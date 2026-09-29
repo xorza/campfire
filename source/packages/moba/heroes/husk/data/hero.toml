@@ -1,0 +1,87 @@
+name = "Husk"
+role = "tank"
+resource = "mana"
+passive = "withering_touch"
+slots = ["grasping_wraps", "dread", "lash_out", "tomb_bind"]
+
+[attack]
+range = "1.25"
+windup_ms = 300
+
+[stats]
+health = { base = 472, per_level = 84 }
+health_regen = { base = "1.5", per_level = "0.17" }
+resource = { base = 220, per_level = 40 }
+resource_regen = { base = "1.3", per_level = "0.1" }
+attack_damage = { base = 47, per_level = "3.8" }
+attack_speed = { base = "0.638", per_level = "0.0218" }
+armor = { base = 18, per_level = "3.3" }
+magic_resist = { base = 30 }
+move_speed = { base = "3.35" }
+
+[modifiers.withering_touch]
+script = "scripts/withering_touch.rhai"
+
+[modifiers.withered]
+duration_ms = 3000
+stats = { magic_resist = -15 }
+
+[abilities.grasping_wraps]
+script = "scripts/grasping_wraps.rhai"
+targeting = "direction"
+range = "11.0"
+cooldown_ms = [16000, 14000, 12000, 10000, 8000]
+cost = [80, 90, 100, 110, 120]
+cast_time_ms = 250
+
+[abilities.grasping_wraps.params]
+speed = "20"
+width = "1.6"
+pull_speed = "18"
+damage = { base = [80, 140, 200, 260, 320], ap = "0.7" }
+stun_ms = 1000
+
+[abilities.dread]
+script = "scripts/dread.rhai"
+targeting = "none"
+toggle = { cost_per_second = 8 }
+
+[abilities.dread.params]
+radius = "3.0"
+share = ["0.015", "0.02", "0.025", "0.03", "0.035"]
+
+[modifiers.dread]
+script = "scripts/dread.rhai"
+interval_ms = 1000
+
+[abilities.lash_out]
+script = "scripts/lash_out.rhai"
+targeting = "none"
+cooldown_ms = [10000, 9000, 8000, 7000, 6000]
+cost = 35
+passive_modifier = "lash_out_guard"
+
+[abilities.lash_out.params]
+radius = "3.5"
+block = [2, 4, 6, 8, 10]
+damage = { base = [75, 100, 125, 150, 175], ap = "0.5" }
+cooldown_cut_ms = 500
+
+[modifiers.lash_out_guard]
+script = "scripts/lash_out.rhai"
+stats = { physical_block = { param = "block" } }
+
+[abilities.tomb_bind]
+script = "scripts/tomb_bind.rhai"
+targeting = "none"
+cooldown_ms = [150000, 130000, 110000]
+cost = [100, 150, 200]
+
+[abilities.tomb_bind.params]
+radius = "5.5"
+damage = { base = [150, 250, 350], ap = "0.8" }
+bind_ms = 2000
+
+[modifiers.entombed]
+duration_ms = { param = "bind_ms" }
+states = ["rooted", "disarmed"]

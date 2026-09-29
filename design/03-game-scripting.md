@@ -54,7 +54,7 @@ The sim does no I/O. The server writes each input to the session log when it ass
 One mode script (`scripts/mode.rhai`) owns the rules. The engine knows only waiting, running and ended; everything inside running is the script's.
 
 - **Phases** (hero pick, warmup, rounds, buy time, overtime) are script state, not engine states.
-- **Hooks:** `on_match_start` (running begins), `on_player_join`, `on_player_leave`, `on_timer`, plus event hooks from the kits in use. `on_tick` exists but is discouraged. Every hook takes `ctx` first.
+- **Hooks:** `on_match_start` (running begins), `on_player_join`, `on_player_leave`, `on_timer`, `on_mode_input`, plus event hooks from the kits in use. `on_tick` exists but is discouraged. Every hook takes `ctx` first.
 - **Primitives:** timers, freeze and unfreeze, respawn and reset, team changes, named per-player resources (e.g. `gold`), scoreboard data.
 - **Timers** are set in milliseconds and rounded up to whole ticks (at least one), so a timer never fires early and modes behave the same at any tick rate to within one tick.
 - **End:** `ctx.end(result)`, callable once. Optional: a persistent world never calls it.
@@ -112,7 +112,7 @@ Scripts never deal with networking.
 
 ## Examples
 
-Function names show the shape of the API.
+Full API: [Script API](08-script-api.md).
 
 **Round-based mode, genre-neutral** (`scripts/mode.rhai`; `phase` and `round` are the state fields declared above). Kit examples are in Game Kits.
 
@@ -120,22 +120,22 @@ Function names show the shape of the API.
 fn on_match_start(ctx) {
     ctx.state.phase = "warmup";
     ctx.state.round = 0;
-    ctx.timer("warmup_end", 60000, false);
+    ctx.timer("warmup_end", 60000, false, ());
 }
 
-fn on_timer(ctx, name) {
+fn on_timer(ctx, name, data) {
     if name == "warmup_end" || name == "round_end" {
         if ctx.state.round == 30 { ctx.end(ctx.leading_team()); return; }
         ctx.state.round += 1;
         ctx.state.phase = "buy";
         ctx.respawn_all();
         ctx.freeze_all(true);
-        ctx.timer("buy_end", 15000, false);
+        ctx.timer("buy_end", 15000, false, ());
     }
     if name == "buy_end" {
         ctx.state.phase = "live";
         ctx.freeze_all(false);
-        ctx.timer("round_end", 115000, false);
+        ctx.timer("round_end", 115000, false, ());
     }
 }
 ```

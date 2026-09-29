@@ -1,0 +1,18 @@
+name = "moba-3v3"
+version = "0.1.0"
+engine = "0.1.0"
+kind = "mode"
+kits = ["moba"]
+tick_hz = { min = 20, max = 60, default = 30 }
+teams = [{ name = "north", slots = 3 }, { name = "south", slots = 3 }]
+backends = { collision = "circles", pathfinding = "grid", visibility = "grid_fog" }
+
+# In the workspace, dependencies are paths; a built package names each by fingerprint.
+[dependencies]
+hero-cinder = { path = "../../heroes/cinder" }
+hero-gale = { path = "../../heroes/gale" }
+hero-husk = { path = "../../heroes/husk" }
+hero-kensho = { path = "../../heroes/kensho" }
+hero-rime = { path = "../../heroes/rime" }
+hero-veil = { path = "../../heroes/veil" }
+player-spells = { path = "../../spells" }

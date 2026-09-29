@@ -1,0 +1,58 @@
+[units.melee_creep]
+ai = "scripts/creep_ai.rhai"
+think_ms = 250
+tags = ["creep"]
+attack = { range = "1.1", windup_ms = 300 }
+stats = { health = { base = 445 }, attack_damage = { base = 12 }, attack_speed = { base = "1.25" }, move_speed = { base = "3.25" } }
+params = { gold = 20, xp = 59, aggro_range = "7.0", help_range = "5.0", help_window_ms = 2000 }
+
+[units.caster_creep]
+ai = "scripts/creep_ai.rhai"
+think_ms = 250
+tags = ["creep"]
+attack = { range = "6.0", windup_ms = 300, projectile_speed = "6.5" }
+stats = { health = { base = 280 }, attack_damage = { base = 23 }, attack_speed = { base = "0.67" }, move_speed = { base = "3.25" } }
+params = { gold = 15, xp = 29, aggro_range = "7.0", help_range = "5.0", help_window_ms = 2000 }
+
+[units.super_creep]
+ai = "scripts/creep_ai.rhai"
+think_ms = 250
+tags = ["creep"]
+attack = { range = "1.7", windup_ms = 300 }
+stats = { health = { base = 1500 }, attack_damage = { base = 190 }, attack_speed = { base = "0.85" }, armor = { base = 30 }, move_speed = { base = "3.25" } }
+params = { gold = 40, xp = 97, aggro_range = "7.0", help_range = "5.0", help_window_ms = 2000 }
+
+[units.tower]
+ai = "scripts/tower_ai.rhai"
+think_ms = 250
+tags = ["structure", "tower"]
+true_sight = true
+attack = { range = "7.75", windup_ms = 150, projectile_speed = "12" }
+stats = { health = { base = 1500 }, attack_damage = { base = 150 }, attack_speed = { base = "0.83" }, armor = { base = 60 }, magic_resist = { base = 60 } }
+params = { gold = 150, xp = 0, help_window_ms = 2000 }
+
+[units.inhibitor]
+tags = ["structure", "inhibitor"]
+stats = { health = { base = 4000 }, armor = { base = 20 }, magic_resist = { base = 20 } }
+params = { gold = 50, xp = 0 }
+
+[units.core]
+tags = ["structure", "core"]
+stats = { health = { base = 5500 }, armor = { base = 20 }, magic_resist = { base = 20 } }
+params = { gold = 0, xp = 0 }
+
+[units.wolf]
+ai = "scripts/camp_ai.rhai"
+think_ms = 250
+tags = ["camp"]
+attack = { range = "1.25", windup_ms = 300 }
+stats = { health = { base = 900 }, attack_damage = { base = 35 }, attack_speed = { base = "0.68" }, armor = { base = 9 }, move_speed = { base = "4.4" } }
+params = { gold = 30, xp = 90, leash_range = "8.0", aggro_window_ms = 5000 }
+
+[units.warden]
+ai = "scripts/camp_ai.rhai"
+think_ms = 250
+tags = ["camp", "objective"]
+attack = { range = "5.0", windup_ms = 400, projectile_speed = "10" }
+stats = { health = { base = 5000 }, attack_damage = { base = 150 }, attack_speed = { base = "0.62" }, armor = { base = 60 }, magic_resist = { base = 30 }, move_speed = { base = "3.0" } }
+params = { gold = 150, xp = 400, leash_range = "10.0", aggro_window_ms = 5000 }

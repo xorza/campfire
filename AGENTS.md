@@ -12,6 +12,7 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus a refere
   - `05-protocol-spec.md` — keys, connection, session log, verification, Nostr events, payments
   - `06-research-notes.md` — early decisions, risks and sources
   - `07-reference-moba.md` — reference MOBA: heroes, player spells, rules
-- `source/` — engine and game code
+  - `08-script-api.md` — script API of the MOBA kit, derived from the reference packages
+- `source/` — engine and game code; `source/packages/<kit>/` holds the reference content packages (heroes, spells, modes)
 
 When code and design disagree, fix one of them, and state which one.

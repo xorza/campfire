@@ -1,0 +1,86 @@
+name = "Veil"
+role = "assassin"
+resource = "energy"
+passive = "dual_path"
+slots = ["dusk_mark", "smoke_ring", "whirling_blades", "night_step"]
+
+[attack]
+range = "1.25"
+windup_ms = 280
+
+[stats]
+health = { base = 445, per_level = 85 }
+health_regen = { base = "1.4", per_level = "0.1" }
+resource = { base = 200 }
+resource_regen = { base = 10 }
+attack_damage = { base = 53, per_level = "3.2" }
+attack_speed = { base = "0.694", per_level = "0.021" }
+armor = { base = "16.5", per_level = "3.5" }
+magic_resist = { base = 30, per_level = "1.25" }
+move_speed = { base = "3.5" }
+
+[modifiers.dual_path]
+script = "scripts/dual_path.rhai"
+
+[modifiers.dual_path.params]
+on_hit_share = { base = "0.06", ap = "0.00167" }
+spell_vamp = { base = "0.06", bonus_ad = "0.00167" }
+
+[abilities.dusk_mark]
+script = "scripts/dusk_mark.rhai"
+targeting = "enemy"
+range = "6.0"
+cooldown_ms = [6000, 5500, 5000, 4500, 4000]
+cost = 60
+
+[abilities.dusk_mark.params]
+speed = "10"
+damage = { base = [45, 70, 95, 120, 145], ap = "0.4" }
+detonate_damage = { base = [45, 70, 95, 120, 145], ap = "0.5" }
+energy_refund = [20, 25, 30, 35, 40]
+
+[modifiers.dusk_mark]
+script = "scripts/dusk_mark.rhai"
+duration_ms = 6000
+
+[abilities.smoke_ring]
+script = "scripts/smoke_ring.rhai"
+targeting = "none"
+cooldown_ms = 20000
+cost = [80, 75, 70, 65, 60]
+
+[abilities.smoke_ring.params]
+radius = "3.0"
+duration_ms = 8000
+tick_ms = 250
+refresh_ms = 300
+slow = ["0.14", "0.18", "0.22", "0.26", "0.30"]
+cover = [10, 20, 30, 40, 50]
+
+[modifiers.smoke_ring_cover]
+states = ["stealthed"]
+stats = { armor = { param = "cover" }, magic_resist = { param = "cover" } }
+
+[abilities.whirling_blades]
+script = "scripts/whirling_blades.rhai"
+targeting = "none"
+cooldown_ms = [7000, 6000, 5000, 4000, 3000]
+cost = [60, 55, 50, 45, 40]
+
+[abilities.whirling_blades.params]
+radius = "3.25"
+damage = { base = [30, 55, 80, 105, 130], ap = "0.3", ad = "0.6" }
+
+[abilities.night_step]
+script = "scripts/night_step.rhai"
+targeting = "enemy"
+range = "8.0"
+charges = { max = 3, recharge_ms = [25000, 20000, 15000] }
+passive_modifier = "night_step_essence"
+
+[abilities.night_step.params]
+speed = "22"
+damage = { base = [100, 175, 250], ap = "0.5" }
+
+[modifiers.night_step_essence]
+script = "scripts/night_step.rhai"

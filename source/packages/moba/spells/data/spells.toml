@@ -1,0 +1,59 @@
+[abilities.blink]
+script = "scripts/blink.rhai"
+targeting = "point"
+range = "4.0"
+clamp_to_range = true
+cooldown_ms = 300000
+
+[abilities.haste]
+script = "scripts/haste.rhai"
+targeting = "none"
+cooldown_ms = 210000
+
+[modifiers.haste]
+duration_ms = 10000
+stats = { move_speed_pct = "0.27" }
+
+[abilities.mend]
+script = "scripts/mend.rhai"
+targeting = "none"
+cooldown_ms = 240000
+
+[abilities.mend.params]
+radius = "7.0"
+heal = { base = 75, per_level = 15 }
+
+[abilities.scorch]
+script = "scripts/scorch.rhai"
+targeting = "enemy"
+range = "6.0"
+cooldown_ms = 210000
+
+[abilities.scorch.params]
+damage_per_second = { base = 10, per_level = 4 }
+
+[modifiers.scorched]
+script = "scripts/scorch.rhai"
+duration_ms = 5000
+interval_ms = 1000
+stats = { healing_received_pct = "-0.5" }
+
+[abilities.sap]
+script = "scripts/sap.rhai"
+targeting = "enemy"
+range = "5.5"
+cooldown_ms = 210000
+
+[modifiers.sapped]
+duration_ms = 2500
+stats = { move_speed_pct = "-0.3", damage_dealt_pct = "-0.7" }
+
+[abilities.farsight]
+script = "scripts/farsight.rhai"
+targeting = "point"
+range = "1000"
+cooldown_ms = 55000
+
+[abilities.farsight.params]
+radius = "6.0"
+reveal_ms = 5000

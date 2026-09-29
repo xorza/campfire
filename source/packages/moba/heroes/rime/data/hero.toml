@@ -1,0 +1,92 @@
+name = "Rime"
+role = "marksman"
+resource = "mana"
+passive = "stillness"
+slots = ["chill_arrows", "fan_of_frost", "snow_owl", "glacier_arrow"]
+
+[attack]
+range = "6.0"
+windup_ms = 230
+projectile_speed = "20"
+
+[stats]
+health = { base = 395, per_level = 79 }
+health_regen = { base = "0.9", per_level = "0.11" }
+resource = { base = 173, per_level = 53 }
+resource_regen = { base = "1.3", per_level = "0.08" }
+attack_damage = { base = 46, per_level = "2.85" }
+attack_speed = { base = "0.658", per_level = "0.021" }
+armor = { base = "11.5", per_level = "3.4" }
+magic_resist = { base = 30 }
+move_speed = { base = "3.25" }
+
+[modifiers.stillness]
+script = "scripts/stillness.rhai"
+interval_ms = 3000
+max_stacks = 33
+stats = { crit_chance = "0.03" }
+
+[abilities.chill_arrows]
+script = "scripts/chill_arrows.rhai"
+targeting = "none"
+toggle = { cost_per_attack = 8 }
+
+[abilities.chill_arrows.params]
+slow = ["0.15", "0.20", "0.25", "0.30", "0.35"]
+slow_ms = 2000
+
+[modifiers.chill_arrows]
+script = "scripts/chill_arrows.rhai"
+
+[abilities.fan_of_frost]
+script = "scripts/fan_of_frost.rhai"
+targeting = "direction"
+range = "12.0"
+cooldown_ms = [16000, 13000, 10000, 7000, 4000]
+cost = 60
+cast_time_ms = 250
+
+[abilities.fan_of_frost.params]
+arrows = 7
+cone_deg = "57.5"
+speed = "15"
+width = "0.4"
+damage = { base = [40, 50, 60, 70, 80], ad = "1.0" }
+slow = ["0.15", "0.20", "0.25", "0.30", "0.35"]
+slow_ms = 2000
+
+[abilities.snow_owl]
+script = "scripts/snow_owl.rhai"
+targeting = "point"
+range = ["25", "32.5", "40", "47.5", "55"]
+cooldown_ms = 60000
+passive_modifier = "snow_owl_bounty"
+
+[abilities.snow_owl.params]
+bonus_gold = [1, 2, 3, 4, 5]
+speed = "14"
+sight_radius = "4.0"
+linger_ms = 5000
+
+[modifiers.snow_owl_bounty]
+script = "scripts/snow_owl.rhai"
+
+[abilities.glacier_arrow]
+script = "scripts/glacier_arrow.rhai"
+targeting = "direction"
+range = "250"
+cooldown_ms = [100000, 90000, 80000]
+cost = 150
+cast_time_ms = 250
+
+[abilities.glacier_arrow.params]
+speed = "16"
+width = "1.3"
+damage = { base = [250, 425, 600], ap = "1.0" }
+splash_radius = "2.5"
+splash_share = "0.5"
+min_stun_ms = 1000
+max_stun_ms = 3500
+full_stun_distance = "15"
+slow = "0.5"
+slow_ms = 3000

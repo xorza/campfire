@@ -71,7 +71,7 @@ Clients can join a running game at any time; they receive the current state of w
 - **No `bevy_mod_scripting`.** It exposes all Bevy types and [pins Bevy patch versions](https://lib.rs/crates/bevy_mod_scripting_script).
 - **Rhai engine:** [`Engine::new_raw`](https://docs.rs/rhai/latest/rhai/struct.Engine.html) plus needed packages only; features `no_float`, `no_time`, without the default `ahash/runtime-rng`; never `unchecked`. `script` fixes Rhai's hashing seed (`rhai::config::hashing::set_hashing_seed`), since Rhai otherwise seeds its hasher per build.
 - **Operation limits.** One limit per call and one total per tick, both set in the manifest. Counts are identical everywhere, so over-budget scripts fail identically. Once a tick's total is spent, every later call in that tick fails.
-- **Other limits** (call depth, expression depth, string, array and map sizes) are constants of the engine release.
+- **Other limits** (call depth, expression depth, string, array and map sizes) are constants of the engine release, set explicitly: Rhai's defaults differ between debug and release builds (call depth 8 against 64), so a script could run on a release server and fail in a debug verifier.
 - **All or nothing per call.** State writes go to an overlay the call can read back; engine effects (damage, spawn, orders, timers) are queued. On success the overlay commits, then the effects apply in call order. On failure (error, overflow, limit) both are discarded, the sim emits a `script_error` event, and the tick goes on.
 - **No hidden script state.** It is declared in a typed schema and stored in sim components; see [Script state](03-game-scripting.md#script-state).
 

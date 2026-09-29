@@ -1,0 +1,29 @@
+script = "scripts/mode.rhai"
+
+[state]
+phase = { type = "string", default = "pick", sync = "all" }
+first_blood = { type = "bool", default = false, sync = "all" }
+
+[params]
+pick_ms = 60000
+first_wave_ms = 60000
+wave_ms = 30000
+wave = ["melee_creep", "melee_creep", "melee_creep", "caster_creep", "caster_creep", "caster_creep"]
+income_ms = 5000
+income_gold = 8
+respawn_base_ms = 5000
+respawn_per_level_ms = 2500
+kill_gold = 300
+first_blood_gold = 100
+assist_gold = 150
+assist_window_ms = 10000
+hero_xp_base = 150
+hero_xp_per_level = 25
+xp_radius = "16.0"
+inhibitor_respawn_ms = 240000
+camp_respawn_ms = 60000
+warden_respawn_ms = 360000
+
+[modifiers.warden_blessing]
+duration_ms = 180000
+stats = { attack_damage_pct = "0.1", ability_power_pct = "0.1" }
