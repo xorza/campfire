@@ -68,7 +68,7 @@ SessionLog
   segments[]
     checkpoint: tick, state hash, snapshot fingerprint,
                 seed commitment for this segment, server signature
-    inputs[]: source, seq, stamp tick, applied tick or late, previous hash, payload
+    ticks[]: inputs[] logged before the tick ran: source, seq, stamp tick, previous hash, payload
     chain heads[]: player, seq, session-key signature
     seed reveal: server seed of this segment (added when the segment is published)
   result (optional): tick, result payload, final state hash, server signature
@@ -90,9 +90,9 @@ SessionLog
 
 **Player inputs**
 
-- **Chain.** Each input of a player carries the hash of that player's previous input; the first carries the delegation hash. A later signature therefore covers every earlier input, and a dropped input breaks the chain.
+- **Chain.** Each input of a player carries the hash of that player's previous input; the first carries the delegation hash. A later signature therefore covers every earlier input, and a dropped input breaks the chain. The hash is BLAKE3 of `"campfire/input-hash/v1" ‖ previous hash ‖ u32 slot ‖ u64 seq ‖ u64 stamp tick ‖ payload`, little-endian; seq counts a player's inputs from 0.
 - **Signature.** The client signs the chain head once per packet, over `"campfire/input/v1" ‖ session id ‖ player slot ‖ seq ‖ chain head hash`.
-- **Applied tick.** The server applies an input at `max(stamp tick, next tick)`. An input that would land more than the max input delay after its stamp is logged as late and not applied, so the chain stays whole.
+- **Applied tick.** The server applies an input at `max(stamp tick, next tick)`. An input that would land more than the max input delay after its stamp is logged as late and not applied, so the chain stays whole. The log groups inputs by the tick that was next when each arrived, so the applied tick and lateness follow from the log and are not stored: a verifier recomputes them and cannot be given wrong ones. The inputs applied in one tick take effect in slot order, then seq order, whatever order they arrived in, so the host cannot choose who acts first in a tick.
 - **Receipts.** About once a second, the server signs `{session id, player slot, tick, highest seq received, chain head hash}` and sends it to the client, which keeps it. A receipt proves the server received every input up to that seq.
 
 ## Verification
