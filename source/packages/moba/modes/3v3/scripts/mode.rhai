@@ -1,5 +1,5 @@
 fn on_match_start(ctx) {
-    ctx.timer("pick_end", ctx.value("pick_ms"), false, ());
+    ctx.timer("pick_end", ctx.p.pick_ms, false, ());
 }
 
 fn on_mode_input(ctx, player, name, value) {
@@ -20,82 +20,76 @@ fn on_timer(ctx, name, data) {
         for point in ctx.map.neutral_spawns {
             ctx.spawn_unit(point.unit_type, "neutral", point.pos);
         }
-        ctx.timer("wave", ctx.value("first_wave_ms"), false, ());
-        ctx.timer("income", ctx.value("income_ms"), true, ());
+        ctx.timer("wave", ctx.p.first_wave_ms, false, ());
+        ctx.timer("income", ctx.p.income_ms, true, ());
     } else if name == "wave" {
         for lane in ctx.map.lanes {
             for team in ctx.teams {
-                let wave = ctx.value("wave");
+                let wave = ctx.p.wave;
                 if inhibitor_down(ctx, ctx.enemy_team(team), lane) {
                     wave.push("super_creep");
                 }
                 ctx.spawn_wave(team, lane, wave);
             }
         }
-        ctx.timer("wave", ctx.value("wave_ms"), false, ());
+        ctx.timer("wave", ctx.p.wave_ms, false, ());
     } else if name == "income" {
         for hero in ctx.heroes() {
-            ctx.add_resource(hero.owner, "gold", ctx.value("income_gold"));
+            ctx.add_resource(hero.owner, "gold", ctx.p.income_gold);
         }
     }
 }
 
-fn on_unit_died(ctx, unit, killer) {
+fn on_unit_died(ctx, unit, killer, assisters) {
     if unit.has_tag("core") {
         ctx.end(ctx.enemy_team(unit.team));
         return;
     }
     share_xp(ctx, unit);
     if unit.is_hero {
-        hero_died(ctx, unit, killer);
+        hero_died(ctx, unit, killer, assisters);
         return;
     }
     if killer != () && killer.is_hero {
         ctx.add_resource(killer.owner, "gold", unit.params.gold);
     }
     if unit.has_tag("inhibitor") {
-        ctx.respawn(unit, ctx.value("inhibitor_respawn_ms"));
+        ctx.respawn(unit, ctx.p.inhibitor_respawn_ms);
     } else if unit.has_tag("objective") {
         if killer != () {
-            for hero in ctx.heroes_of(killer.team) {
+            for hero in ctx.heroes(killer.team) {
                 ctx.add_modifier(hero, "warden_blessing");
             }
         }
-        ctx.respawn(unit, ctx.value("warden_respawn_ms"));
+        ctx.respawn(unit, ctx.p.warden_respawn_ms);
     } else if unit.has_tag("camp") {
-        ctx.respawn(unit, ctx.value("camp_respawn_ms"));
+        ctx.respawn(unit, ctx.p.camp_respawn_ms);
     }
 }
 
-fn hero_died(ctx, hero, killer) {
-    ctx.respawn(hero, ctx.value("respawn_base_ms") + ctx.value("respawn_per_level_ms") * hero.level);
+fn hero_died(ctx, hero, killer, assisters) {
+    ctx.respawn(hero, ctx.p.respawn_base_ms + ctx.p.respawn_per_level_ms * hero.level);
     if killer == () || !killer.is_hero {
         return;
     }
-    let gold = ctx.value("kill_gold");
+    let gold = ctx.p.kill_gold;
     if !ctx.state.first_blood {
-        gold += ctx.value("first_blood_gold");
+        gold += ctx.p.first_blood_gold;
         ctx.state.first_blood = true;
     }
     ctx.add_resource(killer.owner, "gold", gold);
-    let assisters = [];
-    for unit in hero.recent_attackers(ctx.value("assist_window_ms")) {
-        if unit.is_hero && unit != killer {
-            assisters.push(unit);
-        }
-    }
     for unit in assisters {
-        ctx.add_resource(unit.owner, "gold", ctx.value("assist_gold") / assisters.len());
+        ctx.add_resource(unit.owner, "gold", ctx.p.assist_gold / assisters.len());
     }
 }
 
 fn share_xp(ctx, unit) {
-    let heroes = ctx.enemy_heroes_near(unit, unit.pos, ctx.value("xp_radius"));
+    let heroes = ctx.find(unit, unit.pos, ctx.p.xp_radius, "enemies:hero");
     if heroes.is_empty() {
         return;
     }
     let xp = if unit.is_hero {
-        ctx.value("hero_xp_base") + ctx.value("hero_xp_per_level") * unit.level
+        ctx.p.hero_xp_base + ctx.p.hero_xp_per_level * unit.level
     } else {
         unit.params.xp
     };
@@ -113,24 +107,25 @@ fn inhibitor_down(ctx, team, lane) {
     false
 }
 
-fn calc_damage(ctx, source, target, amount, kind) {
-    if kind == "true" {
+fn calc_damage(ctx, d) {
+    let amount = d.amount * (1 + d.source.stat("damage_dealt_pct"));
+    if d.kind == "true" {
         return amount;
     }
-    let physical = kind == "physical";
-    let resist = if physical { target.stat("armor") } else { target.stat("magic_resist") };
-    let pen_pct = if physical { source.stat("armor_pen_pct") } else { source.stat("magic_pen_pct") };
-    let pen_flat = if physical { source.stat("armor_pen") } else { source.stat("magic_pen") };
+    let physical = d.kind == "physical";
+    let resist = if physical { d.target.stat("armor") } else { d.target.stat("magic_resist") };
+    let pen_pct = if physical { d.source.stat("armor_pen_pct") } else { d.source.stat("magic_pen_pct") };
+    let pen_flat = if physical { d.source.stat("armor_pen") } else { d.source.stat("magic_pen") };
     if resist > 0 {
         resist = (resist * (1 - pen_pct) - pen_flat).max(0);
     }
-    let result = if resist >= 0 {
-        amount * 100 / (100 + resist)
+    if resist >= 0 {
+        amount = amount * 100 / (100 + resist);
     } else {
-        amount * (2 - num(100) / (100 - resist))
-    };
-    if physical {
-        result = (result - target.stat("physical_block")).max(0);
+        amount = amount * (2 - num(100) / (100 - resist));
     }
-    result
+    if physical {
+        amount = (amount - d.target.stat("physical_block")).max(0);
+    }
+    amount
 }

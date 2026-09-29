@@ -20,11 +20,6 @@ armor = { base = "9.3", per_level = "3.8" }
 magic_resist = { base = 30 }
 move_speed = { base = "3.35" }
 
-[state]
-cyclone_start_ms = { type = "int", default = 0 }
-cyclone_from = { type = "pos" }
-cyclone_aim = { type = "vec" }
-
 [modifiers.fair_wind]
 aura = { radius = "8.0", affects = "allies", modifier = "fair_wind_speed" }
 
@@ -37,13 +32,11 @@ targeting = "direction"
 range = "17.0"
 cooldown_ms = [14000, 13000, 12000, 11000, 10000]
 cost = [90, 105, 120, 135, 150]
-recast_ms = 3000
+charge = { max_ms = 3000 }
+projectile = { speed = "9", width = "1.2", stop_on_hit = false }
 
 [abilities.cyclone.params]
-speed = "9"
-width = "1.2"
 range_min = "11.0"
-full_charge_ms = 3000
 damage = { base = [60, 85, 110, 135, 160], ap = "0.35" }
 charge_damage = [25, 30, 35, 40, 45]
 knock_up_min_ms = 500
@@ -54,7 +47,7 @@ charge = { type = "num", default = 0 }
 
 [abilities.gust]
 script = "scripts/gust.rhai"
-targeting = "enemy"
+targeting = "enemies"
 range = "6.0"
 cooldown_ms = 8000
 cost = [60, 70, 80, 90, 100]
@@ -72,7 +65,7 @@ stats = { move_speed_pct = { param = "bonus_speed" } }
 
 [abilities.wind_shield]
 script = "scripts/wind_shield.rhai"
-targeting = "ally"
+targeting = "allies"
 range = "8.0"
 cooldown_ms = 10000
 cost = [70, 80, 90, 100, 110]

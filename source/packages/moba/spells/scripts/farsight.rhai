@@ -1,3 +1,3 @@
 fn on_cast(ctx, caster, target) {
-    ctx.reveal(caster, target, ctx.value("radius"), ctx.value("reveal_ms"));
+    ctx.reveal(target, ctx.p.radius, ctx.p.reveal_ms);
 }

@@ -1,29 +1,29 @@
 fn on_cast(ctx, caster, target) {
-    ctx.projectile_homing(caster, caster, target, #{ speed: ctx.value("speed") });
+    ctx.projectile(caster, target);
 }
 
 fn on_projectile_hit(ctx, proj, target) {
-    ctx.damage(proj.source, target, ctx.value("damage"), "magic");
+    ctx.damage(target, ctx.p.damage, "magic");
     ctx.add_modifier(target, "kindle");
     if proj.state.bounces_left == 0 {
         return;
     }
-    let heroes = [];
-    let others = [];
-    for unit in ctx.visible_enemies_near(proj.source, target.pos, ctx.value("bounce_radius")) {
-        if unit == target {
-            continue;
-        }
-        if unit.is_hero {
-            heroes.push(unit);
-        } else {
-            others.push(unit);
-        }
-    }
-    let pool = if heroes.is_empty() { others } else { heroes };
+    let pool = without(ctx.find_visible(proj.source, target.pos, ctx.p.bounce_radius, "enemies:hero"), target);
     if pool.is_empty() {
-        return;
+        pool = without(ctx.find_visible(proj.source, target.pos, ctx.p.bounce_radius, "enemies"), target);
     }
-    let next = ctx.projectile_homing(proj.source, target, ctx.pick(pool), #{ speed: ctx.value("speed") });
-    next.state.bounces_left = proj.state.bounces_left - 1;
+    if !pool.is_empty() {
+        let next = ctx.projectile(target, ctx.pick(pool));
+        next.state.bounces_left = proj.state.bounces_left - 1;
+    }
+}
+
+fn without(units, excluded) {
+    let kept = [];
+    for unit in units {
+        if unit != excluded {
+            kept.push(unit);
+        }
+    }
+    kept
 }

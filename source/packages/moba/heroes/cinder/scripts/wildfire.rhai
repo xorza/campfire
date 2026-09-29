@@ -1,13 +1,13 @@
 fn on_cast(ctx, caster, target) {
     let ablaze = target.has_modifier("kindle");
-    ctx.damage(caster, target, ctx.value("damage"), "magic");
+    ctx.damage(target, ctx.p.damage, "magic");
     ctx.add_modifier(target, "kindle");
     if !ablaze {
         return;
     }
-    for unit in ctx.enemies_near(caster, target.pos, ctx.value("spread_radius")) {
+    for unit in ctx.find(caster, target.pos, ctx.p.spread_radius, "enemies") {
         if unit != target {
-            ctx.damage(caster, unit, ctx.value("spread_damage"), "magic");
+            ctx.damage(unit, ctx.p.spread_damage, "magic");
             ctx.add_modifier(unit, "kindle");
         }
     }

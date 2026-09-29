@@ -34,10 +34,9 @@ range = "10.5"
 cooldown_ms = [10000, 9000, 8000, 7000, 6000]
 cost = 50
 cast_time_ms = 250
+projectile = { speed = "16", width = "1.2", stop_on_hit = true }
 
 [abilities.fire_lance.params]
-speed = "16"
-width = "1.2"
 damage = { base = [80, 120, 160, 200, 240], ap = "0.65" }
 stun_ms = 2000
 
@@ -48,16 +47,15 @@ range = "9.0"
 cooldown_ms = 10000
 cost = [70, 75, 80, 85, 90]
 cast_time_ms = 250
+area = { radius = "2.4", delay_ms = 625, affects = "enemies" }
 
 [abilities.eruption.params]
-radius = "2.4"
-delay_ms = 625
 damage = { base = [75, 120, 165, 210, 255], ap = "0.6" }
 ablaze_bonus = "1.25"
 
 [abilities.wildfire]
 script = "scripts/wildfire.rhai"
-targeting = "enemy"
+targeting = "enemies"
 range = "6.25"
 cooldown_ms = [12000, 11000, 10000, 9000, 8000]
 cost = [70, 75, 80, 85, 90]
@@ -69,13 +67,13 @@ spread_damage = { base = [70, 105, 140, 175, 210], ap = "0.55" }
 
 [abilities.chain_fire]
 script = "scripts/chain_fire.rhai"
-targeting = "enemy"
+targeting = "enemies"
 range = "7.5"
 cooldown_ms = [105000, 90000, 75000]
 cost = [100, 150, 200]
+projectile = { speed = "10" }
 
 [abilities.chain_fire.params]
-speed = "10"
 bounce_radius = "5.0"
 damage = { base = [150, 250, 350], ap = "0.5" }
 

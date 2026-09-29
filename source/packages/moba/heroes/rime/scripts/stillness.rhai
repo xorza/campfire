@@ -1,7 +1,7 @@
 fn on_interval(ctx, m) {
-    ctx.add_stacks(m, 1);
+    m.stacks += 1;
 }
 
 fn on_attack(ctx, m, target) {
-    ctx.set_stacks(m, 0);
+    m.stacks = 0;
 }

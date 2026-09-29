@@ -4,6 +4,6 @@ fn on_cast(ctx, caster, target) {
 
 fn on_takedown(ctx, m, victim) {
     if victim.is_hero {
-        ctx.reduce_cooldowns(m.carrier, ctx.value("cooldown_cut"));
+        ctx.reduce_cooldowns(m.carrier, ctx.p.cooldown_cut);
     }
 }

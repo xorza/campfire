@@ -33,18 +33,17 @@ range = "11.0"
 cooldown_ms = [16000, 14000, 12000, 10000, 8000]
 cost = [80, 90, 100, 110, 120]
 cast_time_ms = 250
+projectile = { speed = "20", width = "1.6", stop_on_hit = true }
 
 [abilities.grasping_wraps.params]
-speed = "20"
-width = "1.6"
 pull_speed = "18"
 damage = { base = [80, 140, 200, 260, 320], ap = "0.7" }
 stun_ms = 1000
 
 [abilities.dread]
-script = "scripts/dread.rhai"
 targeting = "none"
 toggle = { cost_per_second = 8 }
+hold = "dread"
 
 [abilities.dread.params]
 radius = "3.0"

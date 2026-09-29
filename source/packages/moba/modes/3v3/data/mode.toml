@@ -1,4 +1,9 @@
 script = "scripts/mode.rhai"
+assist_window_ms = 10000
+
+[inputs]
+hero = "string"
+spells = "string_list"
 
 [state]
 phase = { type = "string", default = "pick", sync = "all" }
@@ -16,7 +21,6 @@ respawn_per_level_ms = 2500
 kill_gold = 300
 first_blood_gold = 100
 assist_gold = 150
-assist_window_ms = 10000
 hero_xp_base = 150
 hero_xp_per_level = 25
 xp_radius = "16.0"

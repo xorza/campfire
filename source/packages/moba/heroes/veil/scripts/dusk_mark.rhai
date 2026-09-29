@@ -1,18 +1,17 @@
 fn on_cast(ctx, caster, target) {
-    ctx.projectile_homing(caster, caster, target, #{ speed: ctx.value("speed") });
+    ctx.projectile(caster, target);
 }
 
 fn on_projectile_hit(ctx, proj, target) {
-    ctx.damage(proj.source, target, ctx.value("damage"), "magic");
+    ctx.damage(target, ctx.p.damage, "magic");
     ctx.add_modifier(target, "dusk_mark");
 }
 
-// The mark itself: any other damage from Veil detonates it, including her attacks.
-fn on_damage_taken(ctx, m, source, dmg) {
-    if source != m.source || dmg.ability == "dusk_mark" {
-        return;
+// On the marked unit: any other damage from the Veil who marked it, attacks included, detonates the mark.
+fn on_damage_taken(ctx, m, d) {
+    if d.source == m.source && d.ability != "dusk_mark" {
+        ctx.damage(m.carrier, ctx.p.detonate_damage, "magic");
+        ctx.restore(m.source, ctx.p.energy_refund);
+        ctx.remove(m);
     }
-    ctx.damage(m.source, m.carrier, ctx.value("detonate_damage"), "magic");
-    ctx.restore(m.source, "energy", ctx.value("energy_refund"));
-    ctx.remove_modifier(m.carrier, "dusk_mark");
 }

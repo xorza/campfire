@@ -4,10 +4,10 @@ fn think(ctx, unit) {
         target = keep_target(unit);
     }
     if target == () {
-        target = ctx.nearest_visible_enemy(unit, unit.params.aggro_range, "creep");
+        target = ctx.nearest_visible(unit, unit.params.aggro_range, "enemies:creep");
     }
     if target == () {
-        target = ctx.nearest_visible_enemy(unit, unit.params.aggro_range, "hero");
+        target = ctx.nearest_visible(unit, unit.params.aggro_range, "enemies:hero");
     }
     if target == () {
         ctx.order_follow_lane(unit);
@@ -17,12 +17,9 @@ fn think(ctx, unit) {
 }
 
 fn defend_hero(ctx, unit) {
-    for ally in ctx.allies_near(unit, unit.pos, unit.params.help_range) {
-        if !ally.is_hero {
-            continue;
-        }
+    for ally in ctx.find(unit, unit.pos, unit.params.help_range, "allies:hero") {
         for attacker in ally.recent_attackers(unit.params.help_window_ms) {
-            if attacker.is_hero && attacker.is_enemy_of(unit) && unit.can_see(attacker) {
+            if attacker.is_hero && attacker.is_enemy_of(unit) && in_reach(unit, attacker) {
                 return attacker;
             }
         }
@@ -32,9 +29,13 @@ fn defend_hero(ctx, unit) {
 
 fn keep_target(unit) {
     let target = unit.target;
-    if target != () && target.alive && unit.can_see(target) && unit.pos.distance_to(target.pos) <= unit.params.aggro_range {
+    if target != () && target.alive && in_reach(unit, target) {
         target
     } else {
         ()
     }
+}
+
+fn in_reach(unit, other) {
+    unit.can_see(other) && unit.pos.distance_to(other.pos) <= unit.params.aggro_range
 }

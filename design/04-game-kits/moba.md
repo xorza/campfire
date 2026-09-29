@@ -19,15 +19,15 @@ AI scripts drive creeps, neutrals and bosses.
 
 The kit handles the mechanics; the script only describes the effect.
 
-- **Kit fields:** targeting, range, cooldown, cost, cast time, toggles, channels, charges, recasts, granted passives, ranks; see [Script API](../08-script-api.md#data-files).
+- **Kit fields:** targeting, range, cooldown, cost, cast time, toggles, channels, charges, charged casts, granted passives, projectiles, areas, ranks; see [Script API](../08-script-api.md#data-files).
 - **Kit:** validates every cast (range, cooldown, cost, valid and visible target), runs cast and channel time, handles interrupts, applies cooldown and cost.
 - **Passives are modifiers** a hero always carries; the carrier's events (attack, hit, damage, kill, takedown) go to modifier scripts.
 
 | Primitive | Does |
 | --- | --- |
 | Projectile | Linear or homing; calls `on_projectile_hit` |
-| Area | Circle, delayed or lasting; cones and lines are projectiles |
-| Modifier | Buff, debuff or passive: duration, stacks, stat changes, states, shields, auras, periodic `on_interval` |
+| Area | Circle, delayed or lasting; holds modifiers on the units inside; cones and lines are projectiles |
+| Modifier | Buff, debuff or passive, one per source: duration, stacks, stat changes, states, shields, auras, periodic `on_interval` |
 | Damage | Amount and type; the final formula (armor, resistances) is the mode hook `calc_damage` |
 
 ## Space and tick rate

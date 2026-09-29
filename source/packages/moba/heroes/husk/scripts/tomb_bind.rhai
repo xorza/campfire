@@ -1,6 +1,6 @@
 fn on_cast(ctx, caster, target) {
-    for unit in ctx.enemies_near(caster, caster.pos, ctx.value("radius")) {
-        ctx.damage(caster, unit, ctx.value("damage"), "magic");
+    for unit in ctx.find(caster, caster.pos, ctx.p.radius, "enemies") {
+        ctx.damage(unit, ctx.p.damage, "magic");
         ctx.add_modifier(unit, "entombed");
     }
 }

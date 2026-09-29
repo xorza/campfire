@@ -16,8 +16,9 @@ lightyear = { version = "=0.30.1", features = ["webtransport"] }
 nostr = "=0.45.5"
 postcard = { version = "=1.1.3", features = ["use-std"] }
 # No default features: they reseed Rhai's hasher in every process. `script` also sets a
-# fixed seed, because Rhai always seeds per build otherwise.
-rhai = { version = "=1.26.1", default-features = false, features = ["std", "no_float", "no_time"] }
+# fixed seed, because Rhai always seeds per build otherwise. `internals` gives `AST::walk`
+# for the package load checks; its API is unstable, which the exact pin makes safe.
+rhai = { version = "=1.26.1", default-features = false, features = ["std", "no_float", "no_time", "internals"] }
 serde = { version = "=1.0.229", features = ["derive"] }
 sha2 = "=0.11.0"
 toml = "=1.1.6"

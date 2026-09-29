@@ -1,9 +1,9 @@
 fn on_cast(ctx, caster, target) {
-    ctx.dash(caster, target, #{ speed: ctx.value("speed") });
+    ctx.dash(caster, target, ctx.p.speed);
 }
 
 fn on_dash_end(ctx, caster, target) {
-    ctx.damage(caster, target, ctx.value("damage"), "magic");
+    ctx.damage(target, ctx.p.damage, "magic");
 }
 
 fn on_takedown(ctx, m, victim) {

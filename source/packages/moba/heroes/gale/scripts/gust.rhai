@@ -1,4 +1,4 @@
 fn on_cast(ctx, caster, target) {
-    ctx.damage(caster, target, ctx.value("damage"), "magic");
-    ctx.slow(target, ctx.value("slow"), ctx.value("slow_ms"));
+    ctx.damage(target, ctx.p.damage, "magic");
+    ctx.slow(target, ctx.p.slow, ctx.p.slow_ms);
 }
