@@ -8,8 +8,8 @@ use bevy_ecs::component::Component;
 use bevy_ecs::world::World;
 use blake3::Hasher;
 use campfire_math::{Num, RngSource, SegmentSeed, Vec3};
-use campfire_sim::{EntityIndex, IdAllocator, SimComponent, StateHasher};
-use serde::Serialize;
+use campfire_sim::{EntityIndex, IdAllocator, SimComponent, StateRegistry};
+use serde::{Deserialize, Serialize};
 
 const CASES: usize = 4000;
 
@@ -149,14 +149,14 @@ fn rng_section(hasher: &mut Hasher) {
     }
 }
 
-#[derive(Component, Debug, Serialize)]
+#[derive(Component, Debug, Serialize, Deserialize)]
 struct Place(Vec3);
 
 impl SimComponent for Place {
     const NAME: &'static str = "golden.place";
 }
 
-#[derive(Component, Debug, Serialize)]
+#[derive(Component, Debug, Serialize, Deserialize)]
 struct Life(Num);
 
 impl SimComponent for Life {
@@ -180,11 +180,18 @@ fn state_section(hasher: &mut Hasher) {
     for entity in entities.into_iter().step_by(7) {
         world.despawn(entity);
     }
-    let mut state = StateHasher::new();
+    let mut state = StateRegistry::new();
     state.register_component::<Place>();
     state.register_component::<Life>();
     let mut per_type = Vec::new();
-    hasher.update(state.hash_by_type(&world, &mut per_type).as_bytes());
+    let state_hash = state.hash_by_type(&world, &mut per_type);
+    hasher.update(state_hash.as_bytes());
+    let mut snapshot = Vec::new();
+    state.snapshot(&world, &mut snapshot);
+    hasher.update(&snapshot);
+    let mut restored = World::new();
+    state.restore(&snapshot, &mut restored).unwrap();
+    assert_eq!(state.hash(&restored), state_hash);
     for type_hash in &per_type {
         hasher
             .update(type_hash.name.as_bytes())
@@ -226,7 +233,7 @@ fn golden_digests() {
         Section {
             name: "state",
             run: state_section,
-            digest: "96485cc954c708b828f2089562eafc08ecb62ff6da1569a0616e819fad9ee190",
+            digest: "4d6aaaa309d6ed840f49cee7d719d1f7722e32332ad53a390d7812a56cbdebf4",
         },
     ];
     let mut mismatches = String::new();

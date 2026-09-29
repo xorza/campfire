@@ -6,15 +6,16 @@ mod entity_index;
 mod id_allocator;
 mod sim_state;
 mod stable_id;
-mod state_hasher;
+mod state_registry;
 
 pub use entity_index::EntityIndex;
 pub use id_allocator::IdAllocator;
 pub use sim_state::{SimComponent, SimResource};
 pub use stable_id::StableId;
-pub use state_hasher::{StateHash, StateHasher, TypeHash};
+pub use state_registry::error::SnapshotError;
+pub use state_registry::{StateHash, StateRegistry, TypeHash};
 
 #[cfg(feature = "bench")]
 pub mod bench {
-    pub use crate::state_hasher::bench::state_hash;
+    pub use crate::state_registry::bench::state_hash;
 }

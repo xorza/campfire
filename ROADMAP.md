@@ -5,9 +5,6 @@ Open items only. Remove an item when it is done; remove a stage when it is empty
 ## 0. Before code
 - CI on Linux x86_64, Windows x86_64, macOS aarch64.
 
-## 1. Determinism core
-- Snapshot encoding in `sim`: the state hasher's encoder with a byte sink.
-
 ## 2. Prototype gate
 - One unit in Lightyear's World, predicted client, bare-`World` verifier: equal hash every tick on all CI platforms.
 - Measure Schnorr checks per packet and rollback cost. On failure, revisit decision 1.

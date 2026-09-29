@@ -12,6 +12,11 @@ pub struct IdAllocator {
 }
 
 impl IdAllocator {
+    /// Whether `id` was handed out, so the allocator will never hand it out again.
+    pub(crate) const fn issued(&self, id: StableId) -> bool {
+        id.get() < self.next
+    }
+
     pub fn allocate(&mut self) -> StableId {
         let id = StableId::new(self.next);
         self.next = self.next.checked_add(1).expect("stable ids exhausted");
