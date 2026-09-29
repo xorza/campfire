@@ -1,12 +1,12 @@
 # MMO kit
 
-Status: later. A persistent world on one server; the mode never calls `match.end`.
+Status: later. A persistent world on one server; the mode never calls `ctx.end`.
 
 ## World state
 
 - Characters, inventories, guild holdings and world state persist through core saves at tick boundaries. Scripts never write to a database.
 - Character load on login, admin commands, purchases and calendar events ("Saturday 20:00: siege starts") are recorded inputs.
-- Content upgrades apply at restart; script data migrations convert saved state.
+- Content upgrades apply at restart; script state migrations convert saved state.
 
 ## Scale
 

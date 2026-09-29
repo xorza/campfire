@@ -13,12 +13,12 @@ Character controller: a 3D capsule against level geometry, with gravity, jumping
 ## Weapons and hits
 
 - Weapon data: fire rate, damage, falloff, penetration, recoil, spread.
-- Spread comes from the sim RNG, seeded per shot, so client and server agree.
+- Spread comes from the sim RNG on the server only. The client predicts the shot effect, not where it lands: a client that knows the spread can cancel it.
 - Hitscan: ray tests against per-body-part hitboxes. Hitboxes follow a simplified animation pose computed in the sim.
 
 ## Lag compensation
 
-The server keeps a short history of hitbox poses and tests each shot at the tick named in the shooter's input. That tick is recorded, so replays stay deterministic. Built on Lightyear's lag compensation.
+The sim keeps a short history of hitbox poses as part of its state and tests each shot at the tick named in the shooter's input. That tick is in the recorded input and the history is sim state, so the verifier gets the same hit. It is kit code, not the network layer's lag compensation, because the verifier runs no network layer.
 
 ## Visibility
 
