@@ -113,7 +113,7 @@ Same pattern. Backends: grid fog of war (MOBA), 3D occlusion (FPS, battle royale
 - Positions are 3D in every genre. No floats outside a physics backend, no randomly seeded hash maps, no wall clock.
 - The RNG is counter-based: every value is `BLAKE3-keyed(segment seed, stream ‖ stable entity id ‖ tick ‖ n)`, so no draw depends on the order of other draws and systems can draw in parallel. The only RNG state is the segment seed. The function must be a cryptographic PRF: clients see many outcomes, and a non-cryptographic generator could let them recover the seed and predict hidden ones.
 - A random value that decides an outcome never reaches a client before the log is published. Clients may predict effects, never results.
-- Non-integer numbers are 32.32 fixed-point (`I32F32`), 1 unit = 1 meter. Distance math uses a 128-bit helper. Scripts see two number types, integers and fixed-point; see [Game Scripting](03-game-scripting.md#numbers).
+- Non-integer numbers are 40.24 fixed-point (`I40F24`), 1 unit = 1 meter. Distance math uses a 128-bit helper. Scripts see two number types, integers and fixed-point; see [Game Scripting](03-game-scripting.md#numbers).
 - An overflow is a bug and panics in every build profile: integers through `overflow-checks = true`, fixed-point through the checked arithmetic of `math::Num`. `Num` rounds `*` and `/` to nearest, ties to even ([Determinism Core](09-determinism-core.md)).
 - Every coordinate stays within ±2²⁰ m, so exact squared distances fit a `u128`.
 

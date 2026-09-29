@@ -18,7 +18,7 @@ The protocol has its own version, separate from engine releases. Every session l
 | Item | Rule |
 | --- | --- |
 | Binary encoding | `postcard` 1.x (stable wire format) |
-| Numbers in game data | 32.32 fixed-point, stored as raw `i64` |
+| Numbers in game data | 40.24 fixed-point, stored as raw `i64` |
 | Anything published as a file: package files, package fingerprints, session logs, snapshots | SHA-256, 32 bytes, so [Blossom](https://github.com/hzrd149/blossom) servers host it as is |
 | State hashes | BLAKE3, 32 bytes |
 | Signatures | Schnorr over secp256k1, as in Nostr |
