@@ -3,5 +3,12 @@ name = "campfire-sim"
 edition.workspace = true
 license.workspace = true
 
+[dependencies]
+campfire-math.workspace = true
+
+bevy_ecs.workspace = true
+blake3.workspace = true
+postcard.workspace = true
+
 [lints]
 workspace = true

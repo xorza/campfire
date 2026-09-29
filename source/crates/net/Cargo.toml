@@ -3,5 +3,12 @@ name = "campfire-net"
 edition.workspace = true
 license.workspace = true
 
+[dependencies]
+campfire-identity.workspace = true
+campfire-protocol.workspace = true
+campfire-sim.workspace = true
+
+lightyear.workspace = true
+
 [lints]
 workspace = true

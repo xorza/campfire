@@ -3,5 +3,9 @@ name = "campfire-det-ci"
 edition.workspace = true
 license.workspace = true
 
+[dependencies]
+campfire-protocol.workspace = true
+campfire-runner.workspace = true
+
 [lints]
 workspace = true

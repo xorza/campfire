@@ -3,5 +3,10 @@ name = "campfire-kit-moba"
 edition.workspace = true
 license.workspace = true
 
+[dependencies]
+campfire-math.workspace = true
+campfire-script.workspace = true
+campfire-sim.workspace = true
+
 [lints]
 workspace = true

@@ -3,5 +3,9 @@ name = "campfire-content"
 edition.workspace = true
 license.workspace = true
 
+[dependencies]
+postcard.workspace = true
+sha2.workspace = true
+
 [lints]
 workspace = true

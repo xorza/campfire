@@ -3,5 +3,11 @@ name = "campfire-script"
 edition.workspace = true
 license.workspace = true
 
+[dependencies]
+campfire-math.workspace = true
+campfire-sim.workspace = true
+
+rhai.workspace = true
+
 [lints]
 workspace = true

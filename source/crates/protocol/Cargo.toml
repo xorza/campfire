@@ -3,5 +3,12 @@ name = "campfire-protocol"
 edition.workspace = true
 license.workspace = true
 
+[dependencies]
+campfire-math.workspace = true
+
+blake3.workspace = true
+nostr.workspace = true
+postcard.workspace = true
+
 [lints]
 workspace = true

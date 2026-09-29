@@ -3,5 +3,13 @@ name = "campfire-runner"
 edition.workspace = true
 license.workspace = true
 
+[dependencies]
+campfire-content.workspace = true
+campfire-kit-moba.workspace = true
+campfire-math.workspace = true
+campfire-protocol.workspace = true
+campfire-script.workspace = true
+campfire-sim.workspace = true
+
 [lints]
 workspace = true

@@ -3,7 +3,6 @@
 Open items only. Remove an item when it is done; remove a stage when it is empty.
 
 ## 0. Before code
-- Approve dependencies; decide on `rust-toolchain.toml`.
 - Script API on paper: 6 heroes, mode, creep AI.
 - CI on Linux x86_64, Windows x86_64, macOS aarch64.
 
@@ -20,7 +19,7 @@ Open items only. Remove an item when it is done; remove a stage when it is empty
 - Handshake, session log with seed commit-reveal, verifier on another OS. Is it fun?
 
 ## 4. Engine semantics
-- Scripting: all-or-nothing calls, tick budget, typed state, timers.
+- Scripting: fixed Rhai hashing seed, all-or-nothing calls, tick budget, typed state, timers.
 - Kit: all primitives. Server: crash restore, reconnect, late join, receipts.
 - Client: interpolation, presentation scripts, asset limits.
 

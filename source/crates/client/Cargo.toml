@@ -3,5 +3,12 @@ name = "campfire-client"
 edition.workspace = true
 license.workspace = true
 
+[dependencies]
+campfire-content.workspace = true
+campfire-identity.workspace = true
+campfire-net.workspace = true
+campfire-protocol.workspace = true
+campfire-runner.workspace = true
+
 [lints]
 workspace = true
