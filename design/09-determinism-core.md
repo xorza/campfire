@@ -62,7 +62,7 @@ The first engine code: numbers, vectors, randomness, stable ids and the state ha
 - **Trig:** exact points (`sin 0 = 0`, `cos 0 = 1`, `atan2(1, 1)` = `PI / 4`), exact symmetries, and sweeps over small and huge angles and over `atan2` grids, at most 0.501 ulp from `f64`. Floats appear only in these tests, under an `expect` with its reason.
 - **`Rng`:** the official BLAKE3 keyed vectors, with extended output; the documented message layout across a block boundary. Lemire's method and `chance_ratio`, checked exhaustively with 16-bit words. `chance` at `p = 0`, `1`, `2⁻²⁴`, `1 − 2⁻²⁴`, and that it always takes one word.
 - **State hash:** the same world built in two orders hashes equal; changing one field changes exactly that type's hash; extra non-sim components change nothing; the allocator's next id changes only its own hash; the buffered writer equals BLAKE3 over postcard's bytes, across its buffer size. The index follows spawn, replacement and despawn.
-- **Golden test:** a fixed workload (arithmetic, trig, distances, draws, one world hash) against a checked-in digest, the reference that platforms must match.
+- **Golden test** (`sim/tests/golden.rs`, public API only): fixed workloads for `num`, `trig`, `vec3`, `rng` and `state`, each with its own checked-in digest, so a mismatch names the section of the first divergence. Inputs come from `SplitMix64` in the test. The digests hold in debug, release and `-C target-cpu=native`; a broken tie rule in `Num` fails exactly `num`. They change only when a release changes results on purpose.
 
 ## Plan
 
