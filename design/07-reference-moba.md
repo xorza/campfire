@@ -64,7 +64,16 @@ Each player picks two: Blink (short teleport), Haste (move speed), Mend (heal se
 - Crit and every other chance effect roll independently from the secret RNG stream.
 - Vision: brush blocks sight from outside it; sight wards and vision wards; stealth, revealed by true sight (vision wards, towers and consumables).
 - Last-hitting gives gold; there are no denies.
+- Levels 1–18. Basic abilities have 5 ranks; the ultimate has 3, learnable at levels 6, 11 and 16.
+- Resistance `r` scales damage by `100 / (100 + r)`, or by `2 − 100 / (100 − r)` when `r` is negative. Crits deal 200%. Cooldown reduction caps at 40%. Flat and percent penetration, life steal and spell vamp.
+- Attacks have a wind-up, when moving cancels the attack, and a back-swing, when moving is free.
+- Distances are in meters: melee range about 1.25, ranged attacks 5.5–6.5, hero move speed 3.0–3.5 per second.
+
+## Map and items
+
+- 3v3 on two lanes with jungle camps between them and one neutral objective.
+- Some items have actives. Consumables: health and mana potions, sight and vision wards, and an elixir that grants true sight until death.
 
 ## What the kits need from the engine
 
-Mana and energy; toggles with a cost per attack or per second; charges; on-hit effects and crits; marks that detonate; burns; stealth, true sight and area reveal; dashes, pulls, knock-ups and knockbacks; untargetable; channels; line, homing, bouncing and jumping attacks; delayed and persistent areas; global projectiles with effects by distance flown; auras; shields; cooldown changes on takedowns and hits; stun, slow, root, knock-up, knockback and slow immunity; charged casts with recast.
+Mana and energy; toggles with a cost per attack or per second; charges; on-hit effects and crits; marks that detonate; burns; stealth, true sight and area reveal; dashes, pulls, knock-ups and knockbacks; untargetable; channels; line, homing, bouncing and jumping attacks; delayed and persistent areas; global projectiles with effects by distance flown; auras; shields; cooldown changes on takedowns and hits; stun, slow, root, knock-up, knockback and slow immunity; charged casts with recast. The API that provides them: [Script API](08-script-api.md).
