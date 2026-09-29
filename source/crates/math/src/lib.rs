@@ -4,4 +4,10 @@
 
 mod num;
 
-pub use num::Num;
+pub use num::error::ParseNumError;
+pub use num::{Num, SinCos};
+
+#[cfg(feature = "bench")]
+pub mod bench {
+    pub use crate::num::bench::num;
+}

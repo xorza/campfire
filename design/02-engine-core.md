@@ -110,7 +110,7 @@ Same pattern. Backends: grid fog of war (MOBA), 3D occlusion (FPS, battle royale
 
 - Fixed-tick schedule; system-order ambiguities are errors.
 - Own stable entity ids (never Bevy `Entity`) for the protocol and replays, and for sorting queries wherever order matters, since Bevy [does not guarantee query order](https://docs.rs/bevy_rand/latest/bevy_rand/tutorial/ch02_basic_usage/index.html).
-- Positions are 3D in every genre. No floats outside a physics backend, no randomly seeded hash maps, no wall clock.
+- Positions are 3D in every genre. No floats outside a physics backend, except as an estimate that integer steps then correct exactly (`Num::sqrt`); no randomly seeded hash maps, no wall clock.
 - The RNG is counter-based: every value is `BLAKE3-keyed(segment seed, stream ‖ stable entity id ‖ tick ‖ n)`, so no draw depends on the order of other draws and systems can draw in parallel. The only RNG state is the segment seed. The function must be a cryptographic PRF: clients see many outcomes, and a non-cryptographic generator could let them recover the seed and predict hidden ones.
 - A random value that decides an outcome never reaches a client before the log is published. Clients may predict effects, never results.
 - Non-integer numbers are 40.24 fixed-point (`I40F24`), 1 unit = 1 meter. Distance math uses a 128-bit helper. Scripts see two number types, integers and fixed-point; see [Game Scripting](03-game-scripting.md#numbers).

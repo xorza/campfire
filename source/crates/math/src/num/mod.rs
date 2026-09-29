@@ -1,17 +1,36 @@
+use std::fmt;
 use std::ops::{Add, AddAssign, Div, DivAssign, Mul, MulAssign, Neg, Sub, SubAssign};
+use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
+use crate::num::decimal::Decimal;
+use crate::num::error::ParseNumError;
+
+#[cfg(feature = "bench")]
+pub(crate) mod bench;
+mod decimal;
+pub(crate) mod error;
+mod trig;
+
 /// A 40.24 fixed-point number: the value times 2²⁴, in an `i64`.
 ///
-/// `*` and `/` round to nearest, ties to even. Operators panic on overflow and on division by
-/// zero, which in engine code are bugs; the `checked_*` methods return `None` instead.
+/// `*`, `/`, `sqrt`, `sin_cos` and `atan2` round to nearest, ties to even. Operators panic on
+/// overflow and on division by zero, which in engine code are bugs; the `checked_*` methods
+/// return `None` instead.
 #[derive(
     Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[serde(transparent)]
 #[repr(transparent)]
 pub struct Num(i64);
+
+/// Sine and cosine of one angle.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SinCos {
+    pub sin: Num,
+    pub cos: Num,
+}
 
 impl Num {
     pub const FRAC_BITS: u32 = 24;
@@ -21,6 +40,9 @@ impl Num {
     pub const EPSILON: Num = Num(1);
     pub const MIN: Num = Num(i64::MIN);
     pub const MAX: Num = Num(i64::MAX);
+    pub const PI: Num = Num(trig::pi_bits(Self::FRAC_BITS));
+    pub const TAU: Num = Num(trig::pi_bits(Self::FRAC_BITS + 1));
+    pub const FRAC_PI_2: Num = Num(trig::pi_bits(Self::FRAC_BITS - 1));
 
     const HALF_BITS: i64 = 1 << (Self::FRAC_BITS - 1);
     const FRAC_MASK: i64 = (1 << Self::FRAC_BITS) - 1;
@@ -64,78 +86,165 @@ impl Num {
         if up { self.floor() + 1 } else { self.floor() }
     }
 
-    pub fn checked_add(self, rhs: Num) -> Option<Num> {
-        self.0.checked_add(rhs.0).map(Num)
+    pub const fn checked_add(self, rhs: Num) -> Option<Num> {
+        match self.0.checked_add(rhs.0) {
+            Some(bits) => Some(Num(bits)),
+            None => None,
+        }
     }
 
-    pub fn checked_sub(self, rhs: Num) -> Option<Num> {
-        self.0.checked_sub(rhs.0).map(Num)
+    pub const fn checked_sub(self, rhs: Num) -> Option<Num> {
+        match self.0.checked_sub(rhs.0) {
+            Some(bits) => Some(Num(bits)),
+            None => None,
+        }
     }
 
-    pub fn checked_neg(self) -> Option<Num> {
-        self.0.checked_neg().map(Num)
+    pub const fn checked_neg(self) -> Option<Num> {
+        match self.0.checked_neg() {
+            Some(bits) => Some(Num(bits)),
+            None => None,
+        }
     }
 
-    pub fn checked_mul(self, rhs: Num) -> Option<Num> {
-        let product = i128::from(self.0) * i128::from(rhs.0);
-        i64::try_from(div_one_rounded(product)).ok().map(Num)
+    pub const fn checked_mul(self, rhs: Num) -> Option<Num> {
+        narrow(round_shr(self.0 as i128 * rhs.0 as i128, Self::FRAC_BITS))
     }
 
-    pub fn checked_div(self, rhs: Num) -> Option<Num> {
+    pub const fn checked_div(self, rhs: Num) -> Option<Num> {
         if rhs.0 == 0 {
             return None;
         }
-        let quotient = round_div(i128::from(self.0) << Self::FRAC_BITS, i128::from(rhs.0));
-        i64::try_from(quotient).ok().map(Num)
+        narrow(round_div(
+            (self.0 as i128) << Self::FRAC_BITS,
+            rhs.0 as i128,
+        ))
     }
 
     /// Exact scaling by an integer.
-    pub fn checked_mul_int(self, rhs: i64) -> Option<Num> {
-        self.0.checked_mul(rhs).map(Num)
+    pub const fn checked_mul_int(self, rhs: i64) -> Option<Num> {
+        match self.0.checked_mul(rhs) {
+            Some(bits) => Some(Num(bits)),
+            None => None,
+        }
     }
 
-    pub fn checked_div_int(self, rhs: i64) -> Option<Num> {
+    pub const fn checked_div_int(self, rhs: i64) -> Option<Num> {
         if rhs == 0 {
             return None;
         }
-        i64::try_from(round_div(i128::from(self.0), i128::from(rhs)))
-            .ok()
-            .map(Num)
+        narrow(round_div(self.0 as i128, rhs as i128))
+    }
+
+    /// `None` for a negative value.
+    #[expect(
+        clippy::cast_precision_loss,
+        clippy::cast_possible_truncation,
+        clippy::cast_sign_loss,
+        clippy::float_arithmetic,
+        reason = "the f64 root is only an estimate; the integer steps fix the result exactly"
+    )]
+    pub fn checked_sqrt(self) -> Option<Num> {
+        if self.0 < 0 {
+            return None;
+        }
+        let raw = self.0.cast_unsigned();
+        let scaled = u128::from(raw) << Self::FRAC_BITS;
+        // An f64 estimate is three times as fast as `u128::isqrt`. Below 2⁸⁸ it is within 1 of
+        // ⌊√scaled⌋, and the loops make it exact whatever the float returns, so the result
+        // stays deterministic.
+        // The root stays below 2⁴⁴, so no product or step here can overflow.
+        // Converting the 64-bit `raw` is one instruction, where `u128` needs a library call;
+        // multiplying by 2²⁴ is exact.
+        let mut root = (raw as f64 * f64::from(1_u32 << Self::FRAC_BITS)).sqrt() as u128;
+        while root.wrapping_mul(root) > scaled {
+            root = root.wrapping_sub(1);
+        }
+        while (root + 1).wrapping_mul(root + 1) <= scaled {
+            root = root.wrapping_add(1);
+        }
+        // √scaled is never exactly `root + ½`, so rounding up past the midpoint needs no tie rule.
+        let root = if scaled.wrapping_sub(root.wrapping_mul(root)) > root {
+            root + 1
+        } else {
+            root
+        };
+        Some(narrow_in_range(root.cast_signed()))
+    }
+
+    #[must_use]
+    pub fn sqrt(self) -> Num {
+        self.checked_sqrt()
+            .expect("Num square root of a negative value")
+    }
+
+    /// Sine and cosine of an angle in radians; any angle is reduced exactly.
+    pub const fn sin_cos(self) -> SinCos {
+        trig::sin_cos(self)
+    }
+
+    /// The angle of the point `(x, self)` in radians, in `[−π, π]`; `0` for the origin.
+    #[must_use]
+    pub const fn atan2(self, x: Num) -> Num {
+        trig::atan2(self, x)
     }
 }
 
-/// `value / 2²⁴`, rounded to nearest, ties to even.
-fn div_one_rounded(value: i128) -> i128 {
-    let floor = value >> Num::FRAC_BITS;
-    let rest = value - (floor << Num::FRAC_BITS);
-    let half = i128::from(Num::HALF_BITS);
+/// Narrows an exact result; `None` when it does not fit.
+const fn narrow(bits: i128) -> Option<Num> {
+    if bits < i64::MIN as i128 || bits > i64::MAX as i128 {
+        return None;
+    }
+    Some(narrow_in_range(bits))
+}
+
+/// Narrows a result that cannot overflow.
+const fn narrow_in_range(bits: i128) -> Num {
+    Num(to_i64(bits))
+}
+
+#[expect(
+    clippy::cast_possible_truncation,
+    reason = "callers pass values that fit i64"
+)]
+const fn to_i64(value: i128) -> i64 {
+    debug_assert!(value >= i64::MIN as i128 && value <= i64::MAX as i128);
+    value as i64
+}
+
+/// `value / 2^shift`, rounded to nearest, ties to even.
+const fn round_shr(value: i128, shift: u32) -> i128 {
+    debug_assert!(shift > 0);
+    let floor = value >> shift;
+    // Neither step can overflow: `rest` is in `[0, 2^shift)` and `floor` is at most `value / 2`.
+    let rest = value.wrapping_sub(floor << shift);
+    let half = 1 << (shift - 1);
     if rest > half || (rest == half && floor & 1 == 1) {
-        floor + 1
+        floor.wrapping_add(1)
     } else {
         floor
     }
 }
 
-/// `numerator / denominator`, rounded to nearest, ties to even. The denominator is not zero, and
-/// callers keep `|numerator|` at most 2⁸⁷.
-fn round_div(numerator: i128, denominator: i128) -> i128 {
+/// `numerator / denominator`, rounded to nearest, ties to even. Callers keep the denominator
+/// non-zero and below 2¹²⁶, and the quotient at most 2⁸⁷.
+const fn round_div(numerator: i128, denominator: i128) -> i128 {
     let n = numerator.unsigned_abs();
     let d = denominator.unsigned_abs();
+    debug_assert!(d != 0 && d < 1 << 126);
     let mut magnitude = n / d;
     let rest = n % d;
-    if 2 * rest > d || (2 * rest == d && magnitude & 1 == 1) {
-        magnitude += 1;
+    // No step can overflow: `rest < d < 2¹²⁶` and the quotient is at most 2⁸⁷.
+    let twice_rest = rest << 1;
+    if twice_rest > d || (twice_rest == d && magnitude & 1 == 1) {
+        magnitude = magnitude.wrapping_add(1);
     }
-    debug_assert!(magnitude <= 1 << 87, "round_div numerator above 2⁸⁷");
-    #[expect(
-        clippy::cast_possible_wrap,
-        reason = "magnitude ≤ 2⁸⁷, far inside i128"
-    )]
-    let magnitude = magnitude as i128;
+    debug_assert!(magnitude <= 1 << 87, "round_div quotient above 2⁸⁷");
+    let magnitude = magnitude.cast_signed();
     if (numerator < 0) == (denominator < 0) {
         magnitude
     } else {
-        -magnitude
+        magnitude.wrapping_neg()
     }
 }
 
@@ -218,6 +327,22 @@ impl MulAssign for Num {
 impl DivAssign for Num {
     fn div_assign(&mut self, rhs: Num) {
         *self = *self / rhs;
+    }
+}
+
+impl FromStr for Num {
+    type Err = ParseNumError;
+
+    /// Reads `[-]digits[.digits]` exactly, rounded to nearest, ties to even.
+    fn from_str(text: &str) -> Result<Num, ParseNumError> {
+        decimal::parse(text.as_bytes())
+    }
+}
+
+impl fmt::Display for Num {
+    /// The exact decimal value; 24 fractional bits always end within 24 decimal digits.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.pad(Decimal::new(*self).as_str())
     }
 }
 

@@ -21,11 +21,13 @@ The first engine code: numbers, vectors, randomness, stable ids and the state ha
 - **Arithmetic.** `+`, `-`, unary `-` are checked. `*` rounds the exact `i128` product to nearest, ties to even, before the shift; `/` computes `(a << 24) / b` in `i128` with the same rounding. An overflow or a division by zero panics: in engine code it is a bug. The script layer calls `checked_*` versions, which return `None`, and turns that into a `script_error`.
 - **With integers:** `Num * i64` and `Num / i64`, exact scaling without a conversion.
 - **Conversions:** `Num::from_int(i64) -> Option<Num>` (exact, for `|i| < 2³⁹`); `floor`, `ceil`, `round` to `i64`; `from_bits`, `to_bits`. No conversion from or to floats.
-- **Parsing:** `FromStr` for data strings such as `"7.5"`: the integer part, the first 27 fractional digits as an exact fraction (`10²⁷ · 2²⁴` fits a `u128`), a sticky flag for any later non-zero digit, one rounding to nearest, ties to even. Package data is untrusted, so parsing returns an error, never panics.
-- **`sqrt`:** `u128::isqrt` of `raw << 24`, rounded to nearest; the square root of an integer is never exactly a half.
-- **`sin_cos`** returns `SinCos { sin, cos }`: reduce by π/2 with a 96-bit π, then Taylor series on |x| ≤ π/4 in `i128` with 62 fractional bits (8 terms bring the remainder below 2⁻⁴⁵), coefficients 1/n! computed, one rounding at the end.
-- **`atan2`:** reduce to `atan(t)`, `0 ≤ t ≤ 1`, by quadrant; halve once with `atan u = 2·atan(u / (1 + √(1 + u²)))` through the exact `isqrt`; series with coefficients 1/(2k+1) at the same precision.
-- **Constants:** `ZERO`, `ONE`, `PI`, `TAU`, `FRAC_PI_2`. π comes from Machin's formula (`16·atan(1/5) − 4·atan(1/239)`) in a `const fn`, in `u128` with guard bits, rounded to nearest.
+- **Parsing:** `FromStr` for data strings such as `"7.5"`: the integer part, the first 25 fractional digits as an exact fraction, a flag for any later non-zero digit, one rounding to nearest, ties to even. 25 digits suffice because every midpoint between neighbouring values, `(2j + 1) / 2²⁵`, has exactly 25; later digits only break a tie. Package data is untrusted, so parsing returns an error, never panics. `Display` prints the exact decimal, at most 24 fractional digits.
+- **`sqrt`:** the root of `raw << 24`, rounded to nearest; the square root of an integer is never exactly a half. An `f64` square root gives the estimate, then integer steps correct it to exactly ⌊√·⌋, so the result does not depend on the float; three times as fast as `u128::isqrt`. It is the one float in the sim crates, under an `expect` with this reason.
+- **Kernels** work at 2⁻⁶² in `i64`, so every product is one 64×64 multiply. Their tables and constants are computed at compile time by exact series (Taylor, and `atan` with two argument halvings), so nothing is written by hand.
+- **`sin_cos`** returns `SinCos { sin, cos }`: the quadrant from one multiply by 2/π; the remainder reduced exactly with π/2 at 101 bits, modulo 2¹²⁸; the nearest of 52 tabled angles `k/64`; a 4-term series on the rest, |b| ≤ 1/128; the angle-addition formula; one rounding at the end.
+- **`atan2`:** the nearest of 33 tabled tangents `k/32`, found with one 64-bit division; the vector rotated by that angle, which needs no division; one division for the remaining tangent, |u| ≤ 1/64; a 4-term series; quadrant fix-up; one rounding.
+- **Measured:** both are correctly rounded (at most 0.5 ulp against `f64` over a million inputs in each of four regions) and take about 15–20 ns, against 200–230 ns for the plain series.
+- **Constants:** `ZERO`, `ONE`, `EPSILON`, `MIN`, `MAX`, `PI`, `TAU`, `FRAC_PI_2`. π comes from Machin's formula (`16·atan(1/5) − 4·atan(1/239)`) at 2⁻¹²⁰ in a `const fn`; compilation fails if the formula's error bound could move π across a rounding midpoint.
 
 ### `math::Vec3` (`vec3.rs`)
 
@@ -53,7 +55,7 @@ The first engine code: numbers, vectors, randomness, stable ids and the state ha
 - **`Num`:** hand-computed cases for each operation, including ties (`0.5 × 2⁻²⁴` both ways), `MIN`, `MAX`, `−1` raw and sign changes; `proptest` differential tests against an exact rational reference in `i128`.
 - **Parsing and π:** π from Machin must equal a 40-digit decimal rounded by the parser.
 - **`sqrt`, `distance`:** exact cases (`sqrt(4) = 2`, the 3-4-5 triangle, `2⁻²⁴` steps), and the rounding rule against `isqrt` directly.
-- **Trig:** exact points (`sin 0 = 0`, `cos 0 = 1`, `atan2(1, 1)` = `PI / 4`), symmetries, and sweeps over 2 million angles and 1 million `atan2` points, at most 2 ulp from `f64`. Floats appear only in these tests, under an `expect` with its reason.
+- **Trig:** exact points (`sin 0 = 0`, `cos 0 = 1`, `atan2(1, 1)` = `PI / 4`), exact symmetries, and sweeps over small and huge angles and over `atan2` grids, at most 0.501 ulp from `f64`. Floats appear only in these tests, under an `expect` with its reason.
 - **`Rng`:** the official BLAKE3 keyed vectors, with extended output. Lemire's method, generic over the word width, checked exhaustively with 16-bit words. `chance` at `p = 0`, `1`, `2⁻²⁴`, `1 − 2⁻²⁴`; `chance_ratio` exhaustively with 16-bit words.
 - **State hash:** the same world built in two orders hashes equal; changing one field changes exactly that type's hash; extra non-sim components change nothing.
 - **Golden test:** a fixed workload (arithmetic, trig, distances, draws, one world hash) against a checked-in digest, the reference that platforms must match.
