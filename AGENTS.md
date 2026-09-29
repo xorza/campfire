@@ -16,4 +16,6 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus a refere
   - `09-determinism-core.md` — Stage 1 proposal: numbers, vectors, randomness, stable ids, state hash
 - `source/` — engine and game code; `source/packages/<kit>/` holds the reference content packages (heroes, spells, modes)
 
+`ROADMAP.md` holds the milestone stages; `PLAN.md` holds the next concrete steps. Both list open items only.
+
 When code and design disagree, fix one of them, and state which one.

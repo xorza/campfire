@@ -62,16 +62,7 @@ The first engine code: numbers, vectors, randomness, stable ids and the state ha
 
 ## Plan
 
-Each step ends with the check chain passing for the crates it touches.
-
-1. **`Num`**: type, arithmetic with rounding, conversions; tests.
-2. **`Num` functions**: exact parser, Machin π, `sqrt`, `sin_cos`, `atan2`; the ulp sweeps.
-3. **`Vec3`**: operations, exact distance and length, normalizing, rotation; tests.
-4. **`Rng`**: message layout, `next_u64`, `below`, `chance`, `chance_ratio`, `pick`, the debug alias check; BLAKE3 vectors and the exhaustive 16-bit test.
-5. **`sim` ids**: `StableId`, `IdAllocator`, `EntityIndex`, sim spawn and despawn.
-6. **State hash**: `SimComponent`, the postcard-to-BLAKE3 flavor, `StateHasher` with per-type hashes; tests.
-7. **Golden test** in `math` and `sim`.
-8. **Benches**: the worst tick for the RNG and the hash at MOBA scale.
+The open steps are in [PLAN.md](../PLAN.md).
 
 ## Not in Stage 1
 
