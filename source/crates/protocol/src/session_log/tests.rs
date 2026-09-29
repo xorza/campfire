@@ -3,23 +3,25 @@ use blake3::Hasher;
 use super::*;
 
 const MAX_DELAY: u64 = 2;
+const MAX_LEAD: u64 = 2;
 const ROOTS: [InputHash; 2] = [InputHash::new([1; 32]), InputHash::new([2; 32])];
 
 fn header() -> SessionHeader {
     SessionHeader {
         max_input_delay: MAX_DELAY,
+        max_input_lead: MAX_LEAD,
         chain_roots: ROOTS.to_vec(),
     }
 }
 
 /// What the players send before each tick, 0 to 4, as `(slot, stamp, payload)`. Player 0 sends
-/// b, c, e, h, g; player 1 sends a, d, f.
+/// b, c, e, h, g; player 1 sends a, d, f, i, j.
 const SCRIPT: [&[(u32, u64, &[u8])]; 5] = [
     &[(1, 0, b"a"), (0, 1, b"b")],
     &[(0, 1, b"c"), (1, 3, b"d")],
     &[],
-    &[(1, 1, b"f"), (0, 0, b"e"), (0, 3, b"h")],
-    &[(0, 4, b"g")],
+    &[(1, 1, b"f"), (0, 0, b"e"), (0, 3, b"h"), (1, 6, b"i")],
+    &[(0, 4, b"g"), (1, 4, b"j")],
 ];
 
 /// The chained inputs the script's players send, grouped by the tick they arrive before.
@@ -104,18 +106,21 @@ fn inputs_apply_by_the_delay_rule_in_slot_order() {
         }
         drop(log.seal_tick());
     }
-    // Applied at max(stamp, next tick); late when that is more than 2 ticks after the stamp.
+    // Applied at max(stamp, next tick); late when that is more than 2 ticks after the stamp, early
+    // when the stamp is more than 2 ticks ahead.
     assert_eq!(
         outcomes,
         [
             (&b"a"[..], Applied::At(0)), // stamp 0, before tick 0
             (b"b", Applied::At(1)),      // stamp 1 is ahead of tick 0
             (b"c", Applied::At(1)),      // stamp 1, before tick 1
-            (b"d", Applied::At(3)),      // stamp 3 is ahead of tick 1
+            (b"d", Applied::At(3)),      // stamp 3, before tick 1: 2 ticks ahead, the most allowed
             (b"f", Applied::At(3)),      // stamp 1, before tick 3: 2 ticks late, the most allowed
             (b"e", Applied::Late),       // stamp 0, before tick 3: 3 ticks late
             (b"h", Applied::At(3)),      // stamp 3, before tick 3
+            (b"i", Applied::Early),      // stamp 6, before tick 3: 3 ticks ahead
             (b"g", Applied::At(4)),      // stamp 4, before tick 4
+            (b"j", Applied::At(4)),      // the chain goes on after the early i
         ]
     );
     assert_eq!(log.next_tick(), 5);
@@ -127,7 +132,7 @@ fn inputs_apply_by_the_delay_rule_in_slot_order() {
         &[(0, b"b"), (0, b"c")],
         &[],
         &[(0, b"h"), (1, b"d"), (1, b"f")],
-        &[(0, b"g")],
+        &[(0, b"g"), (1, b"j")],
     ]);
     assert_eq!(applied, expected);
 }

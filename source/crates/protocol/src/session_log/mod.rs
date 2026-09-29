@@ -14,6 +14,10 @@ pub(crate) mod error;
 pub struct SessionHeader {
     /// The most ticks an input may land after its stamp; a later one is logged as late.
     pub max_input_delay: u64,
+    /// The most ticks an input's stamp may be ahead of the next tick; a further one is logged as
+    /// early. The server holds each input until its tick, so this bounds what a client can make
+    /// it hold.
+    pub max_input_lead: u64,
     /// Each player's chain root, by slot: what the player's first input links to.
     pub chain_roots: Vec<InputHash>,
 }
@@ -25,6 +29,9 @@ pub enum Applied {
     /// It arrived more than the max input delay after its stamp. It stays in the chain but never
     /// takes effect.
     Late,
+    /// Its stamp was more than the max input lead ahead of the next tick. Like a late input, it
+    /// stays in the chain but never takes effect.
+    Early,
 }
 
 /// The inputs of a session, in memory, in the order they were logged, and grouped by the tick
@@ -101,9 +108,9 @@ impl SessionLog {
         u64::try_from(self.tick_ends.len()).expect("tick count fits u64")
     }
 
-    /// Logs `input` before the next tick and says when it applies: at `max(stamp, next tick)`,
-    /// or late when that is more than the max input delay after the stamp. A refused input
-    /// leaves the log unchanged.
+    /// Logs `input` before the next tick and says when it applies: at `max(stamp, next tick)`;
+    /// late when that is more than the max input delay after the stamp; early when the stamp is
+    /// more than the max input lead ahead. A refused input leaves the log unchanged.
     pub fn record(&mut self, input: PlayerInput<'_>) -> Result<Applied, InputError> {
         let chain = self
             .chains
@@ -137,6 +144,13 @@ impl SessionLog {
             .is_some_and(|delay| delay > self.header.max_input_delay)
         {
             return Ok(Applied::Late);
+        }
+        if input
+            .stamp
+            .checked_sub(next)
+            .is_some_and(|lead| lead > self.header.max_input_lead)
+        {
+            return Ok(Applied::Early);
         }
         let tick = input.stamp.max(next);
         self.pending.push(Reverse(Due {
