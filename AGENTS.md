@@ -13,6 +13,7 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus a refere
   - `06-research-notes.md` — early decisions, risks and sources
   - `07-reference-moba.md` — reference MOBA: heroes, player spells, rules
   - `08-script-api.md` — script API of the MOBA kit, derived from the reference packages
+  - `09-determinism-core.md` — Stage 1 proposal: numbers, vectors, randomness, stable ids, state hash
 - `source/` — engine and game code; `source/packages/<kit>/` holds the reference content packages (heroes, spells, modes)
 
 When code and design disagree, fix one of them, and state which one.

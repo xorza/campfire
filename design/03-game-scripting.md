@@ -84,7 +84,7 @@ Scripts have two number types and no decimal literals (`no_float`):
 - **Integers** (Rhai `INT`, `i64`): counts, ids, milliseconds, amounts.
 - **`Num`** (`I32F32`): positions, distances, speeds, ratios.
 
-Arithmetic on both is checked; an overflow is a script error. An integer becomes a `Num` automatically, and an integer that does not fit is an error. A `Num` becomes an integer only through `floor`, `ceil` or `round`. A `Num` operation with an integer gives a `Num`.
+Arithmetic on both is checked; an overflow is a script error. An integer becomes a `Num` automatically, and an integer that does not fit is an error. A `Num` becomes an integer only through `floor`, `ceil` or `round` (half away from zero). A `Num` operation with an integer gives a `Num`.
 
 In data files, a TOML integer is an integer and a decimal in a string (`"7.5"`) is a `Num`. Kit fields sit at the top level; values for scripts sit in a `[params]` table.
 

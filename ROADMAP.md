@@ -6,7 +6,7 @@ Open items only. Remove an item when it is done; remove a stage when it is empty
 - CI on Linux x86_64, Windows x86_64, macOS aarch64.
 
 ## 1. Determinism core
-- `math`: `Strict<I32F32>`, vectors, trig, 128-bit distance, keyed-BLAKE3 RNG with unbiased ranges.
+- `math`: own `Num` (nearest-even), vectors, trig, exact `u128` distance, keyed-BLAKE3 RNG with unbiased ranges.
 - Snapshot encoding and state hash in `sim`.
 
 ## 2. Prototype gate

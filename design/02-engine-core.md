@@ -114,7 +114,8 @@ Same pattern. Backends: grid fog of war (MOBA), 3D occlusion (FPS, battle royale
 - The RNG is counter-based: every value is `BLAKE3-keyed(segment seed, stream ‖ stable entity id ‖ tick ‖ n)`, so no draw depends on the order of other draws and systems can draw in parallel. The only RNG state is the segment seed. The function must be a cryptographic PRF: clients see many outcomes, and a non-cryptographic generator could let them recover the seed and predict hidden ones.
 - A random value that decides an outcome never reaches a client before the log is published. Clients may predict effects, never results.
 - Non-integer numbers are 32.32 fixed-point (`I32F32`), 1 unit = 1 meter. Distance math uses a 128-bit helper. Scripts see two number types, integers and fixed-point; see [Game Scripting](03-game-scripting.md#numbers).
-- An overflow is a bug and panics in every build profile: integers through `overflow-checks = true`, fixed-point through `fixed::Strict<I32F32>`.
+- An overflow is a bug and panics in every build profile: integers through `overflow-checks = true`, fixed-point through the checked arithmetic of `math::Num`. `Num` rounds `*` and `/` to nearest, ties to even ([Determinism Core](09-determinism-core.md)).
+- Every coordinate stays within ±2²⁰ m, so exact squared distances fit a `u128`.
 
 ## Networking
 
@@ -129,8 +130,7 @@ Exact versions are pinned across the workspace. Each release tag also pins its R
 
 | Area | Crate | Notes |
 | --- | --- | --- |
-| Fixed-point numbers | `fixed` | No trig by design. Plain operators only `debug_assert!` overflow and wrap in release, so the sim uses `Strict` |
-| Fixed-point trig, sqrt | `fixed_analytics` | Deterministic, panic-free |
+| Fixed-point numbers, trig, sqrt | Own code in `math` | `Num`: `*` and `/` round to nearest, ties to even; exact decimal parsing; `sqrt` from `u128::isqrt`; `sin_cos`, `atan2` by series at high internal precision, within 1–2 ulp. `fixed` rounds `*` toward −∞ and constants down, and `fixed_analytics` reaches 48 ulp in `atan2`, so neither is used ([Determinism Core](09-determinism-core.md)) |
 | RNG | `blake3` keyed hash, wrapped in `math` | A PRF by specification, counter-based as in [Random123](https://www.thesalmons.org/john/random123/papers/random123sc11.pdf) but cryptographic, unlike Philox; known-answer vectors run in `det-ci`. Range sampling is own code. No `rand`, which [may change output in minor releases](https://www.rustmax.net/library/rand-book/crate-reprod) |
 | Protocol encoding | `postcard` | [Stable wire format](https://postcard.jamesmunns.com) since 1.0 |
 | State hashes | `blake3` | Per tick, so speed matters |

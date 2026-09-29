@@ -6,7 +6,7 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus a refere
 
 Three equal pillars must all ship: a reusable engine, a reference game good enough to attract players, and an open protocol for Bitcoin-native games.
 
-Docs: [Engine Core](02-engine-core.md) · [Game Scripting](03-game-scripting.md) · [Game Kits](04-game-kits/00-overview.md) · [Protocol Spec](05-protocol-spec.md) · [Research Notes](06-research-notes.md) · [Reference MOBA](07-reference-moba.md) · [Script API](08-script-api.md)
+Docs: [Engine Core](02-engine-core.md) · [Game Scripting](03-game-scripting.md) · [Game Kits](04-game-kits/00-overview.md) · [Protocol Spec](05-protocol-spec.md) · [Research Notes](06-research-notes.md) · [Reference MOBA](07-reference-moba.md) · [Script API](08-script-api.md) · [Determinism Core](09-determinism-core.md)
 
 ## Guiding principles
 

@@ -1802,8 +1802,6 @@ name = "campfire-math"
 version = "0.0.0"
 dependencies = [
  "blake3",
- "fixed",
- "fixed_analytics",
  "serde",
 ]
 
@@ -2801,15 +2799,6 @@ dependencies = [
  "half",
  "serde",
  "typenum",
-]
-
-[[package]]
-name = "fixed_analytics"
-version = "3.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd9b47876d7eed9e1d98a6fc422d1ed85cbb24d4fb270e6e3c829842d33e5599"
-dependencies = [
- "fixed",
 ]
 
 [[package]]
