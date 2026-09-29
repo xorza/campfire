@@ -108,7 +108,7 @@ Same pattern. Backends: grid fog of war (MOBA), 3D occlusion (FPS, battle royale
 
 **Determinism rules for `sim`:**
 
-- Fixed-tick schedule; system-order ambiguities are errors.
+- Fixed-tick schedule, `SimUpdate`, one run per tick. Two systems with conflicting access and no order fail the build, and clippy bans the Bevy calls that allow such a pair. The steps of the [tick pipeline](03-game-scripting.md#tick-pipeline) are ordered sets (`SimSet`); the tick's random sequences start before the first, and the tick number (`SimTick`, which is state) advances after the last.
 - Own stable entity ids (never Bevy `Entity`) for the protocol and replays, and for sorting queries wherever order matters, since Bevy [does not guarantee query order](https://docs.rs/bevy_rand/latest/bevy_rand/tutorial/ch02_basic_usage/index.html).
 - Positions are 3D in every genre. No floats outside a physics backend, except as an estimate that integer steps then correct exactly (`Num::sqrt`); no randomly seeded hash maps, no wall clock.
 - The RNG is counter-based: every value is `BLAKE3-keyed(segment seed, stream ‖ stable entity id ‖ tick ‖ n)`, so no draw depends on the order of other draws and systems can draw in parallel. The only RNG state is the segment seed. The function must be a cryptographic PRF: clients see many outcomes, and a non-cryptographic generator could let them recover the seed and predict hidden ones.

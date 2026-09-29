@@ -4,3 +4,17 @@ disallowed-types = [
     { path = "std::collections::HashSet", reason = "randomly seeded; use a fixed-hasher set" },
     { path = "std::hash::RandomState", reason = "randomly seeded" },
 ]
+
+# Each one lets two conflicting sim systems run in either order, which the sim schedule refuses.
+disallowed-methods = [
+    { path = "bevy_ecs::schedule::IntoScheduleConfigs::ambiguous_with", reason = "order the systems instead" },
+    { path = "bevy_ecs::schedule::IntoScheduleConfigs::ambiguous_with_all", reason = "order the systems instead" },
+    { path = "bevy_ecs::schedule::Schedule::ignore_ambiguity", reason = "order the systems instead" },
+    { path = "bevy_ecs::schedule::Schedule::set_build_settings", reason = "can switch off ambiguity detection" },
+    { path = "bevy_ecs::schedule::Schedules::ignore_ambiguity", reason = "order the systems instead" },
+    { path = "bevy_ecs::schedule::Schedules::allow_ambiguous_component", reason = "order the systems instead" },
+    { path = "bevy_ecs::schedule::Schedules::allow_ambiguous_resource", reason = "order the systems instead" },
+    { path = "bevy_ecs::schedule::Schedules::configure_schedules", reason = "can switch off ambiguity detection" },
+    { path = "bevy_ecs::world::World::allow_ambiguous_component", reason = "order the systems instead" },
+    { path = "bevy_ecs::world::World::allow_ambiguous_resource", reason = "order the systems instead" },
+]

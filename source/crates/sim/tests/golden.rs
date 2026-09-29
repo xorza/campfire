@@ -2,13 +2,23 @@
 //! workload; a mismatch names the section, which points at the first divergence. The digests
 //! change only when a release changes results on purpose.
 
+#![allow(
+    clippy::needless_pass_by_value,
+    reason = "Bevy systems take `Res` and `Query` by value"
+)]
+
 use std::fmt::Write;
 
 use bevy_ecs::component::Component;
+use bevy_ecs::schedule::IntoScheduleConfigs;
+use bevy_ecs::system::{Commands, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use blake3::Hasher;
 use campfire_math::{Num, RngSource, SegmentSeed, Vec3};
-use campfire_sim::{EntityIndex, IdAllocator, SimComponent, StateRegistry};
+use campfire_sim::{
+    EntityIndex, IdAllocator, SimComponent, SimRng, SimSet, SimTick, SimUpdate, StableId,
+    StateRegistry,
+};
 use serde::{Deserialize, Serialize};
 
 const CASES: usize = 4000;
@@ -199,6 +209,61 @@ fn state_section(hasher: &mut Hasher) {
     }
 }
 
+/// Ticks in which one unit arrives, so units of every age move together.
+const ARRIVAL_TICKS: u64 = 20;
+const TICKS: usize = 100;
+
+fn arrive(
+    tick: Res<'_, SimTick>,
+    mut ids: ResMut<'_, IdAllocator>,
+    mut commands: Commands<'_, '_>,
+) {
+    if tick.get() < ARRIVAL_TICKS {
+        commands.spawn((ids.allocate(), Place(Vec3::ZERO), Life(Num::ONE)));
+    }
+}
+
+fn drift(rng: Res<'_, SimRng>, mut units: Query<'_, '_, (&StableId, &mut Place)>) {
+    for (&id, mut place) in &mut units {
+        let mut rng = rng.open("golden.drift", id);
+        let mut axis = || Num::from_bits(rng.below(1 << 25).cast_signed()) - Num::ONE;
+        place.0 += Vec3::new(axis(), axis(), axis());
+    }
+}
+
+fn wear(rng: Res<'_, SimRng>, mut units: Query<'_, '_, (&StableId, &mut Life)>) {
+    for (&id, mut life) in &mut units {
+        if rng.open("golden.wear", id).chance(Num::ONE / 3) {
+            life.0 -= Num::ONE / 10;
+        }
+    }
+}
+
+/// The sim schedule over many ticks: the tick keys every draw, so a wrong tick number or a
+/// missed tick start changes the digest.
+fn tick_section(hasher: &mut Hasher) {
+    let mut inputs = Inputs(5);
+    let mut seed = [0; 32];
+    for chunk in seed.as_chunks_mut::<8>().0 {
+        *chunk = inputs.next().to_le_bytes();
+    }
+    let mut world = World::new();
+    SimUpdate::prepare(&mut world, SegmentSeed::new(seed));
+    let mut schedule = SimUpdate::schedule();
+    schedule.add_systems((
+        arrive.in_set(SimSet::Inputs),
+        drift.in_set(SimSet::BeforeCollision),
+        wear.in_set(SimSet::AfterCollision),
+    ));
+    let mut state = StateRegistry::new();
+    state.register_component::<Place>();
+    state.register_component::<Life>();
+    for _ in 0..TICKS {
+        schedule.run(&mut world);
+        hasher.update(state.hash(&world).as_bytes());
+    }
+}
+
 /// A named workload and the digest every platform must reproduce.
 #[derive(Debug)]
 struct Section {
@@ -233,7 +298,12 @@ fn golden_digests() {
         Section {
             name: "state",
             run: state_section,
-            digest: "4d6aaaa309d6ed840f49cee7d719d1f7722e32332ad53a390d7812a56cbdebf4",
+            digest: "739728de2f8cde6823cc06c1d883bd54a12438d930e89b4aaf00cf3176779db3",
+        },
+        Section {
+            name: "tick",
+            run: tick_section,
+            digest: "9fef1b3b9c4e212d07ca1753b6bd49f04118da4cef78256d9916a6dbc34f2e1f",
         },
     ];
     let mut mismatches = String::new();

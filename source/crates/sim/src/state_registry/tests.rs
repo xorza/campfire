@@ -142,6 +142,7 @@ fn types_hash_in_name_order() {
         [
             "sim.entities",
             "sim.id_allocator",
+            "sim.tick",
             "test.health",
             "test.position"
         ]
@@ -241,8 +242,14 @@ fn flawed_snapshots_are_refused() {
         "test.health",
         "test.position",
     ];
+    // The tick plays no part in these flaws, so every case holds tick 0.
     let with = |bodies: [Vec<u8>; 4]| -> Vec<u8> {
-        frame(&names.iter().copied().zip(bodies).collect::<Vec<_>>())
+        let mut sections: Vec<_> = names.iter().copied().zip(bodies).collect();
+        sections.insert(
+            2,
+            ("sim.tick", postcard::to_allocvec(&Some(0_u64)).unwrap()),
+        );
+        frame(&sections)
     };
     let allocator = |next: u64| postcard::to_allocvec(&Some(next)).unwrap();
     let valid = with([encoded(&[0_u64, 1]), allocator(2), Vec::new(), Vec::new()]);

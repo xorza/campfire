@@ -5,6 +5,7 @@ use serde::de::DeserializeOwned;
 use crate::entity_index::EntityIndex;
 use crate::id_allocator::IdAllocator;
 use crate::sim_state::{SimComponent, SimResource};
+use crate::sim_tick::SimTick;
 use crate::stable_id::StableId;
 use crate::state_registry::error::SnapshotError;
 use crate::state_registry::writer::{Sink, write};
@@ -76,13 +77,14 @@ struct Taken<'a, T> {
 }
 
 impl StateRegistry {
-    /// A registry with the sim's own state: the entity list and the id allocator.
+    /// A registry with the sim's own state: the entity list, the id allocator and the tick.
     pub fn new() -> StateRegistry {
         let mut registry = StateRegistry {
             entries: Vec::new(),
         };
         registry.register(ENTITIES, encode_entities, decode_entities);
         registry.register_resource::<IdAllocator>();
+        registry.register_resource::<SimTick>();
         registry
     }
 
