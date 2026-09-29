@@ -48,11 +48,11 @@ The first engine code: numbers, vectors, randomness, stable ids and the state ha
 
 ### `sim`: stable ids and the state hash
 
-- **`StableId(u64)`** is a component; **`IdAllocator`** (a resource) hands out ids in order and never reuses one, so a dead unit's handle keeps its meaning.
-- **`EntityIndex`** (a resource): `BTreeMap<StableId, Entity>`, kept by the sim's own spawn and despawn; stable-id order without sorting each tick.
-- **`SimComponent`**: a trait for each component in the state, with a `NAME` such as `"moba.health"`; names fix the order, since `TypeId` is not stable across builds. Components Lightyear adds are not `SimComponent`s and never enter the hash.
-- **`StateHasher`**: for each component type in name order, it feeds `(StableId, component)` pairs in id order through a postcard flavor straight into BLAKE3, with no byte buffer, then hashes the `(name, type hash)` list (D5). State resources are hashed the same way. Snapshots use the same encoder with a `Vec` as the sink, so a snapshot and its hash cannot disagree.
-- Per-type hashes go into a caller's reused `&mut Vec`. `det-ci` compares them; production computes only the final hash, at checkpoints.
+- **`StableId(u64)`** is an immutable component; **`IdAllocator`** (a resource) hands out ids in order and never reuses one, so a dead unit's handle keeps its meaning. The allocator's next id is state and is hashed: two worlds that differ in it diverge at the next spawn.
+- **`EntityIndex`** (a resource): `BTreeMap<StableId, Entity>`, the order every hash walks, with no sorting per tick. `StableId`'s `on_insert` and `on_discard` hooks keep it current on every path: `World`, `Commands`, replacement, despawn. Being immutable, a `StableId` changes only by an insert, which the hooks see.
+- **`SimComponent`** and **`SimResource`**: traits for the types that are state, each with a `NAME` such as `"moba.health"`; names fix the order, since `TypeId` is not stable across builds. Registering a name twice panics. Components the network layer adds are not state and never enter the hash.
+- **`StateHasher`**: for each registered type in name order, it feeds `(StableId, component)` pairs in id order, or the resource as an `Option` so a missing one differs from an empty one, through a postcard flavor into BLAKE3, batched in a 64-byte buffer. It then hashes the `(name, type hash)` list (D5). Snapshots will use the same encoder with a `Vec` as the sink, so a snapshot and its hash cannot disagree.
+- `hash_by_type` puts the per-type hashes into a caller's reused `&mut Vec`. `det-ci` compares them; production computes only `hash`, at checkpoints.
 
 ## Tests
 
@@ -61,7 +61,7 @@ The first engine code: numbers, vectors, randomness, stable ids and the state ha
 - **`sqrt`, `distance`:** exact cases (`sqrt(4) = 2`, the 3-4-5 triangle, `2⁻²⁴` steps), and the rounding rule against `isqrt` directly.
 - **Trig:** exact points (`sin 0 = 0`, `cos 0 = 1`, `atan2(1, 1)` = `PI / 4`), exact symmetries, and sweeps over small and huge angles and over `atan2` grids, at most 0.501 ulp from `f64`. Floats appear only in these tests, under an `expect` with its reason.
 - **`Rng`:** the official BLAKE3 keyed vectors, with extended output; the documented message layout across a block boundary. Lemire's method and `chance_ratio`, checked exhaustively with 16-bit words. `chance` at `p = 0`, `1`, `2⁻²⁴`, `1 − 2⁻²⁴`, and that it always takes one word.
-- **State hash:** the same world built in two orders hashes equal; changing one field changes exactly that type's hash; extra non-sim components change nothing.
+- **State hash:** the same world built in two orders hashes equal; changing one field changes exactly that type's hash; extra non-sim components change nothing; the allocator's next id changes only its own hash; the buffered writer equals BLAKE3 over postcard's bytes, across its buffer size. The index follows spawn, replacement and despawn.
 - **Golden test:** a fixed workload (arithmetic, trig, distances, draws, one world hash) against a checked-in digest, the reference that platforms must match.
 
 ## Plan

@@ -1877,6 +1877,7 @@ dependencies = [
  "bevy_ecs",
  "blake3",
  "campfire-math",
+ "criterion 0.8.2",
  "postcard",
  "serde",
 ]
