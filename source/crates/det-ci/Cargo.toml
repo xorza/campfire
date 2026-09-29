@@ -1,0 +1,7 @@
+[package]
+name = "campfire-det-ci"
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true

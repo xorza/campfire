@@ -1,0 +1,7 @@
+[package]
+name = "campfire-script"
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true

@@ -1,0 +1,7 @@
+[package]
+name = "campfire-math"
+edition.workspace = true
+license.workspace = true
+
+[lints]
+workspace = true

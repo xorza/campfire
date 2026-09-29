@@ -1,0 +1,6 @@
+# Randomly seeded: iteration order differs between runs, which breaks determinism.
+disallowed-types = [
+    { path = "std::collections::HashMap", reason = "randomly seeded; use a fixed-hasher map" },
+    { path = "std::collections::HashSet", reason = "randomly seeded; use a fixed-hasher set" },
+    { path = "std::hash::RandomState", reason = "randomly seeded" },
+]
