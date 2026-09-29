@@ -38,11 +38,13 @@ The first engine code: numbers, vectors, randomness, stable ids and the state ha
 - **`normalized`** (`None` for zero) takes one reciprocal ⌊2⁸⁶ / length⌋ and three multiplies, each quotient corrected by its exact remainder, so every component equals the correctly rounded division; `direction_to(other)` normalizes the difference.
 - The sim checks D3 where it sets a position; results that exceed `Num` return `None` and cannot wrap.
 
-### `math::Rng` (`rng.rs`)
+### `math::Rng` (`rng/`)
 
-- `Rng::new(seed, stream, entity, tick)`: the key is the segment seed; the message is `"campfire/rng/v1" ‖ u32 length ‖ stream name ‖ u64 entity ‖ u64 tick`, little-endian and length-prefixed, so no two fields run together. Output is BLAKE3's extended output, read in order.
-- `next_u64()`: the next 8 bytes. `below(n)`: Lemire's multiply-and-reject. `chance(p: Num)`: `p ≤ 0` is false, `p ≥ 1` is true, else `(next_u64() >> 40) < p.to_bits()`, exactly probability `p`. `chance_ratio(num, den)`: `below(den) < num`, exactly `num / den`, for probabilities too small for 24 fractional bits, such as a 1-in-a-million drop. `pick(len)` is `below(len)`.
-- **One sequence per (stream, entity, tick).** A second `Rng` with the same three values repeats the draws of the first. Debug builds record the triples opened in the current tick and assert each opens once.
+- **`RngSource`** holds the `SegmentSeed` and opens sequences: `begin_tick(tick)`, then `open(stream, entity) -> Rng`. It takes `&self`, so systems can open sequences in parallel.
+- **The message** is `"campfire/rng/v1" ‖ u32 length ‖ stream name ‖ u64 entity ‖ u64 tick`, little-endian and length-prefixed, so no two fields run together; the key is the segment seed; the output is BLAKE3's extended output.
+- **Whole blocks:** BLAKE3 computes output 64 bytes at a time and `OutputReader::fill` redoes that for every partial read, so `Rng` fills a 64-byte buffer and serves 8 words from each compression.
+- `next_u64()`: the next 8 bytes. `below(n)`: Lemire's multiply-and-reject, one step generic over the word width. `chance(p: Num)`: `p ≤ 0` is false, `p ≥ 1` is true, else `(word >> 40) < p.to_bits()`, exactly probability `p`; it always takes one word, so later draws never depend on `p`. `chance_ratio(num, den)`: `below(den) < num`, exactly `num / den`, for chances too small for 24 fractional bits, such as a 1-in-a-million drop. `pick(len)` is `below(len)`.
+- **One sequence per (stream, entity, tick).** A second `Rng` with the same three values repeats the draws of the first. Debug builds record the pairs opened since `begin_tick` behind a `Mutex` and panic on a repeat; running a tick again, as rollback does, calls `begin_tick` again. Release builds keep no record.
 
 ### `sim`: stable ids and the state hash
 
@@ -58,7 +60,7 @@ The first engine code: numbers, vectors, randomness, stable ids and the state ha
 - **Parsing and π:** π from Machin must equal a 40-digit decimal rounded by the parser.
 - **`sqrt`, `distance`:** exact cases (`sqrt(4) = 2`, the 3-4-5 triangle, `2⁻²⁴` steps), and the rounding rule against `isqrt` directly.
 - **Trig:** exact points (`sin 0 = 0`, `cos 0 = 1`, `atan2(1, 1)` = `PI / 4`), exact symmetries, and sweeps over small and huge angles and over `atan2` grids, at most 0.501 ulp from `f64`. Floats appear only in these tests, under an `expect` with its reason.
-- **`Rng`:** the official BLAKE3 keyed vectors, with extended output. Lemire's method, generic over the word width, checked exhaustively with 16-bit words. `chance` at `p = 0`, `1`, `2⁻²⁴`, `1 − 2⁻²⁴`; `chance_ratio` exhaustively with 16-bit words.
+- **`Rng`:** the official BLAKE3 keyed vectors, with extended output; the documented message layout across a block boundary. Lemire's method and `chance_ratio`, checked exhaustively with 16-bit words. `chance` at `p = 0`, `1`, `2⁻²⁴`, `1 − 2⁻²⁴`, and that it always takes one word.
 - **State hash:** the same world built in two orders hashes equal; changing one field changes exactly that type's hash; extra non-sim components change nothing.
 - **Golden test:** a fixed workload (arithmetic, trig, distances, draws, one world hash) against a checked-in digest, the reference that platforms must match.
 

@@ -22,6 +22,11 @@ harness = false
 required-features = ["bench"]
 
 [[bench]]
+name = "rng"
+harness = false
+required-features = ["bench"]
+
+[[bench]]
 name = "vec3"
 harness = false
 required-features = ["bench"]

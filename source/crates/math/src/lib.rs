@@ -3,14 +3,18 @@
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 
 mod num;
+mod rng;
 mod vec3;
 
 pub use num::error::ParseNumError;
 pub use num::{Num, SinCos};
+pub use rng::Rng;
+pub use rng::rng_source::{RngSource, SegmentSeed};
 pub use vec3::Vec3;
 
 #[cfg(feature = "bench")]
 pub mod bench {
     pub use crate::num::bench::num;
+    pub use crate::rng::bench::rng;
     pub use crate::vec3::bench::vec3;
 }
