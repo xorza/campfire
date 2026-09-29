@@ -10,7 +10,7 @@ license = "MIT OR Apache-2.0"
 [workspace.dependencies]
 bevy_ecs = "=0.19.1"
 blake3 = "=1.8.7"
-fixed = "=1.31.0"
+fixed = { version = "=1.31.0", features = ["serde"] }
 fixed_analytics = "=3.1.0"
 lightyear = { version = "=0.30.1", features = ["webtransport"] }
 nostr = "=0.45.5"
@@ -18,6 +18,7 @@ postcard = { version = "=1.1.3", features = ["use-std"] }
 # No default features: they reseed Rhai's hasher in every process. `script` also sets a
 # fixed seed, because Rhai always seeds per build otherwise.
 rhai = { version = "=1.26.1", default-features = false, features = ["std", "no_float", "no_time"] }
+serde = { version = "=1.0.229", features = ["derive"] }
 sha2 = "=0.11.0"
 
 campfire-content = { path = "crates/content" }

@@ -38,7 +38,8 @@ Positions are 3D, but gameplay is on the ground plane: collision, pathfinding an
 
 - Grid backend: A* for the long route; shared local steering avoids units and allows body blocking.
 - Creep lanes are waypoints in map data.
-- Vision: grid fog of war; each unit reveals cells within its sight range, blocked by terrain.
+- Vision: grid fog of war; each unit reveals cells within its sight range, blocked by terrain. Brush cells block sight from outside the brush.
+- Stealth: a stealthed unit is visible only to its team and to enemies with true sight over it (vision wards, towers, consumables). Wards are units with sight range and no collision.
 
 ## Network defaults
 

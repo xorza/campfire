@@ -7,6 +7,7 @@ license.workspace = true
 blake3.workspace = true
 fixed.workspace = true
 fixed_analytics.workspace = true
+serde.workspace = true
 
 [lints]
 workspace = true

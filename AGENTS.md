@@ -11,6 +11,7 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus a refere
   - `04-game-kits/` — genre kits: MOBA first, FPS, MMO and battle royale later
   - `05-protocol-spec.md` — keys, connection, session log, verification, Nostr events, payments
   - `06-research-notes.md` — early decisions, risks and sources
+  - `07-reference-moba.md` — reference MOBA: heroes, player spells, rules
 - `source/` — engine and game code
 
 When code and design disagree, fix one of them, and state which one.

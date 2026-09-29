@@ -6,7 +6,7 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus a refere
 
 Three equal pillars must all ship: a reusable engine, a reference game good enough to attract players, and an open protocol for Bitcoin-native games.
 
-Docs: [Engine Core](02-engine-core.md) · [Game Scripting](03-game-scripting.md) · [Game Kits](04-game-kits/00-overview.md) · [Protocol Spec](05-protocol-spec.md) · [Research Notes](06-research-notes.md)
+Docs: [Engine Core](02-engine-core.md) · [Game Scripting](03-game-scripting.md) · [Game Kits](04-game-kits/00-overview.md) · [Protocol Spec](05-protocol-spec.md) · [Research Notes](06-research-notes.md) · [Reference MOBA](07-reference-moba.md)
 
 ## Guiding principles
 
@@ -138,7 +138,8 @@ The reference MOBA proves the engine and is the template people fork: small, rea
 **First playable version:**
 
 - 3v3 on a 2-lane map, 15–20 minute matches; 5v5 on 3 lanes later.
-- 6 original heroes covering the classic roles, each with 3 abilities and an ultimate.
+- 6 original heroes covering the classic roles, each with 3 abilities and an ultimate; see [Reference MOBA](07-reference-moba.md).
+- Player spells, random crits, brush, wards and stealth.
 - About 20 items, one shop, gold and XP, last-hitting.
 - Towers, one inhibitor-like structure per lane, a base core, one neutral objective, creep waves.
 - Bots, so 2 humans can still play a full match.
