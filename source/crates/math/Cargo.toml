@@ -21,5 +21,10 @@ name = "num"
 harness = false
 required-features = ["bench"]
 
+[[bench]]
+name = "vec3"
+harness = false
+required-features = ["bench"]
+
 [lints]
 workspace = true

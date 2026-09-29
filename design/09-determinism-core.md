@@ -29,12 +29,14 @@ The first engine code: numbers, vectors, randomness, stable ids and the state ha
 - **Measured:** both are correctly rounded (at most 0.5 ulp against `f64` over a million inputs in each of four regions) and take about 15–20 ns, against 200–230 ns for the plain series.
 - **Constants:** `ZERO`, `ONE`, `EPSILON`, `MIN`, `MAX`, `PI`, `TAU`, `FRAC_PI_2`. π comes from Machin's formula (`16·atan(1/5) − 4·atan(1/239)`) at 2⁻¹²⁰ in a `const fn`; compilation fails if the formula's error bound could move π across a rounding midpoint.
 
-### `math::Vec3` (`vec3.rs`)
+### `math::Vec3` (`vec3/`)
 
-- `struct Vec3 { x: Num, y: Num, z: Num }` with checked `+`, `-`, `-v`, `* Num`, `/ Num`, and `dot` for directions.
-- **Exact length:** `distance(a, b)` and `length()` sum squared raw differences in `u128` and take a rounded `isqrt`, exact to the last bit.
-- `normalized() -> Option<Vec3>` (`None` for zero), `direction_to(other)`, `rotated_y(SinCos)` for turns on the ground plane.
-- The sim checks D3 where it sets a position; the `u128` arithmetic is checked too, so a violation panics and cannot wrap.
+- `struct Vec3 { x: Num, y: Num, z: Num }` with checked `+`, `-`, `-v`, `* Num`, `/ Num`; operators panic, `checked_*` return `None`.
+- **Rounded once:** `dot` and `rotated_y(SinCos)` round the exact sum of raw products a single time, through `Num::from_raw_products`.
+- **Exact length:** `length` and `distance` sum the squared raw components in `u128`, which always fits (three squares of at most 2⁶³), and take the nearest root through `Num::from_root_of_bits`, the same estimate-and-correct root as `sqrt`, with one Newton step above 2⁵² so correction never loops long.
+- **`within(other, radius)`** compares exact squared distances, with no root: the fast path for radius queries.
+- **`normalized`** (`None` for zero) takes one reciprocal ⌊2⁸⁶ / length⌋ and three multiplies, each quotient corrected by its exact remainder, so every component equals the correctly rounded division; `direction_to(other)` normalizes the difference.
+- The sim checks D3 where it sets a position; results that exceed `Num` return `None` and cannot wrap.
 
 ### `math::Rng` (`rng.rs`)
 

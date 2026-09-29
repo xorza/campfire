@@ -6,19 +6,24 @@ use crate::num::Num;
 
 const COUNT: usize = 4096;
 
-/// Deterministic inputs spread over `[−span, span)` in raw bits, from `SplitMix64`.
+/// Deterministic inputs spread over `[−span, span)` in raw bits.
 fn spread(seed: u64, span: i64) -> Vec<Num> {
-    let mut state = seed;
+    let mut next = split_mix(seed);
     (0..COUNT)
-        .map(|_| {
-            state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
-            let mut z = state;
-            z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-            z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-            z ^= z >> 31;
-            Num::from_bits(z.cast_signed() % span)
-        })
+        .map(|_| Num::from_bits(next().cast_signed() % span))
         .collect()
+}
+
+/// `SplitMix64`: fast, well-mixed deterministic words for bench inputs.
+pub(crate) fn split_mix(seed: u64) -> impl FnMut() -> u64 {
+    let mut state = seed;
+    move || {
+        state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
+        let mut z = state;
+        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
+        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
+        z ^ (z >> 31)
+    }
 }
 
 pub fn num(c: &mut Criterion) {

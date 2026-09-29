@@ -108,7 +108,18 @@ impl Num {
     }
 
     pub const fn checked_mul(self, rhs: Num) -> Option<Num> {
-        narrow(round_shr(self.0 as i128 * rhs.0 as i128, Self::FRAC_BITS))
+        Num::from_raw_products(self.0 as i128 * rhs.0 as i128)
+    }
+
+    /// The value with these bits, from a wider result that cannot overflow.
+    pub(crate) const fn from_wide_bits(bits: i128) -> Num {
+        Num(to_i64(bits))
+    }
+
+    /// The value nearest to `sum / 2²⁴`, for a sum of products of raw values, rounded once;
+    /// `None` when it does not fit.
+    pub(crate) const fn from_raw_products(sum: i128) -> Option<Num> {
+        narrow(round_shr(sum, Self::FRAC_BITS))
     }
 
     pub const fn checked_div(self, rhs: Num) -> Option<Num> {
@@ -137,6 +148,15 @@ impl Num {
     }
 
     /// `None` for a negative value.
+    pub fn checked_sqrt(self) -> Option<Num> {
+        if self.0 < 0 {
+            return None;
+        }
+        Num::from_root_of_bits(u128::from(self.0.cast_unsigned()) << Self::FRAC_BITS)
+    }
+
+    /// The value whose bits are the integer nearest to √`squared_bits`; `None` when it does not
+    /// fit. √ of an integer is never exactly a half, so no tie rule is needed.
     #[expect(
         clippy::cast_precision_loss,
         clippy::cast_possible_truncation,
@@ -144,32 +164,33 @@ impl Num {
         clippy::float_arithmetic,
         reason = "the f64 root is only an estimate; the integer steps fix the result exactly"
     )]
-    pub fn checked_sqrt(self) -> Option<Num> {
-        if self.0 < 0 {
+    pub(crate) fn from_root_of_bits(squared_bits: u128) -> Option<Num> {
+        // A root that fits is below 2⁶³, so its square is below 2¹²⁶; below that bound no
+        // product or step here can overflow.
+        if squared_bits >= 1 << 126 {
             return None;
         }
-        let raw = self.0.cast_unsigned();
-        let scaled = u128::from(raw) << Self::FRAC_BITS;
-        // An f64 estimate is three times as fast as `u128::isqrt`. Below 2⁸⁸ it is within 1 of
-        // ⌊√scaled⌋, and the loops make it exact whatever the float returns, so the result
-        // stays deterministic.
-        // The root stays below 2⁴⁴, so no product or step here can overflow.
-        // Converting the 64-bit `raw` is one instruction, where `u128` needs a library call;
-        // multiplying by 2²⁴ is exact.
-        let mut root = (raw as f64 * f64::from(1_u32 << Self::FRAC_BITS)).sqrt() as u128;
-        while root.wrapping_mul(root) > scaled {
+        // An f64 estimate is three times as fast as `u128::isqrt`. Converting the two halves takes
+        // one instruction each, where converting a `u128` is a library call. The integer steps
+        // make the result exact whatever the float returns, so it stays deterministic.
+        let high = (squared_bits >> 64) as u64;
+        let low = squared_bits as u64;
+        let estimate = (high as f64 * TWO_POW_64 + low as f64).sqrt();
+        let mut root = estimate as u128;
+        // Above 2⁵² the estimate can be off by up to 2¹⁰; one Newton step brings it within 1.
+        if root > 1 << 52 {
+            root = root.midpoint(squared_bits / root);
+        }
+        while root.wrapping_mul(root) > squared_bits {
             root = root.wrapping_sub(1);
         }
-        while (root + 1).wrapping_mul(root + 1) <= scaled {
+        while (root + 1).wrapping_mul(root + 1) <= squared_bits {
             root = root.wrapping_add(1);
         }
-        // √scaled is never exactly `root + ½`, so rounding up past the midpoint needs no tie rule.
-        let root = if scaled.wrapping_sub(root.wrapping_mul(root)) > root {
-            root + 1
-        } else {
-            root
-        };
-        Some(narrow_in_range(root.cast_signed()))
+        if squared_bits.wrapping_sub(root.wrapping_mul(root)) > root {
+            root += 1;
+        }
+        narrow(root.cast_signed())
     }
 
     #[must_use]
@@ -190,17 +211,15 @@ impl Num {
     }
 }
 
+/// 2⁶⁴, exact in f64.
+const TWO_POW_64: f64 = 18_446_744_073_709_551_616.0;
+
 /// Narrows an exact result; `None` when it does not fit.
 const fn narrow(bits: i128) -> Option<Num> {
     if bits < i64::MIN as i128 || bits > i64::MAX as i128 {
         return None;
     }
-    Some(narrow_in_range(bits))
-}
-
-/// Narrows a result that cannot overflow.
-const fn narrow_in_range(bits: i128) -> Num {
-    Num(to_i64(bits))
+    Some(Num::from_wide_bits(bits))
 }
 
 #[expect(

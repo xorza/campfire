@@ -1,4 +1,4 @@
-use crate::num::{Num, SinCos, narrow_in_range, round_div, round_shr, to_i64};
+use crate::num::{Num, SinCos, round_div, round_shr, to_i64};
 
 /// Fractional bits of the internal fixed point. Every intermediate of the kernels is at most 1 in
 /// magnitude, so it fits `i64` and a product of two is a single 64×64 multiply.
@@ -56,7 +56,7 @@ pub(super) const fn pi_bits(frac_bits: u32) -> i64 {
         "π too close to a rounding midpoint"
     );
     let rounded = if rest > half { floor + 1 } else { floor };
-    narrow_in_range(rounded.cast_signed()).to_bits()
+    Num::from_wide_bits(rounded.cast_signed()).to_bits()
 }
 
 pub(super) const fn sin_cos(angle: Num) -> SinCos {
@@ -160,7 +160,7 @@ const fn to_index(value: u64) -> usize {
 }
 
 const fn to_num(wide: i128) -> Num {
-    narrow_in_range(round_shr(wide, WIDE_BITS - Num::FRAC_BITS))
+    Num::from_wide_bits(round_shr(wide, WIDE_BITS - Num::FRAC_BITS))
 }
 
 /// sin or cos of `k / 64` at 2⁻⁶², by the exact series.
