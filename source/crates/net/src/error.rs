@@ -25,6 +25,10 @@ pub enum OrderScriptError {
     Unordered {
         tick: u64,
     },
+    /// The script ends at `end`, before its last order.
+    EndsEarly {
+        end: u64,
+    },
 }
 
 /// Why a client refused the server's offer: its terms name a session the client cannot play, or
@@ -76,6 +80,9 @@ impl fmt::Display for OrderScriptError {
             }
             OrderScriptError::Unordered { tick } => {
                 write!(f, "the order at tick {tick} comes after a later one")
+            }
+            OrderScriptError::EndsEarly { end } => {
+                write!(f, "the script ends at tick {end}, before its last order")
             }
         }
     }

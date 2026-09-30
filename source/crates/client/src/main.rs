@@ -1,5 +1,6 @@
 //! Game client: joins a session over WebTransport, predicts the player's own hero, and draws the
-//! match as capsules on the ground; a right click walks the hero there.
+//! match as capsules on the ground; a right click walks the hero there. With `--bot <orders
+//! file>`, it opens no window and renders nothing, and plays the file's `OrderScript` instead.
 //!
 //! Logs go to standard error, filtered by `RUST_LOG` (`info`, and the renderer's warnings, by
 //! default). With `CAMPFIRE_LOG` set to a path, they also go there as JSON lines, filtered by
@@ -12,18 +13,21 @@
 
 use std::env;
 use std::ffi::OsString;
+use std::fs;
 use std::net::SocketAddr;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::str::FromStr;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use bevy::DefaultPlugins;
-use bevy::app::{App, AppExit, PluginGroup};
+use bevy::app::{App, AppExit, PluginGroup, ScheduleRunnerPlugin, TaskPoolPlugin};
 use bevy::log::LogPlugin;
+use bevy::state::app::StatesPlugin;
+use bevy::time::TimePlugin;
 use bevy::window::{Window, WindowPlugin};
 use campfire_log::Logging;
-use campfire_net::{ClientMode, NetProtocol, ServerPin, SimClient};
+use campfire_net::{ClientMode, NetProtocol, OrderScript, ServerPin, SimClient};
 use campfire_package::ModePackages;
 use campfire_protocol::CertificateHash;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey, XOnlyPublicKey};
@@ -34,21 +38,27 @@ use lightyear::prelude::{
 };
 use tracing::error;
 
+use crate::bot::Bot;
 use crate::orders::Orders;
 use crate::view::View;
 
+mod bot;
 mod orders;
 mod view;
 
-/// What the command line names: the mode to play, and the server as its listing gives it.
+/// What the command line names: the orders file a bot plays, the mode to play, and the server as
+/// its listing gives it.
 #[derive(Debug)]
 struct Args {
+    bot: Option<PathBuf>,
     mode: PathBuf,
     address: SocketAddr,
     certificate: CertificateHash,
     server_key: XOnlyPublicKey,
 }
 
+/// How often a bot's app loop runs: often enough that no fixed tick waits long for its frame.
+const BOT_FRAME: Duration = Duration::from_millis(2);
 /// What the terminal shows when `RUST_LOG` does not say: the renderer's validation layers report
 /// through `wgpu_hal`, loudly, in debug builds.
 const TERMINAL_FILTER: &str = "info,wgpu=error,wgpu_hal=off,naga=warn";
@@ -69,8 +79,8 @@ fn main() -> ExitCode {
         Err(problem) => {
             error!(
                 %problem,
-                "usage: campfire-client <mode package directory> <server address> \
-                 <certificate hash> <server key>"
+                "usage: campfire-client [--bot <orders file>] <mode package directory> \
+                 <server address> <certificate hash> <server key>"
             );
             return ExitCode::from(2);
         }
@@ -82,21 +92,40 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
+    let script = match args.bot.as_deref().map(read_script).transpose() {
+        Ok(script) => script,
+        Err(problem) => {
+            error!(%problem, "the orders file does not read");
+            return ExitCode::FAILURE;
+        }
+    };
     let mode = ClientMode::of(&packages);
     let tick = TickRate::new(mode.tick_hz).length();
 
     let mut app = App::new();
-    app.add_plugins(
-        DefaultPlugins
-            .set(WindowPlugin {
-                primary_window: Some(Window {
-                    title: "Campfire".to_owned(),
-                    ..Window::default()
-                }),
-                ..WindowPlugin::default()
-            })
-            .disable::<LogPlugin>(),
-    );
+    if let Some(script) = script {
+        app.add_plugins((
+            TaskPoolPlugin::default(),
+            TimePlugin,
+            StatesPlugin,
+            ScheduleRunnerPlugin::run_loop(BOT_FRAME),
+            Bot { script },
+        ));
+    } else {
+        app.add_plugins((
+            DefaultPlugins
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        title: "Campfire".to_owned(),
+                        ..Window::default()
+                    }),
+                    ..WindowPlugin::default()
+                })
+                .disable::<LogPlugin>(),
+            View { tick },
+            Orders,
+        ));
+    }
     app.add_plugins(ClientPlugins {
         tick_duration: tick,
     });
@@ -113,8 +142,6 @@ fn main() -> ExitCode {
             clock: unix_now,
             entropy: fill,
         },
-        View { tick },
-        Orders,
     ));
     app.insert_resource(PredictionManager::default());
     let client = app
@@ -141,7 +168,15 @@ fn main() -> ExitCode {
 }
 
 impl Args {
-    fn parse(mut args: impl Iterator<Item = OsString>) -> Result<Args, String> {
+    fn parse(args: impl Iterator<Item = OsString>) -> Result<Args, String> {
+        let mut args = args.peekable();
+        let bot = if args.next_if(|arg| arg == "--bot").is_some() {
+            Some(PathBuf::from(
+                args.next().ok_or("--bot needs an orders file")?,
+            ))
+        } else {
+            None
+        };
         let (Some(mode), Some(address), Some(certificate), Some(server_key), None) = (
             args.next(),
             args.next(),
@@ -149,7 +184,7 @@ impl Args {
             args.next(),
             args.next(),
         ) else {
-            return Err("four arguments are needed".to_owned());
+            return Err("four arguments are needed after the options".to_owned());
         };
         let text = |arg: &OsString| {
             arg.to_str()
@@ -160,6 +195,7 @@ impl Args {
         let certificate = text(&certificate)?;
         let server_key = text(&server_key)?;
         Ok(Args {
+            bot,
             mode: PathBuf::from(mode),
             address: address
                 .parse()
@@ -171,6 +207,12 @@ impl Args {
                 .map_err(|error| format!("{server_key}: {error}"))?,
         })
     }
+}
+
+/// The order script in the file at `path`.
+fn read_script(path: &Path) -> Result<OrderScript, String> {
+    let text = fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    OrderScript::parse(&text).map_err(|error| format!("{}: {error}", path.display()))
 }
 
 /// A fresh key.

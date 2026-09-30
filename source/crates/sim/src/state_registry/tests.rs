@@ -158,12 +158,15 @@ fn build_order_does_not_matter() {
         registry.hash(&shuffled_world())
     );
     assert_eq!(snapshot(&plain_world()), snapshot(&shuffled_world()));
-    // A hash writes as its 32 bytes in lowercase hex, two digits each, leading zeros kept.
+    // A hash writes as its 32 bytes in lowercase hex, two digits each, leading zeros kept, and
+    // reads back from that spelling only.
     let mut bytes = [0; 32];
     bytes[0] = 0x0a;
     bytes[31] = 0xff;
     let written = StateHash(bytes).to_string();
     assert_eq!(written, format!("0a{}ff", "00".repeat(30)));
+    assert_eq!(written.parse(), Ok(StateHash(bytes)));
+    assert_eq!(written.to_uppercase().parse::<StateHash>(), Err(NotHex));
 }
 
 #[test]

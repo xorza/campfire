@@ -3,11 +3,11 @@ use std::num::NonZeroU32;
 use secp256k1::SecretKey;
 
 use super::*;
-use crate::connect::error::NotHex;
 use crate::delegation::DelegationTerms;
 use crate::fingerprint::Fingerprint;
 use crate::seed_chain::SeedChain;
 use crate::session_id::SessionId;
+use campfire_math::NotHex;
 
 const NOW: u64 = 1_700_000_000;
 const EXPIRATION: u64 = NOW + 60;

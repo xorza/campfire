@@ -2050,6 +2050,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "campfire-lan-check"
+version = "0.1.0"
+dependencies = [
+ "campfire-log",
+ "campfire-math",
+ "campfire-net",
+ "campfire-protocol",
+ "campfire-sim",
+ "serde",
+ "serde_json",
+ "tracing",
+]
+
+[[package]]
 name = "campfire-log"
 version = "0.1.0"
 dependencies = [

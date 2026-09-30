@@ -3,11 +3,13 @@
 
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 
+pub mod hex;
 mod num;
 mod player_slot;
 mod rng;
 mod vec3;
 
+pub use hex::error::NotHex;
 pub use num::error::ParseNumError;
 pub use num::{Num, SinCos};
 pub use player_slot::PlayerSlot;

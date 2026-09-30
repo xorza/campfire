@@ -16,10 +16,6 @@ pub enum ConnectError {
     BadAnswer,
 }
 
-/// Text for a certificate hash that is not 64 lowercase hex digits.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct NotHex;
-
 impl fmt::Display for ConnectError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
@@ -34,11 +30,3 @@ impl fmt::Display for ConnectError {
 }
 
 impl Error for ConnectError {}
-
-impl fmt::Display for NotHex {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str("a certificate hash is 64 lowercase hex digits")
-    }
-}
-
-impl Error for NotHex {}

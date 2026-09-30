@@ -6,7 +6,6 @@
 mod connect;
 mod delegation;
 mod fingerprint;
-mod hex;
 mod input_chain;
 mod input_hash;
 mod player_input;
@@ -19,7 +18,7 @@ mod signature;
 
 pub use connect::ConnectChallenge;
 pub use connect::certificate_hash::CertificateHash;
-pub use connect::error::{ConnectError, NotHex};
+pub use connect::error::ConnectError;
 pub use delegation::delegation_tag::DelegationTag;
 pub use delegation::error::DelegationError;
 pub use delegation::{Delegation, DelegationTerms};

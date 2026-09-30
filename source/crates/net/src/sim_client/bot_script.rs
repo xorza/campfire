@@ -6,14 +6,14 @@ use crate::order_script::{OrderScript, ScriptedOrder};
 /// A script a client plays for its player: each order goes out, for the player's own hero, in
 /// the tick of its stamp, with the orders the player gives by hand.
 #[derive(Resource, Debug)]
-pub(crate) struct BotScript {
+pub struct BotScript {
     script: OrderScript,
     /// The first order not sent yet.
     next: usize,
 }
 
 impl BotScript {
-    pub(crate) const fn new(script: OrderScript) -> BotScript {
+    pub const fn new(script: OrderScript) -> BotScript {
         BotScript { script, next: 0 }
     }
 

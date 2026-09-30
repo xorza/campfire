@@ -1,7 +1,9 @@
 use std::fmt;
+use std::str::FromStr;
 
 use bevy_ecs::world::World;
 use blake3::Hasher;
+use campfire_math::{NotHex, hex};
 use serde::de::DeserializeOwned;
 
 use crate::entity_index::EntityIndex;
@@ -50,7 +52,7 @@ pub struct TypeHash {
     pub hash: [u8; 32],
 }
 
-/// The hash of the whole simulated state. It writes as 64 lowercase hex digits.
+/// The hash of the whole simulated state. It writes, and reads back, as 64 lowercase hex digits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StateHash([u8; 32]);
 
@@ -238,7 +240,15 @@ impl StateRegistry {
 
 impl fmt::Display for StateHash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        self.0.iter().try_for_each(|byte| write!(f, "{byte:02x}"))
+        f.write_str(&hex::encode(&self.0))
+    }
+}
+
+impl FromStr for StateHash {
+    type Err = NotHex;
+
+    fn from_str(text: &str) -> Result<StateHash, NotHex> {
+        hex::decode(text).map(StateHash)
     }
 }
 

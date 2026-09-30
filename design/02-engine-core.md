@@ -10,7 +10,7 @@ Each layer uses the layers below it.
 
 | Module | Does |
 | --- | --- |
-| `math` | Fixed-point numbers, 3D vectors, trig, counter-based RNG |
+| `math` | Fixed-point numbers, 3D vectors, trig, counter-based RNG, and the values both sides share: segment seed, player slot, hex |
 | `protocol` | Session log format (see Protocol Spec) |
 | `sim` | Deterministic state and systems on `bevy_ecs`; no genre code |
 | `script` | Rhai host and core script API |
@@ -19,6 +19,7 @@ Each layer uses the layers below it.
 | `runner` | Builds a match from checked packages: wires `sim`, the declared capabilities and `script`, feeds inputs |
 | `verifier` | CLI: replays a session log segment, checks the result |
 | `det-ci` | Headless matches of the reference MOBA with its bots on every OS, comparing state hashes |
+| `lan-check` | On request: the real server and two `client --bot` processes over WebTransport on `127.0.0.1`, checked from their JSON logs and by the verifier |
 | `server` | Headless app: host config, lifecycle, saves, validation, admin |
 | `net` | Lightyear over QUIC (WebTransport): handshake, replication; internal |
 | `launcher` | Small app: fetches, checks and starts the engine release a server or replay names; server browser |
@@ -30,6 +31,8 @@ Each layer uses the layers below it.
 | `payments` | Pools, hold invoices, wallet budgets (optional, separate repo) |
 
 `sim` is pure: state and inputs in, next state out; no files, packages or signatures.
+
+`det-ci` and `lan-check` are checks, not engine crates: they live in `source/checks/`, apart from `source/crates/`, and nothing depends on them.
 
 Dependencies: `server`, `client`, `verifier`, `det-ci` → `runner` → `package` → `capabilities` → `script`, `sim`, `content`; `script` and `sim` → `math`; `protocol` → `math`. The runner joins `protocol` and the packages: the session log and the packages each own their fingerprint type, and the runner converts between them. `math` holds what both sides share: the segment seed and the player slot. Within `capabilities`, a module imports only from the capabilities below it.
 
@@ -108,6 +111,7 @@ Same pattern. Backends: grid fog of war (MOBA), 3D occlusion (FPS, battle royale
 - The predicting client sets `SimTick` from Lightyear's tick before each run, and fills `TickInputs` with its own inputs stamped for that tick. Prediction covers all the latency, with no input delay: Lightyear keeps the client's tick ahead of the server's by the round trip, so an input stamped with it lands in time; with input delay it would keep that tick nearer, and inputs would land late. A rollback runs `FixedMain` again from the server's state, so the sim runs again with the right tick and inputs. The client runs with a dummy seed: it predicts movement, never a random outcome.
 - `client` runs full Bevy and derives render state from sim components each frame, interpolated. It draws each unit with an entity of its own, which mirrors the sim entity, so a sim entity the renderer cannot see (`Unpredicted`) is drawn as well; a drawing moves to the unit's new place over one tick. Float types (`Transform`) exist only there.
 - Match scenarios run in the test suite as whole matches between scripted players (`OrderScript`), through a link model of delay, jitter and loss counted in steps on a manual clock, with every schedule on one thread, so a run repeats and takes a fraction of a second. Lightyear's sync measures the round trip by the wall clock, so the test client's sync margin carries the modeled delay. Players take slots in the order their joins arrive, which a scenario does not fix.
+- The LAN check runs on request, outside the test suite: `cargo run -p campfire-lan-check` builds the server, the client and the verifier, plays a match of about 3 s between two `client --bot` processes that play `OrderScript`s, and checks it from the processes' JSON logs and by the verifier's final hash.
 - Diagnostics go through `tracing`, never a print, which clippy refuses: the libraries emit events with structured fields, and each binary installs the subscriber. `sim` and `capabilities` log nothing, as they run in every tick for every unit; they report through resources such as `ScriptFailures`, which the runner logs. A binary logs to standard error by `RUST_LOG`, and with `CAMPFIRE_LOG` set to a path also writes JSON lines there, by `CAMPFIRE_LOG_FILTER`.
 - Pinned to [Bevy 0.19](https://bevy.org/news/bevy-0-19/); upgrades are deliberate. The script API and protocol expose no Bevy types.
 

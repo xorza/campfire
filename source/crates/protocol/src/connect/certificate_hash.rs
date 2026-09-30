@@ -3,8 +3,8 @@ use std::str::FromStr;
 
 use serde::{Deserialize, Serialize};
 
-use crate::connect::error::NotHex;
-use crate::hex;
+use campfire_math::NotHex;
+use campfire_math::hex;
 
 /// The SHA-256 hash of a server's TLS certificate: the client checks the certificate against it,
 /// and signs it in its connect answer. It reads and writes as 64 lowercase hex digits, as a
@@ -33,6 +33,6 @@ impl FromStr for CertificateHash {
     type Err = NotHex;
 
     fn from_str(text: &str) -> Result<CertificateHash, NotHex> {
-        hex::decode(text).map(CertificateHash).ok_or(NotHex)
+        hex::decode(text).map(CertificateHash)
     }
 }

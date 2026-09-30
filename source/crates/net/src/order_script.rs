@@ -4,27 +4,31 @@ use serde::Deserialize;
 
 use crate::error::OrderScriptError;
 
-/// A player's orders for their hero, each at a sim tick, in tick order: what a bot plays. It
-/// reads from TOML, one `[[order]]` table each, with its `tick` and `move = [x, z]` in meters.
+/// A player's orders for their hero, each at a sim tick, in tick order, and optionally the tick
+/// the player leaves after: what a bot plays. It reads from TOML: an optional `end`, and one
+/// `[[order]]` table each, with its `tick` and `move = [x, z]` in meters.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OrderScript {
     orders: Vec<ScriptedOrder>,
+    end: Option<Tick>,
 }
 
 /// One order of a script: the sim tick it is sent in, and what the hero does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct ScriptedOrder {
-    pub(crate) tick: Tick,
-    pub(crate) action: Action,
+pub struct ScriptedOrder {
+    pub tick: Tick,
+    pub action: Action,
 }
 
 impl OrderScript {
     /// The script `text` holds; an error when it is not TOML of this shape, when a coordinate is
-    /// past what a sim number holds, or when the ticks do not grow.
+    /// past what a sim number holds, when the ticks do not grow, or when the script ends before an
+    /// order.
     pub fn parse(text: &str) -> Result<OrderScript, OrderScriptError> {
         #[derive(Deserialize)]
         #[serde(deny_unknown_fields)]
         struct File {
+            end: Option<u64>,
             #[serde(default)]
             order: Vec<Entry>,
         }
@@ -54,11 +58,22 @@ impl OrderScript {
                 action: Action::Move { x, z },
             });
         }
-        Ok(OrderScript { orders })
+        let end = file.end.map(Tick::new);
+        if let (Some(end), Some(last)) = (end, orders.last())
+            && end < last.tick
+        {
+            return Err(OrderScriptError::EndsEarly { end: end.get() });
+        }
+        Ok(OrderScript { orders, end })
     }
 
-    pub(crate) fn orders(&self) -> &[ScriptedOrder] {
+    pub fn orders(&self) -> &[ScriptedOrder] {
         &self.orders
+    }
+
+    /// The last tick the player plays, when the script names one.
+    pub const fn end(&self) -> Option<Tick> {
+        self.end
     }
 }
 
@@ -95,7 +110,17 @@ mod tests {
                 },
             ]
         );
-        assert_eq!(OrderScript::parse("").unwrap().orders(), []);
+        assert_eq!(script.end(), None);
+        let empty = OrderScript::parse("").unwrap();
+        assert_eq!((empty.orders(), empty.end()), (&[][..], None));
+        // The script may end in the tick of its last order, not before.
+        let ending = |end: u64| {
+            OrderScript::parse(&format!(
+                "end = {end}\n[[order]]\ntick = 9\nmove = [1, 1]\n"
+            ))
+        };
+        assert_eq!(ending(9).unwrap().end(), Some(Tick::new(9)));
+        assert_eq!(ending(8), Err(OrderScriptError::EndsEarly { end: 8 }));
         let flaw = |text: &str| OrderScript::parse(text).unwrap_err();
         assert_eq!(
             flaw("[[order]]\ntick = 9\nmove = [1, 1]\n[[order]]\ntick = 8\nmove = [1, 1]\n"),

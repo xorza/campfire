@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::hex;
+use campfire_math::hex;
 
 /// A session's id: the hash of its terms, see `SessionTerms::session_id`. Delegations and
 /// chain-head signatures name it, so neither counts in another session, and both sign the terms.

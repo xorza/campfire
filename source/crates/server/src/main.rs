@@ -22,7 +22,7 @@ use bevy_app::{App, AppExit, ScheduleRunnerPlugin, TaskPoolPlugin, Update};
 use bevy_ecs::lifecycle::Add;
 use bevy_ecs::observer::On;
 use bevy_ecs::query::With;
-use bevy_ecs::system::Commands;
+use bevy_ecs::system::{Commands, Query};
 use bevy_ecs::world::World;
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
@@ -34,7 +34,7 @@ use campfire_protocol::{CertificateHash, SeedChain};
 use campfire_runner::Session;
 use campfire_sim::TickRate;
 use lightyear::prelude::server::{RawServer, ServerPlugins, Start, WebTransportServerIo};
-use lightyear::prelude::{Connected, Identity, LinkOf, LocalAddr, ReplicationSender};
+use lightyear::prelude::{Connected, Identity, LinkOf, Linked, LocalAddr, ReplicationSender};
 use tracing::{error, info};
 
 /// How often the app loop runs: often enough that no fixed tick waits long for its frame.
@@ -102,13 +102,6 @@ fn main() -> ExitCode {
         mode = %mode.display(),
         "opened a session"
     );
-    info!(
-        %certificate,
-        server_key = %key,
-        "players join with: campfire-client {} <this machine's LAN address>:{} {certificate} {key}",
-        mode.display(),
-        address.port()
-    );
 
     let mut app = App::new();
     app.add_plugins((
@@ -125,6 +118,18 @@ fn main() -> ExitCode {
     app.add_observer(
         |added: On<'_, '_, Add, LinkOf>, mut commands: Commands<'_, '_>| {
             commands.entity(added.entity).insert(ReplicationSender);
+        },
+    );
+    let join = format!(
+        "campfire-client {} <this machine's LAN address>:{} {certificate} {key}",
+        mode.display(),
+        address.port()
+    );
+    app.add_observer(
+        move |added: On<'_, '_, Add, Linked>, servers: Query<'_, '_, (), With<RawServer>>| {
+            if servers.contains(added.entity) {
+                info!(%certificate, server_key = %key, %join, "listening; players join with the command in `join`");
+            }
         },
     );
     app.add_systems(Update, end_when_everyone_left);
@@ -169,8 +174,8 @@ fn end_when_everyone_left(world: &mut World) {
                 session = %id,
                 file = name,
                 %hash,
-                "every player left; wrote the session log. `campfire-verifier <packages directory> \
-                 {name}` gives the same hash when the log verifies"
+                "every player left; wrote the session log, which `campfire-verifier <packages \
+                 directory> <file>` replays to the same hash"
             );
         }
         Err(error) => error!(file = name, %error, "could not write the session log"),

@@ -5,9 +5,9 @@ use secp256k1::{Keypair, Secp256k1, Signing, XOnlyPublicKey};
 
 use crate::delegation::delegation_tag::DelegationTag;
 use crate::delegation::error::DelegationError;
-use crate::hex;
 use crate::input_hash::InputHash;
 use crate::session_id::SessionId;
+use campfire_math::hex;
 
 pub(crate) mod delegation_tag;
 pub(crate) mod error;
@@ -99,15 +99,20 @@ impl Delegation {
             return Err(DelegationError::WrongKind);
         }
         let session_key = hex::decode(tag(&event, DelegationTag::SessionKey)?)
+            .ok()
             .and_then(|bytes| XOnlyPublicKey::from_byte_array(&bytes).ok())
             .ok_or(DelegationError::MalformedTag(DelegationTag::SessionKey))?;
         let server_key = hex::decode(tag(&event, DelegationTag::ServerKey)?)
+            .ok()
             .ok_or(DelegationError::MalformedTag(DelegationTag::ServerKey))?;
         let session_id = hex::decode(tag(&event, DelegationTag::SessionId)?)
+            .ok()
             .ok_or(DelegationError::MalformedTag(DelegationTag::SessionId))?;
-        let seed_contribution = hex::decode(tag(&event, DelegationTag::SeedContribution)?).ok_or(
-            DelegationError::MalformedTag(DelegationTag::SeedContribution),
-        )?;
+        let seed_contribution = hex::decode(tag(&event, DelegationTag::SeedContribution)?)
+            .ok()
+            .ok_or(DelegationError::MalformedTag(
+                DelegationTag::SeedContribution,
+            ))?;
         let expiration = tag(&event, DelegationTag::Expiration)?
             .parse()
             .ok()
