@@ -97,6 +97,7 @@ mod tests {
 
     use super::*;
     use crate::navigation::broadphase::Broadphase;
+    use crate::navigation::broadphase::internals::statics;
 
     fn num(value: i64) -> Num {
         Num::from_int(value).unwrap()
@@ -121,7 +122,8 @@ mod tests {
 
     /// Parts the bodies of `colliders` that overlap, as the Collide stage does.
     fn resolve(colliders: &mut [Collider]) {
-        let contacts = Broadphase::default().contacts(colliders).to_vec();
+        let index = statics(colliders);
+        let contacts = Broadphase::default().contacts(colliders, &index).to_vec();
         Collider::resolve(colliders, &contacts);
     }
 

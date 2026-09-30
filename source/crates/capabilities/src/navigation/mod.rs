@@ -14,8 +14,9 @@ use crate::navigation::destination::Destination;
 use crate::navigation::move_step::MoveStep;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::PathWalker;
-use crate::navigation::pathing_grid::{PathingGrid, StaticBody};
+use crate::navigation::pathing_grid::PathingGrid;
 use crate::navigation::paths::Paths;
+use crate::navigation::static_index::{StaticBody, StaticIndex};
 use crate::units::body::Body;
 use crate::units::script_view::{RowFill, View};
 use crate::values::bounds::Bounds;
@@ -31,25 +32,30 @@ pub(crate) mod on_path;
 pub(crate) mod path_walker;
 pub(crate) mod pathing_grid;
 pub(crate) mod paths;
+pub(crate) mod static_index;
 
 /// The `navigation` capability: units that walk to a destination, and the map's waypoint paths.
 #[derive(Debug)]
 pub struct Navigation;
 
 impl Navigation {
-    /// Adds navigation to a match, with no paths and the world for bounds until the mode sets its
-    /// map's: in Move, units walk towards their destination; in Collide, overlapping living
-    /// bodies part; after Collide, each unit that walks stands within the bounds again.
+    /// Adds navigation to a match, with no paths, the world for bounds, and a static index for
+    /// walkers as wide as a body may be, until the mode sets its map's: in Move, units walk
+    /// towards their destination; in Collide, overlapping living bodies part; after Collide, each
+    /// unit that walks stands within the bounds again.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         if let Some(view) = world.get_non_send::<View>() {
             view.add_source(fill_row);
         }
         world.insert_resource(Paths::default());
         world.insert_resource(Bounds::WORLD);
+        world.insert_resource(StaticIndex::new(Body::MAX_RADIUS));
         schedule.add_systems((
             track_static_bodies.in_set(SimSet::Inputs),
             move_units.in_set(SimSet::Move),
-            collide.in_set(SimSet::Collide),
+            (track_static_bodies, collide)
+                .chain()
+                .in_set(SimSet::Collide),
             keep_in_bounds.after(SimSet::Collide).before(SimSet::Hit),
         ));
         registry.register_component::<Destination>();
@@ -60,18 +66,22 @@ impl Navigation {
 }
 
 impl Navigation {
-    /// Gives the match the map's pathing grid over `cells`, for walkers of `radii`; the static
-    /// bodies mark it from the first tick on.
+    /// Gives the match the map's pathing grid over `cells`, for walkers of `radii`, and a static
+    /// index for the widest of them; the static bodies fill both from the first tick on.
     pub(crate) fn load_pathing(world: &mut World, cells: Grid, radii: Vec<Num>) {
+        let widest = radii.iter().max().copied().unwrap_or(Body::MAX_RADIUS);
+        world.insert_resource(StaticIndex::new(widest));
         world.insert_resource(PathingGrid::new(cells, radii));
     }
 }
 
-/// Marks the pathing grid, as each tick starts, with the static bodies: the living units that
-/// cannot walk, those the client only holds among them. It builds the grid again only when they
-/// changed, so a structure that died or spawned in the tick before counts from this one. Every
-/// tick reads them into `statics`, a buffer it keeps.
+/// Gives the static index and the pathing grid the static bodies: the living units that cannot
+/// walk, those the client only holds among them. It runs as each tick starts, so a structure that
+/// died or spawned in the tick before counts from this one, and again as Collide starts, so
+/// collision parts walkers from the static bodies as they stand then. Every run reads them into
+/// `statics`, a buffer it keeps.
 fn track_static_bodies(
+    mut index: ResMut<'_, StaticIndex>,
     grid: Option<ResMut<'_, PathingGrid>>,
     bodies: Query<
         '_,
@@ -81,9 +91,6 @@ fn track_static_bodies(
     >,
     mut statics: Local<'_, Vec<StaticBody>>,
 ) {
-    let Some(mut grid) = grid else {
-        return;
-    };
     statics.clear();
     statics.extend(bodies.iter().map(|(&id, &at, body)| StaticBody {
         id,
@@ -91,7 +98,11 @@ fn track_static_bodies(
         radius: body.radius(),
     }));
     statics.sort_unstable_by_key(|body| body.id);
-    grid.update(&statics);
+    if index.update(&statics)
+        && let Some(mut grid) = grid
+    {
+        grid.update(&index);
+    }
 }
 
 /// Fills a row of the script view with the path the unit walks or stands on.
@@ -120,7 +131,8 @@ fn move_units(mut units: Query<'_, '_, (&mut Position, &mut Destination, &MoveSt
 
 /// Parts the living bodies that overlap as the stage starts, pair by pair in stable-id order; a
 /// pair that only overlaps after this tick's pushes parts in the next. Only a unit that can walk is
-/// pushed, and one walking to a destination yields to one that stands. A predicting client also
+/// pushed, and one walking to a destination yields to one that stands. The static bodies' contacts
+/// come from `statics`, which holds them as the stage starts. A predicting client also
 /// parts its own units from the units it holds as the server sent them that cannot walk, such as
 /// towers, which never move. Every other held unit is where the server last had it, behind the
 /// client's ticks, and may have started or stopped walking since, so the server alone parts the
@@ -141,6 +153,7 @@ fn collide(
         ),
         (Without<Dead>, Allow<Unpredicted>),
     >,
+    statics: Res<'_, StaticIndex>,
     mut colliders: Local<'_, Vec<Collider>>,
     mut broadphase: Local<'_, Broadphase>,
 ) {
@@ -161,7 +174,15 @@ fn collide(
             ),
     );
     colliders.sort_unstable_by_key(|collider| collider.id);
-    let contacts = broadphase.contacts(&colliders);
+    debug_assert_eq!(
+        colliders
+            .iter()
+            .filter(|collider| !collider.movable)
+            .count(),
+        statics.len(),
+        "the static index holds the static bodies as the stage starts"
+    );
+    let contacts = broadphase.contacts(&colliders, &statics);
     Collider::resolve(&mut colliders, contacts);
     for collider in &*colliders {
         let (_, _, _, mut position, ..) = units

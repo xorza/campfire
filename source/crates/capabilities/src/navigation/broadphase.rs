@@ -1,12 +1,17 @@
-use crate::navigation::collider::Collider;
+use campfire_math::Num;
 
-/// Finds the pairs of bodies that overlap, from a sort of the bodies by cell: a cell is twice the
-/// widest radius, so two that overlap sit in the same cell or in cells side by side. Each occupied
-/// cell pairs its own bodies, and those of the cell to its right and of the three below it, so
-/// each pair of cells is visited once; cursors that only move forward find those cells. A sort,
-/// not a grid over the map, as a map may be wide and its bodies few. The buffers stay between
-/// ticks, so a tick allocates nothing once they have grown, and costs `n log n` and the pairs of
-/// bodies in cells side by side.
+use crate::navigation::collider::Collider;
+use crate::navigation::static_index::StaticIndex;
+
+/// Finds the pairs of bodies that overlap. Two walkers come from a sort of the walkers by cell: a
+/// cell is twice the widest walker's radius, so two that overlap sit in the same cell or in cells
+/// side by side. Each occupied cell pairs its own walkers, and those of the cell to its right and
+/// of the three below it, so each pair of cells is visited once; cursors that only move forward
+/// find those cells. A sort, not a grid over the map, as a map may be wide and its bodies few. A
+/// walker and a static body come from the static index, so a wide structure does not make the
+/// cells wide, and two static bodies never part. The buffers stay between ticks, so a tick
+/// allocates nothing once they have grown, and costs `n log n` and the pairs of bodies in cells
+/// side by side.
 #[derive(Debug, Default)]
 pub(crate) struct Broadphase {
     /// Each collider's cell and index, sorted by cell, row by row, then by index.
@@ -41,18 +46,23 @@ pub(crate) struct Contact {
 }
 
 impl Broadphase {
-    /// The pairs of `colliders` that overlap as they stand now, in the order of their indices,
-    /// first then second: the pairs a check of every pair finds, in its order.
-    pub(crate) fn contacts(&mut self, colliders: &[Collider]) -> &[Contact] {
+    /// The pairs of `colliders`, sorted by stable id, that overlap as they stand now, in the order
+    /// of their indices, first then second: the pairs a check of every pair finds, in its order.
+    /// `statics` holds the colliders that may not be pushed.
+    pub(crate) fn contacts(&mut self, colliders: &[Collider], statics: &StaticIndex) -> &[Contact] {
         self.entries.clear();
         self.cells.clear();
         self.contacts.clear();
-        let Some(widest) = colliders.iter().map(|collider| collider.radius).max() else {
+        let Some(size) = Broadphase::cell(colliders) else {
             return &self.contacts;
         };
-        let size = 2 * widest.to_bits();
+        let size = size.to_bits();
+        let walkers = colliders
+            .iter()
+            .enumerate()
+            .filter(|(_, collider)| collider.movable);
         self.entries
-            .extend(colliders.iter().enumerate().map(|(index, collider)| Entry {
+            .extend(walkers.clone().map(|(index, collider)| Entry {
                 row: collider.at.z.to_bits().div_euclid(size),
                 column: collider.at.x.to_bits().div_euclid(size),
                 index,
@@ -101,8 +111,28 @@ impl Broadphase {
                 }
             }
         }
+        for (index, collider) in walkers {
+            statics.near(collider.at, collider.radius, |body| {
+                let other = colliders
+                    .binary_search_by_key(&body.id, |collider| collider.id)
+                    .expect("a static body of the index is among the colliders");
+                debug_assert!(!colliders[other].movable);
+                Broadphase::check(colliders, index, other, &mut self.contacts);
+            });
+        }
         self.contacts.sort_unstable();
         &self.contacts
+    }
+
+    /// The width of a cell: twice the widest radius of the colliders that may be pushed; `None`
+    /// with none, as no two others part.
+    fn cell(colliders: &[Collider]) -> Option<Num> {
+        let widest = colliders
+            .iter()
+            .filter(|collider| collider.movable)
+            .map(|collider| collider.radius)
+            .max()?;
+        Some(widest + widest)
     }
 
     /// Records the contact of colliders `a` and `b` when they overlap.
@@ -120,9 +150,10 @@ impl Broadphase {
 pub(crate) mod internals {
     use bevy_ecs::world::World;
     use campfire_math::{Num, Vec3};
-    use campfire_sim::IdAllocator;
+    use campfire_sim::{IdAllocator, Position};
 
     use crate::navigation::collider::Collider;
+    use crate::navigation::static_index::{StaticBody, StaticIndex};
 
     /// A draw below `bound` from `state`, by `SplitMix64`.
     fn draw(state: &mut u64, bound: u64) -> u64 {
@@ -161,11 +192,34 @@ pub(crate) mod internals {
             })
             .collect()
     }
+
+    /// The static index of the colliders that may not be pushed, for the widest of the others.
+    pub(crate) fn statics(colliders: &[Collider]) -> StaticIndex {
+        let widest = colliders
+            .iter()
+            .filter(|collider| collider.movable)
+            .map(|collider| collider.radius)
+            .max();
+        let mut index = StaticIndex::new(widest.unwrap_or(Num::ONE));
+        let bodies: Vec<StaticBody> = colliders
+            .iter()
+            .filter(|collider| !collider.movable)
+            .map(|collider| StaticBody {
+                id: collider.id,
+                at: Position::new(collider.at).unwrap(),
+                radius: collider.radius,
+            })
+            .collect();
+        index.update(&bodies);
+        index
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::internals::scene;
+    use campfire_math::Vec3;
+
+    use super::internals::{scene, statics};
     use super::*;
 
     /// The pairs a check of every pair finds, in its order.
@@ -196,13 +250,42 @@ mod tests {
         ] {
             let colliders = scene(seed, count, span);
             let expected = every_pair(&colliders);
-            assert_eq!(broadphase.contacts(&colliders), expected, "seed {seed}");
+            let index = statics(&colliders);
+            assert_eq!(
+                broadphase.contacts(&colliders, &index),
+                expected,
+                "seed {seed}"
+            );
             crowded = crowded.max(expected.len());
         }
         assert!(
             crowded > 100,
             "{crowded} contacts in the most crowded scene"
         );
-        assert_eq!(broadphase.contacts(&[]), []);
+        assert_eq!(broadphase.contacts(&[], &statics(&[])), []);
+
+        // Walkers of 0.35 m over 160 m square, the first body a static one of 64 m at the origin,
+        // which about half of them overlap: the cells stay 0.7 m wide.
+        let walker = Num::from_bits((35 << Num::FRAC_BITS) / 100);
+        for seed in [6, 7] {
+            let mut colliders = scene(seed, 400, 80);
+            for collider in colliders.iter_mut().filter(|collider| collider.movable) {
+                collider.radius = walker;
+            }
+            colliders[0].at = Vec3::ZERO;
+            colliders[0].radius = Num::from_int(64).unwrap();
+            colliders[0].movable = false;
+            colliders[0].walking = false;
+            let expected = every_pair(&colliders);
+            let wide = expected.iter().filter(|contact| contact.first == 0).count();
+            assert!(wide > 100, "{wide} walkers overlap the wide body");
+            let index = statics(&colliders);
+            assert_eq!(
+                broadphase.contacts(&colliders, &index),
+                expected,
+                "seed {seed}"
+            );
+            assert_eq!(Broadphase::cell(&colliders), Some(walker + walker));
+        }
     }
 }
