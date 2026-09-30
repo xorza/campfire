@@ -143,10 +143,10 @@ fn start_casts(
             })
         };
         let started = check(&book, now, &slots, pool, team, casting, lookup)
-            .filter(|checked| in_range(checked, position, casting.target, lookup))
-            .map(|checked| now.after(checked.cast_time));
+            .filter(|checked| in_range(checked, position, lookup))
+            .map(|checked| (now.after(checked.cast_time), checked.target));
         match started {
-            Some(resolves_at) => slots.start(resolves_at),
+            Some((resolves_at, target)) => slots.start(resolves_at, target),
             None => slots.stop(),
         }
     }
@@ -164,6 +164,8 @@ struct TargetUnit {
 #[derive(Debug)]
 struct Checked<'a> {
     id: AbilityId,
+    /// The target the cast keeps: none for an ability that takes none, whatever its order named.
+    target: CastTarget,
     ability: &'a Ability,
     rank: u8,
     range: Range,
@@ -193,7 +195,8 @@ fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
 
 /// The cast `casting` of a unit on `team`, when it may go on: its slot holds a learned ability
 /// that is ready, its cost is affordable, and its target is a living unit the ability's filter
-/// selects. `living` finds a living unit.
+/// selects, or the ability takes none, which drops any target the order named. `living` finds a
+/// living unit.
 fn check<'a>(
     book: &'a AbilityBook,
     now: Tick,
@@ -210,15 +213,18 @@ fn check<'a>(
     if now < slot.ready_at || cost > pool.map_or(Num::ZERO, |pool| pool.current()) {
         return None;
     }
-    let target_fits = match (ability.aim, casting.target) {
-        (Aim::None, CastTarget::None) => true,
-        (Aim::Unit(filter), CastTarget::Unit(target)) => {
-            living(target).is_some_and(|unit| filter.selects(team, unit.team, unit.tags))
+    let target = match (ability.aim, casting.target) {
+        (Aim::None, _) => CastTarget::None,
+        (Aim::Unit(filter), CastTarget::Unit(target))
+            if living(target).is_some_and(|unit| filter.selects(team, unit.team, unit.tags)) =>
+        {
+            CastTarget::Unit(target)
         }
-        _ => false,
+        _ => return None,
     };
-    target_fits.then_some(Checked {
+    Some(Checked {
         id: slot.ability,
+        target,
         ability,
         rank: slot.rank,
         range: values.range,
@@ -233,10 +239,9 @@ fn check<'a>(
 fn in_range(
     checked: &Checked<'_>,
     position: Position,
-    target: CastTarget,
     living: impl Fn(StableId) -> Option<TargetUnit>,
 ) -> bool {
-    let (Range::Meters(range), CastTarget::Unit(target)) = (checked.range, target) else {
+    let (Range::Meters(range), CastTarget::Unit(target)) = (checked.range, checked.target) else {
         return true;
     };
     living(target).is_some_and(|unit| position.within_ground(unit.pos, range))

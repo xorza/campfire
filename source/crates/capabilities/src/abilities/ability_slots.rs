@@ -87,9 +87,11 @@ impl AbilitySlots {
         self.casting
     }
 
-    pub(crate) const fn start(&mut self, resolves_at: Tick) {
+    /// Starts the ordered cast, to resolve in `resolves_at` at the `target` its check kept.
+    pub(crate) const fn start(&mut self, resolves_at: Tick, target: CastTarget) {
         if let Some(casting) = &mut self.casting {
             casting.resolves_at = Some(resolves_at);
+            casting.target = target;
         }
     }
 

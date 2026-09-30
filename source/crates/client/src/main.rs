@@ -44,6 +44,7 @@ use crate::view::View;
 
 mod bot;
 mod orders;
+mod pointer;
 mod view;
 
 /// What the command line names: the orders file a bot plays, the mode to play, and the server as

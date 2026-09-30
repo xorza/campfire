@@ -46,10 +46,15 @@ const MODE: &str = concat!(
 );
 /// The packages the verifier holds, the lane mode's among them.
 const PACKAGES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../packages/test");
-/// Each bot's orders: two steps near its spawn, then it leaves after tick 90, 3 s into the match.
+/// Each bot's orders: two steps near its spawn and a cast of its first ability, then it leaves
+/// after tick 90, 3 s into the match. The walker's cast hits whoever stands within 2 m; the
+/// runner's names no target, which its ability needs, so the sim refuses it, but the order is an
+/// input all the same.
 const SCRIPTS: [&str; 2] = [
-    "end = 90\n[[order]]\ntick = 20\nmove = [2, 0]\n[[order]]\ntick = 50\nmove = [-1, 2]\n",
-    "end = 90\n[[order]]\ntick = 20\nmove = [-2, 0]\n[[order]]\ntick = 50\nmove = [1, -2]\n",
+    "end = 90\n[[order]]\ntick = 20\nmove = [2, 0]\n[[order]]\ntick = 50\nmove = [-1, 2]\n\
+     [[order]]\ntick = 70\ncast = 0\n",
+    "end = 90\n[[order]]\ntick = 20\nmove = [-2, 0]\n[[order]]\ntick = 50\nmove = [1, -2]\n\
+     [[order]]\ntick = 70\ncast = 0\n",
 ];
 
 fn main() -> ExitCode {

@@ -300,8 +300,10 @@ fn lash_out_hits_every_enemy_within_its_radius_exactly() {
     game.cast(husk, CastTarget::None);
     assert_eq!(healths(&game), [400, 400, 500, 400, 500, 500]);
     assert_eq!(game.pool(husk), 65);
+    // An ability that takes no target ignores the one its order names: the cast at the ally hits
+    // the same three enemies.
     game.run_until(270);
-    game.cast(husk, CastTarget::None);
+    game.cast(husk, CastTarget::Unit(ally));
     assert_eq!(healths(&game), [300, 300, 500, 300, 500, 500]);
     assert_eq!(game.pool(husk), 30);
     // 30 left cannot pay 35.

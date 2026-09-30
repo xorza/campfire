@@ -18,7 +18,14 @@ attack_speed = { base = "1.5" }
 move_speed = { base = "7.5" }
 
 [abilities.first]
-targeting = "none"
+script = "scripts/bolt.rhai"
+targeting = "enemies"
+range = "5.0"
+cooldown_ms = 2000
+cost = 30
+
+[abilities.first.params]
+damage = 80
 
 [abilities.second]
 targeting = "none"

@@ -1,58 +1,76 @@
 use bevy::app::{App, Plugin, Update};
-use bevy::camera::Camera;
-use bevy::ecs::query::With;
-use bevy::ecs::system::{Query, Res, ResMut, Single};
+use bevy::ecs::system::{Res, ResMut};
 use bevy::input::ButtonInput;
+use bevy::input::keyboard::KeyCode;
 use bevy::input::mouse::MouseButton;
-use bevy::math::Vec3;
-use bevy::math::primitives::InfinitePlane3d;
-use bevy::transform::components::GlobalTransform;
-use bevy::window::{PrimaryWindow, Window};
-use campfire_capabilities::{Action, Order, Owner};
+use campfire_capabilities::{Action, CastTarget, Order};
 use campfire_math::Num;
 use campfire_net::PendingOrders;
-use campfire_sim::StableId;
-use lightyear::prelude::Predicted;
 
-/// Turns the player's clicks into orders: a right click on the ground walks their hero there.
+use crate::pointer::Pointer;
+
+/// Turns the player's clicks and keys into orders for their hero: a right click on an enemy
+/// attacks it, and anywhere else walks there; Q, W, E and R cast the abilities of slots 0 to 3,
+/// at the unit under the cursor when there is one. The sim ignores a target an ability does not
+/// take, so a key needs no knowledge of the ability.
 #[derive(Debug)]
 pub(crate) struct Orders;
 
+/// The keys that cast, by ability slot.
+const CAST_KEYS: [KeyCode; 4] = [KeyCode::KeyQ, KeyCode::KeyW, KeyCode::KeyE, KeyCode::KeyR];
+
 impl Plugin for Orders {
     fn build(&self, app: &mut App) {
-        app.add_systems(Update, Orders::walk_to_click);
+        app.add_systems(Update, (Orders::click, Orders::cast));
     }
 }
 
 impl Orders {
-    fn walk_to_click(
+    fn click(
         buttons: Res<'_, ButtonInput<MouseButton>>,
-        window: Single<'_, '_, &Window, With<PrimaryWindow>>,
-        camera: Single<'_, '_, (&Camera, &GlobalTransform)>,
-        heroes: Query<'_, '_, &StableId, (With<Owner>, With<Predicted>)>,
+        pointer: Pointer<'_, '_>,
         mut orders: ResMut<'_, PendingOrders>,
     ) {
         if !buttons.just_pressed(MouseButton::Right) {
             return;
         }
-        let (camera, place) = *camera;
-        let Some(point) = window
-            .cursor_position()
-            .and_then(|cursor| camera.viewport_to_world(place, cursor).ok())
-            .and_then(|ray| {
-                ray.plane_intersection_point(Vec3::ZERO, InfinitePlane3d::new(Vec3::Y))
-            })
-        else {
+        let (Some(hero), Some(point)) = (pointer.own_hero(), pointer.ground()) else {
             return;
         };
-        let (Some(x), Some(z), Ok(&hero)) = (meters(point.x), meters(point.z), heroes.single())
-        else {
-            return;
+        let action = match pointer.unit_at(point) {
+            Some(unit) if unit.team != hero.team => Action::Attack { target: unit.id },
+            _ => {
+                let (Some(x), Some(z)) = (meters(point.x), meters(point.z)) else {
+                    return;
+                };
+                Action::Move { x, z }
+            }
         };
         orders.push(Order {
-            unit: hero,
-            action: Action::Move { x, z },
+            unit: hero.id,
+            action,
         });
+    }
+
+    fn cast(
+        keys: Res<'_, ButtonInput<KeyCode>>,
+        pointer: Pointer<'_, '_>,
+        mut orders: ResMut<'_, PendingOrders>,
+    ) {
+        let Some(hero) = pointer.own_hero() else {
+            return;
+        };
+        for (slot, &key) in (0..).zip(&CAST_KEYS) {
+            if !keys.just_pressed(key) {
+                continue;
+            }
+            let under = pointer.ground().and_then(|point| pointer.unit_at(point));
+            let target = under.map_or(CastTarget::None, |unit| CastTarget::Unit(unit.id));
+            orders.push(Order {
+                unit: hero.id,
+                action: Action::Cast { slot, target },
+            });
+        }
     }
 }
 

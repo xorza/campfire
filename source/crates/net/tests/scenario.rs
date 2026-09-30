@@ -177,15 +177,34 @@ fn check_log(local: &mut LocalMatch, inputs: usize) {
     }
 }
 
-/// By team, the west, whose hero is the walker, then the east: both walk 7.5 m off the lane, out of
-/// reach of creeps and towers and within the vision grid, to stand 1 m apart. Then the walker casts its first ability, 100
-/// true damage within 2 m for 40 of its 100 mana, every 90 ticks: in tick 100 it hits; in 120 it
-/// is on cooldown; in 190 its cooldown has ended, and it hits; in 280 the 20 mana left do not pay.
-const CAST_SCRIPTS: [&str; 2] = [
-    "[[order]]\ntick = 60\nmove = [0, \"7.5\"]\n[[order]]\ntick = 100\ncast = 0\n[[order]]\ntick = 120\ncast = 0\n[[order]]\ntick = 190\ncast = 0\n[[order]]\ntick = 280\ncast = 0\n",
-    "[[order]]\ntick = 60\nmove = [1, \"7.5\"]\n",
-];
-const CAST_TICKS: u64 = 300;
+/// The orders by team, the west, whose hero is the walker, then the east, whose is the runner:
+/// both walk 7.5 m off the lane, out of reach of creeps and towers and within the vision grid, to
+/// stand 1 m apart.
+///
+/// The walker casts its first ability, 100 true damage within 2 m for 40 of its 100 mana, every
+/// 90 ticks: in tick 100 it hits; in 120 it is on cooldown; in 190 its cooldown has ended, and it
+/// hits; in 280 the 20 mana left do not pay. In tick 300 it attacks the runner: 60 damage 8 ticks
+/// into each attack of 20, in 308, 328 and 348; in 350 it stays where it stands, which ends the
+/// attack.
+///
+/// The runner casts its first ability at the walker in tick 140: 80 true damage for 30 of its 100
+/// mana, every 60 ticks.
+fn cast_scripts(walker: StableId, runner: StableId) -> [String; 2] {
+    let walker_orders = format!(
+        "[[order]]\ntick = 60\nmove = [0, \"7.5\"]\n\
+         [[order]]\ntick = 100\ncast = 0\n[[order]]\ntick = 120\ncast = 0\n\
+         [[order]]\ntick = 190\ncast = 0\n[[order]]\ntick = 280\ncast = 0\n\
+         [[order]]\ntick = 300\nattack = {}\n[[order]]\ntick = 350\nmove = [0, \"7.5\"]\n",
+        runner.get()
+    );
+    let runner_orders = format!(
+        "[[order]]\ntick = 60\nmove = [1, \"7.5\"]\n\
+         [[order]]\ntick = 140\ncast = 0\ntarget = {}\n",
+        walker.get()
+    );
+    [walker_orders, runner_orders]
+}
+const CAST_TICKS: u64 = 360;
 
 /// A unit's health, its resource, and the first tick its first ability may be cast again, as an
 /// app holds them.
@@ -209,51 +228,61 @@ fn caster(app: &App, id: StableId) -> Caster {
     }
 }
 
-/// Plays the cast scenario through `link` and checks it; gives each client's rollbacks.
+/// Plays the cast and attack scenario through `link` and checks it; gives each client's
+/// rollbacks.
 fn cast(link: LinkModel) -> [u32; 2] {
     let mut local = LocalMatch::new(MatchSetup::duo(link, SEED_CHAIN));
     local.start_match();
     // Player 0 plays the walker, of the west.
-    let heroes = [local.hero(0), local.hero(1)];
-    let teams = local.play_by_team(CAST_SCRIPTS);
-    let walker = heroes[teams.iter().position(|&team| team == 0).unwrap()];
-    let runner = heroes[teams.iter().position(|&team| team == 1).unwrap()];
-    // The ticks after which the runner's health changed on the server.
-    let mut hit = Vec::new();
-    let mut health = caster(local.server(), runner).health;
+    let by_team = |team| {
+        let client = (0..2)
+            .find(|&client| local.team(client).index() == team)
+            .unwrap();
+        local.hero(client)
+    };
+    let [walker, runner] = [0, 1].map(by_team);
+    let [west, east] = cast_scripts(walker, runner);
+    local.play_by_team([&west, &east]);
+    // The ticks after which each hero's health changed on the server, the walker's then the
+    // runner's.
+    let mut hits = [Vec::new(), Vec::new()];
+    let mut health = [walker, runner].map(|id| caster(local.server(), id).health);
     while next_tick(local.server()) < CAST_TICKS {
         local.step();
-        let now = caster(local.server(), runner).health;
-        if now != health {
-            hit.push(next_tick(local.server()) - 1);
-            health = now;
+        for (index, id) in [walker, runner].into_iter().enumerate() {
+            let now = caster(local.server(), id).health;
+            if now != health[index] {
+                hits[index].push(next_tick(local.server()) - 1);
+                health[index] = now;
+            }
         }
     }
     for _ in 0..20 {
         local.step();
     }
-    check_log(&mut local, 6);
+    check_log(&mut local, 9);
 
-    // Each cast that paid took effect in its stamp tick: 600 − 100 − 100 health; 100 − 40 − 40
-    // mana, and the ability ready again 90 ticks after the second, on the server and on both
-    // clients.
-    assert_eq!(hit, [100, 190]);
+    // Each order took effect in its stamp tick: the walker lost 80 health to the runner's cast;
+    // the runner 100 to each of the walker's two casts that paid, and 60 to each of its three
+    // strikes. The walker spent 40 mana twice, the runner 30 once, and each ability is ready
+    // again after its last cast's cooldown: on the server and on both clients.
+    assert_eq!(hits, [vec![140], vec![100, 190, 308, 328, 348]]);
     let num = |value| Num::from_int(value).unwrap();
     let expected = [
         (
-            runner,
+            walker,
             Caster {
-                health: num(400),
-                resource: Some(num(100)),
-                ready_at: Some(Tick::ZERO),
+                health: num(600 - 80),
+                resource: Some(num(100 - 40 - 40)),
+                ready_at: Some(Tick::new(190 + 90)),
             },
         ),
         (
-            walker,
+            runner,
             Caster {
-                health: num(600),
-                resource: Some(num(20)),
-                ready_at: Some(Tick::new(280)),
+                health: num(600 - 100 - 100 - 3 * 60),
+                resource: Some(num(100 - 30)),
+                ready_at: Some(Tick::new(140 + 60)),
             },
         ),
     ];

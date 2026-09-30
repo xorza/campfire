@@ -54,7 +54,7 @@ struct TickSeconds(f32);
 /// On a sim unit: the entity that draws it. The sim entity may be `Unpredicted`, which the
 /// renderer does not see, so the drawing is an entity of its own.
 #[derive(Component, Debug)]
-struct Drawn(Entity);
+pub(crate) struct Drawn(Entity);
 
 /// Where a drawing moves: from where it was drawn when the unit's sim place last changed, to
 /// that place, over one tick from `since`, in seconds of app time; `lift` raises the capsule to
@@ -91,7 +91,7 @@ type MovedUnits<'w, 's> =
 /// How a drawing looks while its unit lives: its material and its shape. A dead unit lies on the
 /// ground, gray.
 #[derive(Component, Debug)]
-struct Look {
+pub(crate) struct Look {
     alive: Handle<StandardMaterial>,
     shape: Shape,
 }
@@ -271,7 +271,18 @@ impl View {
     }
 }
 
+impl Drawn {
+    pub(crate) const fn drawing(&self) -> Entity {
+        self.0
+    }
+}
+
 impl Look {
+    /// How far the drawing reaches from its axis.
+    pub(crate) const fn radius(&self) -> f32 {
+        self.shape.radius
+    }
+
     /// Sets a drawing's material, pose and height for a unit that is `dead` or alive.
     fn show(
         &self,
