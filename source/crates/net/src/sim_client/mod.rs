@@ -280,17 +280,17 @@ fn report_deaths(
     }
 }
 
-/// The client's own hero: the one unit it predicts under a player's control.
-type OwnHero<'w, 's> = Query<'w, 's, &'static StableId, (With<Owner>, With<Predicted>)>;
+/// The client's own avatar: the one unit it predicts under a player's control.
+type OwnAvatar<'w, 's> = Query<'w, 's, &'static StableId, (With<Owner>, With<Predicted>)>;
 
-/// Adds the bot script's orders due in the tick about to run, for the player's own hero, then
+/// Adds the bot script's orders due in the tick about to run, for the player's own avatar, then
 /// stamps each pending order with that tick, chains it and keeps it, and sends them all in one
 /// message signed over the chain head after the last.
 fn send_orders(
     timeline: Res<'_, LocalTimeline>,
     clock: Res<'_, MatchClock>,
     bot: Option<ResMut<'_, BotScript>>,
-    hero: OwnHero<'_, '_>,
+    avatar: OwnAvatar<'_, '_>,
     mut pending: ResMut<'_, PendingOrders>,
     mut sent: ResMut<'_, SentInputs>,
     mut sender: Single<'_, '_, &mut MessageSender<InputMessage>, With<Client>>,
@@ -309,7 +309,7 @@ fn send_orders(
     let Some(stamp) = clock.sim_tick(timeline.tick()) else {
         return;
     };
-    if let (Some(mut bot), Ok(&unit)) = (bot, hero.single()) {
+    if let (Some(mut bot), Ok(&unit)) = (bot, avatar.single()) {
         for scripted in bot.due(stamp) {
             pending.push(Order {
                 unit,

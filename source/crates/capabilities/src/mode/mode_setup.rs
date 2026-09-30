@@ -21,23 +21,23 @@ pub struct ModeSetup<'a> {
     pub teams: &'a [TeamManifest],
     /// The players of the session.
     pub players: u32,
-    /// Every unit type it spawns, heroes' included.
+    /// Every unit type it spawns, avatars' included.
     pub unit_types: Vec<UnitTypeSetup>,
-    pub heroes: Vec<HeroSetup>,
-    pub spells: Vec<SpellSetup>,
+    pub avatars: Vec<AvatarSetup>,
+    pub loadout: Vec<LoadoutSetup>,
 }
 
 /// A unit type the mode spawns, loaded, with its kit: a type of the mode's `units.toml`, or a
-/// hero's.
+/// avatar's.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnitTypeSetup {
     pub unit_type: UnitType,
     pub kit: UnitKit,
 }
 
-/// A hero the mode depends on, loaded: its id is its package's name.
+/// An avatar the mode depends on, loaded: its id is its package's name.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct HeroSetup {
+pub struct AvatarSetup {
     pub id: String,
     pub unit_type: UnitType,
     /// Its abilities, in the order of its slots.
@@ -45,9 +45,9 @@ pub struct HeroSetup {
     pub resource: Option<ResourcePool>,
 }
 
-/// A spell of the mode's spells packages, loaded, by id.
+/// An entry of the mode's loadout packages, loaded, by id.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SpellSetup {
+pub struct LoadoutSetup {
     pub id: String,
     pub ability: AbilityId,
 }

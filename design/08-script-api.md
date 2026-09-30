@@ -24,7 +24,7 @@ Each call, handle field and hook belongs to the core or to one capability ([Capa
 
 ## Filters
 
-One set of words selects units everywhere: `targeting`, projectile `hits`, area `affects`, aura `affects`, and every query. A filter is a relation, `enemies`, `allies` or `all`, and an optional tag after a colon: `enemies:hero`, `allies:hero`, `enemies:creep`. Allies include the unit itself; units of different teams are enemies, so the `neutral` team is an enemy of every other. Heroes carry the tag `hero`.
+One set of words selects units everywhere: `targeting`, projectile `hits`, area `affects`, aura `affects`, and every query. A filter is a relation, `enemies`, `allies` or `all`, and an optional tag after a colon: `enemies:avatar`, `allies:avatar`, `enemies:creep`. Allies include the unit itself; units of different teams are enemies, so the `neutral` team is an enemy of every other. Avatars, the units players choose, carry the tag `avatar`.
 
 ## Data files
 
@@ -41,7 +41,7 @@ Arrays in capability fields and in the params of an ability are per rank: 5 entr
 
 Scaling keys: `base`, `per_level`, and a stat ratio each for `ad`, `bonus_ad`, `ap`, `max_health`, `bonus_health`, `armor`, `magic_resist`. A number field anywhere in data may be `{ param = "<name>" }`, resolved in the same way. An ability's `range`, `cooldown_ms`, `cost` and `cast_time_ms` resolve when the ability loads, one value for each rank, so a param they name is a value or a per-rank array, not a scaling table.
 
-**Hero** (`data/hero.toml`): `name`, `role`, `resource` (one of the mode's `resources`), `passive` (a modifier id), `slots` (four ability ids; the last is the ultimate), `[combat.attack]` (`range`, `windup_ms`, `projectile_speed`; no speed means melee), `[vision]` (`sight_range`, `true_sight`), `[stats]` (`stat = { base, per_level }`; the value at level `n` is `base + per_level × (n − 1)`), `[abilities.<id>]`, `[modifiers.<id>]`.
+**Avatar** (`data/avatar.toml`, in a package of kind `avatar`; the reference MOBA's heroes): `name`, `role`, `resource` (one of the mode's `resources`), `passive` (a modifier id), `slots` (four ability ids; the last is the ultimate), `[combat.attack]` (`range`, `windup_ms`, `projectile_speed`; no speed means melee), `[vision]` (`sight_range`, `true_sight`), `[stats]` (`stat = { base, per_level }`; the value at level `n` is `base + per_level × (n − 1)`), `[abilities.<id>]`, `[modifiers.<id>]`.
 
 **Ability:**
 
@@ -50,7 +50,7 @@ Scaling keys: `base`, `per_level`, and a stat ratio each for `ad`, `bonus_ad`, `
 | `script` | Script file, if the ability needs one |
 | `targeting` | `none`, `point`, `direction`, or a filter for a unit target |
 | `range` | Meters, or `"global"` |
-| `cooldown_ms`, `cost`, `cast_time_ms` | Cost is in the hero's resource |
+| `cooldown_ms`, `cost`, `cast_time_ms` | Cost is in the avatar's resource |
 | `clamp_to_range` | A target beyond range is moved in, instead of the caster walking |
 | `toggle` | `{ cost_per_attack }` or `{ cost_per_second }`; `abilities` turns it off at zero resource and at death |
 | `channel` | `{ duration_ms, tick_ms }`; starts after `on_cast`; calls `on_channel_tick` |
@@ -64,11 +64,11 @@ Scaling keys: `base`, `per_level`, and a stat ratio each for `ad`, `bonus_ad`, `
 
 **Modifier:** `script`, `duration_ms` (absent: until removed), `interval_ms`, `stacks_expire_ms`, `reapply` (`refresh` by default, `stack`, `ignore`), `stats` (per stack), `states`, `shield` (the modifier ends when the shield is spent), `aura` (`{ radius, affects, modifier }`), `[params]`, `[state]`. A unit holds at most one instance of each modifier id from each source.
 
-**Manifest** (`manifest.toml`): `name`, `version`, `engine` (the release tag it targets) and `kind`: `mode`, `hero` or `spells`. A mode's also has `capabilities` (none twice, not `mode`, and each with the ones it builds on: `projectiles`, `abilities` and `vision` on `combat`, `orders` on `combat` and `navigation`), `tick_hz = { min, max, default }` (all positive, `min ≤ default ≤ max`), `teams` (each `{ name, slots }`; their slots in order make the player slots; at most 63, so 64 with the neutral team), `backends`, `max_move_speed` (m/s, positive), `script_limits = { per_call, player, think, mode }` (each pool holds a whole call; each player slot has a pool of the size `player`), and `[dependencies]`, each named by its package's name, and in the workspace given by path. A hero's id is its package's name.
+**Manifest** (`manifest.toml`): `name`, `version`, `engine` (the release tag it targets) and `kind`: `mode`, `avatar` (a unit players choose, such as a hero) or `loadout` (abilities players pick before spawning, such as spells). A mode's also has `capabilities` (none twice, not `mode`, and each with the ones it builds on: `projectiles`, `abilities` and `vision` on `combat`, `orders` on `combat` and `navigation`), `tick_hz = { min, max, default }` (all positive, `min ≤ default ≤ max`), `teams` (each `{ name, slots }`; their slots in order make the player slots; at most 63, so 64 with the neutral team), `backends`, `max_move_speed` (m/s, positive), `script_limits = { per_call, player, think, mode }` (each pool holds a whole call; each player slot has a pool of the size `player`), and `[dependencies]`, each named by its package's name, and in the workspace given by path. A hero's id is its package's name.
 
 **Mode** (`data/mode.toml`): `script`, `assist_window_ms`, `[inputs]` (name and type of each player input: `string`, `string_list`), `[state]`, `[params]` (values, or lists whose entries are values or strings, such as unit types), `[modifiers]`. An input that does not match its type never reaches the script. **Units** (`data/units.toml`): `[units.<id>]` with `tags`, `params`, and a section for each capability the unit type uses ([Unit types](04-capabilities/00-overview.md#unit-types)): `stats`, `combat` (`attack = { range, windup_ms, projectile_speed }`, and `on_death`: `stay` or `despawn`, the default), `orders` (`ai`, `think_ms`), `vision` (`sight_range` in meters, not negative, and `true_sight`). Health, attack damage, attack speed and move speed are stats: an attack starts at most `attack_speed` times a second, its period the tick rate over that rounded up.
 
-**Map** (`map/map.toml`): `[[lanes]]` (`name`, `points` from the first team's end to the second's), `[spawns]` (each playing team's hero spawn), `[[structures]]` (`unit_type`, `team`, `lane` if it guards one, `pos`: they stand from the start), `[[neutral_spawns]]` (`unit_type`, `pos`, as `ctx.map.neutral_spawns` lists them), `[grid]` (`cell` in meters, positive, and `min` and `max`: whole cells from `min` until they cover `max`, at most 2²² cells; a mode with `vision` needs it). A point is `[x, z]` in meters on the ground plane.
+**Map** (`map/map.toml`): `[[lanes]]` (`name`, `points` from the first team's end to the second's), `[spawns]` (each playing team's avatar spawn), `[[structures]]` (`unit_type`, `team`, `lane` if it guards one, `pos`: they stand from the start), `[[neutral_spawns]]` (`unit_type`, `pos`, as `ctx.map.neutral_spawns` lists them), `[grid]` (`cell` in meters, positive, and `min` and `max`: whole cells from `min` until they cover `max`, at most 2²² cells; a mode with `vision` needs it). A point is `[x, z]` in meters on the ground plane.
 
 **State types:** `int`, `num`, `bool`, `string`, `entity`, `entity_list`, `pos`, `vec`; each with a `default` and, for mode state, `sync`.
 
@@ -93,7 +93,7 @@ A unit handle has the fields of the capabilities its type uses; reading a field 
 
 | Handle | Reads |
 | --- | --- |
-| Unit | `pos`, `team`, `owner`, `level`, `alive`, `is_hero`, `target`, `attack_range`, `health`, `max_health`, `stat(name)`, `params` (the unit type's, unresolved), `spawn_pos`, `lane`, `unit_type`, `has_tag(tag)`, `has_modifier(id)`, `is_enemy_of(unit)`, `can_see(unit)`, `recent_attackers(ms)` |
+| Unit | `pos`, `team`, `owner`, `level`, `alive`, `is_avatar`, `target`, `attack_range`, `health`, `max_health`, `stat(name)`, `params` (the unit type's, unresolved), `spawn_pos`, `lane`, `unit_type`, `has_tag(tag)`, `has_modifier(id)`, `is_enemy_of(unit)`, `can_see(unit)`, `recent_attackers(ms)` |
 | Modifier `m` | `carrier`, `source`, `stacks` (writable), `state` (writable) |
 | Projectile | `source`, `pos`, `distance` flown, `state` (writable) |
 | Area | `source`, `pos` |
@@ -105,7 +105,7 @@ A unit handle has the fields of the capabilities its type uses; reading a field 
 | Group | Capability | Calls |
 | --- | --- | --- |
 | Values | core; `abilities` for `range`, `charge`, `origin`; `navigation` for `map` | `p.<name>`, `range`, `charge`, `origin`, `state` (mode), `map` (`lanes`, `neutral_spawns`), `teams` (playing teams) |
-| Queries | core; `vision` for the visible ones | `find(of, pos, radius, filter)`, `find_visible(of, pos, radius, filter)`, `nearest_visible(of, radius, filter)`, `heroes()`, `heroes(team)`, `units_tagged(tag)`, `enemy_team(team)`, `hero_available(player, id)` |
+| Queries | core; `vision` for the visible ones | `find(of, pos, radius, filter)`, `find_visible(of, pos, radius, filter)`, `nearest_visible(of, radius, filter)`, `avatars()`, `avatars(team)`, `units_tagged(tag)`, `enemy_team(team)`, `avatar_available(player, id)` |
 | Random | core | `chance(p)`, `pick(list)` |
 | Combat | `combat` | `damage(target, amount, kind)`, `heal(unit, amount)`, `restore(unit, amount)` (the unit's resource), `attack_hit(target)` |
 | Modifiers | `stats` | `add_modifier(unit, id)` or `(unit, id, duration_ms)`, returns the modifier; `remove(handle)` removes a modifier, projectile or area |
@@ -115,13 +115,13 @@ A unit handle has the fields of the capabilities its type uses; reading a field 
 | Areas | `areas` | `area(pos)`: the ability's `area` data |
 | Vision | `vision` | `reveal(pos, radius, ms)` for the source's team |
 | Abilities | `abilities` | `reduce_cooldown(unit, id, ms)`, `reduce_cooldowns(unit, fraction)` (basic abilities), `add_charge(unit, id)` |
-| Progress | core; `stats` for experience | `add_resource(player, name, amount)`, `add_xp(hero, amount)` |
+| Progress | core; `stats` for experience | `add_resource(player, name, amount)`, `add_xp(avatar, amount)` |
 | Orders (AI) | `orders` | `order_attack(unit, target)`, `order_move(unit, pos)`, `order_follow_lane(unit)`, `order_reset(unit)` (walk home, heal, drop target) |
-| Mode | core; `combat` for `respawn`, `abilities` for `learn` | `timer(name, ms, repeat, data)`, `end(result)`, `spawn_heroes()`, `spawn_unit(type, team, pos)`, `spawn_wave(team, lane, types)`, `respawn(unit, ms)`, `learn(hero, slot)` (the ability in `slot` a rank more, up to its last; a hero's own abilities spawn unlearned), `choose_hero(player, id)`, `choose_spells(player, ids)` |
+| Mode | core; `combat` for `respawn`, `abilities` for `learn` | `timer(name, ms, repeat, data)`, `end(result)`, `spawn_avatars()`, `spawn_unit(type, team, pos)`, `spawn_wave(team, lane, types)`, `respawn(unit, ms)`, `learn(hero, slot)` (the ability in `slot` a rank more, up to its last; a hero's own abilities spawn unlearned), `choose_avatar(player, id)`, `choose_loadout(player, ids)` |
 
 `ctx.p` reads, in an ability, its params; in a modifier, the modifier's params and then those of the ability that applied it; in a mode or AI script, the mode's params.
 
-**Mode calls.** The map's structures spawn, then `on_match_start` runs, before the first tick. A timer counts from its call, in ticks rounded up, at least one, and fires in the Mode stage at the end of a tick: set before the first tick, 1 ms fires at the end of tick 0. `ctx.teams` names the playing teams, and `ctx.players` counts the session's players; neutral units spawn on `neutral`, and `enemy_team` needs a mode of two playing teams. `spawn_wave` spawns its units in order at the team's end of the lane, the first team at its start and the second at its end, walking it. `choose_hero` takes a hero no other player chose; `spawn_heroes` spawns each chosen hero not yet spawned, in slot order, at its team's spawn, its abilities unlearned and its player's spells at rank 1. `on_unit_died` runs after the due timers, once for each unit that died in the tick, in the order they died; `killer` is `()` when no strike killed it. `respawn` takes a dead unit whose type stays dead, and refuses a living one or one whose type despawns ([Combat](04-capabilities/combat.md#damage-and-death)). A player's mode input is a command of the `mode` owner: its name, then its value in its declared type, in postcard.
+**Mode calls.** The map's structures spawn, then `on_match_start` runs, before the first tick. A timer counts from its call, in ticks rounded up, at least one, and fires in the Mode stage at the end of a tick: set before the first tick, 1 ms fires at the end of tick 0. `ctx.teams` names the playing teams, and `ctx.players` counts the session's players; neutral units spawn on `neutral`, and `enemy_team` needs a mode of two playing teams. `spawn_wave` spawns its units in order at the team's end of the lane, the first team at its start and the second at its end, walking it. `choose_avatar` takes an avatar no other player chose; `spawn_avatars` spawns each chosen avatar not yet spawned, in slot order, at its team's spawn, its abilities unlearned and its player's loadout at rank 1. `on_unit_died` runs after the due timers, once for each unit that died in the tick, in the order they died; `killer` is `()` when no strike killed it. `respawn` takes a dead unit whose type stays dead, and refuses a living one or one whose type despawns ([Combat](04-capabilities/combat.md#damage-and-death)). A player's mode input is a command of the `mode` owner: its name, then its value in its declared type, in postcard.
 
 ## Hooks
 
@@ -132,25 +132,25 @@ A unit handle has the fields of the capabilities its type uses; reading a field 
 | Mode | core; `combat` for `on_unit_died` and `calc_damage` | `on_match_start(ctx)`, `on_mode_input(ctx, player, name, value)`, `on_timer(ctx, name, data)`, `on_player_join(ctx, player)`, `on_player_leave(ctx, player)`, `on_unit_died(ctx, unit, killer, assisters)`, `calc_damage(ctx, d)` |
 | AI | `orders` | `think(ctx, unit)` |
 
-A hero passive is a modifier the hero always carries. `combat` finds takedown participants once, with the mode's `assist_window_ms`: they receive `on_takedown`, and the mode receives them as `assisters`.
+An avatar's passive is a modifier it always carries. `combat` finds takedown participants once, with the mode's `assist_window_ms`: they receive `on_takedown`, and the mode receives them as `assisters`.
 
 ## Checks at package load
 
 A package loads only when all of these pass:
 
 - Every data file matches its schema, every per-rank array has one entry for each rank, and every capability field of an ability (`range`, `cooldown_ms`, `cost`, `cast_time_ms`) holds at every rank.
-- The mode's unit types declare at most 64 tags together, and no hero has the name of one of them.
+- The mode's unit types declare at most 64 tags together, and no avatar has the name of one of them.
 - Every script is referenced by data. Every function named like a hook, a hook's name or any name that starts with `on_`, is a hook of a role the script serves, with the hook's parameters, so a misspelled hook is an error, not a hook that never runs.
 - Every modifier id, `ctx.p` name, `{ param }` reference, stat, state, filter and damage kind that a script or data file names exists. Scripts are read with `AST::walk`, from Rhai's `internals` feature.
 - Every `ctx` call is one this API defines, of a capability the mode declares, for the script's role.
 - Every value of `ctx` is a variable named `ctx`, so the checks see all its uses: every hook's first parameter is named `ctx`; `ctx` is used only as `ctx.<name>` or as a whole argument of a call, not of an operator or a function pointer's `call` or `curry`; a function of the script that receives it names that parameter `ctx`; and no `let`, `const` or `for` binds a new `ctx`.
 - Every capability a package's data or scripts use is declared, and each builds on the ones it needs. A capability the release does not run yet loads: its data is checked, and a call to it fails at run time.
 - The manifest's capabilities, tick rates, pools and move speed cap hold, where the manifest is read. Every package targets this release, and every projectile flies faster than the cap.
-- The map and the teams name only what the mode has: every structure's and neutral spawn's unit type, team and lane; a hero spawn for each playing team; no team named `neutral`, and no two teams, lanes, slots of a hero or spells of the mode's spells packages alike.
+- The map and the teams name only what the mode has: every structure's and neutral spawn's unit type, team and lane; an avatar spawn for each playing team; no team named `neutral`, and no two teams, lanes, slots of an avatar or entries of the mode's loadout packages alike.
 
 ## Planned changes
 
-- Core calls take neutral names: avatar for hero, loadout for spells, spawn group for wave, path for lane.
+- Core calls take neutral names: spawn group for wave, path for lane.
 - New capabilities add their parts: `items`, `progression`, `interaction`, `production`.
 
 ## Open questions

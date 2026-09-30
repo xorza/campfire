@@ -212,7 +212,7 @@ mod tests {
     fn the_facts_are_the_names_a_script_uses_on_ctx_and_gives_the_api() {
         let source = r#"
 fn on_cast(ctx, caster, target) {
-    for unit in ctx.find(caster, caster.pos, ctx.p.radius, "enemies:hero") {
+    for unit in ctx.find(caster, caster.pos, ctx.p.radius, "enemies:avatar") {
         ctx.damage(unit, ctx.p.damage * unit.stat("armor"), "magic");
         if !unit.has_modifier("kindle") {
             ctx.add_modifier(unit, "kindle", 100);
@@ -260,7 +260,7 @@ fn helper(ctx, gold) {}
         // A literal counts; a variable, as the filter `name`, cannot be read at load.
         assert_eq!(facts.modifiers, ["kindle", "kindle"]);
         assert_eq!(facts.stats, ["armor"]);
-        assert_eq!(facts.filters, ["enemies:hero"]);
+        assert_eq!(facts.filters, ["enemies:avatar"]);
         assert_eq!(facts.damage_kinds, ["magic"]);
     }
 

@@ -4,7 +4,7 @@ use serde::Deserialize;
 
 use crate::error::OrderScriptError;
 
-/// A player's orders for their hero, each at a sim tick, in tick order, and optionally the tick
+/// A player's orders for their avatar, each at a sim tick, in tick order, and optionally the tick
 /// the player leaves after: what a bot plays. It reads from TOML: an optional `end`, and one
 /// `[[order]]` table each, with its `tick` and one action: `move = [x, z]` in meters,
 /// `attack = <unit>`, or `cast = <slot>`, with `target = <unit>` when the ability takes one. A
@@ -15,7 +15,7 @@ pub struct OrderScript {
     end: Option<Tick>,
 }
 
-/// One order of a script: the sim tick it is sent in, and what the hero does.
+/// One order of a script: the sim tick it is sent in, and what the avatar does.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ScriptedOrder {
     pub tick: Tick,

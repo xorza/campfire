@@ -8,7 +8,7 @@ fn on_projectile_hit(ctx, proj, target) {
     if proj.state.bounces_left == 0 {
         return;
     }
-    let pool = without(ctx.find_visible(proj.source, target.pos, ctx.p.bounce_radius, "enemies:hero"), target);
+    let pool = without(ctx.find_visible(proj.source, target.pos, ctx.p.bounce_radius, "enemies:avatar"), target);
     if pool.is_empty() {
         pool = without(ctx.find_visible(proj.source, target.pos, ctx.p.bounce_radius, "enemies"), target);
     }

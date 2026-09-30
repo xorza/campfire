@@ -102,7 +102,7 @@ pub struct LoadError {
 pub enum LoadProblem {
     /// A file does not read, or a data file does not match its schema.
     Content(ContentError),
-    /// The package is not of the kind its place needs: a mode, or a hero or spells a mode depends
+    /// The package is not of the kind its place needs: a mode, or an avatar or loadout a mode depends
     /// on.
     WrongKind,
     /// The dependency's package has another name than the mode gives it.
@@ -116,14 +116,14 @@ pub enum LoadProblem {
     },
     /// The mode declares `vision`, and its map has no grid for sight to reveal.
     NoGrid,
-    /// A hero's slot names an ability it does not have.
+    /// An avatar's slot names an ability it does not have.
     UnknownSlot(String),
-    /// A hero's ability is in none of its slots, so it has no rank count.
+    /// An avatar's ability is in none of its slots, so it has no rank count.
     Unslotted(String),
-    /// A hero's ability is in two slots.
+    /// An avatar's ability is in two slots.
     RepeatedSlot(String),
-    /// Two spells packages hold a spell of this id.
-    RepeatedSpell(String),
+    /// Two loadout packages hold a loadout entry of this id.
+    RepeatedLoadout(String),
     /// The mode's teams or map name what it does not have.
     Mode(ModeError),
     /// A capability field of an ability does not hold at a rank.
@@ -133,9 +133,9 @@ pub enum LoadProblem {
     },
     /// The mode's unit types declare more tags than a match holds.
     TooManyTags,
-    /// The mode has more unit types, its heroes' among them, than a match holds.
+    /// The mode has more unit types, its avatars' among them, than a match holds.
     TooManyUnitTypes,
-    /// A hero has the name of one of the mode's unit types.
+    /// An avatar has the name of one of the mode's unit types.
     RepeatedUnitType(String),
     /// A per-rank array of an ability has another length than its ranks.
     RankCount {
@@ -182,7 +182,7 @@ pub enum LoadProblem {
         at: Place,
         name: String,
     },
-    /// A hero at `at` spends a resource the mode does not declare.
+    /// An avatar at `at` spends a resource the mode does not declare.
     UnknownResource {
         at: Place,
         name: DeclaredName,
@@ -212,7 +212,7 @@ pub enum LoadProblem {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Place {
     UnitType(String),
-    Hero(String),
+    Avatar(String),
     Ability(String),
     Modifier(String),
     Script(PackagePath),
@@ -271,7 +271,7 @@ impl fmt::Display for Place {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Place::UnitType(name) => write!(f, "unit type {name}"),
-            Place::Hero(name) => write!(f, "hero {name}"),
+            Place::Avatar(name) => write!(f, "avatar {name}"),
             Place::Ability(id) => write!(f, "ability {id}"),
             Place::Modifier(id) => write!(f, "modifier {id}"),
             Place::Script(path) => write!(f, "{path}"),
@@ -305,12 +305,12 @@ impl fmt::Display for LoadProblem {
             LoadProblem::TooManyTags => f.write_str("more unit tags than a match holds"),
             LoadProblem::TooManyUnitTypes => f.write_str("more unit types than a match holds"),
             LoadProblem::RepeatedUnitType(name) => {
-                write!(f, "hero {name:?} has the name of a unit type")
+                write!(f, "avatar {name:?} has the name of a unit type")
             }
             LoadProblem::NoGrid => f.write_str("the mode declares vision, and its map has no grid"),
             LoadProblem::Unslotted(id) => write!(f, "ability {id:?} is in no slot"),
             LoadProblem::RepeatedSlot(id) => write!(f, "ability {id:?} is in two slots"),
-            LoadProblem::RepeatedSpell(id) => write!(f, "two spells packages hold {id:?}"),
+            LoadProblem::RepeatedLoadout(id) => write!(f, "two loadout packages hold {id:?}"),
             LoadProblem::Mode(error) => write!(f, "{error}"),
             LoadProblem::RankCount { ability, ranks } => {
                 write!(

@@ -42,7 +42,7 @@ pub(crate) const CAMERA: Vec3 = Vec3::new(0.0, 24.0, 18.0);
 /// The meshes and materials units are drawn with.
 #[derive(Resource, Debug)]
 struct Palette {
-    hero: Handle<Mesh>,
+    avatar: Handle<Mesh>,
     creep: Handle<Mesh>,
     structure: Handle<Mesh>,
     own: Handle<StandardMaterial>,
@@ -99,14 +99,14 @@ pub(crate) struct Look {
     shape: Shape,
 }
 
-/// The shape of a unit: a hero is under a player's control, a structure does not walk.
+/// The shape of a unit: an avatar is under a player's control, a structure does not walk.
 #[derive(Debug, Clone, Copy)]
 struct Shape {
     radius: f32,
     length: f32,
 }
 
-const HERO: Shape = Shape {
+const AVATAR: Shape = Shape {
     radius: 0.5,
     length: 1.0,
 };
@@ -155,7 +155,7 @@ impl View {
         let mut capsule =
             |shape: Shape| meshes.add(Capsule3d::new(shape.radius, shape.length).mesh());
         let palette = Palette {
-            hero: capsule(HERO),
+            avatar: capsule(AVATAR),
             creep: capsule(CREEP),
             structure: capsule(STRUCTURE),
             own: materials.add(Color::srgb(1.0, 0.85, 0.2)),
@@ -178,7 +178,7 @@ impl View {
     ) {
         for (unit, &pos, team, walks, owned, own, dead) in &units {
             let (shape, mesh) = match (owned, walks) {
-                (true, _) => (HERO, &palette.hero),
+                (true, _) => (AVATAR, &palette.avatar),
                 (false, true) => (CREEP, &palette.creep),
                 (false, false) => (STRUCTURE, &palette.structure),
             };

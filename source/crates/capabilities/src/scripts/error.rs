@@ -56,14 +56,14 @@ pub enum ApiError {
     NoEnemyTeam,
     /// A player slot the session does not have.
     UnknownPlayer,
-    /// A hero the mode does not depend on.
-    UnknownHero,
-    /// A hero another player chose.
-    HeroTaken,
-    /// A spell the mode does not depend on.
-    UnknownSpell,
-    /// A spell chosen twice.
-    RepeatedSpell,
+    /// An avatar the mode does not depend on.
+    UnknownAvatar,
+    /// An avatar another player chose.
+    AvatarTaken,
+    /// A loadout entry the mode does not depend on.
+    UnknownLoadout,
+    /// A loadout entry chosen twice.
+    RepeatedLoadout,
     /// A field of the mode's state it does not declare.
     UnknownState,
     /// A value not of its state field's type.
@@ -147,10 +147,10 @@ impl fmt::Display for ApiError {
             ApiError::NoLaneEnd => "team has no end of the lanes",
             ApiError::NoEnemyTeam => "team has no one enemy team",
             ApiError::UnknownPlayer => "player is not in the session",
-            ApiError::UnknownHero => "hero is not one the mode depends on",
-            ApiError::HeroTaken => "hero is another player's choice",
-            ApiError::UnknownSpell => "spell is not one the mode depends on",
-            ApiError::RepeatedSpell => "spell is chosen twice",
+            ApiError::UnknownAvatar => "avatar is not one the mode depends on",
+            ApiError::AvatarTaken => "avatar is another player's choice",
+            ApiError::UnknownLoadout => "entry is not one the mode depends on",
+            ApiError::RepeatedLoadout => "entry is chosen twice",
             ApiError::UnknownState => "state field is not declared",
             ApiError::WrongStateType => "value is not of the state field's type",
             ApiError::TimerData => "timer data is not a value state can hold",

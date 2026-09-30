@@ -6,17 +6,17 @@ fn on_mode_input(ctx, player, name, value) {
     if ctx.state.phase != "pick" {
         return;
     }
-    if name == "hero" && ctx.hero_available(player, value) {
-        ctx.choose_hero(player, value);
+    if name == "hero" && ctx.avatar_available(player, value) {
+        ctx.choose_avatar(player, value);
     } else if name == "spells" && value.len() == 2 {
-        ctx.choose_spells(player, value);
+        ctx.choose_loadout(player, value);
     }
 }
 
 fn on_timer(ctx, name, data) {
     if name == "pick_end" {
         ctx.state.phase = "play";
-        ctx.spawn_heroes();
+        ctx.spawn_avatars();
         for point in ctx.map.neutral_spawns {
             ctx.spawn_unit(point.unit_type, "neutral", point.pos);
         }
@@ -34,7 +34,7 @@ fn on_timer(ctx, name, data) {
         }
         ctx.timer("wave", ctx.p.wave_ms, false, ());
     } else if name == "income" {
-        for hero in ctx.heroes() {
+        for hero in ctx.avatars() {
             ctx.add_resource(hero.owner, "gold", ctx.p.income_gold);
         }
     }
@@ -46,18 +46,18 @@ fn on_unit_died(ctx, unit, killer, assisters) {
         return;
     }
     share_xp(ctx, unit);
-    if unit.is_hero {
+    if unit.is_avatar {
         hero_died(ctx, unit, killer, assisters);
         return;
     }
-    if killer != () && killer.is_hero {
+    if killer != () && killer.is_avatar {
         ctx.add_resource(killer.owner, "gold", unit.params.gold);
     }
     if unit.has_tag("inhibitor") {
         ctx.respawn(unit, ctx.p.inhibitor_respawn_ms);
     } else if unit.has_tag("objective") {
         if killer != () {
-            for hero in ctx.heroes(killer.team) {
+            for hero in ctx.avatars(killer.team) {
                 ctx.add_modifier(hero, "warden_blessing");
             }
         }
@@ -69,7 +69,7 @@ fn on_unit_died(ctx, unit, killer, assisters) {
 
 fn hero_died(ctx, hero, killer, assisters) {
     ctx.respawn(hero, ctx.p.respawn_base_ms + ctx.p.respawn_per_level_ms * hero.level);
-    if killer == () || !killer.is_hero {
+    if killer == () || !killer.is_avatar {
         return;
     }
     let gold = ctx.p.kill_gold;
@@ -84,11 +84,11 @@ fn hero_died(ctx, hero, killer, assisters) {
 }
 
 fn share_xp(ctx, unit) {
-    let heroes = ctx.find(unit, unit.pos, ctx.p.xp_radius, "enemies:hero");
+    let heroes = ctx.find(unit, unit.pos, ctx.p.xp_radius, "enemies:avatar");
     if heroes.is_empty() {
         return;
     }
-    let xp = if unit.is_hero {
+    let xp = if unit.is_avatar {
         ctx.p.hero_xp_base + ctx.p.hero_xp_per_level * unit.level
     } else {
         unit.params.xp

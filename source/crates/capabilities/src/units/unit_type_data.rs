@@ -22,6 +22,6 @@ impl UnitTypeData {
     /// The most unit types a match loads.
     pub const TYPE_LIMIT: usize = 1 << u16::BITS;
 
-    /// The tag of heroes, which `unit.is_hero` tests: every hero carries it.
-    pub const HERO_TAG: &str = "hero";
+    /// The tag of avatars, which `unit.is_avatar` tests: every avatar carries it.
+    pub const AVATAR_TAG: &str = "avatar";
 }

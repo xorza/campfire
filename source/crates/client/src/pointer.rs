@@ -18,13 +18,13 @@ use crate::view::{Drawn, Look};
 pub(crate) struct Pointer<'w, 's> {
     window: Single<'w, 's, &'static Window, With<PrimaryWindow>>,
     camera: Single<'w, 's, (&'static Camera, &'static GlobalTransform)>,
-    own: OwnHero<'w, 's>,
+    own: OwnAvatar<'w, 's>,
     units: LivingUnits<'w, 's>,
     drawings: Query<'w, 's, (&'static Transform, &'static Look)>,
 }
 
-/// The player's own hero: the unit it predicts under a player's control.
-type OwnHero<'w, 's> =
+/// The player's own avatar: the unit it predicts under a player's control.
+type OwnAvatar<'w, 's> =
     Query<'w, 's, (&'static StableId, &'static Team), (With<Owner>, With<Predicted>)>;
 
 /// The living units the client holds, and the entity each is drawn by.
@@ -43,7 +43,7 @@ pub(crate) struct Pointed {
 }
 
 impl Pointer<'_, '_> {
-    /// The player's own hero, once the client holds it.
+    /// The player's own avatar, once the client holds it.
     pub(crate) fn own_hero(&self) -> Option<Pointed> {
         let (&id, &team) = self.own.single().ok()?;
         Some(Pointed { id, team })
@@ -57,7 +57,7 @@ impl Pointer<'_, '_> {
         ray.plane_intersection_point(Vec3::ZERO, InfinitePlane3d::new(Vec3::Y))
     }
 
-    /// The living unit, other than the player's own hero, drawn over `point` of the ground.
+    /// The living unit, other than the player's own avatar, drawn over `point` of the ground.
     pub(crate) fn unit_at(&self, point: Vec3) -> Option<Pointed> {
         let own = self.own_hero().map(|own| own.id);
         let drawn = self
@@ -99,26 +99,26 @@ mod tests {
             id: ids.allocate(),
             team: Team::new(0),
         };
-        // A hero of 0.5 m at the origin, a unit of 1 m at x = 1, a creep of 0.35 m at x = 0.25, a
-        // hero at x = 4, and a unit of a higher id drawn where the first stands.
-        let [hero, wide, creep, far, twin] = [unit(), unit(), unit(), unit(), unit()];
+        // An avatar of 0.5 m at the origin, a unit of 1 m at x = 1, a creep of 0.35 m at x = 0.25, a
+        // avatar at x = 4, and a unit of a higher id drawn where the first stands.
+        let [avatar, wide, creep, far, twin] = [unit(), unit(), unit(), unit(), unit()];
         let circles = [
-            (hero, Vec2::new(0.0, 0.0), 0.5),
+            (avatar, Vec2::new(0.0, 0.0), 0.5),
             (wide, Vec2::new(1.0, 0.0), 1.0),
             (creep, Vec2::new(0.25, 0.0), 0.35),
             (far, Vec2::new(4.0, 0.0), 0.5),
             (twin, Vec2::new(0.0, 0.0), 0.5),
         ];
         let at = |x: f32, z: f32| nearest_over(Vec2::new(x, z), circles.into_iter());
-        // At x = 0.2: inside the hero (0.2 away), the wide unit (0.8) and the creep (0.05); the
+        // At x = 0.2: inside the avatar (0.2 away), the wide unit (0.8) and the creep (0.05); the
         // creep is nearest.
         assert_eq!(at(0.2, 0.0), Some(creep));
-        // At x = 0.625: outside the hero (0.625 > 0.5) and the creep (0.375 > 0.35); inside the
+        // At x = 0.625: outside the avatar (0.625 > 0.5) and the creep (0.375 > 0.35); inside the
         // wide unit.
         assert_eq!(at(0.625, 0.0), Some(wide));
-        // At 0.25 behind the origin: the hero and its twin, as near; the lower id.
-        assert_eq!(at(0.0, -0.25), Some(hero));
-        // On the far hero's edge, exactly 0.5 away, it holds; a quarter meter aside, 0.559 away,
+        // At 0.25 behind the origin: the avatar and its twin, as near; the lower id.
+        assert_eq!(at(0.0, -0.25), Some(avatar));
+        // On the far avatar's edge, exactly 0.5 away, it holds; a quarter meter aside, 0.559 away,
         // it does not.
         assert_eq!(at(4.5, 0.0), Some(far));
         assert_eq!(at(4.5, 0.25), None);

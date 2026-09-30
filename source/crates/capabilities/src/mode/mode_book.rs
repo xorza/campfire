@@ -37,7 +37,7 @@ pub(crate) struct ModeBook {
     pub(crate) schema: ModeSchema,
     pub(crate) roster: Roster,
     pub(crate) teams: Rc<Teams>,
-    /// Where each playing team's heroes spawn.
+    /// Where each playing team's avatars spawn.
     spawns: Vec<Position>,
     /// By unit type.
     kits: ByType<UnitKit>,
@@ -78,7 +78,7 @@ impl ModeBook {
         let mut book = ModeBook {
             rate,
             schema: ModeSchema::new(setup.script, host, setup.data),
-            roster: Roster::new(setup.heroes, setup.spells),
+            roster: Roster::new(setup.avatars, setup.loadout),
             teams: Rc::new(teams),
             spawns: Vec::new(),
             kits,
@@ -137,8 +137,8 @@ impl ModeBook {
         }
     }
 
-    /// Where `team`'s heroes spawn.
-    pub(crate) fn hero_spawn(&self, team: Team) -> Position {
+    /// Where `team`'s avatars spawn.
+    pub(crate) fn avatar_spawn(&self, team: Team) -> Position {
         self.spawns[usize::from(team.index())]
     }
 
@@ -176,30 +176,30 @@ impl ModeBook {
         unit.id()
     }
 
-    /// Spawns the hero of each player who chose one and has none yet, in slot order, at their team's
-    /// spawn: under their control, with its abilities unlearned and their spells.
-    pub(crate) fn spawn_heroes(&self, world: &mut World) {
+    /// Spawns the avatar of each player who chose one and has none yet, in slot order, at their team's
+    /// spawn: under their control, with its abilities unlearned and their loadout.
+    pub(crate) fn spawn_avatars(&self, world: &mut World) {
         for slot in (0..self.teams.players()).map(PlayerSlot::new) {
             let pick = world.resource::<Picks>().of(slot);
-            let (Some(hero), false) = (pick.hero, pick.spawned) else {
+            let (Some(avatar), false) = (pick.avatar, pick.spawned) else {
                 continue;
             };
-            let spells = pick.spells.clone();
-            let hero = self.roster.hero_setup(hero);
+            let loadout = pick.loadout.clone();
+            let avatar = self.roster.avatar_setup(avatar);
             let team = self.teams.of(slot).expect("a player has a team");
-            let own = hero.abilities.iter().map(|&ability| (ability, 0));
-            let chosen = spells
+            let own = avatar.abilities.iter().map(|&ability| (ability, 0));
+            let chosen = loadout
                 .iter()
-                .map(|&spell| (self.roster.spell_ability(spell), 1));
+                .map(|&entry| (self.roster.loadout_ability(entry), 1));
             let slots = AbilitySlots::new(own.chain(chosen));
             let entity = self.spawn(
                 world,
-                hero.unit_type,
+                avatar.unit_type,
                 team,
-                self.hero_spawn(team),
+                self.avatar_spawn(team),
                 (Owner::new(slot), slots),
             );
-            if let Some(resource) = hero.resource {
+            if let Some(resource) = avatar.resource {
                 world.entity_mut(entity).insert(resource);
             }
             world.resource_mut::<Picks>().of_mut(slot).spawned = true;

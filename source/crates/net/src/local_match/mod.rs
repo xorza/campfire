@@ -38,7 +38,7 @@ use crate::sim_server::{PlayerLink, SimServer, TickHashes};
 pub(crate) mod delay_line;
 pub(crate) mod link_model;
 
-/// The test mode: a lane with a tower a side and a hero for each; player 0 plays the walker, and
+/// The test mode: a lane with a tower a side and an avatar for each; player 0 plays the walker, and
 /// player 1 the runner.
 const LANE_MODE: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -111,7 +111,7 @@ pub struct LocalMatch {
 }
 
 impl LocalMatch {
-    /// The match scenario's orders by team, the west then the east: each hero walks 4 m toward
+    /// The match scenario's orders by team, the west then the east: each avatar walks 4 m toward
     /// the enemy tower, which kills it there; after it respawns, it walks to a point near the
     /// middle. The first order waits for the clients' lead on the server to settle: Lightyear
     /// brings it to its target by 5 % of a tick a frame.
@@ -225,9 +225,9 @@ impl LocalMatch {
     }
 
     /// Opens the session for every client, and steps until each joined, every end runs the
-    /// match, and each client holds its player's hero; see `Lobby`. The players take slots in the
+    /// match, and each client holds its player's avatar; see `Lobby`. The players take slots in the
     /// order their joins arrive. A client runs match ticks from the match start's message, and
-    /// its hero comes in the replication after the server's first tick, in another packet: which
+    /// its avatar comes in the replication after the server's first tick, in another packet: which
     /// arrives first varies with how Lightyear packs and resends them, by the wall clock.
     pub fn start_match(&mut self) {
         let lobby = Lobby::new(LobbySetup {
@@ -253,12 +253,12 @@ impl LocalMatch {
         panic!("the match did not start in {CONNECT_FRAMES} frames");
     }
 
-    /// Whether `client` holds its player's hero.
+    /// Whether `client` holds its player's avatar.
     fn holds_hero(&self, client: usize) -> bool {
         let world = self.clients[client].world();
         world
             .resource::<EntityIndex>()
-            .get(self.hero(client))
+            .get(self.avatar(client))
             .is_some()
     }
 
@@ -286,9 +286,9 @@ impl LocalMatch {
         &self.setup
     }
 
-    /// Gives `client`'s hero an order, sent in the client's next tick.
+    /// Gives `client`'s avatar an order, sent in the client's next tick.
     pub fn order(&mut self, client: usize, action: Action) {
-        let unit = self.hero(client);
+        let unit = self.avatar(client);
         self.clients[client]
             .world_mut()
             .resource_mut::<PendingOrders>()
@@ -302,32 +302,32 @@ impl LocalMatch {
             .insert_resource(BotScript::new(script));
     }
 
-    /// `client`'s player's hero, as the server holds it.
-    pub fn hero(&self, client: usize) -> StableId {
+    /// `client`'s player's avatar, as the server holds it.
+    pub fn avatar(&self, client: usize) -> StableId {
         let world = self.server.world();
         let slot = world
             .get::<PlayerLink>(self.links[client])
             .expect("the match started, with the client's slot")
             .slot();
-        let mut heroes = world.resource::<EntityIndex>().iter();
-        heroes
+        let mut avatars = world.resource::<EntityIndex>().iter();
+        avatars
             .find(|&(_, unit)| {
                 world
                     .get::<Owner>(unit)
                     .is_some_and(|owner| owner.slot() == slot)
             })
             .map(|(id, _)| id)
-            .expect("the match started, with the player's hero")
+            .expect("the match started, with the player's avatar")
     }
 
-    /// Makes each client play the script of its hero's team, by team index, as a bot does; gives
+    /// Makes each client play the script of its avatar's team, by team index, as a bot does; gives
     /// each client's team index. Players take slots in the order their joins arrive, so a
     /// scenario cannot fix which client plays which team.
     pub fn play_by_team(&mut self, scripts: [&str; 2]) -> [usize; 2] {
         let teams = [0, 1].map(|client| usize::from(self.team(client).index()));
         assert_ne!(
             teams[0], teams[1],
-            "the two players' heroes are on two teams"
+            "the two players' avatars are on two teams"
         );
         for (client, team) in teams.into_iter().enumerate() {
             let script = OrderScript::parse(scripts[team]).expect("a scenario's script reads");
@@ -336,13 +336,13 @@ impl LocalMatch {
         teams
     }
 
-    /// The team of `client`'s player's hero: players take slots in the order their joins arrive.
+    /// The team of `client`'s player's avatar: players take slots in the order their joins arrive.
     pub fn team(&self, client: usize) -> Team {
         let world = self.server.world();
-        let hero = world.resource::<EntityIndex>().get(self.hero(client));
+        let avatar = world.resource::<EntityIndex>().get(self.avatar(client));
         *world
-            .get::<Team>(hero.expect("the hero exists"))
-            .expect("a hero has a team")
+            .get::<Team>(avatar.expect("the avatar exists"))
+            .expect("an avatar has a team")
     }
 
     pub const fn server(&self) -> &App {

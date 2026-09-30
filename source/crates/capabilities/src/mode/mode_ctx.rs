@@ -48,7 +48,7 @@ pub(crate) enum ModeEffect {
         repeat: bool,
         data: Option<StateValue>,
     },
-    SpawnHeroes,
+    SpawnAvatars,
     SpawnUnit {
         unit_type: UnitType,
         team: Team,
@@ -129,29 +129,30 @@ impl ModeCtx {
                     ctx.view.team_name(enemy)
                 },
             )
-            .register_fn("heroes", |ctx: &mut ModeCtx| ctx.view.heroes(None))
+            .register_fn("avatars", |ctx: &mut ModeCtx| ctx.view.avatars(None))
             .register_fn(
-                "heroes",
+                "avatars",
                 |ctx: &mut ModeCtx, team: &str| -> Checked<Array> {
-                    Ok(ctx.view.heroes(Some(ctx.team(team)?)))
+                    Ok(ctx.view.avatars(Some(ctx.team(team)?)))
                 },
             )
             .register_fn("units_tagged", |ctx: &mut ModeCtx, tag: &str| {
                 ctx.view.units_tagged(tag)
             })
             .register_fn(
-                "hero_available",
-                |ctx: &mut ModeCtx, player: INT, id: &str| ctx.hero_available(player, id),
+                "avatar_available",
+                |ctx: &mut ModeCtx, player: INT, id: &str| ctx.avatar_available(player, id),
             )
-            .register_fn("choose_hero", |ctx: &mut ModeCtx, player: INT, id: &str| {
-                ctx.choose_hero(player, id)
-            })
             .register_fn(
-                "choose_spells",
-                |ctx: &mut ModeCtx, player: INT, ids: Array| ctx.choose_spells(player, &ids),
+                "choose_avatar",
+                |ctx: &mut ModeCtx, player: INT, id: &str| ctx.choose_avatar(player, id),
             )
-            .register_fn("spawn_heroes", |ctx: &mut ModeCtx| {
-                ctx.frame().effects.push(ModeEffect::SpawnHeroes);
+            .register_fn(
+                "choose_loadout",
+                |ctx: &mut ModeCtx, player: INT, ids: Array| ctx.choose_loadout(player, &ids),
+            )
+            .register_fn("spawn_avatars", |ctx: &mut ModeCtx| {
+                ctx.frame().effects.push(ModeEffect::SpawnAvatars);
             })
             .register_fn(
                 "spawn_unit",
@@ -266,49 +267,49 @@ impl ModeCtx {
         Ok(())
     }
 
-    /// Whether `player` may choose the hero `id`: the mode depends on it, and no other player
+    /// Whether `player` may choose the avatar `id`: the mode depends on it, and no other player
     /// chose it.
-    fn hero_available(&self, player: INT, id: &str) -> Checked<bool> {
+    fn avatar_available(&self, player: INT, id: &str) -> Checked<bool> {
         let slot = self.player(player)?;
-        let hero = self
+        let avatar = self
             .book
             .roster
-            .hero(id)
-            .ok_or_else(|| ApiError::UnknownHero.fail())?;
-        Ok(!self.frame().picks.taken(slot, hero))
+            .avatar(id)
+            .ok_or_else(|| ApiError::UnknownAvatar.fail())?;
+        Ok(!self.frame().picks.taken(slot, avatar))
     }
 
-    fn choose_hero(&self, player: INT, id: &str) -> Checked<()> {
-        if !self.hero_available(player, id)? {
-            return Err(ApiError::HeroTaken.fail().into());
+    fn choose_avatar(&self, player: INT, id: &str) -> Checked<()> {
+        if !self.avatar_available(player, id)? {
+            return Err(ApiError::AvatarTaken.fail().into());
         }
         let slot = self.player(player)?;
-        let hero = self
+        let avatar = self
             .book
             .roster
-            .hero(id)
-            .expect("an available hero is the mode's");
-        self.frame().picks.of_mut(slot).hero = Some(hero);
+            .avatar(id)
+            .expect("an available avatar is the mode's");
+        self.frame().picks.of_mut(slot).avatar = Some(avatar);
         Ok(())
     }
 
-    /// Chooses `ids`, each a spell the mode depends on, none twice, for `player`.
-    fn choose_spells(&self, player: INT, ids: &Array) -> Checked<()> {
+    /// Chooses `ids`, each a loadout entry the mode depends on, none twice, for `player`.
+    fn choose_loadout(&self, player: INT, ids: &Array) -> Checked<()> {
         let slot = self.player(player)?;
         let mut frame = self.frame();
-        let spells = &mut frame.picks.of_mut(slot).spells;
-        spells.clear();
+        let loadout = &mut frame.picks.of_mut(slot).loadout;
+        loadout.clear();
         for id in ids {
             let id = id
                 .clone()
                 .into_immutable_string()
                 .ok()
-                .and_then(|id| self.book.roster.spell(&id))
-                .ok_or_else(|| ApiError::UnknownSpell.fail())?;
-            if spells.contains(&id) {
-                return Err(ApiError::RepeatedSpell.fail().into());
+                .and_then(|id| self.book.roster.loadout(&id))
+                .ok_or_else(|| ApiError::UnknownLoadout.fail())?;
+            if loadout.contains(&id) {
+                return Err(ApiError::RepeatedLoadout.fail().into());
             }
-            spells.push(id);
+            loadout.push(id);
         }
         Ok(())
     }

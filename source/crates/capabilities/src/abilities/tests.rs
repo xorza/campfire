@@ -646,9 +646,9 @@ fn a_unit_target_is_one_its_filter_selects_tag_and_all() {
         };
         Units::load_type(&mut game.world, name, &data).unwrap()
     };
-    let (hero, creep) = (load_type("hero"), load_type("creep"));
+    let (hero, creep) = (load_type("avatar"), load_type("creep"));
     let mut heroes_only = strike();
-    heroes_only.targeting = Targeting::Unit(FilterData::parse("enemies:hero").unwrap());
+    heroes_only.targeting = Targeting::Unit(FilterData::parse("enemies:avatar").unwrap());
     let strike = game.load(&heroes_only, STRIKE);
     let caster = game.caster(strike, 1);
     let enemy_creep = game.spawn(1, at(num(3), Num::ZERO, Num::ZERO), creep);

@@ -288,7 +288,7 @@ pub struct RankFields {
 }
 
 /// What an ability targets. In data: `none`, `point`, `direction`, or a filter of the units it
-/// may target, such as `enemies` or `enemies:hero`.
+/// may target, such as `enemies` or `enemies:avatar`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Targeting {
     None,

@@ -41,9 +41,10 @@ use crate::units::team::Team;
 use crate::units::teams::Teams;
 use crate::vision::Vision;
 
+pub(crate) mod avatar_index;
 pub(crate) mod calls;
 pub(crate) mod error;
-pub(crate) mod hero_index;
+pub(crate) mod loadout_index;
 pub(crate) mod map_data;
 pub(crate) mod mode_book;
 pub(crate) mod mode_ctx;
@@ -55,7 +56,6 @@ pub(crate) mod mode_state;
 pub(crate) mod picks;
 pub(crate) mod player_resources;
 pub(crate) mod roster;
-pub(crate) mod spell_index;
 pub(crate) mod team_manifest;
 pub(crate) mod timers;
 pub(crate) mod unit_kit;
@@ -147,7 +147,7 @@ impl Mode {
     /// Checks what the mode names against what it has: its playing teams, of which none is
     /// named `neutral` and no two share a name, fewer than `Team::LIMIT` with the neutral one; and
     /// its map, whose lanes each have a waypoint and a name of their own, whose every
-    /// playing team has a hero spawn, and whose structures and neutral spawns name unit types
+    /// playing team has an avatar spawn, and whose structures and neutral spawns name unit types
     /// `unit_type` knows, and teams and lanes the mode has. Every point is within the world's
     /// bound.
     pub fn check(

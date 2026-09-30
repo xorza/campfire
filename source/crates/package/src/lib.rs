@@ -13,12 +13,12 @@ mod package_store;
 mod script_facts;
 
 pub use error::{ContentError, CtxMisuse, LoadError, LoadProblem, Place, StoreError};
-pub use files::hero_data::HeroData;
+pub use files::avatar_data::AvatarData;
+pub use files::loadout_data::LoadoutData;
 pub use files::manifest::{
     Backends, CollisionBackend, Dependency, Manifest, ModeManifest, PackageHeader,
     PathfindingBackend, TickRange, VisibilityBackend,
 };
-pub use files::spells_data::SpellsData;
 pub use files::units_data::{UnitTypeFile, UnitsData};
 pub use files::version::Version;
 pub use mode_packages::{Content, Dependent, ModePackages};

@@ -9,7 +9,7 @@ use campfire_net::PendingOrders;
 
 use crate::pointer::Pointer;
 
-/// Turns the player's clicks and keys into orders for their hero: a right click on an enemy
+/// Turns the player's clicks and keys into orders for their avatar: a right click on an enemy
 /// attacks it, and anywhere else walks there; Q, W, E and R cast the abilities of slots 0 to 3,
 /// at the unit under the cursor when there is one. The sim ignores a target an ability does not
 /// take, so a key needs no knowledge of the ability.
@@ -34,11 +34,11 @@ impl Orders {
         if !buttons.just_pressed(MouseButton::Right) {
             return;
         }
-        let (Some(hero), Some(point)) = (pointer.own_hero(), pointer.ground()) else {
+        let (Some(avatar), Some(point)) = (pointer.own_hero(), pointer.ground()) else {
             return;
         };
         let action = match pointer.unit_at(point) {
-            Some(unit) if unit.team != hero.team => Action::Attack { target: unit.id },
+            Some(unit) if unit.team != avatar.team => Action::Attack { target: unit.id },
             _ => {
                 let (Some(x), Some(z)) = (meters(point.x), meters(point.z)) else {
                     return;
@@ -47,7 +47,7 @@ impl Orders {
             }
         };
         orders.push(Order {
-            unit: hero.id,
+            unit: avatar.id,
             action,
         });
     }
@@ -57,7 +57,7 @@ impl Orders {
         pointer: Pointer<'_, '_>,
         mut orders: ResMut<'_, PendingOrders>,
     ) {
-        let Some(hero) = pointer.own_hero() else {
+        let Some(avatar) = pointer.own_hero() else {
             return;
         };
         for (slot, &key) in (0..).zip(&CAST_KEYS) {
@@ -67,7 +67,7 @@ impl Orders {
             let under = pointer.ground().and_then(|point| pointer.unit_at(point));
             let target = under.map_or(CastTarget::None, |unit| CastTarget::Unit(unit.id));
             orders.push(Order {
-                unit: hero.id,
+                unit: avatar.id,
                 action: Action::Cast { slot, target },
             });
         }

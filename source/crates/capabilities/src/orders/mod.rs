@@ -339,7 +339,7 @@ fn chase(
 }
 
 /// Sets where a unit walks, leaving a destination that does not change untouched: a write marks
-/// it changed, and a hero's destination replicates.
+/// it changed, and an avatar's destination replicates.
 fn walk_to(destination: &mut Mut<'_, Destination>, target: Option<Position>) {
     if destination.get() != target {
         destination.set(target);

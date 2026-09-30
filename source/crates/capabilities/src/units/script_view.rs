@@ -304,11 +304,11 @@ impl View {
         Ok(self.units_where(|view, row| view.tags(row).contains(tag)))
     }
 
-    /// Every hero, living or dead, of `team` or of every team, by stable id.
-    pub(crate) fn heroes(&self, team: Option<Team>) -> Array {
+    /// Every avatar, living or dead, of `team` or of every team, by stable id.
+    pub(crate) fn avatars(&self, team: Option<Team>) -> Array {
         self.units_where(|view, row| {
-            let hero = view.types.hero();
-            hero.is_some_and(|hero| view.tags(row).contains(hero))
+            let avatar = view.types.avatar();
+            avatar.is_some_and(|avatar| view.tags(row).contains(avatar))
                 && team.is_none_or(|team| row.team == team)
         })
     }
@@ -339,11 +339,11 @@ impl View {
         })
     }
 
-    pub(crate) fn is_hero(&self, row: &UnitRow) -> bool {
+    pub(crate) fn is_avatar(&self, row: &UnitRow) -> bool {
         let view = self.0.borrow();
         view.types
-            .hero()
-            .is_some_and(|hero| view.tags(row).contains(hero))
+            .avatar()
+            .is_some_and(|avatar| view.tags(row).contains(avatar))
     }
 
     /// The param `name` of the unit type of `row`.

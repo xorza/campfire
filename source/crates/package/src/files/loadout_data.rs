@@ -3,18 +3,18 @@ use std::collections::BTreeMap;
 use campfire_capabilities::{AbilityData, ModifierData};
 use serde::Deserialize;
 
-/// A spells package's `data/spells.toml`: the abilities players pick beside their hero's, each of
+/// A loadout package's `data/loadout.toml`: the abilities players pick beside their avatar's, each of
 /// one rank, and the modifiers they apply.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct SpellsData {
+pub struct LoadoutData {
     #[serde(default)]
     pub abilities: BTreeMap<String, AbilityData>,
     #[serde(default)]
     pub modifiers: BTreeMap<String, ModifierData>,
 }
 
-impl SpellsData {
-    /// The ranks of every spell.
+impl LoadoutData {
+    /// The ranks of every entry.
     pub const RANKS: u8 = 1;
 }

@@ -215,10 +215,10 @@ fn report_deaths(
     tick: Res<'_, SimTick>,
     died: Query<'_, '_, (&StableId, &Team, Has<Owner>), Added<Dead>>,
 ) {
-    for (id, team, hero) in &died {
+    for (id, team, avatar) in &died {
         let (unit, team, tick) = (id.get(), team.index(), tick.start().get() - 1);
-        if hero {
-            info!(unit, team, tick, "a hero died");
+        if avatar {
+            info!(unit, team, tick, "an avatar died");
         } else {
             debug!(unit, team, tick, "a unit died");
         }

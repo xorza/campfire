@@ -200,7 +200,7 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let mut scene = Scene::new();
     let window = ("help_window_ms", Scalar::Int(2000));
     let range = ("aggro_range", Scalar::Decimal(num(7)));
-    let hero = scene.unit_type(&["hero"], &[window, range]);
+    let hero = scene.unit_type(&["avatar"], &[window, range]);
     // On a lane, but the scene has no `navigation` to fill `unit.lane`.
     let owner = Owner::new(PlayerSlot::new(2));
     let lane = OnLane::new(Lane::new(0));
@@ -238,7 +238,7 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
         scene.probe(&source, of)
     };
     let value = |scene: &mut Scene, expression: &str| read(scene, expression).unwrap();
-    assert!(value(&mut scene, "of.is_hero").as_bool().unwrap());
+    assert!(value(&mut scene, "of.is_avatar").as_bool().unwrap());
     assert!(value(&mut scene, "of.alive").as_bool().unwrap());
     assert_eq!(value(&mut scene, "of.owner").as_int(), Ok(2));
     assert!(value(&mut scene, "of.lane").is_unit());
@@ -259,7 +259,7 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
             .as_bool()
             .unwrap()
     );
-    assert!(!value(&mut scene, "of.target.is_hero").as_bool().unwrap());
+    assert!(!value(&mut scene, "of.target.is_avatar").as_bool().unwrap());
     assert!(
         value(&mut scene, "of.target != () && of != ()")
             .as_bool()

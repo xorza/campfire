@@ -29,7 +29,7 @@ mod gauge;
 mod ring;
 
 /// Makes the match readable with plain shapes over the drawings: a health bar over every unit, the
-/// own hero's resource and cooldowns under its own, and a ring where each hit lands. It reads the
+/// own avatar's resource and cooldowns under its own, and a ring where each hit lands. It reads the
 /// sim's components and changes none.
 #[derive(Debug)]
 pub(crate) struct Hud;
@@ -130,9 +130,9 @@ impl Hud {
         });
     }
 
-    /// Gives each drawn unit its gauges, once the client holds its own hero, whose team tells
+    /// Gives each drawn unit its gauges, once the client holds its own avatar, whose team tells
     /// friend from foe: health for every unit with health; resource and one per ability slot for
-    /// the own hero.
+    /// the own avatar.
     fn add_gauges(
         palette: Res<'_, HudPalette>,
         own: Query<'_, '_, &Team, (With<Owner>, With<Predicted>)>,

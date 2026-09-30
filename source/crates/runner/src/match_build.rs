@@ -3,12 +3,12 @@ use std::collections::BTreeMap;
 use bevy_ecs::schedule::Schedule;
 use bevy_ecs::world::World;
 use campfire_capabilities::{
-    Abilities, AbilityData, AbilityId, CombatData, EngineStat, HeroSetup, KitRules, MatchScripts,
-    Mode, ModeSetup, OnDeath, Orders, ResourcePool, SpellSetup, UnitKit, UnitKitError,
+    Abilities, AbilityData, AbilityId, AvatarSetup, CombatData, EngineStat, KitRules, LoadoutSetup,
+    MatchScripts, Mode, ModeSetup, OnDeath, Orders, ResourcePool, UnitKit, UnitKitError,
     UnitTypeData, UnitTypeSetup, Units,
 };
 use campfire_content::PackagePath;
-use campfire_package::{Content, HeroData, ModePackages, Package, SpellsData};
+use campfire_package::{AvatarData, Content, LoadoutData, ModePackages, Package};
 use campfire_script::ScriptId;
 use campfire_sim::{StateRegistry, TickRate};
 
@@ -40,7 +40,7 @@ pub(crate) struct MatchBuild<'a> {
 
 impl<'a> MatchBuild<'a> {
     /// Builds the match of `packages` for `players` players: the core and the declared
-    /// capabilities the release has, the mode's unit types, its heroes and spells, and the mode
+    /// capabilities the release has, the mode's unit types, its avatars and loadout, and the mode
     /// itself. A declared capability the release does not have yet installs nothing.
     pub(crate) fn run(
         packages: &'a ModePackages,
@@ -72,17 +72,17 @@ impl<'a> MatchBuild<'a> {
         };
         build.compile_scripts();
         build.load_unit_types()?;
-        let mut heroes = Vec::new();
-        let mut spells = Vec::new();
+        let mut avatars = Vec::new();
+        let mut loadout = Vec::new();
         for (at, dependent) in packages.dependencies().iter().enumerate() {
             let package = DEPENDENCIES + at;
             match &dependent.content {
-                Content::Hero(hero) => heroes.push(build.load_hero(package, hero)?),
-                Content::Spells(data) => {
+                Content::Avatar(avatar) => avatars.push(build.load_avatar(package, avatar)?),
+                Content::Loadout(data) => {
                     for (id, ability) in &data.abilities {
                         let ability =
-                            build.load_ability(package, id, ability, SpellsData::RANKS)?;
-                        spells.push(SpellSetup {
+                            build.load_ability(package, id, ability, LoadoutData::RANKS)?;
+                        loadout.push(LoadoutSetup {
                             id: id.clone(),
                             ability,
                         });
@@ -97,8 +97,8 @@ impl<'a> MatchBuild<'a> {
             teams: &manifest.teams,
             players,
             unit_types: build.unit_types,
-            heroes,
-            spells,
+            avatars,
+            loadout,
         };
         Mode::install(build.world, schedule, registry, setup).map_err(StartError::Mode)
     }
@@ -128,13 +128,17 @@ impl<'a> MatchBuild<'a> {
         Ok(())
     }
 
-    /// Loads the hero `data` of `package`: its unit type, named for the package and tagged
-    /// `hero`, which stays when it dies, with its kit at level 1; its abilities, in slot order;
+    /// Loads the avatar `data` of `package`: its unit type, named for the package and tagged
+    /// `avatar`, which stays when it dies, with its kit at level 1; its abilities, in slot order;
     /// and its resource pool.
-    fn load_hero(&mut self, package: usize, data: &HeroData) -> Result<HeroSetup, StartError> {
+    fn load_avatar(
+        &mut self,
+        package: usize,
+        data: &AvatarData,
+    ) -> Result<AvatarSetup, StartError> {
         let name = &self.package(package).name;
         let core = UnitTypeData {
-            tags: vec![UnitTypeData::HERO_TAG.to_owned()],
+            tags: vec![UnitTypeData::AVATAR_TAG.to_owned()],
             params: BTreeMap::new(),
         };
         let unit_type = Units::load_type(self.world, name, &core).expect(CHECKED);
@@ -154,7 +158,7 @@ impl<'a> MatchBuild<'a> {
             .iter()
             .enumerate()
             .map(|(slot, id)| {
-                let ranks = HeroData::slot_ranks(slot);
+                let ranks = AvatarData::slot_ranks(slot);
                 self.load_ability(package, id, &data.abilities[id], ranks)
             })
             .collect::<Result<_, _>>()?;
@@ -167,7 +171,7 @@ impl<'a> MatchBuild<'a> {
             None
         };
         self.unit_types.push(UnitTypeSetup { unit_type, kit });
-        Ok(HeroSetup {
+        Ok(AvatarSetup {
             id: name.clone(),
             unit_type,
             abilities,

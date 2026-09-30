@@ -72,7 +72,7 @@ impl Life {
 fn play(link: LinkModel) -> [u32; 2] {
     let mut local = LocalMatch::new(MatchSetup::duo(link, SEED_CHAIN));
     local.start_match();
-    let heroes = [local.hero(0), local.hero(1)];
+    let heroes = [local.avatar(0), local.avatar(1)];
     let teams = local.play_by_team(LocalMatch::SCENARIO_SCRIPTS);
     let mut on_server = [Life::default(); 2];
     let mut on_client = [Life::default(); 2];
@@ -238,7 +238,7 @@ fn cast(link: LinkModel) -> [u32; 2] {
         let client = (0..2)
             .find(|&client| local.team(client).index() == team)
             .unwrap();
-        local.hero(client)
+        local.avatar(client)
     };
     let [walker, runner] = [0, 1].map(by_team);
     let [west, east] = cast_scripts(walker, runner);

@@ -13,12 +13,12 @@ use crate::local_match::{LocalMatch, MatchSetup};
 
 const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
 /// A quarter meter a tick crosses the 10 m between the two targets in 40 ticks, so a new order
-/// every 40 frames keeps the hero walking and the server sending updates.
+/// every 40 frames keeps the avatar walking and the server sending updates.
 const LEG_FRAMES: u64 = 40;
 /// The ticks of the measured match.
 const MATCH_TICKS: u64 = 600;
 
-/// One frame of a server and a predicting client while the hero walks, rolling back only on a
+/// One frame of a server and a predicting client while the avatar walks, rolling back only on a
 /// misprediction (none happen) and on every confirmed update: the difference is the cost of the
 /// rollbacks, each 4 ticks deep, as far as the client runs ahead. A delayed link would make them
 /// deeper, but it would measure the harness: Lightyear resends every unacked reliable message
@@ -58,7 +58,7 @@ pub fn rollback(c: &mut Criterion) {
 }
 
 /// The worst frame of either client in each 1v1 of the lane mode, as the match scenario plays
-/// it: the rollback of each hero's death falls in it.
+/// it: the rollback of each avatar's death falls in it.
 pub fn worst_client_frame(c: &mut Criterion) {
     let mut group = c.benchmark_group("match_1v1");
     group.sample_size(10);

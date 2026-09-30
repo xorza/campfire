@@ -79,7 +79,7 @@ range = "global"
 cooldown_ms = [100000, 90000, 80000]
 cost = 150
 cast_time_ms = 250
-projectile = { speed = "16", width = "1.3", stop_on_hit = true, hits = "enemies:hero" }
+projectile = { speed = "16", width = "1.3", stop_on_hit = true, hits = "enemies:avatar" }
 
 [abilities.glacier_arrow.params]
 damage = { base = [250, 425, 600], ap = "1.0" }

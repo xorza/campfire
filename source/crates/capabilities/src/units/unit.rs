@@ -39,7 +39,9 @@ impl Unit {
             .register_type_with_name::<Unit>("Unit")
             .register_get("pos", |unit: &mut Unit| unit.row().pos)
             .register_get("alive", |unit: &mut Unit| unit.row().alive)
-            .register_get("is_hero", |unit: &mut Unit| unit.view.is_hero(&unit.row()))
+            .register_get("is_avatar", |unit: &mut Unit| {
+                unit.view.is_avatar(&unit.row())
+            })
             .register_get("target", |unit: &mut Unit| unit.target())
             .register_get("attack_range", |unit: &mut Unit| -> Checked<Num> {
                 unit.row()

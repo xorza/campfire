@@ -7,7 +7,7 @@ use campfire_sim::{Tick, Ticks};
 
 use crate::view;
 
-/// A bar over a unit: its health, or, for the player's own hero, its resource or the cooldown of
+/// A bar over a unit: its health, or, for the player's own avatar, its resource or the cooldown of
 /// one ability slot. It draws with two children: a back of its full width, and `fill`.
 #[derive(Component, Debug)]
 pub(crate) struct Gauge {

@@ -14,7 +14,7 @@ use campfire_capabilities::{
 };
 use campfire_content::PackagePath;
 use campfire_math::{Num, PlayerSlot, SegmentSeed, Vec3};
-use campfire_package::{HeroData, PackageDir};
+use campfire_package::{AvatarData, PackageDir};
 use campfire_sim::{
     Capability, EntityIndex, IdAllocator, Position, SimUpdate, StableId, StateRegistry, TickInput,
     TickInputs, TickRate, Ticks,
@@ -33,8 +33,8 @@ fn hero(name: &str) -> PackageDir {
 }
 
 /// The hero `name`, as its data file declares it.
-fn abilities(name: &str) -> HeroData {
-    let path = PackagePath::parse("data/hero.toml").unwrap();
+fn abilities(name: &str) -> AvatarData {
+    let path = PackagePath::parse("data/avatar.toml").unwrap();
     hero(name).read_data(&path).unwrap()
 }
 

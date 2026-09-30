@@ -92,8 +92,8 @@ const fn flaw(
 const MANIFEST: &str = "modes/3v3/manifest.toml";
 const UNITS: &str = "modes/3v3/data/units.toml";
 const MAP: &str = "modes/3v3/map/map.toml";
-const HUSK: &str = "heroes/husk/data/hero.toml";
-const GALE: &str = "heroes/gale/data/hero.toml";
+const HUSK: &str = "heroes/husk/data/avatar.toml";
+const GALE: &str = "heroes/gale/data/avatar.toml";
 const LASH_OUT: &str = "heroes/husk/scripts/lash_out.rhai";
 const CREEP_AI: &str = "modes/3v3/scripts/creep_ai.rhai";
 const MODE: &str = "moba-3v3";
@@ -446,7 +446,7 @@ const FLAWS: [Flaw; 54] = [
         |problem| matches!(problem, LoadProblem::UnknownParam { at: Place::Modifier(id), name } if id == "gust_speed" && name == "bonus_speeds"),
     ),
     flaw(
-        "heroes/kensho/data/hero.toml",
+        "heroes/kensho/data/avatar.toml",
         Edit::Replace(r#"hold = "still_mind""#, r#"hold = "still_mindful""#),
         "hero-kensho",
         |problem| matches!(problem, LoadProblem::UnknownModifier { at: Place::Ability(ability), id } if ability == "still_mind" && id == "still_mindful"),
@@ -458,8 +458,8 @@ const FLAWS: [Flaw; 54] = [
         |problem| matches!(problem, LoadProblem::UnknownFilter { filter, .. } if filter == "allies:friends"),
     ),
     flaw(
-        "heroes/rime/data/hero.toml",
-        Edit::Replace(r#"hits = "enemies:hero""#, r#"hits = "foes:hero""#),
+        "heroes/rime/data/avatar.toml",
+        Edit::Replace(r#"hits = "enemies:avatar""#, r#"hits = "foes:avatar""#),
         "hero-rime",
         |problem| matches!(problem, LoadProblem::Content(_)),
     ),
@@ -500,7 +500,7 @@ const FLAWS: [Flaw; 54] = [
         |problem| matches!(problem, LoadProblem::Mode(ModeError::NeutralTeam)),
     ),
     flaw(
-        "heroes/kensho/data/hero.toml",
+        "heroes/kensho/data/avatar.toml",
         Edit::Replace(r#"targeting = "enemies""#, r#"targeting = "enemies:ward""#),
         "hero-kensho",
         |problem| matches!(problem, LoadProblem::UnknownFilter { filter, .. } if filter == "enemies:ward"),
@@ -516,16 +516,16 @@ const FLAWS: [Flaw; 54] = [
             (
                 "more/manifest.toml",
                 Edit::Create(
-                    "name = \"more-spells\"\nversion = \"0.1.0\"\nengine = \"0.1.0\"\nkind = \"spells\"\n",
+                    "name = \"more-spells\"\nversion = \"0.1.0\"\nengine = \"0.1.0\"\nkind = \"loadout\"\n",
                 ),
             ),
             (
-                "more/data/spells.toml",
+                "more/data/loadout.toml",
                 Edit::Create("[abilities.haste]\ntargeting = \"none\"\n"),
             ),
         ],
         package: "player-spells",
-        refused: |problem| matches!(problem, LoadProblem::RepeatedSpell(id) if id == "haste"),
+        refused: |problem| matches!(problem, LoadProblem::RepeatedLoadout(id) if id == "haste"),
     },
 ];
 

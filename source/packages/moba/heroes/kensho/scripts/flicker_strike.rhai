@@ -20,7 +20,7 @@ fn on_interval(ctx, m) {
 
 fn strike(ctx, m, target) {
     let damage = ctx.p.damage;
-    if !target.is_hero && ctx.chance(ctx.p.minion_bonus_chance) {
+    if !target.is_avatar && ctx.chance(ctx.p.minion_bonus_chance) {
         damage += ctx.p.minion_bonus;
     }
     ctx.teleport(m.carrier, target.pos);

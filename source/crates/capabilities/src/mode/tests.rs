@@ -23,11 +23,11 @@ use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::combat::respawn::Respawn;
 use crate::combat::strikes::{Strike, Strikes};
-use crate::mode::hero_index::HeroIndex;
+use crate::mode::avatar_index::AvatarIndex;
+use crate::mode::loadout_index::LoadoutIndex;
 use crate::mode::map_data::{LaneData, NeutralSpawnData, StructureData};
 use crate::mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
-use crate::mode::mode_setup::{HeroSetup, SpellSetup, UnitTypeSetup};
-use crate::mode::spell_index::SpellIndex;
+use crate::mode::mode_setup::{AvatarSetup, LoadoutSetup, UnitTypeSetup};
 use crate::mode::unit_kit::UnitKit;
 use crate::navigation::lane_walker::{LaneWalker, PathDirection};
 use crate::navigation::move_step::MoveStep;
@@ -79,10 +79,10 @@ fn on_timer(ctx, name, data) {
 fn on_mode_input(ctx, player, name, value) {
     ctx.state.inputs += 1;
     if name == "hero" {
-        ctx.choose_hero(player, value);
-        ctx.spawn_heroes();
+        ctx.choose_avatar(player, value);
+        ctx.spawn_avatars();
     } else if name == "spells" {
-        ctx.choose_spells(player, value);
+        ctx.choose_loadout(player, value);
     } else if name == "rich" {
         ctx.add_resource(player, value, 9223372036854775807);
     } else if name == "gold" {
@@ -97,13 +97,13 @@ fn on_mode_input(ctx, player, name, value) {
         let grunts = ctx.units_tagged("grunt");
         ctx.state.enemy = ctx.enemy_team("a");
         ctx.state.grunts = grunts.len();
-        ctx.state.heroes = ctx.heroes("b").len();
+        ctx.state.heroes = ctx.avatars("b").len();
         ctx.state.teams = ctx.teams.len();
         ctx.state.players = ctx.players;
         ctx.state.lane = grunts[1].lane;
         ctx.state.team = grunts[1].team;
         ctx.state.neutral = grunts[0].team;
-        ctx.state.owner = ctx.heroes()[0].owner;
+        ctx.state.owner = ctx.avatars()[0].owner;
         ctx.state.tower_lane = ctx.units_tagged("tower")[0].lane;
         ctx.state.kind = grunts[1].unit_type;
     }
@@ -245,11 +245,11 @@ fn setup(
     files: &ModeFiles,
     script: ScriptId,
     types: [UnitType; 4],
-    spell: SpellSetup,
+    spell: LoadoutSetup,
     strike: AbilityId,
 ) -> ModeSetup<'_> {
     let [grunt_type, tower_type, x, y] = types;
-    let hero = |id: &str, unit_type, abilities| HeroSetup {
+    let hero = |id: &str, unit_type, abilities| AvatarSetup {
         id: id.to_owned(),
         unit_type,
         abilities,
@@ -282,11 +282,11 @@ fn setup(
                 },
             },
         ],
-        heroes: vec![
+        avatars: vec![
             hero("hero-x", x, vec![strike]),
             hero("hero-y", y, Vec::new()),
         ],
-        spells: vec![spell],
+        loadout: vec![spell],
     }
 }
 
@@ -330,7 +330,7 @@ impl Game {
             Units::load_type(&mut world, name, &data).unwrap()
         };
         let (grunt_type, tower_type) = (load("grunt", "grunt"), load("tower", "tower"));
-        let (x, y) = (load("hero-x", "hero"), load("hero-y", "hero"));
+        let (x, y) = (load("hero-x", "avatar"), load("hero-y", "avatar"));
         let blink = AbilityData {
             script: None,
             targeting: Targeting::None,
@@ -354,7 +354,7 @@ impl Game {
         // A spell has one rank; hero X's ability, 2.
         let strike = Abilities::load(&mut world, &blink, None, 2).unwrap();
         let blink = Abilities::load(&mut world, &blink, None, 1).unwrap();
-        let spell = SpellSetup {
+        let spell = LoadoutSetup {
             id: "blink".to_owned(),
             ability: blink,
         };
@@ -527,8 +527,8 @@ fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
     assert_eq!(
         game.failures(),
         [
-            Some(ApiError::HeroTaken),
-            Some(ApiError::RepeatedSpell),
+            Some(ApiError::AvatarTaken),
+            Some(ApiError::RepeatedLoadout),
             None,
             Some(ApiError::WrongStateType)
         ]
@@ -538,14 +538,14 @@ fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
         picks,
         [
             Pick {
-                hero: Some(HeroIndex::new(0)),
-                spells: vec![SpellIndex::new(0)],
+                avatar: Some(AvatarIndex::new(0)),
+                loadout: vec![LoadoutIndex::new(0)],
                 spawned: true,
             },
             Pick::default(),
             Pick {
-                hero: Some(HeroIndex::new(1)),
-                spells: Vec::new(),
+                avatar: Some(AvatarIndex::new(1)),
+                loadout: Vec::new(),
                 spawned: true,
             },
         ]
@@ -570,15 +570,15 @@ fn a_mode_learns_a_hero_ability_up_to_its_last_rank_and_a_failed_call_learns_not
     let learner = r#"
 fn on_mode_input(ctx, player, name, value) {
     if name == "spells" {
-        ctx.choose_spells(player, value);
+        ctx.choose_loadout(player, value);
         return;
     }
     if name == "hero" {
-        ctx.choose_hero(player, value);
-        ctx.spawn_heroes();
+        ctx.choose_avatar(player, value);
+        ctx.spawn_avatars();
         return;
     }
-    let hero = ctx.heroes()[0];
+    let hero = ctx.avatars()[0];
     let slot = if value == "spell" { 1 } else if value == "none" { 2 } else if value == "negative" { -1 } else { 0 };
     let times = if value == "twice" { 2 } else if value == "thrice" { 3 } else { 1 };
     for time in 0..times {

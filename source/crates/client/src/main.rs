@@ -1,5 +1,5 @@
-//! Game client: joins a session over WebTransport, predicts the player's own hero, and draws the
-//! match as capsules on the ground; a right click walks the hero there. With `--bot <orders
+//! Game client: joins a session over WebTransport, predicts the player's own avatar, and draws the
+//! match as capsules on the ground; a right click walks the avatar there. With `--bot <orders
 //! file>`, it opens no window and renders nothing, and plays the file's `OrderScript` instead.
 //!
 //! Logs go to standard error, filtered by `RUST_LOG` (`info`, and the renderer's warnings, by

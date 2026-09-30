@@ -3,7 +3,7 @@ use campfire_sim::Tick;
 
 use crate::order_script::{OrderScript, ScriptedOrder};
 
-/// A script a client plays for its player: each order goes out, for the player's own hero, in
+/// A script a client plays for its player: each order goes out, for the player's own avatar, in
 /// the tick of its stamp, with the orders the player gives by hand.
 #[derive(Resource, Debug)]
 pub struct BotScript {

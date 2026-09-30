@@ -11,8 +11,8 @@ use crate::values::scalar::Scalar;
 pub(crate) struct UnitTypes {
     /// The name of each tag, by tag.
     tag_names: Vec<Box<str>>,
-    /// The `hero` tag, which `unit.is_hero` tests, once a type declares it.
-    hero: Option<Tag>,
+    /// The `avatar` tag, which `unit.is_avatar` tests, once a type declares it.
+    avatar: Option<Tag>,
     types: Vec<TypeEntry>,
     /// Every type, sorted by name.
     by_name: Vec<UnitType>,
@@ -57,8 +57,8 @@ impl UnitTypes {
                 self.tag_names.push(name.as_str().into());
                 Tag::new(self.tag_names.len() - 1)
             });
-            if name == UnitTypeData::HERO_TAG {
-                self.hero = Some(tag);
+            if name == UnitTypeData::AVATAR_TAG {
+                self.avatar = Some(tag);
             }
             tags = tags.with(tag);
         }
@@ -101,8 +101,8 @@ impl UnitTypes {
         self.types[unit_type.index()].tags
     }
 
-    pub(crate) const fn hero(&self) -> Option<Tag> {
-        self.hero
+    pub(crate) const fn avatar(&self) -> Option<Tag> {
+        self.avatar
     }
 
     /// The param `name` of `unit_type`, if it declares one.

@@ -85,7 +85,7 @@ impl Calls<'_, '_> {
                 } => world
                     .resource_mut::<Timers>()
                     .set(self.now, name, ticks, repeat, data),
-                ModeEffect::SpawnHeroes => book.spawn_heroes(world),
+                ModeEffect::SpawnAvatars => book.spawn_avatars(world),
                 ModeEffect::SpawnUnit {
                     unit_type,
                     team,

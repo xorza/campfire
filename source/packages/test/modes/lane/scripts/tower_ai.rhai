@@ -11,7 +11,7 @@ fn think(ctx, tower) {
         target = ctx.nearest_visible(tower, range, "enemies:creep");
     }
     if target == () {
-        target = ctx.nearest_visible(tower, range, "enemies:hero");
+        target = ctx.nearest_visible(tower, range, "enemies:avatar");
     }
     if target != () && target != tower.target {
         ctx.order_attack(tower, target);
@@ -19,9 +19,9 @@ fn think(ctx, tower) {
 }
 
 fn defend_hero(ctx, tower, range) {
-    for ally in ctx.find(tower, tower.pos, range, "allies:hero") {
+    for ally in ctx.find(tower, tower.pos, range, "allies:avatar") {
         for attacker in ally.recent_attackers(tower.params.help_window_ms) {
-            if attacker.is_hero && attacker.is_enemy_of(tower) && tower.pos.within(attacker.pos, range) {
+            if attacker.is_avatar && attacker.is_enemy_of(tower) && tower.pos.within(attacker.pos, range) {
                 return attacker;
             }
         }

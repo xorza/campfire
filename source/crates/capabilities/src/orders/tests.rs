@@ -39,7 +39,7 @@ fn think(ctx, unit) {
         target = ctx.nearest_visible(unit, unit.params.aggro_range, "enemies:creep");
     }
     if target == () {
-        target = ctx.nearest_visible(unit, unit.params.aggro_range, "enemies:hero");
+        target = ctx.nearest_visible(unit, unit.params.aggro_range, "enemies:avatar");
     }
     if target == () {
         ctx.order_follow_lane(unit);
@@ -49,9 +49,9 @@ fn think(ctx, unit) {
 }
 
 fn defend_hero(ctx, unit) {
-    for ally in ctx.find(unit, unit.pos, unit.params.help_range, "allies:hero") {
+    for ally in ctx.find(unit, unit.pos, unit.params.help_range, "allies:avatar") {
         for attacker in ally.recent_attackers(unit.params.help_window_ms) {
-            if attacker.is_hero && attacker.is_enemy_of(unit) && in_reach(unit, attacker) {
+            if attacker.is_avatar && attacker.is_enemy_of(unit) && in_reach(unit, attacker) {
                 return attacker;
             }
         }
@@ -86,7 +86,7 @@ fn think(ctx, tower) {
         target = ctx.nearest_visible(tower, range, "enemies:creep");
     }
     if target == () {
-        target = ctx.nearest_visible(tower, range, "enemies:hero");
+        target = ctx.nearest_visible(tower, range, "enemies:avatar");
     }
     if target != () && target != tower.target {
         ctx.order_attack(tower, target);
@@ -94,9 +94,9 @@ fn think(ctx, tower) {
 }
 
 fn defend_hero(ctx, tower, range) {
-    for ally in ctx.find(tower, tower.pos, range, "allies:hero") {
+    for ally in ctx.find(tower, tower.pos, range, "allies:avatar") {
         for attacker in ally.recent_attackers(tower.params.help_window_ms) {
-            if attacker.is_hero && attacker.is_enemy_of(tower) && tower.pos.within(attacker.pos, range) {
+            if attacker.is_avatar && attacker.is_enemy_of(tower) && tower.pos.within(attacker.pos, range) {
                 return attacker;
             }
         }
@@ -574,7 +574,7 @@ fn meters(value: i64) -> Scalar {
 #[test]
 fn a_tower_prefers_creeps_and_defends_its_heroes() {
     let mut game = Match::new();
-    let hero = game.unit_type(&["hero"], &[], None);
+    let hero = game.unit_type(&["avatar"], &[], None);
     let creep = game.unit_type(&["creep"], &[], None);
     let window = ("help_window_ms", Scalar::Int(2000));
     let tower_type = game.unit_type(&["structure", "tower"], &[window], Some(TOWER_AI));
@@ -616,7 +616,7 @@ fn a_tower_prefers_creeps_and_defends_its_heroes() {
 #[test]
 fn creeps_think_in_turn_and_take_the_targets_their_script_picks() {
     let mut game = Match::new();
-    let hero = game.unit_type(&["hero"], &[], None);
+    let hero = game.unit_type(&["avatar"], &[], None);
     let still_creep = game.unit_type(&["creep"], &[], None);
     let params = [
         ("aggro_range", meters(7)),

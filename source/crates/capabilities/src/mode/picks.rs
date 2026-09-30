@@ -3,19 +3,19 @@ use campfire_math::PlayerSlot;
 use campfire_sim::SimResource;
 use serde::{Deserialize, Serialize};
 
-use crate::mode::hero_index::HeroIndex;
-use crate::mode::spell_index::SpellIndex;
+use crate::mode::avatar_index::AvatarIndex;
+use crate::mode::loadout_index::LoadoutIndex;
 
-/// What each player chose, by slot: a hero, by its place among the mode's, and spells, by theirs.
+/// What each player chose, by slot: an avatar, by its place among the mode's, and loadout, by theirs.
 #[derive(Resource, Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Picks(pub(crate) Vec<Pick>);
 
-/// One player's choices, and whether their hero spawned.
+/// One player's choices, and whether their avatar spawned.
 #[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Pick {
-    pub hero: Option<HeroIndex>,
-    pub spells: Vec<SpellIndex>,
+    pub avatar: Option<AvatarIndex>,
+    pub loadout: Vec<LoadoutIndex>,
     pub spawned: bool,
 }
 
@@ -33,12 +33,12 @@ impl Picks {
         &mut self.0[slot.index()]
     }
 
-    /// Whether a player other than `slot` chose `hero`.
-    pub(crate) fn taken(&self, slot: PlayerSlot, hero: HeroIndex) -> bool {
+    /// Whether a player other than `slot` chose `avatar`.
+    pub(crate) fn taken(&self, slot: PlayerSlot, avatar: AvatarIndex) -> bool {
         self.0
             .iter()
             .enumerate()
-            .any(|(other, pick)| other != slot.index() && pick.hero == Some(hero))
+            .any(|(other, pick)| other != slot.index() && pick.avatar == Some(avatar))
     }
 }
 

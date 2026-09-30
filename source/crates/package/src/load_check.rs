@@ -10,8 +10,8 @@ use campfire_sim::Capability;
 
 use crate::RELEASE_VERSION;
 use crate::error::{CtxMisuse, LoadError, LoadProblem, Place};
-use crate::files::hero_data::HeroData;
-use crate::files::spells_data::SpellsData;
+use crate::files::avatar_data::AvatarData;
+use crate::files::loadout_data::LoadoutData;
 use crate::mode_packages::{Content, Dependent, ModePackages};
 use crate::package::Package;
 
@@ -23,7 +23,7 @@ use crate::package::Package;
 #[derive(Debug)]
 pub(crate) struct LoadCheck<'a> {
     packages: &'a ModePackages,
-    /// The tags a filter may name: those of the mode's unit types, and `hero`.
+    /// The tags a filter may name: those of the mode's unit types, and `avatar`.
     tags: BTreeSet<&'a str>,
     /// The move speed cap, in meters a second.
     cap: Num,
@@ -57,17 +57,17 @@ impl<'a> LoadCheck<'a> {
             .values()
             .flat_map(|unit_type| unit_type.core.tags.iter().map(String::as_str))
             .collect();
-        tags.insert(UnitTypeData::HERO_TAG);
+        tags.insert(UnitTypeData::AVATAR_TAG);
         if tags.len() > UnitTypeData::TAG_LIMIT {
             return Err(fail(LoadProblem::TooManyTags));
         }
-        let heroes = packages.dependencies.iter().filter_map(|dependent| {
-            matches!(dependent.content, Content::Hero(_)).then_some(&dependent.package.name)
+        let avatars = packages.dependencies.iter().filter_map(|dependent| {
+            matches!(dependent.content, Content::Avatar(_)).then_some(&dependent.package.name)
         });
         let mut unit_types = packages.units.units.len();
-        for hero in heroes {
-            if packages.units.units.contains_key(hero) {
-                return Err(fail(LoadProblem::RepeatedUnitType(hero.clone())));
+        for avatar in avatars {
+            if packages.units.units.contains_key(avatar) {
+                return Err(fail(LoadProblem::RepeatedUnitType(avatar.clone())));
             }
             unit_types += 1;
         }
@@ -94,7 +94,7 @@ impl<'a> LoadCheck<'a> {
             cap: manifest.max_move_speed.get(),
         };
         check.mode().map_err(fail)?;
-        check.spells()?;
+        check.loadout()?;
         for dependent in &packages.dependencies {
             check.dependent(dependent).map_err(|problem| LoadError {
                 package: dependent.package.name.clone(),
@@ -169,69 +169,69 @@ impl<'a> LoadCheck<'a> {
         self.scripts(&names)
     }
 
-    /// No spell id is held by two spells packages, as players choose spells by id.
-    fn spells(&self) -> Result<(), LoadError> {
+    /// No entry id is held by two loadout packages, as players choose loadout entries by id.
+    fn loadout(&self) -> Result<(), LoadError> {
         let mut seen = BTreeSet::new();
         for dependent in &self.packages.dependencies {
-            let Content::Spells(spells) = &dependent.content else {
+            let Content::Loadout(loadout) = &dependent.content else {
                 continue;
             };
-            if let Some(id) = spells.abilities.keys().find(|&id| !seen.insert(id)) {
+            if let Some(id) = loadout.abilities.keys().find(|&id| !seen.insert(id)) {
                 return Err(LoadError {
                     package: dependent.package.name.clone(),
-                    problem: Box::new(LoadProblem::RepeatedSpell(id.clone())),
+                    problem: Box::new(LoadProblem::RepeatedLoadout(id.clone())),
                 });
             }
         }
         Ok(())
     }
 
-    /// A hero or spells package the mode depends on.
+    /// An avatar or loadout package the mode depends on.
     fn dependent(&self, dependent: &Dependent) -> Result<(), LoadProblem> {
         let package = &dependent.package;
         let (abilities, modifiers) = match &dependent.content {
-            Content::Hero(hero) => {
-                let at = Place::Hero(hero.name.clone());
+            Content::Avatar(avatar) => {
+                let at = Place::Avatar(avatar.name.clone());
                 self.require(Capability::Combat, &at)?;
                 self.require(Capability::Stats, &at)?;
-                if hero.vision.is_some() {
+                if avatar.vision.is_some() {
                     self.require(Capability::Vision, &at)?;
                 }
-                self.stats_declared(hero.stats.0.keys(), &at)?;
-                if !self.packages.data.resources.contains(&hero.resource) {
+                self.stats_declared(avatar.stats.0.keys(), &at)?;
+                if !self.packages.data.resources.contains(&avatar.resource) {
                     return Err(LoadProblem::UnknownResource {
                         at,
-                        name: hero.resource.clone(),
+                        name: avatar.resource.clone(),
                     });
                 }
-                let attack = hero
+                let attack = avatar
                     .combat
                     .attack
                     .and_then(|attack| attack.projectile_speed);
                 self.attack_projectile(attack, &at)?;
-                for (at, id) in hero.slots.iter().enumerate() {
-                    if !hero.abilities.contains_key(id) {
+                for (at, id) in avatar.slots.iter().enumerate() {
+                    if !avatar.abilities.contains_key(id) {
                         return Err(LoadProblem::UnknownSlot(id.clone()));
                     }
-                    if hero.slots[..at].contains(id) {
+                    if avatar.slots[..at].contains(id) {
                         return Err(LoadProblem::RepeatedSlot(id.clone()));
                     }
                 }
-                for (id, ability) in &hero.abilities {
-                    let slot = hero.slots.iter().position(|slot| slot == id);
+                for (id, ability) in &avatar.abilities {
+                    let slot = avatar.slots.iter().position(|slot| slot == id);
                     let slot = slot.ok_or_else(|| LoadProblem::Unslotted(id.clone()))?;
-                    ranked(id, ability, HeroData::slot_ranks(slot))?;
+                    ranked(id, ability, AvatarData::slot_ranks(slot))?;
                 }
-                if let Some(passive) = &hero.passive {
-                    modifier_exists(&hero.modifiers, passive, &at)?;
+                if let Some(passive) = &avatar.passive {
+                    modifier_exists(&avatar.modifiers, passive, &at)?;
                 }
-                (&hero.abilities, &hero.modifiers)
+                (&avatar.abilities, &avatar.modifiers)
             }
-            Content::Spells(spells) => {
-                for (id, ability) in &spells.abilities {
-                    ranked(id, ability, SpellsData::RANKS)?;
+            Content::Loadout(loadout) => {
+                for (id, ability) in &loadout.abilities {
+                    ranked(id, ability, LoadoutData::RANKS)?;
                 }
-                (&spells.abilities, &spells.modifiers)
+                (&loadout.abilities, &loadout.modifiers)
             }
         };
         let mut names = PackageNames::new(package, modifiers);

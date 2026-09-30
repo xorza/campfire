@@ -5,9 +5,9 @@ use campfire_content::{Fingerprint, PackagePath};
 use campfire_script::ScriptHost;
 
 use crate::error::{ContentError, LoadError, LoadProblem, StoreError};
-use crate::files::hero_data::HeroData;
+use crate::files::avatar_data::AvatarData;
+use crate::files::loadout_data::LoadoutData;
 use crate::files::manifest::{Manifest, ModeManifest};
-use crate::files::spells_data::SpellsData;
 use crate::files::units_data::UnitsData;
 use crate::load_check::LoadCheck;
 use crate::package::Package;
@@ -17,8 +17,8 @@ use crate::package_store::PackageStore;
 const MODE_DATA: &str = "data/mode.toml";
 const UNITS_DATA: &str = "data/units.toml";
 const MAP_DATA: &str = "map/map.toml";
-const HERO_DATA: &str = "data/hero.toml";
-const SPELLS_DATA: &str = "data/spells.toml";
+const AVATAR_DATA: &str = "data/avatar.toml";
+const LOADOUT_DATA: &str = "data/loadout.toml";
 
 /// A mode and the packages it depends on, read and checked: what a match of the mode loads.
 #[derive(Debug)]
@@ -42,8 +42,8 @@ pub struct Dependent {
 /// The data of a package the mode depends on, by the package's kind.
 #[derive(Debug)]
 pub enum Content {
-    Hero(Box<HeroData>),
-    Spells(SpellsData),
+    Avatar(Box<AvatarData>),
+    Loadout(LoadoutData),
 }
 
 impl ModePackages {
@@ -169,7 +169,7 @@ impl ModePackages {
 }
 
 impl Dependent {
-    /// The package in `dir`, which the mode names `name`: a hero or spells package of that name.
+    /// The package in `dir`, which the mode names `name`: an avatar or loadout package of that name.
     fn read(name: &str, dir: &PackageDir, parser: &ScriptHost) -> Result<Dependent, LoadError> {
         let fail = |problem| LoadError {
             package: name.to_owned(),
@@ -184,14 +184,14 @@ impl Dependent {
             return Err(fail(LoadProblem::OtherName(header.name.clone())));
         }
         let content = match &manifest {
-            Manifest::Hero(_) => Content::Hero(Box::new(
-                dir.read_data(&path(HERO_DATA))
+            Manifest::Avatar(_) => Content::Avatar(Box::new(
+                dir.read_data(&path(AVATAR_DATA))
                     .map_err(content)
                     .map_err(fail)?,
             )),
-            Manifest::Spells(_) => {
-                let data = dir.read_data(&path(SPELLS_DATA));
-                Content::Spells(data.map_err(content).map_err(fail)?)
+            Manifest::Loadout(_) => {
+                let data = dir.read_data(&path(LOADOUT_DATA));
+                Content::Loadout(data.map_err(content).map_err(fail)?)
             }
             Manifest::Mode(_) => return Err(fail(LoadProblem::WrongKind)),
         };

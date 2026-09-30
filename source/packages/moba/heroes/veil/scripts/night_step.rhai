@@ -7,7 +7,7 @@ fn on_dash_end(ctx, caster, target) {
 }
 
 fn on_takedown(ctx, m, victim) {
-    if victim.is_hero {
+    if victim.is_avatar {
         ctx.add_charge(m.carrier, "night_step");
     }
 }

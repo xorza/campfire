@@ -13,8 +13,8 @@ use crate::files::version::Version;
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum Manifest {
     Mode(ModeManifest),
-    Hero(PackageHeader),
-    Spells(PackageHeader),
+    Avatar(PackageHeader),
+    Loadout(PackageHeader),
 }
 
 /// What every manifest starts with: the package's name and version, and the engine release it
@@ -124,7 +124,7 @@ impl Manifest {
     pub const fn header(&self) -> &PackageHeader {
         match self {
             Manifest::Mode(mode) => &mode.header,
-            Manifest::Hero(header) | Manifest::Spells(header) => header,
+            Manifest::Avatar(header) | Manifest::Loadout(header) => header,
         }
     }
 }

@@ -39,7 +39,7 @@ pub enum ModeError {
     UnknownTeam(String),
     UnknownUnitType(String),
     UnknownLane(String),
-    /// A playing team has no hero spawn.
+    /// A playing team has no avatar spawn.
     NoSpawn(String),
     /// A lane has no waypoint.
     EmptyLane(String),
@@ -78,7 +78,7 @@ impl fmt::Display for ModeError {
             ModeError::UnknownTeam(name) => write!(f, "no team {name:?}"),
             ModeError::UnknownUnitType(name) => write!(f, "no unit type {name:?}"),
             ModeError::UnknownLane(name) => write!(f, "no lane {name:?}"),
-            ModeError::NoSpawn(team) => write!(f, "team {team:?} has no hero spawn"),
+            ModeError::NoSpawn(team) => write!(f, "team {team:?} has no avatar spawn"),
             ModeError::EmptyLane(name) => write!(f, "lane {name:?} has no waypoint"),
             ModeError::OutOfBounds => f.write_str("a map point is beyond the world's bound"),
         }

@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum OnDeath {
-    /// It stays, dead, for the mode to respawn, as heroes do.
+    /// It stays, dead, for the mode to respawn, as avatars do.
     Stay,
     /// It despawns, as creeps and towers do.
     #[default]

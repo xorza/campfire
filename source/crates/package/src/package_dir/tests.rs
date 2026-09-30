@@ -127,14 +127,14 @@ fn a_package_reads_its_own_files_only() {
         script: PackagePath,
     }
     let path = |text| PackagePath::parse(text).unwrap();
-    let hero: Hero = husk().read_data(&path("data/hero.toml")).unwrap();
+    let hero: Hero = husk().read_data(&path("data/avatar.toml")).unwrap();
     assert_eq!(hero.name, "Husk");
     assert_eq!(hero.slots[2], "lash_out");
     assert!(hero.abilities.contains_key("lash_out"));
     let script = husk().read_text(&path("scripts/lash_out.rhai")).unwrap();
     assert!(script.starts_with("fn on_cast(ctx, caster, target)"));
 
-    for text in ["../husk/data/hero.toml", "/etc/hosts", "data/../../x", ""] {
+    for text in ["../husk/data/avatar.toml", "/etc/hosts", "data/../../x", ""] {
         assert_eq!(PackagePath::parse(text), None, "{text}");
     }
     // Data that names a path outside the package does not read.
