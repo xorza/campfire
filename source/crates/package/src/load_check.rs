@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_capabilities::{
-    AbilityData, CtxEntry, EngineStat, FilterData, Hook, Mode, ModifierData, Number, Param, Scalar,
-    ScriptRole, Stat, UnitTypeData,
+    AbilityData, CollisionData, CtxEntry, EngineStat, FilterData, Hook, Mode, ModifierData, Number,
+    Param, Scalar, ScriptRole, Stat, UnitTypeData,
 };
 use campfire_content::PackagePath;
 use campfire_math::Num;
@@ -104,6 +104,56 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
+    /// Every structure of the map with a body stands clear of every path by the widest body of a
+    /// unit that walks, among the mode's unit types and its avatars: a unit that does not walk
+    /// never moves, and a walker does not steer around it.
+    fn structures_clear_paths(&self) -> Result<(), LoadProblem> {
+        let packages = self.packages;
+        let radius = |collision: Option<&CollisionData>| collision.map(|data| data.body.radius());
+        let walker_types = packages.units.units.values().filter(|unit_type| {
+            let stats = unit_type.stats.as_ref();
+            stats.is_some_and(|stats| stats.declares(EngineStat::MoveSpeed))
+        });
+        let avatars =
+            packages
+                .dependencies
+                .iter()
+                .filter_map(|dependent| match &dependent.content {
+                    Content::Avatar(avatar) => Some(avatar),
+                    Content::Loadout(_) => None,
+                });
+        let widest = walker_types
+            .filter_map(|unit_type| radius(unit_type.collision.as_ref()))
+            .chain(avatars.filter_map(|avatar| radius(avatar.collision.as_ref())))
+            .max();
+        let Some(widest) = widest else {
+            return Ok(());
+        };
+        for structure in &packages.map.structures {
+            let unit_type = packages
+                .units
+                .units
+                .get(&structure.unit_type)
+                .expect("the mode's check found every structure's unit type");
+            let Some(own) = radius(unit_type.collision.as_ref()) else {
+                continue;
+            };
+            let at = structure.pos.position().expect("the mode's check passed");
+            if let Some(path) = packages
+                .map
+                .paths
+                .iter()
+                .find(|path| path.comes_within(at, own + widest))
+            {
+                return Err(LoadProblem::StructureOnPath {
+                    unit_type: structure.unit_type.clone(),
+                    path: path.name.clone(),
+                });
+            }
+        }
+        Ok(())
+    }
+
     /// The mode package: its unit types' sections, its map, its modifiers and its scripts.
     fn mode(&self) -> Result<(), LoadProblem> {
         let packages = self.packages;
@@ -147,6 +197,7 @@ impl<'a> LoadCheck<'a> {
         if !packages.map.paths.is_empty() {
             self.require(Capability::Navigation, &Place::Paths)?;
         }
+        self.structures_clear_paths()?;
         if packages.manifest.capabilities.contains(Capability::Vision)
             && packages.map.grid.is_none()
         {

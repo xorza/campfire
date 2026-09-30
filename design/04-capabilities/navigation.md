@@ -17,7 +17,7 @@ Queries take world positions, a route is a list of waypoints, and obstacles are 
 
 ## Waypoint paths
 
-A map can hold paths of waypoints, such as a MOBA's lanes. A unit that walks a path goes along it forward or backward, as its spawn sets, while it has no other order: a MOBA's two sides each walk a lane from their own end. It has reached a waypoint once the waypoint is within its body, as walkers that push each other never stand on one point. A unit that does not walk never moves, so a map keeps its structures beside its paths, clear of the widest walker.
+A map can hold paths of waypoints, such as a MOBA's lanes. A unit that walks a path goes along it forward or backward, as its spawn sets, while it has no other order: a MOBA's two sides each walk a lane from their own end. It has reached a waypoint once the waypoint is within its body, as walkers that push each other never stand on one point. A unit that does not walk never moves, so a map keeps its structures beside its paths, clear of the widest walker: the mode's load refuses a structure whose body comes closer to a path than that walker's radius.
 
 ## Collision
 

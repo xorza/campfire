@@ -116,6 +116,12 @@ pub enum LoadProblem {
     },
     /// The mode declares `vision`, and its map has no grid for sight to reveal.
     NoGrid,
+    /// A structure of `unit_type` stands so near `path` that the widest body of a unit that walks
+    /// cannot pass it: with no steering, it would block the path for good.
+    StructureOnPath {
+        unit_type: String,
+        path: String,
+    },
     /// An avatar's slot names an ability it does not have.
     UnknownSlot(String),
     /// An avatar's ability is in none of its slots, so it has no rank count.
@@ -308,6 +314,11 @@ impl fmt::Display for LoadProblem {
                 write!(f, "avatar {name:?} has the name of a unit type")
             }
             LoadProblem::NoGrid => f.write_str("the mode declares vision, and its map has no grid"),
+            LoadProblem::StructureOnPath { unit_type, path } => write!(
+                f,
+                "a {unit_type:?} stands so near path {path:?} that the widest unit that walks \
+                 cannot pass it"
+            ),
             LoadProblem::Unslotted(id) => write!(f, "ability {id:?} is in no slot"),
             LoadProblem::RepeatedSlot(id) => write!(f, "ability {id:?} is in two slots"),
             LoadProblem::RepeatedLoadout(id) => write!(f, "two loadout packages hold {id:?}"),

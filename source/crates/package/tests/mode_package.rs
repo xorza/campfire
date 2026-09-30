@@ -124,7 +124,7 @@ fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 56] = [
+const FLAWS: [Flaw; 57] = [
     flaw(
         MANIFEST,
         Edit::Replace(r#"engine = "0.1.0""#, r#"engine = "0.0.9""#),
@@ -327,6 +327,16 @@ const FLAWS: [Flaw; 56] = [
         Edit::Replace("pos = [0, -54]", "pos = [0, -69]"),
         MODE,
         |problem| matches!(problem, LoadProblem::Mode(ModeError::OutOfBounds)),
+    ),
+    // Back on the west lane, where it stood before the lanes were cleared.
+    flaw(
+        MAP,
+        Edit::Replace("pos = [-22, -46]", "pos = [-21, -43]"),
+        MODE,
+        |problem| {
+            matches!(problem, LoadProblem::StructureOnPath { unit_type, path }
+                if unit_type == "tower" && path == "west")
+        },
     ),
     flaw(
         UNITS,

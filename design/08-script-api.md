@@ -146,7 +146,7 @@ A package loads only when all of these pass:
 - Every value of `ctx` is a variable named `ctx`, so the checks see all its uses: every hook's first parameter is named `ctx`; `ctx` is used only as `ctx.<name>` or as a whole argument of a call, not of an operator or a function pointer's `call` or `curry`; a function of the script that receives it names that parameter `ctx`; and no `let`, `const` or `for` binds a new `ctx`.
 - Every capability a package's data or scripts use is declared, and each builds on the ones it needs. A capability the release does not run yet loads: its data is checked, and a call to it fails at run time.
 - The manifest's capabilities, tick rates, pools and move speed cap hold, where the manifest is read. Every package targets this release, and every projectile flies faster than the cap.
-- The map and the teams name only what the mode has: every structure's and neutral spawn's unit type, team and path; every point of the map within its bounds; an avatar spawn for each playing team; no team named `neutral`, and no two teams, paths, slots of an avatar or entries of the mode's loadout packages alike.
+- The map and the teams name only what the mode has: every structure's and neutral spawn's unit type, team and path; every point of the map within its bounds; every structure with a body clear of every path by the widest body of a unit that walks; an avatar spawn for each playing team; no team named `neutral`, and no two teams, paths, slots of an avatar or entries of the mode's loadout packages alike.
 
 ## Planned changes
 
