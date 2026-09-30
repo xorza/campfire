@@ -131,6 +131,11 @@ impl<'a> LoadCheck<'a> {
         if !packages.map.lanes.is_empty() {
             self.require(Capability::Navigation, &Place::Lanes)?;
         }
+        if packages.manifest.capabilities.contains(Capability::Vision)
+            && packages.map.grid.is_none()
+        {
+            return Err(LoadProblem::NoGrid);
+        }
         for (name, field) in &data.state {
             if field.sync.is_none() {
                 return Err(LoadProblem::StateSync(name.clone()));
@@ -173,6 +178,9 @@ impl<'a> LoadCheck<'a> {
                 let at = Place::Hero(hero.name.clone());
                 self.require(Capability::Combat, &at)?;
                 self.require(Capability::Stats, &at)?;
+                if hero.vision.is_some() {
+                    self.require(Capability::Vision, &at)?;
+                }
                 let attack = hero
                     .combat
                     .attack

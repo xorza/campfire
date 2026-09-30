@@ -6,6 +6,7 @@ params = { aggro_range = "7.0", help_range = "5.0", help_window_ms = 2000 }
 stats = { health = { base = 445 }, attack_damage = { base = 12 }, attack_speed = { base = "1.25" }, move_speed = { base = "3.75" } }
 combat = { attack = { range = "1.0", windup_ms = 300 } }
 orders = { ai = "scripts/creep_ai.rhai", think_ms = 250 }
+vision = { sight_range = "8.0" }
 
 # A tower strikes 7.75 m away 5 ticks into an attack every 37, with a projectile of 12 m/s.
 [units.tower]
@@ -14,3 +15,4 @@ params = { help_window_ms = 2000 }
 stats = { health = { base = 1500 }, attack_damage = { base = 150 }, attack_speed = { base = "0.83" } }
 combat = { attack = { range = "7.75", windup_ms = 150, projectile_speed = "12" } }
 orders = { ai = "scripts/tower_ai.rhai", think_ms = 250 }
+vision = { sight_range = "9.0" }

@@ -8,6 +8,9 @@ slots = ["dusk_mark", "smoke_ring", "whirling_blades", "night_step"]
 range = "1.25"
 windup_ms = 280
 
+[vision]
+sight_range = "12.0"
+
 [stats]
 health = { base = 445, per_level = 85 }
 health_regen = { base = "1.4", per_level = "0.1" }

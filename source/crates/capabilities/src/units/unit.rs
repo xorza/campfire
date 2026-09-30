@@ -67,7 +67,9 @@ impl Unit {
             .register_fn("is_enemy_of", |unit: &mut Unit, other: Unit| {
                 unit.row().team.is_enemy_of(other.row().team)
             })
-            .register_fn("can_see", |_: &mut Unit, _: Unit| true)
+            .register_fn("can_see", |unit: &mut Unit, other: Unit| {
+                other.row().seen_by.contains(unit.row().team)
+            })
             .register_fn("recent_attackers", |unit: &mut Unit, ms: INT| {
                 unit.view.recent_attackers(unit, ms)
             })

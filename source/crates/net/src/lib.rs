@@ -20,6 +20,7 @@ pub use local_pair::LocalPair;
 pub use match_clock::MatchClock;
 pub use match_start::MatchStart;
 pub use net_protocol::{InputChannel, MatchChannel, NetProtocol};
+pub use sim_client::unpredicted::Unpredicted;
 pub use sim_client::{PendingOrders, SimClient};
 pub use sim_server::{PlayerLink, SimServer, TickHashes};
 

@@ -36,10 +36,11 @@ use crate::scripts::state_value::StateValue;
 use crate::units::Units;
 use crate::units::lane::Lane;
 use crate::units::owner::Owner;
-use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
+use crate::values::grid::Grid;
 use crate::values::scalar::Scalar;
+use crate::vision::vision_grid::VisionGrid;
 
 /// 10 ticks a second: 100 ms is a tick.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(10).unwrap());
@@ -131,13 +132,15 @@ fn grunt() -> UnitKit {
             on_death: OnDeath::Stay,
         }),
         step: Some(MoveStep::new(Num::ONE).unwrap()),
+        sight: None,
     }
 }
 
-/// One lane, `mid`, along x; team a's spawn at z = −5 and b's at 5; a's tower 8 m down the lane;
-/// and a neutral grunt in the middle.
+/// A grid of 1 m cells from (−10, −5) to (10, 6); one lane, `mid`, along x; team a's spawn at
+/// z = −5 and b's at 5; a's tower 8 m down the lane; and a neutral grunt in the middle.
 fn map() -> MapData {
     MapData {
+        grid: Grid::new(num(1), [num(-10), num(-5)], [num(10), num(6)]),
         lanes: vec![LaneData {
             name: "mid".to_owned(),
             points: vec![point(-10, 0), point(0, 0), point(10, 0)],
@@ -441,6 +444,9 @@ fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early
         game.world.get::<OnLane>(tower).map(|lane| lane.get()),
         Some(Lane::new(0))
     );
+    // The map's grid is the match's, for its 3 teams: a, b and the neutral one.
+    let vision = *game.world.resource::<VisionGrid>();
+    assert_eq!((vision.grid, vision.teams), (map().grid.unwrap(), 3));
     assert_eq!(game.state(), state("start", 0, 0, 0));
 
     // Set at the start, time 0: "every" is due at 1, the end of tick 0, and every tick after;

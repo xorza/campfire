@@ -10,16 +10,19 @@ use crate::navigation::move_step::MoveStep;
 use crate::stats::stat::Stat;
 use crate::stats::stats_data::StatsData;
 use crate::values::speed::Speed;
+use crate::vision::sight::Sight;
+use crate::vision::vision_data::VisionData;
 
 /// The most attacks a unit makes a second.
 const MAX_ATTACK_SPEED: Num = Num::from_bits(5 << (Num::FRAC_BITS - 1));
 
 /// What a new unit of a type starts with, in ticks at the match's rate: its combat values from its
-/// `combat` section and its stats at level 1, and how far it walks a tick.
+/// `combat` section and its stats at level 1, how far it walks a tick, and how far it sees.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UnitKit {
     pub combatant: Option<Combatant>,
     pub step: Option<MoveStep>,
+    pub sight: Option<Sight>,
 }
 
 /// The match's rules a unit type's values meet: its tick rate, and the mode's move speed cap.
@@ -68,7 +71,20 @@ impl UnitKit {
         } else {
             None
         };
-        Ok(UnitKit { combatant, step })
+        Ok(UnitKit {
+            combatant,
+            step,
+            sight: None,
+        })
+    }
+
+    /// The kit with the sight of its type's `vision` section, if it has one.
+    #[must_use]
+    pub fn with_vision(self, vision: Option<&VisionData>) -> UnitKit {
+        UnitKit {
+            sight: vision.map(|vision| vision.sight),
+            ..self
+        }
     }
 }
 

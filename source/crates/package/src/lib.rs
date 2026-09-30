@@ -19,7 +19,7 @@ pub use files::manifest::{
     PathfindingBackend, TickRange, VisibilityBackend,
 };
 pub use files::spells_data::SpellsData;
-pub use files::units_data::{UnitTypeFile, UnitsData, VisionData};
+pub use files::units_data::{UnitTypeFile, UnitsData};
 pub use files::version::Version;
 pub use mode_packages::{Content, Dependent, ModePackages};
 pub use package::{Package, Script};

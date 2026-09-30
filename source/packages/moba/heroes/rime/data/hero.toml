@@ -9,6 +9,9 @@ range = "6.0"
 windup_ms = 230
 projectile_speed = "20"
 
+[vision]
+sight_range = "12.0"
+
 [stats]
 health = { base = 395, per_level = 79 }
 health_regen = { base = "0.9", per_level = "0.11" }

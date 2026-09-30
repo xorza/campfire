@@ -1,3 +1,9 @@
+# Sight reveals 1 m cells from x = −20 to 20 and z = −8 to 8.
+[grid]
+cell = "1.0"
+min = [-20, -8]
+max = [20, 8]
+
 # The lane runs along x through the origin; each side's tower stands 8 m down it from the middle,
 # where the heroes spawn.
 [[lanes]]

@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use campfire_capabilities::{AiData, CombatData, Scalar, StatsData, UnitTypeData};
+use campfire_capabilities::{AiData, CombatData, Scalar, StatsData, UnitTypeData, VisionData};
 use serde::{Deserialize, Deserializer};
 
 /// The mode's `data/units.toml`: its unit types, by name.
@@ -19,15 +19,6 @@ pub struct UnitTypeFile {
     pub combat: Option<CombatData>,
     pub orders: Option<AiData>,
     pub vision: Option<VisionData>,
-}
-
-/// A unit type's `vision` section. The release loads it, and runs none of it yet.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct VisionData {
-    /// It sees stealthed units.
-    #[serde(default)]
-    pub true_sight: bool,
 }
 
 /// The flat table of a unit type, the core's fields among the capabilities' sections.

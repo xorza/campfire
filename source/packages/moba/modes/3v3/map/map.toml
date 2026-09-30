@@ -1,6 +1,12 @@
 # Two lanes, west and east, from the north base at z = -60 to the south base at z = 60, and the
 # jungle between them. Points are [x, z] in meters on the ground plane.
 
+# Sight reveals 1 m cells over the whole map, from x = −48 to 48 and z = −68 to 68.
+[grid]
+cell = "1.0"
+min = [-48, -68]
+max = [48, 68]
+
 [[lanes]]
 name = "west"
 points = [[-6, -50], [-36, -36], [-40, 0], [-36, 36], [-6, 50]]

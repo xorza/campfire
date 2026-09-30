@@ -1,0 +1,189 @@
+use std::num::NonZeroU32;
+
+use campfire_math::{Num, Vec3};
+use campfire_script::rhai::Dynamic;
+use campfire_script::{Budget, ScriptHost};
+use campfire_sim::{Capability, EntityIndex, IdAllocator, SimUpdate, StableId, TickRate, TypeHash};
+
+use super::*;
+use crate::capability_set::internals::TestMatch;
+use crate::scripts::error::CallError;
+use crate::scripts::match_scripts::MatchScripts;
+use crate::scripts::script_limits::ScriptLimits;
+use crate::units::unit::Unit;
+
+const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
+
+/// A `ctx` with the queries only.
+#[derive(Debug, Clone)]
+struct Probe(View);
+
+impl Probe {
+    const fn view(&self) -> &View {
+        &self.0
+    }
+}
+
+fn num(value: i64) -> Num {
+    Num::from_int(value).unwrap()
+}
+
+fn at(x: i64, z: i64) -> Position {
+    Position::new(Vec3::new(num(x), Num::ZERO, num(z))).unwrap()
+}
+
+/// A match of three teams with vision on a grid of 1 m cells from (−10, −10) to (10, 10).
+#[derive(Debug)]
+struct Scene {
+    world: World,
+    registry: StateRegistry,
+}
+
+impl Scene {
+    fn new() -> Scene {
+        let limits = ScriptLimits {
+            per_call: 10_000,
+            player: 100_000,
+            think: 100_000,
+            mode: 100_000,
+        };
+        let scripts = MatchScripts { limits, players: 1 };
+        let declared = [Capability::Combat, Capability::Vision];
+        let TestMatch {
+            mut world,
+            schedule,
+            registry,
+        } = TestMatch::new(&declared, RATE, Some(scripts));
+        world.add_schedule(schedule);
+        let engine = world.non_send_mut::<ScriptHost>().into_inner().engine_mut();
+        View::register_queries::<Probe>(engine, Probe::view);
+        let grid = Grid::new(num(1), [num(-10), num(-10)], [num(10), num(10)]).unwrap();
+        Vision::load_grid(&mut world, grid, 3);
+        Scene { world, registry }
+    }
+
+    /// A unit of `team` at (`x`, `z`) that sees `sight` meters, if it sees.
+    fn spawn(&mut self, team: u8, x: i64, z: i64, sight: Option<i64>) -> StableId {
+        let id = self.world.resource_mut::<IdAllocator>().allocate();
+        let mut unit = self.world.spawn((id, at(x, z), Team::new(team)));
+        if let Some(range) = sight {
+            unit.insert(Sight::new(num(range)).unwrap());
+        }
+        id
+    }
+
+    fn entity(&self, id: StableId) -> Entity {
+        self.world.resource::<EntityIndex>().get(id).unwrap()
+    }
+
+    fn seen_by(&self, id: StableId) -> TeamSet {
+        Vision::seen_by(&self.world.entity(self.entity(id)))
+    }
+
+    /// `probe(ctx, of)` in `source`, run on the units as they are now.
+    fn probe(&mut self, source: &str, of: StableId) -> Result<Dynamic, CallError> {
+        let view = self.world.non_send::<View>().clone();
+        view.read(&self.world);
+        let mut host = self.world.non_send_mut::<ScriptHost>();
+        let script = host.compile(source).unwrap();
+        let unit = view.unit(of).unwrap();
+        let mut budget = Budget::new(u64::MAX);
+        host.call(&mut budget, script, "probe", (Probe(view), unit))
+            .map_err(CallError::from_script)
+    }
+
+    /// The stable ids of `value`, a unit or a list of units.
+    fn ids(value: Dynamic) -> Vec<StableId> {
+        let units = match value.clone().try_cast::<Vec<Dynamic>>() {
+            Some(units) => units,
+            None if value.is_unit() => Vec::new(),
+            None => vec![value],
+        };
+        units
+            .into_iter()
+            .map(|unit| unit.try_cast::<Unit>().unwrap().id)
+            .collect()
+    }
+}
+
+#[test]
+fn each_team_sees_the_cells_its_living_units_reveal() {
+    let mut scene = Scene::new();
+    // Team 0 sees 3 m from (0, 0). The cell of (2, 0) has its center at (2.5, 0.5), √6.5 ≈ 2.55 m
+    // away; the cell of (3, 0), at (3.5, 0.5), √12.5 ≈ 3.54 m away.
+    let seer = scene.spawn(0, 0, 0, Some(3));
+    let near = scene.spawn(1, 2, 0, Some(0));
+    let far = scene.spawn(1, 3, 0, None);
+    // A dead unit reveals nothing, however far it sees; a unit off the grid only its team sees.
+    let dead = scene.spawn(2, 5, 5, Some(20));
+    let entity = scene.entity(dead);
+    scene.world.entity_mut(entity).insert(Dead);
+    let off = scene.spawn(1, 15, 0, None);
+    let team = |index| TeamSet::of(Team::new(index));
+
+    // Before the first Vision stage each unit is seen by its team alone.
+    assert_eq!(scene.seen_by(near), team(1));
+    scene.world.run_schedule(SimUpdate);
+    let teams = [seer, near, far, dead, off].map(|id| scene.seen_by(id));
+    assert_eq!(
+        teams,
+        [
+            team(0),
+            team(1).with(Team::new(0)),
+            team(1),
+            team(2),
+            team(1)
+        ]
+    );
+
+    // Seen through the view: `find` returns both enemies within 10 m, `find_visible` and
+    // `nearest_visible` only the one team 0 sees, and `can_see` asks the other's teams.
+    let read = |scene: &mut Scene, expression: &str, of| {
+        let source = format!("fn probe(ctx, of) {{ {expression} }}");
+        Scene::ids(scene.probe(&source, of).unwrap())
+    };
+    let find = r#"ctx.find(of, of.pos, 10, "enemies")"#;
+    assert_eq!(read(&mut scene, find, seer), [near, far]);
+    let visible = r#"ctx.find_visible(of, of.pos, 10, "enemies")"#;
+    assert_eq!(read(&mut scene, visible, seer), [near]);
+    let nearest = r#"ctx.nearest_visible(of, 10, "enemies")"#;
+    assert_eq!(read(&mut scene, nearest, seer), [near]);
+    assert_eq!(read(&mut scene, nearest, far), [] as [StableId; 0]);
+    // Over itself, near and far, by stable id: the seer sees itself and near.
+    let can_see = r#"let seen = [];
+        for unit in ctx.find(of, of.pos, 10, "all") { seen.push(of.can_see(unit)); }
+        seen"#;
+    let source = format!("fn probe(ctx, of) {{ {can_see} }}");
+    let flags = scene.probe(&source, seer).unwrap().into_array().unwrap();
+    let flags: Vec<bool> = flags
+        .into_iter()
+        .map(|flag| flag.as_bool().unwrap())
+        .collect();
+    assert_eq!(flags, [true, true, false]);
+
+    // The seer steps 1 m: far's cell, now √6.5 m away, comes into sight in the next Vision stage.
+    let entity = scene.entity(seer);
+    *scene.world.get_mut::<Position>(entity).unwrap() = at(1, 0);
+    assert_eq!(scene.seen_by(far), team(1));
+    scene.world.run_schedule(SimUpdate);
+    assert_eq!(scene.seen_by(far), team(1).with(Team::new(0)));
+
+    // What a team sees is state, restored with the rest.
+    let mut per_type = Vec::new();
+    scene.registry.hash_by_type(&scene.world, &mut per_type);
+    let names: Vec<_> = per_type.iter().map(|TypeHash { name, .. }| *name).collect();
+    assert!(names.contains(&"vision.seen_by") && names.contains(&"vision.sight"));
+}
+
+#[test]
+fn set_bits_fills_a_run_within_one_word_and_across_words() {
+    let mut words = [0; 3];
+    set_bits(&mut words, 3..5);
+    assert_eq!(words, [0b11000, 0, 0]);
+    set_bits(&mut words, 63..64);
+    assert_eq!(words, [0b11000 | 1 << 63, 0, 0]);
+    // Bits 60 to 130: the top 4 of word 0, all of word 1, and the low 3 of word 2.
+    let mut words = [0; 3];
+    set_bits(&mut words, 60..131);
+    assert_eq!(words, [0xF << 60, u64::MAX, 0b111]);
+}

@@ -7,6 +7,9 @@ slots = ["first", "second", "third", "fourth"]
 range = "1.25"
 windup_ms = 266
 
+[vision]
+sight_range = "6.0"
+
 [stats]
 health = { base = 600 }
 resource = { base = 100 }

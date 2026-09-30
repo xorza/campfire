@@ -239,17 +239,20 @@ fn targets_are_living_enemies() {
 
 #[test]
 fn teams_are_enemies_unless_the_same() {
-    // A neutral team is an index like any other: 200 below is an enemy of both sides.
+    // A neutral team is an index like any other: 63, the last, below is an enemy of both sides.
     for (a, b, enemies) in [
         (Team::new(0), Team::new(1), true),
-        (Team::new(0), Team::new(200), true),
-        (Team::new(1), Team::new(200), true),
+        (Team::new(0), Team::new(63), true),
+        (Team::new(1), Team::new(63), true),
         (Team::new(0), Team::new(0), false),
-        (Team::new(200), Team::new(200), false),
+        (Team::new(63), Team::new(63), false),
     ] {
         assert_eq!(a.is_enemy_of(b), enemies, "{a:?} {b:?}");
         assert_eq!(b.is_enemy_of(a), enemies, "{b:?} {a:?}");
     }
+    // A snapshot's team past the limit does not decode.
+    let decode = |index: u8| postcard::from_bytes::<Team>(&[index]).ok();
+    assert_eq!((decode(63), decode(64)), (Some(Team::new(63)), None));
 }
 
 #[test]

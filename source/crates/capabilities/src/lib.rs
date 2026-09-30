@@ -1,8 +1,9 @@
 //! Capabilities: the mechanisms a mode combines, a module each, on the core, and the mode above
 //! them. A module imports only from the layers below its own, lowest first: `values` (data value
 //! types); the core, `units` and `scripts` (unit types, teams, owners, lanes, the script view and
-//! runtime); `combat` and `stats`; `abilities`, `projectiles` and `navigation`; `orders`; the
-//! `mode`. A capability gives the script view its fields of a unit through a row source.
+//! runtime); `combat` and `stats`; `abilities`, `projectiles`, `navigation` and `vision`;
+//! `orders`; the `mode`. A capability gives the script view its fields of a unit through a row
+//! source.
 
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 #![allow(
@@ -25,6 +26,7 @@ mod scripts;
 mod stats;
 mod units;
 mod values;
+mod vision;
 
 pub use abilities::Abilities;
 pub use abilities::ability_book::AbilityId;
@@ -92,12 +94,18 @@ pub use units::lane::Lane;
 pub use units::owner::Owner;
 pub use units::recent_attack::RecentAttack;
 pub use units::team::Team;
+pub use units::team_set::TeamSet;
 pub use units::unit_type::UnitType;
 pub use units::unit_type_data::UnitTypeData;
 pub use values::filter_data::FilterData;
+pub use values::grid::Grid;
 pub use values::number::{Number, ParamRef};
 pub use values::param::{Param, Scaling};
 pub use values::ranked::Ranked;
 pub use values::relation::Relation;
 pub use values::scalar::Scalar;
 pub use values::speed::Speed;
+pub use vision::Vision;
+pub use vision::seen_by::SeenBy;
+pub use vision::sight::Sight;
+pub use vision::vision_data::VisionData;

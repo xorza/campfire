@@ -25,6 +25,7 @@ pub(crate) mod recent_attack;
 pub(crate) mod script_view;
 pub(crate) mod tag_set;
 pub(crate) mod team;
+pub(crate) mod team_set;
 pub(crate) mod teams;
 pub(crate) mod unit;
 pub(crate) mod unit_type;

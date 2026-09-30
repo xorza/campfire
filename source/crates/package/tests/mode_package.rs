@@ -102,8 +102,14 @@ const MODE_DIR: &str = "modes/3v3";
 
 /// Whether `problem` is the manifest failing to read with a message that starts with `message`.
 fn manifest_fails(problem: &LoadProblem, message: &str) -> bool {
+    read_fails(problem, "manifest.toml", message)
+}
+
+/// Whether `problem` is the file at `file` failing to read with a message that starts with
+/// `message`.
+fn read_fails(problem: &LoadProblem, file: &str, message: &str) -> bool {
     matches!(problem, LoadProblem::Content(ContentError::Data { path, error })
-        if path.to_string() == "manifest.toml" && error.message().starts_with(message))
+        if path.to_string() == file && error.message().starts_with(message))
 }
 
 #[test]
@@ -117,7 +123,7 @@ fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 46] = [
+const FLAWS: [Flaw; 49] = [
     flaw(
         MANIFEST,
         Edit::Replace(r#"engine = "0.1.0""#, r#"engine = "0.0.9""#),
@@ -158,7 +164,7 @@ const FLAWS: [Flaw; 46] = [
         MANIFEST,
         Edit::Replace(r#", "vision"]"#, "]"),
         MODE,
-        |problem| matches!(problem, LoadProblem::Undeclared { capability: Capability::Vision, at: Place::UnitType(name) } if name == "tower"),
+        |problem| matches!(problem, LoadProblem::Undeclared { capability: Capability::Vision, at: Place::UnitType(name) } if name == "caster_creep"),
     ),
     flaw(
         MANIFEST,
@@ -294,6 +300,33 @@ const FLAWS: [Flaw; 46] = [
                     misuse: CtxMisuse::Bound,
                     ..
                 }
+            )
+        },
+    ),
+    flaw(
+        MAP,
+        Edit::Replace(
+            "[grid]\ncell = \"1.0\"\nmin = [-48, -68]\nmax = [48, 68]\n",
+            "",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::NoGrid),
+    ),
+    flaw(
+        MAP,
+        Edit::Replace("cell = \"1.0\"", "cell = \"0\""),
+        MODE,
+        |problem| read_fails(problem, "map/map.toml", "a grid needs a positive cell"),
+    ),
+    flaw(
+        UNITS,
+        Edit::Replace(r#"sight_range = "10.0""#, r#"sight_range = "-1.0""#),
+        MODE,
+        |problem| {
+            read_fails(
+                problem,
+                "data/units.toml",
+                "a sight range is a number that is not negative",
             )
         },
     ),

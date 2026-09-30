@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use campfire_capabilities::{AbilityData, CombatData, ModifierData, StatsData};
+use campfire_capabilities::{AbilityData, CombatData, ModifierData, StatsData, VisionData};
 use serde::Deserialize;
 
 /// A hero package's `data/hero.toml`. A hero carries the tag `hero`, and stays when it dies.
@@ -17,6 +17,8 @@ pub struct HeroData {
     pub slots: [String; 4],
     pub combat: CombatData,
     pub stats: StatsData,
+    /// How far it sees; without it, a hero reveals nothing to its team.
+    pub vision: Option<VisionData>,
     #[serde(default)]
     pub abilities: BTreeMap<String, AbilityData>,
     #[serde(default)]

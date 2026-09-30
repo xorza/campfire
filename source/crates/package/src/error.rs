@@ -114,6 +114,8 @@ pub enum LoadProblem {
         capability: Capability,
         at: Place,
     },
+    /// The mode declares `vision`, and its map has no grid for sight to reveal.
+    NoGrid,
     /// A hero's slot names an ability it does not have.
     UnknownSlot(String),
     /// A hero's ability is in none of its slots, so it has no rank count.
@@ -296,6 +298,7 @@ impl fmt::Display for LoadProblem {
             LoadProblem::RepeatedUnitType(name) => {
                 write!(f, "hero {name:?} has the name of a unit type")
             }
+            LoadProblem::NoGrid => f.write_str("the mode declares vision, and its map has no grid"),
             LoadProblem::Unslotted(id) => write!(f, "ability {id:?} is in no slot"),
             LoadProblem::RepeatedSlot(id) => write!(f, "ability {id:?} is in two slots"),
             LoadProblem::RepeatedSpell(id) => write!(f, "two spells packages hold {id:?}"),

@@ -50,6 +50,11 @@ impl Teams {
             .map(|name| &**name)
     }
 
+    /// How many teams the match holds, the neutral one included.
+    pub(crate) fn count(&self) -> usize {
+        self.names.len()
+    }
+
     /// The names of the playing teams, in order.
     pub(crate) fn playing(&self) -> impl ExactSizeIterator<Item = &str> {
         self.names[..self.names.len().saturating_sub(1)]

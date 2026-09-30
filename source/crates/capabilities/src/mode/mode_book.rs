@@ -165,6 +165,9 @@ impl ModeBook {
         if let Some(combatant) = kit.combatant {
             combatant.insert(&mut unit);
         }
+        if let Some(sight) = kit.sight {
+            unit.insert(sight);
+        }
         if let Some(step) = kit.step {
             unit.insert(step.bundle());
         }

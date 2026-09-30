@@ -12,6 +12,7 @@ use crate::orders::Orders;
 use crate::projectiles::Projectiles;
 use crate::scripts::match_scripts::MatchScripts;
 use crate::units::Units;
+use crate::vision::Vision;
 
 pub(crate) mod error;
 
@@ -25,9 +26,10 @@ type Install = fn(&mut World, &mut Schedule, &mut StateRegistry);
 
 /// The capabilities the release runs, in the order they install: each after the ones it builds
 /// on. A declared capability not here installs nothing yet.
-const INSTALLS: [(Capability, Install); 5] = [
+const INSTALLS: [(Capability, Install); 6] = [
     (Capability::Combat, Combat::install),
     (Capability::Navigation, Navigation::install),
+    (Capability::Vision, Vision::install),
     (Capability::Projectiles, Projectiles::install),
     (Capability::Abilities, Abilities::install),
     (Capability::Orders, Orders::install),
@@ -103,7 +105,9 @@ const fn bit(capability: Capability) -> u16 {
 /// The capabilities `capability` builds on.
 const fn needs(capability: Capability) -> &'static [Capability] {
     match capability {
-        Capability::Projectiles | Capability::Abilities => &[Capability::Combat],
+        Capability::Projectiles | Capability::Abilities | Capability::Vision => {
+            &[Capability::Combat]
+        }
         Capability::Orders => &[Capability::Combat, Capability::Navigation],
         _ => &[],
     }

@@ -1,19 +1,21 @@
 use bevy_app::{App, FixedUpdate, Plugin};
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
+use bevy_ecs::query::{Changed, With, Without};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::schedule::common_conditions::resource_exists;
-use bevy_ecs::system::{Local, Query, ResMut};
+use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
-use campfire_capabilities::Owner;
+use campfire_capabilities::{Mode, Owner, SeenBy, Team};
 use campfire_package::ModePackages;
 use campfire_protocol::{Applied, PlayerSlot, ServerSeed, SessionLog};
 use campfire_runner::{Session, StartError};
-use campfire_sim::{EntityIndex, SimTick, StateHash};
+use campfire_sim::{self as sim, SimTick, StateHash};
 use lightyear::core::tick::TickDuration;
 use lightyear::prelude::{
     LocalTimeline, MessageReceiver, MessageSender, NetworkTarget, PredictionTarget, Replicate,
+    VisibilityExt,
 };
 
 use crate::input_message::InputMessage;
@@ -22,14 +24,16 @@ use crate::match_start::MatchStart;
 use crate::net_protocol::MatchChannel;
 
 /// Runs a match on a Lightyear server: records the packets players send, runs one sim tick in each
-/// fixed tick, and keeps the state hash after each.
+/// fixed tick, keeps the state hash after each, and sends each client the units its team sees.
 #[derive(Debug)]
 pub struct SimServer;
 
-/// Which player a client link carries the inputs of, and how many of its messages the log refused.
+/// Which player a client link carries the inputs of, their team, and how many of its messages the
+/// log refused.
 #[derive(Component, Debug, Clone, Copy)]
 pub struct PlayerLink {
     slot: PlayerSlot,
+    team: Team,
     refused: u64,
 }
 
@@ -56,7 +60,11 @@ impl Plugin for SimServer {
         app.init_resource::<TickHashes>();
         app.add_systems(
             FixedUpdate,
-            (record_inputs, run_sim_tick)
+            (
+                record_inputs,
+                run_sim_tick,
+                show_units.run_if(|hashes: Res<'_, TickHashes>| !hashes.0.is_empty()),
+            )
                 .chain()
                 .run_if(resource_exists::<MatchClock>),
         );
@@ -65,9 +73,9 @@ impl Plugin for SimServer {
 
 impl SimServer {
     /// Starts the match of `log`'s header, of the mode `packages` holds, in the next fixed tick,
-    /// recording into `log`. `clients`
-    /// are the links of the players, by slot; each learns its slot and the start tick, and every
-    /// hero replicates to every client, predicted. Towers and creeps do not replicate yet.
+    /// recording into `log`. `clients` are the links of the players, by slot; each learns its slot
+    /// and the start tick. From the first tick on, every unit replicates to the clients whose team
+    /// sees it, and the owner's client predicts it.
     pub fn start_match(
         world: &mut World,
         log: SessionLog,
@@ -88,23 +96,14 @@ impl SimServer {
         Session::start(world, log, server_seed, packages)?;
         let start = world.resource::<LocalTimeline>().tick() + 1;
         world.insert_resource(MatchClock::new(start));
-
-        let heroes: Vec<Entity> = world
-            .resource::<EntityIndex>()
-            .iter()
-            .map(|(_, unit)| unit)
-            .filter(|&unit| world.entity(unit).contains::<Owner>())
-            .collect();
-        for hero in heroes {
-            world.entity_mut(hero).insert((
-                Replicate::to_clients(NetworkTarget::All),
-                PredictionTarget::to_clients(NetworkTarget::All),
-            ));
-        }
         for (slot, &client) in (0..).map(PlayerSlot::new).zip(clients) {
-            world
-                .entity_mut(client)
-                .insert(PlayerLink { slot, refused: 0 });
+            let team = Mode::team_of(world, sim::PlayerSlot::new(slot.get()))
+                .expect("every player has a team");
+            world.entity_mut(client).insert(PlayerLink {
+                slot,
+                team,
+                refused: 0,
+            });
             world
                 .get_mut::<MessageSender<MatchStart>>(client)
                 .expect("a client link sends the match start")
@@ -150,4 +149,50 @@ fn run_sim_tick(world: &mut World) {
     Session::run_tick(world);
     let hash = world.resource::<Session>().state_hash(world);
     world.resource_mut::<TickHashes>().0.push(hash);
+}
+
+/// The units not replicated yet, with their owner if they have one.
+type NewUnits<'w, 's> =
+    Query<'w, 's, (Entity, Option<&'static Owner>), (With<Team>, Without<Replicate>)>;
+
+/// After a sim tick, replicates each new unit, predicted by its owner's client, and shows each
+/// unit whose seers changed to exactly the clients whose team sees it. A unit is hidden in the
+/// tick it replicates in, so a client never receives a unit its team did not see. Without vision
+/// no unit has `SeenBy`, and every client receives every unit.
+fn show_units(
+    links: Query<'_, '_, (Entity, &PlayerLink)>,
+    new: NewUnits<'_, '_>,
+    changed: Query<'_, '_, (Entity, &SeenBy), Changed<SeenBy>>,
+    mut commands: Commands<'_, '_>,
+) {
+    for (unit, owner) in &new {
+        let mut replicated = commands.entity(unit);
+        replicated.insert(Replicate::to_clients(NetworkTarget::All));
+        let owner = owner.and_then(|owner| {
+            links
+                .iter()
+                .find(|(_, link)| link.slot.get() == owner.slot().get())
+        });
+        if let Some((link, _)) = owner {
+            replicated.insert(PredictionTarget::manual(vec![link]));
+        }
+    }
+    for (unit, &seen) in &changed {
+        show(&mut commands, &links, unit, seen);
+    }
+}
+
+fn show(
+    commands: &mut Commands<'_, '_>,
+    links: &Query<'_, '_, (Entity, &PlayerLink)>,
+    unit: Entity,
+    seen: SeenBy,
+) {
+    for (link, player) in links {
+        if seen.get().contains(player.team) {
+            commands.gain_visibility(unit, link);
+        } else {
+            commands.lose_visibility(unit, link);
+        }
+    }
 }

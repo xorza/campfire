@@ -5,9 +5,10 @@
 use std::num::NonZeroU32;
 
 use bevy_app::App;
+use bevy_ecs::entity::Entity;
 use campfire_capabilities::{Action, Destination, Owner};
 use campfire_math::{Num, Vec3};
-use campfire_net::{LocalPair, PlayerLink, TickHashes};
+use campfire_net::{LocalPair, PlayerLink, TickHashes, Unpredicted};
 use campfire_protocol::{SeedChain, SessionLog};
 use campfire_runner::{Runner, Session};
 use campfire_sim::{EntityIndex, Position};
@@ -35,13 +36,17 @@ struct Hero {
 }
 
 /// The one hero in `app`: the one unit under a player's control.
-fn hero(app: &App) -> Hero {
+fn hero_entity(app: &App) -> Entity {
     let world = app.world();
     let mut units = world.resource::<EntityIndex>().iter();
     let (_, entity) = units
         .find(|&(_, entity)| world.entity(entity).contains::<Owner>())
         .unwrap();
-    let hero = world.entity(entity);
+    entity
+}
+
+fn hero(app: &App) -> Hero {
+    let hero = app.world().entity(hero_entity(app));
     Hero {
         position: *hero.get::<Position>().unwrap(),
         destination: *hero.get::<Destination>().unwrap(),
@@ -71,12 +76,8 @@ fn server_and_replay_agree_on_every_tick() {
         assert_eq!(hero(pair.server()), arrived, "{rollback:?}");
         assert_eq!(hero(pair.client()), arrived, "{rollback:?}");
         let client_world = pair.client().world();
-        let (_, client_hero) = client_world
-            .resource::<EntityIndex>()
-            .iter()
-            .next()
-            .unwrap();
-        assert!(client_world.entity(client_hero).contains::<Predicted>());
+        let client_hero = client_world.entity(hero_entity(pair.client()));
+        assert!(client_hero.contains::<Predicted>() && !client_hero.contains::<Unpredicted>());
         let rollbacks = client_world.resource::<PredictionMetrics>().rollbacks;
         // The client stamps each order with the tick it predicts it in, and runs ahead of the
         // server, so the server applies it in that tick: nothing is mispredicted.

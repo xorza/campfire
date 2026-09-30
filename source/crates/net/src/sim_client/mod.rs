@@ -22,6 +22,9 @@ use crate::input_message::InputMessage;
 use crate::match_clock::MatchClock;
 use crate::match_start::MatchStart;
 use crate::net_protocol::InputChannel;
+use crate::sim_client::unpredicted::Unpredicted;
+
+pub(crate) mod unpredicted;
 
 /// A client never holds the segment seed: it predicts movement, never a random outcome.
 const PREDICTION_SEED: SegmentSeed = SegmentSeed::new([0; 32]);
@@ -32,7 +35,7 @@ const AUX: [u8; 32] = [0; 32];
 
 /// Predicts a match on a Lightyear client: sends the player's orders as chained inputs, signed
 /// once per message with the session key, and runs the sim in every fixed tick, rollbacks
-/// included, with the player's own inputs.
+/// included, with the player's own inputs, on the units the client predicts.
 #[derive(Debug, Clone)]
 pub struct SimClient {
     pub session_key: Keypair,
@@ -95,6 +98,7 @@ impl Plugin for SimClient {
         self.capabilities
             .install(world, &mut schedule, &mut state, None);
         world.add_schedule(schedule);
+        Unpredicted::install(world);
         world.insert_resource(SentInputs {
             client: self.clone(),
             session_id: self.terms.session_id(),

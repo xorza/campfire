@@ -28,6 +28,10 @@ serde.workspace = true
 name = "prototype"
 required-features = ["internals"]
 
+[[test]]
+name = "fog"
+required-features = ["internals"]
+
 [[bench]]
 name = "rollback"
 harness = false

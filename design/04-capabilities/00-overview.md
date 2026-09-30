@@ -28,7 +28,7 @@ Capabilities share one vocabulary, so they can meet in one match: a hitscan ray 
 
 - **Base:** `sim` (position, stable ids, randomness, the state hash, the tick rate) and the collision shape; then the core under every script: unit types (tags and params), the one script host whose tick budget every capability's calls share, the types every capability shares (a unit's team, the player who controls it, a lane), and the units as scripts see them, with the queries on them. A capability adds its fields of a unit to that view through a row source, so the core names no capability.
 - **`combat` and `stats`:** health, damage, deaths, stats and modifiers.
-- **Everything else** builds on those: `projectiles` and `hitscan` deal damage through `combat`; `abilities` apply modifiers through `stats`; `orders` issue attacks and casts.
+- **Everything else** builds on those: `projectiles` and `hitscan` deal damage through `combat`; `abilities` apply modifiers through `stats`; `orders` issue attacks and casts; `vision` lets only the units `combat` keeps alive reveal.
 
 The capabilities live in one crate, `capabilities`, a module each, so they share their internals without making them public; the layers are a rule on which modules a capability imports, kept in review. A capability that brings a heavy dependency, such as a physics engine, gets a crate of its own, so the others do not build it. The runner adds only the declared capabilities' systems to the schedule, so a capability a mode does not use costs nothing in a tick.
 
@@ -46,7 +46,7 @@ The engine fixes the stages of a tick, and each capability puts its systems into
 | 6 | Hit | Attack strikes, hitscan rays, projectiles and areas, `on_cast` |
 | 7 | Resolve | Modifier intervals, damage through the mode's `calc_damage`, deaths |
 | 8 | Mode | Due timers, then the capabilities' events in the order they happened; spawns; `ctx.end` |
-| 9 | Vision | Core: the mode's vision backend marks what each team may see |
+| 9 | Vision | `vision` marks what each team sees, from the map's grid |
 
 ## Commands
 

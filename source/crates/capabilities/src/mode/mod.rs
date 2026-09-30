@@ -33,7 +33,9 @@ use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::units::UnitsSet;
 use crate::units::script_view::View;
+use crate::units::team::Team;
 use crate::units::teams::Teams;
+use crate::vision::Vision;
 
 pub(crate) mod calls;
 pub(crate) mod error;
@@ -61,8 +63,9 @@ pub struct Mode;
 
 impl Mode {
     /// Adds the mode of `setup`, which passed `Mode::check` when its package loaded, to a match
-    /// whose capabilities are installed and whose unit types, abilities and AI are loaded: in Inputs, the players' mode inputs run
-    /// `on_mode_input`; in Mode, due timers run `on_timer`. The map's lanes become the match's.
+    /// whose capabilities are installed and whose unit types, abilities and AI are loaded: in
+    /// Inputs, the players' mode inputs run `on_mode_input`; in Mode, due timers run `on_timer`.
+    /// The map's lanes and grid become the match's.
     pub fn install(
         world: &mut World,
         schedule: &mut Schedule,
@@ -72,11 +75,15 @@ impl Mode {
         let view = world.non_send::<View>().clone();
         let rate = *world.resource::<TickRate>();
         let lanes = Mode::lanes(setup.map);
+        let grid = setup.map.grid;
         let book = {
             let mut host = world.non_send_mut::<ScriptHost>();
             ModeCtx::register(host.engine_mut());
             ModeBook::new(setup, rate, &host, &view, &lanes)?
         };
+        if let Some(grid) = grid {
+            Vision::load_grid(world, grid, book.teams.count());
+        }
         view.set_names(Rc::clone(&book.teams), lanes.shared_names());
         world.insert_resource(lanes);
         world.insert_resource(ModeState(book.schema.state_initial.clone()));
@@ -117,9 +124,15 @@ impl Mode {
         )
     }
 
+    /// The team of player `slot` in the match in `world`; `None` before the mode installs, or for
+    /// a slot the session does not have.
+    pub fn team_of(world: &World, slot: PlayerSlot) -> Option<Team> {
+        world.get_non_send::<ModeCtx>()?.book().teams.of(slot)
+    }
+
     /// Checks what the mode names against what it has: its playing teams, of which none is
-    /// named `neutral` and no two share a name, fewer than a team index counts with the neutral
-    /// one; and its map, whose lanes each have a waypoint and a name of their own, whose every
+    /// named `neutral` and no two share a name, fewer than `Team::LIMIT` with the neutral one; and
+    /// its map, whose lanes each have a waypoint and a name of their own, whose every
     /// playing team has a hero spawn, and whose structures and neutral spawns name unit types
     /// `unit_type` knows, and teams and lanes the mode has. Every point is within the world's
     /// bound.
@@ -136,7 +149,7 @@ impl Mode {
                 return Err(ModeError::RepeatedName(team.name.clone()));
             }
         }
-        if u8::try_from(teams.len()).is_err() {
+        if teams.len() >= Team::LIMIT {
             return Err(ModeError::TooManyTeams);
         }
         let in_bounds = |point: &GroundPoint| point.position().ok_or(ModeError::OutOfBounds);

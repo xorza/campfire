@@ -4,13 +4,16 @@ use campfire_math::{Num, Vec3};
 use campfire_sim::Position;
 use serde::Deserialize;
 
+use crate::values::grid::Grid;
 use crate::values::scalar::Scalar;
 
-/// The mode's `map/map.toml`: its lanes, where each team's heroes spawn, the structures that
-/// stand from the start, and where neutral units spawn.
+/// The mode's `map/map.toml`: its grid, its lanes, where each team's heroes spawn, the structures
+/// that stand from the start, and where neutral units spawn.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MapData {
+    /// The cells vision reveals; a mode that declares `vision` has one.
+    pub grid: Option<Grid>,
     /// Each runs from the first team's end to the second's.
     #[serde(default)]
     pub lanes: Vec<LaneData>,

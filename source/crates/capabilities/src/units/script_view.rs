@@ -16,6 +16,7 @@ use crate::units::owner::Owner;
 use crate::units::recent_attack::RecentAttack;
 use crate::units::tag_set::{Tag, TagSet};
 use crate::units::team::Team;
+use crate::units::team_set::TeamSet;
 use crate::units::teams::Teams;
 use crate::units::unit::Unit;
 use crate::units::unit_type::UnitType;
@@ -58,6 +59,8 @@ pub(crate) struct UnitRow {
     pub(crate) attack_range: Option<Num>,
     /// The lane it walks or stands on; `navigation` fills it.
     pub(crate) lane: Option<Lane>,
+    /// The teams that see it; `vision` fills it, and without vision every team does.
+    pub(crate) seen_by: TeamSet,
     /// Its run of recent attacks, from `attacks_start` to `attacks_end`.
     attacks_start: u32,
     attacks_end: u32,
@@ -104,6 +107,7 @@ impl ScriptView {
                 unit_type: unit.get::<UnitType>().copied(),
                 owner: unit.get::<Owner>().map(|owner| owner.slot()),
                 lane: None,
+                seen_by: TeamSet::ALL,
                 target: None,
                 attack_range: None,
                 attacks_start: start,
@@ -297,13 +301,14 @@ impl View {
     }
 
     /// The living units within `radius` of `pos` on the ground plane that `filter` selects
-    /// relative to `of`, by stable id.
+    /// relative to `of`, by stable id; with `visible`, only those `of`'s team sees.
     pub(crate) fn find(
         &self,
         of: &Unit,
         pos: Position,
         radius: Num,
         filter: &str,
+        visible: bool,
     ) -> Checked<Array> {
         if radius < Num::ZERO {
             return Err(ApiError::NegativeRadius.fail().into());
@@ -312,14 +317,15 @@ impl View {
         let of = of.row();
         let selected = view.selected(&of, filter).map_err(ApiError::fail)?;
         Ok(selected
+            .filter(|row| !visible || row.seen_by.contains(of.team))
             .filter(|row| pos.within_ground(row.pos, radius))
             .map(|row| Dynamic::from(Unit::new(row.id, self.clone())))
             .collect())
     }
 
     /// The nearest living unit within `radius` of `of` on the ground plane that `filter` selects
-    /// relative to it, by exact distance, the lower stable id on a tie; `()` when there is none.
-    /// Every unit is visible until the match has vision.
+    /// relative to it and its team sees, by exact distance, the lower stable id on a tie; `()`
+    /// when there is none.
     pub(crate) fn nearest_visible(&self, of: &Unit, radius: Num, filter: &str) -> Checked<Dynamic> {
         if radius < Num::ZERO {
             return Err(ApiError::NegativeRadius.fail().into());
@@ -329,6 +335,7 @@ impl View {
         let nearest = view
             .selected(&of, filter)
             .map_err(ApiError::fail)?
+            .filter(|row| row.seen_by.contains(of.team))
             .map(|row| (of.pos.ground_offset(row.pos), row.id))
             .filter(|&(offset, _)| Vec3::ZERO.within(offset, radius))
             .min_by_key(|&(offset, id)| (offset.length_squared_bits(), id));
@@ -358,21 +365,25 @@ impl View {
             .collect())
     }
 
-    /// Registers the queries on the `ctx` of type `C`: `find` and `nearest_visible`.
+    /// Registers the queries on the `ctx` of type `C`: `find`, `find_visible` and
+    /// `nearest_visible`.
     pub(crate) fn register_queries<C: Clone + 'static>(engine: &mut Engine, view: fn(&C) -> &View) {
+        for (name, visible) in [("find", false), ("find_visible", true)] {
+            engine
+                .register_fn(
+                    name,
+                    move |ctx: &mut C, of: Unit, pos: Position, radius: Num, filter: &str| {
+                        view(ctx).find(&of, pos, radius, filter, visible)
+                    },
+                )
+                .register_fn(
+                    name,
+                    move |ctx: &mut C, of: Unit, pos: Position, radius: INT, filter: &str| {
+                        view(ctx).find(&of, pos, ApiError::num(radius)?, filter, visible)
+                    },
+                );
+        }
         engine
-            .register_fn(
-                "find",
-                move |ctx: &mut C, of: Unit, pos: Position, radius: Num, filter: &str| {
-                    view(ctx).find(&of, pos, radius, filter)
-                },
-            )
-            .register_fn(
-                "find",
-                move |ctx: &mut C, of: Unit, pos: Position, radius: INT, filter: &str| {
-                    view(ctx).find(&of, pos, ApiError::num(radius)?, filter)
-                },
-            )
             .register_fn(
                 "nearest_visible",
                 move |ctx: &mut C, of: Unit, radius: Num, filter: &str| {
