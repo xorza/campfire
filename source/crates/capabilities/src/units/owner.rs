@@ -1,5 +1,6 @@
 use bevy_ecs::component::Component;
-use campfire_sim::{PlayerSlot, SimComponent};
+use campfire_math::PlayerSlot;
+use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
 /// The player who controls a unit, by slot: design 04's control relation, which `orders` and,

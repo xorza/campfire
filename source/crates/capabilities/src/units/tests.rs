@@ -3,11 +3,11 @@ use std::num::NonZeroU32;
 
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::entity::Entity;
-use campfire_math::{Num, Vec3};
+use campfire_math::{Num, PlayerSlot, Vec3};
 use campfire_script::Budget;
 use campfire_script::rhai::Dynamic;
 use campfire_sim::{
-    Capability, EntityIndex, IdAllocator, PlayerSlot, Position, SimTick, StableId, Tick, Ticks,
+    Capability, EntityIndex, IdAllocator, Position, SimTick, StableId, Tick, Ticks,
 };
 
 use super::*;

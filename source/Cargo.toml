@@ -100,6 +100,7 @@ todo = "warn"
 unused_result_ok = "warn"
 
 [profile.dev]
+opt-level = 1
 debug = "line-tables-only"
 overflow-checks = true
 

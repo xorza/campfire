@@ -5,8 +5,8 @@ use secp256k1::{Keypair, Secp256k1, SecretKey};
 
 use crate::input_chain::InputChain;
 use crate::input_hash::InputHash;
-use crate::player_slot::PlayerSlot;
 use crate::session_id::SessionId;
+use campfire_math::PlayerSlot;
 
 /// The per-packet cost of the chain-head signature: the client signs the chain head once per
 /// packet with its session key, and the log checks it once per packet.

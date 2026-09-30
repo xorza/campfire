@@ -7,8 +7,7 @@ use campfire_protocol::{
     Applied, Fingerprint, InputError, PlayerInput, ServerSeed, SessionLog, SessionTerms, Signature,
 };
 use campfire_sim::{
-    PlayerSlot, SimTick, SimUpdate, StableId, StateHash, StateRegistry, TickInput, TickInputs,
-    TickRate,
+    SimTick, SimUpdate, StableId, StateHash, StateRegistry, TickInput, TickInputs, TickRate,
 };
 use tracing::warn;
 
@@ -127,10 +126,9 @@ impl Session {
                 "the sim and the log are at the same tick"
             );
             let mut inputs = world.resource_mut::<TickInputs>();
-            // The log's slot type becomes the sim's here, where the log's inputs enter the sim.
             for input in session.log.seal_tick() {
                 inputs.push(TickInput {
-                    slot: PlayerSlot::new(input.slot.get()),
+                    slot: input.slot,
                     payload: input.payload,
                 });
             }

@@ -8,12 +8,12 @@ use std::path::Path;
 use std::process::Command;
 
 use campfire_capabilities::{Action, AttackState, Destination, Health, Order, Owner, Projectile};
-use campfire_math::{Num, Vec3};
+use campfire_math::{Num, PlayerSlot, Vec3};
 use campfire_package::{ModePackages, PackageStore, RELEASE, StoreError};
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
 use campfire_protocol::{
-    Applied, Delegation, DelegationTerms, Fingerprint, InputChain, PlayerSlot, SeedChain,
-    SeedError, ServerSeed, SessionHeader, SessionLog, SessionTerms,
+    Applied, Delegation, DelegationTerms, Fingerprint, InputChain, SeedChain, SeedError,
+    ServerSeed, SessionHeader, SessionLog, SessionTerms,
 };
 use campfire_runner::{Runner, Session, StartError};
 use campfire_sim::{EntityIndex, Position, StableId, StateHash};

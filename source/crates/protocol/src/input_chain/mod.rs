@@ -3,9 +3,9 @@ use secp256k1::{Keypair, Secp256k1, Signing, Verification, XOnlyPublicKey, schno
 
 use crate::input_hash::InputHash;
 use crate::player_input::PlayerInput;
-use crate::player_slot::PlayerSlot;
 use crate::session_id::SessionId;
 use crate::signature::Signature;
+use campfire_math::PlayerSlot;
 
 /// Starts every input hash, so no other BLAKE3 use can produce a chain link.
 const HASH_DOMAIN: &[u8] = b"campfire/input-hash/v1";

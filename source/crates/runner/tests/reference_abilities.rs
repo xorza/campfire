@@ -11,11 +11,11 @@ use campfire_capabilities::{
     Scalar, Scaling, ScriptLimits, Targeting, Team, Units,
 };
 use campfire_content::PackagePath;
-use campfire_math::{Num, SegmentSeed, Vec3};
+use campfire_math::{Num, PlayerSlot, SegmentSeed, Vec3};
 use campfire_package::{HeroData, PackageDir};
 use campfire_sim::{
-    Capability, EntityIndex, IdAllocator, PlayerSlot, Position, SimUpdate, StableId, StateRegistry,
-    TickInput, TickInputs, TickRate, Ticks,
+    Capability, EntityIndex, IdAllocator, Position, SimUpdate, StableId, StateRegistry, TickInput,
+    TickInputs, TickRate, Ticks,
 };
 
 /// The MOBA's 30 ticks a second.

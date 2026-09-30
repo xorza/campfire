@@ -3,8 +3,8 @@ use std::num::NonZeroU32;
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::Component;
 use campfire_content::PackagePath;
-use campfire_math::Num;
-use campfire_sim::{Capability, IdAllocator, PlayerSlot, SimUpdate, TickInput, TypeHash};
+use campfire_math::{Num, PlayerSlot};
+use campfire_sim::{Capability, IdAllocator, SimUpdate, TickInput, TypeHash};
 
 use super::*;
 use crate::capability_set::internals::TestMatch;

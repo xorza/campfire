@@ -1,4 +1,5 @@
-use campfire_protocol::{PlayerInput, PlayerSlot, Signature};
+use campfire_math::PlayerSlot;
+use campfire_protocol::{PlayerInput, Signature};
 use serde::{Deserialize, Serialize};
 
 /// A packet of player inputs as the client sends it, signed once over the chain head after the

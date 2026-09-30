@@ -1,5 +1,6 @@
 use bevy_ecs::resource::Resource;
-use campfire_sim::{PlayerSlot, SimResource};
+use campfire_math::PlayerSlot;
+use campfire_sim::SimResource;
 use serde::{Deserialize, Serialize};
 
 /// The players' named resources, such as gold: one run sorted by slot, then by name.

@@ -12,7 +12,7 @@ use campfire_math::SegmentSeed;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SignOnly};
 use campfire_protocol::{Delegation, DelegationTerms, InputChain, InputHash, SessionId};
 use campfire_sim::{
-    PlayerSlot, SimTick, SimUpdate, StableId, StateRegistry, Tick, TickInput, TickInputs, TickRate,
+    SimTick, SimUpdate, StableId, StateRegistry, Tick, TickInput, TickInputs, TickRate,
 };
 use lightyear::prelude::client::{InputDelayConfig, InputTimelineConfig};
 use lightyear::prelude::{
@@ -354,7 +354,7 @@ fn run_predicted_tick(world: &mut World) {
     let Some(slot) = world
         .resource::<SentInputs>()
         .chain
-        .map(|chain| PlayerSlot::new(chain.slot().get()))
+        .map(|chain| chain.slot())
     else {
         return;
     };

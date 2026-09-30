@@ -7,16 +7,14 @@ use campfire_capabilities::{
     Hook, InputValue, LaneWalker, ModeInput, ModeState, Owner, PlayerResources, ScriptFailures,
     StateValue, Team, UnitType,
 };
-use campfire_math::{Num, Vec3};
+use campfire_math::{Num, PlayerSlot, Vec3};
 use campfire_package::{ModePackages, RELEASE};
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
 use campfire_protocol::{
-    Delegation, DelegationTerms, InputChain, PlayerSlot, SeedChain, SessionHeader, SessionLog,
-    SessionTerms,
+    Delegation, DelegationTerms, InputChain, SeedChain, SessionHeader, SessionLog, SessionTerms,
 };
 use campfire_runner::{Runner, Session};
 use campfire_script::ScriptHost;
-use campfire_sim::PlayerSlot as SimSlot;
 use campfire_sim::{EntityIndex, Position, StableId, StateHash};
 
 /// The 3v3's slowest rate, which runs a match in the fewest ticks.
@@ -248,7 +246,7 @@ fn a_3v3_match_replays_to_the_same_hashes() {
     let gold = world.resource::<PlayerResources>();
     for slot in 0..PLAYERS {
         assert_eq!(
-            gold.amount(SimSlot::new(slot), "gold"),
+            gold.amount(PlayerSlot::new(slot), "gold"),
             104,
             "player {slot}"
         );

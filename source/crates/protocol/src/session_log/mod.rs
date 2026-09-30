@@ -4,7 +4,7 @@ use std::mem;
 use std::ops::Range;
 
 use blake3::Hasher;
-use campfire_math::SegmentSeed;
+use campfire_math::{PlayerSlot, SegmentSeed};
 use secp256k1::{Secp256k1, VerifyOnly};
 use serde::{Deserialize, Serialize};
 
@@ -12,7 +12,6 @@ use crate::delegation::Delegation;
 use crate::delegation::error::DelegationError;
 use crate::input_chain::InputChain;
 use crate::player_input::PlayerInput;
-use crate::player_slot::PlayerSlot;
 use crate::server_seed::ServerSeed;
 use crate::session_id::SessionId;
 use crate::session_log::error::{HeaderError, InputError, LogError, SeedError};
@@ -236,7 +235,7 @@ impl SessionLog {
     {
         let inputs = inputs.into_iter();
         let slot = inputs.clone().next().ok_or(InputError::EmptyPacket)?.slot;
-        let player = slot.get() as usize;
+        let player = slot.index();
         debug_assert!(
             self.to_replay.is_empty(),
             "a log that replays takes no input"

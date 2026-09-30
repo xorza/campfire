@@ -31,7 +31,7 @@ Each layer uses the layers below it.
 
 `sim` is pure: state and inputs in, next state out; no files, packages or signatures.
 
-Dependencies: `server`, `client`, `verifier`, `det-ci` → `runner` → `package` → `capabilities` → `script`, `sim`, `content`; `script` and `sim` → `math`; `protocol` → `math`. The runner joins `protocol` and the packages: the session log and the packages each own their slot and fingerprint types, and the runner converts between them. Within `capabilities`, a module imports only from the capabilities below it.
+Dependencies: `server`, `client`, `verifier`, `det-ci` → `runner` → `package` → `capabilities` → `script`, `sim`, `content`; `script` and `sim` → `math`; `protocol` → `math`. The runner joins `protocol` and the packages: the session log and the packages each own their fingerprint type, and the runner converts between them. `math` holds what both sides share: the segment seed and the player slot. Within `capabilities`, a module imports only from the capabilities below it.
 
 Outside the engine crates: the reference MOBA and bots. `det-ci` uses both as test content; nothing else in the engine depends on them. Bots produce inputs like players, so replays never depend on bot code.
 

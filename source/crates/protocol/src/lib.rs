@@ -10,7 +10,6 @@ mod hex;
 mod input_chain;
 mod input_hash;
 mod player_input;
-mod player_slot;
 mod seed_chain;
 mod server_seed;
 mod session_id;
@@ -28,7 +27,6 @@ pub use fingerprint::Fingerprint;
 pub use input_chain::InputChain;
 pub use input_hash::InputHash;
 pub use player_input::PlayerInput;
-pub use player_slot::PlayerSlot;
 /// The curve library the keys and signatures of this API are typed in, at the version it pins.
 pub use secp256k1;
 pub use seed_chain::SeedChain;

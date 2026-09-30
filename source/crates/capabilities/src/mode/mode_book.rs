@@ -3,9 +3,10 @@ use std::rc::Rc;
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
+use campfire_math::PlayerSlot;
 use campfire_script::ScriptHost;
 use campfire_script::rhai::{Array, Dynamic, ImmutableString, Map};
-use campfire_sim::{IdAllocator, PlayerSlot, Position, StableId, TickRate};
+use campfire_sim::{IdAllocator, Position, StableId, TickRate};
 
 use crate::abilities::ability_slots::AbilitySlots;
 use crate::mode::error::ModeError;

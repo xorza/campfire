@@ -1,4 +1,4 @@
-use campfire_protocol::PlayerSlot;
+use campfire_math::PlayerSlot;
 use serde::{Deserialize, Serialize};
 
 /// Tells a client that the match started, and which player it is.

@@ -8,10 +8,11 @@ use bevy_ecs::schedule::common_conditions::resource_exists;
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_capabilities::{Dead, Mode, Owner, SeenBy, Team};
+use campfire_math::PlayerSlot;
 use campfire_package::ModePackages;
-use campfire_protocol::{Applied, PlayerSlot, ServerSeed, SessionLog};
+use campfire_protocol::{Applied, ServerSeed, SessionLog};
 use campfire_runner::{Session, StartError};
-use campfire_sim::{self as sim, SimTick, StableId, StateHash, TickRate};
+use campfire_sim::{SimTick, StableId, StateHash, TickRate};
 use lightyear::core::tick::TickDuration;
 use lightyear::prelude::{
     LocalTimeline, MessageReceiver, MessageSender, NetworkTarget, PredictionTarget, Replicate,
@@ -121,8 +122,7 @@ impl SimServer {
         let start = world.resource::<LocalTimeline>().tick() + 1;
         world.insert_resource(MatchClock::new(start));
         for (slot, &client) in (0..).map(PlayerSlot::new).zip(clients) {
-            let team = Mode::team_of(world, sim::PlayerSlot::new(slot.get()))
-                .expect("every player has a team");
+            let team = Mode::team_of(world, slot).expect("every player has a team");
             world.entity_mut(client).insert(PlayerLink {
                 slot,
                 team,
@@ -235,11 +235,8 @@ fn show_units(
     for (unit, owner) in &new {
         let mut replicated = commands.entity(unit);
         replicated.insert(Replicate::to_clients(NetworkTarget::All));
-        let owner = owner.and_then(|owner| {
-            links
-                .iter()
-                .find(|(_, link)| link.slot.get() == owner.slot().get())
-        });
+        let owner =
+            owner.and_then(|owner| links.iter().find(|(_, link)| link.slot == owner.slot()));
         if let Some((link, _)) = owner {
             replicated.insert(PredictionTarget::manual(vec![link]));
         }

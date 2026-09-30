@@ -1,13 +1,16 @@
-//! Fixed-point numbers, 3D vectors, trig and the counter-based RNG.
+//! Fixed-point numbers, 3D vectors, trig, the counter-based RNG, and the player slot that the
+//! session log and the sim share.
 
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 
 mod num;
+mod player_slot;
 mod rng;
 mod vec3;
 
 pub use num::error::ParseNumError;
 pub use num::{Num, SinCos};
+pub use player_slot::PlayerSlot;
 pub use rng::Rng;
 pub use rng::rng_source::{RngSource, SegmentSeed};
 pub use vec3::Vec3;

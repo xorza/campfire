@@ -4,9 +4,9 @@ use std::num::NonZeroU32;
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::Component;
 use campfire_content::PackagePath;
-use campfire_math::Vec3;
+use campfire_math::{PlayerSlot, Vec3};
 use campfire_script::{NumError, ScriptError};
-use campfire_sim::{Capability, IdAllocator, PlayerSlot, SimUpdate};
+use campfire_sim::{Capability, IdAllocator, SimUpdate};
 
 use super::*;
 use crate::abilities::ability_data::RangeField;

@@ -4,9 +4,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use bevy_ecs::world::{EntityRef, World};
-use campfire_math::{Num, Vec3};
+use campfire_math::{Num, PlayerSlot, Vec3};
 use campfire_script::rhai::{Array, Dynamic, Engine, INT, ImmutableString};
-use campfire_sim::{EntityIndex, PlayerSlot, Position, SimTick, StableId, Tick, TickRate, Ticks};
+use campfire_sim::{EntityIndex, Position, SimTick, StableId, Tick, TickRate, Ticks};
 
 use crate::scripts::error::{ApiError, Checked};
 use crate::units::filter::Filter;

@@ -269,7 +269,7 @@ impl LocalMatch {
             .find(|&(_, unit)| {
                 world
                     .get::<Owner>(unit)
-                    .is_some_and(|owner| owner.slot().get() == slot.get())
+                    .is_some_and(|owner| owner.slot() == slot)
             })
             .map(|(id, _)| id)
             .expect("the match started, with the player's hero")

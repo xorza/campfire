@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fmt;
 
 use crate::delegation::error::DelegationError;
-use crate::player_slot::PlayerSlot;
+use campfire_math::PlayerSlot;
 
 /// Why the log refused a packet of inputs. Packets come from the network, so each is an expected
 /// failure.

@@ -1,4 +1,4 @@
-use campfire_sim::PlayerSlot;
+use campfire_math::PlayerSlot;
 
 /// The pool a script call draws from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
