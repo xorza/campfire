@@ -2,7 +2,7 @@ use std::fs;
 use std::path::Path;
 
 use crate::error::ContentError;
-use campfire_protocol::Fingerprint;
+use crate::fingerprint::Fingerprint;
 
 use crate::package_dir::PackageDir;
 

@@ -3,6 +3,7 @@ use std::path::Path;
 use campfire_capabilities::{
     HeroData, Manifest, MapData, ModeData, ModeManifest, SpellsData, UnitsData,
 };
+use campfire_content::Fingerprint as PackageFingerprint;
 use campfire_content::{ContentError, PackageDir, PackagePath, PackageStore};
 use campfire_protocol::Fingerprint;
 use campfire_script::ScriptHost;
@@ -63,7 +64,10 @@ impl ModePackages {
         mode: Fingerprint,
         dependencies: &[Fingerprint],
     ) -> Result<ModePackages, StartError> {
-        let dir = store.get(mode).ok_or(StartError::UnknownMode)?.clone();
+        let dir = store
+            .get(of_package(mode))
+            .ok_or(StartError::UnknownMode)?
+            .clone();
         let manifest = read_mode_manifest(&dir).map_err(StartError::Load)?;
         if manifest.dependencies.len() != dependencies.len() {
             return Err(StartError::DependencyCount);
@@ -74,7 +78,7 @@ impl ModePackages {
             .zip(dependencies)
             .map(|(name, &fingerprint)| {
                 let dir = store
-                    .get(fingerprint)
+                    .get(of_package(fingerprint))
                     .ok_or_else(|| StartError::MissingDependency(name.clone()))?;
                 Ok((name.clone(), dir.clone()))
             })
@@ -83,14 +87,14 @@ impl ModePackages {
     }
 
     pub fn fingerprint(&self) -> Fingerprint {
-        self.mode.fingerprint
+        in_terms(self.mode.fingerprint)
     }
 
     /// The fingerprints of its dependencies, in the order of their names in its manifest.
     pub fn dependencies(&self) -> impl ExactSizeIterator<Item = Fingerprint> + '_ {
         self.dependencies
             .iter()
-            .map(|dependent| dependent.package.fingerprint)
+            .map(|dependent| in_terms(dependent.package.fingerprint))
     }
 
     pub fn manifest(&self) -> &ModeManifest {
@@ -181,6 +185,17 @@ fn read_mode_manifest(dir: &PackageDir) -> Result<ModeManifest, LoadError> {
         Manifest::Mode(manifest) => Ok(manifest),
         _ => Err(fail(LoadProblem::WrongKind)),
     }
+}
+
+/// A package's fingerprint as the session terms name it: the terms and the packages each own a
+/// fingerprint type, and they meet here.
+const fn in_terms(fingerprint: PackageFingerprint) -> Fingerprint {
+    Fingerprint::new(*fingerprint.as_bytes())
+}
+
+/// The fingerprint the session terms name, as the package store holds packages by.
+const fn of_package(fingerprint: Fingerprint) -> PackageFingerprint {
+    PackageFingerprint::new(*fingerprint.as_bytes())
 }
 
 /// One of the engine's paths in a package.

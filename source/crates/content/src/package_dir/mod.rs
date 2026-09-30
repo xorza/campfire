@@ -1,12 +1,12 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use campfire_protocol::Fingerprint;
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sha2::{Digest, Sha256};
 
 use crate::error::ContentError;
+use crate::fingerprint::Fingerprint;
 use crate::package_path::PackagePath;
 
 /// A package's files on disk, as the workspace holds them before a package is built.
