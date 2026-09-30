@@ -3,6 +3,7 @@ use campfire_script::ScriptError;
 use campfire_script::rhai::FuncArgs;
 use campfire_sim::{EntityIndex, Tick};
 
+use crate::abilities::ability_slots::AbilitySlots;
 use crate::combat::respawn::Respawn;
 use crate::mode::mode_ctx::{ModeCtx, ModeEffect};
 use crate::mode::mode_state::ModeState;
@@ -98,6 +99,12 @@ impl Calls<'_, '_> {
                     let entity = entity.expect("a dead unit that stays is in the world");
                     let at = self.now.after(ticks);
                     world.entity_mut(entity).insert(Respawn { at });
+                }
+                ModeEffect::Learn { unit, slot } => {
+                    let entity = world.resource::<EntityIndex>().get(unit);
+                    let entity = entity.expect("a unit the view read is in the world");
+                    let slots = world.get_mut::<AbilitySlots>(entity);
+                    slots.expect("a unit with ability slots").learn(slot);
                 }
             }
         }

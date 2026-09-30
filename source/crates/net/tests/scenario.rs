@@ -4,13 +4,13 @@
 use std::num::NonZeroU32;
 
 use bevy_app::App;
-use campfire_capabilities::Dead;
+use campfire_capabilities::{AbilitySlots, Dead, Health, ResourcePool};
 use campfire_math::{Num, Vec3};
-use campfire_net::{LinkModel, LocalMatch, MatchSetup, OrderScript, TickHashes};
+use campfire_net::{LinkModel, LocalMatch, MatchSetup, TickHashes};
 use campfire_protocol::{SeedChain, SessionLog};
 use campfire_runner::{Runner, Session};
-use campfire_sim::{EntityIndex, Position, SimTick, StableId};
-use lightyear::prelude::{PredictionMetrics, RollbackMode};
+use campfire_sim::{EntityIndex, Position, SimTick, StableId, Tick};
+use lightyear::prelude::PredictionMetrics;
 
 const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
 const MATCH_TICKS: u64 = 600;
@@ -70,28 +70,10 @@ impl Life {
 
 /// Plays the match through `link` and checks it; gives each client's rollbacks.
 fn play(link: LinkModel) -> [u32; 2] {
-    let mut local = LocalMatch::new(MatchSetup {
-        players: 2,
-        rollback: RollbackMode::Check,
-        server_frames: 3,
-        link,
-        seed_chain: SEED_CHAIN,
-    });
+    let mut local = LocalMatch::new(MatchSetup::duo(link, SEED_CHAIN));
     local.start_match();
-    // Players take slots in the order their joins arrive, so each client plays its hero's team's
-    // script.
     let heroes = [local.hero(0), local.hero(1)];
-    let teams = [0, 1].map(|client| usize::from(local.team(client).index()));
-    assert_ne!(
-        teams[0], teams[1],
-        "the two players' heroes are on two teams"
-    );
-    for (client, &team) in teams.iter().enumerate() {
-        local.play(
-            client,
-            OrderScript::parse(LocalMatch::SCENARIO_SCRIPTS[team]).unwrap(),
-        );
-    }
+    let teams = local.play_by_team(LocalMatch::SCENARIO_SCRIPTS);
     let mut on_server = [Life::default(); 2];
     let mut on_client = [Life::default(); 2];
     // Each client's lead on the server, in ticks, when it learned its hero died; below 0 when it
@@ -118,7 +100,7 @@ fn play(link: LinkModel) -> [u32; 2] {
         local.step();
     }
 
-    check_log(&mut local);
+    check_log(&mut local, 4);
 
     let worst = u64::from(link.delay + link.jitter);
     for index in 0..2 {
@@ -166,9 +148,9 @@ fn play(link: LinkModel) -> [u32; 2] {
     })
 }
 
-/// Checks the server's log: every order was logged in time, and took effect in the tick of its
-/// stamp; the replayed log gives the server's hash after every tick.
-fn check_log(local: &mut LocalMatch) {
+/// Checks the server's log: all `inputs` orders were logged in time, and took effect in the tick
+/// of their stamps; the replayed log gives the server's hash after every tick.
+fn check_log(local: &mut LocalMatch, inputs: usize) {
     let server = local.server_mut().world_mut();
     server.resource_mut::<Session>().reveal_seed();
     let live = server.resource::<TickHashes>().get().to_vec();
@@ -182,7 +164,7 @@ fn check_log(local: &mut LocalMatch) {
     for tick in 0..ticks {
         applied.extend(rewound.seal_tick().map(|input| (input.stamp, tick)));
     }
-    assert_eq!(applied.len(), 4);
+    assert_eq!(applied.len(), inputs);
     assert!(
         applied.iter().all(|&(stamp, tick)| stamp == tick),
         "{applied:?}"
@@ -193,6 +175,102 @@ fn check_log(local: &mut LocalMatch) {
         replay.run_tick();
         assert_eq!(replay.state_hash(), *live, "tick {tick}");
     }
+}
+
+/// By team, the west, whose hero is the walker, then the east: both walk 7.5 m off the lane, out of
+/// reach of creeps and towers and within the vision grid, to stand 1 m apart. Then the walker casts its first ability, 100
+/// true damage within 2 m for 40 of its 100 mana, every 90 ticks: in tick 100 it hits; in 120 it
+/// is on cooldown; in 190 its cooldown has ended, and it hits; in 280 the 20 mana left do not pay.
+const CAST_SCRIPTS: [&str; 2] = [
+    "[[order]]\ntick = 60\nmove = [0, \"7.5\"]\n[[order]]\ntick = 100\ncast = 0\n[[order]]\ntick = 120\ncast = 0\n[[order]]\ntick = 190\ncast = 0\n[[order]]\ntick = 280\ncast = 0\n",
+    "[[order]]\ntick = 60\nmove = [1, \"7.5\"]\n",
+];
+const CAST_TICKS: u64 = 300;
+
+/// A unit's health, its resource, and the first tick its first ability may be cast again, as an
+/// app holds them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Caster {
+    health: Num,
+    resource: Option<Num>,
+    ready_at: Option<Tick>,
+}
+
+fn caster(app: &App, id: StableId) -> Caster {
+    let world = app.world();
+    let unit = world.entity(world.resource::<EntityIndex>().get(id).unwrap());
+    Caster {
+        health: unit.get::<Health>().unwrap().current(),
+        resource: unit.get::<ResourcePool>().map(|pool| pool.current()),
+        ready_at: unit
+            .get::<AbilitySlots>()
+            .and_then(|slots| slots.slot(0))
+            .map(|slot| slot.ready_at),
+    }
+}
+
+/// Plays the cast scenario through `link` and checks it; gives each client's rollbacks.
+fn cast(link: LinkModel) -> [u32; 2] {
+    let mut local = LocalMatch::new(MatchSetup::duo(link, SEED_CHAIN));
+    local.start_match();
+    // Player 0 plays the walker, of the west.
+    let heroes = [local.hero(0), local.hero(1)];
+    let teams = local.play_by_team(CAST_SCRIPTS);
+    let walker = heroes[teams.iter().position(|&team| team == 0).unwrap()];
+    let runner = heroes[teams.iter().position(|&team| team == 1).unwrap()];
+    // The ticks after which the runner's health changed on the server.
+    let mut hit = Vec::new();
+    let mut health = caster(local.server(), runner).health;
+    while next_tick(local.server()) < CAST_TICKS {
+        local.step();
+        let now = caster(local.server(), runner).health;
+        if now != health {
+            hit.push(next_tick(local.server()) - 1);
+            health = now;
+        }
+    }
+    for _ in 0..20 {
+        local.step();
+    }
+    check_log(&mut local, 6);
+
+    // Each cast that paid took effect in its stamp tick: 600 − 100 − 100 health; 100 − 40 − 40
+    // mana, and the ability ready again 90 ticks after the second, on the server and on both
+    // clients.
+    assert_eq!(hit, [100, 190]);
+    let num = |value| Num::from_int(value).unwrap();
+    let expected = [
+        (
+            runner,
+            Caster {
+                health: num(400),
+                resource: Some(num(100)),
+                ready_at: Some(Tick::ZERO),
+            },
+        ),
+        (
+            walker,
+            Caster {
+                health: num(600),
+                resource: Some(num(20)),
+                ready_at: Some(Tick::new(280)),
+            },
+        ),
+    ];
+    for (id, expected) in expected {
+        assert_eq!(caster(local.server(), id), expected, "{id:?} on the server");
+        for client in 0..2 {
+            assert_eq!(
+                caster(local.client(client), id),
+                expected,
+                "{id:?} on client {client}"
+            );
+        }
+    }
+    [0, 1].map(|client| {
+        let world = local.client(client).world();
+        world.resource::<PredictionMetrics>().rollbacks
+    })
 }
 
 #[test]
@@ -212,4 +290,15 @@ fn a_1v1_through_delayed_links() {
         seed: 7,
     });
     assert_eq!(rollbacks, [1, 1]);
+}
+
+#[test]
+fn a_cast_through_delayed_links() {
+    let rollbacks = cast(LinkModel {
+        delay: 3,
+        jitter: 2,
+        loss_per_mille: 0,
+        seed: 7,
+    });
+    assert_eq!(rollbacks, [0, 0]);
 }

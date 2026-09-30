@@ -56,6 +56,19 @@ impl AbilitySlots {
         self.slots.get(usize::from(slot)).copied()
     }
 
+    pub(crate) fn iter(&self) -> impl Iterator<Item = AbilitySlot> + '_ {
+        self.slots.iter().copied()
+    }
+
+    /// Raises the ability in `slot` a rank; the caller checked it has one more.
+    pub(crate) fn learn(&mut self, slot: u8) {
+        let slot = &mut self.slots[usize::from(slot)];
+        slot.rank = slot
+            .rank
+            .checked_add(1)
+            .expect("a rank below the ability's ranks");
+    }
+
     /// Whether a cast was ordered or is under way.
     pub const fn is_casting(&self) -> bool {
         self.casting.is_some()

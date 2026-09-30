@@ -77,6 +77,10 @@ pub enum ApiError {
     RespawnAlive,
     /// A unit to respawn whose type despawns when it dies.
     RespawnDespawns,
+    /// A slot the unit has no ability in.
+    NoAbilitySlot,
+    /// An ability to learn that is at its last rank already.
+    MaxRank,
 }
 
 impl CallError {
@@ -153,6 +157,8 @@ impl fmt::Display for ApiError {
             ApiError::ResourceOverflow => "player resource overflows",
             ApiError::RespawnAlive => "unit to respawn is alive",
             ApiError::RespawnDespawns => "unit to respawn despawns when it dies",
+            ApiError::NoAbilitySlot => "unit has no ability in that slot",
+            ApiError::MaxRank => "ability is at its last rank",
         })
     }
 }

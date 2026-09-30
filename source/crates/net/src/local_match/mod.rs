@@ -82,6 +82,18 @@ impl MatchSetup {
             seed_chain,
         }
     }
+
+    /// Two players through `link`, whose clients roll back only on a misprediction, with a
+    /// server that runs 3 frames a tick.
+    pub const fn duo(link: LinkModel, seed_chain: SeedChain) -> MatchSetup {
+        MatchSetup {
+            players: 2,
+            rollback: RollbackMode::Check,
+            server_frames: 3,
+            link,
+            seed_chain,
+        }
+    }
 }
 
 /// A server app and one client app for each player, joined by in-process channels through a
@@ -293,6 +305,22 @@ impl LocalMatch {
             .expect("the match started, with the player's hero")
     }
 
+    /// Makes each client play the script of its hero's team, by team index, as a bot does; gives
+    /// each client's team index. Players take slots in the order their joins arrive, so a
+    /// scenario cannot fix which client plays which team.
+    pub fn play_by_team(&mut self, scripts: [&str; 2]) -> [usize; 2] {
+        let teams = [0, 1].map(|client| usize::from(self.team(client).index()));
+        assert_ne!(
+            teams[0], teams[1],
+            "the two players' heroes are on two teams"
+        );
+        for (client, team) in teams.into_iter().enumerate() {
+            let script = OrderScript::parse(scripts[team]).expect("a scenario's script reads");
+            self.play(client, script);
+        }
+        teams
+    }
+
     /// The team of `client`'s player's hero: players take slots in the order their joins arrive.
     pub fn team(&self, client: usize) -> Team {
         let world = self.server.world();
@@ -361,14 +389,16 @@ impl ClientApp {
             tick_duration: tick,
         });
         client.add_plugins((NetProtocol, sim_client));
-        // Lightyear measures the round trip by the wall clock, and a step of this match takes
-        // almost none, so the sync margin carries the one-way delay the link model adds, in
-        // ticks: its delay and jitter, a tick to spare, and the drift the sync allows before
-        // it corrects the lead.
+        // Lightyear keeps the client ahead of its estimate of the server's tick by half the
+        // round trip and the sync margin, and advances that estimate by the other half. It
+        // measures the round trip by the wall clock, which a step of this match hardly takes, so
+        // the margin carries the round trip the link model adds, at its worst, in ticks: the
+        // uplink's delay and jitter, as much again for the downlink, and the drift the sync
+        // allows before it corrects the lead.
         let sync = SyncConfig::default();
-        let spare = u16::try_from(setup.link.delay + setup.link.jitter + 1)
+        let round_trip = u16::try_from(2 * (setup.link.delay + setup.link.jitter))
             .expect("a delay of a few steps");
-        let margin = f32::from(spare) + sync.error_margin;
+        let margin = f32::from(round_trip) + sync.error_margin;
         client.insert_resource(InputTimelineConfig::new(
             SyncConfig {
                 jitter_margin: margin,

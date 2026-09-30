@@ -117,7 +117,7 @@ A unit handle has the fields of the capabilities its type uses; reading a field 
 | Abilities | `abilities` | `reduce_cooldown(unit, id, ms)`, `reduce_cooldowns(unit, fraction)` (basic abilities), `add_charge(unit, id)` |
 | Progress | core; `stats` for experience | `add_resource(player, name, amount)`, `add_xp(hero, amount)` |
 | Orders (AI) | `orders` | `order_attack(unit, target)`, `order_move(unit, pos)`, `order_follow_lane(unit)`, `order_reset(unit)` (walk home, heal, drop target) |
-| Mode | core; `combat` for `respawn` | `timer(name, ms, repeat, data)`, `end(result)`, `spawn_heroes()`, `spawn_unit(type, team, pos)`, `spawn_wave(team, lane, types)`, `respawn(unit, ms)`, `choose_hero(player, id)`, `choose_spells(player, ids)` |
+| Mode | core; `combat` for `respawn`, `abilities` for `learn` | `timer(name, ms, repeat, data)`, `end(result)`, `spawn_heroes()`, `spawn_unit(type, team, pos)`, `spawn_wave(team, lane, types)`, `respawn(unit, ms)`, `learn(hero, slot)` (the ability in `slot` a rank more, up to its last; a hero's own abilities spawn unlearned), `choose_hero(player, id)`, `choose_spells(player, ids)` |
 
 `ctx.p` reads, in an ability, its params; in a modifier, the modifier's params and then those of the ability that applied it; in a mode or AI script, the mode's params.
 

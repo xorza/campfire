@@ -4,7 +4,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Without;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::{Local, NonSend, Query, Res};
-use bevy_ecs::world::World;
+use bevy_ecs::world::{EntityRef, World};
 use campfire_math::Num;
 use campfire_script::rhai::Dynamic;
 use campfire_script::{ScriptHost, ScriptId};
@@ -28,7 +28,7 @@ use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
 use crate::units::owner::Owner;
-use crate::units::script_view::View;
+use crate::units::script_view::{RowFill, SlotRow, View};
 use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
 use crate::units::unit::Unit;
@@ -58,8 +58,9 @@ impl Abilities {
             return;
         };
         Ctx::register(host.engine_mut());
-        let ctx = Ctx::new(world.non_send::<View>().clone());
-        world.insert_non_send(ctx);
+        let view = world.non_send::<View>().clone();
+        view.add_source(fill_row);
+        world.insert_non_send(Ctx::new(view));
         world.insert_resource(AbilityBook::default());
         schedule.add_systems((
             start_casts.in_set(SimSet::Act),
@@ -169,6 +170,25 @@ struct Checked<'a> {
     cost: Num,
     cooldown: Ticks,
     cast_time: Ticks,
+}
+
+/// Fills a unit's ability slots: each one's rank, and how many ranks its ability has.
+fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
+    let Some(slots) = unit.get::<AbilitySlots>() else {
+        return;
+    };
+    let world = fill.world;
+    let book = world.resource::<AbilityBook>();
+    let rows = slots.iter().map(|slot| {
+        let ability = book
+            .get(slot.ability)
+            .expect("a slot's ability is in the book");
+        SlotRow {
+            rank: slot.rank,
+            ranks: u8::try_from(ability.ranks.len()).expect("an ability has few ranks"),
+        }
+    });
+    fill.slotted(rows);
 }
 
 /// The cast `casting` of a unit on `team`, when it may go on: its slot holds a learned ability

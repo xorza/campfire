@@ -10,7 +10,6 @@ use lightyear::prelude::RollbackMode;
 
 use crate::local_match::link_model::LinkModel;
 use crate::local_match::{LocalMatch, MatchSetup};
-use crate::order_script::OrderScript;
 
 const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
 /// A quarter meter a tick crosses the 10 m between the two targets in 40 ticks, so a new order
@@ -76,19 +75,9 @@ pub fn worst_client_frame(c: &mut Criterion) {
 }
 
 fn worst_frame_of_a_match() -> Duration {
-    let mut local = LocalMatch::new(MatchSetup {
-        players: 2,
-        rollback: RollbackMode::Check,
-        server_frames: 3,
-        link: LinkModel::PERFECT,
-        seed_chain: SEED_CHAIN,
-    });
+    let mut local = LocalMatch::new(MatchSetup::duo(LinkModel::PERFECT, SEED_CHAIN));
     local.start_match();
-    for client in 0..2 {
-        let team = usize::from(local.team(client).index());
-        let script = OrderScript::parse(LocalMatch::SCENARIO_SCRIPTS[team]).unwrap();
-        local.play(client, script);
-    }
+    local.play_by_team(LocalMatch::SCENARIO_SCRIPTS);
     let mut worst = Duration::ZERO;
     for _ in 0..MATCH_TICKS {
         for client in 0..2 {

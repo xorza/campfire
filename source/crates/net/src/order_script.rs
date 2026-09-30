@@ -1,4 +1,4 @@
-use campfire_capabilities::{Action, Scalar};
+use campfire_capabilities::{Action, CastTarget, Scalar};
 use campfire_sim::Tick;
 use serde::Deserialize;
 
@@ -6,7 +6,8 @@ use crate::error::OrderScriptError;
 
 /// A player's orders for their hero, each at a sim tick, in tick order, and optionally the tick
 /// the player leaves after: what a bot plays. It reads from TOML: an optional `end`, and one
-/// `[[order]]` table each, with its `tick` and `move = [x, z]` in meters.
+/// `[[order]]` table each, with its `tick` and one action: `move = [x, z]` in meters, or
+/// `cast = <slot>` of an ability that takes no target.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OrderScript {
     orders: Vec<ScriptedOrder>,
@@ -21,8 +22,8 @@ pub struct ScriptedOrder {
 }
 
 impl OrderScript {
-    /// The script `text` holds; an error when it is not TOML of this shape, when a coordinate is
-    /// past what a sim number holds, when the ticks do not grow, or when the script ends before an
+    /// The script `text` holds; an error when it is not TOML of this shape, when an order names
+    /// no action or two, when a coordinate is past what a sim number holds, when the ticks do not grow, or when the script ends before an
     /// order.
     pub fn parse(text: &str) -> Result<OrderScript, OrderScriptError> {
         #[derive(Deserialize)]
@@ -37,14 +38,25 @@ impl OrderScript {
         struct Entry {
             tick: u64,
             #[serde(rename = "move")]
-            to: [Scalar; 2],
+            to: Option<[Scalar; 2]>,
+            cast: Option<u8>,
         }
         let file: File = toml::from_str(text).map_err(OrderScriptError::Toml)?;
         let mut orders = Vec::with_capacity(file.order.len());
-        for Entry { tick, to } in file.order {
-            let [x, z] = to.map(Scalar::to_num);
-            let (Some(x), Some(z)) = (x, z) else {
-                return Err(OrderScriptError::Coordinate { tick });
+        for Entry { tick, to, cast } in file.order {
+            let action = match (to, cast) {
+                (Some(to), None) => {
+                    let [x, z] = to.map(Scalar::to_num);
+                    let (Some(x), Some(z)) = (x, z) else {
+                        return Err(OrderScriptError::Coordinate { tick });
+                    };
+                    Action::Move { x, z }
+                }
+                (None, Some(slot)) => Action::Cast {
+                    slot,
+                    target: CastTarget::None,
+                },
+                _ => return Err(OrderScriptError::Action { tick }),
             };
             let tick = Tick::new(tick);
             if orders
@@ -53,10 +65,7 @@ impl OrderScript {
             {
                 return Err(OrderScriptError::Unordered { tick: tick.get() });
             }
-            orders.push(ScriptedOrder {
-                tick,
-                action: Action::Move { x, z },
-            });
+            orders.push(ScriptedOrder { tick, action });
         }
         let end = file.end.map(Tick::new);
         if let (Some(end), Some(last)) = (end, orders.last())
@@ -134,5 +143,28 @@ mod tests {
             flaw("[[order]]\ntick = 9\nwalk = [1, 1]\n"),
             OrderScriptError::Toml(_)
         ));
+        // A cast of slot 2, with no target; an order of no action or two is refused.
+        assert_eq!(
+            OrderScript::parse("[[order]]\ntick = 9\ncast = 2\n")
+                .unwrap()
+                .orders(),
+            [ScriptedOrder {
+                tick: Tick::new(9),
+                action: Action::Cast {
+                    slot: 2,
+                    target: CastTarget::None
+                },
+            }]
+        );
+        for flawed in [
+            "[[order]]\ntick = 9\n",
+            "[[order]]\ntick = 9\ncast = 0\nmove = [1, 1]\n",
+        ] {
+            assert_eq!(
+                flaw(flawed),
+                OrderScriptError::Action { tick: 9 },
+                "{flawed}"
+            );
+        }
     }
 }

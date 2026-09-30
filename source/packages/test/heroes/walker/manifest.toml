@@ -1,5 +1,6 @@
 # A test hero: it walks a quarter meter a tick at 30 ticks a second, and strikes 1.25 m away 8 ticks
-# into an attack every 20. Its abilities do nothing.
+# into an attack every 20. Its first ability deals 100 true damage to each enemy within 2 m, for
+# 40 of its 100 mana, every 3 s; the others do nothing.
 name = "hero-walker"
 version = "0.1.0"
 engine = "0.1.0"

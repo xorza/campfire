@@ -63,6 +63,10 @@ pub(crate) enum ModeEffect {
         unit: StableId,
         ticks: Ticks,
     },
+    Learn {
+        unit: StableId,
+        slot: u8,
+    },
 }
 
 /// `ctx.p`: the mode's params, by name.
@@ -169,6 +173,9 @@ impl ModeCtx {
             )
             .register_fn("respawn", |ctx: &mut ModeCtx, unit: Unit, ms: INT| {
                 ctx.respawn(&unit, ms)
+            })
+            .register_fn("learn", |ctx: &mut ModeCtx, unit: Unit, slot: INT| {
+                ctx.learn(&unit, slot)
             })
             .register_fn(
                 "add_resource",
@@ -372,6 +379,31 @@ impl ModeCtx {
             unit: row.id,
             ticks,
         });
+        Ok(())
+    }
+
+    /// Queues a rank more of the ability in `slot` of `unit`: one that has a rank above its
+    /// rank, counting the ranks this call queued already.
+    fn learn(&self, unit: &Unit, slot: INT) -> Checked<()> {
+        let row = unit.row();
+        let slot = u8::try_from(slot)
+            .ok()
+            .ok_or_else(|| ApiError::NoAbilitySlot.fail())?;
+        let slot_row = self
+            .view
+            .slot(&row, slot)
+            .ok_or_else(|| ApiError::NoAbilitySlot.fail())?;
+        let effect = ModeEffect::Learn { unit: row.id, slot };
+        let mut frame = self.frame();
+        let queued = frame
+            .effects
+            .iter()
+            .filter(|&queued| *queued == effect)
+            .count();
+        if usize::from(slot_row.rank) + queued >= usize::from(slot_row.ranks) {
+            return Err(ApiError::MaxRank.fail().into());
+        }
+        frame.effects.push(effect);
         Ok(())
     }
 

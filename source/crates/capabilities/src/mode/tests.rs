@@ -3,6 +3,7 @@ use std::num::NonZeroU32;
 use std::slice;
 
 use bevy_ecs::entity::Entity;
+use bevy_ecs::query::With;
 use campfire_content::PackagePath;
 use campfire_math::{Num, Vec3};
 use campfire_script::ScriptId;
@@ -236,18 +237,19 @@ fn mode_files() -> ModeFiles {
 }
 
 /// The test mode's setup from `files`, of `script`: its grunt, tower and two heroes' unit types,
-/// and its one spell.
+/// its one spell, and hero X's one ability, `strike`.
 fn setup(
     files: &ModeFiles,
     script: ScriptId,
     types: [UnitType; 4],
     spell: SpellSetup,
+    strike: AbilityId,
 ) -> ModeSetup<'_> {
     let [grunt_type, tower_type, x, y] = types;
-    let hero = |id: &str, unit_type| HeroSetup {
+    let hero = |id: &str, unit_type, abilities| HeroSetup {
         id: id.to_owned(),
         unit_type,
-        abilities: Vec::new(),
+        abilities,
         resource: None,
     };
     ModeSetup {
@@ -277,7 +279,10 @@ fn setup(
                 },
             },
         ],
-        heroes: vec![hero("hero-x", x), hero("hero-y", y)],
+        heroes: vec![
+            hero("hero-x", x, vec![strike]),
+            hero("hero-y", y, Vec::new()),
+        ],
         spells: vec![spell],
     }
 }
@@ -287,6 +292,8 @@ struct Game {
     world: World,
     /// The one spell's ability.
     blink: AbilityId,
+    /// Hero X's ability, of 2 ranks.
+    strike: AbilityId,
 }
 
 impl Game {
@@ -337,7 +344,8 @@ impl Game {
             params: BTreeMap::new(),
             projectile_state: BTreeMap::new(),
         };
-        // A spell has one rank.
+        // A spell has one rank; hero X's ability, 2.
+        let strike = Abilities::load(&mut world, &blink, None, 2).unwrap();
         let blink = Abilities::load(&mut world, &blink, None, 1).unwrap();
         let spell = SpellSetup {
             id: "blink".to_owned(),
@@ -346,11 +354,15 @@ impl Game {
         let types = [grunt_type, tower_type, x, y];
         let files = mode_files();
         let script = Units::compile(&mut world, script).unwrap();
-        let setup = setup(&files, script, types, spell);
+        let setup = setup(&files, script, types, spell, strike);
         Mode::install(&mut world, &mut schedule, &mut registry, setup).unwrap();
         world.add_schedule(schedule);
         Mode::start(&mut world)?;
-        Ok(Game { world, blink })
+        Ok(Game {
+            world,
+            blink,
+            strike,
+        })
     }
 
     /// Runs a tick with `inputs`, each a player's slot and a mode input.
@@ -532,7 +544,7 @@ fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
         ]
     );
     // The heroes, 5 and 6, at their teams' spawns under their players' control: player 0's
-    // with its spell learned.
+    // with its own ability unlearned, then its spell learned.
     let heroes: Vec<_> = game.units()[5..].to_vec();
     assert_eq!(heroes, [(5, at(0, -5), 0, None), (6, at(0, 5), 1, None)]);
     let hero = game.entity(5);
@@ -541,10 +553,61 @@ fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
         PlayerSlot::new(0)
     );
     let slots = game.world.get::<AbilitySlots>(hero).unwrap();
-    assert_eq!(
-        slots.slot(0).map(|slot| (slot.ability, slot.rank)),
-        Some((game.blink, 1))
-    );
+    let slots: Vec<_> = slots.iter().map(|slot| (slot.ability, slot.rank)).collect();
+    assert_eq!(slots, [(game.strike, 0), (game.blink, 1)]);
+}
+
+#[test]
+fn a_mode_learns_a_hero_ability_up_to_its_last_rank_and_a_failed_call_learns_nothing() {
+    // Hero X holds its ability in slot 0, of 2 ranks, and the spell in slot 1, of 1.
+    let learner = r#"
+fn on_mode_input(ctx, player, name, value) {
+    if name == "spells" {
+        ctx.choose_spells(player, value);
+        return;
+    }
+    if name == "hero" {
+        ctx.choose_hero(player, value);
+        ctx.spawn_heroes();
+        return;
+    }
+    let hero = ctx.heroes()[0];
+    let slot = if value == "spell" { 1 } else if value == "none" { 2 } else if value == "negative" { -1 } else { 0 };
+    let times = if value == "twice" { 2 } else if value == "thrice" { 3 } else { 1 };
+    for time in 0..times {
+        ctx.learn(hero, slot);
+    }
+}
+"#;
+    let mut game = Game::new(learner, LIMITS);
+    let spells = ModeInput {
+        name: "spells",
+        value: InputValue::StringList(vec!["blink"]),
+    };
+    game.tick(&[(0, spells), (0, input("hero", "hero-x"))]);
+    let mut owned = game.world.query_filtered::<Entity, With<Owner>>();
+    let hero = owned.single(&game.world).unwrap();
+    let ranks = |game: &Game| {
+        let slots = game.world.get::<AbilitySlots>(hero).unwrap();
+        slots.iter().map(|slot| slot.rank).collect::<Vec<_>>()
+    };
+    // Three ranks of two fail at the third, and the call learns none; two in one call count the
+    // first queued, and reach the last rank; then neither slot has a rank more, and two slots do
+    // not exist.
+    let steps = [
+        ("thrice", [0, 1], Some(ApiError::MaxRank)),
+        ("twice", [2, 1], None),
+        ("once", [2, 1], Some(ApiError::MaxRank)),
+        ("spell", [2, 1], Some(ApiError::MaxRank)),
+        ("none", [2, 1], Some(ApiError::NoAbilitySlot)),
+        ("negative", [2, 1], Some(ApiError::NoAbilitySlot)),
+    ];
+    for (value, expected, failure) in steps {
+        game.tick(&[(0, input("probe", value))]);
+        assert_eq!(ranks(&game), expected, "{value}");
+        let failures: Vec<_> = failure.into_iter().map(Some).collect();
+        assert_eq!(game.failures(), failures, "{value}");
+    }
 }
 
 #[test]

@@ -25,6 +25,10 @@ pub enum OrderScriptError {
     Unordered {
         tick: u64,
     },
+    /// The order at `tick` names no action, or more than one.
+    Action {
+        tick: u64,
+    },
     /// The script ends at `end`, before its last order.
     EndsEarly {
         end: u64,
@@ -80,6 +84,12 @@ impl fmt::Display for OrderScriptError {
             }
             OrderScriptError::Unordered { tick } => {
                 write!(f, "the order at tick {tick} comes after a later one")
+            }
+            OrderScriptError::Action { tick } => {
+                write!(
+                    f,
+                    "the order at tick {tick} names no action or more than one"
+                )
             }
             OrderScriptError::EndsEarly { end } => {
                 write!(f, "the script ends at tick {end}, before its last order")

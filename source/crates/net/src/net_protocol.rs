@@ -1,6 +1,7 @@
 use bevy_app::{App, Plugin};
 use campfire_capabilities::{
-    Dead, Destination, Health, MoveStep, Owner, Respawn, SpawnPoint, Team,
+    AbilitySlots, Dead, Destination, Health, MoveStep, Owner, ResourcePool, Respawn, SpawnPoint,
+    Team,
 };
 use campfire_sim::{Position, StableId};
 use lightyear::prelude::{
@@ -30,7 +31,7 @@ pub struct JoinChannel;
 /// channels, and the sim components that replicate. The client predicts where its own units are
 /// and where they walk to, and their death and respawn, which it learns from the server: its sim
 /// stops a dead unit and brings it back as the server's does, and a rollback restores both. It
-/// learns their health from the server.
+/// learns their health, resource and ability slots from the server: it predicts no casts.
 #[derive(Debug)]
 pub struct NetProtocol;
 
@@ -60,6 +61,8 @@ impl Plugin for NetProtocol {
         app.component::<Team>().replicate_once();
         app.component::<SpawnPoint>().replicate_once();
         app.component::<Health>().replicate();
+        app.component::<ResourcePool>().replicate();
+        app.component::<AbilitySlots>().replicate();
         app.component::<Dead>().replicate().predict();
         app.component::<Respawn>().replicate().predict();
         app.component::<MoveStep>().replicate();

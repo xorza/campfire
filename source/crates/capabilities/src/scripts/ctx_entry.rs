@@ -99,6 +99,7 @@ impl CtxEntry {
         call("spawn_unit", None, Some(ScriptRole::Mode)),
         call("spawn_wave", None, Some(ScriptRole::Mode)),
         call("respawn", Some(Capability::Combat), Some(ScriptRole::Mode)),
+        call("learn", Some(Capability::Abilities), Some(ScriptRole::Mode)),
         call("choose_hero", None, Some(ScriptRole::Mode)),
         call("choose_spells", None, Some(ScriptRole::Mode)),
     ];

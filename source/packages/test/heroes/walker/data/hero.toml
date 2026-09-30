@@ -18,7 +18,14 @@ attack_speed = { base = "1.5" }
 move_speed = { base = "7.5" }
 
 [abilities.first]
+script = "scripts/strike.rhai"
 targeting = "none"
+cooldown_ms = 3000
+cost = 40
+
+[abilities.first.params]
+radius = "2.0"
+damage = 100
 
 [abilities.second]
 targeting = "none"

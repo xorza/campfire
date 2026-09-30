@@ -42,6 +42,8 @@ pub(crate) struct ScriptView {
     units: Vec<UnitRow>,
     /// The recent attacks on each unit, one run per unit.
     attacks: Vec<RecentAttack>,
+    /// The ability slots of each unit, one run per unit.
+    slots: Vec<SlotRow>,
 }
 
 /// A unit as the view read it.
@@ -66,23 +68,41 @@ pub(crate) struct UnitRow {
     /// Its run of recent attacks, from `attacks_start` to `attacks_end`.
     attacks_start: u32,
     attacks_end: u32,
+    /// Its run of ability slots, from `slots_start` to `slots_end`; `abilities` fills it.
+    slots_start: u32,
+    slots_end: u32,
+}
+
+/// An ability slot as the view read it: the rank of its ability, 0 while not learned, and how
+/// many ranks the ability has.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SlotRow {
+    pub(crate) rank: u8,
+    pub(crate) ranks: u8,
 }
 
 /// Fills the fields of a unit's row that a capability above the core holds.
 pub(crate) type RowSource = fn(&EntityRef<'_>, &mut RowFill<'_>);
 
-/// A row the view reads, as a capability fills it: its fields, and the view's buffer of recent
-/// attacks, to which the row's run is added.
+/// A row the view reads, as a capability fills it: its fields, the view's buffers of recent
+/// attacks and ability slots, to which the row's runs are added, and the world the unit is in.
 #[derive(Debug)]
 pub(crate) struct RowFill<'a> {
     pub(crate) row: &'a mut UnitRow,
+    pub(crate) world: &'a World,
     attacks: &'a mut Vec<RecentAttack>,
+    slots: &'a mut Vec<SlotRow>,
 }
 
 impl RowFill<'_> {
     /// Adds `attacks` to the row's run of recent attacks.
     pub(crate) fn attacked(&mut self, attacks: impl IntoIterator<Item = RecentAttack>) {
         self.attacks.extend(attacks);
+    }
+
+    /// Adds `slots` to the row's run of ability slots.
+    pub(crate) fn slotted(&mut self, slots: impl IntoIterator<Item = SlotRow>) {
+        self.slots.extend(slots);
     }
 }
 
@@ -95,12 +115,14 @@ impl ScriptView {
         self.now = world.resource::<SimTick>().start();
         self.units.clear();
         self.attacks.clear();
+        self.slots.clear();
         for (id, entity) in world.resource::<EntityIndex>().iter() {
             let unit = world.entity(entity);
             let (Some(&pos), Some(&team)) = (unit.get::<Position>(), unit.get::<Team>()) else {
                 continue;
             };
             let start = u32::try_from(self.attacks.len()).expect("attacks fit u32");
+            let slots_start = u32::try_from(self.slots.len()).expect("slots fit u32");
             let mut row = UnitRow {
                 id,
                 pos,
@@ -115,15 +137,20 @@ impl ScriptView {
                 attack_range: None,
                 attacks_start: start,
                 attacks_end: start,
+                slots_start,
+                slots_end: slots_start,
             };
             let mut fill = RowFill {
                 row: &mut row,
+                world,
                 attacks: &mut self.attacks,
+                slots: &mut self.slots,
             };
             for source in &self.sources {
                 source(&unit, &mut fill);
             }
             row.attacks_end = u32::try_from(self.attacks.len()).expect("attacks fit u32");
+            row.slots_end = u32::try_from(self.slots.len()).expect("slots fit u32");
             self.units.push(row);
         }
     }
@@ -164,6 +191,7 @@ impl View {
             now: Tick::ZERO,
             units: Vec::new(),
             attacks: Vec::new(),
+            slots: Vec::new(),
         })))
     }
 
@@ -272,6 +300,13 @@ impl View {
 
     pub(crate) fn row(&self, id: StableId) -> Option<UnitRow> {
         self.0.borrow().row(id)
+    }
+
+    /// Ability slot `slot` of the unit of `row`, when it has one.
+    pub(crate) fn slot(&self, row: &UnitRow, slot: u8) -> Option<SlotRow> {
+        let view = self.0.borrow();
+        let run = &view.slots[row.slots_start as usize..row.slots_end as usize];
+        run.get(usize::from(slot)).copied()
     }
 
     /// The handle of unit `id`, when the view read it.
