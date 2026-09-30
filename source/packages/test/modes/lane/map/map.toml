@@ -6,7 +6,7 @@ max = [20, 8]
 
 # The lane runs along x through the origin; each side's tower stands 8 m down it from the middle,
 # where the heroes spawn.
-[[lanes]]
+[[paths]]
 name = "lane"
 points = [[-16, 0], [0, 0], [16, 0]]
 
@@ -17,11 +17,11 @@ east = [0, 0]
 [[structures]]
 unit_type = "tower"
 team = "west"
-lane = "lane"
+path = "lane"
 pos = [-8, 0]
 
 [[structures]]
 unit_type = "tower"
 team = "east"
-lane = "lane"
+path = "lane"
 pos = [8, 0]

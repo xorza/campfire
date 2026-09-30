@@ -17,9 +17,9 @@ use crate::combat::attack_stats::AttackStats;
 use crate::combat::dead::Dead;
 use crate::combat::targets::Targets;
 use crate::navigation::destination::Destination;
-use crate::navigation::lane_walker::LaneWalker;
-use crate::navigation::lanes::Lanes;
-use crate::navigation::on_lane::OnLane;
+use crate::navigation::on_path::OnPath;
+use crate::navigation::path_walker::PathWalker;
+use crate::navigation::paths::Paths;
 use crate::orders::ai::Ai;
 use crate::orders::ai_ctx::{AiCtx, AiOrder};
 use crate::orders::ai_data::AiData;
@@ -261,7 +261,7 @@ fn think(world: &mut World, mut due: Local<'_, Vec<Due>>) {
 fn apply_ai_order(world: &mut World, unit: StableId, order: AiOrder) {
     let target = match order {
         AiOrder::Attack { target } => Some(target),
-        AiOrder::FollowLane => None,
+        AiOrder::FollowPath => None,
     };
     let entity = world
         .resource::<EntityIndex>()
@@ -275,29 +275,29 @@ fn apply_ai_order(world: &mut World, unit: StableId, order: AiOrder) {
 /// Sends each path walker with no attack target to the waypoint it walks to, and on to the next
 /// once it stands on one. A walker that chased a target walks back to where it left its path.
 fn follow_paths(
-    lanes: Res<'_, Lanes>,
+    paths: Res<'_, Paths>,
     mut walkers: Query<
         '_,
         '_,
         (
             &Position,
-            &OnLane,
-            &mut LaneWalker,
+            &OnPath,
+            &mut PathWalker,
             &AttackState,
             &mut Destination,
         ),
         Without<Dead>,
     >,
 ) {
-    for (&position, lane, mut walker, attack, mut destination) in &mut walkers {
+    for (&position, path, mut walker, attack, mut destination) in &mut walkers {
         if attack.target().is_some() {
             continue;
         }
-        let lane = lane.get();
-        let mut waypoint = lanes.waypoint(lane, walker.next(), walker.direction());
+        let path = path.get();
+        let mut waypoint = paths.waypoint(path, walker.next(), walker.direction());
         if waypoint == Some(position) {
             walker.advance();
-            waypoint = lanes.waypoint(lane, walker.next(), walker.direction());
+            waypoint = paths.waypoint(path, walker.next(), walker.direction());
         }
         walk_to(&mut destination, waypoint);
     }

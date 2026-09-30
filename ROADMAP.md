@@ -13,7 +13,6 @@ Open items only. Remove an item when it is done; remove a stage when it is empty
 - Handshake, session log with seed commit-reveal, verifier on another OS. Is it fun?
 
 ## 4. Genre proofs
-- Neutral core: modes declare damage kinds, stats and resources; avatar, loadout, spawn group and path replace hero, spells, wave and lane in the core API.
 - A tiny `det-ci` test mode for each target game: a CS round, an RTS skirmish, a BR zone, an MMO zone ([Genres](design/04-capabilities/genres.md#genre-proofs)), with the first cut of each capability they need: `items`, `progression`, `interaction`, `production`, `character`, `hitscan`, level geometry, `persistence`.
 
 ## 5. Engine semantics

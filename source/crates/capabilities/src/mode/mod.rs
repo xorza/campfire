@@ -29,8 +29,8 @@ use crate::mode::picks::{Pick, Picks};
 use crate::mode::player_resources::PlayerResources;
 use crate::mode::team_manifest::TeamManifest;
 use crate::mode::timers::Timers;
-use crate::navigation::lanes::Lanes;
-use crate::navigation::on_lane::OnLane;
+use crate::navigation::on_path::OnPath;
+use crate::navigation::paths::Paths;
 use crate::orders::OrdersSet;
 use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
@@ -69,7 +69,7 @@ impl Mode {
     /// Adds the mode of `setup`, which passed `Mode::check` when its package loaded, to a match
     /// whose capabilities are installed and whose unit types, abilities and AI are loaded: in
     /// Inputs, the players' mode inputs run `on_mode_input`; in Mode, due timers run `on_timer`,
-    /// then the tick's deaths run `on_unit_died`. The map's lanes and grid become the match's,
+    /// then the tick's deaths run `on_unit_died`. The map's paths and grid become the match's,
     /// and the mode's `assist_window_ms` combat's.
     pub fn install(
         world: &mut World,
@@ -79,7 +79,7 @@ impl Mode {
     ) -> Result<(), ModeError> {
         let view = world.non_send::<View>().clone();
         let rate = *world.resource::<TickRate>();
-        let lanes = Mode::lanes(setup.map);
+        let paths = Mode::paths(setup.map);
         let grid = setup.map.grid;
         // A window past what ticks can count covers the whole match.
         let assist_window = setup
@@ -89,7 +89,7 @@ impl Mode {
         let book = {
             let mut host = world.non_send_mut::<ScriptHost>();
             ModeCtx::register(host.engine_mut());
-            ModeBook::new(setup, rate, &host, &view, &lanes)?
+            ModeBook::new(setup, rate, &host, &view, &paths)?
         };
         if let Some(grid) = grid {
             Vision::load_grid(world, grid, book.teams.count());
@@ -97,8 +97,8 @@ impl Mode {
         if let Some(window) = assist_window {
             world.insert_resource(AssistWindow(window));
         }
-        view.set_names(Rc::clone(&book.teams), lanes.shared_names());
-        world.insert_resource(lanes);
+        view.set_names(Rc::clone(&book.teams), paths.shared_names());
+        world.insert_resource(paths);
         world.insert_resource(ModeState(book.schema.state_initial.clone()));
         let players = book.teams.players() as usize;
         world.insert_resource(Picks(vec![Pick::default(); players]));
@@ -120,18 +120,18 @@ impl Mode {
         Ok(())
     }
 
-    /// The lanes of `map`, which passed the check.
-    fn lanes(map: &MapData) -> Lanes {
+    /// The paths of `map`, which passed the check.
+    fn paths(map: &MapData) -> Paths {
         let paths: Vec<(&str, Vec<Position>)> = map
-            .lanes
+            .paths
             .iter()
-            .map(|lane| {
-                let points = lane.points.iter();
+            .map(|path| {
+                let points = path.points.iter();
                 let points = points.map(|point| point.position().expect("the check passed"));
-                (lane.name.as_str(), points.collect())
+                (path.name.as_str(), points.collect())
             })
             .collect();
-        Lanes::new(
+        Paths::new(
             paths
                 .iter()
                 .map(|(name, points)| (*name, points.as_slice())),
@@ -146,9 +146,9 @@ impl Mode {
 
     /// Checks what the mode names against what it has: its playing teams, of which none is
     /// named `neutral` and no two share a name, fewer than `Team::LIMIT` with the neutral one; and
-    /// its map, whose lanes each have a waypoint and a name of their own, whose every
+    /// its map, whose paths each have a waypoint and a name of their own, whose every
     /// playing team has an avatar spawn, and whose structures and neutral spawns name unit types
-    /// `unit_type` knows, and teams and lanes the mode has. Every point is within the world's
+    /// `unit_type` knows, and teams and paths the mode has. Every point is within the world's
     /// bound.
     pub fn check(
         teams: &[TeamManifest],
@@ -167,14 +167,14 @@ impl Mode {
             return Err(ModeError::TooManyTeams);
         }
         let in_bounds = |point: &GroundPoint| point.position().ok_or(ModeError::OutOfBounds);
-        for (at, lane) in map.lanes.iter().enumerate() {
-            if map.lanes[..at].iter().any(|other| other.name == lane.name) {
-                return Err(ModeError::RepeatedName(lane.name.clone()));
+        for (at, path) in map.paths.iter().enumerate() {
+            if map.paths[..at].iter().any(|other| other.name == path.name) {
+                return Err(ModeError::RepeatedName(path.name.clone()));
             }
-            if lane.points.is_empty() {
-                return Err(ModeError::EmptyLane(lane.name.clone()));
+            if path.points.is_empty() {
+                return Err(ModeError::EmptyPath(path.name.clone()));
             }
-            for point in &lane.points {
+            for point in &path.points {
                 in_bounds(point)?;
             }
         }
@@ -191,10 +191,10 @@ impl Mode {
             if !team_known(&structure.team) {
                 return Err(ModeError::UnknownTeam(structure.team.clone()));
             }
-            if let Some(lane) = &structure.lane
-                && !map.lanes.iter().any(|known| known.name == *lane)
+            if let Some(path) = &structure.path
+                && !map.paths.iter().any(|known| known.name == *path)
             {
-                return Err(ModeError::UnknownLane(lane.clone()));
+                return Err(ModeError::UnknownPath(path.clone()));
             }
             in_bounds(&structure.pos)?;
         }
@@ -216,8 +216,8 @@ impl Mode {
             let book = ctx.book();
             let (unit_type, team, pos) = (structure.unit_type, structure.team, structure.pos);
             let entity = book.spawn(world, unit_type, team, pos, ());
-            if let Some(lane) = structure.lane {
-                world.entity_mut(entity).insert(OnLane::new(lane));
+            if let Some(path) = structure.path {
+                world.entity_mut(entity).insert(OnPath::new(path));
             }
         }
         if !ctx.book().schema.hooks.contains(Hook::OnMatchStart) {

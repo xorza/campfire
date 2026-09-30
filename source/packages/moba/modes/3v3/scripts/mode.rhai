@@ -23,13 +23,13 @@ fn on_timer(ctx, name, data) {
         ctx.timer("wave", ctx.p.first_wave_ms, false, ());
         ctx.timer("income", ctx.p.income_ms, true, ());
     } else if name == "wave" {
-        for lane in ctx.map.lanes {
+        for lane in ctx.map.paths {
             for team in ctx.teams {
                 let wave = ctx.p.wave;
                 if inhibitor_down(ctx, ctx.enemy_team(team), lane) {
                     wave.push("super_creep");
                 }
-                ctx.spawn_wave(team, lane, wave);
+                ctx.spawn_group(team, lane, wave);
             }
         }
         ctx.timer("wave", ctx.p.wave_ms, false, ());
@@ -100,7 +100,7 @@ fn share_xp(ctx, unit) {
 
 fn inhibitor_down(ctx, team, lane) {
     for unit in ctx.units_tagged("inhibitor") {
-        if unit.team == team && unit.lane == lane {
+        if unit.team == team && unit.path == lane {
             return !unit.alive;
         }
     }

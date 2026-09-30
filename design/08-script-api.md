@@ -68,7 +68,7 @@ Scaling keys: `base`, `per_level`, and a stat ratio each for `ad`, `bonus_ad`, `
 
 **Mode** (`data/mode.toml`): `script`, `assist_window_ms`, `[inputs]` (name and type of each player input: `string`, `string_list`), `[state]`, `[params]` (values, or lists whose entries are values or strings, such as unit types), `[modifiers]`. An input that does not match its type never reaches the script. **Units** (`data/units.toml`): `[units.<id>]` with `tags`, `params`, and a section for each capability the unit type uses ([Unit types](04-capabilities/00-overview.md#unit-types)): `stats`, `combat` (`attack = { range, windup_ms, projectile_speed }`, and `on_death`: `stay` or `despawn`, the default), `orders` (`ai`, `think_ms`), `vision` (`sight_range` in meters, not negative, and `true_sight`). Health, attack damage, attack speed and move speed are stats: an attack starts at most `attack_speed` times a second, its period the tick rate over that rounded up.
 
-**Map** (`map/map.toml`): `[[lanes]]` (`name`, `points` from the first team's end to the second's), `[spawns]` (each playing team's avatar spawn), `[[structures]]` (`unit_type`, `team`, `lane` if it guards one, `pos`: they stand from the start), `[[neutral_spawns]]` (`unit_type`, `pos`, as `ctx.map.neutral_spawns` lists them), `[grid]` (`cell` in meters, positive, and `min` and `max`: whole cells from `min` until they cover `max`, at most 2²² cells; a mode with `vision` needs it). A point is `[x, z]` in meters on the ground plane.
+**Map** (`map/map.toml`): `[[paths]]` (`name`, `points` from the first team's end to the second's), `[spawns]` (each playing team's avatar spawn), `[[structures]]` (`unit_type`, `team`, `path` if it guards one, `pos`: they stand from the start), `[[neutral_spawns]]` (`unit_type`, `pos`, as `ctx.map.neutral_spawns` lists them), `[grid]` (`cell` in meters, positive, and `min` and `max`: whole cells from `min` until they cover `max`, at most 2²² cells; a mode with `vision` needs it). A point is `[x, z]` in meters on the ground plane.
 
 **State types:** `int`, `num`, `bool`, `string`, `entity`, `entity_list`, `pos`, `vec`; each with a `default` and, for mode state, `sync`.
 
@@ -93,7 +93,7 @@ A unit handle has the fields of the capabilities its type uses; reading a field 
 
 | Handle | Reads |
 | --- | --- |
-| Unit | `pos`, `team`, `owner`, `level`, `alive`, `is_avatar`, `target`, `attack_range`, `health`, `max_health`, `stat(name)`, `params` (the unit type's, unresolved), `spawn_pos`, `lane`, `unit_type`, `has_tag(tag)`, `has_modifier(id)`, `is_enemy_of(unit)`, `can_see(unit)`, `recent_attackers(ms)` |
+| Unit | `pos`, `team`, `owner`, `level`, `alive`, `is_avatar`, `target`, `attack_range`, `health`, `max_health`, `stat(name)`, `params` (the unit type's, unresolved), `spawn_pos`, `path`, `unit_type`, `has_tag(tag)`, `has_modifier(id)`, `is_enemy_of(unit)`, `can_see(unit)`, `recent_attackers(ms)` |
 | Modifier `m` | `carrier`, `source`, `stacks` (writable), `state` (writable) |
 | Projectile | `source`, `pos`, `distance` flown, `state` (writable) |
 | Area | `source`, `pos` |
@@ -104,7 +104,7 @@ A unit handle has the fields of the capabilities its type uses; reading a field 
 
 | Group | Capability | Calls |
 | --- | --- | --- |
-| Values | core; `abilities` for `range`, `charge`, `origin`; `navigation` for `map` | `p.<name>`, `range`, `charge`, `origin`, `state` (mode), `map` (`lanes`, `neutral_spawns`), `teams` (playing teams) |
+| Values | core; `abilities` for `range`, `charge`, `origin`; `navigation` for `map` | `p.<name>`, `range`, `charge`, `origin`, `state` (mode), `map` (`paths`, `neutral_spawns`), `teams` (playing teams) |
 | Queries | core; `vision` for the visible ones | `find(of, pos, radius, filter)`, `find_visible(of, pos, radius, filter)`, `nearest_visible(of, radius, filter)`, `avatars()`, `avatars(team)`, `units_tagged(tag)`, `enemy_team(team)`, `avatar_available(player, id)` |
 | Random | core | `chance(p)`, `pick(list)` |
 | Combat | `combat` | `damage(target, amount, kind)`, `heal(unit, amount)`, `restore(unit, amount)` (the unit's resource), `attack_hit(target)` |
@@ -116,12 +116,12 @@ A unit handle has the fields of the capabilities its type uses; reading a field 
 | Vision | `vision` | `reveal(pos, radius, ms)` for the source's team |
 | Abilities | `abilities` | `reduce_cooldown(unit, id, ms)`, `reduce_cooldowns(unit, fraction)` (basic abilities), `add_charge(unit, id)` |
 | Progress | core; `stats` for experience | `add_resource(player, name, amount)`, `add_xp(avatar, amount)` |
-| Orders (AI) | `orders` | `order_attack(unit, target)`, `order_move(unit, pos)`, `order_follow_lane(unit)`, `order_reset(unit)` (walk home, heal, drop target) |
-| Mode | core; `combat` for `respawn`, `abilities` for `learn` | `timer(name, ms, repeat, data)`, `end(result)`, `spawn_avatars()`, `spawn_unit(type, team, pos)`, `spawn_wave(team, lane, types)`, `respawn(unit, ms)`, `learn(hero, slot)` (the ability in `slot` a rank more, up to its last; a hero's own abilities spawn unlearned), `choose_avatar(player, id)`, `choose_loadout(player, ids)` |
+| Orders (AI) | `orders` | `order_attack(unit, target)`, `order_move(unit, pos)`, `order_follow_path(unit)`, `order_reset(unit)` (walk home, heal, drop target) |
+| Mode | core; `combat` for `respawn`, `abilities` for `learn` | `timer(name, ms, repeat, data)`, `end(result)`, `spawn_avatars()`, `spawn_unit(type, team, pos)`, `spawn_group(team, path, types)`, `respawn(unit, ms)`, `learn(avatar, slot)` (the ability in `slot` a rank more, up to its last; an avatar's own abilities spawn unlearned), `choose_avatar(player, id)`, `choose_loadout(player, ids)` |
 
 `ctx.p` reads, in an ability, its params; in a modifier, the modifier's params and then those of the ability that applied it; in a mode or AI script, the mode's params.
 
-**Mode calls.** The map's structures spawn, then `on_match_start` runs, before the first tick. A timer counts from its call, in ticks rounded up, at least one, and fires in the Mode stage at the end of a tick: set before the first tick, 1 ms fires at the end of tick 0. `ctx.teams` names the playing teams, and `ctx.players` counts the session's players; neutral units spawn on `neutral`, and `enemy_team` needs a mode of two playing teams. `spawn_wave` spawns its units in order at the team's end of the lane, the first team at its start and the second at its end, walking it. `choose_avatar` takes an avatar no other player chose; `spawn_avatars` spawns each chosen avatar not yet spawned, in slot order, at its team's spawn, its abilities unlearned and its player's loadout at rank 1. `on_unit_died` runs after the due timers, once for each unit that died in the tick, in the order they died; `killer` is `()` when no strike killed it. `respawn` takes a dead unit whose type stays dead, and refuses a living one or one whose type despawns ([Combat](04-capabilities/combat.md#damage-and-death)). A player's mode input is a command of the `mode` owner: its name, then its value in its declared type, in postcard.
+**Mode calls.** The map's structures spawn, then `on_match_start` runs, before the first tick. A timer counts from its call, in ticks rounded up, at least one, and fires in the Mode stage at the end of a tick: set before the first tick, 1 ms fires at the end of tick 0. `ctx.teams` names the playing teams, and `ctx.players` counts the session's players; neutral units spawn on `neutral`, and `enemy_team` needs a mode of two playing teams. `spawn_group` spawns its units in order at the team's end of the path, the first team at its start and the second at its end, walking it. `choose_avatar` takes an avatar no other player chose; `spawn_avatars` spawns each chosen avatar not yet spawned, in slot order, at its team's spawn, its abilities unlearned and its player's loadout at rank 1. `on_unit_died` runs after the due timers, once for each unit that died in the tick, in the order they died; `killer` is `()` when no strike killed it. `respawn` takes a dead unit whose type stays dead, and refuses a living one or one whose type despawns ([Combat](04-capabilities/combat.md#damage-and-death)). A player's mode input is a command of the `mode` owner: its name, then its value in its declared type, in postcard.
 
 ## Hooks
 
@@ -146,11 +146,10 @@ A package loads only when all of these pass:
 - Every value of `ctx` is a variable named `ctx`, so the checks see all its uses: every hook's first parameter is named `ctx`; `ctx` is used only as `ctx.<name>` or as a whole argument of a call, not of an operator or a function pointer's `call` or `curry`; a function of the script that receives it names that parameter `ctx`; and no `let`, `const` or `for` binds a new `ctx`.
 - Every capability a package's data or scripts use is declared, and each builds on the ones it needs. A capability the release does not run yet loads: its data is checked, and a call to it fails at run time.
 - The manifest's capabilities, tick rates, pools and move speed cap hold, where the manifest is read. Every package targets this release, and every projectile flies faster than the cap.
-- The map and the teams name only what the mode has: every structure's and neutral spawn's unit type, team and lane; an avatar spawn for each playing team; no team named `neutral`, and no two teams, lanes, slots of an avatar or entries of the mode's loadout packages alike.
+- The map and the teams name only what the mode has: every structure's and neutral spawn's unit type, team and path; an avatar spawn for each playing team; no team named `neutral`, and no two teams, paths, slots of an avatar or entries of the mode's loadout packages alike.
 
 ## Planned changes
 
-- Core calls take neutral names: spawn group for wave, path for lane.
 - New capabilities add their parts: `items`, `progression`, `interaction`, `production`.
 
 ## Open questions

@@ -25,12 +25,12 @@ use crate::combat::respawn::Respawn;
 use crate::combat::strikes::{Strike, Strikes};
 use crate::mode::avatar_index::AvatarIndex;
 use crate::mode::loadout_index::LoadoutIndex;
-use crate::mode::map_data::{LaneData, NeutralSpawnData, StructureData};
+use crate::mode::map_data::{NeutralSpawnData, PathData, StructureData};
 use crate::mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
 use crate::mode::mode_setup::{AvatarSetup, LoadoutSetup, UnitTypeSetup};
 use crate::mode::unit_kit::UnitKit;
-use crate::navigation::lane_walker::{LaneWalker, PathDirection};
 use crate::navigation::move_step::MoveStep;
+use crate::navigation::path_walker::{PathDirection, PathWalker};
 use crate::scripts::error::ApiError;
 use crate::scripts::match_scripts::MatchScripts;
 use crate::scripts::script_failures::ScriptFailures;
@@ -38,8 +38,8 @@ use crate::scripts::script_limits::ScriptLimits;
 use crate::scripts::state_decl::{StateDecl, StateDefault, StateType, SyncTo};
 use crate::scripts::state_value::StateValue;
 use crate::units::Units;
-use crate::units::lane::Lane;
 use crate::units::owner::Owner;
+use crate::units::path_id::PathId;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::grid::Grid;
@@ -64,8 +64,8 @@ fn on_match_start(ctx) {
     for point in ctx.map.neutral_spawns {
         ctx.spawn_unit(point.unit_type, "neutral", point.pos);
     }
-    ctx.spawn_wave("a", "mid", ctx.p.wave);
-    ctx.spawn_wave("b", "mid", ["grunt"]);
+    ctx.spawn_group("a", "mid", ctx.p.group);
+    ctx.spawn_group("b", "mid", ["grunt"]);
 }
 
 fn on_timer(ctx, name, data) {
@@ -100,11 +100,11 @@ fn on_mode_input(ctx, player, name, value) {
         ctx.state.heroes = ctx.avatars("b").len();
         ctx.state.teams = ctx.teams.len();
         ctx.state.players = ctx.players;
-        ctx.state.lane = grunts[1].lane;
+        ctx.state.path = grunts[1].path;
         ctx.state.team = grunts[1].team;
         ctx.state.neutral = grunts[0].team;
         ctx.state.owner = ctx.avatars()[0].owner;
-        ctx.state.tower_lane = ctx.units_tagged("tower")[0].lane;
+        ctx.state.tower_path = ctx.units_tagged("tower")[0].path;
         ctx.state.kind = grunts[1].unit_type;
     }
 }
@@ -141,12 +141,12 @@ fn grunt() -> UnitKit {
     }
 }
 
-/// A grid of 1 m cells from (−10, −5) to (10, 6); one lane, `mid`, along x; team a's spawn at
-/// z = −5 and b's at 5; a's tower 8 m down the lane; and a neutral grunt in the middle.
+/// A grid of 1 m cells from (−10, −5) to (10, 6); one path, `mid`, along x; team a's spawn at
+/// z = −5 and b's at 5; a's tower 8 m down the path; and a neutral grunt in the middle.
 fn map() -> MapData {
     MapData {
         grid: Grid::new(num(1), [num(-10), num(-5)], [num(10), num(6)]),
-        lanes: vec![LaneData {
+        paths: vec![PathData {
             name: "mid".to_owned(),
             points: vec![point(-10, 0), point(0, 0), point(10, 0)],
         }],
@@ -156,7 +156,7 @@ fn map() -> MapData {
         structures: vec![StructureData {
             unit_type: "tower".to_owned(),
             team: "a".to_owned(),
-            lane: Some("mid".to_owned()),
+            path: Some("mid".to_owned()),
             pos: point(-8, 0),
         }],
         neutral_spawns: vec![NeutralSpawnData {
@@ -205,17 +205,17 @@ fn mode_files() -> ModeFiles {
                 ("heroes", field(StateType::Int, None)),
                 ("teams", field(StateType::Int, None)),
                 ("players", field(StateType::Int, None)),
-                ("lane", field(StateType::String, None)),
+                ("path", field(StateType::String, None)),
                 ("team", field(StateType::String, None)),
                 ("neutral", field(StateType::String, None)),
                 ("owner", field(StateType::Int, None)),
-                ("tower_lane", field(StateType::String, None)),
+                ("tower_path", field(StateType::String, None)),
                 ("kind", field(StateType::String, None)),
             ]
             .map(|(name, decl)| (name.to_owned(), decl))
             .into(),
             params: [
-                ("wave", ModeParam::List(vec![text("grunt"), text("grunt")])),
+                ("group", ModeParam::List(vec![text("grunt"), text("grunt")])),
                 ("gold", ModeParam::Value(Scalar::Int(8))),
             ]
             .map(|(name, param)| (name.to_owned(), param))
@@ -402,7 +402,7 @@ impl Game {
         self.world.resource::<ModeState>().get()[at].clone()
     }
 
-    /// Each unit: its id, where it stands, its team, and whether it walks a lane from its start.
+    /// Each unit: its id, where it stands, its team, and whether it walks a path from its start.
     fn units(&self) -> Vec<(u64, Position, u8, Option<PathDirection>)> {
         let world = &self.world;
         world
@@ -414,7 +414,7 @@ impl Game {
                     id.get(),
                     *unit.get::<Position>().unwrap(),
                     unit.get::<Team>().unwrap().index(),
-                    unit.get::<LaneWalker>().map(|walker| walker.direction()),
+                    unit.get::<PathWalker>().map(|walker| walker.direction()),
                 )
             })
             .collect()
@@ -451,8 +451,8 @@ fn state(phase: &str, seen: i64, count: i64, inputs: i64) -> [StateValue; 4] {
 fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early() {
     let mut game = Game::new(SCRIPT, LIMITS);
     // Before tick 0: the map's tower, 0, then the match start's spawns in order: the neutral
-    // grunt, 1, at the map's neutral spawn; team a's wave of two, 2 and 3, at the lane's start;
-    // team b's wave of one, 4, at its end. Teams a and b are 0 and 1, neutral 2.
+    // grunt, 1, at the map's neutral spawn; team a's spawn group of two, 2 and 3, at the path's start;
+    // team b's spawn group of one, 4, at its end. Teams a and b are 0 and 1, neutral 2.
     assert_eq!(
         game.units(),
         [
@@ -465,8 +465,8 @@ fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early
     );
     let tower = game.entity(0);
     assert_eq!(
-        game.world.get::<OnLane>(tower).map(|lane| lane.get()),
-        Some(Lane::new(0))
+        game.world.get::<OnPath>(tower).map(|path| path.get()),
+        Some(PathId::new(0))
     );
     // The map's grid is the match's, for its 3 teams: a, b and the neutral one.
     let vision = *game.world.resource::<VisionGrid>();
@@ -618,7 +618,7 @@ fn on_mode_input(ctx, player, name, value) {
 }
 
 #[test]
-fn resources_add_up_and_queries_see_teams_lanes_and_the_dead() {
+fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
     let mut game = Game::new(SCRIPT, LIMITS);
     game.tick(&[(0, input("hero", "hero-x")), (2, input("hero", "hero-y"))]);
     // A dead grunt is still one the mode sees.
@@ -636,7 +636,7 @@ fn resources_add_up_and_queries_see_teams_lanes_and_the_dead() {
     assert_eq!(resources.amount(PlayerSlot::new(0), "gold"), 0);
     assert_eq!(game.failures(), [Some(ApiError::ResourceOverflow)]);
     // The enemy of a, the 4 grunts with the dead one, b's one hero, the 2 playing teams, the 3
-    // players, the lane and team of grunt 2, the neutral grunt 1's team, hero 5's owner, the lane of the tower,
+    // players, the path and team of grunt 2, the neutral grunt 1's team, hero 5's owner, the path of the tower,
     // which stands on it as grunt 2 walks it, and grunt 2's unit type.
     let text = |text: &str| StateValue::Text(text.to_owned());
     let seen = [
@@ -645,11 +645,11 @@ fn resources_add_up_and_queries_see_teams_lanes_and_the_dead() {
         "heroes",
         "teams",
         "players",
-        "lane",
+        "path",
         "team",
         "neutral",
         "owner",
-        "tower_lane",
+        "tower_path",
         "kind",
     ]
     .map(|name| game.field(name));
@@ -775,8 +775,8 @@ fn on_match_start(ctx) {
     for point in ctx.map.neutral_spawns {
         ctx.spawn_unit(point.unit_type, "neutral", point.pos);
     }
-    ctx.spawn_wave("a", "mid", ctx.p.wave);
-    ctx.spawn_wave("b", "mid", ["grunt"]);
+    ctx.spawn_group("a", "mid", ctx.p.group);
+    ctx.spawn_group("b", "mid", ["grunt"]);
 }
 
 fn on_unit_died(ctx, unit, killer, assisters) {
@@ -784,7 +784,7 @@ fn on_unit_died(ctx, unit, killer, assisters) {
     ctx.state.kind = unit.unit_type;
     ctx.state.team = killer.team;
     ctx.state.grunts = assisters.len();
-    ctx.state.lane = assisters[0].team;
+    ctx.state.path = assisters[0].team;
     ctx.respawn(unit, 250);
 }
 
@@ -819,7 +819,7 @@ fn on_mode_input(ctx, player, name, value) {
     game.tick(&[]);
     // It died in tick 0 with killer 4 of b and one assister of a: the mode set its respawn for the
     // end of tick 0, 1, plus 3 ticks: the start of tick 4.
-    let seen = ["count", "kind", "team", "grunts", "lane"].map(|name| game.field(name));
+    let seen = ["count", "kind", "team", "grunts", "path"].map(|name| game.field(name));
     let text = |text: &str| StateValue::Text(text.to_owned());
     assert_eq!(
         seen,

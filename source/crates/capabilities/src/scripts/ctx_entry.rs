@@ -84,7 +84,7 @@ impl CtxEntry {
         ),
         call("order_move", Some(Capability::Orders), Some(ScriptRole::Ai)),
         call(
-            "order_follow_lane",
+            "order_follow_path",
             Some(Capability::Orders),
             Some(ScriptRole::Ai),
         ),
@@ -97,7 +97,7 @@ impl CtxEntry {
         call("end", None, Some(ScriptRole::Mode)),
         call("spawn_avatars", None, Some(ScriptRole::Mode)),
         call("spawn_unit", None, Some(ScriptRole::Mode)),
-        call("spawn_wave", None, Some(ScriptRole::Mode)),
+        call("spawn_group", None, Some(ScriptRole::Mode)),
         call("respawn", Some(Capability::Combat), Some(ScriptRole::Mode)),
         call("learn", Some(Capability::Abilities), Some(ScriptRole::Mode)),
         call("choose_avatar", None, Some(ScriptRole::Mode)),

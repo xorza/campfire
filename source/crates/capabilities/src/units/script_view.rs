@@ -10,9 +10,9 @@ use campfire_sim::{EntityIndex, Position, SimTick, StableId, Tick, TickRate, Tic
 
 use crate::scripts::error::{ApiError, Checked};
 use crate::units::filter::Filter;
-use crate::units::lane::Lane;
 use crate::units::living_unit::LivingUnit;
 use crate::units::owner::Owner;
+use crate::units::path_id::PathId;
 use crate::units::recent_attack::RecentAttack;
 use crate::units::tag_set::{Tag, TagSet};
 use crate::units::team::Team;
@@ -32,8 +32,8 @@ pub(crate) struct ScriptView {
     types: UnitTypes,
     /// The match's teams, once a mode sets them.
     teams: Rc<Teams>,
-    /// The name of each lane, by index, once a mode sets them.
-    lanes: Arc<[Box<str>]>,
+    /// The name of each path, by index, once a mode sets them.
+    paths: Arc<[Box<str>]>,
     /// The damage kinds the mode declares.
     damage_kinds: Rc<[DeclaredName]>,
     /// How each installed capability above the core fills its fields of a row, in install order.
@@ -64,8 +64,8 @@ pub(crate) struct UnitRow {
     pub(crate) stays: bool,
     pub(crate) target: Option<StableId>,
     pub(crate) attack_range: Option<Num>,
-    /// The lane it walks or stands on; `navigation` fills it.
-    pub(crate) lane: Option<Lane>,
+    /// The path it walks or stands on; `navigation` fills it.
+    pub(crate) path: Option<PathId>,
     /// The teams that see it; `vision` fills it, and without vision every team does.
     pub(crate) seen_by: TeamSet,
     /// Its run of recent attacks, from `attacks_start` to `attacks_end`.
@@ -134,7 +134,7 @@ impl ScriptView {
                 stays: false,
                 unit_type: unit.get::<UnitType>().copied(),
                 owner: unit.get::<Owner>().map(|owner| owner.slot()),
-                lane: None,
+                path: None,
                 seen_by: TeamSet::ALL,
                 target: None,
                 attack_range: None,
@@ -188,7 +188,7 @@ impl View {
         View(Rc::new(RefCell::new(ScriptView {
             types: UnitTypes::default(),
             teams: Rc::default(),
-            lanes: Arc::default(),
+            paths: Arc::default(),
             damage_kinds: Rc::from([]),
             sources: Vec::new(),
             rate,
@@ -208,11 +208,11 @@ impl View {
         RefMut::map(self.0.borrow_mut(), |view| &mut view.types)
     }
 
-    /// Names the teams and the lanes.
-    pub(crate) fn set_names(&self, teams: Rc<Teams>, lanes: Arc<[Box<str>]>) {
+    /// Names the teams and the paths.
+    pub(crate) fn set_names(&self, teams: Rc<Teams>, paths: Arc<[Box<str>]>) {
         let mut view = self.0.borrow_mut();
         view.teams = teams;
-        view.lanes = lanes;
+        view.paths = paths;
     }
 
     /// Sets the damage kinds the mode declares.
@@ -239,20 +239,20 @@ impl View {
             .ok_or_else(|| ApiError::UnknownTeam.fail().into())
     }
 
-    /// The name of `lane`, `()` for none.
-    pub(crate) fn lane_name(&self, lane: Option<Lane>) -> Dynamic {
+    /// The name of `path`, `()` for none.
+    pub(crate) fn path_name(&self, path: Option<PathId>) -> Dynamic {
         let view = self.0.borrow();
-        lane.and_then(|lane| view.lanes.get(lane.index()))
+        path.and_then(|path| view.paths.get(path.index()))
             .map_or(Dynamic::UNIT, |name| {
                 Dynamic::from(ImmutableString::from(&**name))
             })
     }
 
-    /// The lane named `name`.
-    pub(crate) fn lane(&self, name: &str) -> Option<Lane> {
+    /// The path named `name`.
+    pub(crate) fn path(&self, name: &str) -> Option<PathId> {
         let view = self.0.borrow();
-        let at = view.lanes.iter().position(|held| **held == *name)?;
-        Some(Lane::new(at))
+        let at = view.paths.iter().position(|held| **held == *name)?;
+        Some(PathId::new(at))
     }
 
     /// The unit type named `name`.

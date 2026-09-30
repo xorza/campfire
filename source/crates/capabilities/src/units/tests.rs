@@ -20,10 +20,10 @@ use crate::combat::dead::Dead;
 use crate::combat::health::Health;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;
-use crate::navigation::on_lane::OnLane;
+use crate::navigation::on_path::OnPath;
 use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::script_limits::ScriptLimits;
-use crate::units::lane::Lane;
+use crate::units::path_id::PathId;
 use crate::values::scalar::Scalar;
 
 /// The MOBA's 30 ticks a second.
@@ -201,12 +201,12 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let window = ("help_window_ms", Scalar::Int(2000));
     let range = ("aggro_range", Scalar::Decimal(num(7)));
     let hero = scene.unit_type(&["avatar"], &[window, range]);
-    // On a lane, but the scene has no `navigation` to fill `unit.lane`.
+    // On a path, but the scene has no `navigation` to fill `unit.path`.
     let owner = Owner::new(PlayerSlot::new(2));
-    let lane = OnLane::new(Lane::new(0));
+    let path = OnPath::new(PathId::new(0));
     let of = scene.spawn(
         at(0, 0, 0),
-        (hero, unit().bundle(Team::new(0)), owner, lane),
+        (hero, unit().bundle(Team::new(0)), owner, path),
     );
     let near = scene.spawn(at(3, 0, 4), unit().bundle(Team::new(1)));
     let recent = scene.spawn(at(9, 0, 0), unit().bundle(Team::new(1)));
@@ -241,7 +241,7 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     assert!(value(&mut scene, "of.is_avatar").as_bool().unwrap());
     assert!(value(&mut scene, "of.alive").as_bool().unwrap());
     assert_eq!(value(&mut scene, "of.owner").as_int(), Ok(2));
-    assert!(value(&mut scene, "of.lane").is_unit());
+    assert!(value(&mut scene, "of.path").is_unit());
     assert_eq!(
         value(&mut scene, "of.params.help_window_ms").as_int(),
         Ok(2000)

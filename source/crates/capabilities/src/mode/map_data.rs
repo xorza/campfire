@@ -7,7 +7,7 @@ use serde::Deserialize;
 use crate::values::grid::Grid;
 use crate::values::scalar::Scalar;
 
-/// The mode's `map/map.toml`: its grid, its lanes, where each team's avatars spawn, the structures
+/// The mode's `map/map.toml`: its grid, its paths, where each team's avatars spawn, the structures
 /// that stand from the start, and where neutral units spawn.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -16,7 +16,7 @@ pub struct MapData {
     pub grid: Option<Grid>,
     /// Each runs from the first team's end to the second's.
     #[serde(default)]
-    pub lanes: Vec<LaneData>,
+    pub paths: Vec<PathData>,
     /// Where each team's avatars spawn, by team name.
     pub spawns: BTreeMap<String, GroundPoint>,
     #[serde(default)]
@@ -27,18 +27,18 @@ pub struct MapData {
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct LaneData {
+pub struct PathData {
     pub name: String,
     pub points: Vec<GroundPoint>,
 }
 
-/// A unit that stands on the map from the start, of a team, and on a lane if it guards one.
+/// A unit that stands on the map from the start, of a team, and on a path if it guards one.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StructureData {
     pub unit_type: String,
     pub team: String,
-    pub lane: Option<String>,
+    pub path: Option<String>,
     pub pos: GroundPoint,
 }
 

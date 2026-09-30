@@ -216,8 +216,8 @@ pub enum Place {
     Ability(String),
     Modifier(String),
     Script(PackagePath),
-    /// The map's lanes.
-    Lanes,
+    /// The map's paths.
+    Paths,
 }
 
 /// A use of `ctx` that hides it from the load checks: every value of `ctx` in a script is a
@@ -275,7 +275,7 @@ impl fmt::Display for Place {
             Place::Ability(id) => write!(f, "ability {id}"),
             Place::Modifier(id) => write!(f, "modifier {id}"),
             Place::Script(path) => write!(f, "{path}"),
-            Place::Lanes => f.write_str("the map's lanes"),
+            Place::Paths => f.write_str("the map's paths"),
         }
     }
 }

@@ -6,8 +6,8 @@ use campfire_sim::{Capability, EntityIndex, IdAllocator, SimUpdate, StableId, Ti
 
 use super::*;
 use crate::capability_set::internals::TestMatch;
-use crate::navigation::lane_walker::PathDirection;
-use crate::units::lane::Lane;
+use crate::navigation::path_walker::PathDirection;
+use crate::units::path_id::PathId;
 
 /// The MOBA's 30 ticks a second.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
@@ -103,39 +103,39 @@ fn a_dead_unit_stays_and_forgets_its_destination() {
 }
 
 #[test]
-fn lanes_count_waypoints_in_either_direction() {
-    let lanes = Lanes::new([
+fn paths_count_waypoints_in_either_direction() {
+    let paths = Paths::new([
         ("near", &[at(0, 0, 0), at(1, 0, 0)][..]),
         ("far", &[at(5, 0, 5)][..]),
     ]);
-    assert_eq!(lanes.count(), 2);
+    assert_eq!(paths.count(), 2);
     assert_eq!(
-        (lanes.named("far"), lanes.named("none")),
-        (Some(Lane::new(1)), None)
+        (paths.named("far"), paths.named("none")),
+        (Some(PathId::new(1)), None)
     );
     assert_eq!(
-        (lanes.name(Lane::new(0)), lanes.name(Lane::new(1))),
+        (paths.name(PathId::new(0)), paths.name(PathId::new(1))),
         ("near", "far")
     );
-    let walk = |lane, direction| {
+    let walk = |path, direction| {
         (0..3)
-            .map(|index| lanes.waypoint(lane, index, direction))
+            .map(|index| paths.waypoint(path, index, direction))
             .collect::<Vec<_>>()
     };
     assert_eq!(
-        walk(Lane::new(0), PathDirection::Forward),
+        walk(PathId::new(0), PathDirection::Forward),
         [Some(at(0, 0, 0)), Some(at(1, 0, 0)), None]
     );
     assert_eq!(
-        walk(Lane::new(0), PathDirection::Backward),
+        walk(PathId::new(0), PathDirection::Backward),
         [Some(at(1, 0, 0)), Some(at(0, 0, 0)), None]
     );
     assert_eq!(
-        walk(Lane::new(1), PathDirection::Backward),
+        walk(PathId::new(1), PathDirection::Backward),
         [Some(at(5, 0, 5)), None, None]
     );
     assert_eq!(
-        walk(Lane::new(2), PathDirection::Forward),
+        walk(PathId::new(2), PathDirection::Forward),
         [None, None, None]
     );
 }
@@ -146,8 +146,8 @@ fn every_navigation_type_is_state() {
     let unit = walk.unit(at(0, 0, 0), Some(at(0, 0, 5)));
     let entity = walk.world.resource::<EntityIndex>().get(unit).unwrap();
     walk.world.entity_mut(entity).insert((
-        LaneWalker::start(PathDirection::Forward),
-        OnLane::new(Lane::new(0)),
+        PathWalker::start(PathDirection::Forward),
+        OnPath::new(PathId::new(0)),
     ));
     let registry = &walk.registry;
     let mut per_type = Vec::new();
@@ -157,9 +157,9 @@ fn every_navigation_type_is_state() {
         names,
         [
             "navigation.destination",
-            "navigation.lane_walker",
             "navigation.move_step",
-            "navigation.on_lane",
+            "navigation.on_path",
+            "navigation.path_walker",
             "sim.entities",
             "sim.id_allocator",
             "sim.position",

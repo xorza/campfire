@@ -30,7 +30,7 @@ pub(crate) enum AiOrder {
     /// Attack `target`, a living enemy.
     Attack { target: StableId },
     /// Drop the target, and walk the path again.
-    FollowLane,
+    FollowPath,
 }
 
 impl AiCtx {
@@ -58,7 +58,7 @@ impl AiCtx {
         &self.view
     }
 
-    /// The script API of `think`: the queries, `ctx.order_attack` and `ctx.order_follow_lane`.
+    /// The script API of `think`: the queries, `ctx.order_attack` and `ctx.order_follow_path`.
     pub(crate) fn register(engine: &mut Engine) {
         engine
             .register_type_with_name::<AiCtx>("AiCtx")
@@ -66,8 +66,8 @@ impl AiCtx {
                 "order_attack",
                 |ctx: &mut AiCtx, unit: Unit, target: Unit| ctx.order_attack(&unit, &target),
             )
-            .register_fn("order_follow_lane", |ctx: &mut AiCtx, unit: Unit| {
-                ctx.order(&unit, AiOrder::FollowLane)
+            .register_fn("order_follow_path", |ctx: &mut AiCtx, unit: Unit| {
+                ctx.order(&unit, AiOrder::FollowPath)
             });
         View::register_queries::<AiCtx>(engine, AiCtx::view);
     }

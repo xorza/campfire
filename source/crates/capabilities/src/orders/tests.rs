@@ -12,14 +12,14 @@ use crate::capability_set::internals::TestMatch;
 use crate::combat::combatant::Combatant;
 use crate::combat::health::Health;
 use crate::combat::on_death::OnDeath;
-use crate::navigation::lane_walker::PathDirection;
 use crate::navigation::move_step::MoveStep;
+use crate::navigation::path_walker::PathDirection;
 use crate::scripts::error::ApiError;
 use crate::scripts::match_scripts::MatchScripts;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::units::Units;
-use crate::units::lane::Lane;
+use crate::units::path_id::PathId;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::scalar::Scalar;
 
@@ -42,7 +42,7 @@ fn think(ctx, unit) {
         target = ctx.nearest_visible(unit, unit.params.aggro_range, "enemies:avatar");
     }
     if target == () {
-        ctx.order_follow_lane(unit);
+        ctx.order_follow_path(unit);
     } else if target != unit.target {
         ctx.order_attack(unit, target);
     }
@@ -166,20 +166,20 @@ struct Match {
 
 impl Match {
     fn new() -> Match {
-        Match::with_lanes(Lanes::default())
+        Match::with_paths(Paths::default())
     }
 
-    fn with_lanes(lanes: Lanes) -> Match {
+    fn with_paths(paths: Paths) -> Match {
         let limits = ScriptLimits {
             per_call: 20_000,
             player: 200_000,
             think: 200_000,
             mode: 100_000,
         };
-        Match::with(lanes, limits)
+        Match::with(paths, limits)
     }
 
-    fn with(lanes: Lanes, limits: ScriptLimits) -> Match {
+    fn with(paths: Paths, limits: ScriptLimits) -> Match {
         let scripts = MatchScripts {
             limits,
             players: 2,
@@ -195,7 +195,7 @@ impl Match {
             schedule,
             registry,
         } = TestMatch::new(&declared, RATE, Some(scripts));
-        world.insert_resource(lanes);
+        world.insert_resource(paths);
         world.add_schedule(schedule);
         Match { world, registry }
     }
@@ -646,7 +646,7 @@ fn creeps_think_in_turn_and_take_the_targets_their_script_picks() {
     // second in 2 and 10, the lone one in 5. At first each takes the rival creep, 6 m and
     // √40 ≈ 6.32 m away, over the foe, 3 m and √13 ≈ 3.61 m away. The foe strikes their ally in
     // tick 4, so each defends it at its next think. The lone creep's target is beyond its 7 m:
-    // with nothing in reach, it goes back to its lane.
+    // with nothing in reach, it goes back to its path.
     let mut targets = Vec::new();
     for tick in 0..=10 {
         match tick {
@@ -690,7 +690,7 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
 
     let meddle = r#"fn think(ctx, unit) {
         for ally in ctx.find(unit, unit.pos, 9, "allies") {
-            if ally != unit { ctx.order_follow_lane(ally); }
+            if ally != unit { ctx.order_follow_path(ally); }
         }
     }"#;
     let meddler = game.unit_type(&[], &[], Some(meddle));
@@ -725,7 +725,7 @@ fn a_unit_that_finds_the_think_pool_spent_goes_first_next_tick() {
         think: 1500,
         mode: 100_000,
     };
-    let mut game = Match::with(Lanes::default(), limits);
+    let mut game = Match::with(Paths::default(), limits);
     let spinner = game.unit_type(&[], &[], None);
     // 1 ms is 0.03 ticks, up to 1: both think in every tick.
     let ai = AiData {
@@ -768,13 +768,13 @@ fn a_unit_that_finds_the_think_pool_spent_goes_first_next_tick() {
 
 #[test]
 fn a_walker_goes_back_to_its_path_after_a_chase() {
-    let path = [at(0, 0, 0), at(4, 0, 0), at(4, 0, 4)];
-    let mut game = Match::with_lanes(Lanes::new([("lane", &path[..])]));
+    let waypoints = [at(0, 0, 0), at(4, 0, 0), at(4, 0, 4)];
+    let mut game = Match::with_paths(Paths::new([("mid", &waypoints[..])]));
     let walker = (
         combatant(100, 1, 1, 5, 0).bundle(Team::new(0)),
         meter().bundle(),
-        OnLane::new(Lane::new(0)),
-        LaneWalker::start(PathDirection::Forward),
+        OnPath::new(PathId::new(0)),
+        PathWalker::start(PathDirection::Forward),
     );
     let chaser = game.spawn(at(0, 0, 0), walker);
     let prey = game.still(Team::new(1), at(1, 0, 3), dummy(100));
@@ -798,14 +798,14 @@ fn a_walker_goes_back_to_its_path_after_a_chase() {
 
 #[test]
 fn a_walker_follows_its_path_in_its_direction() {
-    let path = [at(0, 0, 0), at(4, 0, 0), at(4, 0, 4)];
-    let mut game = Match::with_lanes(Lanes::new([("lane", &path[..])]));
+    let waypoints = [at(0, 0, 0), at(4, 0, 0), at(4, 0, 4)];
+    let mut game = Match::with_paths(Paths::new([("mid", &waypoints[..])]));
     let path_walker = |team, direction| {
         (
             dummy(10).bundle(team),
             meter().bundle(),
-            OnLane::new(Lane::new(0)),
-            LaneWalker::start(direction),
+            OnPath::new(PathId::new(0)),
+            PathWalker::start(direction),
         )
     };
     let forward = game.spawn(

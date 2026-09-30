@@ -7,11 +7,11 @@ cell = "1.0"
 min = [-48, -68]
 max = [48, 68]
 
-[[lanes]]
+[[paths]]
 name = "west"
 points = [[-6, -50], [-36, -36], [-40, 0], [-36, 36], [-6, 50]]
 
-[[lanes]]
+[[paths]]
 name = "east"
 points = [[6, -50], [36, -36], [40, 0], [36, 36], [6, 50]]
 
@@ -27,37 +27,37 @@ pos = [0, -54]
 [[structures]]
 unit_type = "inhibitor"
 team = "north"
-lane = "west"
+path = "west"
 pos = [-9, -48]
 
 [[structures]]
 unit_type = "tower"
 team = "north"
-lane = "west"
+path = "west"
 pos = [-21, -43]
 
 [[structures]]
 unit_type = "tower"
 team = "north"
-lane = "west"
+path = "west"
 pos = [-38, -16]
 
 [[structures]]
 unit_type = "inhibitor"
 team = "north"
-lane = "east"
+path = "east"
 pos = [9, -48]
 
 [[structures]]
 unit_type = "tower"
 team = "north"
-lane = "east"
+path = "east"
 pos = [21, -43]
 
 [[structures]]
 unit_type = "tower"
 team = "north"
-lane = "east"
+path = "east"
 pos = [38, -16]
 
 [[structures]]
@@ -68,37 +68,37 @@ pos = [0, 54]
 [[structures]]
 unit_type = "inhibitor"
 team = "south"
-lane = "west"
+path = "west"
 pos = [-9, 48]
 
 [[structures]]
 unit_type = "tower"
 team = "south"
-lane = "west"
+path = "west"
 pos = [-21, 43]
 
 [[structures]]
 unit_type = "tower"
 team = "south"
-lane = "west"
+path = "west"
 pos = [-38, 16]
 
 [[structures]]
 unit_type = "inhibitor"
 team = "south"
-lane = "east"
+path = "east"
 pos = [9, 48]
 
 [[structures]]
 unit_type = "tower"
 team = "south"
-lane = "east"
+path = "east"
 pos = [21, 43]
 
 [[structures]]
 unit_type = "tower"
 team = "south"
-lane = "east"
+path = "east"
 pos = [38, 16]
 
 [[neutral_spawns]]

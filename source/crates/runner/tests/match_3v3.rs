@@ -1,7 +1,7 @@
 //! The reference 3v3 as its packages hold it plays a match that replays to the same state hashes.
 
 use campfire_capabilities::{
-    Hook, LaneWalker, ModeState, Owner, PlayerResources, ScriptFailures, StateValue, Team, UnitType,
+    Hook, ModeState, Owner, PathWalker, PlayerResources, ScriptFailures, StateValue, Team, UnitType,
 };
 use campfire_math::{Num, PlayerSlot, Vec3};
 use campfire_protocol::SessionLog;
@@ -48,7 +48,7 @@ fn units(runner: &Runner) -> Vec<Unit> {
                 kind: *unit.get::<UnitType>()?,
                 pos: *unit.get::<Position>()?,
                 controller: unit.get::<Owner>().map(|owner| owner.slot().get()),
-                walks: unit.contains::<LaneWalker>(),
+                walks: unit.contains::<PathWalker>(),
             })
         })
         .collect()

@@ -144,8 +144,8 @@ impl<'a> LoadCheck<'a> {
             let attack = unit_type.combat.as_ref().and_then(|combat| combat.attack);
             self.attack_projectile(attack.and_then(|attack| attack.projectile_speed), &at)?;
         }
-        if !packages.map.lanes.is_empty() {
-            self.require(Capability::Navigation, &Place::Lanes)?;
+        if !packages.map.paths.is_empty() {
+            self.require(Capability::Navigation, &Place::Paths)?;
         }
         if packages.manifest.capabilities.contains(Capability::Vision)
             && packages.map.grid.is_none()

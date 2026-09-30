@@ -55,8 +55,8 @@ impl Unit {
             .register_get("unit_type", |unit: &mut Unit| {
                 unit.view.unit_type_name(&unit.row())
             })
-            .register_get("lane", |unit: &mut Unit| {
-                unit.view.lane_name(unit.row().lane)
+            .register_get("path", |unit: &mut Unit| {
+                unit.view.path_name(unit.row().path)
             })
             .register_get("owner", |unit: &mut Unit| {
                 unit.row().owner.map_or(Dynamic::UNIT, |slot| {

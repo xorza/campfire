@@ -47,11 +47,11 @@ pub enum ApiError {
     UnknownTeam,
     /// A unit type the mode does not have.
     UnknownUnitType,
-    /// A lane the map does not have.
-    UnknownLane,
-    /// A team whose units walk no lane: only the first two teams walk each lane, from their own
+    /// A path the map does not have.
+    UnknownPath,
+    /// A team whose units walk no path: only the first two teams walk each path, from their own
     /// end.
-    NoLaneEnd,
+    NoPathEnd,
     /// A team with no one enemy team: `enemy_team` needs a mode of two teams.
     NoEnemyTeam,
     /// A player slot the session does not have.
@@ -143,8 +143,8 @@ impl fmt::Display for ApiError {
             ApiError::NotAnEnemy => "target is not a living enemy",
             ApiError::UnknownTeam => "team is not one of the mode's",
             ApiError::UnknownUnitType => "unit type is not one of the mode's",
-            ApiError::UnknownLane => "lane is not one of the map's",
-            ApiError::NoLaneEnd => "team has no end of the lanes",
+            ApiError::UnknownPath => "path is not one of the map's",
+            ApiError::NoPathEnd => "team has no end of the paths",
             ApiError::NoEnemyTeam => "team has no one enemy team",
             ApiError::UnknownPlayer => "player is not in the session",
             ApiError::UnknownAvatar => "avatar is not one the mode depends on",

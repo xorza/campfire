@@ -32,17 +32,17 @@ pub enum ModeError {
     NeutralTeam,
     /// More teams than a team index counts, the neutral one included.
     TooManyTeams,
-    /// Two teams, or two lanes, share a name.
+    /// Two teams, or two paths, share a name.
     RepeatedName(String),
     /// More players than the teams have slots.
     TooManyPlayers,
     UnknownTeam(String),
     UnknownUnitType(String),
-    UnknownLane(String),
+    UnknownPath(String),
     /// A playing team has no avatar spawn.
     NoSpawn(String),
-    /// A lane has no waypoint.
-    EmptyLane(String),
+    /// A path has no waypoint.
+    EmptyPath(String),
     /// A point of the map is beyond the world's bound.
     OutOfBounds,
 }
@@ -73,13 +73,13 @@ impl fmt::Display for ModeError {
         match self {
             ModeError::NeutralTeam => f.write_str("a team is named neutral"),
             ModeError::TooManyTeams => f.write_str("more teams than a team index counts"),
-            ModeError::RepeatedName(name) => write!(f, "{name:?} names two teams or lanes"),
+            ModeError::RepeatedName(name) => write!(f, "{name:?} names two teams or paths"),
             ModeError::TooManyPlayers => f.write_str("more players than slots"),
             ModeError::UnknownTeam(name) => write!(f, "no team {name:?}"),
             ModeError::UnknownUnitType(name) => write!(f, "no unit type {name:?}"),
-            ModeError::UnknownLane(name) => write!(f, "no lane {name:?}"),
+            ModeError::UnknownPath(name) => write!(f, "no path {name:?}"),
             ModeError::NoSpawn(team) => write!(f, "team {team:?} has no avatar spawn"),
-            ModeError::EmptyLane(name) => write!(f, "lane {name:?} has no waypoint"),
+            ModeError::EmptyPath(name) => write!(f, "path {name:?} has no waypoint"),
             ModeError::OutOfBounds => f.write_str("a map point is beyond the world's bound"),
         }
     }

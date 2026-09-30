@@ -483,9 +483,9 @@ const FLAWS: [Flaw; 54] = [
     ),
     flaw(
         MAP,
-        Edit::Replace(r#"lane = "west""#, r#"lane = "north""#),
+        Edit::Replace(r#"path = "west""#, r#"path = "north""#),
         MODE,
-        |problem| matches!(problem, LoadProblem::Mode(ModeError::UnknownLane(name)) if name == "north"),
+        |problem| matches!(problem, LoadProblem::Mode(ModeError::UnknownPath(name)) if name == "north"),
     ),
     flaw(
         MAP,

@@ -11,9 +11,9 @@ fn on_match_start(ctx) {
 }
 
 fn on_timer(ctx, name, data) {
-    for lane in ctx.map.lanes {
+    for lane in ctx.map.paths {
         for team in ctx.teams {
-            ctx.spawn_wave(team, lane, ctx.p.wave);
+            ctx.spawn_group(team, lane, ctx.p.wave);
         }
     }
     if name == "first_wave" {

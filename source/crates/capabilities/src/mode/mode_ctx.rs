@@ -11,7 +11,7 @@ use crate::mode::player_resources::PlayerResources;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::state_decl::StateType;
 use crate::scripts::state_value::StateValue;
-use crate::units::lane::Lane;
+use crate::units::path_id::PathId;
 use crate::units::script_view::View;
 use crate::units::team::Team;
 use crate::units::unit::Unit;
@@ -54,9 +54,9 @@ pub(crate) enum ModeEffect {
         team: Team,
         pos: Position,
     },
-    SpawnWave {
+    SpawnGroup {
         team: Team,
-        lane: Lane,
+        path: PathId,
         types: Vec<UnitType>,
     },
     Respawn {
@@ -161,9 +161,9 @@ impl ModeCtx {
                 },
             )
             .register_fn(
-                "spawn_wave",
-                |ctx: &mut ModeCtx, team: &str, lane: &str, types: Array| {
-                    ctx.spawn_wave(team, lane, &types)
+                "spawn_group",
+                |ctx: &mut ModeCtx, team: &str, path: &str, types: Array| {
+                    ctx.spawn_group(team, path, &types)
                 },
             )
             .register_fn(
@@ -330,14 +330,14 @@ impl ModeCtx {
         Ok(())
     }
 
-    /// Queues a wave of `types` on `lane` from `team`'s end of it.
-    fn spawn_wave(&self, team: &str, lane: &str, types: &Array) -> Checked<()> {
+    /// Queues a spawn group of `types` on `path` from `team`'s end of it.
+    fn spawn_group(&self, team: &str, path: &str, types: &Array) -> Checked<()> {
         let team = self.team(team)?;
-        self.book.lane_end(team).map_err(ApiError::fail)?;
-        let lane = self
+        self.book.path_end(team).map_err(ApiError::fail)?;
+        let path = self
             .view
-            .lane(lane)
-            .ok_or_else(|| ApiError::UnknownLane.fail())?;
+            .path(path)
+            .ok_or_else(|| ApiError::UnknownPath.fail())?;
         let types = types
             .iter()
             .map(|name| {
@@ -348,7 +348,7 @@ impl ModeCtx {
             .collect::<Checked<_>>()?;
         self.frame()
             .effects
-            .push(ModeEffect::SpawnWave { team, lane, types });
+            .push(ModeEffect::SpawnGroup { team, path, types });
         Ok(())
     }
 

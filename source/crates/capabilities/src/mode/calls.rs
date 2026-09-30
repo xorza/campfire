@@ -91,8 +91,8 @@ impl Calls<'_, '_> {
                     team,
                     pos,
                 } => drop(book.spawn(world, unit_type, team, pos, ())),
-                ModeEffect::SpawnWave { team, lane, types } => {
-                    book.spawn_wave(world, team, lane, &types);
+                ModeEffect::SpawnGroup { team, path, types } => {
+                    book.spawn_group(world, team, path, &types);
                 }
                 ModeEffect::Respawn { unit, ticks } => {
                     let entity = world.resource::<EntityIndex>().get(unit);

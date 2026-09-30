@@ -1,6 +1,6 @@
 //! Capabilities: the mechanisms a mode combines, a module each, on the core, and the mode above
 //! them. A module imports only from the layers below its own, lowest first: `values` (data value
-//! types); the core, `units` and `scripts` (unit types, teams, owners, lanes, the script view and
+//! types); the core, `units` and `scripts` (unit types, teams, owners, paths, the script view and
 //! runtime); `combat` and `stats`; `abilities`, `projectiles`, `navigation` and `vision`;
 //! `orders`; the `mode`. A capability gives the script view its fields of a unit through a row
 //! source.
@@ -53,7 +53,7 @@ pub use mode::Mode;
 pub use mode::avatar_index::AvatarIndex;
 pub use mode::error::{ModeError, UnitKitError};
 pub use mode::loadout_index::LoadoutIndex;
-pub use mode::map_data::{GroundPoint, LaneData, MapData, NeutralSpawnData, StructureData};
+pub use mode::map_data::{GroundPoint, MapData, NeutralSpawnData, PathData, StructureData};
 pub use mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
 pub use mode::mode_input::{InputValue, ModeInput};
 pub use mode::mode_setup::{AvatarSetup, LoadoutSetup, ModeSetup, UnitTypeSetup};
@@ -65,10 +65,10 @@ pub use mode::timers::{Timer, Timers};
 pub use mode::unit_kit::{KitRules, UnitKit};
 pub use navigation::Navigation;
 pub use navigation::destination::Destination;
-pub use navigation::lane_walker::{LaneWalker, PathDirection};
-pub use navigation::lanes::Lanes;
 pub use navigation::move_step::MoveStep;
-pub use navigation::on_lane::OnLane;
+pub use navigation::on_path::OnPath;
+pub use navigation::path_walker::{PathDirection, PathWalker};
+pub use navigation::paths::Paths;
 pub use orders::Orders;
 pub use orders::ai_data::AiData;
 pub use orders::error::AiError;
@@ -90,8 +90,8 @@ pub use stats::stats_data::{StatValue, StatsData};
 pub use stats::unit_state::UnitState;
 pub use units::Units;
 pub use units::error::UnitTypeError;
-pub use units::lane::Lane;
 pub use units::owner::Owner;
+pub use units::path_id::PathId;
 pub use units::recent_attack::RecentAttack;
 pub use units::spawn_point::SpawnPoint;
 pub use units::team::Team;
