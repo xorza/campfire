@@ -3,7 +3,7 @@
 Open items only. Remove an item when it is done; remove a stage when it is empty.
 
 ## 3. Vertical slice
-- Circle collision between units: the one gap two playtests found in the 1v1 on LAN, which otherwise works, and verifies on Linux and macOS.
+- A playtest of the 1v1 on LAN with circle collision, the one gap two playtests found; the rest works, and verifies on Linux and macOS.
 
 ## 4. Genre proofs
 - A tiny `det-ci` test mode for each target game: a CS round, an RTS skirmish, a BR zone, an MMO zone ([Genres](design/04-capabilities/genres.md#genre-proofs)), with the first cut of each capability they need: `items`, `progression`, `interaction`, `production`, `character`, `hitscan`, level geometry, `persistence`.

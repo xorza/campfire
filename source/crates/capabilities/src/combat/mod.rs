@@ -17,6 +17,7 @@ use crate::combat::recent_attackers::RecentAttackers;
 use crate::combat::respawn::Respawn;
 use crate::combat::strikes::{Strike, Strikes};
 use crate::combat::targets::Targets;
+use crate::units::body::Body;
 use crate::units::owner::Owner;
 use crate::units::recent_attack::RecentAttack;
 use crate::units::script_view::{RowFill, View};
@@ -108,20 +109,31 @@ fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
 fn attack(
     tick: Res<'_, SimTick>,
     targets: Targets<'_, '_>,
-    mut attackers: Query<'_, '_, (&Position, &Team, &AttackStats, &mut AttackState), Without<Dead>>,
+    mut attackers: Query<
+        '_,
+        '_,
+        (
+            &Position,
+            &Team,
+            &AttackStats,
+            &mut AttackState,
+            Option<&Body>,
+        ),
+        Without<Dead>,
+    >,
 ) {
     let now = tick.start();
-    for (&position, &team, stats, mut attack) in &mut attackers {
+    for (&position, &team, stats, mut attack, body) in &mut attackers {
         let Some(target) = attack.target() else {
             continue;
         };
-        let Some(target_at) = targets.enemy_at(team, target) else {
+        let Some(target) = targets.enemy(team, target) else {
             attack.set_target(None);
             continue;
         };
         if attack.started().is_none()
             && now >= attack.ready_at()
-            && stats.reaches(position, target_at)
+            && stats.reaches(position, Body::radius_of(body), &target)
         {
             attack.start(now);
         }

@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::f32::consts::FRAC_PI_2;
 use std::time::Duration;
 
@@ -15,7 +16,7 @@ use bevy::ecs::query::{Added, Allow, Changed, Has, With, Without};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::schedule::common_conditions::resource_added;
-use bevy::ecs::system::{Commands, Query, Res, ResMut, Single};
+use bevy::ecs::system::{Commands, Local, Query, Res, ResMut, Single};
 use bevy::light::DirectionalLight;
 use bevy::math::primitives::{Capsule3d, Plane3d, Sphere};
 use bevy::math::{Quat, Vec3};
@@ -25,11 +26,10 @@ use bevy::time::Time;
 use bevy::transform::components::Transform;
 use bevy::window::Window;
 use campfire_capabilities::{
-    AttackState, Dead, MatchEnd, MatchResult, MoveStep, Owner, Projectile, Team,
+    AttackState, Body, Dead, MatchEnd, MatchResult, MoveStep, Owner, Projectile, Team,
 };
 use campfire_math::Num;
-use campfire_net::Unpredicted;
-use campfire_sim::{EntityIndex, Position, StableId};
+use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
 use lightyear::prelude::Predicted;
 
 /// Draws the match: a camera over the lane, the ground, a capsule for every unit the client holds,
@@ -47,9 +47,6 @@ pub(crate) const CAMERA: Vec3 = Vec3::new(0.0, 24.0, 18.0);
 /// The meshes and materials units are drawn with.
 #[derive(Resource, Debug)]
 struct Palette {
-    avatar: Handle<Mesh>,
-    creep: Handle<Mesh>,
-    structure: Handle<Mesh>,
     projectile: Handle<Mesh>,
     own: Handle<StandardMaterial>,
     shot: Handle<StandardMaterial>,
@@ -90,7 +87,7 @@ pub(crate) struct Glide {
 }
 
 /// The units not drawn yet: where each stands, its team, whether it walks, whether a player
-/// controls it, whether it is the client's own, and whether it is dead.
+/// controls it, whether it is the client's own, whether it is dead, and its body.
 type NewUnits<'w, 's> = Query<
     'w,
     's,
@@ -102,6 +99,7 @@ type NewUnits<'w, 's> = Query<
         Has<Owner>,
         Has<Predicted>,
         Has<Dead>,
+        Option<&'static Body>,
     ),
     (With<StableId>, Without<Drawn>, Allow<Unpredicted>),
 >;
@@ -119,10 +117,26 @@ pub(crate) struct Look {
 }
 
 /// The shape of a unit: an avatar is under a player's control, a structure does not walk.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 struct Shape {
     radius: f32,
     length: f32,
+}
+
+impl Shape {
+    /// The shape of a unit that is under a player's control if `owned`, walks if `walks`, and has
+    /// `body`: its kind's height, at its body's radius, or its kind's own with no body.
+    fn of(owned: bool, walks: bool, body: Option<&Body>) -> Shape {
+        let kind = match (owned, walks) {
+            (true, _) => AVATAR,
+            (false, true) => CREEP,
+            (false, false) => STRUCTURE,
+        };
+        Shape {
+            radius: body.map_or(kind.radius, |body| float(body.radius())),
+            ..kind
+        }
+    }
 }
 
 const AVATAR: Shape = Shape {
@@ -200,12 +214,7 @@ impl View {
             Mesh3d(meshes.add(Plane3d::default().mesh().size(44.0, 20.0))),
             MeshMaterial3d(materials.add(Color::srgb(0.3, 0.33, 0.28))),
         ));
-        let mut capsule =
-            |shape: Shape| meshes.add(Capsule3d::new(shape.radius, shape.length).mesh());
         let palette = Palette {
-            avatar: capsule(AVATAR),
-            creep: capsule(CREEP),
-            structure: capsule(STRUCTURE),
             projectile: meshes.add(Sphere::new(SHOT_RADIUS).mesh()),
             own: materials.add(Color::srgb(1.0, 0.85, 0.2)),
             teams: [
@@ -224,14 +233,15 @@ impl View {
         palette: Res<'_, Palette>,
         time: Res<'_, Time>,
         units: NewUnits<'_, '_>,
+        mut meshes: ResMut<'_, Assets<Mesh>>,
+        mut capsules: Local<'_, BTreeMap<[u32; 2], Handle<Mesh>>>,
         mut commands: Commands<'_, '_>,
     ) {
-        for (unit, &pos, team, walks, owned, own, dead) in &units {
-            let (shape, mesh) = match (owned, walks) {
-                (true, _) => (AVATAR, &palette.avatar),
-                (false, true) => (CREEP, &palette.creep),
-                (false, false) => (STRUCTURE, &palette.structure),
-            };
+        for (unit, &pos, team, walks, owned, own, dead, body) in &units {
+            let shape = Shape::of(owned, walks, body);
+            let mesh = capsules
+                .entry([shape.radius.to_bits(), shape.length.to_bits()])
+                .or_insert_with(|| meshes.add(Capsule3d::new(shape.radius, shape.length).mesh()));
             let material = if own {
                 &palette.own
             } else {
@@ -503,6 +513,18 @@ mod tests {
         assert!(top.abs_diff_eq(expected, 1e-6), "{top}");
         // On one spot, no lean.
         assert_eq!(lean_toward(from, from), Quat::IDENTITY);
+    }
+
+    #[test]
+    fn a_unit_is_drawn_at_its_bodys_radius_and_its_kinds_height() {
+        let body = Body::new(Num::from_bits(3 << (Num::FRAC_BITS - 2))).unwrap();
+        let avatar = Shape {
+            radius: 0.75,
+            ..AVATAR
+        };
+        assert_eq!(Shape::of(true, true, Some(&body)), avatar);
+        assert_eq!(Shape::of(false, true, None), CREEP);
+        assert_eq!(Shape::of(false, false, None), STRUCTURE);
     }
 
     #[test]

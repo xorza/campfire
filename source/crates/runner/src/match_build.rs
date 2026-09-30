@@ -118,7 +118,10 @@ impl<'a> MatchBuild<'a> {
                 })?;
             }
             let kit = UnitKit::new(file.stats.as_ref(), file.combat.as_ref(), self.rules)
-                .map(|kit| kit.with_vision(file.vision.as_ref()))
+                .map(|kit| {
+                    kit.with_vision(file.vision.as_ref())
+                        .with_collision(file.collision.as_ref())
+                })
                 .map_err(|error| StartError::UnitKit {
                     unit_type: name.clone(),
                     error,
@@ -152,7 +155,8 @@ impl<'a> MatchBuild<'a> {
         };
         let kit = UnitKit::new(Some(&data.stats), Some(&combat), self.rules)
             .map_err(kit_error)?
-            .with_vision(data.vision.as_ref());
+            .with_vision(data.vision.as_ref())
+            .with_collision(data.collision.as_ref());
         let abilities = data
             .slots
             .iter()

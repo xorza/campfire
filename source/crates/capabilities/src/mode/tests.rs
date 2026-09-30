@@ -141,6 +141,7 @@ fn grunt() -> UnitKit {
         }),
         step: Some(MoveStep::new(Num::ONE).unwrap()),
         sight: None,
+        body: None,
     }
 }
 

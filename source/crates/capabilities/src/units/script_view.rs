@@ -9,6 +9,7 @@ use campfire_script::rhai::{Array, Dynamic, Engine, INT, ImmutableString};
 use campfire_sim::{EntityIndex, Position, SimTick, StableId, Tick, TickRate, Ticks};
 
 use crate::scripts::error::{ApiError, Checked};
+use crate::units::body::Body;
 use crate::units::filter::Filter;
 use crate::units::living_unit::LivingUnit;
 use crate::units::owner::Owner;
@@ -55,6 +56,8 @@ pub(crate) struct UnitRow {
     pub(crate) id: StableId,
     pub(crate) pos: Position,
     pub(crate) team: Team,
+    /// Its body's radius, 0 for a unit with no body.
+    pub(crate) radius: Num,
     pub(crate) unit_type: Option<UnitType>,
     /// The player who controls it.
     pub(crate) owner: Option<PlayerSlot>,
@@ -130,6 +133,7 @@ impl ScriptView {
                 id,
                 pos,
                 team,
+                radius: Body::radius_of(unit.get::<Body>()),
                 alive: true,
                 stays: false,
                 unit_type: unit.get::<UnitType>().copied(),
@@ -336,6 +340,7 @@ impl View {
             id,
             pos: row.pos,
             team: row.team,
+            radius: row.radius,
         })
     }
 

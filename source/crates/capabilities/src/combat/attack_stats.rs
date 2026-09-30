@@ -4,6 +4,8 @@ use campfire_sim::{Position, SimComponent, Ticks};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::units::living_unit::LivingUnit;
+
 /// How a unit attacks. An attack starts when its target is within `range` on the ground plane,
 /// strikes `windup` ticks later for `damage`, and the next one starts `period` ticks after it at
 /// the earliest. The windup is shorter than the period, so a strike lands before the next attack
@@ -65,9 +67,10 @@ impl AttackStats {
         self.projectile_speed
     }
 
-    /// Whether an attack from `from` reaches `to`: within range on the ground plane, exactly.
-    pub fn reaches(&self, from: Position, to: Position) -> bool {
-        from.within_ground(to, self.range)
+    /// Whether an attack from a unit at `from`, of body radius `radius`, reaches `target`: within
+    /// range on the ground plane, exactly, from the edge of the one body to the edge of the other.
+    pub(crate) fn reaches(&self, from: Position, radius: Num, target: &LivingUnit) -> bool {
+        from.within_ground(target.pos, self.range + radius + target.radius)
     }
 }
 

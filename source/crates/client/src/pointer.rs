@@ -6,8 +6,7 @@ use bevy::math::{Vec2, Vec3};
 use bevy::transform::components::{GlobalTransform, Transform};
 use bevy::window::{PrimaryWindow, Window};
 use campfire_capabilities::{Dead, Owner, Team};
-use campfire_net::Unpredicted;
-use campfire_sim::StableId;
+use campfire_sim::{StableId, Unpredicted};
 use lightyear::prelude::Predicted;
 
 use crate::view::{Drawn, Look};

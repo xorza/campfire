@@ -173,6 +173,9 @@ impl ModeBook {
         if let Some(sight) = kit.sight {
             unit.insert(sight);
         }
+        if let Some(body) = kit.body {
+            unit.insert(body);
+        }
         if let Some(step) = kit.step {
             unit.insert(step.bundle());
         }

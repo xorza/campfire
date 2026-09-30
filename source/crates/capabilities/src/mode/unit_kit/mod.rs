@@ -9,6 +9,8 @@ use crate::mode::error::UnitKitError;
 use crate::navigation::move_step::MoveStep;
 use crate::stats::stat::EngineStat;
 use crate::stats::stats_data::StatsData;
+use crate::units::body::Body;
+use crate::units::collision_data::CollisionData;
 use crate::values::speed::Speed;
 use crate::vision::sight::Sight;
 use crate::vision::vision_data::VisionData;
@@ -17,12 +19,14 @@ use crate::vision::vision_data::VisionData;
 const MAX_ATTACK_SPEED: Num = Num::from_bits(5 << (Num::FRAC_BITS - 1));
 
 /// What a new unit of a type starts with, in ticks at the match's rate: its combat values from its
-/// `combat` section and its stats at level 1, how far it walks a tick, and how far it sees.
+/// `combat` section and its stats at level 1, how far it walks a tick, how far it sees, and its
+/// body.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UnitKit {
     pub combatant: Option<Combatant>,
     pub step: Option<MoveStep>,
     pub sight: Option<Sight>,
+    pub body: Option<Body>,
 }
 
 /// The match's rules a unit type's values meet: its tick rate, and the mode's move speed cap.
@@ -77,7 +81,17 @@ impl UnitKit {
             combatant,
             step,
             sight: None,
+            body: None,
         })
+    }
+
+    /// The kit with the body of its type's `collision` section, if it has one.
+    #[must_use]
+    pub fn with_collision(self, collision: Option<&CollisionData>) -> UnitKit {
+        UnitKit {
+            body: collision.map(|collision| collision.body),
+            ..self
+        }
     }
 
     /// The kit with the sight of its type's `vision` section, if it has one.

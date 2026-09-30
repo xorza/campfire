@@ -1,6 +1,8 @@
 use std::ops::Range;
 
 use bevy_app::{App, FixedUpdate, Plugin, Update};
+use bevy_ecs::lifecycle::Add;
+use bevy_ecs::observer::On;
 use bevy_ecs::query::{Added, Allow, Has, With};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::IntoScheduleConfigs;
@@ -13,12 +15,12 @@ use campfire_math::SegmentSeed;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SignOnly};
 use campfire_protocol::{Delegation, DelegationTerms, InputChain, InputHash, SessionId};
 use campfire_sim::{
-    SimTick, SimUpdate, StableId, StateRegistry, Tick, TickInput, TickInputs, TickRate,
+    SimTick, SimUpdate, StableId, StateRegistry, Tick, TickInput, TickInputs, TickRate, Unpredicted,
 };
 use lightyear::prelude::client::{InputDelayConfig, InputTimelineConfig};
 use lightyear::prelude::{
-    Client, LocalTimeline, MessageReceiver, MessageSender, Predicted, SyncConfig, Tick as NetTick,
-    is_in_rollback,
+    Client, LocalTimeline, MessageReceiver, MessageSender, Predicted, Replicated, SyncConfig,
+    Tick as NetTick, is_in_rollback,
 };
 use tracing::{debug, info, warn};
 
@@ -34,12 +36,10 @@ use crate::offer::Offer;
 use crate::sim_client::bot_script::BotScript;
 use crate::sim_client::client_mode::ClientMode;
 use crate::sim_client::server_pin::ServerPin;
-use crate::sim_client::unpredicted::Unpredicted;
 
 pub(crate) mod bot_script;
 pub(crate) mod client_mode;
 pub(crate) mod server_pin;
-pub(crate) mod unpredicted;
 
 /// A client never holds the segment seed: it predicts movement, never a random outcome.
 const PREDICTION_SEED: SegmentSeed = SegmentSeed::new([0; 32]);
@@ -177,7 +177,7 @@ impl Plugin for SimClient {
             .install(world, &mut schedule, &mut state, None);
         world.insert_resource(self.mode.bounds);
         world.add_schedule(schedule);
-        Unpredicted::install(world);
+        mark_unpredicted(world);
         world.insert_resource(SentInputs {
             client: self.clone(),
             secp: Secp256k1::signing_only(),
@@ -397,6 +397,26 @@ fn run_predicted_tick(world: &mut World) {
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
+
+/// Marks each replicated entity `Unpredicted` until it is predicted, in whatever order the two
+/// markers arrive.
+fn mark_unpredicted(world: &mut World) {
+    Unpredicted::register(world);
+    world.add_observer(
+        |added: On<'_, '_, Add, Replicated>,
+         predicted: Query<'_, '_, (), With<Predicted>>,
+         mut commands: Commands<'_, '_>| {
+            if !predicted.contains(added.entity) {
+                commands.entity(added.entity).insert(Unpredicted);
+            }
+        },
+    );
+    world.add_observer(
+        |added: On<'_, '_, Add, Predicted>, mut commands: Commands<'_, '_>| {
+            commands.entity(added.entity).remove::<Unpredicted>();
+        },
+    );
+}
 
 #[cfg(test)]
 mod tests;

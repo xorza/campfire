@@ -151,6 +151,36 @@ fn an_attack_winds_up_and_strikes_each_period() {
 }
 
 #[test]
+fn a_range_counts_from_the_edge_of_each_body() {
+    // A fighter of range 2 at x = 0, and a dummy 3 m off: out of range from center to center, in
+    // range once each has a body of 0.5 m, as 3 ≤ 2 + 0.5 + 0.5; a bit farther, out again.
+    let half = Num::from_bits(1 << 23);
+    for (dummy_x, bodies, starts) in [
+        (num(3), false, false),
+        (num(3), true, true),
+        (num(3) + Num::EPSILON, true, false),
+    ] {
+        let mut fight = Fight::new();
+        let fighter = fight.unit(Team::new(0), at(0, 0, 0), fighter());
+        let dummy_at = Position::new(Vec3::new(dummy_x, Num::ZERO, Num::ZERO)).unwrap();
+        let dummy = fight.unit(Team::new(1), dummy_at, dummy());
+        if bodies {
+            for unit in [fighter, dummy] {
+                let entity = fight.world.resource::<EntityIndex>().get(unit).unwrap();
+                fight
+                    .world
+                    .entity_mut(entity)
+                    .insert(Body::new(half).unwrap());
+            }
+        }
+        fight.attack(fighter, dummy);
+        fight.run_until(1);
+        let started = fight.state(fighter).started();
+        assert_eq!(started.is_some(), starts, "{dummy_x:?} {bodies}");
+    }
+}
+
+#[test]
 fn a_windup_on_a_target_that_dies_spends_nothing() {
     let mut fight = Fight::new();
     let slow = fight.unit(Team::new(0), at(0, 0, 0), fighter());
@@ -224,7 +254,9 @@ fn targets_are_living_enemies() {
     let enemy_at = |fight: &mut Fight, team: Team, target: StableId| {
         fight
             .world
-            .run_system_once(move |targets: Targets<'_, '_>| targets.enemy_at(team, target))
+            .run_system_once(move |targets: Targets<'_, '_>| {
+                targets.enemy(team, target).map(|unit| unit.pos)
+            })
             .unwrap()
     };
     assert_eq!(enemy_at(&mut fight, Team::new(1), far), Some(at(6, 0, 0)));
@@ -288,6 +320,7 @@ fn every_combat_type_is_state_and_restores() {
             "sim.id_allocator",
             "sim.position",
             "sim.tick",
+            "units.body",
             "units.owner",
             "units.spawn_point",
             "units.team",

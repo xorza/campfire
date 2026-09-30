@@ -239,12 +239,12 @@ fn run_and_replay_agree_on_every_tick() {
     assert!(live[22..].iter().zip(&without[22..]).all(|(a, b)| a != b));
 }
 
-/// The hero walks 1 m along x from the origin, into the reach of the east tower.
+/// The hero walks 1 m along x from its spawn, (0, −2), into the reach of the east tower.
 const INTO_REACH: Sent = Sent {
     arrives: 0,
     stamp: 0,
     x: 1,
-    z: 0,
+    z: -2,
     applied: Applied::At(0),
 };
 
@@ -292,34 +292,40 @@ fn scripted_creeps_and_towers_replay_to_the_same_hashes() {
     }
     assert!(!replay.run_tick());
 
-    // Ids: the map's towers, 0 at x = −8 on the west team and 1 at x = 8 on the east, then the
+    // Ids: the map's towers, 0 at (−8, −3) on the west team and 1 at (8, −3) on the east, then the
     // hero 2, which the mode spawns as the match starts, then the first wave, at the end of tick
     // 0: the west creeps 3 and 4 at x = −16, and the east's 5 and 6 at x = 16. Every unit thinks
-    // every 8 ticks, in the ticks that leave its id.
+    // every 8 ticks, in the ticks that leave its id. Bodies: the towers 0.9 m, the hero 0.5 m, a
+    // creep 0.35 m; a range counts from the edge of each body.
     //
-    // The hero walks ¼ m a tick from tick 0 and stands at x = 1 from tick 3. Tower 1 thinks in
-    // tick 1, with the hero at 0.25, 7.75 m away and just within its 7.75: no creep is in
-    // reach, so it takes the hero. Its attacks start in ticks 1, 38 and 75 and fire 5 ticks
-    // later, from x = 8, at the hero 7 m away. A projectile flies 12 m/s ÷ 30, 0.4 m rounded
-    // down to 6710886 / 2²⁴ m, from the tick after it fires: 17 steps leave less than a step, so
-    // the 18th lands, in ticks 24 and 61, for 150 each.
+    // The hero walks ¼ m a tick from (0, −2) in tick 0 and stands at (1, −2) from tick 3. Tower 1
+    // takes a hero within 7.75 m of its center: in tick 1 the hero at 0.25 is √(7.75² + 1) ≈ 7.81
+    // m away, beyond; in tick 9, at 1, √(7² + 1) ≈ 7.07 m, within: no creep is in reach, so it
+    // takes the hero. Its reach from edge to edge is 7.75 + 0.9 + 0.5 m from its center, so its
+    // attacks start in ticks 9 and 46 and fire 5 ticks later, from (8, −3), at the hero 7.07 m
+    // away. A projectile flies 12 m/s ÷ 30, 0.4 m rounded down to 6710886 / 2²⁴ m, from the tick
+    // after it fires: 17 steps leave less than a step, so the 18th lands, in ticks 32 and 69, for
+    // 150 each.
     //
-    // An east creep stands at 16 − (t − 1)/8 as it thinks in tick t. Creep 5 thinks in tick 61
-    // at 8.5, 7.5 m from the hero, beyond its 7 m aggro range, and in tick 69 at 7.5, 6.5 m
-    // away: it takes the hero. Creep 6 does in tick 70, at 7.375. The west creeps are 15 m from
-    // the east's, and tower 0 is 15.5 m from them: none of them takes a target.
+    // The east creeps walk ⅛ m a tick from tick 1, where their bodies, both at 15.875, part to
+    // 15.525 and 16.225; each thinks in tick t where the tick before left it. Creep 5 thinks in
+    // tick 69 at 15.525 − 67/8 ≈ 7.15, √(6.15² + 2²) ≈ 6.47 m from the hero, within its 7 m aggro
+    // range, and in tick 61 at 8.15, √(7.15² + 4) ≈ 7.42 m, beyond: it takes the hero in tick
+    // 69. Creep 6 thinks in tick 70 at 16.225 − 68/8 = 7.725, √(6.725² + 4) ≈ 7.02 m, just beyond:
+    // it takes no one. The west creeps are 15 m from the east's, and tower 0 is 15.5 m from
+    // them: none of them takes a target.
     let expected: Vec<_> = (0..72)
         .map(|tick| {
             let hero = Some(2);
             let from = |first: u64| (tick >= first).then_some(()).and(hero);
             let hero_health = match tick {
-                ..24 => 600,
-                24..61 => 450,
+                ..32 => 600,
+                32..69 => 450,
                 _ => 300,
             };
-            let projectiles = usize::from((6..24).contains(&tick) || (43..61).contains(&tick));
+            let projectiles = usize::from((14..32).contains(&tick) || (51..69).contains(&tick));
             Seen {
-                targets: [None, from(1), None, None, from(69), from(70)],
+                targets: [None, from(9), None, None, from(69), None],
                 hero_health,
                 projectiles,
             }

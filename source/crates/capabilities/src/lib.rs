@@ -93,6 +93,8 @@ pub use stats::stat::{EngineStat, Stat};
 pub use stats::stats_data::{StatValue, StatsData};
 pub use stats::unit_state::UnitState;
 pub use units::Units;
+pub use units::body::Body;
+pub use units::collision_data::CollisionData;
 pub use units::error::UnitTypeError;
 pub use units::owner::Owner;
 pub use units::path_id::PathId;

@@ -5,6 +5,7 @@ stats = { health = { base = 445 }, attack_damage = { base = 12 }, attack_speed =
 combat = { attack = { range = "1.1", windup_ms = 300 } }
 orders = { ai = "scripts/creep_ai.rhai", think_ms = 250 }
 vision = { sight_range = "10.0" }
+collision = { radius = "0.35" }
 
 [units.caster_creep]
 tags = ["creep"]
@@ -13,6 +14,7 @@ stats = { health = { base = 280 }, attack_damage = { base = 23 }, attack_speed =
 combat = { attack = { range = "6.0", windup_ms = 300, projectile_speed = "6.5" } }
 orders = { ai = "scripts/creep_ai.rhai", think_ms = 250 }
 vision = { sight_range = "10.0" }
+collision = { radius = "0.35" }
 
 [units.super_creep]
 tags = ["creep"]
@@ -21,6 +23,7 @@ stats = { health = { base = 1500 }, attack_damage = { base = 190 }, attack_speed
 combat = { attack = { range = "1.7", windup_ms = 300 } }
 orders = { ai = "scripts/creep_ai.rhai", think_ms = 250 }
 vision = { sight_range = "10.0" }
+collision = { radius = "0.55" }
 
 [units.tower]
 tags = ["structure", "tower"]
@@ -29,6 +32,7 @@ stats = { health = { base = 1500 }, attack_damage = { base = 150 }, attack_speed
 combat = { attack = { range = "7.75", windup_ms = 150, projectile_speed = "12" } }
 orders = { ai = "scripts/tower_ai.rhai", think_ms = 250 }
 vision = { sight_range = "11.0", true_sight = true }
+collision = { radius = "0.9" }
 
 [units.inhibitor]
 tags = ["structure", "inhibitor"]
@@ -36,6 +40,7 @@ params = { gold = 50, xp = 0 }
 stats = { health = { base = 4000 }, armor = { base = 20 }, magic_resist = { base = 20 } }
 combat = { on_death = "stay" }
 vision = { sight_range = "8.0" }
+collision = { radius = "1.2" }
 
 [units.core]
 tags = ["structure", "core"]
@@ -43,6 +48,7 @@ params = { gold = 0, xp = 0 }
 stats = { health = { base = 5500 }, armor = { base = 20 }, magic_resist = { base = 20 } }
 combat = {}
 vision = { sight_range = "8.0" }
+collision = { radius = "1.5" }
 
 [units.wolf]
 tags = ["camp"]
@@ -51,6 +57,7 @@ stats = { health = { base = 900 }, attack_damage = { base = 35 }, attack_speed =
 combat = { attack = { range = "1.25", windup_ms = 300 }, on_death = "stay" }
 orders = { ai = "scripts/camp_ai.rhai", think_ms = 250 }
 vision = { sight_range = "9.0" }
+collision = { radius = "0.4" }
 
 [units.warden]
 tags = ["camp", "objective"]
@@ -59,3 +66,4 @@ stats = { health = { base = 5000 }, attack_damage = { base = 150 }, attack_speed
 combat = { attack = { range = "5.0", windup_ms = 400, projectile_speed = "10" }, on_death = "stay" }
 orders = { ai = "scripts/camp_ai.rhai", think_ms = 250 }
 vision = { sight_range = "11.0" }
+collision = { radius = "0.7" }

@@ -7,6 +7,7 @@ use campfire_sim::{SimSet, StateRegistry, TickRate};
 use crate::scripts::match_scripts::MatchScripts;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
+use crate::units::body::Body;
 use crate::units::error::UnitTypeError;
 use crate::units::owner::Owner;
 use crate::units::script_view::View;
@@ -16,7 +17,9 @@ use crate::units::unit::Unit;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
 
+pub(crate) mod body;
 pub(crate) mod by_type;
+pub(crate) mod collision_data;
 pub(crate) mod error;
 pub(crate) mod filter;
 pub(crate) mod living_unit;
@@ -58,6 +61,7 @@ impl Units {
     ) {
         let rate = *world.resource::<TickRate>();
         let view = View::new(rate);
+        registry.register_component::<Body>();
         registry.register_component::<Owner>();
         registry.register_component::<SpawnPoint>();
         registry.register_component::<Team>();

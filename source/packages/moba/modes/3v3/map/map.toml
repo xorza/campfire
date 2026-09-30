@@ -30,37 +30,37 @@ pos = [0, -54]
 unit_type = "inhibitor"
 team = "north"
 path = "west"
-pos = [-9, -48]
+pos = [-11, -52]
 
 [[structures]]
 unit_type = "tower"
 team = "north"
 path = "west"
-pos = [-21, -43]
+pos = [-22, -46]
 
 [[structures]]
 unit_type = "tower"
 team = "north"
 path = "west"
-pos = [-38, -16]
+pos = [-42, -16]
 
 [[structures]]
 unit_type = "inhibitor"
 team = "north"
 path = "east"
-pos = [9, -48]
+pos = [11, -52]
 
 [[structures]]
 unit_type = "tower"
 team = "north"
 path = "east"
-pos = [21, -43]
+pos = [22, -46]
 
 [[structures]]
 unit_type = "tower"
 team = "north"
 path = "east"
-pos = [38, -16]
+pos = [42, -16]
 
 [[structures]]
 unit_type = "core"
@@ -71,37 +71,37 @@ pos = [0, 54]
 unit_type = "inhibitor"
 team = "south"
 path = "west"
-pos = [-9, 48]
+pos = [-11, 52]
 
 [[structures]]
 unit_type = "tower"
 team = "south"
 path = "west"
-pos = [-21, 43]
+pos = [-22, 46]
 
 [[structures]]
 unit_type = "tower"
 team = "south"
 path = "west"
-pos = [-38, 16]
+pos = [-42, 16]
 
 [[structures]]
 unit_type = "inhibitor"
 team = "south"
 path = "east"
-pos = [9, 48]
+pos = [11, 52]
 
 [[structures]]
 unit_type = "tower"
 team = "south"
 path = "east"
-pos = [21, 43]
+pos = [22, 46]
 
 [[structures]]
 unit_type = "tower"
 team = "south"
 path = "east"
-pos = [38, 16]
+pos = [42, 16]
 
 [[neutral_spawns]]
 unit_type = "wolf"

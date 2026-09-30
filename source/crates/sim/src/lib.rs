@@ -20,6 +20,7 @@ mod state_registry;
 mod tick;
 mod tick_inputs;
 mod tick_rate;
+mod unpredicted;
 
 pub use capability::Capability;
 pub use command::Command;
@@ -36,6 +37,7 @@ pub use state_registry::{StateHash, StateRegistry, TypeHash};
 pub use tick::{Tick, Ticks};
 pub use tick_inputs::{TickInput, TickInputs};
 pub use tick_rate::TickRate;
+pub use unpredicted::Unpredicted;
 
 #[cfg(feature = "bench")]
 pub mod bench {

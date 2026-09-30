@@ -4,6 +4,7 @@ use campfire_sim::{EntityIndex, Position, StableId};
 
 use crate::combat::dead::Dead;
 use crate::combat::health::Health;
+use crate::units::body::Body;
 use crate::units::living_unit::LivingUnit;
 use crate::units::team::Team;
 
@@ -15,22 +16,32 @@ pub(crate) struct Targets<'w, 's> {
     units: Query<
         'w,
         's,
-        (&'static StableId, &'static Position, &'static Team),
+        (
+            &'static StableId,
+            &'static Position,
+            &'static Team,
+            Option<&'static Body>,
+        ),
         (With<Health>, Without<Dead>),
     >,
 }
 
 impl Targets<'_, '_> {
-    /// Where `target` is, when it is a living enemy of `team`.
-    pub(crate) fn enemy_at(&self, team: Team, target: StableId) -> Option<Position> {
+    /// `target`, when it is a living enemy of `team`.
+    pub(crate) fn enemy(&self, team: Team, target: StableId) -> Option<LivingUnit> {
         self.living(target)
             .filter(|unit| team.is_enemy_of(unit.team))
-            .map(|unit| unit.pos)
     }
 
     /// `target`, when it is a living unit.
     pub(crate) fn living(&self, target: StableId) -> Option<LivingUnit> {
-        let (&id, &pos, &team) = self.units.get(self.index.get(target)?).ok()?;
-        Some(LivingUnit { id, pos, team })
+        let (&id, &pos, &team, body) = self.units.get(self.index.get(target)?).ok()?;
+        let radius = Body::radius_of(body);
+        Some(LivingUnit {
+            id,
+            pos,
+            team,
+            radius,
+        })
     }
 }

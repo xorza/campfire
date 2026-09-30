@@ -43,7 +43,6 @@ pub use order_script::{OrderScript, ScriptedOrder};
 pub use sim_client::bot_script::BotScript;
 pub use sim_client::client_mode::ClientMode;
 pub use sim_client::server_pin::ServerPin;
-pub use sim_client::unpredicted::Unpredicted;
 pub use sim_client::{JoinState, PendingOrders, SimClient};
 pub use sim_server::{PlayerLink, SimServer, TickHashes};
 

@@ -17,8 +17,7 @@ use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::time::Time;
 use bevy::transform::components::Transform;
 use campfire_capabilities::{AbilitySlots, AttackState, Dead, Health, Owner, ResourcePool, Team};
-use campfire_net::Unpredicted;
-use campfire_sim::{EntityIndex, SimTick};
+use campfire_sim::{EntityIndex, SimTick, Unpredicted};
 use lightyear::prelude::Predicted;
 
 use crate::hud::gauge::{Cooling, Gauge, GaugeKind, share};

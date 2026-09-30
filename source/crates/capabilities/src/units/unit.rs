@@ -38,6 +38,7 @@ impl Unit {
         engine
             .register_type_with_name::<Unit>("Unit")
             .register_get("pos", |unit: &mut Unit| unit.row().pos)
+            .register_get("radius", |unit: &mut Unit| unit.row().radius)
             .register_get("alive", |unit: &mut Unit| unit.row().alive)
             .register_get("is_avatar", |unit: &mut Unit| {
                 unit.view.is_avatar(&unit.row())

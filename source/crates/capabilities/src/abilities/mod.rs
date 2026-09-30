@@ -27,6 +27,7 @@ use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
+use crate::units::body::Body;
 use crate::units::owner::Owner;
 use crate::units::script_view::{RowFill, SlotRow, View};
 use crate::units::tag_set::TagSet;
@@ -121,12 +122,18 @@ fn start_casts(
     mut casters: Query<
         '_,
         '_,
-        (&Position, &Team, &mut AbilitySlots, Option<&ResourcePool>),
+        (
+            &Position,
+            &Team,
+            &mut AbilitySlots,
+            Option<&ResourcePool>,
+            Option<&Body>,
+        ),
         Without<Dead>,
     >,
 ) {
     let now = tick.start();
-    for (&position, &team, mut slots, pool) in &mut casters {
+    for (&position, &team, mut slots, pool, body) in &mut casters {
         let Some(casting) = slots
             .casting()
             .filter(|casting| casting.resolves_at.is_none())
@@ -139,11 +146,13 @@ fn start_casts(
             Some(TargetUnit {
                 pos: unit.pos,
                 team: unit.team,
+                radius: unit.radius,
                 tags: view.type_tags(unit_type.copied()),
             })
         };
+        let radius = Body::radius_of(body);
         let started = check(&book, now, &slots, pool, team, casting, lookup)
-            .filter(|checked| in_range(checked, position, lookup))
+            .filter(|checked| in_range(checked, position, radius, lookup))
             .map(|checked| (now.after(checked.cast_time), checked.target));
         match started {
             Some((resolves_at, target)) => slots.start(resolves_at, target),
@@ -152,11 +161,12 @@ fn start_casts(
     }
 }
 
-/// A living unit a cast may target: where it stands, its team and its tags.
+/// A living unit a cast may target: where it stands, its team, its body's radius and its tags.
 #[derive(Debug, Clone, Copy)]
 struct TargetUnit {
     pos: Position,
     team: Team,
+    radius: Num,
     tags: TagSet,
 }
 
@@ -234,17 +244,20 @@ fn check<'a>(
     })
 }
 
-/// Whether a unit target is within the ability's range of `position` on the ground plane. The
+/// Whether a unit target is within the ability's range of a caster at `position` with a body of
+/// `radius`, on the ground plane, from the edge of the one body to the edge of the other. The
 /// range counts only when a cast starts.
 fn in_range(
     checked: &Checked<'_>,
     position: Position,
+    radius: Num,
     living: impl Fn(StableId) -> Option<TargetUnit>,
 ) -> bool {
     let (Range::Meters(range), CastTarget::Unit(target)) = (checked.range, checked.target) else {
         return true;
     };
-    living(target).is_some_and(|unit| position.within_ground(unit.pos, range))
+    living(target)
+        .is_some_and(|unit| position.within_ground(unit.pos, range + radius + unit.radius))
 }
 
 /// Resolves the casts due this tick, in the order of their caster's stable id. Their calls share
@@ -355,6 +368,7 @@ fn prepare(
         Some(TargetUnit {
             pos: unit.pos,
             team: unit.team,
+            radius: unit.radius,
             tags: view.type_tags(row.unit_type),
         })
     };

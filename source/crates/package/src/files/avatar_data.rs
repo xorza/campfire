@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use campfire_capabilities::{
-    AbilityData, CombatData, DeclaredName, ModifierData, StatsData, VisionData,
+    AbilityData, CollisionData, CombatData, DeclaredName, ModifierData, StatsData, VisionData,
 };
 use serde::Deserialize;
 
@@ -21,6 +21,8 @@ pub struct AvatarData {
     pub stats: StatsData,
     /// How far it sees; without it, an avatar reveals nothing to its team.
     pub vision: Option<VisionData>,
+    /// Its body; without it, it collides with nothing.
+    pub collision: Option<CollisionData>,
     #[serde(default)]
     pub abilities: BTreeMap<String, AbilityData>,
     #[serde(default)]

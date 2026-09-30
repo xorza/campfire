@@ -1,4 +1,4 @@
-use campfire_capabilities::Team;
+use campfire_capabilities::{DeathView, Team};
 use campfire_log::LogEvent;
 use campfire_math::PlayerSlot;
 use campfire_sim::{StableId, Tick};
@@ -19,6 +19,19 @@ pub struct UnitDied {
     pub killer: Option<StableId>,
 }
 
+impl UnitDied {
+    /// The death `death` of `tick`, as the server logs it.
+    pub(crate) const fn of(tick: Tick, death: &DeathView<'_>) -> UnitDied {
+        UnitDied {
+            tick,
+            unit: death.fallen.unit,
+            team: death.fallen.team,
+            owner: death.fallen.owner,
+            killer: death.killer,
+        }
+    }
+}
+
 impl LogEvent for UnitDied {
     const MESSAGE: &'static str = "a unit died";
 
@@ -37,6 +50,7 @@ impl LogEvent for UnitDied {
 
 #[cfg(test)]
 mod tests {
+    use campfire_capabilities::Fallen;
     use campfire_log::internals::round_trip;
     use campfire_sim::IdAllocator;
 
@@ -61,5 +75,31 @@ mod tests {
             killer: None,
             ..avatar
         });
+    }
+
+    #[test]
+    fn a_death_logs_its_unit_as_it_fell_and_its_killer() {
+        let mut ids = IdAllocator::default();
+        let [killer, unit] = [ids.allocate(), ids.allocate()];
+        let fallen = Fallen {
+            unit,
+            team: Some(Team::new(1)),
+            owner: Some(PlayerSlot::new(0)),
+        };
+        let death = DeathView {
+            fallen,
+            killer: Some(killer),
+            assisters: &[],
+        };
+        assert_eq!(
+            UnitDied::of(Tick::new(7), &death),
+            UnitDied {
+                tick: Tick::new(7),
+                unit,
+                team: Some(Team::new(1)),
+                owner: Some(PlayerSlot::new(0)),
+                killer: Some(killer),
+            }
+        );
     }
 }

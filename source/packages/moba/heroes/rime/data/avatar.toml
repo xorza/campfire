@@ -9,6 +9,9 @@ range = "6.0"
 windup_ms = 230
 projectile_speed = "20"
 
+[collision]
+radius = "0.5"
+
 [vision]
 sight_range = "12.0"
 

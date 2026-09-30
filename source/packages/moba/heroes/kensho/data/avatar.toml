@@ -8,6 +8,9 @@ slots = ["flicker_strike", "still_mind", "honed_edge", "unbound"]
 range = "1.25"
 windup_ms = 250
 
+[collision]
+radius = "0.5"
+
 [vision]
 sight_range = "12.0"
 

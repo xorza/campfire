@@ -17,4 +17,8 @@ Queries take world positions, a route is a list of waypoints, and obstacles are 
 
 ## Waypoint paths
 
-A map can hold paths of waypoints, such as a MOBA's lanes. A unit that walks a path goes along it forward or backward, as its spawn sets, while it has no other order: a MOBA's two sides each walk a lane from their own end.
+A map can hold paths of waypoints, such as a MOBA's lanes. A unit that walks a path goes along it forward or backward, as its spawn sets, while it has no other order: a MOBA's two sides each walk a lane from their own end. It has reached a waypoint once the waypoint is within its body, as walkers that push each other never stand on one point. A unit that does not walk never moves, so a map keeps its structures beside its paths, clear of the widest walker.
+
+## Collision
+
+A unit type may declare a body: a circle of its radius on the ground plane. In the Collide stage, after Move, each pair of living bodies that overlap parts along the line between them, in stable-id order, by exact fixed-point steps: two that walk share the overlap, and a unit that does not walk leaves all of it to the other. Touching is not overlap; two on one spot part along x. A predicting client parts its own units from the held units that do not walk, whose places never go stale; a push by a held unit that walks comes from the server as a correction.

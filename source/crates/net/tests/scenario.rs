@@ -129,7 +129,7 @@ fn play(link: LinkModel) -> [u32; 2] {
     }
     // Each ends where its last order sent it, alive, on the server and on its client.
     for (index, (&id, &team)) in heroes.iter().zip(&teams).enumerate() {
-        let end = [at(-2, 3), at(2, -3)][team];
+        let end = [at(-3, -2), at(3, 4)][team];
         let end = Hero {
             position: end,
             dead: false,
@@ -179,7 +179,8 @@ fn check_log(local: &mut LocalMatch, inputs: usize) {
 
 /// The orders by team, the west, whose hero is the walker, then the east, whose is the runner:
 /// both order a point past the map's edge at z = 12, and stop on the edge, 8 m off the lane, out
-/// of reach of creeps and towers, 1 m apart; there each sees the other.
+/// of reach of creeps and towers, 1.5 m apart, so their bodies of 0.5 m never touch; there each
+/// sees the other.
 ///
 /// The walker casts its first ability, 100 true damage within 2 m for 40 of its 100 mana, every
 /// 90 ticks: in tick 100 it hits; in 120 it is on cooldown; in 190 its cooldown has ended, and it
@@ -198,7 +199,7 @@ fn cast_scripts(walker: StableId, runner: StableId) -> [String; 2] {
         runner.get()
     );
     let runner_orders = format!(
-        "[[order]]\ntick = 60\nmove = [1, 12]\n\
+        "[[order]]\ntick = 60\nmove = [\"1.5\", 12]\n\
          [[order]]\ntick = 140\ncast = 0\ntarget = {}\n",
         walker.get()
     );
@@ -271,12 +272,12 @@ fn cast(link: LinkModel) -> [u32; 2] {
     // again after its last cast's cooldown: on the server and on both clients.
     assert_eq!(hits, [vec![140], vec![100, 190, 308, 328, 348]]);
     let num = |value| Num::from_int(value).unwrap();
-    let edge = |x| Position::new(Vec3::new(num(x), Num::ZERO, num(8))).unwrap();
+    let edge = |x| Position::new(Vec3::new(x, Num::ZERO, num(8))).unwrap();
     let expected = [
         (
             walker,
             Caster {
-                pos: edge(0),
+                pos: edge(Num::ZERO),
                 health: num(600 - 80),
                 resource: Some(num(100 - 40 - 40)),
                 ready_at: Some(Tick::new(190 + 90)),
@@ -285,7 +286,7 @@ fn cast(link: LinkModel) -> [u32; 2] {
         (
             runner,
             Caster {
-                pos: edge(1),
+                pos: edge(num(1) + Num::from_bits(1 << 23)),
                 health: num(600 - 100 - 100 - 3 * 60),
                 resource: Some(num(100 - 30)),
                 ready_at: Some(Tick::new(140 + 60)),

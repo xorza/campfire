@@ -9,7 +9,7 @@ A unit has a team, a type of the core that every capability shares: its index in
 ## Attacks
 
 - **Attack order.** An attack names its target by stable id; an order on a unit that is not a living enemy is ignored.
-- **Range** is measured on the ground plane, exactly, with no square root. A unit that can move walks to its target while out of range and stops in range.
+- **Range** is measured on the ground plane, exactly, with no square root, from the edge of the attacker's body to the edge of the target's, as in League of Legends and Dota 2: a range `r` reaches a center `r` plus both radii away. A unit with no body is a point. A unit that can move walks to its target while out of range and stops in range.
 - **Windup and period.** An attack starts once the unit is ready and strikes when its windup ends. The next attack may start one period after this one started. A move, or an attack on another target, cancels a windup and spends nothing, so the unit may attack again at once; after the strike, in the back-swing, moving is free. Range counts only at the start: a strike lands unless its target died or despawned.
 - **Ranged attacks** fire a homing projectile at the end of the windup, from where the attacker stands, which strikes on arrival ([Abilities](abilities.md#projectiles-and-areas)); in a match without `projectiles`, they strike at the end of the windup.
 

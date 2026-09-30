@@ -30,6 +30,7 @@ use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
+use crate::units::body::Body;
 use crate::units::by_type::ByType;
 use crate::units::owner::Owner;
 use crate::units::script_view::View;
@@ -159,7 +160,7 @@ fn apply_orders(
                     }
                 }
                 Action::Attack { target } => {
-                    let enemy = team.is_some_and(|&team| targets.enemy_at(team, target).is_some());
+                    let enemy = team.is_some_and(|&team| targets.enemy(team, target).is_some());
                     if let (true, Some(mut attack)) = (enemy, attack) {
                         attack.set_target(Some(target));
                     }
@@ -275,7 +276,9 @@ fn apply_ai_order(world: &mut World, unit: StableId, order: AiOrder) {
 }
 
 /// Sends each path walker with no attack target to the waypoint it walks to, and on to the next
-/// once it stands on one. A walker that chased a target walks back to where it left its path.
+/// once the waypoint is within its body, or it stands on the waypoint with no body: walkers that
+/// push each other never stand on one point. A walker that chased a target walks back to where it
+/// left its path.
 fn follow_paths(
     paths: Res<'_, Paths>,
     mut walkers: Query<
@@ -287,17 +290,18 @@ fn follow_paths(
             &mut PathWalker,
             &AttackState,
             &mut Destination,
+            Option<&Body>,
         ),
         Without<Dead>,
     >,
 ) {
-    for (&position, path, mut walker, attack, mut destination) in &mut walkers {
+    for (&position, path, mut walker, attack, mut destination, body) in &mut walkers {
         if attack.target().is_some() {
             continue;
         }
         let path = path.get();
         let mut waypoint = paths.waypoint(path, walker.next(), walker.direction());
-        if waypoint == Some(position) {
+        if waypoint.is_some_and(|at| position.within_ground(at, Body::radius_of(body))) {
             walker.advance();
             waypoint = paths.waypoint(path, walker.next(), walker.direction());
         }
@@ -318,24 +322,27 @@ fn chase(
             &AttackStats,
             &mut AttackState,
             &mut Destination,
+            Option<&Body>,
         ),
         Without<Dead>,
     >,
 ) {
-    for (&position, &team, stats, mut attack, mut destination) in &mut chasers {
+    for (&position, &team, stats, mut attack, mut destination, body) in &mut chasers {
         let Some(target) = attack.target() else {
             continue;
         };
         if attack.started().is_some() {
             continue;
         }
-        match targets.enemy_at(team, target) {
+        match targets.enemy(team, target) {
             None => {
                 attack.set_target(None);
                 walk_to(&mut destination, None);
             }
-            Some(at) if stats.reaches(position, at) => walk_to(&mut destination, None),
-            Some(at) => walk_to(&mut destination, Some(at)),
+            Some(unit) if stats.reaches(position, Body::radius_of(body), &unit) => {
+                walk_to(&mut destination, None);
+            }
+            Some(unit) => walk_to(&mut destination, Some(unit.pos)),
         }
     }
 }

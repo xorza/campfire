@@ -227,14 +227,7 @@ fn report_deaths(tick: Res<'_, SimTick>, deaths: Option<Res<'_, Deaths>>) {
         return;
     }
     for death in deaths.iter() {
-        UnitDied {
-            tick: ran,
-            unit: death.fallen.unit,
-            team: death.fallen.team,
-            owner: death.fallen.owner,
-            killer: death.killer,
-        }
-        .log();
+        UnitDied::of(ran, &death).log();
     }
 }
 

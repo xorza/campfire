@@ -6,9 +6,9 @@ use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use campfire_capabilities::{Action, Owner, SeenBy, Team};
 use campfire_math::{Num, Vec3};
-use campfire_net::{LocalMatch, MatchClock, MatchSetup, TickHashes, Unpredicted};
+use campfire_net::{LocalMatch, MatchClock, MatchSetup, TickHashes};
 use campfire_protocol::SeedChain;
-use campfire_sim::{EntityIndex, Position, SimTick, StableId, Tick};
+use campfire_sim::{EntityIndex, Position, SimTick, StableId, Tick, Unpredicted};
 use lightyear::prelude::{ConfirmHistory, ReplicationCheckpointMap, RollbackMode};
 
 const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
@@ -19,10 +19,11 @@ fn num(value: i64) -> Num {
     Num::from_int(value).unwrap()
 }
 
+/// A move along the hero's line from its spawn, z = −2.
 fn move_to(x: i64) -> Action {
     Action::Move {
         x: num(x),
-        z: Num::ZERO,
+        z: num(-2),
     }
 }
 
@@ -50,7 +51,7 @@ fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
         .world_mut()
         .remove_resource::<TickHashes>();
     assert!(hashes.is_some());
-    let east_tower = Position::new(Vec3::new(num(8), Num::ZERO, Num::ZERO)).unwrap();
+    let east_tower = Position::new(Vec3::new(num(8), Num::ZERO, num(-3))).unwrap();
     let (tower, tower_entity) = unit(local.server(), |app, entity| {
         app.world().get::<Position>(entity) == Some(&east_tower)
     });
@@ -89,9 +90,9 @@ fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
         on_client.push(held.is_some());
     }
 
-    // The hero walks ¼ m a tick from (0, 0) and sees 6 m. The tower's cell spans x 8 to 9 and z 0
-    // to 1, its center (8.5, 0.5): from x = 2.5 it is √(6² + 0.5²) ≈ 6.02 m away, hidden; from
-    // x = 2.75, √(5.75² + 0.5²) ≈ 5.77 m, seen. Then the hero walks back, out of sight.
+    // The hero walks ¼ m a tick from (0, −2) and sees 6 m. The tower's cell spans x 8 to 9 and z
+    // −3 to −2, its center (8.5, −2.5): from x = 2.5 it is √(6² + 0.5²) ≈ 6.02 m away, hidden;
+    // from x = 2.75, √(5.75² + 0.5²) ≈ 5.77 m, seen. Then the hero walks back, out of sight.
     let hidden_at = Num::from_bits(10 << (Num::FRAC_BITS - 2));
     let seen_at = Num::from_bits(11 << (Num::FRAC_BITS - 2));
     let seen = |tick: &Option<Server>| tick.is_some_and(|tick| tick.seen);

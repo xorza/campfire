@@ -428,6 +428,16 @@ fn a_cast_passes_its_checks_or_does_nothing() {
     assert_eq!(game.health(enemy), 450);
     assert_eq!(game.pool(caster), 90);
     assert_eq!(game.slot(caster).ready_at, Tick::new(36));
+
+    // The range counts from the edge of each body: once the unit 6 m off has a body of 1 m, it
+    // is within 5 m, and takes 50 in tick 36.
+    let far_entity = game.world.resource::<EntityIndex>().get(far).unwrap();
+    game.world
+        .entity_mut(far_entity)
+        .insert(Body::new(Num::ONE).unwrap());
+    game.run_until(36);
+    game.cast(caster, CastTarget::Unit(far));
+    assert_eq!(game.health(far), 450);
 }
 
 #[test]

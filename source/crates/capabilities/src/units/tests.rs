@@ -204,9 +204,10 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     // On a path, but the scene has no `navigation` to fill `unit.path`.
     let owner = Owner::new(PlayerSlot::new(2));
     let path = OnPath::new(PathId::new(0));
+    let body = Body::new(Num::from_bits(3 << (Num::FRAC_BITS - 2))).unwrap();
     let of = scene.spawn(
         at(0, 0, 0),
-        (hero, unit().bundle(Team::new(0)), owner, path),
+        (hero, unit().bundle(Team::new(0)), owner, path, body),
     );
     let near = scene.spawn(at(3, 0, 4), unit().bundle(Team::new(1)));
     let recent = scene.spawn(at(9, 0, 0), unit().bundle(Team::new(1)));
@@ -242,6 +243,13 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     assert!(value(&mut scene, "of.alive").as_bool().unwrap());
     assert_eq!(value(&mut scene, "of.owner").as_int(), Ok(2));
     assert!(value(&mut scene, "of.path").is_unit());
+    // Its body's radius, 0.75 m; a unit with no body has none.
+    let radius = |scene: &mut Scene, unit| {
+        let source = "fn probe(ctx, of) { of.radius }";
+        scene.probe(source, unit).unwrap().cast::<Num>()
+    };
+    assert_eq!(radius(&mut scene, of), body.radius());
+    assert_eq!(radius(&mut scene, near), Num::ZERO);
     assert_eq!(
         value(&mut scene, "of.params.help_window_ms").as_int(),
         Ok(2000)

@@ -2,7 +2,7 @@ use std::num::NonZeroU32;
 
 use bevy_ecs::component::Component;
 use campfire_math::{Num, Vec3};
-use campfire_sim::{Capability, EntityIndex, IdAllocator, SimUpdate, StableId, TickRate, TypeHash};
+use campfire_sim::{Capability, EntityIndex, IdAllocator, SimUpdate, TickRate, TypeHash};
 
 use super::*;
 use crate::capability_set::internals::TestMatch;
@@ -47,6 +47,24 @@ impl Walk {
             .spawn((id, at, MoveStep::new(Num::ONE).unwrap().bundle()))
             .id();
         self.world.get_mut::<Destination>(entity).unwrap().set(to);
+        id
+    }
+
+    /// A unit at `at` with a body of `radius`, walking `step` a tick to `to`, or one that does not
+    /// walk when `step` is `None`.
+    fn body(
+        &mut self,
+        at: Position,
+        to: Option<Position>,
+        step: Option<Num>,
+        radius: Num,
+    ) -> StableId {
+        let id = self.world.resource_mut::<IdAllocator>().allocate();
+        let mut unit = self.world.spawn((id, at, Body::new(radius).unwrap()));
+        if let Some(step) = step {
+            unit.insert(MoveStep::new(step).unwrap().bundle());
+            unit.get_mut::<Destination>().unwrap().set(to);
+        }
         id
     }
 
@@ -114,6 +132,52 @@ fn every_unit_that_walks_ends_the_tick_within_the_bounds() {
     assert_eq!(walk.get::<Destination>(past).get(), None);
     // A unit that does not walk is not moved: the map's check keeps it within the bounds.
     assert_eq!(walk.get::<Position>(id), at(9, 0, 9));
+}
+
+#[test]
+fn bodies_part_and_block_the_way() {
+    // Bodies of 0.5 m walking a quarter meter a tick. A from x = 0 and B from x = 3 walk at each
+    // other: 3 − 0.5 t apart after tick t, and in tick 5, at 1.25 and 1.75, they overlap by half
+    // a meter, which parts them a quarter meter each, to 1 and 2: 1 m apart, the sum of their
+    // radii. Every tick after, they walk in and part again, to the same places.
+    let quarter = Num::from_bits(1 << 22);
+    let half = Num::from_bits(1 << 23);
+    let mut walk = Walk::new();
+    let a = walk.body(at(0, 0, 0), Some(at(10, 0, 0)), Some(quarter), half);
+    let b = walk.body(at(3, 0, 0), Some(at(-10, 0, 0)), Some(quarter), half);
+    // A tower of radius 1 at (−6, 4), which does not walk, and C walking at it along z from 0: C
+    // touches it at z = 2.5, 1.5 m off, and in tick 11, at 2.75, is pushed back all the way.
+    let tower = walk.body(at(-6, 0, 4), None, None, Num::ONE);
+    let c = walk.body(at(-6, 0, 0), Some(at(-6, 0, 8)), Some(quarter), half);
+    // D walks through a dead body on its way.
+    let dead = walk.body(at(20, 0, 0), None, Some(quarter), half);
+    let entity = walk.world.resource::<EntityIndex>().get(dead).unwrap();
+    walk.world.entity_mut(entity).insert(Dead);
+    let d = walk.body(at(18, 0, 0), Some(at(22, 0, 0)), Some(quarter), half);
+    for _ in 0..5 {
+        walk.tick();
+    }
+    assert_eq!(
+        [a, b].map(|unit| walk.get::<Position>(unit)),
+        [at(1, 0, 0), at(2, 0, 0)]
+    );
+    for _ in 5..16 {
+        walk.tick();
+    }
+    assert_eq!(
+        [a, b].map(|unit| walk.get::<Position>(unit)),
+        [at(1, 0, 0), at(2, 0, 0)]
+    );
+    let c_at = Position::new(Vec3::new(num(-6), Num::ZERO, num(2) + half)).unwrap();
+    assert_eq!(
+        [c, tower].map(|unit| walk.get::<Position>(unit)),
+        [c_at, at(-6, 0, 4)]
+    );
+    // D, 16 ticks on at a quarter meter, passed the dead body at 20 to reach 22.
+    assert_eq!(
+        [d, dead].map(|unit| walk.get::<Position>(unit)),
+        [at(22, 0, 0), at(20, 0, 0)]
+    );
 }
 
 #[test]
@@ -189,6 +253,7 @@ fn every_navigation_type_is_state() {
             "sim.id_allocator",
             "sim.position",
             "sim.tick",
+            "units.body",
             "units.owner",
             "units.spawn_point",
             "units.team",

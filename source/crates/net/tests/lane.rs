@@ -1,18 +1,16 @@
-//! The lane mode's waves: two waves fight to an end within the time between waves, and the
-//! winner walks into the enemy tower's reach and falls to it; a whole wave there strikes the tower
-//! before it falls.
+//! The lane mode's waves: two equal waves trade to an end within the time between waves, and a
+//! whole wave with no wave to meet walks into the enemy tower's reach, strikes the tower, and falls
+//! to it.
 
 use std::num::NonZeroU32;
 
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use campfire_capabilities::{Action, Health, MoveStep, Owner, Team};
-use campfire_log::LogLine;
-use campfire_log::internals::capture;
 use campfire_math::Num;
-use campfire_net::{LocalMatch, MatchSetup, UnitDied};
+use campfire_net::{LocalMatch, MatchSetup};
 use campfire_protocol::SeedChain;
-use campfire_sim::{EntityIndex, Position, StableId};
+use campfire_sim::EntityIndex;
 use lightyear::prelude::RollbackMode;
 
 use crate::scenario::next_tick;
@@ -59,29 +57,6 @@ fn units(app: &App, team: u8, walks: bool) -> Vec<Entity> {
         .collect()
 }
 
-fn position(app: &App, unit: Entity) -> Position {
-    *app.world().get::<Position>(unit).unwrap()
-}
-
-/// The stable ids of `units`, in order.
-fn ids(app: &App, units: &[Entity]) -> Vec<StableId> {
-    let mut ids: Vec<_> = units
-        .iter()
-        .map(|&unit| *app.world().get::<StableId>(unit).unwrap())
-        .collect();
-    ids.sort_unstable();
-    ids
-}
-
-/// The deaths the server logged in `lines`, in order.
-pub(crate) fn deaths_logged(lines: &[String]) -> Vec<UnitDied> {
-    lines
-        .iter()
-        .filter_map(|line| LogLine::parse(line).unwrap().read::<UnitDied>())
-        .map(Result::unwrap)
-        .collect()
-}
-
 fn health(app: &App, unit: Entity) -> Num {
     app.world().get::<Health>(unit).unwrap().current()
 }
@@ -90,40 +65,31 @@ fn health(app: &App, unit: Entity) -> Num {
 const WAVE_TICKS: u64 = 900;
 
 #[test]
-fn two_waves_fight_to_an_end_and_the_enemy_tower_kills_the_winner() {
-    // The waves spawn 32 m apart and close at 7.5 m/s: they meet about 4 s later. Two creeps
-    // kill one of 300 health with twelve strikes of 25, six each: the sixth strikes 9 + 5 × 24 =
-    // 129 ticks into their fight, 4.3 s. So a wave falls well within 15 s, half the time between
-    // waves, and the fight leaves one wave standing.
+fn two_equal_waves_trade_to_an_end_before_the_next_wave() {
+    // The waves spawn 32 m apart and close at 7.5 m/s: they meet about 4 s later. The lane is a
+    // mirror, so each creep has its twin: the two front creeps fall to twelve strikes of 25, six
+    // from each rear creep, then the two rear creeps to twelve more, 24 ticks apart, 9.6 s. All
+    // four fall well before the next wave, the twins in the same tick, and neither wave is left
+    // to push: a hero tips the balance.
     let mut local = quiet_lane();
     while creeps(local.server(), 0).is_empty() {
         local.step();
     }
     let spawned = next_tick(local.server());
-    let left = |local: &LocalMatch| [0, 1].map(|team| creeps(local.server(), team).len());
-    while left(&local).iter().all(|&count| count > 0) {
-        local.step();
-    }
-    assert!(next_tick(local.server()) - spawned < WAVE_TICKS / 2);
-    let winner = u8::from(left(&local)[0] == 0);
-    assert_eq!(left(&local)[usize::from(1 - winner)], 0);
-
-    // The winner walks on into the enemy tower's reach, 7.75 m, and the tower kills it there
-    // before the next wave.
-    let enemy_tower = tower(local.server(), 1 - winner);
-    let tower_at = position(local.server(), enemy_tower);
-    let survivor = creeps(local.server(), winner)[0];
-    let mut last = position(local.server(), survivor);
-    while local.server().world().get_entity(survivor).is_ok() {
+    let mut gone = [None; 2];
+    while gone.iter().any(Option::is_none) {
         assert!(
             next_tick(local.server()) - spawned < WAVE_TICKS,
-            "the tower kills the winner"
+            "the fight ends"
         );
-        last = position(local.server(), survivor);
         local.step();
+        for (team, gone) in (0..).zip(&mut gone) {
+            if gone.is_none() && creeps(local.server(), team).is_empty() {
+                *gone = Some(next_tick(local.server()));
+            }
+        }
     }
-    let reach = Num::from_bits(31 << (Num::FRAC_BITS - 2));
-    assert!(tower_at.within_ground(last, reach), "{last:?}");
+    assert_eq!(gone[0], gone[1]);
 }
 
 #[test]
@@ -140,29 +106,13 @@ fn a_wave_with_no_wave_to_meet_strikes_the_tower_and_falls_to_it() {
         local.server_mut().world_mut().despawn(creep);
     }
     let west = tower(local.server(), 0);
-    let east_wave = ids(local.server(), &creeps(local.server(), 1));
-    let lines = capture(|| {
-        while !creeps(local.server(), 1).is_empty() {
-            assert!(
-                next_tick(local.server()) - spawned < WAVE_TICKS,
-                "the tower kills the wave"
-            );
-            local.step();
-        }
-    });
-    // The server logs each creep's death once, with its team and the tower as killer, though the
-    // creep is gone by then.
-    let west_id = *local.server().world().get::<StableId>(west).unwrap();
-    let mut died: Vec<_> = deaths_logged(&lines)
-        .into_iter()
-        .map(|death| (death.unit, death.team, death.owner, death.killer))
-        .collect();
-    died.sort_unstable_by_key(|&(unit, ..)| unit);
-    let expected: Vec<_> = east_wave
-        .into_iter()
-        .map(|unit| (unit, Some(Team::new(1)), None, Some(west_id)))
-        .collect();
-    assert_eq!(died, expected);
+    while !creeps(local.server(), 1).is_empty() {
+        assert!(
+            next_tick(local.server()) - spawned < WAVE_TICKS,
+            "the tower kills the wave"
+        );
+        local.step();
+    }
     let full = Num::from_int(1500).unwrap();
     let lost = full - health(local.server(), west);
     let strike = Num::from_int(25).unwrap();

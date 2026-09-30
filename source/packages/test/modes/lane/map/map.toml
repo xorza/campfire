@@ -7,23 +7,24 @@ max = [20, 8]
 cell = "1.0"
 
 # The lane runs along x through the origin; each side's tower stands 8 m down it from the middle,
-# where the heroes spawn.
+# and 3 m to its side, off the way of the units that walk it. The heroes spawn in the middle, 2 m
+# off the lane on either side, clear of the creeps that walk and fight there.
 [[paths]]
 name = "lane"
 points = [[-16, 0], [0, 0], [16, 0]]
 
 [spawns]
-west = [0, 0]
-east = [0, 0]
+west = [0, -2]
+east = [0, 2]
 
 [[structures]]
 unit_type = "tower"
 team = "west"
 path = "lane"
-pos = [-8, 0]
+pos = [-8, -3]
 
 [[structures]]
 unit_type = "tower"
 team = "east"
 path = "lane"
-pos = [8, 0]
+pos = [8, -3]

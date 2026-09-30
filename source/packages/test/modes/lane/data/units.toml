@@ -1,5 +1,5 @@
-# A creep walks an eighth of a meter a tick at 30 ticks a second, and strikes 1 m away 9 ticks
-# into an attack every 24. Twelve strikes of 25 kill one of 300 health: about 9 s, a third of the
+# A creep walks an eighth of a meter a tick at 30 ticks a second, and strikes within 1 m of its
+# target's edge 9 ticks into an attack every 24. Twelve strikes of 25 kill one of 300 health: about 9 s, a third of the
 # time between waves, so a wave that wins walks on before the next comes. A tower kills it in two
 # strikes, a hero in five.
 [units.creep]
@@ -9,6 +9,7 @@ stats = { health = { base = 300 }, attack_damage = { base = 25 }, attack_speed =
 combat = { attack = { range = "1.0", windup_ms = 300 } }
 orders = { ai = "scripts/creep_ai.rhai", think_ms = 250 }
 vision = { sight_range = "8.0" }
+collision = { radius = "0.35" }
 
 # A tower strikes 7.75 m away 5 ticks into an attack every 37, with a projectile of 12 m/s.
 [units.tower]
@@ -18,3 +19,4 @@ stats = { health = { base = 1500 }, attack_damage = { base = 150 }, attack_speed
 combat = { attack = { range = "7.75", windup_ms = 150, projectile_speed = "12" } }
 orders = { ai = "scripts/tower_ai.rhai", think_ms = 250 }
 vision = { sight_range = "9.0" }
+collision = { radius = "0.9" }
