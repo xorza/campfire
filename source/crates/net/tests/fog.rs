@@ -8,7 +8,7 @@ use campfire_capabilities::{Action, Owner, SeenBy, Team};
 use campfire_math::{Num, Vec3};
 use campfire_net::{LocalPair, MatchClock, TickHashes, Unpredicted};
 use campfire_protocol::SeedChain;
-use campfire_sim::{EntityIndex, Position, StableId, Tick};
+use campfire_sim::{EntityIndex, Position, SimTick, StableId, Tick};
 use lightyear::prelude::{ConfirmHistory, ReplicationCheckpointMap, RollbackMode};
 
 const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
@@ -43,6 +43,12 @@ struct Server {
 fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
     let mut pair = LocalPair::new(RollbackMode::Check, SEED_CHAIN);
     pair.start_match().unwrap();
+    // Without the per-tick hash, as in production: the ticks and the replication run all the same.
+    let hashes = pair
+        .server_mut()
+        .world_mut()
+        .remove_resource::<TickHashes>();
+    assert_eq!(hashes.map(|hashes| hashes.get().len()), Some(0));
     let east_tower = Position::new(Vec3::new(num(8), Num::ZERO, Num::ZERO)).unwrap();
     let (tower, tower_entity) = unit(pair.server(), |app, entity| {
         app.world().get::<Position>(entity) == Some(&east_tower)
@@ -64,7 +70,8 @@ fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
         }
         pair.step();
         let world = pair.server().world();
-        if world.resource::<TickHashes>().get().len() > server.len() {
+        let ticks_run = world.resource::<SimTick>().start().get();
+        if ticks_run > u64::try_from(server.len()).unwrap() {
             let seen = world.get::<SeenBy>(tower_entity).unwrap().get();
             server.push(Server {
                 seen: seen.contains(Team::new(0)),

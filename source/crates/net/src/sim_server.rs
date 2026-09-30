@@ -24,7 +24,8 @@ use crate::match_start::MatchStart;
 use crate::net_protocol::MatchChannel;
 
 /// Runs a match on a Lightyear server: records the packets players send, runs one sim tick in each
-/// fixed tick, keeps the state hash after each, and sends each client the units its team sees.
+/// fixed tick, and sends each client the units its team sees. It hashes the state after a tick only
+/// while the world holds `TickHashes`.
 #[derive(Debug)]
 pub struct SimServer;
 
@@ -45,7 +46,9 @@ impl PlayerLink {
     }
 }
 
-/// The state hash after each sim tick, from tick 0.
+/// The state hash after each sim tick while the resource exists, from tick 0 when inserted before
+/// the match starts: the check `det-ci` makes on every tick, for tests and for a host that looks
+/// for a divergence. Production hashes only at checkpoints and at the result.
 #[derive(Resource, Debug, Default)]
 pub struct TickHashes(Vec<StateHash>);
 
@@ -57,16 +60,19 @@ impl TickHashes {
 
 impl Plugin for SimServer {
     fn build(&self, app: &mut App) {
-        app.init_resource::<TickHashes>();
         app.add_systems(
             FixedUpdate,
             (
-                record_inputs,
-                run_sim_tick,
-                show_units.run_if(|hashes: Res<'_, TickHashes>| !hashes.0.is_empty()),
+                record_inputs.run_if(resource_exists::<MatchClock>),
+                (
+                    run_sim_tick,
+                    record_hash.run_if(resource_exists::<TickHashes>),
+                    show_units,
+                )
+                    .chain()
+                    .run_if(sim_tick_due),
             )
-                .chain()
-                .run_if(resource_exists::<MatchClock>),
+                .chain(),
         );
     }
 }
@@ -136,17 +142,22 @@ fn record_inputs(
     }
 }
 
+/// The match has started, so this fixed tick runs a sim tick.
+fn sim_tick_due(timeline: Res<'_, LocalTimeline>, clock: Option<Res<'_, MatchClock>>) -> bool {
+    clock.is_some_and(|clock| clock.sim_tick(timeline.tick()).is_some())
+}
+
 fn run_sim_tick(world: &mut World) {
     let tick = world.resource::<LocalTimeline>().tick();
-    let Some(sim_tick) = world.resource::<MatchClock>().sim_tick(tick) else {
-        return;
-    };
     debug_assert_eq!(
-        sim_tick,
-        world.resource::<SimTick>().start(),
+        world.resource::<MatchClock>().sim_tick(tick),
+        Some(world.resource::<SimTick>().start()),
         "the server runs every sim tick once, in order"
     );
     Session::run_tick(world);
+}
+
+fn record_hash(world: &mut World) {
     let hash = world.resource::<Session>().state_hash(world);
     world.resource_mut::<TickHashes>().0.push(hash);
 }

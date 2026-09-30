@@ -25,7 +25,7 @@ use lightyear::prelude::{
 
 use crate::net_protocol::NetProtocol;
 use crate::sim_client::{PendingOrders, SimClient};
-use crate::sim_server::SimServer;
+use crate::sim_server::{SimServer, TickHashes};
 
 /// The test mode: a lane with a tower a side, and the one hero, which the client's player plays.
 const LANE_MODE: &str = concat!(
@@ -39,7 +39,8 @@ const MAIN_SECRET: [u8; 32] = [1; 32];
 const SESSION_SECRET: [u8; 32] = [2; 32];
 
 /// A server app and one client app joined by in-process channels, each on a manual clock that
-/// advances one tick per `step`, so every run is the same. The client's player holds fixed keys.
+/// advances one tick per `step`, so every run is the same. The client's player holds fixed keys,
+/// and the server keeps the state hash after every tick.
 #[derive(Debug)]
 pub struct LocalPair {
     server: App,
@@ -78,6 +79,7 @@ impl LocalPair {
             tick_duration: tick,
         });
         server.add_plugins((NetProtocol, SimServer));
+        server.init_resource::<TickHashes>();
         server.insert_resource(TimeUpdateStrategy::ManualDuration(tick));
         server.add_observer(
             |added: On<'_, '_, Add, LinkOf>, mut commands: Commands<'_, '_>| {
