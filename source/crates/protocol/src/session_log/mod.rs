@@ -4,21 +4,24 @@ use std::ops::Range;
 
 use blake3::Hasher;
 use campfire_math::SegmentSeed;
+use serde::{Deserialize, Serialize};
 
 use crate::input_chain::InputChain;
 use crate::input_hash::InputHash;
 use crate::player_input::PlayerInput;
 use crate::player_slot::PlayerSlot;
 use crate::server_seed::{SeedCommitment, ServerSeed};
-use crate::session_log::error::{InputError, SeedError};
+use crate::session_log::error::{InputError, LogError, SeedError};
 
 pub(crate) mod error;
 
 /// Starts the segment seed, so no other BLAKE3 use can produce one.
 const SEGMENT_SEED_DOMAIN: &[u8] = b"campfire/segment-seed/v1";
+/// Starts every log file and states its protocol version, so other bytes are refused at once.
+const LOG_TAG: &[u8] = b"campfire/session-log/v1";
 
 /// What the log fixes before the first tick.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionHeader {
     /// The most ticks an input may land after its stamp; a later one is logged as late.
     pub max_input_delay: u64,
@@ -33,7 +36,7 @@ pub struct SessionHeader {
 }
 
 /// A player as the header lists them.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionPlayer {
     /// What the player's first input links to.
     pub chain_root: InputHash,
@@ -221,6 +224,84 @@ impl SessionLog {
         (start..self.tick_ends[tick]).map(|index| self.input(index))
     }
 
+    /// Writes the log file into `out`, which is cleared first: the tag, then in postcard the
+    /// header, the `u64` number of sealed ticks, the inputs logged before each tick as a `u32`
+    /// count and the inputs, the inputs logged since the last tick the same way, and the revealed
+    /// seed as an option.
+    pub fn encode(&self, out: &mut Vec<u8>) {
+        out.clear();
+        out.extend_from_slice(LOG_TAG);
+        put(out, &self.header);
+        put(out, &self.next_tick());
+        let mut start = 0;
+        for &end in &self.tick_ends {
+            self.put_inputs(out, start..end);
+            start = end;
+        }
+        self.put_inputs(out, start..offset(self.inputs.len()));
+        put(out, &self.revealed);
+    }
+
+    /// Decodes a log file. Its inputs are recorded again, which checks every chain link, and only
+    /// the bytes `encode` gives for the decoded log are accepted, so a log has one file.
+    pub fn decode(bytes: &[u8]) -> Result<SessionLog, LogError> {
+        let mut rest = bytes.strip_prefix(LOG_TAG).ok_or(LogError::NotLog)?;
+        let header: SessionHeader = take(&mut rest)?;
+        if u32::try_from(header.players.len()).is_err() {
+            return Err(LogError::TooLarge);
+        }
+        let mut log = SessionLog::new(header);
+        let ticks: u64 = take(&mut rest)?;
+        for _ in 0..ticks {
+            log.record_logged(&mut rest)?;
+            drop(log.seal_tick());
+        }
+        log.record_logged(&mut rest)?;
+        if let Some(server_seed) = take::<Option<ServerSeed>>(&mut rest)? {
+            if server_seed.commitment() != log.header.seed_commitment {
+                return Err(LogError::WrongSeed);
+            }
+            log.revealed = Some(server_seed);
+        }
+        if !rest.is_empty() {
+            return Err(LogError::Trailing);
+        }
+        let mut canonical = Vec::with_capacity(bytes.len());
+        log.encode(&mut canonical);
+        if canonical != bytes {
+            return Err(LogError::NotCanonical);
+        }
+        Ok(log)
+    }
+
+    fn put_inputs(&self, out: &mut Vec<u8>, indices: Range<u32>) {
+        put(out, &(indices.end - indices.start));
+        for index in indices {
+            put(out, &self.input(index));
+        }
+    }
+
+    /// Records the inputs `put_inputs` wrote at the front of `rest` before the next tick.
+    fn record_logged(&mut self, rest: &mut &[u8]) -> Result<(), LogError> {
+        let count: u32 = take(rest)?;
+        for _ in 0..count {
+            let input: PlayerInput<'_> = take(rest)?;
+            if !self.has_room(input.payload) {
+                return Err(LogError::TooLarge);
+            }
+            let tick = self.next_tick();
+            self.record(input)
+                .map_err(|error| LogError::Input { tick, error })?;
+        }
+        Ok(())
+    }
+
+    /// Whether one more input with `payload` keeps every position in the log's buffers a `u32`.
+    fn has_room(&self, payload: &[u8]) -> bool {
+        u32::try_from(self.inputs.len() + 1).is_ok()
+            && u32::try_from(self.payloads.len() + payload.len()).is_ok()
+    }
+
     fn input(&self, index: u32) -> PlayerInput<'_> {
         let logged = &self.inputs[index as usize];
         PlayerInput {
@@ -236,6 +317,20 @@ impl SessionLog {
 /// A position in the log's buffers, which stay below 4 GiB.
 fn offset(len: usize) -> u32 {
     u32::try_from(len).expect("session log above 4 GiB")
+}
+
+fn put<T: Serialize + ?Sized>(out: &mut Vec<u8>, value: &T) {
+    postcard::to_io(value, out).expect("postcard into a Vec cannot fail");
+}
+
+/// Reads one value off the front of `rest`.
+fn take<'a, T: Deserialize<'a>>(rest: &mut &'a [u8]) -> Result<T, LogError> {
+    let (value, after) = postcard::take_from_bytes(rest).map_err(|error| match error {
+        postcard::Error::DeserializeUnexpectedEnd => LogError::Truncated,
+        error => LogError::Malformed(error),
+    })?;
+    *rest = after;
+    Ok(value)
 }
 
 #[cfg(test)]

@@ -1,0 +1,1 @@
+- `SessionLog::record` panics ("session log above 4 GiB") once the logged payloads or the input count pass `u32`, and the server feeds it inputs from the network.

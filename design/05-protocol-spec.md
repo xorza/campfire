@@ -74,6 +74,8 @@ SessionLog
   result (optional): tick, result payload, final state hash, server signature
 ```
 
+**File.** A session log file starts with the tag `campfire/session-log/v1`, which states its protocol version, and continues in postcard. Until signatures and checkpoints come, it holds one segment from tick 0: the header (max input delay and lead, seed commitment, and each player's chain root and seed contribution), the `u64` count of ticks, the inputs logged before each tick as a `u32` count and the inputs, the inputs logged after the last tick the same way, and the seed reveal as an option. An input is `u32 slot, u64 seq, u64 stamp tick, previous hash, payload bytes`. A reader records every input again, so it checks each chain link, and accepts only the canonical encoding: postcard itself accepts an overlong varint, so a reader encodes what it decoded and compares the bytes. One log therefore has one file and one fingerprint.
+
 **Input sources**
 
 | Source | Signed by | Payload |

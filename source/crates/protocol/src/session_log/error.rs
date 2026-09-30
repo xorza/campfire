@@ -44,3 +44,53 @@ impl fmt::Display for SeedError {
 }
 
 impl Error for SeedError {}
+
+/// Why bytes do not decode to a session log. A log file is untrusted, so every flaw is an error.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LogError {
+    /// The format tag is missing.
+    NotLog,
+    /// The bytes end inside a field.
+    Truncated,
+    /// A value does not decode.
+    Malformed(postcard::Error),
+    /// A count of players or inputs, or the payload bytes, do not fit the log's `u32` positions.
+    TooLarge,
+    /// The log refuses an input logged before `tick`, as it refuses one from the network.
+    Input { tick: u64, error: InputError },
+    /// The revealed server seed does not match the header's commitment.
+    WrongSeed,
+    /// Bytes remain after the reveal.
+    Trailing,
+    /// The bytes decode, but not from the one encoding the log has, such as an overlong varint.
+    NotCanonical,
+}
+
+impl fmt::Display for LogError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LogError::NotLog => f.write_str("not a session log"),
+            LogError::Truncated => f.write_str("session log ends inside a field"),
+            LogError::Malformed(_) => f.write_str("session log value does not decode"),
+            LogError::TooLarge => f.write_str("session log above its size bounds"),
+            LogError::Input { tick, error } => {
+                write!(f, "session log input before tick {tick} refused: {error}")
+            }
+            LogError::WrongSeed => {
+                f.write_str("session log reveals a server seed that does not match its commitment")
+            }
+            LogError::Trailing => f.write_str("session log has trailing bytes"),
+            LogError::NotCanonical => f.write_str("session log is not in its canonical encoding"),
+        }
+    }
+}
+
+impl Error for LogError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            LogError::Malformed(error) => Some(error),
+            LogError::Input { error, .. } => Some(error),
+            _ => None,
+        }
+    }
+}

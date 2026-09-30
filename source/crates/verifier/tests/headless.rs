@@ -1,5 +1,10 @@
 //! The first half of the Stage 2 gate, without the network: a match run from its session log and
-//! the replay of that log in a bare `World` agree on the state hash after every tick.
+//! the replay of that log in a bare `World` agree on the state hash after every tick, and so does
+//! the replay of the log's file.
+
+use std::fmt::Write;
+use std::fs;
+use std::process::Command;
 
 use campfire_kit_moba::{Destination, Order};
 use campfire_math::{Num, Vec3};
@@ -127,17 +132,20 @@ fn run_and_replay_agree_on_every_tick() {
     };
     assert_eq!(hero(&runner), arrived);
 
-    let mut replay = Replay::new(runner.log()).unwrap();
-    let mut replayed = Vec::new();
-    while let Some(outcome) = replay.next_tick() {
-        outcome.unwrap();
-        replayed.push(replay.runner().state_hash());
+    let decoded = SessionLog::decode(&encoded(runner.log())).unwrap();
+    for published in [runner.log(), &decoded] {
+        let mut replay = Replay::new(published).unwrap();
+        let mut replayed = Vec::new();
+        while let Some(outcome) = replay.next_tick() {
+            outcome.unwrap();
+            replayed.push(replay.runner().state_hash());
+        }
+        assert_eq!(replayed.len(), live.len());
+        for (tick, (replayed, live)) in replayed.iter().zip(&live).enumerate() {
+            assert_eq!(replayed, live, "tick {tick}");
+        }
+        assert_eq!(hero(replay.runner()), arrived);
     }
-    assert_eq!(replayed.len(), live.len());
-    for (tick, (replayed, live)) in replayed.iter().zip(&live).enumerate() {
-        assert_eq!(replayed, live, "tick {tick}");
-    }
-    assert_eq!(hero(replay.runner()), arrived);
 
     // Without the second order the hashes agree until it would apply, at tick 22, and differ
     // from then on: the hash sees the hero move.
@@ -145,6 +153,83 @@ fn run_and_replay_agree_on_every_tick() {
     let first_difference = live.iter().zip(&without).position(|(a, b)| a != b);
     assert_eq!(first_difference, Some(22));
     assert!(live[22..].iter().zip(&without[22..]).all(|(a, b)| a != b));
+}
+
+fn encoded(log: &SessionLog) -> Vec<u8> {
+    let mut bytes = Vec::new();
+    log.encode(&mut bytes);
+    bytes
+}
+
+#[test]
+fn a_corrupt_log_file_is_refused_or_replays() {
+    let bytes = encoded(run(&ORDERS.each_ref()).runner.log());
+    for len in 0..bytes.len() {
+        assert!(
+            SessionLog::decode(&bytes[..len]).is_err(),
+            "truncated to {len} bytes"
+        );
+    }
+    let mut replays = 0;
+    for at in 0..bytes.len() {
+        for flip in [0x01, 0x80, 0xFF] {
+            let mut corrupt = bytes.clone();
+            corrupt[at] ^= flip;
+            if let Ok(log) = SessionLog::decode(&corrupt) {
+                let mut replay = Replay::new(&log).unwrap();
+                while let Some(outcome) = replay.next_tick() {
+                    outcome.unwrap();
+                }
+                replays += 1;
+            }
+        }
+    }
+    // What no chain link or commitment covers: the max delay and lead (3 ^ 1 = 2), the
+    // contribution under every flip, and in the last order, which no later input links to, its
+    // stamp (26 ^ 1 = 27, now applied at tick 30) and every payload byte under every flip.
+    let payload = Order::Move {
+        x: num(ORDERS[2].x),
+        z: num(ORDERS[2].z),
+    }
+    .encode();
+    assert_eq!(replays, 2 + 32 * 3 + 1 + payload.len() * 3);
+}
+
+#[test]
+fn the_binary_prints_the_last_state_hash() {
+    let Run { runner, hashes } = run(&ORDERS.each_ref());
+    let dir = env!("CARGO_TARGET_TMPDIR");
+    let path = format!("{dir}/headless.log");
+    fs::write(&path, encoded(runner.log())).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_campfire-verifier"))
+        .arg(&path)
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "{output:?}");
+    let mut expected = String::new();
+    for byte in hashes.last().unwrap().as_bytes() {
+        write!(expected, "{byte:02x}").unwrap();
+    }
+    expected.push('\n');
+    assert_eq!(String::from_utf8(output.stdout).unwrap(), expected);
+
+    let corrupt = format!("{dir}/headless-truncated.log");
+    let bytes = encoded(runner.log());
+    fs::write(&corrupt, &bytes[..bytes.len() - 1]).unwrap();
+    let output = Command::new(env!("CARGO_BIN_EXE_campfire-verifier"))
+        .arg(&corrupt)
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(1));
+    assert_eq!(
+        String::from_utf8(output.stderr).unwrap(),
+        format!("{corrupt}: session log ends inside a field\n")
+    );
+
+    let output = Command::new(env!("CARGO_BIN_EXE_campfire-verifier"))
+        .output()
+        .unwrap();
+    assert_eq!(output.status.code(), Some(2));
 }
 
 #[test]

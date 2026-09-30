@@ -1,15 +1,16 @@
 use blake3::Hasher;
+use serde::{Deserialize, Serialize};
 
 /// Starts the commitment, so no other BLAKE3 use can produce one.
 const COMMITMENT_DOMAIN: &[u8] = b"campfire/seed-commitment/v1";
 
 /// The server's secret for a segment's randomness. Until the segment is published, the header
 /// holds only its commitment: the seed predicts every hidden random outcome.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ServerSeed([u8; 32]);
 
 /// `BLAKE3(domain ‖ server seed)`: it binds the server to its seed before the players add theirs.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SeedCommitment([u8; 32]);
 
 impl ServerSeed {

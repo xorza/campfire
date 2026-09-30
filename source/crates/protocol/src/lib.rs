@@ -14,7 +14,7 @@ pub use input_hash::InputHash;
 pub use player_input::PlayerInput;
 pub use player_slot::PlayerSlot;
 pub use server_seed::{SeedCommitment, ServerSeed};
-pub use session_log::error::{InputError, SeedError};
+pub use session_log::error::{InputError, LogError, SeedError};
 pub use session_log::{Applied, SessionHeader, SessionLog, SessionPlayer};
 
 #[cfg(feature = "bench")]
