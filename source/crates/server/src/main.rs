@@ -1,5 +1,9 @@
 //! Headless game server: opens a session of a mode on an address, lets its players join over
 //! WebTransport, runs the match, and writes the session log once every player left.
+//!
+//! Logs go to standard error, filtered by `RUST_LOG` (`info` by default). With `CAMPFIRE_LOG` set
+//! to a path, they also go there as JSON lines, filtered by `CAMPFIRE_LOG_FILTER` (Campfire's
+//! `debug` by default).
 
 #![allow(
     clippy::needless_pass_by_value,
@@ -18,13 +22,12 @@ use bevy_app::{App, AppExit, ScheduleRunnerPlugin, TaskPoolPlugin, Update};
 use bevy_ecs::lifecycle::Add;
 use bevy_ecs::observer::On;
 use bevy_ecs::query::With;
-use bevy_ecs::system::{Commands, Local, Query, Res};
+use bevy_ecs::system::Commands;
 use bevy_ecs::world::World;
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
-use campfire_net::{
-    JoinRefused, Joined, Lobby, LobbySetup, MatchClock, NetProtocol, PlayerLink, SimServer,
-};
+use campfire_log::Logging;
+use campfire_net::{Lobby, LobbySetup, MatchClock, NetProtocol, PlayerLink, SimServer};
 use campfire_package::ModePackages;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
 use campfire_protocol::{CertificateHash, SeedChain};
@@ -32,14 +35,27 @@ use campfire_runner::Session;
 use campfire_sim::TickRate;
 use lightyear::prelude::server::{RawServer, ServerPlugins, Start, WebTransportServerIo};
 use lightyear::prelude::{Connected, Identity, LinkOf, LocalAddr, ReplicationSender};
+use tracing::{error, info};
 
 /// How often the app loop runs: often enough that no fixed tick waits long for its frame.
 const FRAME: Duration = Duration::from_millis(2);
 
+/// What the terminal shows when `RUST_LOG` does not say.
+const TERMINAL_FILTER: &str = "info";
+/// What the log file holds when `CAMPFIRE_LOG_FILTER` does not say: Campfire's messages down to
+/// `debug`, and Lightyear's rollbacks; of the rest, `info` and above.
+const FILE_FILTER: &str = "info,campfire_server=debug,campfire_net=debug,campfire_runner=debug,\
+                           campfire_script=debug,lightyear_prediction=debug";
+
 fn main() -> ExitCode {
+    Logging {
+        terminal: TERMINAL_FILTER,
+        file: FILE_FILTER,
+    }
+    .start();
     let mut args = env::args_os().skip(1);
     let (Some(mode), Some(address), None) = (args.next(), args.next(), args.next()) else {
-        eprintln!("usage: campfire-server <mode package directory> <address, as 0.0.0.0:4433>");
+        error!("usage: campfire-server <mode package directory> <address, as 0.0.0.0:4433>");
         return ExitCode::from(2);
     };
     let mode = PathBuf::from(mode);
@@ -47,13 +63,13 @@ fn main() -> ExitCode {
         .to_str()
         .and_then(|text| text.parse::<SocketAddr>().ok())
     else {
-        eprintln!("{}: not a socket address", address.display());
+        error!(address = %address.display(), "not a socket address");
         return ExitCode::from(2);
     };
     let packages = match ModePackages::from_dir(&mode) {
         Ok(packages) => packages,
         Err(error) => {
-            eprintln!("{}: {error}", mode.display());
+            error!(mode = %mode.display(), %error, "the mode does not load");
             return ExitCode::FAILURE;
         }
     };
@@ -79,11 +95,17 @@ fn main() -> ExitCode {
     let tick = TickRate::new(lobby.terms().tick_hz).length();
 
     let key = server_key.x_only_public_key().0;
-    println!("campfire server on {address}, waiting for {players} players");
-    println!("certificate hash: {certificate}");
-    println!("server key: {key}");
-    println!(
-        "join with: campfire-client {} <this machine's LAN address>:{} {certificate} {key}",
+    info!(
+        session = %lobby.terms().session_id(),
+        %address,
+        players,
+        mode = %mode.display(),
+        "opened a session"
+    );
+    info!(
+        %certificate,
+        server_key = %key,
+        "players join with: campfire-client {} <this machine's LAN address>:{} {certificate} {key}",
         mode.display(),
         address.port()
     );
@@ -105,21 +127,7 @@ fn main() -> ExitCode {
             commands.entity(added.entity).insert(ReplicationSender);
         },
     );
-    app.add_observer(
-        |_: On<'_, '_, Add, Joined>, lobby: Option<Res<'_, Lobby>>| {
-            if let Some(lobby) = lobby {
-                println!("a player joined: {} of {}", lobby.joined(), lobby.players());
-            }
-        },
-    );
-    app.add_observer(
-        |refused: On<'_, '_, Add, JoinRefused>, links: Query<'_, '_, &JoinRefused>| {
-            if let Ok(JoinRefused(error)) = links.get(refused.entity) {
-                println!("refused a player: {error}");
-            }
-        },
-    );
-    app.add_systems(Update, (report_start, end_when_everyone_left));
+    app.add_systems(Update, end_when_everyone_left);
     let server = app
         .world_mut()
         .spawn((
@@ -133,14 +141,6 @@ fn main() -> ExitCode {
     app.world_mut().trigger(Start { entity: server });
     app.run();
     ExitCode::SUCCESS
-}
-
-/// Prints the start of the match.
-fn report_start(clock: Option<Res<'_, MatchClock>>, mut started: Local<'_, bool>) {
-    if clock.is_some() && !*started {
-        *started = true;
-        println!("the match started");
-    }
 }
 
 /// Once the match started and no player is connected any more, reveals the seed, writes the
@@ -165,12 +165,15 @@ fn end_when_everyone_left(world: &mut World) {
     world.write_message(AppExit::Success);
     match written {
         Ok(()) => {
-            println!("every player left; the session log is {name}");
-            println!("final state hash: {hash}");
-            println!("verify with: campfire-verifier <packages directory> {name}");
-            println!("the verifier prints the same hash when the log verifies");
+            info!(
+                session = %id,
+                file = name,
+                %hash,
+                "every player left; wrote the session log. `campfire-verifier <packages directory> \
+                 {name}` gives the same hash when the log verifies"
+            );
         }
-        Err(error) => eprintln!("{name}: {error}"),
+        Err(error) => error!(file = name, %error, "could not write the session log"),
     }
 }
 

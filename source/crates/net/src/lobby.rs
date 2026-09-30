@@ -15,6 +15,7 @@ use lightyear::prelude::server::ClientOf;
 use lightyear::prelude::{
     Connected, LocalTimeline, MessageReceiver, MessageSender, Tick as NetTick,
 };
+use tracing::{debug, info, warn};
 
 use crate::error::JoinError;
 use crate::join::Join;
@@ -147,13 +148,8 @@ impl Lobby {
         &self.terms
     }
 
-    /// How many players the session takes.
-    pub const fn players(&self) -> usize {
-        self.players
-    }
-
     /// How many players joined so far.
-    pub fn joined(&self) -> usize {
+    fn joined(&self) -> usize {
         self.joined.len()
     }
 
@@ -171,6 +167,7 @@ impl Lobby {
             let challenge = match offered {
                 Some(offered) if now.0.wrapping_sub(offered.sent.0) < RESEND_TICKS => continue,
                 Some(mut offered) => {
+                    debug!(?link, "sent the offer again");
                     offered.sent = now;
                     offered.challenge
                 }
@@ -182,6 +179,7 @@ impl Lobby {
                         challenge,
                         sent: now,
                     });
+                    debug!(?link, "offered the terms");
                     challenge
                 }
             };
@@ -204,9 +202,20 @@ impl Lobby {
                 continue;
             };
             match lobby.take(link, offered.challenge, &join) {
-                Ok(()) => commands.entity(link).insert(Joined),
-                Err(error) => commands.entity(link).insert(JoinRefused(error)),
-            };
+                Ok(()) => {
+                    info!(
+                        ?link,
+                        joined = lobby.joined(),
+                        of = lobby.players,
+                        "a player joined"
+                    );
+                    commands.entity(link).insert(Joined);
+                }
+                Err(error) => {
+                    warn!(?link, %error, "refused a join");
+                    commands.entity(link).insert(JoinRefused(error));
+                }
+            }
         }
     }
 
@@ -221,7 +230,9 @@ impl Lobby {
             terms: lobby.terms,
             players,
         };
+        let session = header.terms.session_id();
         let log = SessionLog::new(header).expect("every delegation names this session");
+        info!(%session, players = links.len(), "every slot is taken; the match starts");
         let server_seed = lobby.seed_chain.seed(0);
         SimServer::start_match(world, log, server_seed, &lobby.packages, &links)
             .expect("the lobby's terms come from its own packages");
@@ -290,7 +301,7 @@ mod tests {
             clock: || NOW,
             entropy: |bytes| bytes.fill(5),
         });
-        assert_eq!((lobby.players(), lobby.joined()), (2, 0));
+        assert_eq!((lobby.players, lobby.joined()), (2, 0));
         let secp = Secp256k1::new();
         let granted = DelegationTerms {
             session_key: keypair(2).x_only_public_key().0,

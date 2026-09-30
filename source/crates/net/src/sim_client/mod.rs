@@ -18,6 +18,8 @@ use lightyear::prelude::{
     Client, LocalTimeline, MessageReceiver, MessageSender, Tick as NetTick, is_in_rollback,
 };
 
+use tracing::{debug, info, warn};
+
 use crate::error::TermsMismatch;
 use crate::input_message::InputMessage;
 use crate::join::Join;
@@ -201,12 +203,17 @@ fn answer_offer(
             if *state != JoinState::Waiting {
                 continue;
             }
+            let session = offer.terms.session_id();
             *state = match sent.join(&offer) {
                 Ok(join) => {
                     sender.send::<JoinChannel>(join);
+                    info!(%session, "joined the offered session");
                     JoinState::Joined
                 }
-                Err(mismatch) => JoinState::Refused(mismatch),
+                Err(mismatch) => {
+                    warn!(%session, %mismatch, "did not join the offered session");
+                    JoinState::Refused(mismatch)
+                }
             };
         }
     }
@@ -223,6 +230,11 @@ fn receive_match_start(
                 continue;
             };
             sent.chain = Some(InputChain::new(start.slot, session.chain_root));
+            info!(
+                slot = start.slot.get(),
+                start_tick = start.start_tick,
+                "the match started"
+            );
             commands.insert_resource(MatchClock::new(NetTick(start.start_tick)));
         }
     }
@@ -254,6 +266,7 @@ fn send_orders(
     if pending.0.is_empty() {
         return;
     }
+    debug!(stamp = stamp.get(), orders = pending.0.len(), "sent orders");
     let first = inputs.len();
     for order in pending.0.drain(..) {
         let start = payloads.len();

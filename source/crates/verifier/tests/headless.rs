@@ -2,7 +2,6 @@
 //! its session log and the replay of that log in a bare `World` agree on the state hash after
 //! every tick, and so does the replay of the log's file with the packages a verifier holds.
 
-use std::fmt::Write;
 use std::fs;
 use std::num::NonZeroU32;
 use std::path::Path;
@@ -359,40 +358,39 @@ fn every_corruption_of_a_log_file_is_refused() {
 }
 
 #[test]
-fn the_binary_prints_the_last_state_hash() {
+fn the_binary_logs_the_last_state_hash() {
     let Run { runner, hashes } = run(&ORDERS.each_ref(), TICKS);
     let dir = env!("CARGO_TARGET_TMPDIR");
     let path = format!("{dir}/headless.log");
     fs::write(&path, encoded(runner.log())).unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_campfire-verifier"))
-        .args([PACKAGES, &path])
-        .output()
-        .unwrap();
+    // Logged without color, as standard error is not a terminal here, and at `info`, whatever the
+    // environment says.
+    let verifier = |args: &[&str]| {
+        Command::new(env!("CARGO_BIN_EXE_campfire-verifier"))
+            .args(args)
+            .env("RUST_LOG", "info")
+            .output()
+            .unwrap()
+    };
+    let output = verifier(&[PACKAGES, &path]);
     assert!(output.status.success(), "{output:?}");
-    let mut expected = String::new();
-    for byte in hashes.last().unwrap().as_bytes() {
-        write!(expected, "{byte:02x}").unwrap();
-    }
-    expected.push('\n');
-    assert_eq!(String::from_utf8(output.stdout).unwrap(), expected);
+    let hash = hashes.last().unwrap();
+    let logged = String::from_utf8(output.stderr).unwrap();
+    let success = format!("the log verifies; its final state hash file={path} hash={hash}\n");
+    assert!(logged.ends_with(&success), "{logged}");
+    assert!(output.stdout.is_empty());
 
     let corrupt = format!("{dir}/headless-truncated.log");
     let bytes = encoded(runner.log());
     fs::write(&corrupt, &bytes[..bytes.len() - 1]).unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_campfire-verifier"))
-        .args([PACKAGES, &corrupt])
-        .output()
-        .unwrap();
+    let output = verifier(&[PACKAGES, &corrupt]);
     assert_eq!(output.status.code(), Some(1));
-    assert_eq!(
-        String::from_utf8(output.stderr).unwrap(),
-        format!("{corrupt}: session log ends inside a field\n")
-    );
+    let logged = String::from_utf8(output.stderr).unwrap();
+    let refused =
+        format!("the log does not verify file={corrupt} error=session log ends inside a field\n");
+    assert!(logged.ends_with(&refused), "{logged}");
 
-    let output = Command::new(env!("CARGO_BIN_EXE_campfire-verifier"))
-        .output()
-        .unwrap();
-    assert_eq!(output.status.code(), Some(2));
+    assert_eq!(verifier(&[]).status.code(), Some(2));
 }
 
 #[test]

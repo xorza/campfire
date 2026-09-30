@@ -1,14 +1,16 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::{Mut, World};
-use campfire_capabilities::Mode;
+use campfire_capabilities::{Mode, ScriptFailures};
 use campfire_content::Fingerprint as PackageFingerprint;
 use campfire_package::{ModePackages, PackageStore, RELEASE};
 use campfire_protocol::{
     Applied, Fingerprint, InputError, PlayerInput, ServerSeed, SessionLog, SessionTerms, Signature,
 };
 use campfire_sim::{
-    PlayerSlot, SimTick, SimUpdate, StateHash, StateRegistry, TickInput, TickInputs, TickRate,
+    PlayerSlot, SimTick, SimUpdate, StableId, StateHash, StateRegistry, TickInput, TickInputs,
+    TickRate,
 };
+use tracing::warn;
 
 use crate::error::StartError;
 use crate::match_build::MatchBuild;
@@ -116,7 +118,7 @@ impl Session {
     }
 
     /// Seals the next tick in the log of the session in `world` and runs it with the inputs
-    /// applied in it.
+    /// applied in it, and logs each script call of the tick that failed.
     pub fn run_tick(world: &mut World) {
         world.resource_scope(|world, mut session: Mut<'_, Session>| {
             debug_assert_eq!(
@@ -133,7 +135,19 @@ impl Session {
                 });
             }
         });
+        let tick = world.resource::<SimTick>().start().get();
         world.run_schedule(SimUpdate);
+        if let Some(failures) = world.get_non_send::<ScriptFailures>() {
+            for failure in failures.get() {
+                warn!(
+                    tick,
+                    unit = failure.unit.map(StableId::get),
+                    hook = ?failure.hook,
+                    error = %failure.error,
+                    "a script call failed and changed nothing"
+                );
+            }
+        }
     }
 
     /// Publishes the log's segment by adding the server seed.

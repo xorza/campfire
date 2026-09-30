@@ -1,14 +1,12 @@
 [package]
-name = "campfire-script"
+name = "campfire-log"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
-campfire-math.workspace = true
-
-rhai.workspace = true
 tracing.workspace = true
+tracing-subscriber.workspace = true
 
 [lints]
 workspace = true

@@ -11,12 +11,13 @@ use campfire_capabilities::{Mode, Owner, SeenBy, Team};
 use campfire_package::ModePackages;
 use campfire_protocol::{Applied, PlayerSlot, ServerSeed, SessionLog};
 use campfire_runner::{Session, StartError};
-use campfire_sim::{self as sim, SimTick, StateHash, TickRate};
+use campfire_sim::{self as sim, SimTick, StableId, StateHash, TickRate};
 use lightyear::core::tick::TickDuration;
 use lightyear::prelude::{
     LocalTimeline, MessageReceiver, MessageSender, NetworkTarget, PredictionTarget, Replicate,
     VisibilityExt,
 };
+use tracing::{debug, trace, trace_span, warn};
 
 use crate::input_message::InputMessage;
 use crate::lobby::Lobby;
@@ -141,14 +142,33 @@ fn record_inputs(
     mut applied: Local<'_, Vec<Applied>>,
 ) {
     for (mut link, mut receiver) in &mut links {
+        let slot = link.slot.get();
         for message in receiver.receive() {
-            let recorded = message.inputs(link.slot).is_some_and(|inputs| {
-                session
-                    .record(inputs, message.signature(), &mut applied)
-                    .is_ok()
-            });
-            if !recorded {
+            let Some(inputs) = message.inputs(link.slot) else {
+                warn!(
+                    slot,
+                    "refused an input message whose frames do not fit its payloads"
+                );
                 link.refused += 1;
+                continue;
+            };
+            let next_tick = session.log().next_tick();
+            if let Err(error) = session.record(inputs.clone(), message.signature(), &mut applied) {
+                warn!(slot, next_tick, %error, "refused an input message");
+                link.refused += 1;
+                continue;
+            }
+            for (input, &outcome) in inputs.zip(applied.iter()) {
+                match outcome {
+                    Applied::At(tick) => debug!(slot, stamp = input.stamp, tick, "logged an input"),
+                    Applied::Late | Applied::Early => warn!(
+                        slot,
+                        stamp = input.stamp,
+                        next_tick,
+                        ?outcome,
+                        "logged an input that never takes effect"
+                    ),
+                }
             }
         }
     }
@@ -161,17 +181,21 @@ fn sim_tick_due(timeline: Res<'_, LocalTimeline>, clock: Option<Res<'_, MatchClo
 
 fn run_sim_tick(world: &mut World) {
     let tick = world.resource::<LocalTimeline>().tick();
+    let sim_tick = world.resource::<SimTick>().start();
     debug_assert_eq!(
         world.resource::<MatchClock>().sim_tick(tick),
-        Some(world.resource::<SimTick>().start()),
+        Some(sim_tick),
         "the server runs every sim tick once, in order"
     );
+    let _tick = trace_span!("tick", n = sim_tick.get()).entered();
     Session::run_tick(world);
 }
 
 fn record_hash(world: &mut World) {
     let hash = world.resource::<Session>().state_hash(world);
-    world.resource_mut::<TickHashes>().0.push(hash);
+    let mut hashes = world.resource_mut::<TickHashes>();
+    trace!(tick = hashes.0.len(), %hash, "hashed the state");
+    hashes.0.push(hash);
 }
 
 /// The units not replicated yet, with their owner if they have one.
@@ -185,7 +209,7 @@ type NewUnits<'w, 's> =
 fn show_units(
     links: Query<'_, '_, (Entity, &PlayerLink)>,
     new: NewUnits<'_, '_>,
-    changed: Query<'_, '_, (Entity, &SeenBy), Changed<SeenBy>>,
+    changed: Query<'_, '_, (Entity, &StableId, &SeenBy), Changed<SeenBy>>,
     mut commands: Commands<'_, '_>,
 ) {
     for (unit, owner) in &new {
@@ -200,8 +224,8 @@ fn show_units(
             replicated.insert(PredictionTarget::manual(vec![link]));
         }
     }
-    for (unit, &seen) in &changed {
-        show(&mut commands, &links, unit, seen);
+    for (unit, &id, &seen) in &changed {
+        show(&mut commands, &links, unit, id, seen);
     }
 }
 
@@ -209,10 +233,18 @@ fn show(
     commands: &mut Commands<'_, '_>,
     links: &Query<'_, '_, (Entity, &PlayerLink)>,
     unit: Entity,
+    id: StableId,
     seen: SeenBy,
 ) {
     for (link, player) in links {
-        if seen.get().contains(player.team) {
+        let visible = seen.get().contains(player.team);
+        debug!(
+            unit = id.get(),
+            slot = player.slot.get(),
+            visible,
+            "set a unit's visibility"
+        );
+        if visible {
             commands.gain_visibility(unit, link);
         } else {
             commands.lose_visibility(unit, link);

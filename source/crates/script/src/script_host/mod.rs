@@ -7,6 +7,7 @@ use rhai::packages::{
     BasicStringPackage, LogicPackage, Package,
 };
 use rhai::{AST, CallFnOptions, Dynamic, Engine, FuncArgs, Scope};
+use tracing::debug;
 
 use crate::error::ScriptError;
 use crate::script_host::budget::Budget;
@@ -80,8 +81,8 @@ impl ScriptHost {
             .disable_symbol("eval");
         if cfg!(debug_assertions) {
             engine
-                .on_print(|text| eprintln!("script: {text}"))
-                .on_debug(|text, _, at| eprintln!("script {at}: {text}"));
+                .on_print(|text| debug!(text, "script print"))
+                .on_debug(|text, _, at| debug!(text, %at, "script debug"));
         } else {
             engine.on_print(|_| {}).on_debug(|_, _, _| {});
         }

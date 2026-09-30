@@ -1,5 +1,5 @@
-//! Replays a session log file with the packages under a directory, and prints the state hash
-//! after its last tick, in hex.
+//! Replays a session log file with the packages under a directory, and logs the state hash after
+//! its last tick, in hex. It logs as `campfire_log::Logging` says, `info` by default.
 
 use std::env;
 use std::error::Error;
@@ -7,25 +7,32 @@ use std::fs;
 use std::path::Path;
 use std::process::ExitCode;
 
+use campfire_log::Logging;
 use campfire_package::PackageStore;
 use campfire_protocol::SessionLog;
 use campfire_sim::StateHash;
 use campfire_verifier::Replay;
+use tracing::{error, info};
 
 fn main() -> ExitCode {
+    Logging {
+        terminal: "info",
+        file: "info,campfire_runner=debug,campfire_script=debug",
+    }
+    .start();
     let mut args = env::args_os().skip(1);
     let (Some(packages), Some(path), None) = (args.next(), args.next(), args.next()) else {
-        eprintln!("usage: campfire-verifier <packages directory> <session log file>");
+        error!("usage: campfire-verifier <packages directory> <session log file>");
         return ExitCode::from(2);
     };
     let path = Path::new(&path);
     match verify(Path::new(&packages), path) {
         Ok(hash) => {
-            println!("{hash}");
+            info!(file = %path.display(), %hash, "the log verifies; its final state hash");
             ExitCode::SUCCESS
         }
         Err(error) => {
-            eprintln!("{}: {error}", path.display());
+            error!(file = %path.display(), %error, "the log does not verify");
             ExitCode::FAILURE
         }
     }

@@ -23,6 +23,7 @@ bevy_time = { workspace = true, optional = true }
 criterion = { workspace = true, optional = true }
 lightyear.workspace = true
 serde.workspace = true
+tracing.workspace = true
 
 [[test]]
 name = "prototype"
