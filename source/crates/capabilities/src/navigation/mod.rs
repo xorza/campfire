@@ -74,12 +74,12 @@ fn move_units(mut units: Query<'_, '_, (&mut Position, &mut Destination, &MoveSt
     }
 }
 
-/// Parts each overlapping pair of living bodies, in stable-id order: only a unit that walks is
-/// pushed. A predicting client also parts its own units from the units it holds as the server
-/// sent them that do not walk, such as towers, whose places never go stale; a held unit that
-/// walks stands where the server last had it, behind the client's ticks, so the server alone
-/// parts the client's units from it. Every tick reads the bodies into `colliders`, a buffer it
-/// keeps.
+/// Parts each overlapping pair of living bodies, in stable-id order: only a unit that can walk is
+/// pushed, and one walking to a destination yields to one that stands. A predicting client also
+/// parts its own units from the units it holds as the server sent them that cannot walk, such as
+/// towers, which never move. Every other held unit is where the server last had it, behind the
+/// client's ticks, and may have started or stopped walking since, so the server alone parts the
+/// client's units from it. Every tick reads the bodies into `colliders`, a buffer it keeps.
 fn collide(
     mut units: Query<
         '_,
@@ -90,6 +90,7 @@ fn collide(
             &Body,
             &mut Position,
             Has<MoveStep>,
+            Option<&Destination>,
             Has<Unpredicted>,
         ),
         (Without<Dead>, Allow<Unpredicted>),
@@ -100,19 +101,22 @@ fn collide(
     colliders.extend(
         units
             .iter()
-            .filter(|&(.., movable, held)| !(held && movable))
-            .map(|(entity, &id, body, position, movable, _)| Collider {
-                id,
-                entity,
-                at: position.get(),
-                radius: body.radius(),
-                movable,
-            }),
+            .filter(|&(.., movable, _, held)| !(held && movable))
+            .map(
+                |(entity, &id, body, position, movable, destination, _)| Collider {
+                    id,
+                    entity,
+                    at: position.get(),
+                    radius: body.radius(),
+                    movable,
+                    walking: destination.is_some_and(|destination| destination.get().is_some()),
+                },
+            ),
     );
     colliders.sort_unstable_by_key(|collider| collider.id);
     Collider::resolve(&mut colliders);
     for collider in &*colliders {
-        let (_, _, _, mut position, _, _) = units
+        let (_, _, _, mut position, ..) = units
             .get_mut(collider.entity)
             .expect("a body read this tick");
         let parted = Position::new(collider.at).expect("a push stays near the bounds");

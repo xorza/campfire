@@ -181,6 +181,34 @@ fn bodies_part_and_block_the_way() {
 }
 
 #[test]
+fn a_client_parts_its_units_only_from_held_units_that_cannot_walk() {
+    // Two own walkers along z = 0 and z = 4, a quarter meter a tick from x = 0 towards x = 4,
+    // each with a held unit of the same size, 0.5 m, at x = 2 in its way: on z = 0 one that
+    // cannot walk, like a tower; on z = 4 one that can, standing as the server last had it. In
+    // tick 4, at 1, the first walker touches the first; in tick 5, at 1.25, it takes the whole
+    // overlap and is back at 1. The second walker passes through the second, which may have
+    // started walking since, to x = 4. Neither held unit moves.
+    let quarter = Num::from_bits(1 << 22);
+    let half = Num::from_bits(1 << 23);
+    let mut walk = Walk::new();
+    let blocked = walk.body(at(0, 0, 0), Some(at(4, 0, 0)), Some(quarter), half);
+    let passing = walk.body(at(0, 0, 4), Some(at(4, 0, 4)), Some(quarter), half);
+    let fixed = walk.body(at(2, 0, 0), None, None, half);
+    let resting = walk.body(at(2, 0, 4), None, Some(quarter), half);
+    // As on a client: the sim runs on no held unit, and collision names them.
+    Unpredicted::register(&mut walk.world);
+    for held in [fixed, resting] {
+        let entity = walk.world.resource::<EntityIndex>().get(held).unwrap();
+        walk.world.entity_mut(entity).insert(Unpredicted);
+    }
+    for _ in 0..16 {
+        walk.tick();
+    }
+    let places = [blocked, passing, fixed, resting].map(|unit| walk.get::<Position>(unit));
+    assert_eq!(places, [at(1, 0, 0), at(4, 0, 4), at(2, 0, 0), at(2, 0, 4)]);
+}
+
+#[test]
 fn a_dead_unit_stays_and_forgets_its_destination() {
     let mut walk = Walk::new();
     let unit = walk.unit(at(0, 0, 0), Some(at(0, 0, 5)));

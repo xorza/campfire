@@ -2,8 +2,9 @@ use bevy_ecs::entity::Entity;
 use campfire_math::{Num, Vec3};
 use campfire_sim::StableId;
 
-/// A living unit's body as collision sees it: where it stands, its radius, and whether it may be
-/// pushed. A unit that does not walk, such as a tower, is never pushed.
+/// A living unit's body as collision sees it: where it stands, its radius, whether it may be
+/// pushed, and whether it walks now, to a destination. A unit that cannot walk, such as a tower,
+/// is never pushed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Collider {
     pub(crate) id: StableId,
@@ -11,13 +12,15 @@ pub(crate) struct Collider {
     pub(crate) at: Vec3,
     pub(crate) radius: Num,
     pub(crate) movable: bool,
+    pub(crate) walking: bool,
 }
 
 impl Collider {
     /// Pushes each overlapping pair of `colliders`, sorted by stable id, apart along the line
     /// between them, on the ground plane, in the order of their ids: each pair sees the pushes of
-    /// the pairs before it. Two that may both be pushed share the overlap, the higher id taking
-    /// the odd bit; one that may not be pushed leaves the whole overlap to the other. Two on one
+    /// the pairs before it. A unit that walks into one that stands takes the whole overlap, so no
+    /// unit shoves another aside; two that both walk, or both stand, share it, the higher id
+    /// taking the odd bit; one that may not be pushed leaves the whole overlap to the other. Two on one
     /// spot part along x, the higher id towards +x. A pair that only touches does not overlap.
     pub(crate) fn resolve(colliders: &mut [Collider]) {
         debug_assert!(colliders.is_sorted_by_key(|collider| collider.id));
@@ -48,7 +51,11 @@ impl Collider {
         } else {
             (dx, dz, distance)
         };
-        let (back, forward) = match (a.movable, b.movable) {
+        let moves = match (a.movable, b.movable) {
+            (true, true) if a.walking != b.walking => (a.walking, b.walking),
+            pair => pair,
+        };
+        let (back, forward) = match moves {
             (true, true) => (overlap / 2, overlap - overlap / 2),
             (true, false) => (overlap, 0),
             _ => (0, overlap),
@@ -84,7 +91,8 @@ mod tests {
         Num::from_int(value).unwrap()
     }
 
-    /// Colliders of radius 1 at each x on the ground, in id order, each movable as given.
+    /// Colliders of radius 1 at each place on the ground, in id order, each movable as given, and
+    /// walking when movable.
     fn row(at: &[(Num, Num, bool)]) -> Vec<Collider> {
         let mut ids = IdAllocator::default();
         let mut world = World::new();
@@ -95,6 +103,7 @@ mod tests {
                 at: Vec3::new(x, num(2), z),
                 radius: Num::ONE,
                 movable,
+                walking: movable,
             })
             .collect()
     }
@@ -115,6 +124,19 @@ mod tests {
             [(-quarter, num(0)), (num(1) + half + quarter, num(0))]
         );
         assert_eq!(two[0].at.y, num(2));
+
+        // A unit that walks into one that stands takes the whole half meter, whichever id it has:
+        // no unit shoves another aside.
+        for walker in [0, 1] {
+            let mut pair = row(&[(num(0), num(0), true), (num(1) + half, num(0), true)]);
+            pair[1 - walker].walking = false;
+            Collider::resolve(&mut pair);
+            let expected = [
+                [(-half, num(0)), (num(1) + half, num(0))],
+                [(num(0), num(0)), (num(2), num(0))],
+            ];
+            assert_eq!(places(&pair), expected[walker], "walker {walker}");
+        }
 
         // A tower that may not be pushed leaves the whole half meter to the walker.
         let mut tower = row(&[(num(0), num(0), false), (num(0), num(1) + half, true)]);
