@@ -118,3 +118,8 @@ pub use vision::Vision;
 pub use vision::seen_by::SeenBy;
 pub use vision::sight::Sight;
 pub use vision::vision_data::VisionData;
+
+#[cfg(feature = "bench")]
+pub mod bench {
+    pub use crate::navigation::bench::collision;
+}

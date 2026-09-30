@@ -7,6 +7,7 @@ use bevy_ecs::world::{EntityRef, World};
 use campfire_sim::{Position, SimSet, StableId, StateRegistry, Unpredicted};
 
 use crate::combat::dead::Dead;
+use crate::navigation::broadphase::Broadphase;
 use crate::navigation::collider::Collider;
 use crate::navigation::destination::Destination;
 use crate::navigation::move_step::MoveStep;
@@ -17,6 +18,9 @@ use crate::units::body::Body;
 use crate::units::script_view::{RowFill, View};
 use crate::values::bounds::Bounds;
 
+#[cfg(feature = "bench")]
+pub(crate) mod bench;
+pub(crate) mod broadphase;
 pub(crate) mod collider;
 pub(crate) mod destination;
 pub(crate) mod move_step;
@@ -74,12 +78,14 @@ fn move_units(mut units: Query<'_, '_, (&mut Position, &mut Destination, &MoveSt
     }
 }
 
-/// Parts each overlapping pair of living bodies, in stable-id order: only a unit that can walk is
+/// Parts the living bodies that overlap as the stage starts, pair by pair in stable-id order; a
+/// pair that only overlaps after this tick's pushes parts in the next. Only a unit that can walk is
 /// pushed, and one walking to a destination yields to one that stands. A predicting client also
 /// parts its own units from the units it holds as the server sent them that cannot walk, such as
 /// towers, which never move. Every other held unit is where the server last had it, behind the
 /// client's ticks, and may have started or stopped walking since, so the server alone parts the
-/// client's units from it. Every tick reads the bodies into `colliders`, a buffer it keeps.
+/// client's units from it. Every tick reads the bodies into `colliders`, and finds their
+/// contacts with `broadphase`, buffers it keeps.
 fn collide(
     mut units: Query<
         '_,
@@ -96,6 +102,7 @@ fn collide(
         (Without<Dead>, Allow<Unpredicted>),
     >,
     mut colliders: Local<'_, Vec<Collider>>,
+    mut broadphase: Local<'_, Broadphase>,
 ) {
     colliders.clear();
     colliders.extend(
@@ -114,7 +121,8 @@ fn collide(
             ),
     );
     colliders.sort_unstable_by_key(|collider| collider.id);
-    Collider::resolve(&mut colliders);
+    let contacts = broadphase.contacts(&colliders);
+    Collider::resolve(&mut colliders, contacts);
     for collider in &*colliders {
         let (_, _, _, mut position, ..) = units
             .get_mut(collider.entity)

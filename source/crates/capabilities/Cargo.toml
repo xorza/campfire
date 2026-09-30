@@ -4,6 +4,9 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+[features]
+bench = ["dep:criterion"]
+
 [dependencies]
 campfire-content.workspace = true
 campfire-math.workspace = true
@@ -11,8 +14,14 @@ campfire-script.workspace = true
 campfire-sim.workspace = true
 
 bevy_ecs.workspace = true
+criterion = { workspace = true, optional = true }
 postcard.workspace = true
 serde.workspace = true
+
+[[bench]]
+name = "collision"
+harness = false
+required-features = ["bench"]
 
 [lints]
 workspace = true

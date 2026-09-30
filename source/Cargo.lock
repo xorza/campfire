@@ -2009,6 +2009,7 @@ dependencies = [
  "campfire-math",
  "campfire-script",
  "campfire-sim",
+ "criterion 0.8.2",
  "postcard",
  "serde",
 ]

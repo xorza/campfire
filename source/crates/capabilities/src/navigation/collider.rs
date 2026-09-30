@@ -2,6 +2,8 @@ use bevy_ecs::entity::Entity;
 use campfire_math::{Num, Vec3};
 use campfire_sim::StableId;
 
+use crate::navigation::broadphase::Contact;
+
 /// A living unit's body as collision sees it: where it stands, its radius, whether it may be
 /// pushed, and whether it walks now, to a destination. A unit that cannot walk, such as a tower,
 /// is never pushed.
@@ -16,24 +18,35 @@ pub(crate) struct Collider {
 }
 
 impl Collider {
-    /// Pushes each overlapping pair of `colliders`, sorted by stable id, apart along the line
-    /// between them, on the ground plane, in the order of their ids: each pair sees the pushes of
-    /// the pairs before it. A unit that walks into one that stands takes the whole overlap, so no
-    /// unit shoves another aside; two that both walk, or both stand, share it, the higher id
-    /// taking the odd bit; one that may not be pushed leaves the whole overlap to the other. Two on one
-    /// spot part along x, the higher id towards +x. A pair that only touches does not overlap.
-    pub(crate) fn resolve(colliders: &mut [Collider]) {
+    /// Pushes the two colliders of each of `contacts`, in order, apart along the line between
+    /// them, on the ground plane: each contact sees the pushes of the contacts before it, and one
+    /// they parted already is skipped. A unit that walks into one that stands takes the whole
+    /// overlap, so no unit shoves another aside; two that both walk, or both stand, share it, the
+    /// higher id taking the odd bit; one that may not be pushed leaves the whole overlap to the
+    /// other. Two on one spot part along x, the higher id towards +x.
+    pub(crate) fn resolve(colliders: &mut [Collider], contacts: &[Contact]) {
         debug_assert!(colliders.is_sorted_by_key(|collider| collider.id));
-        for first in 0..colliders.len() {
-            for second in first + 1..colliders.len() {
-                let (head, tail) = colliders.split_at_mut(second);
-                Collider::part(&mut head[first], &mut tail[0]);
-            }
+        for &Contact { first, second } in contacts {
+            debug_assert!(first < second);
+            let (head, tail) = colliders.split_at_mut(second);
+            Collider::part(&mut head[first], &mut tail[0]);
         }
     }
 
+    /// Whether the bodies of `self` and `other` overlap on the ground plane, exactly: touching is
+    /// not overlap. Two that may not be pushed never part, so they have no contact.
+    pub(crate) fn overlaps(&self, other: &Collider) -> bool {
+        if !self.movable && !other.movable {
+            return false;
+        }
+        let dx = i128::from(other.at.x.to_bits() - self.at.x.to_bits());
+        let dz = i128::from(other.at.z.to_bits() - self.at.z.to_bits());
+        let reach = i128::from(self.radius.to_bits() + other.radius.to_bits());
+        dx * dx + dz * dz < reach * reach
+    }
+
     fn part(a: &mut Collider, b: &mut Collider) {
-        if !a.movable && !b.movable {
+        if !a.overlaps(b) {
             return;
         }
         // In bits of a `Num`: a position and a radius are within 2⁴⁵ bits, so squares fit i128.
@@ -41,9 +54,6 @@ impl Collider {
         let dz = i128::from(b.at.z.to_bits() - a.at.z.to_bits());
         let reach = i128::from(a.radius.to_bits() + b.radius.to_bits());
         let square = dx * dx + dz * dz;
-        if square >= reach * reach {
-            return;
-        }
         let distance = square.cast_unsigned().isqrt().cast_signed();
         let overlap = reach - distance;
         let (dx, dz, distance) = if distance == 0 {
@@ -86,6 +96,7 @@ mod tests {
     use campfire_sim::IdAllocator;
 
     use super::*;
+    use crate::navigation::broadphase::Broadphase;
 
     fn num(value: i64) -> Num {
         Num::from_int(value).unwrap()
@@ -108,6 +119,12 @@ mod tests {
             .collect()
     }
 
+    /// Parts the bodies of `colliders` that overlap, as the Collide stage does.
+    fn resolve(colliders: &mut [Collider]) {
+        let contacts = Broadphase::default().contacts(colliders).to_vec();
+        Collider::resolve(colliders, &contacts);
+    }
+
     fn places(colliders: &[Collider]) -> Vec<(Num, Num)> {
         colliders.iter().map(|c| (c.at.x, c.at.z)).collect()
     }
@@ -118,7 +135,7 @@ mod tests {
         let half = Num::from_bits(1 << 23);
         let quarter = Num::from_bits(1 << 22);
         let mut two = row(&[(num(0), num(0), true), (num(1) + half, num(0), true)]);
-        Collider::resolve(&mut two);
+        resolve(&mut two);
         assert_eq!(
             places(&two),
             [(-quarter, num(0)), (num(1) + half + quarter, num(0))]
@@ -130,7 +147,7 @@ mod tests {
         for walker in [0, 1] {
             let mut pair = row(&[(num(0), num(0), true), (num(1) + half, num(0), true)]);
             pair[1 - walker].walking = false;
-            Collider::resolve(&mut pair);
+            resolve(&mut pair);
             let expected = [
                 [(-half, num(0)), (num(1) + half, num(0))],
                 [(num(0), num(0)), (num(2), num(0))],
@@ -140,20 +157,20 @@ mod tests {
 
         // A tower that may not be pushed leaves the whole half meter to the walker.
         let mut tower = row(&[(num(0), num(0), false), (num(0), num(1) + half, true)]);
-        Collider::resolve(&mut tower);
+        resolve(&mut tower);
         assert_eq!(places(&tower), [(num(0), num(0)), (num(0), num(2))]);
 
         // Touching, 2 m apart, is no overlap; two towers never move.
         for (x, movable) in [(num(2), true), (num(1), false)] {
             let mut pair = row(&[(num(0), num(0), movable), (x, num(0), movable)]);
             let before = places(&pair);
-            Collider::resolve(&mut pair);
+            resolve(&mut pair);
             assert_eq!(places(&pair), before);
         }
 
         // On one spot they part along x by a meter each, the higher id towards +x.
         let mut stacked = row(&[(num(3), num(3), true), (num(3), num(3), true)]);
-        Collider::resolve(&mut stacked);
+        resolve(&mut stacked);
         assert_eq!(places(&stacked), [(num(2), num(3)), (num(4), num(3))]);
 
         // On a 3-4-5 line: (0.3, 0.4), each a whole number of bits below, are √(5 033 164² +
@@ -163,7 +180,7 @@ mod tests {
         // back and (7 549 747, 10 066 331) forward.
         let tenth = |n: i64| Num::from_bits((n << Num::FRAC_BITS) / 10);
         let mut slant = row(&[(num(0), num(0), true), (tenth(3), tenth(4), true)]);
-        Collider::resolve(&mut slant);
+        resolve(&mut slant);
         let bits = Num::from_bits;
         let expected = [
             (-bits(7_549_747), -bits(10_066_330)),
