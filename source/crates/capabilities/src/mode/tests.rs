@@ -4,30 +4,27 @@ use std::slice;
 
 use bevy_ecs::entity::Entity;
 use campfire_content::PackagePath;
-use campfire_math::{Num, SegmentSeed, Vec3};
+use campfire_math::{Num, Vec3};
 use campfire_script::ScriptId;
-use campfire_sim::{EntityIndex, SimUpdate, Tick, TickInput, Ticks};
+use campfire_sim::{Capability, EntityIndex, SimUpdate, Tick, TickInput, Ticks};
 
 use super::*;
 use crate::abilities::Abilities;
 use crate::abilities::ability_book::AbilityId;
 use crate::abilities::ability_data::{AbilityData, Targeting};
 use crate::abilities::ability_slots::AbilitySlots;
-use crate::combat::Combat;
+use crate::capability_set::internals::TestMatch;
 use crate::combat::attack_stats::AttackStats;
 use crate::combat::combatant::Combatant;
 use crate::combat::dead::Dead;
 use crate::combat::health::Health;
 use crate::combat::on_death::OnDeath;
-use crate::files::manifest::{Speed, TickRange};
-use crate::files::map_data::{LaneData, NeutralSpawnData, StructureData};
-use crate::files::mode_data::{InputType, ListEntry, ModeData, ModeParam};
-use crate::files::spells_data::SpellsData;
 use crate::mode::hero_index::HeroIndex;
+use crate::mode::map_data::{LaneData, NeutralSpawnData, StructureData};
+use crate::mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
 use crate::mode::mode_setup::{HeroSetup, SpellSetup, UnitTypeSetup};
 use crate::mode::spell_index::SpellIndex;
 use crate::mode::unit_kit::UnitKit;
-use crate::navigation::Navigation;
 use crate::navigation::lane_walker::{LaneWalker, PathDirection};
 use crate::navigation::move_step::MoveStep;
 use crate::scripts::error::ApiError;
@@ -292,15 +289,17 @@ impl Game {
 
     /// The match `new` gives; an error when the mode's start fails.
     fn start(script: &str, limits: ScriptLimits) -> Result<Game, CallError> {
-        let mut world = World::new();
-        SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), RATE);
-        let mut schedule = SimUpdate::schedule();
-        let mut registry = StateRegistry::new();
         let scripts = MatchScripts { limits, players: 3 };
-        Units::install(&mut world, &mut schedule, &mut registry, Some(scripts));
-        Combat::install(&mut world, &mut schedule, &mut registry);
-        Navigation::install(&mut world, &mut schedule, &mut registry);
-        Abilities::install(&mut world, &mut schedule, &mut registry);
+        let declared = [
+            Capability::Combat,
+            Capability::Navigation,
+            Capability::Abilities,
+        ];
+        let TestMatch {
+            mut world,
+            mut schedule,
+            mut registry,
+        } = TestMatch::new(&declared, RATE, Some(scripts));
         let mut load = |name: &str, tag: &str| {
             let data = UnitTypeData {
                 tags: vec![tag.to_owned()],
@@ -330,7 +329,8 @@ impl Game {
             params: BTreeMap::new(),
             projectile_state: BTreeMap::new(),
         };
-        let blink = Abilities::load(&mut world, &blink, None, SpellsData::RANKS).unwrap();
+        // A spell has one rank.
+        let blink = Abilities::load(&mut world, &blink, None, 1).unwrap();
         let spell = SpellSetup {
             id: "blink".to_owned(),
             ability: blink,
@@ -681,19 +681,4 @@ fn on_timer(ctx, name, data) {
     assert_eq!(due(&game), (None, false));
     // Both calls failed, so none counted.
     assert_eq!(game.field("count"), StateValue::Int(0));
-}
-
-#[test]
-fn a_tick_range_holds_its_default_and_a_speed_is_positive() {
-    let hz = |value| NonZeroU32::new(value).unwrap();
-    let range = TickRange::new(hz(20), hz(30), hz(60)).unwrap();
-    assert_eq!(range.default(), hz(30));
-    let held = [19, 20, 60, 61].map(|value| range.contains(hz(value)));
-    assert_eq!(held, [false, true, true, false]);
-    assert!(TickRange::new(hz(30), hz(30), hz(30)).is_some());
-    assert!(TickRange::new(hz(40), hz(30), hz(60)).is_none());
-    assert!(TickRange::new(hz(20), hz(61), hz(60)).is_none());
-    assert_eq!(Speed::new(Num::EPSILON).map(Speed::get), Some(Num::EPSILON));
-    assert!(Speed::new(Num::ZERO).is_none());
-    assert!(Speed::new(-Num::EPSILON).is_none());
 }

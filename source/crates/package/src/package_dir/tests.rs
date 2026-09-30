@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::os::unix::fs::symlink;
 use std::{env, process};
 
@@ -7,7 +6,7 @@ use crate::package_store::PackageStore;
 
 /// A new directory under the system's temporary one, named for the test.
 fn scratch(name: &str) -> PathBuf {
-    let dir = env::temp_dir().join(format!("campfire-content-{}-{name}", process::id()));
+    let dir = env::temp_dir().join(format!("campfire-package-{}-{name}", process::id()));
     if dir.exists() {
         fs::remove_dir_all(&dir).unwrap();
     }
@@ -44,6 +43,28 @@ fn a_fingerprint_hashes_the_sorted_file_list() {
     let expected = Fingerprint::new(Sha256::digest(&list).into());
     let dir = PackageDir::new(&package);
     assert_eq!(dir.fingerprint().unwrap(), expected);
+    // The same files in memory, in a tree whose other files are outside the package, reached
+    // through a path that leaves a sibling first, read and fingerprint the same.
+    let tree: BTreeMap<PathBuf, Vec<u8>> = [
+        ("pack/one/manifest.toml", "m"),
+        ("pack/one/data/a.toml", "ab"),
+        ("pack/other/manifest.toml", "o"),
+    ]
+    .into_iter()
+    .map(|(path, text)| (PathBuf::from(path), text.as_bytes().to_vec()))
+    .collect();
+    let other = PackageDir::in_memory(Arc::new(tree), "pack/other");
+    let memory = other.join(Path::new("../one"));
+    assert_eq!(memory.fingerprint().unwrap(), expected);
+    let listed: Vec<_> = memory.files_under("data").unwrap();
+    assert_eq!(listed, [PackagePath::parse("data/a.toml").unwrap()]);
+    let manifest = PackagePath::parse("manifest.toml").unwrap();
+    assert_eq!(memory.read_text(&manifest).unwrap(), "m");
+    let missing = PackagePath::parse("scripts/x.rhai").unwrap();
+    assert!(matches!(
+        memory.read_text(&missing),
+        Err(ContentError::Io { .. })
+    ));
     write(&package, "data/b/c.toml", "");
     let files = dir.files_under("data").unwrap();
     let files: Vec<_> = files.iter().map(PackagePath::to_string).collect();
@@ -111,13 +132,7 @@ fn a_package_reads_its_own_files_only() {
     assert!(script.starts_with("fn on_cast(ctx, caster, target)"));
 
     for text in ["../husk/data/hero.toml", "/etc/hosts", "data/../../x", ""] {
-        assert!(
-            matches!(
-                PackagePath::parse(text),
-                Err(ContentError::OutsidePackage(_))
-            ),
-            "{text}"
-        );
+        assert_eq!(PackagePath::parse(text), None, "{text}");
     }
     // Data that names a path outside the package does not read.
     assert!(toml::from_str::<Named>(r#"script = "../x.rhai""#).is_err());

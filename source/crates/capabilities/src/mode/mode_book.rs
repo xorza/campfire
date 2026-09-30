@@ -8,8 +8,8 @@ use campfire_script::rhai::{Array, Dynamic, ImmutableString, Map};
 use campfire_sim::{IdAllocator, PlayerSlot, Position, StableId, TickRate};
 
 use crate::abilities::ability_slots::AbilitySlots;
-use crate::files::map_data::MapData;
 use crate::mode::error::ModeError;
+use crate::mode::map_data::MapData;
 use crate::mode::mode_schema::ModeSchema;
 use crate::mode::mode_setup::{ModeSetup, UnitTypeSetup};
 use crate::mode::picks::Picks;

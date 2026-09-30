@@ -7,8 +7,9 @@ use bevy_ecs::schedule::common_conditions::resource_exists;
 use bevy_ecs::system::{Local, Query, ResMut};
 use bevy_ecs::world::World;
 use campfire_capabilities::Owner;
+use campfire_package::ModePackages;
 use campfire_protocol::{Applied, PlayerSlot, ServerSeed, SessionLog};
-use campfire_runner::{ModePackages, Session, StartError};
+use campfire_runner::{Session, StartError};
 use campfire_sim::{EntityIndex, SimTick, StateHash};
 use lightyear::core::tick::TickDuration;
 use lightyear::prelude::{

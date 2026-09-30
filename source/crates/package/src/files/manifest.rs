@@ -1,14 +1,11 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 
-use campfire_math::Num;
+use campfire_capabilities::{CapabilitySet, ScriptLimits, Speed, TeamManifest};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
-use crate::capability_set::CapabilitySet;
 use crate::files::version::Version;
-use crate::scripts::script_limits::ScriptLimits;
-use crate::values::scalar::Scalar;
 
 /// A package's `manifest.toml`: what it is, which engine release it targets, and, for a mode,
 /// the rules its matches run by.
@@ -53,17 +50,6 @@ pub struct TickRange {
     min: NonZeroU32,
     max: NonZeroU32,
     default: NonZeroU32,
-}
-
-/// A speed in meters a second, positive.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub struct Speed(Num);
-
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct TeamManifest {
-    pub name: String,
-    pub slots: u32,
 }
 
 /// The backends of the core's collision, pathfinding and visibility. The release loads them,
@@ -134,32 +120,6 @@ impl<'de> Deserialize<'de> for TickRange {
     }
 }
 
-impl Speed {
-    /// `None` unless `meters_a_second` is positive.
-    pub const fn new(meters_a_second: Num) -> Option<Speed> {
-        if meters_a_second.to_bits() <= 0 {
-            return None;
-        }
-        Some(Speed(meters_a_second))
-    }
-
-    /// In meters a second.
-    pub const fn get(self) -> Num {
-        self.0
-    }
-}
-
-/// A number, or a decimal string, that is positive.
-impl<'de> Deserialize<'de> for Speed {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Speed, D::Error> {
-        let scalar = Scalar::deserialize(deserializer)?;
-        scalar
-            .to_num()
-            .and_then(Speed::new)
-            .ok_or_else(|| D::Error::custom("a speed is a positive number"))
-    }
-}
-
 impl Manifest {
     pub const fn header(&self) -> &PackageHeader {
         match self {
@@ -202,5 +162,22 @@ impl<'de> Deserialize<'de> for ModeManifest {
             script_limits: fields.script_limits,
             dependencies: fields.dependencies,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_tick_range_holds_its_default() {
+        let hz = |value| NonZeroU32::new(value).unwrap();
+        let range = TickRange::new(hz(20), hz(30), hz(60)).unwrap();
+        assert_eq!(range.default(), hz(30));
+        let held = [19, 20, 60, 61].map(|value| range.contains(hz(value)));
+        assert_eq!(held, [false, true, true, false]);
+        assert!(TickRange::new(hz(30), hz(30), hz(30)).is_some());
+        assert!(TickRange::new(hz(40), hz(30), hz(60)).is_none());
+        assert!(TickRange::new(hz(20), hz(61), hz(60)).is_none());
     }
 }

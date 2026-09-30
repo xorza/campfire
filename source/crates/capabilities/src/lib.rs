@@ -2,8 +2,7 @@
 //! them. A module imports only from the layers below its own, lowest first: `values` (data value
 //! types); the core, `units` and `scripts` (unit types, teams, owners, lanes, the script view and
 //! runtime); `combat` and `stats`; `abilities`, `projectiles` and `navigation`; `orders`; the
-//! `mode`. `files`, the package file schemas, reads every capability's data types, and only the
-//! runner reads it. A capability gives the script view its fields of a unit through a row source.
+//! `mode`. A capability gives the script view its fields of a unit through a row source.
 
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 #![allow(
@@ -18,7 +17,6 @@
 mod abilities;
 mod capability_set;
 mod combat;
-mod files;
 mod mode;
 mod navigation;
 mod orders;
@@ -49,25 +47,18 @@ pub use combat::dead::Dead;
 pub use combat::health::Health;
 pub use combat::on_death::OnDeath;
 pub use combat::recent_attackers::RecentAttackers;
-pub use files::hero_data::{HeroData, ResourceKind};
-pub use files::manifest::{
-    Backends, CollisionBackend, Dependency, Manifest, ModeManifest, PackageHeader,
-    PathfindingBackend, Speed, TeamManifest, TickRange, VisibilityBackend,
-};
-pub use files::map_data::{GroundPoint, LaneData, MapData, NeutralSpawnData, StructureData};
-pub use files::mode_data::{InputType, ListEntry, ModeData, ModeParam};
-pub use files::spells_data::SpellsData;
-pub use files::units_data::{UnitTypeFile, UnitsData, VisionData};
-pub use files::version::Version;
 pub use mode::Mode;
 pub use mode::error::{ModeError, UnitKitError};
 pub use mode::hero_index::HeroIndex;
+pub use mode::map_data::{GroundPoint, LaneData, MapData, NeutralSpawnData, StructureData};
+pub use mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
 pub use mode::mode_input::{InputValue, ModeInput};
 pub use mode::mode_setup::{HeroSetup, ModeSetup, SpellSetup, UnitTypeSetup};
 pub use mode::mode_state::ModeState;
 pub use mode::picks::{Pick, Picks};
 pub use mode::player_resources::{PlayerResource, PlayerResources};
 pub use mode::spell_index::SpellIndex;
+pub use mode::team_manifest::TeamManifest;
 pub use mode::timers::{Timer, Timers};
 pub use mode::unit_kit::{KitRules, UnitKit};
 pub use navigation::Navigation;
@@ -109,3 +100,4 @@ pub use values::param::{Param, Scaling};
 pub use values::ranked::Ranked;
 pub use values::relation::Relation;
 pub use values::scalar::Scalar;
+pub use values::speed::Speed;

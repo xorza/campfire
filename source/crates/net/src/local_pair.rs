@@ -8,11 +8,12 @@ use bevy_ecs::system::Commands;
 use bevy_state::app::StatesPlugin;
 use bevy_time::{TimePlugin, TimeUpdateStrategy};
 use campfire_capabilities::{Action, Order, Owner};
+use campfire_package::{ModePackages, RELEASE};
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
 use campfire_protocol::{
     Delegation, DelegationTerms, SeedChain, SessionHeader, SessionLog, SessionTerms,
 };
-use campfire_runner::{ModePackages, RELEASE, StartError};
+use campfire_runner::{Session, StartError};
 use campfire_sim::{EntityIndex, PlayerSlot, StableId};
 use lightyear::crossbeam::CrossbeamIo;
 use lightyear::prelude::client::{ClientPlugins, RawClient};
@@ -65,8 +66,8 @@ impl LocalPair {
             max_inputs_per_tick: 4,
             seed_commitment: seed_chain.commitment(),
             release: RELEASE.to_owned(),
-            mode: packages.fingerprint(),
-            dependencies: packages.dependencies().collect(),
+            mode: Session::mode_in_terms(&packages),
+            dependencies: Session::dependencies_in_terms(&packages),
         };
         let tick = terms.tick_length();
         let (client_io, server_io) = CrossbeamIo::new_pair();

@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_capabilities::{
-    AbilityData, CtxEntry, DamageKind, FilterData, HeroData, Hook, Mode, ModifierData, Number,
-    Param, Scalar, ScriptRole, SpellsData, Stat, UnitTypeData,
+    AbilityData, CtxEntry, DamageKind, FilterData, Hook, Mode, ModifierData, Number, Param, Scalar,
+    ScriptRole, Stat, UnitTypeData,
 };
 use campfire_content::PackagePath;
 use campfire_math::Num;
@@ -10,6 +10,8 @@ use campfire_sim::Capability;
 
 use crate::RELEASE_VERSION;
 use crate::error::{CtxMisuse, LoadError, LoadProblem, Place};
+use crate::files::hero_data::HeroData;
+use crate::files::spells_data::SpellsData;
 use crate::mode_packages::{Content, Dependent, ModePackages};
 use crate::package::Package;
 

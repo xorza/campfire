@@ -1,9 +1,9 @@
 use bevy_ecs::world::World;
+use campfire_package::ModePackages;
 use campfire_protocol::{Applied, ChainSignature, InputError, PlayerInput, ServerSeed, SessionLog};
 use campfire_sim::StateHash;
 
 use crate::error::StartError;
-use crate::mode_packages::ModePackages;
 use crate::session::Session;
 
 /// A match in a bare `World`, with no network layer: what a verifier replays a log in.

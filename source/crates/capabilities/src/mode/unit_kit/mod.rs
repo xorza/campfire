@@ -5,11 +5,11 @@ use crate::combat::attack_stats::AttackStats;
 use crate::combat::combat_data::{AttackData, CombatData};
 use crate::combat::combatant::Combatant;
 use crate::combat::health::Health;
-use crate::files::manifest::Speed;
 use crate::mode::error::UnitKitError;
 use crate::navigation::move_step::MoveStep;
 use crate::stats::stat::Stat;
 use crate::stats::stats_data::StatsData;
+use crate::values::speed::Speed;
 
 /// The most attacks a unit makes a second.
 const MAX_ATTACK_SPEED: Num = Num::from_bits(5 << (Num::FRAC_BITS - 1));

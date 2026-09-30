@@ -1,8 +1,9 @@
-use campfire_capabilities::Version;
-use campfire_content::{Fingerprint, PackageDir, PackagePath};
+use campfire_content::{Fingerprint, PackagePath};
 use campfire_script::ScriptHost;
 
 use crate::error::{LoadError, LoadProblem};
+use crate::files::version::Version;
+use crate::package_dir::PackageDir;
 use crate::script_facts::ScriptFacts;
 
 /// Where a package holds its game scripts.
@@ -11,18 +12,18 @@ const SCRIPTS: &str = "scripts";
 /// A package as the load read it: its name, fingerprint and target release, and each of its
 /// scripts.
 #[derive(Debug)]
-pub(crate) struct Package {
-    pub(crate) name: String,
-    pub(crate) fingerprint: Fingerprint,
+pub struct Package {
+    pub name: String,
+    pub fingerprint: Fingerprint,
     pub(crate) engine: Version,
     /// Every file under `scripts/`, by path.
-    pub(crate) scripts: Vec<Script>,
+    pub scripts: Vec<Script>,
 }
 
 #[derive(Debug)]
-pub(crate) struct Script {
-    pub(crate) path: PackagePath,
-    pub(crate) source: String,
+pub struct Script {
+    pub path: PackagePath,
+    pub source: String,
     pub(crate) facts: ScriptFacts,
 }
 
@@ -75,7 +76,7 @@ impl Package {
     }
 
     /// The place of the script at `path` in `scripts`.
-    pub(crate) fn script_index(&self, path: &PackagePath) -> Option<usize> {
+    pub fn script_index(&self, path: &PackagePath) -> Option<usize> {
         self.scripts.iter().position(|script| script.path == *path)
     }
 }

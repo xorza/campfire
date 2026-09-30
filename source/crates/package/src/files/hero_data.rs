@@ -1,11 +1,7 @@
 use std::collections::BTreeMap;
 
+use campfire_capabilities::{AbilityData, CombatData, ModifierData, StatsData};
 use serde::Deserialize;
-
-use crate::abilities::ability_data::AbilityData;
-use crate::combat::combat_data::CombatData;
-use crate::stats::modifier_data::ModifierData;
-use crate::stats::stats_data::StatsData;
 
 /// A hero package's `data/hero.toml`. A hero carries the tag `hero`, and stays when it dies.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]

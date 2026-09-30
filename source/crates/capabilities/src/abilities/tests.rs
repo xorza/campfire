@@ -4,23 +4,21 @@ use std::num::NonZeroU32;
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::Component;
 use campfire_content::PackagePath;
-use campfire_math::{SegmentSeed, Vec3};
+use campfire_math::Vec3;
 use campfire_script::{NumError, ScriptError};
-use campfire_sim::{IdAllocator, PlayerSlot, SimUpdate, TickInput, TickInputs};
+use campfire_sim::{Capability, IdAllocator, PlayerSlot, SimUpdate};
 
 use super::*;
 use crate::abilities::ability_data::RangeField;
 use crate::abilities::ability_slots::AbilitySlot;
 use crate::abilities::error::AbilityField;
-use crate::combat::Combat;
+use crate::capability_set::internals::TestMatch;
 use crate::combat::attack_stats::AttackStats;
 use crate::combat::combatant::Combatant;
 use crate::combat::health::Health;
 use crate::combat::on_death::OnDeath;
-use crate::navigation::Navigation;
 use crate::orders::Orders;
 use crate::orders::ai_data::AiData;
-use crate::orders::order::{Action, Order};
 use crate::scripts::error::ApiError;
 use crate::scripts::match_scripts::MatchScripts;
 use crate::scripts::script_budgets::ScriptBudgets;
@@ -44,7 +42,21 @@ const LIMITS: ScriptLimits = ScriptLimits {
     think: 100_000,
     mode: 100_000,
 };
-const LASH_OUT: &str = include_str!("../../../../packages/moba/heroes/husk/scripts/lash_out.rhai");
+/// Lash Out as the reference Husk had it when these tests were written: the engine's tests keep
+/// their own copy, so a balance change to the reference hero changes none of them.
+const LASH_OUT: &str = r#"
+fn on_cast(ctx, caster, target) {
+    for unit in ctx.find(caster, caster.pos, ctx.p.radius, "enemies") {
+        ctx.damage(unit, ctx.p.damage, "magic");
+    }
+}
+
+fn on_damage_taken(ctx, m, d) {
+    if d.attack {
+        ctx.reduce_cooldown(m.carrier, "lash_out", ctx.p.cooldown_cut_ms);
+    }
+}
+"#;
 
 fn int(value: i64) -> Number {
     Number::Value(Scalar::Int(value))
@@ -166,21 +178,17 @@ struct Match {
 
 impl Match {
     fn new() -> Match {
-        Match::with(LIMITS)
+        Match::with(LIMITS, &[Capability::Combat, Capability::Abilities])
     }
 
-    /// A match of two players whose scripts run within `limits`.
-    fn with(limits: ScriptLimits) -> Match {
-        let mut world = World::new();
-        SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), RATE);
-        let mut schedule = SimUpdate::schedule();
-        let mut registry = StateRegistry::new();
+    /// A match of two players of `declared`, whose scripts run within `limits`.
+    fn with(limits: ScriptLimits, declared: &[Capability]) -> Match {
         let scripts = MatchScripts { limits, players: 2 };
-        Units::install(&mut world, &mut schedule, &mut registry, Some(scripts));
-        Combat::install(&mut world, &mut schedule, &mut registry);
-        Navigation::install(&mut world, &mut schedule, &mut registry);
-        Abilities::install(&mut world, &mut schedule, &mut registry);
-        Orders::install(&mut world, &mut schedule, &mut registry);
+        let TestMatch {
+            mut world,
+            schedule,
+            registry,
+        } = TestMatch::new(declared, RATE, Some(scripts));
         world.add_schedule(schedule);
         Match { world, registry }
     }
@@ -211,20 +219,16 @@ impl Match {
     }
 
     fn cast(&mut self, unit: StableId, target: CastTarget) {
-        self.casts(&[(0, unit, target)]);
+        self.casts(&[(unit, target)]);
     }
 
-    /// Runs a tick in which each player's slot orders its unit to cast at its target.
-    fn casts(&mut self, casts: &[(u32, StableId, CastTarget)]) {
-        for &(slot, unit, target) in casts {
-            let payload = Order::payload(&[Order {
-                unit,
-                action: Action::Cast { slot: 0, target },
-            }]);
-            self.world.resource_mut::<TickInputs>().push(TickInput {
-                slot: PlayerSlot::new(slot),
-                payload: &payload,
-            });
+    /// Runs a tick in which each unit casts its first slot's ability at its target, as an order
+    /// would make it.
+    fn casts(&mut self, casts: &[(StableId, CastTarget)]) {
+        for &(unit, target) in casts {
+            let entity = self.world.resource::<EntityIndex>().get(unit).unwrap();
+            let mut slots = self.world.get_mut::<AbilitySlots>(entity).unwrap();
+            slots.order(0, target);
         }
         self.world.run_schedule(SimUpdate);
     }
@@ -309,7 +313,15 @@ fn lash_out_hits_every_enemy_within_its_radius_exactly() {
 
 #[test]
 fn ai_load_does_not_spend_what_a_cast_needs() {
-    let mut game = Match::new();
+    // The one test of how abilities and `orders` meet: AI's calls and a cast's draw from pools of
+    // their own.
+    let declared = [
+        Capability::Combat,
+        Capability::Navigation,
+        Capability::Abilities,
+        Capability::Orders,
+    ];
+    let mut game = Match::with(LIMITS, &declared);
     let strike = game.load(&strike(), STRIKE);
     let caster = game.caster(strike, 1);
     let enemy = game.spawn(1, at(num(5), Num::ZERO, Num::ZERO), ());
@@ -457,10 +469,11 @@ fn a_cast_draws_from_its_casters_player_pool() {
     // does alone.
     let mut left = Vec::new();
     for spins in [true, false] {
-        let mut game = Match::with(ScriptLimits {
+        let limits = ScriptLimits {
             player: LIMITS.per_call,
             ..LIMITS
-        });
+        };
+        let mut game = Match::with(limits, &[Capability::Combat, Capability::Abilities]);
         let data = AbilityData {
             params: BTreeMap::new(),
             ..lash_out()
@@ -479,8 +492,8 @@ fn a_cast_draws_from_its_casters_player_pool() {
         );
         let enemy = game.spawn(1, at(num(1), Num::ZERO, Num::ZERO), ());
         let casts = [
-            (0, spinner, CastTarget::None),
-            (1, striker, CastTarget::Unit(enemy)),
+            (spinner, CastTarget::None),
+            (striker, CastTarget::Unit(enemy)),
         ];
         game.casts(if spins { &casts } else { &casts[1..] });
         let failures = game.failures();

@@ -1,12 +1,7 @@
 use std::collections::BTreeMap;
 
+use campfire_capabilities::{AiData, CombatData, Scalar, StatsData, UnitTypeData};
 use serde::{Deserialize, Deserializer};
-
-use crate::combat::combat_data::CombatData;
-use crate::orders::ai_data::AiData;
-use crate::stats::stats_data::StatsData;
-use crate::units::unit_type_data::UnitTypeData;
-use crate::values::scalar::Scalar;
 
 /// The mode's `data/units.toml`: its unit types, by name.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]

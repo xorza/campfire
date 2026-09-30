@@ -1,7 +1,7 @@
 use campfire_script::rhai::{Dynamic, ImmutableString};
 use campfire_script::{ScriptHost, ScriptId};
 
-use crate::files::mode_data::{InputType, ListEntry, ModeData, ModeParam};
+use crate::mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
 use crate::scripts::hook::Hook;
 use crate::scripts::state_decl::StateType;
 use crate::scripts::state_value::StateValue;

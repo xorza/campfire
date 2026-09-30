@@ -3,17 +3,16 @@ use std::collections::BTreeMap;
 use bevy_ecs::schedule::Schedule;
 use bevy_ecs::world::World;
 use campfire_capabilities::{
-    Abilities, AbilityData, AbilityId, CombatData, HeroData, HeroSetup, KitRules, MatchScripts,
-    Mode, ModeSetup, OnDeath, Orders, ResourcePool, SpellSetup, SpellsData, Stat, UnitKit,
-    UnitKitError, UnitTypeData, UnitTypeSetup, Units,
+    Abilities, AbilityData, AbilityId, CombatData, HeroSetup, KitRules, MatchScripts, Mode,
+    ModeSetup, OnDeath, Orders, ResourcePool, SpellSetup, Stat, UnitKit, UnitKitError,
+    UnitTypeData, UnitTypeSetup, Units,
 };
 use campfire_content::PackagePath;
+use campfire_package::{Content, HeroData, ModePackages, Package, SpellsData};
 use campfire_script::ScriptId;
 use campfire_sim::{StateRegistry, TickRate};
 
 use crate::error::StartError;
-use crate::mode_packages::{Content, ModePackages};
-use crate::package::Package;
 
 /// The mode's place among the packages of a match build.
 const MODE: usize = 0;
@@ -50,7 +49,7 @@ impl<'a> MatchBuild<'a> {
         registry: &mut StateRegistry,
         players: u32,
     ) -> Result<(), StartError> {
-        let manifest = &packages.manifest;
+        let manifest = packages.manifest();
         let scripts = MatchScripts {
             limits: manifest.script_limits,
             players,
@@ -66,15 +65,15 @@ impl<'a> MatchBuild<'a> {
             packages,
             world,
             rules,
-            unit_types: Vec::with_capacity(packages.units.units.len()),
+            unit_types: Vec::with_capacity(packages.units().units.len()),
             scripts: Vec::new(),
-            script_starts: Vec::with_capacity(1 + packages.dependencies.len()),
+            script_starts: Vec::with_capacity(1 + packages.dependencies().len()),
         };
         build.compile_scripts();
         build.load_unit_types()?;
         let mut heroes = Vec::new();
         let mut spells = Vec::new();
-        for (at, dependent) in packages.dependencies.iter().enumerate() {
+        for (at, dependent) in packages.dependencies().iter().enumerate() {
             let package = DEPENDENCIES + at;
             match &dependent.content {
                 Content::Hero(hero) => heroes.push(build.load_hero(package, hero)?),
@@ -91,9 +90,9 @@ impl<'a> MatchBuild<'a> {
             }
         }
         let setup = ModeSetup {
-            script: build.script(MODE, &packages.data.script),
-            data: &packages.data,
-            map: &packages.map,
+            script: build.script(MODE, &packages.data().script),
+            data: packages.data(),
+            map: packages.map(),
             teams: &manifest.teams,
             players,
             unit_types: build.unit_types,
@@ -106,7 +105,7 @@ impl<'a> MatchBuild<'a> {
     /// Loads the mode's unit types, each with its AI and its kit.
     fn load_unit_types(&mut self) -> Result<(), StartError> {
         let packages = self.packages;
-        for (name, file) in &packages.units.units {
+        for (name, file) in &packages.units().units {
             let unit_type = Units::load_type(self.world, name, &file.core).expect(CHECKED);
             if let Some(orders) = &file.orders {
                 let script = self.script(MODE, &orders.ai);
@@ -192,10 +191,10 @@ impl<'a> MatchBuild<'a> {
     fn compile_scripts(&mut self) {
         let packages = self.packages;
         let dependencies = packages
-            .dependencies
+            .dependencies()
             .iter()
             .map(|dependent| &dependent.package);
-        for package in [&packages.mode].into_iter().chain(dependencies) {
+        for package in [packages.mode()].into_iter().chain(dependencies) {
             self.script_starts.push(self.scripts.len());
             for script in &package.scripts {
                 let id = Units::compile(self.world, &script.source).expect("the load parsed it");
@@ -214,8 +213,8 @@ impl<'a> MatchBuild<'a> {
     fn package(&self, package: usize) -> &'a Package {
         let packages = self.packages;
         match package.checked_sub(DEPENDENCIES) {
-            None => &packages.mode,
-            Some(at) => &packages.dependencies[at].package,
+            None => packages.mode(),
+            Some(at) => &packages.dependencies()[at].package,
         }
     }
 }

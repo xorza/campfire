@@ -2,9 +2,9 @@ use campfire_script::ScriptId;
 
 use crate::abilities::ability_book::AbilityId;
 use crate::abilities::resource_pool::ResourcePool;
-use crate::files::manifest::TeamManifest;
-use crate::files::map_data::MapData;
-use crate::files::mode_data::ModeData;
+use crate::mode::map_data::MapData;
+use crate::mode::mode_data::ModeData;
+use crate::mode::team_manifest::TeamManifest;
 use crate::mode::unit_kit::UnitKit;
 use crate::units::unit_type::UnitType;
 

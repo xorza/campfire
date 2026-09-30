@@ -7,12 +7,15 @@ license.workspace = true
 [dependencies]
 campfire-capabilities.workspace = true
 campfire-content.workspace = true
-campfire-math.workspace = true
+campfire-package.workspace = true
 campfire-protocol.workspace = true
 campfire-script.workspace = true
 campfire-sim.workspace = true
 
 bevy_ecs.workspace = true
+
+[dev-dependencies]
+campfire-math.workspace = true
 
 [lints]
 workspace = true

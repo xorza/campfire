@@ -1,10 +1,12 @@
 use std::num::NonZeroU32;
 
-use campfire_math::{Num, SegmentSeed, Vec3};
-use campfire_sim::{EntityIndex, SimTick, SimUpdate, StableId, Tick, TickRate, Ticks, TypeHash};
+use campfire_math::{Num, Vec3};
+use campfire_sim::{
+    Capability, EntityIndex, SimTick, SimUpdate, StableId, Tick, TickRate, Ticks, TypeHash,
+};
 
 use super::*;
-use crate::combat::Combat;
+use crate::capability_set::internals::TestMatch;
 use crate::combat::attack_state::AttackState;
 use crate::combat::attack_stats::AttackStats;
 use crate::combat::combatant::Combatant;
@@ -59,14 +61,16 @@ struct Volley {
 impl Volley {
     /// A match with combat, and with projectiles when `projectiles`.
     fn new(projectiles: bool) -> Volley {
-        let mut world = World::new();
-        SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), RATE);
-        let mut schedule = SimUpdate::schedule();
-        let mut registry = StateRegistry::new();
-        Combat::install(&mut world, &mut schedule, &mut registry);
-        if projectiles {
-            Projectiles::install(&mut world, &mut schedule, &mut registry);
-        }
+        let declared: &[Capability] = if projectiles {
+            &[Capability::Combat, Capability::Projectiles]
+        } else {
+            &[Capability::Combat]
+        };
+        let TestMatch {
+            mut world,
+            schedule,
+            registry,
+        } = TestMatch::new(declared, RATE, None);
         world.add_schedule(schedule);
         Volley { world, registry }
     }

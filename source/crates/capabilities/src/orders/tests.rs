@@ -3,15 +3,14 @@ use std::num::NonZeroU32;
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::Component;
 use campfire_content::PackagePath;
-use campfire_math::{Num, SegmentSeed};
+use campfire_math::Num;
 use campfire_sim::{Capability, IdAllocator, PlayerSlot, SimUpdate, TickInput, TypeHash};
 
 use super::*;
-use crate::combat::Combat;
+use crate::capability_set::internals::TestMatch;
 use crate::combat::combatant::Combatant;
 use crate::combat::health::Health;
 use crate::combat::on_death::OnDeath;
-use crate::navigation::Navigation;
 use crate::navigation::lane_walker::PathDirection;
 use crate::navigation::move_step::MoveStep;
 use crate::scripts::error::ApiError;
@@ -27,8 +26,83 @@ use crate::values::scalar::Scalar;
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
 
 const ONE: i64 = 1 << 24;
-const CREEP_AI: &str = include_str!("../../../../packages/moba/modes/3v3/scripts/creep_ai.rhai");
-const TOWER_AI: &str = include_str!("../../../../packages/moba/modes/3v3/scripts/tower_ai.rhai");
+/// The reference 3v3's creep and tower AI as they were when these tests were written: the
+/// engine's tests keep their own copies, so a change to the reference mode changes none of them.
+const CREEP_AI: &str = r#"
+fn think(ctx, unit) {
+    let target = defend_hero(ctx, unit);
+    if target == () {
+        target = keep_target(unit);
+    }
+    if target == () {
+        target = ctx.nearest_visible(unit, unit.params.aggro_range, "enemies:creep");
+    }
+    if target == () {
+        target = ctx.nearest_visible(unit, unit.params.aggro_range, "enemies:hero");
+    }
+    if target == () {
+        ctx.order_follow_lane(unit);
+    } else if target != unit.target {
+        ctx.order_attack(unit, target);
+    }
+}
+
+fn defend_hero(ctx, unit) {
+    for ally in ctx.find(unit, unit.pos, unit.params.help_range, "allies:hero") {
+        for attacker in ally.recent_attackers(unit.params.help_window_ms) {
+            if attacker.is_hero && attacker.is_enemy_of(unit) && in_reach(unit, attacker) {
+                return attacker;
+            }
+        }
+    }
+    ()
+}
+
+fn keep_target(unit) {
+    let target = unit.target;
+    if target != () && target.alive && in_reach(unit, target) {
+        target
+    } else {
+        ()
+    }
+}
+
+fn in_reach(unit, other) {
+    unit.can_see(other) && unit.pos.within(other.pos, unit.params.aggro_range)
+}
+"#;
+const TOWER_AI: &str = r#"
+fn think(ctx, tower) {
+    let range = tower.attack_range;
+    let target = defend_hero(ctx, tower, range);
+    if target == () {
+        let current = tower.target;
+        if current != () && current.alive && tower.pos.within(current.pos, range) {
+            target = current;
+        }
+    }
+    if target == () {
+        target = ctx.nearest_visible(tower, range, "enemies:creep");
+    }
+    if target == () {
+        target = ctx.nearest_visible(tower, range, "enemies:hero");
+    }
+    if target != () && target != tower.target {
+        ctx.order_attack(tower, target);
+    }
+}
+
+fn defend_hero(ctx, tower, range) {
+    for ally in ctx.find(tower, tower.pos, range, "allies:hero") {
+        for attacker in ally.recent_attackers(tower.params.help_window_ms) {
+            if attacker.is_hero && attacker.is_enemy_of(tower) && tower.pos.within(attacker.pos, range) {
+                return attacker;
+            }
+        }
+    }
+    ()
+}
+"#;
 
 fn num(value: i64) -> Num {
     Num::from_int(value).unwrap()
@@ -105,15 +179,17 @@ impl Match {
     }
 
     fn with(lanes: Lanes, limits: ScriptLimits) -> Match {
-        let mut world = World::new();
-        SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), RATE);
-        let mut schedule = SimUpdate::schedule();
-        let mut registry = StateRegistry::new();
         let scripts = MatchScripts { limits, players: 2 };
-        Units::install(&mut world, &mut schedule, &mut registry, Some(scripts));
-        Combat::install(&mut world, &mut schedule, &mut registry);
-        Navigation::install(&mut world, &mut schedule, &mut registry);
-        Orders::install(&mut world, &mut schedule, &mut registry);
+        let declared = [
+            Capability::Combat,
+            Capability::Navigation,
+            Capability::Orders,
+        ];
+        let TestMatch {
+            mut world,
+            schedule,
+            registry,
+        } = TestMatch::new(&declared, RATE, Some(scripts));
         world.insert_resource(lanes);
         world.add_schedule(schedule);
         Match { world, registry }

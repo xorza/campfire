@@ -9,14 +9,14 @@ use std::path::Path;
 use std::process::Command;
 
 use campfire_capabilities::{Action, AttackState, Destination, Health, Order, Owner, Projectile};
-use campfire_content::PackageStore;
 use campfire_math::{Num, Vec3};
+use campfire_package::{ModePackages, PackageStore, RELEASE, StoreError};
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
 use campfire_protocol::{
     Applied, Delegation, DelegationTerms, Fingerprint, InputChain, PlayerSlot, SeedChain,
     SeedError, ServerSeed, SessionHeader, SessionLog, SessionTerms,
 };
-use campfire_runner::{ModePackages, RELEASE, Runner, StartError};
+use campfire_runner::{Runner, Session, StartError};
 use campfire_sim::{EntityIndex, Position, StableId, StateHash};
 use campfire_verifier::Replay;
 
@@ -103,8 +103,8 @@ fn terms() -> SessionTerms {
         max_inputs_per_tick: 4,
         seed_commitment: SEED_CHAIN.commitment(),
         release: RELEASE.to_owned(),
-        mode: packages.fingerprint(),
-        dependencies: packages.dependencies().collect(),
+        mode: Session::mode_in_terms(&packages),
+        dependencies: Session::dependencies_in_terms(&packages),
     }
 }
 
@@ -427,9 +427,9 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
             &refused,
             [
                 Some(StartError::OtherRelease(release)),
-                Some(StartError::UnknownMode),
-                Some(StartError::MissingDependency(dependency)),
-                Some(StartError::DependencyCount),
+                Some(StartError::Packages(StoreError::UnknownMode)),
+                Some(StartError::Packages(StoreError::MissingDependency(dependency))),
+                Some(StartError::Packages(StoreError::DependencyCount)),
                 Some(StartError::TickRate(hz)),
             ] if release == "0.0.9" && dependency == "hero-walker" && hz.get() == 60
         ),

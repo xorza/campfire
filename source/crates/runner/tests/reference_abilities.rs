@@ -6,15 +6,16 @@ use std::num::NonZeroU32;
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::world::World;
 use campfire_capabilities::{
-    Abilities, AbilitySlots, Action, AttackStats, CastTarget, Combat, Combatant, Health, HeroData,
-    MatchScripts, Navigation, Number, OnDeath, Order, Orders, Owner, Param, Range, RangeField,
-    Ranked, ResourcePool, Scalar, Scaling, ScriptLimits, Targeting, Team, Units,
+    Abilities, AbilitySlots, Action, AttackStats, CapabilitySet, CastTarget, Combatant, Health,
+    MatchScripts, Number, OnDeath, Order, Owner, Param, Range, RangeField, Ranked, ResourcePool,
+    Scalar, Scaling, ScriptLimits, Targeting, Team, Units,
 };
-use campfire_content::{PackageDir, PackagePath};
+use campfire_content::PackagePath;
 use campfire_math::{Num, SegmentSeed, Vec3};
+use campfire_package::{HeroData, PackageDir};
 use campfire_sim::{
-    EntityIndex, IdAllocator, PlayerSlot, Position, SimUpdate, StableId, StateRegistry, TickInput,
-    TickInputs, TickRate, Ticks,
+    Capability, EntityIndex, IdAllocator, PlayerSlot, Position, SimUpdate, StableId, StateRegistry,
+    TickInput, TickInputs, TickRate, Ticks,
 };
 
 /// The MOBA's 30 ticks a second.
@@ -113,11 +114,14 @@ fn lash_out_from_its_package_hits_exactly() {
         mode: 100_000,
     };
     let scripts = MatchScripts { limits, players: 1 };
-    Units::install(&mut world, &mut schedule, &mut registry, Some(scripts));
-    Combat::install(&mut world, &mut schedule, &mut registry);
-    Navigation::install(&mut world, &mut schedule, &mut registry);
-    Abilities::install(&mut world, &mut schedule, &mut registry);
-    Orders::install(&mut world, &mut schedule, &mut registry);
+    let declared = [
+        Capability::Combat,
+        Capability::Navigation,
+        Capability::Abilities,
+        Capability::Orders,
+    ];
+    let set = CapabilitySet::new(&declared).unwrap();
+    set.install(&mut world, &mut schedule, &mut registry, Some(scripts));
     world.add_schedule(schedule);
 
     let husk = abilities("husk");

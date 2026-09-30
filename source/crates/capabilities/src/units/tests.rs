@@ -3,15 +3,15 @@ use std::num::NonZeroU32;
 
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::entity::Entity;
-use campfire_math::{Num, SegmentSeed, Vec3};
+use campfire_math::{Num, Vec3};
 use campfire_script::Budget;
 use campfire_script::rhai::Dynamic;
 use campfire_sim::{
-    EntityIndex, IdAllocator, PlayerSlot, Position, SimTick, SimUpdate, StableId, Tick, Ticks,
+    Capability, EntityIndex, IdAllocator, PlayerSlot, Position, SimTick, StableId, Tick, Ticks,
 };
 
 use super::*;
-use crate::combat::Combat;
+use crate::capability_set::internals::TestMatch;
 use crate::combat::attack_state::AttackState;
 use crate::combat::attack_stats::AttackStats;
 use crate::combat::combatant::Combatant;
@@ -61,10 +61,6 @@ struct Scene {
 
 impl Scene {
     fn new() -> Scene {
-        let mut world = World::new();
-        SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), RATE);
-        let mut schedule = SimUpdate::schedule();
-        let mut registry = StateRegistry::new();
         let limits = ScriptLimits {
             per_call: 10_000,
             player: 100_000,
@@ -72,8 +68,11 @@ impl Scene {
             mode: 100_000,
         };
         let scripts = MatchScripts { limits, players: 1 };
-        Units::install(&mut world, &mut schedule, &mut registry, Some(scripts));
-        Combat::install(&mut world, &mut schedule, &mut registry);
+        let TestMatch {
+            mut world,
+            schedule: _,
+            registry: _,
+        } = TestMatch::new(&[Capability::Combat], RATE, Some(scripts));
         let engine = world.non_send_mut::<ScriptHost>().into_inner().engine_mut();
         engine.register_type_with_name::<Probe>("Probe");
         View::register_queries::<Probe>(engine, Probe::view);

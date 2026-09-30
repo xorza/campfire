@@ -1,10 +1,11 @@
 use std::num::NonZeroU32;
 
 use bevy_ecs::component::Component;
-use campfire_math::{Num, SegmentSeed, Vec3};
-use campfire_sim::{EntityIndex, IdAllocator, SimUpdate, StableId, TickRate, TypeHash};
+use campfire_math::{Num, Vec3};
+use campfire_sim::{Capability, EntityIndex, IdAllocator, SimUpdate, StableId, TickRate, TypeHash};
 
 use super::*;
+use crate::capability_set::internals::TestMatch;
 use crate::navigation::lane_walker::PathDirection;
 use crate::units::lane::Lane;
 
@@ -29,11 +30,11 @@ struct Walk {
 
 impl Walk {
     fn new() -> Walk {
-        let mut world = World::new();
-        SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), RATE);
-        let mut schedule = SimUpdate::schedule();
-        let mut registry = StateRegistry::new();
-        Navigation::install(&mut world, &mut schedule, &mut registry);
+        let TestMatch {
+            mut world,
+            schedule,
+            registry,
+        } = TestMatch::new(&[Capability::Navigation], RATE, None);
         world.add_schedule(schedule);
         Walk { world, registry }
     }
@@ -163,6 +164,9 @@ fn every_navigation_type_is_state() {
             "sim.id_allocator",
             "sim.position",
             "sim.tick",
+            "units.owner",
+            "units.team",
+            "units.unit_type",
         ]
     );
     let mut snapshot = Vec::new();

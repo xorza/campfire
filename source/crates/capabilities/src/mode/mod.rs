@@ -13,10 +13,9 @@ use campfire_sim::{
     Command, PlayerSlot, Position, SimSet, SimTick, StateRegistry, TickInputs, TickRate,
 };
 
-use crate::files::manifest::TeamManifest;
-use crate::files::map_data::{GroundPoint, MapData};
 use crate::mode::calls::Calls;
 use crate::mode::error::ModeError;
+use crate::mode::map_data::{GroundPoint, MapData};
 use crate::mode::mode_book::ModeBook;
 use crate::mode::mode_ctx::ModeCtx;
 use crate::mode::mode_input::{InputValue, ModeInput};
@@ -24,6 +23,7 @@ use crate::mode::mode_setup::ModeSetup;
 use crate::mode::mode_state::ModeState;
 use crate::mode::picks::{Pick, Picks};
 use crate::mode::player_resources::PlayerResources;
+use crate::mode::team_manifest::TeamManifest;
 use crate::mode::timers::Timers;
 use crate::navigation::lanes::Lanes;
 use crate::navigation::on_lane::OnLane;
@@ -38,8 +38,10 @@ use crate::units::teams::Teams;
 pub(crate) mod calls;
 pub(crate) mod error;
 pub(crate) mod hero_index;
+pub(crate) mod map_data;
 pub(crate) mod mode_book;
 pub(crate) mod mode_ctx;
+pub(crate) mod mode_data;
 pub(crate) mod mode_input;
 pub(crate) mod mode_schema;
 pub(crate) mod mode_setup;
@@ -48,6 +50,7 @@ pub(crate) mod picks;
 pub(crate) mod player_resources;
 pub(crate) mod roster;
 pub(crate) mod spell_index;
+pub(crate) mod team_manifest;
 pub(crate) mod timers;
 pub(crate) mod unit_kit;
 

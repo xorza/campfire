@@ -110,15 +110,62 @@ const fn needs(capability: Capability) -> &'static [Capability] {
 }
 
 #[cfg(test)]
-mod tests {
-    use std::num::NonZeroU32;
+pub(crate) mod internals {
+    use std::fmt;
 
     use campfire_math::SegmentSeed;
-    use campfire_script::ScriptHost;
     use campfire_sim::{SimUpdate, TickRate};
 
     use super::*;
+
+    /// A match for a capability's tests: a world that `SimUpdate::prepare` set up, with the core
+    /// and the declared capabilities installed; and its schedule and state registry, for what a
+    /// test installs or loads before the schedule goes into the world.
+    pub(crate) struct TestMatch {
+        pub(crate) world: World,
+        pub(crate) schedule: Schedule,
+        pub(crate) registry: StateRegistry,
+    }
+
+    /// A schedule prints nothing, so a match prints only what it is.
+    impl fmt::Debug for TestMatch {
+        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+            f.write_str("TestMatch")
+        }
+    }
+
+    impl TestMatch {
+        /// A match at `rate` of the capabilities `declared`, running `scripts`.
+        pub(crate) fn new(
+            declared: &[Capability],
+            rate: TickRate,
+            scripts: Option<MatchScripts>,
+        ) -> TestMatch {
+            let mut world = World::new();
+            SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), rate);
+            let mut schedule = SimUpdate::schedule();
+            let mut registry = StateRegistry::new();
+            let set = CapabilitySet::new(declared).expect("a test declares a valid set");
+            set.install(&mut world, &mut schedule, &mut registry, scripts);
+            TestMatch {
+                world,
+                schedule,
+                registry,
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::num::NonZeroU32;
+
+    use campfire_script::ScriptHost;
+    use campfire_sim::TickRate;
+
+    use super::*;
     use crate::abilities::ability_book::AbilityBook;
+    use crate::capability_set::internals::TestMatch;
     use crate::orders::ai::Ai;
     use crate::scripts::script_limits::ScriptLimits;
     use crate::units::by_type::ByType;
@@ -173,14 +220,8 @@ mod tests {
 
     /// Installs `declared` into a fresh match that runs `scripts`.
     fn installed(declared: &[Capability], scripts: Option<MatchScripts>) -> World {
-        let mut world = World::new();
         let rate = TickRate::new(NonZeroU32::new(30).unwrap());
-        SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), rate);
-        let mut schedule = SimUpdate::schedule();
-        let mut registry = StateRegistry::new();
-        let set = CapabilitySet::new(declared).unwrap();
-        set.install(&mut world, &mut schedule, &mut registry, scripts);
-        world
+        TestMatch::new(declared, rate, scripts).world
     }
 
     #[test]

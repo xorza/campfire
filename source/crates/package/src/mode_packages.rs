@@ -1,16 +1,18 @@
 use std::path::Path;
 
-use campfire_capabilities::{
-    HeroData, Manifest, MapData, ModeData, ModeManifest, SpellsData, UnitsData,
-};
-use campfire_content::Fingerprint as PackageFingerprint;
-use campfire_content::{ContentError, PackageDir, PackagePath, PackageStore};
-use campfire_protocol::Fingerprint;
+use campfire_capabilities::{MapData, ModeData};
+use campfire_content::{Fingerprint, PackagePath};
 use campfire_script::ScriptHost;
 
-use crate::error::{LoadError, LoadProblem, StartError};
+use crate::error::{ContentError, LoadError, LoadProblem, StoreError};
+use crate::files::hero_data::HeroData;
+use crate::files::manifest::{Manifest, ModeManifest};
+use crate::files::spells_data::SpellsData;
+use crate::files::units_data::UnitsData;
 use crate::load_check::LoadCheck;
 use crate::package::Package;
+use crate::package_dir::PackageDir;
+use crate::package_store::PackageStore;
 
 const MODE_DATA: &str = "data/mode.toml";
 const UNITS_DATA: &str = "data/units.toml";
@@ -32,29 +34,34 @@ pub struct ModePackages {
 
 /// A package the mode depends on, and its data.
 #[derive(Debug)]
-pub(crate) struct Dependent {
-    pub(crate) package: Package,
-    pub(crate) content: Content,
+pub struct Dependent {
+    pub package: Package,
+    pub content: Content,
 }
 
+/// The data of a package the mode depends on, by the package's kind.
 #[derive(Debug)]
-pub(crate) enum Content {
+pub enum Content {
     Hero(Box<HeroData>),
     Spells(SpellsData),
 }
 
 impl ModePackages {
-    /// The mode in `dir`, and its dependencies at the paths its manifest gives, as a workspace
-    /// holds them.
+    /// The mode on disk in `dir`, and its dependencies at the paths its manifest gives, as a
+    /// workspace holds them.
     pub fn from_dir(dir: &Path) -> Result<ModePackages, LoadError> {
-        let mode = PackageDir::new(dir);
-        let manifest = read_mode_manifest(&mode)?;
+        ModePackages::from_package_dir(&PackageDir::new(dir))
+    }
+
+    /// The mode in `mode`, and its dependencies at the paths its manifest gives from it.
+    pub fn from_package_dir(mode: &PackageDir) -> Result<ModePackages, LoadError> {
+        let manifest = read_mode_manifest(mode)?;
         let dependencies = manifest
             .dependencies
             .iter()
-            .map(|(name, dependency)| (name.clone(), PackageDir::new(dir.join(&dependency.path))))
+            .map(|(name, dependency)| (name.clone(), mode.join(Path::new(&dependency.path))))
             .collect::<Vec<_>>();
-        ModePackages::assemble(&mode, manifest, &dependencies)
+        ModePackages::assemble(mode, manifest, &dependencies)
     }
 
     /// The mode of the fingerprint `mode`, and each dependency its manifest names by the
@@ -63,14 +70,11 @@ impl ModePackages {
         store: &PackageStore,
         mode: Fingerprint,
         dependencies: &[Fingerprint],
-    ) -> Result<ModePackages, StartError> {
-        let dir = store
-            .get(of_package(mode))
-            .ok_or(StartError::UnknownMode)?
-            .clone();
-        let manifest = read_mode_manifest(&dir).map_err(StartError::Load)?;
+    ) -> Result<ModePackages, StoreError> {
+        let dir = store.get(mode).ok_or(StoreError::UnknownMode)?.clone();
+        let manifest = read_mode_manifest(&dir).map_err(StoreError::Load)?;
         if manifest.dependencies.len() != dependencies.len() {
-            return Err(StartError::DependencyCount);
+            return Err(StoreError::DependencyCount);
         }
         let dependencies = manifest
             .dependencies
@@ -78,27 +82,48 @@ impl ModePackages {
             .zip(dependencies)
             .map(|(name, &fingerprint)| {
                 let dir = store
-                    .get(of_package(fingerprint))
-                    .ok_or_else(|| StartError::MissingDependency(name.clone()))?;
+                    .get(fingerprint)
+                    .ok_or_else(|| StoreError::MissingDependency(name.clone()))?;
                 Ok((name.clone(), dir.clone()))
             })
-            .collect::<Result<Vec<_>, StartError>>()?;
-        ModePackages::assemble(&dir, manifest, &dependencies).map_err(StartError::Load)
+            .collect::<Result<Vec<_>, StoreError>>()?;
+        ModePackages::assemble(&dir, manifest, &dependencies).map_err(StoreError::Load)
     }
 
-    pub fn fingerprint(&self) -> Fingerprint {
-        in_terms(self.mode.fingerprint)
+    pub const fn fingerprint(&self) -> Fingerprint {
+        self.mode.fingerprint
     }
 
     /// The fingerprints of its dependencies, in the order of their names in its manifest.
-    pub fn dependencies(&self) -> impl ExactSizeIterator<Item = Fingerprint> + '_ {
+    pub fn dependency_fingerprints(&self) -> impl ExactSizeIterator<Item = Fingerprint> + '_ {
         self.dependencies
             .iter()
-            .map(|dependent| in_terms(dependent.package.fingerprint))
+            .map(|dependent| dependent.package.fingerprint)
     }
 
-    pub fn manifest(&self) -> &ModeManifest {
+    pub const fn manifest(&self) -> &ModeManifest {
         &self.manifest
+    }
+
+    pub const fn mode(&self) -> &Package {
+        &self.mode
+    }
+
+    pub const fn data(&self) -> &ModeData {
+        &self.data
+    }
+
+    pub const fn units(&self) -> &UnitsData {
+        &self.units
+    }
+
+    pub const fn map(&self) -> &MapData {
+        &self.map
+    }
+
+    /// The packages it depends on, in the order of their names in its manifest.
+    pub fn dependencies(&self) -> &[Dependent] {
+        &self.dependencies
     }
 
     /// Reads the mode's data and each dependency, and runs the load checks.
@@ -185,17 +210,6 @@ fn read_mode_manifest(dir: &PackageDir) -> Result<ModeManifest, LoadError> {
         Manifest::Mode(manifest) => Ok(manifest),
         _ => Err(fail(LoadProblem::WrongKind)),
     }
-}
-
-/// A package's fingerprint as the session terms name it: the terms and the packages each own a
-/// fingerprint type, and they meet here.
-const fn in_terms(fingerprint: PackageFingerprint) -> Fingerprint {
-    Fingerprint::new(*fingerprint.as_bytes())
-}
-
-/// The fingerprint the session terms name, as the package store holds packages by.
-const fn of_package(fingerprint: Fingerprint) -> PackageFingerprint {
-    PackageFingerprint::new(*fingerprint.as_bytes())
 }
 
 /// One of the engine's paths in a package.

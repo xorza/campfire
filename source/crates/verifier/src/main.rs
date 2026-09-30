@@ -8,7 +8,7 @@ use std::fs;
 use std::path::Path;
 use std::process::ExitCode;
 
-use campfire_content::PackageStore;
+use campfire_package::PackageStore;
 use campfire_protocol::SessionLog;
 use campfire_verifier::Replay;
 

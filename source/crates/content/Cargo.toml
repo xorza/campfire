@@ -5,10 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-postcard.workspace = true
 serde.workspace = true
-sha2.workspace = true
-toml.workspace = true
 
 [lints]
 workspace = true

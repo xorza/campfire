@@ -14,15 +14,16 @@ Each layer uses the layers below it.
 | `protocol` | Session log format (see Protocol Spec) |
 | `sim` | Deterministic state and systems on `bevy_ecs`; no genre code |
 | `script` | Rhai host and core script API |
-| `capabilities` | Mechanisms a mode combines, a module each: `combat`, `navigation`, `control` and the rest ([Capabilities](04-capabilities/00-overview.md)) |
-| `runner` | Loads packages, wires `sim`, the declared capabilities and `script`, feeds inputs |
+| `capabilities` | Mechanisms a mode combines, a module each: `combat`, `navigation`, `orders` and the rest ([Capabilities](04-capabilities/00-overview.md)) |
+| `package` | Reads a mode's packages and every package it depends on, and runs the load checks of [Script API](08-script-api.md) |
+| `runner` | Builds a match from checked packages: wires `sim`, the declared capabilities and `script`, feeds inputs |
 | `verifier` | CLI: replays a session log segment, checks the result |
 | `det-ci` | Headless matches of the reference MOBA with its bots on every OS, comparing state hashes |
 | `server` | Headless app: host config, lifecycle, saves, validation, admin |
 | `net` | Lightyear over QUIC (WebTransport): handshake, replication; internal |
 | `launcher` | Small app: fetches, checks and starts the engine release a server or replay names; server browser |
 | `client` | Bevy app: rendering, input, UI, audio, prediction |
-| `content` | Packages: file lists, fingerprints, signatures, pinning, cache, Blossom fetch |
+| `content` | What names package data from outside a package: paths in a package, fingerprints; later signatures, pinning, cache, Blossom fetch |
 | `editor` | Map and content editors |
 | `identity` | Nostr keys, session keys, listings, reputation |
 | `ownership` | License checks (optional) |
@@ -30,7 +31,7 @@ Each layer uses the layers below it.
 
 `sim` is pure: state and inputs in, next state out; no files, packages or signatures.
 
-Dependencies: `server`, `client`, `verifier`, `det-ci` → `runner` → `capabilities` → `script` → `sim` → `math`; `protocol` → `math`. Within `capabilities`, a module imports only from the capabilities below it.
+Dependencies: `server`, `client`, `verifier`, `det-ci` → `runner` → `package` → `capabilities` → `script`, `sim`, `content`; `script` and `sim` → `math`; `protocol` → `math`. The runner joins `protocol` and the packages: the session log and the packages each own their slot and fingerprint types, and the runner converts between them. Within `capabilities`, a module imports only from the capabilities below it.
 
 Outside the engine crates: the reference MOBA and bots. `det-ci` uses both as test content; nothing else in the engine depends on them. Bots produce inputs like players, so replays never depend on bot code.
 

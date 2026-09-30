@@ -1776,31 +1776,17 @@ dependencies = [
 [[package]]
 name = "campfire-client"
 version = "0.1.0"
-dependencies = [
- "campfire-content",
- "campfire-identity",
- "campfire-net",
- "campfire-protocol",
- "campfire-runner",
-]
 
 [[package]]
 name = "campfire-content"
 version = "0.1.0"
 dependencies = [
- "postcard",
  "serde",
- "sha2 0.11.0",
- "toml",
 ]
 
 [[package]]
 name = "campfire-det-ci"
 version = "0.1.0"
-dependencies = [
- "campfire-protocol",
- "campfire-runner",
-]
 
 [[package]]
 name = "campfire-identity"
@@ -1831,12 +1817,28 @@ dependencies = [
  "bevy_time",
  "campfire-capabilities",
  "campfire-math",
+ "campfire-package",
  "campfire-protocol",
  "campfire-runner",
  "campfire-sim",
  "criterion 0.8.2",
  "lightyear",
  "serde",
+]
+
+[[package]]
+name = "campfire-package"
+version = "0.1.0"
+dependencies = [
+ "campfire-capabilities",
+ "campfire-content",
+ "campfire-math",
+ "campfire-script",
+ "campfire-sim",
+ "postcard",
+ "serde",
+ "sha2 0.11.0",
+ "toml",
 ]
 
 [[package]]
@@ -1860,6 +1862,7 @@ dependencies = [
  "campfire-capabilities",
  "campfire-content",
  "campfire-math",
+ "campfire-package",
  "campfire-protocol",
  "campfire-script",
  "campfire-sim",
@@ -1870,20 +1873,12 @@ name = "campfire-script"
 version = "0.1.0"
 dependencies = [
  "campfire-math",
- "campfire-sim",
  "rhai",
 ]
 
 [[package]]
 name = "campfire-server"
 version = "0.1.0"
-dependencies = [
- "campfire-content",
- "campfire-identity",
- "campfire-net",
- "campfire-protocol",
- "campfire-runner",
-]
 
 [[package]]
 name = "campfire-sim"
@@ -1902,8 +1897,8 @@ name = "campfire-verifier"
 version = "0.1.0"
 dependencies = [
  "campfire-capabilities",
- "campfire-content",
  "campfire-math",
+ "campfire-package",
  "campfire-protocol",
  "campfire-runner",
  "campfire-sim",

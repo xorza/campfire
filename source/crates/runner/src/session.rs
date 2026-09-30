@@ -1,15 +1,18 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::{Mut, World};
 use campfire_capabilities::Mode;
-use campfire_protocol::{Applied, ChainSignature, InputError, PlayerInput, ServerSeed, SessionLog};
+use campfire_content::Fingerprint as PackageFingerprint;
+use campfire_package::{ModePackages, PackageStore, RELEASE};
+use campfire_protocol::{
+    Applied, ChainSignature, Fingerprint, InputError, PlayerInput, ServerSeed, SessionLog,
+    SessionTerms,
+};
 use campfire_sim::{
     PlayerSlot, SimTick, SimUpdate, StateHash, StateRegistry, TickInput, TickInputs, TickRate,
 };
 
-use crate::RELEASE;
 use crate::error::StartError;
 use crate::match_build::MatchBuild;
-use crate::mode_packages::ModePackages;
 
 /// A match's session log and state types, kept as a resource in the `World` that runs the match:
 /// a bare one on a verifier, Lightyear's on a server. The server records inputs as they arrive; a
@@ -43,11 +46,12 @@ impl Session {
         if terms.release != RELEASE {
             return Err(StartError::OtherRelease(terms.release.clone()));
         }
-        if terms.mode != packages.fingerprint() {
+        if terms.mode != in_terms(packages.fingerprint()) {
             return Err(StartError::OtherMode);
         }
         if !packages
-            .dependencies()
+            .dependency_fingerprints()
+            .map(in_terms)
             .eq(terms.dependencies.iter().copied())
         {
             return Err(StartError::OtherDependencies);
@@ -72,6 +76,30 @@ impl Session {
             log,
         });
         Ok(())
+    }
+
+    /// The mode and the dependencies `terms` name, from `store`, as a verifier holds them.
+    pub fn packages(
+        store: &PackageStore,
+        terms: &SessionTerms,
+    ) -> Result<ModePackages, StartError> {
+        let dependencies: Vec<_> = terms
+            .dependencies
+            .iter()
+            .map(|&each| of_package(each))
+            .collect();
+        ModePackages::from_store(store, of_package(terms.mode), &dependencies)
+            .map_err(StartError::Packages)
+    }
+
+    /// The mode of `packages` as session terms name it.
+    pub const fn mode_in_terms(packages: &ModePackages) -> Fingerprint {
+        in_terms(packages.fingerprint())
+    }
+
+    /// The dependencies of `packages` as session terms name them, in the order of their names.
+    pub fn dependencies_in_terms(packages: &ModePackages) -> Vec<Fingerprint> {
+        packages.dependency_fingerprints().map(in_terms).collect()
     }
 
     /// Logs a player's packet before the next tick; see `SessionLog::record`.
@@ -121,4 +149,15 @@ impl Session {
     pub const fn log(&self) -> &SessionLog {
         &self.log
     }
+}
+
+/// A package's fingerprint as the session terms name it: the terms and the packages each own a
+/// fingerprint type, and they meet here.
+const fn in_terms(fingerprint: PackageFingerprint) -> Fingerprint {
+    Fingerprint::new(*fingerprint.as_bytes())
+}
+
+/// The fingerprint the session terms name, as the package store holds packages by it.
+const fn of_package(fingerprint: Fingerprint) -> PackageFingerprint {
+    PackageFingerprint::new(*fingerprint.as_bytes())
 }

@@ -2,10 +2,11 @@ use std::num::NonZeroU32;
 
 use bevy_ecs::component::Component;
 use bevy_ecs::system::RunSystemOnce;
-use campfire_math::{Num, SegmentSeed, Vec3};
-use campfire_sim::{IdAllocator, SimUpdate, Tick, TickRate, Ticks, TypeHash};
+use campfire_math::{Num, Vec3};
+use campfire_sim::{Capability, IdAllocator, SimUpdate, Tick, TickRate, Ticks, TypeHash};
 
 use super::*;
+use crate::capability_set::internals::TestMatch;
 use crate::combat::combatant::Combatant;
 use crate::units::recent_attack::RecentAttack;
 
@@ -55,11 +56,11 @@ struct Fight {
 
 impl Fight {
     fn new() -> Fight {
-        let mut world = World::new();
-        SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), RATE);
-        let mut schedule = SimUpdate::schedule();
-        let mut registry = StateRegistry::new();
-        Combat::install(&mut world, &mut schedule, &mut registry);
+        let TestMatch {
+            mut world,
+            schedule,
+            registry,
+        } = TestMatch::new(&[Capability::Combat], RATE, None);
         world.add_schedule(schedule);
         Fight { world, registry }
     }
@@ -284,6 +285,9 @@ fn every_combat_type_is_state_and_restores() {
             "sim.id_allocator",
             "sim.position",
             "sim.tick",
+            "units.owner",
+            "units.team",
+            "units.unit_type",
         ]
     );
 

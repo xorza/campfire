@@ -8,3 +8,4 @@ pub(crate) mod param;
 pub(crate) mod ranked;
 pub(crate) mod relation;
 pub(crate) mod scalar;
+pub(crate) mod speed;

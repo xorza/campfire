@@ -33,6 +33,7 @@ campfire-content = { path = "crates/content" }
 campfire-identity = { path = "crates/identity" }
 campfire-math = { path = "crates/math" }
 campfire-net = { path = "crates/net" }
+campfire-package = { path = "crates/package" }
 campfire-protocol = { path = "crates/protocol" }
 campfire-runner = { path = "crates/runner" }
 campfire-script = { path = "crates/script" }
