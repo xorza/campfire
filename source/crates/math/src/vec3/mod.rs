@@ -203,9 +203,9 @@ impl Vec3 {
         }
     }
 
-    /// The squared length in raw units, exact: each square is at most 2¹²⁶, so three fit a
-    /// `u128`.
-    const fn length_squared_bits(self) -> u128 {
+    /// The squared length in raw units, 2⁻⁴⁸ each, exact: each square is at most 2¹²⁶, so three
+    /// fit a `u128`. It orders distances exactly, where rounded lengths can tie.
+    pub const fn length_squared_bits(self) -> u128 {
         let x = self.x.to_bits().unsigned_abs() as u128;
         let y = self.y.to_bits().unsigned_abs() as u128;
         let z = self.z.to_bits().unsigned_abs() as u128;

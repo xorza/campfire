@@ -1,4 +1,5 @@
 use campfire_math::Num;
+use campfire_sim::StableId;
 use serde::{Deserialize, Serialize};
 
 /// The payload of a MOBA input. Players, bots and AI issue the same orders.
@@ -6,6 +7,8 @@ use serde::{Deserialize, Serialize};
 pub enum Order {
     /// Walk to a point on the ground plane.
     Move { x: Num, z: Num },
+    /// Attack a unit until it dies or another order comes.
+    Attack { target: StableId },
 }
 
 impl Order {

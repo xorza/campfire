@@ -6,6 +6,18 @@
 
 **Input format: orders.** Players, bots and AI all issue the same orders: move, attack, cast (ability, target), stop, hold. The kit executes them (pathfinding, attacking, casting).
 
+## Attacks and deaths
+
+- **Attack order.** `attack` names its target by stable id; an order on a unit that is not a living enemy is ignored. Different teams are enemies, and the neutral team is an enemy of both sides.
+- **Range** is measured on the ground plane, exactly, with no square root. Out of range the unit walks to its target; in range it stops.
+- **Windup and period.** An attack starts once the unit is ready, and strikes when its windup ends. The next attack may start one period after this one started. A move, or an attack on another target, cancels a windup and spends nothing, so the unit may attack again at once; after the strike, in the back-swing, moving is free. Range counts only at the start: a strike lands unless its target died or despawned.
+- **Ranged attacks** strike at the end of the windup for now; projectile travel comes with the projectile primitive.
+- **Damage.** All strikes of a tick apply together after collision, in the order of their source's stable id, so each follows from the state before any of them: two units can kill each other in one tick. The mode's `calc_damage` comes with scripts; until then an attack deals its damage as is.
+- **Death.** A unit at zero health dies at the end of the damage step. A hero stays, dead, for the mode to respawn; it takes no orders and is no target. Any other unit despawns.
+- **Towers** keep their target while it lives and stays in range, and otherwise take the nearest enemy in range, the lower stable id on a tie; a tower in its windup keeps its target. This stands in for the tower AI script until scripts run, which also prefers creeps and defends heroes.
+- **Creep waves** spawn on each lane for the first side, then the second, on a fixed timer that stands in for the mode's `spawn_wave` timer. A creep walks its lane's waypoints, the first side's forward and the second side's backward, while it has no target; until creep AI runs, it never takes one.
+- **Time** in the kit is in ticks. Data in milliseconds and rates per second become ticks when a package loads, rounded up.
+
 ## AI
 
 AI scripts drive creeps, neutrals and bosses.

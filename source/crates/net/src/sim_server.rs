@@ -6,6 +6,7 @@ use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::schedule::common_conditions::resource_exists;
 use bevy_ecs::system::{Local, Query, ResMut};
 use bevy_ecs::world::World;
+use campfire_kit_moba::Controller;
 use campfire_protocol::{Applied, PlayerSlot, SeedError, ServerSeed, SessionLog};
 use campfire_runner::Session;
 use campfire_sim::{EntityIndex, SimTick, StateHash};
@@ -63,7 +64,7 @@ impl Plugin for SimServer {
 impl SimServer {
     /// Starts the match of `log`'s header in the next fixed tick, recording into `log`. `clients`
     /// are the links of the players, by slot; each learns its slot and the start tick, and every
-    /// hero replicates to every client, predicted.
+    /// hero replicates to every client, predicted. Towers and creeps do not replicate yet.
     pub fn start_match(
         world: &mut World,
         log: SessionLog,
@@ -82,7 +83,8 @@ impl SimServer {
         let heroes: Vec<Entity> = world
             .resource::<EntityIndex>()
             .iter()
-            .map(|(_, hero)| hero)
+            .map(|(_, unit)| unit)
+            .filter(|&unit| world.entity(unit).contains::<Controller>())
             .collect();
         for hero in heroes {
             world.entity_mut(hero).insert((

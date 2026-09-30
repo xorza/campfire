@@ -6,7 +6,7 @@ use std::fmt::Write;
 use std::fs;
 use std::process::Command;
 
-use campfire_kit_moba::{Destination, Order};
+use campfire_kit_moba::{Destination, Health, Order};
 use campfire_math::{Num, Vec3};
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
 use campfire_protocol::{
@@ -22,6 +22,7 @@ const SESSION_ID: SessionId = SessionId::new([7; 32]);
 const SERVER_KEY: [u8; 32] = [8; 32];
 /// BIP-340 signing without auxiliary randomness is deterministic, so every run signs alike.
 const AUX: [u8; 32] = [0; 32];
+/// Long enough for every order to apply, and for the hero to arrive.
 const TICKS: u64 = 40;
 
 /// A move order as the player sends it.
@@ -133,13 +134,13 @@ struct Run {
 }
 
 /// Runs a match in which the player sends `orders`.
-fn run(orders: &[&Sent]) -> Run {
+fn run(orders: &[&Sent], ticks: u64) -> Run {
     let mut runner = Runner::new(log(), SERVER_SEED).unwrap();
     let secp = Secp256k1::new();
     let mut chain = InputChain::new(PlayerSlot::new(0), delegation().chain_root());
     let mut applied = Vec::new();
     let mut hashes = Vec::new();
-    for tick in 0..TICKS {
+    for tick in 0..ticks {
         for sent in orders.iter().filter(|sent| sent.arrives == tick) {
             let payload = Order::Move {
                 x: num(sent.x),
@@ -167,7 +168,7 @@ fn run_and_replay_agree_on_every_tick() {
     let Run {
         runner,
         hashes: live,
-    } = run(&ORDERS.each_ref());
+    } = run(&ORDERS.each_ref(), TICKS);
     let arrived = Hero {
         position: Position::new(Vec3::new(num(-2), Num::ZERO, num(5))).unwrap(),
         destination: Destination::default(),
@@ -191,10 +192,61 @@ fn run_and_replay_agree_on_every_tick() {
 
     // Without the second order the hashes agree until it would apply, at tick 22, and differ
     // from then on: the hash sees the hero move.
-    let without = run(&[&ORDERS[0], &ORDERS[2]]).hashes;
+    let without = run(&[&ORDERS[0], &ORDERS[2]], TICKS).hashes;
     let first_difference = live.iter().zip(&without).position(|(a, b)| a != b);
     assert_eq!(first_difference, Some(22));
     assert!(live[22..].iter().zip(&without[22..]).all(|(a, b)| a != b));
+}
+
+/// The stable ids of the units in `runner`'s world, and each one's health, rounded.
+fn units(runner: &Runner) -> Vec<(u64, i64)> {
+    let world = runner.world();
+    world
+        .resource::<EntityIndex>()
+        .iter()
+        .map(|(id, entity)| {
+            let health = world.entity(entity).get::<Health>().unwrap();
+            (id.get(), health.current().round())
+        })
+        .collect()
+}
+
+#[test]
+fn towers_kill_creeps_and_the_replay_agrees() {
+    // Ids: the hero 0, the first side's tower 1 at x = −8 and the second's 2 at x = 8, then
+    // tick 0's wave: the first side's creeps 3 and 4 at x = −16, the second's 5 and 6 at 16.
+    // A creep walks ⅛ m a tick from tick 1: the first side's is at −16 + t/8 after tick t.
+    // The second side's tower sees it within 7.75 m once 24 − (t − 1)/8 ≤ 7.75, in tick 131,
+    // and takes creep 3, the lower id of the two tied. Attacks start in ticks 131, 168 and
+    // 205, every 37, and strike 5 ticks later for 150: 445 → 295 → 145 → 0 in tick 210. The
+    // second side's creep 5 mirrors it.
+    let before = run(&ORDERS.each_ref(), 210);
+    assert_eq!(
+        units(&before.runner),
+        [
+            (0, 600),
+            (1, 1500),
+            (2, 1500),
+            (3, 145),
+            (4, 445),
+            (5, 145),
+            (6, 445)
+        ]
+    );
+    let Run { runner, hashes } = run(&ORDERS.each_ref(), 211);
+    assert_eq!(
+        units(&runner),
+        [(0, 600), (1, 1500), (2, 1500), (4, 445), (6, 445)]
+    );
+
+    let decoded = SessionLog::decode(&encoded(runner.log())).unwrap();
+    let mut replay = Replay::new(&decoded).unwrap();
+    for (tick, live) in hashes.iter().enumerate() {
+        replay.next_tick().unwrap().unwrap();
+        assert_eq!(replay.runner().state_hash(), *live, "tick {tick}");
+    }
+    assert!(replay.next_tick().is_none());
+    assert_eq!(units(replay.runner()), units(&runner));
 }
 
 fn encoded(log: &SessionLog) -> Vec<u8> {
@@ -205,7 +257,7 @@ fn encoded(log: &SessionLog) -> Vec<u8> {
 
 #[test]
 fn a_corrupt_log_file_is_refused_or_replays() {
-    let bytes = encoded(run(&ORDERS.each_ref()).runner.log());
+    let bytes = encoded(run(&ORDERS.each_ref(), TICKS).runner.log());
     for len in 0..bytes.len() {
         assert!(
             SessionLog::decode(&bytes[..len]).is_err(),
@@ -234,7 +286,7 @@ fn a_corrupt_log_file_is_refused_or_replays() {
 
 #[test]
 fn the_binary_prints_the_last_state_hash() {
-    let Run { runner, hashes } = run(&ORDERS.each_ref());
+    let Run { runner, hashes } = run(&ORDERS.each_ref(), TICKS);
     let dir = env!("CARGO_TARGET_TMPDIR");
     let path = format!("{dir}/headless.log");
     fs::write(&path, encoded(runner.log())).unwrap();

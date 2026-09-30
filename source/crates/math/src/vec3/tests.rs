@@ -94,6 +94,18 @@ fn within_is_exact_at_the_boundary() {
     assert!(origin.within(origin, Num::ZERO));
     assert!(!origin.within(origin, -Num::EPSILON));
     assert!(!raw(i64::MAX, 0, 0).within(raw(i64::MIN, 0, 0), Num::MAX));
+
+    // (3, 4, 0) m is 25 m² = 25 · 2⁴⁸ raw; one raw unit more on x adds 2 · 3 · 2²⁴ + 1.
+    assert_eq!(v(3, 4, 0).length_squared_bits(), 25 << 48);
+    assert_eq!(
+        raw(3 << 24 | 1, 4 << 24, 0).length_squared_bits(),
+        (25 << 48) + (6 << 24) + 1
+    );
+    // Three components of −2⁶³ square to 3 · 2¹²⁶, still within a `u128`.
+    assert_eq!(
+        raw(i64::MIN, i64::MIN, i64::MIN).length_squared_bits(),
+        3 << 126
+    );
 }
 
 #[test]

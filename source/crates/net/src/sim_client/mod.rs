@@ -7,7 +7,7 @@ use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::schedule::common_conditions::{not, resource_exists};
 use bevy_ecs::system::{Commands, Query, Res, ResMut, Single};
 use bevy_ecs::world::{Mut, World};
-use campfire_kit_moba::{MobaKit, Order};
+use campfire_kit_moba::{Lanes, MobaKit, Order};
 use campfire_math::SegmentSeed;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SignOnly};
 use campfire_protocol::{InputChain, InputHash, PlayerSlot, SessionId};
@@ -80,6 +80,7 @@ impl Plugin for SimClient {
     fn build(&self, app: &mut App) {
         let world = app.world_mut();
         SimUpdate::prepare(world, PREDICTION_SEED);
+        MobaKit::prepare(world, Lanes::default(), None);
         let mut schedule = SimUpdate::schedule();
         MobaKit::add_systems(&mut schedule);
         world.add_schedule(schedule);
