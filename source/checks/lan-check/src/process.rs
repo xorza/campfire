@@ -1,4 +1,5 @@
 use std::fmt;
+use std::path::{Path, PathBuf};
 
 /// A process the check runs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -10,6 +11,11 @@ pub(crate) enum Process {
 }
 
 impl Process {
+    /// The file in `dir` that it logs JSON to.
+    pub(crate) fn log_path(self, dir: &Path) -> PathBuf {
+        dir.join(format!("{}.jsonl", self.file_stem()))
+    }
+
     /// The stem of the files its logs go to.
     pub(crate) fn file_stem(self) -> String {
         match self {

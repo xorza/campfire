@@ -51,7 +51,7 @@ impl LanMatch<'_> {
                 .arg(self.mode)
                 .arg(address.to_string()),
         )?;
-        let log = self.log_path(Process::Server);
+        let log = Process::Server.log_path(self.dir);
         let listening = loop {
             let listening = ProcessLog::read(Process::Server, &log)?.first::<Listening>()?;
             if listening.is_some() || Instant::now() >= deadline {
@@ -122,11 +122,6 @@ impl LanMatch<'_> {
         })
     }
 
-    /// The file `process` logs JSON to.
-    pub(crate) fn log_path(&self, process: Process) -> PathBuf {
-        self.dir.join(format!("{}.jsonl", process.file_stem()))
-    }
-
     /// Starts `command` as `process`, in the run's directory, logging JSON to its file and text to
     /// a file beside it.
     fn start(&self, process: Process, command: &mut Command) -> Result<Child, CheckError> {
@@ -134,7 +129,7 @@ impl LanMatch<'_> {
         let text = File::create(&text).map_err(|error| CheckError::File { path: text, error })?;
         command
             .current_dir(self.dir)
-            .env("CAMPFIRE_LOG", self.log_path(process))
+            .env("CAMPFIRE_LOG", process.log_path(self.dir))
             .stdin(Stdio::null())
             .stdout(Stdio::null())
             .stderr(text)

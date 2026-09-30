@@ -1,0 +1,26 @@
+name: Set up the Rust build
+description: Installs the Linux packages the client links, the toolchain of rust-toolchain.toml, and the build cache.
+
+inputs:
+  save-cache:
+    description: Whether this job saves the build cache.
+    required: true
+
+runs:
+  using: composite
+  steps:
+    # Winit's Wayland backend links libwayland-client, which it finds through pkg-config; the rest
+    # of the window stack loads its libraries at run time.
+    - name: Install Linux packages
+      if: runner.os == 'Linux'
+      shell: bash
+      run: sudo apt-get update && sudo apt-get install -y --no-install-recommends pkg-config libwayland-dev
+    - name: Install the toolchain of rust-toolchain.toml
+      shell: bash
+      working-directory: source
+      run: rustup toolchain install
+    - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+      with:
+        workspaces: source -> target
+        shared-key: build
+        save-if: ${{ inputs.save-cache }}

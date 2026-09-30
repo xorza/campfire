@@ -4,8 +4,10 @@
 //! log. It passes when every process succeeded and logged no warning or error, every order was
 //! logged and took effect in its stamp tick, and the verifier gives the server's final hash.
 //!
-//! Run it with `cargo run -p campfire-lan-check`. The logs stay in the run's directory, which it
-//! names.
+//! Run it with `cargo run -p campfire-lan-check [-- <run directory>]`. The logs and the session
+//! log stay in the run's directory. `cargo run -p campfire-lan-check -- verify <run directory>`
+//! verifies the session log of a run, perhaps from another machine, with this machine's verifier,
+//! and compares the server's final hash.
 
 use std::env;
 use std::fs;
@@ -20,6 +22,7 @@ use tracing::{error, info};
 use crate::binaries::Binaries;
 use crate::error::CheckError;
 use crate::lan_match::LanMatch;
+use crate::mode::Mode;
 use crate::outcome::Outcome;
 use crate::process::Process;
 use crate::process_log::ProcessLog;
@@ -29,6 +32,7 @@ mod binaries;
 mod error;
 mod failure;
 mod lan_match;
+mod mode;
 mod outcome;
 mod process;
 mod process_log;
@@ -54,7 +58,15 @@ fn main() -> ExitCode {
         file: "info",
     }
     .start();
-    match check() {
+    let Some(mode) = Mode::parse(env::args_os().skip(1)) else {
+        error!("usage: campfire-lan-check [<run directory>] | verify <run directory>");
+        return ExitCode::from(2);
+    };
+    let result = match mode {
+        Mode::Play { dir } => play(&dir),
+        Mode::Verify { dir } => verify_run(&dir),
+    };
+    match result {
         Ok(verdict) if verdict.failures().is_empty() => {
             info!("the LAN check passed");
             ExitCode::SUCCESS
@@ -72,18 +84,17 @@ fn main() -> ExitCode {
     }
 }
 
-fn check() -> Result<Verdict, CheckError> {
-    let cargo = env::var_os("CARGO").ok_or(CheckError::NotUnderCargo)?;
-    let binaries = Binaries::build(&cargo)?;
-    let dir = env::temp_dir().join("campfire-lan-check");
+/// Plays a LAN match with its logs in `dir`, which it empties first, and checks it.
+fn play(dir: &Path) -> Result<Verdict, CheckError> {
+    let binaries = build()?;
     if dir.exists() {
-        fs::remove_dir_all(&dir).map_err(|error| CheckError::File {
-            path: dir.clone(),
+        fs::remove_dir_all(dir).map_err(|error| CheckError::File {
+            path: dir.to_owned(),
             error,
         })?;
     }
-    fs::create_dir_all(&dir).map_err(|error| CheckError::File {
-        path: dir.clone(),
+    fs::create_dir_all(dir).map_err(|error| CheckError::File {
+        path: dir.to_owned(),
         error,
     })?;
     info!(dir = %dir.display(), "the run's logs go here");
@@ -106,19 +117,19 @@ fn check() -> Result<Verdict, CheckError> {
 
     let lan = LanMatch {
         binaries: &binaries,
-        dir: &dir,
+        dir,
         mode: Path::new(MODE),
         scripts: &scripts,
     };
     let played = lan.play()?;
     let mut verdict = Verdict::default();
-    let server = ProcessLog::read(Process::Server, &lan.log_path(Process::Server))?;
+    let server = ProcessLog::read(Process::Server, &Process::Server.log_path(dir))?;
     verdict.process(Process::Server, played.server, &server);
     verdict.listened(&server.read_all::<Listening>()?);
     let mut bots = Vec::with_capacity(played.bots.len());
     for ((index, &outcome), &scripted) in played.bots.iter().enumerate().zip(&scripted) {
         let process = Process::Bot(index);
-        let log = ProcessLog::read(process, &lan.log_path(process))?;
+        let log = ProcessLog::read(process, &process.log_path(dir))?;
         verdict.process(process, outcome, &log);
         bots.push(BotEvents {
             started: log.first::<MatchStarted>()?,
@@ -128,14 +139,42 @@ fn check() -> Result<Verdict, CheckError> {
     }
     verdict.orders(&server.read_all::<InputLogged>()?, &bots);
 
+    verify(&binaries, dir, &server, &mut verdict)?;
+    Ok(verdict)
+}
+
+/// Verifies the session log of the match played in `dir` with this machine's verifier, and
+/// compares the server's final hash.
+fn verify_run(dir: &Path) -> Result<Verdict, CheckError> {
+    let binaries = build()?;
+    let server = ProcessLog::read(Process::Server, &Process::Server.log_path(dir))?;
+    let mut verdict = Verdict::default();
+    verify(&binaries, dir, &server, &mut verdict)?;
+    Ok(verdict)
+}
+
+/// The processes, built by the cargo that runs the check.
+fn build() -> Result<Binaries, CheckError> {
+    let cargo = env::var_os("CARGO").ok_or(CheckError::NotUnderCargo)?;
+    Binaries::build(&cargo)
+}
+
+/// Checks that the server whose log is `server` wrote the session log into `dir`, and that this
+/// machine's verifier ends without failure or warning, at the server's final hash.
+fn verify(
+    binaries: &Binaries,
+    dir: &Path,
+    server: &ProcessLog,
+    verdict: &mut Verdict,
+) -> Result<(), CheckError> {
     let written = server.first::<SessionWritten>()?;
     let verified = match &written {
         Some(written) => {
-            let path = lan.log_path(Process::Verifier);
+            let path = Process::Verifier.log_path(dir);
             let status = Command::new(&binaries.verifier)
                 .arg(PACKAGES)
                 .arg(&written.file)
-                .current_dir(&dir)
+                .current_dir(dir)
                 .env("CAMPFIRE_LOG", &path)
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())
@@ -151,5 +190,5 @@ fn check() -> Result<Verdict, CheckError> {
         None => None,
     };
     verdict.hash(written.as_ref(), verified.as_ref());
-    Ok(verdict)
+    Ok(())
 }
