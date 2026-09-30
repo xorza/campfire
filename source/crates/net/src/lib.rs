@@ -27,6 +27,7 @@ pub use events::listening::Listening;
 pub use events::match_started::MatchStarted;
 pub use events::orders_sent::OrdersSent;
 pub use events::session_written::SessionWritten;
+pub use events::unit_died::UnitDied;
 pub use input_message::InputMessage;
 pub use join::Join;
 pub use lobby::{JoinRefused, Joined, Lobby, LobbySetup};

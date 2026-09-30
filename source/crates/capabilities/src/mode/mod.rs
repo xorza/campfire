@@ -351,10 +351,11 @@ fn unit_deaths(world: &mut World) {
             for death in deaths.iter() {
                 let killer = death.killer.map_or(Dynamic::UNIT, handle);
                 let assisters: Array = death.assisters.iter().map(|&id| handle(id)).collect();
-                let args = (call.ctx.clone(), handle(death.unit), killer, assisters);
+                let unit = death.fallen.unit;
+                let args = (call.ctx.clone(), handle(unit), killer, assisters);
                 if let Err(error) = call.run(Pool::Mode, Hook::OnUnitDied, args) {
                     let error = CallError::from_script(error);
-                    call.batch.record(Some(death.unit), Hook::OnUnitDied, error);
+                    call.batch.record(Some(unit), Hook::OnUnitDied, error);
                 }
             }
         });

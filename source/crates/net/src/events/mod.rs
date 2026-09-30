@@ -6,3 +6,4 @@ pub(crate) mod listening;
 pub(crate) mod match_started;
 pub(crate) mod orders_sent;
 pub(crate) mod session_written;
+pub(crate) mod unit_died;

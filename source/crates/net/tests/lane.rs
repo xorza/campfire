@@ -7,10 +7,12 @@ use std::num::NonZeroU32;
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use campfire_capabilities::{Action, Health, MoveStep, Owner, Team};
+use campfire_log::LogLine;
+use campfire_log::internals::capture;
 use campfire_math::Num;
-use campfire_net::{LocalMatch, MatchSetup};
+use campfire_net::{LocalMatch, MatchSetup, UnitDied};
 use campfire_protocol::SeedChain;
-use campfire_sim::{EntityIndex, Position};
+use campfire_sim::{EntityIndex, Position, StableId};
 use lightyear::prelude::RollbackMode;
 
 use crate::scenario::next_tick;
@@ -59,6 +61,25 @@ fn units(app: &App, team: u8, walks: bool) -> Vec<Entity> {
 
 fn position(app: &App, unit: Entity) -> Position {
     *app.world().get::<Position>(unit).unwrap()
+}
+
+/// The stable ids of `units`, in order.
+fn ids(app: &App, units: &[Entity]) -> Vec<StableId> {
+    let mut ids: Vec<_> = units
+        .iter()
+        .map(|&unit| *app.world().get::<StableId>(unit).unwrap())
+        .collect();
+    ids.sort_unstable();
+    ids
+}
+
+/// The deaths the server logged in `lines`, in order.
+pub(crate) fn deaths_logged(lines: &[String]) -> Vec<UnitDied> {
+    lines
+        .iter()
+        .filter_map(|line| LogLine::parse(line).unwrap().read::<UnitDied>())
+        .map(Result::unwrap)
+        .collect()
 }
 
 fn health(app: &App, unit: Entity) -> Num {
@@ -119,13 +140,29 @@ fn a_wave_with_no_wave_to_meet_strikes_the_tower_and_falls_to_it() {
         local.server_mut().world_mut().despawn(creep);
     }
     let west = tower(local.server(), 0);
-    while !creeps(local.server(), 1).is_empty() {
-        assert!(
-            next_tick(local.server()) - spawned < WAVE_TICKS,
-            "the tower kills the wave"
-        );
-        local.step();
-    }
+    let east_wave = ids(local.server(), &creeps(local.server(), 1));
+    let lines = capture(|| {
+        while !creeps(local.server(), 1).is_empty() {
+            assert!(
+                next_tick(local.server()) - spawned < WAVE_TICKS,
+                "the tower kills the wave"
+            );
+            local.step();
+        }
+    });
+    // The server logs each creep's death once, with its team and the tower as killer, though the
+    // creep is gone by then.
+    let west_id = *local.server().world().get::<StableId>(west).unwrap();
+    let mut died: Vec<_> = deaths_logged(&lines)
+        .into_iter()
+        .map(|death| (death.unit, death.team, death.owner, death.killer))
+        .collect();
+    died.sort_unstable_by_key(|&(unit, ..)| unit);
+    let expected: Vec<_> = east_wave
+        .into_iter()
+        .map(|unit| (unit, Some(Team::new(1)), None, Some(west_id)))
+        .collect();
+    assert_eq!(died, expected);
     let full = Num::from_int(1500).unwrap();
     let lost = full - health(local.server(), west);
     let strike = Num::from_int(25).unwrap();

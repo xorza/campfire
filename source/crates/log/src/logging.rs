@@ -79,7 +79,7 @@ pub(crate) mod internals {
 
     /// The JSON lines, as `Logging` writes them to its file, of every event `f` logs on this
     /// thread.
-    pub(crate) fn capture(f: impl FnOnce()) -> Vec<String> {
+    pub fn capture(f: impl FnOnce()) -> Vec<String> {
         let buffer = Arc::new(Mutex::new(Vec::new()));
         let writer = {
             let buffer = Arc::clone(&buffer);

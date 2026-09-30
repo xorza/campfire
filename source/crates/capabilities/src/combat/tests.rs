@@ -2,7 +2,7 @@ use std::num::NonZeroU32;
 
 use bevy_ecs::component::Component;
 use bevy_ecs::system::RunSystemOnce;
-use campfire_math::{Num, Vec3};
+use campfire_math::{Num, PlayerSlot, Vec3};
 use campfire_sim::{Capability, IdAllocator, SimUpdate, Tick, TickRate, Ticks, TypeHash};
 
 use super::*;
@@ -376,6 +376,9 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
             ..combatant(130, 0, 0, 1, 0)
         };
         let hero = fight.unit(Team::new(1), at(5, 0, 1), stays);
+        let hero_entity = fight.world.resource::<EntityIndex>().get(hero).unwrap();
+        let owner = Owner::new(PlayerSlot::new(3));
+        fight.world.entity_mut(hero_entity).insert(owner);
         let creep = fight.unit(Team::new(1), at(5, 0, -1), combatant(130, 0, 0, 1, 0));
         let [creep_first, creep_killer] = [4, 6].map(|x| fight.unit(team, at(x, 0, -1), fighter()));
         let creep_slow = fight.unit(team, at(5, 0, -1), slow);
@@ -392,17 +395,29 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
         fight.run_until(7);
         assert_eq!(fight.health(hero), Some(40), "{window:?}");
         fight.run_until(8);
+        // Each death holds its tick, 7, and the unit as it was: its team, and its owner, a
+        // record that outlives the creep.
         let deaths = fight.world.resource::<Deaths>();
+        assert_eq!(deaths.tick(), Tick::new(7));
         let seen: Vec<_> = deaths
             .iter()
-            .map(|death| (death.unit, death.killer, death.assisters.to_vec()))
+            .map(|death| (death.fallen, death.killer, death.assisters.to_vec()))
             .collect();
+        let fallen = |unit, owner| Fallen {
+            unit,
+            team: Some(Team::new(1)),
+            owner,
+        };
         assert_eq!(
             seen,
             [
-                (hero, Some(killer), [first, slow_one][..assisted].to_vec()),
                 (
-                    creep,
+                    fallen(hero, Some(PlayerSlot::new(3))),
+                    Some(killer),
+                    [first, slow_one][..assisted].to_vec()
+                ),
+                (
+                    fallen(creep, None),
                     Some(creep_killer),
                     [creep_first, creep_slow][..assisted].to_vec()
                 ),

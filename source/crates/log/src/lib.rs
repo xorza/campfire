@@ -13,4 +13,5 @@ pub use logging::Logging;
 #[cfg(feature = "internals")]
 pub mod internals {
     pub use crate::log_event::internals::round_trip;
+    pub use crate::logging::internals::capture;
 }

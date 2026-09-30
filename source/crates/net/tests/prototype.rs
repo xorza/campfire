@@ -10,12 +10,15 @@ use campfire_capabilities::{
     Action, AttackState, Dead, Destination, Health, MatchEnd, MatchResult, MoveStep, Owner,
     Projectile, Respawn, Team,
 };
-use campfire_math::{Num, Vec3};
+use campfire_log::internals::capture;
+use campfire_math::{Num, PlayerSlot, Vec3};
 use campfire_net::{LocalMatch, MatchSetup, PlayerLink, TickHashes, Unpredicted};
 use campfire_protocol::{SeedChain, SessionLog};
 use campfire_runner::{Runner, Session};
 use campfire_sim::{EntityIndex, Position, SimTick, Tick};
 use lightyear::prelude::{Predicted, PredictionMetrics, RollbackMode};
+
+use crate::lane::deaths_logged;
 
 const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
 /// Frames of match: one tick each.
@@ -162,15 +165,38 @@ fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_
     };
     let mut seen = [false; 2];
     let mut frames = 0;
-    while !dead(local.server()) {
-        assert!(frames < 400, "the tower kills the hero");
-        local.step();
-        frames += 1;
-        let now = client_sees(&local);
-        seen = [seen[0] || now[0], seen[1] || now[1]];
-    }
+    let lines = capture(|| {
+        while !dead(local.server()) {
+            assert!(frames < 400, "the tower kills the hero");
+            local.step();
+            frames += 1;
+            let now = client_sees(&local);
+            seen = [seen[0] || now[0], seen[1] || now[1]];
+        }
+    });
     assert_eq!(seen, [true, true]);
     let died_in = local.server().world().resource::<SimTick>().start().get() - 1;
+    // The server logs the avatar's death once: its tick, its team, its player and its killer, an
+    // enemy.
+    let avatars: Vec<_> = deaths_logged(&lines)
+        .into_iter()
+        .filter(|death| death.owner.is_some())
+        .collect();
+    let [death] = avatars[..] else {
+        panic!("{avatars:?}");
+    };
+    assert_eq!(
+        (death.tick, death.unit, death.team, death.owner),
+        (
+            Tick::new(died_in),
+            hero_id,
+            Some(Team::new(0)),
+            Some(PlayerSlot::new(0))
+        )
+    );
+    let world = local.server().world();
+    let killer = world.resource::<EntityIndex>().get(death.killer.unwrap());
+    assert_eq!(world.get::<Team>(killer.unwrap()), Some(&Team::new(1)));
     // The client learns of the death after the ticks it predicted ahead, and corrects them once.
     for _ in 0..10 {
         local.step();
@@ -248,11 +274,13 @@ fn a_fallen_tower_ends_the_match_on_the_server_and_its_client() {
         .insert(frail);
     local.order(0, Action::Attack { target: tower });
     let mut frames = 0;
-    while !local.server().world().contains_resource::<MatchEnd>() {
-        assert!(frames < 400, "the walker fells the tower");
-        local.step();
-        frames += 1;
-    }
+    let mut lines = capture(|| {
+        while !local.server().world().contains_resource::<MatchEnd>() {
+            assert!(frames < 400, "the walker fells the tower");
+            local.step();
+            frames += 1;
+        }
+    });
     let end = *local.server().world().resource::<MatchEnd>();
     assert_eq!(end.result(), MatchResult::Won(Team::new(0)));
     for _ in 0..10 {
@@ -267,9 +295,23 @@ fn a_fallen_tower_ends_the_match_on_the_server_and_its_client() {
     let still = hero(local.server());
     let tick = local.server().world().resource::<SimTick>().start();
     local.order(0, move_to(-6, 0));
-    for _ in 0..30 {
-        local.step();
-    }
+    lines.extend(capture(|| {
+        for _ in 0..30 {
+            local.step();
+        }
+    }));
+    // The tower's death is logged once, with the walker as killer, and never again after the end,
+    // though the record of deaths keeps it.
+    let walker = local.avatar(0);
+    let towers: Vec<_> = deaths_logged(&lines)
+        .into_iter()
+        .filter(|death| death.unit == tower)
+        .map(|death| (death.tick, death.team, death.owner, death.killer))
+        .collect();
+    assert_eq!(
+        towers,
+        [(end.tick(), Some(Team::new(1)), None, Some(walker))]
+    );
     assert_eq!(hero(local.server()), still);
     assert_eq!(hero(local.client(0)).position, still.position);
     assert!(local.server().world().resource::<SimTick>().start() > tick);

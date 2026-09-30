@@ -247,7 +247,7 @@ fn a_projectile_that_outlives_its_source_kills_with_no_killer() {
             .world
             .resource::<Deaths>()
             .iter()
-            .map(|death| (death.unit, death.killer, death.assisters.to_vec()))
+            .map(|death| (death.fallen.unit, death.killer, death.assisters.to_vec()))
             .collect();
         let killer = (!second_goes).then_some(shooters[1]);
         assert_eq!(

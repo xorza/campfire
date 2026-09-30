@@ -1,14 +1,14 @@
 use bevy_app::{App, FixedUpdate, Plugin, RunFixedMainLoop, RunFixedMainLoopSystems, Update};
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{Added, Changed, Has, With, Without};
+use bevy_ecs::query::{Changed, With, Without};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::schedule::common_conditions::{resource_added, resource_exists};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_capabilities::{
-    Dead, MatchEnd, MatchResult, Mode, Owner, Projectile, SeenBy, Team, TeamSet,
+    Deaths, MatchEnd, MatchResult, Mode, Owner, Projectile, SeenBy, Team, TeamSet,
 };
 use campfire_log::LogEvent;
 use campfire_math::PlayerSlot;
@@ -24,6 +24,7 @@ use lightyear::prelude::{
 use tracing::{debug, info, trace, trace_span, warn};
 
 use crate::events::input_logged::InputLogged;
+use crate::events::unit_died::UnitDied;
 use crate::input_message::InputMessage;
 use crate::lobby::Lobby;
 use crate::match_clock::MatchClock;
@@ -214,18 +215,26 @@ fn record_hash(world: &mut World) {
     hashes.0.push(hash);
 }
 
-/// Logs each unit that died in the tick just run.
-fn report_deaths(
-    tick: Res<'_, SimTick>,
-    died: Query<'_, '_, (&StableId, &Team, Has<Owner>), Added<Dead>>,
-) {
-    for (id, team, avatar) in &died {
-        let (unit, team, tick) = (id.get(), team.index(), tick.start().get() - 1);
-        if avatar {
-            info!(unit, team, tick, "an avatar died");
-        } else {
-            debug!(unit, team, tick, "a unit died");
+/// Logs each unit that died in the tick just run, from combat's record of the tick's deaths,
+/// which still names a unit that despawned as it died. A match that ended runs no damage, and its
+/// record holds an older tick, which is logged already.
+fn report_deaths(tick: Res<'_, SimTick>, deaths: Option<Res<'_, Deaths>>) {
+    let Some(deaths) = deaths else {
+        return;
+    };
+    let ran = Tick::new(tick.start().get() - 1);
+    if deaths.tick() != ran {
+        return;
+    }
+    for death in deaths.iter() {
+        UnitDied {
+            tick: ran,
+            unit: death.fallen.unit,
+            team: death.fallen.team,
+            owner: death.fallen.owner,
+            killer: death.killer,
         }
+        .log();
     }
 }
 

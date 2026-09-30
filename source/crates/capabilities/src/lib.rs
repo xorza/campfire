@@ -45,6 +45,7 @@ pub use combat::attack_stats::AttackStats;
 pub use combat::combat_data::{AttackData, CombatData};
 pub use combat::combatant::Combatant;
 pub use combat::dead::Dead;
+pub use combat::deaths::{DeathView, Deaths, Fallen};
 pub use combat::health::Health;
 pub use combat::on_death::OnDeath;
 pub use combat::recent_attackers::RecentAttackers;

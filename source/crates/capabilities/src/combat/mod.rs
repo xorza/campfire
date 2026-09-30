@@ -9,7 +9,7 @@ use crate::combat::assist_window::AssistWindow;
 use crate::combat::attack_state::AttackState;
 use crate::combat::attack_stats::AttackStats;
 use crate::combat::dead::Dead;
-use crate::combat::deaths::Deaths;
+use crate::combat::deaths::{Deaths, Fallen};
 use crate::combat::health::Health;
 use crate::combat::launches::{Launch, Launches};
 use crate::combat::on_death::OnDeath;
@@ -17,6 +17,7 @@ use crate::combat::recent_attackers::RecentAttackers;
 use crate::combat::respawn::Respawn;
 use crate::combat::strikes::{Strike, Strikes};
 use crate::combat::targets::Targets;
+use crate::units::owner::Owner;
 use crate::units::recent_attack::RecentAttack;
 use crate::units::script_view::{RowFill, View};
 use crate::units::spawn_point::SpawnPoint;
@@ -180,13 +181,22 @@ fn apply_strikes(
     window: Option<Res<'_, AssistWindow>>,
     mut strikes: ResMut<'_, Strikes>,
     mut deaths: ResMut<'_, Deaths>,
-    mut targets: Query<'_, '_, (&mut Health, Option<&mut RecentAttackers>)>,
+    mut targets: Query<
+        '_,
+        '_,
+        (
+            &mut Health,
+            Option<&mut RecentAttackers>,
+            Option<&Team>,
+            Option<&Owner>,
+        ),
+    >,
 ) {
     let now = tick.start();
-    deaths.clear();
+    deaths.clear(now);
     strikes.0.sort_unstable_by_key(|strike| strike.source);
     for strike in strikes.0.drain(..) {
-        let Some((mut health, mut attackers)) = index
+        let Some((mut health, mut attackers, team, owner)) = index
             .get(strike.target)
             .and_then(|entity| targets.get_mut(entity).ok())
         else {
@@ -212,7 +222,7 @@ fn apply_strikes(
             .filter(assisted)
             .map(|attack| attack.source);
         let killer = Some(strike.source).filter(|&source| index.get(source).is_some());
-        deaths.push(strike.target, killer, assisters);
+        deaths.push(Fallen::of(strike.target, team, owner), killer, assisters);
     }
 }
 
@@ -224,11 +234,18 @@ fn die(
     mut units: Query<
         '_,
         '_,
-        (Entity, &StableId, &Health, Option<&mut AttackState>),
+        (
+            Entity,
+            &StableId,
+            &Health,
+            Option<&mut AttackState>,
+            Option<&Team>,
+            Option<&Owner>,
+        ),
         (With<OnDeath>, Without<Dead>),
     >,
 ) {
-    for (entity, &id, health, attack) in &mut units {
+    for (entity, &id, health, attack, team, owner) in &mut units {
         if !health.is_zero() {
             continue;
         }
@@ -237,7 +254,7 @@ fn die(
         }
         commands.entity(entity).insert(Dead);
         if !deaths.contains(id) {
-            deaths.push(id, None, []);
+            deaths.push(Fallen::of(id, team, owner), None, []);
         }
     }
 }
