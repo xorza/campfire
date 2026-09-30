@@ -17,6 +17,7 @@ use crate::combat::team::Team;
 pub(crate) mod attack_state;
 pub(crate) mod attack_stats;
 pub(crate) mod combatant;
+pub(crate) mod damage_kind;
 pub(crate) mod dead;
 pub(crate) mod health;
 pub(crate) mod on_death;
@@ -33,6 +34,8 @@ pub struct Combat;
 pub(crate) enum CombatSet {
     /// In `SimSet::Act`: attacks start, and targets that are gone are dropped.
     Attack,
+    /// In `SimSet::Hit`: windups that end strike.
+    Strike,
 }
 
 impl Combat {
@@ -42,7 +45,7 @@ impl Combat {
         world.insert_resource(Strikes::default());
         schedule.add_systems((
             attack.in_set(SimSet::Act).in_set(CombatSet::Attack),
-            strike.in_set(SimSet::Hit),
+            strike.in_set(SimSet::Hit).in_set(CombatSet::Strike),
             (apply_strikes, die).chain().in_set(SimSet::Resolve),
         ));
         registry.register_component::<AttackState>();

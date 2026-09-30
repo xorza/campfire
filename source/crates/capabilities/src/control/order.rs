@@ -1,5 +1,7 @@
 use campfire_math::Num;
-use campfire_sim::{Command, StableId};
+use campfire_sim::{Capability, Command, StableId};
+
+use crate::abilities::ability_slots::CastTarget;
 use serde::{Deserialize, Serialize};
 
 /// An order to one unit: the body of an `orders` command. Players, bots and AI issue the same
@@ -17,11 +19,13 @@ pub enum Action {
     Move { x: Num, z: Num },
     /// Attack a unit until it dies or another order comes.
     Attack { target: StableId },
+    /// Cast the ability in `slot` at `target`.
+    Cast { slot: u8, target: CastTarget },
 }
 
 impl Order {
-    /// The capability that orders go to, as a command names it.
-    pub const CAPABILITY: &'static str = "orders";
+    /// The capability that orders go to.
+    pub const CAPABILITY: Capability = Capability::Orders;
 
     pub fn encode(&self) -> Vec<u8> {
         postcard::to_allocvec(self).expect("an order always encodes")

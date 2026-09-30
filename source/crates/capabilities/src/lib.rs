@@ -1,5 +1,6 @@
 //! Capabilities: the mechanisms a mode combines, a module each. A capability imports only from
-//! the ones below it: `combat` from none, `navigation` from `combat`, `control` from both.
+//! the ones below it: `combat` from none; `navigation` and `abilities` from `combat`;
+//! `control` from all three.
 
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 #![allow(
@@ -11,10 +12,20 @@
     reason = "a Bevy query names its data and its filters in one type"
 )]
 
+mod abilities;
 mod combat;
 mod control;
 mod navigation;
 
+pub use abilities::Abilities;
+pub use abilities::ability_book::{AbilityBook, AbilityId};
+pub use abilities::ability_data::{
+    AbilityData, AbilityTables, Param, Range, Ranked, Relation, Scalar, Scaling, Targeting,
+};
+pub use abilities::ability_slots::{AbilitySlot, AbilitySlots, CastTarget};
+pub use abilities::cast_failures::{CastFailure, CastFailures};
+pub use abilities::error::{AbilityError, ApiError, CastError};
+pub use abilities::resource_pool::ResourcePool;
 pub use combat::Combat;
 pub use combat::attack_state::AttackState;
 pub use combat::attack_stats::AttackStats;

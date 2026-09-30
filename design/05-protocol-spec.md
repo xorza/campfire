@@ -90,7 +90,7 @@ SessionLog
 - **Seed.** In waiting, the server commits `BLAKE3("campfire/seed-commitment/v1" ‖ server seed)`; each player then sends a random seed contribution. The first segment's seed is `BLAKE3("campfire/segment-seed/v1" ‖ server seed ‖ contributions in slot order)`. A verifier takes the seed only from the log: from the reveal, checked against the commitment. Each later checkpoint commits the next segment's server seed before that segment starts, and that seed is the segment's seed. A seed is revealed only when its segment is published, because it predicts every hidden random outcome.
 - Players who join later, and session key renewals, are added through a signed external input carrying the delegation. A renewal does not restart the player's input chain; the new key signs the chain heads from then on.
 - Bot and external inputs are signed by the server key, one signature per input.
-- A payload is a list of commands, each for one capability. The log keeps any payload within the max payload length; the sim ignores a command of a capability the mode did not declare, and one that does not decode.
+- A payload is a postcard list of commands, each the owning capability's index in the engine's fixed list and the command's bytes in that capability's format. The log keeps any payload within the max payload length; the sim ignores a command of a capability the mode did not declare, and one that does not decode.
 
 **Player inputs**
 

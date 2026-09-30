@@ -1,3 +1,4 @@
+use crate::abilities::ability_slots::AbilitySlots;
 use crate::combat::CombatSet;
 use crate::combat::attack_state::AttackState;
 use crate::combat::attack_stats::AttackStats;
@@ -49,7 +50,8 @@ impl Control {
 /// wins. An order to a unit its player does not control, or that is dead, is ignored, and so are
 /// a body that is not an order, a target beyond the world bound, and an attack on a unit that is
 /// not a living enemy: a client can send anything. A move cancels an attack in its windup, and
-/// so does an attack on another target.
+/// so does an attack on another target. A cast replaces a cast not resolved yet; its checks run
+/// in Act.
 fn apply_orders(
     inputs: Res<'_, TickInputs>,
     index: Res<'_, EntityIndex>,
@@ -63,6 +65,7 @@ fn apply_orders(
             Option<&Team>,
             Option<&mut Destination>,
             Option<&mut AttackState>,
+            Option<&mut AbilitySlots>,
         ),
         Without<Dead>,
     >,
@@ -72,7 +75,7 @@ fn apply_orders(
             let Some(order) = Order::decode(body) else {
                 continue;
             };
-            let Some(Ok((controller, position, team, destination, attack))) =
+            let Some(Ok((controller, position, team, destination, attack, slots))) =
                 index.get(order.unit).map(|entity| units.get_mut(entity))
             else {
                 continue;
@@ -98,6 +101,11 @@ fn apply_orders(
                     let enemy = team.is_some_and(|&team| targets.enemy_at(team, target).is_some());
                     if let (true, Some(mut attack)) = (enemy, attack) {
                         attack.set_target(Some(target));
+                    }
+                }
+                Action::Cast { slot, target } => {
+                    if let Some(mut slots) = slots {
+                        slots.order(slot, target);
                     }
                 }
             }

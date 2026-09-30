@@ -1,1 +1,9 @@
 //! Packages: file lists, fingerprints, signatures, pinning and cache.
+
+mod error;
+mod package_dir;
+mod package_path;
+
+pub use error::ContentError;
+pub use package_dir::PackageDir;
+pub use package_path::PackagePath;

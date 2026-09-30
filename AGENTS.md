@@ -19,3 +19,7 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus a refere
 `ROADMAP.md` holds the milestone stages; `PLAN.md` holds the next concrete steps. Both list open items only.
 
 When code and design disagree, fix one of them, and state which one.
+
+## Code
+
+- **No data in strings.** A value from a fixed set is an enum, a value with rules is a checked newtype, and an error is an enum of cases. Text from data files, scripts, JSON or the network becomes these types where it enters. Strings stay only for human text and for names the outside format defines.

@@ -49,12 +49,15 @@ fn event(kind: u16, tags: Vec<Tag>) -> String {
 fn tags(change: impl FnOnce(&mut Vec<Vec<String>>)) -> Vec<Tag> {
     let mut tags = vec![
         vec![
-            SESSION_KEY.to_owned(),
+            DelegationTag::SessionKey.name().to_owned(),
             hex(&terms().session_key.serialize()),
         ],
-        vec![SERVER_KEY.to_owned(), "29".repeat(32)],
-        vec![SESSION_ID.to_owned(), "1f".repeat(32)],
-        vec![EXPIRATION.to_owned(), "1700086400".to_owned()],
+        vec![DelegationTag::ServerKey.name().to_owned(), "29".repeat(32)],
+        vec![DelegationTag::SessionId.name().to_owned(), "1f".repeat(32)],
+        vec![
+            DelegationTag::Expiration.name().to_owned(),
+            "1700086400".to_owned(),
+        ],
     ];
     change(&mut tags);
     tags.into_iter()
@@ -108,45 +111,45 @@ fn a_flawed_delegation_is_refused() {
         (event(1, tags(|_| ())), DelegationError::WrongKind),
         (
             event(KIND, tags(|tags| drop(tags.remove(0)))),
-            DelegationError::MissingTag(SESSION_KEY),
+            DelegationError::MissingTag(DelegationTag::SessionKey),
         ),
         (
             event(KIND, tags(|tags| drop(tags.remove(1)))),
-            DelegationError::MissingTag(SERVER_KEY),
+            DelegationError::MissingTag(DelegationTag::ServerKey),
         ),
         (
             event(KIND, tags(|tags| drop(tags.remove(2)))),
-            DelegationError::MissingTag(SESSION_ID),
+            DelegationError::MissingTag(DelegationTag::SessionId),
         ),
         (
             event(KIND, tags(|tags| drop(tags.remove(3)))),
-            DelegationError::MissingTag(EXPIRATION),
+            DelegationError::MissingTag(DelegationTag::Expiration),
         ),
         (
             event(KIND, tags(|tags| tags.push(tags[1].clone()))),
-            DelegationError::RepeatedTag(SERVER_KEY),
+            DelegationError::RepeatedTag(DelegationTag::ServerKey),
         ),
         (
             event(KIND, tags(|tags| tags[3].push("1".to_owned()))),
-            DelegationError::MalformedTag(EXPIRATION),
+            DelegationError::MalformedTag(DelegationTag::Expiration),
         ),
         (
             event(KIND, tags(|tags| tags[3][1] = "soon".to_owned())),
-            DelegationError::MalformedTag(EXPIRATION),
+            DelegationError::MalformedTag(DelegationTag::Expiration),
         ),
         // 0x00…00 is not the x coordinate of a curve point.
         (
             event(KIND, tags(|tags| tags[0][1] = "00".repeat(32))),
-            DelegationError::MalformedTag(SESSION_KEY),
+            DelegationError::MalformedTag(DelegationTag::SessionKey),
         ),
         (
             event(KIND, tags(|tags| tags[1][1] = "29".repeat(31))),
-            DelegationError::MalformedTag(SERVER_KEY),
+            DelegationError::MalformedTag(DelegationTag::ServerKey),
         ),
         // Uppercase is not the one spelling Nostr writes.
         (
             event(KIND, tags(|tags| tags[2][1] = "1F".repeat(32))),
-            DelegationError::MalformedTag(SESSION_ID),
+            DelegationError::MalformedTag(DelegationTag::SessionId),
         ),
     ];
     for (json, error) in cases {

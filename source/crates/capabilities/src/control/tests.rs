@@ -2,7 +2,7 @@ use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::Component;
 use bevy_ecs::world::World;
 use campfire_math::{Num, SegmentSeed};
-use campfire_sim::{IdAllocator, SimTick, SimUpdate, StableId, TickInput, TypeHash};
+use campfire_sim::{Capability, IdAllocator, SimTick, SimUpdate, StableId, TickInput, TypeHash};
 
 use super::*;
 use crate::combat::Combat;
@@ -209,7 +209,7 @@ fn orders_decode_exactly() {
     assert!(
         commands
             .iter()
-            .all(|command| command.capability == "orders")
+            .all(|command| command.capability == Capability::Orders)
     );
     assert_eq!(commands[1].body, attack.encode());
 }
@@ -284,7 +284,7 @@ fn only_its_players_orders_in_the_orders_capability_move_a_unit() {
     }
     .encode();
     let undeclared = Command::encode(&[Command {
-        capability: "character",
+        capability: Capability::Character,
         body: &order,
     }]);
     game.tick(&[

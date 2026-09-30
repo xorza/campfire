@@ -1,6 +1,8 @@
 use std::error::Error;
 use std::fmt;
 
+use crate::delegation::delegation_tag::DelegationTag;
+
 /// Why a delegation does not let a session key sign for a player. A delegation comes from the
 /// player, so each is an expected failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -13,12 +15,10 @@ pub enum DelegationError {
     BadSignature,
     /// The event is not of the delegation kind.
     WrongKind,
-    /// The event lacks the named tag.
-    MissingTag(&'static str),
-    /// The event holds the named tag more than once.
-    RepeatedTag(&'static str),
-    /// The named tag does not hold exactly one value of its format.
-    MalformedTag(&'static str),
+    MissingTag(DelegationTag),
+    RepeatedTag(DelegationTag),
+    /// The tag does not hold exactly one value of its format.
+    MalformedTag(DelegationTag),
     /// The delegation names another server than the header's.
     OtherServer,
     /// The delegation names another session than the header's.
@@ -34,11 +34,15 @@ impl fmt::Display for DelegationError {
                 f.write_str("delegation signature does not hold under the main key")
             }
             DelegationError::WrongKind => f.write_str("delegation is not of the delegation kind"),
-            DelegationError::MissingTag(name) => write!(f, "delegation lacks the {name} tag"),
-            DelegationError::RepeatedTag(name) => {
-                write!(f, "delegation holds the {name} tag more than once")
+            DelegationError::MissingTag(tag) => {
+                write!(f, "delegation lacks the {} tag", tag.name())
             }
-            DelegationError::MalformedTag(name) => write!(f, "delegation {name} tag is malformed"),
+            DelegationError::RepeatedTag(tag) => {
+                write!(f, "delegation holds the {} tag more than once", tag.name())
+            }
+            DelegationError::MalformedTag(tag) => {
+                write!(f, "delegation {} tag is malformed", tag.name())
+            }
             DelegationError::OtherServer => f.write_str("delegation names another server"),
             DelegationError::OtherSession => f.write_str("delegation names another session"),
         }

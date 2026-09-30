@@ -1765,7 +1765,9 @@ name = "campfire-capabilities"
 version = "0.0.0"
 dependencies = [
  "bevy_ecs",
+ "campfire-content",
  "campfire-math",
+ "campfire-script",
  "campfire-sim",
  "postcard",
  "serde",

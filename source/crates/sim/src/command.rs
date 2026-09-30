@@ -1,11 +1,13 @@
 use serde::{Deserialize, Serialize, Serializer};
 
-/// One command of a player input: the name of the capability it goes to, and its body in that
-/// capability's format. A payload is a list of commands, so one input can carry commands for
+use crate::capability::Capability;
+
+/// One command of a player input: the capability it goes to, and its body in that capability's
+/// format. A payload is a list of commands, so one input can carry commands for
 /// several capabilities, and each capability reads only its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Command<'a> {
-    pub capability: &'a str,
+    pub capability: Capability,
     #[serde(serialize_with = "serialize_body")]
     pub body: &'a [u8],
 }
@@ -37,7 +39,7 @@ impl<'a> Command<'a> {
     }
 
     /// The bodies of the commands in `payload` that go to `capability`, in order.
-    pub fn bodies(payload: &'a [u8], capability: &'a str) -> impl Iterator<Item = &'a [u8]> {
+    pub fn bodies(payload: &'a [u8], capability: Capability) -> impl Iterator<Item = &'a [u8]> {
         Command::decode(payload)
             .into_iter()
             .flatten()
@@ -60,55 +62,45 @@ mod tests {
     fn a_payload_is_exactly_a_list_of_commands() {
         let commands = [
             Command {
-                capability: "orders",
+                capability: Capability::Orders,
                 body: b"ab",
             },
             Command {
-                capability: "character",
+                capability: Capability::Character,
                 body: b"",
             },
             Command {
-                capability: "orders",
+                capability: Capability::Orders,
                 body: b"c",
             },
         ];
         let payload = Command::encode(&commands);
-        // 3 commands; each the name's length and bytes, then the body's length and bytes.
-        assert_eq!(
-            payload,
-            [
-                &[3, 6][..],
-                b"orders",
-                &[2],
-                b"ab",
-                &[9],
-                b"character",
-                &[0, 6],
-                b"orders",
-                &[1],
-                b"c",
-            ]
-            .concat()
-        );
+        // 3 commands; each the capability's index, orders 5 and character 6, then the body's
+        // length and bytes.
+        assert_eq!(payload, [3, 5, 2, b'a', b'b', 6, 0, 5, 1, b'c']);
         let decoded: Vec<_> = Command::decode(&payload).unwrap().collect();
         assert_eq!(decoded, commands);
-        let orders: Vec<_> = Command::bodies(&payload, "orders").collect();
+        let orders: Vec<_> = Command::bodies(&payload, Capability::Orders).collect();
         assert_eq!(orders, [&b"ab"[..], b"c"]);
-        assert_eq!(Command::bodies(&payload, "abilities").count(), 0);
+        assert_eq!(Command::bodies(&payload, Capability::Abilities).count(), 0);
 
-        // A flaw anywhere gives no command, not the ones before it.
-        let mut invalid_name = payload.clone();
-        invalid_name[2] = 0xFF;
+        // A flaw anywhere gives no command, not the ones before it: here no capability 12.
+        let mut unknown = payload.clone();
+        unknown[6] = 12;
         let flawed = [
             &payload[..payload.len() - 1],
             &[payload.as_slice(), &[0]].concat(),
             &[&[4], &payload[1..]].concat(),
-            &invalid_name,
+            &unknown,
             &[],
         ];
         for bytes in flawed {
             assert!(Command::decode(bytes).is_none(), "{bytes:?}");
-            assert_eq!(Command::bodies(bytes, "orders").count(), 0, "{bytes:?}");
+            assert_eq!(
+                Command::bodies(bytes, Capability::Orders).count(),
+                0,
+                "{bytes:?}"
+            );
         }
         assert_eq!(Command::decode(&[0]).unwrap().count(), 0);
     }

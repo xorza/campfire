@@ -28,6 +28,12 @@ impl Targets<'_, '_> {
         team.is_enemy_of(theirs).then_some(at)
     }
 
+    /// Where `target` is, and its team, when it is a living unit.
+    pub(crate) fn living(&self, target: StableId) -> Option<(Position, Team)> {
+        let (_, &at, &team) = self.units.get(self.index.get(target)?).ok()?;
+        Some((at, team))
+    }
+
     /// The nearest living enemy of `team` that `stats` reach from `from`, by exact distance on the
     /// ground plane, the lower stable id on a tie.
     pub(crate) fn nearest_enemy(

@@ -5,19 +5,16 @@ use nostr::key::{Keys, SecretKey};
 use nostr::types::Timestamp;
 use secp256k1::{Keypair, Secp256k1, Signing, XOnlyPublicKey};
 
+use crate::delegation::delegation_tag::DelegationTag;
 use crate::delegation::error::DelegationError;
 use crate::input_hash::InputHash;
 use crate::session_id::SessionId;
 
+pub(crate) mod delegation_tag;
 pub(crate) mod error;
 
 /// The Nostr kind of a delegation. Ephemeral, so a relay sent one by mistake does not keep it.
 const KIND: u16 = 22_710;
-const SESSION_KEY: &str = "session_key";
-const SERVER_KEY: &str = "server_key";
-const SESSION_ID: &str = "session_id";
-/// NIP-40's tag, in Unix seconds.
-const EXPIRATION: &str = "expiration";
 
 /// What a delegation grants: its session key signs for its main key in one session on one server,
 /// until it expires.
@@ -54,10 +51,13 @@ impl Delegation {
     ) -> Delegation {
         let main_key = Keys::new(SecretKey::from(main_key.secret_key()));
         let tags = [
-            Tag::custom(SESSION_KEY, [hex(&terms.session_key.serialize())]),
-            Tag::custom(SERVER_KEY, [hex(&terms.server_key)]),
-            Tag::custom(SESSION_ID, [hex(terms.session_id.as_bytes())]),
-            Tag::custom(EXPIRATION, [terms.expiration.to_string()]),
+            custom(
+                DelegationTag::SessionKey,
+                hex(&terms.session_key.serialize()),
+            ),
+            custom(DelegationTag::ServerKey, hex(&terms.server_key)),
+            custom(DelegationTag::SessionId, hex(terms.session_id.as_bytes())),
+            custom(DelegationTag::Expiration, terms.expiration.to_string()),
         ];
         let unsigned = UnsignedEvent::new(
             main_key.public_key(),
@@ -89,17 +89,17 @@ impl Delegation {
         if event.kind != Kind::from_u16(KIND) {
             return Err(DelegationError::WrongKind);
         }
-        let session_key = unhex(tag(&event, SESSION_KEY)?)
+        let session_key = unhex(tag(&event, DelegationTag::SessionKey)?)
             .and_then(|bytes| XOnlyPublicKey::from_byte_array(&bytes).ok())
-            .ok_or(DelegationError::MalformedTag(SESSION_KEY))?;
-        let server_key =
-            unhex(tag(&event, SERVER_KEY)?).ok_or(DelegationError::MalformedTag(SERVER_KEY))?;
-        let session_id =
-            unhex(tag(&event, SESSION_ID)?).ok_or(DelegationError::MalformedTag(SESSION_ID))?;
-        let expiration = tag(&event, EXPIRATION)?
+            .ok_or(DelegationError::MalformedTag(DelegationTag::SessionKey))?;
+        let server_key = unhex(tag(&event, DelegationTag::ServerKey)?)
+            .ok_or(DelegationError::MalformedTag(DelegationTag::ServerKey))?;
+        let session_id = unhex(tag(&event, DelegationTag::SessionId)?)
+            .ok_or(DelegationError::MalformedTag(DelegationTag::SessionId))?;
+        let expiration = tag(&event, DelegationTag::Expiration)?
             .parse()
             .ok()
-            .ok_or(DelegationError::MalformedTag(EXPIRATION))?;
+            .ok_or(DelegationError::MalformedTag(DelegationTag::Expiration))?;
         Ok(Delegation {
             json: json.to_owned(),
             id: event.id.to_bytes(),
@@ -133,8 +133,14 @@ impl Delegation {
     }
 }
 
-/// The one value of the tag `name`.
-fn tag<'a>(event: &'a Event, name: &'static str) -> Result<&'a str, DelegationError> {
+/// The tag `delegation_tag` with its one value.
+fn custom(delegation_tag: DelegationTag, value: String) -> Tag {
+    Tag::custom(delegation_tag.name(), [value])
+}
+
+/// The one value of the tag `delegation_tag`.
+fn tag(event: &Event, delegation_tag: DelegationTag) -> Result<&str, DelegationError> {
+    let name = delegation_tag.name();
     let mut found = None;
     for tag in event.tags.iter() {
         let [tag_name, values @ ..] = tag.as_slice() else {
@@ -144,13 +150,13 @@ fn tag<'a>(event: &'a Event, name: &'static str) -> Result<&'a str, DelegationEr
             continue;
         }
         let [value] = values else {
-            return Err(DelegationError::MalformedTag(name));
+            return Err(DelegationError::MalformedTag(delegation_tag));
         };
         if found.replace(value.as_str()).is_some() {
-            return Err(DelegationError::RepeatedTag(name));
+            return Err(DelegationError::RepeatedTag(delegation_tag));
         }
     }
-    found.ok_or(DelegationError::MissingTag(name))
+    found.ok_or(DelegationError::MissingTag(delegation_tag))
 }
 
 /// Lowercase hex, as Nostr writes keys and ids.

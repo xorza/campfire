@@ -13,6 +13,7 @@ mod session_id;
 mod session_log;
 
 pub use chain_signature::ChainSignature;
+pub use delegation::delegation_tag::DelegationTag;
 pub use delegation::error::DelegationError;
 pub use delegation::{Delegation, DelegationTerms};
 pub use input_chain::InputChain;

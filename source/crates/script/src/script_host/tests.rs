@@ -1,0 +1,149 @@
+use campfire_math::Num;
+use rhai::INT;
+
+use super::*;
+use crate::error::NumError;
+
+const LIMITS: ScriptLimits = ScriptLimits {
+    per_call: 1000,
+    per_tick: 1500,
+};
+
+fn host() -> ScriptHost {
+    ScriptHost::new(LIMITS)
+}
+
+/// Runs `body` as the function `f` of a new script.
+fn run(host: &mut ScriptHost, body: &str) -> Result<Dynamic, ScriptError> {
+    let script = host.compile(&format!("fn f() {{ {body} }}"))?;
+    host.call(script, "f", ())
+}
+
+fn num(host: &mut ScriptHost, body: &str) -> Num {
+    run(host, body).unwrap().cast::<Num>()
+}
+
+const HALF: i64 = 1 << 23;
+
+#[test]
+fn num_arithmetic_is_exact_and_checked() {
+    let mut host = host();
+    // 3 / 2 + 1 = 2.5 exactly; 1 / 3 rounds to nearest: 5 592 405.33 → 5 592 405 raw.
+    assert_eq!(num(&mut host, "num(3) / 2 + 1"), Num::from_bits(5 * HALF));
+    assert_eq!(num(&mut host, "num(1) / 3"), Num::from_bits(5_592_405));
+    // An integer becomes a `Num` on either side of an operator and a comparison.
+    assert_eq!(num(&mut host, "3 * num(2) - 1"), Num::from_int(5).unwrap());
+    assert_eq!(num(&mut host, "-(num(7) - 10)"), Num::from_int(3).unwrap());
+    assert!(
+        run(&mut host, "num(5) > 4 && 4 < num(5) && num(2) == 2")
+            .unwrap()
+            .as_bool()
+            .unwrap()
+    );
+    // `round` is half away from zero; `floor` and `ceil` return integers too.
+    let integers = [
+        ("round(num(-5) / 2)", -3),
+        ("round(num(5) / 2)", 3),
+        ("floor(num(-5) / 2)", -3),
+        ("ceil(num(-5) / 2)", -2),
+    ];
+    for (body, expected) in integers {
+        assert_eq!(
+            run(&mut host, body).unwrap().as_int().unwrap(),
+            expected,
+            "{body}"
+        );
+    }
+    assert_eq!(
+        num(&mut host, "min(num(2), num(3))"),
+        Num::from_int(2).unwrap()
+    );
+    assert_eq!(
+        num(&mut host, "clamp(num(9), num(0), num(4))"),
+        Num::from_int(4).unwrap()
+    );
+
+    // 2²⁰ × 2²⁰ = 2⁴⁰ is past 40.24's range, 1 / 0 has no value, and 2³⁹ is no `Num`.
+    for (body, expected) in [
+        ("num(1 << 20) * num(1 << 20)", NumError::Overflow),
+        ("num(1) / 0", NumError::Overflow),
+        ("num(1 << 39)", NumError::IntegerBeyondNum),
+        ("clamp(num(1), num(4), num(0))", NumError::ClampBounds),
+    ] {
+        let Err(ScriptError::Raised(raised)) = run(&mut host, body) else {
+            panic!("{body} raises");
+        };
+        assert_eq!(raised.get::<NumError>(), Some(expected), "{body}");
+    }
+    // Integer overflow fails too: Rhai checks it.
+    let max = INT::MAX;
+    assert!(matches!(
+        run(&mut host, &format!("{max} + 1")),
+        Err(ScriptError::Runtime(_))
+    ));
+}
+
+#[test]
+fn only_what_scripts_need_is_there() {
+    let mut host = host();
+    // No floats: a decimal literal does not parse.
+    assert!(matches!(
+        host.compile("fn f() { 1.5 }"),
+        Err(ScriptError::Compile(_))
+    ));
+    // No `eval`, no imports, no `sleep`, no clock.
+    assert!(matches!(
+        host.compile(r#"fn f() { eval("1") }"#),
+        Err(ScriptError::Compile(_))
+    ));
+    for body in [r#"import "x" as x; 1"#, "sleep(1)", "timestamp()"] {
+        assert!(run(&mut host, body).is_err(), "{body}");
+    }
+    // What scripts do need: loops over arrays and ranges, maps, strings, and `print`, which
+    // writes nothing.
+    let body = r#"let total = 0; for x in [1, 2, 3] { total += x; } for i in 0..4 { total += i; }
+        let m = #{ a: 5 }; print("quiet");
+        if "enemies" == "enemies" { total + m.a } else { 0 }"#;
+    assert_eq!(run(&mut host, body).unwrap().as_int().unwrap(), 17);
+    assert_eq!(hashing::get_hashing_seed(), &Some(HASHING_SEED));
+}
+
+#[test]
+fn calls_fail_at_their_limits_the_same_way_in_every_build() {
+    let mut host = host();
+    let spin = host.compile("fn spin() { loop {} }").unwrap();
+    // A call runs its 1000 operations; the 1001st, one past the limit, fails it.
+    assert!(matches!(
+        host.call(spin, "spin", ()),
+        Err(ScriptError::CallLimit)
+    ));
+    assert_eq!(host.spent(), 1000);
+    // The tick's budget of 1500 has 500 left: the next call is ended at its 501st operation,
+    // which counts, as the progress callback sees it before ending the call.
+    assert!(matches!(
+        host.call(spin, "spin", ()),
+        Err(ScriptError::TickBudget)
+    ));
+    assert_eq!(host.spent(), 1501);
+    // With the budget spent, a call fails before it runs.
+    let one = host.compile("fn one() { 1 }").unwrap();
+    assert!(matches!(
+        host.call(one, "one", ()),
+        Err(ScriptError::TickBudget)
+    ));
+    assert_eq!(host.spent(), 1501);
+    // A new tick has the whole budget again.
+    host.begin_tick();
+    assert_eq!(host.call(one, "one", ()).unwrap().as_int(), Ok(1));
+
+    // The call depth is the engine's 32 in every build: Rhai's default is 8 in a debug build
+    // and 64 in a release one, so 20 levels passing and 40 failing show the engine's limit.
+    let down = host
+        .compile("fn down(n) { if n > 0 { down(n - 1) } else { 0 } }")
+        .unwrap();
+    assert_eq!(host.call(down, "down", (20_i64,)).unwrap().as_int(), Ok(0));
+    assert!(matches!(
+        host.call(down, "down", (40_i64,)),
+        Err(ScriptError::Runtime(_))
+    ));
+}
