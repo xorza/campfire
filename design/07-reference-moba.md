@@ -74,6 +74,6 @@ Each player picks two: Blink (short teleport), Haste (move speed), Mend (heal se
 - 3v3 on two lanes with jungle camps between them and one neutral objective.
 - Some items have actives. Consumables: health and mana potions, sight and vision wards, and an elixir that grants true sight until death.
 
-## What the kits need from the engine
+## What the game needs from the engine
 
-Mana and energy; toggles with a cost per attack or per second; charges; on-hit effects and crits; marks that detonate; burns; stealth, true sight and area reveal; dashes, pulls, knock-ups and knockbacks; untargetable; channels; line, homing, bouncing and jumping attacks; delayed and persistent areas; global projectiles with effects by distance flown; auras; shields; cooldown changes on takedowns and hits; stun, slow, root, knock-up, knockback and slow immunity; charged casts with recast. The API that provides them: [Script API](08-script-api.md).
+It declares `combat`, `stats`, `abilities`, `projectiles`, `areas`, `orders`, `navigation` and `vision` ([Genres](04-capabilities/genres.md#moba)), and needs from them: mana and energy; toggles with a cost per attack or per second; charges; on-hit effects and crits; marks that detonate; burns; stealth, true sight and area reveal; dashes, pulls, knock-ups and knockbacks; untargetable; channels; line, homing, bouncing and jumping attacks; delayed and persistent areas; global projectiles with effects by distance flown; auras; shields; cooldown changes on takedowns and hits; stun, slow, root, knock-up, knockback and slow immunity; charged casts with recast. The API that provides them: [Script API](08-script-api.md).

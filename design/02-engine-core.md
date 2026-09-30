@@ -2,7 +2,7 @@
 
 ## Module map
 
-*Diagram: module map (apps, services, deterministic core with kits) — see the live doc.*
+*Diagram: module map (apps, services, deterministic core with capabilities) — see the live doc.*
 
 Each layer uses the layers below it.
 
@@ -14,8 +14,8 @@ Each layer uses the layers below it.
 | `protocol` | Session log format (see Protocol Spec) |
 | `sim` | Deterministic state and systems on `bevy_ecs`; no genre code |
 | `script` | Rhai host and core script API |
-| `kit-*` | One genre each (see Game Kits) |
-| `runner` | Loads packages, wires `sim`, kits and `script`, feeds inputs |
+| Capability crates | Mechanisms a mode combines, in crates along their layers: `combat` at the bottom, then `control`, `navigation` and the rest ([Capabilities](04-capabilities/00-overview.md)) |
+| `runner` | Loads packages, wires `sim`, the declared capabilities and `script`, feeds inputs |
 | `verifier` | CLI: replays a session log segment, checks the result |
 | `det-ci` | Headless matches of the reference MOBA with its bots on every OS, comparing state hashes |
 | `server` | Headless app: host config, lifecycle, saves, validation, admin |
@@ -30,13 +30,13 @@ Each layer uses the layers below it.
 
 `sim` is pure: state and inputs in, next state out; no files, packages or signatures.
 
-Dependencies: `server`, `client`, `verifier`, `det-ci` → `runner` → `kit-*` → `script` → `sim` → `math`; `protocol` → `math`.
+Dependencies: `server`, `client`, `verifier`, `det-ci` → `runner` → capability crates → `script` → `sim` → `math`; `protocol` → `math`. Capability crates depend on each other only down their layers.
 
 Outside the engine crates: the reference MOBA and bots. `det-ci` uses both as test content; nothing else in the engine depends on them. Bots produce inputs like players, so replays never depend on bot code.
 
-## Kits
+## Capabilities
 
-The core has no genre code. A kit is a native crate with the components, systems and script API for one genre; a game package declares the kits it uses. Packages hold only scripts and data, so a new kit ships in an engine release.
+The core has no genre code. A capability is native code for one mechanism: components, systems in the engine's tick stages, a data schema, commands, and script calls and hooks. A game package declares the capabilities it uses, and any combination is valid. Packages hold only scripts and data, so a new capability ships in an engine release. See [Capabilities](04-capabilities/00-overview.md).
 
 ## Lifecycle and sessions
 
@@ -51,7 +51,7 @@ The core has no genre code. A kit is a native crate with the components, systems
 
 ## Inputs
 
-Anything from outside enters the sim as a recorded input: player inputs (format defined by the kit), bot inputs, player connects and disconnects, character loads, admin commands, payment events, calendar time. If it is not in the log, the sim cannot depend on it.
+Anything from outside enters the sim as a recorded input: player inputs (commands, each in its capability's format), bot inputs, player connects and disconnects, character loads, admin commands, payment events, calendar time. If it is not in the log, the sim cannot depend on it.
 
 Clients can join a running game at any time; they receive the current state of what they can see.
 

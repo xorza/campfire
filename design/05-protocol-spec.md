@@ -64,7 +64,7 @@ SessionLog
     session id, server pubkey
     mode package fingerprint + dependency fingerprints
     host settings hash, tick rate, max input delay and max input lead (ticks),
-    max payload length, max inputs per player per tick, backends, kits
+    max payload length, max inputs per player per tick, backends, capabilities
     players: session key delegation (which names the main pubkey) + seed contribution
   segments[]
     checkpoint: tick, state hash, snapshot fingerprint,
@@ -82,7 +82,7 @@ SessionLog
 
 | Source | Signed by | Payload |
 | --- | --- | --- |
-| Player | Session key | Kit-defined format (MOBA: order; FPS: input frame) |
+| Player | Session key | Commands, each in its capability's format (order, input frame, mode input) |
 | Bot | Server key | Same format as a player input |
 | External | Server key | Player connect or disconnect, character load, admin command, payment event, calendar time |
 
@@ -122,7 +122,7 @@ SessionLog
 
 | Event | Signed by | Content | Replaceable |
 | --- | --- | --- | --- |
-| Server listing | Server key | Address, TLS certificate hash, engine release tag, region, protocol version, modes (fingerprints), kits, rules summary, prices | Yes, one per server |
+| Server listing | Server key | Address, TLS certificate hash, engine release tag, region, protocol version, modes (fingerprints), capabilities, rules summary, prices | Yes, one per server |
 | Package announcement | Author key | Package id (author + name), version, fingerprint, license, download locations | No |
 | Session log published | Server key | Session id, log and snapshot fingerprints, download locations, result | No |
 | License | License key, with its delegation | Buyer main pubkey, package id, payment hash | No |

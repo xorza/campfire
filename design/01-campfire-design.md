@@ -6,7 +6,7 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus a refere
 
 Three equal pillars must all ship: a reusable engine, a reference game good enough to attract players, and an open protocol for Bitcoin-native games.
 
-Docs: [Engine Core](02-engine-core.md) · [Game Scripting](03-game-scripting.md) · [Game Kits](04-game-kits/00-overview.md) · [Protocol Spec](05-protocol-spec.md) · [Research Notes](06-research-notes.md) · [Reference MOBA](07-reference-moba.md) · [Script API](08-script-api.md) · [Determinism Core](09-determinism-core.md)
+Docs: [Engine Core](02-engine-core.md) · [Game Scripting](03-game-scripting.md) · [Capabilities](04-capabilities/00-overview.md) · [Protocol Spec](05-protocol-spec.md) · [Research Notes](06-research-notes.md) · [Reference MOBA](07-reference-moba.md) · [Script API](08-script-api.md) · [Determinism Core](09-determinism-core.md)
 
 ## Guiding principles
 
@@ -37,7 +37,7 @@ A small launcher starts the right client: a server names only an engine release 
 
 ## Engine
 
-The engine knows nothing about any particular genre; the MOBA is just the first game built on it. Genre features come as kits: MOBA first; FPS, MMO and battle royale later.
+The engine knows nothing about any particular genre; the MOBA is just the first game built on it. It provides capabilities, one mechanism each (health and damage, units that take orders, a first-person character, fog of war), and a game declares the ones it needs: a MOBA, an FPS, or a mix that no genre names.
 
 - **Deterministic:** the same inputs give the same result on every machine.
 - **Configurable tick rate:** set by the host, up to 200 Hz or more on LAN, fixed for the whole session.
@@ -74,7 +74,7 @@ Players move between worlds by leaving one server and joining another. Their ide
 
 ## Scripting and modding
 
-Characters, abilities, items, maps and whole game modes are content anyone can create. Packages hold scripts and data; genre features come from kits in engine releases.
+Characters, abilities, items, maps and whole game modes are content anyone can create. Packages hold scripts and data; mechanisms come from capabilities in engine releases, and a package may combine any of them.
 
 Scripts are Rhai: sandboxed, deterministic and resource-limited. A game script gives the same result wherever the full sim runs: on the server, in the verifier, and in a client that plays back a published log.
 
@@ -155,4 +155,4 @@ All three pillars ship in 1.0; they arrive in this order.
 1. **Playable on LAN.** First the determinism core, `det-ci` on every OS, and the prototype that proves the sim runs the same inside Lightyear and in a bare verifier. Then the 3v3 MOBA with bots on LAN or a local server, verified replays and crash restore. Players use local Nostr key files through the final delegation, handshake and session log formats; no relays, listings, launcher or payments.
 2. **Open network.** Nostr listings, packages over Blossom, reputation, ban lists, and the launcher with signed releases.
 3. **Payments.** The optional `payments` module: entry fees first, then wager pools, then the rest.
-4. **More kits.** FPS, then MMO and battle royale.
+4. **More capabilities.** `character` and `hitscan` for first-person games, then `persistence` and `physics` for persistent worlds and battle royale.

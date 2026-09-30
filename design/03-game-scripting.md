@@ -8,7 +8,7 @@ Only the server and verifier run the full sim during a session; clients would ne
 | --- | --- | --- |
 | Server | Full sim + all game scripts | Everything |
 | Verifier | Full sim + all game scripts, replaying the session log | Everything, after the log is published |
-| Client | Kit prediction of what the player controls, plus presentation scripts | Only what its team can see |
+| Client | Prediction of what the player controls, by the capabilities that move it, plus presentation scripts | Only what its team can see |
 | Spectator client | Presentation scripts, no prediction | Everything, delayed by the host's spectator delay |
 
 - **Game scripts** (rules, units, abilities, AI) are deterministic and change game state.
@@ -21,11 +21,11 @@ A game mode is one content package.
 
 ```
 my-mode/
-  manifest.toml       id, version, engine release, kits used, dependencies (by fingerprint),
+  manifest.toml       id, version, engine release, capabilities used, dependencies (by fingerprint),
                       teams and slots, tick-rate range, collision, pathfinding and visibility backends
   map/                map data: geometry or grid, spawn points, structures
-  data/               kit data (MOBA: units, abilities; FPS: weapons)
-  scripts/            game scripts (.rhai): mode rules, AI, kit hooks
+  data/               unit types, abilities, weapons: one section per capability
+  scripts/            game scripts (.rhai): mode rules, AI, capability hooks
   client/             presentation scripts (.rhai)
   assets/             models (.glb), textures (PNG, KTX2 + zstd), sounds (Ogg Vorbis), icons (PNG)
 ```
@@ -38,16 +38,9 @@ Content can come from other packages, referenced by fingerprint.
 
 ## Tick pipeline
 
-The sim runs every tick on the server and the verifier. The core fixes the order of its own steps; a kit adds its steps before or after collision, in an order the kit fixes.
+The sim runs every tick on the server and the verifier, in stages the engine fixes: inputs, think, act, move, collide, hit, resolve, mode, vision ([Tick stages](04-capabilities/00-overview.md#tick-stages)). Each declared capability puts its systems into them, in an order the engine fixes; the core runs inputs, and the mode's collision and vision backends. The mode stage runs due timers, then the capabilities' events in the order they happened; `ctx.end` ends the match.
 
-1. **Apply inputs** (core): player, bot and external inputs assigned to this tick.
-2. **Kit steps before collision** (kit + script): e.g. AI, orders, movement.
-3. **Collision** (core): backend chosen by the mode.
-4. **Kit steps after collision** (kit + script): e.g. ability effects, damage, deaths.
-5. **Mode hooks** (script): due timers, then kit events from steps 2–4 in the order they happened; `ctx.end` ends the match.
-6. **Visibility** (core): backend marks what each team may see.
-
-Before each tick the runner puts the inputs the session log applies in it into the `TickInputs` resource, in slot order, then seq order; the schedule clears it after step 6, so no tick sees another's inputs.
+Before each tick the runner puts the inputs the session log applies in it into the `TickInputs` resource, in slot order, then seq order; the schedule clears it after the vision stage, so no tick sees another's inputs.
 
 The sim does no I/O. The server writes each input to the session log when it assigns the input to a tick, before that tick runs; after the tick it sends each client its visible state and events. The verifier does neither.
 
@@ -56,14 +49,14 @@ The sim does no I/O. The server writes each input to the session log when it ass
 One mode script (`scripts/mode.rhai`) owns the rules. The engine knows only waiting, running and ended; everything inside running is the script's.
 
 - **Phases** (hero pick, warmup, rounds, buy time, overtime) are script state, not engine states.
-- **Hooks:** `on_match_start` (running begins), `on_player_join`, `on_player_leave`, `on_timer`, `on_mode_input`, plus event hooks from the kits in use. `on_tick` exists but is discouraged. Every hook takes `ctx` first.
+- **Hooks:** `on_match_start` (running begins), `on_player_join`, `on_player_leave`, `on_timer`, `on_mode_input`, plus event hooks from the capabilities in use. `on_tick` exists but is discouraged. Every hook takes `ctx` first.
 - **Primitives:** timers, freeze and unfreeze, respawn and reset, team changes, named per-player resources (e.g. `gold`), scoreboard data.
 - **Timers** are set in milliseconds and rounded up to whole ticks (at least one), so a timer never fires early and modes behave the same at any tick rate to within one tick.
 - **End:** `ctx.end(result)`, callable once. Optional: a persistent world never calls it.
 
-## Kits
+## Capabilities
 
-Units, abilities, weapons, AI hooks and input formats come from kits; see Game Kits. Bots replace players: they run outside the sim, see only what their team's clients would see, and send player inputs.
+Units, abilities, weapons, AI hooks and commands come from capabilities; see [Capabilities](04-capabilities/00-overview.md). Bots replace players: they run outside the sim, see only what their team's clients would see, and send player inputs.
 
 ## Script state
 
@@ -88,19 +81,19 @@ Scripts have two number types and no decimal literals (`no_float`):
 
 Arithmetic on both is checked; an overflow is a script error. An integer becomes a `Num` automatically, and an integer that does not fit is an error. A `Num` becomes an integer only through `floor`, `ceil` or `round` (half away from zero). A `Num` operation with an integer gives a `Num`.
 
-In data files, a TOML integer is an integer and a decimal in a string (`"7.5"`) is a `Num`. Kit fields sit at the top level; values for scripts sit in a `[params]` table.
+In data files, a TOML integer is an integer and a decimal in a string (`"7.5"`) is a `Num`. Capability fields sit in their capability's section; values for scripts sit in a `[params]` table.
 
 ## Network sync
 
 Scripts never deal with networking.
 
-**Client → server: inputs** in the kit's format (MOBA: orders; FPS: per-tick input frames), stamped with a tick, hash-chained and signed per packet with the session key; see [Protocol Spec](05-protocol-spec.md#session-log). The server validates each input.
+**Client → server: inputs**, each a list of commands in their capabilities' formats (orders, per-tick input frames, mode inputs), stamped with a tick, hash-chained and signed per packet with the session key; see [Protocol Spec](05-protocol-spec.md#session-log). The server validates each input.
 
 **Server → client:** only what each client may see:
 
 | Data | Sent to |
 | --- | --- |
-| Kit components | Per kit defaults: everyone who sees the entity, or owner or team only |
+| Capability components | Each capability's defaults: everyone who sees the entity, or owner or team only |
 | Script state | Per field, as its schema declares: `none` (default), `owner`, `team` or `all` |
 | Entities the visibility backend hides from a team | Nobody on that team |
 
@@ -109,14 +102,14 @@ Scripts never deal with networking.
 **Client timeline**
 
 - Other entities are interpolated: shown slightly in the past, smoothly.
-- What the player controls is predicted with the same kit code; the kit decides what else is predicted.
+- What the player controls is predicted with the same capability code; each capability decides what else it predicts.
 - Wrong predictions are corrected by rollback (Lightyear).
 
 ## Examples
 
 Full API: [Script API](08-script-api.md).
 
-**Round-based mode, genre-neutral** (`scripts/mode.rhai`; `phase` and `round` are the state fields declared above). Kit examples are in Game Kits.
+**Round-based mode, genre-neutral** (`scripts/mode.rhai`; `phase` and `round` are the state fields declared above). Genre examples are in [Genres](04-capabilities/genres.md).
 
 ```rhai
 fn on_match_start(ctx) {

@@ -15,7 +15,7 @@ Open items only. Remove an item when it is done; remove a stage when it is empty
 
 ## 4. Engine semantics
 - Scripting: fixed Rhai hashing seed, explicit Rhai limits, package load checks, all-or-nothing calls, tick budget, typed state, timers.
-- Kit: all primitives. Server: crash restore, reconnect, late join, receipts.
+- Capabilities: every primitive the reference game uses. Server: crash restore, reconnect, late join, receipts.
 - Client: interpolation, presentation scripts, asset limits.
 
 ## 5. Reference game

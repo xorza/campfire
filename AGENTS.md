@@ -8,13 +8,13 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus a refere
   - `01-campfire-design.md` — vision, terms, principles, milestones
   - `02-engine-core.md` — modules, determinism rules, Bevy and Lightyear, libraries
   - `03-game-scripting.md` — packages, tick pipeline, script state, numbers, network sync
-  - `04-game-kits/` — genre kits: MOBA first, FPS, MMO and battle royale later
+  - `04-capabilities/` — the mechanisms the engine provides (combat, commands, character, navigation, vision, …), which a game combines, and the genres they make
   - `05-protocol-spec.md` — keys, connection, session log, verification, Nostr events, payments
   - `06-research-notes.md` — early decisions, risks and sources
   - `07-reference-moba.md` — reference MOBA: heroes, player spells, rules
-  - `08-script-api.md` — script API of the MOBA kit, derived from the reference packages
+  - `08-script-api.md` — script API by capability, derived from the reference packages
   - `09-determinism-core.md` — Stage 1 proposal: numbers, vectors, randomness, stable ids, state hash
-- `source/` — engine and game code; `source/packages/<kit>/` holds the reference content packages (heroes, spells, modes)
+- `source/` — engine and game code; `source/packages/<game>/` holds the reference content packages (heroes, spells, modes)
 
 `ROADMAP.md` holds the milestone stages; `PLAN.md` holds the next concrete steps. Both list open items only.
 

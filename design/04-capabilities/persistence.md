@@ -1,6 +1,6 @@
-# MMO kit
+# Persistence
 
-Status: later. A persistent world on one server; the mode never calls `ctx.end`.
+A persistent world on one server; its mode never calls `ctx.end`.
 
 ## World state
 
@@ -10,7 +10,6 @@ Status: later. A persistent world on one server; the mode never calls `ctx.end`.
 
 ## Scale
 
-- Low tick rate (10–20 Hz), strict per-client relevance.
 - Dormant regions: areas with no players nearby stop thinking. Dormancy depends on sim state (player proximity), never the wall clock.
 - Assets stream by region.
 
@@ -20,8 +19,4 @@ Status: later. A persistent world on one server; the mode never calls `ctx.end`.
 | --- | --- |
 | Inventory, trade, parties, guild ownership, quests | Chat, mail, friend lists |
 
-Quests and NPC dialogue are mostly scripts; the kit provides inventory and quest-state helpers.
-
-## Payments
-
-Time-based and per-event payments; no wagers.
+Quests and NPC dialogue are mostly scripts; the capability provides inventory and quest-state helpers.
