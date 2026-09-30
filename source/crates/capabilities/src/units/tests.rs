@@ -20,6 +20,7 @@ use crate::combat::recent_attackers::RecentAttackers;
 use crate::combat::team::Team;
 use crate::units::error::{ApiError, CallError};
 use crate::units::scalar::Scalar;
+use crate::units::script_limits::ScriptLimits;
 
 /// The MOBA's 30 ticks a second.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
@@ -63,11 +64,12 @@ impl Scene {
         let mut registry = StateRegistry::new();
         let limits = ScriptLimits {
             per_call: 10_000,
-            input: 100_000,
+            player: 100_000,
             think: 100_000,
             mode: 100_000,
         };
-        Units::install(&mut world, &mut schedule, &mut registry, limits);
+        let scripts = MatchScripts { limits, players: 1 };
+        Units::install(&mut world, &mut schedule, &mut registry, Some(scripts));
         Combat::install(&mut world, &mut schedule, &mut registry);
         let engine = world.non_send_mut::<ScriptHost>().into_inner().engine_mut();
         engine.register_type_with_name::<Probe>("Probe");
@@ -83,7 +85,8 @@ impl Scene {
                 .map(|&(name, value)| (name.to_owned(), value))
                 .collect::<BTreeMap<_, _>>(),
         };
-        Units::load_type(&mut self.world, &data).unwrap()
+        let name = format!("type {}", self.world.non_send::<View>().types_count());
+        Units::load_type(&mut self.world, &name, &data).unwrap()
     }
 
     fn spawn(&mut self, at: Position, parts: impl Bundle) -> StableId {
@@ -283,4 +286,22 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let entity = scene.entity(near);
     scene.world.despawn(entity);
     assert!(value(&mut scene, "of.target == ()").as_bool().unwrap());
+}
+
+#[test]
+fn a_unit_type_name_is_one_types_only() {
+    let mut scene = Scene::new();
+    let data = UnitTypeData::default();
+    let first = Units::load_type(&mut scene.world, "grunt", &data).unwrap();
+    assert_eq!(
+        Units::load_type(&mut scene.world, "grunt", &data),
+        Err(UnitTypeError::RepeatedName)
+    );
+    let second = Units::load_type(&mut scene.world, "tower", &data).unwrap();
+    let view = scene.world.non_send::<View>();
+    assert_eq!(
+        (view.unit_type("grunt"), view.unit_type("tower")),
+        (Some(first), Some(second))
+    );
+    assert_eq!(view.unit_type("wolf"), None);
 }

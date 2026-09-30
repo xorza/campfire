@@ -262,7 +262,7 @@ impl ModeCtx {
     }
 
     fn unit_type(&self, name: &str) -> Checked<UnitType> {
-        self.book
+        self.view
             .unit_type(name)
             .ok_or_else(|| ApiError::UnknownUnitType.fail().into())
     }
@@ -289,7 +289,7 @@ impl ModeCtx {
             .iter()
             .map(|name| {
                 let name = name.clone().into_immutable_string().ok();
-                name.and_then(|name| self.book.unit_type(&name))
+                name.and_then(|name| self.view.unit_type(&name))
                     .ok_or_else(|| ApiError::UnknownUnitType.fail().into())
             })
             .collect::<Checked<_>>()?;

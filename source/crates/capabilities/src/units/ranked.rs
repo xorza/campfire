@@ -28,12 +28,19 @@ impl<T> Ranked<T> {
     }
 }
 
+impl<T> Ranked<T> {
+    /// The value at `rank`, from 1; `None` past the last rank.
+    pub fn get(&self, rank: u8) -> Option<&T> {
+        match self {
+            Ranked::One(value) => Some(value),
+            Ranked::PerRank(values) => values.get(usize::from(rank.checked_sub(1)?)),
+        }
+    }
+}
+
 impl<T: Copy> Ranked<T> {
     /// The value at `rank`, from 1; `None` past the last rank.
     pub fn at(&self, rank: u8) -> Option<T> {
-        match self {
-            Ranked::One(value) => Some(*value),
-            Ranked::PerRank(values) => values.get(usize::from(rank.checked_sub(1)?)).copied(),
-        }
+        self.get(rank).copied()
     }
 }

@@ -9,7 +9,7 @@ backends = { collision = "circles", pathfinding = "grid", visibility = "grid_fog
 max_move_speed = "6.0"
 # A call's operations, and each pool's in a tick: a call for each of the 6 players, 10 AI calls,
 # 5 mode calls.
-script_limits = { per_call = 20000, input = 120000, think = 200000, mode = 100000 }
+script_limits = { per_call = 20000, player = 40000, think = 200000, mode = 100000 }
 
 # In the workspace, dependencies are paths; a built package names each by fingerprint.
 [dependencies]

@@ -3,11 +3,26 @@ use std::fmt;
 
 use campfire_script::ScriptError;
 
+/// A capability field of an ability that the release runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum AbilityField {
+    Range,
+    Cooldown,
+    Cost,
+    CastTime,
+}
+
 /// Why an ability's data does not load. Packages are untrusted, so each is an expected failure.
 #[derive(Debug, Clone)]
 pub enum AbilityError {
-    /// The ability's per-rank arrays have different lengths.
-    RankCounts,
+    /// A per-rank array of the ability has another length than its ranks.
+    RankCount(u8),
+    /// A capability field does not give a value of its kind at a rank: a whole number of
+    /// milliseconds or of the resource, or a range of meters that is not negative, and never
+    /// through a scaling param.
+    Field(AbilityField),
+    /// A unit target's filter names a tag no unit type of the match declares.
+    UnknownTag(String),
     /// The data names a script, but no source came with it, or the other way round.
     ScriptMismatch,
     /// A time is too large to count in ticks.
@@ -19,7 +34,11 @@ pub enum AbilityError {
 impl fmt::Display for AbilityError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AbilityError::RankCounts => f.write_str("per-rank arrays of different lengths"),
+            AbilityError::RankCount(ranks) => {
+                write!(f, "a per-rank array without {ranks} entries")
+            }
+            AbilityError::Field(field) => write!(f, "{field:?} gives no value of its kind"),
+            AbilityError::UnknownTag(filter) => write!(f, "targeting {filter:?}: no such tag"),
             AbilityError::ScriptMismatch => {
                 f.write_str("script named without a source, or a source for no script")
             }

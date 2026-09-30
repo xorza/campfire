@@ -1,17 +1,11 @@
-use std::collections::BTreeMap;
 use std::path::Path;
 
-use bevy_ecs::schedule::Schedule;
-use bevy_ecs::world::World;
 use campfire_capabilities::{
-    Abilities, AbilityData, AbilityId, Combat, CombatData, Control, HeroData, HeroSetup, KitRules,
-    Manifest, MapData, Mode, ModeData, ModeManifest, ModeSetup, Navigation, OnDeath, Projectiles,
-    ResourcePool, SpellSetup, SpellsData, Stat, UnitKit, UnitKitError, UnitTypeData, UnitTypeSetup,
-    Units, UnitsData,
+    HeroData, Manifest, MapData, ModeData, ModeManifest, SpellsData, UnitsData,
 };
-use campfire_content::{ContentError, Fingerprint, PackageDir, PackagePath, PackageStore};
+use campfire_content::{ContentError, PackageDir, PackagePath, PackageStore};
+use campfire_protocol::Fingerprint;
 use campfire_script::ScriptHost;
-use campfire_sim::{Capability, StateRegistry, TickRate};
 
 use crate::error::{LoadError, LoadProblem, StartError};
 use crate::load_check::LoadCheck;
@@ -22,9 +16,6 @@ const UNITS_DATA: &str = "data/units.toml";
 const MAP_DATA: &str = "map/map.toml";
 const HERO_DATA: &str = "data/hero.toml";
 const SPELLS_DATA: &str = "data/spells.toml";
-
-/// A capability's install.
-type Install = fn(&mut World, &mut Schedule, &mut StateRegistry);
 
 /// A mode and the packages it depends on, read and checked: what a match of the mode loads.
 #[derive(Debug)]
@@ -104,101 +95,6 @@ impl ModePackages {
 
     pub fn manifest(&self) -> &ModeManifest {
         &self.manifest
-    }
-
-    /// Loads the mode into `world`, which `SimUpdate::prepare` set up, for `players` players:
-    /// the core and the declared capabilities the release has, the mode's unit types, its heroes
-    /// and spells, and the mode itself. A declared capability the release does not have yet
-    /// installs nothing.
-    pub(crate) fn install(
-        &self,
-        world: &mut World,
-        schedule: &mut Schedule,
-        registry: &mut StateRegistry,
-        players: u32,
-    ) -> Result<(), StartError> {
-        let manifest = &self.manifest;
-        let declared = |capability| manifest.capabilities.contains(&capability);
-        Units::install(world, schedule, registry, manifest.script_limits);
-        let installs: [(Capability, Install); 5] = [
-            (Capability::Combat, Combat::install),
-            (Capability::Navigation, Navigation::install),
-            (Capability::Projectiles, Projectiles::install),
-            (Capability::Abilities, Abilities::install),
-            (Capability::Orders, Control::install),
-        ];
-        for (capability, install) in installs {
-            if declared(capability) {
-                install(world, schedule, registry);
-            }
-        }
-        let rules = KitRules {
-            rate: *world.resource::<TickRate>(),
-            max_move_speed: manifest
-                .max_move_speed
-                .to_num()
-                .expect("the load checked the cap"),
-        };
-        let mut unit_types = Vec::with_capacity(self.units.units.len());
-        for (name, file) in &self.units.units {
-            let unit_type = Units::load_type(world, &file.core()).map_err(StartError::UnitType)?;
-            if let Some(orders) = &file.orders {
-                let source = &self
-                    .mode
-                    .script(&orders.ai)
-                    .expect("the load checked it")
-                    .source;
-                Control::load_ai(world, unit_type, orders, source).map_err(|error| {
-                    StartError::Ai {
-                        unit_type: name.clone(),
-                        error,
-                    }
-                })?;
-            }
-            let kit = UnitKit::new(file.stats.as_ref(), file.combat.as_ref(), rules).map_err(
-                |error| StartError::UnitKit {
-                    unit_type: name.clone(),
-                    error,
-                },
-            )?;
-            unit_types.push(UnitTypeSetup {
-                name: name.clone(),
-                unit_type,
-                kit,
-            });
-        }
-        let mut heroes = Vec::new();
-        let mut spells = Vec::new();
-        for dependent in &self.dependencies {
-            let package = &dependent.package;
-            match &dependent.content {
-                Content::Hero(hero) => heroes.push(load_hero(world, package, hero, rules)?),
-                Content::Spells(data) => {
-                    for (id, ability) in &data.abilities {
-                        spells.push(SpellSetup {
-                            id: id.clone(),
-                            ability: load_ability(world, package, id, ability)?,
-                        });
-                    }
-                }
-            }
-        }
-        let setup = ModeSetup {
-            script: self
-                .mode
-                .script(&self.data.script)
-                .expect("the load checked it")
-                .source
-                .clone(),
-            data: self.data.clone(),
-            map: self.map.clone(),
-            teams: manifest.teams.clone(),
-            players,
-            unit_types,
-            heroes,
-            spells,
-        };
-        Mode::install(world, schedule, registry, setup).map_err(StartError::Mode)
     }
 
     /// Reads the mode's data and each dependency, and runs the load checks.
@@ -284,70 +180,6 @@ fn read_mode_manifest(dir: &PackageDir) -> Result<ModeManifest, LoadError> {
         Manifest::Mode(manifest) => Ok(manifest),
         _ => Err(fail(LoadProblem::WrongKind)),
     }
-}
-
-/// Loads the hero `data` of `package`: its unit type, tagged `hero`, which stays when it dies; its
-/// kit at level 1; its abilities, in slot order; and its resource pool.
-fn load_hero(
-    world: &mut World,
-    package: &Package,
-    data: &HeroData,
-    rules: KitRules,
-) -> Result<HeroSetup, StartError> {
-    let core = UnitTypeData {
-        tags: vec![UnitTypeData::HERO_TAG.to_owned()],
-        params: BTreeMap::new(),
-    };
-    let unit_type = Units::load_type(world, &core).map_err(StartError::UnitType)?;
-    let combat = CombatData {
-        on_death: OnDeath::Stay,
-        ..data.combat.clone()
-    };
-    let kit_error = |error| StartError::UnitKit {
-        unit_type: package.name.clone(),
-        error,
-    };
-    let kit = UnitKit::new(Some(&data.stats), Some(&combat), rules).map_err(kit_error)?;
-    let abilities = data
-        .slots
-        .iter()
-        .map(|id| load_ability(world, package, id, &data.abilities[id]))
-        .collect::<Result<_, _>>()?;
-    let resource = if data.stats.0.contains_key(&Stat::Resource) {
-        let max = data.stats.at(Stat::Resource, 1);
-        let max = max.ok_or_else(|| kit_error(UnitKitError::Overflow(Stat::Resource)))?;
-        let pool = ResourcePool::new(max);
-        Some(pool.ok_or_else(|| kit_error(UnitKitError::NotPositive(Stat::Resource)))?)
-    } else {
-        None
-    };
-    Ok(HeroSetup {
-        id: package.name.clone(),
-        unit_type,
-        kit,
-        abilities,
-        resource,
-    })
-}
-
-/// Loads the ability `id` of `package`, with its script's source.
-fn load_ability(
-    world: &mut World,
-    package: &Package,
-    id: &str,
-    data: &AbilityData,
-) -> Result<AbilityId, StartError> {
-    let source = data.script.as_ref().map(|path| {
-        package
-            .script(path)
-            .expect("the load checked that the package holds it")
-            .source
-            .as_str()
-    });
-    Abilities::load(world, data, source).map_err(|error| StartError::Ability {
-        ability: id.to_owned(),
-        error,
-    })
 }
 
 /// One of the engine's paths in a package.

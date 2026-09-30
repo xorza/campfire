@@ -1788,6 +1788,7 @@ dependencies = [
 name = "campfire-content"
 version = "0.1.0"
 dependencies = [
+ "campfire-protocol",
  "postcard",
  "serde",
  "sha2 0.11.0",

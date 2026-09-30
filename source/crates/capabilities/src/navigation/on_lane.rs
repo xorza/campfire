@@ -2,8 +2,8 @@ use bevy_ecs::component::Component;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
-/// The lane a unit that does not walk belongs to, such as a structure: `unit.lane` reads it, as
-/// it reads a walker's.
+/// The lane a unit belongs to: the one a structure guards, or the one a `LaneWalker` walks.
+/// `unit.lane` reads it.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct OnLane(u32);

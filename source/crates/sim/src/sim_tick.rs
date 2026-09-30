@@ -20,6 +20,17 @@ impl SimTick {
         self.0
     }
 
+    /// The time the tick starts at, in ticks from the match start: the time of its first stages,
+    /// and before tick 0 the time of the match start.
+    pub const fn start(self) -> u64 {
+        self.0
+    }
+
+    /// The time the tick ends at: the time of its last stages, one tick after its start.
+    pub const fn end(self) -> u64 {
+        self.0.checked_add(1).expect("tick numbers exhausted")
+    }
+
     pub(crate) const fn advance(&mut self) {
         self.0 = self.0.checked_add(1).expect("tick numbers exhausted");
     }
@@ -27,4 +38,17 @@ impl SimTick {
 
 impl SimResource for SimTick {
     const NAME: &'static str = "sim.tick";
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_tick_ends_where_the_next_starts() {
+        let tick = SimTick::new(7);
+        assert_eq!((tick.start(), tick.end()), (7, 8));
+        assert_eq!(SimTick::new(8).start(), tick.end());
+        assert_eq!(SimTick::default().start(), 0);
+    }
 }

@@ -2,7 +2,8 @@ use std::fs;
 use std::path::Path;
 
 use crate::error::ContentError;
-use crate::fingerprint::Fingerprint;
+use campfire_protocol::Fingerprint;
+
 use crate::package_dir::PackageDir;
 
 /// Packages by fingerprint: what a verifier holds, so a log's terms find the packages they name.

@@ -1,4 +1,5 @@
-use campfire_content::{Fingerprint, PackageDir, PackagePath};
+use campfire_content::{PackageDir, PackagePath};
+use campfire_protocol::Fingerprint;
 use campfire_script::ScriptHost;
 
 use crate::error::{LoadError, LoadProblem};

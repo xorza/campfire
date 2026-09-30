@@ -136,7 +136,7 @@ fn every_navigation_type_is_state() {
     let entity = walk.world.resource::<EntityIndex>().get(unit).unwrap();
     walk.world
         .entity_mut(entity)
-        .insert((LaneWalker::start(0, PathDirection::Forward), OnLane::new(0)));
+        .insert((LaneWalker::start(PathDirection::Forward), OnLane::new(0)));
     let registry = &walk.registry;
     let mut per_type = Vec::new();
     let hash = registry.hash_by_type(&walk.world, &mut per_type);

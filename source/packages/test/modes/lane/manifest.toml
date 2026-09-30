@@ -8,7 +8,7 @@ tick_hz = { min = 30, max = 30, default = 30 }
 teams = [{ name = "west", slots = 1 }, { name = "east", slots = 1 }]
 backends = { collision = "circles", pathfinding = "grid", visibility = "grid_fog" }
 max_move_speed = "7.5"
-script_limits = { per_call = 20000, input = 40000, think = 200000, mode = 20000 }
+script_limits = { per_call = 20000, player = 20000, think = 200000, mode = 20000 }
 
 [dependencies]
 hero-walker = { path = "../../heroes/walker" }

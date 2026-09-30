@@ -1,4 +1,4 @@
-use campfire_content::{Fingerprint, PackageStore};
+use campfire_content::PackageStore;
 use campfire_protocol::{SeedError, SessionLog};
 use campfire_runner::{ModePackages, RELEASE, Runner, StartError};
 
@@ -26,13 +26,7 @@ impl Replay {
         if terms.release != RELEASE {
             return Err(StartError::OtherRelease(terms.release.clone()));
         }
-        let dependencies: Vec<Fingerprint> = terms
-            .dependencies
-            .iter()
-            .map(|&dependency| Fingerprint::new(dependency))
-            .collect();
-        let packages =
-            ModePackages::from_store(store, Fingerprint::new(terms.mode), &dependencies)?;
+        let packages = ModePackages::from_store(store, terms.mode, &terms.dependencies)?;
         let ticks = published.next_tick();
         Ok(Replay {
             runner: Runner::new(published.rewound(), server_seed, &packages)?,

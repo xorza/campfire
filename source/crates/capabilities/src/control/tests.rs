@@ -16,7 +16,9 @@ use crate::navigation::lane_walker::PathDirection;
 use crate::navigation::move_step::MoveStep;
 use crate::units::Units;
 use crate::units::error::ApiError;
+use crate::units::match_scripts::MatchScripts;
 use crate::units::scalar::Scalar;
+use crate::units::script_failures::ScriptFailures;
 use crate::units::script_limits::ScriptLimits;
 use crate::units::unit_type_data::UnitTypeData;
 
@@ -86,7 +88,7 @@ impl Match {
     fn with_lanes(lanes: Lanes) -> Match {
         let limits = ScriptLimits {
             per_call: 20_000,
-            input: 200_000,
+            player: 200_000,
             think: 200_000,
             mode: 100_000,
         };
@@ -98,7 +100,8 @@ impl Match {
         SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), RATE);
         let mut schedule = SimUpdate::schedule();
         let mut registry = StateRegistry::new();
-        Units::install(&mut world, &mut schedule, &mut registry, limits);
+        let scripts = MatchScripts { limits, players: 2 };
+        Units::install(&mut world, &mut schedule, &mut registry, Some(scripts));
         Combat::install(&mut world, &mut schedule, &mut registry);
         Navigation::install(&mut world, &mut schedule, &mut registry);
         Control::install(&mut world, &mut schedule, &mut registry);
@@ -140,7 +143,8 @@ impl Match {
                 .map(|&(name, value)| (name.to_owned(), value))
                 .collect(),
         };
-        let unit_type = Units::load_type(&mut self.world, &data).unwrap();
+        let name = format!("type {}", self.world.non_send::<View>().types_count());
+        let unit_type = Units::load_type(&mut self.world, &name, &data).unwrap();
         if let Some(source) = ai {
             let ai = AiData {
                 ai: PackagePath::parse("scripts/ai.rhai").unwrap(),
@@ -616,7 +620,7 @@ fn a_unit_that_finds_the_think_pool_spent_goes_first_next_tick() {
     // next is ended past those 500, so its unit stays due.
     let limits = ScriptLimits {
         per_call: 1000,
-        input: 1000,
+        player: 1000,
         think: 1500,
         mode: 100_000,
     };
@@ -667,7 +671,8 @@ fn a_walker_goes_back_to_its_path_after_a_chase() {
     let walker = (
         combatant(100, 1, 1, 5, 0).bundle(Team::new(0)),
         meter().bundle(),
-        LaneWalker::start(0, PathDirection::Forward),
+        OnLane::new(0),
+        LaneWalker::start(PathDirection::Forward),
     );
     let chaser = game.spawn(at(0, 0, 0), walker);
     let prey = game.still(Team::new(1), at(1, 0, 3), dummy(100));
@@ -697,7 +702,8 @@ fn a_walker_follows_its_path_in_its_direction() {
         (
             dummy(10).bundle(team),
             meter().bundle(),
-            LaneWalker::start(0, direction),
+            OnLane::new(0),
+            LaneWalker::start(direction),
         )
     };
     let forward = game.spawn(

@@ -8,7 +8,7 @@ use campfire_script::rhai::{Array, Dynamic, Engine, INT, ImmutableString};
 use campfire_sim::{EntityIndex, Position, SimTick, StableId, TickRate};
 
 use crate::combat::attack_state::AttackState;
-use crate::combat::attack_stats::{AttackStats, ground_offset};
+use crate::combat::attack_stats::AttackStats;
 use crate::combat::dead::Dead;
 use crate::combat::health::Health;
 use crate::combat::living_unit::LivingUnit;
@@ -16,6 +16,7 @@ use crate::combat::recent_attackers::{RecentAttack, RecentAttackers};
 use crate::combat::team::Team;
 use crate::units::error::{ApiError, Checked};
 use crate::units::filter::Filter;
+use crate::units::filter_data::FilterData;
 use crate::units::tag_set::{Tag, TagSet};
 use crate::units::unit::Unit;
 use crate::units::unit_type::UnitType;
@@ -182,6 +183,30 @@ impl View {
             })
     }
 
+    /// The unit type named `name`.
+    pub(crate) fn unit_type(&self, name: &str) -> Option<UnitType> {
+        self.0.borrow().types.named(name)
+    }
+
+    /// The name of the unit type of `row`, `()` for a unit of no type.
+    pub(crate) fn unit_type_name(&self, row: &UnitRow) -> Dynamic {
+        let view = self.0.borrow();
+        row.unit_type.map_or(Dynamic::UNIT, |unit_type| {
+            Dynamic::from(ImmutableString::from(view.types.name(unit_type)))
+        })
+    }
+
+    /// The tags of units of `unit_type`; none for a unit of no type.
+    pub(crate) fn type_tags(&self, unit_type: Option<UnitType>) -> TagSet {
+        let view = self.0.borrow();
+        unit_type.map_or(TagSet::default(), |unit_type| view.types.tags(unit_type))
+    }
+
+    /// The run-time form of `filter`, its tag among those of the match's unit types.
+    pub(crate) fn resolve_filter(&self, filter: &FilterData) -> Result<Filter, ApiError> {
+        Filter::resolve(filter, &self.0.borrow().types)
+    }
+
     /// The tag `name`; one no unit type declares fails the call.
     pub(crate) fn tag(&self, name: &str) -> Result<Tag, ApiError> {
         self.0.borrow().types.tag(name).ok_or(ApiError::UnknownTag)
@@ -265,7 +290,7 @@ impl View {
         let of = of.row();
         let selected = view.selected(&of, filter).map_err(ApiError::fail)?;
         Ok(selected
-            .filter(|row| Vec3::ZERO.within(ground_offset(pos, row.pos), radius))
+            .filter(|row| pos.within_ground(row.pos, radius))
             .map(|row| Dynamic::from(Unit::new(row.id, self.clone())))
             .collect())
     }
@@ -282,7 +307,7 @@ impl View {
         let nearest = view
             .selected(&of, filter)
             .map_err(ApiError::fail)?
-            .map(|row| (ground_offset(of.pos, row.pos), row.id))
+            .map(|row| (of.pos.ground_offset(row.pos), row.id))
             .filter(|&(offset, _)| Vec3::ZERO.within(offset, radius))
             .min_by_key(|&(offset, id)| (offset.length_squared_bits(), id));
         Ok(nearest.map_or(Dynamic::UNIT, |(_, id)| {
@@ -347,5 +372,17 @@ impl View {
 impl fmt::Debug for View {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str("View")
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use super::*;
+
+    impl View {
+        /// How many unit types the match loaded, for a test to name the next one.
+        pub(crate) fn types_count(&self) -> usize {
+            self.0.borrow().types.count()
+        }
     }
 }

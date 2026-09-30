@@ -14,6 +14,7 @@
 )]
 
 mod abilities;
+mod capability_set;
 mod combat;
 mod control;
 mod mode;
@@ -26,11 +27,13 @@ pub use abilities::Abilities;
 pub use abilities::ability_book::AbilityId;
 pub use abilities::ability_data::{
     AbilityData, AreaData, AreaInside, ChannelData, ChargeData, ChargesData, ProjectileData, Range,
-    Targeting, Toggle,
+    RangeField, Targeting, Toggle,
 };
 pub use abilities::ability_slots::{AbilitySlot, AbilitySlots, CastTarget};
-pub use abilities::error::AbilityError;
+pub use abilities::error::{AbilityError, AbilityField};
 pub use abilities::resource_pool::ResourcePool;
+pub use capability_set::CapabilitySet;
+pub use capability_set::error::CapabilityError;
 pub use combat::Combat;
 pub use combat::attack_state::AttackState;
 pub use combat::attack_stats::AttackStats;
@@ -53,7 +56,7 @@ pub use mode::error::{ModeError, UnitKitError};
 pub use mode::hero_data::{HeroData, ResourceKind};
 pub use mode::manifest::{
     Backends, CollisionBackend, ContentManifest, Dependency, Manifest, ModeManifest,
-    PathfindingBackend, TeamManifest, TickHzRange, VisibilityBackend,
+    PathfindingBackend, Speed, TeamManifest, TickRange, VisibilityBackend,
 };
 pub use mode::map_data::{GroundPoint, LaneData, MapData, NeutralSpawnData, StructureData};
 pub use mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
@@ -81,9 +84,9 @@ pub use stats::unit_state::UnitState;
 pub use units::Units;
 pub use units::ctx_entry::{CtxEntry, CtxKind};
 pub use units::error::{ApiError, CallError, UnitTypeError};
-pub use units::filter::FilterSyntax;
 pub use units::filter_data::FilterData;
 pub use units::hook::{Hook, ScriptRole};
+pub use units::match_scripts::MatchScripts;
 pub use units::number::{Number, ParamRef};
 pub use units::param::{Param, Scaling};
 pub use units::ranked::Ranked;

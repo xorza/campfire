@@ -4,6 +4,7 @@
 
 mod chain_signature;
 mod delegation;
+mod fingerprint;
 mod input_chain;
 mod input_hash;
 mod player_input;
@@ -18,6 +19,7 @@ pub use chain_signature::ChainSignature;
 pub use delegation::delegation_tag::DelegationTag;
 pub use delegation::error::DelegationError;
 pub use delegation::{Delegation, DelegationTerms};
+pub use fingerprint::Fingerprint;
 pub use input_chain::InputChain;
 pub use input_hash::InputHash;
 pub use player_input::PlayerInput;

@@ -71,26 +71,11 @@ pub enum LoadProblem {
     OtherName(String),
     /// The package targets another engine release than this one.
     OtherEngine(String),
-    /// The mode declares `mode`, which every match has.
-    DeclaresMode,
-    RepeatedCapability(Capability),
-    /// A capability is declared without one it builds on.
-    CapabilityNeeds {
-        capability: Capability,
-        needs: Capability,
-    },
     /// Data or a script at `at` uses a capability the mode does not declare.
     Undeclared {
         capability: Capability,
         at: Place,
     },
-    /// The tick rate range is empty, starts at 0, or holds no default.
-    TickRange,
-    /// A script pool holds less than a whole call, or the input pool less than one for each
-    /// player.
-    PoolTooSmall(Pool),
-    /// The move speed cap is not a positive number.
-    MoveSpeedCap,
     /// A hero's slot names an ability it does not have.
     UnknownSlot(String),
     /// A hero's ability is in none of its slots, so it has no rank count.
@@ -104,7 +89,7 @@ pub enum LoadProblem {
     /// A per-rank array of an ability has another length than its ranks.
     RankCount {
         ability: String,
-        ranks: usize,
+        ranks: u8,
     },
     /// A script file no data names.
     UnreferencedScript(PackagePath),
@@ -126,6 +111,12 @@ pub enum LoadProblem {
     UnknownCtx {
         path: PackagePath,
         name: String,
+    },
+    /// A script uses `ctx` other than design 08's convention allows, so the load checks cannot
+    /// see every use of it.
+    CtxMisuse {
+        path: PackagePath,
+        misuse: CtxMisuse,
     },
     /// A param that data or a script at `at` reads is not declared.
     UnknownParam {
@@ -169,13 +160,34 @@ pub enum Place {
     Lanes,
 }
 
-/// A script pool of a mode's manifest.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Pool {
-    PerCall,
-    Input,
-    Think,
-    Mode,
+/// A use of `ctx` that hides it from the load checks: every value of `ctx` in a script is a
+/// variable named `ctx`, used as `ctx.<name>` or as a whole argument of a call.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum CtxMisuse {
+    /// `ctx` is used other than as `ctx.<name>` or as a whole argument of a call, or is given to
+    /// an operator or a function pointer's `call` or `curry`.
+    Stray,
+    /// The script's own function receives `ctx` under another parameter name.
+    Renamed { function: String },
+    /// A `let`, a `const` or a `for` binds a new variable named `ctx`.
+    Bound,
+    /// A hook's first parameter is not named `ctx`.
+    HookParam { function: String },
+}
+
+impl fmt::Display for CtxMisuse {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            CtxMisuse::Stray => f.write_str("ctx used other than as ctx.<name> or a call argument"),
+            CtxMisuse::Renamed { function } => {
+                write!(f, "{function} receives ctx under another name")
+            }
+            CtxMisuse::Bound => f.write_str("binds a new variable named ctx"),
+            CtxMisuse::HookParam { function } => {
+                write!(f, "the first parameter of {function} is not ctx")
+            }
+        }
+    }
 }
 
 impl fmt::Display for StartError {
@@ -271,24 +283,12 @@ impl fmt::Display for LoadProblem {
             LoadProblem::OtherEngine(engine) => {
                 write!(f, "targets engine release {engine:?}, not this one")
             }
-            LoadProblem::DeclaresMode => f.write_str("declares mode, which every match has"),
-            LoadProblem::RepeatedCapability(capability) => {
-                write!(f, "declares {capability:?} twice")
-            }
-            LoadProblem::CapabilityNeeds { capability, needs } => {
-                write!(f, "declares {capability:?} without {needs:?}")
-            }
             LoadProblem::Undeclared { capability, at } => {
                 write!(
                     f,
                     "{at} uses {capability:?}, which the mode does not declare"
                 )
             }
-            LoadProblem::TickRange => {
-                f.write_str("tick rate range empty, from 0, or without its default")
-            }
-            LoadProblem::PoolTooSmall(pool) => write!(f, "script pool {pool:?} too small"),
-            LoadProblem::MoveSpeedCap => f.write_str("move speed cap is not positive"),
             LoadProblem::UnknownSlot(id) => write!(f, "slot names no ability {id:?}"),
             LoadProblem::Unslotted(id) => write!(f, "ability {id:?} is in no slot"),
             LoadProblem::RepeatedSlot(id) => write!(f, "ability {id:?} is in two slots"),
@@ -312,6 +312,7 @@ impl fmt::Display for LoadProblem {
                     "{path}: ctx.{name} is not the script API's for this script"
                 )
             }
+            LoadProblem::CtxMisuse { path, misuse } => write!(f, "{path}: {misuse}"),
             LoadProblem::UnknownParam { at, name } => write!(f, "{at}: no param {name:?}"),
             LoadProblem::UnknownModifier { at, id } => write!(f, "{at}: no modifier {id:?}"),
             LoadProblem::UnknownStat { at, name } => write!(f, "{at}: no stat {name:?}"),

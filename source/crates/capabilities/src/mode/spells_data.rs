@@ -15,3 +15,8 @@ pub struct SpellsData {
     #[serde(default)]
     pub modifiers: BTreeMap<String, ModifierData>,
 }
+
+impl SpellsData {
+    /// The ranks of every spell.
+    pub const RANKS: u8 = 1;
+}

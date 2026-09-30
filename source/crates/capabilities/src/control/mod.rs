@@ -26,10 +26,11 @@ use crate::control::order::{Action, Order};
 use crate::navigation::destination::Destination;
 use crate::navigation::lane_walker::LaneWalker;
 use crate::navigation::lanes::Lanes;
+use crate::navigation::on_lane::OnLane;
 use crate::units::error::CallError;
 use crate::units::hook::Hook;
-use crate::units::script_budgets::ScriptBudgets;
-use crate::units::script_failures::{ScriptFailure, ScriptFailures};
+use crate::units::pool::Pool;
+use crate::units::script_batch::ScriptBatch;
 use crate::units::script_view::View;
 use crate::units::unit_type::UnitType;
 
@@ -56,23 +57,13 @@ pub struct Control;
 impl Control {
     /// Adds control to a match: in Inputs, orders become current; in Think, the units due this
     /// tick think; in Act, before combat starts attacks, units walk their paths and chase their
-    /// targets. It builds on the core `Units` installs, on combat and on navigation.
+    /// targets. It builds on the core `Units` installs, on combat and on navigation. Without the
+    /// core's scripts, as on a client, no unit thinks.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
-        AiCtx::register(
-            world
-                .get_non_send_mut::<ScriptHost>()
-                .expect("Units::install runs first")
-                .into_inner()
-                .engine_mut(),
-        );
-        let ctx = AiCtx::new(world.non_send::<View>().clone());
-        world.insert_non_send(ctx);
-        world.insert_resource(AiBook::default());
         schedule.add_systems((
             apply_orders
                 .in_set(SimSet::Inputs)
                 .in_set(ControlSet::Orders),
-            think.in_set(SimSet::Think),
             (follow_paths, chase)
                 .chain()
                 .in_set(SimSet::Act)
@@ -80,6 +71,14 @@ impl Control {
         ));
         registry.register_component::<Controller>();
         registry.register_component::<NextThink>();
+        let Some(mut host) = world.get_non_send_mut::<ScriptHost>() else {
+            return;
+        };
+        AiCtx::register(host.engine_mut());
+        let ctx = AiCtx::new(world.non_send::<View>().clone());
+        world.insert_non_send(ctx);
+        world.insert_resource(AiBook::default());
+        schedule.add_systems(think.in_set(SimSet::Think));
     }
 
     /// Gives `unit_type` its AI, with the source of its script: the think period in milliseconds
@@ -223,48 +222,39 @@ fn think(world: &mut World, mut due: Local<'_, Vec<Due>>) {
     }
     due.sort_unstable_by_key(|due| (due.since, due.id));
     let ctx = world.non_send::<AiCtx>().clone();
-    ctx.view().read(world);
-    let mut host = world
-        .remove_non_send::<ScriptHost>()
-        .expect("units are installed");
-    let mut budget = world.resource::<ScriptBudgets>().think;
-    for &Due {
-        since,
-        id,
-        entity,
-        script,
-        period,
-    } in &*due
-    {
-        // A unit with no team or health is no unit scripts see.
-        let Some(unit) = ctx.view().unit(id) else {
-            continue;
-        };
-        ctx.begin(id);
-        let next = match host.call(&mut budget, script, Hook::Think.name(), (ctx.clone(), unit)) {
-            Ok(_) => {
-                for order in ctx.frame().orders.drain(..) {
-                    apply_ai_order(world, id, order);
+    ScriptBatch::run(world, ctx.view(), |batch| {
+        for &Due {
+            since,
+            id,
+            entity,
+            script,
+            period,
+        } in &*due
+        {
+            // A unit with no team or health is no unit scripts see.
+            let Some(unit) = ctx.view().unit(id) else {
+                continue;
+            };
+            ctx.begin(id);
+            let next = match batch.call(Pool::Think, script, Hook::Think, (ctx.clone(), unit)) {
+                Ok(_) => {
+                    for order in ctx.frame().orders.drain(..) {
+                        apply_ai_order(batch.world(), id, order);
+                    }
+                    now + period
                 }
-                now + period
-            }
-            Err(ScriptError::TickBudget) => since,
-            Err(error) => {
-                world
-                    .non_send_mut::<ScriptFailures>()
-                    .0
-                    .push(ScriptFailure {
-                        unit: Some(id),
-                        hook: Hook::Think,
-                        error: CallError::from_script(error),
-                    });
-                now + period
-            }
-        };
-        world.entity_mut(entity).insert(NextThink::new(next));
-    }
-    world.resource_mut::<ScriptBudgets>().think = budget;
-    world.insert_non_send(host);
+                Err(ScriptError::TickBudget) => since,
+                Err(error) => {
+                    batch.record(Some(id), Hook::Think, CallError::from_script(error));
+                    now + period
+                }
+            };
+            batch
+                .world()
+                .entity_mut(entity)
+                .insert(NextThink::new(next));
+        }
+    });
 }
 
 /// Applies an order the AI call of `unit` queued, which the call checked against the units as
@@ -290,18 +280,25 @@ fn follow_paths(
     mut walkers: Query<
         '_,
         '_,
-        (&Position, &mut LaneWalker, &AttackState, &mut Destination),
+        (
+            &Position,
+            &OnLane,
+            &mut LaneWalker,
+            &AttackState,
+            &mut Destination,
+        ),
         Without<Dead>,
     >,
 ) {
-    for (&position, mut walker, attack, mut destination) in &mut walkers {
+    for (&position, lane, mut walker, attack, mut destination) in &mut walkers {
         if attack.target().is_some() {
             continue;
         }
-        let mut waypoint = lanes.waypoint(walker.lane(), walker.next(), walker.direction());
+        let lane = lane.get();
+        let mut waypoint = lanes.waypoint(lane, walker.next(), walker.direction());
         if waypoint == Some(position) {
             walker.advance();
-            waypoint = lanes.waypoint(walker.lane(), walker.next(), walker.direction());
+            waypoint = lanes.waypoint(lane, walker.next(), walker.direction());
         }
         walk_to(&mut destination, waypoint);
     }

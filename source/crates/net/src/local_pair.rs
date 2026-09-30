@@ -1,4 +1,3 @@
-use std::num::NonZeroU32;
 use std::path::Path;
 
 use bevy_app::{App, TaskPoolPlugin};
@@ -57,21 +56,17 @@ impl LocalPair {
     /// ahead. The client's state rollbacks follow `rollback`.
     pub fn new(rollback: RollbackMode, seed_chain: SeedChain) -> LocalPair {
         let packages = ModePackages::from_dir(Path::new(LANE_MODE)).expect("the test mode loads");
-        let tick_hz = packages.manifest().tick_hz.default;
         let terms = SessionTerms {
             server_key: SERVER_KEY,
-            tick_hz: NonZeroU32::new(tick_hz).expect("the load checked the range"),
+            tick_hz: packages.manifest().tick_hz.default(),
             max_input_delay: 10,
             max_input_lead: 30,
             max_payload_len: 64,
             max_inputs_per_tick: 4,
             seed_commitment: seed_chain.commitment(),
             release: RELEASE.to_owned(),
-            mode: *packages.fingerprint().as_bytes(),
-            dependencies: packages
-                .dependencies()
-                .map(|dependency| *dependency.as_bytes())
-                .collect(),
+            mode: packages.fingerprint(),
+            dependencies: packages.dependencies().collect(),
         };
         let tick = terms.tick_length();
         let (client_io, server_io) = CrossbeamIo::new_pair();
@@ -107,6 +102,7 @@ impl LocalPair {
             session_key: keypair(SESSION_SECRET),
             terms: terms.clone(),
             chain_root: delegation(&terms).chain_root(),
+            capabilities: packages.manifest().capabilities,
         };
         let mut client = App::new();
         client.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));

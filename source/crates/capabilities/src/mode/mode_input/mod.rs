@@ -53,14 +53,7 @@ impl<'a> ModeInput<'a> {
     /// A payload of `inputs` alone, one command each.
     pub fn payload(inputs: &[ModeInput<'_>]) -> Vec<u8> {
         let bodies: Vec<Vec<u8>> = inputs.iter().map(ModeInput::encode).collect();
-        let commands: Vec<Command<'_>> = bodies
-            .iter()
-            .map(|body| Command {
-                capability: ModeInput::CAPABILITY,
-                body,
-            })
-            .collect();
-        Command::encode(&commands)
+        Command::payload(ModeInput::CAPABILITY, &bodies)
     }
 }
 

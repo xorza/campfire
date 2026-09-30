@@ -21,3 +21,34 @@ pub enum Capability {
     Persistence,
     Mode,
 }
+
+impl Capability {
+    /// Every capability, in the order of their indices.
+    pub const ALL: [Capability; 13] = [
+        Capability::Combat,
+        Capability::Stats,
+        Capability::Abilities,
+        Capability::Projectiles,
+        Capability::Areas,
+        Capability::Orders,
+        Capability::Character,
+        Capability::Hitscan,
+        Capability::Navigation,
+        Capability::Vision,
+        Capability::Physics,
+        Capability::Persistence,
+        Capability::Mode,
+    ];
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn all_lists_each_capability_at_its_index() {
+        for (index, capability) in Capability::ALL.into_iter().enumerate() {
+            assert_eq!(capability as usize, index, "{capability:?}");
+        }
+    }
+}

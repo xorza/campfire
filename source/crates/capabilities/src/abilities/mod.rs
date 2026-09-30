@@ -3,14 +3,14 @@ use std::mem;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Without;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
-use bevy_ecs::system::{Local, Query, Res};
+use bevy_ecs::system::{Local, NonSend, Query, Res};
 use bevy_ecs::world::World;
-use campfire_math::{Num, Vec3};
+use campfire_math::Num;
 use campfire_script::rhai::Dynamic;
-use campfire_script::{Budget, ScriptHost, ScriptId};
+use campfire_script::{ScriptHost, ScriptId};
 use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, TickRate};
 
-use crate::abilities::ability_book::{Ability, AbilityBook, AbilityId};
+use crate::abilities::ability_book::{Ability, AbilityBook, AbilityId, Aim, RankValues};
 use crate::abilities::ability_data::{AbilityData, Range, Targeting};
 use crate::abilities::ability_slots::{AbilitySlots, CastTarget, Casting};
 use crate::abilities::error::AbilityError;
@@ -18,20 +18,21 @@ use crate::abilities::frame::{Effect, Frame};
 use crate::abilities::resource_pool::ResourcePool;
 use crate::abilities::script_api::Ctx;
 use crate::combat::CombatSet;
-use crate::combat::attack_stats::ground_offset;
 use crate::combat::dead::Dead;
-use crate::combat::living_unit::LivingUnit;
 use crate::combat::strikes::{Strike, Strikes};
 use crate::combat::targets::Targets;
 use crate::combat::team::Team;
+use crate::control::controller::Controller;
 use crate::units::error::CallError;
 use crate::units::hook::Hook;
 use crate::units::param::Param;
+use crate::units::pool::Pool;
 use crate::units::scalar::Scalar;
-use crate::units::script_budgets::ScriptBudgets;
-use crate::units::script_failures::{ScriptFailure, ScriptFailures};
+use crate::units::script_batch::ScriptBatch;
 use crate::units::script_view::View;
+use crate::units::tag_set::TagSet;
 use crate::units::unit::Unit;
+use crate::units::unit_type::UnitType;
 
 pub(crate) mod ability_book;
 pub(crate) mod ability_data;
@@ -49,15 +50,14 @@ pub struct Abilities;
 impl Abilities {
     /// Adds abilities to a match, on the core `Units` installs. In Act, ordered casts pass their
     /// checks and start; in Hit, after attacks strike and fire, due casts resolve: the cost, the
-    /// cooldown and the script's effects apply together, or none of them.
+    /// cooldown and the script's effects apply together, or none of them. A cast resolves in the
+    /// script host, so without the core's scripts, as on a client, which predicts no casts, it
+    /// installs nothing.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
-        Ctx::register(
-            world
-                .get_non_send_mut::<ScriptHost>()
-                .expect("Units::install runs first")
-                .into_inner()
-                .engine_mut(),
-        );
+        let Some(mut host) = world.get_non_send_mut::<ScriptHost>() else {
+            return;
+        };
+        Ctx::register(host.engine_mut());
         let ctx = Ctx::new(world.non_send::<View>().clone());
         world.insert_non_send(ctx);
         world.insert_resource(AbilityBook::default());
@@ -69,14 +69,28 @@ impl Abilities {
         registry.register_component::<ResourcePool>();
     }
 
-    /// Loads an ability into the match, with the source of its script if its data names one:
-    /// times in milliseconds become ticks at the match's rate, rounded up.
+    /// Loads an ability of `ranks` ranks into the match, with the source of its script if its
+    /// data names one: its capability fields at each rank, times in milliseconds as ticks at the
+    /// match's rate, rounded up.
     pub fn load(
         world: &mut World,
         data: &AbilityData,
         source: Option<&str>,
+        ranks: u8,
     ) -> Result<AbilityId, AbilityError> {
         let rate = *world.resource::<TickRate>();
+        let aim = match &data.targeting {
+            Targeting::None => Aim::None,
+            Targeting::Point => Aim::Point,
+            Targeting::Direction => Aim::Direction,
+            Targeting::Unit(filter) => Aim::Unit(
+                world
+                    .non_send::<View>()
+                    .resolve_filter(filter)
+                    .map_err(|_unknown_tag| AbilityError::UnknownTag(filter.to_string()))?,
+            ),
+        };
+        let values = RankValues::all(data, ranks, rate)?;
         let mut host = world
             .remove_non_send::<ScriptHost>()
             .expect("units are installed");
@@ -86,7 +100,8 @@ impl Abilities {
             &mut ctx.frame(),
             data,
             source,
-            rate,
+            aim,
+            values,
         );
         world.insert_non_send(host);
         loaded
@@ -99,6 +114,9 @@ fn start_casts(
     tick: Res<'_, SimTick>,
     book: Res<'_, AbilityBook>,
     targets: Targets<'_, '_>,
+    index: Res<'_, EntityIndex>,
+    unit_types: Query<'_, '_, &UnitType>,
+    view: NonSend<'_, View>,
     mut casters: Query<
         '_,
         '_,
@@ -114,7 +132,15 @@ fn start_casts(
         else {
             continue;
         };
-        let lookup = |id| targets.living(id);
+        let lookup = |id| {
+            let unit = targets.living(id)?;
+            let unit_type = index.get(id).and_then(|entity| unit_types.get(entity).ok());
+            Some(TargetUnit {
+                pos: unit.pos,
+                team: unit.team,
+                tags: view.type_tags(unit_type.copied()),
+            })
+        };
         let started = check(&book, now, &slots, pool, team, casting, lookup)
             .filter(|checked| in_range(checked, position, casting.target, lookup))
             .map(|checked| now + checked.cast_time);
@@ -123,6 +149,14 @@ fn start_casts(
             None => slots.stop(),
         }
     }
+}
+
+/// A living unit a cast may target: where it stands, its team and its tags.
+#[derive(Debug, Clone, Copy)]
+struct TargetUnit {
+    pos: Position,
+    team: Team,
+    tags: TagSet,
 }
 
 /// A cast that passes its checks: its ability, and the values at the slot's rank.
@@ -138,8 +172,8 @@ struct Checked<'a> {
 }
 
 /// The cast `casting` of a unit on `team`, when it may go on: its slot holds a learned ability
-/// that is ready, its cost is affordable, and its target is a living unit of the relation the
-/// ability takes. `living` finds a living unit.
+/// that is ready, its cost is affordable, and its target is a living unit the ability's filter
+/// selects. `living` finds a living unit.
 fn check<'a>(
     book: &'a AbilityBook,
     now: u64,
@@ -147,18 +181,19 @@ fn check<'a>(
     pool: Option<&ResourcePool>,
     team: Team,
     casting: Casting,
-    living: impl Fn(StableId) -> Option<LivingUnit>,
+    living: impl Fn(StableId) -> Option<TargetUnit>,
 ) -> Option<Checked<'a>> {
     let slot = slots.slot(casting.slot).filter(|slot| slot.rank > 0)?;
     let ability = book.get(slot.ability)?;
-    let cost = Num::from_int(i64::try_from(ability.cost.at(slot.rank)?).ok()?)?;
+    let values = *ability.ranks.get(usize::from(slot.rank - 1))?;
+    let cost = Num::from_int(i64::try_from(values.cost).ok()?)?;
     if now < slot.ready_at || cost > pool.map_or(Num::ZERO, |pool| pool.current()) {
         return None;
     }
-    let target_fits = match (ability.targeting, casting.target) {
-        (Targeting::None, CastTarget::None) => true,
-        (Targeting::Unit(relation), CastTarget::Unit(target)) => {
-            living(target).is_some_and(|unit| relation.holds(team, unit.team))
+    let target_fits = match (ability.aim, casting.target) {
+        (Aim::None, CastTarget::None) => true,
+        (Aim::Unit(filter), CastTarget::Unit(target)) => {
+            living(target).is_some_and(|unit| filter.selects(team, unit.team, unit.tags))
         }
         _ => false,
     };
@@ -166,10 +201,10 @@ fn check<'a>(
         id: slot.ability,
         ability,
         rank: slot.rank,
-        range: ability.range.at(slot.rank)?,
+        range: values.range,
         cost,
-        cooldown: ability.cooldown.at(slot.rank)?,
-        cast_time: ability.cast_time.at(slot.rank)?,
+        cooldown: values.cooldown,
+        cast_time: values.cast_time,
     })
 }
 
@@ -179,12 +214,12 @@ fn in_range(
     checked: &Checked<'_>,
     position: Position,
     target: CastTarget,
-    living: impl Fn(StableId) -> Option<LivingUnit>,
+    living: impl Fn(StableId) -> Option<TargetUnit>,
 ) -> bool {
     let (Range::Meters(range), CastTarget::Unit(target)) = (checked.range, target) else {
         return true;
     };
-    living(target).is_some_and(|unit| Vec3::ZERO.within(ground_offset(position, unit.pos), range))
+    living(target).is_some_and(|unit| position.within_ground(unit.pos, range))
 }
 
 /// Resolves the casts due this tick, in the order of their caster's stable id. Their calls share
@@ -207,23 +242,19 @@ fn resolve_casts(world: &mut World, mut due: Local<'_, Vec<(StableId, Entity)>>)
         return;
     }
     let ctx = world.non_send::<Ctx>().clone();
-    ctx.view().read(world);
-    let mut host = world
-        .remove_non_send::<ScriptHost>()
-        .expect("units are installed");
-    let mut budget = world.resource::<ScriptBudgets>().input;
-    for &(caster, entity) in &*due {
-        resolve(world, &mut host, &mut budget, &ctx, now, caster, entity);
-    }
-    world.resource_mut::<ScriptBudgets>().input = budget;
-    world.insert_non_send(host);
+    ScriptBatch::run(world, ctx.view(), |batch| {
+        for &(caster, entity) in &*due {
+            resolve(batch, &ctx, now, caster, entity);
+        }
+    });
 }
 
-/// A cast ready to run: the caster as the script sees it, its target, its `on_cast`, and its
-/// cost and cooldown. Its params wait in the frame.
+/// A cast ready to run: the caster as the script sees it, the pool its call draws from, its
+/// target, its `on_cast`, and its cost and cooldown. Its params wait in the frame.
 #[derive(Debug)]
 struct Prepared {
     caster: Unit,
+    pool: Pool,
     slot: u8,
     target: Dynamic,
     on_cast: Option<ScriptId>,
@@ -233,34 +264,20 @@ struct Prepared {
 
 /// Resolves one cast: its script runs, then its effects, cost and cooldown apply together, or,
 /// when the cast no longer passes its checks or it fails, none of them.
-fn resolve(
-    world: &mut World,
-    host: &mut ScriptHost,
-    budget: &mut Budget,
-    ctx: &Ctx,
-    now: u64,
-    caster: StableId,
-    entity: Entity,
-) {
-    let prepared = prepare(world, ctx, now, caster, entity);
+fn resolve(batch: &mut ScriptBatch<'_>, ctx: &Ctx, now: u64, caster: StableId, entity: Entity) {
+    let prepared = prepare(batch.world(), ctx, now, caster, entity);
     let outcome = match prepared {
         Ok(None) => Ok(()),
-        Ok(Some(mut prepared)) => run(host, budget, ctx, &mut prepared).map(|()| {
-            apply(world, &mut ctx.frame(), now, entity, &prepared);
+        Ok(Some(mut prepared)) => run(batch, ctx, &mut prepared).map(|()| {
+            apply(batch.world(), &mut ctx.frame(), now, entity, &prepared);
         }),
         Err(error) => Err(error),
     };
     if let Err(error) = outcome {
-        world
-            .non_send_mut::<ScriptFailures>()
-            .0
-            .push(ScriptFailure {
-                unit: Some(caster),
-                hook: Hook::OnCast,
-                error,
-            });
+        batch.record(Some(caster), Hook::OnCast, error);
     }
-    world
+    batch
+        .world()
         .get_mut::<AbilitySlots>(entity)
         .expect("a caster has slots")
         .stop();
@@ -307,7 +324,16 @@ fn prepare(
     let team = *unit.get::<Team>().expect("a caster has a team");
     let book = world.resource::<AbilityBook>();
     let pool = unit.get::<ResourcePool>();
-    let Some(checked) = check(book, now, slots, pool, team, casting, |id| view.living(id)) else {
+    let living = |id| {
+        let unit = view.living(id)?;
+        let row = view.row(id)?;
+        Some(TargetUnit {
+            pos: unit.pos,
+            team: unit.team,
+            tags: view.type_tags(row.unit_type),
+        })
+    };
+    let Some(checked) = check(book, now, slots, pool, team, casting, living) else {
         return Ok(None);
     };
     let target = match casting.target {
@@ -321,8 +347,12 @@ fn prepare(
     let params = checked.ability.params.iter();
     ctx.frame()
         .begin_cast(checked.id, params.map(|param| param_value(param, rank)))?;
+    let pool = unit
+        .get::<Controller>()
+        .map_or(Pool::Think, |controller| Pool::Player(controller.slot()));
     Ok(Some(Prepared {
         caster,
+        pool,
         slot: casting.slot,
         target,
         on_cast: checked.ability.on_cast,
@@ -332,33 +362,24 @@ fn prepare(
 }
 
 /// Runs the prepared cast's `on_cast`, which queues its effects in the frame.
-fn run(
-    host: &mut ScriptHost,
-    budget: &mut Budget,
-    ctx: &Ctx,
-    prepared: &mut Prepared,
-) -> Result<(), CallError> {
+fn run(batch: &mut ScriptBatch<'_>, ctx: &Ctx, prepared: &mut Prepared) -> Result<(), CallError> {
     let Some(script) = prepared.on_cast else {
         return Ok(());
     };
     let target = mem::take(&mut prepared.target);
     let caster = prepared.caster.clone();
-    host.call(
-        budget,
-        script,
-        Hook::OnCast.name(),
-        (ctx.clone(), caster, target),
-    )
-    .map(drop)
-    .map_err(CallError::from_script)
+    let args = (ctx.clone(), caster, target);
+    batch
+        .call(prepared.pool, script, Hook::OnCast, args)
+        .map(drop)
+        .map_err(CallError::from_script)
 }
 
 /// A param's value at `rank`. Until levels and stats exist, every unit is level 1 and every
 /// stat a scaling table names is 0.
 fn param_value(param: &Param, rank: u8) -> Option<Scalar> {
     match param {
-        Param::Value(value) => Some(*value),
-        Param::PerRank(values) => values.get(usize::from(rank.checked_sub(1)?)).copied(),
+        Param::Ranked(ranked) => ranked.at(rank),
         Param::Scaling(scaling) => {
             let base = scaling.base.at(rank)?.to_num()?;
             let per_level = scaling.per_level.map_or(Some(Num::ZERO), Scalar::to_num)?;

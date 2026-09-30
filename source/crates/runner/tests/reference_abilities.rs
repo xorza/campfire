@@ -7,8 +7,8 @@ use bevy_ecs::bundle::Bundle;
 use bevy_ecs::world::World;
 use campfire_capabilities::{
     Abilities, AbilitySlots, Action, AttackStats, CastTarget, Combat, Combatant, Control,
-    Controller, Health, HeroData, Navigation, OnDeath, Order, Param, Range, Ranked, ResourcePool,
-    Scalar, Scaling, ScriptLimits, Targeting, Team, Units,
+    Controller, Health, HeroData, MatchScripts, Navigation, Number, OnDeath, Order, Param, Range,
+    RangeField, Ranked, ResourcePool, Scalar, Scaling, ScriptLimits, Targeting, Team, Units,
 };
 use campfire_content::{PackageDir, PackagePath};
 use campfire_math::{Num, SegmentSeed, Vec3};
@@ -73,16 +73,15 @@ fn every_reference_ability_reads_into_the_schema() {
     let lash_out = &husk.abilities["lash_out"];
     assert_eq!(lash_out.targeting, Targeting::None);
     assert_eq!(lash_out.range, None);
-    assert_eq!(
-        lash_out.cooldown_ms,
-        Some(Ranked::PerRank(vec![10_000, 9000, 8000, 7000, 6000]))
-    );
-    assert_eq!(lash_out.cost, Some(Ranked::One(35)));
+    let int = |value| Number::Value(Scalar::Int(value));
+    let cooldowns = [10_000, 9000, 8000, 7000, 6000].map(int).to_vec();
+    assert_eq!(lash_out.cooldown_ms, Some(Ranked::PerRank(cooldowns)));
+    assert_eq!(lash_out.cost, Some(Ranked::One(int(35))));
     // "3.5" is 7 halves; "0.5" one half.
     let half = Num::from_bits(1 << 23);
     assert_eq!(
         lash_out.params["radius"],
-        Param::Value(Scalar::Decimal(half * 7))
+        Param::Ranked(Ranked::One(Scalar::Decimal(half * 7)))
     );
     let Param::Scaling(Scaling { base, ap, .. }) = &lash_out.params["damage"] else {
         panic!("damage scales");
@@ -94,10 +93,11 @@ fn every_reference_ability_reads_into_the_schema() {
     let Some(Ranked::PerRank(ranges)) = &rime.abilities["snow_owl"].range else {
         panic!("a range per rank");
     };
-    assert_eq!(ranges[1], Range::Meters(half * 65));
+    assert_eq!(ranges[1], RangeField::Range(Range::Meters(half * 65)));
     let wraps = &husk.abilities["grasping_wraps"];
     assert_eq!(wraps.targeting, Targeting::Direction);
-    assert_eq!(wraps.range, Some(Ranked::One(Range::Meters(num(11)))));
+    let eleven = RangeField::Range(Range::Meters(num(11)));
+    assert_eq!(wraps.range, Some(Ranked::One(eleven)));
 }
 
 #[test]
@@ -108,11 +108,12 @@ fn lash_out_from_its_package_hits_exactly() {
     let mut registry = StateRegistry::new();
     let limits = ScriptLimits {
         per_call: 10_000,
-        input: 100_000,
+        player: 100_000,
         think: 100_000,
         mode: 100_000,
     };
-    Units::install(&mut world, &mut schedule, &mut registry, limits);
+    let scripts = MatchScripts { limits, players: 1 };
+    Units::install(&mut world, &mut schedule, &mut registry, Some(scripts));
     Combat::install(&mut world, &mut schedule, &mut registry);
     Navigation::install(&mut world, &mut schedule, &mut registry);
     Abilities::install(&mut world, &mut schedule, &mut registry);
@@ -124,7 +125,7 @@ fn lash_out_from_its_package_hits_exactly() {
     let source = hero("husk")
         .read_text(data.script.as_ref().unwrap())
         .unwrap();
-    let lash_out = Abilities::load(&mut world, data, Some(&source)).unwrap();
+    let lash_out = Abilities::load(&mut world, data, Some(&source), 5).unwrap();
 
     let caster = spawn(
         &mut world,

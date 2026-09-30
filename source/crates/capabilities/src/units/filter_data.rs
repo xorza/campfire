@@ -14,15 +14,22 @@ pub struct FilterData {
     pub tag: Option<String>,
 }
 
-impl<'de> Deserialize<'de> for FilterData {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<FilterData, D::Error> {
-        let text = String::deserialize(deserializer)?;
-        let syntax = FilterSyntax::parse(&text)
-            .ok_or_else(|| D::Error::custom(format!("filter {text:?}: no relation")))?;
-        Ok(FilterData {
+impl FilterData {
+    /// `text` as a filter; `None` unless its relation is `enemies`, `allies` or `all`.
+    pub fn parse(text: &str) -> Option<FilterData> {
+        let syntax = FilterSyntax::parse(text)?;
+        Some(FilterData {
             relation: syntax.relation,
             tag: syntax.tag.map(str::to_owned),
         })
+    }
+}
+
+impl<'de> Deserialize<'de> for FilterData {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<FilterData, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        FilterData::parse(&text)
+            .ok_or_else(|| D::Error::custom(format!("filter {text:?}: no relation")))
     }
 }
 

@@ -1,10 +1,9 @@
-use campfire_math::{Num, Vec3};
+use campfire_math::Num;
 use campfire_script::NumError;
 use campfire_script::Raised;
 use campfire_script::rhai::{Dynamic, Engine, INT, ImmutableString};
 use campfire_sim::{Position, StableId};
 
-use crate::combat::attack_stats::ground_offset;
 use crate::units::error::{ApiError, Checked};
 use crate::units::script_view::{UnitRow, View};
 
@@ -49,6 +48,9 @@ impl Unit {
             .register_get("params", |unit: &mut Unit| UnitParams(unit.clone()))
             .register_get("team", |unit: &mut Unit| {
                 unit.view.team_name(unit.row().team)
+            })
+            .register_get("unit_type", |unit: &mut Unit| {
+                unit.view.unit_type_name(&unit.row())
             })
             .register_get("lane", |unit: &mut Unit| {
                 unit.view.lane_name(unit.row().extras.lane)
@@ -102,7 +104,7 @@ impl Unit {
         if radius < Num::ZERO {
             return Err(ApiError::NegativeRadius.fail().into());
         }
-        Ok(Vec3::ZERO.within(ground_offset(from, to), radius))
+        Ok(from.within_ground(to, radius))
     }
 
     /// The unit's attack target, `()` when it has none or the view did not read it.

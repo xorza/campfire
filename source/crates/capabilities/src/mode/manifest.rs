@@ -1,7 +1,12 @@
 use std::collections::BTreeMap;
 
-use campfire_sim::Capability;
-use serde::Deserialize;
+use std::num::NonZeroU32;
+
+use campfire_math::Num;
+use serde::de::Error;
+use serde::{Deserialize, Deserializer};
+
+use crate::capability_set::CapabilitySet;
 
 use crate::units::scalar::Scalar;
 use crate::units::script_limits::ScriptLimits;
@@ -35,27 +40,30 @@ pub struct ModeManifest {
     /// The tag of the engine release it targets.
     pub engine: String,
     /// The capabilities its matches use; the release installs only these.
-    pub capabilities: Vec<Capability>,
-    pub tick_hz: TickHzRange,
+    pub capabilities: CapabilitySet,
+    pub tick_hz: TickRange,
     /// The playing teams, in order; their slots in that order make the player slots.
     pub teams: Vec<TeamManifest>,
     pub backends: Backends,
-    /// The most any unit walks, in meters a second.
-    pub max_move_speed: Scalar,
+    /// The most any unit walks.
+    pub max_move_speed: Speed,
     pub script_limits: ScriptLimits,
     /// By name; in the workspace each is a path, relative to the manifest.
     #[serde(default)]
     pub dependencies: BTreeMap<String, Dependency>,
 }
 
-/// The tick rates a session may choose, in ticks a second.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct TickHzRange {
-    pub min: u32,
-    pub max: u32,
-    pub default: u32,
+/// The tick rates a session may choose, in ticks a second: `min ≤ default ≤ max`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TickRange {
+    min: NonZeroU32,
+    max: NonZeroU32,
+    default: NonZeroU32,
 }
+
+/// A speed in meters a second, positive.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Speed(Num);
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -97,6 +105,65 @@ pub enum VisibilityBackend {
 #[serde(deny_unknown_fields)]
 pub struct Dependency {
     pub path: String,
+}
+
+impl TickRange {
+    /// The range from `min` to `max` with its `default`; `None` unless it holds its default.
+    pub const fn new(min: NonZeroU32, default: NonZeroU32, max: NonZeroU32) -> Option<TickRange> {
+        if min.get() > default.get() || default.get() > max.get() {
+            return None;
+        }
+        Some(TickRange { min, max, default })
+    }
+
+    pub const fn contains(self, hz: NonZeroU32) -> bool {
+        self.min.get() <= hz.get() && hz.get() <= self.max.get()
+    }
+
+    pub const fn default(self) -> NonZeroU32 {
+        self.default
+    }
+}
+
+impl<'de> Deserialize<'de> for TickRange {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<TickRange, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Fields {
+            min: NonZeroU32,
+            max: NonZeroU32,
+            default: NonZeroU32,
+        }
+        let Fields { min, max, default } = Fields::deserialize(deserializer)?;
+        TickRange::new(min, default, max)
+            .ok_or_else(|| D::Error::custom("the tick rate range does not hold its default"))
+    }
+}
+
+impl Speed {
+    /// `None` unless `meters_a_second` is positive.
+    pub const fn new(meters_a_second: Num) -> Option<Speed> {
+        if meters_a_second.to_bits() <= 0 {
+            return None;
+        }
+        Some(Speed(meters_a_second))
+    }
+
+    /// In meters a second.
+    pub const fn get(self) -> Num {
+        self.0
+    }
+}
+
+/// A number, or a decimal string, that is positive.
+impl<'de> Deserialize<'de> for Speed {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Speed, D::Error> {
+        let scalar = Scalar::deserialize(deserializer)?;
+        scalar
+            .to_num()
+            .and_then(Speed::new)
+            .ok_or_else(|| D::Error::custom("a speed is a positive number"))
+    }
 }
 
 impl Manifest {

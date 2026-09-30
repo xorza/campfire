@@ -21,4 +21,8 @@ impl ScriptFailures {
     pub fn get(&self) -> &[ScriptFailure] {
         &self.0
     }
+
+    pub(crate) fn record(&mut self, unit: Option<StableId>, hook: Hook, error: CallError) {
+        self.0.push(ScriptFailure { unit, hook, error });
+    }
 }

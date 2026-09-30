@@ -19,15 +19,18 @@ use crate::combat::dead::Dead;
 use crate::combat::health::Health;
 use crate::combat::on_death::OnDeath;
 use crate::combat::team::Team;
+use crate::mode::manifest::{Speed, TickRange};
 use crate::mode::map_data::{LaneData, NeutralSpawnData, StructureData};
 use crate::mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
 use crate::mode::mode_setup::{HeroSetup, SpellSetup, UnitTypeSetup};
+use crate::mode::spells_data::SpellsData;
 use crate::mode::unit_kit::UnitKit;
 use crate::navigation::Navigation;
-use crate::navigation::lane_walker::PathDirection;
+use crate::navigation::lane_walker::{LaneWalker, PathDirection};
 use crate::navigation::move_step::MoveStep;
 use crate::units::Units;
 use crate::units::error::ApiError;
+use crate::units::match_scripts::MatchScripts;
 use crate::units::scalar::Scalar;
 use crate::units::script_failures::ScriptFailures;
 use crate::units::script_limits::ScriptLimits;
@@ -40,7 +43,7 @@ use crate::units::unit_type_data::UnitTypeData;
 const RATE: TickRate = TickRate::new(NonZeroU32::new(10).unwrap());
 const LIMITS: ScriptLimits = ScriptLimits {
     per_call: 10_000,
-    input: 100_000,
+    player: 100_000,
     think: 100_000,
     mode: 100_000,
 };
@@ -93,6 +96,8 @@ fn on_mode_input(ctx, player, name, value) {
         ctx.state.team = grunts[1].team;
         ctx.state.neutral = grunts[0].team;
         ctx.state.owner = ctx.heroes()[0].owner;
+        ctx.state.tower_lane = ctx.units_tagged("tower")[0].lane;
+        ctx.state.kind = grunts[1].unit_type;
     }
 }
 "#;
@@ -149,20 +154,17 @@ fn map() -> MapData {
     }
 }
 
-/// The test mode's setup, of `script`: its grunt, tower and two heroes' unit types, and its one
-/// spell.
-fn setup(script: &str, types: [UnitType; 4], spell: SpellSetup) -> ModeSetup {
-    let [grunt_type, tower_type, x, y] = types;
-    let hero = |id: &str, unit_type| HeroSetup {
-        id: id.to_owned(),
-        unit_type,
-        kit: grunt(),
-        abilities: Vec::new(),
-        resource: None,
-    };
+/// The test mode's own files: its data, its map and its teams.
+#[derive(Debug)]
+struct ModeFiles {
+    data: ModeData,
+    map: MapData,
+    teams: Vec<TeamManifest>,
+}
+
+fn mode_files() -> ModeFiles {
     let text = |text: &str| ListEntry::Text(text.to_owned());
-    ModeSetup {
-        script: script.to_owned(),
+    ModeFiles {
         data: ModeData {
             script: PackagePath::parse("scripts/mode.rhai").unwrap(),
             assist_window_ms: None,
@@ -194,6 +196,8 @@ fn setup(script: &str, types: [UnitType; 4], spell: SpellSetup) -> ModeSetup {
                 ("team", field(StateType::String, None)),
                 ("neutral", field(StateType::String, None)),
                 ("owner", field(StateType::Int, None)),
+                ("tower_lane", field(StateType::String, None)),
+                ("kind", field(StateType::String, None)),
             ]
             .map(|(name, decl)| (name.to_owned(), decl))
             .into(),
@@ -216,15 +220,44 @@ fn setup(script: &str, types: [UnitType; 4], spell: SpellSetup) -> ModeSetup {
                 slots: 1,
             },
         ],
+    }
+}
+
+/// The test mode's setup from `files`, of `script`: its grunt, tower and two heroes' unit types,
+/// and its one spell.
+fn setup<'a>(
+    files: &'a ModeFiles,
+    script: &'a str,
+    types: [UnitType; 4],
+    spell: SpellSetup,
+) -> ModeSetup<'a> {
+    let [grunt_type, tower_type, x, y] = types;
+    let hero = |id: &str, unit_type| HeroSetup {
+        id: id.to_owned(),
+        unit_type,
+        abilities: Vec::new(),
+        resource: None,
+    };
+    ModeSetup {
+        script,
+        data: &files.data,
+        map: &files.map,
+        teams: &files.teams,
         players: 3,
         unit_types: vec![
             UnitTypeSetup {
-                name: "grunt".to_owned(),
                 unit_type: grunt_type,
                 kit: grunt(),
             },
             UnitTypeSetup {
-                name: "tower".to_owned(),
+                unit_type: x,
+                kit: grunt(),
+            },
+            UnitTypeSetup {
+                unit_type: y,
+                kit: grunt(),
+            },
+            UnitTypeSetup {
                 unit_type: tower_type,
                 kit: UnitKit {
                     step: None,
@@ -256,19 +289,20 @@ impl Game {
         SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), RATE);
         let mut schedule = SimUpdate::schedule();
         let mut registry = StateRegistry::new();
-        Units::install(&mut world, &mut schedule, &mut registry, limits);
+        let scripts = MatchScripts { limits, players: 3 };
+        Units::install(&mut world, &mut schedule, &mut registry, Some(scripts));
         Combat::install(&mut world, &mut schedule, &mut registry);
         Navigation::install(&mut world, &mut schedule, &mut registry);
         Abilities::install(&mut world, &mut schedule, &mut registry);
-        let mut load = |tags: &[&str]| {
+        let mut load = |name: &str, tag: &str| {
             let data = UnitTypeData {
-                tags: tags.iter().map(|&tag| tag.to_owned()).collect(),
+                tags: vec![tag.to_owned()],
                 params: BTreeMap::new(),
             };
-            Units::load_type(&mut world, &data).unwrap()
+            Units::load_type(&mut world, name, &data).unwrap()
         };
-        let (grunt_type, tower_type) = (load(&["grunt"]), load(&["tower"]));
-        let (x, y) = (load(&["hero"]), load(&["hero"]));
+        let (grunt_type, tower_type) = (load("grunt", "grunt"), load("tower", "tower"));
+        let (x, y) = (load("hero-x", "hero"), load("hero-y", "hero"));
         let blink = AbilityData {
             script: None,
             targeting: Targeting::None,
@@ -289,13 +323,14 @@ impl Game {
             params: BTreeMap::new(),
             projectile_state: BTreeMap::new(),
         };
-        let blink = Abilities::load(&mut world, &blink, None).unwrap();
+        let blink = Abilities::load(&mut world, &blink, None, SpellsData::RANKS).unwrap();
         let spell = SpellSetup {
             id: "blink".to_owned(),
             ability: blink,
         };
         let types = [grunt_type, tower_type, x, y];
-        let setup = setup(script, types, spell);
+        let files = mode_files();
+        let setup = setup(&files, script, types, spell);
         Mode::install(&mut world, &mut schedule, &mut registry, setup).unwrap();
         world.add_schedule(schedule);
         Mode::start(&mut world)?;
@@ -325,13 +360,10 @@ impl Game {
         ["phase", "seen", "count", "inputs"].map(|name| self.field(name))
     }
 
-    /// The state field `name`, of those the test mode declares, in the order of their names.
+    /// The state field `name`: the state holds the fields in the order of their names.
     fn field(&self, name: &str) -> StateValue {
-        let names = [
-            "count", "enemy", "grunts", "heroes", "inputs", "lane", "neutral", "owner", "phase",
-            "seen", "team", "teams",
-        ];
-        let at = names.iter().position(|held| *held == name).unwrap();
+        let book = self.world.non_send::<ModeCtx>();
+        let at = book.book().state_field(name).unwrap().index;
         self.world.resource::<ModeState>().get()[at].clone()
     }
 
@@ -512,10 +544,20 @@ fn resources_add_up_and_queries_see_teams_lanes_and_the_dead() {
     assert_eq!(resources.amount(0, "gold"), 0);
     assert_eq!(game.failures(), [Some(ApiError::ResourceOverflow)]);
     // The enemy of a, the 4 grunts with the dead one, b's one hero, the 2 playing teams, the
-    // lane and team of grunt 2, the neutral grunt 1's team, and hero 5's owner.
+    // lane and team of grunt 2, the neutral grunt 1's team, hero 5's owner, the lane of the tower,
+    // which stands on it as grunt 2 walks it, and grunt 2's unit type.
     let text = |text: &str| StateValue::Text(text.to_owned());
     let seen = [
-        "enemy", "grunts", "heroes", "teams", "lane", "team", "neutral", "owner",
+        "enemy",
+        "grunts",
+        "heroes",
+        "teams",
+        "lane",
+        "team",
+        "neutral",
+        "owner",
+        "tower_lane",
+        "kind",
     ]
     .map(|name| game.field(name));
     assert_eq!(
@@ -529,8 +571,57 @@ fn resources_add_up_and_queries_see_teams_lanes_and_the_dead() {
             text("a"),
             text("neutral"),
             StateValue::Int(0),
+            text("mid"),
+            text("grunt"),
         ]
     );
+}
+
+#[test]
+fn a_player_spends_only_their_own_pool() {
+    // Each player's pool holds one whole call of 1000: player 0's spin runs its 1000 and fails,
+    // which spends its pool, so its next input fails unrun; player 1's input in the same tick
+    // runs from its own pool.
+    let spin = r#"
+fn on_mode_input(ctx, player, name, value) {
+    ctx.state.inputs += 1;
+    if name == "fail" {
+        loop {}
+    }
+}
+"#;
+    let limits = ScriptLimits {
+        per_call: 1000,
+        player: 1000,
+        ..LIMITS
+    };
+    let mut game = Game::new(spin, limits);
+    let inputs = |game: &Game| game.field("inputs");
+    game.tick(&[
+        (0, input("fail", "")),
+        (0, input("phase", "")),
+        (1, input("phase", "")),
+    ]);
+    let failures = game.world.non_send::<ScriptFailures>();
+    let errors: Vec<_> = failures
+        .get()
+        .iter()
+        .map(|failure| &failure.error)
+        .collect();
+    assert!(
+        matches!(
+            errors[..],
+            [
+                CallError::Script(ScriptError::CallLimit),
+                CallError::Script(ScriptError::TickBudget)
+            ]
+        ),
+        "{errors:?}"
+    );
+    assert_eq!(inputs(&game), StateValue::Int(1));
+    // Every pool starts full in the next tick.
+    game.tick(&[(0, input("phase", ""))]);
+    assert_eq!(inputs(&game), StateValue::Int(2));
 }
 
 #[test]
@@ -577,4 +668,19 @@ fn on_timer(ctx, name, data) {
     assert_eq!(due(&game), (None, false));
     // Both calls failed, so none counted.
     assert_eq!(game.field("count"), StateValue::Int(0));
+}
+
+#[test]
+fn a_tick_range_holds_its_default_and_a_speed_is_positive() {
+    let hz = |value| NonZeroU32::new(value).unwrap();
+    let range = TickRange::new(hz(20), hz(30), hz(60)).unwrap();
+    assert_eq!(range.default(), hz(30));
+    let held = [19, 20, 60, 61].map(|value| range.contains(hz(value)));
+    assert_eq!(held, [false, true, true, false]);
+    assert!(TickRange::new(hz(30), hz(30), hz(30)).is_some());
+    assert!(TickRange::new(hz(40), hz(30), hz(60)).is_none());
+    assert!(TickRange::new(hz(20), hz(61), hz(60)).is_none());
+    assert_eq!(Speed::new(Num::EPSILON).map(Speed::get), Some(Num::EPSILON));
+    assert!(Speed::new(Num::ZERO).is_none());
+    assert!(Speed::new(-Num::EPSILON).is_none());
 }

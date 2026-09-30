@@ -6,6 +6,7 @@ use crate::combat::combat_data::{AttackData, CombatData};
 use crate::combat::combatant::Combatant;
 use crate::combat::health::Health;
 use crate::mode::error::UnitKitError;
+use crate::mode::manifest::Speed;
 use crate::navigation::move_step::MoveStep;
 use crate::stats::stat::Stat;
 use crate::stats::stats_data::StatsData;
@@ -21,12 +22,11 @@ pub struct UnitKit {
     pub step: Option<MoveStep>,
 }
 
-/// The match's rules a unit type's values meet: its tick rate, and the mode's move speed cap in
-/// meters a second.
+/// The match's rules a unit type's values meet: its tick rate, and the mode's move speed cap.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct KitRules {
     pub rate: TickRate,
-    pub max_move_speed: Num,
+    pub max_move_speed: Speed,
 }
 
 impl UnitKit {
@@ -61,7 +61,7 @@ impl UnitKit {
             })
             .transpose()?;
         let step = if stats.is_some_and(|stats| stats.0.contains_key(&Stat::MoveSpeed)) {
-            let speed = stat(Stat::MoveSpeed)?.min(rules.max_move_speed);
+            let speed = stat(Stat::MoveSpeed)?.min(rules.max_move_speed.get());
             let step =
                 per_tick(speed, rules.rate).ok_or(UnitKitError::Overflow(Stat::MoveSpeed))?;
             Some(MoveStep::new(step).ok_or(UnitKitError::Negative(Stat::MoveSpeed))?)
@@ -101,7 +101,7 @@ fn attack_stats(
         return Ok(melee);
     };
     let speed = speed.to_num().and_then(|speed| per_tick(speed, rules.rate));
-    let cap = per_tick(rules.max_move_speed, rules.rate);
+    let cap = per_tick(rules.max_move_speed.get(), rules.rate);
     match (speed, cap) {
         (Some(speed), Some(cap)) if speed > cap => Ok(melee
             .ranged(speed)

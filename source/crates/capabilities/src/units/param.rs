@@ -3,13 +3,12 @@ use serde::Deserialize;
 use crate::units::ranked::Ranked;
 use crate::units::scalar::Scalar;
 
-/// A param, as `ctx.p` reads it: one value, one per rank, or a scaling table, `base + per_level
-/// × level + Σ ratio × stat` of the source.
+/// A param, as `ctx.p` reads it: one value or one per rank, or a scaling table, `base +
+/// per_level × level + Σ ratio × stat` of the source.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(untagged)]
 pub enum Param {
-    Value(Scalar),
-    PerRank(Vec<Scalar>),
+    Ranked(Ranked<Scalar>),
     Scaling(Scaling),
 }
 
@@ -32,8 +31,7 @@ impl Param {
     /// How many ranks it has values for; `None` when it fits any rank.
     pub fn ranks(&self) -> Option<usize> {
         match self {
-            Param::Value(_) => None,
-            Param::PerRank(values) => Some(values.len()),
+            Param::Ranked(ranked) => ranked.ranks(),
             Param::Scaling(scaling) => scaling.base.ranks(),
         }
     }

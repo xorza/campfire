@@ -9,25 +9,26 @@ use crate::units::unit_type::UnitType;
 /// What a match of a mode needs, from its packages, with its unit types, abilities and AI loaded
 /// into the match: the input of `Mode::install`.
 #[derive(Debug)]
-pub struct ModeSetup {
+pub struct ModeSetup<'a> {
     /// The source of the mode script.
-    pub script: String,
-    pub data: ModeData,
-    pub map: MapData,
+    pub script: &'a str,
+    pub data: &'a ModeData,
+    pub map: &'a MapData,
     /// The playing teams, in the manifest's order; their slots in that order make the player
     /// slots.
-    pub teams: Vec<TeamManifest>,
+    pub teams: &'a [TeamManifest],
     /// The players of the session.
     pub players: u32,
+    /// Every unit type it spawns, heroes' included.
     pub unit_types: Vec<UnitTypeSetup>,
     pub heroes: Vec<HeroSetup>,
     pub spells: Vec<SpellSetup>,
 }
 
-/// A unit type of the mode's `units.toml`, loaded, by name.
+/// A unit type the mode spawns, loaded, with its kit: a type of the mode's `units.toml`, or a
+/// hero's.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnitTypeSetup {
-    pub name: String,
     pub unit_type: UnitType,
     pub kit: UnitKit,
 }
@@ -37,7 +38,6 @@ pub struct UnitTypeSetup {
 pub struct HeroSetup {
     pub id: String,
     pub unit_type: UnitType,
-    pub kit: UnitKit,
     /// Its abilities, in the order of its slots.
     pub abilities: Vec<AbilityId>,
     pub resource: Option<ResourcePool>,

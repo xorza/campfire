@@ -24,12 +24,11 @@ use crate::mode::mode_state::ModeState;
 use crate::mode::picks::{Pick, Picks};
 use crate::mode::player_resources::PlayerResources;
 use crate::mode::timers::Timers;
-use crate::navigation::lane_walker::LaneWalker;
 use crate::navigation::on_lane::OnLane;
 use crate::units::UnitsSet;
 use crate::units::error::CallError;
 use crate::units::hook::Hook;
-use crate::units::script_budgets::ScriptBudgets;
+use crate::units::pool::Pool;
 use crate::units::script_view::{RowExtras, View};
 
 pub(crate) mod calls;
@@ -63,19 +62,18 @@ impl Mode {
         world: &mut World,
         schedule: &mut Schedule,
         registry: &mut StateRegistry,
-        setup: ModeSetup,
+        setup: ModeSetup<'_>,
     ) -> Result<(), ModeError> {
-        let unit_types = &setup.unit_types;
-        let known = |name: &str| unit_types.iter().any(|unit_type| unit_type.name == name);
-        Mode::check(&setup.teams, &setup.map, known)?;
+        let view = world.non_send::<View>().clone();
+        let known = |name: &str| view.unit_type(name).is_some();
+        Mode::check(setup.teams, setup.map, known)?;
         let rate = *world.resource::<TickRate>();
         let book = {
             let mut host = world.non_send_mut::<ScriptHost>();
             ModeCtx::register(host.engine_mut());
-            ModeBook::new(setup, rate, &mut host)?
+            ModeBook::new(setup, rate, &mut host, &view)?
         };
         world.insert_resource(book.lanes.clone());
-        let view = world.non_send::<View>().clone();
         let lanes = book.lanes.names().map(Box::from).collect();
         view.set_names(book.team_names(), lanes, read_extras);
         world.insert_resource(ModeState(book.state_initial.clone()));
@@ -175,25 +173,23 @@ impl Mode {
         if !ctx.book().on_match_start {
             return Ok(());
         }
-        let mut budget = world.resource::<ScriptBudgets>().mode;
-        let started = Calls::batch(world, &ctx, &mut budget, 0, |call| {
-            call.run(Hook::OnMatchStart, (call.ctx.clone(),))
-        });
-        world.resource_mut::<ScriptBudgets>().mode = budget;
-        started.map_err(CallError::from_script)
+        let now = world.resource::<SimTick>().start();
+        Calls::batch(world, &ctx, now, |call| {
+            call.run(Pool::Mode, Hook::OnMatchStart, (call.ctx.clone(),))
+        })
+        .map_err(CallError::from_script)
     }
 }
 
 /// A unit's lane and owner, which the core's view reads through the mode.
 fn read_extras(unit: &EntityRef<'_>) -> RowExtras {
-    let lane = unit.get::<LaneWalker>().map(|walker| walker.lane());
     RowExtras {
-        lane: lane.or_else(|| unit.get::<OnLane>().map(|on| on.get())),
+        lane: unit.get::<OnLane>().map(|lane| lane.get()),
         owner: unit.get::<Controller>().map(|controller| controller.slot()),
     }
 }
 
-/// Runs `on_mode_input` for each mode input of the tick, in input order, from the input pool. An
+/// Runs `on_mode_input` for each mode input of the tick, in input order, from its player's pool. An
 /// input whose name the mode does not declare, or whose value is not of its type, is ignored.
 fn mode_inputs(
     world: &mut World,
@@ -219,10 +215,9 @@ fn mode_inputs(
     if inputs.is_empty() {
         return;
     }
-    let now = world.resource::<SimTick>().get();
-    let mut budget = world.resource::<ScriptBudgets>().input;
+    let now = world.resource::<SimTick>().start();
     let bodies = &*bodies;
-    Calls::batch(world, &ctx, &mut budget, now, |call| {
+    Calls::batch(world, &ctx, now, |call| {
         for input in &*inputs {
             let Some(decoded) = ModeInput::decode(&bodies[input.body.clone()], |name| {
                 call.ctx.book().input_type(name)
@@ -240,12 +235,12 @@ fn mode_inputs(
             };
             let name = ImmutableString::from(decoded.name);
             let args = (call.ctx.clone(), INT::from(input.slot), name, value);
-            if let Err(error) = call.run(Hook::OnModeInput, args) {
-                call.record(Hook::OnModeInput, error);
+            if let Err(error) = call.run(Pool::Player(input.slot), Hook::OnModeInput, args) {
+                let error = CallError::from_script(error);
+                call.batch.record(None, Hook::OnModeInput, error);
             }
         }
     });
-    world.resource_mut::<ScriptBudgets>().input = budget;
 }
 
 /// One mode input of the tick: its player's slot, and its body in the scratch buffer.
@@ -258,14 +253,13 @@ struct Input {
 /// Runs `on_timer` for each timer due in this tick's Mode stage, earliest first, from the mode
 /// pool. A timer whose call finds the pool spent stays due, and fires in a later tick.
 fn run_timers(world: &mut World) {
-    let now = world.resource::<SimTick>().get() + 1;
+    let now = world.resource::<SimTick>().end();
     if world.resource::<Timers>().due(now).is_none() {
         return;
     }
     let ctx = world.non_send::<ModeCtx>().clone();
-    let mut budget = world.resource::<ScriptBudgets>().mode;
-    Calls::batch(world, &ctx, &mut budget, now, |call| {
-        while let Some(timer) = call.world.resource::<Timers>().due(now) {
+    Calls::batch(world, &ctx, now, |call| {
+        while let Some(timer) = call.batch.world().resource::<Timers>().due(now) {
             let name = ImmutableString::from(timer.name.as_str());
             let data = timer
                 .data
@@ -273,16 +267,18 @@ fn run_timers(world: &mut World) {
                 .map_or(Dynamic::UNIT, |data| data.to_dynamic(call.ctx.view()));
             if call.ctx.book().on_timer {
                 let args = (call.ctx.clone(), name, data);
-                match call.run(Hook::OnTimer, args) {
+                match call.run(Pool::Mode, Hook::OnTimer, args) {
                     Ok(()) => {}
                     Err(ScriptError::TickBudget) => break,
-                    Err(error) => call.record(Hook::OnTimer, error),
+                    Err(error) => {
+                        let error = CallError::from_script(error);
+                        call.batch.record(None, Hook::OnTimer, error);
+                    }
                 }
             }
-            call.world.resource_mut::<Timers>().fire();
+            call.batch.world().resource_mut::<Timers>().fire();
         }
     });
-    world.resource_mut::<ScriptBudgets>().mode = budget;
 }
 
 #[cfg(test)]

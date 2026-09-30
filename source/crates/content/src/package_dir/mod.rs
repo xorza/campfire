@@ -1,11 +1,12 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use campfire_protocol::Fingerprint;
+use serde::Serialize;
 use serde::de::DeserializeOwned;
 use sha2::{Digest, Sha256};
 
 use crate::error::ContentError;
-use crate::fingerprint::{FileRow, Fingerprint};
 use crate::package_path::PackagePath;
 
 /// A package's files on disk, as the workspace holds them before a package is built.
@@ -43,7 +44,9 @@ impl PackageDir {
                 sha256: Sha256::digest(&bytes).into(),
             });
         }
-        Ok(Fingerprint::of(&rows))
+        debug_assert!(rows.is_sorted_by(|a, b| a.path.as_bytes() < b.path.as_bytes()));
+        let list = postcard::to_allocvec(&rows).expect("a file list always encodes");
+        Ok(Fingerprint::new(Sha256::digest(list).into()))
     }
 
     /// The files under the directory `dir` of the package, sorted by path; none when it has no
@@ -116,6 +119,15 @@ impl PackageDir {
         }
         Ok(())
     }
+}
+
+/// One row of a package's file list, as its fingerprint hashes it.
+#[derive(Debug, Serialize)]
+struct FileRow {
+    /// Relative to the package root, with `/` separators.
+    path: String,
+    size: u64,
+    sha256: [u8; 32],
 }
 
 /// A file found under a package's root: its path from the root, with `/` separators, and on disk.

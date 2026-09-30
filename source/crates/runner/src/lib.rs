@@ -4,13 +4,14 @@
 
 mod error;
 mod load_check;
+mod match_build;
 mod mode_packages;
 mod package;
 mod runner;
 mod script_facts;
 mod session;
 
-pub use error::{LoadError, LoadProblem, Place, Pool, StartError};
+pub use error::{CtxMisuse, LoadError, LoadProblem, Place, StartError};
 pub use mode_packages::ModePackages;
 pub use runner::Runner;
 pub use session::Session;

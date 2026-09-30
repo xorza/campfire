@@ -5,9 +5,9 @@ use campfire_script::ScriptHost;
 use campfire_sim::{SimSet, StateRegistry, TickRate};
 
 use crate::units::error::UnitTypeError;
+use crate::units::match_scripts::MatchScripts;
 use crate::units::script_budgets::ScriptBudgets;
 use crate::units::script_failures::ScriptFailures;
-use crate::units::script_limits::ScriptLimits;
 use crate::units::script_view::View;
 use crate::units::unit::Unit;
 use crate::units::unit_type::UnitType;
@@ -18,11 +18,14 @@ pub(crate) mod error;
 pub(crate) mod filter;
 pub(crate) mod filter_data;
 pub(crate) mod hook;
+pub(crate) mod match_scripts;
 pub(crate) mod number;
 pub(crate) mod param;
+pub(crate) mod pool;
 pub(crate) mod ranked;
 pub(crate) mod relation;
 pub(crate) mod scalar;
+pub(crate) mod script_batch;
 pub(crate) mod script_budgets;
 pub(crate) mod script_failures;
 pub(crate) mod script_limits;
@@ -49,32 +52,40 @@ pub(crate) enum UnitsSet {
 pub struct Units;
 
 impl Units {
-    /// Adds the core to a match, scripts running within `limits`: in Inputs, every pool starts
-    /// full and the last tick's failures clear.
+    /// Adds the core to a match. With `scripts`, scripts run within their limits: in Inputs,
+    /// every pool starts full and the last tick's failures clear. A client runs no scripts.
     pub fn install(
         world: &mut World,
         schedule: &mut Schedule,
         registry: &mut StateRegistry,
-        limits: ScriptLimits,
+        scripts: Option<MatchScripts>,
     ) {
         let rate = *world.resource::<TickRate>();
+        world.insert_non_send(View::new(rate));
+        registry.register_component::<UnitType>();
+        let Some(MatchScripts { limits, players }) = scripts else {
+            return;
+        };
         let mut host = ScriptHost::new(limits.per_call);
         Unit::register(host.engine_mut());
         world.insert_non_send(host);
-        world.insert_non_send(View::new(rate));
         world.insert_non_send(ScriptFailures::default());
-        world.insert_resource(ScriptBudgets::new(limits));
+        world.insert_resource(ScriptBudgets::new(limits, players));
         schedule.add_systems(
             begin_tick
                 .in_set(SimSet::Inputs)
                 .in_set(UnitsSet::BeginTick),
         );
-        registry.register_component::<UnitType>();
     }
 
-    /// Loads a unit type's core fields into the match: its tags and its params.
-    pub fn load_type(world: &mut World, data: &UnitTypeData) -> Result<UnitType, UnitTypeError> {
-        world.non_send::<View>().types_mut().load(data)
+    /// Loads the unit type `name`, with its core fields: its tags and its params. A name is one
+    /// type's only.
+    pub fn load_type(
+        world: &mut World,
+        name: &str,
+        data: &UnitTypeData,
+    ) -> Result<UnitType, UnitTypeError> {
+        world.non_send::<View>().types_mut().load(name, data)
     }
 }
 

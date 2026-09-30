@@ -31,6 +31,18 @@ impl Position {
     pub const fn get(self) -> Vec3 {
         self.0
     }
+
+    /// The offset from here to `to` on the ground plane: heights never count towards a range.
+    pub fn ground_offset(self, to: Position) -> Vec3 {
+        let offset = to.0 - self.0;
+        Vec3::new(offset.x, Num::ZERO, offset.z)
+    }
+
+    /// Whether `to` is within `radius` of here on the ground plane, exactly: the test of every
+    /// range and query radius, so all agree on what is in reach.
+    pub fn within_ground(self, to: Position, radius: Num) -> bool {
+        Vec3::ZERO.within(self.ground_offset(to), radius)
+    }
 }
 
 impl SimComponent for Position {
@@ -65,5 +77,18 @@ mod tests {
             assert_eq!(decoded.ok(), Position::new(at), "{at:?}");
         }
         assert_eq!(Position::BOUND, Num::from_int(1 << 20).unwrap());
+    }
+
+    #[test]
+    fn reach_counts_the_ground_plane_only() {
+        let num = |value| Num::from_int(value).unwrap();
+        let at = |x, y, z| Position::new(Vec3::new(num(x), num(y), num(z))).unwrap();
+        // 3 m along x and 4 m along z: 5 m on the ground, whatever the heights.
+        let (from, to) = (at(1, 0, 1), at(4, 9, 5));
+        assert_eq!(from.ground_offset(to), Vec3::new(num(3), Num::ZERO, num(4)));
+        let reaches = [num(5) - Num::EPSILON, num(5), num(5) + Num::EPSILON]
+            .map(|radius| from.within_ground(to, radius));
+        assert_eq!(reaches, [false, true, true]);
+        assert_eq!(Position::ORIGIN.get(), Vec3::ZERO);
     }
 }

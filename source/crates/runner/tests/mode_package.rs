@@ -10,13 +10,14 @@ use campfire_capabilities::{
     Controller, Hook, InputValue, LaneWalker, ModeError, ModeInput, ModeState, PlayerResources,
     ScriptFailures, StateValue, Team, UnitType,
 };
+use campfire_content::ContentError;
 use campfire_math::{Num, Vec3};
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
 use campfire_protocol::{
     Delegation, DelegationTerms, InputChain, PlayerSlot, SeedChain, SessionHeader, SessionLog,
     SessionTerms,
 };
-use campfire_runner::{LoadError, LoadProblem, ModePackages, Place, Pool, RELEASE, Runner};
+use campfire_runner::{CtxMisuse, LoadError, LoadProblem, ModePackages, Place, RELEASE, Runner};
 use campfire_sim::{Capability, EntityIndex, Position, StableId, StateHash};
 
 /// The 3v3's slowest rate, which runs a match in the fewest ticks.
@@ -63,11 +64,8 @@ fn terms(packages: &ModePackages) -> SessionTerms {
         max_inputs_per_tick: 4,
         seed_commitment: SEED_CHAIN.commitment(),
         release: RELEASE.to_owned(),
-        mode: *packages.fingerprint().as_bytes(),
-        dependencies: packages
-            .dependencies()
-            .map(|dependency| *dependency.as_bytes())
-            .collect(),
+        mode: packages.fingerprint(),
+        dependencies: packages.dependencies().collect(),
     }
 }
 
@@ -345,6 +343,14 @@ const GALE: &str = "heroes/gale/data/hero.toml";
 const LASH_OUT: &str = "heroes/husk/scripts/lash_out.rhai";
 const CREEP_AI: &str = "modes/3v3/scripts/creep_ai.rhai";
 const MODE: &str = "moba-3v3";
+/// A package whose manifest does not read has no name, so its directory names it.
+const MODE_DIR: &str = "modes/3v3";
+
+/// Whether `problem` is the manifest failing to read with a message that starts with `message`.
+fn manifest_fails(problem: &LoadProblem, message: &str) -> bool {
+    matches!(problem, LoadProblem::Content(ContentError::Data { path, error })
+        if path.to_string() == "manifest.toml" && error.message().starts_with(message))
+}
 
 #[test]
 fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
@@ -357,7 +363,7 @@ fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 38] = [
+const FLAWS: [Flaw; 43] = [
     flaw(
         MANIFEST,
         Edit::Replace(r#"engine = "0.1.0""#, r#"engine = "0.0.9""#),
@@ -373,23 +379,20 @@ const FLAWS: [Flaw; 38] = [
     flaw(
         MANIFEST,
         Edit::Replace(r#"["combat","#, r#"["mode", "combat","#),
-        MODE,
-        |problem| matches!(problem, LoadProblem::DeclaresMode),
+        MODE_DIR,
+        |problem| manifest_fails(problem, "declares mode, which every match has"),
     ),
     flaw(
         MANIFEST,
         Edit::Replace(r#"["combat","#, r#"["combat", "combat","#),
-        MODE,
-        |problem| matches!(problem, LoadProblem::RepeatedCapability(Capability::Combat)),
+        MODE_DIR,
+        |problem| manifest_fails(problem, "declares Combat twice"),
     ),
     flaw(
         MANIFEST,
         Edit::Replace(r#", "navigation""#, ""),
-        MODE,
-        |problem| {
-            let needs = (Capability::Orders, Capability::Navigation);
-            matches!(problem, LoadProblem::CapabilityNeeds { capability, needs: navigation } if (*capability, *navigation) == needs)
-        },
+        MODE_DIR,
+        |problem| manifest_fails(problem, "declares Orders without Navigation"),
     ),
     flaw(
         MANIFEST,
@@ -400,27 +403,27 @@ const FLAWS: [Flaw; 38] = [
     flaw(
         MANIFEST,
         Edit::Replace("min = 20", "min = 40"),
-        MODE,
-        |problem| matches!(problem, LoadProblem::TickRange),
+        MODE_DIR,
+        |problem| manifest_fails(problem, "the tick rate range does not hold its default"),
     ),
-    // A whole call of 20 000 for each of the 6 players is 120 000.
+    // A player's pool below the whole call of 20 000.
     flaw(
         MANIFEST,
-        Edit::Replace("input = 120000", "input = 119999"),
-        MODE,
-        |problem| matches!(problem, LoadProblem::PoolTooSmall(Pool::Input)),
+        Edit::Replace("player = 40000", "player = 19999"),
+        MODE_DIR,
+        |problem| manifest_fails(problem, "a script pool holds less than a whole call"),
     ),
     flaw(
         MANIFEST,
         Edit::Replace("mode = 100000", "mode = 19999"),
-        MODE,
-        |problem| matches!(problem, LoadProblem::PoolTooSmall(Pool::Mode)),
+        MODE_DIR,
+        |problem| manifest_fails(problem, "a script pool holds less than a whole call"),
     ),
     flaw(
         MANIFEST,
         Edit::Replace(r#"max_move_speed = "6.0""#, r#"max_move_speed = "0""#),
-        MODE,
-        |problem| matches!(problem, LoadProblem::MoveSpeedCap),
+        MODE_DIR,
+        |problem| manifest_fails(problem, "a speed is a positive number"),
     ),
     flaw(
         MANIFEST,
@@ -490,6 +493,49 @@ const FLAWS: [Flaw; 38] = [
         Edit::Replace("fn think(ctx, unit)", "fn think(ctx, unit, more)"),
         MODE,
         |problem| matches!(problem, LoadProblem::UnknownHook { function, .. } if function == "think"),
+    ),
+    flaw(
+        LASH_OUT,
+        Edit::Replace("    for unit in", "    let c = ctx;\n    for unit in"),
+        "hero-husk",
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::CtxMisuse {
+                    misuse: CtxMisuse::Stray,
+                    ..
+                }
+            )
+        },
+    ),
+    flaw(
+        CREEP_AI,
+        Edit::Replace("fn defend_hero(ctx, unit)", "fn defend_hero(c, unit)"),
+        MODE,
+        |problem| matches!(problem, LoadProblem::CtxMisuse { misuse: CtxMisuse::Renamed { function }, .. } if function == "defend_hero"),
+    ),
+    flaw(
+        LASH_OUT,
+        Edit::Replace(
+            "fn on_damage_taken(ctx, m, d)",
+            "fn on_damage_taken(m, ctx, d)",
+        ),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::CtxMisuse { misuse: CtxMisuse::HookParam { function }, .. } if function == "on_damage_taken"),
+    ),
+    flaw(
+        LASH_OUT,
+        Edit::Replace("    for unit in", "    let ctx = 1;\n    for unit in"),
+        "hero-husk",
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::CtxMisuse {
+                    misuse: CtxMisuse::Bound,
+                    ..
+                }
+            )
+        },
     ),
     flaw(
         LASH_OUT,
@@ -600,6 +646,12 @@ const FLAWS: [Flaw; 38] = [
         MODE,
         |problem| matches!(problem, LoadProblem::Mode(ModeError::NeutralTeam)),
     ),
+    flaw(
+        "heroes/kensho/data/hero.toml",
+        Edit::Replace(r#"targeting = "enemies""#, r#"targeting = "enemies:ward""#),
+        "hero-kensho",
+        |problem| matches!(problem, LoadProblem::UnknownFilter { filter, .. } if filter == "enemies:ward"),
+    ),
     // A second spells package with a spell the first holds.
     Flaw {
         file: MANIFEST,
@@ -634,7 +686,7 @@ fn every_flaw_of_a_package_fails_its_load_with_its_own_problem() {
         let error = ModePackages::from_dir(&dir).expect_err(flaw.file);
         let LoadError { package, problem } = &error;
         assert!(
-            package == flaw.package && (flaw.refused)(problem),
+            Path::new(package).ends_with(flaw.package) && (flaw.refused)(problem),
             "{flaw:?}: {error}"
         );
     }

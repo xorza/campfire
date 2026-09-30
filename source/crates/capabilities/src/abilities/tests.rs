@@ -4,12 +4,14 @@ use std::num::NonZeroU32;
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::Component;
 use campfire_content::PackagePath;
-use campfire_math::SegmentSeed;
+use campfire_math::{SegmentSeed, Vec3};
 use campfire_script::{NumError, ScriptError};
 use campfire_sim::{IdAllocator, SimUpdate, TickInput, TickInputs};
 
 use super::*;
+use crate::abilities::ability_data::RangeField;
 use crate::abilities::ability_slots::AbilitySlot;
+use crate::abilities::error::AbilityField;
 use crate::combat::Combat;
 use crate::combat::attack_stats::AttackStats;
 use crate::combat::combatant::Combatant;
@@ -17,14 +19,17 @@ use crate::combat::health::Health;
 use crate::combat::on_death::OnDeath;
 use crate::control::Control;
 use crate::control::ai_data::AiData;
-use crate::control::controller::Controller;
 use crate::control::order::{Action, Order};
 use crate::navigation::Navigation;
 use crate::units::Units;
 use crate::units::error::ApiError;
+use crate::units::filter_data::FilterData;
+use crate::units::match_scripts::MatchScripts;
+use crate::units::number::{Number, ParamRef};
 use crate::units::param::Scaling;
 use crate::units::ranked::Ranked;
-use crate::units::relation::Relation;
+use crate::units::script_budgets::ScriptBudgets;
+use crate::units::script_failures::{ScriptFailure, ScriptFailures};
 use crate::units::script_limits::ScriptLimits;
 use crate::units::unit_type_data::UnitTypeData;
 
@@ -33,11 +38,21 @@ const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
 
 const LIMITS: ScriptLimits = ScriptLimits {
     per_call: 10_000,
-    input: 100_000,
+    player: 100_000,
     think: 100_000,
     mode: 100_000,
 };
 const LASH_OUT: &str = include_str!("../../../../packages/moba/heroes/husk/scripts/lash_out.rhai");
+
+fn int(value: i64) -> Number {
+    Number::Value(Scalar::Int(value))
+}
+
+fn param(name: &str) -> Number {
+    Number::Param(ParamRef {
+        param: name.to_owned(),
+    })
+}
 
 fn num(value: i64) -> Num {
     Num::from_int(value).unwrap()
@@ -63,13 +78,15 @@ fn combatant(health: i64) -> Combatant {
 /// Husk's Lash Out as its data declares it: no target, a cooldown of 10 s down to 6 s, 35 of the
 /// caster's resource, and damage within 3.5 m of 75 to 175, plus half the caster's ability power.
 fn lash_out() -> AbilityData {
-    let ints = |values: &[i64]| values.iter().map(|&value| Scalar::Int(value)).collect();
+    let scalars = |values: &[i64]| values.iter().map(|&value| Scalar::Int(value)).collect();
     AbilityData {
         script: Some(PackagePath::parse("scripts/lash_out.rhai").unwrap()),
         targeting: Targeting::None,
         range: None,
-        cooldown_ms: Some(Ranked::PerRank(vec![10_000, 9000, 8000, 7000, 6000])),
-        cost: Some(Ranked::One(35)),
+        cooldown_ms: Some(Ranked::PerRank(
+            [10_000, 9000, 8000, 7000, 6000].map(int).to_vec(),
+        )),
+        cost: Some(Ranked::One(int(35))),
         cast_time_ms: None,
         clamp_to_range: false,
         toggle: None,
@@ -85,12 +102,12 @@ fn lash_out() -> AbilityData {
         params: BTreeMap::from([
             (
                 "radius".to_owned(),
-                Param::Value(Scalar::Decimal(halves(7))),
+                Param::Ranked(Ranked::One(Scalar::Decimal(halves(7)))),
             ),
             (
                 "damage".to_owned(),
                 Param::Scaling(Scaling {
-                    base: Ranked::PerRank(ints(&[75, 100, 125, 150, 175])),
+                    base: Ranked::PerRank(scalars(&[75, 100, 125, 150, 175])),
                     per_level: None,
                     ad: None,
                     bonus_ad: None,
@@ -101,7 +118,10 @@ fn lash_out() -> AbilityData {
                     magic_resist: None,
                 }),
             ),
-            ("cooldown_cut_ms".to_owned(), Param::Value(Scalar::Int(500))),
+            (
+                "cooldown_cut_ms".to_owned(),
+                Param::Ranked(Ranked::One(Scalar::Int(500))),
+            ),
         ]),
     }
 }
@@ -110,10 +130,10 @@ fn lash_out() -> AbilityData {
 fn strike() -> AbilityData {
     AbilityData {
         script: Some(PackagePath::parse("strike.rhai").unwrap()),
-        targeting: Targeting::Unit(Relation::Enemies),
-        range: Some(Ranked::One(Range::Meters(num(5)))),
-        cooldown_ms: Some(Ranked::One(1001)),
-        cost: Some(Ranked::One(10)),
+        targeting: Targeting::Unit(FilterData::parse("enemies").unwrap()),
+        range: Some(Ranked::One(RangeField::Range(Range::Meters(num(5))))),
+        cooldown_ms: Some(Ranked::One(int(1001))),
+        cost: Some(Ranked::One(int(10))),
         cast_time_ms: None,
         clamp_to_range: false,
         toggle: None,
@@ -126,7 +146,10 @@ fn strike() -> AbilityData {
         projectile: None,
         area: None,
         projectile_state: BTreeMap::new(),
-        params: BTreeMap::from([("damage".to_owned(), Param::Value(Scalar::Int(50)))]),
+        params: BTreeMap::from([(
+            "damage".to_owned(),
+            Param::Ranked(Ranked::One(Scalar::Int(50))),
+        )]),
     }
 }
 
@@ -141,11 +164,17 @@ struct Match {
 
 impl Match {
     fn new() -> Match {
+        Match::with(LIMITS)
+    }
+
+    /// A match of two players whose scripts run within `limits`.
+    fn with(limits: ScriptLimits) -> Match {
         let mut world = World::new();
         SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), RATE);
         let mut schedule = SimUpdate::schedule();
         let mut registry = StateRegistry::new();
-        Units::install(&mut world, &mut schedule, &mut registry, LIMITS);
+        let scripts = MatchScripts { limits, players: 2 };
+        Units::install(&mut world, &mut schedule, &mut registry, Some(scripts));
         Combat::install(&mut world, &mut schedule, &mut registry);
         Navigation::install(&mut world, &mut schedule, &mut registry);
         Abilities::install(&mut world, &mut schedule, &mut registry);
@@ -155,7 +184,7 @@ impl Match {
     }
 
     fn load(&mut self, data: &AbilityData, source: &str) -> AbilityId {
-        Abilities::load(&mut self.world, data, Some(source)).unwrap()
+        Abilities::load(&mut self.world, data, Some(source), 5).unwrap()
     }
 
     fn spawn(&mut self, team: u8, at: Position, parts: impl Bundle) -> StableId {
@@ -179,14 +208,21 @@ impl Match {
     }
 
     fn cast(&mut self, unit: StableId, target: CastTarget) {
-        let payload = Order::payload(&[Order {
-            unit,
-            action: Action::Cast { slot: 0, target },
-        }]);
-        self.world.resource_mut::<TickInputs>().push(TickInput {
-            slot: 0,
-            payload: &payload,
-        });
+        self.casts(&[(0, unit, target)]);
+    }
+
+    /// Runs a tick in which each player's slot orders its unit to cast at its target.
+    fn casts(&mut self, casts: &[(u32, StableId, CastTarget)]) {
+        for &(slot, unit, target) in casts {
+            let payload = Order::payload(&[Order {
+                unit,
+                action: Action::Cast { slot: 0, target },
+            }]);
+            self.world.resource_mut::<TickInputs>().push(TickInput {
+                slot,
+                payload: &payload,
+            });
+        }
         self.world.run_schedule(SimUpdate);
     }
 
@@ -276,7 +312,7 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
     let enemy = game.spawn(1, at(num(5), Num::ZERO, Num::ZERO), ());
     // Eleven units whose AI spins, all due in every tick: ten calls fail at the 10 000 limit and
     // spend the 100 000 of the think pool, and the eleventh finds it spent.
-    let spinner = Units::load_type(&mut game.world, &UnitTypeData::default()).unwrap();
+    let spinner = Units::load_type(&mut game.world, "spinner", &UnitTypeData::default()).unwrap();
     let ai = AiData {
         ai: PackagePath::parse("scripts/ai.rhai").unwrap(),
         think_ms: 1,
@@ -287,14 +323,15 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
         game.spawn(2, at(Num::ZERO, Num::ZERO, num(20 + z)), spinner);
     }
 
-    // The cast in the same tick draws from the input pool, whole: 500 → 450, 100 → 90.
+    // The cast in the same tick draws from its player's pool, whole: 500 → 450, 100 → 90.
     game.cast(caster, CastTarget::Unit(enemy));
     assert_eq!(game.health(enemy), 450);
     assert_eq!(game.pool(caster), 90);
     let failures = game.failures();
     assert_eq!(failures.len(), 10);
     assert!(failures.iter().all(|failure| failure.hook == Hook::Think));
-    assert_eq!(game.world.resource::<ScriptBudgets>().think.left(), 0);
+    let mut budgets = game.world.resource_mut::<ScriptBudgets>();
+    assert_eq!(budgets.get_mut(Pool::Think).left(), 0);
 }
 
 #[test]
@@ -390,8 +427,8 @@ fn a_failed_script_changes_nothing_and_fails_the_same_way_everywhere() {
                 assert_eq!(failures[0].unit, Some(caster));
                 assert_eq!(failures[0].hook, Hook::OnCast);
                 assert!(expected(&failures[0].error), "{:?}", failures[0].error);
-                let left = game.world.resource::<ScriptBudgets>().input.left();
-                spent.push(LIMITS.input - left);
+                let mut budgets = game.world.resource_mut::<ScriptBudgets>();
+                spent.push(LIMITS.player - budgets.get_mut(Pool::Player(0)).left());
             } else {
                 game.world.run_schedule(SimUpdate);
             }
@@ -409,22 +446,94 @@ fn a_failed_script_changes_nothing_and_fails_the_same_way_everywhere() {
 }
 
 #[test]
+fn a_cast_draws_from_its_casters_player_pool() {
+    // Each player's pool holds one whole call: player 0's spinning cast spends all of its pool,
+    // and player 1's strike in the same tick still resolves from its own, which it spends as it
+    // does alone.
+    let mut left = Vec::new();
+    for spins in [true, false] {
+        let mut game = Match::with(ScriptLimits {
+            player: LIMITS.per_call,
+            ..LIMITS
+        });
+        let data = AbilityData {
+            params: BTreeMap::new(),
+            ..lash_out()
+        };
+        let spin = game.load(&data, "fn on_cast(ctx, caster, target) { loop {} }");
+        let strike = game.load(&strike(), STRIKE);
+        let spinner = game.caster(spin, 1);
+        let striker = game.spawn(
+            0,
+            at(Num::ZERO, Num::ZERO, num(1)),
+            (
+                Controller::new(1),
+                AbilitySlots::new([(strike, 1)]),
+                ResourcePool::new(num(100)).unwrap(),
+            ),
+        );
+        let enemy = game.spawn(1, at(num(1), Num::ZERO, Num::ZERO), ());
+        let casts = [
+            (0, spinner, CastTarget::None),
+            (1, striker, CastTarget::Unit(enemy)),
+        ];
+        game.casts(if spins { &casts } else { &casts[1..] });
+        let failures = game.failures();
+        assert_eq!(failures.len(), usize::from(spins));
+        if spins {
+            assert_eq!(failures[0].unit, Some(spinner));
+            assert!(matches!(
+                failures[0].error,
+                CallError::Script(ScriptError::CallLimit)
+            ));
+        }
+        // The strike's 50 true damage: 500 → 450, and its cost of 10: 100 → 90.
+        assert_eq!(game.health(enemy), 450);
+        assert_eq!(game.pool(striker), 90);
+        let mut budgets = game.world.resource_mut::<ScriptBudgets>();
+        let spent = if spins { 0 } else { LIMITS.per_call };
+        assert_eq!(budgets.get_mut(Pool::Player(0)).left(), spent);
+        left.push(budgets.get_mut(Pool::Player(1)).left());
+    }
+    assert_eq!(left[0], left[1]);
+    assert!(left[0] < LIMITS.per_call);
+}
+
+#[test]
 fn an_ability_loads_only_when_its_data_holds() {
     let mut game = Match::new();
     let load = |game: &mut Match, data: &AbilityData, source: Option<&str>| {
-        Abilities::load(&mut game.world, data, source)
+        Abilities::load(&mut game.world, data, source, 5)
     };
     let mut uneven = lash_out();
-    uneven.cost = Some(Ranked::PerRank(vec![35, 40]));
+    uneven.cost = Some(Ranked::PerRank(vec![int(35), int(40)]));
     let mut aimed = lash_out();
     aimed.targeting = Targeting::Direction;
     let mut unscripted = lash_out();
     unscripted.script = None;
     let mut forever = lash_out();
-    forever.cooldown_ms = Some(Ranked::One(u64::MAX));
-    let cases: [(AbilityData, Option<&str>, fn(&AbilityError) -> bool); 4] = [
+    forever.cooldown_ms = Some(Ranked::One(int(i64::MAX)));
+    let mut scaled = lash_out();
+    scaled.cooldown_ms = Some(Ranked::One(param("damage")));
+    let mut negative = lash_out();
+    negative.cost = Some(Ranked::One(int(-1)));
+    let mut unknown = lash_out();
+    unknown.range = Some(Ranked::One(RangeField::Param(ParamRef {
+        param: "reach".to_owned(),
+    })));
+    let cases: [(AbilityData, Option<&str>, fn(&AbilityError) -> bool); 7] = [
         (uneven, Some(LASH_OUT), |error| {
-            matches!(error, AbilityError::RankCounts)
+            matches!(error, AbilityError::RankCount(5))
+        }),
+        // A scaling param is the caster's value, which no cooldown may take.
+        (scaled, Some(LASH_OUT), |error| {
+            matches!(error, AbilityError::Field(AbilityField::Cooldown))
+        }),
+        (negative, Some(LASH_OUT), |error| {
+            matches!(error, AbilityError::Field(AbilityField::Cost))
+        }),
+        (unknown, Some(LASH_OUT), |error| {
+            matches!(error, AbilityError::Field(AbilityField::Range))
         }),
         (unscripted, Some(LASH_OUT), |error| {
             matches!(error, AbilityError::ScriptMismatch)
@@ -457,4 +566,77 @@ fn an_ability_loads_only_when_its_data_holds() {
     assert!(game.failures().is_empty());
     assert_eq!(game.pool(caster), 65);
     assert_eq!(game.slot(caster).ready_at, 300);
+}
+
+#[test]
+fn a_capability_field_reads_its_param_at_each_rank() {
+    // A cooldown of `{ param = "cd" }`, 1000 ms at rank 1 up to 3000 at rank 3: 30, 60 and 90
+    // ticks at 30 a second, and a cost of `{ param = "price" }`, 7 at every rank.
+    let mut data = strike();
+    data.cooldown_ms = Some(Ranked::One(param("cd")));
+    data.cost = Some(Ranked::PerRank(vec![int(5), param("price"), int(9)]));
+    let per_rank = |values: &[i64]| {
+        Param::Ranked(Ranked::PerRank(
+            values.iter().map(|&value| Scalar::Int(value)).collect(),
+        ))
+    };
+    data.params
+        .insert("cd".to_owned(), per_rank(&[1000, 2000, 3000]));
+    data.params.insert(
+        "price".to_owned(),
+        Param::Ranked(Ranked::One(Scalar::Int(7))),
+    );
+    let mut game = Match::new();
+    let id = Abilities::load(&mut game.world, &data, Some(STRIKE), 3).unwrap();
+    let book = game.world.resource::<AbilityBook>();
+    let ranks: Vec<_> = book
+        .get(id)
+        .unwrap()
+        .ranks
+        .iter()
+        .map(|values| (values.cooldown, values.cost))
+        .collect();
+    assert_eq!(ranks, [(30, 5), (60, 7), (90, 9)]);
+    // Three ranks of an array of 3 is the rank count; five is not.
+    assert!(matches!(
+        Abilities::load(&mut game.world, &data, Some(STRIKE), 5),
+        Err(AbilityError::RankCount(5))
+    ));
+}
+
+#[test]
+fn a_unit_target_is_one_its_filter_selects_tag_and_all() {
+    let mut game = Match::new();
+    let mut load_type = |name: &str| {
+        let data = UnitTypeData {
+            tags: vec![name.to_owned()],
+            params: BTreeMap::new(),
+        };
+        Units::load_type(&mut game.world, name, &data).unwrap()
+    };
+    let (hero, creep) = (load_type("hero"), load_type("creep"));
+    let mut heroes_only = strike();
+    heroes_only.targeting = Targeting::Unit(FilterData::parse("enemies:hero").unwrap());
+    let strike = game.load(&heroes_only, STRIKE);
+    let caster = game.caster(strike, 1);
+    let enemy_creep = game.spawn(1, at(num(3), Num::ZERO, Num::ZERO), creep);
+    let enemy_hero = game.spawn(1, at(num(4), Num::ZERO, Num::ZERO), hero);
+    // The creep is an enemy, but no hero: the cast goes nowhere. The hero takes 50.
+    game.cast(caster, CastTarget::Unit(enemy_creep));
+    assert_eq!(game.health(enemy_creep), 500);
+    game.cast(caster, CastTarget::Unit(enemy_hero));
+    assert_eq!(game.health(enemy_hero), 450);
+
+    // A tag no unit type declares fails the load.
+    let unknown = strike_data_with("enemies:ward");
+    assert!(matches!(
+        Abilities::load(&mut game.world, &unknown, Some(STRIKE), 1),
+        Err(AbilityError::UnknownTag(filter)) if filter == "enemies:ward"
+    ));
+}
+
+fn strike_data_with(filter: &str) -> AbilityData {
+    let mut data = strike();
+    data.targeting = Targeting::Unit(FilterData::parse(filter).unwrap());
+    data
 }

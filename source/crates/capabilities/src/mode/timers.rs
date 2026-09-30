@@ -4,8 +4,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::units::state_value::StateValue;
 
-/// The mode's timers, earliest first. Times count ticks from the match start: the Mode stage of
-/// tick `t` is at time `t + 1`, when that tick ends, so a timer never fires early.
+/// The mode's timers, earliest first. Times count ticks from the match start, as
+/// `SimTick::start` and `SimTick::end` give them: the Mode stage is at its tick's end, so a timer
+/// never fires early.
 #[derive(Resource, Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Timers {
     /// Sorted by due time, then by when each was set.

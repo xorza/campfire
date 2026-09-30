@@ -14,7 +14,7 @@ fn decimal(text: &str) -> Num {
 fn rules(hz: u32) -> KitRules {
     KitRules {
         rate: TickRate::new(NonZeroU32::new(hz).unwrap()),
-        max_move_speed: decimal("6.0"),
+        max_move_speed: Speed::new(decimal("6.0")).unwrap(),
     }
 }
 

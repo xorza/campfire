@@ -7,10 +7,9 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
 use crate::units::filter_data::FilterData;
-use crate::units::number::Number;
+use crate::units::number::{Number, ParamRef};
 use crate::units::param::Param;
 use crate::units::ranked::Ranked;
-use crate::units::relation::Relation;
 use crate::units::state_decl::StateDecl;
 
 /// An ability as its data file declares it, in milliseconds. Each capability field may hold one
@@ -22,11 +21,11 @@ pub struct AbilityData {
     /// The script, if the ability needs one.
     pub script: Option<PackagePath>,
     pub targeting: Targeting,
-    pub range: Option<Ranked<Range>>,
-    pub cooldown_ms: Option<Ranked<u64>>,
+    pub range: Option<Ranked<RangeField>>,
+    pub cooldown_ms: Option<Ranked<Number>>,
     /// In the caster's resource.
-    pub cost: Option<Ranked<u64>>,
-    pub cast_time_ms: Option<Ranked<u64>>,
+    pub cost: Option<Ranked<Number>>,
+    pub cast_time_ms: Option<Ranked<Number>>,
     /// A target beyond range is moved in, instead of the caster walking.
     #[serde(default)]
     pub clamp_to_range: bool,
@@ -154,6 +153,11 @@ impl AbilityData {
         .flatten()
     }
 
+    /// Whether every per-rank array it holds has an entry for each of `ranks` ranks.
+    pub fn check_ranks(&self, ranks: usize) -> bool {
+        self.rank_counts().all(|count| count == ranks)
+    }
+
     /// Every number field that reads a param, `{ param = "<name>" }`: the names it reads.
     pub fn param_refs(&self) -> impl Iterator<Item = &str> + '_ {
         let toggle = self.toggle.as_ref().map(|toggle| match toggle {
@@ -162,6 +166,9 @@ impl AbilityData {
         let projectile = self.projectile.as_ref();
         let area = self.area.as_ref();
         [
+            self.cooldown_ms.as_ref(),
+            self.cost.as_ref(),
+            self.cast_time_ms.as_ref(),
             toggle,
             self.channel.as_ref().map(|channel| &channel.duration_ms),
             self.channel.as_ref().map(|channel| &channel.tick_ms),
@@ -179,6 +186,15 @@ impl AbilityData {
         .flatten()
         .flat_map(Ranked::values)
         .filter_map(Number::param)
+        .chain(
+            self.range
+                .iter()
+                .flat_map(Ranked::values)
+                .filter_map(|range| match range {
+                    RangeField::Range(_) => None,
+                    RangeField::Param(reference) => Some(reference.param.as_str()),
+                }),
+        )
     }
 
     /// The ids of the modifiers its data names: the one it holds, its passive and those its area
@@ -197,9 +213,15 @@ impl AbilityData {
         .map(String::as_str)
     }
 
-    /// The filters its data names: its projectile's hits and its area's affects.
+    /// The filters its data names: its targeting's, its projectile's hits and its area's
+    /// affects.
     pub fn filters(&self) -> impl Iterator<Item = &FilterData> + '_ {
+        let targeting = match &self.targeting {
+            Targeting::Unit(filter) => Some(filter),
+            Targeting::None | Targeting::Point | Targeting::Direction => None,
+        };
         [
+            targeting,
             self.projectile
                 .as_ref()
                 .and_then(|projectile| projectile.hits.as_ref()),
@@ -211,13 +233,21 @@ impl AbilityData {
 }
 
 /// What an ability targets. In data: `none`, `point`, `direction`, or a filter of the units it
-/// may target, such as `enemies`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// may target, such as `enemies` or `enemies:hero`.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Targeting {
     None,
     Point,
     Direction,
-    Unit(Relation),
+    Unit(FilterData),
+}
+
+/// A range as data writes it: a range, or `{ param = "<name>" }`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(untagged)]
+pub enum RangeField {
+    Range(Range),
+    Param(ParamRef),
 }
 
 /// How far an ability reaches. In data: meters as a decimal string, or `global`.
@@ -234,10 +264,7 @@ impl<'de> Deserialize<'de> for Targeting {
             "none" => Ok(Targeting::None),
             "point" => Ok(Targeting::Point),
             "direction" => Ok(Targeting::Direction),
-            filter if filter.contains(':') => Err(Error::custom(format!(
-                "targeting {filter:?}: unit tags are not supported yet"
-            ))),
-            filter => Relation::parse(filter)
+            filter => FilterData::parse(filter)
                 .map(Targeting::Unit)
                 .ok_or_else(|| Error::custom(format!("unknown targeting {filter:?}"))),
         }

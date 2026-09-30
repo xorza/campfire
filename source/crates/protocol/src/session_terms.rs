@@ -3,6 +3,7 @@ use std::time::Duration;
 
 use blake3::Hasher;
 
+use crate::fingerprint::Fingerprint;
 use crate::server_seed::SeedCommitment;
 use crate::session_id::SessionId;
 
@@ -35,9 +36,9 @@ pub struct SessionTerms {
     /// The tag of the engine release the session runs on.
     pub release: String,
     /// The fingerprint of the mode package.
-    pub mode: [u8; 32],
+    pub mode: Fingerprint,
     /// The fingerprints of the mode's dependencies, in the order of their names in its manifest.
-    pub dependencies: Vec<[u8; 32]>,
+    pub dependencies: Vec<Fingerprint>,
 }
 
 impl SessionTerms {
@@ -63,10 +64,10 @@ impl SessionTerms {
             .update(self.seed_commitment.as_bytes())
             .update(&len(self.release.len()).to_le_bytes())
             .update(self.release.as_bytes())
-            .update(&self.mode)
+            .update(self.mode.as_bytes())
             .update(&len(self.dependencies.len()).to_le_bytes());
         for dependency in &self.dependencies {
-            hasher.update(dependency);
+            hasher.update(dependency.as_bytes());
         }
         SessionId::new(*hasher.finalize().as_bytes())
     }

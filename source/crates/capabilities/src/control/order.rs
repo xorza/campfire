@@ -40,13 +40,6 @@ impl Order {
     /// A payload of `orders` alone, one command each.
     pub fn payload(orders: &[Order]) -> Vec<u8> {
         let bodies: Vec<Vec<u8>> = orders.iter().map(Order::encode).collect();
-        let commands: Vec<Command<'_>> = bodies
-            .iter()
-            .map(|body| Command {
-                capability: Order::CAPABILITY,
-                body,
-            })
-            .collect();
-        Command::encode(&commands)
+        Command::payload(Order::CAPABILITY, &bodies)
     }
 }

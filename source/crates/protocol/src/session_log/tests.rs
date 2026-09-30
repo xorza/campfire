@@ -5,6 +5,7 @@ use secp256k1::{Keypair, schnorr};
 
 use super::*;
 use crate::delegation::DelegationTerms;
+use crate::fingerprint::Fingerprint;
 use crate::input_hash::InputHash;
 use crate::seed_chain::SeedChain;
 
@@ -19,8 +20,8 @@ const TICK_HZ: NonZeroU32 = NonZeroU32::new(300).unwrap();
 const SEED_CHAIN: SeedChain = SeedChain::new([5; 32], NonZeroU32::new(2).unwrap());
 const CONTRIBUTIONS: [[u8; 32]; 2] = [[6; 32], [7; 32]];
 const RELEASE: &str = "0.1.0";
-const MODE: [u8; 32] = [51; 32];
-const DEPENDENCIES: [[u8; 32]; 2] = [[52; 32], [53; 32]];
+const MODE: Fingerprint = Fingerprint::new([51; 32]);
+const DEPENDENCIES: [Fingerprint; 2] = [Fingerprint::new([52; 32]), Fingerprint::new([53; 32])];
 /// BIP-340 signing without auxiliary randomness is deterministic, so every run signs alike.
 const AUX: [u8; 32] = [0; 32];
 
@@ -516,8 +517,8 @@ fn a_delegation_for_another_server_or_session_is_refused() {
         |terms| terms.max_inputs_per_tick += 1,
         |terms| terms.seed_commitment = SeedChain::new([6; 32], NonZeroU32::MIN).commitment(),
         |terms| terms.release.push('1'),
-        |terms| terms.mode[31] ^= 1,
-        |terms| terms.dependencies[1][0] ^= 1,
+        |terms| terms.mode = Fingerprint::new([50; 32]),
+        |terms| terms.dependencies[1] = Fingerprint::new([54; 32]),
         |terms| terms.dependencies.swap(0, 1),
     ];
     for change in changes {

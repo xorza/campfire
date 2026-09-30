@@ -15,8 +15,8 @@ use campfire_content::PackageStore;
 use campfire_math::{Num, Vec3};
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
 use campfire_protocol::{
-    Applied, Delegation, DelegationTerms, InputChain, PlayerSlot, SeedChain, SeedError, ServerSeed,
-    SessionHeader, SessionLog, SessionTerms,
+    Applied, Delegation, DelegationTerms, Fingerprint, InputChain, PlayerSlot, SeedChain,
+    SeedError, ServerSeed, SessionHeader, SessionLog, SessionTerms,
 };
 use campfire_runner::{ModePackages, RELEASE, Runner, StartError};
 use campfire_sim::{EntityIndex, Position, StableId, StateHash};
@@ -105,11 +105,8 @@ fn terms() -> SessionTerms {
         max_inputs_per_tick: 4,
         seed_commitment: SEED_CHAIN.commitment(),
         release: RELEASE.to_owned(),
-        mode: *packages.fingerprint().as_bytes(),
-        dependencies: packages
-            .dependencies()
-            .map(|dependency| *dependency.as_bytes())
-            .collect(),
+        mode: packages.fingerprint(),
+        dependencies: packages.dependencies().collect(),
     }
 }
 
@@ -422,8 +419,8 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
     };
     let refused = [
         other(|terms| terms.release = "0.0.9".to_owned()),
-        other(|terms| terms.mode = [0; 32]),
-        other(|terms| terms.dependencies[0] = [0; 32]),
+        other(|terms| terms.mode = Fingerprint::new([0; 32])),
+        other(|terms| terms.dependencies[0] = Fingerprint::new([0; 32])),
         other(|terms| terms.dependencies.clear()),
         other(|terms| terms.tick_hz = NonZeroU32::new(60).unwrap()),
     ];

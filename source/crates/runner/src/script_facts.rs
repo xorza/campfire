@@ -1,5 +1,14 @@
+use std::ptr;
+
 use campfire_capabilities::CtxKind;
-use campfire_script::rhai::{AST, ASTNode, Expr, FnCallExpr};
+use campfire_script::rhai::{AST, ASTNode, Expr, FnCallExpr, Stmt};
+
+use crate::error::CtxMisuse;
+
+/// The variable every script API call goes through, by design 08's convention.
+const CTX: &str = "ctx";
+/// The function pointer calls, through which a value reaches a function under any name.
+const POINTER_CALLS: [&str; 2] = ["call", "curry"];
 
 /// What the package load checks read from a script: its functions, the names it uses on `ctx`,
 /// and the string literals it gives the calls that take a name.
@@ -18,12 +27,16 @@ pub(crate) struct ScriptFacts {
     pub(crate) filters: Vec<String>,
     /// The kinds `ctx.damage` takes.
     pub(crate) damage_kinds: Vec<String>,
+    /// The first use of `ctx` that breaks the convention, if any.
+    pub(crate) ctx_misuse: Option<CtxMisuse>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Function {
     pub(crate) name: String,
     pub(crate) params: usize,
+    /// Whether its first parameter is named `ctx`.
+    pub(crate) ctx_first: bool,
 }
 
 /// A name used on `ctx`, as a value or as a call.
@@ -35,7 +48,8 @@ pub(crate) struct CtxUse {
 
 impl ScriptFacts {
     /// The facts of `ast`. `ctx` is the variable of that name, as every hook's first parameter
-    /// is by convention and every helper passes it on.
+    /// is by convention and every helper passes it on; a use that breaks the convention is
+    /// recorded, so the facts see every use of `ctx` in a script that keeps it.
     pub(crate) fn read(ast: &AST) -> ScriptFacts {
         let mut facts = ScriptFacts {
             functions: ast
@@ -43,6 +57,7 @@ impl ScriptFacts {
                 .map(|function| Function {
                     name: function.name.to_owned(),
                     params: function.params.len(),
+                    ctx_first: function.params.first() == Some(&CTX),
                 })
                 .collect(),
             ..ScriptFacts::default()
@@ -51,13 +66,30 @@ impl ScriptFacts {
             .functions
             .sort_unstable_by(|a, b| (&a.name, a.params).cmp(&(&b.name, b.params)));
         ast.walk(&mut |path: &[ASTNode<'_>]| {
-            if let Some(ASTNode::Expr(Expr::Dot(dot, ..))) = path.last() {
-                if variable(&dot.lhs) == Some("ctx") {
-                    facts.read_ctx(&dot.rhs);
+            match path.last() {
+                Some(ASTNode::Expr(Expr::Dot(dot, ..))) => {
+                    if variable(&dot.lhs) == Some(CTX) {
+                        facts.read_ctx(&dot.rhs);
+                    }
+                    if let Expr::MethodCall(call, _) = &dot.rhs {
+                        facts.read_method(call);
+                    }
                 }
-                if let Expr::MethodCall(call, _) = &dot.rhs {
-                    facts.read_method(call);
+                Some(ASTNode::Expr(expr)) if variable(expr) == Some(CTX) => {
+                    let parent = path.len().checked_sub(2).map(|at| &path[at]);
+                    if let Some(misuse) = ctx_use(ast, expr, parent) {
+                        facts.ctx_misuse.get_or_insert(misuse);
+                    }
                 }
+                Some(ASTNode::Stmt(Stmt::Var(var, ..))) if var.0.name == CTX => {
+                    facts.ctx_misuse.get_or_insert(CtxMisuse::Bound);
+                }
+                Some(ASTNode::Stmt(Stmt::For(each, _)))
+                    if each.0.name == CTX || each.1.as_ref().is_some_and(|at| at.name == CTX) =>
+                {
+                    facts.ctx_misuse.get_or_insert(CtxMisuse::Bound);
+                }
+                _ => {}
             }
             true
         });
@@ -119,6 +151,34 @@ impl ScriptFacts {
     }
 }
 
+/// What breaks the convention in the use `ctx` of the variable, under `parent`: `None` for
+/// `ctx.<name>`, or a whole argument of a call that keeps its name.
+fn ctx_use(ast: &AST, ctx: &Expr, parent: Option<&ASTNode<'_>>) -> Option<CtxMisuse> {
+    let call = match parent {
+        Some(ASTNode::Expr(Expr::Dot(dot, ..))) if ptr::eq(&raw const dot.lhs, ctx) => return None,
+        Some(
+            ASTNode::Expr(Expr::FnCall(call, _) | Expr::MethodCall(call, _))
+            | ASTNode::Stmt(Stmt::FnCall(call, _)),
+        ) => call,
+        _ => return Some(CtxMisuse::Stray),
+    };
+    let Some(at) = call.args.iter().position(|arg| ptr::eq(arg, ctx)) else {
+        return Some(CtxMisuse::Stray);
+    };
+    if call.is_operator_call() || POINTER_CALLS.contains(&call.name.as_str()) {
+        return Some(CtxMisuse::Stray);
+    }
+    let own = ast
+        .iter_functions()
+        .find(|function| function.name == call.name && function.params.len() == call.args.len());
+    match own {
+        Some(function) if function.params[at] != CTX => Some(CtxMisuse::Renamed {
+            function: function.name.to_owned(),
+        }),
+        _ => None,
+    }
+}
+
 /// The name of a variable.
 fn variable(expr: &Expr) -> Option<&str> {
     match expr {
@@ -170,11 +230,13 @@ fn helper(ctx, gold) {}
         let function = |name: &str, params| Function {
             name: name.to_owned(),
             params,
+            ctx_first: true,
         };
         assert_eq!(
             facts.functions,
             [function("helper", 2), function("on_cast", 3)]
         );
+        assert_eq!(facts.ctx_misuse, None);
         let names: Vec<_> = facts
             .ctx_names
             .iter()
@@ -200,5 +262,53 @@ fn helper(ctx, gold) {}
         assert_eq!(facts.stats, ["armor"]);
         assert_eq!(facts.filters, ["enemies:hero"]);
         assert_eq!(facts.damage_kinds, ["magic"]);
+    }
+
+    #[test]
+    fn every_use_of_ctx_but_a_name_on_it_or_a_call_argument_breaks_the_convention() {
+        let renamed = |function: &str| {
+            Some(CtxMisuse::Renamed {
+                function: function.to_owned(),
+            })
+        };
+        let cases = [
+            ("fn on_x(ctx) { ctx.find(1); api(ctx, 2); }", None),
+            ("fn on_x(ctx) { let c = ctx; }", Some(CtxMisuse::Stray)),
+            ("fn on_x(ctx) { c = ctx; }", Some(CtxMisuse::Stray)),
+            ("fn on_x(ctx) { return ctx; }", Some(CtxMisuse::Stray)),
+            ("fn on_x(ctx) { [ctx] }", Some(CtxMisuse::Stray)),
+            ("fn on_x(ctx) { #{ c: ctx } }", Some(CtxMisuse::Stray)),
+            ("fn on_x(ctx) { ctx[0] }", Some(CtxMisuse::Stray)),
+            ("fn on_x(ctx) { ctx == 1 }", Some(CtxMisuse::Stray)),
+            (
+                r#"fn on_x(ctx) { Fn("h").call(ctx) } fn h(c) {}"#,
+                Some(CtxMisuse::Stray),
+            ),
+            (
+                "fn on_x(ctx) { let f = |c| c; f.call(ctx) }",
+                Some(CtxMisuse::Stray),
+            ),
+            ("fn on_x(ctx) { h(1, ctx); } fn h(a, c) {}", renamed("h")),
+            ("fn on_x(ctx) { 1.h(ctx); } fn h(c) {}", renamed("h")),
+            ("fn on_x(ctx) { h(ctx); } fn h(ctx) { ctx.find(1); }", None),
+            ("fn on_x(ctx) { let ctx = 1; }", Some(CtxMisuse::Bound)),
+            ("fn on_x(ctx) { const ctx = 1; }", Some(CtxMisuse::Bound)),
+            // A loop with an empty body is optimized away, so these loops have a body.
+            (
+                "fn on_x(c) { for ctx in [1] { c.f(1); } }",
+                Some(CtxMisuse::Bound),
+            ),
+            (
+                "fn on_x(c) { for (x, ctx) in [1] { c.f(1); } }",
+                Some(CtxMisuse::Bound),
+            ),
+        ];
+        let host = ScriptHost::new(1000);
+        for (source, misuse) in cases {
+            let facts = ScriptFacts::read(&host.parse(source).unwrap());
+            assert_eq!(facts.ctx_misuse, misuse, "{source}");
+        }
+        let facts = ScriptFacts::read(&host.parse("fn on_x(c, ctx) {}").unwrap());
+        assert!(!facts.functions[0].ctx_first);
     }
 }

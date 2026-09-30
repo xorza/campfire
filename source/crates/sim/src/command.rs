@@ -18,6 +18,18 @@ impl<'a> Command<'a> {
         postcard::to_allocvec(commands).expect("commands always encode")
     }
 
+    /// A payload of `bodies`, each a command to `capability`, in order.
+    pub fn payload<B: AsRef<[u8]>>(capability: Capability, bodies: &[B]) -> Vec<u8> {
+        let commands: Vec<Command<'_>> = bodies
+            .iter()
+            .map(|body| Command {
+                capability,
+                body: body.as_ref(),
+            })
+            .collect();
+        Command::encode(&commands)
+    }
+
     /// The commands of `payload`, in order; `None` unless the payload is exactly a list of
     /// commands. A client can send any bytes, so a payload with a flaw gives no command at all.
     pub fn decode(payload: &'a [u8]) -> Option<impl Iterator<Item = Command<'a>> + Clone> {
@@ -75,6 +87,10 @@ mod tests {
             },
         ];
         let payload = Command::encode(&commands);
+        assert_eq!(
+            Command::payload(Capability::Orders, &[&b"x"[..], b"yz"]),
+            [2, 5, 1, b'x', 5, 2, b'y', b'z']
+        );
         // 3 commands; each the capability's index, orders 5 and character 6, then the body's
         // length and bytes.
         assert_eq!(payload, [3, 5, 2, b'a', b'b', 6, 0, 5, 1, b'c']);

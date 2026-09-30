@@ -1,15 +1,15 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_capabilities::{
-    AbilityData, CtxEntry, DamageKind, FilterData, FilterSyntax, Hook, Mode, ModifierData, Number,
-    Param, Scalar, ScriptRole, Stat, UnitTypeData,
+    AbilityData, CtxEntry, DamageKind, FilterData, HeroData, Hook, Mode, ModifierData, Number,
+    Param, Scalar, ScriptRole, SpellsData, Stat, UnitTypeData,
 };
 use campfire_content::PackagePath;
 use campfire_math::Num;
 use campfire_sim::Capability;
 
 use crate::RELEASE;
-use crate::error::{LoadError, LoadProblem, Place, Pool};
+use crate::error::{CtxMisuse, LoadError, LoadProblem, Place};
 use crate::mode_packages::{Content, Dependent, ModePackages};
 use crate::package::Package;
 
@@ -17,8 +17,7 @@ use crate::package::Package;
 /// its schema (the reads checked that), every per-rank array has an entry for each rank, every
 /// script is named by data and defines only hooks of its roles, and every capability, `ctx` name,
 /// modifier, param, stat, filter and damage kind a script or data names exists for the mode. And
-/// the mode's own rules: its manifest's ranges and pools, and every projectile faster than its
-/// move speed cap.
+/// every projectile is faster than the mode's move speed cap.
 #[derive(Debug)]
 pub(crate) struct LoadCheck<'a> {
     packages: &'a ModePackages,
@@ -39,11 +38,6 @@ struct PackageNames<'a> {
     modifiers: &'a BTreeMap<String, ModifierData>,
 }
 
-/// The ranks of the abilities of a hero: 5 for a basic ability, 3 for the ultimate, its last.
-const BASIC_RANKS: usize = 5;
-const ULTIMATE_RANKS: usize = 3;
-/// A spell has one rank.
-const SPELL_RANKS: usize = 1;
 /// A function whose name starts so is named like a hook, as every hook but `think` and
 /// `calc_damage` is: it must be one, so a misspelled hook fails the load.
 const HOOK_PREFIX: &str = "on_";
@@ -55,11 +49,6 @@ impl<'a> LoadCheck<'a> {
             package: manifest.name.clone(),
             problem: Box::new(problem),
         };
-        let cap = manifest
-            .max_move_speed
-            .to_num()
-            .filter(|cap| *cap > Num::ZERO)
-            .ok_or_else(|| fail(LoadProblem::MoveSpeedCap))?;
         let mut tags: BTreeSet<&str> = packages
             .units
             .units
@@ -84,9 +73,8 @@ impl<'a> LoadCheck<'a> {
         let check = LoadCheck {
             packages,
             tags,
-            cap,
+            cap: manifest.max_move_speed.get(),
         };
-        check.manifest().map_err(fail)?;
         check.mode().map_err(fail)?;
         check.spells()?;
         for dependent in &packages.dependencies {
@@ -94,52 +82,6 @@ impl<'a> LoadCheck<'a> {
                 package: dependent.package.name.clone(),
                 problem: Box::new(problem),
             })?;
-        }
-        Ok(())
-    }
-
-    /// The mode's manifest: its capabilities, tick rates and pools.
-    fn manifest(&self) -> Result<(), LoadProblem> {
-        let manifest = &self.packages.manifest;
-        let declared = &manifest.capabilities;
-        for (at, &capability) in declared.iter().enumerate() {
-            if capability == Capability::Mode {
-                return Err(LoadProblem::DeclaresMode);
-            }
-            if declared[..at].contains(&capability) {
-                return Err(LoadProblem::RepeatedCapability(capability));
-            }
-            let needs: &[Capability] = match capability {
-                Capability::Projectiles | Capability::Abilities => &[Capability::Combat],
-                Capability::Orders => &[Capability::Combat, Capability::Navigation],
-                _ => &[],
-            };
-            if let Some(&needs) = needs.iter().find(|needs| !declared.contains(needs)) {
-                return Err(LoadProblem::CapabilityNeeds { capability, needs });
-            }
-        }
-        let hz = manifest.tick_hz;
-        if hz.min == 0 || hz.min > hz.default || hz.default > hz.max {
-            return Err(LoadProblem::TickRange);
-        }
-        let limits = manifest.script_limits;
-        let slots: u64 = manifest
-            .teams
-            .iter()
-            .map(|team| u64::from(team.slots))
-            .sum();
-        let input = limits.per_call.checked_mul(slots.max(1));
-        let pools = [
-            (Pool::PerCall, limits.per_call >= 1),
-            (
-                Pool::Input,
-                input.is_some_and(|input| limits.input >= input),
-            ),
-            (Pool::Think, limits.think >= limits.per_call),
-            (Pool::Mode, limits.mode >= limits.per_call),
-        ];
-        if let Some((pool, _)) = pools.into_iter().find(|(_, holds)| !holds) {
-            return Err(LoadProblem::PoolTooSmall(pool));
         }
         Ok(())
     }
@@ -228,12 +170,8 @@ impl<'a> LoadCheck<'a> {
                 }
                 for (id, ability) in &hero.abilities {
                     let slot = hero.slots.iter().position(|slot| slot == id);
-                    let ranks = match slot {
-                        None => return Err(LoadProblem::Unslotted(id.clone())),
-                        Some(3) => ULTIMATE_RANKS,
-                        Some(_) => BASIC_RANKS,
-                    };
-                    ranked(id, ability, ranks)?;
+                    let slot = slot.ok_or_else(|| LoadProblem::Unslotted(id.clone()))?;
+                    ranked(id, ability, HeroData::slot_ranks(slot))?;
                 }
                 if let Some(passive) = &hero.passive {
                     modifier_exists(&hero.modifiers, passive, &at)?;
@@ -242,7 +180,7 @@ impl<'a> LoadCheck<'a> {
             }
             Content::Spells(spells) => {
                 for (id, ability) in &spells.abilities {
-                    ranked(id, ability, SPELL_RANKS)?;
+                    ranked(id, ability, SpellsData::RANKS)?;
                 }
                 (&spells.abilities, &spells.modifiers)
             }
@@ -336,6 +274,13 @@ impl<'a> LoadCheck<'a> {
             };
             let at = Place::Script(path.clone());
             let facts = &script.facts;
+            let misuse = |misuse| LoadProblem::CtxMisuse {
+                path: path.clone(),
+                misuse,
+            };
+            if let Some(found) = &facts.ctx_misuse {
+                return Err(misuse(found.clone()));
+            }
             for function in &facts.functions {
                 let hook = Hook::named(&function.name);
                 if hook.is_none() && function.name.starts_with(HOOK_PREFIX) {
@@ -352,6 +297,11 @@ impl<'a> LoadCheck<'a> {
                         path: path.clone(),
                         function: function.name.clone(),
                     });
+                }
+                if !function.ctx_first {
+                    return Err(misuse(CtxMisuse::HookParam {
+                        function: function.name.clone(),
+                    }));
                 }
                 if let Some(capability) = hook.capability() {
                     self.require(capability, &at)?;
@@ -406,7 +356,7 @@ impl<'a> LoadCheck<'a> {
     }
 
     fn require(&self, capability: Capability, at: &Place) -> Result<(), LoadProblem> {
-        if self.packages.manifest.capabilities.contains(&capability) {
+        if self.packages.manifest.capabilities.contains(capability) {
             return Ok(());
         }
         Err(LoadProblem::Undeclared {
@@ -418,14 +368,13 @@ impl<'a> LoadCheck<'a> {
     /// A script's filter: its relation is `enemies`, `allies` or `all`, and its tag, if any, one
     /// a unit type of the mode declares.
     fn filter_text(&self, filter: &str, at: &Place) -> Result<(), LoadProblem> {
-        let syntax = FilterSyntax::parse(filter);
-        if syntax.is_some_and(|syntax| syntax.tag.is_none_or(|tag| self.tags.contains(tag))) {
-            return Ok(());
+        match FilterData::parse(filter) {
+            Some(data) => self.filter_data(&data, at),
+            None => Err(LoadProblem::UnknownFilter {
+                at: at.clone(),
+                filter: filter.to_owned(),
+            }),
         }
-        Err(LoadProblem::UnknownFilter {
-            at: at.clone(),
-            filter: filter.to_owned(),
-        })
     }
 
     /// A filter of data, whose relation its read checked: its tag, if any, is one a unit type of
@@ -464,8 +413,7 @@ impl<'a> LoadCheck<'a> {
             let values: Vec<_> = match speed {
                 Number::Value(value) => vec![*value],
                 Number::Param(reference) => match ability.params.get(&reference.param) {
-                    Some(Param::Value(value)) => vec![*value],
-                    Some(Param::PerRank(values)) => values.clone(),
+                    Some(Param::Ranked(ranked)) => ranked.values().to_vec(),
                     Some(Param::Scaling(scaling)) => scaling.base.values().to_vec(),
                     None => {
                         return Err(LoadProblem::UnknownParam {
@@ -530,8 +478,8 @@ fn appliers<'a>(
 }
 
 /// Every per-rank array of `ability` has `ranks` entries.
-fn ranked(id: &str, ability: &AbilityData, ranks: usize) -> Result<(), LoadProblem> {
-    if ability.rank_counts().all(|count| count == ranks) {
+fn ranked(id: &str, ability: &AbilityData, ranks: u8) -> Result<(), LoadProblem> {
+    if ability.check_ranks(usize::from(ranks)) {
         return Ok(());
     }
     Err(LoadProblem::RankCount {

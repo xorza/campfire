@@ -6,6 +6,7 @@ use campfire_sim::{SimTick, SimUpdate, StateHash, StateRegistry, TickInput, Tick
 
 use crate::RELEASE;
 use crate::error::StartError;
+use crate::match_build::MatchBuild;
 use crate::mode_packages::ModePackages;
 
 /// A match's session log and state types, kept as a resource in the `World` that runs the match:
@@ -40,18 +41,17 @@ impl Session {
         if terms.release != RELEASE {
             return Err(StartError::OtherRelease(terms.release.clone()));
         }
-        if terms.mode != *packages.fingerprint().as_bytes() {
+        if terms.mode != packages.fingerprint() {
             return Err(StartError::OtherMode);
         }
-        let dependencies = packages
+        if !packages
             .dependencies()
-            .map(|dependency| *dependency.as_bytes());
-        if !dependencies.eq(terms.dependencies.iter().copied()) {
+            .eq(terms.dependencies.iter().copied())
+        {
             return Err(StartError::OtherDependencies);
         }
         let hz = terms.tick_hz;
-        let range = packages.manifest().tick_hz;
-        if !(range.min..=range.max).contains(&hz.get()) {
+        if !packages.manifest().tick_hz.contains(hz) {
             return Err(StartError::TickRate(hz));
         }
         let seed = header
@@ -61,7 +61,7 @@ impl Session {
         let mut schedule = SimUpdate::schedule();
         let mut state = StateRegistry::new();
         let players = u32::try_from(header.players.len()).expect("the log counts players in u32");
-        packages.install(world, &mut schedule, &mut state, players)?;
+        MatchBuild::run(packages, world, &mut schedule, &mut state, players)?;
         world.add_schedule(schedule);
         Mode::start(world).map_err(StartError::MatchStart)?;
         world.insert_resource(Session {

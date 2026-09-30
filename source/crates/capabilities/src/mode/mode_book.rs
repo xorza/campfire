@@ -13,14 +13,15 @@ use crate::mode::error::ModeError;
 use crate::mode::manifest::TeamManifest;
 use crate::mode::map_data::MapData;
 use crate::mode::mode_data::{InputType, ListEntry, ModeParam};
-use crate::mode::mode_setup::{HeroSetup, ModeSetup, SpellSetup};
+use crate::mode::mode_setup::{HeroSetup, ModeSetup, SpellSetup, UnitTypeSetup};
 use crate::mode::picks::Picks;
 use crate::mode::unit_kit::UnitKit;
-use crate::navigation::lane_walker::LaneWalker;
-use crate::navigation::lane_walker::PathDirection;
+use crate::navigation::lane_walker::{LaneWalker, PathDirection};
 use crate::navigation::lanes::Lanes;
+use crate::navigation::on_lane::OnLane;
 use crate::units::error::ApiError;
 use crate::units::hook::Hook;
+use crate::units::script_view::View;
 use crate::units::state_decl::StateType;
 use crate::units::state_value::StateValue;
 use crate::units::unit_type::UnitType;
@@ -52,8 +53,6 @@ pub(crate) struct ModeBook {
     slot_teams: Vec<Team>,
     /// Where each playing team's heroes spawn.
     spawns: Vec<Position>,
-    /// Sorted by name.
-    unit_types: Vec<(Box<str>, UnitType)>,
     /// By unit type.
     kits: Vec<Option<UnitKit>>,
     pub(crate) heroes: Vec<HeroSetup>,
@@ -85,25 +84,15 @@ impl ModeBook {
     /// The book of `setup`, which passed `Mode::check`, its script compiled in `host`; an error
     /// when the script does not compile, or the teams have fewer slots than the players.
     pub(crate) fn new(
-        setup: ModeSetup,
+        setup: ModeSetup<'_>,
         rate: TickRate,
         host: &mut ScriptHost,
+        view: &View,
     ) -> Result<ModeBook, ModeError> {
-        let script = host.compile(&setup.script).map_err(ModeError::Script)?;
+        let script = host.compile(setup.script).map_err(ModeError::Script)?;
         let defines = |hook: Hook| host.defines(script, hook.name(), hook.params());
-        let mut unit_types: Vec<(Box<str>, UnitType)> = setup
-            .unit_types
-            .iter()
-            .map(|unit_type| (unit_type.name.as_str().into(), unit_type.unit_type))
-            .collect();
-        unit_types.sort_unstable_by(|a, b| a.0.cmp(&b.0));
         let mut kits = Vec::new();
-        let kinds = setup
-            .unit_types
-            .iter()
-            .map(|setup| (setup.unit_type, setup.kit));
-        let hero_kinds = setup.heroes.iter().map(|hero| (hero.unit_type, hero.kit));
-        for (unit_type, kit) in kinds.chain(hero_kinds) {
+        for &UnitTypeSetup { unit_type, kit } in &setup.unit_types {
             if kits.len() <= unit_type.index() {
                 kits.resize(unit_type.index() + 1, None);
             }
@@ -120,21 +109,20 @@ impl ModeBook {
             params: setup
                 .data
                 .params
-                .into_iter()
-                .map(|(name, param)| (name.into(), param))
+                .iter()
+                .map(|(name, param)| (name.as_str().into(), param.clone()))
                 .collect(),
             state: Vec::new(),
             state_initial: Vec::new(),
             inputs: setup
                 .data
                 .inputs
-                .into_iter()
-                .map(|(name, kind)| (name.into(), kind))
+                .iter()
+                .map(|(name, &kind)| (name.as_str().into(), kind))
                 .collect(),
             teams: Vec::new(),
             slot_teams: Vec::new(),
             spawns: Vec::new(),
-            unit_types,
             kits,
             heroes: setup.heroes,
             spells,
@@ -142,12 +130,12 @@ impl ModeBook {
             map: Map::new(),
             lanes: Lanes::default(),
         };
-        for (name, decl) in setup.data.state {
-            book.state.push((name.into(), decl.kind));
-            book.state_initial.push(decl.initial);
+        for (name, decl) in &setup.data.state {
+            book.state.push((name.as_str().into(), decl.kind));
+            book.state_initial.push(decl.initial.clone());
         }
-        book.set_teams(&setup.teams, setup.players)?;
-        book.set_map(&setup.map);
+        book.set_teams(setup.teams, setup.players)?;
+        book.set_map(setup.map, view);
         Ok(book)
     }
 
@@ -167,9 +155,9 @@ impl ModeBook {
         Ok(())
     }
 
-    /// Resolves the names of `map`, which the check found: its lanes, each team's spawn, its
-    /// structures, and the neutral spawns `ctx.map` lists.
-    fn set_map(&mut self, map: &MapData) {
+    /// Resolves the names of `map`, which the check found, unit types through `view`: its lanes,
+    /// each team's spawn, its structures, and the neutral spawns `ctx.map` lists.
+    fn set_map(&mut self, map: &MapData, view: &View) {
         let checked = "the mode's check passed";
         let lanes: Vec<_> = map
             .lanes
@@ -193,7 +181,7 @@ impl ModeBook {
         }
         for structure in &map.structures {
             let structure = Structure {
-                unit_type: self.unit_type(&structure.unit_type).expect(checked),
+                unit_type: view.unit_type(&structure.unit_type).expect(checked),
                 team: self.team(&structure.team).expect(checked),
                 lane: structure
                     .lane
@@ -270,14 +258,6 @@ impl ModeBook {
     /// Where `team`'s heroes spawn.
     pub(crate) fn hero_spawn(&self, team: Team) -> Position {
         self.spawns[usize::from(team.index())]
-    }
-
-    pub(crate) fn unit_type(&self, name: &str) -> Option<UnitType> {
-        let at = self
-            .unit_types
-            .binary_search_by(|(held, _)| (**held).cmp(name))
-            .ok()?;
-        Some(self.unit_types[at].1)
     }
 
     pub(crate) fn kit(&self, unit_type: UnitType) -> Option<UnitKit> {
@@ -412,7 +392,8 @@ impl ModeBook {
             .waypoint(lane, 0, end)
             .expect("a lane has a waypoint");
         for &unit_type in types {
-            self.spawn(world, unit_type, team, start, LaneWalker::start(lane, end));
+            let walker = (OnLane::new(lane), LaneWalker::start(end));
+            self.spawn(world, unit_type, team, start, walker);
         }
     }
 }

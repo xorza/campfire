@@ -15,6 +15,8 @@ pub enum UnitTypeError {
     TooManyTags,
     /// The match would have more unit types than a `u16` counts.
     TooManyTypes,
+    /// Another unit type of the match has the name.
+    RepeatedName,
 }
 
 /// Why a script call failed. A failed call changes nothing.
@@ -112,6 +114,7 @@ impl fmt::Display for UnitTypeError {
         f.write_str(match self {
             UnitTypeError::TooManyTags => "more than 64 unit tags",
             UnitTypeError::TooManyTypes => "more unit types than a u16 counts",
+            UnitTypeError::RepeatedName => "another unit type has the name",
         })
     }
 }
