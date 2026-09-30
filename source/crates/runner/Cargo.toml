@@ -3,6 +3,7 @@ name = "campfire-runner"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+autotests = false
 
 [dependencies]
 campfire-capabilities.workspace = true
@@ -20,3 +21,7 @@ campfire-math.workspace = true
 
 [lints]
 workspace = true
+
+[[test]]
+name = "tests"
+path = "tests/mod.rs"

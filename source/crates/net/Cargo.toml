@@ -3,6 +3,7 @@ name = "campfire-net"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+autotests = false
 
 [features]
 internals = ["dep:bevy_state", "dep:bevy_time"]
@@ -27,15 +28,8 @@ toml.workspace = true
 tracing.workspace = true
 
 [[test]]
-name = "prototype"
-required-features = ["internals"]
-
-[[test]]
-name = "fog"
-required-features = ["internals"]
-
-[[test]]
-name = "scenario"
+name = "tests"
+path = "tests/mod.rs"
 required-features = ["internals"]
 
 [[bench]]

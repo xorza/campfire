@@ -3,6 +3,7 @@ name = "campfire-package"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+autotests = false
 
 [dependencies]
 campfire-capabilities.workspace = true
@@ -18,3 +19,7 @@ toml.workspace = true
 
 [lints]
 workspace = true
+
+[[test]]
+name = "tests"
+path = "tests/mod.rs"
