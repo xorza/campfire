@@ -1,7 +1,7 @@
 use serde::Deserialize;
 
 use crate::combat::on_death::OnDeath;
-use crate::units::scalar::Scalar;
+use crate::values::scalar::Scalar;
 
 /// A unit type's `combat` section. Its health and attack damage and speed are stats.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]

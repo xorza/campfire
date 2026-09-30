@@ -2,7 +2,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Without;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Commands, Query, Res, ResMut};
-use bevy_ecs::world::World;
+use bevy_ecs::world::{EntityRef, World};
 use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry};
 
 use crate::combat::attack_state::AttackState;
@@ -14,7 +14,8 @@ use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::combat::strikes::{Strike, Strikes};
 use crate::combat::targets::Targets;
-use crate::combat::team::Team;
+use crate::units::script_view::{RowFill, View};
+use crate::units::team::Team;
 
 pub(crate) mod attack_state;
 pub(crate) mod attack_stats;
@@ -24,12 +25,10 @@ pub(crate) mod damage_kind;
 pub(crate) mod dead;
 pub(crate) mod health;
 pub(crate) mod launches;
-pub(crate) mod living_unit;
 pub(crate) mod on_death;
 pub(crate) mod recent_attackers;
 pub(crate) mod strikes;
 pub(crate) mod targets;
-pub(crate) mod team;
 
 /// The `combat` capability: teams, health, attacks, damage and deaths.
 #[derive(Debug)]
@@ -51,6 +50,9 @@ impl Combat {
     /// end strike, or fire when ranged and the match has projectiles; in Resolve, the strikes
     /// deal their damage and each target records its attacker, then units at zero health die.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
+        if let Some(view) = world.get_non_send::<View>() {
+            view.add_source(fill_row);
+        }
         world.insert_resource(Strikes::default());
         schedule.configure_sets(
             CombatSet::Launch
@@ -68,7 +70,17 @@ impl Combat {
         registry.register_component::<Health>();
         registry.register_component::<OnDeath>();
         registry.register_component::<RecentAttackers>();
-        registry.register_component::<Team>();
+    }
+}
+
+/// Fills a row of the script view with what combat holds: whether the unit lives, its attack's
+/// target and range, and who struck it recently.
+fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
+    fill.row.alive = !unit.contains::<Dead>();
+    fill.row.target = unit.get::<AttackState>().and_then(|attack| attack.target());
+    fill.row.attack_range = unit.get::<AttackStats>().map(|stats| stats.range());
+    if let Some(recent) = unit.get::<RecentAttackers>() {
+        fill.attacked(recent.iter());
     }
 }
 
@@ -80,7 +92,7 @@ fn attack(
     targets: Targets<'_, '_>,
     mut attackers: Query<'_, '_, (&Position, &Team, &AttackStats, &mut AttackState), Without<Dead>>,
 ) {
-    let now = tick.get();
+    let now = tick.start();
     for (&position, &team, stats, mut attack) in &mut attackers {
         let Some(target) = attack.target() else {
             continue;
@@ -111,12 +123,12 @@ fn strike(
         Without<Dead>,
     >,
 ) {
-    let now = tick.get();
+    let now = tick.start();
     for (&source, &from, stats, mut attack) in &mut attackers {
         let Some(started) = attack.started() else {
             continue;
         };
-        if now < after(started, stats.windup()) {
+        if now < started.after(stats.windup()) {
             continue;
         }
         let target = attack
@@ -137,7 +149,7 @@ fn strike(
                 amount,
             }),
         }
-        attack.strike(after(started, stats.period()));
+        attack.strike(started.after(stats.period()));
     }
 }
 
@@ -149,7 +161,7 @@ fn apply_strikes(
     mut strikes: ResMut<'_, Strikes>,
     mut targets: Query<'_, '_, (&mut Health, Option<&mut RecentAttackers>)>,
 ) {
-    let now = tick.get();
+    let now = tick.start();
     strikes.0.sort_unstable_by_key(|strike| strike.source);
     for strike in strikes.0.drain(..) {
         let Some((mut health, attackers)) = index
@@ -184,12 +196,6 @@ fn die(
             OnDeath::Despawn => commands.entity(entity).despawn(),
         }
     }
-}
-
-/// `tick` plus `ticks`.
-fn after(tick: u64, ticks: u32) -> u64 {
-    tick.checked_add(u64::from(ticks))
-        .expect("tick numbers exhausted")
 }
 
 #[cfg(test)]

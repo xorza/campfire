@@ -5,7 +5,7 @@
 use std::num::NonZeroU32;
 
 use bevy_app::App;
-use campfire_capabilities::{Action, Controller, Destination};
+use campfire_capabilities::{Action, Destination, Owner};
 use campfire_math::{Num, Vec3};
 use campfire_net::{LocalPair, PlayerLink, TickHashes};
 use campfire_protocol::{SeedChain, SessionLog};
@@ -39,7 +39,7 @@ fn hero(app: &App) -> Hero {
     let world = app.world();
     let mut units = world.resource::<EntityIndex>().iter();
     let (_, entity) = units
-        .find(|&(_, entity)| world.entity(entity).contains::<Controller>())
+        .find(|&(_, entity)| world.entity(entity).contains::<Owner>())
         .unwrap();
     let hero = world.entity(entity);
     Hero {

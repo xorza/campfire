@@ -3,7 +3,7 @@ use std::fmt;
 use std::num::NonZeroU32;
 
 use campfire_capabilities::{
-    AbilityError, AiError, CallError, ModeError, UnitKitError, UnitTypeError,
+    AbilityError, AbilityField, AiError, CallError, ModeError, UnitKitError, Version,
 };
 use campfire_content::{ContentError, PackagePath};
 use campfire_protocol::SeedError;
@@ -32,8 +32,6 @@ pub enum StartError {
     OtherDependencies,
     /// The packages do not load.
     Load(LoadError),
-    /// A unit type does not load into the match.
-    UnitType(UnitTypeError),
     /// A unit type's values do not make a unit.
     UnitKit {
         unit_type: String,
@@ -70,7 +68,7 @@ pub enum LoadProblem {
     /// The dependency's package has another name than the mode gives it.
     OtherName(String),
     /// The package targets another engine release than this one.
-    OtherEngine(String),
+    OtherEngine(Version),
     /// Data or a script at `at` uses a capability the mode does not declare.
     Undeclared {
         capability: Capability,
@@ -86,6 +84,17 @@ pub enum LoadProblem {
     RepeatedSpell(String),
     /// The mode's teams or map name what it does not have.
     Mode(ModeError),
+    /// A capability field of an ability does not hold at a rank.
+    AbilityField {
+        ability: String,
+        field: AbilityField,
+    },
+    /// The mode's unit types declare more tags than a match holds.
+    TooManyTags,
+    /// The mode has more unit types, its heroes' among them, than a match holds.
+    TooManyUnitTypes,
+    /// A hero has the name of one of the mode's unit types.
+    RepeatedUnitType(String),
     /// A per-rank array of an ability has another length than its ranks.
     RankCount {
         ability: String,
@@ -218,7 +227,6 @@ impl fmt::Display for StartError {
                 f.write_str("the dependencies are not the ones the session names")
             }
             StartError::Load(error) => write!(f, "{error}"),
-            StartError::UnitType(error) => write!(f, "{error}"),
             StartError::UnitKit { unit_type, error } => write!(f, "unit type {unit_type}: {error}"),
             StartError::Ai { unit_type, error } => write!(f, "unit type {unit_type}: {error}"),
             StartError::Ability { ability, error } => write!(f, "ability {ability}: {error}"),
@@ -233,7 +241,6 @@ impl Error for StartError {
         match self {
             StartError::Seed(error) => Some(error),
             StartError::Load(error) => Some(error),
-            StartError::UnitType(error) => Some(error),
             StartError::UnitKit { error, .. } => Some(error),
             StartError::Ai { error, .. } => Some(error),
             StartError::Ability { error, .. } => Some(error),
@@ -281,7 +288,7 @@ impl fmt::Display for LoadProblem {
             LoadProblem::WrongKind => f.write_str("not a package of the kind its place needs"),
             LoadProblem::OtherName(name) => write!(f, "the package is named {name:?}"),
             LoadProblem::OtherEngine(engine) => {
-                write!(f, "targets engine release {engine:?}, not this one")
+                write!(f, "targets engine release {engine}, not this one")
             }
             LoadProblem::Undeclared { capability, at } => {
                 write!(
@@ -290,6 +297,17 @@ impl fmt::Display for LoadProblem {
                 )
             }
             LoadProblem::UnknownSlot(id) => write!(f, "slot names no ability {id:?}"),
+            LoadProblem::AbilityField { ability, field } => {
+                write!(
+                    f,
+                    "ability {ability:?}: {field:?} gives no value of its kind"
+                )
+            }
+            LoadProblem::TooManyTags => f.write_str("more unit tags than a match holds"),
+            LoadProblem::TooManyUnitTypes => f.write_str("more unit types than a match holds"),
+            LoadProblem::RepeatedUnitType(name) => {
+                write!(f, "hero {name:?} has the name of a unit type")
+            }
             LoadProblem::Unslotted(id) => write!(f, "ability {id:?} is in no slot"),
             LoadProblem::RepeatedSlot(id) => write!(f, "ability {id:?} is in two slots"),
             LoadProblem::RepeatedSpell(id) => write!(f, "two spells packages hold {id:?}"),

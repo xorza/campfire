@@ -4,9 +4,10 @@ use std::num::NonZeroU32;
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::entity::Entity;
 use campfire_math::{Num, SegmentSeed, Vec3};
+use campfire_protocol::PlayerSlot;
 use campfire_script::Budget;
 use campfire_script::rhai::Dynamic;
-use campfire_sim::{EntityIndex, IdAllocator, Position, SimTick, SimUpdate, StableId};
+use campfire_sim::{EntityIndex, IdAllocator, Position, SimTick, SimUpdate, StableId, Tick, Ticks};
 
 use super::*;
 use crate::combat::Combat;
@@ -17,10 +18,11 @@ use crate::combat::dead::Dead;
 use crate::combat::health::Health;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;
-use crate::combat::team::Team;
-use crate::units::error::{ApiError, CallError};
-use crate::units::scalar::Scalar;
-use crate::units::script_limits::ScriptLimits;
+use crate::navigation::on_lane::OnLane;
+use crate::scripts::error::{ApiError, CallError};
+use crate::scripts::script_limits::ScriptLimits;
+use crate::units::lane::Lane;
+use crate::values::scalar::Scalar;
 
 /// The MOBA's 30 ticks a second.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
@@ -46,7 +48,7 @@ fn at(x: i64, y: i64, z: i64) -> Position {
 fn unit() -> Combatant {
     Combatant {
         health: Health::new(num(10)).unwrap(),
-        attack: Some(AttackStats::new(num(2), 0, 1, Num::ZERO).unwrap()),
+        attack: Some(AttackStats::new(num(2), Ticks::new(0), Ticks::new(1), Num::ZERO).unwrap()),
         on_death: OnDeath::Stay,
     }
 }
@@ -194,7 +196,13 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let window = ("help_window_ms", Scalar::Int(2000));
     let range = ("aggro_range", Scalar::Decimal(num(7)));
     let hero = scene.unit_type(&["hero"], &[window, range]);
-    let of = scene.spawn(at(0, 0, 0), (hero, unit().bundle(Team::new(0))));
+    // On a lane, but the scene has no `navigation` to fill `unit.lane`.
+    let owner = Owner::new(PlayerSlot::new(2));
+    let lane = OnLane::new(Lane::new(0));
+    let of = scene.spawn(
+        at(0, 0, 0),
+        (hero, unit().bundle(Team::new(0)), owner, lane),
+    );
     let near = scene.spawn(at(3, 0, 4), unit().bundle(Team::new(1)));
     let recent = scene.spawn(at(9, 0, 0), unit().bundle(Team::new(1)));
     let fallen = scene.spawn(at(9, 0, 1), (unit().bundle(Team::new(1)), Dead));
@@ -211,12 +219,12 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
 
     // At 30 ticks a second, 2000 ms is 60 ticks: in tick 100, a strike in tick 40 is recent, and
     // one in tick 39 is not; a dead attacker is never returned.
-    scene.world.insert_resource(SimTick::new(100));
+    scene.world.insert_resource(SimTick::new(Tick::new(100)));
     let index = scene.world.resource::<EntityIndex>();
     let mut attackers = RecentAttackers::default();
     // A strike later than the view's tick, as a rollback can leave, is not recent either.
     for (source, tick) in [(near, 39), (recent, 40), (fallen, 100), (bare, 101)] {
-        attackers.record(source, tick, index);
+        attackers.record(source, Tick::new(tick), index);
     }
     *scene.world.get_mut::<RecentAttackers>(entity).unwrap() = attackers;
 
@@ -227,6 +235,8 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let value = |scene: &mut Scene, expression: &str| read(scene, expression).unwrap();
     assert!(value(&mut scene, "of.is_hero").as_bool().unwrap());
     assert!(value(&mut scene, "of.alive").as_bool().unwrap());
+    assert_eq!(value(&mut scene, "of.owner").as_int(), Ok(2));
+    assert!(value(&mut scene, "of.lane").is_unit());
     assert_eq!(
         value(&mut scene, "of.params.help_window_ms").as_int(),
         Ok(2000)

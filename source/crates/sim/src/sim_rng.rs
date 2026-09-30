@@ -22,6 +22,6 @@ impl SimRng {
     }
 
     pub(crate) fn begin_tick(&mut self, tick: SimTick) {
-        self.0.begin_tick(tick.get());
+        self.0.begin_tick(tick.start().get());
     }
 }

@@ -1,12 +1,12 @@
 use campfire_math::Num;
-use campfire_sim::TickRate;
+use campfire_sim::{TickRate, Ticks};
 
 use crate::combat::attack_stats::AttackStats;
 use crate::combat::combat_data::{AttackData, CombatData};
 use crate::combat::combatant::Combatant;
 use crate::combat::health::Health;
+use crate::files::manifest::Speed;
 use crate::mode::error::UnitKitError;
-use crate::mode::manifest::Speed;
 use crate::navigation::move_step::MoveStep;
 use crate::stats::stat::Stat;
 use crate::stats::stats_data::StatsData;
@@ -86,13 +86,13 @@ fn attack_stats(
     // hz ÷ speed in ticks, rounded up: exact, as the speed's bits count 2⁻²⁴ attacks a second.
     let bits = u128::try_from(speed.to_bits()).expect("a positive speed");
     let period = (u128::from(hz) << Num::FRAC_BITS).div_ceil(bits);
-    let period = u32::try_from(period)
+    let period = u64::try_from(period)
         .ok()
+        .map(Ticks::new)
         .ok_or(UnitKitError::Overflow(Stat::AttackSpeed))?;
     let windup = rules
         .rate
         .ticks(attack.windup_ms)
-        .and_then(|ticks| u32::try_from(ticks).ok())
         .ok_or(UnitKitError::TimeTooLarge)?;
     let range = attack.range.to_num().ok_or(UnitKitError::Range)?;
     let melee = AttackStats::new(range, windup, period, stat(Stat::AttackDamage)?)

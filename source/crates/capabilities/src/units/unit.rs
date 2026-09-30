@@ -4,7 +4,7 @@ use campfire_script::Raised;
 use campfire_script::rhai::{Dynamic, Engine, INT, ImmutableString};
 use campfire_sim::{Position, StableId};
 
-use crate::units::error::{ApiError, Checked};
+use crate::scripts::error::{ApiError, Checked};
 use crate::units::script_view::{UnitRow, View};
 
 /// A unit as a script holds it, `Unit` in scripts: its values as the view read them.
@@ -53,13 +53,12 @@ impl Unit {
                 unit.view.unit_type_name(&unit.row())
             })
             .register_get("lane", |unit: &mut Unit| {
-                unit.view.lane_name(unit.row().extras.lane)
+                unit.view.lane_name(unit.row().lane)
             })
             .register_get("owner", |unit: &mut Unit| {
-                unit.row()
-                    .extras
-                    .owner
-                    .map_or(Dynamic::UNIT, |slot| Dynamic::from_int(INT::from(slot)))
+                unit.row().owner.map_or(Dynamic::UNIT, |slot| {
+                    Dynamic::from_int(INT::from(slot.get()))
+                })
             })
             .register_fn("has_tag", |unit: &mut Unit, name: &str| -> Checked<bool> {
                 let tag = unit.view.tag(name).map_err(ApiError::fail)?;

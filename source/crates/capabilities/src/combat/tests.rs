@@ -3,11 +3,11 @@ use std::num::NonZeroU32;
 use bevy_ecs::component::Component;
 use bevy_ecs::system::RunSystemOnce;
 use campfire_math::{Num, SegmentSeed, Vec3};
-use campfire_sim::{IdAllocator, SimUpdate, TickRate, TypeHash};
+use campfire_sim::{IdAllocator, SimUpdate, Tick, TickRate, Ticks, TypeHash};
 
 use super::*;
 use crate::combat::combatant::Combatant;
-use crate::combat::recent_attackers::RecentAttack;
+use crate::units::recent_attack::RecentAttack;
 
 /// The MOBA's 30 ticks a second.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
@@ -21,10 +21,18 @@ fn at(x: i64, y: i64, z: i64) -> Position {
 }
 
 /// `health`, and `damage` within `range`, a windup and a period in ticks.
-fn combatant(health: i64, range: i64, windup: u32, period: u32, damage: i64) -> Combatant {
+fn combatant(health: i64, range: i64, windup: u64, period: u64, damage: i64) -> Combatant {
     Combatant {
         health: Health::new(num(health)).unwrap(),
-        attack: Some(AttackStats::new(num(range), windup, period, num(damage)).unwrap()),
+        attack: Some(
+            AttackStats::new(
+                num(range),
+                Ticks::new(windup),
+                Ticks::new(period),
+                num(damage),
+            )
+            .unwrap(),
+        ),
         on_death: OnDeath::Despawn,
     }
 }
@@ -80,7 +88,7 @@ impl Fight {
     }
 
     fn run_until(&mut self, tick: u64) {
-        while self.world.resource::<SimTick>().get() < tick {
+        while self.world.resource::<SimTick>().start().get() < tick {
             self.world.run_schedule(SimUpdate);
         }
     }
@@ -106,17 +114,20 @@ fn an_attack_winds_up_and_strikes_each_period() {
     // In range from tick 0: attacks start in ticks 0, 5, 10 and 15, and strike 2 ticks later,
     // taking 100 to 70, 40, 10 and 0: the dummy despawns in tick 17.
     fight.run_until(2);
-    assert_eq!(fight.state(fighter).started(), Some(0));
+    assert_eq!(fight.state(fighter).started(), Some(Tick::new(0)));
     assert_eq!(fight.health(dummy), Some(100));
     fight.run_until(3);
     assert_eq!(fight.health(dummy), Some(70));
-    assert_eq!(fight.state(fighter).ready_at(), 5);
+    assert_eq!(fight.state(fighter).ready_at(), Tick::new(5));
     assert_eq!(fight.state(fighter).started(), None);
     let attackers = |fight: &Fight| {
         let attackers = fight.get_ref::<RecentAttackers>(dummy).unwrap();
         attackers.iter().collect::<Vec<_>>()
     };
-    let attack = |source, tick| RecentAttack { source, tick };
+    let attack = |source, tick| RecentAttack {
+        source,
+        tick: Tick::new(tick),
+    };
     assert_eq!(attackers(&fight), [attack(fighter, 2)]);
     fight.run_until(8);
     assert_eq!(attackers(&fight), [attack(fighter, 7)]);
@@ -132,10 +143,10 @@ fn an_attack_winds_up_and_strikes_each_period() {
     // A list keeps each attacker once, by stable id, and forgets one that despawned: the dummy.
     let index = fight.world.resource::<EntityIndex>();
     let mut recent = RecentAttackers::default();
-    recent.record(dummy, 3, index);
-    recent.record(fighter, 4, index);
+    recent.record(dummy, Tick::new(3), index);
+    recent.record(fighter, Tick::new(4), index);
     assert_eq!(recent.iter().collect::<Vec<_>>(), [attack(fighter, 4)]);
-    recent.record(fighter, 6, index);
+    recent.record(fighter, Tick::new(6), index);
     assert_eq!(recent.iter().collect::<Vec<_>>(), [attack(fighter, 6)]);
 }
 
@@ -152,10 +163,10 @@ fn a_windup_on_a_target_that_dies_spends_nothing() {
     // one's strike in tick 2. The slow one drops its target in tick 2 and is ready at once.
     fight.run_until(2);
     assert_eq!(fight.health(prey), None);
-    assert_eq!(fight.state(slow).started(), Some(0));
+    assert_eq!(fight.state(slow).started(), Some(Tick::new(0)));
     fight.run_until(3);
     assert_eq!(fight.state(slow), AttackState::default());
-    assert_eq!(fight.state(quick).ready_at(), 5);
+    assert_eq!(fight.state(quick).ready_at(), Tick::new(5));
 }
 
 #[test]
@@ -180,7 +191,7 @@ fn strikes_in_one_tick_see_the_state_before_any_of_them() {
         let attackers = fight.get_ref::<RecentAttackers>(unit).unwrap();
         let attack = RecentAttack {
             source: other,
-            tick: 1,
+            tick: Tick::new(1),
         };
         assert_eq!(attackers.iter().collect::<Vec<_>>(), [attack]);
     }
@@ -269,7 +280,6 @@ fn every_combat_type_is_state_and_restores() {
             "combat.health",
             "combat.on_death",
             "combat.recent_attackers",
-            "combat.team",
             "sim.entities",
             "sim.id_allocator",
             "sim.position",
@@ -292,11 +302,20 @@ fn stats_out_of_their_limits_are_refused() {
         Health::new(Num::EPSILON).map(Health::current),
         Some(Num::EPSILON)
     );
-    assert_eq!(AttackStats::new(-Num::EPSILON, 0, 1, Num::ZERO), None);
-    assert_eq!(AttackStats::new(Num::ZERO, 0, 1, -Num::EPSILON), None);
-    assert_eq!(AttackStats::new(Num::ZERO, 1, 1, Num::ZERO), None);
-    assert!(AttackStats::new(Num::ZERO, 0, 1, Num::ZERO).is_some());
-    let melee = AttackStats::new(Num::ONE, 1, 2, Num::ONE).unwrap();
+    assert_eq!(
+        AttackStats::new(-Num::EPSILON, Ticks::new(0), Ticks::new(1), Num::ZERO),
+        None
+    );
+    assert_eq!(
+        AttackStats::new(Num::ZERO, Ticks::new(0), Ticks::new(1), -Num::EPSILON),
+        None
+    );
+    assert_eq!(
+        AttackStats::new(Num::ZERO, Ticks::new(1), Ticks::new(1), Num::ZERO),
+        None
+    );
+    assert!(AttackStats::new(Num::ZERO, Ticks::new(0), Ticks::new(1), Num::ZERO).is_some());
+    let melee = AttackStats::new(Num::ONE, Ticks::new(1), Ticks::new(2), Num::ONE).unwrap();
     assert_eq!(melee.projectile_speed(), None);
     assert_eq!(melee.ranged(Num::ZERO), None);
     assert_eq!(melee.ranged(-Num::EPSILON), None);

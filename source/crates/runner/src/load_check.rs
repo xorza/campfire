@@ -8,7 +8,7 @@ use campfire_content::PackagePath;
 use campfire_math::Num;
 use campfire_sim::Capability;
 
-use crate::RELEASE;
+use crate::RELEASE_VERSION;
 use crate::error::{CtxMisuse, LoadError, LoadProblem, Place};
 use crate::mode_packages::{Content, Dependent, ModePackages};
 use crate::package::Package;
@@ -46,16 +46,32 @@ impl<'a> LoadCheck<'a> {
     pub(crate) fn run(packages: &'a ModePackages) -> Result<(), LoadError> {
         let manifest = &packages.manifest;
         let fail = |problem| LoadError {
-            package: manifest.name.clone(),
+            package: manifest.header.name.clone(),
             problem: Box::new(problem),
         };
         let mut tags: BTreeSet<&str> = packages
             .units
             .units
             .values()
-            .flat_map(|unit_type| unit_type.tags.iter().map(String::as_str))
+            .flat_map(|unit_type| unit_type.core.tags.iter().map(String::as_str))
             .collect();
         tags.insert(UnitTypeData::HERO_TAG);
+        if tags.len() > UnitTypeData::TAG_LIMIT {
+            return Err(fail(LoadProblem::TooManyTags));
+        }
+        let heroes = packages.dependencies.iter().filter_map(|dependent| {
+            matches!(dependent.content, Content::Hero(_)).then_some(&dependent.package.name)
+        });
+        let mut unit_types = packages.units.units.len();
+        for hero in heroes {
+            if packages.units.units.contains_key(hero) {
+                return Err(fail(LoadProblem::RepeatedUnitType(hero.clone())));
+            }
+            unit_types += 1;
+        }
+        if unit_types > UnitTypeData::TYPE_LIMIT {
+            return Err(fail(LoadProblem::TooManyUnitTypes));
+        }
         let engines = [&packages.mode].into_iter().chain(
             packages
                 .dependencies
@@ -63,10 +79,10 @@ impl<'a> LoadCheck<'a> {
                 .map(|dependent| &dependent.package),
         );
         for package in engines {
-            if package.engine != RELEASE {
+            if package.engine != RELEASE_VERSION {
                 return Err(LoadError {
                     package: package.name.clone(),
-                    problem: Box::new(LoadProblem::OtherEngine(package.engine.clone())),
+                    problem: Box::new(LoadProblem::OtherEngine(package.engine)),
                 });
             }
         }
@@ -345,7 +361,7 @@ impl<'a> LoadCheck<'a> {
                 self.filter_text(filter, &at)?;
             }
             let kinds = &facts.damage_kinds;
-            if let Some(kind) = kinds.iter().find(|kind| DamageKind::parse(kind).is_none()) {
+            if let Some(kind) = kinds.iter().find(|kind| DamageKind::named(kind).is_none()) {
                 return Err(LoadProblem::UnknownDamageKind {
                     at,
                     kind: kind.clone(),
@@ -477,9 +493,18 @@ fn appliers<'a>(
     appliers
 }
 
-/// Every per-rank array of `ability` has `ranks` entries.
+/// Every per-rank array of `ability` has `ranks` entries, and each capability field holds at
+/// every rank.
 fn ranked(id: &str, ability: &AbilityData, ranks: u8) -> Result<(), LoadProblem> {
     if ability.check_ranks(usize::from(ranks)) {
+        for rank in 1..=ranks {
+            ability
+                .fields_at(rank)
+                .map_err(|field| LoadProblem::AbilityField {
+                    ability: id.to_owned(),
+                    field,
+                })?;
+        }
         return Ok(());
     }
     Err(LoadProblem::RankCount {

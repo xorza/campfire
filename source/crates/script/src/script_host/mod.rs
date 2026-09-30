@@ -114,6 +114,11 @@ impl ScriptHost {
         Ok(id)
     }
 
+    /// How many scripts the host compiled.
+    pub const fn compiled(&self) -> usize {
+        self.scripts.len()
+    }
+
     /// The AST of `source`, compiled with the host's limits but not kept, for the package load
     /// checks to walk.
     pub fn parse(&self, source: &str) -> Result<AST, ScriptError> {

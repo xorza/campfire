@@ -1,5 +1,5 @@
 use bevy_ecs::component::Component;
-use campfire_sim::{SimComponent, StableId};
+use campfire_sim::{SimComponent, StableId, Tick};
 use serde::{Deserialize, Serialize};
 
 use crate::abilities::ability_book::AbilityId;
@@ -17,7 +17,7 @@ pub struct AbilitySlots {
 pub struct AbilitySlot {
     pub ability: AbilityId,
     pub rank: u8,
-    pub ready_at: u64,
+    pub ready_at: Tick,
 }
 
 /// A cast of the ability in `slot` at `target`: ordered and not checked yet while `resolves_at`
@@ -26,7 +26,7 @@ pub struct AbilitySlot {
 pub(crate) struct Casting {
     pub(crate) slot: u8,
     pub(crate) target: CastTarget,
-    pub(crate) resolves_at: Option<u64>,
+    pub(crate) resolves_at: Option<Tick>,
 }
 
 /// What a cast is aimed at.
@@ -45,7 +45,7 @@ impl AbilitySlots {
                 .map(|(ability, rank)| AbilitySlot {
                     ability,
                     rank,
-                    ready_at: 0,
+                    ready_at: Tick::ZERO,
                 })
                 .collect(),
             casting: None,
@@ -74,7 +74,7 @@ impl AbilitySlots {
         self.casting
     }
 
-    pub(crate) const fn start(&mut self, resolves_at: u64) {
+    pub(crate) const fn start(&mut self, resolves_at: Tick) {
         if let Some(casting) = &mut self.casting {
             casting.resolves_at = Some(resolves_at);
         }
@@ -86,7 +86,7 @@ impl AbilitySlots {
     }
 
     /// Puts `slot` on cooldown until `ready_at`.
-    pub(crate) fn cool_down(&mut self, slot: u8, ready_at: u64) {
+    pub(crate) fn cool_down(&mut self, slot: u8, ready_at: Tick) {
         if let Some(slot) = self.slots.get_mut(usize::from(slot)) {
             slot.ready_at = ready_at;
         }

@@ -1,23 +1,15 @@
-use crate::combat::team::Team;
-use crate::units::error::ApiError;
-use crate::units::filter_data::FilterData;
-use crate::units::relation::Relation;
+use crate::scripts::error::ApiError;
 use crate::units::tag_set::{Tag, TagSet};
+use crate::units::team::Team;
 use crate::units::unit_types::UnitTypes;
+use crate::values::filter_data::{FilterData, FilterSyntax};
+use crate::values::relation::Relation;
 
 /// A filter as a match runs it: a relation, and the tag of a unit type it may need.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Filter {
     relation: Relation,
     tag: Option<Tag>,
-}
-
-/// A filter as data and scripts write it: a relation and an optional tag after a colon, such as
-/// `enemies:creep`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct FilterSyntax<'a> {
-    pub(crate) relation: Relation,
-    pub(crate) tag: Option<&'a str>,
 }
 
 impl Filter {
@@ -50,20 +42,11 @@ impl Filter {
             Some(tag) => tags.contains(tag),
             None => true,
         };
-        tagged && self.relation.holds(of, team)
-    }
-}
-
-impl<'a> FilterSyntax<'a> {
-    /// `text` as a filter; `None` unless its relation is `enemies`, `allies` or `all`.
-    pub(crate) fn parse(text: &'a str) -> Option<FilterSyntax<'a>> {
-        let (relation, tag) = match text.split_once(':') {
-            Some((relation, tag)) => (relation, Some(tag)),
-            None => (text, None),
+        let related = match self.relation {
+            Relation::Enemies => of.is_enemy_of(team),
+            Relation::Allies => !of.is_enemy_of(team),
+            Relation::All => true,
         };
-        Some(FilterSyntax {
-            relation: Relation::parse(relation)?,
-            tag,
-        })
+        tagged && related
     }
 }

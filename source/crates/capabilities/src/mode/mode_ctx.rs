@@ -1,17 +1,19 @@
 use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
 
+use campfire_protocol::PlayerSlot;
 use campfire_script::rhai::{Array, Dynamic, Engine, INT, ImmutableString};
-use campfire_sim::Position;
+use campfire_sim::{Position, Ticks};
 
-use crate::combat::team::Team;
 use crate::mode::mode_book::ModeBook;
 use crate::mode::picks::Picks;
 use crate::mode::player_resources::PlayerResources;
-use crate::units::error::{ApiError, Checked};
+use crate::scripts::error::{ApiError, Checked};
+use crate::scripts::state_decl::StateType;
+use crate::scripts::state_value::StateValue;
+use crate::units::lane::Lane;
 use crate::units::script_view::View;
-use crate::units::state_decl::StateType;
-use crate::units::state_value::StateValue;
+use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
 
 /// `ctx` in the mode's script: its params and state, the players' choices and resources, and
@@ -41,7 +43,7 @@ pub(crate) struct ModeFrame {
 pub(crate) enum ModeEffect {
     Timer {
         name: String,
-        ticks: u64,
+        ticks: Ticks,
         repeat: bool,
         data: Option<StateValue>,
     },
@@ -53,7 +55,7 @@ pub(crate) enum ModeEffect {
     },
     SpawnWave {
         team: Team,
-        lane: u32,
+        lane: Lane,
         types: Vec<UnitType>,
     },
 }
@@ -98,6 +100,7 @@ impl ModeCtx {
                     params
                         .0
                         .book
+                        .schema
                         .param(&name)
                         .ok_or_else(|| ApiError::UnknownParam.fail().into())
                 },
@@ -120,9 +123,9 @@ impl ModeCtx {
             .register_get("p", |ctx: &mut ModeCtx| ModeParams(ctx.clone()))
             .register_get("state", |ctx: &mut ModeCtx| ModeStateAccess(ctx.clone()))
             .register_get("teams", |ctx: &mut ModeCtx| -> Array {
-                let names = ctx.book.teams.iter();
+                let names = ctx.book.teams.playing();
                 names
-                    .map(|name| Dynamic::from(ImmutableString::from(&**name)))
+                    .map(|name| Dynamic::from(ImmutableString::from(name)))
                     .collect()
             })
             .register_get("map", |ctx: &mut ModeCtx| ctx.book.map())
@@ -130,7 +133,11 @@ impl ModeCtx {
                 "enemy_team",
                 |ctx: &mut ModeCtx, team: &str| -> Checked<Dynamic> {
                     let team = ctx.team(team)?;
-                    let enemy = ctx.book.enemy_team(team).map_err(ApiError::fail)?;
+                    let enemy = ctx
+                        .book
+                        .teams
+                        .sole_enemy(team)
+                        .ok_or_else(|| ApiError::NoEnemyTeam.fail())?;
                     ctx.view.team_name(enemy)
                 },
             )
@@ -187,22 +194,24 @@ impl ModeCtx {
 
     fn team(&self, name: &str) -> Checked<Team> {
         self.book
-            .team(name)
+            .teams
+            .named(name)
             .ok_or_else(|| ApiError::UnknownTeam.fail().into())
     }
 
     /// Player `player`'s slot, when the session has it.
-    fn player(&self, player: INT) -> Checked<usize> {
+    fn player(&self, player: INT) -> Checked<PlayerSlot> {
         u32::try_from(player)
             .ok()
-            .filter(|&slot| slot < self.book.players())
-            .map(|slot| slot as usize)
+            .filter(|&slot| slot < self.book.teams.players())
+            .map(PlayerSlot::new)
             .ok_or_else(|| ApiError::UnknownPlayer.fail().into())
     }
 
     fn state(&self, name: &str) -> Checked<Dynamic> {
         let field = self
             .book
+            .schema
             .state_field(name)
             .ok_or_else(|| ApiError::UnknownState.fail())?;
         Ok(self.frame().state[field.index].to_dynamic(&self.view))
@@ -211,6 +220,7 @@ impl ModeCtx {
     fn set_state(&self, name: &str, value: &Dynamic) -> Checked<()> {
         let field = self
             .book
+            .schema
             .state_field(name)
             .ok_or_else(|| ApiError::UnknownState.fail())?;
         let value = StateValue::from_dynamic(field.kind, value)
@@ -225,6 +235,7 @@ impl ModeCtx {
         let slot = self.player(player)?;
         let hero = self
             .book
+            .roster
             .hero(id)
             .ok_or_else(|| ApiError::UnknownHero.fail())?;
         Ok(!self.frame().picks.taken(slot, hero))
@@ -235,8 +246,12 @@ impl ModeCtx {
             return Err(ApiError::HeroTaken.fail().into());
         }
         let slot = self.player(player)?;
-        let hero = self.book.hero(id).expect("an available hero is the mode's");
-        self.frame().picks.0[slot].hero = Some(hero);
+        let hero = self
+            .book
+            .roster
+            .hero(id)
+            .expect("an available hero is the mode's");
+        self.frame().picks.of_mut(slot).hero = Some(hero);
         Ok(())
     }
 
@@ -244,14 +259,14 @@ impl ModeCtx {
     fn choose_spells(&self, player: INT, ids: &Array) -> Checked<()> {
         let slot = self.player(player)?;
         let mut frame = self.frame();
-        let spells = &mut frame.picks.0[slot].spells;
+        let spells = &mut frame.picks.of_mut(slot).spells;
         spells.clear();
         for id in ids {
             let id = id
                 .clone()
                 .into_immutable_string()
                 .ok()
-                .and_then(|id| self.book.spell(&id))
+                .and_then(|id| self.book.roster.spell(&id))
                 .ok_or_else(|| ApiError::UnknownSpell.fail())?;
             if spells.contains(&id) {
                 return Err(ApiError::RepeatedSpell.fail().into());
@@ -282,7 +297,7 @@ impl ModeCtx {
         let team = self.team(team)?;
         self.book.lane_end(team).map_err(ApiError::fail)?;
         let lane = self
-            .book
+            .view
             .lane(lane)
             .ok_or_else(|| ApiError::UnknownLane.fail())?;
         let types = types
@@ -309,7 +324,7 @@ impl ModeCtx {
             .rate
             .ticks(ms)
             .ok_or_else(|| ApiError::TimeTooLarge.fail())?
-            .max(1);
+            .max(Ticks::ONE);
         let data = timer_data(data).map_err(ApiError::fail)?;
         self.frame().effects.push(ModeEffect::Timer {
             name: name.to_owned(),
@@ -321,7 +336,7 @@ impl ModeCtx {
     }
 
     fn add_resource(&self, player: INT, name: &str, amount: INT) -> Checked<()> {
-        let slot = u32::try_from(self.player(player)?).expect("a slot fits u32");
+        let slot = self.player(player)?;
         self.frame()
             .resources
             .add(slot, name, amount)

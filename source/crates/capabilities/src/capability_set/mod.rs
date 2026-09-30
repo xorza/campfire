@@ -7,11 +7,11 @@ use serde::{Deserialize, Deserializer};
 use crate::abilities::Abilities;
 use crate::capability_set::error::CapabilityError;
 use crate::combat::Combat;
-use crate::control::Control;
 use crate::navigation::Navigation;
+use crate::orders::Orders;
 use crate::projectiles::Projectiles;
+use crate::scripts::match_scripts::MatchScripts;
 use crate::units::Units;
-use crate::units::match_scripts::MatchScripts;
 
 pub(crate) mod error;
 
@@ -30,7 +30,7 @@ const INSTALLS: [(Capability, Install); 5] = [
     (Capability::Navigation, Navigation::install),
     (Capability::Projectiles, Projectiles::install),
     (Capability::Abilities, Abilities::install),
-    (Capability::Orders, Control::install),
+    (Capability::Orders, Orders::install),
 ];
 
 impl CapabilitySet {
@@ -119,8 +119,9 @@ mod tests {
 
     use super::*;
     use crate::abilities::ability_book::AbilityBook;
-    use crate::control::ai_book::AiBook;
-    use crate::units::script_limits::ScriptLimits;
+    use crate::orders::ai::Ai;
+    use crate::scripts::script_limits::ScriptLimits;
+    use crate::units::by_type::ByType;
     use crate::units::script_view::View;
 
     use Capability::{Abilities, Combat, Mode, Navigation, Orders, Projectiles, Vision};
@@ -199,7 +200,7 @@ mod tests {
         for (world, scripts) in [(&scripted, true), (&client, false)] {
             assert_eq!(world.get_non_send::<ScriptHost>().is_some(), scripts);
             assert_eq!(world.contains_resource::<AbilityBook>(), scripts);
-            assert_eq!(world.contains_resource::<AiBook>(), scripts);
+            assert_eq!(world.contains_resource::<ByType<Ai>>(), scripts);
             assert!(world.get_non_send::<View>().is_some());
         }
         let combat_only = installed(&[Combat], Some(scripts));

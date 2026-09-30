@@ -6,7 +6,6 @@ license.workspace = true
 
 [dependencies]
 campfire-content.workspace = true
-campfire-identity.workspace = true
 campfire-protocol.workspace = true
 campfire-runner.workspace = true
 

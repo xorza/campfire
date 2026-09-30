@@ -6,7 +6,7 @@ use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::schedule::common_conditions::resource_exists;
 use bevy_ecs::system::{Local, Query, ResMut};
 use bevy_ecs::world::World;
-use campfire_capabilities::Controller;
+use campfire_capabilities::Owner;
 use campfire_protocol::{Applied, PlayerSlot, ServerSeed, SessionLog};
 use campfire_runner::{ModePackages, Session, StartError};
 use campfire_sim::{EntityIndex, SimTick, StateHash};
@@ -92,7 +92,7 @@ impl SimServer {
             .resource::<EntityIndex>()
             .iter()
             .map(|(_, unit)| unit)
-            .filter(|&unit| world.entity(unit).contains::<Controller>())
+            .filter(|&unit| world.entity(unit).contains::<Owner>())
             .collect();
         for hero in heroes {
             world.entity_mut(hero).insert((
@@ -100,11 +100,10 @@ impl SimServer {
                 PredictionTarget::to_clients(NetworkTarget::All),
             ));
         }
-        for (slot, &client) in (0..).zip(clients) {
-            world.entity_mut(client).insert(PlayerLink {
-                slot: PlayerSlot::new(slot),
-                refused: 0,
-            });
+        for (slot, &client) in (0..).map(PlayerSlot::new).zip(clients) {
+            world
+                .entity_mut(client)
+                .insert(PlayerLink { slot, refused: 0 });
             world
                 .get_mut::<MessageSender<MatchStart>>(client)
                 .expect("a client link sends the match start")
@@ -144,7 +143,7 @@ fn run_sim_tick(world: &mut World) {
     };
     debug_assert_eq!(
         sim_tick,
-        world.resource::<SimTick>().get(),
+        world.resource::<SimTick>().start(),
         "the server runs every sim tick once, in order"
     );
     Session::run_tick(world);

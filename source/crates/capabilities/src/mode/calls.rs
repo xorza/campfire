@@ -1,22 +1,23 @@
 use bevy_ecs::world::World;
 use campfire_script::ScriptError;
 use campfire_script::rhai::FuncArgs;
+use campfire_sim::Tick;
 
 use crate::mode::mode_ctx::{ModeCtx, ModeEffect};
 use crate::mode::mode_state::ModeState;
 use crate::mode::picks::Picks;
 use crate::mode::player_resources::PlayerResources;
 use crate::mode::timers::Timers;
-use crate::units::hook::Hook;
-use crate::units::pool::Pool;
-use crate::units::script_batch::ScriptBatch;
+use crate::scripts::hook::Hook;
+use crate::scripts::pool::Pool;
+use crate::scripts::script_batch::ScriptBatch;
 
 /// The mode calls of one batch, at one time.
 #[derive(Debug)]
 pub(crate) struct Calls<'a, 'w> {
     pub(crate) batch: &'a mut ScriptBatch<'w>,
     pub(crate) ctx: &'a ModeCtx,
-    now: u64,
+    now: Tick,
 }
 
 impl Calls<'_, '_> {
@@ -24,7 +25,7 @@ impl Calls<'_, '_> {
     pub(crate) fn batch<T>(
         world: &mut World,
         ctx: &ModeCtx,
-        now: u64,
+        now: Tick,
         calls: impl FnOnce(&mut Calls<'_, '_>) -> T,
     ) -> T {
         ScriptBatch::run(world, ctx.view(), |batch| {
@@ -41,7 +42,7 @@ impl Calls<'_, '_> {
         args: impl FuncArgs,
     ) -> Result<(), ScriptError> {
         self.begin();
-        let script = self.ctx.book().script;
+        let script = self.ctx.book().schema.script;
         drop(self.batch.call(pool, script, hook, args)?);
         self.commit();
         Ok(())

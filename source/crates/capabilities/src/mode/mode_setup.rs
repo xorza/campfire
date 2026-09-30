@@ -1,8 +1,10 @@
+use campfire_script::ScriptId;
+
 use crate::abilities::ability_book::AbilityId;
 use crate::abilities::resource_pool::ResourcePool;
-use crate::mode::manifest::TeamManifest;
-use crate::mode::map_data::MapData;
-use crate::mode::mode_data::ModeData;
+use crate::files::manifest::TeamManifest;
+use crate::files::map_data::MapData;
+use crate::files::mode_data::ModeData;
 use crate::mode::unit_kit::UnitKit;
 use crate::units::unit_type::UnitType;
 
@@ -10,8 +12,8 @@ use crate::units::unit_type::UnitType;
 /// into the match: the input of `Mode::install`.
 #[derive(Debug)]
 pub struct ModeSetup<'a> {
-    /// The source of the mode script.
-    pub script: &'a str,
+    /// The mode script, compiled.
+    pub script: ScriptId,
     pub data: &'a ModeData,
     pub map: &'a MapData,
     /// The playing teams, in the manifest's order; their slots in that order make the player

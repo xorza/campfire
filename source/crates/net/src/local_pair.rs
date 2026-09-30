@@ -7,10 +7,10 @@ use bevy_ecs::observer::On;
 use bevy_ecs::system::Commands;
 use bevy_state::app::StatesPlugin;
 use bevy_time::{TimePlugin, TimeUpdateStrategy};
-use campfire_capabilities::{Action, Controller, Order};
+use campfire_capabilities::{Action, Order, Owner};
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
 use campfire_protocol::{
-    Delegation, DelegationTerms, SeedChain, SessionHeader, SessionLog, SessionTerms,
+    Delegation, DelegationTerms, PlayerSlot, SeedChain, SessionHeader, SessionLog, SessionTerms,
 };
 use campfire_runner::{ModePackages, RELEASE, StartError};
 use campfire_sim::{EntityIndex, StableId};
@@ -188,8 +188,8 @@ impl LocalPair {
             .find(|&(_, unit)| {
                 world
                     .entity(unit)
-                    .get::<Controller>()
-                    .is_some_and(|controller| controller.slot() == 0)
+                    .get::<Owner>()
+                    .is_some_and(|owner| owner.slot() == PlayerSlot::new(0))
             })
             .map(|(id, _)| id)
             .expect("the match started, with the client's hero")

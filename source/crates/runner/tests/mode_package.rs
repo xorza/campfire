@@ -7,8 +7,8 @@ use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 
 use campfire_capabilities::{
-    Controller, Hook, InputValue, LaneWalker, ModeError, ModeInput, ModeState, PlayerResources,
-    ScriptFailures, StateValue, Team, UnitType,
+    AbilityField, Hook, InputValue, LaneWalker, ModeError, ModeInput, ModeState, Owner,
+    PlayerResources, ScriptFailures, StateValue, Team, UnitType,
 };
 use campfire_content::ContentError;
 use campfire_math::{Num, Vec3};
@@ -18,6 +18,7 @@ use campfire_protocol::{
     SessionTerms,
 };
 use campfire_runner::{CtxMisuse, LoadError, LoadProblem, ModePackages, Place, RELEASE, Runner};
+use campfire_script::ScriptHost;
 use campfire_sim::{Capability, EntityIndex, Position, StableId, StateHash};
 
 /// The 3v3's slowest rate, which runs a match in the fewest ticks.
@@ -130,7 +131,7 @@ fn units(runner: &Runner) -> Vec<Unit> {
                 team: *unit.get::<Team>()?,
                 kind: *unit.get::<UnitType>()?,
                 pos: *unit.get::<Position>()?,
-                controller: unit.get::<Controller>().map(|controller| controller.slot()),
+                controller: unit.get::<Owner>().map(|owner| owner.slot().get()),
                 walks: unit.contains::<LaneWalker>(),
             })
         })
@@ -200,6 +201,9 @@ fn a_3v3_match_replays_to_the_same_hashes() {
     // State in the order of its fields' names: first_blood, then phase.
     let phase = &world.resource::<ModeState>().get()[1];
     assert_eq!(phase, &StateValue::Text("play".to_owned()));
+    // Each script file compiles once, however many abilities or unit types run it: the mode's 4,
+    // the six heroes' 5, 4, 5, 5, 5 and 5, and the spells' 6 make 39.
+    assert_eq!(world.non_send::<ScriptHost>().compiled(), 39);
 
     // The map's 14 structures from the start; at the pick's end, the 6 heroes at their teams'
     // spawns, slots 0 to 2 north and 3 to 5 south, and the 5 neutral camps.
@@ -245,7 +249,11 @@ fn a_3v3_match_replays_to_the_same_hashes() {
     // Income: 8 gold every 5 s from the pick's end, 100 ticks, in ticks 1299 to 2499: 13 times.
     let gold = world.resource::<PlayerResources>();
     for slot in 0..PLAYERS {
-        assert_eq!(gold.amount(slot, "gold"), 104, "player {slot}");
+        assert_eq!(
+            gold.amount(PlayerSlot::new(slot), "gold"),
+            104,
+            "player {slot}"
+        );
     }
     // Only camps, 20 to 24, fail: their AI reads `unit.spawn_pos`, which the release does not
     // have yet.
@@ -363,12 +371,18 @@ fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 43] = [
+const FLAWS: [Flaw; 46] = [
     flaw(
         MANIFEST,
         Edit::Replace(r#"engine = "0.1.0""#, r#"engine = "0.0.9""#),
         MODE,
-        |problem| matches!(problem, LoadProblem::OtherEngine(engine) if engine == "0.0.9"),
+        |problem| matches!(problem, LoadProblem::OtherEngine(engine) if engine.to_string() == "0.0.9"),
+    ),
+    flaw(
+        MANIFEST,
+        Edit::Replace(r#"engine = "0.1.0""#, r#"engine = "0.1""#),
+        MODE_DIR,
+        |problem| manifest_fails(problem, r#""0.1" is not major.minor.patch"#),
     ),
     flaw(
         "heroes/husk/manifest.toml",
@@ -536,6 +550,29 @@ const FLAWS: [Flaw; 43] = [
                 }
             )
         },
+    ),
+    flaw(
+        HUSK,
+        Edit::Replace("cost = 35", "cost = -35"),
+        "hero-husk",
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::AbilityField {
+                    field: AbilityField::Cost,
+                    ..
+                }
+            )
+        },
+    ),
+    flaw(
+        UNITS,
+        Edit::Replace(
+            "[units.melee_creep]",
+            "[units.hero-husk]\n\n[units.melee_creep]",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::RepeatedUnitType(name) if name == "hero-husk"),
     ),
     flaw(
         LASH_OUT,

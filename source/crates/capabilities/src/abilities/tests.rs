@@ -5,6 +5,7 @@ use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::Component;
 use campfire_content::PackagePath;
 use campfire_math::{SegmentSeed, Vec3};
+use campfire_protocol::PlayerSlot;
 use campfire_script::{NumError, ScriptError};
 use campfire_sim::{IdAllocator, SimUpdate, TickInput, TickInputs};
 
@@ -17,21 +18,23 @@ use crate::combat::attack_stats::AttackStats;
 use crate::combat::combatant::Combatant;
 use crate::combat::health::Health;
 use crate::combat::on_death::OnDeath;
-use crate::control::Control;
-use crate::control::ai_data::AiData;
-use crate::control::order::{Action, Order};
 use crate::navigation::Navigation;
+use crate::orders::Orders;
+use crate::orders::ai_data::AiData;
+use crate::orders::order::{Action, Order};
+use crate::scripts::error::ApiError;
+use crate::scripts::match_scripts::MatchScripts;
+use crate::scripts::script_budgets::ScriptBudgets;
+use crate::scripts::script_failures::{ScriptFailure, ScriptFailures};
+use crate::scripts::script_limits::ScriptLimits;
 use crate::units::Units;
-use crate::units::error::ApiError;
-use crate::units::filter_data::FilterData;
-use crate::units::match_scripts::MatchScripts;
-use crate::units::number::{Number, ParamRef};
-use crate::units::param::Scaling;
-use crate::units::ranked::Ranked;
-use crate::units::script_budgets::ScriptBudgets;
-use crate::units::script_failures::{ScriptFailure, ScriptFailures};
-use crate::units::script_limits::ScriptLimits;
 use crate::units::unit_type_data::UnitTypeData;
+use crate::values::filter_data::FilterData;
+use crate::values::number::{Number, ParamRef};
+use crate::values::param::Param;
+use crate::values::param::Scaling;
+use crate::values::ranked::Ranked;
+use crate::values::scalar::Scalar;
 
 /// The MOBA's 30 ticks a second.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
@@ -70,7 +73,7 @@ fn at(x: Num, y: Num, z: Num) -> Position {
 fn combatant(health: i64) -> Combatant {
     Combatant {
         health: Health::new(num(health)).unwrap(),
-        attack: Some(AttackStats::new(Num::ZERO, 0, 1, Num::ZERO).unwrap()),
+        attack: Some(AttackStats::new(Num::ZERO, Ticks::new(0), Ticks::new(1), Num::ZERO).unwrap()),
         on_death: OnDeath::Stay,
     }
 }
@@ -178,13 +181,14 @@ impl Match {
         Combat::install(&mut world, &mut schedule, &mut registry);
         Navigation::install(&mut world, &mut schedule, &mut registry);
         Abilities::install(&mut world, &mut schedule, &mut registry);
-        Control::install(&mut world, &mut schedule, &mut registry);
+        Orders::install(&mut world, &mut schedule, &mut registry);
         world.add_schedule(schedule);
         Match { world, registry }
     }
 
     fn load(&mut self, data: &AbilityData, source: &str) -> AbilityId {
-        Abilities::load(&mut self.world, data, Some(source), 5).unwrap()
+        let script = Units::compile(&mut self.world, source).unwrap();
+        Abilities::load(&mut self.world, data, Some(script), 5).unwrap()
     }
 
     fn spawn(&mut self, team: u8, at: Position, parts: impl Bundle) -> StableId {
@@ -200,7 +204,7 @@ impl Match {
             0,
             at(Num::ZERO, Num::ZERO, Num::ZERO),
             (
-                Controller::new(0),
+                Owner::new(PlayerSlot::new(0)),
                 AbilitySlots::new([(ability, rank)]),
                 ResourcePool::new(num(100)).unwrap(),
             ),
@@ -219,7 +223,7 @@ impl Match {
                 action: Action::Cast { slot: 0, target },
             }]);
             self.world.resource_mut::<TickInputs>().push(TickInput {
-                slot,
+                slot: PlayerSlot::new(slot),
                 payload: &payload,
             });
         }
@@ -227,7 +231,7 @@ impl Match {
     }
 
     fn run_until(&mut self, tick: u64) {
-        while self.world.resource::<SimTick>().get() < tick {
+        while self.world.resource::<SimTick>().start().get() < tick {
             self.world.run_schedule(SimUpdate);
         }
     }
@@ -286,7 +290,7 @@ fn lash_out_hits_every_enemy_within_its_radius_exactly() {
         |game: &Match| [near, edge, beyond, high, ally, dead].map(|unit| game.health(unit));
     assert_eq!(healths(&game), [400, 400, 500, 400, 500, 500]);
     assert_eq!(game.pool(husk), 65);
-    assert_eq!(game.slot(husk).ready_at, 270);
+    assert_eq!(game.slot(husk).ready_at, Tick::new(270));
     assert!(game.failures().is_empty());
 
     // On cooldown until tick 270: a cast in tick 1 does nothing.
@@ -318,7 +322,8 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
         think_ms: 1,
     };
     let spin = "fn think(ctx, unit) { loop {} }";
-    Control::load_ai(&mut game.world, spinner, &ai, spin).unwrap();
+    let spin = Units::compile(&mut game.world, spin).unwrap();
+    Orders::load_ai(&mut game.world, spinner, &ai, spin).unwrap();
     for z in 0..11 {
         game.spawn(2, at(Num::ZERO, Num::ZERO, num(20 + z)), spinner);
     }
@@ -343,7 +348,7 @@ fn a_cast_passes_its_checks_or_does_nothing() {
         0,
         at(num(1), Num::ZERO, Num::ZERO),
         (
-            Controller::new(0),
+            Owner::new(PlayerSlot::new(0)),
             AbilitySlots::new([(strike, 0)]),
             ResourcePool::new(num(100)).unwrap(),
         ),
@@ -352,7 +357,7 @@ fn a_cast_passes_its_checks_or_does_nothing() {
         0,
         at(num(2), Num::ZERO, Num::ZERO),
         (
-            Controller::new(0),
+            Owner::new(PlayerSlot::new(0)),
             AbilitySlots::new([(strike, 1)]),
             ResourcePool::new(num(5)).unwrap(),
         ),
@@ -381,7 +386,7 @@ fn a_cast_passes_its_checks_or_does_nothing() {
     game.cast(caster, CastTarget::Unit(enemy));
     assert_eq!(game.health(enemy), 450);
     assert_eq!(game.pool(caster), 90);
-    assert_eq!(game.slot(caster).ready_at, 36);
+    assert_eq!(game.slot(caster).ready_at, Tick::new(36));
 }
 
 #[test]
@@ -428,13 +433,14 @@ fn a_failed_script_changes_nothing_and_fails_the_same_way_everywhere() {
                 assert_eq!(failures[0].hook, Hook::OnCast);
                 assert!(expected(&failures[0].error), "{:?}", failures[0].error);
                 let mut budgets = game.world.resource_mut::<ScriptBudgets>();
-                spent.push(LIMITS.player - budgets.get_mut(Pool::Player(0)).left());
+                spent
+                    .push(LIMITS.player - budgets.get_mut(Pool::Player(PlayerSlot::new(0))).left());
             } else {
                 game.world.run_schedule(SimUpdate);
             }
             assert_eq!(game.health(enemy), 500);
             assert_eq!(game.pool(caster), 100);
-            assert_eq!(game.slot(caster).ready_at, 0);
+            assert_eq!(game.slot(caster).ready_at, Tick::new(0));
             hashes.push(game.registry.hash(&game.world));
         }
         assert_eq!(hashes[0], hashes[1], "{script}");
@@ -467,7 +473,7 @@ fn a_cast_draws_from_its_casters_player_pool() {
             0,
             at(Num::ZERO, Num::ZERO, num(1)),
             (
-                Controller::new(1),
+                Owner::new(PlayerSlot::new(1)),
                 AbilitySlots::new([(strike, 1)]),
                 ResourcePool::new(num(100)).unwrap(),
             ),
@@ -492,8 +498,11 @@ fn a_cast_draws_from_its_casters_player_pool() {
         assert_eq!(game.pool(striker), 90);
         let mut budgets = game.world.resource_mut::<ScriptBudgets>();
         let spent = if spins { 0 } else { LIMITS.per_call };
-        assert_eq!(budgets.get_mut(Pool::Player(0)).left(), spent);
-        left.push(budgets.get_mut(Pool::Player(1)).left());
+        assert_eq!(
+            budgets.get_mut(Pool::Player(PlayerSlot::new(0))).left(),
+            spent
+        );
+        left.push(budgets.get_mut(Pool::Player(PlayerSlot::new(1))).left());
     }
     assert_eq!(left[0], left[1]);
     assert!(left[0] < LIMITS.per_call);
@@ -502,15 +511,14 @@ fn a_cast_draws_from_its_casters_player_pool() {
 #[test]
 fn an_ability_loads_only_when_its_data_holds() {
     let mut game = Match::new();
-    let load = |game: &mut Match, data: &AbilityData, source: Option<&str>| {
-        Abilities::load(&mut game.world, data, source, 5)
+    let load = |game: &mut Match, data: &AbilityData, source: &str| {
+        let script = Units::compile(&mut game.world, source).unwrap();
+        Abilities::load(&mut game.world, data, Some(script), 5)
     };
     let mut uneven = lash_out();
     uneven.cost = Some(Ranked::PerRank(vec![int(35), int(40)]));
     let mut aimed = lash_out();
     aimed.targeting = Targeting::Direction;
-    let mut unscripted = lash_out();
-    unscripted.script = None;
     let mut forever = lash_out();
     forever.cooldown_ms = Some(Ranked::One(int(i64::MAX)));
     let mut scaled = lash_out();
@@ -521,51 +529,35 @@ fn an_ability_loads_only_when_its_data_holds() {
     unknown.range = Some(Ranked::One(RangeField::Param(ParamRef {
         param: "reach".to_owned(),
     })));
-    let cases: [(AbilityData, Option<&str>, fn(&AbilityError) -> bool); 7] = [
-        (uneven, Some(LASH_OUT), |error| {
-            matches!(error, AbilityError::RankCount(5))
-        }),
-        // A scaling param is the caster's value, which no cooldown may take.
-        (scaled, Some(LASH_OUT), |error| {
-            matches!(error, AbilityError::Field(AbilityField::Cooldown))
-        }),
-        (negative, Some(LASH_OUT), |error| {
-            matches!(error, AbilityError::Field(AbilityField::Cost))
-        }),
-        (unknown, Some(LASH_OUT), |error| {
-            matches!(error, AbilityError::Field(AbilityField::Range))
-        }),
-        (unscripted, Some(LASH_OUT), |error| {
-            matches!(error, AbilityError::ScriptMismatch)
-        }),
-        (lash_out(), None, |error| {
-            matches!(error, AbilityError::ScriptMismatch)
-        }),
-        (forever, Some(LASH_OUT), |error| {
-            matches!(error, AbilityError::TimeTooLarge)
-        }),
-    ];
-    for (data, source, expected) in cases {
-        let error = load(&mut game, &data, source).unwrap_err();
-        assert!(expected(&error), "{error:?}");
+    // The data's rules, which the package load checks: two costs for five ranks, and the field
+    // that does not hold at rank 1. A scaling param is the caster's value, which no cooldown may
+    // take.
+    assert!(lash_out().check_ranks(5) && !uneven.check_ranks(5));
+    for (data, field) in [
+        (scaled, AbilityField::Cooldown),
+        (negative, AbilityField::Cost),
+        (unknown, AbilityField::Range),
+    ] {
+        assert_eq!(data.fields_at(1).err(), Some(field), "{field:?}");
     }
+    // What only a match's rate decides: i64::MAX ms counts in no tick.
     assert!(matches!(
-        load(&mut game, &lash_out(), Some("fn on_cast(")),
-        Err(AbilityError::Script(ScriptError::Compile(_)))
+        load(&mut game, &forever, LASH_OUT),
+        Err(AbilityError::TimeTooLarge)
     ));
-    assert!(load(&mut game, &lash_out(), Some(LASH_OUT)).is_ok());
+    assert!(load(&mut game, &lash_out(), LASH_OUT).is_ok());
     // A direction loads, as every targeting does; no cast can aim one yet.
-    assert!(load(&mut game, &aimed, Some(LASH_OUT)).is_ok());
+    assert!(load(&mut game, &aimed, LASH_OUT).is_ok());
 
     // A script may serve only the ability's modifiers: a cast of rank 1 in tick 0 then runs no
     // script, and spends 35 of 100 and its 10 000 ms, 300 ticks at 30 a second.
     let modifiers_only = "fn on_damage_taken(ctx, m, d) { }";
-    let passive = load(&mut game, &lash_out(), Some(modifiers_only)).unwrap();
+    let passive = load(&mut game, &lash_out(), modifiers_only).unwrap();
     let caster = game.caster(passive, 1);
     game.cast(caster, CastTarget::None);
     assert!(game.failures().is_empty());
     assert_eq!(game.pool(caster), 65);
-    assert_eq!(game.slot(caster).ready_at, 300);
+    assert_eq!(game.slot(caster).ready_at, Tick::new(300));
 }
 
 #[test]
@@ -587,21 +579,19 @@ fn a_capability_field_reads_its_param_at_each_rank() {
         Param::Ranked(Ranked::One(Scalar::Int(7))),
     );
     let mut game = Match::new();
-    let id = Abilities::load(&mut game.world, &data, Some(STRIKE), 3).unwrap();
+    let strike = Units::compile(&mut game.world, STRIKE).unwrap();
+    let id = Abilities::load(&mut game.world, &data, Some(strike), 3).unwrap();
     let book = game.world.resource::<AbilityBook>();
     let ranks: Vec<_> = book
         .get(id)
         .unwrap()
         .ranks
         .iter()
-        .map(|values| (values.cooldown, values.cost))
+        .map(|values| (values.cooldown.get(), values.cost))
         .collect();
     assert_eq!(ranks, [(30, 5), (60, 7), (90, 9)]);
     // Three ranks of an array of 3 is the rank count; five is not.
-    assert!(matches!(
-        Abilities::load(&mut game.world, &data, Some(STRIKE), 5),
-        Err(AbilityError::RankCount(5))
-    ));
+    assert!(data.check_ranks(3) && !data.check_ranks(5));
 }
 
 #[test]
@@ -626,17 +616,4 @@ fn a_unit_target_is_one_its_filter_selects_tag_and_all() {
     assert_eq!(game.health(enemy_creep), 500);
     game.cast(caster, CastTarget::Unit(enemy_hero));
     assert_eq!(game.health(enemy_hero), 450);
-
-    // A tag no unit type declares fails the load.
-    let unknown = strike_data_with("enemies:ward");
-    assert!(matches!(
-        Abilities::load(&mut game.world, &unknown, Some(STRIKE), 1),
-        Err(AbilityError::UnknownTag(filter)) if filter == "enemies:ward"
-    ));
-}
-
-fn strike_data_with(filter: &str) -> AbilityData {
-    let mut data = strike();
-    data.targeting = Targeting::Unit(FilterData::parse(filter).unwrap());
-    data
 }

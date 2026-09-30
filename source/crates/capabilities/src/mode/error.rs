@@ -1,8 +1,6 @@
 use std::error::Error;
 use std::fmt;
 
-use campfire_script::ScriptError;
-
 use crate::stats::stat::Stat;
 
 /// Why a unit type's values do not make a unit. Packages are untrusted, so each is an expected
@@ -30,8 +28,6 @@ pub enum UnitKitError {
 /// not have. Packages are untrusted, so each is an expected failure.
 #[derive(Debug, Clone)]
 pub enum ModeError {
-    /// The mode script does not compile.
-    Script(ScriptError),
     /// A team is named `neutral`, the name of the team neutral units spawn on.
     NeutralTeam,
     /// More teams than a team index counts, the neutral one included.
@@ -75,7 +71,6 @@ impl Error for UnitKitError {}
 impl fmt::Display for ModeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ModeError::Script(error) => write!(f, "mode script: {error}"),
             ModeError::NeutralTeam => f.write_str("a team is named neutral"),
             ModeError::TooManyTeams => f.write_str("more teams than a team index counts"),
             ModeError::RepeatedName(name) => write!(f, "{name:?} names two teams or lanes"),
@@ -90,11 +85,4 @@ impl fmt::Display for ModeError {
     }
 }
 
-impl Error for ModeError {
-    fn source(&self) -> Option<&(dyn Error + 'static)> {
-        match self {
-            ModeError::Script(error) => Some(error),
-            _ => None,
-        }
-    }
-}
+impl Error for ModeError {}

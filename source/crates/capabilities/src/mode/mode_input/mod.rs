@@ -1,6 +1,6 @@
 use campfire_sim::{Capability, Command};
 
-use crate::mode::mode_data::InputType;
+use crate::files::mode_data::InputType;
 
 /// A player's mode input, the body of a `mode` command: its name, then its value in the format of
 /// the type the mode declares for that name, in postcard: a string, or a list of strings.

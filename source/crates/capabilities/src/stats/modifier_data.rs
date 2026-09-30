@@ -3,12 +3,12 @@ use std::collections::BTreeMap;
 use campfire_content::PackagePath;
 use serde::Deserialize;
 
+use crate::scripts::state_decl::StateDecl;
 use crate::stats::stat::Stat;
 use crate::stats::unit_state::UnitState;
-use crate::units::filter_data::FilterData;
-use crate::units::number::Number;
-use crate::units::param::Param;
-use crate::units::state_decl::StateDecl;
+use crate::values::filter_data::FilterData;
+use crate::values::number::Number;
+use crate::values::param::Param;
 
 /// A modifier as its data file declares it, in milliseconds. The release loads it, and runs
 /// none of it yet.

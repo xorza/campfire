@@ -5,7 +5,7 @@ use std::str::FromStr;
 use super::*;
 use crate::combat::on_death::OnDeath;
 use crate::stats::stats_data::StatValue;
-use crate::units::scalar::Scalar;
+use crate::values::scalar::Scalar;
 
 fn decimal(text: &str) -> Num {
     Num::from_str(text).unwrap()
@@ -60,7 +60,7 @@ fn a_kit_counts_its_stats_in_ticks_at_the_rate() {
     // up to 45 ticks. 300 ms is 9 ticks. 6.5 m/s over 30 is 3635063.47 / 2²⁴, to 3635063;
     // 3.25 m/s is 1817531.73 / 2²⁴, to 1817532.
     let stats = combatant.attack.unwrap();
-    assert_eq!((stats.period(), stats.windup()), (45, 9));
+    assert_eq!((stats.period().get(), stats.windup().get()), (45, 9));
     assert_eq!(stats.range(), decimal("6.0"));
     assert_eq!(stats.damage(), decimal("23"));
     assert_eq!(stats.projectile_speed(), Some(Num::from_bits(3_635_063)));
@@ -74,7 +74,7 @@ fn a_kit_counts_its_stats_in_ticks_at_the_rate() {
         rules(20),
     );
     let stats = slower.unwrap().combatant.unwrap().attack.unwrap();
-    assert_eq!((stats.period(), stats.windup()), (30, 6));
+    assert_eq!((stats.period().get(), stats.windup().get()), (30, 6));
     assert_eq!(stats.projectile_speed(), Some(decimal("0.325")));
 
     // 3 attacks a second is capped at 2.5, 12 ticks; 7 m/s at the cap, 6 over 30: 0.2 m.
@@ -83,7 +83,7 @@ fn a_kit_counts_its_stats_in_ticks_at_the_rate() {
         stats.get_mut(&Stat::MoveSpeed).unwrap().base = Scalar::Int(7);
     });
     let kit = UnitKit::new(Some(&fast), Some(&attack(0, None)), rules(30)).unwrap();
-    assert_eq!(kit.combatant.unwrap().attack.unwrap().period(), 12);
+    assert_eq!(kit.combatant.unwrap().attack.unwrap().period().get(), 12);
     assert_eq!(kit.step.unwrap().get(), Num::from_bits(3_355_443));
 
     // No combat section, no move speed: nothing of either.

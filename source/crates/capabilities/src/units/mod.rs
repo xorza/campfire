@@ -1,38 +1,31 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{NonSendMut, ResMut};
 use bevy_ecs::world::World;
-use campfire_script::ScriptHost;
+use campfire_script::{ScriptError, ScriptHost, ScriptId};
 use campfire_sim::{SimSet, StateRegistry, TickRate};
 
+use crate::scripts::match_scripts::MatchScripts;
+use crate::scripts::script_budgets::ScriptBudgets;
+use crate::scripts::script_failures::ScriptFailures;
 use crate::units::error::UnitTypeError;
-use crate::units::match_scripts::MatchScripts;
-use crate::units::script_budgets::ScriptBudgets;
-use crate::units::script_failures::ScriptFailures;
+use crate::units::owner::Owner;
 use crate::units::script_view::View;
+use crate::units::team::Team;
 use crate::units::unit::Unit;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
 
-pub(crate) mod ctx_entry;
+pub(crate) mod by_type;
 pub(crate) mod error;
 pub(crate) mod filter;
-pub(crate) mod filter_data;
-pub(crate) mod hook;
-pub(crate) mod match_scripts;
-pub(crate) mod number;
-pub(crate) mod param;
-pub(crate) mod pool;
-pub(crate) mod ranked;
-pub(crate) mod relation;
-pub(crate) mod scalar;
-pub(crate) mod script_batch;
-pub(crate) mod script_budgets;
-pub(crate) mod script_failures;
-pub(crate) mod script_limits;
+pub(crate) mod lane;
+pub(crate) mod living_unit;
+pub(crate) mod owner;
+pub(crate) mod recent_attack;
 pub(crate) mod script_view;
-pub(crate) mod state_decl;
-pub(crate) mod state_value;
 pub(crate) mod tag_set;
+pub(crate) mod team;
+pub(crate) mod teams;
 pub(crate) mod unit;
 pub(crate) mod unit_type;
 pub(crate) mod unit_type_data;
@@ -62,6 +55,8 @@ impl Units {
     ) {
         let rate = *world.resource::<TickRate>();
         world.insert_non_send(View::new(rate));
+        registry.register_component::<Owner>();
+        registry.register_component::<Team>();
         registry.register_component::<UnitType>();
         let Some(MatchScripts { limits, players }) = scripts else {
             return;
@@ -76,6 +71,11 @@ impl Units {
                 .in_set(SimSet::Inputs)
                 .in_set(UnitsSet::BeginTick),
         );
+    }
+
+    /// Compiles `source` in the match's script host, once for every capability that runs it.
+    pub fn compile(world: &mut World, source: &str) -> Result<ScriptId, ScriptError> {
+        world.non_send_mut::<ScriptHost>().compile(source)
     }
 
     /// Loads the unit type `name`, with its core fields: its tags and its params. A name is one

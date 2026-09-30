@@ -222,7 +222,7 @@ fn arrive(
     mut ids: ResMut<'_, IdAllocator>,
     mut commands: Commands<'_, '_>,
 ) {
-    if tick.get() < ARRIVAL_TICKS {
+    if tick.start().get() < ARRIVAL_TICKS {
         commands.spawn((ids.allocate(), Place(Vec3::ZERO), Life(Num::ONE)));
     }
 }

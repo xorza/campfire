@@ -104,7 +104,7 @@ impl ModePackages {
         dependencies: &[(String, PackageDir)],
     ) -> Result<ModePackages, LoadError> {
         let parser = ScriptHost::new(manifest.script_limits.per_call);
-        let name = manifest.name.clone();
+        let name = manifest.header.name.clone();
         let fail = |problem| LoadError {
             package: name.clone(),
             problem: Box::new(problem),
@@ -121,7 +121,7 @@ impl ModePackages {
             .read_data(&path(MAP_DATA))
             .map_err(content)
             .map_err(fail)?;
-        let mode = Package::read(dir, name.clone(), manifest.engine.clone(), &parser)?;
+        let mode = Package::read(dir, name.clone(), manifest.header.engine, &parser)?;
         let dependencies = dependencies
             .iter()
             .map(|(name, dir)| Dependent::read(name, dir, &parser))
@@ -150,8 +150,9 @@ impl Dependent {
             .read_data(&path(PackageDir::MANIFEST))
             .map_err(content)
             .map_err(fail)?;
-        if manifest.name() != name {
-            return Err(fail(LoadProblem::OtherName(manifest.name().to_owned())));
+        let header = manifest.header();
+        if header.name != name {
+            return Err(fail(LoadProblem::OtherName(header.name.clone())));
         }
         let content = match &manifest {
             Manifest::Hero(_) => Content::Hero(Box::new(
@@ -165,7 +166,7 @@ impl Dependent {
             }
             Manifest::Mode(_) => return Err(fail(LoadProblem::WrongKind)),
         };
-        let package = Package::read(dir, name.to_owned(), manifest.engine().to_owned(), parser)?;
+        let package = Package::read(dir, name.to_owned(), header.engine, parser)?;
         Ok(Dependent { package, content })
     }
 }

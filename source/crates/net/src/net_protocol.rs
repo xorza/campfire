@@ -1,5 +1,5 @@
 use bevy_app::{App, Plugin};
-use campfire_capabilities::{Controller, Destination, MoveStep};
+use campfire_capabilities::{Destination, MoveStep, Owner};
 use campfire_sim::{Position, StableId};
 use lightyear::prelude::{
     AppChannelExt, AppComponentExt, AppMessageExt, ChannelMode, ChannelSettings, NetworkDirection,
@@ -40,7 +40,7 @@ impl Plugin for NetProtocol {
             .add_direction(NetworkDirection::ServerToClient);
 
         app.component::<StableId>().replicate_once();
-        app.component::<Controller>().replicate();
+        app.component::<Owner>().replicate();
         app.component::<MoveStep>().replicate();
         app.component::<Position>().replicate().predict();
         app.component::<Destination>().replicate().predict();

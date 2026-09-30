@@ -4,7 +4,7 @@ use campfire_math::Num;
 use serde::Deserialize;
 
 use crate::stats::stat::Stat;
-use crate::units::scalar::Scalar;
+use crate::values::scalar::Scalar;
 
 /// A unit type's `stats` section: each stat's value at level 1, and what it gains a level.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]

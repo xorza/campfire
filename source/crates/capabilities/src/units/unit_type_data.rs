@@ -2,7 +2,8 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::units::scalar::Scalar;
+use crate::units::tag_set::Tag;
+use crate::values::scalar::Scalar;
 
 /// A unit type's core fields as its data file declares them: its tags, which filters select, and
 /// the params its scripts read as `unit.params`. Each capability the type uses reads its own
@@ -16,6 +17,11 @@ pub struct UnitTypeData {
 }
 
 impl UnitTypeData {
+    /// The most tags the unit types of a match declare together.
+    pub const TAG_LIMIT: usize = Tag::LIMIT;
+    /// The most unit types a match loads.
+    pub const TYPE_LIMIT: usize = 1 << u16::BITS;
+
     /// The tag of heroes, which `unit.is_hero` tests: every hero carries it.
     pub const HERO_TAG: &str = "hero";
 }

@@ -3,15 +3,25 @@ use std::collections::BTreeMap;
 use bevy_ecs::schedule::Schedule;
 use bevy_ecs::world::World;
 use campfire_capabilities::{
-    Abilities, AbilityData, AbilityId, CombatData, Control, HeroData, HeroSetup, KitRules,
-    MatchScripts, Mode, ModeSetup, OnDeath, ResourcePool, SpellSetup, SpellsData, Stat, UnitKit,
+    Abilities, AbilityData, AbilityId, CombatData, HeroData, HeroSetup, KitRules, MatchScripts,
+    Mode, ModeSetup, OnDeath, Orders, ResourcePool, SpellSetup, SpellsData, Stat, UnitKit,
     UnitKitError, UnitTypeData, UnitTypeSetup, Units,
 };
+use campfire_content::PackagePath;
+use campfire_script::ScriptId;
 use campfire_sim::{StateRegistry, TickRate};
 
 use crate::error::StartError;
 use crate::mode_packages::{Content, ModePackages};
 use crate::package::Package;
+
+/// The mode's place among the packages of a match build.
+const MODE: usize = 0;
+/// The place of the first dependency.
+const DEPENDENCIES: usize = 1;
+
+/// What the package load checked, which a match build trusts.
+const CHECKED: &str = "the load checked it";
 
 /// A match of a mode, built from its read packages into a world that `SimUpdate::prepare` set
 /// up.
@@ -22,6 +32,11 @@ pub(crate) struct MatchBuild<'a> {
     rules: KitRules,
     /// Every unit type the mode spawns, as it loads.
     unit_types: Vec<UnitTypeSetup>,
+    /// Every script of every package, compiled once: the mode's, then each dependency's, in the
+    /// order of their packages' scripts.
+    scripts: Vec<ScriptId>,
+    /// Where each package's scripts start in `scripts`: the mode's, then each dependency's.
+    script_starts: Vec<usize>,
 }
 
 impl<'a> MatchBuild<'a> {
@@ -52,12 +67,15 @@ impl<'a> MatchBuild<'a> {
             world,
             rules,
             unit_types: Vec::with_capacity(packages.units.units.len()),
+            scripts: Vec::new(),
+            script_starts: Vec::with_capacity(1 + packages.dependencies.len()),
         };
+        build.compile_scripts();
         build.load_unit_types()?;
         let mut heroes = Vec::new();
         let mut spells = Vec::new();
-        for dependent in &packages.dependencies {
-            let package = &dependent.package;
+        for (at, dependent) in packages.dependencies.iter().enumerate() {
+            let package = DEPENDENCIES + at;
             match &dependent.content {
                 Content::Hero(hero) => heroes.push(build.load_hero(package, hero)?),
                 Content::Spells(data) => {
@@ -72,12 +90,8 @@ impl<'a> MatchBuild<'a> {
                 }
             }
         }
-        let script = packages
-            .mode
-            .script(&packages.data.script)
-            .expect("the load checked it");
         let setup = ModeSetup {
-            script: &script.source,
+            script: build.script(MODE, &packages.data.script),
             data: &packages.data,
             map: &packages.map,
             teams: &manifest.teams,
@@ -93,15 +107,10 @@ impl<'a> MatchBuild<'a> {
     fn load_unit_types(&mut self) -> Result<(), StartError> {
         let packages = self.packages;
         for (name, file) in &packages.units.units {
-            let unit_type =
-                Units::load_type(self.world, name, &file.core()).map_err(StartError::UnitType)?;
+            let unit_type = Units::load_type(self.world, name, &file.core).expect(CHECKED);
             if let Some(orders) = &file.orders {
-                let source = &packages
-                    .mode
-                    .script(&orders.ai)
-                    .expect("the load checked it")
-                    .source;
-                Control::load_ai(self.world, unit_type, orders, source).map_err(|error| {
+                let script = self.script(MODE, &orders.ai);
+                Orders::load_ai(self.world, unit_type, orders, script).map_err(|error| {
                     StartError::Ai {
                         unit_type: name.clone(),
                         error,
@@ -122,19 +131,19 @@ impl<'a> MatchBuild<'a> {
     /// Loads the hero `data` of `package`: its unit type, named for the package and tagged
     /// `hero`, which stays when it dies, with its kit at level 1; its abilities, in slot order;
     /// and its resource pool.
-    fn load_hero(&mut self, package: &Package, data: &HeroData) -> Result<HeroSetup, StartError> {
+    fn load_hero(&mut self, package: usize, data: &HeroData) -> Result<HeroSetup, StartError> {
+        let name = &self.package(package).name;
         let core = UnitTypeData {
             tags: vec![UnitTypeData::HERO_TAG.to_owned()],
             params: BTreeMap::new(),
         };
-        let unit_type =
-            Units::load_type(self.world, &package.name, &core).map_err(StartError::UnitType)?;
+        let unit_type = Units::load_type(self.world, name, &core).expect(CHECKED);
         let combat = CombatData {
             on_death: OnDeath::Stay,
             ..data.combat.clone()
         };
         let kit_error = |error| StartError::UnitKit {
-            unit_type: package.name.clone(),
+            unit_type: name.clone(),
             error,
         };
         let kit = UnitKit::new(Some(&data.stats), Some(&combat), self.rules).map_err(kit_error)?;
@@ -157,31 +166,56 @@ impl<'a> MatchBuild<'a> {
         };
         self.unit_types.push(UnitTypeSetup { unit_type, kit });
         Ok(HeroSetup {
-            id: package.name.clone(),
+            id: name.clone(),
             unit_type,
             abilities,
             resource,
         })
     }
 
-    /// Loads the ability `id` of `package`, of `ranks` ranks, with its script's source.
+    /// Loads the ability `id` of `package`, of `ranks` ranks, with its script.
     fn load_ability(
         &mut self,
-        package: &Package,
+        package: usize,
         id: &str,
         data: &AbilityData,
         ranks: u8,
     ) -> Result<AbilityId, StartError> {
-        let source = data.script.as_ref().map(|path| {
-            package
-                .script(path)
-                .expect("the load checked that the package holds it")
-                .source
-                .as_str()
-        });
-        Abilities::load(self.world, data, source, ranks).map_err(|error| StartError::Ability {
+        let script = data.script.as_ref().map(|path| self.script(package, path));
+        Abilities::load(self.world, data, script, ranks).map_err(|error| StartError::Ability {
             ability: id.to_owned(),
             error,
         })
+    }
+
+    /// Compiles every script of every package in the match's host, each once.
+    fn compile_scripts(&mut self) {
+        let packages = self.packages;
+        let dependencies = packages
+            .dependencies
+            .iter()
+            .map(|dependent| &dependent.package);
+        for package in [&packages.mode].into_iter().chain(dependencies) {
+            self.script_starts.push(self.scripts.len());
+            for script in &package.scripts {
+                let id = Units::compile(self.world, &script.source).expect("the load parsed it");
+                self.scripts.push(id);
+            }
+        }
+    }
+
+    /// The compiled script at `path` of `package`: `MODE`, or `DEPENDENCIES` plus the place of
+    /// a dependency.
+    fn script(&self, package: usize, path: &PackagePath) -> ScriptId {
+        let at = self.package(package).script_index(path).expect(CHECKED);
+        self.scripts[self.script_starts[package] + at]
+    }
+
+    fn package(&self, package: usize) -> &'a Package {
+        let packages = self.packages;
+        match package.checked_sub(DEPENDENCIES) {
+            None => &packages.mode,
+            Some(at) => &packages.dependencies[at].package,
+        }
     }
 }

@@ -8,9 +8,7 @@ use std::num::NonZeroU32;
 use std::path::Path;
 use std::process::Command;
 
-use campfire_capabilities::{
-    Action, AttackState, Controller, Destination, Health, Order, Projectile,
-};
+use campfire_capabilities::{Action, AttackState, Destination, Health, Order, Owner, Projectile};
 use campfire_content::PackageStore;
 use campfire_math::{Num, Vec3};
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
@@ -152,7 +150,7 @@ struct Hero {
 fn hero_id(runner: &Runner) -> StableId {
     let world = runner.world();
     let mut units = world.resource::<EntityIndex>().iter();
-    let hero = units.find(|&(_, entity)| world.entity(entity).contains::<Controller>());
+    let hero = units.find(|&(_, entity)| world.entity(entity).contains::<Owner>());
     hero.unwrap().0
 }
 

@@ -10,10 +10,10 @@ use bevy_ecs::world::{Mut, World};
 use campfire_capabilities::{CapabilitySet, Order};
 use campfire_math::SegmentSeed;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SignOnly};
-use campfire_protocol::{InputChain, InputHash, PlayerSlot, SessionId, SessionTerms};
-use campfire_sim::{SimTick, SimUpdate, StateRegistry, TickInput, TickInputs, TickRate};
+use campfire_protocol::{InputChain, InputHash, SessionId, SessionTerms};
+use campfire_sim::{SimTick, SimUpdate, StateRegistry, Tick, TickInput, TickInputs, TickRate};
 use lightyear::prelude::{
-    Client, LocalTimeline, MessageReceiver, MessageSender, Tick, is_in_rollback,
+    Client, LocalTimeline, MessageReceiver, MessageSender, Tick as NetTick, is_in_rollback,
 };
 
 use crate::input_message::InputMessage;
@@ -67,12 +67,12 @@ struct SentInputs {
 
 #[derive(Debug)]
 struct SentInput {
-    stamp: u64,
+    stamp: Tick,
     payload: Range<usize>,
 }
 
 impl SentInputs {
-    fn at(&self, stamp: u64) -> impl Iterator<Item = &[u8]> {
+    fn at(&self, stamp: Tick) -> impl Iterator<Item = &[u8]> {
         let start = self.inputs.partition_point(|input| input.stamp < stamp);
         self.inputs[start..]
             .iter()
@@ -119,11 +119,8 @@ fn receive_match_start(
 ) {
     for mut receiver in &mut receivers {
         for start in receiver.receive() {
-            sent.chain = Some(InputChain::new(
-                PlayerSlot::new(start.slot),
-                sent.client.chain_root,
-            ));
-            commands.insert_resource(MatchClock::new(Tick(start.start_tick)));
+            sent.chain = Some(InputChain::new(start.slot, sent.client.chain_root));
+            commands.insert_resource(MatchClock::new(NetTick(start.start_tick)));
         }
     }
 }
@@ -168,12 +165,12 @@ fn send_orders(
     // first.
     let mut head = *chain;
     for input in sent {
-        head.extend(stamp, &payloads[input.payload.clone()]);
+        head.extend(stamp.get(), &payloads[input.payload.clone()]);
     }
     let signature = head.sign(secp, &client.session_key, *session_id, &AUX);
     let chained = sent
         .iter()
-        .map(|input| chain.extend(stamp, &payloads[input.payload.clone()]));
+        .map(|input| chain.extend(stamp.get(), &payloads[input.payload.clone()]));
     sender.send::<InputChannel>(InputMessage::new(chained, signature));
     debug_assert_eq!(*chain, head, "the message's inputs end at the signed head");
 }
@@ -196,10 +193,7 @@ fn run_predicted_tick(world: &mut World) {
     world.resource_scope(|world, sent: Mut<'_, SentInputs>| {
         let mut inputs = world.resource_mut::<TickInputs>();
         for payload in sent.at(sim_tick) {
-            inputs.push(TickInput {
-                slot: slot.get(),
-                payload,
-            });
+            inputs.push(TickInput { slot, payload });
         }
     });
     world.run_schedule(SimUpdate);

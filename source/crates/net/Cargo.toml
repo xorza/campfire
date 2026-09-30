@@ -10,7 +10,6 @@ bench = ["internals", "dep:criterion"]
 
 [dependencies]
 campfire-capabilities.workspace = true
-campfire-identity.workspace = true
 campfire-math.workspace = true
 campfire-protocol.workspace = true
 campfire-runner.workspace = true

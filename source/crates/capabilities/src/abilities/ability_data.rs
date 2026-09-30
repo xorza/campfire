@@ -6,11 +6,13 @@ use campfire_math::Num;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
-use crate::units::filter_data::FilterData;
-use crate::units::number::{Number, ParamRef};
-use crate::units::param::Param;
-use crate::units::ranked::Ranked;
-use crate::units::state_decl::StateDecl;
+use crate::abilities::error::AbilityField;
+use crate::scripts::state_decl::StateDecl;
+use crate::values::filter_data::FilterData;
+use crate::values::number::{Number, ParamRef};
+use crate::values::param::Param;
+use crate::values::ranked::Ranked;
+use crate::values::scalar::Scalar;
 
 /// An ability as its data file declares it, in milliseconds. Each capability field may hold one
 /// value or one per rank. The release loads every field, and runs only the targeting, range,
@@ -158,6 +160,49 @@ impl AbilityData {
         self.rank_counts().all(|count| count == ranks)
     }
 
+    /// Its capability fields at `rank`, a `{ param }` read from its params at that rank: global
+    /// reach and 0 for a field it lacks; the field that does not hold otherwise. A field must be
+    /// a whole number of milliseconds or of the resource, or a range of meters that is not
+    /// negative; and it may not read a scaling param, whose value is the caster's, not the
+    /// ability's.
+    pub fn fields_at(&self, rank: u8) -> Result<RankFields, AbilityField> {
+        let param_at = |name: &str, field| match self.params.get(name) {
+            Some(Param::Ranked(ranked)) => ranked.at(rank).ok_or(field),
+            Some(Param::Scaling(_)) | None => Err(field),
+        };
+        let whole = |field, ranked: Option<&Ranked<Number>>| -> Result<u64, AbilityField> {
+            let Some(ranked) = ranked else {
+                return Ok(0);
+            };
+            let value = match ranked.get(rank).ok_or(field)? {
+                Number::Value(value) => *value,
+                Number::Param(reference) => param_at(&reference.param, field)?,
+            };
+            match value {
+                Scalar::Int(value) => u64::try_from(value).ok(),
+                Scalar::Decimal(_) => None,
+            }
+            .ok_or(field)
+        };
+        let range = match &self.range {
+            None => Range::Global,
+            Some(ranked) => match ranked.get(rank).ok_or(AbilityField::Range)? {
+                RangeField::Range(range) => *range,
+                RangeField::Param(reference) => {
+                    let meters = param_at(&reference.param, AbilityField::Range)?.to_num();
+                    let meters = meters.filter(|meters| *meters >= Num::ZERO);
+                    Range::Meters(meters.ok_or(AbilityField::Range)?)
+                }
+            },
+        };
+        Ok(RankFields {
+            range,
+            cooldown_ms: whole(AbilityField::Cooldown, self.cooldown_ms.as_ref())?,
+            cost: whole(AbilityField::Cost, self.cost.as_ref())?,
+            cast_time_ms: whole(AbilityField::CastTime, self.cast_time_ms.as_ref())?,
+        })
+    }
+
     /// Every number field that reads a param, `{ param = "<name>" }`: the names it reads.
     pub fn param_refs(&self) -> impl Iterator<Item = &str> + '_ {
         let toggle = self.toggle.as_ref().map(|toggle| match toggle {
@@ -230,6 +275,16 @@ impl AbilityData {
         .into_iter()
         .flatten()
     }
+}
+
+/// An ability's capability fields at one rank, as data gives them: times in milliseconds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RankFields {
+    pub range: Range,
+    pub cooldown_ms: u64,
+    /// In the caster's resource.
+    pub cost: u64,
+    pub cast_time_ms: u64,
 }
 
 /// What an ability targets. In data: `none`, `point`, `direction`, or a filter of the units it

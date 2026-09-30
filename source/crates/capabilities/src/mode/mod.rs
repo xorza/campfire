@@ -2,21 +2,21 @@
 //! mode's hooks on the capabilities below it.
 
 use std::ops::Range;
+use std::rc::Rc;
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::Local;
-use bevy_ecs::world::{EntityRef, World};
+use bevy_ecs::world::World;
+use campfire_protocol::PlayerSlot;
 use campfire_script::rhai::{Dynamic, INT, ImmutableString};
 use campfire_script::{ScriptError, ScriptHost};
-use campfire_sim::{Command, SimSet, SimTick, StateRegistry, TickInputs, TickRate};
+use campfire_sim::{Command, Position, SimSet, SimTick, StateRegistry, TickInputs, TickRate};
 
-use crate::control::ControlSet;
-use crate::control::controller::Controller;
+use crate::files::manifest::TeamManifest;
+use crate::files::map_data::{GroundPoint, MapData};
 use crate::mode::calls::Calls;
 use crate::mode::error::ModeError;
-use crate::mode::manifest::TeamManifest;
-use crate::mode::map_data::{GroundPoint, MapData};
-use crate::mode::mode_book::{ModeBook, NEUTRAL};
+use crate::mode::mode_book::ModeBook;
 use crate::mode::mode_ctx::ModeCtx;
 use crate::mode::mode_input::{InputValue, ModeInput};
 use crate::mode::mode_setup::ModeSetup;
@@ -24,30 +24,31 @@ use crate::mode::mode_state::ModeState;
 use crate::mode::picks::{Pick, Picks};
 use crate::mode::player_resources::PlayerResources;
 use crate::mode::timers::Timers;
+use crate::navigation::lanes::Lanes;
 use crate::navigation::on_lane::OnLane;
+use crate::orders::OrdersSet;
+use crate::scripts::error::CallError;
+use crate::scripts::hook::Hook;
+use crate::scripts::pool::Pool;
 use crate::units::UnitsSet;
-use crate::units::error::CallError;
-use crate::units::hook::Hook;
-use crate::units::pool::Pool;
-use crate::units::script_view::{RowExtras, View};
+use crate::units::script_view::View;
+use crate::units::teams::Teams;
 
 pub(crate) mod calls;
 pub(crate) mod error;
-pub(crate) mod hero_data;
-pub(crate) mod manifest;
-pub(crate) mod map_data;
+pub(crate) mod hero_index;
 pub(crate) mod mode_book;
 pub(crate) mod mode_ctx;
-pub(crate) mod mode_data;
 pub(crate) mod mode_input;
+pub(crate) mod mode_schema;
 pub(crate) mod mode_setup;
 pub(crate) mod mode_state;
 pub(crate) mod picks;
 pub(crate) mod player_resources;
-pub(crate) mod spells_data;
+pub(crate) mod roster;
+pub(crate) mod spell_index;
 pub(crate) mod timers;
 pub(crate) mod unit_kit;
-pub(crate) mod units_data;
 
 /// The mode of a match: the core's rules above the capabilities. Every match installs it after
 /// its capabilities.
@@ -55,8 +56,8 @@ pub(crate) mod units_data;
 pub struct Mode;
 
 impl Mode {
-    /// Adds the mode of `setup` to a match, whose capabilities are installed and whose unit
-    /// types, abilities and AI are loaded: in Inputs, the players' mode inputs run
+    /// Adds the mode of `setup`, which passed `Mode::check` when its package loaded, to a match
+    /// whose capabilities are installed and whose unit types, abilities and AI are loaded: in Inputs, the players' mode inputs run
     /// `on_mode_input`; in Mode, due timers run `on_timer`. The map's lanes become the match's.
     pub fn install(
         world: &mut World,
@@ -65,19 +66,18 @@ impl Mode {
         setup: ModeSetup<'_>,
     ) -> Result<(), ModeError> {
         let view = world.non_send::<View>().clone();
-        let known = |name: &str| view.unit_type(name).is_some();
-        Mode::check(setup.teams, setup.map, known)?;
         let rate = *world.resource::<TickRate>();
+        let lanes = Mode::lanes(setup.map);
         let book = {
             let mut host = world.non_send_mut::<ScriptHost>();
             ModeCtx::register(host.engine_mut());
-            ModeBook::new(setup, rate, &mut host, &view)?
+            ModeBook::new(setup, rate, &host, &view, &lanes)?
         };
-        world.insert_resource(book.lanes.clone());
-        let lanes = book.lanes.names().map(Box::from).collect();
-        view.set_names(book.team_names(), lanes, read_extras);
-        world.insert_resource(ModeState(book.state_initial.clone()));
-        world.insert_resource(Picks(vec![Pick::default(); book.players() as usize]));
+        view.set_names(Rc::clone(&book.teams), lanes.shared_names());
+        world.insert_resource(lanes);
+        world.insert_resource(ModeState(book.schema.state_initial.clone()));
+        let players = book.teams.players() as usize;
+        world.insert_resource(Picks(vec![Pick::default(); players]));
         world.insert_resource(PlayerResources::default());
         world.insert_resource(Timers::default());
         world.insert_non_send(ModeCtx::new(view, book));
@@ -85,7 +85,7 @@ impl Mode {
             mode_inputs
                 .in_set(SimSet::Inputs)
                 .after(UnitsSet::BeginTick)
-                .before(ControlSet::Orders),
+                .before(OrdersSet::Orders),
             run_timers.in_set(SimSet::Mode),
         ));
         registry.register_resource::<ModeState>();
@@ -93,6 +93,24 @@ impl Mode {
         registry.register_resource::<PlayerResources>();
         registry.register_resource::<Timers>();
         Ok(())
+    }
+
+    /// The lanes of `map`, which passed the check.
+    fn lanes(map: &MapData) -> Lanes {
+        let paths: Vec<(&str, Vec<Position>)> = map
+            .lanes
+            .iter()
+            .map(|lane| {
+                let points = lane.points.iter();
+                let points = points.map(|point| point.position().expect("the check passed"));
+                (lane.name.as_str(), points.collect())
+            })
+            .collect();
+        Lanes::new(
+            paths
+                .iter()
+                .map(|(name, points)| (*name, points.as_slice())),
+        )
     }
 
     /// Checks what the mode names against what it has: its playing teams, of which none is
@@ -107,7 +125,7 @@ impl Mode {
         unit_type: impl Fn(&str) -> bool,
     ) -> Result<(), ModeError> {
         for (at, team) in teams.iter().enumerate() {
-            if team.name == NEUTRAL {
+            if team.name == Teams::NEUTRAL {
                 return Err(ModeError::NeutralTeam);
             }
             if teams[..at].iter().any(|other| other.name == team.name) {
@@ -133,7 +151,8 @@ impl Mode {
             let spawn = map.spawns.get(&team.name);
             in_bounds(spawn.ok_or_else(|| ModeError::NoSpawn(team.name.clone()))?)?;
         }
-        let team_known = |name: &str| name == NEUTRAL || teams.iter().any(|team| team.name == name);
+        let team_known =
+            |name: &str| name == Teams::NEUTRAL || teams.iter().any(|team| team.name == name);
         for structure in &map.structures {
             if !unit_type(&structure.unit_type) {
                 return Err(ModeError::UnknownUnitType(structure.unit_type.clone()));
@@ -170,7 +189,7 @@ impl Mode {
                 world.entity_mut(entity).insert(OnLane::new(lane));
             }
         }
-        if !ctx.book().on_match_start {
+        if !ctx.book().schema.on_match_start {
             return Ok(());
         }
         let now = world.resource::<SimTick>().start();
@@ -178,14 +197,6 @@ impl Mode {
             call.run(Pool::Mode, Hook::OnMatchStart, (call.ctx.clone(),))
         })
         .map_err(CallError::from_script)
-    }
-}
-
-/// A unit's lane and owner, which the core's view reads through the mode.
-fn read_extras(unit: &EntityRef<'_>) -> RowExtras {
-    RowExtras {
-        lane: unit.get::<OnLane>().map(|lane| lane.get()),
-        owner: unit.get::<Controller>().map(|controller| controller.slot()),
     }
 }
 
@@ -197,7 +208,7 @@ fn mode_inputs(
     mut inputs: Local<'_, Vec<Input>>,
 ) {
     let ctx = world.non_send::<ModeCtx>().clone();
-    if !ctx.book().on_mode_input {
+    if !ctx.book().schema.on_mode_input {
         return;
     }
     bodies.clear();
@@ -220,7 +231,7 @@ fn mode_inputs(
     Calls::batch(world, &ctx, now, |call| {
         for input in &*inputs {
             let Some(decoded) = ModeInput::decode(&bodies[input.body.clone()], |name| {
-                call.ctx.book().input_type(name)
+                call.ctx.book().schema.input_type(name)
             }) else {
                 continue;
             };
@@ -234,7 +245,7 @@ fn mode_inputs(
                 ),
             };
             let name = ImmutableString::from(decoded.name);
-            let args = (call.ctx.clone(), INT::from(input.slot), name, value);
+            let args = (call.ctx.clone(), INT::from(input.slot.get()), name, value);
             if let Err(error) = call.run(Pool::Player(input.slot), Hook::OnModeInput, args) {
                 let error = CallError::from_script(error);
                 call.batch.record(None, Hook::OnModeInput, error);
@@ -246,7 +257,7 @@ fn mode_inputs(
 /// One mode input of the tick: its player's slot, and its body in the scratch buffer.
 #[derive(Debug)]
 struct Input {
-    slot: u32,
+    slot: PlayerSlot,
     body: Range<usize>,
 }
 
@@ -265,7 +276,7 @@ fn run_timers(world: &mut World) {
                 .data
                 .as_ref()
                 .map_or(Dynamic::UNIT, |data| data.to_dynamic(call.ctx.view()));
-            if call.ctx.book().on_timer {
+            if call.ctx.book().schema.on_timer {
                 let args = (call.ctx.clone(), name, data);
                 match call.run(Pool::Mode, Hook::OnTimer, args) {
                     Ok(()) => {}

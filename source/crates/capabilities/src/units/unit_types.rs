@@ -1,10 +1,9 @@
-use std::ops::Range;
-
 use crate::units::error::UnitTypeError;
-use crate::units::scalar::Scalar;
 use crate::units::tag_set::{Tag, TagSet};
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
+use crate::values::name_table::NameTable;
+use crate::values::scalar::Scalar;
 
 /// The unit types a match loaded: their names, their tags and their params. Package data, not
 /// state: a restore loads it from the packages, as a new match does.
@@ -17,18 +16,15 @@ pub(crate) struct UnitTypes {
     types: Vec<TypeEntry>,
     /// Every type, sorted by name.
     by_name: Vec<UnitType>,
-    /// The param names of every type, sorted, one run per type.
-    param_names: Vec<Box<str>>,
-    /// The param values, in the order of their names.
-    param_values: Vec<Scalar>,
+    /// Each type's params, one run per type, in the order of the types.
+    params: NameTable<Scalar>,
 }
 
-/// A loaded unit type: its name, its tags, and its run of params.
+/// A loaded unit type: its name and its tags.
 #[derive(Debug)]
 struct TypeEntry {
     name: Box<str>,
     tags: TagSet,
-    params: Range<u32>,
 }
 
 impl UnitTypes {
@@ -66,16 +62,16 @@ impl UnitTypes {
             }
             tags = tags.with(tag);
         }
-        let start = u32::try_from(self.param_names.len()).expect("params fit u32");
-        self.param_names
-            .extend(data.params.keys().map(|name| name.as_str().into()));
-        self.param_values.extend(data.params.values().copied());
-        let end = u32::try_from(self.param_names.len()).expect("params fit u32");
+        let params = data
+            .params
+            .iter()
+            .map(|(name, &value)| (name.as_str(), value));
+        let run = self.params.push(params);
+        debug_assert_eq!(run, usize::from(index), "one run of params per type");
         self.by_name.insert(at, UnitType::new(index));
         self.types.push(TypeEntry {
             name: name.into(),
             tags,
-            params: start..end,
         });
         Ok(UnitType::new(index))
     }
@@ -111,12 +107,7 @@ impl UnitTypes {
 
     /// The param `name` of `unit_type`, if it declares one.
     pub(crate) fn param(&self, unit_type: UnitType, name: &str) -> Option<Scalar> {
-        let run = &self.types[unit_type.index()].params;
-        let (start, end) = (run.start as usize, run.end as usize);
-        let at = self.param_names[start..end]
-            .binary_search_by(|probe| (**probe).cmp(name))
-            .ok()?;
-        Some(self.param_values[start + at])
+        self.params.get(unit_type.index(), name).copied()
     }
 }
 

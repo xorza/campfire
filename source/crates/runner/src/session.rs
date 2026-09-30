@@ -91,14 +91,14 @@ impl Session {
     pub fn run_tick(world: &mut World) {
         world.resource_scope(|world, mut session: Mut<'_, Session>| {
             debug_assert_eq!(
-                world.resource::<SimTick>().get(),
+                world.resource::<SimTick>().start().get(),
                 session.log.next_tick(),
                 "the sim and the log are at the same tick"
             );
             let mut inputs = world.resource_mut::<TickInputs>();
             for input in session.log.seal_tick() {
                 inputs.push(TickInput {
-                    slot: input.slot.get(),
+                    slot: input.slot,
                     payload: input.payload,
                 });
             }

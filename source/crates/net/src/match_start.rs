@@ -1,3 +1,4 @@
+use campfire_protocol::PlayerSlot;
 use serde::{Deserialize, Serialize};
 
 /// Tells a client that the match started, and which player it is.
@@ -5,5 +6,5 @@ use serde::{Deserialize, Serialize};
 pub struct MatchStart {
     /// The Lightyear tick that is sim tick 0.
     pub start_tick: u32,
-    pub slot: u32,
+    pub slot: PlayerSlot,
 }

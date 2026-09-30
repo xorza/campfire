@@ -5,7 +5,8 @@ use std::slice;
 use bevy_ecs::entity::Entity;
 use campfire_content::PackagePath;
 use campfire_math::{Num, SegmentSeed, Vec3};
-use campfire_sim::{EntityIndex, Position, SimUpdate, TickInput};
+use campfire_script::ScriptId;
+use campfire_sim::{EntityIndex, SimUpdate, Tick, TickInput, Ticks};
 
 use super::*;
 use crate::abilities::Abilities;
@@ -18,26 +19,30 @@ use crate::combat::combatant::Combatant;
 use crate::combat::dead::Dead;
 use crate::combat::health::Health;
 use crate::combat::on_death::OnDeath;
-use crate::combat::team::Team;
-use crate::mode::manifest::{Speed, TickRange};
-use crate::mode::map_data::{LaneData, NeutralSpawnData, StructureData};
-use crate::mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
+use crate::files::manifest::{Speed, TickRange};
+use crate::files::map_data::{LaneData, NeutralSpawnData, StructureData};
+use crate::files::mode_data::{InputType, ListEntry, ModeData, ModeParam};
+use crate::files::spells_data::SpellsData;
+use crate::mode::hero_index::HeroIndex;
 use crate::mode::mode_setup::{HeroSetup, SpellSetup, UnitTypeSetup};
-use crate::mode::spells_data::SpellsData;
+use crate::mode::spell_index::SpellIndex;
 use crate::mode::unit_kit::UnitKit;
 use crate::navigation::Navigation;
 use crate::navigation::lane_walker::{LaneWalker, PathDirection};
 use crate::navigation::move_step::MoveStep;
+use crate::scripts::error::ApiError;
+use crate::scripts::match_scripts::MatchScripts;
+use crate::scripts::script_failures::ScriptFailures;
+use crate::scripts::script_limits::ScriptLimits;
+use crate::scripts::state_decl::{StateDecl, StateDefault, StateType, SyncTo};
+use crate::scripts::state_value::StateValue;
 use crate::units::Units;
-use crate::units::error::ApiError;
-use crate::units::match_scripts::MatchScripts;
-use crate::units::scalar::Scalar;
-use crate::units::script_failures::ScriptFailures;
-use crate::units::script_limits::ScriptLimits;
-use crate::units::state_decl::{StateDecl, StateDefault, StateType, SyncTo};
-use crate::units::state_value::StateValue;
+use crate::units::lane::Lane;
+use crate::units::owner::Owner;
+use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
+use crate::values::scalar::Scalar;
 
 /// 10 ticks a second: 100 ms is a tick.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(10).unwrap());
@@ -123,7 +128,9 @@ fn grunt() -> UnitKit {
     UnitKit {
         combatant: Some(Combatant {
             health: Health::new(num(10)).unwrap(),
-            attack: Some(AttackStats::new(num(1), 0, 1, Num::ZERO).unwrap()),
+            attack: Some(
+                AttackStats::new(num(1), Ticks::new(0), Ticks::new(1), Num::ZERO).unwrap(),
+            ),
             on_death: OnDeath::Stay,
         }),
         step: Some(MoveStep::new(Num::ONE).unwrap()),
@@ -225,12 +232,12 @@ fn mode_files() -> ModeFiles {
 
 /// The test mode's setup from `files`, of `script`: its grunt, tower and two heroes' unit types,
 /// and its one spell.
-fn setup<'a>(
-    files: &'a ModeFiles,
-    script: &'a str,
+fn setup(
+    files: &ModeFiles,
+    script: ScriptId,
     types: [UnitType; 4],
     spell: SpellSetup,
-) -> ModeSetup<'a> {
+) -> ModeSetup<'_> {
     let [grunt_type, tower_type, x, y] = types;
     let hero = |id: &str, unit_type| HeroSetup {
         id: id.to_owned(),
@@ -330,6 +337,7 @@ impl Game {
         };
         let types = [grunt_type, tower_type, x, y];
         let files = mode_files();
+        let script = Units::compile(&mut world, script).unwrap();
         let setup = setup(&files, script, types, spell);
         Mode::install(&mut world, &mut schedule, &mut registry, setup).unwrap();
         world.add_schedule(schedule);
@@ -342,7 +350,7 @@ impl Game {
         for (slot, input) in inputs {
             let payload = ModeInput::payload(slice::from_ref(input));
             self.world.resource_mut::<TickInputs>().push(TickInput {
-                slot: *slot,
+                slot: PlayerSlot::new(*slot),
                 payload: &payload,
             });
         }
@@ -363,7 +371,7 @@ impl Game {
     /// The state field `name`: the state holds the fields in the order of their names.
     fn field(&self, name: &str) -> StateValue {
         let book = self.world.non_send::<ModeCtx>();
-        let at = book.book().state_field(name).unwrap().index;
+        let at = book.book().schema.state_field(name).unwrap().index;
         self.world.resource::<ModeState>().get()[at].clone()
     }
 
@@ -431,7 +439,7 @@ fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early
     let tower = game.entity(0);
     assert_eq!(
         game.world.get::<OnLane>(tower).map(|lane| lane.get()),
-        Some(0)
+        Some(Lane::new(0))
     );
     assert_eq!(game.state(), state("start", 0, 0, 0));
 
@@ -500,13 +508,13 @@ fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
         picks,
         [
             Pick {
-                hero: Some(0),
-                spells: vec![0],
+                hero: Some(HeroIndex::new(0)),
+                spells: vec![SpellIndex::new(0)],
                 spawned: true,
             },
             Pick::default(),
             Pick {
-                hero: Some(1),
+                hero: Some(HeroIndex::new(1)),
                 spells: Vec::new(),
                 spawned: true,
             },
@@ -517,7 +525,10 @@ fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
     let heroes: Vec<_> = game.units()[5..].to_vec();
     assert_eq!(heroes, [(5, at(0, -5), 0, None), (6, at(0, 5), 1, None)]);
     let hero = game.entity(5);
-    assert_eq!(game.world.get::<Controller>(hero).unwrap().slot(), 0);
+    assert_eq!(
+        game.world.get::<Owner>(hero).unwrap().slot(),
+        PlayerSlot::new(0)
+    );
     let slots = game.world.get::<AbilitySlots>(hero).unwrap();
     assert_eq!(
         slots.slot(0).map(|slot| (slot.ability, slot.rank)),
@@ -539,9 +550,9 @@ fn resources_add_up_and_queries_see_teams_lanes_and_the_dead() {
         (0, input("probe", "")),
     ]);
     let resources = game.world.resource::<PlayerResources>();
-    assert_eq!(resources.amount(1, "gold"), 16);
-    assert_eq!(resources.amount(1, "gems"), i64::MAX);
-    assert_eq!(resources.amount(0, "gold"), 0);
+    assert_eq!(resources.amount(PlayerSlot::new(1), "gold"), 16);
+    assert_eq!(resources.amount(PlayerSlot::new(1), "gems"), i64::MAX);
+    assert_eq!(resources.amount(PlayerSlot::new(0), "gold"), 0);
     assert_eq!(game.failures(), [Some(ApiError::ResourceOverflow)]);
     // The enemy of a, the 4 grunts with the dead one, b's one hero, the 2 playing teams, the
     // lane and team of grunt 2, the neutral grunt 1's team, hero 5's owner, the lane of the tower,
@@ -658,8 +669,10 @@ fn on_timer(ctx, name, data) {
     let due = |game: &Game| {
         let timers = game.world.resource::<Timers>();
         (
-            timers.due(u64::MAX).map(|timer| timer.name.clone()),
-            timers.due(0).is_some(),
+            timers
+                .due(Tick::new(u64::MAX))
+                .map(|timer| timer.name.clone()),
+            timers.due(Tick::ZERO).is_some(),
         )
     };
     game.tick(&[]);

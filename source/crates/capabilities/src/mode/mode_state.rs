@@ -2,7 +2,7 @@ use bevy_ecs::resource::Resource;
 use campfire_sim::SimResource;
 use serde::{Deserialize, Serialize};
 
-use crate::units::state_value::StateValue;
+use crate::scripts::state_value::StateValue;
 
 /// The mode's script state: a value for each field its data declares, in the order of their
 /// names.

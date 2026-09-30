@@ -4,8 +4,8 @@ use campfire_sim::{EntityIndex, Position, StableId};
 
 use crate::combat::dead::Dead;
 use crate::combat::health::Health;
-use crate::combat::living_unit::LivingUnit;
-use crate::combat::team::Team;
+use crate::units::living_unit::LivingUnit;
+use crate::units::team::Team;
 
 /// The units an attack may target: living units with health. Every capability that chooses or
 /// checks a target goes through it, so all agree on what a valid target is.

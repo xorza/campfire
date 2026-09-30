@@ -1,6 +1,7 @@
 use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
+use campfire_protocol::PlayerSlot;
 
 /// The player inputs applied in the running tick. The runner fills it from the session log before
 /// each tick, and the schedule empties it when the tick ends, so no tick sees another's inputs.
@@ -14,13 +15,13 @@ pub struct TickInputs {
 /// One input: the player's slot, and the payload, a list of commands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TickInput<'a> {
-    pub slot: u32,
+    pub slot: PlayerSlot,
     pub payload: &'a [u8],
 }
 
 #[derive(Debug)]
 struct Entry {
-    slot: u32,
+    slot: PlayerSlot,
     payload: Range<usize>,
 }
 

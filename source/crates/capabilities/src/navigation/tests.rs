@@ -6,6 +6,7 @@ use campfire_sim::{EntityIndex, IdAllocator, SimUpdate, StableId, TickRate, Type
 
 use super::*;
 use crate::navigation::lane_walker::PathDirection;
+use crate::units::lane::Lane;
 
 /// The MOBA's 30 ticks a second.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
@@ -107,26 +108,35 @@ fn lanes_count_waypoints_in_either_direction() {
         ("far", &[at(5, 0, 5)][..]),
     ]);
     assert_eq!(lanes.count(), 2);
-    assert_eq!((lanes.named("far"), lanes.named("none")), (Some(1), None));
-    assert_eq!((lanes.name(0), lanes.name(1)), ("near", "far"));
+    assert_eq!(
+        (lanes.named("far"), lanes.named("none")),
+        (Some(Lane::new(1)), None)
+    );
+    assert_eq!(
+        (lanes.name(Lane::new(0)), lanes.name(Lane::new(1))),
+        ("near", "far")
+    );
     let walk = |lane, direction| {
         (0..3)
             .map(|index| lanes.waypoint(lane, index, direction))
             .collect::<Vec<_>>()
     };
     assert_eq!(
-        walk(0, PathDirection::Forward),
+        walk(Lane::new(0), PathDirection::Forward),
         [Some(at(0, 0, 0)), Some(at(1, 0, 0)), None]
     );
     assert_eq!(
-        walk(0, PathDirection::Backward),
+        walk(Lane::new(0), PathDirection::Backward),
         [Some(at(1, 0, 0)), Some(at(0, 0, 0)), None]
     );
     assert_eq!(
-        walk(1, PathDirection::Backward),
+        walk(Lane::new(1), PathDirection::Backward),
         [Some(at(5, 0, 5)), None, None]
     );
-    assert_eq!(walk(2, PathDirection::Forward), [None, None, None]);
+    assert_eq!(
+        walk(Lane::new(2), PathDirection::Forward),
+        [None, None, None]
+    );
 }
 
 #[test]
@@ -134,9 +144,10 @@ fn every_navigation_type_is_state() {
     let mut walk = Walk::new();
     let unit = walk.unit(at(0, 0, 0), Some(at(0, 0, 5)));
     let entity = walk.world.resource::<EntityIndex>().get(unit).unwrap();
-    walk.world
-        .entity_mut(entity)
-        .insert((LaneWalker::start(PathDirection::Forward), OnLane::new(0)));
+    walk.world.entity_mut(entity).insert((
+        LaneWalker::start(PathDirection::Forward),
+        OnLane::new(Lane::new(0)),
+    ));
     let registry = &walk.registry;
     let mut per_type = Vec::new();
     let hash = registry.hash_by_type(&walk.world, &mut per_type);

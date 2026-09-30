@@ -1,3 +1,4 @@
+use campfire_capabilities::Version;
 use campfire_content::{PackageDir, PackagePath};
 use campfire_protocol::Fingerprint;
 use campfire_script::ScriptHost;
@@ -14,7 +15,7 @@ const SCRIPTS: &str = "scripts";
 pub(crate) struct Package {
     pub(crate) name: String,
     pub(crate) fingerprint: Fingerprint,
-    pub(crate) engine: String,
+    pub(crate) engine: Version,
     /// Every file under `scripts/`, by path.
     pub(crate) scripts: Vec<Script>,
 }
@@ -31,7 +32,7 @@ impl Package {
     pub(crate) fn read(
         dir: &PackageDir,
         name: String,
-        engine: String,
+        engine: Version,
         parser: &ScriptHost,
     ) -> Result<Package, LoadError> {
         let fail = |problem| LoadError {
@@ -71,6 +72,11 @@ impl Package {
 
     /// The script at `path`.
     pub(crate) fn script(&self, path: &PackagePath) -> Option<&Script> {
-        self.scripts.iter().find(|script| script.path == *path)
+        Some(&self.scripts[self.script_index(path)?])
+    }
+
+    /// The place of the script at `path` in `scripts`.
+    pub(crate) fn script_index(&self, path: &PackagePath) -> Option<usize> {
+        self.scripts.iter().position(|script| script.path == *path)
     }
 }

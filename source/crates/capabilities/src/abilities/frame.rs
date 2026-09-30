@@ -1,24 +1,24 @@
-use std::ops::Range;
+use std::collections::BTreeMap;
 
 use campfire_math::Num;
 use campfire_sim::StableId;
 
 use crate::abilities::ability_book::AbilityId;
-use crate::units::error::CallError;
-use crate::units::scalar::Scalar;
+use crate::scripts::error::CallError;
+use crate::values::name_table::NameTable;
+use crate::values::param::Param;
+use crate::values::scalar::Scalar;
 
 /// What `on_cast` calls read and queue, beside the units the view holds. One frame serves the
 /// whole match, its buffers cleared and filled again, so a cast allocates none of them.
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(crate) struct Frame {
-    /// The param names of every loaded ability, sorted, one run per ability.
-    param_names: Vec<Box<str>>,
-    /// Where the run of each ability's names starts, by ability id, then where the last one ends.
-    param_starts: Vec<u32>,
-    /// The running cast's run of names.
-    cast_names: Range<usize>,
-    /// The running cast's params at its rank, in the order of its names.
-    params: Vec<Scalar>,
+    /// Every loaded ability's params, one run per ability, by ability id.
+    params: NameTable<Param>,
+    /// The running cast's ability.
+    cast: Option<AbilityId>,
+    /// The running cast's params at its rank, in the order of their names.
+    values: Vec<Scalar>,
     /// The effects the running cast queued, in order.
     pub(crate) effects: Vec<Effect>,
 }
@@ -29,52 +29,35 @@ pub(crate) enum Effect {
     Damage { target: StableId, amount: Num },
 }
 
-impl Default for Frame {
-    fn default() -> Frame {
-        Frame {
-            param_names: Vec::new(),
-            param_starts: vec![0],
-            cast_names: 0..0,
-            params: Vec::new(),
-            effects: Vec::new(),
-        }
-    }
-}
-
 impl Frame {
-    /// Adds the param names of the ability the book loads next, sorted, as the book keeps its
-    /// params.
-    pub(crate) fn add_param_names<'a>(&mut self, names: impl IntoIterator<Item = &'a str>) {
-        let start = self.param_names.len();
-        self.param_names.extend(names.into_iter().map(Box::from));
-        debug_assert!(self.param_names[start..].is_sorted());
-        let end = u32::try_from(self.param_names.len()).expect("param names fit u32");
-        self.param_starts.push(end);
+    /// Adds the params of `ability`, the one the book loads next.
+    pub(crate) fn add_params(&mut self, ability: AbilityId, params: &BTreeMap<String, Param>) {
+        let run = self.params.push(
+            params
+                .iter()
+                .map(|(name, param)| (name.as_str(), param.clone())),
+        );
+        debug_assert_eq!(run, ability.index(), "one run of params per ability");
     }
 
-    /// Starts a cast of `ability`, with its params at the cast's rank in the order of its names;
-    /// a param that overflows at that rank fails the cast.
-    pub(crate) fn begin_cast(
-        &mut self,
-        ability: AbilityId,
-        params: impl IntoIterator<Item = Option<Scalar>>,
-    ) -> Result<(), CallError> {
-        let index = ability.index();
-        self.cast_names = self.param_starts[index] as usize..self.param_starts[index + 1] as usize;
+    /// Starts a cast of `ability` at `rank`, with its params at that rank; a param that
+    /// overflows there fails the cast.
+    pub(crate) fn begin_cast(&mut self, ability: AbilityId, rank: u8) -> Result<(), CallError> {
+        self.cast = Some(ability);
         self.effects.clear();
-        self.params.clear();
-        self.params.reserve_exact(self.cast_names.len());
+        let params = self.params.values(ability.index());
+        self.values.clear();
+        self.values.reserve_exact(params.len());
         for param in params {
-            self.params.push(param.ok_or(CallError::ParamOverflow)?);
+            self.values
+                .push(param.at(rank).ok_or(CallError::ParamOverflow)?);
         }
-        debug_assert_eq!(self.params.len(), self.cast_names.len());
         Ok(())
     }
 
     /// The running cast's param `name`, if its ability declares one.
     pub(crate) fn param(&self, name: &str) -> Option<Scalar> {
-        let names = &self.param_names[self.cast_names.clone()];
-        let index = names.binary_search_by(|probe| (**probe).cmp(name)).ok()?;
-        Some(self.params[index])
+        let at = self.params.find(self.cast?.index(), name)?;
+        Some(self.values[at])
     }
 }

@@ -1,42 +1,43 @@
 use std::cell::{RefCell, RefMut};
 use std::fmt;
 use std::rc::Rc;
+use std::sync::Arc;
 
 use bevy_ecs::world::{EntityRef, World};
 use campfire_math::{Num, Vec3};
+use campfire_protocol::PlayerSlot;
 use campfire_script::rhai::{Array, Dynamic, Engine, INT, ImmutableString};
-use campfire_sim::{EntityIndex, Position, SimTick, StableId, TickRate};
+use campfire_sim::{EntityIndex, Position, SimTick, StableId, Tick, TickRate, Ticks};
 
-use crate::combat::attack_state::AttackState;
-use crate::combat::attack_stats::AttackStats;
-use crate::combat::dead::Dead;
-use crate::combat::health::Health;
-use crate::combat::living_unit::LivingUnit;
-use crate::combat::recent_attackers::{RecentAttack, RecentAttackers};
-use crate::combat::team::Team;
-use crate::units::error::{ApiError, Checked};
+use crate::scripts::error::{ApiError, Checked};
 use crate::units::filter::Filter;
-use crate::units::filter_data::FilterData;
+use crate::units::lane::Lane;
+use crate::units::living_unit::LivingUnit;
+use crate::units::owner::Owner;
+use crate::units::recent_attack::RecentAttack;
 use crate::units::tag_set::{Tag, TagSet};
+use crate::units::team::Team;
+use crate::units::teams::Teams;
 use crate::units::unit::Unit;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_types::UnitTypes;
+use crate::values::filter_data::FilterData;
 
-/// What scripts see: the match's unit types, and its units, those with a team and health, as the
-/// running phase of the tick began. The units are read again before each phase that runs
+/// What scripts see: the match's unit types, and its units, those with a team, as the running
+/// phase of the tick began. The units are read again before each phase that runs
 /// scripts, and every call of the phase sees them as they were read.
 #[derive(Debug)]
 pub(crate) struct ScriptView {
     types: UnitTypes,
-    /// The name of each team, by index, once a mode sets them.
-    teams: Vec<Box<str>>,
+    /// The match's teams, once a mode sets them.
+    teams: Rc<Teams>,
     /// The name of each lane, by index, once a mode sets them.
-    lanes: Vec<Box<str>>,
-    /// Reads the fields of the capabilities above the core.
-    extras: fn(&EntityRef<'_>) -> RowExtras,
+    lanes: Arc<[Box<str>]>,
+    /// How each installed capability above the core fills its fields of a row, in install order.
+    sources: Vec<RowSource>,
     rate: TickRate,
     /// The tick the units were read in.
-    now: u64,
+    now: Tick,
     /// By stable id.
     units: Vec<UnitRow>,
     /// The recent attacks on each unit, one run per unit.
@@ -49,22 +50,36 @@ pub(crate) struct UnitRow {
     pub(crate) id: StableId,
     pub(crate) pos: Position,
     pub(crate) team: Team,
-    pub(crate) alive: bool,
     pub(crate) unit_type: Option<UnitType>,
+    /// The player who controls it.
+    pub(crate) owner: Option<PlayerSlot>,
+    /// Whether it is not dead; `combat` fills it, and the next two.
+    pub(crate) alive: bool,
     pub(crate) target: Option<StableId>,
     pub(crate) attack_range: Option<Num>,
-    pub(crate) extras: RowExtras,
+    /// The lane it walks or stands on; `navigation` fills it.
+    pub(crate) lane: Option<Lane>,
     /// Its run of recent attacks, from `attacks_start` to `attacks_end`.
     attacks_start: u32,
     attacks_end: u32,
 }
 
-/// A unit's fields that capabilities above the core hold: the lane it walks or stands on, and the
-/// player who controls it.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) struct RowExtras {
-    pub(crate) lane: Option<u32>,
-    pub(crate) owner: Option<u32>,
+/// Fills the fields of a unit's row that a capability above the core holds.
+pub(crate) type RowSource = fn(&EntityRef<'_>, &mut RowFill<'_>);
+
+/// A row the view reads, as a capability fills it: its fields, and the view's buffer of recent
+/// attacks, to which the row's run is added.
+#[derive(Debug)]
+pub(crate) struct RowFill<'a> {
+    pub(crate) row: &'a mut UnitRow,
+    attacks: &'a mut Vec<RecentAttack>,
+}
+
+impl RowFill<'_> {
+    /// Adds `attacks` to the row's run of recent attacks.
+    pub(crate) fn attacked(&mut self, attacks: impl IntoIterator<Item = RecentAttack>) {
+        self.attacks.extend(attacks);
+    }
 }
 
 /// The view as the host and every handle share it.
@@ -73,35 +88,37 @@ pub(crate) struct View(Rc<RefCell<ScriptView>>);
 
 impl ScriptView {
     fn read(&mut self, world: &World) {
-        self.now = world.resource::<SimTick>().get();
+        self.now = world.resource::<SimTick>().start();
         self.units.clear();
         self.attacks.clear();
         for (id, entity) in world.resource::<EntityIndex>().iter() {
             let unit = world.entity(entity);
-            let (Some(&pos), Some(&team), true) = (
-                unit.get::<Position>(),
-                unit.get::<Team>(),
-                unit.contains::<Health>(),
-            ) else {
+            let (Some(&pos), Some(&team)) = (unit.get::<Position>(), unit.get::<Team>()) else {
                 continue;
             };
             let start = u32::try_from(self.attacks.len()).expect("attacks fit u32");
-            if let Some(recent) = unit.get::<RecentAttackers>() {
-                self.attacks.extend(recent.iter());
-            }
-            let end = u32::try_from(self.attacks.len()).expect("attacks fit u32");
-            self.units.push(UnitRow {
+            let mut row = UnitRow {
                 id,
                 pos,
                 team,
-                alive: !unit.contains::<Dead>(),
+                alive: true,
                 unit_type: unit.get::<UnitType>().copied(),
-                target: unit.get::<AttackState>().and_then(|attack| attack.target()),
-                attack_range: unit.get::<AttackStats>().map(|stats| stats.range()),
-                extras: (self.extras)(&unit),
+                owner: unit.get::<Owner>().map(|owner| owner.slot()),
+                lane: None,
+                target: None,
+                attack_range: None,
                 attacks_start: start,
-                attacks_end: end,
-            });
+                attacks_end: start,
+            };
+            let mut fill = RowFill {
+                row: &mut row,
+                attacks: &mut self.attacks,
+            };
+            for source in &self.sources {
+                source(&unit, &mut fill);
+            }
+            row.attacks_end = u32::try_from(self.attacks.len()).expect("attacks fit u32");
+            self.units.push(row);
         }
     }
 
@@ -134,11 +151,11 @@ impl View {
     pub(crate) fn new(rate: TickRate) -> View {
         View(Rc::new(RefCell::new(ScriptView {
             types: UnitTypes::default(),
-            teams: Vec::new(),
-            lanes: Vec::new(),
-            extras: |_| RowExtras::default(),
+            teams: Rc::default(),
+            lanes: Arc::default(),
+            sources: Vec::new(),
             rate,
-            now: 0,
+            now: Tick::ZERO,
             units: Vec::new(),
             attacks: Vec::new(),
         })))
@@ -153,34 +170,40 @@ impl View {
         RefMut::map(self.0.borrow_mut(), |view| &mut view.types)
     }
 
-    /// Names the teams and the lanes, and sets how rows read the fields above the core.
-    pub(crate) fn set_names(
-        &self,
-        teams: Vec<Box<str>>,
-        lanes: Vec<Box<str>>,
-        extras: fn(&EntityRef<'_>) -> RowExtras,
-    ) {
+    /// Names the teams and the lanes.
+    pub(crate) fn set_names(&self, teams: Rc<Teams>, lanes: Arc<[Box<str>]>) {
         let mut view = self.0.borrow_mut();
         view.teams = teams;
         view.lanes = lanes;
-        view.extras = extras;
+    }
+
+    /// Adds how a capability fills its fields of each row, after those added before it.
+    pub(crate) fn add_source(&self, source: RowSource) {
+        self.0.borrow_mut().sources.push(source);
     }
 
     /// The name of `team`.
     pub(crate) fn team_name(&self, team: Team) -> Checked<Dynamic> {
         let view = self.0.borrow();
-        let name = view.teams.get(usize::from(team.index()));
-        name.map(|name| Dynamic::from(ImmutableString::from(&**name)))
+        let name = view.teams.name(team);
+        name.map(|name| Dynamic::from(ImmutableString::from(name)))
             .ok_or_else(|| ApiError::UnknownTeam.fail().into())
     }
 
     /// The name of `lane`, `()` for none.
-    pub(crate) fn lane_name(&self, lane: Option<u32>) -> Dynamic {
+    pub(crate) fn lane_name(&self, lane: Option<Lane>) -> Dynamic {
         let view = self.0.borrow();
-        lane.and_then(|lane| view.lanes.get(lane as usize))
+        lane.and_then(|lane| view.lanes.get(lane.index()))
             .map_or(Dynamic::UNIT, |name| {
                 Dynamic::from(ImmutableString::from(&**name))
             })
+    }
+
+    /// The lane named `name`.
+    pub(crate) fn lane(&self, name: &str) -> Option<Lane> {
+        let view = self.0.borrow();
+        let at = view.lanes.iter().position(|held| **held == *name)?;
+        Some(Lane::new(at))
     }
 
     /// The unit type named `name`.
@@ -322,16 +345,14 @@ impl View {
             .ok()
             .ok_or_else(|| ApiError::NegativeTime.fail())?;
         let view = self.0.borrow();
-        let window = view.rate.ticks(ms).unwrap_or(u64::MAX);
+        let window = view.rate.ticks(ms).unwrap_or(Ticks::new(u64::MAX));
         let row = unit.row();
         let run = &view.attacks[row.attacks_start as usize..row.attacks_end as usize];
         Ok(run
             .iter()
             .filter(|attack| {
                 // A strike later than the view's tick, as a rollback can leave, is not recent.
-                view.now
-                    .checked_sub(attack.tick)
-                    .is_some_and(|age| age <= window)
+                view.now.since(attack.tick).is_some_and(|age| age <= window)
             })
             .filter(|attack| view.row(attack.source).is_some_and(|source| source.alive))
             .map(|attack| Dynamic::from(Unit::new(attack.source, self.clone())))

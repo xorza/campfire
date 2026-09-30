@@ -1,6 +1,6 @@
 use bevy_ecs::component::Component;
 use campfire_math::Num;
-use campfire_sim::{Position, SimComponent};
+use campfire_sim::{Position, SimComponent, Ticks};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -12,16 +12,16 @@ use serde::{Deserialize, Deserializer, Serialize};
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct AttackStats {
     range: Num,
-    windup: u32,
-    period: u32,
+    windup: Ticks,
+    period: Ticks,
     damage: Num,
     projectile_speed: Option<Num>,
 }
 
 impl AttackStats {
     /// `None` for a negative range or damage, or a windup not shorter than the period.
-    pub const fn new(range: Num, windup: u32, period: u32, damage: Num) -> Option<AttackStats> {
-        if range.to_bits() < 0 || damage.to_bits() < 0 || windup >= period {
+    pub const fn new(range: Num, windup: Ticks, period: Ticks, damage: Num) -> Option<AttackStats> {
+        if range.to_bits() < 0 || damage.to_bits() < 0 || windup.get() >= period.get() {
             return None;
         }
         Some(AttackStats {
@@ -49,11 +49,11 @@ impl AttackStats {
         self.range
     }
 
-    pub const fn windup(self) -> u32 {
+    pub const fn windup(self) -> Ticks {
         self.windup
     }
 
-    pub const fn period(self) -> u32 {
+    pub const fn period(self) -> Ticks {
         self.period
     }
 
@@ -81,8 +81,8 @@ impl<'de> Deserialize<'de> for AttackStats {
         #[derive(Deserialize)]
         struct Fields {
             range: Num,
-            windup: u32,
-            period: u32,
+            windup: Ticks,
+            period: Ticks,
             damage: Num,
             projectile_speed: Option<Num>,
         }

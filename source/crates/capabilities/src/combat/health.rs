@@ -1,61 +1,43 @@
 use bevy_ecs::component::Component;
 use campfire_math::Num;
 use campfire_sim::SimComponent;
-use serde::de::Error;
-use serde::{Deserialize, Deserializer, Serialize};
+use serde::{Deserialize, Serialize};
+
+use crate::values::meter::Meter;
 
 /// A unit's hit points, from 0 to a positive maximum. A unit at 0 dies at the end of the damage
 /// step.
-#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-pub struct Health {
-    current: Num,
-    max: Num,
-}
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Health(Meter);
 
 impl Health {
     /// Full health of `max`; `None` unless `max` is positive.
     pub const fn new(max: Num) -> Option<Health> {
-        if max.to_bits() <= 0 {
-            return None;
+        match Meter::new(max) {
+            Some(meter) => Some(Health(meter)),
+            None => None,
         }
-        Some(Health { current: max, max })
     }
 
     pub const fn current(self) -> Num {
-        self.current
+        self.0.current()
     }
 
     pub const fn max(self) -> Num {
-        self.max
+        self.0.max()
     }
 
     pub const fn is_zero(self) -> bool {
-        self.current.to_bits() == 0
+        self.0.is_empty()
     }
 
-    /// Takes `amount`, which is not negative, down to 0 at most.
+    /// Takes `amount` of damage, which is not negative, down to 0.
     pub(crate) fn take(&mut self, amount: Num) {
-        debug_assert!(amount >= Num::ZERO, "damage is not negative");
-        self.current = (self.current - amount).max(Num::ZERO);
+        self.0.take(amount);
     }
 }
 
 impl SimComponent for Health {
     const NAME: &'static str = "combat.health";
-}
-
-/// A snapshot is untrusted, so health outside 0 to a positive maximum fails to decode.
-impl<'de> Deserialize<'de> for Health {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Health, D::Error> {
-        #[derive(Deserialize)]
-        struct Fields {
-            current: Num,
-            max: Num,
-        }
-        let Fields { current, max } = Fields::deserialize(deserializer)?;
-        if max <= Num::ZERO || current < Num::ZERO || current > max {
-            return Err(D::Error::custom("health outside 0 to a positive maximum"));
-        }
-        Ok(Health { current, max })
-    }
 }

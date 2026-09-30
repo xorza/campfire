@@ -1,7 +1,7 @@
 use std::num::NonZeroU32;
 
 use campfire_math::{Num, SegmentSeed, Vec3};
-use campfire_sim::{EntityIndex, SimTick, SimUpdate, StableId, TickRate, TypeHash};
+use campfire_sim::{EntityIndex, SimTick, SimUpdate, StableId, Tick, TickRate, Ticks, TypeHash};
 
 use super::*;
 use crate::combat::Combat;
@@ -10,8 +10,9 @@ use crate::combat::attack_stats::AttackStats;
 use crate::combat::combatant::Combatant;
 use crate::combat::dead::Dead;
 use crate::combat::on_death::OnDeath;
-use crate::combat::recent_attackers::{RecentAttack, RecentAttackers};
-use crate::combat::team::Team;
+use crate::combat::recent_attackers::RecentAttackers;
+use crate::units::recent_attack::RecentAttack;
+use crate::units::team::Team;
 
 /// The MOBA's 30 ticks a second.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
@@ -32,7 +33,7 @@ fn half() -> Num {
 /// 30 damage within 8 m, fired 2 ticks after the start of an attack every 10 ticks, flying half
 /// a meter a tick.
 fn shooter() -> Combatant {
-    let melee = AttackStats::new(num(8), 2, 10, num(30)).unwrap();
+    let melee = AttackStats::new(num(8), Ticks::new(2), Ticks::new(10), num(30)).unwrap();
     Combatant {
         health: Health::new(num(100)).unwrap(),
         attack: Some(melee.ranged(half()).unwrap()),
@@ -44,7 +45,7 @@ fn shooter() -> Combatant {
 fn target() -> Combatant {
     Combatant {
         health: Health::new(num(100)).unwrap(),
-        attack: Some(AttackStats::new(Num::ZERO, 0, 1, Num::ZERO).unwrap()),
+        attack: Some(AttackStats::new(Num::ZERO, Ticks::new(0), Ticks::new(1), Num::ZERO).unwrap()),
         on_death: OnDeath::Stay,
     }
 }
@@ -140,7 +141,7 @@ fn a_projectile_flies_to_its_target_and_strikes_on_arrival() {
     let attackers = volley.world.get::<RecentAttackers>(entity).unwrap();
     let attack = RecentAttack {
         source: shooter_id,
-        tick: 12,
+        tick: Tick::new(12),
     };
     assert_eq!(attackers.iter().collect::<Vec<_>>(), [attack]);
 
@@ -198,7 +199,7 @@ fn a_projectile_whose_target_dies_or_goes_first_ends_without_a_hit() {
     assert_eq!(restored.projectiles(), volley.projectiles());
 
     volley.tick();
-    assert_eq!(volley.world.resource::<SimTick>().get(), 6);
+    assert_eq!(volley.world.resource::<SimTick>().start().get(), 6);
     assert_eq!(volley.projectiles(), []);
     assert_eq!(volley.health(doomed), 100);
 }

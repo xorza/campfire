@@ -1,8 +1,8 @@
 use bevy_ecs::resource::Resource;
-use campfire_sim::SimResource;
+use campfire_sim::{SimResource, Tick, Ticks};
 use serde::{Deserialize, Serialize};
 
-use crate::units::state_value::StateValue;
+use crate::scripts::state_value::StateValue;
 
 /// The mode's timers, earliest first. Times count ticks from the match start, as
 /// `SimTick::start` and `SimTick::end` give them: the Mode stage is at its tick's end, so a timer
@@ -19,10 +19,10 @@ pub struct Timers {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Timer {
     pub name: String,
-    pub due: u64,
+    pub due: Tick,
     seq: u64,
     /// In ticks, when it repeats.
-    pub every: Option<u64>,
+    pub every: Option<Ticks>,
     /// `None` for `()`.
     pub data: Option<StateValue>,
 }
@@ -31,13 +31,13 @@ impl Timers {
     /// Sets a timer `ticks` after `now`, and again every `ticks` if it repeats.
     pub(crate) fn set(
         &mut self,
-        now: u64,
+        now: Tick,
         name: String,
-        ticks: u64,
+        ticks: Ticks,
         repeat: bool,
         data: Option<StateValue>,
     ) {
-        let due = now.checked_add(ticks).expect("tick numbers exhausted");
+        let due = now.after(ticks);
         let timer = Timer {
             name,
             due,
@@ -51,7 +51,7 @@ impl Timers {
     }
 
     /// The earliest timer, when it is due at `now`.
-    pub(crate) fn due(&self, now: u64) -> Option<&Timer> {
+    pub(crate) fn due(&self, now: Tick) -> Option<&Timer> {
         self.timers.first().filter(|timer| timer.due <= now)
     }
 
@@ -59,10 +59,7 @@ impl Timers {
     pub(crate) fn fire(&mut self) -> Timer {
         let timer = self.timers.remove(0);
         if let Some(every) = timer.every {
-            let again = timer
-                .due
-                .checked_add(every)
-                .expect("tick numbers exhausted");
+            let again = timer.due.after(every);
             let repeat = Timer {
                 due: again,
                 seq: self.next_seq,

@@ -7,6 +7,8 @@ use bevy_ecs::system::{Commands, Query, ScheduleSystem};
 use campfire_math::{Num, RngSource};
 use serde::{Deserialize, Serialize};
 
+use campfire_protocol::PlayerSlot;
+
 use super::*;
 use crate::sim_state::{SimComponent, SimResource};
 use crate::stable_id::StableId;
@@ -76,7 +78,7 @@ fn grow_older(mut units: Query<'_, '_, &mut Age>) {
 }
 
 fn sum_ticks(tick: Res<'_, SimTick>, mut sum: ResMut<'_, TickSum>) {
-    sum.0 += tick.get();
+    sum.0 += tick.start().get();
 }
 
 fn new_world(seed: SegmentSeed) -> World {
@@ -272,11 +274,11 @@ fn ticks_advance_and_key_the_draws() {
         if tick == 3 {
             let mut inputs = world.resource_mut::<TickInputs>();
             inputs.push(TickInput {
-                slot: 0,
+                slot: PlayerSlot::new(0),
                 payload: b"up",
             });
             inputs.push(TickInput {
-                slot: 1,
+                slot: PlayerSlot::new(1),
                 payload: b"",
             });
             let pushed: Vec<_> = inputs.iter().collect();
@@ -284,11 +286,11 @@ fn ticks_advance_and_key_the_draws() {
                 pushed,
                 [
                     TickInput {
-                        slot: 0,
+                        slot: PlayerSlot::new(0),
                         payload: b"up"
                     },
                     TickInput {
-                        slot: 1,
+                        slot: PlayerSlot::new(1),
                         payload: b""
                     }
                 ]
@@ -299,7 +301,7 @@ fn ticks_advance_and_key_the_draws() {
     // Tick 3 sees both inputs; tick 4 sees none, since the end of tick 3 cleared them.
     assert_eq!(world.resource::<InputsSeen>().0, 2);
     assert_eq!(world.resource::<TickInputs>().iter().len(), 0);
-    assert_eq!(world.resource::<SimTick>().get(), TICKS);
+    assert_eq!(world.resource::<SimTick>().start().get(), TICKS);
     // Ticks 0 to 4 each add their number: 0 + 1 + 2 + 3 + 4 = 10.
     assert_eq!(world.resource::<TickSum>().0, 10);
 

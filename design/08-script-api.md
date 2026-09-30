@@ -138,7 +138,8 @@ A hero passive is a modifier the hero always carries. `combat` finds takedown pa
 
 A package loads only when all of these pass:
 
-- Every data file matches its schema, and every per-rank array has one entry for each rank.
+- Every data file matches its schema, every per-rank array has one entry for each rank, and every capability field of an ability (`range`, `cooldown_ms`, `cost`, `cast_time_ms`) holds at every rank.
+- The mode's unit types declare at most 64 tags together, and no hero has the name of one of them.
 - Every script is referenced by data. Every function named like a hook, a hook's name or any name that starts with `on_`, is a hook of a role the script serves, with the hook's parameters, so a misspelled hook is an error, not a hook that never runs.
 - Every modifier id, `ctx.p` name, `{ param }` reference, stat, state, filter and damage kind that a script or data file names exists. Scripts are read with `AST::walk`, from Rhai's `internals` feature.
 - Every `ctx` call is one this API defines, of a capability the mode declares, for the script's role.

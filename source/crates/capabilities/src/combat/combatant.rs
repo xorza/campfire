@@ -5,7 +5,6 @@ use crate::combat::attack_stats::AttackStats;
 use crate::combat::health::Health;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;
-use crate::combat::team::Team;
 
 /// A unit type's combat values: what a new unit of that type starts with. A unit with no attack,
 /// such as a structure that only stands, takes damage and dies.
@@ -17,9 +16,9 @@ pub struct Combatant {
 }
 
 impl Combatant {
-    /// Gives `unit` the components of a new unit of this type on `team`, which the spawn gives.
-    pub fn insert(self, unit: &mut EntityWorldMut<'_>, team: Team) {
-        unit.insert((team, self.health, self.on_death, RecentAttackers::default()));
+    /// Gives `unit` the combat components of a new unit of this type.
+    pub fn insert(self, unit: &mut EntityWorldMut<'_>) {
+        unit.insert((self.health, self.on_death, RecentAttackers::default()));
         if let Some(attack) = self.attack {
             unit.insert((attack, AttackState::default()));
         }
@@ -31,9 +30,11 @@ mod internals {
     use bevy_ecs::bundle::Bundle;
 
     use super::*;
+    use crate::units::team::Team;
 
     impl Combatant {
-        /// The components `insert` gives a new unit of this type on `team`, which has an attack.
+        /// The components of a new unit of this type on `team`, which has an attack: its team,
+        /// which the spawn gives, and those `insert` gives.
         pub(crate) fn bundle(self, team: Team) -> impl Bundle {
             (
                 team,

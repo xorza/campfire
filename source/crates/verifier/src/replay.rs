@@ -1,6 +1,6 @@
 use campfire_content::PackageStore;
 use campfire_protocol::{SeedError, SessionLog};
-use campfire_runner::{ModePackages, RELEASE, Runner, StartError};
+use campfire_runner::{ModePackages, Runner, StartError};
 
 /// A published session log replayed in a bare `World`, one tick at a time, with the packages its
 /// terms name. Decoding the log checked every chain link and signature; the replay seals its
@@ -23,9 +23,6 @@ impl Replay {
             .revealed_seed()
             .ok_or(StartError::Seed(SeedError::NotRevealed))?;
         let terms = &published.header().terms;
-        if terms.release != RELEASE {
-            return Err(StartError::OtherRelease(terms.release.clone()));
-        }
         let packages = ModePackages::from_store(store, terms.mode, &terms.dependencies)?;
         let ticks = published.next_tick();
         Ok(Replay {

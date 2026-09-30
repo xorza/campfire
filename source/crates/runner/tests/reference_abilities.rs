@@ -6,15 +6,16 @@ use std::num::NonZeroU32;
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::world::World;
 use campfire_capabilities::{
-    Abilities, AbilitySlots, Action, AttackStats, CastTarget, Combat, Combatant, Control,
-    Controller, Health, HeroData, MatchScripts, Navigation, Number, OnDeath, Order, Param, Range,
-    RangeField, Ranked, ResourcePool, Scalar, Scaling, ScriptLimits, Targeting, Team, Units,
+    Abilities, AbilitySlots, Action, AttackStats, CastTarget, Combat, Combatant, Health, HeroData,
+    MatchScripts, Navigation, Number, OnDeath, Order, Orders, Owner, Param, Range, RangeField,
+    Ranked, ResourcePool, Scalar, Scaling, ScriptLimits, Targeting, Team, Units,
 };
 use campfire_content::{PackageDir, PackagePath};
 use campfire_math::{Num, SegmentSeed, Vec3};
+use campfire_protocol::PlayerSlot;
 use campfire_sim::{
     EntityIndex, IdAllocator, Position, SimUpdate, StableId, StateRegistry, TickInput, TickInputs,
-    TickRate,
+    TickRate, Ticks,
 };
 
 /// The MOBA's 30 ticks a second.
@@ -44,12 +45,12 @@ fn spawn(world: &mut World, team: u8, x: i64, parts: impl Bundle) -> StableId {
     let id = world.resource_mut::<IdAllocator>().allocate();
     let combatant = Combatant {
         health: Health::new(num(500)).unwrap(),
-        attack: Some(AttackStats::new(Num::ZERO, 0, 1, Num::ZERO).unwrap()),
+        attack: Some(AttackStats::new(Num::ZERO, Ticks::ZERO, Ticks::ONE, Num::ZERO).unwrap()),
         on_death: OnDeath::Stay,
     };
     let at = Position::new(Vec3::new(num(x), Num::ZERO, Num::ZERO)).unwrap();
-    let mut unit = world.spawn((id, at, parts));
-    combatant.insert(&mut unit, Team::new(team));
+    let mut unit = world.spawn((id, at, Team::new(team), parts));
+    combatant.insert(&mut unit);
     id
 }
 
@@ -117,7 +118,7 @@ fn lash_out_from_its_package_hits_exactly() {
     Combat::install(&mut world, &mut schedule, &mut registry);
     Navigation::install(&mut world, &mut schedule, &mut registry);
     Abilities::install(&mut world, &mut schedule, &mut registry);
-    Control::install(&mut world, &mut schedule, &mut registry);
+    Orders::install(&mut world, &mut schedule, &mut registry);
     world.add_schedule(schedule);
 
     let husk = abilities("husk");
@@ -125,14 +126,15 @@ fn lash_out_from_its_package_hits_exactly() {
     let source = hero("husk")
         .read_text(data.script.as_ref().unwrap())
         .unwrap();
-    let lash_out = Abilities::load(&mut world, data, Some(&source), 5).unwrap();
+    let script = Units::compile(&mut world, &source).unwrap();
+    let lash_out = Abilities::load(&mut world, data, Some(script), 5).unwrap();
 
     let caster = spawn(
         &mut world,
         0,
         0,
         (
-            Controller::new(0),
+            Owner::new(PlayerSlot::new(0)),
             AbilitySlots::new([(lash_out, 3)]),
             ResourcePool::new(num(100)).unwrap(),
         ),
@@ -148,7 +150,7 @@ fn lash_out_from_its_package_hits_exactly() {
         },
     }]);
     world.resource_mut::<TickInputs>().push(TickInput {
-        slot: 0,
+        slot: PlayerSlot::new(0),
         payload: &payload,
     });
     world.run_schedule(SimUpdate);

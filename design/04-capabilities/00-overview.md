@@ -8,7 +8,7 @@ A capability is native code: components, systems that run in the tick, backends,
 
 | Capability | Adds | Doc |
 | --- | --- | --- |
-| `combat` | Teams, health, attacks, the damage pipeline, deaths, kill credit | [Combat](combat.md) |
+| `combat` | Health, attacks, the damage pipeline, deaths, kill credit | [Combat](combat.md) |
 | `stats` | Stats, how they combine, modifiers, states such as stun | [Combat](combat.md#stats-and-modifiers) |
 | `abilities` | Targeting, range, cooldown, cost, cast and channel time, charges, toggles | [Abilities](abilities.md) |
 | `projectiles`, `areas` | Linear, homing and falling projectiles; circles that hold modifiers | [Abilities](abilities.md#projectiles-and-areas) |
@@ -26,8 +26,8 @@ Which capabilities make which genre, and what each genre adds in scripts: [Genre
 
 Capabilities share one vocabulary, so they can meet in one match: a hitscan ray and a MOBA projectile damage the same `combat` health, and a unit that takes orders can have hitboxes. The shared types live in the lowest layer, and each capability names the ones it builds on. The dependencies form a fixed graph with no cycle:
 
-- **Base:** `sim` (position, stable ids, randomness, the state hash, the tick rate) and the collision shape; then the core under every script: unit types (tags and params), the one script host whose tick budget every capability's calls share, and the units as scripts see them, with the queries on them.
-- **`combat` and `stats`:** teams, health, damage, deaths, stats and modifiers.
+- **Base:** `sim` (position, stable ids, randomness, the state hash, the tick rate) and the collision shape; then the core under every script: unit types (tags and params), the one script host whose tick budget every capability's calls share, the types every capability shares (a unit's team, the player who controls it, a lane), and the units as scripts see them, with the queries on them. A capability adds its fields of a unit to that view through a row source, so the core names no capability.
+- **`combat` and `stats`:** health, damage, deaths, stats and modifiers.
 - **Everything else** builds on those: `projectiles` and `hitscan` deal damage through `combat`; `abilities` apply modifiers through `stats`; `orders` issue attacks and casts.
 
 The capabilities live in one crate, `capabilities`, a module each, so they share their internals without making them public; the layers are a rule on which modules a capability imports, kept in review. A capability that brings a heavy dependency, such as a physics engine, gets a crate of its own, so the others do not build it. The runner adds only the declared capabilities' systems to the schedule, so a capability a mode does not use costs nothing in a tick.
