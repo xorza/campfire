@@ -22,7 +22,7 @@ Three layers, as in Dota 2: a long route around what never moves, a short route 
 - **Pathing grid:** the bounds in `[navigation] cell` cells, blocked for each walker radius near a unit that cannot walk. It changes when such a unit dies or spawns.
 - **Long route:** A* for the unit's radius, eight neighbors, costs 10 and 14, a fixed tie-break, then line-of-sight smoothing. An unreachable goal gives the nearest reachable cell.
 - **Short route:** a small local plan around units that stand, or that block the unit for a few ticks.
-- **Collision:** the push-out below, over a grid of buckets.
+- **Collision:** the push-out below, over a grid of buckets for moving bodies and a static index for units that cannot walk, as 0 A.D. keeps them.
 
 A client plans its own routes on the same grid. Crowds, as in an RTS, add flow fields and ORCA later.
 
