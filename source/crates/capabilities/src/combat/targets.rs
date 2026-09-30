@@ -5,6 +5,7 @@ use campfire_sim::{EntityIndex, Position, StableId};
 use crate::combat::attack_stats::{AttackStats, ground_offset};
 use crate::combat::dead::Dead;
 use crate::combat::health::Health;
+use crate::combat::living_unit::LivingUnit;
 use crate::combat::team::Team;
 
 /// The units an attack may target: living units with health. Every capability that chooses or
@@ -23,15 +24,15 @@ pub(crate) struct Targets<'w, 's> {
 impl Targets<'_, '_> {
     /// Where `target` is, when it is a living enemy of `team`.
     pub(crate) fn enemy_at(&self, team: Team, target: StableId) -> Option<Position> {
-        let entity = self.index.get(target)?;
-        let (_, &at, &theirs) = self.units.get(entity).ok()?;
-        team.is_enemy_of(theirs).then_some(at)
+        self.living(target)
+            .filter(|unit| team.is_enemy_of(unit.team))
+            .map(|unit| unit.pos)
     }
 
-    /// Where `target` is, and its team, when it is a living unit.
-    pub(crate) fn living(&self, target: StableId) -> Option<(Position, Team)> {
-        let (_, &at, &team) = self.units.get(self.index.get(target)?).ok()?;
-        Some((at, team))
+    /// `target`, when it is a living unit.
+    pub(crate) fn living(&self, target: StableId) -> Option<LivingUnit> {
+        let (&id, &pos, &team) = self.units.get(self.index.get(target)?).ok()?;
+        Some(LivingUnit { id, pos, team })
     }
 
     /// The nearest living enemy of `team` that `stats` reach from `from`, by exact distance on the

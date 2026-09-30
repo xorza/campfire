@@ -1,16 +1,15 @@
-use std::collections::BTreeMap;
-
 use bevy_ecs::resource::Resource;
 use campfire_script::{ScriptHost, ScriptId};
 use serde::{Deserialize, Serialize};
 
 use crate::abilities::ability_data::{AbilityData, Param, Range, Ranked, Targeting};
 use crate::abilities::error::AbilityError;
+use crate::abilities::frame::Frame;
 
 /// The abilities a match loaded, times in ticks and scripts compiled. Package data, not state: a
 /// restore loads it from the packages, as a new match does.
 #[derive(Resource, Debug, Default)]
-pub struct AbilityBook {
+pub(crate) struct AbilityBook {
     abilities: Vec<Ability>,
 }
 
@@ -30,15 +29,16 @@ pub(crate) struct Ability {
     /// In ticks.
     pub(crate) cast_time: Ranked<u64>,
     pub(crate) script: Option<ScriptId>,
-    pub(crate) params: BTreeMap<String, Param>,
+    /// In the order of their names.
+    pub(crate) params: Vec<Param>,
 }
 
 impl AbilityBook {
-    /// Loads `data`, with the source of its script if it names one, for a match of `tick_hz`
-    /// ticks a second: times in milliseconds become ticks, rounded up.
-    pub fn load(
+    /// Loads `data`; see `Abilities::load`. `frame` takes its param names.
+    pub(crate) fn load(
         &mut self,
         host: &mut ScriptHost,
+        frame: &mut Frame,
         data: &AbilityData,
         source: Option<&str>,
         tick_hz: u32,
@@ -67,20 +67,29 @@ impl AbilityBook {
             _ => return Err(AbilityError::ScriptMismatch),
         };
         let id = AbilityId(u32::try_from(self.abilities.len()).expect("abilities fit u32"));
+        let cooldown = ticks(data.cooldown_ms.as_ref(), tick_hz)?;
+        let cast_time = ticks(data.cast_time_ms.as_ref(), tick_hz)?;
+        frame.add_param_names(data.params.keys().map(String::as_str));
         self.abilities.push(Ability {
             targeting: data.targeting,
             range: data.range.clone().unwrap_or(Ranked::One(Range::Global)),
-            cooldown: ticks(data.cooldown_ms.as_ref(), tick_hz)?,
+            cooldown,
             cost: data.cost.clone().unwrap_or(Ranked::One(0)),
-            cast_time: ticks(data.cast_time_ms.as_ref(), tick_hz)?,
+            cast_time,
             script,
-            params: data.params.clone(),
+            params: data.params.values().cloned().collect(),
         });
         Ok(id)
     }
 
     pub(crate) fn get(&self, id: AbilityId) -> Option<&Ability> {
-        self.abilities.get(id.0 as usize)
+        self.abilities.get(id.index())
+    }
+}
+
+impl AbilityId {
+    pub(crate) const fn index(self) -> usize {
+        self.0 as usize
     }
 }
 

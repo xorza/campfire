@@ -20,6 +20,7 @@ pub(crate) mod combatant;
 pub(crate) mod damage_kind;
 pub(crate) mod dead;
 pub(crate) mod health;
+pub(crate) mod living_unit;
 pub(crate) mod on_death;
 pub(crate) mod strikes;
 pub(crate) mod targets;

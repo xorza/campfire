@@ -8,11 +8,12 @@ use campfire_script::NumError;
 use campfire_sim::{IdAllocator, SimUpdate, TickInput, TickInputs};
 
 use super::*;
-use crate::abilities::ability_data::{Ranked, Scaling};
+use crate::abilities::ability_data::{Ranked, Relation, Scaling};
 use crate::abilities::ability_slots::AbilitySlot;
 use crate::combat::Combat;
 use crate::combat::attack_stats::AttackStats;
 use crate::combat::combatant::Combatant;
+use crate::combat::health::Health;
 use crate::combat::on_death::OnDeath;
 use crate::control::Control;
 use crate::control::controller::Controller;
@@ -191,6 +192,9 @@ impl Match {
 #[test]
 fn lash_out_hits_every_enemy_within_its_radius_exactly() {
     let mut game = Match::new();
+    // Strike's one param name comes first in the frame, so Lash Out's three follow from the
+    // second.
+    game.load(&strike(), STRIKE);
     let lash_out = game.load(&lash_out(), LASH_OUT);
     let husk = game.caster(lash_out, 2);
     let near = game.spawn(1, at(num(3), Num::ZERO, Num::ZERO), ());
@@ -284,16 +288,20 @@ fn a_failed_script_changes_nothing_and_fails_the_same_way_everywhere() {
     let spin = r#"fn on_cast(ctx, caster, target) { for unit in ctx.find(caster, caster.pos, 10, "enemies") { ctx.damage(unit, 50, "magic"); } loop {} }"#;
     let wrong_kind = r#"fn on_cast(ctx, caster, target) { for unit in ctx.find(caster, caster.pos, 10, "enemies") { ctx.damage(unit, 50, "fire"); } }"#;
     let overflow = r#"fn on_cast(ctx, caster, target) { for unit in ctx.find(caster, caster.pos, 10, "enemies") { ctx.damage(unit, 50, "magic"); } num(1 << 20) * num(1 << 20) }"#;
+    let undeclared = r#"fn on_cast(ctx, caster, target) { for unit in ctx.find(caster, caster.pos, 10, "enemies") { ctx.damage(unit, 50, "magic"); } ctx.p.radius }"#;
     let data = AbilityData {
         params: BTreeMap::new(),
         ..lash_out()
     };
-    let cases: [(&str, fn(&CastError) -> bool); 3] = [
+    let cases: [(&str, fn(&CastError) -> bool); 4] = [
         (spin, |error| {
             matches!(error, CastError::Script(ScriptError::CallLimit))
         }),
         (wrong_kind, |error| {
             matches!(error, CastError::Api(ApiError::UnknownDamageKind))
+        }),
+        (undeclared, |error| {
+            matches!(error, CastError::Api(ApiError::UnknownParam))
         }),
         (overflow, |error| match error {
             CastError::Script(ScriptError::Raised(raised)) => {

@@ -18,7 +18,7 @@ mod control;
 mod navigation;
 
 pub use abilities::Abilities;
-pub use abilities::ability_book::{AbilityBook, AbilityId};
+pub use abilities::ability_book::AbilityId;
 pub use abilities::ability_data::{
     AbilityData, AbilityTables, Param, Range, Ranked, Relation, Scalar, Scaling, Targeting,
 };

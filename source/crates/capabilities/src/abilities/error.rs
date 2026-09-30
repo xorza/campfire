@@ -59,6 +59,8 @@ pub enum CastError {
 /// Why the script API refused a call: a script gave it a value it does not take.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ApiError {
+    /// A param the ability does not declare.
+    UnknownParam,
     /// A filter that is not `enemies`, `allies` or `all`.
     UnknownFilter,
     NegativeRadius,
@@ -92,6 +94,7 @@ impl Error for CastError {
 impl fmt::Display for ApiError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
+            ApiError::UnknownParam => "param is not declared by the ability",
             ApiError::UnknownFilter => "filter is not enemies, allies or all",
             ApiError::NegativeRadius => "radius is negative",
             ApiError::UnknownDamageKind => "damage kind is not physical, magic or true",

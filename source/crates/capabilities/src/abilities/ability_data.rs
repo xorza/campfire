@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 use std::str::FromStr;
 
+use crate::combat::team::Team;
+
 use campfire_content::PackagePath;
 use campfire_math::Num;
 use serde::de::Error;
@@ -138,6 +140,15 @@ impl Scalar {
 }
 
 impl Relation {
+    /// Whether a unit of team `theirs` stands in this relation to one of team `ours`.
+    pub(crate) const fn holds(self, ours: Team, theirs: Team) -> bool {
+        match self {
+            Relation::Enemies => ours.is_enemy_of(theirs),
+            Relation::Allies => !ours.is_enemy_of(theirs),
+            Relation::All => true,
+        }
+    }
+
     /// A filter's relation: `enemies`, `allies` or `all`.
     pub fn parse(filter: &str) -> Option<Relation> {
         match filter {
