@@ -8,7 +8,7 @@ use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use campfire_capabilities::{Action, Dead, Destination, Health, Owner, Respawn};
 use campfire_math::{Num, Vec3};
-use campfire_net::{LocalPair, PlayerLink, TickHashes, Unpredicted};
+use campfire_net::{LocalMatch, MatchSetup, PlayerLink, TickHashes, Unpredicted};
 use campfire_protocol::{SeedChain, SessionLog};
 use campfire_runner::{Runner, Session};
 use campfire_sim::{EntityIndex, Position, SimTick, Tick};
@@ -68,30 +68,30 @@ fn server_and_replay_agree_on_every_tick() {
         (RollbackMode::Check, 3, 2),
     ] {
         let case = format!("{rollback:?}, {server_frames} frames, shift {shift}");
-        let mut pair = LocalPair::new(rollback, SEED_CHAIN, server_frames);
+        let mut local = LocalMatch::new(MatchSetup::solo(rollback, server_frames, SEED_CHAIN));
         for _ in 0..shift {
-            pair.server_frame();
+            local.server_frame();
         }
-        pair.start_match();
+        local.start_match();
         // The ticks the server ran while the client learned the match started.
-        let started = pair.server().world().resource::<SimTick>().start().get();
+        let started = local.server().world().resource::<SimTick>().start().get();
         for frame in 0..MATCH_FRAMES {
             match frame {
-                10 => pair.order(move_to(0, 5)),
-                50 => pair.order(move_to(-2, 5)),
+                10 => local.order(0, move_to(0, 5)),
+                50 => local.order(0, move_to(-2, 5)),
                 _ => {}
             }
-            pair.step();
+            local.step();
         }
 
         let arrived = Hero {
             position: Position::new(Vec3::new(num(-2), Num::ZERO, num(5))).unwrap(),
             destination: Destination::default(),
         };
-        assert_eq!(hero(pair.server()), arrived, "{case}");
-        assert_eq!(hero(pair.client()), arrived, "{case}");
-        let client_world = pair.client().world();
-        let client_hero = client_world.entity(hero_entity(pair.client()));
+        assert_eq!(hero(local.server()), arrived, "{case}");
+        assert_eq!(hero(local.client(0)), arrived, "{case}");
+        let client_world = local.client(0).world();
+        let client_hero = client_world.entity(hero_entity(local.client(0)));
         assert!(client_hero.contains::<Predicted>() && !client_hero.contains::<Unpredicted>());
         let rollbacks = client_world.resource::<PredictionMetrics>().rollbacks;
         // The client stamps each order with the tick it predicts it in, and runs ahead of the
@@ -101,8 +101,8 @@ fn server_and_replay_agree_on_every_tick() {
             _ => assert!(rollbacks > 0, "{case} rolled back {rollbacks} times"),
         }
 
-        let link = pair.link();
-        let server_world = pair.server_mut().world_mut();
+        let link = local.link(0);
+        let server_world = local.server_mut().world_mut();
         assert_eq!(
             server_world
                 .entity(link)
@@ -119,7 +119,7 @@ fn server_and_replay_agree_on_every_tick() {
         server_world.resource::<Session>().log().encode(&mut file);
         let decoded = SessionLog::decode(&file).unwrap();
         let seed = decoded.revealed_seed().unwrap();
-        let mut replay = Runner::new(decoded.rewound(), seed, pair.packages()).unwrap();
+        let mut replay = Runner::new(decoded.rewound(), seed, local.packages()).unwrap();
         for (tick, live) in live.iter().enumerate() {
             replay.run_tick();
             assert_eq!(replay.state_hash(), *live, "{case}, tick {tick}");
@@ -130,50 +130,51 @@ fn server_and_replay_agree_on_every_tick() {
 
 #[test]
 fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_its_client() {
-    let mut pair = LocalPair::new(RollbackMode::Check, SEED_CHAIN, 1);
-    pair.start_match();
+    let mut local = LocalMatch::new(MatchSetup::solo(RollbackMode::Check, 1, SEED_CHAIN));
+    local.start_match();
     // The hero walks to (4, 0), 4 m from the east tower at (8, 0), which reaches 7.75 m and hits
     // for 150 of its 600: the fourth hit kills it where it stands.
-    pair.order(move_to(4, 0));
+    local.order(0, move_to(4, 0));
     let dead = |app: &App| app.world().entity(hero_entity(app)).contains::<Dead>();
-    let rollbacks = |pair: &LocalPair| {
-        pair.client()
+    let rollbacks = |local: &LocalMatch| {
+        local
+            .client(0)
             .world()
             .resource::<PredictionMetrics>()
             .rollbacks
     };
     let mut frames = 0;
-    while !dead(pair.server()) {
+    while !dead(local.server()) {
         assert!(frames < 400, "the tower kills the hero");
-        pair.step();
+        local.step();
         frames += 1;
     }
-    let died_in = pair.server().world().resource::<SimTick>().start().get() - 1;
+    let died_in = local.server().world().resource::<SimTick>().start().get() - 1;
     // The client learns of the death after the ticks it predicted ahead, and corrects them once.
     for _ in 0..10 {
-        pair.step();
+        local.step();
     }
-    assert_eq!(rollbacks(&pair), 1);
+    assert_eq!(rollbacks(&local), 1);
     // An order after its death moves it on neither end, and needs no correction.
-    pair.order(move_to(-4, 0));
+    local.order(0, move_to(-4, 0));
     for _ in 0..40 {
-        pair.step();
+        local.step();
     }
     let at = |x| Hero {
         position: Position::new(Vec3::new(num(x), Num::ZERO, Num::ZERO)).unwrap(),
         destination: Destination::default(),
     };
-    assert_eq!(hero(pair.server()), at(4));
-    assert_eq!(hero(pair.client()), at(4));
-    assert!(dead(pair.client()));
+    assert_eq!(hero(local.server()), at(4));
+    assert_eq!(hero(local.client(0)), at(4));
+    assert!(dead(local.client(0)));
     let health = |app: &App| {
         app.world()
             .get::<Health>(hero_entity(app))
             .unwrap()
             .current()
     };
-    assert_eq!(health(pair.client()), Num::ZERO);
-    assert_eq!(rollbacks(&pair), 1);
+    assert_eq!(health(local.client(0)), Num::ZERO);
+    assert_eq!(rollbacks(&local), 1);
 
     // The lane mode respawns a hero 5000 ms later: 150 ticks at 30 a second, from the end of the
     // tick it died in. It stands at its team's spawn, (0, 0), with its 600 health, on both ends,
@@ -181,22 +182,22 @@ fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_
     let back = Respawn {
         at: Tick::new(died_in + 1 + 150),
     };
-    let client_hero = hero_entity(pair.client());
+    let client_hero = hero_entity(local.client(0));
     assert_eq!(
-        pair.client().world().get::<Respawn>(client_hero),
+        local.client(0).world().get::<Respawn>(client_hero),
         Some(&back)
     );
-    while dead(pair.server()) {
-        pair.step();
+    while dead(local.server()) {
+        local.step();
     }
-    let respawned_in = pair.server().world().resource::<SimTick>().start().get() - 1;
+    let respawned_in = local.server().world().resource::<SimTick>().start().get() - 1;
     assert_eq!(respawned_in, back.at.get());
     for _ in 0..10 {
-        pair.step();
+        local.step();
     }
-    assert_eq!(hero(pair.server()), at(0));
-    assert_eq!(hero(pair.client()), at(0));
-    assert!(!dead(pair.client()));
-    assert_eq!(health(pair.client()), num(600));
-    assert_eq!(rollbacks(&pair), 1);
+    assert_eq!(hero(local.server()), at(0));
+    assert_eq!(hero(local.client(0)), at(0));
+    assert!(!dead(local.client(0)));
+    assert_eq!(health(local.client(0)), num(600));
+    assert_eq!(rollbacks(&local), 1);
 }

@@ -42,6 +42,10 @@ pub struct PlayerLink {
 }
 
 impl PlayerLink {
+    pub const fn slot(self) -> PlayerSlot {
+        self.slot
+    }
+
     /// Messages the log refused: a broken chain or signature, or a limit passed. An honest
     /// client sends none; with the connect handshake, the first one will end the connection.
     pub const fn refused(self) -> u64 {

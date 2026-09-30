@@ -7,15 +7,16 @@ use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::schedule::common_conditions::{not, resource_exists};
 use bevy_ecs::system::{Commands, Query, Res, ResMut, Single};
 use bevy_ecs::world::{Mut, World};
-use campfire_capabilities::{Dead, Order};
+use campfire_capabilities::{Dead, Order, Owner};
 use campfire_math::SegmentSeed;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SignOnly};
 use campfire_protocol::{Delegation, DelegationTerms, InputChain, InputHash, SessionId};
 use campfire_sim::{
     PlayerSlot, SimTick, SimUpdate, StableId, StateRegistry, Tick, TickInput, TickInputs, TickRate,
 };
+use lightyear::prelude::client::{InputDelayConfig, InputTimelineConfig};
 use lightyear::prelude::{
-    Client, LocalTimeline, MessageReceiver, MessageSender, Predicted, Tick as NetTick,
+    Client, LocalTimeline, MessageReceiver, MessageSender, Predicted, SyncConfig, Tick as NetTick,
     is_in_rollback,
 };
 use tracing::{debug, info, warn};
@@ -27,10 +28,12 @@ use crate::match_clock::MatchClock;
 use crate::match_start::MatchStart;
 use crate::net_protocol::{InputChannel, JoinChannel};
 use crate::offer::Offer;
+use crate::sim_client::bot_script::BotScript;
 use crate::sim_client::client_mode::ClientMode;
 use crate::sim_client::server_pin::ServerPin;
 use crate::sim_client::unpredicted::Unpredicted;
 
+pub(crate) mod bot_script;
 pub(crate) mod client_mode;
 pub(crate) mod server_pin;
 pub(crate) mod unpredicted;
@@ -179,6 +182,14 @@ impl Plugin for SimClient {
             inputs: Vec::new(),
             payloads: Vec::new(),
         });
+        // Prediction covers all the latency, with no input delay: an input goes out stamped with the
+        // tick the client predicts it in, which Lightyear keeps ahead of the server's by the
+        // round trip; with input delay it would keep that tick nearer, and the input would land
+        // late.
+        app.insert_resource(InputTimelineConfig::new(
+            SyncConfig::default(),
+            InputDelayConfig::no_input_delay(),
+        ));
         app.insert_resource(JoinState::Waiting);
         app.init_resource::<PendingOrders>();
         app.add_systems(
@@ -266,11 +277,17 @@ fn report_deaths(
     }
 }
 
-/// Stamps each pending order with the sim tick about to run, chains it and keeps it, then sends
-/// them all in one message signed over the chain head after the last.
+/// The client's own hero: the one unit it predicts under a player's control.
+type OwnHero<'w, 's> = Query<'w, 's, &'static StableId, (With<Owner>, With<Predicted>)>;
+
+/// Adds the bot script's orders due in the tick about to run, for the player's own hero, then
+/// stamps each pending order with that tick, chains it and keeps it, and sends them all in one
+/// message signed over the chain head after the last.
 fn send_orders(
     timeline: Res<'_, LocalTimeline>,
     clock: Res<'_, MatchClock>,
+    bot: Option<ResMut<'_, BotScript>>,
+    hero: OwnHero<'_, '_>,
     mut pending: ResMut<'_, PendingOrders>,
     mut sent: ResMut<'_, SentInputs>,
     mut sender: Single<'_, '_, &mut MessageSender<InputMessage>, With<Client>>,
@@ -289,6 +306,14 @@ fn send_orders(
     let Some(stamp) = clock.sim_tick(timeline.tick()) else {
         return;
     };
+    if let (Some(mut bot), Ok(&unit)) = (bot, hero.single()) {
+        for scripted in bot.due(stamp) {
+            pending.push(Order {
+                unit,
+                action: scripted.action,
+            });
+        }
+    }
     if pending.0.is_empty() {
         return;
     }

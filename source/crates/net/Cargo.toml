@@ -23,6 +23,7 @@ bevy_time = { workspace = true, optional = true }
 criterion = { workspace = true, optional = true }
 lightyear.workspace = true
 serde.workspace = true
+toml.workspace = true
 tracing.workspace = true
 
 [[test]]
@@ -31,6 +32,10 @@ required-features = ["internals"]
 
 [[test]]
 name = "fog"
+required-features = ["internals"]
+
+[[test]]
+name = "scenario"
 required-features = ["internals"]
 
 [[bench]]

@@ -6,7 +6,7 @@ use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use campfire_capabilities::{Action, Owner, SeenBy, Team};
 use campfire_math::{Num, Vec3};
-use campfire_net::{LocalPair, MatchClock, TickHashes, Unpredicted};
+use campfire_net::{LocalMatch, MatchClock, MatchSetup, TickHashes, Unpredicted};
 use campfire_protocol::SeedChain;
 use campfire_sim::{EntityIndex, Position, SimTick, StableId, Tick};
 use lightyear::prelude::{ConfirmHistory, ReplicationCheckpointMap, RollbackMode};
@@ -41,20 +41,20 @@ struct Server {
 
 #[test]
 fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
-    let mut pair = LocalPair::new(RollbackMode::Check, SEED_CHAIN, 1);
-    pair.start_match();
+    let mut local = LocalMatch::new(MatchSetup::solo(RollbackMode::Check, 1, SEED_CHAIN));
+    local.start_match();
     // Without the per-tick hash from here on, as in production: the ticks and the replication run
     // all the same.
-    let hashes = pair
+    let hashes = local
         .server_mut()
         .world_mut()
         .remove_resource::<TickHashes>();
     assert!(hashes.is_some());
     let east_tower = Position::new(Vec3::new(num(8), Num::ZERO, Num::ZERO)).unwrap();
-    let (tower, tower_entity) = unit(pair.server(), |app, entity| {
+    let (tower, tower_entity) = unit(local.server(), |app, entity| {
         app.world().get::<Position>(entity) == Some(&east_tower)
     });
-    let (_, hero) = unit(pair.server(), |app, entity| {
+    let (_, hero) = unit(local.server(), |app, entity| {
         app.world().entity(entity).contains::<Owner>()
     });
 
@@ -65,12 +65,12 @@ fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
     let mut arrived_in = None;
     for frame in 0..MATCH_FRAMES {
         match frame {
-            10 => pair.order(move_to(4)),
-            40 => pair.order(move_to(0)),
+            10 => local.order(0, move_to(4)),
+            40 => local.order(0, move_to(0)),
             _ => {}
         }
-        pair.step();
-        let world = pair.server().world();
+        local.step();
+        let world = local.server().world();
         let ticks_run = usize::try_from(world.resource::<SimTick>().start().get()).unwrap();
         if ticks_run > server.len() {
             let seen = world.get::<SeenBy>(tower_entity).unwrap().get();
@@ -80,11 +80,11 @@ fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
                 hero_x: world.get::<Position>(hero).unwrap().get().x,
             }));
         }
-        let client = pair.client().world();
+        let client = local.client(0).world();
         let held = client.resource::<EntityIndex>().get(tower);
         if let (Some(entity), None) = (held, arrived_in) {
             assert!(client.entity(entity).contains::<Unpredicted>());
-            arrived_in = Some(sent_in(&pair, entity));
+            arrived_in = Some(sent_in(&local, entity));
         }
         on_client.push(held.is_some());
     }
@@ -114,13 +114,13 @@ fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
 }
 
 /// The sim tick of the server message that last updated `unit` on the client.
-fn sent_in(pair: &LocalPair, unit: Entity) -> Tick {
-    let client = pair.client().world();
+fn sent_in(local: &LocalMatch, unit: Entity) -> Tick {
+    let client = local.client(0).world();
     let history = client.get::<ConfirmHistory>(unit).unwrap();
     let net_tick = client
         .resource::<ReplicationCheckpointMap>()
         .get(history.last_tick())
         .unwrap();
-    let clock = pair.server().world().resource::<MatchClock>();
+    let clock = local.server().world().resource::<MatchClock>();
     clock.sim_tick(net_tick).unwrap()
 }

@@ -2,6 +2,7 @@ use std::error::Error;
 use std::fmt;
 
 use campfire_protocol::{ConnectError, DelegationError};
+use toml::de::Error as TomlError;
 
 /// Why the server refused a player's join.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -10,6 +11,20 @@ pub enum JoinError {
     Connect(ConnectError),
     /// Every slot was taken by the time the join arrived.
     Full,
+}
+
+/// Why an order script does not read.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum OrderScriptError {
+    Toml(TomlError),
+    /// A coordinate of the order at `tick` is past what a sim number holds.
+    Coordinate {
+        tick: u64,
+    },
+    /// The order at `tick` comes after an order at a later tick.
+    Unordered {
+        tick: u64,
+    },
 }
 
 /// Why a client refused the server's offer: its terms name a session the client cannot play, or
@@ -48,3 +63,22 @@ impl fmt::Display for TermsMismatch {
 }
 
 impl Error for TermsMismatch {}
+
+impl fmt::Display for OrderScriptError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            OrderScriptError::Toml(error) => write!(f, "{error}"),
+            OrderScriptError::Coordinate { tick } => {
+                write!(
+                    f,
+                    "the order at tick {tick} has a coordinate past a sim number"
+                )
+            }
+            OrderScriptError::Unordered { tick } => {
+                write!(f, "the order at tick {tick} comes after a later one")
+            }
+        }
+    }
+}
+
+impl Error for OrderScriptError {}

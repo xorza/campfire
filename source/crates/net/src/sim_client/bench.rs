@@ -7,7 +7,7 @@ use campfire_protocol::SeedChain;
 use criterion::Criterion;
 use lightyear::prelude::RollbackMode;
 
-use crate::local_pair::LocalPair;
+use crate::local_match::{LocalMatch, MatchSetup};
 
 const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
 /// A quarter meter a tick crosses the 10 m between the two targets in 40 ticks, so a new order
@@ -23,8 +23,8 @@ pub fn rollback(c: &mut Criterion) {
         ("frame_without_rollback", RollbackMode::Check),
         ("frame_with_rollback", RollbackMode::Always),
     ] {
-        let mut pair = LocalPair::new(mode, SEED_CHAIN, 1);
-        pair.start_match();
+        let mut local = LocalMatch::new(MatchSetup::solo(mode, 1, SEED_CHAIN));
+        local.start_match();
         let mut frame: u64 = 0;
         group.bench_function(name, |b| {
             b.iter(|| {
@@ -34,14 +34,17 @@ pub fn rollback(c: &mut Criterion) {
                     } else {
                         -5
                     };
-                    pair.order(Action::Move {
-                        x: Num::ZERO,
-                        z: Num::from_int(z).expect("a small integer"),
-                    });
+                    local.order(
+                        0,
+                        Action::Move {
+                            x: Num::ZERO,
+                            z: Num::from_int(z).expect("a small integer"),
+                        },
+                    );
                 }
-                pair.step();
+                local.step();
                 frame += 1;
-                black_box(&pair);
+                black_box(&local);
             });
         });
     }
