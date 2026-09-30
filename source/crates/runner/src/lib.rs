@@ -4,6 +4,7 @@
 
 mod runner;
 mod session;
+mod stand_in_mode;
 
 pub use runner::Runner;
 pub use session::Session;
