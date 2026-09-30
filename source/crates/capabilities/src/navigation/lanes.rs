@@ -3,10 +3,10 @@ use std::ops::Range;
 use bevy_ecs::resource::Resource;
 use campfire_sim::Position;
 
-use crate::team::Team;
+use crate::navigation::lane_walker::PathDirection;
 
-/// The map's lanes, each a path of waypoints from the first team's base to the second's. Map
-/// data, not state: a restore takes it from the map, as a new match does.
+/// The map's lanes, each a path of waypoints that walkers go along forward or backward. Map data,
+/// not state: a restore takes it from the map, as a new match does.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
 pub struct Lanes {
     points: Vec<Position>,
@@ -32,15 +32,13 @@ impl Lanes {
         u32::try_from(self.lanes.len()).expect("lanes fit u32")
     }
 
-    /// Waypoint `index` of `lane` in the order `team` walks it; `None` past the last, and for the
-    /// neutral team, which walks no lane.
-    pub fn waypoint(&self, lane: u32, index: u32, team: Team) -> Option<Position> {
+    /// Waypoint `index` of `lane` counted in `direction`; `None` past the last.
+    pub fn waypoint(&self, lane: u32, index: u32, direction: PathDirection) -> Option<Position> {
         let range = self.lanes.get(lane as usize)?;
         let len = range.end - range.start;
-        let at = match team {
-            Team::First => index,
-            Team::Second => len.checked_sub(1)?.checked_sub(index)?,
-            Team::Neutral => return None,
+        let at = match direction {
+            PathDirection::Forward => index,
+            PathDirection::Backward => len.checked_sub(1)?.checked_sub(index)?,
         };
         (at < len).then(|| self.points[(range.start + at) as usize])
     }

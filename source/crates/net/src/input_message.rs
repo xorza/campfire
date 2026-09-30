@@ -1,4 +1,4 @@
-use campfire_protocol::{ChainSignature, InputHash, PlayerInput, PlayerSlot};
+use campfire_protocol::{ChainSignature, PlayerInput, PlayerSlot};
 use serde::{Deserialize, Serialize};
 
 /// A packet of player inputs as the client sends it, signed once over the chain head after the
@@ -14,9 +14,7 @@ pub struct InputMessage {
 /// One input of a message, without its payload.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 struct InputFrame {
-    seq: u64,
     stamp: u64,
-    previous: InputHash,
     payload_len: u32,
 }
 
@@ -33,9 +31,7 @@ impl InputMessage {
         };
         for input in inputs {
             message.frames.push(InputFrame {
-                seq: input.seq,
                 stamp: input.stamp,
-                previous: input.previous,
                 payload_len: u32::try_from(input.payload.len()).expect("a payload fits u32"),
             });
             message.payloads.extend_from_slice(input.payload);
@@ -62,9 +58,7 @@ impl InputMessage {
             start = end;
             PlayerInput {
                 slot,
-                seq: frame.seq,
                 stamp: frame.stamp,
-                previous: frame.previous,
                 payload,
             }
         }))
@@ -83,14 +77,12 @@ mod tests {
     fn a_message_gives_back_its_inputs_or_none() {
         let signature = ChainSignature::from_bytes([3; 64]);
         let slot = PlayerSlot::new(1);
-        let input = |seq, payload| PlayerInput {
+        let input = |stamp, payload| PlayerInput {
             slot,
-            seq,
-            stamp: 7,
-            previous: InputHash::new([5; 32]),
+            stamp,
             payload,
         };
-        let sent = [input(0, &b"ab"[..]), input(1, b""), input(2, b"cde")];
+        let sent = [input(7, &b"ab"[..]), input(7, b""), input(8, b"cde")];
         let message = InputMessage::new(sent, signature);
         assert_eq!(message.payloads, b"abcde");
         let received: Vec<_> = message.inputs(slot).unwrap().collect();

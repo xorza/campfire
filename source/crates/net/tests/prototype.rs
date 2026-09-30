@@ -3,10 +3,10 @@
 //! with the same state hash after every tick.
 
 use bevy_app::App;
-use campfire_kit_moba::{Destination, Order};
+use campfire_capabilities::{Action, Destination};
 use campfire_math::{Num, Vec3};
 use campfire_net::{LocalPair, PlayerLink, TickHashes};
-use campfire_protocol::ServerSeed;
+use campfire_protocol::{ServerSeed, SessionLog};
 use campfire_runner::Session;
 use campfire_sim::{EntityIndex, Position};
 use campfire_verifier::Replay;
@@ -20,8 +20,8 @@ fn num(value: i64) -> Num {
     Num::from_int(value).unwrap()
 }
 
-fn move_to(x: i64, z: i64) -> Order {
-    Order::Move {
+fn move_to(x: i64, z: i64) -> Action {
+    Action::Move {
         x: num(x),
         z: num(z),
     }
@@ -94,15 +94,17 @@ fn server_and_replay_agree_on_every_tick() {
         server_world.resource_mut::<Session>().reveal_seed();
         let live = server_world.resource::<TickHashes>().get();
         assert_eq!(live.len(), MATCH_FRAMES);
-        let mut replay = Replay::new(server_world.resource::<Session>().log()).unwrap();
+        let mut file = Vec::new();
+        server_world.resource::<Session>().log().encode(&mut file);
+        let mut replay = Replay::new(SessionLog::decode(&file).unwrap()).unwrap();
         for (tick, live) in live.iter().enumerate() {
-            replay.next_tick().unwrap().unwrap();
+            assert!(replay.run_tick());
             assert_eq!(
                 replay.runner().state_hash(),
                 *live,
                 "{rollback:?}, tick {tick}"
             );
         }
-        assert!(replay.next_tick().is_none());
+        assert!(!replay.run_tick());
     }
 }

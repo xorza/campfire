@@ -14,4 +14,4 @@ Positions are 3D. On a grid map gameplay is on the ground plane: collision, path
 
 ## Waypoint paths
 
-A map can hold paths of waypoints, such as a MOBA's lanes, each from the first side's end to the second's. A unit that walks a path goes to its waypoints in its side's order, the first side forward and the second backward, while it has no other order.
+A map can hold paths of waypoints, such as a MOBA's lanes. A unit that walks a path goes along it forward or backward, as its spawn sets, while it has no other order: a MOBA's two sides each walk a lane from their own end.

@@ -6,6 +6,7 @@
     reason = "Bevy systems take `Res` and `Query` by value"
 )]
 
+mod command;
 mod entity_index;
 mod id_allocator;
 mod position;
@@ -17,6 +18,7 @@ mod stable_id;
 mod state_registry;
 mod tick_inputs;
 
+pub use command::Command;
 pub use entity_index::EntityIndex;
 pub use id_allocator::IdAllocator;
 pub use position::Position;

@@ -4,7 +4,7 @@
 
 ## Teams
 
-A unit has a team. Units of different teams are enemies; the neutral team, for camps and objectives, is an enemy of every side. Which teams a mode has, and which slots play on each, are in its manifest.
+A unit has a team: its index in the mode's list of teams, which may be of any length. Units of different teams are enemies and there is no other rule, so a neutral team for camps and objectives is one more team, an enemy of every other. Which teams a mode has, and which slots play on each, are in its manifest.
 
 ## Attacks
 

@@ -7,11 +7,11 @@ use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::schedule::common_conditions::{not, resource_exists};
 use bevy_ecs::system::{Commands, Query, Res, ResMut, Single};
 use bevy_ecs::world::{Mut, World};
-use campfire_kit_moba::{Lanes, MobaKit, Order};
+use campfire_capabilities::{Combat, Control, Navigation, Order};
 use campfire_math::SegmentSeed;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SignOnly};
 use campfire_protocol::{InputChain, InputHash, PlayerSlot, SessionId};
-use campfire_sim::{SimTick, SimUpdate, TickInput, TickInputs};
+use campfire_sim::{SimTick, SimUpdate, StateRegistry, TickInput, TickInputs};
 use lightyear::prelude::{
     Client, LocalTimeline, MessageReceiver, MessageSender, Tick, is_in_rollback,
 };
@@ -80,9 +80,12 @@ impl Plugin for SimClient {
     fn build(&self, app: &mut App) {
         let world = app.world_mut();
         SimUpdate::prepare(world, PREDICTION_SEED);
-        MobaKit::prepare(world, Lanes::default(), None);
         let mut schedule = SimUpdate::schedule();
-        MobaKit::add_systems(&mut schedule);
+        // A client hashes no state, so the registry the capabilities fill is not kept.
+        let mut state = StateRegistry::new();
+        Combat::install(world, &mut schedule, &mut state);
+        Navigation::install(world, &mut schedule, &mut state);
+        Control::install(&mut schedule, &mut state);
         world.add_schedule(schedule);
         world.insert_resource(SentInputs {
             client: self.clone(),
@@ -146,7 +149,7 @@ fn send_orders(
     let first = inputs.len();
     for order in pending.0.drain(..) {
         let start = payloads.len();
-        payloads.extend_from_slice(&order.encode());
+        payloads.extend_from_slice(&Order::payload(&[order]));
         inputs.push(SentInput {
             stamp,
             payload: start..payloads.len(),

@@ -2,6 +2,7 @@ use secp256k1::{Keypair, schnorr};
 
 use super::*;
 use crate::delegation::DelegationTerms;
+use crate::input_hash::InputHash;
 
 const MAX_DELAY: u64 = 2;
 const MAX_LEAD: u64 = 2;
@@ -195,18 +196,12 @@ fn seal(log: &mut SessionLog) -> Vec<(u32, Vec<u8>)> {
         .collect()
 }
 
-/// Each sealed tick's packets as they were logged.
-fn logged(log: &SessionLog) -> Vec<Vec<Sent<'_>>> {
-    (0..log.next_tick())
-        .map(|tick| {
-            log.packets_before(tick)
-                .map(|packet| Sent {
-                    inputs: packet.inputs().collect(),
-                    signature: packet.signature,
-                })
-                .collect()
-        })
-        .collect()
+/// `log` rewound and replayed to its last sealed tick: each tick's applied inputs, and the log.
+fn replayed(log: SessionLog) -> Recorded {
+    let ticks = log.next_tick();
+    let mut log = log.rewound();
+    let applied = (0..ticks).map(|_| seal(&mut log)).collect();
+    Recorded { log, applied }
 }
 
 #[test]
@@ -261,14 +256,28 @@ fn inputs_apply_by_the_delay_rule_in_slot_order() {
 }
 
 #[test]
-fn a_replay_reads_the_packets_back_in_order() {
-    let sent = chained();
-    let Recorded { log, applied: live } = record(header(), &sent).unwrap();
-    let logged = logged(&log);
-    assert_eq!(logged, sent);
+fn a_rewound_log_replays_the_same_ticks_and_ends_as_it_was() {
+    let log = published();
+    let bytes = encoded(&log);
+    let Recorded { mut log, applied } = replayed(log);
+    let expected = per_tick(&[
+        &[(1, b"a")],
+        &[(0, b"b"), (0, b"c")],
+        &[],
+        &[(0, b"h"), (1, b"d"), (1, b"f")],
+        &[(0, b"g"), (1, b"j")],
+    ]);
+    assert_eq!(applied, expected);
+    // Caught up, the log is as it was: the same file, and the tail waits to apply.
+    assert_eq!(encoded(&log), bytes);
+    assert_eq!(
+        [seal(&mut log), seal(&mut log)].to_vec(),
+        per_tick(&[&[(1, b"l")], &[(0, b"k")]])
+    );
 
-    let replayed = record(log.header().clone(), &logged).unwrap();
-    assert_eq!(replayed.applied, live);
+    // A log with no sealed tick rewinds to itself.
+    let empty = SessionLog::new(header()).unwrap().rewound();
+    assert_eq!(empty.next_tick(), 0);
 }
 
 /// A change to the sent packets, and the first packet it makes the log refuse.
@@ -280,18 +289,18 @@ struct Tamper {
 }
 
 /// The tampered sends, each with the packet it makes the log refuse.
-fn tampers() -> [Tamper; 12] {
+fn tampers() -> [Tamper; 11] {
     let refused = |tick, error| LogError::Input { tick, error };
     [
         Tamper {
-            name: "player 0's c dropped: e links to c",
+            name: "player 0's c dropped: the head after e and h is not the one signed",
             change: |ticks| drop(ticks[1].remove(0)),
-            refused: refused(3, InputError::BrokenLink),
+            refused: refused(3, InputError::BadSignature),
         },
         Tamper {
             name: "player 0's e and h swapped in their packet",
             change: |ticks| ticks[3][1].inputs.swap(0, 1),
-            refused: refused(3, InputError::BrokenLink),
+            refused: refused(3, InputError::BadSignature),
         },
         Tamper {
             name: "player 1's a altered: its signature no longer holds",
@@ -314,12 +323,7 @@ fn tampers() -> [Tamper; 12] {
                 let b = ticks[0][1].clone();
                 ticks[0].push(b);
             },
-            refused: refused(0, InputError::BrokenLink),
-        },
-        Tamper {
-            name: "player 1's first seq changed",
-            change: |ticks| ticks[0][0].inputs[0].seq = 1,
-            refused: refused(0, InputError::WrongSeq { expected: 0 }),
+            refused: refused(0, InputError::BadSignature),
         },
         Tamper {
             name: "an input from a slot not in the header",
@@ -328,9 +332,7 @@ fn tampers() -> [Tamper; 12] {
                 ticks[2].push(Sent {
                     inputs: vec![PlayerInput {
                         slot: PlayerSlot::new(2),
-                        seq: 0,
                         stamp: 2,
-                        previous: root(0),
                         payload: b"x",
                     }],
                     signature,
@@ -445,7 +447,7 @@ fn a_refused_packet_leaves_the_log_unchanged() {
     let three = resent(0, &[&[(1, b"b"), (1, b"x"), (1, b"y")]], 0).remove(0);
     assert_eq!(
         submit(&mut log, c, &mut applied),
-        Err(InputError::BrokenLink)
+        Err(InputError::BadSignature)
     );
     assert_eq!(
         submit(&mut log, &b_over_c, &mut applied),
@@ -540,7 +542,14 @@ fn revealing_another_seed_is_a_bug() {
 #[test]
 fn the_hash_and_the_signature_cover_every_field_in_their_layout() {
     let a = chained()[0][0].clone();
-    let input = a.inputs[0];
+    let head = |slot: u32, root: InputHash, inputs: &[(u64, &[u8])]| {
+        let mut chain = InputChain::new(PlayerSlot::new(slot), root);
+        for &(stamp, payload) in inputs {
+            chain.extend(stamp, payload);
+        }
+        chain.head()
+    };
+    // Player 1's a: `domain ‖ root ‖ u32 slot 1 ‖ u64 seq 0 ‖ u64 stamp 0 ‖ "a"`.
     let mut hasher = Hasher::new();
     hasher
         .update(b"campfire/input-hash/v1")
@@ -549,30 +558,30 @@ fn the_hash_and_the_signature_cover_every_field_in_their_layout() {
         .update(&0_u64.to_le_bytes())
         .update(&0_u64.to_le_bytes())
         .update(b"a");
-    assert_eq!(input.hash().as_bytes(), hasher.finalize().as_bytes());
-
-    let changed = [
-        PlayerInput {
-            slot: PlayerSlot::new(0),
-            ..input
-        },
-        PlayerInput { seq: 1, ..input },
-        PlayerInput { stamp: 1, ..input },
-        PlayerInput {
-            previous: root(0),
-            ..input
-        },
-        PlayerInput {
-            payload: b"b",
-            ..input
-        },
-        PlayerInput {
-            payload: b"",
-            ..input
-        },
-    ];
-    for other in changed {
-        assert_ne!(other.hash(), input.hash(), "{other:?}");
+    let after_a = head(1, root(1), &[(0, b"a")]);
+    assert_eq!(after_a.as_bytes(), hasher.finalize().as_bytes());
+    // Each field counts: another slot, root, stamp or payload, and a second input with seq 1
+    // links to the first.
+    let mut hasher = Hasher::new();
+    hasher
+        .update(b"campfire/input-hash/v1")
+        .update(after_a.as_bytes())
+        .update(&1_u32.to_le_bytes())
+        .update(&1_u64.to_le_bytes())
+        .update(&0_u64.to_le_bytes())
+        .update(b"a");
+    assert_eq!(
+        head(1, root(1), &[(0, b"a"), (0, b"a")]).as_bytes(),
+        hasher.finalize().as_bytes()
+    );
+    for other in [
+        head(0, root(1), &[(0, b"a")]),
+        head(1, root(0), &[(0, b"a")]),
+        head(1, root(1), &[(1, b"a")]),
+        head(1, root(1), &[(0, b"b")]),
+        head(1, root(1), &[(0, b"")]),
+    ] {
+        assert_ne!(other, after_a);
     }
 
     // The session key signs `domain ‖ session id ‖ u32 slot ‖ u64 seq ‖ head`, the seq being
@@ -583,7 +592,7 @@ fn the_hash_and_the_signature_cover_every_field_in_their_layout() {
         &[31; 32],
         &1_u32.to_le_bytes(),
         &0_u64.to_le_bytes(),
-        input.hash().as_bytes(),
+        after_a.as_bytes(),
     ]
     .concat();
     let key = session_key(1).x_only_public_key().0;
@@ -631,9 +640,7 @@ fn frame(
             put(&mut bytes, &slot);
             put(&mut bytes, &u32::try_from(packet.inputs.len()).unwrap());
             for input in &packet.inputs {
-                put(&mut bytes, &input.seq);
                 put(&mut bytes, &input.stamp);
-                put(&mut bytes, &input.previous);
                 put(&mut bytes, input.payload);
             }
             put(&mut bytes, &packet.signature);
@@ -679,8 +686,10 @@ fn a_log_file_decodes_to_the_same_log() {
     assert_eq!(decoded.header(), log.header());
     assert_eq!(decoded.revealed_seed(), Some(SERVER_SEED));
     assert_eq!(decoded.next_tick(), 5);
-    assert_eq!(logged(&decoded), sent);
     assert_eq!(encoded(&decoded), bytes);
+    let live = record(header(), &sent).unwrap().applied;
+    let decoded_again = SessionLog::decode(&bytes).unwrap();
+    assert_eq!(replayed(decoded_again).applied, live);
 
     // The tail waits in both logs: l applies at tick 5, k at 6.
     let expected = per_tick(&[&[(1, b"l")], &[(0, b"k")]]);
@@ -690,10 +699,11 @@ fn a_log_file_decodes_to_the_same_log() {
     // An unpublished log, and one with no ticks, decode too.
     let empty = SessionLog::new(header()).unwrap();
     for log in [record(header(), &sent).unwrap().log, empty] {
-        let decoded = SessionLog::decode(&encoded(&log)).unwrap();
+        let bytes = encoded(&log);
+        let decoded = SessionLog::decode(&bytes).unwrap();
         assert_eq!(decoded.revealed_seed(), None);
         assert_eq!(decoded.next_tick(), log.next_tick());
-        assert_eq!(logged(&decoded), logged(&log));
+        assert_eq!(encoded(&decoded), bytes);
     }
 }
 
@@ -736,12 +746,8 @@ fn a_log_file_has_its_layout() {
         &varint(second.json().len()),
         second.json().as_bytes(),
         &[7; 32],
-        // 1 tick with 1 packet: slot 1, 1 input.
-        &[1, 1, 1, 1],
-        // Seq 0, stamp 0, previous, 1 payload byte.
-        &[0, 0],
-        root(1).as_bytes(),
-        &[1],
+        // 1 tick with 1 packet: slot 1, 1 input: stamp 0, 1 payload byte.
+        &[1, 1, 1, 1, 0, 1],
         b"a",
         &a.signature.to_bytes(),
         // No packet since the tick, then the revealed seed.
@@ -783,7 +789,7 @@ fn a_corrupt_log_file_is_refused_or_replays() {
                 continue;
             };
             assert_eq!(encoded(&log), corrupt, "byte {at} ^ {flip:#x}");
-            record(log.header().clone(), &logged(&log)).unwrap();
+            drop(replayed(log));
             decoded.push((at, flip));
         }
     }

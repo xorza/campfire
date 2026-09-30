@@ -14,7 +14,7 @@ Each layer uses the layers below it.
 | `protocol` | Session log format (see Protocol Spec) |
 | `sim` | Deterministic state and systems on `bevy_ecs`; no genre code |
 | `script` | Rhai host and core script API |
-| Capability crates | Mechanisms a mode combines, in crates along their layers: `combat` at the bottom, then `control`, `navigation` and the rest ([Capabilities](04-capabilities/00-overview.md)) |
+| `capabilities` | Mechanisms a mode combines, a module each: `combat`, `navigation`, `control` and the rest ([Capabilities](04-capabilities/00-overview.md)) |
 | `runner` | Loads packages, wires `sim`, the declared capabilities and `script`, feeds inputs |
 | `verifier` | CLI: replays a session log segment, checks the result |
 | `det-ci` | Headless matches of the reference MOBA with its bots on every OS, comparing state hashes |
@@ -30,7 +30,7 @@ Each layer uses the layers below it.
 
 `sim` is pure: state and inputs in, next state out; no files, packages or signatures.
 
-Dependencies: `server`, `client`, `verifier`, `det-ci` → `runner` → capability crates → `script` → `sim` → `math`; `protocol` → `math`. Capability crates depend on each other only down their layers.
+Dependencies: `server`, `client`, `verifier`, `det-ci` → `runner` → `capabilities` → `script` → `sim` → `math`; `protocol` → `math`. Within `capabilities`, a module imports only from the capabilities below it.
 
 Outside the engine crates: the reference MOBA and bots. `det-ci` uses both as test content; nothing else in the engine depends on them. Bots produce inputs like players, so replays never depend on bot code.
 
@@ -60,7 +60,7 @@ Clients can join a running game at any time; they receive the current state of w
 - A match is one segment; a persistent world checkpoints every few minutes. Format: Protocol Spec.
 - The verifier replays any segment from its checkpoint. Hosts set how long logs are kept.
 - **Snapshot:** the postcard encoding of every sim component and resource, entities sorted by stable id, component types in an order the engine release fixes, script state maps sorted by key. Its format belongs to the engine release, not the protocol.
-- **State hash:** BLAKE3 of the snapshot. `det-ci` compares it on every tick and, at the first mismatch, per component, to name the first divergence.
+- **State hash:** one BLAKE3 hash for each state type over the same bytes the snapshot holds, then one hash over the list of `(name, type hash)` ([Determinism Core](09-determinism-core.md)). `det-ci` compares it on every tick and, at the first mismatch, the per-type hashes, to name the first divergence.
 - **No slow tick for a checkpoint:** at the tick boundary the server copies only the components changed since the last checkpoint; a background thread applies them to its copy, encodes and hashes it, and writes the checkpoint record when done.
 
 ## Scripting
@@ -132,7 +132,7 @@ Exact versions are pinned across the workspace. Each release tag also pins its R
 
 | Area | Crate | Notes |
 | --- | --- | --- |
-| Fixed-point numbers, trig, sqrt | Own code in `math` | `Num`: `*` and `/` round to nearest, ties to even; exact decimal parsing; `sqrt` from `u128::isqrt`; `sin_cos`, `atan2` by series at high internal precision, within 1–2 ulp. `fixed` rounds `*` toward −∞ and constants down, and `fixed_analytics` reaches 48 ulp in `atan2`, so neither is used ([Determinism Core](09-determinism-core.md)) |
+| Fixed-point numbers, trig, sqrt | Own code in `math` | `Num`: `*` and `/` round to nearest, ties to even; exact decimal parsing; `sqrt` from an `f64` estimate that integer steps correct to the exact root, so the result does not depend on the float; `sin_cos`, `atan2` by series at high internal precision, within 1–2 ulp. `fixed` rounds `*` toward −∞ and constants down, and `fixed_analytics` reaches 48 ulp in `atan2`, so neither is used ([Determinism Core](09-determinism-core.md)) |
 | RNG | `blake3` keyed hash, wrapped in `math` | A PRF by specification, counter-based as in [Random123](https://www.thesalmons.org/john/random123/papers/random123sc11.pdf) but cryptographic, unlike Philox; known-answer vectors run in `det-ci`. Range sampling is own code. No `rand`, which [may change output in minor releases](https://www.rustmax.net/library/rand-book/crate-reprod) |
 | Protocol encoding | `postcard` | [Stable wire format](https://postcard.jamesmunns.com) since 1.0 |
 | State hashes | `blake3` | Per tick, so speed matters |

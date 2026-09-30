@@ -4,8 +4,8 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
+campfire-capabilities.workspace = true
 campfire-content.workspace = true
-campfire-kit-moba.workspace = true
 campfire-math.workspace = true
 campfire-protocol.workspace = true
 campfire-script.workspace = true

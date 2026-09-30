@@ -12,18 +12,14 @@ pub enum InputError {
     EmptyPacket,
     /// The slot is not in the session header.
     UnknownPlayer,
-    /// `previous` is not the hash of the player's last logged input: an input is missing, out of
-    /// order or altered.
-    BrokenLink,
-    /// The link holds, but the input does not count on from the player's last one.
-    WrongSeq { expected: u64 },
     /// A payload is longer than the header's max payload length.
     PayloadTooLarge,
     /// The packet takes the player past the header's max inputs per tick.
     TooManyInputs,
     /// The log's positions, which fit a `u32`, do not reach past the packet.
     LogFull,
-    /// The player's session key did not sign the chain head after the packet.
+    /// The player's session key did not sign the chain head after the packet: the signature is
+    /// forged, or an input is missing, out of order or altered.
     BadSignature,
 }
 
@@ -32,8 +28,6 @@ impl fmt::Display for InputError {
         match self {
             InputError::EmptyPacket => f.write_str("packet holds no input"),
             InputError::UnknownPlayer => f.write_str("input from a player not in the session"),
-            InputError::BrokenLink => f.write_str("input does not link to the player's last input"),
-            InputError::WrongSeq { expected } => write!(f, "input seq is not {expected}"),
             InputError::PayloadTooLarge => f.write_str("input payload above the max length"),
             InputError::TooManyInputs => f.write_str("player above the max inputs per tick"),
             InputError::LogFull => f.write_str("session log full"),

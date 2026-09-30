@@ -1,8 +1,11 @@
+use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::Component;
 use campfire_math::Num;
 use campfire_sim::SimComponent;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
+
+use crate::navigation::destination::Destination;
 
 /// How far a unit walks in one tick, never negative.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -21,10 +24,15 @@ impl MoveStep {
     pub const fn get(self) -> Num {
         self.0
     }
+
+    /// The components of a new unit that moves by this step, with nowhere to go yet.
+    pub fn bundle(self) -> impl Bundle {
+        (self, Destination::default())
+    }
 }
 
 impl SimComponent for MoveStep {
-    const NAME: &'static str = "moba.move_step";
+    const NAME: &'static str = "navigation.move_step";
 }
 
 /// A snapshot is untrusted, so a negative step fails to decode.

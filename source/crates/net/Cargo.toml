@@ -8,8 +8,8 @@ internals = ["dep:bevy_state", "dep:bevy_time"]
 bench = ["internals", "dep:criterion"]
 
 [dependencies]
+campfire-capabilities.workspace = true
 campfire-identity.workspace = true
-campfire-kit-moba.workspace = true
 campfire-math.workspace = true
 campfire-protocol.workspace = true
 campfire-runner.workspace = true

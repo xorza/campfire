@@ -46,5 +46,5 @@ impl AttackState {
 }
 
 impl SimComponent for AttackState {
-    const NAME: &'static str = "moba.attack";
+    const NAME: &'static str = "combat.attack";
 }

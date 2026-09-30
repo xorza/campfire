@@ -18,5 +18,5 @@ impl Destination {
 }
 
 impl SimComponent for Destination {
-    const NAME: &'static str = "moba.destination";
+    const NAME: &'static str = "navigation.destination";
 }

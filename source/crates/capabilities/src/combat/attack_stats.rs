@@ -1,6 +1,6 @@
 use bevy_ecs::component::Component;
-use campfire_math::Num;
-use campfire_sim::SimComponent;
+use campfire_math::{Num, Vec3};
+use campfire_sim::{Position, SimComponent};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -45,10 +45,21 @@ impl AttackStats {
     pub const fn damage(self) -> Num {
         self.damage
     }
+
+    /// Whether an attack from `from` reaches `to`: within range on the ground plane, exactly.
+    pub fn reaches(&self, from: Position, to: Position) -> bool {
+        Vec3::ZERO.within(ground_offset(from, to), self.range)
+    }
+}
+
+/// The offset from `from` to `to` on the ground plane: heights never count towards a range.
+pub(crate) fn ground_offset(from: Position, to: Position) -> Vec3 {
+    let offset = to.get() - from.get();
+    Vec3::new(offset.x, Num::ZERO, offset.z)
 }
 
 impl SimComponent for AttackStats {
-    const NAME: &'static str = "moba.attack_stats";
+    const NAME: &'static str = "combat.attack_stats";
 }
 
 /// A snapshot is untrusted, so stats `new` refuses fail to decode.

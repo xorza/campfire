@@ -1,11 +1,10 @@
 [package]
-name = "campfire-kit-moba"
+name = "campfire-capabilities"
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
 campfire-math.workspace = true
-campfire-script.workspace = true
 campfire-sim.workspace = true
 
 bevy_ecs.workspace = true

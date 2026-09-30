@@ -1,48 +1,35 @@
-use campfire_protocol::{Applied, InputError, SeedError, SessionLog};
+use campfire_protocol::{SeedError, SessionLog};
 use campfire_runner::Runner;
 
-/// A published session log replayed in a bare `World`, one tick at a time. Recording the logged
-/// packets again gives each tick exactly the inputs the server applied. It also checks every chain
-/// link and signature again, which a decoded log already passed: the runner's log only takes
-/// packets through `record`.
+/// A published session log replayed in a bare `World`, one tick at a time. Decoding the log
+/// checked every chain link and signature; the replay seals its ticks again, which gives each
+/// tick exactly the inputs the server applied, with no check done twice.
 #[derive(Debug)]
-pub struct Replay<'a> {
-    published: &'a SessionLog,
+pub struct Replay {
     runner: Runner,
-    /// Scratch for when each recorded input applies.
-    applied: Vec<Applied>,
+    /// The ticks the log holds.
+    ticks: u64,
 }
 
-impl<'a> Replay<'a> {
+impl Replay {
     /// The replay with the log's own randomness; an error when the log does not reveal the server
     /// seed its header commits to.
-    pub fn new(published: &'a SessionLog) -> Result<Replay<'a>, SeedError> {
+    pub fn new(published: SessionLog) -> Result<Replay, SeedError> {
         let server_seed = published.revealed_seed().ok_or(SeedError::NotRevealed)?;
-        let log = SessionLog::new(published.header().clone())
-            .expect("a published log's header starts a log");
+        let ticks = published.next_tick();
         Ok(Replay {
-            published,
-            runner: Runner::new(log, server_seed)?,
-            applied: Vec::new(),
+            runner: Runner::new(published.rewound(), server_seed)?,
+            ticks,
         })
     }
 
-    /// Runs the next tick the log holds; `None` after its last tick.
-    pub fn next_tick(&mut self) -> Option<Result<(), InputError>> {
-        let tick = self.runner.log().next_tick();
-        if tick == self.published.next_tick() {
-            return None;
-        }
-        for packet in self.published.packets_before(tick) {
-            if let Err(error) =
-                self.runner
-                    .record(packet.inputs(), &packet.signature, &mut self.applied)
-            {
-                return Some(Err(error));
-            }
+    /// Runs the next tick the log holds; `false` after its last tick.
+    pub fn run_tick(&mut self) -> bool {
+        if self.runner.log().next_tick() == self.ticks {
+            return false;
         }
         self.runner.run_tick();
-        Some(Ok(()))
+        true
     }
 
     pub const fn runner(&self) -> &Runner {

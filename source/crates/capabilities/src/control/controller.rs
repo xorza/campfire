@@ -2,7 +2,8 @@ use bevy_ecs::component::Component;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
-/// The player whose orders a unit follows, by slot.
+/// The control relation, of the orders kind: the player whose orders a unit follows, by slot. A
+/// player may control many units, and gives each its own orders.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct Controller(u32);
@@ -18,5 +19,5 @@ impl Controller {
 }
 
 impl SimComponent for Controller {
-    const NAME: &'static str = "moba.controller";
+    const NAME: &'static str = "control.controller";
 }

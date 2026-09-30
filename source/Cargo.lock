@@ -1761,6 +1761,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "campfire-capabilities"
+version = "0.0.0"
+dependencies = [
+ "bevy_ecs",
+ "campfire-math",
+ "campfire-sim",
+ "postcard",
+ "serde",
+]
+
+[[package]]
 name = "campfire-client"
 version = "0.0.0"
 dependencies = [
@@ -1798,18 +1809,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "campfire-kit-moba"
-version = "0.0.0"
-dependencies = [
- "bevy_ecs",
- "campfire-math",
- "campfire-script",
- "campfire-sim",
- "postcard",
- "serde",
-]
-
-[[package]]
 name = "campfire-math"
 version = "0.0.0"
 dependencies = [
@@ -1828,8 +1827,8 @@ dependencies = [
  "bevy_ecs",
  "bevy_state",
  "bevy_time",
+ "campfire-capabilities",
  "campfire-identity",
- "campfire-kit-moba",
  "campfire-math",
  "campfire-protocol",
  "campfire-runner",
@@ -1858,8 +1857,8 @@ name = "campfire-runner"
 version = "0.0.0"
 dependencies = [
  "bevy_ecs",
+ "campfire-capabilities",
  "campfire-content",
- "campfire-kit-moba",
  "campfire-math",
  "campfire-protocol",
  "campfire-script",
@@ -1902,9 +1901,9 @@ dependencies = [
 name = "campfire-verifier"
 version = "0.0.0"
 dependencies = [
+ "campfire-capabilities",
  "campfire-content",
  "campfire-identity",
- "campfire-kit-moba",
  "campfire-math",
  "campfire-protocol",
  "campfire-runner",

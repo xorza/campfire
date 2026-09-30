@@ -1,5 +1,6 @@
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
+use std::mem;
 use std::ops::Range;
 
 use blake3::Hasher;
@@ -11,7 +12,6 @@ use crate::chain_signature::ChainSignature;
 use crate::delegation::Delegation;
 use crate::delegation::error::DelegationError;
 use crate::input_chain::InputChain;
-use crate::input_hash::InputHash;
 use crate::player_input::PlayerInput;
 use crate::player_slot::PlayerSlot;
 use crate::server_seed::{SeedCommitment, ServerSeed};
@@ -95,9 +95,9 @@ pub enum Applied {
 /// The inputs of a session, in memory, in the order they were logged, and grouped by the tick
 /// that was next when each arrived. The applied tick follows from that group, so a log cannot
 /// hold a wrong one. Inputs arrive in packets, each signed once over the player's chain head
-/// after it, so every logged input is signed. The server records packets as they arrive; a
-/// verifier records a published log again, which checks every chain link and signature and gives
-/// each tick exactly the server's inputs.
+/// after it, so every logged input is signed. The server records packets as they arrive; decoding
+/// a published log records them again, which checks every chain link and signature, and a
+/// verifier then replays the decoded log's ticks with `rewound`.
 #[derive(Debug)]
 pub struct SessionLog {
     header: SessionHeader,
@@ -114,6 +114,8 @@ pub struct SessionLog {
     packets: Vec<PacketEnd>,
     /// For each sealed tick, the end of the inputs logged before it ran.
     tick_ends: Vec<u32>,
+    /// While a rewound log replays, the tick ends it had; empty otherwise.
+    to_replay: Vec<u32>,
     /// Inputs applied in a tick not yet sealed, earliest first.
     pending: BinaryHeap<Reverse<Due>>,
     /// Indices of the inputs applied in the tick last sealed.
@@ -125,9 +127,7 @@ pub struct SessionLog {
 #[derive(Debug)]
 struct LoggedInput {
     slot: PlayerSlot,
-    seq: u64,
     stamp: u64,
-    previous: InputHash,
     payload: Range<u32>,
 }
 
@@ -138,27 +138,27 @@ struct PacketEnd {
     signature: ChainSignature,
 }
 
-/// Orders the inputs of one tick by slot, then seq, whatever order they arrived in, so the host
-/// cannot choose who acts first.
+/// Orders the inputs of one tick by slot, then by when they were logged, which for one player is
+/// their chain's order, whatever order the players' inputs arrived in, so the host cannot choose
+/// who acts first.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Due {
     tick: u64,
     slot: PlayerSlot,
-    seq: u64,
     index: u32,
 }
 
 /// A packet as the log holds it: one player's inputs, and the signature over the chain head after
 /// the last.
 #[derive(Debug, Clone)]
-pub struct Packet<'a> {
+struct Packet<'a> {
     log: &'a SessionLog,
     inputs: Range<u32>,
-    pub signature: ChainSignature,
+    signature: ChainSignature,
 }
 
 impl<'a> Packet<'a> {
-    pub fn inputs(&self) -> impl ExactSizeIterator<Item = PlayerInput<'a>> + Clone + use<'a> {
+    fn inputs(&self) -> impl ExactSizeIterator<Item = PlayerInput<'a>> + use<'a> {
         let log = self.log;
         self.inputs.clone().map(move |index| log.input(index))
     }
@@ -197,6 +197,7 @@ impl SessionLog {
             payloads: Vec::new(),
             packets: Vec::new(),
             tick_ends: Vec::new(),
+            to_replay: Vec::new(),
             pending: BinaryHeap::new(),
             due: Vec::new(),
             position_bound: POSITION_BOUND,
@@ -244,12 +245,16 @@ impl SessionLog {
         let inputs = inputs.into_iter();
         let slot = inputs.clone().next().ok_or(InputError::EmptyPacket)?.slot;
         let player = slot.get() as usize;
+        debug_assert!(
+            self.to_replay.is_empty(),
+            "a log that replays takes no input"
+        );
         let mut chain = *self.chains.get(player).ok_or(InputError::UnknownPlayer)?;
         let mut count = 0;
         let mut bytes = 0;
         for input in inputs.clone() {
             debug_assert_eq!(input.slot, slot, "a packet holds one player's inputs");
-            chain.accept(&input)?;
+            chain.extend(input.stamp, input.payload);
             if input.payload.len() > self.header.max_payload_len as usize {
                 return Err(InputError::PayloadTooLarge);
             }
@@ -279,21 +284,10 @@ impl SessionLog {
             self.payloads.extend_from_slice(input.payload);
             self.inputs.push(LoggedInput {
                 slot: input.slot,
-                seq: input.seq,
                 stamp: input.stamp,
-                previous: input.previous,
                 payload: payload_start..offset(self.payloads.len()),
             });
-            let outcome = self.applied(input.stamp);
-            if let Applied::At(tick) = outcome {
-                self.pending.push(Reverse(Due {
-                    tick,
-                    slot: input.slot,
-                    seq: input.seq,
-                    index,
-                }));
-            }
-            applied.push(outcome);
+            applied.push(self.schedule(index));
         }
         self.packets.push(PacketEnd {
             end: offset(self.inputs.len()),
@@ -302,10 +296,29 @@ impl SessionLog {
         Ok(())
     }
 
-    /// Closes the next tick to new inputs and gives the inputs applied in it, by slot, then seq.
+    /// Closes the next tick to new inputs and gives the inputs applied in it, by slot, then in
+    /// each player's chain order.
     pub fn seal_tick(&mut self) -> impl ExactSizeIterator<Item = PlayerInput<'_>> {
         let tick = self.next_tick();
-        self.tick_ends.push(offset(self.inputs.len()));
+        let replayed = usize::try_from(tick).expect("tick fits usize");
+        let end = match self.to_replay.get(replayed) {
+            Some(&end) => {
+                let start = self.tick_ends.last().copied().unwrap_or(0);
+                for index in start..end {
+                    self.schedule(index);
+                }
+                end
+            }
+            None => offset(self.inputs.len()),
+        };
+        self.tick_ends.push(end);
+        if !self.to_replay.is_empty() && self.tick_ends.len() == self.to_replay.len() {
+            // Caught up: the inputs logged after the last tick wait again, as they did.
+            self.to_replay = Vec::new();
+            for index in end..offset(self.inputs.len()) {
+                self.schedule(index);
+            }
+        }
         self.sent_this_tick.fill(0);
         self.due.clear();
         while let Some(Reverse(due)) = self.pending.peek()
@@ -317,20 +330,27 @@ impl SessionLog {
         self.due.iter().map(|&index| self.input(index))
     }
 
-    /// The packets logged before the sealed `tick` ran, in the order they arrived.
-    pub fn packets_before(&self, tick: u64) -> impl ExactSizeIterator<Item = Packet<'_>> {
-        let tick = usize::try_from(tick).expect("tick fits usize");
-        let start = tick
-            .checked_sub(1)
-            .map_or(0, |before| self.tick_ends[before]);
-        self.packets_within(start..self.tick_ends[tick])
+    /// This log with its ticks unsealed, to replay them: sealing each again gives the inputs it
+    /// applied, from what the log holds, with no check done twice. Once the last is sealed, the
+    /// log is as it was. A log that replays takes no input.
+    #[must_use]
+    pub fn rewound(mut self) -> SessionLog {
+        if self.tick_ends.is_empty() {
+            return self;
+        }
+        self.to_replay = mem::take(&mut self.tick_ends);
+        self.pending.clear();
+        self.due.clear();
+        self.sent_this_tick.fill(0);
+        self
     }
 
     /// Writes the log file into `out`, which is cleared first: the tag, then in postcard the
     /// header, the `u64` number of sealed ticks, the packets logged before each tick, the packets
     /// logged since the last tick, and the revealed seed as an option. Packets go as a `u32`
-    /// count, then each as its `u32` slot, its inputs as a `u32` count and each input's seq,
-    /// stamp, previous hash and payload bytes, and its signature. The header goes field by field,
+    /// count, then each as its `u32` slot, its inputs as a `u32` count and each input's stamp
+    /// and payload bytes, and its signature. An input's seq and link are not written: a reader
+    /// computes them from the chain, and the signature covers them. The header goes field by field,
     /// each player as the delegation's JSON and the seed contribution.
     pub fn encode(&self, out: &mut Vec<u8>) {
         out.clear();
@@ -408,9 +428,7 @@ impl SessionLog {
             put(out, &slot.get());
             put(out, &(packet.inputs.end - packet.inputs.start));
             for input in packet.inputs() {
-                put(out, &input.seq);
                 put(out, &input.stamp);
-                put(out, &input.previous);
                 put(out, input.payload);
             }
             put(out, &packet.signature);
@@ -431,15 +449,11 @@ impl SessionLog {
             let count: u32 = take(rest)?;
             inputs.clear();
             for _ in 0..count {
-                let seq = take(rest)?;
                 let stamp = take(rest)?;
-                let previous = take(rest)?;
                 let payload = take(rest)?;
                 inputs.push(PlayerInput {
                     slot,
-                    seq,
                     stamp,
-                    previous,
                     payload,
                 });
             }
@@ -476,6 +490,17 @@ impl SessionLog {
             .map_or(0, |before| self.packets[before].end)
     }
 
+    /// Queues the logged input `index`, logged before the next tick, for the tick it applies in,
+    /// and says when that is.
+    fn schedule(&mut self, index: u32) -> Applied {
+        let logged = &self.inputs[index as usize];
+        let (slot, outcome) = (logged.slot, self.applied(logged.stamp));
+        if let Applied::At(tick) = outcome {
+            self.pending.push(Reverse(Due { tick, slot, index }));
+        }
+        outcome
+    }
+
     /// When an input stamped `stamp`, logged now, applies.
     fn applied(&self, stamp: u64) -> Applied {
         let next = self.next_tick();
@@ -498,9 +523,7 @@ impl SessionLog {
         let logged = &self.inputs[index as usize];
         PlayerInput {
             slot: logged.slot,
-            seq: logged.seq,
             stamp: logged.stamp,
-            previous: logged.previous,
             payload: &self.payloads[logged.payload.start as usize..logged.payload.end as usize],
         }
     }

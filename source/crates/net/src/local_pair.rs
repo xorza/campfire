@@ -7,12 +7,13 @@ use bevy_ecs::observer::On;
 use bevy_ecs::system::Commands;
 use bevy_state::app::StatesPlugin;
 use bevy_time::{TimePlugin, TimeUpdateStrategy};
-use campfire_kit_moba::Order;
+use campfire_capabilities::{Action, Controller, Order};
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
 use campfire_protocol::{
     Delegation, DelegationTerms, SeedError, ServerSeed, SessionHeader, SessionId, SessionLog,
     SessionPlayer,
 };
+use campfire_sim::{EntityIndex, StableId};
 use lightyear::crossbeam::CrossbeamIo;
 use lightyear::prelude::client::{ClientPlugins, RawClient};
 use lightyear::prelude::server::{RawServer, ServerPlugins};
@@ -149,12 +150,32 @@ impl LocalPair {
         self.server.update();
     }
 
-    /// Gives the client's player an order, sent in its next tick.
-    pub fn order(&mut self, order: Order) {
+    /// Gives the client's hero an order, sent in the client's next tick.
+    pub fn order(&mut self, action: Action) {
+        let order = Order {
+            unit: self.hero(),
+            action,
+        };
         self.client
             .world_mut()
             .resource_mut::<PendingOrders>()
             .push(order);
+    }
+
+    /// The client's hero, as the server's world holds it.
+    fn hero(&self) -> StableId {
+        let world = self.server.world();
+        world
+            .resource::<EntityIndex>()
+            .iter()
+            .find(|&(_, unit)| {
+                world
+                    .entity(unit)
+                    .get::<Controller>()
+                    .is_some_and(|controller| controller.slot() == 0)
+            })
+            .map(|(id, _)| id)
+            .expect("the match started, with the client's hero")
     }
 
     pub const fn server(&self) -> &App {

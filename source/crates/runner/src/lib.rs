@@ -1,4 +1,4 @@
-//! Loads packages, wires sim, kits and script, and feeds inputs.
+//! Loads packages, wires sim, the declared capabilities and script, and feeds inputs.
 
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 

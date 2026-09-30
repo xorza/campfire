@@ -41,7 +41,7 @@ impl Health {
 }
 
 impl SimComponent for Health {
-    const NAME: &'static str = "moba.health";
+    const NAME: &'static str = "combat.health";
 }
 
 /// A snapshot is untrusted, so health outside 0 to a positive maximum fails to decode.

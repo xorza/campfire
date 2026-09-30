@@ -34,7 +34,7 @@ impl Session {
         SimUpdate::prepare(world, seed);
         let mut schedule = SimUpdate::schedule();
         let mut state = StateRegistry::new();
-        StandInMode::add_kits(&mut schedule, &mut state);
+        StandInMode::install(world, &mut schedule, &mut state);
         world.add_schedule(schedule);
         StandInMode::start(world, header.players.len());
         world.insert_resource(Session {

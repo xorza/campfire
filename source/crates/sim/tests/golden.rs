@@ -252,8 +252,8 @@ fn tick_section(hasher: &mut Hasher) {
     let mut schedule = SimUpdate::schedule();
     schedule.add_systems((
         arrive.in_set(SimSet::Inputs),
-        drift.in_set(SimSet::BeforeCollision),
-        wear.in_set(SimSet::AfterCollision),
+        drift.in_set(SimSet::Act),
+        wear.in_set(SimSet::Resolve),
     ));
     let mut state = StateRegistry::new();
     state.register_component::<Place>();

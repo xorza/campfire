@@ -24,7 +24,7 @@ pub use secp256k1;
 pub use server_seed::{SeedCommitment, ServerSeed};
 pub use session_id::SessionId;
 pub use session_log::error::{HeaderError, InputError, LogError, SeedError};
-pub use session_log::{Applied, Packet, SessionHeader, SessionLog, SessionPlayer};
+pub use session_log::{Applied, SessionHeader, SessionLog, SessionPlayer};
 
 #[cfg(feature = "bench")]
 pub mod bench {

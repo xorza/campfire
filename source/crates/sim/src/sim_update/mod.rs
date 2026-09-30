@@ -16,22 +16,34 @@ use crate::tick_inputs::TickInputs;
 #[derive(ScheduleLabel, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SimUpdate;
 
-/// The steps of a tick, in this order. A kit orders its own steps inside `BeforeCollision` and
-/// `AfterCollision`.
+/// The stages of a tick, in this order. Each capability puts its systems into them, and orders
+/// them within a stage against the capabilities it builds on.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum SimSet {
+    /// The tick's commands reach the capabilities that own them.
     Inputs,
-    BeforeCollision,
-    Collision,
-    AfterCollision,
+    /// AI of the units due this tick issues orders.
+    Think,
+    /// Current orders run: attack windups, cast starts, path requests.
+    Act,
+    /// Units move.
+    Move,
+    /// The mode's collision backend resolves overlaps.
+    Collide,
+    /// Strikes, hits, projectiles and areas.
+    Hit,
+    /// Damage and modifiers apply, and units die.
+    Resolve,
+    /// Due timers, the capabilities' events, spawns.
     Mode,
-    Visibility,
+    /// The mode's vision backend marks what each team may see.
+    Vision,
 }
 
 impl SimUpdate {
     /// The schedule with no game systems yet. The tick's random sequences start before
-    /// `SimSet::Inputs`; after `SimSet::Visibility` the tick advances and its inputs are cleared. Two systems with
-    /// conflicting access and no order fail the build, since either order could win.
+    /// `SimSet::Inputs`; after `SimSet::Vision` the tick advances and its inputs are cleared. Two
+    /// systems with conflicting access and no order fail the build, since either order could win.
     pub fn schedule() -> Schedule {
         let mut schedule = Schedule::new(SimUpdate);
         #[expect(
@@ -46,17 +58,20 @@ impl SimUpdate {
             .configure_sets(
                 (
                     SimSet::Inputs,
-                    SimSet::BeforeCollision,
-                    SimSet::Collision,
-                    SimSet::AfterCollision,
+                    SimSet::Think,
+                    SimSet::Act,
+                    SimSet::Move,
+                    SimSet::Collide,
+                    SimSet::Hit,
+                    SimSet::Resolve,
                     SimSet::Mode,
-                    SimSet::Visibility,
+                    SimSet::Vision,
                 )
                     .chain(),
             )
             .add_systems((
                 start_tick.before(SimSet::Inputs),
-                end_tick.after(SimSet::Visibility),
+                end_tick.after(SimSet::Vision),
             ));
         schedule
     }

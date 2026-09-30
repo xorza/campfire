@@ -11,7 +11,7 @@ pub struct TickInputs {
     payloads: Vec<u8>,
 }
 
-/// One input: the player's slot, and the payload in the kit's format.
+/// One input: the player's slot, and the payload, a list of commands.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TickInput<'a> {
     pub slot: u32,

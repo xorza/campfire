@@ -35,10 +35,7 @@ fn main() -> ExitCode {
 
 /// The state hash after the last tick of the log file at `path`.
 fn verify(path: &Path) -> Result<[u8; 32], Box<dyn Error>> {
-    let log = SessionLog::decode(&fs::read(path)?)?;
-    let mut replay = Replay::new(&log)?;
-    while let Some(outcome) = replay.next_tick() {
-        outcome.expect("a decoded log records its own inputs again");
-    }
+    let mut replay = Replay::new(SessionLog::decode(&fs::read(path)?)?)?;
+    while replay.run_tick() {}
     Ok(*replay.runner().state_hash().as_bytes())
 }

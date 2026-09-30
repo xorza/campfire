@@ -1,6 +1,6 @@
 use std::hint::black_box;
 
-use campfire_kit_moba::Order;
+use campfire_capabilities::Action;
 use campfire_math::Num;
 use campfire_protocol::ServerSeed;
 use criterion::Criterion;
@@ -34,7 +34,7 @@ pub fn rollback(c: &mut Criterion) {
                     } else {
                         -5
                     };
-                    pair.order(Order::Move {
+                    pair.order(Action::Move {
                         x: Num::ZERO,
                         z: Num::from_int(z).expect("a small integer"),
                     });

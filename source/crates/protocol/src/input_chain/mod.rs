@@ -1,3 +1,4 @@
+use blake3::Hasher;
 use secp256k1::{Keypair, Secp256k1, Signing, Verification, XOnlyPublicKey, schnorr};
 
 use crate::chain_signature::ChainSignature;
@@ -5,15 +6,16 @@ use crate::input_hash::InputHash;
 use crate::player_input::PlayerInput;
 use crate::player_slot::PlayerSlot;
 use crate::session_id::SessionId;
-use crate::session_log::error::InputError;
 
+/// Starts every input hash, so no other BLAKE3 use can produce a chain link.
+const HASH_DOMAIN: &[u8] = b"campfire/input-hash/v1";
 /// Starts every signed chain head, so no other signature of the session key counts as one.
 const SIGNATURE_DOMAIN: &[u8] = b"campfire/input/v1";
 const HEAD_MESSAGE_LEN: usize = SIGNATURE_DOMAIN.len() + 32 + 4 + 8 + 32;
 
 /// A player's input chain: the hash its next input links to, and that input's seq. The player
-/// extends it with each input it sends; the log accepts each input it records against its own
-/// copy, so both sides move on by the same rule.
+/// extends it with each input it sends, and the log extends its own copy with each input it
+/// records, so both reach the same head, which the player's signature covers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InputChain {
     slot: PlayerSlot,
@@ -35,35 +37,30 @@ impl InputChain {
         self.slot
     }
 
-    /// The player's next input, stamped for `stamp`; the chain moves on to it.
-    pub fn extend<'a>(&mut self, stamp: u64, payload: &'a [u8]) -> PlayerInput<'a> {
-        let input = PlayerInput {
-            slot: self.slot,
-            seq: self.next_seq,
-            stamp,
-            previous: self.head,
-            payload,
-        };
-        self.move_on(&input);
-        input
+    /// The hash of the last input, or the root before the first.
+    pub const fn head(&self) -> InputHash {
+        self.head
     }
 
-    /// Moves on to `input` when it is the chain's next one; unchanged otherwise.
-    pub(crate) fn accept(&mut self, input: &PlayerInput<'_>) -> Result<(), InputError> {
-        debug_assert_eq!(
-            input.slot, self.slot,
-            "a chain accepts its own player's inputs"
-        );
-        if input.previous != self.head {
-            return Err(InputError::BrokenLink);
+    /// The player's next input, stamped for `stamp`. The head moves on to `BLAKE3(domain ‖
+    /// previous head ‖ u32 slot ‖ u64 seq ‖ u64 stamp ‖ payload)`, little-endian, seq counting
+    /// the player's inputs from 0; the payload comes last, so it needs no length.
+    pub fn extend<'a>(&mut self, stamp: u64, payload: &'a [u8]) -> PlayerInput<'a> {
+        let mut hasher = Hasher::new();
+        hasher
+            .update(HASH_DOMAIN)
+            .update(self.head.as_bytes())
+            .update(&self.slot.get().to_le_bytes())
+            .update(&self.next_seq.to_le_bytes())
+            .update(&stamp.to_le_bytes())
+            .update(payload);
+        self.head = InputHash::new(*hasher.finalize().as_bytes());
+        self.next_seq = self.next_seq.checked_add(1).expect("input seq exhausted");
+        PlayerInput {
+            slot: self.slot,
+            stamp,
+            payload,
         }
-        if input.seq != self.next_seq {
-            return Err(InputError::WrongSeq {
-                expected: self.next_seq,
-            });
-        }
-        self.move_on(input);
-        Ok(())
     }
 
     /// The session key's signature over the chain head, with BIP-340's auxiliary randomness
@@ -117,11 +114,6 @@ impl InputChain {
         }
         debug_assert_eq!(at, HEAD_MESSAGE_LEN, "the parts fill the message");
         message
-    }
-
-    fn move_on(&mut self, input: &PlayerInput<'_>) {
-        self.head = input.hash();
-        self.next_seq = self.next_seq.checked_add(1).expect("input seq exhausted");
     }
 }
 

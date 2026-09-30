@@ -30,11 +30,11 @@ Capabilities share one vocabulary, so they can meet in one match: a hitscan ray 
 - **`combat` and `stats`:** teams, health, damage, deaths, stats and modifiers.
 - **Everything else** builds on those: `projectiles` and `hitscan` deal damage through `combat`; `abilities` apply modifiers through `stats`; `orders` issue attacks and casts.
 
-Crates follow the layers, not one crate per capability. The runner adds only the declared capabilities' systems to the schedule, so a capability a mode does not use costs nothing in a tick.
+The capabilities live in one crate, `capabilities`, a module each, so they share their internals without making them public; the layers are a rule on which modules a capability imports, kept in review. A capability that brings a heavy dependency, such as a physics engine, gets a crate of its own, so the others do not build it. The runner adds only the declared capabilities' systems to the schedule, so a capability a mode does not use costs nothing in a tick.
 
 ## Tick stages
 
-The engine fixes the stages of a tick, and each capability puts its systems into them. Within a stage, capabilities run in the order of the dependency graph; two systems with no order and conflicting access fail the schedule build, so no order is left to chance.
+The engine fixes the stages of a tick, and each capability puts its systems into them. Within a stage, a capability orders its systems against those of the capabilities it builds on: in Act, `control` chases a target before `combat` starts the attack. Two systems with no order and conflicting access fail the schedule build, so no order is left to chance.
 
 | # | Stage | Runs |
 | --- | --- | --- |

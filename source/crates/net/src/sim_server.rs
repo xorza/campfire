@@ -6,7 +6,7 @@ use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::schedule::common_conditions::resource_exists;
 use bevy_ecs::system::{Local, Query, ResMut};
 use bevy_ecs::world::World;
-use campfire_kit_moba::Controller;
+use campfire_capabilities::Controller;
 use campfire_protocol::{Applied, PlayerSlot, SeedError, ServerSeed, SessionLog};
 use campfire_runner::Session;
 use campfire_sim::{EntityIndex, SimTick, StateHash};

@@ -23,7 +23,7 @@ Each call, handle field and hook belongs to the core or to one capability ([Capa
 
 ## Filters
 
-One set of words selects units everywhere: `targeting`, projectile `hits`, area `affects`, aura `affects`, and every query. A filter is a relation, `enemies`, `allies` or `all`, and an optional tag after a colon: `enemies:hero`, `allies:hero`, `enemies:creep`. Allies include the unit itself; the `neutral` team is an enemy of both sides. Heroes carry the tag `hero`.
+One set of words selects units everywhere: `targeting`, projectile `hits`, area `affects`, aura `affects`, and every query. A filter is a relation, `enemies`, `allies` or `all`, and an optional tag after a colon: `enemies:hero`, `allies:hero`, `enemies:creep`. Allies include the unit itself; units of different teams are enemies, so the `neutral` team is an enemy of every other. Heroes carry the tag `hero`.
 
 ## Data files
 

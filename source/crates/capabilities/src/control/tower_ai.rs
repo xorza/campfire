@@ -9,5 +9,5 @@ use serde::{Deserialize, Serialize};
 pub struct TowerAi;
 
 impl SimComponent for TowerAi {
-    const NAME: &'static str = "moba.tower_ai";
+    const NAME: &'static str = "control.tower_ai";
 }

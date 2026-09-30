@@ -97,9 +97,9 @@ fn workload(reversed: bool) -> Schedule {
     let mut systems: [ScheduleConfigs<ScheduleSystem>; 5] = [
         spawn_unit.in_set(SimSet::Inputs),
         count_inputs.in_set(SimSet::Inputs),
-        wander.in_set(SimSet::BeforeCollision),
-        grow_older.in_set(SimSet::BeforeCollision),
-        sum_ticks.in_set(SimSet::AfterCollision),
+        wander.in_set(SimSet::Act),
+        grow_older.in_set(SimSet::Act),
+        sum_ticks.in_set(SimSet::Resolve),
     ];
     if reversed {
         systems.reverse();
@@ -164,24 +164,21 @@ fn conflicting_unordered_systems_fail_the_build() {
         Case {
             name: "two writers of one component in one step",
             add: |s| {
-                s.add_systems((wander, push).in_set(SimSet::BeforeCollision));
+                s.add_systems((wander, push).in_set(SimSet::Act));
             },
             expected: &[["push", "wander"]],
         },
         Case {
             name: "the same writers in order",
             add: |s| {
-                s.add_systems((wander, push).chain().in_set(SimSet::BeforeCollision));
+                s.add_systems((wander, push).chain().in_set(SimSet::Act));
             },
             expected: &[],
         },
         Case {
             name: "the same writers in two steps",
             add: |s| {
-                s.add_systems((
-                    wander.in_set(SimSet::BeforeCollision),
-                    push.in_set(SimSet::AfterCollision),
-                ));
+                s.add_systems((wander.in_set(SimSet::Act), push.in_set(SimSet::Resolve)));
             },
             expected: &[],
         },

@@ -1,5 +1,5 @@
 use bevy_app::{App, Plugin};
-use campfire_kit_moba::{Controller, Destination, MoveStep};
+use campfire_capabilities::{Controller, Destination, MoveStep};
 use campfire_sim::{Position, StableId};
 use lightyear::prelude::{
     AppChannelExt, AppComponentExt, AppMessageExt, ChannelMode, ChannelSettings, NetworkDirection,
