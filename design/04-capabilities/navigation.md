@@ -2,7 +2,7 @@
 
 ## Space
 
-Positions are 3D. On a grid map gameplay is on the ground plane: collision, pathfinding, ranges and vision use x and z, and y comes from the map's height data. High ground is a vision rule in the grid, not a height test. A `character` moves in full 3D against level geometry.
+Every map has bounds, a closed rectangle on the ground plane, and no unit is ever outside them: move orders clamp to them, the core clamps every unit that moved after Move and Collide, and a spawn outside them fails. Positions are 3D. On a grid map gameplay is on the ground plane: collision, pathfinding, ranges and vision use x and z, and y comes from the map's height data. High ground is a vision rule in the grid, not a height test. A `character` moves in full 3D against level geometry.
 
 ## Backends
 
