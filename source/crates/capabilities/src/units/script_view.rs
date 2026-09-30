@@ -21,6 +21,7 @@ use crate::units::teams::Teams;
 use crate::units::unit::Unit;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_types::UnitTypes;
+use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
 
 /// What scripts see: the match's unit types, and its units, those with a team, as the running
@@ -33,6 +34,8 @@ pub(crate) struct ScriptView {
     teams: Rc<Teams>,
     /// The name of each lane, by index, once a mode sets them.
     lanes: Arc<[Box<str>]>,
+    /// The damage kinds the mode declares.
+    damage_kinds: Rc<[DeclaredName]>,
     /// How each installed capability above the core fills its fields of a row, in install order.
     sources: Vec<RowSource>,
     rate: TickRate,
@@ -186,6 +189,7 @@ impl View {
             types: UnitTypes::default(),
             teams: Rc::default(),
             lanes: Arc::default(),
+            damage_kinds: Rc::from([]),
             sources: Vec::new(),
             rate,
             now: Tick::ZERO,
@@ -209,6 +213,17 @@ impl View {
         let mut view = self.0.borrow_mut();
         view.teams = teams;
         view.lanes = lanes;
+    }
+
+    /// Sets the damage kinds the mode declares.
+    pub(crate) fn set_damage_kinds(&self, damage_kinds: Rc<[DeclaredName]>) {
+        self.0.borrow_mut().damage_kinds = damage_kinds;
+    }
+
+    /// Whether the mode declares the damage kind `name`.
+    pub(crate) fn is_damage_kind(&self, name: &str) -> bool {
+        let view = self.0.borrow();
+        view.damage_kinds.iter().any(|kind| kind.as_str() == name)
     }
 
     /// Adds how a capability fills its fields of each row, after those added before it.

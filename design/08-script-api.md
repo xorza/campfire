@@ -41,7 +41,7 @@ Arrays in capability fields and in the params of an ability are per rank: 5 entr
 
 Scaling keys: `base`, `per_level`, and a stat ratio each for `ad`, `bonus_ad`, `ap`, `max_health`, `bonus_health`, `armor`, `magic_resist`. A number field anywhere in data may be `{ param = "<name>" }`, resolved in the same way. An ability's `range`, `cooldown_ms`, `cost` and `cast_time_ms` resolve when the ability loads, one value for each rank, so a param they name is a value or a per-rank array, not a scaling table.
 
-**Hero** (`data/hero.toml`): `name`, `role`, `resource` (`mana` or `energy`), `passive` (a modifier id), `slots` (four ability ids; the last is the ultimate), `[combat.attack]` (`range`, `windup_ms`, `projectile_speed`; no speed means melee), `[vision]` (`sight_range`, `true_sight`), `[stats]` (`stat = { base, per_level }`; the value at level `n` is `base + per_level × (n − 1)`), `[abilities.<id>]`, `[modifiers.<id>]`.
+**Hero** (`data/hero.toml`): `name`, `role`, `resource` (one of the mode's `resources`), `passive` (a modifier id), `slots` (four ability ids; the last is the ultimate), `[combat.attack]` (`range`, `windup_ms`, `projectile_speed`; no speed means melee), `[vision]` (`sight_range`, `true_sight`), `[stats]` (`stat = { base, per_level }`; the value at level `n` is `base + per_level × (n − 1)`), `[abilities.<id>]`, `[modifiers.<id>]`.
 
 **Ability:**
 
@@ -72,7 +72,7 @@ Scaling keys: `base`, `per_level`, and a stat ratio each for `ad`, `bonus_ad`, `
 
 **State types:** `int`, `num`, `bool`, `string`, `entity`, `entity_list`, `pos`, `vec`; each with a `default` and, for mode state, `sync`.
 
-**Stats:**
+**Stats:** the engine reads `health`, `resource`, `move_speed`, `attack_speed` and `attack_damage`; the mode declares every other stat in `data/mode.toml` (`stats = [...]`), with its `damage_kinds` and the `resources` its units spend. A name the mode does not declare fails the package load. When modifiers come, each declared stat also names how it combines and its limits; the reference MOBA's:
 
 | Stats | Combine | Limits |
 | --- | --- | --- |
@@ -97,7 +97,7 @@ A unit handle has the fields of the capabilities its type uses; reading a field 
 | Modifier `m` | `carrier`, `source`, `stacks` (writable), `state` (writable) |
 | Projectile | `source`, `pos`, `distance` flown, `state` (writable) |
 | Area | `source`, `pos` |
-| Damage `d` | `source`, `target`, `amount`, `kind` (`physical`, `magic`, `true`), `attack`, `crit`, `extra` (an attack from `ctx.attack_hit`), `ability` (`""` when none) |
+| Damage `d` | `source`, `target`, `amount`, `kind` (one of the mode's `damage_kinds`), `attack`, `crit`, `extra` (an attack from `ctx.attack_hit`), `ability` (`""` when none) |
 | Position, vector | `distance_to`, `within(pos, radius)` (on the ground plane and exact, as every range: the test for reach), `direction_to`, `rotated_deg`, `+`, `-`, `*` |
 
 ## `ctx`
@@ -150,7 +150,6 @@ A package loads only when all of these pass:
 
 ## Planned changes
 
-- A mode declares its damage kinds, stats and resources; the fixed lists above are the reference MOBA's declarations.
 - Core calls take neutral names: avatar for hero, loadout for spells, spawn group for wave, path for lane.
 - New capabilities add their parts: `items`, `progression`, `interaction`, `production`.
 

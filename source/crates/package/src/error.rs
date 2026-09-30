@@ -3,7 +3,7 @@ use std::fmt;
 use std::io;
 use std::path::PathBuf;
 
-use campfire_capabilities::{AbilityField, ModeError};
+use campfire_capabilities::{AbilityField, DeclaredName, ModeError};
 use campfire_content::PackagePath;
 use campfire_script::ScriptError;
 use campfire_sim::Capability;
@@ -182,6 +182,15 @@ pub enum LoadProblem {
         at: Place,
         name: String,
     },
+    /// A hero at `at` spends a resource the mode does not declare.
+    UnknownResource {
+        at: Place,
+        name: DeclaredName,
+    },
+    /// The mode declares a name twice in one of its lists.
+    RepeatedName(DeclaredName),
+    /// The mode declares a stat that a capability reads, whose name is the engine's.
+    EngineStatDeclared(DeclaredName),
     UnknownFilter {
         at: Place,
         filter: String,
@@ -325,6 +334,16 @@ impl fmt::Display for LoadProblem {
             LoadProblem::UnknownParam { at, name } => write!(f, "{at}: no param {name:?}"),
             LoadProblem::UnknownModifier { at, id } => write!(f, "{at}: no modifier {id:?}"),
             LoadProblem::UnknownStat { at, name } => write!(f, "{at}: no stat {name:?}"),
+            LoadProblem::UnknownResource { at, name } => {
+                write!(f, "{at}: the mode declares no resource {name:?}")
+            }
+            LoadProblem::RepeatedName(name) => write!(f, "the mode declares {name:?} twice"),
+            LoadProblem::EngineStatDeclared(name) => {
+                write!(
+                    f,
+                    "the mode declares {name:?}, which is a stat the engine reads"
+                )
+            }
             LoadProblem::UnknownFilter { at, filter } => write!(f, "{at}: no filter {filter:?}"),
             LoadProblem::UnknownDamageKind { at, kind } => {
                 write!(f, "{at}: no damage kind {kind:?}")

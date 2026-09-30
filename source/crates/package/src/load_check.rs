@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_capabilities::{
-    AbilityData, CtxEntry, DamageKind, FilterData, Hook, Mode, ModifierData, Number, Param, Scalar,
+    AbilityData, CtxEntry, EngineStat, FilterData, Hook, Mode, ModifierData, Number, Param, Scalar,
     ScriptRole, Stat, UnitTypeData,
 };
 use campfire_content::PackagePath;
@@ -112,6 +112,19 @@ impl<'a> LoadCheck<'a> {
         let unit_type = |name: &str| units.contains_key(name);
         Mode::check(&packages.manifest.teams, &packages.map, unit_type)
             .map_err(LoadProblem::Mode)?;
+        for list in [&data.damage_kinds, &data.stats, &data.resources] {
+            let mut seen = BTreeSet::new();
+            if let Some(name) = list.iter().find(|&name| !seen.insert(name)) {
+                return Err(LoadProblem::RepeatedName(name.clone()));
+            }
+        }
+        if let Some(name) = data
+            .stats
+            .iter()
+            .find(|name| EngineStat::named(name.as_str()).is_some())
+        {
+            return Err(LoadProblem::EngineStatDeclared(name.clone()));
+        }
         for (name, unit_type) in &packages.units.units {
             let at = Place::UnitType(name.clone());
             let sections = [
@@ -124,6 +137,9 @@ impl<'a> LoadCheck<'a> {
                 if used {
                     self.require(capability, &at)?;
                 }
+            }
+            if let Some(stats) = &unit_type.stats {
+                self.stats_declared(stats.0.keys(), &at)?;
             }
             let attack = unit_type.combat.as_ref().and_then(|combat| combat.attack);
             self.attack_projectile(attack.and_then(|attack| attack.projectile_speed), &at)?;
@@ -180,6 +196,13 @@ impl<'a> LoadCheck<'a> {
                 self.require(Capability::Stats, &at)?;
                 if hero.vision.is_some() {
                     self.require(Capability::Vision, &at)?;
+                }
+                self.stats_declared(hero.stats.0.keys(), &at)?;
+                if !self.packages.data.resources.contains(&hero.resource) {
+                    return Err(LoadProblem::UnknownResource {
+                        at,
+                        name: hero.resource.clone(),
+                    });
                 }
                 let attack = hero
                     .combat
@@ -260,6 +283,7 @@ impl<'a> LoadCheck<'a> {
         for (id, modifier) in names.modifiers {
             let at = Place::Modifier(id.clone());
             self.require(Capability::Stats, &at)?;
+            self.stats_declared(modifier.stats.keys(), &at)?;
             if let Some(aura) = &modifier.aura {
                 modifier_exists(names.modifiers, &aura.modifier, &at)?;
                 self.filter_data(&aura.affects, &at)?;
@@ -361,24 +385,58 @@ impl<'a> LoadCheck<'a> {
             for id in &facts.modifiers {
                 modifier_exists(names.modifiers, id, &at)?;
             }
-            if let Some(name) = facts.stats.iter().find(|name| Stat::named(name).is_none()) {
-                return Err(LoadProblem::UnknownStat {
-                    at,
-                    name: name.clone(),
-                });
-            }
             for filter in &facts.filters {
                 self.filter_text(filter, &at)?;
             }
-            let kinds = &facts.damage_kinds;
-            if let Some(kind) = kinds.iter().find(|kind| DamageKind::named(kind).is_none()) {
-                return Err(LoadProblem::UnknownDamageKind {
-                    at,
-                    kind: kind.clone(),
-                });
-            }
+            self.script_vocabulary(&facts.stats, &facts.damage_kinds, at)?;
         }
         Ok(())
+    }
+
+    /// Every stat and damage kind a script at `at` names is one the engine reads or the mode
+    /// declares.
+    fn script_vocabulary(
+        &self,
+        stats: &[String],
+        kinds: &[String],
+        at: Place,
+    ) -> Result<(), LoadProblem> {
+        for name in stats {
+            let stat = Stat::named(name).ok_or_else(|| LoadProblem::UnknownStat {
+                at: at.clone(),
+                name: name.clone(),
+            })?;
+            self.stats_declared([&stat], &at)?;
+        }
+        let data = &self.packages.data;
+        let declared = |kind: &String| data.damage_kinds.iter().any(|name| name.as_str() == kind);
+        if let Some(kind) = kinds.iter().find(|kind| !declared(kind)) {
+            return Err(LoadProblem::UnknownDamageKind {
+                at,
+                kind: kind.clone(),
+            });
+        }
+        Ok(())
+    }
+
+    /// Every stat in `stats` is one the engine reads or the mode declares.
+    fn stats_declared<'s>(
+        &self,
+        stats: impl IntoIterator<Item = &'s Stat>,
+        at: &Place,
+    ) -> Result<(), LoadProblem> {
+        let declared = &self.packages.data.stats;
+        let unknown = stats
+            .into_iter()
+            .filter_map(Stat::declared)
+            .find(|name| !declared.contains(name));
+        match unknown {
+            Some(name) => Err(LoadProblem::UnknownStat {
+                at: at.clone(),
+                name: name.to_string(),
+            }),
+            None => Ok(()),
+        }
     }
 
     fn require(&self, capability: Capability, at: &Place) -> Result<(), LoadProblem> {

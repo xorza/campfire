@@ -7,7 +7,7 @@ use crate::combat::combatant::Combatant;
 use crate::combat::health::Health;
 use crate::mode::error::UnitKitError;
 use crate::navigation::move_step::MoveStep;
-use crate::stats::stat::Stat;
+use crate::stats::stat::EngineStat;
 use crate::stats::stats_data::StatsData;
 use crate::values::speed::Speed;
 use crate::vision::sight::Sight;
@@ -45,13 +45,15 @@ impl UnitKit {
     ) -> Result<UnitKit, UnitKitError> {
         let stat = |stat| {
             let stats = stats.ok_or(UnitKitError::MissingStat(stat))?;
-            stats.0.get(&stat).ok_or(UnitKitError::MissingStat(stat))?;
+            if !stats.declares(stat) {
+                return Err(UnitKitError::MissingStat(stat));
+            }
             stats.at(stat, 1).ok_or(UnitKitError::Overflow(stat))
         };
         let combatant = combat
             .map(|combat| {
-                let health = Health::new(stat(Stat::Health)?)
-                    .ok_or(UnitKitError::NotPositive(Stat::Health))?;
+                let health = Health::new(stat(EngineStat::Health)?)
+                    .ok_or(UnitKitError::NotPositive(EngineStat::Health))?;
                 let attack = combat
                     .attack
                     .map(|attack| attack_stats(&attack, stat, rules))
@@ -63,11 +65,11 @@ impl UnitKit {
                 })
             })
             .transpose()?;
-        let step = if stats.is_some_and(|stats| stats.0.contains_key(&Stat::MoveSpeed)) {
-            let speed = stat(Stat::MoveSpeed)?.min(rules.max_move_speed.get());
+        let step = if stats.is_some_and(|stats| stats.declares(EngineStat::MoveSpeed)) {
+            let speed = stat(EngineStat::MoveSpeed)?.min(rules.max_move_speed.get());
             let step =
-                per_tick(speed, rules.rate).ok_or(UnitKitError::Overflow(Stat::MoveSpeed))?;
-            Some(MoveStep::new(step).ok_or(UnitKitError::Negative(Stat::MoveSpeed))?)
+                per_tick(speed, rules.rate).ok_or(UnitKitError::Overflow(EngineStat::MoveSpeed))?;
+            Some(MoveStep::new(step).ok_or(UnitKitError::Negative(EngineStat::MoveSpeed))?)
         } else {
             None
         };
@@ -91,13 +93,13 @@ impl UnitKit {
 /// The attack of `attack`, with the stats `stat` reads.
 fn attack_stats(
     attack: &AttackData,
-    stat: impl Fn(Stat) -> Result<Num, UnitKitError>,
+    stat: impl Fn(EngineStat) -> Result<Num, UnitKitError>,
     rules: KitRules,
 ) -> Result<AttackStats, UnitKitError> {
     let hz = rules.rate.hz().get();
-    let speed = stat(Stat::AttackSpeed)?.min(MAX_ATTACK_SPEED);
+    let speed = stat(EngineStat::AttackSpeed)?.min(MAX_ATTACK_SPEED);
     if speed <= Num::ZERO {
-        return Err(UnitKitError::NotPositive(Stat::AttackSpeed));
+        return Err(UnitKitError::NotPositive(EngineStat::AttackSpeed));
     }
     // hz ÷ speed in ticks, rounded up: exact, as the speed's bits count 2⁻²⁴ attacks a second.
     let bits = u128::try_from(speed.to_bits()).expect("a positive speed");
@@ -105,13 +107,13 @@ fn attack_stats(
     let period = u64::try_from(period)
         .ok()
         .map(Ticks::new)
-        .ok_or(UnitKitError::Overflow(Stat::AttackSpeed))?;
+        .ok_or(UnitKitError::Overflow(EngineStat::AttackSpeed))?;
     let windup = rules
         .rate
         .ticks(attack.windup_ms)
         .ok_or(UnitKitError::TimeTooLarge)?;
     let range = attack.range.to_num().ok_or(UnitKitError::Range)?;
-    let melee = AttackStats::new(range, windup, period, stat(Stat::AttackDamage)?)
+    let melee = AttackStats::new(range, windup, period, stat(EngineStat::AttackDamage)?)
         .ok_or(UnitKitError::Attack)?;
     let Some(speed) = attack.projectile_speed else {
         return Ok(melee);

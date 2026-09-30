@@ -1,18 +1,18 @@
 use std::error::Error;
 use std::fmt;
 
-use crate::stats::stat::Stat;
+use crate::stats::stat::EngineStat;
 
 /// Why a unit type's values do not make a unit. Packages are untrusted, so each is an expected
 /// failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UnitKitError {
     /// A stat its sections need is not declared.
-    MissingStat(Stat),
+    MissingStat(EngineStat),
     /// A stat overflows at level 1.
-    Overflow(Stat),
-    NotPositive(Stat),
-    Negative(Stat),
+    Overflow(EngineStat),
+    NotPositive(EngineStat),
+    Negative(EngineStat),
     /// The windup is too long to count in ticks.
     TimeTooLarge,
     /// The attack's range is beyond a `Num`.

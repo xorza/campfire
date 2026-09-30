@@ -2,13 +2,15 @@
 //! the typed schema, and Husk's Lash Out, loaded from its data file and script, hits exactly.
 
 use std::num::NonZeroU32;
+use std::rc::Rc;
 
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::world::World;
+
 use campfire_capabilities::{
-    Abilities, AbilitySlots, Action, AttackStats, CapabilitySet, CastTarget, Combatant, Health,
-    MatchScripts, Number, OnDeath, Order, Owner, Param, Range, RangeField, Ranked, ResourcePool,
-    Scalar, Scaling, ScriptLimits, Targeting, Team, Units,
+    Abilities, AbilitySlots, Action, AttackStats, CapabilitySet, CastTarget, Combatant,
+    DeclaredName, Health, MatchScripts, Number, OnDeath, Order, Owner, Param, Range, RangeField,
+    Ranked, ResourcePool, Scalar, Scaling, ScriptLimits, Targeting, Team, Units,
 };
 use campfire_content::PackagePath;
 use campfire_math::{Num, PlayerSlot, SegmentSeed, Vec3};
@@ -113,7 +115,11 @@ fn lash_out_from_its_package_hits_exactly() {
         think: 100_000,
         mode: 100_000,
     };
-    let scripts = MatchScripts { limits, players: 1 };
+    let scripts = MatchScripts {
+        limits,
+        players: 1,
+        damage_kinds: Rc::from([DeclaredName::new("magic").unwrap()]),
+    };
     let declared = [
         Capability::Combat,
         Capability::Navigation,

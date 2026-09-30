@@ -5,6 +5,7 @@ use serde::Deserialize;
 
 use crate::scripts::state_decl::StateDecl;
 use crate::stats::modifier_data::ModifierData;
+use crate::values::declared_name::DeclaredName;
 use crate::values::scalar::Scalar;
 
 /// The mode's `data/mode.toml`: its script, its player inputs, its state and its params.
@@ -25,6 +26,15 @@ pub struct ModeData {
     pub params: BTreeMap<String, ModeParam>,
     #[serde(default)]
     pub modifiers: BTreeMap<String, ModifierData>,
+    /// The kinds of damage its scripts deal and its `calc_damage` weighs.
+    #[serde(default)]
+    pub damage_kinds: Vec<DeclaredName>,
+    /// The stats its units carry beyond those a capability reads.
+    #[serde(default)]
+    pub stats: Vec<DeclaredName>,
+    /// What its units spend on abilities, such as mana or energy.
+    #[serde(default)]
+    pub resources: Vec<DeclaredName>,
 }
 
 /// The type of a player input.

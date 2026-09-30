@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 use bevy_ecs::schedule::Schedule;
 use bevy_ecs::world::World;
 use campfire_capabilities::{
-    Abilities, AbilityData, AbilityId, CombatData, HeroSetup, KitRules, MatchScripts, Mode,
-    ModeSetup, OnDeath, Orders, ResourcePool, SpellSetup, Stat, UnitKit, UnitKitError,
+    Abilities, AbilityData, AbilityId, CombatData, EngineStat, HeroSetup, KitRules, MatchScripts,
+    Mode, ModeSetup, OnDeath, Orders, ResourcePool, SpellSetup, UnitKit, UnitKitError,
     UnitTypeData, UnitTypeSetup, Units,
 };
 use campfire_content::PackagePath;
@@ -53,6 +53,7 @@ impl<'a> MatchBuild<'a> {
         let scripts = MatchScripts {
             limits: manifest.script_limits,
             players,
+            damage_kinds: packages.data().damage_kinds.as_slice().into(),
         };
         manifest
             .capabilities
@@ -157,11 +158,11 @@ impl<'a> MatchBuild<'a> {
                 self.load_ability(package, id, &data.abilities[id], ranks)
             })
             .collect::<Result<_, _>>()?;
-        let resource = if data.stats.0.contains_key(&Stat::Resource) {
-            let max = data.stats.at(Stat::Resource, 1);
-            let max = max.ok_or_else(|| kit_error(UnitKitError::Overflow(Stat::Resource)))?;
+        let resource = if data.stats.declares(EngineStat::Resource) {
+            let max = data.stats.at(EngineStat::Resource, 1);
+            let max = max.ok_or_else(|| kit_error(UnitKitError::Overflow(EngineStat::Resource)))?;
             let pool = ResourcePool::new(max);
-            Some(pool.ok_or_else(|| kit_error(UnitKitError::NotPositive(Stat::Resource)))?)
+            Some(pool.ok_or_else(|| kit_error(UnitKitError::NotPositive(EngineStat::Resource)))?)
         } else {
             None
         };

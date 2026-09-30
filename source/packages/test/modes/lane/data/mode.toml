@@ -1,4 +1,6 @@
 script = "scripts/mode.rhai"
+damage_kinds = ["true"]
+resources = ["mana"]
 
 [params]
 wave_ms = 30000

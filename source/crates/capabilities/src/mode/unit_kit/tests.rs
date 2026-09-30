@@ -4,6 +4,7 @@ use std::str::FromStr;
 
 use super::*;
 use crate::combat::on_death::OnDeath;
+use crate::stats::stat::Stat;
 use crate::stats::stats_data::StatValue;
 use crate::values::scalar::Scalar;
 
@@ -25,10 +26,10 @@ fn caster(change: impl FnOnce(&mut BTreeMap<Stat, StatValue>)) -> StatsData {
         per_level: None,
     };
     let mut stats = BTreeMap::from([
-        (Stat::Health, base("280")),
-        (Stat::AttackDamage, base("23")),
-        (Stat::AttackSpeed, base("0.67")),
-        (Stat::MoveSpeed, base("3.25")),
+        (Stat::Engine(EngineStat::Health), base("280")),
+        (Stat::Engine(EngineStat::AttackDamage), base("23")),
+        (Stat::Engine(EngineStat::AttackSpeed), base("0.67")),
+        (Stat::Engine(EngineStat::MoveSpeed), base("3.25")),
     ]);
     change(&mut stats);
     StatsData(stats)
@@ -79,8 +80,14 @@ fn a_kit_counts_its_stats_in_ticks_at_the_rate() {
 
     // 3 attacks a second is capped at 2.5, 12 ticks; 7 m/s at the cap, 6 over 30: 0.2 m.
     let fast = caster(|stats| {
-        stats.get_mut(&Stat::AttackSpeed).unwrap().base = Scalar::Int(3);
-        stats.get_mut(&Stat::MoveSpeed).unwrap().base = Scalar::Int(7);
+        stats
+            .get_mut(&Stat::Engine(EngineStat::AttackSpeed))
+            .unwrap()
+            .base = Scalar::Int(3);
+        stats
+            .get_mut(&Stat::Engine(EngineStat::MoveSpeed))
+            .unwrap()
+            .base = Scalar::Int(7);
     });
     let kit = UnitKit::new(Some(&fast), Some(&attack(0, None)), rules(30)).unwrap();
     assert_eq!(kit.combatant.unwrap().attack.unwrap().period().get(), 12);
@@ -88,7 +95,7 @@ fn a_kit_counts_its_stats_in_ticks_at_the_rate() {
 
     // No combat section, no move speed: nothing of either.
     let still = caster(|stats| {
-        stats.remove(&Stat::MoveSpeed);
+        stats.remove(&Stat::Engine(EngineStat::MoveSpeed));
     });
     let kit = UnitKit::new(Some(&still), None, rules(30)).unwrap();
     assert_eq!((kit.combatant, kit.step), (None, None));
@@ -112,32 +119,47 @@ fn a_kit_refuses_values_that_make_no_unit() {
         (caster(|_| ()), attack(1500, None), UnitKitError::Attack),
         (
             caster(|stats| {
-                stats.remove(&Stat::Health);
+                stats.remove(&Stat::Engine(EngineStat::Health));
             }),
             attack(300, None),
-            UnitKitError::MissingStat(Stat::Health),
+            UnitKitError::MissingStat(EngineStat::Health),
         ),
         (
             caster(|stats| {
-                stats.remove(&Stat::AttackDamage);
+                stats.remove(&Stat::Engine(EngineStat::AttackDamage));
             }),
             attack(300, None),
-            UnitKitError::MissingStat(Stat::AttackDamage),
+            UnitKitError::MissingStat(EngineStat::AttackDamage),
         ),
         (
-            caster(|stats| stats.get_mut(&Stat::AttackSpeed).unwrap().base = Scalar::Int(0)),
+            caster(|stats| {
+                stats
+                    .get_mut(&Stat::Engine(EngineStat::AttackSpeed))
+                    .unwrap()
+                    .base = Scalar::Int(0);
+            }),
             attack(300, None),
-            UnitKitError::NotPositive(Stat::AttackSpeed),
+            UnitKitError::NotPositive(EngineStat::AttackSpeed),
         ),
         (
-            caster(|stats| stats.get_mut(&Stat::Health).unwrap().base = Scalar::Int(0)),
+            caster(|stats| {
+                stats
+                    .get_mut(&Stat::Engine(EngineStat::Health))
+                    .unwrap()
+                    .base = Scalar::Int(0);
+            }),
             attack(300, None),
-            UnitKitError::NotPositive(Stat::Health),
+            UnitKitError::NotPositive(EngineStat::Health),
         ),
         (
-            caster(|stats| stats.get_mut(&Stat::MoveSpeed).unwrap().base = Scalar::Int(-1)),
+            caster(|stats| {
+                stats
+                    .get_mut(&Stat::Engine(EngineStat::MoveSpeed))
+                    .unwrap()
+                    .base = Scalar::Int(-1);
+            }),
             attack(300, None),
-            UnitKitError::Negative(Stat::MoveSpeed),
+            UnitKitError::Negative(EngineStat::MoveSpeed),
         ),
     ];
     for (stats, combat, error) in cases {

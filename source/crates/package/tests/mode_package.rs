@@ -99,6 +99,7 @@ const CREEP_AI: &str = "modes/3v3/scripts/creep_ai.rhai";
 const MODE: &str = "moba-3v3";
 /// A package whose manifest does not read has no name, so its directory names it.
 const MODE_DIR: &str = "modes/3v3";
+const MODE_DATA: &str = "modes/3v3/data/mode.toml";
 
 /// Whether `problem` is the manifest failing to read with a message that starts with `message`.
 fn manifest_fails(problem: &LoadProblem, message: &str) -> bool {
@@ -123,7 +124,7 @@ fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 49] = [
+const FLAWS: [Flaw; 54] = [
     flaw(
         MANIFEST,
         Edit::Replace(r#"engine = "0.1.0""#, r#"engine = "0.0.9""#),
@@ -392,6 +393,42 @@ const FLAWS: [Flaw; 49] = [
         Edit::Replace("enemies:creep", "enemies:minion"),
         MODE,
         |problem| matches!(problem, LoadProblem::UnknownFilter { filter, .. } if filter == "enemies:minion"),
+    ),
+    flaw(
+        HUSK,
+        Edit::Replace("magic_resist = { base = 30 }", "spirit = { base = 30 }"),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::UnknownStat { name, .. } if name == "spirit"),
+    ),
+    flaw(
+        HUSK,
+        Edit::Replace("stats = { magic_resist = -15 }", "stats = { spirit = -15 }"),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::UnknownStat { name, .. } if name == "spirit"),
+    ),
+    flaw(
+        HUSK,
+        Edit::Replace(r#"resource = "mana""#, r#"resource = "rage""#),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::UnknownResource { name, .. } if name.as_str() == "rage"),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace(
+            r#"resources = ["mana", "energy"]"#,
+            r#"resources = ["mana", "mana"]"#,
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::RepeatedName(name) if name.as_str() == "mana"),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace(
+            r#""slow", "spell_vamp","#,
+            r#""slow", "spell_vamp", "move_speed","#,
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::EngineStatDeclared(name) if name.as_str() == "move_speed"),
     ),
     flaw(
         "heroes/veil/scripts/whirling_blades.rhai",

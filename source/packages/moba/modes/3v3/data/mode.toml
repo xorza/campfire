@@ -1,5 +1,15 @@
 script = "scripts/mode.rhai"
 assist_window_ms = 10000
+# The words of this game: its damage kinds, the stats its units carry beyond those the engine
+# reads, and what its heroes spend.
+damage_kinds = ["physical", "magic", "true"]
+stats = [
+    "ability_power_pct", "armor", "armor_pen", "armor_pen_pct", "attack_damage_pct",
+    "attack_speed_pct", "crit_chance", "damage_dealt_pct", "healing_received_pct", "health_regen",
+    "magic_pen", "magic_pen_pct", "magic_resist", "move_speed_pct", "physical_block",
+    "resource_regen", "slow", "spell_vamp",
+]
+resources = ["mana", "energy"]
 
 [inputs]
 hero = "string"

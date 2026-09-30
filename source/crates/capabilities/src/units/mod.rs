@@ -57,14 +57,22 @@ impl Units {
         scripts: Option<MatchScripts>,
     ) {
         let rate = *world.resource::<TickRate>();
-        world.insert_non_send(View::new(rate));
+        let view = View::new(rate);
         registry.register_component::<Owner>();
         registry.register_component::<SpawnPoint>();
         registry.register_component::<Team>();
         registry.register_component::<UnitType>();
-        let Some(MatchScripts { limits, players }) = scripts else {
+        let Some(MatchScripts {
+            limits,
+            players,
+            damage_kinds,
+        }) = scripts
+        else {
+            world.insert_non_send(view);
             return;
         };
+        view.set_damage_kinds(damage_kinds);
+        world.insert_non_send(view);
         let mut host = ScriptHost::new(limits.per_call);
         Unit::register(host.engine_mut());
         world.insert_non_send(host);

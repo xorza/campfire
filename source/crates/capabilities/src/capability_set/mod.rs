@@ -167,6 +167,8 @@ mod tests {
     use campfire_script::ScriptHost;
     use campfire_sim::TickRate;
 
+    use std::rc::Rc;
+
     use super::*;
     use crate::abilities::ability_book::AbilityBook;
     use crate::capability_set::internals::TestMatch;
@@ -239,8 +241,9 @@ mod tests {
                 mode: 1,
             },
             players: 1,
+            damage_kinds: Rc::from([]),
         };
-        let scripted = installed(&all, Some(scripts));
+        let scripted = installed(&all, Some(scripts.clone()));
         let client = installed(&all, None);
         for (world, scripts) in [(&scripted, true), (&client, false)] {
             assert_eq!(world.get_non_send::<ScriptHost>().is_some(), scripts);

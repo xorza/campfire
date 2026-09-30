@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
+use std::rc::Rc;
 
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::entity::Entity;
@@ -67,7 +68,11 @@ impl Scene {
             think: 100_000,
             mode: 100_000,
         };
-        let scripts = MatchScripts { limits, players: 1 };
+        let scripts = MatchScripts {
+            limits,
+            players: 1,
+            damage_kinds: Rc::from([]),
+        };
         let TestMatch {
             mut world,
             schedule: _,

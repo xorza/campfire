@@ -5,7 +5,6 @@ use campfire_math::Num;
 use campfire_script::rhai::{Dynamic, Engine, INT, ImmutableString};
 
 use crate::abilities::frame::{Effect, Frame};
-use crate::combat::damage_kind::DamageKind;
 use crate::scripts::error::{ApiError, Checked};
 use crate::units::script_view::View;
 use crate::units::unit::Unit;
@@ -65,10 +64,12 @@ impl Ctx {
         View::register_queries::<Ctx>(engine, Ctx::view);
     }
 
-    /// Queues `amount` of `kind` damage to `target`. The kind is checked; until the mode's
-    /// `calc_damage` runs, it does not change the amount.
+    /// Queues `amount` of `kind` damage to `target`. The kind must be one the mode declares;
+    /// until the mode's `calc_damage` runs, it does not change the amount.
     fn damage(&self, target: &Unit, amount: Num, kind: &str) -> Checked<()> {
-        DamageKind::named(kind).ok_or_else(|| ApiError::UnknownDamageKind.fail())?;
+        if !self.view().is_damage_kind(kind) {
+            return Err(ApiError::UnknownDamageKind.fail().into());
+        }
         if amount < Num::ZERO {
             return Err(ApiError::NegativeDamage.fail().into());
         }

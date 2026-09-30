@@ -221,6 +221,9 @@ fn mode_files() -> ModeFiles {
             .map(|(name, param)| (name.to_owned(), param))
             .into(),
             modifiers: BTreeMap::new(),
+            damage_kinds: Vec::new(),
+            stats: Vec::new(),
+            resources: Vec::new(),
         },
         map: map(),
         teams: vec![
@@ -304,7 +307,11 @@ impl Game {
 
     /// The match `new` gives; an error when the mode's start fails.
     fn start(script: &str, limits: ScriptLimits) -> Result<Game, CallError> {
-        let scripts = MatchScripts { limits, players: 3 };
+        let scripts = MatchScripts {
+            limits,
+            players: 3,
+            damage_kinds: Rc::from([]),
+        };
         let declared = [
             Capability::Combat,
             Capability::Navigation,

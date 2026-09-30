@@ -1,4 +1,5 @@
 use std::num::NonZeroU32;
+use std::rc::Rc;
 
 use campfire_math::{Num, Vec3};
 use campfire_script::rhai::Dynamic;
@@ -47,7 +48,11 @@ impl Scene {
             think: 100_000,
             mode: 100_000,
         };
-        let scripts = MatchScripts { limits, players: 1 };
+        let scripts = MatchScripts {
+            limits,
+            players: 1,
+            damage_kinds: Rc::from([]),
+        };
         let declared = [Capability::Combat, Capability::Vision];
         let TestMatch {
             mut world,

@@ -167,9 +167,7 @@ impl Hook {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::combat::damage_kind::DamageKind;
     use crate::scripts::ctx_entry::{CtxEntry, CtxKind};
-    use crate::stats::stat::Stat;
     use crate::values::relation::Relation;
 
     #[test]
@@ -181,17 +179,9 @@ mod tests {
         for entry in CtxEntry::ALL {
             assert_eq!(CtxEntry::named(entry.name), Some(*entry));
         }
-        for stat in Stat::ALL {
-            assert_eq!(Stat::named(stat.name()), Some(stat));
-        }
-        for kind in DamageKind::ALL {
-            assert_eq!(DamageKind::named(kind.name()), Some(kind));
-        }
         for relation in [Relation::Enemies, Relation::Allies, Relation::All] {
             assert_eq!(Relation::named(relation.name()), Some(relation));
         }
-        assert_eq!(Stat::name(Stat::MagicResist), "magic_resist");
-        assert_eq!(DamageKind::named("fire"), None);
         // A few as design 08 lists them.
         let think = Hook::Think;
         assert_eq!((think.params(), think.role()), (2, ScriptRole::Ai));

@@ -1,108 +1,100 @@
-use serde::de::Error;
+use std::fmt;
+
 use serde::{Deserialize, Deserializer};
 
-/// A stat, as data and `unit.stat(name)` name it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+use crate::values::declared_name::DeclaredName;
+
+/// A stat, as data and `unit.stat(name)` name it: one a capability reads, or one the mode
+/// declares for its own scripts and modifiers.
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Stat {
-    Health,
-    HealthRegen,
-    Resource,
-    ResourceRegen,
-    AttackDamage,
-    AbilityPower,
-    Armor,
-    MagicResist,
-    ArmorPen,
-    MagicPen,
-    MoveSpeed,
-    PhysicalBlock,
-    AttackDamagePct,
-    AbilityPowerPct,
-    AttackSpeedPct,
-    MoveSpeedPct,
-    HealingReceivedPct,
-    DamageDealtPct,
-    AttackSpeed,
-    CritChance,
-    ArmorPenPct,
-    MagicPenPct,
-    LifeSteal,
-    SpellVamp,
-    CooldownReduction,
-    Slow,
+    Engine(EngineStat),
+    Declared(DeclaredName),
 }
 
-impl Stat {
-    pub const ALL: [Stat; 26] = [
-        Stat::Health,
-        Stat::HealthRegen,
-        Stat::Resource,
-        Stat::ResourceRegen,
-        Stat::AttackDamage,
-        Stat::AbilityPower,
-        Stat::Armor,
-        Stat::MagicResist,
-        Stat::ArmorPen,
-        Stat::MagicPen,
-        Stat::MoveSpeed,
-        Stat::PhysicalBlock,
-        Stat::AttackDamagePct,
-        Stat::AbilityPowerPct,
-        Stat::AttackSpeedPct,
-        Stat::MoveSpeedPct,
-        Stat::HealingReceivedPct,
-        Stat::DamageDealtPct,
-        Stat::AttackSpeed,
-        Stat::CritChance,
-        Stat::ArmorPenPct,
-        Stat::MagicPenPct,
-        Stat::LifeSteal,
-        Stat::SpellVamp,
-        Stat::CooldownReduction,
-        Stat::Slow,
+/// A stat a capability reads, whatever the mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum EngineStat {
+    Health,
+    Resource,
+    MoveSpeed,
+    AttackSpeed,
+    AttackDamage,
+}
+
+impl EngineStat {
+    pub const ALL: [EngineStat; 5] = [
+        EngineStat::Health,
+        EngineStat::Resource,
+        EngineStat::MoveSpeed,
+        EngineStat::AttackSpeed,
+        EngineStat::AttackDamage,
     ];
 
     /// The stat named `name`.
-    pub fn named(name: &str) -> Option<Stat> {
-        Stat::ALL.into_iter().find(|stat| stat.name() == name)
+    pub fn named(name: &str) -> Option<EngineStat> {
+        EngineStat::ALL.into_iter().find(|stat| stat.name() == name)
     }
 
     /// The stat as data and scripts name it.
     pub const fn name(self) -> &'static str {
         match self {
-            Stat::Health => "health",
-            Stat::HealthRegen => "health_regen",
-            Stat::Resource => "resource",
-            Stat::ResourceRegen => "resource_regen",
-            Stat::AttackDamage => "attack_damage",
-            Stat::AbilityPower => "ability_power",
-            Stat::Armor => "armor",
-            Stat::MagicResist => "magic_resist",
-            Stat::ArmorPen => "armor_pen",
-            Stat::MagicPen => "magic_pen",
-            Stat::MoveSpeed => "move_speed",
-            Stat::PhysicalBlock => "physical_block",
-            Stat::AttackDamagePct => "attack_damage_pct",
-            Stat::AbilityPowerPct => "ability_power_pct",
-            Stat::AttackSpeedPct => "attack_speed_pct",
-            Stat::MoveSpeedPct => "move_speed_pct",
-            Stat::HealingReceivedPct => "healing_received_pct",
-            Stat::DamageDealtPct => "damage_dealt_pct",
-            Stat::AttackSpeed => "attack_speed",
-            Stat::CritChance => "crit_chance",
-            Stat::ArmorPenPct => "armor_pen_pct",
-            Stat::MagicPenPct => "magic_pen_pct",
-            Stat::LifeSteal => "life_steal",
-            Stat::SpellVamp => "spell_vamp",
-            Stat::CooldownReduction => "cooldown_reduction",
-            Stat::Slow => "slow",
+            EngineStat::Health => "health",
+            EngineStat::Resource => "resource",
+            EngineStat::MoveSpeed => "move_speed",
+            EngineStat::AttackSpeed => "attack_speed",
+            EngineStat::AttackDamage => "attack_damage",
+        }
+    }
+}
+
+impl Stat {
+    /// The stat `name` names: an engine stat by its name, else a declared one; `None` when it is
+    /// not a name at all. Whether the mode declares it is the package load's check.
+    pub fn named(name: &str) -> Option<Stat> {
+        EngineStat::named(name)
+            .map(Stat::Engine)
+            .or_else(|| DeclaredName::new(name).map(Stat::Declared))
+    }
+
+    /// The name of a stat the mode must declare; `None` for an engine stat.
+    pub const fn declared(&self) -> Option<&DeclaredName> {
+        match self {
+            Stat::Engine(_) => None,
+            Stat::Declared(name) => Some(name),
+        }
+    }
+}
+
+impl fmt::Display for Stat {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Stat::Engine(stat) => f.write_str(stat.name()),
+            Stat::Declared(name) => write!(f, "{name}"),
         }
     }
 }
 
 impl<'de> Deserialize<'de> for Stat {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Stat, D::Error> {
-        let name = String::deserialize(deserializer)?;
-        Stat::named(&name).ok_or_else(|| D::Error::custom(format!("unknown stat {name:?}")))
+        let name = DeclaredName::deserialize(deserializer)?;
+        Ok(EngineStat::named(name.as_str()).map_or(Stat::Declared(name), Stat::Engine))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_stat_is_an_engine_stat_by_its_name_or_a_declared_one() {
+        for stat in EngineStat::ALL {
+            assert_eq!(Stat::named(stat.name()), Some(Stat::Engine(stat)));
+        }
+        let armor = Stat::named("armor").unwrap();
+        assert_eq!(armor.declared().map(DeclaredName::as_str), Some("armor"));
+        assert_eq!(Stat::Engine(EngineStat::MoveSpeed).declared(), None);
+        assert_eq!(Stat::named("Armor"), None);
+        assert_eq!(armor.to_string(), "armor");
     }
 }

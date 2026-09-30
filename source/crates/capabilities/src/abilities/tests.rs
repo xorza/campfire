@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
+use std::rc::Rc;
 
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::Component;
@@ -26,6 +27,7 @@ use crate::scripts::script_failures::{ScriptFailure, ScriptFailures};
 use crate::scripts::script_limits::ScriptLimits;
 use crate::units::Units;
 use crate::units::unit_type_data::UnitTypeData;
+use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
 use crate::values::number::{Number, ParamRef};
 use crate::values::param::Param;
@@ -183,7 +185,13 @@ impl Match {
 
     /// A match of two players of `declared`, whose scripts run within `limits`.
     fn with(limits: ScriptLimits, declared: &[Capability]) -> Match {
-        let scripts = MatchScripts { limits, players: 2 };
+        // The damage kinds a mode would declare: the reference MOBA's.
+        let kinds = ["physical", "magic", "true"].map(|kind| DeclaredName::new(kind).unwrap());
+        let scripts = MatchScripts {
+            limits,
+            players: 2,
+            damage_kinds: Rc::from(kinds),
+        };
         let TestMatch {
             mut world,
             schedule,
@@ -265,6 +273,26 @@ impl Match {
     fn failures(&self) -> &[ScriptFailure] {
         self.world.non_send::<ScriptFailures>().get()
     }
+}
+
+#[test]
+fn damage_of_a_kind_the_mode_does_not_declare_fails_the_cast() {
+    let mut game = Match::new();
+    let fire = game.load(&lash_out(), &LASH_OUT.replace(r#""magic""#, r#""fire""#));
+    let husk = game.caster(fire, 2);
+    let near = game.spawn(1, at(num(3), Num::ZERO, Num::ZERO), ());
+    game.cast(husk, CastTarget::None);
+    // The call fails, so the cast applies nothing: no damage, no cost.
+    assert_eq!((game.health(near), game.pool(husk)), (500, 100));
+    let errors: Vec<_> = game
+        .failures()
+        .iter()
+        .map(|failure| &failure.error)
+        .collect();
+    assert!(
+        matches!(errors[..], [CallError::Api(ApiError::UnknownDamageKind)]),
+        "{errors:?}"
+    );
 }
 
 #[test]

@@ -135,7 +135,7 @@ impl fmt::Display for ApiError {
             ApiError::NegativeRadius => "radius is negative",
             ApiError::NegativeTime => "time is negative",
             ApiError::TimeTooLarge => "time is too long to count in ticks",
-            ApiError::UnknownDamageKind => "damage kind is not physical, magic or true",
+            ApiError::UnknownDamageKind => "damage kind is not one the mode declares",
             ApiError::NegativeDamage => "damage is negative",
             ApiError::IntegerBeyondNum => "integer is beyond a Num",
             ApiError::NoAttack => "unit has no attack",

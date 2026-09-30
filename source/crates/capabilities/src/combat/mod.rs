@@ -27,7 +27,6 @@ pub(crate) mod attack_state;
 pub(crate) mod attack_stats;
 pub(crate) mod combat_data;
 pub(crate) mod combatant;
-pub(crate) mod damage_kind;
 pub(crate) mod dead;
 pub(crate) mod deaths;
 pub(crate) mod health;

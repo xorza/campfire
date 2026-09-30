@@ -1,4 +1,5 @@
 use std::num::NonZeroU32;
+use std::rc::Rc;
 
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::Component;
@@ -179,7 +180,11 @@ impl Match {
     }
 
     fn with(lanes: Lanes, limits: ScriptLimits) -> Match {
-        let scripts = MatchScripts { limits, players: 2 };
+        let scripts = MatchScripts {
+            limits,
+            players: 2,
+            damage_kinds: Rc::from([]),
+        };
         let declared = [
             Capability::Combat,
             Capability::Navigation,
