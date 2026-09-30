@@ -5,10 +5,12 @@
 mod input_hash;
 mod player_input;
 mod player_slot;
+mod server_seed;
 mod session_log;
 
 pub use input_hash::InputHash;
 pub use player_input::PlayerInput;
 pub use player_slot::PlayerSlot;
-pub use session_log::error::InputError;
-pub use session_log::{Applied, SessionHeader, SessionLog};
+pub use server_seed::{SeedCommitment, ServerSeed};
+pub use session_log::error::{InputError, SeedError};
+pub use session_log::{Applied, SessionHeader, SessionLog, SessionPlayer};

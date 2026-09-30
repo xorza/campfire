@@ -142,6 +142,7 @@ fn types_hash_in_name_order() {
         [
             "sim.entities",
             "sim.id_allocator",
+            "sim.position",
             "sim.tick",
             "test.health",
             "test.position"
@@ -242,11 +243,12 @@ fn flawed_snapshots_are_refused() {
         "test.health",
         "test.position",
     ];
-    // The tick plays no part in these flaws, so every case holds tick 0.
+    // Sim positions and the tick play no part in these flaws: every case has none and tick 0.
     let with = |bodies: [Vec<u8>; 4]| -> Vec<u8> {
         let mut sections: Vec<_> = names.iter().copied().zip(bodies).collect();
+        sections.insert(2, ("sim.position", Vec::new()));
         sections.insert(
-            2,
+            3,
             ("sim.tick", postcard::to_allocvec(&Some(0_u64)).unwrap()),
         );
         frame(&sections)

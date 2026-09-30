@@ -9,5 +9,10 @@ campfire-identity.workspace = true
 campfire-protocol.workspace = true
 campfire-runner.workspace = true
 
+[dev-dependencies]
+campfire-math.workspace = true
+campfire-kit-moba.workspace = true
+campfire-sim.workspace = true
+
 [lints]
 workspace = true

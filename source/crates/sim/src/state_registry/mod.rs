@@ -4,6 +4,7 @@ use serde::de::DeserializeOwned;
 
 use crate::entity_index::EntityIndex;
 use crate::id_allocator::IdAllocator;
+use crate::position::Position;
 use crate::sim_state::{SimComponent, SimResource};
 use crate::sim_tick::SimTick;
 use crate::stable_id::StableId;
@@ -58,6 +59,7 @@ impl StateHash {
 }
 
 /// One type's part of a snapshot, and the bytes after it.
+#[derive(Debug)]
 struct Section<'a> {
     name: &'a [u8],
     body: &'a [u8],
@@ -65,19 +67,22 @@ struct Section<'a> {
 }
 
 /// Bytes split off the front, and the bytes after them.
+#[derive(Debug)]
 struct Split<'a> {
     head: &'a [u8],
     rest: &'a [u8],
 }
 
 /// A decoded value, and the bytes after it.
+#[derive(Debug)]
 struct Taken<'a, T> {
     value: T,
     rest: &'a [u8],
 }
 
 impl StateRegistry {
-    /// A registry with the sim's own state: the entity list, the id allocator and the tick.
+    /// A registry with the sim's own state: the entity list, the id allocator, the tick and
+    /// positions.
     pub fn new() -> StateRegistry {
         let mut registry = StateRegistry {
             entries: Vec::new(),
@@ -85,6 +90,7 @@ impl StateRegistry {
         registry.register(ENTITIES, encode_entities, decode_entities);
         registry.register_resource::<IdAllocator>();
         registry.register_resource::<SimTick>();
+        registry.register_component::<Position>();
         registry
     }
 

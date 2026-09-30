@@ -11,5 +11,7 @@ campfire-protocol.workspace = true
 campfire-script.workspace = true
 campfire-sim.workspace = true
 
+bevy_ecs.workspace = true
+
 [lints]
 workspace = true

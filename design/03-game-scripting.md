@@ -47,6 +47,8 @@ The sim runs every tick on the server and the verifier. The core fixes the order
 5. **Mode hooks** (script): due timers, then kit events from steps 2–4 in the order they happened; `ctx.end` ends the match.
 6. **Visibility** (core): backend marks what each team may see.
 
+Before each tick the runner puts the inputs the session log applies in it into the `TickInputs` resource, in slot order, then seq order; the schedule clears it after step 6, so no tick sees another's inputs.
+
 The sim does no I/O. The server writes each input to the session log when it assigns the input to a tick, before that tick runs; after the tick it sends each client its visible state and events. The verifier does neither.
 
 ## Match rules

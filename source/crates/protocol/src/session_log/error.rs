@@ -24,3 +24,23 @@ impl fmt::Display for InputError {
 }
 
 impl Error for InputError {}
+
+/// Why a log gives no segment seed. A published log is untrusted, so each is an expected failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SeedError {
+    /// The server seed is not revealed yet: the segment is not published.
+    NotRevealed,
+    /// The revealed server seed does not match the header's commitment.
+    WrongReveal,
+}
+
+impl fmt::Display for SeedError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            SeedError::NotRevealed => "the server seed is not revealed",
+            SeedError::WrongReveal => "the revealed server seed does not match its commitment",
+        })
+    }
+}
+
+impl Error for SeedError {}

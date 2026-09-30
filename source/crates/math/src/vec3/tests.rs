@@ -110,6 +110,29 @@ fn normalized_rounds_each_component() {
 }
 
 #[test]
+fn step_toward_rounds_once_and_stops_at_the_target() {
+    let start = v(1, 2, 3);
+    // Offset (3, 0, 4), distance 5: one meter moves 3/5 and 4/5, as in `normalized`.
+    assert_eq!(
+        start.step_toward(v(4, 2, 7), Num::ONE),
+        raw(ONE + 10_066_330, 2 * ONE, 3 * ONE + 13_421_773)
+    );
+    // Two meters: 6/5 · 2²⁴ = 20 132 659.2 → 20 132 659; 8/5 · 2²⁴ = 26 843 545.6 → 26 843 546.
+    assert_eq!(
+        start.step_toward(v(4, 2, 7), n(2 * ONE)),
+        raw(ONE + 20_132_659, 2 * ONE, 3 * ONE + 26_843_546)
+    );
+    assert_eq!(start.step_toward(v(4, 2, 7), n(5 * ONE)), v(4, 2, 7));
+    assert_eq!(start.step_toward(v(4, 2, 7), n(9 * ONE)), v(4, 2, 7));
+    assert_eq!(start.step_toward(v(4, 2, 7), Num::ZERO), start);
+    assert_eq!(start.step_toward(start, Num::ZERO), start);
+    assert_eq!(
+        raw(i64::MIN, 0, 0).checked_step_toward(raw(i64::MAX, 0, 0), n(HALF)),
+        None
+    );
+}
+
+#[test]
 fn rotated_y_turns_on_the_ground_plane() {
     let quarter = Num::FRAC_PI_2.sin_cos();
     let half = Num::PI.sin_cos();
@@ -161,6 +184,16 @@ proptest! {
             .filter(|&length| length != Num::ZERO)
             .and_then(|length| a.checked_div(length));
         prop_assert_eq!(a.normalized(), expected);
+    }
+
+    #[test]
+    fn step_toward_never_passes_the_target(a in vector(), b in vector(), step in 0_i64..(1_i64 << 50)) {
+        if let Some(moved) = a.checked_step_toward(b, n(step)) {
+            for (from, to, at) in [(a.x, b.x, moved.x), (a.y, b.y, moved.y), (a.z, b.z, moved.z)] {
+                prop_assert!(from.min(to) <= at && at <= from.max(to));
+            }
+            prop_assert_eq!(moved == b, a.within(b, n(step)));
+        }
     }
 
     #[test]

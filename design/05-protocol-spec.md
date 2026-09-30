@@ -83,7 +83,7 @@ SessionLog
 | External | Server key | Player connect or disconnect, character load, admin command, payment event, calendar time |
 
 - A match is one segment starting at tick 0 from the initial state. A persistent world adds a checkpoint every few minutes.
-- **Seed.** In waiting, the server commits `BLAKE3(server seed)`; each player then sends a random seed contribution. The first segment's seed is `BLAKE3(server seed ‖ contributions in slot order)`. Each later checkpoint commits the next segment's server seed before that segment starts, and that seed is the segment's seed. A seed is revealed only when its segment is published, because it predicts every hidden random outcome.
+- **Seed.** In waiting, the server commits `BLAKE3("campfire/seed-commitment/v1" ‖ server seed)`; each player then sends a random seed contribution. The first segment's seed is `BLAKE3("campfire/segment-seed/v1" ‖ server seed ‖ contributions in slot order)`. A verifier takes the seed only from the log: from the reveal, checked against the commitment. Each later checkpoint commits the next segment's server seed before that segment starts, and that seed is the segment's seed. A seed is revealed only when its segment is published, because it predicts every hidden random outcome.
 - Players who join later, and session key renewals, are added through a signed external input carrying the delegation. A renewal does not restart the player's input chain; the new key signs the chain heads from then on.
 - Bot and external inputs are signed by the server key, one signature per input.
 - Unknown payload formats are rejected.

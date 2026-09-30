@@ -141,6 +141,38 @@ impl Vec3 {
         other.checked_sub(self)?.normalized()
     }
 
+    /// The point `step` along the way to `target`, or `target` when it is at most `step` away.
+    /// Each component moves by `offset · step / distance`, rounded once, so it never passes the
+    /// target's. `None` when the offset or the distance does not fit a `Num`.
+    pub fn checked_step_toward(self, target: Vec3, step: Num) -> Option<Vec3> {
+        debug_assert!(step >= Num::ZERO, "Vec3::step_toward with a negative step");
+        if self.within(target, step) {
+            return Some(target);
+        }
+        let offset = target.checked_sub(self)?;
+        // The exact distance is above `step`, so the rounded one is at least `step`: every
+        // ratio below is at most 1, and each move at most its offset.
+        let distance = i128::from(offset.checked_length()?.to_bits());
+        let step = i128::from(step.to_bits());
+        let advance = |from: Num, offset: Num| {
+            let moved = Num::from_raw_ratio(i128::from(offset.to_bits()) * step, distance)
+                .expect("a move is at most its offset");
+            from.checked_add(moved)
+                .expect("a move ends between the start and the target")
+        };
+        Some(Vec3::new(
+            advance(self.x, offset.x),
+            advance(self.y, offset.y),
+            advance(self.z, offset.z),
+        ))
+    }
+
+    #[must_use]
+    pub fn step_toward(self, target: Vec3, step: Num) -> Vec3 {
+        self.checked_step_toward(target, step)
+            .expect("Vec3 overflow in step_toward")
+    }
+
     /// Turned about the y axis by the angle of `turn`, counter-clockwise seen from above; each
     /// component rounded once from the exact sum of products.
     pub const fn checked_rotated_y(self, turn: SinCos) -> Option<Vec3> {

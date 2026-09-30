@@ -122,6 +122,12 @@ impl Num {
         narrow(round_shr(sum, Self::FRAC_BITS))
     }
 
+    /// The value whose bits are nearest to `numerator / denominator`, for a ratio of raw products;
+    /// `None` when it does not fit.
+    pub(crate) const fn from_raw_ratio(numerator: i128, denominator: i128) -> Option<Num> {
+        narrow(round_div(numerator, denominator))
+    }
+
     pub const fn checked_div(self, rhs: Num) -> Option<Num> {
         if rhs.0 == 0 {
             return None;

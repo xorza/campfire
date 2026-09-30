@@ -1801,9 +1801,12 @@ dependencies = [
 name = "campfire-kit-moba"
 version = "0.0.0"
 dependencies = [
+ "bevy_ecs",
  "campfire-math",
  "campfire-script",
  "campfire-sim",
+ "postcard",
+ "serde",
 ]
 
 [[package]]
@@ -1842,6 +1845,7 @@ dependencies = [
 name = "campfire-runner"
 version = "0.0.0"
 dependencies = [
+ "bevy_ecs",
  "campfire-content",
  "campfire-kit-moba",
  "campfire-math",
@@ -1888,8 +1892,11 @@ version = "0.0.0"
 dependencies = [
  "campfire-content",
  "campfire-identity",
+ "campfire-kit-moba",
+ "campfire-math",
  "campfire-protocol",
  "campfire-runner",
+ "campfire-sim",
 ]
 
 [[package]]

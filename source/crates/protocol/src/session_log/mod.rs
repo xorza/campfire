@@ -2,12 +2,19 @@ use std::cmp::Reverse;
 use std::collections::BinaryHeap;
 use std::ops::Range;
 
+use blake3::Hasher;
+use campfire_math::SegmentSeed;
+
 use crate::input_hash::InputHash;
 use crate::player_input::PlayerInput;
 use crate::player_slot::PlayerSlot;
-use crate::session_log::error::InputError;
+use crate::server_seed::{SeedCommitment, ServerSeed};
+use crate::session_log::error::{InputError, SeedError};
 
 pub(crate) mod error;
+
+/// Starts the segment seed, so no other BLAKE3 use can produce one.
+const SEGMENT_SEED_DOMAIN: &[u8] = b"campfire/segment-seed/v1";
 
 /// What the log fixes before the first tick.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -18,8 +25,38 @@ pub struct SessionHeader {
     /// early. The server holds each input until its tick, so this bounds what a client can make
     /// it hold.
     pub max_input_lead: u64,
-    /// Each player's chain root, by slot: what the player's first input links to.
-    pub chain_roots: Vec<InputHash>,
+    /// The server's commitment to its seed, made before the players sent their contributions.
+    pub seed_commitment: SeedCommitment,
+    /// The players, by slot.
+    pub players: Vec<SessionPlayer>,
+}
+
+/// A player as the header lists them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SessionPlayer {
+    /// What the player's first input links to.
+    pub chain_root: InputHash,
+    /// The player's random share of the segment seed, sent after the server's commitment, so
+    /// neither side alone chooses the seed.
+    pub seed_contribution: [u8; 32],
+}
+
+impl SessionHeader {
+    /// The segment seed, `BLAKE3(domain ‖ server seed ‖ contributions in slot order)`; an error
+    /// when `server_seed` does not match the commitment.
+    pub fn segment_seed(&self, server_seed: &ServerSeed) -> Result<SegmentSeed, SeedError> {
+        if server_seed.commitment() != self.seed_commitment {
+            return Err(SeedError::WrongReveal);
+        }
+        let mut hasher = Hasher::new();
+        hasher
+            .update(SEGMENT_SEED_DOMAIN)
+            .update(server_seed.as_bytes());
+        for player in &self.players {
+            hasher.update(&player.seed_contribution);
+        }
+        Ok(SegmentSeed::new(*hasher.finalize().as_bytes()))
+    }
 }
 
 /// When a logged input takes effect.
@@ -41,6 +78,8 @@ pub enum Applied {
 #[derive(Debug)]
 pub struct SessionLog {
     header: SessionHeader,
+    /// Present once the segment is published.
+    revealed: Option<ServerSeed>,
     chains: Vec<Chain>,
     inputs: Vec<LoggedInput>,
     payloads: Vec<u8>,
@@ -81,15 +120,16 @@ struct Due {
 impl SessionLog {
     pub fn new(header: SessionHeader) -> SessionLog {
         let chains = header
-            .chain_roots
+            .players
             .iter()
-            .map(|&root| Chain {
-                head: root,
+            .map(|player| Chain {
+                head: player.chain_root,
                 next_seq: 0,
             })
             .collect();
         SessionLog {
             header,
+            revealed: None,
             chains,
             inputs: Vec::new(),
             payloads: Vec::new(),
@@ -101,6 +141,21 @@ impl SessionLog {
 
     pub const fn header(&self) -> &SessionHeader {
         &self.header
+    }
+
+    /// Adds the server seed, which publishes the segment.
+    pub fn reveal_seed(&mut self, server_seed: ServerSeed) {
+        assert!(
+            server_seed.commitment() == self.header.seed_commitment,
+            "the server reveals the seed it committed to"
+        );
+        self.revealed = Some(server_seed);
+    }
+
+    /// The seed of the segment's randomness, from the revealed server seed.
+    pub fn segment_seed(&self) -> Result<SegmentSeed, SeedError> {
+        self.header
+            .segment_seed(self.revealed.as_ref().ok_or(SeedError::NotRevealed)?)
     }
 
     /// The tick that the inputs recorded now arrive before.

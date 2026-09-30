@@ -9,6 +9,7 @@ use super::*;
 use crate::sim_state::{SimComponent, SimResource};
 use crate::stable_id::StableId;
 use crate::state_registry::{StateHash, StateRegistry};
+use crate::tick_inputs::TickInput;
 
 const SEED: SegmentSeed = SegmentSeed::new([7; 32]);
 const OTHER_SEED: SegmentSeed = SegmentSeed::new([8; 32]);
@@ -17,10 +18,10 @@ const TICKS: u64 = 5;
 const STEP_BOUND: u64 = 1000;
 
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-struct Position(Num);
+struct Offset(Num);
 
-impl SimComponent for Position {
-    const NAME: &'static str = "test.position";
+impl SimComponent for Offset {
+    const NAME: &'static str = "test.offset";
 }
 
 /// Ticks lived, counting the tick of the spawn.
@@ -31,6 +32,10 @@ impl SimComponent for Age {
     const NAME: &'static str = "test.age";
 }
 
+/// The number of tick inputs seen so far. It is not state, so it stays out of the hashes.
+#[derive(Resource, Debug, Default)]
+struct InputsSeen(usize);
+
 /// The sum of the tick numbers seen so far.
 #[derive(Resource, Debug, Default, Serialize, Deserialize)]
 struct TickSum(u64);
@@ -40,19 +45,23 @@ impl SimResource for TickSum {
 }
 
 fn spawn_unit(mut commands: Commands<'_, '_>, mut ids: ResMut<'_, IdAllocator>) {
-    commands.spawn((ids.allocate(), Position(Num::ZERO), Age(0)));
+    commands.spawn((ids.allocate(), Offset(Num::ZERO), Age(0)));
 }
 
-fn wander(rng: Res<'_, SimRng>, mut units: Query<'_, '_, (&StableId, &mut Position)>) {
+fn wander(rng: Res<'_, SimRng>, mut units: Query<'_, '_, (&StableId, &mut Offset)>) {
     for (&id, mut position) in &mut units {
         position.0 += Num::from_bits(rng.open("wander", id).below(STEP_BOUND).cast_signed());
     }
 }
 
-fn push(mut units: Query<'_, '_, &mut Position>) {
+fn push(mut units: Query<'_, '_, &mut Offset>) {
     for mut position in &mut units {
         position.0 += Num::ONE;
     }
+}
+
+fn count_inputs(inputs: Res<'_, TickInputs>, mut seen: ResMut<'_, InputsSeen>) {
+    seen.0 += inputs.iter().len();
 }
 
 fn grow_older(mut units: Query<'_, '_, &mut Age>) {
@@ -69,22 +78,25 @@ fn new_world(seed: SegmentSeed) -> World {
     let mut world = World::new();
     SimUpdate::prepare(&mut world, seed);
     world.init_resource::<TickSum>();
+    world.init_resource::<InputsSeen>();
     world
 }
 
 fn registry() -> StateRegistry {
     let mut registry = StateRegistry::new();
-    registry.register_component::<Position>();
+    registry.register_component::<Offset>();
     registry.register_component::<Age>();
     registry.register_resource::<TickSum>();
     registry
 }
 
-/// A spawn, two independent systems in one step, and a reader of the tick; `reversed` adds the
+/// A spawn, a reader of the tick inputs, two independent systems in one step, and a reader of the
+/// tick; `reversed` adds the
 /// same systems in the opposite order.
 fn workload(reversed: bool) -> Schedule {
-    let mut systems: [ScheduleConfigs<ScheduleSystem>; 4] = [
+    let mut systems: [ScheduleConfigs<ScheduleSystem>; 5] = [
         spawn_unit.in_set(SimSet::Inputs),
+        count_inputs.in_set(SimSet::Inputs),
         wander.in_set(SimSet::BeforeCollision),
         grow_older.in_set(SimSet::BeforeCollision),
         sum_ticks.in_set(SimSet::AfterCollision),
@@ -254,9 +266,37 @@ fn same_seed_gives_same_hash_every_tick() {
 fn ticks_advance_and_key_the_draws() {
     let mut world = new_world(SEED);
     let mut schedule = workload(false);
-    for _ in 0..TICKS {
+    for tick in 0..TICKS {
+        if tick == 3 {
+            let mut inputs = world.resource_mut::<TickInputs>();
+            inputs.push(TickInput {
+                slot: 0,
+                payload: b"up",
+            });
+            inputs.push(TickInput {
+                slot: 1,
+                payload: b"",
+            });
+            let pushed: Vec<_> = inputs.iter().collect();
+            assert_eq!(
+                pushed,
+                [
+                    TickInput {
+                        slot: 0,
+                        payload: b"up"
+                    },
+                    TickInput {
+                        slot: 1,
+                        payload: b""
+                    }
+                ]
+            );
+        }
         schedule.run(&mut world);
     }
+    // Tick 3 sees both inputs; tick 4 sees none, since the end of tick 3 cleared them.
+    assert_eq!(world.resource::<InputsSeen>().0, 2);
+    assert_eq!(world.resource::<TickInputs>().iter().len(), 0);
     assert_eq!(world.resource::<SimTick>().get(), TICKS);
     // Ticks 0 to 4 each add their number: 0 + 1 + 2 + 3 + 4 = 10.
     assert_eq!(world.resource::<TickSum>().0, 10);
@@ -279,7 +319,7 @@ fn ticks_advance_and_key_the_draws() {
             let unit = world.entity(entity);
             (
                 id.get(),
-                unit.get::<Position>().unwrap().0.to_bits(),
+                unit.get::<Offset>().unwrap().0.to_bits(),
                 unit.get::<Age>().unwrap().0,
             )
         })

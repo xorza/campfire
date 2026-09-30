@@ -1,16 +1,24 @@
-use blake3::Hasher;
-
 use super::*;
 
 const MAX_DELAY: u64 = 2;
 const MAX_LEAD: u64 = 2;
 const ROOTS: [InputHash; 2] = [InputHash::new([1; 32]), InputHash::new([2; 32])];
+const SERVER_SEED: ServerSeed = ServerSeed::new([5; 32]);
+const CONTRIBUTIONS: [[u8; 32]; 2] = [[6; 32], [7; 32]];
 
 fn header() -> SessionHeader {
     SessionHeader {
         max_input_delay: MAX_DELAY,
         max_input_lead: MAX_LEAD,
-        chain_roots: ROOTS.to_vec(),
+        seed_commitment: SERVER_SEED.commitment(),
+        players: ROOTS
+            .iter()
+            .zip(CONTRIBUTIONS)
+            .map(|(&chain_root, seed_contribution)| SessionPlayer {
+                chain_root,
+                seed_contribution,
+            })
+            .collect(),
     }
 }
 
@@ -151,6 +159,7 @@ fn a_replay_reads_the_inputs_back_in_order() {
 }
 
 /// A change to the sent inputs, and the first input it makes the log refuse.
+#[derive(Debug)]
 struct Tamper {
     name: &'static str,
     change: fn(&mut Vec<Vec<PlayerInput<'static>>>),
@@ -241,6 +250,53 @@ fn a_dropped_input_breaks_the_chain() {
     assert_eq!(log.record(c), Err(InputError::BrokenLink));
     assert_eq!(log.record(b), Ok(Applied::At(1)));
     assert_eq!(log.record(c), Ok(Applied::At(1)));
+}
+
+#[test]
+fn the_segment_seed_comes_from_the_revealed_seed() {
+    let digest = |parts: &[&[u8]]| {
+        let mut hasher = Hasher::new();
+        for part in parts {
+            hasher.update(part);
+        }
+        *hasher.finalize().as_bytes()
+    };
+    assert_eq!(
+        SERVER_SEED.commitment().as_bytes(),
+        &digest(&[b"campfire/seed-commitment/v1", &[5; 32]])
+    );
+    let expected = SegmentSeed::new(digest(&[
+        b"campfire/segment-seed/v1",
+        &[5; 32],
+        &[6; 32],
+        &[7; 32],
+    ]));
+    assert_eq!(header().segment_seed(&SERVER_SEED), Ok(expected));
+    assert_eq!(
+        header().segment_seed(&ServerSeed::new([4; 32])),
+        Err(SeedError::WrongReveal)
+    );
+
+    // Each contribution counts, and so does their slot order.
+    let mut changed = header();
+    changed.players[1].seed_contribution[31] ^= 1;
+    let mut swapped = header();
+    swapped.players.swap(0, 1);
+    for other in [changed, swapped] {
+        let seed = other.segment_seed(&SERVER_SEED).unwrap();
+        assert_ne!(seed, expected, "{other:?}");
+    }
+
+    let mut log = SessionLog::new(header());
+    assert_eq!(log.segment_seed(), Err(SeedError::NotRevealed));
+    log.reveal_seed(SERVER_SEED);
+    assert_eq!(log.segment_seed(), Ok(expected));
+}
+
+#[test]
+#[should_panic(expected = "the server reveals the seed it committed to")]
+fn revealing_another_seed_is_a_bug() {
+    SessionLog::new(header()).reveal_seed(ServerSeed::new([4; 32]));
 }
 
 #[test]
