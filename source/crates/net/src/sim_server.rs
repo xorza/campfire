@@ -1,4 +1,4 @@
-use bevy_app::{App, FixedUpdate, Plugin, Update};
+use bevy_app::{App, FixedUpdate, Plugin, RunFixedMainLoop, RunFixedMainLoopSystems, Update};
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Changed, With, Without};
@@ -68,19 +68,23 @@ impl Plugin for SimServer {
                 .chain()
                 .run_if(resource_exists::<Lobby>),
         );
+        // Lightyear keeps a received message for one frame only, and a frame runs no fixed tick
+        // or several, so the inputs are logged in every frame, before its fixed ticks.
+        app.add_systems(
+            RunFixedMainLoop,
+            record_inputs
+                .in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop)
+                .run_if(resource_exists::<MatchClock>),
+        );
         app.add_systems(
             FixedUpdate,
             (
-                record_inputs.run_if(resource_exists::<MatchClock>),
-                (
-                    run_sim_tick,
-                    record_hash.run_if(resource_exists::<TickHashes>),
-                    show_units,
-                )
-                    .chain()
-                    .run_if(sim_tick_due),
+                run_sim_tick,
+                record_hash.run_if(resource_exists::<TickHashes>),
+                show_units,
             )
-                .chain(),
+                .chain()
+                .run_if(sim_tick_due),
         );
     }
 }
@@ -130,7 +134,7 @@ impl SimServer {
     }
 }
 
-/// Logs each received packet before the tick about to run.
+/// Logs each packet received in this frame, before the next tick runs.
 fn record_inputs(
     mut links: Query<'_, '_, (&mut PlayerLink, &mut MessageReceiver<InputMessage>)>,
     mut session: ResMut<'_, Session>,

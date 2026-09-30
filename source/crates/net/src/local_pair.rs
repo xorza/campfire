@@ -45,12 +45,15 @@ const CERTIFICATE: CertificateHash = CertificateHash::new([3; 32]);
 const NOW: u64 = 1_700_000_000;
 
 /// A server app and one client app joined by in-process channels, each on a manual clock that
-/// advances one tick per `step`, so every run is the same. The client's player holds fixed keys
-/// and draws fixed random bytes, and the server keeps the state hash after every tick.
+/// advances one tick per `step`, so every run is the same. The server may take that tick in
+/// several frames, as a real server runs frames faster than ticks. The client's player holds
+/// fixed keys and draws fixed random bytes, and the server keeps the state hash after every tick.
 #[derive(Debug)]
 pub struct LocalPair {
     server: App,
     client: App,
+    /// Server frames per `step`.
+    server_frames: u32,
     /// The server's link to the client.
     link: Entity,
     seed_chain: SeedChain,
@@ -59,8 +62,10 @@ pub struct LocalPair {
 
 impl LocalPair {
     /// A connected and synced pair of the test lane mode, whose server will commit to
-    /// `seed_chain`, at the mode's default rate. The client's state rollbacks follow `rollback`.
-    pub fn new(rollback: RollbackMode, seed_chain: SeedChain) -> LocalPair {
+    /// `seed_chain`, at the mode's default rate, and runs `server_frames` frames a tick. The
+    /// client's state rollbacks follow `rollback`.
+    pub fn new(rollback: RollbackMode, seed_chain: SeedChain, server_frames: u32) -> LocalPair {
+        assert!(server_frames > 0, "the server runs a frame a tick at least");
         let packages = lane_mode();
         let mode = ClientMode::of(&packages);
         let tick = TickRate::new(mode.tick_hz).length();
@@ -73,7 +78,9 @@ impl LocalPair {
         });
         server.add_plugins((NetProtocol, SimServer));
         server.init_resource::<TickHashes>();
-        server.insert_resource(TimeUpdateStrategy::ManualDuration(tick));
+        let frame = tick / server_frames;
+        assert_eq!(frame * server_frames, tick, "the frames make a whole tick");
+        server.insert_resource(TimeUpdateStrategy::ManualDuration(frame));
         server.add_observer(
             |added: On<'_, '_, Add, LinkOf>, mut commands: Commands<'_, '_>| {
                 commands.entity(added.entity).insert(ReplicationSender);
@@ -130,6 +137,7 @@ impl LocalPair {
         let mut pair = LocalPair {
             server,
             client,
+            server_frames,
             link,
             seed_chain,
             packages,
@@ -172,10 +180,17 @@ impl LocalPair {
         panic!("the match did not start in {CONNECT_FRAMES} frames");
     }
 
-    /// One frame of each app, the client first: one tick each.
+    /// One frame of the server alone, which shifts where in a step its ticks fall.
+    pub fn server_frame(&mut self) {
+        self.server.update();
+    }
+
+    /// One frame of the client, then the server's frames: one tick each.
     pub fn step(&mut self) {
         self.client.update();
-        self.server.update();
+        for _ in 0..self.server_frames {
+            self.server.update();
+        }
     }
 
     /// Gives the client's hero an order, sent in the client's next tick.

@@ -23,7 +23,7 @@ pub fn rollback(c: &mut Criterion) {
         ("frame_without_rollback", RollbackMode::Check),
         ("frame_with_rollback", RollbackMode::Always),
     ] {
-        let mut pair = LocalPair::new(mode, SEED_CHAIN);
+        let mut pair = LocalPair::new(mode, SEED_CHAIN, 1);
         pair.start_match();
         let mut frame: u64 = 0;
         group.bench_function(name, |b| {

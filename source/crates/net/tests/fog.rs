@@ -41,7 +41,7 @@ struct Server {
 
 #[test]
 fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
-    let mut pair = LocalPair::new(RollbackMode::Check, SEED_CHAIN);
+    let mut pair = LocalPair::new(RollbackMode::Check, SEED_CHAIN, 1);
     pair.start_match();
     // Without the per-tick hash from here on, as in production: the ticks and the replication run
     // all the same.
