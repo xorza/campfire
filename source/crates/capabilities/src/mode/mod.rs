@@ -30,6 +30,7 @@ use crate::mode::picks::{Pick, Picks};
 use crate::mode::player_resources::PlayerResources;
 use crate::mode::team_manifest::TeamManifest;
 use crate::mode::timers::Timers;
+use crate::navigation::Navigation;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::paths::Paths;
 use crate::orders::OrdersSet;
@@ -37,6 +38,7 @@ use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::units::UnitsSet;
+use crate::units::body::Body;
 use crate::units::script_view::View;
 use crate::units::team::Team;
 use crate::units::teams::Teams;
@@ -84,6 +86,13 @@ impl Mode {
         let paths = Mode::paths(setup.map);
         let bounds = setup.map.bounds;
         let grid = setup.map.grid().expect("the check passed");
+        let pathing = setup.map.pathing().expect("the check passed");
+        let walkers = setup
+            .unit_types
+            .iter()
+            .filter(|setup| setup.kit.step.is_some())
+            .filter_map(|setup| setup.kit.body.map(Body::radius))
+            .collect();
         // A window past what ticks can count covers the whole match.
         let assist_window = setup
             .data
@@ -96,6 +105,9 @@ impl Mode {
         };
         if let Some(grid) = grid {
             Vision::load_grid(world, grid, book.teams.count());
+        }
+        if let Some(pathing) = pathing {
+            Navigation::load_pathing(world, pathing, walkers);
         }
         if let Some(window) = assist_window {
             world.insert_resource(AssistWindow(window));
@@ -172,6 +184,7 @@ impl Mode {
             return Err(ModeError::TooManyTeams);
         }
         map.grid()?;
+        map.pathing()?;
         let in_bounds = |point: &GroundPoint| match point.position() {
             Some(pos) if map.bounds.contains(pos) => Ok(()),
             _ => Err(ModeError::OutOfBounds),

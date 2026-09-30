@@ -6,6 +6,10 @@ max = [20, 8]
 [grid]
 cell = "1.0"
 
+# Units plan their routes over half-meter cells.
+[navigation]
+cell = "0.5"
+
 # The lane runs along x through the origin; each side's tower stands 8 m down it from the middle,
 # and 3 m to its side, off the way of the units that walk it. The heroes spawn in the middle, 2 m
 # off the lane on either side, clear of the creeps that walk and fight there.

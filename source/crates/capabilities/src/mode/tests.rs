@@ -153,6 +153,9 @@ fn map() -> MapData {
         grid: Some(GridData {
             cell: Scalar::Int(1),
         }),
+        navigation: Some(GridData {
+            cell: Scalar::Int(1),
+        }),
         paths: vec![PathData {
             name: "mid".to_owned(),
             points: vec![point(-10, 0), point(0, 0), point(10, 0)],

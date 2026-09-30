@@ -1,7 +1,7 @@
 use std::num::NonZeroU32;
 
 use bevy_ecs::component::Component;
-use campfire_math::{Num, Vec3};
+use campfire_math::Vec3;
 use campfire_sim::{Capability, EntityIndex, IdAllocator, SimUpdate, TickRate, TypeHash};
 
 use super::*;
@@ -206,6 +206,44 @@ fn a_client_parts_its_units_only_from_held_units_that_cannot_walk() {
     }
     let places = [blocked, passing, fixed, resting].map(|unit| walk.get::<Position>(unit));
     assert_eq!(places, [at(1, 0, 0), at(4, 0, 4), at(2, 0, 0), at(2, 0, 4)]);
+}
+
+#[test]
+fn the_pathing_grid_follows_the_static_bodies_from_the_next_tick() {
+    // 1 m cells over (−2, −2) to (2, 2), for walkers of 0.5 m: a tower of 0.5 m at (−1.5, −1.5)
+    // blocks its own cell, 0, whose center is on it; one the client only holds, at (1.5, 1.5),
+    // blocks cell 15. A walker never marks the grid.
+    let half = Num::from_bits(1 << 23);
+    let mut walk = Walk::new();
+    let bounds = Bounds::new([num(-2), num(-2)], [num(2), num(2)]).unwrap();
+    Navigation::load_pathing(
+        &mut walk.world,
+        Grid::new(Num::ONE, bounds).unwrap(),
+        vec![half],
+    );
+    let quarter = |value: i64| Num::from_bits(value << 22);
+    let place =
+        |x: i64, z: i64| Position::new(Vec3::new(quarter(x), Num::ZERO, quarter(z))).unwrap();
+    let blocked = |walk: &Walk| {
+        let grid = walk.world.resource::<PathingGrid>();
+        (0..16)
+            .filter(|&cell| !grid.open(half, cell))
+            .collect::<Vec<_>>()
+    };
+    let tower = walk.body(place(-6, -6), None, None, half);
+    let held = walk.body(place(6, 6), None, None, half);
+    walk.body(place(0, 0), Some(at(0, 0, 1)), Some(Num::ONE), half);
+    Unpredicted::register(&mut walk.world);
+    let entity = walk.world.resource::<EntityIndex>().get(held).unwrap();
+    walk.world.entity_mut(entity).insert(Unpredicted);
+    assert_eq!(blocked(&walk), Vec::<usize>::new());
+    walk.tick();
+    assert_eq!(blocked(&walk), [0, 15]);
+    // A tower that died stands no more in the way, from the next tick.
+    let entity = walk.world.resource::<EntityIndex>().get(tower).unwrap();
+    walk.world.entity_mut(entity).insert(Dead);
+    walk.tick();
+    assert_eq!(blocked(&walk), [15]);
 }
 
 #[test]

@@ -9,6 +9,10 @@ max = [48, 68]
 [grid]
 cell = "1.0"
 
+# Units plan their routes over half-meter cells.
+[navigation]
+cell = "0.5"
+
 [[paths]]
 name = "west"
 points = [[-6, -50], [-36, -36], [-40, 0], [-36, 36], [-6, 50]]

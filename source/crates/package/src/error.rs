@@ -116,6 +116,8 @@ pub enum LoadProblem {
     },
     /// The mode declares `vision`, and its map has no grid for sight to reveal.
     NoGrid,
+    /// The mode declares `navigation`, and its map has no `[navigation]` cells to plan routes on.
+    NoPathingGrid,
     /// A structure of `unit_type` stands so near `path` that the widest body of a unit that walks
     /// cannot pass it: with no steering, it would block the path for good.
     StructureOnPath {
@@ -314,6 +316,9 @@ impl fmt::Display for LoadProblem {
                 write!(f, "avatar {name:?} has the name of a unit type")
             }
             LoadProblem::NoGrid => f.write_str("the mode declares vision, and its map has no grid"),
+            LoadProblem::NoPathingGrid => {
+                f.write_str("the mode declares navigation, and its map has no [navigation] cells")
+            }
             LoadProblem::StructureOnPath { unit_type, path } => write!(
                 f,
                 "a {unit_type:?} stands so near path {path:?} that the widest unit that walks \

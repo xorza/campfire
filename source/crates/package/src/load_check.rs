@@ -203,6 +203,14 @@ impl<'a> LoadCheck<'a> {
         {
             return Err(LoadProblem::NoGrid);
         }
+        if packages
+            .manifest
+            .capabilities
+            .contains(Capability::Navigation)
+            && packages.map.navigation.is_none()
+        {
+            return Err(LoadProblem::NoPathingGrid);
+        }
         for (name, field) in &data.state {
             if field.sync.is_none() {
                 return Err(LoadProblem::StateSync(name.clone()));

@@ -59,6 +59,24 @@ impl Grid {
         &self,
         pos: Position,
         radius: Num,
+        reveal: impl FnMut(Range<usize>),
+    ) {
+        self.spans(pos, radius, false, reveal);
+    }
+
+    /// Calls `mark` with each row's run of the cells whose centers are closer than `radius` to
+    /// `pos` on the ground plane, exactly: a center at `radius` is not closer. Rows in order.
+    pub(crate) fn spans_closer(&self, pos: Position, radius: Num, mark: impl FnMut(Range<usize>)) {
+        self.spans(pos, radius, true, mark);
+    }
+
+    /// The runs of `spans_within`, or of `spans_closer` when `strict`: with whole half-bits, a
+    /// square below `reach²` is one at most `reach² − 1`.
+    fn spans(
+        &self,
+        pos: Position,
+        radius: Num,
+        strict: bool,
         mut reveal: impl FnMut(Range<usize>),
     ) {
         let at = pos.get();
@@ -76,7 +94,7 @@ impl Grid {
         let high_row = (from[1] + reach).div_euclid(2 * cell).min(size[1] - 1);
         for z in low_row..=high_row {
             let dz = i128::from(from[1] - cell * (2 * z + 1));
-            let rest = i128::from(reach).pow(2) - dz * dz;
+            let rest = i128::from(reach).pow(2) - i128::from(strict) - dz * dz;
             if rest < 0 {
                 continue;
             }
@@ -171,20 +189,33 @@ mod tests {
             for z in -8..10 {
                 let pos = at(quarter * x, quarter * z);
                 for radius in [0, 1, 2, 3, 5, 6, 7, 9, 12, 20].map(|r| quarter * r) {
-                    let mut spans = Vec::new();
-                    grid.spans_within(pos, radius, |span| spans.extend(span));
-                    let alone: Vec<usize> = (0..grid.cells())
-                        .filter(|&cell| {
-                            let center = |index: usize, axis: usize| {
-                                twice(grid.bounds.min()[axis])
-                                    + i128::from(grid.cell.to_bits()) * (2 * index as i128 + 1)
-                            };
-                            let dx = twice(pos.get().x) - center(cell % 4, 0);
-                            let dz = twice(pos.get().z) - center(cell / 4, 1);
-                            dx * dx + dz * dz <= twice(radius) * twice(radius)
-                        })
-                        .collect();
-                    assert_eq!(spans, alone, "{x} {z} {radius:?}");
+                    // Within the radius, and strictly closer than it.
+                    for strict in [false, true] {
+                        let mut spans = Vec::new();
+                        if strict {
+                            grid.spans_closer(pos, radius, |span| spans.extend(span));
+                        } else {
+                            grid.spans_within(pos, radius, |span| spans.extend(span));
+                        }
+                        let alone: Vec<usize> = (0..grid.cells())
+                            .filter(|&cell| {
+                                let center = |index: usize, axis: usize| {
+                                    twice(grid.bounds.min()[axis])
+                                        + i128::from(grid.cell.to_bits()) * (2 * index as i128 + 1)
+                                };
+                                let dx = twice(pos.get().x) - center(cell % 4, 0);
+                                let dz = twice(pos.get().z) - center(cell / 4, 1);
+                                let square = dx * dx + dz * dz;
+                                let reach = twice(radius) * twice(radius);
+                                if strict {
+                                    square < reach
+                                } else {
+                                    square <= reach
+                                }
+                            })
+                            .collect();
+                        assert_eq!(spans, alone, "{x} {z} {radius:?} {strict}");
+                    }
                 }
             }
         }

@@ -124,7 +124,7 @@ fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 57] = [
+const FLAWS: [Flaw; 58] = [
     flaw(
         MANIFEST,
         Edit::Replace(r#"engine = "0.1.0""#, r#"engine = "0.0.9""#),
@@ -309,6 +309,12 @@ const FLAWS: [Flaw; 57] = [
         Edit::Replace("[grid]\ncell = \"1.0\"\n", ""),
         MODE,
         |problem| matches!(problem, LoadProblem::NoGrid),
+    ),
+    flaw(
+        MAP,
+        Edit::Replace("[navigation]\ncell = \"0.5\"\n", ""),
+        MODE,
+        |problem| matches!(problem, LoadProblem::NoPathingGrid),
     ),
     flaw(
         MAP,

@@ -2,8 +2,9 @@ use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Allow, Has, With, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
-use bevy_ecs::system::{Local, Query, Res};
+use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::{EntityRef, World};
+use campfire_math::Num;
 use campfire_sim::{Position, SimSet, StableId, StateRegistry, Unpredicted};
 
 use crate::combat::dead::Dead;
@@ -13,10 +14,12 @@ use crate::navigation::destination::Destination;
 use crate::navigation::move_step::MoveStep;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::PathWalker;
+use crate::navigation::pathing_grid::{PathingGrid, StaticBody};
 use crate::navigation::paths::Paths;
 use crate::units::body::Body;
 use crate::units::script_view::{RowFill, View};
 use crate::values::bounds::Bounds;
+use crate::values::grid::Grid;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
@@ -26,6 +29,7 @@ pub(crate) mod destination;
 pub(crate) mod move_step;
 pub(crate) mod on_path;
 pub(crate) mod path_walker;
+pub(crate) mod pathing_grid;
 pub(crate) mod paths;
 
 /// The `navigation` capability: units that walk to a destination, and the map's waypoint paths.
@@ -43,6 +47,7 @@ impl Navigation {
         world.insert_resource(Paths::default());
         world.insert_resource(Bounds::WORLD);
         schedule.add_systems((
+            track_static_bodies.in_set(SimSet::Inputs),
             move_units.in_set(SimSet::Move),
             collide.in_set(SimSet::Collide),
             keep_in_bounds.after(SimSet::Collide).before(SimSet::Hit),
@@ -52,6 +57,41 @@ impl Navigation {
         registry.register_component::<MoveStep>();
         registry.register_component::<OnPath>();
     }
+}
+
+impl Navigation {
+    /// Gives the match the map's pathing grid over `cells`, for walkers of `radii`; the static
+    /// bodies mark it from the first tick on.
+    pub(crate) fn load_pathing(world: &mut World, cells: Grid, radii: Vec<Num>) {
+        world.insert_resource(PathingGrid::new(cells, radii));
+    }
+}
+
+/// Marks the pathing grid, as each tick starts, with the static bodies: the living units that
+/// cannot walk, those the client only holds among them. It builds the grid again only when they
+/// changed, so a structure that died or spawned in the tick before counts from this one. Every
+/// tick reads them into `statics`, a buffer it keeps.
+fn track_static_bodies(
+    grid: Option<ResMut<'_, PathingGrid>>,
+    bodies: Query<
+        '_,
+        '_,
+        (&StableId, &Position, &Body),
+        (Without<MoveStep>, Without<Dead>, Allow<Unpredicted>),
+    >,
+    mut statics: Local<'_, Vec<StaticBody>>,
+) {
+    let Some(mut grid) = grid else {
+        return;
+    };
+    statics.clear();
+    statics.extend(bodies.iter().map(|(&id, &at, body)| StaticBody {
+        id,
+        at,
+        radius: body.radius(),
+    }));
+    statics.sort_unstable_by_key(|body| body.id);
+    grid.update(&statics);
 }
 
 /// Fills a row of the script view with the path the unit walks or stands on.
