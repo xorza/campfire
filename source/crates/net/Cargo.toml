@@ -11,6 +11,7 @@ bench = ["internals", "dep:criterion"]
 
 [dependencies]
 campfire-capabilities.workspace = true
+campfire-log.workspace = true
 campfire-math.workspace = true
 campfire-package.workspace = true
 campfire-protocol.workspace = true
@@ -26,6 +27,9 @@ lightyear.workspace = true
 serde.workspace = true
 toml.workspace = true
 tracing.workspace = true
+
+[dev-dependencies]
+campfire-log = { workspace = true, features = ["internals"] }
 
 [[test]]
 name = "tests"

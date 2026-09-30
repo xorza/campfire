@@ -7,12 +7,12 @@ use std::fs;
 use std::path::Path;
 use std::process::ExitCode;
 
-use campfire_log::Logging;
+use campfire_log::{LogEvent, Logging};
 use campfire_package::PackageStore;
 use campfire_protocol::SessionLog;
 use campfire_sim::StateHash;
-use campfire_verifier::Replay;
-use tracing::{error, info};
+use campfire_verifier::{Replay, Verified};
+use tracing::error;
 
 fn main() -> ExitCode {
     Logging {
@@ -28,7 +28,11 @@ fn main() -> ExitCode {
     let path = Path::new(&path);
     match verify(Path::new(&packages), path) {
         Ok(hash) => {
-            info!(file = %path.display(), %hash, "the log verifies; its final state hash");
+            Verified {
+                file: path.to_owned(),
+                hash,
+            }
+            .log();
             ExitCode::SUCCESS
         }
         Err(error) => {

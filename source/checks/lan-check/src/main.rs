@@ -13,23 +13,21 @@ use std::path::Path;
 use std::process::{Command, ExitCode, Stdio};
 
 use campfire_log::Logging;
-use campfire_net::OrderScript;
+use campfire_net::{InputLogged, Listening, MatchStarted, OrderScript, OrdersSent, SessionWritten};
+use campfire_verifier::Verified;
 use tracing::{error, info};
 
 use crate::binaries::Binaries;
 use crate::error::CheckError;
-use crate::known_event::KnownEvent;
 use crate::lan_match::LanMatch;
 use crate::outcome::Outcome;
 use crate::process::Process;
 use crate::process_log::ProcessLog;
-use crate::verdict::{BotLog, Verdict};
+use crate::verdict::{BotEvents, Verdict};
 
 mod binaries;
 mod error;
-mod event;
 mod failure;
-mod known_event;
 mod lan_match;
 mod outcome;
 mod process;
@@ -116,31 +114,27 @@ fn check() -> Result<Verdict, CheckError> {
     let mut verdict = Verdict::default();
     let server = ProcessLog::read(Process::Server, &lan.log_path(Process::Server))?;
     verdict.process(Process::Server, played.server, &server);
-    verdict.listened(&server);
+    verdict.listened(&server.read_all::<Listening>()?);
     let mut bots = Vec::with_capacity(played.bots.len());
-    for (index, &outcome) in played.bots.iter().enumerate() {
+    for ((index, &outcome), &scripted) in played.bots.iter().enumerate().zip(&scripted) {
         let process = Process::Bot(index);
         let log = ProcessLog::read(process, &lan.log_path(process))?;
         verdict.process(process, outcome, &log);
-        bots.push(log);
+        bots.push(BotEvents {
+            started: log.first::<MatchStarted>()?,
+            sent: log.read_all::<OrdersSent>()?,
+            scripted,
+        });
     }
-    let bot_logs: Vec<_> = bots
-        .iter()
-        .zip(&scripted)
-        .map(|(log, &scripted)| BotLog { log, scripted })
-        .collect();
-    verdict.orders(&server, &bot_logs);
+    verdict.orders(&server.read_all::<InputLogged>()?, &bots);
 
-    let written = server.known().find_map(|event| match event {
-        KnownEvent::WroteLog { file, .. } => Some(file),
-        _ => None,
-    });
-    let verifier = match written {
-        Some(file) => {
+    let written = server.first::<SessionWritten>()?;
+    let verified = match &written {
+        Some(written) => {
             let path = lan.log_path(Process::Verifier);
             let status = Command::new(&binaries.verifier)
                 .arg(PACKAGES)
-                .arg(file)
+                .arg(&written.file)
                 .current_dir(&dir)
                 .env("CAMPFIRE_LOG", &path)
                 .stdout(Stdio::null())
@@ -152,10 +146,10 @@ fn check() -> Result<Verdict, CheckError> {
                 })?;
             let log = ProcessLog::read(Process::Verifier, &path)?;
             verdict.process(Process::Verifier, Outcome::of(status), &log);
-            log
+            log.first::<Verified>()?
         }
-        None => ProcessLog::default(),
+        None => None,
     };
-    verdict.hash(&server, &verifier);
+    verdict.hash(written.as_ref(), verified.as_ref());
     Ok(verdict)
 }

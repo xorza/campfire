@@ -12,9 +12,11 @@ campfire-protocol.workspace = true
 campfire-runner.workspace = true
 campfire-sim.workspace = true
 
+serde.workspace = true
 tracing.workspace = true
 
 [dev-dependencies]
+campfire-log = { workspace = true, features = ["internals"] }
 campfire-capabilities.workspace = true
 campfire-math.workspace = true
 

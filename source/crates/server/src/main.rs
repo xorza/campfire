@@ -14,7 +14,7 @@ use std::env;
 use std::fs;
 use std::net::SocketAddr;
 use std::num::NonZeroU32;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::ExitCode;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -26,8 +26,10 @@ use bevy_ecs::system::{Commands, Query};
 use bevy_ecs::world::World;
 use bevy_state::app::StatesPlugin;
 use bevy_time::TimePlugin;
-use campfire_log::Logging;
-use campfire_net::{Lobby, LobbySetup, MatchClock, NetProtocol, PlayerLink, SimServer};
+use campfire_log::{LogEvent, Logging};
+use campfire_net::{
+    Listening, Lobby, LobbySetup, MatchClock, NetProtocol, PlayerLink, SessionWritten, SimServer,
+};
 use campfire_package::ModePackages;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
 use campfire_protocol::{CertificateHash, SeedChain};
@@ -120,15 +122,19 @@ fn main() -> ExitCode {
             commands.entity(added.entity).insert(ReplicationSender);
         },
     );
-    let join = format!(
-        "campfire-client {} <this machine's LAN address>:{} {certificate} {key}",
-        mode.display(),
-        address.port()
-    );
+    let listening = Listening {
+        certificate,
+        server_key: key,
+        join: format!(
+            "campfire-client {} <this machine's LAN address>:{} {certificate} {key}",
+            mode.display(),
+            address.port()
+        ),
+    };
     app.add_observer(
         move |added: On<'_, '_, Add, Linked>, servers: Query<'_, '_, (), With<RawServer>>| {
             if servers.contains(added.entity) {
-                info!(%certificate, server_key = %key, %join, "listening; players join with the command in `join`");
+                listening.log();
             }
         },
     );
@@ -165,20 +171,17 @@ fn end_when_everyone_left(world: &mut World) {
     let mut bytes = Vec::new();
     session.log().encode(&mut bytes);
     let id = session.log().header().terms.session_id();
-    let name = format!("{id}.campfire-log");
-    let written = fs::write(Path::new(&name), &bytes);
+    let file = PathBuf::from(format!("{id}.campfire-log"));
+    let written = fs::write(&file, &bytes);
     world.write_message(AppExit::Success);
     match written {
-        Ok(()) => {
-            info!(
-                session = %id,
-                file = name,
-                %hash,
-                "every player left; wrote the session log, which `campfire-verifier <packages \
-                 directory> <file>` replays to the same hash"
-            );
+        Ok(()) => SessionWritten {
+            session: id,
+            file,
+            hash,
         }
-        Err(error) => error!(file = name, %error, "could not write the session log"),
+        .log(),
+        Err(error) => error!(file = %file.display(), %error, "could not write the session log"),
     }
 }
 

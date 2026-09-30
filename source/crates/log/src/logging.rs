@@ -3,8 +3,11 @@ use std::fs::File;
 use std::io::{self, IsTerminal};
 use std::sync::Mutex;
 
-use tracing::error;
+use tracing::{Subscriber, error};
+use tracing_subscriber::fmt::MakeWriter;
+use tracing_subscriber::fmt::format::{Format, Json, JsonFields};
 use tracing_subscriber::layer::SubscriberExt;
+use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::{EnvFilter, Layer, fmt};
 
@@ -36,15 +39,10 @@ impl Logging {
             Err(error) => (None, Some(error)),
         };
         let file = file.map(|file| {
-            fmt::layer()
-                .json()
-                .with_current_span(true)
-                .with_span_list(true)
-                .with_writer(Mutex::new(file))
-                .with_filter(
-                    EnvFilter::try_from_env("CAMPFIRE_LOG_FILTER")
-                        .unwrap_or_else(|_| EnvFilter::new(self.file)),
-                )
+            json(Mutex::new(file)).with_filter(
+                EnvFilter::try_from_env("CAMPFIRE_LOG_FILTER")
+                    .unwrap_or_else(|_| EnvFilter::new(self.file)),
+            )
         });
         tracing_subscriber::registry()
             .with(terminal)
@@ -52,6 +50,62 @@ impl Logging {
             .init();
         if let (Some(path), Some(error)) = (path, failed) {
             error!(path = %path.display(), %error, "CAMPFIRE_LOG names a file that cannot be created");
+        }
+    }
+}
+
+/// The file's layer: an event a line, as JSON, with its spans.
+fn json<S, W>(writer: W) -> fmt::Layer<S, JsonFields, Format<Json>, W>
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+    W: for<'w> MakeWriter<'w> + 'static,
+{
+    fmt::layer()
+        .json()
+        .with_current_span(true)
+        .with_span_list(true)
+        .with_writer(writer)
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use std::io::{self, Write};
+    use std::sync::{Arc, Mutex};
+
+    use tracing::subscriber;
+    use tracing_subscriber::layer::SubscriberExt;
+
+    use super::json;
+
+    /// The JSON lines, as `Logging` writes them to its file, of every event `f` logs on this
+    /// thread.
+    pub(crate) fn capture(f: impl FnOnce()) -> Vec<String> {
+        let buffer = Arc::new(Mutex::new(Vec::new()));
+        let writer = {
+            let buffer = Arc::clone(&buffer);
+            move || Captured(Arc::clone(&buffer))
+        };
+        subscriber::with_default(tracing_subscriber::registry().with(json(writer)), f);
+        let bytes = buffer.lock().unwrap().clone();
+        String::from_utf8(bytes)
+            .unwrap()
+            .lines()
+            .map(str::to_owned)
+            .collect()
+    }
+
+    /// A writer into a shared buffer.
+    #[derive(Debug)]
+    struct Captured(Arc<Mutex<Vec<u8>>>);
+
+    impl Write for Captured {
+        fn write(&mut self, bytes: &[u8]) -> io::Result<usize> {
+            self.0.lock().unwrap().extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+
+        fn flush(&mut self) -> io::Result<()> {
+            Ok(())
         }
     }
 }

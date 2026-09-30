@@ -2058,6 +2058,7 @@ dependencies = [
  "campfire-net",
  "campfire-protocol",
  "campfire-sim",
+ "campfire-verifier",
  "serde",
  "serde_json",
  "tracing",
@@ -2067,6 +2068,8 @@ dependencies = [
 name = "campfire-log"
 version = "0.1.0"
 dependencies = [
+ "serde",
+ "serde_json",
  "tracing",
  "tracing-subscriber",
 ]
@@ -2091,6 +2094,7 @@ dependencies = [
  "bevy_state",
  "bevy_time",
  "campfire-capabilities",
+ "campfire-log",
  "campfire-math",
  "campfire-package",
  "campfire-protocol",
@@ -2197,6 +2201,7 @@ dependencies = [
  "campfire-protocol",
  "campfire-runner",
  "campfire-sim",
+ "serde",
  "tracing",
 ]
 

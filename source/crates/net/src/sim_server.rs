@@ -8,11 +8,12 @@ use bevy_ecs::schedule::common_conditions::resource_exists;
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_capabilities::{Dead, Mode, Owner, SeenBy, Team};
+use campfire_log::LogEvent;
 use campfire_math::PlayerSlot;
 use campfire_package::ModePackages;
 use campfire_protocol::{Applied, ServerSeed, SessionLog};
 use campfire_runner::{Session, StartError};
-use campfire_sim::{SimTick, StableId, StateHash, TickRate};
+use campfire_sim::{SimTick, StableId, StateHash, Tick, TickRate};
 use lightyear::core::tick::TickDuration;
 use lightyear::prelude::{
     LocalTimeline, MessageReceiver, MessageSender, NetworkTarget, PredictionTarget, Replicate,
@@ -20,6 +21,7 @@ use lightyear::prelude::{
 };
 use tracing::{debug, info, trace, trace_span, warn};
 
+use crate::events::input_logged::InputLogged;
 use crate::input_message::InputMessage;
 use crate::lobby::Lobby;
 use crate::match_clock::MatchClock;
@@ -165,7 +167,12 @@ fn record_inputs(
             }
             for (input, &outcome) in inputs.zip(applied.iter()) {
                 match outcome {
-                    Applied::At(tick) => debug!(slot, stamp = input.stamp, tick, "logged an input"),
+                    Applied::At(tick) => InputLogged {
+                        slot: link.slot,
+                        stamp: Tick::new(input.stamp),
+                        tick: Tick::new(tick),
+                    }
+                    .log(),
                     Applied::Late | Applied::Early => warn!(
                         slot,
                         stamp = input.stamp,

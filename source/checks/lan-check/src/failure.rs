@@ -1,10 +1,10 @@
 use std::fmt;
 
+use campfire_log::Level;
 use campfire_math::PlayerSlot;
 use campfire_sim::{StateHash, Tick};
 use serde_json::Value;
 
-use crate::event::Level;
 use crate::outcome::Outcome;
 use crate::process::Process;
 
@@ -25,7 +25,7 @@ pub(crate) enum Failure {
     /// A bot never learned its slot: it did not join, or its match did not start.
     NoSlot { bot: usize },
     /// A bot sent another number of orders than its script holds.
-    OrdersSent {
+    OrderCount {
         bot: usize,
         sent: usize,
         scripted: usize,
@@ -72,7 +72,7 @@ impl fmt::Display for Failure {
             } => write!(f, "{process} logged {level:?} from {target}: {fields}"),
             Failure::NeverListened => f.write_str("the server never listened"),
             Failure::NoSlot { bot } => write!(f, "bot {bot} never learned its slot"),
-            Failure::OrdersSent {
+            Failure::OrderCount {
                 bot,
                 sent,
                 scripted,

@@ -8,6 +8,7 @@ use bevy_ecs::schedule::common_conditions::{not, resource_exists};
 use bevy_ecs::system::{Commands, Query, Res, ResMut, Single};
 use bevy_ecs::world::{Mut, World};
 use campfire_capabilities::{Dead, Order, Owner};
+use campfire_log::LogEvent;
 use campfire_math::SegmentSeed;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SignOnly};
 use campfire_protocol::{Delegation, DelegationTerms, InputChain, InputHash, SessionId};
@@ -22,6 +23,8 @@ use lightyear::prelude::{
 use tracing::{debug, info, warn};
 
 use crate::error::TermsMismatch;
+use crate::events::match_started::MatchStarted;
+use crate::events::orders_sent::OrdersSent;
 use crate::input_message::InputMessage;
 use crate::join::Join;
 use crate::match_clock::MatchClock;
@@ -244,11 +247,11 @@ fn receive_match_start(
                 continue;
             };
             sent.chain = Some(InputChain::new(start.slot, session.chain_root));
-            info!(
-                slot = start.slot.get(),
-                start_tick = start.start_tick,
-                "the match started"
-            );
+            MatchStarted {
+                slot: start.slot,
+                start_tick: start.start_tick,
+            }
+            .log();
             commands.insert_resource(MatchClock::new(NetTick(start.start_tick)));
         }
     }
@@ -317,7 +320,11 @@ fn send_orders(
     if pending.0.is_empty() {
         return;
     }
-    debug!(stamp = stamp.get(), orders = pending.0.len(), "sent orders");
+    OrdersSent {
+        stamp,
+        orders: pending.0.len(),
+    }
+    .log();
     let first = inputs.len();
     for order in pending.0.drain(..) {
         let start = payloads.len();

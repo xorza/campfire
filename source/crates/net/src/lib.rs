@@ -6,6 +6,7 @@
 )]
 
 mod error;
+mod events;
 mod input_message;
 mod join;
 mod lobby;
@@ -20,6 +21,11 @@ mod sim_client;
 mod sim_server;
 
 pub use error::{JoinError, OrderScriptError, TermsMismatch};
+pub use events::input_logged::InputLogged;
+pub use events::listening::Listening;
+pub use events::match_started::MatchStarted;
+pub use events::orders_sent::OrdersSent;
+pub use events::session_written::SessionWritten;
 pub use input_message::InputMessage;
 pub use join::Join;
 pub use lobby::{JoinRefused, Joined, Lobby, LobbySetup};

@@ -8,6 +8,7 @@ use std::path::Path;
 use std::process::Command;
 
 use campfire_capabilities::{Action, AttackState, Destination, Health, Order, Owner, Projectile};
+use campfire_log::LogEvent;
 use campfire_math::{Num, PlayerSlot, Vec3};
 use campfire_package::{ModePackages, PackageStore, RELEASE, StoreError};
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
@@ -17,7 +18,7 @@ use campfire_protocol::{
 };
 use campfire_runner::{Runner, Session, StartError};
 use campfire_sim::{EntityIndex, Position, StableId, StateHash};
-use campfire_verifier::Replay;
+use campfire_verifier::{Replay, Verified};
 
 /// Every package, the reference ones and the test ones: what the verifier holds.
 const PACKAGES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../packages");
@@ -376,7 +377,7 @@ fn the_binary_logs_the_last_state_hash() {
     assert!(output.status.success(), "{output:?}");
     let hash = hashes.last().unwrap();
     let logged = String::from_utf8(output.stderr).unwrap();
-    let success = format!("the log verifies; its final state hash file={path} hash={hash}\n");
+    let success = format!("{} file={path} hash={hash}\n", Verified::MESSAGE);
     assert!(logged.ends_with(&success), "{logged}");
     assert!(output.stdout.is_empty());
 

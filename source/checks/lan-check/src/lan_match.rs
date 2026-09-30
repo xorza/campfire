@@ -5,9 +5,10 @@ use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use campfire_net::Listening;
+
 use crate::binaries::Binaries;
 use crate::error::CheckError;
-use crate::known_event::KnownEvent;
 use crate::outcome::Outcome;
 use crate::process::Process;
 use crate::process_log::ProcessLog;
@@ -52,15 +53,7 @@ impl LanMatch<'_> {
         )?;
         let log = self.log_path(Process::Server);
         let listening = loop {
-            let listening = ProcessLog::read(Process::Server, &log)?
-                .known()
-                .find_map(|event| match *event {
-                    KnownEvent::Listening {
-                        certificate,
-                        server_key,
-                    } => Some([certificate.to_string(), server_key.to_string()]),
-                    _ => None,
-                });
+            let listening = ProcessLog::read(Process::Server, &log)?.first::<Listening>()?;
             if listening.is_some() || Instant::now() >= deadline {
                 break listening;
             }
@@ -75,7 +68,12 @@ impl LanMatch<'_> {
             }
             thread::sleep(POLL);
         };
-        let Some([certificate, server_key]) = listening else {
+        let Some(Listening {
+            certificate,
+            server_key,
+            ..
+        }) = listening
+        else {
             return Ok(Played {
                 server: stop(Process::Server, &mut server)?,
                 bots: vec![Outcome::NotStarted; self.scripts.len()],
@@ -90,7 +88,8 @@ impl LanMatch<'_> {
                     .arg(script)
                     .arg(self.mode)
                     .arg(address.to_string())
-                    .args([&certificate, &server_key]),
+                    .arg(certificate.to_string())
+                    .arg(server_key.to_string()),
             )?;
             children.push((Process::Bot(index), bot));
         }
