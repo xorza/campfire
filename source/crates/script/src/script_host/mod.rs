@@ -121,6 +121,14 @@ impl ScriptHost {
         Ok(id)
     }
 
+    /// Whether `script` defines a function `name` of `params` parameters, as a hook the engine
+    /// calls must be.
+    pub fn defines(&self, script: ScriptId, name: &str, params: usize) -> bool {
+        self.scripts[script.0 as usize]
+            .iter_functions()
+            .any(|function| function.name == name && function.params.len() == params)
+    }
+
     /// Starts a tick's operation budget.
     pub fn begin_tick(&mut self) {
         self.spent.set(0);

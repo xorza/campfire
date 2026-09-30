@@ -6,7 +6,7 @@ use std::fmt::Write;
 use std::fs;
 use std::process::Command;
 
-use campfire_capabilities::{Action, Destination, Health, Order};
+use campfire_capabilities::{Action, AttackState, Destination, Health, Order, Projectile};
 use campfire_math::{Num, Vec3};
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
 use campfire_protocol::{
@@ -208,55 +208,92 @@ fn world_ids(runner: &Runner) -> Vec<StableId> {
         .collect()
 }
 
-/// The stable ids of the units in `runner`'s world, and each one's health, rounded.
-fn units(runner: &Runner) -> Vec<(u64, i64)> {
-    let world = runner.world();
-    world
-        .resource::<EntityIndex>()
-        .iter()
-        .map(|(id, entity)| {
-            let health = world.entity(entity).get::<Health>().unwrap();
-            (id.get(), health.current().round())
-        })
-        .collect()
+/// The hero walks 1 m along x from the origin, into the reach of the second side's tower.
+const INTO_REACH: Sent = Sent {
+    arrives: 0,
+    stamp: 0,
+    x: 1,
+    z: 0,
+    applied: Applied::At(0),
+};
+
+/// What a tick left: the attack target of units 1 to 6, the hero's health, and how many
+/// projectiles fly.
+#[derive(Debug, PartialEq, Eq)]
+struct Seen {
+    targets: [Option<u64>; 6],
+    hero_health: i64,
+    projectiles: usize,
+}
+
+impl Seen {
+    fn of(runner: &Runner) -> Seen {
+        let world = runner.world();
+        let index = world.resource::<EntityIndex>();
+        let entity = |id: u64| index.iter().find(|(unit, _)| unit.get() == id).unwrap().1;
+        let targets = [1, 2, 3, 4, 5, 6].map(|id| {
+            let attack = world.entity(entity(id)).get::<AttackState>().unwrap();
+            attack.target().map(StableId::get)
+        });
+        let hero = world.entity(entity(0)).get::<Health>().unwrap();
+        let projectiles = index
+            .iter()
+            .filter(|&(_, entity)| world.entity(entity).contains::<Projectile>())
+            .count();
+        Seen {
+            targets,
+            hero_health: hero.current().round(),
+            projectiles,
+        }
+    }
 }
 
 #[test]
-fn towers_kill_creeps_and_the_replay_agrees() {
-    // Ids: the hero 0, the first side's tower 1 at x = −8 and the second's 2 at x = 8, then
-    // tick 0's wave: the first side's creeps 3 and 4 at x = −16, the second's 5 and 6 at 16.
-    // A creep walks ⅛ m a tick from tick 1: the first side's is at −16 + t/8 after tick t.
-    // The second side's tower sees it within 7.75 m once 24 − (t − 1)/8 ≤ 7.75, in tick 131,
-    // and takes creep 3, the lower id of the two tied. Attacks start in ticks 131, 168 and
-    // 205, every 37, and strike 5 ticks later for 150: 445 → 295 → 145 → 0 in tick 210. The
-    // second side's creep 5 mirrors it.
-    let before = run(&ORDERS.each_ref(), 210);
-    assert_eq!(
-        units(&before.runner),
-        [
-            (0, 600),
-            (1, 1500),
-            (2, 1500),
-            (3, 145),
-            (4, 445),
-            (5, 145),
-            (6, 445)
-        ]
-    );
-    let Run { runner, hashes } = run(&ORDERS.each_ref(), 211);
-    assert_eq!(
-        units(&runner),
-        [(0, 600), (1, 1500), (2, 1500), (4, 445), (6, 445)]
-    );
-
+fn scripted_creeps_and_towers_replay_to_the_same_hashes() {
+    let Run { runner, hashes } = run(&[&INTO_REACH], 72);
     let decoded = SessionLog::decode(&encoded(runner.log())).unwrap();
     let mut replay = Replay::new(decoded).unwrap();
+    let mut seen = Vec::new();
     for (tick, live) in hashes.iter().enumerate() {
         assert!(replay.run_tick());
         assert_eq!(replay.runner().state_hash(), *live, "tick {tick}");
+        seen.push(Seen::of(replay.runner()));
     }
     assert!(!replay.run_tick());
-    assert_eq!(units(replay.runner()), units(&runner));
+
+    // Ids: the hero 0, the towers 1 at x = −8 and 2 at x = 8, then the first side's creeps 3 and
+    // 4 at x = −16 and the second's 5 and 6 at x = 16. Every unit thinks every 8 ticks, in the
+    // ticks that leave its id.
+    //
+    // The hero walks ¼ m a tick from tick 0 and stands at x = 1 from tick 3. Tower 2 thinks in
+    // tick 2, with the hero at 0.5, 7.5 m away and within its 7.75: no creep is in reach, so it
+    // takes the hero. Its attacks start in ticks 2, 39 and 76 and fire 5 ticks later, from
+    // x = 8, at the hero 7 m away. A projectile flies 12 m/s ÷ 30, 0.4 m rounded down to
+    // 6710886 / 2²⁴ m, from the tick after it fires: 17 steps leave less than a step, so the
+    // 18th lands, in ticks 25 and 62, for 150 each.
+    //
+    // A second-side creep stands at 16 − (t − 1)/8 as it thinks in tick t. Creep 5 thinks in
+    // tick 61 at 8.5, 7.5 m from the hero, beyond its 7 m aggro range, and in tick 69 at 7.5,
+    // 6.5 m away: it takes the hero. Creep 6 does in tick 70, at 7.375. The first side's creeps
+    // are 15 m from the second's, and tower 1 is 15.5 m from them: none of them takes a target.
+    let expected: Vec<_> = (0..72)
+        .map(|tick| {
+            let hero = Some(0);
+            let from = |first: u64| (tick >= first).then_some(()).and(hero);
+            let hero_health = match tick {
+                ..25 => 600,
+                25..62 => 450,
+                _ => 300,
+            };
+            let projectiles = usize::from((7..25).contains(&tick) || (44..62).contains(&tick));
+            Seen {
+                targets: [None, from(2), None, None, from(69), from(70)],
+                hero_health,
+                projectiles,
+            }
+        })
+        .collect();
+    assert_eq!(seen, expected);
 }
 
 fn encoded(log: &SessionLog) -> Vec<u8> {

@@ -7,10 +7,11 @@ use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::schedule::common_conditions::{not, resource_exists};
 use bevy_ecs::system::{Commands, Query, Res, ResMut, Single};
 use bevy_ecs::world::{Mut, World};
-use campfire_capabilities::{Combat, Control, Navigation, Order};
+use campfire_capabilities::{Combat, Control, Navigation, Order, Units};
 use campfire_math::SegmentSeed;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SignOnly};
 use campfire_protocol::{InputChain, InputHash, PlayerSlot, SessionId};
+use campfire_runner::StandInMode;
 use campfire_sim::{SimTick, SimUpdate, StateRegistry, TickInput, TickInputs};
 use lightyear::prelude::{
     Client, LocalTimeline, MessageReceiver, MessageSender, Tick, is_in_rollback,
@@ -83,9 +84,16 @@ impl Plugin for SimClient {
         let mut schedule = SimUpdate::schedule();
         // A client hashes no state, so the registry the capabilities fill is not kept.
         let mut state = StateRegistry::new();
+        Units::install(
+            world,
+            &mut schedule,
+            &mut state,
+            StandInMode::SCRIPT_LIMITS,
+            StandInMode::TICK_RATE,
+        );
         Combat::install(world, &mut schedule, &mut state);
         Navigation::install(world, &mut schedule, &mut state);
-        Control::install(&mut schedule, &mut state);
+        Control::install(world, &mut schedule, &mut state);
         world.add_schedule(schedule);
         world.insert_resource(SentInputs {
             client: self.clone(),

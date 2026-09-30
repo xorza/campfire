@@ -9,7 +9,9 @@ use crate::combat::attack_state::AttackState;
 use crate::combat::attack_stats::AttackStats;
 use crate::combat::dead::Dead;
 use crate::combat::health::Health;
+use crate::combat::launches::{Launch, Launches};
 use crate::combat::on_death::OnDeath;
+use crate::combat::recent_attackers::RecentAttackers;
 use crate::combat::strikes::{Strike, Strikes};
 use crate::combat::targets::Targets;
 use crate::combat::team::Team;
@@ -20,8 +22,10 @@ pub(crate) mod combatant;
 pub(crate) mod damage_kind;
 pub(crate) mod dead;
 pub(crate) mod health;
+pub(crate) mod launches;
 pub(crate) mod living_unit;
 pub(crate) mod on_death;
+pub(crate) mod recent_attackers;
 pub(crate) mod strikes;
 pub(crate) mod targets;
 pub(crate) mod team;
@@ -35,15 +39,23 @@ pub struct Combat;
 pub(crate) enum CombatSet {
     /// In `SimSet::Act`: attacks start, and targets that are gone are dropped.
     Attack,
-    /// In `SimSet::Hit`: windups that end strike.
+    /// In `SimSet::Hit`: windups that end strike, or fire.
     Strike,
+    /// In `SimSet::Hit`, after `Strike`: the tick's launches take off.
+    Launch,
 }
 
 impl Combat {
     /// Adds combat to a match: in Act, attacks in range start once ready; in Hit, windups that
-    /// end strike; in Resolve, the strikes deal their damage, then units at zero health die.
+    /// end strike, or fire when ranged and the match has projectiles; in Resolve, the strikes
+    /// deal their damage and each target records its attacker, then units at zero health die.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         world.insert_resource(Strikes::default());
+        schedule.configure_sets(
+            CombatSet::Launch
+                .in_set(SimSet::Hit)
+                .after(CombatSet::Strike),
+        );
         schedule.add_systems((
             attack.in_set(SimSet::Act).in_set(CombatSet::Attack),
             strike.in_set(SimSet::Hit).in_set(CombatSet::Strike),
@@ -54,6 +66,7 @@ impl Combat {
         registry.register_component::<Dead>();
         registry.register_component::<Health>();
         registry.register_component::<OnDeath>();
+        registry.register_component::<RecentAttackers>();
         registry.register_component::<Team>();
     }
 }
@@ -84,44 +97,69 @@ fn attack(
     }
 }
 
-/// Queues the strike of each attack whose windup ends this tick.
+/// Queues the strike of each attack whose windup ends this tick, or its launch when it is ranged
+/// and the match has projectiles.
 fn strike(
     tick: Res<'_, SimTick>,
     mut strikes: ResMut<'_, Strikes>,
-    mut attackers: Query<'_, '_, (&StableId, &AttackStats, &mut AttackState), Without<Dead>>,
+    mut launches: Option<ResMut<'_, Launches>>,
+    mut attackers: Query<
+        '_,
+        '_,
+        (&StableId, &Position, &AttackStats, &mut AttackState),
+        Without<Dead>,
+    >,
 ) {
     let now = tick.get();
-    for (&source, stats, mut attack) in &mut attackers {
+    for (&source, &from, stats, mut attack) in &mut attackers {
         let Some(started) = attack.started() else {
             continue;
         };
         if now < after(started, stats.windup()) {
             continue;
         }
-        strikes.0.push(Strike {
-            source,
-            target: attack
-                .target()
-                .expect("an attack in its windup has a target"),
-            amount: stats.damage(),
-        });
+        let target = attack
+            .target()
+            .expect("an attack in its windup has a target");
+        let amount = stats.damage();
+        match (stats.projectile_speed(), launches.as_deref_mut()) {
+            (Some(speed), Some(launches)) => launches.0.push(Launch {
+                source,
+                from,
+                target,
+                amount,
+                speed,
+            }),
+            _ => strikes.0.push(Strike {
+                source,
+                target,
+                amount,
+            }),
+        }
         attack.strike(after(started, stats.period()));
     }
 }
 
-/// Deals the tick's strikes in the order of their source's stable id.
+/// Deals the tick's strikes in the order of their source's stable id, and records each source
+/// with its target.
 fn apply_strikes(
+    tick: Res<'_, SimTick>,
     index: Res<'_, EntityIndex>,
     mut strikes: ResMut<'_, Strikes>,
-    mut healths: Query<'_, '_, &mut Health>,
+    mut targets: Query<'_, '_, (&mut Health, Option<&mut RecentAttackers>)>,
 ) {
+    let now = tick.get();
     strikes.0.sort_unstable_by_key(|strike| strike.source);
     for strike in strikes.0.drain(..) {
-        if let Some(mut health) = index
+        let Some((mut health, attackers)) = index
             .get(strike.target)
-            .and_then(|entity| healths.get_mut(entity).ok())
-        {
-            health.take(strike.amount);
+            .and_then(|entity| targets.get_mut(entity).ok())
+        else {
+            continue;
+        };
+        health.take(strike.amount);
+        if let Some(mut attackers) = attackers {
+            attackers.record(strike.source, now, &index);
         }
     }
 }

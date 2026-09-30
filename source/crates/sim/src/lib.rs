@@ -18,6 +18,7 @@ mod sim_update;
 mod stable_id;
 mod state_registry;
 mod tick_inputs;
+mod tick_rate;
 
 pub use capability::Capability;
 pub use command::Command;
@@ -32,6 +33,7 @@ pub use stable_id::StableId;
 pub use state_registry::error::SnapshotError;
 pub use state_registry::{StateHash, StateRegistry, TypeHash};
 pub use tick_inputs::{TickInput, TickInputs};
+pub use tick_rate::TickRate;
 
 #[cfg(feature = "bench")]
 pub mod bench {

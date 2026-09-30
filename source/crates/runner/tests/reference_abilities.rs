@@ -6,13 +6,14 @@ use bevy_ecs::world::World;
 use campfire_capabilities::{
     Abilities, AbilitySlots, AbilityTables, Action, AttackStats, CastTarget, Combat, Combatant,
     Control, Controller, Health, Navigation, OnDeath, Order, Param, Range, Ranked, ResourcePool,
-    Scalar, Scaling, Targeting, Team,
+    Scalar, Scaling, Targeting, Team, Units,
 };
 use campfire_content::{PackageDir, PackagePath};
 use campfire_math::{Num, SegmentSeed, Vec3};
 use campfire_script::ScriptLimits;
 use campfire_sim::{
     EntityIndex, IdAllocator, Position, SimUpdate, StableId, StateRegistry, TickInput, TickInputs,
+    TickRate,
 };
 
 const HEROES: [&str; 6] = ["cinder", "gale", "husk", "kensho", "rime", "veil"];
@@ -100,14 +101,16 @@ fn lash_out_from_its_package_hits_exactly() {
     SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]));
     let mut schedule = SimUpdate::schedule();
     let mut registry = StateRegistry::new();
-    Combat::install(&mut world, &mut schedule, &mut registry);
-    Navigation::install(&mut world, &mut schedule, &mut registry);
     let limits = ScriptLimits {
         per_call: 10_000,
         per_tick: 100_000,
     };
-    Abilities::install(&mut world, &mut schedule, &mut registry, limits);
-    Control::install(&mut schedule, &mut registry);
+    let rate = TickRate::new(30).unwrap();
+    Units::install(&mut world, &mut schedule, &mut registry, limits, rate);
+    Combat::install(&mut world, &mut schedule, &mut registry);
+    Navigation::install(&mut world, &mut schedule, &mut registry);
+    Abilities::install(&mut world, &mut schedule, &mut registry);
+    Control::install(&mut world, &mut schedule, &mut registry);
     world.add_schedule(schedule);
 
     let husk = abilities("husk");
@@ -115,7 +118,7 @@ fn lash_out_from_its_package_hits_exactly() {
     let source = hero("husk")
         .read_text(data.script.as_ref().unwrap())
         .unwrap();
-    let lash_out = Abilities::load(&mut world, data, Some(&source), 30).unwrap();
+    let lash_out = Abilities::load(&mut world, data, Some(&source)).unwrap();
 
     let caster = spawn(
         &mut world,

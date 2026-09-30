@@ -1,8 +1,9 @@
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::Component;
-use bevy_ecs::world::World;
+use campfire_content::PackagePath;
 use campfire_math::{Num, SegmentSeed};
-use campfire_sim::{Capability, IdAllocator, SimTick, SimUpdate, StableId, TickInput, TypeHash};
+use campfire_script::ScriptLimits;
+use campfire_sim::{Capability, IdAllocator, SimUpdate, TickInput, TypeHash};
 
 use super::*;
 use crate::combat::Combat;
@@ -12,8 +13,14 @@ use crate::combat::on_death::OnDeath;
 use crate::navigation::Navigation;
 use crate::navigation::lane_walker::PathDirection;
 use crate::navigation::move_step::MoveStep;
+use crate::units::Units;
+use crate::units::error::ApiError;
+use crate::units::scalar::Scalar;
+use crate::units::unit_type_data::UnitTypeData;
 
 const ONE: i64 = 1 << 24;
+const CREEP_AI: &str = include_str!("../../../../packages/moba/modes/3v3/scripts/creep_ai.rhai");
+const TOWER_AI: &str = include_str!("../../../../packages/moba/modes/3v3/scripts/tower_ai.rhai");
 
 fn num(value: i64) -> Num {
     Num::from_int(value).unwrap()
@@ -76,9 +83,15 @@ impl Match {
         SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]));
         let mut schedule = SimUpdate::schedule();
         let mut registry = StateRegistry::new();
+        let limits = ScriptLimits {
+            per_call: 20_000,
+            per_tick: 200_000,
+        };
+        let rate = TickRate::new(30).unwrap();
+        Units::install(&mut world, &mut schedule, &mut registry, limits, rate);
         Combat::install(&mut world, &mut schedule, &mut registry);
         Navigation::install(&mut world, &mut schedule, &mut registry);
-        Control::install(&mut schedule, &mut registry);
+        Control::install(&mut world, &mut schedule, &mut registry);
         world.insert_resource(lanes);
         world.add_schedule(schedule);
         Match { world, registry }
@@ -102,14 +115,47 @@ impl Match {
         )
     }
 
-    /// A still unit, and a tower when `tower`.
-    fn still(&mut self, team: Team, at: Position, combatant: Combatant, tower: bool) -> StableId {
-        let id = self.spawn(at, combatant.bundle(team));
-        if tower {
-            let entity = self.world.resource::<EntityIndex>().get(id).unwrap();
-            self.world.entity_mut(entity).insert(TowerAi);
+    /// A unit type of `tags` and `params`, and with the AI script `ai` when it has one, thinking
+    /// every 250 ms.
+    fn unit_type(
+        &mut self,
+        tags: &[&str],
+        params: &[(&str, Scalar)],
+        ai: Option<&str>,
+    ) -> UnitType {
+        let data = UnitTypeData {
+            tags: tags.iter().map(|&tag| tag.to_owned()).collect(),
+            params: params
+                .iter()
+                .map(|&(name, value)| (name.to_owned(), value))
+                .collect(),
+        };
+        let unit_type = Units::load_type(&mut self.world, &data).unwrap();
+        if let Some(source) = ai {
+            let ai = AiData {
+                ai: PackagePath::parse("scripts/ai.rhai").unwrap(),
+                think_ms: 250,
+            };
+            Control::load_ai(&mut self.world, unit_type, &ai, source).unwrap();
         }
-        id
+        unit_type
+    }
+
+    /// Runs a tick, and checks that no script call failed in it.
+    fn think(&mut self, inputs: &[(u32, &[u8])]) {
+        self.tick(inputs);
+        let failures = self.world.non_send::<ScriptFailures>().get();
+        assert!(failures.is_empty(), "{failures:?}");
+    }
+
+    fn set_target(&mut self, unit: StableId, target: Option<StableId>) {
+        let entity = self.world.resource::<EntityIndex>().get(unit).unwrap();
+        let mut attack = self.world.get_mut::<AttackState>(entity).unwrap();
+        attack.set_target(target);
+    }
+
+    fn still(&mut self, team: Team, at: Position, combatant: Combatant) -> StableId {
+        self.spawn(at, combatant.bundle(team))
     }
 
     fn tick(&mut self, inputs: &[(u32, &[u8])]) {
@@ -309,7 +355,7 @@ fn only_its_players_orders_in_the_orders_capability_move_a_unit() {
 fn an_attack_chases_winds_up_and_strikes_each_period() {
     let mut game = Match::new();
     let fighter = game.hero(0, Team::new(0), at(0, 0, 0), fighter_stats());
-    let dummy = game.still(Team::new(1), at(6, 0, 0), dummy(100), false);
+    let dummy = game.still(Team::new(1), at(6, 0, 0), dummy(100));
 
     // Ticks 0 to 3 walk 4 m, to 2 m from the dummy. Tick 4 starts an attack: it strikes in tick
     // 6, and the next may start in tick 4 + 5 = 9.
@@ -340,7 +386,7 @@ fn an_attack_chases_winds_up_and_strikes_each_period() {
 fn a_move_cancels_a_windup_but_not_a_back_swing() {
     let mut game = Match::new();
     let fighter = game.hero(0, Team::new(0), at(0, 0, 0), fighter_stats());
-    let dummy = game.still(Team::new(1), at(2, 0, 0), dummy(100), false);
+    let dummy = game.still(Team::new(1), at(2, 0, 0), dummy(100));
 
     // An attack starts in tick 0, in range; a move in tick 1 cancels it before its strike in
     // tick 2, and leaves the fighter ready: the attack ordered in tick 2 starts at once.
@@ -373,8 +419,8 @@ fn attack_orders_need_a_living_enemy() {
     let mut game = Match::new();
     let fighter = game.hero(0, Team::new(0), at(0, 0, 0), fighter_stats());
     let ally = game.hero(1, Team::new(0), at(1, 0, 0), fighter_stats());
-    let gone = game.still(Team::new(1), at(9, 0, 0), dummy(30), false);
-    let enemy = game.still(Team::new(1), at(1, 0, 0), dummy(100), false);
+    let gone = game.still(Team::new(1), at(9, 0, 0), dummy(30));
+    let enemy = game.still(Team::new(1), at(1, 0, 0), dummy(100));
 
     // The fighter kills `gone` in tick 9: it reaches 7 m in tick 6, 2 m from it, starts an
     // attack in tick 7 and strikes 2 ticks later.
@@ -408,52 +454,176 @@ fn attack_orders_need_a_living_enemy() {
     assert_eq!(game.attack(fighter).target(), None);
 }
 
-#[test]
-fn a_tower_keeps_its_target_else_takes_the_nearest_enemy() {
-    let mut game = Match::new();
-    let tower = game.still(Team::new(1), at(0, 0, 0), dummy(100), true);
-    let entity = game.world.resource::<EntityIndex>().get(tower).unwrap();
-    *game.world.get_mut::<AttackStats>(entity).unwrap() =
-        AttackStats::new(num(5), 1, 3, num(10)).unwrap();
-    let prey = combatant(10, 0, 0, 1, 0);
-    // On the ground plane the unit up at y = 9 is 3 m away, the nearest.
-    let high = game.hero(0, Team::new(0), at(0, 9, 3), prey);
-    let east = game.hero(1, Team::new(0), at(4, 0, 0), prey);
-    let west = game.hero(2, Team::new(0), at(-4, 0, 0), prey);
-    let edge = game.hero(3, Team::new(0), at(0, 0, 5), prey);
-    let far = game.hero(4, Team::new(0), at(6, 0, 0), prey);
-    let ally = game.hero(5, Team::new(1), at(1, 0, 0), prey);
+/// 1000 health; reaches nothing and never moves, so only its target changes.
+fn standing() -> Combatant {
+    combatant(1000, 0, 0, 1, 0)
+}
 
-    // Each target takes one strike: an attack every 3 ticks from tick 0, striking a tick later.
-    // East and west tie at 4 m, and east has the lower id. Once west is the target, a nearer
-    // enemy at 1 m spawns in tick 6: the tower keeps west, and takes the newcomer next.
+fn meters(value: i64) -> Scalar {
+    Scalar::Decimal(num(value))
+}
+
+#[test]
+fn a_tower_prefers_creeps_and_defends_its_heroes() {
+    let mut game = Match::new();
+    let hero = game.unit_type(&["hero"], &[], None);
+    let creep = game.unit_type(&["creep"], &[], None);
+    let window = ("help_window_ms", Scalar::Int(2000));
+    let tower_type = game.unit_type(&["structure", "tower"], &[window], Some(TOWER_AI));
+    // The tower strikes 10 within 5 m, a tick into an attack every 3 ticks. The enemy hero
+    // strikes the ally hero, 2 m away, a tick into its attack.
+    let tower_stats = combatant(1000, 5, 1, 3, 10);
+    let tower = game.spawn(at(0, 0, 0), (tower_type, tower_stats.bundle(Team::new(1))));
+    let ally = game.spawn(at(1, 0, 0), (hero, standing().bundle(Team::new(1))));
+    let foe_stats = combatant(1000, 3, 1, 30, 5).bundle(Team::new(0));
+    let foe = game.spawn(at(3, 0, 0), (hero, foe_stats, Controller::new(0)));
+    let enemy_creep = game.spawn(at(4, 0, 0), (creep, standing().bundle(Team::new(0))));
+    assert_eq!(tower.get(), 0);
+
+    // The tower thinks every 8 ticks, 250 ms at 30 ticks a second being 7.5, in the ticks that
+    // leave its id 0: ticks 0 and 8. In tick 0 no ally was struck: it takes the creep 4 m away
+    // over the hero 3 m away. The enemy hero strikes the ally in tick 2, so in tick 8 the tower
+    // defends it.
     let mut targets = Vec::new();
-    let mut newcomer = None;
-    for tick in 0..15 {
-        if tick == 6 {
-            newcomer = Some(game.hero(6, Team::new(0), at(1, 0, 0), prey));
+    for tick in 0..=9 {
+        match tick {
+            1 => game.think(&[(0, &attack(foe, ally))]),
+            _ => game.think(&[]),
         }
-        game.tick(&[]);
         targets.push(game.attack(tower).target());
     }
-    let newcomer = newcomer.unwrap();
-    let chosen = |target, ticks: usize| vec![Some(target); ticks];
-    let expected = [
-        chosen(high, 2),
-        chosen(east, 3),
-        chosen(west, 3),
-        chosen(newcomer, 3),
-        chosen(edge, 3),
-        vec![None],
-    ]
-    .concat();
+    let expected = [vec![Some(enemy_creep); 8], vec![Some(foe); 2]].concat();
     assert_eq!(targets, expected);
-    for (prey, died) in [(high, 1), (east, 4), (west, 7), (newcomer, 10), (edge, 13)] {
-        assert!(game.dead(prey), "{prey:?} died in tick {died}");
+    // Its attacks on the creep start in ticks 0, 3 and 6 and strike a tick later; the next is
+    // ready in tick 9, on the hero, and strikes in tick 10.
+    assert_eq!(game.health(enemy_creep), Some(970));
+    assert_eq!(game.health(foe), Some(1000));
+    game.think(&[]);
+    assert_eq!(game.health(foe), Some(990));
+}
+
+#[test]
+fn creeps_think_in_turn_and_take_the_targets_their_script_picks() {
+    let mut game = Match::new();
+    let hero = game.unit_type(&["hero"], &[], None);
+    let still_creep = game.unit_type(&["creep"], &[], None);
+    let params = [
+        ("aggro_range", meters(7)),
+        ("help_range", meters(5)),
+        ("help_window_ms", Scalar::Int(2000)),
+    ];
+    let creep = game.unit_type(&["creep"], &params, Some(CREEP_AI));
+    let unit = |game: &mut Match, unit_type, team, at| {
+        game.spawn(at, (unit_type, standing().bundle(Team::new(team))))
+    };
+    // The foe strikes within 4 m, a tick into its attack.
+    let foe_stats = combatant(1000, 4, 1, 30, 5).bundle(Team::new(1));
+    let foe = game.spawn(at(3, 0, 0), (hero, foe_stats, Controller::new(0)));
+    let first = unit(&mut game, creep, 0, at(0, 0, 0));
+    let second = unit(&mut game, creep, 0, at(0, 0, 2));
+    let rival = unit(&mut game, still_creep, 1, at(6, 0, 0));
+    let ally = unit(&mut game, hero, 0, at(0, 0, -1));
+    // Far from everything, with a target it cannot reach.
+    let lone = unit(&mut game, creep, 0, at(0, 0, 50));
+    game.set_target(lone, Some(rival));
+    assert_eq!([first, second, lone].map(StableId::get), [1, 2, 5]);
+
+    // Every 8 ticks, in the ticks that leave their ids: the first creep in ticks 1 and 9, the
+    // second in 2 and 10, the lone one in 5. At first each takes the rival creep, 6 m and
+    // √40 ≈ 6.32 m away, over the foe, 3 m and √13 ≈ 3.61 m away. The foe strikes their ally in
+    // tick 4, so each defends it at its next think. The lone creep's target is beyond its 7 m:
+    // with nothing in reach, it goes back to its lane.
+    let mut targets = Vec::new();
+    for tick in 0..=10 {
+        match tick {
+            3 => game.think(&[(0, &attack(foe, ally))]),
+            _ => game.think(&[]),
+        }
+        targets.push([first, second, lone].map(|unit| game.attack(unit).target()));
     }
-    for spared in [far, ally] {
-        assert_eq!(game.health(spared), Some(10));
+    let expected: Vec<_> = (0..=10)
+        .map(|tick| {
+            let first = match tick {
+                0 => None,
+                1..=8 => Some(rival),
+                _ => Some(foe),
+            };
+            let second = match tick {
+                0 | 1 => None,
+                2..=9 => Some(rival),
+                _ => Some(foe),
+            };
+            let lone = (tick < 5).then_some(rival);
+            [first, second, lone]
+        })
+        .collect();
+    assert_eq!(targets, expected);
+}
+
+#[test]
+fn an_ai_needs_think_and_orders_only_its_own_unit() {
+    let mut game = Match::new();
+    let ai = AiData {
+        ai: PackagePath::parse("scripts/ai.rhai").unwrap(),
+        think_ms: 250,
+    };
+    for source in ["fn thinks(ctx, unit) { }", "fn think(ctx) { }"] {
+        let unit_type = game.unit_type(&[], &[], None);
+        let error = Control::load_ai(&mut game.world, unit_type, &ai, source).unwrap_err();
+        assert!(matches!(error, AiError::NoThink), "{source}: {error:?}");
     }
+
+    let meddle = r#"fn think(ctx, unit) {
+        for ally in ctx.find(unit, unit.pos, 9, "allies") {
+            if ally != unit { ctx.order_follow_lane(ally); }
+        }
+    }"#;
+    let meddler = game.unit_type(&[], &[], Some(meddle));
+    let thinker = game.spawn(at(0, 0, 0), (meddler, standing().bundle(Team::new(0))));
+    let ally = game.still(Team::new(0), at(1, 0, 0), standing());
+    let enemy = game.still(Team::new(1), at(9, 0, 0), standing());
+    game.set_target(ally, Some(enemy));
+    assert_eq!(thinker.get(), 0);
+
+    // It thinks in tick 0: the order for its ally fails the call, which changes nothing.
+    game.tick(&[]);
+    let failures = game.world.non_send::<ScriptFailures>().get();
+    assert_eq!(failures.len(), 1);
+    assert_eq!((failures[0].unit, failures[0].hook), (thinker, Hook::Think));
+    assert!(matches!(
+        failures[0].error,
+        CallError::Api(ApiError::OtherUnit)
+    ));
+    assert_eq!(game.attack(ally).target(), Some(enemy));
+}
+
+#[test]
+fn a_walker_goes_back_to_its_path_after_a_chase() {
+    let path = [at(0, 0, 0), at(4, 0, 0), at(4, 0, 4)];
+    let mut game = Match::with_lanes(Lanes::new([&path[..]]));
+    let walker = (
+        combatant(100, 1, 1, 5, 0).bundle(Team::new(0)),
+        meter().bundle(),
+        LaneWalker::start(0, PathDirection::Forward),
+    );
+    let chaser = game.spawn(at(0, 0, 0), walker);
+    let prey = game.still(Team::new(1), at(1, 0, 3), dummy(100));
+
+    // A meter towards the second waypoint, then towards the prey until it is a meter away.
+    game.tick(&[]);
+    assert_eq!(game.position(chaser), at(1, 0, 0));
+    game.set_target(chaser, Some(prey));
+    game.run_until(4);
+    assert_eq!(game.position(chaser), at(1, 0, 2));
+    assert_eq!(game.destination(chaser), None);
+
+    // The prey goes; in tick 4 the chaser drops it, and in tick 5 walks back to the second
+    // waypoint, which it never reached, not on to the third.
+    let entity = game.world.resource::<EntityIndex>().get(prey).unwrap();
+    game.world.despawn(entity);
+    game.run_until(6);
+    assert_eq!(game.attack(chaser).target(), None);
+    assert_eq!(game.destination(chaser), Some(at(4, 0, 0)));
 }
 
 #[test]
@@ -503,14 +673,14 @@ fn a_walker_follows_its_path_in_its_direction() {
 fn every_control_type_is_state_and_restores() {
     let mut game = Match::new();
     let fighter = game.hero(0, Team::new(0), at(0, 0, 0), fighter_stats());
-    game.still(Team::new(1), at(9, 0, 0), fighter_stats(), true);
+    game.still(Team::new(1), at(9, 0, 0), fighter_stats());
     game.tick(&[(0, &move_to(fighter, 0, 3))]);
 
     let registry = &game.registry;
     let mut per_type = Vec::new();
     let hash = registry.hash_by_type(&game.world, &mut per_type);
     let names: Vec<_> = per_type.iter().map(|TypeHash { name, .. }| *name).collect();
-    assert!(names.contains(&"control.controller") && names.contains(&"control.tower_ai"));
+    assert!(names.contains(&"control.controller"));
 
     let mut snapshot = Vec::new();
     registry.snapshot(&game.world, &mut snapshot);

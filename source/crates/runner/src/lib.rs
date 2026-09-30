@@ -8,3 +8,4 @@ mod stand_in_mode;
 
 pub use runner::Runner;
 pub use session::Session;
+pub use stand_in_mode::StandInMode;

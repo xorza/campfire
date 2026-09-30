@@ -37,5 +37,5 @@ fn keep_target(unit) {
 }
 
 fn in_reach(unit, other) {
-    unit.can_see(other) && unit.pos.distance_to(other.pos) <= unit.params.aggro_range
+    unit.can_see(other) && unit.pos.within(other.pos, unit.params.aggro_range)
 }

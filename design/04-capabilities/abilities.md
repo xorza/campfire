@@ -17,7 +17,7 @@ The capability handles the mechanics; the script only describes the effect.
 | Projectile | Linear, homing, or falling under gravity; calls `on_projectile_hit`. Ranged attacks fire one. |
 | Area | Circle, delayed or lasting; holds modifiers on the units inside; cones and lines are projectiles |
 
-A projectile flies in the Hit stage, a fixed distance each tick; a homing one whose target dies or despawns before it lands ends without a hit.
+A projectile flies in the Hit stage, a fixed distance each tick, from the tick after it fires; flights run before attacks strike, and the tick's launches after. A homing one flies at its target's position of that tick, and strikes when it reaches it, in that tick's Resolve; one whose target dies or despawns before it lands ends without a hit. Projectiles take stable ids in the order of their source's id, so every run numbers them alike.
 
 ## Sent to clients
 

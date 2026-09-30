@@ -26,7 +26,7 @@ Which capabilities make which genre, and what each genre adds in scripts: [Genre
 
 Capabilities share one vocabulary, so they can meet in one match: a hitscan ray and a MOBA projectile damage the same `combat` health, and a unit that takes orders can have hitboxes. The shared types live in the lowest layer, and each capability names the ones it builds on. The dependencies form a fixed graph with no cycle:
 
-- **Base:** `sim` (position, stable ids, randomness, the state hash) and the collision shape.
+- **Base:** `sim` (position, stable ids, randomness, the state hash, the tick rate) and the collision shape; then the core under every script: unit types (tags and params), the one script host whose tick budget every capability's calls share, and the units as scripts see them, with the queries on them.
 - **`combat` and `stats`:** teams, health, damage, deaths, stats and modifiers.
 - **Everything else** builds on those: `projectiles` and `hitscan` deal damage through `combat`; `abilities` apply modifiers through `stats`; `orders` issue attacks and casts.
 

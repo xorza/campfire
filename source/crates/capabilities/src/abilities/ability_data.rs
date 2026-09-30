@@ -1,12 +1,13 @@
 use std::collections::BTreeMap;
 use std::str::FromStr;
 
-use crate::combat::team::Team;
-
 use campfire_content::PackagePath;
 use campfire_math::Num;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
+
+use crate::units::relation::Relation;
+use crate::units::scalar::Scalar;
 
 /// The `[abilities.<id>]` tables of a data file, such as a hero's or the player spells'. Its
 /// other tables belong to other capabilities.
@@ -44,15 +45,6 @@ pub enum Targeting {
     Unit(Relation),
 }
 
-/// Which units a filter selects, relative to a unit: its enemies, its allies, which include
-/// itself, or all.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Relation {
-    Enemies,
-    Allies,
-    All,
-}
-
 /// How far an ability reaches. In data: meters as a decimal string, or `global`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Range {
@@ -66,14 +58,6 @@ pub enum Range {
 pub enum Ranked<T> {
     One(T),
     PerRank(Vec<T>),
-}
-
-/// A script value: a TOML integer, or a decimal string, which is a `Num`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(untagged)]
-pub enum Scalar {
-    Int(i64),
-    Decimal(#[serde(deserialize_with = "decimal")] Num),
 }
 
 /// A param: one value, one per rank, or a scaling table, `base + per_level × level + Σ ratio ×
@@ -130,36 +114,6 @@ impl Param {
     }
 }
 
-impl Scalar {
-    pub fn to_num(self) -> Option<Num> {
-        match self {
-            Scalar::Int(value) => Num::from_int(value),
-            Scalar::Decimal(value) => Some(value),
-        }
-    }
-}
-
-impl Relation {
-    /// Whether a unit of team `theirs` stands in this relation to one of team `ours`.
-    pub(crate) const fn holds(self, ours: Team, theirs: Team) -> bool {
-        match self {
-            Relation::Enemies => ours.is_enemy_of(theirs),
-            Relation::Allies => !ours.is_enemy_of(theirs),
-            Relation::All => true,
-        }
-    }
-
-    /// A filter's relation: `enemies`, `allies` or `all`.
-    pub fn parse(filter: &str) -> Option<Relation> {
-        match filter {
-            "enemies" => Some(Relation::Enemies),
-            "allies" => Some(Relation::Allies),
-            "all" => Some(Relation::All),
-            _ => None,
-        }
-    }
-}
-
 impl<'de> Deserialize<'de> for Targeting {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Targeting, D::Error> {
         let text = String::deserialize(deserializer)?;
@@ -189,10 +143,4 @@ impl<'de> Deserialize<'de> for Range {
             .map(Range::Meters)
             .ok_or_else(|| Error::custom(format!("range {text:?} is not meters or global")))
     }
-}
-
-/// A `Num` from a decimal string, such as `"3.5"`: data never holds a float.
-fn decimal<'de, D: Deserializer<'de>>(deserializer: D) -> Result<Num, D::Error> {
-    let text = String::deserialize(deserializer)?;
-    Num::from_str(&text).map_err(Error::custom)
 }

@@ -100,12 +100,18 @@ fn only_what_scripts_need_is_there() {
         assert!(run(&mut host, body).is_err(), "{body}");
     }
     // What scripts do need: loops over arrays and ranges, maps, strings, and `print`, which
-    // writes nothing.
+    // writes only in debug builds.
     let body = r#"let total = 0; for x in [1, 2, 3] { total += x; } for i in 0..4 { total += i; }
         let m = #{ a: 5 }; print("quiet");
         if "enemies" == "enemies" { total + m.a } else { 0 }"#;
     assert_eq!(run(&mut host, body).unwrap().as_int().unwrap(), 17);
     assert_eq!(hashing::get_hashing_seed(), &Some(HASHING_SEED));
+
+    // A hook is found by its name and its number of parameters.
+    let script = host.compile("fn think(ctx, unit) { 1 }").unwrap();
+    assert!(host.defines(script, "think", 2));
+    assert!(!host.defines(script, "think", 1));
+    assert!(!host.defines(script, "on_cast", 3));
 }
 
 #[test]

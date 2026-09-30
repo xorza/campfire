@@ -3,18 +3,17 @@ use std::mem;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Without;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
-use bevy_ecs::system::{Local, NonSendMut, Query, Res};
+use bevy_ecs::system::{Local, Query, Res};
 use bevy_ecs::world::World;
 use campfire_math::{Num, Vec3};
 use campfire_script::rhai::Dynamic;
-use campfire_script::{ScriptError, ScriptHost, ScriptId, ScriptLimits};
-use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry};
+use campfire_script::{ScriptHost, ScriptId};
+use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, TickRate};
 
 use crate::abilities::ability_book::{Ability, AbilityBook, AbilityId};
-use crate::abilities::ability_data::{AbilityData, Param, Range, Scalar, Targeting};
+use crate::abilities::ability_data::{AbilityData, Param, Range, Targeting};
 use crate::abilities::ability_slots::{AbilitySlots, CastTarget, Casting};
-use crate::abilities::cast_failures::{CastFailure, CastFailures};
-use crate::abilities::error::{AbilityError, ApiError, CastError};
+use crate::abilities::error::AbilityError;
 use crate::abilities::frame::{Effect, Frame};
 use crate::abilities::resource_pool::ResourcePool;
 use crate::abilities::script_api::Ctx;
@@ -25,11 +24,15 @@ use crate::combat::living_unit::LivingUnit;
 use crate::combat::strikes::{Strike, Strikes};
 use crate::combat::targets::Targets;
 use crate::combat::team::Team;
+use crate::units::error::CallError;
+use crate::units::scalar::Scalar;
+use crate::units::script_failures::{Hook, ScriptFailure, ScriptFailures};
+use crate::units::script_view::View;
+use crate::units::unit::Unit;
 
 pub(crate) mod ability_book;
 pub(crate) mod ability_data;
 pub(crate) mod ability_slots;
-pub(crate) mod cast_failures;
 pub(crate) mod error;
 pub(crate) mod frame;
 pub(crate) mod resource_pool;
@@ -41,58 +44,50 @@ pub(crate) mod script_api;
 pub struct Abilities;
 
 impl Abilities {
-    /// Adds abilities to a match, scripts running within `limits`. In Inputs, the tick's script
-    /// budget starts; in Act, ordered casts pass their checks and start; in Hit, after attacks
-    /// strike, due casts resolve: the cost, the cooldown and the script's effects apply
-    /// together, or none of them.
-    pub fn install(
-        world: &mut World,
-        schedule: &mut Schedule,
-        registry: &mut StateRegistry,
-        limits: ScriptLimits,
-    ) {
-        let mut host = ScriptHost::new(limits);
-        Ctx::register(host.engine_mut());
-        world.insert_non_send(host);
-        world.insert_non_send(Ctx::default());
+    /// Adds abilities to a match, on the core `Units` installs. In Act, ordered casts pass their
+    /// checks and start; in Hit, after attacks strike and fire, due casts resolve: the cost, the
+    /// cooldown and the script's effects apply together, or none of them.
+    pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
+        Ctx::register(
+            world
+                .get_non_send_mut::<ScriptHost>()
+                .expect("Units::install runs first")
+                .into_inner()
+                .engine_mut(),
+        );
+        let ctx = Ctx::new(world.non_send::<View>().clone());
+        world.insert_non_send(ctx);
         world.insert_resource(AbilityBook::default());
-        world.insert_non_send(CastFailures::default());
         schedule.add_systems((
-            begin_tick.in_set(SimSet::Inputs),
             start_casts.in_set(SimSet::Act),
-            resolve_casts.in_set(SimSet::Hit).after(CombatSet::Strike),
+            resolve_casts.in_set(SimSet::Hit).after(CombatSet::Launch),
         ));
         registry.register_component::<AbilitySlots>();
         registry.register_component::<ResourcePool>();
     }
 
-    /// Loads an ability into the match, with the source of its script if its data names one, for
-    /// a match of `tick_hz` ticks a second: times in milliseconds become ticks, rounded up.
+    /// Loads an ability into the match, with the source of its script if its data names one:
+    /// times in milliseconds become ticks at the match's rate, rounded up.
     pub fn load(
         world: &mut World,
         data: &AbilityData,
         source: Option<&str>,
-        tick_hz: u32,
     ) -> Result<AbilityId, AbilityError> {
+        let rate = *world.resource::<TickRate>();
         let mut host = world
             .remove_non_send::<ScriptHost>()
-            .expect("abilities are installed");
+            .expect("units are installed");
         let ctx = world.non_send::<Ctx>().clone();
         let loaded = world.resource_mut::<AbilityBook>().load(
             &mut host,
             &mut ctx.frame(),
             data,
             source,
-            tick_hz,
+            rate,
         );
         world.insert_non_send(host);
         loaded
     }
-}
-
-fn begin_tick(mut host: NonSendMut<'_, ScriptHost>, mut failures: NonSendMut<'_, CastFailures>) {
-    host.begin_tick();
-    failures.0.clear();
 }
 
 /// Starts each ordered cast that passes its checks, its target within range, and drops the
@@ -209,24 +204,24 @@ fn resolve_casts(world: &mut World, mut due: Local<'_, Vec<(StableId, Entity)>>)
         return;
     }
     let ctx = world.non_send::<Ctx>().clone();
-    LivingUnit::collect(world, &mut ctx.frame().units);
+    ctx.view().read(world);
     let mut host = world
         .remove_non_send::<ScriptHost>()
-        .expect("abilities are installed");
+        .expect("units are installed");
     for &(caster, entity) in &*due {
         resolve(world, &mut host, &ctx, now, caster, entity);
     }
     world.insert_non_send(host);
 }
 
-/// A cast ready to run: the caster as the script sees it, its target, its script, and its cost
-/// and cooldown. Its params wait in the frame.
+/// A cast ready to run: the caster as the script sees it, its target, its `on_cast`, and its
+/// cost and cooldown. Its params wait in the frame.
 #[derive(Debug)]
 struct Prepared {
-    caster: LivingUnit,
+    caster: Unit,
     slot: u8,
     target: Dynamic,
-    script: Option<ScriptId>,
+    on_cast: Option<ScriptId>,
     cost: Num,
     cooldown: u64,
 }
@@ -241,8 +236,7 @@ fn resolve(
     caster: StableId,
     entity: Entity,
 ) {
-    // The frame is borrowed only while the cast prepares: the script borrows it again.
-    let prepared = prepare(world, &mut ctx.frame(), now, caster, entity);
+    let prepared = prepare(world, ctx, now, caster, entity);
     let outcome = match prepared {
         Ok(None) => Ok(()),
         Ok(Some(mut prepared)) => run(host, ctx, &mut prepared).map(|()| {
@@ -252,9 +246,13 @@ fn resolve(
     };
     if let Err(error) = outcome {
         world
-            .non_send_mut::<CastFailures>()
+            .non_send_mut::<ScriptFailures>()
             .0
-            .push(CastFailure { caster, error });
+            .push(ScriptFailure {
+                unit: caster,
+                hook: Hook::OnCast,
+                error,
+            });
     }
     world
         .get_mut::<AbilitySlots>(entity)
@@ -284,60 +282,59 @@ fn apply(world: &mut World, frame: &mut Frame, now: u64, entity: Entity, prepare
         .cool_down(prepared.slot, now + prepared.cooldown);
 }
 
-/// The cast of `entity` checked again, and its params at its rank put in `frame`; `None` when
-/// it no longer passes its checks.
+/// The cast of `entity` checked again, and its params at its rank put in the frame; `None` when
+/// it no longer passes its checks, or its caster is no unit the view read.
 fn prepare(
     world: &World,
-    frame: &mut Frame,
+    ctx: &Ctx,
     now: u64,
     caster: StableId,
     entity: Entity,
-) -> Result<Option<Prepared>, CastError> {
+) -> Result<Option<Prepared>, CallError> {
+    let view = ctx.view();
+    let Some(caster) = view.unit(caster) else {
+        return Ok(None);
+    };
     let unit = world.entity(entity);
     let slots = unit.get::<AbilitySlots>().expect("a due caster has slots");
     let casting = slots.casting().expect("a due caster casts");
     let team = *unit.get::<Team>().expect("a caster has a team");
     let book = world.resource::<AbilityBook>();
     let pool = unit.get::<ResourcePool>();
-    let Some(checked) = check(book, now, slots, pool, team, casting, |id| frame.unit(id)) else {
+    let Some(checked) = check(book, now, slots, pool, team, casting, |id| view.living(id)) else {
         return Ok(None);
     };
     let target = match casting.target {
         CastTarget::None => Dynamic::UNIT,
-        CastTarget::Unit(id) => frame.unit(id).map_or(Dynamic::UNIT, Dynamic::from),
+        CastTarget::Unit(id) => view
+            .living(id)
+            .and_then(|_| view.unit(id))
+            .map_or(Dynamic::UNIT, Dynamic::from),
     };
     let rank = checked.rank;
     let params = checked.ability.params.iter();
-    frame.begin_cast(checked.id, params.map(|param| param_value(param, rank)))?;
+    ctx.frame()
+        .begin_cast(checked.id, params.map(|param| param_value(param, rank)))?;
     Ok(Some(Prepared {
-        caster: LivingUnit {
-            id: caster,
-            pos: *unit.get::<Position>().expect("a caster has a position"),
-            team,
-        },
+        caster,
         slot: casting.slot,
         target,
-        script: checked.ability.script,
+        on_cast: checked.ability.on_cast,
         cost: checked.cost,
         cooldown: checked.cooldown,
     }))
 }
 
 /// Runs the prepared cast's `on_cast`, which queues its effects in the frame.
-fn run(host: &mut ScriptHost, ctx: &Ctx, prepared: &mut Prepared) -> Result<(), CastError> {
-    let Some(script) = prepared.script else {
+fn run(host: &mut ScriptHost, ctx: &Ctx, prepared: &mut Prepared) -> Result<(), CallError> {
+    let Some(script) = prepared.on_cast else {
         return Ok(());
     };
     let target = mem::take(&mut prepared.target);
-    host.call(script, "on_cast", (ctx.clone(), prepared.caster, target))
+    let caster = prepared.caster.clone();
+    host.call(script, Hook::OnCast.name(), (ctx.clone(), caster, target))
         .map(drop)
-        .map_err(|error| {
-            let refused = match &error {
-                ScriptError::Raised(raised) => raised.get::<ApiError>(),
-                _ => None,
-            };
-            refused.map_or(CastError::Script(error), CastError::Api)
-        })
+        .map_err(CallError::from_script)
 }
 
 /// A param's value at `rank`. Until levels and stats exist, every unit is level 1 and every

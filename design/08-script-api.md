@@ -15,6 +15,7 @@ Each call, handle field and hook belongs to the core or to one capability ([Capa
 - **Dead and despawned units.** A handle keeps returning the unit's last values, and `alive` is false. Effects on a dead unit do nothing, except `respawn`. A modifier whose source despawned keeps that source's last stats.
 - **Values are live.** `ctx.p` resolves when it is read, with the current rank and the current stats of the source.
 - **Pure hooks.** `calc_damage` returns a value; its `ctx` refuses effects.
+- **Handles last one call.** A call sees the units as its stage began; a handle is valid within the call. `unit.target` is `()` when the unit has no target, or its target is gone. `unit.recent_attackers(ms)` lists the living units that struck it within the last `ms`, rounded up to whole ticks.
 - **Queries.** Lists are sorted by stable id; `nearest_visible` sorts by distance, then id. Dead and untargetable units are never returned. `find` includes units hidden from the caller's team, for effects on an area; `find_visible` and `nearest_visible` return only what that team sees, for choosing a target.
 - **Numbers.** [Game Scripting](03-game-scripting.md#numbers). `num(i)` makes a `Num` from an integer. `Num` has `min`, `max`, `clamp`, `round`, `floor`, `ceil`; `round` and the others return integers.
 - **Randomness** comes only from `ctx.chance` and `ctx.pick`, both from the secret stream. Crits are rolled by `combat`.
@@ -93,7 +94,7 @@ A unit handle has the fields of the capabilities its type uses; reading a field 
 | Projectile | `source`, `pos`, `distance` flown, `state` (writable) |
 | Area | `source`, `pos` |
 | Damage `d` | `source`, `target`, `amount`, `kind` (`physical`, `magic`, `true`), `attack`, `crit`, `extra` (an attack from `ctx.attack_hit`), `ability` (`""` when none) |
-| Position, vector | `distance_to`, `direction_to`, `rotated_deg`, `+`, `-`, `*` |
+| Position, vector | `distance_to`, `within(pos, radius)` (on the ground plane and exact, as every range: the test for reach), `direction_to`, `rotated_deg`, `+`, `-`, `*` |
 
 ## `ctx`
 
@@ -120,7 +121,7 @@ A unit handle has the fields of the capabilities its type uses; reading a field 
 
 | Role | Capability | Hooks |
 | --- | --- | --- |
-| Ability | `abilities`, `projectiles`, `areas` | `on_cast(ctx, caster, target)` (target: a unit, a position or `()`), `on_channel_tick(ctx, caster)`, `on_dash_end(ctx, unit, target)`, `on_projectile_hit(ctx, proj, target)`, `on_projectile_end(ctx, proj)`, `on_area_trigger(ctx, area, units)` |
+| Ability | `abilities`, `projectiles`, `areas` | `on_cast(ctx, caster, target)` (target: a unit, a position or `()`; a script that serves only the ability's modifiers has none, and a cast then runs no script), `on_channel_tick(ctx, caster)`, `on_dash_end(ctx, unit, target)`, `on_projectile_hit(ctx, proj, target)`, `on_projectile_end(ctx, proj)`, `on_area_trigger(ctx, area, units)` |
 | Modifier | `stats`, `combat` for the carrier's events | `on_interval(ctx, m)`, and the carrier's events: `on_attack(ctx, m, target)`, `on_attack_hit(ctx, m, d)`, `on_damage_taken(ctx, m, d)`, `on_kill(ctx, m, victim)`, `on_takedown(ctx, m, victim)` |
 | Mode | core; `combat` for `on_unit_died` and `calc_damage` | `on_match_start(ctx)`, `on_mode_input(ctx, player, name, value)`, `on_timer(ctx, name, data)`, `on_player_join(ctx, player)`, `on_player_leave(ctx, player)`, `on_unit_died(ctx, unit, killer, assisters)`, `calc_damage(ctx, d)` |
 | AI | `orders` | `think(ctx, unit)` |

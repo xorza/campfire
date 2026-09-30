@@ -1,0 +1,279 @@
+use std::collections::BTreeMap;
+
+use bevy_ecs::bundle::Bundle;
+use bevy_ecs::entity::Entity;
+use campfire_math::{Num, SegmentSeed, Vec3};
+use campfire_script::rhai::Dynamic;
+use campfire_sim::{EntityIndex, IdAllocator, Position, SimTick, SimUpdate, StableId};
+
+use super::*;
+use crate::combat::Combat;
+use crate::combat::attack_state::AttackState;
+use crate::combat::attack_stats::AttackStats;
+use crate::combat::combatant::Combatant;
+use crate::combat::dead::Dead;
+use crate::combat::health::Health;
+use crate::combat::on_death::OnDeath;
+use crate::combat::recent_attackers::RecentAttackers;
+use crate::combat::team::Team;
+use crate::units::error::{ApiError, CallError};
+use crate::units::scalar::Scalar;
+
+/// A `ctx` with the queries only.
+#[derive(Debug, Clone)]
+struct Probe(View);
+
+impl Probe {
+    const fn view(&self) -> &View {
+        &self.0
+    }
+}
+
+fn num(value: i64) -> Num {
+    Num::from_int(value).unwrap()
+}
+
+fn at(x: i64, y: i64, z: i64) -> Position {
+    Position::new(Vec3::new(num(x), num(y), num(z))).unwrap()
+}
+
+fn unit() -> Combatant {
+    Combatant {
+        health: Health::new(num(10)).unwrap(),
+        attack: AttackStats::new(num(2), 0, 1, Num::ZERO).unwrap(),
+        on_death: OnDeath::Stay,
+    }
+}
+
+#[derive(Debug)]
+struct Scene {
+    world: World,
+}
+
+impl Scene {
+    fn new() -> Scene {
+        let mut world = World::new();
+        SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]));
+        let mut schedule = SimUpdate::schedule();
+        let mut registry = StateRegistry::new();
+        let limits = ScriptLimits {
+            per_call: 10_000,
+            per_tick: 100_000,
+        };
+        let rate = TickRate::new(30).unwrap();
+        Units::install(&mut world, &mut schedule, &mut registry, limits, rate);
+        Combat::install(&mut world, &mut schedule, &mut registry);
+        let engine = world.non_send_mut::<ScriptHost>().into_inner().engine_mut();
+        engine.register_type_with_name::<Probe>("Probe");
+        View::register_queries::<Probe>(engine, Probe::view);
+        Scene { world }
+    }
+
+    fn unit_type(&mut self, tags: &[&str], params: &[(&str, Scalar)]) -> UnitType {
+        let data = UnitTypeData {
+            tags: tags.iter().map(|&tag| tag.to_owned()).collect(),
+            params: params
+                .iter()
+                .map(|&(name, value)| (name.to_owned(), value))
+                .collect::<BTreeMap<_, _>>(),
+        };
+        Units::load_type(&mut self.world, &data).unwrap()
+    }
+
+    fn spawn(&mut self, at: Position, parts: impl Bundle) -> StableId {
+        let id = self.world.resource_mut::<IdAllocator>().allocate();
+        self.world.spawn((id, at, parts));
+        id
+    }
+
+    fn entity(&self, id: StableId) -> Entity {
+        self.world.resource::<EntityIndex>().get(id).unwrap()
+    }
+
+    /// `probe(ctx, of)` in `source`, run on the units as they are now.
+    fn probe(&mut self, source: &str, of: StableId) -> Result<Dynamic, CallError> {
+        let view = self.world.non_send::<View>().clone();
+        view.read(&self.world);
+        let mut host = self.world.non_send_mut::<ScriptHost>();
+        let script = host.compile(source).unwrap();
+        let unit = view.unit(of).unwrap();
+        host.call(script, "probe", (Probe(view), unit))
+            .map_err(CallError::from_script)
+    }
+
+    /// The stable ids of `value`, a unit or a list of units.
+    fn ids(value: Dynamic) -> Vec<StableId> {
+        let units = match value.clone().try_cast::<Vec<Dynamic>>() {
+            Some(units) => units,
+            None if value.is_unit() => Vec::new(),
+            None => vec![value],
+        };
+        units
+            .into_iter()
+            .map(|unit| unit.try_cast::<Unit>().unwrap().id)
+            .collect()
+    }
+}
+
+#[test]
+fn queries_select_living_units_by_filter_and_exact_ground_distance() {
+    let mut scene = Scene::new();
+    let creep = scene.unit_type(&["creep"], &[]);
+    let of = scene.spawn(at(0, 0, 0), unit().bundle(Team::new(1)));
+    // Up at y = 9, 3 m away on the ground plane: the nearest.
+    let high = scene.spawn(at(0, 9, 3), unit().bundle(Team::new(0)));
+    let east = scene.spawn(at(4, 0, 0), (creep, unit().bundle(Team::new(0))));
+    let west = scene.spawn(at(-4, 0, 0), unit().bundle(Team::new(0)));
+    let edge = scene.spawn(at(0, 0, 5), unit().bundle(Team::new(0)));
+    let far = scene.spawn(at(6, 0, 0), unit().bundle(Team::new(0)));
+    let ally = scene.spawn(at(1, 0, 0), unit().bundle(Team::new(1)));
+    let dead = scene.spawn(at(0, 0, 1), (unit().bundle(Team::new(0)), Dead));
+
+    let find = |scene: &mut Scene, filter: &str| {
+        let source = format!(r#"fn probe(ctx, of) {{ ctx.find(of, of.pos, 5, "{filter}") }}"#);
+        Scene::ids(scene.probe(&source, of).unwrap())
+    };
+    // By stable id; the edge at exactly 5 m is in; the far one and the dead one are not.
+    assert_eq!(find(&mut scene, "enemies"), [high, east, west, edge]);
+    assert_eq!(find(&mut scene, "enemies:creep"), [east]);
+    assert_eq!(find(&mut scene, "allies"), [of, ally]);
+    assert_eq!(find(&mut scene, "all"), [of, high, east, west, edge, ally]);
+    assert!(far.get() > 0 && dead.get() > 0);
+
+    // The nearest in turn as each despawns: east and west tie at 4 m, and east has the lower id.
+    let nearest = r#"fn probe(ctx, of) { ctx.nearest_visible(of, num(5), "enemies") }"#;
+    let mut order = Vec::new();
+    while let [next] = Scene::ids(scene.probe(nearest, of).unwrap())[..] {
+        order.push(next);
+        let entity = scene.entity(next);
+        scene.world.despawn(entity);
+    }
+    assert_eq!(order, [high, east, west, edge]);
+
+    let refusals = [
+        (
+            r#"ctx.find(of, of.pos, 5, "friends")"#,
+            ApiError::UnknownFilter,
+        ),
+        (
+            r#"ctx.find(of, of.pos, 5, "enemies:boss")"#,
+            ApiError::UnknownTag,
+        ),
+        (
+            r#"ctx.find(of, of.pos, -1, "all")"#,
+            ApiError::NegativeRadius,
+        ),
+        (
+            r#"ctx.nearest_visible(of, 1 << 40, "all")"#,
+            ApiError::IntegerBeyondNum,
+        ),
+    ];
+    for (call, refusal) in refusals {
+        let source = format!("fn probe(ctx, of) {{ {call} }}");
+        let error = scene.probe(&source, of).unwrap_err();
+        assert!(
+            matches!(error, CallError::Api(api) if api == refusal),
+            "{call}: {error:?}"
+        );
+    }
+}
+
+#[test]
+fn a_handle_reads_its_units_fields_as_the_view_read_them() {
+    let mut scene = Scene::new();
+    let window = ("help_window_ms", Scalar::Int(2000));
+    let range = ("aggro_range", Scalar::Decimal(num(7)));
+    let hero = scene.unit_type(&["hero"], &[window, range]);
+    let of = scene.spawn(at(0, 0, 0), (hero, unit().bundle(Team::new(0))));
+    let near = scene.spawn(at(3, 0, 4), unit().bundle(Team::new(1)));
+    let recent = scene.spawn(at(9, 0, 0), unit().bundle(Team::new(1)));
+    let fallen = scene.spawn(at(9, 0, 1), (unit().bundle(Team::new(1)), Dead));
+    let health_only = (Team::new(1), Health::new(num(1)).unwrap());
+    let bare = scene.spawn(at(9, 0, 2), health_only);
+    // 3 m away on the ground plane, √153 ≈ 12.37 m in space.
+    scene.spawn(at(0, 12, 3), unit().bundle(Team::new(1)));
+    let entity = scene.entity(of);
+    scene
+        .world
+        .get_mut::<AttackState>(entity)
+        .unwrap()
+        .set_target(Some(near));
+
+    // At 30 ticks a second, 2000 ms is 60 ticks: in tick 100, a strike in tick 40 is recent, and
+    // one in tick 39 is not; a dead attacker is never returned.
+    scene.world.insert_resource(SimTick::new(100));
+    let index = scene.world.resource::<EntityIndex>();
+    let mut attackers = RecentAttackers::default();
+    // A strike later than the view's tick, as a rollback can leave, is not recent either.
+    for (source, tick) in [(near, 39), (recent, 40), (fallen, 100), (bare, 101)] {
+        attackers.record(source, tick, index);
+    }
+    *scene.world.get_mut::<RecentAttackers>(entity).unwrap() = attackers;
+
+    let read = |scene: &mut Scene, expression: &str| {
+        let source = format!("fn probe(ctx, of) {{ {expression} }}");
+        scene.probe(&source, of)
+    };
+    let value = |scene: &mut Scene, expression: &str| read(scene, expression).unwrap();
+    assert!(value(&mut scene, "of.is_hero").as_bool().unwrap());
+    assert!(value(&mut scene, "of.alive").as_bool().unwrap());
+    assert_eq!(
+        value(&mut scene, "of.params.help_window_ms").as_int(),
+        Ok(2000)
+    );
+    assert_eq!(
+        value(&mut scene, "of.params.aggro_range").cast::<Num>(),
+        num(7)
+    );
+    assert_eq!(value(&mut scene, "of.attack_range").cast::<Num>(), num(2));
+    // 3, 4, 5: exact.
+    let distance = "of.pos.distance_to(of.target.pos)";
+    assert_eq!(value(&mut scene, distance).cast::<Num>(), num(5));
+    assert!(
+        value(&mut scene, "of.target.is_enemy_of(of)")
+            .as_bool()
+            .unwrap()
+    );
+    assert!(!value(&mut scene, "of.target.is_hero").as_bool().unwrap());
+    assert!(
+        value(&mut scene, "of.target != () && of != ()")
+            .as_bool()
+            .unwrap()
+    );
+    // Exactly, on the ground plane, as every range.
+    let reach = "of.pos.within(of.target.pos, 5) && !of.pos.within(of.target.pos, 4)";
+    assert!(value(&mut scene, reach).as_bool().unwrap());
+    let above = r#"let up = ctx.find(of, of.pos, 3, "enemies")[0];
+        of.pos.within(up.pos, 3) && !of.pos.within(up.pos, 2) && of.pos.distance_to(up.pos) > 12"#;
+    assert!(value(&mut scene, above).as_bool().unwrap());
+    let attackers = value(&mut scene, "of.recent_attackers(2000)");
+    assert_eq!(Scene::ids(attackers), [recent]);
+    // 2034 ms is 61.02 ticks, up to 62: tick 39 is in.
+    let attackers = value(&mut scene, "of.recent_attackers(2034)");
+    assert_eq!(Scene::ids(attackers), [near, recent]);
+
+    let refusals = [
+        ("of.params.gold", ApiError::UnknownParam),
+        ("of.recent_attackers(-1)", ApiError::NegativeTime),
+        ("of.pos.within(of.pos, -1)", ApiError::NegativeRadius),
+    ];
+    for (expression, refusal) in refusals {
+        let error = read(&mut scene, expression).unwrap_err();
+        assert!(
+            matches!(error, CallError::Api(api) if api == refusal),
+            "{expression}"
+        );
+    }
+    let error = scene
+        .probe("fn probe(ctx, of) { of.attack_range }", bare)
+        .unwrap_err();
+    assert!(
+        matches!(error, CallError::Api(ApiError::NoAttack)),
+        "{error:?}"
+    );
+
+    // A target the view did not read is `()`.
+    let entity = scene.entity(near);
+    scene.world.despawn(entity);
+    assert!(value(&mut scene, "of.target == ()").as_bool().unwrap());
+}

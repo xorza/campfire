@@ -4,6 +4,7 @@ use crate::combat::attack_state::AttackState;
 use crate::combat::attack_stats::AttackStats;
 use crate::combat::health::Health;
 use crate::combat::on_death::OnDeath;
+use crate::combat::recent_attackers::RecentAttackers;
 use crate::combat::team::Team;
 
 /// A unit type's combat section: what a new unit of that type starts with.
@@ -23,6 +24,7 @@ impl Combatant {
             self.attack,
             AttackState::default(),
             self.on_death,
+            RecentAttackers::default(),
         )
     }
 }

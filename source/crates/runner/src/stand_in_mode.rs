@@ -1,12 +1,18 @@
+use std::collections::BTreeMap;
+
 use bevy_ecs::bundle::Bundle;
+use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::world::World;
 use campfire_capabilities::{
-    AttackStats, Combat, Combatant, Control, Controller, Health, LaneWalker, Lanes, MoveStep,
-    Navigation, OnDeath, PathDirection, Team, TowerAi,
+    AiData, AttackStats, Combat, Combatant, Control, Controller, Health, LaneWalker, Lanes,
+    MoveStep, Navigation, OnDeath, PathDirection, Projectiles, Scalar, Team, UnitType,
+    UnitTypeData, Units,
 };
+use campfire_content::PackagePath;
 use campfire_math::{Num, Vec3};
-use campfire_sim::{IdAllocator, Position, SimSet, SimTick, StateRegistry};
+use campfire_script::ScriptLimits;
+use campfire_sim::{IdAllocator, Position, SimSet, SimTick, StateRegistry, TickRate};
 
 /// A hero strikes 1.25 m away 8 ticks into an attack every 20, and stays when it dies.
 const HERO: Combatant = Combatant {
@@ -14,16 +20,15 @@ const HERO: Combatant = Combatant {
     attack: attack(quarters(5), 8, 20, 60),
     on_death: OnDeath::Stay,
 };
-/// A quarter meter a tick, 7.5 m/s at the MOBA's default 30 ticks a second.
+/// A quarter meter a tick, 7.5 m/s at 30 ticks a second.
 const HERO_STEP: MoveStep = step(quarters(1));
 /// A tower strikes 7.75 m away 5 ticks into an attack every 37: 150 ms and 0.83 attacks a
-/// second, rounded up to whole ticks.
+/// second, rounded up to whole ticks. Its projectile flies 12 m/s.
 const TOWER: Combatant = Combatant {
     health: health(1500),
-    attack: attack(quarters(31), 5, 37, 150),
+    attack: ranged(attack(quarters(31), 5, 37, 150), per_tick(12)),
     on_death: OnDeath::Despawn,
 };
-/// Until creep AI runs, a creep never attacks.
 const CREEP: Combatant = Combatant {
     health: health(445),
     attack: attack(quarters(4), 9, 24, 12),
@@ -42,40 +47,111 @@ const TOWERS: [(Team, Position); 2] = [(SIDES[0].0, at(-8)), (SIDES[1].0, at(8))
 /// Creeps each side gets in a wave, from tick 0 and then every `WAVE_INTERVAL` ticks: 30 s.
 const WAVE_CREEPS: usize = 2;
 const WAVE_INTERVAL: u64 = 900;
+const CREEP_AI: &str = include_str!("../../../packages/moba/modes/3v3/scripts/creep_ai.rhai");
+const TOWER_AI: &str = include_str!("../../../packages/moba/modes/3v3/scripts/tower_ai.rhai");
+/// As the 3v3 package's `units.toml` declares them.
+const THINK_MS: u64 = 250;
+const HELP_WINDOW_MS: i64 = 2000;
 
 /// The match every session plays until modes load from packages, which will replace this file:
-/// `combat`, `navigation` and `control` on one lane; one hero per player, all at the origin, even
-/// slots on the first side and odd on the second; a tower a side 8 m down the lane, just out of
-/// reach of the origin; and creep waves from each end, on a timer standing in for the mode
-/// script's.
+/// the core, `combat`, `navigation`, `projectiles` and `control` on one lane; one hero per
+/// player, all at the origin, even slots on the first side and odd on the second; a tower a side
+/// 8 m down the lane, just out of reach of the origin; and creep waves from each end, on a timer
+/// standing in for the mode script's. Creeps and towers think with the 3v3 package's AI scripts.
 #[derive(Debug)]
-pub(crate) struct StandInMode;
+pub struct StandInMode;
+
+/// The unit types of the stand-in match.
+#[derive(Resource, Debug, Clone, Copy)]
+struct StandInTypes {
+    hero: UnitType,
+    creep: UnitType,
+    tower: UnitType,
+}
 
 impl StandInMode {
-    /// Installs the mode's capabilities and its map into `world`, which `SimUpdate::prepare` set
-    /// up, and adds its wave timer in the Mode stage.
+    /// 30 ticks a second, the MOBA's default.
+    pub const TICK_RATE: TickRate = TickRate::new(30).expect("a positive rate");
+    /// Script operations a call, and a tick, may run.
+    pub const SCRIPT_LIMITS: ScriptLimits = ScriptLimits {
+        per_call: 20_000,
+        per_tick: 200_000,
+    };
+
+    /// Installs the mode's capabilities, unit types and map into `world`, which
+    /// `SimUpdate::prepare` set up, and adds its wave timer in the Mode stage.
     pub(crate) fn install(world: &mut World, schedule: &mut Schedule, state: &mut StateRegistry) {
+        Units::install(
+            world,
+            schedule,
+            state,
+            StandInMode::SCRIPT_LIMITS,
+            StandInMode::TICK_RATE,
+        );
         Combat::install(world, schedule, state);
         Navigation::install(world, schedule, state);
-        Control::install(schedule, state);
+        Projectiles::install(world, schedule, state);
+        Control::install(world, schedule, state);
         world.insert_resource(Lanes::new([&LANE[..]]));
+        let types = StandInTypes::load(world);
+        world.insert_resource(types);
         schedule.add_systems(spawn_waves.in_set(SimSet::Mode));
     }
 
     /// Spawns the heroes of `players` players and the towers.
     pub(crate) fn start(world: &mut World, players: usize) {
+        let types = *world.resource::<StandInTypes>();
         for slot in 0..players {
             let slot = u32::try_from(slot).expect("player slots fit u32");
             let (team, _) = SIDES[slot as usize % 2];
-            spawn(
-                world,
-                at(0),
-                (HERO.bundle(team), HERO_STEP.bundle(), Controller::new(slot)),
-            );
+            let hero = (HERO.bundle(team), HERO_STEP.bundle(), Controller::new(slot));
+            spawn(world, at(0), (types.hero, hero));
         }
         for (team, position) in TOWERS {
-            spawn(world, position, (TOWER.bundle(team), TowerAi));
+            spawn(world, position, (types.tower, TOWER.bundle(team)));
         }
+    }
+}
+
+impl StandInTypes {
+    /// Loads the hero, creep and tower types, the creep's and the tower's with their AI.
+    fn load(world: &mut World) -> StandInTypes {
+        let help_window = ("help_window_ms", Scalar::Int(HELP_WINDOW_MS));
+        let meters = |value| Scalar::Decimal(Num::from_int(value).expect("a few meters"));
+        let mut load = |tags: &[&str], params: &[(&str, Scalar)], ai: Option<(&str, &str)>| {
+            let data = UnitTypeData {
+                tags: tags.iter().map(|&tag| tag.to_owned()).collect(),
+                params: params
+                    .iter()
+                    .map(|&(name, value)| (name.to_owned(), value))
+                    .collect::<BTreeMap<_, _>>(),
+            };
+            let unit_type = Units::load_type(world, &data).expect("the stand-in's types load");
+            if let Some((path, source)) = ai {
+                let ai = AiData {
+                    ai: PackagePath::parse(path).expect("a path in the package"),
+                    think_ms: THINK_MS,
+                };
+                Control::load_ai(world, unit_type, &ai, source).expect("the AI scripts compile");
+            }
+            unit_type
+        };
+        let hero = load(&["hero"], &[], None);
+        let creep = load(
+            &["creep"],
+            &[
+                ("aggro_range", meters(7)),
+                ("help_range", meters(5)),
+                help_window,
+            ],
+            Some(("scripts/creep_ai.rhai", CREEP_AI)),
+        );
+        let tower = load(
+            &["structure", "tower"],
+            &[help_window],
+            Some(("scripts/tower_ai.rhai", TOWER_AI)),
+        );
+        StandInTypes { hero, creep, tower }
     }
 }
 
@@ -89,6 +165,7 @@ fn spawn_waves(world: &mut World) {
     {
         return;
     }
+    let creep_type = world.resource::<StandInTypes>().creep;
     for lane in 0..world.resource::<Lanes>().count() {
         for (team, direction) in SIDES {
             let start = world
@@ -97,6 +174,7 @@ fn spawn_waves(world: &mut World) {
                 .expect("a lane has a waypoint");
             for _ in 0..WAVE_CREEPS {
                 let creep = (
+                    creep_type,
                     CREEP.bundle(team),
                     CREEP_STEP.bundle(),
                     LaneWalker::start(lane, direction),
@@ -116,6 +194,13 @@ const fn quarters(count: i64) -> Num {
     Num::from_bits(count << (Num::FRAC_BITS - 2))
 }
 
+/// `meters` a second, as a distance a tick at the mode's rate.
+const fn per_tick(meters: i64) -> Num {
+    Num::from_bits(meters << Num::FRAC_BITS)
+        .checked_div_int(StandInMode::TICK_RATE.hz() as i64)
+        .expect("a speed a tick fits a Num")
+}
+
 const fn health(max: i64) -> Health {
     Health::new(Num::from_bits(max << Num::FRAC_BITS)).expect("positive health")
 }
@@ -128,6 +213,10 @@ const fn attack(range: Num, windup: u32, period: u32, damage: i64) -> AttackStat
         Num::from_bits(damage << Num::FRAC_BITS),
     )
     .expect("attack stats within their limits")
+}
+
+const fn ranged(melee: AttackStats, speed: Num) -> AttackStats {
+    melee.ranged(speed).expect("a positive speed")
 }
 
 const fn step(meters: Num) -> MoveStep {
@@ -159,20 +248,33 @@ mod tests {
         StandInMode::install(&mut world, &mut schedule, &mut StateRegistry::new());
         world.add_schedule(schedule);
         StandInMode::start(&mut world, 1);
-        let last_id = |world: &World| {
-            let (id, _) = world.resource::<EntityIndex>().iter().last().unwrap();
-            id.get()
+        // A wave spawns in the Mode stage, after units move: at the end of its tick, its creeps
+        // stand at the lane's ends, 2 a side; a tick later they walked on.
+        let at_ends = |world: &World| {
+            let creep = world.resource::<StandInTypes>().creep;
+            let mut ends = [0, 0];
+            for (_, entity) in world.resource::<EntityIndex>().iter() {
+                let unit = world.entity(entity);
+                if unit.get::<UnitType>() != Some(&creep) {
+                    continue;
+                }
+                let position = *unit.get::<Position>().unwrap();
+                for (end, x) in [(0, -16), (1, 16)] {
+                    if position == at(x) {
+                        ends[end] += 1;
+                    }
+                }
+            }
+            ends
         };
-        // The hero 0 and the towers 1 and 2, then 4 creeps a wave: ids 3 to 6 in tick 0, and
-        // 7 to 10 in tick 900.
-        assert_eq!(last_id(&world), 2);
-        world.run_schedule(SimUpdate);
-        assert_eq!(last_id(&world), 6);
-        while world.resource::<SimTick>().get() < 900 {
+        let mut waves = Vec::new();
+        while world.resource::<SimTick>().get() <= 901 {
             world.run_schedule(SimUpdate);
+            let ended = world.resource::<SimTick>().get() - 1;
+            if at_ends(&world) != [0, 0] {
+                waves.push((ended, at_ends(&world)));
+            }
         }
-        assert_eq!(last_id(&world), 6);
-        world.run_schedule(SimUpdate);
-        assert_eq!(last_id(&world), 10);
+        assert_eq!(waves, [(0, [2, 2]), (900, [2, 2])]);
     }
 }

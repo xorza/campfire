@@ -5,6 +5,7 @@ use campfire_sim::{IdAllocator, SimUpdate, TypeHash};
 
 use super::*;
 use crate::combat::combatant::Combatant;
+use crate::combat::recent_attackers::RecentAttack;
 
 fn num(value: i64) -> Num {
     Num::from_int(value).unwrap()
@@ -57,8 +58,12 @@ impl Fight {
     }
 
     fn get<C: Component + Copy>(&self, id: StableId) -> Option<C> {
+        self.get_ref(id).copied()
+    }
+
+    fn get_ref<C: Component>(&self, id: StableId) -> Option<&C> {
         let entity = self.world.resource::<EntityIndex>().get(id)?;
-        self.world.entity(entity).get::<C>().copied()
+        self.world.entity(entity).get::<C>()
     }
 
     fn attack(&mut self, attacker: StableId, target: StableId) {
@@ -102,6 +107,14 @@ fn an_attack_winds_up_and_strikes_each_period() {
     assert_eq!(fight.health(dummy), Some(70));
     assert_eq!(fight.state(fighter).ready_at(), 5);
     assert_eq!(fight.state(fighter).started(), None);
+    let attackers = |fight: &Fight| {
+        let attackers = fight.get_ref::<RecentAttackers>(dummy).unwrap();
+        attackers.iter().collect::<Vec<_>>()
+    };
+    let attack = |source, tick| RecentAttack { source, tick };
+    assert_eq!(attackers(&fight), [attack(fighter, 2)]);
+    fight.run_until(8);
+    assert_eq!(attackers(&fight), [attack(fighter, 7)]);
     fight.run_until(17);
     assert_eq!(fight.health(dummy), Some(10));
     fight.run_until(18);
@@ -110,6 +123,15 @@ fn an_attack_winds_up_and_strikes_each_period() {
     // The next tick finds the target gone and drops it.
     fight.run_until(19);
     assert_eq!(fight.state(fighter).target(), None);
+
+    // A list keeps each attacker once, by stable id, and forgets one that despawned: the dummy.
+    let index = fight.world.resource::<EntityIndex>();
+    let mut recent = RecentAttackers::default();
+    recent.record(dummy, 3, index);
+    recent.record(fighter, 4, index);
+    assert_eq!(recent.iter().collect::<Vec<_>>(), [attack(fighter, 4)]);
+    recent.record(fighter, 6, index);
+    assert_eq!(recent.iter().collect::<Vec<_>>(), [attack(fighter, 6)]);
 }
 
 #[test]
@@ -143,12 +165,19 @@ fn strikes_in_one_tick_see_the_state_before_any_of_them() {
     fight.attack(first, second);
     fight.attack(second, first);
 
-    // Both attacks start in tick 0 and strike in tick 1: each kills the other, and both stay.
+    // Both attacks start in tick 0 and strike in tick 1: each kills the other, and both stay,
+    // each with the other as its attacker.
     fight.run_until(2);
-    for unit in [first, second] {
+    for (unit, other) in [(first, second), (second, first)] {
         assert_eq!(fight.health(unit), Some(0));
         assert!(fight.get::<Dead>(unit).is_some());
         assert_eq!(fight.state(unit).target(), None);
+        let attackers = fight.get_ref::<RecentAttackers>(unit).unwrap();
+        let attack = RecentAttack {
+            source: other,
+            tick: 1,
+        };
+        assert_eq!(attackers.iter().collect::<Vec<_>>(), [attack]);
     }
 
     // A dead unit is no target.
@@ -159,17 +188,12 @@ fn strikes_in_one_tick_see_the_state_before_any_of_them() {
 }
 
 #[test]
-fn targets_are_living_enemies_nearest_on_the_ground_plane() {
+fn targets_are_living_enemies() {
     let mut fight = Fight::new();
-    let tower = combatant(100, 5, 1, 3, 10);
     let prey = combatant(10, 0, 0, 1, 0);
-    // Up at y = 9, 3 m away on the ground plane: the nearest.
+    // Up at y = 9: a target all the same.
     let high = fight.unit(Team::new(0), at(0, 9, 3), prey);
-    let east = fight.unit(Team::new(0), at(4, 0, 0), prey);
-    let west = fight.unit(Team::new(0), at(-4, 0, 0), prey);
-    let edge = fight.unit(Team::new(0), at(0, 0, 5), prey);
     let far = fight.unit(Team::new(0), at(6, 0, 0), prey);
-    let ally = fight.unit(Team::new(1), at(1, 0, 0), prey);
     let dead = fight.unit(
         Team::new(0),
         at(0, 0, 1),
@@ -181,27 +205,6 @@ fn targets_are_living_enemies_nearest_on_the_ground_plane() {
     let entity = fight.world.resource::<EntityIndex>().get(dead).unwrap();
     fight.world.entity_mut(entity).insert(Dead);
 
-    let nearest = |fight: &mut Fight| {
-        fight
-            .world
-            .run_system_once(move |targets: Targets<'_, '_>| {
-                targets.nearest_enemy(Team::new(1), at(0, 0, 0), &tower.attack)
-            })
-            .unwrap()
-    };
-    // Each nearest one despawns in turn: east and west tie at 4 m, east has the lower id; the
-    // edge at exactly 5 m is in range; the far one, the ally and the dead are never taken.
-    let mut order = Vec::new();
-    while let Some(next) = nearest(&mut fight) {
-        order.push(next);
-        let entity = fight.world.resource::<EntityIndex>().get(next).unwrap();
-        fight.world.despawn(entity);
-    }
-    assert_eq!(order, [high, east, west, edge]);
-    for spared in [far, ally, dead] {
-        assert!(fight.get::<Health>(spared).is_some());
-    }
-
     let enemy_at = |fight: &mut Fight, team: Team, target: StableId| {
         fight
             .world
@@ -211,6 +214,9 @@ fn targets_are_living_enemies_nearest_on_the_ground_plane() {
     assert_eq!(enemy_at(&mut fight, Team::new(1), far), Some(at(6, 0, 0)));
     assert_eq!(enemy_at(&mut fight, Team::new(0), far), None);
     assert_eq!(enemy_at(&mut fight, Team::new(1), dead), None);
+    assert_eq!(enemy_at(&mut fight, Team::new(1), high), Some(at(0, 9, 3)));
+    let entity = fight.world.resource::<EntityIndex>().get(high).unwrap();
+    fight.world.despawn(entity);
     assert_eq!(enemy_at(&mut fight, Team::new(1), high), None);
 }
 
@@ -257,6 +263,7 @@ fn every_combat_type_is_state_and_restores() {
             "combat.dead",
             "combat.health",
             "combat.on_death",
+            "combat.recent_attackers",
             "combat.team",
             "sim.entities",
             "sim.id_allocator",
@@ -284,6 +291,16 @@ fn stats_out_of_their_limits_are_refused() {
     assert_eq!(AttackStats::new(Num::ZERO, 0, 1, -Num::EPSILON), None);
     assert_eq!(AttackStats::new(Num::ZERO, 1, 1, Num::ZERO), None);
     assert!(AttackStats::new(Num::ZERO, 0, 1, Num::ZERO).is_some());
+    let melee = AttackStats::new(Num::ONE, 1, 2, Num::ONE).unwrap();
+    assert_eq!(melee.projectile_speed(), None);
+    assert_eq!(melee.ranged(Num::ZERO), None);
+    assert_eq!(melee.ranged(-Num::EPSILON), None);
+    assert_eq!(
+        melee
+            .ranged(Num::EPSILON)
+            .map(AttackStats::projectile_speed),
+        Some(Some(Num::EPSILON))
+    );
 
     // A snapshot's values pass the same limits.
     let health = |current: i64, max: i64| {
@@ -294,10 +311,12 @@ fn stats_out_of_their_limits_are_refused() {
     for (current, max) in [(-1, 1), (2, 1), (0, 0)] {
         assert_eq!(health(current, max), None, "{current} of {max}");
     }
-    let stats = |windup: u32, period: u32| {
-        let bytes = postcard::to_allocvec(&(Num::ONE, windup, period, Num::ONE)).unwrap();
-        postcard::from_bytes::<AttackStats>(&bytes).ok()
+    let stats = |windup: u32, period: u32, speed: Option<Num>| {
+        let fields = (Num::ONE, windup, period, Num::ONE, speed);
+        postcard::from_bytes::<AttackStats>(&postcard::to_allocvec(&fields).unwrap()).ok()
     };
-    assert_eq!(stats(1, 2), AttackStats::new(Num::ONE, 1, 2, Num::ONE));
-    assert_eq!(stats(2, 2), None);
+    assert_eq!(stats(1, 2, None), Some(melee));
+    assert_eq!(stats(1, 2, Some(Num::ONE)), melee.ranged(Num::ONE));
+    assert_eq!(stats(2, 2, None), None);
+    assert_eq!(stats(1, 2, Some(Num::ZERO)), None);
 }

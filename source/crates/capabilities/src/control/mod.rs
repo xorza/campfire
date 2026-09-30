@@ -1,3 +1,13 @@
+use bevy_ecs::query::Without;
+use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
+use bevy_ecs::system::{Local, Query, Res};
+use bevy_ecs::world::{Mut, World};
+use campfire_math::Vec3;
+use campfire_script::{ScriptHost, ScriptId};
+use campfire_sim::{
+    Command, EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, TickInputs, TickRate,
+};
+
 use crate::abilities::ability_slots::AbilitySlots;
 use crate::combat::CombatSet;
 use crate::combat::attack_state::AttackState;
@@ -5,44 +15,80 @@ use crate::combat::attack_stats::AttackStats;
 use crate::combat::dead::Dead;
 use crate::combat::targets::Targets;
 use crate::combat::team::Team;
+use crate::control::ai_book::{Ai, AiBook};
+use crate::control::ai_ctx::{AiCtx, AiOrder};
+use crate::control::ai_data::AiData;
+use crate::control::controller::Controller;
+use crate::control::error::AiError;
+use crate::control::order::{Action, Order};
 use crate::navigation::destination::Destination;
 use crate::navigation::lane_walker::LaneWalker;
 use crate::navigation::lanes::Lanes;
-use bevy_ecs::query::{With, Without};
-use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
-use bevy_ecs::system::{Query, Res};
-use bevy_ecs::world::Mut;
-use campfire_math::Vec3;
-use campfire_sim::{Command, EntityIndex, Position, SimSet, StateRegistry, TickInputs};
+use crate::units::error::CallError;
+use crate::units::script_failures::{Hook, ScriptFailure, ScriptFailures};
+use crate::units::script_view::View;
+use crate::units::unit_type::UnitType;
 
-use crate::control::controller::Controller;
-use crate::control::order::{Action, Order};
-use crate::control::tower_ai::TowerAi;
-
+pub(crate) mod ai_book;
+pub(crate) mod ai_ctx;
+pub(crate) mod ai_data;
 pub(crate) mod controller;
+pub(crate) mod error;
 pub(crate) mod order;
-pub(crate) mod tower_ai;
 
 /// The `control` capability: who moves a unit. For now, of the orders kind: units that take
-/// orders from a player, and towers that choose their own targets.
+/// orders from a player, or from the AI script of their type.
 #[derive(Debug)]
 pub struct Control;
 
 impl Control {
-    /// Adds control to a match: in Inputs, orders become current; in Think, towers choose
-    /// targets; in Act, before combat starts attacks, units walk their paths and chase their
-    /// targets. It builds on combat and navigation, which a match installs too.
-    pub fn install(schedule: &mut Schedule, registry: &mut StateRegistry) {
+    /// Adds control to a match: in Inputs, orders become current; in Think, the units due this
+    /// tick think; in Act, before combat starts attacks, units walk their paths and chase their
+    /// targets. It builds on the core `Units` installs, on combat and on navigation.
+    pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
+        AiCtx::register(
+            world
+                .get_non_send_mut::<ScriptHost>()
+                .expect("Units::install runs first")
+                .into_inner()
+                .engine_mut(),
+        );
+        let ctx = AiCtx::new(world.non_send::<View>().clone());
+        world.insert_non_send(ctx);
+        world.insert_resource(AiBook::default());
         schedule.add_systems((
             apply_orders.in_set(SimSet::Inputs),
-            choose_tower_targets.in_set(SimSet::Think),
+            think.in_set(SimSet::Think),
             (follow_paths, chase)
                 .chain()
                 .in_set(SimSet::Act)
                 .before(CombatSet::Attack),
         ));
         registry.register_component::<Controller>();
-        registry.register_component::<TowerAi>();
+    }
+
+    /// Gives `unit_type` its AI, with the source of its script: the think period in milliseconds
+    /// becomes whole ticks at the match's rate, rounded up, and at least one.
+    pub fn load_ai(
+        world: &mut World,
+        unit_type: UnitType,
+        data: &AiData,
+        source: &str,
+    ) -> Result<(), AiError> {
+        let period = world
+            .resource::<TickRate>()
+            .ticks(data.think_ms)
+            .and_then(|ticks| u32::try_from(ticks.max(1)).ok())
+            .ok_or(AiError::TimeTooLarge)?;
+        let mut host = world.non_send_mut::<ScriptHost>();
+        let script = host.compile(source).map_err(AiError::Script)?;
+        if !host.defines(script, Hook::Think.name(), Hook::Think.params()) {
+            return Err(AiError::NoThink);
+        }
+        world
+            .resource_mut::<AiBook>()
+            .set(unit_type, Ai { script, period });
+        Ok(())
     }
 }
 
@@ -113,46 +159,97 @@ fn apply_orders(
     }
 }
 
-/// Keeps each tower's target while it lives and stays in range, and otherwise takes the nearest
-/// enemy in range, the lower stable id on a tie. A tower in its windup keeps its target. It
-/// stands in for the tower AI script until scripts run.
-fn choose_tower_targets(
-    targets: Targets<'_, '_>,
-    mut towers: Query<
-        '_,
-        '_,
-        (&Position, &Team, &AttackStats, &mut AttackState),
-        (With<TowerAi>, Without<Dead>),
-    >,
-) {
-    for (&position, &team, stats, mut attack) in &mut towers {
-        if attack.started().is_some() {
+/// Runs `think` for each living unit of a type with AI that is due this tick, in the order of
+/// their stable ids. A unit is due in the ticks that leave the remainder of its stable id when
+/// divided by its type's period, so the units of a type spread over the period. Each call's
+/// orders apply when it returns; a failed call's do not.
+fn think(world: &mut World, mut due: Local<'_, Vec<(StableId, ScriptId)>>) {
+    let now = world.resource::<SimTick>().get();
+    due.clear();
+    let book = world.resource::<AiBook>();
+    for (id, entity) in world.resource::<EntityIndex>().iter() {
+        let unit = world.entity(entity);
+        let ai = unit
+            .get::<UnitType>()
+            .and_then(|&unit_type| book.get(unit_type));
+        let Some(ai) = ai.filter(|_| !unit.contains::<Dead>()) else {
             continue;
+        };
+        let period = u64::from(ai.period);
+        if now % period == id.get() % period {
+            due.push((id, ai.script));
         }
-        let kept = attack
-            .target()
-            .and_then(|target| targets.enemy_at(team, target))
-            .is_some_and(|at| stats.reaches(position, at));
-        if !kept {
-            attack.set_target(targets.nearest_enemy(team, position, stats));
+    }
+    if due.is_empty() {
+        return;
+    }
+    let ctx = world.non_send::<AiCtx>().clone();
+    ctx.view().read(world);
+    let mut host = world
+        .remove_non_send::<ScriptHost>()
+        .expect("units are installed");
+    for &(id, script) in &*due {
+        // A unit with no team or health is no unit scripts see.
+        let Some(unit) = ctx.view().unit(id) else {
+            continue;
+        };
+        ctx.begin(id);
+        match host.call(script, Hook::Think.name(), (ctx.clone(), unit)) {
+            Ok(_) => {
+                for order in ctx.frame().orders.drain(..) {
+                    apply_ai_order(world, id, order);
+                }
+            }
+            Err(error) => world
+                .non_send_mut::<ScriptFailures>()
+                .0
+                .push(ScriptFailure {
+                    unit: id,
+                    hook: Hook::Think,
+                    error: CallError::from_script(error),
+                }),
         }
+    }
+    world.insert_non_send(host);
+}
+
+/// Applies an order the AI call of `unit` queued, which the call checked against the units as
+/// the phase began; no unit dies within Think.
+fn apply_ai_order(world: &mut World, unit: StableId, order: AiOrder) {
+    let target = match order {
+        AiOrder::Attack { target } => Some(target),
+        AiOrder::FollowLane => None,
+    };
+    let entity = world
+        .resource::<EntityIndex>()
+        .get(unit)
+        .expect("a unit that thinks lives");
+    if let Some(mut attack) = world.get_mut::<AttackState>(entity) {
+        attack.set_target(target);
     }
 }
 
-/// Sends each path walker with no attack target to its path's next waypoint once it reached the
-/// one before.
+/// Sends each path walker with no attack target to the waypoint it walks to, and on to the next
+/// once it stands on one. A walker that chased a target walks back to where it left its path.
 fn follow_paths(
     lanes: Res<'_, Lanes>,
-    mut walkers: Query<'_, '_, (&mut LaneWalker, &AttackState, &mut Destination), Without<Dead>>,
+    mut walkers: Query<
+        '_,
+        '_,
+        (&Position, &mut LaneWalker, &AttackState, &mut Destination),
+        Without<Dead>,
+    >,
 ) {
-    for (mut walker, attack, mut destination) in &mut walkers {
-        if attack.target().is_some() || destination.get().is_some() {
+    for (&position, mut walker, attack, mut destination) in &mut walkers {
+        if attack.target().is_some() {
             continue;
         }
-        if let Some(waypoint) = lanes.waypoint(walker.lane(), walker.next(), walker.direction()) {
-            destination.set(Some(waypoint));
+        let mut waypoint = lanes.waypoint(walker.lane(), walker.next(), walker.direction());
+        if waypoint == Some(position) {
             walker.advance();
+            waypoint = lanes.waypoint(walker.lane(), walker.next(), walker.direction());
         }
+        walk_to(&mut destination, waypoint);
     }
 }
 

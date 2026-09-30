@@ -4,11 +4,11 @@ use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::Component;
 use campfire_content::PackagePath;
 use campfire_math::SegmentSeed;
-use campfire_script::NumError;
+use campfire_script::{NumError, ScriptError, ScriptLimits};
 use campfire_sim::{IdAllocator, SimUpdate, TickInput, TickInputs};
 
 use super::*;
-use crate::abilities::ability_data::{Ranked, Relation, Scaling};
+use crate::abilities::ability_data::{Ranked, Scaling};
 use crate::abilities::ability_slots::AbilitySlot;
 use crate::combat::Combat;
 use crate::combat::attack_stats::AttackStats;
@@ -19,12 +19,15 @@ use crate::control::Control;
 use crate::control::controller::Controller;
 use crate::control::order::{Action, Order};
 use crate::navigation::Navigation;
+use crate::units::Units;
+use crate::units::error::ApiError;
+use crate::units::relation::Relation;
 
 const LIMITS: ScriptLimits = ScriptLimits {
     per_call: 10_000,
     per_tick: 100_000,
 };
-const TICK_HZ: u32 = 30;
+const RATE: TickRate = TickRate::new(30).unwrap();
 const LASH_OUT: &str = include_str!("../../../../packages/moba/heroes/husk/scripts/lash_out.rhai");
 
 fn num(value: i64) -> Num {
@@ -111,16 +114,17 @@ impl Match {
         SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]));
         let mut schedule = SimUpdate::schedule();
         let mut registry = StateRegistry::new();
+        Units::install(&mut world, &mut schedule, &mut registry, LIMITS, RATE);
         Combat::install(&mut world, &mut schedule, &mut registry);
         Navigation::install(&mut world, &mut schedule, &mut registry);
-        Abilities::install(&mut world, &mut schedule, &mut registry, LIMITS);
-        Control::install(&mut schedule, &mut registry);
+        Abilities::install(&mut world, &mut schedule, &mut registry);
+        Control::install(&mut world, &mut schedule, &mut registry);
         world.add_schedule(schedule);
         Match { world, registry }
     }
 
     fn load(&mut self, data: &AbilityData, source: &str) -> AbilityId {
-        Abilities::load(&mut self.world, data, Some(source), TICK_HZ).unwrap()
+        Abilities::load(&mut self.world, data, Some(source)).unwrap()
     }
 
     fn spawn(&mut self, team: u8, at: Position, parts: impl Bundle) -> StableId {
@@ -184,8 +188,8 @@ impl Match {
             .unwrap()
     }
 
-    fn failures(&self) -> &[CastFailure] {
-        self.world.non_send::<CastFailures>().get()
+    fn failures(&self) -> &[ScriptFailure] {
+        self.world.non_send::<ScriptFailures>().get()
     }
 }
 
@@ -293,18 +297,18 @@ fn a_failed_script_changes_nothing_and_fails_the_same_way_everywhere() {
         params: BTreeMap::new(),
         ..lash_out()
     };
-    let cases: [(&str, fn(&CastError) -> bool); 4] = [
+    let cases: [(&str, fn(&CallError) -> bool); 4] = [
         (spin, |error| {
-            matches!(error, CastError::Script(ScriptError::CallLimit))
+            matches!(error, CallError::Script(ScriptError::CallLimit))
         }),
         (wrong_kind, |error| {
-            matches!(error, CastError::Api(ApiError::UnknownDamageKind))
+            matches!(error, CallError::Api(ApiError::UnknownDamageKind))
         }),
         (undeclared, |error| {
-            matches!(error, CastError::Api(ApiError::UnknownParam))
+            matches!(error, CallError::Api(ApiError::UnknownParam))
         }),
         (overflow, |error| match error {
-            CastError::Script(ScriptError::Raised(raised)) => {
+            CallError::Script(ScriptError::Raised(raised)) => {
                 raised.get::<NumError>() == Some(NumError::Overflow)
             }
             _ => false,
@@ -323,7 +327,8 @@ fn a_failed_script_changes_nothing_and_fails_the_same_way_everywhere() {
                 game.cast(caster, CastTarget::None);
                 let failures = game.failures();
                 assert_eq!(failures.len(), 1, "{script}");
-                assert_eq!(failures[0].caster, caster);
+                assert_eq!(failures[0].unit, caster);
+                assert_eq!(failures[0].hook, Hook::OnCast);
                 assert!(expected(&failures[0].error), "{:?}", failures[0].error);
                 spent.push(game.world.non_send::<ScriptHost>().spent());
             } else {
@@ -346,7 +351,7 @@ fn a_failed_script_changes_nothing_and_fails_the_same_way_everywhere() {
 fn an_ability_loads_only_when_its_data_holds() {
     let mut game = Match::new();
     let load = |game: &mut Match, data: &AbilityData, source: Option<&str>| {
-        Abilities::load(&mut game.world, data, source, TICK_HZ)
+        Abilities::load(&mut game.world, data, source)
     };
     let mut uneven = lash_out();
     uneven.cost = Some(Ranked::PerRank(vec![35, 40]));
@@ -385,4 +390,14 @@ fn an_ability_loads_only_when_its_data_holds() {
         Err(AbilityError::Script(ScriptError::Compile(_)))
     ));
     assert!(load(&mut game, &lash_out(), Some(LASH_OUT)).is_ok());
+
+    // A script may serve only the ability's modifiers: a cast of rank 1 in tick 0 then runs no
+    // script, and spends 35 of 100 and its 10 000 ms, 300 ticks at 30 a second.
+    let modifiers_only = "fn on_damage_taken(ctx, m, d) { }";
+    let passive = load(&mut game, &lash_out(), Some(modifiers_only)).unwrap();
+    let caster = game.caster(passive, 1);
+    game.cast(caster, CastTarget::None);
+    assert!(game.failures().is_empty());
+    assert_eq!(game.pool(caster), 65);
+    assert_eq!(game.slot(caster).ready_at, 300);
 }

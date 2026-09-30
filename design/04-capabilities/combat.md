@@ -11,12 +11,13 @@ A unit has a team: its index in the mode's list of teams, which may be of any le
 - **Attack order.** An attack names its target by stable id; an order on a unit that is not a living enemy is ignored.
 - **Range** is measured on the ground plane, exactly, with no square root. A unit that can move walks to its target while out of range and stops in range.
 - **Windup and period.** An attack starts once the unit is ready and strikes when its windup ends. The next attack may start one period after this one started. A move, or an attack on another target, cancels a windup and spends nothing, so the unit may attack again at once; after the strike, in the back-swing, moving is free. Range counts only at the start: a strike lands unless its target died or despawned.
-- **Ranged attacks** fire a projectile ([Abilities](abilities.md#projectiles-and-areas)); until projectiles exist, they strike at the end of the windup.
+- **Ranged attacks** fire a homing projectile at the end of the windup, from where the attacker stands, which strikes on arrival ([Abilities](abilities.md#projectiles-and-areas)); in a match without `projectiles`, they strike at the end of the windup.
 
 ## Damage and death
 
 - **Damage** has an amount and a kind: `physical`, `magic` or `true`. The mode's `calc_damage` hook turns it into the final amount (armor, resistances); until scripts run, an attack deals its damage as is.
 - **Strikes of one tick apply together** in the Resolve stage, in the order of their source's stable id, so each follows from the state before any of them: two units can kill each other in one tick.
+- **Recent attackers.** Each strike records its source with its target, and the tick it landed in. A unit keeps each attacker once, with its last strike, and forgets one that no longer exists; `unit.recent_attackers(ms)` reads them.
 - **Death.** A unit at zero health dies at the end of Resolve. A unit type says whether it stays dead to respawn, as heroes do, or despawns, as creeps do. A dead unit takes no orders and is no target.
 - **Kill credit.** The source whose damage took the health to zero is the killer; the units that damaged the victim within the mode's `assist_window_ms` assisted. The mode receives both in `on_unit_died`.
 

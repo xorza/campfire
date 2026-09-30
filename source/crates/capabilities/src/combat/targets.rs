@@ -2,7 +2,6 @@ use bevy_ecs::query::{With, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_sim::{EntityIndex, Position, StableId};
 
-use crate::combat::attack_stats::{AttackStats, ground_offset};
 use crate::combat::dead::Dead;
 use crate::combat::health::Health;
 use crate::combat::living_unit::LivingUnit;
@@ -33,20 +32,5 @@ impl Targets<'_, '_> {
     pub(crate) fn living(&self, target: StableId) -> Option<LivingUnit> {
         let (&id, &pos, &team) = self.units.get(self.index.get(target)?).ok()?;
         Some(LivingUnit { id, pos, team })
-    }
-
-    /// The nearest living enemy of `team` that `stats` reach from `from`, by exact distance on the
-    /// ground plane, the lower stable id on a tie.
-    pub(crate) fn nearest_enemy(
-        &self,
-        team: Team,
-        from: Position,
-        stats: &AttackStats,
-    ) -> Option<StableId> {
-        self.units
-            .iter()
-            .filter(|&(_, &at, &theirs)| team.is_enemy_of(theirs) && stats.reaches(from, at))
-            .min_by_key(|&(&id, &at, _)| (ground_offset(from, at).length_squared_bits(), id))
-            .map(|(&id, _, _)| id)
     }
 }

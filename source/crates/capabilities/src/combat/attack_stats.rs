@@ -7,13 +7,15 @@ use serde::{Deserialize, Deserializer, Serialize};
 /// How a unit attacks. An attack starts when its target is within `range` on the ground plane,
 /// strikes `windup` ticks later for `damage`, and the next one starts `period` ticks after it at
 /// the earliest. The windup is shorter than the period, so a strike lands before the next attack
-/// may start.
+/// may start. A ranged attack fires a projectile of `projectile_speed` a tick instead, in a
+/// match with projectiles.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct AttackStats {
     range: Num,
     windup: u32,
     period: u32,
     damage: Num,
+    projectile_speed: Option<Num>,
 }
 
 impl AttackStats {
@@ -27,6 +29,19 @@ impl AttackStats {
             windup,
             period,
             damage,
+            projectile_speed: None,
+        })
+    }
+
+    /// The same attack, ranged: it fires a projectile that flies `speed` a tick. `None` unless
+    /// the speed is positive.
+    pub const fn ranged(self, speed: Num) -> Option<AttackStats> {
+        if speed.to_bits() <= 0 {
+            return None;
+        }
+        Some(AttackStats {
+            projectile_speed: Some(speed),
+            ..self
         })
     }
 
@@ -44,6 +59,10 @@ impl AttackStats {
 
     pub const fn damage(self) -> Num {
         self.damage
+    }
+
+    pub const fn projectile_speed(self) -> Option<Num> {
+        self.projectile_speed
     }
 
     /// Whether an attack from `from` reaches `to`: within range on the ground plane, exactly.
@@ -71,9 +90,14 @@ impl<'de> Deserialize<'de> for AttackStats {
             windup: u32,
             period: u32,
             damage: Num,
+            projectile_speed: Option<Num>,
         }
         let fields = Fields::deserialize(deserializer)?;
-        AttackStats::new(fields.range, fields.windup, fields.period, fields.damage)
-            .ok_or_else(|| D::Error::custom("attack stats out of their limits"))
+        let melee = AttackStats::new(fields.range, fields.windup, fields.period, fields.damage);
+        let stats = match fields.projectile_speed {
+            None => melee,
+            Some(speed) => melee.and_then(|melee| melee.ranged(speed)),
+        };
+        stats.ok_or_else(|| D::Error::custom("attack stats out of their limits"))
     }
 }
