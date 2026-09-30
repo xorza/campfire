@@ -1,3 +1,4 @@
+use std::f32::consts::FRAC_PI_2;
 use std::time::Duration;
 
 use bevy::app::{App, Plugin, Startup, Update};
@@ -8,19 +9,20 @@ use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::lifecycle::Despawn;
+use bevy::ecs::lifecycle::RemovedComponents;
 use bevy::ecs::observer::On;
-use bevy::ecs::query::{Allow, Changed, Has, With, Without};
+use bevy::ecs::query::{Added, Allow, Changed, Has, With, Without};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::system::{Commands, Query, Res, ResMut};
 use bevy::light::DirectionalLight;
-use bevy::math::Vec3;
 use bevy::math::primitives::{Capsule3d, Plane3d};
+use bevy::math::{Quat, Vec3};
 use bevy::mesh::{Mesh, Mesh3d, Meshable};
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::time::Time;
 use bevy::transform::components::Transform;
-use campfire_capabilities::{MoveStep, Owner, Team};
+use campfire_capabilities::{Dead, MoveStep, Owner, Team};
 use campfire_math::Num;
 use campfire_net::Unpredicted;
 use campfire_sim::{Position, StableId};
@@ -43,6 +45,7 @@ struct Palette {
     own: Handle<StandardMaterial>,
     /// By team index: the first playing team, the second, and any other.
     teams: [Handle<StandardMaterial>; 3],
+    dead: Handle<StandardMaterial>,
 }
 
 #[derive(Resource, Debug)]
@@ -65,7 +68,7 @@ struct Glide {
 }
 
 /// The units not drawn yet: where each stands, its team, whether it walks, whether a player
-/// controls it, and whether it is the client's own.
+/// controls it, whether it is the client's own, and whether it is dead.
 type NewUnits<'w, 's> = Query<
     'w,
     's,
@@ -76,6 +79,7 @@ type NewUnits<'w, 's> = Query<
         Has<MoveStep>,
         Has<Owner>,
         Has<Predicted>,
+        Has<Dead>,
     ),
     (With<StableId>, Without<Drawn>, Allow<Unpredicted>),
 >;
@@ -83,6 +87,14 @@ type NewUnits<'w, 's> = Query<
 /// The drawn units whose sim place changed.
 type MovedUnits<'w, 's> =
     Query<'w, 's, (&'static Position, &'static Drawn), (Changed<Position>, Allow<Unpredicted>)>;
+
+/// How a drawing looks while its unit lives: its material and its shape. A dead unit lies on the
+/// ground, gray.
+#[derive(Component, Debug)]
+struct Look {
+    alive: Handle<StandardMaterial>,
+    shape: Shape,
+}
 
 /// The shape of a unit: a hero is under a player's control, a structure does not walk.
 #[derive(Debug, Clone, Copy)]
@@ -108,7 +120,10 @@ impl Plugin for View {
     fn build(&self, app: &mut App) {
         app.insert_resource(TickSeconds(self.tick.as_secs_f32()));
         app.add_systems(Startup, View::set_scene);
-        app.add_systems(Update, (View::draw_new, View::follow, View::glide).chain());
+        app.add_systems(
+            Update,
+            (View::draw_new, View::mourn, View::follow, View::glide).chain(),
+        );
         app.add_observer(View::erase);
     }
 }
@@ -146,6 +161,7 @@ impl View {
                 materials.add(Color::srgb(0.9, 0.25, 0.2)),
                 materials.add(Color::srgb(0.6, 0.6, 0.6)),
             ],
+            dead: materials.add(Color::srgb(0.22, 0.22, 0.24)),
         };
         commands.insert_resource(palette);
     }
@@ -157,7 +173,7 @@ impl View {
         units: NewUnits<'_, '_>,
         mut commands: Commands<'_, '_>,
     ) {
-        for (unit, &pos, team, walks, owned, own) in &units {
+        for (unit, &pos, team, walks, owned, own, dead) in &units {
             let (shape, mesh) = match (owned, walks) {
                 (true, _) => (HERO, &palette.hero),
                 (false, true) => (CREEP, &palette.creep),
@@ -168,22 +184,51 @@ impl View {
             } else {
                 &palette.teams[usize::from(team.index()).min(2)]
             };
-            let lift = shape.radius + shape.length / 2.0;
+            let look = Look {
+                alive: material.clone(),
+                shape,
+            };
             let at = ground(pos);
+            let mut glide = Glide {
+                from: at,
+                to: at,
+                since: time.elapsed_secs(),
+                lift: 0.0,
+            };
+            let mut transform = Transform::default();
+            let mut material = MeshMaterial3d(material.clone());
+            look.show(dead, &palette, &mut material, &mut transform, &mut glide);
+            transform.translation = at + Vec3::Y * glide.lift;
             let drawing = commands
-                .spawn((
-                    Mesh3d(mesh.clone()),
-                    MeshMaterial3d(material.clone()),
-                    Transform::from_translation(at + Vec3::Y * lift),
-                    Glide {
-                        from: at,
-                        to: at,
-                        since: time.elapsed_secs(),
-                        lift,
-                    },
-                ))
+                .spawn((Mesh3d(mesh.clone()), material, transform, glide, look))
                 .id();
             commands.entity(unit).insert(Drawn(drawing));
+        }
+    }
+
+    /// Lays each unit that died down, and stands each unit that came back to life up.
+    fn mourn(
+        palette: Res<'_, Palette>,
+        died: Query<'_, '_, &Drawn, (Added<Dead>, Allow<Unpredicted>)>,
+        mut revived: RemovedComponents<'_, '_, Dead>,
+        units: Query<'_, '_, &Drawn, Allow<Unpredicted>>,
+        mut drawings: Query<
+            '_,
+            '_,
+            (
+                &Look,
+                &mut MeshMaterial3d<StandardMaterial>,
+                &mut Transform,
+                &mut Glide,
+            ),
+        >,
+    ) {
+        let revived = revived.read().filter_map(|unit| units.get(unit).ok());
+        let changes = died.iter().map(|drawn| (drawn, true));
+        for (&Drawn(drawing), dead) in changes.chain(revived.map(|drawn| (drawn, false))) {
+            if let Ok((look, mut material, mut transform, mut glide)) = drawings.get_mut(drawing) {
+                look.show(dead, &palette, &mut material, &mut transform, &mut glide);
+            }
         }
     }
 
@@ -222,6 +267,29 @@ impl View {
     ) {
         if let Ok(&Drawn(drawing)) = units.get(despawned.entity) {
             commands.entity(drawing).despawn();
+        }
+    }
+}
+
+impl Look {
+    /// Sets a drawing's material, pose and height for a unit that is `dead` or alive.
+    fn show(
+        &self,
+        dead: bool,
+        palette: &Palette,
+        material: &mut MeshMaterial3d<StandardMaterial>,
+        transform: &mut Transform,
+        glide: &mut Glide,
+    ) {
+        let Shape { radius, length } = self.shape;
+        if dead {
+            material.0 = palette.dead.clone();
+            transform.rotation = Quat::from_rotation_z(FRAC_PI_2);
+            glide.lift = radius;
+        } else {
+            material.0 = self.alive.clone();
+            transform.rotation = Quat::IDENTITY;
+            glide.lift = radius + length / 2.0;
         }
     }
 }

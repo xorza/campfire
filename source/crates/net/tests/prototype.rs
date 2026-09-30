@@ -6,7 +6,7 @@ use std::num::NonZeroU32;
 
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
-use campfire_capabilities::{Action, Destination, Owner};
+use campfire_capabilities::{Action, Dead, Destination, Health, Owner};
 use campfire_math::{Num, Vec3};
 use campfire_net::{LocalPair, PlayerLink, TickHashes, Unpredicted};
 use campfire_protocol::{SeedChain, SessionLog};
@@ -126,4 +126,39 @@ fn server_and_replay_agree_on_every_tick() {
         }
         assert_eq!(replay.log().next_tick(), ticks);
     }
+}
+
+#[test]
+fn a_dead_hero_stays_where_it_died_on_the_server_and_its_client() {
+    let mut pair = LocalPair::new(RollbackMode::Check, SEED_CHAIN, 1);
+    pair.start_match();
+    // The hero walks to (4, 0), 4 m from the east tower at (8, 0), which reaches 7.75 m and hits
+    // for 150 of its 600: the fourth hit kills it where it stands.
+    pair.order(move_to(4, 0));
+    let dead = |app: &App| app.world().entity(hero_entity(app)).contains::<Dead>();
+    let mut frames = 0;
+    while !dead(pair.server()) {
+        assert!(frames < 400, "the tower kills the hero");
+        pair.step();
+        frames += 1;
+    }
+    // An order after its death moves it on neither end: the client learns the death from the
+    // server and stops the hero as the server does, so nothing snaps back.
+    pair.order(move_to(-4, 0));
+    for _ in 0..40 {
+        pair.step();
+    }
+    let body = Hero {
+        position: Position::new(Vec3::new(num(4), Num::ZERO, Num::ZERO)).unwrap(),
+        destination: Destination::default(),
+    };
+    assert_eq!(hero(pair.server()), body);
+    assert_eq!(hero(pair.client()), body);
+    assert!(dead(pair.client()));
+    let client = pair.client().world();
+    let health = client.get::<Health>(hero_entity(pair.client())).unwrap();
+    assert_eq!(health.current(), Num::ZERO);
+    // No correction was ever needed: a client that predicted the dead hero walking would roll
+    // back to the body.
+    assert_eq!(client.resource::<PredictionMetrics>().rollbacks, 0);
 }
