@@ -39,10 +39,12 @@ use lightyear::prelude::{
 use tracing::error;
 
 use crate::bot::Bot;
+use crate::hud::Hud;
 use crate::orders::Orders;
 use crate::view::View;
 
 mod bot;
+mod hud;
 mod orders;
 mod pointer;
 mod view;
@@ -124,6 +126,7 @@ fn main() -> ExitCode {
                 })
                 .disable::<LogPlugin>(),
             View { tick },
+            Hud,
             Orders,
         ));
     }

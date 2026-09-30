@@ -36,6 +36,9 @@ pub(crate) struct View {
     pub(crate) tick: Duration,
 }
 
+/// Where the camera stands, looking at the origin.
+pub(crate) const CAMERA: Vec3 = Vec3::new(0.0, 24.0, 18.0);
+
 /// The meshes and materials units are drawn with.
 #[derive(Resource, Debug)]
 struct Palette {
@@ -60,7 +63,7 @@ pub(crate) struct Drawn(Entity);
 /// that place, over one tick from `since`, in seconds of app time; `lift` raises the capsule to
 /// stand on the ground.
 #[derive(Component, Debug)]
-struct Glide {
+pub(crate) struct Glide {
     from: Vec3,
     to: Vec3,
     since: f32,
@@ -138,7 +141,7 @@ impl View {
         commands.spawn((
             Camera3d::default(),
             Tonemapping::None,
-            Transform::from_xyz(0.0, 24.0, 18.0).looking_at(Vec3::ZERO, Vec3::Y),
+            Transform::from_translation(CAMERA).looking_at(Vec3::ZERO, Vec3::Y),
         ));
         commands.insert_resource(ClearColor(Color::srgb(0.08, 0.09, 0.11)));
         commands.spawn((
@@ -242,7 +245,7 @@ impl View {
             let Ok((transform, mut glide)) = drawings.get_mut(drawing) else {
                 continue;
             };
-            glide.from = transform.translation - Vec3::Y * glide.lift;
+            glide.from = glide.ground(transform);
             glide.to = ground(pos);
             glide.since = time.elapsed_secs();
         }
@@ -271,6 +274,13 @@ impl View {
     }
 }
 
+impl Glide {
+    /// Where on the ground a drawing at `transform` stands.
+    pub(crate) fn ground(&self, transform: &Transform) -> Vec3 {
+        transform.translation - Vec3::Y * self.lift
+    }
+}
+
 impl Drawn {
     pub(crate) const fn drawing(&self) -> Entity {
         self.0
@@ -283,7 +293,12 @@ impl Look {
         self.shape.radius
     }
 
-    /// Sets a drawing's material, pose and height for a unit that is `dead` or alive.
+    /// How tall the drawing stands while its unit lives.
+    pub(crate) fn height(&self) -> f32 {
+        self.shape.length + 2.0 * self.shape.radius
+    }
+
+    /// Sets a drawing's material, pose and lift for a unit that is `dead` or alive.
     fn show(
         &self,
         dead: bool,
@@ -308,13 +323,14 @@ impl Look {
 /// A sim place on the ground plane, in the renderer's floats.
 fn ground(pos: Position) -> Vec3 {
     let at = pos.get();
-    Vec3::new(meters(at.x), 0.0, meters(at.z))
+    Vec3::new(float(at.x), 0.0, float(at.z))
 }
 
+/// A sim number in the renderer's floats.
 #[expect(
     clippy::cast_precision_loss,
     reason = "drawing needs no more than an f32's 24 bits of a place"
 )]
-fn meters(value: Num) -> f32 {
+pub(crate) fn float(value: Num) -> f32 {
     value.to_bits() as f32 / (1_u64 << Num::FRAC_BITS) as f32
 }

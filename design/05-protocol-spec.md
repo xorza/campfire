@@ -28,6 +28,7 @@ The protocol has its own version, separate from engine releases. Every session l
 
 - A package is a file list: one `(path, size, SHA-256)` row per file, sorted by path bytes, paths in UTF-8 with `/` separators. Its fingerprint is the SHA-256 of the postcard-encoded list.
 - Each file is a separate blob, so an update downloads only changed files and packages share identical assets.
+- A package is its bytes: no tool may convert its line endings, so the repository keeps text LF on every OS.
 - A client fetches blobs from the Blossom servers in the package announcement. A game server also serves every package it pins, so a session never depends on a mirror.
 
 ## Keys

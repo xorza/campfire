@@ -56,7 +56,7 @@ impl AbilitySlots {
         self.slots.get(usize::from(slot)).copied()
     }
 
-    pub(crate) fn iter(&self) -> impl Iterator<Item = AbilitySlot> + '_ {
+    pub fn iter(&self) -> impl Iterator<Item = AbilitySlot> + '_ {
         self.slots.iter().copied()
     }
 
