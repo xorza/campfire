@@ -50,7 +50,7 @@ The engine knows nothing about any particular genre; the MOBA is just the first 
 
 - **Deterministic:** the same inputs give the same result on every machine.
 - **Configurable tick rate:** set by the host, up to 200 Hz or more on LAN, fixed for the whole session.
-- **Platforms:** desktop only (Windows, Linux, macOS). The reference game is 3D with an isometric camera.
+- **Platforms:** desktop only (Windows, Linux, macOS). On x86-64 the CPU must have the x86-64-v3 level (AVX2 and FMA: Intel from 2013, AMD from 2015). The reference game is 3D with an isometric camera.
 - **Tools:** map and content editors, dedicated server and replay verifier.
 
 ## Multiplayer model

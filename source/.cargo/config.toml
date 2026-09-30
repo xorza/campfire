@@ -1,0 +1,5 @@
+# An x86-64 build needs the x86-64-v3 level: AVX2, FMA, BMI1 and BMI2, and MOVBE. The sim is
+# integer fixed point, and Rust never fuses float operations on its own, so the level changes
+# speed, not results.
+[target.'cfg(target_arch = "x86_64")']
+rustflags = ["-C", "target-cpu=x86-64-v3"]
