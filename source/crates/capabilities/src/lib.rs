@@ -53,7 +53,9 @@ pub use mode::Mode;
 pub use mode::avatar_index::AvatarIndex;
 pub use mode::error::{ModeError, UnitKitError};
 pub use mode::loadout_index::LoadoutIndex;
-pub use mode::map_data::{GroundPoint, MapData, NeutralSpawnData, PathData, StructureData};
+pub use mode::map_data::{
+    GridData, GroundPoint, MapData, NeutralSpawnData, PathData, StructureData,
+};
 pub use mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
 pub use mode::mode_input::{InputValue, ModeInput};
 pub use mode::mode_setup::{AvatarSetup, LoadoutSetup, ModeSetup, UnitTypeSetup};
@@ -98,6 +100,7 @@ pub use units::team::Team;
 pub use units::team_set::TeamSet;
 pub use units::unit_type::UnitType;
 pub use units::unit_type_data::UnitTypeData;
+pub use values::bounds::Bounds;
 pub use values::declared_name::DeclaredName;
 pub use values::filter_data::FilterData;
 pub use values::grid::Grid;

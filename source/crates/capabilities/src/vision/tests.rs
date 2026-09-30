@@ -12,6 +12,7 @@ use crate::scripts::error::CallError;
 use crate::scripts::match_scripts::MatchScripts;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::units::unit::Unit;
+use crate::values::bounds::Bounds;
 
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
 
@@ -62,7 +63,8 @@ impl Scene {
         world.add_schedule(schedule);
         let engine = world.non_send_mut::<ScriptHost>().into_inner().engine_mut();
         View::register_queries::<Probe>(engine, Probe::view);
-        let grid = Grid::new(num(1), [num(-10), num(-10)], [num(10), num(10)]).unwrap();
+        let bounds = Bounds::new([num(-10), num(-10)], [num(10), num(10)]).unwrap();
+        let grid = Grid::new(num(1), bounds).unwrap();
         Vision::load_grid(&mut world, grid, 3);
         Scene { world, registry }
     }
@@ -119,26 +121,19 @@ fn each_team_sees_the_cells_its_living_units_reveal() {
     let seer = scene.spawn(0, 0, 0, Some(3));
     let near = scene.spawn(1, 2, 0, Some(0));
     let far = scene.spawn(1, 3, 0, None);
-    // A dead unit reveals nothing, however far it sees; a unit off the grid only its team sees.
+    // A dead unit reveals nothing, however far it sees.
     let dead = scene.spawn(2, 5, 5, Some(20));
     let entity = scene.entity(dead);
     scene.world.entity_mut(entity).insert(Dead);
-    let off = scene.spawn(1, 15, 0, None);
     let team = |index| TeamSet::of(Team::new(index));
 
     // Before the first Vision stage each unit is seen by its team alone.
     assert_eq!(scene.seen_by(near), team(1));
     scene.world.run_schedule(SimUpdate);
-    let teams = [seer, near, far, dead, off].map(|id| scene.seen_by(id));
+    let teams = [seer, near, far, dead].map(|id| scene.seen_by(id));
     assert_eq!(
         teams,
-        [
-            team(0),
-            team(1).with(Team::new(0)),
-            team(1),
-            team(2),
-            team(1)
-        ]
+        [team(0), team(1).with(Team::new(0)), team(1), team(2)]
     );
 
     // Seen through the view: `find` returns both enemies within 10 m, `find_visible` and

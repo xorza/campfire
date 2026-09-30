@@ -35,6 +35,7 @@ use crate::units::owner::Owner;
 use crate::units::script_view::View;
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
+use crate::values::bounds::Bounds;
 
 pub(crate) mod ai;
 pub(crate) mod ai_ctx;
@@ -107,12 +108,13 @@ impl Orders {
 
 /// Makes each order the current one of its unit, in input order, so a later order in the tick
 /// wins. An order to a unit its player does not control, or that is dead, is ignored, and so are
-/// a body that is not an order, a target beyond the world bound, and an attack on a unit that is
-/// not a living enemy: a client can send anything. A move cancels an attack in its windup, and
+/// a body that is not an order and an attack on a unit that is not a living enemy: a client can
+/// send anything. A move's point clamps to the bounds. A move cancels an attack in its windup, and
 /// so does an attack on another target. A cast replaces a cast not resolved yet; its checks run
 /// in Act.
 fn apply_orders(
     inputs: Res<'_, TickInputs>,
+    bounds: Res<'_, Bounds>,
     index: Res<'_, EntityIndex>,
     targets: Targets<'_, '_>,
     mut units: Query<
@@ -144,13 +146,13 @@ fn apply_orders(
             }
             match order.action {
                 Action::Move { x, z } => {
-                    // Orders name a point on the ground plane; the unit keeps its height.
-                    let (Some(mut destination), Some(target)) = (
-                        destination,
-                        Position::new(Vec3::new(x, position.get().y, z)),
-                    ) else {
+                    let Some(mut destination) = destination else {
                         continue;
                     };
+                    // Orders name a point on the ground plane; the unit keeps its height.
+                    let [x, z] = bounds.clamp_ground([x, z]);
+                    let target = Position::new(Vec3::new(x, position.get().y, z))
+                        .expect("bounds are within the world's bound");
                     destination.set(Some(target));
                     if let Some(mut attack) = attack {
                         attack.set_target(None);

@@ -92,6 +92,31 @@ fn a_unit_walks_to_its_destination_exactly() {
 }
 
 #[test]
+fn every_unit_that_walks_ends_the_tick_within_the_bounds() {
+    let mut walk = Walk::new();
+    assert_eq!(*walk.world.resource::<Bounds>(), Bounds::WORLD);
+    walk.world
+        .insert_resource(Bounds::new([num(-4), num(-4)], [num(4), num(4)]).unwrap());
+    // Outside the bounds at x = 6: clamped to the edge x = 4, at its height and its z.
+    let outside = walk.unit(at(6, 1, 2), None);
+    // From x = 3 a meter towards x = 5: it arrives at 4, then walks on to 5 and back to 4.
+    let past = walk.unit(at(3, 0, 0), Some(at(5, 0, 0)));
+    let inside = walk.unit(at(1, 0, 1), None);
+    let id = walk.world.resource_mut::<IdAllocator>().allocate();
+    walk.world.spawn((id, at(9, 0, 9)));
+
+    walk.tick();
+    assert_eq!(walk.get::<Position>(outside), at(4, 1, 2));
+    assert_eq!(walk.get::<Position>(past), at(4, 0, 0));
+    assert_eq!(walk.get::<Position>(inside), at(1, 0, 1));
+    walk.tick();
+    assert_eq!(walk.get::<Position>(past), at(4, 0, 0));
+    assert_eq!(walk.get::<Destination>(past).get(), None);
+    // A unit that does not walk is not moved: the map's check keeps it within the bounds.
+    assert_eq!(walk.get::<Position>(id), at(9, 0, 9));
+}
+
+#[test]
 fn a_dead_unit_stays_and_forgets_its_destination() {
     let mut walk = Walk::new();
     let unit = walk.unit(at(0, 0, 0), Some(at(0, 0, 5)));

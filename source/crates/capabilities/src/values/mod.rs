@@ -1,5 +1,6 @@
 //! Data value types: the numbers, per-rank values, params and filters that data files write.
 
+pub(crate) mod bounds;
 pub(crate) mod declared_name;
 pub(crate) mod filter_data;
 pub(crate) mod grid;

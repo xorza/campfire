@@ -69,7 +69,7 @@ impl Mode {
     /// Adds the mode of `setup`, which passed `Mode::check` when its package loaded, to a match
     /// whose capabilities are installed and whose unit types, abilities and AI are loaded: in
     /// Inputs, the players' mode inputs run `on_mode_input`; in Mode, due timers run `on_timer`,
-    /// then the tick's deaths run `on_unit_died`. The map's paths and grid become the match's,
+    /// then the tick's deaths run `on_unit_died`. The map's bounds, paths and grid become the match's,
     /// and the mode's `assist_window_ms` combat's.
     pub fn install(
         world: &mut World,
@@ -80,7 +80,8 @@ impl Mode {
         let view = world.non_send::<View>().clone();
         let rate = *world.resource::<TickRate>();
         let paths = Mode::paths(setup.map);
-        let grid = setup.map.grid;
+        let bounds = setup.map.bounds;
+        let grid = setup.map.grid().expect("the check passed");
         // A window past what ticks can count covers the whole match.
         let assist_window = setup
             .data
@@ -99,6 +100,7 @@ impl Mode {
         }
         view.set_names(Rc::clone(&book.teams), paths.shared_names());
         world.insert_resource(paths);
+        world.insert_resource(bounds);
         world.insert_resource(ModeState(book.schema.state_initial.clone()));
         let players = book.teams.players() as usize;
         world.insert_resource(Picks(vec![Pick::default(); players]));
@@ -148,8 +150,8 @@ impl Mode {
     /// named `neutral` and no two share a name, fewer than `Team::LIMIT` with the neutral one; and
     /// its map, whose paths each have a waypoint and a name of their own, whose every
     /// playing team has an avatar spawn, and whose structures and neutral spawns name unit types
-    /// `unit_type` knows, and teams and paths the mode has. Every point is within the world's
-    /// bound.
+    /// `unit_type` knows, and teams and paths the mode has. Every point is within the map's
+    /// bounds, and its grid, if it has one, makes a grid of them.
     pub fn check(
         teams: &[TeamManifest],
         map: &MapData,
@@ -166,7 +168,11 @@ impl Mode {
         if teams.len() >= Team::LIMIT {
             return Err(ModeError::TooManyTeams);
         }
-        let in_bounds = |point: &GroundPoint| point.position().ok_or(ModeError::OutOfBounds);
+        map.grid()?;
+        let in_bounds = |point: &GroundPoint| match point.position() {
+            Some(pos) if map.bounds.contains(pos) => Ok(()),
+            _ => Err(ModeError::OutOfBounds),
+        };
         for (at, path) in map.paths.iter().enumerate() {
             if map.paths[..at].iter().any(|other| other.name == path.name) {
                 return Err(ModeError::RepeatedName(path.name.clone()));

@@ -320,7 +320,11 @@ impl ModeCtx {
             .ok_or_else(|| ApiError::UnknownUnitType.fail().into())
     }
 
+    /// Queues a unit of `unit_type` on `team` at `pos`, which is within the map's bounds.
     fn spawn_unit(&self, unit_type: &str, team: &str, pos: Position) -> Checked<()> {
+        if !self.book.bounds.contains(pos) {
+            return Err(ApiError::OutOfBounds.fail().into());
+        }
         let effect = ModeEffect::SpawnUnit {
             unit_type: self.unit_type(unit_type)?,
             team: self.team(team)?,

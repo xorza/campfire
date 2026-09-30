@@ -4,16 +4,19 @@ use campfire_math::{Num, Vec3};
 use campfire_sim::Position;
 use serde::Deserialize;
 
+use crate::mode::error::ModeError;
+use crate::values::bounds::Bounds;
 use crate::values::grid::Grid;
 use crate::values::scalar::Scalar;
 
-/// The mode's `map/map.toml`: its grid, its paths, where each team's avatars spawn, the structures
-/// that stand from the start, and where neutral units spawn.
+/// The mode's `map/map.toml`: its bounds, its grid, its paths, where each team's avatars spawn,
+/// the structures that stand from the start, and where neutral units spawn.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MapData {
-    /// The cells vision reveals; a mode that declares `vision` has one.
-    pub grid: Option<Grid>,
+    pub bounds: Bounds,
+    /// The cells vision reveals, over the bounds; a mode that declares `vision` has one.
+    pub grid: Option<GridData>,
     /// Each runs from the first team's end to the second's.
     #[serde(default)]
     pub paths: Vec<PathData>,
@@ -23,6 +26,13 @@ pub struct MapData {
     pub structures: Vec<StructureData>,
     #[serde(default)]
     pub neutral_spawns: Vec<NeutralSpawnData>,
+}
+
+/// A map's `[grid]`: the size of its square cells, in meters.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct GridData {
+    pub cell: Scalar,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -54,6 +64,21 @@ pub struct NeutralSpawnData {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(transparent)]
 pub struct GroundPoint(pub [Scalar; 2]);
+
+impl MapData {
+    /// The grid over the bounds, if the map has one; an error unless its cell is positive and at
+    /// most the world's bound, and it has at most 2²² cells.
+    pub fn grid(&self) -> Result<Option<Grid>, ModeError> {
+        let Some(data) = self.grid else {
+            return Ok(None);
+        };
+        let grid = data
+            .cell
+            .to_num()
+            .and_then(|cell| Grid::new(cell, self.bounds));
+        grid.map(Some).ok_or(ModeError::Grid)
+    }
+}
 
 impl GroundPoint {
     /// The point at height 0; `None` beyond the world's bound.

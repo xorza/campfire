@@ -4,7 +4,7 @@
 use std::num::NonZeroU32;
 
 use bevy_app::App;
-use campfire_capabilities::{AbilitySlots, Dead, Health, ResourcePool};
+use campfire_capabilities::{AbilitySlots, Dead, Health, ResourcePool, SeenBy, Team};
 use campfire_math::{Num, Vec3};
 use campfire_net::{LinkModel, LocalMatch, MatchSetup, TickHashes};
 use campfire_protocol::{SeedChain, SessionLog};
@@ -178,27 +178,27 @@ fn check_log(local: &mut LocalMatch, inputs: usize) {
 }
 
 /// The orders by team, the west, whose hero is the walker, then the east, whose is the runner:
-/// both walk 7.5 m off the lane, out of reach of creeps and towers and within the vision grid, to
-/// stand 1 m apart.
+/// both order a point past the map's edge at z = 12, and stop on the edge, 8 m off the lane, out
+/// of reach of creeps and towers, 1 m apart; there each sees the other.
 ///
 /// The walker casts its first ability, 100 true damage within 2 m for 40 of its 100 mana, every
 /// 90 ticks: in tick 100 it hits; in 120 it is on cooldown; in 190 its cooldown has ended, and it
 /// hits; in 280 the 20 mana left do not pay. In tick 300 it attacks the runner: 60 damage 8 ticks
-/// into each attack of 20, in 308, 328 and 348; in 350 it stays where it stands, which ends the
-/// attack.
+/// into each attack of 20, in 308, 328 and 348; in 350 it walks to where it stands, which ends
+/// the attack.
 ///
 /// The runner casts its first ability at the walker in tick 140: 80 true damage for 30 of its 100
 /// mana, every 60 ticks.
 fn cast_scripts(walker: StableId, runner: StableId) -> [String; 2] {
     let walker_orders = format!(
-        "[[order]]\ntick = 60\nmove = [0, \"7.5\"]\n\
+        "[[order]]\ntick = 60\nmove = [0, 12]\n\
          [[order]]\ntick = 100\ncast = 0\n[[order]]\ntick = 120\ncast = 0\n\
          [[order]]\ntick = 190\ncast = 0\n[[order]]\ntick = 280\ncast = 0\n\
-         [[order]]\ntick = 300\nattack = {}\n[[order]]\ntick = 350\nmove = [0, \"7.5\"]\n",
+         [[order]]\ntick = 300\nattack = {}\n[[order]]\ntick = 350\nmove = [0, 12]\n",
         runner.get()
     );
     let runner_orders = format!(
-        "[[order]]\ntick = 60\nmove = [1, \"7.5\"]\n\
+        "[[order]]\ntick = 60\nmove = [1, 12]\n\
          [[order]]\ntick = 140\ncast = 0\ntarget = {}\n",
         walker.get()
     );
@@ -206,10 +206,11 @@ fn cast_scripts(walker: StableId, runner: StableId) -> [String; 2] {
 }
 const CAST_TICKS: u64 = 360;
 
-/// A unit's health, its resource, and the first tick its first ability may be cast again, as an
-/// app holds them.
+/// Where a unit stands, its health, its resource, and the first tick its first ability may be
+/// cast again, as an app holds them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Caster {
+    pos: Position,
     health: Num,
     resource: Option<Num>,
     ready_at: Option<Tick>,
@@ -219,6 +220,7 @@ fn caster(app: &App, id: StableId) -> Caster {
     let world = app.world();
     let unit = world.entity(world.resource::<EntityIndex>().get(id).unwrap());
     Caster {
+        pos: *unit.get::<Position>().unwrap(),
         health: unit.get::<Health>().unwrap().current(),
         resource: unit.get::<ResourcePool>().map(|pool| pool.current()),
         ready_at: unit
@@ -262,16 +264,19 @@ fn cast(link: LinkModel) -> [u32; 2] {
     }
     check_log(&mut local, 9);
 
-    // Each order took effect in its stamp tick: the walker lost 80 health to the runner's cast;
+    // Each order took effect in its stamp tick: each hero stands on the edge, z = 8; the walker
+    // lost 80 health to the runner's cast;
     // the runner 100 to each of the walker's two casts that paid, and 60 to each of its three
     // strikes. The walker spent 40 mana twice, the runner 30 once, and each ability is ready
     // again after its last cast's cooldown: on the server and on both clients.
     assert_eq!(hits, [vec![140], vec![100, 190, 308, 328, 348]]);
     let num = |value| Num::from_int(value).unwrap();
+    let edge = |x| Position::new(Vec3::new(num(x), Num::ZERO, num(8))).unwrap();
     let expected = [
         (
             walker,
             Caster {
+                pos: edge(0),
                 health: num(600 - 80),
                 resource: Some(num(100 - 40 - 40)),
                 ready_at: Some(Tick::new(190 + 90)),
@@ -280,6 +285,7 @@ fn cast(link: LinkModel) -> [u32; 2] {
         (
             runner,
             Caster {
+                pos: edge(1),
                 health: num(600 - 100 - 100 - 3 * 60),
                 resource: Some(num(100 - 30)),
                 ready_at: Some(Tick::new(140 + 60)),
@@ -295,6 +301,14 @@ fn cast(link: LinkModel) -> [u32; 2] {
                 "{id:?} on client {client}"
             );
         }
+    }
+    // On the edge, in the grid's last row, each is seen by both teams.
+    for id in [walker, runner] {
+        let world = local.server().world();
+        let unit = world.entity(world.resource::<EntityIndex>().get(id).unwrap());
+        let seen = unit.get::<SeenBy>().unwrap().get();
+        let teams = [0, 1].map(|team| seen.contains(Team::new(team)));
+        assert_eq!(teams, [true, true], "{id:?}");
     }
     [0, 1].map(|client| {
         let world = local.client(client).world();

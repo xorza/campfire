@@ -124,7 +124,7 @@ fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 54] = [
+const FLAWS: [Flaw; 56] = [
     flaw(
         MANIFEST,
         Edit::Replace(r#"engine = "0.1.0""#, r#"engine = "0.0.9""#),
@@ -306,10 +306,7 @@ const FLAWS: [Flaw; 54] = [
     ),
     flaw(
         MAP,
-        Edit::Replace(
-            "[grid]\ncell = \"1.0\"\nmin = [-48, -68]\nmax = [48, 68]\n",
-            "",
-        ),
+        Edit::Replace("[grid]\ncell = \"1.0\"\n", ""),
         MODE,
         |problem| matches!(problem, LoadProblem::NoGrid),
     ),
@@ -317,7 +314,19 @@ const FLAWS: [Flaw; 54] = [
         MAP,
         Edit::Replace("cell = \"1.0\"", "cell = \"0\""),
         MODE,
-        |problem| read_fails(problem, "map/map.toml", "a grid needs a positive cell"),
+        |problem| matches!(problem, LoadProblem::Mode(ModeError::Grid)),
+    ),
+    flaw(
+        MAP,
+        Edit::Replace("min = [-48, -68]", "min = [48, -68]"),
+        MODE,
+        |problem| read_fails(problem, "map/map.toml", "bounds need min below max"),
+    ),
+    flaw(
+        MAP,
+        Edit::Replace("pos = [0, -54]", "pos = [0, -69]"),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Mode(ModeError::OutOfBounds)),
     ),
     flaw(
         UNITS,

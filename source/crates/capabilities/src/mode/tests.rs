@@ -25,7 +25,7 @@ use crate::combat::respawn::Respawn;
 use crate::combat::strikes::{Strike, Strikes};
 use crate::mode::avatar_index::AvatarIndex;
 use crate::mode::loadout_index::LoadoutIndex;
-use crate::mode::map_data::{NeutralSpawnData, PathData, StructureData};
+use crate::mode::map_data::{GridData, NeutralSpawnData, PathData, StructureData};
 use crate::mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
 use crate::mode::mode_setup::{AvatarSetup, LoadoutSetup, UnitTypeSetup};
 use crate::mode::unit_kit::UnitKit;
@@ -42,6 +42,7 @@ use crate::units::owner::Owner;
 use crate::units::path_id::PathId;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
+use crate::values::bounds::Bounds;
 use crate::values::grid::Grid;
 use crate::values::scalar::Scalar;
 use crate::vision::vision_grid::VisionGrid;
@@ -141,11 +142,14 @@ fn grunt() -> UnitKit {
     }
 }
 
-/// A grid of 1 m cells from (−10, −5) to (10, 6); one path, `mid`, along x; team a's spawn at
+/// Bounds from (−10, −5) to (10, 6) with a grid of 1 m cells; one path, `mid`, along x; team a's spawn at
 /// z = −5 and b's at 5; a's tower 8 m down the path; and a neutral grunt in the middle.
 fn map() -> MapData {
     MapData {
-        grid: Grid::new(num(1), [num(-10), num(-5)], [num(10), num(6)]),
+        bounds: Bounds::new([num(-10), num(-5)], [num(10), num(6)]).unwrap(),
+        grid: Some(GridData {
+            cell: Scalar::Int(1),
+        }),
         paths: vec![PathData {
             name: "mid".to_owned(),
             points: vec![point(-10, 0), point(0, 0), point(10, 0)],
@@ -470,7 +474,9 @@ fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early
     );
     // The map's grid is the match's, for its 3 teams: a, b and the neutral one.
     let vision = *game.world.resource::<VisionGrid>();
-    assert_eq!((vision.grid, vision.teams), (map().grid.unwrap(), 3));
+    let grid = Grid::new(num(1), map().bounds).unwrap();
+    assert_eq!((vision.grid, vision.teams), (grid, 3));
+    assert_eq!(*game.world.resource::<Bounds>(), map().bounds);
     assert_eq!(game.state(), state("start", 0, 0, 0));
 
     // Set at the start, time 0: "every" is due at 1, the end of tick 0, and every tick after;

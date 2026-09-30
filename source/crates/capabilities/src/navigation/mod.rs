@@ -1,6 +1,7 @@
-use bevy_ecs::query::Has;
+use bevy_ecs::change_detection::DetectChangesMut;
+use bevy_ecs::query::{Has, With};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
-use bevy_ecs::system::Query;
+use bevy_ecs::system::{Query, Res};
 use bevy_ecs::world::{EntityRef, World};
 use campfire_sim::{Position, SimSet, StateRegistry};
 
@@ -11,6 +12,7 @@ use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::PathWalker;
 use crate::navigation::paths::Paths;
 use crate::units::script_view::{RowFill, View};
+use crate::values::bounds::Bounds;
 
 pub(crate) mod destination;
 pub(crate) mod move_step;
@@ -23,14 +25,19 @@ pub(crate) mod paths;
 pub struct Navigation;
 
 impl Navigation {
-    /// Adds navigation to a match, with no paths until the mode sets its map's: in Move, units
-    /// walk towards their destination.
+    /// Adds navigation to a match, with no paths and the world for bounds until the mode sets its
+    /// map's: in Move, units walk towards their destination; after Collide, each unit that walks
+    /// stands within the bounds again.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         if let Some(view) = world.get_non_send::<View>() {
             view.add_source(fill_row);
         }
         world.insert_resource(Paths::default());
-        schedule.add_systems(move_units.in_set(SimSet::Move));
+        world.insert_resource(Bounds::WORLD);
+        schedule.add_systems((
+            move_units.in_set(SimSet::Move),
+            keep_in_bounds.after(SimSet::Collide).before(SimSet::Hit),
+        ));
         registry.register_component::<Destination>();
         registry.register_component::<PathWalker>();
         registry.register_component::<MoveStep>();
@@ -59,6 +66,16 @@ fn move_units(mut units: Query<'_, '_, (&mut Position, &mut Destination, &MoveSt
         if moved == target.get() {
             destination.set(None);
         }
+    }
+}
+
+/// Clamps each unit that walks into the bounds; a unit already within them does not change.
+fn keep_in_bounds(
+    bounds: Res<'_, Bounds>,
+    mut units: Query<'_, '_, &mut Position, With<MoveStep>>,
+) {
+    for mut position in &mut units {
+        position.set_if_neq(bounds.clamp(*position));
     }
 }
 

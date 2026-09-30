@@ -410,11 +410,12 @@ fn only_its_players_orders_in_the_orders_capability_move_a_unit() {
     assert_eq!(game.position(first), at(0, 0, -1));
     assert_eq!(game.destination(first), Some(at(0, 0, -5)));
 
+    // Past the world's bound, which bounds a match without a map: it clamps to the edge.
     let beyond = Order::payload(&[Order {
         unit: first,
         action: Action::Move {
             x: Position::BOUND + Num::EPSILON,
-            z: Num::ZERO,
+            z: -num(1),
         },
     }]);
     let edge = Order::payload(&[Order {
@@ -450,9 +451,13 @@ fn only_its_players_orders_in_the_orders_capability_move_a_unit() {
         (2, &move_to(first, 9, 9)),
         (1, &edge),
     ]);
-    // None reaches the first hero, which walks on; the second takes only its own player's.
-    assert_eq!(game.position(first), at(0, 0, -2));
-    assert_eq!(game.destination(first), Some(at(0, 0, -5)));
+    // Only the order past the bound reaches the first hero, which walks 1 m along z = −1 towards
+    // the edge; the second takes only its own player's.
+    assert_eq!(game.position(first), at(1, 0, -1));
+    assert_eq!(
+        game.destination(first),
+        Some(Position::new(Vec3::new(Position::BOUND, Num::ZERO, -num(1))).unwrap())
+    );
     assert_eq!(
         game.destination(second),
         Some(Position::new(Vec3::new(Position::BOUND, num(2), Num::ZERO)).unwrap())

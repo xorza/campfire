@@ -28,6 +28,7 @@ use crate::units::spawn_point::SpawnPoint;
 use crate::units::team::Team;
 use crate::units::teams::Teams;
 use crate::units::unit_type::UnitType;
+use crate::values::bounds::Bounds;
 
 /// The mode's package data as a match runs it, names resolved: package data, not state. A restore
 /// loads it from the packages, as a new match does.
@@ -37,6 +38,7 @@ pub(crate) struct ModeBook {
     pub(crate) schema: ModeSchema,
     pub(crate) roster: Roster,
     pub(crate) teams: Rc<Teams>,
+    pub(crate) bounds: Bounds,
     /// Where each playing team's avatars spawn.
     spawns: Vec<Position>,
     /// By unit type.
@@ -80,6 +82,7 @@ impl ModeBook {
             schema: ModeSchema::new(setup.script, host, setup.data),
             roster: Roster::new(setup.avatars, setup.loadout),
             teams: Rc::new(teams),
+            bounds: setup.map.bounds,
             spawns: Vec::new(),
             kits,
             structures: Vec::new(),

@@ -43,8 +43,11 @@ pub enum ModeError {
     NoSpawn(String),
     /// A path has no waypoint.
     EmptyPath(String),
-    /// A point of the map is beyond the world's bound.
+    /// A point of the map is outside its bounds.
     OutOfBounds,
+    /// The grid's cell is not positive or beyond the world's bound, or it makes more than 2²²
+    /// cells.
+    Grid,
 }
 
 impl fmt::Display for UnitKitError {
@@ -80,7 +83,10 @@ impl fmt::Display for ModeError {
             ModeError::UnknownPath(name) => write!(f, "no path {name:?}"),
             ModeError::NoSpawn(team) => write!(f, "team {team:?} has no avatar spawn"),
             ModeError::EmptyPath(name) => write!(f, "path {name:?} has no waypoint"),
-            ModeError::OutOfBounds => f.write_str("a map point is beyond the world's bound"),
+            ModeError::OutOfBounds => f.write_str("a map point is outside the map's bounds"),
+            ModeError::Grid => f.write_str(
+                "the grid needs a positive cell within the world's bound and at most 2²² cells",
+            ),
         }
     }
 }

@@ -2,17 +2,15 @@ use std::ops::Range;
 
 use campfire_math::Num;
 use campfire_sim::Position;
-use serde::de::Error;
-use serde::{Deserialize, Deserializer};
 
-use crate::values::scalar::Scalar;
+use crate::values::bounds::Bounds;
 
-/// A map's ground grid: square cells of `cell` meters, whole cells from `min` on the ground plane
-/// until they cover `max`. Cells are numbered along x, then along z.
+/// A map's ground grid: square cells of `cell` meters over its bounds, whole cells from their min
+/// until they cover their max. Cells are numbered along x, then along z.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Grid {
     cell: Num,
-    min: [Num; 2],
+    bounds: Bounds,
     size: [u32; 2],
 }
 
@@ -20,19 +18,15 @@ impl Grid {
     /// The most cells a grid holds.
     const MAX_CELLS: u64 = 1 << 22;
 
-    /// The grid of `cell`-meter cells from `min` to cover `max`, each `[x, z]`; `None` unless
-    /// `cell` is positive and at most the world's bound, `min` is below `max` on both axes, both
-    /// are within the bound, and the cells are at most `MAX_CELLS`.
-    pub(crate) fn new(cell: Num, min: [Num; 2], max: [Num; 2]) -> Option<Grid> {
+    /// The grid of `cell`-meter cells over `bounds`; `None` unless `cell` is positive and at most
+    /// the world's bound, and the cells are at most `MAX_CELLS`.
+    pub(crate) fn new(cell: Num, bounds: Bounds) -> Option<Grid> {
         if cell <= Num::ZERO || cell > Position::BOUND {
             return None;
         }
+        let (min, max) = (bounds.min(), bounds.max());
         let mut size = [0; 2];
         for axis in 0..2 {
-            let within = -Position::BOUND <= min[axis] && max[axis] <= Position::BOUND;
-            if min[axis] >= max[axis] || !within {
-                return None;
-            }
             let span = (max[axis] - min[axis]).to_bits().unsigned_abs();
             let cells = span.div_ceil(cell.to_bits().unsigned_abs());
             size[axis] = u32::try_from(cells).ok()?;
@@ -40,19 +34,22 @@ impl Grid {
         if u64::from(size[0]) * u64::from(size[1]) > Grid::MAX_CELLS {
             return None;
         }
-        Some(Grid { cell, min, size })
+        Some(Grid { cell, bounds, size })
     }
 
     pub(crate) fn cells(&self) -> usize {
         self.size[0] as usize * self.size[1] as usize
     }
 
-    /// The cell `pos` stands in; `None` off the grid. A point on the line between two cells is
-    /// in the one after it.
+    /// The cell `pos` stands in; `None` outside the bounds. A point on the line between two cells
+    /// is in the one after it, and a point on the max edge in the last.
     pub(crate) fn cell_of(&self, pos: Position) -> Option<usize> {
+        if !self.bounds.contains(pos) {
+            return None;
+        }
         let at = pos.get();
-        let x = self.index(0, at.x)?;
-        let z = self.index(1, at.z)?;
+        let x = self.index(0, at.x);
+        let z = self.index(1, at.z);
         Some(z * self.size[0] as usize + x)
     }
 
@@ -73,10 +70,8 @@ impl Grid {
         let twice = |value: Num| 2 * value.to_bits();
         let reach = twice(radius).min(8 * twice(Position::BOUND));
         let size = self.size.map(i64::from);
-        let from = [
-            twice(at.x) - twice(self.min[0]),
-            twice(at.z) - twice(self.min[1]),
-        ];
+        let min = self.bounds.min();
+        let from = [twice(at.x) - twice(min[0]), twice(at.z) - twice(min[1])];
         let low_row = (from[1] - reach).div_euclid(2 * cell).max(0);
         let high_row = (from[1] + reach).div_euclid(2 * cell).min(size[1] - 1);
         for z in low_row..=high_row {
@@ -99,38 +94,11 @@ impl Grid {
         }
     }
 
-    fn index(&self, axis: usize, at: Num) -> Option<usize> {
-        let offset = at.to_bits().checked_sub(self.min[axis].to_bits())?;
-        if offset < 0 {
-            return None;
-        }
-        let index = offset / self.cell.to_bits();
-        (index < i64::from(self.size[axis])).then(|| usize::try_from(index).expect("a small index"))
-    }
-}
-
-/// A map's `[grid]`: `cell` in meters, and `min` and `max` as `[x, z]`, refused unless they make a
-/// grid.
-impl<'de> Deserialize<'de> for Grid {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Grid, D::Error> {
-        #[derive(Deserialize)]
-        #[serde(deny_unknown_fields)]
-        struct Fields {
-            cell: Scalar,
-            min: [Scalar; 2],
-            max: [Scalar; 2],
-        }
-        let fields = Fields::deserialize(deserializer)?;
-        let num = |scalar: Scalar| {
-            scalar
-                .to_num()
-                .ok_or_else(|| D::Error::custom("a grid value beyond a Num"))
-        };
-        let min = [num(fields.min[0])?, num(fields.min[1])?];
-        let max = [num(fields.max[0])?, num(fields.max[1])?];
-        Grid::new(num(fields.cell)?, min, max).ok_or_else(|| {
-            D::Error::custom("a grid needs a positive cell within the bound, min below max, and at most 2²² cells")
-        })
+    /// The index along `axis` of `at`, which is within the bounds.
+    fn index(&self, axis: usize, at: Num) -> usize {
+        let offset = at.to_bits() - self.bounds.min()[axis].to_bits();
+        let index = (offset / self.cell.to_bits()).min(i64::from(self.size[axis]) - 1);
+        usize::try_from(index).expect("a point within the bounds is past their min")
     }
 }
 
@@ -150,9 +118,10 @@ mod tests {
 
     #[test]
     fn a_grid_covers_its_rectangle_in_whole_cells_and_reveals_exactly() {
-        // 1 m cells from (−2, −1) to cover (2, 1.5): 4 along x, 3 along z, the last row half off.
+        // 1 m cells over (−2, −1) to (2, 1.5): 4 along x, 3 along z, the last row half outside.
         let half = Num::from_bits(1 << 23);
-        let grid = Grid::new(num(1), [num(-2), num(-1)], [num(2), num(1) + half]).unwrap();
+        let bounds = Bounds::new([num(-2), num(-1)], [num(2), num(1) + half]).unwrap();
+        let grid = Grid::new(num(1), bounds).unwrap();
         assert_eq!(grid.cells(), 12);
         // Cell (2, 1) is x from 0 to 1, z from 0 to 1: number 1 × 4 + 2 = 6.
         assert_eq!(grid.cell_of(at(Num::ZERO, Num::ZERO)), Some(6));
@@ -161,10 +130,22 @@ mod tests {
             Some(6)
         );
         assert_eq!(grid.cell_of(at(num(-2), num(-1))), Some(0));
-        let off = [
+        // On the max edges: x = 2 ends cell column 3, the last, so (2, 0) is in 1 × 4 + 3 = 7;
+        // z = 1.5 is inside row 2, so (0, 1.5) is in 2 × 4 + 2 = 10, and the corner in 11.
+        let edges = [
             at(num(2), Num::ZERO),
+            at(Num::ZERO, num(1) + half),
+            at(num(2), num(1) + half),
+        ];
+        assert_eq!(
+            edges.map(|pos| grid.cell_of(pos)),
+            [Some(7), Some(10), Some(11)]
+        );
+        // Outside the bounds, even within the last row's cells, which reach z = 2.
+        let off = [
+            at(num(2) + Num::EPSILON, Num::ZERO),
             at(num(-2) - Num::EPSILON, Num::ZERO),
-            at(Num::ZERO, num(2)),
+            at(Num::ZERO, num(1) + half + Num::EPSILON),
         ];
         assert_eq!(off.map(|pos| grid.cell_of(pos)), [None, None, None]);
 
@@ -195,7 +176,7 @@ mod tests {
                     let alone: Vec<usize> = (0..grid.cells())
                         .filter(|&cell| {
                             let center = |index: usize, axis: usize| {
-                                twice(grid.min[axis])
+                                twice(grid.bounds.min()[axis])
                                     + i128::from(grid.cell.to_bits()) * (2 * index as i128 + 1)
                             };
                             let dx = twice(pos.get().x) - center(cell % 4, 0);
@@ -208,17 +189,19 @@ mod tests {
             }
         }
 
-        for (cell, min, max) in [
-            (Num::ZERO, [num(0), num(0)], [num(1), num(1)]),
-            (
-                Position::BOUND + Num::EPSILON,
-                [num(0), num(0)],
-                [num(1), num(1)],
-            ),
-            (num(1), [num(1), num(0)], [num(1), num(1)]),
-            (num(1), [num(0), num(0)], [num(4096), num(4096) + num(1)]),
+        // 2048 × 2049 cells are more than 2²² = 2048 × 2048.
+        let wide = Bounds::new([num(0), num(0)], [num(2048), num(2049)]).unwrap();
+        let square = Bounds::new([num(0), num(0)], [num(2048), num(2048)]).unwrap();
+        assert_eq!(
+            Grid::new(num(1), square).map(|grid| grid.cells()),
+            Some(1 << 22)
+        );
+        for (cell, bounds) in [
+            (Num::ZERO, bounds),
+            (Position::BOUND + Num::EPSILON, bounds),
+            (num(1), wide),
         ] {
-            assert_eq!(Grid::new(cell, min, max), None, "{cell:?} {min:?} {max:?}");
+            assert_eq!(Grid::new(cell, bounds), None, "{cell:?} {bounds:?}");
         }
     }
 }

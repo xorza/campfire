@@ -62,8 +62,7 @@ fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
 }
 
 /// Reveals the cells each living unit with a sight sees to its team, then gives each unit the
-/// teams that see it: its own, and each whose cells hold it. A unit off the grid only its own
-/// team sees.
+/// teams that see it: its own, and each whose cells hold it.
 fn see(
     grid: Option<Res<'_, VisionGrid>>,
     seers: Query<'_, '_, (&Position, &Team, &Sight), Without<Dead>>,
@@ -85,12 +84,14 @@ fn see(
     }
     for (entity, &pos, &team, seen) in &mut units {
         let mut teams = TeamSet::of(team);
-        if let Some(cell) = grid.grid.cell_of(pos) {
-            for index in 0..grid.teams {
-                if revealed[index * words + cell / 64] & 1 << (cell % 64) != 0 {
-                    let index = u8::try_from(index).expect("teams fit u8");
-                    teams = teams.with(Team::new(index));
-                }
+        let cell = grid
+            .grid
+            .cell_of(pos)
+            .expect("every unit stands within the bounds, which the grid covers");
+        for index in 0..grid.teams {
+            if revealed[index * words + cell / 64] & 1 << (cell % 64) != 0 {
+                let index = u8::try_from(index).expect("teams fit u8");
+                teams = teams.with(Team::new(index));
             }
         }
         match seen {

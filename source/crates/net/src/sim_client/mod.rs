@@ -175,6 +175,7 @@ impl Plugin for SimClient {
         self.mode
             .capabilities
             .install(world, &mut schedule, &mut state, None);
+        world.insert_resource(self.mode.bounds);
         world.add_schedule(schedule);
         Unpredicted::install(world);
         world.insert_resource(SentInputs {

@@ -32,7 +32,7 @@ pub enum ApiError {
     NegativeTime,
     /// A time too long to count in ticks.
     TimeTooLarge,
-    /// A damage kind that is not `physical`, `magic` or `true`.
+    /// A damage kind the mode does not declare.
     UnknownDamageKind,
     NegativeDamage,
     /// An integer beyond a `Num`, which reaches 2³⁹.
@@ -49,6 +49,8 @@ pub enum ApiError {
     UnknownUnitType,
     /// A path the map does not have.
     UnknownPath,
+    /// A point outside the map's bounds.
+    OutOfBounds,
     /// A team whose units walk no path: only the first two teams walk each path, from their own
     /// end.
     NoPathEnd,
@@ -144,6 +146,7 @@ impl fmt::Display for ApiError {
             ApiError::UnknownTeam => "team is not one of the mode's",
             ApiError::UnknownUnitType => "unit type is not one of the mode's",
             ApiError::UnknownPath => "path is not one of the map's",
+            ApiError::OutOfBounds => "point is outside the map's bounds",
             ApiError::NoPathEnd => "team has no end of the paths",
             ApiError::NoEnemyTeam => "team has no one enemy team",
             ApiError::UnknownPlayer => "player is not in the session",
