@@ -12,7 +12,7 @@ use crate::stand_in_mode::StandInMode;
 /// inputs the log gives it. Until modes load from packages, every match is `StandInMode`'s.
 #[derive(Resource, Debug)]
 pub struct Session {
-    /// Secret until `reveal_seed` publishes the log.
+    /// The first segment's server seed, secret until `reveal_seed` publishes the log.
     server_seed: ServerSeed,
     state: StateRegistry,
     log: SessionLog,
@@ -20,9 +20,10 @@ pub struct Session {
 
 impl Session {
     /// Prepares `world` for the match of `log`'s header, at its tick rate and with the
-    /// randomness of `server_seed` and the players' contributions, and inserts the session, which
-    /// records into `log` from its first tick; an error when `server_seed` is not the one the
-    /// header commits to, or the mode does not run at the header's rate.
+    /// randomness of `server_seed`, the first segment's, and the players' contributions, and
+    /// inserts the session, which records into `log` from its first tick; an error when
+    /// `server_seed` is not the first segment's seed of the chain the header commits to, or the
+    /// mode does not run at the header's rate.
     pub fn start(
         world: &mut World,
         log: SessionLog,
@@ -35,7 +36,7 @@ impl Session {
             return Err(StartError::TickRate(hz));
         }
         let seed = header
-            .segment_seed(&server_seed)
+            .segment_seed(0, &server_seed)
             .map_err(StartError::Seed)?;
         SimUpdate::prepare(world, seed, TickRate::new(hz));
         let mut schedule = SimUpdate::schedule();

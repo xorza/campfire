@@ -45,7 +45,7 @@ impl Error for InputError {}
 pub enum SeedError {
     /// The server seed is not revealed yet: the segment is not published.
     NotRevealed,
-    /// The server seed does not match the header's commitment.
+    /// The server seed is not the segment's seed of the chain the header commits to.
     WrongSeed,
 }
 
@@ -53,7 +53,9 @@ impl fmt::Display for SeedError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             SeedError::NotRevealed => "the server seed is not revealed",
-            SeedError::WrongSeed => "the server seed does not match its commitment",
+            SeedError::WrongSeed => {
+                "the server seed is not the segment's seed of its committed chain"
+            }
         })
     }
 }
@@ -106,7 +108,8 @@ pub enum LogError {
     Header(HeaderError),
     /// The log refuses a packet logged before `tick`, as it refuses one from the network.
     Input { tick: u64, error: InputError },
-    /// The revealed server seed does not match the header's commitment.
+    /// The revealed server seed is not the first segment's seed of the chain the header commits
+    /// to.
     WrongSeed,
     /// Bytes remain after the reveal.
     Trailing,
@@ -125,7 +128,7 @@ impl fmt::Display for LogError {
                 write!(f, "session log input before tick {tick} refused: {error}")
             }
             LogError::WrongSeed => {
-                f.write_str("session log reveals a server seed that does not match its commitment")
+                f.write_str("session log reveals a server seed that is not its first segment's")
             }
             LogError::Trailing => f.write_str("session log has trailing bytes"),
             LogError::NotCanonical => f.write_str("session log is not in its canonical encoding"),

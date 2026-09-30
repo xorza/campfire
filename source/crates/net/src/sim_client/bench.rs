@@ -1,14 +1,15 @@
 use std::hint::black_box;
+use std::num::NonZeroU32;
 
 use campfire_capabilities::Action;
 use campfire_math::Num;
-use campfire_protocol::ServerSeed;
+use campfire_protocol::SeedChain;
 use criterion::Criterion;
 use lightyear::prelude::RollbackMode;
 
 use crate::local_pair::LocalPair;
 
-const SERVER_SEED: ServerSeed = ServerSeed::new([9; 32]);
+const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
 /// A quarter meter a tick crosses the 10 m between the two targets in 40 ticks, so a new order
 /// every 40 frames keeps the hero walking and the server sending updates.
 const LEG_FRAMES: u64 = 40;
@@ -22,7 +23,7 @@ pub fn rollback(c: &mut Criterion) {
         ("frame_without_rollback", RollbackMode::Check),
         ("frame_with_rollback", RollbackMode::Always),
     ] {
-        let mut pair = LocalPair::new(mode, SERVER_SEED);
+        let mut pair = LocalPair::new(mode, SEED_CHAIN);
         pair.start_match().expect("the seed matches the header");
         let mut frame: u64 = 0;
         group.bench_function(name, |b| {

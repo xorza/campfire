@@ -6,6 +6,7 @@ use secp256k1::{Keypair, schnorr};
 use super::*;
 use crate::delegation::DelegationTerms;
 use crate::input_hash::InputHash;
+use crate::seed_chain::SeedChain;
 
 const MAX_DELAY: u64 = 2;
 const MAX_LEAD: u64 = 2;
@@ -14,7 +15,8 @@ const MAX_INPUTS_PER_TICK: u32 = 2;
 const SERVER_KEY: [u8; 32] = [41; 32];
 /// Above 127, so its varint takes two bytes.
 const TICK_HZ: NonZeroU32 = NonZeroU32::new(300).unwrap();
-const SERVER_SEED: ServerSeed = ServerSeed::new([5; 32]);
+/// Two segments: the root `[5; 32]` is segment 1's seed, and its hash segment 0's.
+const SEED_CHAIN: SeedChain = SeedChain::new([5; 32], NonZeroU32::new(2).unwrap());
 const CONTRIBUTIONS: [[u8; 32]; 2] = [[6; 32], [7; 32]];
 /// BIP-340 signing without auxiliary randomness is deterministic, so every run signs alike.
 const AUX: [u8; 32] = [0; 32];
@@ -28,14 +30,17 @@ fn session_key(slot: u32) -> Keypair {
     Keypair::from_secret_key(&Secp256k1::new(), &secret(21 + slot))
 }
 
-/// Player `slot`'s delegation of their session key for `server_key` and `session_id`.
-fn delegation_for(slot: u32, server_key: [u8; 32], session_id: SessionId) -> Delegation {
-    let terms = DelegationTerms {
+/// Player `slot`'s delegation of their session key in this session, with `change` applied to its
+/// terms.
+fn delegation_with(slot: u32, change: impl FnOnce(&mut DelegationTerms)) -> Delegation {
+    let mut terms = DelegationTerms {
         session_key: session_key(slot).x_only_public_key().0,
-        server_key,
-        session_id,
+        server_key: SERVER_KEY,
+        session_id: session_id(),
+        seed_contribution: CONTRIBUTIONS[slot as usize],
         expiration: 1_700_086_400,
     };
+    change(&mut terms);
     let main_key = Keypair::from_secret_key(&Secp256k1::new(), &secret(11 + slot));
     Delegation::sign(&Secp256k1::new(), &main_key, &terms, 1_700_000_000, &AUX)
 }
@@ -48,7 +53,7 @@ fn terms() -> SessionTerms {
         max_input_lead: MAX_LEAD,
         max_payload_len: MAX_PAYLOAD_LEN,
         max_inputs_per_tick: MAX_INPUTS_PER_TICK,
-        seed_commitment: SERVER_SEED.commitment(),
+        seed_commitment: SEED_CHAIN.commitment(),
     }
 }
 
@@ -57,7 +62,12 @@ fn session_id() -> SessionId {
 }
 
 fn delegation(slot: u32) -> Delegation {
-    delegation_for(slot, SERVER_KEY, session_id())
+    delegation_with(slot, |_| ())
+}
+
+/// The first segment's server seed, which the log reveals.
+fn server_seed() -> ServerSeed {
+    SEED_CHAIN.seed(0)
 }
 
 fn root(slot: u32) -> InputHash {
@@ -67,13 +77,7 @@ fn root(slot: u32) -> InputHash {
 fn header() -> SessionHeader {
     SessionHeader {
         terms: terms(),
-        players: (0..2)
-            .zip(CONTRIBUTIONS)
-            .map(|(slot, seed_contribution)| SessionPlayer {
-                delegation: delegation(slot),
-                seed_contribution,
-            })
-            .collect(),
+        players: (0..2).map(delegation).collect(),
     }
 }
 
@@ -394,7 +398,7 @@ fn a_tampered_packet_is_refused() {
         let mut ticks = chained();
         (case.change)(&mut ticks);
         // A log file with the same packets is refused for the same packet.
-        let file = frame(&header(), &ticks, &[], Some(SERVER_SEED));
+        let file = frame(&header(), &ticks, &[], Some(server_seed()));
         assert_eq!(
             SessionLog::decode(&file).err(),
             Some(case.refused.clone()),
@@ -481,17 +485,17 @@ fn a_refused_packet_leaves_the_log_unchanged() {
 fn a_delegation_for_another_server_or_session_is_refused() {
     let cases = [
         (
-            delegation_for(1, [42; 32], session_id()),
+            delegation_with(1, |terms| terms.server_key = [42; 32]),
             DelegationError::OtherServer,
         ),
         (
-            delegation_for(1, SERVER_KEY, SessionId::new([32; 32])),
+            delegation_with(1, |terms| terms.session_id = SessionId::new([32; 32])),
             DelegationError::OtherSession,
         ),
     ];
     for (delegation, error) in cases {
         let mut other = header();
-        other.players[1].delegation = delegation;
+        other.players[1] = delegation;
         refuses(&other, error);
     }
 
@@ -504,7 +508,7 @@ fn a_delegation_for_another_server_or_session_is_refused() {
         |terms| terms.max_input_lead += 1,
         |terms| terms.max_payload_len += 1,
         |terms| terms.max_inputs_per_tick += 1,
-        |terms| terms.seed_commitment = ServerSeed::new([6; 32]).commitment(),
+        |terms| terms.seed_commitment = SeedChain::new([6; 32], NonZeroU32::MIN).commitment(),
     ];
     for change in changes {
         let mut other = header();
@@ -534,7 +538,7 @@ fn a_delegation_for_another_server_or_session_is_refused() {
         .update(&2_u64.to_le_bytes())
         .update(&4_u32.to_le_bytes())
         .update(&2_u32.to_le_bytes())
-        .update(SERVER_SEED.commitment().as_bytes());
+        .update(SEED_CHAIN.commitment().as_bytes());
     assert_eq!(session_id().as_bytes(), spelled.finalize().as_bytes());
 }
 
@@ -552,7 +556,7 @@ fn refuses(other: &SessionHeader, error: DelegationError) {
 }
 
 #[test]
-fn the_segment_seed_comes_from_the_revealed_seed() {
+fn each_segment_seed_comes_from_its_chain_seed_and_the_signed_contributions() {
     let digest = |parts: &[&[u8]]| {
         let mut hasher = Hasher::new();
         for part in parts {
@@ -560,36 +564,66 @@ fn the_segment_seed_comes_from_the_revealed_seed() {
         }
         *hasher.finalize().as_bytes()
     };
+    // s_1 is the root, s_0 its hash, and the commitment the hash of s_0.
+    let (s0, s1) = (SEED_CHAIN.seed(0), SEED_CHAIN.seed(1));
+    assert_eq!(s1.as_bytes(), &[5; 32]);
     assert_eq!(
-        SERVER_SEED.commitment().as_bytes(),
-        &digest(&[b"campfire/seed-commitment/v1", &[5; 32]])
+        s0.as_bytes(),
+        &digest(&[b"campfire/seed-chain/v1", &[5; 32]])
     );
-    let expected = SegmentSeed::new(digest(&[
-        b"campfire/segment-seed/v1",
-        &[5; 32],
-        &[6; 32],
-        &[7; 32],
-    ]));
-    assert_eq!(header().segment_seed(&SERVER_SEED), Ok(expected));
+    let commitment = SEED_CHAIN.commitment();
     assert_eq!(
-        header().segment_seed(&ServerSeed::new([4; 32])),
-        Err(SeedError::WrongSeed)
+        commitment.as_bytes(),
+        &digest(&[b"campfire/seed-chain/v1", s0.as_bytes()])
     );
+    // A seed checks for its own segment only: 1 hash leads from s_0 to the commitment, 2 from s_1.
+    assert!(s0.check(0, &commitment));
+    assert!(s1.check(1, &commitment));
+    assert!(!s1.check(0, &commitment));
+    assert!(!s0.check(1, &commitment));
+    // A chain of one segment has its root as that segment's seed.
+    let single = SeedChain::new([5; 32], NonZeroU32::MIN);
+    assert_eq!(single.seed(0), s1);
+    assert!(s1.check(0, &single.commitment()));
 
-    // Each contribution counts, and so does their slot order.
+    let expected = [0, 1].map(|segment: u32| {
+        SegmentSeed::new(digest(&[
+            b"campfire/segment-seed/v1",
+            &segment.to_le_bytes(),
+            SEED_CHAIN.seed(segment).as_bytes(),
+            &[6; 32],
+            &[7; 32],
+        ]))
+    });
+    assert_ne!(expected[0], expected[1]);
+    for (segment, expected) in (0..).zip(expected) {
+        let seed = header().segment_seed(segment, &SEED_CHAIN.seed(segment));
+        assert_eq!(seed, Ok(expected));
+    }
+    for (segment, server_seed) in [(0, s1), (1, s0), (0, ServerSeed::new([4; 32]))] {
+        assert_eq!(
+            header().segment_seed(segment, &server_seed),
+            Err(SeedError::WrongSeed),
+            "{segment}: {server_seed:?}"
+        );
+    }
+
+    // Each signed contribution counts in every segment, and so does their slot order.
     let mut changed = header();
-    changed.players[1].seed_contribution[31] ^= 1;
+    changed.players[1] = delegation_with(1, |terms| terms.seed_contribution[31] ^= 1);
     let mut swapped = header();
     swapped.players.swap(0, 1);
     for other in [changed, swapped] {
-        let seed = other.segment_seed(&SERVER_SEED).unwrap();
-        assert_ne!(seed, expected, "{other:?}");
+        for (segment, expected) in (0..).zip(expected) {
+            let seed = other.segment_seed(segment, &SEED_CHAIN.seed(segment));
+            assert_ne!(seed.unwrap(), expected, "{segment}: {other:?}");
+        }
     }
 
     let mut log = SessionLog::new(header()).unwrap();
     assert_eq!(log.revealed_seed(), None);
-    log.reveal_seed(SERVER_SEED);
-    assert_eq!(log.revealed_seed(), Some(SERVER_SEED));
+    log.reveal_seed(s0);
+    assert_eq!(log.revealed_seed(), Some(s0));
 }
 
 #[test]
@@ -597,7 +631,13 @@ fn the_segment_seed_comes_from_the_revealed_seed() {
 fn revealing_another_seed_is_a_bug() {
     SessionLog::new(header())
         .unwrap()
-        .reveal_seed(ServerSeed::new([4; 32]));
+        .reveal_seed(SEED_CHAIN.seed(1));
+}
+
+#[test]
+#[should_panic(expected = "segment 2 is past the chain's 2 segments")]
+fn a_seed_past_the_chain_is_a_bug() {
+    SEED_CHAIN.seed(2);
 }
 
 #[test]
@@ -690,9 +730,8 @@ fn frame(
     put(&mut bytes, &terms.max_inputs_per_tick);
     put(&mut bytes, &terms.seed_commitment);
     put(&mut bytes, &u32::try_from(header.players.len()).unwrap());
-    for player in &header.players {
-        put(&mut bytes, player.delegation.json());
-        put(&mut bytes, &player.seed_contribution);
+    for delegation in &header.players {
+        put(&mut bytes, delegation.json());
     }
     put(&mut bytes, &u64::try_from(ticks.len()).unwrap());
     for packets in ticks.iter().map(Vec::as_slice).chain([tail]) {
@@ -726,7 +765,7 @@ fn published() -> SessionLog {
         )
         .unwrap();
     }
-    log.reveal_seed(SERVER_SEED);
+    log.reveal_seed(server_seed());
     log
 }
 
@@ -742,11 +781,11 @@ fn a_log_file_decodes_to_the_same_log() {
     let bytes = encoded(&log);
     let mut sent = chained_with_tail();
     let tail = sent.pop().unwrap();
-    assert_eq!(bytes, frame(&header(), &sent, &tail, Some(SERVER_SEED)));
+    assert_eq!(bytes, frame(&header(), &sent, &tail, Some(server_seed())));
 
     let mut decoded = SessionLog::decode(&bytes).unwrap();
     assert_eq!(decoded.header(), log.header());
-    assert_eq!(decoded.revealed_seed(), Some(SERVER_SEED));
+    assert_eq!(decoded.revealed_seed(), Some(server_seed()));
     assert_eq!(decoded.next_tick(), 5);
     assert_eq!(encoded(&decoded), bytes);
     let live = record(header(), &sent).unwrap().applied;
@@ -787,7 +826,7 @@ fn a_log_file_has_its_layout() {
     log.record(a.inputs.iter().copied(), &a.signature, &mut applied)
         .unwrap();
     drop(log.seal_tick());
-    log.reveal_seed(SERVER_SEED);
+    log.reveal_seed(server_seed());
 
     let [first, second] = [0, 1].map(delegation);
     let expected = [
@@ -797,22 +836,20 @@ fn a_log_file_has_its_layout() {
         // 300 ticks a second = 0b10_0101100: varint 0xAC 0x02. Max input delay 2, lead 2,
         // payload length 4, inputs per tick 2.
         &[0xAC, 0x02, 2, 2, 4, 2],
-        SERVER_SEED.commitment().as_bytes(),
-        // 2 players: the delegation's JSON as a length and UTF-8, and the contribution.
+        SEED_CHAIN.commitment().as_bytes(),
+        // 2 players: the delegation's JSON as a length and UTF-8.
         &[2],
         &varint(first.json().len()),
         first.json().as_bytes(),
-        &[6; 32],
         &varint(second.json().len()),
         second.json().as_bytes(),
-        &[7; 32],
         // 1 tick with 1 packet: slot 1, 1 input: stamp 0, 1 payload byte.
         &[1, 1, 1, 1, 0, 1],
         b"a",
         &a.signature.to_bytes(),
         // No packet since the tick, then the revealed seed.
         &[0, 1],
-        &[5; 32],
+        server_seed().as_bytes(),
     ]
     .concat();
     assert_eq!(encoded(&log), expected);
@@ -845,39 +882,21 @@ fn every_truncation_of_a_log_file_is_refused() {
 }
 
 #[test]
-fn a_corrupt_log_file_is_refused_or_replays() {
-    const FLIPS: [u8; 3] = [0x01, 0x80, 0xFF];
+fn every_flip_of_a_log_file_is_refused() {
+    // A signature, a chain link or the commitment covers every byte: the session id hashes the
+    // terms, each main key signs its delegation with the contribution, each session key its
+    // inputs, and the reveal checks against the commitment.
     let bytes = encoded(&published());
-    let mut decoded = Vec::new();
     for at in 0..bytes.len() {
-        for flip in FLIPS {
+        for flip in [0x01, 0x80, 0xFF] {
             let mut corrupt = bytes.clone();
             corrupt[at] ^= flip;
-            let Ok(log) = SessionLog::decode(&corrupt) else {
-                continue;
-            };
-            assert_eq!(encoded(&log), corrupt, "byte {at} ^ {flip:#x}");
-            drop(replayed(log));
-            decoded.push((at, flip));
+            assert!(
+                SessionLog::decode(&corrupt).is_err(),
+                "byte {at} ^ {flip:#x}"
+            );
         }
     }
-
-    // Only what no signature, chain link or commitment covers decodes: every contribution byte.
-    // The session id hashes the terms, so a flip there leaves every delegation naming another
-    // session. The terms are the server key, the rate's two-byte varint, four one-byte limits
-    // and the commitment; then the player count.
-    let mut contribution = b"campfire/session-log/v1".len() + 32 + 2 + 4 + 32 + 1;
-    let mut expected = Vec::new();
-    for slot in 0..2 {
-        let json = delegation(slot).json().len();
-        contribution += varint(json).len() + json;
-        for at in contribution..contribution + 32 {
-            expected.extend(FLIPS.map(|flip| (at, flip)));
-        }
-        contribution += 32;
-    }
-    expected.sort_unstable();
-    assert_eq!(decoded, expected);
 }
 
 #[test]
@@ -912,6 +931,11 @@ fn flawed_log_files_are_refused() {
         ),
         (
             frame(&header(), &sent, &[], Some(ServerSeed::new([4; 32]))),
+            LogError::WrongSeed,
+        ),
+        // Segment 1's seed is in the chain, but not the seed of the one segment the log holds.
+        (
+            frame(&header(), &sent, &[], Some(SEED_CHAIN.seed(1))),
             LogError::WrongSeed,
         ),
         (overlong, LogError::NotCanonical),

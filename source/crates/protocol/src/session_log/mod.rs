@@ -33,34 +33,30 @@ const POSITION_BOUND: usize = u32::MAX as usize;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionHeader {
     pub terms: SessionTerms,
-    /// The players, by slot.
-    pub players: Vec<SessionPlayer>,
-}
-
-/// A player as the header lists them.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct SessionPlayer {
-    /// Lets the player's session key sign their chain heads; its id is what the player's first
-    /// input links to.
-    pub delegation: Delegation,
-    /// The player's random share of the segment seed, sent after the server's commitment, so
-    /// neither side alone chooses the seed.
-    pub seed_contribution: [u8; 32],
+    /// Each player's delegation, by slot. It lets the player's session key sign their chain
+    /// heads, its id is what the player's first input links to, and it carries the player's seed
+    /// contribution.
+    pub players: Vec<Delegation>,
 }
 
 impl SessionHeader {
-    /// The segment seed, `BLAKE3(domain ‖ server seed ‖ contributions in slot order)`; an error
-    /// when `server_seed` does not match the commitment.
-    pub fn segment_seed(&self, server_seed: &ServerSeed) -> Result<SegmentSeed, SeedError> {
-        if server_seed.commitment() != self.terms.seed_commitment {
+    /// Segment `segment`'s seed, `BLAKE3(domain ‖ u32 segment ‖ server seed ‖ contributions in
+    /// slot order)`; an error when `server_seed` is not that segment's seed of the committed chain.
+    pub fn segment_seed(
+        &self,
+        segment: u32,
+        server_seed: &ServerSeed,
+    ) -> Result<SegmentSeed, SeedError> {
+        if !server_seed.check(segment, &self.terms.seed_commitment) {
             return Err(SeedError::WrongSeed);
         }
         let mut hasher = Hasher::new();
         hasher
             .update(SEGMENT_SEED_DOMAIN)
+            .update(&segment.to_le_bytes())
             .update(server_seed.as_bytes());
-        for player in &self.players {
-            hasher.update(&player.seed_contribution);
+        for delegation in &self.players {
+            hasher.update(&delegation.terms().seed_contribution);
         }
         Ok(SegmentSeed::new(*hasher.finalize().as_bytes()))
     }
@@ -162,9 +158,9 @@ impl SessionLog {
         }
         let session_id = header.terms.session_id();
         let mut chains = Vec::with_capacity(header.players.len());
-        for (slot, player) in (0..).zip(&header.players) {
+        for (slot, delegation) in (0..).zip(&header.players) {
             let slot = PlayerSlot::new(slot);
-            let terms = player.delegation.terms();
+            let terms = delegation.terms();
             let flaw = if terms.server_key != header.terms.server_key {
                 Some(DelegationError::OtherServer)
             } else if terms.session_id != session_id {
@@ -175,7 +171,7 @@ impl SessionLog {
             if let Some(error) = flaw {
                 return Err(HeaderError::Delegation { slot, error });
             }
-            chains.push(InputChain::new(slot, player.delegation.chain_root()));
+            chains.push(InputChain::new(slot, delegation.chain_root()));
         }
         Ok(SessionLog {
             sent_this_tick: vec![0; header.players.len()],
@@ -204,16 +200,16 @@ impl SessionLog {
         self.session_id
     }
 
-    /// Adds the server seed, which publishes the segment.
+    /// Adds the first segment's server seed, which publishes the segment.
     pub fn reveal_seed(&mut self, server_seed: ServerSeed) {
         assert!(
-            server_seed.commitment() == self.header.terms.seed_commitment,
+            server_seed.check(0, &self.header.terms.seed_commitment),
             "the server reveals the seed it committed to"
         );
         self.revealed = Some(server_seed);
     }
 
-    /// The server seed, once the segment is published.
+    /// The first segment's server seed, once the segment is published.
     pub const fn revealed_seed(&self) -> Option<ServerSeed> {
         self.revealed
     }
@@ -266,7 +262,7 @@ impl SessionLog {
         {
             return Err(InputError::LogFull);
         }
-        let session_key = &self.header.players[player].delegation.terms().session_key;
+        let session_key = &self.header.players[player].terms().session_key;
         if !chain.signed_by(&self.secp, session_key, self.session_id, signature) {
             return Err(InputError::BadSignature);
         }
@@ -348,7 +344,7 @@ impl SessionLog {
     /// count, then each as its `u32` slot, its inputs as a `u32` count and each input's stamp
     /// and payload bytes, and its signature. An input's seq and link are not written: a reader
     /// computes them from the chain, and the signature covers them. The header goes field by field,
-    /// each player as the delegation's JSON and the seed contribution.
+    /// each player as the delegation's JSON.
     pub fn encode(&self, out: &mut Vec<u8>) {
         out.clear();
         out.extend_from_slice(LOG_TAG);
@@ -384,7 +380,7 @@ impl SessionLog {
         }
         log.record_logged(&mut rest, &mut inputs, &mut applied)?;
         if let Some(server_seed) = take::<Option<ServerSeed>>(&mut rest)? {
-            if server_seed.commitment() != log.header.terms.seed_commitment {
+            if !server_seed.check(0, &log.header.terms.seed_commitment) {
                 return Err(LogError::WrongSeed);
             }
             log.revealed = Some(server_seed);
@@ -410,9 +406,8 @@ impl SessionLog {
         put(out, &terms.max_inputs_per_tick);
         put(out, &terms.seed_commitment);
         put(out, &offset(self.header.players.len()));
-        for player in &self.header.players {
-            put(out, player.delegation.json());
-            put(out, &player.seed_contribution);
+        for delegation in &self.header.players {
+            put(out, delegation.json());
         }
     }
 
@@ -566,10 +561,7 @@ fn take_header(rest: &mut &[u8]) -> Result<SessionHeader, LogError> {
                 error,
             })
         })?;
-        players.push(SessionPlayer {
-            delegation,
-            seed_contribution: take(rest)?,
-        });
+        players.push(delegation);
     }
     Ok(SessionHeader { terms, players })
 }

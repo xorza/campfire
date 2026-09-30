@@ -8,6 +8,7 @@ mod input_chain;
 mod input_hash;
 mod player_input;
 mod player_slot;
+mod seed_chain;
 mod server_seed;
 mod session_id;
 mod session_log;
@@ -23,10 +24,11 @@ pub use player_input::PlayerInput;
 pub use player_slot::PlayerSlot;
 /// The curve library the keys and signatures of this API are typed in, at the version it pins.
 pub use secp256k1;
+pub use seed_chain::SeedChain;
 pub use server_seed::{SeedCommitment, ServerSeed};
 pub use session_id::SessionId;
 pub use session_log::error::{HeaderError, InputError, LogError, SeedError};
-pub use session_log::{Applied, SessionHeader, SessionLog, SessionPlayer};
+pub use session_log::{Applied, SessionHeader, SessionLog};
 pub use session_terms::SessionTerms;
 
 #[cfg(feature = "bench")]

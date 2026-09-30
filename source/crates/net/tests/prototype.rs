@@ -2,17 +2,19 @@
 //! client over in-process channels, and the server's session log replayed in a bare `World`
 //! with the same state hash after every tick.
 
+use std::num::NonZeroU32;
+
 use bevy_app::App;
 use campfire_capabilities::{Action, Destination};
 use campfire_math::{Num, Vec3};
 use campfire_net::{LocalPair, PlayerLink, TickHashes};
-use campfire_protocol::{ServerSeed, SessionLog};
+use campfire_protocol::{SeedChain, SessionLog};
 use campfire_runner::Session;
 use campfire_sim::{EntityIndex, Position};
 use campfire_verifier::Replay;
 use lightyear::prelude::{Predicted, PredictionMetrics, RollbackMode};
 
-const SERVER_SEED: ServerSeed = ServerSeed::new([9; 32]);
+const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
 /// Frames of match: one tick each.
 const MATCH_FRAMES: usize = 120;
 
@@ -49,7 +51,7 @@ fn server_and_replay_agree_on_every_tick() {
     // `Check` rolls the client back only on a misprediction; `Always` on every confirmed update,
     // so the client runs the sim again from the server's state many times.
     for rollback in [RollbackMode::Check, RollbackMode::Always] {
-        let mut pair = LocalPair::new(rollback, SERVER_SEED);
+        let mut pair = LocalPair::new(rollback, SEED_CHAIN);
         pair.start_match().unwrap();
         for frame in 0..MATCH_FRAMES {
             match frame {

@@ -29,8 +29,8 @@ pub struct SessionTerms {
     /// The most inputs a player may send before one tick. With the max payload length, it bounds
     /// how fast a player can grow the log.
     pub max_inputs_per_tick: u32,
-    /// The server's commitment to its seed. It is fresh for every session, so no two sessions
-    /// share an id.
+    /// The server's commitment to its seed chain. It is fresh for every session, so no two
+    /// sessions share an id.
     pub seed_commitment: SeedCommitment,
 }
 

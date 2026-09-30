@@ -17,13 +17,16 @@ pub(crate) mod error;
 const KIND: u16 = 22_710;
 
 /// What a delegation grants: its session key signs for its main key in one session on one server,
-/// until it expires.
+/// until it expires. It also carries the player's seed contribution, so the main key signs it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DelegationTerms {
     pub session_key: XOnlyPublicKey,
     /// The server's x-only public key.
     pub server_key: [u8; 32],
     pub session_id: SessionId,
+    /// The player's random share of every segment's seed, chosen after the session id fixes
+    /// the server's seed commitment, so no one can choose it with the seed in view.
+    pub seed_contribution: [u8; 32],
     /// Unix seconds.
     pub expiration: u64,
 }
@@ -57,6 +60,10 @@ impl Delegation {
             ),
             custom(DelegationTag::ServerKey, hex(&terms.server_key)),
             custom(DelegationTag::SessionId, hex(terms.session_id.as_bytes())),
+            custom(
+                DelegationTag::SeedContribution,
+                hex(&terms.seed_contribution),
+            ),
             custom(DelegationTag::Expiration, terms.expiration.to_string()),
         ];
         let unsigned = UnsignedEvent::new(
@@ -96,6 +103,9 @@ impl Delegation {
             .ok_or(DelegationError::MalformedTag(DelegationTag::ServerKey))?;
         let session_id = unhex(tag(&event, DelegationTag::SessionId)?)
             .ok_or(DelegationError::MalformedTag(DelegationTag::SessionId))?;
+        let seed_contribution = unhex(tag(&event, DelegationTag::SeedContribution)?).ok_or(
+            DelegationError::MalformedTag(DelegationTag::SeedContribution),
+        )?;
         let expiration = tag(&event, DelegationTag::Expiration)?
             .parse()
             .ok()
@@ -108,6 +118,7 @@ impl Delegation {
                 session_key,
                 server_key,
                 session_id: SessionId::new(session_id),
+                seed_contribution,
                 expiration,
             },
         })

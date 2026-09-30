@@ -8,7 +8,7 @@ use bevy_time::{TimePlugin, TimeUpdateStrategy};
 use campfire_capabilities::{Action, Controller, Order};
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
 use campfire_protocol::{
-    Delegation, DelegationTerms, ServerSeed, SessionHeader, SessionLog, SessionPlayer, SessionTerms,
+    Delegation, DelegationTerms, SeedChain, SessionHeader, SessionLog, SessionTerms,
 };
 use campfire_runner::{StandInMode, StartError};
 use campfire_sim::{EntityIndex, StableId};
@@ -39,14 +39,14 @@ pub struct LocalPair {
     /// The server's link to the client.
     link: Entity,
     terms: SessionTerms,
-    server_seed: ServerSeed,
+    seed_chain: SeedChain,
 }
 
 impl LocalPair {
-    /// A connected and synced pair in a session whose server commits to `server_seed`, at the
+    /// A connected and synced pair in a session whose server commits to `seed_chain`, at the
     /// stand-in mode's rate, with inputs held up to 10 ticks late and 30 ahead. The client's
     /// state rollbacks follow `rollback`.
-    pub fn new(rollback: RollbackMode, server_seed: ServerSeed) -> LocalPair {
+    pub fn new(rollback: RollbackMode, seed_chain: SeedChain) -> LocalPair {
         let terms = SessionTerms {
             server_key: SERVER_KEY,
             tick_hz: StandInMode::TICK_HZ,
@@ -54,7 +54,7 @@ impl LocalPair {
             max_input_lead: 30,
             max_payload_len: 64,
             max_inputs_per_tick: 4,
-            seed_commitment: server_seed.commitment(),
+            seed_commitment: seed_chain.commitment(),
         };
         let tick = terms.tick_length();
         let (client_io, server_io) = CrossbeamIo::new_pair();
@@ -118,7 +118,7 @@ impl LocalPair {
             client,
             link,
             terms,
-            server_seed,
+            seed_chain,
         };
         for _ in 0..CONNECT_FRAMES {
             let world = pair.client.world();
@@ -139,13 +139,11 @@ impl LocalPair {
     pub fn start_match(&mut self) -> Result<(), StartError> {
         let header = SessionHeader {
             terms: self.terms,
-            players: vec![SessionPlayer {
-                delegation: delegation(&self.terms),
-                seed_contribution: [4; 32],
-            }],
+            players: vec![delegation(&self.terms)],
         };
         let log = SessionLog::new(header).expect("the delegation names this session");
-        SimServer::start_match(self.server.world_mut(), log, self.server_seed, &[self.link])
+        let server_seed = self.seed_chain.seed(0);
+        SimServer::start_match(self.server.world_mut(), log, server_seed, &[self.link])
     }
 
     /// One frame of each app, the client first: one tick each.
@@ -210,6 +208,7 @@ fn delegation(session: &SessionTerms) -> Delegation {
         session_key: keypair(SESSION_SECRET).x_only_public_key().0,
         server_key: SERVER_KEY,
         session_id: session.session_id(),
+        seed_contribution: [4; 32],
         expiration: 1_700_086_400,
     };
     Delegation::sign(

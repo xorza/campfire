@@ -11,14 +11,14 @@ use campfire_capabilities::{Action, AttackState, Destination, Health, Order, Pro
 use campfire_math::{Num, Vec3};
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
 use campfire_protocol::{
-    Applied, Delegation, DelegationTerms, InputChain, PlayerSlot, SeedError, ServerSeed,
-    SessionHeader, SessionLog, SessionPlayer, SessionTerms,
+    Applied, Delegation, DelegationTerms, InputChain, PlayerSlot, SeedChain, SeedError, ServerSeed,
+    SessionHeader, SessionLog, SessionTerms,
 };
 use campfire_runner::{Runner, StandInMode, StartError};
 use campfire_sim::{EntityIndex, Position, StableId, StateHash};
 use campfire_verifier::Replay;
 
-const SERVER_SEED: ServerSeed = ServerSeed::new([9; 32]);
+const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
 const SERVER_KEY: [u8; 32] = [8; 32];
 /// BIP-340 signing without auxiliary randomness is deterministic, so every run signs alike.
 const AUX: [u8; 32] = [0; 32];
@@ -83,7 +83,7 @@ fn terms() -> SessionTerms {
         max_input_lead: 3,
         max_payload_len: 64,
         max_inputs_per_tick: 4,
-        seed_commitment: SERVER_SEED.commitment(),
+        seed_commitment: SEED_CHAIN.commitment(),
     }
 }
 
@@ -93,6 +93,7 @@ fn delegation(session: &SessionTerms) -> Delegation {
         session_key: session_key().x_only_public_key().0,
         server_key: SERVER_KEY,
         session_id: session.session_id(),
+        seed_contribution: [4; 32],
         expiration: 1_700_086_400,
     };
     Delegation::sign(&Secp256k1::new(), &key(1), &terms, 1_700_000_000, &AUX)
@@ -102,10 +103,7 @@ fn delegation(session: &SessionTerms) -> Delegation {
 fn header_of(terms: SessionTerms) -> SessionHeader {
     SessionHeader {
         terms,
-        players: vec![SessionPlayer {
-            delegation: delegation(&terms),
-            seed_contribution: [4; 32],
-        }],
+        players: vec![delegation(&terms)],
     }
 }
 
@@ -146,7 +144,7 @@ struct Run {
 
 /// Runs a match in which the player sends `orders`.
 fn run(orders: &[&Sent], ticks: u64) -> Run {
-    let mut runner = Runner::new(log(), SERVER_SEED).unwrap();
+    let mut runner = Runner::new(log(), SEED_CHAIN.seed(0)).unwrap();
     let secp = Secp256k1::new();
     let mut chain = InputChain::new(PlayerSlot::new(0), delegation(&terms()).chain_root());
     let mut applied = Vec::new();
@@ -314,7 +312,7 @@ fn encoded(log: &SessionLog) -> Vec<u8> {
 }
 
 #[test]
-fn a_corrupt_log_file_is_refused_or_replays() {
+fn every_corruption_of_a_log_file_is_refused() {
     let bytes = encoded(run(&ORDERS.each_ref(), TICKS).runner.log());
     for len in 0..bytes.len() {
         assert!(
@@ -322,21 +320,19 @@ fn a_corrupt_log_file_is_refused_or_replays() {
             "truncated to {len} bytes"
         );
     }
-    let mut replays = 0;
+    // A signature, a chain link or the commitment covers every byte: the session id hashes the
+    // terms, which the delegation and every order sign, and the main key signs the contribution
+    // in the delegation.
     for at in 0..bytes.len() {
         for flip in [0x01, 0x80, 0xFF] {
             let mut corrupt = bytes.clone();
             corrupt[at] ^= flip;
-            if let Ok(log) = SessionLog::decode(&corrupt) {
-                let mut replay = Replay::new(log).unwrap();
-                while replay.run_tick() {}
-                replays += 1;
-            }
+            assert!(
+                SessionLog::decode(&corrupt).is_err(),
+                "byte {at} ^ {flip:#x}"
+            );
         }
     }
-    // What no signature, chain link or commitment covers: the contribution, under every flip.
-    // The session id hashes the terms, which the delegation and every order sign.
-    assert_eq!(replays, 32 * 3);
 }
 
 #[test]
@@ -393,7 +389,7 @@ fn a_match_starts_only_with_its_seed_and_at_a_rate_its_mode_runs_at() {
     };
     let log = SessionLog::new(header_of(fast)).unwrap();
     assert_eq!(
-        Runner::new(log, SERVER_SEED).err(),
+        Runner::new(log, SEED_CHAIN.seed(0)).err(),
         Some(StartError::TickRate(sixty))
     );
 }

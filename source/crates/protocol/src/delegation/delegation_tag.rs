@@ -4,6 +4,7 @@ pub enum DelegationTag {
     SessionKey,
     ServerKey,
     SessionId,
+    SeedContribution,
     /// NIP-40's tag, in Unix seconds.
     Expiration,
 }
@@ -15,6 +16,7 @@ impl DelegationTag {
             DelegationTag::SessionKey => "session_key",
             DelegationTag::ServerKey => "server_key",
             DelegationTag::SessionId => "session_id",
+            DelegationTag::SeedContribution => "seed_contribution",
             DelegationTag::Expiration => "expiration",
         }
     }
