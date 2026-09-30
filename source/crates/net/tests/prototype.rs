@@ -7,7 +7,8 @@ use std::num::NonZeroU32;
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use campfire_capabilities::{
-    Action, Dead, Destination, Health, MatchEnd, MatchResult, MoveStep, Owner, Respawn, Team,
+    Action, AttackState, Dead, Destination, Health, MatchEnd, MatchResult, MoveStep, Owner,
+    Projectile, Respawn, Team,
 };
 use campfire_math::{Num, Vec3};
 use campfire_net::{LocalMatch, MatchSetup, PlayerLink, TickHashes, Unpredicted};
@@ -145,12 +146,30 @@ fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_
             .resource::<PredictionMetrics>()
             .rollbacks
     };
+    // While it attacks, the client holds the tower's target, the hero, and its projectiles in
+    // flight, to draw them.
+    let hero_id = local.avatar(0);
+    let client_sees = |local: &LocalMatch| {
+        let world = local.client(0).world();
+        let units = || world.resource::<EntityIndex>().iter();
+        let aimed = units().any(|(_, entity)| {
+            let unit = world.entity(entity);
+            unit.get::<AttackState>().and_then(|attack| attack.target()) == Some(hero_id)
+                && !unit.contains::<MoveStep>()
+        });
+        let shot = units().any(|(_, entity)| world.entity(entity).contains::<Projectile>());
+        [aimed, shot]
+    };
+    let mut seen = [false; 2];
     let mut frames = 0;
     while !dead(local.server()) {
         assert!(frames < 400, "the tower kills the hero");
         local.step();
         frames += 1;
+        let now = client_sees(&local);
+        seen = [seen[0] || now[0], seen[1] || now[1]];
     }
+    assert_eq!(seen, [true, true]);
     let died_in = local.server().world().resource::<SimTick>().start().get() - 1;
     // The client learns of the death after the ticks it predicted ahead, and corrects them once.
     for _ in 0..10 {

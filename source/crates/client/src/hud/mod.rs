@@ -9,16 +9,16 @@ use bevy::ecs::entity::Entity;
 use bevy::ecs::query::{Allow, Has, With, Without};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
-use bevy::ecs::system::{Commands, Query, Res, ResMut};
+use bevy::ecs::system::{Commands, Query, Res, ResMut, Single};
 use bevy::math::primitives::{Annulus, Plane3d};
 use bevy::math::{Quat, Vec3};
 use bevy::mesh::{Mesh, Mesh3d, Meshable};
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::time::Time;
 use bevy::transform::components::Transform;
-use campfire_capabilities::{AbilitySlots, Dead, Health, Owner, ResourcePool, Team};
+use campfire_capabilities::{AbilitySlots, AttackState, Dead, Health, Owner, ResourcePool, Team};
 use campfire_net::Unpredicted;
-use campfire_sim::SimTick;
+use campfire_sim::{EntityIndex, SimTick};
 use lightyear::prelude::Predicted;
 
 use crate::hud::gauge::{Cooling, Gauge, GaugeKind, share};
@@ -29,8 +29,8 @@ mod gauge;
 mod ring;
 
 /// Makes the match readable with plain shapes over the drawings: a health bar over every unit, the
-/// own avatar's resource and cooldowns under its own, and a ring where each hit lands. It reads the
-/// sim's components and changes none.
+/// own avatar's resource and cooldowns under its own, a ring where each hit lands, and a ring under
+/// the unit the own avatar attacks. It reads the sim's components and changes none.
 #[derive(Debug)]
 pub(crate) struct Hud;
 
@@ -46,6 +46,10 @@ struct HudPalette {
     cooldown: Handle<StandardMaterial>,
     hit: Handle<StandardMaterial>,
 }
+
+/// The ring under the unit the own avatar attacks, hidden while it attacks none.
+#[derive(Component, Debug)]
+struct TargetMark;
 
 /// The drawn units with no gauges yet: each one's team, whether it has health, its ability slots
 /// and a resource, and whether it is the player's own.
@@ -99,6 +103,7 @@ impl Plugin for Hud {
                 Hud::fill_gauges,
                 Hud::place_gauges,
                 Hud::widen_rings,
+                Hud::mark_target,
             )
                 .chain(),
         );
@@ -118,9 +123,17 @@ impl Hud {
                 ..StandardMaterial::default()
             })
         };
+        let ring = meshes.add(Annulus::new(0.55, 0.7).mesh());
+        commands.spawn((
+            TargetMark,
+            Mesh3d(ring.clone()),
+            MeshMaterial3d(flat(Color::srgb(1.0, 0.35, 0.2))),
+            Transform::default(),
+            Visibility::Hidden,
+        ));
         commands.insert_resource(HudPalette {
             quad: meshes.add(Plane3d::default().mesh().size(1.0, 1.0)),
-            ring: meshes.add(Annulus::new(0.55, 0.7).mesh()),
+            ring,
             back: flat(Color::srgb(0.1, 0.1, 0.12)),
             friend: flat(Color::srgb(0.3, 0.85, 0.35)),
             foe: flat(Color::srgb(0.9, 0.3, 0.25)),
@@ -303,6 +316,32 @@ impl Hud {
         }
     }
 
+    /// Puts the target ring on the ground under the unit the own avatar attacks, as wide as the
+    /// unit's drawing, or hides it.
+    fn mark_target(
+        index: Res<'_, EntityIndex>,
+        own: Query<'_, '_, &AttackState, With<Predicted>>,
+        units: Query<'_, '_, &Drawn, Allow<Unpredicted>>,
+        drawings: Query<'_, '_, (&Transform, &Glide, &Look), Without<TargetMark>>,
+        mark: Single<'_, '_, (&mut Transform, &mut Visibility), With<TargetMark>>,
+    ) {
+        let target = own
+            .iter()
+            .find_map(|attack| attack.target())
+            .and_then(|target| index.get(target))
+            .and_then(|target| units.get(target).ok())
+            .and_then(|drawn| drawings.get(drawn.drawing()).ok());
+        let (mut transform, mut visibility) = mark.into_inner();
+        let Some((drawing, glide, look)) = target else {
+            *visibility = Visibility::Hidden;
+            return;
+        };
+        *visibility = Visibility::Visible;
+        *transform = Transform::from_translation(glide.ground(drawing) + Vec3::Y * 0.04)
+            .with_rotation(Quat::from_rotation_x(-FRAC_PI_2))
+            .with_scale(Vec3::splat(2.0 * look.radius()));
+    }
+
     fn widen_rings(
         time: Res<'_, Time>,
         mut rings: Query<'_, '_, (Entity, &Ring, &mut Transform)>,
@@ -331,8 +370,15 @@ mod tests {
         app.add_plugins((TimePlugin, AssetPlugin::default()));
         app.init_asset::<Mesh>();
         app.init_asset::<StandardMaterial>();
+        app.init_resource::<EntityIndex>();
         app.add_plugins(Hud);
         app.update();
         assert!(app.world().contains_resource::<HudPalette>());
+        // With no own avatar there is no target to mark.
+        let mut marks = app
+            .world_mut()
+            .query_filtered::<&Visibility, With<TargetMark>>();
+        let marks: Vec<_> = marks.iter(app.world()).collect();
+        assert_eq!(marks, [&Visibility::Hidden]);
     }
 }

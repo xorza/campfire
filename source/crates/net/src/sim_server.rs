@@ -7,13 +7,15 @@ use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::schedule::common_conditions::{resource_added, resource_exists};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
-use campfire_capabilities::{Dead, MatchEnd, MatchResult, Mode, Owner, SeenBy, Team};
+use campfire_capabilities::{
+    Dead, MatchEnd, MatchResult, Mode, Owner, Projectile, SeenBy, Team, TeamSet,
+};
 use campfire_log::LogEvent;
 use campfire_math::PlayerSlot;
 use campfire_package::ModePackages;
 use campfire_protocol::{Applied, ServerSeed, SessionLog};
 use campfire_runner::{Session, StartError};
-use campfire_sim::{SimTick, StableId, StateHash, Tick, TickRate};
+use campfire_sim::{EntityIndex, SimTick, StableId, StateHash, Tick, TickRate};
 use lightyear::core::tick::TickDuration;
 use lightyear::prelude::{
     LocalTimeline, MessageReceiver, MessageSender, NetworkTarget, PredictionTarget, Replicate,
@@ -90,6 +92,7 @@ impl Plugin for SimServer {
                 run_sim_tick,
                 record_hash.run_if(resource_exists::<TickHashes>),
                 show_units,
+                show_projectiles,
                 report_deaths,
                 announce_end.run_if(resource_added::<MatchEnd>),
             )
@@ -265,7 +268,51 @@ fn show_units(
         }
     }
     for (unit, &id, &seen) in &changed {
-        show(&mut commands, &links, unit, id, seen);
+        show(&mut commands, &links, unit, id, seen.get());
+    }
+}
+
+/// On a projectile: the teams the server last showed it to.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+struct ShownTo(TeamSet);
+
+impl ShownTo {
+    /// The teams that see a projectile whose target the teams `target` see, and whose source,
+    /// if it is still there, the teams `source` see. A target no team's sight names is in a
+    /// match without vision, which every team sees.
+    fn of(target: Option<TeamSet>, source: Option<TeamSet>) -> ShownTo {
+        ShownTo(match target {
+            None => TeamSet::ALL,
+            Some(target) => target.union(source.unwrap_or_default()),
+        })
+    }
+}
+
+/// After a sim tick, replicates each new projectile, and shows each projectile to exactly the
+/// clients whose team sees its source or its target, so a shot reveals no unit its team does not
+/// see. Without vision no unit has `SeenBy`, and every client receives every projectile.
+fn show_projectiles(
+    links: Query<'_, '_, (Entity, &PlayerLink)>,
+    index: Res<'_, EntityIndex>,
+    seers: Query<'_, '_, &SeenBy>,
+    projectiles: Query<'_, '_, (Entity, &StableId, &Projectile, Option<&ShownTo>)>,
+    mut commands: Commands<'_, '_>,
+) {
+    let seen = |unit: StableId| {
+        let entity = index.get(unit)?;
+        seers.get(entity).ok().map(|seen| seen.get())
+    };
+    for (entity, &id, projectile, shown) in &projectiles {
+        let teams = ShownTo::of(seen(projectile.target()), seen(projectile.source()));
+        if shown == Some(&teams) {
+            continue;
+        }
+        let mut replicated = commands.entity(entity);
+        if shown.is_none() {
+            replicated.insert(Replicate::to_clients(NetworkTarget::All));
+        }
+        replicated.insert(teams);
+        show(&mut commands, &links, entity, id, teams.0);
     }
 }
 
@@ -274,10 +321,10 @@ fn show(
     links: &Query<'_, '_, (Entity, &PlayerLink)>,
     unit: Entity,
     id: StableId,
-    seen: SeenBy,
+    seen: TeamSet,
 ) {
     for (link, player) in links {
-        let visible = seen.get().contains(player.team);
+        let visible = seen.contains(player.team);
         debug!(
             unit = id.get(),
             slot = player.slot.get(),
@@ -289,5 +336,22 @@ fn show(
         } else {
             commands.lose_visibility(unit, link);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_projectile_shows_to_the_teams_that_see_its_source_or_its_target() {
+        let [a, b] = [0, 1].map(|index| TeamSet::of(Team::new(index)));
+        // Team 0 sees the target, team 1 the source: both see the shot.
+        assert_eq!(ShownTo::of(Some(a), Some(b)), ShownTo(a.union(b)));
+        // A source that is gone, or seen by no other team, adds no team.
+        assert_eq!(ShownTo::of(Some(a), None), ShownTo(a));
+        assert_eq!(ShownTo::of(Some(a), Some(a)), ShownTo(a));
+        // Without vision no unit has sight, and every team sees the shot.
+        assert_eq!(ShownTo::of(None, None), ShownTo(TeamSet::ALL));
     }
 }

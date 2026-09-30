@@ -17,21 +17,24 @@ use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::schedule::common_conditions::resource_added;
 use bevy::ecs::system::{Commands, Query, Res, ResMut, Single};
 use bevy::light::DirectionalLight;
-use bevy::math::primitives::{Capsule3d, Plane3d};
+use bevy::math::primitives::{Capsule3d, Plane3d, Sphere};
 use bevy::math::{Quat, Vec3};
 use bevy::mesh::{Mesh, Mesh3d, Meshable};
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::time::Time;
 use bevy::transform::components::Transform;
 use bevy::window::Window;
-use campfire_capabilities::{Dead, MatchEnd, MatchResult, MoveStep, Owner, Team};
+use campfire_capabilities::{
+    AttackState, Dead, MatchEnd, MatchResult, MoveStep, Owner, Projectile, Team,
+};
 use campfire_math::Num;
 use campfire_net::Unpredicted;
-use campfire_sim::{Position, StableId};
+use campfire_sim::{EntityIndex, Position, StableId};
 use lightyear::prelude::Predicted;
 
-/// Draws the match: a camera over the lane, the ground, and a capsule for every unit the client
-/// holds, colored by team, moving smoothly between the places the sim gives it.
+/// Draws the match: a camera over the lane, the ground, a capsule for every unit the client holds,
+/// colored by team, and a ball for every projectile, each moving smoothly between the places the
+/// sim gives it; a unit in its attack's windup leans towards its target.
 #[derive(Debug)]
 pub(crate) struct View {
     /// How long a tick lasts: a drawn unit takes one tick to reach its sim place.
@@ -47,7 +50,9 @@ struct Palette {
     avatar: Handle<Mesh>,
     creep: Handle<Mesh>,
     structure: Handle<Mesh>,
+    projectile: Handle<Mesh>,
     own: Handle<StandardMaterial>,
+    shot: Handle<StandardMaterial>,
     /// By team index: the first playing team, the second, and any other.
     teams: [Handle<StandardMaterial>; 3],
     dead: Handle<StandardMaterial>,
@@ -133,13 +138,40 @@ const STRUCTURE: Shape = Shape {
     length: 2.0,
 };
 
+/// A projectile in flight: a ball at the height of a unit's chest.
+const SHOT_RADIUS: f32 = 0.2;
+const SHOT_HEIGHT: f32 = 1.2;
+
+/// How far a unit in its attack's windup leans towards its target, in radians.
+const LEAN: f32 = 0.35;
+
+/// The drawn units, with their attack if they have one, and whether they are dead.
+type Attackers<'w, 's> =
+    Query<'w, 's, (&'static Drawn, Option<&'static AttackState>, Has<Dead>), Allow<Unpredicted>>;
+
+/// The projectiles not drawn yet.
+type NewShots<'w, 's> = Query<
+    'w,
+    's,
+    (Entity, &'static Position),
+    (With<Projectile>, Without<Drawn>, Allow<Unpredicted>),
+>;
+
 impl Plugin for View {
     fn build(&self, app: &mut App) {
         app.insert_resource(TickSeconds(self.tick.as_secs_f32()));
         app.add_systems(Startup, View::set_scene);
         app.add_systems(
             Update,
-            (View::draw_new, View::mourn, View::follow, View::glide).chain(),
+            (
+                View::draw_new,
+                View::draw_shots,
+                View::mourn,
+                View::follow,
+                View::glide,
+                View::lean,
+            )
+                .chain(),
         );
         app.add_systems(Update, View::show_end.run_if(resource_added::<MatchEnd>));
         app.add_observer(View::erase);
@@ -174,6 +206,7 @@ impl View {
             avatar: capsule(AVATAR),
             creep: capsule(CREEP),
             structure: capsule(STRUCTURE),
+            projectile: meshes.add(Sphere::new(SHOT_RADIUS).mesh()),
             own: materials.add(Color::srgb(1.0, 0.85, 0.2)),
             teams: [
                 materials.add(Color::srgb(0.25, 0.45, 0.95)),
@@ -181,6 +214,7 @@ impl View {
                 materials.add(Color::srgb(0.6, 0.6, 0.6)),
             ],
             dead: materials.add(Color::srgb(0.22, 0.22, 0.24)),
+            shot: materials.add(Color::srgb(1.0, 0.95, 0.6)),
         };
         commands.insert_resource(palette);
     }
@@ -208,12 +242,7 @@ impl View {
                 shape,
             };
             let at = ground(pos);
-            let mut glide = Glide {
-                from: at,
-                to: at,
-                since: time.elapsed_secs(),
-                lift: 0.0,
-            };
+            let mut glide = Glide::resting(at, time.elapsed_secs(), 0.0);
             let mut transform = Transform::default();
             let mut material = MeshMaterial3d(material.clone());
             look.show(dead, &palette, &mut material, &mut transform, &mut glide);
@@ -222,6 +251,55 @@ impl View {
                 .spawn((Mesh3d(mesh.clone()), material, transform, glide, look))
                 .id();
             commands.entity(unit).insert(Drawn(drawing));
+        }
+    }
+
+    /// Gives each projectile the client received a ball at its place, which glides as a unit's
+    /// drawing does.
+    fn draw_shots(
+        palette: Res<'_, Palette>,
+        time: Res<'_, Time>,
+        shots: NewShots<'_, '_>,
+        mut commands: Commands<'_, '_>,
+    ) {
+        for (shot, &pos) in &shots {
+            let at = ground(pos);
+            let glide = Glide::resting(at, time.elapsed_secs(), SHOT_HEIGHT);
+            let drawing = commands
+                .spawn((
+                    Mesh3d(palette.projectile.clone()),
+                    MeshMaterial3d(palette.shot.clone()),
+                    Transform::from_translation(at + Vec3::Y * SHOT_HEIGHT),
+                    glide,
+                ))
+                .id();
+            commands.entity(shot).insert(Drawn(drawing));
+        }
+    }
+
+    /// Leans each living unit in its attack's windup towards its target, and stands every other
+    /// living unit upright.
+    fn lean(
+        index: Res<'_, EntityIndex>,
+        units: Attackers<'_, '_>,
+        mut drawings: Query<'_, '_, (&Glide, &mut Transform), With<Look>>,
+    ) {
+        for (&Drawn(drawing), attack, dead) in &units {
+            if dead {
+                continue;
+            }
+            let aim = attack
+                .filter(|attack| attack.started().is_some())
+                .and_then(|attack| attack.target())
+                .and_then(|target| index.get(target))
+                .and_then(|target| units.get(target).ok())
+                .and_then(|(&Drawn(target), ..)| drawings.get(target).ok())
+                .map(|(glide, transform)| glide.ground(transform));
+            let Ok((glide, mut transform)) = drawings.get_mut(drawing) else {
+                continue;
+            };
+            let from = glide.ground(&transform);
+            transform.rotation = aim.map_or(Quat::IDENTITY, |to| lean_toward(from, to));
         }
     }
 
@@ -327,6 +405,16 @@ impl Standing {
 }
 
 impl Glide {
+    /// A drawing at rest `at`, from `since` seconds of app time, raised by `lift`.
+    const fn resting(at: Vec3, since: f32, lift: f32) -> Glide {
+        Glide {
+            from: at,
+            to: at,
+            since,
+            lift,
+        }
+    }
+
     /// Where on the ground a drawing at `transform` stands.
     pub(crate) fn ground(&self, transform: &Transform) -> Vec3 {
         transform.translation - Vec3::Y * self.lift
@@ -372,6 +460,17 @@ impl Look {
     }
 }
 
+/// The turn that leans a standing drawing at `from` by `LEAN` towards `to` on the ground plane:
+/// about the horizontal axis square to the way to `to`, so its top moves towards `to`. No lean
+/// when the two stand on one spot.
+fn lean_toward(from: Vec3, to: Vec3) -> Quat {
+    let way = Vec3::new(to.x - from.x, 0.0, to.z - from.z).normalize_or_zero();
+    Quat::from_axis_angle(
+        Vec3::Y.cross(way).normalize_or(Vec3::X),
+        LEAN * way.length(),
+    )
+}
+
 /// A sim place on the ground plane, in the renderer's floats.
 fn ground(pos: Position) -> Vec3 {
     let at = pos.get();
@@ -390,6 +489,21 @@ pub(crate) fn float(value: Num) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_unit_leans_its_top_towards_its_target() {
+        // Towards +x: the top, (0, 1, 0), turns by 0.35 rad to (sin 0.35, cos 0.35, 0).
+        let from = Vec3::new(1.0, 0.0, 2.0);
+        let top = lean_toward(from, Vec3::new(5.0, 0.0, 2.0)) * Vec3::Y;
+        let expected = Vec3::new(LEAN.sin(), LEAN.cos(), 0.0);
+        assert!(top.abs_diff_eq(expected, 1e-6), "{top}");
+        // Towards −z, whatever the target's height: the top to (0, cos 0.35, −sin 0.35).
+        let top = lean_toward(from, Vec3::new(1.0, 3.0, -4.0)) * Vec3::Y;
+        let expected = Vec3::new(0.0, LEAN.cos(), -LEAN.sin());
+        assert!(top.abs_diff_eq(expected, 1e-6), "{top}");
+        // On one spot, no lean.
+        assert_eq!(lean_toward(from, from), Quat::IDENTITY);
+    }
 
     #[test]
     fn the_result_stands_by_the_clients_team() {
