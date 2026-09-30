@@ -64,6 +64,8 @@ One server is the single authority for each match or world. Peer-to-peer was rej
 
 - every action is checked for being possible (range, cooldown, resources, line of sight);
 - limits on action rate and on reaction times no human could achieve;
+- detection plugins that read session logs after a match: aim snaps, reaction times, input patterns;
+- community review: a reported replay goes to reviewers other players trust, as in Counter-Strike's Overwatch, and their verdicts are Nostr reputation statements;
 - tools to review match records, flag suspicious identities and ban them;
 - reputation and stake caps for new identities, for hosts that use payments.
 
@@ -128,7 +130,7 @@ An optional module, off by default. Hosts turn on the models they want and set p
 
 **Spectator bets** are off by default. The host sets when betting closes and the spectator delay; players in the match cannot bet.
 
-**Who holds the money.** Each stake is a locked payment the host cannot take before the result, and it returns if the match aborts; at payout the players trust the host ([Payment flows](05-protocol-spec.md#payment-flows)). Later, independent arbiters can check the replay before higher stakes settle.
+**Who holds the money.** Each stake is a locked payment the host cannot take before the result, and it returns if the match aborts; at payout the players trust the host ([Payment flows](05-protocol-spec.md#payment-flows)). Above a stake the host sets, independent arbiters named in the listing replay the log and co-sign the result before it settles.
 
 **Legal.** Real-money features are regulated or banned in many countries; hosts are responsible for how they use them.
 

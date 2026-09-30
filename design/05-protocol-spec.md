@@ -34,7 +34,7 @@ The protocol has its own version, separate from engine releases. Every session l
 
 | Key | Owner | Signs |
 | --- | --- | --- |
-| Main key | Player (Nostr identity; ideally held by a remote signer) | Session key delegations, licenses held, reputation statements |
+| Main key | Player (Nostr identity; ideally held by a remote signer, or in a local file encrypted with [NIP-49](https://github.com/nostr-protocol/nips/blob/master/49.md)) | Session key delegations, licenses held, reputation statements |
 | Session key | Player's client, one per session, short-lived; a long session renews it with a new delegation before it expires | Chain heads of the player's inputs |
 | Server key | Host (Nostr identity) | Listings, checkpoints, bot and external inputs, input receipts, results |
 | Author key | Content creator | Package announcements, license key delegations |
@@ -56,6 +56,7 @@ The connection is part of the protocol, because it binds the Nostr identities to
 2. The client connects over QUIC (WebTransport) and checks the certificate hash.
 3. The server offers the session's terms and a random challenge, and sends the same offer again until the client answers. The client checks that the terms name the server key it expected, and its own release, mode packages and tick rate; then it delegates a fresh session key in that session and replies with its delegation and a session-key signature over `"campfire/connect/v1" ‖ challenge ‖ certificate hash it verified`. The server accepts only its own certificate hash and a delegation naming its own key, so a reply relayed from a connection to another server is useless there. This binds to the server certificate, like the `tls-server-end-point` channel binding of [RFC 5929](https://www.rfc-editor.org/rfc/rfc5929); a TLS exporter would be stronger, but Lightyear's WebTransport layer does not expose one. Players take slots in the order their replies are accepted, and the match starts when every slot is taken.
 4. Home hosts forward a port or use UPnP. LAN servers also announce their signed listing over mDNS.
+5. Against floods, cheap checks come first: QUIC address validation, limits on connections and packets per address, and a packet's size limits before its signature.
 
 ## Session log
 
@@ -128,7 +129,9 @@ SessionLog
 | Package announcement | Author key | Package id (author + name), version, fingerprint, license, download locations | No |
 | Session log published | Server key | Session id, log and snapshot fingerprints, download locations, result | No |
 | License | License key, with its delegation | Buyer main pubkey, package id, payment hash | No |
-| Reputation statement | Any main or server key | Subject pubkey, session id, claim (e.g. paid out, log published), optional log fingerprint | No |
+| Reputation statement | Any main or server key | Subject pubkey, session id, claim (e.g. paid out, log published, cheated), optional log fingerprint and tick range | No |
+| Review request | Any main or server key | Session id, reported pubkey, tick range, reason | No |
+| Arbiter signature | Arbiter key | Session id, result, final state hash | No |
 | Marketplace listing | Author key | Package id, price in sats, preview media, license terms | Yes, one per package |
 | Engine release | One release key; valid once k keys of the pinned set sign the same content | Release tag, protocol version, per-platform hashes of the unsigned build outputs, download locations | No |
 | Release revocation | One release key; valid at the same threshold | Release tag, reason | No |
@@ -146,7 +149,7 @@ The server talks to its own wallet over NWC ([NIP-47](https://github.com/nostr-p
 
 1. Waiting state: each player gives a payout Lightning address; the server creates a hold invoice for their stake (`make_hold_invoice`).
 2. The player pays; the server receives `hold_invoice_accepted` and records a stake-locked event.
-3. Result: the server settles all stakes (`settle_hold_invoice`) and pays winners, minus the host fee, to their payout addresses. Between settle and payout the host holds the whole pool.
+3. Result: the server settles all stakes (`settle_hold_invoice`) and pays winners, minus the host fee, to their payout addresses. Between settle and payout the host holds the whole pool. Above a stake the listing names, the result needs the signatures of the arbiters the listing names first: each replays the published log and co-signs only a result that verifies.
 4. Aborted: the server cancels every hold invoice (`cancel_hold_invoice`); funds return to players automatically.
 
 **Entry fee:** a normal invoice paid during waiting, recorded as an external input.

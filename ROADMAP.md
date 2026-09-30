@@ -26,3 +26,5 @@ Open items only. Remove an item when it is done; remove a stage when it is empty
 
 ## 7. Hardening
 - `det-ci` bot matches per commit, worst-case tick budgets, log tamper tests, mDNS, local singleplayer server.
+- Flood limits before signature checks; NIP-49 encrypted local key files.
+- Anti-cheat: log-based detection plugins, review requests and community review verdicts.

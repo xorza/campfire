@@ -11,4 +11,4 @@ Shots that hit at once, tested against hitboxes, with lag compensation. Damage g
 
 ## Lag compensation
 
-The sim keeps a short history of hitbox poses as part of its state and tests each shot at the tick named in the shooter's input frame. That tick is in the recorded input and the history is sim state, so the verifier gets the same hit. It is capability code, not the network layer's lag compensation, because the verifier runs no network layer.
+The sim keeps a short history of hitbox poses as part of its state and tests each shot at the tick named in the shooter's input frame. The rewind has a limit the host sets (200 ms by default): a frame that names an older tick is tested at the limit, so a client cannot claim a stale view to hit a target that already reached cover. That tick is in the recorded input and the history is sim state, so the verifier gets the same hit. It is capability code, not the network layer's lag compensation, because the verifier runs no network layer.
