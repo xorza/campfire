@@ -1,21 +1,26 @@
 //! LAN check on request: builds and starts the real `campfire-server` and two
 //! `campfire-client --bot` processes over WebTransport on `127.0.0.1`, for a match of about 3 s
-//! of the test lane mode; then reads their JSON logs and runs `campfire-verifier` on the session
-//! log. It passes when every process succeeded and logged no warning or error, every order was
-//! logged and took effect in its stamp tick, and the verifier gives the server's final hash.
+//! of the test lane mode, and a third bot that pins the wrong certificate; then reads their JSON
+//! logs and runs `campfire-verifier` on the session log. It passes when the server, the two bots
+//! and the verifier succeeded and logged no warning or error, every order was logged and took
+//! effect in its stamp tick, the verifier gives the server's final hash, and the third bot exited
+//! with failure and logged why.
 //!
-//! Run it with `cargo run -p campfire-lan-check [-- <run directory>]`. The logs and the session
-//! log stay in the run's directory. `cargo run -p campfire-lan-check -- verify <run directory>`
-//! verifies the session log of a run, perhaps from another machine, with this machine's verifier,
-//! and compares the server's final hash.
+//! Run it with `cargo run -p campfire-lan-check [-- <run root>]`. Each run's logs and session log
+//! go into a new directory below the run root, named for the run's start. `cargo run -p
+//! campfire-lan-check -- verify <run directory>` verifies the session log of a run, perhaps from
+//! another machine, with this machine's verifier, and compares the server's final hash.
 
 use std::env;
 use std::fs;
 use std::path::Path;
 use std::process::{Command, ExitCode, Stdio};
+use std::time::SystemTime;
 
 use campfire_log::Logging;
-use campfire_net::{InputLogged, Listening, MatchStarted, OrderScript, OrdersSent, SessionWritten};
+use campfire_net::{
+    InputLogged, LinkLost, Listening, MatchStarted, OrderScript, OrdersSent, SessionWritten,
+};
 use campfire_verifier::Verified;
 use tracing::{error, info};
 
@@ -26,6 +31,7 @@ use crate::mode::Mode;
 use crate::outcome::Outcome;
 use crate::process::Process;
 use crate::process_log::ProcessLog;
+use crate::run_dir::RunDir;
 use crate::verdict::{BotEvents, Verdict};
 
 mod binaries;
@@ -36,6 +42,7 @@ mod mode;
 mod outcome;
 mod process;
 mod process_log;
+mod run_dir;
 mod target_name;
 mod verdict;
 
@@ -64,44 +71,52 @@ fn main() -> ExitCode {
     }
     .start();
     let Some(mode) = Mode::parse(env::args_os().skip(1)) else {
-        error!("usage: campfire-lan-check [<run directory>] | verify <run directory>");
+        error!("usage: campfire-lan-check [<run root>] | verify <run directory>");
         return ExitCode::from(2);
     };
-    let result = match mode {
-        Mode::Play { dir } => play(&dir),
-        Mode::Verify { dir } => verify_run(&dir),
-    };
-    match result {
-        Ok(verdict) if verdict.failures().is_empty() => {
-            info!("the LAN check passed");
-            ExitCode::SUCCESS
-        }
-        Ok(verdict) => {
-            for failure in verdict.failures() {
-                error!(%failure, "the LAN check failed");
+    let dir = match &mode {
+        Mode::Play { root } => match RunDir::create(root, SystemTime::now()) {
+            Ok(run) => run.path().to_owned(),
+            Err(error) => {
+                error!(%error, "the LAN check did not run");
+                return ExitCode::FAILURE;
             }
-            ExitCode::FAILURE
-        }
+        },
+        Mode::Verify { dir } => dir.clone(),
+    };
+    let result = match mode {
+        Mode::Play { .. } => play(&dir),
+        Mode::Verify { .. } => verify_run(&dir),
+    };
+    report(result, &dir)
+}
+
+/// Logs each failure of `result`, then a last line with their number and the run's `dir`.
+fn report(result: Result<Verdict, CheckError>, dir: &Path) -> ExitCode {
+    let verdict = match result {
+        Ok(verdict) => verdict,
         Err(error) => {
-            error!(%error, "the LAN check did not run");
-            ExitCode::FAILURE
+            error!(%error, dir = %dir.display(), "the LAN check did not run");
+            return ExitCode::FAILURE;
         }
+    };
+    let mut failures = 0;
+    for failure in verdict.failures() {
+        error!(%failure, "a failure of the LAN check");
+        failures += 1;
+    }
+    if failures == 0 {
+        info!(dir = %dir.display(), "the LAN check passed");
+        ExitCode::SUCCESS
+    } else {
+        error!(failures, dir = %dir.display(), "the LAN check failed");
+        ExitCode::FAILURE
     }
 }
 
-/// Plays a LAN match with its logs in `dir`, which it empties first, and checks it.
+/// Plays a LAN match with its logs in `dir`, a new run's directory, and checks it.
 fn play(dir: &Path) -> Result<Verdict, CheckError> {
     let binaries = build()?;
-    if dir.exists() {
-        fs::remove_dir_all(dir).map_err(|error| CheckError::File {
-            path: dir.to_owned(),
-            error,
-        })?;
-    }
-    fs::create_dir_all(dir).map_err(|error| CheckError::File {
-        path: dir.to_owned(),
-        error,
-    })?;
     info!(dir = %dir.display(), "the run's logs go here");
     let mut scripts = Vec::with_capacity(SCRIPTS.len());
     let mut scripted = Vec::with_capacity(SCRIPTS.len());
@@ -143,6 +158,8 @@ fn play(dir: &Path) -> Result<Verdict, CheckError> {
         });
     }
     verdict.orders(&server.read_all::<InputLogged>()?, &bots);
+    let impostor = ProcessLog::read(Process::Impostor, &Process::Impostor.log_path(dir))?;
+    verdict.impostor(played.impostor, &impostor.read_all::<LinkLost>()?);
 
     verify(&binaries, dir, &server, &mut verdict)?;
     Ok(verdict)

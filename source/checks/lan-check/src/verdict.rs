@@ -2,7 +2,7 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_log::Level;
 use campfire_math::PlayerSlot;
-use campfire_net::{InputLogged, Listening, MatchStarted, OrdersSent, SessionWritten};
+use campfire_net::{InputLogged, LinkLost, Listening, MatchStarted, OrdersSent, SessionWritten};
 use campfire_sim::Tick;
 use campfire_verifier::Verified;
 
@@ -41,6 +41,17 @@ impl Verdict {
                     fields: line.fields.clone(),
                 });
             }
+        }
+    }
+
+    /// Checks that the impostor bot exited with failure, and logged why its link failed: a client
+    /// whose link fails ends, and says why.
+    pub(crate) fn impostor(&mut self, outcome: Outcome, lost: &[LinkLost]) {
+        if !matches!(outcome, Outcome::Failed { .. }) {
+            self.failures.push(Failure::ImpostorNotRefused { outcome });
+        }
+        if lost.is_empty() {
+            self.failures.push(Failure::ImpostorSilent);
         }
     }
 
@@ -114,8 +125,22 @@ impl Verdict {
         }
     }
 
-    pub(crate) fn failures(&self) -> &[Failure] {
-        &self.failures
+    /// The failures found, less each that follows from another: with a server that did not
+    /// succeed, the missing session log and final hash; with a verifier that did not, the final
+    /// hash.
+    pub(crate) fn failures(&self) -> impl Iterator<Item = &Failure> {
+        let ended = |of: Process| {
+            self.failures
+                .iter()
+                .any(|failure| matches!(failure, Failure::Ended { process, .. } if *process == of))
+        };
+        let server = ended(Process::Server);
+        let verifier = ended(Process::Verifier);
+        self.failures.iter().filter(move |failure| match failure {
+            Failure::NoLog => !server,
+            Failure::NotVerified => !server && !verifier,
+            _ => true,
+        })
     }
 }
 
@@ -153,6 +178,10 @@ mod tests {
                 .collect(),
             scripted: 2,
         }
+    }
+
+    fn found(verdict: &Verdict) -> Vec<Failure> {
+        verdict.failures().cloned().collect()
     }
 
     fn hash(byte: &str) -> StateHash {
@@ -202,7 +231,7 @@ mod tests {
             Outcome::Succeeded,
             &ProcessLog::empty(Process::Server),
         );
-        assert_eq!(verdict.failures(), []);
+        assert_eq!(found(&verdict), []);
     }
 
     #[test]
@@ -219,7 +248,7 @@ mod tests {
         verdict.hash(Some(&written(hash("aa"))), Some(&verified(hash("bb"))));
         let slot = PlayerSlot::new(0);
         assert_eq!(
-            verdict.failures(),
+            found(&verdict),
             [
                 Failure::NeverListened,
                 Failure::OrderCount {
@@ -250,7 +279,44 @@ mod tests {
         let mut verdict = Verdict::default();
         verdict.hash(None, Some(&verified(hash("aa"))));
         verdict.hash(Some(&written(hash("aa"))), None);
-        assert_eq!(verdict.failures(), [Failure::NoLog, Failure::NotVerified]);
+        assert_eq!(found(&verdict), [Failure::NoLog, Failure::NotVerified]);
+        // Neither follows from a verifier that failed but the first; both follow from a server
+        // that overran, which alone the verdict names.
+        let empty = |process| ProcessLog::empty(process);
+        let failed = Outcome::Failed { code: Some(1) };
+        verdict.process(Process::Verifier, failed, &empty(Process::Verifier));
+        let verifier_failed = Failure::Ended {
+            process: Process::Verifier,
+            outcome: failed,
+        };
+        assert_eq!(found(&verdict), [Failure::NoLog, verifier_failed.clone()]);
+        verdict.process(Process::Server, Outcome::Overran, &empty(Process::Server));
+        let server_overran = Failure::Ended {
+            process: Process::Server,
+            outcome: Outcome::Overran,
+        };
+        assert_eq!(found(&verdict), [verifier_failed, server_overran]);
+
+        // The impostor must exit with failure and say why; one that succeeded or overran, or
+        // stayed silent, fails the check.
+        let lost = LinkLost {
+            reason: "Transport error: certificate hash mismatch".to_owned(),
+        };
+        let mut verdict = Verdict::default();
+        verdict.impostor(failed, &[lost]);
+        assert_eq!(found(&verdict), []);
+        for outcome in [Outcome::Succeeded, Outcome::Overran, Outcome::NotStarted] {
+            let mut verdict = Verdict::default();
+            verdict.impostor(outcome, &[]);
+            assert_eq!(
+                found(&verdict),
+                [
+                    Failure::ImpostorNotRefused { outcome },
+                    Failure::ImpostorSilent
+                ],
+                "{outcome:?}"
+            );
+        }
         // A process that did not end with success fails, and so does each warning or error it
         // logged; lines below a warning do not.
         let text = [
@@ -263,7 +329,7 @@ mod tests {
         let mut verdict = Verdict::default();
         verdict.process(Process::Server, Outcome::Overran, &log);
         assert_eq!(
-            verdict.failures(),
+            found(&verdict),
             [
                 Failure::Ended {
                     process: Process::Server,

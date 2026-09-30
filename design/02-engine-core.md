@@ -19,7 +19,7 @@ Each layer uses the layers below it.
 | `runner` | Builds a match from checked packages: wires `sim`, the declared capabilities and `script`, feeds inputs |
 | `verifier` | CLI: replays a session log segment, checks the result |
 | `det-ci` | Headless matches of the reference MOBA with its bots on every OS, comparing state hashes |
-| `lan-check` | On request: the real server and two `client --bot` processes over WebTransport on `127.0.0.1`, checked from their JSON logs and by the verifier |
+| `lan-check` | On request: the real server and two `client --bot` processes over WebTransport on `127.0.0.1`, and a bot with the wrong certificate that must fail and say why, checked from their JSON logs and by the verifier |
 | `server` | Headless app: host config, lifecycle, saves, validation, admin |
 | `net` | Lightyear over QUIC (WebTransport): handshake, replication; internal |
 | `launcher` | Small app: fetches, checks and starts the engine release a server or replay names; server browser |
@@ -102,7 +102,7 @@ Collision, pathfinding and visibility each have one interface and pluggable back
 ## Testing and diagnostics
 
 - **Match scenarios** run whole matches between scripted players (`OrderScript`) in the test suite, through a modeled link of delay, jitter and loss on a manual clock, so each run repeats. Lightyear measures round trips by the wall clock, so the harness adds the modeled round trip to the sync margin, and its frame costs under delay are not real ones.
-- **LAN check** (`campfire-lan-check`, on request): the real server and two `client --bot` processes on `127.0.0.1`, checked from their JSON logs and by the verifier.
+- **LAN check** (`campfire-lan-check`, on request): the real server and two `client --bot` processes on `127.0.0.1`, and a bot with the wrong certificate that must fail and say why, checked from their JSON logs and by the verifier. Each run keeps its logs in a directory of its own.
 - **CI** runs the check chain and the LAN check on Linux, Windows and macOS; each platform's verifier then replays every platform's session log.
 - **Logging** goes through `tracing`, never a print. `sim` and `capabilities` log nothing; they report through resources the runner logs. Binaries log to standard error, and to JSON lines with `CAMPFIRE_LOG`. An event a tool reads back is a typed `LogEvent`, with a round-trip test.
 

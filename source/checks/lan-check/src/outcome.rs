@@ -1,3 +1,4 @@
+use std::fmt;
 use std::process::ExitStatus;
 
 /// How a process ended.
@@ -22,6 +23,19 @@ impl Outcome {
             Outcome::Failed {
                 code: status.code(),
             }
+        }
+    }
+}
+
+/// How a process ended, as the end of a sentence about it.
+impl fmt::Display for Outcome {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Outcome::Succeeded => f.write_str("succeeded"),
+            Outcome::Failed { code: Some(code) } => write!(f, "exited with {code}"),
+            Outcome::Failed { code: None } => f.write_str("was killed by a signal"),
+            Outcome::Overran => f.write_str("still ran at the deadline"),
+            Outcome::NotStarted => f.write_str("did not start"),
         }
     }
 }

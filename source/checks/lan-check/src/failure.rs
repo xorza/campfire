@@ -43,6 +43,10 @@ pub(crate) enum Failure {
         stamp: Tick,
         tick: Tick,
     },
+    /// The impostor bot did not exit with failure: it linked, or it still ran at the deadline.
+    ImpostorNotRefused { outcome: Outcome },
+    /// The impostor bot did not log why its link failed.
+    ImpostorSilent,
     /// The server did not say it wrote the session log.
     NoLog,
     /// The verifier did not give a final hash.
@@ -57,13 +61,7 @@ pub(crate) enum Failure {
 impl fmt::Display for Failure {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Failure::Ended { process, outcome } => match outcome {
-                Outcome::Succeeded => unreachable!("{process} succeeded, which is no failure"),
-                Outcome::Failed { code: Some(code) } => write!(f, "{process} exited with {code}"),
-                Outcome::Failed { code: None } => write!(f, "{process} was killed by a signal"),
-                Outcome::Overran => write!(f, "{process} still ran at the deadline"),
-                Outcome::NotStarted => write!(f, "{process} did not start"),
-            },
+            Failure::Ended { process, outcome } => write!(f, "{process} {outcome}"),
             Failure::Warned {
                 process,
                 level,
@@ -95,6 +93,13 @@ impl fmt::Display for Failure {
                 stamp.get(),
                 tick.get()
             ),
+            Failure::ImpostorNotRefused { outcome } => {
+                write!(
+                    f,
+                    "the impostor bot {outcome}, where it must exit with failure"
+                )
+            }
+            Failure::ImpostorSilent => f.write_str("the impostor bot did not log its lost link"),
             Failure::NoLog => f.write_str("the server did not write the session log"),
             Failure::NotVerified => f.write_str("the verifier gave no final hash"),
             Failure::OtherHash { server, verifier } => write!(

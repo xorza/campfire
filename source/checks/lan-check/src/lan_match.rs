@@ -5,6 +5,7 @@ use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
+use campfire_math::hex;
 use campfire_net::Listening;
 
 use crate::binaries::Binaries;
@@ -20,7 +21,8 @@ const DEADLINE: Duration = Duration::from_secs(30);
 const POLL: Duration = Duration::from_millis(50);
 
 /// A match of the real server and one bot per script, each a process on `127.0.0.1`, each
-/// logging JSON to a file in the run's directory.
+/// logging JSON to a file in the run's directory; beside them, an impostor bot that pins the
+/// wrong certificate plays the first script.
 #[derive(Debug)]
 pub(crate) struct LanMatch<'a> {
     pub(crate) binaries: &'a Binaries,
@@ -37,11 +39,12 @@ pub(crate) struct LanMatch<'a> {
 pub(crate) struct Played {
     pub(crate) server: Outcome,
     pub(crate) bots: Vec<Outcome>,
+    pub(crate) impostor: Outcome,
 }
 
 impl LanMatch<'_> {
-    /// Starts the server, waits until it listens, starts the bots, and waits until every process
-    /// ended or the deadline passed.
+    /// Starts the server, waits until it listens, starts the bots and the impostor, and waits until
+    /// every process ended or the deadline passed.
     pub(crate) fn play(&self) -> Result<Played, CheckError> {
         let deadline = Instant::now() + DEADLINE;
         let address = SocketAddr::from(([127, 0, 0, 1], free_port()?));
@@ -64,6 +67,7 @@ impl LanMatch<'_> {
                 return Ok(Played {
                     server: Outcome::of(status),
                     bots: vec![Outcome::NotStarted; self.scripts.len()],
+                    impostor: Outcome::NotStarted,
                 });
             }
             thread::sleep(POLL);
@@ -77,21 +81,29 @@ impl LanMatch<'_> {
             return Ok(Played {
                 server: stop(Process::Server, &mut server)?,
                 bots: vec![Outcome::NotStarted; self.scripts.len()],
+                impostor: Outcome::NotStarted,
             });
         };
         let mut children = vec![(Process::Server, server)];
-        for (index, script) in self.scripts.iter().enumerate() {
+        let wrong = hex::encode(&certificate.as_bytes().map(|byte| !byte));
+        let bots = self
+            .scripts
+            .iter()
+            .enumerate()
+            .map(|(index, script)| (Process::Bot(index), script, certificate.to_string()));
+        let impostor = (Process::Impostor, &self.scripts[0], wrong);
+        for (process, script, certificate) in bots.chain([impostor]) {
             let bot = self.start(
-                Process::Bot(index),
+                process,
                 Command::new(&self.binaries.client)
                     .arg("--bot")
                     .arg(script)
                     .arg(self.mode)
                     .arg(address.to_string())
-                    .arg(certificate.to_string())
+                    .arg(certificate)
                     .arg(server_key.to_string()),
             )?;
-            children.push((Process::Bot(index), bot));
+            children.push((process, bot));
         }
         let mut outcomes = vec![None; children.len()];
         while outcomes.iter().any(Option::is_none) && Instant::now() < deadline {
@@ -116,9 +128,11 @@ impl LanMatch<'_> {
             });
         }
         let server = ended.remove(0);
+        let impostor = ended.pop().expect("the impostor ran");
         Ok(Played {
             server,
             bots: ended,
+            impostor,
         })
     }
 

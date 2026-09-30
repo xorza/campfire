@@ -22,6 +22,7 @@ mod sim_server;
 
 pub use error::{JoinError, OrderScriptError, TermsMismatch};
 pub use events::input_logged::InputLogged;
+pub use events::link_lost::LinkLost;
 pub use events::listening::Listening;
 pub use events::match_started::MatchStarted;
 pub use events::orders_sent::OrdersSent;

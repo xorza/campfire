@@ -81,8 +81,11 @@ jobs:
           path: ${{ runner.temp }}/runs
       - name: Verify each platform's match
         run: |
+          # Each artifact holds the run root of one check, with its one run's directory.
           for os in Linux Windows macOS; do
             echo "::group::the match played on $os"
-            cargo run --locked -p campfire-lan-check -- verify "$RUNNER_TEMP/runs/lan-check-$os"
+            for run in "$RUNNER_TEMP/runs/lan-check-$os"/*/; do
+              cargo run --locked -p campfire-lan-check -- verify "$run"
+            done
             echo "::endgroup::"
           done

@@ -7,6 +7,8 @@ pub(crate) enum Process {
     Server,
     /// The bot that plays the script of this index.
     Bot(usize),
+    /// A bot that pins a certificate no server has, so it never links.
+    Impostor,
     Verifier,
 }
 
@@ -21,6 +23,7 @@ impl Process {
         match self {
             Process::Server => "server".to_owned(),
             Process::Bot(index) => format!("bot-{index}"),
+            Process::Impostor => "impostor".to_owned(),
             Process::Verifier => "verifier".to_owned(),
         }
     }
@@ -31,6 +34,7 @@ impl fmt::Display for Process {
         match self {
             Process::Server => f.write_str("the server"),
             Process::Bot(index) => write!(f, "bot {index}"),
+            Process::Impostor => f.write_str("the impostor bot"),
             Process::Verifier => f.write_str("the verifier"),
         }
     }

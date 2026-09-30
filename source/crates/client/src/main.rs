@@ -40,11 +40,13 @@ use tracing::error;
 
 use crate::bot::Bot;
 use crate::hud::Hud;
+use crate::link_watch::LinkWatch;
 use crate::orders::Orders;
 use crate::view::View;
 
 mod bot;
 mod hud;
+mod link_watch;
 mod orders;
 mod pointer;
 mod view;
@@ -130,9 +132,12 @@ fn main() -> ExitCode {
             Orders,
         ));
     }
-    app.add_plugins(ClientPlugins {
-        tick_duration: tick,
-    });
+    app.add_plugins((
+        ClientPlugins {
+            tick_duration: tick,
+        },
+        LinkWatch,
+    ));
     app.add_plugins((
         NetProtocol,
         SimClient {
