@@ -95,9 +95,7 @@ struct Run {
 
 /// Runs a match in which the player sends `orders`.
 fn run(orders: &[&Sent]) -> Run {
-    let header = header();
-    let seed = header.segment_seed(&SERVER_SEED).unwrap();
-    let mut runner = Runner::new(header, seed);
+    let mut runner = Runner::new(header(), SERVER_SEED).unwrap();
     let mut head = ROOT;
     let mut seq = 0;
     let mut hashes = Vec::new();
@@ -122,7 +120,7 @@ fn run(orders: &[&Sent]) -> Run {
         runner.run_tick();
         hashes.push(runner.state_hash());
     }
-    runner.reveal_seed(SERVER_SEED);
+    runner.reveal_seed();
     Run { runner, hashes }
 }
 
@@ -153,14 +151,20 @@ fn run_and_replay_agree_on_every_tick() {
     // Without the second order the hashes agree until it would apply, at tick 22, and differ
     // from then on: the hash sees the hero move.
     let without = run(&[&ORDERS[0], &ORDERS[2]]).hashes;
+    let first_difference = live.iter().zip(&without).position(|(a, b)| a != b);
+    assert_eq!(first_difference, Some(22));
+    assert!(live[22..].iter().zip(&without[22..]).all(|(a, b)| a != b));
+}
 
-    // A log whose segment is not published gives no seed to replay with.
+#[test]
+fn the_seed_comes_only_from_the_header_and_its_reveal() {
     let unpublished = SessionLog::new(header());
     assert_eq!(
         Replay::new(&unpublished).err(),
         Some(SeedError::NotRevealed)
     );
-    let first_difference = live.iter().zip(&without).position(|(a, b)| a != b);
-    assert_eq!(first_difference, Some(22));
-    assert!(live[22..].iter().zip(&without[22..]).all(|(a, b)| a != b));
+    assert_eq!(
+        Runner::new(header(), ServerSeed::new([8; 32])).err(),
+        Some(SeedError::WrongSeed)
+    );
 }

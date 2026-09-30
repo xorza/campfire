@@ -46,7 +46,7 @@ impl SessionHeader {
     /// when `server_seed` does not match the commitment.
     pub fn segment_seed(&self, server_seed: &ServerSeed) -> Result<SegmentSeed, SeedError> {
         if server_seed.commitment() != self.seed_commitment {
-            return Err(SeedError::WrongReveal);
+            return Err(SeedError::WrongSeed);
         }
         let mut hasher = Hasher::new();
         hasher
@@ -152,10 +152,9 @@ impl SessionLog {
         self.revealed = Some(server_seed);
     }
 
-    /// The seed of the segment's randomness, from the revealed server seed.
-    pub fn segment_seed(&self) -> Result<SegmentSeed, SeedError> {
-        self.header
-            .segment_seed(self.revealed.as_ref().ok_or(SeedError::NotRevealed)?)
+    /// The server seed, once the segment is published.
+    pub const fn revealed_seed(&self) -> Option<ServerSeed> {
+        self.revealed
     }
 
     /// The tick that the inputs recorded now arrive before.

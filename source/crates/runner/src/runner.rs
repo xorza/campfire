@@ -1,7 +1,9 @@
 use bevy_ecs::world::World;
 use campfire_kit_moba::{MobaKit, MoveStep};
-use campfire_math::{Num, SegmentSeed, Vec3};
-use campfire_protocol::{Applied, InputError, PlayerInput, ServerSeed, SessionHeader, SessionLog};
+use campfire_math::{Num, Vec3};
+use campfire_protocol::{
+    Applied, InputError, PlayerInput, SeedError, ServerSeed, SessionHeader, SessionLog,
+};
 use campfire_sim::{Position, SimTick, SimUpdate, StateHash, StateRegistry, TickInput, TickInputs};
 
 /// A quarter meter, 7.5 m/s at the MOBA's default 30 ticks a second.
@@ -15,13 +17,18 @@ const HERO_STEP: Num = Num::from_bits(1 << (Num::FRAC_BITS - 2));
 /// origin.
 #[derive(Debug)]
 pub struct Runner {
+    /// Secret until `reveal_seed` publishes the log.
+    server_seed: ServerSeed,
     world: World,
     state: StateRegistry,
     log: SessionLog,
 }
 
 impl Runner {
-    pub fn new(header: SessionHeader, seed: SegmentSeed) -> Runner {
+    /// The match of `header`, with the randomness of `server_seed` and the players'
+    /// contributions; an error when `server_seed` is not the one the header commits to.
+    pub fn new(header: SessionHeader, server_seed: ServerSeed) -> Result<Runner, SeedError> {
+        let seed = header.segment_seed(&server_seed)?;
         let mut world = World::new();
         SimUpdate::prepare(&mut world, seed);
         let mut schedule = SimUpdate::schedule();
@@ -36,11 +43,12 @@ impl Runner {
             let slot = u32::try_from(slot).expect("player slots fit u32");
             MobaKit::spawn_hero(&mut world, slot, origin, step);
         }
-        Runner {
+        Ok(Runner {
+            server_seed,
             world,
             state,
             log: SessionLog::new(header),
-        }
+        })
     }
 
     /// Logs `input` before the next tick; see `SessionLog::record`.
@@ -65,9 +73,9 @@ impl Runner {
         self.world.run_schedule(SimUpdate);
     }
 
-    /// Publishes the log's segment by adding the server seed; see `SessionLog::reveal_seed`.
-    pub fn reveal_seed(&mut self, server_seed: ServerSeed) {
-        self.log.reveal_seed(server_seed);
+    /// Publishes the log's segment by adding the server seed.
+    pub fn reveal_seed(&mut self) {
+        self.log.reveal_seed(self.server_seed);
     }
 
     pub fn state_hash(&self) -> StateHash {

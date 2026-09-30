@@ -274,7 +274,7 @@ fn the_segment_seed_comes_from_the_revealed_seed() {
     assert_eq!(header().segment_seed(&SERVER_SEED), Ok(expected));
     assert_eq!(
         header().segment_seed(&ServerSeed::new([4; 32])),
-        Err(SeedError::WrongReveal)
+        Err(SeedError::WrongSeed)
     );
 
     // Each contribution counts, and so does their slot order.
@@ -288,9 +288,9 @@ fn the_segment_seed_comes_from_the_revealed_seed() {
     }
 
     let mut log = SessionLog::new(header());
-    assert_eq!(log.segment_seed(), Err(SeedError::NotRevealed));
+    assert_eq!(log.revealed_seed(), None);
     log.reveal_seed(SERVER_SEED);
-    assert_eq!(log.segment_seed(), Ok(expected));
+    assert_eq!(log.revealed_seed(), Some(SERVER_SEED));
 }
 
 #[test]

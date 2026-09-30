@@ -10,12 +10,13 @@ pub struct Replay<'a> {
 }
 
 impl<'a> Replay<'a> {
-    /// The replay with the log's own segment seed; an error when the log does not reveal the seed
-    /// its header commits to.
+    /// The replay with the log's own randomness; an error when the log does not reveal the server
+    /// seed its header commits to.
     pub fn new(published: &'a SessionLog) -> Result<Replay<'a>, SeedError> {
+        let server_seed = published.revealed_seed().ok_or(SeedError::NotRevealed)?;
         Ok(Replay {
             published,
-            runner: Runner::new(published.header().clone(), published.segment_seed()?),
+            runner: Runner::new(published.header().clone(), server_seed)?,
         })
     }
 
