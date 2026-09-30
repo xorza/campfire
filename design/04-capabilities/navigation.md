@@ -20,7 +20,7 @@ Queries take world positions, a route is a list of waypoints, and obstacles are 
 Three layers, as in Dota 2: a long route around what never moves, a short route around units in the way, and collision as the last guard. All are exact fixed point, in stable-id order, with a fixed work limit a tick.
 
 - **Pathing grid:** the bounds in `[navigation] cell` cells, blocked for each walker radius near a unit that cannot walk. It changes when such a unit dies or spawns.
-- **Long route:** A* for the unit's radius, eight neighbors, costs 10 and 14, a fixed tie-break, then line-of-sight smoothing. An unreachable goal gives the nearest reachable cell.
+- **Long route:** A* for the unit's radius, eight neighbors with no corner cut, costs 10 and 14, ties by estimate then cell, then line-of-sight smoothing. An unreachable goal gives the nearest reachable cell. Routes wait in the order they were asked, then by stable id; a tick expands up to as many cells as the grid has, and the route that meets that limit finishes.
 - **Short route:** a small local plan around units that stand, or that block the unit for a few ticks.
 - **Collision:** the push-out below, over a grid of buckets for moving bodies and a static index for units that cannot walk, as 0 A.D. keeps them.
 

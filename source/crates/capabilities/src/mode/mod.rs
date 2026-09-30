@@ -91,7 +91,7 @@ impl Mode {
             .unit_types
             .iter()
             .filter(|setup| setup.kit.step.is_some())
-            .filter_map(|setup| setup.kit.body.map(Body::radius))
+            .map(|setup| Body::radius_of(setup.kit.body.as_ref()))
             .collect();
         // A window past what ticks can count covers the whole match.
         let assist_window = setup

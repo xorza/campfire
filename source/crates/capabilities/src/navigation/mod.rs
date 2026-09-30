@@ -16,6 +16,8 @@ use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::PathWalker;
 use crate::navigation::pathing_grid::PathingGrid;
 use crate::navigation::paths::Paths;
+use crate::navigation::route::{Route, Waiting};
+use crate::navigation::route_planner::RoutePlanner;
 use crate::navigation::static_index::{StaticBody, StaticIndex};
 use crate::units::body::Body;
 use crate::units::script_view::{RowFill, View};
@@ -32,6 +34,8 @@ pub(crate) mod on_path;
 pub(crate) mod path_walker;
 pub(crate) mod pathing_grid;
 pub(crate) mod paths;
+pub(crate) mod route;
+pub(crate) mod route_planner;
 pub(crate) mod static_index;
 
 /// The `navigation` capability: units that walk to a destination, and the map's waypoint paths.
@@ -52,7 +56,7 @@ impl Navigation {
         world.insert_resource(StaticIndex::new(Body::MAX_RADIUS));
         schedule.add_systems((
             track_static_bodies.in_set(SimSet::Inputs),
-            move_units.in_set(SimSet::Move),
+            (plan_routes, move_units).chain().in_set(SimSet::Move),
             (track_static_bodies, collide)
                 .chain()
                 .in_set(SimSet::Collide),
@@ -62,15 +66,22 @@ impl Navigation {
         registry.register_component::<PathWalker>();
         registry.register_component::<MoveStep>();
         registry.register_component::<OnPath>();
+        registry.register_component::<Route>();
     }
 }
 
 impl Navigation {
-    /// Gives the match the map's pathing grid over `cells`, for walkers of `radii`, and a static
-    /// index for the widest of them; the static bodies fill both from the first tick on.
+    /// Gives the match the map's pathing grid over `cells`, for walkers of `radii`, 0 for one
+    /// with no body, a static index for the widest of them, and a planner of routes on the grid;
+    /// the static bodies fill the grid and the index from the first tick on.
     pub(crate) fn load_pathing(world: &mut World, cells: Grid, radii: Vec<Num>) {
-        let widest = radii.iter().max().copied().unwrap_or(Body::MAX_RADIUS);
-        world.insert_resource(StaticIndex::new(widest));
+        let widest = radii
+            .iter()
+            .max()
+            .copied()
+            .filter(|&widest| widest > Num::ZERO);
+        world.insert_resource(StaticIndex::new(widest.unwrap_or(Body::MAX_RADIUS)));
+        world.insert_resource(RoutePlanner::new(&cells));
         world.insert_resource(PathingGrid::new(cells, radii));
     }
 }
@@ -108,6 +119,51 @@ fn track_static_bodies(
 /// Fills a row of the script view with the path the unit walks or stands on.
 fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
     fill.row.path = unit.get::<OnPath>().map(|path| path.get());
+}
+
+/// Plans the asked routes, by the tick they were asked in, then by stable id, until the tick has
+/// expanded as many cells as the pathing grid has: the route that meets that limit finishes, and
+/// the rest wait for the next tick, so a tick plans at most one search over the whole grid past
+/// the limit. A match with no pathing grid plans none. Every tick reads the asks into `waiting`,
+/// a buffer it keeps.
+fn plan_routes(
+    grid: Option<Res<'_, PathingGrid>>,
+    planner: Option<ResMut<'_, RoutePlanner>>,
+    mut units: Query<
+        '_,
+        '_,
+        (Entity, &StableId, &Position, &mut Route, Option<&Body>),
+        Without<Dead>,
+    >,
+    mut waiting: Local<'_, Vec<Waiting>>,
+) {
+    let (Some(grid), Some(mut planner)) = (grid, planner) else {
+        return;
+    };
+    waiting.clear();
+    waiting.extend(units.iter().filter_map(|(entity, &id, _, route, _)| {
+        let ask = route.asked()?;
+        Some(Waiting {
+            tick: ask.tick,
+            id,
+            entity,
+        })
+    }));
+    waiting.sort_unstable();
+    let mut expanded = 0;
+    for next in &*waiting {
+        if expanded >= grid.cells() {
+            break;
+        }
+        let (_, _, &at, mut route, body) =
+            units.get_mut(next.entity).expect("a unit read this tick");
+        let goal = route
+            .asked()
+            .expect("a unit waiting for its route asked one")
+            .goal;
+        let layer = grid.layer(Body::radius_of(body));
+        expanded += planner.plan(layer, at, goal, route.answer()).expanded as usize;
+    }
 }
 
 /// Walks each unit one step towards its destination, which it drops on arrival. A dead unit stays

@@ -1,6 +1,6 @@
 use std::ops::Range;
 
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 use campfire_sim::Position;
 
 use crate::values::bounds::Bounds;
@@ -37,8 +37,53 @@ impl Grid {
         Some(Grid { cell, bounds, size })
     }
 
-    pub(crate) fn cells(&self) -> usize {
+    pub(crate) const fn cells(&self) -> usize {
         self.size[0] as usize * self.size[1] as usize
+    }
+
+    /// The cells in a row, along x.
+    pub(crate) const fn columns(&self) -> usize {
+        self.size[0] as usize
+    }
+
+    pub(crate) const fn rows(&self) -> usize {
+        self.size[1] as usize
+    }
+
+    /// The point of the bounds nearest `pos` on the ground plane, at its height.
+    pub(crate) fn clamp(&self, pos: Position) -> Position {
+        self.bounds.clamp(pos)
+    }
+
+    /// The cell of the point of the bounds nearest `pos`.
+    pub(crate) fn nearest_cell(&self, pos: Position) -> usize {
+        self.cell_of(self.clamp(pos))
+            .expect("a point of the bounds is in a cell")
+    }
+
+    /// The square of the distance from the center of `cell` to `pos` on the ground plane, in
+    /// halves of a bit, exactly.
+    pub(crate) fn center_distance(&self, cell: usize, pos: Position) -> u128 {
+        let twice = |value: Num| 2 * i128::from(value.to_bits());
+        let step = i128::from(self.cell.to_bits());
+        let min = self.bounds.min();
+        let index = |index: usize| i128::try_from(index).expect("a cell of the grid");
+        let dx = twice(pos.get().x) - twice(min[0]) - step * (2 * index(cell % self.columns()) + 1);
+        let dz = twice(pos.get().z) - twice(min[1]) - step * (2 * index(cell / self.columns()) + 1);
+        (dx * dx + dz * dz).cast_unsigned()
+    }
+
+    /// The center of `cell` at height `y`, rounded down to a whole bit, or the point of the bounds
+    /// nearest it: a cell of the last row or column may reach past them.
+    pub(crate) fn center(&self, cell: usize, y: Num) -> Position {
+        let (column, row) = (cell % self.columns(), cell / self.columns());
+        let along = |axis: usize, index: usize| {
+            let index = i64::try_from(index).expect("a cell of the grid");
+            let cell = self.cell.to_bits();
+            Num::from_bits(self.bounds.min()[axis].to_bits() + cell * index + cell / 2)
+        };
+        let [x, z] = self.bounds.clamp_ground([along(0, column), along(1, row)]);
+        Position::new(Vec3::new(x, y, z)).expect("bounds are within the world's bound")
     }
 
     /// The cell `pos` stands in; `None` outside the bounds. A point on the line between two cells
@@ -122,8 +167,6 @@ impl Grid {
 
 #[cfg(test)]
 mod tests {
-    use campfire_math::Vec3;
-
     use super::*;
 
     fn num(value: i64) -> Num {

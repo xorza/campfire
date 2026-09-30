@@ -2,7 +2,7 @@ use std::num::NonZeroU32;
 
 use bevy_ecs::component::Component;
 use campfire_math::Vec3;
-use campfire_sim::{Capability, EntityIndex, IdAllocator, SimUpdate, TickRate, TypeHash};
+use campfire_sim::{Capability, EntityIndex, IdAllocator, SimUpdate, Tick, TickRate, TypeHash};
 
 use super::*;
 use crate::capability_set::internals::TestMatch;
@@ -227,7 +227,7 @@ fn the_pathing_grid_follows_the_static_bodies_from_the_next_tick() {
     let blocked = |walk: &Walk| {
         let grid = walk.world.resource::<PathingGrid>();
         (0..16)
-            .filter(|&cell| !grid.open(half, cell))
+            .filter(|&cell| !grid.layer(half).open(cell))
             .collect::<Vec<_>>()
     };
     let tower = walk.body(place(-6, -6), None, None, half);
@@ -244,6 +244,48 @@ fn the_pathing_grid_follows_the_static_bodies_from_the_next_tick() {
     walk.world.entity_mut(entity).insert(Dead);
     walk.tick();
     assert_eq!(blocked(&walk), [15]);
+}
+
+#[test]
+fn routes_wait_past_the_limit_of_expanded_cells_in_the_order_asked() {
+    // A row of 16 cells of 1 m: a route along it expands each cell from the start to the goal
+    // once, 16 to the far end, 4 to x = 3.5. A tick expands up to the grid's 16 cells.
+    let mut walk = Walk::new();
+    let bounds = Bounds::new([num(0), num(0)], [num(16), num(1)]).unwrap();
+    Navigation::load_pathing(
+        &mut walk.world,
+        Grid::new(Num::ONE, bounds).unwrap(),
+        vec![Num::ZERO],
+    );
+    let half = Num::from_bits(1 << 23);
+    let place = |x: i64| Position::new(Vec3::new(num(x) + half, Num::ZERO, half)).unwrap();
+    let (far, near) = (place(15), place(3));
+    let units = [far, near, near, far].map(|_| walk.unit(place(0), None));
+    let ask = |walk: &mut Walk, unit: StableId, goal: Position, tick: u64| {
+        let entity = walk.world.resource::<EntityIndex>().get(unit).unwrap();
+        let mut route = walk.world.get_mut::<Route>(entity).unwrap();
+        route.ask(goal, Tick::new(tick));
+    };
+    let waiting = |walk: &Walk| {
+        units.map(|unit| {
+            let entity = walk.world.resource::<EntityIndex>().get(unit).unwrap();
+            walk.world.get::<Route>(entity).unwrap().asked().is_some()
+        })
+    };
+    for (unit, goal) in units.into_iter().zip([far, near, near, far]) {
+        ask(&mut walk, unit, goal, 0);
+    }
+    // The first expands 16 and meets the limit.
+    walk.tick();
+    assert_eq!(waiting(&walk), [false, true, true, true]);
+    let entity = walk.world.resource::<EntityIndex>().get(units[0]).unwrap();
+    assert_eq!(walk.world.get::<Route>(entity).unwrap().waypoints(), [far]);
+    // The first asks again, after the rest: they go first, 4, 4 and 16, and it waits.
+    ask(&mut walk, units[0], far, 1);
+    walk.tick();
+    assert_eq!(waiting(&walk), [true, false, false, false]);
+    walk.tick();
+    assert_eq!(waiting(&walk), [false; 4]);
 }
 
 #[test]
@@ -304,6 +346,8 @@ fn every_navigation_type_is_state() {
         PathWalker::start(PathDirection::Forward),
         OnPath::new(PathId::new(0)),
     ));
+    let mut route = walk.world.get_mut::<Route>(entity).unwrap();
+    route.ask(at(3, 0, 4), Tick::new(2));
     let registry = &walk.registry;
     let mut per_type = Vec::new();
     let hash = registry.hash_by_type(&walk.world, &mut per_type);
@@ -315,6 +359,7 @@ fn every_navigation_type_is_state() {
             "navigation.move_step",
             "navigation.on_path",
             "navigation.path_walker",
+            "navigation.route",
             "sim.entities",
             "sim.id_allocator",
             "sim.position",

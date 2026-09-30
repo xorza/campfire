@@ -85,20 +85,67 @@ impl PathingGrid {
         }
     }
 
-    /// Whether a walker of `radius`, one of the mode's walkers' radii, may stand in `cell`.
-    #[cfg_attr(
-        not(test),
-        expect(
-            dead_code,
-            reason = "the long route, the plan's next step, reads the grid"
-        )
-    )]
-    pub(crate) fn open(&self, radius: Num, cell: usize) -> bool {
+    pub(crate) const fn cells(&self) -> usize {
+        self.grid.cells()
+    }
+
+    /// The cells a walker of `radius`, one of the mode's walkers' radii, may stand in.
+    pub(crate) fn layer(&self, radius: Num) -> Layer<'_> {
         let layer = self
             .radii
             .binary_search(&radius)
             .expect("a radius of the mode's walkers");
-        self.blocked[layer * self.words + cell / 64] & 1 << (cell % 64) == 0
+        Layer {
+            grid: &self.grid,
+            words: &self.blocked[layer * self.words..(layer + 1) * self.words],
+        }
+    }
+}
+
+/// The cells of the pathing grid a walker of one radius may stand in.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Layer<'a> {
+    grid: &'a Grid,
+    words: &'a [u64],
+}
+
+impl Layer<'_> {
+    pub(crate) const fn grid(&self) -> &Grid {
+        self.grid
+    }
+
+    /// Whether a walker may stand in `cell`.
+    pub(crate) const fn open(&self, cell: usize) -> bool {
+        self.words[cell / 64] & 1 << (cell % 64) == 0
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use campfire_math::Num;
+
+    use crate::navigation::pathing_grid::PathingGrid;
+    use crate::values::bounds::Bounds;
+    use crate::values::grid::Grid;
+
+    impl PathingGrid {
+        /// A grid of 1 m cells from the origin, for walkers of `radius`, blocked where `rows`,
+        /// from z = 0, have `#`.
+        pub(crate) fn from_picture(radius: Num, rows: &[&str]) -> PathingGrid {
+            let size = |count: usize| Num::from_int(i64::try_from(count).unwrap()).unwrap();
+            let bounds = Bounds::new([Num::ZERO; 2], [size(rows[0].len()), size(rows.len())]);
+            let mut grid =
+                PathingGrid::new(Grid::new(Num::ONE, bounds.unwrap()).unwrap(), vec![radius]);
+            for (row, line) in rows.iter().enumerate() {
+                for (column, mark) in line.chars().enumerate() {
+                    if mark == '#' {
+                        let cell = row * line.len() + column;
+                        grid.blocked[cell / 64] |= 1 << (cell % 64);
+                    }
+                }
+            }
+            grid
+        }
     }
 }
 
@@ -126,7 +173,7 @@ mod tests {
             .map(|row| {
                 (0..6)
                     .map(|column| {
-                        if grid.open(radius, row * 6 + column) {
+                        if grid.layer(radius).open(row * 6 + column) {
                             '.'
                         } else {
                             '#'

@@ -6,6 +6,7 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::navigation::destination::Destination;
+use crate::navigation::route::Route;
 
 /// How far a unit walks in one tick, never negative.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -27,7 +28,7 @@ impl MoveStep {
 
     /// The components of a new unit that moves by this step, with nowhere to go yet.
     pub fn bundle(self) -> impl Bundle {
-        (self, Destination::default())
+        (self, Destination::default(), Route::default())
     }
 }
 
