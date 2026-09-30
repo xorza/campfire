@@ -224,8 +224,11 @@ impl LocalMatch {
         panic!("the clients did not connect and sync in {CONNECT_FRAMES} frames");
     }
 
-    /// Opens the session for every client, and steps until each joined and every end runs the
-    /// match; see `Lobby`. The players take slots in the order their joins arrive.
+    /// Opens the session for every client, and steps until each joined, every end runs the
+    /// match, and each client holds its player's hero; see `Lobby`. The players take slots in the
+    /// order their joins arrive. A client runs match ticks from the match start's message, and
+    /// its hero comes in the replication after the server's first tick, in another packet: which
+    /// arrives first varies with how Lightyear packs and resends them, by the wall clock.
     pub fn start_match(&mut self) {
         let lobby = Lobby::new(LobbySetup {
             packages: lane_mode(),
@@ -239,12 +242,24 @@ impl LocalMatch {
         self.server.world_mut().insert_resource(lobby);
         for _ in 0..CONNECT_FRAMES {
             let started = |app: &App| app.world().contains_resource::<MatchClock>();
-            if started(&self.server) && self.clients.iter().all(started) {
+            if started(&self.server)
+                && self.clients.iter().all(started)
+                && (0..self.clients.len()).all(|client| self.holds_hero(client))
+            {
                 return;
             }
             self.step();
         }
         panic!("the match did not start in {CONNECT_FRAMES} frames");
+    }
+
+    /// Whether `client` holds its player's hero.
+    fn holds_hero(&self, client: usize) -> bool {
+        let world = self.clients[client].world();
+        world
+            .resource::<EntityIndex>()
+            .get(self.hero(client))
+            .is_some()
     }
 
     /// One frame of the server alone, which shifts where in a step its ticks fall.
