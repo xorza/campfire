@@ -69,6 +69,9 @@ unused_result_ok = "warn"
 debug = "line-tables-only"
 overflow-checks = true
 
+[profile.dev.package."*"]
+opt-level = 3
+
 [profile.release]
 debug = "line-tables-only"
 overflow-checks = true

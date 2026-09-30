@@ -1,9 +1,15 @@
 use std::error::Error;
 use std::fmt;
 
-/// Why the log refused an input. Inputs come from the network, so each is an expected failure.
+use crate::delegation::error::DelegationError;
+use crate::player_slot::PlayerSlot;
+
+/// Why the log refused a packet of inputs. Packets come from the network, so each is an expected
+/// failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InputError {
+    /// The packet holds no input.
+    EmptyPacket,
     /// The slot is not in the session header.
     UnknownPlayer,
     /// `previous` is not the hash of the player's last logged input: an input is missing, out of
@@ -11,14 +17,29 @@ pub enum InputError {
     BrokenLink,
     /// The link holds, but the input does not count on from the player's last one.
     WrongSeq { expected: u64 },
+    /// A payload is longer than the header's max payload length.
+    PayloadTooLarge,
+    /// The packet takes the player past the header's max inputs per tick.
+    TooManyInputs,
+    /// The log's positions, which fit a `u32`, do not reach past the packet.
+    LogFull,
+    /// The player's session key did not sign the chain head after the packet.
+    BadSignature,
 }
 
 impl fmt::Display for InputError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            InputError::EmptyPacket => f.write_str("packet holds no input"),
             InputError::UnknownPlayer => f.write_str("input from a player not in the session"),
             InputError::BrokenLink => f.write_str("input does not link to the player's last input"),
             InputError::WrongSeq { expected } => write!(f, "input seq is not {expected}"),
+            InputError::PayloadTooLarge => f.write_str("input payload above the max length"),
+            InputError::TooManyInputs => f.write_str("player above the max inputs per tick"),
+            InputError::LogFull => f.write_str("session log full"),
+            InputError::BadSignature => {
+                f.write_str("chain head not signed by the player's session key")
+            }
         }
     }
 }
@@ -45,6 +66,39 @@ impl fmt::Display for SeedError {
 
 impl Error for SeedError {}
 
+/// Why a header does not start a log. A published header is untrusted, so each is an expected
+/// failure.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HeaderError {
+    /// More players than a `u32` slot counts.
+    TooManyPlayers,
+    /// The delegation of the player in `slot` does not hold for this session.
+    Delegation {
+        slot: PlayerSlot,
+        error: DelegationError,
+    },
+}
+
+impl fmt::Display for HeaderError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            HeaderError::TooManyPlayers => f.write_str("more players than slots"),
+            HeaderError::Delegation { slot, error } => {
+                write!(f, "player {}: {error}", slot.get())
+            }
+        }
+    }
+}
+
+impl Error for HeaderError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            HeaderError::TooManyPlayers => None,
+            HeaderError::Delegation { error, .. } => Some(error),
+        }
+    }
+}
+
 /// Why bytes do not decode to a session log. A log file is untrusted, so every flaw is an error.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum LogError {
@@ -54,9 +108,9 @@ pub enum LogError {
     Truncated,
     /// A value does not decode.
     Malformed(postcard::Error),
-    /// A count of players or inputs, or the payload bytes, do not fit the log's `u32` positions.
-    TooLarge,
-    /// The log refuses an input logged before `tick`, as it refuses one from the network.
+    /// The header does not start a log.
+    Header(HeaderError),
+    /// The log refuses a packet logged before `tick`, as it refuses one from the network.
     Input { tick: u64, error: InputError },
     /// The revealed server seed does not match the header's commitment.
     WrongSeed,
@@ -72,7 +126,7 @@ impl fmt::Display for LogError {
             LogError::NotLog => f.write_str("not a session log"),
             LogError::Truncated => f.write_str("session log ends inside a field"),
             LogError::Malformed(_) => f.write_str("session log value does not decode"),
-            LogError::TooLarge => f.write_str("session log above its size bounds"),
+            LogError::Header(error) => write!(f, "session log header refused: {error}"),
             LogError::Input { tick, error } => {
                 write!(f, "session log input before tick {tick} refused: {error}")
             }
@@ -89,6 +143,7 @@ impl Error for LogError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
             LogError::Malformed(error) => Some(error),
+            LogError::Header(error) => Some(error),
             LogError::Input { error, .. } => Some(error),
             _ => None,
         }

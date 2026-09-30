@@ -1,6 +1,6 @@
 use bevy_ecs::world::World;
 use campfire_protocol::{
-    Applied, InputError, PlayerInput, SeedError, ServerSeed, SessionHeader, SessionLog,
+    Applied, ChainSignature, InputError, PlayerInput, SeedError, ServerSeed, SessionLog,
 };
 use campfire_sim::StateHash;
 
@@ -14,14 +14,26 @@ pub struct Runner {
 
 impl Runner {
     /// See `Session::start`.
-    pub fn new(header: SessionHeader, server_seed: ServerSeed) -> Result<Runner, SeedError> {
+    pub fn new(log: SessionLog, server_seed: ServerSeed) -> Result<Runner, SeedError> {
         let mut world = World::new();
-        Session::start(&mut world, header, server_seed)?;
+        Session::start(&mut world, log, server_seed)?;
         Ok(Runner { world })
     }
 
-    pub fn record(&mut self, input: PlayerInput<'_>) -> Result<Applied, InputError> {
-        self.world.resource_mut::<Session>().record(input)
+    /// See `Session::record`.
+    pub fn record<'a, I>(
+        &mut self,
+        inputs: I,
+        signature: &ChainSignature,
+        applied: &mut Vec<Applied>,
+    ) -> Result<(), InputError>
+    where
+        I: IntoIterator<Item = PlayerInput<'a>>,
+        I::IntoIter: Clone,
+    {
+        self.world
+            .resource_mut::<Session>()
+            .record(inputs, signature, applied)
     }
 
     pub fn run_tick(&mut self) {

@@ -4,9 +4,9 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::schedule::common_conditions::resource_exists;
-use bevy_ecs::system::{Query, ResMut};
+use bevy_ecs::system::{Local, Query, ResMut};
 use bevy_ecs::world::World;
-use campfire_protocol::{PlayerSlot, SeedError, ServerSeed, SessionHeader};
+use campfire_protocol::{Applied, PlayerSlot, SeedError, ServerSeed, SessionLog};
 use campfire_runner::Session;
 use campfire_sim::{EntityIndex, SimTick, StateHash};
 use lightyear::prelude::{
@@ -18,12 +18,12 @@ use crate::match_clock::MatchClock;
 use crate::match_start::MatchStart;
 use crate::net_protocol::MatchChannel;
 
-/// Runs a match on a Lightyear server: records the inputs players send, runs one sim tick in each
+/// Runs a match on a Lightyear server: records the packets players send, runs one sim tick in each
 /// fixed tick, and keeps the state hash after each.
 #[derive(Debug)]
 pub struct SimServer;
 
-/// Which player a client link carries the inputs of, and how many of them the log refused.
+/// Which player a client link carries the inputs of, and how many of its messages the log refused.
 #[derive(Component, Debug, Clone, Copy)]
 pub struct PlayerLink {
     slot: PlayerSlot,
@@ -31,8 +31,8 @@ pub struct PlayerLink {
 }
 
 impl PlayerLink {
-    /// Inputs that broke the player's chain. With signatures, the first one will end the
-    /// connection.
+    /// Messages the log refused: a broken chain or signature, or a limit passed. An honest
+    /// client sends none; with the connect handshake, the first one will end the connection.
     pub const fn refused(self) -> u64 {
         self.refused
     }
@@ -61,17 +61,21 @@ impl Plugin for SimServer {
 }
 
 impl SimServer {
-    /// Starts the match of `header` in the next fixed tick. `clients` are the links of the
-    /// players, by slot; each learns its slot and the start tick, and every hero replicates to
-    /// every client, predicted.
+    /// Starts the match of `log`'s header in the next fixed tick, recording into `log`. `clients`
+    /// are the links of the players, by slot; each learns its slot and the start tick, and every
+    /// hero replicates to every client, predicted.
     pub fn start_match(
         world: &mut World,
-        header: SessionHeader,
+        log: SessionLog,
         server_seed: ServerSeed,
         clients: &[Entity],
     ) -> Result<(), SeedError> {
-        assert_eq!(clients.len(), header.players.len(), "one client per player");
-        Session::start(world, header, server_seed)?;
+        assert_eq!(
+            clients.len(),
+            log.header().players.len(),
+            "one client per player"
+        );
+        Session::start(world, log, server_seed)?;
         let start = world.resource::<LocalTimeline>().tick() + 1;
         world.insert_resource(MatchClock::new(start));
 
@@ -103,14 +107,20 @@ impl SimServer {
     }
 }
 
-/// Logs each received input before the tick about to run.
+/// Logs each received packet before the tick about to run.
 fn record_inputs(
     mut links: Query<'_, '_, (&mut PlayerLink, &mut MessageReceiver<InputMessage>)>,
     mut session: ResMut<'_, Session>,
+    mut applied: Local<'_, Vec<Applied>>,
 ) {
     for (mut link, mut receiver) in &mut links {
         for message in receiver.receive() {
-            if session.record(message.input(link.slot)).is_err() {
+            let recorded = message.inputs(link.slot).is_some_and(|inputs| {
+                session
+                    .record(inputs, message.signature(), &mut applied)
+                    .is_ok()
+            });
+            if !recorded {
                 link.refused += 1;
             }
         }

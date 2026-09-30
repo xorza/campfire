@@ -1,0 +1,30 @@
+use serde::{Deserialize, Serialize};
+
+/// A session key's BIP-340 signature over a player's chain head, `R.x ‖ s`. Kept as its two
+/// halves because serde encodes arrays of at most 32 elements.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ChainSignature {
+    r: [u8; 32],
+    s: [u8; 32],
+}
+
+impl ChainSignature {
+    pub const fn from_bytes(bytes: [u8; 64]) -> ChainSignature {
+        let (r, s) = bytes.split_at(32);
+        let mut signature = ChainSignature {
+            r: [0; 32],
+            s: [0; 32],
+        };
+        signature.r.copy_from_slice(r);
+        signature.s.copy_from_slice(s);
+        signature
+    }
+
+    pub const fn to_bytes(self) -> [u8; 64] {
+        let mut bytes = [0; 64];
+        let (r, s) = bytes.split_at_mut(32);
+        r.copy_from_slice(&self.r);
+        s.copy_from_slice(&self.s);
+        bytes
+    }
+}

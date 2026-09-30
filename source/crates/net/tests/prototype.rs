@@ -6,28 +6,15 @@ use bevy_app::App;
 use campfire_kit_moba::{Destination, Order};
 use campfire_math::{Num, Vec3};
 use campfire_net::{LocalPair, PlayerLink, TickHashes};
-use campfire_protocol::{InputHash, ServerSeed, SessionHeader, SessionPlayer};
+use campfire_protocol::ServerSeed;
 use campfire_runner::Session;
 use campfire_sim::{EntityIndex, Position};
 use campfire_verifier::Replay;
 use lightyear::prelude::{Predicted, PredictionMetrics, RollbackMode};
 
 const SERVER_SEED: ServerSeed = ServerSeed::new([9; 32]);
-const ROOT: InputHash = InputHash::new([3; 32]);
 /// Frames of match: one tick each.
 const MATCH_FRAMES: usize = 120;
-
-fn header() -> SessionHeader {
-    SessionHeader {
-        max_input_delay: 10,
-        max_input_lead: 30,
-        seed_commitment: SERVER_SEED.commitment(),
-        players: vec![SessionPlayer {
-            chain_root: ROOT,
-            seed_contribution: [4; 32],
-        }],
-    }
-}
 
 fn num(value: i64) -> Num {
     Num::from_int(value).unwrap()
@@ -62,8 +49,8 @@ fn server_and_replay_agree_on_every_tick() {
     // `Check` rolls the client back only on a misprediction; `Always` on every confirmed update,
     // so the client runs the sim again from the server's state many times.
     for rollback in [RollbackMode::Check, RollbackMode::Always] {
-        let mut pair = LocalPair::new(ROOT, rollback);
-        pair.start_match(header(), SERVER_SEED).unwrap();
+        let mut pair = LocalPair::new(rollback);
+        pair.start_match(SERVER_SEED).unwrap();
         for frame in 0..MATCH_FRAMES {
             match frame {
                 10 => pair.order(move_to(0, 5)),

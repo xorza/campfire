@@ -42,7 +42,7 @@ The protocol has its own version, separate from engine releases. Every session l
 | Group key | A group of hosts | Group membership, shared ban lists |
 | Release keys | The project's maintainers (or any fork's), kept offline; a launcher pins the set and its threshold k of n | Engine release, release revocation and key-set change events |
 
-**Session key delegation:** a Nostr event of a Campfire kind, signed by the main key, with tags for session pubkey, server pubkey, session id and expiry. It is a Nostr event because remote signers (NIP-46) sign only events. It is never published to relays; the session log header holds it verbatim, so a verifier can link every input to a player's identity. The main key never enters the game.
+**Session key delegation:** a Nostr event of a Campfire kind, signed by the main key, with tags for session pubkey, server pubkey, session id and expiry. It is a Nostr event because remote signers (NIP-46) sign only events. It is never published to relays; the session log header holds it verbatim, so a verifier can link every input to a player's identity. The main key never enters the game. The kind is 22710 for now, in the ephemeral range so a relay sent one by mistake does not keep it. Each term is one tag of one value: `session_key`, `server_key` and `session_id` in lowercase hex, and NIP-40's `expiration` in Unix seconds; other tags and the content are ignored. The server checks the expiry against its clock when the player connects; a log has no clock, so a verifier does not.
 
 **License key delegation:** the same shape, signed by the author key for a license key, with tags for the package ids it may license and an expiry. It lets a storefront issue licenses while the author is offline.
 
@@ -63,18 +63,20 @@ SessionLog
     protocol version, engine release tag
     session id, server pubkey
     mode package fingerprint + dependency fingerprints
-    host settings hash, tick rate, max input delay and max input lead (ticks), backends, kits
-    players: main pubkey + session key delegation + seed contribution
+    host settings hash, tick rate, max input delay and max input lead (ticks),
+    max payload length, max inputs per player per tick, backends, kits
+    players: session key delegation (which names the main pubkey) + seed contribution
   segments[]
     checkpoint: tick, state hash, snapshot fingerprint,
                 seed commitment for this segment, server signature
-    ticks[]: inputs[] logged before the tick ran: source, seq, stamp tick, previous hash, payload
-    chain heads[]: player, seq, session-key signature
+    ticks[]: packets[] logged before the tick ran: source,
+             inputs[]: seq, stamp tick, previous hash, payload,
+             session-key signature over the chain head after the last input
     seed reveal: server seed of this segment (added when the segment is published)
   result (optional): tick, result payload, final state hash, server signature
 ```
 
-**File.** A session log file starts with the tag `campfire/session-log/v1`, which states its protocol version, and continues in postcard. Until signatures and checkpoints come, it holds one segment from tick 0: the header (max input delay and lead, seed commitment, and each player's chain root and seed contribution), the `u64` count of ticks, the inputs logged before each tick as a `u32` count and the inputs, the inputs logged after the last tick the same way, and the seed reveal as an option. An input is `u32 slot, u64 seq, u64 stamp tick, previous hash, payload bytes`. A reader records every input again, so it checks each chain link, and accepts only the canonical encoding: postcard itself accepts an overlong varint, so a reader encodes what it decoded and compares the bytes. One log therefore has one file and one fingerprint.
+**File.** A session log file starts with the tag `campfire/session-log/v1`, which states its protocol version, and continues in postcard. Until checkpoints come, it holds one segment from tick 0: the header (session id, server key, max input delay and lead, max payload length, max inputs per tick, seed commitment, and each player's delegation JSON and seed contribution), the `u64` count of ticks, the packets logged before each tick, the packets logged after the last tick, and the seed reveal as an option. Packets go as a `u32` count, then each as `u32 slot`, its inputs as a `u32` count and `u64 seq, u64 stamp tick, previous hash, payload bytes` each, and the 64-byte signature. A reader checks every delegation and records every packet again, so it checks each chain link and signature, and accepts only the canonical encoding: postcard itself accepts an overlong varint, so a reader encodes what it decoded and compares the bytes. One log therefore has one file and one fingerprint.
 
 **Input sources**
 
@@ -92,8 +94,9 @@ SessionLog
 
 **Player inputs**
 
-- **Chain.** Each input of a player carries the hash of that player's previous input; the first carries the delegation hash. A later signature therefore covers every earlier input, and a dropped input breaks the chain. The hash is BLAKE3 of `"campfire/input-hash/v1" ‖ previous hash ‖ u32 slot ‖ u64 seq ‖ u64 stamp tick ‖ payload`, little-endian; seq counts a player's inputs from 0.
-- **Signature.** The client signs the chain head once per packet, over `"campfire/input/v1" ‖ session id ‖ player slot ‖ seq ‖ chain head hash`.
+- **Chain.** Each input of a player carries the hash of that player's previous input; the first carries the delegation's event id. A later signature therefore covers every earlier input, and a dropped input breaks the chain. The hash is BLAKE3 of `"campfire/input-hash/v1" ‖ previous hash ‖ u32 slot ‖ u64 seq ‖ u64 stamp tick ‖ payload`, little-endian; seq counts a player's inputs from 0.
+- **Signature.** The client signs the chain head once per packet, over `"campfire/input/v1" ‖ session id ‖ u32 player slot ‖ u64 seq ‖ chain head hash`, little-endian, where seq is the packet's last input's. The log keeps a packet whole or refuses it whole, with its signature, so every logged input is signed.
+- **Limits.** The header fixes the max payload length and the max inputs a player may send before one tick, which together bound how fast a player can grow the log. The log refuses a packet over either, and a packet that would take the log past the 4 GiB its positions reach, as it refuses a broken link or signature.
 - **Applied tick.** The server applies an input at `max(stamp tick, next tick)`. An input that would land more than the max input delay after its stamp is logged as late and not applied, so the chain stays whole. An input stamped more than the max input lead ahead of the next tick is logged as early and not applied, the same way: a predicting client stamps a few ticks ahead, and the server holds each input until its tick, so the lead bounds what a client can make it hold. The log groups inputs by the tick that was next when each arrived, so the applied tick, lateness and earliness follow from the log and are not stored: a verifier recomputes them and cannot be given wrong ones. The inputs applied in one tick take effect in slot order, then seq order, whatever order they arrived in, so the host cannot choose who acts first in a tick.
 - **Receipts.** About once a second, the server signs `{session id, player slot, tick, highest seq received, chain head hash}` and sends it to the client, which keeps it. A receipt proves the server received every input up to that seq.
 

@@ -8,16 +8,20 @@ use std::process::Command;
 
 use campfire_kit_moba::{Destination, Order};
 use campfire_math::{Num, Vec3};
+use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
 use campfire_protocol::{
-    Applied, InputChain, InputHash, PlayerSlot, SeedError, ServerSeed, SessionHeader, SessionLog,
-    SessionPlayer,
+    Applied, Delegation, DelegationTerms, InputChain, PlayerSlot, SeedError, ServerSeed,
+    SessionHeader, SessionId, SessionLog, SessionPlayer,
 };
 use campfire_runner::Runner;
 use campfire_sim::{EntityIndex, Position, StateHash};
 use campfire_verifier::Replay;
 
 const SERVER_SEED: ServerSeed = ServerSeed::new([9; 32]);
-const ROOT: InputHash = InputHash::new([3; 32]);
+const SESSION_ID: SessionId = SessionId::new([7; 32]);
+const SERVER_KEY: [u8; 32] = [8; 32];
+/// BIP-340 signing without auxiliary randomness is deterministic, so every run signs alike.
+const AUX: [u8; 32] = [0; 32];
 const TICKS: u64 = 40;
 
 /// A move order as the player sends it.
@@ -59,16 +63,46 @@ const ORDERS: [Sent; 3] = [
     },
 ];
 
+fn key(byte: u8) -> Keypair {
+    Keypair::from_secret_key(
+        &Secp256k1::new(),
+        &SecretKey::from_byte_array(&[byte; 32]).unwrap(),
+    )
+}
+
+fn session_key() -> Keypair {
+    key(2)
+}
+
+/// The player's main key, `key(1)`, lets `session_key` sign in this session.
+fn delegation() -> Delegation {
+    let terms = DelegationTerms {
+        session_key: session_key().x_only_public_key().0,
+        server_key: SERVER_KEY,
+        session_id: SESSION_ID,
+        expiration: 1_700_086_400,
+    };
+    Delegation::sign(&Secp256k1::new(), &key(1), &terms, 1_700_000_000, &AUX)
+}
+
 fn header() -> SessionHeader {
     SessionHeader {
+        session_id: SESSION_ID,
+        server_key: SERVER_KEY,
         max_input_delay: 3,
         max_input_lead: 3,
+        max_payload_len: 64,
+        max_inputs_per_tick: 4,
         seed_commitment: SERVER_SEED.commitment(),
         players: vec![SessionPlayer {
-            chain_root: ROOT,
+            delegation: delegation(),
             seed_contribution: [4; 32],
         }],
     }
+}
+
+fn log() -> SessionLog {
+    SessionLog::new(header()).unwrap()
 }
 
 fn num(value: i64) -> Num {
@@ -100,8 +134,10 @@ struct Run {
 
 /// Runs a match in which the player sends `orders`.
 fn run(orders: &[&Sent]) -> Run {
-    let mut runner = Runner::new(header(), SERVER_SEED).unwrap();
-    let mut chain = InputChain::new(PlayerSlot::new(0), ROOT);
+    let mut runner = Runner::new(log(), SERVER_SEED).unwrap();
+    let secp = Secp256k1::new();
+    let mut chain = InputChain::new(PlayerSlot::new(0), delegation().chain_root());
+    let mut applied = Vec::new();
     let mut hashes = Vec::new();
     for tick in 0..TICKS {
         for sent in orders.iter().filter(|sent| sent.arrives == tick) {
@@ -111,7 +147,13 @@ fn run(orders: &[&Sent]) -> Run {
             }
             .encode();
             let input = chain.extend(sent.stamp, &payload);
-            assert_eq!(runner.record(input), Ok(sent.applied), "{sent:?}");
+            let signature = chain.sign(&secp, &session_key(), SESSION_ID, &AUX);
+            assert_eq!(
+                runner.record([input], &signature, &mut applied),
+                Ok(()),
+                "{sent:?}"
+            );
+            assert_eq!(applied, [sent.applied], "{sent:?}");
         }
         runner.run_tick();
         hashes.push(runner.state_hash());
@@ -184,15 +226,10 @@ fn a_corrupt_log_file_is_refused_or_replays() {
             }
         }
     }
-    // What no chain link or commitment covers: the max delay and lead (3 ^ 1 = 2), the
-    // contribution under every flip, and in the last order, which no later input links to, its
-    // stamp (26 ^ 1 = 27, now applied at tick 30) and every payload byte under every flip.
-    let payload = Order::Move {
-        x: num(ORDERS[2].x),
-        z: num(ORDERS[2].z),
-    }
-    .encode();
-    assert_eq!(replays, 2 + 32 * 3 + 1 + payload.len() * 3);
+    // What no signature, chain link or commitment covers: the max delay and lead (3 ^ 1 = 2), the
+    // max payload length (64 ^ 1 = 65), the max inputs per tick (4 ^ 1 = 5), and the contribution
+    // under every flip. The session key signs every order, the last one too.
+    assert_eq!(replays, 4 + 32 * 3);
 }
 
 #[test]
@@ -234,13 +271,13 @@ fn the_binary_prints_the_last_state_hash() {
 
 #[test]
 fn the_seed_comes_only_from_the_header_and_its_reveal() {
-    let unpublished = SessionLog::new(header());
+    let unpublished = log();
     assert_eq!(
         Replay::new(&unpublished).err(),
         Some(SeedError::NotRevealed)
     );
     assert_eq!(
-        Runner::new(header(), ServerSeed::new([8; 32])).err(),
+        Runner::new(log(), ServerSeed::new([8; 32])).err(),
         Some(SeedError::WrongSeed)
     );
 }

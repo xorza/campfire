@@ -9,7 +9,8 @@ use bevy_ecs::system::{Commands, Query, Res, ResMut, Single};
 use bevy_ecs::world::{Mut, World};
 use campfire_kit_moba::{MobaKit, Order};
 use campfire_math::SegmentSeed;
-use campfire_protocol::{InputChain, InputHash, PlayerSlot};
+use campfire_protocol::secp256k1::{Keypair, Secp256k1, SignOnly};
+use campfire_protocol::{InputChain, InputHash, PlayerSlot, SessionId};
 use campfire_sim::{SimTick, SimUpdate, TickInput, TickInputs};
 use lightyear::prelude::{
     Client, LocalTimeline, MessageReceiver, MessageSender, Tick, is_in_rollback,
@@ -22,12 +23,19 @@ use crate::net_protocol::InputChannel;
 
 /// A client never holds the segment seed: it predicts movement, never a random outcome.
 const PREDICTION_SEED: SegmentSeed = SegmentSeed::new([0; 32]);
+/// BIP-340's auxiliary randomness for the chain-head signatures. `net` has no OS randomness yet;
+/// without it BIP-340 signs deterministically, which stays secure and gives up only the added
+/// hardening against side channels.
+const AUX: [u8; 32] = [0; 32];
 
-/// Predicts a match on a Lightyear client: sends the player's orders as chained inputs, and runs
-/// the sim in every fixed tick, rollbacks included, with the player's own inputs.
-#[derive(Debug)]
+/// Predicts a match on a Lightyear client: sends the player's orders as chained inputs, signed
+/// once per message with the session key, and runs the sim in every fixed tick, rollbacks
+/// included, with the player's own inputs.
+#[derive(Debug, Clone)]
 pub struct SimClient {
-    /// What the player's first input links to.
+    pub session_key: Keypair,
+    pub session_id: SessionId,
+    /// What the player's first input links to: the id of their delegation.
     pub chain_root: InputHash,
 }
 
@@ -45,7 +53,8 @@ impl PendingOrders {
 /// again after a rollback. Stamps never decrease, so a tick's inputs are one run.
 #[derive(Resource, Debug)]
 struct SentInputs {
-    root: InputHash,
+    client: SimClient,
+    secp: Secp256k1<SignOnly>,
     chain: Option<InputChain>,
     inputs: Vec<SentInput>,
     payloads: Vec<u8>,
@@ -75,7 +84,8 @@ impl Plugin for SimClient {
         MobaKit::add_systems(&mut schedule);
         world.add_schedule(schedule);
         world.insert_resource(SentInputs {
-            root: self.chain_root,
+            client: self.clone(),
+            secp: Secp256k1::signing_only(),
             chain: None,
             inputs: Vec::new(),
             payloads: Vec::new(),
@@ -98,13 +108,17 @@ fn receive_match_start(
 ) {
     for mut receiver in &mut receivers {
         for start in receiver.receive() {
-            sent.chain = Some(InputChain::new(PlayerSlot::new(start.slot), sent.root));
+            sent.chain = Some(InputChain::new(
+                PlayerSlot::new(start.slot),
+                sent.client.chain_root,
+            ));
             commands.insert_resource(MatchClock::new(Tick(start.start_tick)));
         }
     }
 }
 
-/// Stamps each pending order with the sim tick about to run, chains it, sends it, and keeps it.
+/// Stamps each pending order with the sim tick about to run, chains it and keeps it, then sends
+/// them all in one message signed over the chain head after the last.
 fn send_orders(
     timeline: Res<'_, LocalTimeline>,
     clock: Res<'_, MatchClock>,
@@ -113,10 +127,11 @@ fn send_orders(
     mut sender: Single<'_, '_, &mut MessageSender<InputMessage>, With<Client>>,
 ) {
     let SentInputs {
+        client,
+        secp,
         chain: Some(chain),
         inputs,
         payloads,
-        ..
     } = &mut *sent
     else {
         return;
@@ -124,16 +139,31 @@ fn send_orders(
     let Some(stamp) = clock.sim_tick(timeline.tick()) else {
         return;
     };
+    if pending.0.is_empty() {
+        return;
+    }
+    let first = inputs.len();
     for order in pending.0.drain(..) {
-        let payload = order.encode();
-        sender.send::<InputChannel>(InputMessage::new(&chain.extend(stamp, &payload)));
         let start = payloads.len();
-        payloads.extend_from_slice(&payload);
+        payloads.extend_from_slice(&order.encode());
         inputs.push(SentInput {
             stamp,
             payload: start..payloads.len(),
         });
     }
+    let sent = &inputs[first..];
+    // The signature goes in the message with the inputs, so a copy of the chain reaches the head
+    // first.
+    let mut head = *chain;
+    for input in sent {
+        head.extend(stamp, &payloads[input.payload.clone()]);
+    }
+    let signature = head.sign(secp, &client.session_key, client.session_id, &AUX);
+    let chained = sent
+        .iter()
+        .map(|input| chain.extend(stamp, &payloads[input.payload.clone()]));
+    sender.send::<InputChannel>(InputMessage::new(chained, signature));
+    debug_assert_eq!(*chain, head, "the message's inputs end at the signed head");
 }
 
 /// Runs the sim tick of the current Lightyear tick with the player's inputs stamped for it; in a

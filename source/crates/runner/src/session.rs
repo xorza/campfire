@@ -3,7 +3,7 @@ use bevy_ecs::world::{Mut, World};
 use campfire_kit_moba::{MobaKit, MoveStep};
 use campfire_math::{Num, Vec3};
 use campfire_protocol::{
-    Applied, InputError, PlayerInput, SeedError, ServerSeed, SessionHeader, SessionLog,
+    Applied, ChainSignature, InputError, PlayerInput, SeedError, ServerSeed, SessionLog,
 };
 use campfire_sim::{Position, SimTick, SimUpdate, StateHash, StateRegistry, TickInput, TickInputs};
 
@@ -26,14 +26,16 @@ pub struct Session {
 }
 
 impl Session {
-    /// Prepares `world` for the match of `header`, with the randomness of `server_seed` and the
-    /// players' contributions, and inserts the session; an error when `server_seed` is not the
-    /// one the header commits to.
+    /// Prepares `world` for the match of `log`'s header, with the randomness of `server_seed` and
+    /// the players' contributions, and inserts the session, which records into `log` from its
+    /// first tick; an error when `server_seed` is not the one the header commits to.
     pub fn start(
         world: &mut World,
-        header: SessionHeader,
+        log: SessionLog,
         server_seed: ServerSeed,
     ) -> Result<(), SeedError> {
+        assert_eq!(log.next_tick(), 0, "a session starts before its first tick");
+        let header = log.header();
         let seed = header.segment_seed(&server_seed)?;
         SimUpdate::prepare(world, seed);
         let mut schedule = SimUpdate::schedule();
@@ -51,14 +53,23 @@ impl Session {
         world.insert_resource(Session {
             server_seed,
             state,
-            log: SessionLog::new(header),
+            log,
         });
         Ok(())
     }
 
-    /// Logs `input` before the next tick; see `SessionLog::record`.
-    pub fn record(&mut self, input: PlayerInput<'_>) -> Result<Applied, InputError> {
-        self.log.record(input)
+    /// Logs a player's packet before the next tick; see `SessionLog::record`.
+    pub fn record<'a, I>(
+        &mut self,
+        inputs: I,
+        signature: &ChainSignature,
+        applied: &mut Vec<Applied>,
+    ) -> Result<(), InputError>
+    where
+        I: IntoIterator<Item = PlayerInput<'a>>,
+        I::IntoIter: Clone,
+    {
+        self.log.record(inputs, signature, applied)
     }
 
     /// Seals the next tick in the log of the session in `world` and runs it with the inputs

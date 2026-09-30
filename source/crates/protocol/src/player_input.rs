@@ -1,5 +1,4 @@
 use blake3::Hasher;
-use serde::{Deserialize, Serialize, Serializer};
 
 use crate::input_hash::InputHash;
 use crate::player_slot::PlayerSlot;
@@ -9,7 +8,7 @@ const HASH_DOMAIN: &[u8] = b"campfire/input-hash/v1";
 
 /// One input of a player. `previous` is the hash of the player's input before it, or for the first
 /// one the player's chain root, so a later link covers every earlier input.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PlayerInput<'a> {
     pub slot: PlayerSlot,
     /// Counts the player's inputs from 0.
@@ -17,7 +16,6 @@ pub struct PlayerInput<'a> {
     /// The tick the player wants the input applied in.
     pub stamp: u64,
     pub previous: InputHash,
-    #[serde(serialize_with = "serialize_payload")]
     pub payload: &'a [u8],
 }
 
@@ -35,10 +33,4 @@ impl PlayerInput<'_> {
             .update(self.payload);
         InputHash::new(*hasher.finalize().as_bytes())
     }
-}
-
-/// As postcard bytes, a length and the bytes; a plain slice would go through serde's element by
-/// element sequence to reach the same encoding.
-fn serialize_payload<S: Serializer>(payload: &&[u8], serializer: S) -> Result<S::Ok, S::Error> {
-    serializer.serialize_bytes(payload)
 }
