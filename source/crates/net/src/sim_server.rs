@@ -1,4 +1,4 @@
-use bevy_app::{App, FixedUpdate, Plugin};
+use bevy_app::{App, FixedUpdate, Plugin, Update};
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Changed, With, Without};
@@ -11,7 +11,7 @@ use campfire_capabilities::{Mode, Owner, SeenBy, Team};
 use campfire_package::ModePackages;
 use campfire_protocol::{Applied, PlayerSlot, ServerSeed, SessionLog};
 use campfire_runner::{Session, StartError};
-use campfire_sim::{self as sim, SimTick, StateHash};
+use campfire_sim::{self as sim, SimTick, StateHash, TickRate};
 use lightyear::core::tick::TickDuration;
 use lightyear::prelude::{
     LocalTimeline, MessageReceiver, MessageSender, NetworkTarget, PredictionTarget, Replicate,
@@ -19,12 +19,14 @@ use lightyear::prelude::{
 };
 
 use crate::input_message::InputMessage;
+use crate::lobby::Lobby;
 use crate::match_clock::MatchClock;
 use crate::match_start::MatchStart;
 use crate::net_protocol::MatchChannel;
 
-/// Runs a match on a Lightyear server: records the packets players send, runs one sim tick in each
-/// fixed tick, and sends each client the units its team sees. It hashes the state after a tick only
+/// Runs a session on a Lightyear server: while a `Lobby` is open, lets players join; then records
+/// the packets players send, runs one sim tick in each fixed tick, and sends each client the units
+/// its team sees. It hashes the state after a tick only
 /// while the world holds `TickHashes`.
 #[derive(Debug)]
 pub struct SimServer;
@@ -61,6 +63,12 @@ impl TickHashes {
 impl Plugin for SimServer {
     fn build(&self, app: &mut App) {
         app.add_systems(
+            Update,
+            (Lobby::offer, Lobby::take_joins, Lobby::start_when_full)
+                .chain()
+                .run_if(resource_exists::<Lobby>),
+        );
+        app.add_systems(
             FixedUpdate,
             (
                 record_inputs.run_if(resource_exists::<MatchClock>),
@@ -96,7 +104,7 @@ impl SimServer {
         );
         assert_eq!(
             world.resource::<TickDuration>().0,
-            log.header().terms.tick_length(),
+            TickRate::new(log.header().terms.tick_hz).length(),
             "the server ticks at the session's rate"
         );
         Session::start(world, log, server_seed, packages)?;

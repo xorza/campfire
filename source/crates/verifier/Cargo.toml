@@ -8,11 +8,11 @@ license.workspace = true
 campfire-package.workspace = true
 campfire-protocol.workspace = true
 campfire-runner.workspace = true
+campfire-sim.workspace = true
 
 [dev-dependencies]
 campfire-capabilities.workspace = true
 campfire-math.workspace = true
-campfire-sim.workspace = true
 
 [lints]
 workspace = true

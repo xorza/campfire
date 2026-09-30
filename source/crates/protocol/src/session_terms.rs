@@ -1,7 +1,7 @@
 use std::num::NonZeroU32;
-use std::time::Duration;
 
 use blake3::Hasher;
+use serde::{Deserialize, Serialize};
 
 use crate::fingerprint::Fingerprint;
 use crate::server_seed::SeedCommitment;
@@ -12,8 +12,9 @@ const SESSION_ID_DOMAIN: &[u8] = b"campfire/session-id/v1";
 
 /// What the server fixes when it opens a session, before any player joins. The session id is
 /// their hash, and every delegation and chain-head signature names the id: the players sign
-/// these terms, so a log cannot change them.
-#[derive(Debug, Clone, PartialEq, Eq)]
+/// these terms, so a log cannot change them. They encode in postcard field by field, in the log's
+/// header and in the message that offers them to a joining player.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionTerms {
     /// The server's x-only public key.
     pub server_key: [u8; 32],
@@ -42,11 +43,6 @@ pub struct SessionTerms {
 }
 
 impl SessionTerms {
-    /// How long a tick lasts, to the nanosecond below.
-    pub const fn tick_length(&self) -> Duration {
-        Duration::from_nanos(1_000_000_000 / self.tick_hz.get() as u64)
-    }
-
     /// `BLAKE3(domain ‖ server key ‖ u32 tick rate ‖ u64 max delay ‖ u64 max lead ‖ u32 max
     /// payload length ‖ u32 max inputs per tick ‖ seed commitment ‖ u64 release length ‖ release
     /// ‖ mode fingerprint ‖ u64 dependency count ‖ dependency fingerprints)`, integers

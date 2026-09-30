@@ -1,4 +1,5 @@
 use std::num::NonZeroU32;
+use std::time::Duration;
 
 use bevy_ecs::resource::Resource;
 
@@ -16,6 +17,11 @@ impl TickRate {
 
     pub const fn hz(self) -> NonZeroU32 {
         self.0
+    }
+
+    /// How long a tick lasts, to the nanosecond below.
+    pub const fn length(self) -> Duration {
+        Duration::from_nanos(1_000_000_000 / self.0.get() as u64)
     }
 
     /// `ms` milliseconds in ticks, rounded up, so nothing happens early; `None` when it does not
@@ -52,5 +58,11 @@ mod tests {
             }
             assert_eq!(rate.ticks(u64::MAX), None);
         }
+        // 10⁹ ns ÷ 30 = 33 333 333.3, down to 33 333 333; ÷ 20 = 50 000 000 exactly.
+        let length = |hz| TickRate::new(NonZeroU32::new(hz).unwrap()).length();
+        assert_eq!(
+            (length(30), length(20)),
+            (Duration::from_nanos(33_333_333), Duration::from_millis(50))
+        );
     }
 }

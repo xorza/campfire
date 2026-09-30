@@ -8,7 +8,6 @@ use campfire_math::SegmentSeed;
 use secp256k1::{Secp256k1, VerifyOnly};
 use serde::{Deserialize, Serialize};
 
-use crate::chain_signature::ChainSignature;
 use crate::delegation::Delegation;
 use crate::delegation::error::DelegationError;
 use crate::input_chain::InputChain;
@@ -18,6 +17,7 @@ use crate::server_seed::ServerSeed;
 use crate::session_id::SessionId;
 use crate::session_log::error::{HeaderError, InputError, LogError, SeedError};
 use crate::session_terms::SessionTerms;
+use crate::signature::Signature;
 
 pub(crate) mod error;
 
@@ -119,7 +119,7 @@ struct LoggedInput {
 struct PacketEnd {
     /// The end of the packet's inputs.
     end: u32,
-    signature: ChainSignature,
+    signature: Signature,
 }
 
 /// Orders the inputs of one tick by slot, then by when they were logged, which for one player is
@@ -138,7 +138,7 @@ struct Due {
 struct Packet<'a> {
     log: &'a SessionLog,
     inputs: Range<u32>,
-    signature: ChainSignature,
+    signature: Signature,
 }
 
 impl<'a> Packet<'a> {
@@ -227,7 +227,7 @@ impl SessionLog {
     pub fn record<'a, I>(
         &mut self,
         inputs: I,
-        signature: &ChainSignature,
+        signature: &Signature,
         applied: &mut Vec<Applied>,
     ) -> Result<(), InputError>
     where
@@ -397,17 +397,7 @@ impl SessionLog {
     }
 
     fn put_header(&self, out: &mut Vec<u8>) {
-        let terms = &self.header.terms;
-        put(out, &terms.server_key);
-        put(out, &terms.tick_hz);
-        put(out, &terms.max_input_delay);
-        put(out, &terms.max_input_lead);
-        put(out, &terms.max_payload_len);
-        put(out, &terms.max_inputs_per_tick);
-        put(out, &terms.seed_commitment);
-        put(out, terms.release.as_str());
-        put(out, &terms.mode);
-        put(out, &terms.dependencies);
+        put(out, &self.header.terms);
         put(out, &offset(self.header.players.len()));
         for delegation in &self.header.players {
             put(out, delegation.json());
@@ -545,18 +535,7 @@ fn take<'a, T: Deserialize<'a>>(rest: &mut &'a [u8]) -> Result<T, LogError> {
 
 /// Reads the header `SessionLog::put_header` wrote, checking each delegation.
 fn take_header(rest: &mut &[u8]) -> Result<SessionHeader, LogError> {
-    let terms = SessionTerms {
-        server_key: take(rest)?,
-        tick_hz: take(rest)?,
-        max_input_delay: take(rest)?,
-        max_input_lead: take(rest)?,
-        max_payload_len: take(rest)?,
-        max_inputs_per_tick: take(rest)?,
-        seed_commitment: take(rest)?,
-        release: take::<&str>(rest)?.to_owned(),
-        mode: take(rest)?,
-        dependencies: take(rest)?,
-    };
+    let terms: SessionTerms = take(rest)?;
     let count: u32 = take(rest)?;
     let mut players = Vec::new();
     for slot in 0..count {

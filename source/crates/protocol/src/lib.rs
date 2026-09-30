@@ -1,10 +1,12 @@
-//! Session log format: headers, input chains, checkpoints, results.
+//! Session log format: headers, input chains, checkpoints, results; and the connect handshake
+//! that binds a player's identity to the transport.
 
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 
-mod chain_signature;
+mod connect;
 mod delegation;
 mod fingerprint;
+mod hex;
 mod input_chain;
 mod input_hash;
 mod player_input;
@@ -14,8 +16,11 @@ mod server_seed;
 mod session_id;
 mod session_log;
 mod session_terms;
+mod signature;
 
-pub use chain_signature::ChainSignature;
+pub use connect::ConnectChallenge;
+pub use connect::certificate_hash::CertificateHash;
+pub use connect::error::{ConnectError, NotHex};
 pub use delegation::delegation_tag::DelegationTag;
 pub use delegation::error::DelegationError;
 pub use delegation::{Delegation, DelegationTerms};
@@ -32,6 +37,7 @@ pub use session_id::SessionId;
 pub use session_log::error::{HeaderError, InputError, LogError, SeedError};
 pub use session_log::{Applied, SessionHeader, SessionLog};
 pub use session_terms::SessionTerms;
+pub use signature::Signature;
 
 #[cfg(feature = "bench")]
 pub mod bench {

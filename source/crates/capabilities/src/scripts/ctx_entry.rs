@@ -43,6 +43,7 @@ impl CtxEntry {
         value("state", None, Some(ScriptRole::Mode)),
         value("map", Some(Capability::Navigation), None),
         value("teams", None, None),
+        value("players", None, Some(ScriptRole::Mode)),
         call("find", None, None),
         call("find_visible", Some(Capability::Vision), None),
         call("nearest_visible", Some(Capability::Vision), None),

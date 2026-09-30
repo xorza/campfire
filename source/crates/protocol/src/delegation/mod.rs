@@ -1,5 +1,3 @@
-use std::fmt::Write;
-
 use nostr::event::{Event, Kind, Tag, UnsignedEvent};
 use nostr::key::{Keys, SecretKey};
 use nostr::types::Timestamp;
@@ -7,6 +5,7 @@ use secp256k1::{Keypair, Secp256k1, Signing, XOnlyPublicKey};
 
 use crate::delegation::delegation_tag::DelegationTag;
 use crate::delegation::error::DelegationError;
+use crate::hex;
 use crate::input_hash::InputHash;
 use crate::session_id::SessionId;
 
@@ -56,13 +55,16 @@ impl Delegation {
         let tags = [
             custom(
                 DelegationTag::SessionKey,
-                hex(&terms.session_key.serialize()),
+                hex::encode(&terms.session_key.serialize()),
             ),
-            custom(DelegationTag::ServerKey, hex(&terms.server_key)),
-            custom(DelegationTag::SessionId, hex(terms.session_id.as_bytes())),
+            custom(DelegationTag::ServerKey, hex::encode(&terms.server_key)),
+            custom(
+                DelegationTag::SessionId,
+                hex::encode(terms.session_id.as_bytes()),
+            ),
             custom(
                 DelegationTag::SeedContribution,
-                hex(&terms.seed_contribution),
+                hex::encode(&terms.seed_contribution),
             ),
             custom(DelegationTag::Expiration, terms.expiration.to_string()),
         ];
@@ -96,14 +98,14 @@ impl Delegation {
         if event.kind != Kind::from_u16(KIND) {
             return Err(DelegationError::WrongKind);
         }
-        let session_key = unhex(tag(&event, DelegationTag::SessionKey)?)
+        let session_key = hex::decode(tag(&event, DelegationTag::SessionKey)?)
             .and_then(|bytes| XOnlyPublicKey::from_byte_array(&bytes).ok())
             .ok_or(DelegationError::MalformedTag(DelegationTag::SessionKey))?;
-        let server_key = unhex(tag(&event, DelegationTag::ServerKey)?)
+        let server_key = hex::decode(tag(&event, DelegationTag::ServerKey)?)
             .ok_or(DelegationError::MalformedTag(DelegationTag::ServerKey))?;
-        let session_id = unhex(tag(&event, DelegationTag::SessionId)?)
+        let session_id = hex::decode(tag(&event, DelegationTag::SessionId)?)
             .ok_or(DelegationError::MalformedTag(DelegationTag::SessionId))?;
-        let seed_contribution = unhex(tag(&event, DelegationTag::SeedContribution)?).ok_or(
+        let seed_contribution = hex::decode(tag(&event, DelegationTag::SeedContribution)?).ok_or(
             DelegationError::MalformedTag(DelegationTag::SeedContribution),
         )?;
         let expiration = tag(&event, DelegationTag::Expiration)?
@@ -168,34 +170,6 @@ fn tag(event: &Event, delegation_tag: DelegationTag) -> Result<&str, DelegationE
         }
     }
     found.ok_or(DelegationError::MissingTag(delegation_tag))
-}
-
-/// Lowercase hex, as Nostr writes keys and ids.
-fn hex(bytes: &[u8; 32]) -> String {
-    let mut hex = String::with_capacity(64);
-    for byte in bytes {
-        write!(hex, "{byte:02x}").expect("a String takes any write");
-    }
-    hex
-}
-
-/// 32 bytes from exactly 64 lowercase hex digits, the one spelling `hex` writes.
-fn unhex(hex: &str) -> Option<[u8; 32]> {
-    let digits = hex.as_bytes();
-    if digits.len() != 64 {
-        return None;
-    }
-    let digit = |d: u8| match d {
-        b'0'..=b'9' => Some(d - b'0'),
-        b'a'..=b'f' => Some(d - b'a' + 10),
-        _ => None,
-    };
-    let mut bytes = [0; 32];
-    let (pairs, _) = digits.as_chunks::<2>();
-    for (byte, &[high, low]) in bytes.iter_mut().zip(pairs) {
-        *byte = digit(high)? << 4 | digit(low)?;
-    }
-    Some(bytes)
 }
 
 #[cfg(test)]

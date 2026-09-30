@@ -42,13 +42,14 @@ struct Server {
 #[test]
 fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
     let mut pair = LocalPair::new(RollbackMode::Check, SEED_CHAIN);
-    pair.start_match().unwrap();
-    // Without the per-tick hash, as in production: the ticks and the replication run all the same.
+    pair.start_match();
+    // Without the per-tick hash from here on, as in production: the ticks and the replication run
+    // all the same.
     let hashes = pair
         .server_mut()
         .world_mut()
         .remove_resource::<TickHashes>();
-    assert_eq!(hashes.map(|hashes| hashes.get().len()), Some(0));
+    assert!(hashes.is_some());
     let east_tower = Position::new(Vec3::new(num(8), Num::ZERO, Num::ZERO)).unwrap();
     let (tower, tower_entity) = unit(pair.server(), |app, entity| {
         app.world().get::<Position>(entity) == Some(&east_tower)
@@ -57,8 +58,8 @@ fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
         app.world().entity(entity).contains::<Owner>()
     });
 
-    // By sim tick, from 0.
-    let mut server = Vec::new();
+    // By sim tick, from 0; `None` for the ticks the lobby ran before the loop.
+    let mut server: Vec<Option<Server>> = Vec::new();
     // By frame: the client holds the tower.
     let mut on_client = Vec::new();
     let mut arrived_in = None;
@@ -70,13 +71,14 @@ fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
         }
         pair.step();
         let world = pair.server().world();
-        let ticks_run = world.resource::<SimTick>().start().get();
-        if ticks_run > u64::try_from(server.len()).unwrap() {
+        let ticks_run = usize::try_from(world.resource::<SimTick>().start().get()).unwrap();
+        if ticks_run > server.len() {
             let seen = world.get::<SeenBy>(tower_entity).unwrap().get();
-            server.push(Server {
+            server.resize(ticks_run - 1, None);
+            server.push(Some(Server {
                 seen: seen.contains(Team::new(0)),
                 hero_x: world.get::<Position>(hero).unwrap().get().x,
-            });
+            }));
         }
         let client = pair.client().world();
         let held = client.resource::<EntityIndex>().get(tower);
@@ -92,13 +94,15 @@ fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
     // x = 2.75, √(5.75² + 0.5²) ≈ 5.77 m, seen. Then the hero walks back, out of sight.
     let hidden_at = Num::from_bits(10 << (Num::FRAC_BITS - 2));
     let seen_at = Num::from_bits(11 << (Num::FRAC_BITS - 2));
-    let first = server.iter().position(|tick| tick.seen).unwrap();
-    let last = server.iter().rposition(|tick| tick.seen).unwrap();
-    assert_eq!(server[first - 1].hero_x, hidden_at);
-    assert_eq!(server[first].hero_x, seen_at);
-    assert_eq!(server[last].hero_x, seen_at);
-    assert_eq!(server[last + 1].hero_x, hidden_at);
-    assert!(server[first..=last].iter().all(|tick| tick.seen));
+    let seen = |tick: &Option<Server>| tick.is_some_and(|tick| tick.seen);
+    let first = server.iter().position(seen).unwrap();
+    let last = server.iter().rposition(seen).unwrap();
+    let hero_x = |tick: usize| server[tick].unwrap().hero_x;
+    assert_eq!(hero_x(first - 1), hidden_at);
+    assert_eq!(hero_x(first), seen_at);
+    assert_eq!(hero_x(last), seen_at);
+    assert_eq!(hero_x(last + 1), hidden_at);
+    assert!(server[first..=last].iter().all(seen));
 
     // The client holds the tower from the message of the tick it came into sight in, and not
     // before, and has dropped it by the end.

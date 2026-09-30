@@ -95,6 +95,7 @@ fn on_mode_input(ctx, player, name, value) {
         ctx.state.grunts = grunts.len();
         ctx.state.heroes = ctx.heroes("b").len();
         ctx.state.teams = ctx.teams.len();
+        ctx.state.players = ctx.players;
         ctx.state.lane = grunts[1].lane;
         ctx.state.team = grunts[1].team;
         ctx.state.neutral = grunts[0].team;
@@ -199,6 +200,7 @@ fn mode_files() -> ModeFiles {
                 ("grunts", field(StateType::Int, None)),
                 ("heroes", field(StateType::Int, None)),
                 ("teams", field(StateType::Int, None)),
+                ("players", field(StateType::Int, None)),
                 ("lane", field(StateType::String, None)),
                 ("team", field(StateType::String, None)),
                 ("neutral", field(StateType::String, None)),
@@ -560,8 +562,8 @@ fn resources_add_up_and_queries_see_teams_lanes_and_the_dead() {
     assert_eq!(resources.amount(PlayerSlot::new(1), "gems"), i64::MAX);
     assert_eq!(resources.amount(PlayerSlot::new(0), "gold"), 0);
     assert_eq!(game.failures(), [Some(ApiError::ResourceOverflow)]);
-    // The enemy of a, the 4 grunts with the dead one, b's one hero, the 2 playing teams, the
-    // lane and team of grunt 2, the neutral grunt 1's team, hero 5's owner, the lane of the tower,
+    // The enemy of a, the 4 grunts with the dead one, b's one hero, the 2 playing teams, the 3
+    // players, the lane and team of grunt 2, the neutral grunt 1's team, hero 5's owner, the lane of the tower,
     // which stands on it as grunt 2 walks it, and grunt 2's unit type.
     let text = |text: &str| StateValue::Text(text.to_owned());
     let seen = [
@@ -569,6 +571,7 @@ fn resources_add_up_and_queries_see_teams_lanes_and_the_dead() {
         "grunts",
         "heroes",
         "teams",
+        "players",
         "lane",
         "team",
         "neutral",
@@ -584,6 +587,7 @@ fn resources_add_up_and_queries_see_teams_lanes_and_the_dead() {
             StateValue::Int(4),
             StateValue::Int(1),
             StateValue::Int(2),
+            StateValue::Int(3),
             text("mid"),
             text("a"),
             text("neutral"),

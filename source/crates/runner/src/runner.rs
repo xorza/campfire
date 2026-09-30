@@ -1,6 +1,6 @@
 use bevy_ecs::world::World;
 use campfire_package::ModePackages;
-use campfire_protocol::{Applied, ChainSignature, InputError, PlayerInput, ServerSeed, SessionLog};
+use campfire_protocol::{Applied, InputError, PlayerInput, ServerSeed, SessionLog, Signature};
 use campfire_sim::StateHash;
 
 use crate::error::StartError;
@@ -28,7 +28,7 @@ impl Runner {
     pub fn record<'a, I>(
         &mut self,
         inputs: I,
-        signature: &ChainSignature,
+        signature: &Signature,
         applied: &mut Vec<Applied>,
     ) -> Result<(), InputError>
     where

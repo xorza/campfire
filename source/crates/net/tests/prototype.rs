@@ -11,7 +11,7 @@ use campfire_math::{Num, Vec3};
 use campfire_net::{LocalPair, PlayerLink, TickHashes, Unpredicted};
 use campfire_protocol::{SeedChain, SessionLog};
 use campfire_runner::{Runner, Session};
-use campfire_sim::{EntityIndex, Position};
+use campfire_sim::{EntityIndex, Position, SimTick};
 use lightyear::prelude::{Predicted, PredictionMetrics, RollbackMode};
 
 const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
@@ -59,7 +59,9 @@ fn server_and_replay_agree_on_every_tick() {
     // so the client runs the sim again from the server's state many times.
     for rollback in [RollbackMode::Check, RollbackMode::Always] {
         let mut pair = LocalPair::new(rollback, SEED_CHAIN);
-        pair.start_match().unwrap();
+        pair.start_match();
+        // The ticks the server ran while the client learned the match started.
+        let started = pair.server().world().resource::<SimTick>().start().get();
         for frame in 0..MATCH_FRAMES {
             match frame {
                 10 => pair.order(move_to(0, 5)),
@@ -98,7 +100,8 @@ fn server_and_replay_agree_on_every_tick() {
         );
         server_world.resource_mut::<Session>().reveal_seed();
         let live = server_world.resource::<TickHashes>().get().to_vec();
-        assert_eq!(live.len(), MATCH_FRAMES);
+        let ticks = started + u64::try_from(MATCH_FRAMES).unwrap();
+        assert_eq!(u64::try_from(live.len()).unwrap(), ticks);
         let mut file = Vec::new();
         server_world.resource::<Session>().log().encode(&mut file);
         let decoded = SessionLog::decode(&file).unwrap();
@@ -108,9 +111,6 @@ fn server_and_replay_agree_on_every_tick() {
             replay.run_tick();
             assert_eq!(replay.state_hash(), *live, "{rollback:?}, tick {tick}");
         }
-        assert_eq!(
-            replay.log().next_tick(),
-            u64::try_from(MATCH_FRAMES).unwrap()
-        );
+        assert_eq!(replay.log().next_tick(), ticks);
     }
 }

@@ -1,0 +1,6 @@
+# A second test hero, the walker's twin, so a 1v1 of the lane mode gives each player a hero of
+# their own.
+name = "hero-runner"
+version = "0.1.0"
+engine = "0.1.0"
+kind = "hero"

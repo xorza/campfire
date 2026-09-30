@@ -1,4 +1,4 @@
-use campfire_protocol::{ChainSignature, PlayerInput, PlayerSlot};
+use campfire_protocol::{PlayerInput, PlayerSlot, Signature};
 use serde::{Deserialize, Serialize};
 
 /// A packet of player inputs as the client sends it, signed once over the chain head after the
@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 pub struct InputMessage {
     frames: Vec<InputFrame>,
     payloads: Vec<u8>,
-    signature: ChainSignature,
+    signature: Signature,
 }
 
 /// One input of a message, without its payload.
@@ -22,7 +22,7 @@ impl InputMessage {
     /// A message of `inputs`, with `signature` over the chain head after the last.
     pub fn new<'a>(
         inputs: impl IntoIterator<Item = PlayerInput<'a>>,
-        signature: ChainSignature,
+        signature: Signature,
     ) -> InputMessage {
         let mut message = InputMessage {
             frames: Vec::new(),
@@ -64,7 +64,7 @@ impl InputMessage {
         }))
     }
 
-    pub const fn signature(&self) -> &ChainSignature {
+    pub const fn signature(&self) -> &Signature {
         &self.signature
     }
 }
@@ -75,7 +75,7 @@ mod tests {
 
     #[test]
     fn a_message_gives_back_its_inputs_or_none() {
-        let signature = ChainSignature::from_bytes([3; 64]);
+        let signature = Signature::from_bytes([3; 64]);
         let slot = PlayerSlot::new(1);
         let input = |stamp, payload| PlayerInput {
             slot,

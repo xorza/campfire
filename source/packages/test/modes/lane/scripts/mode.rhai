@@ -1,7 +1,10 @@
-// Player 0 plays the walker from the start. The first wave comes at the end of tick 0, then every
-// wave_ms.
+// Player 0 plays the walker from the start, and player 1, when there is one, the runner. The first
+// wave comes at the end of tick 0, then every wave_ms.
 fn on_match_start(ctx) {
     ctx.choose_hero(0, "hero-walker");
+    if ctx.players > 1 {
+        ctx.choose_hero(1, "hero-runner");
+    }
     ctx.spawn_heroes();
     ctx.timer("first_wave", 1, false, ());
 }

@@ -1,5 +1,4 @@
 use std::num::NonZeroU32;
-use std::time::Duration;
 
 use secp256k1::{Keypair, schnorr};
 
@@ -92,7 +91,7 @@ fn header() -> SessionHeader {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Sent<'a> {
     inputs: Vec<PlayerInput<'a>>,
-    signature: ChainSignature,
+    signature: Signature,
 }
 
 /// Inputs as `(slot, stamp, payload)`; a run of one slot's inputs within a tick is one packet.
@@ -535,9 +534,6 @@ fn a_delegation_for_another_server_or_session_is_refused() {
         };
         assert_eq!(SessionLog::new(other).err(), Some(refused));
     }
-
-    // 300 ticks a second last 3 333 333 ns each.
-    assert_eq!(terms().tick_length(), Duration::from_nanos(3_333_333));
 
     // The id, as design 05 spells it.
     let mut spelled = Hasher::new();

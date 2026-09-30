@@ -1,3 +1,5 @@
+use std::fmt;
+
 use bevy_ecs::world::World;
 use blake3::Hasher;
 use serde::de::DeserializeOwned;
@@ -48,7 +50,7 @@ pub struct TypeHash {
     pub hash: [u8; 32],
 }
 
-/// The hash of the whole simulated state.
+/// The hash of the whole simulated state. It writes as 64 lowercase hex digits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct StateHash([u8; 32]);
 
@@ -231,6 +233,12 @@ impl StateRegistry {
             }
         }
         StateHash(*total.finalize().as_bytes())
+    }
+}
+
+impl fmt::Display for StateHash {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.iter().try_for_each(|byte| write!(f, "{byte:02x}"))
     }
 }
 

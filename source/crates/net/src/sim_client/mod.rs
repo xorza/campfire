@@ -7,10 +7,10 @@ use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::schedule::common_conditions::{not, resource_exists};
 use bevy_ecs::system::{Commands, Query, Res, ResMut, Single};
 use bevy_ecs::world::{Mut, World};
-use campfire_capabilities::{CapabilitySet, Order};
+use campfire_capabilities::Order;
 use campfire_math::SegmentSeed;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SignOnly};
-use campfire_protocol::{InputChain, InputHash, SessionId, SessionTerms};
+use campfire_protocol::{Delegation, DelegationTerms, InputChain, InputHash, SessionId};
 use campfire_sim::{
     PlayerSlot, SimTick, SimUpdate, StateRegistry, Tick, TickInput, TickInputs, TickRate,
 };
@@ -18,33 +18,53 @@ use lightyear::prelude::{
     Client, LocalTimeline, MessageReceiver, MessageSender, Tick as NetTick, is_in_rollback,
 };
 
+use crate::error::TermsMismatch;
 use crate::input_message::InputMessage;
+use crate::join::Join;
 use crate::match_clock::MatchClock;
 use crate::match_start::MatchStart;
-use crate::net_protocol::InputChannel;
+use crate::net_protocol::{InputChannel, JoinChannel};
+use crate::offer::Offer;
+use crate::sim_client::client_mode::ClientMode;
+use crate::sim_client::server_pin::ServerPin;
 use crate::sim_client::unpredicted::Unpredicted;
 
+pub(crate) mod client_mode;
+pub(crate) mod server_pin;
 pub(crate) mod unpredicted;
 
 /// A client never holds the segment seed: it predicts movement, never a random outcome.
 const PREDICTION_SEED: SegmentSeed = SegmentSeed::new([0; 32]);
-/// BIP-340's auxiliary randomness for the chain-head signatures. `net` has no OS randomness yet;
-/// without it BIP-340 signs deterministically, which stays secure and gives up only the added
-/// hardening against side channels.
-const AUX: [u8; 32] = [0; 32];
+/// How long a delegation lets the session key sign, in seconds: a day, longer than a LAN match.
+const DELEGATION_LIFETIME: u64 = 86_400;
 
-/// Predicts a match on a Lightyear client: sends the player's orders as chained inputs, signed
-/// once per message with the session key, and runs the sim in every fixed tick, rollbacks
-/// included, with the player's own inputs, on the units the client predicts.
+/// Plays a session on a Lightyear client: answers the server's offer with a delegation of a
+/// session key, sends the player's orders as chained inputs, signed once per message with the
+/// session key, and runs the sim in every fixed tick, rollbacks included, with the player's own
+/// inputs, on the units the client predicts.
 #[derive(Debug, Clone)]
 pub struct SimClient {
+    /// The player's Nostr identity, which signs the delegation.
+    pub main_key: Keypair,
+    /// This session's key, which the delegation lets sign the player's inputs.
     pub session_key: Keypair,
-    /// The terms of the session: its rate, and its id, which the signatures name.
-    pub terms: SessionTerms,
-    /// What the player's first input links to: the id of their delegation.
-    pub chain_root: InputHash,
-    /// The capabilities the session's mode declares.
-    pub capabilities: CapabilitySet,
+    pub server: ServerPin,
+    pub mode: ClientMode,
+    /// Unix seconds: when the delegation is made, and so when it expires.
+    pub clock: fn() -> u64,
+    /// Fills a seed contribution or BIP-340's auxiliary randomness with random bytes.
+    pub entropy: fn(&mut [u8; 32]),
+}
+
+/// Where the client is in joining the session.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum JoinState {
+    /// No offer came yet.
+    Waiting,
+    /// The offer named a session the client cannot play; it did not answer.
+    Refused(TermsMismatch),
+    /// It answered the offer, and waits for the match to start.
+    Joined,
 }
 
 /// Orders the player gave, sent in the next fixed tick.
@@ -57,17 +77,25 @@ impl PendingOrders {
     }
 }
 
-/// The player's chain, from the match start on, and the inputs sent by stamp, to predict with
-/// again after a rollback. Stamps never decrease, so a tick's inputs are one run.
+/// The player's session once they joined, their chain from the match start on, and the inputs
+/// sent by stamp, to predict with again after a rollback. Stamps never decrease, so a tick's
+/// inputs are one run.
 #[derive(Resource, Debug)]
 struct SentInputs {
     client: SimClient,
-    /// The hash of the client's terms.
-    session_id: SessionId,
     secp: Secp256k1<SignOnly>,
+    session: Option<JoinedSession>,
     chain: Option<InputChain>,
     inputs: Vec<SentInput>,
     payloads: Vec<u8>,
+}
+
+/// What the player's join fixed: the session its signatures name, and what their first input
+/// links to, their delegation's id.
+#[derive(Debug, Clone, Copy)]
+struct JoinedSession {
+    id: SessionId,
+    chain_root: InputHash,
 }
 
 #[derive(Debug)]
@@ -84,37 +112,103 @@ impl SentInputs {
             .take_while(move |input| input.stamp == stamp)
             .map(|input| &self.payloads[input.payload.clone()])
     }
+
+    /// The player's answer to `offer`: a delegation of the session key in the offered session,
+    /// with a fresh seed contribution, and the session key's signature over the challenge and
+    /// the pinned certificate hash. An error when the terms name another server, or a session
+    /// the client cannot play.
+    fn join(&mut self, offer: &Offer) -> Result<Join, TermsMismatch> {
+        let client = &self.client;
+        if offer.terms.server_key != client.server.key {
+            return Err(TermsMismatch::OtherServer);
+        }
+        client.mode.fits(&offer.terms)?;
+        let mut seed_contribution = [0; 32];
+        (client.entropy)(&mut seed_contribution);
+        let now = (client.clock)();
+        let id = offer.terms.session_id();
+        let granted = DelegationTerms {
+            session_key: client.session_key.x_only_public_key().0,
+            server_key: offer.terms.server_key,
+            session_id: id,
+            seed_contribution,
+            expiration: now + DELEGATION_LIFETIME,
+        };
+        let mut aux = [0; 32];
+        (client.entropy)(&mut aux);
+        let delegation = Delegation::sign(&self.secp, &client.main_key, &granted, now, &aux);
+        (client.entropy)(&mut aux);
+        let answer = offer.challenge.answer(
+            &self.secp,
+            &client.session_key,
+            &client.server.certificate,
+            &aux,
+        );
+        self.session = Some(JoinedSession {
+            id,
+            chain_root: delegation.chain_root(),
+        });
+        Ok(Join {
+            delegation: delegation.json().to_owned(),
+            answer,
+        })
+    }
 }
 
 impl Plugin for SimClient {
     fn build(&self, app: &mut App) {
         let world = app.world_mut();
-        let rate = TickRate::new(self.terms.tick_hz);
+        let rate = TickRate::new(self.mode.tick_hz);
         SimUpdate::prepare(world, PREDICTION_SEED, rate);
         let mut schedule = SimUpdate::schedule();
         // A client hashes no state, so the registry the capabilities fill is not kept.
         let mut state = StateRegistry::new();
         // A client runs no scripts: it predicts only its own player's units.
-        self.capabilities
+        self.mode
+            .capabilities
             .install(world, &mut schedule, &mut state, None);
         world.add_schedule(schedule);
         Unpredicted::install(world);
         world.insert_resource(SentInputs {
             client: self.clone(),
-            session_id: self.terms.session_id(),
             secp: Secp256k1::signing_only(),
+            session: None,
             chain: None,
             inputs: Vec::new(),
             payloads: Vec::new(),
         });
+        app.insert_resource(JoinState::Waiting);
         app.init_resource::<PendingOrders>();
-        app.add_systems(Update, receive_match_start);
+        app.add_systems(Update, (answer_offer, receive_match_start).chain());
         app.add_systems(
             FixedUpdate,
             (send_orders.run_if(not(is_in_rollback)), run_predicted_tick)
                 .chain()
                 .run_if(resource_exists::<MatchClock>),
         );
+    }
+}
+
+/// Answers the first offer, unless its terms do not fit.
+fn answer_offer(
+    mut receivers: Query<'_, '_, &mut MessageReceiver<Offer>, With<Client>>,
+    mut sender: Single<'_, '_, &mut MessageSender<Join>, With<Client>>,
+    mut sent: ResMut<'_, SentInputs>,
+    mut state: ResMut<'_, JoinState>,
+) {
+    for mut receiver in &mut receivers {
+        for offer in receiver.receive() {
+            if *state != JoinState::Waiting {
+                continue;
+            }
+            *state = match sent.join(&offer) {
+                Ok(join) => {
+                    sender.send::<JoinChannel>(join);
+                    JoinState::Joined
+                }
+                Err(mismatch) => JoinState::Refused(mismatch),
+            };
+        }
     }
 }
 
@@ -125,7 +219,10 @@ fn receive_match_start(
 ) {
     for mut receiver in &mut receivers {
         for start in receiver.receive() {
-            sent.chain = Some(InputChain::new(start.slot, sent.client.chain_root));
+            let Some(session) = sent.session else {
+                continue;
+            };
+            sent.chain = Some(InputChain::new(start.slot, session.chain_root));
             commands.insert_resource(MatchClock::new(NetTick(start.start_tick)));
         }
     }
@@ -142,8 +239,8 @@ fn send_orders(
 ) {
     let SentInputs {
         client,
-        session_id,
         secp,
+        session: Some(session),
         chain: Some(chain),
         inputs,
         payloads,
@@ -173,7 +270,9 @@ fn send_orders(
     for input in sent {
         head.extend(stamp.get(), &payloads[input.payload.clone()]);
     }
-    let signature = head.sign(secp, &client.session_key, *session_id, &AUX);
+    let mut aux = [0; 32];
+    (client.entropy)(&mut aux);
+    let signature = head.sign(secp, &client.session_key, session.id, &aux);
     let chained = sent
         .iter()
         .map(|input| chain.extend(stamp.get(), &payloads[input.payload.clone()]));
@@ -207,3 +306,6 @@ fn run_predicted_tick(world: &mut World) {
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
+
+#[cfg(test)]
+mod tests;

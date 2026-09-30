@@ -3,13 +3,13 @@
 
 use std::env;
 use std::error::Error;
-use std::fmt::Write;
 use std::fs;
 use std::path::Path;
 use std::process::ExitCode;
 
 use campfire_package::PackageStore;
 use campfire_protocol::SessionLog;
+use campfire_sim::StateHash;
 use campfire_verifier::Replay;
 
 fn main() -> ExitCode {
@@ -21,11 +21,7 @@ fn main() -> ExitCode {
     let path = Path::new(&path);
     match verify(Path::new(&packages), path) {
         Ok(hash) => {
-            let mut hex = String::with_capacity(2 * hash.len());
-            for byte in hash {
-                write!(hex, "{byte:02x}").expect("a String takes any write");
-            }
-            println!("{hex}");
+            println!("{hash}");
             ExitCode::SUCCESS
         }
         Err(error) => {
@@ -37,9 +33,9 @@ fn main() -> ExitCode {
 
 /// The state hash after the last tick of the log file at `path`, replayed with the packages under
 /// `packages`.
-fn verify(packages: &Path, path: &Path) -> Result<[u8; 32], Box<dyn Error>> {
+fn verify(packages: &Path, path: &Path) -> Result<StateHash, Box<dyn Error>> {
     let store = PackageStore::scan(packages)?;
     let mut replay = Replay::new(SessionLog::decode(&fs::read(path)?)?, &store)?;
     while replay.run_tick() {}
-    Ok(*replay.runner().state_hash().as_bytes())
+    Ok(replay.runner().state_hash())
 }

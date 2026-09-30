@@ -1,11 +1,11 @@
 use blake3::Hasher;
 use secp256k1::{Keypair, Secp256k1, Signing, Verification, XOnlyPublicKey, schnorr};
 
-use crate::chain_signature::ChainSignature;
 use crate::input_hash::InputHash;
 use crate::player_input::PlayerInput;
 use crate::player_slot::PlayerSlot;
 use crate::session_id::SessionId;
+use crate::signature::Signature;
 
 /// Starts every input hash, so no other BLAKE3 use can produce a chain link.
 const HASH_DOMAIN: &[u8] = b"campfire/input-hash/v1";
@@ -71,10 +71,10 @@ impl InputChain {
         session_key: &Keypair,
         session_id: SessionId,
         aux: &[u8; 32],
-    ) -> ChainSignature {
+    ) -> Signature {
         let signature =
             secp.sign_schnorr_with_aux_rand(&self.head_message(session_id), session_key, aux);
-        ChainSignature::from_bytes(signature.to_byte_array())
+        Signature::from_bytes(signature.to_byte_array())
     }
 
     /// Whether `signature` is `session_key`'s over the chain head.
@@ -83,7 +83,7 @@ impl InputChain {
         secp: &Secp256k1<C>,
         session_key: &XOnlyPublicKey,
         session_id: SessionId,
-        signature: &ChainSignature,
+        signature: &Signature,
     ) -> bool {
         secp.verify_schnorr(
             &schnorr::Signature::from_byte_array(signature.to_bytes()),

@@ -4,8 +4,7 @@ use campfire_capabilities::Mode;
 use campfire_content::Fingerprint as PackageFingerprint;
 use campfire_package::{ModePackages, PackageStore, RELEASE};
 use campfire_protocol::{
-    Applied, ChainSignature, Fingerprint, InputError, PlayerInput, ServerSeed, SessionLog,
-    SessionTerms,
+    Applied, Fingerprint, InputError, PlayerInput, ServerSeed, SessionLog, SessionTerms, Signature,
 };
 use campfire_sim::{
     PlayerSlot, SimTick, SimUpdate, StateHash, StateRegistry, TickInput, TickInputs, TickRate,
@@ -106,7 +105,7 @@ impl Session {
     pub fn record<'a, I>(
         &mut self,
         inputs: I,
-        signature: &ChainSignature,
+        signature: &Signature,
         applied: &mut Vec<Applied>,
     ) -> Result<(), InputError>
     where

@@ -1,5 +1,3 @@
-use std::array;
-
 use super::*;
 
 const CREATED_AT: u64 = 1_700_000_000;
@@ -51,7 +49,7 @@ fn tags(change: impl FnOnce(&mut Vec<Vec<String>>)) -> Vec<Tag> {
     let mut tags = vec![
         vec![
             DelegationTag::SessionKey.name().to_owned(),
-            hex(&terms().session_key.serialize()),
+            hex::encode(&terms().session_key.serialize()),
         ],
         vec![DelegationTag::ServerKey.name().to_owned(), "29".repeat(32)],
         vec![DelegationTag::SessionId.name().to_owned(), "1f".repeat(32)],
@@ -216,21 +214,4 @@ fn the_main_key_signs_the_seed_contribution() {
         Delegation::parse(&resigned.as_json()),
         Err(DelegationError::BadSignature)
     );
-}
-
-#[test]
-fn hex_takes_back_what_it_writes() {
-    let bytes: [u8; 32] = array::from_fn(|at| u8::try_from(at * 8 + 1).unwrap());
-    let written = hex(&bytes);
-    assert_eq!(&written[..8], "01091119");
-    assert_eq!(unhex(&written), Some(bytes));
-    for flawed in [
-        "",
-        "0",
-        &written[1..],
-        &format!("{written}0"),
-        &written.replace('9', "g"),
-    ] {
-        assert_eq!(unhex(flawed), None, "{flawed}");
-    }
 }

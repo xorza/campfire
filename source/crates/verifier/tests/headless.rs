@@ -431,7 +431,7 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
                 Some(StartError::Packages(StoreError::MissingDependency(dependency))),
                 Some(StartError::Packages(StoreError::DependencyCount)),
                 Some(StartError::TickRate(hz)),
-            ] if release == "0.0.9" && dependency == "hero-walker" && hz.get() == 60
+            ] if release == "0.0.9" && dependency == "hero-runner" && hz.get() == 60
         ),
         "{refused:?}"
     );

@@ -127,6 +127,9 @@ impl ModeCtx {
                     .map(|name| Dynamic::from(ImmutableString::from(name)))
                     .collect()
             })
+            .register_get("players", |ctx: &mut ModeCtx| {
+                INT::from(ctx.book.teams.players())
+            })
             .register_get("map", |ctx: &mut ModeCtx| ctx.book.map())
             .register_fn(
                 "enemy_team",

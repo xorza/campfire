@@ -1,4 +1,4 @@
-# A test mode: one lane, a tower a side and waves of two creeps, with the one hero it depends on.
+# A test mode: one lane, a tower a side and waves of two creeps, with a hero for each side.
 name = "test-lane"
 version = "0.1.0"
 engine = "0.1.0"
@@ -11,4 +11,5 @@ max_move_speed = "7.5"
 script_limits = { per_call = 20000, player = 20000, think = 200000, mode = 20000 }
 
 [dependencies]
+hero-runner = { path = "../../heroes/runner" }
 hero-walker = { path = "../../heroes/walker" }

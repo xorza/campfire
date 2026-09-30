@@ -5,23 +5,33 @@
     reason = "Bevy systems take `Res` and `Query` by value"
 )]
 
+mod error;
 mod input_message;
+mod join;
+mod lobby;
 #[cfg(feature = "internals")]
 mod local_pair;
 mod match_clock;
 mod match_start;
 mod net_protocol;
+mod offer;
 mod sim_client;
 mod sim_server;
 
+pub use error::{JoinError, TermsMismatch};
 pub use input_message::InputMessage;
+pub use join::Join;
+pub use lobby::{JoinRefused, Joined, Lobby, LobbySetup};
 #[cfg(feature = "internals")]
 pub use local_pair::LocalPair;
 pub use match_clock::MatchClock;
 pub use match_start::MatchStart;
-pub use net_protocol::{InputChannel, MatchChannel, NetProtocol};
+pub use net_protocol::{InputChannel, JoinChannel, MatchChannel, NetProtocol};
+pub use offer::Offer;
+pub use sim_client::client_mode::ClientMode;
+pub use sim_client::server_pin::ServerPin;
 pub use sim_client::unpredicted::Unpredicted;
-pub use sim_client::{PendingOrders, SimClient};
+pub use sim_client::{JoinState, PendingOrders, SimClient};
 pub use sim_server::{PlayerLink, SimServer, TickHashes};
 
 #[cfg(feature = "bench")]
