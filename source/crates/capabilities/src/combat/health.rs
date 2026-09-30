@@ -32,6 +32,10 @@ impl Health {
         self.0.is_empty()
     }
 
+    pub(crate) const fn fill(&mut self) {
+        self.0.fill();
+    }
+
     /// Takes `amount` of damage, which is not negative, down to 0.
     pub(crate) fn take(&mut self, amount: Num) {
         self.0.take(amount);

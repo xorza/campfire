@@ -6,12 +6,12 @@ use std::num::NonZeroU32;
 
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
-use campfire_capabilities::{Action, Dead, Destination, Health, Owner};
+use campfire_capabilities::{Action, Dead, Destination, Health, Owner, Respawn};
 use campfire_math::{Num, Vec3};
 use campfire_net::{LocalPair, PlayerLink, TickHashes, Unpredicted};
 use campfire_protocol::{SeedChain, SessionLog};
 use campfire_runner::{Runner, Session};
-use campfire_sim::{EntityIndex, Position, SimTick};
+use campfire_sim::{EntityIndex, Position, SimTick, Tick};
 use lightyear::prelude::{Predicted, PredictionMetrics, RollbackMode};
 
 const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
@@ -129,36 +129,74 @@ fn server_and_replay_agree_on_every_tick() {
 }
 
 #[test]
-fn a_dead_hero_stays_where_it_died_on_the_server_and_its_client() {
+fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_its_client() {
     let mut pair = LocalPair::new(RollbackMode::Check, SEED_CHAIN, 1);
     pair.start_match();
     // The hero walks to (4, 0), 4 m from the east tower at (8, 0), which reaches 7.75 m and hits
     // for 150 of its 600: the fourth hit kills it where it stands.
     pair.order(move_to(4, 0));
     let dead = |app: &App| app.world().entity(hero_entity(app)).contains::<Dead>();
+    let rollbacks = |pair: &LocalPair| {
+        pair.client()
+            .world()
+            .resource::<PredictionMetrics>()
+            .rollbacks
+    };
     let mut frames = 0;
     while !dead(pair.server()) {
         assert!(frames < 400, "the tower kills the hero");
         pair.step();
         frames += 1;
     }
-    // An order after its death moves it on neither end: the client learns the death from the
-    // server and stops the hero as the server does, so nothing snaps back.
+    let died_in = pair.server().world().resource::<SimTick>().start().get() - 1;
+    // The client learns of the death after the ticks it predicted ahead, and corrects them once.
+    for _ in 0..10 {
+        pair.step();
+    }
+    assert_eq!(rollbacks(&pair), 1);
+    // An order after its death moves it on neither end, and needs no correction.
     pair.order(move_to(-4, 0));
     for _ in 0..40 {
         pair.step();
     }
-    let body = Hero {
-        position: Position::new(Vec3::new(num(4), Num::ZERO, Num::ZERO)).unwrap(),
+    let at = |x| Hero {
+        position: Position::new(Vec3::new(num(x), Num::ZERO, Num::ZERO)).unwrap(),
         destination: Destination::default(),
     };
-    assert_eq!(hero(pair.server()), body);
-    assert_eq!(hero(pair.client()), body);
+    assert_eq!(hero(pair.server()), at(4));
+    assert_eq!(hero(pair.client()), at(4));
     assert!(dead(pair.client()));
-    let client = pair.client().world();
-    let health = client.get::<Health>(hero_entity(pair.client())).unwrap();
-    assert_eq!(health.current(), Num::ZERO);
-    // No correction was ever needed: a client that predicted the dead hero walking would roll
-    // back to the body.
-    assert_eq!(client.resource::<PredictionMetrics>().rollbacks, 0);
+    let health = |app: &App| {
+        app.world()
+            .get::<Health>(hero_entity(app))
+            .unwrap()
+            .current()
+    };
+    assert_eq!(health(pair.client()), Num::ZERO);
+    assert_eq!(rollbacks(&pair), 1);
+
+    // The lane mode respawns a hero 5000 ms later: 150 ticks at 30 a second, from the end of the
+    // tick it died in. It stands at its team's spawn, (0, 0), with its 600 health, on both ends,
+    // and the client, which learned the respawn ahead, needs no correction.
+    let back = Respawn {
+        at: Tick::new(died_in + 1 + 150),
+    };
+    let client_hero = hero_entity(pair.client());
+    assert_eq!(
+        pair.client().world().get::<Respawn>(client_hero),
+        Some(&back)
+    );
+    while dead(pair.server()) {
+        pair.step();
+    }
+    let respawned_in = pair.server().world().resource::<SimTick>().start().get() - 1;
+    assert_eq!(respawned_in, back.at.get());
+    for _ in 0..10 {
+        pair.step();
+    }
+    assert_eq!(hero(pair.server()), at(0));
+    assert_eq!(hero(pair.client()), at(0));
+    assert!(!dead(pair.client()));
+    assert_eq!(health(pair.client()), num(600));
+    assert_eq!(rollbacks(&pair), 1);
 }

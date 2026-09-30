@@ -6,13 +6,16 @@ use std::rc::Rc;
 
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::Local;
-use bevy_ecs::world::World;
-use campfire_script::rhai::{Dynamic, INT, ImmutableString};
+use bevy_ecs::world::{Mut, World};
+use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString};
 use campfire_script::{ScriptError, ScriptHost};
 use campfire_sim::{
-    Command, PlayerSlot, Position, SimSet, SimTick, StateRegistry, TickInputs, TickRate,
+    Command, PlayerSlot, Position, SimSet, SimTick, StateRegistry, TickInputs, TickRate, Ticks,
 };
 
+use crate::combat::CombatSet;
+use crate::combat::assist_window::AssistWindow;
+use crate::combat::deaths::Deaths;
 use crate::mode::calls::Calls;
 use crate::mode::error::ModeError;
 use crate::mode::map_data::{GroundPoint, MapData};
@@ -35,6 +38,7 @@ use crate::units::UnitsSet;
 use crate::units::script_view::View;
 use crate::units::team::Team;
 use crate::units::teams::Teams;
+use crate::units::unit::Unit;
 use crate::vision::Vision;
 
 pub(crate) mod calls;
@@ -64,8 +68,9 @@ pub struct Mode;
 impl Mode {
     /// Adds the mode of `setup`, which passed `Mode::check` when its package loaded, to a match
     /// whose capabilities are installed and whose unit types, abilities and AI are loaded: in
-    /// Inputs, the players' mode inputs run `on_mode_input`; in Mode, due timers run `on_timer`.
-    /// The map's lanes and grid become the match's.
+    /// Inputs, the players' mode inputs run `on_mode_input`; in Mode, due timers run `on_timer`,
+    /// then the tick's deaths run `on_unit_died`. The map's lanes and grid become the match's,
+    /// and the mode's `assist_window_ms` combat's.
     pub fn install(
         world: &mut World,
         schedule: &mut Schedule,
@@ -76,6 +81,11 @@ impl Mode {
         let rate = *world.resource::<TickRate>();
         let lanes = Mode::lanes(setup.map);
         let grid = setup.map.grid;
+        // A window past what ticks can count covers the whole match.
+        let assist_window = setup
+            .data
+            .assist_window_ms
+            .map(|ms| rate.ticks(ms).unwrap_or(Ticks::new(u64::MAX)));
         let book = {
             let mut host = world.non_send_mut::<ScriptHost>();
             ModeCtx::register(host.engine_mut());
@@ -83,6 +93,9 @@ impl Mode {
         };
         if let Some(grid) = grid {
             Vision::load_grid(world, grid, book.teams.count());
+        }
+        if let Some(window) = assist_window {
+            world.insert_resource(AssistWindow(window));
         }
         view.set_names(Rc::clone(&book.teams), lanes.shared_names());
         world.insert_resource(lanes);
@@ -96,8 +109,9 @@ impl Mode {
             mode_inputs
                 .in_set(SimSet::Inputs)
                 .after(UnitsSet::BeginTick)
+                .after(CombatSet::Respawn)
                 .before(OrdersSet::Orders),
-            run_timers.in_set(SimSet::Mode),
+            (run_timers, unit_deaths).chain().in_set(SimSet::Mode),
         ));
         registry.register_resource::<ModeState>();
         registry.register_resource::<Picks>();
@@ -206,7 +220,7 @@ impl Mode {
                 world.entity_mut(entity).insert(OnLane::new(lane));
             }
         }
-        if !ctx.book().schema.on_match_start {
+        if !ctx.book().schema.hooks.contains(Hook::OnMatchStart) {
             return Ok(());
         }
         let now = world.resource::<SimTick>().start();
@@ -225,7 +239,7 @@ fn mode_inputs(
     mut inputs: Local<'_, Vec<Input>>,
 ) {
     let ctx = world.non_send::<ModeCtx>().clone();
-    if !ctx.book().schema.on_mode_input {
+    if !ctx.book().schema.hooks.contains(Hook::OnModeInput) {
         return;
     }
     bodies.clear();
@@ -293,7 +307,7 @@ fn run_timers(world: &mut World) {
                 .data
                 .as_ref()
                 .map_or(Dynamic::UNIT, |data| data.to_dynamic(call.ctx.view()));
-            if call.ctx.book().schema.on_timer {
+            if call.ctx.book().schema.hooks.contains(Hook::OnTimer) {
                 let args = (call.ctx.clone(), name, data);
                 match call.run(Pool::Mode, Hook::OnTimer, args) {
                     Ok(()) => {}
@@ -306,6 +320,31 @@ fn run_timers(world: &mut World) {
             }
             call.batch.world().resource_mut::<Timers>().fire();
         }
+    });
+}
+
+/// Runs `on_unit_died` for each death of the tick, in the order they happened, from the mode
+/// pool: with the unit, its killer or `()`, and its assisters.
+fn unit_deaths(world: &mut World) {
+    let ctx = world.non_send::<ModeCtx>().clone();
+    if !ctx.book().schema.hooks.contains(Hook::OnUnitDied) || world.resource::<Deaths>().is_empty()
+    {
+        return;
+    }
+    let now = world.resource::<SimTick>().end();
+    world.resource_scope(|world, deaths: Mut<'_, Deaths>| {
+        Calls::batch(world, &ctx, now, |call| {
+            let handle = |id| Dynamic::from(Unit::new(id, call.ctx.view().clone()));
+            for death in deaths.iter() {
+                let killer = death.killer.map_or(Dynamic::UNIT, handle);
+                let assisters: Array = death.assisters.iter().map(|&id| handle(id)).collect();
+                let args = (call.ctx.clone(), handle(death.unit), killer, assisters);
+                if let Err(error) = call.run(Pool::Mode, Hook::OnUnitDied, args) {
+                    let error = CallError::from_script(error);
+                    call.batch.record(Some(death.unit), Hook::OnUnitDied, error);
+                }
+            }
+        });
     });
 }
 

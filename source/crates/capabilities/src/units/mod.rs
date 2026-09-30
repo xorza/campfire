@@ -10,6 +10,7 @@ use crate::scripts::script_failures::ScriptFailures;
 use crate::units::error::UnitTypeError;
 use crate::units::owner::Owner;
 use crate::units::script_view::View;
+use crate::units::spawn_point::SpawnPoint;
 use crate::units::team::Team;
 use crate::units::unit::Unit;
 use crate::units::unit_type::UnitType;
@@ -23,6 +24,7 @@ pub(crate) mod living_unit;
 pub(crate) mod owner;
 pub(crate) mod recent_attack;
 pub(crate) mod script_view;
+pub(crate) mod spawn_point;
 pub(crate) mod tag_set;
 pub(crate) mod team;
 pub(crate) mod team_set;
@@ -57,6 +59,7 @@ impl Units {
         let rate = *world.resource::<TickRate>();
         world.insert_non_send(View::new(rate));
         registry.register_component::<Owner>();
+        registry.register_component::<SpawnPoint>();
         registry.register_component::<Team>();
         registry.register_component::<UnitType>();
         let Some(MatchScripts { limits, players }) = scripts else {

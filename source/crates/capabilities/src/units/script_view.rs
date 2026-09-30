@@ -53,8 +53,10 @@ pub(crate) struct UnitRow {
     pub(crate) unit_type: Option<UnitType>,
     /// The player who controls it.
     pub(crate) owner: Option<PlayerSlot>,
-    /// Whether it is not dead; `combat` fills it, and the next two.
+    /// Whether it is not dead; `combat` fills it, and the next three.
     pub(crate) alive: bool,
+    /// Whether it stays when dead, for the mode to respawn.
+    pub(crate) stays: bool,
     pub(crate) target: Option<StableId>,
     pub(crate) attack_range: Option<Num>,
     /// The lane it walks or stands on; `navigation` fills it.
@@ -104,6 +106,7 @@ impl ScriptView {
                 pos,
                 team,
                 alive: true,
+                stays: false,
                 unit_type: unit.get::<UnitType>().copied(),
                 owner: unit.get::<Owner>().map(|owner| owner.slot()),
                 lane: None,

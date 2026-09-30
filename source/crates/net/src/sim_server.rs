@@ -1,13 +1,13 @@
 use bevy_app::{App, FixedUpdate, Plugin, RunFixedMainLoop, RunFixedMainLoopSystems, Update};
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{Changed, With, Without};
+use bevy_ecs::query::{Added, Changed, Has, With, Without};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::schedule::common_conditions::resource_exists;
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
-use campfire_capabilities::{Mode, Owner, SeenBy, Team};
+use campfire_capabilities::{Dead, Mode, Owner, SeenBy, Team};
 use campfire_package::ModePackages;
 use campfire_protocol::{Applied, PlayerSlot, ServerSeed, SessionLog};
 use campfire_runner::{Session, StartError};
@@ -17,7 +17,7 @@ use lightyear::prelude::{
     LocalTimeline, MessageReceiver, MessageSender, NetworkTarget, PredictionTarget, Replicate,
     VisibilityExt,
 };
-use tracing::{debug, trace, trace_span, warn};
+use tracing::{debug, info, trace, trace_span, warn};
 
 use crate::input_message::InputMessage;
 use crate::lobby::Lobby;
@@ -83,6 +83,7 @@ impl Plugin for SimServer {
                 run_sim_tick,
                 record_hash.run_if(resource_exists::<TickHashes>),
                 show_units,
+                report_deaths,
             )
                 .chain()
                 .run_if(sim_tick_due),
@@ -196,6 +197,21 @@ fn record_hash(world: &mut World) {
     let mut hashes = world.resource_mut::<TickHashes>();
     trace!(tick = hashes.0.len(), %hash, "hashed the state");
     hashes.0.push(hash);
+}
+
+/// Logs each unit that died in the tick just run.
+fn report_deaths(
+    tick: Res<'_, SimTick>,
+    died: Query<'_, '_, (&StableId, &Team, Has<Owner>), Added<Dead>>,
+) {
+    for (id, team, hero) in &died {
+        let (unit, team, tick) = (id.get(), team.index(), tick.start().get() - 1);
+        if hero {
+            info!(unit, team, tick, "a hero died");
+        } else {
+            debug!(unit, team, tick, "a unit died");
+        }
+    }
 }
 
 /// The units not replicated yet, with their owner if they have one.

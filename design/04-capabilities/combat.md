@@ -18,8 +18,9 @@ A unit has a team, a type of the core that every capability shares: its index in
 - **Damage** has an amount and a kind: `physical`, `magic` or `true`. The mode's `calc_damage` hook turns it into the final amount (armor, resistances); until scripts run, an attack deals its damage as is.
 - **Strikes of one tick apply together** in the Resolve stage, in the order of their source's stable id, so each follows from the state before any of them: two units can kill each other in one tick.
 - **Recent attackers.** Each strike records its source with its target, and the tick it landed in. A unit keeps each attacker once, with its last strike, and forgets one that no longer exists; `unit.recent_attackers(ms)` reads them.
-- **Death.** A unit at zero health dies at the end of Resolve. A unit type says whether it stays dead to respawn, as heroes do, or despawns, as creeps do. A dead unit takes no orders and is no target.
-- **Kill credit.** The source whose damage took the health to zero is the killer; the units that damaged the victim within the mode's `assist_window_ms` assisted. The mode receives both in `on_unit_died`.
+- **Death.** A unit at zero health dies at the end of Resolve. A unit type says whether it stays dead to respawn, as heroes do, or despawns, as creeps do; one that despawns goes at the end of the tick it died in, after the Mode stage saw it. A dead unit takes no orders and is no target.
+- **Kill credit.** The source whose damage took the health to zero is the killer; the other units that damaged the victim within the mode's `assist_window_ms` assisted, by stable id, and without a window no one assisted. The mode receives both in `on_unit_died`, in the Mode stage of the tick, in the order the units died.
+- **Respawn.** Each unit keeps the place it spawned at. `ctx.respawn(unit, ms)` brings a dead unit that stays back at the start of the tick that time later, rounded up and at least one tick after the end of the current one: at its spawn place, with full health and no attacker on record.
 
 ## Stats and modifiers
 

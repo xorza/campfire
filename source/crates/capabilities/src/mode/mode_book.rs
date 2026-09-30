@@ -23,6 +23,7 @@ use crate::units::by_type::ByType;
 use crate::units::lane::Lane;
 use crate::units::owner::Owner;
 use crate::units::script_view::View;
+use crate::units::spawn_point::SpawnPoint;
 use crate::units::team::Team;
 use crate::units::teams::Teams;
 use crate::units::unit_type::UnitType;
@@ -161,7 +162,7 @@ impl ModeBook {
         let kit = self
             .kit(unit_type)
             .expect("a unit type of the mode has a kit");
-        let mut unit = world.spawn((id, pos, unit_type, team, parts));
+        let mut unit = world.spawn((id, pos, SpawnPoint::new(pos), unit_type, team, parts));
         if let Some(combatant) = kit.combatant {
             combatant.insert(&mut unit);
         }

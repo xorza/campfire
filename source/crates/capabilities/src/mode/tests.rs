@@ -6,7 +6,7 @@ use bevy_ecs::entity::Entity;
 use campfire_content::PackagePath;
 use campfire_math::{Num, Vec3};
 use campfire_script::ScriptId;
-use campfire_sim::{Capability, EntityIndex, SimUpdate, Tick, TickInput, Ticks};
+use campfire_sim::{Capability, EntityIndex, SimUpdate, Tick, TickInput};
 
 use super::*;
 use crate::abilities::Abilities;
@@ -19,6 +19,9 @@ use crate::combat::combatant::Combatant;
 use crate::combat::dead::Dead;
 use crate::combat::health::Health;
 use crate::combat::on_death::OnDeath;
+use crate::combat::recent_attackers::RecentAttackers;
+use crate::combat::respawn::Respawn;
+use crate::combat::strikes::{Strike, Strikes};
 use crate::mode::hero_index::HeroIndex;
 use crate::mode::map_data::{LaneData, NeutralSpawnData, StructureData};
 use crate::mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
@@ -691,4 +694,94 @@ fn on_timer(ctx, name, data) {
     assert_eq!(due(&game), (None, false));
     // Both calls failed, so none counted.
     assert_eq!(game.field("count"), StateValue::Int(0));
+}
+
+#[test]
+fn a_death_reaches_the_mode_and_a_respawn_brings_the_unit_back_at_its_spawn() {
+    // The mode spawns as the test mode does, records each death, and respawns the dead 250 ms
+    // later: 3 ticks at 10 a second. A probe respawns the first unit with the tag it names.
+    let script = r#"
+fn on_match_start(ctx) {
+    for point in ctx.map.neutral_spawns {
+        ctx.spawn_unit(point.unit_type, "neutral", point.pos);
+    }
+    ctx.spawn_wave("a", "mid", ctx.p.wave);
+    ctx.spawn_wave("b", "mid", ["grunt"]);
+}
+
+fn on_unit_died(ctx, unit, killer, assisters) {
+    ctx.state.count += 1;
+    ctx.state.kind = unit.unit_type;
+    ctx.state.team = killer.team;
+    ctx.state.grunts = assisters.len();
+    ctx.state.lane = assisters[0].team;
+    ctx.respawn(unit, 250);
+}
+
+fn on_mode_input(ctx, player, name, value) {
+    ctx.respawn(ctx.units_tagged(value)[0], 100);
+}
+"#;
+    let mut game = Game::new(script, LIMITS);
+    // Units: the tower 0 of a, the neutral grunt 1 at (0, 0), a's grunts 2 and 3, b's grunt 4. The
+    // neutral grunt stands at (3, 0) when b's grunt strikes it for its 10 health, in tick 0; a's
+    // grunt 2 struck it in the same tick, within the window of 10 ticks.
+    let victim = game.entity(1);
+    *game.world.get_mut::<Position>(victim).unwrap() = at(3, 0);
+    game.world.insert_resource(AssistWindow(Ticks::new(10)));
+    let ids: Vec<_> = game
+        .world
+        .resource::<EntityIndex>()
+        .iter()
+        .map(|(id, _)| id)
+        .collect();
+    let (one, two, four) = (ids[1], ids[2], ids[4]);
+    game.world
+        .resource_scope(|world, index: Mut<'_, EntityIndex>| {
+            let mut attackers = world.get_mut::<RecentAttackers>(victim).unwrap();
+            attackers.record(two, Tick::new(0), &index);
+        });
+    game.world.resource_mut::<Strikes>().0.push(Strike {
+        source: four,
+        target: one,
+        amount: num(10),
+    });
+    game.tick(&[]);
+    // It died in tick 0 with killer 4 of b and one assister of a: the mode set its respawn for the
+    // end of tick 0, 1, plus 3 ticks: the start of tick 4.
+    let seen = ["count", "kind", "team", "grunts", "lane"].map(|name| game.field(name));
+    let text = |text: &str| StateValue::Text(text.to_owned());
+    assert_eq!(
+        seen,
+        [
+            StateValue::Int(1),
+            text("grunt"),
+            text("b"),
+            StateValue::Int(1),
+            text("a"),
+        ]
+    );
+    assert_eq!(
+        game.world.get::<Respawn>(victim),
+        Some(&Respawn { at: Tick::new(4) })
+    );
+    for _ in 1..4 {
+        game.tick(&[]);
+        assert!(game.world.entity(victim).contains::<Dead>());
+    }
+    game.tick(&[]);
+    assert!(!game.world.entity(victim).contains::<Dead>());
+    assert_eq!(game.world.get::<Position>(victim), Some(&at(0, 0)));
+    assert_eq!(game.world.get::<Health>(victim).unwrap().current(), num(10));
+
+    // A living unit, and a dead one whose type despawns, cannot respawn.
+    game.tick(&[(0, input("probe", "tower"))]);
+    assert_eq!(game.failures(), [Some(ApiError::RespawnAlive)]);
+    let tower = game.entity(0);
+    game.world
+        .entity_mut(tower)
+        .insert((Dead, OnDeath::Despawn));
+    game.tick(&[(0, input("probe", "tower"))]);
+    assert_eq!(game.failures(), [Some(ApiError::RespawnDespawns)]);
+    assert!(game.world.get_entity(tower).is_err());
 }

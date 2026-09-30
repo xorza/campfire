@@ -2,4 +2,6 @@ script = "scripts/mode.rhai"
 
 [params]
 wave_ms = 30000
+# A hero comes back at its spawn this long after it dies.
+respawn_ms = 5000
 wave = ["creep", "creep"]

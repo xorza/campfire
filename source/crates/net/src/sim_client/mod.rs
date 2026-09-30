@@ -1,23 +1,23 @@
 use std::ops::Range;
 
 use bevy_app::{App, FixedUpdate, Plugin, Update};
-use bevy_ecs::query::With;
+use bevy_ecs::query::{Added, Allow, Has, With};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::schedule::common_conditions::{not, resource_exists};
 use bevy_ecs::system::{Commands, Query, Res, ResMut, Single};
 use bevy_ecs::world::{Mut, World};
-use campfire_capabilities::Order;
+use campfire_capabilities::{Dead, Order};
 use campfire_math::SegmentSeed;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SignOnly};
 use campfire_protocol::{Delegation, DelegationTerms, InputChain, InputHash, SessionId};
 use campfire_sim::{
-    PlayerSlot, SimTick, SimUpdate, StateRegistry, Tick, TickInput, TickInputs, TickRate,
+    PlayerSlot, SimTick, SimUpdate, StableId, StateRegistry, Tick, TickInput, TickInputs, TickRate,
 };
 use lightyear::prelude::{
-    Client, LocalTimeline, MessageReceiver, MessageSender, Tick as NetTick, is_in_rollback,
+    Client, LocalTimeline, MessageReceiver, MessageSender, Predicted, Tick as NetTick,
+    is_in_rollback,
 };
-
 use tracing::{debug, info, warn};
 
 use crate::error::TermsMismatch;
@@ -181,7 +181,10 @@ impl Plugin for SimClient {
         });
         app.insert_resource(JoinState::Waiting);
         app.init_resource::<PendingOrders>();
-        app.add_systems(Update, (answer_offer, receive_match_start).chain());
+        app.add_systems(
+            Update,
+            (answer_offer, receive_match_start, report_deaths).chain(),
+        );
         app.add_systems(
             FixedUpdate,
             (send_orders.run_if(not(is_in_rollback)), run_predicted_tick)
@@ -236,6 +239,29 @@ fn receive_match_start(
                 "the match started"
             );
             commands.insert_resource(MatchClock::new(NetTick(start.start_tick)));
+        }
+    }
+}
+
+/// The units whose death the server's state just brought, and whether each is the client's own.
+type Died<'w, 's> =
+    Query<'w, 's, (&'static StableId, Has<Predicted>), (Added<Dead>, Allow<Unpredicted>)>;
+
+/// Logs each death the server's state brings, at the client's own tick, which runs ahead of the
+/// server's.
+fn report_deaths(
+    timeline: Res<'_, LocalTimeline>,
+    clock: Option<Res<'_, MatchClock>>,
+    died: Died<'_, '_>,
+) {
+    let tick = clock.and_then(|clock| clock.sim_tick(timeline.tick()));
+    for (id, own) in &died {
+        let unit = id.get();
+        let tick = tick.map(Tick::get);
+        if own {
+            info!(unit, tick, "learned that the player's own unit died");
+        } else {
+            debug!(unit, tick, "learned that a unit died");
         }
     }
 }

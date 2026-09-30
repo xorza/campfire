@@ -30,6 +30,10 @@ impl Meter {
         self.current.to_bits() == 0
     }
 
+    pub(crate) const fn fill(&mut self) {
+        self.current = self.max;
+    }
+
     /// Takes `amount`, which is not negative, down to 0 at the least.
     pub(crate) fn take(&mut self, amount: Num) {
         debug_assert!(

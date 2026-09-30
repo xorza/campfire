@@ -8,7 +8,6 @@ use campfire_sim::{Capability, IdAllocator, SimUpdate, Tick, TickRate, Ticks, Ty
 use super::*;
 use crate::capability_set::internals::TestMatch;
 use crate::combat::combatant::Combatant;
-use crate::units::recent_attack::RecentAttack;
 
 /// The MOBA's 30 ticks a second.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
@@ -284,11 +283,13 @@ fn every_combat_type_is_state_and_restores() {
             "combat.health",
             "combat.on_death",
             "combat.recent_attackers",
+            "combat.respawn",
             "sim.entities",
             "sim.id_allocator",
             "sim.position",
             "sim.tick",
             "units.owner",
+            "units.spawn_point",
             "units.team",
             "units.unit_type",
         ]
@@ -350,4 +351,102 @@ fn stats_out_of_their_limits_are_refused() {
     assert_eq!(stats(1, 2, Some(Num::ONE)), melee.ranged(Num::ONE));
     assert_eq!(stats(2, 2, None), None);
     assert_eq!(stats(1, 2, Some(Num::ZERO)), None);
+}
+
+#[test]
+fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn() {
+    // Victims of 130 health: a hero that stays, which the first, the killer and the slow one
+    // attack, and a creep that despawns, which the creep's three attack in the same way. The
+    // first and the killer strike every 5 ticks from tick 2, the slow one once, in tick 2, then
+    // 20 ticks later. Strikes land by source id: in tick 2 the three take each victim to 40; in
+    // tick 7 the first takes it to 10 and the killer to 0. The first struck 0 ticks before, the
+    // slow one 5: with a window of 4 ticks only the first assisted, with 5 both, and with no
+    // window no one.
+    let slow = combatant(100, 2, 2, 20, 30);
+    for (window, assisted) in [(None, 0), (Some(4), 1), (Some(5), 2)] {
+        let mut fight = Fight::new();
+        if let Some(ticks) = window {
+            fight.world.insert_resource(AssistWindow(Ticks::new(ticks)));
+        }
+        let team = Team::new(0);
+        let [first, killer] = [4, 6].map(|x| fight.unit(team, at(x, 0, 0), fighter()));
+        let slow_one = fight.unit(team, at(5, 0, 0), slow);
+        let stays = Combatant {
+            on_death: OnDeath::Stay,
+            ..combatant(130, 0, 0, 1, 0)
+        };
+        let hero = fight.unit(Team::new(1), at(5, 0, 1), stays);
+        let creep = fight.unit(Team::new(1), at(5, 0, -1), combatant(130, 0, 0, 1, 0));
+        let [creep_first, creep_killer] = [4, 6].map(|x| fight.unit(team, at(x, 0, -1), fighter()));
+        let creep_slow = fight.unit(team, at(5, 0, -1), slow);
+        for (attacker, target) in [
+            (first, hero),
+            (killer, hero),
+            (slow_one, hero),
+            (creep_first, creep),
+            (creep_killer, creep),
+            (creep_slow, creep),
+        ] {
+            fight.attack(attacker, target);
+        }
+        fight.run_until(7);
+        assert_eq!(fight.health(hero), Some(40), "{window:?}");
+        fight.run_until(8);
+        let deaths = fight.world.resource::<Deaths>();
+        let seen: Vec<_> = deaths
+            .iter()
+            .map(|death| (death.unit, death.killer, death.assisters.to_vec()))
+            .collect();
+        assert_eq!(
+            seen,
+            [
+                (hero, Some(killer), [first, slow_one][..assisted].to_vec()),
+                (
+                    creep,
+                    Some(creep_killer),
+                    [creep_first, creep_slow][..assisted].to_vec()
+                ),
+            ],
+            "{window:?}"
+        );
+        // The hero stays, dead; the creep is gone by the tick's end.
+        assert!(fight.get::<Dead>(hero).is_some());
+        assert_eq!(fight.health(creep), None);
+    }
+
+    // The hero comes back at the start of its respawn tick, 10, at its spawn point with full
+    // health and no attacker on record; the attackers dropped it when it died.
+    let mut fight = Fight::new();
+    let attacker = fight.unit(Team::new(0), at(4, 0, 0), fighter());
+    let stays = Combatant {
+        on_death: OnDeath::Stay,
+        ..combatant(30, 0, 0, 1, 0)
+    };
+    let hero = fight.unit(Team::new(1), at(5, 0, 0), stays);
+    let hero_entity = fight.world.resource::<EntityIndex>().get(hero).unwrap();
+    fight
+        .world
+        .entity_mut(hero_entity)
+        .insert(SpawnPoint::new(at(-3, 0, 2)));
+    fight.attack(attacker, hero);
+    fight.run_until(3);
+    assert!(fight.get::<Dead>(hero).is_some());
+    let at_tick = Tick::new(10);
+    fight
+        .world
+        .entity_mut(hero_entity)
+        .insert(Respawn { at: at_tick });
+    fight.run_until(10);
+    assert!(fight.get::<Dead>(hero).is_some());
+    fight.run_until(11);
+    assert!(fight.get::<Dead>(hero).is_none() && fight.get::<Respawn>(hero).is_none());
+    assert_eq!(fight.get::<Position>(hero), Some(at(-3, 0, 2)));
+    assert_eq!(fight.health(hero), Some(30));
+    assert_eq!(
+        fight
+            .get_ref::<RecentAttackers>(hero)
+            .map(|r| r.iter().count()),
+        Some(0)
+    );
+    assert_eq!(fight.state(attacker).target(), None);
 }

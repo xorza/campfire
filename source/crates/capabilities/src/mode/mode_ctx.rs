@@ -2,7 +2,7 @@ use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
 
 use campfire_script::rhai::{Array, Dynamic, Engine, INT, ImmutableString};
-use campfire_sim::{PlayerSlot, Position, Ticks};
+use campfire_sim::{PlayerSlot, Position, StableId, Ticks};
 
 use crate::mode::mode_book::ModeBook;
 use crate::mode::picks::Picks;
@@ -13,6 +13,7 @@ use crate::scripts::state_value::StateValue;
 use crate::units::lane::Lane;
 use crate::units::script_view::View;
 use crate::units::team::Team;
+use crate::units::unit::Unit;
 use crate::units::unit_type::UnitType;
 
 /// `ctx` in the mode's script: its params and state, the players' choices and resources, and
@@ -57,6 +58,10 @@ pub(crate) enum ModeEffect {
         lane: Lane,
         types: Vec<UnitType>,
     },
+    Respawn {
+        unit: StableId,
+        ticks: Ticks,
+    },
 }
 
 /// `ctx.p`: the mode's params, by name.
@@ -92,31 +97,7 @@ impl ModeCtx {
 
     /// The script API of the mode's hooks.
     pub(crate) fn register(engine: &mut Engine) {
-        engine
-            .register_type_with_name::<ModeParams>("ModeParams")
-            .register_indexer_get(
-                |params: &mut ModeParams, name: ImmutableString| -> Checked<Dynamic> {
-                    params
-                        .0
-                        .book
-                        .schema
-                        .param(&name)
-                        .ok_or_else(|| ApiError::UnknownParam.fail().into())
-                },
-            );
-        engine
-            .register_type_with_name::<ModeStateAccess>("ModeState")
-            .register_indexer_get(
-                |state: &mut ModeStateAccess, name: ImmutableString| -> Checked<Dynamic> {
-                    state.0.state(&name)
-                },
-            )
-            .register_indexer_set(
-                |state: &mut ModeStateAccess,
-                 name: ImmutableString,
-                 value: Dynamic|
-                 -> Checked<()> { state.0.set_state(&name, &value) },
-            );
+        ModeCtx::register_accessors(engine);
         engine
             .register_type_with_name::<ModeCtx>("ModeCtx")
             .register_get("p", |ctx: &mut ModeCtx| ModeParams(ctx.clone()))
@@ -185,6 +166,9 @@ impl ModeCtx {
                     ctx.timer(name, ms, repeat, &data)
                 },
             )
+            .register_fn("respawn", |ctx: &mut ModeCtx, unit: Unit, ms: INT| {
+                ctx.respawn(&unit, ms)
+            })
             .register_fn(
                 "add_resource",
                 |ctx: &mut ModeCtx, player: INT, name: &str, amount: INT| {
@@ -192,6 +176,49 @@ impl ModeCtx {
                 },
             );
         View::register_queries::<ModeCtx>(engine, ModeCtx::view);
+    }
+
+    /// Registers `ctx.p` and `ctx.state`, the types that read and write the mode's params and
+    /// state by name.
+    fn register_accessors(engine: &mut Engine) {
+        engine
+            .register_type_with_name::<ModeParams>("ModeParams")
+            .register_indexer_get(
+                |params: &mut ModeParams, name: ImmutableString| -> Checked<Dynamic> {
+                    params
+                        .0
+                        .book
+                        .schema
+                        .param(&name)
+                        .ok_or_else(|| ApiError::UnknownParam.fail().into())
+                },
+            );
+        engine
+            .register_type_with_name::<ModeStateAccess>("ModeState")
+            .register_indexer_get(
+                |state: &mut ModeStateAccess, name: ImmutableString| -> Checked<Dynamic> {
+                    state.0.state(&name)
+                },
+            )
+            .register_indexer_set(
+                |state: &mut ModeStateAccess,
+                 name: ImmutableString,
+                 value: Dynamic|
+                 -> Checked<()> { state.0.set_state(&name, &value) },
+            );
+    }
+
+    /// `ms` in ticks, rounded up, at least one.
+    fn ticks(&self, ms: INT) -> Checked<Ticks> {
+        let ms = u64::try_from(ms)
+            .ok()
+            .ok_or_else(|| ApiError::NegativeTime.fail())?;
+        Ok(self
+            .book
+            .rate
+            .ticks(ms)
+            .ok_or_else(|| ApiError::TimeTooLarge.fail())?
+            .max(Ticks::ONE))
     }
 
     fn team(&self, name: &str) -> Checked<Team> {
@@ -318,21 +345,31 @@ impl ModeCtx {
 
     /// Queues a timer `ms` milliseconds from the call, rounded up to whole ticks, at least one.
     fn timer(&self, name: &str, ms: INT, repeat: bool, data: &Dynamic) -> Checked<()> {
-        let ms = u64::try_from(ms)
-            .ok()
-            .ok_or_else(|| ApiError::NegativeTime.fail())?;
-        let ticks = self
-            .book
-            .rate
-            .ticks(ms)
-            .ok_or_else(|| ApiError::TimeTooLarge.fail())?
-            .max(Ticks::ONE);
+        let ticks = self.ticks(ms)?;
         let data = timer_data(data).map_err(ApiError::fail)?;
         self.frame().effects.push(ModeEffect::Timer {
             name: name.to_owned(),
             ticks,
             repeat,
             data,
+        });
+        Ok(())
+    }
+
+    /// Brings back `unit`, which is dead and stays when dead, `ms` after this call, in ticks
+    /// rounded up, at least one.
+    fn respawn(&self, unit: &Unit, ms: INT) -> Checked<()> {
+        let row = unit.row();
+        if row.alive {
+            return Err(ApiError::RespawnAlive.fail().into());
+        }
+        if !row.stays {
+            return Err(ApiError::RespawnDespawns.fail().into());
+        }
+        let ticks = self.ticks(ms)?;
+        self.frame().effects.push(ModeEffect::Respawn {
+            unit: row.id,
+            ticks,
         });
         Ok(())
     }

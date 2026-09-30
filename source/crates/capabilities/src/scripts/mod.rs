@@ -4,6 +4,7 @@
 pub(crate) mod ctx_entry;
 pub(crate) mod error;
 pub(crate) mod hook;
+pub(crate) mod hook_set;
 pub(crate) mod match_scripts;
 pub(crate) mod pool;
 pub(crate) mod script_batch;

@@ -73,6 +73,10 @@ pub enum ApiError {
     TimerData,
     /// A player's resource past what an integer holds.
     ResourceOverflow,
+    /// A unit to respawn that is alive.
+    RespawnAlive,
+    /// A unit to respawn whose type despawns when it dies.
+    RespawnDespawns,
 }
 
 impl CallError {
@@ -147,6 +151,8 @@ impl fmt::Display for ApiError {
             ApiError::WrongStateType => "value is not of the state field's type",
             ApiError::TimerData => "timer data is not a value state can hold",
             ApiError::ResourceOverflow => "player resource overflows",
+            ApiError::RespawnAlive => "unit to respawn is alive",
+            ApiError::RespawnDespawns => "unit to respawn despawns when it dies",
         })
     }
 }

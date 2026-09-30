@@ -1,5 +1,5 @@
 // Player 0 plays the walker from the start, and player 1, when there is one, the runner. The first
-// wave comes at the end of tick 0, then every wave_ms.
+// wave comes at the end of tick 0, then every wave_ms. A hero that dies respawns respawn_ms later.
 fn on_match_start(ctx) {
     ctx.choose_hero(0, "hero-walker");
     if ctx.players > 1 {
@@ -17,5 +17,11 @@ fn on_timer(ctx, name, data) {
     }
     if name == "first_wave" {
         ctx.timer("wave", ctx.p.wave_ms, true, ());
+    }
+}
+
+fn on_unit_died(ctx, unit, killer, assisters) {
+    if unit.is_hero {
+        ctx.respawn(unit, ctx.p.respawn_ms);
     }
 }

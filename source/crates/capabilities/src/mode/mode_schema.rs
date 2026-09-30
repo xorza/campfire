@@ -3,6 +3,7 @@ use campfire_script::{ScriptHost, ScriptId};
 
 use crate::mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
 use crate::scripts::hook::Hook;
+use crate::scripts::hook_set::HookSet;
 use crate::scripts::state_decl::StateType;
 use crate::scripts::state_value::StateValue;
 use crate::values::name_table::NameTable;
@@ -16,9 +17,7 @@ const RUN: usize = 0;
 pub(crate) struct ModeSchema {
     pub(crate) script: ScriptId,
     /// Which of the mode's hooks the engine calls its script defines.
-    pub(crate) on_match_start: bool,
-    pub(crate) on_mode_input: bool,
-    pub(crate) on_timer: bool,
+    pub(crate) hooks: HookSet,
     /// One run each.
     params: NameTable<ModeParam>,
     state: NameTable<StateType>,
@@ -40,9 +39,16 @@ impl ModeSchema {
         let defines = |hook: Hook| host.defines(script, hook.name(), hook.params());
         let mut schema = ModeSchema {
             script,
-            on_match_start: defines(Hook::OnMatchStart),
-            on_mode_input: defines(Hook::OnModeInput),
-            on_timer: defines(Hook::OnTimer),
+            hooks: HookSet::of(
+                [
+                    Hook::OnMatchStart,
+                    Hook::OnModeInput,
+                    Hook::OnTimer,
+                    Hook::OnUnitDied,
+                ]
+                .into_iter()
+                .filter(|&hook| defines(hook)),
+            ),
             params: NameTable::default(),
             state: NameTable::default(),
             inputs: NameTable::default(),

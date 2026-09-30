@@ -1,8 +1,9 @@
 use bevy_ecs::world::World;
 use campfire_script::ScriptError;
 use campfire_script::rhai::FuncArgs;
-use campfire_sim::Tick;
+use campfire_sim::{EntityIndex, Tick};
 
+use crate::combat::respawn::Respawn;
 use crate::mode::mode_ctx::{ModeCtx, ModeEffect};
 use crate::mode::mode_state::ModeState;
 use crate::mode::picks::Picks;
@@ -91,6 +92,12 @@ impl Calls<'_, '_> {
                 } => drop(book.spawn(world, unit_type, team, pos, ())),
                 ModeEffect::SpawnWave { team, lane, types } => {
                     book.spawn_wave(world, team, lane, &types);
+                }
+                ModeEffect::Respawn { unit, ticks } => {
+                    let entity = world.resource::<EntityIndex>().get(unit);
+                    let entity = entity.expect("a dead unit that stays is in the world");
+                    let at = self.now.after(ticks);
+                    world.entity_mut(entity).insert(Respawn { at });
                 }
             }
         }
