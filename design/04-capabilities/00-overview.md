@@ -50,7 +50,7 @@ The engine fixes the stages of a tick, and each capability puts its systems into
 
 ## Commands
 
-A player input's payload is a list of commands. Each command names the capability that owns it by the capability's index in the engine's fixed list, one byte, and holds that capability's format: an order, a `character` input frame, a mode input. The list only grows: a new capability takes the next index, so an old log decodes the same. One packet can carry a first-person frame and an order to a squad. A command of a capability the mode did not declare, or one that does not decode, is ignored: a client can send anything.
+A player input's payload is a list of commands. Each command names the capability that owns it by the capability's index in the engine's fixed list, one byte, and holds that capability's format: an order, a `character` input frame. A mode input goes to `mode`, the owner every match has and no manifest declares. The list only grows: a new capability takes the next index, so an old log decodes the same. One packet can carry a first-person frame and an order to a squad. A command of a capability the mode did not declare, or one that does not decode, is ignored: a client can send anything.
 
 ## Control
 

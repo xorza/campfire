@@ -49,7 +49,7 @@ fn raw(x: i64, y: i64, z: i64) -> Position {
 fn combatant(health: i64, range: i64, windup: u32, period: u32, damage: i64) -> Combatant {
     Combatant {
         health: Health::new(num(health)).unwrap(),
-        attack: AttackStats::new(num(range), windup, period, num(damage)).unwrap(),
+        attack: Some(AttackStats::new(num(range), windup, period, num(damage)).unwrap()),
         on_death: OnDeath::Stay,
     }
 }
@@ -88,6 +88,7 @@ impl Match {
             per_call: 20_000,
             input: 200_000,
             think: 200_000,
+            mode: 100_000,
         };
         Match::with(lanes, limits)
     }
@@ -598,7 +599,10 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
     game.tick(&[]);
     let failures = game.world.non_send::<ScriptFailures>().get();
     assert_eq!(failures.len(), 1);
-    assert_eq!((failures[0].unit, failures[0].hook), (thinker, Hook::Think));
+    assert_eq!(
+        (failures[0].unit, failures[0].hook),
+        (Some(thinker), Hook::Think)
+    );
     assert!(matches!(
         failures[0].error,
         CallError::Api(ApiError::OtherUnit)
@@ -614,6 +618,7 @@ fn a_unit_that_finds_the_think_pool_spent_goes_first_next_tick() {
         per_call: 1000,
         input: 1000,
         think: 1500,
+        mode: 100_000,
     };
     let mut game = Match::with(Lanes::default(), limits);
     let spinner = game.unit_type(&[], &[], None);
@@ -642,9 +647,9 @@ fn a_unit_that_finds_the_think_pool_spent_goes_first_next_tick() {
     assert_eq!(
         seen,
         [
-            (vec![first], Some(1), Some(0)),
-            (vec![second], Some(1), Some(2)),
-            (vec![first], Some(3), Some(2)),
+            (vec![Some(first)], Some(1), Some(0)),
+            (vec![Some(second)], Some(1), Some(2)),
+            (vec![Some(first)], Some(3), Some(2)),
         ]
     );
     for failure in game.world.non_send::<ScriptFailures>().get() {
@@ -658,7 +663,7 @@ fn a_unit_that_finds_the_think_pool_spent_goes_first_next_tick() {
 #[test]
 fn a_walker_goes_back_to_its_path_after_a_chase() {
     let path = [at(0, 0, 0), at(4, 0, 0), at(4, 0, 4)];
-    let mut game = Match::with_lanes(Lanes::new([&path[..]]));
+    let mut game = Match::with_lanes(Lanes::new([("lane", &path[..])]));
     let walker = (
         combatant(100, 1, 1, 5, 0).bundle(Team::new(0)),
         meter().bundle(),
@@ -687,7 +692,7 @@ fn a_walker_goes_back_to_its_path_after_a_chase() {
 #[test]
 fn a_walker_follows_its_path_in_its_direction() {
     let path = [at(0, 0, 0), at(4, 0, 0), at(4, 0, 4)];
-    let mut game = Match::with_lanes(Lanes::new([&path[..]]));
+    let mut game = Match::with_lanes(Lanes::new([("lane", &path[..])]));
     let path_walker = |team, direction| {
         (
             dummy(10).bundle(team),

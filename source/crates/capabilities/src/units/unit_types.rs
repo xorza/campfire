@@ -50,7 +50,7 @@ impl UnitTypes {
                 self.tag_names.push(name.as_str().into());
                 Tag::new(self.tag_names.len() - 1)
             });
-            if name == "hero" {
+            if name == UnitTypeData::HERO_TAG {
                 self.hero = Some(tag);
             }
             tags = tags.with(tag);

@@ -10,13 +10,21 @@ pub enum Relation {
 }
 
 impl Relation {
+    const ALL: [Relation; 3] = [Relation::Enemies, Relation::Allies, Relation::All];
+
     /// A filter's relation: `enemies`, `allies` or `all`.
     pub fn parse(text: &str) -> Option<Relation> {
-        match text {
-            "enemies" => Some(Relation::Enemies),
-            "allies" => Some(Relation::Allies),
-            "all" => Some(Relation::All),
-            _ => None,
+        Relation::ALL
+            .into_iter()
+            .find(|relation| relation.name() == text)
+    }
+
+    /// The relation as filters write it.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Relation::Enemies => "enemies",
+            Relation::Allies => "allies",
+            Relation::All => "all",
         }
     }
 

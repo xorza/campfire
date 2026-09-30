@@ -14,6 +14,7 @@ pub struct Position(Vec3);
 impl Position {
     /// 2²⁰ m.
     pub const BOUND: Num = Num::from_bits(1 << (20 + Num::FRAC_BITS));
+    pub const ORIGIN: Position = Position(Vec3::ZERO);
 
     /// `None` when a coordinate is beyond `BOUND`.
     pub const fn new(at: Vec3) -> Option<Position> {

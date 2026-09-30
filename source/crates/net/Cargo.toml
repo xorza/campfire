@@ -1,5 +1,6 @@
 [package]
 name = "campfire-net"
+version.workspace = true
 edition.workspace = true
 license.workspace = true
 
@@ -22,9 +23,6 @@ bevy_time = { workspace = true, optional = true }
 criterion = { workspace = true, optional = true }
 lightyear.workspace = true
 serde.workspace = true
-
-[dev-dependencies]
-campfire-verifier.workspace = true
 
 [[test]]
 name = "prototype"

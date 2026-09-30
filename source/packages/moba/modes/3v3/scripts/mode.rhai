@@ -8,7 +8,7 @@ fn on_mode_input(ctx, player, name, value) {
     }
     if name == "hero" && ctx.hero_available(player, value) {
         ctx.choose_hero(player, value);
-    } else if name == "spells" {
+    } else if name == "spells" && value.len() == 2 {
         ctx.choose_spells(player, value);
     }
 }

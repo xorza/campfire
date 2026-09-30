@@ -1,0 +1,14 @@
+# A test mode: one lane, a tower a side and waves of two creeps, with the one hero it depends on.
+name = "test-lane"
+version = "0.1.0"
+engine = "0.1.0"
+kind = "mode"
+capabilities = ["combat", "stats", "abilities", "projectiles", "orders", "navigation", "vision"]
+tick_hz = { min = 30, max = 30, default = 30 }
+teams = [{ name = "west", slots = 1 }, { name = "east", slots = 1 }]
+backends = { collision = "circles", pathfinding = "grid", visibility = "grid_fog" }
+max_move_speed = "7.5"
+script_limits = { per_call = 20000, input = 40000, think = 200000, mode = 20000 }
+
+[dependencies]
+hero-walker = { path = "../../heroes/walker" }

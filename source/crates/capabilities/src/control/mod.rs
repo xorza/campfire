@@ -1,6 +1,6 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Without;
-use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
+use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Local, Query, Res};
 use bevy_ecs::world::{Mut, World};
 use campfire_math::Vec3;
@@ -27,8 +27,9 @@ use crate::navigation::destination::Destination;
 use crate::navigation::lane_walker::LaneWalker;
 use crate::navigation::lanes::Lanes;
 use crate::units::error::CallError;
+use crate::units::hook::Hook;
 use crate::units::script_budgets::ScriptBudgets;
-use crate::units::script_failures::{Hook, ScriptFailure, ScriptFailures};
+use crate::units::script_failures::{ScriptFailure, ScriptFailures};
 use crate::units::script_view::View;
 use crate::units::unit_type::UnitType;
 
@@ -39,6 +40,13 @@ pub(crate) mod controller;
 pub(crate) mod error;
 pub(crate) mod next_think;
 pub(crate) mod order;
+
+/// Control's systems, for the mode to order its own against.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum ControlSet {
+    /// In `SimSet::Inputs`: the tick's orders become current.
+    Orders,
+}
 
 /// The `control` capability: who moves a unit. For now, of the orders kind: units that take
 /// orders from a player, or from the AI script of their type.
@@ -61,7 +69,9 @@ impl Control {
         world.insert_non_send(ctx);
         world.insert_resource(AiBook::default());
         schedule.add_systems((
-            apply_orders.in_set(SimSet::Inputs),
+            apply_orders
+                .in_set(SimSet::Inputs)
+                .in_set(ControlSet::Orders),
             think.in_set(SimSet::Think),
             (follow_paths, chase)
                 .chain()
@@ -244,7 +254,7 @@ fn think(world: &mut World, mut due: Local<'_, Vec<Due>>) {
                     .non_send_mut::<ScriptFailures>()
                     .0
                     .push(ScriptFailure {
-                        unit: id,
+                        unit: Some(id),
                         hook: Hook::Think,
                         error: CallError::from_script(error),
                     });

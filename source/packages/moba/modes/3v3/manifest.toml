@@ -2,10 +2,14 @@ name = "moba-3v3"
 version = "0.1.0"
 engine = "0.1.0"
 kind = "mode"
-kits = ["moba"]
+capabilities = ["combat", "stats", "abilities", "projectiles", "areas", "orders", "navigation", "vision"]
 tick_hz = { min = 20, max = 60, default = 30 }
 teams = [{ name = "north", slots = 3 }, { name = "south", slots = 3 }]
 backends = { collision = "circles", pathfinding = "grid", visibility = "grid_fog" }
+max_move_speed = "6.0"
+# A call's operations, and each pool's in a tick: a call for each of the 6 players, 10 AI calls,
+# 5 mode calls.
+script_limits = { per_call = 20000, input = 120000, think = 200000, mode = 100000 }
 
 # In the workspace, dependencies are paths; a built package names each by fingerprint.
 [dependencies]

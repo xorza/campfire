@@ -14,3 +14,8 @@ pub struct UnitTypeData {
     #[serde(default)]
     pub params: BTreeMap<String, Scalar>,
 }
+
+impl UnitTypeData {
+    /// The tag of heroes, which `unit.is_hero` tests: every hero carries it.
+    pub const HERO_TAG: &str = "hero";
+}

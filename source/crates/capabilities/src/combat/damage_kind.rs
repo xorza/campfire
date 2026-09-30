@@ -1,7 +1,7 @@
 /// What kind of damage an amount is. The mode's `calc_damage` weighs each kind against its own
 /// resistance.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum DamageKind {
+pub enum DamageKind {
     Physical,
     Magic,
     True,
@@ -9,7 +9,7 @@ pub(crate) enum DamageKind {
 
 impl DamageKind {
     /// A kind as scripts and data name it: `physical`, `magic` or `true`.
-    pub(crate) fn parse(text: &str) -> Option<DamageKind> {
+    pub fn parse(text: &str) -> Option<DamageKind> {
         match text {
             "physical" => Some(DamageKind::Physical),
             "magic" => Some(DamageKind::Magic),

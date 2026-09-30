@@ -4,7 +4,7 @@ resource = "mana"
 passive = "withering_touch"
 slots = ["grasping_wraps", "dread", "lash_out", "tomb_bind"]
 
-[attack]
+[combat.attack]
 range = "1.25"
 windup_ms = 300
 

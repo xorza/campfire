@@ -45,7 +45,7 @@ fn at(x: i64, y: i64, z: i64) -> Position {
 fn unit() -> Combatant {
     Combatant {
         health: Health::new(num(10)).unwrap(),
-        attack: AttackStats::new(num(2), 0, 1, Num::ZERO).unwrap(),
+        attack: Some(AttackStats::new(num(2), 0, 1, Num::ZERO).unwrap()),
         on_death: OnDeath::Stay,
     }
 }
@@ -65,6 +65,7 @@ impl Scene {
             per_call: 10_000,
             input: 100_000,
             think: 100_000,
+            mode: 100_000,
         };
         Units::install(&mut world, &mut schedule, &mut registry, limits);
         Combat::install(&mut world, &mut schedule, &mut registry);

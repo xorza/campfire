@@ -1,19 +1,21 @@
-use crate::combat::dead::Dead;
 use bevy_ecs::query::Has;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::Query;
 use bevy_ecs::world::World;
 use campfire_sim::{Position, SimSet, StateRegistry};
 
+use crate::combat::dead::Dead;
 use crate::navigation::destination::Destination;
 use crate::navigation::lane_walker::LaneWalker;
 use crate::navigation::lanes::Lanes;
 use crate::navigation::move_step::MoveStep;
+use crate::navigation::on_lane::OnLane;
 
 pub(crate) mod destination;
 pub(crate) mod lane_walker;
 pub(crate) mod lanes;
 pub(crate) mod move_step;
+pub(crate) mod on_lane;
 
 /// The `navigation` capability: units that walk to a destination, and the map's waypoint paths.
 #[derive(Debug)]
@@ -28,6 +30,7 @@ impl Navigation {
         registry.register_component::<Destination>();
         registry.register_component::<LaneWalker>();
         registry.register_component::<MoveStep>();
+        registry.register_component::<OnLane>();
     }
 }
 

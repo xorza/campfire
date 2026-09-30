@@ -4,7 +4,7 @@ resource = "mana"
 passive = "fair_wind"
 slots = ["cyclone", "gust", "wind_shield", "tempest"]
 
-[attack]
+[combat.attack]
 range = "4.75"
 windup_ms = 300
 projectile_speed = "12"

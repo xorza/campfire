@@ -18,6 +18,7 @@ use crate::combat::team::Team;
 
 pub(crate) mod attack_state;
 pub(crate) mod attack_stats;
+pub(crate) mod combat_data;
 pub(crate) mod combatant;
 pub(crate) mod damage_kind;
 pub(crate) mod dead;
@@ -167,15 +168,17 @@ fn apply_strikes(
 /// A unit at zero health dies: it stays, dead, or despawns, as its unit type says.
 fn die(
     mut commands: Commands<'_, '_>,
-    mut units: Query<'_, '_, (Entity, &Health, &OnDeath, &mut AttackState), Without<Dead>>,
+    mut units: Query<'_, '_, (Entity, &Health, &OnDeath, Option<&mut AttackState>), Without<Dead>>,
 ) {
-    for (entity, health, on_death, mut attack) in &mut units {
+    for (entity, health, on_death, attack) in &mut units {
         if !health.is_zero() {
             continue;
         }
         match on_death {
             OnDeath::Stay => {
-                attack.set_target(None);
+                if let Some(mut attack) = attack {
+                    attack.set_target(None);
+                }
                 commands.entity(entity).insert(Dead);
             }
             OnDeath::Despawn => commands.entity(entity).despawn(),

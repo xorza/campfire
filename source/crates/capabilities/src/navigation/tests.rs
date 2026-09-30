@@ -102,8 +102,13 @@ fn a_dead_unit_stays_and_forgets_its_destination() {
 
 #[test]
 fn lanes_count_waypoints_in_either_direction() {
-    let lanes = Lanes::new([&[at(0, 0, 0), at(1, 0, 0)][..], &[at(5, 0, 5)][..]]);
+    let lanes = Lanes::new([
+        ("near", &[at(0, 0, 0), at(1, 0, 0)][..]),
+        ("far", &[at(5, 0, 5)][..]),
+    ]);
     assert_eq!(lanes.count(), 2);
+    assert_eq!((lanes.named("far"), lanes.named("none")), (Some(1), None));
+    assert_eq!((lanes.name(0), lanes.name(1)), ("near", "far"));
     let walk = |lane, direction| {
         (0..3)
             .map(|index| lanes.waypoint(lane, index, direction))
@@ -131,7 +136,7 @@ fn every_navigation_type_is_state() {
     let entity = walk.world.resource::<EntityIndex>().get(unit).unwrap();
     walk.world
         .entity_mut(entity)
-        .insert(LaneWalker::start(0, PathDirection::Forward));
+        .insert((LaneWalker::start(0, PathDirection::Forward), OnLane::new(0)));
     let registry = &walk.registry;
     let mut per_type = Vec::new();
     let hash = registry.hash_by_type(&walk.world, &mut per_type);
@@ -142,6 +147,7 @@ fn every_navigation_type_is_state() {
             "navigation.destination",
             "navigation.lane_walker",
             "navigation.move_step",
+            "navigation.on_lane",
             "sim.entities",
             "sim.id_allocator",
             "sim.position",

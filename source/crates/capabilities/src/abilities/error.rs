@@ -3,13 +3,9 @@ use std::fmt;
 
 use campfire_script::ScriptError;
 
-use crate::abilities::ability_data::Targeting;
-
 /// Why an ability's data does not load. Packages are untrusted, so each is an expected failure.
 #[derive(Debug, Clone)]
 pub enum AbilityError {
-    /// A targeting the engine does not run yet: a point or a direction.
-    UnsupportedTargeting(Targeting),
     /// The ability's per-rank arrays have different lengths.
     RankCounts,
     /// The data names a script, but no source came with it, or the other way round.
@@ -23,9 +19,6 @@ pub enum AbilityError {
 impl fmt::Display for AbilityError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AbilityError::UnsupportedTargeting(targeting) => {
-                write!(f, "targeting {targeting:?} is not supported yet")
-            }
             AbilityError::RankCounts => f.write_str("per-rank arrays of different lengths"),
             AbilityError::ScriptMismatch => {
                 f.write_str("script named without a source, or a source for no script")

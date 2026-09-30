@@ -1,0 +1,116 @@
+# Two lanes, west and east, from the north base at z = -60 to the south base at z = 60, and the
+# jungle between them. Points are [x, z] in meters on the ground plane.
+
+[[lanes]]
+name = "west"
+points = [[-6, -50], [-36, -36], [-40, 0], [-36, 36], [-6, 50]]
+
+[[lanes]]
+name = "east"
+points = [[6, -50], [36, -36], [40, 0], [36, 36], [6, 50]]
+
+[spawns]
+north = [0, -60]
+south = [0, 60]
+
+[[structures]]
+unit_type = "core"
+team = "north"
+pos = [0, -54]
+
+[[structures]]
+unit_type = "inhibitor"
+team = "north"
+lane = "west"
+pos = [-9, -48]
+
+[[structures]]
+unit_type = "tower"
+team = "north"
+lane = "west"
+pos = [-21, -43]
+
+[[structures]]
+unit_type = "tower"
+team = "north"
+lane = "west"
+pos = [-38, -16]
+
+[[structures]]
+unit_type = "inhibitor"
+team = "north"
+lane = "east"
+pos = [9, -48]
+
+[[structures]]
+unit_type = "tower"
+team = "north"
+lane = "east"
+pos = [21, -43]
+
+[[structures]]
+unit_type = "tower"
+team = "north"
+lane = "east"
+pos = [38, -16]
+
+[[structures]]
+unit_type = "core"
+team = "south"
+pos = [0, 54]
+
+[[structures]]
+unit_type = "inhibitor"
+team = "south"
+lane = "west"
+pos = [-9, 48]
+
+[[structures]]
+unit_type = "tower"
+team = "south"
+lane = "west"
+pos = [-21, 43]
+
+[[structures]]
+unit_type = "tower"
+team = "south"
+lane = "west"
+pos = [-38, 16]
+
+[[structures]]
+unit_type = "inhibitor"
+team = "south"
+lane = "east"
+pos = [9, 48]
+
+[[structures]]
+unit_type = "tower"
+team = "south"
+lane = "east"
+pos = [21, 43]
+
+[[structures]]
+unit_type = "tower"
+team = "south"
+lane = "east"
+pos = [38, 16]
+
+[[neutral_spawns]]
+unit_type = "wolf"
+pos = [-18, -12]
+
+[[neutral_spawns]]
+unit_type = "wolf"
+pos = [18, -12]
+
+[[neutral_spawns]]
+unit_type = "wolf"
+pos = [-18, 12]
+
+[[neutral_spawns]]
+unit_type = "wolf"
+pos = [18, 12]
+
+[[neutral_spawns]]
+unit_type = "warden"
+pos = [0, 0]

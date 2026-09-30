@@ -24,7 +24,7 @@ fn at(x: i64, y: i64, z: i64) -> Position {
 fn combatant(health: i64, range: i64, windup: u32, period: u32, damage: i64) -> Combatant {
     Combatant {
         health: Health::new(num(health)).unwrap(),
-        attack: AttackStats::new(num(range), windup, period, num(damage)).unwrap(),
+        attack: Some(AttackStats::new(num(range), windup, period, num(damage)).unwrap()),
         on_death: OnDeath::Despawn,
     }
 }

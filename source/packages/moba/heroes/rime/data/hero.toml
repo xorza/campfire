@@ -4,7 +4,7 @@ resource = "mana"
 passive = "stillness"
 slots = ["chill_arrows", "fan_of_frost", "snow_owl", "glacier_arrow"]
 
-[attack]
+[combat.attack]
 range = "6.0"
 windup_ms = 230
 projectile_speed = "20"

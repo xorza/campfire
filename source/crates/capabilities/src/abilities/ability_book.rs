@@ -3,10 +3,12 @@ use campfire_script::{ScriptHost, ScriptId};
 use campfire_sim::TickRate;
 use serde::{Deserialize, Serialize};
 
-use crate::abilities::ability_data::{AbilityData, Param, Range, Ranked, Targeting};
+use crate::abilities::ability_data::{AbilityData, Range, Targeting};
 use crate::abilities::error::AbilityError;
 use crate::abilities::frame::Frame;
-use crate::units::script_failures::Hook;
+use crate::units::hook::Hook;
+use crate::units::param::Param;
+use crate::units::ranked::Ranked;
 
 /// The abilities a match loaded, times in ticks and scripts compiled. Package data, not state: a
 /// restore loads it from the packages, as a new match does.
@@ -46,18 +48,7 @@ impl AbilityBook {
         source: Option<&str>,
         rate: TickRate,
     ) -> Result<AbilityId, AbilityError> {
-        if matches!(data.targeting, Targeting::Point | Targeting::Direction) {
-            return Err(AbilityError::UnsupportedTargeting(data.targeting));
-        }
-        let mut ranks = [
-            data.range.as_ref().and_then(Ranked::ranks),
-            data.cooldown_ms.as_ref().and_then(Ranked::ranks),
-            data.cost.as_ref().and_then(Ranked::ranks),
-            data.cast_time_ms.as_ref().and_then(Ranked::ranks),
-        ]
-        .into_iter()
-        .chain(data.params.values().map(Param::ranks))
-        .flatten();
+        let mut ranks = data.rank_counts();
         if let Some(first) = ranks.next()
             && ranks.any(|count| count != first)
         {

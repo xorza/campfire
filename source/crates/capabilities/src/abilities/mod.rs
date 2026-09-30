@@ -11,7 +11,7 @@ use campfire_script::{Budget, ScriptHost, ScriptId};
 use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, TickRate};
 
 use crate::abilities::ability_book::{Ability, AbilityBook, AbilityId};
-use crate::abilities::ability_data::{AbilityData, Param, Range, Targeting};
+use crate::abilities::ability_data::{AbilityData, Range, Targeting};
 use crate::abilities::ability_slots::{AbilitySlots, CastTarget, Casting};
 use crate::abilities::error::AbilityError;
 use crate::abilities::frame::{Effect, Frame};
@@ -25,9 +25,11 @@ use crate::combat::strikes::{Strike, Strikes};
 use crate::combat::targets::Targets;
 use crate::combat::team::Team;
 use crate::units::error::CallError;
+use crate::units::hook::Hook;
+use crate::units::param::Param;
 use crate::units::scalar::Scalar;
 use crate::units::script_budgets::ScriptBudgets;
-use crate::units::script_failures::{Hook, ScriptFailure, ScriptFailures};
+use crate::units::script_failures::{ScriptFailure, ScriptFailures};
 use crate::units::script_view::View;
 use crate::units::unit::Unit;
 
@@ -253,7 +255,7 @@ fn resolve(
             .non_send_mut::<ScriptFailures>()
             .0
             .push(ScriptFailure {
-                unit: caster,
+                unit: Some(caster),
                 hook: Hook::OnCast,
                 error,
             });

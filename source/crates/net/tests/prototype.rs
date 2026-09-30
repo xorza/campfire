@@ -5,13 +5,12 @@
 use std::num::NonZeroU32;
 
 use bevy_app::App;
-use campfire_capabilities::{Action, Destination};
+use campfire_capabilities::{Action, Controller, Destination};
 use campfire_math::{Num, Vec3};
 use campfire_net::{LocalPair, PlayerLink, TickHashes};
 use campfire_protocol::{SeedChain, SessionLog};
-use campfire_runner::Session;
+use campfire_runner::{Runner, Session};
 use campfire_sim::{EntityIndex, Position};
-use campfire_verifier::Replay;
 use lightyear::prelude::{Predicted, PredictionMetrics, RollbackMode};
 
 const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
@@ -35,10 +34,13 @@ struct Hero {
     destination: Destination,
 }
 
-/// The one hero in `app`.
+/// The one hero in `app`: the one unit under a player's control.
 fn hero(app: &App) -> Hero {
     let world = app.world();
-    let (_, entity) = world.resource::<EntityIndex>().iter().next().unwrap();
+    let mut units = world.resource::<EntityIndex>().iter();
+    let (_, entity) = units
+        .find(|&(_, entity)| world.entity(entity).contains::<Controller>())
+        .unwrap();
     let hero = world.entity(entity);
     Hero {
         position: *hero.get::<Position>().unwrap(),
@@ -94,19 +96,20 @@ fn server_and_replay_agree_on_every_tick() {
             0
         );
         server_world.resource_mut::<Session>().reveal_seed();
-        let live = server_world.resource::<TickHashes>().get();
+        let live = server_world.resource::<TickHashes>().get().to_vec();
         assert_eq!(live.len(), MATCH_FRAMES);
         let mut file = Vec::new();
         server_world.resource::<Session>().log().encode(&mut file);
-        let mut replay = Replay::new(SessionLog::decode(&file).unwrap()).unwrap();
+        let decoded = SessionLog::decode(&file).unwrap();
+        let seed = decoded.revealed_seed().unwrap();
+        let mut replay = Runner::new(decoded.rewound(), seed, pair.packages()).unwrap();
         for (tick, live) in live.iter().enumerate() {
-            assert!(replay.run_tick());
-            assert_eq!(
-                replay.runner().state_hash(),
-                *live,
-                "{rollback:?}, tick {tick}"
-            );
+            replay.run_tick();
+            assert_eq!(replay.state_hash(), *live, "{rollback:?}, tick {tick}");
         }
-        assert!(!replay.run_tick());
+        assert_eq!(
+            replay.log().next_tick(),
+            u64::try_from(MATCH_FRAMES).unwrap()
+        );
     }
 }

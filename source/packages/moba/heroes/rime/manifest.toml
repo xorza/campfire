@@ -2,4 +2,3 @@ name = "hero-rime"
 version = "0.1.0"
 engine = "0.1.0"
 kind = "hero"
-kits = ["moba"]

@@ -10,6 +10,7 @@ pub(crate) struct ScriptBudgets {
     limits: ScriptLimits,
     pub(crate) input: Budget,
     pub(crate) think: Budget,
+    pub(crate) mode: Budget,
 }
 
 impl ScriptBudgets {
@@ -18,6 +19,7 @@ impl ScriptBudgets {
             limits,
             input: Budget::new(limits.input),
             think: Budget::new(limits.think),
+            mode: Budget::new(limits.mode),
         }
     }
 

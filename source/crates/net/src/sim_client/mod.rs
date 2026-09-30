@@ -7,11 +7,10 @@ use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::schedule::common_conditions::{not, resource_exists};
 use bevy_ecs::system::{Commands, Query, Res, ResMut, Single};
 use bevy_ecs::world::{Mut, World};
-use campfire_capabilities::{Combat, Control, Navigation, Order, Units};
+use campfire_capabilities::{Combat, Control, Navigation, Order, ScriptLimits, Units};
 use campfire_math::SegmentSeed;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SignOnly};
 use campfire_protocol::{InputChain, InputHash, PlayerSlot, SessionId, SessionTerms};
-use campfire_runner::StandInMode;
 use campfire_sim::{SimTick, SimUpdate, StateRegistry, TickInput, TickInputs, TickRate};
 use lightyear::prelude::{
     Client, LocalTimeline, MessageReceiver, MessageSender, Tick, is_in_rollback,
@@ -24,6 +23,13 @@ use crate::net_protocol::InputChannel;
 
 /// A client never holds the segment seed: it predicts movement, never a random outcome.
 const PREDICTION_SEED: SegmentSeed = SegmentSeed::new([0; 32]);
+/// A client runs no scripts: it holds no unit type with a script.
+const CLIENT_LIMITS: ScriptLimits = ScriptLimits {
+    per_call: 1,
+    input: 1,
+    think: 1,
+    mode: 1,
+};
 /// BIP-340's auxiliary randomness for the chain-head signatures. `net` has no OS randomness yet;
 /// without it BIP-340 signs deterministically, which stays secure and gives up only the added
 /// hardening against side channels.
@@ -89,12 +95,7 @@ impl Plugin for SimClient {
         // A client hashes no state, so the registry the capabilities fill is not kept.
         let mut state = StateRegistry::new();
         // A client predicts only its own player's units.
-        Units::install(
-            world,
-            &mut schedule,
-            &mut state,
-            StandInMode::script_limits(1),
-        );
+        Units::install(world, &mut schedule, &mut state, CLIENT_LIMITS);
         Combat::install(world, &mut schedule, &mut state);
         Navigation::install(world, &mut schedule, &mut state);
         Control::install(world, &mut schedule, &mut state);

@@ -3,11 +3,17 @@
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 
 mod error;
+mod load_check;
+mod mode_packages;
+mod package;
 mod runner;
+mod script_facts;
 mod session;
-mod stand_in_mode;
 
-pub use error::StartError;
+pub use error::{LoadError, LoadProblem, Place, Pool, StartError};
+pub use mode_packages::ModePackages;
 pub use runner::Runner;
 pub use session::Session;
-pub use stand_in_mode::StandInMode;
+
+/// The tag of this engine release: what a package targets and a session's terms name.
+pub const RELEASE: &str = env!("CARGO_PKG_VERSION");

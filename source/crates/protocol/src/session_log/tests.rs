@@ -18,6 +18,9 @@ const TICK_HZ: NonZeroU32 = NonZeroU32::new(300).unwrap();
 /// Two segments: the root `[5; 32]` is segment 1's seed, and its hash segment 0's.
 const SEED_CHAIN: SeedChain = SeedChain::new([5; 32], NonZeroU32::new(2).unwrap());
 const CONTRIBUTIONS: [[u8; 32]; 2] = [[6; 32], [7; 32]];
+const RELEASE: &str = "0.1.0";
+const MODE: [u8; 32] = [51; 32];
+const DEPENDENCIES: [[u8; 32]; 2] = [[52; 32], [53; 32]];
 /// BIP-340 signing without auxiliary randomness is deterministic, so every run signs alike.
 const AUX: [u8; 32] = [0; 32];
 
@@ -54,6 +57,9 @@ fn terms() -> SessionTerms {
         max_payload_len: MAX_PAYLOAD_LEN,
         max_inputs_per_tick: MAX_INPUTS_PER_TICK,
         seed_commitment: SEED_CHAIN.commitment(),
+        release: RELEASE.to_owned(),
+        mode: MODE,
+        dependencies: DEPENDENCIES.to_vec(),
     }
 }
 
@@ -501,7 +507,7 @@ fn a_delegation_for_another_server_or_session_is_refused() {
 
     // The session id hashes the terms, so a change to any of them leaves every delegation
     // naming another session.
-    let changes: [fn(&mut SessionTerms); 7] = [
+    let changes: [fn(&mut SessionTerms); 11] = [
         |terms| terms.server_key[0] ^= 1,
         |terms| terms.tick_hz = NonZeroU32::new(301).unwrap(),
         |terms| terms.max_input_delay += 1,
@@ -509,6 +515,10 @@ fn a_delegation_for_another_server_or_session_is_refused() {
         |terms| terms.max_payload_len += 1,
         |terms| terms.max_inputs_per_tick += 1,
         |terms| terms.seed_commitment = SeedChain::new([6; 32], NonZeroU32::MIN).commitment(),
+        |terms| terms.release.push('1'),
+        |terms| terms.mode[31] ^= 1,
+        |terms| terms.dependencies[1][0] ^= 1,
+        |terms| terms.dependencies.swap(0, 1),
     ];
     for change in changes {
         let mut other = header();
@@ -538,7 +548,13 @@ fn a_delegation_for_another_server_or_session_is_refused() {
         .update(&2_u64.to_le_bytes())
         .update(&4_u32.to_le_bytes())
         .update(&2_u32.to_le_bytes())
-        .update(SEED_CHAIN.commitment().as_bytes());
+        .update(SEED_CHAIN.commitment().as_bytes())
+        .update(&5_u64.to_le_bytes())
+        .update(b"0.1.0")
+        .update(&[51; 32])
+        .update(&2_u64.to_le_bytes())
+        .update(&[52; 32])
+        .update(&[53; 32]);
     assert_eq!(session_id().as_bytes(), spelled.finalize().as_bytes());
 }
 
@@ -729,6 +745,9 @@ fn frame(
     put(&mut bytes, &terms.max_payload_len);
     put(&mut bytes, &terms.max_inputs_per_tick);
     put(&mut bytes, &terms.seed_commitment);
+    put(&mut bytes, terms.release.as_str());
+    put(&mut bytes, &terms.mode);
+    put(&mut bytes, &terms.dependencies);
     put(&mut bytes, &u32::try_from(header.players.len()).unwrap());
     for delegation in &header.players {
         put(&mut bytes, delegation.json());
@@ -837,6 +856,14 @@ fn a_log_file_has_its_layout() {
         // payload length 4, inputs per tick 2.
         &[0xAC, 0x02, 2, 2, 4, 2],
         SEED_CHAIN.commitment().as_bytes(),
+        // The release as a length and UTF-8, the mode's fingerprint, and the count and
+        // fingerprints of its 2 dependencies.
+        &[5],
+        b"0.1.0",
+        &[51; 32],
+        &[2],
+        &[52; 32],
+        &[53; 32],
         // 2 players: the delegation's JSON as a length and UTF-8.
         &[2],
         &varint(first.json().len()),

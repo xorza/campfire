@@ -1,0 +1,27 @@
+name = "Walker"
+role = "test"
+resource = "mana"
+slots = ["first", "second", "third", "fourth"]
+
+[combat.attack]
+range = "1.25"
+windup_ms = 266
+
+[stats]
+health = { base = 600 }
+resource = { base = 100 }
+attack_damage = { base = 60 }
+attack_speed = { base = "1.5" }
+move_speed = { base = "7.5" }
+
+[abilities.first]
+targeting = "none"
+
+[abilities.second]
+targeting = "none"
+
+[abilities.third]
+targeting = "none"
+
+[abilities.fourth]
+targeting = "none"

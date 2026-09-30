@@ -35,7 +35,7 @@ fn shooter() -> Combatant {
     let melee = AttackStats::new(num(8), 2, 10, num(30)).unwrap();
     Combatant {
         health: Health::new(num(100)).unwrap(),
-        attack: melee.ranged(half()).unwrap(),
+        attack: Some(melee.ranged(half()).unwrap()),
         on_death: OnDeath::Stay,
     }
 }
@@ -44,7 +44,7 @@ fn shooter() -> Combatant {
 fn target() -> Combatant {
     Combatant {
         health: Health::new(num(100)).unwrap(),
-        attack: AttackStats::new(Num::ZERO, 0, 1, Num::ZERO).unwrap(),
+        attack: Some(AttackStats::new(Num::ZERO, 0, 1, Num::ZERO).unwrap()),
         on_death: OnDeath::Stay,
     }
 }

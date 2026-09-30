@@ -47,6 +47,22 @@ impl Unit {
                     .ok_or_else(|| ApiError::NoAttack.fail().into())
             })
             .register_get("params", |unit: &mut Unit| UnitParams(unit.clone()))
+            .register_get("team", |unit: &mut Unit| {
+                unit.view.team_name(unit.row().team)
+            })
+            .register_get("lane", |unit: &mut Unit| {
+                unit.view.lane_name(unit.row().extras.lane)
+            })
+            .register_get("owner", |unit: &mut Unit| {
+                unit.row()
+                    .extras
+                    .owner
+                    .map_or(Dynamic::UNIT, |slot| Dynamic::from_int(INT::from(slot)))
+            })
+            .register_fn("has_tag", |unit: &mut Unit, name: &str| -> Checked<bool> {
+                let tag = unit.view.tag(name).map_err(ApiError::fail)?;
+                Ok(unit.view.has_tag(&unit.row(), tag))
+            })
             .register_fn("is_enemy_of", |unit: &mut Unit, other: Unit| {
                 unit.row().team.is_enemy_of(other.row().team)
             })

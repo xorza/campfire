@@ -9,7 +9,6 @@ use campfire_script::{NumError, ScriptError};
 use campfire_sim::{IdAllocator, SimUpdate, TickInput, TickInputs};
 
 use super::*;
-use crate::abilities::ability_data::{Ranked, Scaling};
 use crate::abilities::ability_slots::AbilitySlot;
 use crate::combat::Combat;
 use crate::combat::attack_stats::AttackStats;
@@ -23,6 +22,8 @@ use crate::control::order::{Action, Order};
 use crate::navigation::Navigation;
 use crate::units::Units;
 use crate::units::error::ApiError;
+use crate::units::param::Scaling;
+use crate::units::ranked::Ranked;
 use crate::units::relation::Relation;
 use crate::units::script_limits::ScriptLimits;
 use crate::units::unit_type_data::UnitTypeData;
@@ -34,6 +35,7 @@ const LIMITS: ScriptLimits = ScriptLimits {
     per_call: 10_000,
     input: 100_000,
     think: 100_000,
+    mode: 100_000,
 };
 const LASH_OUT: &str = include_str!("../../../../packages/moba/heroes/husk/scripts/lash_out.rhai");
 
@@ -53,7 +55,7 @@ fn at(x: Num, y: Num, z: Num) -> Position {
 fn combatant(health: i64) -> Combatant {
     Combatant {
         health: Health::new(num(health)).unwrap(),
-        attack: AttackStats::new(Num::ZERO, 0, 1, Num::ZERO).unwrap(),
+        attack: Some(AttackStats::new(Num::ZERO, 0, 1, Num::ZERO).unwrap()),
         on_death: OnDeath::Stay,
     }
 }
@@ -69,6 +71,17 @@ fn lash_out() -> AbilityData {
         cooldown_ms: Some(Ranked::PerRank(vec![10_000, 9000, 8000, 7000, 6000])),
         cost: Some(Ranked::One(35)),
         cast_time_ms: None,
+        clamp_to_range: false,
+        toggle: None,
+        channel: None,
+        hold: None,
+        charges: None,
+        charge: None,
+        passive_modifier: None,
+        passive_while_ready: false,
+        projectile: None,
+        area: None,
+        projectile_state: BTreeMap::new(),
         params: BTreeMap::from([
             (
                 "radius".to_owned(),
@@ -102,6 +115,17 @@ fn strike() -> AbilityData {
         cooldown_ms: Some(Ranked::One(1001)),
         cost: Some(Ranked::One(10)),
         cast_time_ms: None,
+        clamp_to_range: false,
+        toggle: None,
+        channel: None,
+        hold: None,
+        charges: None,
+        charge: None,
+        passive_modifier: None,
+        passive_while_ready: false,
+        projectile: None,
+        area: None,
+        projectile_state: BTreeMap::new(),
         params: BTreeMap::from([("damage".to_owned(), Param::Value(Scalar::Int(50)))]),
     }
 }
@@ -363,7 +387,7 @@ fn a_failed_script_changes_nothing_and_fails_the_same_way_everywhere() {
                 game.cast(caster, CastTarget::None);
                 let failures = game.failures();
                 assert_eq!(failures.len(), 1, "{script}");
-                assert_eq!(failures[0].unit, caster);
+                assert_eq!(failures[0].unit, Some(caster));
                 assert_eq!(failures[0].hook, Hook::OnCast);
                 assert!(expected(&failures[0].error), "{:?}", failures[0].error);
                 let left = game.world.resource::<ScriptBudgets>().input.left();
@@ -398,15 +422,9 @@ fn an_ability_loads_only_when_its_data_holds() {
     unscripted.script = None;
     let mut forever = lash_out();
     forever.cooldown_ms = Some(Ranked::One(u64::MAX));
-    let cases: [(AbilityData, Option<&str>, fn(&AbilityError) -> bool); 5] = [
+    let cases: [(AbilityData, Option<&str>, fn(&AbilityError) -> bool); 4] = [
         (uneven, Some(LASH_OUT), |error| {
             matches!(error, AbilityError::RankCounts)
-        }),
-        (aimed, Some(LASH_OUT), |error| {
-            matches!(
-                error,
-                AbilityError::UnsupportedTargeting(Targeting::Direction)
-            )
         }),
         (unscripted, Some(LASH_OUT), |error| {
             matches!(error, AbilityError::ScriptMismatch)
@@ -427,6 +445,8 @@ fn an_ability_loads_only_when_its_data_holds() {
         Err(AbilityError::Script(ScriptError::Compile(_)))
     ));
     assert!(load(&mut game, &lash_out(), Some(LASH_OUT)).is_ok());
+    // A direction loads, as every targeting does; no cast can aim one yet.
+    assert!(load(&mut game, &aimed, Some(LASH_OUT)).is_ok());
 
     // A script may serve only the ability's modifiers: a cast of rank 1 in tick 0 then runs no
     // script, and spends 35 of 100 and its 10 000 ms, 300 ticks at 30 a second.

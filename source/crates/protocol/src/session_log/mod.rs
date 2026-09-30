@@ -405,6 +405,9 @@ impl SessionLog {
         put(out, &terms.max_payload_len);
         put(out, &terms.max_inputs_per_tick);
         put(out, &terms.seed_commitment);
+        put(out, terms.release.as_str());
+        put(out, &terms.mode);
+        put(out, &terms.dependencies);
         put(out, &offset(self.header.players.len()));
         for delegation in &self.header.players {
             put(out, delegation.json());
@@ -550,6 +553,9 @@ fn take_header(rest: &mut &[u8]) -> Result<SessionHeader, LogError> {
         max_payload_len: take(rest)?,
         max_inputs_per_tick: take(rest)?,
         seed_commitment: take(rest)?,
+        release: take::<&str>(rest)?.to_owned(),
+        mode: take(rest)?,
+        dependencies: take(rest)?,
     };
     let count: u32 = take(rest)?;
     let mut players = Vec::new();

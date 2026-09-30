@@ -3,6 +3,7 @@ use campfire_protocol::{Applied, ChainSignature, InputError, PlayerInput, Server
 use campfire_sim::StateHash;
 
 use crate::error::StartError;
+use crate::mode_packages::ModePackages;
 use crate::session::Session;
 
 /// A match in a bare `World`, with no network layer: what a verifier replays a log in.
@@ -13,9 +14,13 @@ pub struct Runner {
 
 impl Runner {
     /// See `Session::start`.
-    pub fn new(log: SessionLog, server_seed: ServerSeed) -> Result<Runner, StartError> {
+    pub fn new(
+        log: SessionLog,
+        server_seed: ServerSeed,
+        packages: &ModePackages,
+    ) -> Result<Runner, StartError> {
         let mut world = World::new();
-        Session::start(&mut world, log, server_seed)?;
+        Session::start(&mut world, log, server_seed, packages)?;
         Ok(Runner { world })
     }
 

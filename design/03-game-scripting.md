@@ -22,8 +22,9 @@ A game mode is one content package.
 ```
 my-mode/
   manifest.toml       id, version, engine release, capabilities used, dependencies (by fingerprint),
-                      teams and slots, tick-rate range, collision, pathfinding and visibility backends
-  map/                map data: geometry or grid, spawn points, structures
+                      teams and slots, tick-rate range, collision, pathfinding and visibility backends,
+                      move speed cap, script pools
+  map/                map data: geometry or grid, lanes, spawn points, structures
   data/               unit types, abilities, weapons: one section per capability
   scripts/            game scripts (.rhai): mode rules, AI, capability hooks
   client/             presentation scripts (.rhai)

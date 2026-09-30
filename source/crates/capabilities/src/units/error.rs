@@ -39,6 +39,8 @@ pub enum ApiError {
     UnknownTag,
     NegativeRadius,
     NegativeTime,
+    /// A time too long to count in ticks.
+    TimeTooLarge,
     /// A damage kind that is not `physical`, `magic` or `true`.
     UnknownDamageKind,
     NegativeDamage,
@@ -50,6 +52,36 @@ pub enum ApiError {
     OtherUnit,
     /// An attack order on a unit that is not a living enemy.
     NotAnEnemy,
+    /// A team the mode does not have.
+    UnknownTeam,
+    /// A unit type the mode does not have.
+    UnknownUnitType,
+    /// A lane the map does not have.
+    UnknownLane,
+    /// A team whose units walk no lane: only the first two teams walk each lane, from their own
+    /// end.
+    NoLaneEnd,
+    /// A team with no one enemy team: `enemy_team` needs a mode of two teams.
+    NoEnemyTeam,
+    /// A player slot the session does not have.
+    UnknownPlayer,
+    /// A hero the mode does not depend on.
+    UnknownHero,
+    /// A hero another player chose.
+    HeroTaken,
+    /// A spell the mode does not depend on.
+    UnknownSpell,
+    /// A spell chosen twice.
+    RepeatedSpell,
+    /// A field of the mode's state it does not declare.
+    UnknownState,
+    /// A value not of its state field's type.
+    WrongStateType,
+    /// Timer data that is not `()`, a bool, an integer, a `Num`, a string, a unit, a list of
+    /// units or a position.
+    TimerData,
+    /// A player's resource past what an integer holds.
+    ResourceOverflow,
 }
 
 impl CallError {
@@ -114,12 +146,27 @@ impl fmt::Display for ApiError {
             ApiError::UnknownTag => "tag is not declared by any unit type",
             ApiError::NegativeRadius => "radius is negative",
             ApiError::NegativeTime => "time is negative",
+            ApiError::TimeTooLarge => "time is too long to count in ticks",
             ApiError::UnknownDamageKind => "damage kind is not physical, magic or true",
             ApiError::NegativeDamage => "damage is negative",
             ApiError::IntegerBeyondNum => "integer is beyond a Num",
             ApiError::NoAttack => "unit has no attack",
             ApiError::OtherUnit => "an AI orders only the unit that thinks",
             ApiError::NotAnEnemy => "target is not a living enemy",
+            ApiError::UnknownTeam => "team is not one of the mode's",
+            ApiError::UnknownUnitType => "unit type is not one of the mode's",
+            ApiError::UnknownLane => "lane is not one of the map's",
+            ApiError::NoLaneEnd => "team has no end of the lanes",
+            ApiError::NoEnemyTeam => "team has no one enemy team",
+            ApiError::UnknownPlayer => "player is not in the session",
+            ApiError::UnknownHero => "hero is not one the mode depends on",
+            ApiError::HeroTaken => "hero is another player's choice",
+            ApiError::UnknownSpell => "spell is not one the mode depends on",
+            ApiError::RepeatedSpell => "spell is chosen twice",
+            ApiError::UnknownState => "state field is not declared",
+            ApiError::WrongStateType => "value is not of the state field's type",
+            ApiError::TimerData => "timer data is not a value state can hold",
+            ApiError::ResourceOverflow => "player resource overflows",
         })
     }
 }

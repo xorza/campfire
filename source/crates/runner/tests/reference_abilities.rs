@@ -6,8 +6,8 @@ use std::num::NonZeroU32;
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::world::World;
 use campfire_capabilities::{
-    Abilities, AbilitySlots, AbilityTables, Action, AttackStats, CastTarget, Combat, Combatant,
-    Control, Controller, Health, Navigation, OnDeath, Order, Param, Range, Ranked, ResourcePool,
+    Abilities, AbilitySlots, Action, AttackStats, CastTarget, Combat, Combatant, Control,
+    Controller, Health, HeroData, Navigation, OnDeath, Order, Param, Range, Ranked, ResourcePool,
     Scalar, Scaling, ScriptLimits, Targeting, Team, Units,
 };
 use campfire_content::{PackageDir, PackagePath};
@@ -29,8 +29,8 @@ fn hero(name: &str) -> PackageDir {
     ))
 }
 
-/// The abilities of the hero `name`, as its data file declares them.
-fn abilities(name: &str) -> AbilityTables {
+/// The hero `name`, as its data file declares it.
+fn abilities(name: &str) -> HeroData {
     let path = PackagePath::parse("data/hero.toml").unwrap();
     hero(name).read_data(&path).unwrap()
 }
@@ -44,11 +44,12 @@ fn spawn(world: &mut World, team: u8, x: i64, parts: impl Bundle) -> StableId {
     let id = world.resource_mut::<IdAllocator>().allocate();
     let combatant = Combatant {
         health: Health::new(num(500)).unwrap(),
-        attack: AttackStats::new(Num::ZERO, 0, 1, Num::ZERO).unwrap(),
+        attack: Some(AttackStats::new(Num::ZERO, 0, 1, Num::ZERO).unwrap()),
         on_death: OnDeath::Stay,
     };
     let at = Position::new(Vec3::new(num(x), Num::ZERO, Num::ZERO)).unwrap();
-    world.spawn((id, at, combatant.bundle(Team::new(team)), parts));
+    let mut unit = world.spawn((id, at, parts));
+    combatant.insert(&mut unit, Team::new(team));
     id
 }
 
@@ -109,6 +110,7 @@ fn lash_out_from_its_package_hits_exactly() {
         per_call: 10_000,
         input: 100_000,
         think: 100_000,
+        mode: 100_000,
     };
     Units::install(&mut world, &mut schedule, &mut registry, limits);
     Combat::install(&mut world, &mut schedule, &mut registry);

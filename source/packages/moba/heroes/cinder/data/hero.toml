@@ -3,7 +3,7 @@ role = "mage"
 resource = "mana"
 slots = ["fire_lance", "eruption", "wildfire", "chain_fire"]
 
-[attack]
+[combat.attack]
 range = "5.5"
 windup_ms = 300
 projectile_speed = "20"

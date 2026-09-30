@@ -4,7 +4,7 @@ resource = "energy"
 passive = "dual_path"
 slots = ["dusk_mark", "smoke_ring", "whirling_blades", "night_step"]
 
-[attack]
+[combat.attack]
 range = "1.25"
 windup_ms = 280
 

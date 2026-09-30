@@ -8,7 +8,7 @@ use bevy_ecs::system::{Local, Query, ResMut};
 use bevy_ecs::world::World;
 use campfire_capabilities::Controller;
 use campfire_protocol::{Applied, PlayerSlot, ServerSeed, SessionLog};
-use campfire_runner::{Session, StartError};
+use campfire_runner::{ModePackages, Session, StartError};
 use campfire_sim::{EntityIndex, SimTick, StateHash};
 use lightyear::core::tick::TickDuration;
 use lightyear::prelude::{
@@ -63,13 +63,15 @@ impl Plugin for SimServer {
 }
 
 impl SimServer {
-    /// Starts the match of `log`'s header in the next fixed tick, recording into `log`. `clients`
+    /// Starts the match of `log`'s header, of the mode `packages` holds, in the next fixed tick,
+    /// recording into `log`. `clients`
     /// are the links of the players, by slot; each learns its slot and the start tick, and every
     /// hero replicates to every client, predicted. Towers and creeps do not replicate yet.
     pub fn start_match(
         world: &mut World,
         log: SessionLog,
         server_seed: ServerSeed,
+        packages: &ModePackages,
         clients: &[Entity],
     ) -> Result<(), StartError> {
         assert_eq!(
@@ -82,7 +84,7 @@ impl SimServer {
             log.header().terms.tick_length(),
             "the server ticks at the session's rate"
         );
-        Session::start(world, log, server_seed)?;
+        Session::start(world, log, server_seed, packages)?;
         let start = world.resource::<LocalTimeline>().tick() + 1;
         world.insert_resource(MatchClock::new(start));
 

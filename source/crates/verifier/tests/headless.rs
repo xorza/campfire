@@ -1,23 +1,33 @@
-//! The first half of the Stage 2 gate, without the network: a match run from its session log and
-//! the replay of that log in a bare `World` agree on the state hash after every tick, and so does
-//! the replay of the log's file.
+//! The first half of the Stage 2 gate, without the network: a match of the test lane mode run from
+//! its session log and the replay of that log in a bare `World` agree on the state hash after
+//! every tick, and so does the replay of the log's file with the packages a verifier holds.
 
 use std::fmt::Write;
 use std::fs;
 use std::num::NonZeroU32;
+use std::path::Path;
 use std::process::Command;
 
-use campfire_capabilities::{Action, AttackState, Destination, Health, Order, Projectile};
+use campfire_capabilities::{
+    Action, AttackState, Controller, Destination, Health, Order, Projectile,
+};
+use campfire_content::PackageStore;
 use campfire_math::{Num, Vec3};
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
 use campfire_protocol::{
     Applied, Delegation, DelegationTerms, InputChain, PlayerSlot, SeedChain, SeedError, ServerSeed,
     SessionHeader, SessionLog, SessionTerms,
 };
-use campfire_runner::{Runner, StandInMode, StartError};
+use campfire_runner::{ModePackages, RELEASE, Runner, StartError};
 use campfire_sim::{EntityIndex, Position, StableId, StateHash};
 use campfire_verifier::Replay;
 
+/// Every package, the reference ones and the test ones: what the verifier holds.
+const PACKAGES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../packages");
+const LANE_MODE: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../packages/test/modes/lane"
+);
 const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
 const SERVER_KEY: [u8; 32] = [8; 32];
 /// BIP-340 signing without auxiliary randomness is deterministic, so every run signs alike.
@@ -75,15 +85,31 @@ fn session_key() -> Keypair {
     key(2)
 }
 
+fn packages() -> ModePackages {
+    ModePackages::from_dir(Path::new(LANE_MODE)).unwrap()
+}
+
+fn store() -> PackageStore {
+    PackageStore::scan(Path::new(PACKAGES)).unwrap()
+}
+
+/// A session of the test lane mode at its 30 ticks a second.
 fn terms() -> SessionTerms {
+    let packages = packages();
     SessionTerms {
         server_key: SERVER_KEY,
-        tick_hz: StandInMode::TICK_HZ,
+        tick_hz: NonZeroU32::new(30).unwrap(),
         max_input_delay: 3,
         max_input_lead: 3,
         max_payload_len: 64,
         max_inputs_per_tick: 4,
         seed_commitment: SEED_CHAIN.commitment(),
+        release: RELEASE.to_owned(),
+        mode: *packages.fingerprint().as_bytes(),
+        dependencies: packages
+            .dependencies()
+            .map(|dependency| *dependency.as_bytes())
+            .collect(),
     }
 }
 
@@ -102,8 +128,8 @@ fn delegation(session: &SessionTerms) -> Delegation {
 /// The header of a session of `terms`, with the one player.
 fn header_of(terms: SessionTerms) -> SessionHeader {
     SessionHeader {
-        terms,
         players: vec![delegation(&terms)],
+        terms,
     }
 }
 
@@ -125,9 +151,20 @@ struct Hero {
     destination: Destination,
 }
 
+/// The player's hero: the one unit under their control.
+fn hero_id(runner: &Runner) -> StableId {
+    let world = runner.world();
+    let mut units = world.resource::<EntityIndex>().iter();
+    let hero = units.find(|&(_, entity)| world.entity(entity).contains::<Controller>());
+    hero.unwrap().0
+}
+
 fn hero(runner: &Runner) -> Hero {
     let world = runner.world();
-    let (_, entity) = world.resource::<EntityIndex>().iter().next().unwrap();
+    let entity = world
+        .resource::<EntityIndex>()
+        .get(hero_id(runner))
+        .unwrap();
     let hero = world.entity(entity);
     Hero {
         position: *hero.get::<Position>().unwrap(),
@@ -144,15 +181,14 @@ struct Run {
 
 /// Runs a match in which the player sends `orders`.
 fn run(orders: &[&Sent], ticks: u64) -> Run {
-    let mut runner = Runner::new(log(), SEED_CHAIN.seed(0)).unwrap();
+    let mut runner = Runner::new(log(), SEED_CHAIN.seed(0), &packages()).unwrap();
     let secp = Secp256k1::new();
     let mut chain = InputChain::new(PlayerSlot::new(0), delegation(&terms()).chain_root());
     let mut applied = Vec::new();
     let mut hashes = Vec::new();
     for tick in 0..ticks {
         for sent in orders.iter().filter(|sent| sent.arrives == tick) {
-            // The hero is the first unit spawned, stable id 0.
-            let hero = world_ids(&runner)[0];
+            let hero = hero_id(&runner);
             let payload = Order::payload(&[Order {
                 unit: hero,
                 action: Action::Move {
@@ -189,7 +225,7 @@ fn run_and_replay_agree_on_every_tick() {
     assert_eq!(hero(&runner), arrived);
 
     let decoded = SessionLog::decode(&encoded(runner.log())).unwrap();
-    let mut replay = Replay::new(decoded).unwrap();
+    let mut replay = Replay::new(decoded, &store()).unwrap();
     let mut replayed = Vec::new();
     while replay.run_tick() {
         replayed.push(replay.runner().state_hash());
@@ -208,16 +244,7 @@ fn run_and_replay_agree_on_every_tick() {
     assert!(live[22..].iter().zip(&without[22..]).all(|(a, b)| a != b));
 }
 
-fn world_ids(runner: &Runner) -> Vec<StableId> {
-    runner
-        .world()
-        .resource::<EntityIndex>()
-        .iter()
-        .map(|(id, _)| id)
-        .collect()
-}
-
-/// The hero walks 1 m along x from the origin, into the reach of the second side's tower.
+/// The hero walks 1 m along x from the origin, into the reach of the east tower.
 const INTO_REACH: Sent = Sent {
     arrives: 0,
     stamp: 0,
@@ -226,8 +253,8 @@ const INTO_REACH: Sent = Sent {
     applied: Applied::At(0),
 };
 
-/// What a tick left: the attack target of units 1 to 6, the hero's health, and how many
-/// projectiles fly.
+/// What a tick left: the attack target of the towers, units 0 and 1, and of the creeps, 3 to 6;
+/// the hero's health; and how many projectiles fly.
 #[derive(Debug, PartialEq, Eq)]
 struct Seen {
     targets: [Option<u64>; 6],
@@ -240,11 +267,11 @@ impl Seen {
         let world = runner.world();
         let index = world.resource::<EntityIndex>();
         let entity = |id: u64| index.iter().find(|(unit, _)| unit.get() == id).unwrap().1;
-        let targets = [1, 2, 3, 4, 5, 6].map(|id| {
+        let targets = [0, 1, 3, 4, 5, 6].map(|id| {
             let attack = world.entity(entity(id)).get::<AttackState>().unwrap();
             attack.target().map(StableId::get)
         });
-        let hero = world.entity(entity(0)).get::<Health>().unwrap();
+        let hero = world.entity(entity(2)).get::<Health>().unwrap();
         let projectiles = index
             .iter()
             .filter(|&(_, entity)| world.entity(entity).contains::<Projectile>())
@@ -261,7 +288,7 @@ impl Seen {
 fn scripted_creeps_and_towers_replay_to_the_same_hashes() {
     let Run { runner, hashes } = run(&[&INTO_REACH], 72);
     let decoded = SessionLog::decode(&encoded(runner.log())).unwrap();
-    let mut replay = Replay::new(decoded).unwrap();
+    let mut replay = Replay::new(decoded, &store()).unwrap();
     let mut seen = Vec::new();
     for (tick, live) in hashes.iter().enumerate() {
         assert!(replay.run_tick());
@@ -270,33 +297,34 @@ fn scripted_creeps_and_towers_replay_to_the_same_hashes() {
     }
     assert!(!replay.run_tick());
 
-    // Ids: the hero 0, the towers 1 at x = −8 and 2 at x = 8, then the first side's creeps 3 and
-    // 4 at x = −16 and the second's 5 and 6 at x = 16. Every unit thinks every 8 ticks, in the
-    // ticks that leave its id.
+    // Ids: the map's towers, 0 at x = −8 on the west team and 1 at x = 8 on the east, then the
+    // hero 2, which the mode spawns as the match starts, then the first wave, at the end of tick
+    // 0: the west creeps 3 and 4 at x = −16, and the east's 5 and 6 at x = 16. Every unit thinks
+    // every 8 ticks, in the ticks that leave its id.
     //
-    // The hero walks ¼ m a tick from tick 0 and stands at x = 1 from tick 3. Tower 2 thinks in
-    // tick 2, with the hero at 0.5, 7.5 m away and within its 7.75: no creep is in reach, so it
-    // takes the hero. Its attacks start in ticks 2, 39 and 76 and fire 5 ticks later, from
-    // x = 8, at the hero 7 m away. A projectile flies 12 m/s ÷ 30, 0.4 m rounded down to
-    // 6710886 / 2²⁴ m, from the tick after it fires: 17 steps leave less than a step, so the
-    // 18th lands, in ticks 25 and 62, for 150 each.
+    // The hero walks ¼ m a tick from tick 0 and stands at x = 1 from tick 3. Tower 1 thinks in
+    // tick 1, with the hero at 0.25, 7.75 m away and just within its 7.75: no creep is in
+    // reach, so it takes the hero. Its attacks start in ticks 1, 38 and 75 and fire 5 ticks
+    // later, from x = 8, at the hero 7 m away. A projectile flies 12 m/s ÷ 30, 0.4 m rounded
+    // down to 6710886 / 2²⁴ m, from the tick after it fires: 17 steps leave less than a step, so
+    // the 18th lands, in ticks 24 and 61, for 150 each.
     //
-    // A second-side creep stands at 16 − (t − 1)/8 as it thinks in tick t. Creep 5 thinks in
-    // tick 61 at 8.5, 7.5 m from the hero, beyond its 7 m aggro range, and in tick 69 at 7.5,
-    // 6.5 m away: it takes the hero. Creep 6 does in tick 70, at 7.375. The first side's creeps
-    // are 15 m from the second's, and tower 1 is 15.5 m from them: none of them takes a target.
+    // An east creep stands at 16 − (t − 1)/8 as it thinks in tick t. Creep 5 thinks in tick 61
+    // at 8.5, 7.5 m from the hero, beyond its 7 m aggro range, and in tick 69 at 7.5, 6.5 m
+    // away: it takes the hero. Creep 6 does in tick 70, at 7.375. The west creeps are 15 m from
+    // the east's, and tower 0 is 15.5 m from them: none of them takes a target.
     let expected: Vec<_> = (0..72)
         .map(|tick| {
-            let hero = Some(0);
+            let hero = Some(2);
             let from = |first: u64| (tick >= first).then_some(()).and(hero);
             let hero_health = match tick {
-                ..25 => 600,
-                25..62 => 450,
+                ..24 => 600,
+                24..61 => 450,
                 _ => 300,
             };
-            let projectiles = usize::from((7..25).contains(&tick) || (44..62).contains(&tick));
+            let projectiles = usize::from((6..24).contains(&tick) || (43..61).contains(&tick));
             Seen {
-                targets: [None, from(2), None, None, from(69), from(70)],
+                targets: [None, from(1), None, None, from(69), from(70)],
                 hero_health,
                 projectiles,
             }
@@ -342,7 +370,7 @@ fn the_binary_prints_the_last_state_hash() {
     let path = format!("{dir}/headless.log");
     fs::write(&path, encoded(runner.log())).unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_campfire-verifier"))
-        .arg(&path)
+        .args([PACKAGES, &path])
         .output()
         .unwrap();
     assert!(output.status.success(), "{output:?}");
@@ -357,7 +385,7 @@ fn the_binary_prints_the_last_state_hash() {
     let bytes = encoded(runner.log());
     fs::write(&corrupt, &bytes[..bytes.len() - 1]).unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_campfire-verifier"))
-        .arg(&corrupt)
+        .args([PACKAGES, &corrupt])
         .output()
         .unwrap();
     assert_eq!(output.status.code(), Some(1));
@@ -373,23 +401,43 @@ fn the_binary_prints_the_last_state_hash() {
 }
 
 #[test]
-fn a_match_starts_only_with_its_seed_and_at_a_rate_its_mode_runs_at() {
-    assert_eq!(
-        Replay::new(log()).err(),
-        Some(StartError::Seed(SeedError::NotRevealed))
-    );
-    assert_eq!(
-        Runner::new(log(), ServerSeed::new([8; 32])).err(),
-        Some(StartError::Seed(SeedError::WrongSeed))
-    );
-    let sixty = NonZeroU32::new(60).unwrap();
-    let fast = SessionTerms {
-        tick_hz: sixty,
-        ..terms()
+fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
+    let store = store();
+    assert!(matches!(
+        Replay::new(log(), &store),
+        Err(StartError::Seed(SeedError::NotRevealed))
+    ));
+    assert!(matches!(
+        Runner::new(log(), ServerSeed::new([8; 32]), &packages()),
+        Err(StartError::Seed(SeedError::WrongSeed))
+    ));
+
+    // Each change to the terms, the log revealed, and the error the verifier refuses it with.
+    let other = |change: fn(&mut SessionTerms)| {
+        let mut terms = terms();
+        change(&mut terms);
+        let mut log = SessionLog::new(header_of(terms)).unwrap();
+        log.reveal_seed(SEED_CHAIN.seed(0));
+        Replay::new(log, &store).err()
     };
-    let log = SessionLog::new(header_of(fast)).unwrap();
-    assert_eq!(
-        Runner::new(log, SEED_CHAIN.seed(0)).err(),
-        Some(StartError::TickRate(sixty))
+    let refused = [
+        other(|terms| terms.release = "0.0.9".to_owned()),
+        other(|terms| terms.mode = [0; 32]),
+        other(|terms| terms.dependencies[0] = [0; 32]),
+        other(|terms| terms.dependencies.clear()),
+        other(|terms| terms.tick_hz = NonZeroU32::new(60).unwrap()),
+    ];
+    assert!(
+        matches!(
+            &refused,
+            [
+                Some(StartError::OtherRelease(release)),
+                Some(StartError::UnknownMode),
+                Some(StartError::MissingDependency(dependency)),
+                Some(StartError::DependencyCount),
+                Some(StartError::TickRate(hz)),
+            ] if release == "0.0.9" && dependency == "hero-walker" && hz.get() == 60
+        ),
+        "{refused:?}"
     );
 }

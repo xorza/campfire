@@ -1,3 +1,6 @@
+use std::num::NonZeroU32;
+use std::path::Path;
+
 use bevy_app::{App, TaskPoolPlugin};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::Add;
@@ -10,7 +13,7 @@ use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
 use campfire_protocol::{
     Delegation, DelegationTerms, SeedChain, SessionHeader, SessionLog, SessionTerms,
 };
-use campfire_runner::{StandInMode, StartError};
+use campfire_runner::{ModePackages, RELEASE, StartError};
 use campfire_sim::{EntityIndex, StableId};
 use lightyear::crossbeam::CrossbeamIo;
 use lightyear::prelude::client::{ClientPlugins, RawClient};
@@ -24,6 +27,11 @@ use crate::net_protocol::NetProtocol;
 use crate::sim_client::{PendingOrders, SimClient};
 use crate::sim_server::SimServer;
 
+/// The test mode: a lane with a tower a side, and the one hero, which the client's player plays.
+const LANE_MODE: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../packages/test/modes/lane"
+);
 /// Frames a connection gets to link and sync its timeline.
 const CONNECT_FRAMES: usize = 200;
 const SERVER_KEY: [u8; 32] = [8; 32];
@@ -40,21 +48,30 @@ pub struct LocalPair {
     link: Entity,
     terms: SessionTerms,
     seed_chain: SeedChain,
+    packages: ModePackages,
 }
 
 impl LocalPair {
-    /// A connected and synced pair in a session whose server commits to `seed_chain`, at the
-    /// stand-in mode's rate, with inputs held up to 10 ticks late and 30 ahead. The client's
-    /// state rollbacks follow `rollback`.
+    /// A connected and synced pair in a session of the test lane mode whose server commits to
+    /// `seed_chain`, at the mode's default rate, with inputs held up to 10 ticks late and 30
+    /// ahead. The client's state rollbacks follow `rollback`.
     pub fn new(rollback: RollbackMode, seed_chain: SeedChain) -> LocalPair {
+        let packages = ModePackages::from_dir(Path::new(LANE_MODE)).expect("the test mode loads");
+        let tick_hz = packages.manifest().tick_hz.default;
         let terms = SessionTerms {
             server_key: SERVER_KEY,
-            tick_hz: StandInMode::TICK_HZ,
+            tick_hz: NonZeroU32::new(tick_hz).expect("the load checked the range"),
             max_input_delay: 10,
             max_input_lead: 30,
             max_payload_len: 64,
             max_inputs_per_tick: 4,
             seed_commitment: seed_chain.commitment(),
+            release: RELEASE.to_owned(),
+            mode: *packages.fingerprint().as_bytes(),
+            dependencies: packages
+                .dependencies()
+                .map(|dependency| *dependency.as_bytes())
+                .collect(),
         };
         let tick = terms.tick_length();
         let (client_io, server_io) = CrossbeamIo::new_pair();
@@ -88,7 +105,7 @@ impl LocalPair {
 
         let sim_client = SimClient {
             session_key: keypair(SESSION_SECRET),
-            terms,
+            terms: terms.clone(),
             chain_root: delegation(&terms).chain_root(),
         };
         let mut client = App::new();
@@ -119,6 +136,7 @@ impl LocalPair {
             link,
             terms,
             seed_chain,
+            packages,
         };
         for _ in 0..CONNECT_FRAMES {
             let world = pair.client.world();
@@ -138,12 +156,13 @@ impl LocalPair {
     /// `SimServer::start_match`.
     pub fn start_match(&mut self) -> Result<(), StartError> {
         let header = SessionHeader {
-            terms: self.terms,
+            terms: self.terms.clone(),
             players: vec![delegation(&self.terms)],
         };
         let log = SessionLog::new(header).expect("the delegation names this session");
         let server_seed = self.seed_chain.seed(0);
-        SimServer::start_match(self.server.world_mut(), log, server_seed, &[self.link])
+        let world = self.server.world_mut();
+        SimServer::start_match(world, log, server_seed, &self.packages, &[self.link])
     }
 
     /// One frame of each app, the client first: one tick each.
@@ -194,6 +213,11 @@ impl LocalPair {
 
     pub const fn link(&self) -> Entity {
         self.link
+    }
+
+    /// The packages of the session's mode.
+    pub const fn packages(&self) -> &ModePackages {
+        &self.packages
     }
 }
 

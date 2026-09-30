@@ -1,0 +1,5 @@
+script = "scripts/mode.rhai"
+
+[params]
+wave_ms = 30000
+wave = ["creep", "creep"]

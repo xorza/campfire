@@ -108,10 +108,16 @@ impl ScriptHost {
     }
 
     pub fn compile(&mut self, source: &str) -> Result<ScriptId, ScriptError> {
-        let ast = self.engine.compile(source).map_err(ScriptError::Compile)?;
+        let ast = self.parse(source)?;
         let id = ScriptId(u32::try_from(self.scripts.len()).expect("scripts fit u32"));
         self.scripts.push(ast);
         Ok(id)
+    }
+
+    /// The AST of `source`, compiled with the host's limits but not kept, for the package load
+    /// checks to walk.
+    pub fn parse(&self, source: &str) -> Result<AST, ScriptError> {
+        self.engine.compile(source).map_err(ScriptError::Compile)
     }
 
     /// Whether `script` defines a function `name` of `params` parameters, as a hook the engine

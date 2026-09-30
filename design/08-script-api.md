@@ -16,7 +16,7 @@ Each call, handle field and hook belongs to the core or to one capability ([Capa
 - **Values are live.** `ctx.p` resolves when it is read, with the current rank and the current stats of the source.
 - **Pure hooks.** `calc_damage` returns a value; its `ctx` refuses effects.
 - **Handles last one call.** A call sees the units as its stage began; a handle is valid within the call. `unit.target` is `()` when the unit has no target, or its target is gone. `unit.recent_attackers(ms)` lists the living units that struck it within the last `ms`, rounded up to whole ticks.
-- **Queries.** Lists are sorted by stable id; `nearest_visible` sorts by distance, then id. Dead and untargetable units are never returned. `find` includes units hidden from the caller's team, for effects on an area; `find_visible` and `nearest_visible` return only what that team sees, for choosing a target.
+- **Queries.** Lists are sorted by stable id; `nearest_visible` sorts by distance, then id. `find`, `find_visible` and `nearest_visible` never return dead or untargetable units; `heroes` and `units_tagged` return the dead too, so a mode sees a structure that fell. `find` includes units hidden from the caller's team, for effects on an area; `find_visible` and `nearest_visible` return only what that team sees, for choosing a target.
 - **Numbers.** [Game Scripting](03-game-scripting.md#numbers). `num(i)` makes a `Num` from an integer. `Num` has `min`, `max`, `clamp`, `round`, `floor`, `ceil`; `round` and the others return integers.
 - **Randomness** comes only from `ctx.chance` and `ctx.pick`, both from the secret stream. Crits are rolled by `combat`.
 - **Time** is in milliseconds, rounded up to whole ticks.
@@ -64,7 +64,11 @@ Scaling keys: `base`, `per_level`, and a stat ratio each for `ad`, `bonus_ad`, `
 
 **Modifier:** `script`, `duration_ms` (absent: until removed), `interval_ms`, `stacks_expire_ms`, `reapply` (`refresh` by default, `stack`, `ignore`), `stats` (per stack), `states`, `shield` (the modifier ends when the shield is spent), `aura` (`{ radius, affects, modifier }`), `[params]`, `[state]`. A unit holds at most one instance of each modifier id from each source.
 
-**Mode** (`data/mode.toml`): `script`, `assist_window_ms`, `[inputs]` (name and type of each player input: `string`, `string_list`), `[state]`, `[params]`, `[modifiers]`. An input that does not match its type never reaches the script. **Units** (`data/units.toml`): `[units.<id>]` with `tags`, `params`, and a section for each capability the unit type uses ([Unit types](04-capabilities/00-overview.md#unit-types)): `stats`, `combat` (`attack`, and whether a dead unit stays or despawns), `orders` (`ai`, `think_ms`), `vision` (`true_sight`).
+**Manifest** (`manifest.toml`): `name`, `version`, `engine` (the release tag it targets) and `kind`: `mode`, `hero` or `spells`. A mode's also has `capabilities`, `tick_hz = { min, max, default }`, `teams` (each `{ name, slots }`; their slots in order make the player slots), `backends`, `max_move_speed` (m/s), `script_limits = { per_call, input, think, mode }` (each pool holds a whole call, and `input` one for each slot), and `[dependencies]`, each named by its package's name, and in the workspace given by path. A hero's id is its package's name.
+
+**Mode** (`data/mode.toml`): `script`, `assist_window_ms`, `[inputs]` (name and type of each player input: `string`, `string_list`), `[state]`, `[params]` (values, or lists whose entries are values or strings, such as unit types), `[modifiers]`. An input that does not match its type never reaches the script. **Units** (`data/units.toml`): `[units.<id>]` with `tags`, `params`, and a section for each capability the unit type uses ([Unit types](04-capabilities/00-overview.md#unit-types)): `stats`, `combat` (`attack = { range, windup_ms, projectile_speed }`, and `on_death`: `stay` or `despawn`, the default), `orders` (`ai`, `think_ms`), `vision` (`true_sight`). Health, attack damage, attack speed and move speed are stats: an attack starts at most `attack_speed` times a second, its period the tick rate over that rounded up.
+
+**Map** (`map/map.toml`): `[[lanes]]` (`name`, `points` from the first team's end to the second's), `[spawns]` (each playing team's hero spawn), `[[structures]]` (`unit_type`, `team`, `lane` if it guards one, `pos`: they stand from the start), `[[neutral_spawns]]` (`unit_type`, `pos`, as `ctx.map.neutral_spawns` lists them). A point is `[x, z]` in meters on the ground plane.
 
 **State types:** `int`, `num`, `bool`, `string`, `entity`, `entity_list`, `pos`, `vec`; each with a `default` and, for mode state, `sync`.
 
@@ -79,7 +83,7 @@ Scaling keys: `base`, `per_level`, and a stat ratio each for `ad`, `bonus_ad`, `
 | `cooldown_reduction` | Sum | 0 to 0.4 |
 | `slow` | Strongest only | 0 to 0.99; `slow_immune` ignores it |
 
-Move speed is `move_speed × (1 + move_speed_pct) × (1 − slow)`, at least an engine floor and at most the mode's `max_move_speed`. Every homing projectile flies faster than that cap, which the package load checks, so it catches its target within launch distance ÷ (projectile speed − cap). `life_steal` heals the source for attack damage dealt and `spell_vamp` for ability damage; `healing_received_pct` scales every heal.
+Until modifiers come, a unit's stats are its type's at level 1. Move speed is `move_speed × (1 + move_speed_pct) × (1 − slow)`, at least an engine floor and at most the mode's `max_move_speed`. Every homing projectile flies faster than that cap, which the package load checks, so it catches its target within launch distance ÷ (projectile speed − cap). `life_steal` heals the source for attack damage dealt and `spell_vamp` for ability damage; `healing_received_pct` scales every heal.
 
 **States:** `stunned`, `rooted`, `silenced`, `disarmed`, `airborne`, `stealthed`, `untargetable`, `slow_immune`.
 
@@ -117,6 +121,8 @@ A unit handle has the fields of the capabilities its type uses; reading a field 
 
 `ctx.p` reads, in an ability, its params; in a modifier, the modifier's params and then those of the ability that applied it; in a mode or AI script, the mode's params.
 
+**Mode calls.** The map's structures spawn, then `on_match_start` runs, before the first tick. A timer counts from its call, in ticks rounded up, at least one, and fires in the Mode stage at the end of a tick: set before the first tick, 1 ms fires at the end of tick 0. `ctx.teams` names the playing teams; neutral units spawn on `neutral`, and `enemy_team` needs a mode of two playing teams. `spawn_wave` spawns its units in order at the team's end of the lane, the first team at its start and the second at its end, walking it. `choose_hero` takes a hero no other player chose; `spawn_heroes` spawns each chosen hero not yet spawned, in slot order, at its team's spawn, its abilities unlearned and its player's spells at rank 1. A player's mode input is a command of the `mode` owner: its name, then its value in its declared type, in postcard.
+
 ## Hooks
 
 | Role | Capability | Hooks |
@@ -133,9 +139,12 @@ A hero passive is a modifier the hero always carries. `combat` finds takedown pa
 A package loads only when all of these pass:
 
 - Every data file matches its schema, and every per-rank array has one entry for each rank.
-- Every script is referenced by data. Every function named like a hook is a hook of a role the script serves, so a misspelled hook is an error, not a hook that never runs.
+- Every script is referenced by data. Every function named like a hook, a hook's name or any name that starts with `on_`, is a hook of a role the script serves, with the hook's parameters, so a misspelled hook is an error, not a hook that never runs.
 - Every modifier id, `ctx.p` name, `{ param }` reference, stat, state, filter and damage kind that a script or data file names exists. Scripts are read with `AST::walk`, from Rhai's `internals` feature.
-- Every `ctx` call is one this API defines.
+- Every `ctx` call is one this API defines, of a capability the mode declares, for the script's role.
+- Every capability a package's data or scripts use is declared, and each builds on the ones it needs. A capability the release does not run yet loads: its data is checked, and a call to it fails at run time.
+- The manifest's tick rates, pools and move speed cap hold, every package targets this release, and every projectile flies faster than the cap.
+- The map and the teams name only what the mode has: every structure's and neutral spawn's unit type, team and lane; a hero spawn for each playing team; no team named `neutral`, and no two teams, lanes, slots of a hero or spells of the mode's spells packages alike.
 
 ## Found while writing the scripts
 

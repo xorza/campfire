@@ -9,7 +9,7 @@ use crate::error::ContentError;
 /// A path to a file inside a package: relative, of plain names only, so it cannot leave the
 /// package. Data names its scripts with one, so a path that leaves is refused where the data is
 /// read.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PackagePath(String);
 
 impl PackagePath {

@@ -12,7 +12,7 @@ const SESSION_ID_DOMAIN: &[u8] = b"campfire/session-id/v1";
 /// What the server fixes when it opens a session, before any player joins. The session id is
 /// their hash, and every delegation and chain-head signature names the id: the players sign
 /// these terms, so a log cannot change them.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionTerms {
     /// The server's x-only public key.
     pub server_key: [u8; 32],
@@ -32,6 +32,12 @@ pub struct SessionTerms {
     /// The server's commitment to its seed chain. It is fresh for every session, so no two
     /// sessions share an id.
     pub seed_commitment: SeedCommitment,
+    /// The tag of the engine release the session runs on.
+    pub release: String,
+    /// The fingerprint of the mode package.
+    pub mode: [u8; 32],
+    /// The fingerprints of the mode's dependencies, in the order of their names in its manifest.
+    pub dependencies: Vec<[u8; 32]>,
 }
 
 impl SessionTerms {
@@ -41,7 +47,9 @@ impl SessionTerms {
     }
 
     /// `BLAKE3(domain ‖ server key ‖ u32 tick rate ‖ u64 max delay ‖ u64 max lead ‖ u32 max
-    /// payload length ‖ u32 max inputs per tick ‖ seed commitment)`, integers little-endian.
+    /// payload length ‖ u32 max inputs per tick ‖ seed commitment ‖ u64 release length ‖ release
+    /// ‖ mode fingerprint ‖ u64 dependency count ‖ dependency fingerprints)`, integers
+    /// little-endian.
     pub fn session_id(&self) -> SessionId {
         let mut hasher = Hasher::new();
         hasher
@@ -52,7 +60,18 @@ impl SessionTerms {
             .update(&self.max_input_lead.to_le_bytes())
             .update(&self.max_payload_len.to_le_bytes())
             .update(&self.max_inputs_per_tick.to_le_bytes())
-            .update(self.seed_commitment.as_bytes());
+            .update(self.seed_commitment.as_bytes())
+            .update(&len(self.release.len()).to_le_bytes())
+            .update(self.release.as_bytes())
+            .update(&self.mode)
+            .update(&len(self.dependencies.len()).to_le_bytes());
+        for dependency in &self.dependencies {
+            hasher.update(dependency);
+        }
         SessionId::new(*hasher.finalize().as_bytes())
     }
+}
+
+fn len(len: usize) -> u64 {
+    u64::try_from(len).expect("a length fits u64")
 }

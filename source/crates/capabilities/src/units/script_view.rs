@@ -2,9 +2,9 @@ use std::cell::{RefCell, RefMut};
 use std::fmt;
 use std::rc::Rc;
 
-use bevy_ecs::world::World;
+use bevy_ecs::world::{EntityRef, World};
 use campfire_math::{Num, Vec3};
-use campfire_script::rhai::{Array, Dynamic, Engine, INT};
+use campfire_script::rhai::{Array, Dynamic, Engine, INT, ImmutableString};
 use campfire_sim::{EntityIndex, Position, SimTick, StableId, TickRate};
 
 use crate::combat::attack_state::AttackState;
@@ -16,7 +16,7 @@ use crate::combat::recent_attackers::{RecentAttack, RecentAttackers};
 use crate::combat::team::Team;
 use crate::units::error::{ApiError, Checked};
 use crate::units::filter::Filter;
-use crate::units::tag_set::TagSet;
+use crate::units::tag_set::{Tag, TagSet};
 use crate::units::unit::Unit;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_types::UnitTypes;
@@ -27,6 +27,12 @@ use crate::units::unit_types::UnitTypes;
 #[derive(Debug)]
 pub(crate) struct ScriptView {
     types: UnitTypes,
+    /// The name of each team, by index, once a mode sets them.
+    teams: Vec<Box<str>>,
+    /// The name of each lane, by index, once a mode sets them.
+    lanes: Vec<Box<str>>,
+    /// Reads the fields of the capabilities above the core.
+    extras: fn(&EntityRef<'_>) -> RowExtras,
     rate: TickRate,
     /// The tick the units were read in.
     now: u64,
@@ -46,9 +52,18 @@ pub(crate) struct UnitRow {
     pub(crate) unit_type: Option<UnitType>,
     pub(crate) target: Option<StableId>,
     pub(crate) attack_range: Option<Num>,
+    pub(crate) extras: RowExtras,
     /// Its run of recent attacks, from `attacks_start` to `attacks_end`.
     attacks_start: u32,
     attacks_end: u32,
+}
+
+/// A unit's fields that capabilities above the core hold: the lane it walks or stands on, and the
+/// player who controls it.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct RowExtras {
+    pub(crate) lane: Option<u32>,
+    pub(crate) owner: Option<u32>,
 }
 
 /// The view as the host and every handle share it.
@@ -82,6 +97,7 @@ impl ScriptView {
                 unit_type: unit.get::<UnitType>().copied(),
                 target: unit.get::<AttackState>().and_then(|attack| attack.target()),
                 attack_range: unit.get::<AttackStats>().map(|stats| stats.range()),
+                extras: (self.extras)(&unit),
                 attacks_start: start,
                 attacks_end: end,
             });
@@ -117,6 +133,9 @@ impl View {
     pub(crate) fn new(rate: TickRate) -> View {
         View(Rc::new(RefCell::new(ScriptView {
             types: UnitTypes::default(),
+            teams: Vec::new(),
+            lanes: Vec::new(),
+            extras: |_| RowExtras::default(),
             rate,
             now: 0,
             units: Vec::new(),
@@ -131,6 +150,70 @@ impl View {
 
     pub(crate) fn types_mut(&self) -> RefMut<'_, UnitTypes> {
         RefMut::map(self.0.borrow_mut(), |view| &mut view.types)
+    }
+
+    /// Names the teams and the lanes, and sets how rows read the fields above the core.
+    pub(crate) fn set_names(
+        &self,
+        teams: Vec<Box<str>>,
+        lanes: Vec<Box<str>>,
+        extras: fn(&EntityRef<'_>) -> RowExtras,
+    ) {
+        let mut view = self.0.borrow_mut();
+        view.teams = teams;
+        view.lanes = lanes;
+        view.extras = extras;
+    }
+
+    /// The name of `team`.
+    pub(crate) fn team_name(&self, team: Team) -> Checked<Dynamic> {
+        let view = self.0.borrow();
+        let name = view.teams.get(usize::from(team.index()));
+        name.map(|name| Dynamic::from(ImmutableString::from(&**name)))
+            .ok_or_else(|| ApiError::UnknownTeam.fail().into())
+    }
+
+    /// The name of `lane`, `()` for none.
+    pub(crate) fn lane_name(&self, lane: Option<u32>) -> Dynamic {
+        let view = self.0.borrow();
+        lane.and_then(|lane| view.lanes.get(lane as usize))
+            .map_or(Dynamic::UNIT, |name| {
+                Dynamic::from(ImmutableString::from(&**name))
+            })
+    }
+
+    /// The tag `name`; one no unit type declares fails the call.
+    pub(crate) fn tag(&self, name: &str) -> Result<Tag, ApiError> {
+        self.0.borrow().types.tag(name).ok_or(ApiError::UnknownTag)
+    }
+
+    pub(crate) fn has_tag(&self, row: &UnitRow, tag: Tag) -> bool {
+        self.0.borrow().tags(row).contains(tag)
+    }
+
+    /// Every unit, living or dead, that `keep` keeps, by stable id.
+    pub(crate) fn units_where(&self, mut keep: impl FnMut(&ScriptView, &UnitRow) -> bool) -> Array {
+        let view = self.0.borrow();
+        view.units
+            .iter()
+            .filter(|row| keep(&view, row))
+            .map(|row| Dynamic::from(Unit::new(row.id, self.clone())))
+            .collect()
+    }
+
+    /// Every unit, living or dead, with the tag `name`, by stable id.
+    pub(crate) fn units_tagged(&self, name: &str) -> Checked<Array> {
+        let tag = self.tag(name).map_err(ApiError::fail)?;
+        Ok(self.units_where(|view, row| view.tags(row).contains(tag)))
+    }
+
+    /// Every hero, living or dead, of `team` or of every team, by stable id.
+    pub(crate) fn heroes(&self, team: Option<Team>) -> Array {
+        self.units_where(|view, row| {
+            let hero = view.types.hero();
+            hero.is_some_and(|hero| view.tags(row).contains(hero))
+                && team.is_none_or(|team| row.team == team)
+        })
     }
 
     pub(crate) fn row(&self, id: StableId) -> Option<UnitRow> {

@@ -1762,7 +1762,7 @@ dependencies = [
 
 [[package]]
 name = "campfire-capabilities"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "bevy_ecs",
  "campfire-content",
@@ -1775,7 +1775,7 @@ dependencies = [
 
 [[package]]
 name = "campfire-client"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "campfire-content",
  "campfire-identity",
@@ -1786,7 +1786,7 @@ dependencies = [
 
 [[package]]
 name = "campfire-content"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "postcard",
  "serde",
@@ -1796,7 +1796,7 @@ dependencies = [
 
 [[package]]
 name = "campfire-det-ci"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "campfire-protocol",
  "campfire-runner",
@@ -1804,7 +1804,7 @@ dependencies = [
 
 [[package]]
 name = "campfire-identity"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "campfire-protocol",
  "nostr",
@@ -1812,7 +1812,7 @@ dependencies = [
 
 [[package]]
 name = "campfire-math"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "blake3",
  "criterion 0.8.2",
@@ -1823,7 +1823,7 @@ dependencies = [
 
 [[package]]
 name = "campfire-net"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "bevy_app",
  "bevy_ecs",
@@ -1835,7 +1835,6 @@ dependencies = [
  "campfire-protocol",
  "campfire-runner",
  "campfire-sim",
- "campfire-verifier",
  "criterion 0.8.2",
  "lightyear",
  "serde",
@@ -1843,7 +1842,7 @@ dependencies = [
 
 [[package]]
 name = "campfire-protocol"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "blake3",
  "campfire-math",
@@ -1856,7 +1855,7 @@ dependencies = [
 
 [[package]]
 name = "campfire-runner"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "bevy_ecs",
  "campfire-capabilities",
@@ -1869,7 +1868,7 @@ dependencies = [
 
 [[package]]
 name = "campfire-script"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "campfire-math",
  "campfire-sim",
@@ -1878,7 +1877,7 @@ dependencies = [
 
 [[package]]
 name = "campfire-server"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "campfire-content",
  "campfire-identity",
@@ -1889,7 +1888,7 @@ dependencies = [
 
 [[package]]
 name = "campfire-sim"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "bevy_ecs",
  "blake3",
@@ -1901,7 +1900,7 @@ dependencies = [
 
 [[package]]
 name = "campfire-verifier"
-version = "0.0.0"
+version = "0.1.0"
 dependencies = [
  "campfire-capabilities",
  "campfire-content",
