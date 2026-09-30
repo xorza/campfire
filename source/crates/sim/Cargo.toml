@@ -10,7 +10,6 @@ bench = ["internals", "dep:criterion"]
 
 [dependencies]
 campfire-math.workspace = true
-campfire-protocol.workspace = true
 
 bevy_ecs.workspace = true
 blake3.workspace = true

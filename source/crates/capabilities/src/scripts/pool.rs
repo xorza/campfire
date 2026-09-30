@@ -1,4 +1,4 @@
-use campfire_protocol::PlayerSlot;
+use campfire_sim::PlayerSlot;
 
 /// The pool a script call draws from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -1,7 +1,8 @@
 use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
-use campfire_protocol::PlayerSlot;
+
+use crate::player_slot::PlayerSlot;
 
 /// The player inputs applied in the running tick. The runner fills it from the session log before
 /// each tick, and the schedule empties it when the tick ends, so no tick sees another's inputs.

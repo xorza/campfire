@@ -5,9 +5,8 @@ use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::Component;
 use campfire_content::PackagePath;
 use campfire_math::{SegmentSeed, Vec3};
-use campfire_protocol::PlayerSlot;
 use campfire_script::{NumError, ScriptError};
-use campfire_sim::{IdAllocator, SimUpdate, TickInput, TickInputs};
+use campfire_sim::{IdAllocator, PlayerSlot, SimUpdate, TickInput, TickInputs};
 
 use super::*;
 use crate::abilities::ability_data::RangeField;

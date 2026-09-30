@@ -1,4 +1,4 @@
-use campfire_protocol::PlayerSlot;
+use campfire_sim::PlayerSlot;
 
 use crate::units::team::Team;
 

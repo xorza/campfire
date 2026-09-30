@@ -1,6 +1,5 @@
 use bevy_ecs::resource::Resource;
-use campfire_protocol::PlayerSlot;
-use campfire_sim::SimResource;
+use campfire_sim::{PlayerSlot, SimResource};
 use serde::{Deserialize, Serialize};
 
 use crate::mode::hero_index::HeroIndex;

@@ -7,10 +7,11 @@ use std::rc::Rc;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::Local;
 use bevy_ecs::world::World;
-use campfire_protocol::PlayerSlot;
 use campfire_script::rhai::{Dynamic, INT, ImmutableString};
 use campfire_script::{ScriptError, ScriptHost};
-use campfire_sim::{Command, Position, SimSet, SimTick, StateRegistry, TickInputs, TickRate};
+use campfire_sim::{
+    Command, PlayerSlot, Position, SimSet, SimTick, StateRegistry, TickInputs, TickRate,
+};
 
 use crate::files::manifest::TeamManifest;
 use crate::files::map_data::{GroundPoint, MapData};

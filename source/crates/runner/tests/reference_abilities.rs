@@ -12,10 +12,9 @@ use campfire_capabilities::{
 };
 use campfire_content::{PackageDir, PackagePath};
 use campfire_math::{Num, SegmentSeed, Vec3};
-use campfire_protocol::PlayerSlot;
 use campfire_sim::{
-    EntityIndex, IdAllocator, Position, SimUpdate, StableId, StateRegistry, TickInput, TickInputs,
-    TickRate, Ticks,
+    EntityIndex, IdAllocator, PlayerSlot, Position, SimUpdate, StableId, StateRegistry, TickInput,
+    TickInputs, TickRate, Ticks,
 };
 
 /// The MOBA's 30 ticks a second.

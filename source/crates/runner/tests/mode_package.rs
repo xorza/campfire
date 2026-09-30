@@ -19,6 +19,7 @@ use campfire_protocol::{
 };
 use campfire_runner::{CtxMisuse, LoadError, LoadProblem, ModePackages, Place, RELEASE, Runner};
 use campfire_script::ScriptHost;
+use campfire_sim::PlayerSlot as SimSlot;
 use campfire_sim::{Capability, EntityIndex, Position, StableId, StateHash};
 
 /// The 3v3's slowest rate, which runs a match in the fewest ticks.
@@ -250,7 +251,7 @@ fn a_3v3_match_replays_to_the_same_hashes() {
     let gold = world.resource::<PlayerResources>();
     for slot in 0..PLAYERS {
         assert_eq!(
-            gold.amount(PlayerSlot::new(slot), "gold"),
+            gold.amount(SimSlot::new(slot), "gold"),
             104,
             "player {slot}"
         );

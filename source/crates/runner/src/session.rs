@@ -2,7 +2,9 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::world::{Mut, World};
 use campfire_capabilities::Mode;
 use campfire_protocol::{Applied, ChainSignature, InputError, PlayerInput, ServerSeed, SessionLog};
-use campfire_sim::{SimTick, SimUpdate, StateHash, StateRegistry, TickInput, TickInputs, TickRate};
+use campfire_sim::{
+    PlayerSlot, SimTick, SimUpdate, StateHash, StateRegistry, TickInput, TickInputs, TickRate,
+};
 
 use crate::RELEASE;
 use crate::error::StartError;
@@ -96,9 +98,10 @@ impl Session {
                 "the sim and the log are at the same tick"
             );
             let mut inputs = world.resource_mut::<TickInputs>();
+            // The log's slot type becomes the sim's here, where the log's inputs enter the sim.
             for input in session.log.seal_tick() {
                 inputs.push(TickInput {
-                    slot: input.slot,
+                    slot: PlayerSlot::new(input.slot.get()),
                     payload: input.payload,
                 });
             }

@@ -10,10 +10,10 @@ use bevy_time::{TimePlugin, TimeUpdateStrategy};
 use campfire_capabilities::{Action, Order, Owner};
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
 use campfire_protocol::{
-    Delegation, DelegationTerms, PlayerSlot, SeedChain, SessionHeader, SessionLog, SessionTerms,
+    Delegation, DelegationTerms, SeedChain, SessionHeader, SessionLog, SessionTerms,
 };
 use campfire_runner::{ModePackages, RELEASE, StartError};
-use campfire_sim::{EntityIndex, StableId};
+use campfire_sim::{EntityIndex, PlayerSlot, StableId};
 use lightyear::crossbeam::CrossbeamIo;
 use lightyear::prelude::client::{ClientPlugins, RawClient};
 use lightyear::prelude::server::{RawServer, ServerPlugins};

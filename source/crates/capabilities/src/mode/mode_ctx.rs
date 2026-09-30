@@ -1,9 +1,8 @@
 use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
 
-use campfire_protocol::PlayerSlot;
 use campfire_script::rhai::{Array, Dynamic, Engine, INT, ImmutableString};
-use campfire_sim::{Position, Ticks};
+use campfire_sim::{PlayerSlot, Position, Ticks};
 
 use crate::mode::mode_book::ModeBook;
 use crate::mode::picks::Picks;

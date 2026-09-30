@@ -7,9 +7,8 @@ use bevy_ecs::system::{Commands, Query, ScheduleSystem};
 use campfire_math::{Num, RngSource};
 use serde::{Deserialize, Serialize};
 
-use campfire_protocol::PlayerSlot;
-
 use super::*;
+use crate::player_slot::PlayerSlot;
 use crate::sim_state::{SimComponent, SimResource};
 use crate::stable_id::StableId;
 use crate::state_registry::{StateHash, StateRegistry};

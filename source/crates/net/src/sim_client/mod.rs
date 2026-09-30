@@ -11,7 +11,9 @@ use campfire_capabilities::{CapabilitySet, Order};
 use campfire_math::SegmentSeed;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SignOnly};
 use campfire_protocol::{InputChain, InputHash, SessionId, SessionTerms};
-use campfire_sim::{SimTick, SimUpdate, StateRegistry, Tick, TickInput, TickInputs, TickRate};
+use campfire_sim::{
+    PlayerSlot, SimTick, SimUpdate, StateRegistry, Tick, TickInput, TickInputs, TickRate,
+};
 use lightyear::prelude::{
     Client, LocalTimeline, MessageReceiver, MessageSender, Tick as NetTick, is_in_rollback,
 };
@@ -185,7 +187,7 @@ fn run_predicted_tick(world: &mut World) {
     let Some(slot) = world
         .resource::<SentInputs>()
         .chain
-        .map(|chain| chain.slot())
+        .map(|chain| PlayerSlot::new(chain.slot().get()))
     else {
         return;
     };

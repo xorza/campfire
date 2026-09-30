@@ -7,7 +7,6 @@ license.workspace = true
 [dependencies]
 campfire-content.workspace = true
 campfire-math.workspace = true
-campfire-protocol.workspace = true
 campfire-script.workspace = true
 campfire-sim.workspace = true
 

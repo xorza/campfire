@@ -4,10 +4,11 @@ use std::num::NonZeroU32;
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::entity::Entity;
 use campfire_math::{Num, SegmentSeed, Vec3};
-use campfire_protocol::PlayerSlot;
 use campfire_script::Budget;
 use campfire_script::rhai::Dynamic;
-use campfire_sim::{EntityIndex, IdAllocator, Position, SimTick, SimUpdate, StableId, Tick, Ticks};
+use campfire_sim::{
+    EntityIndex, IdAllocator, PlayerSlot, Position, SimTick, SimUpdate, StableId, Tick, Ticks,
+};
 
 use super::*;
 use crate::combat::Combat;
