@@ -1,9 +1,14 @@
+use std::num::NonZeroU32;
+
 use bevy_ecs::component::Component;
 use campfire_math::{Num, SegmentSeed, Vec3};
-use campfire_sim::{EntityIndex, IdAllocator, SimUpdate, StableId, TypeHash};
+use campfire_sim::{EntityIndex, IdAllocator, SimUpdate, StableId, TickRate, TypeHash};
 
 use super::*;
 use crate::navigation::lane_walker::PathDirection;
+
+/// The MOBA's 30 ticks a second.
+const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
 
 const ONE: i64 = 1 << 24;
 
@@ -24,7 +29,7 @@ struct Walk {
 impl Walk {
     fn new() -> Walk {
         let mut world = World::new();
-        SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]));
+        SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), RATE);
         let mut schedule = SimUpdate::schedule();
         let mut registry = StateRegistry::new();
         Navigation::install(&mut world, &mut schedule, &mut registry);

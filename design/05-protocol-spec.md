@@ -42,6 +42,8 @@ The protocol has its own version, separate from engine releases. Every session l
 | Group key | A group of hosts | Group membership, shared ban lists |
 | Release keys | The project's maintainers (or any fork's), kept offline; a launcher pins the set and its threshold k of n | Engine release, release revocation and key-set change events |
 
+**Session id:** the hash of the session's terms, which the server fixes when it opens the session, before any player joins: `BLAKE3("campfire/session-id/v1" ‖ server key ‖ u32 tick rate ‖ u64 max input delay ‖ u64 max input lead ‖ u32 max payload length ‖ u32 max inputs per tick ‖ seed commitment)`, integers little-endian. Every delegation and every chain-head signature names the id, so the players sign the terms, and a log cannot change them: a verifier computes the id from the header and refuses a delegation that names another. The seed commitment is fresh for every session, so no two sessions share an id.
+
 **Session key delegation:** a Nostr event of a Campfire kind, signed by the main key, with tags for session pubkey, server pubkey, session id and expiry. It is a Nostr event because remote signers (NIP-46) sign only events. It is never published to relays; the session log header holds it verbatim, so a verifier can link every input to a player's identity. The main key never enters the game. The kind is 22710 for now, in the ephemeral range so a relay sent one by mistake does not keep it. Each term is one tag of one value: `session_key`, `server_key` and `session_id` in lowercase hex, and NIP-40's `expiration` in Unix seconds; other tags and the content are ignored. The server checks the expiry against its clock when the player connects; a log has no clock, so a verifier does not.
 
 **License key delegation:** the same shape, signed by the author key for a license key, with tags for the package ids it may license and an expiry. It lets a storefront issue licenses while the author is offline.
@@ -61,10 +63,10 @@ The connection is part of the protocol, because it binds the Nostr identities to
 SessionLog
   header
     protocol version, engine release tag
-    session id, server pubkey
-    mode package fingerprint + dependency fingerprints
-    host settings hash, tick rate, max input delay and max input lead (ticks),
-    max payload length, max inputs per player per tick, backends, capabilities
+    terms: server pubkey, tick rate, max input delay and max input lead (ticks),
+           max payload length, max inputs per player per tick, seed commitment,
+           later mode package fingerprint + dependency fingerprints, backends, capabilities
+           (the session id is their hash, and is not written)
     players: session key delegation (which names the main pubkey) + seed contribution
   segments[]
     checkpoint: tick, state hash, snapshot fingerprint,
@@ -76,7 +78,7 @@ SessionLog
   result (optional): tick, result payload, final state hash, server signature
 ```
 
-**File.** A session log file starts with the tag `campfire/session-log/v1`, which states its protocol version, and continues in postcard. Until checkpoints come, it holds one segment from tick 0: the header (session id, server key, max input delay and lead, max payload length, max inputs per tick, seed commitment, and each player's delegation JSON and seed contribution), the `u64` count of ticks, the packets logged before each tick, the packets logged after the last tick, and the seed reveal as an option. Packets go as a `u32` count, then each as `u32 slot`, its inputs as a `u32` count and `u64 stamp tick, payload bytes` each, and the 64-byte signature. A reader checks every delegation and records every packet again, so it checks each chain link and signature, and accepts only the canonical encoding: postcard itself accepts an overlong varint, so a reader encodes what it decoded and compares the bytes. One log therefore has one file and one fingerprint. A verifier then replays the decoded log's ticks from what it holds, with no check done twice.
+**File.** A session log file starts with the tag `campfire/session-log/v1`, which states its protocol version, and continues in postcard. Until checkpoints come, it holds one segment from tick 0: the header (the terms: server key, tick rate as a non-zero `u32`, max input delay and lead, max payload length, max inputs per tick and seed commitment; then each player's delegation JSON and seed contribution), the `u64` count of ticks, the packets logged before each tick, the packets logged after the last tick, and the seed reveal as an option. Packets go as a `u32` count, then each as `u32 slot`, its inputs as a `u32` count and `u64 stamp tick, payload bytes` each, and the 64-byte signature. A reader checks every delegation and records every packet again, so it checks each chain link and signature, and accepts only the canonical encoding: postcard itself accepts an overlong varint, so a reader encodes what it decoded and compares the bytes. One log therefore has one file and one fingerprint. A verifier then replays the decoded log's ticks from what it holds, with no check done twice.
 
 **Input sources**
 

@@ -11,6 +11,7 @@ mod player_slot;
 mod server_seed;
 mod session_id;
 mod session_log;
+mod session_terms;
 
 pub use chain_signature::ChainSignature;
 pub use delegation::delegation_tag::DelegationTag;
@@ -26,6 +27,7 @@ pub use server_seed::{SeedCommitment, ServerSeed};
 pub use session_id::SessionId;
 pub use session_log::error::{HeaderError, InputError, LogError, SeedError};
 pub use session_log::{Applied, SessionHeader, SessionLog, SessionPlayer};
+pub use session_terms::SessionTerms;
 
 #[cfg(feature = "bench")]
 pub mod bench {

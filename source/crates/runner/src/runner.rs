@@ -1,9 +1,8 @@
 use bevy_ecs::world::World;
-use campfire_protocol::{
-    Applied, ChainSignature, InputError, PlayerInput, SeedError, ServerSeed, SessionLog,
-};
+use campfire_protocol::{Applied, ChainSignature, InputError, PlayerInput, ServerSeed, SessionLog};
 use campfire_sim::StateHash;
 
+use crate::error::StartError;
 use crate::session::Session;
 
 /// A match in a bare `World`, with no network layer: what a verifier replays a log in.
@@ -14,7 +13,7 @@ pub struct Runner {
 
 impl Runner {
     /// See `Session::start`.
-    pub fn new(log: SessionLog, server_seed: ServerSeed) -> Result<Runner, SeedError> {
+    pub fn new(log: SessionLog, server_seed: ServerSeed) -> Result<Runner, StartError> {
         let mut world = World::new();
         Session::start(&mut world, log, server_seed)?;
         Ok(Runner { world })

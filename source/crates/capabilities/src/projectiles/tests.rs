@@ -1,5 +1,7 @@
+use std::num::NonZeroU32;
+
 use campfire_math::{Num, SegmentSeed, Vec3};
-use campfire_sim::{EntityIndex, SimTick, SimUpdate, StableId, TypeHash};
+use campfire_sim::{EntityIndex, SimTick, SimUpdate, StableId, TickRate, TypeHash};
 
 use super::*;
 use crate::combat::Combat;
@@ -10,6 +12,9 @@ use crate::combat::dead::Dead;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::{RecentAttack, RecentAttackers};
 use crate::combat::team::Team;
+
+/// The MOBA's 30 ticks a second.
+const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
 
 fn num(value: i64) -> Num {
     Num::from_int(value).unwrap()
@@ -54,7 +59,7 @@ impl Volley {
     /// A match with combat, and with projectiles when `projectiles`.
     fn new(projectiles: bool) -> Volley {
         let mut world = World::new();
-        SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]));
+        SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), RATE);
         let mut schedule = SimUpdate::schedule();
         let mut registry = StateRegistry::new();
         Combat::install(&mut world, &mut schedule, &mut registry);

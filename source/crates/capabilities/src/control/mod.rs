@@ -1,9 +1,10 @@
+use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Without;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::{Local, Query, Res};
 use bevy_ecs::world::{Mut, World};
 use campfire_math::Vec3;
-use campfire_script::{ScriptHost, ScriptId};
+use campfire_script::{ScriptError, ScriptHost, ScriptId};
 use campfire_sim::{
     Command, EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, TickInputs, TickRate,
 };
@@ -20,11 +21,13 @@ use crate::control::ai_ctx::{AiCtx, AiOrder};
 use crate::control::ai_data::AiData;
 use crate::control::controller::Controller;
 use crate::control::error::AiError;
+use crate::control::next_think::NextThink;
 use crate::control::order::{Action, Order};
 use crate::navigation::destination::Destination;
 use crate::navigation::lane_walker::LaneWalker;
 use crate::navigation::lanes::Lanes;
 use crate::units::error::CallError;
+use crate::units::script_budgets::ScriptBudgets;
 use crate::units::script_failures::{Hook, ScriptFailure, ScriptFailures};
 use crate::units::script_view::View;
 use crate::units::unit_type::UnitType;
@@ -34,6 +37,7 @@ pub(crate) mod ai_ctx;
 pub(crate) mod ai_data;
 pub(crate) mod controller;
 pub(crate) mod error;
+pub(crate) mod next_think;
 pub(crate) mod order;
 
 /// The `control` capability: who moves a unit. For now, of the orders kind: units that take
@@ -65,6 +69,7 @@ impl Control {
                 .before(CombatSet::Attack),
         ));
         registry.register_component::<Controller>();
+        registry.register_component::<NextThink>();
     }
 
     /// Gives `unit_type` its AI, with the source of its script: the think period in milliseconds
@@ -159,11 +164,23 @@ fn apply_orders(
     }
 }
 
-/// Runs `think` for each living unit of a type with AI that is due this tick, in the order of
-/// their stable ids. A unit is due in the ticks that leave the remainder of its stable id when
-/// divided by its type's period, so the units of a type spread over the period. Each call's
-/// orders apply when it returns; a failed call's do not.
-fn think(world: &mut World, mut due: Local<'_, Vec<(StableId, ScriptId)>>) {
+/// A unit due to think this tick: since which tick, and with which script and period.
+#[derive(Debug, Clone, Copy)]
+struct Due {
+    since: u64,
+    id: StableId,
+    entity: Entity,
+    script: ScriptId,
+    period: u64,
+}
+
+/// Runs `think` for each living unit of a type with AI that is due, those due longest first,
+/// then by stable id. A unit is first due in the first tick that leaves the remainder of its
+/// stable id when divided by its type's period, so the units of a type spread over the period;
+/// then a period after each think. Each call's orders apply when it returns; a failed call's do
+/// not. A unit whose call finds the think pool spent stays due, so under load AI thinks later,
+/// and no unit misses its turn for good.
+fn think(world: &mut World, mut due: Local<'_, Vec<Due>>) {
     let now = world.resource::<SimTick>().get();
     due.clear();
     let book = world.resource::<AiBook>();
@@ -176,40 +193,67 @@ fn think(world: &mut World, mut due: Local<'_, Vec<(StableId, ScriptId)>>) {
             continue;
         };
         let period = u64::from(ai.period);
-        if now % period == id.get() % period {
-            due.push((id, ai.script));
+        let since = match unit.get::<NextThink>() {
+            Some(next) => next.get(),
+            None if now % period == id.get() % period => now,
+            None => continue,
+        };
+        if since <= now {
+            due.push(Due {
+                since,
+                id,
+                entity,
+                script: ai.script,
+                period,
+            });
         }
     }
     if due.is_empty() {
         return;
     }
+    due.sort_unstable_by_key(|due| (due.since, due.id));
     let ctx = world.non_send::<AiCtx>().clone();
     ctx.view().read(world);
     let mut host = world
         .remove_non_send::<ScriptHost>()
         .expect("units are installed");
-    for &(id, script) in &*due {
+    let mut budget = world.resource::<ScriptBudgets>().think;
+    for &Due {
+        since,
+        id,
+        entity,
+        script,
+        period,
+    } in &*due
+    {
         // A unit with no team or health is no unit scripts see.
         let Some(unit) = ctx.view().unit(id) else {
             continue;
         };
         ctx.begin(id);
-        match host.call(script, Hook::Think.name(), (ctx.clone(), unit)) {
+        let next = match host.call(&mut budget, script, Hook::Think.name(), (ctx.clone(), unit)) {
             Ok(_) => {
                 for order in ctx.frame().orders.drain(..) {
                     apply_ai_order(world, id, order);
                 }
+                now + period
             }
-            Err(error) => world
-                .non_send_mut::<ScriptFailures>()
-                .0
-                .push(ScriptFailure {
-                    unit: id,
-                    hook: Hook::Think,
-                    error: CallError::from_script(error),
-                }),
-        }
+            Err(ScriptError::TickBudget) => since,
+            Err(error) => {
+                world
+                    .non_send_mut::<ScriptFailures>()
+                    .0
+                    .push(ScriptFailure {
+                        unit: id,
+                        hook: Hook::Think,
+                        error: CallError::from_script(error),
+                    });
+                now + period
+            }
+        };
+        world.entity_mut(entity).insert(NextThink::new(next));
     }
+    world.resource_mut::<ScriptBudgets>().think = budget;
     world.insert_non_send(host);
 }
 

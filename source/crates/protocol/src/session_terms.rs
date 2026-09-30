@@ -1,0 +1,58 @@
+use std::num::NonZeroU32;
+use std::time::Duration;
+
+use blake3::Hasher;
+
+use crate::server_seed::SeedCommitment;
+use crate::session_id::SessionId;
+
+/// Starts the session id, so no other BLAKE3 use can produce one.
+const SESSION_ID_DOMAIN: &[u8] = b"campfire/session-id/v1";
+
+/// What the server fixes when it opens a session, before any player joins. The session id is
+/// their hash, and every delegation and chain-head signature names the id: the players sign
+/// these terms, so a log cannot change them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SessionTerms {
+    /// The server's x-only public key.
+    pub server_key: [u8; 32],
+    /// Ticks a second, fixed for the whole session.
+    pub tick_hz: NonZeroU32,
+    /// The most ticks an input may land after its stamp; a later one is logged as late.
+    pub max_input_delay: u64,
+    /// The most ticks an input's stamp may be ahead of the next tick; a further one is logged as
+    /// early. The server holds each input until its tick, so this bounds what a client can make
+    /// it hold.
+    pub max_input_lead: u64,
+    /// The most bytes an input's payload may hold.
+    pub max_payload_len: u32,
+    /// The most inputs a player may send before one tick. With the max payload length, it bounds
+    /// how fast a player can grow the log.
+    pub max_inputs_per_tick: u32,
+    /// The server's commitment to its seed. It is fresh for every session, so no two sessions
+    /// share an id.
+    pub seed_commitment: SeedCommitment,
+}
+
+impl SessionTerms {
+    /// How long a tick lasts, to the nanosecond below.
+    pub const fn tick_length(&self) -> Duration {
+        Duration::from_nanos(1_000_000_000 / self.tick_hz.get() as u64)
+    }
+
+    /// `BLAKE3(domain ‖ server key ‖ u32 tick rate ‖ u64 max delay ‖ u64 max lead ‖ u32 max
+    /// payload length ‖ u32 max inputs per tick ‖ seed commitment)`, integers little-endian.
+    pub fn session_id(&self) -> SessionId {
+        let mut hasher = Hasher::new();
+        hasher
+            .update(SESSION_ID_DOMAIN)
+            .update(&self.server_key)
+            .update(&self.tick_hz.get().to_le_bytes())
+            .update(&self.max_input_delay.to_le_bytes())
+            .update(&self.max_input_lead.to_le_bytes())
+            .update(&self.max_payload_len.to_le_bytes())
+            .update(&self.max_inputs_per_tick.to_le_bytes())
+            .update(self.seed_commitment.as_bytes());
+        SessionId::new(*hasher.finalize().as_bytes())
+    }
+}

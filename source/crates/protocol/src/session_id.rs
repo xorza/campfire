@@ -1,5 +1,5 @@
-/// A session's id, which the server chooses. Delegations and chain-head signatures name it, so
-/// neither counts in another session.
+/// A session's id: the hash of its terms, see `SessionTerms::session_id`. Delegations and
+/// chain-head signatures name it, so neither counts in another session, and both sign the terms.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct SessionId([u8; 32]);
 

@@ -8,6 +8,7 @@
 )]
 
 use std::fmt::Write;
+use std::num::NonZeroU32;
 
 use bevy_ecs::component::Component;
 use bevy_ecs::schedule::IntoScheduleConfigs;
@@ -17,9 +18,12 @@ use blake3::Hasher;
 use campfire_math::{Num, RngSource, SegmentSeed, Vec3};
 use campfire_sim::{
     EntityIndex, IdAllocator, SimComponent, SimRng, SimSet, SimTick, SimUpdate, StableId,
-    StateRegistry,
+    StateRegistry, TickRate,
 };
 use serde::{Deserialize, Serialize};
+
+/// The MOBA's 30 ticks a second.
+const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
 
 const CASES: usize = 4000;
 
@@ -248,7 +252,7 @@ fn tick_section(hasher: &mut Hasher) {
         *chunk = inputs.next().to_le_bytes();
     }
     let mut world = World::new();
-    SimUpdate::prepare(&mut world, SegmentSeed::new(seed));
+    SimUpdate::prepare(&mut world, SegmentSeed::new(seed), RATE);
     let mut schedule = SimUpdate::schedule();
     schedule.add_systems((
         arrive.in_set(SimSet::Inputs),

@@ -49,8 +49,8 @@ fn server_and_replay_agree_on_every_tick() {
     // `Check` rolls the client back only on a misprediction; `Always` on every confirmed update,
     // so the client runs the sim again from the server's state many times.
     for rollback in [RollbackMode::Check, RollbackMode::Always] {
-        let mut pair = LocalPair::new(rollback);
-        pair.start_match(SERVER_SEED).unwrap();
+        let mut pair = LocalPair::new(rollback, SERVER_SEED);
+        pair.start_match().unwrap();
         for frame in 0..MATCH_FRAMES {
             match frame {
                 10 => pair.order(move_to(0, 5)),

@@ -79,7 +79,7 @@ Scaling keys: `base`, `per_level`, and a stat ratio each for `ad`, `bonus_ad`, `
 | `cooldown_reduction` | Sum | 0 to 0.4 |
 | `slow` | Strongest only | 0 to 0.99; `slow_immune` ignores it |
 
-Move speed is `move_speed × (1 + move_speed_pct) × (1 − slow)`, at least an engine floor. `life_steal` heals the source for attack damage dealt and `spell_vamp` for ability damage; `healing_received_pct` scales every heal.
+Move speed is `move_speed × (1 + move_speed_pct) × (1 − slow)`, at least an engine floor and at most the mode's `max_move_speed`. Every homing projectile flies faster than that cap, which the package load checks, so it catches its target within launch distance ÷ (projectile speed − cap). `life_steal` heals the source for attack damage dealt and `spell_vamp` for ability damage; `healing_received_pct` scales every heal.
 
 **States:** `stunned`, `rooted`, `silenced`, `disarmed`, `airborne`, `stealthed`, `untargetable`, `slow_immune`.
 

@@ -4,6 +4,7 @@
 
 use std::fmt::Write;
 use std::fs;
+use std::num::NonZeroU32;
 use std::process::Command;
 
 use campfire_capabilities::{Action, AttackState, Destination, Health, Order, Projectile};
@@ -11,14 +12,13 @@ use campfire_math::{Num, Vec3};
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
 use campfire_protocol::{
     Applied, Delegation, DelegationTerms, InputChain, PlayerSlot, SeedError, ServerSeed,
-    SessionHeader, SessionId, SessionLog, SessionPlayer,
+    SessionHeader, SessionLog, SessionPlayer, SessionTerms,
 };
-use campfire_runner::Runner;
+use campfire_runner::{Runner, StandInMode, StartError};
 use campfire_sim::{EntityIndex, Position, StableId, StateHash};
 use campfire_verifier::Replay;
 
 const SERVER_SEED: ServerSeed = ServerSeed::new([9; 32]);
-const SESSION_ID: SessionId = SessionId::new([7; 32]);
 const SERVER_KEY: [u8; 32] = [8; 32];
 /// BIP-340 signing without auxiliary randomness is deterministic, so every run signs alike.
 const AUX: [u8; 32] = [0; 32];
@@ -75,31 +75,42 @@ fn session_key() -> Keypair {
     key(2)
 }
 
-/// The player's main key, `key(1)`, lets `session_key` sign in this session.
-fn delegation() -> Delegation {
-    let terms = DelegationTerms {
-        session_key: session_key().x_only_public_key().0,
+fn terms() -> SessionTerms {
+    SessionTerms {
         server_key: SERVER_KEY,
-        session_id: SESSION_ID,
-        expiration: 1_700_086_400,
-    };
-    Delegation::sign(&Secp256k1::new(), &key(1), &terms, 1_700_000_000, &AUX)
-}
-
-fn header() -> SessionHeader {
-    SessionHeader {
-        session_id: SESSION_ID,
-        server_key: SERVER_KEY,
+        tick_hz: StandInMode::TICK_HZ,
         max_input_delay: 3,
         max_input_lead: 3,
         max_payload_len: 64,
         max_inputs_per_tick: 4,
         seed_commitment: SERVER_SEED.commitment(),
+    }
+}
+
+/// The player's main key, `key(1)`, lets `session_key` sign in the session of `session`.
+fn delegation(session: &SessionTerms) -> Delegation {
+    let terms = DelegationTerms {
+        session_key: session_key().x_only_public_key().0,
+        server_key: SERVER_KEY,
+        session_id: session.session_id(),
+        expiration: 1_700_086_400,
+    };
+    Delegation::sign(&Secp256k1::new(), &key(1), &terms, 1_700_000_000, &AUX)
+}
+
+/// The header of a session of `terms`, with the one player.
+fn header_of(terms: SessionTerms) -> SessionHeader {
+    SessionHeader {
+        terms,
         players: vec![SessionPlayer {
-            delegation: delegation(),
+            delegation: delegation(&terms),
             seed_contribution: [4; 32],
         }],
     }
+}
+
+fn header() -> SessionHeader {
+    header_of(terms())
 }
 
 fn log() -> SessionLog {
@@ -137,7 +148,7 @@ struct Run {
 fn run(orders: &[&Sent], ticks: u64) -> Run {
     let mut runner = Runner::new(log(), SERVER_SEED).unwrap();
     let secp = Secp256k1::new();
-    let mut chain = InputChain::new(PlayerSlot::new(0), delegation().chain_root());
+    let mut chain = InputChain::new(PlayerSlot::new(0), delegation(&terms()).chain_root());
     let mut applied = Vec::new();
     let mut hashes = Vec::new();
     for tick in 0..ticks {
@@ -152,7 +163,7 @@ fn run(orders: &[&Sent], ticks: u64) -> Run {
                 },
             }]);
             let input = chain.extend(sent.stamp, &payload);
-            let signature = chain.sign(&secp, &session_key(), SESSION_ID, &AUX);
+            let signature = chain.sign(&secp, &session_key(), terms().session_id(), &AUX);
             assert_eq!(
                 runner.record([input], &signature, &mut applied),
                 Ok(()),
@@ -323,10 +334,9 @@ fn a_corrupt_log_file_is_refused_or_replays() {
             }
         }
     }
-    // What no signature, chain link or commitment covers: the max delay and lead (3 ^ 1 = 2), the
-    // max payload length (64 ^ 1 = 65), the max inputs per tick (4 ^ 1 = 5), and the contribution
-    // under every flip. The session key signs every order, the last one too.
-    assert_eq!(replays, 4 + 32 * 3);
+    // What no signature, chain link or commitment covers: the contribution, under every flip.
+    // The session id hashes the terms, which the delegation and every order sign.
+    assert_eq!(replays, 32 * 3);
 }
 
 #[test]
@@ -367,10 +377,23 @@ fn the_binary_prints_the_last_state_hash() {
 }
 
 #[test]
-fn the_seed_comes_only_from_the_header_and_its_reveal() {
-    assert_eq!(Replay::new(log()).err(), Some(SeedError::NotRevealed));
+fn a_match_starts_only_with_its_seed_and_at_a_rate_its_mode_runs_at() {
+    assert_eq!(
+        Replay::new(log()).err(),
+        Some(StartError::Seed(SeedError::NotRevealed))
+    );
     assert_eq!(
         Runner::new(log(), ServerSeed::new([8; 32])).err(),
-        Some(SeedError::WrongSeed)
+        Some(StartError::Seed(SeedError::WrongSeed))
+    );
+    let sixty = NonZeroU32::new(60).unwrap();
+    let fast = SessionTerms {
+        tick_hz: sixty,
+        ..terms()
+    };
+    let log = SessionLog::new(header_of(fast)).unwrap();
+    assert_eq!(
+        Runner::new(log, SERVER_SEED).err(),
+        Some(StartError::TickRate(sixty))
     );
 }

@@ -10,9 +10,9 @@ use bevy_ecs::world::{Mut, World};
 use campfire_capabilities::{Combat, Control, Navigation, Order, Units};
 use campfire_math::SegmentSeed;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SignOnly};
-use campfire_protocol::{InputChain, InputHash, PlayerSlot, SessionId};
+use campfire_protocol::{InputChain, InputHash, PlayerSlot, SessionId, SessionTerms};
 use campfire_runner::StandInMode;
-use campfire_sim::{SimTick, SimUpdate, StateRegistry, TickInput, TickInputs};
+use campfire_sim::{SimTick, SimUpdate, StateRegistry, TickInput, TickInputs, TickRate};
 use lightyear::prelude::{
     Client, LocalTimeline, MessageReceiver, MessageSender, Tick, is_in_rollback,
 };
@@ -35,7 +35,8 @@ const AUX: [u8; 32] = [0; 32];
 #[derive(Debug, Clone)]
 pub struct SimClient {
     pub session_key: Keypair,
-    pub session_id: SessionId,
+    /// The terms of the session: its rate, and its id, which the signatures name.
+    pub terms: SessionTerms,
     /// What the player's first input links to: the id of their delegation.
     pub chain_root: InputHash,
 }
@@ -55,6 +56,8 @@ impl PendingOrders {
 #[derive(Resource, Debug)]
 struct SentInputs {
     client: SimClient,
+    /// The hash of the client's terms.
+    session_id: SessionId,
     secp: Secp256k1<SignOnly>,
     chain: Option<InputChain>,
     inputs: Vec<SentInput>,
@@ -80,16 +83,17 @@ impl SentInputs {
 impl Plugin for SimClient {
     fn build(&self, app: &mut App) {
         let world = app.world_mut();
-        SimUpdate::prepare(world, PREDICTION_SEED);
+        let rate = TickRate::new(self.terms.tick_hz);
+        SimUpdate::prepare(world, PREDICTION_SEED, rate);
         let mut schedule = SimUpdate::schedule();
         // A client hashes no state, so the registry the capabilities fill is not kept.
         let mut state = StateRegistry::new();
+        // A client predicts only its own player's units.
         Units::install(
             world,
             &mut schedule,
             &mut state,
-            StandInMode::SCRIPT_LIMITS,
-            StandInMode::TICK_RATE,
+            StandInMode::script_limits(1),
         );
         Combat::install(world, &mut schedule, &mut state);
         Navigation::install(world, &mut schedule, &mut state);
@@ -97,6 +101,7 @@ impl Plugin for SimClient {
         world.add_schedule(schedule);
         world.insert_resource(SentInputs {
             client: self.clone(),
+            session_id: self.terms.session_id(),
             secp: Secp256k1::signing_only(),
             chain: None,
             inputs: Vec::new(),
@@ -140,6 +145,7 @@ fn send_orders(
 ) {
     let SentInputs {
         client,
+        session_id,
         secp,
         chain: Some(chain),
         inputs,
@@ -170,7 +176,7 @@ fn send_orders(
     for input in sent {
         head.extend(stamp, &payloads[input.payload.clone()]);
     }
-    let signature = head.sign(secp, &client.session_key, client.session_id, &AUX);
+    let signature = head.sign(secp, &client.session_key, *session_id, &AUX);
     let chained = sent
         .iter()
         .map(|input| chain.extend(stamp, &payloads[input.payload.clone()]));

@@ -9,4 +9,5 @@ pub use error::{NumError, Raised, ScriptError};
 /// The script engine the host runs, at the version it pins, for capabilities to register their
 /// script API with.
 pub use rhai;
-pub use script_host::{ScriptHost, ScriptId, ScriptLimits};
+pub use script_host::budget::Budget;
+pub use script_host::{ScriptHost, ScriptId};

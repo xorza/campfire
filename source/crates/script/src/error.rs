@@ -11,7 +11,7 @@ pub enum ScriptError {
     Compile(ParseError),
     /// The call ran past the operation limit of one call.
     CallLimit,
-    /// The call ran past what the tick's operation budget had left, or found it spent.
+    /// The call ran past what its budget had left, or found it spent.
     TickBudget,
     /// A value raised and not caught: an API's error, such as a `NumError`, or a script's own
     /// `throw`.

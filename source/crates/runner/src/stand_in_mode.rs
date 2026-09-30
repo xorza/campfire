@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::num::NonZeroU32;
 
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::resource::Resource;
@@ -6,13 +7,12 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::world::World;
 use campfire_capabilities::{
     AiData, AttackStats, Combat, Combatant, Control, Controller, Health, LaneWalker, Lanes,
-    MoveStep, Navigation, OnDeath, PathDirection, Projectiles, Scalar, Team, UnitType,
-    UnitTypeData, Units,
+    MoveStep, Navigation, OnDeath, PathDirection, Projectiles, Scalar, ScriptLimits, Team,
+    UnitType, UnitTypeData, Units,
 };
 use campfire_content::PackagePath;
 use campfire_math::{Num, Vec3};
-use campfire_script::ScriptLimits;
-use campfire_sim::{IdAllocator, Position, SimSet, SimTick, StateRegistry, TickRate};
+use campfire_sim::{IdAllocator, Position, SimSet, SimTick, StateRegistry};
 
 /// A hero strikes 1.25 m away 8 ticks into an attack every 20, and stays when it dies.
 const HERO: Combatant = Combatant {
@@ -70,24 +70,32 @@ struct StandInTypes {
 }
 
 impl StandInMode {
-    /// 30 ticks a second, the MOBA's default.
-    pub const TICK_RATE: TickRate = TickRate::new(30).expect("a positive rate");
-    /// Script operations a call, and a tick, may run.
-    pub const SCRIPT_LIMITS: ScriptLimits = ScriptLimits {
-        per_call: 20_000,
-        per_tick: 200_000,
-    };
+    /// The one rate it runs at, 30 ticks a second, the MOBA's default: its data is in ticks.
+    pub const TICK_HZ: NonZeroU32 = NonZeroU32::new(30).expect("a positive rate");
+    /// Script operations a call may run: 20 000.
+    pub const PER_CALL: u64 = 20_000;
+
+    /// The script pools of a match of `players` players: the input pool holds a whole call for
+    /// each of them, at least one, and AI may run 10 whole calls a tick.
+    pub fn script_limits(players: usize) -> ScriptLimits {
+        let players = u64::try_from(players.max(1)).expect("players fit u64");
+        ScriptLimits {
+            per_call: StandInMode::PER_CALL,
+            input: StandInMode::PER_CALL * players,
+            think: StandInMode::PER_CALL * 10,
+        }
+    }
 
     /// Installs the mode's capabilities, unit types and map into `world`, which
-    /// `SimUpdate::prepare` set up, and adds its wave timer in the Mode stage.
-    pub(crate) fn install(world: &mut World, schedule: &mut Schedule, state: &mut StateRegistry) {
-        Units::install(
-            world,
-            schedule,
-            state,
-            StandInMode::SCRIPT_LIMITS,
-            StandInMode::TICK_RATE,
-        );
+    /// `SimUpdate::prepare` set up, for `players` players, and adds its wave timer in the Mode
+    /// stage.
+    pub(crate) fn install(
+        world: &mut World,
+        schedule: &mut Schedule,
+        state: &mut StateRegistry,
+        players: usize,
+    ) {
+        Units::install(world, schedule, state, StandInMode::script_limits(players));
         Combat::install(world, schedule, state);
         Navigation::install(world, schedule, state);
         Projectiles::install(world, schedule, state);
@@ -197,7 +205,7 @@ const fn quarters(count: i64) -> Num {
 /// `meters` a second, as a distance a tick at the mode's rate.
 const fn per_tick(meters: i64) -> Num {
     Num::from_bits(meters << Num::FRAC_BITS)
-        .checked_div_int(StandInMode::TICK_RATE.hz() as i64)
+        .checked_div_int(StandInMode::TICK_HZ.get() as i64)
         .expect("a speed a tick fits a Num")
 }
 
@@ -236,16 +244,17 @@ const fn at(x: i64) -> Position {
 #[cfg(test)]
 mod tests {
     use campfire_math::SegmentSeed;
-    use campfire_sim::{EntityIndex, SimUpdate};
+    use campfire_sim::{EntityIndex, SimUpdate, TickRate};
 
     use super::*;
 
     #[test]
     fn waves_come_every_900_ticks() {
         let mut world = World::new();
-        SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]));
+        let rate = TickRate::new(StandInMode::TICK_HZ);
+        SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), rate);
         let mut schedule = SimUpdate::schedule();
-        StandInMode::install(&mut world, &mut schedule, &mut StateRegistry::new());
+        StandInMode::install(&mut world, &mut schedule, &mut StateRegistry::new(), 1);
         world.add_schedule(schedule);
         StandInMode::start(&mut world, 1);
         // A wave spawns in the Mode stage, after units move: at the end of its tick, its creeps

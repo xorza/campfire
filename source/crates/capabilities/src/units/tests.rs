@@ -1,8 +1,10 @@
 use std::collections::BTreeMap;
+use std::num::NonZeroU32;
 
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::entity::Entity;
 use campfire_math::{Num, SegmentSeed, Vec3};
+use campfire_script::Budget;
 use campfire_script::rhai::Dynamic;
 use campfire_sim::{EntityIndex, IdAllocator, Position, SimTick, SimUpdate, StableId};
 
@@ -18,6 +20,9 @@ use crate::combat::recent_attackers::RecentAttackers;
 use crate::combat::team::Team;
 use crate::units::error::{ApiError, CallError};
 use crate::units::scalar::Scalar;
+
+/// The MOBA's 30 ticks a second.
+const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
 
 /// A `ctx` with the queries only.
 #[derive(Debug, Clone)]
@@ -53,15 +58,15 @@ struct Scene {
 impl Scene {
     fn new() -> Scene {
         let mut world = World::new();
-        SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]));
+        SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), RATE);
         let mut schedule = SimUpdate::schedule();
         let mut registry = StateRegistry::new();
         let limits = ScriptLimits {
             per_call: 10_000,
-            per_tick: 100_000,
+            input: 100_000,
+            think: 100_000,
         };
-        let rate = TickRate::new(30).unwrap();
-        Units::install(&mut world, &mut schedule, &mut registry, limits, rate);
+        Units::install(&mut world, &mut schedule, &mut registry, limits);
         Combat::install(&mut world, &mut schedule, &mut registry);
         let engine = world.non_send_mut::<ScriptHost>().into_inner().engine_mut();
         engine.register_type_with_name::<Probe>("Probe");
@@ -97,7 +102,8 @@ impl Scene {
         let mut host = self.world.non_send_mut::<ScriptHost>();
         let script = host.compile(source).unwrap();
         let unit = view.unit(of).unwrap();
-        host.call(script, "probe", (Probe(view), unit))
+        let mut budget = Budget::new(u64::MAX);
+        host.call(&mut budget, script, "probe", (Probe(view), unit))
             .map_err(CallError::from_script)
     }
 

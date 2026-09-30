@@ -4,19 +4,21 @@ use rhai::INT;
 use super::*;
 use crate::error::NumError;
 
-const LIMITS: ScriptLimits = ScriptLimits {
-    per_call: 1000,
-    per_tick: 1500,
-};
+const PER_CALL: u64 = 1000;
 
 fn host() -> ScriptHost {
-    ScriptHost::new(LIMITS)
+    ScriptHost::new(PER_CALL)
+}
+
+/// A budget no call spends.
+fn ample() -> Budget {
+    Budget::new(u64::MAX)
 }
 
 /// Runs `body` as the function `f` of a new script.
 fn run(host: &mut ScriptHost, body: &str) -> Result<Dynamic, ScriptError> {
     let script = host.compile(&format!("fn f() {{ {body} }}"))?;
-    host.call(script, "f", ())
+    host.call(&mut ample(), script, "f", ())
 }
 
 fn num(host: &mut ScriptHost, body: &str) -> Num {
@@ -118,38 +120,47 @@ fn only_what_scripts_need_is_there() {
 fn calls_fail_at_their_limits_the_same_way_in_every_build() {
     let mut host = host();
     let spin = host.compile("fn spin() { loop {} }").unwrap();
+    let mut budget = Budget::new(1500);
     // A call runs its 1000 operations; the 1001st, one past the limit, fails it.
     assert!(matches!(
-        host.call(spin, "spin", ()),
+        host.call(&mut budget, spin, "spin", ()),
         Err(ScriptError::CallLimit)
     ));
-    assert_eq!(host.spent(), 1000);
-    // The tick's budget of 1500 has 500 left: the next call is ended at its 501st operation,
-    // which counts, as the progress callback sees it before ending the call.
+    assert_eq!(budget.left(), 500);
+    // The budget has 500 left: the next call is ended at its 501st operation, which the
+    // progress callback sees before it ends the call, so the budget is spent.
     assert!(matches!(
-        host.call(spin, "spin", ()),
+        host.call(&mut budget, spin, "spin", ()),
         Err(ScriptError::TickBudget)
     ));
-    assert_eq!(host.spent(), 1501);
+    assert_eq!(budget.left(), 0);
     // With the budget spent, a call fails before it runs.
     let one = host.compile("fn one() { 1 }").unwrap();
     assert!(matches!(
-        host.call(one, "one", ()),
+        host.call(&mut budget, one, "one", ()),
         Err(ScriptError::TickBudget)
     ));
-    assert_eq!(host.spent(), 1501);
-    // A new tick has the whole budget again.
-    host.begin_tick();
-    assert_eq!(host.call(one, "one", ()).unwrap().as_int(), Ok(1));
+    // Another budget is untouched by this one's calls.
+    let mut other = Budget::new(1500);
+    assert_eq!(
+        host.call(&mut other, one, "one", ()).unwrap().as_int(),
+        Ok(1)
+    );
+    assert!(other.left() < 1500);
 
     // The call depth is the engine's 32 in every build: Rhai's default is 8 in a debug build
     // and 64 in a release one, so 20 levels passing and 40 failing show the engine's limit.
     let down = host
         .compile("fn down(n) { if n > 0 { down(n - 1) } else { 0 } }")
         .unwrap();
-    assert_eq!(host.call(down, "down", (20_i64,)).unwrap().as_int(), Ok(0));
+    assert_eq!(
+        host.call(&mut ample(), down, "down", (20_i64,))
+            .unwrap()
+            .as_int(),
+        Ok(0)
+    );
     assert!(matches!(
-        host.call(down, "down", (40_i64,)),
+        host.call(&mut ample(), down, "down", (40_i64,)),
         Err(ScriptError::Runtime(_))
     ));
 }

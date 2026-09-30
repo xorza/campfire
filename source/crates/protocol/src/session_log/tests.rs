@@ -1,3 +1,6 @@
+use std::num::NonZeroU32;
+use std::time::Duration;
+
 use secp256k1::{Keypair, schnorr};
 
 use super::*;
@@ -8,8 +11,9 @@ const MAX_DELAY: u64 = 2;
 const MAX_LEAD: u64 = 2;
 const MAX_PAYLOAD_LEN: u32 = 4;
 const MAX_INPUTS_PER_TICK: u32 = 2;
-const SESSION_ID: SessionId = SessionId::new([31; 32]);
 const SERVER_KEY: [u8; 32] = [41; 32];
+/// Above 127, so its varint takes two bytes.
+const TICK_HZ: NonZeroU32 = NonZeroU32::new(300).unwrap();
 const SERVER_SEED: ServerSeed = ServerSeed::new([5; 32]);
 const CONTRIBUTIONS: [[u8; 32]; 2] = [[6; 32], [7; 32]];
 /// BIP-340 signing without auxiliary randomness is deterministic, so every run signs alike.
@@ -36,8 +40,24 @@ fn delegation_for(slot: u32, server_key: [u8; 32], session_id: SessionId) -> Del
     Delegation::sign(&Secp256k1::new(), &main_key, &terms, 1_700_000_000, &AUX)
 }
 
+fn terms() -> SessionTerms {
+    SessionTerms {
+        server_key: SERVER_KEY,
+        tick_hz: TICK_HZ,
+        max_input_delay: MAX_DELAY,
+        max_input_lead: MAX_LEAD,
+        max_payload_len: MAX_PAYLOAD_LEN,
+        max_inputs_per_tick: MAX_INPUTS_PER_TICK,
+        seed_commitment: SERVER_SEED.commitment(),
+    }
+}
+
+fn session_id() -> SessionId {
+    terms().session_id()
+}
+
 fn delegation(slot: u32) -> Delegation {
-    delegation_for(slot, SERVER_KEY, SESSION_ID)
+    delegation_for(slot, SERVER_KEY, session_id())
 }
 
 fn root(slot: u32) -> InputHash {
@@ -46,13 +66,7 @@ fn root(slot: u32) -> InputHash {
 
 fn header() -> SessionHeader {
     SessionHeader {
-        session_id: SESSION_ID,
-        server_key: SERVER_KEY,
-        max_input_delay: MAX_DELAY,
-        max_input_lead: MAX_LEAD,
-        max_payload_len: MAX_PAYLOAD_LEN,
-        max_inputs_per_tick: MAX_INPUTS_PER_TICK,
-        seed_commitment: SERVER_SEED.commitment(),
+        terms: terms(),
         players: (0..2)
             .zip(CONTRIBUTIONS)
             .map(|(slot, seed_contribution)| SessionPlayer {
@@ -108,7 +122,7 @@ fn chain(script: &[Sends]) -> Vec<Vec<Sent<'static>>> {
             for &(slot, stamp, payload) in *sends {
                 let chain = &mut chains[slot as usize];
                 let input = chain.extend(stamp, payload);
-                let signature = chain.sign(&secp, &keys[slot as usize], SESSION_ID, &AUX);
+                let signature = chain.sign(&secp, &keys[slot as usize], session_id(), &AUX);
                 match packets.last_mut() {
                     Some(packet) if last_slot == Some(slot) => {
                         packet.inputs.push(input);
@@ -138,7 +152,7 @@ fn resent(slot: u32, packets: &[&[(u64, &'static [u8])]], signer: u32) -> Vec<Se
                 .iter()
                 .map(|&(stamp, payload)| chain.extend(stamp, payload))
                 .collect();
-            let signature = chain.sign(&secp, &session_key(signer), SESSION_ID, &AUX);
+            let signature = chain.sign(&secp, &session_key(signer), session_id(), &AUX);
             Sent { inputs, signature }
         })
         .collect()
@@ -467,7 +481,7 @@ fn a_refused_packet_leaves_the_log_unchanged() {
 fn a_delegation_for_another_server_or_session_is_refused() {
     let cases = [
         (
-            delegation_for(1, [42; 32], SESSION_ID),
+            delegation_for(1, [42; 32], session_id()),
             DelegationError::OtherServer,
         ),
         (
@@ -478,16 +492,63 @@ fn a_delegation_for_another_server_or_session_is_refused() {
     for (delegation, error) in cases {
         let mut other = header();
         other.players[1].delegation = delegation;
+        refuses(&other, error);
+    }
+
+    // The session id hashes the terms, so a change to any of them leaves every delegation
+    // naming another session.
+    let changes: [fn(&mut SessionTerms); 7] = [
+        |terms| terms.server_key[0] ^= 1,
+        |terms| terms.tick_hz = NonZeroU32::new(301).unwrap(),
+        |terms| terms.max_input_delay += 1,
+        |terms| terms.max_input_lead += 1,
+        |terms| terms.max_payload_len += 1,
+        |terms| terms.max_inputs_per_tick += 1,
+        |terms| terms.seed_commitment = ServerSeed::new([6; 32]).commitment(),
+    ];
+    for change in changes {
+        let mut other = header();
+        change(&mut other.terms);
+        let error = if other.terms.server_key == SERVER_KEY {
+            DelegationError::OtherSession
+        } else {
+            DelegationError::OtherServer
+        };
         let refused = HeaderError::Delegation {
-            slot: PlayerSlot::new(1),
+            slot: PlayerSlot::new(0),
             error,
         };
-        assert_eq!(SessionLog::new(other.clone()).err(), Some(refused));
-        assert_eq!(
-            SessionLog::decode(&frame(&other, &[], &[], None)).err(),
-            Some(LogError::Header(refused))
-        );
+        assert_eq!(SessionLog::new(other).err(), Some(refused));
     }
+
+    // 300 ticks a second last 3 333 333 ns each.
+    assert_eq!(terms().tick_length(), Duration::from_nanos(3_333_333));
+
+    // The id, as design 05 spells it.
+    let mut spelled = Hasher::new();
+    spelled
+        .update(b"campfire/session-id/v1")
+        .update(&SERVER_KEY)
+        .update(&300_u32.to_le_bytes())
+        .update(&2_u64.to_le_bytes())
+        .update(&2_u64.to_le_bytes())
+        .update(&4_u32.to_le_bytes())
+        .update(&2_u32.to_le_bytes())
+        .update(SERVER_SEED.commitment().as_bytes());
+    assert_eq!(session_id().as_bytes(), spelled.finalize().as_bytes());
+}
+
+/// `other` fails to start a log, and to decode, as player 1's delegation fails with `error`.
+fn refuses(other: &SessionHeader, error: DelegationError) {
+    let refused = HeaderError::Delegation {
+        slot: PlayerSlot::new(1),
+        error,
+    };
+    assert_eq!(SessionLog::new(other.clone()).err(), Some(refused));
+    assert_eq!(
+        SessionLog::decode(&frame(other, &[], &[], None)).err(),
+        Some(LogError::Header(refused))
+    );
 }
 
 #[test]
@@ -589,7 +650,7 @@ fn the_hash_and_the_signature_cover_every_field_in_their_layout() {
     let secp = Secp256k1::new();
     let message = [
         &b"campfire/input/v1"[..],
-        &[31; 32],
+        session_id().as_bytes(),
         &1_u32.to_le_bytes(),
         &0_u64.to_le_bytes(),
         after_a.as_bytes(),
@@ -602,13 +663,13 @@ fn the_hash_and_the_signature_cover_every_field_in_their_layout() {
     // Another session, key or head, and the signature does not hold.
     let mut chain = InputChain::new(PlayerSlot::new(1), root(1));
     chain.extend(0, b"a");
-    assert!(chain.signed_by(&secp, &key, SESSION_ID, &a.signature));
+    assert!(chain.signed_by(&secp, &key, session_id(), &a.signature));
     let other_session = SessionId::new([32; 32]);
     assert!(!chain.signed_by(&secp, &key, other_session, &a.signature));
     let other_key = session_key(0).x_only_public_key().0;
-    assert!(!chain.signed_by(&secp, &other_key, SESSION_ID, &a.signature));
+    assert!(!chain.signed_by(&secp, &other_key, session_id(), &a.signature));
     chain.extend(0, b"b");
-    assert!(!chain.signed_by(&secp, &key, SESSION_ID, &a.signature));
+    assert!(!chain.signed_by(&secp, &key, session_id(), &a.signature));
 }
 
 /// A log file written piece by piece, apart from `SessionLog::encode`, from any header: `ticks`
@@ -620,13 +681,14 @@ fn frame(
     revealed: Option<ServerSeed>,
 ) -> Vec<u8> {
     let mut bytes = b"campfire/session-log/v1".to_vec();
-    put(&mut bytes, header.session_id.as_bytes());
-    put(&mut bytes, &header.server_key);
-    put(&mut bytes, &header.max_input_delay);
-    put(&mut bytes, &header.max_input_lead);
-    put(&mut bytes, &header.max_payload_len);
-    put(&mut bytes, &header.max_inputs_per_tick);
-    put(&mut bytes, &header.seed_commitment);
+    let terms = &header.terms;
+    put(&mut bytes, &terms.server_key);
+    put(&mut bytes, &terms.tick_hz);
+    put(&mut bytes, &terms.max_input_delay);
+    put(&mut bytes, &terms.max_input_lead);
+    put(&mut bytes, &terms.max_payload_len);
+    put(&mut bytes, &terms.max_inputs_per_tick);
+    put(&mut bytes, &terms.seed_commitment);
     put(&mut bytes, &u32::try_from(header.players.len()).unwrap());
     for player in &header.players {
         put(&mut bytes, player.delegation.json());
@@ -719,9 +781,7 @@ fn varint(len: usize) -> Vec<u8> {
 
 #[test]
 fn a_log_file_has_its_layout() {
-    let mut header = header();
-    header.max_input_delay = 300;
-    let mut log = SessionLog::new(header).unwrap();
+    let mut log = SessionLog::new(header()).unwrap();
     let a = chained()[0][0].clone();
     let mut applied = Vec::new();
     log.record(a.inputs.iter().copied(), &a.signature, &mut applied)
@@ -732,11 +792,11 @@ fn a_log_file_has_its_layout() {
     let [first, second] = [0, 1].map(delegation);
     let expected = [
         &b"campfire/session-log/v1"[..],
-        &[31; 32],
+        // The terms, and no session id: it is their hash.
         &[41; 32],
-        // Max input delay 300 = 0b10_0101100: varint 0xAC 0x02. Max input lead 2, max payload
-        // length 4, max inputs per tick 2.
-        &[0xAC, 0x02, 2, 4, 2],
+        // 300 ticks a second = 0b10_0101100: varint 0xAC 0x02. Max input delay 2, lead 2,
+        // payload length 4, inputs per tick 2.
+        &[0xAC, 0x02, 2, 2, 4, 2],
         SERVER_SEED.commitment().as_bytes(),
         // 2 players: the delegation's JSON as a length and UTF-8, and the contribution.
         &[2],
@@ -756,6 +816,14 @@ fn a_log_file_has_its_layout() {
     ]
     .concat();
     assert_eq!(encoded(&log), expected);
+
+    // A rate of 0 ticks a second does not decode.
+    let tick_at = b"campfire/session-log/v1".len() + 32;
+    let zero_rate = [&expected[..tick_at], &[0], &expected[tick_at + 2..]].concat();
+    assert!(matches!(
+        SessionLog::decode(&zero_rate),
+        Err(LogError::Malformed(_))
+    ));
 }
 
 #[test]
@@ -794,12 +862,12 @@ fn a_corrupt_log_file_is_refused_or_replays() {
         }
     }
 
-    // Only what no signature, chain link or commitment covers decodes, and only where a one-byte
-    // varint stays one byte: the max delay and lead (2 ^ 1 = 3), the max payload length
-    // (4 ^ 1 = 5), the max inputs per tick (2 ^ 1 = 3), and every contribution byte.
-    let limits = b"campfire/session-log/v1".len() + 32 + 32;
-    let mut contribution = limits + 4 + 32 + 1;
-    let mut expected: Vec<_> = (limits..limits + 4).map(|at| (at, 0x01)).collect();
+    // Only what no signature, chain link or commitment covers decodes: every contribution byte.
+    // The session id hashes the terms, so a flip there leaves every delegation naming another
+    // session. The terms are the server key, the rate's two-byte varint, four one-byte limits
+    // and the commitment; then the player count.
+    let mut contribution = b"campfire/session-log/v1".len() + 32 + 2 + 4 + 32 + 1;
+    let mut expected = Vec::new();
     for slot in 0..2 {
         let json = delegation(slot).json().len();
         contribution += varint(json).len() + json;

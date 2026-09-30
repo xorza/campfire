@@ -1,11 +1,16 @@
+use std::num::NonZeroU32;
+
 use bevy_ecs::component::Component;
 use bevy_ecs::system::RunSystemOnce;
 use campfire_math::{Num, SegmentSeed, Vec3};
-use campfire_sim::{IdAllocator, SimUpdate, TypeHash};
+use campfire_sim::{IdAllocator, SimUpdate, TickRate, TypeHash};
 
 use super::*;
 use crate::combat::combatant::Combatant;
 use crate::combat::recent_attackers::RecentAttack;
+
+/// The MOBA's 30 ticks a second.
+const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
 
 fn num(value: i64) -> Num {
     Num::from_int(value).unwrap()
@@ -43,7 +48,7 @@ struct Fight {
 impl Fight {
     fn new() -> Fight {
         let mut world = World::new();
-        SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]));
+        SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), RATE);
         let mut schedule = SimUpdate::schedule();
         let mut registry = StateRegistry::new();
         Combat::install(&mut world, &mut schedule, &mut registry);

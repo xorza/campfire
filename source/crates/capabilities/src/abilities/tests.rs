@@ -1,10 +1,11 @@
 use std::collections::BTreeMap;
+use std::num::NonZeroU32;
 
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::Component;
 use campfire_content::PackagePath;
 use campfire_math::SegmentSeed;
-use campfire_script::{NumError, ScriptError, ScriptLimits};
+use campfire_script::{NumError, ScriptError};
 use campfire_sim::{IdAllocator, SimUpdate, TickInput, TickInputs};
 
 use super::*;
@@ -16,18 +17,24 @@ use crate::combat::combatant::Combatant;
 use crate::combat::health::Health;
 use crate::combat::on_death::OnDeath;
 use crate::control::Control;
+use crate::control::ai_data::AiData;
 use crate::control::controller::Controller;
 use crate::control::order::{Action, Order};
 use crate::navigation::Navigation;
 use crate::units::Units;
 use crate::units::error::ApiError;
 use crate::units::relation::Relation;
+use crate::units::script_limits::ScriptLimits;
+use crate::units::unit_type_data::UnitTypeData;
+
+/// The MOBA's 30 ticks a second.
+const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
 
 const LIMITS: ScriptLimits = ScriptLimits {
     per_call: 10_000,
-    per_tick: 100_000,
+    input: 100_000,
+    think: 100_000,
 };
-const RATE: TickRate = TickRate::new(30).unwrap();
 const LASH_OUT: &str = include_str!("../../../../packages/moba/heroes/husk/scripts/lash_out.rhai");
 
 fn num(value: i64) -> Num {
@@ -111,10 +118,10 @@ struct Match {
 impl Match {
     fn new() -> Match {
         let mut world = World::new();
-        SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]));
+        SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), RATE);
         let mut schedule = SimUpdate::schedule();
         let mut registry = StateRegistry::new();
-        Units::install(&mut world, &mut schedule, &mut registry, LIMITS, RATE);
+        Units::install(&mut world, &mut schedule, &mut registry, LIMITS);
         Combat::install(&mut world, &mut schedule, &mut registry);
         Navigation::install(&mut world, &mut schedule, &mut registry);
         Abilities::install(&mut world, &mut schedule, &mut registry);
@@ -238,6 +245,35 @@ fn lash_out_hits_every_enemy_within_its_radius_exactly() {
 }
 
 #[test]
+fn ai_load_does_not_spend_what_a_cast_needs() {
+    let mut game = Match::new();
+    let strike = game.load(&strike(), STRIKE);
+    let caster = game.caster(strike, 1);
+    let enemy = game.spawn(1, at(num(5), Num::ZERO, Num::ZERO), ());
+    // Eleven units whose AI spins, all due in every tick: ten calls fail at the 10 000 limit and
+    // spend the 100 000 of the think pool, and the eleventh finds it spent.
+    let spinner = Units::load_type(&mut game.world, &UnitTypeData::default()).unwrap();
+    let ai = AiData {
+        ai: PackagePath::parse("scripts/ai.rhai").unwrap(),
+        think_ms: 1,
+    };
+    let spin = "fn think(ctx, unit) { loop {} }";
+    Control::load_ai(&mut game.world, spinner, &ai, spin).unwrap();
+    for z in 0..11 {
+        game.spawn(2, at(Num::ZERO, Num::ZERO, num(20 + z)), spinner);
+    }
+
+    // The cast in the same tick draws from the input pool, whole: 500 → 450, 100 → 90.
+    game.cast(caster, CastTarget::Unit(enemy));
+    assert_eq!(game.health(enemy), 450);
+    assert_eq!(game.pool(caster), 90);
+    let failures = game.failures();
+    assert_eq!(failures.len(), 10);
+    assert!(failures.iter().all(|failure| failure.hook == Hook::Think));
+    assert_eq!(game.world.resource::<ScriptBudgets>().think.left(), 0);
+}
+
+#[test]
 fn a_cast_passes_its_checks_or_does_nothing() {
     let mut game = Match::new();
     let strike = game.load(&strike(), STRIKE);
@@ -330,7 +366,8 @@ fn a_failed_script_changes_nothing_and_fails_the_same_way_everywhere() {
                 assert_eq!(failures[0].unit, caster);
                 assert_eq!(failures[0].hook, Hook::OnCast);
                 assert!(expected(&failures[0].error), "{:?}", failures[0].error);
-                spent.push(game.world.non_send::<ScriptHost>().spent());
+                let left = game.world.resource::<ScriptBudgets>().input.left();
+                spent.push(LIMITS.input - left);
             } else {
                 game.world.run_schedule(SimUpdate);
             }

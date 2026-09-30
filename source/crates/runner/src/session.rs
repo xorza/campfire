@@ -1,10 +1,9 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::{Mut, World};
-use campfire_protocol::{
-    Applied, ChainSignature, InputError, PlayerInput, SeedError, ServerSeed, SessionLog,
-};
-use campfire_sim::{SimTick, SimUpdate, StateHash, StateRegistry, TickInput, TickInputs};
+use campfire_protocol::{Applied, ChainSignature, InputError, PlayerInput, ServerSeed, SessionLog};
+use campfire_sim::{SimTick, SimUpdate, StateHash, StateRegistry, TickInput, TickInputs, TickRate};
 
+use crate::error::StartError;
 use crate::stand_in_mode::StandInMode;
 
 /// A match's session log and state types, kept as a resource in the `World` that runs the match:
@@ -20,21 +19,28 @@ pub struct Session {
 }
 
 impl Session {
-    /// Prepares `world` for the match of `log`'s header, with the randomness of `server_seed` and
-    /// the players' contributions, and inserts the session, which records into `log` from its
-    /// first tick; an error when `server_seed` is not the one the header commits to.
+    /// Prepares `world` for the match of `log`'s header, at its tick rate and with the
+    /// randomness of `server_seed` and the players' contributions, and inserts the session, which
+    /// records into `log` from its first tick; an error when `server_seed` is not the one the
+    /// header commits to, or the mode does not run at the header's rate.
     pub fn start(
         world: &mut World,
         log: SessionLog,
         server_seed: ServerSeed,
-    ) -> Result<(), SeedError> {
+    ) -> Result<(), StartError> {
         assert_eq!(log.next_tick(), 0, "a session starts before its first tick");
         let header = log.header();
-        let seed = header.segment_seed(&server_seed)?;
-        SimUpdate::prepare(world, seed);
+        let hz = header.terms.tick_hz;
+        if hz != StandInMode::TICK_HZ {
+            return Err(StartError::TickRate(hz));
+        }
+        let seed = header
+            .segment_seed(&server_seed)
+            .map_err(StartError::Seed)?;
+        SimUpdate::prepare(world, seed, TickRate::new(hz));
         let mut schedule = SimUpdate::schedule();
         let mut state = StateRegistry::new();
-        StandInMode::install(world, &mut schedule, &mut state);
+        StandInMode::install(world, &mut schedule, &mut state, header.players.len());
         world.add_schedule(schedule);
         StandInMode::start(world, header.players.len());
         world.insert_resource(Session {

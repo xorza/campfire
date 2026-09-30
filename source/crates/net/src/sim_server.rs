@@ -7,9 +7,10 @@ use bevy_ecs::schedule::common_conditions::resource_exists;
 use bevy_ecs::system::{Local, Query, ResMut};
 use bevy_ecs::world::World;
 use campfire_capabilities::Controller;
-use campfire_protocol::{Applied, PlayerSlot, SeedError, ServerSeed, SessionLog};
-use campfire_runner::Session;
+use campfire_protocol::{Applied, PlayerSlot, ServerSeed, SessionLog};
+use campfire_runner::{Session, StartError};
 use campfire_sim::{EntityIndex, SimTick, StateHash};
+use lightyear::core::tick::TickDuration;
 use lightyear::prelude::{
     LocalTimeline, MessageReceiver, MessageSender, NetworkTarget, PredictionTarget, Replicate,
 };
@@ -70,11 +71,16 @@ impl SimServer {
         log: SessionLog,
         server_seed: ServerSeed,
         clients: &[Entity],
-    ) -> Result<(), SeedError> {
+    ) -> Result<(), StartError> {
         assert_eq!(
             clients.len(),
             log.header().players.len(),
             "one client per player"
+        );
+        assert_eq!(
+            world.resource::<TickDuration>().0,
+            log.header().terms.tick_length(),
+            "the server ticks at the session's rate"
         );
         Session::start(world, log, server_seed)?;
         let start = world.resource::<LocalTimeline>().tick() + 1;

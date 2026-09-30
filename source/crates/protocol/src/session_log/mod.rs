@@ -14,9 +14,10 @@ use crate::delegation::error::DelegationError;
 use crate::input_chain::InputChain;
 use crate::player_input::PlayerInput;
 use crate::player_slot::PlayerSlot;
-use crate::server_seed::{SeedCommitment, ServerSeed};
+use crate::server_seed::ServerSeed;
 use crate::session_id::SessionId;
 use crate::session_log::error::{HeaderError, InputError, LogError, SeedError};
+use crate::session_terms::SessionTerms;
 
 pub(crate) mod error;
 
@@ -28,25 +29,10 @@ const LOG_TAG: &[u8] = b"campfire/session-log/v1";
 /// tick ends at.
 const POSITION_BOUND: usize = u32::MAX as usize;
 
-/// What the log fixes before the first tick.
+/// What the log fixes before the first tick: the session's terms, and its players.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SessionHeader {
-    pub session_id: SessionId,
-    /// The server's x-only public key.
-    pub server_key: [u8; 32],
-    /// The most ticks an input may land after its stamp; a later one is logged as late.
-    pub max_input_delay: u64,
-    /// The most ticks an input's stamp may be ahead of the next tick; a further one is logged as
-    /// early. The server holds each input until its tick, so this bounds what a client can make
-    /// it hold.
-    pub max_input_lead: u64,
-    /// The most bytes an input's payload may hold.
-    pub max_payload_len: u32,
-    /// The most inputs a player may send before one tick. With the max payload length, it bounds
-    /// how fast a player can grow the log.
-    pub max_inputs_per_tick: u32,
-    /// The server's commitment to its seed, made before the players sent their contributions.
-    pub seed_commitment: SeedCommitment,
+    pub terms: SessionTerms,
     /// The players, by slot.
     pub players: Vec<SessionPlayer>,
 }
@@ -66,7 +52,7 @@ impl SessionHeader {
     /// The segment seed, `BLAKE3(domain ‖ server seed ‖ contributions in slot order)`; an error
     /// when `server_seed` does not match the commitment.
     pub fn segment_seed(&self, server_seed: &ServerSeed) -> Result<SegmentSeed, SeedError> {
-        if server_seed.commitment() != self.seed_commitment {
+        if server_seed.commitment() != self.terms.seed_commitment {
             return Err(SeedError::WrongSeed);
         }
         let mut hasher = Hasher::new();
@@ -122,6 +108,8 @@ pub struct SessionLog {
     due: Vec<u32>,
     /// The most inputs and payload bytes the log holds: `POSITION_BOUND`, or less in a test.
     position_bound: usize,
+    /// The hash of the header's terms.
+    session_id: SessionId,
 }
 
 #[derive(Debug)]
@@ -166,18 +154,20 @@ impl<'a> Packet<'a> {
 
 impl SessionLog {
     /// A log with nothing recorded; an error when a player's delegation names another server or
-    /// session than `header`, or there are more players than slots.
+    /// session than `header`, whose terms the session id hashes, or there are more players than
+    /// slots.
     pub fn new(header: SessionHeader) -> Result<SessionLog, HeaderError> {
         if u32::try_from(header.players.len()).is_err() {
             return Err(HeaderError::TooManyPlayers);
         }
+        let session_id = header.terms.session_id();
         let mut chains = Vec::with_capacity(header.players.len());
         for (slot, player) in (0..).zip(&header.players) {
             let slot = PlayerSlot::new(slot);
             let terms = player.delegation.terms();
-            let flaw = if terms.server_key != header.server_key {
+            let flaw = if terms.server_key != header.terms.server_key {
                 Some(DelegationError::OtherServer)
-            } else if terms.session_id != header.session_id {
+            } else if terms.session_id != session_id {
                 Some(DelegationError::OtherSession)
             } else {
                 None
@@ -201,6 +191,7 @@ impl SessionLog {
             pending: BinaryHeap::new(),
             due: Vec::new(),
             position_bound: POSITION_BOUND,
+            session_id,
         })
     }
 
@@ -208,10 +199,15 @@ impl SessionLog {
         &self.header
     }
 
+    /// The hash of the header's terms.
+    pub const fn session_id(&self) -> SessionId {
+        self.session_id
+    }
+
     /// Adds the server seed, which publishes the segment.
     pub fn reveal_seed(&mut self, server_seed: ServerSeed) {
         assert!(
-            server_seed.commitment() == self.header.seed_commitment,
+            server_seed.commitment() == self.header.terms.seed_commitment,
             "the server reveals the seed it committed to"
         );
         self.revealed = Some(server_seed);
@@ -255,13 +251,14 @@ impl SessionLog {
         for input in inputs.clone() {
             debug_assert_eq!(input.slot, slot, "a packet holds one player's inputs");
             chain.extend(input.stamp, input.payload);
-            if input.payload.len() > self.header.max_payload_len as usize {
+            if input.payload.len() > self.header.terms.max_payload_len as usize {
                 return Err(InputError::PayloadTooLarge);
             }
             count += 1;
             bytes += input.payload.len();
         }
-        if self.sent_this_tick[player] as usize + count > self.header.max_inputs_per_tick as usize {
+        let max_inputs = self.header.terms.max_inputs_per_tick as usize;
+        if self.sent_this_tick[player] as usize + count > max_inputs {
             return Err(InputError::TooManyInputs);
         }
         if self.inputs.len() + count > self.position_bound
@@ -270,7 +267,7 @@ impl SessionLog {
             return Err(InputError::LogFull);
         }
         let session_key = &self.header.players[player].delegation.terms().session_key;
-        if !chain.signed_by(&self.secp, session_key, self.header.session_id, signature) {
+        if !chain.signed_by(&self.secp, session_key, self.session_id, signature) {
             return Err(InputError::BadSignature);
         }
 
@@ -387,7 +384,7 @@ impl SessionLog {
         }
         log.record_logged(&mut rest, &mut inputs, &mut applied)?;
         if let Some(server_seed) = take::<Option<ServerSeed>>(&mut rest)? {
-            if server_seed.commitment() != log.header.seed_commitment {
+            if server_seed.commitment() != log.header.terms.seed_commitment {
                 return Err(LogError::WrongSeed);
             }
             log.revealed = Some(server_seed);
@@ -404,16 +401,16 @@ impl SessionLog {
     }
 
     fn put_header(&self, out: &mut Vec<u8>) {
-        let header = &self.header;
-        put(out, header.session_id.as_bytes());
-        put(out, &header.server_key);
-        put(out, &header.max_input_delay);
-        put(out, &header.max_input_lead);
-        put(out, &header.max_payload_len);
-        put(out, &header.max_inputs_per_tick);
-        put(out, &header.seed_commitment);
-        put(out, &offset(header.players.len()));
-        for player in &header.players {
+        let terms = &self.header.terms;
+        put(out, &terms.server_key);
+        put(out, &terms.tick_hz);
+        put(out, &terms.max_input_delay);
+        put(out, &terms.max_input_lead);
+        put(out, &terms.max_payload_len);
+        put(out, &terms.max_inputs_per_tick);
+        put(out, &terms.seed_commitment);
+        put(out, &offset(self.header.players.len()));
+        for player in &self.header.players {
             put(out, player.delegation.json());
             put(out, &player.seed_contribution);
         }
@@ -506,13 +503,13 @@ impl SessionLog {
         let next = self.next_tick();
         if next
             .checked_sub(stamp)
-            .is_some_and(|delay| delay > self.header.max_input_delay)
+            .is_some_and(|delay| delay > self.header.terms.max_input_delay)
         {
             return Applied::Late;
         }
         if stamp
             .checked_sub(next)
-            .is_some_and(|lead| lead > self.header.max_input_lead)
+            .is_some_and(|lead| lead > self.header.terms.max_input_lead)
         {
             return Applied::Early;
         }
@@ -550,13 +547,15 @@ fn take<'a, T: Deserialize<'a>>(rest: &mut &'a [u8]) -> Result<T, LogError> {
 
 /// Reads the header `SessionLog::put_header` wrote, checking each delegation.
 fn take_header(rest: &mut &[u8]) -> Result<SessionHeader, LogError> {
-    let session_id = SessionId::new(take(rest)?);
-    let server_key = take(rest)?;
-    let max_input_delay = take(rest)?;
-    let max_input_lead = take(rest)?;
-    let max_payload_len = take(rest)?;
-    let max_inputs_per_tick = take(rest)?;
-    let seed_commitment = take(rest)?;
+    let terms = SessionTerms {
+        server_key: take(rest)?,
+        tick_hz: take(rest)?,
+        max_input_delay: take(rest)?,
+        max_input_lead: take(rest)?,
+        max_payload_len: take(rest)?,
+        max_inputs_per_tick: take(rest)?,
+        seed_commitment: take(rest)?,
+    };
     let count: u32 = take(rest)?;
     let mut players = Vec::new();
     for slot in 0..count {
@@ -572,16 +571,7 @@ fn take_header(rest: &mut &[u8]) -> Result<SessionHeader, LogError> {
             seed_contribution: take(rest)?,
         });
     }
-    Ok(SessionHeader {
-        session_id,
-        server_key,
-        max_input_delay,
-        max_input_lead,
-        max_payload_len,
-        max_inputs_per_tick,
-        seed_commitment,
-        players,
-    })
+    Ok(SessionHeader { terms, players })
 }
 
 #[cfg(test)]

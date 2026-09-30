@@ -1,3 +1,5 @@
+use std::num::NonZeroU32;
+
 use bevy_ecs::component::Component;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{ScheduleBuildError, ScheduleBuildWarning, ScheduleConfigs};
@@ -10,6 +12,9 @@ use crate::sim_state::{SimComponent, SimResource};
 use crate::stable_id::StableId;
 use crate::state_registry::{StateHash, StateRegistry};
 use crate::tick_inputs::TickInput;
+
+/// The MOBA's 30 ticks a second.
+const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
 
 const SEED: SegmentSeed = SegmentSeed::new([7; 32]);
 const OTHER_SEED: SegmentSeed = SegmentSeed::new([8; 32]);
@@ -76,7 +81,7 @@ fn sum_ticks(tick: Res<'_, SimTick>, mut sum: ResMut<'_, TickSum>) {
 
 fn new_world(seed: SegmentSeed) -> World {
     let mut world = World::new();
-    SimUpdate::prepare(&mut world, seed);
+    SimUpdate::prepare(&mut world, seed, RATE);
     world.init_resource::<TickSum>();
     world.init_resource::<InputsSeen>();
     world

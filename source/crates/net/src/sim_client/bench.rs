@@ -22,9 +22,8 @@ pub fn rollback(c: &mut Criterion) {
         ("frame_without_rollback", RollbackMode::Check),
         ("frame_with_rollback", RollbackMode::Always),
     ] {
-        let mut pair = LocalPair::new(mode);
-        pair.start_match(SERVER_SEED)
-            .expect("the seed matches the header");
+        let mut pair = LocalPair::new(mode, SERVER_SEED);
+        pair.start_match().expect("the seed matches the header");
         let mut frame: u64 = 0;
         group.bench_function(name, |b| {
             b.iter(|| {

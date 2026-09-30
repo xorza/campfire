@@ -1,5 +1,5 @@
 use campfire_protocol::{SeedError, SessionLog};
-use campfire_runner::Runner;
+use campfire_runner::{Runner, StartError};
 
 /// A published session log replayed in a bare `World`, one tick at a time. Decoding the log
 /// checked every chain link and signature; the replay seals its ticks again, which gives each
@@ -13,9 +13,11 @@ pub struct Replay {
 
 impl Replay {
     /// The replay with the log's own randomness; an error when the log does not reveal the server
-    /// seed its header commits to.
-    pub fn new(published: SessionLog) -> Result<Replay, SeedError> {
-        let server_seed = published.revealed_seed().ok_or(SeedError::NotRevealed)?;
+    /// seed its header commits to, or the mode does not run at the log's tick rate.
+    pub fn new(published: SessionLog) -> Result<Replay, StartError> {
+        let server_seed = published
+            .revealed_seed()
+            .ok_or(StartError::Seed(SeedError::NotRevealed))?;
         let ticks = published.next_tick();
         Ok(Replay {
             runner: Runner::new(published.rewound(), server_seed)?,

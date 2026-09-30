@@ -7,7 +7,7 @@ use bevy_ecs::system::{Local, Query, Res};
 use bevy_ecs::world::World;
 use campfire_math::{Num, Vec3};
 use campfire_script::rhai::Dynamic;
-use campfire_script::{ScriptHost, ScriptId};
+use campfire_script::{Budget, ScriptHost, ScriptId};
 use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, TickRate};
 
 use crate::abilities::ability_book::{Ability, AbilityBook, AbilityId};
@@ -26,6 +26,7 @@ use crate::combat::targets::Targets;
 use crate::combat::team::Team;
 use crate::units::error::CallError;
 use crate::units::scalar::Scalar;
+use crate::units::script_budgets::ScriptBudgets;
 use crate::units::script_failures::{Hook, ScriptFailure, ScriptFailures};
 use crate::units::script_view::View;
 use crate::units::unit::Unit;
@@ -208,9 +209,11 @@ fn resolve_casts(world: &mut World, mut due: Local<'_, Vec<(StableId, Entity)>>)
     let mut host = world
         .remove_non_send::<ScriptHost>()
         .expect("units are installed");
+    let mut budget = world.resource::<ScriptBudgets>().input;
     for &(caster, entity) in &*due {
-        resolve(world, &mut host, &ctx, now, caster, entity);
+        resolve(world, &mut host, &mut budget, &ctx, now, caster, entity);
     }
+    world.resource_mut::<ScriptBudgets>().input = budget;
     world.insert_non_send(host);
 }
 
@@ -231,6 +234,7 @@ struct Prepared {
 fn resolve(
     world: &mut World,
     host: &mut ScriptHost,
+    budget: &mut Budget,
     ctx: &Ctx,
     now: u64,
     caster: StableId,
@@ -239,7 +243,7 @@ fn resolve(
     let prepared = prepare(world, ctx, now, caster, entity);
     let outcome = match prepared {
         Ok(None) => Ok(()),
-        Ok(Some(mut prepared)) => run(host, ctx, &mut prepared).map(|()| {
+        Ok(Some(mut prepared)) => run(host, budget, ctx, &mut prepared).map(|()| {
             apply(world, &mut ctx.frame(), now, entity, &prepared);
         }),
         Err(error) => Err(error),
@@ -326,15 +330,25 @@ fn prepare(
 }
 
 /// Runs the prepared cast's `on_cast`, which queues its effects in the frame.
-fn run(host: &mut ScriptHost, ctx: &Ctx, prepared: &mut Prepared) -> Result<(), CallError> {
+fn run(
+    host: &mut ScriptHost,
+    budget: &mut Budget,
+    ctx: &Ctx,
+    prepared: &mut Prepared,
+) -> Result<(), CallError> {
     let Some(script) = prepared.on_cast else {
         return Ok(());
     };
     let target = mem::take(&mut prepared.target);
     let caster = prepared.caster.clone();
-    host.call(script, Hook::OnCast.name(), (ctx.clone(), caster, target))
-        .map(drop)
-        .map_err(CallError::from_script)
+    host.call(
+        budget,
+        script,
+        Hook::OnCast.name(),
+        (ctx.clone(), caster, target),
+    )
+    .map(drop)
+    .map_err(CallError::from_script)
 }
 
 /// A param's value at `rank`. Until levels and stats exist, every unit is level 1 and every

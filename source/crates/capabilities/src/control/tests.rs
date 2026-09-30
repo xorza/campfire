@@ -1,8 +1,9 @@
+use std::num::NonZeroU32;
+
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::Component;
 use campfire_content::PackagePath;
 use campfire_math::{Num, SegmentSeed};
-use campfire_script::ScriptLimits;
 use campfire_sim::{Capability, IdAllocator, SimUpdate, TickInput, TypeHash};
 
 use super::*;
@@ -16,7 +17,11 @@ use crate::navigation::move_step::MoveStep;
 use crate::units::Units;
 use crate::units::error::ApiError;
 use crate::units::scalar::Scalar;
+use crate::units::script_limits::ScriptLimits;
 use crate::units::unit_type_data::UnitTypeData;
+
+/// The MOBA's 30 ticks a second.
+const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
 
 const ONE: i64 = 1 << 24;
 const CREEP_AI: &str = include_str!("../../../../packages/moba/modes/3v3/scripts/creep_ai.rhai");
@@ -79,16 +84,20 @@ impl Match {
     }
 
     fn with_lanes(lanes: Lanes) -> Match {
-        let mut world = World::new();
-        SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]));
-        let mut schedule = SimUpdate::schedule();
-        let mut registry = StateRegistry::new();
         let limits = ScriptLimits {
             per_call: 20_000,
-            per_tick: 200_000,
+            input: 200_000,
+            think: 200_000,
         };
-        let rate = TickRate::new(30).unwrap();
-        Units::install(&mut world, &mut schedule, &mut registry, limits, rate);
+        Match::with(lanes, limits)
+    }
+
+    fn with(lanes: Lanes, limits: ScriptLimits) -> Match {
+        let mut world = World::new();
+        SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), RATE);
+        let mut schedule = SimUpdate::schedule();
+        let mut registry = StateRegistry::new();
+        Units::install(&mut world, &mut schedule, &mut registry, limits);
         Combat::install(&mut world, &mut schedule, &mut registry);
         Navigation::install(&mut world, &mut schedule, &mut registry);
         Control::install(&mut world, &mut schedule, &mut registry);
@@ -595,6 +604,55 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
         CallError::Api(ApiError::OtherUnit)
     ));
     assert_eq!(game.attack(ally).target(), Some(enemy));
+}
+
+#[test]
+fn a_unit_that_finds_the_think_pool_spent_goes_first_next_tick() {
+    // A pool of 1500 operations: a spinning call runs its 1000 and fails, which leaves 500; the
+    // next is ended past those 500, so its unit stays due.
+    let limits = ScriptLimits {
+        per_call: 1000,
+        input: 1000,
+        think: 1500,
+    };
+    let mut game = Match::with(Lanes::default(), limits);
+    let spinner = game.unit_type(&[], &[], None);
+    // 1 ms is 0.03 ticks, up to 1: both think in every tick.
+    let ai = AiData {
+        ai: PackagePath::parse("scripts/ai.rhai").unwrap(),
+        think_ms: 1,
+    };
+    let spin = "fn think(ctx, unit) { loop {} }";
+    Control::load_ai(&mut game.world, spinner, &ai, spin).unwrap();
+    let first = game.spawn(at(0, 0, 0), (spinner, standing().bundle(Team::new(0))));
+    let second = game.spawn(at(1, 0, 0), (spinner, standing().bundle(Team::new(0))));
+
+    // Tick 0: both due since 0; the first runs, the second finds the pool spent and stays due
+    // since 0. Tick 1: the second, due since 0, goes before the first, due since 1, and the
+    // first stays due. Tick 2: the first again. Each tick one call fails at its limit, and the
+    // other waits; none is lost.
+    let next = |game: &Match, unit| game.get::<NextThink>(unit).map(NextThink::get);
+    let mut seen = Vec::new();
+    for _ in 0..3 {
+        game.tick(&[]);
+        let failures = game.world.non_send::<ScriptFailures>().get();
+        let failed: Vec<_> = failures.iter().map(|failure| failure.unit).collect();
+        seen.push((failed, next(&game, first), next(&game, second)));
+    }
+    assert_eq!(
+        seen,
+        [
+            (vec![first], Some(1), Some(0)),
+            (vec![second], Some(1), Some(2)),
+            (vec![first], Some(3), Some(2)),
+        ]
+    );
+    for failure in game.world.non_send::<ScriptFailures>().get() {
+        assert!(matches!(
+            failure.error,
+            CallError::Script(ScriptError::CallLimit)
+        ));
+    }
 }
 
 #[test]
