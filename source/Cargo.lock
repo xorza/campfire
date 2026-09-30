@@ -1824,10 +1824,20 @@ dependencies = [
 name = "campfire-net"
 version = "0.0.0"
 dependencies = [
+ "bevy_app",
+ "bevy_ecs",
+ "bevy_state",
+ "bevy_time",
  "campfire-identity",
+ "campfire-kit-moba",
+ "campfire-math",
  "campfire-protocol",
+ "campfire-runner",
  "campfire-sim",
+ "campfire-verifier",
+ "criterion 0.8.2",
  "lightyear",
+ "serde",
 ]
 
 [[package]]
@@ -1836,8 +1846,10 @@ version = "0.0.0"
 dependencies = [
  "blake3",
  "campfire-math",
+ "criterion 0.8.2",
  "nostr",
  "postcard",
+ "secp256k1",
  "serde",
 ]
 
@@ -3866,6 +3878,7 @@ dependencies = [
  "lightyear_avian3d",
  "lightyear_connection",
  "lightyear_core",
+ "lightyear_crossbeam",
  "lightyear_deterministic_replication",
  "lightyear_frame_interpolation",
  "lightyear_inputs",
@@ -4000,6 +4013,22 @@ dependencies = [
  "lightyear_serde",
  "lightyear_utils",
  "serde",
+ "tracing",
+]
+
+[[package]]
+name = "lightyear_crossbeam"
+version = "0.30.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2965e3ec005eef82abe5f6d4afd5f806f39c977065212bd1fe3b73ec09800c0b"
+dependencies = [
+ "aeronet_io",
+ "bevy_app",
+ "bevy_ecs",
+ "bytes",
+ "crossbeam-channel",
+ "lightyear_core",
+ "lightyear_link",
  "tracing",
 ]
 

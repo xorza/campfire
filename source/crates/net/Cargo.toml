@@ -3,12 +3,37 @@ name = "campfire-net"
 edition.workspace = true
 license.workspace = true
 
+[features]
+internals = ["dep:bevy_state", "dep:bevy_time"]
+bench = ["internals", "dep:criterion"]
+
 [dependencies]
 campfire-identity.workspace = true
+campfire-kit-moba.workspace = true
+campfire-math.workspace = true
 campfire-protocol.workspace = true
+campfire-runner.workspace = true
 campfire-sim.workspace = true
 
+bevy_app.workspace = true
+bevy_ecs.workspace = true
+bevy_state = { workspace = true, optional = true }
+bevy_time = { workspace = true, optional = true }
+criterion = { workspace = true, optional = true }
 lightyear.workspace = true
+serde.workspace = true
+
+[dev-dependencies]
+campfire-verifier.workspace = true
+
+[[test]]
+name = "prototype"
+required-features = ["internals"]
+
+[[bench]]
+name = "rollback"
+harness = false
+required-features = ["bench"]
 
 [lints]
 workspace = true

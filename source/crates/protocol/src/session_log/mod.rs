@@ -5,6 +5,7 @@ use std::ops::Range;
 use blake3::Hasher;
 use campfire_math::SegmentSeed;
 
+use crate::input_chain::InputChain;
 use crate::input_hash::InputHash;
 use crate::player_input::PlayerInput;
 use crate::player_slot::PlayerSlot;
@@ -80,7 +81,8 @@ pub struct SessionLog {
     header: SessionHeader,
     /// Present once the segment is published.
     revealed: Option<ServerSeed>,
-    chains: Vec<Chain>,
+    /// Each player's chain as logged so far, by slot.
+    chains: Vec<InputChain>,
     inputs: Vec<LoggedInput>,
     payloads: Vec<u8>,
     /// For each sealed tick, the end of the inputs logged before it ran.
@@ -89,13 +91,6 @@ pub struct SessionLog {
     pending: BinaryHeap<Reverse<Due>>,
     /// Indices of the inputs applied in the tick last sealed.
     due: Vec<u32>,
-}
-
-/// A player's chain as logged so far.
-#[derive(Debug)]
-struct Chain {
-    head: InputHash,
-    next_seq: u64,
 }
 
 #[derive(Debug)]
@@ -119,13 +114,9 @@ struct Due {
 
 impl SessionLog {
     pub fn new(header: SessionHeader) -> SessionLog {
-        let chains = header
-            .players
-            .iter()
-            .map(|player| Chain {
-                head: player.chain_root,
-                next_seq: 0,
-            })
+        let chains = (0..)
+            .zip(&header.players)
+            .map(|(slot, player)| InputChain::new(PlayerSlot::new(slot), player.chain_root))
             .collect();
         SessionLog {
             header,
@@ -170,16 +161,7 @@ impl SessionLog {
             .chains
             .get_mut(input.slot.get() as usize)
             .ok_or(InputError::UnknownPlayer)?;
-        if input.previous != chain.head {
-            return Err(InputError::BrokenLink);
-        }
-        if input.seq != chain.next_seq {
-            return Err(InputError::WrongSeq {
-                expected: chain.next_seq,
-            });
-        }
-        chain.head = input.hash();
-        chain.next_seq = chain.next_seq.checked_add(1).expect("input seq exhausted");
+        chain.accept(&input)?;
 
         let index = offset(self.inputs.len());
         let payload_start = offset(self.payloads.len());

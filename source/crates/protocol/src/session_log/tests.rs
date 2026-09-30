@@ -34,25 +34,13 @@ const SCRIPT: [&[(u32, u64, &[u8])]; 5] = [
 
 /// The chained inputs the script's players send, grouped by the tick they arrive before.
 fn chained() -> Vec<Vec<PlayerInput<'static>>> {
-    let mut heads = ROOTS;
-    let mut seqs = [0; 2];
+    let mut chains =
+        [0, 1].map(|slot| InputChain::new(PlayerSlot::new(slot), ROOTS[slot as usize]));
     SCRIPT
         .iter()
         .map(|sent| {
             sent.iter()
-                .map(|&(slot, stamp, payload)| {
-                    let player = slot as usize;
-                    let input = PlayerInput {
-                        slot: PlayerSlot::new(slot),
-                        seq: seqs[player],
-                        stamp,
-                        previous: heads[player],
-                        payload,
-                    };
-                    heads[player] = input.hash();
-                    seqs[player] += 1;
-                    input
-                })
+                .map(|&(slot, stamp, payload)| chains[slot as usize].extend(stamp, payload))
                 .collect()
         })
         .collect()

@@ -10,6 +10,12 @@ use crate::sim_state::SimResource;
 pub struct SimTick(u64);
 
 impl SimTick {
+    /// A predicting client sets the tick it runs from its network timeline, which a rollback
+    /// winds back.
+    pub const fn new(tick: u64) -> SimTick {
+        SimTick(tick)
+    }
+
     pub const fn get(self) -> u64 {
         self.0
     }

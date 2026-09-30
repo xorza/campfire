@@ -4,7 +4,7 @@
 use campfire_kit_moba::{Destination, Order};
 use campfire_math::{Num, Vec3};
 use campfire_protocol::{
-    Applied, InputHash, PlayerInput, PlayerSlot, SeedError, ServerSeed, SessionHeader, SessionLog,
+    Applied, InputChain, InputHash, PlayerSlot, SeedError, ServerSeed, SessionHeader, SessionLog,
     SessionPlayer,
 };
 use campfire_runner::Runner;
@@ -96,8 +96,7 @@ struct Run {
 /// Runs a match in which the player sends `orders`.
 fn run(orders: &[&Sent]) -> Run {
     let mut runner = Runner::new(header(), SERVER_SEED).unwrap();
-    let mut head = ROOT;
-    let mut seq = 0;
+    let mut chain = InputChain::new(PlayerSlot::new(0), ROOT);
     let mut hashes = Vec::new();
     for tick in 0..TICKS {
         for sent in orders.iter().filter(|sent| sent.arrives == tick) {
@@ -106,16 +105,8 @@ fn run(orders: &[&Sent]) -> Run {
                 z: num(sent.z),
             }
             .encode();
-            let input = PlayerInput {
-                slot: PlayerSlot::new(0),
-                seq,
-                stamp: sent.stamp,
-                previous: head,
-                payload: &payload,
-            };
+            let input = chain.extend(sent.stamp, &payload);
             assert_eq!(runner.record(input), Ok(sent.applied), "{sent:?}");
-            head = input.hash();
-            seq += 1;
         }
         runner.run_tick();
         hashes.push(runner.state_hash());
