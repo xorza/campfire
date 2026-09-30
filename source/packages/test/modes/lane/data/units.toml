@@ -1,9 +1,11 @@
 # A creep walks an eighth of a meter a tick at 30 ticks a second, and strikes 1 m away 9 ticks
-# into an attack every 24.
+# into an attack every 24. Twelve strikes of 25 kill one of 300 health: about 9 s, a third of the
+# time between waves, so a wave that wins walks on before the next comes. A tower kills it in two
+# strikes, a hero in five.
 [units.creep]
 tags = ["creep"]
 params = { aggro_range = "7.0", help_range = "5.0", help_window_ms = 2000 }
-stats = { health = { base = 445 }, attack_damage = { base = 12 }, attack_speed = { base = "1.25" }, move_speed = { base = "3.75" } }
+stats = { health = { base = 300 }, attack_damage = { base = 25 }, attack_speed = { base = "1.25" }, move_speed = { base = "3.75" } }
 combat = { attack = { range = "1.0", windup_ms = 300 } }
 orders = { ai = "scripts/creep_ai.rhai", think_ms = 250 }
 vision = { sight_range = "8.0" }

@@ -43,7 +43,7 @@ fn signed(tick: u64) -> i64 {
 }
 
 /// The sim tick an app runs next.
-fn next_tick(app: &App) -> u64 {
+pub(crate) fn next_tick(app: &App) -> u64 {
     app.world().resource::<SimTick>().start().get()
 }
 

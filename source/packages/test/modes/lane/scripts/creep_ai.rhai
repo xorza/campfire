@@ -7,6 +7,9 @@ fn think(ctx, unit) {
         target = ctx.nearest_visible(unit, unit.params.aggro_range, "enemies:creep");
     }
     if target == () {
+        target = ctx.nearest_visible(unit, unit.params.aggro_range, "enemies:structure");
+    }
+    if target == () {
         target = ctx.nearest_visible(unit, unit.params.aggro_range, "enemies:avatar");
     }
     if target == () {
