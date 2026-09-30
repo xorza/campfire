@@ -2,12 +2,6 @@
 
 Open items only. Remove an item when it is done; remove a stage when it is empty.
 
-## 0. Before code
-- CI on Linux x86_64, Windows x86_64, macOS aarch64.
-
-## 2. Prototype gate
-- One unit in Lightyear's World, predicted client, bare-`World` verifier: equal hash every tick on all CI platforms.
-
 ## 3. Vertical slice
 - 1v1, one lane, one hero with one Rhai ability, creeps, tower, fog, capsule art, LAN.
 - Handshake, session log with seed commit-reveal, verifier on another OS. Is it fun?

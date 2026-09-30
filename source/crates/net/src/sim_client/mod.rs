@@ -7,7 +7,7 @@ use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::schedule::common_conditions::{not, resource_exists};
 use bevy_ecs::system::{Commands, Query, Res, ResMut, Single};
 use bevy_ecs::world::{Mut, World};
-use campfire_capabilities::{Dead, Order, Owner};
+use campfire_capabilities::{Dead, MatchEnd, Order, Owner};
 use campfire_log::LogEvent;
 use campfire_math::SegmentSeed;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SignOnly};
@@ -198,7 +198,13 @@ impl Plugin for SimClient {
         app.init_resource::<PendingOrders>();
         app.add_systems(
             Update,
-            (answer_offer, receive_match_start, report_deaths).chain(),
+            (
+                answer_offer,
+                receive_match_start,
+                receive_match_end,
+                report_deaths,
+            )
+                .chain(),
         );
         app.add_systems(
             FixedUpdate,
@@ -254,6 +260,19 @@ fn receive_match_start(
             }
             .log();
             commands.insert_resource(MatchClock::new(NetTick(start.start_tick)));
+        }
+    }
+}
+
+/// Takes the end of the match into the client's world, which then predicts nothing more.
+fn receive_match_end(
+    mut receivers: Query<'_, '_, &mut MessageReceiver<MatchEnd>, With<Client>>,
+    mut commands: Commands<'_, '_>,
+) {
+    for mut receiver in &mut receivers {
+        for end in receiver.receive() {
+            info!(tick = end.tick().get(), result = ?end.result(), "the match ended");
+            commands.insert_resource(end);
         }
     }
 }

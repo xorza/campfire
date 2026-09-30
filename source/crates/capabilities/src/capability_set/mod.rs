@@ -7,6 +7,7 @@ use serde::{Deserialize, Deserializer};
 use crate::abilities::Abilities;
 use crate::capability_set::error::CapabilityError;
 use crate::combat::Combat;
+use crate::mode::match_end::MatchEnd;
 use crate::navigation::Navigation;
 use crate::orders::Orders;
 use crate::projectiles::Projectiles;
@@ -72,7 +73,7 @@ impl CapabilitySet {
     }
 
     /// Installs the core, then each declared capability the release runs, each after the ones it
-    /// builds on. With no `scripts`, as on a client, which runs none, the core has no script host,
+    /// builds on. A match that ended runs no stage. With no `scripts`, as on a client, which runs none, the core has no script host,
     /// and each capability leaves out what runs scripts.
     pub fn install(
         self,
@@ -82,6 +83,7 @@ impl CapabilitySet {
         scripts: Option<MatchScripts>,
     ) {
         Units::install(world, schedule, registry, scripts);
+        MatchEnd::stop_stages(schedule);
         for (capability, install) in INSTALLS {
             if self.contains(capability) {
                 install(world, schedule, registry);

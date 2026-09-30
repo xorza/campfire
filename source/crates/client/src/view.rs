@@ -14,7 +14,8 @@ use bevy::ecs::observer::On;
 use bevy::ecs::query::{Added, Allow, Changed, Has, With, Without};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
-use bevy::ecs::system::{Commands, Query, Res, ResMut};
+use bevy::ecs::schedule::common_conditions::resource_added;
+use bevy::ecs::system::{Commands, Query, Res, ResMut, Single};
 use bevy::light::DirectionalLight;
 use bevy::math::primitives::{Capsule3d, Plane3d};
 use bevy::math::{Quat, Vec3};
@@ -22,7 +23,8 @@ use bevy::mesh::{Mesh, Mesh3d, Meshable};
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::time::Time;
 use bevy::transform::components::Transform;
-use campfire_capabilities::{Dead, MoveStep, Owner, Team};
+use bevy::window::Window;
+use campfire_capabilities::{Dead, MatchEnd, MatchResult, MoveStep, Owner, Team};
 use campfire_math::Num;
 use campfire_net::Unpredicted;
 use campfire_sim::{Position, StableId};
@@ -53,6 +55,18 @@ struct Palette {
 
 #[derive(Resource, Debug)]
 struct TickSeconds(f32);
+
+/// The ground the match is drawn on, which shows the match's result once it ends.
+#[derive(Component, Debug)]
+struct Ground;
+
+/// How the match ended for the client's team.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Standing {
+    Victory,
+    Defeat,
+    Draw,
+}
 
 /// On a sim unit: the entity that draws it. The sim entity may be `Unpredicted`, which the
 /// renderer does not see, so the drawing is an entity of its own.
@@ -127,6 +141,7 @@ impl Plugin for View {
             Update,
             (View::draw_new, View::mourn, View::follow, View::glide).chain(),
         );
+        app.add_systems(Update, View::show_end.run_if(resource_added::<MatchEnd>));
         app.add_observer(View::erase);
     }
 }
@@ -149,6 +164,7 @@ impl View {
             Transform::from_xyz(4.0, 10.0, 6.0).looking_at(Vec3::ZERO, Vec3::Y),
         ));
         commands.spawn((
+            Ground,
             Mesh3d(meshes.add(Plane3d::default().mesh().size(44.0, 20.0))),
             MeshMaterial3d(materials.add(Color::srgb(0.3, 0.33, 0.28))),
         ));
@@ -262,6 +278,29 @@ impl View {
         }
     }
 
+    /// Shows the match's end for the client's team: the window's title names it, and the ground
+    /// turns gold for a victory, dark red for a defeat and gray for a draw.
+    fn show_end(
+        end: Res<'_, MatchEnd>,
+        own: Query<'_, '_, &Team, With<Predicted>>,
+        ground: Single<'_, '_, &mut MeshMaterial3d<StandardMaterial>, With<Ground>>,
+        mut windows: Query<'_, '_, &mut Window>,
+        mut materials: ResMut<'_, Assets<StandardMaterial>>,
+    ) {
+        let standing = Standing::of(end.result(), own.iter().next().copied());
+        let (title, color) = match standing {
+            Some(Standing::Victory) => ("Campfire: victory", Color::srgb(0.75, 0.6, 0.15)),
+            Some(Standing::Defeat) => ("Campfire: defeat", Color::srgb(0.4, 0.08, 0.06)),
+            Some(Standing::Draw) | None => {
+                ("Campfire: the match ended", Color::srgb(0.35, 0.35, 0.35))
+            }
+        };
+        ground.into_inner().0 = materials.add(color);
+        for mut window in &mut windows {
+            title.clone_into(&mut window.title);
+        }
+    }
+
     /// Erases a unit's drawing when the unit leaves the client's world.
     fn erase(
         despawned: On<'_, '_, Despawn, Drawn>,
@@ -270,6 +309,19 @@ impl View {
     ) {
         if let Ok(&Drawn(drawing)) = units.get(despawned.entity) {
             commands.entity(drawing).despawn();
+        }
+    }
+}
+
+impl Standing {
+    /// How `result` stands for the team `own`; `None` for a match someone won when the team is
+    /// not known.
+    fn of(result: MatchResult, own: Option<Team>) -> Option<Standing> {
+        match (result, own) {
+            (MatchResult::Draw, _) => Some(Standing::Draw),
+            (MatchResult::Won(winner), Some(own)) if winner == own => Some(Standing::Victory),
+            (MatchResult::Won(_), Some(_)) => Some(Standing::Defeat),
+            (MatchResult::Won(_), None) => None,
         }
     }
 }
@@ -333,4 +385,21 @@ fn ground(pos: Position) -> Vec3 {
 )]
 pub(crate) fn float(value: Num) -> f32 {
     value.to_bits() as f32 / (1_u64 << Num::FRAC_BITS) as f32
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_result_stands_by_the_clients_team() {
+        let [a, b] = [0, 1].map(Team::new);
+        let won = MatchResult::Won(a);
+        assert_eq!(Standing::of(won, Some(a)), Some(Standing::Victory));
+        assert_eq!(Standing::of(won, Some(b)), Some(Standing::Defeat));
+        assert_eq!(Standing::of(won, None), None);
+        for own in [Some(a), None] {
+            assert_eq!(Standing::of(MatchResult::Draw, own), Some(Standing::Draw));
+        }
+    }
 }

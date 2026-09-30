@@ -41,6 +41,21 @@ pub enum SimSet {
     Vision,
 }
 
+impl SimSet {
+    /// Every stage, in the order a tick runs them.
+    pub const ALL: [SimSet; 9] = [
+        SimSet::Inputs,
+        SimSet::Think,
+        SimSet::Act,
+        SimSet::Move,
+        SimSet::Collide,
+        SimSet::Hit,
+        SimSet::Resolve,
+        SimSet::Mode,
+        SimSet::Vision,
+    ];
+}
+
 impl SimUpdate {
     /// The schedule with no game systems yet. The tick's random sequences start before
     /// `SimSet::Inputs`; after `SimSet::Vision` the tick advances and its inputs are cleared. Two
@@ -55,25 +70,13 @@ impl SimUpdate {
             ambiguity_detection: LogLevel::Error,
             ..ScheduleBuildSettings::new()
         });
-        schedule
-            .configure_sets(
-                (
-                    SimSet::Inputs,
-                    SimSet::Think,
-                    SimSet::Act,
-                    SimSet::Move,
-                    SimSet::Collide,
-                    SimSet::Hit,
-                    SimSet::Resolve,
-                    SimSet::Mode,
-                    SimSet::Vision,
-                )
-                    .chain(),
-            )
-            .add_systems((
-                start_tick.before(SimSet::Inputs),
-                end_tick.after(SimSet::Vision),
-            ));
+        for stages in SimSet::ALL.windows(2) {
+            schedule.configure_sets(stages[1].after(stages[0]));
+        }
+        schedule.add_systems((
+            start_tick.before(SimSet::Inputs),
+            end_tick.after(SimSet::Vision),
+        ));
         schedule
     }
 

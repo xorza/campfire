@@ -20,6 +20,7 @@ use crate::combat::deaths::Deaths;
 use crate::mode::calls::Calls;
 use crate::mode::error::ModeError;
 use crate::mode::map_data::{GroundPoint, MapData};
+use crate::mode::match_end::MatchEnd;
 use crate::mode::mode_book::ModeBook;
 use crate::mode::mode_ctx::ModeCtx;
 use crate::mode::mode_input::{InputValue, ModeInput};
@@ -46,6 +47,7 @@ pub(crate) mod calls;
 pub(crate) mod error;
 pub(crate) mod loadout_index;
 pub(crate) mod map_data;
+pub(crate) mod match_end;
 pub(crate) mod mode_book;
 pub(crate) mod mode_ctx;
 pub(crate) mod mode_data;
@@ -115,6 +117,7 @@ impl Mode {
                 .before(OrdersSet::Orders),
             (run_timers, unit_deaths).chain().in_set(SimSet::Mode),
         ));
+        registry.register_resource::<MatchEnd>();
         registry.register_resource::<ModeState>();
         registry.register_resource::<Picks>();
         registry.register_resource::<PlayerResources>();

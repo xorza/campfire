@@ -1,10 +1,11 @@
 use bevy_ecs::world::World;
 use campfire_script::ScriptError;
 use campfire_script::rhai::FuncArgs;
-use campfire_sim::{EntityIndex, Tick};
+use campfire_sim::{EntityIndex, SimTick, Tick};
 
 use crate::abilities::ability_slots::AbilitySlots;
 use crate::combat::respawn::Respawn;
+use crate::mode::match_end::MatchEnd;
 use crate::mode::mode_ctx::{ModeCtx, ModeEffect};
 use crate::mode::mode_state::ModeState;
 use crate::mode::picks::Picks;
@@ -62,6 +63,7 @@ impl Calls<'_, '_> {
         frame
             .resources
             .clone_from(self.batch.world().resource::<PlayerResources>());
+        frame.ended = self.batch.world().contains_resource::<MatchEnd>();
         frame.effects.clear();
     }
 
@@ -86,6 +88,10 @@ impl Calls<'_, '_> {
                     .resource_mut::<Timers>()
                     .set(self.now, name, ticks, repeat, data),
                 ModeEffect::SpawnAvatars => book.spawn_avatars(world),
+                ModeEffect::End(result) => {
+                    let tick = world.resource::<SimTick>().start();
+                    world.insert_resource(MatchEnd::new(tick, result));
+                }
                 ModeEffect::SpawnUnit {
                     unit_type,
                     team,

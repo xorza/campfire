@@ -6,7 +6,9 @@ use std::num::NonZeroU32;
 
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
-use campfire_capabilities::{Action, Dead, Destination, Health, Owner, Respawn};
+use campfire_capabilities::{
+    Action, Dead, Destination, Health, MatchEnd, MatchResult, MoveStep, Owner, Respawn, Team,
+};
 use campfire_math::{Num, Vec3};
 use campfire_net::{LocalMatch, MatchSetup, PlayerLink, TickHashes, Unpredicted};
 use campfire_protocol::{SeedChain, SessionLog};
@@ -200,4 +202,56 @@ fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_
     assert!(!dead(local.client(0)));
     assert_eq!(health(local.client(0)), num(600));
     assert_eq!(rollbacks(&local), 1);
+}
+
+#[test]
+fn a_fallen_tower_ends_the_match_on_the_server_and_its_client() {
+    let mut local = LocalMatch::new(MatchSetup::solo(RollbackMode::Check, 1, SEED_CHAIN));
+    local.start_match();
+    // The east tower, of team 1, the one unit of that team that neither walks nor has an owner,
+    // falls to one strike: the walker's attack on it ends the match, and the west, team 0, wins.
+    let world = local.server().world();
+    let (tower, tower_entity) = world
+        .resource::<EntityIndex>()
+        .iter()
+        .find(|&(_, entity)| {
+            let unit = world.entity(entity);
+            unit.get::<Team>() == Some(&Team::new(1))
+                && !unit.contains::<MoveStep>()
+                && !unit.contains::<Owner>()
+        })
+        .unwrap();
+    let frail = Health::new(Num::EPSILON).unwrap();
+    local
+        .server_mut()
+        .world_mut()
+        .entity_mut(tower_entity)
+        .insert(frail);
+    local.order(0, Action::Attack { target: tower });
+    let mut frames = 0;
+    while !local.server().world().contains_resource::<MatchEnd>() {
+        assert!(frames < 400, "the walker fells the tower");
+        local.step();
+        frames += 1;
+    }
+    let end = *local.server().world().resource::<MatchEnd>();
+    assert_eq!(end.result(), MatchResult::Won(Team::new(0)));
+    for _ in 0..10 {
+        local.step();
+    }
+    assert_eq!(
+        local.client(0).world().get_resource::<MatchEnd>(),
+        Some(&end)
+    );
+
+    // After the end neither end moves the hero, and the server's tick still counts on.
+    let still = hero(local.server());
+    let tick = local.server().world().resource::<SimTick>().start();
+    local.order(0, move_to(-6, 0));
+    for _ in 0..30 {
+        local.step();
+    }
+    assert_eq!(hero(local.server()), still);
+    assert_eq!(hero(local.client(0)).position, still.position);
+    assert!(local.server().world().resource::<SimTick>().start() > tick);
 }

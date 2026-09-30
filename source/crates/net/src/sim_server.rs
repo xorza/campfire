@@ -4,10 +4,10 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, Changed, Has, With, Without};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::IntoScheduleConfigs;
-use bevy_ecs::schedule::common_conditions::resource_exists;
+use bevy_ecs::schedule::common_conditions::{resource_added, resource_exists};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
-use campfire_capabilities::{Dead, Mode, Owner, SeenBy, Team};
+use campfire_capabilities::{Dead, MatchEnd, MatchResult, Mode, Owner, SeenBy, Team};
 use campfire_log::LogEvent;
 use campfire_math::PlayerSlot;
 use campfire_package::ModePackages;
@@ -91,6 +91,7 @@ impl Plugin for SimServer {
                 record_hash.run_if(resource_exists::<TickHashes>),
                 show_units,
                 report_deaths,
+                announce_end.run_if(resource_added::<MatchEnd>),
             )
                 .chain()
                 .run_if(sim_tick_due),
@@ -222,6 +223,21 @@ fn report_deaths(
         } else {
             debug!(unit, team, tick, "a unit died");
         }
+    }
+}
+
+/// Logs the end of the match the tick just run ended, and tells each player's client.
+fn announce_end(
+    end: Res<'_, MatchEnd>,
+    mut links: Query<'_, '_, &mut MessageSender<MatchEnd>, With<PlayerLink>>,
+) {
+    let tick = end.tick().get();
+    match end.result() {
+        MatchResult::Won(team) => info!(tick, team = team.index(), "the match ended: a team won"),
+        MatchResult::Draw => info!(tick, "the match ended in a draw"),
+    }
+    for mut sender in &mut links {
+        sender.send::<MatchChannel>(*end);
     }
 }
 

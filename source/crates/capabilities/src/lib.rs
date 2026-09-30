@@ -56,6 +56,7 @@ pub use mode::loadout_index::LoadoutIndex;
 pub use mode::map_data::{
     GridData, GroundPoint, MapData, NeutralSpawnData, PathData, StructureData,
 };
+pub use mode::match_end::{MatchEnd, MatchResult};
 pub use mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
 pub use mode::mode_input::{InputValue, ModeInput};
 pub use mode::mode_setup::{AvatarSetup, LoadoutSetup, ModeSetup, UnitTypeSetup};

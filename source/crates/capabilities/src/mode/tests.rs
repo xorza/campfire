@@ -26,9 +26,11 @@ use crate::combat::strikes::{Strike, Strikes};
 use crate::mode::avatar_index::AvatarIndex;
 use crate::mode::loadout_index::LoadoutIndex;
 use crate::mode::map_data::{GridData, NeutralSpawnData, PathData, StructureData};
+use crate::mode::match_end::MatchResult;
 use crate::mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
 use crate::mode::mode_setup::{AvatarSetup, LoadoutSetup, UnitTypeSetup};
 use crate::mode::unit_kit::UnitKit;
+use crate::navigation::destination::Destination;
 use crate::navigation::move_step::MoveStep;
 use crate::navigation::path_walker::{PathDirection, PathWalker};
 use crate::scripts::error::ApiError;
@@ -860,4 +862,62 @@ fn on_mode_input(ctx, player, name, value) {
     game.tick(&[(0, input("probe", "tower"))]);
     assert_eq!(game.failures(), [Some(ApiError::RespawnDespawns)]);
     assert!(game.world.get_entity(tower).is_err());
+}
+
+#[test]
+fn a_match_ends_once_and_then_no_stage_runs() {
+    // A timer counts every tick; inputs end the match.
+    let script = r#"
+fn on_match_start(ctx) {
+    ctx.timer("every", 100, true, ());
+    ctx.spawn_group("a", "mid", ["grunt"]);
+}
+
+fn on_timer(ctx, name, data) {
+    ctx.state.count += 1;
+}
+
+fn on_mode_input(ctx, player, name, value) {
+    if name == "probe" {
+        ctx.end(value);
+        ctx.end(value);
+    } else if name == "hero" {
+        ctx.end(value);
+    } else {
+        ctx.end(());
+    }
+}
+"#;
+    let mut game = Game::new(script, LIMITS);
+    // A second end in the same call fails the call, which ends nothing; so does a team the mode
+    // does not have. The timer fires at the end of ticks 0 and 1.
+    game.tick(&[(0, input("probe", "a"))]);
+    assert_eq!(game.failures(), [Some(ApiError::Ended)]);
+    game.tick(&[(0, input("hero", "z"))]);
+    assert_eq!(game.failures(), [Some(ApiError::UnknownTeam)]);
+    assert!(!game.world.contains_resource::<MatchEnd>());
+    assert_eq!(game.field("count"), StateValue::Int(2));
+
+    // Team b wins in the Inputs stage of tick 2, so no later stage of tick 2 runs: a's grunt,
+    // 1, sent 5 m away, stands where it is, and the timer counts no more. In tick 3 nothing
+    // runs, the input to end again included.
+    let grunt = game.entity(1);
+    let mut destination = game.world.get_mut::<Destination>(grunt).unwrap();
+    destination.set(Some(at(5, 0)));
+    let before = game.units();
+    game.tick(&[(0, input("hero", "b"))]);
+    let end = MatchEnd::new(Tick::new(2), MatchResult::Won(Team::new(1)));
+    assert_eq!(game.world.get_resource::<MatchEnd>(), Some(&end));
+    game.tick(&[(0, input("phase", "draw"))]);
+    assert_eq!(game.failures(), []);
+    assert_eq!(game.world.get_resource::<MatchEnd>(), Some(&end));
+    assert_eq!(game.units(), before);
+    assert_eq!(game.field("count"), StateValue::Int(2));
+    assert_eq!(game.world.resource::<SimTick>().start(), Tick::new(4));
+
+    // `end(())` is a draw.
+    let mut game = Game::new(script, LIMITS);
+    game.tick(&[(0, input("phase", "draw"))]);
+    let draw = MatchEnd::new(Tick::new(0), MatchResult::Draw);
+    assert_eq!(game.world.get_resource::<MatchEnd>(), Some(&draw));
 }

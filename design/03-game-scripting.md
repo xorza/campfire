@@ -49,7 +49,7 @@ One mode script (`scripts/mode.rhai`) owns the rules. The engine knows only wait
 - **Hooks:** `on_match_start` (running begins), `on_player_join`, `on_player_leave`, `on_timer`, `on_mode_input`, plus event hooks from the capabilities in use. `on_tick` exists but is discouraged. Every hook takes `ctx` first.
 - **Primitives:** timers, freeze and unfreeze, respawn and reset, team changes, named per-player resources (e.g. `gold`), scoreboard data.
 - **Timers** are set in milliseconds and rounded up to whole ticks (at least one), so a timer never fires early and modes behave the same at any tick rate to within one tick.
-- **End:** `ctx.end(result)`, callable once. Optional: a persistent world never calls it.
+- **End:** `ctx.end(team)` names the winning team, and `ctx.end(())` a draw; callable once. The result is sim state, so the final state hash proves it, and from the next stage on no stage runs. Optional: a persistent world never calls it.
 
 ## Capabilities
 

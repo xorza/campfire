@@ -1,7 +1,7 @@
 use bevy_app::{App, Plugin};
 use campfire_capabilities::{
-    AbilitySlots, Dead, Destination, Health, MoveStep, Owner, ResourcePool, Respawn, SpawnPoint,
-    Team,
+    AbilitySlots, Dead, Destination, Health, MatchEnd, MoveStep, Owner, ResourcePool, Respawn,
+    SpawnPoint, Team,
 };
 use campfire_sim::{Position, StableId};
 use lightyear::prelude::{
@@ -50,6 +50,8 @@ impl Plugin for NetProtocol {
         app.register_message::<InputMessage>()
             .add_direction(NetworkDirection::ClientToServer);
         app.register_message::<MatchStart>()
+            .add_direction(NetworkDirection::ServerToClient);
+        app.register_message::<MatchEnd>()
             .add_direction(NetworkDirection::ServerToClient);
         app.register_message::<Offer>()
             .add_direction(NetworkDirection::ServerToClient);

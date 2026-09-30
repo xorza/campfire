@@ -1,6 +1,6 @@
 // Player 0 plays the walker from the start, and player 1, when there is one, the runner. At the end
 // of tick 0 each hero learns its first ability and the first wave comes, then a wave every wave_ms.
-// A hero that dies respawns respawn_ms later.
+// A hero that dies respawns respawn_ms later. The team whose tower falls loses.
 fn on_match_start(ctx) {
     ctx.choose_avatar(0, "hero-walker");
     if ctx.players > 1 {
@@ -25,7 +25,9 @@ fn on_timer(ctx, name, data) {
 }
 
 fn on_unit_died(ctx, unit, killer, assisters) {
-    if unit.is_avatar {
+    if unit.has_tag("tower") {
+        ctx.end(ctx.enemy_team(unit.team));
+    } else if unit.is_avatar {
         ctx.respawn(unit, ctx.p.respawn_ms);
     }
 }

@@ -117,7 +117,7 @@ A unit handle has the fields of the capabilities its type uses; reading a field 
 | Abilities | `abilities` | `reduce_cooldown(unit, id, ms)`, `reduce_cooldowns(unit, fraction)` (basic abilities), `add_charge(unit, id)` |
 | Progress | core; `stats` for experience | `add_resource(player, name, amount)`, `add_xp(avatar, amount)` |
 | Orders (AI) | `orders` | `order_attack(unit, target)`, `order_move(unit, pos)`, `order_follow_path(unit)`, `order_reset(unit)` (walk home, heal, drop target) |
-| Mode | core; `combat` for `respawn`, `abilities` for `learn` | `timer(name, ms, repeat, data)`, `end(result)`, `spawn_avatars()`, `spawn_unit(type, team, pos)`, `spawn_group(team, path, types)`, `respawn(unit, ms)`, `learn(avatar, slot)` (the ability in `slot` a rank more, up to its last; an avatar's own abilities spawn unlearned), `choose_avatar(player, id)`, `choose_loadout(player, ids)` |
+| Mode | core; `combat` for `respawn`, `abilities` for `learn` | `timer(name, ms, repeat, data)`, `end(team)` (that team wins; `end(())` is a draw; once), `spawn_avatars()`, `spawn_unit(type, team, pos)`, `spawn_group(team, path, types)`, `respawn(unit, ms)`, `learn(avatar, slot)` (the ability in `slot` a rank more, up to its last; an avatar's own abilities spawn unlearned), `choose_avatar(player, id)`, `choose_loadout(player, ids)` |
 
 `ctx.p` reads, in an ability, its params; in a modifier, the modifier's params and then those of the ability that applied it; in a mode or AI script, the mode's params.
 

@@ -56,6 +56,8 @@ pub enum ApiError {
     NoPathEnd,
     /// A team with no one enemy team: `enemy_team` needs a mode of two teams.
     NoEnemyTeam,
+    /// A second end of a match.
+    Ended,
     /// A player slot the session does not have.
     UnknownPlayer,
     /// An avatar the mode does not depend on.
@@ -149,6 +151,7 @@ impl fmt::Display for ApiError {
             ApiError::OutOfBounds => "point is outside the map's bounds",
             ApiError::NoPathEnd => "team has no end of the paths",
             ApiError::NoEnemyTeam => "team has no one enemy team",
+            ApiError::Ended => "the match has ended",
             ApiError::UnknownPlayer => "player is not in the session",
             ApiError::UnknownAvatar => "avatar is not one the mode depends on",
             ApiError::AvatarTaken => "avatar is another player's choice",

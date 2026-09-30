@@ -5,6 +5,7 @@ use campfire_math::PlayerSlot;
 use campfire_script::rhai::{Array, Dynamic, Engine, INT, ImmutableString};
 use campfire_sim::{Position, StableId, Ticks};
 
+use crate::mode::match_end::MatchResult;
 use crate::mode::mode_book::ModeBook;
 use crate::mode::picks::Picks;
 use crate::mode::player_resources::PlayerResources;
@@ -36,6 +37,8 @@ pub(crate) struct ModeFrame {
     pub(crate) state: Vec<StateValue>,
     pub(crate) picks: Picks,
     pub(crate) resources: PlayerResources,
+    /// Whether the match ended, before this call or in it.
+    pub(crate) ended: bool,
     pub(crate) effects: Vec<ModeEffect>,
 }
 
@@ -49,6 +52,7 @@ pub(crate) enum ModeEffect {
         data: Option<StateValue>,
     },
     SpawnAvatars,
+    End(MatchResult),
     SpawnUnit {
         unit_type: UnitType,
         team: Team,
@@ -129,6 +133,13 @@ impl ModeCtx {
                     ctx.view.team_name(enemy)
                 },
             )
+            .register_fn("end", |ctx: &mut ModeCtx, team: &str| {
+                let team = ctx.team(team)?;
+                ctx.end(MatchResult::Won(team))
+            })
+            .register_fn("end", |ctx: &mut ModeCtx, (): ()| {
+                ctx.end(MatchResult::Draw)
+            })
             .register_fn("avatars", |ctx: &mut ModeCtx| ctx.view.avatars(None))
             .register_fn(
                 "avatars",
@@ -264,6 +275,17 @@ impl ModeCtx {
         let value = StateValue::from_dynamic(field.kind, value)
             .ok_or_else(|| ApiError::WrongStateType.fail())?;
         self.frame().state[field.index] = value;
+        Ok(())
+    }
+
+    /// Ends the match with `result`, once.
+    fn end(&self, result: MatchResult) -> Checked<()> {
+        let mut frame = self.frame();
+        if frame.ended {
+            return Err(ApiError::Ended.fail().into());
+        }
+        frame.ended = true;
+        frame.effects.push(ModeEffect::End(result));
         Ok(())
     }
 
