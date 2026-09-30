@@ -15,9 +15,13 @@ impl RecentAttackers {
         self.0.iter().copied()
     }
 
-    /// Records that `source` struck in `tick`, and forgets the attackers `index` no longer holds.
+    /// Records that `source` struck in `tick`, when it still exists, and forgets the attackers
+    /// `index` no longer holds. A projectile can strike after its source is gone.
     pub(crate) fn record(&mut self, source: StableId, tick: Tick, index: &EntityIndex) {
         self.0.retain(|attack| index.get(attack.source).is_some());
+        if index.get(source).is_none() {
+            return;
+        }
         match self.0.binary_search_by_key(&source, |attack| attack.source) {
             Ok(at) => self.0[at].tick = tick,
             Err(at) => self.0.insert(at, RecentAttack { source, tick }),

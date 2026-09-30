@@ -5,9 +5,18 @@
 
 mod error;
 mod match_build;
+#[cfg(feature = "internals")]
+mod reference_3v3;
 mod runner;
 mod session;
 
 pub use error::StartError;
+#[cfg(feature = "internals")]
+pub use reference_3v3::Reference3v3;
 pub use runner::Runner;
 pub use session::Session;
+
+#[cfg(feature = "bench")]
+pub mod bench {
+    pub use crate::runner::bench::tick_3v3;
+}

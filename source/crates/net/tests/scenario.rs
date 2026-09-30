@@ -4,7 +4,7 @@
 use std::num::NonZeroU32;
 
 use bevy_app::App;
-use campfire_capabilities::{Dead, Team};
+use campfire_capabilities::Dead;
 use campfire_math::{Num, Vec3};
 use campfire_net::{LinkModel, LocalMatch, MatchSetup, OrderScript, TickHashes};
 use campfire_protocol::{SeedChain, SessionLog};
@@ -16,15 +16,6 @@ const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
 const MATCH_TICKS: u64 = 600;
 /// The lane mode's respawn, 5000 ms at 30 ticks a second, from the end of the tick of death.
 const RESPAWN_TICKS: u64 = 150;
-
-/// By team, the west then the east: each hero walks 4 m toward the enemy tower, which kills it
-/// there; after it respawns, it walks to a point near the middle. The first order waits for the
-/// clients' lead on the server to settle: Lightyear brings it to its target by 5 % of a tick a
-/// frame.
-const SCRIPTS: [&str; 2] = [
-    "[[order]]\ntick = 60\nmove = [4, 0]\n[[order]]\ntick = 450\nmove = [-2, 3]\n",
-    "[[order]]\ntick = 60\nmove = [-4, 0]\n[[order]]\ntick = 450\nmove = [2, -3]\n",
-];
 
 fn at(x: i64, z: i64) -> Position {
     let num = |value| Num::from_int(value).unwrap();
@@ -90,17 +81,16 @@ fn play(link: LinkModel) -> [u32; 2] {
     // Players take slots in the order their joins arrive, so each client plays its hero's team's
     // script.
     let heroes = [local.hero(0), local.hero(1)];
-    let teams = heroes.map(|id| {
-        let world = local.server().world();
-        let entity = world.resource::<EntityIndex>().get(id).unwrap();
-        usize::from(world.get::<Team>(entity).unwrap().index())
-    });
+    let teams = [0, 1].map(|client| usize::from(local.team(client).index()));
     assert_ne!(
         teams[0], teams[1],
         "the two players' heroes are on two teams"
     );
     for (client, &team) in teams.iter().enumerate() {
-        local.play(client, OrderScript::parse(SCRIPTS[team]).unwrap());
+        local.play(
+            client,
+            OrderScript::parse(LocalMatch::SCENARIO_SCRIPTS[team]).unwrap(),
+        );
     }
     let mut on_server = [Life::default(); 2];
     let mut on_client = [Life::default(); 2];

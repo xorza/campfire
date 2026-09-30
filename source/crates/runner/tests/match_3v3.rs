@@ -1,93 +1,13 @@
 //! The reference 3v3 as its packages hold it plays a match that replays to the same state hashes.
 
-use std::num::NonZeroU32;
-use std::path::PathBuf;
-
 use campfire_capabilities::{
-    Hook, InputValue, LaneWalker, ModeInput, ModeState, Owner, PlayerResources, ScriptFailures,
-    StateValue, Team, UnitType,
+    Hook, LaneWalker, ModeState, Owner, PlayerResources, ScriptFailures, StateValue, Team, UnitType,
 };
 use campfire_math::{Num, PlayerSlot, Vec3};
-use campfire_package::{ModePackages, RELEASE};
-use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
-use campfire_protocol::{
-    Delegation, DelegationTerms, InputChain, SeedChain, SessionHeader, SessionLog, SessionTerms,
-};
-use campfire_runner::{Runner, Session};
+use campfire_protocol::SessionLog;
+use campfire_runner::{Reference3v3, Runner};
 use campfire_script::ScriptHost;
 use campfire_sim::{EntityIndex, Position, StableId, StateHash};
-
-/// The 3v3's slowest rate, which runs a match in the fewest ticks.
-const TICK_HZ: NonZeroU32 = NonZeroU32::new(20).unwrap();
-const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
-const SERVER_KEY: [u8; 32] = [8; 32];
-/// BIP-340 signing without auxiliary randomness is deterministic, so every run signs alike.
-const AUX: [u8; 32] = [0; 32];
-const PLAYERS: u32 = 6;
-const HEROES: [&str; 6] = [
-    "hero-cinder",
-    "hero-gale",
-    "hero-husk",
-    "hero-kensho",
-    "hero-rime",
-    "hero-veil",
-];
-
-fn moba() -> PathBuf {
-    PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packages/moba"))
-}
-
-fn packages() -> ModePackages {
-    ModePackages::from_dir(&moba().join("modes/3v3")).unwrap_or_else(|error| panic!("{error}"))
-}
-
-fn key(byte: u32) -> Keypair {
-    let secret = SecretKey::from_byte_array(&[u8::try_from(byte).unwrap(); 32]).unwrap();
-    Keypair::from_secret_key(&Secp256k1::new(), &secret)
-}
-
-/// Player `slot`'s session key.
-fn session_key(slot: u32) -> Keypair {
-    key(20 + slot)
-}
-
-fn terms(packages: &ModePackages) -> SessionTerms {
-    SessionTerms {
-        server_key: SERVER_KEY,
-        tick_hz: TICK_HZ,
-        max_input_delay: 10,
-        max_input_lead: 10,
-        max_payload_len: 256,
-        max_inputs_per_tick: 4,
-        seed_commitment: SEED_CHAIN.commitment(),
-        release: RELEASE.to_owned(),
-        mode: Session::mode_in_terms(packages),
-        dependencies: Session::dependencies_in_terms(packages),
-    }
-}
-
-/// Player `slot`'s delegation in the session of `terms`.
-fn delegation(slot: u32, terms: &SessionTerms) -> Delegation {
-    let delegated = DelegationTerms {
-        session_key: session_key(slot).x_only_public_key().0,
-        server_key: SERVER_KEY,
-        session_id: terms.session_id(),
-        seed_contribution: [u8::try_from(slot).unwrap(); 32],
-        expiration: 1_700_086_400,
-    };
-    Delegation::sign(
-        &Secp256k1::new(),
-        &key(10 + slot),
-        &delegated,
-        1_700_000_000,
-        &AUX,
-    )
-}
-
-fn log(terms: SessionTerms) -> SessionLog {
-    let players = (0..PLAYERS).map(|slot| delegation(slot, &terms)).collect();
-    SessionLog::new(SessionHeader { terms, players }).unwrap()
-}
 
 #[derive(Debug)]
 struct Run {
@@ -135,29 +55,8 @@ fn units(runner: &Runner) -> Vec<Unit> {
 }
 
 /// A match of `ticks` ticks in which each player picks a hero and two spells before tick 0.
-fn run(packages: &ModePackages, ticks: u64) -> Run {
-    let terms = terms(packages);
-    let mut runner = Runner::new(log(terms.clone()), SEED_CHAIN.seed(0), packages)
-        .unwrap_or_else(|error| panic!("{error}"));
-    let secp = Secp256k1::new();
-    let mut applied = Vec::new();
-    for slot in 0..PLAYERS {
-        let mut chain =
-            InputChain::new(PlayerSlot::new(slot), delegation(slot, &terms).chain_root());
-        let payload = ModeInput::payload(&[
-            ModeInput {
-                name: "hero",
-                value: InputValue::String(HEROES[slot as usize]),
-            },
-            ModeInput {
-                name: "spells",
-                value: InputValue::StringList(vec!["haste", "mend"]),
-            },
-        ]);
-        let input = chain.extend(0, &payload);
-        let signature = chain.sign(&secp, &session_key(slot), terms.session_id(), &AUX);
-        runner.record([input], &signature, &mut applied).unwrap();
-    }
+fn run(reference: &Reference3v3, ticks: u64) -> Run {
+    let runner = reference.start();
     let mut run = Run {
         runner,
         hashes: Vec::new(),
@@ -190,8 +89,8 @@ fn ground(x: i64, z: i64) -> Position {
 
 #[test]
 fn a_3v3_match_replays_to_the_same_hashes() {
-    let packages = packages();
-    let run = run(&packages, 2500);
+    let reference = Reference3v3::load();
+    let run = run(&reference, 2500);
     let runner = &run.runner;
     let world = runner.world();
     // State in the order of its fields' names: first_blood, then phase.
@@ -212,7 +111,10 @@ fn a_3v3_match_replays_to_the_same_hashes() {
         .iter()
         .map(|unit| (unit.team, unit.pos, unit.controller))
         .collect();
-    assert_eq!(heroes, (0..PLAYERS).map(hero).collect::<Vec<_>>());
+    assert_eq!(
+        heroes,
+        (0..Reference3v3::PLAYERS).map(hero).collect::<Vec<_>>()
+    );
     let camps: Vec<_> = run.at_pick_end[20..]
         .iter()
         .map(|unit| (unit.team, unit.pos))
@@ -244,7 +146,7 @@ fn a_3v3_match_replays_to_the_same_hashes() {
 
     // Income: 8 gold every 5 s from the pick's end, 100 ticks, in ticks 1299 to 2499: 13 times.
     let gold = world.resource::<PlayerResources>();
-    for slot in 0..PLAYERS {
+    for slot in 0..Reference3v3::PLAYERS {
         assert_eq!(
             gold.amount(PlayerSlot::new(slot), "gold"),
             104,
@@ -260,7 +162,12 @@ fn a_3v3_match_replays_to_the_same_hashes() {
     let mut file = Vec::new();
     runner.log().encode(&mut file);
     let decoded = SessionLog::decode(&file).unwrap();
-    let mut replay = Runner::new(decoded.rewound(), SEED_CHAIN.seed(0), &packages).unwrap();
+    let mut replay = Runner::new(
+        decoded.rewound(),
+        Reference3v3::seed(),
+        reference.packages(),
+    )
+    .unwrap();
     for (tick, live) in hashes.iter().enumerate() {
         replay.run_tick();
         assert_eq!(replay.state_hash(), *live, "tick {tick}");

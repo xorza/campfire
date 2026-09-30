@@ -60,3 +60,6 @@ impl Runner {
         &self.world
     }
 }
+
+#[cfg(feature = "bench")]
+pub(crate) mod bench;

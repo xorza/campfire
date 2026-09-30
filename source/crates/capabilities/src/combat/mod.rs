@@ -172,8 +172,9 @@ fn strike(
 }
 
 /// Deals the tick's strikes in the order of their source's stable id, and records each source
-/// with its target. The strike that takes a unit to zero health makes its source the killer;
-/// the other units that struck it within the assist window assisted, by stable id.
+/// with its target. The strike that takes a unit to zero health makes its source the killer, when
+/// the source still exists: a projectile can outlive the unit that launched it. The other units
+/// that struck it within the assist window assisted, by stable id.
 fn apply_strikes(
     tick: Res<'_, SimTick>,
     index: Res<'_, EntityIndex>,
@@ -211,7 +212,8 @@ fn apply_strikes(
             .flat_map(RecentAttackers::iter)
             .filter(assisted)
             .map(|attack| attack.source);
-        deaths.push(strike.target, Some(strike.source), assisters);
+        let killer = Some(strike.source).filter(|&source| index.get(source).is_some());
+        deaths.push(strike.target, killer, assisters);
     }
 }
 

@@ -7,7 +7,6 @@ Open items only. Remove an item when it is done; remove a stage when it is empty
 
 ## 2. Prototype gate
 - One unit in Lightyear's World, predicted client, bare-`World` verifier: equal hash every tick on all CI platforms.
-- Measure Schnorr checks per packet and rollback cost. On failure, revisit decision 1.
 
 ## 3. Vertical slice
 - 1v1, one lane, one hero with one Rhai ability, creeps, tower, fog, capsule art, LAN.

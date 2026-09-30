@@ -47,5 +47,5 @@ pub use sim_server::{PlayerLink, SimServer, TickHashes};
 
 #[cfg(feature = "bench")]
 pub mod bench {
-    pub use crate::sim_client::bench::rollback;
+    pub use crate::sim_client::bench::{rollback, worst_client_frame};
 }

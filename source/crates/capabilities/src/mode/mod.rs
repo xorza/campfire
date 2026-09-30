@@ -39,7 +39,6 @@ use crate::units::UnitsSet;
 use crate::units::script_view::View;
 use crate::units::team::Team;
 use crate::units::teams::Teams;
-use crate::units::unit::Unit;
 use crate::vision::Vision;
 
 pub(crate) mod calls;
@@ -335,7 +334,11 @@ fn unit_deaths(world: &mut World) {
     let now = world.resource::<SimTick>().end();
     world.resource_scope(|world, deaths: Mut<'_, Deaths>| {
         Calls::batch(world, &ctx, now, |call| {
-            let handle = |id| Dynamic::from(Unit::new(id, call.ctx.view().clone()));
+            let view = call.ctx.view().clone();
+            let handle = |id| {
+                let unit = view.unit(id);
+                Dynamic::from(unit.expect("`Deaths` names only units that exist in its tick"))
+            };
             for death in deaths.iter() {
                 let killer = death.killer.map_or(Dynamic::UNIT, handle);
                 let assisters: Array = death.assisters.iter().map(|&id| handle(id)).collect();

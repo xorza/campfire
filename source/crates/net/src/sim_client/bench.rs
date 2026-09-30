@@ -1,5 +1,6 @@
 use std::hint::black_box;
 use std::num::NonZeroU32;
+use std::time::{Duration, Instant};
 
 use campfire_capabilities::Action;
 use campfire_math::Num;
@@ -7,16 +8,22 @@ use campfire_protocol::SeedChain;
 use criterion::Criterion;
 use lightyear::prelude::RollbackMode;
 
+use crate::local_match::link_model::LinkModel;
 use crate::local_match::{LocalMatch, MatchSetup};
+use crate::order_script::OrderScript;
 
 const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
 /// A quarter meter a tick crosses the 10 m between the two targets in 40 ticks, so a new order
 /// every 40 frames keeps the hero walking and the server sending updates.
 const LEG_FRAMES: u64 = 40;
+/// The ticks of the measured match.
+const MATCH_TICKS: u64 = 600;
 
 /// One frame of a server and a predicting client while the hero walks, rolling back only on a
 /// misprediction (none happen) and on every confirmed update: the difference is the cost of the
-/// rollbacks, each as deep as the client runs ahead.
+/// rollbacks, each 4 ticks deep, as far as the client runs ahead. A delayed link would make them
+/// deeper, but it would measure the harness: Lightyear resends every unacked reliable message
+/// after its wall-clock round trip, which a step of the manual clock hardly takes.
 pub fn rollback(c: &mut Criterion) {
     let mut group = c.benchmark_group("rollback");
     for (name, mode) in [
@@ -49,4 +56,50 @@ pub fn rollback(c: &mut Criterion) {
         });
     }
     group.finish();
+}
+
+/// The worst frame of either client in each 1v1 of the lane mode, as the match scenario plays
+/// it: the rollback of each hero's death falls in it.
+pub fn worst_client_frame(c: &mut Criterion) {
+    let mut group = c.benchmark_group("match_1v1");
+    group.sample_size(10);
+    group.bench_function("worst_client_frame", |b| {
+        b.iter_custom(|matches| {
+            let mut worst_sum = Duration::ZERO;
+            for _ in 0..matches {
+                worst_sum += worst_frame_of_a_match();
+            }
+            worst_sum
+        });
+    });
+    group.finish();
+}
+
+fn worst_frame_of_a_match() -> Duration {
+    let mut local = LocalMatch::new(MatchSetup {
+        players: 2,
+        rollback: RollbackMode::Check,
+        server_frames: 3,
+        link: LinkModel::PERFECT,
+        seed_chain: SEED_CHAIN,
+    });
+    local.start_match();
+    for client in 0..2 {
+        let team = usize::from(local.team(client).index());
+        let script = OrderScript::parse(LocalMatch::SCENARIO_SCRIPTS[team]).unwrap();
+        local.play(client, script);
+    }
+    let mut worst = Duration::ZERO;
+    for _ in 0..MATCH_TICKS {
+        for client in 0..2 {
+            let start = Instant::now();
+            local.client_frame(client);
+            worst = worst.max(start.elapsed());
+        }
+        for _ in 0..local.setup().server_frames {
+            local.server_frame();
+        }
+    }
+    black_box(&local);
+    worst
 }

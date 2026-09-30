@@ -20,7 +20,8 @@ pub(crate) struct Unit {
 pub(crate) struct UnitParams(Unit);
 
 impl Unit {
-    pub(crate) const fn new(id: StableId, view: View) -> Unit {
+    /// Only the view makes a handle, of a unit it read: `View::unit` for any other code.
+    pub(super) const fn new(id: StableId, view: View) -> Unit {
         Unit { id, view }
     }
 

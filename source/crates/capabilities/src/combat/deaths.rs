@@ -5,7 +5,8 @@ use campfire_sim::StableId;
 
 /// The units that died in this tick, in the order they died, each with its killer and the units
 /// that assisted: what the mode receives in `on_unit_died`. Not state: it empties before each
-/// tick's damage, and the Mode stage of the same tick reads it.
+/// tick's damage, and the Mode stage of the same tick reads it. Every unit it names exists until
+/// the end of its tick, as the dead despawn only in the Vision stage, after the Mode stage.
 #[derive(Resource, Debug, Default)]
 pub(crate) struct Deaths {
     deaths: Vec<Death>,

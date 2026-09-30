@@ -1,4 +1,7 @@
-use std::os::unix::fs::symlink;
+#[cfg(unix)]
+use std::os::unix::fs::symlink as link_file;
+#[cfg(windows)]
+use std::os::windows::fs::symlink_file as link_file;
 use std::{env, process};
 
 use super::*;
@@ -96,7 +99,7 @@ fn a_fingerprint_hashes_the_sorted_file_list() {
     assert!(store.get(inner).is_none());
 
     // A link is no file of a package.
-    symlink(package.join("manifest.toml"), package.join("link")).unwrap();
+    link_file(package.join("manifest.toml"), package.join("link")).unwrap();
     assert!(
         matches!(dir.fingerprint(), Err(ContentError::NotAFile(path)) if path == package.join("link"))
     );

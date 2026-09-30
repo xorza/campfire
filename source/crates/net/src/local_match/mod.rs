@@ -9,7 +9,7 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedules, SingleThreadedExecutor}
 use bevy_ecs::system::Commands;
 use bevy_state::app::StatesPlugin;
 use bevy_time::{TimePlugin, TimeUpdateStrategy};
-use campfire_capabilities::{Action, Order, Owner};
+use campfire_capabilities::{Action, Order, Owner, Team};
 use campfire_package::ModePackages;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
 use campfire_protocol::{CertificateHash, SeedChain};
@@ -99,6 +99,15 @@ pub struct LocalMatch {
 }
 
 impl LocalMatch {
+    /// The match scenario's orders by team, the west then the east: each hero walks 4 m toward
+    /// the enemy tower, which kills it there; after it respawns, it walks to a point near the
+    /// middle. The first order waits for the clients' lead on the server to settle: Lightyear
+    /// brings it to its target by 5 % of a tick a frame.
+    pub const SCENARIO_SCRIPTS: [&str; 2] = [
+        "[[order]]\ntick = 60\nmove = [4, 0]\n[[order]]\ntick = 450\nmove = [-2, 3]\n",
+        "[[order]]\ntick = 60\nmove = [-4, 0]\n[[order]]\ntick = 450\nmove = [2, -3]\n",
+    ];
+
     /// A match of the test lane mode at its default rate, its clients connected and synced.
     pub fn new(setup: MatchSetup) -> LocalMatch {
         assert!(
@@ -233,12 +242,21 @@ impl LocalMatch {
 
     /// One frame of each client, then the server's frames: one tick each.
     pub fn step(&mut self) {
-        for client in &mut self.clients {
-            client.update();
+        for client in 0..self.clients.len() {
+            self.client_frame(client);
         }
         for _ in 0..self.setup.server_frames {
-            self.server.update();
+            self.server_frame();
         }
+    }
+
+    /// One frame of `client` alone: one tick of it.
+    pub fn client_frame(&mut self, client: usize) {
+        self.clients[client].update();
+    }
+
+    pub const fn setup(&self) -> &MatchSetup {
+        &self.setup
     }
 
     /// Gives `client`'s hero an order, sent in the client's next tick.
@@ -273,6 +291,15 @@ impl LocalMatch {
             })
             .map(|(id, _)| id)
             .expect("the match started, with the player's hero")
+    }
+
+    /// The team of `client`'s player's hero: players take slots in the order their joins arrive.
+    pub fn team(&self, client: usize) -> Team {
+        let world = self.server.world();
+        let hero = world.resource::<EntityIndex>().get(self.hero(client));
+        *world
+            .get::<Team>(hero.expect("the hero exists"))
+            .expect("a hero has a team")
     }
 
     pub const fn server(&self) -> &App {

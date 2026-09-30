@@ -11,6 +11,7 @@ use crate::combat::attack_state::AttackState;
 use crate::combat::attack_stats::AttackStats;
 use crate::combat::combatant::Combatant;
 use crate::combat::dead::Dead;
+use crate::combat::deaths::Deaths;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::units::recent_attack::RecentAttack;
@@ -206,4 +207,62 @@ fn a_projectile_whose_target_dies_or_goes_first_ends_without_a_hit() {
     assert_eq!(volley.world.resource::<SimTick>().start().get(), 6);
     assert_eq!(volley.projectiles(), []);
     assert_eq!(volley.health(doomed), 100);
+}
+
+#[test]
+fn a_projectile_that_outlives_its_source_kills_with_no_killer() {
+    // Two shooters fire at a target of 60 health in tick 2, from 5 m either side: both projectiles
+    // strike in tick 12, 30 damage each, the lower id's first. The first shooter despawns in tick 5, as a
+    // dead creep does, so its strike has no source that exists: the second one's strike kills,
+    // and it alone is the killer's. Were the second shooter gone too, no one would be.
+    for second_goes in [false, true] {
+        let mut volley = Volley::new(true);
+        let shooters = [0, 10].map(|x| volley.unit(0, at(x, 0), shooter()));
+        let victim = volley.unit(1, at(5, 0), target());
+        let victim_entity = volley.entity(victim);
+        volley
+            .world
+            .get_mut::<Health>(victim_entity)
+            .unwrap()
+            .take(num(40));
+        for shooter in shooters {
+            volley.attack(shooter, victim);
+        }
+        for tick in 0..=12 {
+            if tick == 5 {
+                let gone: &[StableId] = if second_goes {
+                    &shooters
+                } else {
+                    &shooters[..1]
+                };
+                for &id in gone {
+                    let entity = volley.entity(id);
+                    volley.world.despawn(entity);
+                }
+            }
+            volley.tick();
+        }
+        assert_eq!(volley.health(victim), 0);
+        let deaths: Vec<_> = volley
+            .world
+            .resource::<Deaths>()
+            .iter()
+            .map(|death| (death.unit, death.killer, death.assisters.to_vec()))
+            .collect();
+        let killer = (!second_goes).then_some(shooters[1]);
+        assert_eq!(
+            deaths,
+            [(victim, killer, vec![])],
+            "second goes: {second_goes}"
+        );
+        // Only a source that exists is an attacker.
+        let attackers: Vec<_> = volley
+            .world
+            .get::<RecentAttackers>(victim_entity)
+            .unwrap()
+            .iter()
+            .map(|attack| attack.source)
+            .collect();
+        assert_eq!(attackers, killer.into_iter().collect::<Vec<_>>());
+    }
 }
