@@ -40,7 +40,7 @@ Outside the engine crates: the reference MOBA and bots. `det-ci` uses both as te
 
 ## Capabilities
 
-The core has no genre code. A capability is native code for one mechanism: components, systems in the engine's tick stages, a data schema, commands, and script calls and hooks. A game package declares the capabilities it uses, and any combination is valid. Packages hold only scripts and data, so a new capability ships in an engine release. See [Capabilities](04-capabilities/00-overview.md).
+The core has no genre code; a mode combines capabilities, one native mechanism each: [Capabilities](04-capabilities/00-overview.md).
 
 ## Lifecycle and sessions
 
@@ -73,61 +73,38 @@ Clients can join a running game at any time; they receive the current state of w
 
 - **Narrow game API.** Scripts never touch the ECS; they call the script API.
 - **No `bevy_mod_scripting`.** It exposes all Bevy types and [pins Bevy patch versions](https://lib.rs/crates/bevy_mod_scripting_script).
-- **Rhai engine:** [`Engine::new_raw`](https://docs.rs/rhai/latest/rhai/struct.Engine.html) plus needed packages only: arithmetic, logic, basic strings, arrays, maps and iteration, not the language core package, whose `sleep` would block a tick; `eval` is disabled, imports are off, and `print` and `debug` become `debug` log events in debug builds and nothing in release builds, so they cannot reach the sim; features `no_float`, `no_time`, without the default `ahash/runtime-rng`; never `unchecked`. `script` fixes Rhai's hashing seed (`rhai::config::hashing::set_hashing_seed`), since Rhai otherwise seeds its hasher per build.
-- **Operation limits.** One limit per call, and pools for each tick: one for each player slot, of the size `player`, for the calls that player causes (their mode inputs, and the casts of the units they control), so no other player's or script's calls can make a player's cast fail; `think` for AI, and the casts of units no player controls; `mode` for the match start and timers, later deaths and `calc_damage`; later `world` (projectile and area hooks, modifiers). The manifest sets them, and each pool holds at least one whole call. A call draws only from its pool, and the sum of the pools is the most one tick's scripts run. Counts are identical everywhere, so over-budget scripts fail identically. Once a pool is spent, later calls of its class in that tick fail; an AI unit whose call finds its pool spent stays due, and thinks first in the next tick.
-- **Other limits** (call depth, expression depth, string, array and map sizes) are constants of the engine release, set explicitly: Rhai's defaults differ between debug and release builds (call depth 8 against 64), so a script could run on a release server and fail in a debug verifier.
+- **Rhai engine:** `Engine::new_raw` with only the packages scripts need; no `eval`, imports, floats or time; `print` goes to debug logs only; a fixed hashing seed; never `unchecked`.
+- **Operation limits:** a limit per call, and per-tick pools: one per player slot for the calls that player causes, `think` for AI, `mode` for mode hooks. The manifest sets them; counts are the same everywhere, so an over-budget script fails the same everywhere. An AI whose pool is spent stays due and thinks first next tick.
+- **Other limits** (call depth, sizes) are engine constants, set explicitly, since Rhai's defaults differ between debug and release builds.
 - **All or nothing per call.** State writes go to an overlay the call can read back; engine effects (damage, spawn, orders, timers) are queued. On success the overlay commits, then the effects apply in call order. On failure (error, overflow, limit) both are discarded, the sim emits a `script_error` event, and the tick goes on.
 - **No hidden script state.** It is declared in a typed schema and stored in sim components; see [Script state](03-game-scripting.md#script-state).
 
-## Collision
+## Backends
 
-`sim` defines one collision interface with pluggable backends; each game mode picks one in its package manifest. Now: simple shapes (e.g. circles). A physics backend (vehicles, rigid bodies) may use strictly deterministic floating point inside itself, such as Rapier's [`enhanced-determinism`](https://rapier.rs/docs/user_guides/rust/determinism/) mode (not with `simd8`), verified by `det-ci`; everything else stays fixed-point. Rapier's promise holds only for the same Rapier and compiler versions, which each release tag pins. Rust gives [no deterministic NaN bit patterns](https://rust-lang.github.io/rfcs/3514-float-semantics.html), so a float that is NaN is a bug that panics before it reaches a snapshot.
-
-## Pathfinding
-
-Same pattern: one interface, pluggable backends, chosen per game mode.
-
-| Layer | Does | Implementation |
-| --- | --- | --- |
-| Long path | Route from A to B through static terrain and blockers; ignores units | Backend. Now: grid with A*, integer cells, cell size set by content. Later: navmesh |
-| Local steering | Follows the route, avoids units, allows body blocking | Shared by all backends; continuous space, fixed-point, fixed unit order |
-| Creep lanes | Lane routes; leave the route only to chase a target | Waypoints in content |
-
-**Navmesh-ready interface:**
-
-- Queries use world positions (fixed-point), never cell indices.
-- A path is a list of waypoints, so steering works with any backend.
-- Obstacles are added and removed as shapes; the backend decides how to apply them (flip cells, patch polygons).
-
-## Visibility
-
-Same pattern. Backends: grid fog of war (MOBA), 3D occlusion (FPS, battle royale). The server sends each client only what the backend marks visible to it.
+Collision, pathfinding and visibility each have one interface and pluggable backends, chosen per mode: [Navigation](04-capabilities/navigation.md), [Vision](04-capabilities/vision.md). Collision: circles on a plane (now), static 3D level geometry, or `physics`. A physics backend may use strictly deterministic floating point inside itself, such as Rapier's [`enhanced-determinism`](https://rapier.rs/docs/user_guides/rust/determinism/) mode, pinned per release and checked by `det-ci`; everything else stays fixed-point, and a NaN panics before it reaches a snapshot.
 
 ## Bevy
 
-- `sim` depends on `bevy_ecs` only and is one schedule of systems. The server and client run it inside Lightyear's fixed-tick schedule, in the app `World`; the verifier and `det-ci` run the same schedule in a bare `World` with no Lightyear. The server never links the renderer.
-- Sim systems read and write only sim components and resources, so Lightyear's own components on the same entities cannot change a result. A prototype proves this before other work: one predicted unit on a Lightyear server, and a bare-`World` replay of its log, with equal state hashes on every tick.
-- In Lightyear's `World`, `FixedUpdate` runs the sim schedule once per tick; sim tick 0 is the Lightyear tick the match started in. The server first records every input received since the last tick, then runs the tick. It hashes the state only at checkpoints and at the result; the hash after every tick is an opt-in check for tests and for a host that looks for a divergence. Inputs travel as Lightyear messages on a reliable, ordered channel. Sim components replicate through Lightyear, each unit to the clients whose team sees it; the client predicts `Position` and `Destination` of the units its player owns, receives their `Health` from the server, and predicts their `Dead` and `Respawn`, which it also learns from the server, so its sim stops a dead unit and brings it back as the server's does, and a rollback restores both. A death costs the client one correction, as it learns of it only after the ticks it predicted ahead. The client's sim runs only on those: every other unit it holds is marked `Unpredicted`, which hides it from the queries that do not name it, and holds the server's state as it arrives.
-- The predicting client sets `SimTick` from Lightyear's tick before each run, and fills `TickInputs` with its own inputs stamped for that tick. Prediction covers all the latency, with no input delay: Lightyear keeps the client's tick ahead of the server's by the round trip, so an input stamped with it lands in time; with input delay it would keep that tick nearer, and inputs would land late. A rollback runs `FixedMain` again from the server's state, so the sim runs again with the right tick and inputs. The client runs with a dummy seed: it predicts movement, never a random outcome.
-- **Prototype gate, measured** (the `bench` profile on an i9-13980HX; `chain_head_signature`, `rollback` and `tick_3v3`). A packet's chain-head signature costs the client 17 µs to sign and the server 26 µs to check. A frame of the lane 1v1, server and predicting client, costs 64 µs, and 76 µs when every confirmed update rolls back 4 ticks: 3.2 µs a re-simulated tick. The worst client frame of a whole 1v1, deaths and their rollbacks in it, is 317 µs. A tick of the reference 3v3 at 20 Hz costs 55 µs on average and 363 µs at worst over 5 minutes. So a server tick of the 3v3, with a packet from each of 6 players, costs at most 6 × 26 + 363 ≈ 520 µs of its 50 ms. A client ahead by about 1.5 round trips rolls back about 8 ticks at a 200 ms round trip, at most 8 × 363 ≈ 2.9 ms of its 50 ms, and less, as fog hides units from it. Decision 1 holds.
-- `client` runs full Bevy and derives render state from sim components each frame, interpolated. It draws each unit with an entity of its own, which mirrors the sim entity, so a sim entity the renderer cannot see (`Unpredicted`) is drawn as well; a drawing moves to the unit's new place over one tick. Float types (`Transform`) exist only there.
-- Match scenarios run in the test suite as whole matches between scripted players (`OrderScript`), through a link model of delay, jitter and loss counted in steps on a manual clock, with every schedule on one thread, so a run repeats and takes a fraction of a second. Lightyear's sync measures the round trip by the wall clock, so the test client's sync margin carries the modeled round trip at its worst, both ways: Lightyear adds half the round trip to its estimate of the server's tick, and half again for the uplink. Players take slots in the order their joins arrive, which a scenario does not fix. The link model's delay is not a real round trip to Lightyear either: it resends each unacked reliable message after 1.5 wall-clock round trips, so under a delayed link it resends every frame, and a frame's cost there is not its cost on a network.
-- The LAN check runs on request, outside the test suite: `cargo run -p campfire-lan-check` builds the server, the client and the verifier, plays a match of about 3 s between two `client --bot` processes that play `OrderScript`s, and checks it from the processes' JSON logs and by the verifier's final hash.
-- CI runs the check chain and the LAN check on Linux x86_64, Windows x86_64 and macOS aarch64; then each platform's verifier replays every platform's session log (`campfire-lan-check verify <run directory>`) to that server's final hash. Actions are pinned by commit, and runner images by version.
-- Diagnostics go through `tracing`, never a print, which clippy refuses: the libraries emit events with structured fields, and each binary installs the subscriber. `sim` and `capabilities` log nothing, as they run in every tick for every unit; they report through resources such as `ScriptFailures`, which the runner logs. A binary logs to standard error by `RUST_LOG`, and with `CAMPFIRE_LOG` set to a path also writes JSON lines there, by `CAMPFIRE_LOG_FILTER`.
-- An event a tool reads back from the JSON log is a `LogEvent`: one type, in the crate that logs it, gives its message, level and fields to the writer and the reader alike, and a round-trip test in its file checks that what it logs reads back as itself. Every other event stays a plain `tracing` call.
-- Pinned to [Bevy 0.19](https://bevy.org/news/bevy-0-19/); upgrades are deliberate. The script API and protocol expose no Bevy types.
+- `sim` depends on `bevy_ecs` only and is one schedule. The server and client run it inside Lightyear's fixed tick; the verifier and `det-ci` run it in a bare `World`. The server never links the renderer. Pinned to [Bevy 0.19](https://bevy.org/news/bevy-0-19/); the script API and protocol expose no Bevy types.
+- Sim systems touch only sim components, so Lightyear's components cannot change a result.
+- The server records the inputs received since the last tick, then runs the tick. It hashes the state at checkpoints and at the result; a hash after every tick is opt-in.
+- Each unit replicates to the clients whose team sees it. A client predicts only what its player controls (position, destination, death and respawn), with no input delay: Lightyear keeps its tick ahead by the round trip, so its inputs land in time. A rollback reruns the sim from the server's state. It predicts movement, never a random outcome.
+- `client` draws each unit with its own entity, interpolated between ticks; floats (`Transform`) exist only there.
+- **Measured** (i9-13980HX): a packet's signature costs 17 µs to sign and 26 µs to check; a 3v3 tick at 20 Hz costs 55 µs on average and 363 µs at worst; a re-simulated tick of the lane 1v1 costs 3.2 µs. A 3v3 server tick with 6 packets costs at most about 0.5 ms of its 50 ms, and an 8-tick rollback at a 200 ms round trip at most about 3 ms. Decision 1 holds.
 
-**Determinism rules for `sim`:**
+**Determinism rules for `sim`** (numbers, RNG and the state hash: [Determinism Core](09-determinism-core.md)):
 
-- Fixed-tick schedule, `SimUpdate`, one run per tick. Two systems with conflicting access and no order fail the build, and clippy bans the Bevy calls that allow such a pair. The steps of the [tick pipeline](03-game-scripting.md#tick-pipeline) are ordered sets (`SimSet`); the tick's random sequences start before the first, and the tick number (`SimTick`, which is state) advances after the last.
-- Own stable entity ids (never Bevy `Entity`) for the protocol and replays, and for sorting queries wherever order matters, since Bevy [does not guarantee query order](https://docs.rs/bevy_rand/latest/bevy_rand/tutorial/ch02_basic_usage/index.html).
-- Positions are 3D in every genre. No floats outside a physics backend, except as an estimate that integer steps then correct exactly (`Num::sqrt`); no randomly seeded hash maps, no wall clock.
-- The RNG is counter-based: every value is `BLAKE3-keyed(segment seed, stream ‖ stable entity id ‖ tick ‖ n)`, so no draw depends on the order of other draws and systems can draw in parallel. The only RNG state is the segment seed. The function must be a cryptographic PRF: clients see many outcomes, and a non-cryptographic generator could let them recover the seed and predict hidden ones.
-- A random value that decides an outcome never reaches a client before the log is published. Clients may predict effects, never results.
-- Non-integer numbers are 40.24 fixed-point (`I40F24`), 1 unit = 1 meter. Distance math uses a 128-bit helper. Scripts see two number types, integers and fixed-point; see [Game Scripting](03-game-scripting.md#numbers).
-- An overflow is a bug and panics in every build profile: integers through `overflow-checks = true`, fixed-point through the checked arithmetic of `math::Num`. `Num` rounds `*` and `/` to nearest, ties to even ([Determinism Core](09-determinism-core.md)).
-- Every coordinate stays within ±2²⁰ m, so exact squared distances fit a `u128`.
+- One fixed-tick schedule in ordered stages. Two systems with conflicting access and no order fail the build.
+- Stable entity ids, never Bevy `Entity`, for the protocol, replays and every order that matters; Bevy [does not guarantee query order](https://docs.rs/bevy_rand/latest/bevy_rand/tutorial/ch02_basic_usage/index.html).
+- Positions are 3D and fixed-point, 1 unit = 1 meter, within ±2²⁰ m. No floats outside a physics backend, no randomly seeded hash maps, no wall clock. An overflow panics in every build.
+- The RNG is a cryptographic PRF, so clients cannot recover the seed from outcomes. A random value that decides an outcome never reaches a client before the log is published: clients predict effects, never results.
+
+## Testing and diagnostics
+
+- **Match scenarios** run whole matches between scripted players (`OrderScript`) in the test suite, through a modeled link of delay, jitter and loss on a manual clock, so each run repeats. Lightyear measures round trips by the wall clock, so the harness adds the modeled round trip to the sync margin, and its frame costs under delay are not real ones.
+- **LAN check** (`campfire-lan-check`, on request): the real server and two `client --bot` processes on `127.0.0.1`, checked from their JSON logs and by the verifier.
+- **CI** runs the check chain and the LAN check on Linux, Windows and macOS; each platform's verifier then replays every platform's session log.
+- **Logging** goes through `tracing`, never a print. `sim` and `capabilities` log nothing; they report through resources the runner logs. Binaries log to standard error, and to JSON lines with `CAMPFIRE_LOG`. An event a tool reads back is a typed `LogEvent`, with a round-trip test.
 
 ## Networking
 

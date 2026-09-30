@@ -1,39 +1,37 @@
 # Genres
 
-A genre is a package: the capabilities it declares, its data and its mode scripts. These are the ones the design has in view; a mode may combine them in any other way.
+A genre is a package: the capabilities it declares, its data and its mode scripts. Nothing ties a capability to a genre. The engine is complete when community packages can rebuild each target game below.
 
-| Genre | Capabilities | Tick rate |
-| --- | --- | --- |
-| MOBA | `combat`, `stats`, `abilities`, `projectiles`, `areas`, `orders`, `navigation` (grid, paths), `vision` (grid fog, stealth) | 30 Hz |
-| RTS | `combat`, `stats`, `orders`, `projectiles`, `navigation` (grid), `vision` (grid fog) | 10–30 Hz |
-| FPS | `combat`, `character`, `hitscan`, `vision` (3D occlusion), `navigation` (navmesh, for bots) | 64–128 Hz |
-| MMO | `persistence`, `combat`, `stats`, `abilities`, `character` or `orders`, `navigation`, `vision` (relevance) | 10–20 Hz |
-| Battle royale | The FPS set, `projectiles` (falling bullets), `physics`, `vision` (relevance) | 30–60 Hz |
+## Target games
+
+| Game | Capabilities | Mode scripts | Tick rate |
+| --- | --- | --- | --- |
+| League of Legends | `combat`, `stats`, `abilities`, `projectiles`, `areas`, `orders`, `navigation` (grid, paths), `vision` (grid fog, stealth), `items`, `progression` | Pick, creep waves, gold, respawns, objectives | 30 Hz |
+| StarCraft | `combat`, `stats`, `abilities`, `projectiles`, `orders` (groups, queues), `navigation` (grid, flow fields), `vision` (grid fog), `production` | Races, supply, win by destruction | 16–24 Hz |
+| C&C Generals | The StarCraft set, `interaction` (garrisons, transports), `progression` (veterancy) | Generals' powers, money over time, superweapons | 15–30 Hz |
+| Counter-Strike | `combat`, `character`, `hitscan`, `projectiles` (grenades), `areas`, `vision` (3D occlusion, smoke), `items` (weapons, buying), `interaction` (bomb, doors), level geometry | Rounds, buy time, economy, bomb, team swaps | 64–128 Hz |
+| PUBG | The Counter-Strike set, `physics` (vehicles), `vision` (relevance), `items` (loot) | Plane drop, shrinking zone, squads, last team standing | 30–60 Hz |
+| WoW, Lineage | `persistence`, `combat`, `stats`, `abilities`, `character` or `orders`, `navigation` (navmesh), `vision` (relevance), `items`, `progression`, `interaction` (NPCs, quests) | Zones, dungeons, quests, loot, guild wars, sieges | 10–20 Hz |
 
 Match phases, win conditions, economy and content are mode scripts in every genre.
 
-## MOBA
+## Genre proofs
 
-The reference game: [Reference MOBA](../07-reference-moba.md). Mode scripts run hero pick, creep waves on each lane, gold and experience, and respawns; the creep, tower and camp AI are unit scripts.
+Before the MOBA is complete, each target game gets a tiny test mode, not a game, that `det-ci` runs. Each uses only the capabilities of its row, so a MOBA-only choice fails a test early.
 
-## RTS
+| Proof | Shows |
+| --- | --- |
+| One CS round | A driven character, hitscan with lag compensation, a bought weapon, planting the bomb |
+| An RTS skirmish | Harvesting, a build queue, placing a building, a group order |
+| A BR zone | Loot on the ground, a shrinking zone, relevance over a large map |
+| An MMO zone | A saved character, a level-up, an NPC quest, a dormant region |
 
-One player orders many units; selection is client-side, and an order names the units it goes to. Economy, production queues and tech are mode scripts with timers and per-player resources. Building placement needs grid occupancy from `navigation`, not designed yet.
+## Main risks
 
-## FPS
-
-Rounds, buy time, the bomb, economy and team swaps are mode scripts, built on core primitives (timers, freeze, respawn, team changes).
-
-## MMO
-
-A persistent world: low tick rate, strict relevance, dormant regions. Payments are time-based and per event; no wagers.
-
-## Battle royale
-
-Around 100 players per match. The plane drop, the shrinking zone, squads and the last team standing are mode scripts; loot spawns from the seeded RNG, stays dormant until someone is near, and is sent only to nearby clients. Wagers and entry fees work as in any match.
-
-**Main risk:** performance, 100 players at 30–60 Hz with vehicles, bullets and loot in one deterministic process. It needs deterministic multithreading and early `det-ci` benchmarks.
+- **Unit counts:** an RTS battle with 1,000+ units must fit the tick budget and the bandwidth. The server sends only what each team sees, so relevance and delta updates carry the load.
+- **Player counts:** 100 players in battle royale, and 1,000+ in one MMO session, need deterministic multithreading and early `det-ci` benchmarks.
+- **Shooter feel:** 64–128 Hz, and lag compensation that the verifier reproduces.
 
 ## Mixed
 
-Nothing ties a capability to a genre. A first-person commander, for example, drives a `character` with `hitscan` weapons, orders squads through `orders`, and fights creeps that walk `navigation` paths: one package, one tick rate, the union of what its parts need.
+A first-person commander, for example, drives a `character` with `hitscan` weapons, orders squads through `orders`, and fights units that walk `navigation` paths: one package, one tick rate, the union of what its parts need.

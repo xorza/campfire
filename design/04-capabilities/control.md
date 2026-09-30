@@ -4,7 +4,10 @@ Who moves a unit, and how. Both kinds go through the control relation of the [ov
 
 ## Orders
 
-Units that take orders: move, attack, cast (ability, target), stop, hold. Players, bots and AI issue the same orders, and an order names the units it goes to. The capability runs them: it asks `navigation` for a path, `combat` for attacks and `abilities` for casts.
+Units that take orders: move, attack, cast (ability, target), stop, hold, and the orders other capabilities add (use, gather, build). Players, bots and AI issue the same orders, and an order names the units it goes to. The capability runs them: it asks `navigation` for a path, `combat` for attacks and `abilities` for casts.
+
+- **Queues:** an order can wait behind the current ones (shift-click).
+- **Groups:** one order to many units moves them as a group, in a formation, and keeps them together; many units share one path search.
 
 **AI.** A unit type names an AI script; `think(ctx, unit)` runs every `think_ms`, rounded up to whole ticks, in the Think stage.
 

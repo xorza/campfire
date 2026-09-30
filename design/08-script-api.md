@@ -148,20 +148,11 @@ A package loads only when all of these pass:
 - The manifest's capabilities, tick rates, pools and move speed cap hold, where the manifest is read. Every package targets this release, and every projectile flies faster than the cap.
 - The map and the teams name only what the mode has: every structure's and neutral spawn's unit type, team and lane; a hero spawn for each playing team; no team named `neutral`, and no two teams, lanes, slots of a hero or spells of the mode's spells packages alike.
 
-## Found while writing the scripts
+## Planned changes
 
-1. Passives are permanent modifiers, and carrier events go to modifier scripts: one mechanism for passives, buffs, marks and, later, items.
-2. Toggles, channels, charged casts, charges and granted passives are data. `abilities` holds their modifiers, so no script can leave one behind.
-3. Projectiles and areas are data; areas hold modifiers on the units inside, which needs no tick script.
-4. Values must be live: resolving them once when a modifier is applied froze passives at their level-1 values.
-5. Stats need a rule for how they combine and limits; slows as negative move speed added up without limit.
-6. Modifier identity is (id, source), with a rule for applying one again.
-7. Handles to dead or despawned units, and hooks of removed modifiers, need defined behavior.
-8. `combat`, not the mode, decides who assisted.
-9. Player inputs are untrusted and typed in data.
-10. Rhai's default limits differ between debug and release builds, so the engine sets every limit itself ([Scripting](02-engine-core.md#scripting)).
-11. `spawn` is reserved in Rhai.
-12. A package in the workspace names its dependencies by path; the built package names them by fingerprint.
+- A mode declares its damage kinds, stats and resources; the fixed lists above are the reference MOBA's declarations.
+- Core calls take neutral names: avatar for hero, loadout for spells, spawn group for wave, path for lane.
+- New capabilities add their parts: `items`, `progression`, `interaction`, `production`.
 
 ## Open questions
 

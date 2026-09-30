@@ -12,25 +12,40 @@ A capability is native code: components, systems that run in the tick, backends,
 | `stats` | Stats, how they combine, modifiers, states such as stun | [Combat](combat.md#stats-and-modifiers) |
 | `abilities` | Targeting, range, cooldown, cost, cast and channel time, charges, toggles | [Abilities](abilities.md) |
 | `projectiles`, `areas` | Linear, homing and falling projectiles; circles that hold modifiers | [Abilities](abilities.md#projectiles-and-areas) |
-| `orders` | Units that take orders: move, attack, cast, stop, hold; AI `think` | [Control](control.md#orders) |
+| `orders` | Units that take orders: move, attack, cast, stop, hold, queues, groups and formations; AI `think` | [Control](control.md#orders) |
 | `character` | Units a player drives directly: per-tick input frames, capsule controller | [Control](control.md#character) |
 | `hitscan` | Rays against hitboxes, lag compensation, weapon data | [Hitscan](hitscan.md) |
 | `navigation` | Grid A*, navmesh, local steering, waypoint paths such as lanes | [Navigation](navigation.md) |
-| `vision` | Grid fog of war, stealth, 3D occlusion, hearing, relevance | [Vision](vision.md) |
+| `vision` | Grid fog of war, stealth, 3D occlusion, dynamic blockers such as smoke, hearing, relevance | [Vision](vision.md) |
+| `items` | Inventories, equipment, world items to pick up and drop, shops; an item grants stats, abilities or a weapon | [Items](items.md) |
+| `progression` | Experience, levels, learning ranks of abilities, talents, veterancy | [Progression](progression.md) |
+| `interaction` | Using objects: doors, containers, plant and defuse, capture points, talking to NPCs, entering vehicles and buildings | [Interaction](interaction.md) |
+| `production` | Build queues, construction with footprints on the grid, harvesting, tech requirements, rally points | [Production](production.md) |
 | `physics` | Vehicles, rigid bodies, heightmap terrain | [Physics](physics.md) |
-| `persistence` | Saved characters and world state, dormancy, inventory, quests | [Persistence](persistence.md) |
+| `persistence` | Saved characters and world state, dormancy, quests | [Persistence](persistence.md) |
 
 Which capabilities make which genre, and what each genre adds in scripts: [Genres](genres.md).
 
+## Mode vocabulary
+
+The core has no genre words and no genre lists. A mode declares, in its data:
+
+- **Damage kinds:** physical and magic for a MOBA; bullet and explosive for a shooter; fire, frost and shadow for an MMO.
+- **Stats:** the numbers its units have. The core knows only the stats a capability reads, such as move speed and attack speed.
+- **Resources:** of units (mana, energy, rage, ammo) and of players (gold, minerals, supply).
+- **Teams and slots,** as now.
+
+Neutral core terms: a player's **avatar** (a hero, a soldier, a character), a **loadout** (what a player picks before spawning), a **spawn group** (a wave, a squad), a **path** (a lane, a patrol route). A package names them in its own words.
+
 ## Layers
 
-Capabilities share one vocabulary, so they can meet in one match: a hitscan ray and a MOBA projectile damage the same `combat` health, and a unit that takes orders can have hitboxes. The shared types live in the lowest layer, and each capability names the ones it builds on. The dependencies form a fixed graph with no cycle:
+Capabilities share one vocabulary, so they meet in one match: a hitscan ray and a MOBA projectile damage the same `combat` health. The dependencies form a fixed graph with no cycle:
 
-- **Base:** `sim` (position, stable ids, randomness, the state hash, the tick rate) and the collision shape; then the core under every script: unit types (tags and params), the one script host whose tick budget every capability's calls share, the types every capability shares (a unit's team, the player who controls it, a lane), and the units as scripts see them, with the queries on them. A capability adds its fields of a unit to that view through a row source, so the core names no capability.
+- **Base:** `sim` (positions, stable ids, randomness, the state hash, the tick rate) and collision; then the core under every script: unit types, the one script host and its tick budget, the shared types (team, owner, path), and the units as scripts see them. A capability adds its fields to that view, so the core names no capability.
 - **`combat` and `stats`:** health, damage, deaths, stats and modifiers.
-- **Everything else** builds on those: `projectiles` and `hitscan` deal damage through `combat`; `abilities` apply modifiers through `stats`; `orders` issue attacks and casts; `vision` lets only the units `combat` keeps alive reveal.
+- **Everything else** builds on those: `projectiles` and `hitscan` deal damage through `combat`, `abilities` apply modifiers through `stats`, `orders` issue attacks and casts.
 
-The capabilities live in one crate, `capabilities`, a module each, so they share their internals without making them public; the layers are a rule on which modules a capability imports, kept in review. A capability that brings a heavy dependency, such as a physics engine, gets a crate of its own, so the others do not build it. The runner adds only the declared capabilities' systems to the schedule, so a capability a mode does not use costs nothing in a tick.
+The capabilities are modules of one crate; a capability with a heavy dependency, such as physics, gets its own crate. Only the declared capabilities' systems run, so an unused one costs nothing.
 
 ## Tick stages
 
@@ -89,4 +104,4 @@ The mode picks its tick rate within the range its manifest allows: an FPS wants 
 ## Open questions
 
 - [ ] A mechanism no capability has needs an engine release. Scripted per-entity systems would let creators add one without a release, at a cost per tick and under a budget; not designed yet.
-- [ ] Which capabilities two modes share decides how much of a hybrid is tested before it ships; `det-ci` runs only the reference modes.
+- [ ] Which capabilities two modes share decides how much of a hybrid is tested before it ships; `det-ci` runs the reference MOBA and the genre proofs, and other combinations are tested by their authors.

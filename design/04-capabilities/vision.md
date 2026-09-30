@@ -16,6 +16,10 @@ The map's `[grid]` divides the ground into square cells. In the Vision stage, th
 
 What each team sees is state: it is hashed with the rest, and the queries of the next tick read it. After each tick the server replicates each unit to the clients whose team sees it, from the tick it comes into sight until the tick it leaves sight, when the client despawns it. A unit hidden in the tick it spawns never reaches that client. A sight range should exceed the reach it chooses targets within by half a cell's diagonal, so a unit sees every target it may take.
 
+## Dynamic blockers
+
+Smoke, closed doors and walls built during a match block sight while they stand, in every backend.
+
 ## Stealth
 
 A stealthed unit is visible only to its team and to enemies with true sight over it (vision wards, towers, consumables). Wards are units with a sight range and no collision.

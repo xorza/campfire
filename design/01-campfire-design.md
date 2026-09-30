@@ -2,9 +2,14 @@
 
 ## Vision
 
-An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus a reference MOBA. Anyone can host a server, create content and set their own rules; the project runs nothing and ships defaults, not policy.
+An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, with its server and client, plus a reference 3v3 MOBA. Content is expected to come from the community. Anyone can host a server, create content and set their own rules; the project runs nothing and ships defaults, not policy.
 
-Three equal pillars must all ship: a reusable engine, a reference game good enough to attract players, and an open protocol for Bitcoin-native games.
+Four pillars must all ship:
+
+1. **Engine:** genre-free, deterministic, scriptable.
+2. **Network:** one authoritative server per session, prediction, verifiable session logs.
+3. **Bitcoin and Nostr:** identity, discovery, reputation and optional Lightning payments.
+4. **Sample game:** the reference 3v3 MOBA, good enough to attract players and to fork.
 
 Docs: [Engine Core](02-engine-core.md) · [Game Scripting](03-game-scripting.md) · [Capabilities](04-capabilities/00-overview.md) · [Protocol Spec](05-protocol-spec.md) · [Research Notes](06-research-notes.md) · [Reference MOBA](07-reference-moba.md) · [Script API](08-script-api.md) · [Determinism Core](09-determinism-core.md)
 
@@ -37,7 +42,11 @@ A small launcher starts the right client: a server names only an engine release 
 
 ## Engine
 
-The engine knows nothing about any particular genre; the MOBA is just the first game built on it. It provides capabilities, one mechanism each (health and damage, units that take orders, a first-person character, fog of war), and a game declares the ones it needs: a MOBA, an FPS, or a mix that no genre names.
+The engine knows nothing about any particular genre; the MOBA is just the first game built on it. It provides capabilities, one mechanism each (health and damage, units that take orders, a first-person character, fog of war, items), and a game declares the ones it needs: a MOBA, an FPS, or a mix that no genre names.
+
+**Target games.** The capabilities must be enough to rebuild, as community packages: Counter-Strike, Command & Conquer: Generals, StarCraft, League of Legends, PUBG, and an MMO like Lineage or World of Warcraft. What each needs: [Genres](04-capabilities/genres.md).
+
+**Neutral core.** The core has no genre words and no genre lists: a mode declares its own damage kinds, stats and resources ([Mode vocabulary](04-capabilities/00-overview.md#mode-vocabulary)).
 
 - **Deterministic:** the same inputs give the same result on every machine.
 - **Configurable tick rate:** set by the host, up to 200 Hz or more on LAN, fixed for the whole session.
@@ -66,7 +75,9 @@ The same engine supports three sizes of game. One server always owns its whole m
 | --- | --- | --- | --- |
 | Match | MOBA, arena, duel | 2–20 | Replay the whole match |
 | Battle | Battle royale, large siege | 20–200 | Replay the whole match |
-| World | Persistent MMO-style world | 1,000+ on one server | Replay any period from a saved checkpoint, after a delay |
+| World | Persistent MMO-style world | 1,000+ in one session, on one server | Replay any period from a saved checkpoint, after a delay |
+
+A world is one session, whatever its size: its dungeons and battlegrounds are regions of the same sim. At 1,000+ players this needs deterministic multithreading, strict relevance and dormant regions ([Persistence](04-capabilities/persistence.md)).
 
 A world's log and checkpoints show hidden state that is still live, so the host publishes them only after a delay the host sets. A match publishes its log after it ends.
 
@@ -117,7 +128,7 @@ An optional module, off by default. Hosts turn on the models they want and set p
 
 **Spectator bets** are off by default. The host sets when betting closes and the spectator delay; players in the match cannot bet.
 
-**Who holds the money.** Until the match ends, each stake is a locked payment that the host cannot take; it returns automatically if the match aborts. At the end the host settles every stake, holds the whole pool, and pays the winners from it, so at payout the players trust the host. Later, independent arbiters can check the replay before higher stakes settle.
+**Who holds the money.** Each stake is a locked payment the host cannot take before the result, and it returns if the match aborts; at payout the players trust the host ([Payment flows](05-protocol-spec.md#payment-flows)). Later, independent arbiters can check the replay before higher stakes settle.
 
 **Legal.** Real-money features are regulated or banned in many countries; hosts are responsible for how they use them.
 
@@ -152,7 +163,7 @@ The reference MOBA proves the engine and is the template people fork: small, rea
 
 All three pillars ship in 1.0; they arrive in this order.
 
-1. **Playable on LAN.** First the determinism core, `det-ci` on every OS, and the prototype that proves the sim runs the same inside Lightyear and in a bare verifier. Then the 3v3 MOBA with bots on LAN or a local server, verified replays and crash restore. Players use local Nostr key files through the final delegation, handshake and session log formats; no relays, listings, launcher or payments.
+1. **Playable on LAN.** First the determinism core, `det-ci` on every OS, and the prototype that proves the sim runs the same inside Lightyear and in a bare verifier. Then a MOBA vertical slice, then **genre proofs**: a tiny test mode for each target game, run by `det-ci`, so a MOBA-only choice fails early. Then the 3v3 MOBA with bots on LAN or a local server, verified replays and crash restore. Players use local Nostr key files through the final delegation, handshake and session log formats; no relays, listings, launcher or payments.
 2. **Open network.** Nostr listings, packages over Blossom, reputation, ban lists, and the launcher with signed releases.
 3. **Payments.** The optional `payments` module: entry fees first, then wager pools, then the rest.
-4. **More capabilities.** `character` and `hitscan` for first-person games, then `persistence` and `physics` for persistent worlds and battle royale.
+4. **Full capabilities.** Each capability the genre proofs need at depth: `character`, `hitscan` and level geometry for shooters; `production` for RTS; `physics` for vehicles; `persistence` and deterministic multithreading for large worlds.

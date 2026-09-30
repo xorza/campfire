@@ -39,11 +39,7 @@ Content can come from other packages, referenced by fingerprint.
 
 ## Tick pipeline
 
-The sim runs every tick on the server and the verifier, in stages the engine fixes: inputs, think, act, move, collide, hit, resolve, mode, vision ([Tick stages](04-capabilities/00-overview.md#tick-stages)). Each declared capability puts its systems into them, in an order the engine fixes; the core runs inputs, and the mode's collision and vision backends. The mode stage runs due timers, then the capabilities' events in the order they happened; `ctx.end` ends the match.
-
-Before each tick the runner puts the inputs the session log applies in it into the `TickInputs` resource, in slot order, then seq order; the schedule clears it after the vision stage, so no tick sees another's inputs.
-
-The sim does no I/O. The server writes each input to the session log when it assigns the input to a tick, before that tick runs; after the tick it sends each client its visible state and events. The verifier does neither.
+The sim runs each tick in the engine's fixed stages ([Tick stages](04-capabilities/00-overview.md#tick-stages)). A tick sees only its own inputs, in slot order, then seq order. The sim does no I/O: the server logs each input before its tick runs, and sends each client its visible state after it.
 
 ## Match rules
 
@@ -57,7 +53,7 @@ One mode script (`scripts/mode.rhai`) owns the rules. The engine knows only wait
 
 ## Capabilities
 
-Units, abilities, weapons, AI hooks and commands come from capabilities; see [Capabilities](04-capabilities/00-overview.md). Bots replace players: they run outside the sim, see only what their team's clients would see, and send player inputs.
+Units, abilities, weapons, items, AI hooks and commands come from [capabilities](04-capabilities/00-overview.md). Bots run outside the sim, see what their team's clients see, and send player inputs.
 
 ## Script state
 
@@ -99,12 +95,6 @@ Scripts never deal with networking.
 | Entities the visibility backend hides from a team | Nobody on that team |
 
 **Presentation events.** The sim emits events (cast, hit, death); clients that can see them run presentation scripts for effects and sound.
-
-**Client timeline**
-
-- Other entities are interpolated: shown slightly in the past, smoothly.
-- What the player controls is predicted with the same capability code; each capability decides what else it predicts.
-- Wrong predictions are corrected by rollback (Lightyear).
 
 ## Examples
 

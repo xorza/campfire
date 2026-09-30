@@ -10,7 +10,10 @@ Positions are 3D. On a grid map gameplay is on the ground plane: collision, path
 | --- | --- |
 | Grid | A* for the long route |
 | Navmesh | Routes over level geometry, for bots and units that take orders in 3D levels |
+| Flow field | One field for many units to the same goal, for RTS groups |
 | Local steering | Follows the route, avoids units and allows body blocking; shared by every backend, in fixed-point with a fixed unit order |
+
+Queries take world positions, a route is a list of waypoints, and obstacles are shapes, so steering works with any backend. Buildings and doors change the map while it runs; each backend updates its obstacles from them.
 
 ## Waypoint paths
 

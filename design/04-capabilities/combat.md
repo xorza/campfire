@@ -15,7 +15,7 @@ A unit has a team, a type of the core that every capability shares: its index in
 
 ## Damage and death
 
-- **Damage** has an amount and a kind: `physical`, `magic` or `true`. The mode's `calc_damage` hook turns it into the final amount (armor, resistances); until scripts run, an attack deals its damage as is.
+- **Damage** has an amount and a kind from the mode's list (for the reference MOBA: `physical`, `magic`, `true`; for a shooter: bullet, explosive; for an MMO: its schools). The mode's `calc_damage` hook turns it into the final amount (armor, resistances, headshots); until scripts run, an attack deals its damage as is.
 - **Strikes of one tick apply together** in the Resolve stage, in the order of their source's stable id, so each follows from the state before any of them: two units can kill each other in one tick.
 - **Recent attackers.** Each strike records its source with its target, and the tick it landed in. A unit keeps each attacker once, with its last strike, and forgets one that no longer exists; `unit.recent_attackers(ms)` reads them.
 - **Death.** A unit at zero health dies at the end of Resolve. A unit type says whether it stays dead to respawn, as heroes do, or despawns, as creeps do; one that despawns goes at the end of the tick it died in, after the Mode stage saw it. A dead unit takes no orders and is no target.
@@ -24,7 +24,7 @@ A unit has a team, a type of the core that every capability shares: its index in
 
 ## Stats and modifiers
 
-Stats, how they combine and their limits, modifiers (duration, stacks, reapply rules, auras, shields) and states (`stunned`, `rooted`, `silenced`, `disarmed`, `airborne`, `stealthed`, `untargetable`, `slow_immune`) are defined once for every mode: [Script API](../08-script-api.md#data-files). A passive is a modifier a unit always carries; the carrier's events (attack, hit, damage, kill, takedown) go to modifier scripts.
+The mode declares its stats; the core knows only those a capability reads, such as move speed. How stats combine and their limits, modifiers (duration, stacks, reapply rules, auras, shields) and states (`stunned`, `rooted`, `silenced`, `disarmed`, `airborne`, `stealthed`, `untargetable`, `slow_immune`) are defined once for every mode: [Script API](../08-script-api.md#data-files). A passive is a modifier a unit always carries; the carrier's events (attack, hit, damage, kill, takedown) go to modifier scripts.
 
 ## Sent to clients
 
