@@ -5,7 +5,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
-use campfire_capabilities::{AbilityField, ModeError};
+use campfire_capabilities::{AbilityField, MapProblem, ModeError};
 use campfire_package::{
     ContentError, CtxMisuse, LoadError, LoadProblem, ModePackages, PackageDir, Place,
 };
@@ -124,7 +124,7 @@ fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 58] = [
+const FLAWS: [Flaw; 59] = [
     flaw(
         MANIFEST,
         Edit::Replace(r#"engine = "0.1.0""#, r#"engine = "0.0.9""#),
@@ -334,15 +334,25 @@ const FLAWS: [Flaw; 58] = [
         MODE,
         |problem| matches!(problem, LoadProblem::Mode(ModeError::OutOfBounds)),
     ),
-    // A meter from the west lane's waypoint at (−36, −36), less than the tower's body and the
+    // A meter from the west lane's waypoint 1, at (−36, −36), less than the tower's body and the
     // widest walker's together.
     flaw(
         MAP,
         Edit::Replace("pos = [-22, -46]", "pos = [-36, -37]"),
         MODE,
         |problem| {
-            matches!(problem, LoadProblem::StructureOnWaypoint { unit_type, path }
-                if unit_type == "tower" && path == "west")
+            matches!(problem, LoadProblem::Map(MapProblem::WaypointBlocked { path, waypoint })
+                if path == "west" && *waypoint == 1)
+        },
+    ),
+    // A meter from the north spawn, at (0, −60).
+    flaw(
+        MAP,
+        Edit::Replace("pos = [-22, -46]", "pos = [0, -59]"),
+        MODE,
+        |problem| {
+            matches!(problem, LoadProblem::Map(MapProblem::SpawnBlocked { team })
+                if team == "north")
         },
     ),
     flaw(

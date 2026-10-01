@@ -4,15 +4,6 @@ Open items only, in order. Remove an item when it is done; remove a system when 
 
 The work is grouped by the system it touches. Each system starts with a design step: find how established engines and games solve it and why, set what this engine promises, and write it into the design, with the steps below revised to match. The implementation steps are drafts until that design passes review.
 
-## Navigation: map checks
-
-Touches: the `navigation` capability and the package load check. Closes: the issue of unreachable waypoints. Design: [Navigation](design/04-capabilities/navigation.md#movement), regions and map checks, from 0 A.D.'s hierarchical pathfinder.
-
-1. **Design review**: the regions and map checks as navigation.md now gives them.
-2. **Regions**: for each walker radius, the pathing grid's regions in chunks of 64 × 64 cells, joined across chunk sides, numbered as reachable sets, and built again only in the chunks a change of the static bodies touched; derived, not state. Test: the reachable sets equal a flood fill of every cell on hand-drawn grids and on random ones, before and after bodies come and go; a change rebuilds only the chunks it touches.
-3. **Routes use regions**: the planner learns from the regions whether a goal is reachable before it searches, and replaces one that is not with the nearest cell in a reachable set of the start's, as 0 A.D.'s `MakeGoalReachable` does. Test: a goal walled off gives the same route as now with far fewer cells expanded, counted by hand on a small grid; the replay gives the same hash.
-4. **Map checks at load**: in the `navigation` capability, a call the package's load check makes with the structures' bodies and the walker radii: every waypoint in a reachable set of the one before, and every avatar spawn, neutral spawn and waypoint a place the widest walker may stand. It takes the waypoint clearance check with it; each problem names the path and waypoint, or the spawn. Test: a map whose towers wall the way between two waypoints fails with that path and waypoint; one with a gap a walker fits through loads; a spawn inside a structure fails; the reference maps load.
-
 ## Stage 3 close
 
 1. **Vertical slice playtest, fourth round**: the same 1v1 on LAN, with routes and collision. Units that block each other and body block are new to the feel; write down whether the match reads and plays well. This closes stage 3, or names what is missing.

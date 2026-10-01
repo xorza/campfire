@@ -5,13 +5,17 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::{EntityRef, World};
 use campfire_math::{Num, Vec3};
-use campfire_sim::{Position, SimSet, SimTick, StableId, StateRegistry, TickRate, Unpredicted};
+use campfire_sim::{
+    IdAllocator, Position, SimSet, SimTick, StableId, StateRegistry, TickRate, Unpredicted,
+};
 
 use crate::combat::dead::Dead;
+use crate::mode::map_data::{GroundPoint, MapData};
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::broadphase::Broadphase;
 use crate::navigation::collider::Collider;
 use crate::navigation::destination::Destination;
+use crate::navigation::error::MapProblem;
 use crate::navigation::move_step::MoveStep;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::PathWalker;
@@ -33,12 +37,14 @@ pub(crate) mod body_index;
 pub(crate) mod broadphase;
 pub(crate) mod collider;
 pub(crate) mod destination;
+pub(crate) mod error;
 pub(crate) mod move_step;
 pub(crate) mod on_path;
 pub(crate) mod path_walker;
 pub(crate) mod pathing_grid;
 pub(crate) mod paths;
 pub(crate) mod progress;
+pub(crate) mod regions;
 pub(crate) mod route;
 pub(crate) mod route_planner;
 pub(crate) mod steering;
@@ -78,16 +84,73 @@ impl Navigation {
         registry.register_component::<Progress>();
     }
 
+    /// Checks that `map` can be walked by every unit that walks, for the widest of them, whose
+    /// radius is `widest`, among the map's structures, whose bodies' radii `body_of` gives by
+    /// unit type: every avatar spawn, neutral spawn and waypoint is a place that walker may
+    /// stand, and every waypoint is in a reachable set of the one before it, by the regions a
+    /// match plans its routes with. A narrower walker has every cell the widest has open. A map
+    /// with no `[navigation]` cells has nothing to check. Its points passed the mode's check.
+    pub fn check_map(
+        map: &MapData,
+        widest: Num,
+        body_of: impl Fn(&str) -> Option<Num>,
+    ) -> Result<(), MapProblem> {
+        let Some(cells) = map.pathing().expect("the mode's check passed") else {
+            return Ok(());
+        };
+        let point = |ground: &GroundPoint| ground.position().expect("the mode's check passed");
+        let mut ids = IdAllocator::default();
+        let structures: Vec<IndexedBody> = map
+            .structures
+            .iter()
+            .filter_map(|structure| {
+                Some(IndexedBody {
+                    id: ids.allocate(),
+                    at: point(&structure.pos),
+                    radius: body_of(&structure.unit_type)?,
+                })
+            })
+            .collect();
+        let mut statics = BodyIndex::new(widest);
+        statics.update(&structures);
+        let mut grid = PathingGrid::new(cells, vec![widest]);
+        grid.update(&statics);
+        let layer = grid.layer(widest);
+        let stands = |at: Position| !statics.blocks(Segment::new(at, at), widest);
+        for (team, spawn) in &map.spawns {
+            if !stands(point(spawn)) {
+                return Err(MapProblem::SpawnBlocked { team: team.clone() });
+            }
+        }
+        for (spawn, neutral) in map.neutral_spawns.iter().enumerate() {
+            if !stands(point(&neutral.pos)) {
+                return Err(MapProblem::NeutralSpawnBlocked { spawn });
+            }
+        }
+        let reach = |at: Position| layer.regions().reach(cells.nearest_cell(at));
+        for path in &map.paths {
+            if let Some(waypoint) = path.points.iter().position(|ground| !stands(point(ground))) {
+                let path = path.name.clone();
+                return Err(MapProblem::WaypointBlocked { path, waypoint });
+            }
+            let closed = path
+                .points
+                .windows(2)
+                .position(|pair| !reach(point(&pair[0])).meets(reach(point(&pair[1]))));
+            if let Some(before) = closed {
+                let (path, waypoint) = (path.name.clone(), before + 1);
+                return Err(MapProblem::WaypointUnreachable { path, waypoint });
+            }
+        }
+        Ok(())
+    }
+
     /// Gives the match the map's pathing grid over `cells`, for walkers of `radii`, 0 for one
     /// with no body, a static index for the widest of them, and a planner of routes on the grid;
     /// the static bodies fill the grid and the index from the first tick on.
     pub fn load_pathing(world: &mut World, cells: Grid, radii: Vec<Num>) {
-        let widest = radii
-            .iter()
-            .max()
-            .copied()
-            .filter(|&widest| widest > Num::ZERO);
-        world.insert_resource(BodyIndex::new(widest.unwrap_or(Body::MAX_RADIUS)));
+        let widest = radii.iter().max().copied().unwrap_or(Num::ZERO);
+        world.insert_resource(BodyIndex::new(widest));
         world.insert_resource(RoutePlanner::new(&cells));
         world.insert_resource(PathingGrid::new(cells, radii));
     }

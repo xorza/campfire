@@ -5,6 +5,7 @@ use bevy_ecs::resource::Resource;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, StableId};
 
+use crate::units::body::Body;
 use crate::values::segment::Segment;
 
 /// Bodies that stand, by the square buckets their bounding boxes cover. As a resource it holds the
@@ -54,9 +55,14 @@ struct Buckets {
 }
 
 impl BodyIndex {
-    /// An empty index for walkers at most `widest` in radius.
+    /// An empty index for walkers at most `widest` in radius, 0 when none has a body.
     pub(crate) fn new(widest: Num) -> BodyIndex {
-        debug_assert!(widest > Num::ZERO);
+        // With no walker of a body any width serves, and a bucket of 0 divides by 0.
+        let widest = if widest > Num::ZERO {
+            widest
+        } else {
+            Body::MAX_RADIUS
+        };
         BodyIndex {
             bucket: widest + widest,
             bodies: Vec::new(),

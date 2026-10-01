@@ -93,47 +93,10 @@ impl MapData {
     }
 }
 
-impl PathData {
-    /// Whether a waypoint of the path is closer than `reach` to `at` on the ground plane,
-    /// exactly; one at `reach` is not closer. Its points passed the mode's check.
-    pub fn has_point_within(&self, at: Position, reach: Num) -> bool {
-        let reach = u128::from(reach.to_bits().unsigned_abs());
-        self.points.iter().any(|point| {
-            let point = point.position().expect("the mode's check passed");
-            point.ground_offset(at).length_squared_bits() < reach * reach
-        })
-    }
-}
-
 impl GroundPoint {
     /// The point at height 0; `None` beyond the world's bound.
     pub fn position(self) -> Option<Position> {
         let [x, z] = self.0.map(Scalar::to_num);
         Position::new(Vec3::new(x?, Num::ZERO, z?))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn num(value: i64) -> Num {
-        Num::from_int(value).unwrap()
-    }
-
-    #[test]
-    fn a_path_has_a_point_within_a_reach_exactly() {
-        let path = PathData {
-            name: "lane".to_owned(),
-            points: [[0, 0], [10, 0]]
-                .map(|[x, z]| GroundPoint([Scalar::Int(x), Scalar::Int(z)]))
-                .to_vec(),
-        };
-        let at = |x: i64, z: i64| Position::new(Vec3::new(num(x), Num::ZERO, num(z))).unwrap();
-        // (13, 4) is 5 m from (10, 0); (5, 1), on the segment's side, is 1 m from it but 5.1 m
-        // from either point.
-        assert!(!path.has_point_within(at(13, 4), num(5)));
-        assert!(path.has_point_within(at(13, 4), num(5) + Num::EPSILON));
-        assert!(!path.has_point_within(at(5, 1), num(5)));
     }
 }

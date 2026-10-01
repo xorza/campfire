@@ -3,7 +3,7 @@ use std::fmt;
 use std::io;
 use std::path::PathBuf;
 
-use campfire_capabilities::{AbilityField, DeclaredName, ModeError};
+use campfire_capabilities::{AbilityField, DeclaredName, MapProblem, ModeError};
 use campfire_content::PackagePath;
 use campfire_script::ScriptError;
 use campfire_sim::Capability;
@@ -118,12 +118,8 @@ pub enum LoadProblem {
     NoGrid,
     /// The mode declares `navigation`, and its map has no `[navigation]` cells to plan routes on.
     NoPathingGrid,
-    /// A structure of `unit_type` stands so near a waypoint of `path` that the widest unit that
-    /// walks cannot stand on it, and so never reaches it.
-    StructureOnWaypoint {
-        unit_type: String,
-        path: String,
-    },
+    /// The map cannot be walked as the mode needs.
+    Map(MapProblem),
     /// An avatar's slot names an ability it does not have.
     UnknownSlot(String),
     /// An avatar's ability is in none of its slots, so it has no rank count.
@@ -319,11 +315,7 @@ impl fmt::Display for LoadProblem {
             LoadProblem::NoPathingGrid => {
                 f.write_str("the mode declares navigation, and its map has no [navigation] cells")
             }
-            LoadProblem::StructureOnWaypoint { unit_type, path } => write!(
-                f,
-                "a {unit_type:?} stands so near a waypoint of path {path:?} that the widest unit \
-                 that walks cannot stand on it"
-            ),
+            LoadProblem::Map(problem) => write!(f, "{problem}"),
             LoadProblem::Unslotted(id) => write!(f, "ability {id:?} is in no slot"),
             LoadProblem::RepeatedSlot(id) => write!(f, "ability {id:?} is in two slots"),
             LoadProblem::RepeatedLoadout(id) => write!(f, "two loadout packages hold {id:?}"),

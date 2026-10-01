@@ -1,12 +1,14 @@
 use std::num::NonZeroU32;
 
 use bevy_ecs::component::Component;
-use campfire_sim::{Capability, EntityIndex, IdAllocator, SimUpdate, Tick, TypeHash};
+use campfire_sim::{Capability, EntityIndex, SimUpdate, Tick, TypeHash};
 
 use super::*;
 use crate::capability_set::internals::TestMatch;
+use crate::mode::map_data::{GridData, NeutralSpawnData, PathData, StructureData};
 use crate::navigation::path_walker::PathDirection;
 use crate::units::path_id::PathId;
+use crate::values::scalar::Scalar;
 
 /// The MOBA's 30 ticks a second.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
@@ -412,6 +414,65 @@ fn routes_wait_past_the_limit_of_expanded_cells_in_the_order_asked() {
     assert_eq!(waiting(&walk), [true, false, false, false]);
     walk.tick();
     assert_eq!(waiting(&walk), [false; 4]);
+}
+
+#[test]
+fn a_map_loads_only_if_the_widest_walker_reaches_every_waypoint_and_stands_on_every_spawn() {
+    // A corridor 10 m by 4 m in half-meter cells, a lane along z = 2 from (1, 2) to (9, 2),
+    // walkers of 0.5 m and towers of 0.9 m. Towers at (5, 0) and (5, 4) block the centers closer
+    // than 1.4 m, z up to 1.25 and from 2.75 at x = 4.75 and 5.25, which leaves z = 1.75 and
+    // 2.25 open: a gap a walker passes. One more at (5, 2) closes it.
+    let tower_radius = Num::from_bits((9 << Num::FRAC_BITS) / 10);
+    let half = Num::from_bits(1 << 23);
+    let point = |x: i64, z: i64| GroundPoint([Scalar::Int(x), Scalar::Int(z)]);
+    let tower = |x: i64, z: i64| StructureData {
+        unit_type: "tower".to_owned(),
+        team: "west".to_owned(),
+        path: None,
+        pos: point(x, z),
+    };
+    let map = |towers: &[(i64, i64)], neutral: (i64, i64)| MapData {
+        bounds: Bounds::new([num(0), num(0)], [num(10), num(4)]).unwrap(),
+        grid: None,
+        navigation: Some(GridData {
+            cell: Scalar::Decimal(half),
+        }),
+        paths: vec![PathData {
+            name: "lane".to_owned(),
+            points: vec![point(1, 2), point(9, 2)],
+        }],
+        spawns: [("west".to_owned(), point(1, 1))].into(),
+        structures: towers.iter().map(|&(x, z)| tower(x, z)).collect(),
+        neutral_spawns: vec![NeutralSpawnData {
+            unit_type: "camp".to_owned(),
+            pos: point(neutral.0, neutral.1),
+        }],
+    };
+    let body_of = |unit_type: &str| (unit_type == "tower").then_some(tower_radius);
+    let check = |towers: &[(i64, i64)], neutral| {
+        Navigation::check_map(&map(towers, neutral), half, body_of)
+    };
+    assert_eq!(check(&[(5, 0), (5, 4)], (8, 3)), Ok(()));
+    let unreachable = MapProblem::WaypointUnreachable {
+        path: "lane".to_owned(),
+        waypoint: 1,
+    };
+    assert_eq!(check(&[(5, 0), (5, 2), (5, 4)], (8, 3)), Err(unreachable));
+    // A tower 1 m from the lane's end, (9, 2), or from the west spawn, (1, 1), or from the
+    // neutral spawn, (8, 3): closer than 1.4 m.
+    let blocked = MapProblem::WaypointBlocked {
+        path: "lane".to_owned(),
+        waypoint: 1,
+    };
+    assert_eq!(check(&[(9, 3)], (8, 1)), Err(blocked));
+    let spawn = MapProblem::SpawnBlocked {
+        team: "west".to_owned(),
+    };
+    assert_eq!(check(&[(2, 1)], (8, 3)), Err(spawn));
+    assert_eq!(
+        check(&[(7, 3)], (8, 3)),
+        Err(MapProblem::NeutralSpawnBlocked { spawn: 0 })
+    );
 }
 
 #[test]

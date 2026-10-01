@@ -66,16 +66,28 @@ impl Grid {
             .expect("a point of the bounds is in a cell")
     }
 
-    /// The square of the distance from the center of `cell` to `pos` on the ground plane, in
-    /// halves of a bit, exactly.
-    pub(crate) fn center_distance(&self, cell: usize, pos: Position) -> u128 {
+    /// The square of the distance from `pos` to the nearest center of the cells from column and
+    /// row `low` to `high`, both in, on the ground plane, in halves of a bit, exactly.
+    pub(crate) fn box_distance(&self, low: [usize; 2], high: [usize; 2], pos: Position) -> u128 {
         let twice = |value: Num| 2 * i128::from(value.to_bits());
         let step = i128::from(self.cell.to_bits());
         let min = self.bounds.min();
         let index = |index: usize| i128::try_from(index).expect("a cell of the grid");
-        let dx = twice(pos.get().x) - twice(min[0]) - step * (2 * index(cell % self.columns()) + 1);
-        let dz = twice(pos.get().z) - twice(min[1]) - step * (2 * index(cell / self.columns()) + 1);
+        let at = [twice(pos.get().x), twice(pos.get().z)];
+        let offset = |axis: usize| {
+            let center = |index: i128| twice(min[axis]) + step * (2 * index + 1);
+            let nearest = at[axis].clamp(center(index(low[axis])), center(index(high[axis])));
+            at[axis] - nearest
+        };
+        let (dx, dz) = (offset(0), offset(1));
         (dx * dx + dz * dz).cast_unsigned()
+    }
+
+    /// The square of the distance from the center of `cell` to `pos` on the ground plane, in
+    /// halves of a bit, exactly.
+    pub(crate) fn center_distance(&self, cell: usize, pos: Position) -> u128 {
+        let at = [cell % self.columns(), cell / self.columns()];
+        self.box_distance(at, at, pos)
     }
 
     /// The center of `cell` at height `y`, rounded down to a whole bit, or the point of the bounds

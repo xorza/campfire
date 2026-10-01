@@ -69,6 +69,7 @@ pub use mode::timers::{Timer, Timers};
 pub use mode::unit_kit::{KitRules, UnitKit};
 pub use navigation::Navigation;
 pub use navigation::destination::Destination;
+pub use navigation::error::MapProblem;
 pub use navigation::move_step::MoveStep;
 pub use navigation::on_path::OnPath;
 pub use navigation::path_walker::{PathDirection, PathWalker};

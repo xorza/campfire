@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_capabilities::{
-    AbilityData, CollisionData, CtxEntry, EngineStat, FilterData, Hook, Mode, ModifierData, Number,
+    AbilityData, CtxEntry, EngineStat, FilterData, Hook, Mode, ModifierData, Navigation, Number,
     Param, Scalar, ScriptRole, Stat, UnitTypeData,
 };
 use campfire_content::PackagePath;
@@ -104,39 +104,19 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// Every structure of the map with a body stands clear of every waypoint of every path by the
-    /// widest body of a unit that walks, among the mode's unit types and its avatars: a walker
-    /// routes round a structure, but reaches a waypoint only by standing on it.
-    fn structures_clear_waypoints(&self) -> Result<(), LoadProblem> {
+    /// The map can be walked by every unit that walks, among the mode's unit types and its
+    /// avatars, as `Navigation::check_map` sets: the widest stands on every spawn and waypoint,
+    /// and reaches every waypoint from the one before, among the map's structures.
+    fn map_walkable(&self) -> Result<(), LoadProblem> {
         let packages = self.packages;
-        let radius = |collision: Option<&CollisionData>| collision.map(|data| data.body.radius());
-        let widest = packages.walker_radii().last().copied();
-        let Some(widest) = widest.filter(|&widest| widest > Num::ZERO) else {
+        let Some(&widest) = packages.walker_radii().last() else {
             return Ok(());
         };
-        for structure in &packages.map.structures {
-            let unit_type = packages
-                .units
-                .units
-                .get(&structure.unit_type)
-                .expect("the mode's check found every structure's unit type");
-            let Some(own) = radius(unit_type.collision.as_ref()) else {
-                continue;
-            };
-            let at = structure.pos.position().expect("the mode's check passed");
-            if let Some(path) = packages
-                .map
-                .paths
-                .iter()
-                .find(|path| path.has_point_within(at, own + widest))
-            {
-                return Err(LoadProblem::StructureOnWaypoint {
-                    unit_type: structure.unit_type.clone(),
-                    path: path.name.clone(),
-                });
-            }
-        }
-        Ok(())
+        let body_of = |unit_type: &str| {
+            let unit_type = packages.units.units.get(unit_type)?;
+            unit_type.collision.as_ref().map(|data| data.body.radius())
+        };
+        Navigation::check_map(&packages.map, widest, body_of).map_err(LoadProblem::Map)
     }
 
     /// The mode package: its unit types' sections, its map, its modifiers and its scripts.
@@ -182,7 +162,7 @@ impl<'a> LoadCheck<'a> {
         if !packages.map.paths.is_empty() {
             self.require(Capability::Navigation, &Place::Paths)?;
         }
-        self.structures_clear_waypoints()?;
+        self.map_walkable()?;
         if packages.manifest.capabilities.contains(Capability::Vision)
             && packages.map.grid.is_none()
         {

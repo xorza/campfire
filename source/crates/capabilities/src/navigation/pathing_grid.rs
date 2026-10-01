@@ -4,6 +4,7 @@ use bevy_ecs::resource::Resource;
 use campfire_math::Num;
 
 use crate::navigation::body_index::BodyIndex;
+use crate::navigation::regions::Regions;
 use crate::values::grid::Grid;
 
 /// The map's pathing grid: its bounds in square cells, and for each body radius the mode's
@@ -20,8 +21,12 @@ pub(crate) struct PathingGrid {
     words: usize,
     /// Each layer's blocked cells, one bit a cell, layer after layer.
     blocked: Vec<u64>,
-    /// The runs of cells a body taken away blocked, row by row, kept between updates.
+    /// Each layer's regions.
+    regions: Vec<Regions>,
+    /// The runs of cells a body taken away blocked, row by row, and the chunks an update touched,
+    /// kept between updates.
     cleared: Vec<Range<usize>>,
+    dirty: Vec<bool>,
 }
 
 impl PathingGrid {
@@ -30,31 +35,44 @@ impl PathingGrid {
         radii.sort_unstable();
         radii.dedup();
         let words = grid.cells().div_ceil(64);
+        let blocked = vec![0; words * radii.len()];
+        let regions: Vec<Regions> = (0..radii.len())
+            .map(|layer| Regions::new(&grid, &blocked[layer * words..(layer + 1) * words]))
+            .collect();
+        let chunks = regions.first().map_or(0, Regions::chunks);
         PathingGrid {
             grid,
-            blocked: vec![0; words * radii.len()],
+            blocked,
             radii,
             words,
+            regions,
             cleared: Vec::new(),
+            dirty: vec![false; chunks],
         }
     }
 
     /// Follows the last update of `index`, which held the static bodies this grid was marked
     /// from: the cells of each body it took away open, then the bodies still near mark them again,
-    /// and each body it put in marks its own.
+    /// and each body it put in marks its own; each layer's regions are labeled again in the chunks
+    /// those cells lie in.
     pub(crate) fn update(&mut self, index: &BodyIndex) {
         let PathingGrid {
             grid,
             radii,
             words,
             blocked,
+            regions,
             cleared,
+            dirty,
         } = self;
         for (layer, &radius) in radii.iter().enumerate() {
             let words = &mut blocked[layer * *words..(layer + 1) * *words];
+            let regions = &mut regions[layer];
+            dirty.fill(false);
             for body in index.removed() {
                 cleared.clear();
                 grid.spans_closer(body.at, radius + body.radius, |cells| {
+                    regions.touch(cells.clone(), dirty);
                     for cell in cells.clone() {
                         words[cell / 64] &= !(1 << (cell % 64));
                     }
@@ -77,10 +95,14 @@ impl PathingGrid {
             }
             for body in index.added() {
                 grid.spans_closer(body.at, radius + body.radius, |cells| {
+                    regions.touch(cells.clone(), dirty);
                     for cell in cells {
                         words[cell / 64] |= 1 << (cell % 64);
                     }
                 });
+            }
+            if dirty.contains(&true) {
+                regions.rebuild(words, dirty);
             }
         }
     }
@@ -103,6 +125,7 @@ impl PathingGrid {
         Layer {
             grid: &self.grid,
             radius,
+            regions: &self.regions[layer],
             words: &self.blocked[layer * self.words..(layer + 1) * self.words],
         }
     }
@@ -113,6 +136,7 @@ impl PathingGrid {
 pub(crate) struct Layer<'a> {
     grid: &'a Grid,
     radius: Num,
+    regions: &'a Regions,
     words: &'a [u64],
 }
 
@@ -123,6 +147,10 @@ impl Layer<'_> {
 
     pub(crate) const fn radius(&self) -> Num {
         self.radius
+    }
+
+    pub(crate) const fn regions(&self) -> &Regions {
+        self.regions
     }
 
     /// Whether a walker may stand in `cell`.
