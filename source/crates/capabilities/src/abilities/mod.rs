@@ -17,7 +17,6 @@ use crate::abilities::ability_book::{Ability, AbilityBook, AbilityId, Aim, RankV
 use crate::abilities::ability_data::{AbilityData, Range, Targeting};
 use crate::abilities::ability_slots::{AbilitySlots, CastTarget, Casting};
 use crate::abilities::error::AbilityError;
-use crate::abilities::resource_pool::ResourcePool;
 use crate::combat::CombatSet;
 use crate::combat::dead::Dead;
 use crate::combat::targets::Targets;
@@ -30,6 +29,8 @@ use crate::scripts::script_batch::ScriptBatch;
 use crate::stats::StatsSet;
 use crate::stats::modifier_book::{Applier, ModifierBook};
 use crate::stats::modifiers::Modifiers;
+use crate::stats::pool_cost::PoolCost;
+use crate::stats::pools::Pools;
 use crate::stats::stat_book::StatBook;
 use crate::units::block::Block;
 use crate::units::body::Body;
@@ -45,7 +46,6 @@ pub(crate) mod ability_book;
 pub(crate) mod ability_data;
 pub(crate) mod ability_slots;
 pub(crate) mod error;
-pub(crate) mod resource_pool;
 
 /// The `abilities` capability: abilities in slots, cast through their checks, with the effect a
 /// script describes.
@@ -80,7 +80,6 @@ impl Abilities {
             hold_passives.in_set(SimSet::Vision),
         ));
         registry.register_component::<AbilitySlots>();
-        registry.register_component::<ResourcePool>();
     }
 
     /// Loads the ability `name` of `package`, of `ranks` ranks, into the match, which the
@@ -114,7 +113,8 @@ impl Abilities {
                     .expect("the load checked the filter's tag"),
             ),
         };
-        let values = RankValues::all(data, ranks, rate)?;
+        let view = world.non_send::<View>().clone();
+        let values = RankValues::all(data, ranks, rate, |name| view.pool_id(name.as_str()))?;
         let host = world
             .remove_non_send::<ScriptHost>()
             .expect("units are installed");
@@ -204,7 +204,7 @@ fn start_casts(
             &Position,
             &Team,
             &mut AbilitySlots,
-            Option<&ResourcePool>,
+            Option<&Pools>,
             Option<&Body>,
             Option<&UnitTags>,
         ),
@@ -212,7 +212,7 @@ fn start_casts(
     >,
 ) {
     let now = tick.start();
-    for (&position, &team, mut slots, pool, body, tags) in &mut casters {
+    for (&position, &team, mut slots, pools, body, tags) in &mut casters {
         let Some(casting) = slots.casting() else {
             continue;
         };
@@ -227,7 +227,7 @@ fn start_casts(
         }
         let lookup = |id| targets.living(id);
         let radius = Body::radius_of(body);
-        let started = check(&book, now, &slots, pool, team, casting, lookup)
+        let started = check(&book, now, &slots, pools, team, casting, lookup)
             .filter(|checked| in_range(checked, position, radius, lookup))
             .map(|checked| (now.after(checked.cast_time), checked.target));
         match started {
@@ -246,7 +246,7 @@ struct Checked<'a> {
     ability: &'a Ability,
     rank: u8,
     range: Range,
-    cost: Num,
+    cost: PoolCost,
     cooldown: Ticks,
     cast_time: Ticks,
 }
@@ -271,14 +271,15 @@ fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
 }
 
 /// The cast `casting` of a unit on `team`, when it may go on: its slot holds a learned ability
-/// that is ready, its cost is affordable, and its target is a living unit the ability's filter
+/// that is ready, its cost is affordable in each pool, and its target is a living unit the
+/// ability's filter
 /// selects, or the ability takes none, which drops any target the order named. `living` finds a
 /// living unit.
 fn check<'a>(
     book: &'a AbilityBook,
     now: Tick,
     slots: &AbilitySlots,
-    pool: Option<&ResourcePool>,
+    pools: Option<&Pools>,
     team: Team,
     casting: Casting,
     living: impl Fn(StableId) -> Option<LivingUnit>,
@@ -286,8 +287,11 @@ fn check<'a>(
     let slot = slots.slot(casting.slot).filter(|slot| slot.rank > 0)?;
     let ability = book.get(slot.ability)?;
     let values = *ability.ranks.get(usize::from(slot.rank - 1))?;
-    let cost = Num::from_int(i64::try_from(values.cost).ok()?)?;
-    if now < slot.ready_at || cost > pool.map_or(Num::ZERO, |pool| pool.current()) {
+    let affords = pools.map_or_else(
+        || values.cost == PoolCost::default(),
+        |pools| pools.affords(&values.cost),
+    );
+    if now < slot.ready_at || !affords {
         return None;
     }
     let target = match (ability.aim, casting.target) {
@@ -305,7 +309,7 @@ fn check<'a>(
         ability,
         rank: slot.rank,
         range: values.range,
-        cost,
+        cost: values.cost,
         cooldown: values.cooldown,
         cast_time: values.cast_time,
     })
@@ -374,7 +378,7 @@ struct Prepared {
     slot: u8,
     target: Dynamic,
     on_resolve: Option<ScriptId>,
-    cost: Num,
+    cost: PoolCost,
     cooldown: Ticks,
 }
 
@@ -403,8 +407,8 @@ fn resolve(batch: &mut ScriptBatch<'_>, ctx: &Ctx, now: Tick, caster: StableId, 
 /// its cooldown.
 fn apply(world: &mut World, ctx: &Ctx, now: Tick, entity: Entity, prepared: &Prepared) {
     ctx.apply(world, now);
-    if let Some(mut pool) = world.get_mut::<ResourcePool>(entity) {
-        pool.spend(prepared.cost);
+    if let Some(mut pools) = world.get_mut::<Pools>(entity) {
+        pools.pay(&prepared.cost);
     }
     world
         .get_mut::<AbilitySlots>(entity)
@@ -430,9 +434,9 @@ fn prepare(
     let casting = slots.casting().expect("a due caster casts");
     let team = *unit.get::<Team>().expect("a caster has a team");
     let book = world.resource::<AbilityBook>();
-    let pool = unit.get::<ResourcePool>();
+    let pools = unit.get::<Pools>();
     let living = |id| view.living(id);
-    let Some(checked) = check(book, now, slots, pool, team, casting, living) else {
+    let Some(checked) = check(book, now, slots, pools, team, casting, living) else {
         return Ok(None);
     };
     let target = match casting.target {

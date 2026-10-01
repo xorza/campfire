@@ -79,12 +79,14 @@ impl Units {
             limits,
             players,
             damage_kinds,
+            pools,
         }) = scripts
         else {
             world.insert_non_send(view);
             return;
         };
         view.set_damage_kinds(damage_kinds);
+        view.set_pool_names(pools);
         world.insert_non_send(Ctx::new(view.clone()));
         world.insert_non_send(view);
         let mut host = ScriptHost::new(limits.per_call);

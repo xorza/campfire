@@ -11,7 +11,7 @@ fn on_hit(ctx, caster, target, hit) {
 fn on_damage_taken(ctx, m, d) {
     if d.source == m.source && d.ability != "dusk_mark" {
         ctx.damage(m.carrier, ctx.p.detonate_damage, "magic");
-        ctx.restore(m.source, ctx.p.energy_refund);
+        ctx.restore(m.source, "energy", ctx.p.energy_refund);
         ctx.remove(m);
     }
 }

@@ -36,7 +36,6 @@ pub use abilities::ability_data::{
 };
 pub use abilities::ability_slots::{AbilitySlot, AbilitySlots, CastTarget};
 pub use abilities::error::{AbilityError, AbilityField};
-pub use abilities::resource_pool::ResourcePool;
 pub use capability_set::CapabilitySet;
 pub use capability_set::error::CapabilityError;
 pub use combat::Combat;
@@ -47,7 +46,6 @@ pub use combat::combat_rules::{CombatRules, Leech};
 pub use combat::combatant::Combatant;
 pub use combat::dead::Dead;
 pub use combat::deaths::{DeathView, Deaths, Fallen};
-pub use combat::health::Health;
 pub use combat::on_death::OnDeath;
 pub use combat::recent_attackers::RecentAttackers;
 pub use combat::respawn::Respawn;
@@ -98,6 +96,10 @@ pub use stats::level::Level;
 pub use stats::modifier_book::ModifierId;
 pub use stats::modifier_data::{AuraData, ModifierData, Reapply};
 pub use stats::modifiers::Modifiers;
+pub use stats::pool_cost::PoolCost;
+pub use stats::pool_data::PoolData;
+pub use stats::pool_id::PoolId;
+pub use stats::pools::Pools;
 pub use stats::stat::{EngineStat, Stat};
 pub use stats::stat_change::StatChange;
 pub use stats::stat_op::StatOp;
@@ -135,8 +137,8 @@ pub use vision::vision_data::VisionData;
 
 #[cfg(feature = "internals")]
 pub mod internals {
-    pub use crate::abilities::resource_pool::internals::spent_pool;
     pub use crate::stats::internals::{give_modifier, load_stats};
+    pub use crate::stats::pools::internals::spent;
 }
 
 #[cfg(feature = "bench")]

@@ -1,6 +1,6 @@
 name = "Runner"
 role = "test"
-resource = "mana"
+pools = ["health", "mana"]
 slots = ["first", "second", "third", "fourth"]
 
 [combat.attack]
@@ -15,7 +15,7 @@ sight_range = "6.0"
 
 [stats]
 health = { base = 600 }
-resource = { base = 100 }
+mana = { base = 100 }
 attack_damage = { base = 60 }
 attack_speed = { base = "1.5" }
 move_speed = { base = "7.5" }
@@ -25,7 +25,7 @@ script = "scripts/bolt.rhai"
 targeting = "enemies"
 range = "5.0"
 cooldown_ms = 2000
-cost = 30
+cost = { mana = 30 }
 
 [abilities.first.params]
 damage = 80

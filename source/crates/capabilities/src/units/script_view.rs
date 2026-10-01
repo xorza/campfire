@@ -12,7 +12,6 @@ use campfire_sim::{Capability, EntityIndex, Position, SimTick, StableId, Tick, T
 
 use crate::abilities::ability_book::AbilityId;
 use crate::combat::damage_kind::DamageKind;
-use crate::combat::health::Health;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
@@ -21,6 +20,8 @@ use crate::scripts::state_value::StateValue;
 use crate::stats::modifier_book::ModifierId;
 use crate::stats::modifier_data::Reapply;
 use crate::stats::modifier_handle::{ModifierHandle, StateField};
+use crate::stats::pool_id::PoolId;
+use crate::stats::pools::Pools;
 use crate::stats::stat::Stat;
 use crate::units::block::Block;
 use crate::units::body::Body;
@@ -68,6 +69,8 @@ pub(crate) struct ScriptView {
     /// The stats the mode declares, in order, and each unit's values of them, one run per unit.
     stat_names: Rc<[Stat]>,
     stats: Vec<Num>,
+    /// The pools the mode declares, by pool id.
+    pool_names: Rc<[DeclaredName]>,
     /// Every modifier, by id, the modifiers each unit carries, one run per unit, and their
     /// script state, one run per modifier.
     modifier_info: Vec<ModifierInfo>,
@@ -96,10 +99,9 @@ pub(crate) struct UnitRow {
     pub(crate) attack_range: Option<Num>,
     /// The path it walks or stands on; `navigation` fills it.
     pub(crate) path: Option<PathId>,
-    /// Its health; `combat` fills it.
-    pub(crate) health: Option<Health>,
-    /// Its level; `stats` fills it, and its run of stats.
+    /// Its level and pools; `stats` fills them, and its run of stats.
     pub(crate) level: Option<u32>,
+    pub(crate) pools: Option<Pools>,
     /// The teams that see it; `vision` fills it, and without vision every team does.
     pub(crate) seen_by: TeamSet,
     /// Its tags and their effects, as the core derives them.
@@ -232,8 +234,8 @@ impl ScriptView {
                 unit_type: unit.get::<UnitType>().copied(),
                 owner: unit.get::<Owner>().map(|owner| owner.slot()),
                 path: None,
-                health: None,
                 level: None,
+                pools: None,
                 seen_by: TeamSet::ALL,
                 tags: unit.get::<UnitTags>().copied().unwrap_or_default(),
                 target: None,
@@ -302,6 +304,7 @@ impl View {
             attacks: Vec::new(),
             slots: Vec::new(),
             stat_names: Rc::from([]),
+            pool_names: Rc::from([]),
             stats: Vec::new(),
             modifier_info: Vec::new(),
             modifiers: Vec::new(),
@@ -452,6 +455,28 @@ impl View {
         run.get(at)
             .copied()
             .ok_or_else(|| ApiError::NoStats.fail().into())
+    }
+
+    /// Sets the pools the mode declares, by pool id.
+    pub(crate) fn set_pool_names(&self, names: Rc<[DeclaredName]>) {
+        self.0.borrow_mut().pool_names = names;
+    }
+
+    /// The pool `name`; an error for one the mode does not declare.
+    pub(crate) fn pool(&self, name: &str) -> Checked<PoolId> {
+        self.pool_id(name)
+            .ok_or_else(|| ApiError::UnknownPool.fail().into())
+    }
+
+    /// The pool `name`; `None` for one the mode does not declare.
+    pub(crate) fn pool_id(&self, name: &str) -> Option<PoolId> {
+        let view = self.0.borrow();
+        let at = view
+            .pool_names
+            .iter()
+            .position(|pool| pool.as_str() == name)?;
+        let pool = u8::try_from(at).ok().and_then(PoolId::new);
+        Some(pool.expect("the load keeps the pools within the limit"))
     }
 
     /// The damage kind `name`; an error for one the mode does not declare.

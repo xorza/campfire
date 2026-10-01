@@ -11,10 +11,12 @@ use super::*;
 use crate::capability_set::internals::TestMatch;
 use crate::combat::combat_rules::{CombatRules, Leech};
 use crate::combat::combatant::Combatant;
+use crate::combat::combatant::internals::Armed;
 use crate::combat::damage_kind::DamageKind;
 use crate::stats::Stats;
-use crate::stats::modifier_data::Reapply;
+use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifiers::{Application, Instance};
+use crate::stats::pool_book::PoolBook;
 use crate::stats::stat::Stat;
 use crate::stats::stat_book::StatBook;
 use crate::stats::stat_rule::StatRule;
@@ -31,9 +33,8 @@ fn at(x: i64, y: i64, z: i64) -> Position {
 }
 
 /// `health`, and `damage` within `range`, a windup and a period in ticks.
-fn combatant(health: i64, range: i64, windup: u64, period: u64, damage: i64) -> Combatant {
-    Combatant {
-        health: Health::new(num(health)).unwrap(),
+fn combatant(health: i64, range: i64, windup: u64, period: u64, damage: i64) -> Armed {
+    let combatant = Combatant {
         attack: Some(
             AttackStats::new(
                 num(range),
@@ -44,16 +45,20 @@ fn combatant(health: i64, range: i64, windup: u64, period: u64, damage: i64) -> 
             .unwrap(),
         ),
         on_death: OnDeath::Despawn,
+    };
+    Armed {
+        combatant,
+        life: num(health),
     }
 }
 
 /// 100 health, and 30 damage within 2 m, 2 ticks after the start of an attack every 5 ticks.
-fn fighter() -> Combatant {
+fn fighter() -> Armed {
     combatant(100, 2, 2, 5, 30)
 }
 
 /// 100 health; never attacks.
-fn dummy() -> Combatant {
+fn dummy() -> Armed {
     combatant(100, 0, 0, 1, 0)
 }
 
@@ -69,12 +74,12 @@ impl Fight {
             mut world,
             schedule,
             registry,
-        } = TestMatch::new(&[Capability::Combat], RATE, None);
+        } = TestMatch::new(&[Capability::Stats, Capability::Combat], RATE, None);
         world.add_schedule(schedule);
         Fight { world, registry }
     }
 
-    fn unit(&mut self, team: Team, at: Position, combatant: Combatant) -> StableId {
+    fn unit(&mut self, team: Team, at: Position, combatant: Armed) -> StableId {
         let id = self.world.resource_mut::<IdAllocator>().allocate();
         self.world.spawn((id, at, combatant.bundle(team)));
         id
@@ -105,8 +110,8 @@ impl Fight {
 
     /// `None` once the unit despawned.
     fn health(&self, id: StableId) -> Option<i64> {
-        self.get::<Health>(id)
-            .map(|health| health.current().round())
+        self.get::<Pools>(id)
+            .map(|pools| pools.current(PoolId::FIRST).unwrap().round())
     }
 
     fn state(&self, id: StableId) -> AttackState {
@@ -267,10 +272,7 @@ fn a_windup_on_a_target_that_dies_spends_nothing() {
 #[test]
 fn strikes_in_one_tick_see_the_state_before_any_of_them() {
     let mut fight = Fight::new();
-    let duelist = Combatant {
-        on_death: OnDeath::Stay,
-        ..combatant(30, 2, 1, 5, 30)
-    };
+    let duelist = combatant(30, 2, 1, 5, 30).on_death(OnDeath::Stay);
     let first = fight.unit(Team::new(0), at(0, 0, 0), duelist);
     let second = fight.unit(Team::new(1), at(1, 0, 0), duelist);
     fight.attack(first, second);
@@ -305,14 +307,7 @@ fn targets_are_living_enemies() {
     // Up at y = 9: a target all the same.
     let high = fight.unit(Team::new(0), at(0, 9, 3), prey);
     let far = fight.unit(Team::new(0), at(6, 0, 0), prey);
-    let dead = fight.unit(
-        Team::new(0),
-        at(0, 0, 1),
-        Combatant {
-            on_death: OnDeath::Stay,
-            ..prey
-        },
-    );
+    let dead = fight.unit(Team::new(0), at(0, 0, 1), prey.on_death(OnDeath::Stay));
     let entity = fight.world.resource::<EntityIndex>().get(dead).unwrap();
     fight.world.entity_mut(entity).insert(Dead);
     // Tags that block being a target: no target; tags that block all else: a target all the same.
@@ -376,10 +371,7 @@ fn every_combat_type_is_state_and_restores() {
     let doomed = fight.unit(
         Team::new(1),
         at(1, 0, 0),
-        Combatant {
-            on_death: OnDeath::Stay,
-            ..combatant(30, 0, 0, 1, 0)
-        },
+        combatant(30, 0, 0, 1, 0).on_death(OnDeath::Stay),
     );
     fight.attack(fighter, doomed);
     fight.run_until(3);
@@ -395,7 +387,6 @@ fn every_combat_type_is_state_and_restores() {
             "combat.attack",
             "combat.attack_stats",
             "combat.dead",
-            "combat.health",
             "combat.on_death",
             "combat.recent_attackers",
             "combat.respawn",
@@ -403,6 +394,9 @@ fn every_combat_type_is_state_and_restores() {
             "sim.id_allocator",
             "sim.position",
             "sim.tick",
+            "stats.level",
+            "stats.modifiers",
+            "stats.pools",
             "units.body",
             "units.owner",
             "units.spawn_point",
@@ -421,9 +415,10 @@ fn every_combat_type_is_state_and_restores() {
 
 #[test]
 fn stats_out_of_their_limits_are_refused() {
-    assert_eq!(Health::new(Num::ZERO), None);
+    let life = |max| Pools::new([(PoolId::FIRST, max)]);
+    assert_eq!(life(Num::ZERO), None);
     assert_eq!(
-        Health::new(Num::EPSILON).map(Health::current),
+        life(Num::EPSILON).and_then(|pools| pools.current(PoolId::FIRST)),
         Some(Num::EPSILON)
     );
     assert_eq!(
@@ -452,8 +447,10 @@ fn stats_out_of_their_limits_are_refused() {
 
     // A snapshot's values pass the same limits.
     let health = |current: i64, max: i64| {
-        let bytes = postcard::to_allocvec(&(num(current), num(max), 0_u32)).unwrap();
-        postcard::from_bytes::<Health>(&bytes).ok()
+        let mut meters = [None; Pools::LIMIT];
+        meters[0] = Some((num(current), num(max), 0_u32));
+        let bytes = postcard::to_allocvec(&meters).unwrap();
+        postcard::from_bytes::<Pools>(&bytes).ok()
     };
     assert!(health(0, 1).is_some() && health(1, 1).is_some());
     for (current, max) in [(-1, 1), (2, 1), (0, 0)] {
@@ -487,10 +484,7 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
         let team = Team::new(0);
         let [first, killer] = [4, 6].map(|x| fight.unit(team, at(x, 0, 0), fighter()));
         let slow_one = fight.unit(team, at(5, 0, 0), slow);
-        let stays = Combatant {
-            on_death: OnDeath::Stay,
-            ..combatant(130, 0, 0, 1, 0)
-        };
+        let stays = combatant(130, 0, 0, 1, 0).on_death(OnDeath::Stay);
         let hero = fight.unit(Team::new(1), at(5, 0, 1), stays);
         let hero_entity = fight.world.resource::<EntityIndex>().get(hero).unwrap();
         let owner = Owner::new(PlayerSlot::new(3));
@@ -549,10 +543,7 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
     // health and no attacker on record; the attackers dropped it when it died.
     let mut fight = Fight::new();
     let attacker = fight.unit(Team::new(0), at(4, 0, 0), fighter());
-    let stays = Combatant {
-        on_death: OnDeath::Stay,
-        ..combatant(30, 0, 0, 1, 0)
-    };
+    let stays = combatant(30, 0, 0, 1, 0).on_death(OnDeath::Stay);
     let hero = fight.unit(Team::new(1), at(5, 0, 0), stays);
     let hero_entity = fight.world.resource::<EntityIndex>().get(hero).unwrap();
     fight
@@ -600,8 +591,26 @@ fn load_damage_stats(world: &mut World) {
         heal_scale: Some(heal),
         ..CombatRules::default()
     };
-    world.insert_resource(BoundStats::new(&combat, &book));
-    Stats::load(world, book);
+    world.insert_resource(CombatBindings::new(&combat, &BTreeMap::new(), &book));
+    Stats::load(world, book, PoolBook::default());
+}
+
+/// A modifier of no stats, tags or script, as each shield the shield test gives is.
+fn shield_data() -> ModifierData {
+    ModifierData {
+        script: None,
+        duration_ms: None,
+        interval_ms: None,
+        stacks_expire_ms: None,
+        reapply: Reapply::Refresh,
+        max_stacks: None,
+        stats: BTreeMap::new(),
+        tags: Vec::new(),
+        shield: None,
+        aura: None,
+        params: BTreeMap::new(),
+        state: BTreeMap::new(),
+    }
 }
 
 impl Fight {
@@ -637,7 +646,10 @@ impl Fight {
     }
 
     fn exact_health(&self, id: StableId) -> Num {
-        self.get::<Health>(id).unwrap().current()
+        self.get::<Pools>(id)
+            .unwrap()
+            .current(PoolId::FIRST)
+            .unwrap()
     }
 }
 
@@ -649,8 +661,7 @@ fn the_pass_deals_damage_in_its_order_and_credits_the_kill() {
     fight.world.insert_resource(AssistWindow(Ticks::new(10)));
     let a = fight.unit(Team::new(0), at(0, 0, 0), dummy());
     let b = fight.unit(Team::new(0), at(1, 0, 0), dummy());
-    let mut stays = dummy();
-    stays.on_death = OnDeath::Stay;
+    let stays = dummy().on_death(OnDeath::Stay);
     let target = fight.unit(Team::new(1), at(2, 0, 0), stays);
     assert!(a < b);
     // Queued from b, then a, then none: none's 30 goes first, 100 to 70, then a's 60, to 10, then
@@ -703,7 +714,8 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     // Heals halved, life steal 0.5 and spell vamp 0.25; at 40 of 100.
     fight.stats(source, [-half, half, Num::ONE / 4]);
     let entity = fight.entity(source);
-    fight.world.get_mut::<Health>(entity).unwrap().take(num(60));
+    let mut pools = fight.world.get_mut::<Pools>(entity).unwrap();
+    pools.take(PoolId::FIRST, num(60));
     let shield = |id: u16, until: Option<u64>, amount: i64| Instance {
         id: ModifierId::new(id),
         source: None,
@@ -722,6 +734,9 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
         tags: TagSet::default(),
         state: Vec::new(),
     };
+    for name in ["first", "second", "third"] {
+        Stats::load_modifier(&mut fight.world, 0, name, &shield_data(), None);
+    }
     let mut modifiers = Modifiers::default();
     for instance in [
         shield(0, None, 100),
@@ -764,24 +779,29 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     assert_eq!(fight.exact_health(source), num(100));
     // Without the bindings the same stats do nothing: at 50, an attack of 10 heals the source
     // nothing, and a heal of 10 is whole.
-    fight.world.insert_resource(BoundStats::default());
+    fight.world.insert_resource(CombatBindings::default());
     let entity = fight.entity(source);
-    fight.world.get_mut::<Health>(entity).unwrap().take(num(50));
+    let mut pools = fight.world.get_mut::<Pools>(entity).unwrap();
+    pools.take(PoolId::FIRST, num(50));
     fight.damage(Some(source), target, 10, ATTACK);
     fight.run_until(3);
     assert_eq!(fight.exact_health(target), num(45));
     assert_eq!(fight.exact_health(source), num(50));
     Combat::heal(&mut fight.world, source, num(10));
     assert_eq!(fight.exact_health(source), num(60));
-    // A restore is not scaled: 50 of 100, then 20 more.
+    // A restore reaches the pool it names, unscaled: a second pool at 50 of 100 takes 20 more,
+    // and the life pool keeps its 60.
+    let mana = PoolId::new(1).unwrap();
     let entity = fight.entity(source);
-    let mut pool = ResourcePool::new(num(100)).unwrap();
-    pool.spend(num(50));
-    fight.world.entity_mut(entity).insert(pool);
-    Combat::restore(&mut fight.world, source, num(20));
+    let mut pools = fight.world.get_mut::<Pools>(entity).unwrap();
+    *pools = Pools::new([(PoolId::FIRST, num(100)), (mana, num(100))]).unwrap();
+    pools.take(PoolId::FIRST, num(40));
+    pools.take(mana, num(50));
+    Combat::restore(&mut fight.world, source, mana, num(20));
+    let pools = fight.get::<Pools>(source).unwrap();
     assert_eq!(
-        fight.get::<ResourcePool>(source).unwrap().current(),
-        num(70)
+        (pools.current(PoolId::FIRST), pools.current(mana)),
+        (Some(num(60)), Some(num(70)))
     );
 }
 

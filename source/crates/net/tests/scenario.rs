@@ -4,9 +4,7 @@
 use std::num::NonZeroU32;
 
 use bevy_app::App;
-use campfire_capabilities::{
-    AbilitySlots, Body, Dead, Health, MoveStep, ResourcePool, SeenBy, Team,
-};
+use campfire_capabilities::{AbilitySlots, Body, Dead, MoveStep, PoolId, Pools, SeenBy, Team};
 use campfire_math::{Num, Vec3};
 use campfire_net::{LinkModel, LocalMatch, MatchSetup, TickHashes};
 use campfire_protocol::{SeedChain, SessionLog};
@@ -209,23 +207,24 @@ fn cast_scripts(walker: StableId, runner: StableId) -> [String; 2] {
 }
 const CAST_TICKS: u64 = 360;
 
-/// Where a unit stands, its health, its resource, and the first tick its first ability may be
-/// cast again, as an app holds them.
+/// Where a unit stands, its health and mana, the lane mode's pools in the order of their names,
+/// and the first tick its first ability may be cast again, as an app holds them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Caster {
     pos: Position,
     health: Num,
-    resource: Option<Num>,
+    mana: Option<Num>,
     ready_at: Option<Tick>,
 }
 
 fn caster(app: &App, id: StableId) -> Caster {
     let world = app.world();
     let unit = world.entity(world.resource::<EntityIndex>().get(id).unwrap());
+    let pools = unit.get::<Pools>().unwrap();
     Caster {
         pos: *unit.get::<Position>().unwrap(),
-        health: unit.get::<Health>().unwrap().current(),
-        resource: unit.get::<ResourcePool>().map(|pool| pool.current()),
+        health: pools.current(PoolId::FIRST).unwrap(),
+        mana: pools.current(PoolId::new(1).unwrap()),
         ready_at: unit
             .get::<AbilitySlots>()
             .and_then(|slots| slots.slot(0))
@@ -280,7 +279,7 @@ fn cast(link: LinkModel) -> [u32; 2] {
             Caster {
                 pos: edge(Num::ZERO),
                 health: num(600 - 80),
-                resource: Some(num(100 - 40 - 40)),
+                mana: Some(num(100 - 40 - 40)),
                 ready_at: Some(Tick::new(190 + 90)),
             },
         ),
@@ -289,7 +288,7 @@ fn cast(link: LinkModel) -> [u32; 2] {
             Caster {
                 pos: edge(num(1) + Num::from_bits(1 << 23)),
                 health: num(600 - 100 - 100 - 3 * 60),
-                resource: Some(num(100 - 30)),
+                mana: Some(num(100 - 30)),
                 ready_at: Some(Tick::new(140 + 60)),
             },
         ),

@@ -13,7 +13,6 @@ use super::*;
 use crate::abilities::Abilities;
 use crate::abilities::ability_book::AbilityId;
 use crate::abilities::ability_data::{AbilityData, Targeting};
-use crate::abilities::resource_pool::ResourcePool;
 use crate::capability_set::internals::TestMatch;
 use crate::combat::attack_stats::AttackStats;
 use crate::combat::combat_rules::CombatRules;
@@ -22,7 +21,6 @@ use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::damage_kind::DamageKind;
 use crate::combat::damage_queue::DamageQueue;
 use crate::combat::dead::Dead;
-use crate::combat::health::Health;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::mode::avatar_index::AvatarIndex;
@@ -47,6 +45,8 @@ use crate::stats::modifier_book::ModifierId;
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifiers::Modifiers;
 use crate::stats::modifiers::{Application, Instance, StatShare};
+use crate::stats::pool_id::PoolId;
+use crate::stats::pools::Pools;
 use crate::stats::stat::Stat;
 use crate::stats::stat_op::StatOp;
 use crate::stats::stat_rule::StatRule;
@@ -77,6 +77,11 @@ const LIMITS: ScriptLimits = ScriptLimits {
 /// A mode that records what its hooks see in its state, and acts on its players' inputs.
 /// The reference MOBA's damage kinds, and the stats its `calc_damage` reads.
 const DAMAGE_KINDS: [&str; 3] = ["physical", "magic", "true"];
+/// The pools the scripts name, the life pool first, as it is until a mode binds one. The mode's
+/// data declares none, so no stat sets their maxima.
+const POOLS: [&str; 2] = ["health", "mana"];
+const MANA: PoolId = PoolId::new(1).unwrap();
+
 const STATS_3V3: [&str; 9] = [
     "armor",
     "armor_pen",
@@ -162,8 +167,8 @@ fn field(kind: StateType, default: Option<StateDefault>) -> StateDecl {
 /// The unit kit of a grunt: 10 health, an attack, and a step of 1 m.
 fn grunt() -> UnitKit {
     UnitKit {
+        pools: Some(Pools::life(num(10))),
         combatant: Some(Combatant {
-            health: Health::new(num(10)).unwrap(),
             attack: Some(
                 AttackStats::new(num(1), Ticks::new(0), Ticks::new(1), Num::ZERO).unwrap(),
             ),
@@ -288,6 +293,7 @@ fn mode_files() -> ModeFiles {
             stats: STATS_3V3
                 .map(|name| (Stat::named(name).unwrap(), StatRule::default()))
                 .into(),
+            pools: BTreeMap::new(),
             resources: Vec::new(),
             tags: BTreeMap::new(),
         },
@@ -321,7 +327,6 @@ fn setup(
         id: id.to_owned(),
         unit_type,
         abilities,
-        resource: None,
     };
     ModeSetup {
         script,
@@ -387,6 +392,7 @@ impl Game {
             damage_kinds: DAMAGE_KINDS
                 .map(|kind| DeclaredName::new(kind).unwrap())
                 .into(),
+            pools: POOLS.map(|pool| DeclaredName::new(pool).unwrap()).into(),
         };
         let declared = [
             Capability::Stats,
@@ -413,7 +419,7 @@ impl Game {
             targeting: Targeting::None,
             range: None,
             cooldown_ms: None,
-            cost: None,
+            cost: BTreeMap::new(),
             cast_time_ms: None,
             clamp_to_range: false,
             toggle: None,
@@ -1034,7 +1040,8 @@ fn on_mode_input(ctx, player, name, value) {
     game.tick(&[]);
     assert!(!game.world.entity(victim).contains::<Dead>());
     assert_eq!(game.world.get::<Position>(victim), Some(&at(0, 0)));
-    assert_eq!(game.world.get::<Health>(victim).unwrap().current(), num(10));
+    let pools = game.world.get::<Pools>(victim).unwrap();
+    assert_eq!(pools.current(PoolId::FIRST), Some(num(10)));
 
     // A living unit, and a dead one whose type despawns, cannot respawn.
     game.tick(&[(0, input("probe", "tower"))]);
@@ -1154,7 +1161,7 @@ impl Game {
             id,
             at(0, 0),
             Team::new(team),
-            Health::new(num(1000)).unwrap(),
+            Pools::life(num(1000)),
             grunt,
             Level::default(),
             UnitStats::default(),
@@ -1186,7 +1193,8 @@ impl Game {
 
     fn health(&self, id: StableId) -> Num {
         let entity = self.world.resource::<EntityIndex>().get(id).unwrap();
-        self.world.get::<Health>(entity).unwrap().current()
+        let pools = self.world.get::<Pools>(entity).unwrap();
+        pools.current(PoolId::FIRST).unwrap()
     }
 }
 
@@ -1320,7 +1328,7 @@ fn every_role_reads_the_match_and_deals_damage_heals_and_restores() {
 fn probe(ctx, unit) {
     ctx.damage(unit, 10, "true");
     ctx.heal(unit, 4);
-    ctx.restore(unit, 3);
+    ctx.restore(unit, "mana", 3);
     ctx.add_resource(0, "gold", 5);
     [ctx.teams, ctx.map.paths, ctx.avatars().len(), ctx.units_tagged("avatar").len()]
 }
@@ -1330,10 +1338,10 @@ fn probe(ctx, unit) {
     let actor = game.fighter(0, &[]);
     let target = game.fighter(1, &[]);
     let entity = game.world.resource::<EntityIndex>().get(target).unwrap();
-    game.world.get_mut::<Health>(entity).unwrap().take(num(20));
-    let mut pool = ResourcePool::new(num(100)).unwrap();
-    pool.spend(num(50));
-    game.world.entity_mut(entity).insert(pool);
+    let mut pools = Pools::new([(PoolId::FIRST, num(1000)), (MANA, num(100))]).unwrap();
+    pools.take(PoolId::FIRST, num(20));
+    pools.take(MANA, num(50));
+    game.world.entity_mut(entity).insert(pools);
     // Each role in turn: 4 healed, 3 restored and 5 gold given as its effects apply, then 10
     // dealt in the tick's damage pass: from 980, 984 then 974, and so on; the pool from 50, 3 a
     // call.
@@ -1361,8 +1369,8 @@ fn probe(ctx, unit) {
         assert_eq!(game.health(target), num(980 - 6 * at + 4), "{role:?}");
         game.tick(&[]);
         assert_eq!(game.health(target), num(980 - 6 * (at + 1)), "{role:?}");
-        let pool = game.world.get::<ResourcePool>(entity).unwrap().current();
-        assert_eq!(pool, num(50 + 3 * (at + 1)), "{role:?}");
+        let pool = game.world.get::<Pools>(entity).unwrap().current(MANA);
+        assert_eq!(pool, Some(num(50 + 3 * (at + 1))), "{role:?}");
     }
     // A call given to other roles fails in this one, when it runs.
     let refused = [

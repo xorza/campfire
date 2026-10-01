@@ -15,21 +15,13 @@ pub enum Stat {
 /// A stat a capability reads, whatever the mode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum EngineStat {
-    Health,
-    HealthRegen,
-    Resource,
-    ResourceRegen,
     MoveSpeed,
     AttackSpeed,
     AttackDamage,
 }
 
 impl EngineStat {
-    pub const ALL: [EngineStat; 7] = [
-        EngineStat::Health,
-        EngineStat::HealthRegen,
-        EngineStat::Resource,
-        EngineStat::ResourceRegen,
+    pub const ALL: [EngineStat; 3] = [
         EngineStat::MoveSpeed,
         EngineStat::AttackSpeed,
         EngineStat::AttackDamage,
@@ -43,10 +35,6 @@ impl EngineStat {
     /// The stat as data and scripts name it.
     pub const fn name(self) -> &'static str {
         match self {
-            EngineStat::Health => "health",
-            EngineStat::HealthRegen => "health_regen",
-            EngineStat::Resource => "resource",
-            EngineStat::ResourceRegen => "resource_regen",
             EngineStat::MoveSpeed => "move_speed",
             EngineStat::AttackSpeed => "attack_speed",
             EngineStat::AttackDamage => "attack_damage",

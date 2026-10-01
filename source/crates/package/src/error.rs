@@ -3,7 +3,7 @@ use std::fmt;
 use std::io;
 use std::path::PathBuf;
 
-use campfire_capabilities::{AbilityField, DeclaredName, MapProblem, ModeError};
+use campfire_capabilities::{AbilityField, DeclaredName, MapProblem, ModeError, Pools};
 use campfire_content::PackagePath;
 use campfire_script::ScriptError;
 use campfire_sim::Capability;
@@ -198,11 +198,22 @@ pub enum LoadProblem {
         at: Place,
         name: String,
     },
-    /// An avatar at `at` spends a resource the mode does not declare.
-    UnknownResource {
+    /// Data or a script at `at` names a pool the mode does not declare.
+    UnknownPool {
+        at: Place,
+        name: String,
+    },
+    /// A unit type at `at` lists a pool twice.
+    RepeatedPool {
         at: Place,
         name: DeclaredName,
     },
+    /// The mode declares more pools than `Pools::LIMIT`.
+    TooManyPools,
+    /// The mode declares `combat` but no `[combat] life`.
+    NoLifePool,
+    /// A unit type at `at` has a `combat` section but not the life pool.
+    LifePoolMissing(Place),
     /// The mode declares a name twice in one of its lists.
     RepeatedName(DeclaredName),
     UnknownFilter {
@@ -236,6 +247,8 @@ pub enum Place {
     AttackKind,
     /// The mode's `[combat]`.
     Combat,
+    /// The mode's pool of that name.
+    Pool(DeclaredName),
 }
 
 /// A use of `ctx` that hides it from the load checks: every value of `ctx` in a script is a
@@ -296,6 +309,7 @@ impl fmt::Display for Place {
             Place::Paths => f.write_str("the map's paths"),
             Place::AttackKind => f.write_str("the mode's attack_kind"),
             Place::Combat => f.write_str("the mode's [combat]"),
+            Place::Pool(name) => write!(f, "pool {name}"),
         }
     }
 }
@@ -370,9 +384,13 @@ impl fmt::Display for LoadProblem {
             LoadProblem::UnknownParam { at, name } => write!(f, "{at}: no param {name:?}"),
             LoadProblem::UnknownModifier { at, id } => write!(f, "{at}: no modifier {id:?}"),
             LoadProblem::UnknownStat { at, name } => write!(f, "{at}: no stat {name:?}"),
-            LoadProblem::UnknownResource { at, name } => {
-                write!(f, "{at}: the mode declares no resource {name:?}")
+            LoadProblem::UnknownPool { at, name } => write!(f, "{at}: no pool {name:?}"),
+            LoadProblem::RepeatedPool { at, name } => write!(f, "{at}: pool {name:?} twice"),
+            LoadProblem::TooManyPools => {
+                write!(f, "more than {} pools", Pools::LIMIT)
             }
+            LoadProblem::NoLifePool => f.write_str("combat with no [combat] life"),
+            LoadProblem::LifePoolMissing(at) => write!(f, "{at}: combat without the life pool"),
             LoadProblem::RepeatedName(name) => write!(f, "the mode declares {name:?} twice"),
             LoadProblem::UnknownFilter { at, filter } => write!(f, "{at}: no filter {filter:?}"),
             LoadProblem::UnknownDamageKind { at, kind } => {

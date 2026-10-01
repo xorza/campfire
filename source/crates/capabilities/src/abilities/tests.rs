@@ -19,10 +19,10 @@ use crate::combat::assist_window::AssistWindow;
 use crate::combat::attack_state::AttackState;
 use crate::combat::attack_stats::AttackStats;
 use crate::combat::combatant::Combatant;
+use crate::combat::combatant::internals::Armed;
 use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::damage_kind::DamageKind;
 use crate::combat::damage_queue::DamageQueue;
-use crate::combat::health::Health;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::orders::Orders;
@@ -36,6 +36,8 @@ use crate::stats::Stats;
 use crate::stats::level::Level;
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifier_effect::ModifierEffect;
+use crate::stats::pool_book::PoolBook;
+use crate::stats::pool_id::PoolId;
 use crate::stats::stat::Stat;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::Units;
@@ -97,16 +99,29 @@ fn at(x: Num, y: Num, z: Num) -> Position {
     Position::new(Vec3::new(x, y, z)).unwrap()
 }
 
-fn combatant(health: i64) -> Combatant {
-    Combatant {
-        health: Health::new(num(health)).unwrap(),
+fn combatant(health: i64) -> Armed {
+    let combatant = Combatant {
         attack: Some(AttackStats::new(Num::ZERO, Ticks::new(0), Ticks::new(1), Num::ZERO).unwrap()),
         on_death: OnDeath::Stay,
+    };
+    Armed {
+        combatant,
+        life: num(health),
     }
 }
 
+/// The match's pools, by name in order: the life pool first, as it is until a mode binds one.
+const POOLS: [&str; 3] = ["health", "mana", "rage"];
+const MANA: PoolId = PoolId::new(1).unwrap();
+const RAGE: PoolId = PoolId::new(2).unwrap();
+
+/// A cost of `amount` in pool `name`.
+fn cost(name: &str, amount: Number) -> BTreeMap<DeclaredName, Ranked<Number>> {
+    BTreeMap::from([(DeclaredName::new(name).unwrap(), Ranked::One(amount))])
+}
+
 /// Husk's Lash Out as its data declares it: no target, a cooldown of 10 s down to 6 s, 35 of the
-/// caster's resource, and damage within 3.5 m of 75 to 175, plus half the caster's ability power.
+/// caster's mana, and damage within 3.5 m of 75 to 175, plus half the caster's ability power.
 fn lash_out() -> AbilityData {
     let scalars = |values: &[i64]| values.iter().map(|&value| Scalar::Int(value)).collect();
     AbilityData {
@@ -116,7 +131,7 @@ fn lash_out() -> AbilityData {
         cooldown_ms: Some(Ranked::PerRank(
             [10_000, 9000, 8000, 7000, 6000].map(int).to_vec(),
         )),
-        cost: Some(Ranked::One(int(35))),
+        cost: cost("mana", int(35)),
         cast_time_ms: None,
         clamp_to_range: false,
         toggle: None,
@@ -155,14 +170,18 @@ fn lash_out() -> AbilityData {
     }
 }
 
-/// A unit-targeted ability: `damage` true damage to an enemy within 5 m, every second, for 10.
+/// A unit-targeted ability: `damage` true damage to an enemy within 5 m, every second, for 10
+/// mana and 4 rage.
 fn strike() -> AbilityData {
     AbilityData {
         script: Some(PackagePath::parse("strike.rhai").unwrap()),
         targeting: Targeting::Unit(FilterData::parse("enemies").unwrap()),
         range: Some(Ranked::One(RangeField::Range(Range::Meters(num(5))))),
         cooldown_ms: Some(Ranked::One(int(1001))),
-        cost: Some(Ranked::One(int(10))),
+        cost: BTreeMap::from([
+            (DeclaredName::new("mana").unwrap(), Ranked::One(int(10))),
+            (DeclaredName::new("rage").unwrap(), Ranked::One(int(4))),
+        ]),
         cast_time_ms: None,
         clamp_to_range: false,
         toggle: None,
@@ -193,7 +212,10 @@ struct Match {
 
 impl Match {
     fn new() -> Match {
-        Match::with(LIMITS, &[Capability::Combat, Capability::Abilities])
+        Match::with(
+            LIMITS,
+            &[Capability::Stats, Capability::Combat, Capability::Abilities],
+        )
     }
 
     /// A match of two players of `declared`, whose scripts run within `limits`.
@@ -204,6 +226,7 @@ impl Match {
             limits,
             players: 2,
             damage_kinds: Rc::from(kinds),
+            pools: POOLS.map(|pool| DeclaredName::new(pool).unwrap()).into(),
         };
         let TestMatch {
             mut world,
@@ -229,17 +252,27 @@ impl Match {
         id
     }
 
-    /// Player 0's caster at the origin, on team 0, with `ability` at `rank` and 100 resource.
+    /// Player 0's caster at the origin, on team 0, with `ability` at `rank`, 100 mana and 20
+    /// rage.
     fn caster(&mut self, ability: AbilityId, rank: u8) -> StableId {
-        self.spawn(
+        let caster = self.spawn(
             0,
             at(Num::ZERO, Num::ZERO, Num::ZERO),
             (
                 Owner::new(PlayerSlot::new(0)),
                 AbilitySlots::new([(ability, rank)]),
-                ResourcePool::new(num(100)).unwrap(),
             ),
-        )
+        );
+        self.give_pools(caster, 100, 20);
+        caster
+    }
+
+    /// Gives unit `id` full pools: its 500 health, `mana` and `rage`.
+    fn give_pools(&mut self, id: StableId, mana: i64, rage: i64) {
+        let entity = self.world.resource::<EntityIndex>().get(id).unwrap();
+        let pools = [(PoolId::FIRST, 500), (MANA, mana), (RAGE, rage)];
+        let pools = Pools::new(pools.map(|(pool, max)| (pool, num(max)))).unwrap();
+        self.world.entity_mut(entity).insert(pools);
     }
 
     fn cast(&mut self, unit: StableId, target: CastTarget) {
@@ -269,11 +302,15 @@ impl Match {
     }
 
     fn health(&self, id: StableId) -> i64 {
-        self.get::<Health>(id).current().round()
+        self.pool_of(id, PoolId::FIRST)
     }
 
     fn pool(&self, id: StableId) -> i64 {
-        self.get::<ResourcePool>(id).current().round()
+        self.pool_of(id, MANA)
+    }
+
+    fn pool_of(&self, id: StableId, pool: PoolId) -> i64 {
+        self.get::<Pools>(id).current(pool).unwrap().round()
     }
 
     fn slot(&self, id: StableId) -> AbilitySlot {
@@ -375,6 +412,7 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
     // The one test of how abilities and `orders` meet: AI's calls and a cast's draw from pools of
     // their own.
     let declared = [
+        Capability::Stats,
         Capability::Combat,
         Capability::Navigation,
         Capability::Abilities,
@@ -414,24 +452,27 @@ fn a_cast_passes_its_checks_or_does_nothing() {
     let mut game = Match::new();
     let strike = game.load(&strike(), STRIKE);
     let caster = game.caster(strike, 1);
-    let unlearned = game.spawn(
-        0,
-        at(num(1), Num::ZERO, Num::ZERO),
-        (
-            Owner::new(PlayerSlot::new(0)),
-            AbilitySlots::new([(strike, 0)]),
-            ResourcePool::new(num(100)).unwrap(),
-        ),
-    );
-    let poor = game.spawn(
-        0,
-        at(num(2), Num::ZERO, Num::ZERO),
-        (
-            Owner::new(PlayerSlot::new(0)),
-            AbilitySlots::new([(strike, 1)]),
-            ResourcePool::new(num(5)).unwrap(),
-        ),
-    );
+    let mut caster_at = |x: i64, rank: u8, mana: i64, rage: i64| {
+        let unit = game.spawn(
+            0,
+            at(num(x), Num::ZERO, Num::ZERO),
+            (
+                Owner::new(PlayerSlot::new(0)),
+                AbilitySlots::new([(strike, rank)]),
+            ),
+        );
+        game.give_pools(unit, mana, rage);
+        unit
+    };
+    let unlearned = caster_at(1, 0, 100, 20);
+    let poor = caster_at(2, 1, 5, 20);
+    let calm = caster_at(2, 1, 100, 3);
+    let spent = caster_at(2, 1, 100, 20);
+    let entity = game.world.resource::<EntityIndex>().get(spent).unwrap();
+    game.world
+        .get_mut::<Pools>(entity)
+        .unwrap()
+        .take(MANA, num(91));
     let enemy = game.spawn(1, at(num(5), Num::ZERO, Num::ZERO), ());
     let far = game.spawn(1, at(num(6), Num::ZERO, Num::ZERO), ());
     let ally = game.spawn(0, at(num(1), Num::ZERO, num(1)), ());
@@ -439,7 +480,8 @@ fn a_cast_passes_its_checks_or_does_nothing() {
     game.set_blocks(hidden, &[Block::Target]);
 
     // An ally, an untargetable enemy, a unit beyond 5 m, and no target at all are refused; so
-    // are a slot not learned and a pool of 5 against a cost of 10.
+    // are a slot not learned, and a cost of 10 mana and 4 rage against 5 mana, 3 rage, or 9
+    // mana left of 100.
     for (unit, target) in [
         (caster, CastTarget::Unit(ally)),
         (caster, CastTarget::Unit(hidden)),
@@ -447,6 +489,8 @@ fn a_cast_passes_its_checks_or_does_nothing() {
         (caster, CastTarget::None),
         (unlearned, CastTarget::Unit(enemy)),
         (poor, CastTarget::Unit(enemy)),
+        (calm, CastTarget::Unit(enemy)),
+        (spent, CastTarget::Unit(enemy)),
     ] {
         game.cast(unit, target);
         assert_eq!(game.health(enemy), 500, "{unit:?} at {target:?}");
@@ -455,20 +499,21 @@ fn a_cast_passes_its_checks_or_does_nothing() {
     assert_eq!(healths, [500, 500, 500]);
     assert_eq!(game.pool(caster), 100);
 
-    // At exactly 5 m, the enemy takes 50. The cooldown, 1001 ms, is 30.03 ticks, rounded up to
-    // 31: the cast in tick 6 is ready again in tick 37.
+    // At exactly 5 m, the enemy takes 50, and the cost comes off each pool: 100 − 10 mana and
+    // 20 − 4 rage. The cooldown, 1001 ms, is 30.03 ticks, rounded up to 31: the cast in tick 8 is
+    // ready again in tick 39.
     game.cast(caster, CastTarget::Unit(enemy));
     assert_eq!(game.health(enemy), 450);
-    assert_eq!(game.pool(caster), 90);
-    assert_eq!(game.slot(caster).ready_at, Tick::new(37));
+    assert_eq!((game.pool(caster), game.pool_of(caster, RAGE)), (90, 16));
+    assert_eq!(game.slot(caster).ready_at, Tick::new(39));
 
     // The range counts from the edge of each body: once the unit 6 m off has a body of 1 m, it
-    // is within 5 m, and takes 50 in tick 37.
+    // is within 5 m, and takes 50 in tick 39.
     let far_entity = game.world.resource::<EntityIndex>().get(far).unwrap();
     game.world
         .entity_mut(far_entity)
         .insert(Body::new(Num::ONE).unwrap());
-    game.run_until(37);
+    game.run_until(39);
     game.cast(caster, CastTarget::Unit(far));
     assert_eq!(game.health(far), 450);
 }
@@ -611,7 +656,8 @@ fn a_cast_draws_from_its_casters_player_pool() {
             player: LIMITS.per_call,
             ..LIMITS
         };
-        let mut game = Match::with(limits, &[Capability::Combat, Capability::Abilities]);
+        let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
+        let mut game = Match::with(limits, &declared);
         let data = AbilityData {
             params: BTreeMap::new(),
             ..lash_out()
@@ -625,9 +671,9 @@ fn a_cast_draws_from_its_casters_player_pool() {
             (
                 Owner::new(PlayerSlot::new(1)),
                 AbilitySlots::new([(strike, 1)]),
-                ResourcePool::new(num(100)).unwrap(),
             ),
         );
+        game.give_pools(striker, 100, 20);
         let enemy = game.spawn(1, at(num(1), Num::ZERO, Num::ZERO), ());
         let casts = [
             (spinner, CastTarget::None),
@@ -666,7 +712,10 @@ fn an_ability_loads_only_when_its_data_holds() {
         Abilities::load(&mut game.world, 0, "lash_out", data, Some(script), 5)
     };
     let mut uneven = lash_out();
-    uneven.cost = Some(Ranked::PerRank(vec![int(35), int(40)]));
+    uneven.cost = BTreeMap::from([(
+        DeclaredName::new("mana").unwrap(),
+        Ranked::PerRank(vec![int(35), int(40)]),
+    )]);
     let mut aimed = lash_out();
     aimed.targeting = Targeting::Direction;
     let mut forever = lash_out();
@@ -674,7 +723,9 @@ fn an_ability_loads_only_when_its_data_holds() {
     let mut scaled = lash_out();
     scaled.cooldown_ms = Some(Ranked::One(param("damage")));
     let mut negative = lash_out();
-    negative.cost = Some(Ranked::One(int(-1)));
+    negative.cost = cost("mana", int(-1));
+    let mut poolless = lash_out();
+    poolless.cost = cost("focus", int(1));
     let mut unknown = lash_out();
     unknown.range = Some(Ranked::One(RangeField::Param(ParamRef {
         param: "reach".to_owned(),
@@ -686,9 +737,14 @@ fn an_ability_loads_only_when_its_data_holds() {
     for (data, field) in [
         (scaled, AbilityField::Cooldown),
         (negative, AbilityField::Cost),
+        (poolless, AbilityField::Cost),
         (unknown, AbilityField::Range),
     ] {
-        assert_eq!(data.fields_at(1).err(), Some(field), "{field:?}");
+        let pool = |name: &DeclaredName| {
+            let at = POOLS.iter().position(|pool| *pool == name.as_str())?;
+            PoolId::new(u8::try_from(at).unwrap())
+        };
+        assert_eq!(data.fields_at(1, pool).err(), Some(field), "{field:?}");
     }
     // What only a match's rate decides: i64::MAX ms counts in no tick.
     assert!(matches!(
@@ -713,10 +769,13 @@ fn an_ability_loads_only_when_its_data_holds() {
 #[test]
 fn a_capability_field_reads_its_param_at_each_rank() {
     // A cooldown of `{ param = "cd" }`, 1000 ms at rank 1 up to 3000 at rank 3: 30, 60 and 90
-    // ticks at 30 a second, and a cost of `{ param = "price" }`, 7 at every rank.
+    // ticks at 30 a second, and a cost of `{ param = "price" }` mana, 7 at every rank.
     let mut data = strike();
     data.cooldown_ms = Some(Ranked::One(param("cd")));
-    data.cost = Some(Ranked::PerRank(vec![int(5), param("price"), int(9)]));
+    data.cost = BTreeMap::from([(
+        DeclaredName::new("mana").unwrap(),
+        Ranked::PerRank(vec![int(5), param("price"), int(9)]),
+    )]);
     let per_rank = |values: &[i64]| {
         Param::Ranked(Ranked::PerRank(
             values.iter().map(|&value| Scalar::Int(value)).collect(),
@@ -737,7 +796,7 @@ fn a_capability_field_reads_its_param_at_each_rank() {
         .unwrap()
         .ranks
         .iter()
-        .map(|values| (values.cooldown.get(), values.cost))
+        .map(|values| (values.cooldown.get(), values.cost.get(MANA).round()))
         .collect();
     assert_eq!(ranks, [(30, 5), (60, 7), (90, 9)]);
     // Three ranks of an array of 3 is the rank count; five is not.
@@ -773,7 +832,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
     let mut game = Match::with(LIMITS, &declared);
     let stats = StatBook::new(&BTreeMap::new(), [], RATE, num(6)).unwrap();
-    Stats::load(&mut game.world, stats);
+    Stats::load(&mut game.world, stats, PoolBook::default());
     // A guard whose shield is Lash Out's damage at its rank: 75, then 100.
     let guard = ModifierData {
         script: None,
@@ -837,7 +896,7 @@ fn a_cast_applies_a_modifier_from_its_caster_with_its_abilitys_params() {
     let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
     let mut game = Match::with(LIMITS, &declared);
     let stats = StatBook::new(&BTreeMap::new(), [], RATE, num(6)).unwrap();
-    Stats::load(&mut game.world, stats);
+    Stats::load(&mut game.world, stats, PoolBook::default());
     let mark = ModifierData {
         script: None,
         duration_ms: Some(int(1000)),
@@ -887,7 +946,7 @@ fn stun_run() -> Vec<(StateHash, bool)> {
     let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
     let mut game = Match::with(LIMITS, &declared);
     let stats = StatBook::new(&BTreeMap::new(), [], RATE, num(6)).unwrap();
-    Stats::load(&mut game.world, stats);
+    Stats::load(&mut game.world, stats, PoolBook::default());
     let stun = ModifierData {
         script: None,
         tags: vec!["stunned".to_owned()],
@@ -946,25 +1005,22 @@ fn a_cast_heals_and_restores_and_a_negative_amount_fails_it() {
     let mender = "
 fn on_resolve(ctx, caster, target) {
     ctx.heal(caster, 30);
-    ctx.restore(caster, num(20));
+    ctx.restore(caster, \"mana\", num(20));
 }
 ";
     let ability = game.load(&lash_out(), mender);
     let caster = game.caster(ability, 1);
     let entity = game.world.resource::<EntityIndex>().get(caster).unwrap();
-    game.world.get_mut::<Health>(entity).unwrap().take(num(460));
-    game.world
-        .get_mut::<ResourcePool>(entity)
-        .unwrap()
-        .spend(num(50));
-    // From 40 health and 50 resource: 30 healed and 20 restored as the effects apply, then the
+    let mut pools = game.world.get_mut::<Pools>(entity).unwrap();
+    pools.take(PoolId::FIRST, num(460));
+    pools.take(MANA, num(50));
+    // From 40 health and 50 mana: 30 healed and 20 restored as the effects apply, then the
     // cost of 35: 70 and 35.
     game.cast(caster, CastTarget::None);
     assert_eq!((game.health(caster), game.pool(caster)), (70, 35));
 
     let mut game = Match::new();
-    let negative =
-        "fn on_resolve(ctx, caster, target) { ctx.restore(caster, 5); ctx.heal(caster, -1); }";
+    let negative = "fn on_resolve(ctx, caster, target) { ctx.restore(caster, \"mana\", 5); ctx.heal(caster, -1); }";
     let ability = game.load(&lash_out(), negative);
     let caster = game.caster(ability, 1);
     game.cast(caster, CastTarget::None);
@@ -1012,7 +1068,7 @@ impl Match {
         let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
         let mut game = Match::with(LIMITS, &declared);
         let stats = StatBook::new(&BTreeMap::new(), [], RATE, num(6)).unwrap();
-        Stats::load(&mut game.world, stats);
+        Stats::load(&mut game.world, stats, PoolBook::default());
         let script = Units::compile(&mut game.world, source).unwrap();
         let mut sorted = modifiers.to_vec();
         sorted.sort_by(|a, b| a.0.cmp(b.0));

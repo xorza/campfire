@@ -45,8 +45,9 @@ impl Scene {
             limits,
             players: 1,
             damage_kinds: Rc::from([]),
+            pools: Rc::from([]),
         };
-        let declared = [Capability::Combat, Capability::Vision];
+        let declared = [Capability::Stats, Capability::Combat, Capability::Vision];
         let TestMatch {
             mut world,
             schedule,

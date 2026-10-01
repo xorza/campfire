@@ -62,6 +62,7 @@ impl ModeApi {
                     "modifiers",
                     "attack_kind",
                     "stats",
+                    "pools",
                     "resources",
                     "tags",
                 ],

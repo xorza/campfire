@@ -30,6 +30,7 @@ fn client() -> SimClient {
             bounds: Bounds::WORLD,
             pathing: None,
             walkers: Vec::new(),
+            life: None,
         },
         clock: || NOW,
         entropy: |bytes| bytes.fill(6),

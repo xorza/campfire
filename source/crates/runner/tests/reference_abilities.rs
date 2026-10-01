@@ -11,8 +11,8 @@ use bevy_ecs::world::World;
 
 use campfire_capabilities::{
     Abilities, AbilitySlots, Action, AttackStats, CapabilitySet, CastTarget, Combatant,
-    DeclaredName, Health, MatchScripts, Number, OnDeath, Order, Owner, Param, Range, RangeField,
-    Ranked, ResourcePool, Scalar, Scaling, ScriptLimits, Stat, Stats, Targeting, Team, Units,
+    DeclaredName, MatchScripts, Number, OnDeath, Order, Owner, Param, PoolId, Pools, Range,
+    RangeField, Ranked, Scalar, Scaling, ScriptLimits, Stat, Stats, Targeting, Team, Units,
 };
 use campfire_capabilities::{Modifiers, ScriptFailures, internals};
 use campfire_content::PackagePath;
@@ -46,18 +46,39 @@ fn num(value: i64) -> Num {
     Num::from_int(value).unwrap()
 }
 
-/// A unit of 500 health on `team` at `x` meters along x, with `parts`.
-fn spawn(world: &mut World, team: u8, x: i64, parts: impl Bundle) -> StableId {
+/// The pools of the match, by name in order: the life pool first, as it is until a mode binds
+/// one.
+const POOLS: [&str; 3] = ["health", "mana", "energy"];
+const MANA: PoolId = PoolId::new(1).unwrap();
+const ENERGY: PoolId = PoolId::new(2).unwrap();
+
+/// A unit of 500 health on `team` at `x` meters along x, with `parts`, and with `mana` and
+/// `energy` pools of those maxima, when not 0.
+fn spawn_with(
+    world: &mut World,
+    team: u8,
+    x: i64,
+    (mana, energy): (i64, i64),
+    parts: impl Bundle,
+) -> StableId {
     let id = world.resource_mut::<IdAllocator>().allocate();
+    let pools = [(PoolId::FIRST, 500), (MANA, mana), (ENERGY, energy)]
+        .into_iter()
+        .filter(|&(_, max)| max > 0)
+        .map(|(pool, max)| (pool, num(max)));
     let combatant = Combatant {
-        health: Health::new(num(500)).unwrap(),
         attack: Some(AttackStats::new(Num::ZERO, Ticks::ZERO, Ticks::ONE, Num::ZERO).unwrap()),
         on_death: OnDeath::Stay,
     };
     let at = Position::new(Vec3::new(num(x), Num::ZERO, Num::ZERO)).unwrap();
-    let mut unit = world.spawn((id, at, Team::new(team), parts));
+    let mut unit = world.spawn((id, at, Team::new(team), Pools::new(pools).unwrap(), parts));
     combatant.insert(&mut unit);
     id
+}
+
+/// A unit of 500 health and no other pool, as `spawn_with` gives.
+fn spawn(world: &mut World, team: u8, x: i64, parts: impl Bundle) -> StableId {
+    spawn_with(world, team, x, (0, 0), parts)
 }
 
 #[test]
@@ -83,7 +104,11 @@ fn every_reference_ability_reads_into_the_schema() {
     let int = |value| Number::Value(Scalar::Int(value));
     let cooldowns = [10_000, 9000, 8000, 7000, 6000].map(int).to_vec();
     assert_eq!(lash_out.cooldown_ms, Some(Ranked::PerRank(cooldowns)));
-    assert_eq!(lash_out.cost, Some(Ranked::One(int(35))));
+    let mana = DeclaredName::new("mana").unwrap();
+    assert_eq!(
+        lash_out.cost,
+        BTreeMap::from([(mana, Ranked::One(int(35)))])
+    );
     // "3.5" is 7 halves; "0.5" one half.
     let half = Num::from_bits(1 << 23);
     assert_eq!(
@@ -145,6 +170,7 @@ fn reference_world() -> World {
         limits,
         players: 1,
         damage_kinds: Rc::from(kinds),
+        pools: POOLS.map(|pool| DeclaredName::new(pool).unwrap()).into(),
     };
     let declared = [
         Capability::Stats,
@@ -187,14 +213,14 @@ fn lash_out_from_its_package_hits_exactly() {
     let script = compile(&mut world, "husk", data.script.as_ref().unwrap());
     let lash_out = Abilities::load(&mut world, 0, "lash_out", data, Some(script), 5).unwrap();
 
-    let caster = spawn(
+    let caster = spawn_with(
         &mut world,
         0,
         0,
+        (100, 0),
         (
             Owner::new(PlayerSlot::new(0)),
             AbilitySlots::new([(lash_out, 3)]),
-            ResourcePool::new(num(100)).unwrap(),
         ),
     );
     let near = spawn(&mut world, 1, 3, ());
@@ -212,17 +238,17 @@ fn lash_out_from_its_package_hits_exactly() {
     );
 
     // Rank 3 deals 125 within 3.5 m: 500 → 375 at 3 m, and nothing at 4 m.
-    let health = |world: &World, id: StableId| {
-        let entity = world.resource::<EntityIndex>().get(id).unwrap();
-        world.get::<Health>(entity).unwrap().current().round()
-    };
     assert_eq!(health(&world, near), 375);
     assert_eq!(health(&world, far), 500);
 }
 
 fn health(world: &World, id: StableId) -> i64 {
+    pool(world, id, PoolId::FIRST).round()
+}
+
+fn pool(world: &World, id: StableId, pool: PoolId) -> Num {
     let entity = world.resource::<EntityIndex>().get(id).unwrap();
-    world.get::<Health>(entity).unwrap().current().round()
+    world.get::<Pools>(entity).unwrap().current(pool).unwrap()
 }
 
 /// Gives `unit` an attack of `damage` within 2 m, its windup of no ticks, every `period` ticks.
@@ -276,8 +302,12 @@ fn veils_dusk_mark_detonates_once_on_veils_next_damage() {
     let data = &veil.abilities["dusk_mark"];
     let ability = Abilities::load(&mut world, 0, "dusk_mark", data, Some(script), 5).unwrap();
     let player = Owner::new(PlayerSlot::new(0));
-    let pool = internals::spent_pool(num(200), num(100));
-    let veil_unit = spawn(&mut world, 0, 0, (player, pool));
+    let veil_unit = spawn_with(&mut world, 0, 0, (0, 200), player);
+    let entity = world.resource::<EntityIndex>().get(veil_unit).unwrap();
+    let pools = *world.get::<Pools>(entity).unwrap();
+    world
+        .entity_mut(entity)
+        .insert(internals::spent(pools, ENERGY, num(100)));
     let other = spawn(&mut world, 0, 0, player);
     let marked = spawn(&mut world, 1, 1, Modifiers::default());
     let dusk_mark = Stats::modifier(&world, 0, "dusk_mark").unwrap();
@@ -296,10 +326,6 @@ fn veils_dusk_mark_detonates_once_on_veils_next_damage() {
     // to 125. The detonation is Dusk Mark's own damage, and the mark is gone: it detonates once.
     tick(&mut world, &[attack(veil_unit, marked)]);
     assert_eq!((health(&world, marked), marks(&world)), (370, false));
-    let entity = world.resource::<EntityIndex>().get(veil_unit).unwrap();
-    assert_eq!(
-        world.get::<ResourcePool>(entity).unwrap().current(),
-        num(125)
-    );
+    assert_eq!(pool(&world, veil_unit, ENERGY), num(125));
     assert!(world.non_send::<ScriptFailures>().get().is_empty());
 }

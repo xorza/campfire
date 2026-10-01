@@ -109,6 +109,7 @@ const fn bit(capability: Capability) -> u16 {
 /// The capabilities `capability` builds on.
 const fn needs(capability: Capability) -> &'static [Capability] {
     match capability {
+        Capability::Combat => &[Capability::Stats],
         Capability::Projectiles | Capability::Abilities | Capability::Vision => {
             &[Capability::Combat]
         }
@@ -181,19 +182,26 @@ mod tests {
     use crate::units::by_type::ByType;
     use crate::units::script_view::View;
 
-    use Capability::{Abilities, Combat, Mode, Navigation, Orders, Projectiles, Vision};
+    use Capability::{Abilities, Combat, Mode, Navigation, Orders, Projectiles, Stats, Vision};
 
     #[test]
     fn a_set_holds_each_capability_once_with_what_it_builds_on() {
-        let set = CapabilitySet::new(&[Orders, Navigation, Combat, Vision]).unwrap();
+        let set = CapabilitySet::new(&[Orders, Navigation, Stats, Combat, Vision]).unwrap();
         assert_eq!(
             set.iter().collect::<Vec<_>>(),
-            [Combat, Orders, Navigation, Vision]
+            [Combat, Stats, Orders, Navigation, Vision]
         );
         assert!(set.contains(Orders) && !set.contains(Abilities));
         assert_eq!(CapabilitySet::new(&[]).unwrap().iter().count(), 0);
         for (declared, error) in [
             (&[Combat, Mode][..], CapabilityError::DeclaresMode),
+            (
+                &[Combat],
+                CapabilityError::Needs {
+                    capability: Combat,
+                    needs: Stats,
+                },
+            ),
             (&[Combat, Vision, Combat], CapabilityError::Repeated(Combat)),
             (
                 &[Projectiles],
@@ -210,7 +218,7 @@ mod tests {
                 },
             ),
             (
-                &[Combat, Orders],
+                &[Stats, Combat, Orders],
                 CapabilityError::Needs {
                     capability: Orders,
                     needs: Navigation,
@@ -236,7 +244,7 @@ mod tests {
 
     #[test]
     fn a_match_without_scripts_installs_no_host_abilities_or_ai() {
-        let all = [Combat, Navigation, Projectiles, Abilities, Orders];
+        let all = [Stats, Combat, Navigation, Projectiles, Abilities, Orders];
         let scripts = MatchScripts {
             limits: ScriptLimits {
                 per_call: 1,
@@ -246,6 +254,7 @@ mod tests {
             },
             players: 1,
             damage_kinds: Rc::from([]),
+            pools: Rc::from([]),
         };
         let scripted = installed(&all, Some(scripts.clone()));
         let client = installed(&all, None);
@@ -255,7 +264,7 @@ mod tests {
             assert_eq!(world.contains_resource::<ByType<Ai>>(), scripts);
             assert!(world.get_non_send::<View>().is_some());
         }
-        let combat_only = installed(&[Combat], Some(scripts));
+        let combat_only = installed(&[Stats, Combat], Some(scripts));
         assert!(!combat_only.contains_resource::<AbilityBook>());
     }
 }

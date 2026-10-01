@@ -9,10 +9,10 @@ use crate::combat::CombatSet;
 use crate::combat::attack_kind::AttackKind;
 use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::damage_queue::DamageQueue;
-use crate::combat::health::Health;
 use crate::combat::launches::Launches;
 use crate::combat::targets::Targets;
 use crate::projectiles::projectile::Projectile;
+use crate::stats::pools::Pools;
 
 pub(crate) mod projectile;
 
@@ -43,7 +43,7 @@ fn fly(
     targets: Targets<'_, '_>,
     kind: Res<'_, AttackKind>,
     mut queue: ResMut<'_, DamageQueue>,
-    mut projectiles: Query<'_, '_, (Entity, &mut Position, &Projectile), Without<Health>>,
+    mut projectiles: Query<'_, '_, (Entity, &mut Position, &Projectile), Without<Pools>>,
 ) {
     for (entity, mut position, &projectile) in &mut projectiles {
         let Some(target) = targets.living(projectile.target()) else {

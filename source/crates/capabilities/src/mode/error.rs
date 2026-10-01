@@ -1,18 +1,20 @@
 use std::error::Error;
 use std::fmt;
 
-use crate::stats::stat::EngineStat;
+use crate::stats::stat::Stat;
 
 /// Why a unit type's values do not make a unit. Packages are untrusted, so each is an expected
 /// failure.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UnitKitError {
-    /// A stat its sections need is not declared.
-    MissingStat(EngineStat),
+    /// A stat its sections or its pools need is not declared.
+    MissingStat(Stat),
     /// A stat overflows at level 1.
-    Overflow(EngineStat),
-    NotPositive(EngineStat),
-    Negative(EngineStat),
+    Overflow(Stat),
+    NotPositive(Stat),
+    Negative(Stat),
+    /// It has a `combat` section but not the life pool.
+    NoLifePool,
     /// The windup is too long to count in ticks.
     TimeTooLarge,
     /// The attack's range is beyond a `Num`.
@@ -55,10 +57,11 @@ pub enum ModeError {
 impl fmt::Display for UnitKitError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            UnitKitError::MissingStat(stat) => write!(f, "stat {stat:?} is not declared"),
-            UnitKitError::Overflow(stat) => write!(f, "stat {stat:?} overflows"),
-            UnitKitError::NotPositive(stat) => write!(f, "stat {stat:?} is not positive"),
-            UnitKitError::Negative(stat) => write!(f, "stat {stat:?} is negative"),
+            UnitKitError::MissingStat(stat) => write!(f, "stat {stat} is not declared"),
+            UnitKitError::Overflow(stat) => write!(f, "stat {stat} overflows"),
+            UnitKitError::NotPositive(stat) => write!(f, "stat {stat} is not positive"),
+            UnitKitError::Negative(stat) => write!(f, "stat {stat} is negative"),
+            UnitKitError::NoLifePool => f.write_str("a unit type with combat lacks the life pool"),
             UnitKitError::TimeTooLarge => f.write_str("windup too long to count in ticks"),
             UnitKitError::Range => f.write_str("attack range beyond a Num"),
             UnitKitError::Attack => f.write_str(

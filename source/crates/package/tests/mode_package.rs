@@ -125,7 +125,7 @@ fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 71] = [
+const FLAWS: [Flaw; 81] = [
     flaw(
         MANIFEST,
         Edit::Replace(r#"engine = "0.1.0""#, r#"engine = "0.0.9""#),
@@ -428,7 +428,7 @@ const FLAWS: [Flaw; 71] = [
     ),
     flaw(
         HUSK,
-        Edit::Replace("cost = 35", "cost = -35"),
+        Edit::Replace("cost = { mana = 35 }", "cost = { mana = -35 }"),
         "hero-husk",
         |problem| {
             matches!(
@@ -529,18 +529,86 @@ const FLAWS: [Flaw; 71] = [
         "hero-veil",
         |problem| matches!(problem, LoadProblem::UnknownStat { at: Place::Modifier(id), name } if id == "dual_path" && name == "attack_dmg"),
     ),
+    // Pools: each a unit lists, a cost names or a script reads is declared, and the life pool is
+    // among a combatant's; no pool shares a name with a player resource, and no more than eight.
     flaw(
         HUSK,
-        Edit::Replace(r#"resource = "mana""#, r#"resource = "rage""#),
+        Edit::Replace(
+            r#"pools = ["health", "mana"]"#,
+            r#"pools = ["health", "rage"]"#,
+        ),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::UnknownResource { name, .. } if name.as_str() == "rage"),
+        |problem| matches!(problem, LoadProblem::UnknownPool { at: Place::Avatar(_), name } if name == "rage"),
+    ),
+    flaw(
+        HUSK,
+        Edit::Replace(
+            r#"pools = ["health", "mana"]"#,
+            r#"pools = ["health", "mana", "mana"]"#,
+        ),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::RepeatedPool { name, .. } if name.as_str() == "mana"),
+    ),
+    flaw(
+        HUSK,
+        Edit::Replace(r#"pools = ["health", "mana"]"#, r#"pools = ["mana"]"#),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::LifePoolMissing(Place::Avatar(_))),
+    ),
+    flaw(
+        UNITS,
+        Edit::Replace("pools = [\"health\"]\n", ""),
+        MODE,
+        |problem| matches!(problem, LoadProblem::LifePoolMissing(Place::UnitType(name)) if name == "melee_creep"),
+    ),
+    flaw(
+        HUSK,
+        Edit::Replace("cost = { mana = 35 }", "cost = { rage = 35 }"),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::UnknownPool { at: Place::Ability(id), name } if id == "lash_out" && name == "rage"),
+    ),
+    flaw(
+        "heroes/veil/scripts/dusk_mark.rhai",
+        Edit::Replace(r#""energy""#, r#""rage""#),
+        "hero-veil",
+        |problem| matches!(problem, LoadProblem::UnknownPool { at: Place::Script(_), name } if name == "rage"),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace("life = \"health\"\n", ""),
+        MODE,
+        |problem| matches!(problem, LoadProblem::NoLifePool),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace(r#"life = "health""#, r#"life = "hp""#),
+        MODE,
+        |problem| matches!(problem, LoadProblem::UnknownPool { at: Place::Combat, name } if name == "hp"),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace("[pools.mana]\nmax = \"mana\"", "[pools.mana]\nmax = \"mp\""),
+        MODE,
+        |problem| matches!(problem, LoadProblem::UnknownStat { at: Place::Pool(pool), name } if pool.as_str() == "mana" && name == "mp"),
     ),
     flaw(
         MODE_DATA,
         Edit::Replace(
-            r#"resources = ["mana", "energy"]"#,
-            r#"resources = ["mana", "mana"]"#,
+            "[pools.energy]",
+            "[pools.p1]\nmax = \"mana\"\n[pools.p2]\nmax = \"mana\"\n[pools.p3]\nmax = \"mana\"\n[pools.p4]\nmax = \"mana\"\n[pools.p5]\nmax = \"mana\"\n[pools.p6]\nmax = \"mana\"\n[pools.energy]",
         ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::TooManyPools),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace(r#"resources = ["gold"]"#, r#"resources = ["gold", "gold"]"#),
+        MODE,
+        |problem| matches!(problem, LoadProblem::RepeatedName(name) if name.as_str() == "gold"),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace(r#"resources = ["gold"]"#, r#"resources = ["gold", "mana"]"#),
         MODE,
         |problem| matches!(problem, LoadProblem::RepeatedName(name) if name.as_str() == "mana"),
     ),

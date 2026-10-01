@@ -1,6 +1,6 @@
 name = "Veil"
 role = "assassin"
-resource = "energy"
+pools = ["health", "energy"]
 passive = "dual_path"
 slots = ["dusk_mark", "smoke_ring", "whirling_blades", "night_step"]
 
@@ -17,8 +17,8 @@ sight_range = "12.0"
 [stats]
 health = { base = 445, per_level = 85 }
 health_regen = { base = "1.4", per_level = "0.1" }
-resource = { base = 200 }
-resource_regen = { base = 10 }
+energy = { base = 200 }
+energy_regen = { base = 10 }
 attack_damage = { base = 53, per_level = "3.2" }
 attack_speed = { base = "0.694", per_level = "0.021" }
 armor = { base = "16.5", per_level = "3.5" }
@@ -38,7 +38,7 @@ script = "scripts/dusk_mark.rhai"
 targeting = "enemies"
 range = "6.0"
 cooldown_ms = [6000, 5500, 5000, 4500, 4000]
-cost = 60
+cost = { energy = 60 }
 projectile = { speed = "10" }
 
 [abilities.dusk_mark.params]
@@ -54,7 +54,7 @@ duration_ms = 6000
 script = "scripts/smoke_ring.rhai"
 targeting = "none"
 cooldown_ms = 20000
-cost = [80, 75, 70, 65, 60]
+cost = { energy = [80, 75, 70, 65, 60] }
 area = { radius = "3.0", duration_ms = 8000, inside = { self = "smoke_ring_cover", enemies = "smoke_ring_slow" } }
 
 [abilities.smoke_ring.params]
@@ -73,7 +73,7 @@ tags = ["slowed"]
 script = "scripts/whirling_blades.rhai"
 targeting = "none"
 cooldown_ms = [7000, 6000, 5000, 4000, 3000]
-cost = [60, 55, 50, 45, 40]
+cost = { energy = [60, 55, 50, 45, 40] }
 
 [abilities.whirling_blades.params]
 radius = "3.25"

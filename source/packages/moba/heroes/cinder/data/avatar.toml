@@ -1,6 +1,6 @@
 name = "Cinder"
 role = "mage"
-resource = "mana"
+pools = ["health", "mana"]
 slots = ["fire_lance", "eruption", "wildfire", "chain_fire"]
 
 [combat.attack]
@@ -17,8 +17,8 @@ sight_range = "12.0"
 [stats]
 health = { base = 380, per_level = 76 }
 health_regen = { base = "1.1", per_level = "0.11" }
-resource = { base = 250, per_level = 45 }
-resource_regen = { base = "1.5", per_level = "0.12" }
+mana = { base = 250, per_level = 45 }
+mana_regen = { base = "1.5", per_level = "0.12" }
 attack_damage = { base = 51, per_level = 3 }
 attack_speed = { base = "0.625", per_level = "0.0136" }
 armor = { base = 12, per_level = "3.5" }
@@ -38,7 +38,7 @@ script = "scripts/fire_lance.rhai"
 targeting = "direction"
 range = "10.5"
 cooldown_ms = [10000, 9000, 8000, 7000, 6000]
-cost = 50
+cost = { mana = 50 }
 cast_time_ms = 250
 projectile = { speed = "16", width = "1.2", stop_on_hit = true }
 
@@ -51,7 +51,7 @@ script = "scripts/eruption.rhai"
 targeting = "point"
 range = "9.0"
 cooldown_ms = 10000
-cost = [70, 75, 80, 85, 90]
+cost = { mana = [70, 75, 80, 85, 90] }
 cast_time_ms = 250
 area = { radius = "2.4", delay_ms = 625, affects = "enemies" }
 
@@ -64,7 +64,7 @@ script = "scripts/wildfire.rhai"
 targeting = "enemies"
 range = "6.25"
 cooldown_ms = [12000, 11000, 10000, 9000, 8000]
-cost = [70, 75, 80, 85, 90]
+cost = { mana = [70, 75, 80, 85, 90] }
 
 [abilities.wildfire.params]
 damage = { base = [70, 105, 140, 175, 210], ability_power = "0.55" }
@@ -76,7 +76,7 @@ script = "scripts/chain_fire.rhai"
 targeting = "enemies"
 range = "7.5"
 cooldown_ms = [105000, 90000, 75000]
-cost = [100, 150, 200]
+cost = { mana = [100, 150, 200] }
 projectile = { speed = "10" }
 
 [abilities.chain_fire.params]

@@ -1,8 +1,9 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::iter;
 
 use campfire_capabilities::{
-    AbilityData, ApiOwner, FilterData, Hook, MemberKind, Mode, ModifierData, Navigation, Number,
-    Param, Scalar, ScriptApi, ScriptRole, Stat, UnitTypeData,
+    AbilityData, ApiOwner, DeclaredName, FilterData, Hook, MemberKind, Mode, ModifierData,
+    Navigation, Number, Param, PoolId, Pools, Scalar, ScriptApi, ScriptRole, Stat, UnitTypeData,
 };
 use campfire_content::PackagePath;
 use campfire_math::Num;
@@ -128,7 +129,8 @@ impl<'a> LoadCheck<'a> {
             }
         }
         self.damage_kinds()?;
-        if data.combat.stats().next().is_some() {
+        self.pools()?;
+        if data.combat.stats().next().is_some() || data.combat.life.is_some() {
             self.require(Capability::Combat, &Place::Combat)?;
             self.stats_declared(data.combat.stats(), &Place::Combat)?;
         }
@@ -148,6 +150,7 @@ impl<'a> LoadCheck<'a> {
             if let Some(stats) = &unit_type.stats {
                 self.stats_declared(stats.0.keys(), &at)?;
             }
+            self.unit_pools(&unit_type.pools, unit_type.combat.is_some(), &at)?;
             let attack = unit_type.combat.as_ref().and_then(|combat| combat.attack);
             self.attack_projectile(attack.and_then(|attack| attack.projectile_speed), &at)?;
         }
@@ -214,12 +217,7 @@ impl<'a> LoadCheck<'a> {
                     self.require(Capability::Vision, &at)?;
                 }
                 self.stats_declared(avatar.stats.0.keys(), &at)?;
-                if !self.packages.data.resources.contains(&avatar.resource) {
-                    return Err(LoadProblem::UnknownResource {
-                        at,
-                        name: avatar.resource.clone(),
-                    });
-                }
+                self.unit_pools(&avatar.pools, true, &at)?;
                 let attack = avatar
                     .combat
                     .attack
@@ -236,7 +234,7 @@ impl<'a> LoadCheck<'a> {
                 for (id, ability) in &avatar.abilities {
                     let slot = avatar.slots.iter().position(|slot| slot == id);
                     let slot = slot.ok_or_else(|| LoadProblem::Unslotted(id.clone()))?;
-                    ranked(id, ability, AvatarData::slot_ranks(slot))?;
+                    self.ranked(id, ability, AvatarData::slot_ranks(slot))?;
                 }
                 if let Some(passive) = &avatar.passive {
                     modifier_exists(&avatar.modifiers, passive, &at)?;
@@ -245,7 +243,7 @@ impl<'a> LoadCheck<'a> {
             }
             Content::Loadout(loadout) => {
                 for (id, ability) in &loadout.abilities {
-                    ranked(id, ability, LoadoutData::RANKS)?;
+                    self.ranked(id, ability, LoadoutData::RANKS)?;
                 }
                 (&loadout.abilities, &loadout.modifiers)
             }
@@ -419,7 +417,7 @@ impl<'a> LoadCheck<'a> {
             for filter in &facts.filters {
                 self.filter_text(filter, &at)?;
             }
-            self.script_vocabulary(&facts.stats, &facts.damage_kinds, at)?;
+            self.script_vocabulary(facts, at)?;
         }
         Ok(())
     }
@@ -444,15 +442,10 @@ impl<'a> LoadCheck<'a> {
             }
     }
 
-    /// Every stat and damage kind a script at `at` names is one the engine reads or the mode
-    /// declares.
-    fn script_vocabulary(
-        &self,
-        stats: &[String],
-        kinds: &[String],
-        at: Place,
-    ) -> Result<(), LoadProblem> {
-        for name in stats {
+    /// Every stat, pool and damage kind a script at `at` with `facts` names is one the engine
+    /// reads or the mode declares.
+    fn script_vocabulary(&self, facts: &ScriptFacts, at: Place) -> Result<(), LoadProblem> {
+        for name in &facts.stats {
             let stat = Stat::named(name).ok_or_else(|| LoadProblem::UnknownStat {
                 at: at.clone(),
                 name: name.clone(),
@@ -460,13 +453,20 @@ impl<'a> LoadCheck<'a> {
             self.stats_declared([&stat], &at)?;
         }
         let data = &self.packages.data;
+        let pool = |name: &String| data.pools.keys().any(|pool| pool.as_str() == name);
+        if let Some(name) = facts.pools.iter().find(|name| !pool(name)) {
+            return Err(LoadProblem::UnknownPool {
+                at,
+                name: name.clone(),
+            });
+        }
         let declared = |kind: &String| {
             data.combat
                 .damage_kinds
                 .iter()
                 .any(|name| name.as_str() == kind)
         };
-        if let Some(kind) = kinds.iter().find(|kind| !declared(kind)) {
+        if let Some(kind) = facts.damage_kinds.iter().find(|kind| !declared(kind)) {
             return Err(LoadProblem::UnknownDamageKind {
                 at,
                 kind: kind.clone(),
@@ -505,6 +505,104 @@ impl<'a> LoadCheck<'a> {
         }
         if data.attack_kind.is_none() {
             return Err(LoadProblem::NoAttackKind);
+        }
+        Ok(())
+    }
+
+    /// The mode's pools: at most `Pools::LIMIT`, none named as a player resource, each with
+    /// stats the mode declares; and with `combat`, a life pool among them.
+    fn pools(&self) -> Result<(), LoadProblem> {
+        let data = &self.packages.data;
+        if data.pools.len() > Pools::LIMIT {
+            return Err(LoadProblem::TooManyPools);
+        }
+        if let Some(name) = data
+            .resources
+            .iter()
+            .find(|name| data.pools.contains_key(name))
+        {
+            return Err(LoadProblem::RepeatedName(name.clone()));
+        }
+        for (name, pool) in &data.pools {
+            let at = Place::Pool(name.clone());
+            self.require(Capability::Stats, &at)?;
+            self.stats_declared(iter::once(&pool.max).chain(&pool.regen), &at)?;
+        }
+        if let Some(life) = &data.combat.life
+            && !data.pools.contains_key(life)
+        {
+            return Err(LoadProblem::UnknownPool {
+                at: Place::Combat,
+                name: life.to_string(),
+            });
+        }
+        let combat = self
+            .packages
+            .manifest
+            .capabilities
+            .contains(Capability::Combat);
+        if combat && data.combat.life.is_none() {
+            return Err(LoadProblem::NoLifePool);
+        }
+        Ok(())
+    }
+
+    /// The pools a unit type at `at` lists: each declared, none twice, and the life pool among
+    /// them when it has `combat`.
+    fn unit_pools(
+        &self,
+        pools: &[DeclaredName],
+        combat: bool,
+        at: &Place,
+    ) -> Result<(), LoadProblem> {
+        let data = &self.packages.data;
+        if !pools.is_empty() {
+            self.require(Capability::Stats, at)?;
+        }
+        for (place, name) in pools.iter().enumerate() {
+            if !data.pools.contains_key(name) {
+                return Err(LoadProblem::UnknownPool {
+                    at: at.clone(),
+                    name: name.to_string(),
+                });
+            }
+            if pools[..place].contains(name) {
+                return Err(LoadProblem::RepeatedPool {
+                    at: at.clone(),
+                    name: name.clone(),
+                });
+            }
+        }
+        let life = data.combat.life.as_ref();
+        if combat && !life.is_some_and(|life| pools.contains(life)) {
+            return Err(LoadProblem::LifePoolMissing(at.clone()));
+        }
+        Ok(())
+    }
+
+    /// Every per-rank array of `ability` has `ranks` entries, each pool its cost names is one
+    /// the mode declares, and each capability field holds at every rank.
+    fn ranked(&self, id: &str, ability: &AbilityData, ranks: u8) -> Result<(), LoadProblem> {
+        let pools = &self.packages.data.pools;
+        if let Some(name) = ability.cost_pools().find(|name| !pools.contains_key(name)) {
+            return Err(LoadProblem::UnknownPool {
+                at: Place::Ability(id.to_owned()),
+                name: name.to_string(),
+            });
+        }
+        if !ability.check_ranks(usize::from(ranks)) {
+            return Err(LoadProblem::RankCount {
+                ability: id.to_owned(),
+                ranks,
+            });
+        }
+        for rank in 1..=ranks {
+            ability
+                .fields_at(rank, |name| PoolId::of(pools, name))
+                .map_err(|field| LoadProblem::AbilityField {
+                    ability: id.to_owned(),
+                    field,
+                })?;
         }
         Ok(())
     }
@@ -646,26 +744,6 @@ fn appliers<'a>(
         }
     }
     appliers
-}
-
-/// Every per-rank array of `ability` has `ranks` entries, and each capability field holds at
-/// every rank.
-fn ranked(id: &str, ability: &AbilityData, ranks: u8) -> Result<(), LoadProblem> {
-    if ability.check_ranks(usize::from(ranks)) {
-        for rank in 1..=ranks {
-            ability
-                .fields_at(rank)
-                .map_err(|field| LoadProblem::AbilityField {
-                    ability: id.to_owned(),
-                    field,
-                })?;
-        }
-        return Ok(());
-    }
-    Err(LoadProblem::RankCount {
-        ability: id.to_owned(),
-        ranks,
-    })
 }
 
 /// `id` is one of `modifiers`.

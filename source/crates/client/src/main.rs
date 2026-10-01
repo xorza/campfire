@@ -128,7 +128,7 @@ fn main() -> ExitCode {
                 })
                 .disable::<LogPlugin>(),
             View { tick },
-            Hud,
+            Hud { life: mode.life },
             Orders,
         ));
     }

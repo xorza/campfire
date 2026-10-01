@@ -11,8 +11,8 @@ use serde::Deserialize;
 pub struct AvatarData {
     pub name: String,
     pub role: String,
-    /// What its abilities cost: one of the mode's resources.
-    pub resource: DeclaredName,
+    /// Its pools, the mode's life pool among them.
+    pub pools: Vec<DeclaredName>,
     /// The modifier it always carries.
     pub passive: Option<String>,
     /// Its four abilities; the last is the ultimate.

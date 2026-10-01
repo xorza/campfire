@@ -19,7 +19,7 @@ use crate::abilities::ability_slots::AbilitySlots;
 use crate::combat::CombatSet;
 use crate::combat::assist_window::AssistWindow;
 use crate::combat::attack_kind::AttackKind;
-use crate::combat::bound_stats::BoundStats;
+use crate::combat::combat_bindings::CombatBindings;
 use crate::combat::damage_weigher::DamageWeigher;
 use crate::combat::deaths::Deaths;
 use crate::combat::respawn::Respawn;
@@ -45,6 +45,7 @@ use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::stats::Stats;
+use crate::stats::pool_book::PoolBook;
 use crate::stats::stat_book::StatBook;
 use crate::units::script_view::View;
 use crate::units::team::Team;
@@ -114,12 +115,14 @@ impl Mode {
             .map(|setup| (setup.unit_type, &setup.stats));
         let stats = StatBook::new(&setup.data.stats, types, rate, setup.max_move_speed)
             .ok_or(ModeError::StatValue)?;
-        let bound = BoundStats::new(&setup.data.combat, &stats);
+        let pools = &setup.data.pools;
+        let bindings = CombatBindings::new(&setup.data.combat, pools, &stats);
+        let pool_book = PoolBook::new(pools, &stats);
         let tags = view.types_mut().tag_book(&setup.data.tags);
         let book = ModeBook::new(setup, world.non_send::<ScriptHost>(), &view, &paths)?;
         view.set_stat_names(Rc::from(stats.stats()));
-        world.insert_resource(bound);
-        Stats::load(world, stats);
+        world.insert_resource(bindings);
+        Stats::load(world, stats, pool_book);
         Units::load_tags(world, tags);
         if let Some(grid) = grid {
             Vision::load_grid(world, grid, book.teams.count());

@@ -11,10 +11,12 @@ use crate::combat::ROLL_STREAM;
 use crate::combat::attack_state::AttackState;
 use crate::combat::attack_stats::AttackStats;
 use crate::combat::combatant::Combatant;
+use crate::combat::combatant::internals::Armed;
 use crate::combat::dead::Dead;
 use crate::combat::deaths::Deaths;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;
+use crate::stats::pool_id::PoolId;
 use crate::units::recent_attack::RecentAttack;
 use crate::units::team::Team;
 
@@ -36,21 +38,27 @@ fn half() -> Num {
 
 /// 30 damage within 8 m, fired 2 ticks after the start of an attack every 10 ticks, flying half
 /// a meter a tick.
-fn shooter() -> Combatant {
+fn shooter() -> Armed {
     let melee = AttackStats::new(num(8), Ticks::new(2), Ticks::new(10), num(30)).unwrap();
-    Combatant {
-        health: Health::new(num(100)).unwrap(),
+    let combatant = Combatant {
         attack: Some(melee.ranged(half()).unwrap()),
         on_death: OnDeath::Stay,
+    };
+    Armed {
+        combatant,
+        life: num(100),
     }
 }
 
 /// 100 health; never attacks; stays when it dies.
-fn target() -> Combatant {
-    Combatant {
-        health: Health::new(num(100)).unwrap(),
+fn target() -> Armed {
+    let combatant = Combatant {
         attack: Some(AttackStats::new(Num::ZERO, Ticks::new(0), Ticks::new(1), Num::ZERO).unwrap()),
         on_death: OnDeath::Stay,
+    };
+    Armed {
+        combatant,
+        life: num(100),
     }
 }
 
@@ -64,9 +72,13 @@ impl Volley {
     /// A match with combat, and with projectiles when `projectiles`.
     fn new(projectiles: bool) -> Volley {
         let declared: &[Capability] = if projectiles {
-            &[Capability::Combat, Capability::Projectiles]
+            &[
+                Capability::Stats,
+                Capability::Combat,
+                Capability::Projectiles,
+            ]
         } else {
-            &[Capability::Combat]
+            &[Capability::Stats, Capability::Combat]
         };
         let TestMatch {
             mut world,
@@ -77,7 +89,7 @@ impl Volley {
         Volley { world, registry }
     }
 
-    fn unit(&mut self, team: u8, at: Position, combatant: Combatant) -> StableId {
+    fn unit(&mut self, team: u8, at: Position, combatant: Armed) -> StableId {
         let id = self.world.resource_mut::<IdAllocator>().allocate();
         self.world
             .spawn((id, at, combatant.bundle(Team::new(team))));
@@ -100,7 +112,8 @@ impl Volley {
 
     fn health(&self, id: StableId) -> i64 {
         let entity = self.entity(id);
-        self.world.get::<Health>(entity).unwrap().current().round()
+        let pools = self.world.get::<Pools>(entity).unwrap();
+        pools.current(PoolId::FIRST).unwrap().round()
     }
 
     /// The roll each projectile carries, by stable id.
@@ -238,11 +251,8 @@ fn a_projectile_that_outlives_its_source_kills_with_no_killer() {
         let shooters = [0, 10].map(|x| volley.unit(0, at(x, 0), shooter()));
         let victim = volley.unit(1, at(5, 0), target());
         let victim_entity = volley.entity(victim);
-        volley
-            .world
-            .get_mut::<Health>(victim_entity)
-            .unwrap()
-            .take(num(40));
+        let mut pools = volley.world.get_mut::<Pools>(victim_entity).unwrap();
+        pools.take(PoolId::FIRST, num(40));
         for shooter in shooters {
             volley.attack(shooter, victim);
         }

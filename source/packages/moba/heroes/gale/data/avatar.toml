@@ -1,6 +1,6 @@
 name = "Gale"
 role = "support"
-resource = "mana"
+pools = ["health", "mana"]
 passive = "fair_wind"
 slots = ["cyclone", "gust", "wind_shield", "tempest"]
 
@@ -18,8 +18,8 @@ sight_range = "12.0"
 [stats]
 health = { base = 356, per_level = 78 }
 health_regen = { base = "0.9", per_level = "0.11" }
-resource = { base = 302, per_level = 64 }
-resource_regen = { base = "1.4", per_level = "0.13" }
+mana = { base = 302, per_level = 64 }
+mana_regen = { base = "1.4", per_level = "0.13" }
 attack_damage = { base = 49, per_level = "2.95" }
 attack_speed = { base = "0.625", per_level = "0.0261" }
 armor = { base = "9.3", per_level = "3.8" }
@@ -37,7 +37,7 @@ script = "scripts/cyclone.rhai"
 targeting = "direction"
 range = "17.0"
 cooldown_ms = [14000, 13000, 12000, 11000, 10000]
-cost = [90, 105, 120, 135, 150]
+cost = { mana = [90, 105, 120, 135, 150] }
 charge = { max_ms = 3000 }
 projectile = { speed = "9", width = "1.2", stop_on_hit = false }
 
@@ -56,7 +56,7 @@ script = "scripts/gust.rhai"
 targeting = "enemies"
 range = "6.0"
 cooldown_ms = 8000
-cost = [60, 70, 80, 90, 100]
+cost = { mana = [60, 70, 80, 90, 100] }
 passive_modifier = "gust_speed"
 passive_while_ready = true
 
@@ -74,7 +74,7 @@ script = "scripts/wind_shield.rhai"
 targeting = "allies"
 range = "8.0"
 cooldown_ms = 10000
-cost = [70, 80, 90, 100, 110]
+cost = { mana = [70, 80, 90, 100, 110] }
 
 [abilities.wind_shield.params]
 shield = { base = [80, 120, 160, 200, 240], ability_power = "0.9" }
@@ -89,7 +89,7 @@ stats = { attack_damage = { param = "power" } }
 script = "scripts/tempest.rhai"
 targeting = "none"
 cooldown_ms = [150000, 135000, 120000]
-cost = [100, 150, 200]
+cost = { mana = [100, 150, 200] }
 channel = { duration_ms = 3000, tick_ms = 500 }
 
 [abilities.tempest.params]

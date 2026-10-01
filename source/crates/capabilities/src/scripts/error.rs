@@ -59,8 +59,10 @@ pub enum ApiError {
     UnknownModifier,
     /// A negative count of a modifier's stacks.
     NegativeStacks,
-    /// A health field of a unit that has no health.
-    NoHealth,
+    /// A pool the unit does not have.
+    NoPool,
+    /// A pool the mode does not declare.
+    UnknownPool,
     /// An AI order for another unit than the one that thinks.
     OtherUnit,
     /// An attack order on a unit that is not a living enemy.
@@ -175,7 +177,8 @@ impl fmt::Display for ApiError {
             ApiError::NotAnAmount => "calc_damage returns no number",
             ApiError::UnknownModifier => "modifier the package does not declare",
             ApiError::NegativeStacks => "a modifier's stacks are not negative",
-            ApiError::NoHealth => "unit has no health",
+            ApiError::NoPool => "unit has no such pool",
+            ApiError::UnknownPool => "pool the mode does not declare",
             ApiError::OtherUnit => "an AI orders only the unit that thinks",
             ApiError::NotAnEnemy => "target is not a living enemy",
             ApiError::UnknownTeam => "team is not one of the mode's",

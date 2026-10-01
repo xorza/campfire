@@ -1,6 +1,6 @@
 name = "Rime"
 role = "marksman"
-resource = "mana"
+pools = ["health", "mana"]
 passive = "stillness"
 slots = ["chill_arrows", "fan_of_frost", "snow_owl", "glacier_arrow"]
 
@@ -18,8 +18,8 @@ sight_range = "12.0"
 [stats]
 health = { base = 395, per_level = 79 }
 health_regen = { base = "0.9", per_level = "0.11" }
-resource = { base = 173, per_level = 53 }
-resource_regen = { base = "1.3", per_level = "0.08" }
+mana = { base = 173, per_level = 53 }
+mana_regen = { base = "1.3", per_level = "0.08" }
 attack_damage = { base = 46, per_level = "2.85" }
 attack_speed = { base = "0.658", per_level = "0.021" }
 armor = { base = "11.5", per_level = "3.4" }
@@ -33,7 +33,7 @@ stats = { crit_chance = "0.03" }
 
 [abilities.chill_arrows]
 targeting = "none"
-toggle = { cost_per_attack = 8 }
+toggle = { cost_per_attack = { mana = 8 } }
 hold = "chill_arrows"
 
 [abilities.chill_arrows.params]
@@ -48,7 +48,7 @@ script = "scripts/fan_of_frost.rhai"
 targeting = "direction"
 range = "12.0"
 cooldown_ms = [16000, 13000, 10000, 7000, 4000]
-cost = 60
+cost = { mana = 60 }
 cast_time_ms = 250
 projectile = { speed = "15", width = "0.4", stop_on_hit = true, once_per_cast = true }
 
@@ -80,7 +80,7 @@ script = "scripts/glacier_arrow.rhai"
 targeting = "direction"
 range = "global"
 cooldown_ms = [100000, 90000, 80000]
-cost = 150
+cost = { mana = 150 }
 cast_time_ms = 250
 projectile = { speed = "16", width = "1.3", stop_on_hit = true, hits = "enemies:avatar" }
 

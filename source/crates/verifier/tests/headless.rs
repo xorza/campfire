@@ -7,7 +7,9 @@ use std::num::NonZeroU32;
 use std::path::Path;
 use std::process::Command;
 
-use campfire_capabilities::{Action, AttackState, Destination, Health, Order, Owner, Projectile};
+use campfire_capabilities::{
+    Action, AttackState, Destination, Order, Owner, PoolId, Pools, Projectile,
+};
 use campfire_log::LogEvent;
 use campfire_math::{Num, PlayerSlot, Vec3};
 use campfire_package::{ModePackages, PackageStore, RELEASE, StoreError};
@@ -21,6 +23,9 @@ use campfire_sim::{EntityIndex, Position, StableId, StateHash};
 use campfire_verifier::{Replay, Verified};
 
 /// Every package, the reference ones and the test ones: what the verifier holds.
+/// The lane mode's life pool, `health`, the first of its pools by name.
+const LIFE: PoolId = PoolId::FIRST;
+
 const PACKAGES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../packages");
 const LANE_MODE: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -266,14 +271,14 @@ impl Seen {
             let attack = world.entity(entity(id)).get::<AttackState>().unwrap();
             attack.target().map(StableId::get)
         });
-        let hero = world.entity(entity(2)).get::<Health>().unwrap();
+        let hero = world.entity(entity(2)).get::<Pools>().unwrap();
         let projectiles = index
             .iter()
             .filter(|&(_, entity)| world.entity(entity).contains::<Projectile>())
             .count();
         Seen {
             targets,
-            hero_health: hero.current().round(),
+            hero_health: hero.current(LIFE).unwrap().round(),
             projectiles,
         }
     }

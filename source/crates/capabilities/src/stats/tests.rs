@@ -13,6 +13,8 @@ use crate::scripts::match_scripts::MatchScripts;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::modifier_data::{AuraData, Reapply};
 use crate::stats::modifiers::{Application, Instance, StatShare};
+use crate::stats::pool_data::PoolData;
+use crate::stats::pool_id::PoolId;
 use crate::stats::stat::Stat;
 use crate::stats::stat_op::StatOp;
 use crate::stats::stat_rule::StatRule;
@@ -20,6 +22,7 @@ use crate::stats::stats_data::{StatValue, StatsData};
 use crate::units::Units;
 use crate::units::tag::Tag;
 use crate::units::tag_effects::TagEffects;
+use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
 use crate::values::number::Number;
 
@@ -35,7 +38,8 @@ fn sixteenths(value: i64) -> Num {
     Num::from_bits(value << (Num::FRAC_BITS - 4))
 }
 
-/// The rules of the test: the engine's stats, move speed at most 5, and `armor` at least −30.
+/// The rules of the test: the engine's stats, move speed at most 5, `armor` at least −30, and the
+/// pools' stats.
 fn rules() -> BTreeMap<Stat, StatRule> {
     let free = StatRule::default();
     let speed = StatRule {
@@ -47,9 +51,6 @@ fn rules() -> BTreeMap<Stat, StatRule> {
         max: None,
     };
     [
-        (EngineStat::Health, free),
-        (EngineStat::HealthRegen, free),
-        (EngineStat::Resource, free),
         (EngineStat::MoveSpeed, speed),
         (EngineStat::AttackSpeed, free),
         (EngineStat::AttackDamage, free),
@@ -57,24 +58,47 @@ fn rules() -> BTreeMap<Stat, StatRule> {
     .map(|(stat, rule)| (Stat::Engine(stat), rule))
     .into_iter()
     .chain([(armor_stat(), armor)])
+    .chain(["health", "health_regen", "mana"].map(|name| (stat(name), free)))
     .collect()
 }
 
+fn stat(name: &str) -> Stat {
+    Stat::named(name).unwrap()
+}
+
 fn armor_stat() -> Stat {
-    Stat::named("armor").unwrap()
+    stat("armor")
+}
+
+/// The pools of the test, by pool id: `health`, which regenerates, then `mana`, which does not.
+const HEALTH: PoolId = PoolId::FIRST;
+const MANA: PoolId = PoolId::new(1).unwrap();
+
+fn pools() -> BTreeMap<DeclaredName, PoolData> {
+    let pool = |max: &str, regen: Option<&str>| PoolData {
+        max: stat(max),
+        regen: regen.map(stat),
+    };
+    BTreeMap::from([
+        (
+            DeclaredName::new("health").unwrap(),
+            pool("health", Some("health_regen")),
+        ),
+        (DeclaredName::new("mana").unwrap(), pool("mana", None)),
+    ])
 }
 
 /// A unit type's stats, each a base and a gain a level.
-fn stats(values: &[(EngineStat, Num, Num)]) -> StatsData {
+fn stats(values: &[(Stat, Num, Num)]) -> StatsData {
     StatsData(
         values
             .iter()
-            .map(|&(stat, base, per_level)| {
+            .map(|(stat, base, per_level)| {
                 let value = StatValue {
-                    base: Scalar::Decimal(base),
-                    per_level: Some(Scalar::Decimal(per_level)),
+                    base: Scalar::Decimal(*base),
+                    per_level: Some(Scalar::Decimal(*per_level)),
                 };
-                (Stat::Engine(stat), value)
+                (stat.clone(), value)
             })
             .collect(),
     )
@@ -88,13 +112,14 @@ fn stat_match(types: &[StatsData]) -> TestMatch {
         (unit_type, data)
     });
     let book = StatBook::new(&rules(), types, RATE, num(6)).unwrap();
-    Stats::load(&mut game.world, book);
+    let pools = PoolBook::new(&pools(), &book);
+    Stats::load(&mut game.world, book, pools);
     game.world.add_schedule(mem::take(&mut game.schedule));
     game
 }
 
 /// A unit of `unit_type` at level 1 that walks, attacks with a windup of 2 ticks, and has a
-/// pool of health and of resource, its values before the stats derive them.
+/// pool of health and of mana, its values before the stats derive them.
 fn unit(game: &mut TestMatch, unit_type: u16) -> Entity {
     let attack = AttackStats::new(Num::ONE, Ticks::new(2), Ticks::new(3), Num::ZERO).unwrap();
     game.world
@@ -105,23 +130,27 @@ fn unit(game: &mut TestMatch, unit_type: u16) -> Entity {
             UnitTags::default(),
             MoveStep::new(Num::ZERO).unwrap(),
             attack,
-            Health::new(Num::ONE).unwrap(),
-            ResourcePool::new(Num::ONE).unwrap(),
+            Pools::new([(HEALTH, Num::ONE), (MANA, Num::ONE)]).unwrap(),
         ))
         .id()
 }
 
 #[test]
 fn a_units_stats_follow_its_type_and_level_within_their_limits() {
-    // A hero of health 380 + 76 a level, regen 1.5, resource 250 + 45, attack damage 51 + 3,
+    // A hero of health 380 + 76 a level, regen 1.5, mana 250 + 45, attack damage 51 + 3,
     // attack speed 0.625 + 0.0625 and move speed 4 + 0.25.
+    let engine = |stat: EngineStat| Stat::Engine(stat);
     let hero = stats(&[
-        (EngineStat::Health, num(380), num(76)),
-        (EngineStat::HealthRegen, sixteenths(24), Num::ZERO),
-        (EngineStat::Resource, num(250), num(45)),
-        (EngineStat::AttackDamage, num(51), num(3)),
-        (EngineStat::AttackSpeed, sixteenths(10), sixteenths(1)),
-        (EngineStat::MoveSpeed, num(4), sixteenths(4)),
+        (stat("health"), num(380), num(76)),
+        (stat("health_regen"), sixteenths(24), Num::ZERO),
+        (stat("mana"), num(250), num(45)),
+        (engine(EngineStat::AttackDamage), num(51), num(3)),
+        (
+            engine(EngineStat::AttackSpeed),
+            sixteenths(10),
+            sixteenths(1),
+        ),
+        (engine(EngineStat::MoveSpeed), num(4), sixteenths(4)),
     ]);
     let mut game = stat_match(&[hero]);
     let units = [unit(&mut game, 0)];
@@ -133,51 +162,47 @@ fn a_units_stats_follow_its_type_and_level_within_their_limits() {
             unit.get::<MoveStep>().unwrap().get(),
             unit.get::<AttackStats>().unwrap().period(),
             unit.get::<AttackStats>().unwrap().damage(),
-            *unit.get::<Health>().unwrap(),
-            unit.get::<ResourcePool>().unwrap().max(),
+            *unit.get::<Pools>().unwrap(),
         )
     };
+    let amounts = |pools: Pools, pool| (pools.current(pool).unwrap(), pools.max(pool).unwrap());
     // At level 1: 4 m/s, 4 × 2²⁴ ÷ 30 = 2 236 962.13 bits a tick, to 2 236 962; 0.625 attacks a
-    // second, 30 ÷ 0.625 = 48 ticks; damage 51; full health of 380 and resource of 250.
-    let (step, period, damage, health, resource) = get(&game);
+    // second, 30 ÷ 0.625 = 48 ticks; damage 51; full health of 380 and mana of 250.
+    let (step, period, damage, pools) = get(&game);
     assert_eq!(step, Num::from_bits(2_236_962));
     assert_eq!((period, damage), (Ticks::new(48), num(51)));
-    assert_eq!(
-        (health.current(), health.max(), resource),
-        (num(380), num(380), num(250))
-    );
+    assert_eq!(amounts(pools, HEALTH), (num(380), num(380)));
+    assert_eq!(amounts(pools, MANA), (num(250), num(250)));
 
     // Down 80 to 300 of 380, then at level 18: health 380 + 76 × 17 = 1672, the pool up by the
     // 1292 the maximum rose, to 1592, plus the regen of the tick that runs, 1.5 ÷ 30 = 0.05,
     // 838 860.8 bits, to 838 860 and its fifth carried; attack speed 0.625 + 17 × 0.0625 =
     // 1.6875, 30 ÷ 1.6875 = 17.8 ticks, to 18; damage 51 + 51 = 102; move speed 4 + 4.25 = 8.25,
-    // past the limit of 5, 5 × 2²⁴ ÷ 30 = 2 796 202.67, to 2 796 203.
-    let mut health = game.world.get_mut::<Health>(units[0]).unwrap();
-    health.take(num(80));
+    // past the limit of 5, 5 × 2²⁴ ÷ 30 = 2 796 202.67, to 2 796 203. Mana, full and with no
+    // regen, rises with its maximum, to 250 + 45 × 17 = 1015.
+    let mut pools = game.world.get_mut::<Pools>(units[0]).unwrap();
+    pools.take(HEALTH, num(80));
     *game.world.get_mut::<Level>(units[0]).unwrap() = Level::new(18).unwrap();
     game.world.run_schedule(SimUpdate);
-    let (step, period, damage, health, resource) = get(&game);
+    let (step, period, damage, pools) = get(&game);
     assert_eq!(step, Num::from_bits(2_796_203));
     assert_eq!((period, damage), (Ticks::new(18), num(102)));
     let regen = Num::from_bits(838_860);
-    assert_eq!(
-        (health.current(), health.max()),
-        (num(1592) + regen, num(1672))
-    );
-    assert_eq!(resource, num(250 + 45 * 17));
+    assert_eq!(amounts(pools, HEALTH), (num(1592) + regen, num(1672)));
+    assert_eq!(amounts(pools, MANA), (num(1015), num(1015)));
 
     // Over the next 29 ticks the regen adds the rest of the second: 30 ticks gain exactly 1.5.
     for _ in 0..29 {
         game.world.run_schedule(SimUpdate);
     }
-    let health = game.world.get::<Health>(units[0]).unwrap();
-    assert_eq!(health.current(), num(1592) + sixteenths(24));
+    let pools = game.world.get::<Pools>(units[0]).unwrap();
+    assert_eq!(pools.current(HEALTH), Some(num(1592) + sixteenths(24)));
 
     // Back to level 1: the maximum falls to 380, and the current amount to it.
     *game.world.get_mut::<Level>(units[0]).unwrap() = Level::default();
     game.world.run_schedule(SimUpdate);
-    let (_, _, _, health, _) = get(&game);
-    assert_eq!((health.current(), health.max()), (num(380), num(380)));
+    let (_, _, _, pools) = get(&game);
+    assert_eq!(amounts(pools, HEALTH), (num(380), num(380)));
 }
 
 /// An application from `source` of modifier `id`, changing `stat` by `value` a stack with `op`,
@@ -283,7 +308,7 @@ fn a_stat_is_its_base_plus_adds_times_pcts_times_the_largest_cut() {
 fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
     // Move speed 4. The tags: 0 detects, and is the type's own; 1, `slowed`, has no effect; 2,
     // `slow_immune`, makes immune to 1.
-    let walker = stats(&[(EngineStat::MoveSpeed, num(4), Num::ZERO)]);
+    let walker = stats(&[(Stat::Engine(EngineStat::MoveSpeed), num(4), Num::ZERO)]);
     let mut game = stat_match(&[walker]);
     let [sight, slowed, slow_immune] = [0, 1, 2].map(Tag::new);
     let effects = [
@@ -416,10 +441,11 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
         limits,
         players: 1,
         damage_kinds: Rc::from([]),
+        pools: Rc::from([]),
     };
     let mut game = TestMatch::new(&[Capability::Stats], RATE, Some(scripts));
     let book = StatBook::new(&rules(), [], RATE, num(6)).unwrap();
-    Stats::load(&mut game.world, book);
+    Stats::load(&mut game.world, book, PoolBook::default());
     // A presence of 2 m on allies, holding `inspired`.
     let presence = AuraData {
         radius: Number::Value(Scalar::Int(2)),

@@ -6,6 +6,7 @@ use serde::Deserialize;
 use crate::combat::combat_rules::CombatRules;
 use crate::scripts::state_decl::StateDecl;
 use crate::stats::modifier_data::ModifierData;
+use crate::stats::pool_data::PoolData;
 use crate::stats::stat::Stat;
 use crate::stats::stat_rule::StatRule;
 use crate::units::tag_data::TagData;
@@ -35,7 +36,10 @@ pub struct ModeData {
     /// Every stat its units carry, those the engine reads among them, each with its rule.
     #[serde(default)]
     pub stats: BTreeMap<Stat, StatRule>,
-    /// What its units spend on abilities, such as mana or energy.
+    /// Its pools, by name, the life pool among them: the amounts its units spend and lose.
+    #[serde(default)]
+    pub pools: BTreeMap<DeclaredName, PoolData>,
+    /// Its players' resources, such as gold, which share no name with a pool.
     #[serde(default)]
     pub resources: Vec<DeclaredName>,
     /// The effects of its tags, by name.

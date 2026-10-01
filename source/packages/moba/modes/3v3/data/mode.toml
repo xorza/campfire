@@ -1,12 +1,14 @@
 script = "scripts/mode.rhai"
 attack_kind = "physical"
-# What its heroes spend.
-resources = ["mana", "energy"]
+# What its players earn and spend.
+resources = ["gold"]
 
-# Its damage kinds, and the stats its damage and heals read: a ratio is a fraction, 0.1 a tenth.
+# Its damage kinds, its life pool, and the stats its damage and heals read: a ratio is a
+# fraction, 0.1 a tenth.
 [combat]
 damage_kinds = ["physical", "magic", "true"]
 assist_window_ms = 10000
+life = "health"
 leech = { attack = "life_steal", other = "spell_vamp" }
 heal_scale = "healing_received_pct"
 
@@ -15,8 +17,10 @@ heal_scale = "healing_received_pct"
 [stats]
 health = {}
 health_regen = {}
-resource = {}
-resource_regen = {}
+mana = {}
+mana_regen = {}
+energy = {}
+energy_regen = {}
 attack_damage = {}
 ability_power = {}
 armor = {}
@@ -34,6 +38,17 @@ magic_pen_pct = { min = 0, max = 1 }
 life_steal = { min = 0, max = 1 }
 spell_vamp = { min = 0, max = 1 }
 cooldown_reduction = { min = 0, max = "0.4" }
+
+# The amounts its units spend and lose: life, and what heroes spend on abilities.
+[pools.health]
+max = "health"
+regen = "health_regen"
+[pools.mana]
+max = "mana"
+regen = "mana_regen"
+[pools.energy]
+max = "energy"
+regen = "energy_regen"
 
 # What its tags do: crowd control, stealth and true sight. A slow, a cut of `move_speed`, grants
 # `slowed`, which `slow_immune` holds without effect.

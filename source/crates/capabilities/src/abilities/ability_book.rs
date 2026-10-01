@@ -8,7 +8,10 @@ use crate::abilities::error::AbilityError;
 use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
 use crate::stats::modifier_book::ModifierId;
+use crate::stats::pool_cost::PoolCost;
+use crate::stats::pool_id::PoolId;
 use crate::units::filter::Filter;
+use crate::values::declared_name::DeclaredName;
 
 /// The abilities a match loaded, times in ticks and scripts compiled. Package data, not state: a
 /// restore loads it from the packages, as a new match does.
@@ -59,8 +62,7 @@ pub(crate) enum Aim {
 pub(crate) struct RankValues {
     pub(crate) range: Range,
     pub(crate) cooldown: Ticks,
-    /// In the caster's resource.
-    pub(crate) cost: u64,
+    pub(crate) cost: PoolCost,
     pub(crate) cast_time: Ticks,
 }
 
@@ -114,11 +116,13 @@ impl AbilityId {
 
 impl RankValues {
     /// The fields of `data`, which the package load checked, at each of its `ranks` ranks,
-    /// times in ticks at `rate`; an error when a time does not count in ticks.
+    /// times in ticks at `rate`, its cost's pools by `pool`; an error when a time does not count
+    /// in ticks.
     pub(crate) fn all(
         data: &AbilityData,
         ranks: u8,
         rate: TickRate,
+        pool: impl Fn(&DeclaredName) -> Option<PoolId>,
     ) -> Result<Vec<RankValues>, AbilityError> {
         assert!(
             data.check_ranks(usize::from(ranks)),
@@ -127,7 +131,9 @@ impl RankValues {
         let ticks = |ms: u64| rate.ticks(ms).ok_or(AbilityError::TimeTooLarge);
         (1..=ranks)
             .map(|rank| {
-                let fields = data.fields_at(rank).expect("the load checked the fields");
+                let fields = data
+                    .fields_at(rank, &pool)
+                    .expect("the load checked the fields");
                 Ok(RankValues {
                     range: fields.range,
                     cooldown: ticks(fields.cooldown_ms)?,

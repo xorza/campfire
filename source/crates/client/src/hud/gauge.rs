@@ -2,12 +2,13 @@ use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::math::{Quat, Vec3};
 use bevy::transform::components::Transform;
+use campfire_capabilities::PoolId;
 use campfire_math::Num;
 use campfire_sim::{Tick, Ticks};
 
 use crate::view;
 
-/// A bar over a unit: its health, or, for the player's own avatar, its resource or the cooldown of
+/// A bar over a unit: its life, or, for the player's own avatar, another pool or the cooldown of
 /// one ability slot. It draws with two children: a back of its full width, and `fill`.
 #[derive(Component, Debug)]
 pub(crate) struct Gauge {
@@ -19,14 +20,15 @@ pub(crate) struct Gauge {
 /// What a gauge shows, and what it remembers to show it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum GaugeKind {
-    /// The unit's health; `shown` is the health it showed last, so a drop marks a hit.
-    Health {
-        shown: Option<Num>,
-    },
-    Resource,
-    /// The cooldown of ability slot `slot`; `cooling` is the cooldown in view, once one starts.
+    /// The unit's life pool; `shown` is the life it showed last, so a drop marks a hit.
+    Life { shown: Option<Num> },
+    /// Another pool of the unit, in row `row` of the stack.
+    Pool { pool: PoolId, row: u8 },
+    /// The cooldown of ability slot `slot`, in row `row`; `cooling` is the cooldown in view, once
+    /// one starts.
     Cooldown {
         slot: u8,
+        row: u8,
         cooling: Option<Cooling>,
     },
 }
@@ -42,7 +44,7 @@ pub(crate) struct Cooling {
 /// A bar's thickness, and the gap between rows.
 const THICKNESS: f32 = 0.12;
 const ROW: f32 = 0.16;
-/// The health and resource bars' width.
+/// The pool bars' width.
 const WIDE: f32 = 1.2;
 /// A cooldown pip's width, and the step from one pip to the next.
 const PIP: f32 = 0.27;
@@ -53,17 +55,21 @@ impl GaugeKind {
     /// camera: x across, z down the stack.
     pub(crate) fn layout(self) -> Layout {
         match self {
-            GaugeKind::Health { .. } => Layout {
+            GaugeKind::Life { .. } => Layout {
                 width: WIDE,
                 center: Vec3::ZERO,
             },
-            GaugeKind::Resource => Layout {
+            GaugeKind::Pool { row, .. } => Layout {
                 width: WIDE,
-                center: Vec3::new(0.0, 0.0, ROW),
+                center: Vec3::new(0.0, 0.0, f32::from(row) * ROW),
             },
-            GaugeKind::Cooldown { slot, .. } => Layout {
+            GaugeKind::Cooldown { slot, row, .. } => Layout {
                 width: PIP,
-                center: Vec3::new((f32::from(slot) - 1.5) * PIP_STEP, 0.0, 2.0 * ROW),
+                center: Vec3::new(
+                    (f32::from(slot) - 1.5) * PIP_STEP,
+                    0.0,
+                    f32::from(row) * ROW,
+                ),
             },
         }
     }
@@ -137,7 +143,7 @@ mod tests {
     #[test]
     fn a_bar_fills_from_its_left_edge_and_a_pip_from_where_its_cooldown_was_seen() {
         // A 1.2 m bar at a quarter: 0.3 m wide, its center 0.45 m left of the bar's.
-        let health = GaugeKind::Health { shown: None }.layout();
+        let health = GaugeKind::Life { shown: None }.layout();
         let quarter = health.fill(0.25);
         assert_eq!(quarter.scale, Vec3::new(0.3, 1.0, THICKNESS));
         assert!((quarter.translation.x + 0.45).abs() < 1e-6, "{quarter:?}");
@@ -148,6 +154,7 @@ mod tests {
         let pip = |slot| {
             GaugeKind::Cooldown {
                 slot,
+                row: 2,
                 cooling: None,
             }
             .layout()

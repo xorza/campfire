@@ -1,6 +1,6 @@
 use std::num::NonZeroU32;
 
-use campfire_capabilities::{Bounds, CapabilitySet, Grid};
+use campfire_capabilities::{Bounds, CapabilitySet, Grid, PoolId};
 use campfire_math::Num;
 use campfire_package::{ModePackages, RELEASE};
 use campfire_protocol::{Fingerprint, SessionTerms};
@@ -10,8 +10,8 @@ use crate::error::TermsMismatch;
 
 /// The session a client can play: the engine release it runs, and the mode it holds, at the mode's
 /// default tick rate, with the capabilities the mode declares, its map's bounds, which its
-/// predicted units stay within, and its map's pathing grid and walker radii, on which it plans
-/// their routes as the server does.
+/// predicted units stay within, its map's pathing grid and walker radii, on which it plans
+/// their routes as the server does, and its life pool, which its predicted targets need.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClientMode {
     pub tick_hz: NonZeroU32,
@@ -21,6 +21,7 @@ pub struct ClientMode {
     pub bounds: Bounds,
     pub pathing: Option<Grid>,
     pub walkers: Vec<Num>,
+    pub life: Option<PoolId>,
 }
 
 impl ClientMode {
@@ -36,6 +37,7 @@ impl ClientMode {
                 .pathing()
                 .expect("a loaded map's cells make a grid"),
             walkers: packages.walker_radii(),
+            life: packages.data().combat.life_pool(&packages.data().pools),
         }
     }
 

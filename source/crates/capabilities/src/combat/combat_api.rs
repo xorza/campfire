@@ -33,12 +33,12 @@ impl CombatApi {
         let heal = call(
             "heal",
             "(unit, amount)",
-            "heals `unit`, times one plus its `heal_scale` stat",
+            "heals `unit`'s life pool, times one plus its `heal_scale` stat",
         );
         let restore = call(
             "restore",
-            "(unit, amount)",
-            "gives `unit` back `amount` of its resource",
+            "(unit, pool, amount)",
+            "gives `unit` back `amount` of its `pool`, unscaled",
         );
         let attack_hit = call(
             "attack_hit",
@@ -71,19 +71,18 @@ impl CombatApi {
                 amount,
             })
         })
-        .bind(restore, |ctx: &mut Ctx, unit: Unit, amount: Num| {
-            CombatApi::mend(ctx, amount, |amount| CombatEffect::Restore {
-                unit: unit.id,
-                amount,
-            })
-        })
-        .bind(restore, |ctx: &mut Ctx, unit: Unit, amount: INT| {
-            let amount = ApiError::num(amount)?;
-            CombatApi::mend(ctx, amount, |amount| CombatEffect::Restore {
-                unit: unit.id,
-                amount,
-            })
-        })
+        .bind(
+            restore,
+            |ctx: &mut Ctx, unit: Unit, pool: &str, amount: Num| {
+                CombatApi::restore(ctx, &unit, pool, amount)
+            },
+        )
+        .bind(
+            restore,
+            |ctx: &mut Ctx, unit: Unit, pool: &str, amount: INT| {
+                CombatApi::restore(ctx, &unit, pool, ApiError::num(amount)?)
+            },
+        )
         .bind(attack_hit, |ctx: &mut Ctx, target: Unit| {
             CombatApi::attack_hit(ctx, &target)
         })
@@ -92,7 +91,13 @@ impl CombatApi {
         .tag_effect(TagEffect::Blocks(Block::Damage), Status::Runs)
         .data(
             DataTable::ModeCombat,
-            &["damage_kinds", "assist_window_ms", "leech", "heal_scale"],
+            &[
+                "damage_kinds",
+                "assist_window_ms",
+                "life",
+                "leech",
+                "heal_scale",
+            ],
             &[],
         )
         .data(DataTable::Leech, &["attack", "other"], &[])
@@ -116,6 +121,16 @@ impl CombatApi {
             amount,
             kind,
         }))
+    }
+
+    /// Queues a restore of `amount` of `unit`'s pool `name`, a pool the mode declares.
+    fn restore(ctx: &Ctx, unit: &Unit, name: &str, amount: Num) -> Checked<()> {
+        let pool = ctx.view().pool(name)?;
+        CombatApi::mend(ctx, amount, |amount| CombatEffect::Restore {
+            unit: unit.id,
+            pool,
+            amount,
+        })
     }
 
     /// Queues the heal or restore `effect` makes of `amount`, which is not negative.

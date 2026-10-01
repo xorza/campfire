@@ -8,12 +8,11 @@ use campfire_math::Num;
 use campfire_sim::{EntityIndex, Position, SimRng, SimSet, SimTick, StableId, StateRegistry, Tick};
 
 use crate::abilities::ability_book::AbilityId;
-use crate::abilities::resource_pool::ResourcePool;
 use crate::combat::assist_window::AssistWindow;
 use crate::combat::attack_kind::AttackKind;
 use crate::combat::attack_state::AttackState;
 use crate::combat::attack_stats::AttackStats;
-use crate::combat::bound_stats::BoundStats;
+use crate::combat::combat_bindings::CombatBindings;
 use crate::combat::combat_effect::CombatEffect;
 use crate::combat::combat_event::CombatEvent;
 use crate::combat::combat_events::CombatEvents;
@@ -22,7 +21,6 @@ use crate::combat::damage_queue::DamageQueue;
 use crate::combat::damage_weigher::DamageWeigher;
 use crate::combat::dead::Dead;
 use crate::combat::deaths::{Deaths, Fallen};
-use crate::combat::health::Health;
 use crate::combat::launches::{Launch, Launches};
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;
@@ -32,6 +30,8 @@ use crate::scripts::hook::Hook;
 use crate::scripts::script_batch::ScriptBatch;
 use crate::stats::modifier_book::ModifierId;
 use crate::stats::modifiers::Modifiers;
+use crate::stats::pool_id::PoolId;
+use crate::stats::pools::Pools;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::block::Block;
 use crate::units::body::Body;
@@ -48,8 +48,8 @@ pub(crate) mod assist_window;
 pub(crate) mod attack_kind;
 pub(crate) mod attack_state;
 pub(crate) mod attack_stats;
-pub(crate) mod bound_stats;
 pub(crate) mod combat_api;
+pub(crate) mod combat_bindings;
 pub(crate) mod combat_data;
 pub(crate) mod combat_effect;
 pub(crate) mod combat_event;
@@ -63,7 +63,6 @@ pub(crate) mod damage_queue;
 pub(crate) mod damage_weigher;
 pub(crate) mod dead;
 pub(crate) mod deaths;
-pub(crate) mod health;
 pub(crate) mod launches;
 pub(crate) mod on_death;
 pub(crate) mod recent_attackers;
@@ -73,7 +72,7 @@ pub(crate) mod targets;
 /// The random stream an attack's roll draws from, for its attacker in its tick.
 pub(crate) const ROLL_STREAM: &str = "combat.roll";
 
-/// The `combat` capability: teams, health, attacks, damage and deaths.
+/// The `combat` capability: teams, the life pool, attacks, damage and deaths.
 #[derive(Debug)]
 pub struct Combat;
 
@@ -93,7 +92,7 @@ pub(crate) enum CombatSet {
     Interval,
     /// In `SimSet::Resolve`: the tick's damage is dealt.
     Damage,
-    /// In `SimSet::Resolve`, after `Damage`: units at zero health die.
+    /// In `SimSet::Resolve`, after `Damage`: units at zero life die.
     Die,
 }
 
@@ -101,7 +100,7 @@ impl Combat {
     /// Adds combat to a match: in Inputs, dead units whose respawn is due come back; in Act,
     /// attacks in range start once ready; in Hit, windups that end strike, or fire when ranged
     /// and the match has projectiles; in Resolve, the tick's damage is dealt, then units at zero
-    /// health die, each with its killer and assisters; in Vision, the dead whose type despawns
+    /// life die, each with its killer and assisters; in Vision, the dead whose type despawns
     /// go, after the Mode stage saw them.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         if let Some(view) = world.get_non_send::<View>() {
@@ -109,7 +108,7 @@ impl Combat {
         }
         world.insert_resource(DamageQueue::default());
         world.insert_resource(AttackKind::default());
-        world.insert_resource(BoundStats::default());
+        world.insert_resource(CombatBindings::default());
         world.insert_resource(Deaths::default());
         schedule.configure_sets(
             CombatSet::Launch
@@ -138,10 +137,17 @@ impl Combat {
         registry.register_component::<AttackState>();
         registry.register_component::<AttackStats>();
         registry.register_component::<Dead>();
-        registry.register_component::<Health>();
         registry.register_component::<OnDeath>();
         registry.register_component::<RecentAttackers>();
         registry.register_component::<Respawn>();
+    }
+}
+
+impl Combat {
+    /// Binds `life` as the life pool, as a client does from the packages it holds, where no mode
+    /// installs.
+    pub fn bind_life(world: &mut World, life: PoolId) {
+        world.resource_mut::<CombatBindings>().life = life;
     }
 }
 
@@ -152,7 +158,6 @@ fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
     fill.row.stays = unit.get::<OnDeath>() == Some(&OnDeath::Stay);
     fill.row.target = unit.get::<AttackState>().and_then(|attack| attack.target());
     fill.row.attack_range = unit.get::<AttackStats>().map(|stats| stats.range());
-    fill.row.health = unit.get::<Health>().copied();
     if let Some(recent) = unit.get::<RecentAttackers>() {
         fill.attacked(recent.iter());
     }
@@ -372,7 +377,7 @@ fn strike(
 
 /// Deals the tick's damage in the queue's order: each through the mode's `calc_damage` when it
 /// has one, with the units as the pass began, then its combat events, whose damage joins the end
-/// of the queue. Damage to a unit at zero health, or to an invulnerable one, does nothing.
+/// of the queue. Damage to a unit at zero life, or to an invulnerable one, does nothing.
 fn deal_damage(world: &mut World, mut assisters: Local<'_, Vec<StableId>>) {
     let now = world.resource::<SimTick>().start();
     world.resource_mut::<Deaths>().clear(now);
@@ -420,7 +425,7 @@ fn deal_damage(world: &mut World, mut assisters: Local<'_, Vec<StableId>>) {
     world.resource_mut::<DamageQueue>().clear();
 }
 
-/// What a damage of the pass did: nothing, as to a unit at zero health or an invulnerable one;
+/// What a damage of the pass did: nothing, as to a unit at zero life or an invulnerable one;
 /// damage; or a kill.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Landed {
@@ -430,12 +435,15 @@ enum Landed {
 }
 
 impl Combat {
-    /// The entity of `unit`, when it exists and has health above zero: one that damage, heals
-    /// and restores reach.
+    /// The entity of `unit`, when it exists and its life pool is above zero: one that damage,
+    /// heals and restores reach.
     fn living(world: &World, unit: StableId) -> Option<Entity> {
         let entity = world.resource::<EntityIndex>().get(unit)?;
-        let health = world.get::<Health>(entity)?;
-        (!health.is_zero()).then_some(entity)
+        let life = world.resource::<CombatBindings>().life;
+        world
+            .get::<Pools>(entity)?
+            .above_zero(life)
+            .then_some(entity)
     }
 
     /// The entity of `unit`, when it is living and its tags let damage reach it.
@@ -493,10 +501,10 @@ impl Combat {
     }
 
     /// Deals `damage` as `amount` in tick `now`, a negative amount as 0: shields absorb it, then
-    /// health takes the rest. The source is recorded as the target's attacker; when the damage
+    /// the life pool takes the rest. The source is recorded as the target's attacker; when the damage
     /// took the target to zero, the source is its killer if it still exists, and the others that
-    /// damaged it within the assist window assisted. A living source heals by its life steal,
-    /// for an attack, or its spell vamp times the health taken.
+    /// damaged it within the assist window assisted. A living source heals by its `leech`
+    /// stat, `attack` for an attack's damage and `other` for the rest, times the life taken.
     fn deal(world: &mut World, damage: Damage, amount: Num, now: Tick) -> Landed {
         let Some(entity) = Combat::damageable(world, damage.target) else {
             return Landed::Nothing;
@@ -514,13 +522,12 @@ impl Combat {
             }
             left = after;
         }
-        let mut health = world
-            .get_mut::<Health>(entity)
+        let life = world.resource::<CombatBindings>().life;
+        let mut pools = world
+            .get_mut::<Pools>(entity)
             .expect("a unit that takes damage");
-        let before = health.current();
-        health.take(left);
-        let taken = before - health.current();
-        let killed = health.is_zero();
+        let taken = pools.take(life, left);
+        let killed = !pools.above_zero(life);
         world.resource_scope(|world, index: Mut<'_, EntityIndex>| {
             let mut attackers = world.get_mut::<RecentAttackers>(entity);
             if let (Some(source), Some(attackers)) = (damage.source, attackers.as_deref_mut()) {
@@ -547,11 +554,11 @@ impl Combat {
             });
         }
         if let Some(source) = source.and_then(|source| Combat::living(world, source)) {
-            let bound = world.resource::<BoundStats>();
+            let bindings = world.resource::<CombatBindings>();
             let stat = if damage.cause.attack() {
-                bound.leech_attack
+                bindings.leech_attack
             } else {
-                bound.leech_other
+                bindings.leech_other
             };
             let ratio = Combat::stat(world, source, stat);
             Combat::heal_living(world, source, scaled(taken, ratio));
@@ -592,7 +599,9 @@ impl Combat {
                 world.resource_mut::<DamageQueue>().push(damage);
             }
             CombatEffect::Heal { unit, amount } => Combat::heal(world, unit, amount),
-            CombatEffect::Restore { unit, amount } => Combat::restore(world, unit, amount),
+            CombatEffect::Restore { unit, pool, amount } => {
+                Combat::restore(world, unit, pool, amount);
+            }
             CombatEffect::AttackHit { target } => {
                 let index = world.resource::<EntityIndex>();
                 let entity = source.and_then(|source| index.get(source));
@@ -606,8 +615,8 @@ impl Combat {
         }
     }
 
-    /// Heals `unit` by `amount` times one plus its `heal_scale` stat, when it exists and is
-    /// above zero health.
+    /// Heals `unit`'s life pool by `amount` times one plus its `heal_scale` stat, when it exists
+    /// and its life is above zero.
     pub(crate) fn heal(world: &mut World, unit: StableId, amount: Num) {
         if let Some(entity) = Combat::living(world, unit) {
             Combat::heal_living(world, entity, amount);
@@ -616,24 +625,24 @@ impl Combat {
 
     /// Heals `entity`, a living unit, as `heal` does.
     fn heal_living(world: &mut World, entity: Entity, amount: Num) {
-        let scale = world.resource::<BoundStats>().heal_scale;
-        let received = Num::ONE + Combat::stat(world, entity, scale);
+        let bindings = *world.resource::<CombatBindings>();
+        let received = Num::ONE + Combat::stat(world, entity, bindings.heal_scale);
         let amount = scaled(amount, received);
         if amount > Num::ZERO {
-            let mut health = world.get_mut::<Health>(entity).expect("a living unit");
-            health.heal(amount);
+            let mut pools = world.get_mut::<Pools>(entity).expect("a living unit");
+            pools.add(bindings.life, amount);
         }
     }
 
-    /// Restores `amount` of `unit`'s resource, when it exists and is above zero health.
-    pub(crate) fn restore(world: &mut World, unit: StableId, amount: Num) {
+    /// Restores `amount` of `unit`'s `pool`, unscaled, when the unit exists, its life is above
+    /// zero, and it has the pool.
+    pub(crate) fn restore(world: &mut World, unit: StableId, pool: PoolId, amount: Num) {
         let Some(entity) = Combat::living(world, unit) else {
             return;
         };
-        if let Some(mut pool) = world.get_mut::<ResourcePool>(entity)
-            && amount > Num::ZERO
-        {
-            pool.restore(amount);
+        if amount > Num::ZERO {
+            let mut pools = world.get_mut::<Pools>(entity).expect("a living unit");
+            pools.add(pool, amount);
         }
     }
 
@@ -657,10 +666,11 @@ fn scaled(amount: Num, ratio: Num) -> Num {
     })
 }
 
-/// A unit at zero health dies, and the Mode stage learns of it; one no strike took there died
+/// A unit at zero life dies, and the Mode stage learns of it; one no strike took there died
 /// with no killer.
 fn die(
     mut commands: Commands<'_, '_>,
+    bindings: Res<'_, CombatBindings>,
     mut deaths: ResMut<'_, Deaths>,
     mut units: Query<
         '_,
@@ -668,7 +678,7 @@ fn die(
         (
             Entity,
             &StableId,
-            &Health,
+            &Pools,
             Option<&mut AttackState>,
             Option<&Team>,
             Option<&Owner>,
@@ -676,8 +686,8 @@ fn die(
         (With<OnDeath>, Without<Dead>),
     >,
 ) {
-    for (entity, &id, health, attack, team, owner) in &mut units {
-        if !health.is_zero() {
+    for (entity, &id, pools, attack, team, owner) in &mut units {
+        if pools.above_zero(bindings.life) {
             continue;
         }
         if let Some(mut attack) = attack {
@@ -702,8 +712,8 @@ fn despawn_dead(
     }
 }
 
-/// Brings back each dead unit whose respawn is due, at its spawn point with full health and
-/// no one on record as its attacker.
+/// Brings back each dead unit whose respawn is due, at its spawn point with full pools and no
+/// one on record as its attacker.
 fn respawn(
     tick: Res<'_, SimTick>,
     mut commands: Commands<'_, '_>,
@@ -714,7 +724,7 @@ fn respawn(
             Entity,
             &Respawn,
             &SpawnPoint,
-            &mut Health,
+            &mut Pools,
             &mut Position,
             Option<&mut RecentAttackers>,
         ),
@@ -722,11 +732,11 @@ fn respawn(
     >,
 ) {
     let now = tick.start();
-    for (entity, respawn, spawn, mut health, mut position, attackers) in &mut dead {
+    for (entity, respawn, spawn, mut pools, mut position, attackers) in &mut dead {
         if respawn.at > now {
             continue;
         }
-        health.fill();
+        pools.fill();
         *position = spawn.get();
         if let Some(mut attackers) = attackers {
             *attackers = RecentAttackers::default();

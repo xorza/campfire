@@ -176,6 +176,9 @@ impl ModeBook {
             Modifiers::default(),
             parts,
         ));
+        if let Some(pools) = kit.pools {
+            unit.insert(pools);
+        }
         if let Some(combatant) = kit.combatant {
             combatant.insert(&mut unit);
         }
@@ -214,9 +217,6 @@ impl ModeBook {
                 self.avatar_spawn(team),
                 (Owner::new(slot), slots),
             );
-            if let Some(resource) = avatar.resource {
-                world.entity_mut(entity).insert(resource);
-            }
             if let Some(passive) = avatar.passive {
                 let id = *world
                     .get::<StableId>(entity)

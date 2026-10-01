@@ -1,6 +1,6 @@
 name = "Walker"
 role = "test"
-resource = "mana"
+pools = ["health", "mana"]
 slots = ["first", "second", "third", "fourth"]
 
 [combat.attack]
@@ -15,7 +15,7 @@ sight_range = "6.0"
 
 [stats]
 health = { base = 600 }
-resource = { base = 100 }
+mana = { base = 100 }
 attack_damage = { base = 60 }
 attack_speed = { base = "1.5" }
 move_speed = { base = "7.5" }
@@ -24,7 +24,7 @@ move_speed = { base = "7.5" }
 script = "scripts/strike.rhai"
 targeting = "none"
 cooldown_ms = 3000
-cost = 40
+cost = { mana = 40 }
 
 [abilities.first.params]
 radius = "2.0"

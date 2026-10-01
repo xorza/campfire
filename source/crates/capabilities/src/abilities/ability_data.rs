@@ -8,6 +8,9 @@ use serde::{Deserialize, Deserializer};
 
 use crate::abilities::error::AbilityField;
 use crate::scripts::state_decl::StateDecl;
+use crate::stats::pool_cost::PoolCost;
+use crate::stats::pool_id::PoolId;
+use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
 use crate::values::number::{Number, ParamRef};
 use crate::values::param::Param;
@@ -25,8 +28,9 @@ pub struct AbilityData {
     pub targeting: Targeting,
     pub range: Option<Ranked<RangeField>>,
     pub cooldown_ms: Option<Ranked<Number>>,
-    /// In the caster's resource.
-    pub cost: Option<Ranked<Number>>,
+    /// In each pool of the caster it names.
+    #[serde(default)]
+    pub cost: BTreeMap<DeclaredName, Ranked<Number>>,
     pub cast_time_ms: Option<Ranked<Number>>,
     /// A target beyond range is moved in, instead of the caster walking.
     #[serde(default)]
@@ -53,12 +57,12 @@ pub struct AbilityData {
     pub projectile_state: BTreeMap<String, StateDecl>,
 }
 
-/// A toggle's cost, in the caster's resource.
+/// A toggle's cost, in each pool of the caster it names.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "snake_case", deny_unknown_fields)]
 pub enum Toggle {
-    CostPerAttack(Ranked<Number>),
-    CostPerSecond(Ranked<Number>),
+    CostPerAttack(BTreeMap<DeclaredName, Ranked<Number>>),
+    CostPerSecond(BTreeMap<DeclaredName, Ranked<Number>>),
 }
 
 /// A channel, which starts after `on_resolve` and calls `on_channel_tick` every `tick_ms`.
@@ -124,17 +128,12 @@ impl AbilityData {
     /// The length of every per-rank array it holds: its capability fields' and its params'.
     pub fn rank_counts(&self) -> impl Iterator<Item = usize> + '_ {
         let numbers = |ranked: Option<&Ranked<Number>>| ranked.and_then(Ranked::ranks);
-        let toggle = self.toggle.as_ref().map(|toggle| match toggle {
-            Toggle::CostPerAttack(cost) | Toggle::CostPerSecond(cost) => cost,
-        });
         let projectile = self.projectile.as_ref();
         let area = self.area.as_ref();
         [
             self.range.as_ref().and_then(Ranked::ranks),
             self.cooldown_ms.as_ref().and_then(Ranked::ranks),
-            self.cost.as_ref().and_then(Ranked::ranks),
             self.cast_time_ms.as_ref().and_then(Ranked::ranks),
-            numbers(toggle),
             numbers(self.channel.as_ref().map(|channel| &channel.duration_ms)),
             numbers(self.channel.as_ref().map(|channel| &channel.tick_ms)),
             numbers(self.charges.as_ref().map(|charges| &charges.max)),
@@ -151,8 +150,29 @@ impl AbilityData {
             numbers(area.and_then(|area| area.duration_ms.as_ref())),
         ]
         .into_iter()
+        .chain(self.costs().map(Ranked::ranks))
         .chain(self.params.values().map(Param::ranks))
         .flatten()
+    }
+
+    /// Every pool it costs something in, its toggle's among them.
+    pub fn cost_pools(&self) -> impl Iterator<Item = &DeclaredName> + '_ {
+        self.cost
+            .keys()
+            .chain(self.toggle_cost().into_iter().flat_map(BTreeMap::keys))
+    }
+
+    /// Each amount of its cost and its toggle's, in its pools.
+    fn costs(&self) -> impl Iterator<Item = &Ranked<Number>> + '_ {
+        self.cost
+            .values()
+            .chain(self.toggle_cost().into_iter().flat_map(BTreeMap::values))
+    }
+
+    fn toggle_cost(&self) -> Option<&BTreeMap<DeclaredName, Ranked<Number>>> {
+        self.toggle.as_ref().map(|toggle| match toggle {
+            Toggle::CostPerAttack(cost) | Toggle::CostPerSecond(cost) => cost,
+        })
     }
 
     /// Whether every per-rank array it holds has an entry for each of `ranks` ranks.
@@ -160,12 +180,16 @@ impl AbilityData {
         self.rank_counts().all(|count| count == ranks)
     }
 
-    /// Its capability fields at `rank`, a `{ param }` read from its params at that rank: global
-    /// reach and 0 for a field it lacks; the field that does not hold otherwise. A field must be
-    /// a whole number of milliseconds or of the resource, or a range of meters that is not
-    /// negative; and it may not read a scaling param, whose value is the caster's, not the
-    /// ability's.
-    pub fn fields_at(&self, rank: u8) -> Result<RankFields, AbilityField> {
+    /// Its capability fields at `rank`, a `{ param }` read from its params at that rank, its
+    /// cost's pools by `pool`: global reach and 0 for a field it lacks; the field that does not
+    /// hold otherwise. A field must be a whole number of milliseconds or of a pool, in a pool
+    /// `pool` finds, or a range of meters that is not negative; and it may not read a scaling
+    /// param, whose value is the caster's, not the ability's.
+    pub fn fields_at(
+        &self,
+        rank: u8,
+        pool: impl Fn(&DeclaredName) -> Option<PoolId>,
+    ) -> Result<RankFields, AbilityField> {
         let param_at = |name: &str, field| match self.params.get(name) {
             Some(Param::Ranked(ranked)) => ranked.at(rank).ok_or(field),
             Some(Param::Scaling(_)) | None => Err(field),
@@ -195,26 +219,28 @@ impl AbilityData {
                 }
             },
         };
+        let mut cost = Vec::with_capacity(self.cost.len());
+        for (name, amount) in &self.cost {
+            let pool = pool(name).ok_or(AbilityField::Cost)?;
+            let amount = whole(AbilityField::Cost, Some(amount))?;
+            let amount = i64::try_from(amount).ok().and_then(Num::from_int);
+            cost.push((pool, amount.ok_or(AbilityField::Cost)?));
+        }
         Ok(RankFields {
             range,
             cooldown_ms: whole(AbilityField::Cooldown, self.cooldown_ms.as_ref())?,
-            cost: whole(AbilityField::Cost, self.cost.as_ref())?,
+            cost: PoolCost::new(cost),
             cast_time_ms: whole(AbilityField::CastTime, self.cast_time_ms.as_ref())?,
         })
     }
 
     /// Every number field that reads a param, `{ param = "<name>" }`: the names it reads.
     pub fn param_refs(&self) -> impl Iterator<Item = &str> + '_ {
-        let toggle = self.toggle.as_ref().map(|toggle| match toggle {
-            Toggle::CostPerAttack(cost) | Toggle::CostPerSecond(cost) => cost,
-        });
         let projectile = self.projectile.as_ref();
         let area = self.area.as_ref();
         [
             self.cooldown_ms.as_ref(),
-            self.cost.as_ref(),
             self.cast_time_ms.as_ref(),
-            toggle,
             self.channel.as_ref().map(|channel| &channel.duration_ms),
             self.channel.as_ref().map(|channel| &channel.tick_ms),
             self.charges.as_ref().map(|charges| &charges.max),
@@ -229,6 +255,7 @@ impl AbilityData {
         ]
         .into_iter()
         .flatten()
+        .chain(self.costs())
         .flat_map(Ranked::values)
         .filter_map(Number::param)
         .chain(
@@ -282,8 +309,7 @@ impl AbilityData {
 pub struct RankFields {
     pub range: Range,
     pub cooldown_ms: u64,
-    /// In the caster's resource.
-    pub cost: u64,
+    pub cost: PoolCost,
     pub cast_time_ms: u64,
 }
 

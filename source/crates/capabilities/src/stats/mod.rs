@@ -11,12 +11,10 @@ use campfire_script::{ScriptHost, ScriptId};
 use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, Ticks};
 
 use crate::abilities::ability_book::AbilityId;
-use crate::abilities::resource_pool::ResourcePool;
 use crate::combat::CombatSet;
 use crate::combat::attack_stats::AttackStats;
 use crate::combat::combat_events::CombatEvents;
 use crate::combat::dead::Dead;
-use crate::combat::health::Health;
 use crate::navigation::move_step::MoveStep;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::hook::Hook;
@@ -28,6 +26,8 @@ use crate::stats::modifier_effect::ModifierEffect;
 use crate::stats::modifier_handle::ModifierHandle;
 use crate::stats::modifier_hooks::ModifierHooks;
 use crate::stats::modifiers::Modifiers;
+use crate::stats::pool_book::PoolBook;
+use crate::stats::pools::Pools;
 use crate::stats::stat::EngineStat;
 use crate::stats::stat_book::{StatBook, StatTotals};
 use crate::stats::unit_stats::UnitStats;
@@ -46,6 +46,11 @@ pub(crate) mod modifier_effect;
 pub(crate) mod modifier_handle;
 pub(crate) mod modifier_hooks;
 pub(crate) mod modifiers;
+pub(crate) mod pool_book;
+pub(crate) mod pool_cost;
+pub(crate) mod pool_data;
+pub(crate) mod pool_id;
+pub(crate) mod pools;
 pub(crate) mod stat;
 pub(crate) mod stat_book;
 pub(crate) mod stat_change;
@@ -64,6 +69,8 @@ pub struct Stats;
 pub(crate) enum StatsSet {
     /// In `SimSet::Inputs`: the modifiers and stacks that hold no longer end.
     Expire,
+    /// In `SimSet::Inputs`: the living units' pools regenerate.
+    Regenerate,
 }
 
 impl Stats {
@@ -85,8 +92,13 @@ impl Stats {
         }
         registry.register_component::<Level>();
         registry.register_component::<Modifiers>();
+        registry.register_component::<Pools>();
         schedule.add_systems((
-            (expire_modifiers.in_set(StatsSet::Expire), regenerate).in_set(SimSet::Inputs),
+            (
+                expire_modifiers.in_set(StatsSet::Expire),
+                regenerate.in_set(StatsSet::Regenerate),
+            )
+                .in_set(SimSet::Inputs),
             (clear_dead_modifiers, apply_auras)
                 .chain()
                 .in_set(SimSet::Resolve)
@@ -99,9 +111,10 @@ impl Stats {
         schedule.add_systems(refresh_stats.after(SimSet::Vision));
     }
 
-    /// Gives the match the mode's stat book.
-    pub(crate) fn load(world: &mut World, book: StatBook) {
+    /// Gives the match the mode's stat book and pool book.
+    pub(crate) fn load(world: &mut World, book: StatBook, pools: PoolBook) {
         world.insert_resource(book);
+        world.insert_resource(pools);
     }
 
     /// Applies `effect`, which a call by `applier` queued. An added modifier's numbers resolve
@@ -364,6 +377,7 @@ struct Held {
 /// Fills a row of the script view with the unit's level, stats and modifiers.
 fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
     fill.row.level = unit.get::<Level>().map(|level| level.get());
+    fill.row.pools = unit.get::<Pools>().copied();
     if let Some(stats) = unit.get::<UnitStats>() {
         fill.stated(stats.values());
     }
@@ -387,7 +401,11 @@ fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
 /// gives no tags and no stats. An effect whose stat the mode does not declare keeps what the
 /// unit's kit gave it.
 fn refresh_stats(
-    (book, tag_book): (Option<Res<'_, StatBook>>, Option<Res<'_, TagBook>>),
+    (book, pool_book, tag_book): (
+        Option<Res<'_, StatBook>>,
+        Option<Res<'_, PoolBook>>,
+        Option<Res<'_, TagBook>>,
+    ),
     mut units: Query<
         '_,
         '_,
@@ -399,20 +417,19 @@ fn refresh_stats(
             &mut UnitStats,
             Option<&mut MoveStep>,
             Option<&mut AttackStats>,
-            Option<&mut Health>,
-            Option<&mut ResourcePool>,
+            Option<&mut Pools>,
         ),
         Or<(Changed<Level>, Changed<Modifiers>, Added<UnitStats>)>,
     >,
     mut totals: Local<'_, Vec<StatTotals>>,
 ) {
-    let Some(book) = book else {
+    let (Some(book), Some(pool_book)) = (book, pool_book) else {
         return;
     };
     let granting = tag_book
         .as_deref()
         .map_or(TagSet::default(), TagBook::granting);
-    for (&unit_type, level, modifiers, tags, mut stats, step, attack, health, pool) in &mut units {
+    for (&unit_type, level, modifiers, tags, mut stats, step, attack, pools) in &mut units {
         let held = modifiers.into_iter().flat_map(Modifiers::iter);
         let granted = held
             .filter(|instance| instance.stacks > 0)
@@ -445,51 +462,36 @@ fn refresh_stats(
                 attack.set_if_neq(derived);
             }
         }
-        let positive = |value: Num| value.max(Num::EPSILON);
-        if let (Some(mut health), Some(max)) = (health, book.engine(values, EngineStat::Health)) {
-            let mut changed = *health;
-            changed.set_max(positive(max));
-            health.set_if_neq(changed);
-        }
-        if let (Some(mut pool), Some(max)) = (pool, book.engine(values, EngineStat::Resource)) {
-            let mut changed = *pool;
-            changed.set_max(positive(max));
-            pool.set_if_neq(changed);
+        if let Some(mut pools) = pools {
+            let mut changed = *pools;
+            for (pool, stats) in pool_book.iter() {
+                let max = values[usize::from(stats.max)].max(Num::EPSILON);
+                changed.set_max(pool, max);
+            }
+            pools.set_if_neq(changed);
         }
     }
 }
 
-/// Adds each living unit's regen to its pools: `health_regen` and `resource_regen` a second,
-/// the tick rate's share a tick, the remainder carried so a second gains exactly the regen.
+/// Adds each living unit's regen to its pools: each pool's `regen` stat a second, the tick
+/// rate's share a tick, the remainder carried so a second gains exactly the regen.
 fn regenerate(
-    book: Option<Res<'_, StatBook>>,
-    mut units: Query<
-        '_,
-        '_,
-        (&UnitStats, Option<&mut Health>, Option<&mut ResourcePool>),
-        Without<Dead>,
-    >,
+    (book, pool_book): (Option<Res<'_, StatBook>>, Option<Res<'_, PoolBook>>),
+    mut units: Query<'_, '_, (&UnitStats, &mut Pools), Without<Dead>>,
 ) {
-    let Some(book) = book else {
+    let (Some(book), Some(pool_book)) = (book, pool_book) else {
         return;
     };
     let hz = book.rate().hz().get();
-    for (stats, health, pool) in &mut units {
+    for (stats, mut pools) in &mut units {
         let values = stats.values();
-        if let (Some(mut health), Some(regen)) =
-            (health, book.engine(values, EngineStat::HealthRegen))
-        {
-            let mut changed = *health;
-            changed.regen(regen, hz);
-            health.set_if_neq(changed);
+        let mut changed = *pools;
+        for (pool, stats) in pool_book.iter() {
+            if let Some(regen) = stats.regen {
+                changed.regen(pool, values[usize::from(regen)], hz);
+            }
         }
-        if let (Some(mut pool), Some(regen)) =
-            (pool, book.engine(values, EngineStat::ResourceRegen))
-        {
-            let mut changed = *pool;
-            changed.regen(regen, hz);
-            pool.set_if_neq(changed);
-        }
+        pools.set_if_neq(changed);
     }
 }
 
@@ -506,14 +508,16 @@ pub(crate) mod internals {
     use crate::stats::Stats;
     use crate::stats::modifier_book::{Applier, ModifierId};
     use crate::stats::modifier_effect::ModifierEffect;
+    use crate::stats::pool_book::PoolBook;
     use crate::stats::stat::Stat;
     use crate::stats::stat_book::StatBook;
     use crate::stats::stat_rule::StatRule;
 
-    /// Gives a match with no mode the stat book of `rules`, at `rate`, with no unit type.
+    /// Gives a match with no mode the stat book of `rules`, at `rate`, with no unit type and no
+    /// pool.
     pub fn load_stats(world: &mut World, rules: &BTreeMap<Stat, StatRule>, rate: TickRate) {
         let book = StatBook::new(rules, [], rate, Num::MAX).expect("rules of no type's value");
-        Stats::load(world, book);
+        Stats::load(world, book, PoolBook::default());
     }
 
     /// Gives `target` the modifier `id` from `source`, by `ability` at `rank`, and a passive when

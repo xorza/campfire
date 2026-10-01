@@ -2,7 +2,6 @@ use campfire_math::Num;
 use campfire_script::ScriptId;
 
 use crate::abilities::ability_book::AbilityId;
-use crate::abilities::resource_pool::ResourcePool;
 use crate::mode::map_data::MapData;
 use crate::mode::mode_data::ModeData;
 use crate::mode::team_manifest::TeamManifest;
@@ -52,7 +51,6 @@ pub struct AvatarSetup {
     pub unit_type: UnitType,
     /// Its abilities, in the order of its slots.
     pub abilities: Vec<AbilityId>,
-    pub resource: Option<ResourcePool>,
     /// The modifier it carries from its spawn on.
     pub passive: Option<ModifierId>,
 }

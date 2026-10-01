@@ -16,7 +16,7 @@ use bevy::mesh::{Mesh, Mesh3d, Meshable};
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::time::Time;
 use bevy::transform::components::Transform;
-use campfire_capabilities::{AbilitySlots, AttackState, Dead, Health, Owner, ResourcePool, Team};
+use campfire_capabilities::{AbilitySlots, AttackState, Dead, Owner, PoolId, Pools, Team};
 use campfire_sim::{EntityIndex, SimTick, Unpredicted};
 use lightyear::prelude::Predicted;
 
@@ -27,11 +27,18 @@ use crate::view::{CAMERA, Drawn, Glide, Look};
 mod gauge;
 mod ring;
 
-/// Makes the match readable with plain shapes over the drawings: a health bar over every unit, the
-/// own avatar's resource and cooldowns under its own, a ring where each hit lands, and a ring under
-/// the unit the own avatar attacks. It reads the sim's components and changes none.
+/// Makes the match readable with plain shapes over the drawings: a bar of the `life` pool over
+/// every unit, the own avatar's other pools and cooldowns under its own, a ring where each hit
+/// lands, and a ring under the unit the own avatar attacks. It reads the sim's components and
+/// changes none.
 #[derive(Debug)]
-pub(crate) struct Hud;
+pub(crate) struct Hud {
+    pub(crate) life: Option<PoolId>,
+}
+
+/// The mode's life pool, when it has one.
+#[derive(Resource, Debug, Clone, Copy)]
+struct Life(PoolId);
 
 /// The meshes and materials of the gauges and rings.
 #[derive(Resource, Debug)]
@@ -50,17 +57,16 @@ struct HudPalette {
 #[derive(Component, Debug)]
 struct TargetMark;
 
-/// The drawn units with no gauges yet: each one's team, whether it has health, its ability slots
-/// and a resource, and whether it is the player's own.
+/// The drawn units with no gauges yet: each one's team, its pools, its ability slots, and whether
+/// it is the player's own.
 type Ungauged<'w, 's> = Query<
     'w,
     's,
     (
         Entity,
         &'static Team,
-        Has<Health>,
+        Option<&'static Pools>,
         Option<&'static AbilitySlots>,
-        Has<ResourcePool>,
         Has<Predicted>,
         Has<Owner>,
     ),
@@ -77,8 +83,7 @@ type Shown<'w, 's> = Query<
     's,
     (
         Has<Dead>,
-        Option<&'static Health>,
-        Option<&'static ResourcePool>,
+        Option<&'static Pools>,
         Option<&'static AbilitySlots>,
     ),
     Allow<Unpredicted>,
@@ -93,6 +98,9 @@ const ABOVE: f32 = 0.35;
 
 impl Plugin for Hud {
     fn build(&self, app: &mut App) {
+        if let Some(life) = self.life {
+            app.insert_resource(Life(life));
+        }
         app.add_systems(Startup, Hud::set_palette);
         app.add_systems(
             Update,
@@ -143,10 +151,11 @@ impl Hud {
     }
 
     /// Gives each drawn unit its gauges, once the client holds its own avatar, whose team tells
-    /// friend from foe: health for every unit with health; resource and one per ability slot for
-    /// the own avatar.
+    /// friend from foe: life for every unit with the life pool; each other pool and one per
+    /// ability slot for the own avatar.
     fn add_gauges(
         palette: Res<'_, HudPalette>,
+        life: Option<Res<'_, Life>>,
         own: Query<'_, '_, &Team, (With<Owner>, With<Predicted>)>,
         drawn: Ungauged<'_, '_>,
         mut commands: Commands<'_, '_>,
@@ -154,14 +163,16 @@ impl Hud {
         let Ok(&own_team) = own.single() else {
             return;
         };
-        for (unit, team, health, slots, resource, predicted, owned) in &drawn {
+        let life = life.map(|life| life.0);
+        for (unit, team, pools, slots, predicted, owned) in &drawn {
             commands.entity(unit).insert(Gauged);
             let mine = predicted && owned;
             let friend = *team == own_team;
             let mut kinds = Vec::new();
-            if health {
+            let has = |pool| pools.is_some_and(|pools| pools.max(pool).is_some());
+            if life.is_some_and(has) {
                 kinds.push((
-                    GaugeKind::Health { shown: None },
+                    GaugeKind::Life { shown: None },
                     if friend {
                         &palette.friend
                     } else {
@@ -169,14 +180,19 @@ impl Hud {
                     },
                 ));
             }
-            if mine && resource {
-                kinds.push((GaugeKind::Resource, &palette.resource));
+            let mut row = 1;
+            if mine && let Some(pools) = pools {
+                for pool in pools.ids().filter(|&pool| Some(pool) != life) {
+                    kinds.push((GaugeKind::Pool { pool, row }, &palette.resource));
+                    row += 1;
+                }
             }
             if mine && let Some(slots) = slots {
                 for (slot, _) in (0..).zip(slots.iter()) {
                     kinds.push((
                         GaugeKind::Cooldown {
                             slot,
+                            row,
                             cooling: None,
                         },
                         &palette.cooldown,
@@ -210,24 +226,27 @@ impl Hud {
         }
     }
 
-    /// Puts a ring on the ground where a unit's health dropped since its gauge last showed it.
+    /// Puts a ring on the ground where a unit's life dropped since its gauge last showed it.
     fn mark_hits(
         time: Res<'_, Time>,
         palette: Res<'_, HudPalette>,
-        units: Query<'_, '_, (&Health, &Drawn), Allow<Unpredicted>>,
+        life: Option<Res<'_, Life>>,
+        units: Query<'_, '_, (&Pools, &Drawn), Allow<Unpredicted>>,
         drawings: Query<'_, '_, (&Transform, &Glide)>,
         mut gauges: Query<'_, '_, &mut Gauge>,
         mut commands: Commands<'_, '_>,
     ) {
         for mut gauge in &mut gauges {
             let unit = gauge.unit;
-            let GaugeKind::Health { shown } = &mut gauge.kind else {
+            let GaugeKind::Life { shown } = &mut gauge.kind else {
                 continue;
             };
-            let Ok((health, drawn)) = units.get(unit) else {
+            let (Some(life), Ok((pools, drawn))) = (&life, units.get(unit)) else {
                 continue;
             };
-            let current = health.current();
+            let Some(current) = pools.current(life.0) else {
+                continue;
+            };
             let hit = shown.is_some_and(|shown| current < shown);
             *shown = Some(current);
             let Ok((transform, glide)) = drawings.get(drawn.drawing()) else {
@@ -251,21 +270,24 @@ impl Hud {
     /// abilities.
     fn fill_gauges(
         tick: Option<Res<'_, SimTick>>,
+        life: Option<Res<'_, Life>>,
         units: Shown<'_, '_>,
         mut gauges: Query<'_, '_, (&mut Gauge, &mut Visibility)>,
         mut fills: Fills<'_, '_>,
     ) {
         let now = tick.map(|tick| tick.start());
         for (mut gauge, mut visibility) in &mut gauges {
-            let Ok((dead, health, pool, slots)) = units.get(gauge.unit) else {
+            let Ok((dead, pools, slots)) = units.get(gauge.unit) else {
                 continue;
             };
+            let fill = |pool| {
+                let pools = pools?;
+                Some(share(pools.current(pool)?, pools.max(pool)?))
+            };
             let fraction = match &mut gauge.kind {
-                GaugeKind::Health { .. } => {
-                    health.map(|health| share(health.current(), health.max()))
-                }
-                GaugeKind::Resource => pool.map(|pool| share(pool.current(), pool.max())),
-                GaugeKind::Cooldown { slot, cooling } => {
+                GaugeKind::Life { .. } => life.as_ref().and_then(|life| fill(life.0)),
+                GaugeKind::Pool { pool, .. } => fill(*pool),
+                GaugeKind::Cooldown { slot, cooling, .. } => {
                     let learned = slots
                         .and_then(|slots| slots.slot(*slot))
                         .filter(|state| state.rank > 0);
@@ -370,7 +392,7 @@ mod tests {
         app.init_asset::<Mesh>();
         app.init_asset::<StandardMaterial>();
         app.init_resource::<EntityIndex>();
-        app.add_plugins(Hud);
+        app.add_plugins(Hud { life: None });
         app.update();
         assert!(app.world().contains_resource::<HudPalette>());
         // With no own avatar there is no target to mark.

@@ -7,7 +7,7 @@ use std::num::NonZeroU32;
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use campfire_capabilities::{
-    Action, AttackState, Dead, Destination, Health, MatchEnd, MatchResult, MoveStep, Owner,
+    Action, AttackState, Dead, Destination, MatchEnd, MatchResult, MoveStep, Owner, PoolId, Pools,
     Projectile, Respawn, Team,
 };
 use campfire_math::{Num, Vec3};
@@ -188,11 +188,10 @@ fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_
     assert_eq!(hero(local.server()), at(4, 0));
     assert_eq!(hero(local.client(0)), at(4, 0));
     assert!(dead(local.client(0)));
+    // The lane mode's life pool, `health`, is the first of its pools by name.
     let health = |app: &App| {
-        app.world()
-            .get::<Health>(hero_entity(app))
-            .unwrap()
-            .current()
+        let pools = app.world().get::<Pools>(hero_entity(app)).unwrap();
+        pools.current(PoolId::FIRST).unwrap()
     };
     assert_eq!(health(local.client(0)), Num::ZERO);
     assert_eq!(rollbacks(&local), 1);
@@ -240,7 +239,7 @@ fn a_fallen_tower_ends_the_match_on_the_server_and_its_client() {
                 && !unit.contains::<Owner>()
         })
         .unwrap();
-    let frail = Health::new(Num::EPSILON).unwrap();
+    let frail = Pools::new([(PoolId::FIRST, Num::EPSILON)]).unwrap();
     local
         .server_mut()
         .world_mut()

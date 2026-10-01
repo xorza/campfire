@@ -31,6 +31,7 @@ use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
+use crate::stats::StatsSet;
 use crate::units::body::Body;
 use crate::units::by_type::ByType;
 use crate::units::owner::Owner;
@@ -67,7 +68,8 @@ impl Orders {
         schedule.add_systems((
             apply_orders
                 .in_set(SimSet::Inputs)
-                .in_set(OrdersSet::Orders),
+                .in_set(OrdersSet::Orders)
+                .after(StatsSet::Regenerate),
             (follow_paths, chase)
                 .chain()
                 .in_set(SimSet::Act)
@@ -247,7 +249,7 @@ fn think(world: &mut World, mut due: Local<'_, Vec<Due>>) {
             period,
         } in &*due
         {
-            // A unit with no team or health is no unit scripts see.
+            // A unit with no position or team is no unit scripts see.
             let Some(unit) = ctx.view().unit(id) else {
                 continue;
             };

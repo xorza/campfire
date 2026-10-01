@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 use bevy_ecs::schedule::Schedule;
 use bevy_ecs::world::World;
 use campfire_capabilities::{
-    Abilities, AbilityData, AbilityId, AvatarSetup, CombatData, EngineStat, KitRules, LoadoutSetup,
-    MatchScripts, Mode, ModeSetup, OnDeath, Orders, ResourcePool, Stats, UnitKit, UnitKitError,
+    Abilities, AbilityData, AbilityId, AvatarSetup, CombatData, DeclaredName, KitRules,
+    LoadoutSetup, MatchScripts, Mode, ModeSetup, OnDeath, Orders, PoolId, Stat, Stats, UnitKit,
     UnitTypeData, UnitTypeSetup, Units,
 };
 use campfire_content::PackagePath;
@@ -54,13 +54,16 @@ impl<'a> MatchBuild<'a> {
             limits: manifest.script_limits,
             players,
             damage_kinds: packages.data().combat.damage_kinds.as_slice().into(),
+            pools: packages.data().pools.keys().cloned().collect(),
         };
         manifest
             .capabilities
             .install(world, schedule, registry, Some(scripts));
+        let data = packages.data();
         let rules = KitRules {
             rate: *world.resource::<TickRate>(),
             max_move_speed: manifest.max_move_speed,
+            life: data.combat.life_pool(&data.pools).unwrap_or(PoolId::FIRST),
         };
         let mut build = MatchBuild {
             packages,
@@ -144,7 +147,8 @@ impl<'a> MatchBuild<'a> {
                     }
                 })?;
             }
-            let kit = UnitKit::new(file.stats.as_ref(), file.combat.as_ref(), self.rules)
+            let pools = self.pools(&file.pools);
+            let kit = UnitKit::new(file.stats.as_ref(), file.combat.as_ref(), pools, self.rules)
                 .map(|kit| {
                     kit.with_vision(file.vision.as_ref())
                         .with_collision(file.collision.as_ref())
@@ -164,8 +168,8 @@ impl<'a> MatchBuild<'a> {
     }
 
     /// Loads the avatar `data` of `package`: its unit type, named for the package and tagged
-    /// `avatar`, which stays when it dies, with its kit at level 1; its abilities, in slot order;
-    /// and its resource pool.
+    /// `avatar`, which stays when it dies, with its kit and pools at level 1; and its abilities,
+    /// in slot order.
     fn load_avatar(
         &mut self,
         package: usize,
@@ -185,7 +189,8 @@ impl<'a> MatchBuild<'a> {
             unit_type: name.clone(),
             error,
         };
-        let kit = UnitKit::new(Some(&data.stats), Some(&combat), self.rules)
+        let pools = self.pools(&data.pools);
+        let kit = UnitKit::new(Some(&data.stats), Some(&combat), pools, self.rules)
             .map_err(kit_error)?
             .with_vision(data.vision.as_ref())
             .with_collision(data.collision.as_ref());
@@ -198,14 +203,6 @@ impl<'a> MatchBuild<'a> {
                 self.load_ability(package, id, &data.abilities[id], ranks)
             })
             .collect::<Result<_, _>>()?;
-        let resource = if data.stats.declares(EngineStat::Resource) {
-            let max = data.stats.at(EngineStat::Resource, 1);
-            let max = max.ok_or_else(|| kit_error(UnitKitError::Overflow(EngineStat::Resource)))?;
-            let pool = ResourcePool::new(max);
-            Some(pool.ok_or_else(|| kit_error(UnitKitError::NotPositive(EngineStat::Resource)))?)
-        } else {
-            None
-        };
         self.unit_types.push(UnitTypeSetup {
             unit_type,
             kit,
@@ -220,8 +217,20 @@ impl<'a> MatchBuild<'a> {
             id: name.clone(),
             unit_type,
             abilities,
-            resource,
             passive,
+        })
+    }
+
+    /// Each pool of `names`, which the load checked the mode declares, with the stat of its
+    /// maximum.
+    fn pools(
+        &self,
+        names: &'a [DeclaredName],
+    ) -> impl Iterator<Item = (PoolId, &'a Stat)> + use<'a> {
+        let pools = &self.packages.data().pools;
+        names.iter().map(move |name| {
+            let id = PoolId::of(pools, name).expect(CHECKED);
+            (id, &pools[name].max)
         })
     }
 

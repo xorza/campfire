@@ -16,15 +16,17 @@ use crate::capability_set::internals::TestMatch;
 use crate::combat::attack_state::AttackState;
 use crate::combat::attack_stats::AttackStats;
 use crate::combat::combatant::Combatant;
+use crate::combat::combatant::internals::Armed;
 use crate::combat::dead::Dead;
-use crate::combat::health::Health;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::navigation::on_path::OnPath;
 use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::level::Level;
-use crate::stats::stat::{EngineStat, Stat};
+use crate::stats::pool_id::PoolId;
+use crate::stats::pools::Pools;
+use crate::stats::stat::Stat;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::block::Block;
 use crate::units::path_id::PathId;
@@ -44,11 +46,15 @@ fn at(x: i64, y: i64, z: i64) -> Position {
     Position::new(Vec3::new(num(x), num(y), num(z))).unwrap()
 }
 
-fn unit() -> Combatant {
-    Combatant {
-        health: Health::new(num(10)).unwrap(),
+/// A unit of 10 health, the life pool the first of the scene's pools, `health` and `mana`.
+fn unit() -> Armed {
+    let combatant = Combatant {
         attack: Some(AttackStats::new(num(2), Ticks::new(0), Ticks::new(1), Num::ZERO).unwrap()),
         on_death: OnDeath::Stay,
+    };
+    Armed {
+        combatant,
+        life: num(10),
     }
 }
 
@@ -69,6 +75,9 @@ impl Scene {
             limits,
             players: 1,
             damage_kinds: Rc::from([]),
+            pools: ["health", "mana"]
+                .map(|pool| DeclaredName::new(pool).unwrap())
+                .into(),
         };
         let TestMatch {
             world,
@@ -219,7 +228,7 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let near = scene.spawn(at(3, 0, 4), unit().bundle(Team::new(1)));
     let recent = scene.spawn(at(9, 0, 0), unit().bundle(Team::new(1)));
     let fallen = scene.spawn(at(9, 0, 1), (unit().bundle(Team::new(1)), Dead));
-    let health_only = (Team::new(1), Health::new(num(1)).unwrap());
+    let health_only = (Team::new(1), Pools::life(num(1)));
     let bare = scene.spawn(at(9, 0, 2), health_only);
     // 3 m away on the ground plane, √153 ≈ 12.37 m in space.
     scene.spawn(at(0, 12, 3), unit().bundle(Team::new(1)));
@@ -319,27 +328,25 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
 }
 
 #[test]
-fn a_handle_reads_its_units_level_health_and_stats() {
+fn a_handle_reads_its_units_level_pools_and_stats() {
     let mut scene = Scene::new();
-    // Level 3, with health 10 and armor 25 among the mode's stats, health first as an engine
-    // stat; 4 health taken. One unit has health and no stats, one neither.
-    let names = [
-        Stat::Engine(EngineStat::Health),
-        Stat::Declared(DeclaredName::new("armor").unwrap()),
-    ];
+    // Level 3, with armor 25 and health 10 among the mode's stats; its health pool of 10, 4
+    // taken, and no mana pool. One unit has a pool and no stats, one neither.
+    let names = ["armor", "health"].map(|name| Stat::named(name).unwrap());
     scene
         .world
         .non_send::<View>()
         .set_stat_names(Rc::from(names));
     let mut stats = UnitStats::default();
-    stats.refill().extend([num(10), num(25)]);
+    stats.refill().extend([num(25), num(10)]);
     let of = scene.spawn(
         at(0, 0, 0),
         (unit().bundle(Team::new(0)), Level::new(3).unwrap(), stats),
     );
     let entity = scene.entity(of);
-    scene.world.get_mut::<Health>(entity).unwrap().take(num(4));
-    let bare = scene.spawn(at(1, 0, 0), (Team::new(1), Health::new(num(1)).unwrap()));
+    let mut pools = scene.world.get_mut::<Pools>(entity).unwrap();
+    pools.take(PoolId::FIRST, num(4));
+    let bare = scene.spawn(at(1, 0, 0), (Team::new(1), Pools::life(num(1))));
     let shell = scene.spawn(at(2, 0, 0), Team::new(1));
 
     let read = |scene: &mut Scene, unit, expression: &str| {
@@ -348,8 +355,14 @@ fn a_handle_reads_its_units_level_health_and_stats() {
     };
     let value = |scene: &mut Scene, expression: &str| read(scene, of, expression).unwrap();
     assert_eq!(value(&mut scene, "of.level").as_int(), Ok(3));
-    assert_eq!(value(&mut scene, "of.health").cast::<Num>(), num(6));
-    assert_eq!(value(&mut scene, "of.max_health").cast::<Num>(), num(10));
+    assert_eq!(
+        value(&mut scene, r#"of.pool("health")"#).cast::<Num>(),
+        num(6)
+    );
+    assert_eq!(
+        value(&mut scene, r#"of.pool_max("health")"#).cast::<Num>(),
+        num(10)
+    );
     assert_eq!(
         value(&mut scene, r#"of.stat("armor")"#).cast::<Num>(),
         num(25)
@@ -363,8 +376,10 @@ fn a_handle_reads_its_units_level_health_and_stats() {
         (of, r#"of.stat("spirit")"#, ApiError::UnknownStat),
         (bare, "of.level", ApiError::NoStats),
         (bare, r#"of.stat("armor")"#, ApiError::NoStats),
-        (shell, "of.health", ApiError::NoHealth),
-        (shell, "of.max_health", ApiError::NoHealth),
+        (of, r#"of.pool("mana")"#, ApiError::NoPool),
+        (of, r#"of.pool_max("rage")"#, ApiError::UnknownPool),
+        (shell, r#"of.pool("health")"#, ApiError::NoPool),
+        (shell, r#"of.pool_max("health")"#, ApiError::NoPool),
     ];
     for (unit, expression, refusal) in refusals {
         let error = read(&mut scene, unit, expression).unwrap_err();

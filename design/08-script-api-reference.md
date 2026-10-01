@@ -24,7 +24,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `enemy_team` | `(team)` | every role | core | runs | the one team that is `team`'s enemy, in a mode of two playing teams |
 | `find` | `(of, pos, radius, filter)` | every role | core | runs | the living units within `radius` of `pos` that `filter` selects for `of`, seen or not, by stable id |
 | `find_visible` | `(of, pos, radius, filter)` | every role | vision | runs | as `find`, of the units `of`'s team sees |
-| `heal` | `(unit, amount)` | every role | combat | runs | heals `unit`, times one plus its `heal_scale` stat |
+| `heal` | `(unit, amount)` | every role | combat | runs | heals `unit`'s life pool, times one plus its `heal_scale` stat |
 | `knock_back` | `(unit, from, distance, ms)` | every role | stats | planned | pushes `unit` away from `from` |
 | `learn` | `(avatar, slot)` | mode | abilities | runs | the ability in `slot` a rank more, up to its last |
 | `map` | read | every role | navigation | runs | the map's paths and neutral spawns |
@@ -43,7 +43,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `reduce_cooldowns` | `(unit, fraction)` | every role | abilities | planned | takes `fraction` off the cooldowns of `unit`'s basic abilities |
 | `remove` | `(handle)` | every role | stats | runs | ends the modifier, projectile or area at once |
 | `respawn` | `(unit, ms)` | mode | combat | runs | brings back `unit`, dead and of a type that stays, `ms` from the call |
-| `restore` | `(unit, amount)` | every role | combat | runs | gives `unit` back `amount` of its resource |
+| `restore` | `(unit, pool, amount)` | every role | combat | runs | gives `unit` back `amount` of its `pool`, unscaled |
 | `reveal` | `(pos, radius, ms)` | every role | vision | planned | shows the source's team what is within `radius` of `pos` |
 | `spawn_avatars` | `()` | mode | core | runs | spawns each chosen avatar not yet spawned, in slot order, at its team's spawn |
 | `spawn_group` | `(team, path, types)` | mode | core | runs | spawns `types` in order at `team`'s end of `path`, walking it |
@@ -65,14 +65,14 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `can_see` | `(unit)` | vision | runs | whether its team sees the other unit |
 | `has_modifier` | `(id)` | stats | runs | whether it carries the modifier of the script's package |
 | `has_tag` | `(tag)` | core | runs | whether it has the tag, of its type or a modifier |
-| `health` | read | combat | runs | its health |
 | `is_avatar` | read | core | runs | whether it is an avatar |
 | `is_enemy_of` | `(unit)` | core | runs | whether the two are of enemy teams |
 | `level` | read | stats | runs | its level |
-| `max_health` | read | combat | runs | its health's maximum |
 | `owner` | read | core | runs | its player's slot, `()` with none |
 | `params` | read | core | runs | its unit type's params, unresolved |
 | `path` | read | core | runs | the name of the path it walks, `()` with none |
+| `pool` | `(name)` | stats | runs | the current amount of its pool `name` |
+| `pool_max` | `(name)` | stats | runs | the maximum of its pool `name` |
 | `pos` | read | core | runs | where it stands |
 | `radius` | read | core | runs | its body's radius, 0 with no body |
 | `recent_attackers` | `(ms)` | combat | runs | the living units that struck it within the last `ms`, rounded up to whole ticks |
@@ -215,6 +215,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `modifiers` | runs |
 | `attack_kind` | runs |
 | `stats` | runs |
+| `pools` | runs |
 | `resources` | runs |
 | `tags` | runs |
 | `state_version` | planned |
@@ -225,6 +226,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | --- | --- |
 | `damage_kinds` | runs |
 | `assist_window_ms` | runs |
+| `life` | runs |
 | `leech` | runs |
 | `heal_scale` | runs |
 

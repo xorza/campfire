@@ -7,6 +7,8 @@ use campfire_sim::{Capability, Position, StableId};
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_api::{ApiOwner, MemberSpec};
+use crate::stats::pool_id::PoolId;
+use crate::stats::pools::Pools;
 use crate::units::script_view::{UnitRow, View};
 
 /// A unit as a script holds it, `Unit` in scripts: its values as the view read them.
@@ -32,6 +34,16 @@ impl Unit {
         self.view
             .row(self.id)
             .expect("a handle's unit is in its view")
+    }
+
+    /// What `read` gives of its pool `name`; an error for a pool the mode does not declare, or
+    /// one the unit does not have.
+    fn pool(&self, name: &str, read: fn(&Pools, PoolId) -> Option<Num>) -> Checked<Num> {
+        let pool = self.view.pool(name)?;
+        self.row()
+            .pools
+            .and_then(|pools| read(&pools, pool))
+            .ok_or_else(|| ApiError::NoPool.fail().into())
     }
 
     /// The `Unit` handle's fields and methods, and `Pos` with `distance_to` and `within`.
@@ -81,20 +93,6 @@ impl Unit {
                     Ok(INT::from(level))
                 },
             )
-            .bind(
-                field("health", "its health").capability(Capability::Combat),
-                |unit: &mut Unit| -> Checked<Num> {
-                    let health = unit.row().health.ok_or_else(|| ApiError::NoHealth.fail())?;
-                    Ok(health.current())
-                },
-            )
-            .bind(
-                field("max_health", "its health's maximum").capability(Capability::Combat),
-                |unit: &mut Unit| -> Checked<Num> {
-                    let health = unit.row().health.ok_or_else(|| ApiError::NoHealth.fail())?;
-                    Ok(health.max())
-                },
-            )
             .bind(field("team", "its team's name"), |unit: &mut Unit| {
                 unit.view.team_name(unit.row().team)
             })
@@ -127,6 +125,16 @@ impl Unit {
             method("stat", "(name)", "its value of a stat the mode declares")
                 .capability(Capability::Stats),
             |unit: &mut Unit, name: &str| unit.view.stat(&unit.row(), name),
+        )
+        .bind(
+            method("pool", "(name)", "the current amount of its pool `name`")
+                .capability(Capability::Stats),
+            |unit: &mut Unit, name: &str| unit.pool(name, Pools::current),
+        )
+        .bind(
+            method("pool_max", "(name)", "the maximum of its pool `name`")
+                .capability(Capability::Stats),
+            |unit: &mut Unit, name: &str| unit.pool(name, Pools::max),
         )
         .bind(
             method(

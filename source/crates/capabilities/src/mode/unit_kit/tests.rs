@@ -4,7 +4,6 @@ use std::str::FromStr;
 
 use super::*;
 use crate::combat::on_death::OnDeath;
-use crate::stats::stat::Stat;
 use crate::stats::stats_data::StatValue;
 use crate::values::scalar::Scalar;
 
@@ -16,7 +15,17 @@ fn rules(hz: u32) -> KitRules {
     KitRules {
         rate: TickRate::new(NonZeroU32::new(hz).unwrap()),
         max_move_speed: Speed::new(decimal("6.0")).unwrap(),
+        life: PoolId::FIRST,
     }
+}
+
+fn health() -> Stat {
+    Stat::named("health").unwrap()
+}
+
+/// The life pool, the first, its maximum the `health` stat.
+fn life(health: &Stat) -> [(PoolId, &Stat); 1] {
+    [(PoolId::FIRST, health)]
 }
 
 /// The 3v3's caster creep, with `change` applied to its stats.
@@ -26,7 +35,7 @@ fn caster(change: impl FnOnce(&mut BTreeMap<Stat, StatValue>)) -> StatsData {
         per_level: None,
     };
     let mut stats = BTreeMap::from([
-        (Stat::Engine(EngineStat::Health), base("280")),
+        (health(), base("280")),
         (Stat::Engine(EngineStat::AttackDamage), base("23")),
         (Stat::Engine(EngineStat::AttackSpeed), base("0.67")),
         (Stat::Engine(EngineStat::MoveSpeed), base("3.25")),
@@ -48,14 +57,20 @@ fn attack(windup_ms: u64, projectile_speed: Option<&str>) -> CombatData {
 
 #[test]
 fn a_kit_counts_its_stats_in_ticks_at_the_rate() {
+    let health = health();
     let kit = UnitKit::new(
         Some(&caster(|_| ())),
         Some(&attack(300, Some("6.5"))),
+        life(&health),
         rules(30),
     );
     let kit = kit.unwrap();
     let combatant = kit.combatant.unwrap();
-    assert_eq!(combatant.health.max(), decimal("280"));
+    assert_eq!(kit.pools.unwrap().max(PoolId::FIRST), Some(decimal("280")));
+    assert_eq!(
+        kit.pools.unwrap().current(PoolId::FIRST),
+        Some(decimal("280"))
+    );
     assert_eq!(combatant.on_death, OnDeath::Despawn);
     // 0.67 attacks a second is 11240735 / 2²⁴, to the nearest: 30 × 2²⁴ over that is 44.78,
     // up to 45 ticks. 300 ms is 9 ticks. 6.5 m/s over 30 is 3635063.47 / 2²⁴, to 3635063;
@@ -72,6 +87,7 @@ fn a_kit_counts_its_stats_in_ticks_at_the_rate() {
     let slower = UnitKit::new(
         Some(&caster(|_| ())),
         Some(&attack(300, Some("6.5"))),
+        life(&health),
         rules(20),
     );
     let stats = slower.unwrap().combatant.unwrap().attack.unwrap();
@@ -90,16 +106,38 @@ fn a_kit_counts_its_stats_in_ticks_at_the_rate() {
             .unwrap()
             .base = Scalar::Int(7);
     });
-    let kit = UnitKit::new(Some(&fast), Some(&attack(0, None)), rules(30)).unwrap();
+    let kit = UnitKit::new(
+        Some(&fast),
+        Some(&attack(0, None)),
+        life(&health),
+        rules(30),
+    )
+    .unwrap();
     assert_eq!(kit.combatant.unwrap().attack.unwrap().period().get(), 10);
     assert_eq!(kit.step.unwrap().get(), Num::from_bits(3_355_443));
 
-    // No combat section, no move speed: nothing of either.
+    // No combat section, no move speed, no pools: nothing of any.
     let still = caster(|stats| {
         stats.remove(&Stat::Engine(EngineStat::MoveSpeed));
     });
-    let kit = UnitKit::new(Some(&still), None, rules(30)).unwrap();
-    assert_eq!((kit.combatant, kit.step), (None, None));
+    let kit = UnitKit::new(Some(&still), None, [], rules(30)).unwrap();
+    assert_eq!((kit.combatant, kit.step, kit.pools), (None, None, None));
+
+    // Two pools, each full at its maximum at level 1: health 280, and mana 100 + 20 × 0. A pool
+    // the type does not list stays none.
+    let mana = Stat::named("mana").unwrap();
+    let with_mana = caster(|stats| {
+        let value = StatValue {
+            base: Scalar::Int(100),
+            per_level: Some(Scalar::Int(20)),
+        };
+        stats.insert(mana.clone(), value);
+    });
+    let pools = [(PoolId::FIRST, &health), (PoolId::new(2).unwrap(), &mana)];
+    let kit = UnitKit::new(Some(&with_mana), None, pools, rules(30)).unwrap();
+    let pools = kit.pools.unwrap();
+    let maxes = [0, 1, 2].map(|at| pools.max(PoolId::new(at).unwrap()));
+    assert_eq!(maxes, [Some(decimal("280")), None, Some(decimal("100"))]);
 }
 
 #[test]
@@ -120,17 +158,17 @@ fn a_kit_refuses_values_that_make_no_unit() {
         (caster(|_| ()), attack(1500, None), UnitKitError::Attack),
         (
             caster(|stats| {
-                stats.remove(&Stat::Engine(EngineStat::Health));
+                stats.remove(&health());
             }),
             attack(300, None),
-            UnitKitError::MissingStat(EngineStat::Health),
+            UnitKitError::MissingStat(health()),
         ),
         (
             caster(|stats| {
                 stats.remove(&Stat::Engine(EngineStat::AttackDamage));
             }),
             attack(300, None),
-            UnitKitError::MissingStat(EngineStat::AttackDamage),
+            UnitKitError::MissingStat(Stat::Engine(EngineStat::AttackDamage)),
         ),
         (
             caster(|stats| {
@@ -140,17 +178,14 @@ fn a_kit_refuses_values_that_make_no_unit() {
                     .base = Scalar::Int(0);
             }),
             attack(300, None),
-            UnitKitError::NotPositive(EngineStat::AttackSpeed),
+            UnitKitError::NotPositive(Stat::Engine(EngineStat::AttackSpeed)),
         ),
         (
             caster(|stats| {
-                stats
-                    .get_mut(&Stat::Engine(EngineStat::Health))
-                    .unwrap()
-                    .base = Scalar::Int(0);
+                stats.get_mut(&health()).unwrap().base = Scalar::Int(0);
             }),
             attack(300, None),
-            UnitKitError::NotPositive(EngineStat::Health),
+            UnitKitError::NotPositive(health()),
         ),
         (
             caster(|stats| {
@@ -160,13 +195,22 @@ fn a_kit_refuses_values_that_make_no_unit() {
                     .base = Scalar::Int(-1);
             }),
             attack(300, None),
-            UnitKitError::Negative(EngineStat::MoveSpeed),
+            UnitKitError::Negative(Stat::Engine(EngineStat::MoveSpeed)),
         ),
     ];
+    let health = health();
     for (stats, combat, error) in cases {
         assert_eq!(
-            UnitKit::new(Some(&stats), Some(&combat), rules(30)),
+            UnitKit::new(Some(&stats), Some(&combat), life(&health), rules(30)),
             Err(error)
         );
     }
+    // A type with combat but without the life pool makes no unit.
+    let kit = UnitKit::new(
+        Some(&caster(|_| ())),
+        Some(&attack(300, None)),
+        [],
+        rules(30),
+    );
+    assert_eq!(kit, Err(UnitKitError::NoLifePool));
 }

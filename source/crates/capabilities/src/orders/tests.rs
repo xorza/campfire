@@ -10,7 +10,7 @@ use campfire_sim::{Capability, IdAllocator, SimUpdate, TickInput, TypeHash};
 use super::*;
 use crate::capability_set::internals::TestMatch;
 use crate::combat::combatant::Combatant;
-use crate::combat::health::Health;
+use crate::combat::combatant::internals::Armed;
 use crate::combat::on_death::OnDeath;
 use crate::navigation::move_step::MoveStep;
 use crate::navigation::path_walker::PathDirection;
@@ -18,6 +18,8 @@ use crate::scripts::error::ApiError;
 use crate::scripts::match_scripts::MatchScripts;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::script_limits::ScriptLimits;
+use crate::stats::pool_id::PoolId;
+use crate::stats::pools::Pools;
 use crate::units::Units;
 use crate::units::path_id::PathId;
 use crate::units::script_view::View;
@@ -126,9 +128,8 @@ fn raw(x: i64, y: i64, z: i64) -> Position {
 
 /// `health`, and `damage` within `range`, a windup and a period in ticks; `Stay` on death, as a
 /// hero.
-fn combatant(health: i64, range: i64, windup: u64, period: u64, damage: i64) -> Combatant {
-    Combatant {
-        health: Health::new(num(health)).unwrap(),
+fn combatant(health: i64, range: i64, windup: u64, period: u64, damage: i64) -> Armed {
+    let combatant = Combatant {
         attack: Some(
             AttackStats::new(
                 num(range),
@@ -139,20 +140,21 @@ fn combatant(health: i64, range: i64, windup: u64, period: u64, damage: i64) -> 
             .unwrap(),
         ),
         on_death: OnDeath::Stay,
+    };
+    Armed {
+        combatant,
+        life: num(health),
     }
 }
 
 /// 100 health, and 30 damage within 2 m, 2 ticks after the start of an attack every 5 ticks.
-fn fighter_stats() -> Combatant {
+fn fighter_stats() -> Armed {
     combatant(100, 2, 2, 5, 30)
 }
 
 /// A still target that never attacks and despawns when it dies.
-fn dummy(health: i64) -> Combatant {
-    Combatant {
-        on_death: OnDeath::Despawn,
-        ..combatant(health, 0, 0, 1, 0)
-    }
+fn dummy(health: i64) -> Armed {
+    combatant(health, 0, 0, 1, 0).on_death(OnDeath::Despawn)
 }
 
 fn meter() -> MoveStep {
@@ -186,8 +188,10 @@ impl Match {
             limits,
             players: 2,
             damage_kinds: Rc::from([]),
+            pools: Rc::from([]),
         };
         let declared = [
+            Capability::Stats,
             Capability::Combat,
             Capability::Navigation,
             Capability::Orders,
@@ -210,7 +214,7 @@ impl Match {
     }
 
     /// A hero of `slot` that walks a meter a tick.
-    fn hero(&mut self, slot: u32, team: Team, at: Position, combatant: Combatant) -> StableId {
+    fn hero(&mut self, slot: u32, team: Team, at: Position, combatant: Armed) -> StableId {
         self.spawn(
             at,
             (
@@ -262,7 +266,7 @@ impl Match {
         attack.set_target(target);
     }
 
-    fn still(&mut self, team: Team, at: Position, combatant: Combatant) -> StableId {
+    fn still(&mut self, team: Team, at: Position, combatant: Armed) -> StableId {
         self.spawn(at, combatant.bundle(team))
     }
 
@@ -299,8 +303,8 @@ impl Match {
 
     /// `None` once the unit despawned.
     fn health(&self, id: StableId) -> Option<i64> {
-        self.get::<Health>(id)
-            .map(|health| health.current().round())
+        self.get::<Pools>(id)
+            .map(|pools| pools.current(PoolId::FIRST).unwrap().round())
     }
 
     fn attack(&self, id: StableId) -> AttackState {
@@ -571,7 +575,7 @@ fn attack_orders_need_a_living_enemy() {
 }
 
 /// 1000 health; reaches nothing and never moves, so only its target changes.
-fn standing() -> Combatant {
+fn standing() -> Armed {
     combatant(1000, 0, 0, 1, 0)
 }
 

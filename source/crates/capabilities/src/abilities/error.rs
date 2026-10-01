@@ -2,8 +2,8 @@ use std::error::Error;
 use std::fmt;
 
 /// A capability field of an ability that the release runs, which does not give a value of its
-/// kind at a rank: a whole number of milliseconds or of the resource, or a range of meters that is
-/// not negative, and never through a scaling param.
+/// kind at a rank: a whole number of milliseconds or of a pool the mode declares, or a range of
+/// meters that is not negative, and never through a scaling param.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AbilityField {
     Range,

@@ -2,7 +2,7 @@ use std::collections::BTreeSet;
 use std::path::Path;
 
 use campfire_capabilities::{
-    CollisionData, EngineStat, MapData, ModeData, StatsData, UnitTypeData,
+    CollisionData, EngineStat, MapData, ModeData, Stat, StatsData, UnitTypeData,
 };
 use campfire_content::{Fingerprint, PackagePath};
 use campfire_math::Num;
@@ -129,9 +129,10 @@ impl ModePackages {
     /// declare a move speed, 0 for one with no body; ascending, each once. The pathing grid has
     /// a layer for each.
     pub fn walker_radii(&self) -> Vec<Num> {
+        let move_speed = Stat::Engine(EngineStat::MoveSpeed);
         let walker = |stats: Option<&StatsData>, collision: Option<&CollisionData>| {
             stats
-                .is_some_and(|stats| stats.declares(EngineStat::MoveSpeed))
+                .is_some_and(|stats| stats.declares(&move_speed))
                 .then(|| collision.map_or(Num::ZERO, |data| data.body.radius()))
         };
         let unit_types =

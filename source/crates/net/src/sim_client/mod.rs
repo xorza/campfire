@@ -9,7 +9,7 @@ use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::schedule::common_conditions::{not, resource_exists};
 use bevy_ecs::system::{Commands, Query, Res, ResMut, Single};
 use bevy_ecs::world::{Mut, World};
-use campfire_capabilities::{Dead, MatchEnd, Navigation, Order, Owner};
+use campfire_capabilities::{Combat, Dead, MatchEnd, Navigation, Order, Owner};
 use campfire_log::LogEvent;
 use campfire_math::SegmentSeed;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SignOnly};
@@ -176,6 +176,9 @@ impl Plugin for SimClient {
             .capabilities
             .install(world, &mut schedule, &mut state, None);
         world.insert_resource(self.mode.bounds);
+        if let Some(life) = self.mode.life {
+            Combat::bind_life(world, life);
+        }
         if let Some(cells) = self.mode.pathing {
             Navigation::load_pathing(world, cells, self.mode.walkers.clone());
         }

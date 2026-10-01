@@ -1,17 +1,22 @@
 script = "scripts/mode.rhai"
 attack_kind = "true"
-resources = ["mana"]
 
 [combat]
 damage_kinds = ["true"]
+life = "health"
 
-# Every stat its units carry, all of them stats the engine reads.
+# Every stat its units carry: those the engine reads, and its pools' maxima.
 [stats]
 health = {}
-resource = {}
+mana = {}
 attack_damage = {}
 attack_speed = { max = "2.5" }
 move_speed = {}
+
+[pools.health]
+max = "health"
+[pools.mana]
+max = "mana"
 
 [params]
 wave_ms = 30000
