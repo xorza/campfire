@@ -8,10 +8,10 @@ Every map has bounds, a closed rectangle on the ground plane, and no unit is eve
 
 | Backend | Does |
 | --- | --- |
-| Grid | A* for the long route |
-| Navmesh | Routes over level geometry, for bots and units that take orders in 3D levels |
-| Flow field | One field for many units to the same goal, for RTS groups |
-| Local steering | Follows the route, avoids units and allows body blocking; shared by every backend, in fixed-point with a fixed unit order |
+| Grid | A* for the long route and the short route; the one the release runs |
+| Navmesh | Routes over level geometry, for bots and units that take orders in 3D levels; later |
+| Flow field | One field for many units to the same goal, for RTS groups; later |
+| Local steering | Follows the route, goes round units that stand or block, and allows body blocking; shared by every backend, in fixed-point with a fixed unit order |
 
 Queries take world positions, a route is a list of waypoints, and obstacles are shapes, so steering works with any backend. Buildings and doors change the map while it runs; each backend updates its obstacles from them.
 
@@ -29,7 +29,7 @@ A client plans its own units' routes on the same grid, so it predicts them with 
 
 ## Waypoint paths
 
-A map can hold paths of waypoints, such as a MOBA's lanes. A unit that walks a path goes along it forward or backward, as its spawn sets, while it has no other order: a MOBA's two sides each walk a lane from their own end. It has reached a waypoint once the waypoint is within its body, as walkers that push each other never stand on one point. A unit that does not walk never moves, so a map keeps its structures beside its paths, clear of the widest walker: the mode's load refuses a structure whose body comes closer to a path than that walker's radius.
+A map can hold paths of waypoints, such as a MOBA's lanes. A unit that walks a path goes along it forward or backward, as its spawn sets, while it has no other order: a MOBA's two sides each walk a lane from their own end. It has reached a waypoint once the waypoint is within its body, as walkers that push each other never stand on one point. It walks a route to each waypoint, round the structures between, but must stand on the waypoint to reach it: the mode's load refuses a structure whose body comes closer to a waypoint than the widest walker's radius.
 
 ## Collision
 

@@ -104,10 +104,10 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// Every structure of the map with a body stands clear of every path by the widest body of a
-    /// unit that walks, among the mode's unit types and its avatars: a unit that does not walk
-    /// never moves, and a walker does not steer around it.
-    fn structures_clear_paths(&self) -> Result<(), LoadProblem> {
+    /// Every structure of the map with a body stands clear of every waypoint of every path by the
+    /// widest body of a unit that walks, among the mode's unit types and its avatars: a walker
+    /// routes round a structure, but reaches a waypoint only by standing on it.
+    fn structures_clear_waypoints(&self) -> Result<(), LoadProblem> {
         let packages = self.packages;
         let radius = |collision: Option<&CollisionData>| collision.map(|data| data.body.radius());
         let widest = packages.walker_radii().last().copied();
@@ -128,9 +128,9 @@ impl<'a> LoadCheck<'a> {
                 .map
                 .paths
                 .iter()
-                .find(|path| path.comes_within(at, own + widest))
+                .find(|path| path.has_point_within(at, own + widest))
             {
-                return Err(LoadProblem::StructureOnPath {
+                return Err(LoadProblem::StructureOnWaypoint {
                     unit_type: structure.unit_type.clone(),
                     path: path.name.clone(),
                 });
@@ -182,7 +182,7 @@ impl<'a> LoadCheck<'a> {
         if !packages.map.paths.is_empty() {
             self.require(Capability::Navigation, &Place::Paths)?;
         }
-        self.structures_clear_paths()?;
+        self.structures_clear_waypoints()?;
         if packages.manifest.capabilities.contains(Capability::Vision)
             && packages.map.grid.is_none()
         {

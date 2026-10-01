@@ -334,13 +334,14 @@ const FLAWS: [Flaw; 58] = [
         MODE,
         |problem| matches!(problem, LoadProblem::Mode(ModeError::OutOfBounds)),
     ),
-    // Back on the west lane, where it stood before the lanes were cleared.
+    // A meter from the west lane's waypoint at (−36, −36), less than the tower's body and the
+    // widest walker's together.
     flaw(
         MAP,
-        Edit::Replace("pos = [-22, -46]", "pos = [-21, -43]"),
+        Edit::Replace("pos = [-22, -46]", "pos = [-36, -37]"),
         MODE,
         |problem| {
-            matches!(problem, LoadProblem::StructureOnPath { unit_type, path }
+            matches!(problem, LoadProblem::StructureOnWaypoint { unit_type, path }
                 if unit_type == "tower" && path == "west")
         },
     ),

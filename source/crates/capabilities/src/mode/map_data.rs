@@ -8,7 +8,6 @@ use crate::mode::error::ModeError;
 use crate::values::bounds::Bounds;
 use crate::values::grid::Grid;
 use crate::values::scalar::Scalar;
-use crate::values::segment::Segment;
 
 /// The mode's `map/map.toml`: its bounds, its grid, its paths, where each team's avatars spawn,
 /// the structures that stand from the start, and where neutral units spawn.
@@ -95,17 +94,14 @@ impl MapData {
 }
 
 impl PathData {
-    /// Whether the path, its waypoints joined by straight segments on the ground plane, comes
-    /// closer than `reach` to `at`, exactly; touching at `reach` is not closer. Its points passed
-    /// the mode's check.
-    pub fn comes_within(&self, at: Position, reach: Num) -> bool {
-        let point = |ground: &GroundPoint| ground.position().expect("the mode's check passed");
-        if let [only] = &self.points[..] {
-            return Segment::new(point(only), point(only)).comes_within(at, reach);
-        }
-        self.points
-            .windows(2)
-            .any(|pair| Segment::new(point(&pair[0]), point(&pair[1])).comes_within(at, reach))
+    /// Whether a waypoint of the path is closer than `reach` to `at` on the ground plane,
+    /// exactly; one at `reach` is not closer. Its points passed the mode's check.
+    pub fn has_point_within(&self, at: Position, reach: Num) -> bool {
+        let reach = u128::from(reach.to_bits().unsigned_abs());
+        self.points.iter().any(|point| {
+            let point = point.position().expect("the mode's check passed");
+            point.ground_offset(at).length_squared_bits() < reach * reach
+        })
     }
 }
 
@@ -121,53 +117,23 @@ impl GroundPoint {
 mod tests {
     use super::*;
 
-    fn path(points: &[[i64; 2]]) -> PathData {
-        PathData {
-            name: "lane".to_owned(),
-            points: points
-                .iter()
-                .map(|&[x, z]| GroundPoint([Scalar::Int(x), Scalar::Int(z)]))
-                .collect(),
-        }
-    }
-
-    fn at(x: i64, z: i64) -> Position {
-        Position::new(Vec3::new(num(x), Num::ZERO, num(z))).unwrap()
-    }
-
     fn num(value: i64) -> Num {
         Num::from_int(value).unwrap()
     }
 
     #[test]
-    fn a_path_comes_within_a_reach_of_a_point_exactly() {
-        let e = Num::EPSILON;
-        // Along x from 0 to 10: (5, 1) is 1 m off it; (−3, 4) and (13, 4) are 5 m from an end,
-        // before its start and past its end.
-        let straight = path(&[[0, 0], [10, 0]]);
-        for (point, distance) in [(at(5, 1), 1), (at(-3, 4), 5), (at(13, 4), 5)] {
-            assert!(
-                !straight.comes_within(point, num(distance)),
-                "{point:?} touches"
-            );
-            assert!(
-                straight.comes_within(point, num(distance) + e),
-                "{point:?} within"
-            );
-        }
-        // From (0, 0) to (8, 6), 10 m: (1, 7) projects halfway, onto (4, 3), √(3² + 4²) = 5 m
-        // away; a second segment back to (8, 20) passes farther.
-        let slant = path(&[[0, 0], [8, 6], [8, 20]]);
-        assert!(!slant.comes_within(at(1, 7), num(5)));
-        assert!(slant.comes_within(at(1, 7), num(5) + e));
-        // A path of one point is that point: (5, 6) is 5 m from (2, 2).
-        let only = path(&[[2, 2]]);
-        assert!(!only.comes_within(at(5, 6), num(5)));
-        assert!(only.comes_within(at(5, 6), num(5) + e));
-        // Across the whole world, 2²⁰ m, whose products pass 128 bits: (0, 1) is 1 m off.
-        let half = 1 << 19;
-        let wide = path(&[[-half, 0], [half, 0]]);
-        assert!(!wide.comes_within(at(0, 1), num(1)));
-        assert!(wide.comes_within(at(0, 1), num(1) + e));
+    fn a_path_has_a_point_within_a_reach_exactly() {
+        let path = PathData {
+            name: "lane".to_owned(),
+            points: [[0, 0], [10, 0]]
+                .map(|[x, z]| GroundPoint([Scalar::Int(x), Scalar::Int(z)]))
+                .to_vec(),
+        };
+        let at = |x: i64, z: i64| Position::new(Vec3::new(num(x), Num::ZERO, num(z))).unwrap();
+        // (13, 4) is 5 m from (10, 0); (5, 1), on the segment's side, is 1 m from it but 5.1 m
+        // from either point.
+        assert!(!path.has_point_within(at(13, 4), num(5)));
+        assert!(path.has_point_within(at(13, 4), num(5) + Num::EPSILON));
+        assert!(!path.has_point_within(at(5, 1), num(5)));
     }
 }

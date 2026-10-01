@@ -118,9 +118,9 @@ pub enum LoadProblem {
     NoGrid,
     /// The mode declares `navigation`, and its map has no `[navigation]` cells to plan routes on.
     NoPathingGrid,
-    /// A structure of `unit_type` stands so near `path` that the widest body of a unit that walks
-    /// cannot pass it: with no steering, it would block the path for good.
-    StructureOnPath {
+    /// A structure of `unit_type` stands so near a waypoint of `path` that the widest unit that
+    /// walks cannot stand on it, and so never reaches it.
+    StructureOnWaypoint {
         unit_type: String,
         path: String,
     },
@@ -319,10 +319,10 @@ impl fmt::Display for LoadProblem {
             LoadProblem::NoPathingGrid => {
                 f.write_str("the mode declares navigation, and its map has no [navigation] cells")
             }
-            LoadProblem::StructureOnPath { unit_type, path } => write!(
+            LoadProblem::StructureOnWaypoint { unit_type, path } => write!(
                 f,
-                "a {unit_type:?} stands so near path {path:?} that the widest unit that walks \
-                 cannot pass it"
+                "a {unit_type:?} stands so near a waypoint of path {path:?} that the widest unit \
+                 that walks cannot stand on it"
             ),
             LoadProblem::Unslotted(id) => write!(f, "ability {id:?} is in no slot"),
             LoadProblem::RepeatedSlot(id) => write!(f, "ability {id:?} is in two slots"),
