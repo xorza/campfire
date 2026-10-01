@@ -133,10 +133,6 @@ pub(crate) fn share(current: Num, max: Num) -> f32 {
 }
 
 #[cfg(test)]
-#[expect(
-    clippy::float_cmp,
-    reason = "the values compared are exact: a clamped share times a width, and whole ticks over whole ticks"
-)]
 mod tests {
     use super::*;
 

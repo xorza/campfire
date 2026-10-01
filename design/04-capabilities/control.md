@@ -26,6 +26,7 @@ A unit type names an AI script; `on_think(ctx, unit)` runs every `think_ms`, rou
 - AI sees only game queries (units in a radius, the nearest visible unit a filter selects, recent attackers) and the sim RNG; results are sorted by stable id. Every call of a tick's Think sees the units as the stage began. Until a match has `vision`, every unit is visible.
 - Orders go through `ctx`, which checks each as it is queued: an AI orders only the unit that thinks, and an attack needs a weapon whose filter selects the target. An AI type loads only when its script has `on_think(ctx, unit)`. They apply when the call returns, and not at all when it fails. `order_follow_path` drops the target; the unit then walks back to the waypoint it had not reached.
 - The reference MOBA ships creep, tower and camp AI as ordinary scripts.
+- An avatar takes no AI, and the load refuses one with `orders`: a player controls it, and a bot plays it through player inputs ([Game scripting](../03-game-scripting.md)).
 
 ### Character
 

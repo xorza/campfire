@@ -10,6 +10,9 @@ fn on_think(ctx, unit) {
         target = ctx.nearest_visible(unit, unit.params.aggro_range, "enemies:avatar");
     }
     if target == () {
+        target = ctx.nearest_visible(unit, unit.params.aggro_range, "enemies:structure");
+    }
+    if target == () {
         ctx.order_follow_path(unit);
     } else if target != unit.target {
         ctx.order_attack(unit, target);

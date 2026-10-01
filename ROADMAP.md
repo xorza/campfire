@@ -18,7 +18,7 @@ Done when the playtest finds that the 1v1 reads and plays well.
 - The model in code ([The model](design/04-capabilities/00-overview.md#the-model)): the action pipeline, weapons, deliveries as units and effects in data; stats and tags derived on the client.
 - The package API version, and human text in Fluent files ([Game package](design/03-game-scripting.md#game-package)).
 - The reference packages rewritten to each as it lands.
-- The 3v3 match flow: creeps that attack structures, experience and levels, AI orders (move, reset, the spawn place), an avatar refused an AI of its own.
+- The 3v3 match flow: experience and levels, AI orders (move, reset, the spawn place).
 
 Done when the 3v3 match plays as before on the model, with no failed call of its mode, creep, tower or camp scripts, every reference package loads on its API version with its text in `en.ftl`, and every log verifies.
 

@@ -115,7 +115,7 @@ pub(super) const fn atan2(y: Num, x: Num) -> Num {
 
     // The table point nearest small/large, from operands cut to 32 bits: off by one at most,
     // which the series still covers.
-    let shift = (u64::BITS - large.leading_zeros()).saturating_sub(32);
+    let shift = large.bit_width().saturating_sub(32);
     let (small_cut, large_cut) = (small >> shift, large >> shift);
     let entry = to_index(((small_cut << (ATAN_STEP_BITS + 1)) + large_cut) / (2 * large_cut));
 
@@ -124,7 +124,10 @@ pub(super) const fn atan2(y: Num, x: Num) -> Num {
     let sin_k = ATAN_SIN[entry] as i128;
     let x_rot = large as i128 * cos_k + small as i128 * sin_k;
     let y_rot = small as i128 * cos_k - large as i128 * sin_k;
-    let normalize = (u128::BITS - x_rot.leading_zeros()).saturating_sub(WIDE_BITS + 1);
+    let normalize = x_rot
+        .cast_unsigned()
+        .bit_width()
+        .saturating_sub(WIDE_BITS + 1);
     let u = to_i64(((y_rot >> normalize) << WIDE_BITS) / (x_rot >> normalize));
 
     // |u| ≤ 2⁻⁶ and a hair: the first omitted term, u⁹/9, is below 2⁻⁵⁴.

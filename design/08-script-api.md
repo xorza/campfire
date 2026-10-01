@@ -120,6 +120,7 @@ A package loads only when all of these pass:
 - No data file holds human text: names, descriptions and lines are message ids, each of which the file of the manifest's `language` defines.
 - Every data file matches its schema, every per-rank array has one entry for each rank of its slot kind, and every field of an action (`range`, `cooldown_ms`, `cost`, `windup_ms`) holds at every rank. A field an action's kind does not use fails.
 - The mode declares at most 256 tags together, and no avatar has the name of one of them.
+- No avatar names `orders`: a player controls it, and a bot plays it through player inputs ([Control](04-capabilities/control.md#ai)).
 - Every script is referenced by data. Every function named like a hook, a hook's name or any name that starts with `on_` or `calc_`, is a hook of a role the script serves, with the hook's parameters, so a misspelled hook is an error, not a hook that never runs.
 - Every modifier id, action id, `ctx.p` name, `{ param }` reference, stat, pool, player resource, tag, slot kind, layer, filter, damage kind, choice and marker tag that a script or data file names exists. Scripts are read with `AST::walk`, from Rhai's `internals` feature.
 - Every `ctx` name is one the registry holds, as a value or a call as the script uses it, for a role the script serves, of a capability the mode declares. Every field or method the script reads on another value is one the registry or the engine has, a key of its object maps, or one of its functions ([One source](#one-source)).

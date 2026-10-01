@@ -221,6 +221,9 @@ impl<'a> LoadCheck<'a> {
         let package = &dependent.package;
         let (actions, modifiers, slotted) = match &dependent.content {
             Content::Avatar(avatar) => {
+                if avatar.unit.orders.is_some() {
+                    return Err(LoadProblem::AvatarOrders);
+                }
                 let at = Place::Avatar(avatar.name.clone());
                 self.unit_type(&avatar.unit, &at, &avatar.actions, &avatar.modifiers)?;
                 let ranks = self.slotted_ranks([&avatar.unit])?;

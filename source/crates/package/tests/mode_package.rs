@@ -146,7 +146,7 @@ fn more_layers_than_tags_a_match_holds_fail_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 110] = [
+const FLAWS: [Flaw; 111] = [
     flaw(
         MANIFEST,
         Edit::Replace(r#"engine = "0.1.0""#, r#"engine = "0.0.9""#),
@@ -234,6 +234,15 @@ const FLAWS: [Flaw; 110] = [
         ),
         "hero-husk",
         |problem| matches!(problem, LoadProblem::RankCount { action, ranks: 5 } if action == "grasping_wraps"),
+    ),
+    flaw(
+        HUSK,
+        Edit::Replace(
+            "[combat]\n",
+            "orders = { ai = \"scripts/lash_out.rhai\", think_ms = 250 }\n[combat]\n",
+        ),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::AvatarOrders),
     ),
     flaw(
         HUSK,

@@ -1248,7 +1248,7 @@ fn on_mode_input(ctx, player, name, value) {
     let end = MatchEnd::new(Tick::new(2), MatchResult::Won(Team::new(1)));
     assert_eq!(game.world.get_resource::<MatchEnd>(), Some(&end));
     game.tick(&[(0, input("phase", "draw"))]);
-    assert_eq!(game.failures(), []);
+    assert!(game.failures().is_empty());
     assert_eq!(game.world.get_resource::<MatchEnd>(), Some(&end));
     assert_eq!(game.units(), before);
     assert_eq!(game.field("count"), StateValue::Int(2));
@@ -1392,7 +1392,7 @@ fn the_3v3s_calc_damage_weighs_each_hit_exactly() {
     let lowest = DamageCause::Attack { roll: Num::ZERO };
     game.damage(None, exposed, 100, "physical", lowest);
     game.tick(&[]);
-    assert_eq!(game.failures(), []);
+    assert!(game.failures().is_empty());
     assert_eq!(game.health(armored), num(1000 - 95 - 75));
     assert_eq!(game.health(exposed), num(1000 - 225 - 150 - 150));
 }

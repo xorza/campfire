@@ -45,6 +45,9 @@ fn on_think(ctx, unit) {
         target = ctx.nearest_visible(unit, unit.params.aggro_range, "enemies:avatar");
     }
     if target == () {
+        target = ctx.nearest_visible(unit, unit.params.aggro_range, "enemies:structure");
+    }
+    if target == () {
         ctx.order_follow_path(unit);
     } else if target != unit.target {
         ctx.order_attack(unit, target);
@@ -638,9 +641,48 @@ fn a_tower_prefers_creeps_and_defends_its_heroes() {
 }
 
 #[test]
+fn a_creep_takes_an_enemy_structure_last_and_keeps_it() {
+    let mut game = Match::new();
+    let params = [
+        ("aggro_range", meters(7)),
+        ("help_range", meters(5)),
+        ("help_window_ms", Scalar::Int(2000)),
+    ];
+    game.unit_type(&["avatar"], &[], None);
+    let structure = game.unit_type(&["structure"], &[], None);
+    let creep = game.unit_type(&["creep"], &params, Some(CREEP_AI));
+    let still_creep = game.unit_type(&["creep"], &[], None);
+    let unit = |game: &mut Match, unit_type, team, at| {
+        let stats = game.arm(standing(), Team::new(team));
+        game.spawn(at, (unit_type, stats))
+    };
+    let first = unit(&mut game, creep, 0, at(0, 0, 0));
+    let second = unit(&mut game, creep, 0, at(0, 0, 20));
+    let tower = unit(&mut game, structure, 1, at(5, 0, 0));
+    let wall = unit(&mut game, structure, 1, at(0, 0, 24));
+    let rival = unit(&mut game, still_creep, 1, at(0, 0, 26));
+    assert_eq!([first, second].map(StableId::get), [0, 1]);
+
+    // The first creep thinks in tick 0: only the tower is in its 7 m, so it takes it. The second
+    // thinks in tick 1: the rival creep 6 m away goes before the wall 4 m away.
+    game.think(&[]);
+    assert_eq!(game.target(first), Some(tower));
+    game.think(&[]);
+    assert_eq!(game.target(second), Some(rival));
+    assert_eq!(game.target(wall), None);
+
+    // A rival creep 3 m from the first creep comes; at its think in tick 8, it keeps the tower.
+    unit(&mut game, still_creep, 1, at(3, 0, 0));
+    game.run_until(8);
+    game.think(&[]);
+    assert_eq!(game.target(first), Some(tower));
+}
+
+#[test]
 fn creeps_think_in_turn_and_take_the_targets_their_script_picks() {
     let mut game = Match::new();
     let hero = game.unit_type(&["avatar"], &[], None);
+    game.unit_type(&["structure"], &[], None);
     let still_creep = game.unit_type(&["creep"], &[], None);
     let params = [
         ("aggro_range", meters(7)),

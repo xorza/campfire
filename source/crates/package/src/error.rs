@@ -128,6 +128,8 @@ pub enum LoadProblem {
     UnknownSlot(String),
     /// An avatar's action is in none of its slots, so it has no rank count.
     Unslotted(String),
+    /// An avatar names an AI: a player controls it, and a bot plays it through player inputs.
+    AvatarOrders,
     /// A unit type's action is in two slots.
     RepeatedSlot(String),
     /// Unit types place the action in slot kinds of other ranks.
@@ -392,6 +394,7 @@ impl fmt::Display for LoadProblem {
             }
             LoadProblem::Map(problem) => write!(f, "{problem}"),
             LoadProblem::Unslotted(id) => write!(f, "action {id:?} is in no slot"),
+            LoadProblem::AvatarOrders => f.write_str("an avatar takes no `orders`: bots play it"),
             LoadProblem::RepeatedSlot(id) => write!(f, "action {id:?} is in two slots"),
             LoadProblem::KindField(action) => write!(
                 f,

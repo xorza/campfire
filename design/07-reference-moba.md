@@ -69,6 +69,8 @@ Each player picks two: Blink (short teleport), Haste (move speed), Mend (heal se
 - Levels 1–18. Basic abilities have 5 ranks; the ultimate has 3, learnable at levels 6, 11 and 16.
 - Resistance `r` scales damage by `100 / (100 + r)`, or by `2 − 100 / (100 − r)` when `r` is negative. Crits deal 200%. Cooldown reduction caps at 40%. Flat and percent penetration, life steal and spell vamp.
 - Attacks have a wind-up, when moving cancels the attack, and a back-swing, when moving is free.
+- **Creeps** walk their lane and, within their aggro range, attack the first of: an enemy hero that struck an allied hero near them; the target they have, while it lives and stays in reach; the nearest enemy creep; the nearest enemy hero; the nearest enemy structure. With none, they walk on. Units go before buildings, as League of Legends' minions and Dota 2's lane creeps choose, and a creep keeps a structure it attacks until a hero needs defending, as a minion ignores calls for help while it attacks a turret. So a wave that wins its lane takes the towers, the inhibitor and the core in its way.
+- **Towers** attack, within their range, the first of: an enemy hero that struck an allied hero there; the target they have, while it stays in range; the nearest enemy creep; the nearest enemy hero.
 - Distances are in meters: melee range about 1.25, ranged attacks 5.5–6.5, hero move speed 3.0–3.5 per second.
 
 ## Map and items
