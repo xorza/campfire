@@ -1,12 +1,17 @@
 script = "scripts/mode.rhai"
-assist_window_ms = 10000
-# The words of this game: its damage kinds, and what its heroes spend.
-damage_kinds = ["physical", "magic", "true"]
 attack_kind = "physical"
+# What its heroes spend.
 resources = ["mana", "energy"]
 
-# Every stat its units carry, those the engine reads among them: how each combines, and its
-# limits. A rate is a fraction: 0.1 adds a tenth.
+# Its damage kinds, and the stats its damage and heals read: a ratio is a fraction, 0.1 a tenth.
+[combat]
+damage_kinds = ["physical", "magic", "true"]
+assist_window_ms = 10000
+leech = { attack = "life_steal", other = "spell_vamp" }
+heal_scale = "healing_received_pct"
+
+# Every stat its units carry, those the engine reads among them, and its limits. A rate is a
+# fraction: 0.1 adds a tenth.
 [stats]
 health = {}
 health_regen = {}
@@ -20,10 +25,6 @@ armor_pen = {}
 magic_pen = {}
 move_speed = {}
 physical_block = {}
-attack_damage_pct = { min = -1 }
-ability_power_pct = { min = -1 }
-attack_speed_pct = { min = -1 }
-move_speed_pct = { min = -1 }
 healing_received_pct = { min = -1 }
 damage_dealt_pct = { min = -1 }
 attack_speed = { max = "2.5" }
@@ -33,10 +34,9 @@ magic_pen_pct = { min = 0, max = 1 }
 life_steal = { min = 0, max = 1 }
 spell_vamp = { min = 0, max = 1 }
 cooldown_reduction = { min = 0, max = "0.4" }
-slow = { combine = "highest", min = 0, max = "0.99" }
 
-# What its tags do: crowd control, stealth and true sight. A slow grants `slowed`, which
-# `slow_immune` holds without effect.
+# What its tags do: crowd control, stealth and true sight. A slow, a cut of `move_speed`, grants
+# `slowed`, which `slow_immune` holds without effect.
 [tags.stunned]
 blocks = ["move", "attack", "cast", "use"]
 [tags.airborne]
@@ -87,4 +87,4 @@ warden_respawn_ms = 360000
 
 [modifiers.warden_blessing]
 duration_ms = 180000
-stats = { attack_damage_pct = "0.1", ability_power_pct = "0.1" }
+stats = { attack_damage = { pct = "0.1" }, ability_power = { pct = "0.1" } }

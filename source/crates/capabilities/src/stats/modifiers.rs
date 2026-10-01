@@ -10,6 +10,7 @@ use crate::abilities::ability_book::AbilityId;
 use crate::scripts::state_value::StateValue;
 use crate::stats::modifier_book::ModifierId;
 use crate::stats::modifier_data::Reapply;
+use crate::stats::stat_op::StatOp;
 use crate::units::tag_set::TagSet;
 
 /// The modifiers a unit carries, by id, then source, one instance of an id from each source.
@@ -66,10 +67,11 @@ pub(crate) struct StackEnd {
     pub(crate) count: u32,
 }
 
-/// A modifier's value of one stat a stack.
+/// A modifier's change of one stat a stack.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct StatShare {
     pub(crate) stat: u16,
+    pub(crate) op: StatOp,
     pub(crate) value: Num,
 }
 
@@ -412,6 +414,7 @@ mod tests {
                 shield: None,
                 stats: vec![StatShare {
                     stat: 0,
+                    op: StatOp::Add,
                     value: num(armor),
                 }],
                 tags: TagSet::default(),

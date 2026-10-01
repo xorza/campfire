@@ -1,4 +1,4 @@
-/// A kind of damage, by its place in the mode's `damage_kinds`.
+/// A kind of damage, by its place in the mode's `[combat] damage_kinds`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub(crate) struct DamageKind(u8);
 

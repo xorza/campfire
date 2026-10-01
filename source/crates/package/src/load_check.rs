@@ -121,13 +121,17 @@ impl<'a> LoadCheck<'a> {
         let unit_type = |name: &str| units.contains_key(name);
         Mode::check(&packages.manifest.teams, &packages.map, unit_type)
             .map_err(LoadProblem::Mode)?;
-        for list in [&data.damage_kinds, &data.resources] {
+        for list in [&data.combat.damage_kinds, &data.resources] {
             let mut seen = BTreeSet::new();
             if let Some(name) = list.iter().find(|&name| !seen.insert(name)) {
                 return Err(LoadProblem::RepeatedName(name.clone()));
             }
         }
         self.damage_kinds()?;
+        if data.combat.stats().next().is_some() {
+            self.require(Capability::Combat, &Place::Combat)?;
+            self.stats_declared(data.combat.stats(), &Place::Combat)?;
+        }
         for (name, unit_type) in &packages.units.units {
             let at = Place::UnitType(name.clone());
             let sections = [
@@ -262,6 +266,7 @@ impl<'a> LoadCheck<'a> {
             for filter in ability.filters() {
                 self.filter_data(filter, &at)?;
             }
+            self.stats_declared(ability.params.values().flat_map(Param::stats), &at)?;
             for name in ability.param_refs() {
                 if !ability.params.contains_key(name) {
                     return Err(LoadProblem::UnknownParam {
@@ -295,7 +300,8 @@ impl<'a> LoadCheck<'a> {
         for (id, modifier) in names.modifiers {
             let at = Place::Modifier(id.clone());
             self.require(Capability::Stats, &at)?;
-            self.stats_declared(modifier.stats.keys(), &at)?;
+            let scaled = modifier.params.values().flat_map(Param::stats);
+            self.stats_declared(modifier.stats.keys().chain(scaled), &at)?;
             if let Some(aura) = &modifier.aura {
                 modifier_exists(names.modifiers, &aura.modifier, &at)?;
                 self.filter_data(&aura.affects, &at)?;
@@ -454,7 +460,12 @@ impl<'a> LoadCheck<'a> {
             self.stats_declared([&stat], &at)?;
         }
         let data = &self.packages.data;
-        let declared = |kind: &String| data.damage_kinds.iter().any(|name| name.as_str() == kind);
+        let declared = |kind: &String| {
+            data.combat
+                .damage_kinds
+                .iter()
+                .any(|name| name.as_str() == kind)
+        };
         if let Some(kind) = kinds.iter().find(|kind| !declared(kind)) {
             return Err(LoadProblem::UnknownDamageKind {
                 at,
@@ -468,12 +479,13 @@ impl<'a> LoadCheck<'a> {
     /// kind among them; never more kinds than a byte tells apart.
     fn damage_kinds(&self) -> Result<(), LoadProblem> {
         let data = &self.packages.data;
-        if data.damage_kinds.len() > usize::from(u8::MAX) + 1 {
+        let kinds = &data.combat.damage_kinds;
+        if kinds.len() > usize::from(u8::MAX) + 1 {
             return Err(LoadProblem::TooManyDamageKinds);
         }
         if let Some(kind) = &data.attack_kind {
             self.require(Capability::Combat, &Place::AttackKind)?;
-            if !data.damage_kinds.contains(kind) {
+            if !kinds.contains(kind) {
                 return Err(LoadProblem::UnknownDamageKind {
                     at: Place::AttackKind,
                     kind: kind.as_str().to_owned(),
@@ -488,7 +500,7 @@ impl<'a> LoadCheck<'a> {
         {
             return Ok(());
         }
-        if data.damage_kinds.is_empty() {
+        if kinds.is_empty() {
             return Err(LoadProblem::NoDamageKinds);
         }
         if data.attack_kind.is_none() {

@@ -9,13 +9,15 @@ use campfire_sim::{Capability, IdAllocator, SimUpdate, TickRate, Ticks, TypeHash
 
 use super::*;
 use crate::capability_set::internals::TestMatch;
+use crate::combat::combat_rules::{CombatRules, Leech};
 use crate::combat::combatant::Combatant;
 use crate::combat::damage_kind::DamageKind;
 use crate::stats::Stats;
 use crate::stats::modifier_data::Reapply;
 use crate::stats::modifiers::{Application, Instance};
 use crate::stats::stat::Stat;
-use crate::stats::stat_rule::{Combine, StatRule};
+use crate::stats::stat_book::StatBook;
+use crate::stats::stat_rule::StatRule;
 
 /// The MOBA's 30 ticks a second.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
@@ -580,23 +582,26 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
     assert_eq!(fight.state(attacker).target(), None);
 }
 
-/// A stat book of the damage system's stats, each a sum with no limits: crit chance, life
-/// steal, spell vamp and healing received, in that order among a unit's values.
-fn damage_stats() -> StatBook {
-    let sum = StatRule {
-        combine: Combine::Sum,
-        min: None,
-        max: None,
+/// Loads a book of the stats `[combat]` binds, with no limits, and binds them: the heal scale
+/// `healing_received_pct`, and leech `life_steal` from attacks and `spell_vamp` from the rest,
+/// in that order among a unit's values.
+fn load_damage_stats(world: &mut World) {
+    let [heal, attack, other] =
+        ["healing_received_pct", "life_steal", "spell_vamp"].map(|name| Stat::named(name).unwrap());
+    let rules: BTreeMap<_, _> = [&heal, &attack, &other]
+        .map(|stat| (stat.clone(), StatRule::default()))
+        .into();
+    let book = StatBook::new(&rules, [], RATE, num(10)).unwrap();
+    let combat = CombatRules {
+        leech: Some(Leech {
+            attack: Some(attack),
+            other: Some(other),
+        }),
+        heal_scale: Some(heal),
+        ..CombatRules::default()
     };
-    let rules: BTreeMap<_, _> = [
-        EngineStat::CritChance,
-        EngineStat::LifeSteal,
-        EngineStat::SpellVamp,
-        EngineStat::HealingReceivedPct,
-    ]
-    .map(|stat| (Stat::Engine(stat), sum))
-    .into();
-    StatBook::new(&rules, [], RATE, num(10)).unwrap()
+    world.insert_resource(BoundStats::new(&combat, &book));
+    Stats::load(world, book);
 }
 
 impl Fight {
@@ -604,8 +609,8 @@ impl Fight {
         self.world.resource::<EntityIndex>().get(id).unwrap()
     }
 
-    /// Gives `id` the values of `damage_stats`' stats.
-    fn stats(&mut self, id: StableId, values: [Num; 4]) {
+    /// Gives `id` the values of `load_damage_stats`' stats.
+    fn stats(&mut self, id: StableId, values: [Num; 3]) {
         let mut stats = UnitStats::default();
         stats.refill().extend(values);
         let entity = self.entity(id);
@@ -636,7 +641,7 @@ impl Fight {
     }
 }
 
-const ATTACK: DamageCause = DamageCause::Attack { crit: false };
+const ATTACK: DamageCause = DamageCause::Attack { roll: Num::ZERO };
 
 #[test]
 fn the_pass_deals_damage_in_its_order_and_credits_the_kill() {
@@ -691,12 +696,12 @@ fn the_pass_deals_damage_in_its_order_and_credits_the_kill() {
 #[test]
 fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     let mut fight = Fight::new();
-    Stats::load(&mut fight.world, damage_stats());
+    load_damage_stats(&mut fight.world);
     let half = Num::ONE / 2;
     let source = fight.unit(Team::new(0), at(0, 0, 0), dummy());
     let target = fight.unit(Team::new(1), at(1, 0, 0), dummy());
-    // Life steal 0.5, spell vamp 0.25, and heals halved; at 40 of 100.
-    fight.stats(source, [Num::ZERO, half, Num::ONE / 4, -half]);
+    // Heals halved, life steal 0.5 and spell vamp 0.25; at 40 of 100.
+    fight.stats(source, [-half, half, Num::ONE / 4]);
     let entity = fight.entity(source);
     fight.world.get_mut::<Health>(entity).unwrap().take(num(60));
     let shield = |id: u16, until: Option<u64>, amount: i64| Instance {
@@ -757,6 +762,17 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     assert_eq!(fight.exact_health(source), num(205) / 4);
     Combat::heal(&mut fight.world, source, num(1000));
     assert_eq!(fight.exact_health(source), num(100));
+    // Without the bindings the same stats do nothing: at 50, an attack of 10 heals the source
+    // nothing, and a heal of 10 is whole.
+    fight.world.insert_resource(BoundStats::default());
+    let entity = fight.entity(source);
+    fight.world.get_mut::<Health>(entity).unwrap().take(num(50));
+    fight.damage(Some(source), target, 10, ATTACK);
+    fight.run_until(3);
+    assert_eq!(fight.exact_health(target), num(45));
+    assert_eq!(fight.exact_health(source), num(50));
+    Combat::heal(&mut fight.world, source, num(10));
+    assert_eq!(fight.exact_health(source), num(60));
     // A restore is not scaled: 50 of 100, then 20 more.
     let entity = fight.entity(source);
     let mut pool = ResourcePool::new(num(100)).unwrap();
@@ -770,17 +786,15 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
 }
 
 #[test]
-fn an_attack_rolls_its_crit_once_as_its_windup_ends_from_the_seed() {
+fn an_attack_draws_its_roll_once_as_its_windup_ends_from_the_seed() {
     let mut fight = Fight::new();
-    Stats::load(&mut fight.world, damage_stats());
     let dummy = fight.unit(Team::new(1), at(0, 0, 0), dummy());
     let attackers: Vec<_> = (0..16)
         .map(|_| fight.unit(Team::new(0), at(1, 0, 0), combatant(100, 2, 0, 5, 30)))
         .collect();
-    // Each attacker's windup ends in tick 0, with a crit chance of `chance`; the crit of each.
-    let roll = |fight: &mut Fight, chance: Num| {
+    // Each attacker's windup ends in tick 0; the roll of each, by the attackers' order.
+    let rolls = |fight: &mut Fight| {
         for &attacker in &attackers {
-            fight.stats(attacker, [chance, Num::ZERO, Num::ZERO, Num::ZERO]);
             let entity = fight.entity(attacker);
             let mut attack = fight.world.get_mut::<AttackState>(entity).unwrap();
             attack.set_target(Some(dummy));
@@ -789,38 +803,41 @@ fn an_attack_rolls_its_crit_once_as_its_windup_ends_from_the_seed() {
         fight.world.resource_mut::<DamageQueue>().clear();
         fight.world.run_system_once(strike).unwrap();
         let queue = fight.world.resource::<DamageQueue>();
-        let mut crits: Vec<_> = (0..attackers.len())
+        let mut rolls: Vec<_> = (0..attackers.len())
             .map(|at| {
                 let damage = queue.get(at).unwrap();
-                (damage.source.unwrap(), damage.cause.crit())
+                (damage.source.unwrap(), damage.cause.roll().unwrap())
             })
             .collect();
-        crits.sort_unstable();
-        crits.into_iter().map(|(_, crit)| crit).collect::<Vec<_>>()
+        rolls.sort_unstable();
+        rolls.into_iter().map(|(_, roll)| roll).collect::<Vec<_>>()
     };
-    // Each crit is the first draw of its attacker's crit stream in tick 0: one draw an attack.
-    let half = Num::ONE / 2;
+    // Each roll is the first draw of its attacker's roll stream in tick 0: one draw an attack.
+    let source = |seed: u8| RngSource::new(SegmentSeed::new([seed; 32]));
     let expected = |seed: u8| {
-        let source = RngSource::new(SegmentSeed::new([seed; 32]));
-        let crit = |&id: &StableId| source.open(CRIT_STREAM, id.get()).chance(half);
-        attackers.iter().map(crit).collect::<Vec<_>>()
+        let source = source(seed);
+        let roll = |&id: &StableId| source.open(ROLL_STREAM, id.get()).fraction();
+        attackers.iter().map(roll).collect::<Vec<_>>()
     };
-    let first = roll(&mut fight, half);
+    let first = rolls(&mut fight);
     assert_eq!(first, expected(0));
-    assert!(first.contains(&true) && first.contains(&false));
+    assert!(
+        first
+            .iter()
+            .all(|&roll| Num::ZERO <= roll && roll < Num::ONE)
+    );
+    // A crit below a chance of one half is the crit the engine rolled from the same stream and
+    // seed before scripts decided it: `chance` on the same draw.
+    let half = Num::ONE / 2;
+    let crits: Vec<_> = first.iter().map(|&roll| roll < half).collect();
+    let old = source(0);
+    let rolled = |&id: &StableId| old.open(ROLL_STREAM, id.get()).chance(half);
+    assert_eq!(crits, attackers.iter().map(rolled).collect::<Vec<_>>());
+    assert!(crits.contains(&true) && crits.contains(&false));
     fight
         .world
         .insert_resource(SimRng::new(SegmentSeed::new([1; 32])));
-    let second = roll(&mut fight, half);
+    let second = rolls(&mut fight);
     assert_eq!(second, expected(1));
     assert_ne!(first, second);
-    // No chance never crits; a chance of 1 always does.
-    fight
-        .world
-        .insert_resource(SimRng::new(SegmentSeed::new([0; 32])));
-    assert!(roll(&mut fight, Num::ZERO).iter().all(|&crit| !crit));
-    fight
-        .world
-        .insert_resource(SimRng::new(SegmentSeed::new([2; 32])));
-    assert!(roll(&mut fight, Num::ONE).iter().all(|&crit| crit));
 }

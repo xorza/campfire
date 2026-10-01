@@ -30,7 +30,7 @@ move_speed = { base = "3.35" }
 aura = { radius = "8.0", affects = "allies", modifier = "fair_wind_speed" }
 
 [modifiers.fair_wind_speed]
-stats = { move_speed_pct = "0.03" }
+stats = { move_speed = { pct = "0.03" } }
 
 [abilities.cyclone]
 script = "scripts/cyclone.rhai"
@@ -43,7 +43,7 @@ projectile = { speed = "9", width = "1.2", stop_on_hit = false }
 
 [abilities.cyclone.params]
 range_min = "11.0"
-damage = { base = [60, 85, 110, 135, 160], ap = "0.35" }
+damage = { base = [60, 85, 110, 135, 160], ability_power = "0.35" }
 charge_damage = [25, 30, 35, 40, 45]
 knock_up_min_ms = 500
 knock_up_max_ms = 1250
@@ -61,13 +61,13 @@ passive_modifier = "gust_speed"
 passive_while_ready = true
 
 [abilities.gust.params]
-damage = { base = [60, 115, 170, 225, 280], ap = "0.6" }
+damage = { base = [60, 115, 170, 225, 280], ability_power = "0.6" }
 slow = ["0.24", "0.28", "0.32", "0.36", "0.4"]
 slow_ms = 3000
 bonus_speed = ["0.04", "0.06", "0.08", "0.10", "0.12"]
 
 [modifiers.gust_speed]
-stats = { move_speed_pct = { param = "bonus_speed" } }
+stats = { move_speed = { pct = { param = "bonus_speed" } } }
 
 [abilities.wind_shield]
 script = "scripts/wind_shield.rhai"
@@ -77,7 +77,7 @@ cooldown_ms = 10000
 cost = [70, 80, 90, 100, 110]
 
 [abilities.wind_shield.params]
-shield = { base = [80, 120, 160, 200, 240], ap = "0.9" }
+shield = { base = [80, 120, 160, 200, 240], ability_power = "0.9" }
 power = [14, 23, 32, 41, 50]
 
 [modifiers.wind_shield]
@@ -96,11 +96,11 @@ channel = { duration_ms = 3000, tick_ms = 500 }
 radius = "7.25"
 knock_back = "8.75"
 knock_back_ms = 400
-heal_per_tick = { base = [35, 55, 75], ap = "0.175" }
+heal_per_tick = { base = [35, 55, 75], ability_power = "0.175" }
 
 # A slow by the `slow` param of the ability that applies it; its time comes from the call.
 [modifiers.slow]
-stats = { slow = { param = "slow" } }
+stats = { move_speed = { cut = { param = "slow" } } }
 tags = ["slowed"]
 
 # A knock up: its time comes from the call that applies it.

@@ -5,26 +5,28 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 /// A homing projectile: it flies `speed` a tick towards `target`, and strikes it for `amount` on
-/// arrival, on behalf of `source`, a crit when the attack that fired it rolled one.
+/// arrival, on behalf of `source`, with the roll the attack that fired it drew.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct Projectile {
     source: StableId,
     target: StableId,
     speed: Num,
     amount: Num,
-    crit: bool,
+    roll: Num,
 }
 
 impl Projectile {
-    /// `None` unless the speed is positive and the amount is not negative.
+    /// `None` unless the speed is positive, the amount is not negative, and the roll is at least 0
+    /// and less than 1.
     pub const fn new(
         source: StableId,
         target: StableId,
         speed: Num,
         amount: Num,
-        crit: bool,
+        roll: Num,
     ) -> Option<Projectile> {
-        if speed.to_bits() <= 0 || amount.to_bits() < 0 {
+        let bits = roll.to_bits();
+        if speed.to_bits() <= 0 || amount.to_bits() < 0 || bits < 0 || bits >= Num::ONE.to_bits() {
             return None;
         }
         Some(Projectile {
@@ -32,7 +34,7 @@ impl Projectile {
             target,
             speed,
             amount,
-            crit,
+            roll,
         })
     }
 
@@ -52,8 +54,8 @@ impl Projectile {
         self.amount
     }
 
-    pub const fn crit(self) -> bool {
-        self.crit
+    pub const fn roll(self) -> Num {
+        self.roll
     }
 }
 
@@ -70,7 +72,7 @@ impl<'de> Deserialize<'de> for Projectile {
             target: StableId,
             speed: Num,
             amount: Num,
-            crit: bool,
+            roll: Num,
         }
         let fields = Fields::deserialize(deserializer)?;
         let Fields {
@@ -78,9 +80,9 @@ impl<'de> Deserialize<'de> for Projectile {
             target,
             speed,
             amount,
-            crit,
+            roll,
         } = fields;
-        Projectile::new(source, target, speed, amount, crit)
+        Projectile::new(source, target, speed, amount, roll)
             .ok_or_else(|| D::Error::custom("projectile out of its limits"))
     }
 }

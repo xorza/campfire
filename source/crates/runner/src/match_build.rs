@@ -53,7 +53,7 @@ impl<'a> MatchBuild<'a> {
         let scripts = MatchScripts {
             limits: manifest.script_limits,
             players,
-            damage_kinds: packages.data().damage_kinds.as_slice().into(),
+            damage_kinds: packages.data().combat.damage_kinds.as_slice().into(),
         };
         manifest
             .capabilities

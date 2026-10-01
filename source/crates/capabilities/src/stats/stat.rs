@@ -20,33 +20,19 @@ pub enum EngineStat {
     Resource,
     ResourceRegen,
     MoveSpeed,
-    MoveSpeedPct,
-    Slow,
     AttackSpeed,
-    AttackSpeedPct,
     AttackDamage,
-    CritChance,
-    LifeSteal,
-    SpellVamp,
-    HealingReceivedPct,
 }
 
 impl EngineStat {
-    pub const ALL: [EngineStat; 14] = [
+    pub const ALL: [EngineStat; 7] = [
         EngineStat::Health,
         EngineStat::HealthRegen,
         EngineStat::Resource,
         EngineStat::ResourceRegen,
         EngineStat::MoveSpeed,
-        EngineStat::MoveSpeedPct,
-        EngineStat::Slow,
         EngineStat::AttackSpeed,
-        EngineStat::AttackSpeedPct,
         EngineStat::AttackDamage,
-        EngineStat::CritChance,
-        EngineStat::LifeSteal,
-        EngineStat::SpellVamp,
-        EngineStat::HealingReceivedPct,
     ];
 
     /// The stat named `name`.
@@ -62,15 +48,8 @@ impl EngineStat {
             EngineStat::Resource => "resource",
             EngineStat::ResourceRegen => "resource_regen",
             EngineStat::MoveSpeed => "move_speed",
-            EngineStat::MoveSpeedPct => "move_speed_pct",
-            EngineStat::Slow => "slow",
             EngineStat::AttackSpeed => "attack_speed",
-            EngineStat::AttackSpeedPct => "attack_speed_pct",
             EngineStat::AttackDamage => "attack_damage",
-            EngineStat::CritChance => "crit_chance",
-            EngineStat::LifeSteal => "life_steal",
-            EngineStat::SpellVamp => "spell_vamp",
-            EngineStat::HealingReceivedPct => "healing_received_pct",
         }
     }
 }

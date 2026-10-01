@@ -234,6 +234,8 @@ pub enum Place {
     Paths,
     /// The mode's `attack_kind`.
     AttackKind,
+    /// The mode's `[combat]`.
+    Combat,
 }
 
 /// A use of `ctx` that hides it from the load checks: every value of `ctx` in a script is a
@@ -293,6 +295,7 @@ impl fmt::Display for Place {
             Place::Script(path) => write!(f, "{path}"),
             Place::Paths => f.write_str("the map's paths"),
             Place::AttackKind => f.write_str("the mode's attack_kind"),
+            Place::Combat => f.write_str("the mode's [combat]"),
         }
     }
 }

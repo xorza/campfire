@@ -1,7 +1,9 @@
 script = "scripts/mode.rhai"
-damage_kinds = ["true"]
 attack_kind = "true"
 resources = ["mana"]
+
+[combat]
+damage_kinds = ["true"]
 
 # Every stat its units carry, all of them stats the engine reads.
 [stats]

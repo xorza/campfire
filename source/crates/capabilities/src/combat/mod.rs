@@ -13,6 +13,7 @@ use crate::combat::assist_window::AssistWindow;
 use crate::combat::attack_kind::AttackKind;
 use crate::combat::attack_state::AttackState;
 use crate::combat::attack_stats::AttackStats;
+use crate::combat::bound_stats::BoundStats;
 use crate::combat::combat_effect::CombatEffect;
 use crate::combat::combat_event::CombatEvent;
 use crate::combat::combat_events::CombatEvents;
@@ -31,8 +32,6 @@ use crate::scripts::hook::Hook;
 use crate::scripts::script_batch::ScriptBatch;
 use crate::stats::modifier_book::ModifierId;
 use crate::stats::modifiers::Modifiers;
-use crate::stats::stat::EngineStat;
-use crate::stats::stat_book::StatBook;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::block::Block;
 use crate::units::body::Body;
@@ -49,11 +48,13 @@ pub(crate) mod assist_window;
 pub(crate) mod attack_kind;
 pub(crate) mod attack_state;
 pub(crate) mod attack_stats;
+pub(crate) mod bound_stats;
 pub(crate) mod combat_api;
 pub(crate) mod combat_data;
 pub(crate) mod combat_effect;
 pub(crate) mod combat_event;
 pub(crate) mod combat_events;
+pub(crate) mod combat_rules;
 pub(crate) mod combatant;
 pub(crate) mod damage;
 pub(crate) mod damage_handle;
@@ -69,8 +70,8 @@ pub(crate) mod recent_attackers;
 pub(crate) mod respawn;
 pub(crate) mod targets;
 
-/// The random stream an attack's crit draws from, for its attacker in its tick.
-const CRIT_STREAM: &str = "combat.crit";
+/// The random stream an attack's roll draws from, for its attacker in its tick.
+pub(crate) const ROLL_STREAM: &str = "combat.roll";
 
 /// The `combat` capability: teams, health, attacks, damage and deaths.
 #[derive(Debug)]
@@ -84,7 +85,7 @@ pub(crate) enum CombatSet {
     Respawn,
     /// In `SimSet::Act`: attacks start, and targets that are gone are dropped.
     Attack,
-    /// In `SimSet::Hit`: windups that end strike, or fire, each with its crit rolled.
+    /// In `SimSet::Hit`: windups that end strike, or fire, each with its roll drawn.
     Strike,
     /// In `SimSet::Hit`, after `Strike`: the tick's launches take off.
     Launch,
@@ -108,6 +109,7 @@ impl Combat {
         }
         world.insert_resource(DamageQueue::default());
         world.insert_resource(AttackKind::default());
+        world.insert_resource(BoundStats::default());
         world.insert_resource(Deaths::default());
         schedule.configure_sets(
             CombatSet::Launch
@@ -311,15 +313,11 @@ fn run_intervals(
 }
 
 /// Queues the damage of each attack whose windup ends this tick, or its launch when it is ranged
-/// and the match has projectiles. Each rolls its crit now, with its attacker's `crit_chance`. A
-/// windup whose attacker's tags keep it from attacking is interrupted instead.
+/// and the match has projectiles. Each draws its roll now, at least 0 and less than 1, which
+/// `calc_damage` reads. A windup whose attacker's tags keep it from attacking is interrupted
+/// instead.
 fn strike(
-    (tick, rng, kind, book): (
-        Res<'_, SimTick>,
-        Res<'_, SimRng>,
-        Res<'_, AttackKind>,
-        Option<Res<'_, StatBook>>,
-    ),
+    (tick, rng, kind): (Res<'_, SimTick>, Res<'_, SimRng>, Res<'_, AttackKind>),
     mut queue: ResMut<'_, DamageQueue>,
     mut launches: Option<ResMut<'_, Launches>>,
     mut attackers: Query<
@@ -330,14 +328,13 @@ fn strike(
             &Position,
             &AttackStats,
             &mut AttackState,
-            Option<&UnitStats>,
             Option<&UnitTags>,
         ),
         Without<Dead>,
     >,
 ) {
     let now = tick.start();
-    for (&source, &from, stats, mut attack, unit_stats, tags) in &mut attackers {
+    for (&source, &from, stats, mut attack, tags) in &mut attackers {
         let Some(started) = attack.windup_ended(stats.windup(), now) else {
             continue;
         };
@@ -349,12 +346,7 @@ fn strike(
             .target()
             .expect("an attack in its windup has a target");
         let amount = stats.damage();
-        let chance = book
-            .as_deref()
-            .zip(unit_stats)
-            .and_then(|(book, unit)| book.engine(unit.values(), EngineStat::CritChance))
-            .unwrap_or(Num::ZERO);
-        let crit = chance > Num::ZERO && rng.open(CRIT_STREAM, source).chance(chance);
+        let roll = rng.open(ROLL_STREAM, source).fraction();
         match (stats.projectile_speed(), launches.as_deref_mut()) {
             (Some(speed), Some(launches)) => launches.0.push(Launch {
                 source,
@@ -362,14 +354,14 @@ fn strike(
                 target,
                 amount,
                 speed,
-                crit,
+                roll,
             }),
             _ => queue.push(Damage {
                 source: Some(source),
                 target,
                 amount,
                 kind: kind.0,
-                cause: DamageCause::Attack { crit },
+                cause: DamageCause::Attack { roll },
                 ability: None,
                 depth: 0,
             }),
@@ -555,10 +547,11 @@ impl Combat {
             });
         }
         if let Some(source) = source.and_then(|source| Combat::living(world, source)) {
+            let bound = world.resource::<BoundStats>();
             let stat = if damage.cause.attack() {
-                EngineStat::LifeSteal
+                bound.leech_attack
             } else {
-                EngineStat::SpellVamp
+                bound.leech_other
             };
             let ratio = Combat::stat(world, source, stat);
             Combat::heal_living(world, source, scaled(taken, ratio));
@@ -613,7 +606,7 @@ impl Combat {
         }
     }
 
-    /// Heals `unit` by `amount` times one plus its `healing_received_pct`, when it exists and is
+    /// Heals `unit` by `amount` times one plus its `heal_scale` stat, when it exists and is
     /// above zero health.
     pub(crate) fn heal(world: &mut World, unit: StableId, amount: Num) {
         if let Some(entity) = Combat::living(world, unit) {
@@ -623,7 +616,8 @@ impl Combat {
 
     /// Heals `entity`, a living unit, as `heal` does.
     fn heal_living(world: &mut World, entity: Entity, amount: Num) {
-        let received = Num::ONE + Combat::stat(world, entity, EngineStat::HealingReceivedPct);
+        let scale = world.resource::<BoundStats>().heal_scale;
+        let received = Num::ONE + Combat::stat(world, entity, scale);
         let amount = scaled(amount, received);
         if amount > Num::ZERO {
             let mut health = world.get_mut::<Health>(entity).expect("a living unit");
@@ -643,15 +637,12 @@ impl Combat {
         }
     }
 
-    /// `entity`'s engine stat `stat`; 0 when the mode does not declare it, or the unit has no
-    /// stats.
-    fn stat(world: &World, entity: Entity, stat: EngineStat) -> Num {
+    /// `entity`'s value of the stat at `stat` among the stats; 0 when `[combat]` binds none, or
+    /// the unit has no stats.
+    fn stat(world: &World, entity: Entity, stat: Option<u16>) -> Num {
         let values = world.get::<UnitStats>(entity);
-        world
-            .get_resource::<StatBook>()
-            .zip(values)
-            .and_then(|(book, values)| book.engine(values.values(), stat))
-            .unwrap_or(Num::ZERO)
+        stat.zip(values)
+            .map_or(Num::ZERO, |(at, values)| values.values()[usize::from(at)])
     }
 }
 

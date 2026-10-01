@@ -55,12 +55,11 @@ impl ModeApi {
                 DataTable::Mode,
                 &[
                     "script",
-                    "assist_window_ms",
+                    "combat",
                     "inputs",
                     "state",
                     "params",
                     "modifiers",
-                    "damage_kinds",
                     "attack_kind",
                     "stats",
                     "resources",

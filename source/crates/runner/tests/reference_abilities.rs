@@ -12,7 +12,7 @@ use bevy_ecs::world::World;
 use campfire_capabilities::{
     Abilities, AbilitySlots, Action, AttackStats, CapabilitySet, CastTarget, Combatant,
     DeclaredName, Health, MatchScripts, Number, OnDeath, Order, Owner, Param, Range, RangeField,
-    Ranked, ResourcePool, Scalar, Scaling, ScriptLimits, Stats, Targeting, Team, Units,
+    Ranked, ResourcePool, Scalar, Scaling, ScriptLimits, Stat, Stats, Targeting, Team, Units,
 };
 use campfire_capabilities::{Modifiers, ScriptFailures, internals};
 use campfire_content::PackagePath;
@@ -90,11 +90,31 @@ fn every_reference_ability_reads_into_the_schema() {
         lash_out.params["radius"],
         Param::Ranked(Ranked::One(Scalar::Decimal(half * 7)))
     );
-    let Param::Scaling(Scaling { base, ap, .. }) = &lash_out.params["damage"] else {
+    let Param::Scaling(Scaling {
+        base,
+        bonus,
+        ratios,
+        ..
+    }) = &lash_out.params["damage"]
+    else {
         panic!("damage scales");
     };
     assert_eq!(base.at(2), Some(Scalar::Int(100)));
-    assert_eq!(*ap, Some(Scalar::Decimal(half)));
+    let ability_power = Stat::named("ability_power").unwrap();
+    assert_eq!(*ratios, [(ability_power, Scalar::Decimal(half))].into());
+    assert!(bonus.is_empty());
+    // Veil's spell vamp scales with bonus attack damage: 0.00167 × 2²⁴ = 28 017.95 bits, to
+    // 28 018.
+    let veil = abilities("veil");
+    let Param::Scaling(Scaling { bonus, ratios, .. }) =
+        &veil.modifiers["dual_path"].params["spell_vamp"]
+    else {
+        panic!("spell vamp scales");
+    };
+    let attack_damage = Stat::named("attack_damage").unwrap();
+    let ratio = Scalar::Decimal(Num::from_bits(28_018));
+    assert_eq!(*bonus, [(attack_damage, ratio)].into());
+    assert!(ratios.is_empty());
     // Rime's Snow Owl reaches farther at each rank.
     let rime = abilities("rime");
     let Some(Ranked::PerRank(ranges)) = &rime.abilities["snow_owl"].range else {

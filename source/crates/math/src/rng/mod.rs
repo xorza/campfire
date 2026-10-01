@@ -69,6 +69,13 @@ impl Rng {
         chance_from_word(self.next_u64(), probability)
     }
 
+    /// A uniform number in `[0, 1)`, of a `Num`'s 24 fractional bits: the top 24 bits of one word,
+    /// so it is below a probability exactly when `chance` with that probability would be true for
+    /// the same word.
+    pub fn fraction(&mut self) -> Num {
+        fraction_of_word(self.next_u64())
+    }
+
     /// True with probability exactly `numerator / denominator`, for chances too small for the
     /// 24 fractional bits of `Num`; `denominator` is not zero.
     pub fn chance_ratio(&mut self, numerator: u64, denominator: u64) -> bool {
@@ -99,6 +106,11 @@ const fn lemire_step<const BITS: u32>(word: u64, bound: u64) -> Option<u64> {
     }
     #[expect(clippy::cast_possible_truncation, reason = "the result is below bound")]
     Some((product >> BITS) as u64)
+}
+
+/// The top 24 bits of `word`, as a number in `[0, 1)`.
+const fn fraction_of_word(word: u64) -> Num {
+    Num::from_bits((word >> (u64::BITS - Num::FRAC_BITS)).cast_signed())
 }
 
 /// Whether `word` falls below the probability: exact for every `Num` in `[0, 1]`, since its 24

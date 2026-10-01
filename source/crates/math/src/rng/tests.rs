@@ -132,6 +132,38 @@ fn chance_compares_the_top_24_bits() {
     assert!(!chance_from_word(0, -Num::ONE));
     assert!(chance_from_word(u64::MAX, Num::ONE));
     assert!(chance_from_word(u64::MAX, Num::MAX));
+
+    // A fraction of the same word is below a probability exactly when the chance is true: at the
+    // ends, at a tie, and either side of it.
+    assert_eq!(fraction_of_word(top(3) | 0xFF), Num::from_bits(3));
+    assert_eq!(fraction_of_word(u64::MAX), almost_one);
+    let words = [
+        0,
+        top(1) - 1,
+        top(1),
+        top(1 << 23),
+        top((1 << 24) - 1),
+        u64::MAX,
+    ];
+    let chances = [
+        -Num::ONE,
+        Num::ZERO,
+        epsilon,
+        Num::ONE / 2,
+        almost_one,
+        Num::ONE,
+        Num::MAX,
+    ];
+    for word in words {
+        for probability in chances {
+            let below = fraction_of_word(word) < probability;
+            assert_eq!(
+                below,
+                chance_from_word(word, probability),
+                "{word:#x} {probability:?}"
+            );
+        }
+    }
 }
 
 #[test]

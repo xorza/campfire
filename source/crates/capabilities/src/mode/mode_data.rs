@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use campfire_content::PackagePath;
 use serde::Deserialize;
 
+use crate::combat::combat_rules::CombatRules;
 use crate::scripts::state_decl::StateDecl;
 use crate::stats::modifier_data::ModifierData;
 use crate::stats::stat::Stat;
@@ -16,8 +17,8 @@ use crate::values::scalar::Scalar;
 #[serde(deny_unknown_fields)]
 pub struct ModeData {
     pub script: PackagePath,
-    /// How long after damage a unit counts as having assisted a kill.
-    pub assist_window_ms: Option<u64>,
+    #[serde(default)]
+    pub combat: CombatRules,
     /// The type of each player input, by name. An input that does not match its type never
     /// reaches the script.
     #[serde(default)]
@@ -29,10 +30,7 @@ pub struct ModeData {
     pub params: BTreeMap<String, ModeParam>,
     #[serde(default)]
     pub modifiers: BTreeMap<String, ModifierData>,
-    /// The kinds of damage its scripts deal and its `calc_damage` weighs.
-    #[serde(default)]
-    pub damage_kinds: Vec<DeclaredName>,
-    /// The kind of damage every attack deals, one of `damage_kinds`.
+    /// The kind of damage every attack deals, one of `[combat] damage_kinds`.
     pub attack_kind: Option<DeclaredName>,
     /// Every stat its units carry, those the engine reads among them, each with its rule.
     #[serde(default)]

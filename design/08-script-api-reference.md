@@ -18,13 +18,13 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `charge` | read | action | abilities | planned | how long a charged cast was held, from 0 to 1 |
 | `choose_avatar` | `(player, id)` | mode | core | runs | chooses the avatar `id` for `player` |
 | `choose_loadout` | `(player, ids)` | mode | core | runs | chooses `ids`, each a loadout entry the mode depends on, none twice, for `player` |
-| `damage` | `(target, amount, kind)` | every role | combat | runs | deals `amount` of `kind`, one of the mode's `damage_kinds`, to `target` |
+| `damage` | `(target, amount, kind)` | every role | combat | runs | deals `amount` of `kind`, one of the mode's `[combat] damage_kinds`, to `target` |
 | `dash` | `(unit, to, speed)` | every role | navigation | planned | moves `unit` to `to` at `speed` |
 | `end` | `(team) or (())` | mode | core | runs | ends the match, once: `team` wins, `()` is a draw |
 | `enemy_team` | `(team)` | every role | core | runs | the one team that is `team`'s enemy, in a mode of two playing teams |
 | `find` | `(of, pos, radius, filter)` | every role | core | runs | the living units within `radius` of `pos` that `filter` selects for `of`, seen or not, by stable id |
 | `find_visible` | `(of, pos, radius, filter)` | every role | vision | runs | as `find`, of the units `of`'s team sees |
-| `heal` | `(unit, amount)` | every role | combat | runs | heals `unit`, scaled by its `healing_received_pct` |
+| `heal` | `(unit, amount)` | every role | combat | runs | heals `unit`, times one plus its `heal_scale` stat |
 | `knock_back` | `(unit, from, distance, ms)` | every role | stats | planned | pushes `unit` away from `from` |
 | `learn` | `(avatar, slot)` | mode | abilities | runs | the ability in `slot` a rank more, up to its last |
 | `map` | read | every role | navigation | runs | the map's paths and neutral spawns |
@@ -125,9 +125,9 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `ability` | read | combat | runs | the ability that dealt it, `""` when none |
 | `amount` | read | combat | runs | raw in `calc_damage`, final in a hook |
 | `attack` | read | combat | runs | whether an attack dealt it |
-| `crit` | read | combat | runs | whether its attack crit |
 | `extra` | read | combat | runs | whether `ctx.attack_hit` dealt it |
-| `kind` | read | combat | runs | one of the mode's `damage_kinds` |
+| `kind` | read | combat | runs | one of the mode's `[combat] damage_kinds` |
+| `roll` | read | combat | runs | its attack's random number, at least 0 and less than 1, `()` for other damage |
 | `source` | read | combat | runs | the unit that dealt it, `()` when gone or none |
 | `target` | read | combat | runs | the unit it is dealt to |
 
@@ -208,17 +208,32 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | Field | Status |
 | --- | --- |
 | `script` | runs |
-| `assist_window_ms` | runs |
+| `combat` | runs |
 | `inputs` | runs |
 | `state` | runs |
 | `params` | runs |
 | `modifiers` | runs |
-| `damage_kinds` | runs |
 | `attack_kind` | runs |
 | `stats` | runs |
 | `resources` | runs |
 | `tags` | runs |
 | `state_version` | planned |
+
+### The mode's `[combat]`
+
+| Field | Status |
+| --- | --- |
+| `damage_kinds` | runs |
+| `assist_window_ms` | runs |
+| `leech` | runs |
+| `heal_scale` | runs |
+
+### The mode's `[combat] leech`
+
+| Field | Status |
+| --- | --- |
+| `attack` | runs |
+| `other` | runs |
 
 ### An ability, `[abilities.<id>]`
 

@@ -18,23 +18,27 @@ pub(crate) struct Damage {
     pub(crate) depth: u8,
 }
 
-/// What dealt a damage: an attack, which rolled its crit as its windup ended; an extra attack,
-/// from `ctx.attack_hit`, which rolls none; or an ability's or modifier's effect.
+/// What dealt a damage: an attack, with the roll it drew as its windup ended; an extra attack,
+/// from `ctx.attack_hit`, which draws none; or an ability's or modifier's effect.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DamageCause {
-    Attack { crit: bool },
+    Attack { roll: Num },
     ExtraAttack,
     Effect,
 }
 
 impl DamageCause {
-    /// Whether an attack dealt it, an extra one included: life steal heals from it, spell vamp
-    /// from the rest.
+    /// Whether an attack dealt it, an extra one included: `leech` heals by its `attack` stat
+    /// from it, by its `other` stat from the rest.
     pub(crate) const fn attack(self) -> bool {
         matches!(self, DamageCause::Attack { .. } | DamageCause::ExtraAttack)
     }
 
-    pub(crate) const fn crit(self) -> bool {
-        matches!(self, DamageCause::Attack { crit: true })
+    /// The roll of an attack, at least 0 and less than 1; `None` for any other cause.
+    pub(crate) const fn roll(self) -> Option<Num> {
+        match self {
+            DamageCause::Attack { roll } => Some(roll),
+            DamageCause::ExtraAttack | DamageCause::Effect => None,
+        }
     }
 }

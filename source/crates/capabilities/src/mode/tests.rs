@@ -16,6 +16,7 @@ use crate::abilities::ability_data::{AbilityData, Targeting};
 use crate::abilities::resource_pool::ResourcePool;
 use crate::capability_set::internals::TestMatch;
 use crate::combat::attack_stats::AttackStats;
+use crate::combat::combat_rules::CombatRules;
 use crate::combat::combatant::Combatant;
 use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::damage_kind::DamageKind;
@@ -47,7 +48,8 @@ use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifiers::Modifiers;
 use crate::stats::modifiers::{Application, Instance, StatShare};
 use crate::stats::stat::Stat;
-use crate::stats::stat_rule::{Combine, StatRule};
+use crate::stats::stat_op::StatOp;
+use crate::stats::stat_rule::StatRule;
 use crate::stats::stats_data::StatsData;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::body::Body;
@@ -75,10 +77,11 @@ const LIMITS: ScriptLimits = ScriptLimits {
 /// A mode that records what its hooks see in its state, and acts on its players' inputs.
 /// The reference MOBA's damage kinds, and the stats its `calc_damage` reads.
 const DAMAGE_KINDS: [&str; 3] = ["physical", "magic", "true"];
-const STATS_3V3: [&str; 8] = [
+const STATS_3V3: [&str; 9] = [
     "armor",
     "armor_pen",
     "armor_pen_pct",
+    "crit_chance",
     "damage_dealt_pct",
     "magic_pen",
     "magic_pen_pct",
@@ -234,7 +237,12 @@ fn mode_files() -> ModeFiles {
     ModeFiles {
         data: ModeData {
             script: PackagePath::parse("scripts/mode.rhai").unwrap(),
-            assist_window_ms: None,
+            combat: CombatRules {
+                damage_kinds: DAMAGE_KINDS
+                    .map(|kind| DeclaredName::new(kind).unwrap())
+                    .into(),
+                ..CombatRules::default()
+            },
             inputs: [
                 ("hero", InputType::String),
                 ("spells", InputType::StringList),
@@ -276,19 +284,9 @@ fn mode_files() -> ModeFiles {
             .map(|(name, param)| (name.to_owned(), param))
             .into(),
             modifiers: [("blessing".to_owned(), blessing())].into(),
-            damage_kinds: DAMAGE_KINDS
-                .map(|kind| DeclaredName::new(kind).unwrap())
-                .into(),
             attack_kind: None,
             stats: STATS_3V3
-                .map(|name| {
-                    let sum = StatRule {
-                        combine: Combine::Sum,
-                        min: None,
-                        max: None,
-                    };
-                    (Stat::named(name).unwrap(), sum)
-                })
+                .map(|name| (Stat::named(name).unwrap(), StatRule::default()))
                 .into(),
             resources: Vec::new(),
             tags: BTreeMap::new(),
@@ -1123,6 +1121,7 @@ impl Game {
         let book = self.world.resource::<StatBook>();
         let shares = stats.iter().map(|&(name, value)| StatShare {
             stat: book.index(&Stat::named(name).unwrap()).unwrap(),
+            op: StatOp::Add,
             value,
         });
         let instance = Instance {
@@ -1195,11 +1194,13 @@ impl Game {
 fn the_3v3s_calc_damage_weighs_each_hit_exactly() {
     let mut game = Game::new(calc_damage_3v3(), LIMITS);
     let half = Num::ONE / 2;
-    // The source deals 50% more, ignores half of armor, then 10 more.
+    // The source deals 50% more, crits on a roll below 0.25, ignores half of armor, then 10
+    // more.
     let source = game.fighter(
         0,
         &[
             ("damage_dealt_pct", half),
+            ("crit_chance", Num::ONE / 4),
             ("armor_pen_pct", half),
             ("armor_pen", num(10)),
         ],
@@ -1214,21 +1215,25 @@ fn the_3v3s_calc_damage_weighs_each_hit_exactly() {
     );
     let exposed = game.fighter(1, &[("armor", num(-100))]);
     game.tick(&[]);
-    let crit = DamageCause::Attack { crit: true };
-    let attack = DamageCause::Attack { crit: false };
-    // 100 physical, 150 dealt: armor 120 × (1 − 0.5) − 10 = 50, 150 × 100 ÷ 150 = 100, less the
-    // block of 5: 95.
+    let crit = DamageCause::Attack {
+        roll: Num::from_bits((1 << Num::FRAC_BITS) / 4 - 1),
+    };
+    let attack = DamageCause::Attack { roll: Num::ONE / 4 };
+    // 100 physical, its roll of 0.25 no crit, 150 dealt: armor 120 × (1 − 0.5) − 10 = 50, 150 ×
+    // 100 ÷ 150 = 100, less the block of 5: 95.
     game.damage(Some(source), armored, 100, "physical", attack);
-    // 40 magic, a crit: 40 × 1.5 × 2 = 120, magic resist 60 with no magic pen: 120 × 100 ÷ 160
-    // = 75, no block.
+    // 40 magic, a crit on a roll just below 0.25: 40 × 1.5 × 2 = 120, magic resist 60 with no
+    // magic pen: 120 × 100 ÷ 160 = 75, no block.
     game.damage(Some(source), armored, 40, "magic", crit);
     // 100 physical, 150 dealt, against armor −100, which pen does not touch: 150 × (2 − 100 ÷
     // 200) = 225.
     game.damage(Some(source), exposed, 100, "physical", attack);
     // 100 true, 150 dealt, whatever the armor.
     game.damage(Some(source), exposed, 100, "true", DamageCause::Effect);
-    // 100 physical from no source: no bonus, 100 × 1.5 = 150.
-    game.damage(None, exposed, 100, "physical", DamageCause::Effect);
+    // An attack of 100 physical from no source, its roll 0: no bonus and no crit chance, 100 ×
+    // 1.5 = 150.
+    let lowest = DamageCause::Attack { roll: Num::ZERO };
+    game.damage(None, exposed, 100, "physical", lowest);
     game.tick(&[]);
     assert_eq!(game.failures(), []);
     assert_eq!(game.health(armored), num(1000 - 95 - 75));

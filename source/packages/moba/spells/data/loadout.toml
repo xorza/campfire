@@ -12,7 +12,7 @@ cooldown_ms = 210000
 
 [modifiers.haste]
 duration_ms = 10000
-stats = { move_speed_pct = "0.27" }
+stats = { move_speed = { pct = "0.27" } }
 
 [abilities.mend]
 script = "scripts/mend.rhai"
@@ -46,7 +46,7 @@ cooldown_ms = 210000
 
 [modifiers.sapped]
 duration_ms = 2500
-stats = { slow = "0.3", damage_dealt_pct = "-0.7" }
+stats = { move_speed = { cut = "0.3" }, damage_dealt_pct = "-0.7" }
 tags = ["slowed"]
 
 [abilities.farsight]

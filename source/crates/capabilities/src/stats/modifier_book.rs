@@ -137,10 +137,11 @@ impl ModifierBook {
             every,
             next: now.after(every),
         });
-        let shares = data.stats.iter().map(|(stat, value)| {
+        let shares = data.stats.iter().map(|(stat, change)| {
             Some(StatShare {
                 stat: stats.index(stat)?,
-                value: number(value)?,
+                op: change.op,
+                value: number(&change.value)?,
             })
         });
         let counts = from.passive && stack_life.is_some();

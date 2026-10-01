@@ -28,12 +28,12 @@ impl CombatApi {
         let damage = call(
             "damage",
             "(target, amount, kind)",
-            "deals `amount` of `kind`, one of the mode's `damage_kinds`, to `target`",
+            "deals `amount` of `kind`, one of the mode's `[combat] damage_kinds`, to `target`",
         );
         let heal = call(
             "heal",
             "(unit, amount)",
-            "heals `unit`, scaled by its `healing_received_pct`",
+            "heals `unit`, times one plus its `heal_scale` stat",
         );
         let restore = call(
             "restore",
@@ -90,6 +90,12 @@ impl CombatApi {
         .tag_effect(TagEffect::Blocks(Block::Attack), Status::Runs)
         .tag_effect(TagEffect::Blocks(Block::Target), Status::Runs)
         .tag_effect(TagEffect::Blocks(Block::Damage), Status::Runs)
+        .data(
+            DataTable::ModeCombat,
+            &["damage_kinds", "assist_window_ms", "leech", "heal_scale"],
+            &[],
+        )
+        .data(DataTable::Leech, &["attack", "other"], &[])
         .data(DataTable::Combat, &["attack", "on_death"], &[])
         .data(
             DataTable::Attack,

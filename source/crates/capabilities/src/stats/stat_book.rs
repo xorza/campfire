@@ -7,7 +7,8 @@ use campfire_sim::{TickRate, Ticks};
 use crate::combat::attack_stats::AttackStats;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::stat::{EngineStat, Stat};
-use crate::stats::stat_rule::{Combine, StatRule};
+use crate::stats::stat_op::StatOp;
+use crate::stats::stat_rule::StatRule;
 use crate::stats::stats_data::StatsData;
 use crate::units::tag_set::TagSet;
 use crate::units::unit_type::UnitType;
@@ -34,6 +35,32 @@ pub(crate) struct StatBook {
 fn saturate(bits: i128) -> Num {
     let bits = bits.clamp(i128::from(i64::MIN), i128::from(i64::MAX));
     Num::from_bits(i64::try_from(bits).expect("clamped to the range"))
+}
+
+/// What a stat's value sums from its base and its modifiers, in bits: the base and each add, each
+/// percent, and the largest cut.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct StatTotals {
+    add: i128,
+    pct: i128,
+    cut: i128,
+}
+
+impl StatTotals {
+    /// `(add) × (1 + pct) × (1 − cut)`, the cut from 0 to 1, each sum stopped at the range of a
+    /// number, the product rounded once to nearest and stopped at that range too.
+    fn value(self) -> Num {
+        let one = 1_i128 << Num::FRAC_BITS;
+        let base = saturate(self.add).to_bits();
+        let gain = saturate(one + self.pct).to_bits();
+        let kept = one - self.cut.clamp(0, one);
+        let negative = (base < 0) != (gain < 0);
+        let magnitude = u128::from(base.unsigned_abs()) * u128::from(gain.unsigned_abs());
+        let product = U256::product(magnitude, kept.cast_unsigned())
+            .round_shr(2 * Num::FRAC_BITS)
+            .map_or(i128::MAX, |bits| i128::try_from(bits).unwrap_or(i128::MAX));
+        saturate(if negative { -product } else { product })
+    }
 }
 
 /// A stat's value at level 1, and what it gains a level.
@@ -95,50 +122,54 @@ impl StatBook {
         self.rate
     }
 
-    /// The stats of a unit of `unit_type` at `level` carrying `modifiers` into `values`: each
-    /// the type's value at that level, 0 where it gives none, combined with the value of each
-    /// modifier whose tags `takes_effect` lets act, times its stacks, as the stat's rule says,
-    /// then within the stat's limits. A value past the range of a number stops at its end before
-    /// the limits.
+    /// The stats of a unit of `unit_type` at `level` carrying `modifiers` into `values`, with
+    /// `totals` to sum in: each `(base + Σ add) × (1 + Σ pct) × (1 − max cut)`, the base the
+    /// type's value at that level, 0 where it gives none, and each modifier's change times its
+    /// stacks, of the modifiers whose tags `takes_effect` lets act; only the largest cut counts,
+    /// from 0 to 1. The product rounds once, to nearest; a sum past the range of a number stops at
+    /// its end; then the stat's limits clamp the value.
     pub(crate) fn compute(
         &self,
         unit_type: UnitType,
         level: u32,
         modifiers: Option<&Modifiers>,
         takes_effect: impl Fn(TagSet) -> bool,
+        totals: &mut Vec<StatTotals>,
         values: &mut Vec<Num>,
     ) {
         let first = unit_type.index() * self.stats.len();
         let levels = i128::from(level - 1);
-        values.extend((0..self.stats.len()).map(|at| {
-            self.growth
-                .get(first + at)
-                .copied()
-                .flatten()
-                .map_or(Num::ZERO, |growth| {
-                    saturate(
-                        i128::from(growth.base.to_bits())
-                            + i128::from(growth.per_level.to_bits()) * levels,
-                    )
-                })
+        totals.clear();
+        totals.extend((0..self.stats.len()).map(|at| {
+            let base = self.growth.get(first + at).copied().flatten();
+            StatTotals {
+                add: base.map_or(0, |growth| {
+                    i128::from(growth.base.to_bits())
+                        + i128::from(growth.per_level.to_bits()) * levels
+                }),
+                pct: 0,
+                cut: 0,
+            }
         }));
         let held = modifiers.into_iter().flat_map(Modifiers::iter);
         for instance in held.filter(|instance| takes_effect(instance.tags)) {
             for share in &instance.stats {
-                let at = usize::from(share.stat);
-                let total =
-                    saturate(i128::from(share.value.to_bits()) * i128::from(instance.stacks));
-                values[at] = match self.rules[at].combine {
-                    Combine::Sum => {
-                        saturate(i128::from(values[at].to_bits()) + i128::from(total.to_bits()))
-                    }
-                    Combine::Highest => values[at].max(total),
-                };
+                let total = &mut totals[usize::from(share.stat)];
+                let change = i128::from(share.value.to_bits()) * i128::from(instance.stacks);
+                match share.op {
+                    StatOp::Add => total.add += change,
+                    StatOp::Pct => total.pct += change,
+                    StatOp::Cut => total.cut = total.cut.max(change),
+                }
             }
         }
-        for (value, rule) in values.iter_mut().zip(&self.rules) {
-            *value = rule.clamp(*value);
-        }
+        values.clear();
+        values.extend(
+            totals
+                .iter()
+                .zip(&self.rules)
+                .map(|(total, rule)| rule.clamp(total.value())),
+        );
     }
 
     /// The place of `stat` among the stats; `None` when the mode does not declare it.
@@ -152,71 +183,25 @@ impl StatBook {
         self.engine[stat as usize].map(|at| values[at])
     }
 
-    fn rule(&self, stat: EngineStat) -> Option<StatRule> {
-        self.engine[stat as usize].map(|at| self.rules[at])
-    }
-
-    /// How far a unit with `values` walks a tick: `move_speed × (1 + move_speed_pct) × (1 −
-    /// slow)`, within `move_speed`'s limits, at least 0 and at most the cap, divided by the tick
-    /// rate, rounded once; `None` when the mode declares no move speed.
+    /// How far a unit with `values` walks a tick: its `move_speed`, from 0 to the manifest's
+    /// `max_move_speed`, divided by the tick rate, rounded once; `None` when the mode declares no
+    /// move speed.
     pub(crate) fn step(&self, values: &[Num]) -> Option<Num> {
-        let speed = i128::from(self.engine(values, EngineStat::MoveSpeed)?.to_bits());
-        let one = 1_i128 << Num::FRAC_BITS;
-        let bits = |stat| {
-            self.engine(values, stat)
-                .map_or(0, |value| i128::from(value.to_bits()))
-        };
-        let gain = one + bits(EngineStat::MoveSpeedPct);
-        let kept = one - bits(EngineStat::Slow);
-        let rule = self
-            .rule(EngineStat::MoveSpeed)
-            .expect("a declared move speed has a rule");
-        let lower = rule.min.map_or(Num::ZERO, |min| min.max(Num::ZERO));
-        let upper = rule
-            .max
-            .map_or(self.max_move_speed, |max| max.min(self.max_move_speed));
+        let speed = self
+            .engine(values, EngineStat::MoveSpeed)?
+            .clamp(Num::ZERO, self.max_move_speed);
         let hz = i64::from(self.rate.hz().get());
-        let per_tick = |speed: Num| speed.checked_div_int(hz).expect("a speed a tick fits");
-        let first = speed * gain;
-        if first <= 0 || kept <= 0 {
-            return Some(per_tick(lower));
-        }
-        // In bits of a number times 2⁴⁸, the unrounded product of the three.
-        let wide = U256::product(first.cast_unsigned(), kept.cast_unsigned());
-        let scaled = |limit: Num| {
-            U256::product(
-                u128::try_from(limit.to_bits()).unwrap_or(0),
-                1 << (2 * Num::FRAC_BITS),
-            )
-        };
-        if wide >= scaled(upper) {
-            return Some(per_tick(upper.max(lower)));
-        }
-        if wide <= scaled(lower) {
-            return Some(per_tick(lower));
-        }
-        let divisor = u128::from(self.rate.hz().get()) << (2 * Num::FRAC_BITS);
-        let step = wide.round_div(divisor).expect("a step below the cap fits");
-        Some(Num::from_bits(
-            i64::try_from(step).expect("a step below the cap fits"),
-        ))
+        Some(speed.checked_div_int(hz).expect("a speed a tick fits"))
     }
 
     /// The ticks from the start of one attack of a unit with `values` to the next at the
-    /// earliest: the tick rate over `attack_speed × (1 + attack_speed_pct)` attacks a second,
-    /// exactly, rounded up, the attacks within `attack_speed`'s limits and at least one bit, and
-    /// the period longer than `windup`; `None` when the mode declares no attack speed.
+    /// earliest: the tick rate over its `attack_speed` attacks a second, exactly, rounded up, the
+    /// attacks at least one bit, and the period longer than `windup`; `None` when the mode
+    /// declares no attack speed.
     pub(crate) fn period(&self, values: &[Num], windup: Ticks) -> Option<Ticks> {
-        let speed = i128::from(self.engine(values, EngineStat::AttackSpeed)?.to_bits());
-        let one = 1_i128 << Num::FRAC_BITS;
-        let pct = self
-            .engine(values, EngineStat::AttackSpeedPct)
-            .map_or(0, |value| i128::from(value.to_bits()));
+        let speed = self.engine(values, EngineStat::AttackSpeed)?;
         // Attacks a second in bits times 2²⁴.
-        let mut attacks = (speed * (one + pct)).max(one);
-        if let Some(max) = self.rule(EngineStat::AttackSpeed).and_then(|rule| rule.max) {
-            attacks = attacks.min((i128::from(max.to_bits()) << Num::FRAC_BITS).max(one));
-        }
+        let attacks = (i128::from(speed.to_bits()) << Num::FRAC_BITS).max(1 << Num::FRAC_BITS);
         let hz = self.rate.hz().get();
         Some(AttackStats::period_at(hz, attacks.cast_unsigned(), windup))
     }

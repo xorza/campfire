@@ -115,7 +115,7 @@ fn source_stat(d, name) {
 
 fn calc_damage(ctx, d) {
     let amount = d.amount * (1 + source_stat(d, "damage_dealt_pct"));
-    if d.crit {
+    if d.roll != () && d.roll < source_stat(d, "crit_chance") {
         amount *= 2;
     }
     if d.kind == "true" {

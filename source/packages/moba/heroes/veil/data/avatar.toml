@@ -30,8 +30,8 @@ script = "scripts/dual_path.rhai"
 stats = { spell_vamp = { param = "spell_vamp" } }
 
 [modifiers.dual_path.params]
-on_hit_share = { base = "0.06", ap = "0.00167" }
-spell_vamp = { base = "0.06", bonus_ad = "0.00167" }
+on_hit_share = { base = "0.06", ability_power = "0.00167" }
+spell_vamp = { base = "0.06", bonus = { attack_damage = "0.00167" } }
 
 [abilities.dusk_mark]
 script = "scripts/dusk_mark.rhai"
@@ -42,8 +42,8 @@ cost = 60
 projectile = { speed = "10" }
 
 [abilities.dusk_mark.params]
-damage = { base = [45, 70, 95, 120, 145], ap = "0.4" }
-detonate_damage = { base = [45, 70, 95, 120, 145], ap = "0.5" }
+damage = { base = [45, 70, 95, 120, 145], ability_power = "0.4" }
+detonate_damage = { base = [45, 70, 95, 120, 145], ability_power = "0.5" }
 energy_refund = [20, 25, 30, 35, 40]
 
 [modifiers.dusk_mark]
@@ -66,7 +66,7 @@ tags = ["stealthed"]
 stats = { armor = { param = "cover" }, magic_resist = { param = "cover" } }
 
 [modifiers.smoke_ring_slow]
-stats = { slow = { param = "slow" } }
+stats = { move_speed = { cut = { param = "slow" } } }
 tags = ["slowed"]
 
 [abilities.whirling_blades]
@@ -77,7 +77,7 @@ cost = [60, 55, 50, 45, 40]
 
 [abilities.whirling_blades.params]
 radius = "3.25"
-damage = { base = [30, 55, 80, 105, 130], ap = "0.3", ad = "0.6" }
+damage = { base = [30, 55, 80, 105, 130], ability_power = "0.3", attack_damage = "0.6" }
 
 [abilities.night_step]
 script = "scripts/night_step.rhai"
@@ -88,7 +88,7 @@ passive_modifier = "night_step_essence"
 
 [abilities.night_step.params]
 speed = "22"
-damage = { base = [100, 175, 250], ap = "0.5" }
+damage = { base = [100, 175, 250], ability_power = "0.5" }
 
 [modifiers.night_step_essence]
 script = "scripts/night_step.rhai"

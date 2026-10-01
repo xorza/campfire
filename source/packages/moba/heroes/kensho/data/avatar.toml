@@ -42,7 +42,7 @@ cost = [60, 70, 80, 90, 100]
 [abilities.flicker_strike.params]
 strikes = 4
 hop_radius = "6.0"
-damage = { base = [100, 150, 200, 250, 300], ad = "1.0" }
+damage = { base = [100, 150, 200, 250, 300], attack_damage = "1.0" }
 minion_bonus = [75, 100, 125, 150, 175]
 minion_bonus_chance = "0.3"
 
@@ -65,7 +65,7 @@ channel = { duration_ms = 5000, tick_ms = 500 }
 hold = "still_mind"
 
 [abilities.still_mind.params]
-heal_per_tick = { base = [20, 35, 50, 65, 80], ap = "0.1" }
+heal_per_tick = { base = [20, 35, 50, 65, 80], ability_power = "0.1" }
 guard = [30, 45, 60, 75, 90]
 
 [modifiers.still_mind]
@@ -105,4 +105,4 @@ cooldown_cut = "0.7"
 script = "scripts/unbound.rhai"
 duration_ms = { param = "duration_ms" }
 tags = ["slow_immune"]
-stats = { attack_speed_pct = { param = "attack_speed" }, move_speed_pct = { param = "move_speed" } }
+stats = { attack_speed = { pct = { param = "attack_speed" } }, move_speed = { pct = { param = "move_speed" } } }

@@ -19,6 +19,7 @@ use crate::abilities::ability_slots::AbilitySlots;
 use crate::combat::CombatSet;
 use crate::combat::assist_window::AssistWindow;
 use crate::combat::attack_kind::AttackKind;
+use crate::combat::bound_stats::BoundStats;
 use crate::combat::damage_weigher::DamageWeigher;
 use crate::combat::deaths::Deaths;
 use crate::combat::respawn::Respawn;
@@ -83,7 +84,7 @@ impl Mode {
     /// whose capabilities are installed and whose unit types, abilities and AI are loaded: in
     /// Inputs, the players' mode inputs run `on_mode_input`; in Mode, due timers run `on_timer`,
     /// then the tick's deaths run `on_unit_died`. The map's bounds, paths and grid become the match's,
-    /// and the mode's `assist_window_ms`, `attack_kind` and `calc_damage` combat's.
+    /// and the mode's `[combat]`, `attack_kind` and `calc_damage` combat's.
     pub fn install(
         world: &mut World,
         schedule: &mut Schedule,
@@ -100,6 +101,7 @@ impl Mode {
         // A window past what ticks can count covers the whole match.
         let assist_window = setup
             .data
+            .combat
             .assist_window_ms
             .map(|ms| rate.ticks(ms).unwrap_or(Ticks::new(u64::MAX)));
         let attack_kind = setup.data.attack_kind.as_ref().map(|name| {
@@ -112,9 +114,11 @@ impl Mode {
             .map(|setup| (setup.unit_type, &setup.stats));
         let stats = StatBook::new(&setup.data.stats, types, rate, setup.max_move_speed)
             .ok_or(ModeError::StatValue)?;
+        let bound = BoundStats::new(&setup.data.combat, &stats);
         let tags = view.types_mut().tag_book(&setup.data.tags);
         let book = ModeBook::new(setup, world.non_send::<ScriptHost>(), &view, &paths)?;
         view.set_stat_names(Rc::from(stats.stats()));
+        world.insert_resource(bound);
         Stats::load(world, stats);
         Units::load_tags(world, tags);
         if let Some(grid) = grid {

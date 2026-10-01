@@ -36,6 +36,7 @@ use crate::stats::Stats;
 use crate::stats::level::Level;
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifier_effect::ModifierEffect;
+use crate::stats::stat::Stat;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::Units;
 use crate::units::tag_data::TagData;
@@ -138,13 +139,12 @@ fn lash_out() -> AbilityData {
                 Param::Scaling(Scaling {
                     base: Ranked::PerRank(scalars(&[75, 100, 125, 150, 175])),
                     per_level: None,
-                    ad: None,
-                    bonus_ad: None,
-                    ap: Some(Scalar::Decimal(halves(1))),
-                    max_health: None,
-                    bonus_health: None,
-                    armor: None,
-                    magic_resist: None,
+                    bonus: BTreeMap::new(),
+                    ratios: [(
+                        Stat::named("ability_power").unwrap(),
+                        Scalar::Decimal(halves(1)),
+                    )]
+                    .into(),
                 }),
             ),
             (

@@ -9,7 +9,7 @@ use campfire_sim::{Position, StableId};
 pub(crate) struct Launches(pub(crate) Vec<Launch>);
 
 /// An attack that fires a projectile from `from` at `target`, flying `speed` a tick, to strike
-/// for `amount`, a crit when its roll was.
+/// for `amount`, with the roll its attack drew.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Launch {
     pub(crate) source: StableId,
@@ -17,5 +17,5 @@ pub(crate) struct Launch {
     pub(crate) target: StableId,
     pub(crate) amount: Num,
     pub(crate) speed: Num,
-    pub(crate) crit: bool,
+    pub(crate) roll: Num,
 }

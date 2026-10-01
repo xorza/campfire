@@ -55,7 +55,7 @@ projectile = { speed = "15", width = "0.4", stop_on_hit = true, once_per_cast = 
 [abilities.fan_of_frost.params]
 arrows = 7
 cone_deg = "57.5"
-damage = { base = [40, 50, 60, 70, 80], ad = "1.0" }
+damage = { base = [40, 50, 60, 70, 80], attack_damage = "1.0" }
 slow = ["0.15", "0.20", "0.25", "0.30", "0.35"]
 slow_ms = 2000
 
@@ -85,7 +85,7 @@ cast_time_ms = 250
 projectile = { speed = "16", width = "1.3", stop_on_hit = true, hits = "enemies:avatar" }
 
 [abilities.glacier_arrow.params]
-damage = { base = [250, 425, 600], ap = "1.0" }
+damage = { base = [250, 425, 600], ability_power = "1.0" }
 splash_radius = "2.5"
 splash_share = "0.5"
 min_stun_ms = 1000
@@ -96,7 +96,7 @@ slow_ms = 3000
 
 # A slow by the `slow` param of the ability that applies it; its time comes from the call.
 [modifiers.slow]
-stats = { slow = { param = "slow" } }
+stats = { move_speed = { cut = { param = "slow" } } }
 tags = ["slowed"]
 
 # A stun: its time comes from the call that applies it.

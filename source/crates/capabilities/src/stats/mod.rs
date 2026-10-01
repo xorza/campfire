@@ -29,7 +29,7 @@ use crate::stats::modifier_handle::ModifierHandle;
 use crate::stats::modifier_hooks::ModifierHooks;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::stat::EngineStat;
-use crate::stats::stat_book::StatBook;
+use crate::stats::stat_book::{StatBook, StatTotals};
 use crate::stats::unit_stats::UnitStats;
 use crate::units::script_view::{RowFill, View};
 use crate::units::tag_book::TagBook;
@@ -48,6 +48,8 @@ pub(crate) mod modifier_hooks;
 pub(crate) mod modifiers;
 pub(crate) mod stat;
 pub(crate) mod stat_book;
+pub(crate) mod stat_change;
+pub(crate) mod stat_op;
 pub(crate) mod stat_rule;
 pub(crate) mod stats_api;
 pub(crate) mod stats_data;
@@ -402,6 +404,7 @@ fn refresh_stats(
         ),
         Or<(Changed<Level>, Changed<Modifiers>, Added<UnitStats>)>,
     >,
+    mut totals: Local<'_, Vec<StatTotals>>,
 ) {
     let Some(book) = book else {
         return;
@@ -427,6 +430,7 @@ fn refresh_stats(
             level.get(),
             modifiers,
             takes_effect,
+            &mut totals,
             stats.refill(),
         );
         let values = stats.values();

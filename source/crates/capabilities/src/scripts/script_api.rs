@@ -61,6 +61,8 @@ pub struct DataField {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum DataTable {
     Mode,
+    ModeCombat,
+    Leech,
     Ability,
     Modifier,
     Aura,
@@ -434,8 +436,10 @@ impl Status {
 }
 
 impl DataTable {
-    pub const ALL: [DataTable; 10] = [
+    pub const ALL: [DataTable; 12] = [
         DataTable::Mode,
+        DataTable::ModeCombat,
+        DataTable::Leech,
         DataTable::Ability,
         DataTable::Modifier,
         DataTable::Aura,
@@ -451,6 +455,8 @@ impl DataTable {
     pub const fn title(self) -> &'static str {
         match self {
             DataTable::Mode => "`data/mode.toml`",
+            DataTable::ModeCombat => "The mode's `[combat]`",
+            DataTable::Leech => "The mode's `[combat] leech`",
             DataTable::Ability => "An ability, `[abilities.<id>]`",
             DataTable::Modifier => "A modifier, `[modifiers.<id>]`",
             DataTable::Aura => "A modifier's `aura`",
@@ -557,6 +563,7 @@ mod tests {
     use super::*;
     use crate::abilities::ability_data::AbilityData;
     use crate::combat::combat_data::{AttackData, CombatData};
+    use crate::combat::combat_rules::{CombatRules, Leech};
     use crate::mode::mode_data::ModeData;
     use crate::orders::ai_data::AiData;
     use crate::stats::modifier_data::{AuraData, ModifierData};
@@ -731,6 +738,8 @@ mod tests {
         let api = ScriptApi::release();
         let tables = [
             (DataTable::Mode, serde_fields::<ModeData>()),
+            (DataTable::ModeCombat, serde_fields::<CombatRules>()),
+            (DataTable::Leech, serde_fields::<Leech>()),
             (DataTable::Ability, serde_fields::<AbilityData>()),
             (DataTable::Modifier, serde_fields::<ModifierData>()),
             (DataTable::Aura, serde_fields::<AuraData>()),

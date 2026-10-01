@@ -14,7 +14,8 @@ use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::modifier_data::{AuraData, Reapply};
 use crate::stats::modifiers::{Application, Instance, StatShare};
 use crate::stats::stat::Stat;
-use crate::stats::stat_rule::{Combine, StatRule};
+use crate::stats::stat_op::StatOp;
+use crate::stats::stat_rule::StatRule;
 use crate::stats::stats_data::{StatValue, StatsData};
 use crate::units::Units;
 use crate::units::tag::Tag;
@@ -34,36 +35,33 @@ fn sixteenths(value: i64) -> Num {
     Num::from_bits(value << (Num::FRAC_BITS - 4))
 }
 
-fn rule(combine: Combine, min: Option<Num>, max: Option<Num>) -> StatRule {
-    StatRule { combine, min, max }
-}
-
-/// The rules of the test: the engine's stats, move speed at most 5, its rate at least −1, the
-/// slow the highest from 0 to 0.99.
+/// The rules of the test: the engine's stats, move speed at most 5, and `armor` at least −30.
 fn rules() -> BTreeMap<Stat, StatRule> {
-    let sum = rule(Combine::Sum, None, None);
-    let slow_max = Num::from_bits((99 << Num::FRAC_BITS) / 100);
+    let free = StatRule::default();
+    let speed = StatRule {
+        min: None,
+        max: Some(num(5)),
+    };
+    let armor = StatRule {
+        min: Some(num(-30)),
+        max: None,
+    };
     [
-        (EngineStat::Health, sum),
-        (EngineStat::HealthRegen, sum),
-        (EngineStat::Resource, sum),
-        (
-            EngineStat::MoveSpeed,
-            rule(Combine::Sum, None, Some(num(5))),
-        ),
-        (
-            EngineStat::MoveSpeedPct,
-            rule(Combine::Sum, Some(num(-1)), None),
-        ),
-        (
-            EngineStat::Slow,
-            rule(Combine::Highest, Some(Num::ZERO), Some(slow_max)),
-        ),
-        (EngineStat::AttackSpeed, sum),
-        (EngineStat::AttackDamage, sum),
+        (EngineStat::Health, free),
+        (EngineStat::HealthRegen, free),
+        (EngineStat::Resource, free),
+        (EngineStat::MoveSpeed, speed),
+        (EngineStat::AttackSpeed, free),
+        (EngineStat::AttackDamage, free),
     ]
     .map(|(stat, rule)| (Stat::Engine(stat), rule))
-    .into()
+    .into_iter()
+    .chain([(armor_stat(), armor)])
+    .collect()
+}
+
+fn armor_stat() -> Stat {
+    Stat::named("armor").unwrap()
 }
 
 /// A unit type's stats, each a base and a gain a level.
@@ -125,18 +123,8 @@ fn a_units_stats_follow_its_type_and_level_within_their_limits() {
         (EngineStat::AttackSpeed, sixteenths(10), sixteenths(1)),
         (EngineStat::MoveSpeed, num(4), sixteenths(4)),
     ]);
-    // A slow of 0.5 on move speed 4, and one of 1.5 the limit cuts to 0.99; a move speed rate
-    // of −2 the limit raises to −1.
-    let slowed = stats(&[
-        (EngineStat::MoveSpeed, num(4), Num::ZERO),
-        (EngineStat::Slow, sixteenths(8), Num::ZERO),
-    ]);
-    let stopped = stats(&[
-        (EngineStat::MoveSpeed, num(4), Num::ZERO),
-        (EngineStat::MoveSpeedPct, num(-2), Num::ZERO),
-    ]);
-    let mut game = stat_match(&[hero, slowed, stopped]);
-    let units = [0, 1, 2].map(|unit_type| unit(&mut game, unit_type));
+    let mut game = stat_match(&[hero]);
+    let units = [unit(&mut game, 0)];
     game.world.run_schedule(SimUpdate);
     let get = |game: &TestMatch| {
         let world = &game.world;
@@ -158,11 +146,6 @@ fn a_units_stats_follow_its_type_and_level_within_their_limits() {
         (health.current(), health.max(), resource),
         (num(380), num(380), num(250))
     );
-    // The slowed one walks 4 × 0.5 = 2 m/s, 2 × 2²⁴ ÷ 30 = 1 118 481.07 bits, to 1 118 481; the
-    // stopped one, at a rate of −1, not at all.
-    let step_of = |game: &TestMatch, unit| game.world.get::<MoveStep>(unit).unwrap().get();
-    assert_eq!(step_of(&game, units[1]), Num::from_bits(1_118_481));
-    assert_eq!(step_of(&game, units[2]), Num::ZERO);
 
     // Down 80 to 300 of 380, then at level 18: health 380 + 76 × 17 = 1672, the pool up by the
     // 1292 the maximum rose, to 1592, plus the regen of the tick that runs, 1.5 ÷ 30 = 0.05,
@@ -197,12 +180,13 @@ fn a_units_stats_follow_its_type_and_level_within_their_limits() {
     assert_eq!((health.current(), health.max()), (num(380), num(380)));
 }
 
-/// An application from `source` of modifier `id`, adding `value` of `stat` a stack, refreshed or
-/// stacked as `reapply` says.
+/// An application from `source` of modifier `id`, changing `stat` by `value` a stack with `op`,
+/// refreshed or stacked as `reapply` says.
 fn share(
     id: u16,
     source: Option<StableId>,
     stat: u16,
+    op: StatOp,
     value: Num,
     reapply: Reapply,
 ) -> Application {
@@ -221,7 +205,7 @@ fn share(
             stack_ends: Vec::new(),
             interval: None,
             shield: None,
-            stats: vec![StatShare { stat, value }],
+            stats: vec![StatShare { stat, op, value }],
             tags: TagSet::default(),
             state: Vec::new(),
         },
@@ -231,10 +215,74 @@ fn share(
 }
 
 #[test]
-fn modifiers_add_to_a_units_stats_by_each_stats_rule() {
-    // Move speed 4. Its place among the stats: health, health regen, resource, move speed, its
-    // rate, slow, attack speed, attack damage, in the engine's order. The tags: 0 detects, and is
-    // the type's own; 1, `slowed`, has no effect; 2, `slow_immune`, makes immune to 1.
+fn a_stat_is_its_base_plus_adds_times_pcts_times_the_largest_cut() {
+    // Armor 10 + 2 a level, at level 3: 10 + 2 × 2 = 14.
+    let armored = StatsData(
+        [(
+            armor_stat(),
+            StatValue {
+                base: Scalar::Int(10),
+                per_level: Some(Scalar::Int(2)),
+            },
+        )]
+        .into(),
+    );
+    let book = StatBook::new(&rules(), [(UnitType::new(0), &armored)], RATE, num(6)).unwrap();
+    let armor = book.index(&armor_stat()).unwrap();
+    let tenths = |tenths: i64| num(tenths) / 10;
+    let value = |changes: &[(StatOp, Num, u32)]| {
+        let mut modifiers = Modifiers::default();
+        for (at, &(op, value, stacks)) in changes.iter().enumerate() {
+            let id = u16::try_from(at).unwrap();
+            for _ in 0..stacks {
+                modifiers.apply(share(id, None, armor, op, value, Reapply::Stack));
+            }
+        }
+        let (mut totals, mut values) = (Vec::new(), Vec::new());
+        let unit_type = UnitType::new(0);
+        book.compute(
+            unit_type,
+            3,
+            Some(&modifiers),
+            |_| true,
+            &mut totals,
+            &mut values,
+        );
+        values[usize::from(armor)]
+    };
+    assert_eq!(value(&[]), num(14));
+    // Adds of 6 and of −1 three times: 17. Pcts of 0.3, 5 033 164.8 bits to 5 033 165, and of
+    // −0.1, 1 677 721.6 to 1 677 722: 2²⁴ + 3 355 443 = 20 132 659 bits. Cuts of 0.1 and 0.25,
+    // only the larger counting: 0.75. 17 × 20 132 659 × 0.75 = 256 691 402.25 bits, rounded once
+    // to 256 691 402.
+    let mixed = [
+        (StatOp::Add, num(6), 1),
+        (StatOp::Add, num(-1), 3),
+        (StatOp::Pct, tenths(3), 1),
+        (StatOp::Pct, tenths(-1), 1),
+        (StatOp::Cut, tenths(1), 1),
+        (StatOp::Cut, sixteenths(4), 1),
+    ];
+    assert_eq!(value(&mixed), Num::from_bits(256_691_402));
+    // A cut past 1 counts as 1, and the value is 0.
+    let cut = [mixed.as_slice(), &[(StatOp::Cut, sixteenths(24), 1)]].concat();
+    assert_eq!(value(&cut), Num::ZERO);
+    // A negative value keeps its sign: (14 − 20) × 1.5 × 0.75 = −6.75. Past the limit, (14 − 40)
+    // × 1.5 = −39 stops at −30.
+    let negative = [
+        (StatOp::Add, num(-20), 1),
+        (StatOp::Pct, sixteenths(8), 1),
+        (StatOp::Cut, sixteenths(4), 1),
+    ];
+    assert_eq!(value(&negative), -num(6) - sixteenths(12));
+    let floored = [(StatOp::Add, num(-40), 1), (StatOp::Pct, sixteenths(8), 1)];
+    assert_eq!(value(&floored), num(-30));
+}
+
+#[test]
+fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
+    // Move speed 4. The tags: 0 detects, and is the type's own; 1, `slowed`, has no effect; 2,
+    // `slow_immune`, makes immune to 1.
     let walker = stats(&[(EngineStat::MoveSpeed, num(4), Num::ZERO)]);
     let mut game = stat_match(&[walker]);
     let [sight, slowed, slow_immune] = [0, 1, 2].map(Tag::new);
@@ -251,22 +299,22 @@ fn modifiers_add_to_a_units_stats_by_each_stats_rule() {
     let unit = unit(&mut game, 0);
     game.world.entity_mut(unit).insert(Modifiers::default());
     let book = game.world.resource::<StatBook>();
-    let [speed, slow] = [EngineStat::MoveSpeed, EngineStat::Slow]
-        .map(|stat| book.index(&Stat::Engine(stat)).unwrap());
+    let speed = book.index(&Stat::Engine(EngineStat::MoveSpeed)).unwrap();
     let mut ids = IdAllocator::default();
     let (first, second) = (Some(ids.allocate()), Some(ids.allocate()));
     let slowing = |source, value| {
-        let mut application = share(0, source, slow, value, Reapply::Refresh);
+        let mut application = share(0, source, speed, StatOp::Cut, value, Reapply::Refresh);
         application.instance.tags = TagSet::of([slowed]);
         application
     };
-    // Slows of 0.25 and 0.5 from two sources, each `slowed`: only the highest counts. A bonus of
-    // 0.5 move speed that stacks, twice: +1.
+    // Cuts of 0.25 and 0.5 from two sources, each `slowed`: only the larger counts. An add of
+    // 0.5 that stacks, twice: +1.
     let mut modifiers = game.world.get_mut::<Modifiers>(unit).unwrap();
     modifiers.apply(slowing(first, sixteenths(4)));
     modifiers.apply(slowing(second, sixteenths(8)));
     for _ in 0..2 {
-        modifiers.apply(share(1, first, speed, sixteenths(8), Reapply::Stack));
+        let add = share(1, first, speed, StatOp::Add, sixteenths(8), Reapply::Stack);
+        modifiers.apply(add);
     }
     game.world.run_schedule(SimUpdate);
     // (4 + 1) × (1 − 0.5) = 2.5 m/s, 2.5 × 2²⁴ ÷ 30 = 1 398 101.33 bits a tick, to 1 398 101.
@@ -276,26 +324,38 @@ fn modifiers_add_to_a_units_stats_by_each_stats_rule() {
     assert_eq!(tags(&game).tags, TagSet::of([sight, slowed]));
     assert!(tags(&game).effects.detects());
 
-    // A bonus of 3 more, past the limit of 5: 5 × 0.5 = 2.5 m/s again; a slow of 1.5, past its
-    // limit of 0.99: 5 × 0.01 = 0.05 m/s, 0.05 × 2²⁴ ÷ 30 = 27 962.03 bits, to 27 962, the
-    // slow's 0.99 itself a whole number of bits, 16 609 443, so 5 × (2²⁴ − 16 609 443) ÷ 30.
+    // A pct of 0.25: 5 × 1.25 × 0.5 = 3.125 m/s, 3.125 × 2²⁴ ÷ 30 = 1 747 626.67 bits, to
+    // 1 747 627. An untagged cut of 1.5 counts as 1: no step at all.
     let mut modifiers = game.world.get_mut::<Modifiers>(unit).unwrap();
-    modifiers.apply(share(2, first, speed, num(3), Reapply::Refresh));
+    modifiers.apply(share(
+        2,
+        first,
+        speed,
+        StatOp::Pct,
+        sixteenths(4),
+        Reapply::Refresh,
+    ));
     game.world.run_schedule(SimUpdate);
-    assert_eq!(step(&game), Num::from_bits(1_398_101));
+    assert_eq!(step(&game), Num::from_bits(1_747_627));
     let mut modifiers = game.world.get_mut::<Modifiers>(unit).unwrap();
-    modifiers.apply(share(3, first, slow, sixteenths(24), Reapply::Refresh));
+    modifiers.apply(share(
+        3,
+        first,
+        speed,
+        StatOp::Cut,
+        sixteenths(24),
+        Reapply::Refresh,
+    ));
     game.world.run_schedule(SimUpdate);
-    let kept = (1_i64 << 24) - (99 << 24) / 100;
-    assert_eq!(step(&game), Num::from_bits((5 * kept + 15) / 30));
+    assert_eq!(step(&game), Num::ZERO);
 
-    // The untagged slow of 0.99 removed, slow immunity from a modifier of 2 stacks and no stat
-    // value holds every `slowed` modifier without effect, so the slow counts as 0: 5 m/s, 5 ×
-    // 2²⁴ ÷ 30 = 2 796 202.67 bits, to 2 796 203. `slowed` leaves the unit's tags, and the
-    // immunity joins them.
+    // The cut of 1.5 removed, slow immunity from a modifier of 2 stacks and no stat value holds
+    // every `slowed` modifier without effect, so no cut counts: 5 × 1.25 = 6.25, past the limit
+    // of 5: 5 × 2²⁴ ÷ 30 = 2 796 202.67 bits, to 2 796 203. `slowed` leaves the unit's tags, and
+    // the immunity joins them.
     let mut modifiers = game.world.get_mut::<Modifiers>(unit).unwrap();
     modifiers.remove(ModifierId::new(3), first);
-    let mut immune = share(4, first, speed, Num::ZERO, Reapply::Stack);
+    let mut immune = share(4, first, speed, StatOp::Add, Num::ZERO, Reapply::Stack);
     immune.instance.tags = TagSet::of([slow_immune]);
     modifiers.apply(immune.clone());
     modifiers.apply(immune);
@@ -305,22 +365,22 @@ fn modifiers_add_to_a_units_stats_by_each_stats_rule() {
     assert_eq!(tags(&game).immune, TagSet::of([slowed]));
 
     // A modifier that grants both an immunity and the tag it is immune to holds itself: its
-    // slow of 0.25 counts, whatever order the modifiers are in. 5 × 0.75 = 3.75 m/s, 3.75 × 2²⁴
-    // ÷ 30 = 2 097 152 bits exactly.
+    // cut of 0.25 counts, whatever order the modifiers are in. 6.25 × 0.75 = 4.6875 m/s, 4.6875
+    // × 2²⁴ ÷ 30 = 2 621 440 bits exactly.
     let mut both = slowing(second, sixteenths(4));
     both.instance.id = ModifierId::new(5);
     both.instance.tags = TagSet::of([slowed, slow_immune]);
     game.world.get_mut::<Modifiers>(unit).unwrap().apply(both);
     game.world.run_schedule(SimUpdate);
-    assert_eq!(step(&game), Num::from_bits(2_097_152));
+    assert_eq!(step(&game), Num::from_bits(2_621_440));
     assert_eq!(tags(&game).tags, TagSet::of([sight, slowed, slow_immune]));
 
-    // The immunity ends: the held slows act again, the highest 0.5: 2.5 m/s.
+    // The immunity ends: the held cuts act again, the larger 0.5: 3.125 m/s.
     let mut modifiers = game.world.get_mut::<Modifiers>(unit).unwrap();
     modifiers.remove(ModifierId::new(4), first);
     modifiers.remove(ModifierId::new(5), second);
     game.world.run_schedule(SimUpdate);
-    assert_eq!(step(&game), Num::from_bits(1_398_101));
+    assert_eq!(step(&game), Num::from_bits(1_747_627));
     assert_eq!(tags(&game).immune, TagSet::default());
 
     // Removing every modifier: back to 4 m/s, and to the type's tag alone.

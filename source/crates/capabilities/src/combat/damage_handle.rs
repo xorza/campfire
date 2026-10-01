@@ -46,7 +46,7 @@ impl DamageHandle {
                 |d: &mut DamageHandle| d.damage.amount,
             )
             .bind(
-                field("kind", "one of the mode's `damage_kinds`"),
+                field("kind", "one of the mode's `[combat] damage_kinds`"),
                 |d: &mut DamageHandle| d.view.damage_kind_name(d.damage.kind),
             )
             .bind(
@@ -58,8 +58,11 @@ impl DamageHandle {
                 |d: &mut DamageHandle| d.damage.cause == DamageCause::ExtraAttack,
             )
             .bind(
-                field("crit", "whether its attack crit"),
-                |d: &mut DamageHandle| d.damage.cause.crit(),
+                field(
+                    "roll",
+                    "its attack's random number, at least 0 and less than 1, `()` for other damage",
+                ),
+                |d: &mut DamageHandle| d.damage.cause.roll().map_or(Dynamic::UNIT, Dynamic::from),
             )
             .bind(
                 field("ability", "the ability that dealt it, `\"\"` when none"),

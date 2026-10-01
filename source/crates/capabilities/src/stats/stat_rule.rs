@@ -4,24 +4,11 @@ use serde::{Deserialize, Deserializer};
 
 use crate::values::scalar::Scalar;
 
-/// How a stat combines its unit type's value with its modifiers' values, and the limits the
-/// result keeps within, as the mode declares it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// The limits a stat's value keeps within, as the mode declares them.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct StatRule {
-    pub combine: Combine,
     pub min: Option<Num>,
     pub max: Option<Num>,
-}
-
-/// How a stat's values combine.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum Combine {
-    /// The type's value plus each modifier's times its stacks.
-    #[default]
-    Sum,
-    /// The greatest of the type's value and each modifier's times its stacks.
-    Highest,
 }
 
 impl StatRule {
@@ -38,12 +25,10 @@ impl<'de> Deserialize<'de> for StatRule {
         #[derive(Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
-            #[serde(default)]
-            combine: Combine,
             min: Option<Scalar>,
             max: Option<Scalar>,
         }
-        let Fields { combine, min, max } = Fields::deserialize(deserializer)?;
+        let Fields { min, max } = Fields::deserialize(deserializer)?;
         let number = |limit: Option<Scalar>| match limit {
             None => Ok(None),
             Some(limit) => limit
@@ -57,6 +42,6 @@ impl<'de> Deserialize<'de> for StatRule {
         {
             return Err(D::Error::custom("a stat's min passes its max"));
         }
-        Ok(StatRule { combine, min, max })
+        Ok(StatRule { min, max })
     }
 }

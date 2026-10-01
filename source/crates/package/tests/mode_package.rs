@@ -125,7 +125,7 @@ fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 67] = [
+const FLAWS: [Flaw; 71] = [
     flaw(
         MANIFEST,
         Edit::Replace(r#"engine = "0.1.0""#, r#"engine = "0.0.9""#),
@@ -344,14 +344,24 @@ const FLAWS: [Flaw; 67] = [
         MODE,
         |problem| matches!(problem, LoadProblem::UnknownDamageKind { at: Place::AttackKind, kind } if kind == "fire"),
     ),
+    Flaw {
+        file: MODE_DATA,
+        edit: Edit::Replace(
+            "damage_kinds = [\"physical\", \"magic\", \"true\"]",
+            "damage_kinds = []",
+        ),
+        also: &[(MODE_DATA, Edit::Replace("attack_kind = \"physical\"\n", ""))],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::NoDamageKinds),
+    },
     flaw(
         MODE_DATA,
         Edit::Replace(
-            "damage_kinds = [\"physical\", \"magic\", \"true\"]\nattack_kind = \"physical\"\n",
-            "damage_kinds = []\n",
+            r#"heal_scale = "healing_received_pct""#,
+            r#"heal_scale = "heal_taken""#,
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::NoDamageKinds),
+        |problem| matches!(problem, LoadProblem::UnknownStat { at: Place::Combat, name } if name == "heal_taken"),
     ),
     flaw(
         MAP,
@@ -491,6 +501,34 @@ const FLAWS: [Flaw; 67] = [
         "hero-husk",
         |problem| matches!(problem, LoadProblem::UnknownStat { name, .. } if name == "spirit"),
     ),
+    // A stat change names one operation; a scaling param scales with declared stats alone.
+    flaw(
+        "spells/data/loadout.toml",
+        Edit::Replace(
+            r#"move_speed = { pct = "0.27" }"#,
+            r#"move_speed = { pct = "0.27", cut = "0.1" }"#,
+        ),
+        "player-spells",
+        |problem| {
+            read_fails(
+                problem,
+                "data/loadout.toml",
+                "a stat change is a number, or one of",
+            )
+        },
+    ),
+    flaw(
+        HUSK,
+        Edit::Replace(r#"ability_power = "0.7""#, r#"spell_power = "0.7""#),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::UnknownStat { at: Place::Ability(_), name } if name == "spell_power"),
+    ),
+    flaw(
+        "heroes/veil/data/avatar.toml",
+        Edit::Replace("bonus = { attack_damage =", "bonus = { attack_dmg ="),
+        "hero-veil",
+        |problem| matches!(problem, LoadProblem::UnknownStat { at: Place::Modifier(id), name } if id == "dual_path" && name == "attack_dmg"),
+    ),
     flaw(
         HUSK,
         Edit::Replace(r#"resource = "mana""#, r#"resource = "rage""#),
@@ -517,8 +555,8 @@ const FLAWS: [Flaw; 67] = [
     flaw(
         MODE_DATA,
         Edit::Replace(
-            r#"slow = { combine = "highest", min = 0, max = "0.99" }"#,
-            r#"slow = { combine = "highest", min = 1, max = "0.99" }"#,
+            r#"cooldown_reduction = { min = 0, max = "0.4" }"#,
+            r#"cooldown_reduction = { min = 1, max = "0.4" }"#,
         ),
         MODE,
         |problem| read_fails(problem, "data/mode.toml", "a stat's min passes its max"),

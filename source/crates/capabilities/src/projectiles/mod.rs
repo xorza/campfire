@@ -60,7 +60,7 @@ fn fly(
                 amount: projectile.amount(),
                 kind: kind.0,
                 cause: DamageCause::Attack {
-                    crit: projectile.crit(),
+                    roll: projectile.roll(),
                 },
                 ability: None,
                 depth: 0,
@@ -87,7 +87,7 @@ fn launch(
             launch.target,
             launch.speed,
             launch.amount,
-            launch.crit,
+            launch.roll,
         )
         .expect("ranged attack stats hold a positive speed and damage that is not negative");
         commands.spawn((ids.allocate(), launch.from, projectile));

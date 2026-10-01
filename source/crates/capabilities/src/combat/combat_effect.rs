@@ -12,7 +12,7 @@ pub(crate) enum CombatEffect {
         amount: Num,
         kind: DamageKind,
     },
-    /// A heal of `amount` to `unit`, scaled by its `healing_received_pct`.
+    /// A heal of `amount` to `unit`, times one plus its `heal_scale` stat.
     Heal { unit: StableId, amount: Num },
     /// `amount` of `unit`'s resource back.
     Restore { unit: StableId, amount: Num },

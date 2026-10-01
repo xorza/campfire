@@ -6,6 +6,7 @@ use serde::Deserialize;
 
 use crate::scripts::state_decl::StateDecl;
 use crate::stats::stat::Stat;
+use crate::stats::stat_change::StatChange;
 use crate::values::filter_data::FilterData;
 use crate::values::number::Number;
 use crate::values::param::Param;
@@ -25,7 +26,7 @@ pub struct ModifierData {
     pub max_stacks: Option<NonZeroU32>,
     /// Per stack.
     #[serde(default)]
-    pub stats: BTreeMap<Stat, Number>,
+    pub stats: BTreeMap<Stat, StatChange>,
     /// The tags it grants its carrier.
     #[serde(default)]
     pub tags: Vec<String>,
@@ -50,7 +51,7 @@ impl ModifierData {
         ]
         .into_iter()
         .flatten()
-        .chain(self.stats.values())
+        .chain(self.stats.values().map(|change| &change.value))
         .filter_map(Number::param)
     }
 }
