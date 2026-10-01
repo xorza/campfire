@@ -73,6 +73,7 @@ pub use navigation::move_step::MoveStep;
 pub use navigation::on_path::OnPath;
 pub use navigation::path_walker::{PathDirection, PathWalker};
 pub use navigation::paths::Paths;
+pub use navigation::progress::Progress;
 pub use navigation::route::Route;
 pub use orders::Orders;
 pub use orders::ai_data::AiData;

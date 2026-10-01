@@ -4,10 +4,11 @@ use bevy_ecs::query::{Allow, Has, With, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::{EntityRef, World};
-use campfire_math::Num;
-use campfire_sim::{Position, SimSet, SimTick, StableId, StateRegistry, Unpredicted};
+use campfire_math::{Num, Vec3};
+use campfire_sim::{Position, SimSet, SimTick, StableId, StateRegistry, TickRate, Unpredicted};
 
 use crate::combat::dead::Dead;
+use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::broadphase::Broadphase;
 use crate::navigation::collider::Collider;
 use crate::navigation::destination::Destination;
@@ -16,9 +17,10 @@ use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::PathWalker;
 use crate::navigation::pathing_grid::PathingGrid;
 use crate::navigation::paths::Paths;
+use crate::navigation::progress::Progress;
 use crate::navigation::route::{Route, Waiting};
-use crate::navigation::route_planner::RoutePlanner;
-use crate::navigation::static_index::{StaticBody, StaticIndex};
+use crate::navigation::route_planner::{Ground, RoutePlanner, Short, Window};
+use crate::navigation::steering::Steering;
 use crate::units::body::Body;
 use crate::units::script_view::{RowFill, View};
 use crate::values::bounds::Bounds;
@@ -27,6 +29,7 @@ use crate::values::segment::Segment;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
+pub(crate) mod body_index;
 pub(crate) mod broadphase;
 pub(crate) mod collider;
 pub(crate) mod destination;
@@ -35,9 +38,10 @@ pub(crate) mod on_path;
 pub(crate) mod path_walker;
 pub(crate) mod pathing_grid;
 pub(crate) mod paths;
+pub(crate) mod progress;
 pub(crate) mod route;
 pub(crate) mod route_planner;
-pub(crate) mod static_index;
+pub(crate) mod steering;
 
 /// The `navigation` capability: units that walk routes to a destination, and the map's waypoint
 /// paths.
@@ -55,10 +59,10 @@ impl Navigation {
         }
         world.insert_resource(Paths::default());
         world.insert_resource(Bounds::WORLD);
-        world.insert_resource(StaticIndex::new(Body::MAX_RADIUS));
+        world.insert_resource(BodyIndex::new(Body::MAX_RADIUS));
         schedule.add_systems((
             track_static_bodies.in_set(SimSet::Inputs),
-            (route_units, plan_routes, move_units)
+            (route_units, plan_routes, steer, move_units)
                 .chain()
                 .in_set(SimSet::Move),
             (track_static_bodies, collide)
@@ -71,6 +75,7 @@ impl Navigation {
         registry.register_component::<MoveStep>();
         registry.register_component::<OnPath>();
         registry.register_component::<Route>();
+        registry.register_component::<Progress>();
     }
 
     /// Gives the match the map's pathing grid over `cells`, for walkers of `radii`, 0 for one
@@ -82,7 +87,7 @@ impl Navigation {
             .max()
             .copied()
             .filter(|&widest| widest > Num::ZERO);
-        world.insert_resource(StaticIndex::new(widest.unwrap_or(Body::MAX_RADIUS)));
+        world.insert_resource(BodyIndex::new(widest.unwrap_or(Body::MAX_RADIUS)));
         world.insert_resource(RoutePlanner::new(&cells));
         world.insert_resource(PathingGrid::new(cells, radii));
     }
@@ -94,7 +99,7 @@ impl Navigation {
 /// collision parts walkers from the static bodies as they stand then. Every run reads them into
 /// `statics`, a buffer it keeps.
 fn track_static_bodies(
-    mut index: ResMut<'_, StaticIndex>,
+    mut index: ResMut<'_, BodyIndex>,
     grid: Option<ResMut<'_, PathingGrid>>,
     bodies: Query<
         '_,
@@ -102,10 +107,10 @@ fn track_static_bodies(
         (&StableId, &Position, &Body),
         (Without<MoveStep>, Without<Dead>, Allow<Unpredicted>),
     >,
-    mut statics: Local<'_, Vec<StaticBody>>,
+    mut statics: Local<'_, Vec<IndexedBody>>,
 ) {
     statics.clear();
-    statics.extend(bodies.iter().map(|(&id, &at, body)| StaticBody {
+    statics.extend(bodies.iter().map(|(&id, &at, body)| IndexedBody {
         id,
         at,
         radius: body.radius(),
@@ -133,7 +138,7 @@ fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
 /// clear until they change, the outcome is that of checking every tick.
 fn route_units(
     tick: Res<'_, SimTick>,
-    statics: Res<'_, StaticIndex>,
+    statics: Res<'_, BodyIndex>,
     grid: Option<Res<'_, PathingGrid>>,
     mut units: Query<'_, '_, (&Position, &Destination, &mut Route, Option<&Body>), Without<Dead>>,
     mut checked: Local<'_, u64>,
@@ -184,7 +189,7 @@ fn route_units(
 /// the asks into `waiting`, and each route into `waypoints`, buffers it keeps.
 fn plan_routes(
     grid: Option<Res<'_, PathingGrid>>,
-    statics: Res<'_, StaticIndex>,
+    statics: Res<'_, BodyIndex>,
     mut planner: Option<ResMut<'_, RoutePlanner>>,
     mut units: Query<
         '_,
@@ -220,9 +225,150 @@ fn plan_routes(
             .as_deref_mut()
             .expect("a pathing grid comes with its planner");
         let layer = grid.layer(Body::radius_of(body));
-        let outcome = planner.plan(layer, &statics, at, goal, &mut waypoints);
+        let ground = Ground {
+            layer,
+            statics: &statics,
+            short: None,
+        };
+        let outcome = planner.plan(ground, at, goal, &mut waypoints);
         route.answer(&waypoints, outcome.reached);
         expanded += outcome.expanded as usize;
+    }
+}
+
+/// Steers walkers round the units in their way. A walker whose next stretch, as far as its
+/// window reaches, would overlap a unit that stands plans a short route in the window, the cells
+/// up to `Steering::WINDOW` from its own, with the units that stand there as blockers. So does a
+/// walker that has moved less than half a step a tick for `Steering::STUCK_MS`, kept back by
+/// walkers it touches, which it marks as blockers too. The short route goes to the last waypoint
+/// within the window, or to where the way leaves it, and the walker goes on from there; one that
+/// cannot end there keeps its route, and still yields as collision does. A predicting client
+/// counts the units it holds that stand: one that stands has not moved since the server sent it.
+/// With no pathing grid no walker steers. Every tick reads the bodies into `steering`'s buffers,
+/// which it keeps.
+fn steer(
+    rate: Res<'_, TickRate>,
+    grid: Option<Res<'_, PathingGrid>>,
+    statics: Res<'_, BodyIndex>,
+    mut planner: Option<ResMut<'_, RoutePlanner>>,
+    bodies: Query<
+        '_,
+        '_,
+        (&StableId, &Position, &Body, Option<&Destination>),
+        (With<MoveStep>, Without<Dead>, Allow<Unpredicted>),
+    >,
+    mut walkers: Query<
+        '_,
+        '_,
+        (
+            &StableId,
+            &Position,
+            &Destination,
+            &MoveStep,
+            &Body,
+            &mut Route,
+            &mut Progress,
+        ),
+        Without<Dead>,
+    >,
+    mut steering: Local<'_, Steering>,
+) {
+    let Some(grid) = grid else {
+        return;
+    };
+    let planner = planner
+        .as_deref_mut()
+        .expect("a pathing grid comes with its planner");
+    let steering = &mut *steering;
+    steering.still.clear();
+    steering.walking.clear();
+    for (&id, &at, body, destination) in &bodies {
+        let body = IndexedBody {
+            id,
+            at,
+            radius: body.radius(),
+        };
+        if destination.is_some_and(|destination| destination.get().is_some()) {
+            steering.walking.push(body);
+        } else {
+            steering.still.push(body);
+        }
+    }
+    steering.still.sort_unstable_by_key(|body| body.id);
+    steering.walking.sort_unstable_by_key(|body| body.id);
+    let standing = steering.standing.get_or_insert_with(|| statics.sibling());
+    standing.update(&steering.still);
+    let stuck_ticks = rate
+        .ticks(Steering::STUCK_MS)
+        .expect("a fixed time fits")
+        .get();
+    let window_cells = i64::try_from(Steering::WINDOW).expect("a small window");
+    let reach = Num::from_bits(grid.cell().to_bits() * window_cells);
+    for (&id, &at, destination, step, body, mut route, mut progress) in &mut walkers {
+        if destination.get().is_none() || route.asked().is_some() || route.ahead().is_empty() {
+            continue;
+        }
+        let stuck = u64::from(progress.track(at, step.get())) >= stuck_ticks;
+        let radius = body.radius();
+        let next = route.ahead()[0];
+        let look = at.get().step_toward(next.get(), reach);
+        let look = Position::new(look).expect("a step ends between two points within the bound");
+        if !stuck && !standing.blocks(Segment::new(at, look), radius) {
+            continue;
+        }
+        let layer = grid.layer(radius);
+        let window = Window::around(
+            layer.grid(),
+            layer.grid().nearest_cell(at),
+            Steering::WINDOW,
+        );
+        let inside = |pos: &Position| {
+            let cell = layer.grid().nearest_cell(*pos);
+            let columns = layer.grid().columns();
+            window.contains(cell % columns, cell / columns)
+        };
+        let ahead = route.ahead();
+        let within = ahead.iter().take_while(|pos| inside(pos)).count();
+        let (goal, skipped) = match within {
+            0 => (look, 0),
+            _ => (ahead[within - 1], within),
+        };
+        let last = skipped == ahead.len();
+        steering.blockers.clear();
+        standing.near(at.get(), reach + reach, |body| {
+            steering.blockers.push(*body);
+        });
+        let way = at.ground_offset(goal);
+        let left = Vec3::new(-way.z, Num::ZERO, way.x).normalized();
+        if let (true, Some(left)) = (stuck, left) {
+            // A walker that keeps this one back counts as standing half their reach to this one's
+            // left, so this one goes round it on its right; two that meet head on so pass on
+            // opposite sides, whatever the cells make of their sides.
+            let shifted = steering.walking.iter().filter_map(|other| {
+                let reach = radius + other.radius;
+                let touching = other.at.within_ground(at, reach + step.get());
+                let shift = left * Num::from_bits(reach.to_bits() / 2);
+                let moved = Position::new(other.at.get() + shift);
+                (other.id != id && touching).then(|| IndexedBody {
+                    at: moved.expect("a shift of a body's reach stays within the bound"),
+                    ..*other
+                })
+            });
+            steering.blockers.extend(shifted);
+        }
+        let ground = Ground {
+            layer,
+            statics: &statics,
+            short: Some(Short {
+                window,
+                blockers: &steering.blockers,
+            }),
+        };
+        let outcome = planner.plan(ground, at, goal, &mut steering.short);
+        if outcome.reached || last {
+            route.splice(&steering.short, skipped, outcome.reached);
+            progress.reset();
+        }
     }
 }
 
@@ -301,7 +447,7 @@ fn collide(
         ),
         (Without<Dead>, Allow<Unpredicted>),
     >,
-    statics: Res<'_, StaticIndex>,
+    statics: Res<'_, BodyIndex>,
     mut colliders: Local<'_, Vec<Collider>>,
     mut broadphase: Local<'_, Broadphase>,
 ) {

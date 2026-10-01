@@ -3,7 +3,7 @@ use std::ops::Range;
 use bevy_ecs::resource::Resource;
 use campfire_math::Num;
 
-use crate::navigation::static_index::StaticIndex;
+use crate::navigation::body_index::BodyIndex;
 use crate::values::grid::Grid;
 
 /// The map's pathing grid: its bounds in square cells, and for each body radius the mode's
@@ -42,7 +42,7 @@ impl PathingGrid {
     /// Follows the last update of `index`, which held the static bodies this grid was marked
     /// from: the cells of each body it took away open, then the bodies still near mark them again,
     /// and each body it put in marks its own.
-    pub(crate) fn update(&mut self, index: &StaticIndex) {
+    pub(crate) fn update(&mut self, index: &BodyIndex) {
         let PathingGrid {
             grid,
             radii,
@@ -89,6 +89,11 @@ impl PathingGrid {
         self.grid.cells()
     }
 
+    /// The side of a cell.
+    pub(crate) const fn cell(&self) -> Num {
+        self.grid.cell()
+    }
+
     /// The cells a walker of `radius`, one of the mode's walkers' radii, may stand in.
     pub(crate) fn layer(&self, radius: Num) -> Layer<'_> {
         let layer = self
@@ -132,7 +137,7 @@ mod tests {
     use campfire_sim::{IdAllocator, Position};
 
     use super::*;
-    use crate::navigation::static_index::StaticBody;
+    use crate::navigation::body_index::IndexedBody;
     use crate::values::bounds::Bounds;
 
     fn num(value: i64) -> Num {
@@ -172,10 +177,10 @@ mod tests {
 
     /// Marks `grid` for `statics`, which `index` held the bodies before, and checks it against a
     /// grid marked for them alone.
-    fn follow(grid: &mut PathingGrid, index: &mut StaticIndex, statics: &[StaticBody]) {
+    fn follow(grid: &mut PathingGrid, index: &mut BodyIndex, statics: &[IndexedBody]) {
         index.update(statics);
         grid.update(index);
-        let (mut alone, mut fresh) = (StaticIndex::new(Num::ONE), self::grid());
+        let (mut alone, mut fresh) = (BodyIndex::new(Num::ONE), self::grid());
         alone.update(statics);
         fresh.update(&alone);
         assert_eq!(grid.blocked, fresh.blocked, "{statics:?}");
@@ -184,14 +189,14 @@ mod tests {
     #[test]
     fn a_static_body_blocks_the_cells_closer_than_the_two_radii() {
         let mut grid = grid();
-        let mut index = StaticIndex::new(Num::ONE);
+        let mut index = BodyIndex::new(Num::ONE);
         let mut ids = IdAllocator::default();
         let at = |x: Num, z: Num| Position::new(Vec3::new(x, Num::ZERO, z)).unwrap();
         // A tower of 1 m at the origin. Centers sit at ±0.5, ±1.5 and ±2.5. For a walker of 0.5
         // m it blocks the centers closer than 1.5 m: the four at √0.5 ≈ 0.71 m; the next, such as
         // (1.5, 0.5) at √2.5 ≈ 1.58 m, are open. For a walker of 1 m, closer than 2 m: those
         // eight too, but not the corners (1.5, 1.5) at √4.5 ≈ 2.12 m.
-        let tower = StaticBody {
+        let tower = IndexedBody {
             id: ids.allocate(),
             at: at(Num::ZERO, Num::ZERO),
             radius: Num::ONE,
@@ -206,12 +211,12 @@ mod tests {
         // than 1 m: the post blocks the centers (1.5, −1.5) and (2.5, −1.5), 0.5 m off, and not
         // (1.5, −0.5), √1.25 ≈ 1.12 m off. The corner post blocks its own cell; (−1.5, 2.5) is
         // exactly 1 m off, on the edge, and open.
-        let post = StaticBody {
+        let post = IndexedBody {
             id: ids.allocate(),
             at: at(num(2), -(num(1) + half())),
             radius: half(),
         };
-        let corner = StaticBody {
+        let corner = IndexedBody {
             id: ids.allocate(),
             at: at(-(num(2) + half()), num(2) + half()),
             radius: half(),
@@ -235,7 +240,7 @@ mod tests {
         assert_eq!(drawn(&grid, Num::ONE), large);
 
         // The post moves a meter along z, to (2, −0.5).
-        let moved = StaticBody {
+        let moved = IndexedBody {
             at: at(num(2), -half()),
             ..post
         };

@@ -1,8 +1,7 @@
 use std::num::NonZeroU32;
 
 use bevy_ecs::component::Component;
-use campfire_math::Vec3;
-use campfire_sim::{Capability, EntityIndex, IdAllocator, SimUpdate, Tick, TickRate, TypeHash};
+use campfire_sim::{Capability, EntityIndex, IdAllocator, SimUpdate, Tick, TypeHash};
 
 use super::*;
 use crate::capability_set::internals::TestMatch;
@@ -289,6 +288,95 @@ fn a_walker_goes_round_a_tower_and_never_touches_it() {
     }
 }
 
+/// Whether the bodies of radii `a` and `b` at `first` and `second` overlap on the ground plane,
+/// exactly.
+fn overlap(first: Position, a: Num, second: Position, b: Num) -> bool {
+    let reach = u128::from((a + b).to_bits().unsigned_abs());
+    first.ground_offset(second).length_squared_bits() < reach * reach
+}
+
+#[test]
+fn a_walker_goes_round_units_that_stand_in_its_way() {
+    // A hero of 0.5 m stands at the origin and a creep of 0.35 m at (2, 0.5), on the line of a
+    // walker of 0.5 m from (−4, 0) to (4, 0), a quarter meter a tick, over half-meter cells. It
+    // goes round both, touching neither, and neither moves; with no pathing grid it walks into
+    // the hero, yields to it, and stays pressed there.
+    let half = Num::from_bits(1 << 23);
+    let quarter = Num::from_bits(1 << 22);
+    let creep_radius = Num::from_bits((35 << Num::FRAC_BITS) / 100);
+    let creep_at = Position::new(Vec3::new(num(2), Num::ZERO, half)).unwrap();
+    for planned in [true, false] {
+        let mut walk = Walk::new();
+        if planned {
+            let bounds = Bounds::new([num(-8), num(-8)], [num(8), num(8)]).unwrap();
+            let grid = Grid::new(half, bounds).unwrap();
+            Navigation::load_pathing(&mut walk.world, grid, vec![creep_radius, half]);
+        }
+        let hero = walk.body(at(0, 0, 0), None, Some(quarter), half);
+        let creep = walk.body(creep_at, None, Some(quarter), creep_radius);
+        let walker = walk.body(at(-4, 0, 0), Some(at(4, 0, 0)), Some(quarter), half);
+        let mut touched = false;
+        for _ in 0..80 {
+            walk.tick();
+            let pos = walk.get::<Position>(walker);
+            touched |= overlap(pos, half, at(0, 0, 0), half);
+            touched |= overlap(pos, half, creep_at, creep_radius);
+        }
+        let arrived = walk.get::<Destination>(walker).get().is_none();
+        let still = [walk.get::<Position>(hero), walk.get::<Position>(creep)];
+        if planned {
+            assert!(!touched);
+            assert!(arrived);
+            assert_eq!(walk.get::<Position>(walker), at(4, 0, 0));
+            assert_eq!(still, [at(0, 0, 0), creep_at]);
+        } else {
+            assert!(!arrived);
+        }
+    }
+}
+
+#[test]
+fn two_walkers_that_meet_head_on_pass_on_opposite_sides() {
+    // Walkers of 0.5 m from (−4, 0) to (4, 0) and back, a quarter meter a tick: they meet, and
+    // each, kept back by the other, goes round it on its own right, so they pass on opposite
+    // sides of the line, the one bound for +x on −z, and both arrive. With no pathing grid they
+    // push each other to a stop.
+    let half = Num::from_bits(1 << 23);
+    let quarter = Num::from_bits(1 << 22);
+    for planned in [true, false] {
+        let mut walk = Walk::new();
+        if planned {
+            let bounds = Bounds::new([num(-8), num(-8)], [num(8), num(8)]).unwrap();
+            Navigation::load_pathing(
+                &mut walk.world,
+                Grid::new(half, bounds).unwrap(),
+                vec![half],
+            );
+        }
+        let east = walk.body(at(-4, 0, 0), Some(at(4, 0, 0)), Some(quarter), half);
+        let west = walk.body(at(4, 0, 0), Some(at(-4, 0, 0)), Some(quarter), half);
+        let mut sides = [Num::ZERO; 2];
+        for _ in 0..120 {
+            walk.tick();
+            for (side, unit) in sides.iter_mut().zip([east, west]) {
+                let z = walk.get::<Position>(unit).get().z;
+                if z.to_bits().abs() > side.to_bits().abs() {
+                    *side = z;
+                }
+            }
+        }
+        let arrived = [east, west].map(|unit| walk.get::<Destination>(unit).get().is_none());
+        if planned {
+            assert_eq!(arrived, [true, true]);
+            assert_eq!(walk.get::<Position>(east), at(4, 0, 0));
+            assert_eq!(walk.get::<Position>(west), at(-4, 0, 0));
+            assert!(sides[0] < Num::ZERO && sides[1] > Num::ZERO, "{sides:?}");
+        } else {
+            assert_eq!(arrived, [false, false]);
+        }
+    }
+}
+
 #[test]
 fn routes_wait_past_the_limit_of_expanded_cells_in_the_order_asked() {
     // A row of 16 cells of 1 m: a route along it expands each cell from the start to the goal
@@ -397,6 +485,7 @@ fn every_navigation_type_is_state() {
             "navigation.move_step",
             "navigation.on_path",
             "navigation.path_walker",
+            "navigation.progress",
             "navigation.route",
             "sim.entities",
             "sim.id_allocator",

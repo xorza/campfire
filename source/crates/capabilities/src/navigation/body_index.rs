@@ -7,37 +7,38 @@ use campfire_sim::{Position, StableId};
 
 use crate::values::segment::Segment;
 
-/// The static bodies, those of the living units that cannot walk, by the square buckets their
-/// bounding boxes cover. Collision finds a walker's static contacts in it, and the pathing grid
-/// the static bodies near one that changed. A bucket is twice the widest walker's radius wide, so
-/// a walker's box covers at most four; any width finds the same bodies. Derived from the static
+/// Bodies that stand, by the square buckets their bounding boxes cover. As a resource it holds the
+/// static bodies, those of the living units that cannot walk: collision finds a walker's static
+/// contacts in it, and the pathing grid the static bodies near one that changed. Steering keeps
+/// another for the units that stand this tick. A bucket is twice the widest walker's radius wide,
+/// so a walker's box covers at most four; any width finds the same bodies. Derived from the
 /// bodies, not state: each change of them changes only the buckets of the bodies it touched.
 #[derive(Resource, Debug)]
-pub(crate) struct StaticIndex {
+pub(crate) struct BodyIndex {
     bucket: Num,
-    /// The static bodies, by stable id.
-    bodies: Vec<StaticBody>,
+    /// The bodies, by stable id.
+    bodies: Vec<IndexedBody>,
     /// Each body once in each bucket its box covers, sorted.
     entries: Vec<Entry>,
     /// The bodies the last update took away, and those it put in, by stable id: a body that
     /// changed is in both.
-    removed: Vec<StaticBody>,
-    added: Vec<StaticBody>,
+    removed: Vec<IndexedBody>,
+    added: Vec<IndexedBody>,
     /// The new bodies' entries, and the entries they merge into, kept between updates.
     fresh: Vec<Entry>,
     merged: Vec<Entry>,
     changes: u64,
 }
 
-/// A living unit that cannot walk, as the static index sees it.
+/// A unit's body as an index of bodies that stand sees it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct StaticBody {
+pub(crate) struct IndexedBody {
     pub(crate) id: StableId,
     pub(crate) at: Position,
     pub(crate) radius: Num,
 }
 
-/// A static body in one bucket.
+/// A body in one bucket.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct Entry {
     row: i64,
@@ -52,11 +53,11 @@ struct Buckets {
     high: i64,
 }
 
-impl StaticIndex {
+impl BodyIndex {
     /// An empty index for walkers at most `widest` in radius.
-    pub(crate) fn new(widest: Num) -> StaticIndex {
+    pub(crate) fn new(widest: Num) -> BodyIndex {
         debug_assert!(widest > Num::ZERO);
-        StaticIndex {
+        BodyIndex {
             bucket: widest + widest,
             bodies: Vec::new(),
             entries: Vec::new(),
@@ -68,18 +69,23 @@ impl StaticIndex {
         }
     }
 
-    /// Makes `statics`, sorted by stable id, the index's bodies; whether they changed. The
+    /// An empty index with the same buckets.
+    pub(crate) fn sibling(&self) -> BodyIndex {
+        BodyIndex::new(Num::from_bits(self.bucket.to_bits() / 2))
+    }
+
+    /// Makes `bodies`, sorted by stable id, the index's bodies; whether they changed. The
     /// bodies the change took away and put in stay for `removed` and `added`.
-    pub(crate) fn update(&mut self, statics: &[StaticBody]) -> bool {
-        debug_assert!(statics.is_sorted_by_key(|body| body.id));
+    pub(crate) fn update(&mut self, bodies: &[IndexedBody]) -> bool {
+        debug_assert!(bodies.is_sorted_by_key(|body| body.id));
         self.removed.clear();
         self.added.clear();
-        if self.bodies == statics {
+        if self.bodies == bodies {
             return false;
         }
         let (mut old, mut new) = (0, 0);
         loop {
-            match (self.bodies.get(old), statics.get(new)) {
+            match (self.bodies.get(old), bodies.get(new)) {
                 (Some(&was), Some(&is)) => match was.id.cmp(&is.id) {
                     Ordering::Less => {
                         self.removed.push(was);
@@ -117,8 +123,8 @@ impl StaticIndex {
         });
         self.fresh.clear();
         for body in &self.added {
-            let rows = StaticIndex::buckets(self.bucket, body.at.get().z, body.radius);
-            let columns = StaticIndex::buckets(self.bucket, body.at.get().x, body.radius);
+            let rows = BodyIndex::buckets(self.bucket, body.at.get().z, body.radius);
+            let columns = BodyIndex::buckets(self.bucket, body.at.get().x, body.radius);
             for row in rows.low..=rows.high {
                 self.fresh
                     .extend((columns.low..=columns.high).map(|column| Entry {
@@ -146,16 +152,16 @@ impl StaticIndex {
         self.merged.extend_from_slice(&self.fresh[put..]);
         mem::swap(&mut self.entries, &mut self.merged);
         self.bodies.clear();
-        self.bodies.extend_from_slice(statics);
+        self.bodies.extend_from_slice(bodies);
         self.changes += 1;
         true
     }
 
-    pub(crate) const fn removed(&self) -> &[StaticBody] {
+    pub(crate) const fn removed(&self) -> &[IndexedBody] {
         self.removed.as_slice()
     }
 
-    pub(crate) const fn added(&self) -> &[StaticBody] {
+    pub(crate) const fn added(&self) -> &[IndexedBody] {
         self.added.as_slice()
     }
 
@@ -167,9 +173,9 @@ impl StaticIndex {
     /// Calls `visit` once with each static body whose bounding box meets the square `reach` from
     /// `at` on each side, on the ground plane: every body that comes within `reach` of `at`, and
     /// some that do not. In order of the buckets, row by row.
-    pub(crate) fn near(&self, at: Vec3, reach: Num, visit: impl FnMut(&StaticBody)) {
-        let rows = StaticIndex::buckets(self.bucket, at.z, reach);
-        let columns = StaticIndex::buckets(self.bucket, at.x, reach);
+    pub(crate) fn near(&self, at: Vec3, reach: Num, visit: impl FnMut(&IndexedBody)) {
+        let rows = BodyIndex::buckets(self.bucket, at.z, reach);
+        let columns = BodyIndex::buckets(self.bucket, at.x, reach);
         self.meeting(rows, columns, visit);
     }
 
@@ -210,7 +216,7 @@ impl StaticIndex {
 
     /// Calls `visit` once with each body in the buckets of `rows` and `columns`, in the first of
     /// them its own buckets share.
-    fn meeting(&self, rows: Buckets, columns: Buckets, mut visit: impl FnMut(&StaticBody)) {
+    fn meeting(&self, rows: Buckets, columns: Buckets, mut visit: impl FnMut(&IndexedBody)) {
         for row in rows.low..=rows.high {
             let start = self
                 .entries
@@ -223,8 +229,8 @@ impl StaticIndex {
                     .bodies
                     .binary_search_by_key(&entry.id, |body| body.id)
                     .expect("an entry's body is in the index")];
-                let own_rows = StaticIndex::buckets(self.bucket, body.at.get().z, body.radius);
-                let own_columns = StaticIndex::buckets(self.bucket, body.at.get().x, body.radius);
+                let own_rows = BodyIndex::buckets(self.bucket, body.at.get().z, body.radius);
+                let own_columns = BodyIndex::buckets(self.bucket, body.at.get().x, body.radius);
                 if row == rows.low.max(own_rows.low)
                     && entry.column == columns.low.max(own_columns.low)
                 {
@@ -254,15 +260,15 @@ mod tests {
         Num::from_int(value).unwrap()
     }
 
-    fn body(id: StableId, x: i64, z: i64, radius: Num) -> StaticBody {
-        StaticBody {
+    fn body(id: StableId, x: i64, z: i64, radius: Num) -> IndexedBody {
+        IndexedBody {
             id,
             at: Position::new(Vec3::new(num(x), Num::ZERO, num(z))).unwrap(),
             radius,
         }
     }
 
-    fn near(index: &StaticIndex, x: i64, z: i64, reach: Num) -> Vec<StableId> {
+    fn near(index: &BodyIndex, x: i64, z: i64, reach: Num) -> Vec<StableId> {
         let mut found = Vec::new();
         index.near(Vec3::new(num(x), Num::ZERO, num(z)), reach, |body| {
             found.push(body.id);
@@ -273,7 +279,7 @@ mod tests {
     #[test]
     fn the_index_finds_each_body_near_once_and_follows_its_changes() {
         // Buckets of 2 m, for walkers of 1 m.
-        let mut index = StaticIndex::new(Num::ONE);
+        let mut index = BodyIndex::new(Num::ONE);
         let mut ids = IdAllocator::default();
         let (wide, small, far) = (ids.allocate(), ids.allocate(), ids.allocate());
         // A body of 5 m at the origin covers buckets −3 to 2 on both axes, 36 of them; one of
@@ -316,7 +322,7 @@ mod tests {
         assert_eq!(near(&index, -10, -10, Num::ONE), [new]);
 
         // The same bodies put in at once give the same entries.
-        let mut again = StaticIndex::new(Num::ONE);
+        let mut again = BodyIndex::new(Num::ONE);
         again.update(&moved);
         assert_eq!(again.entries, index.entries);
 

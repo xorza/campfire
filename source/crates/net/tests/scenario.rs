@@ -233,19 +233,18 @@ fn caster(app: &App, id: StableId) -> Caster {
     }
 }
 
-/// Plays the cast and attack scenario through `link` and checks it; gives each client's
-/// rollbacks.
+/// Plays the cast and attack scenario through `link` and checks it; gives the rollbacks of the
+/// walker's client, then of the runner's.
 fn cast(link: LinkModel) -> [u32; 2] {
     let mut local = LocalMatch::new(MatchSetup::duo(link, SEED_CHAIN));
     local.start_match();
     // Player 0 plays the walker, of the west.
-    let by_team = |team| {
-        let client = (0..2)
+    let clients = [0, 1].map(|team| {
+        (0..2)
             .find(|&client| local.team(client).index() == team)
-            .unwrap();
-        local.avatar(client)
-    };
-    let [walker, runner] = [0, 1].map(by_team);
+            .unwrap()
+    });
+    let [walker, runner] = clients.map(|client| local.avatar(client));
     let [west, east] = cast_scripts(walker, runner);
     local.play_by_team([&west, &east]);
     // The ticks after which each hero's health changed on the server, the walker's then the
@@ -313,7 +312,7 @@ fn cast(link: LinkModel) -> [u32; 2] {
         let teams = [0, 1].map(|team| seen.contains(Team::new(team)));
         assert_eq!(teams, [true, true], "{id:?}");
     }
-    [0, 1].map(|client| {
+    clients.map(|client| {
         let world = local.client(client).world();
         world.resource::<PredictionMetrics>().rollbacks
     })
@@ -380,6 +379,77 @@ fn route(link: LinkModel) -> [u32; 2] {
     })
 }
 
+/// The ticks of the steering scenario: the creeps, 7.25 m off the middle, have yet to come within
+/// their 7 m aggro range of a hero.
+const ROUND_TICKS: u64 = 70;
+
+/// Plays the steering scenario through `link` and checks it; gives the rollbacks of the walker's
+/// client, then of the runner's. In tick 1 the west hero, from (0, −2), is ordered to (0, 5),
+/// through the east hero, which stands on its spawn at (0, 2).
+fn round(link: LinkModel) -> [u32; 2] {
+    let mut local = LocalMatch::new(MatchSetup::duo(link, SEED_CHAIN));
+    local.start_match();
+    let teams = local.play_by_team(["[[order]]\ntick = 1\nmove = [0, 5]\n", ""]);
+    let clients = [0, 1].map(|team| (0..2).find(|&client| teams[client] == team).unwrap());
+    let [walker, stander] = clients.map(|client| local.avatar(client));
+    let world = local.server().world();
+    let radius = |id| {
+        let unit = world.entity(world.resource::<EntityIndex>().get(id).unwrap());
+        unit.get::<Body>().unwrap().radius()
+    };
+    let reach = radius(walker) + radius(stander);
+    let reach = u128::from(reach.to_bits().unsigned_abs());
+    let mut closest = u128::MAX;
+    while next_tick(local.server()) < ROUND_TICKS {
+        local.step();
+        let [walking, standing] = [walker, stander].map(|id| hero(local.server(), id).position);
+        closest = closest.min(walking.ground_offset(standing).length_squared_bits());
+    }
+    for _ in 0..20 {
+        local.step();
+    }
+    check_log(&mut local, 1);
+
+    // It went round the hero that stands, never touching it, and stands on its goal; the other
+    // never moved: on the server and on both clients.
+    assert!(
+        closest >= reach * reach,
+        "{closest} against {}",
+        reach * reach
+    );
+    for (id, end) in [(walker, at(0, 5)), (stander, at(0, 2))] {
+        let end = Hero {
+            position: end,
+            dead: false,
+        };
+        assert_eq!(hero(local.server(), id), end, "{id:?} on the server");
+        for client in 0..2 {
+            assert_eq!(
+                hero(local.client(client), id),
+                end,
+                "{id:?} on client {client}"
+            );
+        }
+    }
+    clients.map(|client| {
+        let world = local.client(client).world();
+        world.resource::<PredictionMetrics>().rollbacks
+    })
+}
+
+#[test]
+fn a_hero_round_a_hero_that_stands_through_delayed_links() {
+    // The walker's client sees the other hero stand where the server has it, so it plans the same
+    // way round, and neither client corrects.
+    let rollbacks = round(LinkModel {
+        delay: 3,
+        jitter: 2,
+        loss_per_mille: 0,
+        seed: 7,
+    });
+    assert_eq!(rollbacks, [0, 0]);
+}
+
 #[test]
 fn a_route_round_a_tower_through_delayed_links() {
     // The client plans its hero's route as the server does, so it corrects nothing.
@@ -419,5 +489,9 @@ fn a_cast_through_delayed_links() {
         loss_per_mille: 0,
         seed: 7,
     });
-    assert_eq!(rollbacks, [0, 0]);
+    // The casts need no correction. In tick 60 the walker sets off north through the runner's
+    // spawn as the runner leaves it; its client, which has yet to learn the runner's order, sees
+    // the runner stand in its way and goes round it, and corrects once to the server's straight
+    // walk.
+    assert_eq!(rollbacks, [1, 0]);
 }

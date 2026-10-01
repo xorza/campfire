@@ -76,6 +76,18 @@ impl Route {
         &self.waypoints[self.next as usize..]
     }
 
+    /// Goes by `short` in place of the next `skipped` waypoints. When it replaces the last, the
+    /// route ends on the goal only if `reached`: if `short` ends on it.
+    pub(crate) fn splice(&mut self, short: &[Position], skipped: usize, reached: bool) {
+        let ahead = self.next as usize;
+        if ahead + skipped == self.waypoints.len() {
+            self.reached = reached;
+        }
+        self.waypoints.drain(..ahead + skipped);
+        self.waypoints.splice(0..0, short.iter().copied());
+        self.next = 0;
+    }
+
     /// Marks the next waypoint reached.
     pub(crate) fn advance(&mut self) {
         debug_assert!(!self.ahead().is_empty());

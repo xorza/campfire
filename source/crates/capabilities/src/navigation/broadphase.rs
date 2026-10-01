@@ -1,7 +1,7 @@
 use campfire_math::Num;
 
+use crate::navigation::body_index::BodyIndex;
 use crate::navigation::collider::Collider;
-use crate::navigation::static_index::StaticIndex;
 
 /// Finds the pairs of bodies that overlap. Two walkers come from a sort of the walkers by cell: a
 /// cell is twice the widest walker's radius, so two that overlap sit in the same cell or in cells
@@ -49,7 +49,7 @@ impl Broadphase {
     /// The pairs of `colliders`, sorted by stable id, that overlap as they stand now, in the order
     /// of their indices, first then second: the pairs a check of every pair finds, in its order.
     /// `statics` holds the colliders that may not be pushed.
-    pub(crate) fn contacts(&mut self, colliders: &[Collider], statics: &StaticIndex) -> &[Contact] {
+    pub(crate) fn contacts(&mut self, colliders: &[Collider], statics: &BodyIndex) -> &[Contact] {
         self.entries.clear();
         self.cells.clear();
         self.contacts.clear();
@@ -152,8 +152,8 @@ pub(crate) mod internals {
     use campfire_math::{Num, Vec3};
     use campfire_sim::{IdAllocator, Position};
 
+    use crate::navigation::body_index::{BodyIndex, IndexedBody};
     use crate::navigation::collider::Collider;
-    use crate::navigation::static_index::{StaticBody, StaticIndex};
 
     /// A draw below `bound` from `state`, by `SplitMix64`.
     fn draw(state: &mut u64, bound: u64) -> u64 {
@@ -194,17 +194,17 @@ pub(crate) mod internals {
     }
 
     /// The static index of the colliders that may not be pushed, for the widest of the others.
-    pub(crate) fn statics(colliders: &[Collider]) -> StaticIndex {
+    pub(crate) fn statics(colliders: &[Collider]) -> BodyIndex {
         let widest = colliders
             .iter()
             .filter(|collider| collider.movable)
             .map(|collider| collider.radius)
             .max();
-        let mut index = StaticIndex::new(widest.unwrap_or(Num::ONE));
-        let bodies: Vec<StaticBody> = colliders
+        let mut index = BodyIndex::new(widest.unwrap_or(Num::ONE));
+        let bodies: Vec<IndexedBody> = colliders
             .iter()
             .filter(|collider| !collider.movable)
-            .map(|collider| StaticBody {
+            .map(|collider| IndexedBody {
                 id: collider.id,
                 at: Position::new(collider.at).unwrap(),
                 radius: collider.radius,

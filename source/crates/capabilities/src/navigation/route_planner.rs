@@ -4,20 +4,20 @@ use std::collections::BinaryHeap;
 use bevy_ecs::resource::Resource;
 use campfire_sim::Position;
 
+use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::pathing_grid::Layer;
-use crate::navigation::static_index::StaticIndex;
 use crate::values::grid::Grid;
 use crate::values::segment::Segment;
 
-/// Plans long routes by A* on a layer of the pathing grid: eight neighbors, a straight step
-/// costing 10 and a diagonal 14, and no diagonal past a blocked cell, so a route never cuts a
-/// blocked corner. The estimate is the octile distance, which never overestimates those costs, so
-/// the route is a cheapest one; among equal totals the cell with the lower estimate goes first,
-/// then the lower cell number, so every run plans the same route. A goal a walker cannot stand on
-/// gives way to the open cell nearest it, and a goal no route reaches to the reached cell nearest
-/// it. The route then keeps only the cells where the straight line from the waypoint before would
-/// overlap a static body, tested exactly. The buffers stay between routes, and a route touches
-/// only the cells it reaches.
+/// Plans routes by A* on a layer of the pathing grid: eight neighbors, a straight step costing 10
+/// and a diagonal 14, and no diagonal past a blocked cell, so a route never cuts a blocked corner.
+/// The estimate is the octile distance, which never overestimates those costs, so the route is a
+/// cheapest one; among equal totals the cell with the lower estimate goes first, then the lower
+/// cell number, so every run plans the same route. A goal a walker
+/// cannot stand on gives way to the open cell nearest it, and a goal no route reaches to the
+/// reached cell nearest it. The route then keeps only the cells where the straight line from the
+/// waypoint before would overlap a body, tested exactly. The buffers stay between routes, and a
+/// route touches only the cells it reaches.
 #[derive(Resource, Debug)]
 pub(crate) struct RoutePlanner {
     /// The route each cell was last reached in, as twice its number, plus one once expanded.
@@ -30,6 +30,31 @@ pub(crate) struct RoutePlanner {
     open: BinaryHeap<Reverse<Open>>,
     /// The cells of the route, the last first.
     cells: Vec<u32>,
+    /// A short route's window cells its blockers block, one bit a cell, row by row.
+    overlay: Vec<u64>,
+}
+
+/// Where a route may go: a layer of the pathing grid with the static bodies it was marked from,
+/// and on a short route, its window and blockers.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Ground<'a> {
+    pub(crate) layer: Layer<'a>,
+    pub(crate) statics: &'a BodyIndex,
+    pub(crate) short: Option<Short<'a>>,
+}
+
+/// A short route's window of cells, which it stays in, and the units that block it there.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct Short<'a> {
+    pub(crate) window: Window,
+    pub(crate) blockers: &'a [IndexedBody],
+}
+
+/// A square of cells, columns and rows from `low` to `high`, both in, `[column, row]` each.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Window {
+    low: [usize; 2],
+    high: [usize; 2],
 }
 
 /// A cell to expand: by its total, cost plus estimate, then by its estimate, then by its number.
@@ -40,6 +65,14 @@ struct Open {
     cell: u32,
 }
 
+/// One search's target and marks.
+#[derive(Debug, Clone, Copy)]
+struct Search {
+    to: usize,
+    seen: u64,
+    done: u64,
+}
+
 /// What planning a route cost, and whether it ends on the goal.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Planned {
@@ -48,6 +81,48 @@ pub(crate) struct Planned {
     /// The cells the search expanded.
     pub(crate) expanded: u32,
     pub(crate) reached: bool,
+}
+
+impl Window {
+    /// The cells up to `half` cells from `cell` along each axis, within `grid`.
+    pub(crate) fn around(grid: &Grid, cell: usize, half: usize) -> Window {
+        let (column, row) = (cell % grid.columns(), cell / grid.columns());
+        Window {
+            low: [column.saturating_sub(half), row.saturating_sub(half)],
+            high: [
+                (column + half).min(grid.columns() - 1),
+                (row + half).min(grid.rows() - 1),
+            ],
+        }
+    }
+
+    pub(crate) const fn contains(&self, column: usize, row: usize) -> bool {
+        self.low[0] <= column && column <= self.high[0] && self.low[1] <= row && row <= self.high[1]
+    }
+
+    const fn cells(&self) -> usize {
+        (self.high[0] - self.low[0] + 1) * (self.high[1] - self.low[1] + 1)
+    }
+
+    /// The number of a cell of the window, row by row from its first.
+    const fn local(&self, column: usize, row: usize) -> usize {
+        (row - self.low[1]) * (self.high[0] - self.low[0] + 1) + column - self.low[0]
+    }
+}
+
+impl Ground<'_> {
+    /// Whether a body blocks a walker along `segment`: a static one, or a short route's blocker.
+    pub(crate) fn blocks(&self, segment: Segment) -> bool {
+        let radius = self.layer.radius();
+        self.statics.blocks(segment, radius)
+            || self.short.is_some_and(|short| {
+                let reach = |body: &IndexedBody| radius + body.radius;
+                short
+                    .blockers
+                    .iter()
+                    .any(|body| segment.comes_within(body.at, reach(body)))
+            })
+    }
 }
 
 impl RoutePlanner {
@@ -64,32 +139,32 @@ impl RoutePlanner {
             routes: 0,
             open: BinaryHeap::new(),
             cells: Vec::new(),
+            overlay: Vec::new(),
         }
     }
 
     /// Plans the route from `start` to `goal`, both taken to the nearest point of the bounds, on
-    /// `layer` among `statics`, into `waypoints` at the goal's height. The route ends on the goal
-    /// when the walker may stand there, even in a cell whose center it may not, and a route
-    /// reaches it. Otherwise it ends on the center of the open cell nearest the goal, or of the
-    /// reached cell nearest it, ties to the cheaper, then to the lower number; with no open cell,
-    /// it is empty. A start in a blocked cell may leave it for an open one.
+    /// `ground`, into `waypoints` at the goal's height. The route ends on the goal when the walker
+    /// may stand there, even in a cell whose center it may not, and a route reaches it. Otherwise
+    /// it ends on the center of the open cell nearest the goal, or of the reached cell nearest it,
+    /// ties to the cheaper, then to the lower number; with no open cell, it is empty. A start in a
+    /// blocked cell may leave it for an open one. A short route's goal is in its window.
     pub(crate) fn plan(
         &mut self,
-        layer: Layer<'_>,
-        statics: &StaticIndex,
+        ground: Ground<'_>,
         start: Position,
         goal: Position,
         waypoints: &mut Vec<Position>,
     ) -> Planned {
         waypoints.clear();
-        let grid = layer.grid();
-        let radius = layer.radius();
+        let grid = ground.layer.grid();
         let goal = grid.clamp(goal);
-        let clear = !statics.blocks(Segment::new(goal, goal), radius);
+        self.mark_blockers(ground);
+        let clear = !ground.blocks(Segment::new(goal, goal));
         let target = if clear {
             Some(grid.nearest_cell(goal))
         } else {
-            RoutePlanner::nearest_open(layer, goal)
+            self.nearest_open(ground, goal)
         };
         let Some(target) = target else {
             return Planned {
@@ -100,9 +175,13 @@ impl RoutePlanner {
         };
         let from = grid.nearest_cell(start);
         self.routes += 1;
-        let (seen, done) = (2 * self.routes, 2 * self.routes + 1);
+        let search = Search {
+            to: target,
+            seen: 2 * self.routes,
+            done: 2 * self.routes + 1,
+        };
         self.open.clear();
-        self.marks[from] = seen;
+        self.marks[from] = search.seen;
         self.costs[from] = 0;
         self.came_from[from] = RoutePlanner::number(from);
         let estimate = RoutePlanner::estimate(grid, from, target);
@@ -116,10 +195,10 @@ impl RoutePlanner {
         let mut found = false;
         while let Some(Reverse(Open { cell, .. })) = self.open.pop() {
             let at = cell as usize;
-            if self.marks[at] == done {
+            if self.marks[at] == search.done {
                 continue;
             }
-            self.marks[at] = done;
+            self.marks[at] = search.done;
             expanded += 1;
             let key = |cell: usize| (grid.center_distance(cell, goal), self.costs[cell], cell);
             if key(at) < key(nearest) {
@@ -129,7 +208,7 @@ impl RoutePlanner {
                 found = true;
                 break;
             }
-            self.expand(layer, at, target, seen, done);
+            self.expand(ground, at, search);
         }
         let end = if found { target } else { nearest };
         self.cells.clear();
@@ -150,7 +229,7 @@ impl RoutePlanner {
         let mut from_point = start;
         while anchor > 0 {
             let mut next = anchor - 1;
-            while next > 0 && !statics.blocks(Segment::new(from_point, point(next - 1)), radius) {
+            while next > 0 && !ground.blocks(Segment::new(from_point, point(next - 1))) {
                 next -= 1;
             }
             from_point = point(next);
@@ -167,11 +246,54 @@ impl RoutePlanner {
         }
     }
 
-    /// The open cell of `layer` whose center is nearest `goal`, ties to the lower number; `None`
-    /// with none. Rings of cells around the goal's go outward until a ring's centers must lie
-    /// farther than the nearest found: a center `k` rings out is at least `k − ½` cells off.
-    fn nearest_open(layer: Layer<'_>, goal: Position) -> Option<usize> {
-        let grid = layer.grid();
+    /// Marks the window cells a short route's blockers block for a walker of the layer's radius:
+    /// those whose centers come closer to one than the two radii together.
+    fn mark_blockers(&mut self, ground: Ground<'_>) {
+        let Some(short) = ground.short else {
+            return;
+        };
+        let grid = ground.layer.grid();
+        let radius = ground.layer.radius();
+        self.overlay.clear();
+        self.overlay.resize(short.window.cells().div_ceil(64), 0);
+        for body in short.blockers {
+            grid.spans_closer(body.at, radius + body.radius, |cells| {
+                for cell in cells {
+                    let (column, row) = (cell % grid.columns(), cell / grid.columns());
+                    if short.window.contains(column, row) {
+                        let local = short.window.local(column, row);
+                        self.overlay[local / 64] |= 1 << (local % 64);
+                    }
+                }
+            });
+        }
+    }
+
+    /// Whether a walker on `ground` may stand in the cell at `column` and `row`: one of the grid,
+    /// and of a short route's window, that neither a static body nor a blocker blocks.
+    fn passable(overlay: &[u64], ground: Ground<'_>, column: usize, row: usize) -> bool {
+        let grid = ground.layer.grid();
+        if column >= grid.columns() || row >= grid.rows() {
+            return false;
+        }
+        if let Some(short) = ground.short {
+            if !short.window.contains(column, row) {
+                return false;
+            }
+            let local = short.window.local(column, row);
+            if overlay[local / 64] & 1 << (local % 64) != 0 {
+                return false;
+            }
+        }
+        ground.layer.open(row * grid.columns() + column)
+    }
+
+    /// The cell a walker on `ground` may stand in whose center is nearest `goal`, ties to the
+    /// lower number; `None` with none. Rings of cells around the goal's go outward until a ring's
+    /// centers must lie farther than the nearest found: a center `k` rings out is at least
+    /// `k − ½` cells off.
+    fn nearest_open(&self, ground: Ground<'_>, goal: Position) -> Option<usize> {
+        let grid = ground.layer.grid();
         let (columns, rows) = (grid.columns(), grid.rows());
         let middle = grid.nearest_cell(goal);
         let (column, row) = (middle % columns, middle / columns);
@@ -195,10 +317,10 @@ impl RoutePlanner {
                     if !edge && x.abs_diff(column) != ring {
                         continue;
                     }
-                    let at = z * columns + x;
-                    if !layer.open(at) {
+                    if !RoutePlanner::passable(&self.overlay, ground, x, z) {
                         continue;
                     }
+                    let at = z * columns + x;
                     let candidate = (grid.center_distance(at, goal), at);
                     if best.is_none_or(|best| candidate < best) {
                         best = Some(candidate);
@@ -209,16 +331,16 @@ impl RoutePlanner {
         best.map(|(_, at)| at)
     }
 
-    /// Reaches the open neighbors of `at`, and `to` whether open or not, more cheaply than before,
-    /// in a fixed order.
-    fn expand(&mut self, layer: Layer<'_>, at: usize, to: usize, seen: u64, done: u64) {
-        let grid = layer.grid();
+    /// Reaches the cells around `at` a walker may stand in, and the search's target whether it
+    /// may or not, more cheaply than before, in a fixed order.
+    fn expand(&mut self, ground: Ground<'_>, at: usize, search: Search) {
+        let grid = ground.layer.grid();
         let columns = grid.columns();
         let (column, row) = (at % columns, at / columns);
-        let open = |column: usize, row: usize| {
-            column < columns && row < grid.rows() && layer.open(row * columns + column)
-        };
-        for (dx, dz) in [
+        let open =
+            |column: usize, row: usize| RoutePlanner::passable(&self.overlay, ground, column, row);
+        let mut reached = [None; 8];
+        for (slot, (dx, dz)) in [
             (-1, -1),
             (0, -1),
             (1, -1),
@@ -227,9 +349,12 @@ impl RoutePlanner {
             (-1, 1),
             (0, 1),
             (1, 1),
-        ] {
+        ]
+        .into_iter()
+        .enumerate()
+        {
             let (x, z) = (column.wrapping_add_signed(dx), row.wrapping_add_signed(dz));
-            let entered = x < columns && z < grid.rows() && z * columns + x == to;
+            let entered = x < columns && z < grid.rows() && z * columns + x == search.to;
             if !entered && !open(x, z) {
                 continue;
             }
@@ -241,15 +366,18 @@ impl RoutePlanner {
             } else {
                 RoutePlanner::STRAIGHT
             };
-            let next = z * columns + x;
+            reached[slot] = Some((z * columns + x, step));
+        }
+        for (next, step) in reached.into_iter().flatten() {
             let cost = self.costs[at] + step;
-            if self.marks[next] == done || (self.marks[next] == seen && self.costs[next] <= cost) {
+            let mark = self.marks[next];
+            if mark == search.done || (mark == search.seen && self.costs[next] <= cost) {
                 continue;
             }
-            self.marks[next] = seen;
+            self.marks[next] = search.seen;
             self.costs[next] = cost;
             self.came_from[next] = RoutePlanner::number(at);
-            let estimate = RoutePlanner::estimate(grid, next, to);
+            let estimate = RoutePlanner::estimate(grid, next, search.to);
             self.open.push(Reverse(Open {
                 total: cost + estimate,
                 estimate,
@@ -281,7 +409,6 @@ mod tests {
 
     use super::*;
     use crate::navigation::pathing_grid::PathingGrid;
-    use crate::navigation::static_index::StaticBody;
     use crate::values::bounds::Bounds;
 
     /// The point `(x, z)` in quarters of a meter.
@@ -293,7 +420,7 @@ mod tests {
     /// 1 m cells from the origin, rows from z = 0, with a post of 0.25 m on the center of each
     /// `#`, for walkers of 0.25 m: a post blocks its own cell, whose center is on it, and not its
     /// neighbors', 1 m off; the walker's center keeps 0.5 m from it.
-    fn walled(rows: &[&str]) -> (PathingGrid, StaticIndex) {
+    fn walled(rows: &[&str]) -> (PathingGrid, BodyIndex) {
         let quarter = Num::from_bits(1 << (Num::FRAC_BITS - 2));
         let size = |count: usize| Num::from_int(i64::try_from(count).unwrap()).unwrap();
         let bounds = Bounds::new([Num::ZERO; 2], [size(rows[0].len()), size(rows.len())]);
@@ -305,7 +432,7 @@ mod tests {
             for (column, mark) in line.chars().enumerate() {
                 if mark == '#' {
                     let center = |index: usize| i64::try_from(4 * index + 2).unwrap();
-                    posts.push(StaticBody {
+                    posts.push(IndexedBody {
                         id: ids.allocate(),
                         at: at(center(column), center(row)),
                         radius: quarter,
@@ -313,7 +440,7 @@ mod tests {
                 }
             }
         }
-        let mut statics = StaticIndex::new(quarter);
+        let mut statics = BodyIndex::new(quarter);
         statics.update(&posts);
         grid.update(&statics);
         (grid, statics)
@@ -328,10 +455,15 @@ mod tests {
             "...#....", "...#....", "...#....", "....#...", "....#...", "........",
         ]);
         let layer = grid.layer(Num::from_bits(1 << (Num::FRAC_BITS - 2)));
+        let ground = Ground {
+            layer,
+            statics: &statics,
+            short: None,
+        };
         let mut planner = RoutePlanner::new(layer.grid());
         let mut waypoints = Vec::new();
         let (start, goal) = (at(2, 10), at(29, 11));
-        let first = planner.plan(layer, &statics, start, goal, &mut waypoints);
+        let first = planner.plan(ground, start, goal, &mut waypoints);
         // From (0, 2) three diagonals to (3, 5), 42; a step to (4, 5), 10; a step to (5, 5), as a
         // diagonal to (5, 4) would pass the blocked (4, 4), 10; then diagonals to (6, 4) and
         // (7, 3), 28, and a step to (7, 2), 10: 100. Across the corner it would be (1, 3), (2, 3),
@@ -349,16 +481,13 @@ mod tests {
 
         // The same route from a planner that planned others, and from a new one.
         let mut other = Vec::new();
-        planner.plan(layer, &statics, at(29, 1), at(1, 21), &mut other);
+        planner.plan(ground, at(29, 1), at(1, 21), &mut other);
         let mut again = Vec::new();
-        assert_eq!(
-            planner.plan(layer, &statics, start, goal, &mut again),
-            first
-        );
+        assert_eq!(planner.plan(ground, start, goal, &mut again), first);
         assert_eq!(again, waypoints);
         let mut fresh = Vec::new();
         assert_eq!(
-            RoutePlanner::new(layer.grid()).plan(layer, &statics, start, goal, &mut fresh),
+            RoutePlanner::new(layer.grid()).plan(ground, start, goal, &mut fresh),
             first
         );
         assert_eq!(fresh, waypoints);
@@ -366,7 +495,7 @@ mod tests {
         // A goal on the post at (3.5, 1.5): the nearest open centers, (2.5, 1.5) and (4.5, 1.5),
         // are a meter off, and (2, 1) has the lower number. The search expands (0, 2), then (1, 1)
         // of total 14 + 10, before (1, 2) of 10 + 14, then (2, 1) of 24 + 0.
-        let blocked = planner.plan(layer, &statics, start, at(14, 6), &mut waypoints);
+        let blocked = planner.plan(ground, start, at(14, 6), &mut waypoints);
         assert_eq!(
             blocked,
             Planned {
@@ -379,7 +508,7 @@ mod tests {
 
         // A goal at (3.5, 3.25) in the open cell (3, 3), past the corner of the wall: a
         // walker may stand there, 0.75 m from (3.5, 2.5) and 1.03 m from (4.5, 3.5).
-        let corner = planner.plan(layer, &statics, start, at(14, 13), &mut waypoints);
+        let corner = planner.plan(ground, start, at(14, 13), &mut waypoints);
         assert!(corner.reached);
         assert_eq!(waypoints, [at(14, 13)]);
 
@@ -391,12 +520,12 @@ mod tests {
             Num::ZERO,
         ))
         .unwrap();
-        let tucked = planner.plan(layer, &statics, start, edge, &mut waypoints);
+        let tucked = planner.plan(ground, start, edge, &mut waypoints);
         assert!(tucked.reached);
         assert_eq!(waypoints.last(), Some(&edge));
 
         // A goal in the start's cell: nothing to expand past it.
-        let here = planner.plan(layer, &statics, start, at(3, 9), &mut waypoints);
+        let here = planner.plan(ground, start, at(3, 9), &mut waypoints);
         assert_eq!(
             here,
             Planned {
