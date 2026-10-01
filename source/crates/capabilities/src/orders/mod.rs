@@ -11,6 +11,7 @@ use campfire_sim::{
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_data::Range;
+use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::ActionSlots;
 use crate::combat::CombatSet;
 use crate::combat::dead::Dead;
@@ -163,8 +164,8 @@ impl Orders {
 /// wins. An order to a unit its player does not control, that is dead or resets, is ignored, and so are
 /// a body that is not an order and an attack on a unit that is not a living enemy or that none of
 /// its weapons selects: a client can send anything. A move's point clamps to the bounds. A move
-/// cancels an attack in its windup, and so does an attack on another target. A cast replaces an
-/// action not resolved yet; its checks run in Act.
+/// cancels an attack in its windup, and so does an attack on another target. A slot's cast or train
+/// replaces an action not resolved yet, and its checks run in Act; a slot's other kind is ignored.
 fn apply_orders(
     inputs: Res<'_, TickInputs>,
     bounds: Res<'_, Bounds>,
@@ -218,9 +219,16 @@ fn apply_orders(
                         slots.set_attack_target(Some(target));
                     }
                 }
-                Action::Cast { slot, target } => {
-                    if let Some(mut slots) = slots {
-                        slots.order(slot, target);
+                Action::Slot { slot, target } => {
+                    let Some(mut slots) = slots else {
+                        continue;
+                    };
+                    let kind = slots
+                        .slot(slot)
+                        .and_then(|held| book.get(held.action))
+                        .map(|action| action.kind);
+                    if let Some(kind @ (ActionKind::Cast | ActionKind::Train)) = kind {
+                        slots.order(slot, kind, target);
                     }
                 }
             }

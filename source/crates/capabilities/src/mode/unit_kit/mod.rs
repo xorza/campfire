@@ -1,3 +1,5 @@
+use std::num::NonZeroU8;
+
 use campfire_math::Num;
 use campfire_sim::TickRate;
 
@@ -5,6 +7,7 @@ use crate::combat::combat_data::CombatData;
 use crate::combat::on_death::OnDeath;
 use crate::mode::error::UnitKitError;
 use crate::navigation::move_step::MoveStep;
+use crate::production::production_data::ProductionData;
 use crate::progression::track_set::TrackSet;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
@@ -17,7 +20,8 @@ use crate::vision::vision_data::VisionData;
 
 /// What a new unit of a type starts with, in ticks at the match's rate: its pools, full at their
 /// maxima at level 1, whether it stays when it dies, when it has a `combat` section, how far it
-/// walks a tick, how far it sees, its body, and the tracks it gains experience on.
+/// walks a tick, how far it sees, its body, the tracks it gains experience on, and the most
+/// trains its queue holds, when it has a `production` section.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UnitKit {
     pub pools: Option<Pools>,
@@ -26,6 +30,7 @@ pub struct UnitKit {
     pub sight: Option<Sight>,
     pub body: Option<Body>,
     pub tracks: TrackSet,
+    pub queue: Option<NonZeroU8>,
 }
 
 /// The match's rules a unit type's values meet: its tick rate, the mode's move speed cap, and
@@ -91,6 +96,7 @@ impl UnitKit {
             sight: None,
             body: None,
             tracks: TrackSet::default(),
+            queue: None,
         })
     }
 
@@ -105,6 +111,15 @@ impl UnitKit {
     #[must_use]
     pub const fn with_tracks(self, tracks: TrackSet) -> UnitKit {
         UnitKit { tracks, ..self }
+    }
+
+    /// The kit with the train queue of its type's `production` section, if it has one.
+    #[must_use]
+    pub fn with_production(self, production: Option<&ProductionData>) -> UnitKit {
+        UnitKit {
+            queue: production.map(|production| production.queue),
+            ..self
+        }
     }
 
     /// The kit with the sight of its type's `vision` section, if it has one.

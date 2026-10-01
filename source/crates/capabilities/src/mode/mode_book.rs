@@ -5,6 +5,7 @@ use std::rc::Rc;
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
+use campfire_math::PlayerSlot;
 use campfire_script::ScriptHost;
 use campfire_script::rhai::ImmutableString;
 use campfire_sim::{EntityIndex, Position, StableId};
@@ -26,6 +27,7 @@ use crate::mode::unit_kit::UnitKit;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::{PathEnd, PathWalker};
 use crate::navigation::paths::Paths;
+use crate::production::train_queue::TrainQueue;
 use crate::progression::experience::Experience;
 use crate::scripts::frame::Frame;
 use crate::stats::Stats;
@@ -35,6 +37,7 @@ use crate::stats::modifier_effect::ModifierEffect;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::by_type::ByType;
+use crate::units::owner::Owner;
 use crate::units::path_id::PathId;
 use crate::units::script_view::View;
 use crate::units::spawn_point::SpawnPoint;
@@ -175,6 +178,20 @@ impl ModeBook {
         self.map.clone()
     }
 
+    /// Spawns `at` as `spawn` does, owned by `owner` when it names a player.
+    pub(crate) fn spawn_owned(
+        &self,
+        world: &mut World,
+        at: SpawnAt,
+        owner: Option<PlayerSlot>,
+        frame: Option<&Frame>,
+    ) -> Entity {
+        match owner {
+            Some(slot) => self.spawn(world, at, Owner::new(slot), frame),
+            None => self.spawn(world, at, (), frame),
+        }
+    }
+
     /// Spawns `at`, with its kit, its actions, each at the first rank of its kind, its passive,
     /// whose params read through `frame` when a call spawned it, and `parts`.
     pub(crate) fn spawn(
@@ -225,6 +242,9 @@ impl ModeBook {
         }
         if !kit.tracks.is_empty() {
             unit.insert(Experience::new(kit.tracks));
+        }
+        if let Some(queue) = kit.queue {
+            unit.insert(TrainQueue::new(queue));
         }
         let actions = self.actions(unit_type);
         if !actions.is_empty() {

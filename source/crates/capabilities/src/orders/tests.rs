@@ -8,6 +8,9 @@ use campfire_math::{Num, PlayerSlot, Vec3};
 use campfire_sim::{Capability, IdAllocator, SimUpdate, TickInput, TypeHash};
 
 use super::*;
+use crate::actions::action_book::internals;
+use crate::actions::action_slots::ActionTarget;
+use crate::actions::slot_kind::SlotKind;
 use crate::capability_set::internals::TestMatch;
 use crate::combat::armed::Armed;
 use crate::combat::on_death::OnDeath;
@@ -439,6 +442,32 @@ fn a_hero_walks_to_its_players_target() {
         raw(4 * ONE + 10_066_330, 2 * ONE, 13_421_773)
     );
     assert_eq!(game.destination(second), Some(at(7, 2, 4)));
+}
+
+#[test]
+fn a_slot_order_starts_a_cast_or_a_train_and_no_other_kind() {
+    let (mut game, [hero, _]) = two_heroes();
+    // Its weapon in slot 0, and a train in slot 1.
+    let train = internals::train(&mut game.world.resource_mut::<ActionBook>());
+    let entity = game.world.resource::<EntityIndex>().get(hero).unwrap();
+    let mut slots = game.world.get_mut::<ActionSlots>(entity).unwrap();
+    slots.grant(SlotKind::new(0), &[train], 1);
+    let ordered = |game: &Match| game.slots(hero).in_progress().map(|underway| underway.kind);
+    let slot = |slot| {
+        Order::payload(&[Order {
+            unit: hero,
+            action: Action::Slot {
+                slot,
+                target: ActionTarget::None,
+            },
+        }])
+    };
+    // The weapon's slot and a slot it does not have order nothing; the train's orders a train,
+    // which no capability here starts.
+    for (at, kind) in [(0, None), (7, None), (1, Some(ActionKind::Train))] {
+        game.tick(&[(0, &slot(at))]);
+        assert_eq!(ordered(&game), kind, "slot {at}");
+    }
 }
 
 #[test]

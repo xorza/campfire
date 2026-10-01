@@ -10,6 +10,7 @@ use crate::combat::Combat;
 use crate::mode::match_end::MatchEnd;
 use crate::navigation::Navigation;
 use crate::orders::Orders;
+use crate::production::Production;
 use crate::progression::Progression;
 use crate::projectiles::Projectiles;
 use crate::scripts::match_scripts::MatchScripts;
@@ -29,7 +30,7 @@ type Install = fn(&mut World, &mut Schedule, &mut StateRegistry);
 
 /// The capabilities the release runs, in the order they install: each after the ones it builds
 /// on. A declared capability not here installs nothing yet.
-const INSTALLS: [(Capability, Install); 8] = [
+const INSTALLS: [(Capability, Install); 9] = [
     (Capability::Stats, Stats::install),
     (Capability::Progression, Progression::install),
     (Capability::Combat, Combat::install),
@@ -38,6 +39,7 @@ const INSTALLS: [(Capability, Install); 8] = [
     (Capability::Projectiles, Projectiles::install),
     (Capability::Abilities, Abilities::install),
     (Capability::Orders, Orders::install),
+    (Capability::Production, Production::install),
 ];
 
 impl CapabilitySet {

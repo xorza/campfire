@@ -19,8 +19,8 @@ pub enum Action {
     Move { x: Num, z: Num },
     /// Attack a unit until it dies or another order comes.
     Attack { target: StableId },
-    /// Cast the ability in `slot` at `target`.
-    Cast { slot: u8, target: ActionTarget },
+    /// Start the action in `slot` at `target`: a cast, or a train.
+    Slot { slot: u8, target: ActionTarget },
 }
 
 impl Order {

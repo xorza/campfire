@@ -14,6 +14,7 @@ use crate::actions::Actions;
 use crate::actions::action_book::ActionId;
 use crate::actions::action_data::{ActionData, Targeting};
 use crate::actions::action_kind::ActionKind;
+use crate::actions::action_slots::ActionTarget;
 use crate::actions::slot_kind::SlotKind;
 use crate::actions::slot_kinds::{SlotKindData, SlotKinds};
 use crate::capability_set::internals::TestMatch;
@@ -37,6 +38,7 @@ use crate::navigation::move_step::MoveStep;
 use crate::navigation::navigation_rules::NavigationRules;
 use crate::navigation::path_walker::PathEnd;
 use crate::navigation::walker::Walker;
+use crate::production::train_queue::TrainQueue;
 use crate::progression::Progression;
 use crate::progression::experience::Experience;
 use crate::progression::track_data::{Thresholds, TrackData};
@@ -63,6 +65,7 @@ use crate::stats::stat_rule::StatRule;
 use crate::stats::stats_data::StatsData;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::layer::Layer;
+use crate::units::owner::Owner;
 use crate::units::path_id::PathId;
 use crate::units::tag_set::TagSet;
 use crate::units::unit_tags::UnitTags;
@@ -75,6 +78,7 @@ use crate::values::filter_data::FilterData;
 use crate::values::grid::Grid;
 use crate::values::metric::Metric;
 use crate::values::number::Number;
+use crate::values::ranked::Ranked;
 use crate::values::scalar::Scalar;
 use crate::vision::vision_grid::VisionGrid;
 
@@ -284,6 +288,7 @@ fn grunt() -> UnitKit {
         sight: None,
         body: None,
         tracks: TrackSet::default(),
+        queue: None,
     }
 }
 
@@ -300,6 +305,35 @@ fn tracks() -> BTreeMap<DeclaredName, TrackData> {
     ]
     .map(|(name, track)| (DeclaredName::new(name).unwrap(), track))
     .into()
+}
+
+/// A cast of no target, cost, time or script: the test mode's spell and hero X's ability.
+fn blink_data() -> ActionData {
+    ActionData {
+        kind: ActionKind::Cast,
+        script: None,
+        targeting: Targeting::None,
+        range: None,
+        cooldown_ms: None,
+        cost: BTreeMap::new(),
+        windup_ms: None,
+        clamp_to_range: false,
+        toggle: None,
+        channel: None,
+        hold: None,
+        charges: None,
+        charge: None,
+        passive_modifier: None,
+        passive_while_ready: false,
+        projectile: None,
+        area: None,
+        rate: None,
+        damage: None,
+        damage_kind: None,
+        params: BTreeMap::new(),
+        projectile_state: BTreeMap::new(),
+        unit_type: None,
+    }
 }
 
 /// Bounds from (−10, −5) to (10, 6) with a grid of 1 m cells; one path, `mid`, along x; team a's
@@ -614,6 +648,7 @@ impl Game {
             Capability::Navigation,
             Capability::Abilities,
             Capability::Progression,
+            Capability::Production,
         ];
         let TestMatch {
             mut world,
@@ -629,30 +664,7 @@ impl Game {
         };
         let (grunt_type, tower_type) = (load("grunt", "grunt"), load("tower", "tower"));
         let (x, y) = (load("hero-x", "avatar"), load("hero-y", "avatar"));
-        let blink = ActionData {
-            kind: ActionKind::Cast,
-            script: None,
-            targeting: Targeting::None,
-            range: None,
-            cooldown_ms: None,
-            cost: BTreeMap::new(),
-            windup_ms: None,
-            clamp_to_range: false,
-            toggle: None,
-            channel: None,
-            hold: None,
-            charges: None,
-            charge: None,
-            passive_modifier: None,
-            passive_while_ready: false,
-            projectile: None,
-            area: None,
-            rate: None,
-            damage: None,
-            damage_kind: None,
-            params: BTreeMap::new(),
-            projectile_state: BTreeMap::new(),
-        };
+        let blink = blink_data();
         // A spell has one rank; hero X's ability, 2.
         let strike = Actions::load(&mut world, 0, "strike", &blink, None, 2).unwrap();
         let blink = Actions::load(&mut world, 0, "blink", &blink, None, 1).unwrap();
@@ -1062,6 +1074,111 @@ fn on_mode_input(ctx, player, name, value) {
         game.tick(&[]);
     }
     assert!(game.world.get::<Dead>(y).is_none());
+}
+
+#[test]
+fn a_train_pays_at_once_joins_the_queue_and_spawns_its_unit_when_its_time_ends() {
+    let picker = r"
+fn on_mode_input(ctx, player, name, value) {
+    pick(ctx, player, value);
+}
+";
+    let mut game = Game::new(picker, LIMITS);
+    game.tick(&[(0, input("hero", "hero-x"))]);
+    // A grunt for 30 mana and 5 gold, in 300 ms, 3 ticks at 10 a second.
+    let int = |value| Ranked::One(Number::Value(Scalar::Int(value)));
+    let cost = ["mana", "gold"].map(|name| DeclaredName::new(name).unwrap());
+    let train = ActionData {
+        kind: ActionKind::Train,
+        cost: [(cost[0].clone(), int(30)), (cost[1].clone(), int(5))].into(),
+        windup_ms: Some(int(300)),
+        unit_type: Some("grunt".to_owned()),
+        ..blink_data()
+    };
+    let train = Actions::load(&mut game.world, 0, "train_grunt", &train, None, 1).unwrap();
+    Production::bind_train(&mut game.world, train, "grunt");
+    // Hero X becomes a producer of a queue of 2, with 100 mana, and its player holds 15 gold.
+    let mut owned = game.world.query_filtered::<Entity, With<Owner>>();
+    let producer = owned.single(&game.world).unwrap();
+    let pools = Pools::new([(PoolId::FIRST, num(10)), (MANA, num(100))]).unwrap();
+    let slots = ActionSlots::new([(train, SlotKind::new(0), 1)]);
+    let queue = TrainQueue::new(NonZeroU8::new(2).unwrap());
+    game.world
+        .entity_mut(producer)
+        .insert((pools, slots, queue));
+    let gold = ResourceId::of(&mode_files().data.resources, "gold").unwrap();
+    let player = PlayerSlot::new(0);
+    game.world
+        .resource_mut::<PlayerResources>()
+        .add(player, gold, 15)
+        .unwrap();
+    let order = |game: &mut Game| {
+        let mut slots = game.world.get_mut::<ActionSlots>(producer).unwrap();
+        slots.order(0, ActionKind::Train, ActionTarget::None);
+    };
+    let paid = |game: &Game| {
+        let mana = game
+            .world
+            .get::<Pools>(producer)
+            .unwrap()
+            .current(MANA)
+            .unwrap();
+        let held = game
+            .world
+            .resource::<PlayerResources>()
+            .amount(player, gold);
+        (mana.round(), held)
+    };
+    let mut grunts = game
+        .world
+        .query_filtered::<(&UnitType, &Owner, &Position), With<Owner>>();
+    let hero = *game.world.get::<UnitType>(producer).unwrap();
+    let mut trained = |game: &mut Game| {
+        let units = grunts.iter(&game.world);
+        units.filter(|&(&unit_type, ..)| unit_type != hero).count()
+    };
+
+    // Ticks 0 and 1 of the queue each order a train: each pays 30 mana and 5 gold at once. The
+    // first's time runs from tick 0, so it spawns in tick 3, and the second's from then, to tick
+    // 6. A third, ordered in tick 2, finds the queue full: nothing is paid.
+    let steps = [
+        (true, (70, 10), 0),
+        (true, (40, 5), 0),
+        (true, (40, 5), 0),
+        (false, (40, 5), 1),
+        // Room again: a third pays, and runs from tick 6 to tick 9.
+        (true, (10, 0), 1),
+        (false, (10, 0), 1),
+        (false, (10, 0), 2),
+        // Room again, and 10 mana of 30: the order fails, and nothing is paid.
+        (true, (10, 0), 2),
+        (false, (10, 0), 2),
+        (false, (10, 0), 3),
+    ];
+    for (at, (ordered, expected, made)) in steps.into_iter().enumerate() {
+        if ordered {
+            order(&mut game);
+        }
+        game.tick(&[]);
+        assert_eq!(paid(&game), expected, "tick {at}");
+        assert_eq!(trained(&mut game), made, "tick {at}");
+    }
+    // Each grunt stands where the producer stood, its player's, and the queue is empty.
+    let at = *game.world.get::<Position>(producer).unwrap();
+    let made: Vec<_> = grunts
+        .iter(&game.world)
+        .filter(|&(&unit_type, ..)| unit_type != hero)
+        .map(|(_, owner, &pos)| (owner.slot(), pos))
+        .collect();
+    assert_eq!(made, [(player, at); 3]);
+    assert!(
+        game.world
+            .get::<TrainQueue>(producer)
+            .unwrap()
+            .entries()
+            .is_empty()
+    );
+    assert_eq!(game.failures(), []);
 }
 
 #[test]

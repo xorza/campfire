@@ -42,6 +42,7 @@ use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::PathWalker;
 use crate::navigation::paths::Paths;
 use crate::orders::OrdersSet;
+use crate::production::Production;
 use crate::progression::level_ups::{LevelUp, LevelUps};
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
@@ -52,7 +53,6 @@ use crate::stats::Stats;
 use crate::stats::pool_book::PoolBook;
 use crate::stats::stat_book::StatBook;
 use crate::units::body::Body;
-use crate::units::owner::Owner;
 use crate::units::relations::Relations;
 use crate::units::script_view::View;
 use crate::units::tag_book::TagBook;
@@ -95,8 +95,9 @@ pub struct Mode;
 impl Mode {
     /// Adds the mode of `setup`, which passed `Mode::check` when its package loaded, to a match
     /// whose capabilities are installed and whose unit types, abilities and AI are loaded: in
-    /// Inputs, the players' mode inputs run `on_mode_input`; in Mode, due timers run `on_timer`,
-    /// then the tick's deaths run `on_unit_died`. The map's metric, bounds, paths and grid become
+    /// Inputs, the players' mode inputs run `on_mode_input`; in Mode, the trains whose time ended
+    /// spawn, due timers run `on_timer`, the tick's deaths run `on_unit_died`, and the levels
+    /// reached run `on_level_up`. The map's metric, bounds, paths and grid become
     /// the match's, and the mode's `[combat]` and `calc_damage` combat's.
     pub fn install(
         world: &mut World,
@@ -175,7 +176,12 @@ impl Mode {
                 .after(UnitsSet::BeginTick)
                 .after(CombatSet::Respawn)
                 .before(OrdersSet::Orders),
-            (run_timers, unit_deaths, level_ups)
+            (
+                Production::finish_trains,
+                run_timers,
+                unit_deaths,
+                level_ups,
+            )
                 .chain()
                 .in_set(SimSet::Mode),
         ));
@@ -250,14 +256,9 @@ impl Mode {
                 let tick = world.resource::<SimTick>().start();
                 world.insert_resource(MatchEnd::new(tick, result));
             }
-            ModeEffect::SpawnUnit { at, owner } => match owner {
-                Some(slot) => {
-                    book.spawn(world, at, Owner::new(slot), Some(frame));
-                }
-                None => {
-                    book.spawn(world, at, (), Some(frame));
-                }
-            },
+            ModeEffect::SpawnUnit { at, owner } => {
+                book.spawn_owned(world, at, owner, Some(frame));
+            }
             ModeEffect::SpawnGroup {
                 team,
                 path,

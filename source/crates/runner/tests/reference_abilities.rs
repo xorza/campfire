@@ -236,7 +236,7 @@ fn lash_out_from_its_package_hits_exactly() {
         &mut world,
         &[Order {
             unit: caster,
-            action: Action::Cast {
+            action: Action::Slot {
                 slot: 0,
                 target: ActionTarget::None,
             },

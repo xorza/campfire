@@ -193,6 +193,7 @@ fn start_actions(
                     None => slots.stop(),
                 }
             }
+            Some(underway) if underway.kind == ActionKind::Train => {}
             Some(_) => {
                 if effects.blocks(Block::Attack) {
                     slots.interrupt();

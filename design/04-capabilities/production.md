@@ -6,11 +6,11 @@ Making units and buildings, and gathering what pays for them, as RTS games do; a
 
 ## Data
 
-A `train` action: the unit type it makes, its cost in player resources, its time, its requirements. A `build` action: the building type, its footprint on the grid, the mode's placement rules (power, creep, distance), its cost and time. A `gather` action: the node filter and the drop-off filter. A unit type's `node` section: what it holds and how much; its `drop_off` section: what it takes. The mode's player resources, among them a supply cap.
+A `train` action: the mode's `unit_type` it makes, its cost in pools and player resources, its time in `windup_ms`, its cooldown, its requirements; it takes no target. A unit type that holds one has `production = { queue = 5 }`, the most entries its queue holds. A `build` action: the building type, its footprint on the grid, the mode's placement rules (power, creep, distance), its cost and time. A `gather` action: the node filter and the drop-off filter. A unit type's `node` section: what it holds and how much; its `drop_off` section: what it takes. The mode's player resources, among them a supply cap.
 
 ## Rules
 
-- **Build queues:** a train action joins its unit's queue; the queue makes one at a time, in order. Progress, cancel and refund are part of the kind; a rally point sends new units on.
+- **Build queues:** a train order passes the core's checks in Act, with a place in its unit's queue among them; it pays its whole cost at once, as StarCraft II does when it queues a unit, goes on cooldown and joins the queue. The unit stays free: a train is never under way. The queue makes one at a time, in order; an entry's time runs from the tick it reaches the head, and when it ends, in the Mode stage, the unit type spawns at its producer's position, of the producer's team and player, and the next entry starts in the same tick. A dead producer's queue waits. Cancel and refund are part of the kind; a rally point sends new units on.
 - **Construction:** placing a building checks its footprint against the grid's occupancy and the mode's rules; the building then grows over time, or builders construct it.
 - **Harvesting:** a gather action walks to a node, gathers over time, and carries the load to a drop-off, again until stopped. Nodes deplete.
 - **Tech:** requirements are buildings, upgrades or levels a player owns; an upgrade is a player modifier on the units it selects.

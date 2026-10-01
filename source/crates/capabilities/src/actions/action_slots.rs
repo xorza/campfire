@@ -102,11 +102,11 @@ impl ActionSlots {
             .expect("a rank below the action's ranks");
     }
 
-    /// Orders a cast, in place of any other action not resolved yet.
-    pub(crate) const fn order(&mut self, slot: u8, target: ActionTarget) {
+    /// Orders the action in `slot`, of `kind`, in place of any other action not resolved yet.
+    pub(crate) const fn order(&mut self, slot: u8, kind: ActionKind, target: ActionTarget) {
         self.underway = Some(InProgress {
             slot,
-            kind: ActionKind::Cast,
+            kind,
             target,
             resolves_at: None,
         });

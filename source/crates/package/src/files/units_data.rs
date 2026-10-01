@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
 
 use campfire_capabilities::{
-    AiData, CollisionData, CombatData, DeclaredName, Scalar, StatsData, UnitTypeData, VisionData,
+    AiData, CollisionData, CombatData, DeclaredName, ProductionData, Scalar, StatsData,
+    UnitTypeData, VisionData,
 };
 use serde::{Deserialize, Deserializer};
 
@@ -30,6 +31,7 @@ pub struct UnitTypeFile {
     pub collision: Option<CollisionData>,
     /// The mode's tracks it gains experience on.
     pub tracks: Vec<DeclaredName>,
+    pub production: Option<ProductionData>,
 }
 
 /// The flat table of a unit type, the core's fields among the capabilities' sections.
@@ -54,6 +56,7 @@ impl<'de> Deserialize<'de> for UnitTypeFile {
             collision: Option<CollisionData>,
             #[serde(default)]
             tracks: Vec<DeclaredName>,
+            production: Option<ProductionData>,
         }
         let fields = Fields::deserialize(deserializer)?;
         Ok(UnitTypeFile {
@@ -70,6 +73,7 @@ impl<'de> Deserialize<'de> for UnitTypeFile {
             vision: fields.vision,
             collision: fields.collision,
             tracks: fields.tracks,
+            production: fields.production,
         })
     }
 }

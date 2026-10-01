@@ -4,7 +4,7 @@ use bevy_ecs::schedule::Schedule;
 use bevy_ecs::world::World;
 use campfire_capabilities::{
     ActionData, ActionId, Actions, DeclaredName, KitRules, LoadoutSetup, MatchScripts, Mode,
-    ModeSetup, OnDeath, Orders, PoolId, Progression, SlotAction, Stat, Stats, UnitKit,
+    ModeSetup, OnDeath, Orders, PoolId, Production, Progression, SlotAction, Stat, Stats, UnitKit,
     UnitTypeData, UnitTypeSetup, Units,
 };
 use campfire_content::PackagePath;
@@ -36,6 +36,8 @@ pub(crate) struct MatchBuild<'a> {
     scripts: Vec<ScriptId>,
     /// Where each package's scripts start in `scripts`: the mode's, then each dependency's.
     script_starts: Vec<usize>,
+    /// Each train loaded, and the name of the unit type it makes, bound once all unit types load.
+    trains: Vec<(ActionId, &'a str)>,
 }
 
 impl<'a> MatchBuild<'a> {
@@ -74,6 +76,7 @@ impl<'a> MatchBuild<'a> {
             unit_types: Vec::with_capacity(packages.units().units.len()),
             scripts: Vec::new(),
             script_starts: Vec::with_capacity(1 + packages.dependencies().len()),
+            trains: Vec::new(),
         };
         Units::declare_tags(build.world, packages.tag_names()).expect(CHECKED);
         if manifest.capabilities.contains(Capability::Progression) {
@@ -112,6 +115,9 @@ impl<'a> MatchBuild<'a> {
                     loadout.extend(entries);
                 }
             }
+        }
+        for &(action, unit_type) in &build.trains {
+            Production::bind_train(build.world, action, unit_type);
         }
         let setup = ModeSetup {
             script: build.script(MODE, &packages.data().script),
@@ -154,12 +160,12 @@ impl<'a> MatchBuild<'a> {
 
     /// Loads the actions of `package`, each once, with the ranks `ranks` gives it, 1 when it
     /// gives none, by id.
-    fn load_actions<'p>(
+    fn load_actions(
         &mut self,
         package: usize,
-        actions: &'p BTreeMap<String, ActionData>,
+        actions: &'a BTreeMap<String, ActionData>,
         ranks: impl Fn(&str) -> Option<u8>,
-    ) -> Result<BTreeMap<&'p str, ActionId>, StartError> {
+    ) -> Result<BTreeMap<&'a str, ActionId>, StartError> {
         actions
             .iter()
             .map(|(id, data)| {
@@ -208,7 +214,8 @@ impl<'a> MatchBuild<'a> {
             .map_err(unit_error)?
             .with_vision(file.vision.as_ref())
             .with_body(data.navigation.body(file.collision.as_ref()))
-            .with_tracks(Progression::tracks(self.world, &file.tracks));
+            .with_tracks(Progression::tracks(self.world, &file.tracks))
+            .with_production(file.production.as_ref());
         let mut slots = Vec::new();
         for (kind, ids) in &file.slots {
             let kind = data.slots.named(kind.as_str()).expect(CHECKED);
@@ -247,22 +254,28 @@ impl<'a> MatchBuild<'a> {
         })
     }
 
-    /// Loads the ability `id` of `package`, of `ranks` ranks, with its script.
+    /// Loads the ability `id` of `package`, of `ranks` ranks, with its script; a train waits for
+    /// its unit type to bind.
     fn load_ability(
         &mut self,
         package: usize,
         id: &str,
-        data: &ActionData,
+        data: &'a ActionData,
         ranks: u8,
     ) -> Result<ActionId, StartError> {
         let script = data.script.as_ref().map(|path| self.script(package, path));
         let package = u16::try_from(package).expect("packages fit u16");
-        Actions::load(self.world, package, id, data, script, ranks).map_err(|error| {
-            StartError::Ability {
-                ability: id.to_owned(),
-                error,
-            }
-        })
+        let action =
+            Actions::load(self.world, package, id, data, script, ranks).map_err(|error| {
+                StartError::Ability {
+                    ability: id.to_owned(),
+                    error,
+                }
+            })?;
+        if let Some(unit_type) = &data.unit_type {
+            self.trains.push((action, unit_type));
+        }
+        Ok(action)
     }
 
     /// Compiles every script of every package in the match's host, each once.

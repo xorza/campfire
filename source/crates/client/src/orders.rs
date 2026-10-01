@@ -68,7 +68,7 @@ impl Orders {
             let target = under.map_or(ActionTarget::None, |unit| ActionTarget::Unit(unit.id));
             orders.push(Order {
                 unit: avatar.id,
-                action: Action::Cast { slot, target },
+                action: Action::Slot { slot, target },
             });
         }
     }

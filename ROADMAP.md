@@ -41,7 +41,7 @@ Done when a LAN match whose server is killed restores and ends, its log verifyin
 
 ### 7. Genre proofs: RTS and campaign
 
-- First cuts: `production` (train, build, gather), region events, `quests` objectives, carry and campaigns, save converters.
+- First cuts: `production` (build, gather; the train's cancel, refund, rally points, requirements and supply), region events, `quests` objectives, carry and campaigns, save converters.
 - The RTS skirmish and the RTS mission ([Genre proofs](design/04-capabilities/genres.md#genre-proofs)).
 
 Done when `det-ci` runs both on every OS with the same hashes.

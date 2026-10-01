@@ -14,7 +14,7 @@ Every action is a table `[actions.<id>]` of a package, in one schema; a field a 
 | `script` | The script of its hooks, if it needs one |
 | `targeting` | `none`, `point`, `direction`, or a filter for a unit target |
 | `range` | Meters in the map's metric, or `"global"` |
-| `windup_ms` | The time between its start and its delivery: an attack's windup, a cast time |
+| `windup_ms` | The time between its start and its delivery: an attack's windup, a cast time, a train's time in its unit's queue |
 | `cooldown_ms`, `charges` | `{ max, recharge_ms }` |
 | `cost` | Per pool of the unit or player resource of its player: `{ mana = 60 }`, `{ rage = 30, combo = 1 }`, `{ minerals = 50, supply = 1 }`; the mode's pools and player resources never share a name |
 | `clamp_to_range` | A target beyond range is moved in, instead of the unit walking |

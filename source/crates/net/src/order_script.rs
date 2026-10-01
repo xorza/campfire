@@ -63,7 +63,7 @@ impl OrderScript {
                     Action::Move { x, z }
                 }
                 (None, Some(target), None, None) => Action::Attack { target },
-                (None, None, Some(slot), target) => Action::Cast {
+                (None, None, Some(slot), target) => Action::Slot {
                     slot,
                     target: target.map_or(ActionTarget::None, ActionTarget::Unit),
                 },
@@ -166,7 +166,7 @@ mod tests {
             (first.tick, first.action),
             (
                 Tick::new(9),
-                Action::Cast {
+                Action::Slot {
                     slot: 2,
                     target: ActionTarget::None
                 }
@@ -174,7 +174,7 @@ mod tests {
         );
         assert!(matches!(
             (second.tick.get(), second.action),
-            (9, Action::Cast { slot: 0, target: ActionTarget::Unit(unit) }) if unit.get() == 7
+            (9, Action::Slot { slot: 0, target: ActionTarget::Unit(unit) }) if unit.get() == 7
         ));
         assert!(matches!(
             (third.tick.get(), third.action),

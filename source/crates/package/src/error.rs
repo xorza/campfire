@@ -128,12 +128,15 @@ pub enum LoadProblem {
     Unslotted(String),
     /// An avatar names an AI: a player controls it, and a bot plays it through player inputs.
     AvatarOrders,
+    /// A unit type holds this train, and has no `production` section to queue it.
+    NoQueue(String),
     /// A unit type's action is in two slots.
     RepeatedSlot(String),
     /// Unit types place the action in slot kinds of other ranks.
     ActionRanks(String),
     /// A weapon without `rate`, `damage` or `damage_kind`, a unit target or a range in meters,
-    /// or with a field only a cast runs; or another kind of action with one of those three.
+    /// or with a field only a cast runs; a train without its `unit_type`, or with a field it does
+    /// not run; or another kind of action with one of a weapon's or a train's fields.
     KindField(String),
     /// An action of a kind the release does not run yet.
     KindNotRun { action: String, kind: ActionKind },
@@ -303,6 +306,7 @@ pub enum NameKind {
     Filter,
     DamageKind,
     Track,
+    UnitType,
 }
 
 /// What a mode declares more of than a match holds.
@@ -346,6 +350,7 @@ impl fmt::Display for NameKind {
             NameKind::Filter => "filter",
             NameKind::DamageKind => "damage kind",
             NameKind::Track => "track",
+            NameKind::UnitType => "unit type",
         })
     }
 }
@@ -418,11 +423,13 @@ impl fmt::Display for LoadProblem {
             LoadProblem::Map(problem) => write!(f, "{problem}"),
             LoadProblem::Unslotted(id) => write!(f, "action {id:?} is in no slot"),
             LoadProblem::AvatarOrders => f.write_str("an avatar takes no `orders`: bots play it"),
+            LoadProblem::NoQueue(id) => write!(f, "train {id:?} sits on a unit type with no queue"),
             LoadProblem::RepeatedSlot(id) => write!(f, "action {id:?} is in two slots"),
             LoadProblem::KindField(action) => write!(
                 f,
                 "action {action:?}: an attack aims at a unit within meters, with rate, damage and \
-                 damage_kind and none of a cast's fields, and no other kind has any of those three"
+                 damage_kind and none of a cast's fields; a train names its unit_type and takes no \
+                 target; and no other kind has their fields"
             ),
             LoadProblem::KindNotRun { action, kind } => {
                 write!(

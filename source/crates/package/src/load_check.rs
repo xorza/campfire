@@ -566,11 +566,30 @@ impl<'a> LoadCheck<'a> {
     fn kind(&self, id: &str, action: &ActionData) -> Result<(), LoadProblem> {
         let at = Place::Action(id.to_owned());
         let fields = action.weapon_fields();
+        let trains = action.unit_type.is_some();
         match action.kind {
             ActionKind::Cast => {
                 self.require(Capability::Abilities, &at)?;
-                if fields.contains(&true) {
+                if fields.contains(&true) || trains {
                     return Err(LoadProblem::KindField(id.to_owned()));
+                }
+            }
+            ActionKind::Train => {
+                self.require(Capability::Production, &at)?;
+                if fields.contains(&true) || action.beyond_train() {
+                    return Err(LoadProblem::KindField(id.to_owned()));
+                }
+                let unit_types = &self.packages.units.units;
+                match &action.unit_type {
+                    None => return Err(LoadProblem::KindField(id.to_owned())),
+                    Some(name) if !unit_types.contains_key(name) => {
+                        return Err(LoadProblem::Unknown {
+                            of: NameKind::UnitType,
+                            at,
+                            name: name.clone(),
+                        });
+                    }
+                    Some(_) => {}
                 }
             }
             ActionKind::Attack => {
@@ -580,7 +599,7 @@ impl<'a> LoadCheck<'a> {
                     .as_ref()
                     .is_none_or(|range| range.values().contains(&RangeField::Range(Range::Global)));
                 let aims = matches!(action.targeting, Targeting::Unit(_));
-                if fields.contains(&false) || global || !aims || action.cast_fields() {
+                if fields.contains(&false) || global || !aims || action.cast_fields() || trains {
                     return Err(LoadProblem::KindField(id.to_owned()));
                 }
                 self.stats_declared(action.rate.iter().chain(&action.damage), &at)?;
@@ -710,6 +729,7 @@ impl<'a> LoadCheck<'a> {
             (unit_type.vision.is_some(), Capability::Vision),
             (!unit_type.slots.is_empty(), Capability::Abilities),
             (!unit_type.tracks.is_empty(), Capability::Progression),
+            (unit_type.production.is_some(), Capability::Production),
         ];
         for (used, capability) in sections {
             if used {
@@ -736,6 +756,9 @@ impl<'a> LoadCheck<'a> {
                 }
                 if !slotted.insert(id.as_str()) {
                     return Err(LoadProblem::RepeatedSlot(id.clone()));
+                }
+                if actions[id].kind == ActionKind::Train && unit_type.production.is_none() {
+                    return Err(LoadProblem::NoQueue(id.clone()));
                 }
             }
         }

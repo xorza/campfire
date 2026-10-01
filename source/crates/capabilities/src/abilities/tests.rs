@@ -153,6 +153,7 @@ fn lash_out() -> ActionData {
         rate: None,
         damage: None,
         damage_kind: None,
+        unit_type: None,
         projectile_state: BTreeMap::new(),
         params: BTreeMap::from([
             (
@@ -207,6 +208,7 @@ fn strike() -> ActionData {
         rate: None,
         damage: None,
         damage_kind: None,
+        unit_type: None,
         projectile_state: BTreeMap::new(),
         params: BTreeMap::from([(
             "damage".to_owned(),
@@ -322,7 +324,7 @@ impl Match {
         for &(unit, target) in casts {
             let entity = self.world.resource::<EntityIndex>().get(unit).unwrap();
             let mut slots = self.world.get_mut::<ActionSlots>(entity).unwrap();
-            slots.order(0, target);
+            slots.order(0, ActionKind::Cast, target);
         }
         self.world.run_schedule(SimUpdate);
     }

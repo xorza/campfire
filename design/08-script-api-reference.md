@@ -310,6 +310,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `charge` | planned |
 | `area` | planned |
 | `projectile_state` | planned |
+| `unit_type` | runs |
 
 ### An action's `projectile`
 
@@ -362,6 +363,12 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | Field | Status |
 | --- | --- |
 | `on_death` | runs |
+
+### A unit type's `production`
+
+| Field | Status |
+| --- | --- |
+| `queue` | runs |
 
 ### A unit type's `vision`
 

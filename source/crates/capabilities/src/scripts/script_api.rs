@@ -8,6 +8,7 @@ use crate::abilities::abilities_api::AbilitiesApi;
 use crate::combat::combat_api::CombatApi;
 use crate::mode::mode_api::ModeApi;
 use crate::orders::orders_api::OrdersApi;
+use crate::production::production_api::ProductionApi;
 use crate::progression::progression_api::ProgressionApi;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::core_api::CoreApi;
@@ -74,6 +75,7 @@ pub enum DataTable {
     Modifier,
     Aura,
     Combat,
+    Production,
     Vision,
     Collision,
     Ai,
@@ -189,6 +191,7 @@ impl ScriptApi {
         OrdersApi::register(&mut builder);
         VisionApi::register(&mut builder);
         ProgressionApi::register(&mut builder);
+        ProductionApi::register(&mut builder);
         api
     }
 
@@ -443,7 +446,7 @@ impl Status {
 }
 
 impl DataTable {
-    pub const ALL: [DataTable; 17] = [
+    pub const ALL: [DataTable; 18] = [
         DataTable::Mode,
         DataTable::ModeCombat,
         DataTable::ModeNavigation,
@@ -457,6 +460,7 @@ impl DataTable {
         DataTable::Modifier,
         DataTable::Aura,
         DataTable::Combat,
+        DataTable::Production,
         DataTable::Vision,
         DataTable::Collision,
         DataTable::Ai,
@@ -479,6 +483,7 @@ impl DataTable {
             DataTable::Modifier => "A modifier, `[modifiers.<id>]`",
             DataTable::Aura => "A modifier's `aura`",
             DataTable::Combat => "A unit type's `combat`",
+            DataTable::Production => "A unit type's `production`",
             DataTable::Vision => "A unit type's `vision`",
             DataTable::Collision => "A unit type's `collision`",
             DataTable::Ai => "A unit type's `orders`",
@@ -587,6 +592,7 @@ mod tests {
     use crate::mode::relation_data::RelationData;
     use crate::navigation::navigation_rules::NavigationRules;
     use crate::orders::ai_data::AiData;
+    use crate::production::production_data::ProductionData;
     use crate::progression::track_data::TrackData;
     use crate::stats::modifier_data::{AuraData, ModifierData};
     use crate::units::block::Block;
@@ -775,6 +781,7 @@ mod tests {
             (DataTable::Modifier, serde_fields::<ModifierData>()),
             (DataTable::Aura, serde_fields::<AuraData>()),
             (DataTable::Combat, serde_fields::<CombatData>()),
+            (DataTable::Production, serde_fields::<ProductionData>()),
             (DataTable::Vision, serde_fields::<VisionData>()),
             (DataTable::Collision, serde_fields::<CollisionData>()),
             (DataTable::Ai, serde_fields::<AiData>()),

@@ -19,6 +19,7 @@ use crate::units::filter::Filter;
 use crate::units::living_unit::LivingUnit;
 use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
+use crate::units::unit_type::UnitType;
 use crate::values::attitude::Attitude;
 use crate::values::declared_name::DeclaredName;
 
@@ -52,6 +53,8 @@ pub(crate) struct Action {
     resource_costs: Box<[ResourceAmount]>,
     /// The script, when it defines `on_resolve`: a script may serve only the action's modifiers.
     pub(crate) on_resolve: Option<ScriptId>,
+    /// The unit type a `train` makes, once the mode's unit types load.
+    pub(crate) trains: Option<UnitType>,
 }
 
 /// An action's passive modifier, and whether its unit holds it only while the action is off
@@ -134,8 +137,20 @@ impl ActionBook {
             ranks: ranks.values,
             resource_costs: ranks.resource_costs.into_boxed_slice(),
             on_resolve,
+            trains: None,
         });
         id
+    }
+
+    /// Binds the train `id` to the unit type it makes.
+    pub(crate) fn bind_train(&mut self, id: ActionId, unit_type: UnitType) {
+        let action = &mut self.actions[id.index()];
+        debug_assert_eq!(
+            action.kind,
+            ActionKind::Train,
+            "only a train makes a unit type"
+        );
+        action.trains = Some(unit_type);
     }
 
     pub(crate) fn get(&self, id: ActionId) -> Option<&Action> {
@@ -360,6 +375,31 @@ pub(crate) mod internals {
             }],
             resource_costs: weapon.resource_cost.into_iter().collect(),
             on_resolve: None,
+            trains: None,
+        });
+        id
+    }
+
+    /// Adds a train of no cost and no time to `book`, its unit type yet unbound.
+    #[cfg(test)]
+    pub(crate) fn train(book: &mut ActionBook) -> ActionId {
+        let id = ActionId(u32::try_from(book.actions.len()).unwrap());
+        book.actions.push(Action {
+            package: 0,
+            kind: ActionKind::Train,
+            weapon: None,
+            passive: None,
+            aim: Aim::None,
+            ranks: vec![RankValues {
+                launch: None,
+                range: Range::Global,
+                cooldown: Ticks::ZERO,
+                cost: PoolCost::default(),
+                windup: Ticks::ZERO,
+            }],
+            resource_costs: Box::new([]),
+            on_resolve: None,
+            trains: None,
         });
         id
     }

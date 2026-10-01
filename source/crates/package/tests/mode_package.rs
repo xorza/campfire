@@ -102,6 +102,10 @@ const MODE: &str = "moba-3v3";
 /// A package whose manifest does not read has no name, so its directory names it.
 const MODE_DIR: &str = "modes/3v3";
 const MODE_DATA: &str = "modes/3v3/data/mode.toml";
+/// A train of a melee creep, which the mode's data does not hold, put before its first action.
+const RECRUIT: &str = "[actions.recruit]\nkind = \"train\"\ntargeting = \"none\"\nunit_type = \"melee_creep\"\n\n[actions.melee_creep_attack]";
+/// The manifest's capabilities with `production`.
+const PRODUCTION: Edit = Edit::Replace(r#""progression"]"#, r#""progression", "production"]"#);
 
 /// Whether `problem` is the manifest failing to read with a message that starts with `message`.
 fn manifest_fails(problem: &LoadProblem, message: &str) -> bool {
@@ -162,7 +166,7 @@ fn more_tracks_than_a_unit_holds_fail_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 115] = [
+const FLAWS: [Flaw; 121] = [
     flaw(
         MANIFEST,
         Edit::Replace(r#"engine = "0.1.0""#, r#"engine = "0.0.9""#),
@@ -996,8 +1000,79 @@ const FLAWS: [Flaw; 115] = [
         MODE,
         |problem| matches!(problem, LoadProblem::Choice(ChoiceProblem::UnknownSlotKind { kind, .. }) if kind == "spells"),
     ),
-    // The release runs actions of kind `cast` and `attack` alone yet; an action sits in slot
-    // kinds of one count of ranks.
+    // A train is production's, names a unit type of the mode and takes no target, and sits on a
+    // unit type with a queue; no other kind names a unit type.
+    flaw(
+        MODE_DATA,
+        Edit::Replace("[actions.melee_creep_attack]", RECRUIT),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Undeclared { capability: Capability::Production, at: Place::Action(action) } if action == "recruit"),
+    ),
+    Flaw {
+        file: MODE_DATA,
+        edit: Edit::Replace("[actions.melee_creep_attack]", RECRUIT),
+        also: &[
+            (MANIFEST, PRODUCTION),
+            (
+                MODE_DATA,
+                Edit::Replace(r#"unit_type = "melee_creep""#, r#"unit_type = "knight""#),
+            ),
+        ],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::UnitType, name, .. } if name == "knight"),
+    },
+    Flaw {
+        file: MODE_DATA,
+        edit: Edit::Replace("[actions.melee_creep_attack]", RECRUIT),
+        also: &[
+            (MANIFEST, PRODUCTION),
+            (
+                MODE_DATA,
+                Edit::Replace(
+                    "targeting = \"none\"\nunit_type",
+                    "targeting = \"enemies\"\nunit_type",
+                ),
+            ),
+        ],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::KindField(action) if action == "recruit"),
+    },
+    Flaw {
+        file: MODE_DATA,
+        edit: Edit::Replace("[actions.melee_creep_attack]", RECRUIT),
+        also: &[
+            (MANIFEST, PRODUCTION),
+            (
+                UNITS,
+                Edit::Replace(
+                    r#"weapon = ["tower_attack"]"#,
+                    r#"weapon = ["tower_attack", "recruit"]"#,
+                ),
+            ),
+        ],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::NoQueue(action) if action == "recruit"),
+    },
+    flaw(
+        UNITS,
+        Edit::Replace(
+            r#"slots = { weapon = ["tower_attack"] }"#,
+            "slots = { weapon = [\"tower_attack\"] }\nproduction = { queue = 5 }",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Undeclared { capability: Capability::Production, at: Place::UnitType(name) } if name == "tower"),
+    ),
+    flaw(
+        HUSK,
+        Edit::Replace(
+            "[actions.dread]\n",
+            "[actions.dread]\nunit_type = \"melee_creep\"\n",
+        ),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::KindField(action) if action == "dread"),
+    ),
+    // The release runs actions of kind `cast`, `attack` and `train` alone yet; an action sits in
+    // slot kinds of one count of ranks.
     flaw(
         HUSK,
         Edit::Replace("[actions.dread]\n", "[actions.dread]\nkind = \"use\"\n"),

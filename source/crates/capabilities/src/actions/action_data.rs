@@ -60,6 +60,8 @@ pub struct ActionData {
     pub damage: Option<Stat>,
     /// The kind of damage a weapon deals, an `attack`'s alone.
     pub damage_kind: Option<DeclaredName>,
+    /// The mode's unit type a `train` makes, a train's alone.
+    pub unit_type: Option<String>,
     /// Values for the script, as `ctx.p` reads them.
     #[serde(default)]
     pub params: BTreeMap<String, Param>,
@@ -190,9 +192,23 @@ impl ActionData {
                 || projectile.sight_radius.is_some()
                 || projectile.collide.is_some()
         });
+        self.cooldown_ms.is_some() || projectile || self.cast_only_fields()
+    }
+
+    /// Whether it has a field a `train` does not run: a target, a range, a projectile, or a field
+    /// only a cast runs, its cooldown aside.
+    pub fn beyond_train(&self) -> bool {
+        self.targeting != Targeting::None
+            || self.range.is_some()
+            || self.projectile.is_some()
+            || self.cast_only_fields()
+    }
+
+    /// Whether it has a field that no kind but a cast runs: a script or params, a clamp to range,
+    /// a toggle, a channel, a hold, charges, a charge, an area, or projectile state.
+    fn cast_only_fields(&self) -> bool {
         self.script.is_some()
             || !self.params.is_empty()
-            || self.cooldown_ms.is_some()
             || self.clamp_to_range
             || self.toggle.is_some()
             || self.channel.is_some()
@@ -201,7 +217,6 @@ impl ActionData {
             || self.charge.is_some()
             || self.area.is_some()
             || !self.projectile_state.is_empty()
-            || projectile
     }
 
     /// Every pool or player resource it costs something in, its toggle's among them.
