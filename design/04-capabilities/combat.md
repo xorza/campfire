@@ -15,12 +15,31 @@ A unit has a team, a type of the core that every capability shares: its index in
 
 ## Damage and death
 
-- **Damage** has an amount and a kind from the mode's list (for the reference MOBA: `physical`, `magic`, `true`; for a shooter: bullet, explosive; for an MMO: its schools). The mode's `calc_damage` hook turns it into the final amount (armor, resistances, headshots); until scripts run, an attack deals its damage as is.
-- **Strikes of one tick apply together** in the Resolve stage, in the order of their source's stable id, so each follows from the state before any of them: two units can kill each other in one tick.
-- **Recent attackers.** Each strike records its source with its target, and the tick it landed in. A unit keeps each attacker once, with its last strike, and forgets one that no longer exists; `unit.recent_attackers(ms)` reads them.
+- **Damage** has a source, a target, an amount and a kind from the mode's list (for the reference MOBA: `physical`, `magic`, `true`). An attack deals the mode's `attack_kind`; an ability or modifier script names its kind. It is an attack when an attack or `ctx.attack_hit` dealt it, and it names the ability whose cast, projectile, area or modifier dealt it.
+- **One pass a tick.** Every damage of a tick applies in Resolve, in one queue: first the tick's damage, by its source's stable id and then the order it was queued, then the damage the events of the pass queue, first in, first out. Every damage of the pass reads the units as the pass began, so two units can kill each other in one tick, and a modifier an event adds takes effect from the next stage.
+- **Each damage, in order:** nothing happens to a target at zero health; the mode's `calc_damage(ctx, d)` turns the amount into the final one, `d.amount` the raw amount and `d.crit` set, and a negative result counts as 0; with no `calc_damage`, or a call that fails, the amount stays as it was, and the failure is recorded. Shields absorb it next, the one that ends soonest first, then the one applied first, as League of Legends spends them; what is left comes off health. The source, when it exists, is recorded as the target's attacker.
+- **Life steal and spell vamp.** The source heals by `life_steal` times the health an attack took, or `spell_vamp` times the health an ability or modifier's damage took: post-mitigation, and not what shields absorbed, as League of Legends' life steal counts it.
+- **Heals.** `ctx.heal(unit, amount)` adds to health, `ctx.restore(unit, amount)` to the resource; a heal, life steal included, is scaled by the healed unit's `healing_received_pct`, a restore is not. Neither reaches a unit at zero health.
+- **Crits.** An attack rolls its crit once, when its windup ends, with the attacker's `crit_chance`, on the secret stream for the attacker in that tick: a ranged attack's projectile carries it. Each roll is independent, as design 07 sets, so the seed alone decides it, and no client learns it before the server applies it. `calc_damage` sees it as `d.crit` and decides what it does: the reference MOBA doubles the amount. `ctx.attack_hit` rolls none.
+- **A source that is gone.** A damage whose source no longer exists, as from a projectile whose source despawned, has `d.source` of `()`, and no killer.
+- **Recent attackers.** Each damage records its source with its target, and the tick it landed in. A unit keeps each attacker once, with its last damage, and forgets one that no longer exists; `unit.recent_attackers(ms)` reads them.
 - **Death.** A unit at zero health dies at the end of Resolve. A unit type says whether it stays dead to respawn, as heroes do, or despawns, as creeps do; one that despawns goes at the end of the tick it died in, after the Mode stage saw it. A dead unit takes no orders and is no target.
-- **Kill credit.** The source whose damage took the health to zero is the killer, when it still exists: a projectile can outlive the unit that launched it, and then no one is. A source that no longer exists is not recorded as an attacker either; the other units that damaged the victim within the mode's `assist_window_ms` assisted, by stable id, and without a window no one assisted. The mode receives both in `on_unit_died`, in the Mode stage of the tick, in the order the units died.
+- **Kill credit.** The source whose damage took the health to zero is the killer, when it still exists. The other units that damaged the victim within the mode's `assist_window_ms` assisted, by stable id; without a window no one assisted. The mode receives both in `on_unit_died`, in the Mode stage of the tick, in the order the units died.
 - **Respawn.** Each unit keeps the place it spawned at. `ctx.respawn(unit, ms)` brings a dead unit that stays back at the start of the tick that time later, rounded up and at least one tick after the end of the current one: at its spawn place, with full health and no attacker on record.
+
+## Combat events
+
+A unit's modifiers hear its combat events, each modifier by its script's hook, in the order the modifiers are kept: by id, then source. A hook runs in the script pool of the modifier source's player, or in the mode's when the source has none.
+
+| Event | When | Hook, on whose modifiers |
+| --- | --- | --- |
+| An attack goes off | Hit, as its windup ends, before it strikes or fires | `on_attack(ctx, m, target)`, the attacker's |
+| A modifier's interval | Hit, after the attacks, by carrier's stable id, then modifier | `on_interval(ctx, m)`, its own |
+| An attack hits | Resolve, after its damage | `on_attack_hit(ctx, m, d)`, the attacker's |
+| Damage is taken | Resolve, after it | `on_damage_taken(ctx, m, d)`, the target's |
+| A kill | Resolve, after the damage that killed | `on_kill(ctx, m, victim)`, the killer's; then `on_takedown(ctx, m, victim)`, the killer's and each assister's by stable id |
+
+`d.amount` in a hook is the amount after `calc_damage`, before shields. A hook's effects apply in the order it queued them, and the damage they deal joins the pass. `ctx.attack_hit(target)` deals the acting unit's attack damage to `target` as an attack: `d.attack` and `d.extra` set, no crit, and `on_attack_hit` follows, but not `on_attack`; a hook that should not answer it reads `d.extra`, as Dota 2 marks reflected damage so a reflection never reflects. A hook queued by a chain of events 16 deep fails with a script error: no designed chain is that deep, and the pass must end within the tick.
 
 ## Stats and modifiers
 
