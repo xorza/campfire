@@ -12,11 +12,11 @@ use crate::scripts::hook_set::HookSet;
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifier_handle::StateField;
 use crate::stats::modifiers::{Application, Instance, Interval, StackEnd, StatShare};
+use crate::stats::param_read::ParamRead;
 use crate::stats::stat_book::StatBook;
 use crate::units::script_view::ModifierInfo;
 use crate::units::tag_set::TagSet;
 use crate::values::number::Number;
-use crate::values::scalar::Scalar;
 
 /// The modifiers a match loaded, of every package: the mode, package 0, and each package it
 /// depends on, in the order of its manifest. Package data, not state: a restore loads it from the
@@ -88,9 +88,9 @@ impl ModifierBook {
     }
 
     /// `id` as applied in tick `now` from `source`, by `ability` at its rank or by none: its
-    /// numbers resolved from its own params, then the ability's, which `ability_param` reads at
-    /// that rank, its duration `duration` when a call names one; `None` when a number does not
-    /// resolve. A passive or an aura holds while its ability or carrier keeps it, so it has no
+    /// numbers resolved by `param`, from its own params, then the ability's, of its source as it
+    /// is now; a stat change that reads a scaling table keeps reading it, live. Its duration is
+    /// `duration` when a call names one; `None` when a number does not resolve. A passive or an aura holds while its ability or carrier keeps it, so it has no
     /// duration, and a passive applied again at another rank refreshes; a passive whose stacks
     /// end one by one counts them from none.
     pub(crate) fn application(
@@ -100,20 +100,20 @@ impl ModifierBook {
         duration: Option<Ticks>,
         now: Tick,
         stats: &StatBook,
-        ability_param: impl Fn(&str) -> Option<Scalar>,
+        param: impl Fn(&str) -> Option<ParamRead>,
     ) -> Option<Application> {
         let entry = self.get(id);
         let data = &entry.data;
-        let number = |number: &Number| -> Option<Num> {
+        let read = |number: &Number| -> Option<ParamRead> {
             match number {
-                Number::Value(value) => value.to_num(),
-                Number::Param(reference) => {
-                    let name = reference.param.as_str();
-                    let own = data.params.get(name).map(|param| param.at(from.rank));
-                    own.unwrap_or_else(|| ability_param(name))?.to_num()
-                }
+                Number::Value(value) => Some(ParamRead {
+                    value: value.to_num()?,
+                    live: None,
+                }),
+                Number::Param(reference) => param(reference.param.as_str()),
             }
         };
+        let number = |number: &Number| read(number).map(|read| read.value);
         let ticks = |field: Option<&Number>| -> Option<Option<Ticks>> {
             let Some(field) = field else {
                 return Some(None);
@@ -138,10 +138,12 @@ impl ModifierBook {
             next: now.after(every),
         });
         let shares = data.stats.iter().map(|(stat, change)| {
+            let read = read(&change.value)?;
             Some(StatShare {
                 stat: stats.index(stat)?,
                 op: change.op,
-                value: number(&change.value)?,
+                value: read.value,
+                live: read.live,
             })
         });
         let counts = from.passive && stack_life.is_some();

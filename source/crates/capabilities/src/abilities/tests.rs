@@ -38,7 +38,12 @@ use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifier_effect::ModifierEffect;
 use crate::stats::pool_book::PoolBook;
 use crate::stats::pool_id::PoolId;
-use crate::stats::stat::Stat;
+use crate::stats::stat::EngineStat;
+use crate::stats::stat_change::StatChange;
+use crate::stats::stat_graph::StatGraph;
+use crate::stats::stat_op::StatOp;
+use crate::stats::stat_rule::StatRule;
+use crate::stats::stats_data::{StatValue, StatsData};
 use crate::stats::unit_stats::UnitStats;
 use crate::units::Units;
 use crate::units::tag_data::TagData;
@@ -226,6 +231,7 @@ impl Match {
             limits,
             players: 2,
             damage_kinds: Rc::from(kinds),
+            stats: scaling_stats().into(),
             pools: POOLS.map(|pool| DeclaredName::new(pool).unwrap()).into(),
         };
         let TestMatch {
@@ -299,6 +305,11 @@ impl Match {
     fn get<C: Component + Copy>(&self, id: StableId) -> C {
         let entity = self.world.resource::<EntityIndex>().get(id).unwrap();
         *self.world.entity(entity).get::<C>().unwrap()
+    }
+
+    fn get_ref<C: Component>(&self, id: StableId) -> &C {
+        let entity = self.world.resource::<EntityIndex>().get(id).unwrap();
+        self.world.entity(entity).get::<C>().unwrap()
     }
 
     fn health(&self, id: StableId) -> i64 {
@@ -1097,7 +1108,8 @@ impl Match {
             id,
             duration: None,
         };
-        Stats::apply_effect(&mut self.world, add, applier, |_| None);
+        let ctx = self.world.non_send::<Ctx>().clone();
+        Stats::apply_effect(&mut self.world, add, applier, Some(&ctx.frame()));
     }
 
     /// Each failed call of the tick: the unit it ran for and its hook.
@@ -1229,4 +1241,220 @@ fn on_damage_taken(ctx, m, d) {
         failures.as_slice(),
         [(Some(unit), Hook::OnDamageTaken, CallError::Api(ApiError::ChainTooDeep))] if *unit == echoer
     ));
+}
+
+/// The stats of the scaling tests' mode, in its order: attack damage, an engine stat, first.
+fn scaling_stats() -> [Stat; 4] {
+    let mut stats = ["attack_damage", "ability_power", "armor", "spell_vamp"]
+        .map(|name| Stat::named(name).unwrap());
+    stats.sort();
+    stats
+}
+
+/// A modifier of no script that changes `stats`, each by an add, and reads `params`, lasting
+/// `duration_ms` when given.
+fn changing(
+    stats: &[(&str, Number)],
+    params: &[(&str, Param)],
+    duration_ms: Option<Number>,
+) -> ModifierData {
+    let change = |value: &Number| StatChange {
+        op: StatOp::Add,
+        value: value.clone(),
+    };
+    ModifierData {
+        script: None,
+        duration_ms,
+        interval_ms: None,
+        stacks_expire_ms: None,
+        reapply: Reapply::Refresh,
+        max_stacks: None,
+        stats: stats
+            .iter()
+            .map(|(name, value)| (Stat::named(name).unwrap(), change(value)))
+            .collect(),
+        tags: Vec::new(),
+        shield: None,
+        aura: None,
+        params: params
+            .iter()
+            .map(|(name, param)| ((*name).to_owned(), param.clone()))
+            .collect(),
+        state: BTreeMap::new(),
+    }
+}
+
+/// A scaling table of `base` at every rank, `per_level`, and `ratios` and `bonus` by stat name.
+fn scaling(base: Scalar, per_level: i64, ratios: &[(&str, Num)], bonus: &[(&str, Num)]) -> Param {
+    let by_name = |pairs: &[(&str, Num)]| {
+        pairs
+            .iter()
+            .map(|&(name, ratio)| (Stat::named(name).unwrap(), Scalar::Decimal(ratio)))
+            .collect()
+    };
+    Param::Scaling(Scaling {
+        base: Ranked::One(base),
+        per_level: Some(Scalar::Int(per_level)),
+        ratios: by_name(ratios),
+        bonus: by_name(bonus),
+    })
+}
+
+fn decimal(text: &str) -> Num {
+    text.parse().unwrap()
+}
+
+#[test]
+fn a_scaling_param_reads_its_sources_level_stats_and_bonus() {
+    let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
+    let mut game = Match::with(LIMITS, &declared);
+    // The caster's type gives attack damage 50 + 5 a level, so 60 at level 3; a modifier adds 20
+    // more and 40 ability power.
+    let caster_type =
+        Units::load_type(&mut game.world, "caster", &UnitTypeData::default()).unwrap();
+    let attack_damage = Stat::Engine(EngineStat::AttackDamage);
+    let growth = StatValue {
+        base: Scalar::Int(50),
+        per_level: Some(Scalar::Int(5)),
+    };
+    let growth = StatsData([(attack_damage, growth)].into());
+    let rules: BTreeMap<_, _> = scaling_stats()
+        .map(|stat| (stat, StatRule::default()))
+        .into();
+    let book = StatBook::new(&rules, [(caster_type, &growth)], RATE, num(6)).unwrap();
+    Stats::load(&mut game.world, book, PoolBook::default());
+    let boost = changing(
+        &[("attack_damage", int(20)), ("ability_power", int(40))],
+        &[],
+        None,
+    );
+    Stats::load_modifier(&mut game.world, 0, "boost", &boost, None);
+    let mark = changing(&[], &[], Some(param("power")));
+    Stats::load_modifier(&mut game.world, 0, "mark", &mark, None);
+    // Power: 100 a rank, 10 a level, half the ability power and 1.5 times the bonus attack
+    // damage.
+    let half = Num::ONE / 2;
+    let power = scaling(
+        Scalar::Int(0),
+        10,
+        &[("ability_power", half)],
+        &[("attack_damage", half * 3)],
+    );
+    let Param::Scaling(mut power) = power else {
+        unreachable!("a scaling table");
+    };
+    power.base = Ranked::PerRank([100, 200, 300, 400, 500].map(Scalar::Int).to_vec());
+    let data = AbilityData {
+        params: [("power".to_owned(), Param::Scaling(power))].into(),
+        ..strike()
+    };
+    let script = r#"
+fn on_resolve(ctx, caster, target) {
+    ctx.damage(target, ctx.p.power, "true");
+    ctx.add_modifier(target, "mark");
+}
+"#;
+    let ability = game.load(&data, script);
+    let caster = game.caster(ability, 2);
+    let entity = game.world.resource::<EntityIndex>().get(caster).unwrap();
+    let parts = (caster_type, Level::new(3).unwrap(), UnitStats::default());
+    game.world.entity_mut(entity).insert(parts);
+    game.give(caster, "boost");
+    let target = game.spawn(1, at(num(5), Num::ZERO, Num::ZERO), Modifiers::default());
+    let t = game.world.resource::<SimTick>().start();
+    game.cast(caster, CastTarget::Unit(target));
+
+    // At rank 2 and level 3: 200 + 10 × 2 + 0.5 × 40 + 1.5 × (80 − 60) = 270, which the script
+    // deals, 500 → 230, and the mark lasts: 270 ms at 30 ticks a second, 8.1 ticks, up to 9,
+    // so it ends as tick t + 10 starts.
+    assert!(game.failures().is_empty(), "{:?}", game.failures());
+    assert_eq!(game.health(target), 230);
+    let mark = Stats::modifier(&game.world, 0, "mark").unwrap();
+    let marked = game
+        .get_ref::<Modifiers>(target)
+        .get(mark, Some(caster))
+        .unwrap()
+        .until;
+    assert_eq!(marked, Some(Tick::new(t.get() + 10)));
+}
+
+#[test]
+fn a_live_change_follows_its_source_in_the_order_of_the_stats_it_reads() {
+    let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
+    let mut game = Match::with(LIMITS, &declared);
+    // Veil: attack damage 53 at level 1. Dual Path gives her spell vamp of 0.06 and 0.00167 a
+    // point of bonus attack damage; Fortify gives armor of 10 times her spell vamp, so armor
+    // reads spell vamp, which reads attack damage. Armor's place, before spell vamp's, makes the
+    // graph's order differ from the places'.
+    let veil_type = Units::load_type(&mut game.world, "veil", &UnitTypeData::default()).unwrap();
+    let attack_damage = Stat::Engine(EngineStat::AttackDamage);
+    let growth = StatValue {
+        base: Scalar::Int(53),
+        per_level: None,
+    };
+    let growth = StatsData([(attack_damage.clone(), growth)].into());
+    let [spell_vamp, armor] = ["spell_vamp", "armor"].map(|name| Stat::named(name).unwrap());
+    let mut graph = StatGraph::new(scaling_stats());
+    graph.add(&attack_damage, &spell_vamp);
+    graph.add(&spell_vamp, &armor);
+    let rules: BTreeMap<_, _> = scaling_stats()
+        .map(|stat| (stat, StatRule::default()))
+        .into();
+    let book = StatBook::new(&rules, [(veil_type, &growth)], RATE, num(6))
+        .unwrap()
+        .with_order(graph.order().unwrap());
+    let place = |stat: &Stat| usize::from(book.index(stat).unwrap());
+    let places = [&attack_damage, &spell_vamp, &armor].map(place);
+    Stats::load(&mut game.world, book, PoolBook::default());
+    let vamp = scaling(
+        Scalar::Decimal(decimal("0.06")),
+        0,
+        &[],
+        &[("attack_damage", decimal("0.00167"))],
+    );
+    let dual_path = changing(&[("spell_vamp", param("vamp"))], &[("vamp", vamp)], None);
+    let guard = scaling(Scalar::Int(0), 0, &[("spell_vamp", num(10))], &[]);
+    let fortify = changing(&[("armor", param("guard"))], &[("guard", guard)], None);
+    let boost = changing(&[("attack_damage", int(30))], &[], None);
+    for (name, data) in [
+        ("boost", boost),
+        ("dual_path", dual_path),
+        ("fortify", fortify),
+    ] {
+        Stats::load_modifier(&mut game.world, 0, name, &data, None);
+    }
+    let veil = game.spawn(
+        0,
+        at(Num::ZERO, Num::ZERO, Num::ZERO),
+        (veil_type, Level::default(), UnitStats::default()),
+    );
+    game.give(veil, "dual_path");
+    game.give(veil, "fortify");
+    let values = |game: &Match| {
+        let stats = game.get_ref::<UnitStats>(veil).values();
+        places.map(|at| stats[at])
+    };
+    game.world.run_schedule(SimUpdate);
+    // 0.06 is 1 006 632.96 bits, to 1 006 633; no bonus; armor 10 times that.
+    assert_eq!(
+        values(&game),
+        [
+            num(53),
+            Num::from_bits(1_006_633),
+            Num::from_bits(10_066_330)
+        ]
+    );
+
+    // 30 more attack damage: in the same refresh, bonus 30, and 0.00167, 28 017.95 bits to
+    // 28 018, times 30 is 840 540: spell vamp 1 847 173 bits, armor ten times it.
+    game.give(veil, "boost");
+    game.world.run_schedule(SimUpdate);
+    assert_eq!(
+        values(&game),
+        [
+            num(83),
+            Num::from_bits(1_847_173),
+            Num::from_bits(18_471_730)
+        ]
+    );
 }

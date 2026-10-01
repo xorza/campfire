@@ -79,6 +79,7 @@ impl Units {
             limits,
             players,
             damage_kinds,
+            stats,
             pools,
         }) = scripts
         else {
@@ -86,6 +87,7 @@ impl Units {
             return;
         };
         view.set_damage_kinds(damage_kinds);
+        view.set_stat_names(stats);
         view.set_pool_names(pools);
         world.insert_non_send(Ctx::new(view.clone()));
         world.insert_non_send(view);

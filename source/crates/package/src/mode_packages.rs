@@ -1,8 +1,9 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
+use std::iter;
 use std::path::Path;
 
 use campfire_capabilities::{
-    CollisionData, EngineStat, MapData, ModeData, Stat, StatsData, UnitTypeData,
+    CollisionData, EngineStat, MapData, ModeData, Param, Stat, StatGraph, StatsData, UnitTypeData,
 };
 use campfire_content::{Fingerprint, PackagePath};
 use campfire_math::Num;
@@ -123,6 +124,44 @@ impl ModePackages {
 
     pub const fn map(&self) -> &MapData {
         &self.map
+    }
+
+    /// Which stats each live stat change reads and which it changes, across the modifiers of the
+    /// mode and of each package it depends on: a change that reads a param its modifier, or else
+    /// an ability that applies it, declares as a scaling table reads each stat the table names.
+    pub fn stat_graph(&self) -> StatGraph {
+        let mut graph = StatGraph::new(self.data.stats.keys().cloned());
+        let no_abilities = BTreeMap::new();
+        let packages = iter::once((&self.mode, &no_abilities, &self.data.modifiers)).chain(
+            self.dependencies
+                .iter()
+                .map(|dependent| match &dependent.content {
+                    Content::Avatar(avatar) => {
+                        (&dependent.package, &avatar.abilities, &avatar.modifiers)
+                    }
+                    Content::Loadout(loadout) => {
+                        (&dependent.package, &loadout.abilities, &loadout.modifiers)
+                    }
+                }),
+        );
+        for (package, abilities, modifiers) in packages {
+            let appliers = package.appliers(abilities);
+            for (id, modifier) in modifiers {
+                let by = appliers.get(id.as_str()).map_or(&[][..], Vec::as_slice);
+                for (changed, change) in &modifier.stats {
+                    let Some(name) = change.value.param() else {
+                        continue;
+                    };
+                    let own = modifier.params.get(name);
+                    let applied = by.iter().filter(|_| own.is_none());
+                    let applied = applied.filter_map(|ability| ability.params.get(name));
+                    for read in own.into_iter().chain(applied).flat_map(Param::stats) {
+                        graph.add(read, changed);
+                    }
+                }
+            }
+        }
+        graph
     }
 
     /// The body radius of each kind of unit that walks, the mode's unit types and avatars that

@@ -366,6 +366,7 @@ fn setup(
         loadout: vec![spell],
         walkers: vec![Body::radius_of(grunt().body.as_ref())],
         max_move_speed: num(10),
+        stat_order: (0..u16::try_from(STATS_3V3.len()).unwrap()).collect(),
     }
 }
 
@@ -392,6 +393,7 @@ impl Game {
             damage_kinds: DAMAGE_KINDS
                 .map(|kind| DeclaredName::new(kind).unwrap())
                 .into(),
+            stats: STATS_3V3.map(|name| Stat::named(name).unwrap()).into(),
             pools: POOLS.map(|pool| DeclaredName::new(pool).unwrap()).into(),
         };
         let declared = [
@@ -1130,6 +1132,7 @@ impl Game {
             stat: book.index(&Stat::named(name).unwrap()).unwrap(),
             op: StatOp::Add,
             value,
+            live: None,
         });
         let instance = Instance {
             id: ModifierId::new(0),

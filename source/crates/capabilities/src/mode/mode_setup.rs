@@ -32,6 +32,9 @@ pub struct ModeSetup<'a> {
     pub walkers: Vec<Num>,
     /// The manifest's move speed cap, in meters a second.
     pub max_move_speed: Num,
+    /// The places of the mode's stats in the order the stats refresh computes them, which the
+    /// mode's stat graph gives.
+    pub stat_order: Vec<u16>,
 }
 
 /// A unit type the mode spawns, loaded, with its kit: a type of the mode's `units.toml`, or a

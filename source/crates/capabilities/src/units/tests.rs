@@ -75,6 +75,7 @@ impl Scene {
             limits,
             players: 1,
             damage_kinds: Rc::from([]),
+            stats: Rc::from([]),
             pools: ["health", "mana"]
                 .map(|pool| DeclaredName::new(pool).unwrap())
                 .into(),

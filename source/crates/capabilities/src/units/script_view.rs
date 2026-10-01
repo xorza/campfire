@@ -444,6 +444,12 @@ impl View {
         self.0.borrow_mut().stat_names = names;
     }
 
+    /// The place of `stat` among the stats the mode declares; `None` when it does not declare it.
+    pub(crate) fn stat_index(&self, stat: &Stat) -> Option<u16> {
+        let at = self.0.borrow().stat_names.binary_search(stat).ok()?;
+        Some(u16::try_from(at).expect("stats fit u16"))
+    }
+
     /// The value of stat `name` of `row`; an error for a stat the mode does not declare, or a
     /// unit with no stats.
     pub(crate) fn stat(&self, row: &UnitRow, name: &str) -> Checked<Num> {

@@ -29,8 +29,10 @@ use crate::scripts::script_batch::ScriptBatch;
 use crate::stats::StatsSet;
 use crate::stats::modifier_book::{Applier, ModifierBook};
 use crate::stats::modifiers::Modifiers;
+use crate::stats::param_sources::ParamSources;
 use crate::stats::pool_cost::PoolCost;
 use crate::stats::pools::Pools;
+use crate::stats::stat::Stat;
 use crate::stats::stat_book::StatBook;
 use crate::units::block::Block;
 use crate::units::body::Body;
@@ -118,18 +120,13 @@ impl Abilities {
         let host = world
             .remove_non_send::<ScriptHost>()
             .expect("units are installed");
-        let ctx = world.non_send::<Ctx>().clone();
-        let id = world.resource_mut::<AbilityBook>().load(
-            &host,
-            &mut ctx.frame(),
-            package,
-            passive,
-            data,
-            script,
-            aim,
-            values,
-        );
+        let id = world
+            .resource_mut::<AbilityBook>()
+            .load(&host, package, passive, data, script, aim, values);
         world.insert_non_send(host);
+        let stat = |stat: &Stat| view.stat_index(stat).expect("the load checked the stats");
+        let ctx = world.non_send::<Ctx>().clone();
+        ctx.frame().add_params(id, &data.params, stat);
         world.non_send::<View>().add_ability(name);
         Ok(id)
     }
@@ -145,6 +142,7 @@ fn hold_passives(
     stats: Option<Res<'_, StatBook>>,
     tick: Res<'_, SimTick>,
     ctx: NonSend<'_, Ctx>,
+    sources: ParamSources<'_, '_>,
     mut units: Query<'_, '_, (&StableId, &AbilitySlots, &mut Modifiers)>,
 ) {
     let (Some(book), Some(stats)) = (book, stats) else {
@@ -180,7 +178,11 @@ fn hold_passives(
                 aura: false,
             };
             let frame = ctx.frame();
-            let param = |name: &str| frame.ability_param(slot.ability, slot.rank, name);
+            let source = sources.get(id);
+            let param = |name: &str| {
+                let (ability, rank) = (Some(slot.ability), slot.rank);
+                frame.modifier_param(passive.modifier, ability, rank, name, source.as_ref())
+            };
             if let Some(application) =
                 book.application(passive.modifier, applier, None, now, &stats, param)
             {

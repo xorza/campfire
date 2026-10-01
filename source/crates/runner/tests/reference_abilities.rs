@@ -166,10 +166,15 @@ fn reference_world() -> World {
         mode: 100_000,
     };
     let kinds = ["physical", "magic", "true"].map(|kind| DeclaredName::new(kind).unwrap());
+    // The stats the heroes' params name, in the order the mode's stats hold them.
+    let mut stats =
+        ["ability_power", "attack_damage", "spell_vamp"].map(|name| Stat::named(name).unwrap());
+    stats.sort();
     let scripts = MatchScripts {
         limits,
         players: 1,
         damage_kinds: Rc::from(kinds),
+        stats: stats.into(),
         pools: POOLS.map(|pool| DeclaredName::new(pool).unwrap()).into(),
     };
     let declared = [

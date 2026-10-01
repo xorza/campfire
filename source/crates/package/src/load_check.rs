@@ -96,6 +96,10 @@ impl<'a> LoadCheck<'a> {
                 problem: Box::new(problem),
             })?;
         }
+        packages
+            .stat_graph()
+            .order()
+            .map_err(|stats| fail(LoadProblem::StatLoop(stats)))?;
         Ok(())
     }
 
@@ -282,7 +286,7 @@ impl<'a> LoadCheck<'a> {
                 );
             }
         }
-        let appliers = appliers(package, abilities);
+        let appliers = package.appliers(abilities);
         self.modifiers(&mut names, &appliers)?;
         self.scripts(&names)
     }
@@ -723,27 +727,6 @@ impl<'a> PackageNames<'a> {
         self.roles.entry(script).or_default().insert(role);
         self.params.entry(script).or_default().extend(params);
     }
-}
-
-/// The abilities that apply each modifier: those whose data names it, and those whose script
-/// adds it.
-fn appliers<'a>(
-    package: &'a Package,
-    abilities: &'a BTreeMap<String, AbilityData>,
-) -> BTreeMap<&'a str, Vec<&'a AbilityData>> {
-    let mut appliers: BTreeMap<&str, Vec<&AbilityData>> = BTreeMap::new();
-    for ability in abilities.values() {
-        let scripted = ability
-            .script
-            .as_ref()
-            .and_then(|path| package.script(path))
-            .into_iter()
-            .flat_map(|script| script.facts.modifiers.iter().map(String::as_str));
-        for id in ability.modifiers().chain(scripted) {
-            appliers.entry(id).or_default().push(ability);
-        }
-    }
-    appliers
 }
 
 /// `id` is one of `modifiers`.

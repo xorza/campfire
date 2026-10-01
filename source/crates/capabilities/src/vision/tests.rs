@@ -45,6 +45,7 @@ impl Scene {
             limits,
             players: 1,
             damage_kinds: Rc::from([]),
+            stats: Rc::from([]),
             pools: Rc::from([]),
         };
         let declared = [Capability::Stats, Capability::Combat, Capability::Vision];

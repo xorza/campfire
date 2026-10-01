@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::abilities::ability_data::{AbilityData, Range};
 use crate::abilities::error::AbilityError;
-use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
 use crate::stats::modifier_book::ModifierId;
 use crate::stats::pool_cost::PoolCost;
@@ -68,7 +67,7 @@ pub(crate) struct RankValues {
 
 impl AbilityBook {
     /// Loads `data`, aiming at `aim`, with its fields at each rank `ranks` holds; see
-    /// `Abilities::load`. `frame` takes its params.
+    /// `Abilities::load`.
     #[expect(
         clippy::too_many_arguments,
         reason = "an ability's parts, each from its own place"
@@ -76,7 +75,6 @@ impl AbilityBook {
     pub(crate) fn load(
         &mut self,
         host: &ScriptHost,
-        frame: &mut Frame,
         package: u16,
         passive: Option<Passive>,
         data: &AbilityData,
@@ -92,7 +90,6 @@ impl AbilityBook {
         let hook = Hook::OnResolve;
         let on_resolve = script.filter(|&script| host.defines(script, hook.name(), hook.params()));
         let id = AbilityId(u32::try_from(self.abilities.len()).expect("abilities fit u32"));
-        frame.add_params(id, &data.params);
         self.abilities.push(Ability {
             package,
             passive,

@@ -30,15 +30,6 @@ pub struct Scaling {
 }
 
 impl Param {
-    /// Its value at `rank`; `None` past its ranks. Until a param reads its source, the source
-    /// is level 1 and every stat a scaling table names is 0, so a table's value is its base.
-    pub fn at(&self, rank: u8) -> Option<Scalar> {
-        match self {
-            Param::Ranked(ranked) => ranked.at(rank),
-            Param::Scaling(scaling) => scaling.base.at(rank),
-        }
-    }
-
     /// Every stat its scaling table names, its bonus ratios' among them.
     pub fn stats(&self) -> impl Iterator<Item = &Stat> {
         let scaling = match self {

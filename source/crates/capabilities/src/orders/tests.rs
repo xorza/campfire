@@ -188,6 +188,7 @@ impl Match {
             limits,
             players: 2,
             damage_kinds: Rc::from([]),
+            stats: Rc::from([]),
             pools: Rc::from([]),
         };
         let declared = [

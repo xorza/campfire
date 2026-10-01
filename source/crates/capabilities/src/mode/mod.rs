@@ -42,6 +42,7 @@ use crate::navigation::paths::Paths;
 use crate::orders::OrdersSet;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
+use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::stats::Stats;
@@ -114,13 +115,13 @@ impl Mode {
             .iter()
             .map(|setup| (setup.unit_type, &setup.stats));
         let stats = StatBook::new(&setup.data.stats, types, rate, setup.max_move_speed)
-            .ok_or(ModeError::StatValue)?;
+            .ok_or(ModeError::StatValue)?
+            .with_order(setup.stat_order.clone());
         let pools = &setup.data.pools;
         let bindings = CombatBindings::new(&setup.data.combat, pools, &stats);
         let pool_book = PoolBook::new(pools, &stats);
         let tags = view.types_mut().tag_book(&setup.data.tags);
         let book = ModeBook::new(setup, world.non_send::<ScriptHost>(), &view, &paths)?;
-        view.set_stat_names(Rc::from(stats.stats()));
         world.insert_resource(bindings);
         Stats::load(world, stats, pool_book);
         Units::load_tags(world, tags);
@@ -192,8 +193,15 @@ impl Mode {
         world.get_non_send::<Ctx>()?.mode()?.teams.of(slot)
     }
 
-    /// Applies `effect`, which a call of `book`'s script queued in tick `now`.
-    pub(crate) fn apply_effect(world: &mut World, book: &ModeBook, now: Tick, effect: ModeEffect) {
+    /// Applies `effect`, which a call of `book`'s script queued in tick `now`; a passive it gives
+    /// reads its params through `frame`, the call's.
+    pub(crate) fn apply_effect(
+        world: &mut World,
+        book: &ModeBook,
+        now: Tick,
+        effect: ModeEffect,
+        frame: &Frame,
+    ) {
         match effect {
             ModeEffect::Timer {
                 name,
@@ -203,7 +211,7 @@ impl Mode {
             } => world
                 .resource_mut::<Timers>()
                 .set(now, name, ticks, repeat, data),
-            ModeEffect::SpawnAvatars => book.spawn_avatars(world),
+            ModeEffect::SpawnAvatars => book.spawn_avatars(world, frame),
             ModeEffect::End(result) => {
                 let tick = world.resource::<SimTick>().start();
                 world.insert_resource(MatchEnd::new(tick, result));

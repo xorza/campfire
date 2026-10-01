@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 use std::mem;
 use std::num::NonZeroU32;
 use std::rc::Rc;
+use std::slice;
 
-use bevy_ecs::entity::Entity;
 use campfire_math::Vec3;
 use campfire_sim::{Capability, IdAllocator, SimUpdate, TickRate};
 
@@ -15,16 +15,17 @@ use crate::stats::modifier_data::{AuraData, Reapply};
 use crate::stats::modifiers::{Application, Instance, StatShare};
 use crate::stats::pool_data::PoolData;
 use crate::stats::pool_id::PoolId;
-use crate::stats::stat::Stat;
 use crate::stats::stat_op::StatOp;
 use crate::stats::stat_rule::StatRule;
 use crate::stats::stats_data::{StatValue, StatsData};
 use crate::units::Units;
+use crate::units::block::Block;
 use crate::units::tag::Tag;
 use crate::units::tag_effects::TagEffects;
 use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
 use crate::values::number::Number;
+use crate::values::scalar::Scalar;
 
 /// 30 ticks a second, as the MOBA runs.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
@@ -122,8 +123,10 @@ fn stat_match(types: &[StatsData]) -> TestMatch {
 /// pool of health and of mana, its values before the stats derive them.
 fn unit(game: &mut TestMatch, unit_type: u16) -> Entity {
     let attack = AttackStats::new(Num::ONE, Ticks::new(2), Ticks::new(3), Num::ZERO).unwrap();
+    let id = game.world.resource_mut::<IdAllocator>().allocate();
     game.world
         .spawn((
+            id,
             UnitType::new(unit_type),
             Level::default(),
             UnitStats::default(),
@@ -230,7 +233,12 @@ fn share(
             stack_ends: Vec::new(),
             interval: None,
             shield: None,
-            stats: vec![StatShare { stat, op, value }],
+            stats: vec![StatShare {
+                stat,
+                op,
+                value,
+                live: None,
+            }],
             tags: TagSet::default(),
             state: Vec::new(),
         },
@@ -252,10 +260,14 @@ fn a_stat_is_its_base_plus_adds_times_pcts_times_the_largest_cut() {
         )]
         .into(),
     );
-    let book = StatBook::new(&rules(), [(UnitType::new(0), &armored)], RATE, num(6)).unwrap();
-    let armor = book.index(&armor_stat()).unwrap();
     let tenths = |tenths: i64| num(tenths) / 10;
     let value = |changes: &[(StatOp, Num, u32)]| {
+        let mut game = stat_match(slice::from_ref(&armored));
+        let armor = game
+            .world
+            .resource::<StatBook>()
+            .index(&armor_stat())
+            .unwrap();
         let mut modifiers = Modifiers::default();
         for (at, &(op, value, stacks)) in changes.iter().enumerate() {
             let id = u16::try_from(at).unwrap();
@@ -263,17 +275,12 @@ fn a_stat_is_its_base_plus_adds_times_pcts_times_the_largest_cut() {
                 modifiers.apply(share(id, None, armor, op, value, Reapply::Stack));
             }
         }
-        let (mut totals, mut values) = (Vec::new(), Vec::new());
-        let unit_type = UnitType::new(0);
-        book.compute(
-            unit_type,
-            3,
-            Some(&modifiers),
-            |_| true,
-            &mut totals,
-            &mut values,
-        );
-        values[usize::from(armor)]
+        let armored_unit = unit(&mut game, 0);
+        let mut entity = game.world.entity_mut(armored_unit);
+        entity.insert((Level::new(3).unwrap(), modifiers));
+        game.world.run_schedule(SimUpdate);
+        let stats = game.world.get::<UnitStats>(armored_unit).unwrap();
+        stats.values()[usize::from(armor)]
     };
     assert_eq!(value(&[]), num(14));
     // Adds of 6 and of −1 three times: 17. Pcts of 0.3, 5 033 164.8 bits to 5 033 165, and of
@@ -441,6 +448,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
         limits,
         players: 1,
         damage_kinds: Rc::from([]),
+        stats: Rc::from([]),
         pools: Rc::from([]),
     };
     let mut game = TestMatch::new(&[Capability::Stats], RATE, Some(scripts));
@@ -520,4 +528,64 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     game.world.entity_mut(dead).insert(Dead);
     game.world.run_schedule(SimUpdate);
     assert_eq!([carrier, far].map(|id| holds(&game, id)), [false, false]);
+}
+
+#[test]
+fn a_restored_unit_derives_its_stats_and_tags_again() {
+    // A walker of move speed 4, stunned by a modifier that grants tag 0, which blocks moving, and
+    // slowed by another's cut of 0.5: move speed 4 × (1 − 0.5) = 2.
+    let walker = stats(&[(Stat::Engine(EngineStat::MoveSpeed), num(4), Num::ZERO)]);
+    let stunned = Tag::new(0);
+    let start = || {
+        let mut game = stat_match(slice::from_ref(&walker));
+        let effects = [(
+            TagEffects::default().with_block(Block::Move),
+            TagSet::default(),
+        )];
+        let book = TagBook::new(effects, [(UnitType::new(0), TagSet::default())]);
+        Units::load_tags(&mut game.world, book);
+        game
+    };
+    let mut game = start();
+    let walker = unit(&mut game, 0);
+    let speed = game.world.resource::<StatBook>();
+    let speed = speed.index(&Stat::Engine(EngineStat::MoveSpeed)).unwrap();
+    let mut stun = share(0, None, speed, StatOp::Add, Num::ZERO, Reapply::Refresh);
+    stun.instance.tags = TagSet::of([stunned]);
+    let mut modifiers = Modifiers::default();
+    modifiers.apply(stun);
+    modifiers.apply(share(
+        1,
+        None,
+        speed,
+        StatOp::Cut,
+        sixteenths(8),
+        Reapply::Refresh,
+    ));
+    game.world.entity_mut(walker).insert(modifiers);
+    game.world.run_schedule(SimUpdate);
+
+    // Restored into a fresh match, the unit comes back with its state alone; after a tick on
+    // both, its stats and tags are derived again as the original's are, and the hashes agree.
+    let mut snapshot = Vec::new();
+    game.registry.snapshot(&game.world, &mut snapshot);
+    let mut restored = start();
+    game.registry
+        .restore(&snapshot, &mut restored.world)
+        .unwrap();
+    let id = *game.world.get::<StableId>(walker).unwrap();
+    let copy = restored.world.resource::<EntityIndex>().get(id).unwrap();
+    assert!(restored.world.get::<UnitStats>(copy).is_none());
+    game.world.run_schedule(SimUpdate);
+    restored.world.run_schedule(SimUpdate);
+    for (world, entity) in [(&game.world, walker), (&restored.world, copy)] {
+        let stats = world.get::<UnitStats>(entity).unwrap();
+        assert_eq!(stats.values()[usize::from(speed)], num(2));
+        let tags = world.get::<UnitTags>(entity);
+        assert!(UnitTags::effects_of(tags).blocks(Block::Move));
+    }
+    assert_eq!(
+        game.registry.hash(&game.world),
+        game.registry.hash(&restored.world)
+    );
 }

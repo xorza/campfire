@@ -125,7 +125,7 @@ fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 81] = [
+const FLAWS: [Flaw; 82] = [
     flaw(
         MANIFEST,
         Edit::Replace(r#"engine = "0.1.0""#, r#"engine = "0.0.9""#),
@@ -522,6 +522,17 @@ const FLAWS: [Flaw; 81] = [
         Edit::Replace(r#"ability_power = "0.7""#, r#"spell_power = "0.7""#),
         "hero-husk",
         |problem| matches!(problem, LoadProblem::UnknownStat { at: Place::Ability(_), name } if name == "spell_power"),
+    ),
+    // Dual Path's spell vamp reads attack damage; a modifier whose attack damage reads spell
+    // vamp closes a loop.
+    flaw(
+        "heroes/veil/data/avatar.toml",
+        Edit::Replace(
+            "[modifiers.dual_path.params]",
+            "[modifiers.loop]\nstats = { attack_damage = { param = \"thirst\" } }\n[modifiers.loop.params]\nthirst = { base = 0, spell_vamp = \"10\" }\n\n[modifiers.dual_path.params]",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::StatLoop(stats) if stats.iter().map(ToString::to_string).eq(["attack_damage", "spell_vamp"])),
     ),
     flaw(
         "heroes/veil/data/avatar.toml",

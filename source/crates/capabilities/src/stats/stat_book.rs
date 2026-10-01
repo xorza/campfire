@@ -1,16 +1,14 @@
 use std::collections::BTreeMap;
 
 use bevy_ecs::resource::Resource;
-use campfire_math::{Num, U256};
+use campfire_math::Num;
 use campfire_sim::{TickRate, Ticks};
 
 use crate::combat::attack_stats::AttackStats;
-use crate::stats::modifiers::Modifiers;
 use crate::stats::stat::{EngineStat, Stat};
-use crate::stats::stat_op::StatOp;
 use crate::stats::stat_rule::StatRule;
+use crate::stats::stat_totals::StatTotals;
 use crate::stats::stats_data::StatsData;
-use crate::units::tag_set::TagSet;
 use crate::units::unit_type::UnitType;
 use crate::values::scalar::Scalar;
 
@@ -27,40 +25,13 @@ pub(crate) struct StatBook {
     /// Each unit type's growth of each stat, one row of the stats a type, in the types' order;
     /// `None` where the type gives the stat no value.
     growth: Vec<Option<Growth>>,
+    /// The stats' places in the order the refresh computes them: each after every stat a live
+    /// change of it reads.
+    order: Vec<u16>,
+    /// Each stat's position in `order`, by its place.
+    positions: Vec<u16>,
     rate: TickRate,
     max_move_speed: Num,
-}
-
-/// `bits` as a number, at the end of the range of numbers when past it.
-fn saturate(bits: i128) -> Num {
-    let bits = bits.clamp(i128::from(i64::MIN), i128::from(i64::MAX));
-    Num::from_bits(i64::try_from(bits).expect("clamped to the range"))
-}
-
-/// What a stat's value sums from its base and its modifiers, in bits: the base and each add, each
-/// percent, and the largest cut.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct StatTotals {
-    add: i128,
-    pct: i128,
-    cut: i128,
-}
-
-impl StatTotals {
-    /// `(add) × (1 + pct) × (1 − cut)`, the cut from 0 to 1, each sum stopped at the range of a
-    /// number, the product rounded once to nearest and stopped at that range too.
-    fn value(self) -> Num {
-        let one = 1_i128 << Num::FRAC_BITS;
-        let base = saturate(self.add).to_bits();
-        let gain = saturate(one + self.pct).to_bits();
-        let kept = one - self.cut.clamp(0, one);
-        let negative = (base < 0) != (gain < 0);
-        let magnitude = u128::from(base.unsigned_abs()) * u128::from(gain.unsigned_abs());
-        let product = U256::product(magnitude, kept.cast_unsigned())
-            .round_shr(2 * Num::FRAC_BITS)
-            .map_or(i128::MAX, |bits| i128::try_from(bits).unwrap_or(i128::MAX));
-        saturate(if negative { -product } else { product })
-    }
 }
 
 /// A stat's value at level 1, and what it gains a level.
@@ -81,6 +52,7 @@ impl StatBook {
         max_move_speed: Num,
     ) -> Option<StatBook> {
         let stats: Vec<Stat> = rules.keys().cloned().collect();
+        let stats_len = u16::try_from(stats.len()).expect("stats fit u16");
         let mut engine = [None; EngineStat::ALL.len()];
         for (at, stat) in stats.iter().enumerate() {
             if let Stat::Engine(stat) = stat {
@@ -109,67 +81,75 @@ impl StatBook {
             rules: rules.values().copied().collect(),
             engine,
             growth,
+            order: (0..stats_len).collect(),
+            positions: (0..stats_len).collect(),
             rate,
             max_move_speed,
         })
-    }
-
-    pub(crate) fn stats(&self) -> &[Stat] {
-        &self.stats
     }
 
     pub(crate) const fn rate(&self) -> TickRate {
         self.rate
     }
 
-    /// The stats of a unit of `unit_type` at `level` carrying `modifiers` into `values`, with
-    /// `totals` to sum in: each `(base + Σ add) × (1 + Σ pct) × (1 − max cut)`, the base the
-    /// type's value at that level, 0 where it gives none, and each modifier's change times its
-    /// stacks, of the modifiers whose tags `takes_effect` lets act; only the largest cut counts,
-    /// from 0 to 1. The product rounds once, to nearest; a sum past the range of a number stops at
-    /// its end; then the stat's limits clamp the value.
-    pub(crate) fn compute(
-        &self,
-        unit_type: UnitType,
-        level: u32,
-        modifiers: Option<&Modifiers>,
-        takes_effect: impl Fn(TagSet) -> bool,
-        totals: &mut Vec<StatTotals>,
-        values: &mut Vec<Num>,
-    ) {
-        let first = unit_type.index() * self.stats.len();
-        let levels = i128::from(level - 1);
-        totals.clear();
-        totals.extend((0..self.stats.len()).map(|at| {
-            let base = self.growth.get(first + at).copied().flatten();
-            StatTotals {
-                add: base.map_or(0, |growth| {
-                    i128::from(growth.base.to_bits())
-                        + i128::from(growth.per_level.to_bits()) * levels
-                }),
-                pct: 0,
-                cut: 0,
-            }
-        }));
-        let held = modifiers.into_iter().flat_map(Modifiers::iter);
-        for instance in held.filter(|instance| takes_effect(instance.tags)) {
-            for share in &instance.stats {
-                let total = &mut totals[usize::from(share.stat)];
-                let change = i128::from(share.value.to_bits()) * i128::from(instance.stacks);
-                match share.op {
-                    StatOp::Add => total.add += change,
-                    StatOp::Pct => total.pct += change,
-                    StatOp::Cut => total.cut = total.cut.max(change),
-                }
-            }
-        }
-        values.clear();
-        values.extend(
-            totals
-                .iter()
-                .zip(&self.rules)
-                .map(|(total, rule)| rule.clamp(total.value())),
+    /// The book with the stats in `order`, a permutation of their places, as a stat graph of
+    /// the mode gives it.
+    #[must_use]
+    pub(crate) fn with_order(self, order: Vec<u16>) -> StatBook {
+        let mut sorted = order.clone();
+        sorted.sort_unstable();
+        assert!(
+            sorted.iter().copied().eq(0..self.len()),
+            "an order holds every stat once"
         );
+        let mut positions = vec![0; order.len()];
+        for (position, &at) in (0..).zip(&order) {
+            positions[usize::from(at)] = position;
+        }
+        StatBook {
+            order,
+            positions,
+            ..self
+        }
+    }
+
+    /// How many stats the mode declares.
+    pub(crate) fn len(&self) -> u16 {
+        u16::try_from(self.stats.len()).expect("stats fit u16")
+    }
+
+    /// The stats' places in the order the refresh computes them.
+    pub(crate) fn order(&self) -> &[u16] {
+        &self.order
+    }
+
+    /// The position of the stat at `at` in the order.
+    pub(crate) fn position(&self, at: u16) -> u16 {
+        self.positions[usize::from(at)]
+    }
+
+    /// Appends to `totals` a unit of `unit_type` at `level`'s totals of each stat before its
+    /// modifiers.
+    pub(crate) fn totals(&self, unit_type: UnitType, level: u32, totals: &mut Vec<StatTotals>) {
+        totals.extend(
+            (0..self.len()).map(|at| StatTotals::base(self.base_bits(unit_type, at, level))),
+        );
+    }
+
+    /// The value of the stat at `at` that `totals` sum, within its rule's limits.
+    pub(crate) fn value(&self, at: u16, totals: StatTotals) -> Num {
+        self.rules[usize::from(at)].clamp(totals.value())
+    }
+
+    /// The value of a unit of `unit_type` at `level` of the stat at `at`, before its modifiers,
+    /// in bits: `base + per_level × (level − 1)`, 0 where the type gives none.
+    pub(crate) fn base_bits(&self, unit_type: UnitType, at: u16, level: u32) -> i128 {
+        let first = unit_type.index() * self.stats.len();
+        let growth = self.growth.get(first + usize::from(at)).copied().flatten();
+        growth.map_or(0, |growth| {
+            i128::from(growth.base.to_bits())
+                + i128::from(growth.per_level.to_bits()) * i128::from(level.saturating_sub(1))
+        })
     }
 
     /// The place of `stat` among the stats; `None` when the mode does not declare it.

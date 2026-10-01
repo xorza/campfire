@@ -8,6 +8,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::abilities::ability_book::AbilityId;
 use crate::scripts::state_value::StateValue;
+use crate::stats::live_param::LiveParam;
 use crate::stats::modifier_book::ModifierId;
 use crate::stats::modifier_data::Reapply;
 use crate::stats::stat_op::StatOp;
@@ -67,12 +68,14 @@ pub(crate) struct StackEnd {
     pub(crate) count: u32,
 }
 
-/// A modifier's change of one stat a stack.
+/// A modifier's change of one stat a stack: `value`, which the refresh reads again from `live`
+/// when the change reads a scaling table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct StatShare {
     pub(crate) stat: u16,
     pub(crate) op: StatOp,
     pub(crate) value: Num,
+    pub(crate) live: Option<LiveParam>,
 }
 
 /// A modifier applied to a unit, its numbers resolved: its instance as it would be new, with
@@ -416,6 +419,7 @@ mod tests {
                     stat: 0,
                     op: StatOp::Add,
                     value: num(armor),
+                    live: None,
                 }],
                 tags: TagSet::default(),
                 state: vec![StateValue::Int(7)],

@@ -54,6 +54,7 @@ impl<'a> MatchBuild<'a> {
             limits: manifest.script_limits,
             players,
             damage_kinds: packages.data().combat.damage_kinds.as_slice().into(),
+            stats: packages.data().stats.keys().cloned().collect(),
             pools: packages.data().pools.keys().cloned().collect(),
         };
         manifest
@@ -106,6 +107,7 @@ impl<'a> MatchBuild<'a> {
             loadout,
             walkers: packages.walker_radii(),
             max_move_speed: manifest.max_move_speed.get(),
+            stat_order: packages.stat_graph().order().expect(CHECKED),
         };
         Mode::install(build.world, schedule, registry, setup).map_err(StartError::Mode)
     }

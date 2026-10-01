@@ -22,6 +22,7 @@ use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::{PathDirection, PathWalker};
 use crate::navigation::paths::Paths;
 use crate::scripts::error::ApiError;
+use crate::scripts::frame::Frame;
 use crate::stats::Stats;
 use crate::stats::level::Level;
 use crate::stats::modifier_book::Applier;
@@ -195,8 +196,9 @@ impl ModeBook {
     }
 
     /// Spawns the avatar of each player who chose one and has none yet, in slot order, at their team's
-    /// spawn: under their control, with its abilities unlearned and their loadout.
-    pub(crate) fn spawn_avatars(&self, world: &mut World) {
+    /// spawn: under their control, with its abilities unlearned and their loadout, its passive's
+    /// params read through `frame`.
+    pub(crate) fn spawn_avatars(&self, world: &mut World, frame: &Frame) {
         for slot in (0..self.teams.players()).map(PlayerSlot::new) {
             let pick = world.resource::<Picks>().of(slot);
             let (Some(avatar), false) = (pick.avatar, pick.spawned) else {
@@ -233,7 +235,7 @@ impl ModeBook {
                     id: passive,
                     duration: None,
                 };
-                Stats::apply_effect(world, add, applier, |_| None);
+                Stats::apply_effect(world, add, applier, Some(frame));
             }
             world.resource_mut::<Picks>().of_mut(slot).spawned = true;
         }

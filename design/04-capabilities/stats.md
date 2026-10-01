@@ -95,7 +95,7 @@ A unit's level, from 1, is state beside its modifiers; `progression` changes it.
 ## State and derived
 
 - **State**, hashed, saved, restored and replicated: each unit's modifiers, its level, the current amount of each pool, and the players' modifiers.
-- **Derived**, never state: each unit's stats and tags. They are computed from the state again whenever its modifiers, level or type change, before any system reads them, so the server, a client after a rollback and a replay see the same numbers. The components that hold a stat's effect, a unit's step a tick, its weapons' periods and damage and its pools' maxima, take their numbers from the derived stats each time they change; those components exist from the unit's spawn, as state, so their numbers enter the hash as well.
+- **Derived**, never state: each unit's stats and tags. They are computed from the state again whenever its modifiers, level or type change, or a source of a live change it carries changes, and after a restore, before any system reads them, so the server, a client after a rollback and a replay see the same numbers. The components that hold a stat's effect, a unit's step a tick, its weapons' periods and damage and its pools' maxima, take their numbers from the derived stats each time they change; those components exist from the unit's spawn, as state, so their numbers enter the hash as well.
 
 ## Script API
 
@@ -109,7 +109,7 @@ To derive them, a client builds the mode's stat book from the packages it holds,
 
 ## Cost
 
-A refresh of a unit walks its modifiers once: its cost grows with the modifiers and the stats each changes. Only units whose modifiers, level or type changed refresh. Each tick, every unit's pools regenerate, its modifiers' ends and intervals are counted, and each aura carrier finds the units within its radius.
+A refresh of a unit walks its modifiers once: its cost grows with the modifiers and the stats each changes. Only units whose modifiers, level or type changed refresh, and those that carry a live change, which refresh every pass. Each tick, every unit's pools regenerate, its modifiers' ends and intervals are counted, and each aura carrier finds the units within its radius.
 
 ## Genres
 

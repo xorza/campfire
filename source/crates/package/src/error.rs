@@ -3,7 +3,7 @@ use std::fmt;
 use std::io;
 use std::path::PathBuf;
 
-use campfire_capabilities::{AbilityField, DeclaredName, MapProblem, ModeError, Pools};
+use campfire_capabilities::{AbilityField, DeclaredName, MapProblem, ModeError, Pools, Stat};
 use campfire_content::PackagePath;
 use campfire_script::ScriptError;
 use campfire_sim::Capability;
@@ -208,6 +208,9 @@ pub enum LoadProblem {
         at: Place,
         name: DeclaredName,
     },
+    /// Live stat changes across the mode's modifiers read each other in a loop, through these
+    /// stats.
+    StatLoop(Vec<Stat>),
     /// The mode declares more pools than `Pools::LIMIT`.
     TooManyPools,
     /// The mode declares `combat` but no `[combat] life`.
@@ -386,6 +389,14 @@ impl fmt::Display for LoadProblem {
             LoadProblem::UnknownStat { at, name } => write!(f, "{at}: no stat {name:?}"),
             LoadProblem::UnknownPool { at, name } => write!(f, "{at}: no pool {name:?}"),
             LoadProblem::RepeatedPool { at, name } => write!(f, "{at}: pool {name:?} twice"),
+            LoadProblem::StatLoop(stats) => {
+                let names: Vec<String> = stats.iter().map(Stat::to_string).collect();
+                write!(
+                    f,
+                    "live stat changes read each other in a loop through {}",
+                    names.join(", ")
+                )
+            }
             LoadProblem::TooManyPools => {
                 write!(f, "more than {} pools", Pools::LIMIT)
             }

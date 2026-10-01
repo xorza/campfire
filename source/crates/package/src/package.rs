@@ -1,3 +1,6 @@
+use std::collections::BTreeMap;
+
+use campfire_capabilities::AbilityData;
 use campfire_content::{Fingerprint, PackagePath};
 use campfire_script::ScriptHost;
 
@@ -73,6 +76,27 @@ impl Package {
     /// The script at `path`.
     pub(crate) fn script(&self, path: &PackagePath) -> Option<&Script> {
         Some(&self.scripts[self.script_index(path)?])
+    }
+
+    /// The abilities of `abilities`, this package's, that apply each modifier: those whose data
+    /// names it, and those whose script adds it.
+    pub(crate) fn appliers<'a>(
+        &'a self,
+        abilities: &'a BTreeMap<String, AbilityData>,
+    ) -> BTreeMap<&'a str, Vec<&'a AbilityData>> {
+        let mut appliers: BTreeMap<&str, Vec<&AbilityData>> = BTreeMap::new();
+        for ability in abilities.values() {
+            let scripted = ability
+                .script
+                .as_ref()
+                .and_then(|path| self.script(path))
+                .into_iter()
+                .flat_map(|script| script.facts.modifiers.iter().map(String::as_str));
+            for id in ability.modifiers().chain(scripted) {
+                appliers.entry(id).or_default().push(ability);
+            }
+        }
+        appliers
     }
 
     /// The place of the script at `path` in `scripts`.
