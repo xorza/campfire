@@ -1,14 +1,15 @@
-//! The reference 3v3 as its packages hold it plays a match that replays to the same state hashes.
+//! The reference 3v3 as its packages hold it plays a match with no failed call that replays to the
+//! same state hashes.
 
 use campfire_capabilities::{
-    ActionSlot, ActionSlots, Hook, ModeState, Owner, PathWalker, PlayerResources, ResourceId,
+    ActionSlot, ActionSlots, ModeState, Owner, PathWalker, PlayerResources, ResourceId,
     ScriptFailures, SlotKind, StateValue, Team, UnitType,
 };
 use campfire_math::{Num, PlayerSlot, Vec3};
 use campfire_protocol::SessionLog;
 use campfire_runner::{Reference3v3, Runner};
 use campfire_script::ScriptHost;
-use campfire_sim::{EntityIndex, Position, StableId, StateHash};
+use campfire_sim::{EntityIndex, Position, StateHash};
 
 #[derive(Debug)]
 struct Run {
@@ -17,8 +18,6 @@ struct Run {
     /// Each unit after the tick the heroes spawn in, and after the one the first wave spawns in.
     at_pick_end: Vec<Unit>,
     at_first_wave: Vec<Unit>,
-    /// The units whose calls failed, of every tick.
-    failed: Vec<StableId>,
 }
 
 /// A unit as a test sees it: its team, its unit type, where it stands, who controls it, whether
@@ -67,16 +66,16 @@ fn run(reference: &Reference3v3, ticks: u64) -> Run {
         hashes: Vec::new(),
         at_pick_end: Vec::new(),
         at_first_wave: Vec::new(),
-        failed: Vec::new(),
     };
     for tick in 0..ticks {
         run.runner.run_tick();
         run.hashes.push(run.runner.state_hash());
         let failures = run.runner.world().non_send::<ScriptFailures>();
-        for failure in failures.get() {
-            assert_eq!(failure.hook, Hook::OnThink, "{failure:?}");
-            run.failed.push(failure.unit.unwrap());
-        }
+        assert!(
+            failures.get().is_empty(),
+            "tick {tick}: {:?}",
+            failures.get()
+        );
         match tick {
             PICK_END => run.at_pick_end = units(&run.runner),
             FIRST_WAVE => run.at_first_wave = units(&run.runner),
@@ -183,10 +182,6 @@ fn a_3v3_match_replays_to_the_same_hashes() {
             "player {slot}"
         );
     }
-    // Only camps, 20 to 24, fail: their AI reads `unit.spawn_pos`, which the release does not
-    // have yet.
-    assert!(!run.failed.is_empty());
-    assert!(run.failed.iter().all(|id| (20..25).contains(&id.get())));
     let hashes = &run.hashes;
 
     let mut file = Vec::new();

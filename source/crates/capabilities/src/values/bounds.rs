@@ -64,8 +64,14 @@ impl Bounds {
     /// The point of the bounds nearest `pos` on the ground plane, at its height.
     pub(crate) fn clamp(self, pos: Position) -> Position {
         let at = pos.get();
-        let [x, z] = self.clamp_ground([at.x, at.z]);
-        Position::new(Vec3::new(x, at.y, z)).expect("bounds are within the world's bound")
+        self.ground_point([at.x, at.z], pos)
+    }
+
+    /// The point of the bounds nearest `[x, z]` on the ground plane, at the height of `at`: a
+    /// unit ordered to a point on the ground keeps its height.
+    pub(crate) fn ground_point(self, ground: [Num; 2], at: Position) -> Position {
+        let [x, z] = self.clamp_ground(ground);
+        Position::new(Vec3::new(x, at.get().y, z)).expect("bounds are within the world's bound")
     }
 }
 
@@ -135,6 +141,10 @@ mod tests {
             at(num(1), num(0), num(2))
         );
         assert_eq!(bounds.clamp_ground([num(-9), num(-9)]), [num(-2), num(-1)]);
+        assert_eq!(
+            bounds.ground_point([num(9), num(-9)], at(num(1), num(6), num(2))),
+            at(num(4), num(6), num(-1))
+        );
 
         let past = Position::BOUND + e;
         for (min, max) in [

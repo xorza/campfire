@@ -112,7 +112,13 @@ impl Unit {
                     })
                 },
             )
-            .plan(field("spawn_pos", "where it spawned"));
+            .bind(
+                field(
+                    "spawn_pos",
+                    "where it spawned, where it respawns; `()` with none",
+                ),
+                |unit: &mut Unit| unit.row().spawn.map_or(Dynamic::UNIT, Dynamic::from),
+            );
         api.ty::<UnitParams>("UnitParams")
             .index(|params: &mut UnitParams, name: ImmutableString| params.get(&name));
     }

@@ -9,6 +9,8 @@ pub struct PathWalker {
     from: PathEnd,
     /// The waypoint it walks to next, counted from its end.
     next: u32,
+    /// Whether it left the path for a place it was ordered to, until it is told to walk it again.
+    left: bool,
 }
 
 /// The end of a path a unit walks it from, as a placed unit's or a spawn group's `from` names it:
@@ -34,7 +36,11 @@ impl PathEnd {
 impl PathWalker {
     /// A walker at the end `from` of its path, bound for its second waypoint from there.
     pub const fn start(from: PathEnd) -> PathWalker {
-        PathWalker { from, next: 1 }
+        PathWalker {
+            from,
+            next: 1,
+            left: false,
+        }
     }
 
     pub const fn walks_from(self) -> PathEnd {
@@ -47,6 +53,19 @@ impl PathWalker {
 
     pub(crate) const fn advance(&mut self) {
         self.next += 1;
+    }
+
+    /// Whether it left the path, and walks it no more until it rejoins it.
+    pub const fn left(self) -> bool {
+        self.left
+    }
+
+    pub(crate) const fn leave(&mut self) {
+        self.left = true;
+    }
+
+    pub(crate) const fn rejoin(&mut self) {
+        self.left = false;
     }
 }
 

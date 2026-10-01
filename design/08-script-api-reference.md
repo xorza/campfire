@@ -34,8 +34,8 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `nearest_visible` | `(of, radius, filter)` | every role | vision | runs | the nearest living unit within `radius` of `of` that `filter` selects and `of`'s team sees, `()` with none |
 | `order_attack` | `(unit, target)` | AI | orders | runs | `unit`, which has an attack, attacks `target`, a living enemy |
 | `order_follow_path` | `(unit)` | AI | orders | runs | `unit` drops its target and walks its path again |
-| `order_move` | `(unit, pos)` | AI | orders | planned | `unit` walks to `pos` |
-| `order_reset` | `(unit)` | AI | orders | planned | `unit` walks home, heals, and drops its target |
+| `order_move` | `(unit, pos)` | AI | orders | runs | `unit` drops its target and walks to `pos`, within the map, off its path |
+| `order_reset` | `(unit)` | AI | orders | runs | `unit` drops its target and walks home, taking no order until there, where its pools fill |
 | `origin` | read | action | abilities | planned | where the cast comes from |
 | `p` | read | every role | core | runs | the params: an ability's at its rank, a modifier's then its ability's, or the mode's |
 | `pick` | `(list)` | every role | core | planned | an entry of `list`, from the secret stream |
@@ -82,7 +82,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `pos` | read | core | runs | where it stands |
 | `radius` | read | core | runs | its body's radius, 0 with no body |
 | `recent_attackers` | `(ms)` | combat | runs | the living units that struck it within the last `ms`, rounded up to whole ticks |
-| `spawn_pos` | read | core | planned | where it spawned |
+| `spawn_pos` | read | core | runs | where it spawned, where it respawns; `()` with none |
 | `stat` | `(name)` | stats | runs | its value of a stat the mode declares |
 | `target` | read | core | runs | its attack's target, `()` with none |
 | `team` | read | core | runs | its team's name |

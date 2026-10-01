@@ -39,6 +39,8 @@ pub enum ApiError {
     UnknownTrack,
     /// Experience on a track the unit does not have.
     NoTrack,
+    /// A reset of a unit with no spawn place to walk to.
+    NoSpawnPlace,
     NegativeXp,
     /// An integer beyond a `Num`, which reaches 2³⁹.
     IntegerBeyondNum,
@@ -187,6 +189,7 @@ impl fmt::Display for ApiError {
             ApiError::NegativeDamage => "damage is negative",
             ApiError::UnknownTrack => "no such track",
             ApiError::NoTrack => "the unit does not have the track",
+            ApiError::NoSpawnPlace => "the unit has no spawn place",
             ApiError::NegativeXp => "experience is negative",
             ApiError::IntegerBeyondNum => "integer is beyond a Num",
             ApiError::NoAttack => "unit has no attack",

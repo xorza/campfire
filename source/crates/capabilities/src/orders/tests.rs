@@ -4,7 +4,7 @@ use std::rc::Rc;
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::Component;
 use campfire_content::PackagePath;
-use campfire_math::{Num, PlayerSlot};
+use campfire_math::{Num, PlayerSlot, Vec3};
 use campfire_sim::{Capability, IdAllocator, SimUpdate, TickInput, TypeHash};
 
 use super::*;
@@ -18,7 +18,6 @@ use crate::scripts::match_scripts::MatchScripts;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::pool_id::PoolId;
-use crate::stats::pools::Pools;
 use crate::units::Units;
 use crate::units::path_id::PathId;
 use crate::units::script_view::View;
@@ -110,6 +109,29 @@ fn defend_hero(ctx, tower, range) {
     ()
 }
 "#;
+
+const CAMP_AI: &str = r"
+fn on_think(ctx, unit) {
+    let away = unit.pos.distance_to(unit.spawn_pos);
+    if away > unit.params.leash_range {
+        ctx.order_reset(unit);
+        return;
+    }
+    let target = unit.target;
+    if target != () && target.alive && unit.can_see(target) {
+        return;
+    }
+    for attacker in unit.recent_attackers(unit.params.aggro_window_ms) {
+        if unit.can_see(attacker) {
+            ctx.order_attack(unit, attacker);
+            return;
+        }
+    }
+    if away > unit.params.home_slack {
+        ctx.order_move(unit, unit.spawn_pos);
+    }
+}
+";
 
 fn num(value: i64) -> Num {
     Num::from_int(value).unwrap()
@@ -785,6 +807,27 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
         CallError::Api(ApiError::OtherUnit)
     ));
     assert_eq!(game.target(ally), Some(enemy));
+
+    // A unit the mode did not spawn has no spawn place to reset to: the call fails.
+    let resetter = game.unit_type(
+        &[],
+        &[],
+        Some("fn on_think(ctx, unit) { ctx.order_reset(unit); }"),
+    );
+    let stats = game.arm(standing(), Team::new(0));
+    let homeless = game.spawn(at(2, 0, 0), (resetter, stats));
+    // It thinks first in the tick of its id, 3.
+    assert_eq!(homeless.get(), 3);
+    game.run_until(homeless.get());
+    game.tick(&[]);
+    let failures = game.world.non_send::<ScriptFailures>().get();
+    assert_eq!(failures.len(), 1);
+    assert_eq!(failures[0].unit, Some(homeless));
+    assert!(matches!(
+        failures[0].error,
+        CallError::Api(ApiError::NoSpawnPlace)
+    ));
+    assert!(game.get::<Resetting>(homeless).is_none());
 }
 
 #[test]
@@ -871,6 +914,128 @@ fn a_walker_goes_back_to_its_path_after_a_chase() {
 }
 
 #[test]
+fn a_monster_pulled_past_its_leash_walks_home_ignoring_its_attacker_and_heals() {
+    let mut game = Match::new();
+    let half = Num::from_bits(1 << 23);
+    let params = [
+        ("leash_range", meters(8)),
+        ("home_slack", Scalar::Decimal(half)),
+        ("aggro_window_ms", Scalar::Int(5000)),
+    ];
+    let camp = game.unit_type(&["camp"], &params, Some(CAMP_AI));
+    let home = at(0, 0, 0);
+    let arms = game.arm(combatant(100, 1, 1, 5, 0), Team::new(0));
+    let parts = (
+        camp,
+        arms,
+        MoveStep::new(half).unwrap().bundle(),
+        SpawnPoint::new(home),
+    );
+    let monster = game.spawn(home, parts);
+    let hero = game.hero(0, Team::new(1), at(2, 0, 0), fighter_stats());
+    assert_eq!(monster.get(), 0);
+    let resets = |game: &Match| game.get::<Resetting>(monster).is_some();
+
+    // The hero strikes 30 in ticks 2 and 7, then runs from tick 8, a meter a tick. The monster,
+    // thinking every 8 ticks, attacks it from tick 8 and follows at half a meter a tick: 4 m out
+    // by its think in tick 16, 8 in tick 24, and 12, past its leash of 8, in tick 32: it resets.
+    game.think(&[(0, &attack(hero, monster))]);
+    game.run_until(8);
+    game.think(&[(0, &move_to(hero, 30, 0))]);
+    while game.world.resource::<SimTick>().start().get() < 32 {
+        game.think(&[]);
+    }
+    assert_eq!(game.target(monster), Some(hero));
+    assert!(!resets(&game));
+    game.think(&[]);
+    assert!(resets(&game));
+    assert_eq!(game.destination(monster), Some(home));
+    assert_eq!(game.health(monster), Some(40));
+
+    // It walks the 12 m home in 24 ticks, to tick 55. At its thinks in ticks 40 and 48, 8 and
+    // 4 m out, it attacks the hero that struck it, and the reset ignores the order.
+    for _ in 33..=55 {
+        game.think(&[]);
+        assert!(resets(&game));
+        assert_eq!(game.target(monster), None);
+    }
+    assert_eq!(game.position(monster), home);
+    assert_eq!(game.health(monster), Some(40));
+    // Home, its pools fill as tick 56 begins, and its think then takes the hero again.
+    game.think(&[]);
+    assert!(!resets(&game));
+    assert_eq!(game.health(monster), Some(100));
+    assert_eq!(game.target(monster), Some(hero));
+
+    // One that dies while it resets stops resetting, and nothing fills its pools.
+    let entity = game.world.resource::<EntityIndex>().get(monster).unwrap();
+    let mut unit = game.world.entity_mut(entity);
+    unit.get_mut::<Pools>()
+        .unwrap()
+        .take(PoolId::FIRST, num(60));
+    unit.insert((Resetting, Dead));
+    game.tick(&[]);
+    assert!(!resets(&game));
+    assert_eq!(game.health(monster), Some(40));
+}
+
+#[test]
+fn a_walker_ordered_to_move_leaves_its_path_until_it_follows_it_again() {
+    let waypoints = [at(0, 0, 0), at(4, 0, 0), at(4, 0, 4)];
+    let mut game = Match::with_paths(Paths::new([("mid", &waypoints[..])]));
+    // To the post while away from it, and back to the path once there.
+    let mover = r#"
+fn on_think(ctx, unit) {
+    let post = ctx.find(unit, unit.pos, 50, "allies:post")[0];
+    if unit.pos.within(post.pos, 0) {
+        ctx.order_follow_path(unit);
+    } else {
+        ctx.order_move(unit, post.pos);
+    }
+}
+"#;
+    let walker_type = game.unit_type(&["walker"], &[], Some(mover));
+    let post_type = game.unit_type(&["post"], &[], None);
+    let parts = (
+        walker_type,
+        game.arm(dummy(10), Team::new(0)),
+        meter().bundle(),
+        OnPath::new(PathId::new(0)),
+        PathWalker::start(PathEnd::Start),
+    );
+    let walker = game.spawn(at(0, 0, 0), parts);
+    let post = game.arm(standing(), Team::new(0));
+    game.spawn(at(0, 0, 3), (post_type, post));
+    assert_eq!(walker.get(), 0);
+
+    // It thinks in tick 0, off the path to the post 3 m away, there in tick 2, and stays: the
+    // path no longer draws it to its next waypoint. Its think in tick 8 sends it back to it.
+    let mut steps = Vec::new();
+    for _ in 0..8 {
+        game.think(&[]);
+        steps.push(game.position(walker));
+    }
+    let post_at = at(0, 0, 3);
+    assert_eq!(
+        steps,
+        [
+            at(0, 0, 1),
+            at(0, 0, 2),
+            post_at,
+            post_at,
+            post_at,
+            post_at,
+            post_at,
+            post_at
+        ]
+    );
+    assert!(game.get::<PathWalker>(walker).unwrap().left());
+    game.think(&[]);
+    assert!(!game.get::<PathWalker>(walker).unwrap().left());
+    assert_eq!(game.destination(walker), Some(at(4, 0, 0)));
+}
+
+#[test]
 fn a_walker_follows_its_path_in_its_direction() {
     let waypoints = [at(0, 0, 0), at(4, 0, 0), at(4, 0, 4)];
     let mut game = Match::with_paths(Paths::new([("mid", &waypoints[..])]));
@@ -914,14 +1079,21 @@ fn a_walker_follows_its_path_in_its_direction() {
 fn every_orders_type_is_state_and_restores() {
     let mut game = Match::new();
     let fighter = game.hero(0, Team::new(0), at(0, 0, 0), fighter_stats());
-    game.still(Team::new(1), at(9, 0, 0), fighter_stats());
+    let still = game.still(Team::new(1), at(9, 0, 0), fighter_stats());
     game.tick(&[(0, &move_to(fighter, 0, 3))]);
+    let entity = game.world.resource::<EntityIndex>().get(still).unwrap();
+    game.world.entity_mut(entity).insert(Resetting);
 
     let registry = &game.registry;
     let mut per_type = Vec::new();
     let hash = registry.hash_by_type(&game.world, &mut per_type);
     let names: Vec<_> = per_type.iter().map(|TypeHash { name, .. }| *name).collect();
-    for name in ["units.owner", "units.team", "orders.next_think"] {
+    for name in [
+        "units.owner",
+        "units.team",
+        "orders.next_think",
+        "orders.resetting",
+    ] {
         assert!(names.contains(&name), "{name}");
     }
 
@@ -931,4 +1103,5 @@ fn every_orders_type_is_state_and_restores() {
     registry.restore(&snapshot, &mut restored.world).unwrap();
     assert_eq!(registry.hash(&restored.world), hash);
     assert_eq!(restored.destination(fighter), Some(at(0, 0, 3)));
+    assert!(restored.get::<Resetting>(still).is_some());
 }

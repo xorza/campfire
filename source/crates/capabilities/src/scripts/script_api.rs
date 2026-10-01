@@ -666,8 +666,11 @@ mod tests {
         assert_eq!(timer.roles, RoleSet::MODE);
         let stacks = api.member(ApiOwner::Modifier, "stacks").unwrap();
         assert!(stacks.writable);
-        let spawn_pos = api.member(ApiOwner::Unit, "spawn_pos").unwrap();
-        assert_eq!(spawn_pos.status, Status::Planned);
+        let points = api.member(ApiOwner::Unit, "points").unwrap();
+        assert_eq!(
+            (points.capability, points.status),
+            (Some(Capability::Progression), Status::Planned)
+        );
         assert!(api.builtin("len") && api.builtin("max") && !api.builtin("pos"));
     }
 

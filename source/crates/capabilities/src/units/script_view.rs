@@ -35,6 +35,7 @@ use crate::units::owner::Owner;
 use crate::units::path_id::PathId;
 use crate::units::recent_attack::RecentAttack;
 use crate::units::relations::Relations;
+use crate::units::spawn_point::SpawnPoint;
 use crate::units::tag::Tag;
 use crate::units::team::Team;
 use crate::units::team_set::TeamSet;
@@ -102,6 +103,8 @@ pub(crate) struct UnitRow {
     pub(crate) team: Team,
     /// Its body's radius, 0 for a unit with no body.
     pub(crate) radius: Num,
+    /// Where it spawned, if it did as a unit of the mode.
+    pub(crate) spawn: Option<Position>,
     pub(crate) unit_type: Option<UnitType>,
     /// The player who controls it.
     pub(crate) owner: Option<PlayerSlot>,
@@ -247,6 +250,7 @@ impl ScriptView {
                 pos,
                 team,
                 radius: Body::radius_of(unit.get::<Body>()),
+                spawn: unit.get::<SpawnPoint>().map(|spawn| spawn.get()),
                 alive: true,
                 stays: false,
                 unit_type: unit.get::<UnitType>().copied(),

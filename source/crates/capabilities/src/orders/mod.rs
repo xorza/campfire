@@ -3,7 +3,6 @@ use bevy_ecs::query::Without;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Local, Query, Res};
 use bevy_ecs::world::{Mut, World};
-use campfire_math::Vec3;
 use campfire_script::{ScriptError, ScriptHost, ScriptId};
 use campfire_sim::{
     Command, EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, Tick, TickInputs,
@@ -26,15 +25,18 @@ use crate::orders::ai_order::AiOrder;
 use crate::orders::error::AiError;
 use crate::orders::next_think::NextThink;
 use crate::orders::order::{Action, Order};
+use crate::orders::resetting::Resetting;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
 use crate::stats::StatsSet;
+use crate::stats::pools::Pools;
 use crate::units::body::Body;
 use crate::units::by_type::ByType;
 use crate::units::owner::Owner;
+use crate::units::spawn_point::SpawnPoint;
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
 use crate::values::bounds::Bounds;
@@ -46,6 +48,7 @@ pub(crate) mod error;
 pub(crate) mod next_think;
 pub(crate) mod order;
 pub(crate) mod orders_api;
+pub(crate) mod resetting;
 
 /// The systems of `orders`, for the mode to order its own against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -60,10 +63,10 @@ pub(crate) enum OrdersSet {
 pub struct Orders;
 
 impl Orders {
-    /// Adds orders to a match: in Inputs, orders become current; in Think, the units due this
-    /// tick think; in Act, before combat starts attacks, units walk their paths and chase their
-    /// targets. It builds on the core `Units` installs, on combat and on navigation. Without the
-    /// core's scripts, as on a client, no unit thinks.
+    /// Adds orders to a match: in Inputs, orders become current; in Think, the resets whose units
+    /// arrived end, then the units due this tick think; in Act, before combat starts attacks,
+    /// units walk their paths and chase their targets. It builds on the core `Units` installs, on
+    /// combat and on navigation. Without the core's scripts, as on a client, no unit thinks.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         schedule.add_systems((
             apply_orders
@@ -76,6 +79,7 @@ impl Orders {
                 .before(CombatSet::Attack),
         ));
         registry.register_component::<NextThink>();
+        registry.register_component::<Resetting>();
         if !world.contains_non_send::<Ctx>() {
             return;
         }
@@ -107,24 +111,56 @@ impl Orders {
     }
 
     /// Applies an order the AI call of `unit` queued, which the call checked against the units
-    /// as the phase began; no unit dies within Think.
+    /// as the phase began; no unit dies within Think. A unit that resets takes none. A move or a
+    /// reset leaves the unit's path until it is told to follow it again.
     pub(crate) fn apply_order(world: &mut World, unit: StableId, order: AiOrder) {
-        let target = match order {
-            AiOrder::Attack { target } => Some(target),
-            AiOrder::FollowPath => None,
-        };
         let entity = world
             .resource::<EntityIndex>()
             .get(unit)
             .expect("a unit that thinks lives");
+        if world.entity(entity).contains::<Resetting>() {
+            return;
+        }
+        let target = match order {
+            AiOrder::Attack { target } => Some(target),
+            AiOrder::FollowPath | AiOrder::Move { .. } | AiOrder::Reset => None,
+        };
         if let Some(mut slots) = world.get_mut::<ActionSlots>(entity) {
             slots.set_attack_target(target);
+        }
+        let to = match order {
+            AiOrder::Attack { .. } => return,
+            AiOrder::FollowPath => {
+                if let Some(mut walker) = world.get_mut::<PathWalker>(entity) {
+                    walker.rejoin();
+                }
+                return;
+            }
+            AiOrder::Move { to } => {
+                let at = *world.get::<Position>(entity).expect("a unit stands");
+                let to = to.get();
+                world.resource::<Bounds>().ground_point([to.x, to.z], at)
+            }
+            AiOrder::Reset => {
+                world.entity_mut(entity).insert(Resetting);
+                world
+                    .get::<SpawnPoint>(entity)
+                    .expect("the call checked the spawn place")
+                    .get()
+            }
+        };
+        let mut unit = world.entity_mut(entity);
+        if let Some(mut walker) = unit.get_mut::<PathWalker>() {
+            walker.leave();
+        }
+        if let Some(mut destination) = unit.get_mut::<Destination>() {
+            destination.set(Some(to));
         }
     }
 }
 
 /// Makes each order the current one of its unit, in input order, so a later order in the tick
-/// wins. An order to a unit its player does not control, or that is dead, is ignored, and so are
+/// wins. An order to a unit its player does not control, that is dead or resets, is ignored, and so are
 /// a body that is not an order and an attack on a unit that is not a living enemy or that none of
 /// its weapons selects: a client can send anything. A move's point clamps to the bounds. A move
 /// cancels an attack in its windup, and so does an attack on another target. A cast replaces an
@@ -145,7 +181,7 @@ fn apply_orders(
             Option<&mut Destination>,
             Option<&mut ActionSlots>,
         ),
-        Without<Dead>,
+        (Without<Dead>, Without<Resetting>),
     >,
 ) {
     for input in inputs.iter() {
@@ -166,11 +202,7 @@ fn apply_orders(
                     let Some(mut destination) = destination else {
                         continue;
                     };
-                    // Orders name a point on the ground plane; the unit keeps its height.
-                    let [x, z] = bounds.clamp_ground([x, z]);
-                    let target = Position::new(Vec3::new(x, position.get().y, z))
-                        .expect("bounds are within the world's bound");
-                    destination.set(Some(target));
+                    destination.set(Some(bounds.ground_point([x, z], *position)));
                     if let Some(mut slots) = slots {
                         slots.set_attack_target(None);
                     }
@@ -206,18 +238,37 @@ struct Due {
     period: Ticks,
 }
 
+/// A reset that ends this tick: its unit, and whether it died.
+#[derive(Debug, Clone, Copy)]
+struct Ended {
+    entity: Entity,
+    dead: bool,
+}
+
 /// Runs `on_think` for each living unit of a type with AI that is due, those due longest first,
 /// then by stable id. A unit is first due in the first tick that leaves the remainder of its
 /// stable id when divided by its type's period, so the units of a type spread over the period;
 /// then a period after each think. Each call's orders apply when it returns; a failed call's do
 /// not. A unit whose call finds the think pool spent stays due, so under load AI thinks later,
-/// and no unit misses its turn for good.
-fn think(world: &mut World, mut due: Local<'_, Vec<Due>>) {
+/// and no unit misses its turn for good. First, each reset whose unit arrived, its destination
+/// dropped, ends with its pools full, and each whose unit died ends with nothing more: its AI
+/// thinks free of it.
+fn think(world: &mut World, mut due: Local<'_, Vec<Due>>, mut reset: Local<'_, Vec<Ended>>) {
     let now = world.resource::<SimTick>().start();
     due.clear();
+    reset.clear();
     let book = world.resource::<ByType<Ai>>();
     for (id, entity) in world.resource::<EntityIndex>().iter() {
         let unit = world.entity(entity);
+        if unit.contains::<Resetting>() {
+            let dead = unit.contains::<Dead>();
+            let arrived = unit
+                .get::<Destination>()
+                .is_none_or(|destination| destination.get().is_none());
+            if dead || arrived {
+                reset.push(Ended { entity, dead });
+            }
+        }
         let ai = unit
             .get::<UnitType>()
             .and_then(|&unit_type| book.get(unit_type));
@@ -238,6 +289,13 @@ fn think(world: &mut World, mut due: Local<'_, Vec<Due>>) {
                 script: ai.script,
                 period,
             });
+        }
+    }
+    for &Ended { entity, dead } in &*reset {
+        let mut unit = world.entity_mut(entity);
+        unit.remove::<Resetting>();
+        if let (false, Some(mut pools)) = (dead, unit.get_mut::<Pools>()) {
+            pools.fill();
         }
     }
     if due.is_empty() {
@@ -279,7 +337,7 @@ fn think(world: &mut World, mut due: Local<'_, Vec<Due>>) {
     });
 }
 
-/// Sends each path walker with no attack target to the waypoint it walks to, and on to the next
+/// Sends each path walker with no attack target, on its path, to the waypoint it walks to, and on to the next
 /// once the waypoint is within its body, or it stands on the waypoint with no body: walkers that
 /// push each other never stand on one point. A walker that chased a target walks back to where it
 /// left its path.
@@ -300,7 +358,7 @@ fn follow_paths(
     >,
 ) {
     for (&position, path, mut walker, slots, mut destination, body) in &mut walkers {
-        if slots.is_some_and(|slots| slots.attack_target().is_some()) {
+        if walker.left() || slots.is_some_and(|slots| slots.attack_target().is_some()) {
             continue;
         }
         let path = path.get();

@@ -264,7 +264,8 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let owner = Owner::new(PlayerSlot::new(2));
     let path = OnPath::new(PathId::new(0));
     let body = Body::new(Num::from_bits(3 << (Num::FRAC_BITS - 2))).unwrap();
-    let of = scene.unit(at(0, 0, 0), 0, (hero, owner, path, body));
+    let spawn = SpawnPoint::new(at(5, 0, -5));
+    let of = scene.unit(at(0, 0, 0), 0, (hero, owner, path, body, spawn));
     let near = scene.unit(at(3, 0, 4), 1, ());
     let recent = scene.unit(at(9, 0, 0), 1, ());
     let fallen = scene.unit(at(9, 0, 1), 1, Dead);
@@ -304,6 +305,13 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     };
     assert_eq!(radius(&mut scene, of), body.radius());
     assert_eq!(radius(&mut scene, near), Num::ZERO);
+    // Where it spawned, which a unit the mode did not spawn has none of.
+    let spawn_pos = |scene: &mut Scene, unit| {
+        let source = "fn probe(ctx, of) { of.spawn_pos }";
+        scene.probe(source, unit).unwrap()
+    };
+    assert_eq!(spawn_pos(&mut scene, of).cast::<Position>(), spawn.get());
+    assert!(spawn_pos(&mut scene, near).is_unit());
     assert_eq!(
         value(&mut scene, "of.params.help_window_ms").as_int(),
         Ok(2000)

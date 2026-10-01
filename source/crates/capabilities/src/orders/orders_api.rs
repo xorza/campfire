@@ -1,4 +1,4 @@
-use campfire_sim::Capability;
+use campfire_sim::{Capability, Position};
 
 use crate::orders::ai_order::AiOrder;
 use crate::scripts::api_builder::ApiBuilder;
@@ -37,12 +37,29 @@ impl OrdersApi {
             ),
             |ctx: &mut Ctx, unit: Unit| OrdersApi::order(ctx, &unit, AiOrder::FollowPath),
         )
-        .plan(order("order_move", "(unit, pos)", "`unit` walks to `pos`"))
-        .plan(order(
-            "order_reset",
-            "(unit)",
-            "`unit` walks home, heals, and drops its target",
-        ))
+        .bind(
+            order(
+                "order_move",
+                "(unit, pos)",
+                "`unit` drops its target and walks to `pos`, within the map, off its path",
+            ),
+            |ctx: &mut Ctx, unit: Unit, to: Position| {
+                OrdersApi::order(ctx, &unit, AiOrder::Move { to })
+            },
+        )
+        .bind(
+            order(
+                "order_reset",
+                "(unit)",
+                "`unit` drops its target and walks home, taking no order until there, where its pools fill",
+            ),
+            |ctx: &mut Ctx, unit: Unit| {
+                if unit.row().spawn.is_none() {
+                    return Err(ApiError::NoSpawnPlace.fail().into());
+                }
+                OrdersApi::order(ctx, &unit, AiOrder::Reset)
+            },
+        )
         .hook(Hook::OnThink, "(ctx, unit)", Status::Runs)
         .data(DataTable::Ai, &["ai", "think_ms"], &[]);
     }
