@@ -319,7 +319,7 @@ impl fmt::Display for LoadProblem {
                     "ability {ability:?}: {field:?} gives no value of its kind"
                 )
             }
-            LoadProblem::TooManyTags => f.write_str("more unit tags than a match holds"),
+            LoadProblem::TooManyTags => f.write_str("more tags than a match holds"),
             LoadProblem::TooManyUnitTypes => f.write_str("more unit types than a match holds"),
             LoadProblem::RepeatedUnitType(name) => {
                 write!(f, "avatar {name:?} has the name of a unit type")

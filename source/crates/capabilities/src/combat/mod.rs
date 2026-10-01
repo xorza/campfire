@@ -34,12 +34,16 @@ use crate::stats::modifiers::Modifiers;
 use crate::stats::stat::EngineStat;
 use crate::stats::stat_book::StatBook;
 use crate::stats::unit_stats::UnitStats;
+use crate::units::block::Block;
 use crate::units::body::Body;
 use crate::units::owner::Owner;
 use crate::units::recent_attack::RecentAttack;
 use crate::units::script_view::{RowFill, View};
 use crate::units::spawn_point::SpawnPoint;
+use crate::units::tag_book::TagBook;
+use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
+use crate::units::unit_tags::UnitTags;
 
 pub(crate) mod assist_window;
 pub(crate) mod attack_kind;
@@ -154,7 +158,7 @@ fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
 
 /// Drops each target that is gone, dead, no longer an enemy or not a target, which cancels its
 /// windup, and starts an attack when the target is in range and the unit is ready. The range
-/// counts only at the start. A unit its states keep from attacking keeps its target, and its
+/// counts only at the start. A unit its tags keep from attacking keeps its target, and its
 /// windup starts again.
 fn attack(
     tick: Res<'_, SimTick>,
@@ -168,17 +172,17 @@ fn attack(
             &AttackStats,
             &mut AttackState,
             Option<&Body>,
-            Option<&UnitStats>,
+            Option<&UnitTags>,
         ),
         Without<Dead>,
     >,
 ) {
     let now = tick.start();
-    for (&position, &team, stats, mut attack, body, unit_stats) in &mut attackers {
+    for (&position, &team, stats, mut attack, body, tags) in &mut attackers {
         let Some(target) = attack.target() else {
             continue;
         };
-        if !UnitStats::states_of(unit_stats).can_attack() {
+        if UnitTags::effects_of(tags).blocks(Block::Attack) {
             if attack.started().is_some() {
                 attack.interrupt();
             }
@@ -205,11 +209,11 @@ struct GoingOff {
 }
 
 /// Runs `on_attack` for each attack whose windup ends this tick, by attacker's stable id, before
-/// any of them strikes or fires; not for one its attacker's states stop, which does not strike.
+/// any of them strikes or fires; not for one its attacker's tags stop, which does not strike.
 fn attack_events(
     world: &mut World,
     attackers: &mut QueryState<
-        (&StableId, &AttackStats, &AttackState, Option<&UnitStats>),
+        (&StableId, &AttackStats, &AttackState, Option<&UnitTags>),
         Without<Dead>,
     >,
     mut going: Local<'_, Vec<GoingOff>>,
@@ -219,9 +223,9 @@ fn attack_events(
     };
     let now = world.resource::<SimTick>().start();
     going.clear();
-    for (&attacker, stats, attack, unit_stats) in attackers.iter(world) {
+    for (&attacker, stats, attack, tags) in attackers.iter(world) {
         if attack.windup_ended(stats.windup(), now).is_some()
-            && UnitStats::states_of(unit_stats).can_attack()
+            && !UnitTags::effects_of(tags).blocks(Block::Attack)
         {
             let target = attack
                 .target()
@@ -253,12 +257,16 @@ struct IntervalDue {
 /// interval comes this tick, by carrier's stable id, then modifier, then source.
 fn run_intervals(
     world: &mut World,
-    carriers: &mut QueryState<(&StableId, &mut Modifiers), Without<Dead>>,
+    carriers: &mut QueryState<(&StableId, &mut Modifiers, Option<&UnitTags>), Without<Dead>>,
     mut due: Local<'_, Vec<IntervalDue>>,
 ) {
     let now = world.resource::<SimTick>().start();
+    let granting = world
+        .get_resource::<TagBook>()
+        .map_or(TagSet::default(), TagBook::granting);
     due.clear();
-    for (&carrier, mut modifiers) in carriers.iter_mut(world) {
+    for (&carrier, mut modifiers, tags) in carriers.iter_mut(world) {
+        let immune = tags.map_or(TagSet::default(), |tags| tags.immune);
         let push = |id, source| {
             due.push(IntervalDue {
                 carrier,
@@ -266,10 +274,11 @@ fn run_intervals(
                 source,
             });
         };
-        if modifiers
-            .bypass_change_detection()
-            .advance_intervals(now, push)
-        {
+        if modifiers.bypass_change_detection().advance_intervals(
+            now,
+            TagBook::effect_test(granting, immune),
+            push,
+        ) {
             modifiers.set_changed();
         }
     }
@@ -303,7 +312,7 @@ fn run_intervals(
 
 /// Queues the damage of each attack whose windup ends this tick, or its launch when it is ranged
 /// and the match has projectiles. Each rolls its crit now, with its attacker's `crit_chance`. A
-/// windup whose attacker's states keep it from attacking is interrupted instead.
+/// windup whose attacker's tags keep it from attacking is interrupted instead.
 fn strike(
     (tick, rng, kind, book): (
         Res<'_, SimTick>,
@@ -322,16 +331,17 @@ fn strike(
             &AttackStats,
             &mut AttackState,
             Option<&UnitStats>,
+            Option<&UnitTags>,
         ),
         Without<Dead>,
     >,
 ) {
     let now = tick.start();
-    for (&source, &from, stats, mut attack, unit_stats) in &mut attackers {
+    for (&source, &from, stats, mut attack, unit_stats, tags) in &mut attackers {
         let Some(started) = attack.windup_ended(stats.windup(), now) else {
             continue;
         };
-        if !UnitStats::states_of(unit_stats).can_attack() {
+        if UnitTags::effects_of(tags).blocks(Block::Attack) {
             attack.interrupt();
             continue;
         }
@@ -436,10 +446,10 @@ impl Combat {
         (!health.is_zero()).then_some(entity)
     }
 
-    /// The entity of `unit`, when it is living and its states let damage reach it.
+    /// The entity of `unit`, when it is living and its tags let damage reach it.
     fn damageable(world: &World, unit: StableId) -> Option<Entity> {
         Combat::living(world, unit)
-            .filter(|&entity| UnitStats::states_of(world.get(entity)).takes_damage())
+            .filter(|&entity| !UnitTags::effects_of(world.get(entity)).blocks(Block::Damage))
     }
 
     /// Runs the events of `damage`, which `landed`, its amount after `calc_damage`: an attack's
@@ -502,8 +512,11 @@ impl Combat {
         let index = world.resource::<EntityIndex>();
         let source = damage.source.filter(|&source| index.get(source).is_some());
         let mut left = amount.max(Num::ZERO);
+        let takes_effect = TagBook::effective(world, entity);
         if let Some(mut modifiers) = world.get_mut::<Modifiers>(entity) {
-            let after = modifiers.bypass_change_detection().absorb(left);
+            let after = modifiers
+                .bypass_change_detection()
+                .absorb(left, takes_effect);
             if after != left {
                 modifiers.set_changed();
             }

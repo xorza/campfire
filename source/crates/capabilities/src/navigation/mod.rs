@@ -25,9 +25,10 @@ use crate::navigation::progress::Progress;
 use crate::navigation::route::{Route, Waiting};
 use crate::navigation::route_planner::{Ground, RoutePlanner, Short, Window};
 use crate::navigation::steering::Steering;
-use crate::stats::unit_stats::UnitStats;
+use crate::units::block::Block;
 use crate::units::body::Body;
 use crate::units::script_view::{RowFill, View};
+use crate::units::unit_tags::UnitTags;
 use crate::values::bounds::Bounds;
 use crate::values::grid::Grid;
 use crate::values::segment::Segment;
@@ -323,7 +324,7 @@ fn steer(
             &Position,
             &Body,
             Option<&Destination>,
-            Option<&UnitStats>,
+            Option<&UnitTags>,
         ),
         (With<MoveStep>, Without<Dead>, Allow<Unpredicted>),
     >,
@@ -338,7 +339,7 @@ fn steer(
             &Body,
             &mut Route,
             &mut Progress,
-            Option<&UnitStats>,
+            Option<&UnitTags>,
         ),
         Without<Dead>,
     >,
@@ -353,13 +354,13 @@ fn steer(
     let steering = &mut *steering;
     steering.still.clear();
     steering.walking.clear();
-    for (&id, &at, body, destination, stats) in &bodies {
+    for (&id, &at, body, destination, tags) in &bodies {
         let body = IndexedBody {
             id,
             at,
             radius: body.radius(),
         };
-        if walks(destination, stats) {
+        if walks(destination, tags) {
             steering.walking.push(body);
         } else {
             steering.still.push(body);
@@ -375,8 +376,8 @@ fn steer(
         .get();
     let window_cells = i64::try_from(Steering::WINDOW).expect("a small window");
     let reach = Num::from_bits(grid.cell().to_bits() * window_cells);
-    for (&id, &at, destination, step, body, mut route, mut progress, stats) in &mut walkers {
-        if !walks(Some(destination), stats) || route.asked().is_some() || route.ahead().is_empty() {
+    for (&id, &at, destination, step, body, mut route, mut progress, tags) in &mut walkers {
+        if !walks(Some(destination), tags) || route.asked().is_some() || route.ahead().is_empty() {
             continue;
         }
         let stuck = u64::from(progress.track(at, step.get())) >= stuck_ticks;
@@ -446,7 +447,7 @@ fn steer(
 /// Walks each unit along its route, a step a tick: past each waypoint it reaches, on to the next
 /// with the rest of its step. Past the last it has arrived, and drops its destination and its
 /// route. A unit whose route waits for the planner walks the one it has, if any. A dead unit stays
-/// where it fell, and forgets where it walked to; one its states stop keeps both.
+/// where it fell, and forgets where it walked to; one its tags stop keeps both.
 fn move_units(
     mut units: Query<
         '_,
@@ -456,12 +457,12 @@ fn move_units(
             &mut Destination,
             &mut Route,
             &MoveStep,
-            Option<&UnitStats>,
+            Option<&UnitTags>,
             Has<Dead>,
         ),
     >,
 ) {
-    for (mut position, mut destination, mut route, step, stats, dead) in &mut units {
+    for (mut position, mut destination, mut route, step, tags, dead) in &mut units {
         if destination.get().is_none() {
             continue;
         }
@@ -470,7 +471,7 @@ fn move_units(
             route.clear();
             continue;
         }
-        if !walks(Some(&destination), stats) {
+        if !walks(Some(&destination), tags) {
             continue;
         }
         let mut at = position.get();
@@ -518,7 +519,7 @@ fn collide(
             &mut Position,
             Has<MoveStep>,
             Option<&Destination>,
-            Option<&UnitStats>,
+            Option<&UnitTags>,
             Has<Unpredicted>,
         ),
         (Without<Dead>, Allow<Unpredicted>),
@@ -533,13 +534,13 @@ fn collide(
             .iter()
             .filter(|&(.., movable, _, _, held)| !(held && movable))
             .map(
-                |(entity, &id, body, position, movable, destination, stats, _)| Collider {
+                |(entity, &id, body, position, movable, destination, tags, _)| Collider {
                     id,
                     entity,
                     at: position.get(),
                     radius: body.radius(),
                     movable,
-                    walking: walks(destination, stats),
+                    walking: walks(destination, tags),
                 },
             ),
     );
@@ -563,11 +564,11 @@ fn collide(
     }
 }
 
-/// Whether a unit walks this tick: it has a destination, and its states let it move. One they
+/// Whether a unit walks this tick: it has a destination, and its tags let it move. One they
 /// stop stands, to the units round it as to itself.
-fn walks(destination: Option<&Destination>, stats: Option<&UnitStats>) -> bool {
+fn walks(destination: Option<&Destination>, tags: Option<&UnitTags>) -> bool {
     destination.is_some_and(|destination| destination.get().is_some())
-        && UnitStats::states_of(stats).can_move()
+        && !UnitTags::effects_of(tags).blocks(Block::Move)
 }
 
 /// Clamps each unit that walks into the bounds; a unit already within them does not change.

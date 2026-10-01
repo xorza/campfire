@@ -64,6 +64,7 @@ impl ModeApi {
                     "attack_kind",
                     "stats",
                     "resources",
+                    "tags",
                 ],
                 &["state_version"],
             );

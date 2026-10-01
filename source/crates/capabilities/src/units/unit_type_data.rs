@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::units::tag_set::Tag;
+use crate::units::tag::Tag;
 use crate::values::scalar::Scalar;
 
 /// A unit type's core fields as its data file declares them: its tags, which filters select, and

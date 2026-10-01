@@ -1,6 +1,9 @@
+use std::collections::BTreeSet;
 use std::path::Path;
 
-use campfire_capabilities::{CollisionData, EngineStat, MapData, ModeData, StatsData};
+use campfire_capabilities::{
+    CollisionData, EngineStat, MapData, ModeData, StatsData, UnitTypeData,
+};
 use campfire_content::{Fingerprint, PackagePath};
 use campfire_math::Num;
 use campfire_script::ScriptHost;
@@ -146,6 +149,41 @@ impl ModePackages {
         radii.sort_unstable();
         radii.dedup();
         radii
+    }
+
+    /// Every tag its packages name, each once, sorted: `avatar`, the tags of its unit types,
+    /// those its and its dependencies' modifiers grant, and those of its `[tags]` and their
+    /// immunities. A match declares them in this order, so it numbers them the same however it
+    /// loads.
+    pub fn tag_names(&self) -> BTreeSet<&str> {
+        let dependents = self
+            .dependencies
+            .iter()
+            .map(|dependent| match &dependent.content {
+                Content::Avatar(avatar) => &avatar.modifiers,
+                Content::Loadout(loadout) => &loadout.modifiers,
+            });
+        let modifiers = [&self.data.modifiers]
+            .into_iter()
+            .chain(dependents)
+            .flat_map(|modifiers| modifiers.values())
+            .flat_map(|modifier| &modifier.tags);
+        let types = self
+            .units
+            .units
+            .values()
+            .flat_map(|unit_type| &unit_type.core.tags);
+        let declared = self
+            .data
+            .tags
+            .iter()
+            .flat_map(|(name, tag)| [name].into_iter().chain(&tag.immune));
+        modifiers
+            .chain(types)
+            .chain(declared)
+            .map(String::as_str)
+            .chain([UnitTypeData::AVATAR_TAG])
+            .collect()
     }
 
     /// The packages it depends on, in the order of their names in its manifest.

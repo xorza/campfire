@@ -93,3 +93,12 @@ max_stun_ms = 3500
 full_stun_distance = "15"
 slow = "0.5"
 slow_ms = 3000
+
+# A slow by the `slow` param of the ability that applies it; its time comes from the call.
+[modifiers.slow]
+stats = { slow = { param = "slow" } }
+tags = ["slowed"]
+
+# A stun: its time comes from the call that applies it.
+[modifiers.stun]
+tags = ["stunned"]

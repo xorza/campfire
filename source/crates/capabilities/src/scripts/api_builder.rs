@@ -4,7 +4,7 @@ use crate::scripts::hook::Hook;
 use crate::scripts::script_api::{
     DataTable, HookStatus, MemberKind, MemberSpec, ScriptApi, Status,
 };
-use crate::stats::unit_state::UnitState;
+use crate::units::tag_effect::TagEffect;
 
 /// Rhai's names for a property's getter and setter, and a type's indexer, which its
 /// `register_get` and kin use and do not export.
@@ -88,9 +88,9 @@ impl<'a> ApiBuilder<'a> {
         self
     }
 
-    /// Records whether the release honours `state`, as the code that honours it says.
-    pub(crate) fn state(&mut self, state: UnitState, status: Status) -> &mut Self {
-        self.api.record_state(state, status);
+    /// Records whether the release honours `effect`, as the code that honours it says.
+    pub(crate) fn tag_effect(&mut self, effect: TagEffect, status: Status) -> &mut Self {
+        self.api.record_tag_effect(effect, status);
         self
     }
 

@@ -70,6 +70,7 @@ impl<'a> MatchBuild<'a> {
             scripts: Vec::new(),
             script_starts: Vec::with_capacity(1 + packages.dependencies().len()),
         };
+        Units::declare_tags(build.world, packages.tag_names()).expect(CHECKED);
         build.compile_scripts();
         build.load_unit_types()?;
         build.load_modifiers();

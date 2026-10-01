@@ -7,6 +7,7 @@ use crate::scripts::state_decl::StateDecl;
 use crate::stats::modifier_data::ModifierData;
 use crate::stats::stat::Stat;
 use crate::stats::stat_rule::StatRule;
+use crate::units::tag_data::TagData;
 use crate::values::declared_name::DeclaredName;
 use crate::values::scalar::Scalar;
 
@@ -39,6 +40,9 @@ pub struct ModeData {
     /// What its units spend on abilities, such as mana or energy.
     #[serde(default)]
     pub resources: Vec<DeclaredName>,
+    /// The effects of its tags, by name.
+    #[serde(default)]
+    pub tags: BTreeMap<String, TagData>,
 }
 
 /// The type of a player input.

@@ -62,11 +62,12 @@ slow = ["0.14", "0.18", "0.22", "0.26", "0.30"]
 cover = [10, 20, 30, 40, 50]
 
 [modifiers.smoke_ring_cover]
-states = ["stealthed"]
+tags = ["stealthed"]
 stats = { armor = { param = "cover" }, magic_resist = { param = "cover" } }
 
 [modifiers.smoke_ring_slow]
 stats = { slow = { param = "slow" } }
+tags = ["slowed"]
 
 [abilities.whirling_blades]
 script = "scripts/whirling_blades.rhai"

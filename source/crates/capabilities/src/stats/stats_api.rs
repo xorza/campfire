@@ -9,7 +9,7 @@ use crate::scripts::hook::Hook;
 use crate::scripts::script_api::{DataTable, MemberSpec, Status};
 use crate::stats::modifier_effect::ModifierEffect;
 use crate::stats::modifier_handle::ModifierHandle;
-use crate::stats::unit_state::UnitState;
+use crate::units::tag_effect::TagEffect;
 use crate::units::unit::Unit;
 
 /// The script API of `stats`: `ctx.add_modifier`, `ctx.remove`, the `Modifier` handle, and the
@@ -44,21 +44,6 @@ impl StatsApi {
             |ctx: &mut Ctx, handle: ModifierHandle| ctx.queue(Effect::Modifier(handle.remove())),
         )
         .plan(call(
-            "stun",
-            "(unit, ms)",
-            "the engine's stun, from the acting unit",
-        ))
-        .plan(call(
-            "slow",
-            "(unit, fraction, ms)",
-            "the engine's slow, from the acting unit",
-        ))
-        .plan(call(
-            "knock_up",
-            "(unit, ms)",
-            "the engine's knock up, from the acting unit",
-        ))
-        .plan(call(
             "knock_back",
             "(unit, from, distance, ms)",
             "pushes `unit` away from `from`",
@@ -73,10 +58,8 @@ impl StatsApi {
             .hook(Hook::OnAttackHit, "(ctx, m, d)", Status::Runs)
             .hook(Hook::OnDamageTaken, "(ctx, m, d)", Status::Runs)
             .hook(Hook::OnKill, "(ctx, m, victim)", Status::Runs)
-            .hook(Hook::OnTakedown, "(ctx, m, victim)", Status::Runs);
-        for state in UnitState::ALL {
-            api.state(state, Status::Runs);
-        }
+            .hook(Hook::OnTakedown, "(ctx, m, victim)", Status::Runs)
+            .tag_effect(TagEffect::Immune, Status::Runs);
         api.data(
             DataTable::Modifier,
             &[
@@ -91,7 +74,7 @@ impl StatsApi {
                 "aura",
                 "params",
                 "state",
-                "states",
+                "tags",
             ],
             &[],
         )

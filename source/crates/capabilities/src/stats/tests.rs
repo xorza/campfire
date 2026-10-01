@@ -16,8 +16,9 @@ use crate::stats::modifiers::{Application, Instance, StatShare};
 use crate::stats::stat::Stat;
 use crate::stats::stat_rule::{Combine, StatRule};
 use crate::stats::stats_data::{StatValue, StatsData};
-use crate::stats::unit_state::UnitState;
-use crate::stats::unit_states::UnitStates;
+use crate::units::Units;
+use crate::units::tag::Tag;
+use crate::units::tag_effects::TagEffects;
 use crate::values::filter_data::FilterData;
 use crate::values::number::Number;
 
@@ -81,13 +82,12 @@ fn stats(values: &[(EngineStat, Num, Num)]) -> StatsData {
     )
 }
 
-/// A match with the stats capability and a book of `types`, each with its own states, with a
-/// move speed cap of 6.
-fn stat_match(types: &[(StatsData, UnitStates)]) -> TestMatch {
+/// A match with the stats capability and a book of `types`, with a move speed cap of 6.
+fn stat_match(types: &[StatsData]) -> TestMatch {
     let mut game = TestMatch::new(&[Capability::Stats], RATE, None);
-    let types = types.iter().enumerate().map(|(at, (data, states))| {
+    let types = types.iter().enumerate().map(|(at, data)| {
         let unit_type = UnitType::new(u16::try_from(at).unwrap());
-        (unit_type, data, *states)
+        (unit_type, data)
     });
     let book = StatBook::new(&rules(), types, RATE, num(6)).unwrap();
     Stats::load(&mut game.world, book);
@@ -104,6 +104,7 @@ fn unit(game: &mut TestMatch, unit_type: u16) -> Entity {
             UnitType::new(unit_type),
             Level::default(),
             UnitStats::default(),
+            UnitTags::default(),
             MoveStep::new(Num::ZERO).unwrap(),
             attack,
             Health::new(Num::ONE).unwrap(),
@@ -134,8 +135,7 @@ fn a_units_stats_follow_its_type_and_level_within_their_limits() {
         (EngineStat::MoveSpeed, num(4), Num::ZERO),
         (EngineStat::MoveSpeedPct, num(-2), Num::ZERO),
     ]);
-    let none = UnitStates::default();
-    let mut game = stat_match(&[(hero, none), (slowed, none), (stopped, none)]);
+    let mut game = stat_match(&[hero, slowed, stopped]);
     let units = [0, 1, 2].map(|unit_type| unit(&mut game, unit_type));
     game.world.run_schedule(SimUpdate);
     let get = |game: &TestMatch| {
@@ -222,7 +222,7 @@ fn share(
             interval: None,
             shield: None,
             stats: vec![StatShare { stat, value }],
-            states: UnitStates::default(),
+            tags: TagSet::default(),
             state: Vec::new(),
         },
         reapply,
@@ -232,12 +232,22 @@ fn share(
 
 #[test]
 fn modifiers_add_to_a_units_stats_by_each_stats_rule() {
-    // Move speed 4, and true sight from its type. Its place among the stats: health, health
-    // regen, resource, move speed, its rate, slow, attack speed, attack damage, in the engine's
-    // order.
+    // Move speed 4. Its place among the stats: health, health regen, resource, move speed, its
+    // rate, slow, attack speed, attack damage, in the engine's order. The tags: 0 detects, and is
+    // the type's own; 1, `slowed`, has no effect; 2, `slow_immune`, makes immune to 1.
     let walker = stats(&[(EngineStat::MoveSpeed, num(4), Num::ZERO)]);
-    let true_sight = UnitStates::of([UnitState::TrueSight]);
-    let mut game = stat_match(&[(walker, true_sight)]);
+    let mut game = stat_match(&[walker]);
+    let [sight, slowed, slow_immune] = [0, 1, 2].map(Tag::new);
+    let effects = [
+        (TagEffects::default().with_detects(), TagSet::default()),
+        (TagEffects::default(), TagSet::default()),
+        (TagEffects::default(), TagSet::of([slowed])),
+    ];
+    let own = TagSet::of([sight]);
+    Units::load_tags(
+        &mut game.world,
+        TagBook::new(effects, [(UnitType::new(0), own)]),
+    );
     let unit = unit(&mut game, 0);
     game.world.entity_mut(unit).insert(Modifiers::default());
     let book = game.world.resource::<StatBook>();
@@ -245,11 +255,16 @@ fn modifiers_add_to_a_units_stats_by_each_stats_rule() {
         .map(|stat| book.index(&Stat::Engine(stat)).unwrap());
     let mut ids = IdAllocator::default();
     let (first, second) = (Some(ids.allocate()), Some(ids.allocate()));
-    // Slows of 0.25 and 0.5 from two sources: only the highest counts. A bonus of 0.5 move speed
-    // that stacks, twice: +1.
+    let slowing = |source, value| {
+        let mut application = share(0, source, slow, value, Reapply::Refresh);
+        application.instance.tags = TagSet::of([slowed]);
+        application
+    };
+    // Slows of 0.25 and 0.5 from two sources, each `slowed`: only the highest counts. A bonus of
+    // 0.5 move speed that stacks, twice: +1.
     let mut modifiers = game.world.get_mut::<Modifiers>(unit).unwrap();
-    modifiers.apply(share(0, first, slow, sixteenths(4), Reapply::Refresh));
-    modifiers.apply(share(0, second, slow, sixteenths(8), Reapply::Refresh));
+    modifiers.apply(slowing(first, sixteenths(4)));
+    modifiers.apply(slowing(second, sixteenths(8)));
     for _ in 0..2 {
         modifiers.apply(share(1, first, speed, sixteenths(8), Reapply::Stack));
     }
@@ -257,6 +272,9 @@ fn modifiers_add_to_a_units_stats_by_each_stats_rule() {
     // (4 + 1) × (1 − 0.5) = 2.5 m/s, 2.5 × 2²⁴ ÷ 30 = 1 398 101.33 bits a tick, to 1 398 101.
     let step = |game: &TestMatch| game.world.get::<MoveStep>(unit).unwrap().get();
     assert_eq!(step(&game), Num::from_bits(1_398_101));
+    let tags = |game: &TestMatch| *game.world.get::<UnitTags>(unit).unwrap();
+    assert_eq!(tags(&game).tags, TagSet::of([sight, slowed]));
+    assert!(tags(&game).effects.detects());
 
     // A bonus of 3 more, past the limit of 5: 5 × 0.5 = 2.5 m/s again; a slow of 1.5, past its
     // limit of 0.99: 5 × 0.01 = 0.05 m/s, 0.05 × 2²⁴ ÷ 30 = 27 962.03 bits, to 27 962, the
@@ -270,27 +288,46 @@ fn modifiers_add_to_a_units_stats_by_each_stats_rule() {
     game.world.run_schedule(SimUpdate);
     let kept = (1_i64 << 24) - (99 << 24) / 100;
     assert_eq!(step(&game), Num::from_bits((5 * kept + 15) / 30));
-    let states = |game: &TestMatch| game.world.get::<UnitStats>(unit).unwrap().states();
-    assert_eq!(states(&game), true_sight);
 
-    // Slow immunity, from a modifier of 2 stacks and no stat value: the slow counts as 0, so
-    // 5 m/s, 5 × 2²⁴ ÷ 30 = 2 796 202.67 bits, to 2 796 203; the unit is in its type's state and
-    // the modifier's, once whatever the stacks.
-    let mut immune = share(4, first, speed, Num::ZERO, Reapply::Stack);
-    immune.instance.states = UnitStates::of([UnitState::SlowImmune]);
+    // The untagged slow of 0.99 removed, slow immunity from a modifier of 2 stacks and no stat
+    // value holds every `slowed` modifier without effect, so the slow counts as 0: 5 m/s, 5 ×
+    // 2²⁴ ÷ 30 = 2 796 202.67 bits, to 2 796 203. `slowed` leaves the unit's tags, and the
+    // immunity joins them.
     let mut modifiers = game.world.get_mut::<Modifiers>(unit).unwrap();
+    modifiers.remove(ModifierId::new(3), first);
+    let mut immune = share(4, first, speed, Num::ZERO, Reapply::Stack);
+    immune.instance.tags = TagSet::of([slow_immune]);
     modifiers.apply(immune.clone());
     modifiers.apply(immune);
     game.world.run_schedule(SimUpdate);
     assert_eq!(step(&game), Num::from_bits(2_796_203));
-    let both = true_sight.with(UnitState::SlowImmune);
-    assert_eq!(states(&game), both);
+    assert_eq!(tags(&game).tags, TagSet::of([sight, slow_immune]));
+    assert_eq!(tags(&game).immune, TagSet::of([slowed]));
 
-    // Removing every modifier: back to 4 m/s, and to the type's state alone.
+    // A modifier that grants both an immunity and the tag it is immune to holds itself: its
+    // slow of 0.25 counts, whatever order the modifiers are in. 5 × 0.75 = 3.75 m/s, 3.75 × 2²⁴
+    // ÷ 30 = 2 097 152 bits exactly.
+    let mut both = slowing(second, sixteenths(4));
+    both.instance.id = ModifierId::new(5);
+    both.instance.tags = TagSet::of([slowed, slow_immune]);
+    game.world.get_mut::<Modifiers>(unit).unwrap().apply(both);
+    game.world.run_schedule(SimUpdate);
+    assert_eq!(step(&game), Num::from_bits(2_097_152));
+    assert_eq!(tags(&game).tags, TagSet::of([sight, slowed, slow_immune]));
+
+    // The immunity ends: the held slows act again, the highest 0.5: 2.5 m/s.
+    let mut modifiers = game.world.get_mut::<Modifiers>(unit).unwrap();
+    modifiers.remove(ModifierId::new(4), first);
+    modifiers.remove(ModifierId::new(5), second);
+    game.world.run_schedule(SimUpdate);
+    assert_eq!(step(&game), Num::from_bits(1_398_101));
+    assert_eq!(tags(&game).immune, TagSet::default());
+
+    // Removing every modifier: back to 4 m/s, and to the type's tag alone.
     *game.world.get_mut::<Modifiers>(unit).unwrap() = Modifiers::default();
     game.world.run_schedule(SimUpdate);
     assert_eq!(step(&game), Num::from_bits(2_236_962));
-    assert_eq!(states(&game), true_sight);
+    assert_eq!(tags(&game).tags, own);
 }
 
 #[test]
@@ -303,7 +340,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
         reapply: Reapply::Refresh,
         max_stacks: None,
         stats: BTreeMap::new(),
-        states: Vec::new(),
+        tags: Vec::new(),
         shield: None,
         aura,
         params: BTreeMap::new(),
@@ -369,7 +406,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
             interval: None,
             shield: None,
             stats: Vec::new(),
-            states: UnitStates::default(),
+            tags: TagSet::default(),
             state: Vec::new(),
         },
         reapply: Reapply::Refresh,

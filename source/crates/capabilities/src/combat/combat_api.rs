@@ -9,7 +9,9 @@ use crate::scripts::ctx::Ctx;
 use crate::scripts::effect::Effect;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::role_set::RoleSet;
-use crate::scripts::script_api::{DataTable, MemberSpec};
+use crate::scripts::script_api::{DataTable, MemberSpec, Status};
+use crate::units::block::Block;
+use crate::units::tag_effect::TagEffect;
 use crate::units::unit::Unit;
 
 /// The script API of `combat`: `ctx.damage`, `ctx.heal`, `ctx.restore`, `ctx.attack_hit`, and the
@@ -85,6 +87,9 @@ impl CombatApi {
         .bind(attack_hit, |ctx: &mut Ctx, target: Unit| {
             CombatApi::attack_hit(ctx, &target)
         })
+        .tag_effect(TagEffect::Blocks(Block::Attack), Status::Runs)
+        .tag_effect(TagEffect::Blocks(Block::Target), Status::Runs)
+        .tag_effect(TagEffect::Blocks(Block::Damage), Status::Runs)
         .data(DataTable::Combat, &["attack", "on_death"], &[])
         .data(
             DataTable::Attack,

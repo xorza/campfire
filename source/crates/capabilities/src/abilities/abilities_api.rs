@@ -4,6 +4,8 @@ use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::hook::Hook;
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::{ApiOwner, DataTable, MemberSpec, Status};
+use crate::units::block::Block;
+use crate::units::tag_effect::TagEffect;
 
 /// The script API of `abilities`, `projectiles` and `areas` that design 08 plans: the values of
 /// a cast, the projectiles and areas it makes, and the bookkeeping of cooldowns and charges.
@@ -48,6 +50,42 @@ impl AbilitiesApi {
                 "takes `fraction` off the cooldowns of `unit`'s basic abilities",
             ))
             .plan(call("add_charge", "(unit, id)", "gives `unit`'s ability `id` a charge"));
+        AbilitiesApi::register_deliveries(api);
+        api.tag_effect(TagEffect::Blocks(Block::Cast), Status::Runs)
+            .hook(Hook::OnResolve, "(ctx, unit, target)", Status::Runs)
+            .hook(Hook::OnHit, "(ctx, unit, target, hit)", Status::Planned)
+            .hook(Hook::OnEnd, "(ctx, unit, hit)", Status::Planned)
+            .hook(Hook::OnChannelTick, "(ctx, unit)", Status::Planned)
+            .hook(Hook::OnInterrupt, "(ctx, unit, target)", Status::Planned)
+            .data(
+                DataTable::Ability,
+                &[
+                    "script",
+                    "targeting",
+                    "range",
+                    "cooldown_ms",
+                    "cost",
+                    "cast_time_ms",
+                    "passive_modifier",
+                    "passive_while_ready",
+                    "params",
+                ],
+                &[
+                    "clamp_to_range",
+                    "toggle",
+                    "channel",
+                    "hold",
+                    "charges",
+                    "charge",
+                    "projectile",
+                    "area",
+                    "projectile_state",
+                ],
+            );
+    }
+
+    /// The planned handles of deliveries: a projectile, an area, and the hit either records.
+    fn register_deliveries(api: &mut ApiBuilder<'_>) {
         let projectile = |name, description| {
             MemberSpec::field(ApiOwner::Projectile, name, description)
                 .capability(Capability::Projectiles)
@@ -81,36 +119,6 @@ impl AbilitiesApi {
             .plan(hit(
                 "part",
                 "the body part a ray or a sweep struck, `()` with none",
-            ))
-            .hook(Hook::OnResolve, "(ctx, unit, target)", Status::Runs)
-            .hook(Hook::OnHit, "(ctx, unit, target, hit)", Status::Planned)
-            .hook(Hook::OnEnd, "(ctx, unit, hit)", Status::Planned)
-            .hook(Hook::OnChannelTick, "(ctx, unit)", Status::Planned)
-            .hook(Hook::OnInterrupt, "(ctx, unit, target)", Status::Planned)
-            .data(
-                DataTable::Ability,
-                &[
-                    "script",
-                    "targeting",
-                    "range",
-                    "cooldown_ms",
-                    "cost",
-                    "cast_time_ms",
-                    "passive_modifier",
-                    "passive_while_ready",
-                    "params",
-                ],
-                &[
-                    "clamp_to_range",
-                    "toggle",
-                    "channel",
-                    "hold",
-                    "charges",
-                    "charge",
-                    "projectile",
-                    "area",
-                    "projectile_state",
-                ],
-            );
+            ));
     }
 }

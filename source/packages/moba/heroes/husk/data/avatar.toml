@@ -89,4 +89,8 @@ bind_ms = 2000
 
 [modifiers.entombed]
 duration_ms = { param = "bind_ms" }
-states = ["rooted", "disarmed"]
+tags = ["rooted", "disarmed"]
+
+# A stun: its time comes from the call that applies it.
+[modifiers.stun]
+tags = ["stunned"]

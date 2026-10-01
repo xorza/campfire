@@ -32,7 +32,10 @@ use crate::stats::stat::EngineStat;
 use crate::stats::stat_book::StatBook;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::script_view::{RowFill, View};
+use crate::units::tag_book::TagBook;
+use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
+use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
 use crate::values::scalar::Scalar;
 
@@ -48,8 +51,6 @@ pub(crate) mod stat_book;
 pub(crate) mod stat_rule;
 pub(crate) mod stats_api;
 pub(crate) mod stats_data;
-pub(crate) mod unit_state;
-pub(crate) mod unit_states;
 pub(crate) mod unit_stats;
 
 /// The `stats` capability.
@@ -202,9 +203,15 @@ impl Stats {
             let defines = |&hook: &Hook| host.defines(script, hook.name(), hook.params());
             HookSet::of(MODIFIER_HOOKS.into_iter().filter(defines))
         });
+        let tags = {
+            let view = world.non_send::<View>();
+            let mut types = view.types_mut();
+            let declare = |name: &String| types.declare(name).expect("the load counted the tags");
+            TagSet::of(data.tags.iter().map(declare))
+        };
         let id = world
             .resource_mut::<ModifierBook>()
-            .load(package, name, data, script, hooks);
+            .load(package, name, data, script, hooks, tags);
         if let Some(view) = world.get_non_send::<View>() {
             view.add_modifier(world.resource::<ModifierBook>().get(id).info());
         }
@@ -265,7 +272,7 @@ fn apply_auras(
             &StableId,
             &Position,
             &Team,
-            Option<&UnitType>,
+            Option<&UnitTags>,
             &mut Modifiers,
         ),
         Without<Dead>,
@@ -290,8 +297,8 @@ fn apply_auras(
             let modifier = book
                 .find(package, &aura.modifier)
                 .expect("the load checked the aura's modifier");
-            for (&target, &pos, &other, unit_type, _) in &units {
-                let tags = view.type_tags(unit_type.copied());
+            for (&target, &pos, &other, tags, _) in &units {
+                let tags = tags.map_or(TagSet::default(), |tags| tags.tags);
                 if at.within_ground(pos, radius) && filter.selects(team, other, tags) {
                     held.push(Held {
                         target,
@@ -352,12 +359,11 @@ struct Held {
     rank: u8,
 }
 
-/// Fills a row of the script view with the unit's level, stats, states and modifiers.
+/// Fills a row of the script view with the unit's level, stats and modifiers.
 fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
     fill.row.level = unit.get::<Level>().map(|level| level.get());
     if let Some(stats) = unit.get::<UnitStats>() {
         fill.stated(stats.values());
-        fill.row.states = stats.states();
     }
     for instance in unit
         .get::<Modifiers>()
@@ -373,12 +379,13 @@ fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
     }
 }
 
-/// Derives the stats and states of each unit whose level or modifiers changed or that is new, and
-/// sets what holds their effect: how far it walks a tick, which `slow_immune` takes the slow out
-/// of, its attack's damage and period, and its pools' maxima, a pool keeping the rule of
-/// stats.md. An effect whose stat the mode does not declare keeps what the unit's kit gave it.
+/// Derives the tags and stats of each unit whose level or modifiers changed or that is new, and
+/// sets what holds their effect: how far it walks a tick, its attack's damage and period, and its
+/// pools' maxima, a pool keeping the rule of stats.md. A modifier its tags' immunities suppress
+/// gives no tags and no stats. An effect whose stat the mode does not declare keeps what the
+/// unit's kit gave it.
 fn refresh_stats(
-    book: Option<Res<'_, StatBook>>,
+    (book, tag_book): (Option<Res<'_, StatBook>>, Option<Res<'_, TagBook>>),
     mut units: Query<
         '_,
         '_,
@@ -386,6 +393,7 @@ fn refresh_stats(
             &UnitType,
             &Level,
             Option<&Modifiers>,
+            Option<&mut UnitTags>,
             &mut UnitStats,
             Option<&mut MoveStep>,
             Option<&mut AttackStats>,
@@ -398,12 +406,31 @@ fn refresh_stats(
     let Some(book) = book else {
         return;
     };
-    for (&unit_type, level, modifiers, mut stats, step, attack, health, pool) in &mut units {
-        book.compute(unit_type, level.get(), modifiers, stats.refill());
-        let states = book.states(unit_type, modifiers);
-        stats.set_states(states);
+    let granting = tag_book
+        .as_deref()
+        .map_or(TagSet::default(), TagBook::granting);
+    for (&unit_type, level, modifiers, tags, mut stats, step, attack, health, pool) in &mut units {
+        let held = modifiers.into_iter().flat_map(Modifiers::iter);
+        let granted = held
+            .filter(|instance| instance.stacks > 0)
+            .map(|instance| instance.tags);
+        let derived = tag_book
+            .as_deref()
+            .map(|book| book.unit_tags(unit_type, granted));
+        if let (Some(mut tags), Some(derived)) = (tags, derived) {
+            tags.set_if_neq(derived);
+        }
+        let immune = derived.map_or(TagSet::default(), |derived| derived.immune);
+        let takes_effect = TagBook::effect_test(granting, immune);
+        book.compute(
+            unit_type,
+            level.get(),
+            modifiers,
+            takes_effect,
+            stats.refill(),
+        );
         let values = stats.values();
-        if let (Some(mut step), Some(value)) = (step, book.step(values, states)) {
+        if let (Some(mut step), Some(value)) = (step, book.step(values)) {
             step.set_if_neq(MoveStep::new(value).expect("a step is at least 0"));
         }
         if let Some(mut attack) = attack {

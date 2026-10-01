@@ -10,7 +10,7 @@ use crate::abilities::ability_book::AbilityId;
 use crate::scripts::state_value::StateValue;
 use crate::stats::modifier_book::ModifierId;
 use crate::stats::modifier_data::Reapply;
-use crate::stats::unit_states::UnitStates;
+use crate::units::tag_set::TagSet;
 
 /// The modifiers a unit carries, by id, then source, one instance of an id from each source.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -46,7 +46,8 @@ pub(crate) struct Instance {
     pub(crate) shield: Option<Num>,
     /// What it adds to each stat a stack, by the stat's place in the stat book.
     pub(crate) stats: Vec<StatShare>,
-    pub(crate) states: UnitStates,
+    /// The tags it grants its carrier.
+    pub(crate) tags: TagSet,
     /// Its script state, in the order of its fields' names.
     pub(crate) state: Vec<StateValue>,
 }
@@ -82,7 +83,7 @@ pub(crate) struct Application {
 }
 
 impl Modifiers {
-    pub(crate) fn iter(&self) -> impl Iterator<Item = &Instance> {
+    pub(crate) fn iter(&self) -> impl Iterator<Item = &Instance> + Clone {
         self.0.iter()
     }
 
@@ -179,33 +180,38 @@ impl Modifiers {
         true
     }
 
-    /// Counts the intervals of tick `now`: each instance whose interval comes goes to `due`, by
-    /// id and source, and its next comes an interval later; whether any came.
+    /// Counts the intervals of tick `now`: each instance whose interval comes, and whose tags
+    /// `takes_effect` lets act, goes to `due`, by id and source, and its next comes an interval
+    /// later; whether any came.
     pub(crate) fn advance_intervals(
         &mut self,
         now: Tick,
+        takes_effect: impl Fn(TagSet) -> bool,
         mut due: impl FnMut(ModifierId, Option<StableId>),
     ) -> bool {
         let mut any = false;
         for instance in &mut self.0 {
             if instance.interval_due(now) {
-                due(instance.id, instance.source);
+                if takes_effect(instance.tags) {
+                    due(instance.id, instance.source);
+                }
                 any = true;
             }
         }
         any
     }
 
-    /// Spends shields on `amount` of damage: the shield that ends soonest first, one with no end
-    /// last, and shields with the same end in the order kept; a shield spent to 0 ends its
-    /// instance. What is left of the amount.
-    pub(crate) fn absorb(&mut self, mut amount: Num) -> Num {
+    /// Spends shields on `amount` of damage: of the instances whose tags `takes_effect` lets act,
+    /// the shield that ends soonest first, one with no end last, and shields with the same end in
+    /// the order kept; a shield spent to 0 ends its instance. What is left of the amount.
+    pub(crate) fn absorb(&mut self, mut amount: Num, takes_effect: impl Fn(TagSet) -> bool) -> Num {
         while amount > Num::ZERO {
             let soonest = self
                 .0
                 .iter()
                 .enumerate()
                 .filter(|(_, instance)| instance.shield.is_some_and(|shield| shield > Num::ZERO))
+                .filter(|(_, instance)| takes_effect(instance.tags))
                 .min_by_key(|&(at, instance)| (instance.until.is_none(), instance.until, at))
                 .map(|(at, _)| at);
             let Some(at) = soonest else {
@@ -408,7 +414,7 @@ mod tests {
                     stat: 0,
                     value: num(armor),
                 }],
-                states: UnitStates::default(),
+                tags: TagSet::default(),
                 state: vec![StateValue::Int(7)],
             },
             reapply,

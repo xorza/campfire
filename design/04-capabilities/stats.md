@@ -70,7 +70,7 @@ Intervals, shields and the events modifiers hear are part of [Combat](combat.md#
 
 ### Tags
 
-A unit's tags are its type's tags, the tags the engine gives it by its sections (`avatar`, `projectile`, `area`, `item`, and its layer's name), and the tags its modifiers grant, whatever their stacks. A tag has effects only when the mode declares them in `[tags.<name>]`:
+A unit's tags are its type's tags, the tags the engine gives it by its sections (`avatar`, `projectile`, `area`, `item`, and its layer's name), and the tags its modifiers grant, those of 0 stacks and those an immunity suppresses aside. A tag has effects only when the mode declares them in `[tags.<name>]`:
 
 | Effect | Means | Asked by |
 | --- | --- | --- |

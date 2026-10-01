@@ -31,14 +31,14 @@ use crate::stats::StatsSet;
 use crate::stats::modifier_book::{Applier, ModifierBook};
 use crate::stats::modifiers::Modifiers;
 use crate::stats::stat_book::StatBook;
-use crate::stats::unit_stats::UnitStats;
+use crate::units::block::Block;
 use crate::units::body::Body;
+use crate::units::living_unit::LivingUnit;
 use crate::units::owner::Owner;
 use crate::units::script_view::{RowFill, SlotRow, View};
-use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
 use crate::units::unit::Unit;
-use crate::units::unit_type::UnitType;
+use crate::units::unit_tags::UnitTags;
 
 pub(crate) mod abilities_api;
 pub(crate) mod ability_book;
@@ -191,15 +191,12 @@ fn hold_passives(
 }
 
 /// Starts each ordered cast that passes its checks, its target within range, and drops the
-/// others. A unit its states keep from casting keeps its order, and a cast it started goes back
+/// others. A unit its tags keep from casting keeps its order, and a cast it started goes back
 /// to it.
 fn start_casts(
     tick: Res<'_, SimTick>,
     book: Res<'_, AbilityBook>,
     targets: Targets<'_, '_>,
-    index: Res<'_, EntityIndex>,
-    unit_types: Query<'_, '_, &UnitType>,
-    view: NonSend<'_, View>,
     mut casters: Query<
         '_,
         '_,
@@ -209,17 +206,17 @@ fn start_casts(
             &mut AbilitySlots,
             Option<&ResourcePool>,
             Option<&Body>,
-            Option<&UnitStats>,
+            Option<&UnitTags>,
         ),
         Without<Dead>,
     >,
 ) {
     let now = tick.start();
-    for (&position, &team, mut slots, pool, body, stats) in &mut casters {
+    for (&position, &team, mut slots, pool, body, tags) in &mut casters {
         let Some(casting) = slots.casting() else {
             continue;
         };
-        if !UnitStats::states_of(stats).can_cast() {
+        if UnitTags::effects_of(tags).blocks(Block::Cast) {
             if casting.resolves_at.is_some() {
                 slots.interrupt();
             }
@@ -228,16 +225,7 @@ fn start_casts(
         if casting.resolves_at.is_some() {
             continue;
         }
-        let lookup = |id| {
-            let unit = targets.living(id)?;
-            let unit_type = index.get(id).and_then(|entity| unit_types.get(entity).ok());
-            Some(TargetUnit {
-                pos: unit.pos,
-                team: unit.team,
-                radius: unit.radius,
-                tags: view.type_tags(unit_type.copied()),
-            })
-        };
+        let lookup = |id| targets.living(id);
         let radius = Body::radius_of(body);
         let started = check(&book, now, &slots, pool, team, casting, lookup)
             .filter(|checked| in_range(checked, position, radius, lookup))
@@ -247,15 +235,6 @@ fn start_casts(
             None => slots.stop(),
         }
     }
-}
-
-/// A living unit a cast may target: where it stands, its team, its body's radius and its tags.
-#[derive(Debug, Clone, Copy)]
-struct TargetUnit {
-    pos: Position,
-    team: Team,
-    radius: Num,
-    tags: TagSet,
 }
 
 /// A cast that passes its checks: its ability, and the values at the slot's rank.
@@ -302,7 +281,7 @@ fn check<'a>(
     pool: Option<&ResourcePool>,
     team: Team,
     casting: Casting,
-    living: impl Fn(StableId) -> Option<TargetUnit>,
+    living: impl Fn(StableId) -> Option<LivingUnit>,
 ) -> Option<Checked<'a>> {
     let slot = slots.slot(casting.slot).filter(|slot| slot.rank > 0)?;
     let ability = book.get(slot.ability)?;
@@ -339,7 +318,7 @@ fn in_range(
     checked: &Checked<'_>,
     position: Position,
     radius: Num,
-    living: impl Fn(StableId) -> Option<TargetUnit>,
+    living: impl Fn(StableId) -> Option<LivingUnit>,
 ) -> bool {
     let (Range::Meters(range), CastTarget::Unit(target)) = (checked.range, checked.target) else {
         return true;
@@ -350,7 +329,7 @@ fn in_range(
 
 /// Resolves the casts due this tick, in the order of their caster's stable id. Their calls share
 /// one snapshot of the living units: effects apply only in Resolve, so none changes it. A due cast
-/// whose caster's states keep it from casting goes back to its order instead.
+/// whose caster's tags keep it from casting goes back to its order instead.
 fn resolve_casts(world: &mut World, mut due: Local<'_, Vec<(StableId, Entity)>>) {
     let now = world.resource::<SimTick>().start();
     due.clear();
@@ -366,7 +345,7 @@ fn resolve_casts(world: &mut World, mut due: Local<'_, Vec<(StableId, Entity)>>)
         }
     }
     due.retain(|&(_, entity)| {
-        let can_cast = UnitStats::states_of(world.get::<UnitStats>(entity)).can_cast();
+        let can_cast = !UnitTags::effects_of(world.get::<UnitTags>(entity)).blocks(Block::Cast);
         if !can_cast {
             world
                 .get_mut::<AbilitySlots>(entity)
@@ -452,16 +431,7 @@ fn prepare(
     let team = *unit.get::<Team>().expect("a caster has a team");
     let book = world.resource::<AbilityBook>();
     let pool = unit.get::<ResourcePool>();
-    let living = |id| {
-        let unit = view.living(id)?;
-        let row = view.row(id)?;
-        Some(TargetUnit {
-            pos: unit.pos,
-            team: unit.team,
-            radius: unit.radius,
-            tags: view.type_tags(row.unit_type),
-        })
-    };
+    let living = |id| view.living(id);
     let Some(checked) = check(book, now, slots, pool, team, casting, living) else {
         return Ok(None);
     };

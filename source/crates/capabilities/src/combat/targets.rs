@@ -4,12 +4,14 @@ use campfire_sim::{EntityIndex, Position, StableId};
 
 use crate::combat::dead::Dead;
 use crate::combat::health::Health;
-use crate::stats::unit_stats::UnitStats;
+use crate::units::block::Block;
 use crate::units::body::Body;
 use crate::units::living_unit::LivingUnit;
+use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
+use crate::units::unit_tags::UnitTags;
 
-/// The units an attack may target: living units with health whose states let them be targets.
+/// The units an attack may target: living units with health whose tags let them be targets.
 /// Every capability that chooses or checks a target goes through it, so all agree on what a valid
 /// target is.
 #[derive(SystemParam, Debug)]
@@ -23,7 +25,7 @@ pub(crate) struct Targets<'w, 's> {
             &'static Position,
             &'static Team,
             Option<&'static Body>,
-            Option<&'static UnitStats>,
+            Option<&'static UnitTags>,
         ),
         (With<Health>, Without<Dead>),
     >,
@@ -38,16 +40,16 @@ impl Targets<'_, '_> {
 
     /// `target`, when it is a living unit that may be a target.
     pub(crate) fn living(&self, target: StableId) -> Option<LivingUnit> {
-        let (&id, &pos, &team, body, stats) = self.units.get(self.index.get(target)?).ok()?;
-        if !UnitStats::states_of(stats).targetable() {
+        let (&id, &pos, &team, body, tags) = self.units.get(self.index.get(target)?).ok()?;
+        if UnitTags::effects_of(tags).blocks(Block::Target) {
             return None;
         }
-        let radius = Body::radius_of(body);
         Some(LivingUnit {
             id,
             pos,
             team,
-            radius,
+            radius: Body::radius_of(body),
+            tags: tags.map_or(TagSet::default(), |tags| tags.tags),
         })
     }
 }

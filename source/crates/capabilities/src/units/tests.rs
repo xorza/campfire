@@ -25,10 +25,11 @@ use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::level::Level;
 use crate::stats::stat::{EngineStat, Stat};
-use crate::stats::unit_state::UnitState;
 use crate::stats::unit_stats::UnitStats;
+use crate::units::block::Block;
 use crate::units::path_id::PathId;
 use crate::units::unit::Unit;
+use crate::units::unit_tags::UnitTags;
 use crate::values::declared_name::DeclaredName;
 use crate::values::scalar::Scalar;
 
@@ -95,7 +96,8 @@ impl Scene {
 
     fn spawn(&mut self, at: Position, parts: impl Bundle) -> StableId {
         let id = self.world.resource_mut::<IdAllocator>().allocate();
-        self.world.spawn((id, at, parts));
+        let unit = self.world.spawn((id, at, parts)).id();
+        UnitTags::give_type_tags(&mut self.world, unit);
         id
     }
 
@@ -143,9 +145,9 @@ fn queries_select_living_units_by_filter_and_exact_ground_distance() {
     let ally = scene.spawn(at(1, 0, 0), unit().bundle(Team::new(1)));
     let dead = scene.spawn(at(0, 0, 1), (unit().bundle(Team::new(0)), Dead));
     // Within 2 m, but no target: one untargetable, one invulnerable.
-    let hidden = UnitStats::in_states(&[UnitState::Untargetable]);
+    let hidden = UnitTags::blocking(&[Block::Target]);
     let hidden = scene.spawn(at(2, 0, 0), (unit().bundle(Team::new(0)), hidden));
-    let guarded = UnitStats::in_states(&[UnitState::Invulnerable]);
+    let guarded = UnitTags::blocking(&[Block::Target, Block::Damage]);
     let guarded = scene.spawn(at(-2, 0, 0), (unit().bundle(Team::new(0)), guarded));
 
     let find = |scene: &mut Scene, filter: &str| {
@@ -156,6 +158,8 @@ fn queries_select_living_units_by_filter_and_exact_ground_distance() {
     // no target are not.
     assert_eq!(find(&mut scene, "enemies"), [high, east, west, edge]);
     assert_eq!(find(&mut scene, "enemies:creep"), [east]);
+    assert_eq!(find(&mut scene, "enemies:!creep"), [high, west, edge]);
+    assert_eq!(find(&mut scene, "enemies:creep:!creep"), []);
     assert_eq!(find(&mut scene, "allies"), [of, ally]);
     assert_eq!(find(&mut scene, "all"), [of, high, east, west, edge, ally]);
     assert!(far.get() > 0 && dead.get() > 0 && hidden.get() > 0 && guarded.get() > 0);

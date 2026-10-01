@@ -24,7 +24,7 @@ use crate::script_facts::ScriptFacts;
 #[derive(Debug)]
 pub(crate) struct LoadCheck<'a> {
     packages: &'a ModePackages,
-    /// The tags a filter may name: those of the mode's unit types, and `avatar`.
+    /// The tags a filter may name: every tag the mode's packages name.
     tags: BTreeSet<&'a str>,
     /// The move speed cap, in meters a second.
     cap: Num,
@@ -50,13 +50,7 @@ impl<'a> LoadCheck<'a> {
             package: manifest.header.name.clone(),
             problem: Box::new(problem),
         };
-        let mut tags: BTreeSet<&str> = packages
-            .units
-            .units
-            .values()
-            .flat_map(|unit_type| unit_type.core.tags.iter().map(String::as_str))
-            .collect();
-        tags.insert(UnitTypeData::AVATAR_TAG);
+        let tags = packages.tag_names();
         if tags.len() > UnitTypeData::TAG_LIMIT {
             return Err(fail(LoadProblem::TooManyTags));
         }
@@ -542,13 +536,13 @@ impl<'a> LoadCheck<'a> {
         }
     }
 
-    /// A filter of data, whose relation its read checked: its tag, if any, is one a unit type of
-    /// the mode declares.
+    /// A filter of data, whose relation its read checked: each of its tags is one the mode's
+    /// packages name.
     fn filter_data(&self, filter: &FilterData, at: &Place) -> Result<(), LoadProblem> {
         if filter
-            .tag
-            .as_deref()
-            .is_none_or(|tag| self.tags.contains(tag))
+            .tags
+            .iter()
+            .all(|tag| self.tags.contains(tag.name.as_str()))
         {
             return Ok(());
         }

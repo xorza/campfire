@@ -10,5 +10,5 @@ fn on_resolve(ctx, caster, target) {
 
 fn on_hit(ctx, caster, target, hit) {
     ctx.damage(target, ctx.p.damage, "physical");
-    ctx.slow(target, ctx.p.slow, ctx.p.slow_ms);
+    ctx.add_modifier(target, "slow", ctx.p.slow_ms);
 }

@@ -13,8 +13,8 @@ use crate::scripts::core_api::CoreApi;
 use crate::scripts::hook::{Hook, ScriptRole};
 use crate::scripts::role_set::RoleSet;
 use crate::stats::stats_api::StatsApi;
-use crate::stats::unit_state::UnitState;
 use crate::units::script_view::View;
+use crate::units::tag_effect::TagEffect;
 use crate::units::unit::Unit;
 use crate::vision::vision_api::VisionApi;
 
@@ -27,7 +27,7 @@ pub struct ScriptApi {
     members: Vec<ApiMember>,
     /// Each hook, each unit state, and each data field: whether it runs.
     hooks: Vec<HookStatus>,
-    states: Vec<StateStatus>,
+    tag_effects: Vec<TagEffectStatus>,
     data: Vec<DataField>,
     /// The names of the functions the engine has before the API binds: Rhai's packages and
     /// `Num`'s, getters as `get$<field>`; sorted.
@@ -42,10 +42,10 @@ pub struct HookStatus {
     pub status: Status,
 }
 
-/// Whether the release honours a unit state.
+/// Whether the release honours an effect a tag may have.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct StateStatus {
-    pub state: UnitState,
+pub struct TagEffectStatus {
+    pub effect: TagEffect,
     pub status: Status,
 }
 
@@ -69,6 +69,7 @@ pub enum DataTable {
     Vision,
     Collision,
     Ai,
+    Tag,
 }
 
 /// The opening of the generated reference.
@@ -165,7 +166,7 @@ impl ScriptApi {
         let mut api = ScriptApi {
             members: Vec::new(),
             hooks: Vec::new(),
-            states: Vec::new(),
+            tag_effects: Vec::new(),
             data: Vec::new(),
             builtins: Vec::new(),
         };
@@ -186,8 +187,8 @@ impl ScriptApi {
         &self.hooks
     }
 
-    pub fn states(&self) -> &[StateStatus] {
-        &self.states
+    pub fn tag_effects(&self) -> &[TagEffectStatus] {
+        &self.tag_effects
     }
 
     pub fn data(&self) -> &[DataField] {
@@ -276,12 +277,12 @@ impl ScriptApi {
                 status.status.name(),
             )?;
         }
-        out.push_str("\n## States\n\n| State | Status |\n| --- | --- |\n");
-        for status in &self.states {
+        out.push_str("\n## Tag effects\n\n| Effect | Status |\n| --- | --- |\n");
+        for status in &self.tag_effects {
             writeln!(
                 out,
                 "| `{}` | {} |",
-                status.state.name(),
+                status.effect.name(),
                 status.status.name()
             )?;
         }
@@ -309,13 +310,13 @@ impl ScriptApi {
         self.hooks.push(hook);
     }
 
-    /// Records whether the release honours `state`.
-    pub(crate) fn record_state(&mut self, state: UnitState, status: Status) {
+    /// Records whether the release honours `effect`.
+    pub(crate) fn record_tag_effect(&mut self, effect: TagEffect, status: Status) {
         assert!(
-            self.states.iter().all(|held| held.state != state),
-            "{state:?} is recorded once"
+            self.tag_effects.iter().all(|held| held.effect != effect),
+            "{effect:?} is recorded once"
         );
-        self.states.push(StateStatus { state, status });
+        self.tag_effects.push(TagEffectStatus { effect, status });
     }
 
     /// Records the fields of `table`: `runs`, which the release reads, and `planned`.
@@ -433,7 +434,7 @@ impl Status {
 }
 
 impl DataTable {
-    pub const ALL: [DataTable; 9] = [
+    pub const ALL: [DataTable; 10] = [
         DataTable::Mode,
         DataTable::Ability,
         DataTable::Modifier,
@@ -443,6 +444,7 @@ impl DataTable {
         DataTable::Vision,
         DataTable::Collision,
         DataTable::Ai,
+        DataTable::Tag,
     ];
 
     /// The table as the reference titles it.
@@ -457,6 +459,7 @@ impl DataTable {
             DataTable::Vision => "A unit type's `vision`",
             DataTable::Collision => "A unit type's `collision`",
             DataTable::Ai => "A unit type's `orders`",
+            DataTable::Tag => "A tag's effects, `[tags.<name>]`",
         }
     }
 }
@@ -557,7 +560,9 @@ mod tests {
     use crate::mode::mode_data::ModeData;
     use crate::orders::ai_data::AiData;
     use crate::stats::modifier_data::{AuraData, ModifierData};
+    use crate::units::block::Block;
     use crate::units::collision_data::CollisionData;
+    use crate::units::tag_data::TagData;
     use crate::vision::vision_data::VisionData;
 
     /// Each function of `engine`: its name, and the type of its first parameter.
@@ -615,9 +620,13 @@ mod tests {
         let hooks: Vec<_> = api.hooks().iter().map(|status| status.hook).collect();
         assert!(Hook::ALL.iter().all(|hook| hooks.contains(hook)));
         assert_eq!(hooks.len(), Hook::ALL.len());
-        let states: Vec<_> = api.states().iter().map(|status| status.state).collect();
-        assert!(UnitState::ALL.iter().all(|state| states.contains(state)));
-        assert_eq!(states.len(), UnitState::ALL.len());
+        let effects: Vec<_> = api
+            .tag_effects()
+            .iter()
+            .map(|status| status.effect)
+            .collect();
+        assert!(TagEffect::ALL.iter().all(|effect| effects.contains(effect)));
+        assert_eq!(effects.len(), TagEffect::ALL.len());
         let damage = api.member(ApiOwner::Ctx, "damage").unwrap();
         assert_eq!(
             (damage.roles, damage.capability, damage.status),
@@ -711,9 +720,9 @@ mod tests {
             let named = status.signature.split(',').count();
             assert_eq!(named, status.hook.params(), "{:?}", status.hook);
         }
-        for state in UnitState::ALL {
-            let name = StrDeserializer::<ValueError>::new(state.name());
-            assert_eq!(UnitState::deserialize(name), Ok(state));
+        for block in Block::ALL {
+            let name = StrDeserializer::<ValueError>::new(block.name());
+            assert_eq!(Block::deserialize(name), Ok(block));
         }
     }
 
@@ -730,6 +739,7 @@ mod tests {
             (DataTable::Vision, serde_fields::<VisionData>()),
             (DataTable::Collision, serde_fields::<CollisionData>()),
             (DataTable::Ai, serde_fields::<AiData>()),
+            (DataTable::Tag, serde_fields::<TagData>()),
         ];
         for (table, schema) in tables {
             let mut recorded: Vec<_> = api

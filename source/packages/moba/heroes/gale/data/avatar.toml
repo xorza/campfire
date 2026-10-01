@@ -97,3 +97,12 @@ radius = "7.25"
 knock_back = "8.75"
 knock_back_ms = 400
 heal_per_tick = { base = [35, 55, 75], ap = "0.175" }
+
+# A slow by the `slow` param of the ability that applies it; its time comes from the call.
+[modifiers.slow]
+stats = { slow = { param = "slow" } }
+tags = ["slowed"]
+
+# A knock up: its time comes from the call that applies it.
+[modifiers.knock_up]
+tags = ["airborne"]

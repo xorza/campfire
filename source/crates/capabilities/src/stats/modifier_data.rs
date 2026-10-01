@@ -6,7 +6,6 @@ use serde::Deserialize;
 
 use crate::scripts::state_decl::StateDecl;
 use crate::stats::stat::Stat;
-use crate::stats::unit_state::UnitState;
 use crate::values::filter_data::FilterData;
 use crate::values::number::Number;
 use crate::values::param::Param;
@@ -27,8 +26,9 @@ pub struct ModifierData {
     /// Per stack.
     #[serde(default)]
     pub stats: BTreeMap<Stat, Number>,
+    /// The tags it grants its carrier.
     #[serde(default)]
-    pub states: Vec<UnitState>,
+    pub tags: Vec<String>,
     /// The modifier ends when the shield is spent.
     pub shield: Option<Number>,
     pub aura: Option<AuraData>,

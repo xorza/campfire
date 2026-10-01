@@ -26,7 +26,6 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `find_visible` | `(of, pos, radius, filter)` | every role | vision | runs | as `find`, of the units `of`'s team sees |
 | `heal` | `(unit, amount)` | every role | combat | runs | heals `unit`, scaled by its `healing_received_pct` |
 | `knock_back` | `(unit, from, distance, ms)` | every role | stats | planned | pushes `unit` away from `from` |
-| `knock_up` | `(unit, ms)` | every role | stats | planned | the engine's knock up, from the acting unit |
 | `learn` | `(avatar, slot)` | mode | abilities | runs | the ability in `slot` a rank more, up to its last |
 | `map` | read | every role | navigation | runs | the map's paths and neutral spawns |
 | `nearest_visible` | `(of, radius, filter)` | every role | vision | runs | the nearest living unit within `radius` of `of` that `filter` selects and `of`'s team sees, `()` with none |
@@ -46,12 +45,10 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `respawn` | `(unit, ms)` | mode | combat | runs | brings back `unit`, dead and of a type that stays, `ms` from the call |
 | `restore` | `(unit, amount)` | every role | combat | runs | gives `unit` back `amount` of its resource |
 | `reveal` | `(pos, radius, ms)` | every role | vision | planned | shows the source's team what is within `radius` of `pos` |
-| `slow` | `(unit, fraction, ms)` | every role | stats | planned | the engine's slow, from the acting unit |
 | `spawn_avatars` | `()` | mode | core | runs | spawns each chosen avatar not yet spawned, in slot order, at its team's spawn |
 | `spawn_group` | `(team, path, types)` | mode | core | runs | spawns `types` in order at `team`'s end of `path`, walking it |
 | `spawn_unit` | `(type, team, pos)` | mode | core | runs | spawns a unit of `type` on `team` at `pos`, within the map's bounds |
 | `state` | read | mode | core | runs | the mode's state fields, by name, to read and write |
-| `stun` | `(unit, ms)` | every role | stats | planned | the engine's stun, from the acting unit |
 | `teams` | read | every role | core | runs | the playing teams' names |
 | `teleport` | `(unit, pos)` | every role | navigation | planned | puts `unit` at `pos` |
 | `timer` | `(name, ms, repeat, data)` | mode | core | runs | calls `on_timer` `ms` from the call, rounded up to whole ticks, at least one |
@@ -67,7 +64,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `attack_range` | read | combat | runs | its attack's range |
 | `can_see` | `(unit)` | vision | runs | whether its team sees the other unit |
 | `has_modifier` | `(id)` | stats | runs | whether it carries the modifier of the script's package |
-| `has_tag` | `(tag)` | core | runs | whether its unit type has the tag |
+| `has_tag` | `(tag)` | core | runs | whether it has the tag, of its type or a modifier |
 | `health` | read | combat | runs | its health |
 | `is_avatar` | read | core | runs | whether it is an avatar |
 | `is_enemy_of` | `(unit)` | core | runs | whether the two are of enemy teams |
@@ -190,20 +187,19 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `calc_heal(ctx, h)` | mode | combat | planned |
 | `on_think(ctx, unit)` | AI | orders | runs |
 
-## States
+## Tag effects
 
-| State | Status |
+| Effect | Status |
 | --- | --- |
-| `stunned` | runs |
-| `rooted` | runs |
-| `silenced` | runs |
-| `disarmed` | runs |
-| `airborne` | runs |
-| `stealthed` | runs |
-| `untargetable` | runs |
-| `slow_immune` | runs |
-| `invulnerable` | runs |
-| `true_sight` | runs |
+| `blocks = ["move"]` | runs |
+| `blocks = ["use"]` | planned |
+| `blocks = ["attack"]` | runs |
+| `blocks = ["target"]` | runs |
+| `blocks = ["damage"]` | runs |
+| `immune = [tags]` | runs |
+| `blocks = ["cast"]` | runs |
+| `hidden = true` | runs |
+| `detects = true` | runs |
 
 ## Data fields
 
@@ -221,6 +217,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `attack_kind` | runs |
 | `stats` | runs |
 | `resources` | runs |
+| `tags` | runs |
 | `state_version` | planned |
 
 ### An ability, `[abilities.<id>]`
@@ -261,7 +258,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `aura` | runs |
 | `params` | runs |
 | `state` | runs |
-| `states` | runs |
+| `tags` | runs |
 
 ### A modifier's `aura`
 
@@ -291,7 +288,6 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | Field | Status |
 | --- | --- |
 | `sight_range` | runs |
-| `true_sight` | runs |
 
 ### A unit type's `collision`
 
@@ -305,3 +301,12 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | --- | --- |
 | `ai` | runs |
 | `think_ms` | runs |
+
+### A tag's effects, `[tags.<name>]`
+
+| Field | Status |
+| --- | --- |
+| `blocks` | runs |
+| `hidden` | runs |
+| `detects` | runs |
+| `immune` | runs |

@@ -35,6 +35,29 @@ spell_vamp = { min = 0, max = 1 }
 cooldown_reduction = { min = 0, max = "0.4" }
 slow = { combine = "highest", min = 0, max = "0.99" }
 
+# What its tags do: crowd control, stealth and true sight. A slow grants `slowed`, which
+# `slow_immune` holds without effect.
+[tags.stunned]
+blocks = ["move", "attack", "cast", "use"]
+[tags.airborne]
+blocks = ["move", "attack", "cast", "use"]
+[tags.rooted]
+blocks = ["move"]
+[tags.silenced]
+blocks = ["cast"]
+[tags.disarmed]
+blocks = ["attack"]
+[tags.untargetable]
+blocks = ["target"]
+[tags.invulnerable]
+blocks = ["target", "damage"]
+[tags.stealthed]
+hidden = true
+[tags.true_sight]
+detects = true
+[tags.slow_immune]
+immune = ["slowed"]
+
 [inputs]
 hero = "string"
 spells = "string_list"

@@ -129,10 +129,14 @@ impl Unit {
             |unit: &mut Unit, name: &str| unit.view.stat(&unit.row(), name),
         )
         .bind(
-            method("has_tag", "(tag)", "whether its unit type has the tag"),
+            method(
+                "has_tag",
+                "(tag)",
+                "whether it has the tag, of its type or a modifier",
+            ),
             |unit: &mut Unit, name: &str| -> Checked<bool> {
                 let tag = unit.view.tag(name).map_err(ApiError::fail)?;
-                Ok(unit.view.has_tag(&unit.row(), tag))
+                Ok(unit.row().tags.tags.contains(tag))
             },
         )
         .bind(

@@ -7,7 +7,6 @@ use super::*;
 use crate::capability_set::internals::TestMatch;
 use crate::mode::map_data::{GridData, NeutralSpawnData, PathData, StructureData};
 use crate::navigation::path_walker::PathDirection;
-use crate::stats::unit_state::UnitState;
 use crate::units::path_id::PathId;
 use crate::values::scalar::Scalar;
 
@@ -70,12 +69,12 @@ impl Walk {
         id
     }
 
-    /// Puts unit `id` in `states`, as its modifiers would.
-    fn set_states(&mut self, id: StableId, states: &[UnitState]) {
+    /// Gives unit `id` tags that block `blocks`, as its modifiers would.
+    fn set_blocks(&mut self, id: StableId, blocks: &[Block]) {
         let entity = self.world.resource::<EntityIndex>().get(id).unwrap();
         self.world
             .entity_mut(entity)
-            .insert(UnitStats::in_states(states));
+            .insert(UnitTags::blocking(blocks));
     }
 
     fn get<C: Component + Copy>(&self, id: StableId) -> C {
@@ -168,7 +167,7 @@ fn bodies_part_and_block_the_way() {
     // in tick 8, at x = 1, and from tick 9 takes the whole overlap, back to 1 each tick, as a
     // walker takes it from a unit that stands. The rooted unit keeps its place and destination.
     let rooted = walk.body(at(0, 0, 10), Some(at(10, 0, 10)), Some(quarter), half);
-    walk.set_states(rooted, &[UnitState::Rooted]);
+    walk.set_blocks(rooted, &[Block::Move]);
     let walker = walk.body(at(3, 0, 10), Some(at(-10, 0, 10)), Some(quarter), half);
     for _ in 0..5 {
         walk.tick();
@@ -501,38 +500,40 @@ fn a_dead_unit_forgets_its_destination_and_a_stopped_one_keeps_it() {
     let unit = walk.unit(at(0, 0, 0), Some(at(0, 0, 5)));
     let entity = walk.world.resource::<EntityIndex>().get(unit).unwrap();
     walk.world.entity_mut(entity).insert(Dead);
-    // Each state that stops moving holds its unit where it stands, its destination kept, until
-    // the state ends; one that does not, as disarmed, lets it walk.
-    let states = [
-        (UnitState::Stunned, false),
-        (UnitState::Airborne, false),
-        (UnitState::Rooted, false),
-        (UnitState::Disarmed, true),
+    // Tags that block moving hold their unit where it stands, its destination kept, until they
+    // end; tags that block anything else let it walk.
+    let cases = [
+        (&[Block::Move, Block::Attack][..], false),
+        (&[Block::Move][..], false),
+        (&[Block::Attack, Block::Cast][..], true),
     ];
-    let walkers = states.map(|(state, _)| {
-        let x = 2 * (state as i64 + 1);
-        let id = walk.unit(at(x, 0, 0), Some(at(x, 0, 5)));
-        walk.set_states(id, &[state]);
-        (id, x)
-    });
+    let walkers: Vec<_> = (2..)
+        .step_by(2)
+        .zip(cases)
+        .map(|(x, (blocks, _))| {
+            let id = walk.unit(at(x, 0, 0), Some(at(x, 0, 5)));
+            walk.set_blocks(id, blocks);
+            (id, x)
+        })
+        .collect();
     walk.tick();
     assert_eq!(walk.get::<Position>(unit), at(0, 0, 0));
     assert_eq!(walk.get::<Destination>(unit).get(), None);
-    for (&(id, x), (state, walks)) in walkers.iter().zip(states) {
+    for (&(id, x), (blocks, walks)) in walkers.iter().zip(cases) {
         let z = i64::from(walks);
-        assert_eq!(walk.get::<Position>(id), at(x, 0, z), "{state:?}");
+        assert_eq!(walk.get::<Position>(id), at(x, 0, z), "{blocks:?}");
         assert_eq!(
             walk.get::<Destination>(id).get(),
             Some(at(x, 0, 5)),
-            "{state:?}"
+            "{blocks:?}"
         );
-        walk.set_states(id, &[]);
+        walk.set_blocks(id, &[]);
     }
-    // The states end: each walks on a meter from where it stood.
+    // The blocks end: each walks on a meter from where it stood.
     walk.tick();
-    for (&(id, x), (state, walks)) in walkers.iter().zip(states) {
+    for (&(id, x), (blocks, walks)) in walkers.iter().zip(cases) {
         let z = i64::from(walks) + 1;
-        assert_eq!(walk.get::<Position>(id), at(x, 0, z), "{state:?}");
+        assert_eq!(walk.get::<Position>(id), at(x, 0, z), "{blocks:?}");
     }
 }
 

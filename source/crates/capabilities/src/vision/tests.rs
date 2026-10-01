@@ -12,6 +12,7 @@ use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
 use crate::scripts::match_scripts::MatchScripts;
 use crate::scripts::script_limits::ScriptLimits;
+use crate::units::tag_effects::TagEffects;
 use crate::units::unit::Unit;
 use crate::values::bounds::Bounds;
 
@@ -68,12 +69,12 @@ impl Scene {
         id
     }
 
-    /// Puts unit `id` in `state`, as its modifiers would.
-    fn set_state(&mut self, id: StableId, state: UnitState) {
+    /// Gives unit `id` tags with `effects`, as its modifiers would.
+    fn set_effects(&mut self, id: StableId, effects: TagEffects) {
         let entity = self.entity(id);
         self.world
             .entity_mut(entity)
-            .insert(UnitStats::in_states(&[state]));
+            .insert(UnitTags::with_effects(effects));
     }
 
     fn entity(&self, id: StableId) -> Entity {
@@ -171,9 +172,9 @@ fn each_team_sees_the_cells_its_living_units_reveal() {
     // true sight, beyond: team 1 alone sees it. The ward steps to (−3, 0), √6.5 ≈ 2.55 m off:
     // its true sight shows the sneak to team 0.
     let sneak = scene.spawn(1, -1, 0, None);
-    scene.set_state(sneak, UnitState::Stealthed);
+    scene.set_effects(sneak, TagEffects::default().with_hidden());
     let ward = scene.spawn(0, -4, 0, Some(3));
-    scene.set_state(ward, UnitState::TrueSight);
+    scene.set_effects(ward, TagEffects::default().with_detects());
     scene.world.run_schedule(SimUpdate);
     assert_eq!(scene.seen_by(sneak), team(1));
     let entity = scene.entity(ward);

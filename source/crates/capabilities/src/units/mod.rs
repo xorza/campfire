@@ -14,10 +14,12 @@ use crate::units::error::UnitTypeError;
 use crate::units::owner::Owner;
 use crate::units::script_view::View;
 use crate::units::spawn_point::SpawnPoint;
+use crate::units::tag_book::TagBook;
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
 
+pub(crate) mod block;
 pub(crate) mod body;
 pub(crate) mod by_type;
 pub(crate) mod collision_data;
@@ -29,11 +31,17 @@ pub(crate) mod path_id;
 pub(crate) mod recent_attack;
 pub(crate) mod script_view;
 pub(crate) mod spawn_point;
+pub(crate) mod tag;
+pub(crate) mod tag_book;
+pub(crate) mod tag_data;
+pub(crate) mod tag_effect;
+pub(crate) mod tag_effects;
 pub(crate) mod tag_set;
 pub(crate) mod team;
 pub(crate) mod team_set;
 pub(crate) mod teams;
 pub(crate) mod unit;
+pub(crate) mod unit_tags;
 pub(crate) mod unit_type;
 pub(crate) mod unit_type_data;
 pub(crate) mod unit_types;
@@ -94,6 +102,25 @@ impl Units {
     /// Compiles `source` in the match's script host, once for every capability that runs it.
     pub fn compile(world: &mut World, source: &str) -> Result<ScriptId, ScriptError> {
         world.non_send_mut::<ScriptHost>().compile(source)
+    }
+
+    /// Declares every tag the match's packages name, in their order, before any type, modifier
+    /// or filter names one, so the tags are numbered the same however the packages load.
+    pub fn declare_tags<'a>(
+        world: &mut World,
+        names: impl IntoIterator<Item = &'a str>,
+    ) -> Result<(), UnitTypeError> {
+        let view = world.non_send::<View>();
+        let mut types = view.types_mut();
+        for name in names {
+            types.declare(name)?;
+        }
+        Ok(())
+    }
+
+    /// Gives the match its tags' effects and its unit types' own tags.
+    pub(crate) fn load_tags(world: &mut World, book: TagBook) {
+        world.insert_resource(book);
     }
 
     /// Loads the unit type `name`, with its core fields: its tags and its params. A name is one

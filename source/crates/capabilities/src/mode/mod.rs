@@ -45,10 +45,10 @@ use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::stats::Stats;
 use crate::stats::stat_book::StatBook;
-use crate::units::UnitsSet;
 use crate::units::script_view::View;
 use crate::units::team::Team;
 use crate::units::teams::Teams;
+use crate::units::{Units, UnitsSet};
 use crate::vision::Vision;
 
 pub(crate) mod avatar_index;
@@ -109,12 +109,14 @@ impl Mode {
         let types = setup
             .unit_types
             .iter()
-            .map(|setup| (setup.unit_type, &setup.stats, setup.kit.states()));
+            .map(|setup| (setup.unit_type, &setup.stats));
         let stats = StatBook::new(&setup.data.stats, types, rate, setup.max_move_speed)
             .ok_or(ModeError::StatValue)?;
+        let tags = view.types_mut().tag_book(&setup.data.tags);
         let book = ModeBook::new(setup, world.non_send::<ScriptHost>(), &view, &paths)?;
         view.set_stat_names(Rc::from(stats.stats()));
         Stats::load(world, stats);
+        Units::load_tags(world, tags);
         if let Some(grid) = grid {
             Vision::load_grid(world, grid, book.teams.count());
         }

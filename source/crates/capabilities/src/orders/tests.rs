@@ -21,6 +21,7 @@ use crate::scripts::script_limits::ScriptLimits;
 use crate::units::Units;
 use crate::units::path_id::PathId;
 use crate::units::script_view::View;
+use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::scalar::Scalar;
 
@@ -203,7 +204,8 @@ impl Match {
 
     fn spawn(&mut self, at: Position, parts: impl Bundle) -> StableId {
         let id = self.world.resource_mut::<IdAllocator>().allocate();
-        self.world.spawn((id, at, parts));
+        let unit = self.world.spawn((id, at, parts)).id();
+        UnitTags::give_type_tags(&mut self.world, unit);
         id
     }
 

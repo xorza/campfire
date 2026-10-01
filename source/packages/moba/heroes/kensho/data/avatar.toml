@@ -49,7 +49,7 @@ minion_bonus_chance = "0.3"
 [modifiers.flicker_strike]
 script = "scripts/flicker_strike.rhai"
 interval_ms = 180
-states = ["untargetable"]
+tags = ["untargetable"]
 
 [modifiers.flicker_strike.state]
 last = { type = "entity" }
@@ -104,5 +104,5 @@ cooldown_cut = "0.7"
 [modifiers.unbound]
 script = "scripts/unbound.rhai"
 duration_ms = { param = "duration_ms" }
-states = ["slow_immune"]
+tags = ["slow_immune"]
 stats = { attack_speed_pct = { param = "attack_speed" }, move_speed_pct = { param = "move_speed" } }

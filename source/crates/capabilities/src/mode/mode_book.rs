@@ -1,3 +1,4 @@
+use std::iter;
 use std::rc::Rc;
 
 use bevy_ecs::bundle::Bundle;
@@ -32,6 +33,7 @@ use crate::units::owner::Owner;
 use crate::units::path_id::PathId;
 use crate::units::script_view::View;
 use crate::units::spawn_point::SpawnPoint;
+use crate::units::tag_book::TagBook;
 use crate::units::team::Team;
 use crate::units::teams::Teams;
 use crate::units::unit_type::UnitType;
@@ -159,6 +161,9 @@ impl ModeBook {
         let kit = self
             .kit(unit_type)
             .expect("a unit type of the mode has a kit");
+        let tags = world
+            .resource::<TagBook>()
+            .unit_tags(unit_type, iter::empty());
         let mut unit = world.spawn((
             id,
             pos,
@@ -167,6 +172,7 @@ impl ModeBook {
             team,
             Level::default(),
             UnitStats::default(),
+            tags,
             Modifiers::default(),
             parts,
         ));

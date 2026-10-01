@@ -47,6 +47,7 @@ cooldown_ms = 210000
 [modifiers.sapped]
 duration_ms = 2500
 stats = { slow = "0.3", damage_dealt_pct = "-0.7" }
+tags = ["slowed"]
 
 [abilities.farsight]
 script = "scripts/farsight.rhai"

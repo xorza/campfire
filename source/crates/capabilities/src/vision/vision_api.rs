@@ -1,7 +1,8 @@
 use campfire_sim::Capability;
 
 use crate::scripts::api_builder::ApiBuilder;
-use crate::scripts::script_api::{DataTable, MemberSpec};
+use crate::scripts::script_api::{DataTable, MemberSpec, Status};
+use crate::units::tag_effect::TagEffect;
 
 /// The script API and data of `vision` beside the queries the view answers: the sight range,
 /// and the planned reveal and true sight.
@@ -18,6 +19,8 @@ impl VisionApi {
             )
             .capability(Capability::Vision),
         )
-        .data(DataTable::Vision, &["sight_range", "true_sight"], &[]);
+        .tag_effect(TagEffect::Hidden, Status::Runs)
+        .tag_effect(TagEffect::Detects, Status::Runs)
+        .data(DataTable::Vision, &["sight_range"], &[]);
     }
 }

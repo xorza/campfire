@@ -26,12 +26,12 @@ vision = { sight_range = "10.0" }
 collision = { radius = "0.55" }
 
 [units.tower]
-tags = ["structure", "tower"]
+tags = ["structure", "tower", "true_sight"]
 params = { gold = 150, xp = 0, help_window_ms = 2000 }
 stats = { health = { base = 1500 }, attack_damage = { base = 150 }, attack_speed = { base = "0.83" }, armor = { base = 60 }, magic_resist = { base = 60 } }
 combat = { attack = { range = "7.75", windup_ms = 150, projectile_speed = "12" } }
 orders = { ai = "scripts/tower_ai.rhai", think_ms = 250 }
-vision = { sight_range = "11.0", true_sight = true }
+vision = { sight_range = "11.0" }
 collision = { radius = "0.9" }
 
 [units.inhibitor]

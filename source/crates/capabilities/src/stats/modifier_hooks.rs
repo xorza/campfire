@@ -16,6 +16,7 @@ use crate::scripts::script_batch::ScriptBatch;
 use crate::stats::modifier_book::{ModifierBook, ModifierId};
 use crate::stats::modifiers::Modifiers;
 use crate::units::owner::Owner;
+use crate::units::tag_book::TagBook;
 
 /// The chain depth at which a hook fails instead of running: no designed chain of combat
 /// events is that deep, and the damage pass must end within its tick.
@@ -119,13 +120,16 @@ impl ModifierHooks {
         heard.clear();
         let world = batch.world();
         let entity = world.resource::<EntityIndex>().get(carrier);
-        if let Some(modifiers) = entity.and_then(|entity| world.get::<Modifiers>(entity)) {
+        if let Some(entity) = entity
+            && let Some(modifiers) = world.get::<Modifiers>(entity)
+        {
             let book = world.resource::<ModifierBook>();
             let defines = |id| book.get(id).hooks.contains(hook);
+            let takes_effect = TagBook::effective(world, entity);
             heard.extend(
                 modifiers
                     .iter()
-                    .filter(|instance| defines(instance.id))
+                    .filter(|instance| defines(instance.id) && takes_effect(instance.tags))
                     .map(|instance| Heard {
                         id: instance.id,
                         source: instance.source,

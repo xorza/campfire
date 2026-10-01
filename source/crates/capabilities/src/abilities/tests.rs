@@ -8,7 +8,7 @@ use bevy_ecs::world::Mut;
 use campfire_content::PackagePath;
 use campfire_math::{PlayerSlot, Vec3};
 use campfire_script::{NumError, ScriptError};
-use campfire_sim::{Capability, IdAllocator, SimUpdate};
+use campfire_sim::{Capability, IdAllocator, SimUpdate, StateHash};
 
 use super::*;
 use crate::abilities::ability_data::RangeField;
@@ -33,11 +33,12 @@ use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::{ScriptFailure, ScriptFailures};
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::Stats;
+use crate::stats::level::Level;
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifier_effect::ModifierEffect;
-use crate::stats::unit_state::UnitState;
-use crate::stats::unit_states::UnitStates;
+use crate::stats::unit_stats::UnitStats;
 use crate::units::Units;
+use crate::units::tag_data::TagData;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
@@ -220,8 +221,11 @@ impl Match {
 
     fn spawn(&mut self, team: u8, at: Position, parts: impl Bundle) -> StableId {
         let id = self.world.resource_mut::<IdAllocator>().allocate();
-        self.world
-            .spawn((id, at, combatant(500).bundle(Team::new(team)), parts));
+        let unit = self
+            .world
+            .spawn((id, at, combatant(500).bundle(Team::new(team)), parts))
+            .id();
+        UnitTags::give_type_tags(&mut self.world, unit);
         id
     }
 
@@ -282,12 +286,12 @@ impl Match {
             .unwrap()
     }
 
-    /// Puts unit `id` in `states`, as its modifiers would.
-    fn set_states(&mut self, id: StableId, states: &[UnitState]) {
+    /// Gives unit `id` tags that block `blocks`, as its modifiers would.
+    fn set_blocks(&mut self, id: StableId, blocks: &[Block]) {
         let entity = self.world.resource::<EntityIndex>().get(id).unwrap();
         self.world
             .entity_mut(entity)
-            .insert(UnitStats::in_states(states));
+            .insert(UnitTags::blocking(blocks));
     }
 
     fn casting(&self, id: StableId) -> Option<Casting> {
@@ -432,7 +436,7 @@ fn a_cast_passes_its_checks_or_does_nothing() {
     let far = game.spawn(1, at(num(6), Num::ZERO, Num::ZERO), ());
     let ally = game.spawn(0, at(num(1), Num::ZERO, num(1)), ());
     let hidden = game.spawn(1, at(num(1), Num::ZERO, Num::ZERO), ());
-    game.set_states(hidden, &[UnitState::Untargetable]);
+    game.set_blocks(hidden, &[Block::Target]);
 
     // An ally, an untargetable enemy, a unit beyond 5 m, and no target at all are refused; so
     // are a slot not learned and a pool of 5 against a cost of 10.
@@ -470,7 +474,7 @@ fn a_cast_passes_its_checks_or_does_nothing() {
 }
 
 #[test]
-fn a_cast_its_casters_states_stop_is_kept_and_an_interrupted_one_spends_nothing() {
+fn a_cast_its_casters_tags_stop_is_kept_and_an_interrupted_one_spends_nothing() {
     let mut game = Match::new();
     // Strike with a cast time of 100 ms, 3 ticks.
     let data = AbilityData {
@@ -495,10 +499,10 @@ fn a_cast_its_casters_states_stop_is_kept_and_an_interrupted_one_spends_nothing(
     };
     // A stun in tick 7's Move stage, after the casts start in Act and before they resolve in Hit.
     let caster_entity = game.world.resource::<EntityIndex>().get(caster).unwrap();
-    let stun = move |tick: Res<'_, SimTick>, mut stats: Query<'_, '_, &mut UnitStats>| {
+    let stun = move |tick: Res<'_, SimTick>, mut tags: Query<'_, '_, &mut UnitTags>| {
         if tick.start() == Tick::new(7) {
-            let states = UnitStates::of([UnitState::Stunned]);
-            stats.get_mut(caster_entity).unwrap().set_states(states);
+            *tags.get_mut(caster_entity).unwrap() =
+                UnitTags::blocking(&[Block::Move, Block::Attack, Block::Cast, Block::Use]);
         }
     };
     game.world.schedule_scope(SimUpdate, |_, schedule| {
@@ -506,28 +510,28 @@ fn a_cast_its_casters_states_stop_is_kept_and_an_interrupted_one_spends_nothing(
     });
 
     // Silenced in tick 0 and 1: the order is kept, and not started.
-    game.set_states(caster, &[UnitState::Silenced]);
+    game.set_blocks(caster, &[Block::Cast]);
     game.cast(caster, target);
     game.run_until(2);
     assert_eq!(game.casting(caster), ordered);
     // Free in tick 2: it starts, to resolve in tick 5. Silenced again in tick 3: its cast time
     // is interrupted, back to the order, and spends nothing.
-    game.set_states(caster, &[]);
+    game.set_blocks(caster, &[]);
     game.run_until(3);
     assert_eq!(game.casting(caster), started(5));
-    game.set_states(caster, &[UnitState::Silenced]);
+    game.set_blocks(caster, &[Block::Cast]);
     game.run_until(4);
     assert_eq!(game.casting(caster), ordered);
     // Free in tick 4: it starts again, to resolve in tick 7, when the stun in Move holds it
     // back from resolving: back to the order once more.
-    game.set_states(caster, &[]);
+    game.set_blocks(caster, &[]);
     game.run_until(8);
     assert_eq!(game.casting(caster), ordered);
     assert_eq!((game.health(enemy), game.pool(caster)), (500, 100));
     assert_eq!(game.slot(caster).ready_at, Tick::new(0));
     // Free in tick 8: it starts and resolves in tick 11, for 50 and 10 of the pool; ready again
     // 31 ticks later, in tick 42.
-    game.set_states(caster, &[]);
+    game.set_blocks(caster, &[]);
     game.run_until(12);
     assert_eq!(game.casting(caster), None);
     assert_eq!((game.health(enemy), game.pool(caster)), (450, 90));
@@ -779,7 +783,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
         reapply: Reapply::Refresh,
         max_stacks: None,
         stats: BTreeMap::new(),
-        states: Vec::new(),
+        tags: Vec::new(),
         shield: Some(param("damage")),
         aura: None,
         params: BTreeMap::new(),
@@ -842,7 +846,7 @@ fn a_cast_applies_a_modifier_from_its_caster_with_its_abilitys_params() {
         reapply: Reapply::Refresh,
         max_stacks: None,
         stats: BTreeMap::new(),
-        states: Vec::new(),
+        tags: Vec::new(),
         shield: Some(param("damage")),
         aura: None,
         params: BTreeMap::new(),
@@ -875,6 +879,65 @@ fn on_resolve(ctx, caster, target) {
         (held.shield, held.until),
         (Some(num(125)), Some(Tick::new(t.get() + 31)))
     );
+}
+
+/// A match in which a strike stuns its target for 100 ms through the mode's `stunned` tag: each
+/// tick's state hash, and whether the target's tags block its moving.
+fn stun_run() -> Vec<(StateHash, bool)> {
+    let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
+    let mut game = Match::with(LIMITS, &declared);
+    let stats = StatBook::new(&BTreeMap::new(), [], RATE, num(6)).unwrap();
+    Stats::load(&mut game.world, stats);
+    let stun = ModifierData {
+        script: None,
+        tags: vec!["stunned".to_owned()],
+        ..scripted(None, &[])
+    };
+    Stats::load_modifier(&mut game.world, 0, "stun", &stun, None);
+    let stunned = TagData {
+        blocks: vec![Block::Move, Block::Attack, Block::Cast, Block::Use],
+        ..TagData::default()
+    };
+    let effects = BTreeMap::from([("stunned".to_owned(), stunned)]);
+    let book = game.world.non_send::<View>().types_mut().tag_book(&effects);
+    Units::load_tags(&mut game.world, book);
+    let script = r#"fn on_resolve(ctx, caster, target) { ctx.add_modifier(target, "stun", 100); }"#;
+    let strike = game.load(&strike(), script);
+    let caster = game.caster(strike, 1);
+    let target_type = Units::load_type(&mut game.world, "target", &UnitTypeData::default());
+    let parts = (
+        target_type.unwrap(),
+        Level::default(),
+        UnitStats::default(),
+        UnitTags::default(),
+        Modifiers::default(),
+    );
+    let enemy = game.spawn(1, at(num(5), Num::ZERO, Num::ZERO), parts);
+    let entity = game.world.resource::<EntityIndex>().get(enemy).unwrap();
+    let mut seen = Vec::new();
+    for tick in 0..8 {
+        if tick == 2 {
+            game.cast(caster, CastTarget::Unit(enemy));
+        } else {
+            game.world.run_schedule(SimUpdate);
+        }
+        let stunned = UnitTags::effects_of(game.world.get(entity)).blocks(Block::Move);
+        seen.push((game.registry.hash(&game.world), stunned));
+    }
+    seen
+}
+
+#[test]
+fn a_stun_a_script_applies_blocks_its_target_alike_in_every_run() {
+    // The strike resolves in tick 2's Hit and stuns for 100 ms, 3 ticks: the stun holds through
+    // tick 2 + 3 = 5, and ends as tick 6 starts.
+    let first = stun_run();
+    let stunned: Vec<_> = first.iter().map(|&(_, stunned)| stunned).collect();
+    assert_eq!(
+        stunned,
+        [false, false, true, true, true, true, false, false]
+    );
+    assert_eq!(stun_run(), first);
 }
 
 #[test]
@@ -926,7 +989,7 @@ fn scripted(interval_ms: Option<i64>, params: &[(&str, i64)]) -> ModifierData {
         reapply: Reapply::Refresh,
         max_stacks: None,
         stats: BTreeMap::new(),
-        states: Vec::new(),
+        tags: Vec::new(),
         shield: None,
         aura: None,
         params: params

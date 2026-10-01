@@ -85,3 +85,7 @@ damage = { base = [150, 250, 350], ap = "0.5" }
 
 [abilities.chain_fire.projectile_state]
 bounces_left = { type = "int", default = 4 }
+
+# A stun: its time comes from the call that applies it.
+[modifiers.stun]
+tags = ["stunned"]

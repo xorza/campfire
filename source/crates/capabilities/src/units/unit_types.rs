@@ -1,5 +1,11 @@
+use std::collections::BTreeMap;
+
 use crate::units::error::UnitTypeError;
-use crate::units::tag_set::{Tag, TagSet};
+use crate::units::tag::Tag;
+use crate::units::tag_book::TagBook;
+use crate::units::tag_data::TagData;
+use crate::units::tag_effects::TagEffects;
+use crate::units::tag_set::TagSet;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::name_table::NameTable;
@@ -11,7 +17,7 @@ use crate::values::scalar::Scalar;
 pub(crate) struct UnitTypes {
     /// The name of each tag, by tag.
     tag_names: Vec<Box<str>>,
-    /// The `avatar` tag, which `unit.is_avatar` tests, once a type declares it.
+    /// The `avatar` tag, which `unit.is_avatar` tests, once declared.
     avatar: Option<Tag>,
     types: Vec<TypeEntry>,
     /// Every type, sorted by name.
@@ -41,26 +47,9 @@ impl UnitTypes {
         let Err(at) = self.find(name) else {
             return Err(UnitTypeError::RepeatedName);
         };
-        let mut new_tags = 0;
-        for (at, name) in data.tags.iter().enumerate() {
-            let seen = data.tags[..at].contains(name);
-            if !seen && self.tag(name).is_none() {
-                new_tags += 1;
-            }
-        }
-        if self.tag_names.len() + new_tags > Tag::LIMIT {
-            return Err(UnitTypeError::TooManyTags);
-        }
         let mut tags = TagSet::default();
         for name in &data.tags {
-            let tag = self.tag(name).unwrap_or_else(|| {
-                self.tag_names.push(name.as_str().into());
-                Tag::new(self.tag_names.len() - 1)
-            });
-            if name == UnitTypeData::AVATAR_TAG {
-                self.avatar = Some(tag);
-            }
-            tags = tags.with(tag);
+            tags = tags.with(self.declare(name)?);
         }
         let params = data
             .params
@@ -74,6 +63,22 @@ impl UnitTypes {
             tags,
         });
         Ok(UnitType::new(index))
+    }
+
+    /// The tag `name`, which joins the match's tags if it is new.
+    pub(crate) fn declare(&mut self, name: &str) -> Result<Tag, UnitTypeError> {
+        if let Some(tag) = self.tag(name) {
+            return Ok(tag);
+        }
+        if self.tag_names.len() == Tag::LIMIT {
+            return Err(UnitTypeError::TooManyTags);
+        }
+        self.tag_names.push(name.into());
+        let tag = Tag::new(self.tag_names.len() - 1);
+        if name == UnitTypeData::AVATAR_TAG {
+            self.avatar = Some(tag);
+        }
+        Ok(tag)
     }
 
     /// The type named `name`.
@@ -91,18 +96,36 @@ impl UnitTypes {
         &self.types[unit_type.index()].name
     }
 
-    /// The tag `name` of a loaded type.
+    /// The tag `name`, once declared.
     pub(crate) fn tag(&self, name: &str) -> Option<Tag> {
         let index = self.tag_names.iter().position(|tag| **tag == *name)?;
         Some(Tag::new(index))
     }
 
-    pub(crate) fn tags(&self, unit_type: UnitType) -> TagSet {
-        self.types[unit_type.index()].tags
-    }
-
     pub(crate) const fn avatar(&self) -> Option<Tag> {
         self.avatar
+    }
+
+    /// The book of the effects `data` gives the tags, by name, and of the types' own tags. A
+    /// tag `data` does not name has none.
+    pub(crate) fn tag_book(&self, data: &BTreeMap<String, TagData>) -> TagBook {
+        let tags = self.tag_names.iter().map(|name| {
+            let Some(data) = data.get(&**name) else {
+                return (TagEffects::default(), TagSet::default());
+            };
+            let immune = data.immune.iter().map(|name| {
+                self.tag(name)
+                    .expect("the match declared every tag the mode names")
+            });
+            (TagEffects::of(data), TagSet::of(immune))
+        });
+        let types = self.types.iter().enumerate().map(|(at, entry)| {
+            (
+                UnitType::new(u16::try_from(at).expect("types fit u16")),
+                entry.tags,
+            )
+        });
+        TagBook::new(tags, types)
     }
 
     /// The param `name` of `unit_type`, if it declares one.
@@ -118,6 +141,10 @@ pub(crate) mod internals {
     impl UnitTypes {
         pub(crate) fn count(&self) -> usize {
             self.types.len()
+        }
+
+        pub(crate) fn tags(&self, unit_type: UnitType) -> TagSet {
+            self.types[unit_type.index()].tags
         }
     }
 }

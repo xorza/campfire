@@ -22,18 +22,19 @@ use crate::stats::modifier_book::ModifierId;
 use crate::stats::modifier_data::Reapply;
 use crate::stats::modifier_handle::{ModifierHandle, StateField};
 use crate::stats::stat::Stat;
-use crate::stats::unit_states::UnitStates;
+use crate::units::block::Block;
 use crate::units::body::Body;
 use crate::units::filter::Filter;
 use crate::units::living_unit::LivingUnit;
 use crate::units::owner::Owner;
 use crate::units::path_id::PathId;
 use crate::units::recent_attack::RecentAttack;
-use crate::units::tag_set::{Tag, TagSet};
+use crate::units::tag::Tag;
 use crate::units::team::Team;
 use crate::units::team_set::TeamSet;
 use crate::units::teams::Teams;
 use crate::units::unit::Unit;
+use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_types::UnitTypes;
 use crate::values::declared_name::DeclaredName;
@@ -101,8 +102,8 @@ pub(crate) struct UnitRow {
     pub(crate) level: Option<u32>,
     /// The teams that see it; `vision` fills it, and without vision every team does.
     pub(crate) seen_by: TeamSet,
-    /// Its states; `stats` fills it.
-    pub(crate) states: UnitStates,
+    /// Its tags and their effects, as the core derives them.
+    pub(crate) tags: UnitTags,
     /// Its run of recent attacks, from `attacks_start` to `attacks_end`.
     attacks_start: u32,
     attacks_end: u32,
@@ -234,7 +235,7 @@ impl ScriptView {
                 health: None,
                 level: None,
                 seen_by: TeamSet::ALL,
-                states: UnitStates::default(),
+                tags: unit.get::<UnitTags>().copied().unwrap_or_default(),
                 target: None,
                 attack_range: None,
                 attacks_start: start,
@@ -271,11 +272,6 @@ impl ScriptView {
         Some(self.units[index])
     }
 
-    fn tags(&self, row: &UnitRow) -> TagSet {
-        row.unit_type
-            .map_or(TagSet::default(), |unit_type| self.types.tags(unit_type))
-    }
-
     /// The living units that may be targets and that `filter` selects relative to `of`.
     fn selected<'a>(
         &'a self,
@@ -285,7 +281,8 @@ impl ScriptView {
         let filter = Filter::parse(filter, &self.types)?;
         let of = of.team;
         Ok(self.units.iter().filter(move |row| {
-            row.alive && row.states.targetable() && filter.selects(of, row.team, self.tags(row))
+            let targetable = !row.tags.effects.blocks(Block::Target);
+            row.alive && targetable && filter.selects(of, row.team, row.tags.tags)
         }))
     }
 }
@@ -527,24 +524,14 @@ impl View {
         })
     }
 
-    /// The tags of units of `unit_type`; none for a unit of no type.
-    pub(crate) fn type_tags(&self, unit_type: Option<UnitType>) -> TagSet {
-        let view = self.0.borrow();
-        unit_type.map_or(TagSet::default(), |unit_type| view.types.tags(unit_type))
-    }
-
     /// The run-time form of `filter`, its tag among those of the match's unit types.
     pub(crate) fn resolve_filter(&self, filter: &FilterData) -> Result<Filter, ApiError> {
         Filter::resolve(filter, &self.0.borrow().types)
     }
 
-    /// The tag `name`; one no unit type declares fails the call.
+    /// The tag `name`; one the match does not have fails the call.
     pub(crate) fn tag(&self, name: &str) -> Result<Tag, ApiError> {
         self.0.borrow().types.tag(name).ok_or(ApiError::UnknownTag)
-    }
-
-    pub(crate) fn has_tag(&self, row: &UnitRow, tag: Tag) -> bool {
-        self.0.borrow().tags(row).contains(tag)
     }
 
     /// Every unit, living or dead, that `keep` keeps, by stable id.
@@ -560,14 +547,14 @@ impl View {
     /// Every unit, living or dead, with the tag `name`, by stable id.
     pub(crate) fn units_tagged(&self, name: &str) -> Checked<Array> {
         let tag = self.tag(name).map_err(ApiError::fail)?;
-        Ok(self.units_where(|view, row| view.tags(row).contains(tag)))
+        Ok(self.units_where(|_, row| row.tags.tags.contains(tag)))
     }
 
     /// Every avatar, living or dead, of `team` or of every team, by stable id.
     pub(crate) fn avatars(&self, team: Option<Team>) -> Array {
         self.units_where(|view, row| {
             let avatar = view.types.avatar();
-            avatar.is_some_and(|avatar| view.tags(row).contains(avatar))
+            avatar.is_some_and(|avatar| row.tags.tags.contains(avatar))
                 && team.is_none_or(|team| row.team == team)
         })
     }
@@ -592,12 +579,13 @@ impl View {
     pub(crate) fn living(&self, id: StableId) -> Option<LivingUnit> {
         let row = self
             .row(id)
-            .filter(|row| row.alive && row.states.targetable())?;
+            .filter(|row| row.alive && !row.tags.effects.blocks(Block::Target))?;
         Some(LivingUnit {
             id,
             pos: row.pos,
             team: row.team,
             radius: row.radius,
+            tags: row.tags.tags,
         })
     }
 
@@ -605,7 +593,7 @@ impl View {
         let view = self.0.borrow();
         view.types
             .avatar()
-            .is_some_and(|avatar| view.tags(row).contains(avatar))
+            .is_some_and(|avatar| row.tags.tags.contains(avatar))
     }
 
     /// The param `name` of the unit type of `row`.

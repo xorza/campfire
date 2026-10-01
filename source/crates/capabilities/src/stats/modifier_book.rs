@@ -13,8 +13,8 @@ use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifier_handle::StateField;
 use crate::stats::modifiers::{Application, Instance, Interval, StackEnd, StatShare};
 use crate::stats::stat_book::StatBook;
-use crate::stats::unit_states::UnitStates;
 use crate::units::script_view::ModifierInfo;
+use crate::units::tag_set::TagSet;
 use crate::values::number::Number;
 use crate::values::scalar::Scalar;
 
@@ -40,11 +40,13 @@ pub(crate) struct ModifierEntry {
     pub(crate) data: ModifierData,
     pub(crate) script: Option<ScriptId>,
     pub(crate) hooks: HookSet,
+    /// The tags it grants its carrier.
+    pub(crate) tags: TagSet,
 }
 
 impl ModifierBook {
     /// Loads `data` as the modifier `name` of `package`, after every modifier of an earlier
-    /// package or name, with its `script` and the `hooks` it defines.
+    /// package or name, with its `script`, the `hooks` it defines and the `tags` it grants.
     pub(crate) fn load(
         &mut self,
         package: u16,
@@ -52,6 +54,7 @@ impl ModifierBook {
         data: &ModifierData,
         script: Option<ScriptId>,
         hooks: HookSet,
+        tags: TagSet,
     ) -> ModifierId {
         assert!(
             self.entries
@@ -66,6 +69,7 @@ impl ModifierBook {
             data: data.clone(),
             script,
             hooks,
+            tags,
         });
         id
     }
@@ -98,7 +102,8 @@ impl ModifierBook {
         stats: &StatBook,
         ability_param: impl Fn(&str) -> Option<Scalar>,
     ) -> Option<Application> {
-        let data = &self.get(id).data;
+        let entry = self.get(id);
+        let data = &entry.data;
         let number = |number: &Number| -> Option<Num> {
             match number {
                 Number::Value(value) => value.to_num(),
@@ -158,7 +163,7 @@ impl ModifierBook {
             interval,
             shield: value(data.shield.as_ref())?,
             stats: shares.collect::<Option<_>>()?,
-            states: UnitStates::of(data.states.iter().copied()),
+            tags: entry.tags,
             state: data
                 .state
                 .values()

@@ -9,8 +9,6 @@ use crate::mode::error::UnitKitError;
 use crate::navigation::move_step::MoveStep;
 use crate::stats::stat::EngineStat;
 use crate::stats::stats_data::StatsData;
-use crate::stats::unit_state::UnitState;
-use crate::stats::unit_states::UnitStates;
 use crate::units::body::Body;
 use crate::units::collision_data::CollisionData;
 use crate::values::speed::Speed;
@@ -18,14 +16,13 @@ use crate::vision::sight::Sight;
 use crate::vision::vision_data::VisionData;
 
 /// What a new unit of a type starts with, in ticks at the match's rate: its combat values from its
-/// `combat` section and its stats at level 1, how far it walks a tick, how far it sees, whether
-/// it sees stealthed units, and its body.
+/// `combat` section and its stats at level 1, how far it walks a tick, how far it sees, and its
+/// body.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UnitKit {
     pub combatant: Option<Combatant>,
     pub step: Option<MoveStep>,
     pub sight: Option<Sight>,
-    pub true_sight: bool,
     pub body: Option<Body>,
 }
 
@@ -81,7 +78,6 @@ impl UnitKit {
             combatant,
             step,
             sight: None,
-            true_sight: false,
             body: None,
         })
     }
@@ -95,19 +91,13 @@ impl UnitKit {
         }
     }
 
-    /// The kit with the sight and true sight of its type's `vision` section, if it has one.
+    /// The kit with the sight of its type's `vision` section, if it has one.
     #[must_use]
     pub fn with_vision(self, vision: Option<&VisionData>) -> UnitKit {
         UnitKit {
             sight: vision.map(|vision| vision.sight),
-            true_sight: vision.is_some_and(|vision| vision.true_sight),
             ..self
         }
-    }
-
-    /// The states every unit of the type is in.
-    pub(crate) fn states(&self) -> UnitStates {
-        UnitStates::of(self.true_sight.then_some(UnitState::TrueSight))
     }
 }
 
