@@ -1,7 +1,3 @@
-fn on_resolve(ctx, caster, target) {
-    ctx.projectile(caster.pos, caster.pos.direction_to(target));
-}
-
 fn on_hit(ctx, caster, target, hit) {
     let ablaze = target.has_modifier("kindle");
     ctx.damage(target, ctx.p.damage, "magic");

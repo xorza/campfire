@@ -38,7 +38,7 @@ targeting = "enemies"
 range = "6.0"
 cooldown_ms = [6000, 5500, 5000, 4500, 4000]
 cost = { energy = 60 }
-projectile = { speed = "10" }
+delivery = { projectile = "dusk_mark" }
 
 [actions.dusk_mark.params]
 damage = { base = [45, 70, 95, 120, 145], ability_power = "0.4" }
@@ -100,3 +100,6 @@ windup_ms = 280
 rate = "attack_speed"
 damage = "attack_damage"
 damage_kind = "physical"
+
+[units.dusk_mark]
+projectile = { speed = "10", homing = true }

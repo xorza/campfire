@@ -24,3 +24,6 @@ slots = { weapon = ["tower_attack"] }
 orders = { ai = "scripts/tower_ai.rhai", think_ms = 250 }
 vision = { sight_range = "9.0" }
 collision = { radius = "0.9" }
+
+[units.tower_bolt]
+projectile = { speed = "12", homing = true }

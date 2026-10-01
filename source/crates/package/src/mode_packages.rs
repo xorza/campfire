@@ -8,6 +8,7 @@ use campfire_capabilities::{
 };
 use campfire_content::{Fingerprint, PackagePath};
 use campfire_script::ScriptHost;
+use campfire_sim::Capability;
 
 use crate::error::{ContentError, LoadError, LoadProblem, StoreError};
 use crate::files::avatar_data::AvatarData;
@@ -219,10 +220,11 @@ impl ModePackages {
         walkers
     }
 
-    /// Every tag its packages name, each once, sorted: `avatar`, the tags of its unit types and
-    /// its avatars', the names of its layers, those its and its dependencies' modifiers grant, and those of its `[tags]` and their
-    /// immunities. A match declares them in this order, so it numbers them the same however it
-    /// loads.
+    /// Every tag its packages name, each once, sorted: `avatar`, `projectile` with projectiles,
+    /// the tags of its unit types, its avatars' and its dependencies' delivery types, the names of
+    /// its layers, those its and its dependencies' modifiers grant, and those of its `[tags]` and
+    /// their immunities. A match declares them in this order, so it numbers them the same however
+    /// it loads.
     pub fn tag_names(&self) -> BTreeSet<&str> {
         let dependents = self
             .dependencies
@@ -243,12 +245,22 @@ impl ModePackages {
                 Content::Avatar(avatar) => Some(&avatar.unit),
                 Content::Loadout(_) => None,
             });
+        let deliveries = self
+            .dependencies
+            .iter()
+            .flat_map(|dependent| dependent.units().values());
         let types = self
             .units
             .units
             .values()
             .chain(avatars)
+            .chain(deliveries)
             .flat_map(|unit_type| &unit_type.core.tags);
+        let projectiles = self
+            .manifest
+            .capabilities
+            .contains(Capability::Projectiles)
+            .then_some(UnitTypeData::PROJECTILE_TAG);
         let declared = self
             .data
             .tags
@@ -261,6 +273,7 @@ impl ModePackages {
             .map(String::as_str)
             .chain(layers)
             .chain([UnitTypeData::AVATAR_TAG])
+            .chain(projectiles)
             .collect()
     }
 
@@ -312,6 +325,20 @@ impl ModePackages {
 }
 
 impl Dependent {
+    /// The unit types it holds, by id: those its actions deliver.
+    pub const fn units(&self) -> &BTreeMap<String, UnitTypeFile> {
+        match &self.content {
+            Content::Avatar(avatar) => &avatar.units,
+            Content::Loadout(loadout) => &loadout.units,
+        }
+    }
+
+    /// The name of its unit type `id` in a match: `<package>/<id>`, apart from every other
+    /// package's.
+    pub fn unit_type_name(&self, id: &str) -> String {
+        format!("{}/{id}", self.package.name)
+    }
+
     /// The package in `dir`, which the mode names `name`: an avatar or loadout package of that name.
     fn read(name: &str, dir: &PackageDir, parser: &ScriptHost) -> Result<Dependent, LoadError> {
         let fail = |problem| LoadError {

@@ -7,14 +7,16 @@ use serde::{Deserialize, Deserializer};
 use crate::files::units_data::UnitTypeFile;
 
 /// An avatar package's `data/avatar.toml`: its one unit type, in the units schema, with its
-/// name, and the actions and modifiers of the package. An avatar carries the tag `avatar`, and
-/// stays when it dies.
+/// name, and the actions, modifiers and delivery types of the package. An avatar carries the tag
+/// `avatar`, and stays when it dies.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AvatarData {
     pub name: String,
     pub unit: UnitTypeFile,
     pub actions: BTreeMap<String, ActionData>,
     pub modifiers: BTreeMap<String, ModifierData>,
+    /// The unit types its actions deliver, by id.
+    pub units: BTreeMap<String, UnitTypeFile>,
 }
 
 /// The unit type's fields beside the package's own, in one table.
@@ -27,6 +29,8 @@ impl<'de> Deserialize<'de> for AvatarData {
             actions: BTreeMap<String, ActionData>,
             #[serde(default)]
             modifiers: BTreeMap<String, ModifierData>,
+            #[serde(default)]
+            units: BTreeMap<String, UnitTypeFile>,
             #[serde(flatten)]
             unit: toml::Table,
         }
@@ -38,6 +42,7 @@ impl<'de> Deserialize<'de> for AvatarData {
             unit,
             actions: fields.actions,
             modifiers: fields.modifiers,
+            units: fields.units,
         })
     }
 }

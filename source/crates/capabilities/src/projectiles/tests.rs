@@ -1,22 +1,22 @@
 use std::num::NonZeroU32;
 
-use campfire_math::{Num, RngSource, SegmentSeed, Vec3};
-use campfire_sim::{
-    Capability, EntityIndex, SimTick, SimUpdate, StableId, Tick, TickRate, TypeHash,
-};
+use campfire_math::{RngSource, SegmentSeed};
+use campfire_sim::{Capability, SimUpdate, Tick, TypeHash};
 
 use super::*;
 use crate::actions::action_slots::ActionSlots;
 use crate::capability_set::internals::TestMatch;
 use crate::combat::ROLL_STREAM;
 use crate::combat::armed::Armed;
+use crate::combat::damage_kind::DamageKind;
 use crate::combat::dead::Dead;
 use crate::combat::deaths::Deaths;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;
+use crate::projectiles::cast_hits::CastHit;
 use crate::stats::pool_id::PoolId;
+use crate::units::Units;
 use crate::units::recent_attack::RecentAttack;
-use crate::units::team::Team;
 
 /// The MOBA's 30 ticks a second.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
@@ -34,11 +34,28 @@ fn half() -> Num {
     Num::ONE.checked_div_int(2).unwrap()
 }
 
-/// 30 damage within 8 m, fired 2 ticks after the start of an attack every 10 ticks, flying half
-/// a meter a tick.
-fn shooter() -> Armed {
+/// A projectile type of 15 m/s, half a meter a tick, that hits enemies; homing, or along a line
+/// of `width` for `range` that ends at its first hit when `stop_on_hit`.
+fn projectile(homing: bool, width: Num, range: Option<Num>, stop_on_hit: bool) -> ProjectileData {
+    ProjectileData {
+        speed: num(15),
+        width,
+        range,
+        homing,
+        stop_on_hit,
+        once_per_cast: false,
+        hits: None,
+        gravity: None,
+        sight_radius: None,
+        collide: None,
+    }
+}
+
+/// 30 damage within 8 m, fired 2 ticks after the start of an attack every 10 ticks, its
+/// projectiles of the homing type `bolt`.
+fn shooter(bolt: UnitType) -> Armed {
     Armed::melee(num(100), num(8), 2, 10, num(30))
-        .ranged(half())
+        .ranged(bolt)
         .on_death(OnDeath::Stay)
 }
 
@@ -51,10 +68,16 @@ fn target() -> Armed {
 struct Volley {
     world: World,
     registry: StateRegistry,
+    /// A homing projectile type.
+    bolt: UnitType,
+    /// A line of 1 m wide for 6 m, that passes through what it hits.
+    lance: UnitType,
+    /// A line of no width for 6 m, that ends at its first hit.
+    dart: UnitType,
 }
 
 impl Volley {
-    /// A match with combat, and with projectiles when `projectiles`.
+    /// A match with combat, and with projectiles and their types when `projectiles`.
     fn new(projectiles: bool) -> Volley {
         let declared: &[Capability] = if projectiles {
             &[
@@ -71,7 +94,56 @@ impl Volley {
             registry,
         } = TestMatch::new(declared, RATE, None);
         world.add_schedule(schedule);
-        Volley { world, registry }
+        let types = [
+            ("bolt", projectile(true, Num::ZERO, None, false)),
+            ("lance", projectile(false, Num::ONE, Some(num(6)), false)),
+            ("dart", projectile(false, Num::ZERO, Some(num(6)), true)),
+        ];
+        let [bolt, lance, dart] = types.map(|(name, data)| {
+            let unit_type = Units::load_type(&mut world, name, &UnitTypeData::default()).unwrap();
+            if projectiles {
+                Projectiles::load_type(&mut world, unit_type, &data);
+            }
+            unit_type
+        });
+        Volley {
+            world,
+            registry,
+            bolt,
+            lance,
+            dart,
+        }
+    }
+
+    /// Launches a projectile of the line type `unit_type` from `source` at the origin along +x,
+    /// carrying 10 damage, from the next tick.
+    fn fire_line(&mut self, source: StableId, unit_type: UnitType) {
+        let range = self
+            .world
+            .resource::<ByType<ProjectileSpec>>()
+            .get(unit_type)
+            .unwrap()
+            .range
+            .unwrap();
+        let mut launches = self.world.resource_mut::<Launches>();
+        let cast = launches.cast();
+        launches.launches.push(Launch {
+            source,
+            from: at(0, 0),
+            unit_type,
+            flight: Flight::Line {
+                direction: Vec3::new(Num::ONE, Num::ZERO, Num::ZERO),
+                flown: Num::ZERO,
+                range,
+                aimed: None,
+            },
+            payload: Payload::Attack {
+                amount: num(10),
+                kind: DamageKind::new(0),
+                roll: Num::ZERO,
+            },
+            cast,
+        });
     }
 
     fn unit(&mut self, team: u8, at: Position, combatant: Armed) -> StableId {
@@ -107,7 +179,10 @@ impl Volley {
         let projectiles = world.resource::<EntityIndex>().iter();
         projectiles
             .filter_map(|(_, entity)| world.get::<Projectile>(entity))
-            .map(|projectile| projectile.roll())
+            .map(|projectile| match projectile.payload() {
+                Payload::Attack { roll, .. } => roll,
+                Payload::Action { .. } => panic!("an attack's projectile"),
+            })
             .collect()
     }
 
@@ -126,7 +201,7 @@ impl Volley {
 #[test]
 fn a_projectile_flies_to_its_target_and_strikes_on_arrival() {
     let mut volley = Volley::new(true);
-    let shooter_id = volley.unit(0, at(0, 0), shooter());
+    let shooter_id = volley.unit(0, at(0, 0), shooter(volley.bolt));
     let target_id = volley.unit(1, at(5, 0), target());
     volley.attack(shooter_id, target_id);
 
@@ -168,7 +243,7 @@ fn a_projectile_flies_to_its_target_and_strikes_on_arrival() {
 
     // Without projectiles, the same attack strikes at the end of its windup, in tick 2.
     let mut instant = Volley::new(false);
-    let shooter_id = instant.unit(0, at(0, 0), shooter());
+    let shooter_id = instant.unit(0, at(0, 0), shooter(instant.bolt));
     let target_id = instant.unit(1, at(5, 0), target());
     instant.attack(shooter_id, target_id);
     let healths: Vec<_> = (0..3)
@@ -183,8 +258,8 @@ fn a_projectile_flies_to_its_target_and_strikes_on_arrival() {
 #[test]
 fn a_projectile_whose_target_dies_or_goes_first_ends_without_a_hit() {
     let mut volley = Volley::new(true);
-    let first = volley.unit(0, at(0, 0), shooter());
-    let second = volley.unit(0, at(0, 1), shooter());
+    let first = volley.unit(0, at(0, 0), shooter(volley.bolt));
+    let second = volley.unit(0, at(0, 1), shooter(volley.bolt));
     let doomed = volley.unit(1, at(5, 0), target());
     let gone = volley.unit(1, at(-5, 1), target());
     volley.attack(first, doomed);
@@ -218,6 +293,18 @@ fn a_projectile_whose_target_dies_or_goes_first_ends_without_a_hit() {
         .unwrap();
     assert_eq!(volley.registry.hash(&restored.world), hash);
     assert_eq!(restored.projectiles(), volley.projectiles());
+    // A cast's hits decode only in order, each once: the ids were allocated in order.
+    let decode = |hits: &[(StableId, StableId)]| {
+        let hits: Vec<CastHit> = hits
+            .iter()
+            .map(|&(group, unit)| CastHit { group, unit })
+            .collect();
+        let bytes = postcard::to_allocvec(&hits).unwrap();
+        postcard::from_bytes::<CastHits>(&bytes)
+    };
+    assert!(decode(&[(first, doomed), (first, gone), (second, doomed)]).is_ok());
+    assert!(decode(&[(first, gone), (first, doomed)]).is_err());
+    assert!(decode(&[(first, doomed), (first, doomed)]).is_err());
 
     volley.tick();
     assert_eq!(volley.world.resource::<SimTick>().start().get(), 6);
@@ -233,7 +320,7 @@ fn a_projectile_that_outlives_its_source_kills_with_no_killer() {
     // and it alone is the killer's. Were the second shooter gone too, no one would be.
     for second_goes in [false, true] {
         let mut volley = Volley::new(true);
-        let shooters = [0, 10].map(|x| volley.unit(0, at(x, 0), shooter()));
+        let shooters = [0, 10].map(|x| volley.unit(0, at(x, 0), shooter(volley.bolt)));
         let victim = volley.unit(1, at(5, 0), target());
         let victim_entity = volley.entity(victim);
         let mut pools = volley.world.get_mut::<Pools>(victim_entity).unwrap();
@@ -278,4 +365,48 @@ fn a_projectile_that_outlives_its_source_kills_with_no_killer() {
             .collect();
         assert_eq!(attackers, killer.into_iter().collect::<Vec<_>>());
     }
+}
+
+#[test]
+fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_ends_at_its_range() {
+    let mut volley = Volley::new(true);
+    let source = volley.unit(0, at(0, -9), target());
+    let point = |x: Num, z: Num| Position::new(Vec3::new(x, Num::ZERO, z)).unwrap();
+    let e = Num::EPSILON;
+    // The lance's reach is half its width, 0.5 m, and these bodies have no radius. Its path runs
+    // along x from 0 to 6: 0.5 m beside it and 0.5 m past its end are in reach, one bit more is
+    // not, and an ally is never hit.
+    let beside = volley.unit(1, point(num(2), half()), target());
+    let wide = volley.unit(1, point(num(3), half() + e), target());
+    let ally = volley.unit(0, at(1, 0), target());
+    let past = volley.unit(1, point(num(6) + half(), Num::ZERO), target());
+    let beyond = volley.unit(1, point(num(6) + half() + e, Num::ZERO), target());
+    volley.fire_line(source, volley.lance);
+
+    // It launches in tick 0 and flies half a meter a tick from tick 1: 6 m is ticks 1 to 12, and
+    // it ends in tick 12, as its range runs out. After tick 11 it is at 5.5 m.
+    for _ in 0..12 {
+        volley.tick();
+    }
+    assert_eq!(volley.projectiles(), [point(num(5) + half(), Num::ZERO)]);
+    volley.tick();
+    assert_eq!(volley.projectiles(), []);
+    let healths = [beside, wide, ally, past, beyond].map(|unit| volley.health(unit));
+    assert_eq!(healths, [90, 100, 100, 90, 100]);
+
+    // A dart of no width ends at its first hit: of two enemies on one point, the lower id, in
+    // tick 6, where its path reaches 3 m from 2.5 m; the one past them is never hit.
+    let mut volley = Volley::new(true);
+    let source = volley.unit(0, at(0, -9), target());
+    let [first, second, behind] =
+        [at(3, 0), at(3, 0), at(4, 0)].map(|at| volley.unit(1, at, target()));
+    volley.fire_line(source, volley.dart);
+    for _ in 0..6 {
+        volley.tick();
+    }
+    assert_eq!(volley.projectiles(), [point(num(2) + half(), Num::ZERO)]);
+    volley.tick();
+    assert_eq!(volley.projectiles(), []);
+    let healths = [first, second, behind].map(|unit| volley.health(unit));
+    assert_eq!(healths, [90, 100, 100]);
 }

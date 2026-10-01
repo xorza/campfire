@@ -7,6 +7,7 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
 use crate::actions::action_kind::ActionKind;
+use crate::actions::delivery_data::DeliveryData;
 use crate::actions::error::ActionField;
 use crate::mode::resource_id::{ResourceAmount, ResourceId};
 use crate::scripts::state_decl::StateDecl;
@@ -21,8 +22,8 @@ use crate::values::ranked::Ranked;
 use crate::values::scalar::Scalar;
 
 /// An action as its package's `[actions.<id>]` declares it, in milliseconds. Each capability
-/// field may hold one value or one per rank. The release loads every field, and runs only the
-/// targeting, range, cooldown, cost, windup and params yet.
+/// field may hold one value or one per rank. The release loads every field, and runs those the
+/// script API reference lists as running.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ActionData {
@@ -52,7 +53,8 @@ pub struct ActionData {
     /// The passive modifier is held only while the action is off cooldown.
     #[serde(default)]
     pub passive_while_ready: bool,
-    pub projectile: Option<ProjectileData>,
+    /// How it reaches what it affects, other than at once.
+    pub delivery: Option<DeliveryData>,
     pub area: Option<AreaData>,
     /// A weapon's stat of attacks a second, an `attack`'s alone.
     pub rate: Option<Stat>,
@@ -99,23 +101,6 @@ pub struct ChargeData {
     pub max_ms: Ranked<Number>,
 }
 
-/// The projectile `ctx.projectile` fires, or that a weapon launches, which homes at its speed
-/// alone. Its speed and width are in meters a second and meters.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct ProjectileData {
-    pub speed: Ranked<Number>,
-    pub width: Option<Ranked<Number>>,
-    /// Default: the action's.
-    pub range: Option<Ranked<Range>>,
-    pub stop_on_hit: Option<bool>,
-    pub once_per_cast: Option<bool>,
-    /// A filter of the units it hits.
-    pub hits: Option<FilterData>,
-    pub sight_radius: Option<Ranked<Number>>,
-    pub collide: Option<bool>,
-}
-
 /// The area `ctx.area` places.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -142,7 +127,6 @@ impl ActionData {
     /// The length of every per-rank array it holds: its capability fields' and its params'.
     pub fn rank_counts(&self) -> impl Iterator<Item = usize> + '_ {
         let numbers = |ranked: Option<&Ranked<Number>>| ranked.and_then(Ranked::ranks);
-        let projectile = self.projectile.as_ref();
         let area = self.area.as_ref();
         [
             self.range.as_ref().and_then(Ranked::ranks),
@@ -153,12 +137,6 @@ impl ActionData {
             numbers(self.charges.as_ref().map(|charges| &charges.max)),
             numbers(self.charges.as_ref().map(|charges| &charges.recharge_ms)),
             numbers(self.charge.as_ref().map(|charge| &charge.max_ms)),
-            numbers(projectile.map(|projectile| &projectile.speed)),
-            numbers(projectile.and_then(|projectile| projectile.width.as_ref())),
-            projectile
-                .and_then(|projectile| projectile.range.as_ref())
-                .and_then(Ranked::ranks),
-            numbers(projectile.and_then(|projectile| projectile.sight_radius.as_ref())),
             numbers(area.map(|area| &area.radius)),
             numbers(area.and_then(|area| area.delay_ms.as_ref())),
             numbers(area.and_then(|area| area.duration_ms.as_ref())),
@@ -180,27 +158,17 @@ impl ActionData {
     }
 
     /// Whether it has a field only a cast runs: a script or params, a cooldown, a clamp to range,
-    /// a toggle, a channel, a hold, charges, a charge, an area, projectile state, or a field of its
-    /// projectile other than the speed a weapon's homing launch flies at.
+    /// a toggle, a channel, a hold, charges, a charge, an area, or projectile state.
     pub fn cast_fields(&self) -> bool {
-        let projectile = self.projectile.as_ref().is_some_and(|projectile| {
-            projectile.width.is_some()
-                || projectile.range.is_some()
-                || projectile.stop_on_hit.is_some()
-                || projectile.once_per_cast.is_some()
-                || projectile.hits.is_some()
-                || projectile.sight_radius.is_some()
-                || projectile.collide.is_some()
-        });
-        self.cooldown_ms.is_some() || projectile || self.cast_only_fields()
+        self.cooldown_ms.is_some() || self.cast_only_fields()
     }
 
-    /// Whether it has a field a `train` does not run: a target, a range, a projectile, or a field
+    /// Whether it has a field a `train` does not run: a target, a range, a delivery, or a field
     /// only a cast runs, its cooldown aside.
     pub fn beyond_train(&self) -> bool {
         self.targeting != Targeting::None
             || self.range.is_some()
-            || self.projectile.is_some()
+            || self.delivery.is_some()
             || self.cast_only_fields()
     }
 
@@ -298,21 +266,7 @@ impl ActionData {
                 }
             }
         }
-        let launch = match (self.kind, &self.projectile) {
-            (ActionKind::Attack, Some(projectile)) => {
-                let speed = match projectile.speed.get(rank).ok_or(ActionField::Projectile)? {
-                    Number::Value(value) => *value,
-                    Number::Param(reference) => {
-                        param_at(&reference.param, ActionField::Projectile)?
-                    }
-                };
-                let speed = speed.to_num().filter(|speed| *speed > Num::ZERO);
-                Some(speed.ok_or(ActionField::Projectile)?)
-            }
-            _ => None,
-        };
         Ok(RankFields {
-            launch,
             range,
             cooldown_ms: whole(ActionField::Cooldown, self.cooldown_ms.as_ref())?,
             cost: PoolCost::new(cost),
@@ -323,7 +277,6 @@ impl ActionData {
 
     /// Every number field that reads a param, `{ param = "<name>" }`: the names it reads.
     pub fn param_refs(&self) -> impl Iterator<Item = &str> + '_ {
-        let projectile = self.projectile.as_ref();
         let area = self.area.as_ref();
         [
             self.cooldown_ms.as_ref(),
@@ -333,9 +286,6 @@ impl ActionData {
             self.charges.as_ref().map(|charges| &charges.max),
             self.charges.as_ref().map(|charges| &charges.recharge_ms),
             self.charge.as_ref().map(|charge| &charge.max_ms),
-            projectile.map(|projectile| &projectile.speed),
-            projectile.and_then(|projectile| projectile.width.as_ref()),
-            projectile.and_then(|projectile| projectile.sight_radius.as_ref()),
             area.map(|area| &area.radius),
             area.and_then(|area| area.delay_ms.as_ref()),
             area.and_then(|area| area.duration_ms.as_ref()),
@@ -372,8 +322,7 @@ impl ActionData {
         .map(String::as_str)
     }
 
-    /// The filters its data names: its targeting's, its projectile's hits and its area's
-    /// affects.
+    /// The filters its data names: its targeting's and its area's affects.
     pub fn filters(&self) -> impl Iterator<Item = &FilterData> + '_ {
         let targeting = match &self.targeting {
             Targeting::Unit(filter) => Some(filter),
@@ -381,9 +330,6 @@ impl ActionData {
         };
         [
             targeting,
-            self.projectile
-                .as_ref()
-                .and_then(|projectile| projectile.hits.as_ref()),
             self.area.as_ref().and_then(|area| area.affects.as_ref()),
         ]
         .into_iter()
@@ -395,8 +341,6 @@ impl ActionData {
 /// cost in its caster's pools, and in its caster's player's resources.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RankFields {
-    /// A weapon's homing projectile's speed, in meters a second, when it fires one.
-    pub launch: Option<Num>,
     pub range: Range,
     pub cooldown_ms: u64,
     pub cost: PoolCost,

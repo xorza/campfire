@@ -36,6 +36,7 @@ pub(crate) mod action_book;
 pub(crate) mod action_data;
 pub(crate) mod action_kind;
 pub(crate) mod action_slots;
+pub(crate) mod delivery_data;
 pub(crate) mod error;
 pub(crate) mod purse;
 pub(crate) mod slot_kind;
@@ -70,6 +71,19 @@ impl Actions {
                 .before(CombatSet::Die),
             hold_passives.in_set(SimSet::Vision),
         ));
+    }
+
+    /// Binds `action` to the unit type `name` it spawns, once the match's unit types load: a
+    /// train's unit, or its delivery's projectile, one the package load checked.
+    pub fn bind_spawn(world: &mut World, action: ActionId, name: &str) {
+        let unit_type = world
+            .non_send::<View>()
+            .types_mut()
+            .named(name)
+            .expect("the load checked an action's unit type");
+        world
+            .resource_mut::<ActionBook>()
+            .bind_spawn(action, unit_type);
     }
 
     /// Loads the action `name` of `package`, of `ranks` ranks, into the match, which the
@@ -131,7 +145,9 @@ impl Actions {
         world.insert_non_send(host);
         let ctx = world.non_send::<Ctx>().clone();
         ctx.frame().add_params(id, &data.params, stat);
-        world.non_send::<View>().add_ability(name);
+        world
+            .non_send::<View>()
+            .add_ability(name, data.delivery.is_some());
         Ok(id)
     }
 }

@@ -5,7 +5,8 @@ use crate::values::attitude::Attitude;
 use crate::values::filter_data::{FilterData, FilterSyntax};
 use crate::values::relation::Relation;
 
-/// A filter as a match runs it: a relation, the tags a unit must have, and those it must not.
+/// A filter as a match runs it: a relation, the tags a unit must have, and those it must not,
+/// among them `projectile` unless it must have that one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Filter {
     relation: Relation,
@@ -44,6 +45,11 @@ impl Filter {
             } else {
                 filter.all = filter.all.with(tag);
             }
+        }
+        if let Some(projectile) = types.projectile()
+            && !filter.all.contains(projectile)
+        {
+            filter.none = filter.none.with(projectile);
         }
         Ok(filter)
     }

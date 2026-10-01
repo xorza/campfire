@@ -1,6 +1,6 @@
 //! The reference heroes' abilities as their packages hold them: every ability's data reads into
-//! the typed schema, and Husk's Lash Out, Kensho's Twin Cut and Veil's Dusk Mark, loaded from
-//! their data files and scripts, act exactly.
+//! the typed schema, and Husk's Lash Out, Kensho's Twin Cut, Veil's Dusk Mark and Rime's Fan of
+//! Frost, loaded from their data files and scripts, act exactly.
 
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
@@ -11,9 +11,10 @@ use bevy_ecs::world::World;
 
 use campfire_capabilities::internals::{self, Arms};
 use campfire_capabilities::{
-    Action, ActionSlots, ActionTarget, Actions, CapabilitySet, DeclaredName, MatchScripts, Number,
-    OnDeath, Order, Owner, Param, PoolId, Pools, Range, RangeField, Ranked, RecentAttackers,
-    Scalar, Scaling, ScriptLimits, SlotKind, Stat, Stats, Targeting, Team, Units,
+    Action, ActionSlots, ActionTarget, Actions, CapabilitySet, DeclaredName, Hook, MatchScripts,
+    Number, OnDeath, Order, Owner, Param, PoolId, Pools, Projectile, Projectiles, Range,
+    RangeField, Ranked, RecentAttackers, Scalar, Scaling, ScriptLimits, SlotKind, Stat, StatRule,
+    Stats, Targeting, Team, Units,
 };
 use campfire_capabilities::{Modifiers, ScriptFailures};
 use campfire_content::PackagePath;
@@ -60,6 +61,18 @@ fn spawn_with(
     world: &mut World,
     team: u8,
     x: i64,
+    pools: (i64, i64),
+    parts: impl Bundle,
+) -> StableId {
+    let at = Position::new(Vec3::new(num(x), Num::ZERO, Num::ZERO)).unwrap();
+    spawn_at(world, team, at, pools, parts)
+}
+
+/// A unit as `spawn_with` gives, at `at`.
+fn spawn_at(
+    world: &mut World,
+    team: u8,
+    at: Position,
     (mana, energy): (i64, i64),
     parts: impl Bundle,
 ) -> StableId {
@@ -68,7 +81,6 @@ fn spawn_with(
         .into_iter()
         .filter(|&(_, max)| max > 0)
         .map(|(pool, max)| (pool, num(max)));
-    let at = Position::new(Vec3::new(num(x), Num::ZERO, Num::ZERO)).unwrap();
     let combat = (OnDeath::Stay, RecentAttackers::default());
     let pools = Pools::new(pools).unwrap();
     let mut unit = world.spawn((id, at, Team::new(team), pools, combat, parts));
@@ -153,7 +165,7 @@ fn every_reference_ability_reads_into_the_schema() {
 }
 
 /// A match of 1 player with the capabilities the reference abilities use, the reference MOBA's
-/// damage kinds, and a stat book of none of their stats.
+/// damage kinds, and a stat book of move speed alone, which a slow cuts.
 fn reference_world() -> World {
     let mut world = World::new();
     SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), RATE);
@@ -184,11 +196,17 @@ fn reference_world() -> World {
         Capability::Navigation,
         Capability::Abilities,
         Capability::Orders,
+        Capability::Projectiles,
     ];
     let set = CapabilitySet::new(&declared).unwrap();
     set.install(&mut world, &mut schedule, &mut registry, Some(scripts));
     world.add_schedule(schedule);
-    internals::load_stats(&mut world, &BTreeMap::new(), RATE);
+    let move_speed = Stat::named("move_speed").unwrap();
+    internals::load_stats(
+        &mut world,
+        &BTreeMap::from([(move_speed, StatRule::default())]),
+        RATE,
+    );
     world
 }
 
@@ -335,4 +353,135 @@ fn veils_dusk_mark_detonates_once_on_veils_next_damage() {
     assert_eq!((health(&world, marked), marks(&world)), (370, false));
     assert_eq!(pool(&world, veil_unit, ENERGY), num(125));
     assert!(world.non_send::<ScriptFailures>().get().is_empty());
+}
+
+#[test]
+fn rimes_fan_of_frost_from_its_package_hits_exactly_the_units_in_reach_once_each() {
+    let mut world = reference_world();
+    let rime = abilities("rime");
+    Stats::load_modifier(&mut world, 0, "slow", &rime.modifiers["slow"], None);
+    let arrow = &rime.units["frost_arrow"];
+    let frost_arrow = Units::load_type(&mut world, "rime/frost_arrow", &arrow.core).unwrap();
+    Projectiles::load_type(&mut world, frost_arrow, arrow.projectile.as_ref().unwrap());
+    let data = &rime.actions["fan_of_frost"];
+    let script = compile(&mut world, "rime", data.script.as_ref().unwrap());
+    let fan = Actions::load(&mut world, 0, "fan_of_frost", data, Some(script), 5).unwrap();
+    Actions::bind_spawn(&mut world, fan, "rime/frost_arrow");
+
+    let player = Owner::new(PlayerSlot::new(0));
+    let slots = ActionSlots::new([(fan, SlotKind::new(0), 1)]);
+    let caster = spawn_with(&mut world, 0, 0, (100, 0), (player, slots));
+    let milli = |x: i64, z: i64| {
+        let at = |value: i64| num(value).checked_div_int(1000).unwrap();
+        Position::new(Vec3::new(at(x), Num::ZERO, at(z))).unwrap()
+    };
+    // Seven arrows from the origin, 57.5° apart from the first to the last, around +x: at 0°,
+    // ±9.583°, ±19.167° and ±28.75°, each 0.4 m wide, so a body of no radius within 0.2 m of an
+    // arrow's path is in reach, up to the 12 m of the range.
+    let enemy = |world: &mut World, at| spawn_at(world, 1, at, (0, 0), Modifiers::default());
+    // 1 m out on +x, 1 · sin 9.583° = 0.166 m from the arrows beside the middle one: three
+    // arrows reach it in the same tick, and the cast hits it once.
+    let near = enemy(&mut world, milli(1000, 0));
+    // On +x at 10 m: the middle arrow, which the near one did not stop, as another arrow of its
+    // cast hit that one first.
+    let far = enemy(&mut world, milli(10_000, 0));
+    // 7.998 m out at ±28.774°, 0.003 m from the outer arrows.
+    let outer = [3850, -3850].map(|z| enemy(&mut world, milli(7010, z)));
+    // 12.5 m out at ±19.167°, past the range: 0.5 m from where the arrows end.
+    let beyond = [4104, -4104].map(|z| enemy(&mut world, milli(11_807, z)));
+    // 6 m out at ±4.78°, between two arrows: 0.50 m from each.
+    let between = [500, -500].map(|z| enemy(&mut world, milli(5980, z)));
+    let ally = spawn_at(&mut world, 0, milli(5000, 0), (0, 0), Modifiers::default());
+
+    tick(
+        &mut world,
+        &[Order {
+            unit: caster,
+            action: Action::Slot {
+                slot: 0,
+                target: ActionTarget::Point(milli(10_000, 0)),
+            },
+        }],
+    );
+    // The cast resolves after its windup of 8 ticks, and the arrows fly 0.5 m a tick for 24.
+    for _ in 0..40 {
+        world.run_schedule(SimUpdate);
+    }
+    let projectiles = world.resource::<EntityIndex>().iter();
+    assert_eq!(
+        projectiles
+            .filter(|&(_, entity)| world.get::<Projectile>(entity).is_some())
+            .count(),
+        0
+    );
+
+    // Rank 1 deals 40, and slows.
+    let slowed = |unit: StableId| {
+        let entity = world.resource::<EntityIndex>().get(unit).unwrap();
+        *world.get::<Modifiers>(entity).unwrap() != Modifiers::default()
+    };
+    let hit = [near, far, outer[0], outer[1]];
+    let missed = [beyond[0], beyond[1], between[0], between[1], ally];
+    assert_eq!(hit.map(|unit| health(&world, unit)), [460; 4]);
+    assert_eq!(missed.map(|unit| health(&world, unit)), [500; 5]);
+    assert_eq!(hit.map(slowed), [true; 4]);
+    assert_eq!(missed.map(slowed), [false; 5]);
+    assert_eq!(pool(&world, caster, MANA), num(40));
+    assert!(world.non_send::<ScriptFailures>().get().is_empty());
+}
+
+#[test]
+fn rimes_snow_owl_flies_to_its_point_and_ends_there() {
+    let mut world = reference_world();
+    let rime = abilities("rime");
+    let data = &rime.actions["snow_owl"];
+    let script = compile(&mut world, "rime", data.script.as_ref().unwrap());
+    let bounty = &rime.modifiers["snow_owl_bounty"];
+    Stats::load_modifier(&mut world, 0, "snow_owl_bounty", bounty, Some(script));
+    let owl = &rime.units["snow_owl"];
+    let owl_type = Units::load_type(&mut world, "rime/snow_owl", &owl.core).unwrap();
+    Projectiles::load_type(&mut world, owl_type, owl.projectile.as_ref().unwrap());
+    let snow_owl = Actions::load(&mut world, 0, "snow_owl", data, Some(script), 5).unwrap();
+    Actions::bind_spawn(&mut world, snow_owl, "rime/snow_owl");
+    let player = Owner::new(PlayerSlot::new(0));
+    let slots = ActionSlots::new([(snow_owl, SlotKind::new(0), 1)]);
+    let caster = spawn(&mut world, 0, 0, (player, slots));
+    let owls = |world: &World| -> Vec<Position> {
+        let units = world.resource::<EntityIndex>().iter();
+        units
+            .filter(|&(_, entity)| world.get::<Projectile>(entity).is_some())
+            .map(|(_, entity)| *world.get::<Position>(entity).unwrap())
+            .collect()
+    };
+
+    // Aimed at a point 7 m out, within its 25 m range: it launches in tick 0, and flies 14/30 m
+    // a tick, 7 829 367 bits rounded, from tick 1. Fifteen steps are 7 bits short of 7 m, and the
+    // sixteenth ends it on the point, where its `on_end` runs.
+    let point = Position::new(Vec3::new(num(7), Num::ZERO, Num::ZERO)).unwrap();
+    tick(
+        &mut world,
+        &[Order {
+            unit: caster,
+            action: Action::Slot {
+                slot: 0,
+                target: ActionTarget::Point(point),
+            },
+        }],
+    );
+    for _ in 1..=15 {
+        world.run_schedule(SimUpdate);
+    }
+    let short = Num::from_bits(15 * 7_829_367);
+    assert_eq!(short, num(7) - Num::from_bits(7));
+    let flying = Position::new(Vec3::new(short, Num::ZERO, Num::ZERO)).unwrap();
+    assert_eq!(owls(&world), [flying]);
+    world.run_schedule(SimUpdate);
+    assert_eq!(owls(&world), []);
+    // Its `on_end` ran, for its caster, and failed only on `ctx.reveal`, which vision plans.
+    let failures = world.non_send::<ScriptFailures>().get();
+    assert_eq!(failures.len(), 1);
+    assert_eq!(
+        (failures[0].unit, failures[0].hook),
+        (Some(caster), Hook::OnEnd)
+    );
 }

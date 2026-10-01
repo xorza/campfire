@@ -4,7 +4,7 @@ use bevy_ecs::schedule::Schedule;
 use bevy_ecs::world::World;
 use campfire_capabilities::{
     ActionData, ActionId, Actions, DeclaredName, KitRules, LoadoutSetup, MatchScripts, Mode,
-    ModeSetup, OnDeath, Orders, PoolId, Production, Progression, SlotAction, Stat, Stats, UnitKit,
+    ModeSetup, OnDeath, Orders, PoolId, Progression, Projectiles, SlotAction, Stat, Stats, UnitKit,
     UnitTypeData, UnitTypeSetup, Units,
 };
 use campfire_content::PackagePath;
@@ -29,15 +29,16 @@ pub(crate) struct MatchBuild<'a> {
     packages: &'a ModePackages,
     world: &'a mut World,
     rules: KitRules,
-    /// Every unit type the mode spawns, as it loads.
+    /// Every unit type the mode spawns, as it loads: its projectile types are none.
     unit_types: Vec<UnitTypeSetup>,
     /// Every script of every package, compiled once: the mode's, then each dependency's, in the
     /// order of their packages' scripts.
     scripts: Vec<ScriptId>,
     /// Where each package's scripts start in `scripts`: the mode's, then each dependency's.
     script_starts: Vec<usize>,
-    /// Each train loaded, and the name of the unit type it makes, bound once all unit types load.
-    trains: Vec<(ActionId, &'a str)>,
+    /// Each train and delivery loaded, and the match's name of the unit type it spawns, bound
+    /// once all unit types load.
+    spawns: Vec<(ActionId, String)>,
 }
 
 impl<'a> MatchBuild<'a> {
@@ -76,7 +77,7 @@ impl<'a> MatchBuild<'a> {
             unit_types: Vec::with_capacity(packages.units().units.len()),
             scripts: Vec::new(),
             script_starts: Vec::with_capacity(1 + packages.dependencies().len()),
-            trains: Vec::new(),
+            spawns: Vec::new(),
         };
         Units::declare_tags(build.world, packages.tag_names()).expect(CHECKED);
         if manifest.capabilities.contains(Capability::Progression) {
@@ -89,13 +90,19 @@ impl<'a> MatchBuild<'a> {
         let mode_actions =
             build.load_actions(MODE, &packages.data().actions, |id| ranks.get(id).copied())?;
         for (name, file) in units {
-            build.load_unit_type(MODE, name, file, &mode_actions, false)?;
+            match &file.projectile {
+                Some(_) => build.load_projectile(name, file),
+                None => build.load_unit_type(MODE, name, file, &mode_actions, false)?,
+            }
         }
         let mut avatars = Vec::new();
         let mut loadout = Vec::new();
         let loadout_ranks = packages.data().loadout_ranks();
         for (at, dependent) in packages.dependencies().iter().enumerate() {
             let package = DEPENDENCIES + at;
+            for (id, file) in dependent.units() {
+                build.load_projectile(&dependent.unit_type_name(id), file);
+            }
             match &dependent.content {
                 Content::Avatar(avatar) => {
                     let name = &dependent.package.name;
@@ -116,8 +123,8 @@ impl<'a> MatchBuild<'a> {
                 }
             }
         }
-        for &(action, unit_type) in &build.trains {
-            Production::bind_train(build.world, action, unit_type);
+        for (action, unit_type) in &build.spawns {
+            Actions::bind_spawn(build.world, *action, unit_type);
         }
         let setup = ModeSetup {
             script: build.script(MODE, &packages.data().script),
@@ -241,6 +248,14 @@ impl<'a> MatchBuild<'a> {
         Ok(())
     }
 
+    /// Loads the projectile type `name` of `file`, which only actions deliver, so the mode spawns
+    /// none.
+    fn load_projectile(&mut self, name: &str, file: &UnitTypeFile) {
+        let unit_type = Units::load_type(self.world, name, &file.core).expect(CHECKED);
+        let projectile = file.projectile.as_ref().expect(CHECKED);
+        Projectiles::load_type(self.world, unit_type, projectile);
+    }
+
     /// Each pool of `names`, which the load checked the mode declares, with the stat of its
     /// maximum.
     fn pools(
@@ -255,7 +270,7 @@ impl<'a> MatchBuild<'a> {
     }
 
     /// Loads the ability `id` of `package`, of `ranks` ranks, with its script; a train waits for
-    /// its unit type to bind.
+    /// its unit type to bind, and a delivery for its projectile type, of the same package.
     fn load_ability(
         &mut self,
         package: usize,
@@ -273,7 +288,17 @@ impl<'a> MatchBuild<'a> {
                 }
             })?;
         if let Some(unit_type) = &data.unit_type {
-            self.trains.push((action, unit_type));
+            self.spawns.push((action, unit_type.clone()));
+        }
+        if let Some(delivery) = &data.delivery {
+            let name = match usize::from(package).checked_sub(DEPENDENCIES) {
+                None => delivery.projectile.clone(),
+                Some(at) => {
+                    let dependent = &self.packages.dependencies()[at];
+                    dependent.unit_type_name(&delivery.projectile)
+                }
+            };
+            self.spawns.push((action, name));
         }
         Ok(action)
     }

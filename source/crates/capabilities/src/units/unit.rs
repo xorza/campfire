@@ -1,4 +1,4 @@
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 use campfire_script::NumError;
 use campfire_script::Raised;
 use campfire_script::rhai::{Dynamic, INT, ImmutableString, NativeCallContext};
@@ -233,20 +233,36 @@ impl Unit {
                     Unit::within(&call, *from, to, ApiError::num(radius)?)
                 },
             )
-            .plan(position(
-                "direction_to",
-                "(pos)",
-                "the unit vector towards `pos`",
-            ));
+            .bind(
+                position(
+                    "direction_to",
+                    "(pos)",
+                    "the unit vector towards `pos` in the map's metric, `()` for the same point",
+                ),
+                |call: NativeCallContext<'_>, from: &mut Position, to: Position| {
+                    View::of_call(&call)
+                        .metric()
+                        .offset(*from, to)
+                        .normalized()
+                        .map_or(Dynamic::UNIT, Dynamic::from)
+                },
+            );
         let vector = |name, signature, description| {
             MemberSpec::method(ApiOwner::Vector, name, signature, description)
         };
-        api.plan(vector(
+        let rotated = vector(
             "rotated_deg",
             "(degrees)",
-            "the vector turned by `degrees`",
-        ))
-        .plan(MemberSpec::operator(
+            "the vector turned by `degrees` about the vertical, counter-clockwise seen from above",
+        );
+        api.ty::<Vec3>("Vector")
+            .bind(rotated, |vector: &mut Vec3, degrees: Num| {
+                Unit::rotated(*vector, degrees)
+            })
+            .bind(rotated, |vector: &mut Vec3, degrees: INT| {
+                Unit::rotated(*vector, ApiError::num(degrees)?)
+            });
+        api.plan(MemberSpec::operator(
             ApiOwner::Vector,
             "+",
             "the sum of two vectors",
@@ -261,6 +277,17 @@ impl Unit {
             "*",
             "the vector scaled by a number",
         ));
+    }
+
+    /// `vector` turned by `degrees` about the vertical; a turn too large to compute fails the call.
+    fn rotated(vector: Vec3, degrees: Num) -> Checked<Vec3> {
+        let radians = degrees
+            .checked_mul(Num::PI)
+            .and_then(|turn| turn.checked_div_int(180))
+            .ok_or_else(|| Box::new(Raised::error(NumError::Overflow)))?;
+        vector
+            .checked_rotated_y(radians.sin_cos())
+            .ok_or_else(|| Box::new(Raised::error(NumError::Overflow)))
     }
 
     /// Whether `to` is within `radius` of `from` in the map's metric, exactly: as every range and

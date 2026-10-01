@@ -40,7 +40,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `p` | read | every role | core | runs | the params: an ability's at its rank, a modifier's then its ability's, or the mode's |
 | `pick` | `(list)` | every role | core | planned | an entry of `list`, from the secret stream |
 | `players` | read | mode | core | runs | how many players the session has |
-| `projectile` | `(from, to) or (from, to, overrides)` | action | projectiles | planned | the ability's projectile, flying a line, homing on a unit or flying to a position |
+| `projectile` | `(from, direction) or (from, unit)` | action | projectiles | runs | launches one more of the action's projectiles from `from`, along `direction` or homing on `unit`, its own cast |
 | `range` | read | action | abilities | planned | the ability's range at its rank |
 | `reduce_cooldown` | `(unit, id, ms)` | every role | abilities | planned | takes `ms` off the cooldown of `unit`'s ability `id` |
 | `reduce_cooldowns` | `(unit, fraction)` | every role | abilities | planned | takes `fraction` off the cooldowns of `unit`'s basic abilities |
@@ -119,12 +119,12 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 
 | Name | Form | Capability | Status | What it is |
 | --- | --- | --- | --- | --- |
-| `delivery` | read | abilities | planned | the projectile or area unit that delivered it, `()` when at once |
-| `direction` | read | abilities | planned | the direction it came from |
-| `distance` | read | abilities | planned | how far its delivery flew |
-| `part` | read | abilities | planned | the body part a ray or a sweep struck, `()` with none |
-| `pos` | read | abilities | planned | where it hit, or where its delivery ended |
-| `target` | read | abilities | planned | the unit the action aimed at, `()` with none |
+| `delivery` | read | projectiles | runs | the projectile unit that delivered it, `()` when at once or gone |
+| `direction` | read | projectiles | runs | the direction its delivery flew in |
+| `distance` | read | projectiles | runs | how far its delivery flew |
+| `part` | read | hitscan | planned | the body part a ray or a sweep struck, `()` with none |
+| `pos` | read | projectiles | runs | where it hit, or where its delivery ended |
+| `target` | read | projectiles | runs | the unit the action aimed at, `()` with none |
 
 ## Damage `d`
 
@@ -143,7 +143,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 
 | Name | Form | Capability | Status | What it is |
 | --- | --- | --- | --- | --- |
-| `direction_to` | `(pos)` | core | planned | the unit vector towards `pos` |
+| `direction_to` | `(pos)` | core | runs | the unit vector towards `pos` in the map's metric, `()` for the same point |
 | `distance_to` | `(pos)` | core | runs | the distance to `pos` in the map's metric |
 | `within` | `(pos, radius)` | core | runs | whether `pos` is within `radius` in the map's metric, exactly: the test for reach |
 
@@ -154,7 +154,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `*` | operator | core | planned | the vector scaled by a number |
 | `+` | operator | core | planned | the sum of two vectors |
 | `-` | operator | core | planned | the difference of two vectors |
-| `rotated_deg` | `(degrees)` | core | planned | the vector turned by `degrees` |
+| `rotated_deg` | `(degrees)` | core | runs | the vector turned by `degrees` about the vertical, counter-clockwise seen from above |
 
 ## Map, `ctx.map`
 
@@ -177,8 +177,8 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | Hook | Role | Capability | Status |
 | --- | --- | --- | --- |
 | `on_resolve(ctx, unit, target)` | action | abilities | runs |
-| `on_hit(ctx, unit, target, hit)` | action | abilities | planned |
-| `on_end(ctx, unit, hit)` | action | abilities | planned |
+| `on_hit(ctx, unit, target, hit)` | action | projectiles | runs |
+| `on_end(ctx, unit, hit)` | action | projectiles | runs |
 | `on_channel_tick(ctx, unit)` | action | abilities | planned |
 | `on_interrupt(ctx, unit, target)` | action | abilities | planned |
 | `on_interval(ctx, m)` | modifier | stats | runs |
@@ -298,7 +298,6 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `rate` | runs |
 | `damage` | runs |
 | `damage_kind` | runs |
-| `projectile` | runs |
 | `script` | runs |
 | `cooldown_ms` | runs |
 | `params` | runs |
@@ -311,17 +310,28 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `area` | planned |
 | `projectile_state` | planned |
 | `unit_type` | runs |
+| `delivery` | runs |
 
-### An action's `projectile`
+### An action's `delivery`
+
+| Field | Status |
+| --- | --- |
+| `projectile` | runs |
+| `count` | runs |
+| `spread_deg` | runs |
+
+### A unit type's `projectile`
 
 | Field | Status |
 | --- | --- |
 | `speed` | runs |
-| `width` | planned |
-| `range` | planned |
-| `stop_on_hit` | planned |
-| `once_per_cast` | planned |
-| `hits` | planned |
+| `width` | runs |
+| `range` | runs |
+| `homing` | runs |
+| `stop_on_hit` | runs |
+| `once_per_cast` | runs |
+| `hits` | runs |
+| `gravity` | planned |
 | `sight_radius` | planned |
 | `collide` | planned |
 

@@ -63,6 +63,8 @@ pub(crate) struct ScriptView {
     damage_kinds: Rc<[DeclaredName]>,
     /// Each loaded ability's name in its package, by ability id.
     ability_names: Vec<ImmutableString>,
+    /// Whether each loaded ability delivers projectiles, by ability id.
+    delivers: Vec<bool>,
     /// How each installed capability above the core fills its fields of a row, in install order.
     sources: Vec<RowSource>,
     rate: TickRate,
@@ -321,6 +323,7 @@ impl View {
             paths: Arc::default(),
             damage_kinds: Rc::from([]),
             ability_names: Vec::new(),
+            delivers: Vec::new(),
             sources: Vec::new(),
             rate,
             now: Tick::ZERO,
@@ -591,9 +594,17 @@ impl View {
         self.0.borrow().damage_kinds[kind.index()].as_str().into()
     }
 
-    /// Adds the name of the ability loaded next, which takes the next ability id.
-    pub(crate) fn add_ability(&self, name: &str) {
-        self.0.borrow_mut().ability_names.push(name.into());
+    /// Adds the name of the ability loaded next, which takes the next ability id, and whether it
+    /// delivers projectiles.
+    pub(crate) fn add_ability(&self, name: &str, delivers: bool) {
+        let mut view = self.0.borrow_mut();
+        view.ability_names.push(name.into());
+        view.delivers.push(delivers);
+    }
+
+    /// Whether ability `id` delivers projectiles.
+    pub(crate) fn delivers(&self, id: ActionId) -> bool {
+        self.0.borrow().delivers[id.index()]
     }
 
     /// The name of ability `id` in its package.

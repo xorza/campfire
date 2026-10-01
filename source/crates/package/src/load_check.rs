@@ -2,17 +2,18 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::iter;
 
 use campfire_capabilities::{
-    ActionData, ActionKind, ActionSlots, ApiOwner, CollisionData, DeclaredName, EngineStat,
-    FilterData, Hook, MemberKind, Mode, ModifierData, Navigation, Number, Offers, Param, Pools,
-    Range, RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Stat, Targeting, TrackId,
-    UnitTypeData,
+    ActionData, ActionKind, ActionSlots, ApiOwner, CollisionData, DeclaredName, DeliveryData,
+    EngineStat, FilterData, Hook, MemberKind, Mode, ModifierData, Navigation, Offers, Param, Pools,
+    Range, RangeField, ResourceId, ScriptApi, ScriptRole, Stat, Targeting, TrackId, UnitTypeData,
 };
 use campfire_content::PackagePath;
 use campfire_math::Num;
 use campfire_sim::Capability;
 
 use crate::RELEASE_VERSION;
-use crate::error::{ChoiceProblem, CtxMisuse, Limit, LoadError, LoadProblem, NameKind, Place};
+use crate::error::{
+    ChoiceProblem, CtxMisuse, DeliveryProblem, Limit, LoadError, LoadProblem, NameKind, Place,
+};
 use crate::files::units_data::UnitTypeFile;
 use crate::mode_packages::{Content, Dependent, ModePackages};
 use crate::package::Package;
@@ -22,7 +23,7 @@ use crate::script_facts::ScriptFacts;
 /// its schema (the reads checked that), every per-rank array has an entry for each rank, every
 /// script is named by data and defines only hooks of its roles, and every capability, `ctx` name,
 /// modifier, param, stat, filter and damage kind a script or data names exists for the mode. And
-/// every projectile is faster than the mode's move speed cap.
+/// every homing projectile is faster than the mode's move speed cap.
 #[derive(Debug)]
 pub(crate) struct LoadCheck<'a> {
     packages: &'a ModePackages,
@@ -56,15 +57,19 @@ impl<'a> LoadCheck<'a> {
         if tags.len() > UnitTypeData::TAG_LIMIT {
             return Err(fail(LoadProblem::TooMany(Limit::Tags)));
         }
-        let avatars = packages.dependencies.iter().filter_map(|dependent| {
-            matches!(dependent.content, Content::Avatar(_)).then_some(&dependent.package.name)
-        });
-        let mut unit_types = packages.units.units.len();
-        for avatar in avatars {
-            if packages.units.units.contains_key(avatar) {
-                return Err(fail(LoadProblem::RepeatedUnitType(avatar.clone())));
+        let units = &packages.units.units;
+        let mut unit_types = units.len();
+        for dependent in &packages.dependencies {
+            let avatar = matches!(dependent.content, Content::Avatar(_))
+                .then(|| dependent.package.name.clone());
+            let deliveries = dependent.units().keys();
+            let deliveries = deliveries.map(|id| dependent.unit_type_name(id));
+            for name in avatar.into_iter().chain(deliveries) {
+                if units.contains_key(&name) {
+                    return Err(fail(LoadProblem::RepeatedUnitType(name)));
+                }
+                unit_types += 1;
             }
-            unit_types += 1;
         }
         if unit_types > UnitTypeData::TYPE_LIMIT {
             return Err(fail(LoadProblem::TooMany(Limit::UnitTypes)));
@@ -129,7 +134,11 @@ impl<'a> LoadCheck<'a> {
         let packages = self.packages;
         let data = &packages.data;
         let units = &packages.units.units;
-        let unit_type = |name: &str| units.contains_key(name);
+        let unit_type = |name: &str| {
+            units
+                .get(name)
+                .is_some_and(|unit_type| unit_type.projectile.is_none())
+        };
         Mode::check(
             &packages.manifest.teams,
             &data.relations,
@@ -193,7 +202,7 @@ impl<'a> LoadCheck<'a> {
         }
         let ranks = self.slotted_ranks(packages.units.units.values())?;
         let ranks = |id: &str| ranks.get(id).copied().unwrap_or(1);
-        self.actions(&data.actions, ranks, &mut names)?;
+        self.actions(&data.actions, units, ranks, &mut names)?;
         let appliers = packages.mode.appliers(&data.actions);
         self.modifiers(&mut names, &appliers)?;
         self.scripts(&names)
@@ -218,15 +227,19 @@ impl<'a> LoadCheck<'a> {
 
     /// An avatar or loadout package the mode depends on: an avatar's unit type, with every
     /// action of the package in its slots, and each action with the ranks of its kind; a
-    /// loadout's actions, each with the ranks of the slot kind its choice fills.
-    fn dependent(&self, dependent: &Dependent) -> Result<(), LoadProblem> {
+    /// loadout's actions, each with the ranks of the slot kind its choice fills; and its delivery
+    /// types.
+    fn dependent(&self, dependent: &'a Dependent) -> Result<(), LoadProblem> {
         let package = &dependent.package;
         let (actions, modifiers, slotted) = match &dependent.content {
             Content::Avatar(avatar) => {
+                let at = Place::Avatar(avatar.name.clone());
                 if avatar.unit.orders.is_some() {
                     return Err(LoadProblem::AvatarOrders);
                 }
-                let at = Place::Avatar(avatar.name.clone());
+                if avatar.unit.projectile.is_some() {
+                    return Err(LoadProblem::Delivery(DeliveryProblem::NotDelivery(at)));
+                }
                 self.unit_type(&avatar.unit, &at, &avatar.actions, &avatar.modifiers)?;
                 let ranks = self.slotted_ranks([&avatar.unit])?;
                 let unslotted = avatar
@@ -240,10 +253,17 @@ impl<'a> LoadCheck<'a> {
             }
             Content::Loadout(loadout) => (&loadout.actions, &loadout.modifiers, None),
         };
+        for (id, unit_type) in dependent.units() {
+            let at = Place::UnitType(dependent.unit_type_name(id));
+            if !unit_type.delivery_only() {
+                return Err(LoadProblem::Delivery(DeliveryProblem::NotDelivery(at)));
+            }
+            self.unit_type(unit_type, &at, actions, modifiers)?;
+        }
         let loadout_ranks = self.packages.data.loadout_ranks();
         let ranks = |id: &str| slotted.as_ref().map_or(loadout_ranks, |ranks| ranks[id]);
         let mut names = PackageNames::new(package, modifiers);
-        self.actions(actions, ranks, &mut names)?;
+        self.actions(actions, dependent.units(), ranks, &mut names)?;
         let appliers = package.appliers(actions);
         self.modifiers(&mut names, &appliers)?;
         self.scripts(&names)
@@ -260,12 +280,13 @@ impl<'a> LoadCheck<'a> {
             .map_err(|id| LoadProblem::ActionRanks(id.to_owned()))
     }
 
-    /// A package's `actions`, each with the ranks `ranks` gives it, and the roles of their
-    /// scripts in `names`: the capabilities each uses, and the modifiers, filters, stats and
-    /// params it names.
+    /// A package's `actions`, each with the ranks `ranks` gives it and its delivery one of the
+    /// package's `units`, and the roles of their scripts in `names`: the capabilities each uses,
+    /// and the modifiers, filters, stats and params it names.
     fn actions(
         &self,
         actions: &'a BTreeMap<String, ActionData>,
+        units: &BTreeMap<String, UnitTypeFile>,
         ranks: impl Fn(&str) -> u8,
         names: &mut PackageNames<'a>,
     ) -> Result<(), LoadProblem> {
@@ -273,8 +294,9 @@ impl<'a> LoadCheck<'a> {
             let at = Place::Action(id.clone());
             self.kind(id, ability)?;
             self.ranked(id, ability, ranks(id))?;
-            if ability.projectile.is_some() {
+            if let Some(delivery) = &ability.delivery {
                 self.require(Capability::Projectiles, &at)?;
+                delivery_holds(id, ability, delivery, units)?;
             }
             if ability.area.is_some() {
                 self.require(Capability::Areas, &at)?;
@@ -295,7 +317,6 @@ impl<'a> LoadCheck<'a> {
                     });
                 }
             }
-            self.ability_projectile(ability, &at)?;
             if let Some(script) = &ability.script {
                 names.serve(
                     script,
@@ -580,14 +601,21 @@ impl<'a> LoadCheck<'a> {
                     return Err(LoadProblem::KindField(id.to_owned()));
                 }
                 let unit_types = &self.packages.units.units;
-                match &action.unit_type {
-                    None => return Err(LoadProblem::KindField(id.to_owned())),
-                    Some(name) if !unit_types.contains_key(name) => {
+                let Some(name) = &action.unit_type else {
+                    return Err(LoadProblem::KindField(id.to_owned()));
+                };
+                match unit_types.get(name) {
+                    None => {
                         return Err(LoadProblem::Unknown {
                             of: NameKind::UnitType,
                             at,
                             name: name.clone(),
                         });
+                    }
+                    Some(unit_type) if unit_type.projectile.is_some() => {
+                        return Err(LoadProblem::Delivery(DeliveryProblem::Trained(
+                            id.to_owned(),
+                        )));
                     }
                     Some(_) => {}
                 }
@@ -712,9 +740,10 @@ impl<'a> LoadCheck<'a> {
     }
 
     /// A unit type at `at`, of a package of `actions` and `modifiers`: each capability its
-    /// sections use declared, its stats and pools the mode's, its layer one the mode declares,
-    /// its projectile fast enough; its slots of kinds the mode declares, each holding actions of
-    /// `actions`, none twice; and its passive one of `modifiers`.
+    /// sections use declared, its stats and pools the mode's, its layer one the mode declares;
+    /// its slots of kinds the mode declares, each holding actions of `actions`, none twice; its
+    /// passive one of `modifiers`; and a projectile type a delivery type alone, which, homing,
+    /// flies faster than the cap, and hits units by the match's tags.
     fn unit_type(
         &self,
         unit_type: &UnitTypeFile,
@@ -730,10 +759,26 @@ impl<'a> LoadCheck<'a> {
             (!unit_type.slots.is_empty(), Capability::Abilities),
             (!unit_type.tracks.is_empty(), Capability::Progression),
             (unit_type.production.is_some(), Capability::Production),
+            (unit_type.projectile.is_some(), Capability::Projectiles),
         ];
         for (used, capability) in sections {
             if used {
                 self.require(capability, at)?;
+            }
+        }
+        if let Some(projectile) = &unit_type.projectile {
+            if !unit_type.delivery_only() {
+                return Err(LoadProblem::Delivery(DeliveryProblem::NotDelivery(
+                    at.clone(),
+                )));
+            }
+            if projectile.homing && projectile.speed <= self.cap {
+                return Err(LoadProblem::Delivery(DeliveryProblem::NotFaster(
+                    at.clone(),
+                )));
+            }
+            if let Some(hits) = &projectile.hits {
+                self.filter_data(hits, at)?;
             }
         }
         if let Some(stats) = &unit_type.stats {
@@ -944,43 +989,6 @@ impl<'a> LoadCheck<'a> {
             name: filter.to_string(),
         })
     }
-
-    /// A projectile, of `speed` meters a second, may home, so it flies faster than the cap.
-    fn projectile_speed(&self, speed: Option<Scalar>, at: &Place) -> Result<(), LoadProblem> {
-        match speed.map(Scalar::to_num) {
-            None => Ok(()),
-            Some(Some(speed)) if speed > self.cap => Ok(()),
-            Some(_) => Err(LoadProblem::ProjectileNotFaster { at: at.clone() }),
-        }
-    }
-
-    /// Every speed an ability's projectile may fly at, at any rank, is faster than the cap: a
-    /// script may make it home.
-    fn ability_projectile(&self, ability: &ActionData, at: &Place) -> Result<(), LoadProblem> {
-        let Some(projectile) = &ability.projectile else {
-            return Ok(());
-        };
-        for speed in projectile.speed.values() {
-            let values: Vec<_> = match speed {
-                Number::Value(value) => vec![*value],
-                Number::Param(reference) => match ability.params.get(&reference.param) {
-                    Some(Param::Ranked(ranked)) => ranked.values().to_vec(),
-                    Some(Param::Scaling(scaling)) => scaling.base.values().to_vec(),
-                    None => {
-                        return Err(LoadProblem::Unknown {
-                            of: NameKind::Param,
-                            at: at.clone(),
-                            name: reference.param.clone(),
-                        });
-                    }
-                },
-            };
-            for value in values {
-                self.projectile_speed(Some(value), at)?;
-            }
-        }
-        Ok(())
-    }
 }
 
 impl<'a> PackageNames<'a> {
@@ -1022,4 +1030,39 @@ fn modifier_exists(
         at: at.to_owned(),
         name: id.to_owned(),
     })
+}
+
+/// The `delivery` of `action`, whose id is `id`: a projectile type of its package's `units`; for
+/// a weapon, one that homes; aimed at something, and at a unit, alone, for one that homes.
+fn delivery_holds(
+    id: &str,
+    action: &ActionData,
+    delivery: &DeliveryData,
+    units: &BTreeMap<String, UnitTypeFile>,
+) -> Result<(), LoadProblem> {
+    let fail = LoadProblem::Delivery;
+    let action_id = || id.to_owned();
+    let name = &delivery.projectile;
+    let unit_type = units.get(name).ok_or_else(|| LoadProblem::Unknown {
+        of: NameKind::UnitType,
+        at: Place::Action(id.to_owned()),
+        name: name.clone(),
+    })?;
+    let Some(projectile) = &unit_type.projectile else {
+        return Err(fail(DeliveryProblem::NotProjectile {
+            action: action_id(),
+            unit_type: name.clone(),
+        }));
+    };
+    if action.targeting == Targeting::None {
+        return Err(fail(DeliveryProblem::NoAim(action_id())));
+    }
+    let at_unit = matches!(action.targeting, Targeting::Unit(_));
+    if projectile.homing && (!at_unit || delivery.count.get() > 1) {
+        return Err(fail(DeliveryProblem::Homing(action_id())));
+    }
+    if action.kind == ActionKind::Attack && !projectile.homing {
+        return Err(fail(DeliveryProblem::WeaponLine(action_id())));
+    }
+    Ok(())
 }

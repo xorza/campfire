@@ -13,6 +13,7 @@ use crate::actions::action_book::ActionBook;
 use crate::actions::action_data::Range;
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::ActionSlots;
+use crate::actions::action_slots::ActionTarget;
 use crate::combat::CombatSet;
 use crate::combat::dead::Dead;
 use crate::combat::targets::Targets;
@@ -161,9 +162,10 @@ impl Orders {
 }
 
 /// Makes each order the current one of its unit, in input order, so a later order in the tick
-/// wins. An order to a unit its player does not control, that is dead or resets, is ignored, and so are
-/// a body that is not an order and an attack on a unit that is not a living enemy or that none of
-/// its weapons selects: a client can send anything. A move's point clamps to the bounds. A move
+/// wins. An order to a unit its player does not control, that is dead or resets, is ignored, and so
+/// are a body that is not an order and an attack on a unit that is not a living enemy or that none
+/// of its weapons selects: a client can send anything. A move's point clamps to the bounds, and a
+/// slot's point to the ground within them, at the unit's height. A move
 /// cancels an attack in its windup, and so does an attack on another target. A slot's cast or train
 /// replaces an action not resolved yet, and its checks run in Act; a slot's other kind is ignored.
 fn apply_orders(
@@ -227,6 +229,13 @@ fn apply_orders(
                         .slot(slot)
                         .and_then(|held| book.get(held.action))
                         .map(|action| action.kind);
+                    let target = match target {
+                        ActionTarget::Point(at) => {
+                            let at = at.get();
+                            ActionTarget::Point(bounds.ground_point([at.x, at.z], *position))
+                        }
+                        target => target,
+                    };
                     if let Some(kind @ (ActionKind::Cast | ActionKind::Train)) = kind {
                         slots.order(slot, kind, target);
                     }

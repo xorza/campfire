@@ -10,6 +10,7 @@ use crate::mode::mode_api::ModeApi;
 use crate::orders::orders_api::OrdersApi;
 use crate::production::production_api::ProductionApi;
 use crate::progression::progression_api::ProgressionApi;
+use crate::projectiles::projectiles_api::ProjectilesApi;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::core_api::CoreApi;
 use crate::scripts::hook::{Hook, ScriptRole};
@@ -70,6 +71,7 @@ pub enum DataTable {
     Leech,
     Relation,
     Action,
+    Delivery,
     Projectile,
     Track,
     Modifier,
@@ -192,6 +194,7 @@ impl ScriptApi {
         VisionApi::register(&mut builder);
         ProgressionApi::register(&mut builder);
         ProductionApi::register(&mut builder);
+        ProjectilesApi::register(&mut builder);
         api
     }
 
@@ -446,7 +449,7 @@ impl Status {
 }
 
 impl DataTable {
-    pub const ALL: [DataTable; 18] = [
+    pub const ALL: [DataTable; 19] = [
         DataTable::Mode,
         DataTable::ModeCombat,
         DataTable::ModeNavigation,
@@ -455,6 +458,7 @@ impl DataTable {
         DataTable::Leech,
         DataTable::Relation,
         DataTable::Action,
+        DataTable::Delivery,
         DataTable::Projectile,
         DataTable::Track,
         DataTable::Modifier,
@@ -478,7 +482,8 @@ impl DataTable {
             DataTable::Leech => "The mode's `[combat] leech`",
             DataTable::Relation => "A pair of teams, `[[relations]]`",
             DataTable::Action => "An action, `[actions.<id>]`",
-            DataTable::Projectile => "An action's `projectile`",
+            DataTable::Delivery => "An action's `delivery`",
+            DataTable::Projectile => "A unit type's `projectile`",
             DataTable::Track => "A track, `[tracks.<name>]`",
             DataTable::Modifier => "A modifier, `[modifiers.<id>]`",
             DataTable::Aura => "A modifier's `aura`",
@@ -583,7 +588,8 @@ mod tests {
     use serde::de::{self, Deserialize, Deserializer, Visitor};
 
     use super::*;
-    use crate::actions::action_data::{ActionData, ProjectileData};
+    use crate::actions::action_data::ActionData;
+    use crate::actions::delivery_data::DeliveryData;
     use crate::actions::slot_kinds::SlotKindData;
     use crate::combat::combat_data::CombatData;
     use crate::combat::combat_rules::{CombatRules, Leech};
@@ -594,6 +600,7 @@ mod tests {
     use crate::orders::ai_data::AiData;
     use crate::production::production_data::ProductionData;
     use crate::progression::track_data::TrackData;
+    use crate::projectiles::projectile_data::ProjectileData;
     use crate::stats::modifier_data::{AuraData, ModifierData};
     use crate::units::block::Block;
     use crate::units::collision_data::CollisionData;
@@ -776,6 +783,7 @@ mod tests {
             (DataTable::Leech, serde_fields::<Leech>()),
             (DataTable::Relation, serde_fields::<RelationData>()),
             (DataTable::Action, serde_fields::<ActionData>()),
+            (DataTable::Delivery, serde_fields::<DeliveryData>()),
             (DataTable::Projectile, serde_fields::<ProjectileData>()),
             (DataTable::Track, serde_fields::<TrackData>()),
             (DataTable::Modifier, serde_fields::<ModifierData>()),

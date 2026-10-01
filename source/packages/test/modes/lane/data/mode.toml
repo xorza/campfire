@@ -58,4 +58,4 @@ windup_ms = 150
 rate = "attack_speed"
 damage = "attack_damage"
 damage_kind = "true"
-projectile = { speed = "12" }
+delivery = { projectile = "tower_bolt" }

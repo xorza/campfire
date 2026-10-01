@@ -5,7 +5,7 @@ use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_sim::{EntityIndex, IdAllocator, Position, SimSet, SimTick, StateRegistry, Ticks};
 
-use crate::actions::action_book::{ActionBook, ActionId};
+use crate::actions::action_book::ActionBook;
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::purse::Purse;
@@ -17,7 +17,6 @@ use crate::production::train_queue::{Queued, TrainQueue};
 use crate::scripts::ctx::Ctx;
 use crate::stats::pools::Pools;
 use crate::units::owner::Owner;
-use crate::units::script_view::View;
 use crate::units::team::Team;
 use crate::values::attitude::Attitude;
 
@@ -35,19 +34,6 @@ impl Production {
     pub fn install(_: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         schedule.add_systems(start_trains.in_set(SimSet::Act).after(CombatSet::Attack));
         registry.register_component::<TrainQueue>();
-    }
-
-    /// Binds the train `action` to the unit type `name` it makes, once the mode's unit types
-    /// load: one the package load checked.
-    pub fn bind_train(world: &mut World, action: ActionId, name: &str) {
-        let unit_type = world
-            .non_send::<View>()
-            .types_mut()
-            .named(name)
-            .expect("the load checked a train's unit type");
-        world
-            .resource_mut::<ActionBook>()
-            .bind_train(action, unit_type);
     }
 
     /// Spawns each train whose time ended this tick, at its unit's position, of its unit's team
@@ -78,7 +64,7 @@ impl Production {
                 let unit_type = world
                     .resource::<ActionBook>()
                     .get(head.action)
-                    .and_then(|action| action.trains)
+                    .and_then(|action| action.spawns)
                     .expect("a train's unit type binds as the mode loads");
                 let producer = world.entity(entity);
                 let team = *producer.get::<Team>().expect("a producer has a team");

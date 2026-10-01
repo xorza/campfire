@@ -13,8 +13,8 @@ mod package_store;
 mod script_facts;
 
 pub use error::{
-    ChoiceProblem, ContentError, CtxMisuse, Limit, LoadError, LoadProblem, NameKind, Place,
-    StoreError,
+    ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem, Limit, LoadError, LoadProblem,
+    NameKind, Place, StoreError,
 };
 pub use files::avatar_data::AvatarData;
 pub use files::loadout_data::LoadoutData;

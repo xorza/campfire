@@ -48,6 +48,10 @@ impl Targets<'_, '_> {
             .filter(|unit| self.attitude(team, unit.team).may_attack())
     }
 
+    pub(crate) fn metric(&self) -> Metric {
+        *self.metric
+    }
+
     /// How `of` regards `other`.
     pub(crate) fn attitude(&self, of: Team, other: Team) -> Attitude {
         self.relations.between(of, other)
@@ -64,6 +68,23 @@ impl Targets<'_, '_> {
     ) -> bool {
         self.metric
             .within(from, target.pos, range + radius + target.radius)
+    }
+
+    /// Whether `range` from a unit at `from` of body radius `radius` reaches the point `at`, from
+    /// the edge of its body, exactly.
+    pub(crate) fn reaches_point(
+        &self,
+        from: Position,
+        radius: Num,
+        range: Num,
+        at: Position,
+    ) -> bool {
+        self.metric.within(from, at, range + radius)
+    }
+
+    /// Every living unit that may be a target, in no order.
+    pub(crate) fn units(&self) -> impl Iterator<Item = LivingUnit> + '_ {
+        self.units.iter().filter_map(|(&id, ..)| self.living(id))
     }
 
     /// `target`, when it is a living unit that may be a target.

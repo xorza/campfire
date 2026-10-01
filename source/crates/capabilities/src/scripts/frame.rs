@@ -15,6 +15,7 @@ use crate::mode::mode_state::ModeState;
 use crate::mode::player_resources::PlayerResources;
 use crate::orders::Orders;
 use crate::progression::Progression;
+use crate::projectiles::Projectiles;
 use crate::scripts::effect::Effect;
 use crate::scripts::error::CallError;
 use crate::scripts::hook::ScriptRole;
@@ -103,6 +104,15 @@ impl Frame {
 
     pub(crate) const fn acting(&self) -> Option<StableId> {
         self.acting
+    }
+
+    /// The action whose params it reads, and at which rank.
+    pub(crate) const fn action(&self) -> Option<ActionId> {
+        self.ability
+    }
+
+    pub(crate) const fn rank(&self) -> u8 {
+        self.rank
     }
 
     /// Starts a cast of `ability` at `rank` by `caster` in `world`, with its params at that
@@ -265,6 +275,7 @@ impl Frame {
                     Mode::apply_effect(world, mode, now, effect, self);
                 }
                 Effect::Progression(effect) => Progression::apply(world, effect),
+                Effect::Projectile(effect) => Projectiles::apply(world, effect),
             }
         }
         self.effects = effects;

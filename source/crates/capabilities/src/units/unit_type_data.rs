@@ -24,4 +24,6 @@ impl UnitTypeData {
 
     /// The tag of avatars, which `unit.is_avatar` tests: every avatar carries it.
     pub const AVATAR_TAG: &str = "avatar";
+    /// The tag of projectile types: a filter selects their units only when it names it.
+    pub const PROJECTILE_TAG: &str = "projectile";
 }

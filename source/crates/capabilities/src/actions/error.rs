@@ -10,8 +10,6 @@ pub enum ActionField {
     Cooldown,
     Cost,
     Windup,
-    /// A weapon's projectile speed: meters a second, positive.
-    Projectile,
 }
 
 /// Why an action that passed the package load does not load into a match: what only the

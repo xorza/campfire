@@ -150,7 +150,7 @@ pub enum LoadProblem {
     TooMany(Limit),
     /// More than one of the mode's tracks is the `level` track.
     LevelTracks,
-    /// An avatar has the name of one of the mode's unit types.
+    /// An avatar or a dependency's delivery type has the name of one of the mode's unit types.
     RepeatedUnitType(String),
     /// A per-rank array of an ability has another length than its ranks.
     RankCount { action: String, ranks: u8 },
@@ -178,7 +178,6 @@ pub enum LoadProblem {
         path: PackagePath,
         misuse: CtxMisuse,
     },
-    /// A param that data or a script at `at` reads is not declared.
     /// A unit type at `at` lists a pool twice.
     RepeatedPool { at: Place, name: DeclaredName },
     /// Live stat changes across the mode's modifiers read each other in a loop, through these
@@ -198,11 +197,67 @@ pub enum LoadProblem {
     LifePoolMissing(Place),
     /// The mode declares a name twice in one of its lists.
     RepeatedName(DeclaredName),
-    /// A projectile at `at` is no faster than the move speed cap, so a homing one might never
-    /// catch its target.
-    ProjectileNotFaster { at: Place },
+    /// A projectile type, or what delivers or makes one.
+    Delivery(DeliveryProblem),
     /// A field of mode state has no `sync`, or another state field has one.
     StateSync(String),
+}
+
+/// What is wrong with a projectile type, or with what delivers or makes one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum DeliveryProblem {
+    /// A homing projectile type at `at` is no faster than the move speed cap, so it might never
+    /// catch its target.
+    NotFaster(Place),
+    /// A unit type at `at` with a `projectile` section has a section of a unit that stands, a
+    /// dependency's unit type is no delivery type, or an avatar is one.
+    NotDelivery(Place),
+    /// An action's `delivery` names a unit type of its package with no `projectile` section.
+    NotProjectile { action: String, unit_type: String },
+    /// An action that aims at nothing has a delivery, which has no way to fly.
+    NoAim(String),
+    /// An action's projectile homes, and the action aims at no unit, or launches more than one.
+    Homing(String),
+    /// A weapon's projectile does not home.
+    WeaponLine(String),
+    /// A train makes a projectile type, whose units only actions deliver.
+    Trained(String),
+}
+
+impl fmt::Display for DeliveryProblem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            DeliveryProblem::NotFaster(at) => {
+                write!(
+                    f,
+                    "{at}: homing projectile no faster than the move speed cap"
+                )
+            }
+            DeliveryProblem::NotDelivery(at) => write!(
+                f,
+                "{at}: a projectile type has tags, params and its projectile section alone, a \
+                 dependency's unit types are projectile types, and an avatar is none"
+            ),
+            DeliveryProblem::NotProjectile { action, unit_type } => write!(
+                f,
+                "action {action:?} delivers unit type {unit_type:?}, which has no projectile \
+                 section"
+            ),
+            DeliveryProblem::NoAim(action) => {
+                write!(f, "action {action:?} aims at nothing, and delivers nothing")
+            }
+            DeliveryProblem::Homing(action) => write!(
+                f,
+                "action {action:?}: a homing projectile flies one at a time, at a unit target"
+            ),
+            DeliveryProblem::WeaponLine(action) => {
+                write!(f, "weapon {action:?}: its projectile homes")
+            }
+            DeliveryProblem::Trained(action) => {
+                write!(f, "train {action:?} makes a projectile type")
+            }
+        }
+    }
 }
 
 /// Where in a package a load problem is.
@@ -314,7 +369,7 @@ pub enum NameKind {
 pub enum Limit {
     /// Tags, its unit types' together.
     Tags,
-    /// Unit types, its avatars' among them.
+    /// Unit types, its avatars' and its dependencies' delivery types among them.
     UnitTypes,
     /// Tracks, more than a unit holds.
     Tracks,
@@ -411,7 +466,7 @@ impl fmt::Display for LoadProblem {
             LoadProblem::TooMany(limit) => write!(f, "{limit}"),
             LoadProblem::LevelTracks => f.write_str("more than one `level` track"),
             LoadProblem::RepeatedUnitType(name) => {
-                write!(f, "avatar {name:?} has the name of a unit type")
+                write!(f, "two unit types are named {name:?}")
             }
             LoadProblem::NoDamageKinds => {
                 f.write_str("the mode declares combat, and no damage kinds")
@@ -478,9 +533,7 @@ impl fmt::Display for LoadProblem {
             LoadProblem::NoLifePool => f.write_str("combat with no [combat] life"),
             LoadProblem::LifePoolMissing(at) => write!(f, "{at}: combat without the life pool"),
             LoadProblem::RepeatedName(name) => write!(f, "the mode declares {name:?} twice"),
-            LoadProblem::ProjectileNotFaster { at } => {
-                write!(f, "{at}: projectile no faster than the move speed cap")
-            }
+            LoadProblem::Delivery(problem) => write!(f, "{problem}"),
             LoadProblem::StateSync(field) => write!(f, "state {field:?}: sync where it has none"),
         }
     }

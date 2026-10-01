@@ -6,15 +6,16 @@ use bevy_ecs::system::Local;
 use bevy_ecs::world::World;
 use campfire_script::ScriptId;
 use campfire_script::rhai::Dynamic;
-use campfire_sim::{EntityIndex, SimSet, SimTick, StableId, StateRegistry, Tick, Ticks};
+use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, Tick, Ticks};
 
-use crate::actions::action_book::ActionBook;
+use crate::actions::action_book::{ActionBook, ActionId};
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::{ActionSlots, ActionTarget};
 use crate::actions::purse::Purse;
 use crate::combat::CombatSet;
 use crate::combat::dead::Dead;
 use crate::mode::player_resources::PlayerResources;
+use crate::projectiles::Projectiles;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
@@ -37,9 +38,10 @@ pub struct Abilities;
 
 impl Abilities {
     /// Adds abilities to a match, on the core `Units` installs: in Hit, after attacks strike and
-    /// fire, due casts resolve: the cost, the cooldown and the script's effects apply together, or
-    /// none of them. A cast resolves in the script host, so without the core's scripts, as on a
-    /// client, which predicts no casts, it installs nothing.
+    /// before the tick's projectiles launch, due casts resolve: the delivery, the cost, the
+    /// cooldown and the script's effects apply together, or none of them. A cast resolves in the
+    /// script host, so without the core's scripts, as on a client, which predicts no casts, it
+    /// installs nothing.
     pub fn install(world: &mut World, schedule: &mut Schedule, _: &mut StateRegistry) {
         if !world.contains_non_send::<Ctx>() {
             return;
@@ -47,8 +49,8 @@ impl Abilities {
         schedule.add_systems(
             resolve_casts
                 .in_set(SimSet::Hit)
-                .after(CombatSet::Launch)
-                .before(CombatSet::Interval),
+                .after(CombatSet::Strike)
+                .before(CombatSet::Launch),
         );
     }
 }
@@ -93,12 +95,16 @@ fn resolve_casts(world: &mut World, mut due: Local<'_, Vec<(StableId, Entity)>>)
 }
 
 /// A cast ready to run: the caster as the script sees it, the pool its call draws from, its
-/// target, its `on_resolve`, and its cost and cooldown. Its params wait in the frame.
+/// slot, action and rank, its target as it aimed and as the script sees it, its `on_resolve`,
+/// and its cost and cooldown. Its params wait in the frame.
 #[derive(Debug)]
 struct Prepared {
     caster: Unit,
     pool: Pool,
     slot: u8,
+    action: ActionId,
+    rank: u8,
+    aim: ActionTarget,
     target: Dynamic,
     on_resolve: Option<ScriptId>,
     cost: PoolCost,
@@ -126,9 +132,12 @@ fn resolve(batch: &mut ScriptBatch<'_>, ctx: &Ctx, now: Tick, caster: StableId, 
         .stop();
 }
 
-/// Applies a cast that ran: the effects it queued in `frame` and its handle writes, its cost and
-/// its cooldown.
+/// Applies a cast that ran: its delivery's launches, then the effects it queued in `frame` and
+/// its handle writes, its cost and its cooldown.
 fn apply(world: &mut World, ctx: &Ctx, now: Tick, entity: Entity, prepared: &Prepared) {
+    let from = *world.get::<Position>(entity).expect("a caster stands");
+    let (caster, action, rank) = (prepared.caster.id, prepared.action, prepared.rank);
+    Projectiles::deliver(world, caster, from, action, rank, prepared.aim);
     ctx.apply(world, now);
     if let Some(mut pools) = world.get_mut::<Pools>(entity) {
         pools.pay(&prepared.cost);
@@ -174,6 +183,7 @@ fn prepare(
             .living(id)
             .and_then(|_| view.unit(id))
             .map_or(Dynamic::UNIT, Dynamic::from),
+        ActionTarget::Point(at) => Dynamic::from(at),
     };
     let mut frame = ctx.frame();
     frame.begin_cast(world, checked.id, checked.rank, caster.id)?;
@@ -191,8 +201,11 @@ fn prepare(
         caster,
         pool,
         slot: casting.slot,
+        action: checked.id,
+        rank: checked.rank,
+        aim: checked.target,
         target,
-        on_resolve: checked.action.on_resolve,
+        on_resolve: checked.action.hook(Hook::OnResolve),
         cost: checked.values.cost,
         cooldown: checked.values.cooldown,
     }))

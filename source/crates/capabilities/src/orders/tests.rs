@@ -9,7 +9,6 @@ use campfire_sim::{Capability, IdAllocator, SimUpdate, TickInput, TypeHash};
 
 use super::*;
 use crate::actions::action_book::internals;
-use crate::actions::action_slots::ActionTarget;
 use crate::actions::slot_kind::SlotKind;
 use crate::capability_set::internals::TestMatch;
 use crate::combat::armed::Armed;

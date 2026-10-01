@@ -48,11 +48,9 @@ range = "12.0"
 cooldown_ms = [16000, 13000, 10000, 7000, 4000]
 cost = { mana = 60 }
 windup_ms = 250
-projectile = { speed = "15", width = "0.4", stop_on_hit = true, once_per_cast = true }
+delivery = { projectile = "frost_arrow", count = 7, spread_deg = "57.5" }
 
 [actions.fan_of_frost.params]
-arrows = 7
-cone_deg = "57.5"
 damage = { base = [40, 50, 60, 70, 80], attack_damage = "1.0" }
 slow = ["0.15", "0.20", "0.25", "0.30", "0.35"]
 slow_ms = 2000
@@ -63,7 +61,7 @@ targeting = "point"
 range = ["25", "32.5", "40", "47.5", "55"]
 cooldown_ms = 60000
 passive_modifier = "snow_owl_bounty"
-projectile = { speed = "14", sight_radius = { param = "sight_radius" }, collide = false }
+delivery = { projectile = "snow_owl" }
 
 [actions.snow_owl.params]
 bonus_gold = [1, 2, 3, 4, 5]
@@ -80,7 +78,7 @@ range = "global"
 cooldown_ms = [100000, 90000, 80000]
 cost = { mana = 150 }
 windup_ms = 250
-projectile = { speed = "16", width = "1.3", stop_on_hit = true, hits = "enemies:avatar" }
+delivery = { projectile = "glacier_arrow" }
 
 [actions.glacier_arrow.params]
 damage = { base = [250, 425, 600], ability_power = "1.0" }
@@ -109,4 +107,16 @@ windup_ms = 230
 rate = "attack_speed"
 damage = "attack_damage"
 damage_kind = "physical"
-projectile = { speed = "20" }
+delivery = { projectile = "arrow" }
+
+[units.frost_arrow]
+projectile = { speed = "15", width = "0.4", stop_on_hit = true, once_per_cast = true }
+
+[units.snow_owl]
+projectile = { speed = "14", sight_radius = "4.0", collide = false }
+
+[units.glacier_arrow]
+projectile = { speed = "16", width = "1.3", stop_on_hit = true, hits = "enemies:avatar" }
+
+[units.arrow]
+projectile = { speed = "20", homing = true }

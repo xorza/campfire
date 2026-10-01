@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use campfire_capabilities::{
-    AiData, CollisionData, CombatData, DeclaredName, ProductionData, Scalar, StatsData,
-    UnitTypeData, VisionData,
+    AiData, CollisionData, CombatData, DeclaredName, ProductionData, ProjectileData, Scalar,
+    StatsData, UnitTypeData, VisionData,
 };
 use serde::{Deserialize, Deserializer};
 
@@ -32,6 +32,40 @@ pub struct UnitTypeFile {
     /// The mode's tracks it gains experience on.
     pub tracks: Vec<DeclaredName>,
     pub production: Option<ProductionData>,
+    /// It is a projectile type: actions deliver its units.
+    pub projectile: Option<ProjectileData>,
+}
+
+impl UnitTypeFile {
+    /// Whether it is a delivery type and nothing more: a `projectile` section beside its tags
+    /// and params, and no section of a unit that stands.
+    pub(crate) fn delivery_only(&self) -> bool {
+        let UnitTypeFile {
+            core: _,
+            pools,
+            slots,
+            passive,
+            stats,
+            combat,
+            orders,
+            vision,
+            collision,
+            tracks,
+            production,
+            projectile,
+        } = self;
+        projectile.is_some()
+            && pools.is_empty()
+            && slots.is_empty()
+            && passive.is_none()
+            && stats.is_none()
+            && combat.is_none()
+            && orders.is_none()
+            && vision.is_none()
+            && collision.is_none()
+            && tracks.is_empty()
+            && production.is_none()
+    }
 }
 
 /// The flat table of a unit type, the core's fields among the capabilities' sections.
@@ -57,6 +91,7 @@ impl<'de> Deserialize<'de> for UnitTypeFile {
             #[serde(default)]
             tracks: Vec<DeclaredName>,
             production: Option<ProductionData>,
+            projectile: Option<ProjectileData>,
         }
         let fields = Fields::deserialize(deserializer)?;
         Ok(UnitTypeFile {
@@ -74,6 +109,7 @@ impl<'de> Deserialize<'de> for UnitTypeFile {
             collision: fields.collision,
             tracks: fields.tracks,
             production: fields.production,
+            projectile: fields.projectile,
         })
     }
 }

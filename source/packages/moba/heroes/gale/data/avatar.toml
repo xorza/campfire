@@ -37,7 +37,7 @@ range = "17.0"
 cooldown_ms = [14000, 13000, 12000, 11000, 10000]
 cost = { mana = [90, 105, 120, 135, 150] }
 charge = { max_ms = 3000 }
-projectile = { speed = "9", width = "1.2", stop_on_hit = false }
+delivery = { projectile = "cyclone" }
 
 [actions.cyclone.params]
 range_min = "11.0"
@@ -113,4 +113,10 @@ windup_ms = 300
 rate = "attack_speed"
 damage = "attack_damage"
 damage_kind = "physical"
-projectile = { speed = "12" }
+delivery = { projectile = "wind_bolt" }
+
+[units.cyclone]
+projectile = { speed = "9", width = "1.2" }
+
+[units.wind_bolt]
+projectile = { speed = "12", homing = true }

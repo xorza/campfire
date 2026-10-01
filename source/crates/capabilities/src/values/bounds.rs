@@ -53,6 +53,28 @@ impl Bounds {
             && at.z.to_bits() <= self.max[1].to_bits()
     }
 
+    /// How far a straight path from `from` along the unit vector `direction` stays within the
+    /// bounds on the ground plane, and within the world's bound in height: 0 from a point
+    /// outside. An axis the path barely moves along cannot be the one it leaves by, so a ratio
+    /// too large to hold is never the nearest.
+    pub(crate) fn exit(self, from: Position, direction: Vec3) -> Num {
+        let at = from.get();
+        let height = Position::BOUND;
+        [
+            (at.x, direction.x, self.min[0], self.max[0]),
+            (at.y, direction.y, -height, height),
+            (at.z, direction.z, self.min[1], self.max[1]),
+        ]
+        .into_iter()
+        .filter_map(|(at, moves, min, max)| {
+            let edge = if moves > Num::ZERO { max } else { min };
+            (edge - at).checked_div(moves)
+        })
+        .min()
+        .expect("a unit vector moves along an axis")
+        .max(Num::ZERO)
+    }
+
     /// The point of the bounds nearest `[x, z]`.
     pub(crate) fn clamp_ground(self, [x, z]: [Num; 2]) -> [Num; 2] {
         [
@@ -156,5 +178,16 @@ mod tests {
             assert_eq!(Bounds::new(min, max), None, "{min:?} {max:?}");
         }
         assert!(Bounds::WORLD.contains(at(-Position::BOUND, num(0), Position::BOUND)));
+
+        // From (0, 0, 1): 4 to the right edge along +x, 2 to the bottom along −z, and from a
+        // point past the right edge, 0. Straight up, the path leaves at the world's height.
+        let x = Vec3::new(Num::ONE, Num::ZERO, Num::ZERO);
+        let z = Vec3::new(Num::ZERO, Num::ZERO, -Num::ONE);
+        let up = Vec3::new(Num::ZERO, Num::ONE, Num::ZERO);
+        let origin = at(num(0), num(0), num(1));
+        assert_eq!(bounds.exit(origin, x), num(4));
+        assert_eq!(bounds.exit(origin, z), num(2));
+        assert_eq!(bounds.exit(at(num(5), num(0), num(1)), x), Num::ZERO);
+        assert_eq!(bounds.exit(origin, up), Position::BOUND);
     }
 }

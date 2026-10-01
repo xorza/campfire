@@ -1,7 +1,3 @@
-fn on_resolve(ctx, caster, target) {
-    ctx.projectile(caster.pos, caster.pos.direction_to(target));
-}
-
 fn on_hit(ctx, caster, target, hit) {
     let reach = (hit.distance / ctx.p.full_stun_distance).min(1);
     let stun = ctx.p.min_stun_ms + (ctx.p.max_stun_ms - ctx.p.min_stun_ms) * reach;

@@ -38,7 +38,7 @@ range = "11.0"
 cooldown_ms = [16000, 14000, 12000, 10000, 8000]
 cost = { mana = [80, 90, 100, 110, 120] }
 windup_ms = 250
-projectile = { speed = "20", width = "1.6", stop_on_hit = true }
+delivery = { projectile = "grasping_wraps" }
 
 [actions.grasping_wraps.params]
 pull_speed = "18"
@@ -102,3 +102,6 @@ windup_ms = 300
 rate = "attack_speed"
 damage = "attack_damage"
 damage_kind = "physical"
+
+[units.grasping_wraps]
+projectile = { speed = "20", width = "1.6", stop_on_hit = true }

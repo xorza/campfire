@@ -1,5 +1,5 @@
 use bevy_ecs::component::Component;
-use campfire_sim::{SimComponent, StableId, Tick};
+use campfire_sim::{Position, SimComponent, StableId, Tick};
 use serde::{Deserialize, Serialize};
 
 use crate::actions::action_book::ActionId;
@@ -36,11 +36,13 @@ pub(crate) struct InProgress {
     pub(crate) resolves_at: Option<Tick>,
 }
 
-/// What an action is aimed at.
+/// What an action is aimed at: nothing, a unit, or a point, which an action that aims at a
+/// direction aims through.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ActionTarget {
     None,
     Unit(StableId),
+    Point(Position),
 }
 
 impl ActionSlots {

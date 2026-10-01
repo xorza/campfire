@@ -81,3 +81,12 @@ slots = { weapon = ["warden_attack"] }
 orders = { ai = "scripts/camp_ai.rhai", think_ms = 250 }
 vision = { sight_range = "11.0" }
 collision = { radius = "0.7" }
+
+[units.caster_creep_bolt]
+projectile = { speed = "6.5", homing = true }
+
+[units.tower_bolt]
+projectile = { speed = "12", homing = true }
+
+[units.warden_bolt]
+projectile = { speed = "10", homing = true }

@@ -30,6 +30,7 @@ use crate::combat::recent_attackers::RecentAttackers;
 use crate::combat::respawn::Respawn;
 use crate::mode::player_resources::PlayerResources;
 use crate::mode::resource_id::ResourceAmount;
+use crate::projectiles::projectile::{Flight, Payload};
 use crate::scripts::hook::Hook;
 use crate::scripts::script_batch::ScriptBatch;
 use crate::stats::modifier_book::ModifierId;
@@ -46,6 +47,7 @@ use crate::units::tag_book::TagBook;
 use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
+use crate::units::unit_type::UnitType;
 
 pub(crate) mod assist_window;
 pub(crate) mod combat_api;
@@ -159,6 +161,7 @@ impl Combat {
             weapon: action.weapon.expect("an attack's action is a weapon"),
             values: action.values(slot.rank),
             resource_cost: action.resource_cost(slot.rank),
+            projectile: action.spawns,
         }
     }
 
@@ -197,6 +200,8 @@ struct Wielded<'a> {
     weapon: Weapon,
     values: RankValues,
     resource_cost: &'a [ResourceAmount],
+    /// The type of the homing projectile it fires, if it fires one.
+    projectile: Option<UnitType>,
 }
 
 impl Wielded<'_> {
@@ -376,16 +381,25 @@ fn strike(
         let stats = stats.map_or(&[][..], UnitStats::values);
         let amount = weapon.damage(stats);
         let roll = rng.open(ROLL_STREAM, source).fraction();
-        match (values.launch, launches.as_deref_mut()) {
-            (Some(speed), Some(launches)) => launches.0.push(Launch {
-                source,
-                from,
-                target,
-                amount,
-                kind: weapon.kind,
-                speed,
-                roll,
-            }),
+        match (wielded.projectile, launches.as_deref_mut()) {
+            (Some(unit_type), Some(launches)) => {
+                let cast = launches.cast();
+                launches.launches.push(Launch {
+                    source,
+                    from,
+                    unit_type,
+                    flight: Flight::Homing {
+                        target,
+                        flown: Num::ZERO,
+                    },
+                    payload: Payload::Attack {
+                        amount,
+                        kind: weapon.kind,
+                        roll,
+                    },
+                    cast,
+                });
+            }
             _ => queue.push(Damage {
                 source: Some(source),
                 target,
@@ -810,18 +824,19 @@ pub(crate) mod internals {
     use crate::stats::pool_cost::PoolCost;
     use crate::stats::unit_stats::UnitStats;
     use crate::units::filter::Filter;
+    use crate::units::unit_type::UnitType;
     use crate::units::unit_types::UnitTypes;
 
     /// A test unit's weapon: it aims at enemies within `range`, winds up `windup`, may attack
-    /// again `period` after an attack's start, deals `damage`, and fires a homing projectile of
-    /// `launch` a tick when given.
+    /// again `period` after an attack's start, deals `damage`, and fires a projectile of the
+    /// homing type `projectile` when given.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub struct Arms {
         range: Num,
         windup: Ticks,
         period: Ticks,
         damage: Num,
-        launch: Option<Num>,
+        projectile: Option<UnitType>,
     }
 
     /// A unit's slots and stats: its weapon's slot, if it has one, and the stats it reads.
@@ -849,15 +864,15 @@ pub(crate) mod internals {
                 windup: Ticks::new(windup),
                 period: Ticks::new(period),
                 damage,
-                launch: None,
+                projectile: None,
             }
         }
 
-        /// The same weapon, firing a homing projectile of `launch` a tick.
+        /// The same weapon, firing projectiles of the homing type `projectile`.
         #[must_use]
-        pub const fn ranged(self, launch: Num) -> Arms {
+        pub const fn ranged(self, projectile: UnitType) -> Arms {
             Arms {
-                launch: Some(launch),
+                projectile: Some(projectile),
                 ..self
             }
         }
@@ -869,7 +884,7 @@ pub(crate) mod internals {
                 aim: Filter::parse("enemies", &UnitTypes::default()).unwrap(),
                 range: self.range,
                 windup: self.windup,
-                launch: self.launch,
+                projectile: self.projectile,
                 rate: 0,
                 damage: 1,
                 cost: PoolCost::default(),
@@ -902,6 +917,7 @@ pub(crate) mod armed {
     use crate::combat::recent_attackers::RecentAttackers;
     use crate::stats::pools::Pools;
     use crate::units::team::Team;
+    use crate::units::unit_type::UnitType;
 
     /// A test unit's combat values: the life pool it starts with, whether it stays when it dies,
     /// and its one weapon, if it has one.
@@ -937,9 +953,12 @@ pub(crate) mod armed {
             Armed { on_death, ..self }
         }
 
-        /// The same unit, its weapon firing a homing projectile of `launch` a tick.
-        pub(crate) fn ranged(self, launch: Num) -> Armed {
-            let arms = self.arms.expect("a ranged unit is armed").ranged(launch);
+        /// The same unit, its weapon firing projectiles of the homing type `projectile`.
+        pub(crate) fn ranged(self, projectile: UnitType) -> Armed {
+            let arms = self
+                .arms
+                .expect("a ranged unit is armed")
+                .ranged(projectile);
             Armed {
                 arms: Some(arms),
                 ..self

@@ -8,8 +8,8 @@ use std::sync::{Arc, OnceLock};
 
 use campfire_capabilities::{ActionField, ActionKind, MapProblem, ModeError};
 use campfire_package::{
-    ChoiceProblem, ContentError, CtxMisuse, Limit, LoadError, LoadProblem, ModePackages, NameKind,
-    PackageDir, Place,
+    ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem, Limit, LoadError, LoadProblem,
+    ModePackages, NameKind, PackageDir, Place,
 };
 use campfire_sim::Capability;
 
@@ -123,13 +123,19 @@ fn read_fails(problem: &LoadProblem, file: &str, message: &str) -> bool {
 fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
     // 5 m/s, slower than the 3v3's cap of 6: a homing projectile might never catch a hero.
     let edit = Edit::Replace(
-        r#"projectile = { speed = "6.5" }"#,
-        r#"projectile = { speed = "5.0" }"#,
+        r#"projectile = { speed = "6.5", homing = true }"#,
+        r#"projectile = { speed = "5.0", homing = true }"#,
     );
-    let error = ModePackages::from_package_dir(&edited([(MODE_DATA, edit)])).unwrap_err();
+    let error = ModePackages::from_package_dir(&edited([(UNITS, edit)])).unwrap_err();
     assert_eq!(error.package, MODE);
-    let at_caster = |problem: &LoadProblem| matches!(problem, LoadProblem::ProjectileNotFaster { at: Place::Action(name) } if name == "caster_creep_attack");
+    let at_caster = |problem: &LoadProblem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NotFaster(Place::UnitType(name))) if name == "caster_creep_bolt");
     assert!(at_caster(&error.problem), "{error}");
+    // Along a line, the same speed loads: it chases no one.
+    let edit = Edit::Replace(
+        r#"projectile = { speed = "20", width"#,
+        r#"projectile = { speed = "5", width"#,
+    );
+    assert!(ModePackages::from_package_dir(&edited([(HUSK, edit)])).is_ok());
 }
 
 #[test]
@@ -166,7 +172,7 @@ fn more_tracks_than_a_unit_holds_fail_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 121] = [
+const FLAWS: [Flaw; 131] = [
     flaw(
         MANIFEST,
         Edit::Replace(r#"engine = "0.1.0""#, r#"engine = "0.0.9""#),
@@ -307,15 +313,117 @@ const FLAWS: [Flaw; 121] = [
         "hero-husk",
         |problem| matches!(problem, LoadProblem::Content(_)),
     ),
+    // An action delivers a projectile type of its own package, which homes only alone and at a
+    // unit, and needs an aim; a weapon's homes. A projectile type is a delivery type alone, a
+    // dependency's unit types are all projectile types, and only actions make projectiles.
     flaw(
         HUSK,
         Edit::Replace(
-            r#"projectile = { speed = "20""#,
-            r#"projectile = { speed = "5""#,
+            r#"projectile = { speed = "20", width"#,
+            r#"projectile = { speed = "20", homing = true, width"#,
         ),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::ProjectileNotFaster { at: Place::Action(id) } if id == "grasping_wraps"),
+        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::Homing(action)) if action == "grasping_wraps"),
     ),
+    flaw(
+        HUSK,
+        Edit::Replace(
+            r#"delivery = { projectile = "grasping_wraps" }"#,
+            r#"delivery = { projectile = "wraps" }"#,
+        ),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::UnitType, at: Place::Action(action), name } if action == "grasping_wraps" && name == "wraps"),
+    ),
+    flaw(
+        HUSK,
+        Edit::Replace(
+            "targeting = \"direction\"\nrange = \"11.0\"",
+            "targeting = \"none\"\nrange = \"11.0\"",
+        ),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NoAim(action)) if action == "grasping_wraps"),
+    ),
+    flaw(
+        HUSK,
+        Edit::Replace(
+            "[units.grasping_wraps]\n",
+            "[units.husk_dummy]\ntags = [\"dummy\"]\n\n[units.grasping_wraps]\n",
+        ),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NotDelivery(Place::UnitType(name))) if name == "hero-husk/husk_dummy"),
+    ),
+    flaw(
+        HUSK,
+        Edit::Replace(
+            "[combat]\n",
+            "projectile = { speed = \"20\" }\n\n[combat]\n",
+        ),
+        "hero-husk",
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Delivery(DeliveryProblem::NotDelivery(Place::Avatar(_)))
+            )
+        },
+    ),
+    flaw(
+        UNITS,
+        Edit::Replace(
+            "[units.tower_bolt]\n",
+            "[units.tower_bolt]\npools = [\"health\"]\n",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NotDelivery(Place::UnitType(name))) if name == "tower_bolt"),
+    ),
+    flaw(
+        UNITS,
+        Edit::Replace(
+            r#"projectile = { speed = "12", homing = true }"#,
+            r#"projectile = { speed = "12" }"#,
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::WeaponLine(action)) if action == "tower_attack"),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace(
+            r#"delivery = { projectile = "tower_bolt" }"#,
+            r#"delivery = { projectile = "tower" }"#,
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NotProjectile { action, unit_type }) if action == "tower_attack" && unit_type == "tower"),
+    ),
+    flaw(
+        MAP,
+        Edit::Replace("unit_type = \"tower\"", "unit_type = \"tower_bolt\""),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Mode(ModeError::UnknownUnitType(name)) if name == "tower_bolt"),
+    ),
+    flaw(
+        UNITS,
+        Edit::Replace(
+            "[units.tower_bolt]\n",
+            "[units.\"hero-husk/grasping_wraps\"]\nprojectile = { speed = \"20\" }\n\n[units.tower_bolt]\n",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::RepeatedUnitType(name) if name == "hero-husk/grasping_wraps"),
+    ),
+    flaw(
+        MANIFEST,
+        Edit::Replace(r#""projectiles", "#, ""),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Undeclared { capability: Capability::Projectiles, at: Place::UnitType(name) } if name == "caster_creep_bolt"),
+    ),
+    Flaw {
+        file: MODE_DATA,
+        edit: Edit::Replace(
+            "[actions.melee_creep_attack]",
+            "[actions.recruit]\nkind = \"train\"\ntargeting = \"none\"\nunit_type = \"tower_bolt\"\n\n[actions.melee_creep_attack]",
+        ),
+        also: &[(MANIFEST, PRODUCTION)],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::Trained(action)) if action == "recruit"),
+    },
     flaw(
         "heroes/husk/scripts/extra.rhai",
         Edit::Create("fn on_resolve(ctx, caster, target) {}"),
@@ -424,8 +532,8 @@ const FLAWS: [Flaw; 121] = [
     flaw(
         MODE_DATA,
         Edit::Replace(
-            "damage_kind = \"physical\"\nprojectile = { speed = \"12\" }",
-            "damage_kind = \"fire\"\nprojectile = { speed = \"12\" }",
+            "damage_kind = \"physical\"\ndelivery = { projectile = \"tower_bolt\" }",
+            "damage_kind = \"fire\"\ndelivery = { projectile = \"tower_bolt\" }",
         ),
         MODE,
         |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::DamageKind, at: Place::Action(action), name: kind } if action == "tower_attack" && kind == "fire"),
@@ -456,15 +564,6 @@ const FLAWS: [Flaw; 121] = [
         ),
         MODE,
         |problem| matches!(problem, LoadProblem::KindField(action) if action == "wolf_attack"),
-    ),
-    flaw(
-        MODE_DATA,
-        Edit::Replace(
-            "projectile = { speed = \"12\" }",
-            "projectile = { speed = \"12\", width = \"1\" }",
-        ),
-        MODE,
-        |problem| matches!(problem, LoadProblem::KindField(action) if action == "tower_attack"),
     ),
     flaw(
         HUSK,

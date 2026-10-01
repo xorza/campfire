@@ -86,7 +86,7 @@ pub(crate) struct Glide {
     lift: f32,
 }
 
-/// The units not drawn yet: where each stands, its team, whether it walks, whether a player
+/// The units not drawn yet, projectiles apart: where each stands, its team, whether it walks, whether a player
 /// controls it, whether it is the client's own, whether it is dead, and its body.
 type NewUnits<'w, 's> = Query<
     'w,
@@ -101,7 +101,12 @@ type NewUnits<'w, 's> = Query<
         Has<Dead>,
         Option<&'static Body>,
     ),
-    (With<StableId>, Without<Drawn>, Allow<Unpredicted>),
+    (
+        With<StableId>,
+        Without<Drawn>,
+        Without<Projectile>,
+        Allow<Unpredicted>,
+    ),
 >;
 
 /// The drawn units whose sim place changed.

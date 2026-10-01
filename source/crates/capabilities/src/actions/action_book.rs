@@ -1,3 +1,5 @@
+use std::num::NonZeroU8;
+
 use bevy_ecs::resource::Resource;
 use campfire_math::Num;
 use campfire_script::{ScriptHost, ScriptId};
@@ -13,6 +15,7 @@ use crate::actions::weapon::Weapon;
 use crate::combat::targets::Targets;
 use crate::mode::resource_id::ResourceAmount;
 use crate::scripts::hook::Hook;
+use crate::scripts::hook_set::HookSet;
 use crate::stats::modifier_book::ModifierId;
 use crate::stats::pool_cost::PoolCost;
 use crate::units::filter::Filter;
@@ -51,10 +54,24 @@ pub(crate) struct Action {
     /// Its cost in its caster's player's resources at each rank, one run of the same resources
     /// each, rank after rank.
     resource_costs: Box<[ResourceAmount]>,
-    /// The script, when it defines `on_resolve`: a script may serve only the action's modifiers.
-    pub(crate) on_resolve: Option<ScriptId>,
-    /// The unit type a `train` makes, once the mode's unit types load.
-    pub(crate) trains: Option<UnitType>,
+    /// Its script, if it has one, and the action hooks the script defines: a script may serve
+    /// only the action's modifiers.
+    script: Option<ScriptId>,
+    hooks: HookSet,
+    /// How many projectiles its delivery launches, and over what spread; none for an action
+    /// that delivers at once.
+    pub(crate) fan: Option<Fan>,
+    /// The unit type it spawns, once the match's unit types load: a train's unit, or its
+    /// delivery's projectile.
+    pub(crate) spawns: Option<UnitType>,
+}
+
+/// How a delivery launches its projectiles: `count` of them, spread evenly over `spread_deg`
+/// degrees around the aim.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Fan {
+    pub(crate) count: NonZeroU8,
+    pub(crate) spread_deg: Num,
 }
 
 /// An action's passive modifier, and whether its unit holds it only while the action is off
@@ -93,11 +110,9 @@ pub(crate) struct LoadedRanks {
     pub(crate) resource_costs: Vec<ResourceAmount>,
 }
 
-/// An action's capability fields at one rank, times in ticks, and a weapon's projectile's speed
-/// in meters a tick.
+/// An action's capability fields at one rank, times in ticks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct RankValues {
-    pub(crate) launch: Option<Num>,
     pub(crate) range: Range,
     pub(crate) cooldown: Ticks,
     pub(crate) cost: PoolCost,
@@ -125,8 +140,18 @@ impl ActionBook {
             script.is_some(),
             "an action has a script exactly when its data names one"
         );
-        let hook = Hook::OnResolve;
-        let on_resolve = script.filter(|&script| host.defines(script, hook.name(), hook.params()));
+        let defines = |hook: Hook| {
+            script.is_some_and(|script| host.defines(script, hook.name(), hook.params()))
+        };
+        let hooks = HookSet::of(
+            [Hook::OnResolve, Hook::OnHit, Hook::OnEnd]
+                .into_iter()
+                .filter(|&hook| defines(hook)),
+        );
+        let fan = data.delivery.as_ref().map(|delivery| Fan {
+            count: delivery.count,
+            spread_deg: delivery.spread_deg,
+        });
         let id = ActionId(u32::try_from(self.actions.len()).expect("actions fit u32"));
         self.actions.push(Action {
             package,
@@ -136,21 +161,22 @@ impl ActionBook {
             aim,
             ranks: ranks.values,
             resource_costs: ranks.resource_costs.into_boxed_slice(),
-            on_resolve,
-            trains: None,
+            script,
+            hooks,
+            fan,
+            spawns: None,
         });
         id
     }
 
-    /// Binds the train `id` to the unit type it makes.
-    pub(crate) fn bind_train(&mut self, id: ActionId, unit_type: UnitType) {
+    /// Binds `id` to the unit type it spawns: a train's unit, or its delivery's projectile.
+    pub(crate) fn bind_spawn(&mut self, id: ActionId, unit_type: UnitType) {
         let action = &mut self.actions[id.index()];
-        debug_assert_eq!(
-            action.kind,
-            ActionKind::Train,
-            "only a train makes a unit type"
+        debug_assert!(
+            action.kind == ActionKind::Train || action.fan.is_some(),
+            "only a train or a delivery spawns a unit type"
         );
-        action.trains = Some(unit_type);
+        action.spawns = Some(unit_type);
     }
 
     pub(crate) fn get(&self, id: ActionId) -> Option<&Action> {
@@ -180,6 +206,7 @@ impl ActionBook {
         }
         let target = match (action.aim, underway.target) {
             (Aim::None, _) => ActionTarget::None,
+            (Aim::Point | Aim::Direction, ActionTarget::Point(at)) => ActionTarget::Point(at),
             (Aim::Unit(filter), ActionTarget::Unit(target))
                 if living(target)
                     .is_some_and(|unit| filter.selects(attitude(unit.team), unit.tags)) =>
@@ -244,26 +271,37 @@ pub(crate) struct Checked<'a> {
 }
 
 impl Checked<'_> {
-    /// Whether its unit target is within its range of a unit at `position` with a body of
-    /// `radius`, as `targets` measure reach; an action of global reach or with no unit target
-    /// always is. The range counts only when an action starts.
+    /// Whether its target is within its range of a unit at `position` with a body of `radius`,
+    /// as `targets` measure reach: a unit's body, or a point it aims at; an action of global
+    /// reach, one that aims at a direction, or one with no target always is. The range counts
+    /// only when an action starts.
     pub(crate) fn in_range(
         &self,
         position: Position,
         radius: Num,
         targets: &Targets<'_, '_>,
     ) -> bool {
-        let (Range::Meters(range), ActionTarget::Unit(target)) = (self.values.range, self.target)
-        else {
+        let Range::Meters(range) = self.values.range else {
             return true;
         };
-        targets
-            .living(target)
-            .is_some_and(|unit| targets.reaches(position, radius, range, &unit))
+        match (self.action.aim, self.target) {
+            (Aim::Unit(_), ActionTarget::Unit(target)) => targets
+                .living(target)
+                .is_some_and(|unit| targets.reaches(position, radius, range, &unit)),
+            (Aim::Point, ActionTarget::Point(at)) => {
+                targets.reaches_point(position, radius, range, at)
+            }
+            _ => true,
+        }
     }
 }
 
 impl Action {
+    /// Its script, when it defines `hook`.
+    pub(crate) fn hook(&self, hook: Hook) -> Option<ScriptId> {
+        self.script.filter(|_| self.hooks.contains(hook))
+    }
+
     /// Its capability fields at `rank`.
     pub(crate) fn values(&self, rank: u8) -> RankValues {
         self.ranks[usize::from(rank - 1)]
@@ -306,13 +344,7 @@ impl RankValues {
             let fields = data
                 .fields_at(rank, &target)
                 .expect("the load checked the fields");
-            let launch = fields.launch.map(|speed| {
-                speed
-                    .checked_div_int(i64::from(rate.hz().get()))
-                    .expect("a speed over a tick rate fits")
-            });
             loaded.values.push(RankValues {
-                launch,
                 range: fields.range,
                 cooldown: ticks(fields.cooldown_ms)?,
                 cost: fields.cost,
@@ -329,24 +361,28 @@ pub(crate) mod internals {
     use campfire_math::Num;
     use campfire_sim::Ticks;
 
-    use crate::actions::action_book::{Action, ActionBook, ActionId, Aim, RankValues};
+    use std::num::NonZeroU8;
+
+    use crate::actions::action_book::{Action, ActionBook, ActionId, Aim, Fan, RankValues};
     use crate::actions::action_data::Range;
     use crate::actions::action_kind::ActionKind;
     use crate::actions::weapon::Weapon;
     use crate::combat::damage_kind::DamageKind;
     use crate::mode::resource_id::ResourceAmount;
+    use crate::scripts::hook_set::HookSet;
     use crate::stats::pool_cost::PoolCost;
     use crate::units::filter::Filter;
+    use crate::units::unit_type::UnitType;
 
-    /// A weapon tests arm units with: what it aims at, its range, its windup, the speed a tick
-    /// of the homing projectile it fires, if it fires one, the places among its unit's stats of
-    /// its rate and its damage, and its cost in pools and in a player resource.
+    /// A weapon tests arm units with: what it aims at, its range, its windup, the type of the
+    /// homing projectile it fires, if it fires one, the places among its unit's stats of its
+    /// rate and its damage, and its cost in pools and in a player resource.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub(crate) struct TestWeapon {
         pub(crate) aim: Filter,
         pub(crate) range: Num,
         pub(crate) windup: Ticks,
-        pub(crate) launch: Option<Num>,
+        pub(crate) projectile: Option<UnitType>,
         pub(crate) rate: u16,
         pub(crate) damage: u16,
         pub(crate) cost: PoolCost,
@@ -355,6 +391,10 @@ pub(crate) mod internals {
 
     /// Adds `weapon` to `book`, which deals damage of the first kind.
     pub(crate) fn weapon(book: &mut ActionBook, weapon: TestWeapon) -> ActionId {
+        let fan = weapon.projectile.map(|_| Fan {
+            count: NonZeroU8::MIN,
+            spread_deg: Num::ZERO,
+        });
         let id = ActionId(u32::try_from(book.actions.len()).unwrap());
         book.actions.push(Action {
             package: 0,
@@ -367,15 +407,16 @@ pub(crate) mod internals {
             passive: None,
             aim: Aim::Unit(weapon.aim),
             ranks: vec![RankValues {
-                launch: weapon.launch,
                 range: Range::Meters(weapon.range),
                 cooldown: Ticks::ZERO,
                 cost: weapon.cost,
                 windup: weapon.windup,
             }],
             resource_costs: weapon.resource_cost.into_iter().collect(),
-            on_resolve: None,
-            trains: None,
+            script: None,
+            hooks: HookSet::default(),
+            fan,
+            spawns: weapon.projectile,
         });
         id
     }
@@ -391,15 +432,16 @@ pub(crate) mod internals {
             passive: None,
             aim: Aim::None,
             ranks: vec![RankValues {
-                launch: None,
                 range: Range::Global,
                 cooldown: Ticks::ZERO,
                 cost: PoolCost::default(),
                 windup: Ticks::ZERO,
             }],
             resource_costs: Box::new([]),
-            on_resolve: None,
-            trains: None,
+            script: None,
+            hooks: HookSet::default(),
+            fan: None,
+            spawns: None,
         });
         id
     }

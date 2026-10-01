@@ -152,7 +152,7 @@ windup_ms = 300
 rate = "attack_speed"
 damage = "attack_damage"
 damage_kind = "physical"
-projectile = { speed = "6.5" }
+delivery = { projectile = "caster_creep_bolt" }
 
 [actions.super_creep_attack]
 kind = "attack"
@@ -171,7 +171,7 @@ windup_ms = 150
 rate = "attack_speed"
 damage = "attack_damage"
 damage_kind = "physical"
-projectile = { speed = "12" }
+delivery = { projectile = "tower_bolt" }
 
 [actions.wolf_attack]
 kind = "attack"
@@ -190,4 +190,4 @@ windup_ms = 400
 rate = "attack_speed"
 damage = "attack_damage"
 damage_kind = "physical"
-projectile = { speed = "10" }
+delivery = { projectile = "warden_bolt" }

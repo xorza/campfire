@@ -23,17 +23,11 @@ impl AbilitiesApi {
             MemberSpec::call(name, signature, description).capability(Capability::Abilities)
         };
         api.plan(cast("range", "the ability's range at its rank"))
-            .plan(cast("charge", "how long a charged cast was held, from 0 to 1"))
+            .plan(cast(
+                "charge",
+                "how long a charged cast was held, from 0 to 1",
+            ))
             .plan(cast("origin", "where the cast comes from"))
-            .plan(
-                MemberSpec::call(
-                    "projectile",
-                    "(from, to) or (from, to, overrides)",
-                    "the ability's projectile, flying a line, homing on a unit or flying to a position",
-                )
-                .roles(RoleSet::ACTION)
-                .capability(Capability::Projectiles),
-            )
             .plan(
                 MemberSpec::call("area", "(pos)", "the ability's area at `pos`")
                     .roles(RoleSet::ACTION)
@@ -49,12 +43,14 @@ impl AbilitiesApi {
                 "(unit, fraction)",
                 "takes `fraction` off the cooldowns of `unit`'s basic abilities",
             ))
-            .plan(call("add_charge", "(unit, id)", "gives `unit`'s ability `id` a charge"));
+            .plan(call(
+                "add_charge",
+                "(unit, id)",
+                "gives `unit`'s ability `id` a charge",
+            ));
         AbilitiesApi::register_deliveries(api);
         api.tag_effect(TagEffect::Blocks(Block::Cast), Status::Runs)
             .hook(Hook::OnResolve, "(ctx, unit, target)", Status::Runs)
-            .hook(Hook::OnHit, "(ctx, unit, target, hit)", Status::Planned)
-            .hook(Hook::OnEnd, "(ctx, unit, hit)", Status::Planned)
             .hook(Hook::OnChannelTick, "(ctx, unit)", Status::Planned)
             .hook(Hook::OnInterrupt, "(ctx, unit, target)", Status::Planned)
             .data(
@@ -86,28 +82,10 @@ impl AbilitiesApi {
                 "state",
                 "its script state, which a call may write",
             ));
-        let hit = |name, description| {
-            MemberSpec::field(ApiOwner::Hit, name, description).capability(Capability::Abilities)
-        };
         let area = |name, description| {
             MemberSpec::field(ApiOwner::Area, name, description).capability(Capability::Areas)
         };
         api.plan(area("source", "the unit that made it"))
-            .plan(area("pos", "where it lies"))
-            .plan(hit(
-                "delivery",
-                "the projectile or area unit that delivered it, `()` when at once",
-            ))
-            .plan(hit(
-                "target",
-                "the unit the action aimed at, `()` with none",
-            ))
-            .plan(hit("pos", "where it hit, or where its delivery ended"))
-            .plan(hit("distance", "how far its delivery flew"))
-            .plan(hit("direction", "the direction it came from"))
-            .plan(hit(
-                "part",
-                "the body part a ray or a sweep struck, `()` with none",
-            ));
+            .plan(area("pos", "where it lies"));
     }
 }

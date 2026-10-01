@@ -35,11 +35,12 @@ pub use abilities::Abilities;
 pub use actions::Actions;
 pub use actions::action_book::ActionId;
 pub use actions::action_data::{
-    ActionData, AreaData, AreaInside, ChannelData, ChargeData, ChargesData, CostTarget,
-    ProjectileData, Range, RangeField, RankFields, Targeting, Toggle,
+    ActionData, AreaData, AreaInside, ChannelData, ChargeData, ChargesData, CostTarget, Range,
+    RangeField, RankFields, Targeting, Toggle,
 };
 pub use actions::action_kind::ActionKind;
 pub use actions::action_slots::{ActionSlot, ActionSlots, ActionTarget};
+pub use actions::delivery_data::DeliveryData;
 pub use actions::error::{ActionError, ActionField};
 pub use actions::slot_kind::SlotKind;
 pub use actions::slot_kinds::{SlotKindData, SlotKinds};
@@ -98,6 +99,7 @@ pub use progression::track_id::TrackId;
 pub use progression::track_set::TrackSet;
 pub use projectiles::Projectiles;
 pub use projectiles::projectile::Projectile;
+pub use projectiles::projectile_data::ProjectileData;
 pub use scripts::error::{ApiError, CallError};
 pub use scripts::hook::{Hook, ScriptRole};
 pub use scripts::match_scripts::MatchScripts;

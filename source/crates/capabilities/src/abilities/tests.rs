@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use std::num::NonZeroU32;
+use std::num::{NonZeroU8, NonZeroU32};
 use std::rc::Rc;
 
 use bevy_ecs::bundle::Bundle;
@@ -9,13 +9,13 @@ use bevy_ecs::world::Mut;
 use campfire_content::PackagePath;
 use campfire_math::{Num, PlayerSlot, Vec3};
 use campfire_script::{NumError, ScriptError};
-use campfire_sim::{Capability, IdAllocator, Position, SimUpdate, StateHash, TickRate};
+use campfire_sim::{Capability, IdAllocator, SimUpdate, StateHash, TickRate};
 
 use super::*;
 use crate::actions::Actions;
-use crate::actions::action_book::ActionId;
 use crate::actions::action_data::{ActionData, CostTarget, Range, RangeField, Targeting};
 use crate::actions::action_slots::{ActionSlot, InProgress};
+use crate::actions::delivery_data::DeliveryData;
 use crate::actions::error::{ActionError, ActionField};
 use crate::actions::slot_kind::SlotKind;
 use crate::capability_set::internals::TestMatch;
@@ -29,6 +29,7 @@ use crate::combat::recent_attackers::RecentAttackers;
 use crate::mode::resource_id::ResourceId;
 use crate::orders::Orders;
 use crate::orders::ai_data::AiData;
+use crate::projectiles::projectile_data::ProjectileData;
 use crate::scripts::error::ApiError;
 use crate::scripts::match_scripts::MatchScripts;
 use crate::scripts::script_budgets::ScriptBudgets;
@@ -148,7 +149,7 @@ fn lash_out() -> ActionData {
         charge: None,
         passive_modifier: None,
         passive_while_ready: false,
-        projectile: None,
+        delivery: None,
         area: None,
         rate: None,
         damage: None,
@@ -203,7 +204,7 @@ fn strike() -> ActionData {
         charge: None,
         passive_modifier: None,
         passive_while_ready: false,
-        projectile: None,
+        delivery: None,
         area: None,
         rate: None,
         damage: None,
@@ -1574,4 +1575,64 @@ fn a_live_change_follows_its_source_in_the_order_of_the_stats_it_reads() {
             Num::from_bits(18_471_730)
         ]
     );
+}
+
+#[test]
+fn a_delivery_hook_reads_its_projectile_and_the_unit_its_cast_aimed_at() {
+    let mut game = Match::with(
+        LIMITS,
+        &[
+            Capability::Stats,
+            Capability::Combat,
+            Capability::Abilities,
+            Capability::Projectiles,
+        ],
+    );
+    let bolt = Units::load_type(&mut game.world, "bolt", &UnitTypeData::default()).unwrap();
+    let data = ProjectileData {
+        speed: num(15),
+        width: Num::ZERO,
+        range: None,
+        homing: false,
+        stop_on_hit: true,
+        once_per_cast: false,
+        hits: None,
+        gravity: None,
+        sight_radius: None,
+        collide: None,
+    };
+    Projectiles::load_type(&mut game.world, bolt, &data);
+    let shot = ActionData {
+        delivery: Some(DeliveryData {
+            projectile: "bolt".to_owned(),
+            count: NonZeroU8::MIN,
+            spread_deg: Num::ZERO,
+        }),
+        ..strike()
+    };
+    // Each hook deals damage only when it reads the bolt still there, and the hit's target is the
+    // unit the cast aimed at.
+    let source = r#"
+        fn on_hit(ctx, caster, target, hit) {
+            if hit.delivery.unit_type == "bolt" && hit.target == target {
+                ctx.damage(target, 50, "true");
+            }
+        }
+        fn on_end(ctx, caster, hit) {
+            if hit.delivery.unit_type == "bolt" && hit.target != () {
+                ctx.damage(caster, 7, "true");
+            }
+        }
+    "#;
+    let ability = game.load(&shot, source);
+    Actions::bind_spawn(&mut game.world, ability, "bolt");
+    let caster = game.caster(ability, 1);
+    let target = game.spawn(1, at(num(3), Num::ZERO, Num::ZERO), ());
+
+    // The bolt launches in tick 0 and flies half a meter a tick from tick 1: it reaches the
+    // target 3 m out in tick 6, hits it, and ends there, as it stops on a hit.
+    game.cast(caster, ActionTarget::Unit(target));
+    game.run_until(7);
+    assert_eq!((game.health(target), game.health(caster)), (450, 493));
+    assert!(game.failures().is_empty());
 }
