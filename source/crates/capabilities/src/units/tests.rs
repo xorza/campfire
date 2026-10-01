@@ -23,7 +23,11 @@ use crate::combat::recent_attackers::RecentAttackers;
 use crate::navigation::on_path::OnPath;
 use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::script_limits::ScriptLimits;
+use crate::stats::level::Level;
+use crate::stats::stat::{EngineStat, Stat};
+use crate::stats::unit_stats::UnitStats;
 use crate::units::path_id::PathId;
+use crate::values::declared_name::DeclaredName;
 use crate::values::scalar::Scalar;
 
 /// The MOBA's 30 ticks a second.
@@ -77,7 +81,11 @@ impl Scene {
             mut world,
             schedule: _,
             registry: _,
-        } = TestMatch::new(&[Capability::Combat], RATE, Some(scripts));
+        } = TestMatch::new(
+            &[Capability::Stats, Capability::Combat],
+            RATE,
+            Some(scripts),
+        );
         let engine = world.non_send_mut::<ScriptHost>().into_inner().engine_mut();
         engine.register_type_with_name::<Probe>("Probe");
         View::register_queries::<Probe>(engine, Probe::view);
@@ -309,6 +317,63 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let entity = scene.entity(near);
     scene.world.despawn(entity);
     assert!(value(&mut scene, "of.target == ()").as_bool().unwrap());
+}
+
+#[test]
+fn a_handle_reads_its_units_level_health_and_stats() {
+    let mut scene = Scene::new();
+    // Level 3, with health 10 and armor 25 among the mode's stats, health first as an engine
+    // stat; 4 health taken. One unit has health and no stats, one neither.
+    let names = [
+        Stat::Engine(EngineStat::Health),
+        Stat::Declared(DeclaredName::new("armor").unwrap()),
+    ];
+    scene
+        .world
+        .non_send::<View>()
+        .set_stat_names(Rc::from(names));
+    let mut stats = UnitStats::default();
+    stats.refill().extend([num(10), num(25)]);
+    let of = scene.spawn(
+        at(0, 0, 0),
+        (unit().bundle(Team::new(0)), Level::new(3).unwrap(), stats),
+    );
+    let entity = scene.entity(of);
+    scene.world.get_mut::<Health>(entity).unwrap().take(num(4));
+    let bare = scene.spawn(at(1, 0, 0), (Team::new(1), Health::new(num(1)).unwrap()));
+    let shell = scene.spawn(at(2, 0, 0), Team::new(1));
+
+    let read = |scene: &mut Scene, unit, expression: &str| {
+        let source = format!("fn probe(ctx, of) {{ {expression} }}");
+        scene.probe(&source, unit)
+    };
+    let value = |scene: &mut Scene, expression: &str| read(scene, of, expression).unwrap();
+    assert_eq!(value(&mut scene, "of.level").as_int(), Ok(3));
+    assert_eq!(value(&mut scene, "of.health").cast::<Num>(), num(6));
+    assert_eq!(value(&mut scene, "of.max_health").cast::<Num>(), num(10));
+    assert_eq!(
+        value(&mut scene, r#"of.stat("armor")"#).cast::<Num>(),
+        num(25)
+    );
+    assert_eq!(
+        value(&mut scene, r#"of.stat("health")"#).cast::<Num>(),
+        num(10)
+    );
+
+    let refusals = [
+        (of, r#"of.stat("spirit")"#, ApiError::UnknownStat),
+        (bare, "of.level", ApiError::NoStats),
+        (bare, r#"of.stat("armor")"#, ApiError::NoStats),
+        (shell, "of.health", ApiError::NoHealth),
+        (shell, "of.max_health", ApiError::NoHealth),
+    ];
+    for (unit, expression, refusal) in refusals {
+        let error = read(&mut scene, unit, expression).unwrap_err();
+        assert!(
+            matches!(error, CallError::Api(api) if api == refusal),
+            "{expression}: {error:?}"
+        );
+    }
 }
 
 #[test]

@@ -5,6 +5,8 @@ use serde::Deserialize;
 
 use crate::scripts::state_decl::StateDecl;
 use crate::stats::modifier_data::ModifierData;
+use crate::stats::stat::Stat;
+use crate::stats::stat_rule::StatRule;
 use crate::values::declared_name::DeclaredName;
 use crate::values::scalar::Scalar;
 
@@ -29,9 +31,9 @@ pub struct ModeData {
     /// The kinds of damage its scripts deal and its `calc_damage` weighs.
     #[serde(default)]
     pub damage_kinds: Vec<DeclaredName>,
-    /// The stats its units carry beyond those a capability reads.
+    /// Every stat its units carry, those the engine reads among them, each with its rule.
     #[serde(default)]
-    pub stats: Vec<DeclaredName>,
+    pub stats: BTreeMap<Stat, StatRule>,
     /// What its units spend on abilities, such as mana or energy.
     #[serde(default)]
     pub resources: Vec<DeclaredName>,

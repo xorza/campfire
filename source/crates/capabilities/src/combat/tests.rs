@@ -369,7 +369,7 @@ fn stats_out_of_their_limits_are_refused() {
 
     // A snapshot's values pass the same limits.
     let health = |current: i64, max: i64| {
-        let bytes = postcard::to_allocvec(&(num(current), num(max))).unwrap();
+        let bytes = postcard::to_allocvec(&(num(current), num(max), 0_u32)).unwrap();
         postcard::from_bytes::<Health>(&bytes).ok()
     };
     assert!(health(0, 1).is_some() && health(1, 1).is_some());

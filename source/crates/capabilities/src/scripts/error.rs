@@ -39,6 +39,12 @@ pub enum ApiError {
     IntegerBeyondNum,
     /// An attack field or order for a unit that has no attack.
     NoAttack,
+    /// A stat or level field of a unit that has no stats.
+    NoStats,
+    /// A stat the mode does not declare.
+    UnknownStat,
+    /// A health field of a unit that has no health.
+    NoHealth,
     /// An AI order for another unit than the one that thinks.
     OtherUnit,
     /// An attack order on a unit that is not a living enemy.
@@ -143,6 +149,9 @@ impl fmt::Display for ApiError {
             ApiError::NegativeDamage => "damage is negative",
             ApiError::IntegerBeyondNum => "integer is beyond a Num",
             ApiError::NoAttack => "unit has no attack",
+            ApiError::NoStats => "unit has no stats",
+            ApiError::UnknownStat => "stat the mode does not declare",
+            ApiError::NoHealth => "unit has no health",
             ApiError::OtherUnit => "an AI orders only the unit that thinks",
             ApiError::NotAnEnemy => "target is not a living enemy",
             ApiError::UnknownTeam => "team is not one of the mode's",

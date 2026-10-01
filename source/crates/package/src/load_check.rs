@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_capabilities::{
-    AbilityData, CtxEntry, EngineStat, FilterData, Hook, Mode, ModifierData, Navigation, Number,
-    Param, Scalar, ScriptRole, Stat, UnitTypeData,
+    AbilityData, CtxEntry, FilterData, Hook, Mode, ModifierData, Navigation, Number, Param, Scalar,
+    ScriptRole, Stat, UnitTypeData,
 };
 use campfire_content::PackagePath;
 use campfire_math::Num;
@@ -127,18 +127,11 @@ impl<'a> LoadCheck<'a> {
         let unit_type = |name: &str| units.contains_key(name);
         Mode::check(&packages.manifest.teams, &packages.map, unit_type)
             .map_err(LoadProblem::Mode)?;
-        for list in [&data.damage_kinds, &data.stats, &data.resources] {
+        for list in [&data.damage_kinds, &data.resources] {
             let mut seen = BTreeSet::new();
             if let Some(name) = list.iter().find(|&name| !seen.insert(name)) {
                 return Err(LoadProblem::RepeatedName(name.clone()));
             }
-        }
-        if let Some(name) = data
-            .stats
-            .iter()
-            .find(|name| EngineStat::named(name.as_str()).is_some())
-        {
-            return Err(LoadProblem::EngineStatDeclared(name.clone()));
         }
         for (name, unit_type) in &packages.units.units {
             let at = Place::UnitType(name.clone());
@@ -450,10 +443,7 @@ impl<'a> LoadCheck<'a> {
         at: &Place,
     ) -> Result<(), LoadProblem> {
         let declared = &self.packages.data.stats;
-        let unknown = stats
-            .into_iter()
-            .filter_map(Stat::declared)
-            .find(|name| !declared.contains(name));
+        let unknown = stats.into_iter().find(|stat| !declared.contains_key(stat));
         match unknown {
             Some(name) => Err(LoadProblem::UnknownStat {
                 at: at.clone(),

@@ -98,6 +98,7 @@ fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
     fill.row.stays = unit.get::<OnDeath>() == Some(&OnDeath::Stay);
     fill.row.target = unit.get::<AttackState>().and_then(|attack| attack.target());
     fill.row.attack_range = unit.get::<AttackStats>().map(|stats| stats.range());
+    fill.row.health = unit.get::<Health>().copied();
     if let Some(recent) = unit.get::<RecentAttackers>() {
         fill.attacked(recent.iter());
     }

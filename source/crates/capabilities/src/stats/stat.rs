@@ -16,18 +16,28 @@ pub enum Stat {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum EngineStat {
     Health,
+    HealthRegen,
     Resource,
+    ResourceRegen,
     MoveSpeed,
+    MoveSpeedPct,
+    Slow,
     AttackSpeed,
+    AttackSpeedPct,
     AttackDamage,
 }
 
 impl EngineStat {
-    pub const ALL: [EngineStat; 5] = [
+    pub const ALL: [EngineStat; 10] = [
         EngineStat::Health,
+        EngineStat::HealthRegen,
         EngineStat::Resource,
+        EngineStat::ResourceRegen,
         EngineStat::MoveSpeed,
+        EngineStat::MoveSpeedPct,
+        EngineStat::Slow,
         EngineStat::AttackSpeed,
+        EngineStat::AttackSpeedPct,
         EngineStat::AttackDamage,
     ];
 
@@ -40,9 +50,14 @@ impl EngineStat {
     pub const fn name(self) -> &'static str {
         match self {
             EngineStat::Health => "health",
+            EngineStat::HealthRegen => "health_regen",
             EngineStat::Resource => "resource",
+            EngineStat::ResourceRegen => "resource_regen",
             EngineStat::MoveSpeed => "move_speed",
+            EngineStat::MoveSpeedPct => "move_speed_pct",
+            EngineStat::Slow => "slow",
             EngineStat::AttackSpeed => "attack_speed",
+            EngineStat::AttackSpeedPct => "attack_speed_pct",
             EngineStat::AttackDamage => "attack_damage",
         }
     }

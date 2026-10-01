@@ -8,7 +8,9 @@ use campfire_math::{Num, PlayerSlot, Vec3};
 use campfire_script::rhai::{Array, Dynamic, Engine, INT, ImmutableString};
 use campfire_sim::{EntityIndex, Position, SimTick, StableId, Tick, TickRate, Ticks};
 
+use crate::combat::health::Health;
 use crate::scripts::error::{ApiError, Checked};
+use crate::stats::stat::Stat;
 use crate::units::body::Body;
 use crate::units::filter::Filter;
 use crate::units::living_unit::LivingUnit;
@@ -48,6 +50,9 @@ pub(crate) struct ScriptView {
     attacks: Vec<RecentAttack>,
     /// The ability slots of each unit, one run per unit.
     slots: Vec<SlotRow>,
+    /// The stats the mode declares, in order, and each unit's values of them, one run per unit.
+    stat_names: Rc<[Stat]>,
+    stats: Vec<Num>,
 }
 
 /// A unit as the view read it.
@@ -69,6 +74,10 @@ pub(crate) struct UnitRow {
     pub(crate) attack_range: Option<Num>,
     /// The path it walks or stands on; `navigation` fills it.
     pub(crate) path: Option<PathId>,
+    /// Its health; `combat` fills it.
+    pub(crate) health: Option<Health>,
+    /// Its level; `stats` fills it, and its run of stats.
+    pub(crate) level: Option<u32>,
     /// The teams that see it; `vision` fills it, and without vision every team does.
     pub(crate) seen_by: TeamSet,
     /// Its run of recent attacks, from `attacks_start` to `attacks_end`.
@@ -77,6 +86,9 @@ pub(crate) struct UnitRow {
     /// Its run of ability slots, from `slots_start` to `slots_end`; `abilities` fills it.
     slots_start: u32,
     slots_end: u32,
+    /// Its run of stats, in the order of the view's stat names, empty for a unit with none.
+    stats_start: u32,
+    stats_end: u32,
 }
 
 /// An ability slot as the view read it: the rank of its ability, 0 while not learned, and how
@@ -98,9 +110,15 @@ pub(crate) struct RowFill<'a> {
     pub(crate) world: &'a World,
     attacks: &'a mut Vec<RecentAttack>,
     slots: &'a mut Vec<SlotRow>,
+    stats: &'a mut Vec<Num>,
 }
 
 impl RowFill<'_> {
+    /// Adds `stats`, in the order of the view's stat names, as the row's run of stats.
+    pub(crate) fn stated(&mut self, stats: &[Num]) {
+        self.stats.extend_from_slice(stats);
+    }
+
     /// Adds `attacks` to the row's run of recent attacks.
     pub(crate) fn attacked(&mut self, attacks: impl IntoIterator<Item = RecentAttack>) {
         self.attacks.extend(attacks);
@@ -122,6 +140,7 @@ impl ScriptView {
         self.units.clear();
         self.attacks.clear();
         self.slots.clear();
+        self.stats.clear();
         for (id, entity) in world.resource::<EntityIndex>().iter() {
             let unit = world.entity(entity);
             let (Some(&pos), Some(&team)) = (unit.get::<Position>(), unit.get::<Team>()) else {
@@ -129,6 +148,7 @@ impl ScriptView {
             };
             let start = u32::try_from(self.attacks.len()).expect("attacks fit u32");
             let slots_start = u32::try_from(self.slots.len()).expect("slots fit u32");
+            let stats_start = u32::try_from(self.stats.len()).expect("stats fit u32");
             let mut row = UnitRow {
                 id,
                 pos,
@@ -139,6 +159,8 @@ impl ScriptView {
                 unit_type: unit.get::<UnitType>().copied(),
                 owner: unit.get::<Owner>().map(|owner| owner.slot()),
                 path: None,
+                health: None,
+                level: None,
                 seen_by: TeamSet::ALL,
                 target: None,
                 attack_range: None,
@@ -146,18 +168,22 @@ impl ScriptView {
                 attacks_end: start,
                 slots_start,
                 slots_end: slots_start,
+                stats_start,
+                stats_end: stats_start,
             };
             let mut fill = RowFill {
                 row: &mut row,
                 world,
                 attacks: &mut self.attacks,
                 slots: &mut self.slots,
+                stats: &mut self.stats,
             };
             for source in &self.sources {
                 source(&unit, &mut fill);
             }
             row.attacks_end = u32::try_from(self.attacks.len()).expect("attacks fit u32");
             row.slots_end = u32::try_from(self.slots.len()).expect("slots fit u32");
+            row.stats_end = u32::try_from(self.stats.len()).expect("stats fit u32");
             self.units.push(row);
         }
     }
@@ -200,6 +226,8 @@ impl View {
             units: Vec::new(),
             attacks: Vec::new(),
             slots: Vec::new(),
+            stat_names: Rc::from([]),
+            stats: Vec::new(),
         })))
     }
 
@@ -222,6 +250,24 @@ impl View {
     /// Sets the damage kinds the mode declares.
     pub(crate) fn set_damage_kinds(&self, damage_kinds: Rc<[DeclaredName]>) {
         self.0.borrow_mut().damage_kinds = damage_kinds;
+    }
+
+    /// Sets the stats the mode declares, in the order units' runs of stats hold them.
+    pub(crate) fn set_stat_names(&self, names: Rc<[Stat]>) {
+        self.0.borrow_mut().stat_names = names;
+    }
+
+    /// The value of stat `name` of `row`; an error for a stat the mode does not declare, or a
+    /// unit with no stats.
+    pub(crate) fn stat(&self, row: &UnitRow, name: &str) -> Checked<Num> {
+        let view = self.0.borrow();
+        let at = Stat::named(name)
+            .and_then(|stat| view.stat_names.binary_search(&stat).ok())
+            .ok_or_else(|| ApiError::UnknownStat.fail())?;
+        let run = &view.stats[row.stats_start as usize..row.stats_end as usize];
+        run.get(at)
+            .copied()
+            .ok_or_else(|| ApiError::NoStats.fail().into())
     }
 
     /// Whether the mode declares the damage kind `name`.

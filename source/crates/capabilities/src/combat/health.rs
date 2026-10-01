@@ -28,6 +28,16 @@ impl Health {
         self.0.max()
     }
 
+    /// Sets the maximum, as `Meter::set_max` does.
+    pub(crate) fn set_max(&mut self, max: Num) {
+        self.0.set_max(max);
+    }
+
+    /// Adds a tick's share of `per_second`, as `Meter::regen` does.
+    pub(crate) fn regen(&mut self, per_second: Num, hz: u32) {
+        self.0.regen(per_second, hz);
+    }
+
     pub const fn is_zero(self) -> bool {
         self.0.is_empty()
     }

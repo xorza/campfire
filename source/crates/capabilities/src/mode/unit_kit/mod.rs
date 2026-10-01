@@ -15,9 +15,6 @@ use crate::values::speed::Speed;
 use crate::vision::sight::Sight;
 use crate::vision::vision_data::VisionData;
 
-/// The most attacks a unit makes a second.
-const MAX_ATTACK_SPEED: Num = Num::from_bits(5 << (Num::FRAC_BITS - 1));
-
 /// What a new unit of a type starts with, in ticks at the match's rate: its combat values from its
 /// `combat` section and its stats at level 1, how far it walks a tick, how far it sees, and its
 /// body.
@@ -110,22 +107,18 @@ fn attack_stats(
     stat: impl Fn(EngineStat) -> Result<Num, UnitKitError>,
     rules: KitRules,
 ) -> Result<AttackStats, UnitKitError> {
-    let hz = rules.rate.hz().get();
-    let speed = stat(EngineStat::AttackSpeed)?.min(MAX_ATTACK_SPEED);
+    let speed = stat(EngineStat::AttackSpeed)?;
     if speed <= Num::ZERO {
         return Err(UnitKitError::NotPositive(EngineStat::AttackSpeed));
     }
-    // hz ÷ speed in ticks, rounded up: exact, as the speed's bits count 2⁻²⁴ attacks a second.
-    let bits = u128::try_from(speed.to_bits()).expect("a positive speed");
-    let period = (u128::from(hz) << Num::FRAC_BITS).div_ceil(bits);
-    let period = u64::try_from(period)
-        .ok()
-        .map(Ticks::new)
-        .ok_or(UnitKitError::Overflow(EngineStat::AttackSpeed))?;
     let windup = rules
         .rate
         .ticks(attack.windup_ms)
         .ok_or(UnitKitError::TimeTooLarge)?;
+    // A windup not shorter than the period at level 1 is a mistake of the data; a period that
+    // later shrinks past it, as attack speed grows, the derived stats stretch.
+    let attacks = u128::from(speed.to_bits().unsigned_abs()) << Num::FRAC_BITS;
+    let period = AttackStats::period_at(rules.rate.hz().get(), attacks, Ticks::ZERO);
     let range = attack.range.to_num().ok_or(UnitKitError::Range)?;
     let melee = AttackStats::new(range, windup, period, stat(EngineStat::AttackDamage)?)
         .ok_or(UnitKitError::Attack)?;

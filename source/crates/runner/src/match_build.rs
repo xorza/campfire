@@ -100,6 +100,7 @@ impl<'a> MatchBuild<'a> {
             avatars,
             loadout,
             walkers: packages.walker_radii(),
+            max_move_speed: manifest.max_move_speed.get(),
         };
         Mode::install(build.world, schedule, registry, setup).map_err(StartError::Mode)
     }
@@ -127,7 +128,12 @@ impl<'a> MatchBuild<'a> {
                     unit_type: name.clone(),
                     error,
                 })?;
-            self.unit_types.push(UnitTypeSetup { unit_type, kit });
+            let stats = file.stats.clone().unwrap_or_default();
+            self.unit_types.push(UnitTypeSetup {
+                unit_type,
+                kit,
+                stats,
+            });
         }
         Ok(())
     }
@@ -175,7 +181,11 @@ impl<'a> MatchBuild<'a> {
         } else {
             None
         };
-        self.unit_types.push(UnitTypeSetup { unit_type, kit });
+        self.unit_types.push(UnitTypeSetup {
+            unit_type,
+            kit,
+            stats: data.stats.clone(),
+        });
         Ok(AvatarSetup {
             id: name.clone(),
             unit_type,

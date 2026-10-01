@@ -20,6 +20,8 @@ use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::{PathDirection, PathWalker};
 use crate::navigation::paths::Paths;
 use crate::scripts::error::ApiError;
+use crate::stats::level::Level;
+use crate::stats::unit_stats::UnitStats;
 use crate::units::by_type::ByType;
 use crate::units::owner::Owner;
 use crate::units::path_id::PathId;
@@ -74,7 +76,7 @@ impl ModeBook {
             .map(|team| (team.name.as_str(), team.slots));
         let teams = Teams::new(playing, setup.players).ok_or(ModeError::TooManyPlayers)?;
         let mut kits = ByType::default();
-        for &UnitTypeSetup { unit_type, kit } in &setup.unit_types {
+        for &UnitTypeSetup { unit_type, kit, .. } in &setup.unit_types {
             kits.set(unit_type, kit);
         }
         let mut book = ModeBook {
@@ -166,7 +168,16 @@ impl ModeBook {
         let kit = self
             .kit(unit_type)
             .expect("a unit type of the mode has a kit");
-        let mut unit = world.spawn((id, pos, SpawnPoint::new(pos), unit_type, team, parts));
+        let mut unit = world.spawn((
+            id,
+            pos,
+            SpawnPoint::new(pos),
+            unit_type,
+            team,
+            Level::default(),
+            UnitStats::default(),
+            parts,
+        ));
         if let Some(combatant) = kit.combatant {
             combatant.insert(&mut unit);
         }

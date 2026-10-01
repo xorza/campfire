@@ -2,6 +2,14 @@ script = "scripts/mode.rhai"
 damage_kinds = ["true"]
 resources = ["mana"]
 
+# Every stat its units carry, all of them stats the engine reads.
+[stats]
+health = {}
+resource = {}
+attack_damage = {}
+attack_speed = { max = "2.5" }
+move_speed = {}
+
 [params]
 wave_ms = 30000
 # A hero comes back at its spawn this long after it dies.

@@ -50,6 +50,21 @@ impl Unit {
                     .ok_or_else(|| ApiError::NoAttack.fail().into())
             })
             .register_get("params", |unit: &mut Unit| UnitParams(unit.clone()))
+            .register_get("level", |unit: &mut Unit| -> Checked<INT> {
+                let level = unit.row().level.ok_or_else(|| ApiError::NoStats.fail())?;
+                Ok(INT::from(level))
+            })
+            .register_get("health", |unit: &mut Unit| -> Checked<Num> {
+                let health = unit.row().health.ok_or_else(|| ApiError::NoHealth.fail())?;
+                Ok(health.current())
+            })
+            .register_get("max_health", |unit: &mut Unit| -> Checked<Num> {
+                let health = unit.row().health.ok_or_else(|| ApiError::NoHealth.fail())?;
+                Ok(health.max())
+            })
+            .register_fn("stat", |unit: &mut Unit, name: &str| {
+                unit.view.stat(&unit.row(), name)
+            })
             .register_get("team", |unit: &mut Unit| {
                 unit.view.team_name(unit.row().team)
             })

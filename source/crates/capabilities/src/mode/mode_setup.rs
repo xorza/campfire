@@ -7,6 +7,7 @@ use crate::mode::map_data::MapData;
 use crate::mode::mode_data::ModeData;
 use crate::mode::team_manifest::TeamManifest;
 use crate::mode::unit_kit::UnitKit;
+use crate::stats::stats_data::StatsData;
 use crate::units::unit_type::UnitType;
 
 /// What a match of a mode needs, from its packages, with its unit types, abilities and AI loaded
@@ -29,6 +30,8 @@ pub struct ModeSetup<'a> {
     /// The body radius of each kind of unit that walks, 0 for one with no body: the layers of
     /// the map's pathing grid.
     pub walkers: Vec<Num>,
+    /// The manifest's move speed cap, in meters a second.
+    pub max_move_speed: Num,
 }
 
 /// A unit type the mode spawns, loaded, with its kit: a type of the mode's `units.toml`, or a
@@ -37,6 +40,8 @@ pub struct ModeSetup<'a> {
 pub struct UnitTypeSetup {
     pub unit_type: UnitType,
     pub kit: UnitKit,
+    /// Its `stats` section, empty when it has none.
+    pub stats: StatsData,
 }
 
 /// An avatar the mode depends on, loaded: its id is its package's name.

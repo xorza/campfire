@@ -47,6 +47,27 @@ impl AttackStats {
         })
     }
 
+    /// The ticks from one attack's start to the next at the earliest at `hz` ticks a second, for
+    /// `attacks` a second, positive, in bits of a number times 2²⁴: `hz` over them exactly,
+    /// rounded up, and longer than `windup`.
+    pub(crate) fn period_at(hz: u32, attacks: u128, windup: Ticks) -> Ticks {
+        debug_assert!(attacks > 0, "a positive attack speed");
+        let period = (u128::from(hz) << (2 * Num::FRAC_BITS)).div_ceil(attacks);
+        let period = u64::try_from(period).unwrap_or(u64::MAX);
+        Ticks::new(period.max(windup.get() + 1))
+    }
+
+    /// The same attack with `damage`, not negative, and `period`, longer than the windup, as a
+    /// unit's stats derive them.
+    pub(crate) const fn derived(self, damage: Num, period: Ticks) -> AttackStats {
+        debug_assert!(damage.to_bits() >= 0 && period.get() > self.windup.get());
+        AttackStats {
+            period,
+            damage,
+            ..self
+        }
+    }
+
     pub const fn range(self) -> Num {
         self.range
     }

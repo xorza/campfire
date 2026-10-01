@@ -124,7 +124,7 @@ fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 59] = [
+const FLAWS: [Flaw; 60] = [
     flaw(
         MANIFEST,
         Edit::Replace(r#"engine = "0.1.0""#, r#"engine = "0.0.9""#),
@@ -457,14 +457,22 @@ const FLAWS: [Flaw; 59] = [
         MODE,
         |problem| matches!(problem, LoadProblem::RepeatedName(name) if name.as_str() == "mana"),
     ),
+    // An engine stat is declared like any other: one the units carry and the mode does not
+    // declare fails.
+    flaw(
+        MODE_DATA,
+        Edit::Replace("move_speed = {}\n", ""),
+        MODE,
+        |problem| matches!(problem, LoadProblem::UnknownStat { name, .. } if name == "move_speed"),
+    ),
     flaw(
         MODE_DATA,
         Edit::Replace(
-            r#""slow", "spell_vamp","#,
-            r#""slow", "spell_vamp", "move_speed","#,
+            r#"slow = { combine = "highest", min = 0, max = "0.99" }"#,
+            r#"slow = { combine = "highest", min = 1, max = "0.99" }"#,
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::EngineStatDeclared(name) if name.as_str() == "move_speed"),
+        |problem| read_fails(problem, "data/mode.toml", "a stat's min passes its max"),
     ),
     flaw(
         "heroes/veil/scripts/whirling_blades.rhai",

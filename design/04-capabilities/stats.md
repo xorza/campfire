@@ -5,7 +5,7 @@ How a unit's numbers and states come from its type, its level and the modifiers 
 ## State and derived
 
 - **State**, hashed, saved, restored and replicated: each unit's modifiers, its level and experience, and the current amount of each pool (health, resource).
-- **Derived**, never state: each unit's stats and states. They are computed from the state again whenever its modifiers, level or type change, before any system reads them, so the server, a client after a rollback and a replay see the same numbers.
+- **Derived**, never state: each unit's stats and states. They are computed from the state again whenever its modifiers, level or type change, before any system reads them, so the server, a client after a rollback and a replay see the same numbers. The components that hold a stat's effect, a unit's step a tick, its attack's period and damage and its pools' maxima, take their numbers from the derived stats each time they change; those components exist from the unit's spawn, as state, so their numbers enter the hash as well.
 
 ## Stats
 
@@ -32,7 +32,7 @@ The engine reads some stats by name and fixes how it uses them. The mode declare
 | `health`, `resource` | The maximum of the pool |
 | `health_regen`, `resource_regen` | Added to the pool each second: regen ÷ tick rate a tick, the remainder carried, so a second gains exactly the regen |
 | `move_speed`, `move_speed_pct`, `slow` | Move speed is `move_speed × (1 + move_speed_pct) × (1 − slow)`, rounded once, within `move_speed`'s limits and the manifest's `max_move_speed`; `slow_immune` takes the slow as 0 |
-| `attack_speed`, `attack_speed_pct` | Attacks a second: `attack_speed × (1 + attack_speed_pct)`, rounded once, within `attack_speed`'s limits |
+| `attack_speed`, `attack_speed_pct` | Attacks a second: `attack_speed × (1 + attack_speed_pct)`, exactly, within `attack_speed`'s limits; the period is the tick rate over that, rounded up, and at least a tick longer than the windup, as a windup in milliseconds does not shrink with speed |
 | `attack_damage` | The damage of an attack |
 
 The damage system adds its own: `crit_chance`, `life_steal`, `spell_vamp`, `healing_received_pct`.

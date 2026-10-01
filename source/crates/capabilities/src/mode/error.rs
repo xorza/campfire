@@ -48,6 +48,8 @@ pub enum ModeError {
     /// The grid's cell is not positive or beyond the world's bound, or it makes more than 2²²
     /// cells.
     Grid,
+    /// A unit type's value of a stat, or its gain a level, is not a number.
+    StatValue,
 }
 
 impl fmt::Display for UnitKitError {
@@ -87,6 +89,9 @@ impl fmt::Display for ModeError {
             ModeError::Grid => f.write_str(
                 "the grid needs a positive cell within the world's bound and at most 2²² cells",
             ),
+            ModeError::StatValue => {
+                f.write_str("a unit type's stat value or gain a level is not a number")
+            }
         }
     }
 }

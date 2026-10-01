@@ -7,6 +7,9 @@ use serde::{Deserialize, Deserializer, Serialize};
 pub(crate) struct Meter {
     current: Num,
     max: Num,
+    /// What regen added beyond whole bits, in parts of a bit as many as the ticks a second; 0
+    /// while full or empty.
+    carry: u32,
 }
 
 impl Meter {
@@ -15,7 +18,11 @@ impl Meter {
         if max.to_bits() <= 0 {
             return None;
         }
-        Some(Meter { current: max, max })
+        Some(Meter {
+            current: max,
+            max,
+            carry: 0,
+        })
     }
 
     pub(crate) const fn current(self) -> Num {
@@ -32,6 +39,37 @@ impl Meter {
 
     pub(crate) const fn fill(&mut self) {
         self.current = self.max;
+    }
+
+    /// Sets the maximum to `max`, which is positive: a rise raises the current amount as much, a
+    /// fall keeps it but at most the new maximum.
+    pub(crate) fn set_max(&mut self, max: Num) {
+        debug_assert!(max > Num::ZERO, "a meter's maximum is positive");
+        if max > self.max {
+            self.current += max - self.max;
+        } else {
+            self.current = self.current.min(max);
+        }
+        self.max = max;
+        if self.current == max {
+            self.carry = 0;
+        }
+    }
+
+    /// Adds a tick's share of `per_second` at `hz` ticks a second, within 0 and the maximum:
+    /// the bits a second divided by `hz`, the remainder carried to the next tick, so `hz` ticks
+    /// add exactly `per_second`. At either end the remainder is dropped.
+    pub(crate) fn regen(&mut self, per_second: Num, hz: u32) {
+        let total = i128::from(per_second.to_bits()) + i128::from(self.carry);
+        let hz = i128::from(hz);
+        let gain = total.div_euclid(hz);
+        self.carry = u32::try_from(total.rem_euclid(hz)).expect("a remainder below the rate");
+        let current =
+            (i128::from(self.current.to_bits()) + gain).clamp(0, i128::from(self.max.to_bits()));
+        self.current = Num::from_bits(i64::try_from(current).expect("within the maximum"));
+        if self.current == self.max || current == 0 {
+            self.carry = 0;
+        }
     }
 
     /// Takes `amount`, which is not negative, down to 0 at the least.
@@ -51,12 +89,21 @@ impl<'de> Deserialize<'de> for Meter {
         struct Fields {
             current: Num,
             max: Num,
+            carry: u32,
         }
-        let Fields { current, max } = Fields::deserialize(deserializer)?;
+        let Fields {
+            current,
+            max,
+            carry,
+        } = Fields::deserialize(deserializer)?;
         if max <= Num::ZERO || current < Num::ZERO || current > max {
             return Err(D::Error::custom("meter outside 0 to a positive maximum"));
         }
-        Ok(Meter { current, max })
+        Ok(Meter {
+            current,
+            max,
+            carry,
+        })
     }
 }
 
@@ -78,6 +125,29 @@ mod tests {
         assert_eq!(meter.current(), num(6));
         meter.take(num(7));
         assert!(meter.is_empty());
+        // A rise of 5 to 15 raises 0 to 5; a fall to 3 cuts it to 3; a rise to 20 raises it by
+        // 17, to 20; a fall to 12 cuts it to 12.
+        for (max, current) in [(15, 5), (3, 3), (20, 20), (12, 12)] {
+            meter.set_max(num(max));
+            assert_eq!((meter.current(), meter.max()), (num(current), num(max)));
+        }
+
+        // 1 a second at 3 ticks a second, from 2 of 12: 2²⁴ bits ÷ 3 is 5 592 405, a third of a
+        // bit left; the third tick carries two thirds, 1 more: 2²⁴ in all, exactly 1.
+        meter.take(num(10));
+        for gain in [5_592_405, 5_592_405, 5_592_406] {
+            let before = meter.current();
+            meter.regen(Num::ONE, 3);
+            assert_eq!(meter.current() - before, Num::from_bits(gain));
+        }
+        assert_eq!(meter.current(), num(3));
+        // Full, or empty, it drops the remainder.
+        meter.set_max(num(3));
+        meter.regen(Num::ONE, 3);
+        assert_eq!((meter.current(), meter.carry), (num(3), 0));
+        meter.regen(-num(9), 3);
+        assert_eq!((meter.current(), meter.carry), (Num::ZERO, 0));
+
         for (current, max, reads) in [
             (0, 10, true),
             (10, 10, true),
@@ -85,7 +155,7 @@ mod tests {
             (-1, 10, false),
             (0, 0, false),
         ] {
-            let encoded = postcard::to_allocvec(&(num(current), num(max))).unwrap();
+            let encoded = postcard::to_allocvec(&(num(current), num(max), 0_u32)).unwrap();
             let decoded = postcard::from_bytes::<Meter>(&encoded);
             assert_eq!(decoded.is_ok(), reads, "{current} of {max}");
         }

@@ -39,6 +39,7 @@ use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::scripts::state_decl::{StateDecl, StateDefault, StateType, SyncTo};
 use crate::scripts::state_value::StateValue;
+use crate::stats::stats_data::StatsData;
 use crate::units::Units;
 use crate::units::body::Body;
 use crate::units::owner::Owner;
@@ -233,7 +234,7 @@ fn mode_files() -> ModeFiles {
             .into(),
             modifiers: BTreeMap::new(),
             damage_kinds: Vec::new(),
-            stats: Vec::new(),
+            stats: BTreeMap::new(),
             resources: Vec::new(),
         },
         map: map(),
@@ -276,14 +277,17 @@ fn setup(
             UnitTypeSetup {
                 unit_type: grunt_type,
                 kit: grunt(),
+                stats: StatsData::default(),
             },
             UnitTypeSetup {
                 unit_type: x,
                 kit: grunt(),
+                stats: StatsData::default(),
             },
             UnitTypeSetup {
                 unit_type: y,
                 kit: grunt(),
+                stats: StatsData::default(),
             },
             UnitTypeSetup {
                 unit_type: tower_type,
@@ -291,6 +295,7 @@ fn setup(
                     step: None,
                     ..grunt()
                 },
+                stats: StatsData::default(),
             },
         ],
         avatars: vec![
@@ -299,6 +304,7 @@ fn setup(
         ],
         loadout: vec![spell],
         walkers: vec![Body::radius_of(grunt().body.as_ref())],
+        max_move_speed: num(10),
     }
 }
 
