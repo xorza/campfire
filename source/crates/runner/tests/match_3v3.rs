@@ -69,7 +69,7 @@ fn run(reference: &Reference3v3, ticks: u64) -> Run {
         run.hashes.push(run.runner.state_hash());
         let failures = run.runner.world().non_send::<ScriptFailures>();
         for failure in failures.get() {
-            assert_eq!(failure.hook, Hook::Think, "{failure:?}");
+            assert_eq!(failure.hook, Hook::OnThink, "{failure:?}");
             run.failed.push(failure.unit.unwrap());
         }
         match tick {

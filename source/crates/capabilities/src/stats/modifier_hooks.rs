@@ -200,7 +200,7 @@ impl ModifierHooks {
         }
     }
 
-    /// The pool a hook of a modifier from `source` draws from: its player's; `think` when no
+    /// The pool a hook of a modifier from `source` draws from: its player's; the `think` pool when no
     /// player controls it, or it is gone; the mode's when the modifier has no source.
     fn pool(world: &World, source: Option<StableId>) -> Pool {
         let Some(source) = source else {

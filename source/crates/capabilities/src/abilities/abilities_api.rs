@@ -14,7 +14,7 @@ impl AbilitiesApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         let cast = |name, description| {
             MemberSpec::value(name, description)
-                .roles(RoleSet::ABILITY)
+                .roles(RoleSet::ACTION)
                 .capability(Capability::Abilities)
         };
         let call = |name, signature, description| {
@@ -29,12 +29,12 @@ impl AbilitiesApi {
                     "(from, to) or (from, to, overrides)",
                     "the ability's projectile, flying a line, homing on a unit or flying to a position",
                 )
-                .roles(RoleSet::ABILITY)
+                .roles(RoleSet::ACTION)
                 .capability(Capability::Projectiles),
             )
             .plan(
                 MemberSpec::call("area", "(pos)", "the ability's area at `pos`")
-                    .roles(RoleSet::ABILITY)
+                    .roles(RoleSet::ACTION)
                     .capability(Capability::Areas),
             )
             .plan(call(
@@ -59,20 +59,34 @@ impl AbilitiesApi {
                 "state",
                 "its script state, which a call may write",
             ));
+        let hit = |name, description| {
+            MemberSpec::field(ApiOwner::Hit, name, description).capability(Capability::Abilities)
+        };
         let area = |name, description| {
             MemberSpec::field(ApiOwner::Area, name, description).capability(Capability::Areas)
         };
         api.plan(area("source", "the unit that made it"))
             .plan(area("pos", "where it lies"))
-            .hook(Hook::OnCast, "(ctx, caster, target)", Status::Runs)
-            .hook(Hook::OnChannelTick, "(ctx, caster)", Status::Planned)
-            .hook(
-                Hook::OnProjectileHit,
-                "(ctx, proj, target)",
-                Status::Planned,
-            )
-            .hook(Hook::OnProjectileEnd, "(ctx, proj)", Status::Planned)
-            .hook(Hook::OnAreaTrigger, "(ctx, area, units)", Status::Planned)
+            .plan(hit(
+                "delivery",
+                "the projectile or area unit that delivered it, `()` when at once",
+            ))
+            .plan(hit(
+                "target",
+                "the unit the action aimed at, `()` with none",
+            ))
+            .plan(hit("pos", "where it hit, or where its delivery ended"))
+            .plan(hit("distance", "how far its delivery flew"))
+            .plan(hit("direction", "the direction it came from"))
+            .plan(hit(
+                "part",
+                "the body part a ray or a sweep struck, `()` with none",
+            ))
+            .hook(Hook::OnResolve, "(ctx, unit, target)", Status::Runs)
+            .hook(Hook::OnHit, "(ctx, unit, target, hit)", Status::Planned)
+            .hook(Hook::OnEnd, "(ctx, unit, hit)", Status::Planned)
+            .hook(Hook::OnChannelTick, "(ctx, unit)", Status::Planned)
+            .hook(Hook::OnInterrupt, "(ctx, unit, target)", Status::Planned)
             .data(
                 DataTable::Ability,
                 &[

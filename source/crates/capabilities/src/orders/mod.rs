@@ -95,7 +95,7 @@ impl Orders {
             .ok_or(AiError::TimeTooLarge)?
             .max(Ticks::ONE);
         let host = world.non_send::<ScriptHost>();
-        if !host.defines(script, Hook::Think.name(), Hook::Think.params()) {
+        if !host.defines(script, Hook::OnThink.name(), Hook::OnThink.params()) {
             return Err(AiError::NoThink);
         }
         world
@@ -199,7 +199,7 @@ struct Due {
     period: Ticks,
 }
 
-/// Runs `think` for each living unit of a type with AI that is due, those due longest first,
+/// Runs `on_think` for each living unit of a type with AI that is due, those due longest first,
 /// then by stable id. A unit is first due in the first tick that leaves the remainder of its
 /// stable id when divided by its type's period, so the units of a type spread over the period;
 /// then a period after each think. Each call's orders apply when it returns; a failed call's do
@@ -253,14 +253,14 @@ fn think(world: &mut World, mut due: Local<'_, Vec<Due>>) {
             };
             ctx.frame().begin_think(batch.world(), id);
             ctx.view().set_caller(0);
-            let next = match batch.call(Pool::Think, script, Hook::Think, (ctx.clone(), unit)) {
+            let next = match batch.call(Pool::Think, script, Hook::OnThink, (ctx.clone(), unit)) {
                 Ok(_) => {
                     ctx.apply(batch.world(), now);
                     now.after(period)
                 }
                 Err(ScriptError::TickBudget) => since,
                 Err(error) => {
-                    batch.record(Some(id), Hook::Think, CallError::from_script(error));
+                    batch.record(Some(id), Hook::OnThink, CallError::from_script(error));
                     now.after(period)
                 }
             };

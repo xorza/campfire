@@ -267,7 +267,7 @@ mod tests {
     #[test]
     fn the_facts_are_the_names_a_script_uses_on_ctx_and_gives_the_api() {
         let source = r#"
-fn on_cast(ctx, caster, target) {
+fn on_resolve(ctx, caster, target) {
     for unit in ctx.find(caster, caster.pos, ctx.p.radius, "enemies:avatar") {
         ctx.damage(unit, ctx.p.damage * unit.stat("armor"), "magic");
         if !unit.has_modifier("kindle") {
@@ -290,7 +290,7 @@ fn helper(ctx, gold) {}
         };
         assert_eq!(
             facts.functions,
-            [function("helper", 2), function("on_cast", 3)]
+            [function("helper", 2), function("on_resolve", 3)]
         );
         assert_eq!(facts.ctx_misuse, None);
         let names: Vec<_> = facts

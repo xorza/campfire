@@ -1,4 +1,4 @@
-fn on_cast(ctx, caster, target) {
+fn on_resolve(ctx, caster, target) {
     let ablaze = target.has_modifier("kindle");
     ctx.damage(target, ctx.p.damage, "magic");
     ctx.add_modifier(target, "kindle");

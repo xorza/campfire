@@ -108,7 +108,7 @@ impl Frame {
     ) -> Result<(), CallError> {
         self.read_resources(world);
         self.begin(
-            ScriptRole::Ability,
+            ScriptRole::Action,
             Some(caster),
             Some(ability),
             rank,
@@ -134,7 +134,7 @@ impl Frame {
         self.begin(role, source, ability, rank, Some(modifier), depth)
     }
 
-    /// Starts `think` for `unit` in `world`.
+    /// Starts `on_think` for `unit` in `world`.
     pub(crate) fn begin_think(&mut self, world: &World, unit: StableId) {
         self.read_resources(world);
         self.begin(ScriptRole::Ai, Some(unit), None, 1, None, 0)

@@ -1,4 +1,4 @@
-fn think(ctx, tower) {
+fn on_think(ctx, tower) {
     let range = tower.attack_range;
     let target = defend_hero(ctx, tower, range);
     if target == () {

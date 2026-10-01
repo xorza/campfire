@@ -1,4 +1,4 @@
-fn on_cast(ctx, caster, target) {
+fn on_resolve(ctx, caster, target) {
     let m = ctx.add_modifier(caster, "flicker_strike");
     m.state.left = ctx.p.strikes;
     strike(ctx, m, target);

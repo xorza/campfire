@@ -107,7 +107,7 @@ impl Params {
         let ctx = &self.0;
         let role = ctx.frame().role();
         let value = match role {
-            Some(ScriptRole::Ability | ScriptRole::Modifier) => {
+            Some(ScriptRole::Action | ScriptRole::Modifier) => {
                 ctx.frame().param(name).map(Scalar::to_dynamic)
             }
             Some(ScriptRole::Mode | ScriptRole::Ai) | None => {

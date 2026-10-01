@@ -1285,7 +1285,7 @@ impl Game {
         match role {
             ScriptRole::Mode => ctx.frame().begin_mode(&self.world, false),
             ScriptRole::Ai => ctx.frame().begin_think(&self.world, actor),
-            ScriptRole::Ability => ctx
+            ScriptRole::Action => ctx
                 .frame()
                 .begin_cast(&self.world, self.strike, 1, actor)
                 .unwrap(),
@@ -1362,7 +1362,7 @@ fn probe(ctx, unit) {
     }
     // A call given to other roles fails in this one, when it runs.
     let refused = [
-        ("ctx.timer(\"late\", 100, false, ())", ScriptRole::Ability),
+        ("ctx.timer(\"late\", 100, false, ())", ScriptRole::Action),
         ("ctx.end(())", ScriptRole::Ai),
         ("ctx.state.phase", ScriptRole::Modifier),
         ("ctx.order_follow_path(unit)", ScriptRole::Mode),

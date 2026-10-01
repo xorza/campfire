@@ -387,14 +387,14 @@ fn resolve_casts(world: &mut World, mut due: Local<'_, Vec<(StableId, Entity)>>)
 }
 
 /// A cast ready to run: the caster as the script sees it, the pool its call draws from, its
-/// target, its `on_cast`, and its cost and cooldown. Its params wait in the frame.
+/// target, its `on_resolve`, and its cost and cooldown. Its params wait in the frame.
 #[derive(Debug)]
 struct Prepared {
     caster: Unit,
     pool: Pool,
     slot: u8,
     target: Dynamic,
-    on_cast: Option<ScriptId>,
+    on_resolve: Option<ScriptId>,
     cost: Num,
     cooldown: Ticks,
 }
@@ -411,7 +411,7 @@ fn resolve(batch: &mut ScriptBatch<'_>, ctx: &Ctx, now: Tick, caster: StableId, 
         Err(error) => Err(error),
     };
     if let Err(error) = outcome {
-        batch.record(Some(caster), Hook::OnCast, error);
+        batch.record(Some(caster), Hook::OnResolve, error);
     }
     batch
         .world()
@@ -483,22 +483,22 @@ fn prepare(
         pool,
         slot: casting.slot,
         target,
-        on_cast: checked.ability.on_cast,
+        on_resolve: checked.ability.on_resolve,
         cost: checked.cost,
         cooldown: checked.cooldown,
     }))
 }
 
-/// Runs the prepared cast's `on_cast`, which queues its effects in the frame.
+/// Runs the prepared cast's `on_resolve`, which queues its effects in the frame.
 fn run(batch: &mut ScriptBatch<'_>, ctx: &Ctx, prepared: &mut Prepared) -> Result<(), CallError> {
-    let Some(script) = prepared.on_cast else {
+    let Some(script) = prepared.on_resolve else {
         return Ok(());
     };
     let target = mem::take(&mut prepared.target);
     let caster = prepared.caster.clone();
     let args = (ctx.clone(), caster, target);
     batch
-        .call(prepared.pool, script, Hook::OnCast, args)
+        .call(prepared.pool, script, Hook::OnResolve, args)
         .map(drop)
         .map_err(CallError::from_script)
 }

@@ -32,8 +32,8 @@ pub(crate) struct Ability {
     pub(crate) aim: Aim,
     /// Its capability fields at each rank, from rank 1.
     pub(crate) ranks: Vec<RankValues>,
-    /// The script, when it defines `on_cast`: a script may serve only the ability's modifiers.
-    pub(crate) on_cast: Option<ScriptId>,
+    /// The script, when it defines `on_resolve`: a script may serve only the ability's modifiers.
+    pub(crate) on_resolve: Option<ScriptId>,
 }
 
 /// An ability's passive modifier, and whether its unit holds it only while the ability is off
@@ -87,9 +87,8 @@ impl AbilityBook {
             script.is_some(),
             "an ability has a script exactly when its data names one"
         );
-        let on_cast = Hook::OnCast;
-        let on_cast =
-            script.filter(|&script| host.defines(script, on_cast.name(), on_cast.params()));
+        let hook = Hook::OnResolve;
+        let on_resolve = script.filter(|&script| host.defines(script, hook.name(), hook.params()));
         let id = AbilityId(u32::try_from(self.abilities.len()).expect("abilities fit u32"));
         frame.add_params(id, &data.params);
         self.abilities.push(Ability {
@@ -97,7 +96,7 @@ impl AbilityBook {
             passive,
             aim,
             ranks,
-            on_cast,
+            on_resolve,
         });
         id
     }

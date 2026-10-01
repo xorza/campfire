@@ -43,10 +43,6 @@ struct PackageNames<'a> {
     modifiers: &'a BTreeMap<String, ModifierData>,
 }
 
-/// A function whose name starts so is named like a hook, as every hook but `think` and
-/// `calc_damage` is: it must be one, so a misspelled hook fails the load.
-const HOOK_PREFIX: &str = "on_";
-
 impl<'a> LoadCheck<'a> {
     pub(crate) fn run(packages: &'a ModePackages) -> Result<(), LoadError> {
         let manifest = &packages.manifest;
@@ -284,7 +280,7 @@ impl<'a> LoadCheck<'a> {
             if let Some(script) = &ability.script {
                 names.serve(
                     script,
-                    ScriptRole::Ability,
+                    ScriptRole::Action,
                     ability.params.keys().map(String::as_str),
                 );
             }
@@ -355,7 +351,11 @@ impl<'a> LoadCheck<'a> {
             }
             for function in &facts.functions {
                 let hook = Hook::named(&function.name);
-                if hook.is_none() && function.name.starts_with(HOOK_PREFIX) {
+                if hook.is_none()
+                    && Hook::PREFIXES
+                        .iter()
+                        .any(|prefix| function.name.starts_with(prefix))
+                {
                     return Err(LoadProblem::UnknownHook {
                         path: path.clone(),
                         function: function.name.clone(),

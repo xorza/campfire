@@ -132,7 +132,7 @@ fn a_package_reads_its_own_files_only() {
     assert_eq!(hero.slots[2], "lash_out");
     assert!(hero.abilities.contains_key("lash_out"));
     let script = husk().read_text(&path("scripts/lash_out.rhai")).unwrap();
-    assert!(script.starts_with("fn on_cast(ctx, caster, target)"));
+    assert!(script.starts_with("fn on_resolve(ctx, caster, target)"));
 
     for text in ["../husk/data/avatar.toml", "/etc/hosts", "data/../../x", ""] {
         assert_eq!(PackagePath::parse(text), None, "{text}");

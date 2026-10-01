@@ -31,7 +31,7 @@ const ONE: i64 = 1 << 24;
 /// The reference 3v3's creep and tower AI as they were when these tests were written: the
 /// engine's tests keep their own copies, so a change to the reference mode changes none of them.
 const CREEP_AI: &str = r#"
-fn think(ctx, unit) {
+fn on_think(ctx, unit) {
     let target = defend_hero(ctx, unit);
     if target == () {
         target = keep_target(unit);
@@ -74,7 +74,7 @@ fn in_reach(unit, other) {
 }
 "#;
 const TOWER_AI: &str = r#"
-fn think(ctx, tower) {
+fn on_think(ctx, tower) {
     let range = tower.attack_range;
     let target = defend_hero(ctx, tower, range);
     if target == () {
@@ -687,14 +687,18 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
         ai: PackagePath::parse("scripts/ai.rhai").unwrap(),
         think_ms: 250,
     };
-    for source in ["fn thinks(ctx, unit) { }", "fn think(ctx) { }"] {
+    for source in [
+        "fn thinks(ctx, unit) { }",
+        "fn on_think(ctx) { }",
+        "fn think(ctx, unit) { }",
+    ] {
         let unit_type = game.unit_type(&[], &[], None);
         let script = Units::compile(&mut game.world, source).unwrap();
         let error = Orders::load_ai(&mut game.world, unit_type, &ai, script).unwrap_err();
         assert!(matches!(error, AiError::NoThink), "{source}: {error:?}");
     }
 
-    let meddle = r#"fn think(ctx, unit) {
+    let meddle = r#"fn on_think(ctx, unit) {
         for ally in ctx.find(unit, unit.pos, 9, "allies") {
             if ally != unit { ctx.order_follow_path(ally); }
         }
@@ -712,7 +716,7 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
     assert_eq!(failures.len(), 1);
     assert_eq!(
         (failures[0].unit, failures[0].hook),
-        (Some(thinker), Hook::Think)
+        (Some(thinker), Hook::OnThink)
     );
     assert!(matches!(
         failures[0].error,
@@ -738,7 +742,7 @@ fn a_unit_that_finds_the_think_pool_spent_goes_first_next_tick() {
         ai: PackagePath::parse("scripts/ai.rhai").unwrap(),
         think_ms: 1,
     };
-    let spin = "fn think(ctx, unit) { loop {} }";
+    let spin = "fn on_think(ctx, unit) { loop {} }";
     let spin = Units::compile(&mut game.world, spin).unwrap();
     Orders::load_ai(&mut game.world, spinner, &ai, spin).unwrap();
     let first = game.spawn(at(0, 0, 0), (spinner, standing().bundle(Team::new(0))));

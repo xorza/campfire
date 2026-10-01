@@ -1,8 +1,8 @@
-fn on_cast(ctx, caster, target) {
+fn on_resolve(ctx, caster, target) {
     ctx.projectile(caster, target);
 }
 
-fn on_projectile_hit(ctx, proj, target) {
+fn on_hit(ctx, caster, target, hit) {
     ctx.damage(target, ctx.p.damage, "magic");
     ctx.add_modifier(target, "dusk_mark");
 }

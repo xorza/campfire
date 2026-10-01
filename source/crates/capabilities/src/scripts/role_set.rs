@@ -8,9 +8,9 @@ impl RoleSet {
     pub const ALL: RoleSet = RoleSet::of(&ScriptRole::ALL);
     /// The roles whose calls have an acting unit: every one but the mode's.
     pub const ACTING: RoleSet =
-        RoleSet::of(&[ScriptRole::Ability, ScriptRole::Modifier, ScriptRole::Ai]);
-    /// The role of an ability's own calls, not its modifiers'.
-    pub const ABILITY: RoleSet = RoleSet::of(&[ScriptRole::Ability]);
+        RoleSet::of(&[ScriptRole::Action, ScriptRole::Modifier, ScriptRole::Ai]);
+    /// The role of an action's own calls, not its modifiers'.
+    pub const ACTION: RoleSet = RoleSet::of(&[ScriptRole::Action]);
     pub const MODE: RoleSet = RoleSet::of(&[ScriptRole::Mode]);
     pub const AI: RoleSet = RoleSet::of(&[ScriptRole::Ai]);
 

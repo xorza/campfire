@@ -1,4 +1,4 @@
-fn think(ctx, unit) {
+fn on_think(ctx, unit) {
     let target = defend_hero(ctx, unit);
     if target == () {
         target = keep_target(unit);

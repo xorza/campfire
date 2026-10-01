@@ -1,4 +1,4 @@
-fn on_cast(ctx, caster, target) {
+fn on_resolve(ctx, caster, target) {
     for unit in ctx.find(caster, caster.pos, ctx.p.radius, "enemies") {
         ctx.knock_back(unit, caster.pos, ctx.p.knock_back, ctx.p.knock_back_ms);
     }

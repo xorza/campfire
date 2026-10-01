@@ -83,7 +83,7 @@ Projectiles and areas are units of types with a `projectile` or an `area` sectio
 - **Projectile:** `speed`, `width`, `range` (the action's by default), `homing`, `gravity`, `stop_on_hit`, `once_per_cast`, `hits` (a filter), `sight_radius`, `collide`, `[state]`. It flies in the Hit stage, a fixed distance each tick, from the tick after it launches; flights run before attacks deliver, and the tick's launches after. A homing one flies at its target's position of that tick, and hits when it reaches it, in that tick's Resolve; one whose target dies, despawns, becomes blocked as a target or disjoints before it lands ends without a hit. A teleport, and a forced move longer than an engine constant, disjoint: they end the homing projectiles that target the unit, since the move speed cap does not limit them. Every homing projectile flies faster than the mode's `max_move_speed`, which the load checks, so it always catches its target and the number of live projectiles is bounded. Projectiles take stable ids in the order of their source's id, so every run numbers them alike.
 - **Area:** `radius`, `delay_ms`, `duration_ms`, `affects` (a filter), `inside = { self, allies, enemies }` (modifiers held on the units inside), `[state]`. A cone or a line is a projectile.
 
-Each delivery records how it reached a unit on the damage it deals: `d.hit`, with the distance flown, the direction and, for a ray, the body part ([Combat](combat.md#damage-and-heals)).
+Each delivery records how it reached a unit in a **hit**: the projectile or area unit that delivered it, or `()` at once; the unit the action aimed at; where it hit, or where its delivery ended; the distance flown; the direction; and, for a ray or a sweep, the body part. The `on_hit` and `on_end` hooks receive it, and the damage the delivery deals carries it as `d.hit` ([Combat](combat.md#damage-and-heals)).
 
 ### Effects
 
@@ -125,7 +125,7 @@ An order names an action and a target ([Orders](control.md#orders)); a button of
 
 ## Script API
 
-`ctx.p`, `ctx.range`, `ctx.charge`, `ctx.origin`; `ctx.projectile(from, to)` and `(from, to, overrides)`, `ctx.area(pos)`; `ctx.reduce_cooldown(unit, id, ms)`, `ctx.reduce_cooldowns(unit, slot_kind, fraction)`, `ctx.add_charge(unit, id)`, `ctx.learn(unit, slot)`; the hooks `on_resolve(ctx, unit, target)`, `on_hit(ctx, unit, target, hit)`, `on_end(ctx, unit)`, `on_channel_tick(ctx, unit)` and `on_interrupt(ctx, unit, target)`. Projectiles and areas are unit handles, with the fields of their sections.
+`ctx.p`, `ctx.range`, `ctx.charge`, `ctx.origin`; `ctx.projectile(from, to)` and `(from, to, overrides)`, `ctx.area(pos)`; `ctx.reduce_cooldown(unit, id, ms)`, `ctx.reduce_cooldowns(unit, slot_kind, fraction)`, `ctx.add_charge(unit, id)`, `ctx.learn(unit, slot)`; the hooks `on_resolve(ctx, unit, target)`, `on_hit(ctx, unit, target, hit)`, `on_end(ctx, unit, hit)`, `on_channel_tick(ctx, unit)` and `on_interrupt(ctx, unit, target)`. Projectiles and areas are unit handles, with the fields of their sections.
 
 ## Network
 

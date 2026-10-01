@@ -125,7 +125,7 @@ fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 65] = [
+const FLAWS: [Flaw; 67] = [
     flaw(
         MANIFEST,
         Edit::Replace(r#"engine = "0.1.0""#, r#"engine = "0.0.9""#),
@@ -231,7 +231,7 @@ const FLAWS: [Flaw; 65] = [
     ),
     flaw(
         "heroes/husk/scripts/extra.rhai",
-        Edit::Create("fn on_cast(ctx, caster, target) {}"),
+        Edit::Create("fn on_resolve(ctx, caster, target) {}"),
         "hero-husk",
         |problem| matches!(problem, LoadProblem::UnreferencedScript(path) if path.to_string() == "scripts/extra.rhai"),
     ),
@@ -248,19 +248,31 @@ const FLAWS: [Flaw; 65] = [
         |problem| matches!(problem, LoadProblem::UnknownHook { function, .. } if function == "on_damage_takn"),
     ),
     flaw(
+        LASH_OUT,
+        Edit::Replace("fn on_damage_taken(", "fn calc_damage_taken("),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::UnknownHook { function, .. } if function == "calc_damage_taken"),
+    ),
+    flaw(
         CREEP_AI,
         Edit::Replace(
-            "fn think(ctx, unit) {",
-            "fn on_cast(ctx, caster, target) {}\n\nfn think(ctx, unit) {",
+            "fn on_think(ctx, unit) {",
+            "fn on_resolve(ctx, caster, target) {}\n\nfn on_think(ctx, unit) {",
         ),
         MODE,
+        |problem| matches!(problem, LoadProblem::UnknownHook { function, .. } if function == "on_resolve"),
+    ),
+    flaw(
+        LASH_OUT,
+        Edit::Replace("fn on_resolve(", "fn on_cast("),
+        "hero-husk",
         |problem| matches!(problem, LoadProblem::UnknownHook { function, .. } if function == "on_cast"),
     ),
     flaw(
         CREEP_AI,
-        Edit::Replace("fn think(ctx, unit)", "fn think(ctx, unit, more)"),
+        Edit::Replace("fn on_think(ctx, unit)", "fn on_think(ctx, unit, more)"),
         MODE,
-        |problem| matches!(problem, LoadProblem::UnknownHook { function, .. } if function == "think"),
+        |problem| matches!(problem, LoadProblem::UnknownHook { function, .. } if function == "on_think"),
     ),
     flaw(
         LASH_OUT,

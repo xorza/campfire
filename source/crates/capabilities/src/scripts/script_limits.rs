@@ -11,7 +11,7 @@ pub struct ScriptLimits {
     /// For the calls each player causes: their casts and mode inputs. Each player slot has a
     /// pool of this size.
     pub player: u64,
-    /// For AI `think` calls.
+    /// For AI `on_think` calls.
     pub think: u64,
     /// For the mode's own calls: the match start and timers.
     pub mode: u64,

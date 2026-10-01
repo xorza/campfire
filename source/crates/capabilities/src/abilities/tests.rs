@@ -59,7 +59,7 @@ const LIMITS: ScriptLimits = ScriptLimits {
 /// Lash Out as the reference Husk had it when these tests were written: the engine's tests keep
 /// their own copy, so a balance change to the reference hero changes none of them.
 const LASH_OUT: &str = r#"
-fn on_cast(ctx, caster, target) {
+fn on_resolve(ctx, caster, target) {
     for unit in ctx.find(caster, caster.pos, ctx.p.radius, "enemies") {
         ctx.damage(unit, ctx.p.damage, "magic");
     }
@@ -182,7 +182,7 @@ fn strike() -> AbilityData {
 }
 
 const STRIKE: &str =
-    r#"fn on_cast(ctx, caster, target) { ctx.damage(target, ctx.p.damage, "true"); }"#;
+    r#"fn on_resolve(ctx, caster, target) { ctx.damage(target, ctx.p.damage, "true"); }"#;
 
 #[derive(Debug)]
 struct Match {
@@ -387,7 +387,7 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
         ai: PackagePath::parse("scripts/ai.rhai").unwrap(),
         think_ms: 1,
     };
-    let spin = "fn think(ctx, unit) { loop {} }";
+    let spin = "fn on_think(ctx, unit) { loop {} }";
     let spin = Units::compile(&mut game.world, spin).unwrap();
     Orders::load_ai(&mut game.world, spinner, &ai, spin).unwrap();
     for z in 0..11 {
@@ -400,7 +400,7 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
     assert_eq!(game.pool(caster), 90);
     let failures = game.failures();
     assert_eq!(failures.len(), 10);
-    assert!(failures.iter().all(|failure| failure.hook == Hook::Think));
+    assert!(failures.iter().all(|failure| failure.hook == Hook::OnThink));
     let mut budgets = game.world.resource_mut::<ScriptBudgets>();
     assert_eq!(budgets.get_mut(Pool::Think).left(), 0);
 }
@@ -536,10 +536,10 @@ fn a_cast_its_casters_states_stop_is_kept_and_an_interrupted_one_spends_nothing(
 
 #[test]
 fn a_failed_script_changes_nothing_and_fails_the_same_way_everywhere() {
-    let spin = r#"fn on_cast(ctx, caster, target) { for unit in ctx.find(caster, caster.pos, 10, "enemies") { ctx.damage(unit, 50, "magic"); } loop {} }"#;
-    let wrong_kind = r#"fn on_cast(ctx, caster, target) { for unit in ctx.find(caster, caster.pos, 10, "enemies") { ctx.damage(unit, 50, "fire"); } }"#;
-    let overflow = r#"fn on_cast(ctx, caster, target) { for unit in ctx.find(caster, caster.pos, 10, "enemies") { ctx.damage(unit, 50, "magic"); } num(1 << 20) * num(1 << 20) }"#;
-    let undeclared = r#"fn on_cast(ctx, caster, target) { for unit in ctx.find(caster, caster.pos, 10, "enemies") { ctx.damage(unit, 50, "magic"); } ctx.p.radius }"#;
+    let spin = r#"fn on_resolve(ctx, caster, target) { for unit in ctx.find(caster, caster.pos, 10, "enemies") { ctx.damage(unit, 50, "magic"); } loop {} }"#;
+    let wrong_kind = r#"fn on_resolve(ctx, caster, target) { for unit in ctx.find(caster, caster.pos, 10, "enemies") { ctx.damage(unit, 50, "fire"); } }"#;
+    let overflow = r#"fn on_resolve(ctx, caster, target) { for unit in ctx.find(caster, caster.pos, 10, "enemies") { ctx.damage(unit, 50, "magic"); } num(1 << 20) * num(1 << 20) }"#;
+    let undeclared = r#"fn on_resolve(ctx, caster, target) { for unit in ctx.find(caster, caster.pos, 10, "enemies") { ctx.damage(unit, 50, "magic"); } ctx.p.radius }"#;
     let data = AbilityData {
         params: BTreeMap::new(),
         ..lash_out()
@@ -575,7 +575,7 @@ fn a_failed_script_changes_nothing_and_fails_the_same_way_everywhere() {
                 let failures = game.failures();
                 assert_eq!(failures.len(), 1, "{script}");
                 assert_eq!(failures[0].unit, Some(caster));
-                assert_eq!(failures[0].hook, Hook::OnCast);
+                assert_eq!(failures[0].hook, Hook::OnResolve);
                 assert!(expected(&failures[0].error), "{:?}", failures[0].error);
                 let mut budgets = game.world.resource_mut::<ScriptBudgets>();
                 spent
@@ -612,7 +612,7 @@ fn a_cast_draws_from_its_casters_player_pool() {
             params: BTreeMap::new(),
             ..lash_out()
         };
-        let spin = game.load(&data, "fn on_cast(ctx, caster, target) { loop {} }");
+        let spin = game.load(&data, "fn on_resolve(ctx, caster, target) { loop {} }");
         let strike = game.load(&strike(), STRIKE);
         let spinner = game.caster(spin, 1);
         let striker = game.spawn(
@@ -850,7 +850,7 @@ fn a_cast_applies_a_modifier_from_its_caster_with_its_abilitys_params() {
     };
     Stats::load_modifier(&mut game.world, 0, "mark", &mark, None);
     let marker = r#"
-fn on_cast(ctx, caster, target) {
+fn on_resolve(ctx, caster, target) {
     let m = ctx.add_modifier(caster, "mark");
     if m.stacks != 1 { throw "a new modifier's handle has one stack"; }
 }
@@ -881,7 +881,7 @@ fn on_cast(ctx, caster, target) {
 fn a_cast_heals_and_restores_and_a_negative_amount_fails_it() {
     let mut game = Match::new();
     let mender = "
-fn on_cast(ctx, caster, target) {
+fn on_resolve(ctx, caster, target) {
     ctx.heal(caster, 30);
     ctx.restore(caster, num(20));
 }
@@ -901,7 +901,7 @@ fn on_cast(ctx, caster, target) {
 
     let mut game = Match::new();
     let negative =
-        "fn on_cast(ctx, caster, target) { ctx.restore(caster, 5); ctx.heal(caster, -1); }";
+        "fn on_resolve(ctx, caster, target) { ctx.restore(caster, 5); ctx.heal(caster, -1); }";
     let ability = game.load(&lash_out(), negative);
     let caster = game.caster(ability, 1);
     game.cast(caster, CastTarget::None);

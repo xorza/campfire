@@ -61,7 +61,7 @@ pub enum Toggle {
     CostPerSecond(Ranked<Number>),
 }
 
-/// A channel, which starts after `on_cast` and calls `on_channel_tick` every `tick_ms`.
+/// A channel, which starts after `on_resolve` and calls `on_channel_tick` every `tick_ms`.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ChannelData {
@@ -105,7 +105,7 @@ pub struct AreaData {
     pub radius: Ranked<Number>,
     pub delay_ms: Option<Ranked<Number>>,
     pub duration_ms: Option<Ranked<Number>>,
-    /// A filter of the units `on_area_trigger` receives.
+    /// A filter of the units the area reaches, each with `on_hit`.
     pub affects: Option<FilterData>,
     pub inside: Option<AreaInside>,
 }

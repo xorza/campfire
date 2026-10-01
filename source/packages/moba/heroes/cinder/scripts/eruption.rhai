@@ -1,14 +1,12 @@
-fn on_cast(ctx, caster, target) {
+fn on_resolve(ctx, caster, target) {
     ctx.area(target);
 }
 
-fn on_area_trigger(ctx, area, units) {
-    for unit in units {
-        let damage = ctx.p.damage;
-        if unit.has_modifier("kindle") {
-            damage *= ctx.p.ablaze_bonus;
-        }
-        ctx.damage(unit, damage, "magic");
-        ctx.add_modifier(unit, "kindle");
+fn on_hit(ctx, caster, target, hit) {
+    let damage = ctx.p.damage;
+    if target.has_modifier("kindle") {
+        damage *= ctx.p.ablaze_bonus;
     }
+    ctx.damage(target, damage, "magic");
+    ctx.add_modifier(target, "kindle");
 }

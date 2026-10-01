@@ -4,12 +4,11 @@ use campfire_sim::Capability;
 /// release calls it yet or not, so the package load checks know them all.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Hook {
-    OnCast,
+    OnResolve,
+    OnHit,
+    OnEnd,
     OnChannelTick,
-    OnDashEnd,
-    OnProjectileHit,
-    OnProjectileEnd,
-    OnAreaTrigger,
+    OnInterrupt,
     OnInterval,
     OnAttack,
     OnAttackHit,
@@ -23,13 +22,14 @@ pub enum Hook {
     OnPlayerLeave,
     OnUnitDied,
     CalcDamage,
-    Think,
+    CalcHeal,
+    OnThink,
 }
 
 /// What a script serves, as the data that names it says: each role has its own hooks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum ScriptRole {
-    Ability,
+    Action,
     Modifier,
     Mode,
     Ai,
@@ -37,7 +37,7 @@ pub enum ScriptRole {
 
 impl ScriptRole {
     pub const ALL: [ScriptRole; 4] = [
-        ScriptRole::Ability,
+        ScriptRole::Action,
         ScriptRole::Modifier,
         ScriptRole::Mode,
         ScriptRole::Ai,
@@ -45,7 +45,7 @@ impl ScriptRole {
 
     pub const fn name(self) -> &'static str {
         match self {
-            ScriptRole::Ability => "ability",
+            ScriptRole::Action => "action",
             ScriptRole::Modifier => "modifier",
             ScriptRole::Mode => "mode",
             ScriptRole::Ai => "AI",
@@ -55,12 +55,11 @@ impl ScriptRole {
 
 impl Hook {
     pub const ALL: [Hook; 20] = [
-        Hook::OnCast,
+        Hook::OnResolve,
+        Hook::OnHit,
+        Hook::OnEnd,
         Hook::OnChannelTick,
-        Hook::OnDashEnd,
-        Hook::OnProjectileHit,
-        Hook::OnProjectileEnd,
-        Hook::OnAreaTrigger,
+        Hook::OnInterrupt,
         Hook::OnInterval,
         Hook::OnAttack,
         Hook::OnAttackHit,
@@ -74,8 +73,13 @@ impl Hook {
         Hook::OnPlayerLeave,
         Hook::OnUnitDied,
         Hook::CalcDamage,
-        Hook::Think,
+        Hook::CalcHeal,
+        Hook::OnThink,
     ];
+
+    /// The prefixes that mark a script function as a hook: one with either that is no hook of
+    /// the API is a misspelling, not a helper.
+    pub const PREFIXES: [&'static str; 2] = ["on_", "calc_"];
 
     /// The hook named `name`, of any role.
     pub fn named(name: &str) -> Option<Hook> {
@@ -85,12 +89,11 @@ impl Hook {
     /// The script function the engine calls.
     pub const fn name(self) -> &'static str {
         match self {
-            Hook::OnCast => "on_cast",
+            Hook::OnResolve => "on_resolve",
+            Hook::OnHit => "on_hit",
+            Hook::OnEnd => "on_end",
             Hook::OnChannelTick => "on_channel_tick",
-            Hook::OnDashEnd => "on_dash_end",
-            Hook::OnProjectileHit => "on_projectile_hit",
-            Hook::OnProjectileEnd => "on_projectile_end",
-            Hook::OnAreaTrigger => "on_area_trigger",
+            Hook::OnInterrupt => "on_interrupt",
             Hook::OnInterval => "on_interval",
             Hook::OnAttack => "on_attack",
             Hook::OnAttackHit => "on_attack_hit",
@@ -104,7 +107,8 @@ impl Hook {
             Hook::OnPlayerLeave => "on_player_leave",
             Hook::OnUnitDied => "on_unit_died",
             Hook::CalcDamage => "calc_damage",
-            Hook::Think => "think",
+            Hook::CalcHeal => "calc_heal",
+            Hook::OnThink => "on_think",
         }
     }
 
@@ -113,34 +117,32 @@ impl Hook {
         match self {
             Hook::OnMatchStart => 1,
             Hook::OnChannelTick
-            | Hook::OnProjectileEnd
             | Hook::OnInterval
             | Hook::OnPlayerJoin
             | Hook::OnPlayerLeave
             | Hook::CalcDamage
-            | Hook::Think => 2,
-            Hook::OnCast
-            | Hook::OnDashEnd
-            | Hook::OnProjectileHit
-            | Hook::OnAreaTrigger
+            | Hook::CalcHeal
+            | Hook::OnThink => 2,
+            Hook::OnResolve
+            | Hook::OnEnd
+            | Hook::OnInterrupt
             | Hook::OnAttack
             | Hook::OnAttackHit
             | Hook::OnDamageTaken
             | Hook::OnKill
             | Hook::OnTakedown
             | Hook::OnTimer => 3,
-            Hook::OnModeInput | Hook::OnUnitDied => 4,
+            Hook::OnHit | Hook::OnModeInput | Hook::OnUnitDied => 4,
         }
     }
 
     pub const fn role(self) -> ScriptRole {
         match self {
-            Hook::OnCast
+            Hook::OnResolve
+            | Hook::OnHit
+            | Hook::OnEnd
             | Hook::OnChannelTick
-            | Hook::OnDashEnd
-            | Hook::OnProjectileHit
-            | Hook::OnProjectileEnd
-            | Hook::OnAreaTrigger => ScriptRole::Ability,
+            | Hook::OnInterrupt => ScriptRole::Action,
             Hook::OnInterval
             | Hook::OnAttack
             | Hook::OnAttackHit
@@ -153,17 +155,20 @@ impl Hook {
             | Hook::OnPlayerJoin
             | Hook::OnPlayerLeave
             | Hook::OnUnitDied
-            | Hook::CalcDamage => ScriptRole::Mode,
-            Hook::Think => ScriptRole::Ai,
+            | Hook::CalcDamage
+            | Hook::CalcHeal => ScriptRole::Mode,
+            Hook::OnThink => ScriptRole::Ai,
         }
     }
 
     /// The capability that calls it; `None` for the core's.
     pub const fn capability(self) -> Option<Capability> {
         match self {
-            Hook::OnCast | Hook::OnChannelTick | Hook::OnDashEnd => Some(Capability::Abilities),
-            Hook::OnProjectileHit | Hook::OnProjectileEnd => Some(Capability::Projectiles),
-            Hook::OnAreaTrigger => Some(Capability::Areas),
+            Hook::OnResolve
+            | Hook::OnHit
+            | Hook::OnEnd
+            | Hook::OnChannelTick
+            | Hook::OnInterrupt => Some(Capability::Abilities),
             Hook::OnInterval => Some(Capability::Stats),
             Hook::OnAttack
             | Hook::OnAttackHit
@@ -171,13 +176,14 @@ impl Hook {
             | Hook::OnKill
             | Hook::OnTakedown
             | Hook::OnUnitDied
-            | Hook::CalcDamage => Some(Capability::Combat),
+            | Hook::CalcDamage
+            | Hook::CalcHeal => Some(Capability::Combat),
             Hook::OnMatchStart
             | Hook::OnModeInput
             | Hook::OnTimer
             | Hook::OnPlayerJoin
             | Hook::OnPlayerLeave => None,
-            Hook::Think => Some(Capability::Orders),
+            Hook::OnThink => Some(Capability::Orders),
         }
     }
 }
@@ -193,13 +199,24 @@ mod tests {
             assert_eq!(Hook::named(hook.name()), Some(hook));
         }
         assert_eq!(Hook::named("on_cats"), None);
+        assert_eq!(Hook::named("on_cast"), None);
+        assert_eq!(Hook::named("think"), None);
+        let named_like_hooks = Hook::ALL.iter().all(|hook| {
+            Hook::PREFIXES
+                .iter()
+                .any(|prefix| hook.name().starts_with(prefix))
+        });
+        assert!(named_like_hooks);
         for relation in [Relation::Enemies, Relation::Allies, Relation::All] {
             assert_eq!(Relation::named(relation.name()), Some(relation));
         }
         // A few as design 08 lists them.
-        let think = Hook::Think;
+        let think = Hook::OnThink;
         assert_eq!((think.params(), think.role()), (2, ScriptRole::Ai));
         assert_eq!(think.capability(), Some(Capability::Orders));
+        let hit = Hook::OnHit;
+        assert_eq!((hit.params(), hit.role()), (4, ScriptRole::Action));
+        assert_eq!(Hook::CalcHeal.capability(), Some(Capability::Combat));
         assert_eq!(Hook::OnModeInput.params(), 4);
         assert_eq!(Hook::OnTimer.capability(), None);
     }

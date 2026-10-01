@@ -118,10 +118,10 @@ fn only_what_scripts_need_is_there() {
     assert_eq!(hashing::get_hashing_seed(), &Some(HASHING_SEED));
 
     // A hook is found by its name and its number of parameters.
-    let script = host.compile("fn think(ctx, unit) { 1 }").unwrap();
-    assert!(host.defines(script, "think", 2));
-    assert!(!host.defines(script, "think", 1));
-    assert!(!host.defines(script, "on_cast", 3));
+    let script = host.compile("fn on_think(ctx, unit) { 1 }").unwrap();
+    assert!(host.defines(script, "on_think", 2));
+    assert!(!host.defines(script, "on_think", 1));
+    assert!(!host.defines(script, "on_resolve", 3));
 }
 
 #[test]

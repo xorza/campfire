@@ -10,12 +10,12 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `add_modifier` | `(unit, id) or (unit, id, duration_ms)` | every role | stats | runs | applies the modifier `id` of the script's package to `unit` from the acting unit, and returns its handle |
 | `add_resource` | `(player, name, amount)` | every role | core | runs | adds `amount` of the player resource `name` to `player` |
 | `add_xp` | `(avatar, amount)` | every role | stats | planned | gives `avatar` experience |
-| `area` | `(pos)` | ability | areas | planned | the ability's area at `pos` |
-| `attack_hit` | `(target)` | ability, modifier, AI | combat | runs | an extra attack of the acting unit on `target`: no crit, and no `on_attack` |
+| `area` | `(pos)` | action | areas | planned | the ability's area at `pos` |
+| `attack_hit` | `(target)` | action, modifier, AI | combat | runs | an extra attack of the acting unit on `target`: no crit, and no `on_attack` |
 | `avatar_available` | `(player, id)` | mode | core | runs | whether `player` may choose the avatar `id`: the mode depends on it, and no other player chose it |
 | `avatars` | `() or (team)` | every role | core | runs | the avatars, living or dead, of every team or of `team`, by stable id |
 | `chance` | `(p)` | every role | core | planned | true with probability `p`, from the secret stream |
-| `charge` | read | ability | abilities | planned | how long a charged cast was held, from 0 to 1 |
+| `charge` | read | action | abilities | planned | how long a charged cast was held, from 0 to 1 |
 | `choose_avatar` | `(player, id)` | mode | core | runs | chooses the avatar `id` for `player` |
 | `choose_loadout` | `(player, ids)` | mode | core | runs | chooses `ids`, each a loadout entry the mode depends on, none twice, for `player` |
 | `damage` | `(target, amount, kind)` | every role | combat | runs | deals `amount` of `kind`, one of the mode's `damage_kinds`, to `target` |
@@ -34,12 +34,12 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `order_follow_path` | `(unit)` | AI | orders | runs | `unit` drops its target and walks its path again |
 | `order_move` | `(unit, pos)` | AI | orders | planned | `unit` walks to `pos` |
 | `order_reset` | `(unit)` | AI | orders | planned | `unit` walks home, heals, and drops its target |
-| `origin` | read | ability | abilities | planned | where the cast comes from |
+| `origin` | read | action | abilities | planned | where the cast comes from |
 | `p` | read | every role | core | runs | the params: an ability's at its rank, a modifier's then its ability's, or the mode's |
 | `pick` | `(list)` | every role | core | planned | an entry of `list`, from the secret stream |
 | `players` | read | mode | core | runs | how many players the session has |
-| `projectile` | `(from, to) or (from, to, overrides)` | ability | projectiles | planned | the ability's projectile, flying a line, homing on a unit or flying to a position |
-| `range` | read | ability | abilities | planned | the ability's range at its rank |
+| `projectile` | `(from, to) or (from, to, overrides)` | action | projectiles | planned | the ability's projectile, flying a line, homing on a unit or flying to a position |
+| `range` | read | action | abilities | planned | the ability's range at its rank |
 | `reduce_cooldown` | `(unit, id, ms)` | every role | abilities | planned | takes `ms` off the cooldown of `unit`'s ability `id` |
 | `reduce_cooldowns` | `(unit, fraction)` | every role | abilities | planned | takes `fraction` off the cooldowns of `unit`'s basic abilities |
 | `remove` | `(handle)` | every role | stats | runs | ends the modifier, projectile or area at once |
@@ -110,6 +110,17 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `pos` | read | areas | planned | where it lies |
 | `source` | read | areas | planned | the unit that made it |
 
+## Hit `hit`
+
+| Name | Form | Capability | Status | What it is |
+| --- | --- | --- | --- | --- |
+| `delivery` | read | abilities | planned | the projectile or area unit that delivered it, `()` when at once |
+| `direction` | read | abilities | planned | the direction it came from |
+| `distance` | read | abilities | planned | how far its delivery flew |
+| `part` | read | abilities | planned | the body part a ray or a sweep struck, `()` with none |
+| `pos` | read | abilities | planned | where it hit, or where its delivery ended |
+| `target` | read | abilities | planned | the unit the action aimed at, `()` with none |
+
 ## Damage `d`
 
 | Name | Form | Capability | Status | What it is |
@@ -158,12 +169,11 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 
 | Hook | Role | Capability | Status |
 | --- | --- | --- | --- |
-| `on_cast(ctx, caster, target)` | ability | abilities | runs |
-| `on_channel_tick(ctx, caster)` | ability | abilities | planned |
-| `on_dash_end(ctx, unit, target)` | ability | abilities | planned |
-| `on_projectile_hit(ctx, proj, target)` | ability | projectiles | planned |
-| `on_projectile_end(ctx, proj)` | ability | projectiles | planned |
-| `on_area_trigger(ctx, area, units)` | ability | areas | planned |
+| `on_resolve(ctx, unit, target)` | action | abilities | runs |
+| `on_hit(ctx, unit, target, hit)` | action | abilities | planned |
+| `on_end(ctx, unit, hit)` | action | abilities | planned |
+| `on_channel_tick(ctx, unit)` | action | abilities | planned |
+| `on_interrupt(ctx, unit, target)` | action | abilities | planned |
 | `on_interval(ctx, m)` | modifier | stats | runs |
 | `on_attack(ctx, m, target)` | modifier | combat | runs |
 | `on_attack_hit(ctx, m, d)` | modifier | combat | runs |
@@ -177,7 +187,8 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `on_player_leave(ctx, player)` | mode | core | planned |
 | `on_unit_died(ctx, unit, killer, assisters)` | mode | combat | runs |
 | `calc_damage(ctx, d)` | mode | combat | runs |
-| `think(ctx, unit)` | AI | orders | runs |
+| `calc_heal(ctx, h)` | mode | combat | planned |
+| `on_think(ctx, unit)` | AI | orders | runs |
 
 ## States
 

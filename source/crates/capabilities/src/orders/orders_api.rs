@@ -43,7 +43,7 @@ impl OrdersApi {
             "(unit)",
             "`unit` walks home, heals, and drops its target",
         ))
-        .hook(Hook::Think, "(ctx, unit)", Status::Runs)
+        .hook(Hook::OnThink, "(ctx, unit)", Status::Runs)
         .data(DataTable::Ai, &["ai", "think_ms"], &[]);
     }
 

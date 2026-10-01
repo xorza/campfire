@@ -3,8 +3,7 @@ use campfire_sim::Capability;
 
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::{Ctx, Params};
-use crate::scripts::hook::Hook;
-use crate::scripts::script_api::{DataTable, MemberSpec, Status};
+use crate::scripts::script_api::{DataTable, MemberSpec};
 
 /// The script API of the core: `ctx` itself, `ctx.p`, and the core's and the movement calls
 /// design 08 plans.
@@ -39,7 +38,6 @@ impl CoreApi {
                 MemberSpec::call("teleport", "(unit, pos)", "puts `unit` at `pos`")
                     .capability(Capability::Navigation),
             )
-            .hook(Hook::OnDashEnd, "(ctx, unit, target)", Status::Planned)
             .data(DataTable::Collision, &["radius"], &[]);
         api.ty::<Params>("Params")
             .index(|params: &mut Params, name: ImmutableString| params.get(&name));
