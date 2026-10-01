@@ -4,6 +4,7 @@ use std::rc::Rc;
 
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::Component;
+use bevy_ecs::world::Mut;
 use campfire_content::PackagePath;
 use campfire_math::{PlayerSlot, Vec3};
 use campfire_script::{NumError, ScriptError};
@@ -14,10 +15,16 @@ use crate::abilities::ability_data::RangeField;
 use crate::abilities::ability_slots::AbilitySlot;
 use crate::abilities::error::AbilityField;
 use crate::capability_set::internals::TestMatch;
+use crate::combat::assist_window::AssistWindow;
+use crate::combat::attack_state::AttackState;
 use crate::combat::attack_stats::AttackStats;
 use crate::combat::combatant::Combatant;
+use crate::combat::damage::{Damage, DamageCause};
+use crate::combat::damage_kind::DamageKind;
+use crate::combat::damage_queue::DamageQueue;
 use crate::combat::health::Health;
 use crate::combat::on_death::OnDeath;
+use crate::combat::recent_attackers::RecentAttackers;
 use crate::orders::Orders;
 use crate::orders::ai_data::AiData;
 use crate::scripts::error::ApiError;
@@ -25,7 +32,9 @@ use crate::scripts::match_scripts::MatchScripts;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::{ScriptFailure, ScriptFailures};
 use crate::scripts::script_limits::ScriptLimits;
+use crate::stats::Stats;
 use crate::stats::modifier_data::{ModifierData, Reapply};
+use crate::stats::modifier_effect::ModifierEffect;
 use crate::units::Units;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::declared_name::DeclaredName;
@@ -692,7 +701,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
         params: BTreeMap::new(),
         state: BTreeMap::new(),
     };
-    Stats::load_modifier(&mut game.world, 0, "guard", &guard);
+    Stats::load_modifier(&mut game.world, 0, "guard", &guard, None);
     let mut data = lash_out();
     data.passive_modifier = Some("guard".to_owned());
     data.passive_while_ready = true;
@@ -755,9 +764,7 @@ fn a_cast_applies_a_modifier_from_its_caster_with_its_abilitys_params() {
         params: BTreeMap::new(),
         state: BTreeMap::new(),
     };
-    Stats::load_modifier(&mut game.world, 0, "mark", &mark);
-    let info = game.world.resource::<ModifierBook>().info();
-    game.world.non_send::<View>().set_modifier_info(info);
+    Stats::load_modifier(&mut game.world, 0, "mark", &mark, None);
     let marker = r#"
 fn on_cast(ctx, caster, target) {
     let m = ctx.add_modifier(caster, "mark");
@@ -822,4 +829,201 @@ fn on_cast(ctx, caster, target) {
             && refused.count() == 1
     );
     assert_eq!(game.pool(caster), 100);
+}
+
+/// A modifier of no duration that runs `script`, with an interval of `interval_ms` and the
+/// params `params`.
+fn scripted(interval_ms: Option<i64>, params: &[(&str, i64)]) -> ModifierData {
+    ModifierData {
+        script: Some(PackagePath::parse("scripts/hooks.rhai").unwrap()),
+        duration_ms: None,
+        interval_ms: interval_ms.map(int),
+        stacks_expire_ms: None,
+        reapply: Reapply::Refresh,
+        max_stacks: None,
+        stats: BTreeMap::new(),
+        states: Vec::new(),
+        shield: None,
+        aura: None,
+        params: params
+            .iter()
+            .map(|&(name, value)| {
+                (
+                    name.to_owned(),
+                    Param::Ranked(Ranked::One(Scalar::Int(value))),
+                )
+            })
+            .collect(),
+        state: BTreeMap::new(),
+    }
+}
+
+impl Match {
+    /// A match of stats, combat and abilities whose modifiers, by name in package 0, run
+    /// `source`, as `scripted` declares them.
+    fn with_modifiers(source: &str, modifiers: &[(&str, ModifierData)]) -> Match {
+        let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
+        let mut game = Match::with(LIMITS, &declared);
+        let stats = StatBook::new(&BTreeMap::new(), [], RATE, num(6)).unwrap();
+        Stats::load(&mut game.world, stats);
+        let script = Units::compile(&mut game.world, source).unwrap();
+        let mut sorted = modifiers.to_vec();
+        sorted.sort_by(|a, b| a.0.cmp(b.0));
+        for (name, data) in &sorted {
+            Stats::load_modifier(&mut game.world, 0, name, data, Some(script));
+        }
+        game
+    }
+
+    /// Gives `unit` the modifier `name` from itself.
+    fn give(&mut self, unit: StableId, name: &str) {
+        let id = Stats::modifier(&self.world, 0, name).unwrap();
+        let entity = self.world.resource::<EntityIndex>().get(unit).unwrap();
+        if !self.world.entity(entity).contains::<Modifiers>() {
+            self.world.entity_mut(entity).insert(Modifiers::default());
+        }
+        let applier = Applier {
+            source: Some(unit),
+            ability: None,
+            rank: 1,
+            passive: false,
+            aura: false,
+        };
+        let add = ModifierEffect::Add {
+            target: unit,
+            id,
+            duration: None,
+        };
+        Stats::apply_effect(&mut self.world, add, applier, |_| None);
+    }
+
+    /// Each failed call of the tick: the unit it ran for and its hook.
+    fn calls(&self) -> Vec<(StableId, Hook)> {
+        let failures = self.failures().iter();
+        failures
+            .map(|failure| (failure.unit.unwrap(), failure.hook))
+            .collect()
+    }
+}
+
+#[test]
+fn combat_events_reach_each_modifier_once_in_their_order() {
+    // Every hook fails, so the failures list the calls in the order they ran.
+    let log = r#"
+fn on_attack(ctx, m, target) { throw "attack"; }
+fn on_attack_hit(ctx, m, d) { throw "hit"; }
+fn on_damage_taken(ctx, m, d) { throw "taken"; }
+fn on_kill(ctx, m, victim) { throw "kill"; }
+fn on_takedown(ctx, m, victim) { throw "takedown"; }
+fn on_interval(ctx, m) { throw "interval"; }
+"#;
+    let mut game = Match::with_modifiers(
+        log,
+        &[
+            ("log", scripted(None, &[])),
+            ("pulse", scripted(Some(100), &[])),
+        ],
+    );
+    game.world.insert_resource(AssistWindow(Ticks::new(10)));
+    let attacker = game.spawn(0, at(Num::ZERO, Num::ZERO, Num::ZERO), ());
+    let assister = game.spawn(0, at(num(3), Num::ZERO, Num::ZERO), ());
+    let victim = game.spawn(1, at(Num::ONE, Num::ZERO, Num::ZERO), ());
+    let bystander = game.spawn(1, at(num(9), Num::ZERO, Num::ZERO), ());
+    for unit in [attacker, assister, victim] {
+        game.give(unit, "log");
+    }
+    game.give(bystander, "pulse");
+    // The attacker strikes for 500 as its windup of no ticks ends, in tick 0; the assister
+    // struck the victim in tick 0 too.
+    let entity = |game: &Match, id| game.world.resource::<EntityIndex>().get(id).unwrap();
+    let striker = entity(&game, attacker);
+    let stats = AttackStats::new(num(2), Ticks::new(0), Ticks::new(5), num(500)).unwrap();
+    game.world.entity_mut(striker).insert(stats);
+    let mut attack = game.world.get_mut::<AttackState>(striker).unwrap();
+    attack.set_target(Some(victim));
+    let target = entity(&game, victim);
+    game.world
+        .resource_scope(|world, index: Mut<'_, EntityIndex>| {
+            let mut attackers = world.get_mut::<RecentAttackers>(target).unwrap();
+            attackers.record(assister, Tick::new(0), &index);
+        });
+    game.world.run_schedule(SimUpdate);
+    assert_eq!(game.health(victim), 0);
+    assert_eq!(
+        game.calls(),
+        [
+            (attacker, Hook::OnAttack),
+            (attacker, Hook::OnAttackHit),
+            (victim, Hook::OnDamageTaken),
+            (attacker, Hook::OnKill),
+            (attacker, Hook::OnTakedown),
+            (assister, Hook::OnTakedown),
+        ]
+    );
+    // The pulse of 100 ms, 3 ticks at 30 a second, applied in tick 0: in ticks 3 and 6 alone.
+    for tick in 1..=6 {
+        game.world.run_schedule(SimUpdate);
+        let expected = if tick % 3 == 0 {
+            vec![(bystander, Hook::OnInterval)]
+        } else {
+            Vec::new()
+        };
+        assert_eq!(game.calls(), expected, "tick {tick}");
+    }
+}
+
+#[test]
+fn a_hook_deals_damage_into_the_pass_and_a_chain_16_deep_fails() {
+    // An extra attack on each attack that is not one, and a unit that hurts itself again, by its
+    // modifier's `echo`, each time it takes damage.
+    let hooks = r#"
+fn on_attack_hit(ctx, m, d) {
+    if !d.extra {
+        ctx.attack_hit(d.target);
+    }
+}
+fn on_damage_taken(ctx, m, d) {
+    ctx.damage(m.carrier, ctx.p.echo, "true");
+}
+"#;
+    let mut game = Match::with_modifiers(
+        hooks,
+        &[
+            ("double", scripted(None, &[])),
+            ("echo", scripted(None, &[("echo", 1)])),
+        ],
+    );
+    let attacker = game.spawn(0, at(Num::ZERO, Num::ZERO, Num::ZERO), ());
+    let victim = game.spawn(1, at(Num::ONE, Num::ZERO, Num::ZERO), ());
+    let echoer = game.spawn(1, at(num(9), Num::ZERO, Num::ZERO), ());
+    game.give(attacker, "double");
+    game.give(echoer, "echo");
+    let striker = game.world.resource::<EntityIndex>().get(attacker).unwrap();
+    let stats = AttackStats::new(num(2), Ticks::new(0), Ticks::new(5), num(30)).unwrap();
+    game.world.entity_mut(striker).insert(stats);
+    let mut attack = game.world.get_mut::<AttackState>(striker).unwrap();
+    attack.set_target(Some(victim));
+    game.world.resource_mut::<DamageQueue>().push(Damage {
+        source: None,
+        target: echoer,
+        amount: num(10),
+        kind: DamageKind::new(2),
+        cause: DamageCause::Effect,
+        ability: None,
+        depth: 0,
+    });
+    game.world.run_schedule(SimUpdate);
+    // The attack's 30, then the extra attack's 30, which adds none: 500 − 60. The echoer's 10,
+    // then an echo of 1 from each hook at depths 1 to 15; the one at 16 fails: 500 − 10 − 15.
+    assert_eq!(game.health(victim), 440);
+    assert_eq!(game.health(echoer), 475);
+    let failures: Vec<_> = game
+        .failures()
+        .iter()
+        .map(|failure| (failure.unit, failure.hook, failure.error.clone()))
+        .collect();
+    assert!(matches!(
+        failures.as_slice(),
+        [(Some(unit), Hook::OnDamageTaken, CallError::Api(ApiError::ChainTooDeep))] if *unit == echoer
+    ));
 }

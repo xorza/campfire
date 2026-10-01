@@ -55,3 +55,17 @@ impl ResourcePool {
 impl SimComponent for ResourcePool {
     const NAME: &'static str = "abilities.resource_pool";
 }
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use campfire_math::Num;
+
+    use crate::abilities::resource_pool::ResourcePool;
+
+    /// A pool of `max`, `spent` of it spent.
+    pub fn spent_pool(max: Num, spent: Num) -> ResourcePool {
+        let mut pool = ResourcePool::new(max).expect("a positive maximum");
+        pool.spend(spent);
+        pool
+    }
+}

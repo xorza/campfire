@@ -6,7 +6,7 @@ license.workspace = true
 autotests = false
 
 [features]
-internals = ["dep:campfire-math"]
+internals = ["dep:campfire-math", "campfire-capabilities/internals"]
 bench = ["internals", "dep:criterion"]
 
 [dependencies]

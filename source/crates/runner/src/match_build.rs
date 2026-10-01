@@ -121,9 +121,10 @@ impl<'a> MatchBuild<'a> {
             .chain(dependents)
             .enumerate()
         {
-            let package = u16::try_from(package).expect("packages fit u16");
+            let id = u16::try_from(package).expect("packages fit u16");
             for (name, data) in modifiers {
-                Stats::load_modifier(self.world, package, name, data);
+                let script = data.script.as_ref().map(|path| self.script(package, path));
+                Stats::load_modifier(self.world, id, name, data, script);
             }
         }
     }
@@ -209,11 +210,17 @@ impl<'a> MatchBuild<'a> {
             kit,
             stats: data.stats.clone(),
         });
+        let id = u16::try_from(package).expect("packages fit u16");
+        let passive = data
+            .passive
+            .as_ref()
+            .map(|passive| Stats::modifier(self.world, id, passive).expect(CHECKED));
         Ok(AvatarSetup {
             id: name.clone(),
             unit_type,
             abilities,
             resource,
+            passive,
         })
     }
 

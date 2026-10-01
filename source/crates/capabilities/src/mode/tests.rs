@@ -314,9 +314,11 @@ fn setup(
     types: [UnitType; 4],
     spell: LoadoutSetup,
     strike: AbilityId,
+    blessing: ModifierId,
 ) -> ModeSetup<'_> {
     let [grunt_type, tower_type, x, y] = types;
-    let hero = |id: &str, unit_type, abilities| AvatarSetup {
+    let hero = |id: &str, unit_type, abilities, passive| AvatarSetup {
+        passive,
         id: id.to_owned(),
         unit_type,
         abilities,
@@ -354,8 +356,8 @@ fn setup(
             },
         ],
         avatars: vec![
-            hero("hero-x", x, vec![strike]),
-            hero("hero-y", y, Vec::new()),
+            hero("hero-x", x, vec![strike], None),
+            hero("hero-y", y, Vec::new(), Some(blessing)),
         ],
         loadout: vec![spell],
         walkers: vec![Body::radius_of(grunt().body.as_ref())],
@@ -437,10 +439,11 @@ impl Game {
         let types = [grunt_type, tower_type, x, y];
         let files = mode_files();
         for (name, data) in &files.data.modifiers {
-            Stats::load_modifier(&mut world, 0, name, data);
+            Stats::load_modifier(&mut world, 0, name, data, None);
         }
         let script = Units::compile(&mut world, script).unwrap();
-        let setup = setup(&files, script, types, spell, strike);
+        let blessing = Stats::modifier(&world, 0, "blessing").unwrap();
+        let setup = setup(&files, script, types, spell, strike, blessing);
         Mode::install(&mut world, &mut schedule, &mut registry, setup).unwrap();
         world.add_schedule(schedule);
         Mode::start(&mut world)?;
@@ -789,6 +792,24 @@ fn on_mode_input(ctx, player, name, value) {
 fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
     let mut game = Game::new(SCRIPT, LIMITS);
     game.tick(&[(0, input("hero", "hero-x")), (2, input("hero", "hero-y"))]);
+    // Hero Y carries its passive, the blessing, from itself, with no end.
+    let mut owned = game.world.query::<(&StableId, &Owner, &Modifiers)>();
+    let (&hero_y, _, modifiers) = owned
+        .iter(&game.world)
+        .find(|(_, owner, _)| owner.slot() == PlayerSlot::new(2))
+        .unwrap();
+    let held: Vec<_> = modifiers
+        .iter()
+        .map(|instance| {
+            (
+                instance.source,
+                instance.passive,
+                instance.until,
+                instance.stacks,
+            )
+        })
+        .collect();
+    assert_eq!(held, [(Some(hero_y), true, None, 1)]);
     // A dead grunt is still one the mode sees.
     let grunt = game.entity(3);
     game.world.entity_mut(grunt).insert(Dead);
@@ -986,6 +1007,7 @@ fn on_mode_input(ctx, player, name, value) {
         kind: DamageKind::new(0),
         cause: DamageCause::Effect,
         ability: None,
+        depth: 0,
     });
     game.tick(&[]);
     // It died in tick 0 with killer 4 of b and one assister of a: the mode set its respawn for the
@@ -1114,6 +1136,7 @@ impl Game {
             until: None,
             stack_life: None,
             stack_ends: Vec::new(),
+            interval: None,
             shield: None,
             stats: shares.collect(),
             state: vec![StateValue::Int(0)],
@@ -1156,6 +1179,7 @@ impl Game {
             kind: DamageKind::new(u8::try_from(kind).unwrap()),
             cause,
             ability: None,
+            depth: 0,
         });
     }
 

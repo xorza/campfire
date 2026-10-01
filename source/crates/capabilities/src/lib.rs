@@ -93,6 +93,7 @@ pub use scripts::state_decl::{StateDecl, StateDefault, StateType, SyncTo};
 pub use scripts::state_value::StateValue;
 pub use stats::Stats;
 pub use stats::level::Level;
+pub use stats::modifier_book::ModifierId;
 pub use stats::modifier_data::{AuraData, ModifierData, Reapply};
 pub use stats::modifiers::Modifiers;
 pub use stats::stat::{EngineStat, Stat};
@@ -125,6 +126,12 @@ pub use vision::Vision;
 pub use vision::seen_by::SeenBy;
 pub use vision::sight::Sight;
 pub use vision::vision_data::VisionData;
+
+#[cfg(feature = "internals")]
+pub mod internals {
+    pub use crate::abilities::resource_pool::internals::spent_pool;
+    pub use crate::stats::internals::{give_modifier, load_stats};
+}
 
 #[cfg(feature = "bench")]
 pub mod bench {

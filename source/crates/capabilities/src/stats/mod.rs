@@ -7,6 +7,7 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Local, NonSend, Query, Res};
 use bevy_ecs::world::{EntityRef, World};
 use campfire_math::Num;
+use campfire_script::{ScriptHost, ScriptId};
 use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, Ticks};
 
 use crate::abilities::ability_book::AbilityId;
@@ -17,6 +18,8 @@ use crate::combat::attack_stats::AttackStats;
 use crate::combat::dead::Dead;
 use crate::combat::health::Health;
 use crate::navigation::move_step::MoveStep;
+use crate::scripts::hook::Hook;
+use crate::scripts::hook_set::HookSet;
 use crate::stats::level::Level;
 use crate::stats::modifier_book::{Applier, ModifierBook, ModifierId};
 use crate::stats::modifier_data::ModifierData;
@@ -173,13 +176,46 @@ impl Stats {
     }
 
     /// Loads `data` as the modifier `name` of `package`: 0 the mode, then each package it
-    /// depends on, in its manifest's order. Modifiers load by package, then name.
-    pub fn load_modifier(world: &mut World, package: u16, name: &str, data: &ModifierData) {
-        world
+    /// depends on, in its manifest's order, with its compiled `script` exactly when its data
+    /// names one. Modifiers load by package, then name.
+    pub fn load_modifier(
+        world: &mut World,
+        package: u16,
+        name: &str,
+        data: &ModifierData,
+        script: Option<ScriptId>,
+    ) {
+        let hooks = script.map_or_else(HookSet::default, |script| {
+            let host = world.non_send::<ScriptHost>();
+            let defines = |&hook: &Hook| host.defines(script, hook.name(), hook.params());
+            HookSet::of(MODIFIER_HOOKS.into_iter().filter(defines))
+        });
+        let id = world
             .resource_mut::<ModifierBook>()
-            .load(package, name, data);
+            .load(package, name, data, script, hooks);
+        if let Some(view) = world.get_non_send::<View>() {
+            view.add_modifier(world.resource::<ModifierBook>().get(id).info());
+        }
+        if let Some(ctx) = world.get_non_send::<Ctx>() {
+            ctx.frame().add_modifier_params(id, &data.params);
+        }
+    }
+
+    /// The modifier `name` of `package`, as `load_modifier` loaded it.
+    pub fn modifier(world: &World, package: u16, name: &str) -> Option<ModifierId> {
+        world.resource::<ModifierBook>().find(package, name)
     }
 }
+
+/// The hooks of a modifier's script that combat events call.
+const MODIFIER_HOOKS: [Hook; 6] = [
+    Hook::OnAttack,
+    Hook::OnInterval,
+    Hook::OnAttackHit,
+    Hook::OnDamageTaken,
+    Hook::OnKill,
+    Hook::OnTakedown,
+];
 
 /// Ends, as each tick starts, the modifiers and stacks that hold no longer.
 fn expire_modifiers(tick: Res<'_, SimTick>, mut units: Query<'_, '_, &mut Modifiers>) {
@@ -408,6 +444,59 @@ fn regenerate(
             changed.regen(regen, hz);
             pool.set_if_neq(changed);
         }
+    }
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use std::collections::BTreeMap;
+
+    use bevy_ecs::world::World;
+    use campfire_math::Num;
+    use campfire_sim::{StableId, TickRate};
+
+    use crate::abilities::ability_book::AbilityId;
+    use crate::abilities::script_api::Ctx;
+    use crate::stats::Stats;
+    use crate::stats::modifier_book::{Applier, ModifierId};
+    use crate::stats::modifier_effect::ModifierEffect;
+    use crate::stats::stat::Stat;
+    use crate::stats::stat_book::StatBook;
+    use crate::stats::stat_rule::StatRule;
+
+    /// Gives a match with no mode the stat book of `rules`, at `rate`, with no unit type.
+    pub fn load_stats(world: &mut World, rules: &BTreeMap<Stat, StatRule>, rate: TickRate) {
+        let book = StatBook::new(rules, [], rate, Num::MAX).expect("rules of no type's value");
+        Stats::load(world, book);
+    }
+
+    /// Gives `target` the modifier `id` from `source`, by `ability` at `rank`, and a passive when
+    /// `passive`, as an application in the running tick would.
+    pub fn give_modifier(
+        world: &mut World,
+        target: StableId,
+        id: ModifierId,
+        from: Option<(StableId, Option<AbilityId>, u8)>,
+        passive: bool,
+    ) {
+        let (source, ability, rank) = from.map_or((None, None, 1), |(source, ability, rank)| {
+            (Some(source), ability, rank)
+        });
+        let applier = Applier {
+            source,
+            ability,
+            rank,
+            passive,
+            aura: false,
+        };
+        let ctx = world.get_non_send::<Ctx>().cloned();
+        let param = |name: &str| ctx.as_ref()?.frame().ability_param(ability?, rank, name);
+        let add = ModifierEffect::Add {
+            target,
+            id,
+            duration: None,
+        };
+        Stats::apply_effect(world, add, applier, param);
     }
 }
 

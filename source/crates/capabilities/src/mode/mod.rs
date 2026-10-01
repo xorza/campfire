@@ -40,7 +40,6 @@ use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::stats::Stats;
-use crate::stats::modifier_book::ModifierBook;
 use crate::stats::stat_book::StatBook;
 use crate::units::UnitsSet;
 use crate::units::script_view::View;
@@ -113,9 +112,6 @@ impl Mode {
             ModeBook::new(setup, &host, &view, &paths)?
         };
         view.set_stat_names(Rc::from(stats.stats()));
-        if let Some(modifiers) = world.get_resource::<ModifierBook>() {
-            view.set_modifier_info(modifiers.info());
-        }
         Stats::load(world, stats);
         if let Some(grid) = grid {
             Vision::load_grid(world, grid, book.teams.count());

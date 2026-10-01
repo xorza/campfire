@@ -1,0 +1,211 @@
+use std::cell::RefCell;
+use std::mem;
+
+use bevy_ecs::world::World;
+use campfire_script::rhai::Dynamic;
+use campfire_sim::{EntityIndex, StableId};
+
+use crate::abilities::script_api::Ctx;
+use crate::combat::combat_event::CombatEvent;
+use crate::combat::damage::Damage;
+use crate::combat::damage_handle::DamageHandle;
+use crate::scripts::error::{ApiError, CallError};
+use crate::scripts::hook::Hook;
+use crate::scripts::pool::Pool;
+use crate::scripts::script_batch::ScriptBatch;
+use crate::stats::modifier_book::{ModifierBook, ModifierId};
+use crate::stats::modifiers::Modifiers;
+use crate::units::owner::Owner;
+
+/// The chain depth at which a hook fails instead of running: no designed chain of combat
+/// events is that deep, and the damage pass must end within its tick.
+const MAX_DEPTH: u8 = 16;
+
+/// Runs modifier scripts' hooks for the combat events, with the `ctx` ability scripts get.
+#[derive(Debug)]
+pub(crate) struct ModifierHooks {
+    ctx: Ctx,
+    /// The modifiers that hear the running event, kept between events.
+    heard: RefCell<Vec<Heard>>,
+}
+
+/// A modifier instance that hears an event: its id and its source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Heard {
+    id: ModifierId,
+    source: Option<StableId>,
+}
+
+impl ModifierHooks {
+    pub(crate) const fn new(ctx: Ctx) -> ModifierHooks {
+        ModifierHooks {
+            ctx,
+            heard: RefCell::new(Vec::new()),
+        }
+    }
+
+    /// Answers `event` by the hooks of the modifiers that hear it, in the order they are kept.
+    pub(crate) fn hear(&self, batch: &mut ScriptBatch<'_>, event: CombatEvent) {
+        let unit = |id| {
+            Some(
+                self.ctx
+                    .view()
+                    .unit(id)
+                    .map_or(Dynamic::UNIT, Dynamic::from),
+            )
+        };
+        let damage = |damage: Damage| {
+            let handle = DamageHandle::new(damage, self.ctx.view().clone());
+            Some(Dynamic::from(handle))
+        };
+        let next = |depth: u8| depth.saturating_add(1);
+        match event {
+            CombatEvent::Interval {
+                carrier,
+                id,
+                source,
+            } => {
+                let heard = Heard { id, source };
+                self.call(batch, carrier, heard, Hook::OnInterval, 1, None);
+            }
+            CombatEvent::Attack { attacker, target } => {
+                self.run(batch, attacker, Hook::OnAttack, 1, unit(target));
+            }
+            CombatEvent::AttackHit(hit) => {
+                if let Some(attacker) = hit.source {
+                    self.run(
+                        batch,
+                        attacker,
+                        Hook::OnAttackHit,
+                        next(hit.depth),
+                        damage(hit),
+                    );
+                }
+            }
+            CombatEvent::DamageTaken(taken) => {
+                let depth = next(taken.depth);
+                self.run(
+                    batch,
+                    taken.target,
+                    Hook::OnDamageTaken,
+                    depth,
+                    damage(taken),
+                );
+            }
+            CombatEvent::Kill {
+                killer,
+                victim,
+                depth,
+            } => self.run(batch, killer, Hook::OnKill, next(depth), unit(victim)),
+            CombatEvent::Takedown {
+                unit: taker,
+                victim,
+                depth,
+            } => self.run(batch, taker, Hook::OnTakedown, next(depth), unit(victim)),
+        }
+    }
+
+    /// Runs `hook` of each modifier `carrier` holds whose script defines it, with `arg` after
+    /// `ctx` and `m`, at chain depth `depth`.
+    fn run(
+        &self,
+        batch: &mut ScriptBatch<'_>,
+        carrier: StableId,
+        hook: Hook,
+        depth: u8,
+        arg: Option<Dynamic>,
+    ) {
+        let mut heard = mem::take(&mut *self.heard.borrow_mut());
+        heard.clear();
+        let world = batch.world();
+        let entity = world.resource::<EntityIndex>().get(carrier);
+        if let Some(modifiers) = entity.and_then(|entity| world.get::<Modifiers>(entity)) {
+            let book = world.resource::<ModifierBook>();
+            let defines = |id| book.get(id).hooks.contains(hook);
+            heard.extend(
+                modifiers
+                    .iter()
+                    .filter(|instance| defines(instance.id))
+                    .map(|instance| Heard {
+                        id: instance.id,
+                        source: instance.source,
+                    }),
+            );
+        }
+        for &modifier in &heard {
+            self.call(batch, carrier, modifier, hook, depth, arg.clone());
+        }
+        *self.heard.borrow_mut() = heard;
+    }
+
+    /// Calls `hook` of the instance `heard` on `carrier`, if it still holds: in the pool of its
+    /// source, with its params, its `m` handle, and `arg`. Its effects apply when it returns; a
+    /// call at `MAX_DEPTH` fails without running.
+    fn call(
+        &self,
+        batch: &mut ScriptBatch<'_>,
+        carrier: StableId,
+        heard: Heard,
+        hook: Hook,
+        depth: u8,
+        arg: Option<Dynamic>,
+    ) {
+        let world = batch.world();
+        let entity = world.resource::<EntityIndex>().get(carrier);
+        let modifiers = entity.and_then(|entity| world.get::<Modifiers>(entity));
+        let Some(instance) = modifiers.and_then(|modifiers| modifiers.get(heard.id, heard.source))
+        else {
+            return;
+        };
+        let entry = world.resource::<ModifierBook>().get(heard.id);
+        if !entry.hooks.contains(hook) {
+            return;
+        }
+        let script = entry
+            .script
+            .expect("a modifier whose script defines a hook has one");
+        let handle = self.ctx.view().held_handle(
+            carrier,
+            heard.id,
+            heard.source,
+            instance.stacks,
+            instance.state.clone(),
+        );
+        let (ability, rank, package) = (instance.ability, instance.rank, entry.package);
+        let pool = ModifierHooks::pool(world, heard.source);
+        let begun = if depth >= MAX_DEPTH {
+            Err(CallError::Api(ApiError::ChainTooDeep))
+        } else {
+            self.ctx
+                .frame()
+                .begin_hook(heard.id, ability, rank, heard.source, depth)
+        };
+        if let Err(error) = begun {
+            batch.record(Some(carrier), hook, error);
+            return;
+        }
+        self.ctx.view().set_caller(package);
+        self.ctx.frame().handles.push(handle.clone());
+        let ctx = self.ctx.clone();
+        let called = match arg {
+            Some(arg) => batch.call(pool, script, hook, (ctx, handle, arg)),
+            None => batch.call(pool, script, hook, (ctx, handle)),
+        };
+        match called {
+            Ok(_) => self.ctx.frame().apply(batch.world()),
+            Err(error) => batch.record(Some(carrier), hook, CallError::from_script(error)),
+        }
+    }
+
+    /// The pool a hook of a modifier from `source` draws from: its player's; `think` when no
+    /// player controls it, or it is gone; the mode's when the modifier has no source.
+    fn pool(world: &World, source: Option<StableId>) -> Pool {
+        let Some(source) = source else {
+            return Pool::Mode;
+        };
+        let entity = world.resource::<EntityIndex>().get(source);
+        entity
+            .and_then(|entity| world.get::<Owner>(entity))
+            .map_or(Pool::Think, |owner| Pool::Player(owner.slot()))
+    }
+}

@@ -12,7 +12,6 @@ use crate::capability_set::internals::TestMatch;
 use crate::combat::combatant::Combatant;
 use crate::combat::damage_kind::DamageKind;
 use crate::stats::Stats;
-use crate::stats::modifier_book::ModifierId;
 use crate::stats::modifier_data::Reapply;
 use crate::stats::modifiers::{Application, Instance};
 use crate::stats::stat::Stat;
@@ -555,6 +554,7 @@ impl Fight {
             kind: DamageKind::new(0),
             cause,
             ability: None,
+            depth: 0,
         });
     }
 
@@ -623,6 +623,7 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
         until: until.map(Tick::new),
         stack_life: None,
         stack_ends: Vec::new(),
+        interval: None,
         shield: Some(num(amount)),
         stats: Vec::new(),
         state: Vec::new(),

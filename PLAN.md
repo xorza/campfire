@@ -17,12 +17,6 @@ Touches: the `stats` capability, the combat and navigation systems that read sta
 2. **States take effect**: every state in stats.md's table where its system runs, with the order kept for after the state; `ctx.stun`, `ctx.slow` and `ctx.knock_up` as engine modifiers; stealth and true sight in vision. Test: each state on and off, with the action it stops refused and then taken; two stuns from one source and from two; a stealthed unit seen only through a true-sight unit; the replay gives the same hash.
 3. **Levels and experience**: the mode's `levels` and `rank_levels`, `ctx.add_xp`, a point a level, and the `learn` order with its rule; the reference 3v3 data gets its curve. Test: experience to hand-computed levels, stats and pools; a rank refused before its level and taken at it; `ctx.learn` past the rule.
 
-## Damage and combat events
-
-Touches: the `combat` capability, the mode's `calc_damage`, modifier scripts, the 3v3 mode's data and script. Closes: the issue of hooks that never run, for damage and combat events. Design: [Combat](design/04-capabilities/combat.md#damage-and-death), from League of Legends' shields, life steal and crits, and Dota 2's reflection flag. Shields and modifier hooks live on the modifier instances the stats system keeps.
-
-1. **Combat events**: modifier hooks run in an order every machine repeats: `on_attack` and `on_interval` in Hit, `on_attack_hit`, `on_damage_taken`, `on_kill` and `on_takedown` in the Resolve pass, each in its modifier source's pool; their effects apply in queued order and their damage joins the pass; `ctx.attack_hit`; a chain 16 deep fails. Test: each event once per cause and in order on hand-placed units; Kensho's Twin Cut extra hit, which does not answer itself; Veil's Dusk Mark, whose detonation does not detonate it again; a chain that reaches the depth and fails; the replay gives the same hash.
-
 ## Abilities
 
 Touches: the `abilities`, `projectiles` and `vision` capabilities. Closes: the issues of missing ability calls, the projectile and area handles, and ability hooks.

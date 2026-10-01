@@ -7,6 +7,7 @@ use crate::mode::map_data::MapData;
 use crate::mode::mode_data::ModeData;
 use crate::mode::team_manifest::TeamManifest;
 use crate::mode::unit_kit::UnitKit;
+use crate::stats::modifier_book::ModifierId;
 use crate::stats::stats_data::StatsData;
 use crate::units::unit_type::UnitType;
 
@@ -52,6 +53,8 @@ pub struct AvatarSetup {
     /// Its abilities, in the order of its slots.
     pub abilities: Vec<AbilityId>,
     pub resource: Option<ResourcePool>,
+    /// The modifier it carries from its spawn on.
+    pub passive: Option<ModifierId>,
 }
 
 /// An entry of the mode's loadout packages, loaded, by id.

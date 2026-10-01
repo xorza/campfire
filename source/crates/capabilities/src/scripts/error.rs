@@ -43,6 +43,8 @@ pub enum ApiError {
     NoStats,
     /// A stat the mode does not declare.
     UnknownStat,
+    /// A hook at the depth of combat events no chain reaches.
+    ChainTooDeep,
     /// A heal or restore of a negative amount.
     NegativeHeal,
     /// A change from a pure hook's `ctx`, which only reads.
@@ -161,6 +163,7 @@ impl fmt::Display for ApiError {
             ApiError::NoAttack => "unit has no attack",
             ApiError::NoStats => "unit has no stats",
             ApiError::UnknownStat => "stat the mode does not declare",
+            ApiError::ChainTooDeep => "a chain of combat events 16 deep",
             ApiError::NegativeHeal => "amount to heal or restore is negative",
             ApiError::PureCall => "a pure hook changes nothing",
             ApiError::NotAnAmount => "calc_damage returns no number",

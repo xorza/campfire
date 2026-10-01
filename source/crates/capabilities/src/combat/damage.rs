@@ -5,8 +5,8 @@ use crate::abilities::ability_book::AbilityId;
 use crate::combat::damage_kind::DamageKind;
 
 /// A damage the pass deals: from its source, none from a modifier the mode applied, to its
-/// target, its amount before `calc_damage`, its kind, what dealt it, and the ability whose cast,
-/// projectile, area or modifier dealt it.
+/// target, its amount before `calc_damage`, its kind, what dealt it, the ability whose cast,
+/// projectile, area or modifier dealt it, and the depth of the chain of events that dealt it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Damage {
     pub(crate) source: Option<StableId>,
@@ -15,6 +15,7 @@ pub(crate) struct Damage {
     pub(crate) kind: DamageKind,
     pub(crate) cause: DamageCause,
     pub(crate) ability: Option<AbilityId>,
+    pub(crate) depth: u8,
 }
 
 /// What dealt a damage: an attack, which rolled its crit as its windup ended; an extra attack,

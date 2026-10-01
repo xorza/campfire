@@ -29,7 +29,7 @@ A unit has a team, a type of the core that every capability shares: its index in
 
 ## Combat events
 
-A unit's modifiers hear its combat events, each modifier by its script's hook, in the order the modifiers are kept: by id, then source. A hook runs in the script pool of the modifier source's player, or in the mode's when the source has none.
+A unit's modifiers hear its combat events, each modifier by its script's hook, in the order the modifiers are kept: by id, then source. A hook runs in the script pool of the modifier source's player; in the `think` pool when no player controls the source, or it is gone; and in the mode's when the modifier has no source.
 
 | Event | When | Hook, on whose modifiers |
 | --- | --- | --- |
@@ -39,7 +39,11 @@ A unit's modifiers hear its combat events, each modifier by its script's hook, i
 | Damage is taken | Resolve, after it | `on_damage_taken(ctx, m, d)`, the target's |
 | A kill | Resolve, after the damage that killed | `on_kill(ctx, m, victim)`, the killer's; then `on_takedown(ctx, m, victim)`, the killer's and each assister's by stable id |
 
-`d.amount` in a hook is the amount after `calc_damage`, before shields. A hook's effects apply in the order it queued them, and the damage they deal joins the pass. `ctx.attack_hit(target)` deals the acting unit's attack damage to `target` as an attack: `d.attack` and `d.extra` set, no crit, and `on_attack_hit` follows, but not `on_attack`; a hook that should not answer it reads `d.extra`, as Dota 2 marks reflected damage so a reflection never reflects. A hook queued by a chain of events 16 deep fails with a script error: no designed chain is that deep, and the pass must end within the tick.
+After one damage of the pass, its events run in this order: `on_attack_hit`, then `on_damage_taken`, then `on_kill` and `on_takedown`. They run for every damage that reached a unit above zero health, all absorbed by shields or not. `d.amount` in a hook is the amount after `calc_damage`, before shields. A hook's effects apply in the order it queued them, when it returns: a heal or a modifier at once, and the damage joins the end of the pass.
+
+- **A hook's `ctx`** is the one ability scripts get, so a modifier with a script needs the `abilities` capability. Its acting unit is the modifier's source; `ctx.p` reads the modifier's params, then those of its ability, at the instance's rank; damage it deals names the modifier's ability. Writes to `m` apply when the hook returns, as a handle's do.
+- **Intervals.** A modifier with `interval_ms` calls `on_interval` that many ticks after it was applied, rounded up and at least one, and again each interval while it holds; a refresh keeps the count.
+- **Depth.** An attack, a cast and the tick's other damage are at depth 0, `on_attack` and `on_interval` at depth 1, and a hook an event of a damage at depth `k` causes runs at `k + 1`; the damage it deals is at that depth. `ctx.attack_hit(target)` deals the acting unit's attack damage to `target` as an attack: `d.attack` and `d.extra` set, no crit, and `on_attack_hit` follows, but not `on_attack`; a hook that should not answer it reads `d.extra`, as Dota 2 marks reflected damage so a reflection never reflects. A hook at depth 16 fails with a script error and does not run: no designed chain is that deep, and the pass must end within the tick. `ctx.attack_hit` uses the acting unit's attack damage as its effect applies; a unit with no attack fails the call.
 
 ## Stats and modifiers
 

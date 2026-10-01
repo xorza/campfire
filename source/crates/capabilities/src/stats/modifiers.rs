@@ -39,12 +39,21 @@ pub(crate) struct Instance {
     /// With a stack life, when its stacks end: by tick, ascending, their counts adding to its
     /// stacks; empty without one.
     pub(crate) stack_ends: Vec<StackEnd>,
+    /// When its `on_interval` comes, when its modifier has an interval.
+    pub(crate) interval: Option<Interval>,
     /// What is left of its shield.
     pub(crate) shield: Option<Num>,
     /// What it adds to each stat a stack, by the stat's place in the stat book.
     pub(crate) stats: Vec<StatShare>,
     /// Its script state, in the order of its fields' names.
     pub(crate) state: Vec<StateValue>,
+}
+
+/// A modifier's interval: every `every` ticks, the next in tick `next`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct Interval {
+    pub(crate) every: Ticks,
+    pub(crate) next: Tick,
 }
 
 /// The stacks of an instance that end as tick `until` starts.
@@ -137,8 +146,8 @@ impl Modifiers {
     }
 
     /// Ends what no longer holds as tick `now` starts: each stack whose end it reached, then
-    /// each instance whose end it reached, or whose stacks ending one by one all ended; whether
-    /// any ended.
+    /// each instance whose end it reached, or whose stacks ending one by one all ended, but a
+    /// passive, which stays with none; whether any ended.
     pub(crate) fn expire(&mut self, now: Tick) -> bool {
         let ends = |instance: &Instance| {
             instance.until.is_some_and(|until| until <= now)
@@ -160,12 +169,29 @@ impl Modifiers {
                     .sum();
                 instance.stacks -= count;
                 if instance.stacks == 0 {
-                    return false;
+                    return instance.passive;
                 }
             }
             instance.until.is_none_or(|until| until > now)
         });
         true
+    }
+
+    /// Counts the intervals of tick `now`: each instance whose interval comes goes to `due`, by
+    /// id and source, and its next comes an interval later; whether any came.
+    pub(crate) fn advance_intervals(
+        &mut self,
+        now: Tick,
+        mut due: impl FnMut(ModifierId, Option<StableId>),
+    ) -> bool {
+        let mut any = false;
+        for instance in &mut self.0 {
+            if instance.interval_due(now) {
+                due(instance.id, instance.source);
+                any = true;
+            }
+        }
+        any
     }
 
     /// Spends shields on `amount` of damage: the shield that ends soonest first, one with no end
@@ -248,6 +274,18 @@ impl Instance {
         self.stats = stats;
     }
 
+    /// Whether its interval comes in tick `now`; when it does, the next comes an interval later.
+    pub(crate) fn interval_due(&mut self, now: Tick) -> bool {
+        let Some(interval) = &mut self.interval else {
+            return false;
+        };
+        if interval.next > now {
+            return false;
+        }
+        interval.next = interval.next.after(interval.every);
+        true
+    }
+
     /// Writes `stacks` in tick `now`, as a script does. With a stack life, the stacks it takes
     /// away are those that end soonest, and those it adds end as stacks applied now do.
     pub(crate) fn set_stacks(&mut self, stacks: u32, now: Tick) {
@@ -292,8 +330,8 @@ impl SimComponent for Modifiers {
     const NAME: &'static str = "stats.modifiers";
 }
 
-/// A snapshot is untrusted, so instances out of order or twice, and stack ends out of order,
-/// empty, or that do not count an instance's stacks, fail to decode.
+/// A snapshot is untrusted, so instances out of order or twice, stack ends out of order, empty,
+/// or that do not count an instance's stacks, and an interval of no ticks fail to decode.
 impl<'de> Deserialize<'de> for Modifiers {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Modifiers, D::Error> {
         let instances = Vec::<Instance>::deserialize(deserializer)?;
@@ -308,7 +346,10 @@ impl<'de> Deserialize<'de> for Modifiers {
                 Some(_) => counted == u64::from(instance.stacks),
                 None => ends.is_empty(),
             };
-            ordered && counts && ends.iter().all(|end| end.count > 0)
+            let interval = instance
+                .interval
+                .is_none_or(|interval| interval.every > Ticks::ZERO);
+            ordered && counts && interval && ends.iter().all(|end| end.count > 0)
         });
         if !ordered || !stacks {
             return Err(D::Error::custom(
@@ -359,6 +400,7 @@ mod tests {
                 until: until.map(Tick::new),
                 stack_life,
                 stack_ends: stack_ends.into_iter().collect(),
+                interval: None,
                 shield: None,
                 stats: vec![StatShare {
                     stat: 0,
@@ -448,12 +490,19 @@ mod tests {
         instance.set_stacks(0, Tick::new(16));
         assert_eq!((instance.stacks, ends(instance)), (0, vec![]));
 
+        // A passive whose last stack ends stays, with none: one stack of 2 ticks applied in
+        // tick 16 ends as 19 starts.
+        modifiers.apply(applied(3, a, Reapply::Stack, None, 1, None, Some((16, 2))));
+        modifiers.get_mut(ModifierId::new(3), a).unwrap().passive = true;
+        assert!(modifiers.expire(Tick::new(19)));
+        assert_eq!(modifiers.get(ModifierId::new(3), a).unwrap().stacks, 0);
+
         // Removing one, then a death, which keeps only passives.
         assert!(modifiers.remove(ModifierId::new(0), b));
         assert!(!modifiers.remove(ModifierId::new(0), b));
         modifiers.get_mut(ModifierId::new(0), a).unwrap().passive = true;
         modifiers.clear_on_death();
-        assert_eq!(stacks(&modifiers), [(0, 1)]);
+        assert_eq!(stacks(&modifiers), [(0, 1), (3, 0)]);
     }
 
     #[test]

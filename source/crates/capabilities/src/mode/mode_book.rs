@@ -20,7 +20,10 @@ use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::{PathDirection, PathWalker};
 use crate::navigation::paths::Paths;
 use crate::scripts::error::ApiError;
+use crate::stats::Stats;
 use crate::stats::level::Level;
+use crate::stats::modifier_book::Applier;
+use crate::stats::modifier_effect::ModifierEffect;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::by_type::ByType;
@@ -217,6 +220,24 @@ impl ModeBook {
             );
             if let Some(resource) = avatar.resource {
                 world.entity_mut(entity).insert(resource);
+            }
+            if let Some(passive) = avatar.passive {
+                let id = *world
+                    .get::<StableId>(entity)
+                    .expect("a spawned unit has an id");
+                let applier = Applier {
+                    source: Some(id),
+                    ability: None,
+                    rank: 1,
+                    passive: true,
+                    aura: false,
+                };
+                let add = ModifierEffect::Add {
+                    target: id,
+                    id: passive,
+                    duration: None,
+                };
+                Stats::apply_effect(world, add, applier, |_| None);
             }
             world.resource_mut::<Picks>().of_mut(slot).spawned = true;
         }

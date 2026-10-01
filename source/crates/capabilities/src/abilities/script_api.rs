@@ -45,8 +45,8 @@ impl Ctx {
         &self.view
     }
 
-    /// The script API of `on_cast`: `ctx.p`, the queries, `ctx.damage`, `ctx.heal`,
-    /// `ctx.restore`, `ctx.add_modifier` and `ctx.remove`.
+    /// The script API of `on_cast` and of modifier hooks: `ctx.p`, the queries, `ctx.damage`,
+    /// `ctx.heal`, `ctx.restore`, `ctx.attack_hit`, `ctx.add_modifier` and `ctx.remove`.
     pub(crate) fn register(engine: &mut Engine) {
         engine
             .register_type_with_name::<Params>("Params")
@@ -77,6 +77,9 @@ impl Ctx {
             })
             .register_fn("restore", |ctx: &mut Ctx, unit: Unit, amount: INT| {
                 ctx.restore(&unit, ApiError::num(amount)?)
+            })
+            .register_fn("attack_hit", |ctx: &mut Ctx, target: Unit| {
+                ctx.attack_hit(&target)
             })
             .register_fn("add_modifier", |ctx: &mut Ctx, target: Unit, id: &str| {
                 ctx.add_modifier(&target, id, None)
@@ -128,6 +131,21 @@ impl Ctx {
             amount,
             kind,
         });
+        Ok(())
+    }
+
+    /// Queues an extra attack of the acting unit on `target`, which has an attack.
+    fn attack_hit(&self, target: &Unit) -> Checked<()> {
+        let acting = self.frame().caster;
+        let attacks = acting
+            .and_then(|id| self.view().row(id))
+            .is_some_and(|row| row.attack_range.is_some());
+        if !attacks {
+            return Err(ApiError::NoAttack.fail().into());
+        }
+        self.frame()
+            .effects
+            .push(Effect::AttackHit { target: target.id });
         Ok(())
     }
 

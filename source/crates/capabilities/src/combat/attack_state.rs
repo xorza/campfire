@@ -1,5 +1,5 @@
 use bevy_ecs::component::Component;
-use campfire_sim::{SimComponent, StableId, Tick};
+use campfire_sim::{SimComponent, StableId, Tick, Ticks};
 use serde::{Deserialize, Serialize};
 
 /// A unit's attack order and where its attack stands. The period runs from an attack's start,
@@ -32,6 +32,11 @@ impl AttackState {
             self.started = None;
         }
         self.target = target;
+    }
+
+    /// The tick the attack in its windup started in, when a windup of `windup` ends by `now`.
+    pub(crate) fn windup_ended(self, windup: Ticks, now: Tick) -> Option<Tick> {
+        self.started.filter(|started| now >= started.after(windup))
     }
 
     pub(crate) const fn start(&mut self, tick: Tick) {

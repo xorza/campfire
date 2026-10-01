@@ -320,6 +320,7 @@ impl<'a> LoadCheck<'a> {
                 });
             }
             if let Some(script) = &modifier.script {
+                self.require(Capability::Abilities, &at)?;
                 names.serve(script, ScriptRole::Modifier, readable.iter().copied());
             }
         }

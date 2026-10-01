@@ -63,6 +63,7 @@ fn fly(
                     crit: projectile.crit(),
                 },
                 ability: None,
+                depth: 0,
             });
             commands.entity(entity).despawn();
         } else {

@@ -1,8 +1,8 @@
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{With, Without};
+use bevy_ecs::query::{QueryState, With, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
-use bevy_ecs::system::{Commands, Query, Res, ResMut};
+use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::{EntityRef, Mut, World};
 use campfire_math::Num;
 use campfire_script::ScriptHost;
@@ -13,6 +13,8 @@ use crate::combat::assist_window::AssistWindow;
 use crate::combat::attack_kind::AttackKind;
 use crate::combat::attack_state::AttackState;
 use crate::combat::attack_stats::AttackStats;
+use crate::combat::combat_event::CombatEvent;
+use crate::combat::combat_events::CombatEvents;
 use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::damage_handle::DamageHandle;
 use crate::combat::damage_queue::DamageQueue;
@@ -27,6 +29,7 @@ use crate::combat::respawn::Respawn;
 use crate::combat::targets::Targets;
 use crate::scripts::hook::Hook;
 use crate::scripts::script_batch::ScriptBatch;
+use crate::stats::modifier_book::ModifierId;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::stat::EngineStat;
 use crate::stats::stat_book::StatBook;
@@ -43,6 +46,8 @@ pub(crate) mod attack_kind;
 pub(crate) mod attack_state;
 pub(crate) mod attack_stats;
 pub(crate) mod combat_data;
+pub(crate) mod combat_event;
+pub(crate) mod combat_events;
 pub(crate) mod combatant;
 pub(crate) mod damage;
 pub(crate) mod damage_handle;
@@ -77,6 +82,8 @@ pub(crate) enum CombatSet {
     Strike,
     /// In `SimSet::Hit`, after `Strike`: the tick's launches take off.
     Launch,
+    /// In `SimSet::Hit`, after `Launch`: modifiers' intervals come.
+    Interval,
     /// In `SimSet::Resolve`: the tick's damage is dealt.
     Damage,
     /// In `SimSet::Resolve`, after `Damage`: units at zero health die.
@@ -106,7 +113,14 @@ impl Combat {
         );
         schedule.add_systems((
             attack.in_set(SimSet::Act).in_set(CombatSet::Attack),
-            strike.in_set(SimSet::Hit).in_set(CombatSet::Strike),
+            (attack_events, strike)
+                .chain()
+                .in_set(SimSet::Hit)
+                .in_set(CombatSet::Strike),
+            run_intervals
+                .in_set(SimSet::Hit)
+                .in_set(CombatSet::Interval)
+                .after(CombatSet::Launch),
             (
                 deal_damage.in_set(CombatSet::Damage),
                 die.in_set(CombatSet::Die),
@@ -176,6 +190,105 @@ fn attack(
     }
 }
 
+/// An attack that goes off this tick: its attacker and its target.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct GoingOff {
+    attacker: StableId,
+    target: StableId,
+}
+
+/// Runs `on_attack` for each attack whose windup ends this tick, by attacker's stable id, before
+/// any of them strikes or fires.
+fn attack_events(
+    world: &mut World,
+    attackers: &mut QueryState<(&StableId, &AttackStats, &AttackState), Without<Dead>>,
+    mut going: Local<'_, Vec<GoingOff>>,
+) {
+    let Some(events) = world.remove_non_send::<CombatEvents>() else {
+        return;
+    };
+    let now = world.resource::<SimTick>().start();
+    going.clear();
+    for (&attacker, stats, attack) in attackers.iter(world) {
+        if attack.windup_ended(stats.windup(), now).is_some() {
+            let target = attack
+                .target()
+                .expect("an attack in its windup has a target");
+            going.push(GoingOff { attacker, target });
+        }
+    }
+    going.sort_unstable();
+    if !going.is_empty() {
+        let view = world.non_send::<View>().clone();
+        ScriptBatch::run(world, &view, |batch| {
+            for &GoingOff { attacker, target } in &*going {
+                events.hear(batch, CombatEvent::Attack { attacker, target });
+            }
+        });
+    }
+    world.insert_non_send(events);
+}
+
+/// An instance whose interval comes this tick: its carrier, its modifier and its source.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct IntervalDue {
+    carrier: StableId,
+    id: ModifierId,
+    source: Option<StableId>,
+}
+
+/// Counts each living carrier's intervals, and runs `on_interval` of each instance whose
+/// interval comes this tick, by carrier's stable id, then modifier, then source.
+fn run_intervals(
+    world: &mut World,
+    carriers: &mut QueryState<(&StableId, &mut Modifiers), Without<Dead>>,
+    mut due: Local<'_, Vec<IntervalDue>>,
+) {
+    let now = world.resource::<SimTick>().start();
+    due.clear();
+    for (&carrier, mut modifiers) in carriers.iter_mut(world) {
+        let push = |id, source| {
+            due.push(IntervalDue {
+                carrier,
+                id,
+                source,
+            });
+        };
+        if modifiers
+            .bypass_change_detection()
+            .advance_intervals(now, push)
+        {
+            modifiers.set_changed();
+        }
+    }
+    if due.is_empty() {
+        return;
+    }
+    due.sort_unstable();
+    let Some(events) = world.remove_non_send::<CombatEvents>() else {
+        return;
+    };
+    let view = world.non_send::<View>().clone();
+    ScriptBatch::run(world, &view, |batch| {
+        for &IntervalDue {
+            carrier,
+            id,
+            source,
+        } in &*due
+        {
+            events.hear(
+                batch,
+                CombatEvent::Interval {
+                    carrier,
+                    id,
+                    source,
+                },
+            );
+        }
+    });
+    world.insert_non_send(events);
+}
+
 /// Queues the damage of each attack whose windup ends this tick, or its launch when it is ranged
 /// and the match has projectiles. Each rolls its crit now, with its attacker's `crit_chance`.
 fn strike(
@@ -202,12 +315,9 @@ fn strike(
 ) {
     let now = tick.start();
     for (&source, &from, stats, mut attack, unit_stats) in &mut attackers {
-        let Some(started) = attack.started() else {
+        let Some(started) = attack.windup_ended(stats.windup(), now) else {
             continue;
         };
-        if now < started.after(stats.windup()) {
-            continue;
-        }
         let target = attack
             .target()
             .expect("an attack in its windup has a target");
@@ -234,19 +344,29 @@ fn strike(
                 kind: kind.0,
                 cause: DamageCause::Attack { crit },
                 ability: None,
+                depth: 0,
             }),
         }
         attack.strike(started.after(stats.period()));
     }
 }
 
-/// Deals the tick's damage in the queue's order, each through the mode's `calc_damage` when it
-/// has one, with the units as the pass began; damage to a unit at zero health does nothing.
-fn deal_damage(world: &mut World) {
+/// Deals the tick's damage in the queue's order: each through the mode's `calc_damage` when it
+/// has one, with the units as the pass began, then its combat events, whose damage joins the end
+/// of the queue. Damage to a unit at zero health does nothing.
+fn deal_damage(world: &mut World, mut assisters: Local<'_, Vec<StableId>>) {
     let now = world.resource::<SimTick>().start();
     world.resource_mut::<Deaths>().clear(now);
     world.resource_mut::<DamageQueue>().sort();
-    if let Some(weigher) = world.remove_non_send::<DamageWeigher>() {
+    let weigher = world.remove_non_send::<DamageWeigher>();
+    let events = world.remove_non_send::<CombatEvents>();
+    if weigher.is_none() && events.is_none() {
+        let mut at = 0;
+        while let Some(damage) = world.resource::<DamageQueue>().get(at) {
+            at += 1;
+            Combat::deal(world, damage, damage.amount, now);
+        }
+    } else {
         let view = world.non_send::<View>().clone();
         ScriptBatch::run(world, &view, |batch| {
             let mut at = 0;
@@ -255,22 +375,38 @@ fn deal_damage(world: &mut World) {
                 if Combat::living(batch.world(), damage.target).is_none() {
                     continue;
                 }
-                let amount = weigher.weigh(batch, damage).unwrap_or_else(|error| {
-                    batch.record(Some(damage.target), Hook::CalcDamage, error);
-                    damage.amount
+                let amount = weigher.as_ref().map_or(damage.amount, |weigher| {
+                    weigher.weigh(batch, damage).unwrap_or_else(|error| {
+                        batch.record(Some(damage.target), Hook::CalcDamage, error);
+                        damage.amount
+                    })
                 });
-                Combat::deal(batch.world(), damage, amount, now);
+                let landed = Combat::deal(batch.world(), damage, amount, now);
+                if let Some(events) = &events {
+                    let dealt = Damage {
+                        amount: amount.max(Num::ZERO),
+                        ..damage
+                    };
+                    Combat::answer(batch, events, dealt, landed, &mut assisters);
+                }
             }
         });
+    }
+    if let Some(weigher) = weigher {
         world.insert_non_send(weigher);
-    } else {
-        let mut at = 0;
-        while let Some(damage) = world.resource::<DamageQueue>().get(at) {
-            at += 1;
-            Combat::deal(world, damage, damage.amount, now);
-        }
+    }
+    if let Some(events) = events {
+        world.insert_non_send(events);
     }
     world.resource_mut::<DamageQueue>().clear();
+}
+
+/// What a damage of the pass did: nothing, as to a unit at zero health; damage; or a kill.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Landed {
+    Nothing,
+    Taken,
+    Killed,
 }
 
 impl Combat {
@@ -282,14 +418,62 @@ impl Combat {
         (!health.is_zero()).then_some(entity)
     }
 
+    /// Runs the events of `damage`, which `landed`, its amount after `calc_damage`: an attack's
+    /// hit, the damage taken, then a kill's: the killer's, then the takedowns of the killer and
+    /// each assister, by stable id, whom `assisters` holds while their hooks run.
+    fn answer(
+        batch: &mut ScriptBatch<'_>,
+        events: &CombatEvents,
+        damage: Damage,
+        landed: Landed,
+        assisters: &mut Vec<StableId>,
+    ) {
+        if landed == Landed::Nothing {
+            return;
+        }
+        if damage.cause.attack() {
+            events.hear(batch, CombatEvent::AttackHit(damage));
+        }
+        events.hear(batch, CombatEvent::DamageTaken(damage));
+        if landed != Landed::Killed {
+            return;
+        }
+        let deaths = batch.world().resource::<Deaths>();
+        let kill = deaths.iter().last().expect("a kill records its death");
+        let killer = kill.killer;
+        assisters.clear();
+        assisters.extend_from_slice(kill.assisters);
+        let (victim, depth) = (damage.target, damage.depth);
+        if let Some(killer) = killer {
+            events.hear(
+                batch,
+                CombatEvent::Kill {
+                    killer,
+                    victim,
+                    depth,
+                },
+            );
+        }
+        for unit in killer.into_iter().chain(assisters.iter().copied()) {
+            events.hear(
+                batch,
+                CombatEvent::Takedown {
+                    unit,
+                    victim,
+                    depth,
+                },
+            );
+        }
+    }
+
     /// Deals `damage` as `amount` in tick `now`, a negative amount as 0: shields absorb it, then
     /// health takes the rest. The source is recorded as the target's attacker; when the damage
     /// took the target to zero, the source is its killer if it still exists, and the others that
     /// damaged it within the assist window assisted. A living source heals by its life steal,
     /// for an attack, or its spell vamp times the health taken.
-    fn deal(world: &mut World, damage: Damage, amount: Num, now: Tick) {
+    fn deal(world: &mut World, damage: Damage, amount: Num, now: Tick) -> Landed {
         let Some(entity) = Combat::living(world, damage.target) else {
-            return;
+            return Landed::Nothing;
         };
         let index = world.resource::<EntityIndex>();
         let source = damage.source.filter(|&source| index.get(source).is_some());
@@ -341,6 +525,11 @@ impl Combat {
             };
             let ratio = Combat::stat(world, source, stat);
             Combat::heal_living(world, source, scaled(taken, ratio));
+        }
+        if killed {
+            Landed::Killed
+        } else {
+            Landed::Taken
         }
     }
 

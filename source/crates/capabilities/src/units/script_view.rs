@@ -65,7 +65,7 @@ pub(crate) struct ScriptView {
     stats: Vec<Num>,
     /// Every modifier, by id, the modifiers each unit carries, one run per unit, and their
     /// script state, one run per modifier.
-    modifier_info: Rc<[ModifierInfo]>,
+    modifier_info: Vec<ModifierInfo>,
     modifiers: Vec<ModifierRow>,
     modifier_state: Vec<StateValue>,
     /// The package of the running call: the one whose modifiers its names mean.
@@ -300,7 +300,7 @@ impl View {
             slots: Vec::new(),
             stat_names: Rc::from([]),
             stats: Vec::new(),
-            modifier_info: Rc::from([]),
+            modifier_info: Vec::new(),
             modifiers: Vec::new(),
             modifier_state: Vec::new(),
             caller: 0,
@@ -340,9 +340,10 @@ impl View {
             .max(Ticks::ONE))
     }
 
-    /// Sets every modifier of the match, by id, which orders them by package, then name.
-    pub(crate) fn set_modifier_info(&self, info: Rc<[ModifierInfo]>) {
-        self.0.borrow_mut().modifier_info = info;
+    /// Adds the modifier the match loaded next, which takes the next id: modifiers load by
+    /// package, then name.
+    pub(crate) fn add_modifier(&self, info: ModifierInfo) {
+        self.0.borrow_mut().modifier_info.push(info);
     }
 
     /// Sets the package of the call about to run.
@@ -412,11 +413,24 @@ impl View {
             }
             None => (1, info.initial.to_vec()),
         };
-        let fields = Rc::clone(&info.fields);
         drop(view);
-        let handle = ModifierHandle::new(carrier, id, source, stacks, state, fields, self.clone());
+        let handle = self.held_handle(carrier, id, source, stacks, state);
         handles.push(handle.clone());
         handle
+    }
+
+    /// The handle of `carrier`'s instance of `id` from `source`, as a call sees it: `stacks`
+    /// and `state`.
+    pub(crate) fn held_handle(
+        &self,
+        carrier: StableId,
+        id: ModifierId,
+        source: Option<StableId>,
+        stacks: u32,
+        state: Vec<StateValue>,
+    ) -> ModifierHandle {
+        let fields = Rc::clone(&self.0.borrow().modifier_info[id.index()].fields);
+        ModifierHandle::new(carrier, id, source, stacks, state, fields, self.clone())
     }
 
     /// Sets the stats the mode declares, in the order units' runs of stats hold them.

@@ -17,13 +17,12 @@ use crate::abilities::ability_book::{Ability, AbilityBook, AbilityId, Aim, RankV
 use crate::abilities::ability_data::{AbilityData, Range, Targeting};
 use crate::abilities::ability_slots::{AbilitySlots, CastTarget, Casting};
 use crate::abilities::error::AbilityError;
-use crate::abilities::frame::{Effect, Frame};
+use crate::abilities::frame::Frame;
+use crate::abilities::modifier_hooks::ModifierHooks;
 use crate::abilities::resource_pool::ResourcePool;
 use crate::abilities::script_api::Ctx;
-use crate::combat::Combat;
 use crate::combat::CombatSet;
-use crate::combat::damage::{Damage, DamageCause};
-use crate::combat::damage_queue::DamageQueue;
+use crate::combat::combat_events::CombatEvents;
 use crate::combat::dead::Dead;
 use crate::combat::targets::Targets;
 use crate::orders::OrdersSet;
@@ -31,10 +30,10 @@ use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
+use crate::stats::StatsSet;
 use crate::stats::modifier_book::{Applier, ModifierBook};
 use crate::stats::modifiers::Modifiers;
 use crate::stats::stat_book::StatBook;
-use crate::stats::{Stats, StatsSet};
 use crate::units::body::Body;
 use crate::units::owner::Owner;
 use crate::units::script_view::{RowFill, SlotRow, View};
@@ -48,6 +47,7 @@ pub(crate) mod ability_data;
 pub(crate) mod ability_slots;
 pub(crate) mod error;
 pub(crate) mod frame;
+pub(crate) mod modifier_hooks;
 pub(crate) mod resource_pool;
 pub(crate) mod script_api;
 
@@ -69,11 +69,19 @@ impl Abilities {
         Ctx::register(host.engine_mut());
         let view = world.non_send::<View>().clone();
         view.add_source(fill_row);
-        world.insert_non_send(Ctx::new(view));
+        let ctx = Ctx::new(view);
+        let hooks = ModifierHooks::new(ctx.clone());
+        world.insert_non_send(CombatEvents::new(move |batch, event| {
+            hooks.hear(batch, event);
+        }));
+        world.insert_non_send(ctx);
         world.insert_resource(AbilityBook::default());
         schedule.add_systems((
             start_casts.in_set(SimSet::Act),
-            resolve_casts.in_set(SimSet::Hit).after(CombatSet::Launch),
+            resolve_casts
+                .in_set(SimSet::Hit)
+                .after(CombatSet::Launch)
+                .before(CombatSet::Interval),
             hold_passives
                 .in_set(SimSet::Inputs)
                 .after(OrdersSet::Orders)
@@ -405,44 +413,10 @@ fn resolve(batch: &mut ScriptBatch<'_>, ctx: &Ctx, now: Tick, caster: StableId, 
         .stop();
 }
 
-/// Applies a cast that ran: the effects it queued in `frame`, then what it wrote to modifier
-/// handles, its cost and its cooldown.
+/// Applies a cast that ran: the effects it queued in `frame` and its handle writes, its cost and
+/// its cooldown.
 fn apply(world: &mut World, frame: &mut Frame, now: Tick, entity: Entity, prepared: &Prepared) {
-    let ability = frame.cast().expect("a cast that ran has an ability");
-    let rank = frame.rank;
-    for &effect in &frame.effects {
-        match effect {
-            Effect::Damage {
-                target,
-                amount,
-                kind,
-            } => world.resource_mut::<DamageQueue>().push(Damage {
-                source: Some(prepared.caster.id),
-                target,
-                amount,
-                kind,
-                cause: DamageCause::Effect,
-                ability: Some(ability),
-            }),
-            Effect::Heal { unit, amount } => Combat::heal(world, unit, amount),
-            Effect::Restore { unit, amount } => Combat::restore(world, unit, amount),
-            Effect::Modifier(effect) => {
-                let applier = Applier {
-                    source: Some(prepared.caster.id),
-                    ability: Some(ability),
-                    rank,
-                    passive: false,
-                    aura: false,
-                };
-                let param = |name: &str| frame.ability_param(ability, rank, name);
-                Stats::apply_effect(world, effect, applier, param);
-            }
-        }
-    }
-    frame.effects.clear();
-    for handle in frame.handles.drain(..) {
-        Stats::write_handle(world, &handle);
-    }
+    frame.apply(world);
     if let Some(mut pool) = world.get_mut::<ResourcePool>(entity) {
         pool.spend(prepared.cost);
     }
