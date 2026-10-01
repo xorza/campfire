@@ -1,12 +1,19 @@
-//! The script runtime under every capability: the hooks and `ctx` names of the script API, the
-//! batch every call runs in, its budgets and failures, and script state.
+//! The script runtime under every capability: the script API and its registry, the one `ctx`
+//! every call goes through, the batch every call runs in, its budgets and failures, and script
+//! state.
 
-pub(crate) mod ctx_entry;
+pub(crate) mod api_builder;
+pub(crate) mod core_api;
+pub(crate) mod ctx;
+pub(crate) mod effect;
 pub(crate) mod error;
+pub(crate) mod frame;
 pub(crate) mod hook;
 pub(crate) mod hook_set;
 pub(crate) mod match_scripts;
 pub(crate) mod pool;
+pub(crate) mod role_set;
+pub(crate) mod script_api;
 pub(crate) mod script_batch;
 pub(crate) mod script_budgets;
 pub(crate) mod script_failures;

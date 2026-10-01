@@ -12,12 +12,13 @@ use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StableId, StateRegist
 
 use crate::abilities::ability_book::AbilityId;
 use crate::abilities::resource_pool::ResourcePool;
-use crate::abilities::script_api::Ctx;
 use crate::combat::CombatSet;
 use crate::combat::attack_stats::AttackStats;
+use crate::combat::combat_events::CombatEvents;
 use crate::combat::dead::Dead;
 use crate::combat::health::Health;
 use crate::navigation::move_step::MoveStep;
+use crate::scripts::ctx::Ctx;
 use crate::scripts::hook::Hook;
 use crate::scripts::hook_set::HookSet;
 use crate::stats::level::Level;
@@ -25,6 +26,7 @@ use crate::stats::modifier_book::{Applier, ModifierBook, ModifierId};
 use crate::stats::modifier_data::ModifierData;
 use crate::stats::modifier_effect::ModifierEffect;
 use crate::stats::modifier_handle::ModifierHandle;
+use crate::stats::modifier_hooks::ModifierHooks;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::stat::EngineStat;
 use crate::stats::stat_book::StatBook;
@@ -39,10 +41,12 @@ pub(crate) mod modifier_book;
 pub(crate) mod modifier_data;
 pub(crate) mod modifier_effect;
 pub(crate) mod modifier_handle;
+pub(crate) mod modifier_hooks;
 pub(crate) mod modifiers;
 pub(crate) mod stat;
 pub(crate) mod stat_book;
 pub(crate) mod stat_rule;
+pub(crate) mod stats_api;
 pub(crate) mod stats_data;
 pub(crate) mod unit_state;
 pub(crate) mod unit_stats;
@@ -68,6 +72,12 @@ impl Stats {
             view.add_source(fill_row);
         }
         world.insert_resource(ModifierBook::default());
+        if let Some(ctx) = world.get_non_send::<Ctx>().cloned() {
+            let hooks = ModifierHooks::new(ctx);
+            world.insert_non_send(CombatEvents::new(move |batch, event| {
+                hooks.hear(batch, event);
+            }));
+        }
         registry.register_component::<Level>();
         registry.register_component::<Modifiers>();
         schedule.add_systems((
@@ -456,7 +466,7 @@ pub(crate) mod internals {
     use campfire_sim::{StableId, TickRate};
 
     use crate::abilities::ability_book::AbilityId;
-    use crate::abilities::script_api::Ctx;
+    use crate::scripts::ctx::Ctx;
     use crate::stats::Stats;
     use crate::stats::modifier_book::{Applier, ModifierId};
     use crate::stats::modifier_effect::ModifierEffect;

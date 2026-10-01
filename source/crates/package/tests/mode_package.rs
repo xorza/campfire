@@ -125,7 +125,7 @@ fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 64] = [
+const FLAWS: [Flaw; 65] = [
     flaw(
         MANIFEST,
         Edit::Replace(r#"engine = "0.1.0""#, r#"engine = "0.0.9""#),
@@ -304,6 +304,21 @@ const FLAWS: [Flaw; 64] = [
                 }
             )
         },
+    ),
+    flaw(
+        LASH_OUT,
+        Edit::Replace("caster.pos", "caster.position"),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::UnknownMember { name, .. } if name == "position"),
+    ),
+    flaw(
+        LASH_OUT,
+        Edit::Replace(
+            "    for unit in",
+            "    ctx.spawn_avatars();\n    for unit in",
+        ),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::UnknownCtx { name, .. } if name == "spawn_avatars"),
     ),
     flaw(
         MODE_DATA,
@@ -572,20 +587,6 @@ const FLAWS: [Flaw; 64] = [
         |problem| matches!(problem, LoadProblem::UnknownFilter { filter, .. } if filter == "enemies:ward"),
     ),
     // A second spells package with a spell the first holds.
-    // A modifier's script gets the `ctx` of ability scripts, so it needs `abilities`.
-    Flaw {
-        file: MANIFEST,
-        edit: Edit::Replace(r#""abilities", "projectiles", "areas", "#, ""),
-        also: &[(
-            MODE_DATA,
-            Edit::Replace(
-                "[modifiers.warden_blessing]\n",
-                "[modifiers.warden_blessing]\nscript = \"scripts/mode.rhai\"\n",
-            ),
-        )],
-        package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Undeclared { capability: Capability::Abilities, at: Place::Modifier(id) } if id == "warden_blessing"),
-    },
     Flaw {
         file: MANIFEST,
         edit: Edit::Replace(

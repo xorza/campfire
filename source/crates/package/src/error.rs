@@ -173,6 +173,12 @@ pub enum LoadProblem {
         path: PackagePath,
         name: String,
     },
+    /// A script reads a field or calls a method no handle, no built-in and none of its own
+    /// functions or object maps has.
+    UnknownMember {
+        path: PackagePath,
+        name: String,
+    },
     /// A script uses `ctx` other than design 08's convention allows, so the load checks cannot
     /// see every use of it.
     CtxMisuse {
@@ -347,6 +353,9 @@ impl fmt::Display for LoadProblem {
             LoadProblem::Script { path, error } => write!(f, "{path}: {error}"),
             LoadProblem::UnknownHook { path, function } => {
                 write!(f, "{path}: {function} is no hook of the script's roles")
+            }
+            LoadProblem::UnknownMember { path, name } => {
+                write!(f, "{path}: .{name} is no member the script API has")
             }
             LoadProblem::UnknownCtx { path, name } => {
                 write!(

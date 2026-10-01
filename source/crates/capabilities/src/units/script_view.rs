@@ -7,13 +7,16 @@ use std::sync::Arc;
 
 use bevy_ecs::world::{EntityRef, World};
 use campfire_math::{Num, PlayerSlot, Vec3};
-use campfire_script::rhai::{Array, Dynamic, Engine, INT, ImmutableString};
-use campfire_sim::{EntityIndex, Position, SimTick, StableId, Tick, TickRate, Ticks};
+use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString};
+use campfire_sim::{Capability, EntityIndex, Position, SimTick, StableId, Tick, TickRate, Ticks};
 
 use crate::abilities::ability_book::AbilityId;
 use crate::combat::damage_kind::DamageKind;
 use crate::combat::health::Health;
+use crate::scripts::api_builder::ApiBuilder;
+use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
+use crate::scripts::script_api::MemberSpec;
 use crate::scripts::state_value::StateValue;
 use crate::stats::modifier_book::ModifierId;
 use crate::stats::modifier_data::Reapply;
@@ -672,37 +675,53 @@ impl View {
             .collect())
     }
 
-    /// Registers the queries on the `ctx` of type `C`: `find`, `find_visible` and
-    /// `nearest_visible`.
-    pub(crate) fn register_queries<C: Clone + 'static>(engine: &mut Engine, view: fn(&C) -> &View) {
-        for (name, visible) in [("find", false), ("find_visible", true)] {
-            engine
-                .register_fn(
-                    name,
-                    move |ctx: &mut C, of: Unit, pos: Position, radius: Num, filter: &str| {
-                        view(ctx).find(&of, pos, radius, filter, visible)
-                    },
-                )
-                .register_fn(
-                    name,
-                    move |ctx: &mut C, of: Unit, pos: Position, radius: INT, filter: &str| {
-                        view(ctx).find(&of, pos, ApiError::num(radius)?, filter, visible)
-                    },
-                );
-        }
-        engine
-            .register_fn(
-                "nearest_visible",
-                move |ctx: &mut C, of: Unit, radius: Num, filter: &str| {
-                    view(ctx).nearest_visible(&of, radius, filter)
+    /// `ctx.find`, `ctx.find_visible` and `ctx.nearest_visible`.
+    pub(crate) fn register_queries(api: &mut ApiBuilder<'_>) {
+        let find = MemberSpec::call(
+            "find",
+            "(of, pos, radius, filter)",
+            "the living units within `radius` of `pos` that `filter` selects for `of`, seen or not, by stable id",
+        );
+        let visible = MemberSpec::call(
+            "find_visible",
+            "(of, pos, radius, filter)",
+            "as `find`, of the units `of`'s team sees",
+        )
+        .capability(Capability::Vision);
+        for (spec, visible) in [(find, false), (visible, true)] {
+            api.bind(
+                spec,
+                move |ctx: &mut Ctx, of: Unit, pos: Position, radius: Num, filter: &str| {
+                    ctx.view().find(&of, pos, radius, filter, visible)
                 },
             )
-            .register_fn(
-                "nearest_visible",
-                move |ctx: &mut C, of: Unit, radius: INT, filter: &str| {
-                    view(ctx).nearest_visible(&of, ApiError::num(radius)?, filter)
+            .bind(
+                spec,
+                move |ctx: &mut Ctx, of: Unit, pos: Position, radius: INT, filter: &str| {
+                    ctx.view()
+                        .find(&of, pos, ApiError::num(radius)?, filter, visible)
                 },
             );
+        }
+        let nearest = MemberSpec::call(
+            "nearest_visible",
+            "(of, radius, filter)",
+            "the nearest living unit within `radius` of `of` that `filter` selects and `of`'s team sees, `()` with none",
+        )
+        .capability(Capability::Vision);
+        api.bind(
+            nearest,
+            |ctx: &mut Ctx, of: Unit, radius: Num, filter: &str| {
+                ctx.view().nearest_visible(&of, radius, filter)
+            },
+        )
+        .bind(
+            nearest,
+            |ctx: &mut Ctx, of: Unit, radius: INT, filter: &str| {
+                ctx.view()
+                    .nearest_visible(&of, ApiError::num(radius)?, filter)
+            },
+        );
     }
 }
 

@@ -1,10 +1,12 @@
 use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
 
-use campfire_script::rhai::{Dynamic, Engine, INT, ImmutableString};
-use campfire_sim::StableId;
+use campfire_script::rhai::{Dynamic, INT, ImmutableString};
+use campfire_sim::{Capability, StableId};
 
+use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::error::{ApiError, Checked};
+use crate::scripts::script_api::{ApiOwner, MemberSpec};
 use crate::scripts::state_decl::StateType;
 use crate::scripts::state_value::StateValue;
 use crate::stats::modifier_book::ModifierId;
@@ -90,26 +92,33 @@ impl ModifierHandle {
     }
 
     /// The `Modifier` handle's fields, and `m.state`.
-    pub(crate) fn register(engine: &mut Engine) {
-        engine
-            .register_type_with_name::<ModifierHandle>("Modifier")
-            .register_get("carrier", |m: &mut ModifierHandle| {
-                let data = m.data();
-                data.view
-                    .unit(data.carrier)
-                    .map_or(Dynamic::UNIT, Dynamic::from)
-            })
-            .register_get("source", |m: &mut ModifierHandle| {
-                let data = m.data();
-                data.source
-                    .and_then(|source| data.view.unit(source))
-                    .map_or(Dynamic::UNIT, Dynamic::from)
-            })
-            .register_get("stacks", |m: &mut ModifierHandle| {
-                INT::from(m.data().stacks)
-            })
-            .register_set(
-                "stacks",
+    pub(crate) fn register(api: &mut ApiBuilder<'_>) {
+        let field = |name, description| {
+            MemberSpec::field(ApiOwner::Modifier, name, description).capability(Capability::Stats)
+        };
+        let stacks = field("stacks", "its stacks, which a call may write and read back");
+        api.ty::<ModifierHandle>("Modifier")
+            .bind(
+                field("carrier", "the unit that carries it"),
+                |m: &mut ModifierHandle| {
+                    let data = m.data();
+                    data.view
+                        .unit(data.carrier)
+                        .map_or(Dynamic::UNIT, Dynamic::from)
+                },
+            )
+            .bind(
+                field("source", "the unit that applied it, `()` when gone or none"),
+                |m: &mut ModifierHandle| {
+                    let data = m.data();
+                    data.source
+                        .and_then(|source| data.view.unit(source))
+                        .map_or(Dynamic::UNIT, Dynamic::from)
+                },
+            )
+            .bind(stacks, |m: &mut ModifierHandle| INT::from(m.data().stacks))
+            .bind_set(
+                stacks,
                 |m: &mut ModifierHandle, stacks: INT| -> Checked<()> {
                     let stacks = u32::try_from(stacks)
                         .ok()
@@ -120,17 +129,22 @@ impl ModifierHandle {
                     Ok(())
                 },
             )
-            .register_get("state", |m: &mut ModifierHandle| ModifierState(m.clone()));
-        engine
-            .register_type_with_name::<ModifierState>("ModifierState")
-            .register_indexer_get(
+            .bind(
+                field(
+                    "state",
+                    "its script state, by name, which a call may write and read back",
+                ),
+                |m: &mut ModifierHandle| ModifierState(m.clone()),
+            );
+        api.ty::<ModifierState>("ModifierState")
+            .index(
                 |state: &mut ModifierState, name: ImmutableString| -> Checked<Dynamic> {
                     let data = state.0.data();
                     let at = data.field(&name)?;
                     Ok(data.state[at].to_dynamic(&data.view))
                 },
             )
-            .register_indexer_set(
+            .index_set(
                 |state: &mut ModifierState, name: ImmutableString, value: Dynamic| -> Checked<()> {
                     let mut data = state.0.data();
                     let at = data.field(&name)?;

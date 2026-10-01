@@ -11,20 +11,23 @@ use campfire_math::PlayerSlot;
 use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString};
 use campfire_script::{ScriptError, ScriptHost};
 use campfire_sim::{
-    Command, Position, SimSet, SimTick, StateRegistry, TickInputs, TickRate, Ticks,
+    Command, EntityIndex, Position, SimSet, SimTick, StateRegistry, Tick, TickInputs, TickRate,
+    Ticks,
 };
 
+use crate::abilities::ability_slots::AbilitySlots;
 use crate::combat::CombatSet;
 use crate::combat::assist_window::AssistWindow;
 use crate::combat::attack_kind::AttackKind;
 use crate::combat::damage_weigher::DamageWeigher;
 use crate::combat::deaths::Deaths;
+use crate::combat::respawn::Respawn;
 use crate::mode::calls::Calls;
 use crate::mode::error::ModeError;
 use crate::mode::map_data::{GroundPoint, MapData};
 use crate::mode::match_end::MatchEnd;
 use crate::mode::mode_book::ModeBook;
-use crate::mode::mode_ctx::ModeCtx;
+use crate::mode::mode_effect::ModeEffect;
 use crate::mode::mode_input::{InputValue, ModeInput};
 use crate::mode::mode_setup::ModeSetup;
 use crate::mode::mode_state::ModeState;
@@ -36,6 +39,7 @@ use crate::navigation::Navigation;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::paths::Paths;
 use crate::orders::OrdersSet;
+use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
@@ -50,12 +54,14 @@ use crate::vision::Vision;
 pub(crate) mod avatar_index;
 pub(crate) mod calls;
 pub(crate) mod error;
+pub(crate) mod game_map;
 pub(crate) mod loadout_index;
 pub(crate) mod map_data;
 pub(crate) mod match_end;
+pub(crate) mod mode_api;
 pub(crate) mod mode_book;
-pub(crate) mod mode_ctx;
 pub(crate) mod mode_data;
+pub(crate) mod mode_effect;
 pub(crate) mod mode_input;
 pub(crate) mod mode_schema;
 pub(crate) mod mode_setup;
@@ -106,11 +112,7 @@ impl Mode {
             .map(|setup| (setup.unit_type, &setup.stats));
         let stats = StatBook::new(&setup.data.stats, types, rate, setup.max_move_speed)
             .ok_or(ModeError::StatValue)?;
-        let book = {
-            let mut host = world.non_send_mut::<ScriptHost>();
-            ModeCtx::register(host.engine_mut());
-            ModeBook::new(setup, &host, &view, &paths)?
-        };
+        let book = ModeBook::new(setup, world.non_send::<ScriptHost>(), &view, &paths)?;
         view.set_stat_names(Rc::from(stats.stats()));
         Stats::load(world, stats);
         if let Some(grid) = grid {
@@ -134,14 +136,13 @@ impl Mode {
         world.insert_resource(PlayerResources::default());
         world.insert_resource(Timers::default());
         let weighs = book.schema.hooks.contains(Hook::CalcDamage);
-        let ctx = ModeCtx::new(view, book);
+        let ctx = world.non_send::<Ctx>().clone();
+        ctx.set_mode(book);
         if weighs {
-            let weigher = ctx.clone();
             world.insert_non_send(DamageWeigher::new(move |batch, damage| {
-                Calls::weigh(batch, &weigher, damage)
+                Calls::weigh(batch, &ctx, damage)
             }));
         }
-        world.insert_non_send(ctx);
         schedule.add_systems((
             mode_inputs
                 .in_set(SimSet::Inputs)
@@ -179,7 +180,46 @@ impl Mode {
     /// The team of player `slot` in the match in `world`; `None` before the mode installs, or for
     /// a slot the session does not have.
     pub fn team_of(world: &World, slot: PlayerSlot) -> Option<Team> {
-        world.get_non_send::<ModeCtx>()?.book().teams.of(slot)
+        world.get_non_send::<Ctx>()?.mode()?.teams.of(slot)
+    }
+
+    /// Applies `effect`, which a call of `book`'s script queued in tick `now`.
+    pub(crate) fn apply_effect(world: &mut World, book: &ModeBook, now: Tick, effect: ModeEffect) {
+        match effect {
+            ModeEffect::Timer {
+                name,
+                ticks,
+                repeat,
+                data,
+            } => world
+                .resource_mut::<Timers>()
+                .set(now, name, ticks, repeat, data),
+            ModeEffect::SpawnAvatars => book.spawn_avatars(world),
+            ModeEffect::End(result) => {
+                let tick = world.resource::<SimTick>().start();
+                world.insert_resource(MatchEnd::new(tick, result));
+            }
+            ModeEffect::SpawnUnit {
+                unit_type,
+                team,
+                pos,
+            } => drop(book.spawn(world, unit_type, team, pos, ())),
+            ModeEffect::SpawnGroup { team, path, types } => {
+                book.spawn_group(world, team, path, &types);
+            }
+            ModeEffect::Respawn { unit, ticks } => {
+                let entity = world.resource::<EntityIndex>().get(unit);
+                let entity = entity.expect("a dead unit that stays is in the world");
+                let at = now.after(ticks);
+                world.entity_mut(entity).insert(Respawn { at });
+            }
+            ModeEffect::Learn { unit, slot } => {
+                let entity = world.resource::<EntityIndex>().get(unit);
+                let entity = entity.expect("a unit the view read is in the world");
+                let slots = world.get_mut::<AbilitySlots>(entity);
+                slots.expect("a unit with ability slots").learn(slot);
+            }
+        }
     }
 
     /// Checks what the mode names against what it has: its playing teams, of which none is
@@ -254,16 +294,16 @@ impl Mode {
     /// `on_match_start` runs. A timer it sets counts from the start. An error when the call
     /// fails: a match its mode cannot start would run without its rules.
     pub fn start(world: &mut World) -> Result<(), CallError> {
-        let ctx = world.non_send::<ModeCtx>().clone();
-        for structure in &ctx.book().structures {
-            let book = ctx.book();
+        let ctx = world.non_send::<Ctx>().clone();
+        let book = ctx.mode().expect("a match with a mode");
+        for structure in &book.structures {
             let (unit_type, team, pos) = (structure.unit_type, structure.team, structure.pos);
             let entity = book.spawn(world, unit_type, team, pos, ());
             if let Some(path) = structure.path {
                 world.entity_mut(entity).insert(OnPath::new(path));
             }
         }
-        if !ctx.book().schema.hooks.contains(Hook::OnMatchStart) {
+        if !book.schema.hooks.contains(Hook::OnMatchStart) {
             return Ok(());
         }
         let now = world.resource::<SimTick>().start();
@@ -281,8 +321,14 @@ fn mode_inputs(
     mut bodies: Local<'_, Vec<u8>>,
     mut inputs: Local<'_, Vec<Input>>,
 ) {
-    let ctx = world.non_send::<ModeCtx>().clone();
-    if !ctx.book().schema.hooks.contains(Hook::OnModeInput) {
+    let ctx = world.non_send::<Ctx>().clone();
+    if !ctx
+        .mode()
+        .expect("a match with a mode")
+        .schema
+        .hooks
+        .contains(Hook::OnModeInput)
+    {
         return;
     }
     bodies.clear();
@@ -305,7 +351,7 @@ fn mode_inputs(
     Calls::batch(world, &ctx, now, |call| {
         for input in &*inputs {
             let Some(decoded) = ModeInput::decode(&bodies[input.body.clone()], |name| {
-                call.ctx.book().schema.input_type(name)
+                call.book().schema.input_type(name)
             }) else {
                 continue;
             };
@@ -342,7 +388,7 @@ fn run_timers(world: &mut World) {
     if world.resource::<Timers>().due(now).is_none() {
         return;
     }
-    let ctx = world.non_send::<ModeCtx>().clone();
+    let ctx = world.non_send::<Ctx>().clone();
     Calls::batch(world, &ctx, now, |call| {
         while let Some(timer) = call.batch.world().resource::<Timers>().due(now) {
             let name = ImmutableString::from(timer.name.as_str());
@@ -350,7 +396,7 @@ fn run_timers(world: &mut World) {
                 .data
                 .as_ref()
                 .map_or(Dynamic::UNIT, |data| data.to_dynamic(call.ctx.view()));
-            if call.ctx.book().schema.hooks.contains(Hook::OnTimer) {
+            if call.book().schema.hooks.contains(Hook::OnTimer) {
                 let args = (call.ctx.clone(), name, data);
                 match call.run(Pool::Mode, Hook::OnTimer, args) {
                     Ok(()) => {}
@@ -369,8 +415,14 @@ fn run_timers(world: &mut World) {
 /// Runs `on_unit_died` for each death of the tick, in the order they happened, from the mode
 /// pool: with the unit, its killer or `()`, and its assisters.
 fn unit_deaths(world: &mut World) {
-    let ctx = world.non_send::<ModeCtx>().clone();
-    if !ctx.book().schema.hooks.contains(Hook::OnUnitDied) || world.resource::<Deaths>().is_empty()
+    let ctx = world.non_send::<Ctx>().clone();
+    if !ctx
+        .mode()
+        .expect("a match with a mode")
+        .schema
+        .hooks
+        .contains(Hook::OnUnitDied)
+        || world.resource::<Deaths>().is_empty()
     {
         return;
     }

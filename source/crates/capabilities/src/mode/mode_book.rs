@@ -5,11 +5,12 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_math::PlayerSlot;
 use campfire_script::ScriptHost;
-use campfire_script::rhai::{Array, Dynamic, ImmutableString, Map};
+use campfire_script::rhai::ImmutableString;
 use campfire_sim::{IdAllocator, Position, StableId};
 
 use crate::abilities::ability_slots::AbilitySlots;
 use crate::mode::error::ModeError;
+use crate::mode::game_map::{GameMap, NeutralSpawn};
 use crate::mode::map_data::MapData;
 use crate::mode::mode_schema::ModeSchema;
 use crate::mode::mode_setup::{ModeSetup, UnitTypeSetup};
@@ -50,7 +51,7 @@ pub(crate) struct ModeBook {
     kits: ByType<UnitKit>,
     pub(crate) structures: Vec<Structure>,
     /// `ctx.map`, as scripts read it.
-    map: Map,
+    map: GameMap,
 }
 
 /// A structure of the map, names resolved.
@@ -89,7 +90,7 @@ impl ModeBook {
             spawns: Vec::new(),
             kits,
             structures: Vec::new(),
-            map: Map::new(),
+            map: GameMap::default(),
         };
         book.set_map(setup.map, view, paths);
         Ok(book)
@@ -115,22 +116,11 @@ impl ModeBook {
             };
             self.structures.push(structure);
         }
-        let neutral_spawns = map.neutral_spawns.iter().map(|spawn| {
-            let mut entry = Map::new();
-            let unit_type = ImmutableString::from(spawn.unit_type.as_str());
-            entry.insert("unit_type".into(), Dynamic::from(unit_type));
-            let pos = spawn.pos.position().expect(checked);
-            entry.insert("pos".into(), Dynamic::from(pos));
-            Dynamic::from_map(entry)
+        let neutral_spawns = map.neutral_spawns.iter().map(|spawn| NeutralSpawn {
+            unit_type: ImmutableString::from(spawn.unit_type.as_str()),
+            pos: spawn.pos.position().expect(checked),
         });
-        let neutral_spawns: Array = neutral_spawns.collect();
-        let path_names = paths
-            .names()
-            .map(|name| Dynamic::from(ImmutableString::from(name)));
-        self.map
-            .insert("paths".into(), Dynamic::from_array(path_names.collect()));
-        self.map
-            .insert("neutral_spawns".into(), Dynamic::from_array(neutral_spawns));
+        self.map = GameMap::new(paths.names().map(ImmutableString::from), neutral_spawns);
     }
 
     /// Where `team` walks the paths from: the first team from each path's start, the second from
@@ -152,8 +142,8 @@ impl ModeBook {
         self.kits.get(unit_type).copied()
     }
 
-    pub(crate) fn map(&self) -> Dynamic {
-        Dynamic::from_map(self.map.clone())
+    pub(crate) fn map(&self) -> GameMap {
+        self.map.clone()
     }
 
     /// Spawns a unit of `unit_type` on `team` at `pos`, with its kit and `parts`.

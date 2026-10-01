@@ -1,10 +1,12 @@
 use campfire_math::Num;
 use campfire_script::NumError;
 use campfire_script::Raised;
-use campfire_script::rhai::{Dynamic, Engine, INT, ImmutableString};
-use campfire_sim::{Position, StableId};
+use campfire_script::rhai::{Dynamic, INT, ImmutableString};
+use campfire_sim::{Capability, Position, StableId};
 
+use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::error::{ApiError, Checked};
+use crate::scripts::script_api::{ApiOwner, MemberSpec};
 use crate::units::script_view::{UnitRow, View};
 
 /// A unit as a script holds it, `Unit` in scripts: its values as the view read them.
@@ -32,93 +34,200 @@ impl Unit {
             .expect("a handle's unit is in its view")
     }
 
-    /// The core script API of units and positions: the `Unit` handle's fields, and `Pos` with
-    /// `distance_to` and `within`.
-    pub(crate) fn register(engine: &mut Engine) {
-        engine
-            .register_type_with_name::<Unit>("Unit")
-            .register_get("pos", |unit: &mut Unit| unit.row().pos)
-            .register_get("radius", |unit: &mut Unit| unit.row().radius)
-            .register_get("alive", |unit: &mut Unit| unit.row().alive)
-            .register_get("is_avatar", |unit: &mut Unit| {
-                unit.view.is_avatar(&unit.row())
+    /// The `Unit` handle's fields and methods, and `Pos` with `distance_to` and `within`.
+    pub(crate) fn register(api: &mut ApiBuilder<'_>) {
+        Unit::register_fields(api);
+        Unit::register_methods(api);
+        Unit::register_positions(api);
+    }
+
+    fn register_fields(api: &mut ApiBuilder<'_>) {
+        let field = |name, description| MemberSpec::field(ApiOwner::Unit, name, description);
+        api.ty::<Unit>("Unit")
+            .bind(field("pos", "where it stands"), |unit: &mut Unit| {
+                unit.row().pos
             })
-            .register_get("target", |unit: &mut Unit| unit.target())
-            .register_get("attack_range", |unit: &mut Unit| -> Checked<Num> {
-                unit.row()
-                    .attack_range
-                    .ok_or_else(|| ApiError::NoAttack.fail().into())
+            .bind(
+                field("radius", "its body's radius, 0 with no body"),
+                |unit: &mut Unit| unit.row().radius,
+            )
+            .bind(field("alive", "whether it lives"), |unit: &mut Unit| {
+                unit.row().alive
             })
-            .register_get("params", |unit: &mut Unit| UnitParams(unit.clone()))
-            .register_get("level", |unit: &mut Unit| -> Checked<INT> {
-                let level = unit.row().level.ok_or_else(|| ApiError::NoStats.fail())?;
-                Ok(INT::from(level))
-            })
-            .register_get("health", |unit: &mut Unit| -> Checked<Num> {
-                let health = unit.row().health.ok_or_else(|| ApiError::NoHealth.fail())?;
-                Ok(health.current())
-            })
-            .register_get("max_health", |unit: &mut Unit| -> Checked<Num> {
-                let health = unit.row().health.ok_or_else(|| ApiError::NoHealth.fail())?;
-                Ok(health.max())
-            })
-            .register_fn("stat", |unit: &mut Unit, name: &str| {
-                unit.view.stat(&unit.row(), name)
-            })
-            .register_get("team", |unit: &mut Unit| {
+            .bind(
+                field("is_avatar", "whether it is an avatar"),
+                |unit: &mut Unit| unit.view.is_avatar(&unit.row()),
+            )
+            .bind(
+                field("target", "its attack's target, `()` with none"),
+                |unit: &mut Unit| unit.target(),
+            )
+            .bind(
+                field("attack_range", "its attack's range").capability(Capability::Combat),
+                |unit: &mut Unit| -> Checked<Num> {
+                    unit.row()
+                        .attack_range
+                        .ok_or_else(|| ApiError::NoAttack.fail().into())
+                },
+            )
+            .bind(
+                field("params", "its unit type's params, unresolved"),
+                |unit: &mut Unit| UnitParams(unit.clone()),
+            )
+            .bind(
+                field("level", "its level").capability(Capability::Stats),
+                |unit: &mut Unit| -> Checked<INT> {
+                    let level = unit.row().level.ok_or_else(|| ApiError::NoStats.fail())?;
+                    Ok(INT::from(level))
+                },
+            )
+            .bind(
+                field("health", "its health").capability(Capability::Combat),
+                |unit: &mut Unit| -> Checked<Num> {
+                    let health = unit.row().health.ok_or_else(|| ApiError::NoHealth.fail())?;
+                    Ok(health.current())
+                },
+            )
+            .bind(
+                field("max_health", "its health's maximum").capability(Capability::Combat),
+                |unit: &mut Unit| -> Checked<Num> {
+                    let health = unit.row().health.ok_or_else(|| ApiError::NoHealth.fail())?;
+                    Ok(health.max())
+                },
+            )
+            .bind(field("team", "its team's name"), |unit: &mut Unit| {
                 unit.view.team_name(unit.row().team)
             })
-            .register_get("unit_type", |unit: &mut Unit| {
-                unit.view.unit_type_name(&unit.row())
-            })
-            .register_get("path", |unit: &mut Unit| {
-                unit.view.path_name(unit.row().path)
-            })
-            .register_get("owner", |unit: &mut Unit| {
-                unit.row().owner.map_or(Dynamic::UNIT, |slot| {
-                    Dynamic::from_int(INT::from(slot.get()))
-                })
-            })
-            .register_fn("has_tag", |unit: &mut Unit, name: &str| -> Checked<bool> {
+            .bind(
+                field("unit_type", "its unit type's name"),
+                |unit: &mut Unit| unit.view.unit_type_name(&unit.row()),
+            )
+            .bind(
+                field("path", "the name of the path it walks, `()` with none"),
+                |unit: &mut Unit| unit.view.path_name(unit.row().path),
+            )
+            .bind(
+                field("owner", "its player's slot, `()` with none"),
+                |unit: &mut Unit| {
+                    unit.row().owner.map_or(Dynamic::UNIT, |slot| {
+                        Dynamic::from_int(INT::from(slot.get()))
+                    })
+                },
+            )
+            .plan(field("spawn_pos", "where it spawned"));
+        api.ty::<UnitParams>("UnitParams")
+            .index(|params: &mut UnitParams, name: ImmutableString| params.get(&name));
+    }
+
+    fn register_methods(api: &mut ApiBuilder<'_>) {
+        let method = |name, signature, description| {
+            MemberSpec::method(ApiOwner::Unit, name, signature, description)
+        };
+        api.bind(
+            method("stat", "(name)", "its value of a stat the mode declares")
+                .capability(Capability::Stats),
+            |unit: &mut Unit, name: &str| unit.view.stat(&unit.row(), name),
+        )
+        .bind(
+            method("has_tag", "(tag)", "whether its unit type has the tag"),
+            |unit: &mut Unit, name: &str| -> Checked<bool> {
                 let tag = unit.view.tag(name).map_err(ApiError::fail)?;
                 Ok(unit.view.has_tag(&unit.row(), tag))
-            })
-            .register_fn("has_modifier", |unit: &mut Unit, id: &str| {
-                unit.view.has_modifier(&unit.row(), id)
-            })
-            .register_fn("is_enemy_of", |unit: &mut Unit, other: Unit| {
-                unit.row().team.is_enemy_of(other.row().team)
-            })
-            .register_fn("can_see", |unit: &mut Unit, other: Unit| {
-                other.row().seen_by.contains(unit.row().team)
-            })
-            .register_fn("recent_attackers", |unit: &mut Unit, ms: INT| {
-                unit.view.recent_attackers(unit, ms)
-            })
-            .register_fn("==", |a: Unit, b: Unit| a.id == b.id)
-            .register_fn("!=", |a: Unit, b: Unit| a.id != b.id);
-        engine
-            .register_type_with_name::<UnitParams>("UnitParams")
-            .register_indexer_get(|params: &mut UnitParams, name: ImmutableString| {
-                params.get(&name)
-            });
-        engine
-            .register_type_with_name::<Position>("Pos")
-            .register_fn("distance_to", |from: &mut Position, to: Position| {
-                from.get()
-                    .checked_distance(to.get())
-                    .ok_or_else(|| Box::new(Raised::error(NumError::Overflow)))
-            })
-            .register_fn(
-                "within",
-                |from: &mut Position, to: Position, radius: Num| Unit::within(*from, to, radius),
+            },
+        )
+        .bind(
+            method(
+                "has_modifier",
+                "(id)",
+                "whether it carries the modifier of the script's package",
             )
-            .register_fn(
-                "within",
-                |from: &mut Position, to: Position, radius: INT| {
-                    Unit::within(*from, to, ApiError::num(radius)?)
+            .capability(Capability::Stats),
+            |unit: &mut Unit, id: &str| unit.view.has_modifier(&unit.row(), id),
+        )
+        .bind(
+            method(
+                "is_enemy_of",
+                "(unit)",
+                "whether the two are of enemy teams",
+            ),
+            |unit: &mut Unit, other: Unit| unit.row().team.is_enemy_of(other.row().team),
+        )
+        .bind(
+            method("can_see", "(unit)", "whether its team sees the other unit")
+                .capability(Capability::Vision),
+            |unit: &mut Unit, other: Unit| other.row().seen_by.contains(unit.row().team),
+        )
+        .bind(
+            method(
+                "recent_attackers",
+                "(ms)",
+                "the living units that struck it within the last `ms`, rounded up to whole ticks",
+            )
+            .capability(Capability::Combat),
+            |unit: &mut Unit, ms: INT| unit.view.recent_attackers(unit, ms),
+        )
+        .bind(
+            MemberSpec::operator(ApiOwner::Unit, "==", "whether the two are one unit"),
+            |a: Unit, b: Unit| a.id == b.id,
+        )
+        .bind(
+            MemberSpec::operator(ApiOwner::Unit, "!=", "whether the two are two units"),
+            |a: Unit, b: Unit| a.id != b.id,
+        );
+    }
+
+    fn register_positions(api: &mut ApiBuilder<'_>) {
+        let position = |name, signature, description| {
+            MemberSpec::method(ApiOwner::Position, name, signature, description)
+        };
+        let within = position(
+            "within",
+            "(pos, radius)",
+            "whether `pos` is within `radius` on the ground plane, exactly: the test for reach",
+        );
+        api.ty::<Position>("Pos")
+            .bind(
+                position("distance_to", "(pos)", "the distance to `pos`"),
+                |from: &mut Position, to: Position| {
+                    from.get()
+                        .checked_distance(to.get())
+                        .ok_or_else(|| Box::new(Raised::error(NumError::Overflow)))
                 },
-            );
+            )
+            .bind(within, |from: &mut Position, to: Position, radius: Num| {
+                Unit::within(*from, to, radius)
+            })
+            .bind(within, |from: &mut Position, to: Position, radius: INT| {
+                Unit::within(*from, to, ApiError::num(radius)?)
+            })
+            .plan(position(
+                "direction_to",
+                "(pos)",
+                "the unit vector towards `pos`",
+            ));
+        let vector = |name, signature, description| {
+            MemberSpec::method(ApiOwner::Vector, name, signature, description)
+        };
+        api.plan(vector(
+            "rotated_deg",
+            "(degrees)",
+            "the vector turned by `degrees`",
+        ))
+        .plan(MemberSpec::operator(
+            ApiOwner::Vector,
+            "+",
+            "the sum of two vectors",
+        ))
+        .plan(MemberSpec::operator(
+            ApiOwner::Vector,
+            "-",
+            "the difference of two vectors",
+        ))
+        .plan(MemberSpec::operator(
+            ApiOwner::Vector,
+            "*",
+            "the vector scaled by a number",
+        ));
     }
 
     /// Whether `to` is within `radius` of `from` on the ground plane, exactly: as every range and

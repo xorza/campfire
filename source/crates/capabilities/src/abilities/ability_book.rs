@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::abilities::ability_data::{AbilityData, Range};
 use crate::abilities::error::AbilityError;
-use crate::abilities::frame::Frame;
+use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
 use crate::stats::modifier_book::ModifierId;
 use crate::units::filter::Filter;

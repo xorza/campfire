@@ -1,8 +1,8 @@
 # Campfire — Script API
 
-Draft, derived from the reference packages in `source/packages/moba/`: six heroes, the player spells and the 3v3 mode. Every name below is used there; a name the packages do not need is not here. Nothing runs yet.
+Derived from the reference packages in `source/packages/moba/`: six heroes, the player spells and the 3v3 mode. Every name is used there; a name the packages do not need is not here. The [reference](08-script-api-reference.md), which the registry writes, lists every name with its roles, capability and whether the release runs it.
 
-Each call, handle field and hook belongs to the core or to one capability ([Capabilities](04-capabilities/00-overview.md)); a package gets those of the capabilities it declares, and the load checks refuse the rest. The tables below name each one's capability.
+Each call, handle field and hook belongs to the core or to one capability ([Capabilities](04-capabilities/00-overview.md)); a package gets those of the capabilities it declares, and the load checks refuse the rest. The reference names each one's capability.
 
 ## Rules
 
@@ -21,6 +21,22 @@ Each call, handle field and hook belongs to the core or to one capability ([Capa
 - **Randomness** comes only from `ctx.chance` and `ctx.pick`, both from the secret stream. Crits are rolled by `combat`.
 - **Time** is in milliseconds, rounded up to whole ticks.
 - **Rhai names.** Rhai's reserved words cannot be names, including `spawn` and `match`.
+
+## One source
+
+The registry replaced the hand-kept lists the load check read (a table of `ctx` names beside three `ctx` types that each registered their own), which drifted from what the engine runs: a name loaded that no code ran, or that one role ran and another did not.
+
+Established engines keep one source for what scripts may use, and derive everything else from it. Godot's `ClassDB` is filled by the same `bind_method` call that binds the code; the script analyzer and the editor read it, and the build fails when the class reference does not list exactly what it holds. Roblox's API dump is generated from the engine's reflection, each member tagged with the contexts that may use it and the security they need, and the engine enforces those tags when a script calls. Factorio publishes its runtime API as a machine-readable file per stage, which its documentation and tools read. The campfire registry follows them:
+
+- **Registration is declaration.** Every name a script may use, a `ctx` call or value, a handle's field or method, is registered by one builder call that both binds the function to Rhai and records the entry: its owner (`ctx`, unit, modifier, projectile, area, damage, position, number), its name, whether it is a value, a call, a field or a method, the roles that may use it, its capability, its signature and a one-line description. No name exists in one place and not the other.
+- **One `ctx`.** One `ctx` type serves every role. Its frame holds the role, the acting unit, the params it reads, the mode's state as a mode call sees it, the players' resources and the effects it queues; a call is registered once, for every role design 08 gives it, so a call written for abilities runs in a mode script without a second copy. A call given to some roles only checks the frame's role when it runs, as Roblox checks a member's context, so it fails as the API's refusal even if a check above missed it.
+- **One effect queue.** The calls queue effects in one enum; each capability applies its own variants, and they apply in call order, as now.
+- **Hooks, states and data fields** are registered by the code that runs them: the system that calls a hook, with its parameters' names, the system that honours a state, the code that reads a data field. A test holds the registry's data fields equal to the names serde reads for each table, and another holds the registry equal to the functions the engine binds, by name and first parameter.
+- **Planned names.** A name design 08 gives that no code runs yet is registered as planned, for its roles, with no function. The load check accepts it until the release runs it, and the reference lists it as planned, so what loads and does nothing is visible in one place. At the end of the stage the planned names go, and the load check refuses every name the registry does not run.
+- **The checks read the registry.** A `ctx` name loads only for a role it is registered for, of a capability the mode declares. A field or method a script reads on any other value must be one some handle has, one the engine has of its own (Rhai's packages and `Num`'s, which the registry reads from the engine), a key of the script's object-map literals, or one of the script's own functions; the names after `p`, `state` and `params` name data, which the data checks read. A dynamic script gives no type to check against, so the check is by name, and a field read on the wrong handle still fails at run time.
+- **The reference is generated.** The tables of `ctx`, handles, hooks, states and data fields come from the registry, into the [reference](08-script-api-reference.md), with each name's roles, capability, status and description; a test fails when the checked-in reference differs from what the registry writes, as Godot's build does for its class reference. The rules stay prose here.
+
+The registry reads Rhai's own list of functions (`Engine::collect_fn_metadata`, from its `internals` feature) for the engine's built-ins, and a test reads it to hold the registry equal to what the engine binds; Rhai holds no roles, capabilities or status, so the registry is campfire's, and Rhai stays its binding.
 
 ## Filters
 
@@ -89,35 +105,11 @@ Move speed, attack speed and pools follow [Stats](04-capabilities/stats.md#stats
 
 ## Handles
 
-A unit handle has the fields of the capabilities its type uses; reading a field it lacks is a script error.
-
-| Handle | Reads |
-| --- | --- |
-| Unit | `pos`, `radius` (its body's, 0 with no body), `team`, `owner`, `level`, `alive`, `is_avatar`, `target`, `attack_range`, `health`, `max_health`, `stat(name)`, `params` (the unit type's, unresolved), `spawn_pos`, `path`, `unit_type`, `has_tag(tag)`, `has_modifier(id)`, `is_enemy_of(unit)`, `can_see(unit)`, `recent_attackers(ms)` |
-| Modifier `m` | `carrier`, `source`, `stacks` (writable), `state` (writable) |
-| Projectile | `source`, `pos`, `distance` flown, `state` (writable) |
-| Area | `source`, `pos` |
-| Damage `d` | `source` (`()` when gone or none), `target`, `amount` (raw in `calc_damage`, final in a hook), `kind` (one of the mode's `damage_kinds`), `attack`, `crit`, `extra` (an attack from `ctx.attack_hit`), `ability` (`""` when none) ([Combat](04-capabilities/combat.md#damage-and-death)) |
-| Position, vector | `distance_to`, `within(pos, radius)` (on the ground plane and exact, as every range: the test for reach), `direction_to`, `rotated_deg`, `+`, `-`, `*` |
+A unit handle has the fields of the capabilities its type uses; reading a field it lacks is a script error. The [reference](08-script-api-reference.md) lists each handle's fields and methods.
 
 ## `ctx`
 
-| Group | Capability | Calls |
-| --- | --- | --- |
-| Values | core; `abilities` for `range`, `charge`, `origin`; `navigation` for `map` | `p.<name>`, `range`, `charge`, `origin`, `state` (mode), `map` (`paths`, `neutral_spawns`), `teams` (playing teams) |
-| Queries | core; `vision` for the visible ones | `find(of, pos, radius, filter)`, `find_visible(of, pos, radius, filter)`, `nearest_visible(of, radius, filter)`, `avatars()`, `avatars(team)`, `units_tagged(tag)`, `enemy_team(team)`, `avatar_available(player, id)` |
-| Random | core | `chance(p)`, `pick(list)` |
-| Combat | `combat` | `damage(target, amount, kind)`, `heal(unit, amount)`, `restore(unit, amount)` (the unit's resource), `attack_hit(target)` |
-| Modifiers | `stats` | `add_modifier(unit, id)` or `(unit, id, duration_ms)`, returns the modifier; `remove(handle)` removes a modifier, projectile or area |
-| Crowd control | `stats` | `stun(unit, ms)`, `slow(unit, fraction, ms)`, `knock_up(unit, ms)`, `knock_back(unit, from, distance, ms)` |
-| Movement | `navigation` | `dash(unit, to, speed)`, `teleport(unit, pos)` |
-| Projectiles | `projectiles` | `projectile(from, to)` or `(from, to, overrides)`: the ability's `projectile` data; `to` a direction flies a line, a unit homes, a position flies to it; `from` a unit or a position |
-| Areas | `areas` | `area(pos)`: the ability's `area` data |
-| Vision | `vision` | `reveal(pos, radius, ms)` for the source's team |
-| Abilities | `abilities` | `reduce_cooldown(unit, id, ms)`, `reduce_cooldowns(unit, fraction)` (basic abilities), `add_charge(unit, id)` |
-| Progress | core; `stats` for experience | `add_resource(player, name, amount)`, `add_xp(avatar, amount)` |
-| Orders (AI) | `orders` | `order_attack(unit, target)`, `order_move(unit, pos)`, `order_follow_path(unit)`, `order_reset(unit)` (walk home, heal, drop target) |
-| Mode | core; `combat` for `respawn`, `abilities` for `learn` | `timer(name, ms, repeat, data)`, `end(team)` (that team wins; `end(())` is a draw; once), `spawn_avatars()`, `spawn_unit(type, team, pos)`, `spawn_group(team, path, types)`, `respawn(unit, ms)`, `learn(avatar, slot)` (the ability in `slot` a rank more, up to its last; an avatar's own abilities spawn unlearned), `choose_avatar(player, id)`, `choose_loadout(player, ids)` |
+The [reference](08-script-api-reference.md) lists every value and call of `ctx`, with the roles it serves.
 
 **Walking.** A unit a move order, a chase or a path sends somewhere walks a route there on the map's `[navigation]` cells: round structures, then round units that stand in its way or keep it back ([Navigation](04-capabilities/navigation.md#movement)). A goal it cannot stand on ends its route at the nearest place it can.
 
@@ -127,12 +119,7 @@ A unit handle has the fields of the capabilities its type uses; reading a field 
 
 ## Hooks
 
-| Role | Capability | Hooks |
-| --- | --- | --- |
-| Ability | `abilities`, `projectiles`, `areas` | `on_cast(ctx, caster, target)` (target: a unit, a position or `()`; a script that serves only the ability's modifiers has none, and a cast then runs no script), `on_channel_tick(ctx, caster)`, `on_dash_end(ctx, unit, target)`, `on_projectile_hit(ctx, proj, target)`, `on_projectile_end(ctx, proj)`, `on_area_trigger(ctx, area, units)` |
-| Modifier | `stats`, `combat` for the carrier's events | `on_interval(ctx, m)`, and the carrier's events: `on_attack(ctx, m, target)`, `on_attack_hit(ctx, m, d)`, `on_damage_taken(ctx, m, d)`, `on_kill(ctx, m, victim)`, `on_takedown(ctx, m, victim)` |
-| Mode | core; `combat` for `on_unit_died` and `calc_damage` | `on_match_start(ctx)`, `on_mode_input(ctx, player, name, value)`, `on_timer(ctx, name, data)`, `on_player_join(ctx, player)`, `on_player_leave(ctx, player)`, `on_unit_died(ctx, unit, killer, assisters)`, `calc_damage(ctx, d)` |
-| AI | `orders` | `think(ctx, unit)` |
+The [reference](08-script-api-reference.md) lists every hook, with its parameters, role and capability.
 
 An avatar's passive is a modifier it always carries. `combat` finds takedown participants once, with the mode's `assist_window_ms`: they receive `on_takedown`, and the mode receives them as `assisters`.
 
@@ -144,9 +131,9 @@ A package loads only when all of these pass:
 - The mode's unit types declare at most 64 tags together, and no avatar has the name of one of them.
 - Every script is referenced by data. Every function named like a hook, a hook's name or any name that starts with `on_`, is a hook of a role the script serves, with the hook's parameters, so a misspelled hook is an error, not a hook that never runs.
 - Every modifier id, `ctx.p` name, `{ param }` reference, stat, state, filter and damage kind that a script or data file names exists. Scripts are read with `AST::walk`, from Rhai's `internals` feature.
-- Every `ctx` call is one this API defines, of a capability the mode declares, for the script's role.
+- Every `ctx` name is one the registry holds, as a value or a call as the script uses it, for a role the script serves, of a capability the mode declares. Every field or method the script reads on another value is one the registry or the engine has, a key of its object maps, or one of its functions ([One source](#one-source)).
 - Every value of `ctx` is a variable named `ctx`, so the checks see all its uses: every hook's first parameter is named `ctx`; `ctx` is used only as `ctx.<name>` or as a whole argument of a call, not of an operator or a function pointer's `call` or `curry`; a function of the script that receives it names that parameter `ctx`; and no `let`, `const` or `for` binds a new `ctx`.
-- Every capability a package's data or scripts use is declared, and each builds on the ones it needs. A capability the release does not run yet loads: its data is checked, and a call to it fails at run time.
+- Every capability a package's data or scripts use is declared, and each builds on the ones it needs. A name the registry plans loads until the release runs it, and fails when a script uses it; the reference lists each.
 - The manifest's capabilities, tick rates, pools and move speed cap hold, where the manifest is read. Every package targets this release, and every projectile flies faster than the cap.
 - The map and the teams name only what the mode has: every structure's and neutral spawn's unit type, team and path; every point of the map within its bounds; every avatar spawn, neutral spawn and waypoint a place the widest unit that walks may stand among the structures, and every waypoint reachable from the one before ([Navigation](04-capabilities/navigation.md#map-checks)); an avatar spawn for each playing team; no team named `neutral`, and no two teams, paths, slots of an avatar or entries of the mode's loadout packages alike.
 

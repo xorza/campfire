@@ -5,18 +5,18 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::{EntityRef, Mut, World};
 use campfire_math::Num;
-use campfire_script::ScriptHost;
 use campfire_sim::{EntityIndex, Position, SimRng, SimSet, SimTick, StableId, StateRegistry, Tick};
 
+use crate::abilities::ability_book::AbilityId;
 use crate::abilities::resource_pool::ResourcePool;
 use crate::combat::assist_window::AssistWindow;
 use crate::combat::attack_kind::AttackKind;
 use crate::combat::attack_state::AttackState;
 use crate::combat::attack_stats::AttackStats;
+use crate::combat::combat_effect::CombatEffect;
 use crate::combat::combat_event::CombatEvent;
 use crate::combat::combat_events::CombatEvents;
 use crate::combat::damage::{Damage, DamageCause};
-use crate::combat::damage_handle::DamageHandle;
 use crate::combat::damage_queue::DamageQueue;
 use crate::combat::damage_weigher::DamageWeigher;
 use crate::combat::dead::Dead;
@@ -45,7 +45,9 @@ pub(crate) mod assist_window;
 pub(crate) mod attack_kind;
 pub(crate) mod attack_state;
 pub(crate) mod attack_stats;
+pub(crate) mod combat_api;
 pub(crate) mod combat_data;
+pub(crate) mod combat_effect;
 pub(crate) mod combat_event;
 pub(crate) mod combat_events;
 pub(crate) mod combatant;
@@ -99,9 +101,6 @@ impl Combat {
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         if let Some(view) = world.get_non_send::<View>() {
             view.add_source(fill_row);
-        }
-        if let Some(mut host) = world.get_non_send_mut::<ScriptHost>() {
-            DamageHandle::register(host.engine_mut());
         }
         world.insert_resource(DamageQueue::default());
         world.insert_resource(AttackKind::default());
@@ -530,6 +529,49 @@ impl Combat {
             Landed::Killed
         } else {
             Landed::Taken
+        }
+    }
+
+    /// Applies `effect`, which a call queued from `source`, by `ability`, at chain depth
+    /// `depth`: damage joins the queue, a heal or a restore applies at once, and an extra attack
+    /// queues the source's attack damage, when it still has an attack.
+    pub(crate) fn apply_effect(
+        world: &mut World,
+        effect: CombatEffect,
+        source: Option<StableId>,
+        ability: Option<AbilityId>,
+        depth: u8,
+    ) {
+        let damage = |target, amount, kind, cause| Damage {
+            source,
+            target,
+            amount,
+            kind,
+            cause,
+            ability,
+            depth,
+        };
+        match effect {
+            CombatEffect::Damage {
+                target,
+                amount,
+                kind,
+            } => {
+                let damage = damage(target, amount, kind, DamageCause::Effect);
+                world.resource_mut::<DamageQueue>().push(damage);
+            }
+            CombatEffect::Heal { unit, amount } => Combat::heal(world, unit, amount),
+            CombatEffect::Restore { unit, amount } => Combat::restore(world, unit, amount),
+            CombatEffect::AttackHit { target } => {
+                let index = world.resource::<EntityIndex>();
+                let entity = source.and_then(|source| index.get(source));
+                let Some(stats) = entity.and_then(|entity| world.get::<AttackStats>(entity)) else {
+                    return;
+                };
+                let kind = world.resource::<AttackKind>().0;
+                let hit = damage(target, stats.damage(), kind, DamageCause::ExtraAttack);
+                world.resource_mut::<DamageQueue>().push(hit);
+            }
         }
     }
 

@@ -39,16 +39,40 @@ impl Capability {
         Capability::Persistence,
         Capability::Mode,
     ];
+
+    /// The capability as a manifest names it.
+    pub const fn name(self) -> &'static str {
+        match self {
+            Capability::Combat => "combat",
+            Capability::Stats => "stats",
+            Capability::Abilities => "abilities",
+            Capability::Projectiles => "projectiles",
+            Capability::Areas => "areas",
+            Capability::Orders => "orders",
+            Capability::Character => "character",
+            Capability::Hitscan => "hitscan",
+            Capability::Navigation => "navigation",
+            Capability::Vision => "vision",
+            Capability::Physics => "physics",
+            Capability::Persistence => "persistence",
+            Capability::Mode => "mode",
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    use serde::de::value::{Error as ValueError, StrDeserializer};
+
     use super::*;
 
     #[test]
-    fn all_lists_each_capability_at_its_index() {
+    fn all_lists_each_capability_at_its_index_and_names_it_as_a_manifest_does() {
         for (index, capability) in Capability::ALL.into_iter().enumerate() {
             assert_eq!(capability as usize, index, "{capability:?}");
+            let name = StrDeserializer::<ValueError>::new(capability.name());
+            let named = Capability::deserialize(name);
+            assert_eq!(named, Ok(capability));
         }
     }
 }

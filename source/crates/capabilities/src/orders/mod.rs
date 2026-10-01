@@ -21,11 +21,12 @@ use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::PathWalker;
 use crate::navigation::paths::Paths;
 use crate::orders::ai::Ai;
-use crate::orders::ai_ctx::{AiCtx, AiOrder};
 use crate::orders::ai_data::AiData;
+use crate::orders::ai_order::AiOrder;
 use crate::orders::error::AiError;
 use crate::orders::next_think::NextThink;
 use crate::orders::order::{Action, Order};
+use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
@@ -33,17 +34,17 @@ use crate::scripts::script_batch::ScriptBatch;
 use crate::units::body::Body;
 use crate::units::by_type::ByType;
 use crate::units::owner::Owner;
-use crate::units::script_view::View;
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
 use crate::values::bounds::Bounds;
 
 pub(crate) mod ai;
-pub(crate) mod ai_ctx;
 pub(crate) mod ai_data;
+pub(crate) mod ai_order;
 pub(crate) mod error;
 pub(crate) mod next_think;
 pub(crate) mod order;
+pub(crate) mod orders_api;
 
 /// The systems of `orders`, for the mode to order its own against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -73,12 +74,9 @@ impl Orders {
                 .before(CombatSet::Attack),
         ));
         registry.register_component::<NextThink>();
-        let Some(mut host) = world.get_non_send_mut::<ScriptHost>() else {
+        if !world.contains_non_send::<Ctx>() {
             return;
-        };
-        AiCtx::register(host.engine_mut());
-        let ctx = AiCtx::new(world.non_send::<View>().clone());
-        world.insert_non_send(ctx);
+        }
         world.insert_resource(ByType::<Ai>::default());
         schedule.add_systems(think.in_set(SimSet::Think));
     }
@@ -104,6 +102,22 @@ impl Orders {
             .resource_mut::<ByType<Ai>>()
             .set(unit_type, Ai { script, period });
         Ok(())
+    }
+
+    /// Applies an order the AI call of `unit` queued, which the call checked against the units
+    /// as the phase began; no unit dies within Think.
+    pub(crate) fn apply_order(world: &mut World, unit: StableId, order: AiOrder) {
+        let target = match order {
+            AiOrder::Attack { target } => Some(target),
+            AiOrder::FollowPath => None,
+        };
+        let entity = world
+            .resource::<EntityIndex>()
+            .get(unit)
+            .expect("a unit that thinks lives");
+        if let Some(mut attack) = world.get_mut::<AttackState>(entity) {
+            attack.set_target(target);
+        }
     }
 }
 
@@ -223,7 +237,7 @@ fn think(world: &mut World, mut due: Local<'_, Vec<Due>>) {
         return;
     }
     due.sort_unstable_by_key(|due| (due.since, due.id));
-    let ctx = world.non_send::<AiCtx>().clone();
+    let ctx = world.non_send::<Ctx>().clone();
     ScriptBatch::run(world, ctx.view(), |batch| {
         for &Due {
             since,
@@ -237,13 +251,11 @@ fn think(world: &mut World, mut due: Local<'_, Vec<Due>>) {
             let Some(unit) = ctx.view().unit(id) else {
                 continue;
             };
-            ctx.begin(id);
+            ctx.frame().begin_think(batch.world(), id);
             ctx.view().set_caller(0);
             let next = match batch.call(Pool::Think, script, Hook::Think, (ctx.clone(), unit)) {
                 Ok(_) => {
-                    for order in ctx.frame().orders.drain(..) {
-                        apply_ai_order(batch.world(), id, order);
-                    }
+                    ctx.apply(batch.world(), now);
                     now.after(period)
                 }
                 Err(ScriptError::TickBudget) => since,
@@ -258,22 +270,6 @@ fn think(world: &mut World, mut due: Local<'_, Vec<Due>>) {
                 .insert(NextThink::new(next));
         }
     });
-}
-
-/// Applies an order the AI call of `unit` queued, which the call checked against the units as
-/// the phase began; no unit dies within Think.
-fn apply_ai_order(world: &mut World, unit: StableId, order: AiOrder) {
-    let target = match order {
-        AiOrder::Attack { target } => Some(target),
-        AiOrder::FollowPath => None,
-    };
-    let entity = world
-        .resource::<EntityIndex>()
-        .get(unit)
-        .expect("a unit that thinks lives");
-    if let Some(mut attack) = world.get_mut::<AttackState>(entity) {
-        attack.set_target(target);
-    }
 }
 
 /// Sends each path walker with no attack target to the waypoint it walks to, and on to the next

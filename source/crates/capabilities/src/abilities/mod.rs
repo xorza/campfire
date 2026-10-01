@@ -17,15 +17,12 @@ use crate::abilities::ability_book::{Ability, AbilityBook, AbilityId, Aim, RankV
 use crate::abilities::ability_data::{AbilityData, Range, Targeting};
 use crate::abilities::ability_slots::{AbilitySlots, CastTarget, Casting};
 use crate::abilities::error::AbilityError;
-use crate::abilities::frame::Frame;
-use crate::abilities::modifier_hooks::ModifierHooks;
 use crate::abilities::resource_pool::ResourcePool;
-use crate::abilities::script_api::Ctx;
 use crate::combat::CombatSet;
-use crate::combat::combat_events::CombatEvents;
 use crate::combat::dead::Dead;
 use crate::combat::targets::Targets;
 use crate::orders::OrdersSet;
+use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
@@ -42,14 +39,12 @@ use crate::units::team::Team;
 use crate::units::unit::Unit;
 use crate::units::unit_type::UnitType;
 
+pub(crate) mod abilities_api;
 pub(crate) mod ability_book;
 pub(crate) mod ability_data;
 pub(crate) mod ability_slots;
 pub(crate) mod error;
-pub(crate) mod frame;
-pub(crate) mod modifier_hooks;
 pub(crate) mod resource_pool;
-pub(crate) mod script_api;
 
 /// The `abilities` capability: abilities in slots, cast through their checks, with the effect a
 /// script describes.
@@ -63,18 +58,10 @@ impl Abilities {
     /// script host, so without the core's scripts, as on a client, which predicts no casts, it
     /// installs nothing.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
-        let Some(mut host) = world.get_non_send_mut::<ScriptHost>() else {
+        if !world.contains_non_send::<Ctx>() {
             return;
-        };
-        Ctx::register(host.engine_mut());
-        let view = world.non_send::<View>().clone();
-        view.add_source(fill_row);
-        let ctx = Ctx::new(view);
-        let hooks = ModifierHooks::new(ctx.clone());
-        world.insert_non_send(CombatEvents::new(move |batch, event| {
-            hooks.hear(batch, event);
-        }));
-        world.insert_non_send(ctx);
+        }
+        world.non_send::<View>().add_source(fill_row);
         world.insert_resource(AbilityBook::default());
         schedule.add_systems((
             start_casts.in_set(SimSet::Act),
@@ -399,7 +386,7 @@ fn resolve(batch: &mut ScriptBatch<'_>, ctx: &Ctx, now: Tick, caster: StableId, 
     let outcome = match prepared {
         Ok(None) => Ok(()),
         Ok(Some(mut prepared)) => run(batch, ctx, &mut prepared).map(|()| {
-            apply(batch.world(), &mut ctx.frame(), now, entity, &prepared);
+            apply(batch.world(), ctx, now, entity, &prepared);
         }),
         Err(error) => Err(error),
     };
@@ -415,8 +402,8 @@ fn resolve(batch: &mut ScriptBatch<'_>, ctx: &Ctx, now: Tick, caster: StableId, 
 
 /// Applies a cast that ran: the effects it queued in `frame` and its handle writes, its cost and
 /// its cooldown.
-fn apply(world: &mut World, frame: &mut Frame, now: Tick, entity: Entity, prepared: &Prepared) {
-    frame.apply(world);
+fn apply(world: &mut World, ctx: &Ctx, now: Tick, entity: Entity, prepared: &Prepared) {
+    ctx.apply(world, now);
     if let Some(mut pool) = world.get_mut::<ResourcePool>(entity) {
         pool.spend(prepared.cost);
     }
@@ -466,7 +453,7 @@ fn prepare(
             .map_or(Dynamic::UNIT, Dynamic::from),
     };
     ctx.frame()
-        .begin_cast(checked.id, checked.rank, caster.id)?;
+        .begin_cast(world, checked.id, checked.rank, caster.id)?;
     view.set_caller(checked.ability.package);
     let pool = unit
         .get::<Owner>()

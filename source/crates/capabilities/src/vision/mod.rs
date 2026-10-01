@@ -18,6 +18,7 @@ use crate::vision::vision_grid::VisionGrid;
 
 pub(crate) mod seen_by;
 pub(crate) mod sight;
+pub(crate) mod vision_api;
 pub(crate) mod vision_data;
 pub(crate) mod vision_grid;
 

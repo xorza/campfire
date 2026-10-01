@@ -4,17 +4,17 @@ use bevy_ecs::world::World;
 use campfire_script::{ScriptError, ScriptHost, ScriptId};
 use campfire_sim::{SimSet, StateRegistry, TickRate};
 
+use crate::scripts::ctx::Ctx;
 use crate::scripts::match_scripts::MatchScripts;
+use crate::scripts::script_api::ScriptApi;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
-use crate::stats::modifier_handle::ModifierHandle;
 use crate::units::body::Body;
 use crate::units::error::UnitTypeError;
 use crate::units::owner::Owner;
 use crate::units::script_view::View;
 use crate::units::spawn_point::SpawnPoint;
 use crate::units::team::Team;
-use crate::units::unit::Unit;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
 
@@ -77,10 +77,10 @@ impl Units {
             return;
         };
         view.set_damage_kinds(damage_kinds);
+        world.insert_non_send(Ctx::new(view.clone()));
         world.insert_non_send(view);
         let mut host = ScriptHost::new(limits.per_call);
-        Unit::register(host.engine_mut());
-        ModifierHandle::register(host.engine_mut());
+        ScriptApi::bind(host.engine_mut());
         world.insert_non_send(host);
         world.insert_non_send(ScriptFailures::default());
         world.insert_resource(ScriptBudgets::new(limits, players));

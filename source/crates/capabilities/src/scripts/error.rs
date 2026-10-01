@@ -47,6 +47,10 @@ pub enum ApiError {
     ChainTooDeep,
     /// A heal or restore of a negative amount.
     NegativeHeal,
+    /// A call of a role the running script does not serve.
+    NotForRole,
+    /// A name that reads the mode, in a match with none.
+    NoMode,
     /// A change from a pure hook's `ctx`, which only reads.
     PureCall,
     /// A `calc_damage` that returns no number.
@@ -165,6 +169,8 @@ impl fmt::Display for ApiError {
             ApiError::UnknownStat => "stat the mode does not declare",
             ApiError::ChainTooDeep => "a chain of combat events 16 deep",
             ApiError::NegativeHeal => "amount to heal or restore is negative",
+            ApiError::NotForRole => "the call is not one of the script's role",
+            ApiError::NoMode => "the match has no mode",
             ApiError::PureCall => "a pure hook changes nothing",
             ApiError::NotAnAmount => "calc_damage returns no number",
             ApiError::UnknownModifier => "modifier the package does not declare",

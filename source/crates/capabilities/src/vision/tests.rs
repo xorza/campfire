@@ -8,6 +8,7 @@ use campfire_sim::{Capability, EntityIndex, IdAllocator, SimUpdate, StableId, Ti
 
 use super::*;
 use crate::capability_set::internals::TestMatch;
+use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
 use crate::scripts::match_scripts::MatchScripts;
 use crate::scripts::script_limits::ScriptLimits;
@@ -15,16 +16,6 @@ use crate::units::unit::Unit;
 use crate::values::bounds::Bounds;
 
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
-
-/// A `ctx` with the queries only.
-#[derive(Debug, Clone)]
-struct Probe(View);
-
-impl Probe {
-    const fn view(&self) -> &View {
-        &self.0
-    }
-}
 
 fn num(value: i64) -> Num {
     Num::from_int(value).unwrap()
@@ -61,8 +52,6 @@ impl Scene {
             registry,
         } = TestMatch::new(&declared, RATE, Some(scripts));
         world.add_schedule(schedule);
-        let engine = world.non_send_mut::<ScriptHost>().into_inner().engine_mut();
-        View::register_queries::<Probe>(engine, Probe::view);
         let bounds = Bounds::new([num(-10), num(-10)], [num(10), num(10)]).unwrap();
         let grid = Grid::new(num(1), bounds).unwrap();
         Vision::load_grid(&mut world, grid, 3);
@@ -89,13 +78,13 @@ impl Scene {
 
     /// `probe(ctx, of)` in `source`, run on the units as they are now.
     fn probe(&mut self, source: &str, of: StableId) -> Result<Dynamic, CallError> {
-        let view = self.world.non_send::<View>().clone();
-        view.read(&self.world);
+        let ctx = self.world.non_send::<Ctx>().clone();
+        ctx.view().read(&self.world);
+        let unit = ctx.view().unit(of).unwrap();
         let mut host = self.world.non_send_mut::<ScriptHost>();
         let script = host.compile(source).unwrap();
-        let unit = view.unit(of).unwrap();
         let mut budget = Budget::new(u64::MAX);
-        host.call(&mut budget, script, "probe", (Probe(view), unit))
+        host.call(&mut budget, script, "probe", (ctx, unit))
             .map_err(CallError::from_script)
     }
 

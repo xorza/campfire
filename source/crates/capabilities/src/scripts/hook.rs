@@ -35,6 +35,24 @@ pub enum ScriptRole {
     Ai,
 }
 
+impl ScriptRole {
+    pub const ALL: [ScriptRole; 4] = [
+        ScriptRole::Ability,
+        ScriptRole::Modifier,
+        ScriptRole::Mode,
+        ScriptRole::Ai,
+    ];
+
+    pub const fn name(self) -> &'static str {
+        match self {
+            ScriptRole::Ability => "ability",
+            ScriptRole::Modifier => "modifier",
+            ScriptRole::Mode => "mode",
+            ScriptRole::Ai => "AI",
+        }
+    }
+}
+
 impl Hook {
     pub const ALL: [Hook; 20] = [
         Hook::OnCast,
@@ -167,18 +185,14 @@ impl Hook {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scripts::ctx_entry::{CtxEntry, CtxKind};
     use crate::values::relation::Relation;
 
     #[test]
-    fn every_hook_and_ctx_name_is_found_by_its_name_alone() {
+    fn every_hook_is_found_by_its_name_alone() {
         for hook in Hook::ALL {
             assert_eq!(Hook::named(hook.name()), Some(hook));
         }
         assert_eq!(Hook::named("on_cats"), None);
-        for entry in CtxEntry::ALL {
-            assert_eq!(CtxEntry::named(entry.name), Some(*entry));
-        }
         for relation in [Relation::Enemies, Relation::Allies, Relation::All] {
             assert_eq!(Relation::named(relation.name()), Some(relation));
         }
@@ -188,15 +202,5 @@ mod tests {
         assert_eq!(think.capability(), Some(Capability::Orders));
         assert_eq!(Hook::OnModeInput.params(), 4);
         assert_eq!(Hook::OnTimer.capability(), None);
-        let timer = CtxEntry::named("timer").unwrap();
-        assert_eq!(
-            (timer.kind, timer.role),
-            (CtxKind::Call, Some(ScriptRole::Mode))
-        );
-        let map = CtxEntry::named("map").unwrap();
-        assert_eq!(
-            (map.kind, map.capability),
-            (CtxKind::Value, Some(Capability::Navigation))
-        );
     }
 }

@@ -1,6 +1,6 @@
 use std::ptr;
 
-use campfire_capabilities::CtxKind;
+use campfire_capabilities::MemberKind;
 use campfire_script::rhai::{AST, ASTNode, Expr, FnCallExpr, Stmt};
 
 use crate::error::CtxMisuse;
@@ -27,6 +27,10 @@ pub(crate) struct ScriptFacts {
     pub(crate) filters: Vec<String>,
     /// The kinds `ctx.damage` takes.
     pub(crate) damage_kinds: Vec<String>,
+    /// Each field or method it reads on a value other than `ctx`, but the names after `p`,
+    /// `state` and `params`, which name data; and the keys of its object-map literals.
+    pub(crate) members: Vec<MemberUse>,
+    pub(crate) map_keys: Vec<String>,
     /// The first use of `ctx` that breaks the convention, if any.
     pub(crate) ctx_misuse: Option<CtxMisuse>,
 }
@@ -43,8 +47,19 @@ pub(crate) struct Function {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CtxUse {
     pub(crate) name: String,
-    pub(crate) kind: CtxKind,
+    pub(crate) kind: MemberKind,
 }
+
+/// A name read on a value, as a field or as a method.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct MemberUse {
+    pub(crate) name: String,
+    pub(crate) kind: MemberKind,
+}
+
+/// The names after which a property names data, not a member: `ctx.p.<param>`,
+/// `ctx.state.<field>`, `m.state.<field>`, `unit.params.<param>`.
+const DATA_ACCESSORS: [&str; 3] = ["p", "state", "params"];
 
 impl ScriptFacts {
     /// The facts of `ast`. `ctx` is the variable of that name, as every hook's first parameter
@@ -67,9 +82,18 @@ impl ScriptFacts {
             .sort_unstable_by(|a, b| (&a.name, a.params).cmp(&(&b.name, b.params)));
         ast.walk(&mut |path: &[ASTNode<'_>]| {
             match path.last() {
+                Some(ASTNode::Expr(Expr::Map(map, _))) => {
+                    let keys = map.0.iter().map(|(key, _)| key.name.to_string());
+                    facts.map_keys.extend(keys);
+                }
                 Some(ASTNode::Expr(Expr::Dot(dot, ..))) => {
-                    if variable(&dot.lhs) == Some(CTX) {
-                        facts.read_ctx(&dot.rhs);
+                    let link = matches!(dot.lhs, Expr::Property(..) | Expr::MethodCall(..));
+                    if !link {
+                        let on_ctx = variable(&dot.lhs) == Some(CTX);
+                        if on_ctx {
+                            facts.read_ctx(&dot.rhs);
+                        }
+                        facts.read_chain(&dot.rhs, on_ctx, false);
                     }
                     if let Expr::MethodCall(call, _) = &dot.rhs {
                         facts.read_method(call);
@@ -102,7 +126,7 @@ impl ScriptFacts {
             Expr::MethodCall(call, _) => {
                 self.ctx_names.push(CtxUse {
                     name: call.name.to_string(),
-                    kind: CtxKind::Call,
+                    kind: MemberKind::Call,
                 });
                 let literal = |at: usize| call.args.get(at).and_then(string);
                 let (list, at) = match call.name.as_str() {
@@ -131,6 +155,38 @@ impl ScriptFacts {
         }
     }
 
+    /// The members a chain of links reads, from `link`: its first is a name of `ctx` when
+    /// `on_ctx`, and data when `data`, as after `p`; neither is a member.
+    fn read_chain(&mut self, link: &Expr, on_ctx: bool, data: bool) {
+        let read = |facts: &mut ScriptFacts, link: &Expr| -> bool {
+            let (name, kind) = match link {
+                Expr::Property(property, _) => (property.2.as_str(), MemberKind::Field),
+                Expr::MethodCall(call, _) => (call.name.as_str(), MemberKind::Method),
+                _ => return false,
+            };
+            if !on_ctx && !data {
+                facts.members.push(MemberUse {
+                    name: name.to_owned(),
+                    kind,
+                });
+            }
+            kind == MemberKind::Field && DATA_ACCESSORS.contains(&name)
+        };
+        match link {
+            Expr::Dot(next, ..) => {
+                let next_data = read(self, &next.lhs);
+                self.read_chain(&next.rhs, false, next_data);
+            }
+            Expr::Index(next, ..) => {
+                read(self, &next.lhs);
+                if let Expr::Dot(element, ..) = &next.rhs {
+                    self.read_chain(&element.rhs, false, false);
+                }
+            }
+            link => drop(read(self, link)),
+        }
+    }
+
     /// What a method called on any value uses: `has_modifier` and `stat` take names.
     fn read_method(&mut self, call: &FnCallExpr) {
         let list = match call.name.as_str() {
@@ -145,7 +201,7 @@ impl ScriptFacts {
         if !name.is_empty() {
             self.ctx_names.push(CtxUse {
                 name: name.to_owned(),
-                kind: CtxKind::Value,
+                kind: MemberKind::Value,
             });
         }
     }
@@ -242,7 +298,7 @@ fn helper(ctx, gold) {}
             .iter()
             .map(|used| (used.name.as_str(), used.kind))
             .collect();
-        let (call, value) = (CtxKind::Call, CtxKind::Value);
+        let (call, value) = (MemberKind::Call, MemberKind::Value);
         assert_eq!(
             names,
             [

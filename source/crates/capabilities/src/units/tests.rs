@@ -27,21 +27,12 @@ use crate::stats::level::Level;
 use crate::stats::stat::{EngineStat, Stat};
 use crate::stats::unit_stats::UnitStats;
 use crate::units::path_id::PathId;
+use crate::units::unit::Unit;
 use crate::values::declared_name::DeclaredName;
 use crate::values::scalar::Scalar;
 
 /// The MOBA's 30 ticks a second.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
-
-/// A `ctx` with the queries only.
-#[derive(Debug, Clone)]
-struct Probe(View);
-
-impl Probe {
-    const fn view(&self) -> &View {
-        &self.0
-    }
-}
 
 fn num(value: i64) -> Num {
     Num::from_int(value).unwrap()
@@ -78,7 +69,7 @@ impl Scene {
             damage_kinds: Rc::from([]),
         };
         let TestMatch {
-            mut world,
+            world,
             schedule: _,
             registry: _,
         } = TestMatch::new(
@@ -86,9 +77,6 @@ impl Scene {
             RATE,
             Some(scripts),
         );
-        let engine = world.non_send_mut::<ScriptHost>().into_inner().engine_mut();
-        engine.register_type_with_name::<Probe>("Probe");
-        View::register_queries::<Probe>(engine, Probe::view);
         Scene { world }
     }
 
@@ -116,13 +104,13 @@ impl Scene {
 
     /// `probe(ctx, of)` in `source`, run on the units as they are now.
     fn probe(&mut self, source: &str, of: StableId) -> Result<Dynamic, CallError> {
-        let view = self.world.non_send::<View>().clone();
-        view.read(&self.world);
+        let ctx = self.world.non_send::<Ctx>().clone();
+        ctx.view().read(&self.world);
+        let unit = ctx.view().unit(of).unwrap();
         let mut host = self.world.non_send_mut::<ScriptHost>();
         let script = host.compile(source).unwrap();
-        let unit = view.unit(of).unwrap();
         let mut budget = Budget::new(u64::MAX);
-        host.call(&mut budget, script, "probe", (Probe(view), unit))
+        host.call(&mut budget, script, "probe", (ctx, unit))
             .map_err(CallError::from_script)
     }
 

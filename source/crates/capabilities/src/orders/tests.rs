@@ -20,6 +20,7 @@ use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::units::Units;
 use crate::units::path_id::PathId;
+use crate::units::script_view::View;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::scalar::Scalar;
 

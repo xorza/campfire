@@ -6,14 +6,14 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use campfire_content::PackagePath;
 use campfire_math::{Num, Vec3};
-use campfire_script::ScriptId;
-use campfire_sim::{Capability, EntityIndex, IdAllocator, SimUpdate, StableId, Tick, TickInput};
+use campfire_script::{Budget, ScriptId};
+use campfire_sim::{Capability, IdAllocator, SimUpdate, StableId, TickInput};
 
 use super::*;
 use crate::abilities::Abilities;
 use crate::abilities::ability_book::AbilityId;
 use crate::abilities::ability_data::{AbilityData, Targeting};
-use crate::abilities::ability_slots::AbilitySlots;
+use crate::abilities::resource_pool::ResourcePool;
 use crate::capability_set::internals::TestMatch;
 use crate::combat::attack_stats::AttackStats;
 use crate::combat::combatant::Combatant;
@@ -24,7 +24,6 @@ use crate::combat::dead::Dead;
 use crate::combat::health::Health;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;
-use crate::combat::respawn::Respawn;
 use crate::mode::avatar_index::AvatarIndex;
 use crate::mode::loadout_index::LoadoutIndex;
 use crate::mode::map_data::{GridData, NeutralSpawnData, PathData, StructureData};
@@ -36,6 +35,7 @@ use crate::navigation::destination::Destination;
 use crate::navigation::move_step::MoveStep;
 use crate::navigation::path_walker::{PathDirection, PathWalker};
 use crate::scripts::error::ApiError;
+use crate::scripts::hook::ScriptRole;
 use crate::scripts::match_scripts::MatchScripts;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::script_limits::ScriptLimits;
@@ -479,8 +479,8 @@ impl Game {
 
     /// The state field `name`: the state holds the fields in the order of their names.
     fn field(&self, name: &str) -> StateValue {
-        let book = self.world.non_send::<ModeCtx>();
-        let at = book.book().schema.state_field(name).unwrap().index;
+        let ctx = self.world.non_send::<Ctx>();
+        let at = ctx.mode().unwrap().schema.state_field(name).unwrap().index;
         self.world.resource::<ModeState>().get()[at].clone()
     }
 
@@ -1265,4 +1265,111 @@ fn calc_damage(ctx, d) {
     assert_eq!(game.health(target), num(950));
     let timers = game.world.resource::<Timers>();
     assert!(timers.due(Tick::new(u64::MAX)).is_none());
+}
+
+impl Game {
+    /// Runs `probe(ctx, unit)` of `source` as a call of `role`, acting as `actor` but in the
+    /// mode's, then applies its effects: what it returned, or why it failed.
+    fn probe(
+        &mut self,
+        source: &str,
+        role: ScriptRole,
+        actor: StableId,
+        unit: StableId,
+    ) -> Result<Dynamic, CallError> {
+        let ctx = self.world.non_send::<Ctx>().clone();
+        ctx.view().read(&self.world);
+        match role {
+            ScriptRole::Mode => ctx.frame().begin_mode(&self.world, false),
+            ScriptRole::Ai => ctx.frame().begin_think(&self.world, actor),
+            ScriptRole::Ability => ctx
+                .frame()
+                .begin_cast(&self.world, self.strike, 1, actor)
+                .unwrap(),
+            ScriptRole::Modifier => {
+                let blessing = Stats::modifier(&self.world, 0, "blessing").unwrap();
+                ctx.frame()
+                    .begin_hook(&self.world, blessing, None, 1, Some(actor), 1)
+                    .unwrap();
+            }
+        }
+        let handle = ctx.view().unit(unit).unwrap();
+        let returned = {
+            let mut host = self.world.non_send_mut::<ScriptHost>();
+            let script = host.compile(source).unwrap();
+            let mut budget = Budget::new(u64::MAX);
+            host.call(&mut budget, script, "probe", (ctx.clone(), handle))
+        };
+        let returned = returned.map_err(CallError::from_script)?;
+        let now = self.world.resource::<SimTick>().start();
+        ctx.apply(&mut self.world, now);
+        Ok(returned)
+    }
+}
+
+#[test]
+fn every_role_reads_the_match_and_deals_damage_heals_and_restores() {
+    let probe = r#"
+fn probe(ctx, unit) {
+    ctx.damage(unit, 10, "true");
+    ctx.heal(unit, 4);
+    ctx.restore(unit, 3);
+    ctx.add_resource(0, "gold", 5);
+    [ctx.teams, ctx.map.paths, ctx.avatars().len(), ctx.units_tagged("avatar").len()]
+}
+"#;
+    let mut game = Game::new(SCRIPT, LIMITS);
+    game.tick(&[(0, input("hero", "hero-x"))]);
+    let actor = game.fighter(0, &[]);
+    let target = game.fighter(1, &[]);
+    let entity = game.world.resource::<EntityIndex>().get(target).unwrap();
+    game.world.get_mut::<Health>(entity).unwrap().take(num(20));
+    let mut pool = ResourcePool::new(num(100)).unwrap();
+    pool.spend(num(50));
+    game.world.entity_mut(entity).insert(pool);
+    // Each role in turn: 4 healed, 3 restored and 5 gold given as its effects apply, then 10
+    // dealt in the tick's damage pass: from 980, 984 then 974, and so on; the pool from 50, 3 a
+    // call.
+    let gold = |game: &Game| {
+        let resources = game.world.resource::<PlayerResources>();
+        resources.amount(PlayerSlot::new(0), "gold")
+    };
+    for (at, role) in ScriptRole::ALL.into_iter().enumerate() {
+        let at = i64::try_from(at).unwrap();
+        let before = gold(&game);
+        let read = game.probe(probe, role, actor, target).unwrap();
+        assert_eq!(gold(&game), before + 5, "{role:?}");
+        let read: Array = read.cast();
+        let names = |value: &Dynamic| -> Vec<String> {
+            let list: Array = value.clone().cast();
+            list.into_iter().map(|name| name.to_string()).collect()
+        };
+        assert_eq!(names(&read[0]), ["a", "b"], "{role:?}");
+        assert_eq!(names(&read[1]), ["mid"], "{role:?}");
+        assert_eq!(
+            (read[2].as_int(), read[3].as_int()),
+            (Ok(1), Ok(1)),
+            "{role:?}"
+        );
+        assert_eq!(game.health(target), num(980 - 6 * at + 4), "{role:?}");
+        game.tick(&[]);
+        assert_eq!(game.health(target), num(980 - 6 * (at + 1)), "{role:?}");
+        let pool = game.world.get::<ResourcePool>(entity).unwrap().current();
+        assert_eq!(pool, num(50 + 3 * (at + 1)), "{role:?}");
+    }
+    // A call given to other roles fails in this one, when it runs.
+    let refused = [
+        ("ctx.timer(\"late\", 100, false, ())", ScriptRole::Ability),
+        ("ctx.end(())", ScriptRole::Ai),
+        ("ctx.state.phase", ScriptRole::Modifier),
+        ("ctx.order_follow_path(unit)", ScriptRole::Mode),
+    ];
+    for (call, role) in refused {
+        let source = format!("fn probe(ctx, unit) {{ {call} }}");
+        let failed = game.probe(&source, role, actor, actor).unwrap_err();
+        assert!(
+            matches!(failed, CallError::Api(ApiError::NotForRole)),
+            "{call} in {role:?}: {failed}"
+        );
+    }
 }

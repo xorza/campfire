@@ -3,12 +3,12 @@ use std::mem;
 
 use bevy_ecs::world::World;
 use campfire_script::rhai::Dynamic;
-use campfire_sim::{EntityIndex, StableId};
+use campfire_sim::{EntityIndex, SimTick, StableId};
 
-use crate::abilities::script_api::Ctx;
 use crate::combat::combat_event::CombatEvent;
 use crate::combat::damage::Damage;
 use crate::combat::damage_handle::DamageHandle;
+use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
@@ -21,7 +21,7 @@ use crate::units::owner::Owner;
 /// events is that deep, and the damage pass must end within its tick.
 const MAX_DEPTH: u8 = 16;
 
-/// Runs modifier scripts' hooks for the combat events, with the `ctx` ability scripts get.
+/// Runs modifier scripts' hooks for the combat events.
 #[derive(Debug)]
 pub(crate) struct ModifierHooks {
     ctx: Ctx,
@@ -178,7 +178,7 @@ impl ModifierHooks {
         } else {
             self.ctx
                 .frame()
-                .begin_hook(heard.id, ability, rank, heard.source, depth)
+                .begin_hook(world, heard.id, ability, rank, heard.source, depth)
         };
         if let Err(error) = begun {
             batch.record(Some(carrier), hook, error);
@@ -192,7 +192,10 @@ impl ModifierHooks {
             None => batch.call(pool, script, hook, (ctx, handle)),
         };
         match called {
-            Ok(_) => self.ctx.frame().apply(batch.world()),
+            Ok(_) => {
+                let now = batch.world().resource::<SimTick>().start();
+                self.ctx.apply(batch.world(), now);
+            }
             Err(error) => batch.record(Some(carrier), hook, CallError::from_script(error)),
         }
     }

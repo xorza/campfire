@@ -1,8 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_capabilities::{
-    AbilityData, CtxEntry, FilterData, Hook, Mode, ModifierData, Navigation, Number, Param, Scalar,
-    ScriptRole, Stat, UnitTypeData,
+    AbilityData, ApiOwner, FilterData, Hook, MemberKind, Mode, ModifierData, Navigation, Number,
+    Param, Scalar, ScriptApi, ScriptRole, Stat, UnitTypeData,
 };
 use campfire_content::PackagePath;
 use campfire_math::Num;
@@ -14,6 +14,7 @@ use crate::files::avatar_data::AvatarData;
 use crate::files::loadout_data::LoadoutData;
 use crate::mode_packages::{Content, Dependent, ModePackages};
 use crate::package::Package;
+use crate::script_facts::ScriptFacts;
 
 /// Design 08's checks at package load, over a mode and every package it depends on: data matches
 /// its schema (the reads checked that), every per-rank array has an entry for each rank, every
@@ -27,6 +28,8 @@ pub(crate) struct LoadCheck<'a> {
     tags: BTreeSet<&'a str>,
     /// The move speed cap, in meters a second.
     cap: Num,
+    /// The script API of the release, which every name a script uses must be of.
+    api: ScriptApi,
 }
 
 /// The facts one package's checks share.
@@ -92,6 +95,7 @@ impl<'a> LoadCheck<'a> {
             packages,
             tags,
             cap: manifest.max_move_speed.get(),
+            api: ScriptApi::release(),
         };
         check.mode().map_err(fail)?;
         check.loadout()?;
@@ -320,7 +324,6 @@ impl<'a> LoadCheck<'a> {
                 });
             }
             if let Some(script) = &modifier.script {
-                self.require(Capability::Abilities, &at)?;
                 names.serve(script, ScriptRole::Modifier, readable.iter().copied());
             }
         }
@@ -377,17 +380,26 @@ impl<'a> LoadCheck<'a> {
                 }
             }
             for used in &facts.ctx_names {
-                let unknown = || LoadProblem::UnknownCtx {
-                    path: path.clone(),
-                    name: used.name.clone(),
+                let member = self.api.member(ApiOwner::Ctx, &used.name).filter(|member| {
+                    member.kind == used.kind
+                        && roles.iter().any(|&role| member.roles.contains(role))
+                });
+                let Some(member) = member else {
+                    return Err(LoadProblem::UnknownCtx {
+                        path: path.clone(),
+                        name: used.name.clone(),
+                    });
                 };
-                let entry = CtxEntry::named(&used.name).ok_or_else(unknown)?;
-                let for_role = entry.role.is_none_or(|role| roles.contains(&role));
-                if entry.kind != used.kind || !for_role {
-                    return Err(unknown());
-                }
-                if let Some(capability) = entry.capability {
+                if let Some(capability) = member.capability {
                     self.require(capability, &at)?;
+                }
+            }
+            for used in &facts.members {
+                if !self.member_known(facts, &used.name, used.kind) {
+                    return Err(LoadProblem::UnknownMember {
+                        path: path.clone(),
+                        name: used.name.clone(),
+                    });
                 }
             }
             let params = &names.params[path];
@@ -410,6 +422,26 @@ impl<'a> LoadCheck<'a> {
             self.script_vocabulary(&facts.stats, &facts.damage_kinds, at)?;
         }
         Ok(())
+    }
+
+    /// Whether a field or method `name` that a script with `facts` reads on a value is one some
+    /// handle has, one the engine has of its own, a key of the script's object maps, or one of
+    /// its functions, called as a method.
+    fn member_known(&self, facts: &ScriptFacts, name: &str, kind: MemberKind) -> bool {
+        let handle = self.api.members().iter().any(|member| {
+            member.owner != ApiOwner::Ctx && member.name == name && member.kind == kind
+        });
+        handle
+            || match kind {
+                MemberKind::Field => {
+                    self.api.builtin(&format!("get${name}"))
+                        || facts.map_keys.iter().any(|key| key == name)
+                }
+                _ => {
+                    self.api.builtin(name)
+                        || facts.functions.iter().any(|function| function.name == name)
+                }
+            }
     }
 
     /// Every stat and damage kind a script at `at` names is one the engine reads or the mode
