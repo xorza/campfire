@@ -13,7 +13,7 @@ use crate::error::{ContentError, LoadError, LoadProblem, StoreError};
 use crate::files::avatar_data::AvatarData;
 use crate::files::loadout_data::LoadoutData;
 use crate::files::manifest::{Manifest, ModeManifest};
-use crate::files::units_data::UnitsData;
+use crate::files::units_data::{UnitTypeFile, UnitsData};
 use crate::load_check::LoadCheck;
 use crate::package::Package;
 use crate::package_dir::PackageDir;
@@ -137,10 +137,10 @@ impl ModePackages {
                 .iter()
                 .map(|dependent| match &dependent.content {
                     Content::Avatar(avatar) => {
-                        (&dependent.package, &avatar.abilities, &avatar.modifiers)
+                        (&dependent.package, &avatar.actions, &avatar.modifiers)
                     }
                     Content::Loadout(loadout) => {
-                        (&dependent.package, &loadout.abilities, &loadout.modifiers)
+                        (&dependent.package, &loadout.actions, &loadout.modifiers)
                     }
                 }),
         );
@@ -162,6 +162,31 @@ impl ModePackages {
             }
         }
         graph
+    }
+
+    /// The ranks of each action `types` place in their slots: those of the slot kind it sits in.
+    /// An error names an action they place in kinds of other ranks. A kind the mode does not
+    /// declare places nothing.
+    pub fn slotted_ranks<'u>(
+        &self,
+        types: impl IntoIterator<Item = &'u UnitTypeFile>,
+    ) -> Result<BTreeMap<&'u str, u8>, &'u str> {
+        let kinds = &self.data.slots;
+        let mut ranks = BTreeMap::new();
+        for unit_type in types {
+            for (kind, ids) in &unit_type.slots {
+                let Some(kind) = kinds.named(kind.as_str()) else {
+                    continue;
+                };
+                for id in ids {
+                    let held = *ranks.entry(id.as_str()).or_insert(kinds.ranks(kind));
+                    if held != kinds.ranks(kind) {
+                        return Err(id);
+                    }
+                }
+            }
+        }
+        Ok(ranks)
     }
 
     /// Each kind of unit that walks, of the mode's unit types and avatars that declare a move

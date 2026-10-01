@@ -136,7 +136,7 @@ A unit type in data is a set of sections, one for each capability it uses, in th
 tags = ["vehicle", "mechanical"]
 pools = ["health"]
 stats = { health = { base = 900 }, attack_damage = { base = 60 }, attack_speed = { base = "0.4" }, move_speed = { base = "3.0" } }
-actions = { weapon = ["tank_cannon"], command = ["siege_mode"] }
+slots = { weapon = ["tank_cannon"], command = ["siege_mode"] }
 collision = { radius = "1.2", layer = "ground" }
 orders = { ai = "scripts/tank_ai.rhai", think_ms = 250 }
 vision = { sight_range = "11" }

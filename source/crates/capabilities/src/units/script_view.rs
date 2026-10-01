@@ -11,7 +11,9 @@ use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString, NativeCallCont
 use campfire_sim::{Capability, EntityIndex, Position, SimTick, StableId, Tick, TickRate, Ticks};
 
 use crate::abilities::ability_book::AbilityId;
+use crate::abilities::action_data::CostTarget;
 use crate::combat::damage_kind::DamageKind;
+use crate::mode::resource_id::ResourceId;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
@@ -77,6 +79,8 @@ pub(crate) struct ScriptView {
     stats: Vec<Num>,
     /// The pools the mode declares, by pool id.
     pool_names: Rc<[DeclaredName]>,
+    /// The players' resources the mode declares, by resource id.
+    resource_names: Rc<[DeclaredName]>,
     /// Every modifier, by id, the modifiers each unit carries, one run per unit, and their
     /// script state, one run per modifier.
     modifier_info: Vec<ModifierInfo>,
@@ -316,6 +320,7 @@ impl View {
             slots: Vec::new(),
             stat_names: Rc::from([]),
             pool_names: Rc::from([]),
+            resource_names: Rc::from([]),
             stats: Vec::new(),
             modifier_info: Vec::new(),
             modifiers: Vec::new(),
@@ -511,6 +516,28 @@ impl View {
             .position(|pool| pool.as_str() == name)?;
         let pool = u8::try_from(at).ok().and_then(PoolId::new);
         Some(pool.expect("the load keeps the pools within the limit"))
+    }
+
+    /// Sets the players' resources the mode declares, by resource id.
+    pub(crate) fn set_resource_names(&self, names: Rc<[DeclaredName]>) {
+        self.0.borrow_mut().resource_names = names;
+    }
+
+    /// The player resource `name`; `None` for one the mode does not declare.
+    pub(crate) fn resource(&self, name: &str) -> Option<ResourceId> {
+        ResourceId::of(&self.0.borrow().resource_names, name)
+    }
+
+    /// How many player resources the mode declares.
+    pub(crate) fn resource_count(&self) -> usize {
+        self.0.borrow().resource_names.len()
+    }
+
+    /// What a cost named `name` takes from: a pool, or else a player resource; `None` for a
+    /// name the mode declares neither as.
+    pub(crate) fn cost_target(&self, name: &str) -> Option<CostTarget> {
+        let pool = self.pool_id(name).map(CostTarget::Pool);
+        pool.or_else(|| self.resource(name).map(CostTarget::Resource))
     }
 
     /// The damage kind `name`; an error for one the mode does not declare.

@@ -67,7 +67,7 @@ pub enum DataTable {
     Choice,
     Leech,
     Relation,
-    Ability,
+    Action,
     Modifier,
     Aura,
     Combat,
@@ -448,7 +448,7 @@ impl DataTable {
         DataTable::Choice,
         DataTable::Leech,
         DataTable::Relation,
-        DataTable::Ability,
+        DataTable::Action,
         DataTable::Modifier,
         DataTable::Aura,
         DataTable::Combat,
@@ -469,7 +469,7 @@ impl DataTable {
             DataTable::Choice => "A choice, `[choices.<name>]`",
             DataTable::Leech => "The mode's `[combat] leech`",
             DataTable::Relation => "A pair of teams, `[[relations]]`",
-            DataTable::Ability => "An ability, `[abilities.<id>]`",
+            DataTable::Action => "An action, `[actions.<id>]`",
             DataTable::Modifier => "A modifier, `[modifiers.<id>]`",
             DataTable::Aura => "A modifier's `aura`",
             DataTable::Combat => "A unit type's `combat`",
@@ -573,7 +573,7 @@ mod tests {
     use serde::de::{self, Deserialize, Deserializer, Visitor};
 
     use super::*;
-    use crate::abilities::ability_data::AbilityData;
+    use crate::abilities::action_data::ActionData;
     use crate::abilities::slot_kinds::SlotKindData;
     use crate::combat::combat_data::{AttackData, CombatData};
     use crate::combat::combat_rules::{CombatRules, Leech};
@@ -760,7 +760,7 @@ mod tests {
             (DataTable::Choice, serde_fields::<ChoiceData>()),
             (DataTable::Leech, serde_fields::<Leech>()),
             (DataTable::Relation, serde_fields::<RelationData>()),
-            (DataTable::Ability, serde_fields::<AbilityData>()),
+            (DataTable::Action, serde_fields::<ActionData>()),
             (DataTable::Modifier, serde_fields::<ModifierData>()),
             (DataTable::Aura, serde_fields::<AuraData>()),
             (DataTable::Combat, serde_fields::<CombatData>()),

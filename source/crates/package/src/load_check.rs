@@ -2,9 +2,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::iter;
 
 use campfire_capabilities::{
-    AbilityData, AbilitySlots, ApiOwner, CollisionData, DeclaredName, EngineStat, FilterData, Hook,
-    MemberKind, Mode, ModifierData, Navigation, Number, Offers, Param, PoolId, Pools, ResourceId,
-    Scalar, ScriptApi, ScriptRole, Stat, UnitTypeData,
+    AbilitySlots, ActionData, ActionKind, ApiOwner, CollisionData, DeclaredName, EngineStat,
+    FilterData, Hook, MemberKind, Mode, ModifierData, Navigation, Number, Offers, Param, Pools,
+    ResourceId, Scalar, ScriptApi, ScriptRole, Stat, UnitTypeData,
 };
 use campfire_content::PackagePath;
 use campfire_math::Num;
@@ -157,7 +157,7 @@ impl<'a> LoadCheck<'a> {
         self.choices()?;
         for (name, unit_type) in &packages.units.units {
             let at = Place::UnitType(name.clone());
-            self.unit_type(unit_type, &at, &BTreeMap::new(), &data.modifiers)?;
+            self.unit_type(unit_type, &at, &data.actions, &data.modifiers)?;
         }
         if !packages.map.paths.is_empty() {
             self.require(Capability::Navigation, &Place::Paths)?;
@@ -189,7 +189,11 @@ impl<'a> LoadCheck<'a> {
                 names.serve(&orders.ai, ScriptRole::Ai, mode_params.iter().copied());
             }
         }
-        self.modifiers(&mut names, &BTreeMap::new())?;
+        let ranks = self.slotted_ranks(packages.units.units.values())?;
+        let ranks = |id: &str| ranks.get(id).copied().unwrap_or(1);
+        self.actions(&data.actions, ranks, &mut names)?;
+        let appliers = packages.mode.appliers(&data.actions);
+        self.modifiers(&mut names, &appliers)?;
         self.scripts(&names)
     }
 
@@ -200,7 +204,7 @@ impl<'a> LoadCheck<'a> {
             let Content::Loadout(loadout) = &dependent.content else {
                 continue;
             };
-            if let Some(id) = loadout.abilities.keys().find(|&id| !seen.insert(id)) {
+            if let Some(id) = loadout.actions.keys().find(|&id| !seen.insert(id)) {
                 return Err(LoadError {
                     package: dependent.package.name.clone(),
                     problem: Box::new(LoadProblem::RepeatedLoadout(id.clone())),
@@ -210,26 +214,65 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// An avatar or loadout package the mode depends on.
+    /// An avatar or loadout package the mode depends on: an avatar's unit type, with every
+    /// action of the package in its slots, and each action with the ranks of its kind; a
+    /// loadout's actions, each with the ranks of the slot kind its choice fills.
     fn dependent(&self, dependent: &Dependent) -> Result<(), LoadProblem> {
         let package = &dependent.package;
-        let (abilities, modifiers) = match &dependent.content {
+        let (actions, modifiers, slotted) = match &dependent.content {
             Content::Avatar(avatar) => {
                 let at = Place::Avatar(avatar.name.clone());
-                self.unit_type(&avatar.unit, &at, &avatar.abilities, &avatar.modifiers)?;
-                (&avatar.abilities, &avatar.modifiers)
-            }
-            Content::Loadout(loadout) => {
-                let ranks = self.packages.data.loadout_ranks();
-                for (id, ability) in &loadout.abilities {
-                    self.ranked(id, ability, ranks)?;
+                self.unit_type(&avatar.unit, &at, &avatar.actions, &avatar.modifiers)?;
+                let ranks = self.slotted_ranks([&avatar.unit])?;
+                let unslotted = avatar
+                    .actions
+                    .keys()
+                    .find(|id| !ranks.contains_key(id.as_str()));
+                if let Some(id) = unslotted {
+                    return Err(LoadProblem::Unslotted(id.clone()));
                 }
-                (&loadout.abilities, &loadout.modifiers)
+                (&avatar.actions, &avatar.modifiers, Some(ranks))
             }
+            Content::Loadout(loadout) => (&loadout.actions, &loadout.modifiers, None),
         };
+        let loadout_ranks = self.packages.data.loadout_ranks();
+        let ranks = |id: &str| slotted.as_ref().map_or(loadout_ranks, |ranks| ranks[id]);
         let mut names = PackageNames::new(package, modifiers);
-        for (id, ability) in abilities {
-            let at = Place::Ability(id.clone());
+        self.actions(actions, ranks, &mut names)?;
+        let appliers = package.appliers(actions);
+        self.modifiers(&mut names, &appliers)?;
+        self.scripts(&names)
+    }
+
+    /// The ranks `types` give each action they place, as `ModePackages::slotted_ranks` reads
+    /// them; an action placed in kinds of other ranks fails.
+    fn slotted_ranks<'u>(
+        &self,
+        types: impl IntoIterator<Item = &'u UnitTypeFile>,
+    ) -> Result<BTreeMap<&'u str, u8>, LoadProblem> {
+        self.packages
+            .slotted_ranks(types)
+            .map_err(|id| LoadProblem::ActionRanks(id.to_owned()))
+    }
+
+    /// A package's `actions`, each with the ranks `ranks` gives it, and the roles of their
+    /// scripts in `names`: the capabilities each uses, and the modifiers, filters, stats and
+    /// params it names.
+    fn actions(
+        &self,
+        actions: &'a BTreeMap<String, ActionData>,
+        ranks: impl Fn(&str) -> u8,
+        names: &mut PackageNames<'a>,
+    ) -> Result<(), LoadProblem> {
+        for (id, ability) in actions {
+            if ability.kind != ActionKind::Cast {
+                return Err(LoadProblem::KindNotRun {
+                    action: id.clone(),
+                    kind: ability.kind,
+                });
+            }
+            self.ranked(id, ability, ranks(id))?;
+            let at = Place::Action(id.clone());
             self.require(Capability::Abilities, &at)?;
             if ability.projectile.is_some() {
                 self.require(Capability::Projectiles, &at)?;
@@ -238,7 +281,7 @@ impl<'a> LoadCheck<'a> {
                 self.require(Capability::Areas, &at)?;
             }
             for modifier in ability.modifiers() {
-                modifier_exists(modifiers, modifier, &at)?;
+                modifier_exists(names.modifiers, modifier, &at)?;
             }
             for filter in ability.filters() {
                 self.filter_data(filter, &at)?;
@@ -262,9 +305,7 @@ impl<'a> LoadCheck<'a> {
                 );
             }
         }
-        let appliers = package.appliers(abilities);
-        self.modifiers(&mut names, &appliers)?;
-        self.scripts(&names)
+        Ok(())
     }
 
     /// The package's modifiers: the capability, the modifiers, filters and params each names, and
@@ -273,7 +314,7 @@ impl<'a> LoadCheck<'a> {
     fn modifiers(
         &self,
         names: &mut PackageNames<'a>,
-        appliers: &BTreeMap<&str, Vec<&'a AbilityData>>,
+        appliers: &BTreeMap<&str, Vec<&'a ActionData>>,
     ) -> Result<(), LoadProblem> {
         for (id, modifier) in names.modifiers {
             let at = Place::Modifier(id.clone());
@@ -602,16 +643,15 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// A unit type at `at`, of a package of `abilities` and `modifiers`: each capability its
+    /// A unit type at `at`, of a package of `actions` and `modifiers`: each capability its
     /// sections use declared, its stats and pools the mode's, its layer one the mode declares,
-    /// its projectile fast enough; its actions in slot kinds the mode declares, each one of
-    /// `abilities` with the ranks of its kind, once, and every one of `abilities` among them;
-    /// and its passive one of `modifiers`.
+    /// its projectile fast enough; its slots of kinds the mode declares, each holding actions of
+    /// `actions`, none twice; and its passive one of `modifiers`.
     fn unit_type(
         &self,
         unit_type: &UnitTypeFile,
         at: &Place,
-        abilities: &BTreeMap<String, AbilityData>,
+        actions: &BTreeMap<String, ActionData>,
         modifiers: &BTreeMap<String, ModifierData>,
     ) -> Result<(), LoadProblem> {
         let sections = [
@@ -619,7 +659,7 @@ impl<'a> LoadCheck<'a> {
             (unit_type.combat.is_some(), Capability::Combat),
             (unit_type.orders.is_some(), Capability::Orders),
             (unit_type.vision.is_some(), Capability::Vision),
-            (!unit_type.actions.is_empty(), Capability::Abilities),
+            (!unit_type.slots.is_empty(), Capability::Abilities),
         ];
         for (used, capability) in sections {
             if used {
@@ -635,25 +675,21 @@ impl<'a> LoadCheck<'a> {
         self.attack_projectile(attack.and_then(|attack| attack.projectile_speed), at)?;
         let kinds = &self.packages.data.slots;
         let mut slotted = BTreeSet::new();
-        for (kind, ids) in &unit_type.actions {
-            let kind = kinds.named(kind.as_str()).ok_or_else(|| {
+        for (kind, ids) in &unit_type.slots {
+            kinds.named(kind.as_str()).ok_or_else(|| {
                 LoadProblem::Choice(ChoiceProblem::UnknownSlotKind {
                     at: at.clone(),
                     kind: kind.to_string(),
                 })
             })?;
             for id in ids {
-                let ability = abilities
-                    .get(id)
-                    .ok_or_else(|| LoadProblem::UnknownSlot(id.clone()))?;
+                if !actions.contains_key(id) {
+                    return Err(LoadProblem::UnknownSlot(id.clone()));
+                }
                 if !slotted.insert(id.as_str()) {
                     return Err(LoadProblem::RepeatedSlot(id.clone()));
                 }
-                self.ranked(id, ability, kinds.ranks(kind))?;
             }
-        }
-        if let Some(id) = abilities.keys().find(|id| !slotted.contains(id.as_str())) {
-            return Err(LoadProblem::Unslotted(id.clone()));
         }
         if let Some(passive) = &unit_type.passive {
             modifier_exists(modifiers, passive, at)?;
@@ -739,26 +775,29 @@ impl<'a> LoadCheck<'a> {
 
     /// Every per-rank array of `ability` has `ranks` entries, each pool its cost names is one
     /// the mode declares, and each capability field holds at every rank.
-    fn ranked(&self, id: &str, ability: &AbilityData, ranks: u8) -> Result<(), LoadProblem> {
-        let pools = &self.packages.data.pools;
-        if let Some(name) = ability.cost_pools().find(|name| !pools.contains_key(name)) {
+    fn ranked(&self, id: &str, ability: &ActionData, ranks: u8) -> Result<(), LoadProblem> {
+        let data = &self.packages.data;
+        if let Some(name) = ability
+            .cost_names()
+            .find(|name| data.cost_target(name).is_none())
+        {
             return Err(LoadProblem::Unknown {
-                of: NameKind::Pool,
-                at: Place::Ability(id.to_owned()),
+                of: NameKind::Cost,
+                at: Place::Action(id.to_owned()),
                 name: name.to_string(),
             });
         }
         if !ability.check_ranks(usize::from(ranks)) {
             return Err(LoadProblem::RankCount {
-                ability: id.to_owned(),
+                action: id.to_owned(),
                 ranks,
             });
         }
         for rank in 1..=ranks {
             ability
-                .fields_at(rank, |name| PoolId::of(pools, name))
-                .map_err(|field| LoadProblem::AbilityField {
-                    ability: id.to_owned(),
+                .fields_at(rank, |name| data.cost_target(name))
+                .map_err(|field| LoadProblem::ActionField {
+                    action: id.to_owned(),
                     field,
                 })?;
         }
@@ -835,7 +874,7 @@ impl<'a> LoadCheck<'a> {
 
     /// Every speed an ability's projectile may fly at, at any rank, is faster than the cap: a
     /// script may make it home.
-    fn ability_projectile(&self, ability: &AbilityData, at: &Place) -> Result<(), LoadProblem> {
+    fn ability_projectile(&self, ability: &ActionData, at: &Place) -> Result<(), LoadProblem> {
         let Some(projectile) = &ability.projectile else {
             return Ok(());
         };

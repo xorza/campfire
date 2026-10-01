@@ -4,7 +4,8 @@ use std::io;
 use std::path::PathBuf;
 
 use campfire_capabilities::{
-    AbilityField, AbilitySlots, DeclaredName, MapProblem, ModeError, Pools, ResourceId, Stat,
+    AbilitySlots, ActionField, ActionKind, DeclaredName, MapProblem, ModeError, Pools, ResourceId,
+    Stat,
 };
 use campfire_content::PackagePath;
 use campfire_script::ScriptError;
@@ -125,21 +126,22 @@ pub enum LoadProblem {
     NoPathingGrid,
     /// The map cannot be walked as the mode needs.
     Map(MapProblem),
-    /// An avatar's slot names an ability it does not have.
+    /// A unit type's slot names an action its package does not have.
     UnknownSlot(String),
-    /// An avatar's ability is in none of its slots, so it has no rank count.
+    /// An avatar's action is in none of its slots, so it has no rank count.
     Unslotted(String),
-    /// An avatar's ability is in two slots.
+    /// A unit type's action is in two slots.
     RepeatedSlot(String),
+    /// Unit types place the action in slot kinds of other ranks.
+    ActionRanks(String),
+    /// An action of a kind the release does not run yet.
+    KindNotRun { action: String, kind: ActionKind },
     /// Two loadout packages hold a loadout entry of this id.
     RepeatedLoadout(String),
     /// The mode's teams or map name what it does not have.
     Mode(ModeError),
     /// A capability field of an ability does not hold at a rank.
-    AbilityField {
-        ability: String,
-        field: AbilityField,
-    },
+    ActionField { action: String, field: ActionField },
     /// The mode's unit types declare more tags than a match holds.
     TooManyTags,
     /// The mode has more unit types, its avatars' among them, than a match holds.
@@ -147,7 +149,7 @@ pub enum LoadProblem {
     /// An avatar has the name of one of the mode's unit types.
     RepeatedUnitType(String),
     /// A per-rank array of an ability has another length than its ranks.
-    RankCount { ability: String, ranks: u8 },
+    RankCount { action: String, ranks: u8 },
     /// A script file no data names.
     UnreferencedScript(PackagePath),
     /// Data names a script the package does not hold.
@@ -208,7 +210,7 @@ pub enum LoadProblem {
 pub enum Place {
     UnitType(String),
     Avatar(String),
-    Ability(String),
+    Action(String),
     Modifier(String),
     Script(PackagePath),
     /// The map's paths.
@@ -277,7 +279,7 @@ impl fmt::Display for Place {
         match self {
             Place::UnitType(name) => write!(f, "unit type {name}"),
             Place::Avatar(name) => write!(f, "avatar {name}"),
-            Place::Ability(id) => write!(f, "ability {id}"),
+            Place::Action(id) => write!(f, "action {id}"),
             Place::Modifier(id) => write!(f, "modifier {id}"),
             Place::Script(path) => write!(f, "{path}"),
             Place::Paths => f.write_str("the map's paths"),
@@ -297,6 +299,7 @@ pub enum NameKind {
     Modifier,
     Stat,
     Pool,
+    Cost,
     MarkerTag,
     Resource,
     Layer,
@@ -311,6 +314,7 @@ impl fmt::Display for NameKind {
             NameKind::Modifier => "modifier",
             NameKind::Stat => "stat",
             NameKind::Pool => "pool",
+            NameKind::Cost => "pool or player resource",
             NameKind::MarkerTag => "marker with tag",
             NameKind::Resource => "player resource",
             NameKind::Layer => "layer",
@@ -369,12 +373,9 @@ impl fmt::Display for LoadProblem {
                     "{at} uses {capability:?}, which the mode does not declare"
                 )
             }
-            LoadProblem::UnknownSlot(id) => write!(f, "slot names no ability {id:?}"),
-            LoadProblem::AbilityField { ability, field } => {
-                write!(
-                    f,
-                    "ability {ability:?}: {field:?} gives no value of its kind"
-                )
+            LoadProblem::UnknownSlot(id) => write!(f, "a slot names no action {id:?}"),
+            LoadProblem::ActionField { action, field } => {
+                write!(f, "action {action:?}: {field:?} gives no value of its kind")
             }
             LoadProblem::TooManyTags => f.write_str("more tags than a match holds"),
             LoadProblem::TooManyUnitTypes => f.write_str("more unit types than a match holds"),
@@ -395,14 +396,23 @@ impl fmt::Display for LoadProblem {
                 f.write_str("the mode declares navigation, and its map has no [navigation] cells")
             }
             LoadProblem::Map(problem) => write!(f, "{problem}"),
-            LoadProblem::Unslotted(id) => write!(f, "ability {id:?} is in no slot"),
-            LoadProblem::RepeatedSlot(id) => write!(f, "ability {id:?} is in two slots"),
-            LoadProblem::RepeatedLoadout(id) => write!(f, "two loadout packages hold {id:?}"),
-            LoadProblem::Mode(error) => write!(f, "{error}"),
-            LoadProblem::RankCount { ability, ranks } => {
+            LoadProblem::Unslotted(id) => write!(f, "action {id:?} is in no slot"),
+            LoadProblem::RepeatedSlot(id) => write!(f, "action {id:?} is in two slots"),
+            LoadProblem::KindNotRun { action, kind } => {
                 write!(
                     f,
-                    "ability {ability:?}: a per-rank array without {ranks} entries"
+                    "action {action:?}: the release does not run {kind:?} yet"
+                )
+            }
+            LoadProblem::ActionRanks(id) => {
+                write!(f, "action {id:?} sits in slot kinds of other ranks")
+            }
+            LoadProblem::RepeatedLoadout(id) => write!(f, "two loadout packages hold {id:?}"),
+            LoadProblem::Mode(error) => write!(f, "{error}"),
+            LoadProblem::RankCount { action, ranks } => {
+                write!(
+                    f,
+                    "action {action:?}: a per-rank array without {ranks} entries"
                 )
             }
             LoadProblem::UnreferencedScript(path) => write!(f, "{path}: no data names it"),

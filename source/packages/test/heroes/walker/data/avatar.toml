@@ -1,7 +1,7 @@
 name = "Walker"
 tags = ["test"]
 pools = ["health", "mana"]
-actions = { basic = ["first", "second", "third"], ultimate = ["fourth"] }
+slots = { basic = ["first", "second", "third"], ultimate = ["fourth"] }
 
 [combat.attack]
 range = "1.25"
@@ -20,21 +20,21 @@ attack_damage = { base = 60 }
 attack_speed = { base = "1.5" }
 move_speed = { base = "7.5" }
 
-[abilities.first]
+[actions.first]
 script = "scripts/strike.rhai"
 targeting = "none"
 cooldown_ms = 3000
 cost = { mana = 40 }
 
-[abilities.first.params]
+[actions.first.params]
 radius = "2.0"
 damage = 100
 
-[abilities.second]
+[actions.second]
 targeting = "none"
 
-[abilities.third]
+[actions.third]
 targeting = "none"
 
-[abilities.fourth]
+[actions.fourth]
 targeting = "none"

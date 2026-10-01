@@ -190,6 +190,7 @@ impl Match {
             damage_kinds: Rc::from([]),
             stats: Rc::from([]),
             pools: Rc::from([]),
+            resources: Rc::from([]),
         };
         let declared = [
             Capability::Stats,

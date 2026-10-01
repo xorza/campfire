@@ -90,6 +90,7 @@ impl Units {
             damage_kinds,
             stats,
             pools,
+            resources,
         }) = scripts
         else {
             world.insert_non_send(view);
@@ -98,6 +99,7 @@ impl Units {
         view.set_damage_kinds(damage_kinds);
         view.set_stat_names(stats);
         view.set_pool_names(pools);
+        view.set_resource_names(resources);
         world.insert_non_send(Ctx::new(view.clone()));
         let mut host = ScriptHost::new(limits.per_call);
         ScriptApi::bind(host.engine_mut());

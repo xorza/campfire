@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 use std::mem;
 use std::num::NonZeroU32;
-use std::rc::Rc;
 use std::slice;
 
 use campfire_math::Vec3;
@@ -9,7 +8,7 @@ use campfire_sim::{Capability, IdAllocator, SimUpdate, TickRate};
 
 use super::*;
 use crate::capability_set::internals::TestMatch;
-use crate::scripts::match_scripts::MatchScripts;
+use crate::scripts::match_scripts::internals;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::modifier_data::{AuraData, Reapply};
 use crate::stats::modifiers::{Application, Instance, StatShare};
@@ -445,13 +444,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
         think: 10_000,
         mode: 10_000,
     };
-    let scripts = MatchScripts {
-        limits,
-        players: 1,
-        damage_kinds: Rc::from([]),
-        stats: Rc::from([]),
-        pools: Rc::from([]),
-    };
+    let scripts = internals::bare(limits, 1);
     let mut game = TestMatch::new(&[Capability::Stats], RATE, Some(scripts));
     let book = StatBook::new(&rules(), [], RATE, num(6)).unwrap();
     Stats::load(&mut game.world, book, PoolBook::default());

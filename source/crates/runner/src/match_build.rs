@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use bevy_ecs::schedule::Schedule;
 use bevy_ecs::world::World;
 use campfire_capabilities::{
-    Abilities, AbilityData, AbilityId, DeclaredName, KitRules, LoadoutSetup, MatchScripts, Mode,
+    Abilities, AbilityId, ActionData, DeclaredName, KitRules, LoadoutSetup, MatchScripts, Mode,
     ModeSetup, OnDeath, Orders, PoolId, SlotAction, Stat, Stats, UnitKit, UnitTypeData,
     UnitTypeSetup, Units,
 };
@@ -56,6 +56,7 @@ impl<'a> MatchBuild<'a> {
             damage_kinds: packages.data().combat.damage_kinds.as_slice().into(),
             stats: packages.data().stats.keys().cloned().collect(),
             pools: packages.data().pools.keys().cloned().collect(),
+            resources: packages.data().resources.as_slice().into(),
         };
         manifest
             .capabilities
@@ -77,9 +78,12 @@ impl<'a> MatchBuild<'a> {
         Units::declare_tags(build.world, packages.tag_names()).expect(CHECKED);
         build.compile_scripts();
         build.load_modifiers();
-        let no_abilities = BTreeMap::new();
-        for (name, file) in &packages.units().units {
-            build.load_unit_type(MODE, name, file, &no_abilities, false)?;
+        let units = &packages.units().units;
+        let ranks = packages.slotted_ranks(units.values()).expect(CHECKED);
+        let mode_actions =
+            build.load_actions(MODE, &packages.data().actions, |id| ranks.get(id).copied())?;
+        for (name, file) in units {
+            build.load_unit_type(MODE, name, file, &mode_actions, false)?;
         }
         let mut avatars = Vec::new();
         let mut loadout = Vec::new();
@@ -89,17 +93,20 @@ impl<'a> MatchBuild<'a> {
             match &dependent.content {
                 Content::Avatar(avatar) => {
                     let name = &dependent.package.name;
-                    build.load_unit_type(package, name, &avatar.unit, &avatar.abilities, true)?;
+                    let ranks = packages.slotted_ranks([&avatar.unit]).expect(CHECKED);
+                    let actions = build
+                        .load_actions(package, &avatar.actions, |id| ranks.get(id).copied())?;
+                    build.load_unit_type(package, name, &avatar.unit, &actions, true)?;
                     avatars.push(name.clone());
                 }
                 Content::Loadout(data) => {
-                    for (id, ability) in &data.abilities {
-                        let ability = build.load_ability(package, id, ability, loadout_ranks)?;
-                        loadout.push(LoadoutSetup {
-                            id: id.clone(),
-                            ability,
-                        });
-                    }
+                    let actions =
+                        build.load_actions(package, &data.actions, |_| Some(loadout_ranks))?;
+                    let entries = actions.into_iter().map(|(id, ability)| LoadoutSetup {
+                        id: id.to_owned(),
+                        ability,
+                    });
+                    loadout.extend(entries);
                 }
             }
         }
@@ -142,15 +149,32 @@ impl<'a> MatchBuild<'a> {
         }
     }
 
-    /// Loads the unit type `name` of `file`, of `package`, whose `abilities` its actions name:
-    /// its AI, its kit, its actions, each with the ranks of its slot kind, and its passive. An
+    /// Loads the actions of `package`, each once, with the ranks `ranks` gives it, 1 when it
+    /// gives none, by id.
+    fn load_actions<'p>(
+        &mut self,
+        package: usize,
+        actions: &'p BTreeMap<String, ActionData>,
+        ranks: impl Fn(&str) -> Option<u8>,
+    ) -> Result<BTreeMap<&'p str, AbilityId>, StartError> {
+        actions
+            .iter()
+            .map(|(id, data)| {
+                let ranks = ranks(id).unwrap_or(1);
+                Ok((id.as_str(), self.load_ability(package, id, data, ranks)?))
+            })
+            .collect()
+    }
+
+    /// Loads the unit type `name` of `file`, of `package`, whose slots hold the package's
+    /// loaded `actions`: its AI, its kit, its slots, kind after kind, and its passive. An
     /// avatar's is tagged `avatar`, and stays when it dies.
     fn load_unit_type(
         &mut self,
         package: usize,
         name: &str,
         file: &UnitTypeFile,
-        abilities: &BTreeMap<String, AbilityData>,
+        actions: &BTreeMap<&str, AbilityId>,
         avatar: bool,
     ) -> Result<(), StartError> {
         let data = self.packages.data();
@@ -181,16 +205,16 @@ impl<'a> MatchBuild<'a> {
             .map_err(unit_error)?
             .with_vision(file.vision.as_ref())
             .with_body(data.navigation.body(file.collision.as_ref()));
-        let mut actions = Vec::new();
-        for (kind, ids) in &file.actions {
+        let mut slots = Vec::new();
+        for (kind, ids) in &file.slots {
             let kind = data.slots.named(kind.as_str()).expect(CHECKED);
-            for id in ids {
-                let ranks = data.slots.ranks(kind);
-                let ability = self.load_ability(package, id, &abilities[id], ranks)?;
-                actions.push(SlotAction { kind, ability });
-            }
+            let slotted = ids.iter().map(|id| SlotAction {
+                kind,
+                ability: actions[id.as_str()],
+            });
+            slots.extend(slotted);
         }
-        actions.sort_by_key(|action| action.kind);
+        slots.sort_by_key(|action| action.kind);
         let id = u16::try_from(package).expect("packages fit u16");
         let passive = file
             .passive
@@ -200,7 +224,7 @@ impl<'a> MatchBuild<'a> {
             unit_type,
             kit,
             stats: file.stats.clone().unwrap_or_default(),
-            actions,
+            actions: slots,
             passive,
         });
         Ok(())
@@ -224,7 +248,7 @@ impl<'a> MatchBuild<'a> {
         &mut self,
         package: usize,
         id: &str,
-        data: &AbilityData,
+        data: &ActionData,
         ranks: u8,
     ) -> Result<AbilityId, StartError> {
         let script = data.script.as_ref().map(|path| self.script(package, path));

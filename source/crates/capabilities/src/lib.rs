@@ -30,12 +30,13 @@ mod vision;
 
 pub use abilities::Abilities;
 pub use abilities::ability_book::AbilityId;
-pub use abilities::ability_data::{
-    AbilityData, AreaData, AreaInside, ChannelData, ChargeData, ChargesData, ProjectileData, Range,
-    RangeField, RankFields, Targeting, Toggle,
-};
 pub use abilities::ability_slots::{AbilitySlot, AbilitySlots, CastTarget};
-pub use abilities::error::{AbilityError, AbilityField};
+pub use abilities::action_data::{
+    ActionData, AreaData, AreaInside, ChannelData, ChargeData, ChargesData, CostTarget,
+    ProjectileData, Range, RangeField, RankFields, Targeting, Toggle,
+};
+pub use abilities::action_kind::ActionKind;
+pub use abilities::error::{AbilityError, ActionField};
 pub use abilities::slot_kind::SlotKind;
 pub use abilities::slot_kinds::{SlotKindData, SlotKinds};
 pub use capability_set::CapabilitySet;

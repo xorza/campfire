@@ -165,7 +165,7 @@ impl Mode {
         world.insert_resource(ModeState(book.schema.state_initial.clone()));
         let players = book.teams.players() as usize;
         world.insert_resource(book.choices.empty(players));
-        world.insert_resource(PlayerResources::new(players, book.resources.len()));
+        world.insert_resource(PlayerResources::new(players, view.resource_count()));
         world.insert_resource(Timers::default());
         let weighs = book.schema.hooks.contains(Hook::CalcDamage);
         let ctx = world.non_send::<Ctx>().clone();

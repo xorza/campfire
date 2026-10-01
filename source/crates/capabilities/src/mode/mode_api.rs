@@ -10,7 +10,6 @@ use crate::mode::match_end::MatchResult;
 use crate::mode::mode_book::{GroupUnit, ModeBook, SpawnAt};
 use crate::mode::mode_effect::ModeEffect;
 use crate::mode::new_unit::NewUnit;
-use crate::mode::resource_id::ResourceId;
 use crate::navigation::path_walker::PathEnd;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
@@ -72,6 +71,7 @@ impl ModeApi {
                     "state",
                     "params",
                     "modifiers",
+                    "actions",
                     "attack_kind",
                     "stats",
                     "pools",
@@ -707,7 +707,9 @@ impl ModeApi {
     fn add_resource(ctx: &Ctx, player: INT, name: &str, amount: INT) -> Checked<()> {
         let book = ctx.mode_or_fail()?;
         let slot = ModeApi::player(book, player)?;
-        let resource = ResourceId::of(&book.resources, name)
+        let resource = ctx
+            .view()
+            .resource(name)
             .ok_or_else(|| ApiError::UnknownResource.fail())?;
         let mut frame = ctx.write()?;
         let resources = frame

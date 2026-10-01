@@ -79,6 +79,7 @@ impl Scene {
             pools: ["health", "mana"]
                 .map(|pool| DeclaredName::new(pool).unwrap())
                 .into(),
+            resources: Rc::from([]),
         };
         let TestMatch {
             world,

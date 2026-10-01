@@ -87,7 +87,7 @@ fn every_reference_ability_reads_into_the_schema() {
     let mut read = 0;
     for name in HEROES {
         let data = abilities(name);
-        for (ability, data) in &data.abilities {
+        for (ability, data) in &data.actions {
             if let Some(script) = &data.script {
                 assert!(hero(name).read_text(script).is_ok(), "{name}.{ability}");
             }
@@ -99,7 +99,7 @@ fn every_reference_ability_reads_into_the_schema() {
 
     // Husk's Lash Out reads exactly as its file writes it.
     let husk = abilities("husk");
-    let lash_out = &husk.abilities["lash_out"];
+    let lash_out = &husk.actions["lash_out"];
     assert_eq!(lash_out.targeting, Targeting::None);
     assert_eq!(lash_out.range, None);
     let int = |value| Number::Value(Scalar::Int(value));
@@ -143,11 +143,11 @@ fn every_reference_ability_reads_into_the_schema() {
     assert!(ratios.is_empty());
     // Rime's Snow Owl reaches farther at each rank.
     let rime = abilities("rime");
-    let Some(Ranked::PerRank(ranges)) = &rime.abilities["snow_owl"].range else {
+    let Some(Ranked::PerRank(ranges)) = &rime.actions["snow_owl"].range else {
         panic!("a range per rank");
     };
     assert_eq!(ranges[1], RangeField::Range(Range::Meters(half * 65)));
-    let wraps = &husk.abilities["grasping_wraps"];
+    let wraps = &husk.actions["grasping_wraps"];
     assert_eq!(wraps.targeting, Targeting::Direction);
     let eleven = RangeField::Range(Range::Meters(num(11)));
     assert_eq!(wraps.range, Some(Ranked::One(eleven)));
@@ -177,6 +177,7 @@ fn reference_world() -> World {
         damage_kinds: Rc::from(kinds),
         stats: stats.into(),
         pools: POOLS.map(|pool| DeclaredName::new(pool).unwrap()).into(),
+        resources: Rc::from([]),
     };
     let declared = [
         Capability::Stats,
@@ -215,7 +216,7 @@ fn lash_out_from_its_package_hits_exactly() {
     for (name, modifier) in &husk.modifiers {
         Stats::load_modifier(&mut world, 0, name, modifier, None);
     }
-    let data = &husk.abilities["lash_out"];
+    let data = &husk.actions["lash_out"];
     let script = compile(&mut world, "husk", data.script.as_ref().unwrap());
     let lash_out = Abilities::load(&mut world, 0, "lash_out", data, Some(script), 5).unwrap();
 
@@ -305,7 +306,7 @@ fn veils_dusk_mark_detonates_once_on_veils_next_damage() {
     let mark = &veil.modifiers["dusk_mark"];
     let script = compile(&mut world, "veil", mark.script.as_ref().unwrap());
     Stats::load_modifier(&mut world, 0, "dusk_mark", mark, Some(script));
-    let data = &veil.abilities["dusk_mark"];
+    let data = &veil.actions["dusk_mark"];
     let ability = Abilities::load(&mut world, 0, "dusk_mark", data, Some(script), 5).unwrap();
     let player = Owner::new(PlayerSlot::new(0));
     let veil_unit = spawn_with(&mut world, 0, 0, (0, 200), player);

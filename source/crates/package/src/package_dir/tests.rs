@@ -118,8 +118,8 @@ fn a_package_reads_its_own_files_only() {
     #[derive(Debug, serde::Deserialize)]
     struct Hero {
         name: String,
-        actions: BTreeMap<String, Vec<String>>,
-        abilities: BTreeMap<String, toml::Table>,
+        slots: BTreeMap<String, Vec<String>>,
+        actions: BTreeMap<String, toml::Table>,
     }
     #[derive(Debug, serde::Deserialize)]
     struct Named {
@@ -129,8 +129,8 @@ fn a_package_reads_its_own_files_only() {
     let path = |text| PackagePath::parse(text).unwrap();
     let hero: Hero = husk().read_data(&path("data/avatar.toml")).unwrap();
     assert_eq!(hero.name, "Husk");
-    assert_eq!(hero.actions["basic"][2], "lash_out");
-    assert!(hero.abilities.contains_key("lash_out"));
+    assert_eq!(hero.slots["basic"][2], "lash_out");
+    assert!(hero.actions.contains_key("lash_out"));
     let script = husk().read_text(&path("scripts/lash_out.rhai")).unwrap();
     assert!(script.starts_with("fn on_resolve(ctx, caster, target)"));
 

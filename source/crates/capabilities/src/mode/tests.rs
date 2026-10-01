@@ -12,7 +12,8 @@ use campfire_sim::{Capability, SimUpdate, StableId, TickInput};
 use super::*;
 use crate::abilities::Abilities;
 use crate::abilities::ability_book::AbilityId;
-use crate::abilities::ability_data::{AbilityData, Targeting};
+use crate::abilities::action_data::{ActionData, Targeting};
+use crate::abilities::action_kind::ActionKind;
 use crate::abilities::slot_kind::SlotKind;
 use crate::abilities::slot_kinds::{SlotKindData, SlotKinds};
 use crate::capability_set::internals::TestMatch;
@@ -405,6 +406,7 @@ fn mode_files() -> ModeFiles {
             ]
             .map(|(name, param)| (name.to_owned(), param))
             .into(),
+            actions: BTreeMap::new(),
             modifiers: [
                 ("blessing".to_owned(), blessing()),
                 ("drill".to_owned(), drill()),
@@ -522,6 +524,7 @@ impl Game {
                 .into(),
             stats: STATS_3V3.map(|name| Stat::named(name).unwrap()).into(),
             pools: POOLS.map(|pool| DeclaredName::new(pool).unwrap()).into(),
+            resources: mode_files().data.resources.as_slice().into(),
         };
         let declared = [
             Capability::Stats,
@@ -543,7 +546,8 @@ impl Game {
         };
         let (grunt_type, tower_type) = (load("grunt", "grunt"), load("tower", "tower"));
         let (x, y) = (load("hero-x", "avatar"), load("hero-y", "avatar"));
-        let blink = AbilityData {
+        let blink = ActionData {
+            kind: ActionKind::Cast,
             script: None,
             targeting: Targeting::None,
             range: None,

@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use campfire_capabilities::AbilityData;
+use campfire_capabilities::ActionData;
 use campfire_content::{Fingerprint, PackagePath};
 use campfire_script::ScriptHost;
 
@@ -82,9 +82,9 @@ impl Package {
     /// names it, and those whose script adds it.
     pub(crate) fn appliers<'a>(
         &'a self,
-        abilities: &'a BTreeMap<String, AbilityData>,
-    ) -> BTreeMap<&'a str, Vec<&'a AbilityData>> {
-        let mut appliers: BTreeMap<&str, Vec<&AbilityData>> = BTreeMap::new();
+        abilities: &'a BTreeMap<String, ActionData>,
+    ) -> BTreeMap<&'a str, Vec<&'a ActionData>> {
+        let mut appliers: BTreeMap<&str, Vec<&ActionData>> = BTreeMap::new();
         for ability in abilities.values() {
             let scripted = ability
                 .script

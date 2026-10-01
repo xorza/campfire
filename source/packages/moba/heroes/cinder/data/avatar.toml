@@ -1,7 +1,7 @@
 name = "Cinder"
 tags = ["mage"]
 pools = ["health", "mana"]
-actions = { basic = ["fire_lance", "eruption", "wildfire"], ultimate = ["chain_fire"] }
+slots = { basic = ["fire_lance", "eruption", "wildfire"], ultimate = ["chain_fire"] }
 
 [combat.attack]
 range = "5.5"
@@ -33,7 +33,7 @@ interval_ms = 1000
 [modifiers.kindle.params]
 burn_share = "0.02"
 
-[abilities.fire_lance]
+[actions.fire_lance]
 script = "scripts/fire_lance.rhai"
 targeting = "direction"
 range = "10.5"
@@ -42,11 +42,11 @@ cost = { mana = 50 }
 cast_time_ms = 250
 projectile = { speed = "16", width = "1.2", stop_on_hit = true }
 
-[abilities.fire_lance.params]
+[actions.fire_lance.params]
 damage = { base = [80, 120, 160, 200, 240], ability_power = "0.65" }
 stun_ms = 2000
 
-[abilities.eruption]
+[actions.eruption]
 script = "scripts/eruption.rhai"
 targeting = "point"
 range = "9.0"
@@ -55,23 +55,23 @@ cost = { mana = [70, 75, 80, 85, 90] }
 cast_time_ms = 250
 area = { radius = "2.4", delay_ms = 625, affects = "enemies" }
 
-[abilities.eruption.params]
+[actions.eruption.params]
 damage = { base = [75, 120, 165, 210, 255], ability_power = "0.6" }
 ablaze_bonus = "1.25"
 
-[abilities.wildfire]
+[actions.wildfire]
 script = "scripts/wildfire.rhai"
 targeting = "enemies"
 range = "6.25"
 cooldown_ms = [12000, 11000, 10000, 9000, 8000]
 cost = { mana = [70, 75, 80, 85, 90] }
 
-[abilities.wildfire.params]
+[actions.wildfire.params]
 damage = { base = [70, 105, 140, 175, 210], ability_power = "0.55" }
 spread_radius = "3.0"
 spread_damage = { base = [70, 105, 140, 175, 210], ability_power = "0.55" }
 
-[abilities.chain_fire]
+[actions.chain_fire]
 script = "scripts/chain_fire.rhai"
 targeting = "enemies"
 range = "7.5"
@@ -79,11 +79,11 @@ cooldown_ms = [105000, 90000, 75000]
 cost = { mana = [100, 150, 200] }
 projectile = { speed = "10" }
 
-[abilities.chain_fire.params]
+[actions.chain_fire.params]
 bounce_radius = "5.0"
 damage = { base = [150, 250, 350], ability_power = "0.5" }
 
-[abilities.chain_fire.projectile_state]
+[actions.chain_fire.projectile_state]
 bounces_left = { type = "int", default = 4 }
 
 # A stun: its time comes from the call that applies it.

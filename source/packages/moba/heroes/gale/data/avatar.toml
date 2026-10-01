@@ -2,7 +2,7 @@ name = "Gale"
 tags = ["support"]
 pools = ["health", "mana"]
 passive = "fair_wind"
-actions = { basic = ["cyclone", "gust", "wind_shield"], ultimate = ["tempest"] }
+slots = { basic = ["cyclone", "gust", "wind_shield"], ultimate = ["tempest"] }
 
 [combat.attack]
 range = "4.75"
@@ -32,7 +32,7 @@ aura = { radius = "8.0", affects = "allies", modifier = "fair_wind_speed" }
 [modifiers.fair_wind_speed]
 stats = { move_speed = { pct = "0.03" } }
 
-[abilities.cyclone]
+[actions.cyclone]
 script = "scripts/cyclone.rhai"
 targeting = "direction"
 range = "17.0"
@@ -41,17 +41,17 @@ cost = { mana = [90, 105, 120, 135, 150] }
 charge = { max_ms = 3000 }
 projectile = { speed = "9", width = "1.2", stop_on_hit = false }
 
-[abilities.cyclone.params]
+[actions.cyclone.params]
 range_min = "11.0"
 damage = { base = [60, 85, 110, 135, 160], ability_power = "0.35" }
 charge_damage = [25, 30, 35, 40, 45]
 knock_up_min_ms = 500
 knock_up_max_ms = 1250
 
-[abilities.cyclone.projectile_state]
+[actions.cyclone.projectile_state]
 charge = { type = "num", default = 0 }
 
-[abilities.gust]
+[actions.gust]
 script = "scripts/gust.rhai"
 targeting = "enemies"
 range = "6.0"
@@ -60,7 +60,7 @@ cost = { mana = [60, 70, 80, 90, 100] }
 passive_modifier = "gust_speed"
 passive_while_ready = true
 
-[abilities.gust.params]
+[actions.gust.params]
 damage = { base = [60, 115, 170, 225, 280], ability_power = "0.6" }
 slow = ["0.24", "0.28", "0.32", "0.36", "0.4"]
 slow_ms = 3000
@@ -69,14 +69,14 @@ bonus_speed = ["0.04", "0.06", "0.08", "0.10", "0.12"]
 [modifiers.gust_speed]
 stats = { move_speed = { pct = { param = "bonus_speed" } } }
 
-[abilities.wind_shield]
+[actions.wind_shield]
 script = "scripts/wind_shield.rhai"
 targeting = "allies"
 range = "8.0"
 cooldown_ms = 10000
 cost = { mana = [70, 80, 90, 100, 110] }
 
-[abilities.wind_shield.params]
+[actions.wind_shield.params]
 shield = { base = [80, 120, 160, 200, 240], ability_power = "0.9" }
 power = [14, 23, 32, 41, 50]
 
@@ -85,14 +85,14 @@ duration_ms = 5000
 shield = { param = "shield" }
 stats = { attack_damage = { param = "power" } }
 
-[abilities.tempest]
+[actions.tempest]
 script = "scripts/tempest.rhai"
 targeting = "none"
 cooldown_ms = [150000, 135000, 120000]
 cost = { mana = [100, 150, 200] }
 channel = { duration_ms = 3000, tick_ms = 500 }
 
-[abilities.tempest.params]
+[actions.tempest.params]
 radius = "7.25"
 knock_back = "8.75"
 knock_back_ms = 400

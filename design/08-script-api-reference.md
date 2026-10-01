@@ -221,6 +221,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `state` | runs |
 | `params` | runs |
 | `modifiers` | runs |
+| `actions` | runs |
 | `attack_kind` | runs |
 | `stats` | runs |
 | `pools` | runs |
@@ -277,10 +278,11 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `relation` | runs |
 | `vision` | runs |
 
-### An ability, `[abilities.<id>]`
+### An action, `[actions.<id>]`
 
 | Field | Status |
 | --- | --- |
+| `kind` | runs |
 | `script` | runs |
 | `targeting` | runs |
 | `range` | runs |

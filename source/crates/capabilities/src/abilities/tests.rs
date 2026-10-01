@@ -11,9 +11,10 @@ use campfire_script::{NumError, ScriptError};
 use campfire_sim::{Capability, IdAllocator, SimUpdate, StateHash};
 
 use super::*;
-use crate::abilities::ability_data::RangeField;
 use crate::abilities::ability_slots::AbilitySlot;
-use crate::abilities::error::AbilityField;
+use crate::abilities::action_data::{CostTarget, RangeField};
+use crate::abilities::action_kind::ActionKind;
+use crate::abilities::error::ActionField;
 use crate::abilities::slot_kind::SlotKind;
 use crate::capability_set::internals::TestMatch;
 use crate::combat::assist_window::AssistWindow;
@@ -26,6 +27,7 @@ use crate::combat::damage_kind::DamageKind;
 use crate::combat::damage_queue::DamageQueue;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;
+use crate::mode::resource_id::ResourceId;
 use crate::orders::Orders;
 use crate::orders::ai_data::AiData;
 use crate::scripts::error::ApiError;
@@ -128,9 +130,10 @@ fn cost(name: &str, amount: Number) -> BTreeMap<DeclaredName, Ranked<Number>> {
 
 /// Husk's Lash Out as its data declares it: no target, a cooldown of 10 s down to 6 s, 35 of the
 /// caster's mana, and damage within 3.5 m of 75 to 175, plus half the caster's ability power.
-fn lash_out() -> AbilityData {
+fn lash_out() -> ActionData {
     let scalars = |values: &[i64]| values.iter().map(|&value| Scalar::Int(value)).collect();
-    AbilityData {
+    ActionData {
+        kind: ActionKind::Cast,
         script: Some(PackagePath::parse("scripts/lash_out.rhai").unwrap()),
         targeting: Targeting::None,
         range: None,
@@ -178,8 +181,9 @@ fn lash_out() -> AbilityData {
 
 /// A unit-targeted ability: `damage` true damage to an enemy within 5 m, every second, for 10
 /// mana and 4 rage.
-fn strike() -> AbilityData {
-    AbilityData {
+fn strike() -> ActionData {
+    ActionData {
+        kind: ActionKind::Cast,
         script: Some(PackagePath::parse("strike.rhai").unwrap()),
         targeting: Targeting::Unit(FilterData::parse("enemies").unwrap()),
         range: Some(Ranked::One(RangeField::Range(Range::Meters(num(5))))),
@@ -224,7 +228,8 @@ impl Match {
         )
     }
 
-    /// A match of two players of `declared`, whose scripts run within `limits`.
+    /// A match of two players of `declared`, whose scripts run within `limits`, and who hold
+    /// gold, as a mode would keep it.
     fn with(limits: ScriptLimits, declared: &[Capability]) -> Match {
         // The damage kinds a mode would declare: the reference MOBA's.
         let kinds = ["physical", "magic", "true"].map(|kind| DeclaredName::new(kind).unwrap());
@@ -234,6 +239,7 @@ impl Match {
             damage_kinds: Rc::from(kinds),
             stats: scaling_stats().into(),
             pools: POOLS.map(|pool| DeclaredName::new(pool).unwrap()).into(),
+            resources: Rc::from([DeclaredName::new("gold").unwrap()]),
         };
         let TestMatch {
             mut world,
@@ -241,10 +247,11 @@ impl Match {
             registry,
         } = TestMatch::new(declared, RATE, Some(scripts));
         world.add_schedule(schedule);
+        world.insert_resource(PlayerResources::new(2, 1));
         Match { world, registry }
     }
 
-    fn load(&mut self, data: &AbilityData, source: &str) -> AbilityId {
+    fn load(&mut self, data: &ActionData, source: &str) -> AbilityId {
         let script = Units::compile(&mut self.world, source).unwrap();
         Abilities::load(&mut self.world, 0, "lash_out", data, Some(script), 5).unwrap()
     }
@@ -531,10 +538,54 @@ fn a_cast_passes_its_checks_or_does_nothing() {
 }
 
 #[test]
+fn a_cost_in_a_pool_and_a_player_resource_is_checked_and_paid_together() {
+    let mut game = Match::new();
+    let gold = ResourceId::of(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
+    let mut cost = cost("mana", int(10));
+    cost.insert(DeclaredName::new("gold").unwrap(), Ranked::One(int(30)));
+    let data = ActionData { cost, ..strike() };
+    let strike = game.load(&data, STRIKE);
+    let caster = game.caster(strike, 1);
+    let ownerless = game.spawn(
+        0,
+        at(Num::ZERO, Num::ZERO, num(1)),
+        AbilitySlots::new([(strike, SlotKind::new(0), 1)]),
+    );
+    game.give_pools(ownerless, 100, 20);
+    let enemy = game.spawn(1, at(num(5), Num::ZERO, Num::ZERO), ());
+    let player = PlayerSlot::new(0);
+    game.world
+        .resource_mut::<PlayerResources>()
+        .add(player, gold, 40)
+        .unwrap();
+    let held = |game: &Match, unit| {
+        let amounts = game.world.resource::<PlayerResources>();
+        (game.pool(unit), amounts.amount(player, gold))
+    };
+    // A unit no player owns pays no player resource, so it may not cast.
+    game.cast(ownerless, CastTarget::Unit(enemy));
+    assert_eq!(game.health(enemy), 500);
+    assert_eq!(game.pool(ownerless), 100);
+    // Player 0's caster pays both in tick 1, 100 − 10 mana and 40 − 30 gold, as the strike
+    // lands.
+    game.cast(caster, CastTarget::Unit(enemy));
+    assert_eq!(game.health(enemy), 450);
+    assert_eq!(held(&game, caster), (90, 10));
+    // Ready again in tick 1 + 31 = 32, the cooldown's 1001 ms in ticks rounded up, it may not
+    // cast with 10 gold of 30: nothing is spent, and the cooldown does not start again.
+    game.run_until(32);
+    game.cast(caster, CastTarget::Unit(enemy));
+    assert_eq!(game.health(enemy), 450);
+    assert_eq!(held(&game, caster), (90, 10));
+    assert_eq!(game.slot(caster).ready_at, Tick::new(32));
+}
+
+#[test]
 fn a_cast_its_casters_tags_stop_is_kept_and_an_interrupted_one_spends_nothing() {
     let mut game = Match::new();
     // Strike with a cast time of 100 ms, 3 ticks.
-    let data = AbilityData {
+    let data = ActionData {
+        kind: ActionKind::Cast,
         cast_time_ms: Some(Ranked::One(int(100))),
         ..strike()
     };
@@ -601,7 +652,8 @@ fn a_failed_script_changes_nothing_and_fails_the_same_way_everywhere() {
     let wrong_kind = r#"fn on_resolve(ctx, caster, target) { for unit in ctx.find(caster, caster.pos, 10, "enemies") { ctx.damage(unit, 50, "fire"); } }"#;
     let overflow = r#"fn on_resolve(ctx, caster, target) { for unit in ctx.find(caster, caster.pos, 10, "enemies") { ctx.damage(unit, 50, "magic"); } num(1 << 20) * num(1 << 20) }"#;
     let undeclared = r#"fn on_resolve(ctx, caster, target) { for unit in ctx.find(caster, caster.pos, 10, "enemies") { ctx.damage(unit, 50, "magic"); } ctx.p.radius }"#;
-    let data = AbilityData {
+    let data = ActionData {
+        kind: ActionKind::Cast,
         params: BTreeMap::new(),
         ..lash_out()
     };
@@ -670,7 +722,8 @@ fn a_cast_draws_from_its_casters_player_pool() {
         };
         let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
         let mut game = Match::with(limits, &declared);
-        let data = AbilityData {
+        let data = ActionData {
+            kind: ActionKind::Cast,
             params: BTreeMap::new(),
             ..lash_out()
         };
@@ -719,7 +772,7 @@ fn a_cast_draws_from_its_casters_player_pool() {
 #[test]
 fn an_ability_loads_only_when_its_data_holds() {
     let mut game = Match::new();
-    let load = |game: &mut Match, data: &AbilityData, source: &str| {
+    let load = |game: &mut Match, data: &ActionData, source: &str| {
         let script = Units::compile(&mut game.world, source).unwrap();
         Abilities::load(&mut game.world, 0, "lash_out", data, Some(script), 5)
     };
@@ -747,14 +800,14 @@ fn an_ability_loads_only_when_its_data_holds() {
     // take.
     assert!(lash_out().check_ranks(5) && !uneven.check_ranks(5));
     for (data, field) in [
-        (scaled, AbilityField::Cooldown),
-        (negative, AbilityField::Cost),
-        (poolless, AbilityField::Cost),
-        (unknown, AbilityField::Range),
+        (scaled, ActionField::Cooldown),
+        (negative, ActionField::Cost),
+        (poolless, ActionField::Cost),
+        (unknown, ActionField::Range),
     ] {
         let pool = |name: &DeclaredName| {
             let at = POOLS.iter().position(|pool| *pool == name.as_str())?;
-            PoolId::new(u8::try_from(at).unwrap())
+            PoolId::new(u8::try_from(at).unwrap()).map(CostTarget::Pool)
         };
         assert_eq!(data.fields_at(1, pool).err(), Some(field), "{field:?}");
     }
@@ -1349,7 +1402,8 @@ fn a_scaling_param_reads_its_sources_level_stats_and_bonus() {
         unreachable!("a scaling table");
     };
     power.base = Ranked::PerRank([100, 200, 300, 400, 500].map(Scalar::Int).to_vec());
-    let data = AbilityData {
+    let data = ActionData {
+        kind: ActionKind::Cast,
         params: [("power".to_owned(), Param::Scaling(power))].into(),
         ..strike()
     };

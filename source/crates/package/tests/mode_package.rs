@@ -6,7 +6,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
-use campfire_capabilities::{AbilityField, MapProblem, ModeError};
+use campfire_capabilities::{ActionField, ActionKind, MapProblem, ModeError};
 use campfire_package::{
     ChoiceProblem, ContentError, CtxMisuse, LoadError, LoadProblem, ModePackages, NameKind,
     PackageDir, Place,
@@ -143,7 +143,7 @@ fn more_layers_than_tags_a_match_holds_fail_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 103] = [
+const FLAWS: [Flaw; 105] = [
     flaw(
         MANIFEST,
         Edit::Replace(r#"engine = "0.1.0""#, r#"engine = "0.0.9""#),
@@ -230,7 +230,7 @@ const FLAWS: [Flaw; 103] = [
             "[16000, 14000, 12000, 10000]",
         ),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::RankCount { ability, ranks: 5 } if ability == "grasping_wraps"),
+        |problem| matches!(problem, LoadProblem::RankCount { action, ranks: 5 } if action == "grasping_wraps"),
     ),
     flaw(
         HUSK,
@@ -245,7 +245,7 @@ const FLAWS: [Flaw; 103] = [
             r#"projectile = { speed = "5""#,
         ),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::ProjectileNotFaster { at: Place::Ability(id) } if id == "grasping_wraps"),
+        |problem| matches!(problem, LoadProblem::ProjectileNotFaster { at: Place::Action(id) } if id == "grasping_wraps"),
     ),
     flaw(
         "heroes/husk/scripts/extra.rhai",
@@ -451,8 +451,8 @@ const FLAWS: [Flaw; 103] = [
         |problem| {
             matches!(
                 problem,
-                LoadProblem::AbilityField {
-                    field: AbilityField::Cost,
+                LoadProblem::ActionField {
+                    field: ActionField::Cost,
                     ..
                 }
             )
@@ -539,7 +539,7 @@ const FLAWS: [Flaw; 103] = [
         HUSK,
         Edit::Replace(r#"ability_power = "0.7""#, r#"spell_power = "0.7""#),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, at: Place::Ability(_), name } if name == "spell_power"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, at: Place::Action(_), name } if name == "spell_power"),
     ),
     // Dual Path's spell vamp reads attack damage; a modifier whose attack damage reads spell
     // vamp closes a loop.
@@ -594,7 +594,7 @@ const FLAWS: [Flaw; 103] = [
         HUSK,
         Edit::Replace("cost = { mana = 35 }", "cost = { rage = 35 }"),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Pool, at: Place::Ability(id), name } if id == "lash_out" && name == "rage"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Cost, at: Place::Action(id), name } if id == "lash_out" && name == "rage"),
     ),
     flaw(
         "heroes/veil/scripts/dusk_mark.rhai",
@@ -677,7 +677,7 @@ const FLAWS: [Flaw; 103] = [
         "heroes/kensho/data/avatar.toml",
         Edit::Replace(r#"hold = "still_mind""#, r#"hold = "still_mindful""#),
         "hero-kensho",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Modifier, at: Place::Ability(ability), name: id } if ability == "still_mind" && id == "still_mindful"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Modifier, at: Place::Action(ability), name: id } if ability == "still_mind" && id == "still_mindful"),
     ),
     flaw(
         GALE,
@@ -888,6 +888,39 @@ const FLAWS: [Flaw; 103] = [
         MODE,
         |problem| matches!(problem, LoadProblem::Choice(ChoiceProblem::UnknownSlotKind { kind, .. }) if kind == "spells"),
     ),
+    // The release runs actions of kind `cast` alone yet; an action sits in slot kinds of one
+    // count of ranks.
+    flaw(
+        HUSK,
+        Edit::Replace("[actions.dread]\n", "[actions.dread]\nkind = \"attack\"\n"),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::KindNotRun { action, kind: ActionKind::Attack } if action == "dread"),
+    ),
+    Flaw {
+        file: MODE_DATA,
+        edit: Edit::Replace(
+            "[modifiers.warden_blessing]",
+            "[actions.taunt]\ntargeting = \"none\"\n\n[modifiers.warden_blessing]",
+        ),
+        also: &[
+            (
+                UNITS,
+                Edit::Replace(
+                    "[units.melee_creep]\n",
+                    "[units.melee_creep]\nslots = { basic = [\"taunt\"] }\n",
+                ),
+            ),
+            (
+                UNITS,
+                Edit::Replace(
+                    "[units.caster_creep]\n",
+                    "[units.caster_creep]\nslots = { ultimate = [\"taunt\"] }\n",
+                ),
+            ),
+        ],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::ActionRanks(action) if action == "taunt"),
+    },
     // A script adds only to a player resource the mode declares.
     flaw(
         "modes/3v3/scripts/mode.rhai",
@@ -949,7 +982,7 @@ const FLAWS: [Flaw; 103] = [
             ),
             (
                 "more/data/loadout.toml",
-                Edit::Create("[abilities.haste]\ntargeting = \"none\"\n"),
+                Edit::Create("[actions.haste]\ntargeting = \"none\"\n"),
             ),
         ],
         package: "player-spells",

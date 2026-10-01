@@ -20,7 +20,7 @@ pub struct UnitTypeFile {
     pub core: UnitTypeData,
     pub pools: Vec<DeclaredName>,
     /// Its package's actions in each slot kind, in order.
-    pub actions: BTreeMap<DeclaredName, Vec<String>>,
+    pub slots: BTreeMap<DeclaredName, Vec<String>>,
     /// A modifier of its package it holds from its spawn, from itself.
     pub passive: Option<String>,
     pub stats: Option<StatsData>,
@@ -43,7 +43,7 @@ impl<'de> Deserialize<'de> for UnitTypeFile {
             #[serde(default)]
             pools: Vec<DeclaredName>,
             #[serde(default)]
-            actions: BTreeMap<DeclaredName, Vec<String>>,
+            slots: BTreeMap<DeclaredName, Vec<String>>,
             passive: Option<String>,
             stats: Option<StatsData>,
             combat: Option<CombatData>,
@@ -58,7 +58,7 @@ impl<'de> Deserialize<'de> for UnitTypeFile {
                 params: fields.params,
             },
             pools: fields.pools,
-            actions: fields.actions,
+            slots: fields.slots,
             passive: fields.passive,
             stats: fields.stats,
             combat: fields.combat,

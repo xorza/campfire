@@ -2,7 +2,7 @@ name = "Kensho"
 tags = ["fighter"]
 pools = ["health", "mana"]
 passive = "twin_cut"
-actions = { basic = ["flicker_strike", "still_mind", "honed_edge"], ultimate = ["unbound"] }
+slots = { basic = ["flicker_strike", "still_mind", "honed_edge"], ultimate = ["unbound"] }
 
 [combat.attack]
 range = "1.25"
@@ -32,14 +32,14 @@ stacks_expire_ms = 4000
 [modifiers.twin_cut.params]
 every = 7
 
-[abilities.flicker_strike]
+[actions.flicker_strike]
 script = "scripts/flicker_strike.rhai"
 targeting = "enemies"
 range = "6.0"
 cooldown_ms = [18000, 16000, 14000, 12000, 10000]
 cost = { mana = [60, 70, 80, 90, 100] }
 
-[abilities.flicker_strike.params]
+[actions.flicker_strike.params]
 strikes = 4
 hop_radius = "6.0"
 damage = { base = [100, 150, 200, 250, 300], attack_damage = "1.0" }
@@ -56,7 +56,7 @@ last = { type = "entity" }
 struck = { type = "entity_list" }
 left = { type = "int", default = 0 }
 
-[abilities.still_mind]
+[actions.still_mind]
 script = "scripts/still_mind.rhai"
 targeting = "none"
 cooldown_ms = 35000
@@ -64,21 +64,21 @@ cost = { mana = [50, 65, 80, 95, 110] }
 channel = { duration_ms = 5000, tick_ms = 500 }
 hold = "still_mind"
 
-[abilities.still_mind.params]
+[actions.still_mind.params]
 heal_per_tick = { base = [20, 35, 50, 65, 80], ability_power = "0.1" }
 guard = [30, 45, 60, 75, 90]
 
 [modifiers.still_mind]
 stats = { armor = { param = "guard" }, magic_resist = { param = "guard" } }
 
-[abilities.honed_edge]
+[actions.honed_edge]
 script = "scripts/honed_edge.rhai"
 targeting = "none"
 cooldown_ms = [25000, 23000, 21000, 19000, 17000]
 passive_modifier = "honed_edge"
 passive_while_ready = true
 
-[abilities.honed_edge.params]
+[actions.honed_edge.params]
 bonus_ad = [15, 20, 25, 30, 35]
 active_ad = [30, 40, 50, 60, 70]
 
@@ -89,13 +89,13 @@ stats = { attack_damage = { param = "bonus_ad" } }
 duration_ms = 5000
 stats = { attack_damage = { param = "active_ad" } }
 
-[abilities.unbound]
+[actions.unbound]
 script = "scripts/unbound.rhai"
 targeting = "none"
 cooldown_ms = 75000
 cost = { mana = 100 }
 
-[abilities.unbound.params]
+[actions.unbound.params]
 duration_ms = [8000, 10000, 12000]
 attack_speed = ["0.4", "0.55", "0.7"]
 move_speed = ["0.25", "0.35", "0.45"]

@@ -3,12 +3,12 @@ use campfire_script::{ScriptHost, ScriptId};
 use campfire_sim::{TickRate, Ticks};
 use serde::{Deserialize, Serialize};
 
-use crate::abilities::ability_data::{AbilityData, Range};
+use crate::abilities::action_data::{ActionData, CostTarget, Range};
 use crate::abilities::error::AbilityError;
+use crate::mode::resource_id::ResourceAmount;
 use crate::scripts::hook::Hook;
 use crate::stats::modifier_book::ModifierId;
 use crate::stats::pool_cost::PoolCost;
-use crate::stats::pool_id::PoolId;
 use crate::units::filter::Filter;
 use crate::values::declared_name::DeclaredName;
 
@@ -34,6 +34,9 @@ pub(crate) struct Ability {
     pub(crate) aim: Aim,
     /// Its capability fields at each rank, from rank 1.
     pub(crate) ranks: Vec<RankValues>,
+    /// Its cost in its caster's player's resources at each rank, one run of the same resources
+    /// each, rank after rank.
+    resource_costs: Box<[ResourceAmount]>,
     /// The script, when it defines `on_resolve`: a script may serve only the ability's modifiers.
     pub(crate) on_resolve: Option<ScriptId>,
 }
@@ -54,6 +57,14 @@ pub(crate) enum Aim {
     Point,
     Direction,
     Unit(Filter),
+}
+
+/// An ability's fields at each rank: its values, and its cost in player resources, one run of
+/// the same resources a rank.
+#[derive(Debug)]
+pub(crate) struct LoadedRanks {
+    pub(crate) values: Vec<RankValues>,
+    pub(crate) resource_costs: Vec<ResourceAmount>,
 }
 
 /// An ability's capability fields at one rank, times in ticks.
@@ -77,10 +88,10 @@ impl AbilityBook {
         host: &ScriptHost,
         package: u16,
         passive: Option<Passive>,
-        data: &AbilityData,
+        data: &ActionData,
         script: Option<ScriptId>,
         aim: Aim,
-        ranks: Vec<RankValues>,
+        ranks: LoadedRanks,
     ) -> AbilityId {
         assert_eq!(
             data.script.is_some(),
@@ -94,7 +105,8 @@ impl AbilityBook {
             package,
             passive,
             aim,
-            ranks,
+            ranks: ranks.values,
+            resource_costs: ranks.resource_costs.into_boxed_slice(),
             on_resolve,
         });
         id
@@ -102,6 +114,15 @@ impl AbilityBook {
 
     pub(crate) fn get(&self, id: AbilityId) -> Option<&Ability> {
         self.abilities.get(id.index())
+    }
+}
+
+impl Ability {
+    /// Its cost at `rank` in its caster's player's resources.
+    pub(crate) fn resource_cost(&self, rank: u8) -> &[ResourceAmount] {
+        let per_rank = self.resource_costs.len() / self.ranks.len().max(1);
+        let start = usize::from(rank - 1) * per_rank;
+        &self.resource_costs[start..start + per_rank]
     }
 }
 
@@ -113,31 +134,35 @@ impl AbilityId {
 
 impl RankValues {
     /// The fields of `data`, which the package load checked, at each of its `ranks` ranks,
-    /// times in ticks at `rate`, its cost's pools by `pool`; an error when a time does not count
-    /// in ticks.
+    /// times in ticks at `rate`, what its cost's names take from by `target`; an error when a
+    /// time does not count in ticks.
     pub(crate) fn all(
-        data: &AbilityData,
+        data: &ActionData,
         ranks: u8,
         rate: TickRate,
-        pool: impl Fn(&DeclaredName) -> Option<PoolId>,
-    ) -> Result<Vec<RankValues>, AbilityError> {
+        target: impl Fn(&DeclaredName) -> Option<CostTarget>,
+    ) -> Result<LoadedRanks, AbilityError> {
         assert!(
             data.check_ranks(usize::from(ranks)),
             "the load checked the ranks"
         );
         let ticks = |ms: u64| rate.ticks(ms).ok_or(AbilityError::TimeTooLarge);
-        (1..=ranks)
-            .map(|rank| {
-                let fields = data
-                    .fields_at(rank, &pool)
-                    .expect("the load checked the fields");
-                Ok(RankValues {
-                    range: fields.range,
-                    cooldown: ticks(fields.cooldown_ms)?,
-                    cost: fields.cost,
-                    cast_time: ticks(fields.cast_time_ms)?,
-                })
-            })
-            .collect()
+        let mut loaded = LoadedRanks {
+            values: Vec::with_capacity(usize::from(ranks)),
+            resource_costs: Vec::new(),
+        };
+        for rank in 1..=ranks {
+            let fields = data
+                .fields_at(rank, &target)
+                .expect("the load checked the fields");
+            loaded.values.push(RankValues {
+                range: fields.range,
+                cooldown: ticks(fields.cooldown_ms)?,
+                cost: fields.cost,
+                cast_time: ticks(fields.cast_time_ms)?,
+            });
+            loaded.resource_costs.extend(fields.resource_cost);
+        }
+        Ok(loaded)
     }
 }

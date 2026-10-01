@@ -256,6 +256,7 @@ mod tests {
             damage_kinds: Rc::from([]),
             stats: Rc::from([]),
             pools: Rc::from([]),
+            resources: Rc::from([]),
         };
         let scripted = installed(&all, Some(scripts.clone()));
         let client = installed(&all, None);

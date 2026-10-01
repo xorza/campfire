@@ -1,19 +1,19 @@
 use std::collections::BTreeMap;
 
-use campfire_capabilities::{AbilityData, ModifierData};
+use campfire_capabilities::{ActionData, ModifierData};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
 use crate::files::units_data::UnitTypeFile;
 
 /// An avatar package's `data/avatar.toml`: its one unit type, in the units schema, with its
-/// name, and the abilities and modifiers of the package. An avatar carries the tag `avatar`, and
+/// name, and the actions and modifiers of the package. An avatar carries the tag `avatar`, and
 /// stays when it dies.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AvatarData {
     pub name: String,
     pub unit: UnitTypeFile,
-    pub abilities: BTreeMap<String, AbilityData>,
+    pub actions: BTreeMap<String, ActionData>,
     pub modifiers: BTreeMap<String, ModifierData>,
 }
 
@@ -24,7 +24,7 @@ impl<'de> Deserialize<'de> for AvatarData {
         struct Fields {
             name: String,
             #[serde(default)]
-            abilities: BTreeMap<String, AbilityData>,
+            actions: BTreeMap<String, ActionData>,
             #[serde(default)]
             modifiers: BTreeMap<String, ModifierData>,
             #[serde(flatten)]
@@ -36,7 +36,7 @@ impl<'de> Deserialize<'de> for AvatarData {
         Ok(AvatarData {
             name: fields.name,
             unit,
-            abilities: fields.abilities,
+            actions: fields.actions,
             modifiers: fields.modifiers,
         })
     }

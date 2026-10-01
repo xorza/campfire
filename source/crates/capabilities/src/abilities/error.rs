@@ -5,7 +5,7 @@ use std::fmt;
 /// kind at a rank: a whole number of milliseconds or of a pool the mode declares, or a range of
 /// meters that is not negative, and never through a scaling param.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AbilityField {
+pub enum ActionField {
     Range,
     Cooldown,
     Cost,

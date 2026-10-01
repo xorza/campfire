@@ -14,12 +14,14 @@ use campfire_sim::{
 
 use crate::abilities::ability_book::Passive;
 use crate::abilities::ability_book::{Ability, AbilityBook, AbilityId, Aim, RankValues};
-use crate::abilities::ability_data::{AbilityData, Range, Targeting};
 use crate::abilities::ability_slots::{AbilitySlots, CastTarget, Casting};
+use crate::abilities::action_data::{ActionData, Range, Targeting};
 use crate::abilities::error::AbilityError;
+use crate::abilities::purse::Purse;
 use crate::combat::CombatSet;
 use crate::combat::dead::Dead;
 use crate::combat::targets::Targets;
+use crate::mode::player_resources::PlayerResources;
 use crate::orders::OrdersSet;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
@@ -46,9 +48,11 @@ use crate::values::attitude::Attitude;
 
 pub(crate) mod abilities_api;
 pub(crate) mod ability_book;
-pub(crate) mod ability_data;
 pub(crate) mod ability_slots;
+pub(crate) mod action_data;
+pub(crate) mod action_kind;
 pub(crate) mod error;
+pub(crate) mod purse;
 pub(crate) mod slot_kind;
 pub(crate) mod slot_kinds;
 
@@ -95,7 +99,7 @@ impl Abilities {
         world: &mut World,
         package: u16,
         name: &str,
-        data: &AbilityData,
+        data: &ActionData,
         script: Option<ScriptId>,
         ranks: u8,
     ) -> Result<AbilityId, AbilityError> {
@@ -119,7 +123,7 @@ impl Abilities {
             ),
         };
         let view = world.non_send::<View>().clone();
-        let values = RankValues::all(data, ranks, rate, |name| view.pool_id(name.as_str()))?;
+        let values = RankValues::all(data, ranks, rate, |name| view.cost_target(name.as_str()))?;
         let host = world
             .remove_non_send::<ScriptHost>()
             .expect("units are installed");
@@ -201,6 +205,7 @@ fn hold_passives(
 fn start_casts(
     tick: Res<'_, SimTick>,
     book: Res<'_, AbilityBook>,
+    resources: Option<Res<'_, PlayerResources>>,
     targets: Targets<'_, '_>,
     mut casters: Query<
         '_,
@@ -210,6 +215,7 @@ fn start_casts(
             &Team,
             &mut AbilitySlots,
             Option<&Pools>,
+            Option<&Owner>,
             Option<&Body>,
             Option<&UnitTags>,
         ),
@@ -217,7 +223,7 @@ fn start_casts(
     >,
 ) {
     let now = tick.start();
-    for (&position, &team, mut slots, pools, body, tags) in &mut casters {
+    for (&position, &team, mut slots, pools, owner, body, tags) in &mut casters {
         let Some(casting) = slots.casting() else {
             continue;
         };
@@ -233,7 +239,12 @@ fn start_casts(
         let lookup = |id| targets.living(id);
         let radius = Body::radius_of(body);
         let attitude = |other| targets.attitude(team, other);
-        let started = check(&book, now, &slots, pools, casting, attitude, lookup)
+        let purse = Purse {
+            pools,
+            resources: resources.as_deref(),
+            owner: owner.map(|owner| owner.slot()),
+        };
+        let started = check(&book, now, &slots, purse, casting, attitude, lookup)
             .filter(|checked| in_range(checked, position, radius, &targets))
             .map(|checked| (now.after(checked.cast_time), checked.target));
         match started {
@@ -277,15 +288,14 @@ fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
 }
 
 /// The cast `casting` of a unit on `team`, when it may go on: its slot holds a learned ability
-/// that is ready, its cost is affordable in each pool, and its target is a living unit the
-/// ability's filter
-/// selects, or the ability takes none, which drops any target the order named. `living` finds a
-/// living unit.
+/// that is ready, its `purse` affords its cost in each pool and player resource, and its target
+/// is a living unit the ability's filter selects, or the ability takes none, which drops any
+/// target the order named. `living` finds a living unit.
 fn check<'a>(
     book: &'a AbilityBook,
     now: Tick,
     slots: &AbilitySlots,
-    pools: Option<&Pools>,
+    purse: Purse<'_>,
     casting: Casting,
     attitude: impl Fn(Team) -> Attitude,
     living: impl Fn(StableId) -> Option<LivingUnit>,
@@ -293,10 +303,7 @@ fn check<'a>(
     let slot = slots.slot(casting.slot).filter(|slot| slot.rank > 0)?;
     let ability = book.get(slot.ability)?;
     let values = *ability.ranks.get(usize::from(slot.rank - 1))?;
-    let affords = pools.map_or_else(
-        || values.cost == PoolCost::default(),
-        |pools| pools.affords(&values.cost),
-    );
+    let affords = purse.affords(&values.cost, ability.resource_cost(slot.rank));
     if now < slot.ready_at || !affords {
         return None;
     }
@@ -441,10 +448,15 @@ fn prepare(
     let casting = slots.casting().expect("a due caster casts");
     let team = *unit.get::<Team>().expect("a caster has a team");
     let book = world.resource::<AbilityBook>();
-    let pools = unit.get::<Pools>();
+    let owner = unit.get::<Owner>().map(|owner| owner.slot());
+    let purse = Purse {
+        pools: unit.get::<Pools>(),
+        resources: world.get_resource::<PlayerResources>(),
+        owner,
+    };
     let living = |id| view.living(id);
     let attitude = |other| view.attitude(team, other);
-    let Some(checked) = check(book, now, slots, pools, casting, attitude, living) else {
+    let Some(checked) = check(book, now, slots, purse, casting, attitude, living) else {
         return Ok(None);
     };
     let target = match casting.target {
@@ -454,12 +466,22 @@ fn prepare(
             .and_then(|_| view.unit(id))
             .map_or(Dynamic::UNIT, Dynamic::from),
     };
-    ctx.frame()
-        .begin_cast(world, checked.id, checked.rank, caster.id)?;
+    let mut frame = ctx.frame();
+    frame.begin_cast(world, checked.id, checked.rank, caster.id)?;
+    let resource_cost = checked.ability.resource_cost(checked.rank);
+    if let (Some(owner), false) = (owner, resource_cost.is_empty()) {
+        let resources = frame
+            .resources_mut()
+            .expect("a purse that affords player resources is a match's");
+        for cost in resource_cost {
+            resources
+                .add(owner, cost.resource, -cost.amount)
+                .expect("a cost the player affords takes no amount past an integer");
+        }
+    }
+    drop(frame);
     view.set_caller(checked.ability.package);
-    let pool = unit
-        .get::<Owner>()
-        .map_or(Pool::Think, |controller| Pool::Player(controller.slot()));
+    let pool = owner.map_or(Pool::Think, Pool::Player);
     Ok(Some(Prepared {
         caster,
         pool,

@@ -41,7 +41,6 @@ use crate::units::team::Team;
 use crate::units::teams::Teams;
 use crate::units::unit_type::UnitType;
 use crate::values::bounds::Bounds;
-use crate::values::declared_name::DeclaredName;
 
 /// The mode's package data as a match runs it, names resolved: package data, not state. A restore
 /// loads it from the packages, as a new match does.
@@ -53,8 +52,6 @@ pub(crate) struct ModeBook {
     pub(crate) bounds: Bounds,
     pub(crate) choices: ChoiceBook,
     pub(crate) slot_kinds: SlotKinds,
-    /// The players' resources, in the mode's order.
-    pub(crate) resources: Vec<DeclaredName>,
     /// The ranks of every loadout entry.
     pub(crate) loadout_ranks: u8,
     /// By unit type.
@@ -114,7 +111,6 @@ impl ModeBook {
             choices: ChoiceBook::new(&setup.data.choices),
             slot_kinds: setup.data.slots.clone(),
             loadout_ranks: setup.data.loadout_ranks(),
-            resources: setup.data.resources.clone(),
             kits,
             passives,
             action_runs,

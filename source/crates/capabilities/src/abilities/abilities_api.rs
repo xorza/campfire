@@ -58,8 +58,9 @@ impl AbilitiesApi {
             .hook(Hook::OnChannelTick, "(ctx, unit)", Status::Planned)
             .hook(Hook::OnInterrupt, "(ctx, unit, target)", Status::Planned)
             .data(
-                DataTable::Ability,
+                DataTable::Action,
                 &[
+                    "kind",
                     "script",
                     "targeting",
                     "range",
