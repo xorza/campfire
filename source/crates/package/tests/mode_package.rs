@@ -8,7 +8,8 @@ use std::sync::{Arc, OnceLock};
 
 use campfire_capabilities::{AbilityField, MapProblem, ModeError};
 use campfire_package::{
-    ChoiceProblem, ContentError, CtxMisuse, LoadError, LoadProblem, ModePackages, PackageDir, Place,
+    ChoiceProblem, ContentError, CtxMisuse, LoadError, LoadProblem, ModePackages, NameKind,
+    PackageDir, Place,
 };
 use campfire_sim::Capability;
 
@@ -142,7 +143,7 @@ fn more_layers_than_tags_a_match_holds_fail_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 102] = [
+const FLAWS: [Flaw; 103] = [
     flaw(
         MANIFEST,
         Edit::Replace(r#"engine = "0.1.0""#, r#"engine = "0.0.9""#),
@@ -359,7 +360,7 @@ const FLAWS: [Flaw; 102] = [
         MODE_DATA,
         Edit::Replace("attack_kind = \"physical\"", "attack_kind = \"fire\""),
         MODE,
-        |problem| matches!(problem, LoadProblem::UnknownDamageKind { at: Place::AttackKind, kind } if kind == "fire"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::DamageKind, at: Place::AttackKind, name: kind } if kind == "fire"),
     ),
     Flaw {
         file: MODE_DATA,
@@ -378,7 +379,7 @@ const FLAWS: [Flaw; 102] = [
             r#"heal_scale = "heal_taken""#,
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::UnknownStat { at: Place::Combat, name } if name == "heal_taken"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, at: Place::Combat, name } if name == "heal_taken"),
     ),
     flaw(
         MAP,
@@ -486,37 +487,37 @@ const FLAWS: [Flaw; 102] = [
         LASH_OUT,
         Edit::Replace("ctx.p.radius", "ctx.p.radios"),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::UnknownParam { at: Place::Script(path), name } if path.to_string() == "scripts/lash_out.rhai" && name == "radios"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Param, at: Place::Script(path), name } if path.to_string() == "scripts/lash_out.rhai" && name == "radios"),
     ),
     flaw(
         "heroes/cinder/scripts/wildfire.rhai",
         Edit::Replace(r#""kindle""#, r#""kindl""#),
         "hero-cinder",
-        |problem| matches!(problem, LoadProblem::UnknownModifier { id, .. } if id == "kindl"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Modifier, name: id, .. } if id == "kindl"),
     ),
     flaw(
         "heroes/veil/scripts/dual_path.rhai",
         Edit::Replace(r#"stat("attack_damage")"#, r#"stat("attack_dmg")"#),
         "hero-veil",
-        |problem| matches!(problem, LoadProblem::UnknownStat { name, .. } if name == "attack_dmg"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, name, .. } if name == "attack_dmg"),
     ),
     flaw(
         CREEP_AI,
         Edit::Replace("enemies:creep", "enemies:minion"),
         MODE,
-        |problem| matches!(problem, LoadProblem::UnknownFilter { filter, .. } if filter == "enemies:minion"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Filter, name: filter, .. } if filter == "enemies:minion"),
     ),
     flaw(
         HUSK,
         Edit::Replace("magic_resist = { base = 30 }", "spirit = { base = 30 }"),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::UnknownStat { name, .. } if name == "spirit"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, name, .. } if name == "spirit"),
     ),
     flaw(
         HUSK,
         Edit::Replace("stats = { magic_resist = -15 }", "stats = { spirit = -15 }"),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::UnknownStat { name, .. } if name == "spirit"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, name, .. } if name == "spirit"),
     ),
     // A stat change names one operation; a scaling param scales with declared stats alone.
     flaw(
@@ -538,7 +539,7 @@ const FLAWS: [Flaw; 102] = [
         HUSK,
         Edit::Replace(r#"ability_power = "0.7""#, r#"spell_power = "0.7""#),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::UnknownStat { at: Place::Ability(_), name } if name == "spell_power"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, at: Place::Ability(_), name } if name == "spell_power"),
     ),
     // Dual Path's spell vamp reads attack damage; a modifier whose attack damage reads spell
     // vamp closes a loop.
@@ -555,7 +556,7 @@ const FLAWS: [Flaw; 102] = [
         "heroes/veil/data/avatar.toml",
         Edit::Replace("bonus = { attack_damage =", "bonus = { attack_dmg ="),
         "hero-veil",
-        |problem| matches!(problem, LoadProblem::UnknownStat { at: Place::Modifier(id), name } if id == "dual_path" && name == "attack_dmg"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, at: Place::Modifier(id), name } if id == "dual_path" && name == "attack_dmg"),
     ),
     // Pools: each a unit lists, a cost names or a script reads is declared, and the life pool is
     // among a combatant's; no pool shares a name with a player resource, and no more than eight.
@@ -566,7 +567,7 @@ const FLAWS: [Flaw; 102] = [
             r#"pools = ["health", "rage"]"#,
         ),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::UnknownPool { at: Place::Avatar(_), name } if name == "rage"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Pool, at: Place::Avatar(_), name } if name == "rage"),
     ),
     flaw(
         HUSK,
@@ -593,13 +594,13 @@ const FLAWS: [Flaw; 102] = [
         HUSK,
         Edit::Replace("cost = { mana = 35 }", "cost = { rage = 35 }"),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::UnknownPool { at: Place::Ability(id), name } if id == "lash_out" && name == "rage"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Pool, at: Place::Ability(id), name } if id == "lash_out" && name == "rage"),
     ),
     flaw(
         "heroes/veil/scripts/dusk_mark.rhai",
         Edit::Replace(r#""energy""#, r#""rage""#),
         "hero-veil",
-        |problem| matches!(problem, LoadProblem::UnknownPool { at: Place::Script(_), name } if name == "rage"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Pool, at: Place::Script(_), name } if name == "rage"),
     ),
     flaw(
         MODE_DATA,
@@ -611,13 +612,13 @@ const FLAWS: [Flaw; 102] = [
         MODE_DATA,
         Edit::Replace(r#"life = "health""#, r#"life = "hp""#),
         MODE,
-        |problem| matches!(problem, LoadProblem::UnknownPool { at: Place::Combat, name } if name == "hp"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Pool, at: Place::Combat, name } if name == "hp"),
     ),
     flaw(
         MODE_DATA,
         Edit::Replace("[pools.mana]\nmax = \"mana\"", "[pools.mana]\nmax = \"mp\""),
         MODE,
-        |problem| matches!(problem, LoadProblem::UnknownStat { at: Place::Pool(pool), name } if pool.as_str() == "mana" && name == "mp"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, at: Place::Pool(pool), name } if pool.as_str() == "mana" && name == "mp"),
     ),
     flaw(
         MODE_DATA,
@@ -646,7 +647,7 @@ const FLAWS: [Flaw; 102] = [
         MODE_DATA,
         Edit::Replace("move_speed = {}\n", ""),
         MODE,
-        |problem| matches!(problem, LoadProblem::UnknownStat { name, .. } if name == "move_speed"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, name, .. } if name == "move_speed"),
     ),
     flaw(
         MODE_DATA,
@@ -661,7 +662,7 @@ const FLAWS: [Flaw; 102] = [
         "heroes/veil/scripts/whirling_blades.rhai",
         Edit::Replace(r#""physical""#, r#""fire""#),
         "hero-veil",
-        |problem| matches!(problem, LoadProblem::UnknownDamageKind { kind, .. } if kind == "fire"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::DamageKind, name: kind, .. } if kind == "fire"),
     ),
     flaw(
         GALE,
@@ -670,19 +671,19 @@ const FLAWS: [Flaw; 102] = [
             r#"{ param = "bonus_speeds" }"#,
         ),
         "hero-gale",
-        |problem| matches!(problem, LoadProblem::UnknownParam { at: Place::Modifier(id), name } if id == "gust_speed" && name == "bonus_speeds"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Param, at: Place::Modifier(id), name } if id == "gust_speed" && name == "bonus_speeds"),
     ),
     flaw(
         "heroes/kensho/data/avatar.toml",
         Edit::Replace(r#"hold = "still_mind""#, r#"hold = "still_mindful""#),
         "hero-kensho",
-        |problem| matches!(problem, LoadProblem::UnknownModifier { at: Place::Ability(ability), id } if ability == "still_mind" && id == "still_mindful"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Modifier, at: Place::Ability(ability), name: id } if ability == "still_mind" && id == "still_mindful"),
     ),
     flaw(
         GALE,
         Edit::Replace(r#"affects = "allies""#, r#"affects = "allies:friends""#),
         "hero-gale",
-        |problem| matches!(problem, LoadProblem::UnknownFilter { filter, .. } if filter == "allies:friends"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Filter, name: filter, .. } if filter == "allies:friends"),
     ),
     flaw(
         "heroes/rime/data/avatar.toml",
@@ -721,7 +722,7 @@ const FLAWS: [Flaw; 102] = [
         "modes/3v3/scripts/mode.rhai",
         Edit::Replace(r#"ctx.map.markers("camp")"#, r#"ctx.map.markers("camps")"#),
         MODE,
-        |problem| matches!(problem, LoadProblem::UnknownMarkerTag { tag, .. } if tag == "camps"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::MarkerTag, name: tag, .. } if tag == "camps"),
     ),
     flaw(
         MAP,
@@ -789,7 +790,7 @@ const FLAWS: [Flaw; 102] = [
             r#"collision = { radius = "0.35", layer = "air" }"#,
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::UnknownLayer { at: Place::UnitType(unit_type), layer } if unit_type == "melee_creep" && layer.as_str() == "air"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Layer, at: Place::UnitType(unit_type), name: layer } if unit_type == "melee_creep" && layer.as_str() == "air"),
     ),
     Flaw {
         file: MANIFEST,
@@ -887,6 +888,16 @@ const FLAWS: [Flaw; 102] = [
         MODE,
         |problem| matches!(problem, LoadProblem::Choice(ChoiceProblem::UnknownSlotKind { kind, .. }) if kind == "spells"),
     ),
+    // A script adds only to a player resource the mode declares.
+    flaw(
+        "modes/3v3/scripts/mode.rhai",
+        Edit::Replace(
+            r#"add_resource(killer.owner, "gold", unit.params.gold)"#,
+            r#"add_resource(killer.owner, "silver", unit.params.gold)"#,
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Resource, name, .. } if name == "silver"),
+    ),
     // A player modifier's filter names a tag the mode has.
     flaw(
         MODE_DATA,
@@ -895,7 +906,7 @@ const FLAWS: [Flaw; 102] = [
             "[modifiers.warden_blessing]\naffects = \"allies:ward\"\n",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::UnknownFilter { filter, .. } if filter == "allies:ward"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Filter, name: filter, .. } if filter == "allies:ward"),
     ),
     // A relation names two of the mode's teams, a pair once.
     flaw(
@@ -920,7 +931,7 @@ const FLAWS: [Flaw; 102] = [
         "heroes/kensho/data/avatar.toml",
         Edit::Replace(r#"targeting = "enemies""#, r#"targeting = "enemies:ward""#),
         "hero-kensho",
-        |problem| matches!(problem, LoadProblem::UnknownFilter { filter, .. } if filter == "enemies:ward"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Filter, name: filter, .. } if filter == "enemies:ward"),
     ),
     // A second spells package with a spell the first holds.
     Flaw {

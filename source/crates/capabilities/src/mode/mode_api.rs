@@ -10,6 +10,7 @@ use crate::mode::match_end::MatchResult;
 use crate::mode::mode_book::{GroupUnit, ModeBook, SpawnAt};
 use crate::mode::mode_effect::ModeEffect;
 use crate::mode::new_unit::NewUnit;
+use crate::mode::resource_id::ResourceId;
 use crate::navigation::path_walker::PathEnd;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
@@ -327,7 +328,7 @@ impl ModeApi {
             MemberSpec::call(
                 "add_resource",
                 "(player, name, amount)",
-                "adds `amount` of the player resource `name` to `player`",
+                "adds `amount` of the player resource `name`, one the mode declares, to `player`",
             ),
             |ctx: &mut Ctx, player: INT, name: &str, amount: INT| {
                 ModeApi::add_resource(ctx, player, name, amount)
@@ -704,13 +705,16 @@ impl ModeApi {
     }
 
     fn add_resource(ctx: &Ctx, player: INT, name: &str, amount: INT) -> Checked<()> {
-        let slot = ModeApi::player(ctx.mode_or_fail()?, player)?;
+        let book = ctx.mode_or_fail()?;
+        let slot = ModeApi::player(book, player)?;
+        let resource = ResourceId::of(&book.resources, name)
+            .ok_or_else(|| ApiError::UnknownResource.fail())?;
         let mut frame = ctx.write()?;
         let resources = frame
             .resources_mut()
             .ok_or_else(|| ApiError::NoMode.fail())?;
         resources
-            .add(slot, name, amount)
+            .add(slot, resource, amount)
             .ok_or_else(|| ApiError::ResourceOverflow.fail().into())
     }
 

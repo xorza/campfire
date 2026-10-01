@@ -31,6 +31,8 @@ pub(crate) struct ScriptFacts {
     /// `ctx.grant` takes.
     pub(crate) choices: Vec<String>,
     pub(crate) slot_kinds: Vec<String>,
+    /// The player resources `ctx.add_resource` takes.
+    pub(crate) resources: Vec<String>,
     /// The filters the queries take.
     pub(crate) filters: Vec<String>,
     /// The kinds `ctx.damage` takes.
@@ -145,6 +147,7 @@ impl ScriptFacts {
                     "restore" => (&mut self.pools, 1),
                     "choose" | "chosen" | "available" => (&mut self.choices, 1),
                     "grant" => (&mut self.slot_kinds, 1),
+                    "add_resource" => (&mut self.resources, 1),
                     _ => return,
                 };
                 list.extend(literal(at));
@@ -291,6 +294,7 @@ fn on_resolve(ctx, caster, target) {
     ctx.restore(caster, "mana", caster.pool("energy") + caster.pool_max("health"));
     for camp in ctx.map.markers("camp") {}
     ctx.grant(caster, "spell", ctx.chosen(0, "spells"));
+    ctx.add_resource(caster.owner, "gold", 5);
     let first = ctx.teams[0];
     ctx.state.phase = ctx.nearest_visible(caster, 5, name);
     helper(ctx, caster.params.gold);
@@ -328,6 +332,7 @@ fn helper(ctx, gold) {}
                 ("map", value),
                 ("grant", call),
                 ("chosen", call),
+                ("add_resource", call),
                 ("teams", value),
                 ("state", value),
                 ("nearest_visible", call),
@@ -341,6 +346,7 @@ fn helper(ctx, gold) {}
         assert_eq!(facts.markers, ["camp"]);
         assert_eq!(facts.choices, ["spells"]);
         assert_eq!(facts.slot_kinds, ["spell"]);
+        assert_eq!(facts.resources, ["gold"]);
         assert_eq!(facts.filters, ["enemies:avatar"]);
         assert_eq!(facts.damage_kinds, ["magic"]);
     }

@@ -31,6 +31,7 @@ use crate::mode::match_end::MatchResult;
 use crate::mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
 use crate::mode::mode_setup::{LoadoutSetup, SlotAction, UnitTypeSetup};
 use crate::mode::offer::Offer;
+use crate::mode::resource_id::ResourceId;
 use crate::mode::unit_kit::UnitKit;
 use crate::navigation::destination::Destination;
 use crate::navigation::move_step::MoveStep;
@@ -414,7 +415,9 @@ fn mode_files() -> ModeFiles {
                 .map(|name| (Stat::named(name).unwrap(), StatRule::default()))
                 .into(),
             pools: BTreeMap::new(),
-            resources: Vec::new(),
+            resources: ["gold", "gems"]
+                .map(|name| DeclaredName::new(name).unwrap())
+                .into(),
             relations: vec![RelationData {
                 teams: ["a", "neutral"].map(str::to_owned),
                 relation: Attitude::Neutral,
@@ -950,13 +953,31 @@ fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
         (1, input("gold", "gold")),
         (1, input("rich", "gems")),
         (1, input("rich", "gems")),
+        (1, input("gold", "silver")),
         (0, input("probe", "")),
     ]);
+    // Gold, the first of the mode's resources, and gems, the second; a resource the mode does
+    // not declare fails, as a sum past what an integer holds does.
     let resources = game.world.resource::<PlayerResources>();
-    assert_eq!(resources.amount(PlayerSlot::new(1), "gold"), 16);
-    assert_eq!(resources.amount(PlayerSlot::new(1), "gems"), i64::MAX);
-    assert_eq!(resources.amount(PlayerSlot::new(0), "gold"), 0);
-    assert_eq!(game.failures(), [Some(ApiError::ResourceOverflow)]);
+    let amount = |slot, name| {
+        let resource = ResourceId::of(&mode_files().data.resources, name).unwrap();
+        resources.amount(PlayerSlot::new(slot), resource)
+    };
+    assert_eq!(
+        [amount(1, "gold"), amount(1, "gems"), amount(0, "gold")],
+        [16, i64::MAX, 0]
+    );
+    assert_eq!(
+        ResourceId::of(&mode_files().data.resources, "gems").map(ResourceId::index),
+        Some(1)
+    );
+    assert_eq!(
+        game.failures(),
+        [
+            Some(ApiError::ResourceOverflow),
+            Some(ApiError::UnknownResource)
+        ]
+    );
     // The enemy of a, the 4 grunts with the dead one, b's one hero, the 2 playing teams, the 3
     // players, the path and team of grunt 2, the neutral grunt 1's team, hero 5's owner, the path of the tower,
     // which stands on it as grunt 2 walks it, and grunt 2's unit type.
@@ -1476,7 +1497,8 @@ fn probe(ctx, unit) {
     // call.
     let gold = |game: &Game| {
         let resources = game.world.resource::<PlayerResources>();
-        resources.amount(PlayerSlot::new(0), "gold")
+        let gold = ResourceId::of(&mode_files().data.resources, "gold").unwrap();
+        resources.amount(PlayerSlot::new(0), gold)
     };
     for (at, role) in ScriptRole::ALL.into_iter().enumerate() {
         let at = i64::try_from(at).unwrap();

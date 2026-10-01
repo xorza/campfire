@@ -1,47 +1,72 @@
 use bevy_ecs::resource::Resource;
 use campfire_math::PlayerSlot;
 use campfire_sim::SimResource;
-use serde::{Deserialize, Serialize};
+use serde::de::Error;
+use serde::{Deserialize, Deserializer, Serialize};
 
-/// The players' named resources, such as gold: one run sorted by slot, then by name.
-#[derive(Resource, Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct PlayerResources(Vec<PlayerResource>);
+use crate::mode::resource_id::ResourceId;
 
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PlayerResource {
-    pub slot: PlayerSlot,
-    pub name: String,
-    pub amount: i64,
+/// The players' resources, such as gold: one run of amounts by player slot, then by the
+/// resource's place in the mode's `resources`.
+#[derive(Resource, Debug, Default, Clone, PartialEq, Eq, Serialize)]
+pub struct PlayerResources {
+    /// How many resources the mode declares: the amounts of one player.
+    resources: usize,
+    amounts: Vec<i64>,
 }
 
 impl PlayerResources {
-    /// The amount of `name` player `slot` holds; 0 before any is added.
-    pub fn amount(&self, slot: PlayerSlot, name: &str) -> i64 {
-        self.find(slot, name).map_or(0, |at| self.0[at].amount)
+    /// None of `resources` resources for each of `players` players.
+    pub(crate) fn new(players: usize, resources: usize) -> PlayerResources {
+        PlayerResources {
+            resources,
+            amounts: vec![0; players * resources],
+        }
+    }
+
+    /// The amount of `resource` player `slot` holds.
+    pub fn amount(&self, slot: PlayerSlot, resource: ResourceId) -> i64 {
+        self.amounts[self.at(slot, resource)]
     }
 
     /// Adds `amount`; `None` when the sum overflows, which leaves it unchanged.
-    pub(crate) fn add(&mut self, slot: PlayerSlot, name: &str, amount: i64) -> Option<()> {
-        match self.find(slot, name) {
-            Ok(at) => {
-                self.0[at].amount = self.0[at].amount.checked_add(amount)?;
-            }
-            Err(at) => self.0.insert(
-                at,
-                PlayerResource {
-                    slot,
-                    name: name.to_owned(),
-                    amount,
-                },
-            ),
-        }
+    pub(crate) fn add(
+        &mut self,
+        slot: PlayerSlot,
+        resource: ResourceId,
+        amount: i64,
+    ) -> Option<()> {
+        let at = self.at(slot, resource);
+        self.amounts[at] = self.amounts[at].checked_add(amount)?;
         Some(())
     }
 
-    fn find(&self, slot: PlayerSlot, name: &str) -> Result<usize, usize> {
-        self.0
-            .binary_search_by(|held| (held.slot, held.name.as_str()).cmp(&(slot, name)))
+    fn at(&self, slot: PlayerSlot, resource: ResourceId) -> usize {
+        debug_assert!(
+            resource.index() < self.resources,
+            "a resource the mode declares"
+        );
+        slot.index() * self.resources + resource.index()
+    }
+}
+
+/// A snapshot is untrusted, so amounts that make no whole row of each player fail to decode.
+impl<'de> Deserialize<'de> for PlayerResources {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<PlayerResources, D::Error> {
+        #[derive(Deserialize)]
+        struct Fields {
+            resources: usize,
+            amounts: Vec<i64>,
+        }
+        let Fields { resources, amounts } = Fields::deserialize(deserializer)?;
+        if amounts
+            .len()
+            .checked_rem(resources)
+            .is_some_and(|rest| rest != 0)
+        {
+            return Err(D::Error::custom("amounts that make no whole rows"));
+        }
+        Ok(PlayerResources { resources, amounts })
     }
 }
 

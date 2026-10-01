@@ -1,8 +1,8 @@
 //! The reference 3v3 as its packages hold it plays a match that replays to the same state hashes.
 
 use campfire_capabilities::{
-    AbilitySlot, AbilitySlots, Hook, ModeState, Owner, PathWalker, PlayerResources, ScriptFailures,
-    SlotKind, StateValue, Team, UnitType,
+    AbilitySlot, AbilitySlots, Hook, ModeState, Owner, PathWalker, PlayerResources, ResourceId,
+    ScriptFailures, SlotKind, StateValue, Team, UnitType,
 };
 use campfire_math::{Num, PlayerSlot, Vec3};
 use campfire_protocol::SessionLog;
@@ -173,10 +173,11 @@ fn a_3v3_match_replays_to_the_same_hashes() {
     assert_ne!(wave[0].kind, wave[5].kind);
 
     // Income: 8 gold every 5 s from the pick's end, 100 ticks, in ticks 1299 to 2499: 13 times.
-    let gold = world.resource::<PlayerResources>();
+    let amounts = world.resource::<PlayerResources>();
+    let gold = ResourceId::of(&reference.packages().data().resources, "gold").unwrap();
     for slot in 0..Reference3v3::PLAYERS {
         assert_eq!(
-            gold.amount(PlayerSlot::new(slot), "gold"),
+            amounts.amount(PlayerSlot::new(slot), gold),
             104,
             "player {slot}"
         );

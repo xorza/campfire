@@ -4,7 +4,7 @@ use std::io;
 use std::path::PathBuf;
 
 use campfire_capabilities::{
-    AbilityField, AbilitySlots, DeclaredName, MapProblem, ModeError, Pools, Stat,
+    AbilityField, AbilitySlots, DeclaredName, MapProblem, ModeError, Pools, ResourceId, Stat,
 };
 use campfire_content::PackagePath;
 use campfire_script::ScriptError;
@@ -112,10 +112,7 @@ pub enum LoadProblem {
     /// The package targets another engine release than this one.
     OtherEngine(Version),
     /// Data or a script at `at` uses a capability the mode does not declare.
-    Undeclared {
-        capability: Capability,
-        at: Place,
-    },
+    Undeclared { capability: Capability, at: Place },
     /// The mode declares `combat`, and no damage kinds for its damage.
     NoDamageKinds,
     /// The mode declares `combat`, and no `attack_kind` for its attacks.
@@ -150,10 +147,7 @@ pub enum LoadProblem {
     /// An avatar has the name of one of the mode's unit types.
     RepeatedUnitType(String),
     /// A per-rank array of an ability has another length than its ranks.
-    RankCount {
-        ability: String,
-        ranks: u8,
-    },
+    RankCount { ability: String, ranks: u8 },
     /// A script file no data names.
     UnreferencedScript(PackagePath),
     /// Data names a script the package does not hold.
@@ -165,22 +159,13 @@ pub enum LoadProblem {
     },
     /// A function named like a hook is no hook of a role the script serves, or takes another count
     /// of parameters.
-    UnknownHook {
-        path: PackagePath,
-        function: String,
-    },
+    UnknownHook { path: PackagePath, function: String },
     /// A script uses a name on `ctx` that the script API does not define, or not for its role, or
     /// not in the way it uses it.
-    UnknownCtx {
-        path: PackagePath,
-        name: String,
-    },
+    UnknownCtx { path: PackagePath, name: String },
     /// A script reads a field or calls a method no handle, no built-in and none of its own
     /// functions or object maps has.
-    UnknownMember {
-        path: PackagePath,
-        name: String,
-    },
+    UnknownMember { path: PackagePath, name: String },
     /// A script uses `ctx` other than design 08's convention allows, so the load checks cannot
     /// see every use of it.
     CtxMisuse {
@@ -188,44 +173,22 @@ pub enum LoadProblem {
         misuse: CtxMisuse,
     },
     /// A param that data or a script at `at` reads is not declared.
-    UnknownParam {
-        at: Place,
-        name: String,
-    },
-    UnknownModifier {
-        at: Place,
-        id: String,
-    },
-    UnknownStat {
-        at: Place,
-        name: String,
-    },
-    /// A script at `at` names a marker tag no marker of the map has.
-    UnknownMarkerTag {
-        at: Place,
-        tag: String,
-    },
-    /// Data or a script at `at` names a pool the mode does not declare.
-    UnknownPool {
-        at: Place,
-        name: String,
-    },
     /// A unit type at `at` lists a pool twice.
-    RepeatedPool {
-        at: Place,
-        name: DeclaredName,
-    },
+    RepeatedPool { at: Place, name: DeclaredName },
     /// Live stat changes across the mode's modifiers read each other in a loop, through these
     /// stats.
     StatLoop(Vec<Stat>),
     /// The mode declares more pools than `Pools::LIMIT`.
     TooManyPools,
+    /// The mode declares more player resources than `ResourceId::LIMIT`.
+    TooManyResources,
     /// The mode's slot kinds or choices, or what names them.
     Choice(ChoiceProblem),
-    /// A unit type at `at` moves on a layer the mode does not declare.
-    UnknownLayer {
+    /// Data or a script at `at` names something of `of` the mode or its packages do not have.
+    Unknown {
         at: Place,
-        layer: DeclaredName,
+        name: String,
+        of: NameKind,
     },
     /// The mode declares `combat` but no `[combat] life`.
     NoLifePool,
@@ -233,19 +196,9 @@ pub enum LoadProblem {
     LifePoolMissing(Place),
     /// The mode declares a name twice in one of its lists.
     RepeatedName(DeclaredName),
-    UnknownFilter {
-        at: Place,
-        filter: String,
-    },
-    UnknownDamageKind {
-        at: Place,
-        kind: String,
-    },
     /// A projectile at `at` is no faster than the move speed cap, so a homing one might never
     /// catch its target.
-    ProjectileNotFaster {
-        at: Place,
-    },
+    ProjectileNotFaster { at: Place },
     /// A field of mode state has no `sync`, or another state field has one.
     StateSync(String),
 }
@@ -334,6 +287,36 @@ impl fmt::Display for Place {
             Place::Pool(name) => write!(f, "pool {name}"),
             Place::Choice(name) => write!(f, "choice {name}"),
         }
+    }
+}
+
+/// What kind of name a load did not find.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NameKind {
+    Param,
+    Modifier,
+    Stat,
+    Pool,
+    MarkerTag,
+    Resource,
+    Layer,
+    Filter,
+    DamageKind,
+}
+
+impl fmt::Display for NameKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            NameKind::Param => "param",
+            NameKind::Modifier => "modifier",
+            NameKind::Stat => "stat",
+            NameKind::Pool => "pool",
+            NameKind::MarkerTag => "marker with tag",
+            NameKind::Resource => "player resource",
+            NameKind::Layer => "layer",
+            NameKind::Filter => "filter",
+            NameKind::DamageKind => "damage kind",
+        })
     }
 }
 
@@ -438,13 +421,7 @@ impl fmt::Display for LoadProblem {
                 )
             }
             LoadProblem::CtxMisuse { path, misuse } => write!(f, "{path}: {misuse}"),
-            LoadProblem::UnknownParam { at, name } => write!(f, "{at}: no param {name:?}"),
-            LoadProblem::UnknownModifier { at, id } => write!(f, "{at}: no modifier {id:?}"),
-            LoadProblem::UnknownStat { at, name } => write!(f, "{at}: no stat {name:?}"),
-            LoadProblem::UnknownPool { at, name } => write!(f, "{at}: no pool {name:?}"),
-            LoadProblem::UnknownMarkerTag { at, tag } => {
-                write!(f, "{at}: no marker with tag {tag:?}")
-            }
+            LoadProblem::Unknown { at, name, of } => write!(f, "{at}: no {of} {name:?}"),
             LoadProblem::RepeatedPool { at, name } => write!(f, "{at}: pool {name:?} twice"),
             LoadProblem::StatLoop(stats) => {
                 let names: Vec<String> = stats.iter().map(Stat::to_string).collect();
@@ -455,17 +432,15 @@ impl fmt::Display for LoadProblem {
                 )
             }
             LoadProblem::Choice(problem) => write!(f, "{problem}"),
+            LoadProblem::TooManyResources => {
+                write!(f, "more than {} player resources", ResourceId::LIMIT)
+            }
             LoadProblem::TooManyPools => {
                 write!(f, "more than {} pools", Pools::LIMIT)
             }
-            LoadProblem::UnknownLayer { at, layer } => write!(f, "{at}: no layer {layer:?}"),
             LoadProblem::NoLifePool => f.write_str("combat with no [combat] life"),
             LoadProblem::LifePoolMissing(at) => write!(f, "{at}: combat without the life pool"),
             LoadProblem::RepeatedName(name) => write!(f, "the mode declares {name:?} twice"),
-            LoadProblem::UnknownFilter { at, filter } => write!(f, "{at}: no filter {filter:?}"),
-            LoadProblem::UnknownDamageKind { at, kind } => {
-                write!(f, "{at}: no damage kind {kind:?}")
-            }
             LoadProblem::ProjectileNotFaster { at } => {
                 write!(f, "{at}: projectile no faster than the move speed cap")
             }

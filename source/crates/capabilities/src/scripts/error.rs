@@ -112,6 +112,8 @@ pub enum ApiError {
     /// Timer data that is not `()`, a bool, an integer, a `Num`, a string, a unit, a list of
     /// units or a position.
     TimerData,
+    /// A player resource the mode does not declare.
+    UnknownResource,
     /// A player's resource past what an integer holds.
     ResourceOverflow,
     /// A unit to respawn that is alive.
@@ -216,6 +218,7 @@ impl fmt::Display for ApiError {
             ApiError::UnknownState => "state field is not declared",
             ApiError::WrongStateType => "value is not of the state field's type",
             ApiError::TimerData => "timer data is not a value state can hold",
+            ApiError::UnknownResource => "player resource is not one the mode declares",
             ApiError::ResourceOverflow => "player resource overflows",
             ApiError::RespawnAlive => "unit to respawn is alive",
             ApiError::RespawnDespawns => "unit to respawn despawns when it dies",

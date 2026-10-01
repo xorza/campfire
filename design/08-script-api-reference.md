@@ -9,7 +9,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `add_charge` | `(unit, id)` | every role | abilities | planned | gives `unit`'s ability `id` a charge |
 | `add_modifier` | `(unit, id) or (unit, id, duration_ms)` | every role | stats | runs | applies the modifier `id` of the script's package to `unit` from the acting unit, and returns its handle |
 | `add_player_modifier` | `(player, id)` | every role | stats | runs | gives `player` the modifier `id` of the script's package, which every living unit it owns that the modifier's `affects` selects holds from no source |
-| `add_resource` | `(player, name, amount)` | every role | core | runs | adds `amount` of the player resource `name` to `player` |
+| `add_resource` | `(player, name, amount)` | every role | core | runs | adds `amount` of the player resource `name`, one the mode declares, to `player` |
 | `add_xp` | `(avatar, amount)` | every role | stats | planned | gives `avatar` experience |
 | `area` | `(pos)` | action | areas | planned | the ability's area at `pos` |
 | `attack_hit` | `(target)` | action, modifier, AI | combat | runs | an extra attack of the acting unit on `target`: no crit, and no `on_attack` |

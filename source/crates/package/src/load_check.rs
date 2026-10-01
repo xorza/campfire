@@ -3,15 +3,15 @@ use std::iter;
 
 use campfire_capabilities::{
     AbilityData, AbilitySlots, ApiOwner, CollisionData, DeclaredName, EngineStat, FilterData, Hook,
-    MemberKind, Mode, ModifierData, Navigation, Number, Offers, Param, PoolId, Pools, Scalar,
-    ScriptApi, ScriptRole, Stat, UnitTypeData,
+    MemberKind, Mode, ModifierData, Navigation, Number, Offers, Param, PoolId, Pools, ResourceId,
+    Scalar, ScriptApi, ScriptRole, Stat, UnitTypeData,
 };
 use campfire_content::PackagePath;
 use campfire_math::Num;
 use campfire_sim::Capability;
 
 use crate::RELEASE_VERSION;
-use crate::error::{ChoiceProblem, CtxMisuse, LoadError, LoadProblem, Place};
+use crate::error::{ChoiceProblem, CtxMisuse, LoadError, LoadProblem, NameKind, Place};
 use crate::files::units_data::UnitTypeFile;
 use crate::mode_packages::{Content, Dependent, ModePackages};
 use crate::package::Package;
@@ -147,7 +147,7 @@ impl<'a> LoadCheck<'a> {
             }
         }
         self.damage_kinds()?;
-        self.pools()?;
+        self.pools_and_resources()?;
         self.layers()?;
         if data.combat.stats().next().is_some() || data.combat.life.is_some() {
             self.require(Capability::Combat, &Place::Combat)?;
@@ -246,7 +246,8 @@ impl<'a> LoadCheck<'a> {
             self.stats_declared(ability.params.values().flat_map(Param::stats), &at)?;
             for name in ability.param_refs() {
                 if !ability.params.contains_key(name) {
-                    return Err(LoadProblem::UnknownParam {
+                    return Err(LoadProblem::Unknown {
+                        of: NameKind::Param,
                         at,
                         name: name.to_owned(),
                     });
@@ -294,7 +295,8 @@ impl<'a> LoadCheck<'a> {
                 .map(String::as_str)
                 .collect();
             if let Some(name) = modifier.param_refs().find(|name| !readable.contains(name)) {
-                return Err(LoadProblem::UnknownParam {
+                return Err(LoadProblem::Unknown {
+                    of: NameKind::Param,
                     at,
                     name: name.to_owned(),
                 });
@@ -388,7 +390,8 @@ impl<'a> LoadCheck<'a> {
                 .iter()
                 .find(|name| !params.contains(name.as_str()))
             {
-                return Err(LoadProblem::UnknownParam {
+                return Err(LoadProblem::Unknown {
+                    of: NameKind::Param,
                     at,
                     name: name.clone(),
                 });
@@ -428,7 +431,8 @@ impl<'a> LoadCheck<'a> {
     /// reads or the mode declares.
     fn script_vocabulary(&self, facts: &ScriptFacts, at: Place) -> Result<(), LoadProblem> {
         for name in &facts.stats {
-            let stat = Stat::named(name).ok_or_else(|| LoadProblem::UnknownStat {
+            let stat = Stat::named(name).ok_or_else(|| LoadProblem::Unknown {
+                of: NameKind::Stat,
                 at: at.clone(),
                 name: name.clone(),
             })?;
@@ -440,9 +444,10 @@ impl<'a> LoadCheck<'a> {
             markers.iter().any(|marker| marker.tags.contains(name))
         };
         if let Some(name) = facts.markers.iter().find(|name| !tag(name)) {
-            return Err(LoadProblem::UnknownMarkerTag {
+            return Err(LoadProblem::Unknown {
+                of: NameKind::MarkerTag,
                 at,
-                tag: name.clone(),
+                name: name.clone(),
             });
         }
         let choice = |name: &String| data.choices.keys().any(|choice| choice.as_str() == name);
@@ -462,9 +467,18 @@ impl<'a> LoadCheck<'a> {
                 kind: kind.clone(),
             }));
         }
+        let resource = |name: &String| ResourceId::of(&data.resources, name).is_some();
+        if let Some(name) = facts.resources.iter().find(|name| !resource(name)) {
+            return Err(LoadProblem::Unknown {
+                of: NameKind::Resource,
+                at,
+                name: name.clone(),
+            });
+        }
         let pool = |name: &String| data.pools.keys().any(|pool| pool.as_str() == name);
         if let Some(name) = facts.pools.iter().find(|name| !pool(name)) {
-            return Err(LoadProblem::UnknownPool {
+            return Err(LoadProblem::Unknown {
+                of: NameKind::Pool,
                 at,
                 name: name.clone(),
             });
@@ -476,9 +490,10 @@ impl<'a> LoadCheck<'a> {
                 .any(|name| name.as_str() == kind)
         };
         if let Some(kind) = facts.damage_kinds.iter().find(|kind| !declared(kind)) {
-            return Err(LoadProblem::UnknownDamageKind {
+            return Err(LoadProblem::Unknown {
+                of: NameKind::DamageKind,
                 at,
-                kind: kind.clone(),
+                name: kind.clone(),
             });
         }
         Ok(())
@@ -495,9 +510,10 @@ impl<'a> LoadCheck<'a> {
         if let Some(kind) = &data.attack_kind {
             self.require(Capability::Combat, &Place::AttackKind)?;
             if !kinds.contains(kind) {
-                return Err(LoadProblem::UnknownDamageKind {
+                return Err(LoadProblem::Unknown {
+                    of: NameKind::DamageKind,
                     at: Place::AttackKind,
-                    kind: kind.as_str().to_owned(),
+                    name: kind.as_str().to_owned(),
                 });
             }
         }
@@ -534,20 +550,25 @@ impl<'a> LoadCheck<'a> {
     ) -> Result<(), LoadProblem> {
         let navigation = &self.packages.data.navigation;
         match collision.and_then(|collision| collision.layer.as_ref()) {
-            Some(layer) if navigation.layer(layer).is_none() => Err(LoadProblem::UnknownLayer {
+            Some(layer) if navigation.layer(layer).is_none() => Err(LoadProblem::Unknown {
+                of: NameKind::Layer,
                 at: at.clone(),
-                layer: layer.clone(),
+                name: layer.to_string(),
             }),
             _ => Ok(()),
         }
     }
 
-    /// The mode's pools: at most `Pools::LIMIT`, none named as a player resource, each with
-    /// stats the mode declares; and with `combat`, a life pool among them.
-    fn pools(&self) -> Result<(), LoadProblem> {
+    /// The mode's pools and player resources: at most `Pools::LIMIT` pools and
+    /// `ResourceId::LIMIT` resources, no pool named as a resource, each pool with stats the mode
+    /// declares; and with `combat`, a life pool among them.
+    fn pools_and_resources(&self) -> Result<(), LoadProblem> {
         let data = &self.packages.data;
         if data.pools.len() > Pools::LIMIT {
             return Err(LoadProblem::TooManyPools);
+        }
+        if data.resources.len() > ResourceId::LIMIT {
+            return Err(LoadProblem::TooManyResources);
         }
         if let Some(name) = data
             .resources
@@ -564,7 +585,8 @@ impl<'a> LoadCheck<'a> {
         if let Some(life) = &data.combat.life
             && !data.pools.contains_key(life)
         {
-            return Err(LoadProblem::UnknownPool {
+            return Err(LoadProblem::Unknown {
+                of: NameKind::Pool,
                 at: Place::Combat,
                 name: life.to_string(),
             });
@@ -695,7 +717,8 @@ impl<'a> LoadCheck<'a> {
         }
         for (place, name) in pools.iter().enumerate() {
             if !data.pools.contains_key(name) {
-                return Err(LoadProblem::UnknownPool {
+                return Err(LoadProblem::Unknown {
+                    of: NameKind::Pool,
                     at: at.clone(),
                     name: name.to_string(),
                 });
@@ -719,7 +742,8 @@ impl<'a> LoadCheck<'a> {
     fn ranked(&self, id: &str, ability: &AbilityData, ranks: u8) -> Result<(), LoadProblem> {
         let pools = &self.packages.data.pools;
         if let Some(name) = ability.cost_pools().find(|name| !pools.contains_key(name)) {
-            return Err(LoadProblem::UnknownPool {
+            return Err(LoadProblem::Unknown {
+                of: NameKind::Pool,
                 at: Place::Ability(id.to_owned()),
                 name: name.to_string(),
             });
@@ -750,7 +774,8 @@ impl<'a> LoadCheck<'a> {
         let declared = &self.packages.data.stats;
         let unknown = stats.into_iter().find(|stat| !declared.contains_key(stat));
         match unknown {
-            Some(name) => Err(LoadProblem::UnknownStat {
+            Some(name) => Err(LoadProblem::Unknown {
+                of: NameKind::Stat,
                 at: at.clone(),
                 name: name.to_string(),
             }),
@@ -773,9 +798,10 @@ impl<'a> LoadCheck<'a> {
     fn filter_text(&self, filter: &str, at: &Place) -> Result<(), LoadProblem> {
         match FilterData::parse(filter) {
             Some(data) => self.filter_data(&data, at),
-            None => Err(LoadProblem::UnknownFilter {
+            None => Err(LoadProblem::Unknown {
+                of: NameKind::Filter,
                 at: at.clone(),
-                filter: filter.to_owned(),
+                name: filter.to_owned(),
             }),
         }
     }
@@ -790,9 +816,10 @@ impl<'a> LoadCheck<'a> {
         {
             return Ok(());
         }
-        Err(LoadProblem::UnknownFilter {
+        Err(LoadProblem::Unknown {
+            of: NameKind::Filter,
             at: at.clone(),
-            filter: filter.to_string(),
+            name: filter.to_string(),
         })
     }
 
@@ -819,7 +846,8 @@ impl<'a> LoadCheck<'a> {
                     Some(Param::Ranked(ranked)) => ranked.values().to_vec(),
                     Some(Param::Scaling(scaling)) => scaling.base.values().to_vec(),
                     None => {
-                        return Err(LoadProblem::UnknownParam {
+                        return Err(LoadProblem::Unknown {
+                            of: NameKind::Param,
                             at: at.clone(),
                             name: reference.param.clone(),
                         });
@@ -868,8 +896,9 @@ fn modifier_exists(
     if modifiers.contains_key(id) {
         return Ok(());
     }
-    Err(LoadProblem::UnknownModifier {
+    Err(LoadProblem::Unknown {
+        of: NameKind::Modifier,
         at: at.to_owned(),
-        id: id.to_owned(),
+        name: id.to_owned(),
     })
 }

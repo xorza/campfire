@@ -80,6 +80,7 @@ pub(crate) mod new_unit;
 pub(crate) mod offer;
 pub(crate) mod player_resources;
 pub(crate) mod relation_data;
+pub(crate) mod resource_id;
 pub(crate) mod roster;
 pub(crate) mod team_manifest;
 pub(crate) mod timers;
@@ -164,7 +165,7 @@ impl Mode {
         world.insert_resource(ModeState(book.schema.state_initial.clone()));
         let players = book.teams.players() as usize;
         world.insert_resource(book.choices.empty(players));
-        world.insert_resource(PlayerResources::default());
+        world.insert_resource(PlayerResources::new(players, book.resources.len()));
         world.insert_resource(Timers::default());
         let weighs = book.schema.hooks.contains(Hook::CalcDamage);
         let ctx = world.non_send::<Ctx>().clone();
