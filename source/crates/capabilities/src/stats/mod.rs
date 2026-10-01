@@ -49,6 +49,7 @@ pub(crate) mod stat_rule;
 pub(crate) mod stats_api;
 pub(crate) mod stats_data;
 pub(crate) mod unit_state;
+pub(crate) mod unit_states;
 pub(crate) mod unit_stats;
 
 /// The `stats` capability.
@@ -63,10 +64,11 @@ pub(crate) enum StatsSet {
 }
 
 impl Stats {
-    /// Adds stats to a match: before the first stage and after each, every unit whose level
-    /// changed, or that is new, has its stats derived again, and the components that hold their
-    /// effect follow them; as each tick starts, the living units' pools regenerate. With no stat
-    /// book, as before a mode loads one or on a client, which loads none, nothing changes.
+    /// Adds stats to a match: before the first stage and after each, every unit whose level or
+    /// modifiers changed, or that is new, has its stats and states derived again, and the
+    /// components that hold their effect follow them; as each tick starts, the living units'
+    /// pools regenerate. With no stat book, as before a mode loads one or on a client, which
+    /// loads none, nothing changes.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         if let Some(view) = world.get_non_send::<View>() {
             view.add_source(fill_row);
@@ -350,11 +352,12 @@ struct Held {
     rank: u8,
 }
 
-/// Fills a row of the script view with the unit's level, stats and modifiers.
+/// Fills a row of the script view with the unit's level, stats, states and modifiers.
 fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
     fill.row.level = unit.get::<Level>().map(|level| level.get());
     if let Some(stats) = unit.get::<UnitStats>() {
         fill.stated(stats.values());
+        fill.row.states = stats.states();
     }
     for instance in unit
         .get::<Modifiers>()
@@ -370,10 +373,10 @@ fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
     }
 }
 
-/// Derives the stats of each unit whose level changed or that is new, and sets what holds their
-/// effect: how far it walks a tick, its attack's damage and period, and its pools' maxima, a
-/// pool keeping the rule of stats.md. An effect whose stat the mode does not declare keeps what
-/// the unit's kit gave it.
+/// Derives the stats and states of each unit whose level or modifiers changed or that is new, and
+/// sets what holds their effect: how far it walks a tick, which `slow_immune` takes the slow out
+/// of, its attack's damage and period, and its pools' maxima, a pool keeping the rule of
+/// stats.md. An effect whose stat the mode does not declare keeps what the unit's kit gave it.
 fn refresh_stats(
     book: Option<Res<'_, StatBook>>,
     mut units: Query<
@@ -397,8 +400,10 @@ fn refresh_stats(
     };
     for (&unit_type, level, modifiers, mut stats, step, attack, health, pool) in &mut units {
         book.compute(unit_type, level.get(), modifiers, stats.refill());
+        let states = book.states(unit_type, modifiers);
+        stats.set_states(states);
         let values = stats.values();
-        if let (Some(mut step), Some(value)) = (step, book.step(values)) {
+        if let (Some(mut step), Some(value)) = (step, book.step(values, states)) {
             step.set_if_neq(MoveStep::new(value).expect("a step is at least 0"));
         }
         if let Some(mut attack) = attack {

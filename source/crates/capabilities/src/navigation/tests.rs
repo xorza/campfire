@@ -7,6 +7,7 @@ use super::*;
 use crate::capability_set::internals::TestMatch;
 use crate::mode::map_data::{GridData, NeutralSpawnData, PathData, StructureData};
 use crate::navigation::path_walker::PathDirection;
+use crate::stats::unit_state::UnitState;
 use crate::units::path_id::PathId;
 use crate::values::scalar::Scalar;
 
@@ -67,6 +68,14 @@ impl Walk {
             unit.get_mut::<Destination>().unwrap().set(to);
         }
         id
+    }
+
+    /// Puts unit `id` in `states`, as its modifiers would.
+    fn set_states(&mut self, id: StableId, states: &[UnitState]) {
+        let entity = self.world.resource::<EntityIndex>().get(id).unwrap();
+        self.world
+            .entity_mut(entity)
+            .insert(UnitStats::in_states(states));
     }
 
     fn get<C: Component + Copy>(&self, id: StableId) -> C {
@@ -155,6 +164,12 @@ fn bodies_part_and_block_the_way() {
     let entity = walk.world.resource::<EntityIndex>().get(dead).unwrap();
     walk.world.entity_mut(entity).insert(Dead);
     let d = walk.body(at(18, 0, 0), Some(at(22, 0, 0)), Some(quarter), half);
+    // A walker at a rooted unit on its way along z = 10, which so stands: the walker touches it
+    // in tick 8, at x = 1, and from tick 9 takes the whole overlap, back to 1 each tick, as a
+    // walker takes it from a unit that stands. The rooted unit keeps its place and destination.
+    let rooted = walk.body(at(0, 0, 10), Some(at(10, 0, 10)), Some(quarter), half);
+    walk.set_states(rooted, &[UnitState::Rooted]);
+    let walker = walk.body(at(3, 0, 10), Some(at(-10, 0, 10)), Some(quarter), half);
     for _ in 0..5 {
         walk.tick();
     }
@@ -179,6 +194,11 @@ fn bodies_part_and_block_the_way() {
         [d, dead].map(|unit| walk.get::<Position>(unit)),
         [at(22, 0, 0), at(20, 0, 0)]
     );
+    assert_eq!(
+        [rooted, walker].map(|unit| walk.get::<Position>(unit)),
+        [at(0, 0, 10), at(1, 0, 10)]
+    );
+    assert_eq!(walk.get::<Destination>(rooted).get(), Some(at(10, 0, 10)));
 }
 
 #[test]
@@ -476,14 +496,44 @@ fn a_map_loads_only_if_the_widest_walker_reaches_every_waypoint_and_stands_on_ev
 }
 
 #[test]
-fn a_dead_unit_stays_and_forgets_its_destination() {
+fn a_dead_unit_forgets_its_destination_and_a_stopped_one_keeps_it() {
     let mut walk = Walk::new();
     let unit = walk.unit(at(0, 0, 0), Some(at(0, 0, 5)));
     let entity = walk.world.resource::<EntityIndex>().get(unit).unwrap();
     walk.world.entity_mut(entity).insert(Dead);
+    // Each state that stops moving holds its unit where it stands, its destination kept, until
+    // the state ends; one that does not, as disarmed, lets it walk.
+    let states = [
+        (UnitState::Stunned, false),
+        (UnitState::Airborne, false),
+        (UnitState::Rooted, false),
+        (UnitState::Disarmed, true),
+    ];
+    let walkers = states.map(|(state, _)| {
+        let x = 2 * (state as i64 + 1);
+        let id = walk.unit(at(x, 0, 0), Some(at(x, 0, 5)));
+        walk.set_states(id, &[state]);
+        (id, x)
+    });
     walk.tick();
     assert_eq!(walk.get::<Position>(unit), at(0, 0, 0));
     assert_eq!(walk.get::<Destination>(unit).get(), None);
+    for (&(id, x), (state, walks)) in walkers.iter().zip(states) {
+        let z = i64::from(walks);
+        assert_eq!(walk.get::<Position>(id), at(x, 0, z), "{state:?}");
+        assert_eq!(
+            walk.get::<Destination>(id).get(),
+            Some(at(x, 0, 5)),
+            "{state:?}"
+        );
+        walk.set_states(id, &[]);
+    }
+    // The states end: each walks on a meter from where it stood.
+    walk.tick();
+    for (&(id, x), (state, walks)) in walkers.iter().zip(states) {
+        let z = i64::from(walks) + 1;
+        assert_eq!(walk.get::<Position>(id), at(x, 0, z), "{state:?}");
+    }
 }
 
 #[test]

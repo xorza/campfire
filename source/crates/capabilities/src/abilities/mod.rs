@@ -31,6 +31,7 @@ use crate::stats::StatsSet;
 use crate::stats::modifier_book::{Applier, ModifierBook};
 use crate::stats::modifiers::Modifiers;
 use crate::stats::stat_book::StatBook;
+use crate::stats::unit_stats::UnitStats;
 use crate::units::body::Body;
 use crate::units::owner::Owner;
 use crate::units::script_view::{RowFill, SlotRow, View};
@@ -190,7 +191,8 @@ fn hold_passives(
 }
 
 /// Starts each ordered cast that passes its checks, its target within range, and drops the
-/// others.
+/// others. A unit its states keep from casting keeps its order, and a cast it started goes back
+/// to it.
 fn start_casts(
     tick: Res<'_, SimTick>,
     book: Res<'_, AbilityBook>,
@@ -207,18 +209,25 @@ fn start_casts(
             &mut AbilitySlots,
             Option<&ResourcePool>,
             Option<&Body>,
+            Option<&UnitStats>,
         ),
         Without<Dead>,
     >,
 ) {
     let now = tick.start();
-    for (&position, &team, mut slots, pool, body) in &mut casters {
-        let Some(casting) = slots
-            .casting()
-            .filter(|casting| casting.resolves_at.is_none())
-        else {
+    for (&position, &team, mut slots, pool, body, stats) in &mut casters {
+        let Some(casting) = slots.casting() else {
             continue;
         };
+        if !UnitStats::states_of(stats).can_cast() {
+            if casting.resolves_at.is_some() {
+                slots.interrupt();
+            }
+            continue;
+        }
+        if casting.resolves_at.is_some() {
+            continue;
+        }
         let lookup = |id| {
             let unit = targets.living(id)?;
             let unit_type = index.get(id).and_then(|entity| unit_types.get(entity).ok());
@@ -340,7 +349,8 @@ fn in_range(
 }
 
 /// Resolves the casts due this tick, in the order of their caster's stable id. Their calls share
-/// one snapshot of the living units: effects apply only in Resolve, so none changes it.
+/// one snapshot of the living units: effects apply only in Resolve, so none changes it. A due cast
+/// whose caster's states keep it from casting goes back to its order instead.
 fn resolve_casts(world: &mut World, mut due: Local<'_, Vec<(StableId, Entity)>>) {
     let now = world.resource::<SimTick>().start();
     due.clear();
@@ -355,6 +365,16 @@ fn resolve_casts(world: &mut World, mut due: Local<'_, Vec<(StableId, Entity)>>)
             due.push((id, entity));
         }
     }
+    due.retain(|&(_, entity)| {
+        let can_cast = UnitStats::states_of(world.get::<UnitStats>(entity)).can_cast();
+        if !can_cast {
+            world
+                .get_mut::<AbilitySlots>(entity)
+                .expect("a due caster has slots")
+                .interrupt();
+        }
+        can_cast
+    });
     if due.is_empty() {
         return;
     }

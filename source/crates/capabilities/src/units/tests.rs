@@ -25,6 +25,7 @@ use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::level::Level;
 use crate::stats::stat::{EngineStat, Stat};
+use crate::stats::unit_state::UnitState;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::path_id::PathId;
 use crate::units::unit::Unit;
@@ -141,17 +142,23 @@ fn queries_select_living_units_by_filter_and_exact_ground_distance() {
     let far = scene.spawn(at(6, 0, 0), unit().bundle(Team::new(0)));
     let ally = scene.spawn(at(1, 0, 0), unit().bundle(Team::new(1)));
     let dead = scene.spawn(at(0, 0, 1), (unit().bundle(Team::new(0)), Dead));
+    // Within 2 m, but no target: one untargetable, one invulnerable.
+    let hidden = UnitStats::in_states(&[UnitState::Untargetable]);
+    let hidden = scene.spawn(at(2, 0, 0), (unit().bundle(Team::new(0)), hidden));
+    let guarded = UnitStats::in_states(&[UnitState::Invulnerable]);
+    let guarded = scene.spawn(at(-2, 0, 0), (unit().bundle(Team::new(0)), guarded));
 
     let find = |scene: &mut Scene, filter: &str| {
         let source = format!(r#"fn probe(ctx, of) {{ ctx.find(of, of.pos, 5, "{filter}") }}"#);
         Scene::ids(scene.probe(&source, of).unwrap())
     };
-    // By stable id; the edge at exactly 5 m is in; the far one and the dead one are not.
+    // By stable id; the edge at exactly 5 m is in; the far one, the dead one and the two that are
+    // no target are not.
     assert_eq!(find(&mut scene, "enemies"), [high, east, west, edge]);
     assert_eq!(find(&mut scene, "enemies:creep"), [east]);
     assert_eq!(find(&mut scene, "allies"), [of, ally]);
     assert_eq!(find(&mut scene, "all"), [of, high, east, west, edge, ally]);
-    assert!(far.get() > 0 && dead.get() > 0);
+    assert!(far.get() > 0 && dead.get() > 0 && hidden.get() > 0 && guarded.get() > 0);
 
     // The nearest in turn as each despawns: east and west tie at 4 m, and east has the lower id.
     let nearest = r#"fn probe(ctx, of) { ctx.nearest_visible(of, num(5), "enemies") }"#;

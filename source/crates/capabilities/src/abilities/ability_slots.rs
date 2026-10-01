@@ -95,6 +95,14 @@ impl AbilitySlots {
         }
     }
 
+    /// Takes the cast back to its order, which starts it again from its check, and spends
+    /// nothing.
+    pub(crate) const fn interrupt(&mut self) {
+        if let Some(casting) = &mut self.casting {
+            casting.resolves_at = None;
+        }
+    }
+
     /// Ends the cast, resolved or not.
     pub(crate) const fn stop(&mut self) {
         self.casting = None;

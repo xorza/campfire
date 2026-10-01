@@ -12,10 +12,12 @@ pub enum UnitState {
     Stealthed,
     Untargetable,
     SlowImmune,
+    Invulnerable,
+    TrueSight,
 }
 
 impl UnitState {
-    pub const ALL: [UnitState; 8] = [
+    pub const ALL: [UnitState; 10] = [
         UnitState::Stunned,
         UnitState::Rooted,
         UnitState::Silenced,
@@ -24,6 +26,8 @@ impl UnitState {
         UnitState::Stealthed,
         UnitState::Untargetable,
         UnitState::SlowImmune,
+        UnitState::Invulnerable,
+        UnitState::TrueSight,
     ];
 
     /// The state as data names it.
@@ -37,6 +41,8 @@ impl UnitState {
             UnitState::Stealthed => "stealthed",
             UnitState::Untargetable => "untargetable",
             UnitState::SlowImmune => "slow_immune",
+            UnitState::Invulnerable => "invulnerable",
+            UnitState::TrueSight => "true_sight",
         }
     }
 }

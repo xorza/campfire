@@ -5,7 +5,7 @@ use crate::values::scalar::Scalar;
 use crate::vision::sight::Sight;
 
 /// A unit type's `vision` section: how far it sees, in meters, and whether it sees stealthed
-/// units. The release runs the sight range, and none of stealth yet.
+/// units.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct VisionData {
     pub sight: Sight,

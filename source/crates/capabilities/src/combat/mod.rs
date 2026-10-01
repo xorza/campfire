@@ -152,9 +152,10 @@ fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
     }
 }
 
-/// Drops each target that is gone, dead or no longer an enemy, which cancels its windup, and
-/// starts an attack when the target is in range and the unit is ready. The range counts only at
-/// the start.
+/// Drops each target that is gone, dead, no longer an enemy or not a target, which cancels its
+/// windup, and starts an attack when the target is in range and the unit is ready. The range
+/// counts only at the start. A unit its states keep from attacking keeps its target, and its
+/// windup starts again.
 fn attack(
     tick: Res<'_, SimTick>,
     targets: Targets<'_, '_>,
@@ -167,15 +168,22 @@ fn attack(
             &AttackStats,
             &mut AttackState,
             Option<&Body>,
+            Option<&UnitStats>,
         ),
         Without<Dead>,
     >,
 ) {
     let now = tick.start();
-    for (&position, &team, stats, mut attack, body) in &mut attackers {
+    for (&position, &team, stats, mut attack, body, unit_stats) in &mut attackers {
         let Some(target) = attack.target() else {
             continue;
         };
+        if !UnitStats::states_of(unit_stats).can_attack() {
+            if attack.started().is_some() {
+                attack.interrupt();
+            }
+            continue;
+        }
         let Some(target) = targets.enemy(team, target) else {
             attack.set_target(None);
             continue;
@@ -197,10 +205,13 @@ struct GoingOff {
 }
 
 /// Runs `on_attack` for each attack whose windup ends this tick, by attacker's stable id, before
-/// any of them strikes or fires.
+/// any of them strikes or fires; not for one its attacker's states stop, which does not strike.
 fn attack_events(
     world: &mut World,
-    attackers: &mut QueryState<(&StableId, &AttackStats, &AttackState), Without<Dead>>,
+    attackers: &mut QueryState<
+        (&StableId, &AttackStats, &AttackState, Option<&UnitStats>),
+        Without<Dead>,
+    >,
     mut going: Local<'_, Vec<GoingOff>>,
 ) {
     let Some(events) = world.remove_non_send::<CombatEvents>() else {
@@ -208,8 +219,10 @@ fn attack_events(
     };
     let now = world.resource::<SimTick>().start();
     going.clear();
-    for (&attacker, stats, attack) in attackers.iter(world) {
-        if attack.windup_ended(stats.windup(), now).is_some() {
+    for (&attacker, stats, attack, unit_stats) in attackers.iter(world) {
+        if attack.windup_ended(stats.windup(), now).is_some()
+            && UnitStats::states_of(unit_stats).can_attack()
+        {
             let target = attack
                 .target()
                 .expect("an attack in its windup has a target");
@@ -289,7 +302,8 @@ fn run_intervals(
 }
 
 /// Queues the damage of each attack whose windup ends this tick, or its launch when it is ranged
-/// and the match has projectiles. Each rolls its crit now, with its attacker's `crit_chance`.
+/// and the match has projectiles. Each rolls its crit now, with its attacker's `crit_chance`. A
+/// windup whose attacker's states keep it from attacking is interrupted instead.
 fn strike(
     (tick, rng, kind, book): (
         Res<'_, SimTick>,
@@ -317,6 +331,10 @@ fn strike(
         let Some(started) = attack.windup_ended(stats.windup(), now) else {
             continue;
         };
+        if !UnitStats::states_of(unit_stats).can_attack() {
+            attack.interrupt();
+            continue;
+        }
         let target = attack
             .target()
             .expect("an attack in its windup has a target");
@@ -352,7 +370,7 @@ fn strike(
 
 /// Deals the tick's damage in the queue's order: each through the mode's `calc_damage` when it
 /// has one, with the units as the pass began, then its combat events, whose damage joins the end
-/// of the queue. Damage to a unit at zero health does nothing.
+/// of the queue. Damage to a unit at zero health, or to an invulnerable one, does nothing.
 fn deal_damage(world: &mut World, mut assisters: Local<'_, Vec<StableId>>) {
     let now = world.resource::<SimTick>().start();
     world.resource_mut::<Deaths>().clear(now);
@@ -371,7 +389,7 @@ fn deal_damage(world: &mut World, mut assisters: Local<'_, Vec<StableId>>) {
             let mut at = 0;
             while let Some(damage) = batch.world().resource::<DamageQueue>().get(at) {
                 at += 1;
-                if Combat::living(batch.world(), damage.target).is_none() {
+                if Combat::damageable(batch.world(), damage.target).is_none() {
                     continue;
                 }
                 let amount = weigher.as_ref().map_or(damage.amount, |weigher| {
@@ -400,7 +418,8 @@ fn deal_damage(world: &mut World, mut assisters: Local<'_, Vec<StableId>>) {
     world.resource_mut::<DamageQueue>().clear();
 }
 
-/// What a damage of the pass did: nothing, as to a unit at zero health; damage; or a kill.
+/// What a damage of the pass did: nothing, as to a unit at zero health or an invulnerable one;
+/// damage; or a kill.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Landed {
     Nothing,
@@ -415,6 +434,12 @@ impl Combat {
         let entity = world.resource::<EntityIndex>().get(unit)?;
         let health = world.get::<Health>(entity)?;
         (!health.is_zero()).then_some(entity)
+    }
+
+    /// The entity of `unit`, when it is living and its states let damage reach it.
+    fn damageable(world: &World, unit: StableId) -> Option<Entity> {
+        Combat::living(world, unit)
+            .filter(|&entity| UnitStats::states_of(world.get(entity)).takes_damage())
     }
 
     /// Runs the events of `damage`, which `landed`, its amount after `calc_damage`: an attack's
@@ -471,7 +496,7 @@ impl Combat {
     /// damaged it within the assist window assisted. A living source heals by its life steal,
     /// for an attack, or its spell vamp times the health taken.
     fn deal(world: &mut World, damage: Damage, amount: Num, now: Tick) -> Landed {
-        let Some(entity) = Combat::living(world, damage.target) else {
+        let Some(entity) = Combat::damageable(world, damage.target) else {
             return Landed::Nothing;
         };
         let index = world.resource::<EntityIndex>();

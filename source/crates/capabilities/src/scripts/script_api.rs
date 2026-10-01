@@ -738,11 +738,5 @@ mod tests {
             recorded.sort_unstable();
             assert_eq!(recorded, schema, "{table:?}");
         }
-        let planned = |table, name| {
-            api.data().iter().any(|field| {
-                (field.table, field.name, field.status) == (table, name, Status::Planned)
-            })
-        };
-        assert!(planned(DataTable::Vision, "true_sight") && planned(DataTable::Modifier, "states"));
     }
 }

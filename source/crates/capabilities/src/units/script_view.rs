@@ -22,6 +22,7 @@ use crate::stats::modifier_book::ModifierId;
 use crate::stats::modifier_data::Reapply;
 use crate::stats::modifier_handle::{ModifierHandle, StateField};
 use crate::stats::stat::Stat;
+use crate::stats::unit_states::UnitStates;
 use crate::units::body::Body;
 use crate::units::filter::Filter;
 use crate::units::living_unit::LivingUnit;
@@ -100,6 +101,8 @@ pub(crate) struct UnitRow {
     pub(crate) level: Option<u32>,
     /// The teams that see it; `vision` fills it, and without vision every team does.
     pub(crate) seen_by: TeamSet,
+    /// Its states; `stats` fills it.
+    pub(crate) states: UnitStates,
     /// Its run of recent attacks, from `attacks_start` to `attacks_end`.
     attacks_start: u32,
     attacks_end: u32,
@@ -231,6 +234,7 @@ impl ScriptView {
                 health: None,
                 level: None,
                 seen_by: TeamSet::ALL,
+                states: UnitStates::default(),
                 target: None,
                 attack_range: None,
                 attacks_start: start,
@@ -272,7 +276,7 @@ impl ScriptView {
             .map_or(TagSet::default(), |unit_type| self.types.tags(unit_type))
     }
 
-    /// The living units `filter` selects relative to `of`.
+    /// The living units that may be targets and that `filter` selects relative to `of`.
     fn selected<'a>(
         &'a self,
         of: &UnitRow,
@@ -280,10 +284,9 @@ impl ScriptView {
     ) -> Result<impl Iterator<Item = &'a UnitRow>, ApiError> {
         let filter = Filter::parse(filter, &self.types)?;
         let of = of.team;
-        Ok(self
-            .units
-            .iter()
-            .filter(move |row| row.alive && filter.selects(of, row.team, self.tags(row))))
+        Ok(self.units.iter().filter(move |row| {
+            row.alive && row.states.targetable() && filter.selects(of, row.team, self.tags(row))
+        }))
     }
 }
 
@@ -585,9 +588,11 @@ impl View {
         self.row(id).map(|_| Unit::new(id, self.clone()))
     }
 
-    /// Unit `id`, when it is a living unit.
+    /// Unit `id`, when it is a living unit that may be a target.
     pub(crate) fn living(&self, id: StableId) -> Option<LivingUnit> {
-        let row = self.row(id).filter(|row| row.alive)?;
+        let row = self
+            .row(id)
+            .filter(|row| row.alive && row.states.targetable())?;
         Some(LivingUnit {
             id,
             pos: row.pos,

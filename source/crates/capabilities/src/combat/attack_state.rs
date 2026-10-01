@@ -43,6 +43,11 @@ impl AttackState {
         self.started = Some(tick);
     }
 
+    /// Cancels the windup and keeps the target, so the attack starts again when it may.
+    pub(crate) const fn interrupt(&mut self) {
+        self.started = None;
+    }
+
     /// Ends the windup with its strike, which spends the period from the attack's start.
     pub(crate) const fn strike(&mut self, ready_at: Tick) {
         self.started = None;

@@ -16,6 +16,8 @@ use crate::stats::modifier_data::Reapply;
 use crate::stats::modifiers::{Application, Instance};
 use crate::stats::stat::Stat;
 use crate::stats::stat_rule::{Combine, StatRule};
+use crate::stats::unit_state::UnitState;
+use crate::stats::unit_states::UnitStates;
 
 /// The MOBA's 30 ticks a second.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
@@ -110,6 +112,14 @@ impl Fight {
     fn state(&self, id: StableId) -> AttackState {
         self.get::<AttackState>(id).unwrap()
     }
+
+    /// Puts unit `id` in `states`, as its modifiers would.
+    fn set_states(&mut self, id: StableId, states: &[UnitState]) {
+        let entity = self.world.resource::<EntityIndex>().get(id).unwrap();
+        self.world
+            .entity_mut(entity)
+            .insert(UnitStats::in_states(states));
+    }
 }
 
 #[test]
@@ -189,6 +199,53 @@ fn a_range_counts_from_the_edge_of_each_body() {
 }
 
 #[test]
+fn a_windup_its_attackers_states_stop_starts_again_and_spends_nothing() {
+    let mut fight = Fight::new();
+    let early = fight.unit(Team::new(0), at(0, 0, 0), fighter());
+    let late = fight.unit(Team::new(0), at(0, 0, 1), fighter());
+    let dummy = fight.unit(Team::new(1), at(1, 0, 0), dummy());
+    fight.attack(early, dummy);
+    fight.attack(late, dummy);
+    // Both start in tick 0, to strike in tick 2. The early one is disarmed before tick 1: Act
+    // interrupts its windup and keeps its target. The late one is stunned in tick 2's Move
+    // stage, after Act, so its strike in Hit is interrupted instead.
+    let late_entity = fight.world.resource::<EntityIndex>().get(late).unwrap();
+    let stun = move |tick: Res<'_, SimTick>, mut stats: Query<'_, '_, &mut UnitStats>| {
+        if tick.start() == Tick::new(2) {
+            let states = UnitStates::of([UnitState::Stunned]);
+            stats.get_mut(late_entity).unwrap().set_states(states);
+        }
+    };
+    fight.world.schedule_scope(SimUpdate, |_, schedule| {
+        schedule.add_systems(stun.in_set(SimSet::Move));
+    });
+    fight.set_states(late, &[]);
+    fight.run_until(1);
+    fight.set_states(early, &[UnitState::Disarmed]);
+    fight.run_until(2);
+    assert_eq!(fight.state(early).started(), None);
+    assert_eq!(fight.state(late).started(), Some(Tick::new(0)));
+    fight.run_until(3);
+    assert_eq!(fight.health(dummy), Some(100));
+    for unit in [early, late] {
+        let state = fight.state(unit);
+        assert_eq!(
+            (state.target(), state.started(), state.ready_at()),
+            (Some(dummy), None, Tick::new(0))
+        );
+    }
+    // The states end before tick 3: both start again in tick 3, ready at once as no strike spent
+    // the period, and strike in tick 5, 100 − 2 × 30 = 40, ready again in tick 3 + 5 = 8.
+    fight.set_states(early, &[]);
+    fight.set_states(late, &[]);
+    fight.run_until(4);
+    assert_eq!(fight.state(early).started(), Some(Tick::new(3)));
+    fight.run_until(6);
+    assert_eq!(fight.health(dummy), Some(40));
+    assert_eq!(fight.state(late).ready_at(), Tick::new(8));
+}
+
+#[test]
 fn a_windup_on_a_target_that_dies_spends_nothing() {
     let mut fight = Fight::new();
     let slow = fight.unit(Team::new(0), at(0, 0, 0), fighter());
@@ -258,6 +315,17 @@ fn targets_are_living_enemies() {
     );
     let entity = fight.world.resource::<EntityIndex>().get(dead).unwrap();
     fight.world.entity_mut(entity).insert(Dead);
+    // Untargetable or invulnerable: no target; stunned: a target all the same.
+    let cases = [
+        (UnitState::Untargetable, false),
+        (UnitState::Invulnerable, false),
+        (UnitState::Stunned, true),
+    ];
+    let units = cases.map(|(state, _)| {
+        let unit = fight.unit(Team::new(0), at(state as i64, 0, 5), prey);
+        fight.set_states(unit, &[state]);
+        unit
+    });
 
     let enemy_at = |fight: &mut Fight, team: Team, target: StableId| {
         fight
@@ -271,6 +339,10 @@ fn targets_are_living_enemies() {
     assert_eq!(enemy_at(&mut fight, Team::new(0), far), None);
     assert_eq!(enemy_at(&mut fight, Team::new(1), dead), None);
     assert_eq!(enemy_at(&mut fight, Team::new(1), high), Some(at(0, 9, 3)));
+    for (unit, (state, target)) in units.into_iter().zip(cases) {
+        let pos = target.then_some(at(state as i64, 0, 5));
+        assert_eq!(enemy_at(&mut fight, Team::new(1), unit), pos, "{state:?}");
+    }
     let entity = fight.world.resource::<EntityIndex>().get(high).unwrap();
     fight.world.despawn(entity);
     assert_eq!(enemy_at(&mut fight, Team::new(1), high), None);
@@ -598,6 +670,21 @@ fn the_pass_deals_damage_in_its_order_and_credits_the_kill() {
     let attackers = fight.get_ref::<RecentAttackers>(target).unwrap();
     assert!(attackers.iter().all(|attack| attack.source != c));
     assert!(fight.world.resource::<Deaths>().is_empty());
+
+    // An invulnerable unit takes nothing and records no attacker; untargetable, it takes all.
+    let guarded = fight.unit(Team::new(1), at(4, 0, 0), dummy());
+    let hidden = fight.unit(Team::new(1), at(5, 0, 0), dummy());
+    fight.set_states(guarded, &[UnitState::Invulnerable]);
+    fight.set_states(hidden, &[UnitState::Untargetable]);
+    fight.damage(Some(c), guarded, 10, DamageCause::Effect);
+    fight.damage(Some(c), hidden, 10, DamageCause::Effect);
+    fight.run_until(3);
+    assert_eq!(
+        (fight.health(guarded), fight.health(hidden)),
+        (Some(100), Some(90))
+    );
+    let attackers = fight.get_ref::<RecentAttackers>(guarded).unwrap();
+    assert_eq!(attackers.iter().count(), 0);
 }
 
 #[test]
@@ -626,6 +713,7 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
         interval: None,
         shield: Some(num(amount)),
         stats: Vec::new(),
+        states: UnitStates::default(),
         state: Vec::new(),
     };
     let mut modifiers = Modifiers::default();

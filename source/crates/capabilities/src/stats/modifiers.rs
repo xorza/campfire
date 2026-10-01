@@ -10,6 +10,7 @@ use crate::abilities::ability_book::AbilityId;
 use crate::scripts::state_value::StateValue;
 use crate::stats::modifier_book::ModifierId;
 use crate::stats::modifier_data::Reapply;
+use crate::stats::unit_states::UnitStates;
 
 /// The modifiers a unit carries, by id, then source, one instance of an id from each source.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -45,6 +46,7 @@ pub(crate) struct Instance {
     pub(crate) shield: Option<Num>,
     /// What it adds to each stat a stack, by the stat's place in the stat book.
     pub(crate) stats: Vec<StatShare>,
+    pub(crate) states: UnitStates,
     /// Its script state, in the order of its fields' names.
     pub(crate) state: Vec<StateValue>,
 }
@@ -406,6 +408,7 @@ mod tests {
                     stat: 0,
                     value: num(armor),
                 }],
+                states: UnitStates::default(),
                 state: vec![StateValue::Int(7)],
             },
             reapply,

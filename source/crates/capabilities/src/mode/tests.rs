@@ -49,6 +49,7 @@ use crate::stats::modifiers::{Application, Instance, StatShare};
 use crate::stats::stat::Stat;
 use crate::stats::stat_rule::{Combine, StatRule};
 use crate::stats::stats_data::StatsData;
+use crate::stats::unit_states::UnitStates;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::Units;
 use crate::units::body::Body;
@@ -168,6 +169,7 @@ fn grunt() -> UnitKit {
         }),
         step: Some(MoveStep::new(Num::ONE).unwrap()),
         sight: None,
+        true_sight: false,
         body: None,
     }
 }
@@ -1139,6 +1141,7 @@ impl Game {
             interval: None,
             shield: None,
             stats: shares.collect(),
+            states: UnitStates::default(),
             state: vec![StateValue::Int(0)],
         };
         let mut modifiers = Modifiers::default();

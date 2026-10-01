@@ -16,6 +16,8 @@ use crate::stats::modifiers::{Application, Instance, StatShare};
 use crate::stats::stat::Stat;
 use crate::stats::stat_rule::{Combine, StatRule};
 use crate::stats::stats_data::{StatValue, StatsData};
+use crate::stats::unit_state::UnitState;
+use crate::stats::unit_states::UnitStates;
 use crate::values::filter_data::FilterData;
 use crate::values::number::Number;
 
@@ -79,13 +81,14 @@ fn stats(values: &[(EngineStat, Num, Num)]) -> StatsData {
     )
 }
 
-/// A match with the stats capability and a book of `types`, with a move speed cap of 6.
-fn stat_match(types: &[StatsData]) -> TestMatch {
+/// A match with the stats capability and a book of `types`, each with its own states, with a
+/// move speed cap of 6.
+fn stat_match(types: &[(StatsData, UnitStates)]) -> TestMatch {
     let mut game = TestMatch::new(&[Capability::Stats], RATE, None);
-    let types = types
-        .iter()
-        .enumerate()
-        .map(|(at, data)| (UnitType::new(u16::try_from(at).unwrap()), data));
+    let types = types.iter().enumerate().map(|(at, (data, states))| {
+        let unit_type = UnitType::new(u16::try_from(at).unwrap());
+        (unit_type, data, *states)
+    });
     let book = StatBook::new(&rules(), types, RATE, num(6)).unwrap();
     Stats::load(&mut game.world, book);
     game.world.add_schedule(mem::take(&mut game.schedule));
@@ -131,7 +134,8 @@ fn a_units_stats_follow_its_type_and_level_within_their_limits() {
         (EngineStat::MoveSpeed, num(4), Num::ZERO),
         (EngineStat::MoveSpeedPct, num(-2), Num::ZERO),
     ]);
-    let mut game = stat_match(&[hero, slowed, stopped]);
+    let none = UnitStates::default();
+    let mut game = stat_match(&[(hero, none), (slowed, none), (stopped, none)]);
     let units = [0, 1, 2].map(|unit_type| unit(&mut game, unit_type));
     game.world.run_schedule(SimUpdate);
     let get = |game: &TestMatch| {
@@ -218,6 +222,7 @@ fn share(
             interval: None,
             shield: None,
             stats: vec![StatShare { stat, value }],
+            states: UnitStates::default(),
             state: Vec::new(),
         },
         reapply,
@@ -227,10 +232,12 @@ fn share(
 
 #[test]
 fn modifiers_add_to_a_units_stats_by_each_stats_rule() {
-    // Move speed 4. Its place among the stats: health, health regen, resource, move speed, its
-    // rate, slow, attack speed, attack damage, in the engine's order.
+    // Move speed 4, and true sight from its type. Its place among the stats: health, health
+    // regen, resource, move speed, its rate, slow, attack speed, attack damage, in the engine's
+    // order.
     let walker = stats(&[(EngineStat::MoveSpeed, num(4), Num::ZERO)]);
-    let mut game = stat_match(&[walker]);
+    let true_sight = UnitStates::of([UnitState::TrueSight]);
+    let mut game = stat_match(&[(walker, true_sight)]);
     let unit = unit(&mut game, 0);
     game.world.entity_mut(unit).insert(Modifiers::default());
     let book = game.world.resource::<StatBook>();
@@ -263,11 +270,27 @@ fn modifiers_add_to_a_units_stats_by_each_stats_rule() {
     game.world.run_schedule(SimUpdate);
     let kept = (1_i64 << 24) - (99 << 24) / 100;
     assert_eq!(step(&game), Num::from_bits((5 * kept + 15) / 30));
+    let states = |game: &TestMatch| game.world.get::<UnitStats>(unit).unwrap().states();
+    assert_eq!(states(&game), true_sight);
 
-    // Removing every modifier: back to 4 m/s.
+    // Slow immunity, from a modifier of 2 stacks and no stat value: the slow counts as 0, so
+    // 5 m/s, 5 × 2²⁴ ÷ 30 = 2 796 202.67 bits, to 2 796 203; the unit is in its type's state and
+    // the modifier's, once whatever the stacks.
+    let mut immune = share(4, first, speed, Num::ZERO, Reapply::Stack);
+    immune.instance.states = UnitStates::of([UnitState::SlowImmune]);
+    let mut modifiers = game.world.get_mut::<Modifiers>(unit).unwrap();
+    modifiers.apply(immune.clone());
+    modifiers.apply(immune);
+    game.world.run_schedule(SimUpdate);
+    assert_eq!(step(&game), Num::from_bits(2_796_203));
+    let both = true_sight.with(UnitState::SlowImmune);
+    assert_eq!(states(&game), both);
+
+    // Removing every modifier: back to 4 m/s, and to the type's state alone.
     *game.world.get_mut::<Modifiers>(unit).unwrap() = Modifiers::default();
     game.world.run_schedule(SimUpdate);
     assert_eq!(step(&game), Num::from_bits(2_236_962));
+    assert_eq!(states(&game), true_sight);
 }
 
 #[test]
@@ -346,6 +369,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
             interval: None,
             shield: None,
             stats: Vec::new(),
+            states: UnitStates::default(),
             state: Vec::new(),
         },
         reapply: Reapply::Refresh,

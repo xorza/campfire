@@ -35,6 +35,8 @@ use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::Stats;
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifier_effect::ModifierEffect;
+use crate::stats::unit_state::UnitState;
+use crate::stats::unit_states::UnitStates;
 use crate::units::Units;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::declared_name::DeclaredName;
@@ -280,6 +282,19 @@ impl Match {
             .unwrap()
     }
 
+    /// Puts unit `id` in `states`, as its modifiers would.
+    fn set_states(&mut self, id: StableId, states: &[UnitState]) {
+        let entity = self.world.resource::<EntityIndex>().get(id).unwrap();
+        self.world
+            .entity_mut(entity)
+            .insert(UnitStats::in_states(states));
+    }
+
+    fn casting(&self, id: StableId) -> Option<Casting> {
+        let entity = self.world.resource::<EntityIndex>().get(id).unwrap();
+        self.world.get::<AbilitySlots>(entity).unwrap().casting()
+    }
+
     fn failures(&self) -> &[ScriptFailure] {
         self.world.non_send::<ScriptFailures>().get()
     }
@@ -416,11 +431,14 @@ fn a_cast_passes_its_checks_or_does_nothing() {
     let enemy = game.spawn(1, at(num(5), Num::ZERO, Num::ZERO), ());
     let far = game.spawn(1, at(num(6), Num::ZERO, Num::ZERO), ());
     let ally = game.spawn(0, at(num(1), Num::ZERO, num(1)), ());
+    let hidden = game.spawn(1, at(num(1), Num::ZERO, Num::ZERO), ());
+    game.set_states(hidden, &[UnitState::Untargetable]);
 
-    // An ally, a unit beyond 5 m, and no target at all are refused; so are a slot not learned
-    // and a pool of 5 against a cost of 10.
+    // An ally, an untargetable enemy, a unit beyond 5 m, and no target at all are refused; so
+    // are a slot not learned and a pool of 5 against a cost of 10.
     for (unit, target) in [
         (caster, CastTarget::Unit(ally)),
+        (caster, CastTarget::Unit(hidden)),
         (caster, CastTarget::Unit(far)),
         (caster, CastTarget::None),
         (unlearned, CastTarget::Unit(enemy)),
@@ -429,25 +447,91 @@ fn a_cast_passes_its_checks_or_does_nothing() {
         game.cast(unit, target);
         assert_eq!(game.health(enemy), 500, "{unit:?} at {target:?}");
     }
-    assert_eq!([game.health(far), game.health(ally)], [500, 500]);
+    let healths = [far, ally, hidden].map(|unit| game.health(unit));
+    assert_eq!(healths, [500, 500, 500]);
     assert_eq!(game.pool(caster), 100);
 
     // At exactly 5 m, the enemy takes 50. The cooldown, 1001 ms, is 30.03 ticks, rounded up to
-    // 31: the cast in tick 5 is ready again in tick 36.
+    // 31: the cast in tick 6 is ready again in tick 37.
     game.cast(caster, CastTarget::Unit(enemy));
     assert_eq!(game.health(enemy), 450);
     assert_eq!(game.pool(caster), 90);
-    assert_eq!(game.slot(caster).ready_at, Tick::new(36));
+    assert_eq!(game.slot(caster).ready_at, Tick::new(37));
 
     // The range counts from the edge of each body: once the unit 6 m off has a body of 1 m, it
-    // is within 5 m, and takes 50 in tick 36.
+    // is within 5 m, and takes 50 in tick 37.
     let far_entity = game.world.resource::<EntityIndex>().get(far).unwrap();
     game.world
         .entity_mut(far_entity)
         .insert(Body::new(Num::ONE).unwrap());
-    game.run_until(36);
+    game.run_until(37);
     game.cast(caster, CastTarget::Unit(far));
     assert_eq!(game.health(far), 450);
+}
+
+#[test]
+fn a_cast_its_casters_states_stop_is_kept_and_an_interrupted_one_spends_nothing() {
+    let mut game = Match::new();
+    // Strike with a cast time of 100 ms, 3 ticks.
+    let data = AbilityData {
+        cast_time_ms: Some(Ranked::One(int(100))),
+        ..strike()
+    };
+    let strike = game.load(&data, STRIKE);
+    let caster = game.caster(strike, 1);
+    let enemy = game.spawn(1, at(num(5), Num::ZERO, Num::ZERO), ());
+    let target = CastTarget::Unit(enemy);
+    let order = Casting {
+        slot: 0,
+        target,
+        resolves_at: None,
+    };
+    let ordered = Some(order);
+    let started = |tick| {
+        Some(Casting {
+            resolves_at: Some(Tick::new(tick)),
+            ..order
+        })
+    };
+    // A stun in tick 7's Move stage, after the casts start in Act and before they resolve in Hit.
+    let caster_entity = game.world.resource::<EntityIndex>().get(caster).unwrap();
+    let stun = move |tick: Res<'_, SimTick>, mut stats: Query<'_, '_, &mut UnitStats>| {
+        if tick.start() == Tick::new(7) {
+            let states = UnitStates::of([UnitState::Stunned]);
+            stats.get_mut(caster_entity).unwrap().set_states(states);
+        }
+    };
+    game.world.schedule_scope(SimUpdate, |_, schedule| {
+        schedule.add_systems(stun.in_set(SimSet::Move));
+    });
+
+    // Silenced in tick 0 and 1: the order is kept, and not started.
+    game.set_states(caster, &[UnitState::Silenced]);
+    game.cast(caster, target);
+    game.run_until(2);
+    assert_eq!(game.casting(caster), ordered);
+    // Free in tick 2: it starts, to resolve in tick 5. Silenced again in tick 3: its cast time
+    // is interrupted, back to the order, and spends nothing.
+    game.set_states(caster, &[]);
+    game.run_until(3);
+    assert_eq!(game.casting(caster), started(5));
+    game.set_states(caster, &[UnitState::Silenced]);
+    game.run_until(4);
+    assert_eq!(game.casting(caster), ordered);
+    // Free in tick 4: it starts again, to resolve in tick 7, when the stun in Move holds it
+    // back from resolving: back to the order once more.
+    game.set_states(caster, &[]);
+    game.run_until(8);
+    assert_eq!(game.casting(caster), ordered);
+    assert_eq!((game.health(enemy), game.pool(caster)), (500, 100));
+    assert_eq!(game.slot(caster).ready_at, Tick::new(0));
+    // Free in tick 8: it starts and resolves in tick 11, for 50 and 10 of the pool; ready again
+    // 31 ticks later, in tick 42.
+    game.set_states(caster, &[]);
+    game.run_until(12);
+    assert_eq!(game.casting(caster), None);
+    assert_eq!((game.health(enemy), game.pool(caster)), (450, 90));
+    assert_eq!(game.slot(caster).ready_at, Tick::new(42));
 }
 
 #[test]

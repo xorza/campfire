@@ -68,6 +68,14 @@ impl Scene {
         id
     }
 
+    /// Puts unit `id` in `state`, as its modifiers would.
+    fn set_state(&mut self, id: StableId, state: UnitState) {
+        let entity = self.entity(id);
+        self.world
+            .entity_mut(entity)
+            .insert(UnitStats::in_states(&[state]));
+    }
+
     fn entity(&self, id: StableId) -> Entity {
         self.world.resource::<EntityIndex>().get(id).unwrap()
     }
@@ -156,6 +164,22 @@ fn each_team_sees_the_cells_its_living_units_reveal() {
     assert_eq!(scene.seen_by(far), team(1));
     scene.world.run_schedule(SimUpdate);
     assert_eq!(scene.seen_by(far), team(1).with(Team::new(0)));
+
+    // A stealthed unit of team 1 at (−1, 0), in the seer's sight, √2.5 ≈ 1.58 m from its cell's
+    // center at (−0.5, 0.5); a ward of team 0 in the true sight state at (−4, 0), seeing 3 m,
+    // √12.5 ≈ 3.54 m from that center. The seer's sight does not show it, nor does the ward's
+    // true sight, beyond: team 1 alone sees it. The ward steps to (−3, 0), √6.5 ≈ 2.55 m off:
+    // its true sight shows the sneak to team 0.
+    let sneak = scene.spawn(1, -1, 0, None);
+    scene.set_state(sneak, UnitState::Stealthed);
+    let ward = scene.spawn(0, -4, 0, Some(3));
+    scene.set_state(ward, UnitState::TrueSight);
+    scene.world.run_schedule(SimUpdate);
+    assert_eq!(scene.seen_by(sneak), team(1));
+    let entity = scene.entity(ward);
+    *scene.world.get_mut::<Position>(entity).unwrap() = at(-3, 0);
+    scene.world.run_schedule(SimUpdate);
+    assert_eq!(scene.seen_by(sneak), team(1).with(Team::new(0)));
 
     // What a team sees is state, restored with the rest.
     let mut per_type = Vec::new();

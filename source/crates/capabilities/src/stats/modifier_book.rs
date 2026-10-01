@@ -13,6 +13,7 @@ use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifier_handle::StateField;
 use crate::stats::modifiers::{Application, Instance, Interval, StackEnd, StatShare};
 use crate::stats::stat_book::StatBook;
+use crate::stats::unit_states::UnitStates;
 use crate::units::script_view::ModifierInfo;
 use crate::values::number::Number;
 use crate::values::scalar::Scalar;
@@ -157,6 +158,7 @@ impl ModifierBook {
             interval,
             shield: value(data.shield.as_ref())?,
             stats: shares.collect::<Option<_>>()?,
+            states: UnitStates::of(data.states.iter().copied()),
             state: data
                 .state
                 .values()

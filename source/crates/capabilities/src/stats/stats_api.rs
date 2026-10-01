@@ -75,7 +75,7 @@ impl StatsApi {
             .hook(Hook::OnKill, "(ctx, m, victim)", Status::Runs)
             .hook(Hook::OnTakedown, "(ctx, m, victim)", Status::Runs);
         for state in UnitState::ALL {
-            api.state(state, Status::Planned);
+            api.state(state, Status::Runs);
         }
         api.data(
             DataTable::Modifier,
@@ -91,8 +91,9 @@ impl StatsApi {
                 "aura",
                 "params",
                 "state",
+                "states",
             ],
-            &["states"],
+            &[],
         )
         .data(DataTable::Aura, &["radius", "affects", "modifier"], &[]);
     }

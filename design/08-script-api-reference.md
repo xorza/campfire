@@ -183,14 +183,16 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 
 | State | Status |
 | --- | --- |
-| `stunned` | planned |
-| `rooted` | planned |
-| `silenced` | planned |
-| `disarmed` | planned |
-| `airborne` | planned |
-| `stealthed` | planned |
-| `untargetable` | planned |
-| `slow_immune` | planned |
+| `stunned` | runs |
+| `rooted` | runs |
+| `silenced` | runs |
+| `disarmed` | runs |
+| `airborne` | runs |
+| `stealthed` | runs |
+| `untargetable` | runs |
+| `slow_immune` | runs |
+| `invulnerable` | runs |
+| `true_sight` | runs |
 
 ## Data fields
 
@@ -248,7 +250,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `aura` | runs |
 | `params` | runs |
 | `state` | runs |
-| `states` | planned |
+| `states` | runs |
 
 ### A modifier's `aura`
 
@@ -278,7 +280,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | Field | Status |
 | --- | --- |
 | `sight_range` | runs |
-| `true_sight` | planned |
+| `true_sight` | runs |
 
 ### A unit type's `collision`
 

@@ -9,6 +9,9 @@ use crate::stats::modifiers::Modifiers;
 use crate::stats::stat::{EngineStat, Stat};
 use crate::stats::stat_rule::{Combine, StatRule};
 use crate::stats::stats_data::StatsData;
+use crate::stats::unit_state::UnitState;
+use crate::stats::unit_states::UnitStates;
+use crate::units::by_type::ByType;
 use crate::units::unit_type::UnitType;
 use crate::values::scalar::Scalar;
 
@@ -25,6 +28,8 @@ pub(crate) struct StatBook {
     /// Each unit type's growth of each stat, one row of the stats a type, in the types' order;
     /// `None` where the type gives the stat no value.
     growth: Vec<Option<Growth>>,
+    /// Each unit type's own states, as a tower's true sight.
+    type_states: ByType<UnitStates>,
     rate: TickRate,
     max_move_speed: Num,
 }
@@ -48,7 +53,7 @@ impl StatBook {
     /// number.
     pub(crate) fn new<'a>(
         rules: &BTreeMap<Stat, StatRule>,
-        types: impl IntoIterator<Item = (UnitType, &'a StatsData)>,
+        types: impl IntoIterator<Item = (UnitType, &'a StatsData, UnitStates)>,
         rate: TickRate,
         max_move_speed: Num,
     ) -> Option<StatBook> {
@@ -60,7 +65,9 @@ impl StatBook {
             }
         }
         let mut growth = Vec::new();
-        for (unit_type, data) in types {
+        let mut type_states = ByType::default();
+        for (unit_type, data, states) in types {
+            type_states.set(unit_type, states);
             let first = unit_type.index() * stats.len();
             if growth.len() < first + stats.len() {
                 growth.resize(first + stats.len(), None);
@@ -81,6 +88,7 @@ impl StatBook {
             rules: rules.values().copied().collect(),
             engine,
             growth,
+            type_states,
             rate,
             max_move_speed,
         })
@@ -155,7 +163,17 @@ impl StatBook {
     /// How far a unit with `values` walks a tick: `move_speed × (1 + move_speed_pct) × (1 −
     /// slow)`, within `move_speed`'s limits, at least 0 and at most the cap, divided by the tick
     /// rate, rounded once; `None` when the mode declares no move speed.
-    pub(crate) fn step(&self, values: &[Num]) -> Option<Num> {
+    /// The states of a unit of `unit_type` carrying `modifiers`: its type's and every
+    /// instance's, whatever its stacks.
+    pub(crate) fn states(&self, unit_type: UnitType, modifiers: Option<&Modifiers>) -> UnitStates {
+        let own = self.type_states.get(unit_type).copied().unwrap_or_default();
+        modifiers
+            .into_iter()
+            .flat_map(Modifiers::iter)
+            .fold(own, |states, instance| states.union(instance.states))
+    }
+
+    pub(crate) fn step(&self, values: &[Num], states: UnitStates) -> Option<Num> {
         let speed = i128::from(self.engine(values, EngineStat::MoveSpeed)?.to_bits());
         let one = 1_i128 << Num::FRAC_BITS;
         let bits = |stat| {
@@ -163,7 +181,12 @@ impl StatBook {
                 .map_or(0, |value| i128::from(value.to_bits()))
         };
         let gain = one + bits(EngineStat::MoveSpeedPct);
-        let kept = one - bits(EngineStat::Slow);
+        let slow = if states.contains(UnitState::SlowImmune) {
+            0
+        } else {
+            bits(EngineStat::Slow)
+        };
+        let kept = one - slow;
         let rule = self
             .rule(EngineStat::MoveSpeed)
             .expect("a declared move speed has a rule");

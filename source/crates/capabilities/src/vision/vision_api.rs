@@ -18,6 +18,6 @@ impl VisionApi {
             )
             .capability(Capability::Vision),
         )
-        .data(DataTable::Vision, &["sight_range"], &["true_sight"]);
+        .data(DataTable::Vision, &["sight_range", "true_sight"], &[]);
     }
 }

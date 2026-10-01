@@ -8,6 +8,8 @@ use bevy_ecs::world::{EntityRef, World};
 use campfire_sim::{Position, SimSet, StateRegistry};
 
 use crate::combat::dead::Dead;
+use crate::stats::unit_state::UnitState;
+use crate::stats::unit_stats::UnitStats;
 use crate::units::script_view::{RowFill, View};
 use crate::units::team::Team;
 use crate::units::team_set::TeamSet;
@@ -62,14 +64,26 @@ fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
     fill.row.seen_by = Vision::seen_by(unit);
 }
 
-/// Reveals the cells each living unit with a sight sees to its team, then gives each unit the
-/// teams that see it: its own, and each whose cells hold it.
+/// Reveals the cells each living unit with a sight sees to its team, and those each such unit in
+/// the `true_sight` state sees to its team's true sight, then gives each unit the teams that see
+/// it: its own, and each whose cells hold it, or, for a stealthed unit, whose true sight does.
 fn see(
     grid: Option<Res<'_, VisionGrid>>,
-    seers: Query<'_, '_, (&Position, &Team, &Sight), Without<Dead>>,
-    mut units: Query<'_, '_, (Entity, &Position, &Team, Option<&mut SeenBy>)>,
+    seers: Query<'_, '_, (&Position, &Team, &Sight, Option<&UnitStats>), Without<Dead>>,
+    mut units: Query<
+        '_,
+        '_,
+        (
+            Entity,
+            &Position,
+            &Team,
+            Option<&UnitStats>,
+            Option<&mut SeenBy>,
+        ),
+    >,
     mut commands: Commands<'_, '_>,
     mut revealed: Local<'_, Vec<u64>>,
+    mut true_sight: Local<'_, Vec<u64>>,
 ) {
     let Some(grid) = grid else {
         return;
@@ -77,20 +91,28 @@ fn see(
     let words = grid.grid.cells().div_ceil(64);
     revealed.clear();
     revealed.resize(words * grid.teams, 0);
-    for (&pos, &team, sight) in &seers {
+    true_sight.clear();
+    true_sight.resize(words * grid.teams, 0);
+    for (&pos, &team, sight, stats) in &seers {
         let run = usize::from(team.index()) * words;
-        let team = &mut revealed[run..run + words];
-        grid.grid
-            .spans_within(pos, sight.range(), |cells| set_bits(team, cells));
+        let truly = UnitStats::states_of(stats).contains(UnitState::TrueSight);
+        grid.grid.spans_within(pos, sight.range(), |cells| {
+            set_bits(&mut revealed[run..run + words], cells.clone());
+            if truly {
+                set_bits(&mut true_sight[run..run + words], cells);
+            }
+        });
     }
-    for (entity, &pos, &team, seen) in &mut units {
+    for (entity, &pos, &team, stats, seen) in &mut units {
         let mut teams = TeamSet::of(team);
         let cell = grid
             .grid
             .cell_of(pos)
             .expect("every unit stands within the bounds, which the grid covers");
+        let stealthed = UnitStats::states_of(stats).contains(UnitState::Stealthed);
+        let sight = if stealthed { &true_sight } else { &revealed };
         for index in 0..grid.teams {
-            if revealed[index * words + cell / 64] & 1 << (cell % 64) != 0 {
+            if sight[index * words + cell / 64] & 1 << (cell % 64) != 0 {
                 let index = u8::try_from(index).expect("teams fit u8");
                 teams = teams.with(Team::new(index));
             }
