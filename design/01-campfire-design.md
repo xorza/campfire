@@ -181,9 +181,9 @@ The reference MOBA proves the engine and is the template people fork: small, rea
 
 ## Milestones
 
-All four pillars ship in 1.0; they arrive in this order.
+All four pillars ship in 1.0; they arrive in this order, in the stages of the [roadmap](../ROADMAP.md).
 
-1. **Playable on LAN.** First the determinism core, `det-ci` on every OS, and the prototype that proves the sim runs the same inside Lightyear and in a bare verifier. Then a MOBA vertical slice, then **genre proofs**: a tiny test mode for each target game, run by `det-ci`, so a MOBA-only choice fails early. Then the 3v3 MOBA with bots on LAN or a local server, verified replays and crash restore. Players use local Nostr key files through the final delegation, handshake and session log formats; no relays, listings, launcher or payments.
+1. **Playable on LAN.** First the determinism core, `det-ci` on every OS, and the prototype that proves the sim runs the same inside Lightyear and in a bare verifier. Then a MOBA vertical slice, the game model in code, the MOBA's mechanics and sessions that restore, then **genre proofs**: a tiny test mode for each target game, run by `det-ci`, so a MOBA-only choice fails early. Then the 3v3 MOBA with bots on LAN or a local server, verified replays and crash restore. Players use local Nostr key files through the final delegation, handshake and session log formats; no relays, listings, launcher or payments.
 2. **Open network.** Nostr listings, packages over Blossom, reputation, ban lists, and the launcher with signed releases.
 3. **Payments.** The optional `payments` module: entry fees first, then wager pools, then item sales, then the rest.
 4. **Full capabilities.** Each capability the genre proofs need at depth: `character`, `hitboxes` and level geometry for shooters and action RPGs; `quests`, the game clock, senses and overrides for RPGs; `production` for RTS; `physics` for vehicles; saves, carry and generated maps for singleplayer games and campaigns; `world` and deterministic multithreading for large worlds.
