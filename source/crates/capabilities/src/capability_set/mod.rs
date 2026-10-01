@@ -10,6 +10,7 @@ use crate::combat::Combat;
 use crate::mode::match_end::MatchEnd;
 use crate::navigation::Navigation;
 use crate::orders::Orders;
+use crate::progression::Progression;
 use crate::projectiles::Projectiles;
 use crate::scripts::match_scripts::MatchScripts;
 use crate::stats::Stats;
@@ -28,8 +29,9 @@ type Install = fn(&mut World, &mut Schedule, &mut StateRegistry);
 
 /// The capabilities the release runs, in the order they install: each after the ones it builds
 /// on. A declared capability not here installs nothing yet.
-const INSTALLS: [(Capability, Install); 7] = [
+const INSTALLS: [(Capability, Install); 8] = [
     (Capability::Stats, Stats::install),
+    (Capability::Progression, Progression::install),
     (Capability::Combat, Combat::install),
     (Capability::Navigation, Navigation::install),
     (Capability::Vision, Vision::install),
@@ -109,7 +111,7 @@ const fn bit(capability: Capability) -> u16 {
 /// The capabilities `capability` builds on.
 const fn needs(capability: Capability) -> &'static [Capability] {
     match capability {
-        Capability::Combat => &[Capability::Stats],
+        Capability::Combat | Capability::Progression => &[Capability::Stats],
         Capability::Projectiles | Capability::Abilities | Capability::Vision => {
             &[Capability::Combat]
         }

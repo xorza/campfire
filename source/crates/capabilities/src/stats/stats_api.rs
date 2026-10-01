@@ -57,11 +57,6 @@ impl StatsApi {
             "knock_back",
             "(unit, from, distance, ms)",
             "pushes `unit` away from `from`",
-        ))
-        .plan(call(
-            "add_xp",
-            "(avatar, amount)",
-            "gives `avatar` experience",
         ));
         api.hook(Hook::OnInterval, "(ctx, m)", Status::Runs)
             .hook(Hook::OnAttack, "(ctx, m, target)", Status::Runs)

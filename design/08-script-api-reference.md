@@ -10,7 +10,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `add_modifier` | `(unit, id) or (unit, id, duration_ms)` | every role | stats | runs | applies the modifier `id` of the script's package to `unit` from the acting unit, and returns its handle |
 | `add_player_modifier` | `(player, id)` | every role | stats | runs | gives `player` the modifier `id` of the script's package, which every living unit it owns that the modifier's `affects` selects holds from no source |
 | `add_resource` | `(player, name, amount)` | every role | core | runs | adds `amount` of the player resource `name`, one the mode declares, to `player` |
-| `add_xp` | `(avatar, amount)` | every role | stats | planned | gives `avatar` experience |
+| `add_xp` | `(unit, track, amount)` | every role | progression | runs | gives `unit` `amount` of experience on `track`, one of its unit type's |
 | `area` | `(pos)` | action | areas | planned | the ability's area at `pos` |
 | `attack_hit` | `(target)` | action, modifier, AI | combat | runs | an extra attack of the acting unit on `target`: no crit, and no `on_attack` |
 | `available` | `(player, choice, value)` | mode | core | runs | whether `player` may choose `value` of `choice`: no other player chose it in a unique choice |
@@ -26,6 +26,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `find` | `(of, pos, radius, filter)` | every role | core | runs | the living units within `radius` of `pos` that `filter` selects for `of`, seen or not, by stable id |
 | `find_visible` | `(of, pos, radius, filter)` | every role | vision | runs | as `find`, of the units `of`'s team sees |
 | `grant` | `(unit, kind, ids)` | mode | abilities | runs | puts the actions `ids`, loadout entries the mode depends on, in the slot kind `kind` of `unit`, after its slots of that kind, at the kind's first rank |
+| `grant_perk` | `(unit, id)` | every role | progression | planned | gives `unit` the perk `id`, with no point and no requirement |
 | `heal` | `(unit, amount)` | every role | combat | runs | heals `unit`'s life pool, times one plus its `heal_scale` stat |
 | `knock_back` | `(unit, from, distance, ms)` | every role | stats | planned | pushes `unit` away from `from` |
 | `learn` | `(avatar, slot)` | mode | abilities | runs | the ability in `slot` a rank more, up to its last |
@@ -67,6 +68,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `attack_range` | read | combat | runs | its attack's range |
 | `can_see` | `(unit)` | vision | runs | whether its team sees the other unit |
 | `has_modifier` | `(id)` | stats | runs | whether it carries the modifier of the script's package |
+| `has_perk` | `(id)` | progression | planned | whether it has the perk `id` |
 | `has_tag` | `(tag)` | core | runs | whether it has the tag, of its type or a modifier |
 | `is_avatar` | read | core | runs | whether it is an avatar |
 | `is_enemy_of` | `(unit)` | core | runs | whether its team may attack the other's, hostile or neutral |
@@ -74,6 +76,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `owner` | read | core | runs | its player's slot, `()` with none |
 | `params` | read | core | runs | its unit type's params, unresolved |
 | `path` | read | core | runs | the name of the path it walks, `()` with none |
+| `points` | read | progression | planned | its unspent points |
 | `pool` | `(name)` | stats | runs | the current amount of its pool `name` |
 | `pool_max` | `(name)` | stats | runs | the maximum of its pool `name` |
 | `pos` | read | core | runs | where it stands |
@@ -83,7 +86,9 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `stat` | `(name)` | stats | runs | its value of a stat the mode declares |
 | `target` | read | core | runs | its attack's target, `()` with none |
 | `team` | read | core | runs | its team's name |
+| `track_level` | `(track)` | progression | planned | its level on `track` |
 | `unit_type` | read | core | runs | its unit type's name |
+| `xp` | `(track)` | progression | planned | its experience on `track` |
 
 ## Modifier `m`
 
@@ -191,6 +196,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `calc_damage(ctx, d)` | mode | combat | runs |
 | `calc_heal(ctx, h)` | mode | combat | planned |
 | `on_think(ctx, unit)` | AI | orders | runs |
+| `on_level_up(ctx, unit, track, level)` | mode | progression | runs |
 
 ## Tag effects
 
@@ -228,6 +234,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `relations` | runs |
 | `tags` | runs |
 | `state_version` | planned |
+| `tracks` | runs |
 
 ### The mode's `[combat]`
 
@@ -316,6 +323,13 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `hits` | planned |
 | `sight_radius` | planned |
 | `collide` | planned |
+
+### A track, `[tracks.<name>]`
+
+| Field | Status |
+| --- | --- |
+| `levels` | runs |
+| `level` | runs |
 
 ### A modifier, `[modifiers.<id>]`
 

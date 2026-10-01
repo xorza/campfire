@@ -14,6 +14,8 @@ use crate::actions::action_book::ActionId;
 use crate::actions::action_data::CostTarget;
 use crate::combat::damage_kind::DamageKind;
 use crate::mode::resource_id::ResourceId;
+use crate::progression::track_id::TrackId;
+use crate::progression::track_set::TrackSet;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
@@ -81,6 +83,8 @@ pub(crate) struct ScriptView {
     pool_names: Rc<[DeclaredName]>,
     /// The players' resources the mode declares, by resource id.
     resource_names: Rc<[DeclaredName]>,
+    /// The tracks the mode declares, by track id.
+    track_names: Rc<[DeclaredName]>,
     /// Every modifier, by id, the modifiers each unit carries, one run per unit, and their
     /// script state, one run per modifier.
     modifier_info: Vec<ModifierInfo>,
@@ -114,6 +118,8 @@ pub(crate) struct UnitRow {
     pub(crate) pools: Option<Pools>,
     /// The teams that see it; `vision` fills it, and without vision every team does.
     pub(crate) seen_by: TeamSet,
+    /// The tracks it has; `progression` fills it.
+    pub(crate) tracks: TrackSet,
     /// Its tags and their effects, as the core derives them.
     pub(crate) tags: UnitTags,
     /// Its run of recent attacks, from `attacks_start` to `attacks_end`.
@@ -249,6 +255,7 @@ impl ScriptView {
                 level: None,
                 pools: None,
                 seen_by: TeamSet::ALL,
+                tracks: TrackSet::default(),
                 tags: unit.get::<UnitTags>().copied().unwrap_or_default(),
                 target: None,
                 attack_range: None,
@@ -321,6 +328,7 @@ impl View {
             stat_names: Rc::from([]),
             pool_names: Rc::from([]),
             resource_names: Rc::from([]),
+            track_names: Rc::from([]),
             stats: Vec::new(),
             modifier_info: Vec::new(),
             modifiers: Vec::new(),
@@ -551,6 +559,27 @@ impl View {
         Ok(DamageKind::new(
             u8::try_from(at).expect("the load keeps damage kinds within u8"),
         ))
+    }
+
+    /// Sets the tracks the mode declares.
+    pub(crate) fn set_track_names(&self, track_names: Rc<[DeclaredName]>) {
+        self.0.borrow_mut().track_names = track_names;
+    }
+
+    /// The track `name`; an error for one the mode does not declare.
+    pub(crate) fn track(&self, name: &str) -> Checked<TrackId> {
+        let view = self.0.borrow();
+        let at = view
+            .track_names
+            .iter()
+            .position(|track| track.as_str() == name)
+            .ok_or_else(|| ApiError::UnknownTrack.fail())?;
+        Ok(TrackId::new(at).expect("the load keeps tracks within their limit"))
+    }
+
+    /// The name of track `track`.
+    pub(crate) fn track_name(&self, track: TrackId) -> ImmutableString {
+        self.0.borrow().track_names[track.index()].as_str().into()
     }
 
     /// The name of damage kind `kind`.

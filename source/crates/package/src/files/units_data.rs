@@ -28,6 +28,8 @@ pub struct UnitTypeFile {
     pub orders: Option<AiData>,
     pub vision: Option<VisionData>,
     pub collision: Option<CollisionData>,
+    /// The mode's tracks it gains experience on.
+    pub tracks: Vec<DeclaredName>,
 }
 
 /// The flat table of a unit type, the core's fields among the capabilities' sections.
@@ -50,6 +52,8 @@ impl<'de> Deserialize<'de> for UnitTypeFile {
             orders: Option<AiData>,
             vision: Option<VisionData>,
             collision: Option<CollisionData>,
+            #[serde(default)]
+            tracks: Vec<DeclaredName>,
         }
         let fields = Fields::deserialize(deserializer)?;
         Ok(UnitTypeFile {
@@ -65,6 +69,7 @@ impl<'de> Deserialize<'de> for UnitTypeFile {
             orders: fields.orders,
             vision: fields.vision,
             collision: fields.collision,
+            tracks: fields.tracks,
         })
     }
 }

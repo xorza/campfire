@@ -49,6 +49,11 @@ regen = "mana_regen"
 max = "energy"
 regen = "energy_regen"
 
+# A hero's levels, 1 to 18: the experience that reaches each from 2, League of Legends' table.
+[tracks.level]
+level = true
+levels = [280, 660, 1140, 1720, 2400, 3180, 4060, 5040, 6120, 7300, 8580, 9960, 11440, 13020, 14700, 16480, 18360]
+
 # What its tags do: crowd control, stealth and true sight. A slow, a cut of `move_speed`, grants
 # `slowed`, which `slow_immune` holds without effect.
 [tags.stunned]

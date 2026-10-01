@@ -14,6 +14,7 @@ use crate::mode::mode_book::ModeBook;
 use crate::mode::mode_state::ModeState;
 use crate::mode::player_resources::PlayerResources;
 use crate::orders::Orders;
+use crate::progression::Progression;
 use crate::scripts::effect::Effect;
 use crate::scripts::error::CallError;
 use crate::scripts::hook::ScriptRole;
@@ -263,6 +264,7 @@ impl Frame {
                     let mode = mode.expect("a mode effect comes from a match with a mode");
                     Mode::apply_effect(world, mode, now, effect, self);
                 }
+                Effect::Progression(effect) => Progression::apply(world, effect),
             }
         }
         self.effects = effects;

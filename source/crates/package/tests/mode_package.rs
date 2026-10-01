@@ -8,7 +8,7 @@ use std::sync::{Arc, OnceLock};
 
 use campfire_capabilities::{ActionField, ActionKind, MapProblem, ModeError};
 use campfire_package::{
-    ChoiceProblem, ContentError, CtxMisuse, LoadError, LoadProblem, ModePackages, NameKind,
+    ChoiceProblem, ContentError, CtxMisuse, Limit, LoadError, LoadProblem, ModePackages, NameKind,
     PackageDir, Place,
 };
 use campfire_sim::Capability;
@@ -140,13 +140,29 @@ fn more_layers_than_tags_a_match_holds_fail_the_load() {
     let error = ModePackages::from_package_dir(&edited([(MODE_DATA, edit)])).unwrap_err();
     assert_eq!(error.package, MODE);
     assert!(
-        matches!(*error.problem, LoadProblem::TooManyTags),
+        matches!(*error.problem, LoadProblem::TooMany(Limit::Tags)),
+        "{error}"
+    );
+}
+
+#[test]
+fn more_tracks_than_a_unit_holds_fail_the_load() {
+    // 32 tracks beside `level`, past the 32 a unit holds.
+    let mut tracks = String::new();
+    for at in 0..32 {
+        write!(tracks, "[tracks.skill{at}]\nlevels = [10]\n\n").unwrap();
+    }
+    let edit = Edit::Replace("[tracks.level]", format!("{tracks}[tracks.level]").leak());
+    let error = ModePackages::from_package_dir(&edited([(MODE_DATA, edit)])).unwrap_err();
+    assert_eq!(error.package, MODE);
+    assert!(
+        matches!(*error.problem, LoadProblem::TooMany(Limit::Tracks)),
         "{error}"
     );
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 111] = [
+const FLAWS: [Flaw; 115] = [
     flaw(
         MANIFEST,
         Edit::Replace(r#"engine = "0.1.0""#, r#"engine = "0.0.9""#),
@@ -185,9 +201,46 @@ const FLAWS: [Flaw; 111] = [
     ),
     flaw(
         MANIFEST,
-        Edit::Replace(r#", "vision"]"#, "]"),
+        Edit::Replace(r#", "vision", "progression"]"#, r#", "progression"]"#),
         MODE,
         |problem| matches!(problem, LoadProblem::Undeclared { capability: Capability::Vision, at: Place::UnitType(name) } if name == "caster_creep"),
+    ),
+    // Tracks are progression's: positive and ascending, at most one the `level` track, and each a
+    // unit type lists one the mode declares.
+    flaw(
+        MANIFEST,
+        Edit::Replace(r#", "progression"]"#, "]"),
+        MODE,
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Undeclared {
+                    capability: Capability::Progression,
+                    at: Place::Tracks
+                }
+            )
+        },
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace("levels = [280, 660,", "levels = [660, 280,"),
+        MODE,
+        |problem| read_fails(problem, "data/mode.toml", "a track has a level 2"),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace(
+            "[tracks.level]\n",
+            "[tracks.fame]\nlevel = true\nlevels = [10]\n\n[tracks.level]\n",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::LevelTracks),
+    ),
+    flaw(
+        HUSK,
+        Edit::Replace(r#"tracks = ["level"]"#, r#"tracks = ["levels"]"#),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Track, name, .. } if name == "levels"),
     ),
     flaw(
         MANIFEST,
@@ -682,7 +735,7 @@ const FLAWS: [Flaw; 111] = [
             "[pools.p1]\nmax = \"mana\"\n[pools.p2]\nmax = \"mana\"\n[pools.p3]\nmax = \"mana\"\n[pools.p4]\nmax = \"mana\"\n[pools.p5]\nmax = \"mana\"\n[pools.p6]\nmax = \"mana\"\n[pools.energy]",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::TooManyPools),
+        |problem| matches!(problem, LoadProblem::TooMany(Limit::Pools)),
     ),
     flaw(
         MODE_DATA,
@@ -1077,7 +1130,7 @@ fn every_flaw_of_a_package_fails_its_load_with_its_own_problem() {
     assert!(kinds(253).is_ok());
     let error = kinds(254).unwrap_err();
     assert!(
-        matches!(*error.problem, LoadProblem::TooManyDamageKinds),
+        matches!(*error.problem, LoadProblem::TooMany(Limit::DamageKinds)),
         "{error}"
     );
 

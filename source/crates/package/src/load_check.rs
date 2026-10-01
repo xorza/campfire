@@ -4,14 +4,15 @@ use std::iter;
 use campfire_capabilities::{
     ActionData, ActionKind, ActionSlots, ApiOwner, CollisionData, DeclaredName, EngineStat,
     FilterData, Hook, MemberKind, Mode, ModifierData, Navigation, Number, Offers, Param, Pools,
-    Range, RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Stat, Targeting, UnitTypeData,
+    Range, RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Stat, Targeting, TrackId,
+    UnitTypeData,
 };
 use campfire_content::PackagePath;
 use campfire_math::Num;
 use campfire_sim::Capability;
 
 use crate::RELEASE_VERSION;
-use crate::error::{ChoiceProblem, CtxMisuse, LoadError, LoadProblem, NameKind, Place};
+use crate::error::{ChoiceProblem, CtxMisuse, Limit, LoadError, LoadProblem, NameKind, Place};
 use crate::files::units_data::UnitTypeFile;
 use crate::mode_packages::{Content, Dependent, ModePackages};
 use crate::package::Package;
@@ -53,7 +54,7 @@ impl<'a> LoadCheck<'a> {
         };
         let tags = packages.tag_names();
         if tags.len() > UnitTypeData::TAG_LIMIT {
-            return Err(fail(LoadProblem::TooManyTags));
+            return Err(fail(LoadProblem::TooMany(Limit::Tags)));
         }
         let avatars = packages.dependencies.iter().filter_map(|dependent| {
             matches!(dependent.content, Content::Avatar(_)).then_some(&dependent.package.name)
@@ -66,7 +67,7 @@ impl<'a> LoadCheck<'a> {
             unit_types += 1;
         }
         if unit_types > UnitTypeData::TYPE_LIMIT {
-            return Err(fail(LoadProblem::TooManyUnitTypes));
+            return Err(fail(LoadProblem::TooMany(Limit::UnitTypes)));
         }
         let engines = [&packages.mode].into_iter().chain(
             packages
@@ -149,6 +150,7 @@ impl<'a> LoadCheck<'a> {
         self.damage_kinds()?;
         self.pools_and_resources()?;
         self.layers()?;
+        self.tracks()?;
         if data.combat.stats().next().is_some() || data.combat.life.is_some() {
             self.require(Capability::Combat, &Place::Combat)?;
             self.stats_declared(data.combat.stats(), &Place::Combat)?;
@@ -542,7 +544,7 @@ impl<'a> LoadCheck<'a> {
         let data = &self.packages.data;
         let kinds = &data.combat.damage_kinds;
         if kinds.len() > usize::from(u8::MAX) + 1 {
-            return Err(LoadProblem::TooManyDamageKinds);
+            return Err(LoadProblem::TooMany(Limit::DamageKinds));
         }
         if !self
             .packages
@@ -605,6 +607,23 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
+    /// The mode's tracks are progression's: no more than a unit holds, and at most one the
+    /// `level` track.
+    fn tracks(&self) -> Result<(), LoadProblem> {
+        let tracks = &self.packages.data.tracks;
+        if tracks.is_empty() {
+            return Ok(());
+        }
+        self.require(Capability::Progression, &Place::Tracks)?;
+        if tracks.len() > TrackId::LIMIT {
+            return Err(LoadProblem::TooMany(Limit::Tracks));
+        }
+        if tracks.values().filter(|track| track.level).count() > 1 {
+            return Err(LoadProblem::LevelTracks);
+        }
+        Ok(())
+    }
+
     /// The mode's layers are navigation's.
     fn layers(&self) -> Result<(), LoadProblem> {
         if self.packages.data.navigation.layers.is_empty() {
@@ -636,10 +655,10 @@ impl<'a> LoadCheck<'a> {
     fn pools_and_resources(&self) -> Result<(), LoadProblem> {
         let data = &self.packages.data;
         if data.pools.len() > Pools::LIMIT {
-            return Err(LoadProblem::TooManyPools);
+            return Err(LoadProblem::TooMany(Limit::Pools));
         }
         if data.resources.len() > ResourceId::LIMIT {
-            return Err(LoadProblem::TooManyResources);
+            return Err(LoadProblem::TooMany(Limit::Resources));
         }
         if let Some(name) = data
             .resources
@@ -690,6 +709,7 @@ impl<'a> LoadCheck<'a> {
             (unit_type.orders.is_some(), Capability::Orders),
             (unit_type.vision.is_some(), Capability::Vision),
             (!unit_type.slots.is_empty(), Capability::Abilities),
+            (!unit_type.tracks.is_empty(), Capability::Progression),
         ];
         for (used, capability) in sections {
             if used {
@@ -721,6 +741,18 @@ impl<'a> LoadCheck<'a> {
         }
         if let Some(passive) = &unit_type.passive {
             modifier_exists(modifiers, passive, at)?;
+        }
+        let tracks = &self.packages.data.tracks;
+        if let Some(track) = unit_type
+            .tracks
+            .iter()
+            .find(|&track| !tracks.contains_key(track))
+        {
+            return Err(LoadProblem::Unknown {
+                of: NameKind::Track,
+                at: at.clone(),
+                name: track.to_string(),
+            });
         }
         Ok(())
     }

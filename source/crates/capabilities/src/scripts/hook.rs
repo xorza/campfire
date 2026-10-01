@@ -24,6 +24,7 @@ pub enum Hook {
     CalcDamage,
     CalcHeal,
     OnThink,
+    OnLevelUp,
 }
 
 /// What a script serves, as the data that names it says: each role has its own hooks.
@@ -54,7 +55,7 @@ impl ScriptRole {
 }
 
 impl Hook {
-    pub const ALL: [Hook; 20] = [
+    pub const ALL: [Hook; 21] = [
         Hook::OnResolve,
         Hook::OnHit,
         Hook::OnEnd,
@@ -75,6 +76,7 @@ impl Hook {
         Hook::CalcDamage,
         Hook::CalcHeal,
         Hook::OnThink,
+        Hook::OnLevelUp,
     ];
 
     /// The prefixes that mark a script function as a hook: one with either that is no hook of
@@ -109,6 +111,7 @@ impl Hook {
             Hook::CalcDamage => "calc_damage",
             Hook::CalcHeal => "calc_heal",
             Hook::OnThink => "on_think",
+            Hook::OnLevelUp => "on_level_up",
         }
     }
 
@@ -132,7 +135,7 @@ impl Hook {
             | Hook::OnKill
             | Hook::OnTakedown
             | Hook::OnTimer => 3,
-            Hook::OnHit | Hook::OnModeInput | Hook::OnUnitDied => 4,
+            Hook::OnHit | Hook::OnModeInput | Hook::OnUnitDied | Hook::OnLevelUp => 4,
         }
     }
 
@@ -156,7 +159,8 @@ impl Hook {
             | Hook::OnPlayerLeave
             | Hook::OnUnitDied
             | Hook::CalcDamage
-            | Hook::CalcHeal => ScriptRole::Mode,
+            | Hook::CalcHeal
+            | Hook::OnLevelUp => ScriptRole::Mode,
             Hook::OnThink => ScriptRole::Ai,
         }
     }
@@ -184,6 +188,7 @@ impl Hook {
             | Hook::OnPlayerJoin
             | Hook::OnPlayerLeave => None,
             Hook::OnThink => Some(Capability::Orders),
+            Hook::OnLevelUp => Some(Capability::Progression),
         }
     }
 }

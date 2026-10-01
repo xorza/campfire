@@ -1,6 +1,7 @@
 name = "Cinder"
 tags = ["mage"]
 pools = ["health", "mana"]
+tracks = ["level"]
 slots = { basic = ["fire_lance", "eruption", "wildfire"], ultimate = ["chain_fire"], weapon = ["attack"] }
 
 [combat]

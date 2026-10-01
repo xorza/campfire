@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use campfire_capabilities::{
     ActionField, ActionKind, ActionSlots, DeclaredName, MapProblem, ModeError, Pools, ResourceId,
-    Stat,
+    Stat, TrackId,
 };
 use campfire_content::PackagePath;
 use campfire_script::ScriptError;
@@ -116,8 +116,6 @@ pub enum LoadProblem {
     Undeclared { capability: Capability, at: Place },
     /// The mode declares `combat`, and no damage kinds for its damage.
     NoDamageKinds,
-    /// The mode declares more damage kinds than a match tells apart.
-    TooManyDamageKinds,
     /// The mode declares `vision`, and its map has no grid for sight to reveal.
     NoGrid,
     /// The mode declares `navigation`, and its map has no `[navigation]` cells to plan routes on.
@@ -145,10 +143,10 @@ pub enum LoadProblem {
     Mode(ModeError),
     /// A capability field of an ability does not hold at a rank.
     ActionField { action: String, field: ActionField },
-    /// The mode's unit types declare more tags than a match holds.
-    TooManyTags,
-    /// The mode has more unit types, its avatars' among them, than a match holds.
-    TooManyUnitTypes,
+    /// The mode declares more of something than a match holds.
+    TooMany(Limit),
+    /// More than one of the mode's tracks is the `level` track.
+    LevelTracks,
     /// An avatar has the name of one of the mode's unit types.
     RepeatedUnitType(String),
     /// A per-rank array of an ability has another length than its ranks.
@@ -183,10 +181,6 @@ pub enum LoadProblem {
     /// Live stat changes across the mode's modifiers read each other in a loop, through these
     /// stats.
     StatLoop(Vec<Stat>),
-    /// The mode declares more pools than `Pools::LIMIT`.
-    TooManyPools,
-    /// The mode declares more player resources than `ResourceId::LIMIT`.
-    TooManyResources,
     /// The mode's slot kinds or choices, or what names them.
     Choice(ChoiceProblem),
     /// Data or a script at `at` names something of `of` the mode or its packages do not have.
@@ -226,6 +220,8 @@ pub enum Place {
     Pool(DeclaredName),
     /// The mode's choice of that name.
     Choice(DeclaredName),
+    /// The mode's `[tracks]`.
+    Tracks,
 }
 
 /// A use of `ctx` that hides it from the load checks: every value of `ctx` in a script is a
@@ -288,6 +284,7 @@ impl fmt::Display for Place {
             Place::Navigation => f.write_str("the mode's [navigation]"),
             Place::Pool(name) => write!(f, "pool {name}"),
             Place::Choice(name) => write!(f, "choice {name}"),
+            Place::Tracks => f.write_str("the mode's [tracks]"),
         }
     }
 }
@@ -305,6 +302,34 @@ pub enum NameKind {
     Layer,
     Filter,
     DamageKind,
+    Track,
+}
+
+/// What a mode declares more of than a match holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Limit {
+    /// Tags, its unit types' together.
+    Tags,
+    /// Unit types, its avatars' among them.
+    UnitTypes,
+    /// Tracks, more than a unit holds.
+    Tracks,
+    DamageKinds,
+    Pools,
+    Resources,
+}
+
+impl fmt::Display for Limit {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Limit::Tags => f.write_str("more tags than a match holds"),
+            Limit::UnitTypes => f.write_str("more unit types than a match holds"),
+            Limit::Tracks => write!(f, "more than {} tracks", TrackId::LIMIT),
+            Limit::DamageKinds => f.write_str("more damage kinds than a match tells apart"),
+            Limit::Pools => write!(f, "more than {} pools", Pools::LIMIT),
+            Limit::Resources => write!(f, "more than {} player resources", ResourceId::LIMIT),
+        }
+    }
 }
 
 impl fmt::Display for NameKind {
@@ -320,6 +345,7 @@ impl fmt::Display for NameKind {
             NameKind::Layer => "layer",
             NameKind::Filter => "filter",
             NameKind::DamageKind => "damage kind",
+            NameKind::Track => "track",
         })
     }
 }
@@ -377,16 +403,13 @@ impl fmt::Display for LoadProblem {
             LoadProblem::ActionField { action, field } => {
                 write!(f, "action {action:?}: {field:?} gives no value of its kind")
             }
-            LoadProblem::TooManyTags => f.write_str("more tags than a match holds"),
-            LoadProblem::TooManyUnitTypes => f.write_str("more unit types than a match holds"),
+            LoadProblem::TooMany(limit) => write!(f, "{limit}"),
+            LoadProblem::LevelTracks => f.write_str("more than one `level` track"),
             LoadProblem::RepeatedUnitType(name) => {
                 write!(f, "avatar {name:?} has the name of a unit type")
             }
             LoadProblem::NoDamageKinds => {
                 f.write_str("the mode declares combat, and no damage kinds")
-            }
-            LoadProblem::TooManyDamageKinds => {
-                f.write_str("more damage kinds than a match tells apart")
             }
             LoadProblem::NoGrid => f.write_str("the mode declares vision, and its map has no grid"),
             LoadProblem::NoPathingGrid => {
@@ -445,12 +468,6 @@ impl fmt::Display for LoadProblem {
                 )
             }
             LoadProblem::Choice(problem) => write!(f, "{problem}"),
-            LoadProblem::TooManyResources => {
-                write!(f, "more than {} player resources", ResourceId::LIMIT)
-            }
-            LoadProblem::TooManyPools => {
-                write!(f, "more than {} pools", Pools::LIMIT)
-            }
             LoadProblem::NoLifePool => f.write_str("combat with no [combat] life"),
             LoadProblem::LifePoolMissing(at) => write!(f, "{at}: combat without the life pool"),
             LoadProblem::RepeatedName(name) => write!(f, "the mode declares {name:?} twice"),

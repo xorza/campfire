@@ -26,6 +26,7 @@ use crate::mode::unit_kit::UnitKit;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::{PathEnd, PathWalker};
 use crate::navigation::paths::Paths;
+use crate::progression::experience::Experience;
 use crate::scripts::frame::Frame;
 use crate::stats::Stats;
 use crate::stats::level::Level;
@@ -221,6 +222,9 @@ impl ModeBook {
         }
         if let Some(step) = kit.step {
             unit.insert(step.bundle());
+        }
+        if !kit.tracks.is_empty() {
+            unit.insert(Experience::new(kit.tracks));
         }
         let actions = self.actions(unit_type);
         if !actions.is_empty() {

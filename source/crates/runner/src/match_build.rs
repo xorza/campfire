@@ -4,13 +4,13 @@ use bevy_ecs::schedule::Schedule;
 use bevy_ecs::world::World;
 use campfire_capabilities::{
     ActionData, ActionId, Actions, DeclaredName, KitRules, LoadoutSetup, MatchScripts, Mode,
-    ModeSetup, OnDeath, Orders, PoolId, SlotAction, Stat, Stats, UnitKit, UnitTypeData,
-    UnitTypeSetup, Units,
+    ModeSetup, OnDeath, Orders, PoolId, Progression, SlotAction, Stat, Stats, UnitKit,
+    UnitTypeData, UnitTypeSetup, Units,
 };
 use campfire_content::PackagePath;
 use campfire_package::{Content, ModePackages, Package, UnitTypeFile};
 use campfire_script::ScriptId;
-use campfire_sim::{StateRegistry, TickRate};
+use campfire_sim::{Capability, StateRegistry, TickRate};
 
 use crate::error::StartError;
 
@@ -76,6 +76,9 @@ impl<'a> MatchBuild<'a> {
             script_starts: Vec::with_capacity(1 + packages.dependencies().len()),
         };
         Units::declare_tags(build.world, packages.tag_names()).expect(CHECKED);
+        if manifest.capabilities.contains(Capability::Progression) {
+            Progression::load(build.world, &data.tracks);
+        }
         build.compile_scripts();
         build.load_modifiers();
         let units = &packages.units().units;
@@ -204,7 +207,8 @@ impl<'a> MatchBuild<'a> {
         let kit = UnitKit::new(file.stats.as_ref(), combat.as_ref(), pools, self.rules)
             .map_err(unit_error)?
             .with_vision(file.vision.as_ref())
-            .with_body(data.navigation.body(file.collision.as_ref()));
+            .with_body(data.navigation.body(file.collision.as_ref()))
+            .with_tracks(Progression::tracks(self.world, &file.tracks));
         let mut slots = Vec::new();
         for (kind, ids) in &file.slots {
             let kind = data.slots.named(kind.as_str()).expect(CHECKED);

@@ -35,6 +35,11 @@ pub enum ApiError {
     /// A damage kind the mode does not declare.
     UnknownDamageKind,
     NegativeDamage,
+    /// A track the mode does not declare.
+    UnknownTrack,
+    /// Experience on a track the unit does not have.
+    NoTrack,
+    NegativeXp,
     /// An integer beyond a `Num`, which reaches 2³⁹.
     IntegerBeyondNum,
     /// An attack field or order for a unit that has no attack.
@@ -180,6 +185,9 @@ impl fmt::Display for ApiError {
             ApiError::TimeTooLarge => "time is too long to count in ticks",
             ApiError::UnknownDamageKind => "damage kind is not one the mode declares",
             ApiError::NegativeDamage => "damage is negative",
+            ApiError::UnknownTrack => "no such track",
+            ApiError::NoTrack => "the unit does not have the track",
+            ApiError::NegativeXp => "experience is negative",
             ApiError::IntegerBeyondNum => "integer is beyond a Num",
             ApiError::NoAttack => "unit has no attack",
             ApiError::NoStats => "unit has no stats",

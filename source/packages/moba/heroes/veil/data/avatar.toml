@@ -1,6 +1,7 @@
 name = "Veil"
 tags = ["assassin"]
 pools = ["health", "energy"]
+tracks = ["level"]
 passive = "dual_path"
 slots = { basic = ["dusk_mark", "smoke_ring", "whirling_blades"], ultimate = ["night_step"], weapon = ["attack"] }
 

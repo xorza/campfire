@@ -1,6 +1,7 @@
 //! The mode: its script, its state, its players' choices, and the units it spawns. It runs the
 //! mode's hooks on the capabilities below it.
 
+use std::mem;
 use std::ops::Range;
 use std::rc::Rc;
 
@@ -41,6 +42,7 @@ use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::PathWalker;
 use crate::navigation::paths::Paths;
 use crate::orders::OrdersSet;
+use crate::progression::level_ups::{LevelUp, LevelUps};
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
 use crate::scripts::frame::Frame;
@@ -173,7 +175,9 @@ impl Mode {
                 .after(UnitsSet::BeginTick)
                 .after(CombatSet::Respawn)
                 .before(OrdersSet::Orders),
-            (run_timers, unit_deaths).chain().in_set(SimSet::Mode),
+            (run_timers, unit_deaths, level_ups)
+                .chain()
+                .in_set(SimSet::Mode),
         ));
         registry.register_resource::<MatchEnd>();
         registry.register_resource::<ModeState>();
@@ -548,6 +552,43 @@ fn unit_deaths(world: &mut World) {
             }
         });
     });
+}
+
+/// Runs `on_level_up` for each level a unit reached this tick, in the order reached, from the
+/// mode pool: with the unit, the track's name and the level. A level that a call reaches joins
+/// the end, so a chain of level-ups ends within the tick, as levels are finite.
+fn level_ups(world: &mut World, mut due: Local<'_, Vec<LevelUp>>) {
+    if !world.contains_resource::<LevelUps>() {
+        return;
+    }
+    let ctx = world.non_send::<Ctx>().clone();
+    let hooks = ctx.mode().expect("a match with a mode").schema.hooks;
+    if !hooks.contains(Hook::OnLevelUp) {
+        world.resource_mut::<LevelUps>().0.clear();
+        return;
+    }
+    let now = world.resource::<SimTick>().end();
+    loop {
+        due.clear();
+        mem::swap(&mut *due, &mut world.resource_mut::<LevelUps>().0);
+        if due.is_empty() {
+            return;
+        }
+        Calls::batch(world, &ctx, now, |call| {
+            let view = call.ctx.view().clone();
+            for &LevelUp { unit, track, level } in &*due {
+                let Some(handle) = view.unit(unit) else {
+                    continue;
+                };
+                let level = INT::from(level.get());
+                let args = (call.ctx.clone(), handle, view.track_name(track), level);
+                if let Err(error) = call.run(Pool::Mode, Hook::OnLevelUp, args) {
+                    let error = CallError::from_script(error);
+                    call.batch.record(Some(unit), Hook::OnLevelUp, error);
+                }
+            }
+        });
+    }
 }
 
 #[cfg(test)]

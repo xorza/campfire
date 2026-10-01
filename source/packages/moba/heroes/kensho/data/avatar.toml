@@ -1,6 +1,7 @@
 name = "Kensho"
 tags = ["fighter"]
 pools = ["health", "mana"]
+tracks = ["level"]
 passive = "twin_cut"
 slots = { basic = ["flicker_strike", "still_mind", "honed_edge"], ultimate = ["unbound"], weapon = ["attack"] }
 

@@ -8,6 +8,7 @@ use crate::abilities::abilities_api::AbilitiesApi;
 use crate::combat::combat_api::CombatApi;
 use crate::mode::mode_api::ModeApi;
 use crate::orders::orders_api::OrdersApi;
+use crate::progression::progression_api::ProgressionApi;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::core_api::CoreApi;
 use crate::scripts::hook::{Hook, ScriptRole};
@@ -69,6 +70,7 @@ pub enum DataTable {
     Relation,
     Action,
     Projectile,
+    Track,
     Modifier,
     Aura,
     Combat,
@@ -186,6 +188,7 @@ impl ScriptApi {
         AbilitiesApi::register(&mut builder);
         OrdersApi::register(&mut builder);
         VisionApi::register(&mut builder);
+        ProgressionApi::register(&mut builder);
         api
     }
 
@@ -440,7 +443,7 @@ impl Status {
 }
 
 impl DataTable {
-    pub const ALL: [DataTable; 16] = [
+    pub const ALL: [DataTable; 17] = [
         DataTable::Mode,
         DataTable::ModeCombat,
         DataTable::ModeNavigation,
@@ -450,6 +453,7 @@ impl DataTable {
         DataTable::Relation,
         DataTable::Action,
         DataTable::Projectile,
+        DataTable::Track,
         DataTable::Modifier,
         DataTable::Aura,
         DataTable::Combat,
@@ -471,6 +475,7 @@ impl DataTable {
             DataTable::Relation => "A pair of teams, `[[relations]]`",
             DataTable::Action => "An action, `[actions.<id>]`",
             DataTable::Projectile => "An action's `projectile`",
+            DataTable::Track => "A track, `[tracks.<name>]`",
             DataTable::Modifier => "A modifier, `[modifiers.<id>]`",
             DataTable::Aura => "A modifier's `aura`",
             DataTable::Combat => "A unit type's `combat`",
@@ -582,6 +587,7 @@ mod tests {
     use crate::mode::relation_data::RelationData;
     use crate::navigation::navigation_rules::NavigationRules;
     use crate::orders::ai_data::AiData;
+    use crate::progression::track_data::TrackData;
     use crate::stats::modifier_data::{AuraData, ModifierData};
     use crate::units::block::Block;
     use crate::units::collision_data::CollisionData;
@@ -762,6 +768,7 @@ mod tests {
             (DataTable::Relation, serde_fields::<RelationData>()),
             (DataTable::Action, serde_fields::<ActionData>()),
             (DataTable::Projectile, serde_fields::<ProjectileData>()),
+            (DataTable::Track, serde_fields::<TrackData>()),
             (DataTable::Modifier, serde_fields::<ModifierData>()),
             (DataTable::Aura, serde_fields::<AuraData>()),
             (DataTable::Combat, serde_fields::<CombatData>()),

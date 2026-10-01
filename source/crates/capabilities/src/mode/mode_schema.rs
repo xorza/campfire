@@ -46,6 +46,7 @@ impl ModeSchema {
                     Hook::OnTimer,
                     Hook::OnUnitDied,
                     Hook::CalcDamage,
+                    Hook::OnLevelUp,
                 ]
                 .into_iter()
                 .filter(|&hook| defines(hook)),

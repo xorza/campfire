@@ -11,6 +11,7 @@ use crate::mode::choice_data::ChoiceData;
 use crate::mode::relation_data::RelationData;
 use crate::mode::resource_id::ResourceId;
 use crate::navigation::navigation_rules::NavigationRules;
+use crate::progression::track_data::TrackData;
 use crate::scripts::state_decl::StateDecl;
 use crate::stats::modifier_data::ModifierData;
 use crate::stats::pool_data::PoolData;
@@ -65,6 +66,9 @@ pub struct ModeData {
     /// The effects of its tags, by name.
     #[serde(default)]
     pub tags: BTreeMap<String, TagData>,
+    /// The tracks its units gain experience on, by name.
+    #[serde(default)]
+    pub tracks: BTreeMap<DeclaredName, TrackData>,
 }
 
 impl ModeData {

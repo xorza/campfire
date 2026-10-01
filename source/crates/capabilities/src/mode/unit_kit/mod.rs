@@ -5,6 +5,7 @@ use crate::combat::combat_data::CombatData;
 use crate::combat::on_death::OnDeath;
 use crate::mode::error::UnitKitError;
 use crate::navigation::move_step::MoveStep;
+use crate::progression::track_set::TrackSet;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::stat::{EngineStat, Stat};
@@ -16,7 +17,7 @@ use crate::vision::vision_data::VisionData;
 
 /// What a new unit of a type starts with, in ticks at the match's rate: its pools, full at their
 /// maxima at level 1, whether it stays when it dies, when it has a `combat` section, how far it
-/// walks a tick, how far it sees, and its body.
+/// walks a tick, how far it sees, its body, and the tracks it gains experience on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UnitKit {
     pub pools: Option<Pools>,
@@ -24,6 +25,7 @@ pub struct UnitKit {
     pub step: Option<MoveStep>,
     pub sight: Option<Sight>,
     pub body: Option<Body>,
+    pub tracks: TrackSet,
 }
 
 /// The match's rules a unit type's values meet: its tick rate, the mode's move speed cap, and
@@ -88,6 +90,7 @@ impl UnitKit {
             step,
             sight: None,
             body: None,
+            tracks: TrackSet::default(),
         })
     }
 
@@ -96,6 +99,12 @@ impl UnitKit {
     #[must_use]
     pub const fn with_body(self, body: Option<Body>) -> UnitKit {
         UnitKit { body, ..self }
+    }
+
+    /// The kit with `tracks`, its type's.
+    #[must_use]
+    pub const fn with_tracks(self, tracks: TrackSet) -> UnitKit {
+        UnitKit { tracks, ..self }
     }
 
     /// The kit with the sight of its type's `vision` section, if it has one.

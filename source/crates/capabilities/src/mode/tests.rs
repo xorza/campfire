@@ -37,6 +37,11 @@ use crate::navigation::move_step::MoveStep;
 use crate::navigation::navigation_rules::NavigationRules;
 use crate::navigation::path_walker::PathEnd;
 use crate::navigation::walker::Walker;
+use crate::progression::Progression;
+use crate::progression::experience::Experience;
+use crate::progression::track_data::{Thresholds, TrackData};
+use crate::progression::track_id::TrackId;
+use crate::progression::track_set::TrackSet;
 use crate::scripts::error::ApiError;
 use crate::scripts::hook::ScriptRole;
 use crate::scripts::match_scripts::MatchScripts;
@@ -170,6 +175,68 @@ fn pick(ctx, player, hero) {
 }
 "#;
 
+/// The reference 3v3's `on_unit_died`, `hero_died` and `share_xp` as they were when these tests
+/// were written.
+const DEATHS_3V3: &str = r#"
+fn on_unit_died(ctx, unit, killer, assisters) {
+    if unit.has_tag("core") {
+        ctx.end(ctx.enemy_team(unit.team));
+        return;
+    }
+    share_xp(ctx, unit);
+    if unit.is_avatar {
+        hero_died(ctx, unit, killer, assisters);
+        return;
+    }
+    if killer != () && killer.is_avatar {
+        ctx.add_resource(killer.owner, "gold", unit.params.gold);
+    }
+    if unit.has_tag("inhibitor") {
+        ctx.respawn(unit, ctx.p.inhibitor_respawn_ms);
+    } else if unit.has_tag("objective") {
+        if killer != () {
+            for hero in ctx.avatars(killer.team) {
+                ctx.add_modifier(hero, "warden_blessing");
+            }
+        }
+        ctx.respawn(unit, ctx.p.warden_respawn_ms);
+    } else if unit.has_tag("camp") {
+        ctx.respawn(unit, ctx.p.camp_respawn_ms);
+    }
+}
+
+fn hero_died(ctx, hero, killer, assisters) {
+    ctx.respawn(hero, ctx.p.respawn_base_ms + ctx.p.respawn_per_level_ms * hero.level);
+    if killer == () || !killer.is_avatar {
+        return;
+    }
+    let gold = ctx.p.kill_gold;
+    if !ctx.state.first_blood {
+        gold += ctx.p.first_blood_gold;
+        ctx.state.first_blood = true;
+    }
+    ctx.add_resource(killer.owner, "gold", gold);
+    for unit in assisters {
+        ctx.add_resource(unit.owner, "gold", ctx.p.assist_gold / assisters.len());
+    }
+}
+
+fn share_xp(ctx, unit) {
+    let heroes = ctx.find(unit, unit.pos, ctx.p.xp_radius, "enemies:avatar");
+    if heroes.is_empty() {
+        return;
+    }
+    let xp = if unit.is_avatar {
+        ctx.p.hero_xp_base + ctx.p.hero_xp_per_level * unit.level
+    } else {
+        unit.params.xp
+    };
+    for hero in heroes {
+        ctx.add_xp(hero, "level", num(xp) / heroes.len());
+    }
+}
+"#;
+
 fn num(value: i64) -> Num {
     Num::from_int(value).unwrap()
 }
@@ -216,7 +283,23 @@ fn grunt() -> UnitKit {
         step: Some(MoveStep::new(Num::ONE).unwrap()),
         sight: None,
         body: None,
+        tracks: TrackSet::default(),
     }
+}
+
+/// The test mode's tracks: `level`, its units' level, of levels 2 at 100 and 3 at 300; and
+/// `valor`, of level 2 at 50.
+fn tracks() -> BTreeMap<DeclaredName, TrackData> {
+    let track = |levels: &[i64], level| TrackData {
+        levels: Thresholds::new(levels.iter().map(|&value| num(value))).unwrap(),
+        level,
+    };
+    [
+        ("level", track(&[100, 300], true)),
+        ("valor", track(&[50], false)),
+    ]
+    .map(|(name, track)| (DeclaredName::new(name).unwrap(), track))
+    .into()
 }
 
 /// Bounds from (−10, −5) to (10, 6) with a grid of 1 m cells; one path, `mid`, along x; team a's
@@ -396,6 +479,11 @@ fn mode_files() -> ModeFiles {
             params: [
                 ("group", ModeParam::List(vec![text("grunt"), text("grunt")])),
                 ("gold", ModeParam::Value(Scalar::Int(8))),
+                ("xp_radius", ModeParam::Value(Scalar::Int(16))),
+                ("hero_xp_base", ModeParam::Value(Scalar::Int(150))),
+                ("hero_xp_per_level", ModeParam::Value(Scalar::Int(25))),
+                ("respawn_base_ms", ModeParam::Value(Scalar::Int(1000))),
+                ("respawn_per_level_ms", ModeParam::Value(Scalar::Int(0))),
             ]
             .map(|(name, param)| (name.to_owned(), param))
             .into(),
@@ -418,6 +506,7 @@ fn mode_files() -> ModeFiles {
                 vision: true,
             }],
             tags: BTreeMap::new(),
+            tracks: tracks(),
         },
         map: map(),
         teams: vec![
@@ -438,7 +527,7 @@ fn mode_files() -> ModeFiles {
 }
 
 /// The test mode's setup from `files`, of `script`: its grunt, tower and two heroes' unit types,
-/// its one spell, and hero X's one ability, `strike`.
+/// the heroes on both tracks, its one spell, and hero X's one ability, `strike`.
 fn setup(
     files: &ModeFiles,
     script: ScriptId,
@@ -448,6 +537,7 @@ fn setup(
     blessing: ModifierId,
 ) -> ModeSetup<'_> {
     let [grunt_type, tower_type, x, y] = types;
+    let hero = grunt().with_tracks(TrackSet::of([0, 1].map(|at| TrackId::new(at).unwrap())));
     let unit = |unit_type, kit| UnitTypeSetup {
         unit_type,
         kit,
@@ -468,11 +558,11 @@ fn setup(
                     kind: SlotKind::new(0),
                     ability: strike,
                 }],
-                ..unit(x, grunt())
+                ..unit(x, hero)
             },
             UnitTypeSetup {
                 passive: Some(blessing),
-                ..unit(y, grunt())
+                ..unit(y, hero)
             },
             unit(
                 tower_type,
@@ -523,6 +613,7 @@ impl Game {
             Capability::Combat,
             Capability::Navigation,
             Capability::Abilities,
+            Capability::Progression,
         ];
         let TestMatch {
             mut world,
@@ -570,6 +661,7 @@ impl Game {
             ability: blink,
         };
         let types = [grunt_type, tower_type, x, y];
+        Progression::load(&mut world, &files.data.tracks);
         for (name, data) in &files.data.modifiers {
             Stats::load_modifier(&mut world, 0, name, data, None);
         }
@@ -835,6 +927,141 @@ fn on_mode_input(ctx, player, name, value) {
         let failures: Vec<_> = failure.into_iter().map(Some).collect();
         assert_eq!(game.failures(), failures, "{value}");
     }
+}
+
+#[test]
+fn experience_raises_levels_and_each_level_reached_runs_on_level_up_in_the_tick() {
+    let leveler = r#"
+fn on_mode_input(ctx, player, name, value) {
+    if name == "hero" {
+        pick(ctx, player, value);
+        return;
+    }
+    let hero = ctx.avatars()[0];
+    if value == "99" {
+        ctx.add_xp(hero, "level", 99);
+    } else if value == "1.5" {
+        ctx.add_xp(hero, "level", num(3) / 2);
+    } else if value == "500" {
+        ctx.add_xp(hero, "level", 500);
+    } else if value == "tower" {
+        ctx.add_xp(ctx.units_tagged("tower")[0], "level", 1);
+    } else if value == "fame" {
+        ctx.add_xp(hero, "fame", 1);
+    } else if value == "negative" {
+        ctx.add_xp(hero, "level", -1);
+    }
+}
+
+fn on_level_up(ctx, unit, track, level) {
+    ctx.state.kind += `${track} ${level};`;
+    if track == "level" && level == 3 {
+        ctx.add_xp(unit, "valor", 50);
+    }
+}
+"#;
+    let mut game = Game::new(leveler, LIMITS);
+    game.tick(&[(0, input("hero", "hero-x"))]);
+    let mut owned = game.world.query_filtered::<Entity, With<Owner>>();
+    let hero = owned.single(&game.world).unwrap();
+    let progress = |game: &Game| {
+        let experience = game.world.get::<Experience>(hero).unwrap();
+        let [level, valor] = [0, 1].map(|at| experience.get(TrackId::new(at).unwrap()).unwrap());
+        let unit_level = game.world.get::<Level>(hero).unwrap().get();
+        (
+            level.xp,
+            level.level.get(),
+            valor.xp,
+            valor.level.get(),
+            unit_level,
+        )
+    };
+    let half = Num::from_bits(1 << 23);
+    // 99 stays below level 2's 100. 1.5 more makes 100.5: level 2, and the unit's level with it.
+    // 500 more makes 600.5, past level 3's 300, the last; level 3 adds 50 valor, valor's level 2,
+    // and its `on_level_up` runs in the same tick.
+    let steps = [
+        ("99", (num(99), 1, Num::ZERO, 1, 1), ""),
+        ("1.5", (num(100) + half, 2, Num::ZERO, 1, 2), "level 2;"),
+        (
+            "500",
+            (num(600) + half, 3, num(50), 2, 3),
+            "level 2;level 3;valor 2;",
+        ),
+    ];
+    for (value, expected, reached) in steps {
+        game.tick(&[(0, input("probe", value))]);
+        assert_eq!(progress(&game), expected, "{value}");
+        assert_eq!(
+            game.field("kind"),
+            StateValue::Text(reached.into()),
+            "{value}"
+        );
+        assert_eq!(game.failures(), [], "{value}");
+    }
+    // A unit without the track, a track the mode does not declare, and a negative amount fail
+    // the call, and change nothing.
+    let refused = [
+        ("tower", ApiError::NoTrack),
+        ("fame", ApiError::UnknownTrack),
+        ("negative", ApiError::NegativeXp),
+    ];
+    for (value, error) in refused {
+        game.tick(&[(0, input("probe", value))]);
+        assert_eq!(game.failures(), [Some(error)], "{value}");
+        assert_eq!(
+            progress(&game),
+            (num(600) + half, 3, num(50), 2, 3),
+            "{value}"
+        );
+    }
+}
+
+#[test]
+fn a_hero_dead_beside_an_enemy_hero_gives_it_experience_and_comes_back() {
+    // The 3v3's `on_unit_died` as it is: hero Y, 10 m from hero X, dies to the mode's damage,
+    // with no killer. X takes all of Y's 150 + 25 × 1 experience, past level 2's 100, and Y
+    // comes back 1000 ms later, 30 ticks, as the call that gave the experience did not fail.
+    let killer = r#"
+fn on_mode_input(ctx, player, name, value) {
+    if name == "hero" {
+        pick(ctx, player, value);
+        return;
+    }
+    ctx.damage(ctx.avatars("b")[0], 1000, "physical");
+}
+"#;
+    let script = format!("{killer}{DEATHS_3V3}");
+    let mut game = Game::new(&script, LIMITS);
+    // The 3v3's tag of its cores, which `on_unit_died` reads first.
+    let core = UnitTypeData {
+        tags: vec!["core".to_owned()],
+        params: BTreeMap::new(),
+    };
+    Units::load_type(&mut game.world, "core", &core).unwrap();
+    game.tick(&[(0, input("hero", "hero-x")), (2, input("hero", "hero-y"))]);
+    let hero = |game: &mut Game, slot| {
+        let mut owned = game.world.query::<(Entity, &Owner)>();
+        let (entity, _) = owned
+            .iter(&game.world)
+            .find(|(_, owner)| owner.slot() == PlayerSlot::new(slot))
+            .unwrap();
+        entity
+    };
+    let (x, y) = (hero(&mut game, 0), hero(&mut game, 2));
+    game.tick(&[(0, input("probe", "kill"))]);
+    assert_eq!(game.failures(), []);
+    assert!(game.world.get::<Dead>(y).is_some());
+    let xp = |game: &Game| {
+        let experience = game.world.get::<Experience>(x).unwrap();
+        experience.get(TrackId::new(0).unwrap()).unwrap().xp
+    };
+    assert_eq!(xp(&game), num(175));
+    assert_eq!(game.world.get::<Level>(x).unwrap().get(), 2);
+    for _ in 0..30 {
+        game.tick(&[]);
+    }
+    assert!(game.world.get::<Dead>(y).is_none());
 }
 
 #[test]

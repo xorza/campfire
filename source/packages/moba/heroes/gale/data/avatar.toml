@@ -1,6 +1,7 @@
 name = "Gale"
 tags = ["support"]
 pools = ["health", "mana"]
+tracks = ["level"]
 passive = "fair_wind"
 slots = { basic = ["cyclone", "gust", "wind_shield"], ultimate = ["tempest"], weapon = ["attack"] }
 

@@ -4,7 +4,7 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 /// A unit's level, from 1: its type's stats grow with it.
-#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize)]
 #[serde(transparent)]
 pub struct Level(u32);
 

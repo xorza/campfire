@@ -20,11 +20,12 @@ pub enum Capability {
     Physics,
     Persistence,
     Mode,
+    Progression,
 }
 
 impl Capability {
     /// Every capability, in the order of their indices.
-    pub const ALL: [Capability; 13] = [
+    pub const ALL: [Capability; 14] = [
         Capability::Combat,
         Capability::Stats,
         Capability::Abilities,
@@ -38,6 +39,7 @@ impl Capability {
         Capability::Physics,
         Capability::Persistence,
         Capability::Mode,
+        Capability::Progression,
     ];
 
     /// The capability as a manifest names it.
@@ -56,6 +58,7 @@ impl Capability {
             Capability::Physics => "physics",
             Capability::Persistence => "persistence",
             Capability::Mode => "mode",
+            Capability::Progression => "progression",
         }
     }
 }

@@ -94,7 +94,7 @@ fn share_xp(ctx, unit) {
         unit.params.xp
     };
     for hero in heroes {
-        ctx.add_xp(hero, xp / heroes.len());
+        ctx.add_xp(hero, "level", num(xp) / heroes.len());
     }
 }
 
