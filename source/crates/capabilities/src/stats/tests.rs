@@ -1,16 +1,23 @@
 use std::collections::BTreeMap;
 use std::mem;
 use std::num::NonZeroU32;
+use std::rc::Rc;
 
 use bevy_ecs::entity::Entity;
-use campfire_sim::{Capability, SimUpdate, TickRate, Ticks};
+use campfire_math::Vec3;
+use campfire_sim::{Capability, IdAllocator, SimUpdate, TickRate};
 
 use super::*;
 use crate::capability_set::internals::TestMatch;
+use crate::scripts::match_scripts::MatchScripts;
+use crate::scripts::script_limits::ScriptLimits;
+use crate::stats::modifier_data::{AuraData, Reapply};
+use crate::stats::modifiers::{Application, Instance, StatShare};
 use crate::stats::stat::Stat;
 use crate::stats::stat_rule::{Combine, StatRule};
 use crate::stats::stats_data::{StatValue, StatsData};
-use crate::values::scalar::Scalar;
+use crate::values::filter_data::FilterData;
+use crate::values::number::Number;
 
 /// 30 ticks a second, as the MOBA runs.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
@@ -184,4 +191,184 @@ fn a_units_stats_follow_its_type_and_level_within_their_limits() {
     game.world.run_schedule(SimUpdate);
     let (_, _, _, health, _) = get(&game);
     assert_eq!((health.current(), health.max()), (num(380), num(380)));
+}
+
+/// An application from `source` of modifier `id`, adding `value` of `stat` a stack, refreshed or
+/// stacked as `reapply` says.
+fn share(
+    id: u16,
+    source: Option<StableId>,
+    stat: u16,
+    value: Num,
+    reapply: Reapply,
+) -> Application {
+    Application {
+        instance: Instance {
+            id: ModifierId::new(id),
+            source,
+            ability: None,
+            rank: 1,
+            passive: false,
+            aura: false,
+            aura_radius: None,
+            stacks: 1,
+            until: None,
+            stack_life: None,
+            stack_ends: Vec::new(),
+            shield: None,
+            stats: vec![StatShare { stat, value }],
+            state: Vec::new(),
+        },
+        reapply,
+        max_stacks: None,
+    }
+}
+
+#[test]
+fn modifiers_add_to_a_units_stats_by_each_stats_rule() {
+    // Move speed 4. Its place among the stats: health, health regen, resource, move speed, its
+    // rate, slow, attack speed, attack damage, in the engine's order.
+    let walker = stats(&[(EngineStat::MoveSpeed, num(4), Num::ZERO)]);
+    let mut game = stat_match(&[walker]);
+    let unit = unit(&mut game, 0);
+    game.world.entity_mut(unit).insert(Modifiers::default());
+    let book = game.world.resource::<StatBook>();
+    let [speed, slow] = [EngineStat::MoveSpeed, EngineStat::Slow]
+        .map(|stat| book.index(&Stat::Engine(stat)).unwrap());
+    let mut ids = IdAllocator::default();
+    let (first, second) = (Some(ids.allocate()), Some(ids.allocate()));
+    // Slows of 0.25 and 0.5 from two sources: only the highest counts. A bonus of 0.5 move speed
+    // that stacks, twice: +1.
+    let mut modifiers = game.world.get_mut::<Modifiers>(unit).unwrap();
+    modifiers.apply(share(0, first, slow, sixteenths(4), Reapply::Refresh));
+    modifiers.apply(share(0, second, slow, sixteenths(8), Reapply::Refresh));
+    for _ in 0..2 {
+        modifiers.apply(share(1, first, speed, sixteenths(8), Reapply::Stack));
+    }
+    game.world.run_schedule(SimUpdate);
+    // (4 + 1) × (1 − 0.5) = 2.5 m/s, 2.5 × 2²⁴ ÷ 30 = 1 398 101.33 bits a tick, to 1 398 101.
+    let step = |game: &TestMatch| game.world.get::<MoveStep>(unit).unwrap().get();
+    assert_eq!(step(&game), Num::from_bits(1_398_101));
+
+    // A bonus of 3 more, past the limit of 5: 5 × 0.5 = 2.5 m/s again; a slow of 1.5, past its
+    // limit of 0.99: 5 × 0.01 = 0.05 m/s, 0.05 × 2²⁴ ÷ 30 = 27 962.03 bits, to 27 962, the
+    // slow's 0.99 itself a whole number of bits, 16 609 443, so 5 × (2²⁴ − 16 609 443) ÷ 30.
+    let mut modifiers = game.world.get_mut::<Modifiers>(unit).unwrap();
+    modifiers.apply(share(2, first, speed, num(3), Reapply::Refresh));
+    game.world.run_schedule(SimUpdate);
+    assert_eq!(step(&game), Num::from_bits(1_398_101));
+    let mut modifiers = game.world.get_mut::<Modifiers>(unit).unwrap();
+    modifiers.apply(share(3, first, slow, sixteenths(24), Reapply::Refresh));
+    game.world.run_schedule(SimUpdate);
+    let kept = (1_i64 << 24) - (99 << 24) / 100;
+    assert_eq!(step(&game), Num::from_bits((5 * kept + 15) / 30));
+
+    // Removing every modifier: back to 4 m/s.
+    *game.world.get_mut::<Modifiers>(unit).unwrap() = Modifiers::default();
+    game.world.run_schedule(SimUpdate);
+    assert_eq!(step(&game), Num::from_bits(2_236_962));
+}
+
+#[test]
+fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
+    let data = |aura: Option<AuraData>| ModifierData {
+        script: None,
+        duration_ms: None,
+        interval_ms: None,
+        stacks_expire_ms: None,
+        reapply: Reapply::Refresh,
+        max_stacks: None,
+        stats: BTreeMap::new(),
+        states: Vec::new(),
+        shield: None,
+        aura,
+        params: BTreeMap::new(),
+        state: BTreeMap::new(),
+    };
+    let limits = ScriptLimits {
+        per_call: 10_000,
+        player: 10_000,
+        think: 10_000,
+        mode: 10_000,
+    };
+    let scripts = MatchScripts {
+        limits,
+        players: 1,
+        damage_kinds: Rc::from([]),
+    };
+    let mut game = TestMatch::new(&[Capability::Stats], RATE, Some(scripts));
+    let book = StatBook::new(&rules(), [], RATE, num(6)).unwrap();
+    Stats::load(&mut game.world, book);
+    // A presence of 2 m on allies, holding `inspired`.
+    let presence = AuraData {
+        radius: Number::Value(Scalar::Int(2)),
+        affects: FilterData::parse("allies").unwrap(),
+        modifier: "inspired".to_owned(),
+    };
+    Stats::load_modifier(&mut game.world, 0, "inspired", &data(None));
+    Stats::load_modifier(&mut game.world, 0, "presence", &data(Some(presence)));
+    game.world.add_schedule(mem::take(&mut game.schedule));
+    let mut ids = IdAllocator::default();
+    let at = |x: i64| Position::new(Vec3::new(num(x), Num::ZERO, Num::ZERO)).unwrap();
+    let mut spawn = |game: &mut TestMatch, x: i64, team: u8| {
+        let id = ids.allocate();
+        let team = Team::new(team);
+        game.world.spawn((id, at(x), team, Modifiers::default()));
+        id
+    };
+    // The carrier at 0; an ally at 2, on the edge, and one at 3; an enemy at 1.
+    let carrier = spawn(&mut game, 0, 0);
+    let near = spawn(&mut game, 2, 0);
+    let far = spawn(&mut game, 3, 0);
+    let enemy = spawn(&mut game, 1, 1);
+    let entity =
+        |game: &TestMatch, id: StableId| game.world.resource::<EntityIndex>().get(id).unwrap();
+    let [inspired, presence] = ["inspired", "presence"]
+        .map(|name| game.world.resource::<ModifierBook>().find(0, name).unwrap());
+    let mut presence_carrier = game
+        .world
+        .get_mut::<Modifiers>(entity(&game, carrier))
+        .unwrap();
+    presence_carrier.apply(Application {
+        instance: Instance {
+            id: presence,
+            source: Some(carrier),
+            ability: None,
+            rank: 1,
+            passive: false,
+            aura: false,
+            aura_radius: Some(num(2)),
+            stacks: 1,
+            until: None,
+            stack_life: None,
+            stack_ends: Vec::new(),
+            shield: None,
+            stats: Vec::new(),
+            state: Vec::new(),
+        },
+        reapply: Reapply::Refresh,
+        max_stacks: None,
+    });
+    let holds = |game: &TestMatch, id: StableId| {
+        let modifiers = game.world.get::<Modifiers>(entity(game, id)).unwrap();
+        modifiers
+            .get(inspired, Some(carrier))
+            .is_some_and(|instance| instance.aura && instance.until.is_none())
+    };
+    game.world.run_schedule(SimUpdate);
+    // The carrier is its own ally, within 0 m of itself.
+    assert_eq!(
+        [carrier, near, far, enemy].map(|id| holds(&game, id)),
+        [true, true, false, false]
+    );
+    // The near ally leaves, and the far one comes within 2 m.
+    *game.world.get_mut::<Position>(entity(&game, near)).unwrap() = at(5);
+    *game.world.get_mut::<Position>(entity(&game, far)).unwrap() = at(-2);
+    game.world.run_schedule(SimUpdate);
+    assert_eq!([near, far].map(|id| holds(&game, id)), [false, true]);
+    // The carrier dies: its aura goes, with its own modifiers.
+    let dead = entity(&game, carrier);
+    game.world.entity_mut(dead).insert(Dead);
+    game.world.run_schedule(SimUpdate);
+    assert_eq!([carrier, far].map(|id| holds(&game, id)), [false, false]);
 }

@@ -14,6 +14,8 @@ use crate::mode::timers::Timers;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
+use crate::stats::Stats;
+use crate::stats::modifier_book::Applier;
 
 /// The mode calls of one batch, at one time.
 #[derive(Debug)]
@@ -45,6 +47,7 @@ impl Calls<'_, '_> {
         args: impl FuncArgs,
     ) -> Result<(), ScriptError> {
         self.begin();
+        self.ctx.view().set_caller(0);
         let script = self.ctx.book().schema.script;
         drop(self.batch.call(pool, script, hook, args)?);
         self.commit();
@@ -65,6 +68,7 @@ impl Calls<'_, '_> {
             .clone_from(self.batch.world().resource::<PlayerResources>());
         frame.ended = self.batch.world().contains_resource::<MatchEnd>();
         frame.effects.clear();
+        frame.handles.clear();
     }
 
     /// Commits the call's state and choices, then applies its effects in order.
@@ -112,7 +116,20 @@ impl Calls<'_, '_> {
                     let slots = world.get_mut::<AbilitySlots>(entity);
                     slots.expect("a unit with ability slots").learn(slot);
                 }
+                ModeEffect::Modifier(effect) => {
+                    let applier = Applier {
+                        source: None,
+                        ability: None,
+                        rank: 1,
+                        passive: false,
+                        aura: false,
+                    };
+                    Stats::apply_effect(world, effect, applier, |_| None);
+                }
             }
+        }
+        for handle in frame.handles.drain(..) {
+            Stats::write_handle(world, &handle);
         }
     }
 }

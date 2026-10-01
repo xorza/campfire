@@ -43,6 +43,10 @@ pub enum ApiError {
     NoStats,
     /// A stat the mode does not declare.
     UnknownStat,
+    /// A modifier the calling package does not declare.
+    UnknownModifier,
+    /// A negative count of a modifier's stacks.
+    NegativeStacks,
     /// A health field of a unit that has no health.
     NoHealth,
     /// An AI order for another unit than the one that thinks.
@@ -151,6 +155,8 @@ impl fmt::Display for ApiError {
             ApiError::NoAttack => "unit has no attack",
             ApiError::NoStats => "unit has no stats",
             ApiError::UnknownStat => "stat the mode does not declare",
+            ApiError::UnknownModifier => "modifier the package does not declare",
+            ApiError::NegativeStacks => "a modifier's stacks are not negative",
             ApiError::NoHealth => "unit has no health",
             ApiError::OtherUnit => "an AI orders only the unit that thinks",
             ApiError::NotAnEnemy => "target is not a living enemy",

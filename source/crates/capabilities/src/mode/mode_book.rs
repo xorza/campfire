@@ -6,7 +6,7 @@ use bevy_ecs::world::World;
 use campfire_math::PlayerSlot;
 use campfire_script::ScriptHost;
 use campfire_script::rhai::{Array, Dynamic, ImmutableString, Map};
-use campfire_sim::{IdAllocator, Position, StableId, TickRate};
+use campfire_sim::{IdAllocator, Position, StableId};
 
 use crate::abilities::ability_slots::AbilitySlots;
 use crate::mode::error::ModeError;
@@ -21,6 +21,7 @@ use crate::navigation::path_walker::{PathDirection, PathWalker};
 use crate::navigation::paths::Paths;
 use crate::scripts::error::ApiError;
 use crate::stats::level::Level;
+use crate::stats::modifiers::Modifiers;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::by_type::ByType;
 use crate::units::owner::Owner;
@@ -36,7 +37,6 @@ use crate::values::bounds::Bounds;
 /// loads it from the packages, as a new match does.
 #[derive(Debug)]
 pub(crate) struct ModeBook {
-    pub(crate) rate: TickRate,
     pub(crate) schema: ModeSchema,
     pub(crate) roster: Roster,
     pub(crate) teams: Rc<Teams>,
@@ -65,7 +65,6 @@ impl ModeBook {
     /// players.
     pub(crate) fn new(
         setup: ModeSetup<'_>,
-        rate: TickRate,
         host: &ScriptHost,
         view: &View,
         paths: &Paths,
@@ -80,7 +79,6 @@ impl ModeBook {
             kits.set(unit_type, kit);
         }
         let mut book = ModeBook {
-            rate,
             schema: ModeSchema::new(setup.script, host, setup.data),
             roster: Roster::new(setup.avatars, setup.loadout),
             teams: Rc::new(teams),
@@ -176,6 +174,7 @@ impl ModeBook {
             team,
             Level::default(),
             UnitStats::default(),
+            Modifiers::default(),
             parts,
         ));
         if let Some(combatant) = kit.combatant {

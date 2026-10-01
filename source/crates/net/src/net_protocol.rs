@@ -1,7 +1,7 @@
 use bevy_app::{App, Plugin};
 use campfire_capabilities::{
-    AbilitySlots, AttackState, Body, Dead, Destination, Health, MatchEnd, MoveStep, Owner,
-    Progress, Projectile, ResourcePool, Respawn, Route, SpawnPoint, Team,
+    AbilitySlots, AttackState, Body, Dead, Destination, Health, MatchEnd, Modifiers, MoveStep,
+    Owner, Progress, Projectile, ResourcePool, Respawn, Route, SpawnPoint, Team,
 };
 use campfire_sim::{Position, StableId};
 use lightyear::prelude::{
@@ -76,5 +76,6 @@ impl Plugin for NetProtocol {
         app.component::<Destination>().replicate().predict();
         app.component::<Route>().replicate().predict();
         app.component::<Progress>().replicate().predict();
+        app.component::<Modifiers>().replicate().predict();
     }
 }

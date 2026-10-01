@@ -7,6 +7,7 @@ use crate::abilities::ability_data::{AbilityData, Range};
 use crate::abilities::error::AbilityError;
 use crate::abilities::frame::Frame;
 use crate::scripts::hook::Hook;
+use crate::stats::modifier_book::ModifierId;
 use crate::units::filter::Filter;
 
 /// The abilities a match loaded, times in ticks and scripts compiled. Package data, not state: a
@@ -17,18 +18,30 @@ pub(crate) struct AbilityBook {
 }
 
 /// An ability, by its place in the book.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct AbilityId(u32);
 
 /// An ability as a match runs it.
 #[derive(Debug)]
 pub(crate) struct Ability {
+    /// Its package: 0 the mode, then each package the mode depends on.
+    pub(crate) package: u16,
+    /// The modifier its unit holds while it has a rank, and whether only while it is ready.
+    pub(crate) passive: Option<Passive>,
     pub(crate) aim: Aim,
     /// Its capability fields at each rank, from rank 1.
     pub(crate) ranks: Vec<RankValues>,
     /// The script, when it defines `on_cast`: a script may serve only the ability's modifiers.
     pub(crate) on_cast: Option<ScriptId>,
+}
+
+/// An ability's passive modifier, and whether its unit holds it only while the ability is off
+/// cooldown.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Passive {
+    pub(crate) modifier: ModifierId,
+    pub(crate) while_ready: bool,
 }
 
 /// What an ability aims at, as a match runs it: a unit target's filter resolved against the
@@ -54,10 +67,16 @@ pub(crate) struct RankValues {
 impl AbilityBook {
     /// Loads `data`, aiming at `aim`, with its fields at each rank `ranks` holds; see
     /// `Abilities::load`. `frame` takes its params.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "an ability's parts, each from its own place"
+    )]
     pub(crate) fn load(
         &mut self,
         host: &ScriptHost,
         frame: &mut Frame,
+        package: u16,
+        passive: Option<Passive>,
         data: &AbilityData,
         script: Option<ScriptId>,
         aim: Aim,
@@ -74,6 +93,8 @@ impl AbilityBook {
         let id = AbilityId(u32::try_from(self.abilities.len()).expect("abilities fit u32"));
         frame.add_params(id, &data.params);
         self.abilities.push(Ability {
+            package,
+            passive,
             aim,
             ranks,
             on_cast,

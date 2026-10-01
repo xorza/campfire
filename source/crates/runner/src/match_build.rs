@@ -4,7 +4,7 @@ use bevy_ecs::schedule::Schedule;
 use bevy_ecs::world::World;
 use campfire_capabilities::{
     Abilities, AbilityData, AbilityId, AvatarSetup, CombatData, EngineStat, KitRules, LoadoutSetup,
-    MatchScripts, Mode, ModeSetup, OnDeath, Orders, ResourcePool, UnitKit, UnitKitError,
+    MatchScripts, Mode, ModeSetup, OnDeath, Orders, ResourcePool, Stats, UnitKit, UnitKitError,
     UnitTypeData, UnitTypeSetup, Units,
 };
 use campfire_content::PackagePath;
@@ -72,6 +72,7 @@ impl<'a> MatchBuild<'a> {
         };
         build.compile_scripts();
         build.load_unit_types()?;
+        build.load_modifiers();
         let mut avatars = Vec::new();
         let mut loadout = Vec::new();
         for (at, dependent) in packages.dependencies().iter().enumerate() {
@@ -103,6 +104,28 @@ impl<'a> MatchBuild<'a> {
             max_move_speed: manifest.max_move_speed.get(),
         };
         Mode::install(build.world, schedule, registry, setup).map_err(StartError::Mode)
+    }
+
+    /// Loads the modifiers of every package, the mode's first, before any ability names one.
+    fn load_modifiers(&mut self) {
+        let packages = self.packages;
+        let dependents = packages
+            .dependencies()
+            .iter()
+            .map(|dependent| match &dependent.content {
+                Content::Avatar(avatar) => &avatar.modifiers,
+                Content::Loadout(loadout) => &loadout.modifiers,
+            });
+        for (package, modifiers) in [&packages.data().modifiers]
+            .into_iter()
+            .chain(dependents)
+            .enumerate()
+        {
+            let package = u16::try_from(package).expect("packages fit u16");
+            for (name, data) in modifiers {
+                Stats::load_modifier(self.world, package, name, data);
+            }
+        }
     }
 
     /// Loads the mode's unit types, each with its AI and its kit.
@@ -203,9 +226,12 @@ impl<'a> MatchBuild<'a> {
         ranks: u8,
     ) -> Result<AbilityId, StartError> {
         let script = data.script.as_ref().map(|path| self.script(package, path));
-        Abilities::load(self.world, data, script, ranks).map_err(|error| StartError::Ability {
-            ability: id.to_owned(),
-            error,
+        let package = u16::try_from(package).expect("packages fit u16");
+        Abilities::load(self.world, package, data, script, ranks).map_err(|error| {
+            StartError::Ability {
+                ability: id.to_owned(),
+                error,
+            }
         })
     }
 

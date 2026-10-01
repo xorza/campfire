@@ -25,6 +25,7 @@ use crate::scripts::match_scripts::MatchScripts;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::{ScriptFailure, ScriptFailures};
 use crate::scripts::script_limits::ScriptLimits;
+use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::units::Units;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::declared_name::DeclaredName;
@@ -203,7 +204,7 @@ impl Match {
 
     fn load(&mut self, data: &AbilityData, source: &str) -> AbilityId {
         let script = Units::compile(&mut self.world, source).unwrap();
-        Abilities::load(&mut self.world, data, Some(script), 5).unwrap()
+        Abilities::load(&mut self.world, 0, data, Some(script), 5).unwrap()
     }
 
     fn spawn(&mut self, team: u8, at: Position, parts: impl Bundle) -> StableId {
@@ -565,7 +566,7 @@ fn an_ability_loads_only_when_its_data_holds() {
     let mut game = Match::new();
     let load = |game: &mut Match, data: &AbilityData, source: &str| {
         let script = Units::compile(&mut game.world, source).unwrap();
-        Abilities::load(&mut game.world, data, Some(script), 5)
+        Abilities::load(&mut game.world, 0, data, Some(script), 5)
     };
     let mut uneven = lash_out();
     uneven.cost = Some(Ranked::PerRank(vec![int(35), int(40)]));
@@ -632,7 +633,7 @@ fn a_capability_field_reads_its_param_at_each_rank() {
     );
     let mut game = Match::new();
     let strike = Units::compile(&mut game.world, STRIKE).unwrap();
-    let id = Abilities::load(&mut game.world, &data, Some(strike), 3).unwrap();
+    let id = Abilities::load(&mut game.world, 0, &data, Some(strike), 3).unwrap();
     let book = game.world.resource::<AbilityBook>();
     let ranks: Vec<_> = book
         .get(id)
@@ -668,4 +669,119 @@ fn a_unit_target_is_one_its_filter_selects_tag_and_all() {
     assert_eq!(game.health(enemy_creep), 500);
     game.cast(caster, CastTarget::Unit(enemy_hero));
     assert_eq!(game.health(enemy_hero), 450);
+}
+
+#[test]
+fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
+    let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
+    let mut game = Match::with(LIMITS, &declared);
+    let stats = StatBook::new(&BTreeMap::new(), [], RATE, num(6)).unwrap();
+    Stats::load(&mut game.world, stats);
+    // A guard whose shield is Lash Out's damage at its rank: 75, then 100.
+    let guard = ModifierData {
+        script: None,
+        duration_ms: None,
+        interval_ms: None,
+        stacks_expire_ms: None,
+        reapply: Reapply::Refresh,
+        max_stacks: None,
+        stats: BTreeMap::new(),
+        states: Vec::new(),
+        shield: Some(param("damage")),
+        aura: None,
+        params: BTreeMap::new(),
+        state: BTreeMap::new(),
+    };
+    Stats::load_modifier(&mut game.world, 0, "guard", &guard);
+    let mut data = lash_out();
+    data.passive_modifier = Some("guard".to_owned());
+    data.passive_while_ready = true;
+    let ability = game.load(&data, LASH_OUT);
+    let caster = game.caster(ability, 0);
+    let entity = game.world.resource::<EntityIndex>().get(caster).unwrap();
+    game.world.entity_mut(entity).insert(Modifiers::default());
+    let id = game
+        .world
+        .resource::<ModifierBook>()
+        .find(0, "guard")
+        .unwrap();
+    let shield = |game: &Match| {
+        let modifiers = game.world.get::<Modifiers>(entity).unwrap();
+        let held = modifiers.get(id, Some(caster))?;
+        assert!(held.passive && held.until.is_none());
+        held.shield
+    };
+    let learn = |game: &mut Match| {
+        let mut slots = game.world.get_mut::<AbilitySlots>(entity).unwrap();
+        slots.learn(0);
+        game.world.run_schedule(SimUpdate);
+    };
+    // Unlearned, none; at rank 1, the shield of 75; at rank 2, applied again, 100.
+    game.world.run_schedule(SimUpdate);
+    assert_eq!(shield(&game), None);
+    learn(&mut game);
+    assert_eq!(shield(&game), Some(num(75)));
+    learn(&mut game);
+    assert_eq!(shield(&game), Some(num(100)));
+    // A cast puts it on cooldown for 9000 ms at rank 2, 270 ticks: gone from that tick, back in
+    // the 270th after it.
+    game.cast(caster, CastTarget::None);
+    assert_eq!(shield(&game), None);
+    for _ in 0..269 {
+        game.world.run_schedule(SimUpdate);
+    }
+    assert_eq!(shield(&game), None);
+    game.world.run_schedule(SimUpdate);
+    assert_eq!(shield(&game), Some(num(100)));
+}
+
+#[test]
+fn a_cast_applies_a_modifier_from_its_caster_with_its_abilitys_params() {
+    let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
+    let mut game = Match::with(LIMITS, &declared);
+    let stats = StatBook::new(&BTreeMap::new(), [], RATE, num(6)).unwrap();
+    Stats::load(&mut game.world, stats);
+    let mark = ModifierData {
+        script: None,
+        duration_ms: Some(int(1000)),
+        interval_ms: None,
+        stacks_expire_ms: None,
+        reapply: Reapply::Refresh,
+        max_stacks: None,
+        stats: BTreeMap::new(),
+        states: Vec::new(),
+        shield: Some(param("damage")),
+        aura: None,
+        params: BTreeMap::new(),
+        state: BTreeMap::new(),
+    };
+    Stats::load_modifier(&mut game.world, 0, "mark", &mark);
+    let info = game.world.resource::<ModifierBook>().info();
+    game.world.non_send::<View>().set_modifier_info(info);
+    let marker = r#"
+fn on_cast(ctx, caster, target) {
+    let m = ctx.add_modifier(caster, "mark");
+    if m.stacks != 1 { throw "a new modifier's handle has one stack"; }
+}
+"#;
+    let ability = game.load(&lash_out(), marker);
+    let caster = game.caster(ability, 3);
+    let entity = game.world.resource::<EntityIndex>().get(caster).unwrap();
+    game.world.entity_mut(entity).insert(Modifiers::default());
+    let t = game.world.resource::<SimTick>().start();
+    game.cast(caster, CastTarget::None);
+    // From the caster, by Lash Out at rank 3: a shield of its damage there, 125; 1000 ms at 30
+    // ticks a second, 30 ticks, so it ends as tick t + 31 starts.
+    let id = game
+        .world
+        .resource::<ModifierBook>()
+        .find(0, "mark")
+        .unwrap();
+    let modifiers = game.world.get::<Modifiers>(entity).unwrap();
+    let held = modifiers.get(id, Some(caster)).unwrap();
+    assert_eq!((held.ability, held.rank), (Some(ability), 3));
+    assert_eq!(
+        (held.shield, held.until),
+        (Some(num(125)), Some(Tick::new(t.get() + 31)))
+    );
 }

@@ -83,6 +83,9 @@ impl Unit {
                 let tag = unit.view.tag(name).map_err(ApiError::fail)?;
                 Ok(unit.view.has_tag(&unit.row(), tag))
             })
+            .register_fn("has_modifier", |unit: &mut Unit, id: &str| {
+                unit.view.has_modifier(&unit.row(), id)
+            })
             .register_fn("is_enemy_of", |unit: &mut Unit, other: Unit| {
                 unit.row().team.is_enemy_of(other.row().team)
             })

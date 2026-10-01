@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::num::NonZeroU32;
 
 use campfire_content::PackagePath;
 use serde::Deserialize;
@@ -10,8 +11,7 @@ use crate::values::filter_data::FilterData;
 use crate::values::number::Number;
 use crate::values::param::Param;
 
-/// A modifier as its data file declares it, in milliseconds. The release loads it, and runs
-/// none of it yet.
+/// A modifier as its data file declares it, in milliseconds.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModifierData {
@@ -22,6 +22,8 @@ pub struct ModifierData {
     pub stacks_expire_ms: Option<Number>,
     #[serde(default)]
     pub reapply: Reapply,
+    /// Absent: no limit.
+    pub max_stacks: Option<NonZeroU32>,
     /// Per stack.
     #[serde(default)]
     pub stats: BTreeMap<Stat, Number>,
@@ -61,6 +63,18 @@ pub enum Reapply {
     Refresh,
     Stack,
     Ignore,
+}
+
+impl Reapply {
+    /// The stacks of an instance of `stacks` after one more application from its source, up to
+    /// `max_stacks`.
+    pub(crate) const fn stacks(self, stacks: u32, max_stacks: Option<NonZeroU32>) -> u32 {
+        match (self, max_stacks) {
+            (Reapply::Stack, Some(max)) if stacks >= max.get() => stacks,
+            (Reapply::Stack, _) => stacks.saturating_add(1),
+            (Reapply::Refresh | Reapply::Ignore, _) => stacks,
+        }
+    }
 }
 
 /// A modifier held on the units within `radius` that `affects` selects.

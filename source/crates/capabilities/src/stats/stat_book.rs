@@ -5,8 +5,9 @@ use campfire_math::{Num, U256};
 use campfire_sim::{TickRate, Ticks};
 
 use crate::combat::attack_stats::AttackStats;
+use crate::stats::modifiers::Modifiers;
 use crate::stats::stat::{EngineStat, Stat};
-use crate::stats::stat_rule::StatRule;
+use crate::stats::stat_rule::{Combine, StatRule};
 use crate::stats::stats_data::StatsData;
 use crate::units::unit_type::UnitType;
 use crate::values::scalar::Scalar;
@@ -26,6 +27,12 @@ pub(crate) struct StatBook {
     growth: Vec<Option<Growth>>,
     rate: TickRate,
     max_move_speed: Num,
+}
+
+/// `bits` as a number, at the end of the range of numbers when past it.
+fn saturate(bits: i128) -> Num {
+    let bits = bits.clamp(i128::from(i64::MIN), i128::from(i64::MAX));
+    Num::from_bits(i64::try_from(bits).expect("clamped to the range"))
 }
 
 /// A stat's value at level 1, and what it gains a level.
@@ -87,26 +94,53 @@ impl StatBook {
         self.rate
     }
 
-    /// The stats of a unit of `unit_type` at `level` into `values`: each the type's value at
-    /// that level, 0 where it gives none, within the stat's limits. A value past the range of a
-    /// number stops at its end before the limits.
-    pub(crate) fn compute(&self, unit_type: UnitType, level: u32, values: &mut Vec<Num>) {
+    /// The stats of a unit of `unit_type` at `level` carrying `modifiers` into `values`: each
+    /// the type's value at that level, 0 where it gives none, combined with each modifier's value
+    /// times its stacks as the stat's rule says, then within the stat's limits. A value past the
+    /// range of a number stops at its end before the limits.
+    pub(crate) fn compute(
+        &self,
+        unit_type: UnitType,
+        level: u32,
+        modifiers: Option<&Modifiers>,
+        values: &mut Vec<Num>,
+    ) {
         let first = unit_type.index() * self.stats.len();
         let levels = i128::from(level - 1);
-        values.extend(self.rules.iter().enumerate().map(|(at, rule)| {
-            let value =
-                self.growth
-                    .get(first + at)
-                    .copied()
-                    .flatten()
-                    .map_or(Num::ZERO, |growth| {
-                        let bits = i128::from(growth.base.to_bits())
-                            + i128::from(growth.per_level.to_bits()) * levels;
-                        let bits = bits.clamp(i128::from(i64::MIN), i128::from(i64::MAX));
-                        Num::from_bits(i64::try_from(bits).expect("clamped to the range"))
-                    });
-            rule.clamp(value)
+        values.extend((0..self.stats.len()).map(|at| {
+            self.growth
+                .get(first + at)
+                .copied()
+                .flatten()
+                .map_or(Num::ZERO, |growth| {
+                    saturate(
+                        i128::from(growth.base.to_bits())
+                            + i128::from(growth.per_level.to_bits()) * levels,
+                    )
+                })
         }));
+        for instance in modifiers.into_iter().flat_map(Modifiers::iter) {
+            for share in &instance.stats {
+                let at = usize::from(share.stat);
+                let total =
+                    saturate(i128::from(share.value.to_bits()) * i128::from(instance.stacks));
+                values[at] = match self.rules[at].combine {
+                    Combine::Sum => {
+                        saturate(i128::from(values[at].to_bits()) + i128::from(total.to_bits()))
+                    }
+                    Combine::Highest => values[at].max(total),
+                };
+            }
+        }
+        for (value, rule) in values.iter_mut().zip(&self.rules) {
+            *value = rule.clamp(*value);
+        }
+    }
+
+    /// The place of `stat` among the stats; `None` when the mode does not declare it.
+    pub(crate) fn index(&self, stat: &Stat) -> Option<u16> {
+        let at = self.stats.binary_search(stat).ok()?;
+        Some(u16::try_from(at).expect("stats fit u16"))
     }
 
     /// Engine stat `stat` among `values`; `None` when the mode does not declare it.

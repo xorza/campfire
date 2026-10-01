@@ -12,6 +12,8 @@ use crate::mode::player_resources::PlayerResources;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::state_decl::StateType;
 use crate::scripts::state_value::StateValue;
+use crate::stats::modifier_effect::ModifierEffect;
+use crate::stats::modifier_handle::ModifierHandle;
 use crate::units::path_id::PathId;
 use crate::units::script_view::View;
 use crate::units::team::Team;
@@ -40,6 +42,8 @@ pub(crate) struct ModeFrame {
     /// Whether the match ended, before this call or in it.
     pub(crate) ended: bool,
     pub(crate) effects: Vec<ModeEffect>,
+    /// The modifier handles the call took.
+    pub(crate) handles: Vec<ModifierHandle>,
 }
 
 /// An effect a mode call queued.
@@ -71,6 +75,7 @@ pub(crate) enum ModeEffect {
         unit: StableId,
         slot: u8,
     },
+    Modifier(ModifierEffect),
 }
 
 /// `ctx.p`: the mode's params, by name.
@@ -196,6 +201,28 @@ impl ModeCtx {
                 },
             );
         View::register_queries::<ModeCtx>(engine, ModeCtx::view);
+        ModeCtx::register_modifiers(engine);
+    }
+
+    /// `ctx.add_modifier` and `ctx.remove` of the mode's scripts.
+    fn register_modifiers(engine: &mut Engine) {
+        engine
+            .register_fn(
+                "add_modifier",
+                |ctx: &mut ModeCtx, target: Unit, id: &str| ctx.add_modifier(&target, id, None),
+            )
+            .register_fn(
+                "add_modifier",
+                |ctx: &mut ModeCtx, target: Unit, id: &str, ms: INT| {
+                    let ticks = ctx.view.ticks(ms)?;
+                    ctx.add_modifier(&target, id, Some(ticks))
+                },
+            )
+            .register_fn("remove", |ctx: &mut ModeCtx, handle: ModifierHandle| {
+                ctx.frame()
+                    .effects
+                    .push(ModeEffect::Modifier(handle.remove()));
+            });
     }
 
     /// Registers `ctx.p` and `ctx.state`, the types that read and write the mode's params and
@@ -226,19 +253,6 @@ impl ModeCtx {
                  value: Dynamic|
                  -> Checked<()> { state.0.set_state(&name, &value) },
             );
-    }
-
-    /// `ms` in ticks, rounded up, at least one.
-    fn ticks(&self, ms: INT) -> Checked<Ticks> {
-        let ms = u64::try_from(ms)
-            .ok()
-            .ok_or_else(|| ApiError::NegativeTime.fail())?;
-        Ok(self
-            .book
-            .rate
-            .ticks(ms)
-            .ok_or_else(|| ApiError::TimeTooLarge.fail())?
-            .max(Ticks::ONE))
     }
 
     fn team(&self, name: &str) -> Checked<Team> {
@@ -276,6 +290,29 @@ impl ModeCtx {
             .ok_or_else(|| ApiError::WrongStateType.fail())?;
         self.frame().state[field.index] = value;
         Ok(())
+    }
+
+    /// Queues modifier `id` of the mode on `target`, from no unit, for `duration` when given, and
+    /// gives its handle.
+    fn add_modifier(
+        &self,
+        target: &Unit,
+        id: &str,
+        duration: Option<Ticks>,
+    ) -> Checked<ModifierHandle> {
+        let id = self.view.modifier(id)?;
+        let mut frame = self.frame();
+        let handle = self
+            .view
+            .applied_handle(&mut frame.handles, target.id, id, None);
+        frame
+            .effects
+            .push(ModeEffect::Modifier(ModifierEffect::Add {
+                target: target.id,
+                id,
+                duration,
+            }));
+        Ok(handle)
     }
 
     /// Ends the match with `result`, once.
@@ -380,7 +417,7 @@ impl ModeCtx {
 
     /// Queues a timer `ms` milliseconds from the call, rounded up to whole ticks, at least one.
     fn timer(&self, name: &str, ms: INT, repeat: bool, data: &Dynamic) -> Checked<()> {
-        let ticks = self.ticks(ms)?;
+        let ticks = self.view.ticks(ms)?;
         let data = timer_data(data).map_err(ApiError::fail)?;
         self.frame().effects.push(ModeEffect::Timer {
             name: name.to_owned(),
@@ -401,7 +438,7 @@ impl ModeCtx {
         if !row.stays {
             return Err(ApiError::RespawnDespawns.fail().into());
         }
-        let ticks = self.ticks(ms)?;
+        let ticks = self.view.ticks(ms)?;
         self.frame().effects.push(ModeEffect::Respawn {
             unit: row.id,
             ticks,

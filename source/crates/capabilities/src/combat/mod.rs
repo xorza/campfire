@@ -55,6 +55,8 @@ pub(crate) enum CombatSet {
     Strike,
     /// In `SimSet::Hit`, after `Strike`: the tick's launches take off.
     Launch,
+    /// In `SimSet::Resolve`: units at zero health die.
+    Die,
 }
 
 impl Combat {
@@ -77,7 +79,9 @@ impl Combat {
         schedule.add_systems((
             attack.in_set(SimSet::Act).in_set(CombatSet::Attack),
             strike.in_set(SimSet::Hit).in_set(CombatSet::Strike),
-            (apply_strikes, die).chain().in_set(SimSet::Resolve),
+            (apply_strikes, die.in_set(CombatSet::Die))
+                .chain()
+                .in_set(SimSet::Resolve),
             respawn.in_set(SimSet::Inputs).in_set(CombatSet::Respawn),
             despawn_dead.in_set(SimSet::Vision),
         ));

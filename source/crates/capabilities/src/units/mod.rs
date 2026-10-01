@@ -7,6 +7,7 @@ use campfire_sim::{SimSet, StateRegistry, TickRate};
 use crate::scripts::match_scripts::MatchScripts;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
+use crate::stats::modifier_handle::ModifierHandle;
 use crate::units::body::Body;
 use crate::units::error::UnitTypeError;
 use crate::units::owner::Owner;
@@ -79,6 +80,7 @@ impl Units {
         world.insert_non_send(view);
         let mut host = ScriptHost::new(limits.per_call);
         Unit::register(host.engine_mut());
+        ModifierHandle::register(host.engine_mut());
         world.insert_non_send(host);
         world.insert_non_send(ScriptFailures::default());
         world.insert_resource(ScriptBudgets::new(limits, players));

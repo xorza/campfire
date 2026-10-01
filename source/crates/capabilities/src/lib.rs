@@ -94,6 +94,7 @@ pub use scripts::state_value::StateValue;
 pub use stats::Stats;
 pub use stats::level::Level;
 pub use stats::modifier_data::{AuraData, ModifierData, Reapply};
+pub use stats::modifiers::Modifiers;
 pub use stats::stat::{EngineStat, Stat};
 pub use stats::stat_rule::{Combine, StatRule};
 pub use stats::stats_data::{StatValue, StatsData};

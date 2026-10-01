@@ -238,6 +238,7 @@ fn think(world: &mut World, mut due: Local<'_, Vec<Due>>) {
                 continue;
             };
             ctx.begin(id);
+            ctx.view().set_caller(0);
             let next = match batch.call(Pool::Think, script, Hook::Think, (ctx.clone(), unit)) {
                 Ok(_) => {
                     for order in ctx.frame().orders.drain(..) {

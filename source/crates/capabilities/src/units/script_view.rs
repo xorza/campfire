@@ -1,5 +1,7 @@
 use std::cell::{RefCell, RefMut};
 use std::fmt;
+use std::num::NonZeroU32;
+use std::ops::Range;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -10,6 +12,10 @@ use campfire_sim::{EntityIndex, Position, SimTick, StableId, Tick, TickRate, Tic
 
 use crate::combat::health::Health;
 use crate::scripts::error::{ApiError, Checked};
+use crate::scripts::state_value::StateValue;
+use crate::stats::modifier_book::ModifierId;
+use crate::stats::modifier_data::Reapply;
+use crate::stats::modifier_handle::{ModifierHandle, StateField};
 use crate::stats::stat::Stat;
 use crate::units::body::Body;
 use crate::units::filter::Filter;
@@ -53,6 +59,13 @@ pub(crate) struct ScriptView {
     /// The stats the mode declares, in order, and each unit's values of them, one run per unit.
     stat_names: Rc<[Stat]>,
     stats: Vec<Num>,
+    /// Every modifier, by id, the modifiers each unit carries, one run per unit, and their
+    /// script state, one run per modifier.
+    modifier_info: Rc<[ModifierInfo]>,
+    modifiers: Vec<ModifierRow>,
+    modifier_state: Vec<StateValue>,
+    /// The package of the running call: the one whose modifiers its names mean.
+    caller: u16,
 }
 
 /// A unit as the view read it.
@@ -89,6 +102,31 @@ pub(crate) struct UnitRow {
     /// Its run of stats, in the order of the view's stat names, empty for a unit with none.
     stats_start: u32,
     stats_end: u32,
+    /// Its run of modifiers, by id, then source.
+    modifiers_start: u32,
+    modifiers_end: u32,
+}
+
+/// A modifier a unit carries, as the view read it: which, from whom, its stacks, and its run of
+/// script state.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ModifierRow {
+    pub(crate) id: ModifierId,
+    pub(crate) source: Option<StableId>,
+    pub(crate) stacks: u32,
+    pub(crate) state: Range<u32>,
+}
+
+/// A modifier as scripts name it: its package and name, its state's fields and their first
+/// values, and how a second application from one source acts, up to how many stacks.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ModifierInfo {
+    pub(crate) package: u16,
+    pub(crate) name: Box<str>,
+    pub(crate) fields: Rc<[StateField]>,
+    pub(crate) initial: Rc<[StateValue]>,
+    pub(crate) reapply: Reapply,
+    pub(crate) max_stacks: Option<NonZeroU32>,
 }
 
 /// An ability slot as the view read it: the rank of its ability, 0 while not learned, and how
@@ -111,9 +149,30 @@ pub(crate) struct RowFill<'a> {
     attacks: &'a mut Vec<RecentAttack>,
     slots: &'a mut Vec<SlotRow>,
     stats: &'a mut Vec<Num>,
+    modifiers: &'a mut Vec<ModifierRow>,
+    modifier_state: &'a mut Vec<StateValue>,
 }
 
 impl RowFill<'_> {
+    /// Adds `instance` to the row's run of modifiers, which the caller adds in order.
+    pub(crate) fn modified(
+        &mut self,
+        id: ModifierId,
+        source: Option<StableId>,
+        stacks: u32,
+        state: &[StateValue],
+    ) {
+        let start = u32::try_from(self.modifier_state.len()).expect("state fits u32");
+        self.modifier_state.extend_from_slice(state);
+        let end = u32::try_from(self.modifier_state.len()).expect("state fits u32");
+        self.modifiers.push(ModifierRow {
+            id,
+            source,
+            stacks,
+            state: start..end,
+        });
+    }
+
     /// Adds `stats`, in the order of the view's stat names, as the row's run of stats.
     pub(crate) fn stated(&mut self, stats: &[Num]) {
         self.stats.extend_from_slice(stats);
@@ -141,6 +200,8 @@ impl ScriptView {
         self.attacks.clear();
         self.slots.clear();
         self.stats.clear();
+        self.modifiers.clear();
+        self.modifier_state.clear();
         for (id, entity) in world.resource::<EntityIndex>().iter() {
             let unit = world.entity(entity);
             let (Some(&pos), Some(&team)) = (unit.get::<Position>(), unit.get::<Team>()) else {
@@ -149,6 +210,7 @@ impl ScriptView {
             let start = u32::try_from(self.attacks.len()).expect("attacks fit u32");
             let slots_start = u32::try_from(self.slots.len()).expect("slots fit u32");
             let stats_start = u32::try_from(self.stats.len()).expect("stats fit u32");
+            let modifiers_start = u32::try_from(self.modifiers.len()).expect("modifiers fit u32");
             let mut row = UnitRow {
                 id,
                 pos,
@@ -170,6 +232,8 @@ impl ScriptView {
                 slots_end: slots_start,
                 stats_start,
                 stats_end: stats_start,
+                modifiers_start,
+                modifiers_end: modifiers_start,
             };
             let mut fill = RowFill {
                 row: &mut row,
@@ -177,6 +241,8 @@ impl ScriptView {
                 attacks: &mut self.attacks,
                 slots: &mut self.slots,
                 stats: &mut self.stats,
+                modifiers: &mut self.modifiers,
+                modifier_state: &mut self.modifier_state,
             };
             for source in &self.sources {
                 source(&unit, &mut fill);
@@ -184,6 +250,7 @@ impl ScriptView {
             row.attacks_end = u32::try_from(self.attacks.len()).expect("attacks fit u32");
             row.slots_end = u32::try_from(self.slots.len()).expect("slots fit u32");
             row.stats_end = u32::try_from(self.stats.len()).expect("stats fit u32");
+            row.modifiers_end = u32::try_from(self.modifiers.len()).expect("modifiers fit u32");
             self.units.push(row);
         }
     }
@@ -228,6 +295,10 @@ impl View {
             slots: Vec::new(),
             stat_names: Rc::from([]),
             stats: Vec::new(),
+            modifier_info: Rc::from([]),
+            modifiers: Vec::new(),
+            modifier_state: Vec::new(),
+            caller: 0,
         })))
     }
 
@@ -250,6 +321,97 @@ impl View {
     /// Sets the damage kinds the mode declares.
     pub(crate) fn set_damage_kinds(&self, damage_kinds: Rc<[DeclaredName]>) {
         self.0.borrow_mut().damage_kinds = damage_kinds;
+    }
+
+    /// `ms` in ticks at the match's rate, rounded up, at least one; an error for a negative time
+    /// or one too long to count.
+    pub(crate) fn ticks(&self, ms: INT) -> Checked<Ticks> {
+        let ms = u64::try_from(ms)
+            .ok()
+            .ok_or_else(|| ApiError::NegativeTime.fail())?;
+        let ticks = self.0.borrow().rate.ticks(ms);
+        Ok(ticks
+            .ok_or_else(|| ApiError::TimeTooLarge.fail())?
+            .max(Ticks::ONE))
+    }
+
+    /// Sets every modifier of the match, by id, which orders them by package, then name.
+    pub(crate) fn set_modifier_info(&self, info: Rc<[ModifierInfo]>) {
+        self.0.borrow_mut().modifier_info = info;
+    }
+
+    /// Sets the package of the call about to run.
+    pub(crate) fn set_caller(&self, package: u16) {
+        self.0.borrow_mut().caller = package;
+    }
+
+    /// The modifier `name` of the running call's package; an error when it declares none.
+    pub(crate) fn modifier(&self, name: &str) -> Checked<ModifierId> {
+        let view = self.0.borrow();
+        let caller = view.caller;
+        let at = view
+            .modifier_info
+            .binary_search_by(|info| info.package.cmp(&caller).then((*info.name).cmp(name)))
+            .ok()
+            .ok_or_else(|| ApiError::UnknownModifier.fail())?;
+        Ok(ModifierId::new(
+            u16::try_from(at).expect("modifiers fit u16"),
+        ))
+    }
+
+    /// Whether the unit of `row` carries the modifier `name` of the running call's package.
+    pub(crate) fn has_modifier(&self, row: &UnitRow, name: &str) -> Checked<bool> {
+        let id = self.modifier(name)?;
+        let view = self.0.borrow();
+        let run = &view.modifiers[row.modifiers_start as usize..row.modifiers_end as usize];
+        Ok(run.iter().any(|modifier| modifier.id == id))
+    }
+
+    /// The handle of the instance of `id` from `source` on `carrier` that an application in the
+    /// running call adds or applies again, as the call sees it: a new one's one stack and first
+    /// state, or a held one's, a stack more when it stacks, up to its limit. An instance the call
+    /// took a handle to before, in `handles`, keeps that handle, so the call sees one instance
+    /// once; one it removed is new again.
+    pub(crate) fn applied_handle(
+        &self,
+        handles: &mut Vec<ModifierHandle>,
+        carrier: StableId,
+        id: ModifierId,
+        source: Option<StableId>,
+    ) -> ModifierHandle {
+        let view = self.0.borrow();
+        let info = &view.modifier_info[id.index()];
+        if let Some(handle) = handles.iter().find(|handle| handle.is(carrier, id, source)) {
+            let mut data = handle.data();
+            if data.removed {
+                data.removed = false;
+                data.written = false;
+                data.stacks = 1;
+                data.state.clone_from_slice(&info.initial);
+            } else {
+                data.stacks = info.reapply.stacks(data.stacks, info.max_stacks);
+            }
+            return handle.clone();
+        }
+        let held = view.row(carrier).and_then(|row| {
+            let run = &view.modifiers[row.modifiers_start as usize..row.modifiers_end as usize];
+            run.iter()
+                .find(|modifier| modifier.id == id && modifier.source == source)
+        });
+        let (stacks, state) = match held {
+            Some(held) => {
+                let state =
+                    &view.modifier_state[held.state.start as usize..held.state.end as usize];
+                let stacks = info.reapply.stacks(held.stacks, info.max_stacks);
+                (stacks, state.to_vec())
+            }
+            None => (1, info.initial.to_vec()),
+        };
+        let fields = Rc::clone(&info.fields);
+        drop(view);
+        let handle = ModifierHandle::new(carrier, id, source, stacks, state, fields, self.clone());
+        handles.push(handle.clone());
+        handle
     }
 
     /// Sets the stats the mode declares, in the order units' runs of stats hold them.

@@ -12,6 +12,7 @@ use campfire_sim::{
     EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, Tick, TickRate, Ticks,
 };
 
+use crate::abilities::ability_book::Passive;
 use crate::abilities::ability_book::{Ability, AbilityBook, AbilityId, Aim, RankValues};
 use crate::abilities::ability_data::{AbilityData, Range, Targeting};
 use crate::abilities::ability_slots::{AbilitySlots, CastTarget, Casting};
@@ -23,10 +24,15 @@ use crate::combat::CombatSet;
 use crate::combat::dead::Dead;
 use crate::combat::strikes::{Strike, Strikes};
 use crate::combat::targets::Targets;
+use crate::orders::OrdersSet;
 use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
+use crate::stats::modifier_book::{Applier, ModifierBook};
+use crate::stats::modifiers::Modifiers;
+use crate::stats::stat_book::StatBook;
+use crate::stats::{Stats, StatsSet};
 use crate::units::body::Body;
 use crate::units::owner::Owner;
 use crate::units::script_view::{RowFill, SlotRow, View};
@@ -66,6 +72,12 @@ impl Abilities {
         schedule.add_systems((
             start_casts.in_set(SimSet::Act),
             resolve_casts.in_set(SimSet::Hit).after(CombatSet::Launch),
+            hold_passives
+                .in_set(SimSet::Inputs)
+                .after(OrdersSet::Orders)
+                .after(StatsSet::Expire),
+            hold_passives.in_set(SimSet::Resolve),
+            hold_passives.in_set(SimSet::Vision),
         ));
         registry.register_component::<AbilitySlots>();
         registry.register_component::<ResourcePool>();
@@ -76,10 +88,18 @@ impl Abilities {
     /// times in milliseconds as ticks at the match's rate, rounded up.
     pub fn load(
         world: &mut World,
+        package: u16,
         data: &AbilityData,
         script: Option<ScriptId>,
         ranks: u8,
     ) -> Result<AbilityId, AbilityError> {
+        let passive = data.passive_modifier.as_ref().map(|name| Passive {
+            modifier: world
+                .resource::<ModifierBook>()
+                .find(package, name)
+                .expect("the load checked the passive's modifier"),
+            while_ready: data.passive_while_ready,
+        });
         let rate = *world.resource::<TickRate>();
         let aim = match &data.targeting {
             Targeting::None => Aim::None,
@@ -100,6 +120,8 @@ impl Abilities {
         let id = world.resource_mut::<AbilityBook>().load(
             &host,
             &mut ctx.frame(),
+            package,
+            passive,
             data,
             script,
             aim,
@@ -107,6 +129,61 @@ impl Abilities {
         );
         world.insert_non_send(host);
         Ok(id)
+    }
+}
+
+/// Keeps each unit's passives as its slots stand: the passive of each ability with a rank, and
+/// with `passive_while_ready` off cooldown, from the unit itself at the ability's rank, applied
+/// again when the rank changes; and none other. It runs as each tick starts, after the casts
+/// resolve, and after the mode's calls, which learn ranks.
+fn hold_passives(
+    abilities: Res<'_, AbilityBook>,
+    book: Option<Res<'_, ModifierBook>>,
+    stats: Option<Res<'_, StatBook>>,
+    tick: Res<'_, SimTick>,
+    ctx: NonSend<'_, Ctx>,
+    mut units: Query<'_, '_, (&StableId, &AbilitySlots, &mut Modifiers)>,
+) {
+    let (Some(book), Some(stats)) = (book, stats) else {
+        return;
+    };
+    let now = tick.start();
+    for (&id, slots, mut modifiers) in &mut units {
+        for slot in slots.iter() {
+            let Some(passive) = abilities
+                .get(slot.ability)
+                .and_then(|ability| ability.passive)
+            else {
+                continue;
+            };
+            let held = modifiers
+                .get(passive.modifier, Some(id))
+                .map(|instance| instance.rank);
+            let holds = slot.rank > 0 && (!passive.while_ready || slot.ready_at <= now);
+            if !holds {
+                if held.is_some() {
+                    modifiers.remove(passive.modifier, Some(id));
+                }
+                continue;
+            }
+            if held == Some(slot.rank) {
+                continue;
+            }
+            let applier = Applier {
+                source: Some(id),
+                ability: Some(slot.ability),
+                rank: slot.rank,
+                passive: true,
+                aura: false,
+            };
+            let frame = ctx.frame();
+            let param = |name: &str| frame.ability_param(slot.ability, slot.rank, name);
+            if let Some(application) =
+                book.application(passive.modifier, applier, None, now, &stats, param)
+            {
+                modifiers.apply(application);
+            }
+        }
     }
 }
 
@@ -321,9 +398,12 @@ fn resolve(batch: &mut ScriptBatch<'_>, ctx: &Ctx, now: Tick, caster: StableId, 
         .stop();
 }
 
-/// Applies a cast that ran: the effects it queued in `frame`, its cost and its cooldown.
+/// Applies a cast that ran: the effects it queued in `frame`, then what it wrote to modifier
+/// handles, its cost and its cooldown.
 fn apply(world: &mut World, frame: &mut Frame, now: Tick, entity: Entity, prepared: &Prepared) {
-    for effect in frame.effects.drain(..) {
+    let ability = frame.cast().expect("a cast that ran has an ability");
+    let rank = frame.rank;
+    for &effect in &frame.effects {
         match effect {
             Effect::Damage { target, amount } => {
                 world.resource_mut::<Strikes>().0.push(Strike {
@@ -332,7 +412,22 @@ fn apply(world: &mut World, frame: &mut Frame, now: Tick, entity: Entity, prepar
                     amount,
                 });
             }
+            Effect::Modifier(effect) => {
+                let applier = Applier {
+                    source: Some(prepared.caster.id),
+                    ability: Some(ability),
+                    rank,
+                    passive: false,
+                    aura: false,
+                };
+                let param = |name: &str| frame.ability_param(ability, rank, name);
+                Stats::apply_effect(world, effect, applier, param);
+            }
         }
+    }
+    frame.effects.clear();
+    for handle in frame.handles.drain(..) {
+        Stats::write_handle(world, &handle);
     }
     if let Some(mut pool) = world.get_mut::<ResourcePool>(entity) {
         pool.spend(prepared.cost);
@@ -382,7 +477,9 @@ fn prepare(
             .and_then(|_| view.unit(id))
             .map_or(Dynamic::UNIT, Dynamic::from),
     };
-    ctx.frame().begin_cast(checked.id, checked.rank)?;
+    ctx.frame()
+        .begin_cast(checked.id, checked.rank, caster.id)?;
+    view.set_caller(checked.ability.package);
     let pool = unit
         .get::<Owner>()
         .map_or(Pool::Think, |controller| Pool::Player(controller.slot()));

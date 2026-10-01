@@ -1,0 +1,20 @@
+use campfire_sim::{StableId, Ticks};
+
+use crate::stats::modifier_book::ModifierId;
+
+/// A change to a unit's modifiers that a call queued.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ModifierEffect {
+    /// Modifier `id` on `target`, for `duration` when the call names one.
+    Add {
+        target: StableId,
+        id: ModifierId,
+        duration: Option<Ticks>,
+    },
+    /// The end of the instance of `id` from `source` on `carrier`.
+    Remove {
+        carrier: StableId,
+        id: ModifierId,
+        source: Option<StableId>,
+    },
+}

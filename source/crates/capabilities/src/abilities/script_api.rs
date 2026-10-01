@@ -4,8 +4,12 @@ use std::rc::Rc;
 use campfire_math::Num;
 use campfire_script::rhai::{Dynamic, Engine, INT, ImmutableString};
 
+use campfire_sim::Ticks;
+
 use crate::abilities::frame::{Effect, Frame};
 use crate::scripts::error::{ApiError, Checked};
+use crate::stats::modifier_effect::ModifierEffect;
+use crate::stats::modifier_handle::ModifierHandle;
 use crate::units::script_view::View;
 use crate::units::unit::Unit;
 
@@ -41,7 +45,8 @@ impl Ctx {
         &self.view
     }
 
-    /// The script API of `on_cast`: `ctx.p`, the queries and `ctx.damage`.
+    /// The script API of `on_cast`: `ctx.p`, the queries, `ctx.damage`, `ctx.add_modifier` and
+    /// `ctx.remove`.
     pub(crate) fn register(engine: &mut Engine) {
         engine
             .register_type_with_name::<Params>("Params")
@@ -60,8 +65,43 @@ impl Ctx {
                 |ctx: &mut Ctx, target: Unit, amount: INT, kind: &str| {
                     ctx.damage(&target, ApiError::num(amount)?, kind)
                 },
-            );
+            )
+            .register_fn("add_modifier", |ctx: &mut Ctx, target: Unit, id: &str| {
+                ctx.add_modifier(&target, id, None)
+            })
+            .register_fn(
+                "add_modifier",
+                |ctx: &mut Ctx, target: Unit, id: &str, ms: INT| {
+                    let ticks = ctx.view().ticks(ms)?;
+                    ctx.add_modifier(&target, id, Some(ticks))
+                },
+            )
+            .register_fn("remove", |ctx: &mut Ctx, handle: ModifierHandle| {
+                ctx.frame().effects.push(Effect::Modifier(handle.remove()));
+            });
         View::register_queries::<Ctx>(engine, Ctx::view);
+    }
+
+    /// Queues modifier `id` of the cast's package on `target`, from the caster, for `duration`
+    /// when given, and gives its handle.
+    fn add_modifier(
+        &self,
+        target: &Unit,
+        id: &str,
+        duration: Option<Ticks>,
+    ) -> Checked<ModifierHandle> {
+        let id = self.view().modifier(id)?;
+        let mut frame = self.frame();
+        let source = frame.caster;
+        let handle = self
+            .view()
+            .applied_handle(&mut frame.handles, target.id, id, source);
+        frame.effects.push(Effect::Modifier(ModifierEffect::Add {
+            target: target.id,
+            id,
+            duration,
+        }));
+        Ok(handle)
     }
 
     /// Queues `amount` of `kind` damage to `target`. The kind must be one the mode declares;

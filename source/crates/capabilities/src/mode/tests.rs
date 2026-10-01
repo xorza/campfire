@@ -39,6 +39,8 @@ use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::scripts::state_decl::{StateDecl, StateDefault, StateType, SyncTo};
 use crate::scripts::state_value::StateValue;
+use crate::stats::modifier_data::{ModifierData, Reapply};
+use crate::stats::modifiers::Modifiers;
 use crate::stats::stats_data::StatsData;
 use crate::units::Units;
 use crate::units::body::Body;
@@ -48,6 +50,7 @@ use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::bounds::Bounds;
 use crate::values::grid::Grid;
+use crate::values::number::Number;
 use crate::values::scalar::Scalar;
 use crate::vision::vision_grid::VisionGrid;
 
@@ -186,6 +189,24 @@ struct ModeFiles {
     teams: Vec<TeamManifest>,
 }
 
+/// The mode's one modifier: 200 ms, stacking up to 4, with a count in its state.
+fn blessing() -> ModifierData {
+    ModifierData {
+        script: None,
+        duration_ms: Some(Number::Value(Scalar::Int(200))),
+        interval_ms: None,
+        stacks_expire_ms: None,
+        reapply: Reapply::Stack,
+        max_stacks: NonZeroU32::new(4),
+        stats: BTreeMap::new(),
+        states: Vec::new(),
+        shield: None,
+        aura: None,
+        params: BTreeMap::new(),
+        state: [("count".to_owned(), field(StateType::Int, None))].into(),
+    }
+}
+
 fn mode_files() -> ModeFiles {
     let text = |text: &str| ListEntry::Text(text.to_owned());
     ModeFiles {
@@ -232,7 +253,7 @@ fn mode_files() -> ModeFiles {
             ]
             .map(|(name, param)| (name.to_owned(), param))
             .into(),
-            modifiers: BTreeMap::new(),
+            modifiers: [("blessing".to_owned(), blessing())].into(),
             damage_kinds: Vec::new(),
             stats: BTreeMap::new(),
             resources: Vec::new(),
@@ -331,6 +352,7 @@ impl Game {
             damage_kinds: Rc::from([]),
         };
         let declared = [
+            Capability::Stats,
             Capability::Combat,
             Capability::Navigation,
             Capability::Abilities,
@@ -370,14 +392,17 @@ impl Game {
             projectile_state: BTreeMap::new(),
         };
         // A spell has one rank; hero X's ability, 2.
-        let strike = Abilities::load(&mut world, &blink, None, 2).unwrap();
-        let blink = Abilities::load(&mut world, &blink, None, 1).unwrap();
+        let strike = Abilities::load(&mut world, 0, &blink, None, 2).unwrap();
+        let blink = Abilities::load(&mut world, 0, &blink, None, 1).unwrap();
         let spell = LoadoutSetup {
             id: "blink".to_owned(),
             ability: blink,
         };
         let types = [grunt_type, tower_type, x, y];
         let files = mode_files();
+        for (name, data) in &files.data.modifiers {
+            Stats::load_modifier(&mut world, 0, name, data);
+        }
         let script = Units::compile(&mut world, script).unwrap();
         let setup = setup(&files, script, types, spell, strike);
         Mode::install(&mut world, &mut schedule, &mut registry, setup).unwrap();
@@ -635,6 +660,93 @@ fn on_mode_input(ctx, player, name, value) {
         let failures: Vec<_> = failure.into_iter().map(Some).collect();
         assert_eq!(game.failures(), failures, "{value}");
     }
+}
+
+#[test]
+fn a_mode_applies_a_modifier_writes_its_handle_and_sees_it_end() {
+    let blesser = r#"
+fn on_mode_input(ctx, player, name, value) {
+    if name == "hero" {
+        ctx.choose_avatar(player, value);
+        ctx.spawn_avatars();
+        return;
+    }
+    let hero = ctx.avatars()[0];
+    if value == "bless" {
+        let m = ctx.add_modifier(hero, "blessing", 100);
+        ctx.state.seen = m.stacks;
+        m.stacks = 3;
+        m.state.count = m.state.count + 5;
+    } else if value == "again" {
+        ctx.state.seen = ctx.add_modifier(hero, "blessing").stacks;
+    } else if value == "check" {
+        ctx.state.seen = if hero.has_modifier("blessing") { 1 } else { 0 };
+    } else if value == "twice" {
+        let first = ctx.add_modifier(hero, "blessing");
+        let second = ctx.add_modifier(hero, "blessing");
+        ctx.state.seen = first.stacks * 10 + second.stacks;
+    } else if value == "renew" {
+        let m = ctx.add_modifier(hero, "blessing");
+        m.state.count = 9;
+        ctx.remove(m);
+        let renewed = ctx.add_modifier(hero, "blessing");
+        ctx.state.seen = renewed.stacks * 10 + renewed.state.count;
+    } else if value == "unknown" {
+        ctx.add_modifier(hero, "curse");
+    }
+}
+"#;
+    let mut game = Game::new(blesser, LIMITS);
+    game.tick(&[(0, input("hero", "hero-x"))]);
+    let mut owned = game.world.query_filtered::<Entity, With<Owner>>();
+    let hero = owned.single(&game.world).unwrap();
+    let held = |game: &Game| {
+        let modifiers = game.world.get::<Modifiers>(hero).unwrap();
+        modifiers
+            .iter()
+            .map(|instance| {
+                (
+                    instance.stacks,
+                    instance.until.map(Tick::get),
+                    instance.state.clone(),
+                )
+            })
+            .collect::<Vec<_>>()
+    };
+    // In tick t a new one, 1 stack as the call sees it, written to 3 and its count from 0 to 5;
+    // 100 ms at 10 ticks a second is 1 tick, so it holds through t + 1 and ends as t + 2
+    // starts.
+    let t = game.world.resource::<SimTick>().start().get();
+    game.tick(&[(0, input("probe", "bless"))]);
+    assert_eq!(game.field("seen"), StateValue::Int(1));
+    assert_eq!(held(&game), [(3, Some(t + 2), vec![StateValue::Int(5)])]);
+    // Again in t + 1 with its own 200 ms, 2 ticks: a fourth stack, the limit, and the end
+    // t + 1 + 2 + 1; the count stays.
+    game.tick(&[(0, input("probe", "again"))]);
+    assert_eq!(game.field("seen"), StateValue::Int(4));
+    assert_eq!(held(&game), [(4, Some(t + 4), vec![StateValue::Int(5)])]);
+    game.tick(&[(0, input("probe", "check"))]);
+    assert_eq!(game.field("seen"), StateValue::Int(1));
+    // Through t + 3, then gone as t + 4 starts: once that tick has run.
+    while game.world.resource::<SimTick>().start().get() <= t + 4 {
+        game.tick(&[]);
+    }
+    assert_eq!(held(&game), []);
+    game.tick(&[(0, input("probe", "check"))]);
+    assert_eq!(game.field("seen"), StateValue::Int(0));
+    // Two applications in one call in tick u: one handle, which sees both, 2 stacks; 200 ms, so
+    // it ends as u + 3 starts.
+    let u = game.world.resource::<SimTick>().start().get();
+    game.tick(&[(0, input("probe", "twice"))]);
+    assert_eq!(game.field("seen"), StateValue::Int(22));
+    assert_eq!(held(&game), [(2, Some(u + 3), vec![StateValue::Int(0)])]);
+    // In u + 1, a third stack written, removed, and applied again: a new one, 1 stack and its
+    // count 0, which ends as u + 4 starts.
+    game.tick(&[(0, input("probe", "renew"))]);
+    assert_eq!(game.field("seen"), StateValue::Int(10));
+    assert_eq!(held(&game), [(1, Some(u + 4), vec![StateValue::Int(0)])]);
+    game.tick(&[(0, input("probe", "unknown"))]);
+    assert_eq!(game.failures(), [Some(ApiError::UnknownModifier)]);
 }
 
 #[test]

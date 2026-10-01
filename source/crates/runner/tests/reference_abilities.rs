@@ -10,7 +10,7 @@ use bevy_ecs::world::World;
 use campfire_capabilities::{
     Abilities, AbilitySlots, Action, AttackStats, CapabilitySet, CastTarget, Combatant,
     DeclaredName, Health, MatchScripts, Number, OnDeath, Order, Owner, Param, Range, RangeField,
-    Ranked, ResourcePool, Scalar, Scaling, ScriptLimits, Targeting, Team, Units,
+    Ranked, ResourcePool, Scalar, Scaling, ScriptLimits, Stats, Targeting, Team, Units,
 };
 use campfire_content::PackagePath;
 use campfire_math::{Num, PlayerSlot, SegmentSeed, Vec3};
@@ -121,6 +121,7 @@ fn lash_out_from_its_package_hits_exactly() {
         damage_kinds: Rc::from([DeclaredName::new("magic").unwrap()]),
     };
     let declared = [
+        Capability::Stats,
         Capability::Combat,
         Capability::Navigation,
         Capability::Abilities,
@@ -131,12 +132,15 @@ fn lash_out_from_its_package_hits_exactly() {
     world.add_schedule(schedule);
 
     let husk = abilities("husk");
+    for (name, modifier) in &husk.modifiers {
+        Stats::load_modifier(&mut world, 0, name, modifier);
+    }
     let data = &husk.abilities["lash_out"];
     let source = hero("husk")
         .read_text(data.script.as_ref().unwrap())
         .unwrap();
     let script = Units::compile(&mut world, &source).unwrap();
-    let lash_out = Abilities::load(&mut world, data, Some(script), 5).unwrap();
+    let lash_out = Abilities::load(&mut world, 0, data, Some(script), 5).unwrap();
 
     let caster = spawn(
         &mut world,
