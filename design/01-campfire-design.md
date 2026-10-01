@@ -28,8 +28,11 @@ Docs: [Engine Core](02-engine-core.md) · [Game Scripting](03-game-scripting.md)
 | World | A persistent game that never ends |
 | Session | One match or one world on one server, with one session id and one session log. A server restart continues the same session from its latest save |
 | Segment | The part of a session log that starts at one checkpoint. A match is one segment |
-| Team | Players who share vision. A mode has any number of teams |
-| Params | Read-only values from data files (units, abilities, weapons) |
+| Team | A side players and units belong to. A mode has any number of teams, and declares how each pair regards each other: hostile, neutral or friendly. Friendly teams share vision |
+| Unit | Anything in the sim with a stable id, a position and a type: a hero, a soldier, a building, a projectile, an item on the ground, a door |
+| Action | Anything a unit does on purpose: an attack, a cast, a shot, a use, a build; every action runs one pipeline |
+| Tag | A word a unit carries, from its type or its modifiers; the mode says what a tag does, such as stop a unit moving |
+| Params | Read-only values from data files (units, actions, modifiers) |
 | Script state | Values scripts keep on units, players and the mode; part of the game state |
 
 ## System overview
@@ -46,7 +49,7 @@ The engine knows nothing about any particular genre; the MOBA is just the first 
 
 **Target games.** The capabilities must be enough to rebuild, as community packages: Counter-Strike, Command & Conquer: Generals, StarCraft, League of Legends, PUBG, and an MMO like Lineage or World of Warcraft. What each needs: [Genres](04-capabilities/genres.md).
 
-**Neutral core.** The core has no genre words and no genre lists: a mode declares its own damage kinds, stats and resources ([Mode vocabulary](04-capabilities/00-overview.md#mode-vocabulary)).
+**Neutral core.** The core has no genre words and no genre lists: a mode declares its own damage kinds, stats, pools, tags, slot kinds, teams and relations ([Mode vocabulary](04-capabilities/00-overview.md#mode-vocabulary)). Every capability says its mechanism in one model of units, tags, stats, pools, modifiers, actions, effects, events, relations and space ([The model](04-capabilities/00-overview.md#the-model)), so a MOBA, a shooter, an RTS, an MMO and a battle royale are the same kind of package.
 
 - **Deterministic:** the same inputs give the same result on every machine.
 - **Configurable tick rate:** set by the host, up to 200 Hz or more on LAN, fixed for the whole session.
@@ -83,7 +86,7 @@ A world is one session, whatever its size: its dungeons and battlegrounds are re
 
 A world's log and checkpoints show hidden state that is still live, so the host publishes them only after a delay the host sets. A match publishes its log after it ends.
 
-Players move between worlds by leaving one server and joining another. Their identity comes with them; items and progress come with them only if the new server chooses to accept them. How a server exports an item so it cannot exist twice is not designed yet.
+Players move between worlds by leaving one server and joining another. Their identity comes with them; items and progress come with them only if the new server chooses to accept them. An item moves by burn and attest: the old server destroys it and signs a transfer that only the one server it names can redeem, once ([Item export](05-protocol-spec.md#item-export)).
 
 ## Scripting and modding
 

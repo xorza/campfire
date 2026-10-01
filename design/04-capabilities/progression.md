@@ -1,15 +1,41 @@
 # Progression
 
-How units grow during a match or a life. `stats` owns a unit's level, as an input to its stats; `progression` decides when it changes.
+## Mechanism
 
-## Experience and levels
+How units grow during a match or a life. `stats` owns a unit's level, as an input to its stats; `progression` decides when it changes, and when a unit may learn a rank of an action.
 
-- The mode's `levels` lists the experience each level needs, from level 2: `levels = [280, 660, ...]`, ascending. `ctx.add_xp(unit, amount)` adds experience, state beside the level; each level reached raises the unit's level, and with it its stats and, by the pool rule, its pools ([Stats](stats.md#pools)).
-- Each level reached gives an avatar a point to learn a rank. A player learns by an order, `learn = slot`, which takes a point and a rank the slot's level rule allows; the mode's `rank_levels` sets it by slot kind, the reference MOBA's `basic = [1, 3, 5, 7, 9]` and `ultimate = [6, 11, 16]`. `ctx.learn` still grants a rank with no point and no rule.
+## Data
+
+The mode's `levels`: the experience each level needs, from level 2, ascending: `levels = [280, 660, ...]`. Its slot kinds' `ranks` and `levels`: the level each rank of a slot's action needs ([Actions](actions.md#data)).
+
+## Rules
+
+- **Experience.** `ctx.add_xp(unit, amount)` adds experience, state beside the level, to any unit: a hero's, an RTS unit's veterancy, an MMO character's. Each level reached raises the unit's level, and with it its stats and, by the rule of a maximum that rises, its pools ([Pools](stats.md#pools)).
+- **Learning.** Each level reached gives a unit a point to learn a rank. A player learns by an order, `learn = slot`, which takes a point and a rank its slot kind's `levels` allow. `ctx.learn` grants a rank with no point and no level rule.
+
+## State and derived
+
+- **State:** each unit's experience and unspent points.
+
+## Script API
+
+`ctx.add_xp(unit, amount)`, `ctx.learn(unit, slot)`; `unit.xp`, `unit.points`.
+
+## Network
+
+Experience and points go to the unit's owner; the level to everyone who sees the unit.
+
+## Cost
+
+A level reached costs a refresh of its unit.
 
 ## Later
 
-- **Talents:** choices that grant modifiers or abilities, as data.
-- **Veterancy:** kills raise a unit's rank, as in RTS games; the same levels, driven by kill credit.
+- **Talents:** choices that grant modifiers or actions, as data.
+- **Veterancy:** the same levels, driven by kill credit through the mode's script.
 
-Persistent progress (an MMO character's level) is saved by `persistence`; this capability only runs it.
+Persistent progress, an MMO character's level, is saved by `persistence`; this capability only runs it.
+
+## Genres
+
+A MOBA's levels 1 to 18 and ability ranks; an RTS's veterancy; an MMO's levels and talents. A shooter and a battle royale take none, or a mode's own perks as modifiers.

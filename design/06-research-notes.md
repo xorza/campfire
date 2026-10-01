@@ -1,6 +1,6 @@
 # Campfire — Research Notes
 
-The design holds up against what others have learned. The biggest hidden risk is that an open-source client makes bots and scripts easy to build, which matters most once money is at stake. All six early decisions below are now made.
+The design holds up against what others have learned. The biggest hidden risk is that an open-source client makes bots and scripts easy to build, which matters most once money is at stake. All seven early decisions below are now made.
 
 ## Decide early
 
@@ -12,6 +12,7 @@ The design holds up against what others have learned. The biggest hidden risk is
 | 4 | A player's main key stays out of the game and signs a short-lived key per session | Decided | [Nostr remote signing](https://github.com/nostr-protocol/nips/blob/master/46.md) exists to keep private keys out of apps |
 | 5 | Hosts pin exact content versions; author updates never reach players automatically | Decided | In the [fractureiser incident](https://prismlauncher.org/news/cf-compromised-alert/), hijacked mod-author accounts, some with two-factor login, pushed malware into popular Minecraft mods |
 | 6 | Pick the scripting runtime by its sandbox and update record first | Decided: Rhai | Dota 2 ran an [unsandboxed 2018 build of its JavaScript engine](https://www.gendigital.com/blog/insights/research/dota-2-under-attack-how-a-v8-bug-was-exploited-in-the-game); malicious custom game modes used an old bug in it until Valve patched it in January 2023 |
+| 7 | One model of units, tags, stats, pools, modifiers, actions, effects, relations and space serves every genre; the core has no genre words ([The model](04-capabilities/00-overview.md#the-model)) | Decided, after the reference MOBA had put its rules into the core: fixed states and League of Legends stats, at most 63 teams, one attack and one resource a unit, path ends for two teams, every distance on the ground plane, and a separate mechanism for each kind of action | Engines that serve many genres converge on it: Unreal's [Gameplay Ability System](https://ikrima.dev/ue4guide/gameplay-programming/gameplay-ability-system/epic-technical-brief/) (shooters, MOBAs, RPGs) has one tag set and one modifier formula; the [StarCraft II data editor](https://wiki.hiveworkshop.com/index.php/Data_Editor), heir of the editor DotA was built in, makes missiles units and runs weapons and abilities through the same effects; Unreal gives [teams attitudes](https://dev.epicgames.com/documentation/unreal-engine/API/Runtime/AIModule/FGenericTeamId); Fortnite sends 100 players what a [spatial grid](https://www.unrealengine.com/en-US/tech-blog/replication-graph-overview-and-proper-replication-methods) finds near each; Photon Quantum runs [MOBAs, RTS games and shooters](https://doc.photonengine.com/quantum/current/getting-started/which-sdk) on one deterministic fixed-point ECS |
 
 ## Hidden issues
 

@@ -1,54 +1,99 @@
-# Combat and stats
+# Combat
 
-`combat` gives units a side, health and attacks, and runs damage and deaths. `stats` gives them numbers that modifiers change. Almost every other capability builds on them.
+## Mechanism
 
-## Teams
+`combat` gives units a life pool and weapons, and runs damage, heals, deaths and kill credit. A weapon is an action of the `attack` kind ([Actions](actions.md)); damage and heals are effects; who may hit whom comes from the relations of their teams ([Relations](00-overview.md#relations)). Almost every other capability builds on it.
 
-A unit has a team, a type of the core that every capability shares: its index in the mode's list of teams, which may be of any length. Units of different teams are enemies and there is no other rule, so a neutral team for camps and objectives is one more team, an enemy of every other. Which teams a mode has, and which slots play on each, are in its manifest.
+## Data
 
-## Attacks
+The mode, in `data/mode.toml`:
 
-- **Attack order.** An attack names its target by stable id; an order on a unit that is not a living enemy is ignored.
-- **Range** is measured on the ground plane, exactly, with no square root, from the edge of the attacker's body to the edge of the target's, as in League of Legends and Dota 2: a range `r` reaches a center `r` plus both radii away. A unit with no body is a point. A unit that can move walks to its target while out of range and stops in range.
-- **Windup and period.** An attack starts once the unit is ready and strikes when its windup ends. The next attack may start one period after this one started. A move, or an attack on another target, cancels a windup and spends nothing, so the unit may attack again at once; after the strike, in the back-swing, moving is free. Range counts only at the start: a strike lands unless its target died or despawned.
-- **Ranged attacks** fire a homing projectile at the end of the windup, from where the attacker stands, which strikes on arrival ([Abilities](abilities.md#projectiles-and-areas)); in a match without `projectiles`, they strike at the end of the windup.
+```toml
+damage_kinds = ["physical", "magic", "true"]
+assist_window_ms = 10000
 
-## Damage and death
+[combat]
+life = "health"                                        # the pool that is life
+leech = { attack = "life_steal", other = "spell_vamp" } # optional: stats that heal the source
+heal_scale = "healing_received_pct"                    # optional: a stat that scales heals
+```
 
-- **Damage** has a source, or none for a modifier the mode applied, a target, an amount and a kind from the mode's list (for the reference MOBA: `physical`, `magic`, `true`). A mode with the combat capability declares at least one kind, and its `attack_kind`, one of them. An attack deals the `attack_kind`; an ability or modifier script names its kind. It is an attack when an attack or `ctx.attack_hit` dealt it, and it names the ability whose cast, projectile, area or modifier dealt it.
-- **One pass a tick.** Every damage of a tick applies in Resolve, in one queue: first the tick's damage, the damage with no source first, then by its source's stable id, and then in the order it was queued, then the damage the events of the pass queue, first in, first out. Every damage of the pass reads the units as the pass began, so two units can kill each other in one tick, and a modifier an event adds takes effect from the next stage.
-- **Each damage, in order:** nothing happens to a target at zero health or `invulnerable` ([Stats](stats.md#states)); the mode's `calc_damage(ctx, d)` turns the amount into the final one, `d.amount` the raw amount and `d.crit` set, and a negative result counts as 0; with no `calc_damage`, or a call that fails, the amount stays as it was, and the failure is recorded. `calc_damage` counts against no script pool, only the limit per call: its calls grow with the damage of a tick, and a crowded fight must not spend the mode's pool and so change how damage is weighed. Shields absorb it next, the one that ends soonest first, as League of Legends spends them, a shield with no end last, and shields with the same end in the order the carrier keeps its modifiers; what is left comes off health. The source, when it exists, is recorded as the target's attacker.
-- **Life steal and spell vamp.** The source heals by `life_steal` times the health an attack took, or `spell_vamp` times the health an ability or modifier's damage took: post-mitigation, and not what shields absorbed, as League of Legends' life steal counts it.
-- **Heals.** `ctx.heal(unit, amount)` adds to health, `ctx.restore(unit, amount)` to the resource; a heal, life steal included, is scaled by the healed unit's `healing_received_pct`, a restore is not. Neither reaches a unit at zero health. A heal applies when the effects of its call apply: a cast's in Hit, before the damage of that tick, and an event's in its place in the pass.
-- **Crits.** An attack rolls its crit once, when its windup ends, with the attacker's `crit_chance`, on the secret stream for the attacker in that tick: a ranged attack's projectile carries it. Each roll is independent, as design 07 sets, so the seed alone decides it, and no client learns it before the server applies it. `calc_damage` sees it as `d.crit` and decides what it does: the reference MOBA doubles the amount. `ctx.attack_hit` rolls none.
+A unit type: `pools` that hold the life pool, `combat = { on_death = "stay" }` (`stay` or `despawn`, the default), and its weapons in its action slots. A weapon is an action of kind `attack`:
+
+```toml
+[abilities.tank_cannon]
+kind = "attack"
+targeting = "enemies:!air"
+range = "9.0"
+windup_ms = 400
+rate = "attack_speed"      # the stat of attacks a second
+damage = "attack_damage"   # the stat of its damage
+damage_kind = "physical"
+delivery = { projectile = { speed = "14", homing = true } }
+```
+
+## Rules
+
+### Weapons
+
+- **Attack order.** An attack names its target by stable id. The unit attacks with the first of its weapons whose filter selects the target; an order on a unit no weapon selects is ignored.
+- **Range** is measured in the map's metric, exactly, with no square root, from the edge of the attacker's body to the edge of the target's, as in League of Legends and Dota 2: a range `r` reaches a center `r` plus both radii away. A unit with no body is a point. A unit that can move walks to its target while out of range and stops in range.
+- **Windup and period.** An attack starts once the weapon is ready and delivers when its windup ends. The next attack may start one period after this one started. A move, or an attack on another target, cancels a windup and spends nothing, so the unit may attack again at once; after the delivery, in the back-swing, moving is free. Range counts only at the start: a delivery happens unless its target died, despawned or became blocked as a target.
+- **Delivery.** At once to the target, a homing projectile, a ray or an area, as the weapon's `delivery` says ([Deliveries](actions.md#deliveries)). In a match without the delivery's capability, the weapon strikes at once at the end of the windup.
+- **Its damage** is the weapon's `damage` stat of the attacker, of the weapon's `damage_kind`, followed by the weapon's `on_hit` effects.
+- **The roll.** An attack draws one random number from 0 to 1, `d.roll`, when its windup ends, on the secret stream for the attacker in that tick: a projectile carries it. The seed alone decides it, and no client learns it before the server applies it. `calc_damage` decides what it means: the reference MOBA crits when it is below the attacker's `crit_chance`.
+
+### Damage and heals
+
+- **Damage** has a source, or none for an effect the mode applied, a target, an amount, a kind from the mode's list, its hit (`d.hit`: the distance its delivery flew, its direction, and the body part a ray struck), whether an attack dealt it, its roll, and the action whose resolve, delivery or modifier dealt it.
+- **One pass a tick.** Every damage and heal of a tick applies in Resolve, in one queue: first the tick's effects, those with no source first, then by their source's stable id, and then in the order they were queued, then those the events of the pass queue, first in, first out. Every effect of the pass reads the units as the pass began, so two units can kill each other in one tick, and a modifier an event adds takes effect from the next stage.
+- **Each damage, in order:** nothing happens to a target at zero life or whose tags block `damage` ([Tags](stats.md#tags)); the mode's `calc_damage(ctx, d)` turns the amount into the final one, `d.amount` the raw amount, and a negative result counts as 0; with no `calc_damage`, or a call that fails, the amount stays as it was, and the failure is recorded. `calc_damage` counts against no script pool, only the limit per call: its calls grow with the damage of a tick, and a crowded fight must not spend the mode's pool and so change how damage is weighed. Shields absorb it next, the one that ends soonest first, as League of Legends spends them, a shield with no end last, and shields with the same end in the order the carrier keeps its modifiers; what is left comes off the life pool. The source, when it exists, is recorded as the target's attacker.
+- **Each heal** passes the mode's `calc_heal(ctx, h)` the same way, then the `heal_scale` stat of the healed unit scales it, and it adds to the life pool. A restore adds to another pool, unscaled. Neither reaches a unit at zero life.
+- **Leech.** With `leech`, the source heals by its `attack` stat times the life an attack took, or its `other` stat times the life any other damage took: after mitigation, and not what shields absorbed, as League of Legends' life steal counts it. The heal passes `calc_heal` and the scale.
 - **A source that is gone.** A damage whose source no longer exists, as from a projectile whose source despawned, has `d.source` of `()`, and no killer.
 - **Recent attackers.** Each damage records its source with its target, and the tick it landed in. A unit keeps each attacker once, with its last damage, and forgets one that no longer exists; `unit.recent_attackers(ms)` reads them.
-- **Death.** A unit at zero health dies at the end of Resolve. A unit type says whether it stays dead to respawn, as heroes do, or despawns, as creeps do; one that despawns goes at the end of the tick it died in, after the Mode stage saw it. A dead unit takes no orders and is no target.
-- **Kill credit.** The source whose damage took the health to zero is the killer, when it still exists. The other units that damaged the victim within the mode's `assist_window_ms` assisted, by stable id; without a window no one assisted. The mode receives both in `on_unit_died`, in the Mode stage of the tick, in the order the units died.
-- **Respawn.** Each unit keeps the place it spawned at. `ctx.respawn(unit, ms)` brings a dead unit that stays back at the start of the tick that time later, rounded up and at least one tick after the end of the current one: at its spawn place, with full health and no attacker on record.
 
-## Combat events
+### Death and respawn
+
+- **Death.** A unit at zero life dies at the end of Resolve. A unit type says whether it stays dead to respawn, as heroes do, or despawns, as creeps do; one that despawns goes at the end of the tick it died in, after the Mode stage saw it. A dead unit takes no orders, starts no action and is no target.
+- **Kill credit.** The source whose damage took the life to zero is the killer, when it still exists. The other units that damaged the victim within the mode's `assist_window_ms` assisted, by stable id; without a window no one assisted. The mode receives both in `on_unit_died`, in the Mode stage of the tick, in the order the units died.
+- **Respawn.** Each unit keeps the place it spawned at. `ctx.respawn(unit, ms)` brings a dead unit that stays back at the start of the tick that time later, rounded up and at least one tick after the end of the current one: at its spawn place, with full pools and no attacker on record.
+
+### Events
 
 A unit's modifiers hear its combat events, each modifier by its script's hook, in the order the modifiers are kept: by id, then source. A hook runs in the script pool of the modifier source's player; in the `think` pool when no player controls the source, or it is gone; and in the mode's when the modifier has no source.
 
 | Event | When | Hook, on whose modifiers |
 | --- | --- | --- |
-| An attack goes off | Hit, as its windup ends, before it strikes or fires | `on_attack(ctx, m, target)`, the attacker's |
+| An attack goes off | Hit, as its windup ends, before it delivers | `on_attack(ctx, m, target)`, the attacker's |
 | A modifier's interval | Hit, after the attacks, by carrier's stable id, then modifier | `on_interval(ctx, m)`, its own |
 | An attack hits | Resolve, after its damage | `on_attack_hit(ctx, m, d)`, the attacker's |
 | Damage is taken | Resolve, after it | `on_damage_taken(ctx, m, d)`, the target's |
 | A kill | Resolve, after the damage that killed | `on_kill(ctx, m, victim)`, the killer's; then `on_takedown(ctx, m, victim)`, the killer's and each assister's by stable id |
 
-After one damage of the pass, its events run in this order: `on_attack_hit`, then `on_damage_taken`, then `on_kill` and `on_takedown`. They run for every damage that reached a unit above zero health, all absorbed by shields or not. `d.amount` in a hook is the amount after `calc_damage`, before shields. A hook's effects apply in the order it queued them, when it returns: a heal or a modifier at once, and the damage joins the end of the pass.
+After one damage of the pass, its events run in this order: `on_attack_hit`, then `on_damage_taken`, then `on_kill` and `on_takedown`. They run for every damage that reached a unit above zero life, all absorbed by shields or not. `d.amount` in a hook is the amount after `calc_damage`, before shields. A hook's effects apply in the order it queued them, when it returns: a heal or a modifier at once, and the damage joins the end of the pass.
 
-- **A hook's `ctx`** is the one every script gets ([One source](../08-script-api.md#one-source)). Its acting unit is the modifier's source; `ctx.p` reads the modifier's params, then those of its ability, at the instance's rank; damage it deals names the modifier's ability. Writes to `m` apply when the hook returns, as a handle's do.
-- **Intervals.** A modifier with `interval_ms` calls `on_interval` that many ticks after it was applied, rounded up and at least one, and again each interval while it holds; a refresh keeps the count.
-- **Depth.** An attack, a cast and the tick's other damage are at depth 0, `on_attack` and `on_interval` at depth 1, and a hook an event of a damage at depth `k` causes runs at `k + 1`; the damage it deals is at that depth. `ctx.attack_hit(target)` deals the acting unit's attack damage to `target` as an attack: `d.attack` and `d.extra` set, no crit, and `on_attack_hit` follows, but not `on_attack`; a hook that should not answer it reads `d.extra`, as Dota 2 marks reflected damage so a reflection never reflects. A hook at depth 16 fails with a script error and does not run: no designed chain is that deep, and the pass must end within the tick. `ctx.attack_hit` uses the acting unit's attack damage as its effect applies; a unit with no attack fails the call.
+- **A hook's `ctx`** is the one every script gets ([One source](../08-script-api.md#one-source)). Its acting unit is the modifier's source; `ctx.p` reads the modifier's params, then those of its action, at the instance's rank; damage it deals names the modifier's action. Writes to `m` apply when the hook returns, as a handle's do.
+- **Intervals.** A modifier with `interval_ms` runs its `on_interval` effects and hook that many ticks after it was applied, rounded up and at least one, and again each interval while it holds; a refresh keeps the count.
+- **Depth.** An attack, an action and the tick's other damage are at depth 0, `on_attack` and `on_interval` at depth 1, and a hook an event of a damage at depth `k` causes runs at `k + 1`; the damage it deals is at that depth. `ctx.attack_hit(target)` deals the acting unit's first weapon's damage to `target` as an attack: `d.attack` and `d.extra` set, and `on_attack_hit` follows, but not `on_attack`; a hook that should not answer it reads `d.extra`, as Dota 2 marks reflected damage so a reflection never reflects. A hook at depth 16 fails with a script error and does not run: no designed chain is that deep, and the pass must end within the tick. A unit with no weapon fails `ctx.attack_hit`.
 
-## Stats and modifiers
+## State and derived
 
-Stats, modifiers, states and levels: [Stats](stats.md). A passive is a modifier a unit always carries; the carrier's events (attack, hit, damage, kill, takedown) go to modifier scripts.
+- **State:** each unit's life pool, its weapons' attack state (target, the tick its windup started, the tick it is ready), its recent attackers, whether it is dead and when it respawns, its spawn place; the tick's deaths.
+- **Derived:** each weapon's period and damage, from the stats.
 
-## Sent to clients
+## Script API
 
-Health, visible modifiers and the current animation go to everyone who sees the unit; resources such as mana go to the owner or the team, as the mode sets. Damage and deaths appear on a client only when the server confirms them.
+`ctx.damage(target, amount, kind)`, `ctx.heal(unit, amount)`, `ctx.restore(unit, pool, amount)`, `ctx.attack_hit(target)`, `ctx.respawn(unit, ms)`; `unit.target`, `unit.attack_range`, `unit.recent_attackers(ms)`; the damage handle `d`; the hooks above, `calc_damage(ctx, d)`, `calc_heal(ctx, h)` and `on_unit_died(ctx, unit, killer, assisters)`.
+
+## Network
+
+The life pool, visible modifiers and the current animation go to everyone who sees the unit; other pools go to the owner or the team, as the mode sets. Damage and deaths appear on a client only when the server confirms them. A client predicts the start of its own attacks, not their damage.
+
+## Cost
+
+The pass costs one `calc_damage` call for each damage and one `calc_heal` call for each heal, each under the limit per call, and the events' hooks under their pools. Each weapon that has a target costs a range test a tick.
+
+## Genres
+
+Every target game deals damage through one pass: a MOBA's attacks and abilities, a shooter's rays and grenades with headshots from `d.hit`, an RTS's weapons against ground and air, an MMO's auto attack and spells, and a battle royale's zone through a modifier.

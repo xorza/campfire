@@ -124,21 +124,24 @@ SessionLog
 
 ## Nostr events
 
-| Event | Signed by | Content | Replaceable |
+Where a NIP already says what an event says, campfire uses it, so other Nostr clients, marketplaces and moderation tools read campfire's events: labels ([NIP-32](https://github.com/nostr-protocol/nips/blob/master/32.md), kind 1985) for reputation, reports ([NIP-56](https://github.com/nostr-protocol/nips/blob/master/56.md), kind 1984) for review requests, lists ([NIP-51](https://github.com/nostr-protocol/nips/blob/master/51.md)) for ban lists, classified listings ([NIP-99](https://github.com/nostr-protocol/nips/blob/master/99.md), kind 30402) for the marketplace, and Blossom ([NIP-B7](https://github.com/nostr-protocol/nips/blob/master/B7.md)) for files. Every other event is a campfire kind, chosen in the range NIP-01 gives its behavior: regular, replaceable, ephemeral or addressable. Campfire proposes its kinds as a NIP once the open network (milestone 2) runs them; until then the kinds and field lists are this spec's, and are fixed when milestone 2 builds each event.
+
+| Event | Signed by | Content | Kind |
 | --- | --- | --- | --- |
-| Server listing | Server key | Address, TLS certificate hash, engine release tag, region, protocol version, modes (fingerprints), capabilities, rules summary, prices | Yes, one per server |
-| Package announcement | Author key | Package id (author + name), version, fingerprint, license, download locations | No |
-| Session log published | Server key | Session id, log and snapshot fingerprints, download locations, result | No |
-| License | License key, with its delegation | Buyer main pubkey, package id, payment hash | No |
-| Reputation statement | Any main or server key | Subject pubkey, session id, claim (e.g. paid out, log published, cheated), optional log fingerprint and tick range | No |
-| Review request | Any main or server key | Session id, reported pubkey, tick range, reason | No |
-| Arbiter signature | Arbiter key | Session id, result, final state hash | No |
-| Marketplace listing | Author key | Package id, price in sats, preview media, license terms | Yes, one per package |
-| Engine release | One release key; valid once k keys of the pinned set sign the same content | Release tag, protocol version, per-platform hashes of the unsigned build outputs, download locations | No |
-| Release revocation | One release key; valid at the same threshold | Release tag, reason | No |
-| Release key set | One release key of the current set; valid at the current threshold | New key set and threshold | No |
-| Ban list | Server or group key | Banned pubkeys, each with a reason and optional session id | Yes, one per signer |
-| Server group | Group key | Member server pubkeys, shared rules summary | Yes, one per group |
+| Server listing | Server key | Address, TLS certificate hash, engine release tag, region, protocol version, modes (fingerprints), capabilities, rules summary, prices | Campfire, addressable: one per server |
+| Package announcement | Author key | Package id (author + name), version, fingerprint, license, download locations | Campfire, regular |
+| Session log published | Server key | Session id, log and snapshot fingerprints, download locations, result | Campfire, regular |
+| License | License key, with its delegation | Buyer main pubkey, package id, payment hash | Campfire, regular |
+| Reputation statement | Any main or server key | Subject pubkey, session id, claim (e.g. paid out, log published, cheated), optional log fingerprint and tick range | NIP-32 label, in campfire's namespace |
+| Review request | Any main or server key | Session id, reported pubkey, tick range, reason | NIP-56 report, with the session tags |
+| Arbiter signature | Arbiter key | Session id, result, final state hash | Campfire, regular |
+| Marketplace listing | Author key | Package id, price in sats, preview media, license terms | NIP-99 classified listing: one per package |
+| Engine release | One release key; valid once k keys of the pinned set sign the same content | Release tag, protocol version, per-platform hashes of the unsigned build outputs, download locations | Campfire, regular |
+| Release revocation | One release key; valid at the same threshold | Release tag, reason | Campfire, regular |
+| Release key set | One release key of the current set; valid at the current threshold | New key set and threshold | Campfire, regular |
+| Item export | Source server key | Export id, destination server key, item, owner's main pubkey, source session and tick, expiry | Campfire, regular ([Item export](#item-export)) |
+| Ban list | Server or group key | Banned pubkeys, each with a reason and optional session id | NIP-51 set: one per signer |
+| Server group | Group key | Member server pubkeys, shared rules summary | Campfire, addressable: one per group |
 
 A license names the package id, not a fingerprint, so it covers future versions of the same hero or skin.
 
@@ -161,8 +164,12 @@ The server talks to its own wallet over NWC ([NIP-47](https://github.com/nostr-p
 
 **Failed payouts:** the server retries a failed payout for a period the host sets, then records it as unpaid in the result. The host still owes it; the player can publish a reputation statement with the claim "not paid".
 
-## Open questions
+## Item export
 
-- [ ] Nostr event kind numbers, and whether to publish them as NIPs.
-- [ ] Exact field lists for each payload.
-- [ ] Item export between worlds: a server-signed attestation, and how the old server retires the item so it cannot exist twice.
+An item leaves one world for another by burn and attest, as Circle's [CCTP](https://chain.link/article/burn-and-mint-transfer) moves a token between chains: the transfer names its one destination, so no shared ledger is needed to keep the item from existing twice.
+
+1. **Burn.** The player asks to export an item to a destination server, named by its key. The source server destroys the item through a recorded input, so its log shows the item gone, and signs an **item export** event: a unique export id, the destination server key, the item (its package id, its type and its state), the owner's main pubkey, the source session and tick, and an expiry.
+2. **Redeem.** The player presents the event to the destination, which accepts it only when it names that server, comes from a server the host trusts, and has not expired, by the calendar time the destination records. The redemption is a recorded external input carrying the event: the item appears in the destination's world, and its export id joins the world's redeemed ids, which are state. A second redemption of the same id is refused, and the log proves it.
+3. **Return.** An export not redeemed by its expiry returns to the source: the player redeems it there, after the expiry and a margin the host sets for clock skew, as at any destination.
+
+What it proves: no honest server redeems one export twice, and no two honest servers both hold the item. What it does not prove: that the source server is honest. A source can mint items in its own world at will, so an item is worth the trust in the server that made it; the hosts that accept a source's items name it, and reputation tells them whom to trust.

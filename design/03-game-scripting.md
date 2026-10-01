@@ -8,7 +8,7 @@ Only the server and verifier run the full sim during a session; clients would ne
 | --- | --- | --- |
 | Server | Full sim + all game scripts | Everything |
 | Verifier | Full sim + all game scripts, replaying the session log | Everything, after the log is published |
-| Client | Prediction of what the player controls, by the capabilities that move it, plus presentation scripts | Only what its team can see |
+| Client | Prediction of what the player controls, by the capabilities that move it, plus presentation scripts | Only what its group of friendly teams can see |
 | Spectator client | Presentation scripts, no prediction | Everything, delayed by the host's spectator delay |
 
 - **Game scripts** (rules, units, abilities, AI) are deterministic and change game state.
@@ -25,7 +25,7 @@ my-mode/
                       teams and slots, tick-rate range, collision, pathfinding and visibility backends,
                       move speed cap, script pools
   map/                map data: geometry or grid, lanes, spawn points, structures
-  data/               unit types, abilities, weapons: one section per capability
+  data/               unit types, actions, modifiers: one section per capability
   scripts/            game scripts (.rhai): mode rules, AI, capability hooks
   client/             presentation scripts (.rhai)
   assets/             models (.glb), textures (PNG, KTX2 + zstd), sounds (Ogg Vorbis), icons (PNG)
@@ -46,14 +46,14 @@ The sim runs each tick in the engine's fixed stages ([Tick stages](04-capabiliti
 One mode script (`scripts/mode.rhai`) owns the rules. The engine knows only waiting, running and ended; everything inside running is the script's.
 
 - **Phases** (hero pick, warmup, rounds, buy time, overtime) are script state, not engine states.
-- **Hooks:** `on_match_start` (running begins), `on_player_join`, `on_player_leave`, `on_timer`, `on_mode_input`, plus event hooks from the capabilities in use. `on_tick` exists but is discouraged. Every hook takes `ctx` first.
-- **Primitives:** timers, freeze and unfreeze, respawn and reset, team changes, named per-player resources (e.g. `gold`), scoreboard data.
+- **Hooks:** `on_match_start` (running begins), `on_player_join`, `on_player_leave`, `on_timer`, `on_mode_input`, plus event hooks from the capabilities in use. `on_tick` exists but is discouraged. A hook is named `on_<event>` for what happened, or `calc_<value>` for a pure hook that returns a value; every hook takes `ctx` first.
+- **Primitives:** timers, freeze and unfreeze, respawn and reset, team changes and relations, players' choices, named per-player resources (e.g. `gold`), scoreboard data.
 - **Timers** are set in milliseconds and rounded up to whole ticks (at least one), so a timer never fires early and modes behave the same at any tick rate to within one tick.
 - **End:** `ctx.end(team)` names the winning team, and `ctx.end(())` a draw; callable once. The result is sim state, so the final state hash proves it, and from the next stage on no stage runs. Optional: a persistent world never calls it.
 
 ## Capabilities
 
-Units, abilities, weapons, items, AI hooks and commands come from [capabilities](04-capabilities/00-overview.md). Bots run outside the sim, see what their team's clients see, and send player inputs.
+Units, actions, items, AI hooks and commands come from [capabilities](04-capabilities/00-overview.md). Bots run outside the sim, see what their team's clients see, and send player inputs.
 
 ## Script state
 

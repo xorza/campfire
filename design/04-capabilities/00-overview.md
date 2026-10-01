@@ -1,67 +1,105 @@
 # Campfire — Capabilities
 
-The engine has no genres. It has **capabilities**: each is one mechanism, such as health and damage, units that take orders, a first-person character or grid fog of war. A game package declares the capabilities it uses, and its mode scripts and data make the genre. A MOBA, an RTS, an FPS and a game that mixes all three are the same kind of package: the reference MOBA is only the first.
+The engine has no genres. It has **capabilities**: each is one mechanism, such as health and damage, units that take orders, a first-person character or grid fog of war. A game package declares the capabilities it uses, and its mode scripts and data make the genre. A MOBA, an RTS, an FPS, an MMO, a battle royale and a game that mixes them are the same kind of package: the reference MOBA is only the first.
 
 A capability is native code: components, systems that run in the tick, backends, a data schema for unit types, commands, and the script calls and hooks it adds. Capabilities follow the core's determinism rules and ship in engine releases; packages cannot add native code, because the verifier must run only code the release pins. A new combination of capabilities needs no release; a new mechanism does.
+
+## The model
+
+Every capability says its mechanism in the same few terms, so that capabilities meet in one match and a genre is only data and scripts. Each capability's doc gives the reasons and sources for the form its terms take.
+
+- **Unit.** Anything in the sim with a stable id, a position and a type: a hero, a soldier, a building, a creep, a projectile, an area, an item on the ground, a door, a resource node, a vehicle. The sections of its type decide what it is and what it does. Scripts see every unit through one handle, which has the fields of its type's sections.
+- **Tag.** A unit's tags are its type's tags and the tags its modifiers grant. A tag has effects only when the mode gives it some ([Tags](stats.md#tags)): it can block an action kind, moving, being a target or taking damage; hide the unit or detect hidden units; or make the unit immune to the modifiers that grant other tags. The engine tags a unit by some of its sections: `avatar`, `projectile`, `area`, `item`, and the name of the layer it moves on.
+- **Stat.** A number the mode declares. A unit's value of a stat is its type's value at its level, changed by its modifiers through one formula ([Stats](stats.md#stats)).
+- **Pool.** An amount between 0 and the value of a stat, which a regen stat refills: health, mana, energy, rage, ammunition. The mode declares its pools; a unit type lists those it has ([Pools](stats.md#pools)).
+- **Modifier.** An instance on a unit, from a source, for a time: it changes stats, grants tags, runs effects at intervals, and hears the unit's events ([Modifiers](stats.md#modifiers)).
+- **Action.** Anything a unit does on purpose: an attack, a cast, a shot, the use of an item or of an object, a build, a train or a gather order. Every action runs one pipeline: checks, time, delivery, effects and cost ([Actions](actions.md)).
+- **Effect.** A change the sim applies: damage, a heal, a pool restored, a modifier added or purged, a unit spawned, a projectile or an area launched, a unit moved. Data lists effects; scripts queue the same effects through `ctx`.
+- **Event.** What happened in a tick: an action resolved, a delivery hit, damage was taken, a unit died. The units it concerns hear it through their modifiers, and the mode through its hooks.
+- **Relation.** How two teams regard each other: `hostile`, `neutral` or `friendly`. A team is friendly to itself; friendly teams share vision ([Relations](#relations)).
+- **Space.** The map's metric, `planar` or `spatial`, and the layers bodies move on ([Space and map](#space-and-map)).
 
 ## Capabilities
 
 | Capability | Adds | Doc |
 | --- | --- | --- |
-| `combat` | Health, attacks, the damage pipeline, deaths, kill credit | [Combat](combat.md) |
-| `stats` | Stats, how they combine, modifiers, states such as stun, levels | [Stats](stats.md) |
-| `abilities` | Targeting, range, cooldown, cost, cast and channel time, charges, toggles | [Abilities](abilities.md) |
-| `projectiles`, `areas` | Linear, homing and falling projectiles; circles that hold modifiers | [Abilities](abilities.md#projectiles-and-areas) |
-| `orders` | Units that take orders: move, attack, cast, stop, hold, queues, groups and formations; AI `think` | [Control](control.md#orders) |
+| `combat` | The life pool, weapons, the damage and heal pass, deaths, kill credit, respawns | [Combat](combat.md) |
+| `stats` | Stats and their formula, pools, modifiers, tags and their effects, levels | [Stats](stats.md) |
+| `abilities` | Cast actions: ranks, charges, toggles, channels, charged casts | [Actions](actions.md#kinds) |
+| `projectiles`, `areas` | Deliveries: projectiles that fly a line, home or fall; areas that hold modifiers on the units inside | [Actions](actions.md#deliveries) |
+| `orders` | Units that take orders: move, attack, an action, stop, hold, queues, groups and formations; AI `on_think` | [Control](control.md#orders) |
 | `character` | Units a player drives directly: per-tick input frames, capsule controller | [Control](control.md#character) |
-| `hitscan` | Rays against hitboxes, lag compensation, weapon data | [Hitscan](hitscan.md) |
-| `navigation` | Grid A*, navmesh, local steering, waypoint paths such as lanes | [Navigation](navigation.md) |
-| `vision` | Grid fog of war, stealth, 3D occlusion, dynamic blockers such as smoke, hearing, relevance | [Vision](vision.md) |
-| `items` | Inventories, equipment, world items to pick up and drop, shops; an item grants stats, abilities or a weapon | [Items](items.md) |
-| `progression` | Experience, levels, learning ranks of abilities, talents, veterancy | [Progression](progression.md) |
-| `interaction` | Using objects: doors, containers, plant and defuse, capture points, talking to NPCs, entering vehicles and buildings | [Interaction](interaction.md) |
-| `production` | Build queues, construction with footprints on the grid, harvesting, tech requirements, rally points | [Production](production.md) |
+| `hitscan` | The ray delivery: rays against hitboxes, lag compensation, spread | [Hitscan](hitscan.md) |
+| `navigation` | Layers, routes on a grid or a navmesh, local steering, waypoint paths | [Navigation](navigation.md) |
+| `vision` | What each group of friendly teams sees: grid fog of war, hidden units and detection, 3D occlusion, relevance | [Vision](vision.md) |
+| `items` | Item units, inventories, equipment, shops; an item grants modifiers, actions and pools | [Items](items.md) |
+| `progression` | Experience, levels, points to learn ranks, talents, veterancy | [Progression](progression.md) |
+| `interaction` | The use action on objects: doors, containers, plant and defuse, capture points, dialogue, entering vehicles and buildings | [Interaction](interaction.md) |
+| `production` | The train, build and gather actions, construction on the grid, tech, player modifiers | [Production](production.md) |
 | `physics` | Vehicles, rigid bodies, heightmap terrain | [Physics](physics.md) |
 | `persistence` | Saved characters and world state, dormancy, quests | [Persistence](persistence.md) |
 
-Which capabilities make which genre, and what each genre adds in scripts: [Genres](genres.md).
+Which capabilities make which genre: [Genres](genres.md).
 
 ## Mode vocabulary
 
-The core has no genre words and no genre lists. A mode declares, in its data:
+The core has no genre words and no genre lists. A mode declares, in its data, every name its packages use:
 
 - **Damage kinds:** physical and magic for a MOBA; bullet and explosive for a shooter; fire, frost and shadow for an MMO.
-- **Stats:** the numbers its units have. The core knows only the stats a capability reads, such as move speed and attack speed.
-- **Resources:** of units (mana, energy, rage, ammo) and of players (gold, minerals, supply).
-- **Teams and slots,** as now.
+- **Stats** and **pools:** the numbers its units have, and the amounts they spend. The engine reads only the stats its mechanisms need, and binds the rest by the mode's names.
+- **Tags** and their effects: a MOBA's `stunned` and `stealthed`, an RTS's `cloaked` and `detector`, a shooter's `flashed`.
+- **Slot kinds:** where a unit's actions sit: a MOBA's `basic` and `ultimate`, a shooter's `primary` and `secondary`, an RTS's command card.
+- **Teams** and their **relations**, and the **choices** players make before they spawn.
+- **Player resources:** gold, minerals, supply.
 
-Neutral core terms: a player's **avatar** (a hero, a soldier, a character), a **loadout** (what a player picks before spawning), a **spawn group** (a wave, a squad), a **path** (a lane, a patrol route). A package names them in its own words.
+Neutral core terms: a player's **avatar** (a unit type players choose: a hero, a soldier, a class), a **loadout** (actions a player chooses before spawning), a **spawn group** (a wave, a squad), a **path** (a lane, a patrol route), a **marker** (a named place on the map). A package names them in its own words.
 
-## Layers
+## Relations
 
-Capabilities share one vocabulary, so they meet in one match: a hitscan ray and a MOBA projectile damage the same `combat` health. The dependencies form a fixed graph with no cycle:
+A team is an index in the mode's list of teams, of any length, so a battle royale of 100 solo players has 100 teams. The mode declares how pairs of teams regard each other, as Unreal's [team attitudes](https://dev.epicgames.com/documentation/unreal-engine/API/Runtime/AIModule/FGenericTeamId) do:
 
-- **Base:** `sim` (positions, stable ids, randomness, the state hash, the tick rate) and collision; then the core under every script: unit types, the one script host and its tick budget, the shared types (team, owner, path), and the units as scripts see them. A capability adds its fields to that view, so the core names no capability.
-- **`combat` and `stats`:** health, damage, deaths, stats and modifiers.
-- **Everything else** builds on those: `projectiles` and `hitscan` deal damage through `combat`, `abilities` apply modifiers through `stats`, `orders` issue attacks and casts.
+```toml
+[[relations]]
+teams = ["alliance", "horde"]
+relation = "hostile"
+```
+
+A pair not named is `hostile`, and a team is `friendly` to itself. `ctx.set_relation(a, b, relation)` changes a pair, and the relations are state. Filters read them: `enemies` selects the units that may be attacked, hostile and neutral; `hostiles` only hostile ones; `neutrals` only neutral ones; `allies` friendly ones; `all` every one. A neutral unit may be attacked, but does not seek a fight: an AI chooses its targets with `hostiles`, so a neutral monster fights back only when a script makes its team hostile or orders it, as a neutral monster does in WoW. A group of teams friendly to each other shares vision. A MOBA's camps are on one more team, hostile to every other.
+
+## Space and map
+
+- **Metric.** A map's `metric` is `planar` or `spatial`. `planar` measures ranges, reach and sight on the ground plane, with the height from the map's terrain; MOBAs and RTS games use it. `spatial` measures in 3D; shooters and flight use it. Every distance of every capability uses the map's metric.
+- **Layers.** The mode declares the layers bodies move on, such as `ground` and `air`; the first is the default. Collision and pathing work within a layer: an RTS's air units pass over ground units and walls. A shooter has one layer.
+- **Bounds.** A closed box no unit is ever outside: move orders clamp to it, the core clamps every unit that moved after Move and Collide, and a spawn outside it fails.
+- **Map.** A map holds its bounds, its terrain, grid or level geometry, its paths, the units placed at its start, and **markers**: named points and regions, each with tags, an optional team and params, which scripts read by tag (`ctx.map.markers("spawn")`). A MOBA's team spawns and camps, a shooter's bomb sites and buy zones, an RTS's start locations and resource fields, a battle royale's loot spots and an MMO's zones are markers.
+
+## Layers of capabilities
+
+The dependencies form a fixed graph with no cycle:
+
+- **Base:** `sim` (positions, stable ids, randomness, the state hash, the tick rate) and collision; then the core under every script: unit types, tags, relations, the map and its markers, the action pipeline, the effect queue, the one script host and its tick budget, and the units as scripts see them. A capability adds its fields to that view, so the core names no capability.
+- **`combat` and `stats`:** pools, damage, deaths, stats, modifiers, tag effects.
+- **Everything else** builds on those: action kinds and deliveries (`abilities`, `projectiles`, `areas`, `hitscan`, `interaction`, `production`), who starts actions (`orders`, `character`), and the rest.
 
 The capabilities are modules of one crate; a capability with a heavy dependency, such as physics, gets its own crate. Only the declared capabilities' systems run, so an unused one costs nothing.
 
 ## Tick stages
 
-The engine fixes the stages of a tick, and each capability puts its systems into them. Within a stage, a capability orders its systems against those of the capabilities it builds on: in Act, `control` chases a target before `combat` starts the attack. Two systems with no order and conflicting access fail the schedule build, so no order is left to chance.
+The engine fixes the stages of a tick, and each capability puts its systems into them. Within a stage, a capability orders its systems against those of the capabilities it builds on: in Act, `orders` chases a target before `combat` starts the attack. Two systems with no order and conflicting access fail the schedule build, so no order is left to chance.
 
 | # | Stage | Runs |
 | --- | --- | --- |
-| 1 | Inputs | Core: the tick's commands reach the capabilities that own them |
-| 2 | Think | AI `think` of the units due this tick issues orders |
-| 3 | Act | Current orders and intents: attack windups, cast starts, path requests, character intents |
-| 4 | Move | Steering, the character controller, dashes |
-| 5 | Collide | Core: the mode's collision backend resolves overlaps |
-| 6 | Hit | Attack strikes, hitscan rays, projectiles and areas, `on_cast` |
-| 7 | Resolve | Modifier intervals, damage through the mode's `calc_damage`, deaths |
+| 1 | Inputs | Core: the tick's commands reach the capabilities that own them; modifiers end |
+| 2 | Think | AI `on_think` of the units due this tick issues orders |
+| 3 | Act | Orders and input frames start actions: checks, windups and cast times; path requests |
+| 4 | Move | Steering, the character controller, forced movement |
+| 5 | Collide | Core: the mode's collision backend resolves overlaps within each layer |
+| 6 | Hit | Actions whose time ended deliver: strikes, rays, projectiles, areas; actions resolve with their effects; modifier intervals |
+| 7 | Resolve | The damage and heal pass, deaths, auras |
 | 8 | Mode | Due timers, then the capabilities' events in the order they happened; spawns; `ctx.end` |
-| 9 | Vision | `vision` marks what each team sees, from the map's grid |
+| 9 | Vision | `vision` marks what each group of friendly teams sees |
+
+Before the first stage and after each, every unit whose level, modifiers or type changed has its stats and tags derived again ([Stats](stats.md#state-and-derived)).
 
 ## Commands
 
@@ -69,39 +107,70 @@ A player input's payload is a list of commands. Each command names the capabilit
 
 ## Control
 
-Control is a relation from a player slot to entities, of one of two kinds:
+Control is a relation from a player slot to units, of one of two kinds:
 
-- **Direct:** the player drives the entity with `character` input frames, and the client predicts it.
-- **Orders:** the entity follows the player's orders (`orders`); an order names the units it goes to, so one player can order many.
+- **Direct:** the player drives the unit with `character` input frames, and the client predicts it.
+- **Orders:** the unit follows the player's orders (`orders`); an order names the units it goes to, so one player can order many.
 
-A player can hold both kinds at once: a first-person commander drives a character and orders squads. AI scripts issue the same orders; bots send the same commands as players.
+A player controls any number of units, or none: an RTS player an army, an MMO player one character, a first-person commander a character and its squads. Both kinds start the same actions. AI scripts issue the same orders; bots send the same commands as players.
 
 ## Unit types
 
-A unit type in data is a set of sections, one for each capability it uses:
+A unit type in data is a set of sections, one for each capability it uses, in the same schema wherever it is written: a mode's `data/units.toml`, or an avatar package's one unit type.
 
 ```toml
 [units.siege_tank]
-tags = ["vehicle"]
+tags = ["vehicle", "mechanical"]
+pools = ["health"]
 stats = { health = { base = 900 }, attack_damage = { base = 60 }, attack_speed = { base = "0.4" }, move_speed = { base = "3.0" } }
-combat = { attack = { range = "9.0", windup_ms = 400, projectile_speed = "14" } }
+abilities = { weapon = ["tank_cannon"], command = ["siege_mode"] }
+collision = { radius = "1.2", layer = "ground" }
 orders = { ai = "scripts/tank_ai.rhai", think_ms = 250 }
-hitscan = { hitbox = "tank" }
+vision = { sight_range = "11" }
 ```
 
-The team and the owner come from the spawn, not the unit type.
-
-A section of a capability the mode did not declare fails the package load. Time is in milliseconds and rates are per second; they become whole ticks when the package loads, rounded up, so a unit type behaves the same at any tick rate to within one tick.
+The team and the owner come from the spawn, not the unit type. A section of a capability the mode did not declare fails the package load. Time is in milliseconds and rates are per second; they become whole ticks when the package loads, rounded up, so a unit type behaves the same at any tick rate to within one tick.
 
 ## Script API
 
-`ctx`, the handles and the hooks are made of the declared capabilities' parts: a mode without `combat` has no `ctx.damage` and no `unit.health`. The package load checks refuse a call, a field or a hook of a capability the mode did not declare. [Script API](../08-script-api.md) lists each capability's part.
+`ctx`, the handles and the hooks are made of the declared capabilities' parts: a mode without `combat` has no `ctx.damage` and no `unit.health`. The package load checks refuse a call, a field or a hook of a capability the mode did not declare. Hooks are named `on_<event>` for what happened, and `calc_<value>` for a pure hook that returns a value; every hook takes `ctx` first. An event's data list and its script hook share the name: an ability's `on_hit` effects run, then its `on_hit` hook. [Script API](../08-script-api.md) lists each capability's part.
 
 ## Tick rate
 
 The mode picks its tick rate within the range its manifest allows: an FPS wants 64 to 128 Hz, a MOBA 30, an MMO or a large RTS 10 to 20. Every capability works in ticks at any rate, and each states what its worst tick costs, so a mode can see what its combination costs before it ships.
 
-## Open questions
+## Capability docs
 
-- [ ] A mechanism no capability has needs an engine release. Scripted per-entity systems would let creators add one without a release, at a cost per tick and under a budget; not designed yet.
-- [ ] Which capabilities two modes share decides how much of a hybrid is tested before it ships; `det-ci` runs the reference MOBA and the genre proofs, and other combinations are tested by their authors.
+Each capability doc has the same sections, in this order, and leaves out one it has nothing for:
+
+1. **Mechanism:** what it does, in the model's terms.
+2. **Data:** its sections of a unit type and of the mode.
+3. **Rules:** how it runs, in which tick stage.
+4. **State and derived:** what is hashed, what is computed again.
+5. **Script API:** the calls, fields and hooks it adds.
+6. **Network:** what goes to which clients, and what a client predicts.
+7. **Cost:** the worst tick, in the units and players it counts.
+8. **Genres:** what each target game takes from it.
+
+## Scripted systems
+
+A mechanism no capability has needs an engine release, but a package can add one in Rhai as a **scripted system**: a script the mode declares that runs each interval in a stage it names, over the units its filter selects, under a budget. A shield that drains in a zone, a heat meter for weapons or a capture rule are scripted systems, as Dota 2's custom games add rules with thinkers in Lua, and the verifier still runs only the code the release pins.
+
+```toml
+[systems.overheat]
+script = "scripts/overheat.rhai"
+stage = "resolve"        # act, hit, resolve or mode
+affects = "all:gun"      # a filter
+interval_ms = 100
+```
+
+- **One call an interval:** `on_system(ctx, units)` runs once, with the units its filter selects, by stable id, after the capabilities' systems of its stage. One call over a list keeps Rhai's cost of a call to one an interval, not one a unit.
+- **The filter is kept, not searched:** the units a filter selects are kept as their tags change, so a call costs the units it gets, not the units in the match.
+- **State and effects** are those of every script: the units' and the mode's declared script state, and effects queued through `ctx`, which apply when the call ends; the call is all or nothing.
+- **Budget:** the mode's `systems` pool in `script_limits`. A system whose call finds the pool spent stays due and runs first in the next tick, as AI does, so a system runs late under load but never skips a turn.
+- **Order:** systems of one stage run in the order of their names.
+- **Cost** is Rhai's, which is far slower than native code: a system suits rules over tens or hundreds of units an interval, not per-tick physics over thousands. A mechanism that needs more is a capability.
+
+## Testing combinations
+
+Every pair of capabilities a mode may declare together meets in at least one `det-ci` test mode: the reference MOBA, the genre proofs, and as many small mixed modes as the pairs need, as all-pairs testing covers every two-way combination of options with few cases. A test lists the pairs the test modes declare and fails when a pair is missing, so a new capability brings its pairs with it. Interactions of three or more capabilities are tested where a mode needs them.
