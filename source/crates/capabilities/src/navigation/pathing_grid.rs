@@ -97,6 +97,7 @@ impl PathingGrid {
             .expect("a radius of the mode's walkers");
         Layer {
             grid: &self.grid,
+            radius,
             words: &self.blocked[layer * self.words..(layer + 1) * self.words],
         }
     }
@@ -106,6 +107,7 @@ impl PathingGrid {
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Layer<'a> {
     grid: &'a Grid,
+    radius: Num,
     words: &'a [u64],
 }
 
@@ -114,38 +116,13 @@ impl Layer<'_> {
         self.grid
     }
 
+    pub(crate) const fn radius(&self) -> Num {
+        self.radius
+    }
+
     /// Whether a walker may stand in `cell`.
     pub(crate) const fn open(&self, cell: usize) -> bool {
         self.words[cell / 64] & 1 << (cell % 64) == 0
-    }
-}
-
-#[cfg(test)]
-pub(crate) mod internals {
-    use campfire_math::Num;
-
-    use crate::navigation::pathing_grid::PathingGrid;
-    use crate::values::bounds::Bounds;
-    use crate::values::grid::Grid;
-
-    impl PathingGrid {
-        /// A grid of 1 m cells from the origin, for walkers of `radius`, blocked where `rows`,
-        /// from z = 0, have `#`.
-        pub(crate) fn from_picture(radius: Num, rows: &[&str]) -> PathingGrid {
-            let size = |count: usize| Num::from_int(i64::try_from(count).unwrap()).unwrap();
-            let bounds = Bounds::new([Num::ZERO; 2], [size(rows[0].len()), size(rows.len())]);
-            let mut grid =
-                PathingGrid::new(Grid::new(Num::ONE, bounds.unwrap()).unwrap(), vec![radius]);
-            for (row, line) in rows.iter().enumerate() {
-                for (column, mark) in line.chars().enumerate() {
-                    if mark == '#' {
-                        let cell = row * line.len() + column;
-                        grid.blocked[cell / 64] |= 1 << (cell % 64);
-                    }
-                }
-            }
-            grid
-        }
     }
 }
 

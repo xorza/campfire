@@ -110,23 +110,8 @@ impl<'a> LoadCheck<'a> {
     fn structures_clear_paths(&self) -> Result<(), LoadProblem> {
         let packages = self.packages;
         let radius = |collision: Option<&CollisionData>| collision.map(|data| data.body.radius());
-        let walker_types = packages.units.units.values().filter(|unit_type| {
-            let stats = unit_type.stats.as_ref();
-            stats.is_some_and(|stats| stats.declares(EngineStat::MoveSpeed))
-        });
-        let avatars =
-            packages
-                .dependencies
-                .iter()
-                .filter_map(|dependent| match &dependent.content {
-                    Content::Avatar(avatar) => Some(avatar),
-                    Content::Loadout(_) => None,
-                });
-        let widest = walker_types
-            .filter_map(|unit_type| radius(unit_type.collision.as_ref()))
-            .chain(avatars.filter_map(|avatar| radius(avatar.collision.as_ref())))
-            .max();
-        let Some(widest) = widest else {
+        let widest = packages.walker_radii().last().copied();
+        let Some(widest) = widest.filter(|&widest| widest > Num::ZERO) else {
             return Ok(());
         };
         for structure in &packages.map.structures {

@@ -247,6 +247,49 @@ fn the_pathing_grid_follows_the_static_bodies_from_the_next_tick() {
 }
 
 #[test]
+fn a_walker_goes_round_a_tower_and_never_touches_it() {
+    // A tower of 0.9 m at the origin, on the line of a walker of 0.5 m from (−4, 0) to (4, 0), a
+    // quarter meter a tick, over half-meter cells. Its route keeps 1.4 m off the tower's center at
+    // every step, so collision never pushes it; with no pathing grid it walks into the tower, and
+    // stops against it, pressed there.
+    let half = Num::from_bits(1 << 23);
+    let quarter = Num::from_bits(1 << 22);
+    let tower_radius = Num::from_bits((9 << Num::FRAC_BITS) / 10);
+    let reach = u128::from((tower_radius + half).to_bits().unsigned_abs());
+    for planned in [true, false] {
+        let mut walk = Walk::new();
+        if planned {
+            let bounds = Bounds::new([num(-8), num(-8)], [num(8), num(8)]).unwrap();
+            Navigation::load_pathing(
+                &mut walk.world,
+                Grid::new(half, bounds).unwrap(),
+                vec![half],
+            );
+        }
+        walk.body(at(0, 0, 0), None, None, tower_radius);
+        let walker = walk.body(at(-4, 0, 0), Some(at(4, 0, 0)), Some(quarter), half);
+        let mut closest = u128::MAX;
+        for _ in 0..80 {
+            walk.tick();
+            let offset = walk.get::<Position>(walker).get();
+            closest = closest.min(offset.length_squared_bits());
+        }
+        let arrived = walk.get::<Destination>(walker).get().is_none();
+        if planned {
+            assert!(
+                closest >= reach * reach,
+                "{closest} against {}",
+                reach * reach
+            );
+            assert!(arrived);
+            assert_eq!(walk.get::<Position>(walker), at(4, 0, 0));
+        } else {
+            assert!(!arrived);
+        }
+    }
+}
+
+#[test]
 fn routes_wait_past_the_limit_of_expanded_cells_in_the_order_asked() {
     // A row of 16 cells of 1 m: a route along it expands each cell from the start to the goal
     // once, 16 to the far end, 4 to x = 3.5. A tick expands up to the grid's 16 cells.
@@ -259,29 +302,24 @@ fn routes_wait_past_the_limit_of_expanded_cells_in_the_order_asked() {
     );
     let half = Num::from_bits(1 << 23);
     let place = |x: i64| Position::new(Vec3::new(num(x) + half, Num::ZERO, half)).unwrap();
-    let (far, near) = (place(15), place(3));
-    let units = [far, near, near, far].map(|_| walk.unit(place(0), None));
-    let ask = |walk: &mut Walk, unit: StableId, goal: Position, tick: u64| {
-        let entity = walk.world.resource::<EntityIndex>().get(unit).unwrap();
-        let mut route = walk.world.get_mut::<Route>(entity).unwrap();
-        route.ask(goal, Tick::new(tick));
-    };
+    let (start, far, near) = (place(0), place(15), place(3));
+    let units = [None, Some(far), Some(near), Some(far)].map(|goal| walk.unit(start, goal));
     let waiting = |walk: &Walk| {
         units.map(|unit| {
             let entity = walk.world.resource::<EntityIndex>().get(unit).unwrap();
             walk.world.get::<Route>(entity).unwrap().asked().is_some()
         })
     };
-    for (unit, goal) in units.into_iter().zip([far, near, near, far]) {
-        ask(&mut walk, unit, goal, 0);
-    }
-    // The first expands 16 and meets the limit.
+    // The last three ask in tick 0; the second expands 16 and meets the limit.
     walk.tick();
-    assert_eq!(waiting(&walk), [false, true, true, true]);
-    let entity = walk.world.resource::<EntityIndex>().get(units[0]).unwrap();
-    assert_eq!(walk.world.get::<Route>(entity).unwrap().waypoints(), [far]);
-    // The first asks again, after the rest: they go first, 4, 4 and 16, and it waits.
-    ask(&mut walk, units[0], far, 1);
+    assert_eq!(waiting(&walk), [false, false, true, true]);
+    let second = walk.world.resource::<EntityIndex>().get(units[1]).unwrap();
+    assert_eq!(walk.world.get::<Route>(second).unwrap().ahead(), [far]);
+    // The first, of the lowest id, asks in tick 1, after the rest: they go first, 4 and 16, and
+    // it waits.
+    let first = walk.world.resource::<EntityIndex>().get(units[0]).unwrap();
+    let mut destination = walk.world.get_mut::<Destination>(first).unwrap();
+    destination.set(Some(near));
     walk.tick();
     assert_eq!(waiting(&walk), [true, false, false, false]);
     walk.tick();

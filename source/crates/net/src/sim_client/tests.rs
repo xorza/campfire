@@ -28,6 +28,8 @@ fn client() -> SimClient {
             dependencies: vec![Fingerprint::new([4; 32])],
             capabilities: CapabilitySet::new(&[]).unwrap(),
             bounds: Bounds::WORLD,
+            pathing: None,
+            walkers: Vec::new(),
         },
         clock: || NOW,
         entropy: |bytes| bytes.fill(6),

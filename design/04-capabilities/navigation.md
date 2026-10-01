@@ -20,11 +20,12 @@ Queries take world positions, a route is a list of waypoints, and obstacles are 
 Three layers, as in Dota 2: a long route around what never moves, a short route around units in the way, and collision as the last guard. All are exact fixed point, in stable-id order, with a fixed work limit a tick.
 
 - **Pathing grid:** the bounds in `[navigation] cell` cells, blocked for each walker radius near a unit that cannot walk. It changes when such a unit dies or spawns.
-- **Long route:** A* for the unit's radius, eight neighbors with no corner cut, costs 10 and 14, ties by estimate then cell, then line-of-sight smoothing. An unreachable goal gives the nearest reachable cell. Routes wait in the order they were asked, then by stable id; a tick expands up to as many cells as the grid has, and the route that meets that limit finishes.
+- **Long route:** A* for the unit's radius, eight neighbors with no corner cut, costs 10 and 14, ties by estimate then cell, then smoothing that keeps a waypoint only where the straight line on would overlap a static body, tested exactly. A goal the unit cannot stand on gives the nearest open cell; an unreachable one, the nearest reachable cell. Routes wait in the order they were asked, then by stable id; a tick expands up to as many cells as the grid has, and the route that meets that limit finishes.
+- **Walking a route:** a move order, a chase and a path walker set the destination; a new one asks for a route, except that a chaser whose target moved in plain sight moves only its last waypoint. The unit walks from waypoint to waypoint, the rest of its step carried past each. When the static bodies change, a route they now block is planned again; a route they now leave shorter is kept.
 - **Short route:** a small local plan around units that stand, or that block the unit for a few ticks.
 - **Collision:** the push-out below, over a grid of buckets for moving bodies and a static index for units that cannot walk, as 0 A.D. keeps them.
 
-A client plans its own routes on the same grid. Crowds, as in an RTS, add flow fields and ORCA later.
+A client plans its own units' routes on the same grid, so it predicts them with no correction. Crowds, as in an RTS, add flow fields and ORCA later.
 
 ## Waypoint paths
 

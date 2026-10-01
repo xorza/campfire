@@ -1,3 +1,4 @@
+use campfire_math::Num;
 use campfire_script::ScriptId;
 
 use crate::abilities::ability_book::AbilityId;
@@ -25,6 +26,9 @@ pub struct ModeSetup<'a> {
     pub unit_types: Vec<UnitTypeSetup>,
     pub avatars: Vec<AvatarSetup>,
     pub loadout: Vec<LoadoutSetup>,
+    /// The body radius of each kind of unit that walks, 0 for one with no body: the layers of
+    /// the map's pathing grid.
+    pub walkers: Vec<Num>,
 }
 
 /// A unit type the mode spawns, loaded, with its kit: a type of the mode's `units.toml`, or a

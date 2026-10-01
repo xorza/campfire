@@ -40,6 +40,7 @@ use crate::scripts::script_limits::ScriptLimits;
 use crate::scripts::state_decl::{StateDecl, StateDefault, StateType, SyncTo};
 use crate::scripts::state_value::StateValue;
 use crate::units::Units;
+use crate::units::body::Body;
 use crate::units::owner::Owner;
 use crate::units::path_id::PathId;
 use crate::units::unit_type::UnitType;
@@ -297,6 +298,7 @@ fn setup(
             hero("hero-y", y, Vec::new()),
         ],
         loadout: vec![spell],
+        walkers: vec![Body::radius_of(grunt().body.as_ref())],
     }
 }
 

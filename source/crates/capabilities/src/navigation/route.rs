@@ -1,23 +1,20 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use campfire_sim::{Position, SimComponent, StableId, Tick};
-use serde::{Deserialize, Serialize};
+use serde::de::Error;
+use serde::{Deserialize, Deserializer, Serialize};
 
-/// A walker's long route: the goal it asked a route to, while the route waits for the planner,
-/// and the waypoints of the route planned last, the last the goal or the nearest place to it the
-/// walker reaches.
-#[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct Route {
-    asked: Option<RouteAsk>,
+/// A walker's long route to its destination: the goal it serves, the tick it asked the planner
+/// for a route there while it waits for one, and the waypoints of the route planned last, the
+/// next one first among those left. A unit with no destination has no goal.
+#[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize)]
+pub struct Route {
+    goal: Option<Position>,
+    asked: Option<Tick>,
     waypoints: Vec<Position>,
-}
-
-/// A goal a walker asked a route to, and the tick it asked in: routes are planned in the order
-/// they were asked.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct RouteAsk {
-    pub(crate) goal: Position,
-    pub(crate) tick: Tick,
+    next: u32,
+    /// Whether the last waypoint is the goal, not the nearest place to it the walker reaches.
+    reached: bool,
 }
 
 /// A walker whose route waits for the planner, in the order routes are planned: by the tick it
@@ -30,36 +27,93 @@ pub(crate) struct Waiting {
 }
 
 impl Route {
-    /// Asks the planner for a route to `goal` in `tick`; the route planned before stays until the
-    /// planner answers.
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "the plan's next step makes orders ask routes")
-    )]
-    pub(crate) const fn ask(&mut self, goal: Position, tick: Tick) {
-        self.asked = Some(RouteAsk { goal, tick });
+    pub(crate) const fn goal(&self) -> Option<Position> {
+        self.goal
     }
 
-    pub(crate) const fn asked(&self) -> Option<RouteAsk> {
+    pub(crate) const fn asked(&self) -> Option<Tick> {
         self.asked
     }
 
-    #[cfg_attr(
-        not(test),
-        expect(dead_code, reason = "the plan's next step walks the waypoints")
-    )]
-    pub(crate) const fn waypoints(&self) -> &[Position] {
-        self.waypoints.as_slice()
+    pub(crate) const fn reached(&self) -> bool {
+        self.reached
     }
 
-    /// Takes the ask away, and hands the waypoints, cleared, to the planner to fill.
-    pub(crate) fn answer(&mut self) -> &mut Vec<Position> {
+    /// Asks the planner in `tick` for a route to `goal`; the walker keeps to the route it has
+    /// until the planner answers.
+    pub(crate) const fn ask(&mut self, goal: Position, tick: Tick) {
+        self.goal = Some(goal);
+        self.asked = Some(tick);
+    }
+
+    /// Takes the planner's answer: `waypoints`, the last the goal when `reached`.
+    pub(crate) fn answer(&mut self, waypoints: &[Position], reached: bool) {
         self.asked = None;
         self.waypoints.clear();
-        &mut self.waypoints
+        self.waypoints.extend_from_slice(waypoints);
+        self.next = 0;
+        self.reached = reached;
+    }
+
+    /// Serves `goal` in place of the goal the route reaches, as its last waypoint.
+    pub(crate) fn move_goal(&mut self, goal: Position) {
+        debug_assert!(self.reached && self.asked.is_none());
+        let last = self
+            .waypoints
+            .last_mut()
+            .expect("a route that reaches its goal");
+        *last = goal;
+        self.goal = Some(goal);
+    }
+
+    /// Forgets the goal and the route.
+    pub(crate) fn clear(&mut self) {
+        *self = Route::default();
+    }
+
+    /// The waypoints the walker has yet to reach, the next first.
+    pub fn ahead(&self) -> &[Position] {
+        &self.waypoints[self.next as usize..]
+    }
+
+    /// Marks the next waypoint reached.
+    pub(crate) fn advance(&mut self) {
+        debug_assert!(!self.ahead().is_empty());
+        self.next += 1;
     }
 }
 
 impl SimComponent for Route {
     const NAME: &'static str = "navigation.route";
+}
+
+/// A snapshot is untrusted, so a next waypoint past the last fails to decode.
+impl<'de> Deserialize<'de> for Route {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Route, D::Error> {
+        #[derive(Deserialize)]
+        struct Fields {
+            goal: Option<Position>,
+            asked: Option<Tick>,
+            waypoints: Vec<Position>,
+            next: u32,
+            reached: bool,
+        }
+        let Fields {
+            goal,
+            asked,
+            waypoints,
+            next,
+            reached,
+        } = Fields::deserialize(deserializer)?;
+        if next as usize > waypoints.len() {
+            return Err(D::Error::custom("a route's next waypoint past its last"));
+        }
+        Ok(Route {
+            goal,
+            asked,
+            waypoints,
+            next,
+            reached,
+        })
+    }
 }

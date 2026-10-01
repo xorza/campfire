@@ -1,7 +1,8 @@
 use std::path::Path;
 
-use campfire_capabilities::{MapData, ModeData};
+use campfire_capabilities::{CollisionData, EngineStat, MapData, ModeData, StatsData};
 use campfire_content::{Fingerprint, PackagePath};
+use campfire_math::Num;
 use campfire_script::ScriptHost;
 
 use crate::error::{ContentError, LoadError, LoadProblem, StoreError};
@@ -119,6 +120,32 @@ impl ModePackages {
 
     pub const fn map(&self) -> &MapData {
         &self.map
+    }
+
+    /// The body radius of each kind of unit that walks, the mode's unit types and avatars that
+    /// declare a move speed, 0 for one with no body; ascending, each once. The pathing grid has
+    /// a layer for each.
+    pub fn walker_radii(&self) -> Vec<Num> {
+        let walker = |stats: Option<&StatsData>, collision: Option<&CollisionData>| {
+            stats
+                .is_some_and(|stats| stats.declares(EngineStat::MoveSpeed))
+                .then(|| collision.map_or(Num::ZERO, |data| data.body.radius()))
+        };
+        let unit_types =
+            self.units.units.values().filter_map(|unit_type| {
+                walker(unit_type.stats.as_ref(), unit_type.collision.as_ref())
+            });
+        let avatars = self
+            .dependencies
+            .iter()
+            .filter_map(|dependent| match &dependent.content {
+                Content::Avatar(avatar) => walker(Some(&avatar.stats), avatar.collision.as_ref()),
+                Content::Loadout(_) => None,
+            });
+        let mut radii: Vec<Num> = unit_types.chain(avatars).collect();
+        radii.sort_unstable();
+        radii.dedup();
+        radii
     }
 
     /// The packages it depends on, in the order of their names in its manifest.

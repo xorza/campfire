@@ -99,6 +99,7 @@ impl<'a> MatchBuild<'a> {
             unit_types: build.unit_types,
             avatars,
             loadout,
+            walkers: packages.walker_radii(),
         };
         Mode::install(build.world, schedule, registry, setup).map_err(StartError::Mode)
     }

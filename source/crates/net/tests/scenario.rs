@@ -4,7 +4,9 @@
 use std::num::NonZeroU32;
 
 use bevy_app::App;
-use campfire_capabilities::{AbilitySlots, Dead, Health, ResourcePool, SeenBy, Team};
+use campfire_capabilities::{
+    AbilitySlots, Body, Dead, Health, MoveStep, ResourcePool, SeenBy, Team,
+};
 use campfire_math::{Num, Vec3};
 use campfire_net::{LinkModel, LocalMatch, MatchSetup, TickHashes};
 use campfire_protocol::{SeedChain, SessionLog};
@@ -315,6 +317,79 @@ fn cast(link: LinkModel) -> [u32; 2] {
         let world = local.client(client).world();
         world.resource::<PredictionMetrics>().rollbacks
     })
+}
+
+/// The ticks of the route scenario: the west hero walks some 12 m at 0.117 m a tick from tick 60.
+const ROUTE_TICKS: u64 = 240;
+
+/// Plays the route scenario through `link` and checks it; gives each client's rollbacks. In tick
+/// 60 the west hero, from (0, −2), is ordered to (−12, −4), behind its own tower at (−8, −3),
+/// whose body the straight line passes a third of a meter from its center; the east hero walks
+/// off to (12, 7), out of every unit's reach.
+fn route(link: LinkModel) -> [u32; 2] {
+    let mut local = LocalMatch::new(MatchSetup::duo(link, SEED_CHAIN));
+    local.start_match();
+    let teams = local.play_by_team([
+        "[[order]]\ntick = 60\nmove = [-12, -4]\n",
+        "[[order]]\ntick = 60\nmove = [12, 7]\n",
+    ]);
+    let client = (0..2).find(|&client| teams[client] == 0).unwrap();
+    let walker = local.avatar(client);
+    let world = local.server().world();
+    let tower = world
+        .resource::<EntityIndex>()
+        .iter()
+        .map(|(_, unit)| world.entity(unit))
+        .find(|unit| {
+            unit.contains::<Body>()
+                && !unit.contains::<MoveStep>()
+                && unit.get::<Team>() == Some(&Team::new(0))
+        })
+        .unwrap();
+    let tower_at = tower.get::<Position>().unwrap().get();
+    let walker_body = world.entity(world.resource::<EntityIndex>().get(walker).unwrap());
+    let reach = tower.get::<Body>().unwrap().radius() + walker_body.get::<Body>().unwrap().radius();
+    let reach = u128::from(reach.to_bits().unsigned_abs());
+    let mut closest = u128::MAX;
+    while next_tick(local.server()) < ROUTE_TICKS {
+        local.step();
+        let offset = hero(local.server(), walker).position.get() - tower_at;
+        closest = closest.min(offset.length_squared_bits());
+    }
+    for _ in 0..20 {
+        local.step();
+    }
+    check_log(&mut local, 2);
+
+    // It went round the tower, never touching it, and stands on its goal, on the server and on
+    // its client.
+    assert!(
+        closest >= reach * reach,
+        "{closest} against {}",
+        reach * reach
+    );
+    let end = Hero {
+        position: at(-12, -4),
+        dead: false,
+    };
+    assert_eq!(hero(local.server(), walker), end);
+    assert_eq!(hero(local.client(client), walker), end);
+    [0, 1].map(|client| {
+        let world = local.client(client).world();
+        world.resource::<PredictionMetrics>().rollbacks
+    })
+}
+
+#[test]
+fn a_route_round_a_tower_through_delayed_links() {
+    // The client plans its hero's route as the server does, so it corrects nothing.
+    let rollbacks = route(LinkModel {
+        delay: 3,
+        jitter: 2,
+        loss_per_mille: 0,
+        seed: 7,
+    });
+    assert_eq!(rollbacks, [0, 0]);
 }
 
 #[test]

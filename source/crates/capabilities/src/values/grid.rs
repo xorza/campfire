@@ -41,6 +41,11 @@ impl Grid {
         self.size[0] as usize * self.size[1] as usize
     }
 
+    /// The side of a cell.
+    pub(crate) const fn cell(&self) -> Num {
+        self.cell
+    }
+
     /// The cells in a row, along x.
     pub(crate) const fn columns(&self) -> usize {
         self.size[0] as usize

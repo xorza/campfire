@@ -5,6 +5,8 @@ use bevy_ecs::resource::Resource;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, StableId};
 
+use crate::values::segment::Segment;
+
 /// The static bodies, those of the living units that cannot walk, by the square buckets their
 /// bounding boxes cover. Collision finds a walker's static contacts in it, and the pathing grid
 /// the static bodies near one that changed. A bucket is twice the widest walker's radius wide, so
@@ -24,6 +26,7 @@ pub(crate) struct StaticIndex {
     /// The new bodies' entries, and the entries they merge into, kept between updates.
     fresh: Vec<Entry>,
     merged: Vec<Entry>,
+    changes: u64,
 }
 
 /// A living unit that cannot walk, as the static index sees it.
@@ -61,6 +64,7 @@ impl StaticIndex {
             added: Vec::new(),
             fresh: Vec::new(),
             merged: Vec::new(),
+            changes: 0,
         }
     }
 
@@ -143,6 +147,7 @@ impl StaticIndex {
         mem::swap(&mut self.entries, &mut self.merged);
         self.bodies.clear();
         self.bodies.extend_from_slice(statics);
+        self.changes += 1;
         true
     }
 
@@ -162,9 +167,50 @@ impl StaticIndex {
     /// Calls `visit` once with each static body whose bounding box meets the square `reach` from
     /// `at` on each side, on the ground plane: every body that comes within `reach` of `at`, and
     /// some that do not. In order of the buckets, row by row.
-    pub(crate) fn near(&self, at: Vec3, reach: Num, mut visit: impl FnMut(&StaticBody)) {
+    pub(crate) fn near(&self, at: Vec3, reach: Num, visit: impl FnMut(&StaticBody)) {
         let rows = StaticIndex::buckets(self.bucket, at.z, reach);
         let columns = StaticIndex::buckets(self.bucket, at.x, reach);
+        self.meeting(rows, columns, visit);
+    }
+
+    /// Whether a static body comes closer to `segment` than its radius and `radius` together,
+    /// exactly: whether a walker of `radius` along it would overlap one.
+    pub(crate) fn blocks(&self, segment: Segment, radius: Num) -> bool {
+        let (from, to) = (segment.start().get(), segment.end().get());
+        let span = |a: Num, b: Num| Buckets {
+            low: (a.min(b) - radius)
+                .to_bits()
+                .div_euclid(self.bucket.to_bits()),
+            high: (a.max(b) + radius)
+                .to_bits()
+                .div_euclid(self.bucket.to_bits()),
+        };
+        let mut blocked = false;
+        self.meeting(span(from.z, to.z), span(from.x, to.x), |body| {
+            blocked = blocked || segment.comes_within(body.at, radius + body.radius);
+        });
+        blocked
+    }
+
+    /// Whether a static body blocks a walker of `radius` on its way from `from` along
+    /// `waypoints`.
+    pub(crate) fn blocks_route(&self, from: Position, waypoints: &[Position], radius: Num) -> bool {
+        let mut at = from;
+        waypoints.iter().any(|&next| {
+            let leg = Segment::new(at, next);
+            at = next;
+            self.blocks(leg, radius)
+        })
+    }
+
+    /// How many updates changed the static bodies: it changes whenever they do.
+    pub(crate) const fn changes(&self) -> u64 {
+        self.changes
+    }
+
+    /// Calls `visit` once with each body in the buckets of `rows` and `columns`, in the first of
+    /// them its own buckets share.
+    fn meeting(&self, rows: Buckets, columns: Buckets, mut visit: impl FnMut(&StaticBody)) {
         for row in rows.low..=rows.high {
             let start = self
                 .entries
@@ -177,7 +223,6 @@ impl StaticIndex {
                     .bodies
                     .binary_search_by_key(&entry.id, |body| body.id)
                     .expect("an entry's body is in the index")];
-                // A body in several of the buckets is visited in the first the two boxes share.
                 let own_rows = StaticIndex::buckets(self.bucket, body.at.get().z, body.radius);
                 let own_columns = StaticIndex::buckets(self.bucket, body.at.get().x, body.radius);
                 if row == rows.low.max(own_rows.low)

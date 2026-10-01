@@ -38,7 +38,6 @@ use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::units::UnitsSet;
-use crate::units::body::Body;
 use crate::units::script_view::View;
 use crate::units::team::Team;
 use crate::units::teams::Teams;
@@ -87,12 +86,7 @@ impl Mode {
         let bounds = setup.map.bounds;
         let grid = setup.map.grid().expect("the check passed");
         let pathing = setup.map.pathing().expect("the check passed");
-        let walkers = setup
-            .unit_types
-            .iter()
-            .filter(|setup| setup.kit.step.is_some())
-            .map(|setup| Body::radius_of(setup.kit.body.as_ref()))
-            .collect();
+        let walkers = setup.walkers.clone();
         // A window past what ticks can count covers the whole match.
         let assist_window = setup
             .data

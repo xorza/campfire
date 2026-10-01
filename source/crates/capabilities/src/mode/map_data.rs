@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use campfire_math::{Num, U256, Vec3};
+use campfire_math::{Num, Vec3};
 use campfire_sim::Position;
 use serde::Deserialize;
 
@@ -8,6 +8,7 @@ use crate::mode::error::ModeError;
 use crate::values::bounds::Bounds;
 use crate::values::grid::Grid;
 use crate::values::scalar::Scalar;
+use crate::values::segment::Segment;
 
 /// The mode's `map/map.toml`: its bounds, its grid, its paths, where each team's avatars spawn,
 /// the structures that stand from the start, and where neutral units spawn.
@@ -98,42 +99,13 @@ impl PathData {
     /// closer than `reach` to `at`, exactly; touching at `reach` is not closer. Its points passed
     /// the mode's check.
     pub fn comes_within(&self, at: Position, reach: Num) -> bool {
-        let point = |ground: &GroundPoint| {
-            let pos = ground.position().expect("the mode's check passed").get();
-            [pos.x, pos.z].map(|value| i128::from(value.to_bits()))
-        };
-        let at = at.get();
-        let at = [at.x, at.z].map(|value| i128::from(value.to_bits()));
-        let reach = u128::from(reach.to_bits().unsigned_abs());
-        let square = |v: [i128; 2]| (v[0] * v[0] + v[1] * v[1]).cast_unsigned();
-        let within = |square: u128| square < reach * reach;
+        let point = |ground: &GroundPoint| ground.position().expect("the mode's check passed");
         if let [only] = &self.points[..] {
-            let only = point(only);
-            return within(square([at[0] - only[0], at[1] - only[1]]));
+            return Segment::new(point(only), point(only)).comes_within(at, reach);
         }
-        self.points.windows(2).any(|pair| {
-            let [a, b] = [point(&pair[0]), point(&pair[1])];
-            let along = [b[0] - a[0], b[1] - a[1]];
-            let from_a = [at[0] - a[0], at[1] - a[1]];
-            let length = square(along);
-            let projection = from_a[0] * along[0] + from_a[1] * along[1];
-            if projection <= 0 {
-                return within(square(from_a));
-            }
-            if projection.cast_unsigned() >= length {
-                return within(square([at[0] - b[0], at[1] - b[1]]));
-            }
-            // The nearest point lies within the segment: its squared distance is
-            // |from_a|² − projection² / length, compared times `length`.
-            let far = U256::product(square(from_a), length);
-            let near = U256::product(reach * reach, length)
-                .checked_add(U256::product(
-                    projection.cast_unsigned(),
-                    projection.cast_unsigned(),
-                ))
-                .expect("points within the world's bound");
-            far < near
-        })
+        self.points
+            .windows(2)
+            .any(|pair| Segment::new(point(&pair[0]), point(&pair[1])).comes_within(at, reach))
     }
 }
 
