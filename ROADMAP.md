@@ -15,7 +15,7 @@ Done when the playtest finds that the 1v1 reads and plays well.
 
 ### 4. Game model
 
-- The model in code ([The model](design/04-capabilities/00-overview.md#the-model)): choices and one unit type schema; the action pipeline, weapons, deliveries as units and effects in data; stats and tags derived on the client.
+- The model in code ([The model](design/04-capabilities/00-overview.md#the-model)): the action pipeline, weapons, deliveries as units and effects in data; stats and tags derived on the client.
 - The package API version, and human text in Fluent files ([Game package](design/03-game-scripting.md#game-package)).
 - The reference packages rewritten to each as it lands.
 

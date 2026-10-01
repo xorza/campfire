@@ -6,17 +6,17 @@ fn on_mode_input(ctx, player, name, value) {
     if ctx.state.phase != "pick" {
         return;
     }
-    if name == "hero" && ctx.avatar_available(player, value) {
-        ctx.choose_avatar(player, value);
+    if name == "hero" && ctx.available(player, "hero", value) {
+        ctx.choose(player, "hero", value);
     } else if name == "spells" && value.len() == 2 {
-        ctx.choose_loadout(player, value);
+        ctx.choose(player, "spells", value);
     }
 }
 
 fn on_timer(ctx, name, data) {
     if name == "pick_end" {
         ctx.state.phase = "play";
-        ctx.spawn_avatars("spawn");
+        spawn_heroes(ctx);
         for camp in ctx.map.markers("camp") {
             ctx.spawn_unit(camp.params.unit_type, "camps", camp.pos);
         }
@@ -98,11 +98,28 @@ fn share_xp(ctx, unit) {
     }
 }
 
+// Each player who chose a hero gets it at their team's spawn, with the spells they chose.
+fn spawn_heroes(ctx) {
+    for player in 0..ctx.players {
+        let hero = ctx.chosen(player, "hero");
+        if hero.is_empty() {
+            continue;
+        }
+        let team = ctx.team_of(player);
+        let unit = ctx.spawn_unit(hero[0], team, spawn_marker(ctx, team).pos, player);
+        ctx.grant(unit, "spell", ctx.chosen(player, "spells"));
+    }
+}
+
 // The end of the lanes `team`'s creeps walk from, as its spawn marker names it.
 fn lane_end(ctx, team) {
+    spawn_marker(ctx, team).params.from
+}
+
+fn spawn_marker(ctx, team) {
     for marker in ctx.map.markers("spawn") {
         if marker.team == team {
-            return marker.params.from;
+            return marker;
         }
     }
     throw "a team with no spawn marker";

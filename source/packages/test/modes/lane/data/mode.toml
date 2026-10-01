@@ -23,3 +23,17 @@ wave_ms = 30000
 # A hero comes back at its spawn this long after it dies.
 respawn_ms = 5000
 wave = ["creep", "creep"]
+
+# The kinds of slot actions sit in: a hero's three basic abilities and its ultimate.
+[[slots]]
+name = "basic"
+ranks = 5
+
+[[slots]]
+name = "ultimate"
+ranks = 3
+
+# Each player plays a hero no other player has.
+[choices.hero]
+offers = "avatars"
+unique = true

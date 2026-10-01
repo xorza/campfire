@@ -63,6 +63,8 @@ pub enum DataTable {
     Mode,
     ModeCombat,
     ModeNavigation,
+    SlotKind,
+    Choice,
     Leech,
     Relation,
     Ability,
@@ -438,10 +440,12 @@ impl Status {
 }
 
 impl DataTable {
-    pub const ALL: [DataTable; 14] = [
+    pub const ALL: [DataTable; 16] = [
         DataTable::Mode,
         DataTable::ModeCombat,
         DataTable::ModeNavigation,
+        DataTable::SlotKind,
+        DataTable::Choice,
         DataTable::Leech,
         DataTable::Relation,
         DataTable::Ability,
@@ -461,6 +465,8 @@ impl DataTable {
             DataTable::Mode => "`data/mode.toml`",
             DataTable::ModeCombat => "The mode's `[combat]`",
             DataTable::ModeNavigation => "The mode's `[navigation]`",
+            DataTable::SlotKind => "A slot kind, `[[slots]]`",
+            DataTable::Choice => "A choice, `[choices.<name>]`",
             DataTable::Leech => "The mode's `[combat] leech`",
             DataTable::Relation => "A pair of teams, `[[relations]]`",
             DataTable::Ability => "An ability, `[abilities.<id>]`",
@@ -568,8 +574,10 @@ mod tests {
 
     use super::*;
     use crate::abilities::ability_data::AbilityData;
+    use crate::abilities::slot_kinds::SlotKindData;
     use crate::combat::combat_data::{AttackData, CombatData};
     use crate::combat::combat_rules::{CombatRules, Leech};
+    use crate::mode::choice_data::ChoiceData;
     use crate::mode::mode_data::ModeData;
     use crate::mode::relation_data::RelationData;
     use crate::navigation::navigation_rules::NavigationRules;
@@ -748,6 +756,8 @@ mod tests {
             (DataTable::Mode, serde_fields::<ModeData>()),
             (DataTable::ModeCombat, serde_fields::<CombatRules>()),
             (DataTable::ModeNavigation, serde_fields::<NavigationRules>()),
+            (DataTable::SlotKind, serde_fields::<SlotKindData>()),
+            (DataTable::Choice, serde_fields::<ChoiceData>()),
             (DataTable::Leech, serde_fields::<Leech>()),
             (DataTable::Relation, serde_fields::<RelationData>()),
             (DataTable::Ability, serde_fields::<AbilityData>()),

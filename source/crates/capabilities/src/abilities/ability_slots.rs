@@ -3,19 +3,22 @@ use campfire_sim::{SimComponent, StableId, Tick};
 use serde::{Deserialize, Serialize};
 
 use crate::abilities::ability_book::AbilityId;
+use crate::abilities::slot_kind::SlotKind;
 
-/// A unit's abilities: its slots, each an ability at a rank with its cooldown, and the cast it
-/// was ordered or is casting.
+/// A unit's abilities: its slots, kind after kind in the mode's order, each an ability at a rank
+/// with its cooldown, and the cast it was ordered or is casting.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AbilitySlots {
     slots: Vec<AbilitySlot>,
     casting: Option<Casting>,
 }
 
-/// One slot: the ability, its rank, 0 while not learned, and the first tick it may be cast again.
+/// One slot: the ability, its kind, its rank, 0 while not learned, and the first tick it may be
+/// cast again.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AbilitySlot {
     pub ability: AbilityId,
+    pub kind: SlotKind,
     pub rank: u8,
     pub ready_at: Tick,
 }
@@ -37,18 +40,43 @@ pub enum CastTarget {
 }
 
 impl AbilitySlots {
-    /// Slots of `(ability, rank)`, each ready at once.
-    pub fn new(slots: impl IntoIterator<Item = (AbilityId, u8)>) -> AbilitySlots {
+    /// The most slots a unit holds: every index a `u8` holds.
+    pub const LIMIT: usize = 256;
+
+    /// Slots of `(ability, kind, rank)`, in the order of their kinds, each ready at once.
+    pub fn new(slots: impl IntoIterator<Item = (AbilityId, SlotKind, u8)>) -> AbilitySlots {
+        let slots: Vec<AbilitySlot> = slots
+            .into_iter()
+            .map(|(ability, kind, rank)| AbilitySlot {
+                ability,
+                kind,
+                rank,
+                ready_at: Tick::ZERO,
+            })
+            .collect();
+        debug_assert!(slots.is_sorted_by_key(|slot| slot.kind));
         AbilitySlots {
-            slots: slots
-                .into_iter()
-                .map(|(ability, rank)| AbilitySlot {
-                    ability,
-                    rank,
-                    ready_at: Tick::ZERO,
-                })
-                .collect(),
+            slots,
             casting: None,
+        }
+    }
+
+    /// Puts `abilities` in `kind` at `rank`, each ready at once, after the slots of that kind it
+    /// has: the slots of later kinds, and a cast ordered from one, move along.
+    pub(crate) fn grant(&mut self, kind: SlotKind, abilities: &[AbilityId], rank: u8) {
+        let at = self.slots.partition_point(|slot| slot.kind <= kind);
+        let added = abilities.iter().map(|&ability| AbilitySlot {
+            ability,
+            kind,
+            rank,
+            ready_at: Tick::ZERO,
+        });
+        self.slots.splice(at..at, added);
+        if let Some(casting) = &mut self.casting
+            && usize::from(casting.slot) >= at
+        {
+            let moved = usize::from(casting.slot) + abilities.len();
+            casting.slot = u8::try_from(moved).expect("a unit's slots fit u8");
         }
     }
 

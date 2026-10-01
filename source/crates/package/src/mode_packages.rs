@@ -183,7 +183,9 @@ impl ModePackages {
             .dependencies
             .iter()
             .filter_map(|dependent| match &dependent.content {
-                Content::Avatar(avatar) => walker(Some(&avatar.stats), avatar.collision.as_ref()),
+                Content::Avatar(avatar) => {
+                    walker(avatar.unit.stats.as_ref(), avatar.unit.collision.as_ref())
+                }
                 Content::Loadout(_) => None,
             });
         let mut walkers: Vec<Walker> = unit_types.chain(avatars).collect();
@@ -192,8 +194,8 @@ impl ModePackages {
         walkers
     }
 
-    /// Every tag its packages name, each once, sorted: `avatar`, the tags of its unit types,
-    /// those its and its dependencies' modifiers grant, and those of its `[tags]` and their
+    /// Every tag its packages name, each once, sorted: `avatar`, the tags of its unit types and
+    /// its avatars', the names of its layers, those its and its dependencies' modifiers grant, and those of its `[tags]` and their
     /// immunities. A match declares them in this order, so it numbers them the same however it
     /// loads.
     pub fn tag_names(&self) -> BTreeSet<&str> {
@@ -209,10 +211,18 @@ impl ModePackages {
             .chain(dependents)
             .flat_map(|modifiers| modifiers.values())
             .flat_map(|modifier| &modifier.tags);
+        let avatars = self
+            .dependencies
+            .iter()
+            .filter_map(|dependent| match &dependent.content {
+                Content::Avatar(avatar) => Some(&avatar.unit),
+                Content::Loadout(_) => None,
+            });
         let types = self
             .units
             .units
             .values()
+            .chain(avatars)
             .flat_map(|unit_type| &unit_type.core.tags);
         let declared = self
             .data

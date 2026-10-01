@@ -103,3 +103,26 @@ warden_respawn_ms = 360000
 [modifiers.warden_blessing]
 duration_ms = 180000
 stats = { attack_damage = { pct = "0.1" }, ability_power = { pct = "0.1" } }
+
+# The kinds of slot actions sit in, in the order a hero's keys bind them: three basic abilities
+# and the ultimate, which heroes learn rank by rank, then the spells players choose.
+[[slots]]
+name = "basic"
+ranks = 5
+
+[[slots]]
+name = "ultimate"
+ranks = 3
+
+[[slots]]
+name = "spell"
+
+# Each player chooses a hero no other player has, and two spells.
+[choices.hero]
+offers = "avatars"
+unique = true
+
+[choices.spells]
+offers = "loadout"
+count = 2
+slot = "spell"

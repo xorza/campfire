@@ -31,12 +31,14 @@ use crate::stats::modifier_hooks::ModifierHooks;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::param_source::ParamSource;
 use crate::stats::param_sources::ParamSources;
+use crate::stats::player_modifiers::{PlayerModifier, PlayerModifiers};
 use crate::stats::pool_book::PoolBook;
 use crate::stats::pools::Pools;
 use crate::stats::refresh_scratch::{RefreshScratch, Refreshing};
 use crate::stats::stat::{EngineStat, Stat};
 use crate::stats::stat_book::StatBook;
 use crate::stats::unit_stats::UnitStats;
+use crate::units::owner::Owner;
 use crate::units::relations::Relations;
 use crate::units::script_view::{RowFill, View};
 use crate::units::tag_book::TagBook;
@@ -44,6 +46,7 @@ use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
+use crate::values::attitude::Attitude;
 use crate::values::metric::Metric;
 
 pub(crate) mod level;
@@ -59,6 +62,7 @@ pub(crate) mod param_read;
 pub(crate) mod param_source;
 pub(crate) mod param_sources;
 pub(crate) mod param_table;
+pub(crate) mod player_modifiers;
 pub(crate) mod pool_book;
 pub(crate) mod pool_cost;
 pub(crate) mod pool_data;
@@ -100,6 +104,8 @@ impl Stats {
             view.add_source(fill_row);
         }
         world.insert_resource(ModifierBook::default());
+        world.insert_resource(PlayerModifiers::default());
+        registry.register_resource::<PlayerModifiers>();
         if let Some(ctx) = world.get_non_send::<Ctx>().cloned() {
             let hooks = ModifierHooks::new(ctx);
             world.insert_non_send(CombatEvents::new(move |batch, event| {
@@ -115,7 +121,7 @@ impl Stats {
                 regenerate.in_set(StatsSet::Regenerate),
             )
                 .in_set(SimSet::Inputs),
-            (clear_dead_modifiers, apply_auras)
+            (clear_dead_modifiers, apply_held)
                 .chain()
                 .in_set(SimSet::Resolve)
                 .after(CombatSet::Die),
@@ -159,6 +165,13 @@ impl Stats {
                 id,
                 duration,
             } => Stats::add_modifier(world, target, id, applier, duration, frame),
+            ModifierEffect::AddPlayer { player, id } => {
+                let held = PlayerModifier {
+                    player,
+                    modifier: id,
+                };
+                world.resource_mut::<PlayerModifiers>().add(held);
+            }
             ModifierEffect::Remove {
                 carrier,
                 id,
@@ -303,16 +316,18 @@ fn clear_dead_modifiers(mut dead: Query<'_, '_, &mut Modifiers, Added<Dead>>) {
     }
 }
 
-/// Holds each aura's modifier, in Resolve each tick, on every living unit within its radius in
-/// the map's metric that its `affects` selects, from the unit that carries the aura, and ends
-/// it on each unit that left. The aura's modifier resolves its numbers from the ability that
-/// gave the aura, and has no duration.
-fn apply_auras(
-    (book, stats, tick, metric): (
+/// Holds, in Resolve each tick, each aura's modifier on every living unit within its radius in
+/// the map's metric that its `affects` selects, from the unit that carries the aura; and each
+/// player modifier on every living unit of its player that the modifier's `affects` selects,
+/// from no source. Each ends on a unit that left it. An aura's modifier resolves its numbers from
+/// the ability that gave the aura, a player modifier's at rank 1; neither has a duration.
+fn apply_held(
+    (book, stats, tick, metric, players): (
         Option<Res<'_, ModifierBook>>,
         Option<Res<'_, StatBook>>,
         Res<'_, SimTick>,
         Res<'_, Metric>,
+        Res<'_, PlayerModifiers>,
     ),
     view: Option<NonSend<'_, View>>,
     abilities: Option<NonSend<'_, Ctx>>,
@@ -326,6 +341,7 @@ fn apply_auras(
             &Position,
             &Team,
             Option<&UnitTags>,
+            Option<&Owner>,
             &mut Modifiers,
         ),
         Without<Dead>,
@@ -336,7 +352,28 @@ fn apply_auras(
         return;
     };
     held.clear();
-    for (&source, &at, &team, _, modifiers) in &units {
+    for (&target, _, _, tags, owner, _) in &units {
+        let Some(owner) = owner else {
+            continue;
+        };
+        let tags = tags.map_or(TagSet::default(), |tags| tags.tags);
+        for modifier in players.of(owner.slot()) {
+            let affects = book.get(modifier).data.affects.as_ref().map(|affects| {
+                view.resolve_filter(affects)
+                    .expect("the load checked the modifier's filter")
+            });
+            if affects.is_none_or(|filter| filter.selects(Attitude::Friendly, tags)) {
+                held.push(Held {
+                    target,
+                    modifier,
+                    source: None,
+                    ability: None,
+                    rank: 1,
+                });
+            }
+        }
+    }
+    for (&source, &at, &team, _, _, modifiers) in &units {
         for instance in modifiers.iter() {
             let (Some(aura), Some(radius)) =
                 (&book.get(instance.id).data.aura, instance.aura_radius)
@@ -350,14 +387,14 @@ fn apply_auras(
             let modifier = book
                 .find(package, &aura.modifier)
                 .expect("the load checked the aura's modifier");
-            for (&target, &pos, &other, tags, _) in &units {
+            for (&target, &pos, &other, tags, _, _) in &units {
                 let tags = tags.map_or(TagSet::default(), |tags| tags.tags);
                 let attitude = relations.between(team, other);
                 if metric.within(at, pos, radius) && filter.selects(attitude, tags) {
                     held.push(Held {
                         target,
                         modifier,
-                        source,
+                        source: Some(source),
                         ability: instance.ability,
                         rank: instance.rank,
                     });
@@ -367,28 +404,28 @@ fn apply_auras(
     }
     held.sort_unstable();
     let frame = abilities.as_ref().map(|ctx| ctx.frame());
-    for (&id, _, _, _, mut modifiers) in &mut units {
+    for (&id, _, _, _, _, mut modifiers) in &mut units {
         let first = held.partition_point(|entry| entry.target < id);
         let mine = held[first..].iter().take_while(|entry| entry.target == id);
         let kept = |modifier, source| {
             mine.clone()
-                .any(|entry| entry.modifier == modifier && Some(entry.source) == source)
+                .any(|entry| entry.modifier == modifier && entry.source == source)
         };
-        if modifiers.bypass_change_detection().release_auras(kept) {
+        if modifiers.bypass_change_detection().release_held(kept) {
             modifiers.set_changed();
         }
         for entry in mine {
-            if modifiers.get(entry.modifier, Some(entry.source)).is_some() {
+            if modifiers.get(entry.modifier, entry.source).is_some() {
                 continue;
             }
             let applier = Applier {
-                source: Some(entry.source),
+                source: entry.source,
                 ability: entry.ability,
                 rank: entry.rank,
                 passive: false,
-                aura: true,
+                held: true,
             };
-            let source = sources.get(entry.source);
+            let source = entry.source.and_then(|source| sources.get(source));
             let param = |name: &str| {
                 let (ability, rank) = (entry.ability, entry.rank);
                 let frame = frame.as_ref()?;
@@ -404,13 +441,13 @@ fn apply_auras(
     }
 }
 
-/// An aura's modifier a unit holds: the unit, the modifier, the aura's carrier, and the ability
-/// that gave the aura, at its rank.
+/// A modifier an aura or a player holds on a unit: the unit, the modifier, the aura's carrier,
+/// none for a player's, and the ability that gave the aura, at its rank.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct Held {
     target: StableId,
     modifier: ModifierId,
-    source: StableId,
+    source: Option<StableId>,
     ability: Option<AbilityId>,
     rank: u8,
 }
@@ -655,7 +692,7 @@ pub(crate) mod internals {
             ability,
             rank,
             passive,
-            aura: false,
+            held: false,
         };
         let ctx = world.get_non_send::<Ctx>().cloned();
         let frame = ctx.as_ref().map(Ctx::frame);

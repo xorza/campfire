@@ -1,10 +1,8 @@
 use std::rc::Rc;
 
 use campfire_script::rhai::{Array, Dynamic, ImmutableString};
-use campfire_sim::Position;
 
 use crate::mode::marker::Marker;
-use crate::units::team::Team;
 
 /// `ctx.map`: the map's paths, by name, and its markers, in the map's order.
 #[derive(Debug, Clone, Default)]
@@ -32,13 +30,5 @@ impl GameMap {
             .filter(|marker| marker.has(tag))
             .map(|marker| Dynamic::from(marker.clone()))
             .collect()
-    }
-
-    /// The point of the first marker with tag `tag` and team `team`, if it has one.
-    pub(crate) fn point(&self, tag: &str, team: Team) -> Option<Position> {
-        self.markers
-            .iter()
-            .find(|marker| marker.has(tag) && marker.info().team == Some(team))
-            .and_then(|marker| marker.info().pos)
     }
 }

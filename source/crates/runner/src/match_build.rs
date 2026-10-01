@@ -3,12 +3,12 @@ use std::collections::BTreeMap;
 use bevy_ecs::schedule::Schedule;
 use bevy_ecs::world::World;
 use campfire_capabilities::{
-    Abilities, AbilityData, AbilityId, AvatarSetup, CombatData, DeclaredName, KitRules,
-    LoadoutSetup, MatchScripts, Mode, ModeSetup, OnDeath, Orders, PoolId, Stat, Stats, UnitKit,
-    UnitTypeData, UnitTypeSetup, Units,
+    Abilities, AbilityData, AbilityId, DeclaredName, KitRules, LoadoutSetup, MatchScripts, Mode,
+    ModeSetup, OnDeath, Orders, PoolId, SlotAction, Stat, Stats, UnitKit, UnitTypeData,
+    UnitTypeSetup, Units,
 };
 use campfire_content::PackagePath;
-use campfire_package::{AvatarData, Content, LoadoutData, ModePackages, Package};
+use campfire_package::{Content, ModePackages, Package, UnitTypeFile};
 use campfire_script::ScriptId;
 use campfire_sim::{StateRegistry, TickRate};
 
@@ -76,18 +76,25 @@ impl<'a> MatchBuild<'a> {
         };
         Units::declare_tags(build.world, packages.tag_names()).expect(CHECKED);
         build.compile_scripts();
-        build.load_unit_types()?;
         build.load_modifiers();
+        let no_abilities = BTreeMap::new();
+        for (name, file) in &packages.units().units {
+            build.load_unit_type(MODE, name, file, &no_abilities, false)?;
+        }
         let mut avatars = Vec::new();
         let mut loadout = Vec::new();
+        let loadout_ranks = packages.data().loadout_ranks();
         for (at, dependent) in packages.dependencies().iter().enumerate() {
             let package = DEPENDENCIES + at;
             match &dependent.content {
-                Content::Avatar(avatar) => avatars.push(build.load_avatar(package, avatar)?),
+                Content::Avatar(avatar) => {
+                    let name = &dependent.package.name;
+                    build.load_unit_type(package, name, &avatar.unit, &avatar.abilities, true)?;
+                    avatars.push(name.clone());
+                }
                 Content::Loadout(data) => {
                     for (id, ability) in &data.abilities {
-                        let ability =
-                            build.load_ability(package, id, ability, LoadoutData::RANKS)?;
+                        let ability = build.load_ability(package, id, ability, loadout_ranks)?;
                         loadout.push(LoadoutSetup {
                             id: id.clone(),
                             ability,
@@ -135,94 +142,68 @@ impl<'a> MatchBuild<'a> {
         }
     }
 
-    /// Loads the mode's unit types, each with its AI and its kit.
-    fn load_unit_types(&mut self) -> Result<(), StartError> {
-        let packages = self.packages;
-        let navigation = &packages.data().navigation;
-        for (name, file) in &packages.units().units {
-            let unit_type = Units::load_type(self.world, name, &file.core).expect(CHECKED);
-            if let Some(orders) = &file.orders {
-                let script = self.script(MODE, &orders.ai);
-                Orders::load_ai(self.world, unit_type, orders, script).map_err(|error| {
-                    StartError::Ai {
-                        unit_type: name.clone(),
-                        error,
-                    }
-                })?;
-            }
-            let pools = self.pools(&file.pools);
-            let kit = UnitKit::new(file.stats.as_ref(), file.combat.as_ref(), pools, self.rules)
-                .map(|kit| {
-                    kit.with_vision(file.vision.as_ref())
-                        .with_body(navigation.body(file.collision.as_ref()))
-                })
-                .map_err(|error| StartError::UnitKit {
-                    unit_type: name.clone(),
-                    error,
-                })?;
-            let stats = file.stats.clone().unwrap_or_default();
-            self.unit_types.push(UnitTypeSetup {
-                unit_type,
-                kit,
-                stats,
-            });
-        }
-        Ok(())
-    }
-
-    /// Loads the avatar `data` of `package`: its unit type, named for the package and tagged
-    /// `avatar`, which stays when it dies, with its kit and pools at level 1; and its abilities,
-    /// in slot order.
-    fn load_avatar(
+    /// Loads the unit type `name` of `file`, of `package`, whose `abilities` its actions name:
+    /// its AI, its kit, its actions, each with the ranks of its slot kind, and its passive. An
+    /// avatar's is tagged `avatar`, and stays when it dies.
+    fn load_unit_type(
         &mut self,
         package: usize,
-        data: &AvatarData,
-    ) -> Result<AvatarSetup, StartError> {
-        let name = &self.package(package).name;
-        let navigation = &self.packages.data().navigation;
-        let core = UnitTypeData {
-            tags: vec![UnitTypeData::AVATAR_TAG.to_owned()],
-            params: BTreeMap::new(),
-        };
+        name: &str,
+        file: &UnitTypeFile,
+        abilities: &BTreeMap<String, AbilityData>,
+        avatar: bool,
+    ) -> Result<(), StartError> {
+        let data = self.packages.data();
+        let mut core = file.core.clone();
+        let mut combat = file.combat.clone();
+        if avatar {
+            core.tags.push(UnitTypeData::AVATAR_TAG.to_owned());
+            if let Some(combat) = &mut combat {
+                combat.on_death = OnDeath::Stay;
+            }
+        }
         let unit_type = Units::load_type(self.world, name, &core).expect(CHECKED);
-        let combat = CombatData {
-            on_death: OnDeath::Stay,
-            ..data.combat.clone()
-        };
-        let kit_error = |error| StartError::UnitKit {
-            unit_type: name.clone(),
+        let unit_error = |error| StartError::UnitKit {
+            unit_type: name.to_owned(),
             error,
         };
-        let pools = self.pools(&data.pools);
-        let kit = UnitKit::new(Some(&data.stats), Some(&combat), pools, self.rules)
-            .map_err(kit_error)?
-            .with_vision(data.vision.as_ref())
-            .with_body(navigation.body(data.collision.as_ref()));
-        let abilities = data
-            .slots
-            .iter()
-            .enumerate()
-            .map(|(slot, id)| {
-                let ranks = AvatarData::slot_ranks(slot);
-                self.load_ability(package, id, &data.abilities[id], ranks)
-            })
-            .collect::<Result<_, _>>()?;
-        self.unit_types.push(UnitTypeSetup {
-            unit_type,
-            kit,
-            stats: data.stats.clone(),
-        });
+        if let Some(orders) = &file.orders {
+            let script = self.script(package, &orders.ai);
+            Orders::load_ai(self.world, unit_type, orders, script).map_err(|error| {
+                StartError::Ai {
+                    unit_type: name.to_owned(),
+                    error,
+                }
+            })?;
+        }
+        let pools = self.pools(&file.pools);
+        let kit = UnitKit::new(file.stats.as_ref(), combat.as_ref(), pools, self.rules)
+            .map_err(unit_error)?
+            .with_vision(file.vision.as_ref())
+            .with_body(data.navigation.body(file.collision.as_ref()));
+        let mut actions = Vec::new();
+        for (kind, ids) in &file.actions {
+            let kind = data.slots.named(kind.as_str()).expect(CHECKED);
+            for id in ids {
+                let ranks = data.slots.ranks(kind);
+                let ability = self.load_ability(package, id, &abilities[id], ranks)?;
+                actions.push(SlotAction { kind, ability });
+            }
+        }
+        actions.sort_by_key(|action| action.kind);
         let id = u16::try_from(package).expect("packages fit u16");
-        let passive = data
+        let passive = file
             .passive
             .as_ref()
             .map(|passive| Stats::modifier(self.world, id, passive).expect(CHECKED));
-        Ok(AvatarSetup {
-            id: name.clone(),
+        self.unit_types.push(UnitTypeSetup {
             unit_type,
-            abilities,
+            kit,
+            stats: file.stats.clone().unwrap_or_default(),
+            actions,
             passive,
-        })
+        });
+        Ok(())
     }
 
     /// Each pool of `names`, which the load checked the mode declares, with the stat of its

@@ -1,7 +1,7 @@
 name = "Cinder"
-role = "mage"
+tags = ["mage"]
 pools = ["health", "mana"]
-slots = ["fire_lance", "eruption", "wildfire", "chain_fire"]
+actions = { basic = ["fire_lance", "eruption", "wildfire"], ultimate = ["chain_fire"] }
 
 [combat.attack]
 range = "5.5"

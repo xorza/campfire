@@ -4,7 +4,9 @@ use campfire_content::PackagePath;
 use campfire_script::rhai::{Dynamic, ImmutableString};
 use serde::Deserialize;
 
+use crate::abilities::slot_kinds::SlotKinds;
 use crate::combat::combat_rules::CombatRules;
+use crate::mode::choice_data::ChoiceData;
 use crate::mode::relation_data::RelationData;
 use crate::navigation::navigation_rules::NavigationRules;
 use crate::scripts::state_decl::StateDecl;
@@ -25,6 +27,12 @@ pub struct ModeData {
     pub combat: CombatRules,
     #[serde(default)]
     pub navigation: NavigationRules,
+    /// The kinds of slot its units' actions sit in, in order.
+    #[serde(default)]
+    pub slots: SlotKinds,
+    /// What its players choose before their units spawn, by name.
+    #[serde(default)]
+    pub choices: BTreeMap<DeclaredName, ChoiceData>,
     /// The type of each player input, by name. An input that does not match its type never
     /// reaches the script.
     #[serde(default)]
@@ -53,6 +61,19 @@ pub struct ModeData {
     /// The effects of its tags, by name.
     #[serde(default)]
     pub tags: BTreeMap<String, TagData>,
+}
+
+impl ModeData {
+    /// The ranks of every loadout entry: those of the slot kind a choice of loadout entries
+    /// fills, which the load checked they all share, or 1 with none.
+    pub fn loadout_ranks(&self) -> u8 {
+        let mut kinds = self
+            .choices
+            .values()
+            .filter_map(|choice| choice.slot.as_ref());
+        let kind = kinds.find_map(|kind| self.slots.named(kind.as_str()));
+        kind.map_or(1, |kind| self.slots.ranks(kind))
+    }
 }
 
 /// The type of a player input.

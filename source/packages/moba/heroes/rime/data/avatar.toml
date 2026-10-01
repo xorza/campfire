@@ -1,8 +1,8 @@
 name = "Rime"
-role = "marksman"
+tags = ["marksman"]
 pools = ["health", "mana"]
 passive = "stillness"
-slots = ["chill_arrows", "fan_of_frost", "snow_owl", "glacier_arrow"]
+actions = { basic = ["chill_arrows", "fan_of_frost", "snow_owl"], ultimate = ["glacier_arrow"] }
 
 [combat.attack]
 range = "6.0"

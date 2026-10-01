@@ -1,7 +1,7 @@
 name = "Runner"
-role = "test"
+tags = ["test"]
 pools = ["health", "mana"]
-slots = ["first", "second", "third", "fourth"]
+actions = { basic = ["first", "second", "third"], ultimate = ["fourth"] }
 
 [combat.attack]
 range = "1.25"

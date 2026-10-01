@@ -1,37 +1,43 @@
 use std::collections::BTreeMap;
 
-use campfire_capabilities::{
-    AbilityData, CollisionData, CombatData, DeclaredName, ModifierData, StatsData, VisionData,
-};
-use serde::Deserialize;
+use campfire_capabilities::{AbilityData, ModifierData};
+use serde::de::Error;
+use serde::{Deserialize, Deserializer};
 
-/// An avatar package's `data/avatar.toml`. An avatar carries the tag `avatar`, and stays when it dies.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
+use crate::files::units_data::UnitTypeFile;
+
+/// An avatar package's `data/avatar.toml`: its one unit type, in the units schema, with its
+/// name, and the abilities and modifiers of the package. An avatar carries the tag `avatar`, and
+/// stays when it dies.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AvatarData {
     pub name: String,
-    pub role: String,
-    /// Its pools, the mode's life pool among them.
-    pub pools: Vec<DeclaredName>,
-    /// The modifier it always carries.
-    pub passive: Option<String>,
-    /// Its four abilities; the last is the ultimate.
-    pub slots: [String; 4],
-    pub combat: CombatData,
-    pub stats: StatsData,
-    /// How far it sees; without it, an avatar reveals nothing to its team.
-    pub vision: Option<VisionData>,
-    /// Its body; without it, it collides with nothing.
-    pub collision: Option<CollisionData>,
-    #[serde(default)]
+    pub unit: UnitTypeFile,
     pub abilities: BTreeMap<String, AbilityData>,
-    #[serde(default)]
     pub modifiers: BTreeMap<String, ModifierData>,
 }
 
-impl AvatarData {
-    /// The ranks of the ability in `slot`: 5 for a basic ability, 3 for the ultimate, the last.
-    pub const fn slot_ranks(slot: usize) -> u8 {
-        if slot == 3 { 3 } else { 5 }
+/// The unit type's fields beside the package's own, in one table.
+impl<'de> Deserialize<'de> for AvatarData {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<AvatarData, D::Error> {
+        #[derive(Deserialize)]
+        struct Fields {
+            name: String,
+            #[serde(default)]
+            abilities: BTreeMap<String, AbilityData>,
+            #[serde(default)]
+            modifiers: BTreeMap<String, ModifierData>,
+            #[serde(flatten)]
+            unit: toml::Table,
+        }
+        let fields = Fields::deserialize(deserializer)?;
+        let unit =
+            UnitTypeFile::deserialize(toml::Value::Table(fields.unit)).map_err(D::Error::custom)?;
+        Ok(AvatarData {
+            name: fields.name,
+            unit,
+            abilities: fields.abilities,
+            modifiers: fields.modifiers,
+        })
     }
 }

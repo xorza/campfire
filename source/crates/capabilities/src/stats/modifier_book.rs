@@ -128,7 +128,7 @@ impl ModifierBook {
             }
         };
         let duration = match duration {
-            _ if from.passive || from.aura => None,
+            _ if from.passive || from.held => None,
             Some(duration) => Some(duration),
             None => ticks(data.duration_ms.as_ref())?,
         };
@@ -157,7 +157,7 @@ impl ModifierBook {
             ability: from.ability,
             rank: from.rank,
             passive: from.passive,
-            aura: from.aura,
+            held: from.held,
             aura_radius: value(data.aura.as_ref().map(|aura| &aura.radius))?,
             stacks: u32::from(!counts),
             until: duration.map(|ticks| Instance::end(now, ticks)),
@@ -186,14 +186,14 @@ impl ModifierBook {
 }
 
 /// Who applies a modifier: its source, none from the mode; the ability that applies it, at
-/// `rank`, rank 1 with none; and whether it is a passive, or an aura's.
+/// `rank`, rank 1 with none; and whether it is a passive, or held by an aura or a player.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Applier {
     pub(crate) source: Option<StableId>,
     pub(crate) ability: Option<AbilityId>,
     pub(crate) rank: u8,
     pub(crate) passive: bool,
-    pub(crate) aura: bool,
+    pub(crate) held: bool,
 }
 
 impl ModifierEntry {

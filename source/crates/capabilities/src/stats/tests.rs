@@ -225,7 +225,7 @@ fn share(
             ability: None,
             rank: 1,
             passive: false,
-            aura: false,
+            held: false,
             aura_radius: None,
             stacks: 1,
             until: None,
@@ -435,6 +435,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
         tags: Vec::new(),
         shield: None,
         aura,
+        affects: None,
         params: BTreeMap::new(),
         state: BTreeMap::new(),
     };
@@ -491,7 +492,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
             ability: None,
             rank: 1,
             passive: false,
-            aura: false,
+            held: false,
             aura_radius: Some(num(2)),
             stacks: 1,
             until: None,
@@ -510,7 +511,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
         let modifiers = game.world.get::<Modifiers>(entity(game, id)).unwrap();
         modifiers
             .get(inspired, Some(carrier))
-            .is_some_and(|instance| instance.aura && instance.until.is_none())
+            .is_some_and(|instance| instance.held && instance.until.is_none())
     };
     game.world.run_schedule(SimUpdate);
     // The carrier is its own ally, within 0 m of itself.

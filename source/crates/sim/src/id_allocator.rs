@@ -6,7 +6,7 @@ use crate::stable_id::StableId;
 
 /// Hands out stable ids in order. An id is never reused, so a despawned entity's id keeps its
 /// meaning; the next id is state, since two worlds that differ in it diverge at the next spawn.
-#[derive(Resource, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Resource, Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IdAllocator {
     next: u64,
 }

@@ -1,6 +1,7 @@
 use campfire_script::rhai::INT;
 use campfire_sim::{Capability, Ticks};
 
+use crate::mode::mode_api::ModeApi;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::effect::Effect;
@@ -35,6 +36,15 @@ impl StatsApi {
             let ticks = ctx.view().ticks(ms)?;
             StatsApi::add_modifier(ctx, &target, id, Some(ticks))
         })
+        .bind(
+            call(
+                "add_player_modifier",
+                "(player, id)",
+                "gives `player` the modifier `id` of the script's package, which every living unit \
+                 it owns that the modifier's `affects` selects holds from no source",
+            ),
+            |ctx: &mut Ctx, player: INT, id: &str| StatsApi::add_player_modifier(ctx, player, id),
+        )
         .bind(
             call(
                 "remove",
@@ -72,6 +82,7 @@ impl StatsApi {
                 "stats",
                 "shield",
                 "aura",
+                "affects",
                 "params",
                 "state",
                 "tags",
@@ -79,6 +90,13 @@ impl StatsApi {
             &[],
         )
         .data(DataTable::Aura, &["radius", "affects", "modifier"], &[]);
+    }
+
+    /// Queues modifier `id` of the call's package for `player`, one of the session's.
+    fn add_player_modifier(ctx: &Ctx, player: INT, id: &str) -> Checked<()> {
+        let player = ModeApi::player(ctx.mode_or_fail()?, player)?;
+        let id = ctx.view().modifier(id)?;
+        ctx.queue(Effect::Modifier(ModifierEffect::AddPlayer { player, id }))
     }
 
     /// Queues modifier `id` of the call's package on `target`, from the acting unit, for

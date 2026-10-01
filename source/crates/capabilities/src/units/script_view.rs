@@ -623,6 +623,11 @@ impl View {
     }
 
     /// Ability slot `slot` of the unit of `row`, when it has one.
+    /// How many ability slots the unit of `row` has.
+    pub(crate) const fn slot_count(row: &UnitRow) -> usize {
+        (row.slots_end - row.slots_start) as usize
+    }
+
     pub(crate) fn slot(&self, row: &UnitRow, slot: u8) -> Option<SlotRow> {
         let view = self.0.borrow();
         let run = &view.slots[row.slots_start as usize..row.slots_end as usize];

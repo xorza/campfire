@@ -1,8 +1,8 @@
 name = "Kensho"
-role = "fighter"
+tags = ["fighter"]
 pools = ["health", "mana"]
 passive = "twin_cut"
-slots = ["flicker_strike", "still_mind", "honed_edge", "unbound"]
+actions = { basic = ["flicker_strike", "still_mind", "honed_edge"], ultimate = ["unbound"] }
 
 [combat.attack]
 range = "1.25"

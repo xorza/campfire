@@ -12,7 +12,9 @@ mod package_dir;
 mod package_store;
 mod script_facts;
 
-pub use error::{ContentError, CtxMisuse, LoadError, LoadProblem, Place, StoreError};
+pub use error::{
+    ChoiceProblem, ContentError, CtxMisuse, LoadError, LoadProblem, Place, StoreError,
+};
 pub use files::avatar_data::AvatarData;
 pub use files::loadout_data::LoadoutData;
 pub use files::manifest::{

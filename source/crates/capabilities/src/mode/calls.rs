@@ -2,13 +2,13 @@ use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_script::ScriptError;
 use campfire_script::rhai::FuncArgs;
-use campfire_sim::{SimTick, Tick};
+use campfire_sim::{IdAllocator, SimTick, Tick};
 
 use crate::combat::damage::Damage;
 use crate::combat::damage_handle::DamageHandle;
+use crate::mode::choices::Choices;
 use crate::mode::mode_book::ModeBook;
 use crate::mode::mode_state::ModeState;
-use crate::mode::picks::Picks;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::hook::Hook;
@@ -43,7 +43,7 @@ impl Calls<'_, '_> {
             .expect("mode calls run in a match with a mode")
     }
 
-    /// Runs `hook` with `args` from `pool`: on success its state and choices commit and its
+    /// Runs `hook` with `args` from `pool`: on success its state, choices and ids commit and its
     /// effects apply; on failure nothing changes.
     pub(crate) fn run(
         &mut self,
@@ -89,13 +89,15 @@ impl Calls<'_, '_> {
         self.ctx.view().set_caller(0);
     }
 
-    /// Commits the call's state and choices, then applies its effects in order.
+    /// Commits the call's state, choices and the ids it took, then applies its effects in order:
+    /// a unit it spawns takes the id the call took for it.
     fn commit(&mut self) {
         let world = self.batch.world();
         {
             let frame = self.ctx.frame();
             world.resource_mut::<ModeState>().0.clone_from(&frame.state);
-            world.resource_mut::<Picks>().clone_from(&frame.picks);
+            world.resource_mut::<Choices>().clone_from(&frame.choices);
+            world.resource_mut::<IdAllocator>().clone_from(&frame.ids);
         }
         self.ctx.apply(world, self.now);
     }

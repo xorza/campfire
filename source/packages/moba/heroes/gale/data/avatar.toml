@@ -1,8 +1,8 @@
 name = "Gale"
-role = "support"
+tags = ["support"]
 pools = ["health", "mana"]
 passive = "fair_wind"
-slots = ["cyclone", "gust", "wind_shield", "tempest"]
+actions = { basic = ["cyclone", "gust", "wind_shield"], ultimate = ["tempest"] }
 
 [combat.attack]
 range = "4.75"

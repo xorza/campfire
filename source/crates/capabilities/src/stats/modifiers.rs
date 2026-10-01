@@ -29,9 +29,10 @@ pub(crate) struct Instance {
     /// at its rank on the source.
     pub(crate) ability: Option<AbilityId>,
     pub(crate) rank: u8,
-    /// Whether it is an ability's passive, which a death keeps, and whether an aura holds it.
+    /// Whether it is an ability's passive, which a death keeps, and whether an aura or its
+    /// carrier's player holds it.
     pub(crate) passive: bool,
-    pub(crate) aura: bool,
+    pub(crate) held: bool,
     /// The radius of the aura it gives, when its modifier has one.
     pub(crate) aura_radius: Option<Num>,
     pub(crate) stacks: u32,
@@ -241,14 +242,15 @@ impl Modifiers {
         self.0.retain(|instance| instance.passive);
     }
 
-    /// Ends every instance an aura holds that `holds` no longer keeps; whether any ended.
-    pub(crate) fn release_auras(
+    /// Ends every instance an aura or a player holds that `holds` no longer keeps; whether any
+    /// ended.
+    pub(crate) fn release_held(
         &mut self,
         mut holds: impl FnMut(ModifierId, Option<StableId>) -> bool,
     ) -> bool {
         let before = self.0.len();
         self.0
-            .retain(|instance| !instance.aura || holds(instance.id, instance.source));
+            .retain(|instance| !instance.held || holds(instance.id, instance.source));
         self.0.len() != before
     }
 
@@ -407,7 +409,7 @@ mod tests {
                 ability: None,
                 rank: 1,
                 passive: false,
-                aura: false,
+                held: false,
                 aura_radius: None,
                 stacks: 1,
                 until: until.map(Tick::new),

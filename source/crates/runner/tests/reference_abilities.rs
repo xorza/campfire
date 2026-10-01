@@ -12,7 +12,8 @@ use bevy_ecs::world::World;
 use campfire_capabilities::{
     Abilities, AbilitySlots, Action, AttackStats, CapabilitySet, CastTarget, Combatant,
     DeclaredName, MatchScripts, Number, OnDeath, Order, Owner, Param, PoolId, Pools, Range,
-    RangeField, Ranked, Scalar, Scaling, ScriptLimits, Stat, Stats, Targeting, Team, Units,
+    RangeField, Ranked, Scalar, Scaling, ScriptLimits, SlotKind, Stat, Stats, Targeting, Team,
+    Units,
 };
 use campfire_capabilities::{Modifiers, ScriptFailures, internals};
 use campfire_content::PackagePath;
@@ -225,7 +226,7 @@ fn lash_out_from_its_package_hits_exactly() {
         (100, 0),
         (
             Owner::new(PlayerSlot::new(0)),
-            AbilitySlots::new([(lash_out, 3)]),
+            AbilitySlots::new([(lash_out, SlotKind::new(0), 3)]),
         ),
     );
     let near = spawn(&mut world, 1, 3, ());

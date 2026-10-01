@@ -1,3 +1,4 @@
+use campfire_math::PlayerSlot;
 use campfire_sim::{StableId, Ticks};
 
 use crate::stats::modifier_book::ModifierId;
@@ -11,6 +12,8 @@ pub(crate) enum ModifierEffect {
         id: ModifierId,
         duration: Option<Ticks>,
     },
+    /// Modifier `id` held by `player`, for the units it owns.
+    AddPlayer { player: PlayerSlot, id: ModifierId },
     /// The end of the instance of `id` from `source` on `carrier`.
     Remove {
         carrier: StableId,

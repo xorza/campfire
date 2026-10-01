@@ -29,19 +29,22 @@ Every action is a table `[actions.<id>]` of a package, in one schema; a field a 
 
 A kind adds its own fields: an attack's `rate`, `damage` and `damage_kind` ([Combat](combat.md#data)), a use's channel and range, a train's unit type and time.
 
-The mode declares its **slot kinds**, where actions sit on a unit:
+The mode declares its **slot kinds**, where actions sit on a unit, in order:
 
 ```toml
-[slots.basic]
+[[slots]]
+name = "weapon"
+[[slots]]
+name = "basic"
 ranks = 5
 levels = [1, 3, 5, 7, 9]   # the level each rank needs; optional
-[slots.ultimate]
+[[slots]]
+name = "ultimate"
 ranks = 3
 levels = [6, 11, 16]
-[slots.weapon]
 ```
 
-A unit type fills them: `actions = { weapon = ["claws"], basic = ["fan_of_frost", "snow_owl", "chill_arrows"], ultimate = ["glacier_arrow"] }`. A slot kind with no `ranks` has one rank, learned from the spawn. A loadout fills a slot kind with the actions a player chose ([Choices](control.md#choices)); an item's actions sit with the item ([Items](items.md)).
+A unit type fills them: `actions = { weapon = ["claws"], basic = ["fan_of_frost", "snow_owl", "chill_arrows"], ultimate = ["glacier_arrow"] }`. A unit's slots go kind after kind in the mode's order, each kind's actions in the order the unit type lists them, so a client binds its keys to the same slots on every unit. A slot kind with no `ranks` has one rank, learned from the spawn; one with `ranks` starts unlearned. An action has the ranks of the kind it sits in, and its per-rank values that many entries. A loadout fills a slot kind with the actions a player chose ([Choices](control.md#choices)): `ctx.grant(unit, kind, ids)` puts them after the unit's slots of that kind, at the kind's first rank; an item's actions sit with the item ([Items](items.md)). `levels` loads, and the release does not enforce it until progression ([Progression](progression.md)).
 
 ## Rules
 

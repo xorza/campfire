@@ -1,41 +1,46 @@
 use crate::abilities::ability_book::AbilityId;
-use crate::mode::avatar_index::AvatarIndex;
-use crate::mode::loadout_index::LoadoutIndex;
-use crate::mode::mode_setup::{AvatarSetup, LoadoutSetup};
+use crate::mode::choice_data::Offers;
+use crate::mode::mode_setup::LoadoutSetup;
+use crate::mode::offer::Offer;
 
-/// The avatars and loadout a mode's players choose from. Package data, not state.
+/// The avatars and loadout entries a mode's choices offer. Package data, not state.
 #[derive(Debug)]
 pub(crate) struct Roster {
     /// In the order of the mode's dependencies.
-    avatars: Vec<AvatarSetup>,
+    avatars: Vec<String>,
     /// Sorted by id.
     loadout: Vec<LoadoutSetup>,
 }
 
 impl Roster {
-    pub(crate) fn new(avatars: Vec<AvatarSetup>, mut loadout: Vec<LoadoutSetup>) -> Roster {
+    pub(crate) fn new(avatars: Vec<String>, mut loadout: Vec<LoadoutSetup>) -> Roster {
         loadout.sort_unstable_by(|a, b| a.id.cmp(&b.id));
         Roster { avatars, loadout }
     }
 
-    pub(crate) fn avatar(&self, id: &str) -> Option<AvatarIndex> {
-        let at = self.avatars.iter().position(|avatar| avatar.id == id)?;
-        Some(AvatarIndex::new(at))
+    /// The value `id` among `offers`.
+    pub(crate) fn offer(&self, offers: Offers, id: &str) -> Option<Offer> {
+        let at = match offers {
+            Offers::Avatars => self.avatars.iter().position(|avatar| avatar == id)?,
+            Offers::Loadout => self
+                .loadout
+                .binary_search_by(|entry| entry.id.as_str().cmp(id))
+                .ok()?,
+        };
+        Some(Offer::new(at))
     }
 
-    pub(crate) fn avatar_setup(&self, avatar: AvatarIndex) -> &AvatarSetup {
-        &self.avatars[avatar.index()]
+    /// The id of `offer` among `offers`.
+    pub(crate) fn id(&self, offers: Offers, offer: Offer) -> &str {
+        match offers {
+            Offers::Avatars => &self.avatars[offer.index()],
+            Offers::Loadout => &self.loadout[offer.index()].id,
+        }
     }
 
-    pub(crate) fn loadout(&self, id: &str) -> Option<LoadoutIndex> {
-        let at = self
-            .loadout
-            .binary_search_by(|entry| entry.id.as_str().cmp(id))
-            .ok()?;
-        Some(LoadoutIndex::new(at))
-    }
-
-    pub(crate) fn loadout_ability(&self, entry: LoadoutIndex) -> AbilityId {
-        self.loadout[entry.index()].ability
+    /// The ability of the loadout entry `id`.
+    pub(crate) fn loadout_ability(&self, id: &str) -> Option<AbilityId> {
+        let offer = self.offer(Offers::Loadout, id)?;
+        Some(self.loadout[offer.index()].ability)
     }
 }

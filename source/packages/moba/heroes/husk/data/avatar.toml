@@ -1,8 +1,8 @@
 name = "Husk"
-role = "tank"
+tags = ["tank"]
 pools = ["health", "mana"]
 passive = "withering_touch"
-slots = ["grasping_wraps", "dread", "lash_out", "tomb_bind"]
+actions = { basic = ["grasping_wraps", "dread", "lash_out"], ultimate = ["tomb_bind"] }
 
 [combat.attack]
 range = "1.25"

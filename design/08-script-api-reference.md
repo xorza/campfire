@@ -8,26 +8,28 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | --- | --- | --- | --- | --- | --- |
 | `add_charge` | `(unit, id)` | every role | abilities | planned | gives `unit`'s ability `id` a charge |
 | `add_modifier` | `(unit, id) or (unit, id, duration_ms)` | every role | stats | runs | applies the modifier `id` of the script's package to `unit` from the acting unit, and returns its handle |
+| `add_player_modifier` | `(player, id)` | every role | stats | runs | gives `player` the modifier `id` of the script's package, which every living unit it owns that the modifier's `affects` selects holds from no source |
 | `add_resource` | `(player, name, amount)` | every role | core | runs | adds `amount` of the player resource `name` to `player` |
 | `add_xp` | `(avatar, amount)` | every role | stats | planned | gives `avatar` experience |
 | `area` | `(pos)` | action | areas | planned | the ability's area at `pos` |
 | `attack_hit` | `(target)` | action, modifier, AI | combat | runs | an extra attack of the acting unit on `target`: no crit, and no `on_attack` |
-| `avatar_available` | `(player, id)` | mode | core | runs | whether `player` may choose the avatar `id`: the mode depends on it, and no other player chose it |
+| `available` | `(player, choice, value)` | mode | core | runs | whether `player` may choose `value` of `choice`: no other player chose it in a unique choice |
 | `avatars` | `() or (team)` | every role | core | runs | the avatars, living or dead, of every team or of `team`, by stable id |
 | `chance` | `(p)` | every role | core | planned | true with probability `p`, from the secret stream |
 | `charge` | read | action | abilities | planned | how long a charged cast was held, from 0 to 1 |
-| `choose_avatar` | `(player, id)` | mode | core | runs | chooses the avatar `id` for `player` |
-| `choose_loadout` | `(player, ids)` | mode | core | runs | chooses `ids`, each a loadout entry the mode depends on, none twice, for `player` |
+| `choose` | `(player, choice, values)` | mode | core | runs | records `values`, as many as `choice` takes, each a value it offers, none twice and, in a unique choice, none another player chose, as what `player` chose of it; one value may be given alone |
+| `chosen` | `(player, choice)` | mode | core | runs | the values `player` chose of `choice`, in order; empty before the player chose |
 | `damage` | `(target, amount, kind)` | every role | combat | runs | deals `amount` of `kind`, one of the mode's `[combat] damage_kinds`, to `target` |
 | `dash` | `(unit, to, speed)` | every role | navigation | planned | moves `unit` to `to` at `speed` |
 | `end` | `(team) or (())` | mode | core | runs | ends the match, once: `team` wins, `()` is a draw |
 | `enemy_team` | `(team)` | every role | core | runs | the one team that is `team`'s enemy, in a mode of two playing teams |
 | `find` | `(of, pos, radius, filter)` | every role | core | runs | the living units within `radius` of `pos` that `filter` selects for `of`, seen or not, by stable id |
 | `find_visible` | `(of, pos, radius, filter)` | every role | vision | runs | as `find`, of the units `of`'s team sees |
+| `grant` | `(unit, kind, ids)` | mode | abilities | runs | puts the actions `ids`, loadout entries the mode depends on, in the slot kind `kind` of `unit`, after its slots of that kind, at the kind's first rank |
 | `heal` | `(unit, amount)` | every role | combat | runs | heals `unit`'s life pool, times one plus its `heal_scale` stat |
 | `knock_back` | `(unit, from, distance, ms)` | every role | stats | planned | pushes `unit` away from `from` |
 | `learn` | `(avatar, slot)` | mode | abilities | runs | the ability in `slot` a rank more, up to its last |
-| `map` | read | every role | navigation | runs | the map's paths and neutral spawns |
+| `map` | read | every role | core | runs | the map: its paths and its markers |
 | `nearest_visible` | `(of, radius, filter)` | every role | vision | runs | the nearest living unit within `radius` of `of` that `filter` selects and `of`'s team sees, `()` with none |
 | `order_attack` | `(unit, target)` | AI | orders | runs | `unit`, which has an attack, attacks `target`, a living enemy |
 | `order_follow_path` | `(unit)` | AI | orders | runs | `unit` drops its target and walks its path again |
@@ -46,10 +48,10 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `restore` | `(unit, pool, amount)` | every role | combat | runs | gives `unit` back `amount` of its `pool`, unscaled |
 | `reveal` | `(pos, radius, ms)` | every role | vision | planned | shows the source's team what is within `radius` of `pos` |
 | `set_relation` | `(a, b, relation)` | every role | core | runs | sets how teams `a` and `b` regard each other, `hostile`, `neutral` or `friendly`, their vision as it was |
-| `spawn_avatars` | `(tag)` | mode | core | runs | spawns each chosen avatar not yet spawned, in slot order, at its team's marker with `tag` |
 | `spawn_group` | `(team, path, from, types)` | mode | core | runs | spawns `types` of `team` in order at the end `from`, `start` or `end`, of `path`, walking it from there |
-| `spawn_unit` | `(type, team, pos)` | mode | core | runs | spawns a unit of `type` on `team` at `pos`, within the map's bounds |
+| `spawn_unit` | `(type, team, pos) or (type, team, pos, player)` | mode | core | runs | spawns a unit of `type` on `team` at `pos`, within the map's bounds, owned by `player` if given, when the call ends; the new unit, for `grant` |
 | `state` | read | mode | core | runs | the mode's state fields, by name, to read and write |
+| `team_of` | `(player)` | mode | core | runs | the name of `player`'s team |
 | `teams` | read | every role | core | runs | the playing teams' names, the teams with slots |
 | `teleport` | `(unit, pos)` | every role | navigation | planned | puts `unit` at `pos` |
 | `timer` | `(name, ms, repeat, data)` | mode | core | runs | calls `on_timer` `ms` from the call, rounded up to whole ticks, at least one |
@@ -213,6 +215,8 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `script` | runs |
 | `combat` | runs |
 | `navigation` | runs |
+| `slots` | runs |
+| `choices` | runs |
 | `inputs` | runs |
 | `state` | runs |
 | `params` | runs |
@@ -240,6 +244,23 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | Field | Status |
 | --- | --- |
 | `layers` | runs |
+
+### A slot kind, `[[slots]]`
+
+| Field | Status |
+| --- | --- |
+| `name` | runs |
+| `ranks` | runs |
+| `levels` | planned |
+
+### A choice, `[choices.<name>]`
+
+| Field | Status |
+| --- | --- |
+| `offers` | runs |
+| `unique` | runs |
+| `count` | runs |
+| `slot` | runs |
 
 ### The mode's `[combat] leech`
 
@@ -292,6 +313,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `stats` | runs |
 | `shield` | runs |
 | `aura` | runs |
+| `affects` | runs |
 | `params` | runs |
 | `state` | runs |
 | `tags` | runs |

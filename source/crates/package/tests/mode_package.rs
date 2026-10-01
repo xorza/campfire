@@ -8,7 +8,7 @@ use std::sync::{Arc, OnceLock};
 
 use campfire_capabilities::{AbilityField, MapProblem, ModeError};
 use campfire_package::{
-    ContentError, CtxMisuse, LoadError, LoadProblem, ModePackages, PackageDir, Place,
+    ChoiceProblem, ContentError, CtxMisuse, LoadError, LoadProblem, ModePackages, PackageDir, Place,
 };
 use campfire_sim::Capability;
 
@@ -142,7 +142,7 @@ fn more_layers_than_tags_a_match_holds_fail_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 92] = [
+const FLAWS: [Flaw; 102] = [
     flaw(
         MANIFEST,
         Edit::Replace(r#"engine = "0.1.0""#, r#"engine = "0.0.9""#),
@@ -812,6 +812,91 @@ const FLAWS: [Flaw; 92] = [
             )
         },
     },
+    // Slot kinds have names of their own; a unit type fills only kinds the mode declares, with
+    // each of its abilities once; a choice of loadout entries fills a kind, and only one; all
+    // such kinds have one count of ranks; scripts name only the mode's choices and kinds.
+    flaw(
+        HUSK,
+        Edit::Replace(
+            r#"ultimate = ["tomb_bind"]"#,
+            r#"ultimates = ["tomb_bind"]"#,
+        ),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::Choice(ChoiceProblem::UnknownSlotKind { at: Place::Avatar(name), kind }) if name == "Husk" && kind == "ultimates"),
+    ),
+    flaw(
+        HUSK,
+        Edit::Replace(
+            r#""grasping_wraps", "dread", "lash_out""#,
+            r#""grasping_wraps", "lash_out""#,
+        ),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::Unslotted(id) if id == "dread"),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace("name = \"ultimate\"", "name = \"basic\""),
+        MODE,
+        |problem| matches!(problem, LoadProblem::RepeatedName(name) if name.as_str() == "basic"),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace("count = 2\nslot = \"spell\"", "count = 2"),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Choice(ChoiceProblem::ChoiceSlot(name)) if name.as_str() == "spells"),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace(
+            "unique = true\n\n[choices.spells]",
+            "unique = true\nslot = \"spell\"\n\n[choices.spells]",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Choice(ChoiceProblem::ChoiceSlot(name)) if name.as_str() == "hero"),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace("slot = \"spell\"", "slot = \"spells\""),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Choice(ChoiceProblem::UnknownSlotKind { at: Place::Choice(name), kind }) if name.as_str() == "spells" && kind == "spells"),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace(
+            "slot = \"spell\"",
+            "slot = \"spell\"\n\n[choices.more]\noffers = \"loadout\"\nslot = \"basic\"",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Choice(ChoiceProblem::LoadoutRanks)),
+    ),
+    flaw(
+        "modes/3v3/scripts/mode.rhai",
+        Edit::Replace(
+            r#"ctx.chosen(player, "spells")"#,
+            r#"ctx.chosen(player, "spell")"#,
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Choice(ChoiceProblem::UnknownChoice { name, .. }) if name == "spell"),
+    ),
+    flaw(
+        "modes/3v3/scripts/mode.rhai",
+        Edit::Replace(
+            r#"ctx.grant(unit, "spell","#,
+            r#"ctx.grant(unit, "spells","#,
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Choice(ChoiceProblem::UnknownSlotKind { kind, .. }) if kind == "spells"),
+    ),
+    // A player modifier's filter names a tag the mode has.
+    flaw(
+        MODE_DATA,
+        Edit::Replace(
+            "[modifiers.warden_blessing]\n",
+            "[modifiers.warden_blessing]\naffects = \"allies:ward\"\n",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::UnknownFilter { filter, .. } if filter == "allies:ward"),
+    ),
     // A relation names two of the mode's teams, a pair once.
     flaw(
         MODE_DATA,

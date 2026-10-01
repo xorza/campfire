@@ -14,6 +14,7 @@ use super::*;
 use crate::abilities::ability_data::RangeField;
 use crate::abilities::ability_slots::AbilitySlot;
 use crate::abilities::error::AbilityField;
+use crate::abilities::slot_kind::SlotKind;
 use crate::capability_set::internals::TestMatch;
 use crate::combat::assist_window::AssistWindow;
 use crate::combat::attack_state::AttackState;
@@ -266,7 +267,7 @@ impl Match {
             at(Num::ZERO, Num::ZERO, Num::ZERO),
             (
                 Owner::new(PlayerSlot::new(0)),
-                AbilitySlots::new([(ability, rank)]),
+                AbilitySlots::new([(ability, SlotKind::new(0), rank)]),
             ),
         );
         self.give_pools(caster, 100, 20);
@@ -469,7 +470,7 @@ fn a_cast_passes_its_checks_or_does_nothing() {
             at(num(x), Num::ZERO, Num::ZERO),
             (
                 Owner::new(PlayerSlot::new(0)),
-                AbilitySlots::new([(strike, rank)]),
+                AbilitySlots::new([(strike, SlotKind::new(0), rank)]),
             ),
         );
         game.give_pools(unit, mana, rage);
@@ -681,7 +682,7 @@ fn a_cast_draws_from_its_casters_player_pool() {
             at(Num::ZERO, Num::ZERO, num(1)),
             (
                 Owner::new(PlayerSlot::new(1)),
-                AbilitySlots::new([(strike, 1)]),
+                AbilitySlots::new([(strike, SlotKind::new(0), 1)]),
             ),
         );
         game.give_pools(striker, 100, 20);
@@ -856,6 +857,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
         tags: Vec::new(),
         shield: Some(param("damage")),
         aura: None,
+        affects: None,
         params: BTreeMap::new(),
         state: BTreeMap::new(),
     };
@@ -919,6 +921,7 @@ fn a_cast_applies_a_modifier_from_its_caster_with_its_abilitys_params() {
         tags: Vec::new(),
         shield: Some(param("damage")),
         aura: None,
+        affects: None,
         params: BTreeMap::new(),
         state: BTreeMap::new(),
     };
@@ -1059,6 +1062,7 @@ fn scripted(interval_ms: Option<i64>, params: &[(&str, i64)]) -> ModifierData {
         tags: Vec::new(),
         shield: None,
         aura: None,
+        affects: None,
         params: params
             .iter()
             .map(|&(name, value)| {
@@ -1101,7 +1105,7 @@ impl Match {
             ability: None,
             rank: 1,
             passive: false,
-            aura: false,
+            held: false,
         };
         let add = ModifierEffect::Add {
             target: unit,
@@ -1276,6 +1280,7 @@ fn changing(
         tags: Vec::new(),
         shield: None,
         aura: None,
+        affects: None,
         params: params
             .iter()
             .map(|(name, param)| ((*name).to_owned(), param.clone()))

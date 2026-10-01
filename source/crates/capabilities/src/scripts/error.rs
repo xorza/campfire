@@ -69,8 +69,6 @@ pub enum ApiError {
     NotAnEnemy,
     /// A team the mode does not have.
     UnknownTeam,
-    /// A spawn of avatars at a marker tag some playing team has no marker of.
-    NoSpawnMarker,
     /// An end of a path other than `start` or `end`.
     UnknownPathEnd,
     /// A relation other than `hostile`, `neutral` or `friendly`.
@@ -83,22 +81,30 @@ pub enum ApiError {
     UnknownPath,
     /// A point outside the map's bounds.
     OutOfBounds,
-    /// A team whose units walk no path: only the first two teams walk each path, from their own
-    /// end.
     /// A team with no one enemy team: `enemy_team` needs a mode of two teams.
     NoEnemyTeam,
     /// A second end of a match.
     Ended,
     /// A player slot the session does not have.
     UnknownPlayer,
-    /// An avatar the mode does not depend on.
-    UnknownAvatar,
-    /// An avatar another player chose.
-    AvatarTaken,
-    /// A loadout entry the mode does not depend on.
-    UnknownLoadout,
-    /// A loadout entry chosen twice.
-    RepeatedLoadout,
+    /// A choice the mode does not declare.
+    UnknownChoice,
+    /// A count of values other than the choice's.
+    ChoiceCount,
+    /// A value the choice does not offer.
+    UnknownChoiceValue,
+    /// A value chosen twice in one choice.
+    RepeatedChoiceValue,
+    /// A value of a unique choice another player chose.
+    ChoiceTaken,
+    /// A slot kind the mode does not declare.
+    UnknownSlotKind,
+    /// An action that is no loadout entry the mode depends on.
+    UnknownAction,
+    /// An action whose ranks are not those of the slot kind it goes in.
+    SlotKindRanks,
+    /// More slots than a unit holds.
+    TooManySlots,
     /// A field of the mode's state it does not declare.
     UnknownState,
     /// A value not of its state field's type.
@@ -189,7 +195,6 @@ impl fmt::Display for ApiError {
             ApiError::OtherUnit => "an AI orders only the unit that thinks",
             ApiError::NotAnEnemy => "target is not a living enemy",
             ApiError::UnknownTeam => "team is not one of the mode's",
-            ApiError::NoSpawnMarker => "a playing team has no marker with the tag",
             ApiError::UnknownPathEnd => "a path's end is start or end",
             ApiError::UnknownRelation => "relation is not hostile, neutral or friendly",
             ApiError::SelfRelation => "a team's relation to itself is friendly",
@@ -199,10 +204,15 @@ impl fmt::Display for ApiError {
             ApiError::NoEnemyTeam => "team has no one enemy team",
             ApiError::Ended => "the match has ended",
             ApiError::UnknownPlayer => "player is not in the session",
-            ApiError::UnknownAvatar => "avatar is not one the mode depends on",
-            ApiError::AvatarTaken => "avatar is another player's choice",
-            ApiError::UnknownLoadout => "entry is not one the mode depends on",
-            ApiError::RepeatedLoadout => "entry is chosen twice",
+            ApiError::UnknownChoice => "choice is not one the mode declares",
+            ApiError::ChoiceCount => "count of values is not the choice's",
+            ApiError::UnknownChoiceValue => "value is not one the choice offers",
+            ApiError::RepeatedChoiceValue => "value is chosen twice",
+            ApiError::ChoiceTaken => "value is another player's choice",
+            ApiError::UnknownSlotKind => "slot kind is not one the mode declares",
+            ApiError::UnknownAction => "action is not a loadout entry the mode depends on",
+            ApiError::SlotKindRanks => "action's ranks are not its slot kind's",
+            ApiError::TooManySlots => "a unit holds at most 256 slots",
             ApiError::UnknownState => "state field is not declared",
             ApiError::WrongStateType => "value is not of the state field's type",
             ApiError::TimerData => "timer data is not a value state can hold",

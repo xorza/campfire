@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use std::num::NonZeroU32;
+use std::num::{NonZeroU8, NonZeroU32};
 use std::slice;
 
 use bevy_ecs::entity::Entity;
@@ -7,12 +7,14 @@ use bevy_ecs::query::With;
 use campfire_content::PackagePath;
 use campfire_math::{Num, Vec3};
 use campfire_script::{Budget, ScriptId};
-use campfire_sim::{Capability, IdAllocator, SimUpdate, StableId, TickInput};
+use campfire_sim::{Capability, SimUpdate, StableId, TickInput};
 
 use super::*;
 use crate::abilities::Abilities;
 use crate::abilities::ability_book::AbilityId;
 use crate::abilities::ability_data::{AbilityData, Targeting};
+use crate::abilities::slot_kind::SlotKind;
+use crate::abilities::slot_kinds::{SlotKindData, SlotKinds};
 use crate::capability_set::internals::TestMatch;
 use crate::combat::attack_stats::AttackStats;
 use crate::combat::combat_rules::CombatRules;
@@ -23,12 +25,12 @@ use crate::combat::damage_queue::DamageQueue;
 use crate::combat::dead::Dead;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;
-use crate::mode::avatar_index::AvatarIndex;
-use crate::mode::loadout_index::LoadoutIndex;
+use crate::mode::choice_data::{ChoiceData, Offers};
 use crate::mode::map_data::{GridData, MarkerData, PathData, PlacedUnitData};
 use crate::mode::match_end::MatchResult;
 use crate::mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
-use crate::mode::mode_setup::{AvatarSetup, LoadoutSetup, UnitTypeSetup};
+use crate::mode::mode_setup::{LoadoutSetup, SlotAction, UnitTypeSetup};
+use crate::mode::offer::Offer;
 use crate::mode::unit_kit::UnitKit;
 use crate::navigation::destination::Destination;
 use crate::navigation::move_step::MoveStep;
@@ -47,6 +49,7 @@ use crate::stats::modifier_book::ModifierId;
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifiers::Modifiers;
 use crate::stats::modifiers::{Application, Instance, StatShare};
+use crate::stats::player_modifiers::PlayerModifiers;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::stat::Stat;
@@ -55,7 +58,6 @@ use crate::stats::stat_rule::StatRule;
 use crate::stats::stats_data::StatsData;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::layer::Layer;
-use crate::units::owner::Owner;
 use crate::units::path_id::PathId;
 use crate::units::tag_set::TagSet;
 use crate::units::unit_tags::UnitTags;
@@ -64,6 +66,7 @@ use crate::units::unit_type_data::UnitTypeData;
 use crate::values::attitude::Attitude;
 use crate::values::bounds::Bounds;
 use crate::values::declared_name::DeclaredName;
+use crate::values::filter_data::FilterData;
 use crate::values::grid::Grid;
 use crate::values::metric::Metric;
 use crate::values::number::Number;
@@ -122,10 +125,9 @@ fn on_timer(ctx, name, data) {
 fn on_mode_input(ctx, player, name, value) {
     ctx.state.inputs += 1;
     if name == "hero" {
-        ctx.choose_avatar(player, value);
-        ctx.spawn_avatars("spawn");
+        pick(ctx, player, value);
     } else if name == "spells" {
-        ctx.choose_loadout(player, value);
+        ctx.choose(player, "spells", value);
     } else if name == "rich" {
         ctx.add_resource(player, value, 9223372036854775807);
     } else if name == "gold" {
@@ -149,6 +151,21 @@ fn on_mode_input(ctx, player, name, value) {
         ctx.state.owner = ctx.avatars()[0].owner;
         ctx.state.tower_path = ctx.units_tagged("tower")[0].path;
         ctx.state.kind = grunts[1].unit_type;
+    }
+}
+"#;
+
+/// Every test script's way to pick: player `player` chooses the hero `hero`, which spawns at the
+/// spawn marker of its team, with the spells the player chose.
+const PICK: &str = r#"
+fn pick(ctx, player, hero) {
+    ctx.choose(player, "hero", hero);
+    let team = ctx.team_of(player);
+    for marker in ctx.map.markers("spawn") {
+        if marker.team == team {
+            let unit = ctx.spawn_unit(hero, team, marker.pos, player);
+            ctx.grant(unit, "spell", ctx.chosen(player, "spells"));
+        }
     }
 }
 "#;
@@ -281,9 +298,52 @@ fn blessing() -> ModifierData {
         tags: Vec::new(),
         shield: None,
         aura: None,
+        affects: None,
         params: BTreeMap::new(),
         state: [("count".to_owned(), field(StateType::Int, None))].into(),
     }
+}
+
+/// An upgrade a player holds for its grunts, with no end.
+fn drill() -> ModifierData {
+    ModifierData {
+        duration_ms: None,
+        reapply: Reapply::Refresh,
+        max_stacks: None,
+        affects: FilterData::parse("allies:grunt"),
+        state: BTreeMap::new(),
+        ..blessing()
+    }
+}
+
+/// The test mode's slot kinds: `basic`, of 2 ranks, and `spell`, learned from the spawn.
+fn slot_kinds() -> SlotKinds {
+    let kind = |name, ranks| SlotKindData {
+        name: DeclaredName::new(name).unwrap(),
+        ranks: NonZeroU8::new(ranks),
+        levels: Vec::new(),
+    };
+    SlotKinds(vec![kind("basic", 2), kind("spell", 0)])
+}
+
+/// The test mode's choices: a unique hero, one spell, and `duo`, two avatars any player may
+/// share.
+fn choices() -> BTreeMap<DeclaredName, ChoiceData> {
+    [
+        ("hero", Offers::Avatars, true, 1, None),
+        ("spells", Offers::Loadout, false, 1, Some("spell")),
+        ("duo", Offers::Avatars, false, 2, None),
+    ]
+    .map(|(name, offers, unique, count, slot)| {
+        let choice = ChoiceData {
+            offers,
+            unique,
+            count: NonZeroU8::new(count).unwrap(),
+            slot: slot.map(|kind| DeclaredName::new(kind).unwrap()),
+        };
+        (DeclaredName::new(name).unwrap(), choice)
+    })
+    .into()
 }
 
 fn mode_files() -> ModeFiles {
@@ -302,6 +362,8 @@ fn mode_files() -> ModeFiles {
                     .map(|name| DeclaredName::new(name).unwrap())
                     .into(),
             },
+            slots: slot_kinds(),
+            choices: choices(),
             inputs: [
                 ("hero", InputType::String),
                 ("spells", InputType::StringList),
@@ -342,7 +404,11 @@ fn mode_files() -> ModeFiles {
             ]
             .map(|(name, param)| (name.to_owned(), param))
             .into(),
-            modifiers: [("blessing".to_owned(), blessing())].into(),
+            modifiers: [
+                ("blessing".to_owned(), blessing()),
+                ("drill".to_owned(), drill()),
+            ]
+            .into(),
             attack_kind: None,
             stats: STATS_3V3
                 .map(|name| (Stat::named(name).unwrap(), StatRule::default()))
@@ -385,11 +451,12 @@ fn setup(
     blessing: ModifierId,
 ) -> ModeSetup<'_> {
     let [grunt_type, tower_type, x, y] = types;
-    let hero = |id: &str, unit_type, abilities, passive| AvatarSetup {
-        passive,
-        id: id.to_owned(),
+    let unit = |unit_type, kit| UnitTypeSetup {
         unit_type,
-        abilities,
+        kit,
+        stats: StatsData::default(),
+        actions: Vec::new(),
+        passive: None,
     };
     ModeSetup {
         script,
@@ -398,35 +465,28 @@ fn setup(
         teams: &files.teams,
         players: 3,
         unit_types: vec![
+            unit(grunt_type, grunt()),
             UnitTypeSetup {
-                unit_type: grunt_type,
-                kit: grunt(),
-                stats: StatsData::default(),
+                actions: vec![SlotAction {
+                    kind: SlotKind::new(0),
+                    ability: strike,
+                }],
+                ..unit(x, grunt())
             },
             UnitTypeSetup {
-                unit_type: x,
-                kit: grunt(),
-                stats: StatsData::default(),
+                passive: Some(blessing),
+                ..unit(y, grunt())
             },
-            UnitTypeSetup {
-                unit_type: y,
-                kit: grunt(),
-                stats: StatsData::default(),
-            },
-            UnitTypeSetup {
-                unit_type: tower_type,
-                kit: UnitKit {
+            unit(
+                tower_type,
+                UnitKit {
                     step: None,
                     body: Body::new(num(1)).map(|body| body.on(Layer::new(1))),
                     ..grunt()
                 },
-                stats: StatsData::default(),
-            },
+            ),
         ],
-        avatars: vec![
-            hero("hero-x", x, vec![strike], None),
-            hero("hero-y", y, Vec::new(), Some(blessing)),
-        ],
+        avatars: vec!["hero-x".to_owned(), "hero-y".to_owned()],
         loadout: vec![spell],
         walkers: vec![Walker::of(grunt().body.as_ref())],
         max_move_speed: num(10),
@@ -511,7 +571,7 @@ impl Game {
         for (name, data) in &files.data.modifiers {
             Stats::load_modifier(&mut world, 0, name, data, None);
         }
-        let script = Units::compile(&mut world, script).unwrap();
+        let script = Units::compile(&mut world, &format!("{script}{PICK}")).unwrap();
         let blessing = Stats::modifier(&world, 0, "blessing").unwrap();
         let setup = setup(&files, script, types, spell, strike, blessing);
         Mode::install(&mut world, &mut schedule, &mut registry, setup).unwrap();
@@ -681,35 +741,34 @@ fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
         (1, input("phase", "")),
     ]);
     // The failed calls count no input and spawn nothing: three calls succeeded, player 0's two
-    // and player 2's choice of the other hero. The thrown call fails with no refusal of the API.
+    // and player 2's choice of the other hero. The thrown call fails with no refusal of the API,
+    // and the id it took for its grunt is free again.
     assert_eq!(game.field("inputs"), StateValue::Int(3));
     assert_eq!(game.field("phase"), StateValue::Text("start".to_owned()));
     assert_eq!(
         game.failures(),
         [
-            Some(ApiError::AvatarTaken),
-            Some(ApiError::RepeatedLoadout),
+            Some(ApiError::ChoiceTaken),
+            Some(ApiError::ChoiceCount),
             None,
             Some(ApiError::WrongStateType)
         ]
     );
-    let picks = game.world.resource::<Picks>().get().to_vec();
+    // Each player's row: duo's two values, hero's, spells', the choices by name. Player 0 chose
+    // hero X, offer 0, and blink, the one spell; player 2 hero Y, offer 1.
+    let offer = |index| Some(Offer::new(index));
+    let chosen = &game.world.resource::<Choices>().0;
+    let rows: Vec<_> = chosen.chunks(4).collect();
     assert_eq!(
-        picks,
+        rows,
         [
-            Pick {
-                avatar: Some(AvatarIndex::new(0)),
-                loadout: vec![LoadoutIndex::new(0)],
-                spawned: true,
-            },
-            Pick::default(),
-            Pick {
-                avatar: Some(AvatarIndex::new(1)),
-                loadout: Vec::new(),
-                spawned: true,
-            },
+            [None, None, offer(0), offer(0)],
+            [None; 4],
+            [None, None, offer(1), None],
         ]
     );
+    let next = game.world.resource_mut::<IdAllocator>().allocate();
+    assert_eq!(next.get(), 7);
     // The heroes, 5 and 6, at their teams' spawns under their players' control: player 0's
     // with its own ability unlearned, then its spell learned.
     let heroes: Vec<_> = game.units()[5..].to_vec();
@@ -730,12 +789,11 @@ fn a_mode_learns_a_hero_ability_up_to_its_last_rank_and_a_failed_call_learns_not
     let learner = r#"
 fn on_mode_input(ctx, player, name, value) {
     if name == "spells" {
-        ctx.choose_loadout(player, value);
+        ctx.choose(player, "spells", value);
         return;
     }
     if name == "hero" {
-        ctx.choose_avatar(player, value);
-        ctx.spawn_avatars("spawn");
+        pick(ctx, player, value);
         return;
     }
     let hero = ctx.avatars()[0];
@@ -782,8 +840,7 @@ fn a_mode_applies_a_modifier_writes_its_handle_and_sees_it_end() {
     let blesser = r#"
 fn on_mode_input(ctx, player, name, value) {
     if name == "hero" {
-        ctx.choose_avatar(player, value);
-        ctx.spawn_avatars("spawn");
+        pick(ctx, player, value);
         return;
     }
     let hero = ctx.avatars()[0];
@@ -1209,7 +1266,7 @@ impl Game {
             ability: None,
             rank: 1,
             passive: false,
-            aura: false,
+            held: false,
             aura_radius: None,
             stacks: 1,
             until: None,
@@ -1524,11 +1581,7 @@ fn on_match_start(ctx) {
 }
 
 fn on_mode_input(ctx, player, name, value) {
-    if name == "phase" {
-        ctx.spawn_group("a", "mid", "middle", ["grunt"]);
-    } else {
-        ctx.spawn_avatars("camp");
-    }
+    ctx.spawn_group("a", "mid", "middle", ["grunt"]);
 }
 "#;
     let mut files = mode_files();
@@ -1550,11 +1603,165 @@ fn on_mode_input(ctx, player, name, value) {
     let paths = game.world.resource::<Paths>();
     let last = walkers(&game).map(|unit| paths.waypoint(PathId::new(0), 2, unit.3.unwrap()));
     assert_eq!(last, [Some(up(10)), Some(up(-10)), Some(up(10))]);
-    // An end other than `start` and `end`, and a tag a playing team has no marker of, fail.
-    game.tick(&[(0, input("phase", "x")), (1, input("hero", "x"))]);
+    // An end other than `start` and `end` fails.
+    game.tick(&[(0, input("phase", "x"))]);
+    assert_eq!(game.failures(), [Some(ApiError::UnknownPathEnd)]);
+}
+
+#[test]
+fn choices_hold_each_players_values_and_grants_fill_a_slot_kind() {
+    let script = r#"
+fn on_mode_input(ctx, player, name, value) {
+    if name == "hero" {
+        pick(ctx, player, value);
+        return;
+    }
+    if value == "read" {
+        let duo = ctx.chosen(player, "duo");
+        ctx.state.kind = if duo.is_empty() { "none" } else { duo[0] + "," + duo[1] };
+        ctx.state.seen = if ctx.available(player, "hero", "hero-x") { 1 } else { 0 };
+        ctx.state.team = ctx.team_of(player);
+    } else if value == "duo" {
+        ctx.choose(player, "duo", ["hero-y", "hero-x"]);
+    } else if value == "swap" {
+        ctx.choose(player, "duo", ["hero-x", "hero-y"]);
+    } else if value == "short" {
+        ctx.choose(player, "duo", ["hero-y"]);
+    } else if value == "twice" {
+        ctx.choose(player, "duo", ["hero-x", "hero-x"]);
+    } else if value == "stranger" {
+        ctx.choose(player, "duo", ["hero-x", "hero-z"]);
+    } else if value == "nothing" {
+        ctx.choose(player, "nothing", "hero-x");
+    } else if value == "grant" {
+        ctx.grant(ctx.avatars()[0], "spell", ["blink"]);
+    } else if value == "grant_basic" {
+        ctx.grant(ctx.avatars()[0], "basic", ["blink"]);
+    } else if value == "grant_ultimate" {
+        ctx.grant(ctx.avatars()[0], "ultimate", ["blink"]);
+    } else if value == "grant_stranger" {
+        ctx.grant(ctx.avatars()[0], "spell", ["haste"]);
+    }
+}
+"#;
+    let mut game = Game::new(script, LIMITS);
+    let probe = |value| input("probe", value);
+    let read = |game: &Game| ["kind", "seen", "team"].map(|name| game.field(name));
+    let text = |text: &str| StateValue::Text(text.to_owned());
+    // Before any choice: no duo, hero X free to player 0, who is on team a.
+    game.tick(&[(0, probe("read"))]);
+    assert_eq!(read(&game), [text("none"), StateValue::Int(1), text("a")]);
+    // Player 0 takes hero X, and spawns it with no spells, as it chose none: player 2, of team
+    // b, may not take it, as the hero choice is unique.
+    game.tick(&[(0, input("hero", "hero-x")), (2, probe("read"))]);
+    assert_eq!(read(&game), [text("none"), StateValue::Int(0), text("b")]);
+    // Unit 1, after the map's tower.
+    let hero = game.entity(1);
+    let slots = |game: &Game| {
+        let slots = game.world.get::<AbilitySlots>(hero).unwrap();
+        let slots = slots
+            .iter()
+            .map(|slot| (slot.ability, slot.kind, slot.rank));
+        slots.collect::<Vec<_>>()
+    };
+    let [basic, spell] = [0, 1].map(SlotKind::new);
+    assert_eq!(slots(&game), [(game.strike, basic, 0)]);
+    // A choice not unique: players 1 and 2 both take both heroes, in their own order; then
+    // player 1 chooses again, which replaces its values. Too few values, one twice, one the
+    // choice does not offer and a choice the mode does not declare fail, and change nothing.
+    game.tick(&[
+        (1, probe("duo")),
+        (2, probe("duo")),
+        (1, probe("swap")),
+        (1, probe("short")),
+        (1, probe("twice")),
+        (1, probe("stranger")),
+        (1, probe("nothing")),
+        (1, probe("read")),
+    ]);
     let refused = [
-        Some(ApiError::UnknownPathEnd),
-        Some(ApiError::NoSpawnMarker),
+        ApiError::ChoiceCount,
+        ApiError::RepeatedChoiceValue,
+        ApiError::UnknownChoiceValue,
+        ApiError::UnknownChoice,
     ];
-    assert_eq!(game.failures(), refused);
+    assert_eq!(game.failures(), refused.map(Some));
+    assert_eq!(game.field("kind"), text("hero-x,hero-y"));
+    game.tick(&[(2, probe("read"))]);
+    assert_eq!(game.field("kind"), text("hero-y,hero-x"));
+    // A grant puts the spell after the hero's basic ability, learned as its kind has no ranks;
+    // a kind of other ranks, a kind the mode does not declare and an action that is no loadout
+    // entry fail.
+    game.tick(&[
+        (0, probe("grant")),
+        (0, probe("grant_basic")),
+        (0, probe("grant_ultimate")),
+        (0, probe("grant_stranger")),
+    ]);
+    let refused = [
+        ApiError::SlotKindRanks,
+        ApiError::UnknownSlotKind,
+        ApiError::UnknownAction,
+    ];
+    assert_eq!(game.failures(), refused.map(Some));
+    assert_eq!(
+        slots(&game),
+        [(game.strike, basic, 0), (game.blink, spell, 1)]
+    );
+}
+
+#[test]
+fn a_player_modifier_holds_on_each_unit_of_its_player_it_selects_and_on_one_spawned_after() {
+    let script = r#"
+fn on_mode_input(ctx, player, name, value) {
+    let at = ctx.map.markers("camp")[0].pos;
+    if value == "units" {
+        ctx.spawn_unit("grunt", "a", at, 1);
+        ctx.spawn_unit("tower", "a", at, 1);
+        ctx.spawn_unit("grunt", "a", at, 0);
+    } else if value == "drill" {
+        ctx.add_player_modifier(1, "drill");
+    } else if value == "another" {
+        ctx.spawn_unit("grunt", "a", at, 1);
+    } else if value == "stranger" {
+        ctx.add_player_modifier(1, "march");
+    } else if value == "nobody" {
+        ctx.add_player_modifier(9, "drill");
+    }
+}
+"#;
+    let mut game = Game::new(script, LIMITS);
+    let drill = Stats::modifier(&game.world, 0, "drill").unwrap();
+    // Units 1 to 3, after the map's tower: a grunt and a tower of player 1, and a grunt of
+    // player 0.
+    game.tick(&[(1, input("probe", "units"))]);
+    let drilled = |game: &Game| {
+        let mut held = Vec::new();
+        for (id, entity) in game.world.resource::<EntityIndex>().iter() {
+            let modifiers = game.world.get::<Modifiers>(entity).unwrap();
+            if let Some(instance) = modifiers.get(drill, None) {
+                assert!(instance.held && instance.until.is_none());
+                held.push(id.get());
+            }
+        }
+        held
+    };
+    assert!(drilled(&game).is_empty());
+    // From the tick player 1 holds the drill, its grunt holds it, from no source, with no end;
+    // its tower is no grunt, and player 0's grunt is not its.
+    game.tick(&[(1, input("probe", "drill"))]);
+    assert_eq!(drilled(&game), [1]);
+    // A grunt of player 1 spawned later holds it from its first Resolve.
+    game.tick(&[(1, input("probe", "another"))]);
+    assert_eq!(drilled(&game), [1, 4]);
+    let held = game.world.resource::<PlayerModifiers>();
+    assert_eq!(held.of(PlayerSlot::new(1)).collect::<Vec<_>>(), [drill]);
+    assert_eq!(held.of(PlayerSlot::new(0)).count(), 0);
+    // A modifier the package does not declare, and a player the session does not have, fail.
+    game.tick(&[
+        (1, input("probe", "stranger")),
+        (1, input("probe", "nobody")),
+    ]);
+    let refused = [ApiError::UnknownModifier, ApiError::UnknownPlayer];
+    assert_eq!(game.failures(), refused.map(Some));
 }

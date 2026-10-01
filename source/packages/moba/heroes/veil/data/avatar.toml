@@ -1,8 +1,8 @@
 name = "Veil"
-role = "assassin"
+tags = ["assassin"]
 pools = ["health", "energy"]
 passive = "dual_path"
-slots = ["dusk_mark", "smoke_ring", "whirling_blades", "night_step"]
+actions = { basic = ["dusk_mark", "smoke_ring", "whirling_blades"], ultimate = ["night_step"] }
 
 [combat.attack]
 range = "1.25"

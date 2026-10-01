@@ -1,12 +1,15 @@
-use campfire_script::rhai::ImmutableString;
-use campfire_sim::{Position, StableId, Ticks};
+use campfire_math::PlayerSlot;
+use campfire_sim::{StableId, Ticks};
+
+use crate::abilities::ability_book::AbilityId;
+use crate::abilities::slot_kind::SlotKind;
 
 use crate::mode::match_end::MatchResult;
+use crate::mode::mode_book::{GroupUnit, SpawnAt};
 use crate::navigation::path_walker::PathEnd;
 use crate::scripts::state_value::StateValue;
 use crate::units::path_id::PathId;
 use crate::units::team::Team;
-use crate::units::unit_type::UnitType;
 use crate::values::attitude::Attitude;
 
 /// A change to the match that a mode call queued.
@@ -18,19 +21,22 @@ pub(crate) enum ModeEffect {
         repeat: bool,
         data: Option<StateValue>,
     },
-    /// At the markers of the tag.
-    SpawnAvatars(ImmutableString),
     End(MatchResult),
+    /// Owned by the player, if the call names one.
     SpawnUnit {
-        unit_type: UnitType,
-        team: Team,
-        pos: Position,
+        at: SpawnAt,
+        owner: Option<PlayerSlot>,
     },
     SpawnGroup {
         team: Team,
         path: PathId,
         from: PathEnd,
-        types: Vec<UnitType>,
+        units: Vec<GroupUnit>,
+    },
+    Grant {
+        unit: StableId,
+        kind: SlotKind,
+        abilities: Vec<AbilityId>,
     },
     Respawn {
         unit: StableId,

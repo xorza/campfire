@@ -2,18 +2,17 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::iter;
 
 use campfire_capabilities::{
-    AbilityData, ApiOwner, CollisionData, DeclaredName, EngineStat, FilterData, Hook, MemberKind,
-    Mode, ModifierData, Navigation, Number, Param, PoolId, Pools, Scalar, ScriptApi, ScriptRole,
-    Stat, UnitTypeData,
+    AbilityData, AbilitySlots, ApiOwner, CollisionData, DeclaredName, EngineStat, FilterData, Hook,
+    MemberKind, Mode, ModifierData, Navigation, Number, Offers, Param, PoolId, Pools, Scalar,
+    ScriptApi, ScriptRole, Stat, UnitTypeData,
 };
 use campfire_content::PackagePath;
 use campfire_math::Num;
 use campfire_sim::Capability;
 
 use crate::RELEASE_VERSION;
-use crate::error::{CtxMisuse, LoadError, LoadProblem, Place};
-use crate::files::avatar_data::AvatarData;
-use crate::files::loadout_data::LoadoutData;
+use crate::error::{ChoiceProblem, CtxMisuse, LoadError, LoadProblem, Place};
+use crate::files::units_data::UnitTypeFile;
 use crate::mode_packages::{Content, Dependent, ModePackages};
 use crate::package::Package;
 use crate::script_facts::ScriptFacts;
@@ -154,26 +153,11 @@ impl<'a> LoadCheck<'a> {
             self.require(Capability::Combat, &Place::Combat)?;
             self.stats_declared(data.combat.stats(), &Place::Combat)?;
         }
+        self.slot_kinds()?;
+        self.choices()?;
         for (name, unit_type) in &packages.units.units {
             let at = Place::UnitType(name.clone());
-            let sections = [
-                (unit_type.stats.is_some(), Capability::Stats),
-                (unit_type.combat.is_some(), Capability::Combat),
-                (unit_type.orders.is_some(), Capability::Orders),
-                (unit_type.vision.is_some(), Capability::Vision),
-            ];
-            for (used, capability) in sections {
-                if used {
-                    self.require(capability, &at)?;
-                }
-            }
-            if let Some(stats) = &unit_type.stats {
-                self.stats_declared(stats.0.keys(), &at)?;
-            }
-            self.unit_pools(&unit_type.pools, unit_type.combat.is_some(), &at)?;
-            self.collision_layer(unit_type.collision.as_ref(), &at)?;
-            let attack = unit_type.combat.as_ref().and_then(|combat| combat.attack);
-            self.attack_projectile(attack.and_then(|attack| attack.projectile_speed), &at)?;
+            self.unit_type(unit_type, &at, &BTreeMap::new(), &data.modifiers)?;
         }
         if !packages.map.paths.is_empty() {
             self.require(Capability::Navigation, &Place::Paths)?;
@@ -232,40 +216,13 @@ impl<'a> LoadCheck<'a> {
         let (abilities, modifiers) = match &dependent.content {
             Content::Avatar(avatar) => {
                 let at = Place::Avatar(avatar.name.clone());
-                self.require(Capability::Combat, &at)?;
-                self.require(Capability::Stats, &at)?;
-                if avatar.vision.is_some() {
-                    self.require(Capability::Vision, &at)?;
-                }
-                self.stats_declared(avatar.stats.0.keys(), &at)?;
-                self.unit_pools(&avatar.pools, true, &at)?;
-                self.collision_layer(avatar.collision.as_ref(), &at)?;
-                let attack = avatar
-                    .combat
-                    .attack
-                    .and_then(|attack| attack.projectile_speed);
-                self.attack_projectile(attack, &at)?;
-                for (at, id) in avatar.slots.iter().enumerate() {
-                    if !avatar.abilities.contains_key(id) {
-                        return Err(LoadProblem::UnknownSlot(id.clone()));
-                    }
-                    if avatar.slots[..at].contains(id) {
-                        return Err(LoadProblem::RepeatedSlot(id.clone()));
-                    }
-                }
-                for (id, ability) in &avatar.abilities {
-                    let slot = avatar.slots.iter().position(|slot| slot == id);
-                    let slot = slot.ok_or_else(|| LoadProblem::Unslotted(id.clone()))?;
-                    self.ranked(id, ability, AvatarData::slot_ranks(slot))?;
-                }
-                if let Some(passive) = &avatar.passive {
-                    modifier_exists(&avatar.modifiers, passive, &at)?;
-                }
+                self.unit_type(&avatar.unit, &at, &avatar.abilities, &avatar.modifiers)?;
                 (&avatar.abilities, &avatar.modifiers)
             }
             Content::Loadout(loadout) => {
+                let ranks = self.packages.data.loadout_ranks();
                 for (id, ability) in &loadout.abilities {
-                    self.ranked(id, ability, LoadoutData::RANKS)?;
+                    self.ranked(id, ability, ranks)?;
                 }
                 (&loadout.abilities, &loadout.modifiers)
             }
@@ -322,6 +279,9 @@ impl<'a> LoadCheck<'a> {
             self.require(Capability::Stats, &at)?;
             let scaled = modifier.params.values().flat_map(Param::stats);
             self.stats_declared(modifier.stats.keys().chain(scaled), &at)?;
+            if let Some(affects) = &modifier.affects {
+                self.filter_data(affects, &at)?;
+            }
             if let Some(aura) = &modifier.aura {
                 modifier_exists(names.modifiers, &aura.modifier, &at)?;
                 self.filter_data(&aura.affects, &at)?;
@@ -485,6 +445,23 @@ impl<'a> LoadCheck<'a> {
                 tag: name.clone(),
             });
         }
+        let choice = |name: &String| data.choices.keys().any(|choice| choice.as_str() == name);
+        if let Some(name) = facts.choices.iter().find(|name| !choice(name)) {
+            return Err(LoadProblem::Choice(ChoiceProblem::UnknownChoice {
+                at,
+                name: name.clone(),
+            }));
+        }
+        if let Some(kind) = facts
+            .slot_kinds
+            .iter()
+            .find(|kind| data.slots.named(kind).is_none())
+        {
+            return Err(LoadProblem::Choice(ChoiceProblem::UnknownSlotKind {
+                at,
+                kind: kind.clone(),
+            }));
+        }
         let pool = |name: &String| data.pools.keys().any(|pool| pool.as_str() == name);
         if let Some(name) = facts.pools.iter().find(|name| !pool(name)) {
             return Err(LoadProblem::UnknownPool {
@@ -599,6 +576,107 @@ impl<'a> LoadCheck<'a> {
             .contains(Capability::Combat);
         if combat && data.combat.life.is_none() {
             return Err(LoadProblem::NoLifePool);
+        }
+        Ok(())
+    }
+
+    /// A unit type at `at`, of a package of `abilities` and `modifiers`: each capability its
+    /// sections use declared, its stats and pools the mode's, its layer one the mode declares,
+    /// its projectile fast enough; its actions in slot kinds the mode declares, each one of
+    /// `abilities` with the ranks of its kind, once, and every one of `abilities` among them;
+    /// and its passive one of `modifiers`.
+    fn unit_type(
+        &self,
+        unit_type: &UnitTypeFile,
+        at: &Place,
+        abilities: &BTreeMap<String, AbilityData>,
+        modifiers: &BTreeMap<String, ModifierData>,
+    ) -> Result<(), LoadProblem> {
+        let sections = [
+            (unit_type.stats.is_some(), Capability::Stats),
+            (unit_type.combat.is_some(), Capability::Combat),
+            (unit_type.orders.is_some(), Capability::Orders),
+            (unit_type.vision.is_some(), Capability::Vision),
+            (!unit_type.actions.is_empty(), Capability::Abilities),
+        ];
+        for (used, capability) in sections {
+            if used {
+                self.require(capability, at)?;
+            }
+        }
+        if let Some(stats) = &unit_type.stats {
+            self.stats_declared(stats.0.keys(), at)?;
+        }
+        self.unit_pools(&unit_type.pools, unit_type.combat.is_some(), at)?;
+        self.collision_layer(unit_type.collision.as_ref(), at)?;
+        let attack = unit_type.combat.as_ref().and_then(|combat| combat.attack);
+        self.attack_projectile(attack.and_then(|attack| attack.projectile_speed), at)?;
+        let kinds = &self.packages.data.slots;
+        let mut slotted = BTreeSet::new();
+        for (kind, ids) in &unit_type.actions {
+            let kind = kinds.named(kind.as_str()).ok_or_else(|| {
+                LoadProblem::Choice(ChoiceProblem::UnknownSlotKind {
+                    at: at.clone(),
+                    kind: kind.to_string(),
+                })
+            })?;
+            for id in ids {
+                let ability = abilities
+                    .get(id)
+                    .ok_or_else(|| LoadProblem::UnknownSlot(id.clone()))?;
+                if !slotted.insert(id.as_str()) {
+                    return Err(LoadProblem::RepeatedSlot(id.clone()));
+                }
+                self.ranked(id, ability, kinds.ranks(kind))?;
+            }
+        }
+        if let Some(id) = abilities.keys().find(|id| !slotted.contains(id.as_str())) {
+            return Err(LoadProblem::Unslotted(id.clone()));
+        }
+        if let Some(passive) = &unit_type.passive {
+            modifier_exists(modifiers, passive, at)?;
+        }
+        Ok(())
+    }
+
+    /// The mode's slot kinds: no more than a slot's index holds, and none named twice.
+    fn slot_kinds(&self) -> Result<(), LoadProblem> {
+        let kinds = &self.packages.data.slots.0;
+        if kinds.len() > AbilitySlots::LIMIT {
+            return Err(LoadProblem::Choice(ChoiceProblem::TooManySlotKinds));
+        }
+        let mut seen = BTreeSet::new();
+        match kinds.iter().find(|kind| !seen.insert(&kind.name)) {
+            Some(kind) => Err(LoadProblem::RepeatedName(kind.name.clone())),
+            None => Ok(()),
+        }
+    }
+
+    /// The mode's choices: a choice of loadout entries fills a slot kind the mode declares, and
+    /// a choice of avatars none; every choice of loadout entries fills a kind of the same ranks,
+    /// which the entries have.
+    fn choices(&self) -> Result<(), LoadProblem> {
+        let data = &self.packages.data;
+        let mut ranks = None;
+        for (name, choice) in &data.choices {
+            let fills = |kind: &DeclaredName| {
+                data.slots.named(kind.as_str()).ok_or_else(|| {
+                    LoadProblem::Choice(ChoiceProblem::UnknownSlotKind {
+                        at: Place::Choice(name.clone()),
+                        kind: kind.to_string(),
+                    })
+                })
+            };
+            match (choice.offers, &choice.slot) {
+                (Offers::Loadout, Some(kind)) => {
+                    let kind_ranks = data.slots.ranks(fills(kind)?);
+                    if *ranks.get_or_insert(kind_ranks) != kind_ranks {
+                        return Err(LoadProblem::Choice(ChoiceProblem::LoadoutRanks));
+                    }
+                }
+                (Offers::Avatars, None) => {}
+                _ => return Err(LoadProblem::Choice(ChoiceProblem::ChoiceSlot(name.clone()))),
+            }
         }
         Ok(())
     }

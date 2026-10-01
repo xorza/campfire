@@ -43,10 +43,11 @@ offers = "avatars"   # the avatar packages the mode depends on
 unique = true        # no two players choose the same
 [choices.spells]
 offers = "loadout"   # the entries of the mode's loadout
-count = 2
+count = 2            # the values a player chooses; 1 by default
+slot = "spell"       # the slot kind the entries fill, whose ranks they have
 ```
 
-`ctx.choose(player, choice, values)` records a player's choice, from a mode input as the mode reads it, and refuses a value the choice does not offer or, with `unique`, one another player chose; `ctx.chosen(player, choice)` and `ctx.available(player, choice, value)` read them. A unit spawns with `ctx.spawn_unit(type, team, pos, player)`, owned by `player`, and `ctx.grant(unit, slot_kind, ids)` puts actions in a slot kind of it. A MOBA's pick, a shooter's class and loadout, an RTS's faction and an MMO's character creation are choices.
+A choice of loadout entries names the slot kind they fill, and one of avatars names none; every choice of loadout entries fills a kind of the same ranks, as each entry loads with one count of ranks. `ctx.choose(player, choice, values)` records a player's choice, from a mode input as the mode reads it: exactly `count` values, one of which may be given alone, none twice, each one the choice offers and, with `unique`, none another player chose; a second choice replaces the first. `ctx.chosen(player, choice)` lists the values in order, empty before the player chose, and `ctx.available(player, choice, value)` tells whether no other player chose a value of a unique choice. The choices are state, and a call that fails changes none. `ctx.team_of(player)` names a player's team. A unit spawns with `ctx.spawn_unit(type, team, pos, player)`, owned by `player`; it spawns when the call ends, so the call gets a new unit, which it can give to `ctx.grant` but whose fields it cannot read. `ctx.grant(unit, slot_kind, ids)` puts loadout entries in a slot kind of a unit ([Slot kinds](actions.md#data)), each with the ranks of that kind. A MOBA's pick, a shooter's class and loadout, an RTS's faction and an MMO's character creation are choices.
 
 ## State and derived
 
@@ -54,7 +55,7 @@ count = 2
 
 ## Script API
 
-`ctx.order_move`, `ctx.order_attack`, `ctx.order_action`, `ctx.order_follow_path`, `ctx.order_reset`; `ctx.choose`, `ctx.chosen`, `ctx.available`, `ctx.spawn_unit`, `ctx.grant`; the hook `on_think(ctx, unit)`.
+`ctx.order_move`, `ctx.order_attack`, `ctx.order_action`, `ctx.order_follow_path`, `ctx.order_reset`; `ctx.choose`, `ctx.chosen`, `ctx.available`, `ctx.team_of`, `ctx.spawn_unit`, `ctx.grant`; the hook `on_think(ctx, unit)`.
 
 ## Network
 

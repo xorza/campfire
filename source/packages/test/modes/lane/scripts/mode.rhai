@@ -2,11 +2,12 @@
 // of tick 0 each hero learns its first ability and the first wave comes, then a wave every wave_ms.
 // A hero that dies respawns respawn_ms later. The team whose tower falls loses.
 fn on_match_start(ctx) {
-    ctx.choose_avatar(0, "hero-walker");
-    if ctx.players > 1 {
-        ctx.choose_avatar(1, "hero-runner");
+    let heroes = ["hero-walker", "hero-runner"];
+    for player in 0..ctx.players {
+        ctx.choose(player, "hero", heroes[player]);
+        let team = ctx.team_of(player);
+        ctx.spawn_unit(heroes[player], team, spawn_marker(ctx, team).pos, player);
     }
-    ctx.spawn_avatars("spawn");
     ctx.timer("first_wave", 1, false, ());
 }
 
@@ -34,9 +35,13 @@ fn on_unit_died(ctx, unit, killer, assisters) {
 
 // The end of the lane `team`'s creeps walk from, as its spawn marker names it.
 fn lane_end(ctx, team) {
+    spawn_marker(ctx, team).params.from
+}
+
+fn spawn_marker(ctx, team) {
     for marker in ctx.map.markers("spawn") {
         if marker.team == team {
-            return marker.params.from;
+            return marker;
         }
     }
     throw "a team with no spawn marker";

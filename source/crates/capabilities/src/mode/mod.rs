@@ -11,8 +11,8 @@ use campfire_math::PlayerSlot;
 use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString};
 use campfire_script::{ScriptError, ScriptHost};
 use campfire_sim::{
-    Command, EntityIndex, Position, SimSet, SimTick, StateRegistry, Tick, TickInputs, TickRate,
-    Ticks,
+    Command, EntityIndex, IdAllocator, Position, SimSet, SimTick, StateRegistry, Tick, TickInputs,
+    TickRate, Ticks,
 };
 
 use crate::abilities::ability_slots::AbilitySlots;
@@ -24,15 +24,15 @@ use crate::combat::damage_weigher::DamageWeigher;
 use crate::combat::deaths::Deaths;
 use crate::combat::respawn::Respawn;
 use crate::mode::calls::Calls;
+use crate::mode::choices::Choices;
 use crate::mode::error::ModeError;
 use crate::mode::map_data::{MapData, MapPoint};
 use crate::mode::match_end::MatchEnd;
-use crate::mode::mode_book::ModeBook;
+use crate::mode::mode_book::{ModeBook, SpawnAt};
 use crate::mode::mode_effect::ModeEffect;
 use crate::mode::mode_input::{InputValue, ModeInput};
 use crate::mode::mode_setup::ModeSetup;
 use crate::mode::mode_state::ModeState;
-use crate::mode::picks::{Pick, Picks};
 use crate::mode::player_resources::PlayerResources;
 use crate::mode::relation_data::RelationData;
 use crate::mode::team_manifest::TeamManifest;
@@ -51,6 +51,7 @@ use crate::stats::Stats;
 use crate::stats::pool_book::PoolBook;
 use crate::stats::stat_book::StatBook;
 use crate::units::body::Body;
+use crate::units::owner::Owner;
 use crate::units::relations::Relations;
 use crate::units::script_view::View;
 use crate::units::tag_book::TagBook;
@@ -58,11 +59,12 @@ use crate::units::team::Team;
 use crate::units::{Units, UnitsSet};
 use crate::vision::Vision;
 
-pub(crate) mod avatar_index;
 pub(crate) mod calls;
+pub(crate) mod choice_book;
+pub(crate) mod choice_data;
+pub(crate) mod choices;
 pub(crate) mod error;
 pub(crate) mod game_map;
-pub(crate) mod loadout_index;
 pub(crate) mod map_data;
 pub(crate) mod marker;
 pub(crate) mod match_end;
@@ -74,7 +76,8 @@ pub(crate) mod mode_input;
 pub(crate) mod mode_schema;
 pub(crate) mod mode_setup;
 pub(crate) mod mode_state;
-pub(crate) mod picks;
+pub(crate) mod new_unit;
+pub(crate) mod offer;
 pub(crate) mod player_resources;
 pub(crate) mod relation_data;
 pub(crate) mod roster;
@@ -160,7 +163,7 @@ impl Mode {
         world.insert_resource(metric);
         world.insert_resource(ModeState(book.schema.state_initial.clone()));
         let players = book.teams.players() as usize;
-        world.insert_resource(Picks(vec![Pick::default(); players]));
+        world.insert_resource(book.choices.empty(players));
         world.insert_resource(PlayerResources::default());
         world.insert_resource(Timers::default());
         let weighs = book.schema.hooks.contains(Hook::CalcDamage);
@@ -181,7 +184,7 @@ impl Mode {
         ));
         registry.register_resource::<MatchEnd>();
         registry.register_resource::<ModeState>();
-        registry.register_resource::<Picks>();
+        registry.register_resource::<Choices>();
         registry.register_resource::<PlayerResources>();
         registry.register_resource::<Timers>();
         Ok(())
@@ -246,22 +249,29 @@ impl Mode {
             } => world
                 .resource_mut::<Timers>()
                 .set(now, name, ticks, repeat, data),
-            ModeEffect::SpawnAvatars(tag) => book.spawn_avatars(world, frame, &tag),
             ModeEffect::End(result) => {
                 let tick = world.resource::<SimTick>().start();
                 world.insert_resource(MatchEnd::new(tick, result));
             }
-            ModeEffect::SpawnUnit {
-                unit_type,
-                team,
-                pos,
-            } => drop(book.spawn(world, unit_type, team, pos, ())),
+            ModeEffect::SpawnUnit { at, owner } => match owner {
+                Some(slot) => {
+                    book.spawn(world, at, Owner::new(slot), Some(frame));
+                }
+                None => {
+                    book.spawn(world, at, (), Some(frame));
+                }
+            },
             ModeEffect::SpawnGroup {
                 team,
                 path,
                 from,
-                types,
-            } => book.spawn_group(world, team, path, from, &types),
+                units,
+            } => book.spawn_group(world, team, path, from, &units, frame),
+            ModeEffect::Grant {
+                unit,
+                kind,
+                abilities,
+            } => book.grant(world, unit, kind, &abilities),
             ModeEffect::Respawn { unit, ticks } => {
                 let entity = world.resource::<EntityIndex>().get(unit);
                 let entity = entity.expect("a dead unit that stays is in the world");
@@ -387,8 +397,13 @@ impl Mode {
         let ctx = world.non_send::<Ctx>().clone();
         let book = ctx.mode().expect("a match with a mode");
         for placed in &book.placed {
-            let (unit_type, team, pos) = (placed.unit_type, placed.team, placed.pos);
-            let entity = book.spawn(world, unit_type, team, pos, ());
+            let at = SpawnAt {
+                id: world.resource_mut::<IdAllocator>().allocate(),
+                unit_type: placed.unit_type,
+                team: placed.team,
+                pos: placed.pos,
+            };
+            let entity = book.spawn(world, at, (), None);
             let mut entity = world.entity_mut(entity);
             if let Some(path) = placed.path {
                 entity.insert(OnPath::new(path));

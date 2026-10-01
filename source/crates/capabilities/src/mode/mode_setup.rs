@@ -2,6 +2,7 @@ use campfire_math::Num;
 use campfire_script::ScriptId;
 
 use crate::abilities::ability_book::AbilityId;
+use crate::abilities::slot_kind::SlotKind;
 use crate::mode::map_data::MapData;
 use crate::mode::mode_data::ModeData;
 use crate::mode::team_manifest::TeamManifest;
@@ -26,7 +27,9 @@ pub struct ModeSetup<'a> {
     pub players: u32,
     /// Every unit type it spawns, avatars' included.
     pub unit_types: Vec<UnitTypeSetup>,
-    pub avatars: Vec<AvatarSetup>,
+    /// The ids of the avatars the mode depends on, in order: each its package's name, and its
+    /// unit type's.
+    pub avatars: Vec<String>,
     pub loadout: Vec<LoadoutSetup>,
     /// Each kind of unit that walks, by its layer and its body's radius: the clearances of the
     /// map's pathing grid.
@@ -38,7 +41,7 @@ pub struct ModeSetup<'a> {
     pub stat_order: Vec<u16>,
 }
 
-/// A unit type the mode spawns, loaded, with its kit: a type of the mode's `units.toml`, or a
+/// A unit type the mode spawns, loaded, with its kit: a type of the mode's `units.toml`, or an
 /// avatar's.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnitTypeSetup {
@@ -46,17 +49,17 @@ pub struct UnitTypeSetup {
     pub kit: UnitKit,
     /// Its `stats` section, empty when it has none.
     pub stats: StatsData,
+    /// Its actions, kind after kind in the mode's order.
+    pub actions: Vec<SlotAction>,
+    /// The modifier it holds from its spawn on, from itself.
+    pub passive: Option<ModifierId>,
 }
 
-/// An avatar the mode depends on, loaded: its id is its package's name.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct AvatarSetup {
-    pub id: String,
-    pub unit_type: UnitType,
-    /// Its abilities, in the order of its slots.
-    pub abilities: Vec<AbilityId>,
-    /// The modifier it carries from its spawn on.
-    pub passive: Option<ModifierId>,
+/// An action in a slot kind of a unit type.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SlotAction {
+    pub kind: SlotKind,
+    pub ability: AbilityId,
 }
 
 /// An entry of the mode's loadout packages, loaded, by id.

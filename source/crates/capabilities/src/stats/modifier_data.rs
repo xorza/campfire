@@ -33,6 +33,8 @@ pub struct ModifierData {
     /// The modifier ends when the shield is spent.
     pub shield: Option<Number>,
     pub aura: Option<AuraData>,
+    /// The units of its player a player modifier holds on; absent, all of them.
+    pub affects: Option<FilterData>,
     #[serde(default)]
     pub params: BTreeMap<String, Param>,
     #[serde(default)]

@@ -13,11 +13,16 @@ pub struct UnitsData {
 }
 
 /// A unit type as its data file declares it: the core's tags and params, and a section for each
-/// capability the type uses, in one table, its pools beside its stats.
+/// capability the type uses, in one table, its pools beside its stats, its actions by slot kind
+/// and the modifier it holds from its spawn.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UnitTypeFile {
     pub core: UnitTypeData,
     pub pools: Vec<DeclaredName>,
+    /// Its package's actions in each slot kind, in order.
+    pub actions: BTreeMap<DeclaredName, Vec<String>>,
+    /// A modifier of its package it holds from its spawn, from itself.
+    pub passive: Option<String>,
     pub stats: Option<StatsData>,
     pub combat: Option<CombatData>,
     pub orders: Option<AiData>,
@@ -37,6 +42,9 @@ impl<'de> Deserialize<'de> for UnitTypeFile {
             params: BTreeMap<String, Scalar>,
             #[serde(default)]
             pools: Vec<DeclaredName>,
+            #[serde(default)]
+            actions: BTreeMap<DeclaredName, Vec<String>>,
+            passive: Option<String>,
             stats: Option<StatsData>,
             combat: Option<CombatData>,
             orders: Option<AiData>,
@@ -50,6 +58,8 @@ impl<'de> Deserialize<'de> for UnitTypeFile {
                 params: fields.params,
             },
             pools: fields.pools,
+            actions: fields.actions,
+            passive: fields.passive,
             stats: fields.stats,
             combat: fields.combat,
             orders: fields.orders,

@@ -3,7 +3,9 @@ use std::fmt;
 use std::io;
 use std::path::PathBuf;
 
-use campfire_capabilities::{AbilityField, DeclaredName, MapProblem, ModeError, Pools, Stat};
+use campfire_capabilities::{
+    AbilityField, AbilitySlots, DeclaredName, MapProblem, ModeError, Pools, Stat,
+};
 use campfire_content::PackagePath;
 use campfire_script::ScriptError;
 use campfire_sim::Capability;
@@ -218,6 +220,8 @@ pub enum LoadProblem {
     StatLoop(Vec<Stat>),
     /// The mode declares more pools than `Pools::LIMIT`.
     TooManyPools,
+    /// The mode's slot kinds or choices, or what names them.
+    Choice(ChoiceProblem),
     /// A unit type at `at` moves on a layer the mode does not declare.
     UnknownLayer {
         at: Place,
@@ -264,6 +268,8 @@ pub enum Place {
     Navigation,
     /// The mode's pool of that name.
     Pool(DeclaredName),
+    /// The mode's choice of that name.
+    Choice(DeclaredName),
 }
 
 /// A use of `ctx` that hides it from the load checks: every value of `ctx` in a script is a
@@ -326,6 +332,41 @@ impl fmt::Display for Place {
             Place::Combat => f.write_str("the mode's [combat]"),
             Place::Navigation => f.write_str("the mode's [navigation]"),
             Place::Pool(name) => write!(f, "pool {name}"),
+            Place::Choice(name) => write!(f, "choice {name}"),
+        }
+    }
+}
+
+/// What is wrong with the mode's slot kinds or choices, or with a name of one.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ChoiceProblem {
+    /// The mode declares more slot kinds than `AbilitySlots::LIMIT`.
+    TooManySlotKinds,
+    /// Data or a script at `at` names a slot kind the mode does not declare.
+    UnknownSlotKind { at: Place, kind: String },
+    /// A script at `at` names a choice the mode does not declare.
+    UnknownChoice { at: Place, name: String },
+    /// A choice of loadout entries names no slot kind, or a choice of avatars names one.
+    ChoiceSlot(DeclaredName),
+    /// Two choices of loadout entries fill slot kinds of other ranks.
+    LoadoutRanks,
+}
+
+impl fmt::Display for ChoiceProblem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ChoiceProblem::TooManySlotKinds => {
+                write!(f, "more than {} slot kinds", AbilitySlots::LIMIT)
+            }
+            ChoiceProblem::UnknownSlotKind { at, kind } => write!(f, "{at}: no slot kind {kind:?}"),
+            ChoiceProblem::UnknownChoice { at, name } => write!(f, "{at}: no choice {name:?}"),
+            ChoiceProblem::ChoiceSlot(choice) => write!(
+                f,
+                "choice {choice}: a choice of loadout entries fills a slot kind, one of avatars none"
+            ),
+            ChoiceProblem::LoadoutRanks => {
+                f.write_str("choices of loadout entries fill slot kinds of other ranks")
+            }
         }
     }
 }
@@ -413,6 +454,7 @@ impl fmt::Display for LoadProblem {
                     names.join(", ")
                 )
             }
+            LoadProblem::Choice(problem) => write!(f, "{problem}"),
             LoadProblem::TooManyPools => {
                 write!(f, "more than {} pools", Pools::LIMIT)
             }

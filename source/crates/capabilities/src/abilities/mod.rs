@@ -49,6 +49,8 @@ pub(crate) mod ability_book;
 pub(crate) mod ability_data;
 pub(crate) mod ability_slots;
 pub(crate) mod error;
+pub(crate) mod slot_kind;
+pub(crate) mod slot_kinds;
 
 /// The `abilities` capability: abilities in slots, cast through their checks, with the effect a
 /// script describes.
@@ -176,7 +178,7 @@ fn hold_passives(
                 ability: Some(slot.ability),
                 rank: slot.rank,
                 passive: true,
-                aura: false,
+                held: false,
             };
             let frame = ctx.frame();
             let source = sources.get(id);

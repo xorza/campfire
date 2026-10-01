@@ -3,15 +3,15 @@ use std::mem;
 
 use bevy_ecs::world::World;
 use campfire_math::Num;
-use campfire_sim::{StableId, Tick};
+use campfire_sim::{IdAllocator, StableId, Tick};
 
 use crate::abilities::ability_book::AbilityId;
 use crate::combat::Combat;
 use crate::mode::Mode;
+use crate::mode::choices::Choices;
 use crate::mode::match_end::MatchEnd;
 use crate::mode::mode_book::ModeBook;
 use crate::mode::mode_state::ModeState;
-use crate::mode::picks::Picks;
 use crate::mode::player_resources::PlayerResources;
 use crate::orders::Orders;
 use crate::scripts::effect::Effect;
@@ -56,9 +56,11 @@ pub(crate) struct Frame {
     /// Whether it is a pure hook's, whose `ctx` only reads.
     pub(crate) pure: bool,
     /// The mode's state and players' choices as a mode call sees them, which it writes and reads
-    /// back; whether the match ended, before the call or in it.
+    /// back; the stable ids as a mode call takes them for the units it spawns; whether the match
+    /// ended, before the call or in it.
     pub(crate) state: Vec<StateValue>,
-    pub(crate) picks: Picks,
+    pub(crate) choices: Choices,
+    pub(crate) ids: IdAllocator,
     pub(crate) ended: bool,
     /// The players' resources as the call sees them, when the match has them, and whether the
     /// call changed them.
@@ -157,8 +159,8 @@ impl Frame {
             .expect("a call with no params overflows none");
     }
 
-    /// Starts a mode call, with the mode's state, choices and resources as `world` holds them,
-    /// for the call to read and write; `pure` for a hook whose `ctx` only reads.
+    /// Starts a mode call, with the mode's state, choices, resources and stable ids as `world`
+    /// holds them, for the call to read and write; `pure` for a hook whose `ctx` only reads.
     pub(crate) fn begin_mode(&mut self, world: &World, pure: bool) {
         self.read_resources(world);
         self.begin(ScriptRole::Mode, None, None, 1, None, 0, None)
@@ -166,7 +168,8 @@ impl Frame {
         self.state.clear();
         self.state
             .extend_from_slice(&world.resource::<ModeState>().0);
-        self.picks.clone_from(world.resource::<Picks>());
+        self.choices.clone_from(world.resource::<Choices>());
+        self.ids.clone_from(world.resource::<IdAllocator>());
         self.ended = world.contains_resource::<MatchEnd>();
         self.pure = pure;
     }
@@ -248,7 +251,7 @@ impl Frame {
                         ability,
                         rank,
                         passive: false,
-                        aura: false,
+                        held: false,
                     };
                     Stats::apply_effect(world, effect, applier, Some(self));
                 }
