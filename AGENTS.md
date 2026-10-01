@@ -21,6 +21,17 @@ An open-source (MIT/Apache-2.0) Rust engine for multiplayer games, plus a refere
 
 When code and design disagree, fix one of them, and state which one.
 
+## Workflow
+
+Work goes system by system, in four steps, each agreed before the next starts:
+
+1. **Decide** what to work on: one system, or one section of `PLAN.md`.
+2. **Investigate** the code it touches, and how established engines and games solve the problem and why.
+3. **Propose** a design, written into `design/`, with an implementation plan in `PLAN.md`, for review.
+4. **Implement** the plan as reviewed, step by step, each step ending with the checks passing.
+
+No small, unplanned changes to other systems along the way. A problem found outside the system goes to the issue log, and is planned with its own system later.
+
 ## Code
 
 - **No data in strings.** A value from a fixed set is an enum, a value with rules is a checked newtype, and an error is an enum of cases. Text from data files, scripts, JSON or the network becomes these types where it enters. Strings stay only for human text and for names the outside format defines.
