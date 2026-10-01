@@ -22,4 +22,4 @@ Smoke, closed doors and walls built during a match block sight while they stand,
 
 ## Stealth
 
-A stealthed unit is visible only to its team and to enemies with true sight over it (vision wards, towers, consumables). Wards are units with a sight range and no collision.
+A `stealthed` unit is visible only to its team and to an enemy team one of whose units is in the `true_sight` state and sees the unit's cell within its sight range, as Dota 2's true sight reveals invisible units ([Stats](stats.md#states)). True sight comes from a unit type, as a tower's, or from a modifier, as a ward's or a consumable's. Wards are units with a sight range and no collision.

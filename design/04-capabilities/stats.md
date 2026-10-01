@@ -1,10 +1,10 @@
 # Stats and modifiers
 
-How a unit's numbers and states come from its type, its level and the modifiers it carries. The model follows Unreal's Gameplay Ability System where the field agrees: a base value from the type and level, a current value its modifiers change, stacks counted by source. The rules for movement and health follow League of Legends, where they are exact.
+How a unit's numbers and states come from its type, its level and the modifiers it carries. How a unit gains levels is [Progression](progression.md)'s. The model follows Unreal's Gameplay Ability System where the field agrees: a base value from the type and level, a current value its modifiers change, stacks counted by source. The rules for movement and health follow League of Legends, where they are exact.
 
 ## State and derived
 
-- **State**, hashed, saved, restored and replicated: each unit's modifiers, its level and experience, and the current amount of each pool (health, resource).
+- **State**, hashed, saved, restored and replicated: each unit's modifiers, its level, and the current amount of each pool (health, resource).
 - **Derived**, never state: each unit's stats and states. They are computed from the state again whenever its modifiers, level or type change, before any system reads them, so the server, a client after a rollback and a replay see the same numbers. The components that hold a stat's effect, a unit's step a tick, its attack's period and damage and its pools' maxima, take their numbers from the derived stats each time they change; those components exist from the unit's spawn, as state, so their numbers enter the hash as well.
 
 ## Stats
@@ -59,25 +59,26 @@ Intervals, shields and the events modifier scripts hear are part of [Combat](com
 
 ## States
 
-A unit's states are the union of its modifiers' `states`, whatever their stacks. Each takes effect where the system that reads it runs:
+A state is a flag a modifier puts its carrier in, as Dota 2's modifier states and the Gameplay Ability System's tags are. A unit's states are derived, never state: the union of its modifiers' `states`, whatever their stacks, and of its unit type's, computed in the same refresh as its stats, so every system reads one set. An instance keeps the states of its modifier, as it keeps its stats, so a snapshot and a client hold them with it.
 
 | State | Effect |
 | --- | --- |
-| `stunned`, `airborne` | No moving, attacking or casting; an attack in its windup and a channel stop |
+| `stunned`, `airborne` | No moving, attacking or casting; an attack in its windup, a cast in its cast time and a channel stop |
 | `rooted` | No moving |
-| `silenced` | No casting; a channel stops |
+| `silenced` | No casting; a cast in its cast time and a channel stop |
 | `disarmed` | No attacking; an attack in its windup stops |
 | `slow_immune` | The slow stat counts as 0 |
-| `stealthed` | Enemies see the unit only from a unit with true sight that sees its cell ([Vision](vision.md#stealth)) |
+| `stealthed` | Enemies see the unit only through a unit with `true_sight` that sees its cell ([Vision](vision.md#stealth)) |
+| `true_sight` | The unit's sight shows stealthed enemies; a unit type's `true_sight` gives it always |
 | `untargetable` | `find`, `find_visible` and `nearest_visible` skip it; an attack order and a cast aimed at it are refused; a chaser drops it; a projectile homing on it is lost; areas still reach it |
+| `invulnerable` | As `untargetable`, and it takes no damage, from areas either: Dota 2 and League of Legends protect a structure so |
 
-An order given while a state stops its action is kept, and runs when the state ends, as League of Legends buffers input. `ctx.stun(unit, ms)`, `ctx.slow(unit, fraction, ms)` and `ctx.knock_up(unit, ms)` apply engine modifiers, `stun`, `slow` and `knock_up`, from the calling unit: two stuns from one source refresh, and from two sources the longer holds.
-
-## Levels and experience
-
-- The mode's `levels` lists the experience each level needs, from level 2: `levels = [280, 660, ...]`, ascending. `ctx.add_xp(unit, amount)` adds experience; each level reached raises the unit's level, its stats and, by the pool rule, its pools.
-- Each level reached gives an avatar a point to learn a rank. A player learns by an order, `learn = slot`, which takes a point and a rank the slot's level rule allows; the mode's `rank_levels` sets it by slot kind, the reference MOBA's `basic = [1, 3, 5, 7, 9]` and `ultimate = [6, 11, 16]`. `ctx.learn` still grants a rank with no point and no rule.
+- **One question each.** The set answers four questions, and each system asks only its own: may the unit move (the Move stage), attack (combat's attack and strike), cast (the casts' start and resolve), and is it a target (combat's `Targets`, the script view's queries, the damage pass). No system reads modifiers for a state.
+- **Stopped, not dropped.** A state that stops an action keeps the order behind it: the destination and route, the attack target, the ordered cast. The action runs again when the state ends, as League of Legends buffers input. A windup or a cast time it interrupts starts again from nothing; an interrupted cast spends no cost and no cooldown, as Dota 2's cast point does. A cast its checks refuse for another reason is dropped.
+- **Engine modifiers.** `ctx.stun(unit, ms)`, `ctx.slow(unit, fraction, ms)` and `ctx.knock_up(unit, ms)` apply the engine's own modifiers, `stun`, `slow` and `knock_up`, from the acting unit, for `ms`. The engine loads them into the book under a package of its own, after every package, so they refresh, stack, end, replicate and hash as any other: two stuns from one source refresh, and from two the longer holds. `slow` adds `fraction` to the slow stat, which the mode must declare for a script that calls it; `knock_up` makes its unit `airborne` and does not move it, as the sim has no height.
 
 ## What a client predicts
 
 A client keeps its own units' modifiers as the server sends them and runs their time, so a modifier ends on the client in the tick it ends on the server; it derives their stats and states as the server does, so its predicted movement and attacks obey them. It creates no modifier: those come from scripts, which only the server runs, so a stun the client learns late costs a correction, as the Gameplay Ability System also predicts no effect it did not start.
+
+To derive them, a client builds the mode's stat book from the packages it holds, with the unit types numbered as the server numbers them, by one order both read from the packages; the server sends each unit's type once and its level as it changes. A unit's step, its attack's period and damage, and its pools' maxima are then derived on both sides, and the server no longer sends the step.
