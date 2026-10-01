@@ -28,6 +28,15 @@ What each group sees is state: it is hashed with the rest, and the queries of th
 
 A unit with a `hidden` tag is seen only by its own group and by a group one of whose units has a `detects` tag and sees the unit's cell within its sight range, as Dota 2's true sight reveals invisible units and StarCraft II's detectors reveal cloaked ones. Detection comes from a unit type's tag, as a tower's, or from a modifier, as a ward's or a consumable's. Wards are units with a sight range and no collision.
 
+### Senses
+
+What one unit perceives, for AI that sneaks and is sneaked on, as Skyrim's guards notice a thief. The engine gives facts, each exact and the same everywhere; the mode decides what they mean, in its scripts or a scripted system:
+
+- **Sight:** `unit.sees(other)`, whether `other` is within the unit's sight range, within its view cone (the type's `vision = { cone_deg }`), and not behind level geometry or a blocker on the line between them; and the light at `other`'s place, from the map's light and the game clock.
+- **Hearing:** an action's or an effect's `noise`, heard by the units within its radius in the tick it is made: `on_heard(ctx, unit, source, pos)` runs in the unit's AI, in the Think stage of the next tick.
+
+A detection meter, a sneak skill against a perception stat, and a guard's search are the mode's rules on those facts.
+
 ### Dynamic blockers
 
 Smoke, closed doors and walls built during a match block sight while they stand, in every backend.

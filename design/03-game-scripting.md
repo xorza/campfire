@@ -21,7 +21,8 @@ A game mode is one content package.
 
 ```
 my-mode/
-  manifest.toml       id, version, engine release, capabilities used, dependencies (by fingerprint),
+  manifest.toml       id, version, kind (mode, avatar, loadout, campaign), engine release, capabilities used,
+                      dependencies (by fingerprint),
                       teams and slots, tick-rate range, collision, pathfinding and visibility backends,
                       move speed cap, script pools
   map/                map data: geometry or grid, lanes, spawn points, structures
@@ -31,7 +32,7 @@ my-mode/
   assets/             models (.glb), textures (PNG, KTX2 + zstd), sounds (Ogg Vorbis), icons (PNG)
 ```
 
-Content can come from other packages, referenced by fingerprint.
+Content can come from other packages, referenced by fingerprint. A package may also **override** a record of a package it depends on, a unit type, an action, a modifier, a table or a quest, whole: the mode's load order, its `load_order`, decides, and the last loaded wins, as Bethesda's plugins do. The load lists every record more than one package overrides, so a player sees the conflicts, and a small patch package that loads last settles them.
 
 **Assets are untrusted.** Clients download them from any server, so only the formats above load, each through a pure-Rust decoder (`gltf`, `png`, `ktx2` + `ruzstd`, `symphonia`); no C or C++ decoder ever reads package data. Loads enforce limits on file size, image dimensions, decompressed size, and vertex and bone counts.
 
@@ -50,6 +51,7 @@ One mode script (`scripts/mode.rhai`) owns the rules. The engine knows only wait
 - **Primitives:** timers, freeze and unfreeze, respawn and reset, team changes and relations, players' choices, named per-player resources (e.g. `gold`), scoreboard data.
 - **Timers** are set in milliseconds and rounded up to whole ticks (at least one), so a timer never fires early and modes behave the same at any tick rate to within one tick.
 - **End:** `ctx.end(team)` names the winning team, and `ctx.end(())` a draw; callable once. The result is sim state, so the final state hash proves it, and from the next stage on no stage runs. Optional: a persistent world never calls it.
+- **Saves and carry:** `ctx.save()` asks for a save at the end of the tick; `ctx.carry` reads what the session loaded and writes what it hands on, in the mode's declared `[carry]` schema ([Saves](02-engine-core.md#saves)).
 
 ## Capabilities
 

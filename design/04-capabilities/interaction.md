@@ -14,7 +14,7 @@ A unit type's `use` section: range, who may use it (a filter), whether the use i
 - **Shared progress** is the object's script state, which each user's channel adds to.
 - **Doors** change level geometry, pathing and vision blockers when they open or close.
 - **Enter and exit:** a unit enters a vehicle, a transport or a building, and rides or garrisons inside; it acts from inside when the host allows; exit puts it beside the host.
-- **Dialogue** is a script with choices sent to one player; trading uses `items` shops.
+- **Dialogue** is a use of a unit with topics ([Quests](quests.md)); trading uses `items` shops; a lock to pick or a pocket to pick is a held use whose outcome the mode's script decides from the player's inputs.
 
 ## State and derived
 

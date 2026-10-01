@@ -29,15 +29,16 @@ Every capability says its mechanism in the same few terms, so that capabilities 
 | `projectiles`, `areas` | Deliveries: projectiles that fly a line, home or fall; areas that hold modifiers on the units inside | [Actions](actions.md#deliveries) |
 | `orders` | Units that take orders: move, attack, an action, stop, hold, queues, groups and formations; AI `on_think` | [Control](control.md#orders) |
 | `character` | Units a player drives directly: per-tick input frames, capsule controller | [Control](control.md#character) |
-| `hitscan` | The ray delivery: rays against hitboxes, lag compensation, spread | [Hitscan](hitscan.md) |
+| `hitboxes` | The ray and sweep deliveries: shots and swings against hitboxes, lag compensation, spread | [Hitboxes](hitboxes.md) |
 | `navigation` | Layers, routes on a grid or a navmesh, local steering, waypoint paths | [Navigation](navigation.md) |
 | `vision` | What each group of friendly teams sees: grid fog of war, hidden units and detection, 3D occlusion, relevance | [Vision](vision.md) |
-| `items` | Item units, inventories, equipment, shops; an item grants modifiers, actions and pools | [Items](items.md) |
-| `progression` | Experience, levels, points to learn ranks, talents, veterancy | [Progression](progression.md) |
+| `items` | Item units, inventories, equipment, shops, crafting; an item grants modifiers, actions and pools | [Items](items.md) |
+| `progression` | Experience on tracks, levels, points to learn ranks, perks, veterancy | [Progression](progression.md) |
+| `quests` | Quests with stages and objectives, dialogue with topics and choices, campaign objectives | [Quests](quests.md) |
 | `interaction` | The use action on objects: doors, containers, plant and defuse, capture points, dialogue, entering vehicles and buildings | [Interaction](interaction.md) |
 | `production` | The train, build and gather actions, construction on the grid, tech, player modifiers | [Production](production.md) |
 | `physics` | Vehicles, rigid bodies, heightmap terrain | [Physics](physics.md) |
-| `persistence` | Saved characters and world state, dormancy, quests | [Persistence](persistence.md) |
+| `world` | Large worlds: regions that sleep, parallel regions, streaming | [World](world.md) |
 
 Which capabilities make which genre: [Genres](genres.md).
 
@@ -51,6 +52,8 @@ The core has no genre words and no genre lists. A mode declares, in its data, ev
 - **Slot kinds:** where a unit's actions sit: a MOBA's `basic` and `ultimate`, a shooter's `primary` and `secondary`, an RTS's command card.
 - **Teams** and their **relations**, and the **choices** players make before they spawn.
 - **Player resources:** gold, minerals, supply.
+- **Tracks** of experience: a MOBA's one level, Skyrim's skills.
+- **Random tables:** a battle royale's loot, Diablo's drops, Skyrim's leveled lists.
 
 Neutral core terms: a player's **avatar** (a unit type players choose: a hero, a soldier, a class), a **loadout** (actions a player chooses before spawning), a **spawn group** (a wave, a squad), a **path** (a lane, a patrol route), a **marker** (a named place on the map). A package names them in its own words.
 
@@ -72,6 +75,16 @@ A pair not named is `hostile`, and a team is `friendly` to itself. `ctx.set_rela
 - **Layers.** The mode declares the layers bodies move on, such as `ground` and `air`; the first is the default. Collision and pathing work within a layer: an RTS's air units pass over ground units and walls. A shooter has one layer.
 - **Bounds.** A closed box no unit is ever outside: move orders clamp to it, the core clamps every unit that moved after Move and Collide, and a spawn outside it fails.
 - **Map.** A map holds its bounds, its terrain, grid or level geometry, its paths, the units placed at its start, and **markers**: named points and regions, each with tags, an optional team and params, which scripts read by tag (`ctx.map.markers("spawn")`). A MOBA's team spawns and camps, a shooter's bomb sites and buy zones, an RTS's start locations and resource fields, a battle royale's loot spots and an MMO's zones are markers.
+- **Region events.** A region marker with `events = true` tells the mode when a unit enters or leaves it: `on_enter(ctx, marker, unit)` and `on_leave(ctx, marker, unit)`, in the Mode stage, by marker name, then by the unit's stable id. A campaign's triggers, an ambush, a capture zone and a cutscene's start are region events. Only the units that moved test against the event markers, through the same buckets collision uses.
+- **Generated maps.** A map may be built, wholly or in part, by the mode's `on_generate(ctx, region)` hook: at the session's start for the whole map, and again when a script asks for a region with `ctx.generate(region)`, as Diablo builds a dungeon level when a player first goes down to it. The hook writes only within its region: blocked cells, markers, paths and placed units; it draws from the secret stream, so the seed decides the map; and the map checks run on what it built, as on a map file. A generated map is state, so a save holds it.
+
+## Game clock
+
+Game time is sim state: the hour, the day and the date of the mode's calendar, which advance with the ticks at the mode's `time_scale` (Skyrim's is 20 game seconds a real second) from its `start_time`. `ctx.time` reads it. `ctx.advance_time(ms)` moves it on without running ticks, for waiting, sleeping and fast travel; the durations of modifiers, timers and cooldowns count ticks and do not move, while what a script schedules by game time, an NPC's day or a shop's restock, sees the new time. A world's regions place their sleeping units by it when they wake ([World](world.md)). The clock is not the wall clock: the same log gives the same time everywhere.
+
+## Random tables
+
+A package's `[tables.<id>]` lists weighted entries, each a unit type, an item type or another table, with conditions such as a level range: Skyrim's leveled lists, Diablo's drops and a battle royale's loot. A `spawn` or `loot` effect, and `on_generate`, roll a table on the secret stream, with the level they name, so the seed decides every roll.
 
 ## Layers of capabilities
 
@@ -79,7 +92,7 @@ The dependencies form a fixed graph with no cycle:
 
 - **Base:** `sim` (positions, stable ids, randomness, the state hash, the tick rate) and collision; then the core under every script: unit types, tags, relations, the map and its markers, the action pipeline, the effect queue, the one script host and its tick budget, and the units as scripts see them. A capability adds its fields to that view, so the core names no capability.
 - **`combat` and `stats`:** pools, damage, deaths, stats, modifiers, tag effects.
-- **Everything else** builds on those: action kinds and deliveries (`abilities`, `projectiles`, `areas`, `hitscan`, `interaction`, `production`), who starts actions (`orders`, `character`), and the rest.
+- **Everything else** builds on those: action kinds and deliveries (`abilities`, `projectiles`, `areas`, `hitboxes`, `interaction`, `production`, `items`), who starts actions (`orders`, `character`), and the rest.
 
 The capabilities are modules of one crate; a capability with a heavy dependency, such as physics, gets its own crate. Only the declared capabilities' systems run, so an unused one costs nothing.
 
@@ -96,7 +109,7 @@ The engine fixes the stages of a tick, and each capability puts its systems into
 | 5 | Collide | Core: the mode's collision backend resolves overlaps within each layer |
 | 6 | Hit | Actions whose time ended deliver: strikes, rays, projectiles, areas; actions resolve with their effects; modifier intervals |
 | 7 | Resolve | The damage and heal pass, deaths, auras |
-| 8 | Mode | Due timers, then the capabilities' events in the order they happened; spawns; `ctx.end` |
+| 8 | Mode | Due timers, then the capabilities' events in the order they happened, region events among them; spawns; generated regions; `ctx.end` and `ctx.save` |
 | 9 | Vision | `vision` marks what each group of friendly teams sees |
 
 Before the first stage and after each, every unit whose level, modifiers or type changed has its stats and tags derived again ([Stats](stats.md#state-and-derived)).

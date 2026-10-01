@@ -20,7 +20,7 @@ Each layer uses the layers below it.
 | `verifier` | CLI: replays a session log segment, checks the result |
 | `det-ci` | Headless matches of the reference MOBA with its bots on every OS, comparing state hashes |
 | `lan-check` | On request: the real server and two `client --bot` processes over WebTransport on `127.0.0.1`, and a bot with the wrong certificate that must fail and say why, checked from their JSON logs and by the verifier |
-| `server` | Headless app: host config, lifecycle, saves, validation, admin |
+| `server` | Host config, lifecycle, saves, validation, admin; a headless app, and a library the client runs on a thread for singleplayer |
 | `net` | Lightyear over QUIC (WebTransport): handshake, replication; internal |
 | `launcher` | Small app: fetches, checks and starts the engine release a server or replay names; server browser |
 | `client` | Bevy app: rendering, input, UI, audio, prediction |
@@ -48,14 +48,15 @@ The core has no genre code; a mode combines capabilities, one native mechanism e
 - Start gates and end hooks are how optional modules join the lifecycle; the engine has no money code. The `payments` module adds a start gate that locks stakes and an end hook that settles them.
 - Everything inside running (pick, rounds, buy time, overtime) is defined by the mode script.
 - `ctx.end` is optional: a persistent world never calls it.
-- A session outlives the server process. A match restores by replaying its own log from tick 0; a world loads its latest checkpoint and replays the log after it. Players reconnect with the same session key.
+- A session outlives the server process. A match restores by replaying its own log from its latest checkpoint, from tick 0 when it has none; a world loads its latest checkpoint and replays the log after it. Players reconnect with the same session key.
+- A session pauses by running no ticks, and runs at a game speed by running more or fewer ticks a real second; the sim reads no clock, so neither enters the log. Who may pause is the host's setting, and always the player in singleplayer.
 - The server writes each input to the log before its tick runs and flushes the log from a background thread, so no tick waits on the disk; a crash loses at most the unflushed inputs, and clients resync to the restored state.
 - A match that is not back within the host's restore window aborts. The window must end before any stake's hold invoice expires; a window of 0 means a crash always aborts.
 - Script state is versioned; migration hooks convert saved state when a package version changes at restart.
 
 ## Inputs
 
-Anything from outside enters the sim as a recorded input: player inputs (commands, each in its capability's format), bot inputs, player connects and disconnects, character loads, admin commands, payment events, calendar time. If it is not in the log, the sim cannot depend on it.
+Anything from outside enters the sim as a recorded input: player inputs (commands, each in its capability's format), bot inputs, player connects and disconnects, carry loads, admin commands, payment events, calendar time. If it is not in the log, the sim cannot depend on it.
 
 Clients can join a running game at any time; they receive the current state of what they can see.
 
@@ -63,9 +64,18 @@ Clients can join a running game at any time; they receive the current state of w
 
 - A match is one segment; a persistent world checkpoints every few minutes. Format: Protocol Spec.
 - The verifier replays any segment from its checkpoint. Hosts set how long logs are kept.
-- **Snapshot:** the postcard encoding of every sim component and resource, entities sorted by stable id, component types in an order the engine release fixes, script state maps sorted by key. Its format belongs to the engine release, not the protocol.
+- **Snapshot:** the postcard encoding of every sim component and resource, entities sorted by stable id, component types in an order the engine release fixes, script state maps sorted by key. Its format belongs to the engine release, not the protocol, and carries a data version, which a release raises whenever it changes the format.
 - **State hash:** one BLAKE3 hash for each state type over the same bytes the snapshot holds, then one hash over the list of `(name, type hash)` ([Determinism Core](09-determinism-core.md)). `det-ci` compares it on every tick and, at the first mismatch, the per-type hashes, to name the first divergence.
 - **No slow tick for a checkpoint:** at the tick boundary the server copies only the components changed since the last checkpoint; a background thread applies them to its copy, encodes and hashes it, and writes the checkpoint record when done.
+
+## Saves
+
+A save is a checkpoint a player keeps: the snapshot at a tick boundary, and the session log before it. The player asks for one with a command, the mode with `ctx.save()` or at its autosave interval; a mode that sets `saves = "mode"` refuses the player's, as a hardcore mode does. A save costs no slow tick: it is written as every checkpoint is, from a copy, on a background thread.
+
+- **Load.** Loading a save restores its snapshot and starts a new segment of the same session from it; the log after the save is dropped, so a load goes back in time. A singleplayer session may load any of its saves.
+- **Converters.** A save loads on the release that made it and on every later one. Each release carries a converter from the data version before it, which rewrites a snapshot one way, as Factorio's map versions and Minecraft's DataFixerUpper do; loading an older save runs the converters in order. A release may drop the converters older than a point it names, and the launcher then fetches the last release that had them to convert in two steps. Script state converts by the packages' `state_version` and migration hooks, as for a world.
+- **Verification.** A segment verifies on the release that recorded it, from its checkpoint. A converted save starts a new segment whose checkpoint the converter made outside the sim: the log names the release before and after, and the proof of the earlier segment ends at the conversion.
+- **Carry.** The mode declares a carry schema, typed and versioned like script state. `ctx.carry` reads the carry the session loaded and writes the carry it will hand on; the server writes it out at the session's end and with each save. A session loads a carry as an external input at its start, so its log holds everything it read. A campaign's next mission, and a Diablo character's next play session, start from it.
 
 ## Scripting
 

@@ -27,7 +27,10 @@ Docs: [Engine Core](02-engine-core.md) · [Game Scripting](03-game-scripting.md)
 | Match | A game with an end: waiting → running → ended |
 | World | A persistent game that never ends |
 | Session | One match or one world on one server, with one session id and one session log. A server restart continues the same session from its latest save |
-| Segment | The part of a session log that starts at one checkpoint. A match is one segment |
+| Segment | The part of a session log that starts at one checkpoint. A match with no save is one segment |
+| Save | A checkpoint a player keeps, with the log before it, to load and continue the session later, on the same engine release or a newer one |
+| Carry | Declared, typed data that leaves one session and enters another as a recorded input: a hero between missions, a character between play sessions |
+| Campaign | Missions, each a mode, played in an order the carry opens, with their carry |
 | Team | A side players and units belong to. A mode has any number of teams, and declares how each pair regards each other: hostile, neutral or friendly. Friendly teams share vision |
 | Unit | Anything in the sim with a stable id, a position and a type: a hero, a soldier, a building, a projectile, an item on the ground, a door |
 | Action | Anything a unit does on purpose: an attack, a cast, a shot, a use, a build; every action runs one pipeline |
@@ -47,7 +50,7 @@ A small launcher starts the right client: a server names only an engine release 
 
 The engine knows nothing about any particular genre; the MOBA is just the first game built on it. It provides capabilities, one mechanism each (health and damage, units that take orders, a first-person character, fog of war, items), and a game declares the ones it needs: a MOBA, an FPS, or a mix that no genre names.
 
-**Target games.** The capabilities must be enough to rebuild, as community packages: Counter-Strike, Command & Conquer: Generals, StarCraft, League of Legends, PUBG, and an MMO like Lineage or World of Warcraft. What each needs: [Genres](04-capabilities/genres.md).
+**Target games.** The capabilities must be enough to rebuild, as community packages: Counter-Strike, Command & Conquer: Generals, StarCraft and its campaign, Warcraft III's campaign, League of Legends, PUBG, Diablo, Skyrim, and an MMO like Lineage or World of Warcraft. What each needs: [Genres](04-capabilities/genres.md).
 
 **Neutral core.** The core has no genre words and no genre lists: a mode declares its own damage kinds, stats, pools, tags, slot kinds, teams and relations ([Mode vocabulary](04-capabilities/00-overview.md#mode-vocabulary)). Every capability says its mechanism in one model of units, tags, stats, pools, modifiers, actions, effects, events, relations and space ([The model](04-capabilities/00-overview.md#the-model)), so a MOBA, a shooter, an RTS, an MMO and a battle royale are the same kind of package.
 
@@ -82,9 +85,18 @@ The same engine supports three sizes of game. One server always owns its whole m
 | Battle | Battle royale, large siege | 20–200 | Replay the whole match |
 | World | Persistent MMO-style world | 1,000+ in one session, on one server | Replay any period from a saved checkpoint, after a delay |
 
-A world is one session, whatever its size: its dungeons and battlegrounds are regions of the same sim. At 1,000+ players this needs deterministic multithreading, strict relevance and dormant regions ([Persistence](04-capabilities/persistence.md)).
+A world is one session, whatever its size: its dungeons and battlegrounds are regions of the same sim. At 1,000+ players this needs deterministic multithreading, strict relevance and dormant regions ([World](04-capabilities/world.md)).
 
 A world's log and checkpoints show hidden state that is still live, so the host publishes them only after a delay the host sets. A match publishes its log after it ends.
+
+## Singleplayer and saves
+
+A singleplayer game is a session with one player, on a server that runs as a thread of the client, as Minecraft's integrated server does since version 1.3: one code path for singleplayer, LAN and online play, so a fix to one is a fix to all. It needs no network, no relay and no payment.
+
+- **Saves.** The player saves when the mode allows: a quick save, an autosave, or the mode's own save points; a hardcore mode allows only its own. A save is a checkpoint with the log before it; loading it starts a new segment of the same session ([Saves](02-engine-core.md#saves)).
+- **Newer releases.** A save loads on the engine release that made it and on every later one: each release carries the converters from the save format before it, as Factorio and Minecraft convert old saves, one way. A converted save starts a new segment, and verification proves each segment on the release that recorded it.
+- **Campaigns and characters.** What a hero, an army's research or a Diablo character keeps between missions or play sessions is the mode's carry: it leaves a session at its end or at a save, and enters the next as a recorded input, so each session still verifies alone.
+- **Pause and game speed.** The sim never reads the wall clock, so a pause runs no ticks, and a game speed runs more or fewer ticks a real second; neither changes the sim or the log. A singleplayer session pauses at will; in multiplayer, the host's settings say who may pause.
 
 Players move between worlds by leaving one server and joining another. Their identity comes with them; items and progress come with them only if the new server chooses to accept them. An item moves by burn and attest: the old server destroys it and signs a transfer that only the one server it names can redeem, once ([Item export](05-protocol-spec.md#item-export)).
 
@@ -126,6 +138,7 @@ An optional module, off by default. Hosts turn on the models they want and set p
 | Time-based | Player → host | Pay per minute on a premium world server |
 | Per event, charge | Player → host | Pay to respawn, fast travel or enter a boss arena |
 | Per event, reward | Host → player | Bounty for a boss kill, tournament prize |
+| Item sale | Player → player | A player sells a sword found in a world to another player; the host may take a fee |
 
 **Player consent.** Every price is shown before joining; nothing else can be charged. Time-based and per-event payments draw on a spending budget the player's wallet grants and can cancel at any time.
 
@@ -135,7 +148,9 @@ An optional module, off by default. Hosts turn on the models they want and set p
 
 **Who holds the money.** Each stake is a locked payment the host cannot take before the result, and it returns if the match aborts; at payout the players trust the host ([Payment flows](05-protocol-spec.md#payment-flows)). Above a stake the host sets, independent arbiters named in the listing replay the log and co-sign the result before it settles.
 
-**Legal.** Real-money features are regulated or banned in many countries; hosts are responsible for how they use them.
+**Item sales.** A world records who owns each of its tradable items, by the owner's main key, and every change of owner is a recorded input, so the log proves an item's history. A sale for sats is an atomic swap: the buyer's payment settles only when the world has recorded the transfer, and neither the host nor anyone else holds the money in between ([Item sale](05-protocol-spec.md#item-sale)). No token on a blockchain records the item: what an item does exists only in the world that runs it, so that world is its authority either way, and an item is worth the trust in its world. An item of a singleplayer game, whose server is the player's own, has no value for trade. Which item types are tradable is the mode's choice, off unless it turns it on: Blizzard closed Diablo III's real-money auction house because buying gear had replaced finding it.
+
+**Legal.** Real-money features are regulated or banned in many countries; hosts are responsible for how they use them. Random rewards that can be sold for money count as gambling in some, such as Belgium: a mode whose random loot is tradable for sats is in that zone.
 
 ## Character and skin ownership
 
@@ -170,5 +185,5 @@ All three pillars ship in 1.0; they arrive in this order.
 
 1. **Playable on LAN.** First the determinism core, `det-ci` on every OS, and the prototype that proves the sim runs the same inside Lightyear and in a bare verifier. Then a MOBA vertical slice, then **genre proofs**: a tiny test mode for each target game, run by `det-ci`, so a MOBA-only choice fails early. Then the 3v3 MOBA with bots on LAN or a local server, verified replays and crash restore. Players use local Nostr key files through the final delegation, handshake and session log formats; no relays, listings, launcher or payments.
 2. **Open network.** Nostr listings, packages over Blossom, reputation, ban lists, and the launcher with signed releases.
-3. **Payments.** The optional `payments` module: entry fees first, then wager pools, then the rest.
-4. **Full capabilities.** Each capability the genre proofs need at depth: `character`, `hitscan` and level geometry for shooters; `production` for RTS; `physics` for vehicles; `persistence` and deterministic multithreading for large worlds.
+3. **Payments.** The optional `payments` module: entry fees first, then wager pools, then item sales, then the rest.
+4. **Full capabilities.** Each capability the genre proofs need at depth: `character`, `hitboxes` and level geometry for shooters and action RPGs; `quests`, the game clock, senses and overrides for RPGs; `production` for RTS; `physics` for vehicles; saves, carry and generated maps for singleplayer games and campaigns; `world` and deterministic multithreading for large worlds.

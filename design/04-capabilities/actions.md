@@ -10,7 +10,7 @@ Every action is a table `[abilities.<id>]` of a package, in one schema; a field 
 
 | Field | Meaning |
 | --- | --- |
-| `kind` | `cast` (the default), `attack`, `use`, `enter`, `train`, `build`, `gather` ([Kinds](#kinds)) |
+| `kind` | `cast` (the default), `attack`, `use`, `enter`, `train`, `build`, `gather`, `craft` ([Kinds](#kinds)) |
 | `script` | The script of its hooks, if it needs one |
 | `targeting` | `none`, `point`, `direction`, or a filter for a unit target |
 | `range` | Meters in the map's metric, or `"global"` |
@@ -23,7 +23,7 @@ Every action is a table `[abilities.<id>]` of a package, in one schema; a field 
 | `hold` | A modifier held while the toggle is on or the channel runs |
 | `charge` | `{ max_ms }`: a charged action. It resolves at release, with `ctx.charge` from 0 to 1 and `ctx.origin` and the target as they were when the charge began |
 | `passive_modifier`, `passive_while_ready` | A modifier held while the action has a rank; with `passive_while_ready`, only while it is off cooldown |
-| `delivery` | `instant` (the default), `ray`, `{ projectile = "<unit type>" }` or `{ area = "<unit type>" }`; a projectile may add `count` and `spread_deg`, a fan of that many spread evenly over the angle ([Deliveries](#deliveries)) |
+| `delivery` | `instant` (the default), `ray`, `sweep`, `{ projectile = "<unit type>" }` or `{ area = "<unit type>" }`; a projectile may add `count` and `spread_deg`, a fan of that many spread evenly over the angle ([Deliveries](#deliveries)) |
 | `on_resolve`, `on_hit`, `on_end` | Effects in data ([Effects](#effects)) |
 | `[params]` | Script values, read as `ctx.p.<name>` |
 
@@ -66,13 +66,15 @@ Values of the fields may be one or one per rank, like params; times become whole
 | `train` | `production` | `use` | Joins its unit's queue, and spawns a unit type when its time ends ([Production](production.md)) |
 | `build` | `production` | `use` | Aims at a point where a footprint fits, and places a building |
 | `gather` | `production` | `use` | Walks to a node, gathers, and carries the load to a drop-off, again until stopped |
+| `craft` | `items` | `use` | Takes a recipe's items and pools, at a station a filter selects or anywhere, and makes an item, or adds modifiers to one, as enchanting does ([Items](items.md)) |
 
 ### Deliveries
 
 | Delivery | Capability | Reaches |
 | --- | --- | --- |
 | `instant` | core | The target, at once |
-| `ray` | `hitscan` | The first unit, or each unit for a weapon that penetrates, a ray meets against hitboxes, tested at the tick the shooter saw ([Hitscan](hitscan.md)) |
+| `ray` | `hitboxes` | The first unit, or each unit for a weapon that penetrates, a ray meets against hitboxes, tested at the tick the shooter saw ([Hitboxes](hitboxes.md)) |
+| `sweep` | `hitboxes` | Each unit a shape swept along an arc over the windup meets against hitboxes, once a swing: a sword or an axe |
 | `projectile` | `projectiles` | What a projectile unit meets: it flies a line, homes on a unit or falls under gravity |
 | `area` | `areas` | The units inside an area unit: once after its delay, and while it lasts it holds its `inside` modifiers on them |
 
@@ -97,6 +99,9 @@ An effect list is an array of effects, each one table; the effects queue in orde
 | `spawn = { unit_type, team }` | Spawns a unit where it stands |
 | `launch = { projectile }`, `launch = { area }` | Launches a delivery from it |
 | `move = { to, speed }`, `move = { from, distance, ms }` | Forced movement: a dash or a knock back ([Navigation](navigation.md#forced-movement)) |
+| `xp = { track, amount }` | Experience on a track ([Progression](progression.md)) |
+| `loot = { table, level }` | Rolls a random table and drops what it gives where the unit stands ([Random tables](00-overview.md#random-tables)) |
+| `noise = { radius }` | A noise that units within the radius hear ([Senses](vision.md#senses)) |
 
 Every effect takes `to = "source"` to apply to the acting unit instead. Numbers take `{ param = "<name>" }`. An effect list runs before the script hook of the same name, so a hook adds only what data cannot say. One example, Rime's Fan of Frost:
 

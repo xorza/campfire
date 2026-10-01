@@ -9,9 +9,12 @@ A genre is a package: the capabilities it declares, its data and its mode script
 | League of Legends | `combat`, `stats`, `abilities`, `projectiles`, `areas`, `orders`, `navigation` (grid, paths), `vision` (grid fog), `items`, `progression` | Pick, creep waves, gold, respawns, objectives | 30 Hz |
 | StarCraft | `combat`, `stats`, `abilities`, `projectiles`, `orders` (groups, queues), `navigation` (grid, air and ground, flow fields), `vision` (grid fog), `production` | Races, supply, win by destruction | 16–24 Hz |
 | C&C Generals | The StarCraft set, `interaction` (garrisons, transports), `progression` (veterancy) | Generals' powers, money over time, superweapons | 15–30 Hz |
-| Counter-Strike | `combat`, `stats`, `character`, `hitscan`, `projectiles` (grenades), `areas`, `vision` (3D occlusion, smoke), `items` (weapons, buying), `interaction` (bomb, doors), level geometry | Rounds, buy time, economy, bomb, team swaps | 64–128 Hz |
+| Counter-Strike | `combat`, `stats`, `character`, `hitboxes`, `projectiles` (grenades), `areas`, `vision` (3D occlusion, smoke), `items` (weapons, buying), `interaction` (bomb, doors), level geometry | Rounds, buy time, economy, bomb, team swaps | 64–128 Hz |
 | PUBG | The Counter-Strike set, `physics` (vehicles), `vision` (relevance), `items` (loot) | Plane drop, shrinking zone, squads, last team standing | 30–60 Hz |
-| WoW, Lineage | `persistence`, `combat`, `stats`, `abilities`, `character` or `orders`, `navigation` (navmesh), `vision` (relevance), `items`, `progression`, `interaction` (NPCs, quests) | Zones, dungeons, quests, loot, factions, guild wars, sieges | 10–20 Hz |
+| Diablo | `combat`, `stats`, `abilities`, `projectiles`, `areas`, `orders` or `character`, `navigation`, `vision`, `items`, `progression`, `interaction`, `quests`; generated maps, random tables, saves and carry | Acts, quests, generated dungeons, loot by level, a character kept between play sessions | 20–30 Hz |
+| StarCraft and Warcraft III campaigns | The StarCraft set, `quests` (objectives) and, for Warcraft III, `items` and `progression`; saves, carry, region events |
+| Skyrim | `combat`, `stats`, `abilities`, `projectiles`, `areas`, `character`, `hitboxes` (sweeps), `navigation` (navmesh), `vision` (senses), `items` (crafting), `progression` (tracks, perks), `interaction`, `quests`, `world`, `physics`; saves, the game clock, random tables, overrides | Main and side quests, factions and crime, NPC days, stealth, skills by use, followers, mods | 30–60 Hz | Missions in an order, objectives, triggers and cutscenes, heroes and research kept between missions | 16–24 Hz |
+| WoW, Lineage | `world`, `quests`, `combat`, `stats`, `abilities`, `character` or `orders`, `navigation` (navmesh), `vision` (relevance), `items`, `progression`, `interaction` (NPCs, quests) | Zones, dungeons, quests, loot, factions, guild wars, sieges | 10–20 Hz |
 
 Match phases, win conditions, economy and content are mode scripts in every genre.
 
@@ -39,10 +42,13 @@ Before the MOBA is complete, each target game gets a tiny test mode, not a game,
 
 | Proof | Shows |
 | --- | --- |
-| One CS round | A driven character, hitscan with lag compensation, a bought weapon, planting the bomb |
+| One CS round | A driven character, rays with lag compensation, a bought weapon, planting the bomb |
 | An RTS skirmish | Harvesting, a build queue, placing a building, a group order, an air unit over a ground unit |
 | A BR zone | Loot on the ground, a shrinking zone, 100 one-player teams, relevance over a large map |
 | An MMO zone | A saved character, a level-up, an NPC quest, a neutral monster, a dormant region |
+| A Diablo level | A dungeon generated from the seed, loot dropped by level, a save and a load in the middle of a fight that continue the same session, the character carried into the next session |
+| An RTS mission | A region trigger that starts an ambush, an objective, a hero carried into the next mission, a save converted by the next release |
+| An RPG town | NPCs that keep their days by the game clock and a sleeping region that wakes them in place, a quest given in dialogue, a guard that hears and sees a thief, a skill raised by use and a perk, a sword crafted and swung as a sweep, a mod that overrides a sword |
 
 ## Main risks
 
@@ -52,4 +58,4 @@ Before the MOBA is complete, each target game gets a tiny test mode, not a game,
 
 ## Mixed
 
-A first-person commander, for example, drives a `character` with `hitscan` weapons, orders squads through `orders`, and fights units that walk `navigation` paths: one package, one tick rate, the union of what its parts need.
+A first-person commander, for example, drives a `character` with `hitboxes` weapons, orders squads through `orders`, and fights units that walk `navigation` paths: one package, one tick rate, the union of what its parts need.

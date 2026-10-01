@@ -30,7 +30,8 @@ Touches: the `stats` capability, the net protocol and the client. Design: [Stats
 
 Touches: a new `progression` capability, the mode's data, the `orders` format, the 3v3 data. Closes: the planned `ctx.add_xp`. Design: [Progression](design/04-capabilities/progression.md).
 
-1. **Experience, levels and learning**: `progression` joins the capabilities, after the last; experience beside each unit's level; the mode's `levels`, and its slot kinds' `levels`; `ctx.add_xp` for any unit; a point a level, and the `learn` order with its rule; the 3v3 data gets its curve. Test: experience to hand-computed levels, stats and pools; a rank refused before its level and taken at it; `ctx.learn` past the rule.
+1. **Experience, levels and learning**: `progression` joins the capabilities, after the last; the mode's tracks, the `level` track among them, and its slot kinds' `levels`; `ctx.add_xp` and the `xp` effect for any unit and track; `on_level_up`; a point a level, and the `learn` order with its rule; the 3v3 data gets its curve. Test: experience to hand-computed levels on two tracks, stats and pools; a skill level-up whose `on_level_up` adds character experience; a rank refused before its level and taken at it; `ctx.learn` past the rule.
+2. **Perks**: `[perks]` with their requirements and costs, the `perk` order, `ctx.grant_perk`. Test: a perk refused before its track level and its prior perk, then taken, granting its modifier and action.
 
 ## Actions
 
@@ -46,6 +47,27 @@ Touches: the action pipeline in the core, `combat`, `abilities`, `projectiles`, 
 Touches: the `navigation` capability, the effects. Closes: the issues of `dash`, `teleport` and `knock_back`. Design: [Forced movement](design/04-capabilities/navigation.md#forced-movement).
 
 1. **Forced movement**: the `move` effect and `ctx.dash`, `ctx.teleport` and `ctx.knock_back`, each moving its unit over the ground plane through the static bodies' clearance, ending at the nearest place it may stand, and planning its route again after; a dash ends with its action's `on_end`. Test: a dash stopped by a tower, a teleport into a wall that lands beside it, a knock back to its hand-computed end.
+
+## Singleplayer and saves
+
+Touches: the server, the client, the session log, the runner, the mode's data. Design: [Singleplayer and saves](design/01-campfire-design.md#singleplayer-and-saves), [Saves](design/02-engine-core.md#saves).
+
+1. **Checkpoints and saves**: a checkpoint at a tick boundary, written from a copy on a background thread; a save from a player's command, `ctx.save()` or the autosave interval, refused by `saves = "mode"`; a load that restores a save and starts a new segment from it. Test: a save and a load in the middle of a fight that give the same hashes as the session run through; a load that goes back past later ticks; the verifier proving each segment from its checkpoint.
+2. **The local server**: the server as a library the client runs on a thread for singleplayer, with no network; pause and game speed, by ticks a real second. Test: a singleplayer match whose log verifies as a LAN match's does; a paused session whose hashes do not change; a match at double speed with the same hashes a tick.
+3. **Carry and campaigns**: the mode's `[carry]`, `ctx.carry`, the carry load as an external input, the `campaign` package with its missions and `opens_when`. Test: a hero whose level and items reach the next mission exactly; a session that verifies alone with its carry load.
+4. **Save converters**: the snapshot's data version, the converter of each release from the one before, the chain of converters on load, and the segment that names both releases. Test: a save of a format one version back, converted, that continues with hand-checked state; a save from before the last converter refused with its error.
+5. **Region events and generated maps**: `on_enter` and `on_leave` for event markers; `on_generate` and `ctx.generate` with the map checks on what it built. Test: a unit that enters and leaves a region exactly once each, by stable id; a dungeon the same seed builds alike and another seed builds otherwise, saved and loaded whole.
+
+## RPG mechanics
+
+Touches: the core's clock and tables, the package loader, `vision`, `items`, a new `quests` capability; the capability list, where `hitscan` becomes `hitboxes` and `persistence` becomes `world`. Design: [Game clock](design/04-capabilities/00-overview.md#game-clock), [Random tables](design/04-capabilities/00-overview.md#random-tables), [Quests](design/04-capabilities/quests.md), [Senses](design/04-capabilities/vision.md#senses), [Items](design/04-capabilities/items.md), [overrides](design/03-game-scripting.md#game-package).
+
+1. **Capability names**: `hitscan` becomes `hitboxes`, `persistence` becomes `world`, `quests` joins after the last. Test: a manifest with an old name fails; every reference package loads.
+2. **Game clock and random tables**: game time with `time_scale` and `start_time`, `ctx.time`, `ctx.advance_time`; `[tables]`, the `loot` effect and tables in `spawn`. Test: the hour after hand-counted ticks; waiting eight hours with a modifier's ticks unchanged; a table whose rolls the same seed repeats, and whose level condition leaves out what it should.
+3. **Package overrides**: `load_order` and `[overrides]`, the last loaded winning, the conflicts listed, the session id over the dependencies in load order. Test: a mod that changes a sword's damage; two mods on one record, the later winning, the conflict listed; a log that names another load order refused.
+4. **Quests and dialogue**: `[quests]` with stages and objectives completed by events, `[topics]` with conditions and choices, `on_stage_done`. Test: a quest of a `talk`, a `kill` of three and a `reach`, each completing from its event; a topic hidden until its condition holds.
+5. **Senses**: `unit.sees` with range, cone and line of sight; light by the game clock; the `noise` effect and `on_heard`. Test: a guard that sees a unit in its cone and not one behind a wall or behind it; a noise heard within its radius and not beyond.
+6. **Crafting**: `[recipes]` and the `craft` action kind, items made, and modifiers added to an item as its state. Test: a sword made from hand-counted items; an enchantment kept through a save and a load.
 
 ## Scripted systems
 
