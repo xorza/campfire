@@ -9,7 +9,7 @@ A capability is native code: components, systems that run in the tick, backends,
 | Capability | Adds | Doc |
 | --- | --- | --- |
 | `combat` | Health, attacks, the damage pipeline, deaths, kill credit | [Combat](combat.md) |
-| `stats` | Stats, how they combine, modifiers, states such as stun | [Combat](combat.md#stats-and-modifiers) |
+| `stats` | Stats, how they combine, modifiers, states such as stun, levels | [Stats](stats.md) |
 | `abilities` | Targeting, range, cooldown, cost, cast and channel time, charges, toggles | [Abilities](abilities.md) |
 | `projectiles`, `areas` | Linear, homing and falling projectiles; circles that hold modifiers | [Abilities](abilities.md#projectiles-and-areas) |
 | `orders` | Units that take orders: move, attack, cast, stop, hold, queues, groups and formations; AI `think` | [Control](control.md#orders) |

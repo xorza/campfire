@@ -24,7 +24,7 @@ A unit has a team, a type of the core that every capability shares: its index in
 
 ## Stats and modifiers
 
-The mode declares its stats; the core knows only those a capability reads, such as move speed. How stats combine and their limits, modifiers (duration, stacks, reapply rules, auras, shields) and states (`stunned`, `rooted`, `silenced`, `disarmed`, `airborne`, `stealthed`, `untargetable`, `slow_immune`) are defined once for every mode: [Script API](../08-script-api.md#data-files). A passive is a modifier a unit always carries; the carrier's events (attack, hit, damage, kill, takedown) go to modifier scripts.
+Stats, modifiers, states and levels: [Stats](stats.md). A passive is a modifier a unit always carries; the carrier's events (attack, hit, damage, kill, takedown) go to modifier scripts.
 
 ## Sent to clients
 

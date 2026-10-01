@@ -1,0 +1,79 @@
+# Stats and modifiers
+
+How a unit's numbers and states come from its type, its level and the modifiers it carries. The model follows Unreal's Gameplay Ability System where the field agrees: a base value from the type and level, a current value its modifiers change, stacks counted by source. The rules for movement and health follow League of Legends, where they are exact.
+
+## State and derived
+
+- **State**, hashed, saved, restored and replicated: each unit's modifiers, its level and experience, and the current amount of each pool (health, resource).
+- **Derived**, never state: each unit's stats and states. They are computed from the state again whenever its modifiers, level or type change, before any system reads them, so the server, a client after a rollback and a replay see the same numbers.
+
+## Stats
+
+The mode declares each stat in `data/mode.toml`, with how it combines and its limits:
+
+```toml
+[stats.armor]
+combine = "sum"       # or "highest"
+min = "-100"          # optional, both
+max = "500"
+```
+
+A unit's value of a stat is its type's value at its level, `base + per_level × (level − 1)`, combined with its modifiers' values for it:
+
+- `sum`: the type's value plus each modifier's value times its stacks. Fixed point adds exactly, so the order of modifiers never matters.
+- `highest`: the greatest of the type's value and each modifier's value times its stacks, as a slow where only the strongest counts.
+
+Then the limits clamp it. A sum that leaves the range of a number stops at its end before the limits.
+
+The engine reads some stats by name and fixes how it uses them. The mode declares them like the others, so it sets their limits:
+
+| Stat | Engine use |
+| --- | --- |
+| `health`, `resource` | The maximum of the pool |
+| `health_regen`, `resource_regen` | Added to the pool each second: regen ÷ tick rate a tick, the remainder carried, so a second gains exactly the regen |
+| `move_speed`, `move_speed_pct`, `slow` | Move speed is `move_speed × (1 + move_speed_pct) × (1 − slow)`, rounded once, within `move_speed`'s limits and the manifest's `max_move_speed`; `slow_immune` takes the slow as 0 |
+| `attack_speed`, `attack_speed_pct` | Attacks a second: `attack_speed × (1 + attack_speed_pct)`, rounded once, within `attack_speed`'s limits |
+| `attack_damage` | The damage of an attack |
+
+The damage system adds its own: `crit_chance`, `life_steal`, `spell_vamp`, `healing_received_pct`.
+
+**Pools.** When a pool's maximum rises, its current amount rises by as much; when the maximum falls, the current amount stays, unless it is now above the maximum. This is League of Legends' rule; Dota 2 keeps the fraction instead, which needs a rounding the engine does not take.
+
+## Modifiers
+
+A modifier is an instance on its carrier, from a source: the unit whose ability, attack or aura applied it, or none for one the mode applies. A carrier holds at most one instance of an id from each source, as the Gameplay Ability System's stacking by source does.
+
+- **Applying.** `ctx.add_modifier(unit, id)` and `(unit, id, duration_ms)` return the instance's handle. When the instance exists, `reapply` decides: `refresh` sets its duration whole again; `stack` adds a stack, up to `max_stacks`, and sets the duration whole again; `ignore` leaves it. Either way the handle of the instance comes back.
+- **Stacks.** With `stacks_expire_ms`, each stack keeps its own end, and the instance ends with its last stack. A script may write `m.stacks`; at 0 the instance stays, with no stats.
+- **Time.** A duration counts in ticks, rounded up and at least one, from the end of the tick it was applied in: a modifier of `d` ticks applied in tick `t` holds through tick `t + d`, every stage, and ends in Resolve of that tick. Timers count the same way.
+- **Ending.** `ctx.remove(handle)` ends it at once; so does a spent shield, and the carrier's death, except for a passive.
+- **Passives.** An ability's `passive_modifier` is an instance from the carrier itself while the ability has a rank; with `passive_while_ready`, only while it is off cooldown. It keeps its stacks and state across a death.
+- **Auras.** A modifier with an `aura` makes its carrier a source: in Resolve each tick, every living unit within the aura's radius that `affects` selects holds the aura's modifier from that carrier, with no duration, and loses it the tick it leaves. There is no linger: the sim has no flicker to hide.
+- **Order.** Instances are kept by id, then source, so every walk over them is in the same order on every machine.
+
+Intervals, shields and the events modifier scripts hear are part of [Combat](combat.md#damage-and-death): the damage system runs them.
+
+## States
+
+A unit's states are the union of its modifiers' `states`, whatever their stacks. Each takes effect where the system that reads it runs:
+
+| State | Effect |
+| --- | --- |
+| `stunned`, `airborne` | No moving, attacking or casting; an attack in its windup and a channel stop |
+| `rooted` | No moving |
+| `silenced` | No casting; a channel stops |
+| `disarmed` | No attacking; an attack in its windup stops |
+| `slow_immune` | The slow stat counts as 0 |
+| `stealthed` | Enemies see the unit only from a unit with true sight that sees its cell ([Vision](vision.md#stealth)) |
+| `untargetable` | `find`, `find_visible` and `nearest_visible` skip it; an attack order and a cast aimed at it are refused; a chaser drops it; a projectile homing on it is lost; areas still reach it |
+
+An order given while a state stops its action is kept, and runs when the state ends, as League of Legends buffers input. `ctx.stun(unit, ms)`, `ctx.slow(unit, fraction, ms)` and `ctx.knock_up(unit, ms)` apply engine modifiers, `stun`, `slow` and `knock_up`, from the calling unit: two stuns from one source refresh, and from two sources the longer holds.
+
+## Levels and experience
+
+- The mode's `levels` lists the experience each level needs, from level 2: `levels = [280, 660, ...]`, ascending. `ctx.add_xp(unit, amount)` adds experience; each level reached raises the unit's level, its stats and, by the pool rule, its pools.
+- Each level reached gives an avatar a point to learn a rank. A player learns by an order, `learn = slot`, which takes a point and a rank the slot's level rule allows; the mode's `rank_levels` sets it by slot kind, the reference MOBA's `basic = [1, 3, 5, 7, 9]` and `ultimate = [6, 11, 16]`. `ctx.learn` still grants a rank with no point and no rule.
+
+## What a client predicts
+
+A client keeps its own units' modifiers as the server sends them and runs their time, so a modifier ends on the client in the tick it ends on the server; it derives their stats and states as the server does, so its predicted movement and attacks obey them. It creates no modifier: those come from scripts, which only the server runs, so a stun the client learns late costs a correction, as the Gameplay Ability System also predicts no effect it did not start.
