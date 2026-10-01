@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use crate::actions::action_data::{ActionData, CostTarget, Range};
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::{ActionSlots, ActionTarget, InProgress};
+use crate::actions::delivery_data::DeliveryData;
 use crate::actions::error::ActionError;
 use crate::actions::purse::Purse;
 use crate::actions::weapon::Weapon;
@@ -58,12 +59,18 @@ pub(crate) struct Action {
     /// only the action's modifiers.
     script: Option<ScriptId>,
     hooks: HookSet,
-    /// How many projectiles its delivery launches, and over what spread; none for an action
-    /// that delivers at once.
-    pub(crate) fan: Option<Fan>,
+    /// How it delivers, other than at once.
+    pub(crate) delivery: Option<Delivery>,
     /// The unit type it spawns, once the match's unit types load: a train's unit, or its
     /// delivery's projectile.
     pub(crate) spawns: Option<UnitType>,
+}
+
+/// How an action delivers, as a match runs it: a fan of projectiles, or an area.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Delivery {
+    Projectile(Fan),
+    Area,
 }
 
 /// How a delivery launches its projectiles: `count` of them, spread evenly over `spread_deg`
@@ -148,9 +155,11 @@ impl ActionBook {
                 .into_iter()
                 .filter(|&hook| defines(hook)),
         );
-        let fan = data.delivery.as_ref().map(|delivery| Fan {
-            count: delivery.count,
-            spread_deg: delivery.spread_deg,
+        let delivery = data.delivery.as_ref().map(|delivery| match *delivery {
+            DeliveryData::Projectile {
+                count, spread_deg, ..
+            } => Delivery::Projectile(Fan { count, spread_deg }),
+            DeliveryData::Area { .. } => Delivery::Area,
         });
         let id = ActionId(u32::try_from(self.actions.len()).expect("actions fit u32"));
         self.actions.push(Action {
@@ -163,7 +172,7 @@ impl ActionBook {
             resource_costs: ranks.resource_costs.into_boxed_slice(),
             script,
             hooks,
-            fan,
+            delivery,
             spawns: None,
         });
         id
@@ -173,7 +182,7 @@ impl ActionBook {
     pub(crate) fn bind_spawn(&mut self, id: ActionId, unit_type: UnitType) {
         let action = &mut self.actions[id.index()];
         debug_assert!(
-            action.kind == ActionKind::Train || action.fan.is_some(),
+            action.kind == ActionKind::Train || action.delivery.is_some(),
             "only a train or a delivery spawns a unit type"
         );
         action.spawns = Some(unit_type);
@@ -363,7 +372,9 @@ pub(crate) mod internals {
 
     use std::num::NonZeroU8;
 
-    use crate::actions::action_book::{Action, ActionBook, ActionId, Aim, Fan, RankValues};
+    use crate::actions::action_book::{
+        Action, ActionBook, ActionId, Aim, Delivery, Fan, RankValues,
+    };
     use crate::actions::action_data::Range;
     use crate::actions::action_kind::ActionKind;
     use crate::actions::weapon::Weapon;
@@ -391,9 +402,11 @@ pub(crate) mod internals {
 
     /// Adds `weapon` to `book`, which deals damage of the first kind.
     pub(crate) fn weapon(book: &mut ActionBook, weapon: TestWeapon) -> ActionId {
-        let fan = weapon.projectile.map(|_| Fan {
-            count: NonZeroU8::MIN,
-            spread_deg: Num::ZERO,
+        let delivery = weapon.projectile.map(|_| {
+            Delivery::Projectile(Fan {
+                count: NonZeroU8::MIN,
+                spread_deg: Num::ZERO,
+            })
         });
         let id = ActionId(u32::try_from(book.actions.len()).unwrap());
         book.actions.push(Action {
@@ -415,7 +428,7 @@ pub(crate) mod internals {
             resource_costs: weapon.resource_cost.into_iter().collect(),
             script: None,
             hooks: HookSet::default(),
-            fan,
+            delivery,
             spawns: weapon.projectile,
         });
         id
@@ -440,7 +453,7 @@ pub(crate) mod internals {
             resource_costs: Box::new([]),
             script: None,
             hooks: HookSet::default(),
-            fan: None,
+            delivery: None,
             spawns: None,
         });
         id

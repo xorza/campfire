@@ -1,7 +1,7 @@
 use campfire_script::rhai::Dynamic;
 use campfire_sim::Capability;
 
-use crate::projectiles::hit::Hit;
+use crate::deliveries::hit::Hit;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::script_api::{ApiOwner, MemberSpec};
 use crate::units::script_view::View;
@@ -21,7 +21,7 @@ impl HitHandle {
     /// The `Hit` handle's fields.
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         let field = |name, description| {
-            MemberSpec::field(ApiOwner::Hit, name, description).capability(Capability::Projectiles)
+            MemberSpec::field(ApiOwner::Hit, name, description).capability(Capability::Abilities)
         };
         let unit = |hit: &HitHandle, id: Option<_>| {
             id.and_then(|id| hit.view.unit(id))
@@ -31,7 +31,7 @@ impl HitHandle {
             .bind(
                 field(
                     "delivery",
-                    "the projectile unit that delivered it, `()` when at once or gone",
+                    "the projectile or area unit that delivered it, `()` when at once or gone",
                 ),
                 move |hit: &mut HitHandle| unit(hit, hit.hit.delivery),
             )

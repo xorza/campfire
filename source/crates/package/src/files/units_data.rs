@@ -1,8 +1,8 @@
 use std::collections::BTreeMap;
 
 use campfire_capabilities::{
-    AiData, CollisionData, CombatData, DeclaredName, ProductionData, ProjectileData, Scalar,
-    StatsData, UnitTypeData, VisionData,
+    AiData, AreaData, CollisionData, CombatData, DeclaredName, ProductionData, ProjectileData,
+    Scalar, StatsData, UnitTypeData, VisionData,
 };
 use serde::{Deserialize, Deserializer};
 
@@ -34,11 +34,19 @@ pub struct UnitTypeFile {
     pub production: Option<ProductionData>,
     /// It is a projectile type: actions deliver its units.
     pub projectile: Option<ProjectileData>,
+    /// It is an area type: actions deliver its units.
+    pub area: Option<AreaData>,
 }
 
 impl UnitTypeFile {
-    /// Whether it is a delivery type and nothing more: a `projectile` section beside its tags
-    /// and params, and no section of a unit that stands.
+    /// Whether it is a delivery type: a `projectile` or an `area` section makes it one, which
+    /// no map or train places.
+    pub const fn delivers(&self) -> bool {
+        self.projectile.is_some() || self.area.is_some()
+    }
+
+    /// Whether it is a delivery type and nothing more: a `projectile` or an `area` section, one
+    /// of them, beside its tags and params, and no section of a unit that stands.
     pub(crate) fn delivery_only(&self) -> bool {
         let UnitTypeFile {
             core: _,
@@ -53,8 +61,9 @@ impl UnitTypeFile {
             tracks,
             production,
             projectile,
+            area,
         } = self;
-        projectile.is_some()
+        projectile.is_some() != area.is_some()
             && pools.is_empty()
             && slots.is_empty()
             && passive.is_none()
@@ -92,6 +101,7 @@ impl<'de> Deserialize<'de> for UnitTypeFile {
             tracks: Vec<DeclaredName>,
             production: Option<ProductionData>,
             projectile: Option<ProjectileData>,
+            area: Option<AreaData>,
         }
         let fields = Fields::deserialize(deserializer)?;
         Ok(UnitTypeFile {
@@ -110,6 +120,7 @@ impl<'de> Deserialize<'de> for UnitTypeFile {
             tracks: fields.tracks,
             production: fields.production,
             projectile: fields.projectile,
+            area: fields.area,
         })
     }
 }

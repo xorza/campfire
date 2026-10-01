@@ -41,7 +41,7 @@ pub enum ApiError {
     NoTrack,
     /// A reset of a unit with no spawn place to walk to.
     NoSpawnPlace,
-    /// A projectile of an action that delivers none.
+    /// A projectile or an area of an action that delivers none of that kind.
     NoDelivery,
     NegativeXp,
     /// An integer beyond a `Num`, which reaches 2³⁹.
@@ -192,7 +192,7 @@ impl fmt::Display for ApiError {
             ApiError::UnknownTrack => "no such track",
             ApiError::NoTrack => "the unit does not have the track",
             ApiError::NoSpawnPlace => "the unit has no spawn place",
-            ApiError::NoDelivery => "the action delivers no projectile",
+            ApiError::NoDelivery => "the action delivers no unit of that kind",
             ApiError::NegativeXp => "experience is negative",
             ApiError::IntegerBeyondNum => "integer is beyond a Num",
             ApiError::NoAttack => "unit has no attack",

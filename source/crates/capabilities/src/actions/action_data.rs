@@ -55,7 +55,6 @@ pub struct ActionData {
     pub passive_while_ready: bool,
     /// How it reaches what it affects, other than at once.
     pub delivery: Option<DeliveryData>,
-    pub area: Option<AreaData>,
     /// A weapon's stat of attacks a second, an `attack`'s alone.
     pub rate: Option<Stat>,
     /// A weapon's stat of its damage, an `attack`'s alone.
@@ -101,33 +100,10 @@ pub struct ChargeData {
     pub max_ms: Ranked<Number>,
 }
 
-/// The area `ctx.area` places.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct AreaData {
-    pub radius: Ranked<Number>,
-    pub delay_ms: Option<Ranked<Number>>,
-    pub duration_ms: Option<Ranked<Number>>,
-    /// A filter of the units the area reaches, each with `on_hit`.
-    pub affects: Option<FilterData>,
-    pub inside: Option<AreaInside>,
-}
-
-/// The modifiers an area holds on the units inside it.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct AreaInside {
-    #[serde(rename = "self")]
-    pub caster: Option<String>,
-    pub allies: Option<String>,
-    pub enemies: Option<String>,
-}
-
 impl ActionData {
     /// The length of every per-rank array it holds: its capability fields' and its params'.
     pub fn rank_counts(&self) -> impl Iterator<Item = usize> + '_ {
         let numbers = |ranked: Option<&Ranked<Number>>| ranked.and_then(Ranked::ranks);
-        let area = self.area.as_ref();
         [
             self.range.as_ref().and_then(Ranked::ranks),
             self.cooldown_ms.as_ref().and_then(Ranked::ranks),
@@ -137,9 +113,6 @@ impl ActionData {
             numbers(self.charges.as_ref().map(|charges| &charges.max)),
             numbers(self.charges.as_ref().map(|charges| &charges.recharge_ms)),
             numbers(self.charge.as_ref().map(|charge| &charge.max_ms)),
-            numbers(area.map(|area| &area.radius)),
-            numbers(area.and_then(|area| area.delay_ms.as_ref())),
-            numbers(area.and_then(|area| area.duration_ms.as_ref())),
         ]
         .into_iter()
         .chain(self.costs().map(Ranked::ranks))
@@ -158,7 +131,7 @@ impl ActionData {
     }
 
     /// Whether it has a field only a cast runs: a script or params, a cooldown, a clamp to range,
-    /// a toggle, a channel, a hold, charges, a charge, an area, or projectile state.
+    /// a toggle, a channel, a hold, charges, a charge, or projectile state.
     pub fn cast_fields(&self) -> bool {
         self.cooldown_ms.is_some() || self.cast_only_fields()
     }
@@ -173,7 +146,7 @@ impl ActionData {
     }
 
     /// Whether it has a field that no kind but a cast runs: a script or params, a clamp to range,
-    /// a toggle, a channel, a hold, charges, a charge, an area, or projectile state.
+    /// a toggle, a channel, a hold, charges, a charge, or projectile state.
     fn cast_only_fields(&self) -> bool {
         self.script.is_some()
             || !self.params.is_empty()
@@ -183,7 +156,6 @@ impl ActionData {
             || self.hold.is_some()
             || self.charges.is_some()
             || self.charge.is_some()
-            || self.area.is_some()
             || !self.projectile_state.is_empty()
     }
 
@@ -277,7 +249,6 @@ impl ActionData {
 
     /// Every number field that reads a param, `{ param = "<name>" }`: the names it reads.
     pub fn param_refs(&self) -> impl Iterator<Item = &str> + '_ {
-        let area = self.area.as_ref();
         [
             self.cooldown_ms.as_ref(),
             self.windup_ms.as_ref(),
@@ -286,9 +257,6 @@ impl ActionData {
             self.charges.as_ref().map(|charges| &charges.max),
             self.charges.as_ref().map(|charges| &charges.recharge_ms),
             self.charge.as_ref().map(|charge| &charge.max_ms),
-            area.map(|area| &area.radius),
-            area.and_then(|area| area.delay_ms.as_ref()),
-            area.and_then(|area| area.duration_ms.as_ref()),
         ]
         .into_iter()
         .flatten()
@@ -306,34 +274,21 @@ impl ActionData {
         )
     }
 
-    /// The ids of the modifiers its data names: the one it holds, its passive and those its area
-    /// holds.
+    /// The ids of the modifiers its data names: the one it holds and its passive.
     pub fn modifiers(&self) -> impl Iterator<Item = &str> + '_ {
-        let inside = self.area.as_ref().and_then(|area| area.inside.as_ref());
-        [
-            self.hold.as_ref(),
-            self.passive_modifier.as_ref(),
-            inside.and_then(|inside| inside.caster.as_ref()),
-            inside.and_then(|inside| inside.allies.as_ref()),
-            inside.and_then(|inside| inside.enemies.as_ref()),
-        ]
-        .into_iter()
-        .flatten()
-        .map(String::as_str)
+        [self.hold.as_ref(), self.passive_modifier.as_ref()]
+            .into_iter()
+            .flatten()
+            .map(String::as_str)
     }
 
-    /// The filters its data names: its targeting's and its area's affects.
+    /// The filter its data names: its targeting's.
     pub fn filters(&self) -> impl Iterator<Item = &FilterData> + '_ {
-        let targeting = match &self.targeting {
+        match &self.targeting {
             Targeting::Unit(filter) => Some(filter),
             Targeting::None | Targeting::Point | Targeting::Direction => None,
-        };
-        [
-            targeting,
-            self.area.as_ref().and_then(|area| area.affects.as_ref()),
-        ]
+        }
         .into_iter()
-        .flatten()
     }
 }
 

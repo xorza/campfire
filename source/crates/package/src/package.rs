@@ -1,10 +1,11 @@
 use std::collections::BTreeMap;
 
-use campfire_capabilities::ActionData;
+use campfire_capabilities::{ActionData, DeliveryData};
 use campfire_content::{Fingerprint, PackagePath};
 use campfire_script::ScriptHost;
 
 use crate::error::{LoadError, LoadProblem};
+use crate::files::units_data::UnitTypeFile;
 use crate::files::version::Version;
 use crate::package_dir::PackageDir;
 use crate::script_facts::ScriptFacts;
@@ -79,20 +80,30 @@ impl Package {
     }
 
     /// The abilities of `abilities`, this package's, that apply each modifier: those whose data
-    /// names it, and those whose script adds it.
+    /// names it, those whose area type of `units` holds it inside, and those whose script adds
+    /// it.
     pub(crate) fn appliers<'a>(
         &'a self,
         abilities: &'a BTreeMap<String, ActionData>,
+        units: &'a BTreeMap<String, UnitTypeFile>,
     ) -> BTreeMap<&'a str, Vec<&'a ActionData>> {
         let mut appliers: BTreeMap<&str, Vec<&ActionData>> = BTreeMap::new();
         for ability in abilities.values() {
+            let inside = match &ability.delivery {
+                Some(DeliveryData::Area { unit_type }) => units
+                    .get(unit_type)
+                    .and_then(|unit_type| unit_type.area.as_ref()),
+                _ => None,
+            }
+            .into_iter()
+            .flat_map(|area| area.inside.modifiers());
             let scripted = ability
                 .script
                 .as_ref()
                 .and_then(|path| self.script(path))
                 .into_iter()
                 .flat_map(|script| script.facts.modifiers.iter().map(String::as_str));
-            for id in ability.modifiers().chain(scripted) {
+            for id in ability.modifiers().chain(inside).chain(scripted) {
                 appliers.entry(id).or_default().push(ability);
             }
         }

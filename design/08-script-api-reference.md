@@ -11,7 +11,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `add_player_modifier` | `(player, id)` | every role | stats | runs | gives `player` the modifier `id` of the script's package, which every living unit it owns that the modifier's `affects` selects holds from no source |
 | `add_resource` | `(player, name, amount)` | every role | core | runs | adds `amount` of the player resource `name`, one the mode declares, to `player` |
 | `add_xp` | `(unit, track, amount)` | every role | progression | runs | gives `unit` `amount` of experience on `track`, one of its unit type's |
-| `area` | `(pos)` | action | areas | planned | the ability's area at `pos` |
+| `area` | `(pos)` | action | areas | runs | lands one more of the action's areas at `pos`, its own cast |
 | `attack_hit` | `(target)` | action, modifier, AI | combat | runs | an extra attack of the acting unit on `target`: no crit, and no `on_attack` |
 | `available` | `(player, choice, value)` | mode | core | runs | whether `player` may choose `value` of `choice`: no other player chose it in a unique choice |
 | `avatars` | `() or (team)` | every role | core | runs | the avatars, living or dead, of every team or of `team`, by stable id |
@@ -119,12 +119,12 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 
 | Name | Form | Capability | Status | What it is |
 | --- | --- | --- | --- | --- |
-| `delivery` | read | projectiles | runs | the projectile unit that delivered it, `()` when at once or gone |
-| `direction` | read | projectiles | runs | the direction its delivery flew in |
-| `distance` | read | projectiles | runs | how far its delivery flew |
+| `delivery` | read | abilities | runs | the projectile or area unit that delivered it, `()` when at once or gone |
+| `direction` | read | abilities | runs | the direction its delivery flew in |
+| `distance` | read | abilities | runs | how far its delivery flew |
 | `part` | read | hitscan | planned | the body part a ray or a sweep struck, `()` with none |
-| `pos` | read | projectiles | runs | where it hit, or where its delivery ended |
-| `target` | read | projectiles | runs | the unit the action aimed at, `()` with none |
+| `pos` | read | abilities | runs | where it hit, or where its delivery ended |
+| `target` | read | abilities | runs | the unit the action aimed at, `()` with none |
 
 ## Damage `d`
 
@@ -177,8 +177,8 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | Hook | Role | Capability | Status |
 | --- | --- | --- | --- |
 | `on_resolve(ctx, unit, target)` | action | abilities | runs |
-| `on_hit(ctx, unit, target, hit)` | action | projectiles | runs |
-| `on_end(ctx, unit, hit)` | action | projectiles | runs |
+| `on_hit(ctx, unit, target, hit)` | action | abilities | runs |
+| `on_end(ctx, unit, hit)` | action | abilities | runs |
 | `on_channel_tick(ctx, unit)` | action | abilities | planned |
 | `on_interrupt(ctx, unit, target)` | action | abilities | planned |
 | `on_interval(ctx, m)` | modifier | stats | runs |
@@ -307,7 +307,6 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `hold` | planned |
 | `charges` | planned |
 | `charge` | planned |
-| `area` | planned |
 | `projectile_state` | planned |
 | `unit_type` | runs |
 | `delivery` | runs |
@@ -319,6 +318,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `projectile` | runs |
 | `count` | runs |
 | `spread_deg` | runs |
+| `area` | runs |
 
 ### A unit type's `projectile`
 
@@ -334,6 +334,24 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `gravity` | planned |
 | `sight_radius` | planned |
 | `collide` | planned |
+
+### A unit type's `area`
+
+| Field | Status |
+| --- | --- |
+| `radius` | runs |
+| `delay_ms` | runs |
+| `duration_ms` | runs |
+| `affects` | runs |
+| `inside` | runs |
+
+### An area's `inside`
+
+| Field | Status |
+| --- | --- |
+| `self` | runs |
+| `allies` | runs |
+| `enemies` | runs |
 
 ### A track, `[tracks.<name>]`
 

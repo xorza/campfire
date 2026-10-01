@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use bevy_ecs::schedule::Schedule;
 use bevy_ecs::world::World;
 use campfire_capabilities::{
-    ActionData, ActionId, Actions, DeclaredName, KitRules, LoadoutSetup, MatchScripts, Mode,
+    ActionData, ActionId, Actions, Areas, DeclaredName, KitRules, LoadoutSetup, MatchScripts, Mode,
     ModeSetup, OnDeath, Orders, PoolId, Progression, Projectiles, SlotAction, Stat, Stats, UnitKit,
     UnitTypeData, UnitTypeSetup, Units,
 };
@@ -90,9 +90,10 @@ impl<'a> MatchBuild<'a> {
         let mode_actions =
             build.load_actions(MODE, &packages.data().actions, |id| ranks.get(id).copied())?;
         for (name, file) in units {
-            match &file.projectile {
-                Some(_) => build.load_projectile(name, file),
-                None => build.load_unit_type(MODE, name, file, &mode_actions, false)?,
+            if file.delivers() {
+                build.load_delivery(MODE, name, file);
+            } else {
+                build.load_unit_type(MODE, name, file, &mode_actions, false)?;
             }
         }
         let mut avatars = Vec::new();
@@ -101,7 +102,7 @@ impl<'a> MatchBuild<'a> {
         for (at, dependent) in packages.dependencies().iter().enumerate() {
             let package = DEPENDENCIES + at;
             for (id, file) in dependent.units() {
-                build.load_projectile(&dependent.unit_type_name(id), file);
+                build.load_delivery(package, &dependent.unit_type_name(id), file);
             }
             match &dependent.content {
                 Content::Avatar(avatar) => {
@@ -248,12 +249,17 @@ impl<'a> MatchBuild<'a> {
         Ok(())
     }
 
-    /// Loads the projectile type `name` of `file`, which only actions deliver, so the mode spawns
-    /// none.
-    fn load_projectile(&mut self, name: &str, file: &UnitTypeFile) {
+    /// Loads the projectile or area type `name` of `file`, of `package`, which only actions
+    /// deliver, so the mode spawns none.
+    fn load_delivery(&mut self, package: usize, name: &str, file: &UnitTypeFile) {
         let unit_type = Units::load_type(self.world, name, &file.core).expect(CHECKED);
-        let projectile = file.projectile.as_ref().expect(CHECKED);
-        Projectiles::load_type(self.world, unit_type, projectile);
+        if let Some(projectile) = &file.projectile {
+            Projectiles::load_type(self.world, unit_type, projectile);
+        }
+        if let Some(area) = &file.area {
+            let package = u16::try_from(package).expect("packages fit u16");
+            Areas::load_type(self.world, unit_type, package, area);
+        }
     }
 
     /// Each pool of `names`, which the load checked the mode declares, with the stat of its
@@ -270,7 +276,7 @@ impl<'a> MatchBuild<'a> {
     }
 
     /// Loads the ability `id` of `package`, of `ranks` ranks, with its script; a train waits for
-    /// its unit type to bind, and a delivery for its projectile type, of the same package.
+    /// its unit type to bind, and a delivery for its projectile or area type, of the same package.
     fn load_ability(
         &mut self,
         package: usize,
@@ -292,10 +298,10 @@ impl<'a> MatchBuild<'a> {
         }
         if let Some(delivery) = &data.delivery {
             let name = match usize::from(package).checked_sub(DEPENDENCIES) {
-                None => delivery.projectile.clone(),
+                None => delivery.unit_type().to_owned(),
                 Some(at) => {
                     let dependent = &self.packages.dependencies()[at];
-                    dependent.unit_type_name(&delivery.projectile)
+                    dependent.unit_type_name(delivery.unit_type())
                 }
             };
             self.spawns.push((action, name));

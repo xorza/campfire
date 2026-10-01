@@ -19,8 +19,9 @@ pub(crate) struct UnitTypes {
     tag_names: Vec<Box<str>>,
     /// The `avatar` tag, which `unit.is_avatar` tests, once declared.
     avatar: Option<Tag>,
-    /// The `projectile` tag, which every filter that does not name it excludes, once declared.
-    projectile: Option<Tag>,
+    /// The tags of delivery units, `projectile` and `area`, once declared: every filter that does
+    /// not name one excludes it.
+    deliveries: TagSet,
     types: Vec<TypeEntry>,
     /// Every type, sorted by name.
     by_name: Vec<UnitType>,
@@ -79,7 +80,9 @@ impl UnitTypes {
         let tag = Tag::new(self.tag_names.len() - 1);
         match name {
             UnitTypeData::AVATAR_TAG => self.avatar = Some(tag),
-            UnitTypeData::PROJECTILE_TAG => self.projectile = Some(tag),
+            UnitTypeData::PROJECTILE_TAG | UnitTypeData::AREA_TAG => {
+                self.deliveries = self.deliveries.with(tag);
+            }
             _ => {}
         }
         Ok(tag)
@@ -116,8 +119,8 @@ impl UnitTypes {
         self.avatar
     }
 
-    pub(crate) const fn projectile(&self) -> Option<Tag> {
-        self.projectile
+    pub(crate) const fn deliveries(&self) -> TagSet {
+        self.deliveries
     }
 
     /// The book of the effects `data` gives the tags, by name, and of the types' own tags. A

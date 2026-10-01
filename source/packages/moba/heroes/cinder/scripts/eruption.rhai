@@ -1,7 +1,3 @@
-fn on_resolve(ctx, caster, target) {
-    ctx.area(target);
-}
-
 fn on_hit(ctx, caster, target, hit) {
     let damage = ctx.p.damage;
     if target.has_modifier("kindle") {

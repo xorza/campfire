@@ -8,12 +8,14 @@ use campfire_script::ScriptId;
 use campfire_script::rhai::Dynamic;
 use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, Tick, Ticks};
 
-use crate::actions::action_book::{ActionBook, ActionId};
+use crate::actions::action_book::{ActionBook, ActionId, Delivery};
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::{ActionSlots, ActionTarget};
 use crate::actions::purse::Purse;
+use crate::areas::Areas;
 use crate::combat::CombatSet;
 use crate::combat::dead::Dead;
+use crate::deliveries::delivering::Delivering;
 use crate::mode::player_resources::PlayerResources;
 use crate::projectiles::Projectiles;
 use crate::scripts::ctx::Ctx;
@@ -136,8 +138,19 @@ fn resolve(batch: &mut ScriptBatch<'_>, ctx: &Ctx, now: Tick, caster: StableId, 
 /// its handle writes, its cost and its cooldown.
 fn apply(world: &mut World, ctx: &Ctx, now: Tick, entity: Entity, prepared: &Prepared) {
     let from = *world.get::<Position>(entity).expect("a caster stands");
-    let (caster, action, rank) = (prepared.caster.id, prepared.action, prepared.rank);
-    Projectiles::deliver(world, caster, from, action, rank, prepared.aim);
+    let by = Delivering {
+        source: prepared.caster.id,
+        action: prepared.action,
+        rank: prepared.rank,
+    };
+    let book = world.resource::<ActionBook>();
+    match book.get(by.action).and_then(|action| action.delivery) {
+        Some(Delivery::Projectile(fan)) => {
+            Projectiles::deliver(world, by, from, fan, prepared.aim);
+        }
+        Some(Delivery::Area) => Areas::deliver(world, by, from, prepared.aim),
+        None => {}
+    }
     ctx.apply(world, now);
     if let Some(mut pools) = world.get_mut::<Pools>(entity) {
         pools.pay(&prepared.cost);

@@ -18,6 +18,8 @@ use crate::actions::action_slots::{ActionSlot, InProgress};
 use crate::actions::delivery_data::DeliveryData;
 use crate::actions::error::{ActionError, ActionField};
 use crate::actions::slot_kind::SlotKind;
+use crate::areas::area::Area;
+use crate::areas::area_data::{AreaData, AreaInside};
 use crate::capability_set::internals::TestMatch;
 use crate::combat::armed::Armed;
 use crate::combat::assist_window::AssistWindow;
@@ -150,7 +152,6 @@ fn lash_out() -> ActionData {
         passive_modifier: None,
         passive_while_ready: false,
         delivery: None,
-        area: None,
         rate: None,
         damage: None,
         damage_kind: None,
@@ -205,7 +206,6 @@ fn strike() -> ActionData {
         passive_modifier: None,
         passive_while_ready: false,
         delivery: None,
-        area: None,
         rate: None,
         damage: None,
         damage_kind: None,
@@ -1603,8 +1603,8 @@ fn a_delivery_hook_reads_its_projectile_and_the_unit_its_cast_aimed_at() {
     };
     Projectiles::load_type(&mut game.world, bolt, &data);
     let shot = ActionData {
-        delivery: Some(DeliveryData {
-            projectile: "bolt".to_owned(),
+        delivery: Some(DeliveryData::Projectile {
+            unit_type: "bolt".to_owned(),
             count: NonZeroU8::MIN,
             spread_deg: Num::ZERO,
         }),
@@ -1635,4 +1635,83 @@ fn a_delivery_hook_reads_its_projectile_and_the_unit_its_cast_aimed_at() {
     game.run_until(7);
     assert_eq!((game.health(target), game.health(caster)), (450, 493));
     assert!(game.failures().is_empty());
+}
+
+#[test]
+fn an_area_reaches_the_bodies_within_its_radius_once_at_its_delay_and_ends() {
+    // A delay of 0 ms triggers in tick 1, of 100 ms, 3 ticks at 30 a second, in tick 3: an area
+    // lands in the tick its cast resolves, tick 0, and triggers its delay later, one tick at the
+    // least.
+    for (delay_ms, trigger) in [(0, 1), (100, 3)] {
+        let declared = [
+            Capability::Stats,
+            Capability::Combat,
+            Capability::Abilities,
+            Capability::Areas,
+        ];
+        let mut game = Match::with(LIMITS, &declared);
+        let blast = Units::load_type(&mut game.world, "blast", &UnitTypeData::default()).unwrap();
+        let data = AreaData {
+            radius: num(2),
+            delay_ms,
+            duration_ms: 0,
+            affects: None,
+            inside: AreaInside::default(),
+        };
+        Areas::load_type(&mut game.world, blast, 0, &data);
+        let shot = ActionData {
+            targeting: Targeting::Point,
+            delivery: Some(DeliveryData::Area {
+                unit_type: "blast".to_owned(),
+            }),
+            ..strike()
+        };
+        // Each hook deals damage only when it reads the area still there, and no aimed unit.
+        let source = r#"
+            fn on_hit(ctx, caster, target, hit) {
+                if hit.delivery.unit_type == "blast" && hit.target == () {
+                    ctx.damage(target, 50, "true");
+                }
+            }
+            fn on_end(ctx, caster, hit) {
+                if hit.delivery.unit_type == "blast" {
+                    ctx.damage(caster, 7, "true");
+                }
+            }
+        "#;
+        let ability = game.load(&shot, source);
+        Actions::bind_spawn(&mut game.world, ability, "blast");
+        let caster = game.caster(ability, 1);
+        // The area lands on (4, 0, 0), of radius 2: a body of no radius 2 m away is inside it and
+        // one a bit farther is not; a body of radius 0.5 2.5 m away touches it; an enemy whose
+        // tags block it as a target is reached all the same; an ally is not.
+        let center = num(4);
+        let edge = game.spawn(1, at(center + num(2), Num::ZERO, Num::ZERO), ());
+        let beyond = game.spawn(1, at(center, Num::ZERO, num(2) + Num::EPSILON), ());
+        let body = Body::new(halves(1)).unwrap();
+        let wide = game.spawn(1, at(center - halves(5), Num::ZERO, Num::ZERO), body);
+        let hidden = game.spawn(1, at(center, Num::ZERO, Num::ONE), ());
+        game.set_blocks(hidden, &[Block::Target]);
+        let ally = game.spawn(0, at(center, Num::ZERO, Num::ZERO), ());
+        let units = [edge, beyond, wide, hidden, ally, caster];
+        let areas = |game: &mut Match| {
+            let mut query = game.world.query::<&Area>();
+            query.iter(&game.world).count()
+        };
+
+        game.cast(
+            caster,
+            ActionTarget::Point(at(center, Num::ZERO, Num::ZERO)),
+        );
+        game.run_until(trigger);
+        assert_eq!(units.map(|unit| game.health(unit)), [500; 6], "{delay_ms}");
+        assert_eq!(areas(&mut game), 1);
+        // It triggers, deals 50 to each enemy it reaches, ends at once with no duration, and
+        // its `on_end` deals 7 to its caster.
+        game.run_until(trigger + 1);
+        let healths = units.map(|unit| game.health(unit));
+        assert_eq!(healths, [450, 500, 450, 450, 500, 493], "{delay_ms}");
+        assert_eq!(areas(&mut game), 0);
+        assert!(game.failures().is_empty(), "{:?}", game.failures());
+    }
 }

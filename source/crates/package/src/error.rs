@@ -197,30 +197,32 @@ pub enum LoadProblem {
     LifePoolMissing(Place),
     /// The mode declares a name twice in one of its lists.
     RepeatedName(DeclaredName),
-    /// A projectile type, or what delivers or makes one.
+    /// A projectile or an area type, or what delivers or makes one.
     Delivery(DeliveryProblem),
     /// A field of mode state has no `sync`, or another state field has one.
     StateSync(String),
 }
 
-/// What is wrong with a projectile type, or with what delivers or makes one.
+/// What is wrong with a projectile or an area type, or with what delivers or makes one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeliveryProblem {
     /// A homing projectile type at `at` is no faster than the move speed cap, so it might never
     /// catch its target.
     NotFaster(Place),
-    /// A unit type at `at` with a `projectile` section has a section of a unit that stands, a
-    /// dependency's unit type is no delivery type, or an avatar is one.
+    /// A unit type at `at` with a `projectile` or an `area` section has both, or a section of a
+    /// unit that stands; a dependency's unit type is no delivery type; or an avatar is one.
     NotDelivery(Place),
-    /// An action's `delivery` names a unit type of its package with no `projectile` section.
-    NotProjectile { action: String, unit_type: String },
-    /// An action that aims at nothing has a delivery, which has no way to fly.
+    /// An action's `delivery` names a unit type of its package with no section of its kind.
+    WrongSection { action: String, unit_type: String },
+    /// An action that aims at nothing delivers a projectile, which has no way to fly.
     NoAim(String),
     /// An action's projectile homes, and the action aims at no unit, or launches more than one.
     Homing(String),
-    /// A weapon's projectile does not home.
-    WeaponLine(String),
-    /// A train makes a projectile type, whose units only actions deliver.
+    /// An action that aims along a direction delivers an area, which lands on a point.
+    AreaDirection(String),
+    /// A weapon's delivery is no homing projectile.
+    Weapon(String),
+    /// A train makes a projectile or an area type, whose units only actions deliver.
     Trained(String),
 }
 
@@ -235,26 +237,34 @@ impl fmt::Display for DeliveryProblem {
             }
             DeliveryProblem::NotDelivery(at) => write!(
                 f,
-                "{at}: a projectile type has tags, params and its projectile section alone, a \
-                 dependency's unit types are projectile types, and an avatar is none"
+                "{at}: a projectile or area type has tags, params and one of the two sections \
+                 alone, a dependency's unit types are delivery types, and an avatar is none"
             ),
-            DeliveryProblem::NotProjectile { action, unit_type } => write!(
+            DeliveryProblem::WrongSection { action, unit_type } => write!(
                 f,
-                "action {action:?} delivers unit type {unit_type:?}, which has no projectile \
-                 section"
+                "action {action:?} delivers unit type {unit_type:?}, which has no section of \
+                 its delivery's kind"
             ),
             DeliveryProblem::NoAim(action) => {
-                write!(f, "action {action:?} aims at nothing, and delivers nothing")
+                write!(
+                    f,
+                    "action {action:?} aims at nothing, and a projectile needs an aim"
+                )
             }
             DeliveryProblem::Homing(action) => write!(
                 f,
                 "action {action:?}: a homing projectile flies one at a time, at a unit target"
             ),
-            DeliveryProblem::WeaponLine(action) => {
-                write!(f, "weapon {action:?}: its projectile homes")
+            DeliveryProblem::AreaDirection(action) => write!(
+                f,
+                "action {action:?}: an area lands on a point, a unit or the caster, not along a \
+                 direction"
+            ),
+            DeliveryProblem::Weapon(action) => {
+                write!(f, "weapon {action:?}: its delivery is a homing projectile")
             }
             DeliveryProblem::Trained(action) => {
-                write!(f, "train {action:?} makes a projectile type")
+                write!(f, "train {action:?} makes a projectile or an area type")
             }
         }
     }

@@ -145,9 +145,11 @@ impl Actions {
         world.insert_non_send(host);
         let ctx = world.non_send::<Ctx>().clone();
         ctx.frame().add_params(id, &data.params, stat);
-        world
-            .non_send::<View>()
-            .add_ability(name, data.delivery.is_some());
+        let delivery = world
+            .resource::<ActionBook>()
+            .get(id)
+            .and_then(|action| action.delivery);
+        world.non_send::<View>().add_ability(name, delivery);
         Ok(id)
     }
 }

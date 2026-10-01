@@ -8,7 +8,7 @@ use bevy_ecs::schedule::common_conditions::{resource_added, resource_exists};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_capabilities::{
-    Deaths, MatchEnd, MatchResult, Mode, Owner, Projectile, SeenBy, Team, TeamSet,
+    Area, Deaths, MatchEnd, MatchResult, Mode, Owner, Projectile, SeenBy, Team, TeamSet,
 };
 use campfire_log::LogEvent;
 use campfire_math::PlayerSlot;
@@ -106,7 +106,7 @@ impl SimServer {
     /// Starts the match of `log`'s header, of the mode `packages` holds, in the next fixed tick,
     /// recording into `log`. `clients` are the links of the players, by slot; each learns its slot
     /// and the start tick. From the first tick on, every unit replicates to the clients whose team
-    /// sees it, and the owner's client predicts it.
+    /// sees it, and the owner's client predicts it, but a projectile or an area.
     pub fn start_match(
         world: &mut World,
         log: SessionLog,
@@ -246,16 +246,16 @@ fn announce_end(
 }
 
 /// The units not replicated yet, with their owner if they have one, and whether they are
-/// projectiles.
+/// projectiles or areas.
 type NewUnits<'w, 's> = Query<
     'w,
     's,
-    (Entity, Option<&'static Owner>, Has<Projectile>),
+    (Entity, Option<&'static Owner>, Has<Projectile>, Has<Area>),
     (With<Team>, Without<Replicate>),
 >;
 
 /// After a sim tick, replicates each new unit, predicted by its owner's client unless it is a
-/// projectile, which flies by the server's sim alone, and shows each unit whose seers changed to
+/// projectile or an area, which the server's sim alone runs, and shows each unit whose seers changed to
 /// exactly the clients whose team sees it. A unit is hidden in the tick it replicates in, so a
 /// client never receives a unit its team did not see: a projectile shows where it flies, not
 /// where its source stands. Without vision no unit has `SeenBy`, and every client receives every
@@ -266,11 +266,11 @@ fn show_units(
     changed: Query<'_, '_, (Entity, &StableId, &SeenBy), Changed<SeenBy>>,
     mut commands: Commands<'_, '_>,
 ) {
-    for (unit, owner, projectile) in &new {
+    for (unit, owner, projectile, area) in &new {
         let mut replicated = commands.entity(unit);
         replicated.insert(Replicate::to_clients(NetworkTarget::All));
         let owner = owner
-            .filter(|_| !projectile)
+            .filter(|_| !projectile && !area)
             .and_then(|owner| links.iter().find(|(_, link)| link.slot == owner.slot()));
         if let Some((link, _)) = owner {
             replicated.insert(PredictionTarget::manual(vec![link]));

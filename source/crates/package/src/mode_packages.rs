@@ -133,20 +133,31 @@ impl ModePackages {
     pub fn stat_graph(&self) -> StatGraph {
         let mut graph = StatGraph::new(self.data.stats.keys().cloned());
         let no_abilities = BTreeMap::new();
-        let packages = iter::once((&self.mode, &no_abilities, &self.data.modifiers)).chain(
-            self.dependencies
-                .iter()
-                .map(|dependent| match &dependent.content {
-                    Content::Avatar(avatar) => {
-                        (&dependent.package, &avatar.actions, &avatar.modifiers)
-                    }
-                    Content::Loadout(loadout) => {
-                        (&dependent.package, &loadout.actions, &loadout.modifiers)
-                    }
-                }),
+        let mode = (
+            &self.mode,
+            &no_abilities,
+            &self.units.units,
+            &self.data.modifiers,
         );
-        for (package, abilities, modifiers) in packages {
-            let appliers = package.appliers(abilities);
+        let packages = iter::once(mode).chain(self.dependencies.iter().map(|dependent| {
+            let units = dependent.units();
+            match &dependent.content {
+                Content::Avatar(avatar) => (
+                    &dependent.package,
+                    &avatar.actions,
+                    units,
+                    &avatar.modifiers,
+                ),
+                Content::Loadout(loadout) => (
+                    &dependent.package,
+                    &loadout.actions,
+                    units,
+                    &loadout.modifiers,
+                ),
+            }
+        }));
+        for (package, abilities, units, modifiers) in packages {
+            let appliers = package.appliers(abilities, units);
             for (id, modifier) in modifiers {
                 let by = appliers.get(id.as_str()).map_or(&[][..], Vec::as_slice);
                 for (changed, change) in &modifier.stats {
@@ -221,6 +232,7 @@ impl ModePackages {
     }
 
     /// Every tag its packages name, each once, sorted: `avatar`, `projectile` with projectiles,
+    /// `area` with areas,
     /// the tags of its unit types, its avatars' and its dependencies' delivery types, the names of
     /// its layers, those its and its dependencies' modifiers grant, and those of its `[tags]` and
     /// their immunities. A match declares them in this order, so it numbers them the same however
@@ -256,11 +268,13 @@ impl ModePackages {
             .chain(avatars)
             .chain(deliveries)
             .flat_map(|unit_type| &unit_type.core.tags);
-        let projectiles = self
-            .manifest
-            .capabilities
-            .contains(Capability::Projectiles)
-            .then_some(UnitTypeData::PROJECTILE_TAG);
+        let capabilities = self.manifest.capabilities;
+        let deliveries = [
+            (Capability::Projectiles, UnitTypeData::PROJECTILE_TAG),
+            (Capability::Areas, UnitTypeData::AREA_TAG),
+        ]
+        .into_iter()
+        .filter_map(move |(capability, tag)| capabilities.contains(capability).then_some(tag));
         let declared = self
             .data
             .tags
@@ -273,7 +287,7 @@ impl ModePackages {
             .map(String::as_str)
             .chain(layers)
             .chain([UnitTypeData::AVATAR_TAG])
-            .chain(projectiles)
+            .chain(deliveries)
             .collect()
     }
 

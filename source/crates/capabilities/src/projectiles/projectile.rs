@@ -73,7 +73,7 @@ impl Projectile {
         })
     }
 
-    pub const fn source(&self) -> StableId {
+    pub(crate) const fn source(&self) -> StableId {
         self.source
     }
 

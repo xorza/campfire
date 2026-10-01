@@ -326,7 +326,6 @@ fn blink_data() -> ActionData {
         passive_modifier: None,
         passive_while_ready: false,
         delivery: None,
-        area: None,
         rate: None,
         damage: None,
         damage_kind: None,

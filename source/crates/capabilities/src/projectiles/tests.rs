@@ -1,7 +1,7 @@
 use std::num::NonZeroU32;
 
 use campfire_math::{RngSource, SegmentSeed};
-use campfire_sim::{Capability, SimUpdate, Tick, TypeHash};
+use campfire_sim::{Capability, EntityIndex, IdAllocator, SimTick, SimUpdate, Tick, TypeHash};
 
 use super::*;
 use crate::actions::action_slots::ActionSlots;

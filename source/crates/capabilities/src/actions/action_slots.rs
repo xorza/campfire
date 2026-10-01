@@ -1,5 +1,6 @@
 use bevy_ecs::component::Component;
-use campfire_sim::{Position, SimComponent, StableId, Tick};
+use bevy_ecs::world::World;
+use campfire_sim::{EntityIndex, Position, SimComponent, StableId, Tick};
 use serde::{Deserialize, Serialize};
 
 use crate::actions::action_book::ActionId;
@@ -43,6 +44,28 @@ pub enum ActionTarget {
     None,
     Unit(StableId),
     Point(Position),
+}
+
+impl ActionTarget {
+    /// The point it names in `world`: its point, or where its unit stands; `None` for no
+    /// target, or a unit that is gone.
+    pub(crate) fn point(self, world: &World) -> Option<Position> {
+        match self {
+            ActionTarget::None => None,
+            ActionTarget::Point(at) => Some(at),
+            ActionTarget::Unit(unit) => {
+                let entity = world.resource::<EntityIndex>().get(unit)?;
+                world.get::<Position>(entity).copied()
+            }
+        }
+    }
+
+    pub(crate) const fn unit(self) -> Option<StableId> {
+        match self {
+            ActionTarget::Unit(unit) => Some(unit),
+            ActionTarget::None | ActionTarget::Point(_) => None,
+        }
+    }
 }
 
 impl ActionSlots {

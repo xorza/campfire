@@ -1,6 +1,7 @@
 //! The reference heroes' abilities as their packages hold them: every ability's data reads into
-//! the typed schema, and Husk's Lash Out, Kensho's Twin Cut, Veil's Dusk Mark and Rime's Fan of
-//! Frost, loaded from their data files and scripts, act exactly.
+//! the typed schema, and Husk's Lash Out, Kensho's Twin Cut, Veil's Dusk Mark and Smoke Ring,
+//! Rime's Fan of Frost and Cinder's Eruption, loaded from their data files and scripts, act
+//! exactly.
 
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
@@ -11,10 +12,10 @@ use bevy_ecs::world::World;
 
 use campfire_capabilities::internals::{self, Arms};
 use campfire_capabilities::{
-    Action, ActionSlots, ActionTarget, Actions, CapabilitySet, DeclaredName, Hook, MatchScripts,
-    Number, OnDeath, Order, Owner, Param, PoolId, Pools, Projectile, Projectiles, Range,
-    RangeField, Ranked, RecentAttackers, Scalar, Scaling, ScriptLimits, SlotKind, Stat, StatRule,
-    Stats, Targeting, Team, Units,
+    Action, ActionSlots, ActionTarget, Actions, Area, Areas, CapabilitySet, DeclaredName, Hook,
+    MatchScripts, Number, OnDeath, Order, Owner, Param, PoolId, Pools, Projectile, Projectiles,
+    Range, RangeField, Ranked, RecentAttackers, Scalar, Scaling, ScriptLimits, SlotKind, Stat,
+    StatRule, Stats, Targeting, Team, Units,
 };
 use campfire_capabilities::{Modifiers, ScriptFailures};
 use campfire_content::PackagePath;
@@ -165,7 +166,7 @@ fn every_reference_ability_reads_into_the_schema() {
 }
 
 /// A match of 1 player with the capabilities the reference abilities use, the reference MOBA's
-/// damage kinds, and a stat book of move speed alone, which a slow cuts.
+/// damage kinds, and a stat book of the stats the tested modifiers change.
 fn reference_world() -> World {
     let mut world = World::new();
     SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), RATE);
@@ -197,16 +198,14 @@ fn reference_world() -> World {
         Capability::Abilities,
         Capability::Orders,
         Capability::Projectiles,
+        Capability::Areas,
     ];
     let set = CapabilitySet::new(&declared).unwrap();
     set.install(&mut world, &mut schedule, &mut registry, Some(scripts));
     world.add_schedule(schedule);
-    let move_speed = Stat::named("move_speed").unwrap();
-    internals::load_stats(
-        &mut world,
-        &BTreeMap::from([(move_speed, StatRule::default())]),
-        RATE,
-    );
+    let changed = ["move_speed", "armor", "magic_resist"]
+        .map(|name| (Stat::named(name).unwrap(), StatRule::default()));
+    internals::load_stats(&mut world, &BTreeMap::from(changed), RATE);
     world
 }
 
@@ -484,4 +483,169 @@ fn rimes_snow_owl_flies_to_its_point_and_ends_there() {
         (failures[0].unit, failures[0].hook),
         (Some(caster), Hook::OnEnd)
     );
+}
+
+/// Loads every modifier of the hero `name`, with its script, as its package 0.
+fn load_modifiers(world: &mut World, name: &str, data: &AvatarData) {
+    for (id, modifier) in &data.modifiers {
+        let script = modifier
+            .script
+            .as_ref()
+            .map(|path| compile(world, name, path));
+        Stats::load_modifier(world, 0, id, modifier, script);
+    }
+}
+
+/// How many areas the match holds.
+fn areas(world: &mut World) -> usize {
+    world.query::<&Area>().iter(world).count()
+}
+
+#[test]
+fn cinders_eruption_from_its_package_erupts_on_the_units_in_reach_after_its_delay() {
+    let mut world = reference_world();
+    let cinder = abilities("cinder");
+    load_modifiers(&mut world, "cinder", &cinder);
+    let file = &cinder.units["eruption"];
+    let unit_type = Units::load_type(&mut world, "cinder/eruption", &file.core).unwrap();
+    Areas::load_type(&mut world, unit_type, 0, file.area.as_ref().unwrap());
+    let data = &cinder.actions["eruption"];
+    let script = compile(&mut world, "cinder", data.script.as_ref().unwrap());
+    let eruption = Actions::load(&mut world, 0, "eruption", data, Some(script), 5).unwrap();
+    Actions::bind_spawn(&mut world, eruption, "cinder/eruption");
+
+    let player = Owner::new(PlayerSlot::new(0));
+    let slots = ActionSlots::new([(eruption, SlotKind::new(0), 1)]);
+    let caster = spawn_with(&mut world, 0, 0, (100, 0), (player, slots));
+    let milli = |x: i64, z: i64| {
+        let at = |value: i64| num(value).checked_div_int(1000).unwrap();
+        Position::new(Vec3::new(at(x), Num::ZERO, at(z))).unwrap()
+    };
+    // The area lands on (6, 0, 0), of radius 2.4, and these bodies have no radius: one on the
+    // centre and one 2.4 m out are in reach, one 2.401 m out is not, and an ally is never hit.
+    let enemy = |world: &mut World, at| spawn_at(world, 1, at, (0, 0), Modifiers::default());
+    let center = enemy(&mut world, milli(6000, 0));
+    let edge = enemy(&mut world, milli(8400, 0));
+    let beyond = enemy(&mut world, milli(6000, 2401));
+    let burning = enemy(&mut world, milli(6000, 1000));
+    let ally = spawn_at(&mut world, 0, milli(6000, 0), (0, 0), Modifiers::default());
+    let kindle = Stats::modifier(&world, 0, "kindle").unwrap();
+    internals::give_modifier(
+        &mut world,
+        burning,
+        kindle,
+        Some((caster, Some(eruption), 1)),
+        false,
+    );
+
+    // The cast starts in tick 0 and resolves after its windup of 250 ms, 8 ticks at 30 a
+    // second, in tick 8, where the area lands; it erupts 625 ms later, 19 ticks rounded up, in
+    // tick 27.
+    tick(
+        &mut world,
+        &[Order {
+            unit: caster,
+            action: Action::Slot {
+                slot: 0,
+                target: ActionTarget::Point(milli(6000, 0)),
+            },
+        }],
+    );
+    let units = [center, edge, beyond, burning, ally];
+    for _ in 1..27 {
+        world.run_schedule(SimUpdate);
+    }
+    assert_eq!(units.map(|unit| health(&world, unit)), [500; 5]);
+    assert_eq!(areas(&mut world), 1);
+    world.run_schedule(SimUpdate);
+    // Rank 1 deals 75, and 1.25 × 75 = 93.75 to a unit ablaze: 500 → 406.25. Each unit hit is
+    // ablaze after, and the area ends with its eruption.
+    assert_eq!(
+        units.map(|unit| health(&world, unit)),
+        [425, 425, 500, 406, 500]
+    );
+    let ablaze = |unit| internals::carried(&world, unit) == [(kindle, Some(caster))];
+    assert_eq!(units.map(ablaze), [true, true, false, true, false]);
+    assert_eq!(areas(&mut world), 0);
+    assert_eq!(pool(&world, caster, MANA), num(30));
+    assert!(world.non_send::<ScriptFailures>().get().is_empty());
+}
+
+#[test]
+fn veils_smoke_ring_from_its_package_holds_its_modifiers_on_the_units_inside_while_it_lasts() {
+    let mut world = reference_world();
+    let veil = abilities("veil");
+    load_modifiers(&mut world, "veil", &veil);
+    let file = &veil.units["smoke_ring"];
+    let unit_type = Units::load_type(&mut world, "veil/smoke_ring", &file.core).unwrap();
+    Areas::load_type(&mut world, unit_type, 0, file.area.as_ref().unwrap());
+    let data = &veil.actions["smoke_ring"];
+    assert_eq!(data.script, None);
+    let ring = Actions::load(&mut world, 0, "smoke_ring", data, None, 5).unwrap();
+    Actions::bind_spawn(&mut world, ring, "veil/smoke_ring");
+
+    let player = Owner::new(PlayerSlot::new(0));
+    let slots = ActionSlots::new([(ring, SlotKind::new(0), 1)]);
+    let caster = spawn_with(
+        &mut world,
+        0,
+        0,
+        (0, 100),
+        (player, slots, Modifiers::default()),
+    );
+    let unit =
+        |world: &mut World, team, x| spawn_with(world, team, x, (0, 0), Modifiers::default());
+    // The ring lands where Veil stands, of radius 3: an enemy 2 m and one 3 m away are inside,
+    // one 4 m away is not, and an ally inside gets nothing, as the ring names no `allies`.
+    let near = unit(&mut world, 1, 2);
+    let edge = unit(&mut world, 1, 3);
+    let far = unit(&mut world, 1, 4);
+    let ally = unit(&mut world, 0, 1);
+    let cover = Stats::modifier(&world, 0, "smoke_ring_cover").unwrap();
+    let slow = Stats::modifier(&world, 0, "smoke_ring_slow").unwrap();
+    let carried =
+        |world: &World| [caster, near, edge, far, ally].map(|unit| internals::carried(world, unit));
+    let from_veil = |id| vec![(id, Some(caster))];
+    let inside = [
+        from_veil(cover),
+        from_veil(slow),
+        from_veil(slow),
+        vec![],
+        vec![],
+    ];
+
+    // The cast resolves at once and the ring lands in tick 0; it holds its modifiers from that
+    // tick's Resolve. It lasts 8000 ms, 240 ticks, and ends in tick 240.
+    tick(
+        &mut world,
+        &[Order {
+            unit: caster,
+            action: Action::Slot {
+                slot: 0,
+                target: ActionTarget::None,
+            },
+        }],
+    );
+    assert_eq!(carried(&world), inside);
+    assert_eq!(pool(&world, caster, ENERGY), num(20));
+    // The near enemy steps out to 4 m: its slow ends in the next tick's Resolve.
+    for _ in 1..100 {
+        world.run_schedule(SimUpdate);
+    }
+    let entity = world.resource::<EntityIndex>().get(near).unwrap();
+    *world.get_mut::<Position>(entity).unwrap() =
+        Position::new(Vec3::new(num(4), Num::ZERO, Num::ZERO)).unwrap();
+    world.run_schedule(SimUpdate);
+    let mut left = inside.clone();
+    left[1] = vec![];
+    assert_eq!(carried(&world), left);
+    for _ in 101..240 {
+        world.run_schedule(SimUpdate);
+    }
+    assert_eq!(carried(&world), left);
+    assert_eq!(areas(&mut world), 1);
+    world.run_schedule(SimUpdate);
+    assert_eq!(carried(&world), [vec![], vec![], vec![], vec![], vec![]]);
+    assert_eq!(areas(&mut world), 0);
+    assert!(world.non_send::<ScriptFailures>().get().is_empty());
 }

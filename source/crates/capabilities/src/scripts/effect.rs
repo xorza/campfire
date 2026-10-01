@@ -1,3 +1,4 @@
+use crate::areas::area_effect::AreaEffect;
 use crate::combat::combat_effect::CombatEffect;
 use crate::mode::mode_effect::ModeEffect;
 use crate::orders::ai_order::AiOrder;
@@ -15,4 +16,5 @@ pub(crate) enum Effect {
     Mode(ModeEffect),
     Progression(ProgressionEffect),
     Projectile(ProjectileEffect),
+    Area(AreaEffect),
 }

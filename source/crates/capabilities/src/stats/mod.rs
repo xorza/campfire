@@ -11,7 +11,6 @@ use campfire_math::Num;
 use campfire_script::{ScriptHost, ScriptId};
 use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, Ticks};
 
-use crate::actions::action_book::ActionId;
 use crate::combat::CombatSet;
 use crate::combat::combat_events::CombatEvents;
 use crate::combat::dead::Dead;
@@ -20,6 +19,7 @@ use crate::scripts::ctx::Ctx;
 use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
 use crate::scripts::hook_set::HookSet;
+use crate::stats::held_modifiers::{Held, HeldModifiers};
 use crate::stats::level::Level;
 use crate::stats::live_shares::LiveShares;
 use crate::stats::modifier_book::{Applier, ModifierBook, ModifierId};
@@ -48,6 +48,7 @@ use crate::units::unit_type::UnitType;
 use crate::values::attitude::Attitude;
 use crate::values::metric::Metric;
 
+pub(crate) mod held_modifiers;
 pub(crate) mod level;
 pub(crate) mod live_param;
 pub(crate) mod live_shares;
@@ -90,6 +91,9 @@ pub(crate) enum StatsSet {
     Expire,
     /// In `SimSet::Inputs`: the living units' pools regenerate.
     Regenerate,
+    /// In `SimSet::Resolve`, after `CombatSet::Die`: auras, players and `HeldModifiers` hold
+    /// their modifiers.
+    Hold,
 }
 
 impl Stats {
@@ -104,6 +108,7 @@ impl Stats {
         }
         world.insert_resource(ModifierBook::default());
         world.insert_resource(PlayerModifiers::default());
+        world.insert_resource(HeldModifiers::default());
         registry.register_resource::<PlayerModifiers>();
         if let Some(ctx) = world.get_non_send::<Ctx>().cloned() {
             let hooks = ModifierHooks::new(ctx);
@@ -120,7 +125,7 @@ impl Stats {
                 regenerate.in_set(StatsSet::Regenerate),
             )
                 .in_set(SimSet::Inputs),
-            (clear_dead_modifiers, apply_held)
+            (clear_dead_modifiers, apply_held.in_set(StatsSet::Hold))
                 .chain()
                 .in_set(SimSet::Resolve)
                 .after(CombatSet::Die),
@@ -316,17 +321,19 @@ fn clear_dead_modifiers(mut dead: Query<'_, '_, &mut Modifiers, Added<Dead>>) {
 }
 
 /// Holds, in Resolve each tick, each aura's modifier on every living unit within its radius in
-/// the map's metric that its `affects` selects, from the unit that carries the aura; and each
+/// the map's metric that its `affects` selects, from the unit that carries the aura; each one
+/// another capability holds this tick, as `HeldModifiers` lists it; and each
 /// player modifier on every living unit of its player that the modifier's `affects` selects,
 /// from no source. Each ends on a unit that left it. An aura's modifier resolves its numbers from
 /// the ability that gave the aura, a player modifier's at rank 1; neither has a duration.
 fn apply_held(
-    (book, stats, tick, metric, players): (
+    (book, stats, tick, metric, players, others): (
         Option<Res<'_, ModifierBook>>,
         Option<Res<'_, StatBook>>,
         Res<'_, SimTick>,
         Res<'_, Metric>,
         Res<'_, PlayerModifiers>,
+        Res<'_, HeldModifiers>,
     ),
     view: Option<NonSend<'_, View>>,
     abilities: Option<NonSend<'_, Ctx>>,
@@ -351,6 +358,7 @@ fn apply_held(
         return;
     };
     held.clear();
+    held.extend_from_slice(&others.0);
     for (&target, _, _, tags, owner, _) in &units {
         let Some(owner) = owner else {
             continue;
@@ -438,17 +446,6 @@ fn apply_held(
             modifiers.apply(application);
         }
     }
-}
-
-/// A modifier an aura or a player holds on a unit: the unit, the modifier, the aura's carrier,
-/// none for a player's, and the ability that gave the aura, at its rank.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-struct Held {
-    target: StableId,
-    modifier: ModifierId,
-    source: Option<StableId>,
-    ability: Option<ActionId>,
-    rank: u8,
 }
 
 /// Fills a row of the script view with the unit's level, stats and modifiers.
@@ -638,13 +635,14 @@ pub(crate) mod internals {
 
     use bevy_ecs::world::World;
     use campfire_math::Num;
-    use campfire_sim::{StableId, TickRate};
+    use campfire_sim::{EntityIndex, StableId, TickRate};
 
     use crate::actions::action_book::ActionId;
     use crate::scripts::ctx::Ctx;
     use crate::stats::Stats;
     use crate::stats::modifier_book::{Applier, ModifierId};
     use crate::stats::modifier_effect::ModifierEffect;
+    use crate::stats::modifiers::Modifiers;
     use crate::stats::pool_book::PoolBook;
     use crate::stats::stat::Stat;
     use crate::stats::stat_book::StatBook;
@@ -684,6 +682,20 @@ pub(crate) mod internals {
             duration: None,
         };
         Stats::apply_effect(world, add, applier, frame.as_deref());
+    }
+
+    /// The modifiers `unit` carries, each with its source, in their order.
+    pub fn carried(world: &World, unit: StableId) -> Vec<(ModifierId, Option<StableId>)> {
+        let entity = world
+            .resource::<EntityIndex>()
+            .get(unit)
+            .expect("a unit of the match");
+        world
+            .get::<Modifiers>(entity)
+            .into_iter()
+            .flat_map(Modifiers::iter)
+            .map(|instance| (instance.id, instance.source))
+            .collect()
     }
 }
 

@@ -51,7 +51,7 @@ range = "9.0"
 cooldown_ms = 10000
 cost = { mana = [70, 75, 80, 85, 90] }
 windup_ms = 250
-area = { radius = "2.4", delay_ms = 625, affects = "enemies" }
+delivery = { area = "eruption" }
 
 [actions.eruption.params]
 damage = { base = [75, 120, 165, 210, 255], ability_power = "0.6" }
@@ -106,3 +106,6 @@ projectile = { speed = "10", homing = true }
 
 [units.fire_bolt]
 projectile = { speed = "20", homing = true }
+
+[units.eruption]
+area = { radius = "2.4", delay_ms = 625, affects = "enemies" }

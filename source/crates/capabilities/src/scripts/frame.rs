@@ -6,6 +6,7 @@ use campfire_math::Num;
 use campfire_sim::{IdAllocator, StableId, Tick};
 
 use crate::actions::action_book::ActionId;
+use crate::areas::Areas;
 use crate::combat::Combat;
 use crate::mode::Mode;
 use crate::mode::choices::Choices;
@@ -276,6 +277,7 @@ impl Frame {
                 }
                 Effect::Progression(effect) => Progression::apply(world, effect),
                 Effect::Projectile(effect) => Projectiles::apply(world, effect),
+                Effect::Area(effect) => Areas::apply(world, effect),
             }
         }
         self.effects = effects;

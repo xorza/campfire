@@ -1,4 +1,5 @@
 use bevy_ecs::resource::Resource;
+use bevy_ecs::world::World;
 use campfire_math::{Num, Vec3};
 use campfire_sim::Position;
 use serde::de::Error;
@@ -20,6 +21,14 @@ impl Bounds {
         min: [Num::from_bits(-Position::BOUND.to_bits()); 2],
         max: [Position::BOUND; 2],
     };
+
+    /// The bounds of the match in `world`: its map's, or the world's in a match without a map.
+    pub(crate) fn of(world: &World) -> Bounds {
+        world
+            .get_resource::<Bounds>()
+            .copied()
+            .unwrap_or(Bounds::WORLD)
+    }
 
     /// The bounds from `min` to `max`; `None` unless `min` is below `max` on both axes and both
     /// are within the world's bound.

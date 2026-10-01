@@ -1,16 +1,13 @@
 use campfire_math::Vec3;
 use campfire_sim::{Position, StableId};
 
-use crate::actions::action_book::ActionId;
+use crate::deliveries::delivering::Delivering;
 
-/// A projectile a call queued: `source`'s, from `from`, of `action` at `rank`, toward a
-/// direction or homing on a unit.
+/// A projectile a call queued: of `by`, from `from`, toward a direction or homing on a unit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ProjectileEffect {
-    pub(crate) source: StableId,
+    pub(crate) by: Delivering,
     pub(crate) from: Position,
-    pub(crate) action: ActionId,
-    pub(crate) rank: u8,
     pub(crate) toward: Toward,
 }
 

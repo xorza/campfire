@@ -5,6 +5,7 @@ use campfire_script::rhai::Engine;
 use campfire_sim::Capability;
 
 use crate::abilities::abilities_api::AbilitiesApi;
+use crate::areas::areas_api::AreasApi;
 use crate::combat::combat_api::CombatApi;
 use crate::mode::mode_api::ModeApi;
 use crate::orders::orders_api::OrdersApi;
@@ -73,6 +74,8 @@ pub enum DataTable {
     Action,
     Delivery,
     Projectile,
+    Area,
+    AreaInside,
     Track,
     Modifier,
     Aura,
@@ -195,6 +198,7 @@ impl ScriptApi {
         ProgressionApi::register(&mut builder);
         ProductionApi::register(&mut builder);
         ProjectilesApi::register(&mut builder);
+        AreasApi::register(&mut builder);
         api
     }
 
@@ -449,7 +453,7 @@ impl Status {
 }
 
 impl DataTable {
-    pub const ALL: [DataTable; 19] = [
+    pub const ALL: [DataTable; 21] = [
         DataTable::Mode,
         DataTable::ModeCombat,
         DataTable::ModeNavigation,
@@ -460,6 +464,8 @@ impl DataTable {
         DataTable::Action,
         DataTable::Delivery,
         DataTable::Projectile,
+        DataTable::Area,
+        DataTable::AreaInside,
         DataTable::Track,
         DataTable::Modifier,
         DataTable::Aura,
@@ -484,6 +490,8 @@ impl DataTable {
             DataTable::Action => "An action, `[actions.<id>]`",
             DataTable::Delivery => "An action's `delivery`",
             DataTable::Projectile => "A unit type's `projectile`",
+            DataTable::Area => "A unit type's `area`",
+            DataTable::AreaInside => "An area's `inside`",
             DataTable::Track => "A track, `[tracks.<name>]`",
             DataTable::Modifier => "A modifier, `[modifiers.<id>]`",
             DataTable::Aura => "A modifier's `aura`",
@@ -591,6 +599,7 @@ mod tests {
     use crate::actions::action_data::ActionData;
     use crate::actions::delivery_data::DeliveryData;
     use crate::actions::slot_kinds::SlotKindData;
+    use crate::areas::area_data::{AreaData, AreaInside};
     use crate::combat::combat_data::CombatData;
     use crate::combat::combat_rules::{CombatRules, Leech};
     use crate::mode::choice_data::ChoiceData;
@@ -785,6 +794,8 @@ mod tests {
             (DataTable::Action, serde_fields::<ActionData>()),
             (DataTable::Delivery, serde_fields::<DeliveryData>()),
             (DataTable::Projectile, serde_fields::<ProjectileData>()),
+            (DataTable::Area, serde_fields::<AreaData>()),
+            (DataTable::AreaInside, serde_fields::<AreaInside>()),
             (DataTable::Track, serde_fields::<TrackData>()),
             (DataTable::Modifier, serde_fields::<ModifierData>()),
             (DataTable::Aura, serde_fields::<AuraData>()),

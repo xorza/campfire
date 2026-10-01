@@ -96,6 +96,8 @@ const UNITS: &str = "modes/3v3/data/units.toml";
 const MAP: &str = "modes/3v3/map/map.toml";
 const HUSK: &str = "heroes/husk/data/avatar.toml";
 const GALE: &str = "heroes/gale/data/avatar.toml";
+const CINDER: &str = "heroes/cinder/data/avatar.toml";
+const VEIL: &str = "heroes/veil/data/avatar.toml";
 const LASH_OUT: &str = "heroes/husk/scripts/lash_out.rhai";
 const CREEP_AI: &str = "modes/3v3/scripts/creep_ai.rhai";
 const MODE: &str = "moba-3v3";
@@ -172,7 +174,7 @@ fn more_tracks_than_a_unit_holds_fail_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 131] = [
+const FLAWS: [Flaw; 138] = [
     flaw(
         MANIFEST,
         Edit::Replace(r#"engine = "0.1.0""#, r#"engine = "0.0.9""#),
@@ -315,7 +317,7 @@ const FLAWS: [Flaw; 131] = [
     ),
     // An action delivers a projectile type of its own package, which homes only alone and at a
     // unit, and needs an aim; a weapon's homes. A projectile type is a delivery type alone, a
-    // dependency's unit types are all projectile types, and only actions make projectiles.
+    // dependency's unit types are all delivery types, and only actions make projectiles.
     flaw(
         HUSK,
         Edit::Replace(
@@ -382,7 +384,7 @@ const FLAWS: [Flaw; 131] = [
             r#"projectile = { speed = "12" }"#,
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::WeaponLine(action)) if action == "tower_attack"),
+        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::Weapon(action)) if action == "tower_attack"),
     ),
     flaw(
         MODE_DATA,
@@ -391,7 +393,66 @@ const FLAWS: [Flaw; 131] = [
             r#"delivery = { projectile = "tower" }"#,
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NotProjectile { action, unit_type }) if action == "tower_attack" && unit_type == "tower"),
+        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::WrongSection { action, unit_type }) if action == "tower_attack" && unit_type == "tower"),
+    ),
+    // An area delivery names an area type, which lands on a point, a unit or the caster, takes
+    // no count, and holds modifiers of its package; a delivery type has one section of the two.
+    flaw(
+        CINDER,
+        Edit::Replace(
+            r#"delivery = { area = "eruption" }"#,
+            r#"delivery = { area = "fire_lance" }"#,
+        ),
+        "hero-cinder",
+        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::WrongSection { action, unit_type }) if action == "eruption" && unit_type == "fire_lance"),
+    ),
+    flaw(
+        CINDER,
+        Edit::Replace(
+            "targeting = \"point\"\nrange = \"9.0\"",
+            "targeting = \"direction\"\nrange = \"9.0\"",
+        ),
+        "hero-cinder",
+        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::AreaDirection(action)) if action == "eruption"),
+    ),
+    flaw(
+        CINDER,
+        Edit::Replace(
+            r#"delivery = { area = "eruption" }"#,
+            r#"delivery = { area = "eruption", count = 2 }"#,
+        ),
+        "hero-cinder",
+        |problem| read_fails(problem, "data/avatar.toml", "an area takes no count"),
+    ),
+    flaw(
+        CINDER,
+        Edit::Replace(
+            r#"delay_ms = 625, affects = "enemies" }"#,
+            r#"delay_ms = 625, affects = "enemies:molten" }"#,
+        ),
+        "hero-cinder",
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Filter, at: Place::UnitType(name), .. } if name == "hero-cinder/eruption"),
+    ),
+    flaw(
+        CINDER,
+        Edit::Replace(
+            "[units.eruption]\n",
+            "[units.eruption]\nprojectile = { speed = \"20\" }\n",
+        ),
+        "hero-cinder",
+        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NotDelivery(Place::UnitType(name))) if name == "hero-cinder/eruption"),
+    ),
+    flaw(
+        VEIL,
+        Edit::Replace(r#"self = "smoke_ring_cover""#, r#"self = "smoke_cover""#),
+        "hero-veil",
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Modifier, at: Place::UnitType(unit_type), name } if unit_type == "hero-veil/smoke_ring" && name == "smoke_cover"),
+    ),
+    flaw(
+        MANIFEST,
+        Edit::Replace(r#""areas", "#, ""),
+        "hero-cinder",
+        |problem| matches!(problem, LoadProblem::Undeclared { capability: Capability::Areas, at: Place::UnitType(name) } if name == "hero-cinder/eruption"),
     ),
     flaw(
         MAP,

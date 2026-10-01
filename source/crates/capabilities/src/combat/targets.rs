@@ -89,12 +89,30 @@ impl Targets<'_, '_> {
 
     /// `target`, when it is a living unit that may be a target.
     pub(crate) fn living(&self, target: StableId) -> Option<LivingUnit> {
-        let (&id, &pos, &team, pools, body, tags) = self.units.get(self.index.get(target)?).ok()?;
-        if pools.max(self.bindings.life).is_none()
-            || UnitTags::effects_of(tags).blocks(Block::Target)
-        {
-            return None;
-        }
+        let row = self.units.get(self.index.get(target)?).ok()?;
+        let blocked = UnitTags::effects_of(row.5).blocks(Block::Target);
+        self.body(row).filter(|_| !blocked)
+    }
+
+    /// Every living unit with the life pool, those whose tags block it as a target among them:
+    /// the units an area reaches, in no order.
+    pub(crate) fn bodies(&self) -> impl Iterator<Item = LivingUnit> + '_ {
+        self.units.iter().filter_map(|row| self.body(row))
+    }
+
+    /// The unit of `row`, when it has the life pool.
+    fn body(
+        &self,
+        (&id, &pos, &team, pools, body, tags): (
+            &StableId,
+            &Position,
+            &Team,
+            &Pools,
+            Option<&Body>,
+            Option<&UnitTags>,
+        ),
+    ) -> Option<LivingUnit> {
+        pools.max(self.bindings.life)?;
         Some(LivingUnit {
             id,
             pos,

@@ -26,4 +26,6 @@ impl UnitTypeData {
     pub const AVATAR_TAG: &str = "avatar";
     /// The tag of projectile types: a filter selects their units only when it names it.
     pub const PROJECTILE_TAG: &str = "projectile";
+    /// The tag of area types: a filter selects their units only when it names it.
+    pub const AREA_TAG: &str = "area";
 }

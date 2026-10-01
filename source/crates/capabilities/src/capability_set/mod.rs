@@ -5,6 +5,7 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
 use crate::abilities::Abilities;
+use crate::areas::Areas;
 use crate::capability_set::error::CapabilityError;
 use crate::combat::Combat;
 use crate::mode::match_end::MatchEnd;
@@ -30,13 +31,14 @@ type Install = fn(&mut World, &mut Schedule, &mut StateRegistry);
 
 /// The capabilities the release runs, in the order they install: each after the ones it builds
 /// on. A declared capability not here installs nothing yet.
-const INSTALLS: [(Capability, Install); 9] = [
+const INSTALLS: [(Capability, Install); 10] = [
     (Capability::Stats, Stats::install),
     (Capability::Progression, Progression::install),
     (Capability::Combat, Combat::install),
     (Capability::Navigation, Navigation::install),
     (Capability::Vision, Vision::install),
     (Capability::Projectiles, Projectiles::install),
+    (Capability::Areas, Areas::install),
     (Capability::Abilities, Abilities::install),
     (Capability::Orders, Orders::install),
     (Capability::Production, Production::install),
@@ -114,9 +116,10 @@ const fn bit(capability: Capability) -> u16 {
 const fn needs(capability: Capability) -> &'static [Capability] {
     match capability {
         Capability::Combat | Capability::Progression => &[Capability::Stats],
-        Capability::Projectiles | Capability::Abilities | Capability::Vision => {
-            &[Capability::Combat]
-        }
+        Capability::Projectiles
+        | Capability::Areas
+        | Capability::Abilities
+        | Capability::Vision => &[Capability::Combat],
         Capability::Orders => &[Capability::Combat, Capability::Navigation],
         _ => &[],
     }

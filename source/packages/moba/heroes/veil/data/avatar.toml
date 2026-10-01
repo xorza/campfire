@@ -50,11 +50,10 @@ script = "scripts/dusk_mark.rhai"
 duration_ms = 6000
 
 [actions.smoke_ring]
-script = "scripts/smoke_ring.rhai"
 targeting = "none"
 cooldown_ms = 20000
 cost = { energy = [80, 75, 70, 65, 60] }
-area = { radius = "3.0", duration_ms = 8000, inside = { self = "smoke_ring_cover", enemies = "smoke_ring_slow" } }
+delivery = { area = "smoke_ring" }
 
 [actions.smoke_ring.params]
 slow = ["0.14", "0.18", "0.22", "0.26", "0.30"]
@@ -103,3 +102,6 @@ damage_kind = "physical"
 
 [units.dusk_mark]
 projectile = { speed = "10", homing = true }
+
+[units.smoke_ring]
+area = { radius = "3.0", duration_ms = 8000, inside = { self = "smoke_ring_cover", enemies = "smoke_ring_slow" } }

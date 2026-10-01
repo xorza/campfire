@@ -10,7 +10,7 @@ use campfire_math::{Num, PlayerSlot, Vec3};
 use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString, NativeCallContext};
 use campfire_sim::{Capability, EntityIndex, Position, SimTick, StableId, Tick, TickRate, Ticks};
 
-use crate::actions::action_book::ActionId;
+use crate::actions::action_book::{ActionId, Delivery};
 use crate::actions::action_data::CostTarget;
 use crate::combat::damage_kind::DamageKind;
 use crate::mode::resource_id::ResourceId;
@@ -63,8 +63,8 @@ pub(crate) struct ScriptView {
     damage_kinds: Rc<[DeclaredName]>,
     /// Each loaded ability's name in its package, by ability id.
     ability_names: Vec<ImmutableString>,
-    /// Whether each loaded ability delivers projectiles, by ability id.
-    delivers: Vec<bool>,
+    /// How each loaded ability delivers, if other than at once, by ability id.
+    delivers: Vec<Option<Delivery>>,
     /// How each installed capability above the core fills its fields of a row, in install order.
     sources: Vec<RowSource>,
     rate: TickRate,
@@ -594,16 +594,16 @@ impl View {
         self.0.borrow().damage_kinds[kind.index()].as_str().into()
     }
 
-    /// Adds the name of the ability loaded next, which takes the next ability id, and whether it
-    /// delivers projectiles.
-    pub(crate) fn add_ability(&self, name: &str, delivers: bool) {
+    /// Adds the name of the ability loaded next, which takes the next ability id, and how it
+    /// delivers.
+    pub(crate) fn add_ability(&self, name: &str, delivers: Option<Delivery>) {
         let mut view = self.0.borrow_mut();
         view.ability_names.push(name.into());
         view.delivers.push(delivers);
     }
 
-    /// Whether ability `id` delivers projectiles.
-    pub(crate) fn delivers(&self, id: ActionId) -> bool {
+    /// How ability `id` delivers, if other than at once.
+    pub(crate) fn delivers(&self, id: ActionId) -> Option<Delivery> {
         self.0.borrow().delivers[id.index()]
     }
 

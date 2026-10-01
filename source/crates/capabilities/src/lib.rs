@@ -17,8 +17,10 @@
 
 mod abilities;
 mod actions;
+mod areas;
 mod capability_set;
 mod combat;
+mod deliveries;
 mod mode;
 mod navigation;
 mod orders;
@@ -35,8 +37,8 @@ pub use abilities::Abilities;
 pub use actions::Actions;
 pub use actions::action_book::ActionId;
 pub use actions::action_data::{
-    ActionData, AreaData, AreaInside, ChannelData, ChargeData, ChargesData, CostTarget, Range,
-    RangeField, RankFields, Targeting, Toggle,
+    ActionData, ChannelData, ChargeData, ChargesData, CostTarget, Range, RangeField, RankFields,
+    Targeting, Toggle,
 };
 pub use actions::action_kind::ActionKind;
 pub use actions::action_slots::{ActionSlot, ActionSlots, ActionTarget};
@@ -44,6 +46,9 @@ pub use actions::delivery_data::DeliveryData;
 pub use actions::error::{ActionError, ActionField};
 pub use actions::slot_kind::SlotKind;
 pub use actions::slot_kinds::{SlotKindData, SlotKinds};
+pub use areas::Areas;
+pub use areas::area::Area;
+pub use areas::area_data::{AreaData, AreaInside};
 pub use capability_set::CapabilitySet;
 pub use capability_set::error::CapabilityError;
 pub use combat::Combat;
@@ -161,7 +166,7 @@ pub use vision::vision_data::VisionData;
 #[cfg(feature = "internals")]
 pub mod internals {
     pub use crate::combat::internals::{Arms, ArmsParts};
-    pub use crate::stats::internals::{give_modifier, load_stats};
+    pub use crate::stats::internals::{carried, give_modifier, load_stats};
     pub use crate::stats::pools::internals::spent;
 }
 

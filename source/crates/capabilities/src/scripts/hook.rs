@@ -168,10 +168,11 @@ impl Hook {
     /// The capability that calls it; `None` for the core's.
     pub const fn capability(self) -> Option<Capability> {
         match self {
-            Hook::OnResolve | Hook::OnChannelTick | Hook::OnInterrupt => {
-                Some(Capability::Abilities)
-            }
-            Hook::OnHit | Hook::OnEnd => Some(Capability::Projectiles),
+            Hook::OnResolve
+            | Hook::OnHit
+            | Hook::OnEnd
+            | Hook::OnChannelTick
+            | Hook::OnInterrupt => Some(Capability::Abilities),
             Hook::OnInterval => Some(Capability::Stats),
             Hook::OnAttack
             | Hook::OnAttackHit

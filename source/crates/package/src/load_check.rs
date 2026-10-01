@@ -137,7 +137,7 @@ impl<'a> LoadCheck<'a> {
         let unit_type = |name: &str| {
             units
                 .get(name)
-                .is_some_and(|unit_type| unit_type.projectile.is_none())
+                .is_some_and(|unit_type| !unit_type.delivers())
         };
         Mode::check(
             &packages.manifest.teams,
@@ -203,7 +203,7 @@ impl<'a> LoadCheck<'a> {
         let ranks = self.slotted_ranks(packages.units.units.values())?;
         let ranks = |id: &str| ranks.get(id).copied().unwrap_or(1);
         self.actions(&data.actions, units, ranks, &mut names)?;
-        let appliers = packages.mode.appliers(&data.actions);
+        let appliers = packages.mode.appliers(&data.actions, units);
         self.modifiers(&mut names, &appliers)?;
         self.scripts(&names)
     }
@@ -237,7 +237,7 @@ impl<'a> LoadCheck<'a> {
                 if avatar.unit.orders.is_some() {
                     return Err(LoadProblem::AvatarOrders);
                 }
-                if avatar.unit.projectile.is_some() {
+                if avatar.unit.delivers() {
                     return Err(LoadProblem::Delivery(DeliveryProblem::NotDelivery(at)));
                 }
                 self.unit_type(&avatar.unit, &at, &avatar.actions, &avatar.modifiers)?;
@@ -264,7 +264,7 @@ impl<'a> LoadCheck<'a> {
         let ranks = |id: &str| slotted.as_ref().map_or(loadout_ranks, |ranks| ranks[id]);
         let mut names = PackageNames::new(package, modifiers);
         self.actions(actions, dependent.units(), ranks, &mut names)?;
-        let appliers = package.appliers(actions);
+        let appliers = package.appliers(actions, dependent.units());
         self.modifiers(&mut names, &appliers)?;
         self.scripts(&names)
     }
@@ -295,11 +295,12 @@ impl<'a> LoadCheck<'a> {
             self.kind(id, ability)?;
             self.ranked(id, ability, ranks(id))?;
             if let Some(delivery) = &ability.delivery {
-                self.require(Capability::Projectiles, &at)?;
+                let capability = match delivery {
+                    DeliveryData::Projectile { .. } => Capability::Projectiles,
+                    DeliveryData::Area { .. } => Capability::Areas,
+                };
+                self.require(capability, &at)?;
                 delivery_holds(id, ability, delivery, units)?;
-            }
-            if ability.area.is_some() {
-                self.require(Capability::Areas, &at)?;
             }
             for modifier in ability.modifiers() {
                 modifier_exists(names.modifiers, modifier, &at)?;
@@ -612,7 +613,7 @@ impl<'a> LoadCheck<'a> {
                             name: name.clone(),
                         });
                     }
-                    Some(unit_type) if unit_type.projectile.is_some() => {
+                    Some(unit_type) if unit_type.delivers() => {
                         return Err(LoadProblem::Delivery(DeliveryProblem::Trained(
                             id.to_owned(),
                         )));
@@ -742,8 +743,9 @@ impl<'a> LoadCheck<'a> {
     /// A unit type at `at`, of a package of `actions` and `modifiers`: each capability its
     /// sections use declared, its stats and pools the mode's, its layer one the mode declares;
     /// its slots of kinds the mode declares, each holding actions of `actions`, none twice; its
-    /// passive one of `modifiers`; and a projectile type a delivery type alone, which, homing,
-    /// flies faster than the cap, and hits units by the match's tags.
+    /// passive one of `modifiers`; and a projectile or an area type a delivery type alone: a
+    /// homing projectile faster than the cap, its filter of the match's tags, and an area's
+    /// `inside` modifiers of `modifiers`.
     fn unit_type(
         &self,
         unit_type: &UnitTypeFile,
@@ -760,18 +762,27 @@ impl<'a> LoadCheck<'a> {
             (!unit_type.tracks.is_empty(), Capability::Progression),
             (unit_type.production.is_some(), Capability::Production),
             (unit_type.projectile.is_some(), Capability::Projectiles),
+            (unit_type.area.is_some(), Capability::Areas),
         ];
         for (used, capability) in sections {
             if used {
                 self.require(capability, at)?;
             }
         }
-        if let Some(projectile) = &unit_type.projectile {
-            if !unit_type.delivery_only() {
-                return Err(LoadProblem::Delivery(DeliveryProblem::NotDelivery(
-                    at.clone(),
-                )));
+        if unit_type.delivers() && !unit_type.delivery_only() {
+            return Err(LoadProblem::Delivery(DeliveryProblem::NotDelivery(
+                at.clone(),
+            )));
+        }
+        if let Some(area) = &unit_type.area {
+            if let Some(affects) = &area.affects {
+                self.filter_data(affects, at)?;
             }
+            for modifier in area.inside.modifiers() {
+                modifier_exists(modifiers, modifier, at)?;
+            }
+        }
+        if let Some(projectile) = &unit_type.projectile {
             if projectile.homing && projectile.speed <= self.cap {
                 return Err(LoadProblem::Delivery(DeliveryProblem::NotFaster(
                     at.clone(),
@@ -1032,37 +1043,55 @@ fn modifier_exists(
     })
 }
 
-/// The `delivery` of `action`, whose id is `id`: a projectile type of its package's `units`; for
-/// a weapon, one that homes; aimed at something, and at a unit, alone, for one that homes.
+/// The `delivery` of `action`, whose id is `id`: a unit type of its package's `units` with the
+/// section of its kind. A projectile needs an aim, and homes alone and at a unit; an area lands
+/// on a point, a unit or the caster, not along a direction; a weapon's is a homing projectile.
 fn delivery_holds(
     id: &str,
     action: &ActionData,
     delivery: &DeliveryData,
     units: &BTreeMap<String, UnitTypeFile>,
 ) -> Result<(), LoadProblem> {
-    let fail = LoadProblem::Delivery;
-    let action_id = || id.to_owned();
-    let name = &delivery.projectile;
+    let fail =
+        |problem: fn(String) -> DeliveryProblem| Err(LoadProblem::Delivery(problem(id.to_owned())));
+    let name = delivery.unit_type();
     let unit_type = units.get(name).ok_or_else(|| LoadProblem::Unknown {
         of: NameKind::UnitType,
         at: Place::Action(id.to_owned()),
-        name: name.clone(),
+        name: name.to_owned(),
     })?;
-    let Some(projectile) = &unit_type.projectile else {
-        return Err(fail(DeliveryProblem::NotProjectile {
-            action: action_id(),
-            unit_type: name.clone(),
-        }));
+    let wrong_section = || {
+        Err(LoadProblem::Delivery(DeliveryProblem::WrongSection {
+            action: id.to_owned(),
+            unit_type: name.to_owned(),
+        }))
     };
-    if action.targeting == Targeting::None {
-        return Err(fail(DeliveryProblem::NoAim(action_id())));
-    }
-    let at_unit = matches!(action.targeting, Targeting::Unit(_));
-    if projectile.homing && (!at_unit || delivery.count.get() > 1) {
-        return Err(fail(DeliveryProblem::Homing(action_id())));
-    }
-    if action.kind == ActionKind::Attack && !projectile.homing {
-        return Err(fail(DeliveryProblem::WeaponLine(action_id())));
+    let homing = match delivery {
+        DeliveryData::Projectile { count, .. } => {
+            let Some(projectile) = &unit_type.projectile else {
+                return wrong_section();
+            };
+            let at_unit = matches!(action.targeting, Targeting::Unit(_));
+            if action.targeting == Targeting::None {
+                return fail(DeliveryProblem::NoAim);
+            }
+            if projectile.homing && (!at_unit || count.get() > 1) {
+                return fail(DeliveryProblem::Homing);
+            }
+            projectile.homing
+        }
+        DeliveryData::Area { .. } => {
+            if unit_type.area.is_none() {
+                return wrong_section();
+            }
+            if action.targeting == Targeting::Direction {
+                return fail(DeliveryProblem::AreaDirection);
+            }
+            false
+        }
+    };
+    if action.kind == ActionKind::Attack && !homing {
+        return fail(DeliveryProblem::Weapon);
     }
     Ok(())
 }

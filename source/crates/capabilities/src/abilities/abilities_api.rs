@@ -1,5 +1,6 @@
 use campfire_sim::Capability;
 
+use crate::deliveries::hit_handle::HitHandle;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::hook::Hook;
 use crate::scripts::role_set::RoleSet;
@@ -28,11 +29,6 @@ impl AbilitiesApi {
                 "how long a charged cast was held, from 0 to 1",
             ))
             .plan(cast("origin", "where the cast comes from"))
-            .plan(
-                MemberSpec::call("area", "(pos)", "the ability's area at `pos`")
-                    .roles(RoleSet::ACTION)
-                    .capability(Capability::Areas),
-            )
             .plan(call(
                 "reduce_cooldown",
                 "(unit, id, ms)",
@@ -51,6 +47,8 @@ impl AbilitiesApi {
         AbilitiesApi::register_deliveries(api);
         api.tag_effect(TagEffect::Blocks(Block::Cast), Status::Runs)
             .hook(Hook::OnResolve, "(ctx, unit, target)", Status::Runs)
+            .hook(Hook::OnHit, "(ctx, unit, target, hit)", Status::Runs)
+            .hook(Hook::OnEnd, "(ctx, unit, hit)", Status::Runs)
             .hook(Hook::OnChannelTick, "(ctx, unit)", Status::Planned)
             .hook(Hook::OnInterrupt, "(ctx, unit, target)", Status::Planned)
             .data(
@@ -63,14 +61,14 @@ impl AbilitiesApi {
                     "hold",
                     "charges",
                     "charge",
-                    "area",
                     "projectile_state",
                 ],
             );
     }
 
-    /// The planned handles of deliveries: a projectile, an area, and the hit either records.
+    /// The handles of deliveries: the hit either records, and the planned projectile and area.
     fn register_deliveries(api: &mut ApiBuilder<'_>) {
+        HitHandle::register(api);
         let projectile = |name, description| {
             MemberSpec::field(ApiOwner::Projectile, name, description)
                 .capability(Capability::Projectiles)
