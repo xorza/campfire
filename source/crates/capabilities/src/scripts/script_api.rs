@@ -63,6 +63,7 @@ pub enum DataTable {
     Mode,
     ModeCombat,
     Leech,
+    Relation,
     Ability,
     Modifier,
     Aura,
@@ -436,10 +437,11 @@ impl Status {
 }
 
 impl DataTable {
-    pub const ALL: [DataTable; 12] = [
+    pub const ALL: [DataTable; 13] = [
         DataTable::Mode,
         DataTable::ModeCombat,
         DataTable::Leech,
+        DataTable::Relation,
         DataTable::Ability,
         DataTable::Modifier,
         DataTable::Aura,
@@ -457,6 +459,7 @@ impl DataTable {
             DataTable::Mode => "`data/mode.toml`",
             DataTable::ModeCombat => "The mode's `[combat]`",
             DataTable::Leech => "The mode's `[combat] leech`",
+            DataTable::Relation => "A pair of teams, `[[relations]]`",
             DataTable::Ability => "An ability, `[abilities.<id>]`",
             DataTable::Modifier => "A modifier, `[modifiers.<id>]`",
             DataTable::Aura => "A modifier's `aura`",
@@ -565,6 +568,7 @@ mod tests {
     use crate::combat::combat_data::{AttackData, CombatData};
     use crate::combat::combat_rules::{CombatRules, Leech};
     use crate::mode::mode_data::ModeData;
+    use crate::mode::relation_data::RelationData;
     use crate::orders::ai_data::AiData;
     use crate::stats::modifier_data::{AuraData, ModifierData};
     use crate::units::block::Block;
@@ -740,6 +744,7 @@ mod tests {
             (DataTable::Mode, serde_fields::<ModeData>()),
             (DataTable::ModeCombat, serde_fields::<CombatRules>()),
             (DataTable::Leech, serde_fields::<Leech>()),
+            (DataTable::Relation, serde_fields::<RelationData>()),
             (DataTable::Ability, serde_fields::<AbilityData>()),
             (DataTable::Modifier, serde_fields::<ModifierData>()),
             (DataTable::Aura, serde_fields::<AuraData>()),

@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::units::team_set::TeamSet;
 
-/// The teams that see a unit, as the Vision stage of the last tick found them: its own, and each
-/// team with a living unit that sees the grid cell it stands in.
+/// The teams that see a unit, as the Vision stage of the last tick found them: those of its own
+/// vision group, and of each group with a living unit that sees the grid cell it stands in.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
 pub struct SeenBy(TeamSet);

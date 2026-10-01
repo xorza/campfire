@@ -59,7 +59,7 @@ Neutral core terms: a player's **avatar** (a unit type players choose: a hero, a
 
 ## Relations
 
-A team is an index in the mode's list of teams, of any length, so a battle royale of 100 solo players has 100 teams. The mode declares how pairs of teams regard each other, as Unreal's [team attitudes](https://dev.epicgames.com/documentation/unreal-engine/API/Runtime/AIModule/FGenericTeamId) do:
+A team is an index in the mode's list of teams, up to 256 long, so a battle royale of 100 solo players has 100 teams; a set of teams is then a fixed bitset a rollback copies without an allocation. The mode declares how pairs of teams regard each other, as Unreal's [team attitudes](https://dev.epicgames.com/documentation/unreal-engine/API/Runtime/AIModule/FGenericTeamId) do:
 
 ```toml
 [[relations]]

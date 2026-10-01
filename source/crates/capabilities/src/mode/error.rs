@@ -30,10 +30,10 @@ pub enum UnitKitError {
 /// not have. Packages are untrusted, so each is an expected failure.
 #[derive(Debug, Clone)]
 pub enum ModeError {
-    /// A team is named `neutral`, the name of the team neutral units spawn on.
-    NeutralTeam,
-    /// More teams than a team index counts, the neutral one included.
+    /// More teams than a team index counts.
     TooManyTeams,
+    /// A relation of a team to itself, or of a pair the relations name before.
+    RepeatedRelation(String, String),
     /// Two teams, or two paths, share a name.
     RepeatedName(String),
     /// More players than the teams have slots.
@@ -79,8 +79,13 @@ impl Error for UnitKitError {}
 impl fmt::Display for ModeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ModeError::NeutralTeam => f.write_str("a team is named neutral"),
             ModeError::TooManyTeams => f.write_str("more teams than a team index counts"),
+            ModeError::RepeatedRelation(a, b) => {
+                write!(
+                    f,
+                    "a relation of {a:?} and {b:?} again, or of a team to itself"
+                )
+            }
             ModeError::RepeatedName(name) => write!(f, "{name:?} names two teams or paths"),
             ModeError::TooManyPlayers => f.write_str("more players than slots"),
             ModeError::UnknownTeam(name) => write!(f, "no team {name:?}"),

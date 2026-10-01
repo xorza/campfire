@@ -605,6 +605,7 @@ fn every_navigation_type_is_state() {
             "sim.tick",
             "units.body",
             "units.owner",
+            "units.relations",
             "units.spawn_point",
             "units.team",
             "units.unit_type",

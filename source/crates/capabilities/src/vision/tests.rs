@@ -14,6 +14,7 @@ use crate::scripts::match_scripts::MatchScripts;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::units::tag_effects::TagEffects;
 use crate::units::unit::Unit;
+use crate::values::attitude::Attitude;
 use crate::values::bounds::Bounds;
 
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
@@ -26,7 +27,7 @@ fn at(x: i64, z: i64) -> Position {
     Position::new(Vec3::new(num(x), Num::ZERO, num(z))).unwrap()
 }
 
-/// A match of three teams with vision on a grid of 1 m cells from (−10, −10) to (10, 10).
+/// A match of teams with vision on a grid of 1 m cells from (−10, −10) to (10, 10).
 #[derive(Debug)]
 struct Scene {
     world: World,
@@ -34,7 +35,13 @@ struct Scene {
 }
 
 impl Scene {
+    /// A match of three teams.
     fn new() -> Scene {
+        Scene::of_teams(3)
+    }
+
+    /// A match of `teams` teams.
+    fn of_teams(teams: usize) -> Scene {
         let limits = ScriptLimits {
             per_call: 10_000,
             player: 100_000,
@@ -57,7 +64,7 @@ impl Scene {
         world.add_schedule(schedule);
         let bounds = Bounds::new([num(-10), num(-10)], [num(10), num(10)]).unwrap();
         let grid = Grid::new(num(1), bounds).unwrap();
-        Vision::load_grid(&mut world, grid, 3);
+        Vision::load_grid(&mut world, grid, teams);
         Scene { world, registry }
     }
 
@@ -202,4 +209,42 @@ fn set_bits_fills_a_run_within_one_word_and_across_words() {
     let mut words = [0; 3];
     set_bits(&mut words, 60..131);
     assert_eq!(words, [0xF << 60, u64::MAX, 0b111]);
+}
+
+#[test]
+fn friendly_teams_share_vision_as_one_group_unless_their_vision_is_off() {
+    // A match of 100 one-unit teams, past the 64 of before. Team 0 at the origin sees 3 m;
+    // team 70 at (6, 0) sees 2 m, so neither sees the other's cell; team 99 at (−2, 0), in team
+    // 0's sight, sees nothing; team 1, far off at (9, 9), sees nothing either.
+    let mut scene = Scene::of_teams(100);
+    let units = [
+        (0, 0, 0, Some(3)),
+        (70, 6, 0, Some(2)),
+        (99, -2, 0, None),
+        (1, 9, 9, None),
+    ]
+    .map(|(team, x, z, sight)| scene.spawn(team, x, z, sight));
+    let [zero, seventy, ninety_nine, one] = units;
+    // 0 and 70 friends that share vision, 0 and 99 friends with vision off.
+    let mut relations = scene.world.resource_mut::<Relations>();
+    relations.set(Team::new(0), Team::new(70), Attitude::Friendly, true);
+    relations.set(Team::new(99), Team::new(0), Attitude::Friendly, false);
+    let teams = |list: &[u8]| {
+        list.iter()
+            .fold(TeamSet::NONE, |set, &team| set.with(Team::new(team)))
+    };
+    scene.world.run_schedule(SimUpdate);
+    // 0 and 70 see as one: each is seen by both, and 99, in 0's sight, by both and itself.
+    assert_eq!(scene.seen_by(zero), teams(&[0, 70]));
+    assert_eq!(scene.seen_by(seventy), teams(&[0, 70]));
+    assert_eq!(scene.seen_by(ninety_nine), teams(&[0, 70, 99]));
+    assert_eq!(scene.seen_by(one), teams(&[1]));
+
+    // With vision off between 0 and 70, as between 0 and 99, each team sees alone.
+    let mut relations = scene.world.resource_mut::<Relations>();
+    relations.set(Team::new(0), Team::new(70), Attitude::Friendly, false);
+    scene.world.run_schedule(SimUpdate);
+    assert_eq!(scene.seen_by(zero), teams(&[0]));
+    assert_eq!(scene.seen_by(seventy), teams(&[70]));
+    assert_eq!(scene.seen_by(ninety_nine), teams(&[0, 99]));
 }

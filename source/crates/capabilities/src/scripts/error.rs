@@ -69,6 +69,10 @@ pub enum ApiError {
     NotAnEnemy,
     /// A team the mode does not have.
     UnknownTeam,
+    /// A relation other than `hostile`, `neutral` or `friendly`.
+    UnknownRelation,
+    /// A relation of a team to itself, which is friendly.
+    SelfRelation,
     /// A unit type the mode does not have.
     UnknownUnitType,
     /// A path the map does not have.
@@ -182,6 +186,8 @@ impl fmt::Display for ApiError {
             ApiError::OtherUnit => "an AI orders only the unit that thinks",
             ApiError::NotAnEnemy => "target is not a living enemy",
             ApiError::UnknownTeam => "team is not one of the mode's",
+            ApiError::UnknownRelation => "relation is not hostile, neutral or friendly",
+            ApiError::SelfRelation => "a team's relation to itself is friendly",
             ApiError::UnknownUnitType => "unit type is not one of the mode's",
             ApiError::UnknownPath => "path is not one of the map's",
             ApiError::OutOfBounds => "point is outside the map's bounds",

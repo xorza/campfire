@@ -160,9 +160,12 @@ impl Unit {
             method(
                 "is_enemy_of",
                 "(unit)",
-                "whether the two are of enemy teams",
+                "whether its team may attack the other's, hostile or neutral",
             ),
-            |unit: &mut Unit, other: Unit| unit.row().team.is_enemy_of(other.row().team),
+            |unit: &mut Unit, other: Unit| {
+                let attitude = unit.view.attitude(unit.row().team, other.row().team);
+                attitude.may_attack()
+            },
         )
         .bind(
             method("can_see", "(unit)", "whether its team sees the other unit")

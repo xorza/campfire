@@ -48,8 +48,8 @@ pub(crate) struct ModeBook {
     pub(crate) roster: Roster,
     pub(crate) teams: Rc<Teams>,
     pub(crate) bounds: Bounds,
-    /// Where each playing team's avatars spawn.
-    spawns: Vec<Position>,
+    /// Where each team's avatars spawn, by team index: a playing team's.
+    spawns: Vec<Option<Position>>,
     /// By unit type.
     kits: ByType<UnitKit>,
     pub(crate) structures: Vec<Structure>,
@@ -76,11 +76,11 @@ impl ModeBook {
         view: &View,
         paths: &Paths,
     ) -> Result<ModeBook, ModeError> {
-        let playing = setup
+        let teams = setup
             .teams
             .iter()
             .map(|team| (team.name.as_str(), team.slots));
-        let teams = Teams::new(playing, setup.players).ok_or(ModeError::TooManyPlayers)?;
+        let teams = Teams::new(teams, setup.players).ok_or(ModeError::TooManyPlayers)?;
         let mut kits = ByType::default();
         for &UnitTypeSetup { unit_type, kit, .. } in &setup.unit_types {
             kits.set(unit_type, kit);
@@ -100,12 +100,14 @@ impl ModeBook {
     }
 
     /// Resolves the names of `map`, which the check found, unit types through `view`: its paths,
-    /// each team's spawn, its structures, and the neutral spawns `ctx.map` lists.
+    /// each playing team's spawn, its structures, and the neutral spawns `ctx.map` lists.
     fn set_map(&mut self, map: &MapData, view: &View, paths: &Paths) {
         let checked = "the mode's check passed";
-        for team in self.teams.playing() {
-            let spawn = map.spawns[team].position().expect(checked);
-            self.spawns.push(spawn);
+        self.spawns.resize(self.teams.count(), None);
+        for &team in self.teams.playing() {
+            let name = self.teams.name(team).expect("a team of the match");
+            let spawn = map.spawns[name].position().expect(checked);
+            self.spawns[usize::from(team.index())] = Some(spawn);
         }
         for structure in &map.structures {
             let structure = Structure {
@@ -126,19 +128,20 @@ impl ModeBook {
         self.map = GameMap::new(paths.names().map(ImmutableString::from), neutral_spawns);
     }
 
-    /// Where `team` walks the paths from: the first team from each path's start, the second from
-    /// its end.
+    /// Where `team` walks the paths from: the first playing team from each path's start, the
+    /// second from its end.
     pub(crate) fn path_end(&self, team: Team) -> Result<PathDirection, ApiError> {
-        match (team.index(), self.teams.playing().len()) {
-            (0, 2..) => Ok(PathDirection::Forward),
-            (1, 2..) => Ok(PathDirection::Backward),
+        let playing = self.teams.playing();
+        match (playing.iter().position(|&held| held == team), playing.len()) {
+            (Some(0), 2..) => Ok(PathDirection::Forward),
+            (Some(1), 2..) => Ok(PathDirection::Backward),
             _ => Err(ApiError::NoPathEnd),
         }
     }
 
-    /// Where `team`'s avatars spawn.
+    /// Where `team`'s avatars spawn: a playing team, which has a spawn.
     pub(crate) fn avatar_spawn(&self, team: Team) -> Position {
-        self.spawns[usize::from(team.index())]
+        self.spawns[usize::from(team.index())].expect("a playing team has a spawn")
     }
 
     pub(crate) fn kit(&self, unit_type: UnitType) -> Option<UnitKit> {

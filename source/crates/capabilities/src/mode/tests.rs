@@ -58,6 +58,7 @@ use crate::units::path_id::PathId;
 use crate::units::tag_set::TagSet;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
+use crate::values::attitude::Attitude;
 use crate::values::bounds::Bounds;
 use crate::values::declared_name::DeclaredName;
 use crate::values::grid::Grid;
@@ -295,6 +296,11 @@ fn mode_files() -> ModeFiles {
                 .into(),
             pools: BTreeMap::new(),
             resources: Vec::new(),
+            relations: vec![RelationData {
+                teams: ["a", "neutral"].map(str::to_owned),
+                relation: Attitude::Neutral,
+                vision: true,
+            }],
             tags: BTreeMap::new(),
         },
         map: map(),
@@ -306,6 +312,10 @@ fn mode_files() -> ModeFiles {
             TeamManifest {
                 name: "b".to_owned(),
                 slots: 1,
+            },
+            TeamManifest {
+                name: "neutral".to_owned(),
+                slots: 0,
             },
         ],
     }
@@ -1388,6 +1398,57 @@ fn probe(ctx, unit) {
         assert!(
             matches!(failed, CallError::Api(ApiError::NotForRole)),
             "{call} in {role:?}: {failed}"
+        );
+    }
+}
+
+#[test]
+fn a_script_turns_a_neutral_pair_hostile_and_filters_follow_it() {
+    // Team a and the neutral team regard each other neutral, as the mode declares; b is hostile to
+    // both. At the origin: a's and b's fighters, and the map's neutral grunt.
+    let mut game = Game::new(SCRIPT, LIMITS);
+    game.tick(&[]);
+    let a = game.fighter(0, &[]);
+    game.fighter(1, &[]);
+    let counts = r#"
+fn probe(ctx, unit) {
+    ["hostiles", "neutrals", "enemies"].map(|filter| ctx.find(unit, unit.pos, 1, filter).len())
+}
+"#;
+    let count = |game: &mut Game| -> Vec<INT> {
+        let counts: Array = game.probe(counts, ScriptRole::Mode, a, a).unwrap().cast();
+        counts
+            .into_iter()
+            .map(|count| count.as_int().unwrap())
+            .collect()
+    };
+    // From a: b's fighter is hostile, the grunt neutral, and both are enemies a may attack.
+    assert_eq!(count(&mut game), [1, 1, 2]);
+    // A unit's script, as a modifier's, turns the pair hostile; the grunt is a hostile then.
+    let turn = r#"fn probe(ctx, unit) { ctx.set_relation("neutral", "a", "hostile") }"#;
+    let turned = game.probe(turn, ScriptRole::Modifier, a, a).unwrap();
+    assert!(turned.is_unit());
+    assert_eq!(count(&mut game), [2, 0, 2]);
+    // An attitude other than the three, or a team's to itself, fails the call.
+    for (call, refused) in [
+        (
+            r#"ctx.set_relation("a", "b", "angry")"#,
+            ApiError::UnknownRelation,
+        ),
+        (
+            r#"ctx.set_relation("b", "b", "neutral")"#,
+            ApiError::SelfRelation,
+        ),
+        (
+            r#"ctx.set_relation("a", "c", "neutral")"#,
+            ApiError::UnknownTeam,
+        ),
+    ] {
+        let source = format!("fn probe(ctx, unit) {{ {call} }}");
+        let failed = game.probe(&source, ScriptRole::Mode, a, a).unwrap_err();
+        assert!(
+            matches!(failed, CallError::Api(api) if api == refused),
+            "{call}: {failed}"
         );
     }
 }

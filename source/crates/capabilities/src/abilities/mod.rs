@@ -42,6 +42,7 @@ use crate::units::script_view::{RowFill, SlotRow, View};
 use crate::units::team::Team;
 use crate::units::unit::Unit;
 use crate::units::unit_tags::UnitTags;
+use crate::values::attitude::Attitude;
 
 pub(crate) mod abilities_api;
 pub(crate) mod ability_book;
@@ -229,7 +230,8 @@ fn start_casts(
         }
         let lookup = |id| targets.living(id);
         let radius = Body::radius_of(body);
-        let started = check(&book, now, &slots, pools, team, casting, lookup)
+        let attitude = |other| targets.attitude(team, other);
+        let started = check(&book, now, &slots, pools, casting, attitude, lookup)
             .filter(|checked| in_range(checked, position, radius, lookup))
             .map(|checked| (now.after(checked.cast_time), checked.target));
         match started {
@@ -282,8 +284,8 @@ fn check<'a>(
     now: Tick,
     slots: &AbilitySlots,
     pools: Option<&Pools>,
-    team: Team,
     casting: Casting,
+    attitude: impl Fn(Team) -> Attitude,
     living: impl Fn(StableId) -> Option<LivingUnit>,
 ) -> Option<Checked<'a>> {
     let slot = slots.slot(casting.slot).filter(|slot| slot.rank > 0)?;
@@ -299,7 +301,8 @@ fn check<'a>(
     let target = match (ability.aim, casting.target) {
         (Aim::None, _) => CastTarget::None,
         (Aim::Unit(filter), CastTarget::Unit(target))
-            if living(target).is_some_and(|unit| filter.selects(team, unit.team, unit.tags)) =>
+            if living(target)
+                .is_some_and(|unit| filter.selects(attitude(unit.team), unit.tags)) =>
         {
             CastTarget::Unit(target)
         }
@@ -438,7 +441,8 @@ fn prepare(
     let book = world.resource::<AbilityBook>();
     let pools = unit.get::<Pools>();
     let living = |id| view.living(id);
-    let Some(checked) = check(book, now, slots, pools, team, casting, living) else {
+    let attitude = |other| view.attitude(team, other);
+    let Some(checked) = check(book, now, slots, pools, casting, attitude, living) else {
         return Ok(None);
     };
     let target = match casting.target {

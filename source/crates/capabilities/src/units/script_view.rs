@@ -30,6 +30,7 @@ use crate::units::living_unit::LivingUnit;
 use crate::units::owner::Owner;
 use crate::units::path_id::PathId;
 use crate::units::recent_attack::RecentAttack;
+use crate::units::relations::Relations;
 use crate::units::tag::Tag;
 use crate::units::team::Team;
 use crate::units::team_set::TeamSet;
@@ -38,6 +39,7 @@ use crate::units::unit::Unit;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_types::UnitTypes;
+use crate::values::attitude::Attitude;
 use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
 
@@ -62,6 +64,8 @@ pub(crate) struct ScriptView {
     now: Tick,
     /// By stable id.
     units: Vec<UnitRow>,
+    /// How the teams regard each other, as the units were read.
+    relations: Relations,
     /// The recent attacks on each unit, one run per unit.
     attacks: Vec<RecentAttack>,
     /// The ability slots of each unit, one run per unit.
@@ -209,6 +213,7 @@ pub(crate) struct View(Rc<RefCell<ScriptView>>);
 impl ScriptView {
     fn read(&mut self, world: &World) {
         self.now = world.resource::<SimTick>().start();
+        self.relations.clone_from(world.resource::<Relations>());
         self.units.clear();
         self.attacks.clear();
         self.slots.clear();
@@ -284,7 +289,8 @@ impl ScriptView {
         let of = of.team;
         Ok(self.units.iter().filter(move |row| {
             let targetable = !row.tags.effects.blocks(Block::Target);
-            row.alive && targetable && filter.selects(of, row.team, row.tags.tags)
+            let attitude = self.relations.between(of, row.team);
+            row.alive && targetable && filter.selects(attitude, row.tags.tags)
         }))
     }
 }
@@ -301,6 +307,7 @@ impl View {
             rate,
             now: Tick::ZERO,
             units: Vec::new(),
+            relations: Relations::default(),
             attacks: Vec::new(),
             slots: Vec::new(),
             stat_names: Rc::from([]),
@@ -442,6 +449,11 @@ impl View {
     /// Sets the stats the mode declares, in the order units' runs of stats hold them.
     pub(crate) fn set_stat_names(&self, names: Rc<[Stat]>) {
         self.0.borrow_mut().stat_names = names;
+    }
+
+    /// How `of` regards `other`, as the units were read.
+    pub(crate) fn attitude(&self, of: Team, other: Team) -> Attitude {
+        self.0.borrow().relations.between(of, other)
     }
 
     /// The place of `stat` among the stats the mode declares; `None` when it does not declare it.

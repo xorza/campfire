@@ -37,6 +37,7 @@ use crate::stats::refresh_scratch::{RefreshScratch, Refreshing};
 use crate::stats::stat::{EngineStat, Stat};
 use crate::stats::stat_book::StatBook;
 use crate::stats::unit_stats::UnitStats;
+use crate::units::relations::Relations;
 use crate::units::script_view::{RowFill, View};
 use crate::units::tag_book::TagBook;
 use crate::units::tag_set::TagSet;
@@ -314,6 +315,7 @@ fn apply_auras(
     view: Option<NonSend<'_, View>>,
     abilities: Option<NonSend<'_, Ctx>>,
     sources: ParamSources<'_, '_>,
+    relations: Res<'_, Relations>,
     mut units: Query<
         '_,
         '_,
@@ -348,7 +350,8 @@ fn apply_auras(
                 .expect("the load checked the aura's modifier");
             for (&target, &pos, &other, tags, _) in &units {
                 let tags = tags.map_or(TagSet::default(), |tags| tags.tags);
-                if at.within_ground(pos, radius) && filter.selects(team, other, tags) {
+                let attitude = relations.between(team, other);
+                if at.within_ground(pos, radius) && filter.selects(attitude, tags) {
                     held.push(Held {
                         target,
                         modifier,

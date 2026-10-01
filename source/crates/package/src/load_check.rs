@@ -124,8 +124,13 @@ impl<'a> LoadCheck<'a> {
         let data = &packages.data;
         let units = &packages.units.units;
         let unit_type = |name: &str| units.contains_key(name);
-        Mode::check(&packages.manifest.teams, &packages.map, unit_type)
-            .map_err(LoadProblem::Mode)?;
+        Mode::check(
+            &packages.manifest.teams,
+            &data.relations,
+            &packages.map,
+            unit_type,
+        )
+        .map_err(LoadProblem::Mode)?;
         for list in [&data.combat.damage_kinds, &data.resources] {
             let mut seen = BTreeSet::new();
             if let Some(name) = list.iter().find(|&name| !seen.insert(name)) {

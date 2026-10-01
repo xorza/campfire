@@ -45,11 +45,12 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `respawn` | `(unit, ms)` | mode | combat | runs | brings back `unit`, dead and of a type that stays, `ms` from the call |
 | `restore` | `(unit, pool, amount)` | every role | combat | runs | gives `unit` back `amount` of its `pool`, unscaled |
 | `reveal` | `(pos, radius, ms)` | every role | vision | planned | shows the source's team what is within `radius` of `pos` |
+| `set_relation` | `(a, b, relation)` | every role | core | runs | sets how teams `a` and `b` regard each other, `hostile`, `neutral` or `friendly`, their vision as it was |
 | `spawn_avatars` | `()` | mode | core | runs | spawns each chosen avatar not yet spawned, in slot order, at its team's spawn |
 | `spawn_group` | `(team, path, types)` | mode | core | runs | spawns `types` in order at `team`'s end of `path`, walking it |
 | `spawn_unit` | `(type, team, pos)` | mode | core | runs | spawns a unit of `type` on `team` at `pos`, within the map's bounds |
 | `state` | read | mode | core | runs | the mode's state fields, by name, to read and write |
-| `teams` | read | every role | core | runs | the playing teams' names |
+| `teams` | read | every role | core | runs | the playing teams' names, the teams with slots |
 | `teleport` | `(unit, pos)` | every role | navigation | planned | puts `unit` at `pos` |
 | `timer` | `(name, ms, repeat, data)` | mode | core | runs | calls `on_timer` `ms` from the call, rounded up to whole ticks, at least one |
 | `units_tagged` | `(tag)` | every role | core | runs | the units of a tag, living or dead, by stable id |
@@ -66,7 +67,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `has_modifier` | `(id)` | stats | runs | whether it carries the modifier of the script's package |
 | `has_tag` | `(tag)` | core | runs | whether it has the tag, of its type or a modifier |
 | `is_avatar` | read | core | runs | whether it is an avatar |
-| `is_enemy_of` | `(unit)` | core | runs | whether the two are of enemy teams |
+| `is_enemy_of` | `(unit)` | core | runs | whether its team may attack the other's, hostile or neutral |
 | `level` | read | stats | runs | its level |
 | `owner` | read | core | runs | its player's slot, `()` with none |
 | `params` | read | core | runs | its unit type's params, unresolved |
@@ -217,6 +218,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `stats` | runs |
 | `pools` | runs |
 | `resources` | runs |
+| `relations` | runs |
 | `tags` | runs |
 | `state_version` | planned |
 
@@ -236,6 +238,14 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | --- | --- |
 | `attack` | runs |
 | `other` | runs |
+
+### A pair of teams, `[[relations]]`
+
+| Field | Status |
+| --- | --- |
+| `teams` | runs |
+| `relation` | runs |
+| `vision` | runs |
 
 ### An ability, `[abilities.<id>]`
 

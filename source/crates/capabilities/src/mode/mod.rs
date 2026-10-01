@@ -34,6 +34,7 @@ use crate::mode::mode_setup::ModeSetup;
 use crate::mode::mode_state::ModeState;
 use crate::mode::picks::{Pick, Picks};
 use crate::mode::player_resources::PlayerResources;
+use crate::mode::relation_data::RelationData;
 use crate::mode::team_manifest::TeamManifest;
 use crate::mode::timers::Timers;
 use crate::navigation::Navigation;
@@ -48,9 +49,9 @@ use crate::scripts::pool::Pool;
 use crate::stats::Stats;
 use crate::stats::pool_book::PoolBook;
 use crate::stats::stat_book::StatBook;
+use crate::units::relations::Relations;
 use crate::units::script_view::View;
 use crate::units::team::Team;
-use crate::units::teams::Teams;
 use crate::units::{Units, UnitsSet};
 use crate::vision::Vision;
 
@@ -71,6 +72,7 @@ pub(crate) mod mode_setup;
 pub(crate) mod mode_state;
 pub(crate) mod picks;
 pub(crate) mod player_resources;
+pub(crate) mod relation_data;
 pub(crate) mod roster;
 pub(crate) mod team_manifest;
 pub(crate) mod timers;
@@ -121,7 +123,17 @@ impl Mode {
         let bindings = CombatBindings::new(&setup.data.combat, pools, &stats);
         let pool_book = PoolBook::new(pools, &stats);
         let tags = view.types_mut().tag_book(&setup.data.tags);
+        let data = setup.data;
         let book = ModeBook::new(setup, world.non_send::<ScriptHost>(), &view, &paths)?;
+        let mut relations = Relations::default();
+        for relation in &data.relations {
+            let [a, b] = relation
+                .teams
+                .each_ref()
+                .map(|name| book.teams.named(name).expect("the check passed"));
+            relations.set(a, b, relation.relation, relation.vision);
+        }
+        world.insert_resource(relations);
         world.insert_resource(bindings);
         Stats::load(world, stats, pool_book);
         Units::load_tags(world, tags);
@@ -236,30 +248,47 @@ impl Mode {
                 let slots = world.get_mut::<AbilitySlots>(entity);
                 slots.expect("a unit with ability slots").learn(slot);
             }
+            ModeEffect::SetRelation { a, b, attitude } => {
+                world
+                    .resource_mut::<Relations>()
+                    .set_attitude(a, b, attitude);
+            }
         }
     }
 
-    /// Checks what the mode names against what it has: its playing teams, of which none is
-    /// named `neutral` and no two share a name, fewer than `Team::LIMIT` with the neutral one; and
-    /// its map, whose paths each have a waypoint and a name of their own, whose every
-    /// playing team has an avatar spawn, and whose structures and neutral spawns name unit types
-    /// `unit_type` knows, and teams and paths the mode has. Every point is within the map's
-    /// bounds, and its grid, if it has one, makes a grid of them.
+    /// Checks what the mode names against what it has: its teams, no two of which share a name,
+    /// at most `Team::LIMIT`; its relations, each of two teams it has, and no pair twice; and its
+    /// map, whose paths each have a waypoint and a name of their own, whose every playing team
+    /// has an avatar spawn, and whose structures and neutral spawns name unit types `unit_type`
+    /// knows, and teams and paths the mode has. Every point is within the map's bounds, and its
+    /// grid, if it has one, makes a grid of them.
     pub fn check(
         teams: &[TeamManifest],
+        relations: &[RelationData],
         map: &MapData,
         unit_type: impl Fn(&str) -> bool,
     ) -> Result<(), ModeError> {
         for (at, team) in teams.iter().enumerate() {
-            if team.name == Teams::NEUTRAL {
-                return Err(ModeError::NeutralTeam);
-            }
             if teams[..at].iter().any(|other| other.name == team.name) {
                 return Err(ModeError::RepeatedName(team.name.clone()));
             }
         }
-        if teams.len() >= Team::LIMIT {
+        if teams.len() > Team::LIMIT {
             return Err(ModeError::TooManyTeams);
+        }
+        let team_known = |name: &str| teams.iter().any(|team| team.name == name);
+        for (at, relation) in relations.iter().enumerate() {
+            let [a, b] = &relation.teams;
+            if let Some(unknown) = [a, b].into_iter().find(|name| !team_known(name)) {
+                return Err(ModeError::UnknownTeam(unknown.clone()));
+            }
+            let pair = |data: &RelationData| {
+                let [x, y] = &data.teams;
+                (x == a && y == b) || (x == b && y == a)
+            };
+            if a == b || relations[..at].iter().any(pair) {
+                return Err(ModeError::RepeatedRelation(a.clone(), b.clone()));
+            }
         }
         map.grid()?;
         map.pathing()?;
@@ -278,12 +307,10 @@ impl Mode {
                 in_bounds(point)?;
             }
         }
-        for team in teams {
+        for team in teams.iter().filter(|team| team.slots > 0) {
             let spawn = map.spawns.get(&team.name);
             in_bounds(spawn.ok_or_else(|| ModeError::NoSpawn(team.name.clone()))?)?;
         }
-        let team_known =
-            |name: &str| name == Teams::NEUTRAL || teams.iter().any(|team| team.name == name);
         for structure in &map.structures {
             if !unit_type(&structure.unit_type) {
                 return Err(ModeError::UnknownUnitType(structure.unit_type.clone()));

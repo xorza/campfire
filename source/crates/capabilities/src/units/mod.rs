@@ -12,6 +12,7 @@ use crate::scripts::script_failures::ScriptFailures;
 use crate::units::body::Body;
 use crate::units::error::UnitTypeError;
 use crate::units::owner::Owner;
+use crate::units::relations::Relations;
 use crate::units::script_view::View;
 use crate::units::spawn_point::SpawnPoint;
 use crate::units::tag_book::TagBook;
@@ -29,6 +30,7 @@ pub(crate) mod living_unit;
 pub(crate) mod owner;
 pub(crate) mod path_id;
 pub(crate) mod recent_attack;
+pub(crate) mod relations;
 pub(crate) mod script_view;
 pub(crate) mod spawn_point;
 pub(crate) mod tag;
@@ -75,6 +77,8 @@ impl Units {
         registry.register_component::<SpawnPoint>();
         registry.register_component::<Team>();
         registry.register_component::<UnitType>();
+        world.insert_resource(Relations::default());
+        registry.register_resource::<Relations>();
         let Some(MatchScripts {
             limits,
             players,

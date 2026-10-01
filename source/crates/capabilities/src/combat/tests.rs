@@ -20,6 +20,8 @@ use crate::stats::pool_book::PoolBook;
 use crate::stats::stat::Stat;
 use crate::stats::stat_book::StatBook;
 use crate::stats::stat_rule::StatRule;
+use crate::units::relations::Relations;
+use crate::values::attitude::Attitude;
 
 /// The MOBA's 30 ticks a second.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
@@ -341,27 +343,16 @@ fn targets_are_living_enemies() {
         let pos = target.then_some(at(x, 0, 5));
         assert_eq!(enemy_at(&mut fight, Team::new(1), unit), pos, "{blocks:?}");
     }
+    // By the relations: team 2, friendly to team 0, may not attack its units; team 3, neutral,
+    // may; team 200, past the 64 teams of before and hostile as every pair not set is, may.
+    let mut relations = fight.world.resource_mut::<Relations>();
+    relations.set(Team::new(2), Team::new(0), Attitude::Friendly, true);
+    relations.set(Team::new(3), Team::new(0), Attitude::Neutral, true);
+    let related = [2, 3, 200].map(|team| enemy_at(&mut fight, Team::new(team), far));
+    assert_eq!(related, [None, Some(at(6, 0, 0)), Some(at(6, 0, 0))]);
     let entity = fight.world.resource::<EntityIndex>().get(high).unwrap();
     fight.world.despawn(entity);
     assert_eq!(enemy_at(&mut fight, Team::new(1), high), None);
-}
-
-#[test]
-fn teams_are_enemies_unless_the_same() {
-    // A neutral team is an index like any other: 63, the last, below is an enemy of both sides.
-    for (a, b, enemies) in [
-        (Team::new(0), Team::new(1), true),
-        (Team::new(0), Team::new(63), true),
-        (Team::new(1), Team::new(63), true),
-        (Team::new(0), Team::new(0), false),
-        (Team::new(63), Team::new(63), false),
-    ] {
-        assert_eq!(a.is_enemy_of(b), enemies, "{a:?} {b:?}");
-        assert_eq!(b.is_enemy_of(a), enemies, "{b:?} {a:?}");
-    }
-    // A snapshot's team past the limit does not decode.
-    let decode = |index: u8| postcard::from_bytes::<Team>(&[index]).ok();
-    assert_eq!((decode(63), decode(64)), (Some(Team::new(63)), None));
 }
 
 #[test]
@@ -399,6 +390,7 @@ fn every_combat_type_is_state_and_restores() {
             "stats.pools",
             "units.body",
             "units.owner",
+            "units.relations",
             "units.spawn_point",
             "units.team",
             "units.unit_type",

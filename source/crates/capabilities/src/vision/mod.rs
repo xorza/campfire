@@ -1,5 +1,6 @@
 use std::ops::Range;
 
+use bevy_ecs::change_detection::DetectChanges;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Without;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
@@ -8,6 +9,7 @@ use bevy_ecs::world::{EntityRef, World};
 use campfire_sim::{Position, SimSet, StateRegistry};
 
 use crate::combat::dead::Dead;
+use crate::units::relations::Relations;
 use crate::units::script_view::{RowFill, View};
 use crate::units::team::Team;
 use crate::units::team_set::TeamSet;
@@ -16,22 +18,25 @@ use crate::values::grid::Grid;
 use crate::vision::seen_by::SeenBy;
 use crate::vision::sight::Sight;
 use crate::vision::vision_grid::VisionGrid;
+use crate::vision::vision_groups::VisionGroups;
 
 pub(crate) mod seen_by;
 pub(crate) mod sight;
 pub(crate) mod vision_api;
 pub(crate) mod vision_data;
 pub(crate) mod vision_grid;
+pub(crate) mod vision_groups;
 
-/// The `vision` capability, for now its grid fog of war: what each team sees, which decides what
-/// its clients receive and what `find_visible`, `nearest_visible` and `unit.can_see` return.
+/// The `vision` capability, for now its grid fog of war: what each vision group sees, which
+/// decides what its teams' clients receive and what `find_visible`, `nearest_visible` and
+/// `unit.can_see` return.
 #[derive(Debug)]
 pub struct Vision;
 
 impl Vision {
     /// Adds vision to a match, on combat: in Vision, the last stage of a tick, each living unit
-    /// with a sight reveals the grid cells around it to its team, and each unit learns the teams
-    /// that see it. A match sees nothing until its mode gives the grid.
+    /// with a sight reveals the grid cells around it to its vision group, and each unit learns the
+    /// teams that see it. A match sees nothing until its mode gives the grid.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         if let Some(view) = world.get_non_send::<View>() {
             view.add_source(fill_row);
@@ -41,7 +46,7 @@ impl Vision {
         registry.register_component::<Sight>();
     }
 
-    /// Gives the match the map's `grid`, and the number of its teams, the neutral one included.
+    /// Gives the match the map's `grid`, and the number of its teams.
     pub fn load_grid(world: &mut World, grid: Grid, teams: usize) {
         assert!(teams <= Team::LIMIT, "the mode's check limits the teams");
         world.insert_resource(VisionGrid { grid, teams });
@@ -63,11 +68,12 @@ fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
     fill.row.seen_by = Vision::seen_by(unit);
 }
 
-/// Reveals the cells each living unit with a sight sees to its team, and those each such unit
-/// whose tags detect sees to its team's detection, then gives each unit the teams that see it:
-/// its own, and each whose cells hold it, or, for a unit its tags hide, whose detection does.
+/// Reveals the cells each living unit with a sight sees to its vision group, and those each such
+/// unit whose tags detect sees to its group's detection, then gives each unit the teams that see
+/// it: its own group's, and those of each group whose cells hold it, or, for a unit its tags
+/// hide, whose detection does. The groups follow the relations as they change.
 fn see(
-    grid: Option<Res<'_, VisionGrid>>,
+    (grid, relations): (Option<Res<'_, VisionGrid>>, Res<'_, Relations>),
     seers: Query<'_, '_, (&Position, &Team, &Sight, Option<&UnitTags>), Without<Dead>>,
     mut units: Query<
         '_,
@@ -81,19 +87,25 @@ fn see(
         ),
     >,
     mut commands: Commands<'_, '_>,
-    mut revealed: Local<'_, Vec<u64>>,
-    mut detected: Local<'_, Vec<u64>>,
+    (mut groups, mut revealed, mut detected): (
+        Local<'_, VisionGroups>,
+        Local<'_, Vec<u64>>,
+        Local<'_, Vec<u64>>,
+    ),
 ) {
     let Some(grid) = grid else {
         return;
     };
+    if relations.is_changed() || grid.is_changed() {
+        groups.rebuild(grid.teams, &relations);
+    }
     let words = grid.grid.cells().div_ceil(64);
     revealed.clear();
-    revealed.resize(words * grid.teams, 0);
+    revealed.resize(words * groups.count(), 0);
     detected.clear();
-    detected.resize(words * grid.teams, 0);
+    detected.resize(words * groups.count(), 0);
     for (&pos, &team, sight, tags) in &seers {
-        let run = usize::from(team.index()) * words;
+        let run = groups.of(team) * words;
         let detects = UnitTags::effects_of(tags).detects();
         grid.grid.spans_within(pos, sight.range(), |cells| {
             set_bits(&mut revealed[run..run + words], cells.clone());
@@ -103,17 +115,16 @@ fn see(
         });
     }
     for (entity, &pos, &team, tags, seen) in &mut units {
-        let mut teams = TeamSet::of(team);
+        let mut teams = groups.members(groups.of(team));
         let cell = grid
             .grid
             .cell_of(pos)
             .expect("every unit stands within the bounds, which the grid covers");
         let hidden = UnitTags::effects_of(tags).hidden();
         let sight = if hidden { &detected } else { &revealed };
-        for index in 0..grid.teams {
-            if sight[index * words + cell / 64] & 1 << (cell % 64) != 0 {
-                let index = u8::try_from(index).expect("teams fit u8");
-                teams = teams.with(Team::new(index));
+        for group in 0..groups.count() {
+            if sight[group * words + cell / 64] & 1 << (cell % 64) != 0 {
+                teams = teams.union(groups.members(group));
             }
         }
         match seen {

@@ -4,6 +4,7 @@ use campfire_content::PackagePath;
 use serde::Deserialize;
 
 use crate::combat::combat_rules::CombatRules;
+use crate::mode::relation_data::RelationData;
 use crate::scripts::state_decl::StateDecl;
 use crate::stats::modifier_data::ModifierData;
 use crate::stats::pool_data::PoolData;
@@ -42,6 +43,9 @@ pub struct ModeData {
     /// Its players' resources, such as gold, which share no name with a pool.
     #[serde(default)]
     pub resources: Vec<DeclaredName>,
+    /// How pairs of its teams regard each other; a pair not named is hostile.
+    #[serde(default)]
+    pub relations: Vec<RelationData>,
     /// The effects of its tags, by name.
     #[serde(default)]
     pub tags: BTreeMap<String, TagData>,

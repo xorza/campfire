@@ -4,7 +4,7 @@ engine = "0.1.0"
 kind = "mode"
 capabilities = ["combat", "stats", "abilities", "projectiles", "areas", "orders", "navigation", "vision"]
 tick_hz = { min = 20, max = 60, default = 30 }
-teams = [{ name = "north", slots = 3 }, { name = "south", slots = 3 }]
+teams = [{ name = "north", slots = 3 }, { name = "south", slots = 3 }, { name = "camps", slots = 0 }]
 backends = { collision = "circles", pathfinding = "grid", visibility = "grid_fog" }
 max_move_speed = "6.0"
 # A call's operations, and each pool's in a tick: a call for each of the 6 players, 10 AI calls,

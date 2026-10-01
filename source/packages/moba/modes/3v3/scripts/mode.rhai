@@ -18,7 +18,7 @@ fn on_timer(ctx, name, data) {
         ctx.state.phase = "play";
         ctx.spawn_avatars();
         for point in ctx.map.neutral_spawns {
-            ctx.spawn_unit(point.unit_type, "neutral", point.pos);
+            ctx.spawn_unit(point.unit_type, "camps", point.pos);
         }
         ctx.timer("wave", ctx.p.first_wave_ms, false, ());
         ctx.timer("income", ctx.p.income_ms, true, ());

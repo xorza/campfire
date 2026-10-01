@@ -125,7 +125,7 @@ fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 82] = [
+const FLAWS: [Flaw; 83] = [
     flaw(
         MANIFEST,
         Edit::Replace(r#"engine = "0.1.0""#, r#"engine = "0.0.9""#),
@@ -703,11 +703,24 @@ const FLAWS: [Flaw; 82] = [
         MODE,
         |problem| matches!(problem, LoadProblem::Mode(ModeError::NoSpawn(team)) if team == "north"),
     ),
+    // A relation names two of the mode's teams, a pair once.
     flaw(
-        MANIFEST,
-        Edit::Replace(r#"name = "south""#, r#"name = "neutral""#),
+        MODE_DATA,
+        Edit::Replace(
+            "resources = [\"gold\"]\n",
+            "resources = [\"gold\"]\n\n[[relations]]\nteams = [\"north\", \"east\"]\nrelation = \"neutral\"\n",
+        ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Mode(ModeError::NeutralTeam)),
+        |problem| matches!(problem, LoadProblem::Mode(ModeError::UnknownTeam(team)) if team == "east"),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace(
+            "resources = [\"gold\"]\n",
+            "resources = [\"gold\"]\n\n[[relations]]\nteams = [\"north\", \"camps\"]\nrelation = \"neutral\"\n\n[[relations]]\nteams = [\"camps\", \"north\"]\nrelation = \"friendly\"\n",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Mode(ModeError::RepeatedRelation(a, b)) if a == "camps" && b == "north"),
     ),
     flaw(
         "heroes/kensho/data/avatar.toml",

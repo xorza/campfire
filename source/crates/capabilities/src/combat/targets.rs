@@ -8,9 +8,11 @@ use crate::stats::pools::Pools;
 use crate::units::block::Block;
 use crate::units::body::Body;
 use crate::units::living_unit::LivingUnit;
+use crate::units::relations::Relations;
 use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
+use crate::values::attitude::Attitude;
 
 /// The units an attack may target: living units with the life pool whose tags let them be
 /// targets.
@@ -19,6 +21,7 @@ use crate::units::unit_tags::UnitTags;
 #[derive(SystemParam, Debug)]
 pub(crate) struct Targets<'w, 's> {
     index: Res<'w, EntityIndex>,
+    relations: Res<'w, Relations>,
     bindings: Res<'w, CombatBindings>,
     units: Query<
         'w,
@@ -36,10 +39,15 @@ pub(crate) struct Targets<'w, 's> {
 }
 
 impl Targets<'_, '_> {
-    /// `target`, when it is a living enemy of `team`.
+    /// `target`, when it is a living unit `team` may attack.
     pub(crate) fn enemy(&self, team: Team, target: StableId) -> Option<LivingUnit> {
         self.living(target)
-            .filter(|unit| team.is_enemy_of(unit.team))
+            .filter(|unit| self.attitude(team, unit.team).may_attack())
+    }
+
+    /// How `of` regards `other`.
+    pub(crate) fn attitude(&self, of: Team, other: Team) -> Attitude {
+        self.relations.between(of, other)
     }
 
     /// `target`, when it is a living unit that may be a target.

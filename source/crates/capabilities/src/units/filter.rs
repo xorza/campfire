@@ -1,7 +1,7 @@
 use crate::scripts::error::ApiError;
 use crate::units::tag_set::TagSet;
-use crate::units::team::Team;
 use crate::units::unit_types::UnitTypes;
+use crate::values::attitude::Attitude;
 use crate::values::filter_data::{FilterData, FilterSyntax};
 use crate::values::relation::Relation;
 
@@ -48,13 +48,9 @@ impl Filter {
         Ok(filter)
     }
 
-    /// Whether it selects a unit of `team` with `tags`, relative to a unit of `of`.
-    pub(crate) const fn selects(self, of: Team, team: Team, tags: TagSet) -> bool {
-        let related = match self.relation {
-            Relation::Enemies => of.is_enemy_of(team),
-            Relation::Allies => !of.is_enemy_of(team),
-            Relation::All => true,
-        };
-        related && tags.covers(self.all) && !tags.meets(self.none)
+    /// Whether it selects a unit with `tags` of a team regarded with `attitude`, as the unit it
+    /// selects for regards it.
+    pub(crate) const fn selects(self, attitude: Attitude, tags: TagSet) -> bool {
+        self.relation.selects(attitude) && tags.covers(self.all) && !tags.meets(self.none)
     }
 }

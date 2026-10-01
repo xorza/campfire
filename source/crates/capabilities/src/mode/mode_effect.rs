@@ -5,6 +5,7 @@ use crate::scripts::state_value::StateValue;
 use crate::units::path_id::PathId;
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
+use crate::values::attitude::Attitude;
 
 /// A change to the match that a mode call queued.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -34,5 +35,10 @@ pub(crate) enum ModeEffect {
     Learn {
         unit: StableId,
         slot: u8,
+    },
+    SetRelation {
+        a: Team,
+        b: Team,
+        attitude: Attitude,
     },
 }

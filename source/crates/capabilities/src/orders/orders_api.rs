@@ -53,7 +53,8 @@ impl OrdersApi {
         if ordered.attack_range.is_none() {
             return Err(ApiError::NoAttack.fail().into());
         }
-        if !target.alive || !ordered.team.is_enemy_of(target.team) {
+        let attitude = ctx.view().attitude(ordered.team, target.team);
+        if !target.alive || !attitude.may_attack() {
             return Err(ApiError::NotAnEnemy.fail().into());
         }
         OrdersApi::order(ctx, unit, AiOrder::Attack { target: target.id })

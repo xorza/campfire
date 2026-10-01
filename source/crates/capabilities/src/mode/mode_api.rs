@@ -18,6 +18,7 @@ use crate::scripts::state_value::StateValue;
 use crate::units::team::Team;
 use crate::units::unit::Unit;
 use crate::units::unit_type::UnitType;
+use crate::values::attitude::Attitude;
 
 /// The script API of the mode, which every match has: the teams, the map, the avatars and the
 /// mode's state, which every role reads, and what only the mode's calls do: the players'
@@ -64,21 +65,26 @@ impl ModeApi {
                     "stats",
                     "pools",
                     "resources",
+                    "relations",
                     "tags",
                 ],
                 &["state_version"],
-            );
+            )
+            .data(DataTable::Relation, &["teams", "relation", "vision"], &[]);
     }
 
     /// What every role reads of the mode: the teams, the map, the avatars, the units of a tag,
     /// and, for the mode's calls, the players and its state.
     fn register_reads(api: &mut ApiBuilder<'_>) {
         api.bind(
-            MemberSpec::value("teams", "the playing teams' names"),
+            MemberSpec::value("teams", "the playing teams' names, the teams with slots"),
             |ctx: &mut Ctx| -> Checked<Array> {
-                let teams = ctx.mode_or_fail()?.teams.playing();
+                let teams = &ctx.mode_or_fail()?.teams;
+                let name = |&team| teams.name(team).expect("a team of the match");
                 Ok(teams
-                    .map(|name| Dynamic::from(ImmutableString::from(name)))
+                    .playing()
+                    .iter()
+                    .map(|team| Dynamic::from(ImmutableString::from(name(team))))
                     .collect())
             },
         )
@@ -177,8 +183,8 @@ impl ModeApi {
         });
     }
 
-    /// What only the mode's calls do, but adding resources, which every role does: spawns,
-    /// timers, respawns, learning and the match's end.
+    /// What only the mode's calls do, but adding resources and setting relations, which every
+    /// role does: spawns, timers, respawns, learning and the match's end.
     fn register_changes(api: &mut ApiBuilder<'_>) {
         let mode = |name, signature, description| {
             MemberSpec::call(name, signature, description).roles(RoleSet::MODE)
@@ -255,6 +261,17 @@ impl ModeApi {
             ),
             |ctx: &mut Ctx, player: INT, name: &str, amount: INT| {
                 ModeApi::add_resource(ctx, player, name, amount)
+            },
+        )
+        .bind(
+            MemberSpec::call(
+                "set_relation",
+                "(a, b, relation)",
+                "sets how teams `a` and `b` regard each other, `hostile`, `neutral` or `friendly`, \
+                 their vision as it was",
+            ),
+            |ctx: &mut Ctx, a: &str, b: &str, relation: &str| {
+                ModeApi::set_relation(ctx, a, b, relation)
             },
         )
         .bind(end, |ctx: &mut Ctx, team: &str| -> Checked<()> {
@@ -492,6 +509,17 @@ impl ModeApi {
         }
         frame.effects.push(effect);
         Ok(())
+    }
+
+    /// Queues a change of how teams `a` and `b`, two of the mode's, regard each other.
+    fn set_relation(ctx: &Ctx, a: &str, b: &str, relation: &str) -> Checked<()> {
+        let book = ctx.mode_or_fail()?;
+        let (a, b) = (ModeApi::team(book, a)?, ModeApi::team(book, b)?);
+        let attitude = Attitude::named(relation).ok_or_else(|| ApiError::UnknownRelation.fail())?;
+        if a == b {
+            return Err(ApiError::SelfRelation.fail().into());
+        }
+        ctx.queue(Effect::Mode(ModeEffect::SetRelation { a, b, attitude }))
     }
 
     fn add_resource(ctx: &Ctx, player: INT, name: &str, amount: INT) -> Checked<()> {
