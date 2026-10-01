@@ -2,12 +2,9 @@ name = "Rime"
 tags = ["marksman"]
 pools = ["health", "mana"]
 passive = "stillness"
-slots = { basic = ["chill_arrows", "fan_of_frost", "snow_owl"], ultimate = ["glacier_arrow"] }
+slots = { basic = ["chill_arrows", "fan_of_frost", "snow_owl"], ultimate = ["glacier_arrow"], weapon = ["attack"] }
 
-[combat.attack]
-range = "6.0"
-windup_ms = 230
-projectile_speed = "20"
+[combat]
 
 [collision]
 radius = "0.5"
@@ -49,7 +46,7 @@ targeting = "direction"
 range = "12.0"
 cooldown_ms = [16000, 13000, 10000, 7000, 4000]
 cost = { mana = 60 }
-cast_time_ms = 250
+windup_ms = 250
 projectile = { speed = "15", width = "0.4", stop_on_hit = true, once_per_cast = true }
 
 [actions.fan_of_frost.params]
@@ -81,7 +78,7 @@ targeting = "direction"
 range = "global"
 cooldown_ms = [100000, 90000, 80000]
 cost = { mana = 150 }
-cast_time_ms = 250
+windup_ms = 250
 projectile = { speed = "16", width = "1.3", stop_on_hit = true, hits = "enemies:avatar" }
 
 [actions.glacier_arrow.params]
@@ -102,3 +99,13 @@ tags = ["slowed"]
 # A stun: its time comes from the call that applies it.
 [modifiers.stun]
 tags = ["stunned"]
+
+[actions.attack]
+kind = "attack"
+targeting = "enemies"
+range = "6.0"
+windup_ms = 230
+rate = "attack_speed"
+damage = "attack_damage"
+damage_kind = "physical"
+projectile = { speed = "20" }

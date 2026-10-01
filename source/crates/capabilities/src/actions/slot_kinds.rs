@@ -2,7 +2,7 @@ use std::num::NonZeroU8;
 
 use serde::Deserialize;
 
-use crate::abilities::slot_kind::SlotKind;
+use crate::actions::slot_kind::SlotKind;
 use crate::values::declared_name::DeclaredName;
 
 /// The mode's `[[slots]]`: the kinds of slot actions sit in on a unit, in order.

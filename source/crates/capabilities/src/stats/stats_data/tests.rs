@@ -7,7 +7,7 @@ use crate::stats::stat::EngineStat;
 fn a_stat_grows_by_its_per_level_from_level_1() {
     let value = |base, per_level| StatValue { base, per_level };
     let [health, armor] = ["health", "armor"].map(|name| Stat::named(name).unwrap());
-    let attack_damage = Stat::Engine(EngineStat::AttackDamage);
+    let attack_damage = Stat::named("attack_damage").unwrap();
     let stats = StatsData(BTreeMap::from([
         (
             health.clone(),

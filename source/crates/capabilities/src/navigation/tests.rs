@@ -707,6 +707,7 @@ fn every_navigation_type_is_state() {
     assert_eq!(
         names,
         [
+            "actions.slots",
             "navigation.destination",
             "navigation.move_step",
             "navigation.on_path",

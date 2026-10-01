@@ -4,24 +4,23 @@ use std::rc::Rc;
 
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::Component;
+use bevy_ecs::system::{Query, Res};
 use bevy_ecs::world::Mut;
 use campfire_content::PackagePath;
-use campfire_math::{PlayerSlot, Vec3};
+use campfire_math::{Num, PlayerSlot, Vec3};
 use campfire_script::{NumError, ScriptError};
-use campfire_sim::{Capability, IdAllocator, SimUpdate, StateHash};
+use campfire_sim::{Capability, IdAllocator, Position, SimUpdate, StateHash, TickRate};
 
 use super::*;
-use crate::abilities::ability_slots::AbilitySlot;
-use crate::abilities::action_data::{CostTarget, RangeField};
-use crate::abilities::action_kind::ActionKind;
-use crate::abilities::error::ActionField;
-use crate::abilities::slot_kind::SlotKind;
+use crate::actions::Actions;
+use crate::actions::action_book::ActionId;
+use crate::actions::action_data::{ActionData, CostTarget, Range, RangeField, Targeting};
+use crate::actions::action_slots::{ActionSlot, InProgress};
+use crate::actions::error::{ActionError, ActionField};
+use crate::actions::slot_kind::SlotKind;
 use crate::capability_set::internals::TestMatch;
+use crate::combat::armed::Armed;
 use crate::combat::assist_window::AssistWindow;
-use crate::combat::attack_state::AttackState;
-use crate::combat::attack_stats::AttackStats;
-use crate::combat::combatant::Combatant;
-use crate::combat::combatant::internals::Armed;
 use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::damage_kind::DamageKind;
 use crate::combat::damage_queue::DamageQueue;
@@ -37,11 +36,14 @@ use crate::scripts::script_failures::{ScriptFailure, ScriptFailures};
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::Stats;
 use crate::stats::level::Level;
+use crate::stats::modifier_book::{Applier, ModifierBook};
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifier_effect::ModifierEffect;
+use crate::stats::modifiers::Modifiers;
 use crate::stats::pool_book::PoolBook;
 use crate::stats::pool_id::PoolId;
-use crate::stats::stat::EngineStat;
+use crate::stats::stat::Stat;
+use crate::stats::stat_book::StatBook;
 use crate::stats::stat_change::StatChange;
 use crate::stats::stat_graph::StatGraph;
 use crate::stats::stat_op::StatOp;
@@ -49,6 +51,8 @@ use crate::stats::stat_rule::StatRule;
 use crate::stats::stats_data::{StatValue, StatsData};
 use crate::stats::unit_stats::UnitStats;
 use crate::units::Units;
+use crate::units::body::Body;
+use crate::units::script_view::View;
 use crate::units::tag_data::TagData;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::declared_name::DeclaredName;
@@ -107,15 +111,9 @@ fn at(x: Num, y: Num, z: Num) -> Position {
     Position::new(Vec3::new(x, y, z)).unwrap()
 }
 
-fn combatant(health: i64) -> Armed {
-    let combatant = Combatant {
-        attack: Some(AttackStats::new(Num::ZERO, Ticks::new(0), Ticks::new(1), Num::ZERO).unwrap()),
-        on_death: OnDeath::Stay,
-    };
-    Armed {
-        combatant,
-        life: num(health),
-    }
+/// A unit that strikes for `damage` within 2 m, as its windup of no ticks ends, every 5 ticks.
+fn striker(damage: i64) -> Armed {
+    Armed::melee(num(500), num(2), 0, 5, num(damage)).on_death(OnDeath::Stay)
 }
 
 /// The match's pools, by name in order: the life pool first, as it is until a mode binds one.
@@ -141,7 +139,7 @@ fn lash_out() -> ActionData {
             [10_000, 9000, 8000, 7000, 6000].map(int).to_vec(),
         )),
         cost: cost("mana", int(35)),
-        cast_time_ms: None,
+        windup_ms: None,
         clamp_to_range: false,
         toggle: None,
         channel: None,
@@ -152,6 +150,9 @@ fn lash_out() -> ActionData {
         passive_while_ready: false,
         projectile: None,
         area: None,
+        rate: None,
+        damage: None,
+        damage_kind: None,
         projectile_state: BTreeMap::new(),
         params: BTreeMap::from([
             (
@@ -192,7 +193,7 @@ fn strike() -> ActionData {
             (DeclaredName::new("mana").unwrap(), Ranked::One(int(10))),
             (DeclaredName::new("rage").unwrap(), Ranked::One(int(4))),
         ]),
-        cast_time_ms: None,
+        windup_ms: None,
         clamp_to_range: false,
         toggle: None,
         channel: None,
@@ -203,6 +204,9 @@ fn strike() -> ActionData {
         passive_while_ready: false,
         projectile: None,
         area: None,
+        rate: None,
+        damage: None,
+        damage_kind: None,
         projectile_state: BTreeMap::new(),
         params: BTreeMap::from([(
             "damage".to_owned(),
@@ -251,30 +255,49 @@ impl Match {
         Match { world, registry }
     }
 
-    fn load(&mut self, data: &ActionData, source: &str) -> AbilityId {
+    fn load(&mut self, data: &ActionData, source: &str) -> ActionId {
         let script = Units::compile(&mut self.world, source).unwrap();
-        Abilities::load(&mut self.world, 0, "lash_out", data, Some(script), 5).unwrap()
+        Actions::load(&mut self.world, 0, "lash_out", data, Some(script), 5).unwrap()
     }
 
+    /// A unit of `team` with 500 health that stays when it dies, and `parts`, with no slots
+    /// unless they hold some.
     fn spawn(&mut self, team: u8, at: Position, parts: impl Bundle) -> StableId {
         let id = self.world.resource_mut::<IdAllocator>().allocate();
-        let unit = self
-            .world
-            .spawn((id, at, combatant(500).bundle(Team::new(team)), parts))
-            .id();
+        let combat = (
+            Team::new(team),
+            Pools::life(num(500)),
+            OnDeath::Stay,
+            RecentAttackers::default(),
+        );
+        let unit = self.world.spawn((id, at, combat, parts)).id();
+        self.world
+            .entity_mut(unit)
+            .insert_if_new(ActionSlots::new([]));
         UnitTags::give_type_tags(&mut self.world, unit);
+        id
+    }
+
+    /// A unit of `team` armed as `armed` that attacks `target`.
+    fn attacker(&mut self, team: u8, at: Position, armed: Armed, target: StableId) -> StableId {
+        let id = self.world.resource_mut::<IdAllocator>().allocate();
+        let armed = armed.bundle(&mut self.world, Team::new(team), RATE.hz().get());
+        let unit = self.world.spawn((id, at, armed)).id();
+        UnitTags::give_type_tags(&mut self.world, unit);
+        let mut slots = self.world.get_mut::<ActionSlots>(unit).unwrap();
+        slots.set_attack_target(Some(target));
         id
     }
 
     /// Player 0's caster at the origin, on team 0, with `ability` at `rank`, 100 mana and 20
     /// rage.
-    fn caster(&mut self, ability: AbilityId, rank: u8) -> StableId {
+    fn caster(&mut self, ability: ActionId, rank: u8) -> StableId {
         let caster = self.spawn(
             0,
             at(Num::ZERO, Num::ZERO, Num::ZERO),
             (
                 Owner::new(PlayerSlot::new(0)),
-                AbilitySlots::new([(ability, SlotKind::new(0), rank)]),
+                ActionSlots::new([(ability, SlotKind::new(0), rank)]),
             ),
         );
         self.give_pools(caster, 100, 20);
@@ -289,16 +312,16 @@ impl Match {
         self.world.entity_mut(entity).insert(pools);
     }
 
-    fn cast(&mut self, unit: StableId, target: CastTarget) {
+    fn cast(&mut self, unit: StableId, target: ActionTarget) {
         self.casts(&[(unit, target)]);
     }
 
     /// Runs a tick in which each unit casts its first slot's ability at its target, as an order
     /// would make it.
-    fn casts(&mut self, casts: &[(StableId, CastTarget)]) {
+    fn casts(&mut self, casts: &[(StableId, ActionTarget)]) {
         for &(unit, target) in casts {
             let entity = self.world.resource::<EntityIndex>().get(unit).unwrap();
-            let mut slots = self.world.get_mut::<AbilitySlots>(entity).unwrap();
+            let mut slots = self.world.get_mut::<ActionSlots>(entity).unwrap();
             slots.order(0, target);
         }
         self.world.run_schedule(SimUpdate);
@@ -332,11 +355,11 @@ impl Match {
         self.get::<Pools>(id).current(pool).unwrap().round()
     }
 
-    fn slot(&self, id: StableId) -> AbilitySlot {
+    fn slot(&self, id: StableId) -> ActionSlot {
         let entity = self.world.resource::<EntityIndex>().get(id).unwrap();
         self.world
             .entity(entity)
-            .get::<AbilitySlots>()
+            .get::<ActionSlots>()
             .unwrap()
             .slot(0)
             .unwrap()
@@ -350,9 +373,12 @@ impl Match {
             .insert(UnitTags::blocking(blocks));
     }
 
-    fn casting(&self, id: StableId) -> Option<Casting> {
+    fn casting(&self, id: StableId) -> Option<InProgress> {
         let entity = self.world.resource::<EntityIndex>().get(id).unwrap();
-        self.world.get::<AbilitySlots>(entity).unwrap().casting()
+        let slots = self.world.get::<ActionSlots>(entity).unwrap();
+        slots
+            .in_progress()
+            .filter(|underway| underway.kind == ActionKind::Cast)
     }
 
     fn failures(&self) -> &[ScriptFailure] {
@@ -366,7 +392,7 @@ fn damage_of_a_kind_the_mode_does_not_declare_fails_the_cast() {
     let fire = game.load(&lash_out(), &LASH_OUT.replace(r#""magic""#, r#""fire""#));
     let husk = game.caster(fire, 2);
     let near = game.spawn(1, at(num(3), Num::ZERO, Num::ZERO), ());
-    game.cast(husk, CastTarget::None);
+    game.cast(husk, ActionTarget::None);
     // The call fails, so the cast applies nothing: no damage, no cost.
     assert_eq!((game.health(near), game.pool(husk)), (500, 100));
     let errors: Vec<_> = game
@@ -401,7 +427,7 @@ fn lash_out_hits_every_enemy_within_its_radius_exactly() {
 
     // Rank 2 deals 100, and 0.5 × 0 ability power: 500 → 400 for the three enemies in reach.
     // It costs 35 of 100, and its 9000 ms cooldown is 9 × 30 = 270 ticks.
-    game.cast(husk, CastTarget::None);
+    game.cast(husk, ActionTarget::None);
     let healths =
         |game: &Match| [near, edge, beyond, high, ally, dead].map(|unit| game.health(unit));
     assert_eq!(healths(&game), [400, 400, 500, 400, 500, 500]);
@@ -410,18 +436,18 @@ fn lash_out_hits_every_enemy_within_its_radius_exactly() {
     assert!(game.failures().is_empty());
 
     // On cooldown until tick 270: a cast in tick 1 does nothing.
-    game.cast(husk, CastTarget::None);
+    game.cast(husk, ActionTarget::None);
     assert_eq!(healths(&game), [400, 400, 500, 400, 500, 500]);
     assert_eq!(game.pool(husk), 65);
     // An ability that takes no target ignores the one its order names: the cast at the ally hits
     // the same three enemies.
     game.run_until(270);
-    game.cast(husk, CastTarget::Unit(ally));
+    game.cast(husk, ActionTarget::Unit(ally));
     assert_eq!(healths(&game), [300, 300, 500, 300, 500, 500]);
     assert_eq!(game.pool(husk), 30);
     // 30 left cannot pay 35.
     game.run_until(540);
-    game.cast(husk, CastTarget::None);
+    game.cast(husk, ActionTarget::None);
     assert_eq!(healths(&game), [300, 300, 500, 300, 500, 500]);
     assert_eq!(game.pool(husk), 30);
 }
@@ -456,7 +482,7 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
     }
 
     // The cast in the same tick draws from its player's pool, whole: 500 → 450, 100 → 90.
-    game.cast(caster, CastTarget::Unit(enemy));
+    game.cast(caster, ActionTarget::Unit(enemy));
     assert_eq!(game.health(enemy), 450);
     assert_eq!(game.pool(caster), 90);
     let failures = game.failures();
@@ -477,7 +503,7 @@ fn a_cast_passes_its_checks_or_does_nothing() {
             at(num(x), Num::ZERO, Num::ZERO),
             (
                 Owner::new(PlayerSlot::new(0)),
-                AbilitySlots::new([(strike, SlotKind::new(0), rank)]),
+                ActionSlots::new([(strike, SlotKind::new(0), rank)]),
             ),
         );
         game.give_pools(unit, mana, rage);
@@ -502,14 +528,14 @@ fn a_cast_passes_its_checks_or_does_nothing() {
     // are a slot not learned, and a cost of 10 mana and 4 rage against 5 mana, 3 rage, or 9
     // mana left of 100.
     for (unit, target) in [
-        (caster, CastTarget::Unit(ally)),
-        (caster, CastTarget::Unit(hidden)),
-        (caster, CastTarget::Unit(far)),
-        (caster, CastTarget::None),
-        (unlearned, CastTarget::Unit(enemy)),
-        (poor, CastTarget::Unit(enemy)),
-        (calm, CastTarget::Unit(enemy)),
-        (spent, CastTarget::Unit(enemy)),
+        (caster, ActionTarget::Unit(ally)),
+        (caster, ActionTarget::Unit(hidden)),
+        (caster, ActionTarget::Unit(far)),
+        (caster, ActionTarget::None),
+        (unlearned, ActionTarget::Unit(enemy)),
+        (poor, ActionTarget::Unit(enemy)),
+        (calm, ActionTarget::Unit(enemy)),
+        (spent, ActionTarget::Unit(enemy)),
     ] {
         game.cast(unit, target);
         assert_eq!(game.health(enemy), 500, "{unit:?} at {target:?}");
@@ -521,7 +547,7 @@ fn a_cast_passes_its_checks_or_does_nothing() {
     // At exactly 5 m, the enemy takes 50, and the cost comes off each pool: 100 − 10 mana and
     // 20 − 4 rage. The cooldown, 1001 ms, is 30.03 ticks, rounded up to 31: the cast in tick 8 is
     // ready again in tick 39.
-    game.cast(caster, CastTarget::Unit(enemy));
+    game.cast(caster, ActionTarget::Unit(enemy));
     assert_eq!(game.health(enemy), 450);
     assert_eq!((game.pool(caster), game.pool_of(caster, RAGE)), (90, 16));
     assert_eq!(game.slot(caster).ready_at, Tick::new(39));
@@ -533,7 +559,7 @@ fn a_cast_passes_its_checks_or_does_nothing() {
         .entity_mut(far_entity)
         .insert(Body::new(Num::ONE).unwrap());
     game.run_until(39);
-    game.cast(caster, CastTarget::Unit(far));
+    game.cast(caster, ActionTarget::Unit(far));
     assert_eq!(game.health(far), 450);
 }
 
@@ -549,7 +575,7 @@ fn a_cost_in_a_pool_and_a_player_resource_is_checked_and_paid_together() {
     let ownerless = game.spawn(
         0,
         at(Num::ZERO, Num::ZERO, num(1)),
-        AbilitySlots::new([(strike, SlotKind::new(0), 1)]),
+        ActionSlots::new([(strike, SlotKind::new(0), 1)]),
     );
     game.give_pools(ownerless, 100, 20);
     let enemy = game.spawn(1, at(num(5), Num::ZERO, Num::ZERO), ());
@@ -563,18 +589,18 @@ fn a_cost_in_a_pool_and_a_player_resource_is_checked_and_paid_together() {
         (game.pool(unit), amounts.amount(player, gold))
     };
     // A unit no player owns pays no player resource, so it may not cast.
-    game.cast(ownerless, CastTarget::Unit(enemy));
+    game.cast(ownerless, ActionTarget::Unit(enemy));
     assert_eq!(game.health(enemy), 500);
     assert_eq!(game.pool(ownerless), 100);
     // Player 0's caster pays both in tick 1, 100 − 10 mana and 40 − 30 gold, as the strike
     // lands.
-    game.cast(caster, CastTarget::Unit(enemy));
+    game.cast(caster, ActionTarget::Unit(enemy));
     assert_eq!(game.health(enemy), 450);
     assert_eq!(held(&game, caster), (90, 10));
     // Ready again in tick 1 + 31 = 32, the cooldown's 1001 ms in ticks rounded up, it may not
     // cast with 10 gold of 30: nothing is spent, and the cooldown does not start again.
     game.run_until(32);
-    game.cast(caster, CastTarget::Unit(enemy));
+    game.cast(caster, ActionTarget::Unit(enemy));
     assert_eq!(game.health(enemy), 450);
     assert_eq!(held(&game, caster), (90, 10));
     assert_eq!(game.slot(caster).ready_at, Tick::new(32));
@@ -583,24 +609,25 @@ fn a_cost_in_a_pool_and_a_player_resource_is_checked_and_paid_together() {
 #[test]
 fn a_cast_its_casters_tags_stop_is_kept_and_an_interrupted_one_spends_nothing() {
     let mut game = Match::new();
-    // Strike with a cast time of 100 ms, 3 ticks.
+    // Strike with a windup of 100 ms, 3 ticks.
     let data = ActionData {
         kind: ActionKind::Cast,
-        cast_time_ms: Some(Ranked::One(int(100))),
+        windup_ms: Some(Ranked::One(int(100))),
         ..strike()
     };
     let strike = game.load(&data, STRIKE);
     let caster = game.caster(strike, 1);
     let enemy = game.spawn(1, at(num(5), Num::ZERO, Num::ZERO), ());
-    let target = CastTarget::Unit(enemy);
-    let order = Casting {
+    let target = ActionTarget::Unit(enemy);
+    let order = InProgress {
         slot: 0,
+        kind: ActionKind::Cast,
         target,
         resolves_at: None,
     };
     let ordered = Some(order);
     let started = |tick| {
-        Some(Casting {
+        Some(InProgress {
             resolves_at: Some(Tick::new(tick)),
             ..order
         })
@@ -622,7 +649,7 @@ fn a_cast_its_casters_tags_stop_is_kept_and_an_interrupted_one_spends_nothing() 
     game.cast(caster, target);
     game.run_until(2);
     assert_eq!(game.casting(caster), ordered);
-    // Free in tick 2: it starts, to resolve in tick 5. Silenced again in tick 3: its cast time
+    // Free in tick 2: it starts, to resolve in tick 5. Silenced again in tick 3: its windup
     // is interrupted, back to the order, and spends nothing.
     game.set_blocks(caster, &[]);
     game.run_until(3);
@@ -684,7 +711,7 @@ fn a_failed_script_changes_nothing_and_fails_the_same_way_everywhere() {
             let caster = game.caster(ability, 1);
             let enemy = game.spawn(1, at(num(1), Num::ZERO, Num::ZERO), ());
             if ordered {
-                game.cast(caster, CastTarget::None);
+                game.cast(caster, ActionTarget::None);
                 let failures = game.failures();
                 assert_eq!(failures.len(), 1, "{script}");
                 assert_eq!(failures[0].unit, Some(caster));
@@ -735,14 +762,14 @@ fn a_cast_draws_from_its_casters_player_pool() {
             at(Num::ZERO, Num::ZERO, num(1)),
             (
                 Owner::new(PlayerSlot::new(1)),
-                AbilitySlots::new([(strike, SlotKind::new(0), 1)]),
+                ActionSlots::new([(strike, SlotKind::new(0), 1)]),
             ),
         );
         game.give_pools(striker, 100, 20);
         let enemy = game.spawn(1, at(num(1), Num::ZERO, Num::ZERO), ());
         let casts = [
-            (spinner, CastTarget::None),
-            (striker, CastTarget::Unit(enemy)),
+            (spinner, ActionTarget::None),
+            (striker, ActionTarget::Unit(enemy)),
         ];
         game.casts(if spins { &casts } else { &casts[1..] });
         let failures = game.failures();
@@ -774,7 +801,7 @@ fn an_ability_loads_only_when_its_data_holds() {
     let mut game = Match::new();
     let load = |game: &mut Match, data: &ActionData, source: &str| {
         let script = Units::compile(&mut game.world, source).unwrap();
-        Abilities::load(&mut game.world, 0, "lash_out", data, Some(script), 5)
+        Actions::load(&mut game.world, 0, "lash_out", data, Some(script), 5)
     };
     let mut uneven = lash_out();
     uneven.cost = BTreeMap::from([(
@@ -814,7 +841,7 @@ fn an_ability_loads_only_when_its_data_holds() {
     // What only a match's rate decides: i64::MAX ms counts in no tick.
     assert!(matches!(
         load(&mut game, &forever, LASH_OUT),
-        Err(AbilityError::TimeTooLarge)
+        Err(ActionError::TimeTooLarge)
     ));
     assert!(load(&mut game, &lash_out(), LASH_OUT).is_ok());
     // A direction loads, as every targeting does; no cast can aim one yet.
@@ -825,7 +852,7 @@ fn an_ability_loads_only_when_its_data_holds() {
     let modifiers_only = "fn on_damage_taken(ctx, m, d) { }";
     let passive = load(&mut game, &lash_out(), modifiers_only).unwrap();
     let caster = game.caster(passive, 1);
-    game.cast(caster, CastTarget::None);
+    game.cast(caster, ActionTarget::None);
     assert!(game.failures().is_empty());
     assert_eq!(game.pool(caster), 65);
     assert_eq!(game.slot(caster).ready_at, Tick::new(300));
@@ -854,8 +881,8 @@ fn a_capability_field_reads_its_param_at_each_rank() {
     );
     let mut game = Match::new();
     let strike = Units::compile(&mut game.world, STRIKE).unwrap();
-    let id = Abilities::load(&mut game.world, 0, "strike", &data, Some(strike), 3).unwrap();
-    let book = game.world.resource::<AbilityBook>();
+    let id = Actions::load(&mut game.world, 0, "strike", &data, Some(strike), 3).unwrap();
+    let book = game.world.resource::<ActionBook>();
     let ranks: Vec<_> = book
         .get(id)
         .unwrap()
@@ -886,9 +913,9 @@ fn a_unit_target_is_one_its_filter_selects_tag_and_all() {
     let enemy_creep = game.spawn(1, at(num(3), Num::ZERO, Num::ZERO), creep);
     let enemy_hero = game.spawn(1, at(num(4), Num::ZERO, Num::ZERO), hero);
     // The creep is an enemy, but no hero: the cast goes nowhere. The hero takes 50.
-    game.cast(caster, CastTarget::Unit(enemy_creep));
+    game.cast(caster, ActionTarget::Unit(enemy_creep));
     assert_eq!(game.health(enemy_creep), 500);
-    game.cast(caster, CastTarget::Unit(enemy_hero));
+    game.cast(caster, ActionTarget::Unit(enemy_hero));
     assert_eq!(game.health(enemy_hero), 450);
 }
 
@@ -934,7 +961,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
         held.shield
     };
     let learn = |game: &mut Match| {
-        let mut slots = game.world.get_mut::<AbilitySlots>(entity).unwrap();
+        let mut slots = game.world.get_mut::<ActionSlots>(entity).unwrap();
         slots.learn(0);
         game.world.run_schedule(SimUpdate);
     };
@@ -947,7 +974,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     assert_eq!(shield(&game), Some(num(100)));
     // A cast puts it on cooldown for 9000 ms at rank 2, 270 ticks: gone from that tick, back in
     // the 270th after it.
-    game.cast(caster, CastTarget::None);
+    game.cast(caster, ActionTarget::None);
     assert_eq!(shield(&game), None);
     for _ in 0..269 {
         game.world.run_schedule(SimUpdate);
@@ -955,6 +982,44 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     assert_eq!(shield(&game), None);
     game.world.run_schedule(SimUpdate);
     assert_eq!(shield(&game), Some(num(100)));
+
+    // A weapon's passive holds as well, in a match with no abilities: a ward of 40 from its
+    // first tick.
+    let mut game = Match::with(LIMITS, &[Capability::Stats, Capability::Combat]);
+    let stats = StatBook::new(&BTreeMap::new(), [], RATE, num(6)).unwrap();
+    Stats::load(&mut game.world, stats, PoolBook::default());
+    let ward = ModifierData {
+        shield: Some(int(40)),
+        ..guard
+    };
+    Stats::load_modifier(&mut game.world, 0, "ward", &ward, None);
+    let mut claws = lash_out();
+    claws.kind = ActionKind::Attack;
+    claws.script = None;
+    claws.cooldown_ms = None;
+    claws.cost = BTreeMap::new();
+    claws.params = BTreeMap::new();
+    claws.targeting = Targeting::Unit(FilterData::parse("enemies").unwrap());
+    claws.rate = Some(Stat::named("armor").unwrap());
+    claws.damage = Some(Stat::named("attack_damage").unwrap());
+    claws.damage_kind = Some(DeclaredName::new("physical").unwrap());
+    claws.passive_modifier = Some("ward".to_owned());
+    let claws = Actions::load(&mut game.world, 0, "claws", &claws, None, 1).unwrap();
+    let slots = ActionSlots::new([(claws, SlotKind::new(0), 1)]);
+    let beast = game.spawn(0, at(Num::ZERO, Num::ZERO, Num::ZERO), slots);
+    let entity = game.world.resource::<EntityIndex>().get(beast).unwrap();
+    game.world.entity_mut(entity).insert(Modifiers::default());
+    game.world.run_schedule(SimUpdate);
+    let ward = game
+        .world
+        .resource::<ModifierBook>()
+        .find(0, "ward")
+        .unwrap();
+    let modifiers = game.world.get::<Modifiers>(entity).unwrap();
+    assert_eq!(
+        modifiers.get(ward, Some(beast)).map(|held| held.shield),
+        Some(Some(num(40)))
+    );
 }
 
 #[test]
@@ -990,7 +1055,7 @@ fn on_resolve(ctx, caster, target) {
     let entity = game.world.resource::<EntityIndex>().get(caster).unwrap();
     game.world.entity_mut(entity).insert(Modifiers::default());
     let t = game.world.resource::<SimTick>().start();
-    game.cast(caster, CastTarget::None);
+    game.cast(caster, ActionTarget::None);
     // From the caster, by Lash Out at rank 3: a shield of its damage there, 125; 1000 ms at 30
     // ticks a second, 30 ticks, so it ends as tick t + 31 starts.
     let id = game
@@ -1043,7 +1108,7 @@ fn stun_run() -> Vec<(StateHash, bool)> {
     let mut seen = Vec::new();
     for tick in 0..8 {
         if tick == 2 {
-            game.cast(caster, CastTarget::Unit(enemy));
+            game.cast(caster, ActionTarget::Unit(enemy));
         } else {
             game.world.run_schedule(SimUpdate);
         }
@@ -1083,14 +1148,14 @@ fn on_resolve(ctx, caster, target) {
     pools.take(MANA, num(50));
     // From 40 health and 50 mana: 30 healed and 20 restored as the effects apply, then the
     // cost of 35: 70 and 35.
-    game.cast(caster, CastTarget::None);
+    game.cast(caster, ActionTarget::None);
     assert_eq!((game.health(caster), game.pool(caster)), (70, 35));
 
     let mut game = Match::new();
     let negative = "fn on_resolve(ctx, caster, target) { ctx.restore(caster, \"mana\", 5); ctx.heal(caster, -1); }";
     let ability = game.load(&lash_out(), negative);
     let caster = game.caster(ability, 1);
-    game.cast(caster, CastTarget::None);
+    game.cast(caster, ActionTarget::None);
     let refused = game.failures().iter().map(|failure| &failure.error);
     assert!(
         refused
@@ -1197,9 +1262,10 @@ fn on_interval(ctx, m) { throw "interval"; }
         ],
     );
     game.world.insert_resource(AssistWindow(Ticks::new(10)));
-    let attacker = game.spawn(0, at(Num::ZERO, Num::ZERO, Num::ZERO), ());
-    let assister = game.spawn(0, at(num(3), Num::ZERO, Num::ZERO), ());
     let victim = game.spawn(1, at(Num::ONE, Num::ZERO, Num::ZERO), ());
+    let origin = at(Num::ZERO, Num::ZERO, Num::ZERO);
+    let attacker = game.attacker(0, origin, striker(500), victim);
+    let assister = game.spawn(0, at(num(3), Num::ZERO, Num::ZERO), ());
     let bystander = game.spawn(1, at(num(9), Num::ZERO, Num::ZERO), ());
     for unit in [attacker, assister, victim] {
         game.give(unit, "log");
@@ -1207,13 +1273,7 @@ fn on_interval(ctx, m) { throw "interval"; }
     game.give(bystander, "pulse");
     // The attacker strikes for 500 as its windup of no ticks ends, in tick 0; the assister
     // struck the victim in tick 0 too.
-    let entity = |game: &Match, id| game.world.resource::<EntityIndex>().get(id).unwrap();
-    let striker = entity(&game, attacker);
-    let stats = AttackStats::new(num(2), Ticks::new(0), Ticks::new(5), num(500)).unwrap();
-    game.world.entity_mut(striker).insert(stats);
-    let mut attack = game.world.get_mut::<AttackState>(striker).unwrap();
-    attack.set_target(Some(victim));
-    let target = entity(&game, victim);
+    let target = game.world.resource::<EntityIndex>().get(victim).unwrap();
     game.world
         .resource_scope(|world, index: Mut<'_, EntityIndex>| {
             let mut attackers = world.get_mut::<RecentAttackers>(target).unwrap();
@@ -1265,16 +1325,12 @@ fn on_damage_taken(ctx, m, d) {
             ("echo", scripted(None, &[("echo", 1)])),
         ],
     );
-    let attacker = game.spawn(0, at(Num::ZERO, Num::ZERO, Num::ZERO), ());
     let victim = game.spawn(1, at(Num::ONE, Num::ZERO, Num::ZERO), ());
+    let origin = at(Num::ZERO, Num::ZERO, Num::ZERO);
+    let attacker = game.attacker(0, origin, striker(30), victim);
     let echoer = game.spawn(1, at(num(9), Num::ZERO, Num::ZERO), ());
     game.give(attacker, "double");
     game.give(echoer, "echo");
-    let striker = game.world.resource::<EntityIndex>().get(attacker).unwrap();
-    let stats = AttackStats::new(num(2), Ticks::new(0), Ticks::new(5), num(30)).unwrap();
-    game.world.entity_mut(striker).insert(stats);
-    let mut attack = game.world.get_mut::<AttackState>(striker).unwrap();
-    attack.set_target(Some(victim));
     game.world.resource_mut::<DamageQueue>().push(Damage {
         source: None,
         target: echoer,
@@ -1370,7 +1426,7 @@ fn a_scaling_param_reads_its_sources_level_stats_and_bonus() {
     // more and 40 ability power.
     let caster_type =
         Units::load_type(&mut game.world, "caster", &UnitTypeData::default()).unwrap();
-    let attack_damage = Stat::Engine(EngineStat::AttackDamage);
+    let attack_damage = Stat::named("attack_damage").unwrap();
     let growth = StatValue {
         base: Scalar::Int(50),
         per_level: Some(Scalar::Int(5)),
@@ -1421,7 +1477,7 @@ fn on_resolve(ctx, caster, target) {
     game.give(caster, "boost");
     let target = game.spawn(1, at(num(5), Num::ZERO, Num::ZERO), Modifiers::default());
     let t = game.world.resource::<SimTick>().start();
-    game.cast(caster, CastTarget::Unit(target));
+    game.cast(caster, ActionTarget::Unit(target));
 
     // At rank 2 and level 3: 200 + 10 × 2 + 0.5 × 40 + 1.5 × (80 − 60) = 270, which the script
     // deals, 500 → 230, and the mark lasts: 270 ms at 30 ticks a second, 8.1 ticks, up to 9,
@@ -1446,7 +1502,7 @@ fn a_live_change_follows_its_source_in_the_order_of_the_stats_it_reads() {
     // reads spell vamp, which reads attack damage. Armor's place, before spell vamp's, makes the
     // graph's order differ from the places'.
     let veil_type = Units::load_type(&mut game.world, "veil", &UnitTypeData::default()).unwrap();
-    let attack_damage = Stat::Engine(EngineStat::AttackDamage);
+    let attack_damage = Stat::named("attack_damage").unwrap();
     let growth = StatValue {
         base: Scalar::Int(53),
         per_level: None,

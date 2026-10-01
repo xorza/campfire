@@ -26,7 +26,7 @@ use bevy::time::Time;
 use bevy::transform::components::Transform;
 use bevy::window::Window;
 use campfire_capabilities::{
-    AttackState, Body, Dead, MatchEnd, MatchResult, MoveStep, Owner, Projectile, Team,
+    ActionSlots, Body, Dead, MatchEnd, MatchResult, MoveStep, Owner, Projectile, Team,
 };
 use campfire_math::Num;
 use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
@@ -161,7 +161,7 @@ const LEAN: f32 = 0.35;
 
 /// The drawn units, with their attack if they have one, and whether they are dead.
 type Attackers<'w, 's> =
-    Query<'w, 's, (&'static Drawn, Option<&'static AttackState>, Has<Dead>), Allow<Unpredicted>>;
+    Query<'w, 's, (&'static Drawn, Option<&'static ActionSlots>, Has<Dead>), Allow<Unpredicted>>;
 
 /// The projectiles not drawn yet.
 type NewShots<'w, 's> = Query<
@@ -294,13 +294,12 @@ impl View {
         units: Attackers<'_, '_>,
         mut drawings: Query<'_, '_, (&Glide, &mut Transform), With<Look>>,
     ) {
-        for (&Drawn(drawing), attack, dead) in &units {
+        for (&Drawn(drawing), slots, dead) in &units {
             if dead {
                 continue;
             }
-            let aim = attack
-                .filter(|attack| attack.started().is_some())
-                .and_then(|attack| attack.target())
+            let aim = slots
+                .and_then(ActionSlots::attacking)
                 .and_then(|target| index.get(target))
                 .and_then(|target| units.get(target).ok())
                 .and_then(|(&Drawn(target), ..)| drawings.get(target).ok())

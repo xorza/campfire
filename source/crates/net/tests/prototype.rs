@@ -7,7 +7,7 @@ use std::num::NonZeroU32;
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use campfire_capabilities::{
-    Action, AttackState, Dead, Destination, MatchEnd, MatchResult, MoveStep, Owner, PoolId, Pools,
+    Action, ActionSlots, Dead, Destination, MatchEnd, MatchResult, MoveStep, Owner, PoolId, Pools,
     Projectile, Respawn, Team,
 };
 use campfire_math::{Num, Vec3};
@@ -154,7 +154,9 @@ fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_
         let units = || world.resource::<EntityIndex>().iter();
         let aimed = units().any(|(_, entity)| {
             let unit = world.entity(entity);
-            unit.get::<AttackState>().and_then(|attack| attack.target()) == Some(hero_id)
+            unit.get::<ActionSlots>()
+                .and_then(ActionSlots::attack_target)
+                == Some(hero_id)
                 && !unit.contains::<MoveStep>()
         });
         let shot = units().any(|(_, entity)| world.entity(entity).contains::<Projectile>());

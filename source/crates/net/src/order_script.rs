@@ -1,4 +1,4 @@
-use campfire_capabilities::{Action, CastTarget, Scalar};
+use campfire_capabilities::{Action, ActionTarget, Scalar};
 use campfire_sim::{StableId, Tick};
 use serde::Deserialize;
 
@@ -65,7 +65,7 @@ impl OrderScript {
                 (None, Some(target), None, None) => Action::Attack { target },
                 (None, None, Some(slot), target) => Action::Cast {
                     slot,
-                    target: target.map_or(CastTarget::None, CastTarget::Unit),
+                    target: target.map_or(ActionTarget::None, ActionTarget::Unit),
                 },
                 _ => return Err(OrderScriptError::Action { tick }),
             };
@@ -168,13 +168,13 @@ mod tests {
                 Tick::new(9),
                 Action::Cast {
                     slot: 2,
-                    target: CastTarget::None
+                    target: ActionTarget::None
                 }
             )
         );
         assert!(matches!(
             (second.tick.get(), second.action),
-            (9, Action::Cast { slot: 0, target: CastTarget::Unit(unit) }) if unit.get() == 7
+            (9, Action::Cast { slot: 0, target: ActionTarget::Unit(unit) }) if unit.get() == 7
         ));
         assert!(matches!(
             (third.tick.get(), third.action),

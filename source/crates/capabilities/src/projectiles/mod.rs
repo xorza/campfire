@@ -1,12 +1,11 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Without;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
-use bevy_ecs::system::{Commands, Query, Res, ResMut};
+use bevy_ecs::system::{Commands, Query, ResMut};
 use bevy_ecs::world::World;
 use campfire_sim::{IdAllocator, Position, SimSet, StateRegistry};
 
 use crate::combat::CombatSet;
-use crate::combat::attack_kind::AttackKind;
 use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::damage_queue::DamageQueue;
 use crate::combat::launches::Launches;
@@ -41,7 +40,6 @@ impl Projectiles {
 fn fly(
     mut commands: Commands<'_, '_>,
     targets: Targets<'_, '_>,
-    kind: Res<'_, AttackKind>,
     mut queue: ResMut<'_, DamageQueue>,
     mut projectiles: Query<'_, '_, (Entity, &mut Position, &Projectile), Without<Pools>>,
 ) {
@@ -58,7 +56,7 @@ fn fly(
                 source: Some(projectile.source()),
                 target: projectile.target(),
                 amount: projectile.amount(),
-                kind: kind.0,
+                kind: projectile.kind(),
                 cause: DamageCause::Attack {
                     roll: projectile.roll(),
                 },
@@ -87,6 +85,7 @@ fn launch(
             launch.target,
             launch.speed,
             launch.amount,
+            launch.kind,
             launch.roll,
         )
         .expect("ranged attack stats hold a positive speed and damage that is not negative");

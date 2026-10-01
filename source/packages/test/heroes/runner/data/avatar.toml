@@ -1,11 +1,9 @@
 name = "Runner"
 tags = ["test"]
 pools = ["health", "mana"]
-slots = { basic = ["first", "second", "third"], ultimate = ["fourth"] }
+slots = { basic = ["first", "second", "third"], ultimate = ["fourth"], weapon = ["attack"] }
 
-[combat.attack]
-range = "1.25"
-windup_ms = 266
+[combat]
 
 [collision]
 radius = "0.5"
@@ -38,3 +36,12 @@ targeting = "none"
 
 [actions.fourth]
 targeting = "none"
+
+[actions.attack]
+kind = "attack"
+targeting = "enemies"
+range = "1.25"
+windup_ms = 266
+rate = "attack_speed"
+damage = "attack_damage"
+damage_kind = "true"

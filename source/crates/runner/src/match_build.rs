@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use bevy_ecs::schedule::Schedule;
 use bevy_ecs::world::World;
 use campfire_capabilities::{
-    Abilities, AbilityId, ActionData, DeclaredName, KitRules, LoadoutSetup, MatchScripts, Mode,
+    ActionData, ActionId, Actions, DeclaredName, KitRules, LoadoutSetup, MatchScripts, Mode,
     ModeSetup, OnDeath, Orders, PoolId, SlotAction, Stat, Stats, UnitKit, UnitTypeData,
     UnitTypeSetup, Units,
 };
@@ -156,7 +156,7 @@ impl<'a> MatchBuild<'a> {
         package: usize,
         actions: &'p BTreeMap<String, ActionData>,
         ranks: impl Fn(&str) -> Option<u8>,
-    ) -> Result<BTreeMap<&'p str, AbilityId>, StartError> {
+    ) -> Result<BTreeMap<&'p str, ActionId>, StartError> {
         actions
             .iter()
             .map(|(id, data)| {
@@ -174,7 +174,7 @@ impl<'a> MatchBuild<'a> {
         package: usize,
         name: &str,
         file: &UnitTypeFile,
-        actions: &BTreeMap<&str, AbilityId>,
+        actions: &BTreeMap<&str, ActionId>,
         avatar: bool,
     ) -> Result<(), StartError> {
         let data = self.packages.data();
@@ -250,10 +250,10 @@ impl<'a> MatchBuild<'a> {
         id: &str,
         data: &ActionData,
         ranks: u8,
-    ) -> Result<AbilityId, StartError> {
+    ) -> Result<ActionId, StartError> {
         let script = data.script.as_ref().map(|path| self.script(package, path));
         let package = u16::try_from(package).expect("packages fit u16");
-        Abilities::load(self.world, package, id, data, script, ranks).map_err(|error| {
+        Actions::load(self.world, package, id, data, script, ranks).map_err(|error| {
             StartError::Ability {
                 ability: id.to_owned(),
                 error,

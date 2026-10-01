@@ -2,9 +2,8 @@ use std::collections::BTreeMap;
 
 use bevy_ecs::resource::Resource;
 use campfire_math::Num;
-use campfire_sim::{TickRate, Ticks};
+use campfire_sim::TickRate;
 
-use crate::combat::attack_stats::AttackStats;
 use crate::stats::stat::{EngineStat, Stat};
 use crate::stats::stat_rule::StatRule;
 use crate::stats::stat_totals::StatTotals;
@@ -172,17 +171,5 @@ impl StatBook {
             .clamp(Num::ZERO, self.max_move_speed);
         let hz = i64::from(self.rate.hz().get());
         Some(speed.checked_div_int(hz).expect("a speed a tick fits"))
-    }
-
-    /// The ticks from the start of one attack of a unit with `values` to the next at the
-    /// earliest: the tick rate over its `attack_speed` attacks a second, exactly, rounded up, the
-    /// attacks at least one bit, and the period longer than `windup`; `None` when the mode
-    /// declares no attack speed.
-    pub(crate) fn period(&self, values: &[Num], windup: Ticks) -> Option<Ticks> {
-        let speed = self.engine(values, EngineStat::AttackSpeed)?;
-        // Attacks a second in bits times 2²⁴.
-        let attacks = (i128::from(speed.to_bits()) << Num::FRAC_BITS).max(1 << Num::FRAC_BITS);
-        let hz = self.rate.hz().get();
-        Some(AttackStats::period_at(hz, attacks.cast_unsigned(), windup))
     }
 }

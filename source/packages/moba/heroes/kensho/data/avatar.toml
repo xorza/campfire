@@ -2,11 +2,9 @@ name = "Kensho"
 tags = ["fighter"]
 pools = ["health", "mana"]
 passive = "twin_cut"
-slots = { basic = ["flicker_strike", "still_mind", "honed_edge"], ultimate = ["unbound"] }
+slots = { basic = ["flicker_strike", "still_mind", "honed_edge"], ultimate = ["unbound"], weapon = ["attack"] }
 
-[combat.attack]
-range = "1.25"
-windup_ms = 250
+[combat]
 
 [collision]
 radius = "0.5"
@@ -106,3 +104,12 @@ script = "scripts/unbound.rhai"
 duration_ms = { param = "duration_ms" }
 tags = ["slow_immune"]
 stats = { attack_speed = { pct = { param = "attack_speed" } }, move_speed = { pct = { param = "move_speed" } } }
+
+[actions.attack]
+kind = "attack"
+targeting = "enemies"
+range = "1.25"
+windup_ms = 250
+rate = "attack_speed"
+damage = "attack_damage"
+damage_kind = "physical"

@@ -10,16 +10,14 @@ use campfire_script::{Budget, ScriptId};
 use campfire_sim::{Capability, SimUpdate, StableId, TickInput};
 
 use super::*;
-use crate::abilities::Abilities;
-use crate::abilities::ability_book::AbilityId;
-use crate::abilities::action_data::{ActionData, Targeting};
-use crate::abilities::action_kind::ActionKind;
-use crate::abilities::slot_kind::SlotKind;
-use crate::abilities::slot_kinds::{SlotKindData, SlotKinds};
+use crate::actions::Actions;
+use crate::actions::action_book::ActionId;
+use crate::actions::action_data::{ActionData, Targeting};
+use crate::actions::action_kind::ActionKind;
+use crate::actions::slot_kind::SlotKind;
+use crate::actions::slot_kinds::{SlotKindData, SlotKinds};
 use crate::capability_set::internals::TestMatch;
-use crate::combat::attack_stats::AttackStats;
 use crate::combat::combat_rules::CombatRules;
-use crate::combat::combatant::Combatant;
 use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::damage_kind::DamageKind;
 use crate::combat::damage_queue::DamageQueue;
@@ -210,16 +208,11 @@ fn field(kind: StateType, default: Option<StateDefault>) -> StateDecl {
     StateDecl::new(kind, default, Some(SyncTo::All)).unwrap()
 }
 
-/// The unit kit of a grunt: 10 health, an attack, and a step of 1 m.
+/// The unit kit of a grunt: 10 health, combat that keeps it when it dies, and a step of 1 m.
 fn grunt() -> UnitKit {
     UnitKit {
         pools: Some(Pools::life(num(10))),
-        combatant: Some(Combatant {
-            attack: Some(
-                AttackStats::new(num(1), Ticks::new(0), Ticks::new(1), Num::ZERO).unwrap(),
-            ),
-            on_death: OnDeath::Stay,
-        }),
+        on_death: Some(OnDeath::Stay),
         step: Some(MoveStep::new(Num::ONE).unwrap()),
         sight: None,
         body: None,
@@ -412,7 +405,6 @@ fn mode_files() -> ModeFiles {
                 ("drill".to_owned(), drill()),
             ]
             .into(),
-            attack_kind: None,
             stats: STATS_3V3
                 .map(|name| (Stat::named(name).unwrap(), StatRule::default()))
                 .into(),
@@ -452,7 +444,7 @@ fn setup(
     script: ScriptId,
     types: [UnitType; 4],
     spell: LoadoutSetup,
-    strike: AbilityId,
+    strike: ActionId,
     blessing: ModifierId,
 ) -> ModeSetup<'_> {
     let [grunt_type, tower_type, x, y] = types;
@@ -503,9 +495,9 @@ fn setup(
 struct Game {
     world: World,
     /// The one spell's ability.
-    blink: AbilityId,
+    blink: ActionId,
     /// Hero X's ability, of 2 ranks.
-    strike: AbilityId,
+    strike: ActionId,
 }
 
 impl Game {
@@ -553,7 +545,7 @@ impl Game {
             range: None,
             cooldown_ms: None,
             cost: BTreeMap::new(),
-            cast_time_ms: None,
+            windup_ms: None,
             clamp_to_range: false,
             toggle: None,
             channel: None,
@@ -564,12 +556,15 @@ impl Game {
             passive_while_ready: false,
             projectile: None,
             area: None,
+            rate: None,
+            damage: None,
+            damage_kind: None,
             params: BTreeMap::new(),
             projectile_state: BTreeMap::new(),
         };
         // A spell has one rank; hero X's ability, 2.
-        let strike = Abilities::load(&mut world, 0, "strike", &blink, None, 2).unwrap();
-        let blink = Abilities::load(&mut world, 0, "blink", &blink, None, 1).unwrap();
+        let strike = Actions::load(&mut world, 0, "strike", &blink, None, 2).unwrap();
+        let blink = Actions::load(&mut world, 0, "blink", &blink, None, 1).unwrap();
         let spell = LoadoutSetup {
             id: "blink".to_owned(),
             ability: blink,
@@ -785,8 +780,8 @@ fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
         game.world.get::<Owner>(hero).unwrap().slot(),
         PlayerSlot::new(0)
     );
-    let slots = game.world.get::<AbilitySlots>(hero).unwrap();
-    let slots: Vec<_> = slots.iter().map(|slot| (slot.ability, slot.rank)).collect();
+    let slots = game.world.get::<ActionSlots>(hero).unwrap();
+    let slots: Vec<_> = slots.iter().map(|slot| (slot.action, slot.rank)).collect();
     assert_eq!(slots, [(game.strike, 0), (game.blink, 1)]);
 }
 
@@ -820,7 +815,7 @@ fn on_mode_input(ctx, player, name, value) {
     let mut owned = game.world.query_filtered::<Entity, With<Owner>>();
     let hero = owned.single(&game.world).unwrap();
     let ranks = |game: &Game| {
-        let slots = game.world.get::<AbilitySlots>(hero).unwrap();
+        let slots = game.world.get::<ActionSlots>(hero).unwrap();
         slots.iter().map(|slot| slot.rank).collect::<Vec<_>>()
     };
     // Three ranks of two fail at the third, and the call learns none; two in one call count the
@@ -1684,10 +1679,8 @@ fn on_mode_input(ctx, player, name, value) {
     // Unit 1, after the map's tower.
     let hero = game.entity(1);
     let slots = |game: &Game| {
-        let slots = game.world.get::<AbilitySlots>(hero).unwrap();
-        let slots = slots
-            .iter()
-            .map(|slot| (slot.ability, slot.kind, slot.rank));
+        let slots = game.world.get::<ActionSlots>(hero).unwrap();
+        let slots = slots.iter().map(|slot| (slot.action, slot.kind, slot.rank));
         slots.collect::<Vec<_>>()
     };
     let [basic, spell] = [0, 1].map(SlotKind::new);

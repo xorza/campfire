@@ -78,7 +78,7 @@ After one damage of the pass, its events run in this order: `on_attack_hit`, the
 
 ## State and derived
 
-- **State:** each unit's life pool, its weapons' attack state (target, the tick its windup started, the tick it is ready), its recent attackers, whether it is dead and when it respawns, its spawn place; the tick's deaths.
+- **State:** each unit's life pool, its attack target, its recent attackers, whether it is dead and when it respawns, its spawn place; the tick's deaths. A weapon's windup and the tick it is ready are its unit's slots' ([Actions](actions.md#state-and-derived)).
 - **Derived:** each weapon's period and damage, from the stats.
 
 ## Script API

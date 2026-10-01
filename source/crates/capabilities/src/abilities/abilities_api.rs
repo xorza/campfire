@@ -59,18 +59,7 @@ impl AbilitiesApi {
             .hook(Hook::OnInterrupt, "(ctx, unit, target)", Status::Planned)
             .data(
                 DataTable::Action,
-                &[
-                    "kind",
-                    "script",
-                    "targeting",
-                    "range",
-                    "cooldown_ms",
-                    "cost",
-                    "cast_time_ms",
-                    "passive_modifier",
-                    "passive_while_ready",
-                    "params",
-                ],
+                &["script", "cooldown_ms", "params"],
                 &[
                     "clamp_to_range",
                     "toggle",
@@ -78,7 +67,6 @@ impl AbilitiesApi {
                     "hold",
                     "charges",
                     "charge",
-                    "projectile",
                     "area",
                     "projectile_state",
                 ],

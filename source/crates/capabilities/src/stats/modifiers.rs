@@ -6,7 +6,7 @@ use campfire_sim::{SimComponent, StableId, Tick, Ticks};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::abilities::ability_book::AbilityId;
+use crate::actions::action_book::ActionId;
 use crate::scripts::state_value::StateValue;
 use crate::stats::live_param::LiveParam;
 use crate::stats::modifier_book::ModifierId;
@@ -27,7 +27,7 @@ pub(crate) struct Instance {
     pub(crate) source: Option<StableId>,
     /// The ability whose cast, projectile, area or modifier applied it, or whose passive it is,
     /// at its rank on the source.
-    pub(crate) ability: Option<AbilityId>,
+    pub(crate) ability: Option<ActionId>,
     pub(crate) rank: u8,
     /// Whether it is an ability's passive, which a death keeps, and whether an aura or its
     /// carrier's player holds it.

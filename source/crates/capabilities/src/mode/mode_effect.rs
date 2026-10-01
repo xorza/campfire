@@ -1,8 +1,8 @@
 use campfire_math::PlayerSlot;
 use campfire_sim::{StableId, Ticks};
 
-use crate::abilities::ability_book::AbilityId;
-use crate::abilities::slot_kind::SlotKind;
+use crate::actions::action_book::ActionId;
+use crate::actions::slot_kind::SlotKind;
 
 use crate::mode::match_end::MatchResult;
 use crate::mode::mode_book::{GroupUnit, SpawnAt};
@@ -36,7 +36,7 @@ pub(crate) enum ModeEffect {
     Grant {
         unit: StableId,
         kind: SlotKind,
-        abilities: Vec<AbilityId>,
+        abilities: Vec<ActionId>,
     },
     Respawn {
         unit: StableId,

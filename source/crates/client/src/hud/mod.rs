@@ -16,7 +16,7 @@ use bevy::mesh::{Mesh, Mesh3d, Meshable};
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::time::Time;
 use bevy::transform::components::Transform;
-use campfire_capabilities::{AbilitySlots, AttackState, Dead, Owner, PoolId, Pools, Team};
+use campfire_capabilities::{ActionSlots, Dead, Owner, PoolId, Pools, Team};
 use campfire_sim::{EntityIndex, SimTick, Unpredicted};
 use lightyear::prelude::Predicted;
 
@@ -66,7 +66,7 @@ type Ungauged<'w, 's> = Query<
         Entity,
         &'static Team,
         Option<&'static Pools>,
-        Option<&'static AbilitySlots>,
+        Option<&'static ActionSlots>,
         Has<Predicted>,
         Has<Owner>,
     ),
@@ -84,7 +84,7 @@ type Shown<'w, 's> = Query<
     (
         Has<Dead>,
         Option<&'static Pools>,
-        Option<&'static AbilitySlots>,
+        Option<&'static ActionSlots>,
     ),
     Allow<Unpredicted>,
 >;
@@ -341,14 +341,14 @@ impl Hud {
     /// unit's drawing, or hides it.
     fn mark_target(
         index: Res<'_, EntityIndex>,
-        own: Query<'_, '_, &AttackState, With<Predicted>>,
+        own: Query<'_, '_, &ActionSlots, With<Predicted>>,
         units: Query<'_, '_, &Drawn, Allow<Unpredicted>>,
         drawings: Query<'_, '_, (&Transform, &Glide, &Look), Without<TargetMark>>,
         mark: Single<'_, '_, (&mut Transform, &mut Visibility), With<TargetMark>>,
     ) {
         let target = own
             .iter()
-            .find_map(|attack| attack.target())
+            .find_map(ActionSlots::attack_target)
             .and_then(|target| index.get(target))
             .and_then(|target| units.get(target).ok())
             .and_then(|drawn| drawings.get(drawn.drawing()).ok());

@@ -1,8 +1,8 @@
 use campfire_math::Num;
 use campfire_script::ScriptId;
 
-use crate::abilities::ability_book::AbilityId;
-use crate::abilities::slot_kind::SlotKind;
+use crate::actions::action_book::ActionId;
+use crate::actions::slot_kind::SlotKind;
 use crate::mode::map_data::MapData;
 use crate::mode::mode_data::ModeData;
 use crate::mode::team_manifest::TeamManifest;
@@ -59,12 +59,12 @@ pub struct UnitTypeSetup {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SlotAction {
     pub kind: SlotKind,
-    pub ability: AbilityId,
+    pub ability: ActionId,
 }
 
 /// An entry of the mode's loadout packages, loaded, by id.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct LoadoutSetup {
     pub id: String,
-    pub ability: AbilityId,
+    pub ability: ActionId,
 }

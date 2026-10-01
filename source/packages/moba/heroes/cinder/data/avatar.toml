@@ -1,12 +1,9 @@
 name = "Cinder"
 tags = ["mage"]
 pools = ["health", "mana"]
-slots = { basic = ["fire_lance", "eruption", "wildfire"], ultimate = ["chain_fire"] }
+slots = { basic = ["fire_lance", "eruption", "wildfire"], ultimate = ["chain_fire"], weapon = ["attack"] }
 
-[combat.attack]
-range = "5.5"
-windup_ms = 300
-projectile_speed = "20"
+[combat]
 
 [collision]
 radius = "0.5"
@@ -39,7 +36,7 @@ targeting = "direction"
 range = "10.5"
 cooldown_ms = [10000, 9000, 8000, 7000, 6000]
 cost = { mana = 50 }
-cast_time_ms = 250
+windup_ms = 250
 projectile = { speed = "16", width = "1.2", stop_on_hit = true }
 
 [actions.fire_lance.params]
@@ -52,7 +49,7 @@ targeting = "point"
 range = "9.0"
 cooldown_ms = 10000
 cost = { mana = [70, 75, 80, 85, 90] }
-cast_time_ms = 250
+windup_ms = 250
 area = { radius = "2.4", delay_ms = 625, affects = "enemies" }
 
 [actions.eruption.params]
@@ -89,3 +86,13 @@ bounces_left = { type = "int", default = 4 }
 # A stun: its time comes from the call that applies it.
 [modifiers.stun]
 tags = ["stunned"]
+
+[actions.attack]
+kind = "attack"
+targeting = "enemies"
+range = "5.5"
+windup_ms = 300
+rate = "attack_speed"
+damage = "attack_damage"
+damage_kind = "physical"
+projectile = { speed = "20" }

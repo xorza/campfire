@@ -4,25 +4,29 @@ use campfire_sim::{SimComponent, StableId};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
-/// A homing projectile: it flies `speed` a tick towards `target`, and strikes it for `amount` on
-/// arrival, on behalf of `source`, with the roll the attack that fired it drew.
+use crate::combat::damage_kind::DamageKind;
+
+/// A homing projectile: it flies `speed` a tick towards `target`, and strikes it for `amount` of
+/// `kind` on arrival, on behalf of `source`, with the roll the attack that fired it drew.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct Projectile {
     source: StableId,
     target: StableId,
     speed: Num,
     amount: Num,
+    kind: DamageKind,
     roll: Num,
 }
 
 impl Projectile {
     /// `None` unless the speed is positive, the amount is not negative, and the roll is at least 0
     /// and less than 1.
-    pub const fn new(
+    pub(crate) const fn new(
         source: StableId,
         target: StableId,
         speed: Num,
         amount: Num,
+        kind: DamageKind,
         roll: Num,
     ) -> Option<Projectile> {
         let bits = roll.to_bits();
@@ -34,6 +38,7 @@ impl Projectile {
             target,
             speed,
             amount,
+            kind,
             roll,
         })
     }
@@ -54,6 +59,10 @@ impl Projectile {
         self.amount
     }
 
+    pub(crate) const fn kind(self) -> DamageKind {
+        self.kind
+    }
+
     pub const fn roll(self) -> Num {
         self.roll
     }
@@ -72,6 +81,7 @@ impl<'de> Deserialize<'de> for Projectile {
             target: StableId,
             speed: Num,
             amount: Num,
+            kind: DamageKind,
             roll: Num,
         }
         let fields = Fields::deserialize(deserializer)?;
@@ -80,9 +90,10 @@ impl<'de> Deserialize<'de> for Projectile {
             target,
             speed,
             amount,
+            kind,
             roll,
         } = fields;
-        Projectile::new(source, target, speed, amount, roll)
+        Projectile::new(source, target, speed, amount, kind, roll)
             .ok_or_else(|| D::Error::custom("projectile out of its limits"))
     }
 }

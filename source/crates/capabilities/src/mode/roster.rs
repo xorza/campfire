@@ -1,4 +1,4 @@
-use crate::abilities::ability_book::AbilityId;
+use crate::actions::action_book::ActionId;
 use crate::mode::choice_data::Offers;
 use crate::mode::mode_setup::LoadoutSetup;
 use crate::mode::offer::Offer;
@@ -39,7 +39,7 @@ impl Roster {
     }
 
     /// The ability of the loadout entry `id`.
-    pub(crate) fn loadout_ability(&self, id: &str) -> Option<AbilityId> {
+    pub(crate) fn loadout_ability(&self, id: &str) -> Option<ActionId> {
         let offer = self.offer(Offers::Loadout, id)?;
         Some(self.loadout[offer.index()].ability)
     }

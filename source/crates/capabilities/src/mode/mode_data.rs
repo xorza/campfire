@@ -4,8 +4,8 @@ use campfire_content::PackagePath;
 use campfire_script::rhai::{Dynamic, ImmutableString};
 use serde::Deserialize;
 
-use crate::abilities::action_data::{ActionData, CostTarget};
-use crate::abilities::slot_kinds::SlotKinds;
+use crate::actions::action_data::{ActionData, CostTarget};
+use crate::actions::slot_kinds::SlotKinds;
 use crate::combat::combat_rules::CombatRules;
 use crate::mode::choice_data::ChoiceData;
 use crate::mode::relation_data::RelationData;
@@ -50,8 +50,6 @@ pub struct ModeData {
     /// The actions its unit types' slots name.
     #[serde(default)]
     pub actions: BTreeMap<String, ActionData>,
-    /// The kind of damage every attack deals, one of `[combat] damage_kinds`.
-    pub attack_kind: Option<DeclaredName>,
     /// Every stat its units carry, those the engine reads among them, each with its rule.
     #[serde(default)]
     pub stats: BTreeMap<Stat, StatRule>,

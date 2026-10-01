@@ -101,11 +101,24 @@ impl CombatApi {
             &[],
         )
         .data(DataTable::Leech, &["attack", "other"], &[])
-        .data(DataTable::Combat, &["attack", "on_death"], &[])
+        .data(DataTable::Combat, &["on_death"], &[])
         .data(
-            DataTable::Attack,
-            &["range", "windup_ms", "projectile_speed"],
+            DataTable::Action,
+            &["rate", "damage", "damage_kind", "projectile"],
             &[],
+        )
+        .data(
+            DataTable::Projectile,
+            &["speed"],
+            &[
+                "width",
+                "range",
+                "stop_on_hit",
+                "once_per_cast",
+                "hits",
+                "sight_radius",
+                "collide",
+            ],
         );
     }
 

@@ -16,16 +16,10 @@ pub enum Stat {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum EngineStat {
     MoveSpeed,
-    AttackSpeed,
-    AttackDamage,
 }
 
 impl EngineStat {
-    pub const ALL: [EngineStat; 3] = [
-        EngineStat::MoveSpeed,
-        EngineStat::AttackSpeed,
-        EngineStat::AttackDamage,
-    ];
+    pub const ALL: [EngineStat; 1] = [EngineStat::MoveSpeed];
 
     /// The stat named `name`.
     pub fn named(name: &str) -> Option<EngineStat> {
@@ -36,8 +30,6 @@ impl EngineStat {
     pub const fn name(self) -> &'static str {
         match self {
             EngineStat::MoveSpeed => "move_speed",
-            EngineStat::AttackSpeed => "attack_speed",
-            EngineStat::AttackDamage => "attack_damage",
         }
     }
 }

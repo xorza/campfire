@@ -9,20 +9,20 @@ use std::rc::Rc;
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::world::World;
 
+use campfire_capabilities::internals::{self, Arms};
 use campfire_capabilities::{
-    Abilities, AbilitySlots, Action, AttackStats, CapabilitySet, CastTarget, Combatant,
-    DeclaredName, MatchScripts, Number, OnDeath, Order, Owner, Param, PoolId, Pools, Range,
-    RangeField, Ranked, Scalar, Scaling, ScriptLimits, SlotKind, Stat, Stats, Targeting, Team,
-    Units,
+    Action, ActionSlots, ActionTarget, Actions, CapabilitySet, DeclaredName, MatchScripts, Number,
+    OnDeath, Order, Owner, Param, PoolId, Pools, Range, RangeField, Ranked, RecentAttackers,
+    Scalar, Scaling, ScriptLimits, SlotKind, Stat, Stats, Targeting, Team, Units,
 };
-use campfire_capabilities::{Modifiers, ScriptFailures, internals};
+use campfire_capabilities::{Modifiers, ScriptFailures};
 use campfire_content::PackagePath;
 use campfire_math::{Num, PlayerSlot, SegmentSeed, Vec3};
 use campfire_package::{AvatarData, PackageDir};
 use campfire_script::ScriptId;
 use campfire_sim::{
     Capability, EntityIndex, IdAllocator, Position, SimUpdate, StableId, StateRegistry, TickInput,
-    TickInputs, TickRate, Ticks,
+    TickInputs, TickRate,
 };
 
 /// The MOBA's 30 ticks a second.
@@ -53,8 +53,9 @@ const POOLS: [&str; 3] = ["health", "mana", "energy"];
 const MANA: PoolId = PoolId::new(1).unwrap();
 const ENERGY: PoolId = PoolId::new(2).unwrap();
 
-/// A unit of 500 health on `team` at `x` meters along x, with `parts`, and with `mana` and
-/// `energy` pools of those maxima, when not 0.
+/// A unit of 500 health on `team` at `x` meters along x that stays when it dies, with `parts`, and
+/// with `mana` and `energy` pools of those maxima, when not 0; with no slots unless `parts` hold
+/// some.
 fn spawn_with(
     world: &mut World,
     team: u8,
@@ -67,13 +68,11 @@ fn spawn_with(
         .into_iter()
         .filter(|&(_, max)| max > 0)
         .map(|(pool, max)| (pool, num(max)));
-    let combatant = Combatant {
-        attack: Some(AttackStats::new(Num::ZERO, Ticks::ZERO, Ticks::ONE, Num::ZERO).unwrap()),
-        on_death: OnDeath::Stay,
-    };
     let at = Position::new(Vec3::new(num(x), Num::ZERO, Num::ZERO)).unwrap();
-    let mut unit = world.spawn((id, at, Team::new(team), Pools::new(pools).unwrap(), parts));
-    combatant.insert(&mut unit);
+    let combat = (OnDeath::Stay, RecentAttackers::default());
+    let pools = Pools::new(pools).unwrap();
+    let mut unit = world.spawn((id, at, Team::new(team), pools, combat, parts));
+    unit.insert_if_new(ActionSlots::new([]));
     id
 }
 
@@ -94,8 +93,8 @@ fn every_reference_ability_reads_into_the_schema() {
             read += 1;
         }
     }
-    // Four abilities a hero.
-    assert_eq!(read, 24);
+    // Four abilities and a weapon a hero.
+    assert_eq!(read, 30);
 
     // Husk's Lash Out reads exactly as its file writes it.
     let husk = abilities("husk");
@@ -218,7 +217,7 @@ fn lash_out_from_its_package_hits_exactly() {
     }
     let data = &husk.actions["lash_out"];
     let script = compile(&mut world, "husk", data.script.as_ref().unwrap());
-    let lash_out = Abilities::load(&mut world, 0, "lash_out", data, Some(script), 5).unwrap();
+    let lash_out = Actions::load(&mut world, 0, "lash_out", data, Some(script), 5).unwrap();
 
     let caster = spawn_with(
         &mut world,
@@ -227,7 +226,7 @@ fn lash_out_from_its_package_hits_exactly() {
         (100, 0),
         (
             Owner::new(PlayerSlot::new(0)),
-            AbilitySlots::new([(lash_out, SlotKind::new(0), 3)]),
+            ActionSlots::new([(lash_out, SlotKind::new(0), 3)]),
         ),
     );
     let near = spawn(&mut world, 1, 3, ());
@@ -239,7 +238,7 @@ fn lash_out_from_its_package_hits_exactly() {
             unit: caster,
             action: Action::Cast {
                 slot: 0,
-                target: CastTarget::None,
+                target: ActionTarget::None,
             },
         }],
     );
@@ -258,11 +257,12 @@ fn pool(world: &World, id: StableId, pool: PoolId) -> Num {
     world.get::<Pools>(entity).unwrap().current(pool).unwrap()
 }
 
-/// Gives `unit` an attack of `damage` within 2 m, its windup of no ticks, every `period` ticks.
+/// Gives `unit` a weapon of `damage` within 2 m, its windup of no ticks, every `period` ticks.
 fn arm(world: &mut World, unit: StableId, damage: i64, period: u64) {
     let entity = world.resource::<EntityIndex>().get(unit).unwrap();
-    let stats = AttackStats::new(num(2), Ticks::ZERO, Ticks::new(period), num(damage)).unwrap();
-    world.entity_mut(entity).insert(stats);
+    let arms = Arms::melee(num(2), 0, period, num(damage));
+    let parts = arms.parts(world, RATE.hz().get());
+    world.entity_mut(entity).insert(parts);
 }
 
 fn attack(unit: StableId, target: StableId) -> Order {
@@ -307,7 +307,7 @@ fn veils_dusk_mark_detonates_once_on_veils_next_damage() {
     let script = compile(&mut world, "veil", mark.script.as_ref().unwrap());
     Stats::load_modifier(&mut world, 0, "dusk_mark", mark, Some(script));
     let data = &veil.actions["dusk_mark"];
-    let ability = Abilities::load(&mut world, 0, "dusk_mark", data, Some(script), 5).unwrap();
+    let ability = Actions::load(&mut world, 0, "dusk_mark", data, Some(script), 5).unwrap();
     let player = Owner::new(PlayerSlot::new(0));
     let veil_unit = spawn_with(&mut world, 0, 0, (0, 200), player);
     let entity = world.resource::<EntityIndex>().get(veil_unit).unwrap();

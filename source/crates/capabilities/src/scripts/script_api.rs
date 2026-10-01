@@ -68,10 +68,10 @@ pub enum DataTable {
     Leech,
     Relation,
     Action,
+    Projectile,
     Modifier,
     Aura,
     Combat,
-    Attack,
     Vision,
     Collision,
     Ai,
@@ -449,10 +449,10 @@ impl DataTable {
         DataTable::Leech,
         DataTable::Relation,
         DataTable::Action,
+        DataTable::Projectile,
         DataTable::Modifier,
         DataTable::Aura,
         DataTable::Combat,
-        DataTable::Attack,
         DataTable::Vision,
         DataTable::Collision,
         DataTable::Ai,
@@ -470,10 +470,10 @@ impl DataTable {
             DataTable::Leech => "The mode's `[combat] leech`",
             DataTable::Relation => "A pair of teams, `[[relations]]`",
             DataTable::Action => "An action, `[actions.<id>]`",
+            DataTable::Projectile => "An action's `projectile`",
             DataTable::Modifier => "A modifier, `[modifiers.<id>]`",
             DataTable::Aura => "A modifier's `aura`",
             DataTable::Combat => "A unit type's `combat`",
-            DataTable::Attack => "A unit type's `combat.attack`",
             DataTable::Vision => "A unit type's `vision`",
             DataTable::Collision => "A unit type's `collision`",
             DataTable::Ai => "A unit type's `orders`",
@@ -573,9 +573,9 @@ mod tests {
     use serde::de::{self, Deserialize, Deserializer, Visitor};
 
     use super::*;
-    use crate::abilities::action_data::ActionData;
-    use crate::abilities::slot_kinds::SlotKindData;
-    use crate::combat::combat_data::{AttackData, CombatData};
+    use crate::actions::action_data::{ActionData, ProjectileData};
+    use crate::actions::slot_kinds::SlotKindData;
+    use crate::combat::combat_data::CombatData;
     use crate::combat::combat_rules::{CombatRules, Leech};
     use crate::mode::choice_data::ChoiceData;
     use crate::mode::mode_data::ModeData;
@@ -761,10 +761,10 @@ mod tests {
             (DataTable::Leech, serde_fields::<Leech>()),
             (DataTable::Relation, serde_fields::<RelationData>()),
             (DataTable::Action, serde_fields::<ActionData>()),
+            (DataTable::Projectile, serde_fields::<ProjectileData>()),
             (DataTable::Modifier, serde_fields::<ModifierData>()),
             (DataTable::Aura, serde_fields::<AuraData>()),
             (DataTable::Combat, serde_fields::<CombatData>()),
-            (DataTable::Attack, serde_fields::<AttackData>()),
             (DataTable::Vision, serde_fields::<VisionData>()),
             (DataTable::Collision, serde_fields::<CollisionData>()),
             (DataTable::Ai, serde_fields::<AiData>()),

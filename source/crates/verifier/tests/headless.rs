@@ -8,7 +8,7 @@ use std::path::Path;
 use std::process::Command;
 
 use campfire_capabilities::{
-    Action, AttackState, Destination, Order, Owner, PoolId, Pools, Projectile,
+    Action, ActionSlots, Destination, Order, Owner, PoolId, Pools, Projectile,
 };
 use campfire_log::LogEvent;
 use campfire_math::{Num, PlayerSlot, Vec3};
@@ -268,8 +268,8 @@ impl Seen {
         let index = world.resource::<EntityIndex>();
         let entity = |id: u64| index.iter().find(|(unit, _)| unit.get() == id).unwrap().1;
         let targets = [0, 1, 3, 4, 5, 6].map(|id| {
-            let attack = world.entity(entity(id)).get::<AttackState>().unwrap();
-            attack.target().map(StableId::get)
+            let slots = world.entity(entity(id)).get::<ActionSlots>().unwrap();
+            slots.attack_target().map(StableId::get)
         });
         let hero = world.entity(entity(2)).get::<Pools>().unwrap();
         let projectiles = index

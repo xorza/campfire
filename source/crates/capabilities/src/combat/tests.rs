@@ -5,23 +5,34 @@ use bevy_ecs::system::RunSystemOnce;
 use std::collections::BTreeMap;
 
 use campfire_math::{PlayerSlot, RngSource, SegmentSeed, Vec3};
-use campfire_sim::{Capability, IdAllocator, SimUpdate, TickRate, Ticks, TypeHash};
+use campfire_sim::{Capability, IdAllocator, SimUpdate, Ticks, TypeHash};
 
 use super::*;
+use crate::actions::action_book::internals::{self, TestWeapon};
+use crate::actions::slot_kind::SlotKind;
 use crate::capability_set::internals::TestMatch;
+use crate::combat::armed::Armed;
 use crate::combat::combat_rules::{CombatRules, Leech};
-use crate::combat::combatant::Combatant;
-use crate::combat::combatant::internals::Armed;
 use crate::combat::damage_kind::DamageKind;
+use crate::combat::targets::Targets;
+use crate::mode::resource_id::ResourceId;
 use crate::stats::Stats;
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifiers::{Application, Instance};
 use crate::stats::pool_book::PoolBook;
+use crate::stats::pool_cost::PoolCost;
 use crate::stats::stat::Stat;
 use crate::stats::stat_book::StatBook;
 use crate::stats::stat_rule::StatRule;
+use crate::units::Units;
+use crate::units::body::Body;
+use crate::units::filter::Filter;
 use crate::units::relations::Relations;
+use crate::units::unit_type_data::UnitTypeData;
+use crate::units::unit_types::UnitTypes;
 use crate::values::attitude::Attitude;
+use crate::values::declared_name::DeclaredName;
+use crate::values::filter_data::FilterData;
 use crate::values::metric::Metric;
 
 /// The MOBA's 30 ticks a second.
@@ -37,21 +48,29 @@ fn at(x: i64, y: i64, z: i64) -> Position {
 
 /// `health`, and `damage` within `range`, a windup and a period in ticks.
 fn combatant(health: i64, range: i64, windup: u64, period: u64, damage: i64) -> Armed {
-    let combatant = Combatant {
-        attack: Some(
-            AttackStats::new(
-                num(range),
-                Ticks::new(windup),
-                Ticks::new(period),
-                num(damage),
-            )
-            .unwrap(),
-        ),
-        on_death: OnDeath::Despawn,
-    };
-    Armed {
-        combatant,
-        life: num(health),
+    Armed::melee(num(health), num(range), windup, period, num(damage))
+}
+
+/// A unit's attack as these tests read it: its target, the tick the attack in its windup
+/// started in, and the first tick its weapon may attack again.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct Attack {
+    target: Option<StableId>,
+    started: Option<Tick>,
+    ready_at: Tick,
+}
+
+impl Attack {
+    const fn target(self) -> Option<StableId> {
+        self.target
+    }
+
+    const fn started(self) -> Option<Tick> {
+        self.started
+    }
+
+    const fn ready_at(self) -> Tick {
+        self.ready_at
     }
 }
 
@@ -84,7 +103,8 @@ impl Fight {
 
     fn unit(&mut self, team: Team, at: Position, combatant: Armed) -> StableId {
         let id = self.world.resource_mut::<IdAllocator>().allocate();
-        self.world.spawn((id, at, combatant.bundle(team)));
+        let bundle = combatant.bundle(&mut self.world, team, RATE.hz().get());
+        self.world.spawn((id, at, bundle));
         id
     }
 
@@ -100,9 +120,9 @@ impl Fight {
     fn attack(&mut self, attacker: StableId, target: StableId) {
         let entity = self.world.resource::<EntityIndex>().get(attacker).unwrap();
         self.world
-            .get_mut::<AttackState>(entity)
+            .get_mut::<ActionSlots>(entity)
             .unwrap()
-            .set_target(Some(target));
+            .set_attack_target(Some(target));
     }
 
     fn run_until(&mut self, tick: u64) {
@@ -117,8 +137,19 @@ impl Fight {
             .map(|pools| pools.current(PoolId::FIRST).unwrap().round())
     }
 
-    fn state(&self, id: StableId) -> AttackState {
-        self.get::<AttackState>(id).unwrap()
+    /// The attack of unit `id`, whose one weapon sits in its first slot.
+    fn state(&self, id: StableId) -> Attack {
+        let slots = self.get_ref::<ActionSlots>(id).unwrap();
+        let slot = slots.slot(0).unwrap();
+        let book = self.world.resource::<ActionBook>();
+        let windup = book.get(slot.action).unwrap().ranks[0].windup;
+        let started = slots.attacking().and(slots.in_progress());
+        let started = started.and_then(|underway| underway.resolves_at);
+        Attack {
+            target: slots.attack_target(),
+            started: started.map(|at| Tick::new(at.get() - windup.get())),
+            ready_at: slot.ready_at,
+        }
     }
 
     /// Gives unit `id` tags that block `blocks`, as its modifiers would.
@@ -216,6 +247,117 @@ fn a_range_counts_from_the_edge_of_each_body_in_the_maps_metric() {
 }
 
 #[test]
+fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
+    // An RTS unit with a ground weapon of 1 m and no windup, dealing its stat at place 1, 10,
+    // then an air weapon of 5 m and a windup of 1 tick, dealing its stat at place 2, 25; both at
+    // its rate of 6 attacks a second, a period of 30 ÷ 6 = 5 ticks.
+    let mut fight = Fight::new();
+    let types = ["ground", "air", "structure"].map(|tag| {
+        let data = UnitTypeData {
+            tags: vec![tag.to_owned()],
+            params: BTreeMap::new(),
+        };
+        Units::load_type(&mut fight.world, tag, &data).unwrap()
+    });
+    let hover = UnitTypeData {
+        tags: vec!["ground".to_owned(), "air".to_owned()],
+        params: BTreeMap::new(),
+    };
+    let hover = Units::load_type(&mut fight.world, "hover", &hover).unwrap();
+    let weapon = |fight: &mut Fight, aim: &str, range, windup, damage| {
+        let view = fight.world.non_send::<View>().clone();
+        let aim = view
+            .resolve_filter(&FilterData::parse(aim).unwrap())
+            .unwrap();
+        let weapon = TestWeapon {
+            aim,
+            range: num(range),
+            windup: Ticks::new(windup),
+            launch: None,
+            rate: 0,
+            damage,
+            cost: PoolCost::default(),
+            resource_cost: None,
+        };
+        internals::weapon(&mut fight.world.resource_mut::<ActionBook>(), weapon)
+    };
+    let ground = weapon(&mut fight, "enemies:ground", 1, 0, 1);
+    let air = weapon(&mut fight, "enemies:air", 5, 1, 2);
+    let mut stats = UnitStats::default();
+    stats.refill().extend([num(6), num(10), num(25)]);
+    let slots = ActionSlots::new([ground, air].map(|weapon| (weapon, SlotKind::new(0), 1)));
+    let unit = fight.unit(Team::new(0), at(0, 0, 0), dummy());
+    let entity = fight.world.resource::<EntityIndex>().get(unit).unwrap();
+    fight.world.entity_mut(entity).insert((slots, stats));
+    let [ground_at, air_at, structure_at, hover_at] = [1, 4, 1, 1];
+    let targets = [
+        (types[0], ground_at),
+        (types[1], air_at),
+        (types[2], structure_at),
+        (hover, hover_at),
+    ]
+    .map(|(unit_type, x)| {
+        let target = fight.unit(Team::new(1), at(x, 0, 0), dummy());
+        let entity = fight.world.resource::<EntityIndex>().get(target).unwrap();
+        fight.world.entity_mut(entity).insert(unit_type);
+        UnitTags::give_type_tags(&mut fight.world, entity);
+        target
+    });
+    let [ground_unit, air_unit, structure, hovering] = targets;
+    let healths = |fight: &Fight| targets.map(|target| fight.health(target).unwrap());
+    let underway = |fight: &Fight| {
+        let slots = fight.get_ref::<ActionSlots>(unit).unwrap();
+        slots.in_progress().map(|underway| underway.slot)
+    };
+
+    // The air unit, 4 m off, only the air weapon selects: it starts in tick 0 and strikes in
+    // tick 1, for 25, and is ready again in tick 0 + 5.
+    fight.attack(unit, air_unit);
+    fight.run_until(1);
+    assert_eq!(underway(&fight), Some(1));
+    fight.run_until(2);
+    assert_eq!(healths(&fight), [100, 75, 100, 100]);
+    let slots = fight.get_ref::<ActionSlots>(unit).unwrap();
+    assert_eq!(slots.slot(1).unwrap().ready_at, Tick::new(5));
+
+    // The ground unit, 1 m off: the ground weapon, ready, strikes in tick 2 itself, for 10, while
+    // the air weapon cools down.
+    fight.attack(unit, ground_unit);
+    fight.run_until(3);
+    assert_eq!(healths(&fight), [90, 75, 100, 100]);
+    let slots = fight.get_ref::<ActionSlots>(unit).unwrap();
+    assert_eq!(slots.slot(0).unwrap().ready_at, Tick::new(7));
+
+    // No weapon selects the structure: nothing starts while it is the target.
+    fight.attack(unit, structure);
+    for tick in 4..=8 {
+        fight.run_until(tick);
+        assert_eq!(underway(&fight), None, "tick {tick}");
+    }
+    assert_eq!(healths(&fight), [90, 75, 100, 100]);
+
+    // Both weapons select a hovering unit, ground and air, 1 m off: the first, the ground one,
+    // ready since tick 7, strikes in tick 8 for 10.
+    fight.attack(unit, hovering);
+    fight.run_until(9);
+    assert_eq!(healths(&fight), [90, 75, 100, 90]);
+
+    // A weapon not learned is none: a unit √2 m off the hovering one, its ground weapon at rank
+    // 0, starts with the air one in tick 9 and strikes in tick 10 for 25, while the first unit's
+    // ground weapon waits for tick 13.
+    let second = fight.unit(Team::new(0), at(0, 0, 1), dummy());
+    let entity = fight.world.resource::<EntityIndex>().get(second).unwrap();
+    let mut stats = UnitStats::default();
+    stats.refill().extend([num(6), num(10), num(25)]);
+    let kind = SlotKind::new(0);
+    let slots = ActionSlots::new([(ground, kind, 0), (air, kind, 1)]);
+    fight.world.entity_mut(entity).insert((slots, stats));
+    fight.attack(second, hovering);
+    fight.run_until(11);
+    assert_eq!(healths(&fight), [90, 75, 100, 65]);
+}
+
+#[test]
 fn a_windup_its_attackers_states_stop_starts_again_and_spends_nothing() {
     let mut fight = Fight::new();
     let early = fight.unit(Team::new(0), at(0, 0, 0), fighter());
@@ -263,6 +405,80 @@ fn a_windup_its_attackers_states_stop_starts_again_and_spends_nothing() {
 }
 
 #[test]
+fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_resources() {
+    // A weapon of 2 m, a windup of 2 ticks, 6 attacks a second, a period of 5 ticks, and 10
+    // damage, that costs 4 mana and 2 gold; its unit has 100 mana, and its player 5 gold.
+    let mut fight = Fight::new();
+    let gold = ResourceId::of(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
+    let mut resources = PlayerResources::new(1, 1);
+    resources.add(PlayerSlot::new(0), gold, 5).unwrap();
+    fight.world.insert_resource(resources);
+    let mana = PoolId::new(1).unwrap();
+    let weapon = TestWeapon {
+        aim: Filter::parse("enemies", &UnitTypes::default()).unwrap(),
+        range: num(2),
+        windup: Ticks::new(2),
+        launch: None,
+        rate: 0,
+        damage: 1,
+        cost: PoolCost::new([(mana, num(4))]),
+        resource_cost: Some(ResourceAmount {
+            resource: gold,
+            amount: 2,
+        }),
+    };
+    let weapon = internals::weapon(&mut fight.world.resource_mut::<ActionBook>(), weapon);
+    let mut stats = UnitStats::default();
+    stats.refill().extend([num(6), num(10)]);
+    let unit = fight.unit(Team::new(0), at(0, 0, 0), dummy());
+    let dummy = fight.unit(Team::new(1), at(1, 0, 0), dummy());
+    let entity = fight.world.resource::<EntityIndex>().get(unit).unwrap();
+    let pools = Pools::new([(PoolId::FIRST, num(100)), (mana, num(100))]).unwrap();
+    let slots = ActionSlots::new([(weapon, SlotKind::new(0), 1)]);
+    let owner = Owner::new(PlayerSlot::new(0));
+    fight
+        .world
+        .entity_mut(entity)
+        .insert((slots, stats, pools, owner));
+    fight.attack(unit, dummy);
+    let paid = |fight: &Fight| {
+        let pools = fight.get::<Pools>(unit).unwrap();
+        let mana = pools.current(mana).unwrap().round();
+        let gold = fight
+            .world
+            .resource::<PlayerResources>()
+            .amount(PlayerSlot::new(0), gold);
+        (mana, gold, fight.health(dummy).unwrap())
+    };
+    let add_gold = |fight: &mut Fight, amount| {
+        let mut resources = fight.world.resource_mut::<PlayerResources>();
+        resources.add(PlayerSlot::new(0), gold, amount).unwrap();
+    };
+
+    // Attacks start in ticks 0 and 5 and strike 2 ticks later, each paying 4 mana and 2 gold:
+    // 100 to 96 and 92, 5 to 3 and 1, and the dummy 100 to 90 and 80.
+    fight.run_until(3);
+    assert_eq!(paid(&fight), (96, 3, 90));
+    fight.run_until(8);
+    assert_eq!(paid(&fight), (92, 1, 80));
+
+    // Ready in tick 10, it cannot afford 2 gold of 1, so nothing starts.
+    fight.run_until(11);
+    assert_eq!(fight.state(unit).started(), None);
+
+    // With 2 gold an attack starts in tick 11, to strike in tick 13; the gold goes before it
+    // strikes, so the checks fail again at the strike: it stops and spends nothing.
+    add_gold(&mut fight, 1);
+    fight.run_until(12);
+    assert_eq!(fight.state(unit).started(), Some(Tick::new(11)));
+    add_gold(&mut fight, -2);
+    fight.run_until(14);
+    assert_eq!(paid(&fight), (92, 0, 80));
+    assert_eq!(fight.state(unit).started(), None);
+    assert_eq!(fight.state(unit).ready_at(), Tick::new(10));
+}
+
+#[test]
 fn a_windup_on_a_target_that_dies_spends_nothing() {
     let mut fight = Fight::new();
     let slow = fight.unit(Team::new(0), at(0, 0, 0), fighter());
@@ -277,7 +493,7 @@ fn a_windup_on_a_target_that_dies_spends_nothing() {
     assert_eq!(fight.health(prey), None);
     assert_eq!(fight.state(slow).started(), Some(Tick::new(0)));
     fight.run_until(3);
-    assert_eq!(fight.state(slow), AttackState::default());
+    assert_eq!(fight.state(slow), Attack::default());
     assert_eq!(fight.state(quick).ready_at(), Tick::new(5));
 }
 
@@ -385,8 +601,7 @@ fn every_combat_type_is_state_and_restores() {
     assert_eq!(
         names,
         [
-            "combat.attack",
-            "combat.attack_stats",
+            "actions.slots",
             "combat.dead",
             "combat.on_death",
             "combat.recent_attackers",
@@ -413,7 +628,10 @@ fn every_combat_type_is_state_and_restores() {
     let mut restored = Fight::new();
     registry.restore(&snapshot, &mut restored.world).unwrap();
     assert_eq!(registry.hash(&restored.world), hash);
-    assert_eq!(restored.state(fighter), fight.state(fighter));
+    assert_eq!(
+        restored.get_ref::<ActionSlots>(fighter),
+        fight.get_ref::<ActionSlots>(fighter)
+    );
 }
 
 #[test]
@@ -423,29 +641,6 @@ fn stats_out_of_their_limits_are_refused() {
     assert_eq!(
         life(Num::EPSILON).and_then(|pools| pools.current(PoolId::FIRST)),
         Some(Num::EPSILON)
-    );
-    assert_eq!(
-        AttackStats::new(-Num::EPSILON, Ticks::new(0), Ticks::new(1), Num::ZERO),
-        None
-    );
-    assert_eq!(
-        AttackStats::new(Num::ZERO, Ticks::new(0), Ticks::new(1), -Num::EPSILON),
-        None
-    );
-    assert_eq!(
-        AttackStats::new(Num::ZERO, Ticks::new(1), Ticks::new(1), Num::ZERO),
-        None
-    );
-    assert!(AttackStats::new(Num::ZERO, Ticks::new(0), Ticks::new(1), Num::ZERO).is_some());
-    let melee = AttackStats::new(Num::ONE, Ticks::new(1), Ticks::new(2), Num::ONE).unwrap();
-    assert_eq!(melee.projectile_speed(), None);
-    assert_eq!(melee.ranged(Num::ZERO), None);
-    assert_eq!(melee.ranged(-Num::EPSILON), None);
-    assert_eq!(
-        melee
-            .ranged(Num::EPSILON)
-            .map(AttackStats::projectile_speed),
-        Some(Some(Num::EPSILON))
     );
 
     // A snapshot's values pass the same limits.
@@ -459,14 +654,6 @@ fn stats_out_of_their_limits_are_refused() {
     for (current, max) in [(-1, 1), (2, 1), (0, 0)] {
         assert_eq!(health(current, max), None, "{current} of {max}");
     }
-    let stats = |windup: u32, period: u32, speed: Option<Num>| {
-        let fields = (Num::ONE, windup, period, Num::ONE, speed);
-        postcard::from_bytes::<AttackStats>(&postcard::to_allocvec(&fields).unwrap()).ok()
-    };
-    assert_eq!(stats(1, 2, None), Some(melee));
-    assert_eq!(stats(1, 2, Some(Num::ONE)), melee.ranged(Num::ONE));
-    assert_eq!(stats(2, 2, None), None);
-    assert_eq!(stats(1, 2, Some(Num::ZERO)), None);
 }
 
 #[test]
@@ -820,9 +1007,9 @@ fn an_attack_draws_its_roll_once_as_its_windup_ends_from_the_seed() {
     let rolls = |fight: &mut Fight| {
         for &attacker in &attackers {
             let entity = fight.entity(attacker);
-            let mut attack = fight.world.get_mut::<AttackState>(entity).unwrap();
-            attack.set_target(Some(dummy));
-            attack.start(Tick::new(0));
+            let mut slots = fight.world.get_mut::<ActionSlots>(entity).unwrap();
+            slots.set_attack_target(Some(dummy));
+            slots.start_attack(0, Tick::new(0));
         }
         fight.world.resource_mut::<DamageQueue>().clear();
         fight.world.run_system_once(strike).unwrap();

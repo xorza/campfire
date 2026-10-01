@@ -118,10 +118,13 @@ fn read_fails(problem: &LoadProblem, file: &str, message: &str) -> bool {
 #[test]
 fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
     // 5 m/s, slower than the 3v3's cap of 6: a homing projectile might never catch a hero.
-    let edit = Edit::Replace(r#"projectile_speed = "6.5""#, r#"projectile_speed = "5.0""#);
-    let error = ModePackages::from_package_dir(&edited([(UNITS, edit)])).unwrap_err();
+    let edit = Edit::Replace(
+        r#"projectile = { speed = "6.5" }"#,
+        r#"projectile = { speed = "5.0" }"#,
+    );
+    let error = ModePackages::from_package_dir(&edited([(MODE_DATA, edit)])).unwrap_err();
     assert_eq!(error.package, MODE);
-    let at_caster = |problem: &LoadProblem| matches!(problem, LoadProblem::ProjectileNotFaster { at: Place::UnitType(name) } if name == "caster_creep");
+    let at_caster = |problem: &LoadProblem| matches!(problem, LoadProblem::ProjectileNotFaster { at: Place::Action(name) } if name == "caster_creep_attack");
     assert!(at_caster(&error.problem), "{error}");
 }
 
@@ -143,7 +146,7 @@ fn more_layers_than_tags_a_match_holds_fail_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 105] = [
+const FLAWS: [Flaw; 110] = [
     flaw(
         MANIFEST,
         Edit::Replace(r#"engine = "0.1.0""#, r#"engine = "0.0.9""#),
@@ -234,7 +237,7 @@ const FLAWS: [Flaw; 105] = [
     ),
     flaw(
         HUSK,
-        Edit::Replace("[combat.attack]", "[attack]"),
+        Edit::Replace("[combat]\n", "[fight]\n"),
         "hero-husk",
         |problem| matches!(problem, LoadProblem::Content(_)),
     ),
@@ -350,28 +353,71 @@ const FLAWS: [Flaw; 105] = [
         "hero-husk",
         |problem| matches!(problem, LoadProblem::UnknownCtx { name, .. } if name == "spawn_avatars"),
     ),
+    // A weapon has a rate, a damage and a damage kind the mode declares, aims at a unit within
+    // meters, and has no field only a cast runs; no other kind has a weapon's fields.
     flaw(
         MODE_DATA,
-        Edit::Replace("attack_kind = \"physical\"\n", ""),
+        Edit::Replace(
+            "damage_kind = \"physical\"\nprojectile = { speed = \"12\" }",
+            "damage_kind = \"fire\"\nprojectile = { speed = \"12\" }",
+        ),
         MODE,
-        |problem| matches!(problem, LoadProblem::NoAttackKind),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::DamageKind, at: Place::Action(action), name: kind } if action == "tower_attack" && kind == "fire"),
     ),
     flaw(
         MODE_DATA,
-        Edit::Replace("attack_kind = \"physical\"", "attack_kind = \"fire\""),
+        Edit::Replace("rate = \"attack_speed\"\n", "rate = \"attack_sped\"\n"),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::DamageKind, at: Place::AttackKind, name: kind } if kind == "fire"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, at: Place::Action(action), name } if action == "melee_creep_attack" && name == "attack_sped"),
     ),
-    Flaw {
-        file: MODE_DATA,
-        edit: Edit::Replace(
+    flaw(
+        MODE_DATA,
+        Edit::Replace("rate = \"attack_speed\"\n", ""),
+        MODE,
+        |problem| matches!(problem, LoadProblem::KindField(action) if action == "melee_creep_attack"),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace("range = \"7.75\"", "range = \"global\""),
+        MODE,
+        |problem| matches!(problem, LoadProblem::KindField(action) if action == "tower_attack"),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace(
+            "[actions.wolf_attack]\n",
+            "[actions.wolf_attack]\ncooldown_ms = 1000\n",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::KindField(action) if action == "wolf_attack"),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace(
+            "projectile = { speed = \"12\" }",
+            "projectile = { speed = \"12\", width = \"1\" }",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::KindField(action) if action == "tower_attack"),
+    ),
+    flaw(
+        HUSK,
+        Edit::Replace(
+            "[actions.dread]\n",
+            "[actions.dread]\nrate = \"attack_speed\"\n",
+        ),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::KindField(action) if action == "dread"),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace(
             "damage_kinds = [\"physical\", \"magic\", \"true\"]",
             "damage_kinds = []",
         ),
-        also: &[(MODE_DATA, Edit::Replace("attack_kind = \"physical\"\n", ""))],
-        package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::NoDamageKinds),
-    },
+        MODE,
+        |problem| matches!(problem, LoadProblem::NoDamageKinds),
+    ),
     flaw(
         MODE_DATA,
         Edit::Replace(
@@ -888,13 +934,13 @@ const FLAWS: [Flaw; 105] = [
         MODE,
         |problem| matches!(problem, LoadProblem::Choice(ChoiceProblem::UnknownSlotKind { kind, .. }) if kind == "spells"),
     ),
-    // The release runs actions of kind `cast` alone yet; an action sits in slot kinds of one
-    // count of ranks.
+    // The release runs actions of kind `cast` and `attack` alone yet; an action sits in slot
+    // kinds of one count of ranks.
     flaw(
         HUSK,
-        Edit::Replace("[actions.dread]\n", "[actions.dread]\nkind = \"attack\"\n"),
+        Edit::Replace("[actions.dread]\n", "[actions.dread]\nkind = \"use\"\n"),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::KindNotRun { action, kind: ActionKind::Attack } if action == "dread"),
+        |problem| matches!(problem, LoadProblem::KindNotRun { action, kind: ActionKind::Use } if action == "dread"),
     ),
     Flaw {
         file: MODE_DATA,
@@ -906,15 +952,15 @@ const FLAWS: [Flaw; 105] = [
             (
                 UNITS,
                 Edit::Replace(
-                    "[units.melee_creep]\n",
-                    "[units.melee_creep]\nslots = { basic = [\"taunt\"] }\n",
+                    "slots = { weapon = [\"melee_creep_attack\"] }",
+                    "slots = { weapon = [\"melee_creep_attack\"], basic = [\"taunt\"] }",
                 ),
             ),
             (
                 UNITS,
                 Edit::Replace(
-                    "[units.caster_creep]\n",
-                    "[units.caster_creep]\nslots = { ultimate = [\"taunt\"] }\n",
+                    "slots = { weapon = [\"caster_creep_attack\"] }",
+                    "slots = { weapon = [\"caster_creep_attack\"], ultimate = [\"taunt\"] }",
                 ),
             ),
         ],

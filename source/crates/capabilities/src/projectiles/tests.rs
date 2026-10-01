@@ -2,16 +2,14 @@ use std::num::NonZeroU32;
 
 use campfire_math::{Num, RngSource, SegmentSeed, Vec3};
 use campfire_sim::{
-    Capability, EntityIndex, SimTick, SimUpdate, StableId, Tick, TickRate, Ticks, TypeHash,
+    Capability, EntityIndex, SimTick, SimUpdate, StableId, Tick, TickRate, TypeHash,
 };
 
 use super::*;
+use crate::actions::action_slots::ActionSlots;
 use crate::capability_set::internals::TestMatch;
 use crate::combat::ROLL_STREAM;
-use crate::combat::attack_state::AttackState;
-use crate::combat::attack_stats::AttackStats;
-use crate::combat::combatant::Combatant;
-use crate::combat::combatant::internals::Armed;
+use crate::combat::armed::Armed;
 use crate::combat::dead::Dead;
 use crate::combat::deaths::Deaths;
 use crate::combat::on_death::OnDeath;
@@ -39,27 +37,14 @@ fn half() -> Num {
 /// 30 damage within 8 m, fired 2 ticks after the start of an attack every 10 ticks, flying half
 /// a meter a tick.
 fn shooter() -> Armed {
-    let melee = AttackStats::new(num(8), Ticks::new(2), Ticks::new(10), num(30)).unwrap();
-    let combatant = Combatant {
-        attack: Some(melee.ranged(half()).unwrap()),
-        on_death: OnDeath::Stay,
-    };
-    Armed {
-        combatant,
-        life: num(100),
-    }
+    Armed::melee(num(100), num(8), 2, 10, num(30))
+        .ranged(half())
+        .on_death(OnDeath::Stay)
 }
 
 /// 100 health; never attacks; stays when it dies.
 fn target() -> Armed {
-    let combatant = Combatant {
-        attack: Some(AttackStats::new(Num::ZERO, Ticks::new(0), Ticks::new(1), Num::ZERO).unwrap()),
-        on_death: OnDeath::Stay,
-    };
-    Armed {
-        combatant,
-        life: num(100),
-    }
+    Armed::unarmed(num(100)).on_death(OnDeath::Stay)
 }
 
 #[derive(Debug)]
@@ -91,8 +76,8 @@ impl Volley {
 
     fn unit(&mut self, team: u8, at: Position, combatant: Armed) -> StableId {
         let id = self.world.resource_mut::<IdAllocator>().allocate();
-        self.world
-            .spawn((id, at, combatant.bundle(Team::new(team))));
+        let bundle = combatant.bundle(&mut self.world, Team::new(team), RATE.hz().get());
+        self.world.spawn((id, at, bundle));
         id
     }
 
@@ -102,8 +87,8 @@ impl Volley {
 
     fn attack(&mut self, attacker: StableId, target: StableId) {
         let entity = self.entity(attacker);
-        let mut attack = self.world.get_mut::<AttackState>(entity).unwrap();
-        attack.set_target(Some(target));
+        let mut slots = self.world.get_mut::<ActionSlots>(entity).unwrap();
+        slots.set_attack_target(Some(target));
     }
 
     fn tick(&mut self) {

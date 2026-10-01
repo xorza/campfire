@@ -5,7 +5,7 @@ use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_sim::{IdAllocator, StableId, Tick};
 
-use crate::abilities::ability_book::AbilityId;
+use crate::actions::action_book::ActionId;
 use crate::combat::Combat;
 use crate::mode::Mode;
 use crate::mode::choices::Choices;
@@ -45,7 +45,7 @@ pub(crate) struct Frame {
     /// mode.
     acting: Option<StableId>,
     /// The ability whose params it reads, at `rank`, and its modifier's.
-    ability: Option<AbilityId>,
+    ability: Option<ActionId>,
     rank: u8,
     modifier: Option<ModifierId>,
     /// The depth of the chain of combat events it runs in: 0 for a cast.
@@ -76,7 +76,7 @@ impl Frame {
     /// gives.
     pub(crate) fn add_params(
         &mut self,
-        ability: AbilityId,
+        ability: ActionId,
         params: &BTreeMap<String, Param>,
         stat: impl Fn(&Stat) -> u16,
     ) {
@@ -109,7 +109,7 @@ impl Frame {
     pub(crate) fn begin_cast(
         &mut self,
         world: &World,
-        ability: AbilityId,
+        ability: ActionId,
         rank: u8,
         caster: StableId,
     ) -> Result<(), CallError> {
@@ -133,7 +133,7 @@ impl Frame {
         &mut self,
         world: &World,
         modifier: ModifierId,
-        ability: Option<AbilityId>,
+        ability: Option<ActionId>,
         rank: u8,
         source: Option<StableId>,
         depth: u8,
@@ -199,7 +199,7 @@ impl Frame {
         &mut self,
         role: ScriptRole,
         acting: Option<StableId>,
-        ability: Option<AbilityId>,
+        ability: Option<ActionId>,
         rank: u8,
         modifier: Option<ModifierId>,
         depth: u8,
@@ -227,7 +227,7 @@ impl Frame {
             }
             Ok(())
         };
-        let run = ability.map(AbilityId::index);
+        let run = ability.map(ActionId::index);
         fill(&mut self.values, &self.params, run)?;
         let run = modifier.map(ModifierId::index);
         fill(&mut self.modifier_values, &self.modifier_params, run)
@@ -282,7 +282,7 @@ impl Frame {
     pub(crate) fn modifier_param(
         &self,
         modifier: ModifierId,
-        ability: Option<AbilityId>,
+        ability: Option<ActionId>,
         rank: u8,
         name: &str,
         source: Option<&ParamSource<'_>>,
@@ -294,7 +294,7 @@ impl Frame {
         let (owner, at) = own.or_else(|| {
             let ability = ability?;
             let at = self.params.find(ability.index(), name)?;
-            Some((ParamOwner::Ability(ability), at))
+            Some((ParamOwner::Action(ability), at))
         })?;
         let (table, run) = self.table(owner);
         let value = table.value(run, at, rank, source)?.to_num()?;
@@ -322,7 +322,7 @@ impl Frame {
     fn table(&self, owner: ParamOwner) -> (&ParamTable, usize) {
         match owner {
             ParamOwner::Modifier(modifier) => (&self.modifier_params, modifier.index()),
-            ParamOwner::Ability(ability) => (&self.params, ability.index()),
+            ParamOwner::Action(ability) => (&self.params, ability.index()),
         }
     }
 

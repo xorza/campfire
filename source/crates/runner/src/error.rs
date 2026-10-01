@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fmt;
 use std::num::NonZeroU32;
 
-use campfire_capabilities::{AbilityError, AiError, CallError, ModeError, UnitKitError};
+use campfire_capabilities::{ActionError, AiError, CallError, ModeError, UnitKitError};
 use campfire_package::StoreError;
 use campfire_protocol::SeedError;
 
@@ -30,10 +30,7 @@ pub enum StartError {
     /// A unit type's AI does not load.
     Ai { unit_type: String, error: AiError },
     /// An ability does not load.
-    Ability {
-        ability: String,
-        error: AbilityError,
-    },
+    Ability { ability: String, error: ActionError },
     /// The mode's setup does not start a match.
     Mode(ModeError),
     /// The mode script's `on_match_start` failed.

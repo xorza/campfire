@@ -4,7 +4,7 @@ use std::io;
 use std::path::PathBuf;
 
 use campfire_capabilities::{
-    AbilitySlots, ActionField, ActionKind, DeclaredName, MapProblem, ModeError, Pools, ResourceId,
+    ActionField, ActionKind, ActionSlots, DeclaredName, MapProblem, ModeError, Pools, ResourceId,
     Stat,
 };
 use campfire_content::PackagePath;
@@ -116,8 +116,6 @@ pub enum LoadProblem {
     Undeclared { capability: Capability, at: Place },
     /// The mode declares `combat`, and no damage kinds for its damage.
     NoDamageKinds,
-    /// The mode declares `combat`, and no `attack_kind` for its attacks.
-    NoAttackKind,
     /// The mode declares more damage kinds than a match tells apart.
     TooManyDamageKinds,
     /// The mode declares `vision`, and its map has no grid for sight to reveal.
@@ -134,6 +132,9 @@ pub enum LoadProblem {
     RepeatedSlot(String),
     /// Unit types place the action in slot kinds of other ranks.
     ActionRanks(String),
+    /// A weapon without `rate`, `damage` or `damage_kind`, a unit target or a range in meters,
+    /// or with a field only a cast runs; or another kind of action with one of those three.
+    KindField(String),
     /// An action of a kind the release does not run yet.
     KindNotRun { action: String, kind: ActionKind },
     /// Two loadout packages hold a loadout entry of this id.
@@ -215,8 +216,6 @@ pub enum Place {
     Script(PackagePath),
     /// The map's paths.
     Paths,
-    /// The mode's `attack_kind`.
-    AttackKind,
     /// The mode's `[combat]`.
     Combat,
     /// The mode's `[navigation]`.
@@ -283,7 +282,6 @@ impl fmt::Display for Place {
             Place::Modifier(id) => write!(f, "modifier {id}"),
             Place::Script(path) => write!(f, "{path}"),
             Place::Paths => f.write_str("the map's paths"),
-            Place::AttackKind => f.write_str("the mode's attack_kind"),
             Place::Combat => f.write_str("the mode's [combat]"),
             Place::Navigation => f.write_str("the mode's [navigation]"),
             Place::Pool(name) => write!(f, "pool {name}"),
@@ -327,7 +325,7 @@ impl fmt::Display for NameKind {
 /// What is wrong with the mode's slot kinds or choices, or with a name of one.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ChoiceProblem {
-    /// The mode declares more slot kinds than `AbilitySlots::LIMIT`.
+    /// The mode declares more slot kinds than `ActionSlots::LIMIT`.
     TooManySlotKinds,
     /// Data or a script at `at` names a slot kind the mode does not declare.
     UnknownSlotKind { at: Place, kind: String },
@@ -343,7 +341,7 @@ impl fmt::Display for ChoiceProblem {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ChoiceProblem::TooManySlotKinds => {
-                write!(f, "more than {} slot kinds", AbilitySlots::LIMIT)
+                write!(f, "more than {} slot kinds", ActionSlots::LIMIT)
             }
             ChoiceProblem::UnknownSlotKind { at, kind } => write!(f, "{at}: no slot kind {kind:?}"),
             ChoiceProblem::UnknownChoice { at, name } => write!(f, "{at}: no choice {name:?}"),
@@ -385,9 +383,6 @@ impl fmt::Display for LoadProblem {
             LoadProblem::NoDamageKinds => {
                 f.write_str("the mode declares combat, and no damage kinds")
             }
-            LoadProblem::NoAttackKind => {
-                f.write_str("the mode declares combat, and no attack_kind")
-            }
             LoadProblem::TooManyDamageKinds => {
                 f.write_str("more damage kinds than a match tells apart")
             }
@@ -398,6 +393,11 @@ impl fmt::Display for LoadProblem {
             LoadProblem::Map(problem) => write!(f, "{problem}"),
             LoadProblem::Unslotted(id) => write!(f, "action {id:?} is in no slot"),
             LoadProblem::RepeatedSlot(id) => write!(f, "action {id:?} is in two slots"),
+            LoadProblem::KindField(action) => write!(
+                f,
+                "action {action:?}: an attack aims at a unit within meters, with rate, damage and \
+                 damage_kind and none of a cast's fields, and no other kind has any of those three"
+            ),
             LoadProblem::KindNotRun { action, kind } => {
                 write!(
                     f,

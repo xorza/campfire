@@ -1,7 +1,7 @@
 use campfire_math::Num;
 use campfire_sim::{Capability, Command, StableId};
 
-use crate::abilities::ability_slots::CastTarget;
+use crate::actions::action_slots::ActionTarget;
 use serde::{Deserialize, Serialize};
 
 /// An order to one unit: the body of an `orders` command. Players, bots and AI issue the same
@@ -20,7 +20,7 @@ pub enum Action {
     /// Attack a unit until it dies or another order comes.
     Attack { target: StableId },
     /// Cast the ability in `slot` at `target`.
-    Cast { slot: u8, target: CastTarget },
+    Cast { slot: u8, target: ActionTarget },
 }
 
 impl Order {

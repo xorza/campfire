@@ -2,11 +2,9 @@ name = "Veil"
 tags = ["assassin"]
 pools = ["health", "energy"]
 passive = "dual_path"
-slots = { basic = ["dusk_mark", "smoke_ring", "whirling_blades"], ultimate = ["night_step"] }
+slots = { basic = ["dusk_mark", "smoke_ring", "whirling_blades"], ultimate = ["night_step"], weapon = ["attack"] }
 
-[combat.attack]
-range = "1.25"
-windup_ms = 280
+[combat]
 
 [collision]
 radius = "0.5"
@@ -92,3 +90,12 @@ damage = { base = [100, 175, 250], ability_power = "0.5" }
 
 [modifiers.night_step_essence]
 script = "scripts/night_step.rhai"
+
+[actions.attack]
+kind = "attack"
+targeting = "enemies"
+range = "1.25"
+windup_ms = 280
+rate = "attack_speed"
+damage = "attack_damage"
+damage_kind = "physical"

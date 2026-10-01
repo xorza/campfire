@@ -5,13 +5,16 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::{EntityRef, Mut, World};
 use campfire_math::Num;
-use campfire_sim::{EntityIndex, Position, SimRng, SimSet, SimTick, StableId, StateRegistry, Tick};
+use campfire_sim::{
+    EntityIndex, Position, SimRng, SimSet, SimTick, StableId, StateRegistry, Tick, TickRate,
+};
 
-use crate::abilities::ability_book::AbilityId;
+use crate::actions::Actions;
+use crate::actions::action_book::{ActionBook, ActionId, RankValues};
+use crate::actions::action_slots::ActionSlots;
+use crate::actions::purse::Purse;
+use crate::actions::weapon::Weapon;
 use crate::combat::assist_window::AssistWindow;
-use crate::combat::attack_kind::AttackKind;
-use crate::combat::attack_state::AttackState;
-use crate::combat::attack_stats::AttackStats;
 use crate::combat::combat_bindings::CombatBindings;
 use crate::combat::combat_effect::CombatEffect;
 use crate::combat::combat_event::CombatEvent;
@@ -25,7 +28,8 @@ use crate::combat::launches::{Launch, Launches};
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::combat::respawn::Respawn;
-use crate::combat::targets::Targets;
+use crate::mode::player_resources::PlayerResources;
+use crate::mode::resource_id::ResourceAmount;
 use crate::scripts::hook::Hook;
 use crate::scripts::script_batch::ScriptBatch;
 use crate::stats::modifier_book::ModifierId;
@@ -34,7 +38,6 @@ use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::block::Block;
-use crate::units::body::Body;
 use crate::units::owner::Owner;
 use crate::units::recent_attack::RecentAttack;
 use crate::units::script_view::{RowFill, View};
@@ -45,9 +48,6 @@ use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
 
 pub(crate) mod assist_window;
-pub(crate) mod attack_kind;
-pub(crate) mod attack_state;
-pub(crate) mod attack_stats;
 pub(crate) mod combat_api;
 pub(crate) mod combat_bindings;
 pub(crate) mod combat_data;
@@ -55,7 +55,6 @@ pub(crate) mod combat_effect;
 pub(crate) mod combat_event;
 pub(crate) mod combat_events;
 pub(crate) mod combat_rules;
-pub(crate) mod combatant;
 pub(crate) mod damage;
 pub(crate) mod damage_handle;
 pub(crate) mod damage_kind;
@@ -107,7 +106,6 @@ impl Combat {
             view.add_source(fill_row);
         }
         world.insert_resource(DamageQueue::default());
-        world.insert_resource(AttackKind::default());
         world.insert_resource(CombatBindings::default());
         world.insert_resource(Deaths::default());
         schedule.configure_sets(
@@ -115,8 +113,8 @@ impl Combat {
                 .in_set(SimSet::Hit)
                 .after(CombatSet::Strike),
         );
+        Actions::schedule(schedule);
         schedule.add_systems((
-            attack.in_set(SimSet::Act).in_set(CombatSet::Attack),
             (attack_events, strike)
                 .chain()
                 .in_set(SimSet::Hit)
@@ -134,8 +132,6 @@ impl Combat {
             respawn.in_set(SimSet::Inputs).in_set(CombatSet::Respawn),
             despawn_dead.in_set(SimSet::Vision),
         ));
-        registry.register_component::<AttackState>();
-        registry.register_component::<AttackStats>();
         registry.register_component::<Dead>();
         registry.register_component::<OnDeath>();
         registry.register_component::<RecentAttackers>();
@@ -144,6 +140,28 @@ impl Combat {
 }
 
 impl Combat {
+    /// The target of the attack of a unit with `slots` whose windup ends by `now`, if one does.
+    fn going_off(slots: &ActionSlots, now: Tick) -> Option<StableId> {
+        let target = slots.attacking()?;
+        let resolves_at = slots.in_progress()?.resolves_at?;
+        (resolves_at <= now).then_some(target)
+    }
+
+    /// The weapon of the attack under way of a unit with `slots`.
+    fn wielded<'a>(book: &'a ActionBook, slots: &ActionSlots) -> Wielded<'a> {
+        let underway = slots.in_progress().expect("an attack is under way");
+        let slot = slots.slot(underway.slot).expect("an attack's slot");
+        let action = book
+            .get(slot.action)
+            .expect("a slot's action is in the book");
+        Wielded {
+            slot: underway.slot,
+            weapon: action.weapon.expect("an attack's action is a weapon"),
+            values: action.values(slot.rank),
+            resource_cost: action.resource_cost(slot.rank),
+        }
+    }
+
     /// Binds `life` as the life pool, as a client does from the packages it holds, where no mode
     /// installs.
     pub fn bind_life(world: &mut World, life: PoolId) {
@@ -152,59 +170,41 @@ impl Combat {
 }
 
 /// Fills a row of the script view with what combat holds: whether the unit lives and whether it
-/// stays when dead, its attack's target and range, and who struck it recently.
+/// stays when dead, and who struck it recently.
 fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
     fill.row.alive = !unit.contains::<Dead>();
     fill.row.stays = unit.get::<OnDeath>() == Some(&OnDeath::Stay);
-    fill.row.target = unit.get::<AttackState>().and_then(|attack| attack.target());
-    fill.row.attack_range = unit.get::<AttackStats>().map(|stats| stats.range());
     if let Some(recent) = unit.get::<RecentAttackers>() {
         fill.attacked(recent.iter());
     }
 }
 
-/// Drops each target that is gone, dead, no longer an enemy or not a target, which cancels its
-/// windup, and starts an attack when the target is in range and the unit is ready. The range
-/// counts only at the start. A unit its tags keep from attacking keeps its target, and its
-/// windup starts again.
-fn attack(
-    tick: Res<'_, SimTick>,
-    targets: Targets<'_, '_>,
-    mut attackers: Query<
-        '_,
-        '_,
-        (
-            &Position,
-            &Team,
-            &AttackStats,
-            &mut AttackState,
-            Option<&Body>,
-            Option<&UnitTags>,
-        ),
-        Without<Dead>,
-    >,
-) {
-    let now = tick.start();
-    for (&position, &team, stats, mut attack, body, tags) in &mut attackers {
-        let Some(target) = attack.target() else {
-            continue;
-        };
-        if UnitTags::effects_of(tags).blocks(Block::Attack) {
-            if attack.started().is_some() {
-                attack.interrupt();
-            }
-            continue;
-        }
-        let Some(target) = targets.enemy(team, target) else {
-            attack.set_target(None);
-            continue;
-        };
-        if attack.started().is_none()
-            && now >= attack.ready_at()
-            && targets.reaches(position, Body::radius_of(body), stats.range(), &target)
-        {
-            attack.start(now);
-        }
+/// What tells whether a unit's attack strikes: its id, its slots, its tags, and what it pays the
+/// cost from.
+type Attacker<'a> = (
+    &'a StableId,
+    &'a ActionSlots,
+    Option<&'a UnitTags>,
+    Option<&'a Pools>,
+    Option<&'a Owner>,
+);
+
+/// The weapon of an attack under way: its slot, what it deals, and its values and its cost in
+/// player resources at the slot's rank.
+#[derive(Debug, Clone, Copy)]
+struct Wielded<'a> {
+    slot: u8,
+    weapon: Weapon,
+    values: RankValues,
+    resource_cost: &'a [ResourceAmount],
+}
+
+impl Wielded<'_> {
+    /// Whether its attack, going off, strikes for a unit with `tags`: no tag keeps it from
+    /// attacking, and `purse` still affords its cost, as the checks run again at delivery.
+    fn strikes(&self, tags: Option<&UnitTags>, purse: Purse<'_>) -> bool {
+        !UnitTags::effects_of(tags).blocks(Block::Attack)
+            && purse.affords(&self.values.cost, self.resource_cost)
     }
 }
 
@@ -216,27 +216,28 @@ struct GoingOff {
 }
 
 /// Runs `on_attack` for each attack whose windup ends this tick, by attacker's stable id, before
-/// any of them strikes or fires; not for one its attacker's tags stop, which does not strike.
+/// any of them strikes or fires; not for one that does not strike.
 fn attack_events(
     world: &mut World,
-    attackers: &mut QueryState<
-        (&StableId, &AttackStats, &AttackState, Option<&UnitTags>),
-        Without<Dead>,
-    >,
+    attackers: &mut QueryState<Attacker<'_>, Without<Dead>>,
     mut going: Local<'_, Vec<GoingOff>>,
 ) {
     let Some(events) = world.remove_non_send::<CombatEvents>() else {
         return;
     };
     let now = world.resource::<SimTick>().start();
+    let book = world.resource::<ActionBook>();
+    let resources = world.get_resource::<PlayerResources>();
     going.clear();
-    for (&attacker, stats, attack, tags) in attackers.iter(world) {
-        if attack.windup_ended(stats.windup(), now).is_some()
-            && !UnitTags::effects_of(tags).blocks(Block::Attack)
+    for (&attacker, slots, tags, pools, owner) in attackers.iter(world) {
+        let purse = Purse {
+            pools,
+            resources,
+            owner: owner.map(|owner| owner.slot()),
+        };
+        if let Some(target) = Combat::going_off(slots, now)
+            && Combat::wielded(book, slots).strikes(tags, purse)
         {
-            let target = attack
-                .target()
-                .expect("an attack in its windup has a target");
             going.push(GoingOff { attacker, target });
         }
     }
@@ -317,47 +318,71 @@ fn run_intervals(
     world.insert_non_send(events);
 }
 
-/// Queues the damage of each attack whose windup ends this tick, or its launch when it is ranged
-/// and the match has projectiles. Each draws its roll now, at least 0 and less than 1, which
-/// `calc_damage` reads. A windup whose attacker's tags keep it from attacking is interrupted
-/// instead.
+/// Delivers each attack whose windup ends this tick: it queues the damage of its weapon's damage
+/// stat, of its kind, or its launch when the weapon fires a projectile and the match has
+/// projectiles. Each draws its roll now, at least 0 and less than 1, which `calc_damage` reads.
+/// The weapon's cost is paid, in pools and its player's resources, and it is ready again a period
+/// from the attack's start, the tick rate over its rate stat. A windup whose attacker's tags keep
+/// it from attacking, or that no longer affords its cost, stops instead, and spends nothing.
 fn strike(
-    (tick, rng, kind): (Res<'_, SimTick>, Res<'_, SimRng>, Res<'_, AttackKind>),
-    mut queue: ResMut<'_, DamageQueue>,
-    mut launches: Option<ResMut<'_, Launches>>,
+    (tick, rate, rng, book): (
+        Res<'_, SimTick>,
+        Res<'_, TickRate>,
+        Res<'_, SimRng>,
+        Res<'_, ActionBook>,
+    ),
+    (mut queue, mut launches, mut resources): (
+        ResMut<'_, DamageQueue>,
+        Option<ResMut<'_, Launches>>,
+        Option<ResMut<'_, PlayerResources>>,
+    ),
     mut attackers: Query<
         '_,
         '_,
         (
             &StableId,
             &Position,
-            &AttackStats,
-            &mut AttackState,
+            &mut ActionSlots,
+            Option<&UnitStats>,
+            Option<&mut Pools>,
             Option<&UnitTags>,
+            Option<&Owner>,
         ),
         Without<Dead>,
     >,
 ) {
     let now = tick.start();
-    for (&source, &from, stats, mut attack, tags) in &mut attackers {
-        let Some(started) = attack.windup_ended(stats.windup(), now) else {
+    for (&source, &from, mut slots, stats, pools, tags, owner) in &mut attackers {
+        let Some(target) = Combat::going_off(&slots, now) else {
             continue;
         };
-        if UnitTags::effects_of(tags).blocks(Block::Attack) {
-            attack.interrupt();
+        let owner = owner.map(|owner| owner.slot());
+        let purse = Purse {
+            pools: pools.as_deref(),
+            resources: resources.as_deref(),
+            owner,
+        };
+        let wielded = Combat::wielded(&book, &slots);
+        if !wielded.strikes(tags, purse) {
+            slots.interrupt();
             continue;
         }
-        let target = attack
-            .target()
-            .expect("an attack in its windup has a target");
-        let amount = stats.damage();
+        let Wielded {
+            weapon,
+            values,
+            resource_cost,
+            ..
+        } = wielded;
+        let stats = stats.map_or(&[][..], UnitStats::values);
+        let amount = weapon.damage(stats);
         let roll = rng.open(ROLL_STREAM, source).fraction();
-        match (stats.projectile_speed(), launches.as_deref_mut()) {
+        match (values.launch, launches.as_deref_mut()) {
             (Some(speed), Some(launches)) => launches.0.push(Launch {
                 source,
                 from,
                 target,
                 amount,
+                kind: weapon.kind,
                 speed,
                 roll,
             }),
@@ -365,13 +390,26 @@ fn strike(
                 source: Some(source),
                 target,
                 amount,
-                kind: kind.0,
+                kind: weapon.kind,
                 cause: DamageCause::Attack { roll },
                 ability: None,
                 depth: 0,
             }),
         }
-        attack.strike(started.after(stats.period()));
+        let resolves_at = slots
+            .in_progress()
+            .and_then(|underway| underway.resolves_at)
+            .expect("an attack going off started");
+        let started = Tick::new(resolves_at.get() - values.windup.get());
+        let period = weapon.period(stats, rate.hz().get(), values.windup);
+        slots.cool_down(wielded.slot, started.after(period));
+        slots.stop();
+        if let Some(mut pools) = pools {
+            pools.pay(&values.cost);
+        }
+        if let (Some(owner), Some(resources)) = (owner, resources.as_deref_mut()) {
+            resources.pay(owner, resource_cost);
+        }
     }
 }
 
@@ -577,7 +615,7 @@ impl Combat {
         world: &mut World,
         effect: CombatEffect,
         source: Option<StableId>,
-        ability: Option<AbilityId>,
+        ability: Option<ActionId>,
         depth: u8,
     ) {
         let damage = |target, amount, kind, cause| Damage {
@@ -604,12 +642,25 @@ impl Combat {
             }
             CombatEffect::AttackHit { target } => {
                 let index = world.resource::<EntityIndex>();
-                let entity = source.and_then(|source| index.get(source));
-                let Some(stats) = entity.and_then(|entity| world.get::<AttackStats>(entity)) else {
+                let Some(unit) = source.and_then(|source| index.get(source)) else {
                     return;
                 };
-                let kind = world.resource::<AttackKind>().0;
-                let hit = damage(target, stats.damage(), kind, DamageCause::ExtraAttack);
+                let unit = world.entity(unit);
+                let book = world.resource::<ActionBook>();
+                let first = unit.get::<ActionSlots>().and_then(|slots| {
+                    let slot = slots.slot(book.weapon_for(slots, None)?)?;
+                    book.get(slot.action)?.weapon
+                });
+                let Some(weapon) = first else {
+                    return;
+                };
+                let stats = unit.get::<UnitStats>().map_or(&[][..], UnitStats::values);
+                let hit = damage(
+                    target,
+                    weapon.damage(stats),
+                    weapon.kind,
+                    DamageCause::ExtraAttack,
+                );
                 world.resource_mut::<DamageQueue>().push(hit);
             }
         }
@@ -679,19 +730,19 @@ fn die(
             Entity,
             &StableId,
             &Pools,
-            Option<&mut AttackState>,
+            Option<&mut ActionSlots>,
             Option<&Team>,
             Option<&Owner>,
         ),
         (With<OnDeath>, Without<Dead>),
     >,
 ) {
-    for (entity, &id, pools, attack, team, owner) in &mut units {
+    for (entity, &id, pools, slots, team, owner) in &mut units {
         if pools.above_zero(bindings.life) {
             continue;
         }
-        if let Some(mut attack) = attack {
-            attack.set_target(None);
+        if let Some(mut slots) = slots {
+            slots.set_attack_target(None);
         }
         commands.entity(entity).insert(Dead);
         if !deaths.contains(id) {
@@ -742,6 +793,174 @@ fn respawn(
             *attackers = RecentAttackers::default();
         }
         commands.entity(entity).remove::<(Dead, Respawn)>();
+    }
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use bevy_ecs::bundle::Bundle;
+    use bevy_ecs::world::World;
+    use campfire_math::Num;
+    use campfire_sim::Ticks;
+
+    use crate::actions::action_book::ActionBook;
+    use crate::actions::action_book::internals::{self, TestWeapon};
+    use crate::actions::action_slots::ActionSlots;
+    use crate::actions::slot_kind::SlotKind;
+    use crate::stats::pool_cost::PoolCost;
+    use crate::stats::unit_stats::UnitStats;
+    use crate::units::filter::Filter;
+    use crate::units::unit_types::UnitTypes;
+
+    /// A test unit's weapon: it aims at enemies within `range`, winds up `windup`, may attack
+    /// again `period` after an attack's start, deals `damage`, and fires a homing projectile of
+    /// `launch` a tick when given.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub struct Arms {
+        range: Num,
+        windup: Ticks,
+        period: Ticks,
+        damage: Num,
+        launch: Option<Num>,
+    }
+
+    /// A unit's slots and stats: its weapon's slot, if it has one, and the stats it reads.
+    #[derive(Debug, Bundle)]
+    pub struct ArmsParts {
+        slots: ActionSlots,
+        stats: UnitStats,
+    }
+
+    impl ArmsParts {
+        /// The parts of a unit with no weapon: no slot, and no stats.
+        pub fn unarmed() -> ArmsParts {
+            ArmsParts {
+                slots: ActionSlots::new([]),
+                stats: UnitStats::default(),
+            }
+        }
+    }
+
+    impl Arms {
+        /// A melee weapon of `range`, `windup` ticks, `period` ticks and `damage`.
+        pub fn melee(range: Num, windup: u64, period: u64, damage: Num) -> Arms {
+            Arms {
+                range,
+                windup: Ticks::new(windup),
+                period: Ticks::new(period),
+                damage,
+                launch: None,
+            }
+        }
+
+        /// The same weapon, firing a homing projectile of `launch` a tick.
+        #[must_use]
+        pub const fn ranged(self, launch: Num) -> Arms {
+            Arms {
+                launch: Some(launch),
+                ..self
+            }
+        }
+
+        /// The weapon added to the book of `world`, in a unit's one slot, and the stats it reads:
+        /// the rate that makes its period at `hz` ticks a second, then its damage.
+        pub fn parts(self, world: &mut World, hz: u32) -> ArmsParts {
+            let weapon = TestWeapon {
+                aim: Filter::parse("enemies", &UnitTypes::default()).unwrap(),
+                range: self.range,
+                windup: self.windup,
+                launch: self.launch,
+                rate: 0,
+                damage: 1,
+                cost: PoolCost::default(),
+                resource_cost: None,
+            };
+            let id = internals::weapon(&mut world.resource_mut::<ActionBook>(), weapon);
+            // The rate whose attacks are `period` ticks apart at `hz`, rounded up so the period
+            // rounds back to `period`.
+            let bits = (u128::from(hz) << (2 * Num::FRAC_BITS))
+                .div_ceil(u128::from(self.period.get()) << Num::FRAC_BITS);
+            let rate = Num::from_bits(i64::try_from(bits).unwrap());
+            let mut stats = UnitStats::default();
+            stats.refill().extend([rate, self.damage]);
+            ArmsParts {
+                slots: ActionSlots::new([(id, SlotKind::new(0), 1)]),
+                stats,
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod armed {
+    use bevy_ecs::bundle::Bundle;
+    use bevy_ecs::world::World;
+    use campfire_math::Num;
+
+    use crate::combat::internals::{Arms, ArmsParts};
+    use crate::combat::on_death::OnDeath;
+    use crate::combat::recent_attackers::RecentAttackers;
+    use crate::stats::pools::Pools;
+    use crate::units::team::Team;
+
+    /// A test unit's combat values: the life pool it starts with, whether it stays when it dies,
+    /// and its one weapon, if it has one.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub(crate) struct Armed {
+        pub(crate) life: Num,
+        pub(crate) on_death: OnDeath,
+        pub(crate) arms: Option<Arms>,
+    }
+
+    impl Armed {
+        /// A unit of `life` that despawns when it dies, with a melee weapon of `range`, `windup`
+        /// ticks, `period` ticks and `damage`.
+        pub(crate) fn melee(life: Num, range: Num, windup: u64, period: u64, damage: Num) -> Armed {
+            Armed {
+                life,
+                on_death: OnDeath::Despawn,
+                arms: Some(Arms::melee(range, windup, period, damage)),
+            }
+        }
+
+        /// A unit of `life` with no weapon, that despawns when it dies.
+        pub(crate) const fn unarmed(life: Num) -> Armed {
+            Armed {
+                life,
+                on_death: OnDeath::Despawn,
+                arms: None,
+            }
+        }
+
+        /// The same unit, which `on_death` says whether it stays when it dies.
+        pub(crate) const fn on_death(self, on_death: OnDeath) -> Armed {
+            Armed { on_death, ..self }
+        }
+
+        /// The same unit, its weapon firing a homing projectile of `launch` a tick.
+        pub(crate) fn ranged(self, launch: Num) -> Armed {
+            let arms = self.arms.expect("a ranged unit is armed").ranged(launch);
+            Armed {
+                arms: Some(arms),
+                ..self
+            }
+        }
+
+        /// The components of a new unit of this type on `team` in `world`, whose book takes its
+        /// weapon: its team and its life pool, which the spawn and its kit give; its death and
+        /// its attackers, which its `combat` gives; and its weapon's parts at `hz` ticks a second.
+        pub(crate) fn bundle(self, world: &mut World, team: Team, hz: u32) -> impl Bundle + use<> {
+            let parts = self
+                .arms
+                .map_or_else(ArmsParts::unarmed, |arms| arms.parts(world, hz));
+            (
+                team,
+                Pools::life(self.life),
+                self.on_death,
+                RecentAttackers::default(),
+                parts,
+            )
+        }
     }
 }
 

@@ -1,5 +1,4 @@
 script = "scripts/mode.rhai"
-attack_kind = "physical"
 # What its players earn and spend.
 resources = ["gold"]
 
@@ -126,3 +125,64 @@ unique = true
 offers = "loadout"
 count = 2
 slot = "spell"
+
+[[slots]]
+name = "weapon"
+
+# Each unit type's weapon: its attack, at the rate and for the damage of its stats.
+[actions.melee_creep_attack]
+kind = "attack"
+targeting = "enemies"
+range = "1.1"
+windup_ms = 300
+rate = "attack_speed"
+damage = "attack_damage"
+damage_kind = "physical"
+
+[actions.caster_creep_attack]
+kind = "attack"
+targeting = "enemies"
+range = "6.0"
+windup_ms = 300
+rate = "attack_speed"
+damage = "attack_damage"
+damage_kind = "physical"
+projectile = { speed = "6.5" }
+
+[actions.super_creep_attack]
+kind = "attack"
+targeting = "enemies"
+range = "1.7"
+windup_ms = 300
+rate = "attack_speed"
+damage = "attack_damage"
+damage_kind = "physical"
+
+[actions.tower_attack]
+kind = "attack"
+targeting = "enemies"
+range = "7.75"
+windup_ms = 150
+rate = "attack_speed"
+damage = "attack_damage"
+damage_kind = "physical"
+projectile = { speed = "12" }
+
+[actions.wolf_attack]
+kind = "attack"
+targeting = "enemies"
+range = "1.25"
+windup_ms = 300
+rate = "attack_speed"
+damage = "attack_damage"
+damage_kind = "physical"
+
+[actions.warden_attack]
+kind = "attack"
+targeting = "enemies"
+range = "5.0"
+windup_ms = 400
+rate = "attack_speed"
+damage = "attack_damage"
+damage_kind = "physical"
+projectile = { speed = "10" }

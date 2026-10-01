@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::abilities::ability_book::AbilityId;
+use crate::actions::action_book::ActionId;
 use crate::stats::modifier_book::ModifierId;
 
 /// The scaling param a live stat change reads, computed again from its source at each refresh:
@@ -15,5 +15,5 @@ pub(crate) struct LiveParam {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum ParamOwner {
     Modifier(ModifierId),
-    Ability(AbilityId),
+    Action(ActionId),
 }

@@ -1,7 +1,7 @@
 use campfire_math::Num;
 use campfire_sim::StableId;
 
-use crate::abilities::ability_book::AbilityId;
+use crate::actions::action_book::ActionId;
 use crate::combat::damage_kind::DamageKind;
 
 /// A damage the pass deals: from its source, none from a modifier the mode applied, to its
@@ -14,7 +14,7 @@ pub(crate) struct Damage {
     pub(crate) amount: Num,
     pub(crate) kind: DamageKind,
     pub(crate) cause: DamageCause,
-    pub(crate) ability: Option<AbilityId>,
+    pub(crate) ability: Option<ActionId>,
     pub(crate) depth: u8,
 }
 

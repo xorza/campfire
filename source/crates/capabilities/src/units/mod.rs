@@ -5,6 +5,7 @@ use campfire_script::rhai::Dynamic;
 use campfire_script::{ScriptError, ScriptHost, ScriptId};
 use campfire_sim::{SimSet, StateRegistry, TickRate};
 
+use crate::actions::Actions;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::match_scripts::MatchScripts;
 use crate::scripts::script_api::ScriptApi;
@@ -83,6 +84,7 @@ impl Units {
         registry.register_component::<UnitType>();
         world.insert_resource(Relations::default());
         registry.register_resource::<Relations>();
+        Actions::install(world, registry, &view);
         world.insert_resource(Metric::default());
         let Some(MatchScripts {
             limits,

@@ -10,10 +10,10 @@ use campfire_sim::{
     TickRate, Ticks,
 };
 
-use crate::abilities::ability_slots::AbilitySlots;
+use crate::actions::action_book::ActionBook;
+use crate::actions::action_data::Range;
+use crate::actions::action_slots::ActionSlots;
 use crate::combat::CombatSet;
-use crate::combat::attack_state::AttackState;
-use crate::combat::attack_stats::AttackStats;
 use crate::combat::dead::Dead;
 use crate::combat::targets::Targets;
 use crate::navigation::destination::Destination;
@@ -117,22 +117,23 @@ impl Orders {
             .resource::<EntityIndex>()
             .get(unit)
             .expect("a unit that thinks lives");
-        if let Some(mut attack) = world.get_mut::<AttackState>(entity) {
-            attack.set_target(target);
+        if let Some(mut slots) = world.get_mut::<ActionSlots>(entity) {
+            slots.set_attack_target(target);
         }
     }
 }
 
 /// Makes each order the current one of its unit, in input order, so a later order in the tick
 /// wins. An order to a unit its player does not control, or that is dead, is ignored, and so are
-/// a body that is not an order and an attack on a unit that is not a living enemy: a client can
-/// send anything. A move's point clamps to the bounds. A move cancels an attack in its windup, and
-/// so does an attack on another target. A cast replaces a cast not resolved yet; its checks run
-/// in Act.
+/// a body that is not an order and an attack on a unit that is not a living enemy or that none of
+/// its weapons selects: a client can send anything. A move's point clamps to the bounds. A move
+/// cancels an attack in its windup, and so does an attack on another target. A cast replaces an
+/// action not resolved yet; its checks run in Act.
 fn apply_orders(
     inputs: Res<'_, TickInputs>,
     bounds: Res<'_, Bounds>,
     index: Res<'_, EntityIndex>,
+    book: Res<'_, ActionBook>,
     targets: Targets<'_, '_>,
     mut units: Query<
         '_,
@@ -142,8 +143,7 @@ fn apply_orders(
             &Position,
             Option<&Team>,
             Option<&mut Destination>,
-            Option<&mut AttackState>,
-            Option<&mut AbilitySlots>,
+            Option<&mut ActionSlots>,
         ),
         Without<Dead>,
     >,
@@ -153,7 +153,7 @@ fn apply_orders(
             let Some(order) = Order::decode(body) else {
                 continue;
             };
-            let Some(Ok((owner, position, team, destination, attack, slots))) =
+            let Some(Ok((owner, position, team, destination, slots))) =
                 index.get(order.unit).map(|entity| units.get_mut(entity))
             else {
                 continue;
@@ -171,14 +171,19 @@ fn apply_orders(
                     let target = Position::new(Vec3::new(x, position.get().y, z))
                         .expect("bounds are within the world's bound");
                     destination.set(Some(target));
-                    if let Some(mut attack) = attack {
-                        attack.set_target(None);
+                    if let Some(mut slots) = slots {
+                        slots.set_attack_target(None);
                     }
                 }
                 Action::Attack { target } => {
-                    let enemy = team.is_some_and(|&team| targets.enemy(team, target).is_some());
-                    if let (true, Some(mut attack)) = (enemy, attack) {
-                        attack.set_target(Some(target));
+                    let selected = team.and_then(|&team| {
+                        let unit = targets.enemy(team, target)?;
+                        Some((targets.attitude(team, unit.team), unit.tags))
+                    });
+                    if let (Some(selected), Some(mut slots)) = (selected, slots)
+                        && book.weapon_for(&slots, Some(selected)).is_some()
+                    {
+                        slots.set_attack_target(Some(target));
                     }
                 }
                 Action::Cast { slot, target } => {
@@ -287,15 +292,15 @@ fn follow_paths(
             &Position,
             &OnPath,
             &mut PathWalker,
-            &AttackState,
+            Option<&ActionSlots>,
             &mut Destination,
             Option<&Body>,
         ),
         Without<Dead>,
     >,
 ) {
-    for (&position, path, mut walker, attack, mut destination, body) in &mut walkers {
-        if attack.target().is_some() {
+    for (&position, path, mut walker, slots, mut destination, body) in &mut walkers {
+        if slots.is_some_and(|slots| slots.attack_target().is_some()) {
             continue;
         }
         let path = path.get();
@@ -308,9 +313,11 @@ fn follow_paths(
     }
 }
 
-/// Walks each unit that can move to its attack target while out of range, and stops it in range
-/// or in its windup. A unit whose target is gone, dead or no longer an enemy drops it and stops.
+/// Walks each unit that can move to its attack target while out of the range of the weapon it
+/// attacks it with, and stops it in range or in its windup. A unit whose target is gone, dead, no
+/// longer an enemy or one no weapon of it selects drops it and stops.
 fn chase(
+    book: Res<'_, ActionBook>,
     targets: Targets<'_, '_>,
     mut chasers: Query<
         '_,
@@ -318,32 +325,36 @@ fn chase(
         (
             &Position,
             &Team,
-            &AttackStats,
-            &mut AttackState,
+            &mut ActionSlots,
             &mut Destination,
             Option<&Body>,
         ),
         Without<Dead>,
     >,
 ) {
-    for (&position, &team, stats, mut attack, mut destination, body) in &mut chasers {
-        let Some(target) = attack.target() else {
+    for (&position, &team, mut slots, mut destination, body) in &mut chasers {
+        let Some(target) = slots.attack_target() else {
             continue;
         };
-        if attack.started().is_some() {
+        if slots.attacking().is_some() {
             continue;
         }
-        match targets.enemy(team, target) {
+        let aimed = targets.enemy(team, target).and_then(|unit| {
+            let selected = (targets.attitude(team, unit.team), unit.tags);
+            let slot = book.weapon_for(&slots, Some(selected))?;
+            Some((unit, book.range(&slots, slot)))
+        });
+        match aimed {
             None => {
-                attack.set_target(None);
+                slots.set_attack_target(None);
                 walk_to(&mut destination, None);
             }
-            Some(unit)
-                if targets.reaches(position, Body::radius_of(body), stats.range(), &unit) =>
+            Some((unit, Range::Meters(range)))
+                if !targets.reaches(position, Body::radius_of(body), range, &unit) =>
             {
-                walk_to(&mut destination, None);
+                walk_to(&mut destination, Some(unit.pos));
             }
-            Some(unit) => walk_to(&mut destination, Some(unit.pos)),
+            Some(_) => walk_to(&mut destination, None),
         }
     }
 }

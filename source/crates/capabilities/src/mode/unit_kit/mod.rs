@@ -1,9 +1,8 @@
 use campfire_math::Num;
-use campfire_sim::{TickRate, Ticks};
+use campfire_sim::TickRate;
 
-use crate::combat::attack_stats::AttackStats;
-use crate::combat::combat_data::{AttackData, CombatData};
-use crate::combat::combatant::Combatant;
+use crate::combat::combat_data::CombatData;
+use crate::combat::on_death::OnDeath;
 use crate::mode::error::UnitKitError;
 use crate::navigation::move_step::MoveStep;
 use crate::stats::pool_id::PoolId;
@@ -16,12 +15,12 @@ use crate::vision::sight::Sight;
 use crate::vision::vision_data::VisionData;
 
 /// What a new unit of a type starts with, in ticks at the match's rate: its pools, full at their
-/// maxima at level 1, its combat values from its `combat` section and its stats at level 1, how
-/// far it walks a tick, how far it sees, and its body.
+/// maxima at level 1, whether it stays when it dies, when it has a `combat` section, how far it
+/// walks a tick, how far it sees, and its body.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct UnitKit {
     pub pools: Option<Pools>,
-    pub combatant: Option<Combatant>,
+    pub on_death: Option<OnDeath>,
     pub step: Option<MoveStep>,
     pub sight: Option<Sight>,
     pub body: Option<Body>,
@@ -39,10 +38,7 @@ pub struct KitRules {
 impl UnitKit {
     /// The kit of a type with `stats`, `combat`, and `pools`, each with the stat of its maximum.
     /// Each pool's maximum is that stat at level 1, and a type with `combat` has the rules' life
-    /// pool. Its attack deals `attack_damage` and starts at most `attack_speed` times a second,
-    /// so its period is the rate over that, rounded up. Its move speed is capped at the rules'
-    /// cap. A ranged attack's projectile homes, so it must fly faster than the cap, in the steps
-    /// the match takes.
+    /// pool. Its move speed is capped at the rules' cap.
     pub fn new<'a>(
         stats: Option<&StatsData>,
         combat: Option<&CombatData>,
@@ -69,19 +65,12 @@ impl UnitKit {
         }
         let pools =
             (!maxes.is_empty()).then(|| Pools::new(maxes).expect("each maximum is positive"));
-        let combatant = combat
+        let on_death = combat
             .map(|combat| {
                 if pools.is_none_or(|pools| pools.max(rules.life).is_none()) {
                     return Err(UnitKitError::NoLifePool);
                 }
-                let attack = combat
-                    .attack
-                    .map(|attack| attack_stats(&attack, stat, rules))
-                    .transpose()?;
-                Ok(Combatant {
-                    attack,
-                    on_death: combat.on_death,
-                })
+                Ok(combat.on_death)
             })
             .transpose()?;
         let move_speed = Stat::Engine(EngineStat::MoveSpeed);
@@ -95,7 +84,7 @@ impl UnitKit {
         };
         Ok(UnitKit {
             pools,
-            combatant,
+            on_death,
             step,
             sight: None,
             body: None,
@@ -116,41 +105,6 @@ impl UnitKit {
             sight: vision.map(|vision| vision.sight),
             ..self
         }
-    }
-}
-
-/// The attack of `attack`, with the stats `stat` reads.
-fn attack_stats(
-    attack: &AttackData,
-    stat: impl Fn(&Stat) -> Result<Num, UnitKitError>,
-    rules: KitRules,
-) -> Result<AttackStats, UnitKitError> {
-    let attack_speed = Stat::Engine(EngineStat::AttackSpeed);
-    let speed = stat(&attack_speed)?;
-    if speed <= Num::ZERO {
-        return Err(UnitKitError::NotPositive(attack_speed));
-    }
-    let windup = rules
-        .rate
-        .ticks(attack.windup_ms)
-        .ok_or(UnitKitError::TimeTooLarge)?;
-    // A windup not shorter than the period at level 1 is a mistake of the data; a period that
-    // later shrinks past it, as attack speed grows, the derived stats stretch.
-    let attacks = u128::from(speed.to_bits().unsigned_abs()) << Num::FRAC_BITS;
-    let period = AttackStats::period_at(rules.rate.hz().get(), attacks, Ticks::ZERO);
-    let range = attack.range.to_num().ok_or(UnitKitError::Range)?;
-    let damage = stat(&Stat::Engine(EngineStat::AttackDamage))?;
-    let melee = AttackStats::new(range, windup, period, damage).ok_or(UnitKitError::Attack)?;
-    let Some(speed) = attack.projectile_speed else {
-        return Ok(melee);
-    };
-    let speed = speed.to_num().and_then(|speed| per_tick(speed, rules.rate));
-    let cap = per_tick(rules.max_move_speed.get(), rules.rate);
-    match (speed, cap) {
-        (Some(speed), Some(cap)) if speed > cap => Ok(melee
-            .ranged(speed)
-            .expect("faster than a cap that is not negative")),
-        _ => Err(UnitKitError::ProjectileNotFaster),
     }
 }
 

@@ -1,5 +1,10 @@
+use serde::{Deserialize, Serialize};
+
 /// A kind of damage, by its place in the mode's `[combat] damage_kinds`.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+#[serde(transparent)]
 pub(crate) struct DamageKind(u8);
 
 impl DamageKind {

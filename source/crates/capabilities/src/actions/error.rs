@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fmt;
 
-/// A capability field of an ability that the release runs, which does not give a value of its
+/// A capability field of an action that the release runs, which does not give a value of its
 /// kind at a rank: a whole number of milliseconds or of a pool the mode declares, or a range of
 /// meters that is not negative, and never through a scaling param.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -9,23 +9,25 @@ pub enum ActionField {
     Range,
     Cooldown,
     Cost,
-    CastTime,
+    Windup,
+    /// A weapon's projectile speed: meters a second, positive.
+    Projectile,
 }
 
-/// Why an ability that passed the package load does not load into a match: what only the
+/// Why an action that passed the package load does not load into a match: what only the
 /// match's tick rate decides.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum AbilityError {
+pub enum ActionError {
     /// A time is too large to count in ticks.
     TimeTooLarge,
 }
 
-impl fmt::Display for AbilityError {
+impl fmt::Display for ActionError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            AbilityError::TimeTooLarge => f.write_str("time too large to count in ticks"),
+            ActionError::TimeTooLarge => f.write_str("time too large to count in ticks"),
         }
     }
 }
 
-impl Error for AbilityError {}
+impl Error for ActionError {}

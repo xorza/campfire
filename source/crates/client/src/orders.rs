@@ -3,7 +3,7 @@ use bevy::ecs::system::{Res, ResMut};
 use bevy::input::ButtonInput;
 use bevy::input::keyboard::KeyCode;
 use bevy::input::mouse::MouseButton;
-use campfire_capabilities::{Action, CastTarget, Order};
+use campfire_capabilities::{Action, ActionTarget, Order};
 use campfire_math::Num;
 use campfire_net::PendingOrders;
 
@@ -65,7 +65,7 @@ impl Orders {
                 continue;
             }
             let under = pointer.ground().and_then(|point| pointer.unit_at(point));
-            let target = under.map_or(CastTarget::None, |unit| CastTarget::Unit(unit.id));
+            let target = under.map_or(ActionTarget::None, |unit| ActionTarget::Unit(unit.id));
             orders.push(Order {
                 unit: avatar.id,
                 action: Action::Cast { slot, target },

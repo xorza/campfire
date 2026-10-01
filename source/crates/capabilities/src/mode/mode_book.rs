@@ -9,10 +9,11 @@ use campfire_script::ScriptHost;
 use campfire_script::rhai::ImmutableString;
 use campfire_sim::{EntityIndex, Position, StableId};
 
-use crate::abilities::ability_book::AbilityId;
-use crate::abilities::ability_slots::AbilitySlots;
-use crate::abilities::slot_kind::SlotKind;
-use crate::abilities::slot_kinds::SlotKinds;
+use crate::actions::action_book::ActionId;
+use crate::actions::action_slots::ActionSlots;
+use crate::actions::slot_kind::SlotKind;
+use crate::actions::slot_kinds::SlotKinds;
+use crate::combat::recent_attackers::RecentAttackers;
 use crate::mode::choice_book::ChoiceBook;
 use crate::mode::error::ModeError;
 use crate::mode::game_map::GameMap;
@@ -209,8 +210,8 @@ impl ModeBook {
         if let Some(pools) = kit.pools {
             unit.insert(pools);
         }
-        if let Some(combatant) = kit.combatant {
-            combatant.insert(&mut unit);
+        if let Some(on_death) = kit.on_death {
+            unit.insert((on_death, RecentAttackers::default()));
         }
         if let Some(sight) = kit.sight {
             unit.insert(sight);
@@ -227,7 +228,7 @@ impl ModeBook {
                 let rank = self.slot_kinds.first_rank(action.kind);
                 (action.ability, action.kind, rank)
             });
-            unit.insert(AbilitySlots::new(slots));
+            unit.insert(ActionSlots::new(slots));
         }
         let entity = unit.id();
         if let Some(&passive) = self.passives.get(unit_type) {
@@ -282,18 +283,18 @@ impl ModeBook {
         world: &mut World,
         unit: StableId,
         kind: SlotKind,
-        abilities: &[AbilityId],
+        abilities: &[ActionId],
     ) {
         let Some(entity) = world.resource::<EntityIndex>().get(unit) else {
             return;
         };
         let rank = self.slot_kinds.first_rank(kind);
         let mut unit = world.entity_mut(entity);
-        if let Some(mut slots) = unit.get_mut::<AbilitySlots>() {
+        if let Some(mut slots) = unit.get_mut::<ActionSlots>() {
             slots.grant(kind, abilities, rank);
         } else {
             let slots = abilities.iter().map(|&ability| (ability, kind, rank));
-            unit.insert(AbilitySlots::new(slots));
+            unit.insert(ActionSlots::new(slots));
         }
     }
 }

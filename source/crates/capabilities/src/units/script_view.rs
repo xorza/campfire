@@ -10,8 +10,8 @@ use campfire_math::{Num, PlayerSlot, Vec3};
 use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString, NativeCallContext};
 use campfire_sim::{Capability, EntityIndex, Position, SimTick, StableId, Tick, TickRate, Ticks};
 
-use crate::abilities::ability_book::AbilityId;
-use crate::abilities::action_data::CostTarget;
+use crate::actions::action_book::ActionId;
+use crate::actions::action_data::CostTarget;
 use crate::combat::damage_kind::DamageKind;
 use crate::mode::resource_id::ResourceId;
 use crate::scripts::api_builder::ApiBuilder;
@@ -564,7 +564,7 @@ impl View {
     }
 
     /// The name of ability `id` in its package.
-    pub(crate) fn ability_name(&self, id: AbilityId) -> ImmutableString {
+    pub(crate) fn ability_name(&self, id: ActionId) -> ImmutableString {
         self.0.borrow().ability_names[id.index()].clone()
     }
 

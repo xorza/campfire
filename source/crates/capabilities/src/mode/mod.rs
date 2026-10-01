@@ -15,10 +15,9 @@ use campfire_sim::{
     TickRate, Ticks,
 };
 
-use crate::abilities::ability_slots::AbilitySlots;
+use crate::actions::action_slots::ActionSlots;
 use crate::combat::CombatSet;
 use crate::combat::assist_window::AssistWindow;
-use crate::combat::attack_kind::AttackKind;
 use crate::combat::combat_bindings::CombatBindings;
 use crate::combat::damage_weigher::DamageWeigher;
 use crate::combat::deaths::Deaths;
@@ -96,7 +95,7 @@ impl Mode {
     /// whose capabilities are installed and whose unit types, abilities and AI are loaded: in
     /// Inputs, the players' mode inputs run `on_mode_input`; in Mode, due timers run `on_timer`,
     /// then the tick's deaths run `on_unit_died`. The map's metric, bounds, paths and grid become
-    /// the match's, and the mode's `[combat]`, `attack_kind` and `calc_damage` combat's.
+    /// the match's, and the mode's `[combat]` and `calc_damage` combat's.
     pub fn install(
         world: &mut World,
         schedule: &mut Schedule,
@@ -117,10 +116,6 @@ impl Mode {
             .combat
             .assist_window_ms
             .map(|ms| rate.ticks(ms).unwrap_or(Ticks::new(u64::MAX)));
-        let attack_kind = setup.data.attack_kind.as_ref().map(|name| {
-            view.damage_kind(name.as_str())
-                .expect("the load checked the attack kind")
-        });
         let types = setup
             .unit_types
             .iter()
@@ -154,9 +149,6 @@ impl Mode {
         }
         if let Some(window) = assist_window {
             world.insert_resource(AssistWindow(window));
-        }
-        if let Some(kind) = attack_kind {
-            world.insert_resource(AttackKind(kind));
         }
         view.set_names(Rc::clone(&book.teams), paths.shared_names());
         world.insert_resource(paths);
@@ -282,7 +274,7 @@ impl Mode {
             ModeEffect::Learn { unit, slot } => {
                 let entity = world.resource::<EntityIndex>().get(unit);
                 let entity = entity.expect("a unit the view read is in the world");
-                let slots = world.get_mut::<AbilitySlots>(entity);
+                let slots = world.get_mut::<ActionSlots>(entity);
                 slots.expect("a unit with ability slots").learn(slot);
             }
             ModeEffect::SetRelation { a, b, attitude } => {

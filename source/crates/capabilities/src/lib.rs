@@ -16,6 +16,7 @@
 )]
 
 mod abilities;
+mod actions;
 mod capability_set;
 mod combat;
 mod mode;
@@ -29,24 +30,22 @@ mod values;
 mod vision;
 
 pub use abilities::Abilities;
-pub use abilities::ability_book::AbilityId;
-pub use abilities::ability_slots::{AbilitySlot, AbilitySlots, CastTarget};
-pub use abilities::action_data::{
+pub use actions::Actions;
+pub use actions::action_book::ActionId;
+pub use actions::action_data::{
     ActionData, AreaData, AreaInside, ChannelData, ChargeData, ChargesData, CostTarget,
     ProjectileData, Range, RangeField, RankFields, Targeting, Toggle,
 };
-pub use abilities::action_kind::ActionKind;
-pub use abilities::error::{AbilityError, ActionField};
-pub use abilities::slot_kind::SlotKind;
-pub use abilities::slot_kinds::{SlotKindData, SlotKinds};
+pub use actions::action_kind::ActionKind;
+pub use actions::action_slots::{ActionSlot, ActionSlots, ActionTarget};
+pub use actions::error::{ActionError, ActionField};
+pub use actions::slot_kind::SlotKind;
+pub use actions::slot_kinds::{SlotKindData, SlotKinds};
 pub use capability_set::CapabilitySet;
 pub use capability_set::error::CapabilityError;
 pub use combat::Combat;
-pub use combat::attack_state::AttackState;
-pub use combat::attack_stats::AttackStats;
-pub use combat::combat_data::{AttackData, CombatData};
+pub use combat::combat_data::CombatData;
 pub use combat::combat_rules::{CombatRules, Leech};
-pub use combat::combatant::Combatant;
 pub use combat::dead::Dead;
 pub use combat::deaths::{DeathView, Deaths, Fallen};
 pub use combat::on_death::OnDeath;
@@ -149,6 +148,7 @@ pub use vision::vision_data::VisionData;
 
 #[cfg(feature = "internals")]
 pub mod internals {
+    pub use crate::combat::internals::{Arms, ArmsParts};
     pub use crate::stats::internals::{give_modifier, load_stats};
     pub use crate::stats::pools::internals::spent;
 }

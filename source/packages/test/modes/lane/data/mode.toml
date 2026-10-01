@@ -1,5 +1,4 @@
 script = "scripts/mode.rhai"
-attack_kind = "true"
 
 [combat]
 damage_kinds = ["true"]
@@ -37,3 +36,26 @@ ranks = 3
 [choices.hero]
 offers = "avatars"
 unique = true
+
+[[slots]]
+name = "weapon"
+
+# Each unit type's weapon: its attack, at the rate and for the damage of its stats.
+[actions.creep_attack]
+kind = "attack"
+targeting = "enemies"
+range = "1.0"
+windup_ms = 300
+rate = "attack_speed"
+damage = "attack_damage"
+damage_kind = "true"
+
+[actions.tower_attack]
+kind = "attack"
+targeting = "enemies"
+range = "7.75"
+windup_ms = 150
+rate = "attack_speed"
+damage = "attack_damage"
+damage_kind = "true"
+projectile = { speed = "12" }

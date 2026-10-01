@@ -4,7 +4,7 @@ use campfire_sim::SimResource;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::mode::resource_id::ResourceId;
+use crate::mode::resource_id::{ResourceAmount, ResourceId};
 
 /// The players' resources, such as gold: one run of amounts by player slot, then by the
 /// resource's place in the mode's `resources`.
@@ -39,6 +39,18 @@ impl PlayerResources {
         let at = self.at(slot, resource);
         self.amounts[at] = self.amounts[at].checked_add(amount)?;
         Some(())
+    }
+
+    /// Takes `costs` from player `slot`, who affords them.
+    pub(crate) fn pay(&mut self, slot: PlayerSlot, costs: &[ResourceAmount]) {
+        for cost in costs {
+            let at = self.at(slot, cost.resource);
+            debug_assert!(
+                self.amounts[at] >= cost.amount,
+                "the player affords the cost"
+            );
+            self.amounts[at] -= cost.amount;
+        }
     }
 
     fn at(&self, slot: PlayerSlot, resource: ResourceId) -> usize {

@@ -3,7 +3,8 @@ tags = ["creep"]
 params = { gold = 20, xp = 59, aggro_range = "7.0", help_range = "5.0", help_window_ms = 2000 }
 pools = ["health"]
 stats = { health = { base = 445 }, attack_damage = { base = 12 }, attack_speed = { base = "1.25" }, move_speed = { base = "3.25" } }
-combat = { attack = { range = "1.1", windup_ms = 300 } }
+combat = {}
+slots = { weapon = ["melee_creep_attack"] }
 orders = { ai = "scripts/creep_ai.rhai", think_ms = 250 }
 vision = { sight_range = "10.0" }
 collision = { radius = "0.35" }
@@ -13,7 +14,8 @@ tags = ["creep"]
 params = { gold = 15, xp = 29, aggro_range = "7.0", help_range = "5.0", help_window_ms = 2000 }
 pools = ["health"]
 stats = { health = { base = 280 }, attack_damage = { base = 23 }, attack_speed = { base = "0.67" }, move_speed = { base = "3.25" } }
-combat = { attack = { range = "6.0", windup_ms = 300, projectile_speed = "6.5" } }
+combat = {}
+slots = { weapon = ["caster_creep_attack"] }
 orders = { ai = "scripts/creep_ai.rhai", think_ms = 250 }
 vision = { sight_range = "10.0" }
 collision = { radius = "0.35" }
@@ -23,7 +25,8 @@ tags = ["creep"]
 params = { gold = 40, xp = 97, aggro_range = "7.0", help_range = "5.0", help_window_ms = 2000 }
 pools = ["health"]
 stats = { health = { base = 1500 }, attack_damage = { base = 190 }, attack_speed = { base = "0.85" }, armor = { base = 30 }, move_speed = { base = "3.25" } }
-combat = { attack = { range = "1.7", windup_ms = 300 } }
+combat = {}
+slots = { weapon = ["super_creep_attack"] }
 orders = { ai = "scripts/creep_ai.rhai", think_ms = 250 }
 vision = { sight_range = "10.0" }
 collision = { radius = "0.55" }
@@ -33,7 +36,8 @@ tags = ["structure", "tower", "true_sight"]
 params = { gold = 150, xp = 0, help_window_ms = 2000 }
 pools = ["health"]
 stats = { health = { base = 1500 }, attack_damage = { base = 150 }, attack_speed = { base = "0.83" }, armor = { base = 60 }, magic_resist = { base = 60 } }
-combat = { attack = { range = "7.75", windup_ms = 150, projectile_speed = "12" } }
+combat = {}
+slots = { weapon = ["tower_attack"] }
 orders = { ai = "scripts/tower_ai.rhai", think_ms = 250 }
 vision = { sight_range = "11.0" }
 collision = { radius = "0.9" }
@@ -61,7 +65,8 @@ tags = ["camp"]
 params = { gold = 30, xp = 90, leash_range = "8.0", home_slack = "0.5", aggro_window_ms = 5000 }
 pools = ["health"]
 stats = { health = { base = 900 }, attack_damage = { base = 35 }, attack_speed = { base = "0.68" }, armor = { base = 9 }, move_speed = { base = "4.4" } }
-combat = { attack = { range = "1.25", windup_ms = 300 }, on_death = "stay" }
+combat = { on_death = "stay" }
+slots = { weapon = ["wolf_attack"] }
 orders = { ai = "scripts/camp_ai.rhai", think_ms = 250 }
 vision = { sight_range = "9.0" }
 collision = { radius = "0.4" }
@@ -71,7 +76,8 @@ tags = ["camp", "objective"]
 params = { gold = 150, xp = 400, leash_range = "10.0", home_slack = "0.5", aggro_window_ms = 5000 }
 pools = ["health"]
 stats = { health = { base = 5000 }, attack_damage = { base = 150 }, attack_speed = { base = "0.62" }, armor = { base = 60 }, magic_resist = { base = 30 }, move_speed = { base = "3.0" } }
-combat = { attack = { range = "5.0", windup_ms = 400, projectile_speed = "10" }, on_death = "stay" }
+combat = { on_death = "stay" }
+slots = { weapon = ["warden_attack"] }
 orders = { ai = "scripts/camp_ai.rhai", think_ms = 250 }
 vision = { sight_range = "11.0" }
 collision = { radius = "0.7" }

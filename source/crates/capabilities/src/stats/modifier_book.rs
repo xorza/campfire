@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use campfire_math::Num;
 use campfire_sim::{StableId, Tick, Ticks};
 
-use crate::abilities::ability_book::AbilityId;
+use crate::actions::action_book::ActionId;
 use crate::scripts::hook_set::HookSet;
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifier_handle::StateField;
@@ -190,7 +190,7 @@ impl ModifierBook {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Applier {
     pub(crate) source: Option<StableId>,
-    pub(crate) ability: Option<AbilityId>,
+    pub(crate) ability: Option<ActionId>,
     pub(crate) rank: u8,
     pub(crate) passive: bool,
     pub(crate) held: bool,

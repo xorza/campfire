@@ -7,16 +7,12 @@ use bevy_ecs::entity::Entity;
 use campfire_math::{Num, PlayerSlot, Vec3};
 use campfire_script::Budget;
 use campfire_script::rhai::Array;
-use campfire_sim::{
-    Capability, EntityIndex, IdAllocator, Position, SimTick, StableId, Tick, Ticks,
-};
+use campfire_sim::{Capability, EntityIndex, IdAllocator, Position, SimTick, StableId, Tick};
 
 use super::*;
+use crate::actions::action_slots::ActionSlots;
 use crate::capability_set::internals::TestMatch;
-use crate::combat::attack_state::AttackState;
-use crate::combat::attack_stats::AttackStats;
-use crate::combat::combatant::Combatant;
-use crate::combat::combatant::internals::Armed;
+use crate::combat::armed::Armed;
 use crate::combat::dead::Dead;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;
@@ -46,16 +42,10 @@ fn at(x: i64, y: i64, z: i64) -> Position {
     Position::new(Vec3::new(num(x), num(y), num(z))).unwrap()
 }
 
-/// A unit of 10 health, the life pool the first of the scene's pools, `health` and `mana`.
+/// A unit of 10 health, the life pool the first of the scene's pools, `health` and `mana`, with
+/// a weapon of 2 m.
 fn unit() -> Armed {
-    let combatant = Combatant {
-        attack: Some(AttackStats::new(num(2), Ticks::new(0), Ticks::new(1), Num::ZERO).unwrap()),
-        on_death: OnDeath::Stay,
-    };
-    Armed {
-        combatant,
-        life: num(10),
-    }
+    Armed::melee(num(10), num(2), 0, 1, Num::ZERO).on_death(OnDeath::Stay)
 }
 
 #[derive(Debug)]
@@ -105,6 +95,12 @@ impl Scene {
         Units::load_type(&mut self.world, &name, &data).unwrap()
     }
 
+    /// A `unit()` of `team` with `parts`.
+    fn unit(&mut self, at: Position, team: u8, parts: impl Bundle) -> StableId {
+        let armed = unit().bundle(&mut self.world, Team::new(team), RATE.hz().get());
+        self.spawn(at, (armed, parts))
+    }
+
     fn spawn(&mut self, at: Position, parts: impl Bundle) -> StableId {
         let id = self.world.resource_mut::<IdAllocator>().allocate();
         let unit = self.world.spawn((id, at, parts)).id();
@@ -146,20 +142,20 @@ impl Scene {
 fn queries_select_living_units_by_filter_and_exact_distance() {
     let mut scene = Scene::new();
     let creep = scene.unit_type(&["creep"], &[]);
-    let of = scene.spawn(at(0, 0, 0), unit().bundle(Team::new(1)));
+    let of = scene.unit(at(0, 0, 0), 1, ());
     // Up at y = 9, 3 m away on the ground plane: the nearest.
-    let high = scene.spawn(at(0, 9, 3), unit().bundle(Team::new(0)));
-    let east = scene.spawn(at(4, 0, 0), (creep, unit().bundle(Team::new(0))));
-    let west = scene.spawn(at(-4, 0, 0), unit().bundle(Team::new(0)));
-    let edge = scene.spawn(at(0, 0, 5), unit().bundle(Team::new(0)));
-    let far = scene.spawn(at(6, 0, 0), unit().bundle(Team::new(0)));
-    let ally = scene.spawn(at(1, 0, 0), unit().bundle(Team::new(1)));
-    let dead = scene.spawn(at(0, 0, 1), (unit().bundle(Team::new(0)), Dead));
+    let high = scene.unit(at(0, 9, 3), 0, ());
+    let east = scene.unit(at(4, 0, 0), 0, creep);
+    let west = scene.unit(at(-4, 0, 0), 0, ());
+    let edge = scene.unit(at(0, 0, 5), 0, ());
+    let far = scene.unit(at(6, 0, 0), 0, ());
+    let ally = scene.unit(at(1, 0, 0), 1, ());
+    let dead = scene.unit(at(0, 0, 1), 0, Dead);
     // Within 2 m, but no target: one untargetable, one invulnerable.
     let hidden = UnitTags::blocking(&[Block::Target]);
-    let hidden = scene.spawn(at(2, 0, 0), (unit().bundle(Team::new(0)), hidden));
+    let hidden = scene.unit(at(2, 0, 0), 0, hidden);
     let guarded = UnitTags::blocking(&[Block::Target, Block::Damage]);
-    let guarded = scene.spawn(at(-2, 0, 0), (unit().bundle(Team::new(0)), guarded));
+    let guarded = scene.unit(at(-2, 0, 0), 0, guarded);
 
     let find = |scene: &mut Scene, filter: &str| {
         let source = format!(r#"fn probe(ctx, of) {{ ctx.find(of, of.pos, 5, "{filter}") }}"#);
@@ -222,9 +218,9 @@ fn queries_select_living_units_by_filter_and_exact_distance() {
 #[test]
 fn a_position_measures_reach_and_distance_in_the_maps_metric() {
     let mut scene = Scene::new();
-    let of = scene.spawn(at(0, 0, 0), unit().bundle(Team::new(0)));
-    scene.spawn(at(3, 0, 4), unit().bundle(Team::new(1)));
-    scene.spawn(at(0, 12, 3), unit().bundle(Team::new(1)));
+    let of = scene.unit(at(0, 0, 0), 0, ());
+    scene.unit(at(3, 0, 4), 1, ());
+    scene.unit(at(0, 12, 3), 1, ());
     let probe = r#"fn probe(ctx, of) {
         let found = ctx.find(of, of.pos, 13, "enemies");
         let near = found[0];
@@ -268,21 +264,18 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let owner = Owner::new(PlayerSlot::new(2));
     let path = OnPath::new(PathId::new(0));
     let body = Body::new(Num::from_bits(3 << (Num::FRAC_BITS - 2))).unwrap();
-    let of = scene.spawn(
-        at(0, 0, 0),
-        (hero, unit().bundle(Team::new(0)), owner, path, body),
-    );
-    let near = scene.spawn(at(3, 0, 4), unit().bundle(Team::new(1)));
-    let recent = scene.spawn(at(9, 0, 0), unit().bundle(Team::new(1)));
-    let fallen = scene.spawn(at(9, 0, 1), (unit().bundle(Team::new(1)), Dead));
+    let of = scene.unit(at(0, 0, 0), 0, (hero, owner, path, body));
+    let near = scene.unit(at(3, 0, 4), 1, ());
+    let recent = scene.unit(at(9, 0, 0), 1, ());
+    let fallen = scene.unit(at(9, 0, 1), 1, Dead);
     let health_only = (Team::new(1), Pools::life(num(1)));
     let bare = scene.spawn(at(9, 0, 2), health_only);
     let entity = scene.entity(of);
     scene
         .world
-        .get_mut::<AttackState>(entity)
+        .get_mut::<ActionSlots>(entity)
         .unwrap()
-        .set_target(Some(near));
+        .set_attack_target(Some(near));
 
     // At 30 ticks a second, 2000 ms is 60 ticks: in tick 100, a strike in tick 40 is recent, and
     // one in tick 39 is not; a dead attacker is never returned.
@@ -374,11 +367,9 @@ fn a_handle_reads_its_units_level_pools_and_stats() {
         .set_stat_names(Rc::from(names));
     let mut stats = UnitStats::default();
     stats.refill().extend([num(25), num(10)]);
-    let of = scene.spawn(
-        at(0, 0, 0),
-        (unit().bundle(Team::new(0)), Level::new(3).unwrap(), stats),
-    );
+    let of = scene.unit(at(0, 0, 0), 0, Level::new(3).unwrap());
     let entity = scene.entity(of);
+    scene.world.entity_mut(entity).insert(stats);
     let mut pools = scene.world.get_mut::<Pools>(entity).unwrap();
     pools.take(PoolId::FIRST, num(4));
     let bare = scene.spawn(at(1, 0, 0), (Team::new(1), Pools::life(num(1))));

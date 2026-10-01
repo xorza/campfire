@@ -175,7 +175,7 @@ mod tests {
     use std::rc::Rc;
 
     use super::*;
-    use crate::abilities::ability_book::AbilityBook;
+    use crate::actions::action_book::ActionBook;
     use crate::capability_set::internals::TestMatch;
     use crate::orders::ai::Ai;
     use crate::scripts::script_limits::ScriptLimits;
@@ -243,7 +243,7 @@ mod tests {
     }
 
     #[test]
-    fn a_match_without_scripts_installs_no_host_abilities_or_ai() {
+    fn a_match_without_scripts_installs_no_host_or_ai_and_the_core_its_actions() {
         let all = [Stats, Combat, Navigation, Projectiles, Abilities, Orders];
         let scripts = MatchScripts {
             limits: ScriptLimits {
@@ -262,11 +262,11 @@ mod tests {
         let client = installed(&all, None);
         for (world, scripts) in [(&scripted, true), (&client, false)] {
             assert_eq!(world.get_non_send::<ScriptHost>().is_some(), scripts);
-            assert_eq!(world.contains_resource::<AbilityBook>(), scripts);
+            assert!(world.contains_resource::<ActionBook>());
             assert_eq!(world.contains_resource::<ByType<Ai>>(), scripts);
             assert!(world.get_non_send::<View>().is_some());
         }
         let combat_only = installed(&[Stats, Combat], Some(scripts));
-        assert!(!combat_only.contains_resource::<AbilityBook>());
+        assert!(combat_only.contains_resource::<ActionBook>());
     }
 }

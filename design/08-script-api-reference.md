@@ -222,7 +222,6 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `params` | runs |
 | `modifiers` | runs |
 | `actions` | runs |
-| `attack_kind` | runs |
 | `stats` | runs |
 | `pools` | runs |
 | `resources` | runs |
@@ -283,14 +282,18 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | Field | Status |
 | --- | --- |
 | `kind` | runs |
-| `script` | runs |
 | `targeting` | runs |
 | `range` | runs |
-| `cooldown_ms` | runs |
 | `cost` | runs |
-| `cast_time_ms` | runs |
+| `windup_ms` | runs |
 | `passive_modifier` | runs |
 | `passive_while_ready` | runs |
+| `rate` | runs |
+| `damage` | runs |
+| `damage_kind` | runs |
+| `projectile` | runs |
+| `script` | runs |
+| `cooldown_ms` | runs |
 | `params` | runs |
 | `clamp_to_range` | planned |
 | `toggle` | planned |
@@ -298,9 +301,21 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `hold` | planned |
 | `charges` | planned |
 | `charge` | planned |
-| `projectile` | planned |
 | `area` | planned |
 | `projectile_state` | planned |
+
+### An action's `projectile`
+
+| Field | Status |
+| --- | --- |
+| `speed` | runs |
+| `width` | planned |
+| `range` | planned |
+| `stop_on_hit` | planned |
+| `once_per_cast` | planned |
+| `hits` | planned |
+| `sight_radius` | planned |
+| `collide` | planned |
 
 ### A modifier, `[modifiers.<id>]`
 
@@ -332,16 +347,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 
 | Field | Status |
 | --- | --- |
-| `attack` | runs |
 | `on_death` | runs |
-
-### A unit type's `combat.attack`
-
-| Field | Status |
-| --- | --- |
-| `range` | runs |
-| `windup_ms` | runs |
-| `projectile_speed` | runs |
 
 ### A unit type's `vision`
 

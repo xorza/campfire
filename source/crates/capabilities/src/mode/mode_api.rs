@@ -2,7 +2,7 @@ use campfire_math::PlayerSlot;
 use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString, NativeCallContext};
 use campfire_sim::{Capability, Position, StableId};
 
-use crate::abilities::ability_slots::AbilitySlots;
+use crate::actions::action_slots::ActionSlots;
 use crate::mode::choice_book::Choice;
 use crate::mode::game_map::GameMap;
 use crate::mode::marker::Marker;
@@ -72,7 +72,6 @@ impl ModeApi {
                     "params",
                     "modifiers",
                     "actions",
-                    "attack_kind",
                     "stats",
                     "pools",
                     "resources",
@@ -589,7 +588,7 @@ impl ModeApi {
                 _ => None,
             })
             .sum();
-        if slots + queued + abilities.len() > AbilitySlots::LIMIT {
+        if slots + queued + abilities.len() > ActionSlots::LIMIT {
             return Err(ApiError::TooManySlots.fail().into());
         }
         frame.effects.push(Effect::Mode(ModeEffect::Grant {

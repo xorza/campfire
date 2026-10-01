@@ -2,9 +2,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::iter;
 
 use campfire_capabilities::{
-    AbilitySlots, ActionData, ActionKind, ApiOwner, CollisionData, DeclaredName, EngineStat,
+    ActionData, ActionKind, ActionSlots, ApiOwner, CollisionData, DeclaredName, EngineStat,
     FilterData, Hook, MemberKind, Mode, ModifierData, Navigation, Number, Offers, Param, Pools,
-    ResourceId, Scalar, ScriptApi, ScriptRole, Stat, UnitTypeData,
+    Range, RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Stat, Targeting, UnitTypeData,
 };
 use campfire_content::PackagePath;
 use campfire_math::Num;
@@ -265,15 +265,9 @@ impl<'a> LoadCheck<'a> {
         names: &mut PackageNames<'a>,
     ) -> Result<(), LoadProblem> {
         for (id, ability) in actions {
-            if ability.kind != ActionKind::Cast {
-                return Err(LoadProblem::KindNotRun {
-                    action: id.clone(),
-                    kind: ability.kind,
-                });
-            }
-            self.ranked(id, ability, ranks(id))?;
             let at = Place::Action(id.clone());
-            self.require(Capability::Abilities, &at)?;
+            self.kind(id, ability)?;
+            self.ranked(id, ability, ranks(id))?;
             if ability.projectile.is_some() {
                 self.require(Capability::Projectiles, &at)?;
             }
@@ -540,23 +534,12 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// The mode's damage kinds and `attack_kind`: with `combat`, at least one kind and an attack
-    /// kind among them; never more kinds than a byte tells apart.
+    /// The mode's damage kinds: with `combat`, at least one; never more than a byte tells apart.
     fn damage_kinds(&self) -> Result<(), LoadProblem> {
         let data = &self.packages.data;
         let kinds = &data.combat.damage_kinds;
         if kinds.len() > usize::from(u8::MAX) + 1 {
             return Err(LoadProblem::TooManyDamageKinds);
-        }
-        if let Some(kind) = &data.attack_kind {
-            self.require(Capability::Combat, &Place::AttackKind)?;
-            if !kinds.contains(kind) {
-                return Err(LoadProblem::Unknown {
-                    of: NameKind::DamageKind,
-                    at: Place::AttackKind,
-                    name: kind.as_str().to_owned(),
-                });
-            }
         }
         if !self
             .packages
@@ -569,8 +552,52 @@ impl<'a> LoadCheck<'a> {
         if kinds.is_empty() {
             return Err(LoadProblem::NoDamageKinds);
         }
-        if data.attack_kind.is_none() {
-            return Err(LoadProblem::NoAttackKind);
+        Ok(())
+    }
+
+    /// An action of a kind the release runs, with the capability of its kind: a `cast` of
+    /// `abilities`, with no weapon field; an `attack` of `combat`, with all three, a unit target,
+    /// a range in meters, its stats declared and its damage kind the mode's.
+    fn kind(&self, id: &str, action: &ActionData) -> Result<(), LoadProblem> {
+        let at = Place::Action(id.to_owned());
+        let fields = action.weapon_fields();
+        match action.kind {
+            ActionKind::Cast => {
+                self.require(Capability::Abilities, &at)?;
+                if fields.contains(&true) {
+                    return Err(LoadProblem::KindField(id.to_owned()));
+                }
+            }
+            ActionKind::Attack => {
+                self.require(Capability::Combat, &at)?;
+                let global = action
+                    .range
+                    .as_ref()
+                    .is_none_or(|range| range.values().contains(&RangeField::Range(Range::Global)));
+                let aims = matches!(action.targeting, Targeting::Unit(_));
+                if fields.contains(&false) || global || !aims || action.cast_fields() {
+                    return Err(LoadProblem::KindField(id.to_owned()));
+                }
+                self.stats_declared(action.rate.iter().chain(&action.damage), &at)?;
+                let kinds = &self.packages.data.combat.damage_kinds;
+                if let Some(kind) = action
+                    .damage_kind
+                    .as_ref()
+                    .filter(|kind| !kinds.contains(kind))
+                {
+                    return Err(LoadProblem::Unknown {
+                        of: NameKind::DamageKind,
+                        at,
+                        name: kind.to_string(),
+                    });
+                }
+            }
+            kind => {
+                return Err(LoadProblem::KindNotRun {
+                    action: id.to_owned(),
+                    kind,
+                });
+            }
         }
         Ok(())
     }
@@ -671,8 +698,6 @@ impl<'a> LoadCheck<'a> {
         }
         self.unit_pools(&unit_type.pools, unit_type.combat.is_some(), at)?;
         self.collision_layer(unit_type.collision.as_ref(), at)?;
-        let attack = unit_type.combat.as_ref().and_then(|combat| combat.attack);
-        self.attack_projectile(attack.and_then(|attack| attack.projectile_speed), at)?;
         let kinds = &self.packages.data.slots;
         let mut slotted = BTreeSet::new();
         for (kind, ids) in &unit_type.slots {
@@ -700,7 +725,7 @@ impl<'a> LoadCheck<'a> {
     /// The mode's slot kinds: no more than a slot's index holds, and none named twice.
     fn slot_kinds(&self) -> Result<(), LoadProblem> {
         let kinds = &self.packages.data.slots.0;
-        if kinds.len() > AbilitySlots::LIMIT {
+        if kinds.len() > ActionSlots::LIMIT {
             return Err(LoadProblem::Choice(ChoiceProblem::TooManySlotKinds));
         }
         let mut seen = BTreeSet::new();
@@ -862,9 +887,8 @@ impl<'a> LoadCheck<'a> {
         })
     }
 
-    /// An attack's projectile, of `speed` meters a second, homes, so it flies faster than the
-    /// cap.
-    fn attack_projectile(&self, speed: Option<Scalar>, at: &Place) -> Result<(), LoadProblem> {
+    /// A projectile, of `speed` meters a second, may home, so it flies faster than the cap.
+    fn projectile_speed(&self, speed: Option<Scalar>, at: &Place) -> Result<(), LoadProblem> {
         match speed.map(Scalar::to_num) {
             None => Ok(()),
             Some(Some(speed)) if speed > self.cap => Ok(()),
@@ -894,7 +918,7 @@ impl<'a> LoadCheck<'a> {
                 },
             };
             for value in values {
-                self.attack_projectile(Some(value), at)?;
+                self.projectile_speed(Some(value), at)?;
             }
         }
         Ok(())

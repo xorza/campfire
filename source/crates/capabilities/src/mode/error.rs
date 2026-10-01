@@ -15,15 +15,6 @@ pub enum UnitKitError {
     Negative(Stat),
     /// It has a `combat` section but not the life pool.
     NoLifePool,
-    /// The windup is too long to count in ticks.
-    TimeTooLarge,
-    /// The attack's range is beyond a `Num`.
-    Range,
-    /// The attack's range or damage is negative, or its windup is not shorter than its period.
-    Attack,
-    /// The attack's projectile homes, and flies no faster than the move speed cap, so it might
-    /// never catch its target.
-    ProjectileNotFaster,
 }
 
 /// Why the mode's setup does not start a match: its map or its teams name what the mode does
@@ -67,14 +58,6 @@ impl fmt::Display for UnitKitError {
             UnitKitError::NotPositive(stat) => write!(f, "stat {stat} is not positive"),
             UnitKitError::Negative(stat) => write!(f, "stat {stat} is negative"),
             UnitKitError::NoLifePool => f.write_str("a unit type with combat lacks the life pool"),
-            UnitKitError::TimeTooLarge => f.write_str("windup too long to count in ticks"),
-            UnitKitError::Range => f.write_str("attack range beyond a Num"),
-            UnitKitError::Attack => f.write_str(
-                "attack range or damage negative, or windup not shorter than the period",
-            ),
-            UnitKitError::ProjectileNotFaster => {
-                f.write_str("attack projectile no faster than the move speed cap")
-            }
         }
     }
 }

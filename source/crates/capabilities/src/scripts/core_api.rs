@@ -42,7 +42,20 @@ impl CoreApi {
             )
             .data(DataTable::ModeNavigation, &["layers"], &[])
             .data(DataTable::Collision, &["radius", "layer"], &[])
-            .data(DataTable::Tag, &["blocks", "hidden", "detects", "immune"], &[]);
+            .data(DataTable::Tag, &["blocks", "hidden", "detects", "immune"], &[])
+            .data(
+                DataTable::Action,
+                &[
+                    "kind",
+                    "targeting",
+                    "range",
+                    "cost",
+                    "windup_ms",
+                    "passive_modifier",
+                    "passive_while_ready",
+                ],
+                &[],
+            );
         api.tag_effect(TagEffect::Blocks(Block::Move), Status::Runs)
             .tag_effect(TagEffect::Blocks(Block::Use), Status::Planned);
         api.ty::<Params>("Params")

@@ -2,12 +2,9 @@ name = "Gale"
 tags = ["support"]
 pools = ["health", "mana"]
 passive = "fair_wind"
-slots = { basic = ["cyclone", "gust", "wind_shield"], ultimate = ["tempest"] }
+slots = { basic = ["cyclone", "gust", "wind_shield"], ultimate = ["tempest"], weapon = ["attack"] }
 
-[combat.attack]
-range = "4.75"
-windup_ms = 300
-projectile_speed = "12"
+[combat]
 
 [collision]
 radius = "0.5"
@@ -106,3 +103,13 @@ tags = ["slowed"]
 # A knock up: its time comes from the call that applies it.
 [modifiers.knock_up]
 tags = ["airborne"]
+
+[actions.attack]
+kind = "attack"
+targeting = "enemies"
+range = "4.75"
+windup_ms = 300
+rate = "attack_speed"
+damage = "attack_damage"
+damage_kind = "physical"
+projectile = { speed = "12" }

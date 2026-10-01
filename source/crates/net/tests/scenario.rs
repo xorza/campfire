@@ -4,7 +4,7 @@
 use std::num::NonZeroU32;
 
 use bevy_app::App;
-use campfire_capabilities::{AbilitySlots, Body, Dead, MoveStep, PoolId, Pools, SeenBy, Team};
+use campfire_capabilities::{ActionSlots, Body, Dead, MoveStep, PoolId, Pools, SeenBy, Team};
 use campfire_math::{Num, Vec3};
 use campfire_net::{LinkModel, LocalMatch, MatchSetup, TickHashes};
 use campfire_protocol::{SeedChain, SessionLog};
@@ -226,7 +226,7 @@ fn caster(app: &App, id: StableId) -> Caster {
         health: pools.current(PoolId::FIRST).unwrap(),
         mana: pools.current(PoolId::new(1).unwrap()),
         ready_at: unit
-            .get::<AbilitySlots>()
+            .get::<ActionSlots>()
             .and_then(|slots| slots.slot(0))
             .map(|slot| slot.ready_at),
     }

@@ -3,7 +3,6 @@ use std::num::NonZeroU32;
 use std::str::FromStr;
 
 use super::*;
-use crate::combat::on_death::OnDeath;
 use crate::stats::stats_data::StatValue;
 use crate::values::scalar::Scalar;
 
@@ -28,7 +27,7 @@ fn life(health: &Stat) -> [(PoolId, &Stat); 1] {
     [(PoolId::FIRST, health)]
 }
 
-/// The 3v3's caster creep, with `change` applied to its stats.
+/// The 3v3's caster creep, its stats the pool's and the kit's, with `change` applied.
 fn caster(change: impl FnOnce(&mut BTreeMap<Stat, StatValue>)) -> StatsData {
     let base = |text: &str| StatValue {
         base: Scalar::Decimal(decimal(text)),
@@ -36,84 +35,50 @@ fn caster(change: impl FnOnce(&mut BTreeMap<Stat, StatValue>)) -> StatsData {
     };
     let mut stats = BTreeMap::from([
         (health(), base("280")),
-        (Stat::Engine(EngineStat::AttackDamage), base("23")),
-        (Stat::Engine(EngineStat::AttackSpeed), base("0.67")),
         (Stat::Engine(EngineStat::MoveSpeed), base("3.25")),
     ]);
     change(&mut stats);
     StatsData(stats)
 }
 
-fn attack(windup_ms: u64, projectile_speed: Option<&str>) -> CombatData {
-    CombatData {
-        attack: Some(AttackData {
-            range: Scalar::Decimal(decimal("6.0")),
-            windup_ms,
-            projectile_speed: projectile_speed.map(|speed| Scalar::Decimal(decimal(speed))),
-        }),
-        on_death: OnDeath::Despawn,
-    }
+fn combat(on_death: OnDeath) -> CombatData {
+    CombatData { on_death }
 }
 
 #[test]
 fn a_kit_counts_its_stats_in_ticks_at_the_rate() {
     let health = health();
+    let despawn = combat(OnDeath::Despawn);
     let kit = UnitKit::new(
         Some(&caster(|_| ())),
-        Some(&attack(300, Some("6.5"))),
+        Some(&despawn),
         life(&health),
         rules(30),
     );
     let kit = kit.unwrap();
-    let combatant = kit.combatant.unwrap();
     assert_eq!(kit.pools.unwrap().max(PoolId::FIRST), Some(decimal("280")));
     assert_eq!(
         kit.pools.unwrap().current(PoolId::FIRST),
         Some(decimal("280"))
     );
-    assert_eq!(combatant.on_death, OnDeath::Despawn);
-    // 0.67 attacks a second is 11240735 / 2²⁴, to the nearest: 30 × 2²⁴ over that is 44.78,
-    // up to 45 ticks. 300 ms is 9 ticks. 6.5 m/s over 30 is 3635063.47 / 2²⁴, to 3635063;
-    // 3.25 m/s is 1817531.73 / 2²⁴, to 1817532.
-    let stats = combatant.attack.unwrap();
-    assert_eq!((stats.period().get(), stats.windup().get()), (45, 9));
-    assert_eq!(stats.range(), decimal("6.0"));
-    assert_eq!(stats.damage(), decimal("23"));
-    assert_eq!(stats.projectile_speed(), Some(Num::from_bits(3_635_063)));
+    assert_eq!(kit.on_death, Some(OnDeath::Despawn));
+    // 3.25 m/s is 54525952 / 2²⁴: over 30 that is 1817531.73, to 1817532; over 20, 2726297.6,
+    // to 2726298.
     assert_eq!(kit.step.unwrap().get(), Num::from_bits(1_817_532));
+    let stay = combat(OnDeath::Stay);
+    let slower = UnitKit::new(Some(&caster(|_| ())), Some(&stay), life(&health), rules(20));
+    let slower = slower.unwrap();
+    assert_eq!(slower.step.unwrap().get(), Num::from_bits(2_726_298));
+    assert_eq!(slower.on_death, Some(OnDeath::Stay));
 
-    // At 20 ticks a second: 29.85 up to 30 ticks, 300 ms is 6, and the projectile flies
-    // 0.325 m a tick, faster than the cap's 0.3.
-    let slower = UnitKit::new(
-        Some(&caster(|_| ())),
-        Some(&attack(300, Some("6.5"))),
-        life(&health),
-        rules(20),
-    );
-    let stats = slower.unwrap().combatant.unwrap().attack.unwrap();
-    assert_eq!((stats.period().get(), stats.windup().get()), (30, 6));
-    assert_eq!(stats.projectile_speed(), Some(decimal("0.325")));
-
-    // 3 attacks a second, 10 ticks, with no cap: the mode's limits cap it, in the derived
-    // stats; 7 m/s at the cap, 6 over 30: 0.2 m.
+    // 7 m/s is over the cap: 6 over 30 is 0.2 m, 3355443.2 / 2²⁴, to 3355443.
     let fast = caster(|stats| {
-        stats
-            .get_mut(&Stat::Engine(EngineStat::AttackSpeed))
-            .unwrap()
-            .base = Scalar::Int(3);
         stats
             .get_mut(&Stat::Engine(EngineStat::MoveSpeed))
             .unwrap()
             .base = Scalar::Int(7);
     });
-    let kit = UnitKit::new(
-        Some(&fast),
-        Some(&attack(0, None)),
-        life(&health),
-        rules(30),
-    )
-    .unwrap();
-    assert_eq!(kit.combatant.unwrap().attack.unwrap().period().get(), 10);
+    let kit = UnitKit::new(Some(&fast), None, life(&health), rules(30)).unwrap();
     assert_eq!(kit.step.unwrap().get(), Num::from_bits(3_355_443));
 
     // No combat section, no move speed, no pools: nothing of any.
@@ -121,7 +86,7 @@ fn a_kit_counts_its_stats_in_ticks_at_the_rate() {
         stats.remove(&Stat::Engine(EngineStat::MoveSpeed));
     });
     let kit = UnitKit::new(Some(&still), None, [], rules(30)).unwrap();
-    assert_eq!((kit.combatant, kit.step, kit.pools), (None, None, None));
+    assert_eq!((kit.on_death, kit.step, kit.pools), (None, None, None));
 
     // Two pools, each full at its maximum at level 1: health 280, and mana 100 + 20 × 0. A pool
     // the type does not list stays none.
@@ -144,47 +109,15 @@ fn a_kit_counts_its_stats_in_ticks_at_the_rate() {
 fn a_kit_refuses_values_that_make_no_unit() {
     let cases = [
         (
-            caster(|_| ()),
-            attack(300, Some("5.0")),
-            UnitKitError::ProjectileNotFaster,
-        ),
-        // As fast as the cap, in the steps the match takes: not faster.
-        (
-            caster(|_| ()),
-            attack(300, Some("6.0")),
-            UnitKitError::ProjectileNotFaster,
-        ),
-        // 1500 ms is 45 ticks, the period.
-        (caster(|_| ()), attack(1500, None), UnitKitError::Attack),
-        (
             caster(|stats| {
                 stats.remove(&health());
             }),
-            attack(300, None),
             UnitKitError::MissingStat(health()),
-        ),
-        (
-            caster(|stats| {
-                stats.remove(&Stat::Engine(EngineStat::AttackDamage));
-            }),
-            attack(300, None),
-            UnitKitError::MissingStat(Stat::Engine(EngineStat::AttackDamage)),
-        ),
-        (
-            caster(|stats| {
-                stats
-                    .get_mut(&Stat::Engine(EngineStat::AttackSpeed))
-                    .unwrap()
-                    .base = Scalar::Int(0);
-            }),
-            attack(300, None),
-            UnitKitError::NotPositive(Stat::Engine(EngineStat::AttackSpeed)),
         ),
         (
             caster(|stats| {
                 stats.get_mut(&health()).unwrap().base = Scalar::Int(0);
             }),
-            attack(300, None),
             UnitKitError::NotPositive(health()),
         ),
         (
@@ -194,23 +127,18 @@ fn a_kit_refuses_values_that_make_no_unit() {
                     .unwrap()
                     .base = Scalar::Int(-1);
             }),
-            attack(300, None),
             UnitKitError::Negative(Stat::Engine(EngineStat::MoveSpeed)),
         ),
     ];
     let health = health();
-    for (stats, combat, error) in cases {
+    let despawn = combat(OnDeath::Despawn);
+    for (stats, error) in cases {
         assert_eq!(
-            UnitKit::new(Some(&stats), Some(&combat), life(&health), rules(30)),
+            UnitKit::new(Some(&stats), Some(&despawn), life(&health), rules(30)),
             Err(error)
         );
     }
     // A type with combat but without the life pool makes no unit.
-    let kit = UnitKit::new(
-        Some(&caster(|_| ())),
-        Some(&attack(300, None)),
-        [],
-        rules(30),
-    );
+    let kit = UnitKit::new(Some(&caster(|_| ())), Some(&despawn), [], rules(30));
     assert_eq!(kit, Err(UnitKitError::NoLifePool));
 }

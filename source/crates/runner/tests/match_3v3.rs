@@ -1,7 +1,7 @@
 //! The reference 3v3 as its packages hold it plays a match that replays to the same state hashes.
 
 use campfire_capabilities::{
-    AbilitySlot, AbilitySlots, Hook, ModeState, Owner, PathWalker, PlayerResources, ResourceId,
+    ActionSlot, ActionSlots, Hook, ModeState, Owner, PathWalker, PlayerResources, ResourceId,
     ScriptFailures, SlotKind, StateValue, Team, UnitType,
 };
 use campfire_math::{Num, PlayerSlot, Vec3};
@@ -30,7 +30,7 @@ struct Unit {
     pos: Position,
     controller: Option<u32>,
     walks: bool,
-    slots: Vec<AbilitySlot>,
+    slots: Vec<ActionSlot>,
 }
 
 /// The pick lasts 60 s, 1200 ticks, set at the start: it ends in tick 1199. The first wave comes
@@ -52,7 +52,7 @@ fn units(runner: &Runner) -> Vec<Unit> {
                 controller: unit.get::<Owner>().map(|owner| owner.slot().get()),
                 walks: unit.contains::<PathWalker>(),
                 slots: unit
-                    .get::<AbilitySlots>()
+                    .get::<ActionSlots>()
                     .map_or_else(Vec::new, |slots| slots.iter().collect()),
             })
         })
@@ -122,9 +122,9 @@ fn a_3v3_match_replays_to_the_same_hashes() {
     );
     // Each hero's slots, kind after kind: its three basic abilities and its ultimate, unlearned,
     // then the two spells its player chose, haste and mend, learned from the spawn: the same
-    // two abilities for every hero.
-    let [basic, ultimate, spell] = [0, 1, 2].map(SlotKind::new);
-    let spells = &run.at_pick_end[14].slots[4..];
+    // two abilities for every hero; and last its weapon, learned from the spawn.
+    let [basic, ultimate, spell, weapon] = [0, 1, 2, 3].map(SlotKind::new);
+    let spells = &run.at_pick_end[14].slots[4..6];
     for unit in &run.at_pick_end[14..20] {
         let slots: Vec<_> = unit
             .slots
@@ -138,11 +138,12 @@ fn a_3v3_match_replays_to_the_same_hashes() {
             (ultimate, 0),
             (spell, 1),
             (spell, 1),
+            (weapon, 1),
         ];
         assert_eq!(slots, kinds);
-        assert_eq!(&unit.slots[4..], spells);
+        assert_eq!(&unit.slots[4..6], spells);
     }
-    assert_ne!(spells[0].ability, spells[1].ability);
+    assert_ne!(spells[0].action, spells[1].action);
     let camps: Vec<_> = run.at_pick_end[20..]
         .iter()
         .map(|unit| (unit.team, unit.pos))

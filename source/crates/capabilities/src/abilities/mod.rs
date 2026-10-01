@@ -1,60 +1,34 @@
 use std::mem;
 
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::Without;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
-use bevy_ecs::system::{Local, NonSend, Query, Res};
-use bevy_ecs::world::{EntityRef, World};
-use campfire_math::Num;
+use bevy_ecs::system::Local;
+use bevy_ecs::world::World;
+use campfire_script::ScriptId;
 use campfire_script::rhai::Dynamic;
-use campfire_script::{ScriptHost, ScriptId};
-use campfire_sim::{
-    EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, Tick, TickRate, Ticks,
-};
+use campfire_sim::{EntityIndex, SimSet, SimTick, StableId, StateRegistry, Tick, Ticks};
 
-use crate::abilities::ability_book::Passive;
-use crate::abilities::ability_book::{Ability, AbilityBook, AbilityId, Aim, RankValues};
-use crate::abilities::ability_slots::{AbilitySlots, CastTarget, Casting};
-use crate::abilities::action_data::{ActionData, Range, Targeting};
-use crate::abilities::error::AbilityError;
-use crate::abilities::purse::Purse;
+use crate::actions::action_book::ActionBook;
+use crate::actions::action_kind::ActionKind;
+use crate::actions::action_slots::{ActionSlots, ActionTarget};
+use crate::actions::purse::Purse;
 use crate::combat::CombatSet;
 use crate::combat::dead::Dead;
-use crate::combat::targets::Targets;
 use crate::mode::player_resources::PlayerResources;
-use crate::orders::OrdersSet;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
-use crate::stats::StatsSet;
-use crate::stats::modifier_book::{Applier, ModifierBook};
-use crate::stats::modifiers::Modifiers;
-use crate::stats::param_sources::ParamSources;
 use crate::stats::pool_cost::PoolCost;
 use crate::stats::pools::Pools;
-use crate::stats::stat::Stat;
-use crate::stats::stat_book::StatBook;
 use crate::units::block::Block;
-use crate::units::body::Body;
-use crate::units::living_unit::LivingUnit;
 use crate::units::owner::Owner;
-use crate::units::script_view::{RowFill, SlotRow, View};
 use crate::units::team::Team;
 use crate::units::unit::Unit;
 use crate::units::unit_tags::UnitTags;
-use crate::values::attitude::Attitude;
 
 pub(crate) mod abilities_api;
-pub(crate) mod ability_book;
-pub(crate) mod ability_slots;
-pub(crate) mod action_data;
-pub(crate) mod action_kind;
-pub(crate) mod error;
-pub(crate) mod purse;
-pub(crate) mod slot_kind;
-pub(crate) mod slot_kinds;
 
 /// The `abilities` capability: abilities in slots, cast through their checks, with the effect a
 /// script describes.
@@ -62,287 +36,21 @@ pub(crate) mod slot_kinds;
 pub struct Abilities;
 
 impl Abilities {
-    /// Adds abilities to a match, on the core `Units` installs. In Act, ordered casts pass their
-    /// checks and start; in Hit, after attacks strike and fire, due casts resolve: the cost, the
-    /// cooldown and the script's effects apply together, or none of them. A cast resolves in the
-    /// script host, so without the core's scripts, as on a client, which predicts no casts, it
-    /// installs nothing.
-    pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
+    /// Adds abilities to a match, on the core `Units` installs: in Hit, after attacks strike and
+    /// fire, due casts resolve: the cost, the cooldown and the script's effects apply together, or
+    /// none of them. A cast resolves in the script host, so without the core's scripts, as on a
+    /// client, which predicts no casts, it installs nothing.
+    pub fn install(world: &mut World, schedule: &mut Schedule, _: &mut StateRegistry) {
         if !world.contains_non_send::<Ctx>() {
             return;
         }
-        world.non_send::<View>().add_source(fill_row);
-        world.insert_resource(AbilityBook::default());
-        schedule.add_systems((
-            start_casts.in_set(SimSet::Act),
+        schedule.add_systems(
             resolve_casts
                 .in_set(SimSet::Hit)
                 .after(CombatSet::Launch)
                 .before(CombatSet::Interval),
-            hold_passives
-                .in_set(SimSet::Inputs)
-                .after(OrdersSet::Orders)
-                .after(StatsSet::Expire),
-            hold_passives
-                .in_set(SimSet::Resolve)
-                .after(CombatSet::Damage),
-            hold_passives.in_set(SimSet::Vision),
-        ));
-        registry.register_component::<AbilitySlots>();
+        );
     }
-
-    /// Loads the ability `name` of `package`, of `ranks` ranks, into the match, which the
-    /// package load checked, with its compiled script exactly when its data names one: its
-    /// capability fields at each rank, times in milliseconds as ticks at the match's rate,
-    /// rounded up.
-    pub fn load(
-        world: &mut World,
-        package: u16,
-        name: &str,
-        data: &ActionData,
-        script: Option<ScriptId>,
-        ranks: u8,
-    ) -> Result<AbilityId, AbilityError> {
-        let passive = data.passive_modifier.as_ref().map(|name| Passive {
-            modifier: world
-                .resource::<ModifierBook>()
-                .find(package, name)
-                .expect("the load checked the passive's modifier"),
-            while_ready: data.passive_while_ready,
-        });
-        let rate = *world.resource::<TickRate>();
-        let aim = match &data.targeting {
-            Targeting::None => Aim::None,
-            Targeting::Point => Aim::Point,
-            Targeting::Direction => Aim::Direction,
-            Targeting::Unit(filter) => Aim::Unit(
-                world
-                    .non_send::<View>()
-                    .resolve_filter(filter)
-                    .expect("the load checked the filter's tag"),
-            ),
-        };
-        let view = world.non_send::<View>().clone();
-        let values = RankValues::all(data, ranks, rate, |name| view.cost_target(name.as_str()))?;
-        let host = world
-            .remove_non_send::<ScriptHost>()
-            .expect("units are installed");
-        let id = world
-            .resource_mut::<AbilityBook>()
-            .load(&host, package, passive, data, script, aim, values);
-        world.insert_non_send(host);
-        let stat = |stat: &Stat| view.stat_index(stat).expect("the load checked the stats");
-        let ctx = world.non_send::<Ctx>().clone();
-        ctx.frame().add_params(id, &data.params, stat);
-        world.non_send::<View>().add_ability(name);
-        Ok(id)
-    }
-}
-
-/// Keeps each unit's passives as its slots stand: the passive of each ability with a rank, and
-/// with `passive_while_ready` off cooldown, from the unit itself at the ability's rank, applied
-/// again when the rank changes; and none other. It runs as each tick starts, after the casts
-/// resolve, and after the mode's calls, which learn ranks.
-fn hold_passives(
-    abilities: Res<'_, AbilityBook>,
-    book: Option<Res<'_, ModifierBook>>,
-    stats: Option<Res<'_, StatBook>>,
-    tick: Res<'_, SimTick>,
-    ctx: NonSend<'_, Ctx>,
-    sources: ParamSources<'_, '_>,
-    mut units: Query<'_, '_, (&StableId, &AbilitySlots, &mut Modifiers)>,
-) {
-    let (Some(book), Some(stats)) = (book, stats) else {
-        return;
-    };
-    let now = tick.start();
-    for (&id, slots, mut modifiers) in &mut units {
-        for slot in slots.iter() {
-            let Some(passive) = abilities
-                .get(slot.ability)
-                .and_then(|ability| ability.passive)
-            else {
-                continue;
-            };
-            let held = modifiers
-                .get(passive.modifier, Some(id))
-                .map(|instance| instance.rank);
-            let holds = slot.rank > 0 && (!passive.while_ready || slot.ready_at <= now);
-            if !holds {
-                if held.is_some() {
-                    modifiers.remove(passive.modifier, Some(id));
-                }
-                continue;
-            }
-            if held == Some(slot.rank) {
-                continue;
-            }
-            let applier = Applier {
-                source: Some(id),
-                ability: Some(slot.ability),
-                rank: slot.rank,
-                passive: true,
-                held: false,
-            };
-            let frame = ctx.frame();
-            let source = sources.get(id);
-            let param = |name: &str| {
-                let (ability, rank) = (Some(slot.ability), slot.rank);
-                frame.modifier_param(passive.modifier, ability, rank, name, source.as_ref())
-            };
-            if let Some(application) =
-                book.application(passive.modifier, applier, None, now, &stats, param)
-            {
-                modifiers.apply(application);
-            }
-        }
-    }
-}
-
-/// Starts each ordered cast that passes its checks, its target within range, and drops the
-/// others. A unit its tags keep from casting keeps its order, and a cast it started goes back
-/// to it.
-fn start_casts(
-    tick: Res<'_, SimTick>,
-    book: Res<'_, AbilityBook>,
-    resources: Option<Res<'_, PlayerResources>>,
-    targets: Targets<'_, '_>,
-    mut casters: Query<
-        '_,
-        '_,
-        (
-            &Position,
-            &Team,
-            &mut AbilitySlots,
-            Option<&Pools>,
-            Option<&Owner>,
-            Option<&Body>,
-            Option<&UnitTags>,
-        ),
-        Without<Dead>,
-    >,
-) {
-    let now = tick.start();
-    for (&position, &team, mut slots, pools, owner, body, tags) in &mut casters {
-        let Some(casting) = slots.casting() else {
-            continue;
-        };
-        if UnitTags::effects_of(tags).blocks(Block::Cast) {
-            if casting.resolves_at.is_some() {
-                slots.interrupt();
-            }
-            continue;
-        }
-        if casting.resolves_at.is_some() {
-            continue;
-        }
-        let lookup = |id| targets.living(id);
-        let radius = Body::radius_of(body);
-        let attitude = |other| targets.attitude(team, other);
-        let purse = Purse {
-            pools,
-            resources: resources.as_deref(),
-            owner: owner.map(|owner| owner.slot()),
-        };
-        let started = check(&book, now, &slots, purse, casting, attitude, lookup)
-            .filter(|checked| in_range(checked, position, radius, &targets))
-            .map(|checked| (now.after(checked.cast_time), checked.target));
-        match started {
-            Some((resolves_at, target)) => slots.start(resolves_at, target),
-            None => slots.stop(),
-        }
-    }
-}
-
-/// A cast that passes its checks: its ability, and the values at the slot's rank.
-#[derive(Debug)]
-struct Checked<'a> {
-    id: AbilityId,
-    /// The target the cast keeps: none for an ability that takes none, whatever its order named.
-    target: CastTarget,
-    ability: &'a Ability,
-    rank: u8,
-    range: Range,
-    cost: PoolCost,
-    cooldown: Ticks,
-    cast_time: Ticks,
-}
-
-/// Fills a unit's ability slots: each one's rank, and how many ranks its ability has.
-fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
-    let Some(slots) = unit.get::<AbilitySlots>() else {
-        return;
-    };
-    let world = fill.world;
-    let book = world.resource::<AbilityBook>();
-    let rows = slots.iter().map(|slot| {
-        let ability = book
-            .get(slot.ability)
-            .expect("a slot's ability is in the book");
-        SlotRow {
-            rank: slot.rank,
-            ranks: u8::try_from(ability.ranks.len()).expect("an ability has few ranks"),
-        }
-    });
-    fill.slotted(rows);
-}
-
-/// The cast `casting` of a unit on `team`, when it may go on: its slot holds a learned ability
-/// that is ready, its `purse` affords its cost in each pool and player resource, and its target
-/// is a living unit the ability's filter selects, or the ability takes none, which drops any
-/// target the order named. `living` finds a living unit.
-fn check<'a>(
-    book: &'a AbilityBook,
-    now: Tick,
-    slots: &AbilitySlots,
-    purse: Purse<'_>,
-    casting: Casting,
-    attitude: impl Fn(Team) -> Attitude,
-    living: impl Fn(StableId) -> Option<LivingUnit>,
-) -> Option<Checked<'a>> {
-    let slot = slots.slot(casting.slot).filter(|slot| slot.rank > 0)?;
-    let ability = book.get(slot.ability)?;
-    let values = *ability.ranks.get(usize::from(slot.rank - 1))?;
-    let affords = purse.affords(&values.cost, ability.resource_cost(slot.rank));
-    if now < slot.ready_at || !affords {
-        return None;
-    }
-    let target = match (ability.aim, casting.target) {
-        (Aim::None, _) => CastTarget::None,
-        (Aim::Unit(filter), CastTarget::Unit(target))
-            if living(target)
-                .is_some_and(|unit| filter.selects(attitude(unit.team), unit.tags)) =>
-        {
-            CastTarget::Unit(target)
-        }
-        _ => return None,
-    };
-    Some(Checked {
-        id: slot.ability,
-        target,
-        ability,
-        rank: slot.rank,
-        range: values.range,
-        cost: values.cost,
-        cooldown: values.cooldown,
-        cast_time: values.cast_time,
-    })
-}
-
-/// Whether a unit target is within the ability's range of a caster at `position` with a body of
-/// `radius`, as an attack's range reaches. The range counts only when a cast starts.
-fn in_range(
-    checked: &Checked<'_>,
-    position: Position,
-    radius: Num,
-    targets: &Targets<'_, '_>,
-) -> bool {
-    let (Range::Meters(range), CastTarget::Unit(target)) = (checked.range, checked.target) else {
-        return true;
-    };
-    targets
-        .living(target)
-        .is_some_and(|unit| targets.reaches(position, radius, range, &unit))
 }
 
 /// Resolves the casts due this tick, in the order of their caster's stable id. Their calls share
@@ -354,8 +62,9 @@ fn resolve_casts(world: &mut World, mut due: Local<'_, Vec<(StableId, Entity)>>)
     for (id, entity) in world.resource::<EntityIndex>().iter() {
         let caster = world.entity(entity);
         let resolves = caster
-            .get::<AbilitySlots>()
-            .and_then(AbilitySlots::casting)
+            .get::<ActionSlots>()
+            .and_then(ActionSlots::in_progress)
+            .filter(|underway| underway.kind == ActionKind::Cast)
             .and_then(|casting| casting.resolves_at)
             .is_some_and(|at| at <= now);
         if resolves && !caster.contains::<Dead>() {
@@ -366,7 +75,7 @@ fn resolve_casts(world: &mut World, mut due: Local<'_, Vec<(StableId, Entity)>>)
         let can_cast = !UnitTags::effects_of(world.get::<UnitTags>(entity)).blocks(Block::Cast);
         if !can_cast {
             world
-                .get_mut::<AbilitySlots>(entity)
+                .get_mut::<ActionSlots>(entity)
                 .expect("a due caster has slots")
                 .interrupt();
         }
@@ -412,7 +121,7 @@ fn resolve(batch: &mut ScriptBatch<'_>, ctx: &Ctx, now: Tick, caster: StableId, 
     }
     batch
         .world()
-        .get_mut::<AbilitySlots>(entity)
+        .get_mut::<ActionSlots>(entity)
         .expect("a caster has slots")
         .stop();
 }
@@ -425,7 +134,7 @@ fn apply(world: &mut World, ctx: &Ctx, now: Tick, entity: Entity, prepared: &Pre
         pools.pay(&prepared.cost);
     }
     world
-        .get_mut::<AbilitySlots>(entity)
+        .get_mut::<ActionSlots>(entity)
         .expect("a caster has slots")
         .cool_down(prepared.slot, now.after(prepared.cooldown));
 }
@@ -444,10 +153,10 @@ fn prepare(
         return Ok(None);
     };
     let unit = world.entity(entity);
-    let slots = unit.get::<AbilitySlots>().expect("a due caster has slots");
-    let casting = slots.casting().expect("a due caster casts");
+    let slots = unit.get::<ActionSlots>().expect("a due caster has slots");
+    let casting = slots.in_progress().expect("a due caster casts");
     let team = *unit.get::<Team>().expect("a caster has a team");
-    let book = world.resource::<AbilityBook>();
+    let book = world.resource::<ActionBook>();
     let owner = unit.get::<Owner>().map(|owner| owner.slot());
     let purse = Purse {
         pools: unit.get::<Pools>(),
@@ -456,40 +165,36 @@ fn prepare(
     };
     let living = |id| view.living(id);
     let attitude = |other| view.attitude(team, other);
-    let Some(checked) = check(book, now, slots, purse, casting, attitude, living) else {
+    let Some(checked) = book.check(now, slots, purse, casting, attitude, living) else {
         return Ok(None);
     };
     let target = match casting.target {
-        CastTarget::None => Dynamic::UNIT,
-        CastTarget::Unit(id) => view
+        ActionTarget::None => Dynamic::UNIT,
+        ActionTarget::Unit(id) => view
             .living(id)
             .and_then(|_| view.unit(id))
             .map_or(Dynamic::UNIT, Dynamic::from),
     };
     let mut frame = ctx.frame();
     frame.begin_cast(world, checked.id, checked.rank, caster.id)?;
-    let resource_cost = checked.ability.resource_cost(checked.rank);
+    let resource_cost = checked.action.resource_cost(checked.rank);
     if let (Some(owner), false) = (owner, resource_cost.is_empty()) {
-        let resources = frame
+        frame
             .resources_mut()
-            .expect("a purse that affords player resources is a match's");
-        for cost in resource_cost {
-            resources
-                .add(owner, cost.resource, -cost.amount)
-                .expect("a cost the player affords takes no amount past an integer");
-        }
+            .expect("a purse that affords player resources is a match's")
+            .pay(owner, resource_cost);
     }
     drop(frame);
-    view.set_caller(checked.ability.package);
+    view.set_caller(checked.action.package);
     let pool = owner.map_or(Pool::Think, Pool::Player);
     Ok(Some(Prepared {
         caster,
         pool,
         slot: casting.slot,
         target,
-        on_resolve: checked.ability.on_resolve,
-        cost: checked.cost,
-        cooldown: checked.cooldown,
+        on_resolve: checked.action.on_resolve,
+        cost: checked.values.cost,
+        cooldown: checked.values.cooldown,
     }))
 }
 

@@ -11,9 +11,8 @@ use campfire_math::Num;
 use campfire_script::{ScriptHost, ScriptId};
 use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, Ticks};
 
-use crate::abilities::ability_book::AbilityId;
+use crate::actions::action_book::ActionId;
 use crate::combat::CombatSet;
-use crate::combat::attack_stats::AttackStats;
 use crate::combat::combat_events::CombatEvents;
 use crate::combat::dead::Dead;
 use crate::navigation::move_step::MoveStep;
@@ -35,7 +34,7 @@ use crate::stats::player_modifiers::{PlayerModifier, PlayerModifiers};
 use crate::stats::pool_book::PoolBook;
 use crate::stats::pools::Pools;
 use crate::stats::refresh_scratch::{RefreshScratch, Refreshing};
-use crate::stats::stat::{EngineStat, Stat};
+use crate::stats::stat::Stat;
 use crate::stats::stat_book::StatBook;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::owner::Owner;
@@ -448,7 +447,7 @@ struct Held {
     target: StableId,
     modifier: ModifierId,
     source: Option<StableId>,
-    ability: Option<AbilityId>,
+    ability: Option<ActionId>,
     rank: u8,
 }
 
@@ -492,8 +491,8 @@ fn give_derived_parts(
 }
 
 /// Derives the stats and tags of every unit whose level or modifiers changed, that is new, or
-/// that carries a live change, and sets what holds their effect: how far it walks a tick, its
-/// attack's damage and period, and its pools' maxima, a pool keeping the rule of stats.md. A
+/// that carries a live change, and sets what holds their effect: how far it walks a tick and its
+/// pools' maxima, a pool keeping the rule of stats.md. A
 /// modifier its tags' immunities suppress gives no tags and no stats. Each stat is computed for
 /// every refreshing unit in the stat book's order, so a live change reads its source's stats
 /// once they are final; a live change that does not resolve keeps the value it last had. An
@@ -534,16 +533,7 @@ fn refresh_stats(
                 ),
             >,
             Query<'_, '_, (&UnitType, &Level, &UnitStats)>,
-            Query<
-                '_,
-                '_,
-                (
-                    &mut UnitStats,
-                    Option<&mut MoveStep>,
-                    Option<&mut AttackStats>,
-                    Option<&mut Pools>,
-                ),
-            >,
+            Query<'_, '_, (&mut UnitStats, Option<&mut MoveStep>, Option<&mut Pools>)>,
         ),
     >,
     mut scratch: Local<'_, RefreshScratch>,
@@ -600,7 +590,7 @@ fn refresh_stats(
     let count = usize::from(book.len());
     let mut writes = units.p2();
     for (unit, refreshing) in scratch.units.iter().enumerate() {
-        let Ok((mut stats, step, attack, pools)) = writes.get_mut(refreshing.entity) else {
+        let Ok((mut stats, step, pools)) = writes.get_mut(refreshing.entity) else {
             continue;
         };
         let values = scratch.values(unit, count);
@@ -608,14 +598,6 @@ fn refresh_stats(
         refill.extend_from_slice(values);
         if let (Some(mut step), Some(value)) = (step, book.step(values)) {
             step.set_if_neq(MoveStep::new(value).expect("a step is at least 0"));
-        }
-        if let Some(mut attack) = attack {
-            let damage = book.engine(values, EngineStat::AttackDamage);
-            let period = book.period(values, attack.windup());
-            if let (Some(damage), Some(period)) = (damage, period) {
-                let derived = attack.derived(damage.max(Num::ZERO), period);
-                attack.set_if_neq(derived);
-            }
         }
         if let Some(mut pools) = pools {
             let mut changed = *pools;
@@ -658,7 +640,7 @@ pub(crate) mod internals {
     use campfire_math::Num;
     use campfire_sim::{StableId, TickRate};
 
-    use crate::abilities::ability_book::AbilityId;
+    use crate::actions::action_book::ActionId;
     use crate::scripts::ctx::Ctx;
     use crate::stats::Stats;
     use crate::stats::modifier_book::{Applier, ModifierId};
@@ -681,7 +663,7 @@ pub(crate) mod internals {
         world: &mut World,
         target: StableId,
         id: ModifierId,
-        from: Option<(StableId, Option<AbilityId>, u8)>,
+        from: Option<(StableId, Option<ActionId>, u8)>,
         passive: bool,
     ) {
         let (source, ability, rank) = from.map_or((None, None, 1), |(source, ability, rank)| {
