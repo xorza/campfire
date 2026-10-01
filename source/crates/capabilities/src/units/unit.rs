@@ -1,7 +1,7 @@
 use campfire_math::Num;
 use campfire_script::NumError;
 use campfire_script::Raised;
-use campfire_script::rhai::{Dynamic, INT, ImmutableString};
+use campfire_script::rhai::{Dynamic, INT, ImmutableString, NativeCallContext};
 use campfire_sim::{Capability, Position, StableId};
 
 use crate::scripts::api_builder::ApiBuilder;
@@ -198,23 +198,35 @@ impl Unit {
         let within = position(
             "within",
             "(pos, radius)",
-            "whether `pos` is within `radius` on the ground plane, exactly: the test for reach",
+            "whether `pos` is within `radius` in the map's metric, exactly: the test for reach",
         );
         api.ty::<Position>("Pos")
             .bind(
-                position("distance_to", "(pos)", "the distance to `pos`"),
-                |from: &mut Position, to: Position| {
-                    from.get()
-                        .checked_distance(to.get())
+                position(
+                    "distance_to",
+                    "(pos)",
+                    "the distance to `pos` in the map's metric",
+                ),
+                |call: NativeCallContext<'_>, from: &mut Position, to: Position| {
+                    View::of_call(&call)
+                        .metric()
+                        .offset(*from, to)
+                        .checked_length()
                         .ok_or_else(|| Box::new(Raised::error(NumError::Overflow)))
                 },
             )
-            .bind(within, |from: &mut Position, to: Position, radius: Num| {
-                Unit::within(*from, to, radius)
-            })
-            .bind(within, |from: &mut Position, to: Position, radius: INT| {
-                Unit::within(*from, to, ApiError::num(radius)?)
-            })
+            .bind(
+                within,
+                |call: NativeCallContext<'_>, from: &mut Position, to: Position, radius: Num| {
+                    Unit::within(&call, *from, to, radius)
+                },
+            )
+            .bind(
+                within,
+                |call: NativeCallContext<'_>, from: &mut Position, to: Position, radius: INT| {
+                    Unit::within(&call, *from, to, ApiError::num(radius)?)
+                },
+            )
             .plan(position(
                 "direction_to",
                 "(pos)",
@@ -245,13 +257,18 @@ impl Unit {
         ));
     }
 
-    /// Whether `to` is within `radius` of `from` on the ground plane, exactly: as every range and
+    /// Whether `to` is within `radius` of `from` in the map's metric, exactly: as every range and
     /// query radius, so a script's reach agrees with combat's.
-    fn within(from: Position, to: Position, radius: Num) -> Checked<bool> {
+    fn within(
+        call: &NativeCallContext<'_>,
+        from: Position,
+        to: Position,
+        radius: Num,
+    ) -> Checked<bool> {
         if radius < Num::ZERO {
             return Err(ApiError::NegativeRadius.fail().into());
         }
-        Ok(from.within_ground(to, radius))
+        Ok(View::of_call(call).metric().within(from, to, radius))
     }
 
     /// The unit's attack target, `()` when it has none or the view did not read it.

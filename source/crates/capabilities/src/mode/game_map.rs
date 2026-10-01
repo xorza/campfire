@@ -1,29 +1,44 @@
+use std::rc::Rc;
+
 use campfire_script::rhai::{Array, Dynamic, ImmutableString};
 use campfire_sim::Position;
 
-/// `ctx.map`: the map's paths, by name, and its neutral spawns.
+use crate::mode::marker::Marker;
+use crate::units::team::Team;
+
+/// `ctx.map`: the map's paths, by name, and its markers, in the map's order.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct GameMap {
     pub(crate) paths: Array,
-    pub(crate) neutral_spawns: Array,
-}
-
-/// A neutral spawn of the map, as `ctx.map.neutral_spawns` lists it.
-#[derive(Debug, Clone)]
-pub(crate) struct NeutralSpawn {
-    pub(crate) unit_type: ImmutableString,
-    pub(crate) pos: Position,
+    markers: Rc<[Marker]>,
 }
 
 impl GameMap {
-    /// The map of `paths`, by name, and `neutral_spawns`.
+    /// The map of `paths`, by name, and `markers`.
     pub(crate) fn new(
         paths: impl Iterator<Item = ImmutableString>,
-        neutral_spawns: impl Iterator<Item = NeutralSpawn>,
+        markers: impl Iterator<Item = Marker>,
     ) -> GameMap {
         GameMap {
             paths: paths.map(Dynamic::from).collect(),
-            neutral_spawns: neutral_spawns.map(Dynamic::from).collect(),
+            markers: markers.collect(),
         }
+    }
+
+    /// The markers with tag `tag`, in the map's order.
+    pub(crate) fn markers(&self, tag: &str) -> Array {
+        self.markers
+            .iter()
+            .filter(|marker| marker.has(tag))
+            .map(|marker| Dynamic::from(marker.clone()))
+            .collect()
+    }
+
+    /// The point of the first marker with tag `tag` and team `team`, if it has one.
+    pub(crate) fn point(&self, tag: &str, team: Team) -> Option<Position> {
+        self.markers
+            .iter()
+            .find(|marker| marker.has(tag) && marker.info().team == Some(team))
+            .and_then(|marker| marker.info().pos)
     }
 }

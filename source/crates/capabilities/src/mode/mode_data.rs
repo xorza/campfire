@@ -1,10 +1,12 @@
 use std::collections::BTreeMap;
 
 use campfire_content::PackagePath;
+use campfire_script::rhai::{Dynamic, ImmutableString};
 use serde::Deserialize;
 
 use crate::combat::combat_rules::CombatRules;
 use crate::mode::relation_data::RelationData;
+use crate::navigation::navigation_rules::NavigationRules;
 use crate::scripts::state_decl::StateDecl;
 use crate::stats::modifier_data::ModifierData;
 use crate::stats::pool_data::PoolData;
@@ -21,6 +23,8 @@ pub struct ModeData {
     pub script: PackagePath,
     #[serde(default)]
     pub combat: CombatRules,
+    #[serde(default)]
+    pub navigation: NavigationRules,
     /// The type of each player input, by name. An input that does not match its type never
     /// reaches the script.
     #[serde(default)]
@@ -59,12 +63,35 @@ pub enum InputType {
     StringList,
 }
 
-/// A mode param: a value, or a list, as `ctx.p` reads it in the mode's and the AI's scripts.
+/// A mode param: a value, a list, or a text, as `ctx.p` reads it in the mode's and the AI's
+/// scripts, and as a marker's params hold it.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(untagged)]
 pub enum ModeParam {
     Value(Scalar),
     List(Vec<ListEntry>),
+    /// A string that is not a decimal, such as a unit type.
+    Text(String),
+}
+
+impl ModeParam {
+    /// The param as a script reads it.
+    pub(crate) fn to_dynamic(&self) -> Dynamic {
+        let text = |text: &str| Dynamic::from(ImmutableString::from(text));
+        match self {
+            ModeParam::Value(value) => value.to_dynamic(),
+            ModeParam::List(entries) => Dynamic::from_array(
+                entries
+                    .iter()
+                    .map(|entry| match entry {
+                        ListEntry::Value(value) => value.to_dynamic(),
+                        ListEntry::Text(entry) => text(entry),
+                    })
+                    .collect(),
+            ),
+            ModeParam::Text(value) => text(value),
+        }
+    }
 }
 
 /// An entry of a list param: a value, or a string that is not a decimal, such as a unit type.

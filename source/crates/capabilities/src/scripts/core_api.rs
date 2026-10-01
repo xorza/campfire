@@ -40,7 +40,8 @@ impl CoreApi {
                 MemberSpec::call("teleport", "(unit, pos)", "puts `unit` at `pos`")
                     .capability(Capability::Navigation),
             )
-            .data(DataTable::Collision, &["radius"], &[])
+            .data(DataTable::ModeNavigation, &["layers"], &[])
+            .data(DataTable::Collision, &["radius", "layer"], &[])
             .data(DataTable::Tag, &["blocks", "hidden", "detects", "immune"], &[]);
         api.tag_effect(TagEffect::Blocks(Block::Move), Status::Runs)
             .tag_effect(TagEffect::Blocks(Block::Use), Status::Planned);

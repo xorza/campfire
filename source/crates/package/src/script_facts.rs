@@ -25,6 +25,8 @@ pub(crate) struct ScriptFacts {
     pub(crate) stats: Vec<String>,
     /// The pools `unit.pool`, `unit.pool_max` and `ctx.restore` take.
     pub(crate) pools: Vec<String>,
+    /// The marker tags `ctx.map.markers` and `ctx.spawn_avatars` take.
+    pub(crate) markers: Vec<String>,
     /// The filters the queries take.
     pub(crate) filters: Vec<String>,
     /// The kinds `ctx.damage` takes.
@@ -137,6 +139,7 @@ impl ScriptFacts {
                     "nearest_visible" => (&mut self.filters, 2),
                     "damage" => (&mut self.damage_kinds, 2),
                     "restore" => (&mut self.pools, 1),
+                    "spawn_avatars" => (&mut self.markers, 0),
                     _ => return,
                 };
                 list.extend(literal(at));
@@ -190,13 +193,14 @@ impl ScriptFacts {
         }
     }
 
-    /// What a method called on any value uses: `has_modifier`, `stat`, `pool` and `pool_max`
-    /// take names.
+    /// What a method called on any value uses: `has_modifier`, `stat`, `pool`, `pool_max` and
+    /// `markers` take names.
     fn read_method(&mut self, call: &FnCallExpr) {
         let list = match call.name.as_str() {
             "has_modifier" => &mut self.modifiers,
             "stat" => &mut self.stats,
             "pool" | "pool_max" => &mut self.pools,
+            "markers" => &mut self.markers,
             _ => return,
         };
         list.extend(call.args.first().and_then(string));
@@ -280,6 +284,7 @@ fn on_resolve(ctx, caster, target) {
         }
     }
     ctx.restore(caster, "mana", caster.pool("energy") + caster.pool_max("health"));
+    for camp in ctx.map.markers("camp") {}
     let first = ctx.teams[0];
     ctx.state.phase = ctx.nearest_visible(caster, 5, name);
     helper(ctx, caster.params.gold);
@@ -314,6 +319,7 @@ fn helper(ctx, gold) {}
                 ("p", value),
                 ("add_modifier", call),
                 ("restore", call),
+                ("map", value),
                 ("teams", value),
                 ("state", value),
                 ("nearest_visible", call),
@@ -324,6 +330,7 @@ fn helper(ctx, gold) {}
         assert_eq!(facts.modifiers, ["kindle", "kindle"]);
         assert_eq!(facts.stats, ["armor"]);
         assert_eq!(facts.pools, ["mana", "energy", "health"]);
+        assert_eq!(facts.markers, ["camp"]);
         assert_eq!(facts.filters, ["enemies:avatar"]);
         assert_eq!(facts.damage_kinds, ["magic"]);
     }

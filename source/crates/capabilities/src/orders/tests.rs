@@ -13,7 +13,7 @@ use crate::combat::combatant::Combatant;
 use crate::combat::combatant::internals::Armed;
 use crate::combat::on_death::OnDeath;
 use crate::navigation::move_step::MoveStep;
-use crate::navigation::path_walker::PathDirection;
+use crate::navigation::path_walker::PathEnd;
 use crate::scripts::error::ApiError;
 use crate::scripts::match_scripts::MatchScripts;
 use crate::scripts::script_failures::ScriptFailures;
@@ -791,7 +791,7 @@ fn a_walker_goes_back_to_its_path_after_a_chase() {
         combatant(100, 1, 1, 5, 0).bundle(Team::new(0)),
         meter().bundle(),
         OnPath::new(PathId::new(0)),
-        PathWalker::start(PathDirection::Forward),
+        PathWalker::start(PathEnd::Start),
     );
     let chaser = game.spawn(at(0, 0, 0), walker);
     let prey = game.still(Team::new(1), at(1, 0, 3), dummy(100));
@@ -825,14 +825,8 @@ fn a_walker_follows_its_path_in_its_direction() {
             PathWalker::start(direction),
         )
     };
-    let forward = game.spawn(
-        at(0, 0, 0),
-        path_walker(Team::new(0), PathDirection::Forward),
-    );
-    let backward = game.spawn(
-        at(4, 0, 4),
-        path_walker(Team::new(1), PathDirection::Backward),
-    );
+    let forward = game.spawn(at(0, 0, 0), path_walker(Team::new(0), PathEnd::Start));
+    let backward = game.spawn(at(4, 0, 4), path_walker(Team::new(1), PathEnd::End));
 
     // Each walks a meter a tick along the waypoints in its direction, then stays.
     let walked: Vec<_> = (0..9)

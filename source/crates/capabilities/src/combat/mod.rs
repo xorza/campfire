@@ -201,7 +201,7 @@ fn attack(
         };
         if attack.started().is_none()
             && now >= attack.ready_at()
-            && stats.reaches(position, Body::radius_of(body), &target)
+            && targets.reaches(position, Body::radius_of(body), stats.range(), &target)
         {
             attack.start(now);
         }

@@ -1,6 +1,6 @@
 use std::num::NonZeroU32;
 
-use campfire_capabilities::{Bounds, CapabilitySet};
+use campfire_capabilities::{Bounds, CapabilitySet, Metric};
 use campfire_package::RELEASE;
 use campfire_protocol::secp256k1::SecretKey;
 use campfire_protocol::{CertificateHash, ConnectChallenge, Fingerprint, SeedChain, SessionTerms};
@@ -27,6 +27,7 @@ fn client() -> SimClient {
             mode: Fingerprint::new([5; 32]),
             dependencies: vec![Fingerprint::new([4; 32])],
             capabilities: CapabilitySet::new(&[]).unwrap(),
+            metric: Metric::Planar,
             bounds: Bounds::WORLD,
             pathing: None,
             walkers: Vec::new(),

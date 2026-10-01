@@ -5,10 +5,13 @@ use bevy_ecs::resource::Resource;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, StableId};
 
+use crate::navigation::walker::Walker;
 use crate::units::body::Body;
+use crate::units::layer::Layer;
 use crate::values::segment::Segment;
 
-/// Bodies that stand, by the square buckets their bounding boxes cover. As a resource it holds the
+/// Bodies that stand, by layer and by the square buckets their bounding boxes cover, so a query
+/// sees only the bodies of its layer. As a resource it holds the
 /// static bodies, those of the living units that cannot walk: collision finds a walker's static
 /// contacts in it, and the pathing grid the static bodies near one that changed. Steering keeps
 /// another for the units that stand this tick. A bucket is twice the widest walker's radius wide,
@@ -37,11 +40,13 @@ pub(crate) struct IndexedBody {
     pub(crate) id: StableId,
     pub(crate) at: Position,
     pub(crate) radius: Num,
+    pub(crate) layer: Layer,
 }
 
-/// A body in one bucket.
+/// A body in one bucket of its layer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct Entry {
+    layer: Layer,
     row: i64,
     column: i64,
     id: StableId,
@@ -134,6 +139,7 @@ impl BodyIndex {
             for row in rows.low..=rows.high {
                 self.fresh
                     .extend((columns.low..=columns.high).map(|column| Entry {
+                        layer: body.layer,
                         row,
                         column,
                         id: body.id,
@@ -176,18 +182,19 @@ impl BodyIndex {
         self.bodies.len()
     }
 
-    /// Calls `visit` once with each static body whose bounding box meets the square `reach` from
-    /// `at` on each side, on the ground plane: every body that comes within `reach` of `at`, and
-    /// some that do not. In order of the buckets, row by row.
-    pub(crate) fn near(&self, at: Vec3, reach: Num, visit: impl FnMut(&IndexedBody)) {
+    /// Calls `visit` once with each body of `layer` whose bounding box meets the square `reach`
+    /// from `at` on each side, on the ground plane: every body of the layer that comes within
+    /// `reach` of `at`, and some that do not. In order of the buckets, row by row.
+    pub(crate) fn near(&self, layer: Layer, at: Vec3, reach: Num, visit: impl FnMut(&IndexedBody)) {
         let rows = BodyIndex::buckets(self.bucket, at.z, reach);
         let columns = BodyIndex::buckets(self.bucket, at.x, reach);
-        self.meeting(rows, columns, visit);
+        self.meeting(layer, rows, columns, visit);
     }
 
-    /// Whether a static body comes closer to `segment` than its radius and `radius` together,
-    /// exactly: whether a walker of `radius` along it would overlap one.
-    pub(crate) fn blocks(&self, segment: Segment, radius: Num) -> bool {
+    /// Whether a body of `walker`'s layer comes closer to `segment` than its radius and the
+    /// walker's together, exactly: whether the walker along it would overlap one.
+    pub(crate) fn blocks(&self, segment: Segment, walker: Walker) -> bool {
+        let radius = walker.radius;
         let (from, to) = (segment.start().get(), segment.end().get());
         let span = |a: Num, b: Num| Buckets {
             low: (a.min(b) - radius)
@@ -198,20 +205,29 @@ impl BodyIndex {
                 .div_euclid(self.bucket.to_bits()),
         };
         let mut blocked = false;
-        self.meeting(span(from.z, to.z), span(from.x, to.x), |body| {
-            blocked = blocked || segment.comes_within(body.at, radius + body.radius);
-        });
+        self.meeting(
+            walker.layer,
+            span(from.z, to.z),
+            span(from.x, to.x),
+            |body| {
+                blocked = blocked || segment.comes_within(body.at, radius + body.radius);
+            },
+        );
         blocked
     }
 
-    /// Whether a static body blocks a walker of `radius` on its way from `from` along
-    /// `waypoints`.
-    pub(crate) fn blocks_route(&self, from: Position, waypoints: &[Position], radius: Num) -> bool {
+    /// Whether a body blocks `walker` on its way from `from` along `waypoints`.
+    pub(crate) fn blocks_route(
+        &self,
+        from: Position,
+        waypoints: &[Position],
+        walker: Walker,
+    ) -> bool {
         let mut at = from;
         waypoints.iter().any(|&next| {
             let leg = Segment::new(at, next);
             at = next;
-            self.blocks(leg, radius)
+            self.blocks(leg, walker)
         })
     }
 
@@ -220,16 +236,22 @@ impl BodyIndex {
         self.changes
     }
 
-    /// Calls `visit` once with each body in the buckets of `rows` and `columns`, in the first of
-    /// them its own buckets share.
-    fn meeting(&self, rows: Buckets, columns: Buckets, mut visit: impl FnMut(&IndexedBody)) {
+    /// Calls `visit` once with each body of `layer` in the buckets of `rows` and `columns`, in
+    /// the first of them its own buckets share.
+    fn meeting(
+        &self,
+        layer: Layer,
+        rows: Buckets,
+        columns: Buckets,
+        mut visit: impl FnMut(&IndexedBody),
+    ) {
         for row in rows.low..=rows.high {
-            let start = self
-                .entries
-                .partition_point(|entry| (entry.row, entry.column) < (row, columns.low));
-            let run = self.entries[start..]
-                .iter()
-                .take_while(|entry| entry.row == row && entry.column <= columns.high);
+            let start = self.entries.partition_point(|entry| {
+                (entry.layer, entry.row, entry.column) < (layer, row, columns.low)
+            });
+            let run = self.entries[start..].iter().take_while(|entry| {
+                entry.layer == layer && entry.row == row && entry.column <= columns.high
+            });
             for entry in run {
                 let body = &self.bodies[self
                     .bodies
@@ -271,15 +293,20 @@ mod tests {
             id,
             at: Position::new(Vec3::new(num(x), Num::ZERO, num(z))).unwrap(),
             radius,
+            layer: Layer::FIRST,
         }
     }
 
-    fn near(index: &BodyIndex, x: i64, z: i64, reach: Num) -> Vec<StableId> {
+    fn near_on(index: &BodyIndex, layer: Layer, x: i64, z: i64, reach: Num) -> Vec<StableId> {
         let mut found = Vec::new();
-        index.near(Vec3::new(num(x), Num::ZERO, num(z)), reach, |body| {
+        index.near(layer, Vec3::new(num(x), Num::ZERO, num(z)), reach, |body| {
             found.push(body.id);
         });
         found
+    }
+
+    fn near(index: &BodyIndex, x: i64, z: i64, reach: Num) -> Vec<StableId> {
+        near_on(index, Layer::FIRST, x, z, reach)
     }
 
     #[test]
@@ -331,6 +358,35 @@ mod tests {
         let mut again = BodyIndex::new(Num::ONE);
         again.update(&moved);
         assert_eq!(again.entries, index.entries);
+
+        // A body of another layer at (−10, −10), and one beside it at (−9, −10): each layer's
+        // query finds only its own, and a walker of 1 m along x through both meets only its own.
+        let (air, above) = (Layer::new(1), ids.allocate());
+        let layered = [
+            moved[0],
+            moved[1],
+            moved[2],
+            IndexedBody {
+                layer: air,
+                ..body(above, -9, -10, Num::ONE)
+            },
+        ];
+        assert!(index.update(&layered));
+        assert_eq!(near(&index, -10, -10, Num::ONE), [new]);
+        assert_eq!(near_on(&index, air, -10, -10, Num::ONE), [above]);
+        assert_eq!(near_on(&index, Layer::new(2), -10, -10, Num::ONE), []);
+        let at = |x| Position::new(Vec3::new(num(x), Num::ZERO, num(-13))).unwrap();
+        let (beside, past) = (Segment::new(at(-12), at(-7)), Segment::new(at(30), at(31)));
+        for (layer, blocked) in [(Layer::FIRST, true), (air, true), (Layer::new(2), false)] {
+            let walker = Walker {
+                layer,
+                radius: num(3),
+            };
+            // 3 m from each center to the segment along z = −13: within the radii's 1 + 3 = 4 m.
+            assert_eq!(index.blocks(beside, walker), blocked, "{layer:?}");
+            assert!(!index.blocks(past, walker));
+        }
+        assert!(index.update(&moved));
 
         assert!(index.update(&[]));
         assert_eq!(index.entries, []);

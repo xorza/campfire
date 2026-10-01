@@ -299,10 +299,10 @@ fn follow_paths(
             continue;
         }
         let path = path.get();
-        let mut waypoint = paths.waypoint(path, walker.next(), walker.direction());
+        let mut waypoint = paths.waypoint(path, walker.next(), walker.walks_from());
         if waypoint.is_some_and(|at| position.within_ground(at, Body::radius_of(body))) {
             walker.advance();
-            waypoint = paths.waypoint(path, walker.next(), walker.direction());
+            waypoint = paths.waypoint(path, walker.next(), walker.walks_from());
         }
         walk_to(&mut destination, waypoint);
     }
@@ -338,7 +338,9 @@ fn chase(
                 attack.set_target(None);
                 walk_to(&mut destination, None);
             }
-            Some(unit) if stats.reaches(position, Body::radius_of(body), &unit) => {
+            Some(unit)
+                if targets.reaches(position, Body::radius_of(body), stats.range(), &unit) =>
+            {
                 walk_to(&mut destination, None);
             }
             Some(unit) => walk_to(&mut destination, Some(unit.pos)),

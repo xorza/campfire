@@ -81,6 +81,12 @@ impl UnitTypes {
         Ok(tag)
     }
 
+    /// Gives `unit_type` the tag `tag` too, as the engine tags a type by its sections.
+    pub(crate) fn give_tag(&mut self, unit_type: UnitType, tag: Tag) {
+        let entry = &mut self.types[unit_type.index()];
+        entry.tags = entry.tags.with(tag);
+    }
+
     /// The type named `name`.
     pub(crate) fn named(&self, name: &str) -> Option<UnitType> {
         Some(self.by_name[self.find(name).ok()?])

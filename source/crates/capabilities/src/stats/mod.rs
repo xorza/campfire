@@ -44,6 +44,7 @@ use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
+use crate::values::metric::Metric;
 
 pub(crate) mod level;
 pub(crate) mod live_param;
@@ -302,15 +303,16 @@ fn clear_dead_modifiers(mut dead: Query<'_, '_, &mut Modifiers, Added<Dead>>) {
     }
 }
 
-/// Holds each aura's modifier, in Resolve each tick, on every living unit within its radius on
-/// the ground plane that its `affects` selects, from the unit that carries the aura, and ends
+/// Holds each aura's modifier, in Resolve each tick, on every living unit within its radius in
+/// the map's metric that its `affects` selects, from the unit that carries the aura, and ends
 /// it on each unit that left. The aura's modifier resolves its numbers from the ability that
 /// gave the aura, and has no duration.
 fn apply_auras(
-    (book, stats, tick): (
+    (book, stats, tick, metric): (
         Option<Res<'_, ModifierBook>>,
         Option<Res<'_, StatBook>>,
         Res<'_, SimTick>,
+        Res<'_, Metric>,
     ),
     view: Option<NonSend<'_, View>>,
     abilities: Option<NonSend<'_, Ctx>>,
@@ -351,7 +353,7 @@ fn apply_auras(
             for (&target, &pos, &other, tags, _) in &units {
                 let tags = tags.map_or(TagSet::default(), |tags| tags.tags);
                 let attitude = relations.between(team, other);
-                if at.within_ground(pos, radius) && filter.selects(attitude, tags) {
+                if metric.within(at, pos, radius) && filter.selects(attitude, tags) {
                     held.push(Held {
                         target,
                         modifier,

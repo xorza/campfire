@@ -62,6 +62,7 @@ pub struct DataField {
 pub enum DataTable {
     Mode,
     ModeCombat,
+    ModeNavigation,
     Leech,
     Relation,
     Ability,
@@ -110,7 +111,7 @@ pub enum ApiOwner {
     Position,
     Vector,
     GameMap,
-    NeutralSpawn,
+    Marker,
 }
 
 /// How a script uses a name: reads a value of `ctx`, calls `ctx`, reads a handle's field, calls
@@ -406,7 +407,7 @@ impl ApiOwner {
         ApiOwner::Position,
         ApiOwner::Vector,
         ApiOwner::GameMap,
-        ApiOwner::NeutralSpawn,
+        ApiOwner::Marker,
     ];
 
     /// The owner as the reference titles it.
@@ -422,7 +423,7 @@ impl ApiOwner {
             ApiOwner::Position => "Position",
             ApiOwner::Vector => "Vector",
             ApiOwner::GameMap => "Map, `ctx.map`",
-            ApiOwner::NeutralSpawn => "Neutral spawn, of `ctx.map.neutral_spawns`",
+            ApiOwner::Marker => "Marker, of `ctx.map.markers(tag)`",
         }
     }
 }
@@ -437,9 +438,10 @@ impl Status {
 }
 
 impl DataTable {
-    pub const ALL: [DataTable; 13] = [
+    pub const ALL: [DataTable; 14] = [
         DataTable::Mode,
         DataTable::ModeCombat,
+        DataTable::ModeNavigation,
         DataTable::Leech,
         DataTable::Relation,
         DataTable::Ability,
@@ -458,6 +460,7 @@ impl DataTable {
         match self {
             DataTable::Mode => "`data/mode.toml`",
             DataTable::ModeCombat => "The mode's `[combat]`",
+            DataTable::ModeNavigation => "The mode's `[navigation]`",
             DataTable::Leech => "The mode's `[combat] leech`",
             DataTable::Relation => "A pair of teams, `[[relations]]`",
             DataTable::Ability => "An ability, `[abilities.<id>]`",
@@ -569,6 +572,7 @@ mod tests {
     use crate::combat::combat_rules::{CombatRules, Leech};
     use crate::mode::mode_data::ModeData;
     use crate::mode::relation_data::RelationData;
+    use crate::navigation::navigation_rules::NavigationRules;
     use crate::orders::ai_data::AiData;
     use crate::stats::modifier_data::{AuraData, ModifierData};
     use crate::units::block::Block;
@@ -743,6 +747,7 @@ mod tests {
         let tables = [
             (DataTable::Mode, serde_fields::<ModeData>()),
             (DataTable::ModeCombat, serde_fields::<CombatRules>()),
+            (DataTable::ModeNavigation, serde_fields::<NavigationRules>()),
             (DataTable::Leech, serde_fields::<Leech>()),
             (DataTable::Relation, serde_fields::<RelationData>()),
             (DataTable::Ability, serde_fields::<AbilityData>()),

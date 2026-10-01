@@ -11,17 +11,17 @@ use campfire_sim::{IdAllocator, Position, StableId};
 
 use crate::abilities::ability_slots::AbilitySlots;
 use crate::mode::error::ModeError;
-use crate::mode::game_map::{GameMap, NeutralSpawn};
+use crate::mode::game_map::GameMap;
 use crate::mode::map_data::MapData;
+use crate::mode::marker::{Marker, MarkerInfo};
 use crate::mode::mode_schema::ModeSchema;
 use crate::mode::mode_setup::{ModeSetup, UnitTypeSetup};
 use crate::mode::picks::Picks;
 use crate::mode::roster::Roster;
 use crate::mode::unit_kit::UnitKit;
 use crate::navigation::on_path::OnPath;
-use crate::navigation::path_walker::{PathDirection, PathWalker};
+use crate::navigation::path_walker::{PathEnd, PathWalker};
 use crate::navigation::paths::Paths;
-use crate::scripts::error::ApiError;
 use crate::scripts::frame::Frame;
 use crate::stats::Stats;
 use crate::stats::level::Level;
@@ -48,21 +48,21 @@ pub(crate) struct ModeBook {
     pub(crate) roster: Roster,
     pub(crate) teams: Rc<Teams>,
     pub(crate) bounds: Bounds,
-    /// Where each team's avatars spawn, by team index: a playing team's.
-    spawns: Vec<Option<Position>>,
     /// By unit type.
     kits: ByType<UnitKit>,
-    pub(crate) structures: Vec<Structure>,
-    /// `ctx.map`, as scripts read it.
-    map: GameMap,
+    /// The units the map places from the start.
+    pub(crate) placed: Vec<PlacedUnit>,
+    /// `ctx.map`, as scripts read it, and where avatars spawn.
+    pub(crate) map: GameMap,
 }
 
-/// A structure of the map, names resolved.
+/// A unit of the map, names resolved: on its path, if it names one, and walking it from `from`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Structure {
+pub(crate) struct PlacedUnit {
     pub(crate) unit_type: UnitType,
     pub(crate) team: Team,
     pub(crate) path: Option<PathId>,
+    pub(crate) from: Option<PathEnd>,
     pub(crate) pos: Position,
 }
 
@@ -90,9 +90,8 @@ impl ModeBook {
             roster: Roster::new(setup.avatars, setup.loadout),
             teams: Rc::new(teams),
             bounds: setup.map.bounds,
-            spawns: Vec::new(),
             kits,
-            structures: Vec::new(),
+            placed: Vec::new(),
             map: GameMap::default(),
         };
         book.set_map(setup.map, view, paths);
@@ -100,48 +99,39 @@ impl ModeBook {
     }
 
     /// Resolves the names of `map`, which the check found, unit types through `view`: its paths,
-    /// each playing team's spawn, its structures, and the neutral spawns `ctx.map` lists.
+    /// its placed units, and its markers, which `ctx.map` lists.
     fn set_map(&mut self, map: &MapData, view: &View, paths: &Paths) {
         let checked = "the mode's check passed";
-        self.spawns.resize(self.teams.count(), None);
-        for &team in self.teams.playing() {
-            let name = self.teams.name(team).expect("a team of the match");
-            let spawn = map.spawns[name].position().expect(checked);
-            self.spawns[usize::from(team.index())] = Some(spawn);
-        }
-        for structure in &map.structures {
-            let structure = Structure {
-                unit_type: view.unit_type(&structure.unit_type).expect(checked),
-                team: self.teams.named(&structure.team).expect(checked),
-                path: structure
+        for unit in &map.units {
+            let unit = PlacedUnit {
+                unit_type: view.unit_type(&unit.unit_type).expect(checked),
+                team: self.teams.named(&unit.team).expect(checked),
+                path: unit
                     .path
                     .as_ref()
                     .map(|path| paths.named(path).expect(checked)),
-                pos: structure.pos.position().expect(checked),
+                from: unit.from,
+                pos: unit.pos.position().expect(checked),
             };
-            self.structures.push(structure);
+            self.placed.push(unit);
         }
-        let neutral_spawns = map.neutral_spawns.iter().map(|spawn| NeutralSpawn {
-            unit_type: ImmutableString::from(spawn.unit_type.as_str()),
-            pos: spawn.pos.position().expect(checked),
+        let markers = map.markers.iter().map(|marker| {
+            let params = marker
+                .params
+                .iter()
+                .map(|(name, param)| (name.as_str().into(), param.to_dynamic()));
+            Marker::new(MarkerInfo {
+                name: marker.name.as_str().into(),
+                tags: marker.tags.iter().map(|tag| tag.as_str().into()).collect(),
+                pos: marker.pos.map(|pos| pos.position().expect(checked)),
+                team: marker
+                    .team
+                    .as_ref()
+                    .map(|team| self.teams.named(team).expect(checked)),
+                params: params.collect(),
+            })
         });
-        self.map = GameMap::new(paths.names().map(ImmutableString::from), neutral_spawns);
-    }
-
-    /// Where `team` walks the paths from: the first playing team from each path's start, the
-    /// second from its end.
-    pub(crate) fn path_end(&self, team: Team) -> Result<PathDirection, ApiError> {
-        let playing = self.teams.playing();
-        match (playing.iter().position(|&held| held == team), playing.len()) {
-            (Some(0), 2..) => Ok(PathDirection::Forward),
-            (Some(1), 2..) => Ok(PathDirection::Backward),
-            _ => Err(ApiError::NoPathEnd),
-        }
-    }
-
-    /// Where `team`'s avatars spawn: a playing team, which has a spawn.
-    pub(crate) fn avatar_spawn(&self, team: Team) -> Position {
-        self.spawns[usize::from(team.index())].expect("a playing team has a spawn")
+        self.map = GameMap::new(paths.names().map(ImmutableString::from), markers);
     }
 
     pub(crate) fn kit(&self, unit_type: UnitType) -> Option<UnitKit> {
@@ -198,10 +188,11 @@ impl ModeBook {
         unit.id()
     }
 
-    /// Spawns the avatar of each player who chose one and has none yet, in slot order, at their team's
-    /// spawn: under their control, with its abilities unlearned and their loadout, its passive's
-    /// params read through `frame`.
-    pub(crate) fn spawn_avatars(&self, world: &mut World, frame: &Frame) {
+    /// Spawns the avatar of each player who chose one and has none yet, in slot order, at the
+    /// point of their team's marker with tag `tag`, which the call checked each playing team has:
+    /// under their control, with its abilities unlearned and their loadout, its passive's params
+    /// read through `frame`.
+    pub(crate) fn spawn_avatars(&self, world: &mut World, frame: &Frame, tag: &str) {
         for slot in (0..self.teams.players()).map(PlayerSlot::new) {
             let pick = world.resource::<Picks>().of(slot);
             let (Some(avatar), false) = (pick.avatar, pick.spawned) else {
@@ -219,7 +210,9 @@ impl ModeBook {
                 world,
                 avatar.unit_type,
                 team,
-                self.avatar_spawn(team),
+                self.map
+                    .point(tag, team)
+                    .expect("the call checked each team's spawn"),
                 (Owner::new(slot), slots),
             );
             if let Some(passive) = avatar.passive {
@@ -244,23 +237,21 @@ impl ModeBook {
         }
     }
 
-    /// Spawns `types` in order at `team`'s end of `path`, walking it.
+    /// Spawns `types` of `team` in order at the end `from` of `path`, walking it from there.
     pub(crate) fn spawn_group(
         &self,
         world: &mut World,
         team: Team,
         path: PathId,
+        from: PathEnd,
         types: &[UnitType],
     ) {
-        let end = self
-            .path_end(team)
-            .expect("a spawn group's team was checked");
         let start = world
             .resource::<Paths>()
-            .waypoint(path, 0, end)
+            .waypoint(path, 0, from)
             .expect("a path has a waypoint");
         for &unit_type in types {
-            let walker = (OnPath::new(path), PathWalker::start(end));
+            let walker = (OnPath::new(path), PathWalker::start(from));
             self.spawn(world, unit_type, team, start, walker);
         }
     }

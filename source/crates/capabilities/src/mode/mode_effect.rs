@@ -1,6 +1,8 @@
+use campfire_script::rhai::ImmutableString;
 use campfire_sim::{Position, StableId, Ticks};
 
 use crate::mode::match_end::MatchResult;
+use crate::navigation::path_walker::PathEnd;
 use crate::scripts::state_value::StateValue;
 use crate::units::path_id::PathId;
 use crate::units::team::Team;
@@ -16,7 +18,8 @@ pub(crate) enum ModeEffect {
         repeat: bool,
         data: Option<StateValue>,
     },
-    SpawnAvatars,
+    /// At the markers of the tag.
+    SpawnAvatars(ImmutableString),
     End(MatchResult),
     SpawnUnit {
         unit_type: UnitType,
@@ -26,6 +29,7 @@ pub(crate) enum ModeEffect {
     SpawnGroup {
         team: Team,
         path: PathId,
+        from: PathEnd,
         types: Vec<UnitType>,
     },
     Respawn {

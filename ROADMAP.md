@@ -15,7 +15,7 @@ Done when the playtest finds that the 1v1 reads and plays well.
 
 ### 4. Game model
 
-- The model in code ([The model](design/04-capabilities/00-overview.md#the-model)): hook names; tags and their effects; one stat formula and pools; relations and vision groups; map markers, metric and layers; choices and one unit type schema; the action pipeline, weapons, deliveries as units and effects in data; stats and tags derived on the client.
+- The model in code ([The model](design/04-capabilities/00-overview.md#the-model)): choices and one unit type schema; the action pipeline, weapons, deliveries as units and effects in data; stats and tags derived on the client.
 - The package API version, and human text in Fluent files ([Game package](design/03-game-scripting.md#game-package)).
 - The reference packages rewritten to each as it lands.
 
@@ -42,7 +42,7 @@ Done when a LAN match whose server is killed restores and ends, its log verifyin
 
 ### 7. Genre proofs: RTS and campaign
 
-- First cuts: `production` (train, build, gather), the air and ground layers, region events, `quests` objectives, carry and campaigns, save converters.
+- First cuts: `production` (train, build, gather), region events, `quests` objectives, carry and campaigns, save converters.
 - The RTS skirmish and the RTS mission ([Genre proofs](design/04-capabilities/genres.md#genre-proofs)).
 
 Done when `det-ci` runs both on every OS with the same hashes.

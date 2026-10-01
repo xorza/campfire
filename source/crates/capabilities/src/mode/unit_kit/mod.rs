@@ -11,7 +11,6 @@ use crate::stats::pools::Pools;
 use crate::stats::stat::{EngineStat, Stat};
 use crate::stats::stats_data::StatsData;
 use crate::units::body::Body;
-use crate::units::collision_data::CollisionData;
 use crate::values::speed::Speed;
 use crate::vision::sight::Sight;
 use crate::vision::vision_data::VisionData;
@@ -103,13 +102,11 @@ impl UnitKit {
         })
     }
 
-    /// The kit with the body of its type's `collision` section, if it has one.
+    /// The kit with `body`, the body of its type's `collision` section on its layer, if it has
+    /// one.
     #[must_use]
-    pub fn with_collision(self, collision: Option<&CollisionData>) -> UnitKit {
-        UnitKit {
-            body: collision.map(|collision| collision.body),
-            ..self
-        }
+    pub const fn with_body(self, body: Option<Body>) -> UnitKit {
+        UnitKit { body, ..self }
     }
 
     /// The kit with the sight of its type's `vision` section, if it has one.

@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use bevy_ecs::world::{EntityRef, World};
 use campfire_math::{Num, PlayerSlot, Vec3};
-use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString};
+use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString, NativeCallContext};
 use campfire_sim::{Capability, EntityIndex, Position, SimTick, StableId, Tick, TickRate, Ticks};
 
 use crate::abilities::ability_book::AbilityId;
@@ -42,6 +42,7 @@ use crate::units::unit_types::UnitTypes;
 use crate::values::attitude::Attitude;
 use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
+use crate::values::metric::Metric;
 
 /// What scripts see: the match's unit types, and its units, those with a team, as the running
 /// phase of the tick began. The units are read again before each phase that runs
@@ -66,6 +67,7 @@ pub(crate) struct ScriptView {
     units: Vec<UnitRow>,
     /// How the teams regard each other, as the units were read.
     relations: Relations,
+    metric: Metric,
     /// The recent attacks on each unit, one run per unit.
     attacks: Vec<RecentAttack>,
     /// The ability slots of each unit, one run per unit.
@@ -214,6 +216,7 @@ impl ScriptView {
     fn read(&mut self, world: &World) {
         self.now = world.resource::<SimTick>().start();
         self.relations.clone_from(world.resource::<Relations>());
+        self.metric = *world.resource::<Metric>();
         self.units.clear();
         self.attacks.clear();
         self.slots.clear();
@@ -308,6 +311,7 @@ impl View {
             now: Tick::ZERO,
             units: Vec::new(),
             relations: Relations::default(),
+            metric: Metric::default(),
             attacks: Vec::new(),
             slots: Vec::new(),
             stat_names: Rc::from([]),
@@ -323,6 +327,18 @@ impl View {
     /// Reads the units of `world` for the phase that begins.
     pub(crate) fn read(&self, world: &World) {
         self.0.borrow_mut().read(world);
+    }
+
+    /// The view of the match whose script makes `call`.
+    pub(crate) fn of_call(call: &NativeCallContext<'_>) -> View {
+        call.tag()
+            .and_then(Dynamic::read_lock::<View>)
+            .expect("the units capability tags its host with the view")
+            .clone()
+    }
+
+    pub(crate) fn metric(&self) -> Metric {
+        self.0.borrow().metric
     }
 
     pub(crate) fn types_mut(&self) -> RefMut<'_, UnitTypes> {
@@ -646,7 +662,7 @@ impl View {
         Some(value.to_dynamic())
     }
 
-    /// The living units within `radius` of `pos` on the ground plane that `filter` selects
+    /// The living units within `radius` of `pos` in the map's metric that `filter` selects
     /// relative to `of`, by stable id; with `visible`, only those `of`'s team sees.
     pub(crate) fn find(
         &self,
@@ -664,12 +680,12 @@ impl View {
         let selected = view.selected(&of, filter).map_err(ApiError::fail)?;
         Ok(selected
             .filter(|row| !visible || row.seen_by.contains(of.team))
-            .filter(|row| pos.within_ground(row.pos, radius))
+            .filter(|row| view.metric.within(pos, row.pos, radius))
             .map(|row| Dynamic::from(Unit::new(row.id, self.clone())))
             .collect())
     }
 
-    /// The nearest living unit within `radius` of `of` on the ground plane that `filter` selects
+    /// The nearest living unit within `radius` of `of` in the map's metric that `filter` selects
     /// relative to it and its team sees, by exact distance, the lower stable id on a tie; `()`
     /// when there is none.
     pub(crate) fn nearest_visible(&self, of: &Unit, radius: Num, filter: &str) -> Checked<Dynamic> {
@@ -682,7 +698,7 @@ impl View {
             .selected(&of, filter)
             .map_err(ApiError::fail)?
             .filter(|row| row.seen_by.contains(of.team))
-            .map(|row| (of.pos.ground_offset(row.pos), row.id))
+            .map(|row| (view.metric.offset(of.pos, row.pos), row.id))
             .filter(|&(offset, _)| Vec3::ZERO.within(offset, radius))
             .min_by_key(|&(offset, id)| (offset.length_squared_bits(), id));
         Ok(nearest.map_or(Dynamic::UNIT, |(_, id)| {

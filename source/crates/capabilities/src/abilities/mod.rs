@@ -232,7 +232,7 @@ fn start_casts(
         let radius = Body::radius_of(body);
         let attitude = |other| targets.attitude(team, other);
         let started = check(&book, now, &slots, pools, casting, attitude, lookup)
-            .filter(|checked| in_range(checked, position, radius, lookup))
+            .filter(|checked| in_range(checked, position, radius, &targets))
             .map(|checked| (now.after(checked.cast_time), checked.target));
         match started {
             Some((resolves_at, target)) => slots.start(resolves_at, target),
@@ -321,19 +321,19 @@ fn check<'a>(
 }
 
 /// Whether a unit target is within the ability's range of a caster at `position` with a body of
-/// `radius`, on the ground plane, from the edge of the one body to the edge of the other. The
-/// range counts only when a cast starts.
+/// `radius`, as an attack's range reaches. The range counts only when a cast starts.
 fn in_range(
     checked: &Checked<'_>,
     position: Position,
     radius: Num,
-    living: impl Fn(StableId) -> Option<LivingUnit>,
+    targets: &Targets<'_, '_>,
 ) -> bool {
     let (Range::Meters(range), CastTarget::Unit(target)) = (checked.range, checked.target) else {
         return true;
     };
-    living(target)
-        .is_some_and(|unit| position.within_ground(unit.pos, range + radius + unit.radius))
+    targets
+        .living(target)
+        .is_some_and(|unit| targets.reaches(position, radius, range, &unit))
 }
 
 /// Resolves the casts due this tick, in the order of their caster's stable id. Their calls share

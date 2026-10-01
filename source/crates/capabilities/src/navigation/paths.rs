@@ -4,7 +4,7 @@ use std::sync::Arc;
 use bevy_ecs::resource::Resource;
 use campfire_sim::Position;
 
-use crate::navigation::path_walker::PathDirection;
+use crate::navigation::path_walker::PathEnd;
 use crate::units::path_id::PathId;
 
 /// The map's paths, each a named list of waypoints that walkers go along forward or backward. Map
@@ -67,13 +67,13 @@ impl Paths {
         &self.names[path.index()]
     }
 
-    /// Waypoint `index` of `path` counted in `direction`; `None` past the last.
-    pub fn waypoint(&self, path: PathId, index: u32, direction: PathDirection) -> Option<Position> {
+    /// Waypoint `index` of `path` counted from its end `from`; `None` past the last.
+    pub fn waypoint(&self, path: PathId, index: u32, from: PathEnd) -> Option<Position> {
         let range = self.ranges.get(path.index())?;
         let len = range.end - range.start;
-        let at = match direction {
-            PathDirection::Forward => index,
-            PathDirection::Backward => len.checked_sub(1)?.checked_sub(index)?,
+        let at = match from {
+            PathEnd::Start => index,
+            PathEnd::End => len.checked_sub(1)?.checked_sub(index)?,
         };
         (at < len).then(|| self.points[(range.start + at) as usize])
     }

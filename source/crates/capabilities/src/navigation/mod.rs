@@ -10,7 +10,7 @@ use campfire_sim::{
 };
 
 use crate::combat::dead::Dead;
-use crate::mode::map_data::{GroundPoint, MapData};
+use crate::mode::map_data::{MapData, MapPoint};
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::broadphase::Broadphase;
 use crate::navigation::collider::Collider;
@@ -23,8 +23,9 @@ use crate::navigation::pathing_grid::PathingGrid;
 use crate::navigation::paths::Paths;
 use crate::navigation::progress::Progress;
 use crate::navigation::route::{Route, Waiting};
-use crate::navigation::route_planner::{Ground, RoutePlanner, Short, Window};
+use crate::navigation::route_planner::{RoutePlanner, Short, Walkable, Window};
 use crate::navigation::steering::Steering;
+use crate::navigation::walker::Walker;
 use crate::units::block::Block;
 use crate::units::body::Body;
 use crate::units::script_view::{RowFill, View};
@@ -41,6 +42,7 @@ pub(crate) mod collider;
 pub(crate) mod destination;
 pub(crate) mod error;
 pub(crate) mod move_step;
+pub(crate) mod navigation_rules;
 pub(crate) mod on_path;
 pub(crate) mod path_walker;
 pub(crate) mod pathing_grid;
@@ -50,6 +52,7 @@ pub(crate) mod regions;
 pub(crate) mod route;
 pub(crate) mod route_planner;
 pub(crate) mod steering;
+pub(crate) mod walker;
 
 /// The `navigation` capability: units that walk routes to a destination, and the map's waypoint
 /// paths.
@@ -86,75 +89,82 @@ impl Navigation {
         registry.register_component::<Progress>();
     }
 
-    /// Checks that `map` can be walked by every unit that walks, for the widest of them, whose
-    /// radius is `widest`, among the map's structures, whose bodies' radii `body_of` gives by
-    /// unit type: every avatar spawn, neutral spawn and waypoint is a place that walker may
-    /// stand, and every waypoint is in a reachable set of the one before it, by the regions a
-    /// match plans its routes with. A narrower walker has every cell the widest has open. A map
-    /// with no `[navigation]` cells has nothing to check. Its points passed the mode's check.
+    /// Checks that `map` can be walked by every kind of unit that walks, of `walkers`, for the
+    /// widest of each layer, among the map's placed units that cannot walk, whose bodies
+    /// `body_of` gives by unit type, and none for a type that walks: every marker's point and
+    /// waypoint is a place that walker may stand, and every waypoint is in a reachable set of the
+    /// one before it, by the regions a match plans its routes with. A narrower walker of the
+    /// layer has every cell the widest has open. A map with no `[navigation]` cells, or a mode
+    /// with no walker, has nothing to check. Its points passed the mode's check.
     pub fn check_map(
         map: &MapData,
-        widest: Num,
-        body_of: impl Fn(&str) -> Option<Num>,
+        walkers: &[Walker],
+        body_of: impl Fn(&str) -> Option<Body>,
     ) -> Result<(), MapProblem> {
         let Some(cells) = map.pathing().expect("the mode's check passed") else {
             return Ok(());
         };
-        let point = |ground: &GroundPoint| ground.position().expect("the mode's check passed");
+        debug_assert!(walkers.is_sorted(), "walkers by layer, then radius");
+        let widest = walkers
+            .chunk_by(|a, b| a.layer == b.layer)
+            .map(|layer| *layer.last().expect("a chunk is never empty"));
+        let point = |point: &MapPoint| point.position().expect("the mode's check passed");
         let mut ids = IdAllocator::default();
         let structures: Vec<IndexedBody> = map
-            .structures
+            .units
             .iter()
-            .filter_map(|structure| {
+            .filter_map(|unit| {
+                let body = body_of(&unit.unit_type)?;
                 Some(IndexedBody {
                     id: ids.allocate(),
-                    at: point(&structure.pos),
-                    radius: body_of(&structure.unit_type)?,
+                    at: point(&unit.pos),
+                    radius: body.radius(),
+                    layer: body.layer(),
                 })
             })
             .collect();
-        let mut statics = BodyIndex::new(widest);
+        let widest_radius = walkers.iter().map(|walker| walker.radius).max();
+        let mut statics = BodyIndex::new(widest_radius.unwrap_or(Num::ZERO));
         statics.update(&structures);
-        let mut grid = PathingGrid::new(cells, vec![widest]);
+        let mut grid = PathingGrid::new(cells, widest.clone().collect());
         grid.update(&statics);
-        let layer = grid.layer(widest);
-        let stands = |at: Position| !statics.blocks(Segment::new(at, at), widest);
-        for (team, spawn) in &map.spawns {
-            if !stands(point(spawn)) {
-                return Err(MapProblem::SpawnBlocked { team: team.clone() });
+        for walker in widest {
+            let clearance = grid.clearance(walker);
+            let stands = |at: Position| !statics.blocks(Segment::new(at, at), walker);
+            for marker in &map.markers {
+                if marker.pos.is_some_and(|pos| !stands(point(&pos))) {
+                    let marker = marker.name.clone();
+                    return Err(MapProblem::MarkerBlocked { marker });
+                }
             }
-        }
-        for (spawn, neutral) in map.neutral_spawns.iter().enumerate() {
-            if !stands(point(&neutral.pos)) {
-                return Err(MapProblem::NeutralSpawnBlocked { spawn });
-            }
-        }
-        let reach = |at: Position| layer.regions().reach(cells.nearest_cell(at));
-        for path in &map.paths {
-            if let Some(waypoint) = path.points.iter().position(|ground| !stands(point(ground))) {
-                let path = path.name.clone();
-                return Err(MapProblem::WaypointBlocked { path, waypoint });
-            }
-            let closed = path
-                .points
-                .windows(2)
-                .position(|pair| !reach(point(&pair[0])).meets(reach(point(&pair[1]))));
-            if let Some(before) = closed {
-                let (path, waypoint) = (path.name.clone(), before + 1);
-                return Err(MapProblem::WaypointUnreachable { path, waypoint });
+            let reach = |at: Position| clearance.regions().reach(cells.nearest_cell(at));
+            for path in &map.paths {
+                if let Some(waypoint) = path.points.iter().position(|ground| !stands(point(ground)))
+                {
+                    let path = path.name.clone();
+                    return Err(MapProblem::WaypointBlocked { path, waypoint });
+                }
+                let closed = path
+                    .points
+                    .windows(2)
+                    .position(|pair| !reach(point(&pair[0])).meets(reach(point(&pair[1]))));
+                if let Some(before) = closed {
+                    let (path, waypoint) = (path.name.clone(), before + 1);
+                    return Err(MapProblem::WaypointUnreachable { path, waypoint });
+                }
             }
         }
         Ok(())
     }
 
-    /// Gives the match the map's pathing grid over `cells`, for walkers of `radii`, 0 for one
-    /// with no body, a static index for the widest of them, and a planner of routes on the grid;
-    /// the static bodies fill the grid and the index from the first tick on.
-    pub fn load_pathing(world: &mut World, cells: Grid, radii: Vec<Num>) {
-        let widest = radii.iter().max().copied().unwrap_or(Num::ZERO);
-        world.insert_resource(BodyIndex::new(widest));
+    /// Gives the match the map's pathing grid over `cells`, for the kinds of `walkers`, a static
+    /// index for the widest of them, and a planner of routes on the grid; the static bodies fill
+    /// the grid and the index from the first tick on.
+    pub fn load_pathing(world: &mut World, cells: Grid, walkers: Vec<Walker>) {
+        let widest = walkers.iter().map(|walker| walker.radius).max();
+        world.insert_resource(BodyIndex::new(widest.unwrap_or(Num::ZERO)));
         world.insert_resource(RoutePlanner::new(&cells));
-        world.insert_resource(PathingGrid::new(cells, radii));
+        world.insert_resource(PathingGrid::new(cells, walkers));
     }
 }
 
@@ -179,6 +189,7 @@ fn track_static_bodies(
         id,
         at,
         radius: body.radius(),
+        layer: body.layer(),
     }));
     statics.sort_unstable_by_key(|body| body.id);
     if index.update(&statics)
@@ -196,7 +207,7 @@ fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
 /// Keeps each walker's route on its destination. A walker with a new destination asks for a route
 /// there, unless its route reaches its goal and the walker may go straight on from the waypoint
 /// before the last to the new one, as a chaser after a target that moved: then only the last
-/// waypoint moves. A walker whose way along its route a static body blocks, after the static
+/// waypoint moves. A walker whose way along its route a static body of its layer blocks, after the static
 /// bodies changed, asks for its route again. With no pathing grid, as in a match with no map, no
 /// static body blocks a route. Each walker checks its route only when the static bodies changed
 /// since the tick before, which `checked` counts; as a route the static bodies do not block stays
@@ -213,7 +224,7 @@ fn route_units(
     let changed = planned && statics.changes() != *checked;
     *checked = statics.changes();
     for (&at, destination, mut route, body) in &mut units {
-        let radius = Body::radius_of(body);
+        let walker = Walker::of(body);
         match destination.get() {
             None => {
                 if route.goal().is_some() {
@@ -223,7 +234,7 @@ fn route_units(
             Some(goal) if route.goal() == Some(goal) => {
                 if changed
                     && route.asked().is_none()
-                    && statics.blocks_route(at, route.ahead(), radius)
+                    && statics.blocks_route(at, route.ahead(), walker)
                 {
                     route.ask(goal, now);
                 }
@@ -236,7 +247,7 @@ fn route_units(
                 };
                 let straight = from.filter(|_| route.reached() && route.asked().is_none());
                 if let Some(from) = straight
-                    && !(planned && statics.blocks(Segment::new(from, goal), radius))
+                    && !(planned && statics.blocks(Segment::new(from, goal), walker))
                 {
                     route.move_goal(goal);
                 } else {
@@ -289,20 +300,19 @@ fn plan_routes(
         let planner = planner
             .as_deref_mut()
             .expect("a pathing grid comes with its planner");
-        let layer = grid.layer(Body::radius_of(body));
-        let ground = Ground {
-            layer,
+        let walkable = Walkable {
+            clearance: grid.clearance(Walker::of(body)),
             statics: &statics,
             short: None,
         };
-        let outcome = planner.plan(ground, at, goal, &mut waypoints);
+        let outcome = planner.plan(walkable, at, goal, &mut waypoints);
         route.answer(&waypoints, outcome.reached);
         expanded += outcome.expanded as usize;
     }
 }
 
 /// Steers walkers round the units in their way. A walker whose next stretch, as far as its
-/// window reaches, would overlap a unit that stands plans a short route in the window, the cells
+/// window reaches, would overlap a unit of its layer that stands plans a short route in the window, the cells
 /// up to `Steering::WINDOW` from its own, with the units that stand there as blockers. So does a
 /// walker that has moved less than half a step a tick for `Steering::STUCK_MS`, kept back by
 /// walkers it touches, which it marks as blockers too. The short route goes to the last waypoint
@@ -359,6 +369,7 @@ fn steer(
             id,
             at,
             radius: body.radius(),
+            layer: body.layer(),
         };
         if walks(destination, tags) {
             steering.walking.push(body);
@@ -381,22 +392,19 @@ fn steer(
             continue;
         }
         let stuck = u64::from(progress.track(at, step.get())) >= stuck_ticks;
-        let radius = body.radius();
+        let walker = Walker::of(Some(body));
         let next = route.ahead()[0];
         let look = at.get().step_toward(next.get(), reach);
         let look = Position::new(look).expect("a step ends between two points within the bound");
-        if !stuck && !standing.blocks(Segment::new(at, look), radius) {
+        if !stuck && !standing.blocks(Segment::new(at, look), walker) {
             continue;
         }
-        let layer = grid.layer(radius);
-        let window = Window::around(
-            layer.grid(),
-            layer.grid().nearest_cell(at),
-            Steering::WINDOW,
-        );
+        let clearance = grid.clearance(walker);
+        let cells = clearance.grid();
+        let window = Window::around(cells, cells.nearest_cell(at), Steering::WINDOW);
         let inside = |pos: &Position| {
-            let cell = layer.grid().nearest_cell(*pos);
-            let columns = layer.grid().columns();
+            let cell = cells.nearest_cell(*pos);
+            let columns = cells.columns();
             window.contains(cell % columns, cell / columns)
         };
         let ahead = route.ahead();
@@ -407,7 +415,7 @@ fn steer(
         };
         let last = skipped == ahead.len();
         steering.blockers.clear();
-        standing.near(at.get(), reach + reach, |body| {
+        standing.near(walker.layer, at.get(), reach + reach, |body| {
             steering.blockers.push(*body);
         });
         let way = at.ground_offset(goal);
@@ -416,8 +424,12 @@ fn steer(
             // A walker that keeps this one back counts as standing half their reach to this one's
             // left, so this one goes round it on its right; two that meet head on so pass on
             // opposite sides, whatever the cells make of their sides.
-            let shifted = steering.walking.iter().filter_map(|other| {
-                let reach = radius + other.radius;
+            let ours = steering
+                .walking
+                .iter()
+                .filter(|other| other.layer == walker.layer);
+            let shifted = ours.filter_map(|other| {
+                let reach = walker.radius + other.radius;
                 let touching = other.at.within_ground(at, reach + step.get());
                 let shift = left * Num::from_bits(reach.to_bits() / 2);
                 let moved = Position::new(other.at.get() + shift);
@@ -428,15 +440,15 @@ fn steer(
             });
             steering.blockers.extend(shifted);
         }
-        let ground = Ground {
-            layer,
+        let walkable = Walkable {
+            clearance,
             statics: &statics,
             short: Some(Short {
                 window,
                 blockers: &steering.blockers,
             }),
         };
-        let outcome = planner.plan(ground, at, goal, &mut steering.short);
+        let outcome = planner.plan(walkable, at, goal, &mut steering.short);
         if outcome.reached || last {
             route.splice(&steering.short, skipped, outcome.reached);
             progress.reset();
@@ -499,7 +511,7 @@ fn move_units(
     }
 }
 
-/// Parts the living bodies that overlap as the stage starts, pair by pair in stable-id order; a
+/// Parts the living bodies of one layer that overlap as the stage starts, pair by pair in stable-id order; a
 /// pair that only overlaps after this tick's pushes parts in the next. Only a unit that can walk is
 /// pushed, and one walking to a destination yields to one that stands. The static bodies' contacts
 /// come from `statics`, which holds them as the stage starts. A predicting client also
@@ -539,6 +551,7 @@ fn collide(
                     entity,
                     at: position.get(),
                     radius: body.radius(),
+                    layer: body.layer(),
                     movable,
                     walking: walks(destination, tags),
                 },

@@ -1,6 +1,7 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{NonSendMut, ResMut};
 use bevy_ecs::world::World;
+use campfire_script::rhai::Dynamic;
 use campfire_script::{ScriptError, ScriptHost, ScriptId};
 use campfire_sim::{SimSet, StateRegistry, TickRate};
 
@@ -19,6 +20,7 @@ use crate::units::tag_book::TagBook;
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
+use crate::values::metric::Metric;
 
 pub(crate) mod block;
 pub(crate) mod body;
@@ -26,6 +28,7 @@ pub(crate) mod by_type;
 pub(crate) mod collision_data;
 pub(crate) mod error;
 pub(crate) mod filter;
+pub(crate) mod layer;
 pub(crate) mod living_unit;
 pub(crate) mod owner;
 pub(crate) mod path_id;
@@ -62,7 +65,8 @@ pub(crate) enum UnitsSet {
 pub struct Units;
 
 impl Units {
-    /// Adds the core to a match. With `scripts`, scripts run within their limits: in Inputs,
+    /// Adds the core to a match, on a planar map until the mode sets its own. With `scripts`,
+    /// scripts run within their limits: in Inputs,
     /// every pool starts full and the last tick's failures clear. A client runs no scripts.
     pub fn install(
         world: &mut World,
@@ -79,6 +83,7 @@ impl Units {
         registry.register_component::<UnitType>();
         world.insert_resource(Relations::default());
         registry.register_resource::<Relations>();
+        world.insert_resource(Metric::default());
         let Some(MatchScripts {
             limits,
             players,
@@ -94,9 +99,11 @@ impl Units {
         view.set_stat_names(stats);
         view.set_pool_names(pools);
         world.insert_non_send(Ctx::new(view.clone()));
-        world.insert_non_send(view);
         let mut host = ScriptHost::new(limits.per_call);
         ScriptApi::bind(host.engine_mut());
+        host.engine_mut()
+            .set_default_tag(Dynamic::from(view.clone()));
+        world.insert_non_send(view);
         world.insert_non_send(host);
         world.insert_non_send(ScriptFailures::default());
         world.insert_resource(ScriptBudgets::new(limits, players));

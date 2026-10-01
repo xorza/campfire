@@ -6,7 +6,7 @@ use bevy_ecs::bundle::Bundle;
 use bevy_ecs::entity::Entity;
 use campfire_math::{Num, PlayerSlot, Vec3};
 use campfire_script::Budget;
-use campfire_script::rhai::Dynamic;
+use campfire_script::rhai::Array;
 use campfire_sim::{
     Capability, EntityIndex, IdAllocator, Position, SimTick, StableId, Tick, Ticks,
 };
@@ -142,7 +142,7 @@ impl Scene {
 }
 
 #[test]
-fn queries_select_living_units_by_filter_and_exact_ground_distance() {
+fn queries_select_living_units_by_filter_and_exact_distance() {
     let mut scene = Scene::new();
     let creep = scene.unit_type(&["creep"], &[]);
     let of = scene.spawn(at(0, 0, 0), unit().bundle(Team::new(1)));
@@ -173,6 +173,12 @@ fn queries_select_living_units_by_filter_and_exact_ground_distance() {
     assert_eq!(find(&mut scene, "allies"), [of, ally]);
     assert_eq!(find(&mut scene, "all"), [of, high, east, west, edge, ally]);
     assert!(far.get() > 0 && dead.get() > 0 && hidden.get() > 0 && guarded.get() > 0);
+    // In space, the high one is √(81 + 9) ≈ 9.49 m away: out of reach, and no longer the nearest.
+    scene.world.insert_resource(Metric::Spatial);
+    assert_eq!(find(&mut scene, "enemies"), [east, west, edge]);
+    let nearest = r#"fn probe(ctx, of) { ctx.nearest_visible(of, num(10), "enemies") }"#;
+    assert_eq!(Scene::ids(scene.probe(nearest, of).unwrap()), [east]);
+    scene.world.insert_resource(Metric::Planar);
 
     // The nearest in turn as each despawns: east and west tie at 4 m, and east has the lower id.
     let nearest = r#"fn probe(ctx, of) { ctx.nearest_visible(of, num(5), "enemies") }"#;
@@ -213,6 +219,45 @@ fn queries_select_living_units_by_filter_and_exact_ground_distance() {
 }
 
 #[test]
+fn a_position_measures_reach_and_distance_in_the_maps_metric() {
+    let mut scene = Scene::new();
+    let of = scene.spawn(at(0, 0, 0), unit().bundle(Team::new(0)));
+    scene.spawn(at(3, 0, 4), unit().bundle(Team::new(1)));
+    scene.spawn(at(0, 12, 3), unit().bundle(Team::new(1)));
+    let probe = r#"fn probe(ctx, of) {
+        let found = ctx.find(of, of.pos, 13, "enemies");
+        let near = found[0];
+        let up = found[1];
+        [of.pos.within(near.pos, 5), of.pos.within(near.pos, 4), of.pos.within(up.pos, 3),
+            of.pos.within(up.pos, 12), of.pos.within(up.pos, 13),
+            of.pos.distance_to(near.pos), of.pos.distance_to(up.pos)]
+    }"#;
+    // Exactly, as every range. The near one is 5 m away in either metric: 3, 4, 5. The one up at
+    // y = 12 is 3 m away on a planar map, and √153 ≈ 12.37 m on a spatial one, 207522701.02 in 24
+    // fraction bits.
+    let metrics = [
+        (Metric::Planar, [true, false, true, true, true], num(3)),
+        (
+            Metric::Spatial,
+            [true, false, false, false, true],
+            Num::from_bits(207_522_701),
+        ),
+    ];
+    for (metric, within, distance) in metrics {
+        scene.world.insert_resource(metric);
+        let read = scene.probe(probe, of).unwrap().cast::<Array>();
+        let read_within = read[..5].iter().map(|reach| reach.as_bool().unwrap());
+        assert!(read_within.eq(within), "{metric:?}");
+        let read_distance = read[5..].iter().map(|at| at.clone().cast::<Num>());
+        assert!(read_distance.eq([num(5), distance]), "{metric:?}");
+    }
+    let error = scene
+        .probe("fn probe(ctx, of) { of.pos.within(of.pos, -1) }", of)
+        .unwrap_err();
+    assert!(matches!(error, CallError::Api(ApiError::NegativeRadius)));
+}
+
+#[test]
 fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let mut scene = Scene::new();
     let window = ("help_window_ms", Scalar::Int(2000));
@@ -231,8 +276,6 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let fallen = scene.spawn(at(9, 0, 1), (unit().bundle(Team::new(1)), Dead));
     let health_only = (Team::new(1), Pools::life(num(1)));
     let bare = scene.spawn(at(9, 0, 2), health_only);
-    // 3 m away on the ground plane, √153 ≈ 12.37 m in space.
-    scene.spawn(at(0, 12, 3), unit().bundle(Team::new(1)));
     let entity = scene.entity(of);
     scene
         .world
@@ -276,9 +319,6 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
         num(7)
     );
     assert_eq!(value(&mut scene, "of.attack_range").cast::<Num>(), num(2));
-    // 3, 4, 5: exact.
-    let distance = "of.pos.distance_to(of.target.pos)";
-    assert_eq!(value(&mut scene, distance).cast::<Num>(), num(5));
     assert!(
         value(&mut scene, "of.target.is_enemy_of(of)")
             .as_bool()
@@ -290,12 +330,6 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
             .as_bool()
             .unwrap()
     );
-    // Exactly, on the ground plane, as every range.
-    let reach = "of.pos.within(of.target.pos, 5) && !of.pos.within(of.target.pos, 4)";
-    assert!(value(&mut scene, reach).as_bool().unwrap());
-    let above = r#"let up = ctx.find(of, of.pos, 3, "enemies")[0];
-        of.pos.within(up.pos, 3) && !of.pos.within(up.pos, 2) && of.pos.distance_to(up.pos) > 12"#;
-    assert!(value(&mut scene, above).as_bool().unwrap());
     let attackers = value(&mut scene, "of.recent_attackers(2000)");
     assert_eq!(Scene::ids(attackers), [recent]);
     // 2034 ms is 61.02 ticks, up to 62: tick 39 is in.
@@ -305,7 +339,6 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let refusals = [
         ("of.params.gold", ApiError::UnknownParam),
         ("of.recent_attackers(-1)", ApiError::NegativeTime),
-        ("of.pos.within(of.pos, -1)", ApiError::NegativeRadius),
     ];
     for (expression, refusal) in refusals {
         let error = read(&mut scene, expression).unwrap_err();

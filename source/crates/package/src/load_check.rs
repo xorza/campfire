@@ -2,8 +2,9 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::iter;
 
 use campfire_capabilities::{
-    AbilityData, ApiOwner, DeclaredName, FilterData, Hook, MemberKind, Mode, ModifierData,
-    Navigation, Number, Param, PoolId, Pools, Scalar, ScriptApi, ScriptRole, Stat, UnitTypeData,
+    AbilityData, ApiOwner, CollisionData, DeclaredName, EngineStat, FilterData, Hook, MemberKind,
+    Mode, ModifierData, Navigation, Number, Param, PoolId, Pools, Scalar, ScriptApi, ScriptRole,
+    Stat, UnitTypeData,
 };
 use campfire_content::PackagePath;
 use campfire_math::Num;
@@ -104,18 +105,23 @@ impl<'a> LoadCheck<'a> {
     }
 
     /// The map can be walked by every unit that walks, among the mode's unit types and its
-    /// avatars, as `Navigation::check_map` sets: the widest stands on every spawn and waypoint,
-    /// and reaches every waypoint from the one before, among the map's structures.
+    /// avatars, as `Navigation::check_map` sets: the widest of each layer stands on every
+    /// marker's point and waypoint, and reaches every waypoint from the one before, among the
+    /// map's placed units that cannot walk.
     fn map_walkable(&self) -> Result<(), LoadProblem> {
         let packages = self.packages;
-        let Some(&widest) = packages.walker_radii().last() else {
-            return Ok(());
-        };
+        let walkers = packages.walkers();
+        let move_speed = Stat::Engine(EngineStat::MoveSpeed);
         let body_of = |unit_type: &str| {
             let unit_type = packages.units.units.get(unit_type)?;
-            unit_type.collision.as_ref().map(|data| data.body.radius())
+            let walks = unit_type
+                .stats
+                .as_ref()
+                .is_some_and(|stats| stats.declares(&move_speed));
+            let body = packages.data.navigation.body(unit_type.collision.as_ref());
+            body.filter(|_| !walks)
         };
-        Navigation::check_map(&packages.map, widest, body_of).map_err(LoadProblem::Map)
+        Navigation::check_map(&packages.map, &walkers, body_of).map_err(LoadProblem::Map)
     }
 
     /// The mode package: its unit types' sections, its map, its modifiers and its scripts.
@@ -131,7 +137,11 @@ impl<'a> LoadCheck<'a> {
             unit_type,
         )
         .map_err(LoadProblem::Mode)?;
-        for list in [&data.combat.damage_kinds, &data.resources] {
+        for list in [
+            &data.combat.damage_kinds,
+            &data.resources,
+            &data.navigation.layers,
+        ] {
             let mut seen = BTreeSet::new();
             if let Some(name) = list.iter().find(|&name| !seen.insert(name)) {
                 return Err(LoadProblem::RepeatedName(name.clone()));
@@ -139,6 +149,7 @@ impl<'a> LoadCheck<'a> {
         }
         self.damage_kinds()?;
         self.pools()?;
+        self.layers()?;
         if data.combat.stats().next().is_some() || data.combat.life.is_some() {
             self.require(Capability::Combat, &Place::Combat)?;
             self.stats_declared(data.combat.stats(), &Place::Combat)?;
@@ -160,6 +171,7 @@ impl<'a> LoadCheck<'a> {
                 self.stats_declared(stats.0.keys(), &at)?;
             }
             self.unit_pools(&unit_type.pools, unit_type.combat.is_some(), &at)?;
+            self.collision_layer(unit_type.collision.as_ref(), &at)?;
             let attack = unit_type.combat.as_ref().and_then(|combat| combat.attack);
             self.attack_projectile(attack.and_then(|attack| attack.projectile_speed), &at)?;
         }
@@ -227,6 +239,7 @@ impl<'a> LoadCheck<'a> {
                 }
                 self.stats_declared(avatar.stats.0.keys(), &at)?;
                 self.unit_pools(&avatar.pools, true, &at)?;
+                self.collision_layer(avatar.collision.as_ref(), &at)?;
                 let attack = avatar
                     .combat
                     .attack
@@ -462,6 +475,16 @@ impl<'a> LoadCheck<'a> {
             self.stats_declared([&stat], &at)?;
         }
         let data = &self.packages.data;
+        let tag = |name: &String| {
+            let markers = &self.packages.map.markers;
+            markers.iter().any(|marker| marker.tags.contains(name))
+        };
+        if let Some(name) = facts.markers.iter().find(|name| !tag(name)) {
+            return Err(LoadProblem::UnknownMarkerTag {
+                at,
+                tag: name.clone(),
+            });
+        }
         let pool = |name: &String| data.pools.keys().any(|pool| pool.as_str() == name);
         if let Some(name) = facts.pools.iter().find(|name| !pool(name)) {
             return Err(LoadProblem::UnknownPool {
@@ -516,6 +539,30 @@ impl<'a> LoadCheck<'a> {
             return Err(LoadProblem::NoAttackKind);
         }
         Ok(())
+    }
+
+    /// The mode's layers are navigation's.
+    fn layers(&self) -> Result<(), LoadProblem> {
+        if self.packages.data.navigation.layers.is_empty() {
+            return Ok(());
+        }
+        self.require(Capability::Navigation, &Place::Navigation)
+    }
+
+    /// The layer a `collision` section at `at` names, if any, is one the mode declares.
+    fn collision_layer(
+        &self,
+        collision: Option<&CollisionData>,
+        at: &Place,
+    ) -> Result<(), LoadProblem> {
+        let navigation = &self.packages.data.navigation;
+        match collision.and_then(|collision| collision.layer.as_ref()) {
+            Some(layer) if navigation.layer(layer).is_none() => Err(LoadProblem::UnknownLayer {
+                at: at.clone(),
+                layer: layer.clone(),
+            }),
+            _ => Ok(()),
+        }
     }
 
     /// The mode's pools: at most `Pools::LIMIT`, none named as a player resource, each with

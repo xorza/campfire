@@ -41,8 +41,13 @@ pub enum ModeError {
     UnknownTeam(String),
     UnknownUnitType(String),
     UnknownPath(String),
-    /// A playing team has no avatar spawn.
-    NoSpawn(String),
+    /// A placed unit of the type walks from an end of no path.
+    NoPathToWalk(String),
+    /// A point of the map has the shape of the other metric's points.
+    PointShape,
+    /// The marker's region is not a box within the map's bounds of its metric, or the marker has
+    /// a point too.
+    Region(String),
     /// A path has no waypoint.
     EmptyPath(String),
     /// A point of the map is outside its bounds.
@@ -91,7 +96,16 @@ impl fmt::Display for ModeError {
             ModeError::UnknownTeam(name) => write!(f, "no team {name:?}"),
             ModeError::UnknownUnitType(name) => write!(f, "no unit type {name:?}"),
             ModeError::UnknownPath(name) => write!(f, "no path {name:?}"),
-            ModeError::NoSpawn(team) => write!(f, "team {team:?} has no avatar spawn"),
+            ModeError::NoPathToWalk(unit_type) => {
+                write!(f, "a placed {unit_type:?} walks from an end of no path")
+            }
+            ModeError::PointShape => f.write_str("a point of the map does not fit its metric"),
+            ModeError::Region(marker) => {
+                write!(
+                    f,
+                    "marker {marker:?}: the region is no box within the bounds, or has a point too"
+                )
+            }
             ModeError::EmptyPath(name) => write!(f, "path {name:?} has no waypoint"),
             ModeError::OutOfBounds => f.write_str("a map point is outside the map's bounds"),
             ModeError::Grid => f.write_str(

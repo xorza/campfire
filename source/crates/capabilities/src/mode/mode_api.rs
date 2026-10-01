@@ -1,11 +1,13 @@
 use campfire_math::PlayerSlot;
-use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString};
+use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString, NativeCallContext};
 use campfire_sim::{Capability, Position};
 
-use crate::mode::game_map::{GameMap, NeutralSpawn};
+use crate::mode::game_map::GameMap;
+use crate::mode::marker::Marker;
 use crate::mode::match_end::MatchResult;
 use crate::mode::mode_book::ModeBook;
 use crate::mode::mode_effect::ModeEffect;
+use crate::navigation::path_walker::PathEnd;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::effect::Effect;
@@ -15,6 +17,7 @@ use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::{ApiOwner, DataTable, MemberSpec, Status};
 use crate::scripts::state_decl::StateType;
 use crate::scripts::state_value::StateValue;
+use crate::units::script_view::View;
 use crate::units::team::Team;
 use crate::units::unit::Unit;
 use crate::units::unit_type::UnitType;
@@ -57,6 +60,7 @@ impl ModeApi {
                 &[
                     "script",
                     "combat",
+                    "navigation",
                     "inputs",
                     "state",
                     "params",
@@ -197,13 +201,11 @@ impl ModeApi {
         api.bind(
             mode(
                 "spawn_avatars",
-                "()",
-                "spawns each chosen avatar not yet spawned, in slot order, at its team's spawn",
+                "(tag)",
+                "spawns each chosen avatar not yet spawned, in slot order, at its team's marker \
+                 with `tag`",
             ),
-            |ctx: &mut Ctx| -> Checked<()> {
-                ctx.require(RoleSet::MODE)?;
-                ctx.queue(Effect::Mode(ModeEffect::SpawnAvatars))
-            },
+            |ctx: &mut Ctx, tag: &str| ModeApi::spawn_avatars(ctx, tag),
         )
         .bind(
             mode(
@@ -218,11 +220,12 @@ impl ModeApi {
         .bind(
             mode(
                 "spawn_group",
-                "(team, path, types)",
-                "spawns `types` in order at `team`'s end of `path`, walking it",
+                "(team, path, from, types)",
+                "spawns `types` of `team` in order at the end `from`, `start` or `end`, of `path`, \
+                 walking it from there",
             ),
-            |ctx: &mut Ctx, team: &str, path: &str, types: Array| {
-                ModeApi::spawn_group(ctx, team, path, &types)
+            |ctx: &mut Ctx, team: &str, path: &str, from: &str, types: Array| {
+                ModeApi::spawn_group(ctx, team, path, from, &types)
             },
         )
         .bind(
@@ -283,32 +286,42 @@ impl ModeApi {
         });
     }
 
-    /// `ctx.map` and the neutral spawns it lists.
+    /// `ctx.map`, its paths and its markers.
     fn register_map(api: &mut ApiBuilder<'_>) {
-        let map = |name, description| {
-            MemberSpec::field(ApiOwner::GameMap, name, description)
-                .capability(Capability::Navigation)
-        };
-        let spawn = |name, description| {
-            MemberSpec::field(ApiOwner::NeutralSpawn, name, description)
-                .capability(Capability::Navigation)
-        };
+        let field = |name, description| MemberSpec::field(ApiOwner::Marker, name, description);
         api.ty::<GameMap>("Map")
-            .bind(map("paths", "the paths' names"), |map: &mut GameMap| {
-                map.paths.clone()
-            })
             .bind(
-                map("neutral_spawns", "the neutral spawns"),
-                |map: &mut GameMap| map.neutral_spawns.clone(),
-            );
-        api.ty::<NeutralSpawn>("NeutralSpawn")
-            .bind(
-                spawn("unit_type", "the unit type it spawns"),
-                |spawn: &mut NeutralSpawn| spawn.unit_type.clone(),
+                MemberSpec::field(ApiOwner::GameMap, "paths", "the paths' names")
+                    .capability(Capability::Navigation),
+                |map: &mut GameMap| map.paths.clone(),
             )
             .bind(
-                spawn("pos", "where it spawns"),
-                |spawn: &mut NeutralSpawn| spawn.pos,
+                MemberSpec::method(
+                    ApiOwner::GameMap,
+                    "markers",
+                    "(tag)",
+                    "the markers with `tag`, in the map's order",
+                ),
+                |map: &mut GameMap, tag: &str| map.markers(tag),
+            );
+        api.ty::<Marker>("Marker")
+            .bind(field("name", "its name"), |marker: &mut Marker| {
+                marker.info().name.clone()
+            })
+            .bind(
+                field("pos", "its point, `()` for a region"),
+                |marker: &mut Marker| marker.info().pos.map_or(Dynamic::UNIT, Dynamic::from),
+            )
+            .bind(
+                field("team", "its team's name, `()` with none"),
+                |call: NativeCallContext<'_>, marker: &mut Marker| match marker.info().team {
+                    Some(team) => View::of_call(&call).team_name(team),
+                    None => Ok(Dynamic::UNIT),
+                },
+            )
+            .bind(
+                field("params", "its params, by name"),
+                |marker: &mut Marker| marker.info().params.clone(),
             );
     }
 
@@ -433,12 +446,27 @@ impl ModeApi {
         ctx.queue(Effect::Mode(effect))
     }
 
-    /// Queues a spawn group of `types` on `path` from `team`'s end of it.
-    fn spawn_group(ctx: &Ctx, team: &str, path: &str, types: &Array) -> Checked<()> {
+    /// Queues the spawn of each chosen avatar at its team's marker with `tag`, which every
+    /// playing team has.
+    fn spawn_avatars(ctx: &Ctx, tag: &str) -> Checked<()> {
+        ctx.require(RoleSet::MODE)?;
+        let book = ctx.mode_or_fail()?;
+        let teams = book.teams.playing();
+        if teams
+            .iter()
+            .any(|&team| book.map.point(tag, team).is_none())
+        {
+            return Err(ApiError::NoSpawnMarker.fail().into());
+        }
+        ctx.queue(Effect::Mode(ModeEffect::SpawnAvatars(tag.into())))
+    }
+
+    /// Queues a spawn group of `team`, of `types`, on `path` from its end `from`.
+    fn spawn_group(ctx: &Ctx, team: &str, path: &str, from: &str, types: &Array) -> Checked<()> {
         ctx.require(RoleSet::MODE)?;
         let book = ctx.mode_or_fail()?;
         let team = ModeApi::team(book, team)?;
-        book.path_end(team).map_err(ApiError::fail)?;
+        let from = PathEnd::named(from).ok_or_else(|| ApiError::UnknownPathEnd.fail())?;
         let path = ctx
             .view()
             .path(path)
@@ -451,7 +479,12 @@ impl ModeApi {
                     .ok_or_else(|| ApiError::UnknownUnitType.fail().into())
             })
             .collect::<Checked<_>>()?;
-        ctx.queue(Effect::Mode(ModeEffect::SpawnGroup { team, path, types }))
+        ctx.queue(Effect::Mode(ModeEffect::SpawnGroup {
+            team,
+            path,
+            from,
+            types,
+        }))
     }
 
     /// Queues a timer `ms` milliseconds from the call, rounded up to whole ticks, at least one.

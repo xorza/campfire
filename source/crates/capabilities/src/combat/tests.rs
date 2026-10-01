@@ -22,6 +22,7 @@ use crate::stats::stat_book::StatBook;
 use crate::stats::stat_rule::StatRule;
 use crate::units::relations::Relations;
 use crate::values::attitude::Attitude;
+use crate::values::metric::Metric;
 
 /// The MOBA's 30 ticks a second.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
@@ -176,18 +177,23 @@ fn an_attack_winds_up_and_strikes_each_period() {
 }
 
 #[test]
-fn a_range_counts_from_the_edge_of_each_body() {
+fn a_range_counts_from_the_edge_of_each_body_in_the_maps_metric() {
     // A fighter of range 2 at x = 0, and a dummy 3 m off: out of range from center to center, in
-    // range once each has a body of 0.5 m, as 3 ≤ 2 + 0.5 + 0.5; a bit farther, out again.
+    // range once each has a body of 0.5 m, as 3 ≤ 2 + 0.5 + 0.5; a bit farther, out again. Up at
+    // y = 4, the dummy is still 3 m off on a planar map, and 5 m off on a spatial one.
     let half = Num::from_bits(1 << 23);
-    for (dummy_x, bodies, starts) in [
-        (num(3), false, false),
-        (num(3), true, true),
-        (num(3) + Num::EPSILON, true, false),
+    for (dummy_x, dummy_y, bodies, metric, starts) in [
+        (num(3), 0, false, Metric::Planar, false),
+        (num(3), 0, true, Metric::Planar, true),
+        (num(3) + Num::EPSILON, 0, true, Metric::Planar, false),
+        (num(3), 4, true, Metric::Planar, true),
+        (num(3), 0, true, Metric::Spatial, true),
+        (num(3), 4, true, Metric::Spatial, false),
     ] {
         let mut fight = Fight::new();
+        fight.world.insert_resource(metric);
         let fighter = fight.unit(Team::new(0), at(0, 0, 0), fighter());
-        let dummy_at = Position::new(Vec3::new(dummy_x, Num::ZERO, Num::ZERO)).unwrap();
+        let dummy_at = Position::new(Vec3::new(dummy_x, num(dummy_y), Num::ZERO)).unwrap();
         let dummy = fight.unit(Team::new(1), dummy_at, dummy());
         if bodies {
             for unit in [fighter, dummy] {
@@ -201,7 +207,11 @@ fn a_range_counts_from_the_edge_of_each_body() {
         fight.attack(fighter, dummy);
         fight.run_until(1);
         let started = fight.state(fighter).started();
-        assert_eq!(started.is_some(), starts, "{dummy_x:?} {bodies}");
+        assert_eq!(
+            started.is_some(),
+            starts,
+            "{dummy_x:?} {dummy_y} {bodies} {metric:?}"
+        );
     }
 }
 

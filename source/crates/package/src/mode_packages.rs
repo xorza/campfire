@@ -3,10 +3,10 @@ use std::iter;
 use std::path::Path;
 
 use campfire_capabilities::{
-    CollisionData, EngineStat, MapData, ModeData, Param, Stat, StatGraph, StatsData, UnitTypeData,
+    CollisionData, DeclaredName, EngineStat, MapData, ModeData, Param, Stat, StatGraph, StatsData,
+    UnitTypeData, Walker,
 };
 use campfire_content::{Fingerprint, PackagePath};
-use campfire_math::Num;
 use campfire_script::ScriptHost;
 
 use crate::error::{ContentError, LoadError, LoadProblem, StoreError};
@@ -164,15 +164,16 @@ impl ModePackages {
         graph
     }
 
-    /// The body radius of each kind of unit that walks, the mode's unit types and avatars that
-    /// declare a move speed, 0 for one with no body; ascending, each once. The pathing grid has
-    /// a layer for each.
-    pub fn walker_radii(&self) -> Vec<Num> {
+    /// Each kind of unit that walks, of the mode's unit types and avatars that declare a move
+    /// speed, by its layer and its body's radius, 0 for one with no body; in order, each once.
+    /// The pathing grid has a clearance for each.
+    pub fn walkers(&self) -> Vec<Walker> {
         let move_speed = Stat::Engine(EngineStat::MoveSpeed);
+        let navigation = &self.data.navigation;
         let walker = |stats: Option<&StatsData>, collision: Option<&CollisionData>| {
             stats
                 .is_some_and(|stats| stats.declares(&move_speed))
-                .then(|| collision.map_or(Num::ZERO, |data| data.body.radius()))
+                .then(|| Walker::of(navigation.body(collision).as_ref()))
         };
         let unit_types =
             self.units.units.values().filter_map(|unit_type| {
@@ -185,10 +186,10 @@ impl ModePackages {
                 Content::Avatar(avatar) => walker(Some(&avatar.stats), avatar.collision.as_ref()),
                 Content::Loadout(_) => None,
             });
-        let mut radii: Vec<Num> = unit_types.chain(avatars).collect();
-        radii.sort_unstable();
-        radii.dedup();
-        radii
+        let mut walkers: Vec<Walker> = unit_types.chain(avatars).collect();
+        walkers.sort_unstable();
+        walkers.dedup();
+        walkers
     }
 
     /// Every tag its packages name, each once, sorted: `avatar`, the tags of its unit types,
@@ -218,10 +219,12 @@ impl ModePackages {
             .tags
             .iter()
             .flat_map(|(name, tag)| [name].into_iter().chain(&tag.immune));
+        let layers = self.data.navigation.layers.iter().map(DeclaredName::as_str);
         modifiers
             .chain(types)
             .chain(declared)
             .map(String::as_str)
+            .chain(layers)
             .chain([UnitTypeData::AVATAR_TAG])
             .collect()
     }

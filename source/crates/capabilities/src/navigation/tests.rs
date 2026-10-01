@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 
 use bevy_ecs::component::Component;
@@ -5,9 +6,11 @@ use campfire_sim::{Capability, EntityIndex, SimUpdate, Tick, TypeHash};
 
 use super::*;
 use crate::capability_set::internals::TestMatch;
-use crate::mode::map_data::{GridData, NeutralSpawnData, PathData, StructureData};
-use crate::navigation::path_walker::PathDirection;
+use crate::mode::map_data::{GridData, MarkerData, PathData, PlacedUnitData};
+use crate::navigation::path_walker::PathEnd;
+use crate::units::layer::Layer;
 use crate::units::path_id::PathId;
+use crate::values::metric::Metric;
 use crate::values::scalar::Scalar;
 
 /// The MOBA's 30 ticks a second.
@@ -21,6 +24,17 @@ fn num(value: i64) -> Num {
 
 fn at(x: i64, y: i64, z: i64) -> Position {
     Position::new(Vec3::new(num(x), num(y), num(z))).unwrap()
+}
+
+/// The second layer, as an RTS's air.
+const AIR: Layer = Layer::new(1);
+
+/// A walker of `radius` on the first layer.
+const fn ground(radius: Num) -> Walker {
+    Walker {
+        layer: Layer::FIRST,
+        radius,
+    }
 }
 
 #[derive(Debug)]
@@ -60,8 +74,20 @@ impl Walk {
         step: Option<Num>,
         radius: Num,
     ) -> StableId {
+        self.body_on(at, to, step, Body::new(radius).unwrap())
+    }
+
+    /// A unit at `at` with `body`, walking `step` a tick to `to`, or one that does not walk when
+    /// `step` is `None`.
+    fn body_on(
+        &mut self,
+        at: Position,
+        to: Option<Position>,
+        step: Option<Num>,
+        body: Body,
+    ) -> StableId {
         let id = self.world.resource_mut::<IdAllocator>().allocate();
-        let mut unit = self.world.spawn((id, at, Body::new(radius).unwrap()));
+        let mut unit = self.world.spawn((id, at, body));
         if let Some(step) = step {
             unit.insert(MoveStep::new(step).unwrap().bundle());
             unit.get_mut::<Destination>().unwrap().set(to);
@@ -239,7 +265,7 @@ fn the_pathing_grid_follows_the_static_bodies_from_the_next_tick() {
     Navigation::load_pathing(
         &mut walk.world,
         Grid::new(Num::ONE, bounds).unwrap(),
-        vec![half],
+        vec![ground(half)],
     );
     let quarter = |value: i64| Num::from_bits(value << 22);
     let place =
@@ -247,7 +273,7 @@ fn the_pathing_grid_follows_the_static_bodies_from_the_next_tick() {
     let blocked = |walk: &Walk| {
         let grid = walk.world.resource::<PathingGrid>();
         (0..16)
-            .filter(|&cell| !grid.layer(half).open(cell))
+            .filter(|&cell| !grid.clearance(ground(half)).open(cell))
             .collect::<Vec<_>>()
     };
     let tower = walk.body(place(-6, -6), None, None, half);
@@ -283,7 +309,7 @@ fn a_walker_goes_round_a_tower_and_never_touches_it() {
             Navigation::load_pathing(
                 &mut walk.world,
                 Grid::new(half, bounds).unwrap(),
-                vec![half],
+                vec![ground(half)],
             );
         }
         walk.body(at(0, 0, 0), None, None, tower_radius);
@@ -331,7 +357,11 @@ fn a_walker_goes_round_units_that_stand_in_its_way() {
         if planned {
             let bounds = Bounds::new([num(-8), num(-8)], [num(8), num(8)]).unwrap();
             let grid = Grid::new(half, bounds).unwrap();
-            Navigation::load_pathing(&mut walk.world, grid, vec![creep_radius, half]);
+            Navigation::load_pathing(
+                &mut walk.world,
+                grid,
+                vec![ground(creep_radius), ground(half)],
+            );
         }
         let hero = walk.body(at(0, 0, 0), None, Some(quarter), half);
         let creep = walk.body(creep_at, None, Some(quarter), creep_radius);
@@ -371,7 +401,7 @@ fn two_walkers_that_meet_head_on_pass_on_opposite_sides() {
             Navigation::load_pathing(
                 &mut walk.world,
                 Grid::new(half, bounds).unwrap(),
-                vec![half],
+                vec![ground(half)],
             );
         }
         let east = walk.body(at(-4, 0, 0), Some(at(4, 0, 0)), Some(quarter), half);
@@ -399,6 +429,46 @@ fn two_walkers_that_meet_head_on_pass_on_opposite_sides() {
 }
 
 #[test]
+fn an_air_unit_passes_over_a_ground_unit_and_a_wall() {
+    // Over 1 m cells from (0, 0) to (12, 6), a wall of three towers of 1 m on the ground at
+    // x = 6, z = 1, 3 and 5, touching, closes the map to walkers of 0.5 m: every cell center of
+    // columns 5 and 6 is 0.71 m from a tower, closer than 1.5. A ground unit of 0.5 m stands at
+    // (3, 3).
+    let half = Num::from_bits(1 << 23);
+    let mut walk = Walk::new();
+    let bounds = Bounds::new([num(0), num(0)], [num(12), num(6)]).unwrap();
+    let flyer = Walker {
+        layer: AIR,
+        radius: half,
+    };
+    let grid = Grid::new(Num::ONE, bounds).unwrap();
+    Navigation::load_pathing(&mut walk.world, grid, vec![ground(half), flyer]);
+    for z in [1, 3, 5] {
+        walk.body(at(6, 0, z), None, None, Num::ONE);
+    }
+    let standing = walk.body(at(3, 0, 3), None, Some(Num::ONE), half);
+    // An air unit of 0.5 m from (1, 3) to (11, 3), a meter a tick, flies straight over both: in
+    // tick 2 it is on the ground unit, which does not move, and in tick 10 at its goal.
+    let body = Body::new(half).unwrap().on(AIR);
+    let flying = walk.body_on(at(1, 0, 3), Some(at(11, 0, 3)), Some(Num::ONE), body);
+    // A ground unit of 0.5 m from (1, 1) to (11, 1) stops short of the wall, at the cell center
+    // nearest its goal that it reaches: (4.5, 0.5) and (4.5, 1.5) tie at √42.5 ≈ 6.52 m, each
+    // √2.5 ≈ 1.58 m from the tower at (6, 1), and the lower cell number wins. It walks straight
+    // there, √12.5 ≈ 3.54 m, so it arrives in tick 4.
+    let walking = walk.body(at(1, 0, 1), Some(at(11, 0, 1)), Some(Num::ONE), half);
+    let short = Position::new(Vec3::new(num(4) + half, Num::ZERO, half)).unwrap();
+    let mut flown = Vec::new();
+    for _ in 0..12 {
+        walk.tick();
+        flown.push(walk.get::<Position>(flying));
+        assert_eq!(walk.get::<Position>(standing), at(3, 0, 3));
+    }
+    let line: Vec<Position> = (2..=11).chain([11; 2]).map(|x| at(x, 0, 3)).collect();
+    assert_eq!(flown, line);
+    assert_eq!(walk.get::<Position>(walking), short);
+}
+
+#[test]
 fn routes_wait_past_the_limit_of_expanded_cells_in_the_order_asked() {
     // A row of 16 cells of 1 m: a route along it expands each cell from the start to the goal
     // once, 16 to the far end, 4 to x = 3.5. A tick expands up to the grid's 16 cells.
@@ -407,7 +477,7 @@ fn routes_wait_past_the_limit_of_expanded_cells_in_the_order_asked() {
     Navigation::load_pathing(
         &mut walk.world,
         Grid::new(Num::ONE, bounds).unwrap(),
-        vec![Num::ZERO],
+        vec![ground(Num::ZERO)],
     );
     let half = Num::from_bits(1 << 23);
     let place = |x: i64| Position::new(Vec3::new(num(x) + half, Num::ZERO, half)).unwrap();
@@ -436,21 +506,33 @@ fn routes_wait_past_the_limit_of_expanded_cells_in_the_order_asked() {
 }
 
 #[test]
-fn a_map_loads_only_if_the_widest_walker_reaches_every_waypoint_and_stands_on_every_spawn() {
+fn a_map_loads_only_if_the_widest_walker_reaches_every_waypoint_and_stands_on_every_marker() {
     // A corridor 10 m by 4 m in half-meter cells, a lane along z = 2 from (1, 2) to (9, 2),
     // walkers of 0.5 m and towers of 0.9 m. Towers at (5, 0) and (5, 4) block the centers closer
     // than 1.4 m, z up to 1.25 and from 2.75 at x = 4.75 and 5.25, which leaves z = 1.75 and
     // 2.25 open: a gap a walker passes. One more at (5, 2) closes it.
     let tower_radius = Num::from_bits((9 << Num::FRAC_BITS) / 10);
     let half = Num::from_bits(1 << 23);
-    let point = |x: i64, z: i64| GroundPoint([Scalar::Int(x), Scalar::Int(z)]);
-    let tower = |x: i64, z: i64| StructureData {
-        unit_type: "tower".to_owned(),
+    let point = |x: i64, z: i64| MapPoint::Ground([Scalar::Int(x), Scalar::Int(z)]);
+    let placed = |unit_type: &str, (x, z): (i64, i64)| PlacedUnitData {
+        unit_type: unit_type.to_owned(),
         team: "west".to_owned(),
-        path: None,
         pos: point(x, z),
+        path: None,
+        from: None,
     };
-    let map = |towers: &[(i64, i64)], neutral: (i64, i64)| MapData {
+    let marker = |name: &str, (x, z): (i64, i64)| MarkerData {
+        name: name.to_owned(),
+        tags: vec![name.to_owned()],
+        pos: Some(point(x, z)),
+        region: None,
+        team: None,
+        params: BTreeMap::new(),
+        events: false,
+    };
+    // A creep placed on the west spawn walks, so it blocks nothing.
+    let map = |towers: &[(i64, i64)], camp: (i64, i64)| MapData {
+        metric: Metric::Planar,
         bounds: Bounds::new([num(0), num(0)], [num(10), num(4)]).unwrap(),
         grid: None,
         navigation: Some(GridData {
@@ -460,16 +542,24 @@ fn a_map_loads_only_if_the_widest_walker_reaches_every_waypoint_and_stands_on_ev
             name: "lane".to_owned(),
             points: vec![point(1, 2), point(9, 2)],
         }],
-        spawns: [("west".to_owned(), point(1, 1))].into(),
-        structures: towers.iter().map(|&(x, z)| tower(x, z)).collect(),
-        neutral_spawns: vec![NeutralSpawnData {
-            unit_type: "camp".to_owned(),
-            pos: point(neutral.0, neutral.1),
-        }],
+        units: towers
+            .iter()
+            .map(|&at| placed("tower", at))
+            .chain([placed("creep", (1, 1))])
+            .collect(),
+        markers: vec![marker("spawn", (1, 1)), marker("camp", camp)],
     };
-    let body_of = |unit_type: &str| (unit_type == "tower").then_some(tower_radius);
+    // A tower stands on the ground, a cloud of the same width in the air.
+    let body_of = |unit_type: &str| {
+        let tower = Body::new(tower_radius).unwrap();
+        match unit_type {
+            "tower" => Some(tower),
+            "cloud" => Some(tower.on(AIR)),
+            _ => None,
+        }
+    };
     let check = |towers: &[(i64, i64)], neutral| {
-        Navigation::check_map(&map(towers, neutral), half, body_of)
+        Navigation::check_map(&map(towers, neutral), &[ground(half)], body_of)
     };
     assert_eq!(check(&[(5, 0), (5, 4)], (8, 3)), Ok(()));
     let unreachable = MapProblem::WaypointUnreachable {
@@ -477,21 +567,48 @@ fn a_map_loads_only_if_the_widest_walker_reaches_every_waypoint_and_stands_on_ev
         waypoint: 1,
     };
     assert_eq!(check(&[(5, 0), (5, 2), (5, 4)], (8, 3)), Err(unreachable));
-    // A tower 1 m from the lane's end, (9, 2), or from the west spawn, (1, 1), or from the
-    // neutral spawn, (8, 3): closer than 1.4 m.
+    // A tower 1 m from the lane's end, (9, 2), or from the spawn marker, (1, 1), or from the camp
+    // marker, (8, 3): closer than 1.4 m.
     let blocked = MapProblem::WaypointBlocked {
         path: "lane".to_owned(),
         waypoint: 1,
     };
     assert_eq!(check(&[(9, 3)], (8, 1)), Err(blocked));
-    let spawn = MapProblem::SpawnBlocked {
-        team: "west".to_owned(),
+    let blocked = |marker: &str| {
+        let marker = marker.to_owned();
+        Err(MapProblem::MarkerBlocked { marker })
     };
-    assert_eq!(check(&[(2, 1)], (8, 3)), Err(spawn));
+    assert_eq!(check(&[(2, 1)], (8, 3)), blocked("spawn"));
+    assert_eq!(check(&[(7, 3)], (8, 3)), blocked("camp"));
+
+    // Each layer's widest walker is checked against the bodies of its layer alone: an air walker
+    // passes over the towers that close the lane, and a cloud by the camp blocks it there, but
+    // not a walker on the ground.
+    let flyer = Walker {
+        layer: AIR,
+        radius: half,
+    };
+    let both = [ground(half), flyer];
+    let closed = map(&[(5, 0), (5, 2), (5, 4)], (8, 3));
+    assert_eq!(Navigation::check_map(&closed, &[flyer], body_of), Ok(()));
     assert_eq!(
-        check(&[(7, 3)], (8, 3)),
-        Err(MapProblem::NeutralSpawnBlocked { spawn: 0 })
+        Navigation::check_map(&closed, &both, body_of),
+        Err(MapProblem::WaypointUnreachable {
+            path: "lane".to_owned(),
+            waypoint: 1,
+        })
     );
+    let mut clouded = map(&[(5, 0), (5, 4)], (8, 3));
+    clouded.units.push(placed("cloud", (7, 3)));
+    assert_eq!(
+        Navigation::check_map(&clouded, &[ground(half)], body_of),
+        Ok(())
+    );
+    assert_eq!(
+        Navigation::check_map(&clouded, &both, body_of),
+        blocked("camp")
+    );
+    assert_eq!(Navigation::check_map(&clouded, &[], body_of), Ok(()));
 }
 
 #[test]
@@ -558,21 +675,18 @@ fn paths_count_waypoints_in_either_direction() {
             .collect::<Vec<_>>()
     };
     assert_eq!(
-        walk(PathId::new(0), PathDirection::Forward),
+        walk(PathId::new(0), PathEnd::Start),
         [Some(at(0, 0, 0)), Some(at(1, 0, 0)), None]
     );
     assert_eq!(
-        walk(PathId::new(0), PathDirection::Backward),
+        walk(PathId::new(0), PathEnd::End),
         [Some(at(1, 0, 0)), Some(at(0, 0, 0)), None]
     );
     assert_eq!(
-        walk(PathId::new(1), PathDirection::Backward),
+        walk(PathId::new(1), PathEnd::End),
         [Some(at(5, 0, 5)), None, None]
     );
-    assert_eq!(
-        walk(PathId::new(2), PathDirection::Forward),
-        [None, None, None]
-    );
+    assert_eq!(walk(PathId::new(2), PathEnd::Start), [None, None, None]);
 }
 
 #[test]
@@ -581,7 +695,7 @@ fn every_navigation_type_is_state() {
     let unit = walk.unit(at(0, 0, 0), Some(at(0, 0, 5)));
     let entity = walk.world.resource::<EntityIndex>().get(unit).unwrap();
     walk.world.entity_mut(entity).insert((
-        PathWalker::start(PathDirection::Forward),
+        PathWalker::start(PathEnd::Start),
         OnPath::new(PathId::new(0)),
     ));
     let mut route = walk.world.get_mut::<Route>(entity).unwrap();

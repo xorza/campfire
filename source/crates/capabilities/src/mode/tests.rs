@@ -25,14 +25,16 @@ use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::mode::avatar_index::AvatarIndex;
 use crate::mode::loadout_index::LoadoutIndex;
-use crate::mode::map_data::{GridData, NeutralSpawnData, PathData, StructureData};
+use crate::mode::map_data::{GridData, MarkerData, PathData, PlacedUnitData};
 use crate::mode::match_end::MatchResult;
 use crate::mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
 use crate::mode::mode_setup::{AvatarSetup, LoadoutSetup, UnitTypeSetup};
 use crate::mode::unit_kit::UnitKit;
 use crate::navigation::destination::Destination;
 use crate::navigation::move_step::MoveStep;
-use crate::navigation::path_walker::{PathDirection, PathWalker};
+use crate::navigation::navigation_rules::NavigationRules;
+use crate::navigation::path_walker::PathEnd;
+use crate::navigation::walker::Walker;
 use crate::scripts::error::ApiError;
 use crate::scripts::hook::ScriptRole;
 use crate::scripts::match_scripts::MatchScripts;
@@ -52,16 +54,18 @@ use crate::stats::stat_op::StatOp;
 use crate::stats::stat_rule::StatRule;
 use crate::stats::stats_data::StatsData;
 use crate::stats::unit_stats::UnitStats;
-use crate::units::body::Body;
+use crate::units::layer::Layer;
 use crate::units::owner::Owner;
 use crate::units::path_id::PathId;
 use crate::units::tag_set::TagSet;
+use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::attitude::Attitude;
 use crate::values::bounds::Bounds;
 use crate::values::declared_name::DeclaredName;
 use crate::values::grid::Grid;
+use crate::values::metric::Metric;
 use crate::values::number::Number;
 use crate::values::scalar::Scalar;
 use crate::vision::vision_grid::VisionGrid;
@@ -100,11 +104,11 @@ fn on_match_start(ctx) {
     ctx.state.phase = "start";
     ctx.timer("once", 250, false, 7);
     ctx.timer("every", 100, true, ());
-    for point in ctx.map.neutral_spawns {
-        ctx.spawn_unit(point.unit_type, "neutral", point.pos);
+    for camp in ctx.map.markers("camp") {
+        ctx.spawn_unit(camp.params.unit_type, "neutral", camp.pos);
     }
-    ctx.spawn_group("a", "mid", ctx.p.group);
-    ctx.spawn_group("b", "mid", ["grunt"]);
+    ctx.spawn_group("a", "mid", "start", ctx.p.group);
+    ctx.spawn_group("b", "mid", "end", ["grunt"]);
 }
 
 fn on_timer(ctx, name, data) {
@@ -119,7 +123,7 @@ fn on_mode_input(ctx, player, name, value) {
     ctx.state.inputs += 1;
     if name == "hero" {
         ctx.choose_avatar(player, value);
-        ctx.spawn_avatars();
+        ctx.spawn_avatars("spawn");
     } else if name == "spells" {
         ctx.choose_loadout(player, value);
     } else if name == "rich" {
@@ -128,7 +132,7 @@ fn on_mode_input(ctx, player, name, value) {
         ctx.add_resource(player, value, ctx.p.gold);
         ctx.add_resource(player, value, ctx.p.gold);
     } else if name == "fail" {
-        ctx.spawn_unit("grunt", "a", ctx.map.neutral_spawns[0].pos);
+        ctx.spawn_unit("grunt", "a", ctx.map.markers("camp")[0].pos);
         throw value;
     } else if name == "phase" {
         ctx.state.phase = 5;
@@ -153,8 +157,30 @@ fn num(value: i64) -> Num {
     Num::from_int(value).unwrap()
 }
 
-fn point(x: i64, z: i64) -> GroundPoint {
-    GroundPoint([Scalar::Int(x), Scalar::Int(z)])
+fn point(x: i64, z: i64) -> MapPoint {
+    MapPoint::Ground([Scalar::Int(x), Scalar::Int(z)])
+}
+
+/// A marker `name` with `tag` at (`x`, `z`), of `team` if it names one, with `params`.
+fn marker(
+    name: &str,
+    tag: &str,
+    (x, z): (i64, i64),
+    team: Option<&str>,
+    params: &[(&str, ModeParam)],
+) -> MarkerData {
+    MarkerData {
+        name: name.to_owned(),
+        tags: vec![tag.to_owned()],
+        pos: Some(point(x, z)),
+        region: None,
+        team: team.map(str::to_owned),
+        params: params
+            .iter()
+            .map(|(name, param)| ((*name).to_owned(), param.clone()))
+            .collect(),
+        events: false,
+    }
 }
 
 fn at(x: i64, z: i64) -> Position {
@@ -181,10 +207,12 @@ fn grunt() -> UnitKit {
     }
 }
 
-/// Bounds from (−10, −5) to (10, 6) with a grid of 1 m cells; one path, `mid`, along x; team a's spawn at
-/// z = −5 and b's at 5; a's tower 8 m down the path; and a neutral grunt in the middle.
+/// Bounds from (−10, −5) to (10, 6) with a grid of 1 m cells; one path, `mid`, along x; team a's
+/// spawn at z = −5 and b's at 5; a's tower 8 m down the path; and a camp of a grunt in the middle.
 fn map() -> MapData {
+    let grunt = ("unit_type", ModeParam::Text("grunt".to_owned()));
     MapData {
+        metric: Metric::Planar,
         bounds: Bounds::new([num(-10), num(-5)], [num(10), num(6)]).unwrap(),
         grid: Some(GridData {
             cell: Scalar::Int(1),
@@ -196,20 +224,40 @@ fn map() -> MapData {
             name: "mid".to_owned(),
             points: vec![point(-10, 0), point(0, 0), point(10, 0)],
         }],
-        spawns: [("a", point(0, -5)), ("b", point(0, 5))]
-            .map(|(team, point)| (team.to_owned(), point))
-            .into(),
-        structures: vec![StructureData {
+        units: vec![PlacedUnitData {
             unit_type: "tower".to_owned(),
             team: "a".to_owned(),
-            path: Some("mid".to_owned()),
             pos: point(-8, 0),
+            path: Some("mid".to_owned()),
+            from: None,
         }],
-        neutral_spawns: vec![NeutralSpawnData {
-            unit_type: "grunt".to_owned(),
-            pos: point(0, 0),
-        }],
+        markers: vec![
+            marker("a_spawn", "spawn", (0, -5), Some("a"), &[]),
+            marker("b_spawn", "spawn", (0, 5), Some("b"), &[]),
+            marker("camp", "camp", (0, 0), None, slice::from_ref(&grunt)),
+        ],
     }
+}
+
+/// `map` made spatial, each point up at `y`.
+fn raised(mut map: MapData, y: i64) -> MapData {
+    let raise = |point: &mut MapPoint| {
+        let MapPoint::Ground([x, z]) = *point else {
+            panic!("the test map's points are on the ground");
+        };
+        *point = MapPoint::Space([x, Scalar::Int(y), z]);
+    };
+    map.metric = Metric::Spatial;
+    for path in &mut map.paths {
+        path.points.iter_mut().for_each(raise);
+    }
+    for unit in &mut map.units {
+        raise(&mut unit.pos);
+    }
+    for marker in &mut map.markers {
+        marker.pos.iter_mut().for_each(raise);
+    }
+    map
 }
 
 /// The test mode's own files: its data, its map and its teams.
@@ -248,6 +296,11 @@ fn mode_files() -> ModeFiles {
                     .map(|kind| DeclaredName::new(kind).unwrap())
                     .into(),
                 ..CombatRules::default()
+            },
+            navigation: NavigationRules {
+                layers: ["ground", "air"]
+                    .map(|name| DeclaredName::new(name).unwrap())
+                    .into(),
             },
             inputs: [
                 ("hero", InputType::String),
@@ -364,6 +417,7 @@ fn setup(
                 unit_type: tower_type,
                 kit: UnitKit {
                     step: None,
+                    body: Body::new(num(1)).map(|body| body.on(Layer::new(1))),
                     ..grunt()
                 },
                 stats: StatsData::default(),
@@ -374,7 +428,7 @@ fn setup(
             hero("hero-y", y, Vec::new(), Some(blessing)),
         ],
         loadout: vec![spell],
-        walkers: vec![Body::radius_of(grunt().body.as_ref())],
+        walkers: vec![Walker::of(grunt().body.as_ref())],
         max_move_speed: num(10),
         stat_order: (0..u16::try_from(STATS_3V3.len()).unwrap()).collect(),
     }
@@ -392,11 +446,11 @@ struct Game {
 impl Game {
     /// A match of the test mode for 3 players, two on team `a` and one on `b`, with `limits`.
     fn new(script: &str, limits: ScriptLimits) -> Game {
-        Game::start(script, limits).unwrap()
+        Game::start(script, limits, mode_files()).unwrap()
     }
 
-    /// The match `new` gives; an error when the mode's start fails.
-    fn start(script: &str, limits: ScriptLimits) -> Result<Game, CallError> {
+    /// The match `new` gives, of the mode `files`; an error when the mode's start fails.
+    fn start(script: &str, limits: ScriptLimits, files: ModeFiles) -> Result<Game, CallError> {
         let scripts = MatchScripts {
             limits,
             players: 3,
@@ -454,7 +508,6 @@ impl Game {
             ability: blink,
         };
         let types = [grunt_type, tower_type, x, y];
-        let files = mode_files();
         for (name, data) in &files.data.modifiers {
             Stats::load_modifier(&mut world, 0, name, data, None);
         }
@@ -501,8 +554,8 @@ impl Game {
         self.world.resource::<ModeState>().get()[at].clone()
     }
 
-    /// Each unit: its id, where it stands, its team, and whether it walks a path from its start.
-    fn units(&self) -> Vec<(u64, Position, u8, Option<PathDirection>)> {
+    /// Each unit: its id, where it stands, its team, and the end of a path it walks from.
+    fn units(&self) -> Vec<(u64, Position, u8, Option<PathEnd>)> {
         let world = &self.world;
         world
             .resource::<EntityIndex>()
@@ -513,7 +566,7 @@ impl Game {
                     id.get(),
                     *unit.get::<Position>().unwrap(),
                     unit.get::<Team>().unwrap().index(),
-                    unit.get::<PathWalker>().map(|walker| walker.direction()),
+                    unit.get::<PathWalker>().map(|walker| walker.walks_from()),
                 )
             })
             .collect()
@@ -549,17 +602,17 @@ fn state(phase: &str, seen: i64, count: i64, inputs: i64) -> [StateValue; 4] {
 #[test]
 fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early() {
     let mut game = Game::new(SCRIPT, LIMITS);
-    // Before tick 0: the map's tower, 0, then the match start's spawns in order: the neutral
-    // grunt, 1, at the map's neutral spawn; team a's spawn group of two, 2 and 3, at the path's start;
-    // team b's spawn group of one, 4, at its end. Teams a and b are 0 and 1, neutral 2.
+    // Before tick 0: the map's tower, 0, then the match start's spawns in order: the camp's
+    // grunt, 1, at its marker; team a's spawn group of two, 2 and 3, at the path's start; team
+    // b's spawn group of one, 4, at its end. Teams a and b are 0 and 1, neutral 2.
     assert_eq!(
         game.units(),
         [
             (0, at(-8, 0), 0, None),
             (1, at(0, 0), 2, None),
-            (2, at(-10, 0), 0, Some(PathDirection::Forward)),
-            (3, at(-10, 0), 0, Some(PathDirection::Forward)),
-            (4, at(10, 0), 1, Some(PathDirection::Backward)),
+            (2, at(-10, 0), 0, Some(PathEnd::Start)),
+            (3, at(-10, 0), 0, Some(PathEnd::Start)),
+            (4, at(10, 0), 1, Some(PathEnd::End)),
         ]
     );
     let tower = game.entity(0);
@@ -572,6 +625,12 @@ fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early
     let grid = Grid::new(num(1), map().bounds).unwrap();
     assert_eq!((vision.grid, vision.teams), (grid, 3));
     assert_eq!(*game.world.resource::<Bounds>(), map().bounds);
+    // Each unit type has the tag of the layer it moves on: the tower, of the second layer, `air`;
+    // the grunt, with no body, the first's, `ground`.
+    let tags = |id| game.world.get::<UnitTags>(game.entity(id)).unwrap().tags;
+    let tag = |name| game.world.non_send::<View>().types_mut().tag(name).unwrap();
+    let layer_tags = [0, 1].map(|id| [tag("ground"), tag("air")].map(|tag| tags(id).contains(tag)));
+    assert_eq!(layer_tags, [[false, true], [true, false]]);
     assert_eq!(game.state(), state("start", 0, 0, 0));
 
     // Set at the start, time 0: "every" is due at 1, the end of tick 0, and every tick after;
@@ -676,7 +735,7 @@ fn on_mode_input(ctx, player, name, value) {
     }
     if name == "hero" {
         ctx.choose_avatar(player, value);
-        ctx.spawn_avatars();
+        ctx.spawn_avatars("spawn");
         return;
     }
     let hero = ctx.avatars()[0];
@@ -724,7 +783,7 @@ fn a_mode_applies_a_modifier_writes_its_handle_and_sees_it_end() {
 fn on_mode_input(ctx, player, name, value) {
     if name == "hero" {
         ctx.choose_avatar(player, value);
-        ctx.spawn_avatars();
+        ctx.spawn_avatars("spawn");
         return;
     }
     let hero = ctx.avatars()[0];
@@ -926,8 +985,8 @@ fn on_mode_input(ctx, player, name, value) {
 
 #[test]
 fn a_mode_whose_start_fails_starts_no_match() {
-    let failing = "fn on_match_start(ctx) { ctx.spawn_unit(\"ghost\", \"a\", ctx.map.neutral_spawns[0].pos); }";
-    let failed = Game::start(failing, LIMITS).err();
+    let failing = "fn on_match_start(ctx) { ctx.spawn_unit(\"ghost\", \"a\", ctx.map.markers(\"camp\")[0].pos); }";
+    let failed = Game::start(failing, LIMITS, mode_files()).err();
     assert!(
         matches!(failed, Some(CallError::Api(ApiError::UnknownUnitType))),
         "{failed:?}"
@@ -978,11 +1037,11 @@ fn a_death_reaches_the_mode_and_a_respawn_brings_the_unit_back_at_its_spawn() {
     // later: 3 ticks at 10 a second. A probe respawns the first unit with the tag it names.
     let script = r#"
 fn on_match_start(ctx) {
-    for point in ctx.map.neutral_spawns {
-        ctx.spawn_unit(point.unit_type, "neutral", point.pos);
+    for camp in ctx.map.markers("camp") {
+        ctx.spawn_unit(camp.params.unit_type, "neutral", camp.pos);
     }
-    ctx.spawn_group("a", "mid", ctx.p.group);
-    ctx.spawn_group("b", "mid", ["grunt"]);
+    ctx.spawn_group("a", "mid", "start", ctx.p.group);
+    ctx.spawn_group("b", "mid", "end", ["grunt"]);
 }
 
 fn on_unit_died(ctx, unit, killer, assisters) {
@@ -1073,7 +1132,7 @@ fn a_match_ends_once_and_then_no_stage_runs() {
     let script = r#"
 fn on_match_start(ctx) {
     ctx.timer("every", 100, true, ());
-    ctx.spawn_group("a", "mid", ["grunt"]);
+    ctx.spawn_group("a", "mid", "start", ["grunt"]);
 }
 
 fn on_timer(ctx, name, data) {
@@ -1451,4 +1510,51 @@ fn probe(ctx, unit) {
             "{call}: {failed}"
         );
     }
+}
+
+#[test]
+fn three_teams_walk_a_path_each_from_the_end_it_names() {
+    // On the test map made spatial, 3 m up: team a and the neutral team walk `mid` from its start,
+    // (−10, 3, 0); b from its end, (10, 3, 0).
+    let script = r#"
+fn on_match_start(ctx) {
+    ctx.spawn_group("a", "mid", "start", ["grunt"]);
+    ctx.spawn_group("b", "mid", "end", ["grunt"]);
+    ctx.spawn_group("neutral", "mid", "start", ["grunt"]);
+}
+
+fn on_mode_input(ctx, player, name, value) {
+    if name == "phase" {
+        ctx.spawn_group("a", "mid", "middle", ["grunt"]);
+    } else {
+        ctx.spawn_avatars("camp");
+    }
+}
+"#;
+    let mut files = mode_files();
+    files.map = raised(files.map, 3);
+    let mut game = Game::start(script, LIMITS, files).unwrap();
+    assert_eq!(*game.world.resource::<Metric>(), Metric::Spatial);
+    let up = |x| Position::new(Vec3::new(num(x), num(3), Num::ZERO)).unwrap();
+    let walkers = |game: &Game| <[_; 3]>::try_from(&game.units()[1..]).unwrap();
+    assert_eq!(
+        walkers(&game),
+        [
+            (1, up(-10), 0, Some(PathEnd::Start)),
+            (2, up(10), 1, Some(PathEnd::End)),
+            (3, up(-10), 2, Some(PathEnd::Start)),
+        ]
+    );
+    // Each walks to the last waypoint from its end: a and the neutral team to (10, 3, 0), b to
+    // (−10, 3, 0).
+    let paths = game.world.resource::<Paths>();
+    let last = walkers(&game).map(|unit| paths.waypoint(PathId::new(0), 2, unit.3.unwrap()));
+    assert_eq!(last, [Some(up(10)), Some(up(-10)), Some(up(10))]);
+    // An end other than `start` and `end`, and a tag a playing team has no marker of, fail.
+    game.tick(&[(0, input("phase", "x")), (1, input("hero", "x"))]);
+    let refused = [
+        Some(ApiError::UnknownPathEnd),
+        Some(ApiError::NoSpawnMarker),
+    ];
+    assert_eq!(game.failures(), refused);
 }

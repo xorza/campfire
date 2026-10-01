@@ -16,9 +16,9 @@ fn on_mode_input(ctx, player, name, value) {
 fn on_timer(ctx, name, data) {
     if name == "pick_end" {
         ctx.state.phase = "play";
-        ctx.spawn_avatars();
-        for point in ctx.map.neutral_spawns {
-            ctx.spawn_unit(point.unit_type, "camps", point.pos);
+        ctx.spawn_avatars("spawn");
+        for camp in ctx.map.markers("camp") {
+            ctx.spawn_unit(camp.params.unit_type, "camps", camp.pos);
         }
         ctx.timer("wave", ctx.p.first_wave_ms, false, ());
         ctx.timer("income", ctx.p.income_ms, true, ());
@@ -29,7 +29,7 @@ fn on_timer(ctx, name, data) {
                 if inhibitor_down(ctx, ctx.enemy_team(team), lane) {
                     wave.push("super_creep");
                 }
-                ctx.spawn_group(team, lane, wave);
+                ctx.spawn_group(team, lane, lane_end(ctx, team), wave);
             }
         }
         ctx.timer("wave", ctx.p.wave_ms, false, ());
@@ -96,6 +96,16 @@ fn share_xp(ctx, unit) {
     for hero in heroes {
         ctx.add_xp(hero, xp / heroes.len());
     }
+}
+
+// The end of the lanes `team`'s creeps walk from, as its spawn marker names it.
+fn lane_end(ctx, team) {
+    for marker in ctx.map.markers("spawn") {
+        if marker.team == team {
+            return marker.params.from;
+        }
+    }
+    throw "a team with no spawn marker";
 }
 
 fn inhibitor_down(ctx, team, lane) {

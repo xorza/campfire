@@ -46,8 +46,8 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `restore` | `(unit, pool, amount)` | every role | combat | runs | gives `unit` back `amount` of its `pool`, unscaled |
 | `reveal` | `(pos, radius, ms)` | every role | vision | planned | shows the source's team what is within `radius` of `pos` |
 | `set_relation` | `(a, b, relation)` | every role | core | runs | sets how teams `a` and `b` regard each other, `hostile`, `neutral` or `friendly`, their vision as it was |
-| `spawn_avatars` | `()` | mode | core | runs | spawns each chosen avatar not yet spawned, in slot order, at its team's spawn |
-| `spawn_group` | `(team, path, types)` | mode | core | runs | spawns `types` in order at `team`'s end of `path`, walking it |
+| `spawn_avatars` | `(tag)` | mode | core | runs | spawns each chosen avatar not yet spawned, in slot order, at its team's marker with `tag` |
+| `spawn_group` | `(team, path, from, types)` | mode | core | runs | spawns `types` of `team` in order at the end `from`, `start` or `end`, of `path`, walking it from there |
 | `spawn_unit` | `(type, team, pos)` | mode | core | runs | spawns a unit of `type` on `team` at `pos`, within the map's bounds |
 | `state` | read | mode | core | runs | the mode's state fields, by name, to read and write |
 | `teams` | read | every role | core | runs | the playing teams' names, the teams with slots |
@@ -137,8 +137,8 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | Name | Form | Capability | Status | What it is |
 | --- | --- | --- | --- | --- |
 | `direction_to` | `(pos)` | core | planned | the unit vector towards `pos` |
-| `distance_to` | `(pos)` | core | runs | the distance to `pos` |
-| `within` | `(pos, radius)` | core | runs | whether `pos` is within `radius` on the ground plane, exactly: the test for reach |
+| `distance_to` | `(pos)` | core | runs | the distance to `pos` in the map's metric |
+| `within` | `(pos, radius)` | core | runs | whether `pos` is within `radius` in the map's metric, exactly: the test for reach |
 
 ## Vector
 
@@ -153,15 +153,17 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 
 | Name | Form | Capability | Status | What it is |
 | --- | --- | --- | --- | --- |
-| `neutral_spawns` | read | navigation | runs | the neutral spawns |
+| `markers` | `(tag)` | core | runs | the markers with `tag`, in the map's order |
 | `paths` | read | navigation | runs | the paths' names |
 
-## Neutral spawn, of `ctx.map.neutral_spawns`
+## Marker, of `ctx.map.markers(tag)`
 
 | Name | Form | Capability | Status | What it is |
 | --- | --- | --- | --- | --- |
-| `pos` | read | navigation | runs | where it spawns |
-| `unit_type` | read | navigation | runs | the unit type it spawns |
+| `name` | read | core | runs | its name |
+| `params` | read | core | runs | its params, by name |
+| `pos` | read | core | runs | its point, `()` for a region |
+| `team` | read | core | runs | its team's name, `()` with none |
 
 ## Hooks
 
@@ -210,6 +212,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | --- | --- |
 | `script` | runs |
 | `combat` | runs |
+| `navigation` | runs |
 | `inputs` | runs |
 | `state` | runs |
 | `params` | runs |
@@ -231,6 +234,12 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `life` | runs |
 | `leech` | runs |
 | `heal_scale` | runs |
+
+### The mode's `[navigation]`
+
+| Field | Status |
+| --- | --- |
+| `layers` | runs |
 
 ### The mode's `[combat] leech`
 
@@ -321,6 +330,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | Field | Status |
 | --- | --- |
 | `radius` | runs |
+| `layer` | runs |
 
 ### A unit type's `orders`
 

@@ -105,7 +105,7 @@ impl<'a> MatchBuild<'a> {
             unit_types: build.unit_types,
             avatars,
             loadout,
-            walkers: packages.walker_radii(),
+            walkers: packages.walkers(),
             max_move_speed: manifest.max_move_speed.get(),
             stat_order: packages.stat_graph().order().expect(CHECKED),
         };
@@ -138,6 +138,7 @@ impl<'a> MatchBuild<'a> {
     /// Loads the mode's unit types, each with its AI and its kit.
     fn load_unit_types(&mut self) -> Result<(), StartError> {
         let packages = self.packages;
+        let navigation = &packages.data().navigation;
         for (name, file) in &packages.units().units {
             let unit_type = Units::load_type(self.world, name, &file.core).expect(CHECKED);
             if let Some(orders) = &file.orders {
@@ -153,7 +154,7 @@ impl<'a> MatchBuild<'a> {
             let kit = UnitKit::new(file.stats.as_ref(), file.combat.as_ref(), pools, self.rules)
                 .map(|kit| {
                     kit.with_vision(file.vision.as_ref())
-                        .with_collision(file.collision.as_ref())
+                        .with_body(navigation.body(file.collision.as_ref()))
                 })
                 .map_err(|error| StartError::UnitKit {
                     unit_type: name.clone(),
@@ -178,6 +179,7 @@ impl<'a> MatchBuild<'a> {
         data: &AvatarData,
     ) -> Result<AvatarSetup, StartError> {
         let name = &self.package(package).name;
+        let navigation = &self.packages.data().navigation;
         let core = UnitTypeData {
             tags: vec![UnitTypeData::AVATAR_TAG.to_owned()],
             params: BTreeMap::new(),
@@ -195,7 +197,7 @@ impl<'a> MatchBuild<'a> {
         let kit = UnitKit::new(Some(&data.stats), Some(&combat), pools, self.rules)
             .map_err(kit_error)?
             .with_vision(data.vision.as_ref())
-            .with_collision(data.collision.as_ref());
+            .with_body(navigation.body(data.collision.as_ref()));
         let abilities = data
             .slots
             .iter()

@@ -3,16 +3,18 @@ use campfire_math::{Num, Vec3};
 use campfire_sim::StableId;
 
 use crate::navigation::broadphase::Contact;
+use crate::units::layer::Layer;
 
-/// A living unit's body as collision sees it: where it stands, its radius, whether it may be
-/// pushed, and whether it walks now, to a destination. A unit that cannot walk, such as a tower,
-/// is never pushed.
+/// A living unit's body as collision sees it: where it stands, its radius, its layer, whether it
+/// may be pushed, and whether it walks now, to a destination. A unit that cannot walk, such as a
+/// tower, is never pushed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Collider {
     pub(crate) id: StableId,
     pub(crate) entity: Entity,
     pub(crate) at: Vec3,
     pub(crate) radius: Num,
+    pub(crate) layer: Layer,
     pub(crate) movable: bool,
     pub(crate) walking: bool,
 }
@@ -34,9 +36,10 @@ impl Collider {
     }
 
     /// Whether the bodies of `self` and `other` overlap on the ground plane, exactly: touching is
-    /// not overlap. Two that may not be pushed never part, so they have no contact.
+    /// not overlap. Two that may not be pushed never part, so they have no contact, nor have two
+    /// of other layers.
     pub(crate) fn overlaps(&self, other: &Collider) -> bool {
-        if !self.movable && !other.movable {
+        if !self.movable && !other.movable || self.layer != other.layer {
             return false;
         }
         let dx = i128::from(other.at.x.to_bits() - self.at.x.to_bits());
@@ -114,6 +117,7 @@ mod tests {
                 entity: world.spawn_empty().id(),
                 at: Vec3::new(x, num(2), z),
                 radius: Num::ONE,
+                layer: Layer::FIRST,
                 movable,
                 walking: movable,
             })

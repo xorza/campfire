@@ -21,108 +21,129 @@ points = [[-6, -50], [-36, -36], [-40, 0], [-36, 36], [-6, 50]]
 name = "east"
 points = [[6, -50], [36, -36], [40, 0], [36, 36], [6, 50]]
 
-[spawns]
-north = [0, -60]
-south = [0, 60]
+# Where each team's heroes spawn, and the end of the lanes its creeps walk from.
+[[markers]]
+name = "north_spawn"
+tags = ["spawn"]
+team = "north"
+pos = [0, -60]
+params = { from = "start" }
 
-[[structures]]
+[[markers]]
+name = "south_spawn"
+tags = ["spawn"]
+team = "south"
+pos = [0, 60]
+params = { from = "end" }
+
+[[units]]
 unit_type = "core"
 team = "north"
 pos = [0, -54]
 
-[[structures]]
+[[units]]
 unit_type = "inhibitor"
 team = "north"
 path = "west"
 pos = [-11, -52]
 
-[[structures]]
+[[units]]
 unit_type = "tower"
 team = "north"
 path = "west"
 pos = [-22, -46]
 
-[[structures]]
+[[units]]
 unit_type = "tower"
 team = "north"
 path = "west"
 pos = [-42, -16]
 
-[[structures]]
+[[units]]
 unit_type = "inhibitor"
 team = "north"
 path = "east"
 pos = [11, -52]
 
-[[structures]]
+[[units]]
 unit_type = "tower"
 team = "north"
 path = "east"
 pos = [22, -46]
 
-[[structures]]
+[[units]]
 unit_type = "tower"
 team = "north"
 path = "east"
 pos = [42, -16]
 
-[[structures]]
+[[units]]
 unit_type = "core"
 team = "south"
 pos = [0, 54]
 
-[[structures]]
+[[units]]
 unit_type = "inhibitor"
 team = "south"
 path = "west"
 pos = [-11, 52]
 
-[[structures]]
+[[units]]
 unit_type = "tower"
 team = "south"
 path = "west"
 pos = [-22, 46]
 
-[[structures]]
+[[units]]
 unit_type = "tower"
 team = "south"
 path = "west"
 pos = [-42, 16]
 
-[[structures]]
+[[units]]
 unit_type = "inhibitor"
 team = "south"
 path = "east"
 pos = [11, 52]
 
-[[structures]]
+[[units]]
 unit_type = "tower"
 team = "south"
 path = "east"
 pos = [22, 46]
 
-[[structures]]
+[[units]]
 unit_type = "tower"
 team = "south"
 path = "east"
 pos = [42, 16]
 
-[[neutral_spawns]]
-unit_type = "wolf"
+[[markers]]
+name = "camp1"
+tags = ["camp"]
 pos = [-18, -12]
+params = { unit_type = "wolf" }
 
-[[neutral_spawns]]
-unit_type = "wolf"
+[[markers]]
+name = "camp2"
+tags = ["camp"]
 pos = [18, -12]
+params = { unit_type = "wolf" }
 
-[[neutral_spawns]]
-unit_type = "wolf"
+[[markers]]
+name = "camp3"
+tags = ["camp"]
 pos = [-18, 12]
+params = { unit_type = "wolf" }
 
-[[neutral_spawns]]
-unit_type = "wolf"
+[[markers]]
+name = "camp4"
+tags = ["camp"]
 pos = [18, 12]
+params = { unit_type = "wolf" }
 
-[[neutral_spawns]]
-unit_type = "warden"
+[[markers]]
+name = "camp5"
+tags = ["camp"]
 pos = [0, 0]
+params = { unit_type = "warden" }

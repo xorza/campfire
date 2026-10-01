@@ -25,7 +25,7 @@ use crate::combat::deaths::Deaths;
 use crate::combat::respawn::Respawn;
 use crate::mode::calls::Calls;
 use crate::mode::error::ModeError;
-use crate::mode::map_data::{GroundPoint, MapData};
+use crate::mode::map_data::{MapData, MapPoint};
 use crate::mode::match_end::MatchEnd;
 use crate::mode::mode_book::ModeBook;
 use crate::mode::mode_effect::ModeEffect;
@@ -39,6 +39,7 @@ use crate::mode::team_manifest::TeamManifest;
 use crate::mode::timers::Timers;
 use crate::navigation::Navigation;
 use crate::navigation::on_path::OnPath;
+use crate::navigation::path_walker::PathWalker;
 use crate::navigation::paths::Paths;
 use crate::orders::OrdersSet;
 use crate::scripts::ctx::Ctx;
@@ -49,8 +50,10 @@ use crate::scripts::pool::Pool;
 use crate::stats::Stats;
 use crate::stats::pool_book::PoolBook;
 use crate::stats::stat_book::StatBook;
+use crate::units::body::Body;
 use crate::units::relations::Relations;
 use crate::units::script_view::View;
+use crate::units::tag_book::TagBook;
 use crate::units::team::Team;
 use crate::units::{Units, UnitsSet};
 use crate::vision::Vision;
@@ -61,6 +64,7 @@ pub(crate) mod error;
 pub(crate) mod game_map;
 pub(crate) mod loadout_index;
 pub(crate) mod map_data;
+pub(crate) mod marker;
 pub(crate) mod match_end;
 pub(crate) mod mode_api;
 pub(crate) mod mode_book;
@@ -87,8 +91,8 @@ impl Mode {
     /// Adds the mode of `setup`, which passed `Mode::check` when its package loaded, to a match
     /// whose capabilities are installed and whose unit types, abilities and AI are loaded: in
     /// Inputs, the players' mode inputs run `on_mode_input`; in Mode, due timers run `on_timer`,
-    /// then the tick's deaths run `on_unit_died`. The map's bounds, paths and grid become the match's,
-    /// and the mode's `[combat]`, `attack_kind` and `calc_damage` combat's.
+    /// then the tick's deaths run `on_unit_died`. The map's metric, bounds, paths and grid become
+    /// the match's, and the mode's `[combat]`, `attack_kind` and `calc_damage` combat's.
     pub fn install(
         world: &mut World,
         schedule: &mut Schedule,
@@ -99,6 +103,7 @@ impl Mode {
         let rate = *world.resource::<TickRate>();
         let paths = Mode::paths(setup.map);
         let bounds = setup.map.bounds;
+        let metric = setup.map.metric;
         let grid = setup.map.grid().expect("the check passed");
         let pathing = setup.map.pathing().expect("the check passed");
         let walkers = setup.walkers.clone();
@@ -122,7 +127,7 @@ impl Mode {
         let pools = &setup.data.pools;
         let bindings = CombatBindings::new(&setup.data.combat, pools, &stats);
         let pool_book = PoolBook::new(pools, &stats);
-        let tags = view.types_mut().tag_book(&setup.data.tags);
+        let tags = Mode::tag_book(&view, &setup);
         let data = setup.data;
         let book = ModeBook::new(setup, world.non_send::<ScriptHost>(), &view, &paths)?;
         let mut relations = Relations::default();
@@ -152,6 +157,7 @@ impl Mode {
         view.set_names(Rc::clone(&book.teams), paths.shared_names());
         world.insert_resource(paths);
         world.insert_resource(bounds);
+        world.insert_resource(metric);
         world.insert_resource(ModeState(book.schema.state_initial.clone()));
         let players = book.teams.players() as usize;
         world.insert_resource(Picks(vec![Pick::default(); players]));
@@ -179,6 +185,23 @@ impl Mode {
         registry.register_resource::<PlayerResources>();
         registry.register_resource::<Timers>();
         Ok(())
+    }
+
+    /// The book of the mode's tags: their effects, and each unit type's own tags, the name of
+    /// the layer it moves on among them, when the mode names its layers.
+    fn tag_book(view: &View, setup: &ModeSetup<'_>) -> TagBook {
+        let mut types = view.types_mut();
+        let layers = &setup.data.navigation.layers;
+        for unit_type in &setup.unit_types {
+            let layer = Body::layer_of(unit_type.kit.body.as_ref());
+            if let Some(name) = layers.get(usize::from(layer.index())) {
+                let tag = types
+                    .declare(name.as_str())
+                    .expect("the match declared every tag its packages name");
+                types.give_tag(unit_type.unit_type, tag);
+            }
+        }
+        types.tag_book(&setup.data.tags)
     }
 
     /// The paths of `map`, which passed the check.
@@ -223,7 +246,7 @@ impl Mode {
             } => world
                 .resource_mut::<Timers>()
                 .set(now, name, ticks, repeat, data),
-            ModeEffect::SpawnAvatars => book.spawn_avatars(world, frame),
+            ModeEffect::SpawnAvatars(tag) => book.spawn_avatars(world, frame, &tag),
             ModeEffect::End(result) => {
                 let tick = world.resource::<SimTick>().start();
                 world.insert_resource(MatchEnd::new(tick, result));
@@ -233,9 +256,12 @@ impl Mode {
                 team,
                 pos,
             } => drop(book.spawn(world, unit_type, team, pos, ())),
-            ModeEffect::SpawnGroup { team, path, types } => {
-                book.spawn_group(world, team, path, &types);
-            }
+            ModeEffect::SpawnGroup {
+                team,
+                path,
+                from,
+                types,
+            } => book.spawn_group(world, team, path, from, &types),
             ModeEffect::Respawn { unit, ticks } => {
                 let entity = world.resource::<EntityIndex>().get(unit);
                 let entity = entity.expect("a dead unit that stays is in the world");
@@ -258,10 +284,7 @@ impl Mode {
 
     /// Checks what the mode names against what it has: its teams, no two of which share a name,
     /// at most `Team::LIMIT`; its relations, each of two teams it has, and no pair twice; and its
-    /// map, whose paths each have a waypoint and a name of their own, whose every playing team
-    /// has an avatar spawn, and whose structures and neutral spawns name unit types `unit_type`
-    /// knows, and teams and paths the mode has. Every point is within the map's bounds, and its
-    /// grid, if it has one, makes a grid of them.
+    /// map, as `check_map` does.
     pub fn check(
         teams: &[TeamManifest],
         relations: &[RelationData],
@@ -290,12 +313,27 @@ impl Mode {
                 return Err(ModeError::RepeatedRelation(a.clone(), b.clone()));
             }
         }
+        Mode::check_map(map, team_known, unit_type)
+    }
+
+    /// Checks `map`: its grids make grids of its bounds; its paths each have a waypoint and a
+    /// name of their own; its placed units are of unit types `unit_type` knows and teams
+    /// `team_known` knows, on paths it has, and walk one only from an end of a path they name;
+    /// its markers have names of their own, teams it knows, and a point or a region within its
+    /// bounds, not both. Every point fits its metric and is within its bounds.
+    fn check_map(
+        map: &MapData,
+        team_known: impl Fn(&str) -> bool,
+        unit_type: impl Fn(&str) -> bool,
+    ) -> Result<(), ModeError> {
         map.grid()?;
         map.pathing()?;
-        let in_bounds = |point: &GroundPoint| match point.position() {
+        let point = |point: &MapPoint| match point.position() {
+            _ if !point.fits(map.metric) => Err(ModeError::PointShape),
             Some(pos) if map.bounds.contains(pos) => Ok(()),
             _ => Err(ModeError::OutOfBounds),
         };
+        let path_known = |name: &String| map.paths.iter().any(|path| path.name == *name);
         for (at, path) in map.paths.iter().enumerate() {
             if map.paths[..at].iter().any(|other| other.name == path.name) {
                 return Err(ModeError::RepeatedName(path.name.clone()));
@@ -303,48 +341,60 @@ impl Mode {
             if path.points.is_empty() {
                 return Err(ModeError::EmptyPath(path.name.clone()));
             }
-            for point in &path.points {
-                in_bounds(point)?;
-            }
+            path.points.iter().try_for_each(point)?;
         }
-        for team in teams.iter().filter(|team| team.slots > 0) {
-            let spawn = map.spawns.get(&team.name);
-            in_bounds(spawn.ok_or_else(|| ModeError::NoSpawn(team.name.clone()))?)?;
+        for unit in &map.units {
+            if !unit_type(&unit.unit_type) {
+                return Err(ModeError::UnknownUnitType(unit.unit_type.clone()));
+            }
+            if !team_known(&unit.team) {
+                return Err(ModeError::UnknownTeam(unit.team.clone()));
+            }
+            match (&unit.path, unit.from) {
+                (Some(path), _) if !path_known(path) => {
+                    return Err(ModeError::UnknownPath(path.clone()));
+                }
+                (None, Some(_)) => return Err(ModeError::NoPathToWalk(unit.unit_type.clone())),
+                _ => {}
+            }
+            point(&unit.pos)?;
         }
-        for structure in &map.structures {
-            if !unit_type(&structure.unit_type) {
-                return Err(ModeError::UnknownUnitType(structure.unit_type.clone()));
-            }
-            if !team_known(&structure.team) {
-                return Err(ModeError::UnknownTeam(structure.team.clone()));
-            }
-            if let Some(path) = &structure.path
-                && !map.paths.iter().any(|known| known.name == *path)
+        for (at, marker) in map.markers.iter().enumerate() {
+            if map.markers[..at]
+                .iter()
+                .any(|other| other.name == marker.name)
             {
-                return Err(ModeError::UnknownPath(path.clone()));
+                return Err(ModeError::RepeatedName(marker.name.clone()));
             }
-            in_bounds(&structure.pos)?;
-        }
-        for spawn in &map.neutral_spawns {
-            if !unit_type(&spawn.unit_type) {
-                return Err(ModeError::UnknownUnitType(spawn.unit_type.clone()));
+            if let Some(team) = marker.team.as_ref().filter(|team| !team_known(team)) {
+                return Err(ModeError::UnknownTeam(team.clone()));
             }
-            in_bounds(&spawn.pos)?;
+            if let Some(region) = marker.region
+                && (marker.pos.is_some() || !region.holds(map.metric, map.bounds))
+            {
+                return Err(ModeError::Region(marker.name.clone()));
+            }
+            marker.pos.iter().try_for_each(point)?;
         }
         Ok(())
     }
 
-    /// Starts the match, before its first tick: the map's structures spawn, then
-    /// `on_match_start` runs. A timer it sets counts from the start. An error when the call
-    /// fails: a match its mode cannot start would run without its rules.
+    /// Starts the match, before its first tick: the map's placed units spawn, on their paths and
+    /// walking them as they name, then `on_match_start` runs. A timer it sets counts from the
+    /// start. An error when the call fails: a match its mode cannot start would run without its
+    /// rules.
     pub fn start(world: &mut World) -> Result<(), CallError> {
         let ctx = world.non_send::<Ctx>().clone();
         let book = ctx.mode().expect("a match with a mode");
-        for structure in &book.structures {
-            let (unit_type, team, pos) = (structure.unit_type, structure.team, structure.pos);
+        for placed in &book.placed {
+            let (unit_type, team, pos) = (placed.unit_type, placed.team, placed.pos);
             let entity = book.spawn(world, unit_type, team, pos, ());
-            if let Some(path) = structure.path {
-                world.entity_mut(entity).insert(OnPath::new(path));
+            let mut entity = world.entity_mut(entity);
+            if let Some(path) = placed.path {
+                entity.insert(OnPath::new(path));
+            }
+            if let Some(from) = placed.from {
+                entity.insert(PathWalker::start(from));
             }
         }
         if !book.schema.hooks.contains(Hook::OnMatchStart) {

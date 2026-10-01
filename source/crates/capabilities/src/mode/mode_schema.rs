@@ -1,7 +1,7 @@
-use campfire_script::rhai::{Dynamic, ImmutableString};
+use campfire_script::rhai::Dynamic;
 use campfire_script::{ScriptHost, ScriptId};
 
-use crate::mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
+use crate::mode::mode_data::{InputType, ModeData, ModeParam};
 use crate::scripts::hook::Hook;
 use crate::scripts::hook_set::HookSet;
 use crate::scripts::state_decl::StateType;
@@ -76,20 +76,7 @@ impl ModeSchema {
 
     /// The param `name`, as `ctx.p` reads it.
     pub(crate) fn param(&self, name: &str) -> Option<Dynamic> {
-        Some(match self.params.get(RUN, name)? {
-            ModeParam::Value(value) => value.to_dynamic(),
-            ModeParam::List(entries) => Dynamic::from_array(
-                entries
-                    .iter()
-                    .map(|entry| match entry {
-                        ListEntry::Value(value) => value.to_dynamic(),
-                        ListEntry::Text(text) => {
-                            Dynamic::from(ImmutableString::from(text.as_str()))
-                        }
-                    })
-                    .collect(),
-            ),
-        })
+        Some(self.params.get(RUN, name)?.to_dynamic())
     }
 
     /// The state field `name`.

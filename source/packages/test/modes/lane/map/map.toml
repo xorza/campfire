@@ -17,17 +17,27 @@ cell = "0.5"
 name = "lane"
 points = [[-16, 0], [0, 0], [16, 0]]
 
-[spawns]
-west = [0, -2]
-east = [0, 2]
+[[markers]]
+name = "west_spawn"
+tags = ["spawn"]
+team = "west"
+pos = [0, -2]
+params = { from = "start" }
 
-[[structures]]
+[[markers]]
+name = "east_spawn"
+tags = ["spawn"]
+team = "east"
+pos = [0, 2]
+params = { from = "end" }
+
+[[units]]
 unit_type = "tower"
 team = "west"
 path = "lane"
 pos = [-8, -3]
 
-[[structures]]
+[[units]]
 unit_type = "tower"
 team = "east"
 path = "lane"

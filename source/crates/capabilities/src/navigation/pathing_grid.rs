@@ -3,25 +3,25 @@ use std::ops::Range;
 use bevy_ecs::resource::Resource;
 use campfire_math::Num;
 
-use crate::navigation::body_index::BodyIndex;
+use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::regions::Regions;
+use crate::navigation::walker::Walker;
 use crate::values::grid::Grid;
 
-/// The map's pathing grid: its bounds in square cells, and for each body radius the mode's
-/// walkers have, the cells a walker of that radius cannot stand in, whose centers come closer to
-/// a static body, of a living unit that cannot walk, than the two radii together. Derived from
-/// the static bodies, not state: a change of them marks again only the cells of the bodies it
-/// touched.
+/// The map's pathing grid: its bounds in square cells, and for each kind of walker the mode has,
+/// its clearance: the cells it cannot stand in, whose centers come closer to a static body of its
+/// layer, of a living unit that cannot walk, than the two radii together. Derived from the static
+/// bodies, not state: a change of them marks again only the cells of the bodies it touched.
 #[derive(Resource, Debug)]
 pub(crate) struct PathingGrid {
     grid: Grid,
-    /// The walkers' radii, ascending, each once: one layer each.
-    radii: Vec<Num>,
-    /// Words of blocked cells a layer.
+    /// The kinds of walker, in order, each once: one clearance each.
+    walkers: Vec<Walker>,
+    /// Words of blocked cells a clearance.
     words: usize,
-    /// Each layer's blocked cells, one bit a cell, layer after layer.
+    /// Each clearance's blocked cells, one bit a cell, clearance after clearance.
     blocked: Vec<u64>,
-    /// Each layer's regions.
+    /// Each clearance's regions.
     regions: Vec<Regions>,
     /// The runs of cells a body taken away blocked, row by row, and the chunks an update touched,
     /// kept between updates.
@@ -30,20 +30,20 @@ pub(crate) struct PathingGrid {
 }
 
 impl PathingGrid {
-    /// The grid over `grid`'s cells for walkers of `radii`, with no static body yet.
-    pub(crate) fn new(grid: Grid, mut radii: Vec<Num>) -> PathingGrid {
-        radii.sort_unstable();
-        radii.dedup();
+    /// The grid over `grid`'s cells for `walkers`, with no static body yet.
+    pub(crate) fn new(grid: Grid, mut walkers: Vec<Walker>) -> PathingGrid {
+        walkers.sort_unstable();
+        walkers.dedup();
         let words = grid.cells().div_ceil(64);
-        let blocked = vec![0; words * radii.len()];
-        let regions: Vec<Regions> = (0..radii.len())
-            .map(|layer| Regions::new(&grid, &blocked[layer * words..(layer + 1) * words]))
+        let blocked = vec![0; words * walkers.len()];
+        let regions: Vec<Regions> = (0..walkers.len())
+            .map(|at| Regions::new(&grid, &blocked[at * words..(at + 1) * words]))
             .collect();
         let chunks = regions.first().map_or(0, Regions::chunks);
         PathingGrid {
             grid,
             blocked,
-            radii,
+            walkers,
             words,
             regions,
             cleared: Vec::new(),
@@ -52,24 +52,25 @@ impl PathingGrid {
     }
 
     /// Follows the last update of `index`, which held the static bodies this grid was marked
-    /// from: the cells of each body it took away open, then the bodies still near mark them again,
-    /// and each body it put in marks its own; each layer's regions are labeled again in the chunks
-    /// those cells lie in.
+    /// from: in each clearance, the cells of each body of its layer that the update took away
+    /// open, then the bodies still near mark them again, and each body it put in marks its own;
+    /// each clearance's regions are labeled again in the chunks those cells lie in.
     pub(crate) fn update(&mut self, index: &BodyIndex) {
         let PathingGrid {
             grid,
-            radii,
+            walkers,
             words,
             blocked,
             regions,
             cleared,
             dirty,
         } = self;
-        for (layer, &radius) in radii.iter().enumerate() {
-            let words = &mut blocked[layer * *words..(layer + 1) * *words];
-            let regions = &mut regions[layer];
+        for (at, &Walker { layer, radius }) in walkers.iter().enumerate() {
+            let words = &mut blocked[at * *words..(at + 1) * *words];
+            let regions = &mut regions[at];
             dirty.fill(false);
-            for body in index.removed() {
+            let ours = |body: &&IndexedBody| body.layer == layer;
+            for body in index.removed().iter().filter(ours) {
                 cleared.clear();
                 grid.spans_closer(body.at, radius + body.radius, |cells| {
                     regions.touch(cells.clone(), dirty);
@@ -81,7 +82,7 @@ impl PathingGrid {
                 // A cell another body blocks too lies within both reaches, so the bodies' centers
                 // are closer than the two reaches together.
                 let reach = body.radius + radius + radius;
-                index.near(body.at.get(), reach, |other| {
+                index.near(layer, body.at.get(), reach, |other| {
                     grid.spans_closer(other.at, radius + other.radius, |cells| {
                         let at = cleared.partition_point(|run| run.end <= cells.start);
                         let Some(run) = cleared.get(at) else {
@@ -93,7 +94,7 @@ impl PathingGrid {
                     });
                 });
             }
-            for body in index.added() {
+            for body in index.added().iter().filter(ours) {
                 grid.spans_closer(body.at, radius + body.radius, |cells| {
                     regions.touch(cells.clone(), dirty);
                     for cell in cells {
@@ -116,37 +117,37 @@ impl PathingGrid {
         self.grid.cell()
     }
 
-    /// The cells a walker of `radius`, one of the mode's walkers' radii, may stand in.
-    pub(crate) fn layer(&self, radius: Num) -> Layer<'_> {
-        let layer = self
-            .radii
-            .binary_search(&radius)
-            .expect("a radius of the mode's walkers");
-        Layer {
+    /// The cells `walker`, one of the mode's kinds of walker, may stand in.
+    pub(crate) fn clearance(&self, walker: Walker) -> Clearance<'_> {
+        let at = self
+            .walkers
+            .binary_search(&walker)
+            .expect("a kind of walker the mode has");
+        Clearance {
             grid: &self.grid,
-            radius,
-            regions: &self.regions[layer],
-            words: &self.blocked[layer * self.words..(layer + 1) * self.words],
+            walker,
+            regions: &self.regions[at],
+            words: &self.blocked[at * self.words..(at + 1) * self.words],
         }
     }
 }
 
-/// The cells of the pathing grid a walker of one radius may stand in.
+/// The cells of the pathing grid one kind of walker may stand in.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Layer<'a> {
+pub(crate) struct Clearance<'a> {
     grid: &'a Grid,
-    radius: Num,
+    walker: Walker,
     regions: &'a Regions,
     words: &'a [u64],
 }
 
-impl Layer<'_> {
+impl Clearance<'_> {
     pub(crate) const fn grid(&self) -> &Grid {
         self.grid
     }
 
-    pub(crate) const fn radius(&self) -> Num {
-        self.radius
+    pub(crate) const fn walker(&self) -> Walker {
+        self.walker
     }
 
     pub(crate) const fn regions(&self) -> &Regions {
@@ -165,7 +166,7 @@ mod tests {
     use campfire_sim::{IdAllocator, Position};
 
     use super::*;
-    use crate::navigation::body_index::IndexedBody;
+    use crate::units::layer::Layer;
     use crate::values::bounds::Bounds;
 
     fn num(value: i64) -> Num {
@@ -176,14 +177,30 @@ mod tests {
         Num::from_bits(1 << 23)
     }
 
+    /// A walker of `radius` on the first layer.
+    fn ground(radius: Num) -> Walker {
+        Walker {
+            layer: Layer::FIRST,
+            radius,
+        }
+    }
+
+    /// A walker of 1 m on the second layer.
+    fn air() -> Walker {
+        Walker {
+            layer: Layer::new(1),
+            radius: Num::ONE,
+        }
+    }
+
     /// Each cell of the 6 × 6 grid of 1 m cells over (−3, −3) to (3, 3), row by row from z = −3,
-    /// as `#` where a walker of `radius` cannot stand, `.` where it can.
-    fn drawn(grid: &PathingGrid, radius: Num) -> Vec<String> {
+    /// as `#` where `walker` cannot stand, `.` where it can.
+    fn drawn(grid: &PathingGrid, walker: Walker) -> Vec<String> {
         (0..6)
             .map(|row| {
                 (0..6)
                     .map(|column| {
-                        if grid.layer(radius).open(row * 6 + column) {
+                        if grid.clearance(walker).open(row * 6 + column) {
                             '.'
                         } else {
                             '#'
@@ -194,12 +211,13 @@ mod tests {
             .collect()
     }
 
-    /// A grid over the 6 × 6 cells for walkers of 1 m and 0.5 m.
+    /// A grid over the 6 × 6 cells for walkers of 1 m and 0.5 m on the ground, and of 1 m in
+    /// the air.
     fn grid() -> PathingGrid {
         let bounds = Bounds::new([num(-3), num(-3)], [num(3), num(3)]).unwrap();
         PathingGrid::new(
             Grid::new(num(1), bounds).unwrap(),
-            vec![Num::ONE, half(), half()],
+            vec![air(), ground(Num::ONE), ground(half()), ground(half())],
         )
     }
 
@@ -228,12 +246,13 @@ mod tests {
             id: ids.allocate(),
             at: at(Num::ZERO, Num::ZERO),
             radius: Num::ONE,
+            layer: Layer::FIRST,
         };
         follow(&mut grid, &mut index, &[tower]);
         let small = ["......", "......", "..##..", "..##..", "......", "......"];
         let large = ["......", "..##..", ".####.", ".####.", "..##..", "......"];
-        assert_eq!(drawn(&grid, half()), small);
-        assert_eq!(drawn(&grid, Num::ONE), large);
+        assert_eq!(drawn(&grid, ground(half())), small);
+        assert_eq!(drawn(&grid, ground(Num::ONE)), large);
 
         // A post of 0.5 m at (2, −1.5), and one at (−2.5, 2.5), for a walker of 0.5 m, closer
         // than 1 m: the post blocks the centers (1.5, −1.5) and (2.5, −1.5), 0.5 m off, and not
@@ -243,29 +262,45 @@ mod tests {
             id: ids.allocate(),
             at: at(num(2), -(num(1) + half())),
             radius: half(),
+            layer: Layer::FIRST,
         };
         let corner = IndexedBody {
             id: ids.allocate(),
             at: at(-(num(2) + half()), num(2) + half()),
             radius: half(),
+            layer: Layer::FIRST,
         };
         follow(&mut grid, &mut index, &[tower, post, corner]);
         let small = ["......", "....##", "..##..", "..##..", "......", "#....."];
-        assert_eq!(drawn(&grid, half()), small);
+        assert_eq!(drawn(&grid, ground(half())), small);
         // For a walker of 1 m, closer than 1.5 m to the post: its own two cells, the two above
         // and the two below at √1.25 ≈ 1.12 m, such as (1.5, −0.5), which the tower blocks too;
         // (0.5, −1.5), 1.5 m off, is open. The corner post blocks (−2.5, 1.5) and (−1.5, 1.5) at
         // most √2 ≈ 1.41 m off, and (−1.5, 2.5) at 1 m.
         let large = ["....##", "..####", ".#####", ".####.", "####..", "##...."];
-        assert_eq!(drawn(&grid, Num::ONE), large);
+        assert_eq!(drawn(&grid, ground(Num::ONE)), large);
+        // None of them is in the air; a cloud of 1 m at the origin is, and blocks for the air
+        // walker of 1 m what the tower blocks for the ground walker of 1 m, and nothing on the
+        // ground.
+        assert_eq!(drawn(&grid, air()), ["......"; 6]);
+        let cloud = IndexedBody {
+            id: ids.allocate(),
+            layer: air().layer,
+            ..tower
+        };
+        follow(&mut grid, &mut index, &[tower, post, corner, cloud]);
+        assert_eq!(drawn(&grid, ground(half())), small);
+        assert_eq!(drawn(&grid, ground(Num::ONE)), large);
+        let under = ["......", "..##..", ".####.", ".####.", "..##..", "......"];
+        assert_eq!(drawn(&grid, air()), under);
 
         // Without the tower, only the others block, and the post still blocks the cells it shares
         // with the tower.
         follow(&mut grid, &mut index, &[post, corner]);
         let small = ["......", "....##", "......", "......", "......", "#....."];
-        assert_eq!(drawn(&grid, half()), small);
+        assert_eq!(drawn(&grid, ground(half())), small);
         let large = ["....##", "....##", "....##", "......", "##....", "##...."];
-        assert_eq!(drawn(&grid, Num::ONE), large);
+        assert_eq!(drawn(&grid, ground(Num::ONE)), large);
 
         // The post moves a meter along z, to (2, −0.5).
         let moved = IndexedBody {
@@ -273,7 +308,8 @@ mod tests {
             ..post
         };
         follow(&mut grid, &mut index, &[tower, moved, corner]);
+        assert_eq!(drawn(&grid, air()), ["......"; 6]);
         follow(&mut grid, &mut index, &[]);
-        assert_eq!(drawn(&grid, Num::ONE), ["......"; 6]);
+        assert_eq!(drawn(&grid, ground(Num::ONE)), ["......"; 6]);
     }
 }

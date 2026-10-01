@@ -38,8 +38,8 @@ impl Position {
         Vec3::new(offset.x, Num::ZERO, offset.z)
     }
 
-    /// Whether `to` is within `radius` of here on the ground plane, exactly: the test of every
-    /// range and query radius, so all agree on what is in reach.
+    /// Whether `to` is within `radius` of here on the ground plane, exactly: the range test of a
+    /// planar map.
     pub fn within_ground(self, to: Position, radius: Num) -> bool {
         Vec3::ZERO.within(self.ground_offset(to), radius)
     }

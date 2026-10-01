@@ -198,6 +198,11 @@ pub enum LoadProblem {
         at: Place,
         name: String,
     },
+    /// A script at `at` names a marker tag no marker of the map has.
+    UnknownMarkerTag {
+        at: Place,
+        tag: String,
+    },
     /// Data or a script at `at` names a pool the mode does not declare.
     UnknownPool {
         at: Place,
@@ -213,6 +218,11 @@ pub enum LoadProblem {
     StatLoop(Vec<Stat>),
     /// The mode declares more pools than `Pools::LIMIT`.
     TooManyPools,
+    /// A unit type at `at` moves on a layer the mode does not declare.
+    UnknownLayer {
+        at: Place,
+        layer: DeclaredName,
+    },
     /// The mode declares `combat` but no `[combat] life`.
     NoLifePool,
     /// A unit type at `at` has a `combat` section but not the life pool.
@@ -250,6 +260,8 @@ pub enum Place {
     AttackKind,
     /// The mode's `[combat]`.
     Combat,
+    /// The mode's `[navigation]`.
+    Navigation,
     /// The mode's pool of that name.
     Pool(DeclaredName),
 }
@@ -312,6 +324,7 @@ impl fmt::Display for Place {
             Place::Paths => f.write_str("the map's paths"),
             Place::AttackKind => f.write_str("the mode's attack_kind"),
             Place::Combat => f.write_str("the mode's [combat]"),
+            Place::Navigation => f.write_str("the mode's [navigation]"),
             Place::Pool(name) => write!(f, "pool {name}"),
         }
     }
@@ -388,6 +401,9 @@ impl fmt::Display for LoadProblem {
             LoadProblem::UnknownModifier { at, id } => write!(f, "{at}: no modifier {id:?}"),
             LoadProblem::UnknownStat { at, name } => write!(f, "{at}: no stat {name:?}"),
             LoadProblem::UnknownPool { at, name } => write!(f, "{at}: no pool {name:?}"),
+            LoadProblem::UnknownMarkerTag { at, tag } => {
+                write!(f, "{at}: no marker with tag {tag:?}")
+            }
             LoadProblem::RepeatedPool { at, name } => write!(f, "{at}: pool {name:?} twice"),
             LoadProblem::StatLoop(stats) => {
                 let names: Vec<String> = stats.iter().map(Stat::to_string).collect();
@@ -400,6 +416,7 @@ impl fmt::Display for LoadProblem {
             LoadProblem::TooManyPools => {
                 write!(f, "more than {} pools", Pools::LIMIT)
             }
+            LoadProblem::UnknownLayer { at, layer } => write!(f, "{at}: no layer {layer:?}"),
             LoadProblem::NoLifePool => f.write_str("combat with no [combat] life"),
             LoadProblem::LifePoolMissing(at) => write!(f, "{at}: combat without the life pool"),
             LoadProblem::RepeatedName(name) => write!(f, "the mode declares {name:?} twice"),

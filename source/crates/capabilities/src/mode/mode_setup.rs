@@ -6,6 +6,7 @@ use crate::mode::map_data::MapData;
 use crate::mode::mode_data::ModeData;
 use crate::mode::team_manifest::TeamManifest;
 use crate::mode::unit_kit::UnitKit;
+use crate::navigation::walker::Walker;
 use crate::stats::modifier_book::ModifierId;
 use crate::stats::stats_data::StatsData;
 use crate::units::unit_type::UnitType;
@@ -27,9 +28,9 @@ pub struct ModeSetup<'a> {
     pub unit_types: Vec<UnitTypeSetup>,
     pub avatars: Vec<AvatarSetup>,
     pub loadout: Vec<LoadoutSetup>,
-    /// The body radius of each kind of unit that walks, 0 for one with no body: the layers of
-    /// the map's pathing grid.
-    pub walkers: Vec<Num>,
+    /// Each kind of unit that walks, by its layer and its body's radius: the clearances of the
+    /// map's pathing grid.
+    pub walkers: Vec<Walker>,
     /// The manifest's move speed cap, in meters a second.
     pub max_move_speed: Num,
     /// The places of the mode's stats in the order the stats refresh computes them, which the

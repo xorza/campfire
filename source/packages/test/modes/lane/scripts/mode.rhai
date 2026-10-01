@@ -6,14 +6,14 @@ fn on_match_start(ctx) {
     if ctx.players > 1 {
         ctx.choose_avatar(1, "hero-runner");
     }
-    ctx.spawn_avatars();
+    ctx.spawn_avatars("spawn");
     ctx.timer("first_wave", 1, false, ());
 }
 
 fn on_timer(ctx, name, data) {
     for lane in ctx.map.paths {
         for team in ctx.teams {
-            ctx.spawn_group(team, lane, ctx.p.wave);
+            ctx.spawn_group(team, lane, lane_end(ctx, team), ctx.p.wave);
         }
     }
     if name == "first_wave" {
@@ -30,4 +30,14 @@ fn on_unit_died(ctx, unit, killer, assisters) {
     } else if unit.is_avatar {
         ctx.respawn(unit, ctx.p.respawn_ms);
     }
+}
+
+// The end of the lane `team`'s creeps walk from, as its spawn marker names it.
+fn lane_end(ctx, team) {
+    for marker in ctx.map.markers("spawn") {
+        if marker.team == team {
+            return marker.params.from;
+        }
+    }
+    throw "a team with no spawn marker";
 }

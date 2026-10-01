@@ -12,7 +12,7 @@ pub fn collision(c: &mut Criterion) {
     let mut group = c.benchmark_group("collision");
     group.throughput(Throughput::Elements(1000));
     for (name, span) in [("crowded", 20), ("spread", 60)] {
-        let bodies = scene(9, 1000, span);
+        let bodies = scene(9, 1000, span, 1);
         let index = statics(&bodies);
         let mut broadphase = Broadphase::default();
         let mut colliders = bodies.clone();

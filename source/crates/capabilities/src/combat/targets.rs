@@ -1,5 +1,6 @@
 use bevy_ecs::query::Without;
 use bevy_ecs::system::{Query, Res, SystemParam};
+use campfire_math::Num;
 use campfire_sim::{EntityIndex, Position, StableId};
 
 use crate::combat::combat_bindings::CombatBindings;
@@ -13,6 +14,7 @@ use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
 use crate::values::attitude::Attitude;
+use crate::values::metric::Metric;
 
 /// The units an attack may target: living units with the life pool whose tags let them be
 /// targets.
@@ -23,6 +25,7 @@ pub(crate) struct Targets<'w, 's> {
     index: Res<'w, EntityIndex>,
     relations: Res<'w, Relations>,
     bindings: Res<'w, CombatBindings>,
+    metric: Res<'w, Metric>,
     units: Query<
         'w,
         's,
@@ -48,6 +51,19 @@ impl Targets<'_, '_> {
     /// How `of` regards `other`.
     pub(crate) fn attitude(&self, of: Team, other: Team) -> Attitude {
         self.relations.between(of, other)
+    }
+
+    /// Whether `range` from a unit at `from` of body radius `radius` reaches `target`: within
+    /// range in the map's metric, exactly, from the edge of the one body to the edge of the other.
+    pub(crate) fn reaches(
+        &self,
+        from: Position,
+        radius: Num,
+        range: Num,
+        target: &LivingUnit,
+    ) -> bool {
+        self.metric
+            .within(from, target.pos, range + radius + target.radius)
     }
 
     /// `target`, when it is a living unit that may be a target.

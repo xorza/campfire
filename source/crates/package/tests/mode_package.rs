@@ -124,8 +124,25 @@ fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
     assert!(at_caster(&error.problem), "{error}");
 }
 
+#[test]
+fn more_layers_than_tags_a_match_holds_fail_the_load() {
+    // 257 layers, each a tag, past the 256 tags a match holds.
+    let names: Vec<String> = (0..=256).map(|at| format!("\"layer{at}\"")).collect();
+    let section = format!(
+        "[navigation]\nlayers = [{}]\n\n# Its damage kinds",
+        names.join(", ")
+    );
+    let edit = Edit::Replace("# Its damage kinds", section.leak());
+    let error = ModePackages::from_package_dir(&edited([(MODE_DATA, edit)])).unwrap_err();
+    assert_eq!(error.package, MODE);
+    assert!(
+        matches!(*error.problem, LoadProblem::TooManyTags),
+        "{error}"
+    );
+}
+
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 83] = [
+const FLAWS: [Flaw; 92] = [
     flaw(
         MANIFEST,
         Edit::Replace(r#"engine = "0.1.0""#, r#"engine = "0.0.9""#),
@@ -410,8 +427,8 @@ const FLAWS: [Flaw; 83] = [
         Edit::Replace("pos = [-22, -46]", "pos = [0, -59]"),
         MODE,
         |problem| {
-            matches!(problem, LoadProblem::Map(MapProblem::SpawnBlocked { team })
-                if team == "north")
+            matches!(problem, LoadProblem::Map(MapProblem::MarkerBlocked { marker })
+                if marker == "north_spawn")
         },
     ),
     flaw(
@@ -697,12 +714,104 @@ const FLAWS: [Flaw; 83] = [
         MODE,
         |problem| matches!(problem, LoadProblem::Mode(ModeError::UnknownPath(name)) if name == "north"),
     ),
+    // A marker tag a script names is some marker's; a point fits the map's metric; a region is a
+    // box within the bounds, of a marker with no point; a placed unit walks only a path it
+    // names; marker names differ.
+    flaw(
+        "modes/3v3/scripts/mode.rhai",
+        Edit::Replace(r#"ctx.map.markers("camp")"#, r#"ctx.map.markers("camps")"#),
+        MODE,
+        |problem| matches!(problem, LoadProblem::UnknownMarkerTag { tag, .. } if tag == "camps"),
+    ),
     flaw(
         MAP,
-        Edit::Replace("north = [0, -60]\n", ""),
+        Edit::Replace("pos = [0, -60]", "pos = [0, 0, -60]"),
         MODE,
-        |problem| matches!(problem, LoadProblem::Mode(ModeError::NoSpawn(team)) if team == "north"),
+        |problem| matches!(problem, LoadProblem::Mode(ModeError::PointShape)),
     ),
+    flaw(
+        MAP,
+        Edit::Replace(
+            "pos = [-18, -12]",
+            "region = { min = [-20, -14], max = [-16, -70] }",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Mode(ModeError::Region(marker)) if marker == "camp1"),
+    ),
+    flaw(
+        MAP,
+        Edit::Replace(
+            "pos = [-18, -12]",
+            "pos = [-18, -12]\nregion = { min = [-20, -14], max = [-16, -10] }",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Mode(ModeError::Region(marker)) if marker == "camp1"),
+    ),
+    flaw(
+        MAP,
+        Edit::Replace(
+            "path = \"west\"\npos = [-22, -46]",
+            "path = \"middle\"\npos = [-22, -46]",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Mode(ModeError::UnknownPath(path)) if path == "middle"),
+    ),
+    flaw(
+        MAP,
+        Edit::Replace(
+            "unit_type = \"core\"\nteam = \"north\"\npos = [0, -54]",
+            "unit_type = \"core\"\nteam = \"north\"\npos = [0, -54]\nfrom = \"start\"",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Mode(ModeError::NoPathToWalk(unit_type)) if unit_type == "core"),
+    ),
+    flaw(
+        MAP,
+        Edit::Replace(r#"name = "camp2""#, r#"name = "camp1""#),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Mode(ModeError::RepeatedName(name)) if name == "camp1"),
+    ),
+    // The layers have names of their own, a unit type moves on one of them, and they are
+    // navigation's.
+    flaw(
+        MODE_DATA,
+        Edit::Replace(
+            "# Its damage kinds",
+            "[navigation]\nlayers = [\"ground\", \"ground\"]\n\n# Its damage kinds",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::RepeatedName(name) if name.as_str() == "ground"),
+    ),
+    flaw(
+        UNITS,
+        Edit::Replace(
+            r#"collision = { radius = "0.35" }"#,
+            r#"collision = { radius = "0.35", layer = "air" }"#,
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::UnknownLayer { at: Place::UnitType(unit_type), layer } if unit_type == "melee_creep" && layer.as_str() == "air"),
+    ),
+    Flaw {
+        file: MANIFEST,
+        edit: Edit::Replace(r#""orders", "navigation", "vision""#, r#""vision""#),
+        also: &[(
+            MODE_DATA,
+            Edit::Replace(
+                "# Its damage kinds",
+                "[navigation]\nlayers = [\"ground\"]\n\n# Its damage kinds",
+            ),
+        )],
+        package: MODE,
+        refused: |problem| {
+            matches!(
+                problem,
+                LoadProblem::Undeclared {
+                    capability: Capability::Navigation,
+                    at: Place::Navigation
+                }
+            )
+        },
+    },
     // A relation names two of the mode's teams, a pair once.
     flaw(
         MODE_DATA,

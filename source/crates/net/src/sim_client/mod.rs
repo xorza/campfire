@@ -175,6 +175,7 @@ impl Plugin for SimClient {
         self.mode
             .capabilities
             .install(world, &mut schedule, &mut state, None);
+        world.insert_resource(self.mode.metric);
         world.insert_resource(self.mode.bounds);
         if let Some(life) = self.mode.life {
             Combat::bind_life(world, life);

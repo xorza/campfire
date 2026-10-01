@@ -69,6 +69,10 @@ pub enum ApiError {
     NotAnEnemy,
     /// A team the mode does not have.
     UnknownTeam,
+    /// A spawn of avatars at a marker tag some playing team has no marker of.
+    NoSpawnMarker,
+    /// An end of a path other than `start` or `end`.
+    UnknownPathEnd,
     /// A relation other than `hostile`, `neutral` or `friendly`.
     UnknownRelation,
     /// A relation of a team to itself, which is friendly.
@@ -81,7 +85,6 @@ pub enum ApiError {
     OutOfBounds,
     /// A team whose units walk no path: only the first two teams walk each path, from their own
     /// end.
-    NoPathEnd,
     /// A team with no one enemy team: `enemy_team` needs a mode of two teams.
     NoEnemyTeam,
     /// A second end of a match.
@@ -186,12 +189,13 @@ impl fmt::Display for ApiError {
             ApiError::OtherUnit => "an AI orders only the unit that thinks",
             ApiError::NotAnEnemy => "target is not a living enemy",
             ApiError::UnknownTeam => "team is not one of the mode's",
+            ApiError::NoSpawnMarker => "a playing team has no marker with the tag",
+            ApiError::UnknownPathEnd => "a path's end is start or end",
             ApiError::UnknownRelation => "relation is not hostile, neutral or friendly",
             ApiError::SelfRelation => "a team's relation to itself is friendly",
             ApiError::UnknownUnitType => "unit type is not one of the mode's",
             ApiError::UnknownPath => "path is not one of the map's",
             ApiError::OutOfBounds => "point is outside the map's bounds",
-            ApiError::NoPathEnd => "team has no end of the paths",
             ApiError::NoEnemyTeam => "team has no one enemy team",
             ApiError::Ended => "the match has ended",
             ApiError::UnknownPlayer => "player is not in the session",
