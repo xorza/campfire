@@ -62,7 +62,7 @@ Clients can join a running game at any time; they receive the current state of w
 
 ## Session log
 
-- A match is one segment; a persistent world checkpoints every few minutes. Format: Protocol Spec.
+- A match with no save is one segment; a persistent world checkpoints every few minutes, and every save is a checkpoint. Format: Protocol Spec.
 - The verifier replays any segment from its checkpoint. Hosts set how long logs are kept.
 - **Snapshot:** the postcard encoding of every sim component and resource, entities sorted by stable id, component types in an order the engine release fixes, script state maps sorted by key. Its format belongs to the engine release, not the protocol, and carries a data version, which a release raises whenever it changes the format.
 - **State hash:** one BLAKE3 hash for each state type over the same bytes the snapshot holds, then one hash over the list of `(name, type hash)` ([Determinism Core](09-determinism-core.md)). `det-ci` compares it on every tick and, at the first mismatch, the per-type hashes, to name the first divergence.
@@ -70,7 +70,7 @@ Clients can join a running game at any time; they receive the current state of w
 
 ## Saves
 
-A save is a checkpoint a player keeps: the snapshot at a tick boundary, and the session log before it. The player asks for one with a command, the mode with `ctx.save()` or at its autosave interval; a mode that sets `saves = "mode"` refuses the player's, as a hardcore mode does. A save costs no slow tick: it is written as every checkpoint is, from a copy, on a background thread.
+A save is a checkpoint a player keeps: the snapshot at a tick boundary, and the session log before it. The player asks for one with a command, the mode with `ctx.save()` or at its `[saves] autosave_ms`; a mode that sets `[saves] by = "mode"` refuses the player's, as a hardcore mode does. A save costs no slow tick: it is written as every checkpoint is, from a copy, on a background thread.
 
 - **Load.** Loading a save restores its snapshot and starts a new segment of the same session from it; the log after the save is dropped, so a load goes back in time. A singleplayer session may load any of its saves.
 - **Converters.** A save loads on the release that made it and on every later one. Each release carries a converter from the data version before it, which rewrites a snapshot one way, as Factorio's map versions and Minecraft's DataFixerUpper do; loading an older save runs the converters in order. A release may drop the converters older than a point it names, and the launcher then fetches the last release that had them to convert in two steps. Script state converts by the packages' `state_version` and migration hooks, as for a world.
@@ -84,7 +84,17 @@ A save is a checkpoint a player keeps: the snapshot at a tick boundary, and the 
 - **Narrow game API.** Scripts never touch the ECS; they call the script API.
 - **No `bevy_mod_scripting`.** It exposes all Bevy types and [pins Bevy patch versions](https://lib.rs/crates/bevy_mod_scripting_script).
 - **Rhai engine:** `Engine::new_raw` with only the packages scripts need; no `eval`, imports, floats or time; `print` goes to debug logs only; a fixed hashing seed; never `unchecked`.
-- **Operation limits:** a limit per call, and per-tick pools: one per player slot for the calls that player causes, `think` for AI, `mode` for mode hooks, `systems` for scripted systems. `calc_damage` and `calc_heal`, pure hooks called once for each damage and each heal, have only the limit per call ([Combat](04-capabilities/combat.md#damage-and-heals)). The manifest sets them; counts are the same everywhere, so an over-budget script fails the same everywhere. An AI whose pool is spent stays due and thinks first next tick.
+- **Operation limits:** a limit per call, and per-tick pools, which the manifest sets; counts are the same everywhere, so an over-budget script fails the same everywhere. Each hook runs in one pool:
+
+  | Pool | Hooks |
+  | --- | --- |
+  | The player's, one per player slot | The calls that player causes: an action of a unit the player controls, its deliveries and modifiers, the player's quests and dialogue |
+  | `think` | AI: `on_think`, `on_heard`; the hooks of an action or modifier whose source no player controls, or is gone |
+  | `mode` | The mode's hooks: timers, inputs, deaths, region events, `on_level_up`, `on_wake`; a modifier with no source |
+  | `systems` | `on_system` |
+  | None, only the limit per call | `calc_damage` and `calc_heal`, pure and called once for each damage and each heal, so a crowded fight cannot spend a pool and change how they weigh ([Combat](04-capabilities/combat.md#damage-and-heals)); `on_generate`, under its own larger limit per call, `generate`, since it builds a region in one call |
+
+  A call that finds its pool spent waits and runs first in the next tick, as AI and scripted systems do; a hook that cannot wait, a pure one, has no pool.
 - **Other limits** (call depth, sizes) are engine constants, set explicitly, since Rhai's defaults differ between debug and release builds.
 - **All or nothing per call.** State writes go to an overlay the call can read back; engine effects (damage, spawn, orders, timers) are queued. On success the overlay commits, then the effects apply in call order. On failure (error, overflow, limit) both are discarded, the sim emits a `script_error` event, and the tick goes on.
 - **No hidden script state.** It is declared in a typed schema and stored in sim components; see [Script state](03-game-scripting.md#script-state).
@@ -98,7 +108,7 @@ Collision, pathfinding and visibility each have one interface and pluggable back
 - `sim` depends on `bevy_ecs` only and is one schedule. The server and client run it inside Lightyear's fixed tick; the verifier and `det-ci` run it in a bare `World`. The server never links the renderer. Pinned to [Bevy 0.19](https://bevy.org/news/bevy-0-19/); the script API and protocol expose no Bevy types.
 - Sim systems touch only sim components, so Lightyear's components cannot change a result.
 - The server records the inputs received since the last tick, then runs the tick. It hashes the state at checkpoints and at the result; a hash after every tick is opt-in.
-- Each unit replicates to the clients whose group of friendly teams sees it. A client predicts only what its player controls (position, destination, death and respawn), with no input delay: Lightyear keeps its tick ahead by the round trip, so its inputs land in time. A rollback reruns the sim from the server's state. It predicts movement, never a random outcome.
+- Each unit replicates to the clients whose vision group sees it. A client predicts only what its player controls (position, destination, death and respawn), with no input delay: Lightyear keeps its tick ahead by the round trip, so its inputs land in time. A rollback reruns the sim from the server's state. It predicts movement, never a random outcome.
 - `client` draws each unit with its own entity, interpolated between ticks; floats (`Transform`) exist only there.
 - **Measured** (i9-13980HX): a packet's signature costs 17 µs to sign and 26 µs to check; a 3v3 tick at 20 Hz costs 55 µs on average and 363 µs at worst; a re-simulated tick of the lane 1v1 costs 3.2 µs. A 3v3 server tick with 6 packets costs at most about 0.5 ms of its 50 ms, and an 8-tick rollback at a 200 ms round trip at most about 3 ms. Decision 1 holds.
 
@@ -108,6 +118,11 @@ Collision, pathfinding and visibility each have one interface and pluggable back
 - Stable entity ids, never Bevy `Entity`, for the protocol, replays and every order that matters; Bevy [does not guarantee query order](https://docs.rs/bevy_rand/latest/bevy_rand/tutorial/ch02_basic_usage/index.html).
 - Positions are 3D and fixed-point, 1 unit = 1 meter, within ±2²⁰ m. No floats outside a physics backend, no randomly seeded hash maps, no wall clock. An overflow panics in every build.
 - The RNG is a cryptographic PRF, so clients cannot recover the seed from outcomes. A random value that decides an outcome never reaches a client before the log is published: clients predict effects, never results.
+
+## Creator tools
+
+- **Data schemas.** A JSON Schema for every data file is generated from the same types the engine reads, as the script API reference is generated from the registry, and a test fails when the checked-in schemas differ; an editor such as VS Code then completes and checks a package's TOML as a creator types. Generating them needs a schema crate, to be chosen and approved when the work starts.
+- **Hot reload.** A local session in dev mode reloads changed scripts, data and text without a restart, as Roblox Studio and Dota 2's workshop tools do. A reload is no input the log can replay, so a dev session's terms say it is one, the verifier refuses its log, and a dev session takes no payments.
 
 ## Testing and diagnostics
 

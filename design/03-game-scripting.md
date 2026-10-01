@@ -8,7 +8,7 @@ Only the server and verifier run the full sim during a session; clients would ne
 | --- | --- | --- |
 | Server | Full sim + all game scripts | Everything |
 | Verifier | Full sim + all game scripts, replaying the session log | Everything, after the log is published |
-| Client | Prediction of what the player controls, by the capabilities that move it, plus presentation scripts | Only what its group of friendly teams can see |
+| Client | Prediction of what the player controls, by the capabilities that move it, plus presentation scripts | Only what its vision group can see |
 | Spectator client | Presentation scripts, no prediction | Everything, delayed by the host's spectator delay |
 
 - **Game scripts** (rules, units, abilities, AI) are deterministic and change game state.
@@ -21,18 +21,24 @@ A game mode is one content package.
 
 ```
 my-mode/
-  manifest.toml       id, version, kind (mode, avatar, loadout, campaign), engine release, capabilities used,
+  manifest.toml       id, version, kind (mode, avatar, loadout, campaign, locale), package API version,
+                      capabilities used,
                       dependencies (by fingerprint),
                       teams and slots, tick-rate range, collision, pathfinding and visibility backends,
                       move speed cap, script pools
-  map/                map data: geometry or grid, lanes, spawn points, structures
+  map/                map data: bounds, terrain or grid or geometry, paths, placed units, markers
   data/               unit types, actions, modifiers: one section per capability
   scripts/            game scripts (.rhai): mode rules, AI, capability hooks
   client/             presentation scripts (.rhai)
+  locale/             human text by message id, one Fluent file a language (en.ftl, de.ftl)
   assets/             models (.glb), textures (PNG, KTX2 + zstd), sounds (Ogg Vorbis), icons (PNG)
 ```
 
 Content can come from other packages, referenced by fingerprint. A package may also **override** a record of a package it depends on, a unit type, an action, a modifier, a table or a quest, whole: the mode's load order, its `load_order`, decides, and the last loaded wins, as Bethesda's plugins do. The load lists every record more than one package overrides, so a player sees the conflicts, and a small patch package that loads last settles them.
+
+**Package API.** A package targets a version of the package API, `api = "major.minor"`: the script API and the schemas of the data files together. A release loads every package whose API has its major and a minor no higher than its own, as Factorio loads a mod made for "major.minor" across its patches; a name or field the API adds raises the minor, and one it removes or changes raises the major. The registry records the version each name came in, and the reference lists it. A session log still names its exact engine release, so a replay runs the code that recorded it.
+
+**Human text.** Data and scripts hold no human text: a name, a description, a line of dialogue or a message to the player is a message id, and each package's `locale/<language>.ftl` gives its text, in Mozilla's [Fluent](https://hacks.mozilla.org/2019/04/fluent-1-0-a-localization-system-for-natural-sounding-translations/) format, which handles plurals and grammar for each language, as Space Station 14 keeps all its text in Fluent files. The client shows the player's language, and the package's own, its manifest's `language`, where a message has no translation. A package of kind `locale` adds a language to the packages it depends on, so a translation needs no fork. Text never enters the sim, so a translation changes no result.
 
 **Assets are untrusted.** Clients download them from any server, so only the formats above load, each through a pure-Rust decoder (`gltf`, `png`, `ktx2` + `ruzstd`, `symphonia`); no C or C++ decoder ever reads package data. Loads enforce limits on file size, image dimensions, decompressed size, and vertex and bone counts.
 
@@ -47,7 +53,7 @@ The sim runs each tick in the engine's fixed stages ([Tick stages](04-capabiliti
 One mode script (`scripts/mode.rhai`) owns the rules. The engine knows only waiting, running and ended; everything inside running is the script's.
 
 - **Phases** (hero pick, warmup, rounds, buy time, overtime) are script state, not engine states.
-- **Hooks:** `on_match_start` (running begins), `on_player_join`, `on_player_leave`, `on_timer`, `on_mode_input`, plus event hooks from the capabilities in use. `on_tick` exists but is discouraged. A hook is named `on_<event>` for what happened, or `calc_<value>` for a pure hook that returns a value; every hook takes `ctx` first.
+- **Hooks:** `on_match_start` (running begins), `on_player_join`, `on_player_leave`, `on_timer`, `on_mode_input`, plus event hooks from the capabilities in use. A rule that runs each tick or interval over many units is a scripted system ([Scripted systems](04-capabilities/00-overview.md#scripted-systems)). A hook is named `on_<event>` for what happened, or `calc_<value>` for a pure hook that returns a value; every hook takes `ctx` first.
 - **Primitives:** timers, freeze and unfreeze, respawn and reset, team changes and relations, players' choices, named per-player resources (e.g. `gold`), scoreboard data.
 - **Timers** are set in milliseconds and rounded up to whole ticks (at least one), so a timer never fires early and modes behave the same at any tick rate to within one tick.
 - **End:** `ctx.end(team)` names the winning team, and `ctx.end(())` a draw; callable once. The result is sim state, so the final state hash proves it, and from the next stage on no stage runs. Optional: a persistent world never calls it.
@@ -59,7 +65,7 @@ Units, actions, items, AI hooks and commands come from [capabilities](04-capabil
 
 ## Script state
 
-Script state is declared, never invented at run time. The mode declares its fields in `data/mode.toml` and each unit type in its own data file, under `[state]`: type (`int`, `num`, `bool`, `string`, `entity`, or a list of one of these), default, and replication (`none`, `owner`, `team`, `all`). A `state_version` sits beside them for migrations. A write to an undeclared field, or of the wrong type, is a script error.
+Script state is declared, never invented at run time. The mode declares its fields in `data/mode.toml` and each unit type in its own data file, under `[state]`: type (one of the [state types](08-script-api.md#data-files)), default, and replication (`none`, `owner`, `team`, `all`). A `state_version` sits beside them for migrations. A write to an undeclared field, or of the wrong type, is a script error.
 
 ```toml
 state_version = 1
@@ -94,7 +100,7 @@ Scripts never deal with networking.
 | --- | --- |
 | Capability components | Each capability's defaults: everyone who sees the entity, or owner or team only |
 | Script state | Per field, as its schema declares: `none` (default), `owner`, `team` or `all` |
-| Entities the visibility backend hides from a team | Nobody on that team |
+| Units the visibility backend hides from a vision group | Nobody in that group |
 
 **Presentation events.** The sim emits events (cast, hit, death); clients that can see them run presentation scripts for effects and sound.
 
@@ -113,16 +119,15 @@ fn on_match_start(ctx) {
 
 fn on_timer(ctx, name, data) {
     if name == "warmup_end" || name == "round_end" {
-        if ctx.state.round == 30 { ctx.end(ctx.leading_team()); return; }
+        if ctx.state.round == 30 { ctx.end(()); return; }
         ctx.state.round += 1;
         ctx.state.phase = "buy";
-        ctx.respawn_all();
-        ctx.freeze_all(true);
+        // `frozen` is a modifier of the mode; its tag blocks moving and every action.
+        for unit in ctx.avatars() { ctx.add_modifier(unit, "frozen", 15000); }
         ctx.timer("buy_end", 15000, false, ());
     }
     if name == "buy_end" {
         ctx.state.phase = "live";
-        ctx.freeze_all(false);
         ctx.timer("round_end", 115000, false, ());
     }
 }

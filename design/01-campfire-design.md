@@ -31,7 +31,7 @@ Docs: [Engine Core](02-engine-core.md) · [Game Scripting](03-game-scripting.md)
 | Save | A checkpoint a player keeps, with the log before it, to load and continue the session later, on the same engine release or a newer one |
 | Carry | Declared, typed data that leaves one session and enters another as a recorded input: a hero between missions, a character between play sessions |
 | Campaign | Missions, each a mode, played in an order the carry opens, with their carry |
-| Team | A side players and units belong to. A mode has any number of teams, and declares how each pair regards each other: hostile, neutral or friendly. Friendly teams share vision |
+| Team | A side players and units belong to. A mode has any number of teams, and declares how each pair regards each other: hostile, neutral or friendly, and whether they share vision |
 | Unit | Anything in the sim with a stable id, a position and a type: a hero, a soldier, a building, a projectile, an item on the ground, a door |
 | Action | Anything a unit does on purpose: an attack, a cast, a shot, a use, a build; every action runs one pipeline |
 | Tag | A word a unit carries, from its type or its modifiers; the mode says what a tag does, such as stop a unit moving |
@@ -55,7 +55,7 @@ The engine knows nothing about any particular genre; the MOBA is just the first 
 **Neutral core.** The core has no genre words and no genre lists: a mode declares its own damage kinds, stats, pools, tags, slot kinds, teams and relations ([Mode vocabulary](04-capabilities/00-overview.md#mode-vocabulary)). Every capability says its mechanism in one model of units, tags, stats, pools, modifiers, actions, effects, events, relations and space ([The model](04-capabilities/00-overview.md#the-model)), so a MOBA, a shooter, an RTS, an MMO and a battle royale are the same kind of package.
 
 - **Deterministic:** the same inputs give the same result on every machine.
-- **Configurable tick rate:** set by the host, up to 200 Hz or more on LAN, fixed for the whole session.
+- **Configurable tick rate:** set by the host within the range the mode allows, up to 200 Hz or more on LAN, fixed for the whole session.
 - **Platforms:** desktop only (Windows, Linux, macOS). On x86-64 the CPU must have the x86-64-v3 level (AVX2 and FMA: Intel from 2013, AMD from 2015). The reference game is 3D with an isometric camera.
 - **Tools:** map and content editors, dedicated server and replay verifier.
 
@@ -112,7 +112,7 @@ Scripts are Rhai: sandboxed, deterministic and resource-limited. A game script g
 
 No central server list or account system: Nostr provides both.
 
-- **Identity:** a player is a Nostr key, used on every server to own items and receive payouts. The main key never enters the game; it signs a short-lived key for each session.
+- **Identity:** a player is a Nostr key, used on every server to own items and receive payouts. The main key never enters the game; it signs a short-lived key for each session. A published session log names the main key of every player in it, so anyone can list the matches a key played: the client lets a player keep several identities and choose one for each server, so play can be kept apart from a public profile; what a key owns, licenses and items, stays with that key.
 - **Discovery:** servers publish signed listings (region, modes, content, rules, prices) that players browse; LAN servers also announce themselves on the local network.
 - **Reputation:** players and servers publish signed statements after matches; each player chooses whom to trust. Servers may form groups that share bans, ratings and dispute handling as Nostr events.
 - **Matchmaking** runs on each server.
@@ -181,7 +181,7 @@ The reference MOBA proves the engine and is the template people fork: small, rea
 
 ## Milestones
 
-All three pillars ship in 1.0; they arrive in this order.
+All four pillars ship in 1.0; they arrive in this order.
 
 1. **Playable on LAN.** First the determinism core, `det-ci` on every OS, and the prototype that proves the sim runs the same inside Lightyear and in a bare verifier. Then a MOBA vertical slice, then **genre proofs**: a tiny test mode for each target game, run by `det-ci`, so a MOBA-only choice fails early. Then the 3v3 MOBA with bots on LAN or a local server, verified replays and crash restore. Players use local Nostr key files through the final delegation, handshake and session log formats; no relays, listings, launcher or payments.
 2. **Open network.** Nostr listings, packages over Blossom, reputation, ban lists, and the launcher with signed releases.

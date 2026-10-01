@@ -2,7 +2,7 @@
 
 ## Mechanism
 
-What each group of friendly teams may see, and so what each client receives. Only what a client's group sees is sent to it. Teams share vision when their relation is `friendly` ([Relations](00-overview.md#relations)); a unit hidden by its tags is seen only through detection.
+What each vision group may see, and so what each client receives. Only what a client's group sees is sent to it. Friendly teams form a vision group unless their relation turns vision off ([Relations](00-overview.md#relations)); a unit hidden by its tags is seen only through detection.
 
 ## Data
 
@@ -44,7 +44,7 @@ Smoke, closed doors and walls built during a match block sight while they stand,
 ## State and derived
 
 - **State:** which groups see each unit, from the last Vision stage.
-- **Derived:** the groups, from the relations; the revealed cells of each group, each tick.
+- **Derived:** the vision groups, from the relations; the revealed cells of each group, each tick.
 
 ## Script API
 

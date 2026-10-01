@@ -6,7 +6,7 @@ An action is anything a unit does on purpose: an attack, a cast, a shot, the use
 
 ## Data
 
-Every action is a table `[abilities.<id>]` of a package, in one schema; a field a kind does not use fails the load.
+Every action is a table `[actions.<id>]` of a package, in one schema; a field a kind does not use fails the load.
 
 | Field | Meaning |
 | --- | --- |
@@ -16,7 +16,7 @@ Every action is a table `[abilities.<id>]` of a package, in one schema; a field 
 | `range` | Meters in the map's metric, or `"global"` |
 | `windup_ms` | The time between its start and its delivery: an attack's windup, a cast time |
 | `cooldown_ms`, `charges` | `{ max, recharge_ms }` |
-| `cost` | Per pool: `{ mana = 60 }`, `{ rage = 30, combo = 1 }` |
+| `cost` | Per pool of the unit or player resource of its player: `{ mana = 60 }`, `{ rage = 30, combo = 1 }`, `{ minerals = 50, supply = 1 }`; the mode's pools and player resources never share a name |
 | `clamp_to_range` | A target beyond range is moved in, instead of the unit walking |
 | `toggle` | `{ cost_per_attack }` or `{ cost_per_second }`, each per pool; turned off at an empty pool and at death |
 | `channel` | `{ duration_ms, tick_ms }`; starts after the action resolves; `on_channel_tick` each tick of it |
@@ -41,13 +41,13 @@ levels = [6, 11, 16]
 [slots.weapon]
 ```
 
-A unit type fills them: `abilities = { weapon = ["claws"], basic = ["fan_of_frost", "snow_owl", "chill_arrows"], ultimate = ["glacier_arrow"] }`. A slot kind with no `ranks` has one rank, learned from the spawn. A loadout fills a slot kind with the actions a player chose ([Choices](control.md#choices)); an item's actions sit with the item ([Items](items.md)).
+A unit type fills them: `actions = { weapon = ["claws"], basic = ["fan_of_frost", "snow_owl", "chill_arrows"], ultimate = ["glacier_arrow"] }`. A slot kind with no `ranks` has one rank, learned from the spawn. A loadout fills a slot kind with the actions a player chose ([Choices](control.md#choices)); an item's actions sit with the item ([Items](items.md)).
 
 ## Rules
 
 ### The pipeline
 
-1. **Checks** as it starts, in Act: the slot's action is learned and off cooldown or has a charge, its cost is affordable in each pool it names, no tag of the unit blocks its group, and its target is a unit its filter selects or a point, within range from the edge of the unit's body to the edge of the target's. An action that takes no target ignores one its order names, so a client may always send the unit under the cursor.
+1. **Checks** as it starts, in Act: the slot's action is learned and off cooldown or has a charge, its cost is affordable in each pool and player resource it names, no tag of the unit blocks its group, and its target is a unit its filter selects or a point, within range from the edge of the unit's body to the edge of the target's. An action that takes no target ignores one its order names, so a client may always send the unit under the cursor.
 2. **Time:** the windup. A tag that blocks the action's group interrupts it, back to the order behind it, and nothing is spent ([Tags](stats.md#tags)); so does a new order.
 3. **Delivery,** in Hit, after the tick's attacks: the checks run again, without the range; then the action delivers, its `on_resolve` effects run, and its `on_resolve` hook. The cost, the cooldown and every effect it queued apply together. If the checks fail or the script fails, none of them apply, and the failure goes to the tick's script errors.
 4. **Effects** on each unit its delivery reaches: its `on_hit` effects, then its `on_hit` hook; when the delivery ends, `on_end`.
@@ -106,7 +106,7 @@ An effect list is an array of effects, each one table; the effects queue in orde
 Every effect takes `to = "source"` to apply to the acting unit instead. Numbers take `{ param = "<name>" }`. An effect list runs before the script hook of the same name, so a hook adds only what data cannot say. One example, Rime's Fan of Frost:
 
 ```toml
-[abilities.fan_of_frost]
+[actions.fan_of_frost]
 targeting = "direction"
 cost = { mana = [60, 65, 70, 75, 80] }
 cooldown_ms = 9000

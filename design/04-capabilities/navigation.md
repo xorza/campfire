@@ -6,7 +6,7 @@ How units move: on layers, by routes round what blocks them, along waypoint path
 
 ## Data
 
-- **Mode:** `layers = ["ground", "air"]`, the first the default.
+- **Mode:** `[navigation] layers = ["ground", "air"]`, the first the default.
 - **Map:** `[navigation]` with `cell`, in meters, positive: whole cells over the bounds, at most 2²² cells, the cells routes are planned on; for each layer, the cells its map blocks, none for a layer such as `air`. `[[paths]]`, each a `name` and `points`.
 - **Unit type:** `collision = { radius, layer }`: a body, a circle of its radius on the ground plane, up to 64 m, on its layer; a type without it collides with nothing. A unit that can walk has the `move_speed` stat.
 
@@ -42,7 +42,7 @@ A client plans its own units' routes on the same grid, so it predicts them with 
 
 ### Waypoint paths
 
-A map can hold paths of waypoints, such as a MOBA's lanes or a patrol route. A unit that walks a path goes along it in the direction its spawn names, from the start or from the end, while it has no other order: a MOBA's two sides each walk a lane from their own end, and a third team may walk it either way. It has reached a waypoint once the waypoint is within its body, as walkers that push each other never stand on one point. It walks a route to each waypoint, round the structures between, but must stand on the waypoint to reach it: the mode's load refuses a structure whose body comes closer to a waypoint than the widest walker's radius.
+A map can hold paths of waypoints, such as a MOBA's lanes or a patrol route. A unit that walks a path goes along it in the direction its spawn names, from the start or from the end, while it has no other order: a MOBA's two sides each walk a lane from their own end, and a third team may walk it either way. It has reached a waypoint once the waypoint is within its body, as walkers that push each other never stand on one point. It walks a route to each waypoint, round the structures between, but must stand on the waypoint to reach it: the mode's load refuses a placed unit that cannot walk whose body comes closer to a waypoint than the widest walker's radius.
 
 ### Forced movement
 

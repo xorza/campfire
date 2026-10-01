@@ -6,7 +6,7 @@ Things a unit carries, equips or finds. One mechanism for MOBA items, shooter we
 
 ## Data
 
-A unit type's `item` section: stack size, slot kind (equipment or bag), and what it grants while carried or equipped: modifiers, held as passives from the carrier ([Modifiers](stats.md#modifiers)); actions, in the item's slot ([Actions](actions.md)); and pools, such as a gun's ammunition. A carrier's type gives its `inventory`: equipment slots (weapon, armor, trinket) and bag slots. The mode's shops: where and when each sells, and the player resource it costs.
+A unit type's `item` section: stack size, the inventory slot it takes (an equipment slot or a bag), and what it grants while carried or equipped: modifiers, held as passives from the carrier ([Modifiers](stats.md#modifiers)); actions, in the item's slot ([Actions](actions.md)); and pools, such as a gun's ammunition. A carrier's type gives its `inventory`: equipment slots (weapon, armor, trinket) and bag slots. The mode's shops: where and when each sells, and the player resource it costs.
 
 ## Rules
 

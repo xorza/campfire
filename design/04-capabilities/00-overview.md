@@ -16,7 +16,7 @@ Every capability says its mechanism in the same few terms, so that capabilities 
 - **Action.** Anything a unit does on purpose: an attack, a cast, a shot, the use of an item or of an object, a build, a train or a gather order. Every action runs one pipeline: checks, time, delivery, effects and cost ([Actions](actions.md)).
 - **Effect.** A change the sim applies: damage, a heal, a pool restored, a modifier added or purged, a unit spawned, a projectile or an area launched, a unit moved. Data lists effects; scripts queue the same effects through `ctx`.
 - **Event.** What happened in a tick: an action resolved, a delivery hit, damage was taken, a unit died. The units it concerns hear it through their modifiers, and the mode through its hooks.
-- **Relation.** How two teams regard each other: `hostile`, `neutral` or `friendly`. A team is friendly to itself; friendly teams share vision ([Relations](#relations)).
+- **Relation.** How two teams regard each other: `hostile`, `neutral` or `friendly`, and whether they share vision. A team is friendly to itself ([Relations](#relations)).
 - **Space.** The map's metric, `planar` or `spatial`, and the layers bodies move on ([Space and map](#space-and-map)).
 
 ## Capabilities
@@ -31,7 +31,7 @@ Every capability says its mechanism in the same few terms, so that capabilities 
 | `character` | Units a player drives directly: per-tick input frames, capsule controller | [Control](control.md#character) |
 | `hitboxes` | The ray and sweep deliveries: shots and swings against hitboxes, lag compensation, spread | [Hitboxes](hitboxes.md) |
 | `navigation` | Layers, routes on a grid or a navmesh, local steering, waypoint paths | [Navigation](navigation.md) |
-| `vision` | What each group of friendly teams sees: grid fog of war, hidden units and detection, 3D occlusion, relevance | [Vision](vision.md) |
+| `vision` | What each vision group sees: grid fog of war, hidden units and detection, 3D occlusion, relevance | [Vision](vision.md) |
 | `items` | Item units, inventories, equipment, shops, crafting; an item grants modifiers, actions and pools | [Items](items.md) |
 | `progression` | Experience on tracks, levels, points to learn ranks, perks, veterancy | [Progression](progression.md) |
 | `quests` | Quests with stages and objectives, dialogue with topics and choices, campaign objectives | [Quests](quests.md) |
@@ -67,7 +67,7 @@ teams = ["alliance", "horde"]
 relation = "hostile"
 ```
 
-A pair not named is `hostile`, and a team is `friendly` to itself. `ctx.set_relation(a, b, relation)` changes a pair, and the relations are state. Filters read them: `enemies` selects the units that may be attacked, hostile and neutral; `hostiles` only hostile ones; `neutrals` only neutral ones; `allies` friendly ones; `all` every one. A neutral unit may be attacked, but does not seek a fight: an AI chooses its targets with `hostiles`, so a neutral monster fights back only when a script makes its team hostile or orders it, as a neutral monster does in WoW. A group of teams friendly to each other shares vision. A MOBA's camps are on one more team, hostile to every other.
+A pair not named is `hostile`, and a team is `friendly` to itself. `ctx.set_relation(a, b, relation)` changes a pair, and the relations are state. Filters read them: `enemies` selects the units that may be attacked, hostile and neutral; `hostiles` only hostile ones; `neutrals` only neutral ones; `allies` friendly ones; `all` every one. A neutral unit may be attacked, but does not seek a fight: an AI chooses its targets with `hostiles`, so a neutral monster fights back only when a script makes its team hostile or orders it, as a neutral monster does in WoW. Two friendly teams share vision unless their relation says `vision = false`, as StarCraft's allies choose whether to share it; teams that share vision form a **vision group**, which sees as one. A MOBA's camps are on one more team, hostile to every other.
 
 ## Space and map
 
@@ -80,7 +80,7 @@ A pair not named is `hostile`, and a team is `friendly` to itself. `ctx.set_rela
 
 ## Game clock
 
-Game time is sim state: the hour, the day and the date of the mode's calendar, which advance with the ticks at the mode's `time_scale` (Skyrim's is 20 game seconds a real second) from its `start_time`. `ctx.time` reads it. `ctx.advance_time(ms)` moves it on without running ticks, for waiting, sleeping and fast travel; the durations of modifiers, timers and cooldowns count ticks and do not move, while what a script schedules by game time, an NPC's day or a shop's restock, sees the new time. A world's regions place their sleeping units by it when they wake ([World](world.md)). The clock is not the wall clock: the same log gives the same time everywhere.
+Game time is sim state: the hour, the day and the date of the mode's calendar, which advance with the ticks at the mode's `[clock] time_scale` (Skyrim's is 20 game seconds a real second) from its `[clock] start`. `ctx.time` reads it. `ctx.advance_time(ms)` moves it on without running ticks, for waiting, sleeping and fast travel; the durations of modifiers, timers and cooldowns count ticks and do not move, while what a script schedules by game time, an NPC's day or a shop's restock, sees the new time. A world's regions place their sleeping units by it when they wake ([World](world.md)). The clock is not the wall clock: the same log gives the same time everywhere.
 
 ## Random tables
 
@@ -110,7 +110,7 @@ The engine fixes the stages of a tick, and each capability puts its systems into
 | 6 | Hit | Actions whose time ended deliver: strikes, rays, projectiles, areas; actions resolve with their effects; modifier intervals |
 | 7 | Resolve | The damage and heal pass, deaths, auras |
 | 8 | Mode | Due timers, then the capabilities' events in the order they happened, region events among them; spawns; generated regions; `ctx.end` and `ctx.save` |
-| 9 | Vision | `vision` marks what each group of friendly teams sees |
+| 9 | Vision | `vision` marks what each vision group sees |
 
 Before the first stage and after each, every unit whose level, modifiers or type changed has its stats and tags derived again ([Stats](stats.md#state-and-derived)).
 
@@ -136,7 +136,7 @@ A unit type in data is a set of sections, one for each capability it uses, in th
 tags = ["vehicle", "mechanical"]
 pools = ["health"]
 stats = { health = { base = 900 }, attack_damage = { base = 60 }, attack_speed = { base = "0.4" }, move_speed = { base = "3.0" } }
-abilities = { weapon = ["tank_cannon"], command = ["siege_mode"] }
+actions = { weapon = ["tank_cannon"], command = ["siege_mode"] }
 collision = { radius = "1.2", layer = "ground" }
 orders = { ai = "scripts/tank_ai.rhai", think_ms = 250 }
 vision = { sight_range = "11" }
@@ -146,7 +146,7 @@ The team and the owner come from the spawn, not the unit type. A section of a ca
 
 ## Script API
 
-`ctx`, the handles and the hooks are made of the declared capabilities' parts: a mode without `combat` has no `ctx.damage` and no `unit.health`. The package load checks refuse a call, a field or a hook of a capability the mode did not declare. Hooks are named `on_<event>` for what happened, and `calc_<value>` for a pure hook that returns a value; every hook takes `ctx` first. An event's data list and its script hook share the name: an ability's `on_hit` effects run, then its `on_hit` hook. [Script API](../08-script-api.md) lists each capability's part.
+`ctx`, the handles and the hooks are made of the declared capabilities' parts: a mode without `combat` has no `ctx.damage` and no `on_unit_died`. The package load checks refuse a call, a field or a hook of a capability the mode did not declare. Hooks are named `on_<event>` for what happened, and `calc_<value>` for a pure hook that returns a value; every hook takes `ctx` first. An event's data list and its script hook share the name: an action's `on_hit` effects run, then its `on_hit` hook. [Script API](../08-script-api.md) lists each capability's part.
 
 ## Tick rate
 

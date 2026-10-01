@@ -16,12 +16,11 @@ The mode's `[tracks.<name>]`: the experience each level needs, from level 2, asc
 
 ## State and derived
 
-- **State:** each unit's experience on each track, its unspent points, and its perks.
-- **Derived:** each track's level, from its experience.
+- **State:** each unit's experience and level on each track, its unspent points, and its perks. A level is state, not derived from experience, so a script may set it, as `ctx.learn` grants a rank.
 
 ## Script API
 
-`ctx.add_xp(unit, track, amount)`, `ctx.learn(unit, slot)`, `ctx.grant_perk(unit, id)`; `unit.xp(track)`, `unit.track_level(track)`, `unit.points`, `unit.has_perk(id)`; the hook `on_level_up(ctx, unit, track, level)`.
+`ctx.add_xp(unit, track, amount)`, `ctx.grant_perk(unit, id)`; `unit.xp(track)`, `unit.track_level(track)`, `unit.points`, `unit.has_perk(id)`; the hook `on_level_up(ctx, unit, track, level)`.
 
 ## Network
 

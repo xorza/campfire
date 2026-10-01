@@ -9,10 +9,9 @@
 The mode, in `data/mode.toml`:
 
 ```toml
+[combat]
 damage_kinds = ["physical", "magic", "true"]
 assist_window_ms = 10000
-
-[combat]
 life = "health"                                        # the pool that is life
 leech = { attack = "life_steal", other = "spell_vamp" } # optional: stats that heal the source
 heal_scale = "healing_received_pct"                    # optional: a stat that scales heals
@@ -21,7 +20,7 @@ heal_scale = "healing_received_pct"                    # optional: a stat that s
 A unit type: `pools` that hold the life pool, `combat = { on_death = "stay" }` (`stay` or `despawn`, the default), and its weapons in its action slots. A weapon is an action of kind `attack`:
 
 ```toml
-[abilities.tank_cannon]
+[actions.tank_cannon]
 kind = "attack"
 targeting = "enemies:!air"
 range = "9.0"
@@ -29,7 +28,7 @@ windup_ms = 400
 rate = "attack_speed"      # the stat of attacks a second
 damage = "attack_damage"   # the stat of its damage
 damage_kind = "physical"
-delivery = { projectile = { speed = "14", homing = true } }
+delivery = { projectile = "cannon_shell" }   # a unit type with a homing `projectile` section
 ```
 
 ## Rules
@@ -39,7 +38,7 @@ delivery = { projectile = { speed = "14", homing = true } }
 - **Attack order.** An attack names its target by stable id. The unit attacks with the first of its weapons whose filter selects the target; an order on a unit no weapon selects is ignored.
 - **Range** is measured in the map's metric, exactly, with no square root, from the edge of the attacker's body to the edge of the target's, as in League of Legends and Dota 2: a range `r` reaches a center `r` plus both radii away. A unit with no body is a point. A unit that can move walks to its target while out of range and stops in range.
 - **Windup and period.** An attack starts once the weapon is ready and delivers when its windup ends. The next attack may start one period after this one started. A move, or an attack on another target, cancels a windup and spends nothing, so the unit may attack again at once; after the delivery, in the back-swing, moving is free. Range counts only at the start: a delivery happens unless its target died, despawned or became blocked as a target.
-- **Delivery.** At once to the target, a homing projectile, a ray or an area, as the weapon's `delivery` says ([Deliveries](actions.md#deliveries)). In a match without the delivery's capability, the weapon strikes at once at the end of the windup.
+- **Delivery.** At once to the target, a projectile, a ray, a sweep or an area, as the weapon's `delivery` says ([Deliveries](actions.md#deliveries)); a delivery of a capability the mode does not declare fails the load, as any section of one does.
 - **Its damage** is the weapon's `damage` stat of the attacker, of the weapon's `damage_kind`, followed by the weapon's `on_hit` effects.
 - **The roll.** An attack draws one random number from 0 to 1, `d.roll`, when its windup ends, on the secret stream for the attacker in that tick: a projectile carries it. The seed alone decides it, and no client learns it before the server applies it. `calc_damage` decides what it means: the reference MOBA crits when it is below the attacker's `crit_chance`.
 
@@ -56,7 +55,7 @@ delivery = { projectile = { speed = "14", homing = true } }
 ### Death and respawn
 
 - **Death.** A unit at zero life dies at the end of Resolve. A unit type says whether it stays dead to respawn, as heroes do, or despawns, as creeps do; one that despawns goes at the end of the tick it died in, after the Mode stage saw it. A dead unit takes no orders, starts no action and is no target.
-- **Kill credit.** The source whose damage took the life to zero is the killer, when it still exists. The other units that damaged the victim within the mode's `assist_window_ms` assisted, by stable id; without a window no one assisted. The mode receives both in `on_unit_died`, in the Mode stage of the tick, in the order the units died.
+- **Kill credit.** The source whose damage took the life to zero is the killer, when it still exists. The other units that damaged the victim within the mode's `[combat] assist_window_ms` assisted, by stable id; without a window no one assisted. The mode receives both in `on_unit_died`, in the Mode stage of the tick, in the order the units died.
 - **Respawn.** Each unit keeps the place it spawned at. `ctx.respawn(unit, ms)` brings a dead unit that stays back at the start of the tick that time later, rounded up and at least one tick after the end of the current one: at its spawn place, with full pools and no attacker on record.
 
 ### Events
@@ -84,7 +83,7 @@ After one damage of the pass, its events run in this order: `on_attack_hit`, the
 
 ## Script API
 
-`ctx.damage(target, amount, kind)`, `ctx.heal(unit, amount)`, `ctx.restore(unit, pool, amount)`, `ctx.attack_hit(target)`, `ctx.respawn(unit, ms)`; `unit.target`, `unit.attack_range`, `unit.recent_attackers(ms)`; the damage handle `d`; the hooks above, `calc_damage(ctx, d)`, `calc_heal(ctx, h)` and `on_unit_died(ctx, unit, killer, assisters)`.
+`ctx.damage(target, amount, kind)`, `ctx.heal(unit, amount)`, `ctx.restore(unit, pool, amount)`, `ctx.attack_hit(target)`, `ctx.respawn(unit, ms)`; `unit.target`, `unit.attack_range` (its first weapon's), `unit.recent_attackers(ms)`; the damage handle `d`; the hooks above, `calc_damage(ctx, d)`, `calc_heal(ctx, h)` and `on_unit_died(ctx, unit, killer, assisters)`.
 
 ## Network
 
