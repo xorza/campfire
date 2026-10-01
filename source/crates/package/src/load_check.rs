@@ -133,6 +133,7 @@ impl<'a> LoadCheck<'a> {
                 return Err(LoadProblem::RepeatedName(name.clone()));
             }
         }
+        self.damage_kinds()?;
         for (name, unit_type) in &packages.units.units {
             let at = Place::UnitType(name.clone());
             let sections = [
@@ -432,6 +433,39 @@ impl<'a> LoadCheck<'a> {
                 at,
                 kind: kind.clone(),
             });
+        }
+        Ok(())
+    }
+
+    /// The mode's damage kinds and `attack_kind`: with `combat`, at least one kind and an attack
+    /// kind among them; never more kinds than a byte tells apart.
+    fn damage_kinds(&self) -> Result<(), LoadProblem> {
+        let data = &self.packages.data;
+        if data.damage_kinds.len() > usize::from(u8::MAX) + 1 {
+            return Err(LoadProblem::TooManyDamageKinds);
+        }
+        if let Some(kind) = &data.attack_kind {
+            self.require(Capability::Combat, &Place::AttackKind)?;
+            if !data.damage_kinds.contains(kind) {
+                return Err(LoadProblem::UnknownDamageKind {
+                    at: Place::AttackKind,
+                    kind: kind.as_str().to_owned(),
+                });
+            }
+        }
+        if !self
+            .packages
+            .manifest
+            .capabilities
+            .contains(Capability::Combat)
+        {
+            return Ok(());
+        }
+        if data.damage_kinds.is_empty() {
+            return Err(LoadProblem::NoDamageKinds);
+        }
+        if data.attack_kind.is_none() {
+            return Err(LoadProblem::NoAttackKind);
         }
         Ok(())
     }

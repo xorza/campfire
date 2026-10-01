@@ -31,6 +31,8 @@ pub struct ModeData {
     /// The kinds of damage its scripts deal and its `calc_damage` weighs.
     #[serde(default)]
     pub damage_kinds: Vec<DeclaredName>,
+    /// The kind of damage every attack deals, one of `damage_kinds`.
+    pub attack_kind: Option<DeclaredName>,
     /// Every stat its units carry, those the engine reads among them, each with its rule.
     #[serde(default)]
     pub stats: BTreeMap<Stat, StatRule>,

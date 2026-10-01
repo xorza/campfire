@@ -46,6 +46,11 @@ impl Health {
         self.0.fill();
     }
 
+    /// Heals `amount`, which is not negative, up to the maximum.
+    pub(crate) fn heal(&mut self, amount: Num) {
+        self.0.add(amount);
+    }
+
     /// Takes `amount` of damage, which is not negative, down to 0.
     pub(crate) fn take(&mut self, amount: Num) {
         self.0.take(amount);

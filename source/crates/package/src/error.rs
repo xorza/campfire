@@ -114,6 +114,12 @@ pub enum LoadProblem {
         capability: Capability,
         at: Place,
     },
+    /// The mode declares `combat`, and no damage kinds for its damage.
+    NoDamageKinds,
+    /// The mode declares `combat`, and no `attack_kind` for its attacks.
+    NoAttackKind,
+    /// The mode declares more damage kinds than a match tells apart.
+    TooManyDamageKinds,
     /// The mode declares `vision`, and its map has no grid for sight to reveal.
     NoGrid,
     /// The mode declares `navigation`, and its map has no `[navigation]` cells to plan routes on.
@@ -220,6 +226,8 @@ pub enum Place {
     Script(PackagePath),
     /// The map's paths.
     Paths,
+    /// The mode's `attack_kind`.
+    AttackKind,
 }
 
 /// A use of `ctx` that hides it from the load checks: every value of `ctx` in a script is a
@@ -278,6 +286,7 @@ impl fmt::Display for Place {
             Place::Modifier(id) => write!(f, "modifier {id}"),
             Place::Script(path) => write!(f, "{path}"),
             Place::Paths => f.write_str("the map's paths"),
+            Place::AttackKind => f.write_str("the mode's attack_kind"),
         }
     }
 }
@@ -308,6 +317,15 @@ impl fmt::Display for LoadProblem {
             LoadProblem::TooManyUnitTypes => f.write_str("more unit types than a match holds"),
             LoadProblem::RepeatedUnitType(name) => {
                 write!(f, "avatar {name:?} has the name of a unit type")
+            }
+            LoadProblem::NoDamageKinds => {
+                f.write_str("the mode declares combat, and no damage kinds")
+            }
+            LoadProblem::NoAttackKind => {
+                f.write_str("the mode declares combat, and no attack_kind")
+            }
+            LoadProblem::TooManyDamageKinds => {
+                f.write_str("more damage kinds than a match tells apart")
             }
             LoadProblem::NoGrid => f.write_str("the mode declares vision, and its map has no grid"),
             LoadProblem::NoPathingGrid => {

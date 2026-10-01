@@ -37,6 +37,11 @@ impl ResourcePool {
         self.0.regen(per_second, hz);
     }
 
+    /// Restores `amount`, which is not negative, up to the maximum.
+    pub(crate) fn restore(&mut self, amount: Num) {
+        self.0.add(amount);
+    }
+
     /// Spends `amount`, which a cast checked it can afford.
     pub(crate) fn spend(&mut self, amount: Num) {
         debug_assert!(

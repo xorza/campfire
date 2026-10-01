@@ -45,8 +45,8 @@ impl Ctx {
         &self.view
     }
 
-    /// The script API of `on_cast`: `ctx.p`, the queries, `ctx.damage`, `ctx.add_modifier` and
-    /// `ctx.remove`.
+    /// The script API of `on_cast`: `ctx.p`, the queries, `ctx.damage`, `ctx.heal`,
+    /// `ctx.restore`, `ctx.add_modifier` and `ctx.remove`.
     pub(crate) fn register(engine: &mut Engine) {
         engine
             .register_type_with_name::<Params>("Params")
@@ -66,6 +66,18 @@ impl Ctx {
                     ctx.damage(&target, ApiError::num(amount)?, kind)
                 },
             )
+            .register_fn("heal", |ctx: &mut Ctx, unit: Unit, amount: Num| {
+                ctx.heal(&unit, amount)
+            })
+            .register_fn("heal", |ctx: &mut Ctx, unit: Unit, amount: INT| {
+                ctx.heal(&unit, ApiError::num(amount)?)
+            })
+            .register_fn("restore", |ctx: &mut Ctx, unit: Unit, amount: Num| {
+                ctx.restore(&unit, amount)
+            })
+            .register_fn("restore", |ctx: &mut Ctx, unit: Unit, amount: INT| {
+                ctx.restore(&unit, ApiError::num(amount)?)
+            })
             .register_fn("add_modifier", |ctx: &mut Ctx, target: Unit, id: &str| {
                 ctx.add_modifier(&target, id, None)
             })
@@ -104,17 +116,40 @@ impl Ctx {
         Ok(handle)
     }
 
-    /// Queues `amount` of `kind` damage to `target`. The kind must be one the mode declares;
-    /// until the mode's `calc_damage` runs, it does not change the amount.
+    /// Queues `amount` of `kind` damage to `target`, a kind the mode declares, which the damage
+    /// pass deals.
     fn damage(&self, target: &Unit, amount: Num, kind: &str) -> Checked<()> {
-        if !self.view().is_damage_kind(kind) {
-            return Err(ApiError::UnknownDamageKind.fail().into());
-        }
+        let kind = self.view().damage_kind(kind)?;
         if amount < Num::ZERO {
             return Err(ApiError::NegativeDamage.fail().into());
         }
         self.frame().effects.push(Effect::Damage {
             target: target.id,
+            amount,
+            kind,
+        });
+        Ok(())
+    }
+
+    /// Queues a heal of `amount` to `unit`, as `Combat::heal` deals it.
+    fn heal(&self, unit: &Unit, amount: Num) -> Checked<()> {
+        if amount < Num::ZERO {
+            return Err(ApiError::NegativeHeal.fail().into());
+        }
+        self.frame().effects.push(Effect::Heal {
+            unit: unit.id,
+            amount,
+        });
+        Ok(())
+    }
+
+    /// Queues `amount` of `unit`'s resource back, as `Combat::restore` gives it.
+    fn restore(&self, unit: &Unit, amount: Num) -> Checked<()> {
+        if amount < Num::ZERO {
+            return Err(ApiError::NegativeHeal.fail().into());
+        }
+        self.frame().effects.push(Effect::Restore {
+            unit: unit.id,
             amount,
         });
         Ok(())

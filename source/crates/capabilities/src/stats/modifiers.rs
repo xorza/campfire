@@ -168,6 +168,35 @@ impl Modifiers {
         true
     }
 
+    /// Spends shields on `amount` of damage: the shield that ends soonest first, one with no end
+    /// last, and shields with the same end in the order kept; a shield spent to 0 ends its
+    /// instance. What is left of the amount.
+    pub(crate) fn absorb(&mut self, mut amount: Num) -> Num {
+        while amount > Num::ZERO {
+            let soonest = self
+                .0
+                .iter()
+                .enumerate()
+                .filter(|(_, instance)| instance.shield.is_some_and(|shield| shield > Num::ZERO))
+                .min_by_key(|&(at, instance)| (instance.until.is_none(), instance.until, at))
+                .map(|(at, _)| at);
+            let Some(at) = soonest else {
+                break;
+            };
+            let shield = self.0[at]
+                .shield
+                .as_mut()
+                .expect("a shield the search found");
+            let spent = (*shield).min(amount);
+            *shield -= spent;
+            amount -= spent;
+            if *shield == Num::ZERO {
+                self.0.remove(at);
+            }
+        }
+        amount
+    }
+
     /// Ends every instance a death ends: all but passives.
     pub(crate) fn clear_on_death(&mut self) {
         self.0.retain(|instance| instance.passive);

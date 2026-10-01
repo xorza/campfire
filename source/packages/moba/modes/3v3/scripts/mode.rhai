@@ -107,15 +107,24 @@ fn inhibitor_down(ctx, team, lane) {
     false
 }
 
+// A source that is gone, as from a projectile that outlived it, has no bonus and no penetration.
+fn source_stat(d, name) {
+    let source = d.source;
+    if source == () { 0 } else { source.stat(name) }
+}
+
 fn calc_damage(ctx, d) {
-    let amount = d.amount * (1 + d.source.stat("damage_dealt_pct"));
+    let amount = d.amount * (1 + source_stat(d, "damage_dealt_pct"));
+    if d.crit {
+        amount *= 2;
+    }
     if d.kind == "true" {
         return amount;
     }
     let physical = d.kind == "physical";
     let resist = if physical { d.target.stat("armor") } else { d.target.stat("magic_resist") };
-    let pen_pct = if physical { d.source.stat("armor_pen_pct") } else { d.source.stat("magic_pen_pct") };
-    let pen_flat = if physical { d.source.stat("armor_pen") } else { d.source.stat("magic_pen") };
+    let pen_pct = source_stat(d, if physical { "armor_pen_pct" } else { "magic_pen_pct" });
+    let pen_flat = source_stat(d, if physical { "armor_pen" } else { "magic_pen" });
     if resist > 0 {
         resist = (resist * (1 - pen_pct) - pen_flat).max(0);
     }

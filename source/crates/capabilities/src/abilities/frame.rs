@@ -4,6 +4,7 @@ use campfire_math::Num;
 use campfire_sim::StableId;
 
 use crate::abilities::ability_book::AbilityId;
+use crate::combat::damage_kind::DamageKind;
 use crate::scripts::error::CallError;
 use crate::stats::modifier_effect::ModifierEffect;
 use crate::stats::modifier_handle::ModifierHandle;
@@ -31,7 +32,19 @@ pub(crate) struct Frame {
 /// An effect a call queued.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Effect {
-    Damage { target: StableId, amount: Num },
+    Damage {
+        target: StableId,
+        amount: Num,
+        kind: DamageKind,
+    },
+    Heal {
+        unit: StableId,
+        amount: Num,
+    },
+    Restore {
+        unit: StableId,
+        amount: Num,
+    },
     Modifier(ModifierEffect),
 }
 

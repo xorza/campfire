@@ -7,7 +7,7 @@ use bevy_ecs::query::With;
 use campfire_content::PackagePath;
 use campfire_math::{Num, Vec3};
 use campfire_script::ScriptId;
-use campfire_sim::{Capability, EntityIndex, SimUpdate, Tick, TickInput};
+use campfire_sim::{Capability, EntityIndex, IdAllocator, SimUpdate, StableId, Tick, TickInput};
 
 use super::*;
 use crate::abilities::Abilities;
@@ -17,12 +17,14 @@ use crate::abilities::ability_slots::AbilitySlots;
 use crate::capability_set::internals::TestMatch;
 use crate::combat::attack_stats::AttackStats;
 use crate::combat::combatant::Combatant;
+use crate::combat::damage::{Damage, DamageCause};
+use crate::combat::damage_kind::DamageKind;
+use crate::combat::damage_queue::DamageQueue;
 use crate::combat::dead::Dead;
 use crate::combat::health::Health;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::combat::respawn::Respawn;
-use crate::combat::strikes::{Strike, Strikes};
 use crate::mode::avatar_index::AvatarIndex;
 use crate::mode::loadout_index::LoadoutIndex;
 use crate::mode::map_data::{GridData, NeutralSpawnData, PathData, StructureData};
@@ -39,9 +41,15 @@ use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::scripts::state_decl::{StateDecl, StateDefault, StateType, SyncTo};
 use crate::scripts::state_value::StateValue;
+use crate::stats::level::Level;
+use crate::stats::modifier_book::ModifierId;
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifiers::Modifiers;
+use crate::stats::modifiers::{Application, Instance, StatShare};
+use crate::stats::stat::Stat;
+use crate::stats::stat_rule::{Combine, StatRule};
 use crate::stats::stats_data::StatsData;
+use crate::stats::unit_stats::UnitStats;
 use crate::units::Units;
 use crate::units::body::Body;
 use crate::units::owner::Owner;
@@ -49,6 +57,7 @@ use crate::units::path_id::PathId;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::bounds::Bounds;
+use crate::values::declared_name::DeclaredName;
 use crate::values::grid::Grid;
 use crate::values::number::Number;
 use crate::values::scalar::Scalar;
@@ -64,6 +73,19 @@ const LIMITS: ScriptLimits = ScriptLimits {
 };
 
 /// A mode that records what its hooks see in its state, and acts on its players' inputs.
+/// The reference MOBA's damage kinds, and the stats its `calc_damage` reads.
+const DAMAGE_KINDS: [&str; 3] = ["physical", "magic", "true"];
+const STATS_3V3: [&str; 8] = [
+    "armor",
+    "armor_pen",
+    "armor_pen_pct",
+    "damage_dealt_pct",
+    "magic_pen",
+    "magic_pen_pct",
+    "magic_resist",
+    "physical_block",
+];
+
 const SCRIPT: &str = r#"
 fn on_match_start(ctx) {
     ctx.state.phase = "start";
@@ -254,8 +276,20 @@ fn mode_files() -> ModeFiles {
             .map(|(name, param)| (name.to_owned(), param))
             .into(),
             modifiers: [("blessing".to_owned(), blessing())].into(),
-            damage_kinds: Vec::new(),
-            stats: BTreeMap::new(),
+            damage_kinds: DAMAGE_KINDS
+                .map(|kind| DeclaredName::new(kind).unwrap())
+                .into(),
+            attack_kind: None,
+            stats: STATS_3V3
+                .map(|name| {
+                    let sum = StatRule {
+                        combine: Combine::Sum,
+                        min: None,
+                        max: None,
+                    };
+                    (Stat::named(name).unwrap(), sum)
+                })
+                .into(),
             resources: Vec::new(),
         },
         map: map(),
@@ -349,7 +383,9 @@ impl Game {
         let scripts = MatchScripts {
             limits,
             players: 3,
-            damage_kinds: Rc::from([]),
+            damage_kinds: DAMAGE_KINDS
+                .map(|kind| DeclaredName::new(kind).unwrap())
+                .into(),
         };
         let declared = [
             Capability::Stats,
@@ -392,8 +428,8 @@ impl Game {
             projectile_state: BTreeMap::new(),
         };
         // A spell has one rank; hero X's ability, 2.
-        let strike = Abilities::load(&mut world, 0, &blink, None, 2).unwrap();
-        let blink = Abilities::load(&mut world, 0, &blink, None, 1).unwrap();
+        let strike = Abilities::load(&mut world, 0, "strike", &blink, None, 2).unwrap();
+        let blink = Abilities::load(&mut world, 0, "blink", &blink, None, 1).unwrap();
         let spell = LoadoutSetup {
             id: "blink".to_owned(),
             ability: blink,
@@ -943,10 +979,13 @@ fn on_mode_input(ctx, player, name, value) {
             let mut attackers = world.get_mut::<RecentAttackers>(victim).unwrap();
             attackers.record(two, Tick::new(0), &index);
         });
-    game.world.resource_mut::<Strikes>().0.push(Strike {
-        source: four,
+    game.world.resource_mut::<DamageQueue>().push(Damage {
+        source: Some(four),
         target: one,
         amount: num(10),
+        kind: DamageKind::new(0),
+        cause: DamageCause::Effect,
+        ability: None,
     });
     game.tick(&[]);
     // It died in tick 0 with killer 4 of b and one assister of a: the mode set its respawn for the
@@ -1044,4 +1083,162 @@ fn on_mode_input(ctx, player, name, value) {
     game.tick(&[(0, input("phase", "draw"))]);
     let draw = MatchEnd::new(Tick::new(0), MatchResult::Draw);
     assert_eq!(game.world.get_resource::<MatchEnd>(), Some(&draw));
+}
+
+/// The reference 3v3's `calc_damage` and the function it calls, as its package holds them.
+fn calc_damage_3v3() -> &'static str {
+    const MODE_3V3: &str = include_str!("../../../../packages/moba/modes/3v3/scripts/mode.rhai");
+    let start = MODE_3V3.find("// A source that is gone").unwrap();
+    let body = MODE_3V3.find("fn calc_damage(ctx, d) {").unwrap();
+    let end = body + MODE_3V3[body..].find("\n}\n").unwrap() + 3;
+    &MODE_3V3[start..end]
+}
+
+impl Game {
+    /// A grunt of 1000 health on `team`, whose modifier adds `stats` by name.
+    fn fighter(&mut self, team: u8, stats: &[(&str, Num)]) -> StableId {
+        let book = self.world.resource::<StatBook>();
+        let shares = stats.iter().map(|&(name, value)| StatShare {
+            stat: book.index(&Stat::named(name).unwrap()).unwrap(),
+            value,
+        });
+        let instance = Instance {
+            id: ModifierId::new(0),
+            source: None,
+            ability: None,
+            rank: 1,
+            passive: false,
+            aura: false,
+            aura_radius: None,
+            stacks: 1,
+            until: None,
+            stack_life: None,
+            stack_ends: Vec::new(),
+            shield: None,
+            stats: shares.collect(),
+            state: vec![StateValue::Int(0)],
+        };
+        let mut modifiers = Modifiers::default();
+        modifiers.apply(Application {
+            instance,
+            reapply: Reapply::Refresh,
+            max_stacks: None,
+        });
+        let grunt = self.world.non_send::<View>().unit_type("grunt").unwrap();
+        let id = self.world.resource_mut::<IdAllocator>().allocate();
+        self.world.spawn((
+            id,
+            at(0, 0),
+            Team::new(team),
+            Health::new(num(1000)).unwrap(),
+            grunt,
+            Level::default(),
+            UnitStats::default(),
+            modifiers,
+        ));
+        id
+    }
+
+    /// Queues `amount` of damage of the kind `kind` from `source` to `target`, dealt by `cause`.
+    fn damage(
+        &mut self,
+        source: Option<StableId>,
+        target: StableId,
+        amount: i64,
+        kind: &str,
+        cause: DamageCause,
+    ) {
+        let kind = DAMAGE_KINDS.iter().position(|&name| name == kind).unwrap();
+        self.world.resource_mut::<DamageQueue>().push(Damage {
+            source,
+            target,
+            amount: num(amount),
+            kind: DamageKind::new(u8::try_from(kind).unwrap()),
+            cause,
+            ability: None,
+        });
+    }
+
+    fn health(&self, id: StableId) -> Num {
+        let entity = self.world.resource::<EntityIndex>().get(id).unwrap();
+        self.world.get::<Health>(entity).unwrap().current()
+    }
+}
+
+#[test]
+fn the_3v3s_calc_damage_weighs_each_hit_exactly() {
+    let mut game = Game::new(calc_damage_3v3(), LIMITS);
+    let half = Num::ONE / 2;
+    // The source deals 50% more, ignores half of armor, then 10 more.
+    let source = game.fighter(
+        0,
+        &[
+            ("damage_dealt_pct", half),
+            ("armor_pen_pct", half),
+            ("armor_pen", num(10)),
+        ],
+    );
+    let armored = game.fighter(
+        1,
+        &[
+            ("armor", num(120)),
+            ("magic_resist", num(60)),
+            ("physical_block", num(5)),
+        ],
+    );
+    let exposed = game.fighter(1, &[("armor", num(-100))]);
+    game.tick(&[]);
+    let crit = DamageCause::Attack { crit: true };
+    let attack = DamageCause::Attack { crit: false };
+    // 100 physical, 150 dealt: armor 120 × (1 − 0.5) − 10 = 50, 150 × 100 ÷ 150 = 100, less the
+    // block of 5: 95.
+    game.damage(Some(source), armored, 100, "physical", attack);
+    // 40 magic, a crit: 40 × 1.5 × 2 = 120, magic resist 60 with no magic pen: 120 × 100 ÷ 160
+    // = 75, no block.
+    game.damage(Some(source), armored, 40, "magic", crit);
+    // 100 physical, 150 dealt, against armor −100, which pen does not touch: 150 × (2 − 100 ÷
+    // 200) = 225.
+    game.damage(Some(source), exposed, 100, "physical", attack);
+    // 100 true, 150 dealt, whatever the armor.
+    game.damage(Some(source), exposed, 100, "true", DamageCause::Effect);
+    // 100 physical from no source: no bonus, 100 × 1.5 = 150.
+    game.damage(None, exposed, 100, "physical", DamageCause::Effect);
+    game.tick(&[]);
+    assert_eq!(game.failures(), []);
+    assert_eq!(game.health(armored), num(1000 - 95 - 75));
+    assert_eq!(game.health(exposed), num(1000 - 225 - 150 - 150));
+}
+
+#[test]
+fn calc_damage_is_pure_outside_the_pools_and_a_failure_keeps_the_amount() {
+    let script = r#"
+fn calc_damage(ctx, d) {
+    if d.kind == "magic" {
+        ctx.timer("late", 100, false, ());
+    }
+    if d.kind == "true" {
+        return "none";
+    }
+    d.amount * 3
+}
+"#;
+    // A mode pool of one operation, which no call of `calc_damage` draws from.
+    let limits = ScriptLimits { mode: 1, ..LIMITS };
+    let mut game = Game::new(script, limits);
+    let source = game.fighter(0, &[]);
+    let target = game.fighter(1, &[]);
+    game.tick(&[]);
+    // Physical 10, tripled; magic 10, whose timer the pure `ctx` refuses; true 10, which returns
+    // no number. The two failures keep their 10: 1000 − 30 − 10 − 10.
+    for kind in DAMAGE_KINDS {
+        game.damage(Some(source), target, 10, kind, DamageCause::Effect);
+    }
+    game.tick(&[]);
+    assert_eq!(
+        game.failures(),
+        [Some(ApiError::PureCall), Some(ApiError::NotAnAmount)]
+    );
+    assert_eq!(game.health(target), num(950));
+    let timers = game.world.resource::<Timers>();
+    assert!(timers.due(Tick::new(u64::MAX)).is_none());
 }

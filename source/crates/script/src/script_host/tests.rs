@@ -56,10 +56,18 @@ fn num_arithmetic_is_exact_and_checked() {
             "{body}"
         );
     }
-    assert_eq!(
-        num(&mut host, "min(num(2), num(3))"),
-        Num::from_int(2).unwrap()
-    );
+    for (body, expected) in [
+        ("min(num(2), num(3))", 2),
+        ("max(num(2), 3)", 3),
+        ("min(-1, num(2))", -1),
+        ("num(-4).max(0)", 0),
+    ] {
+        assert_eq!(
+            num(&mut host, body),
+            Num::from_int(expected).unwrap(),
+            "{body}"
+        );
+    }
     assert_eq!(
         num(&mut host, "clamp(num(9), num(0), num(4))"),
         Num::from_int(4).unwrap()

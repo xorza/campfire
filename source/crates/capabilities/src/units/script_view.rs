@@ -10,6 +10,8 @@ use campfire_math::{Num, PlayerSlot, Vec3};
 use campfire_script::rhai::{Array, Dynamic, Engine, INT, ImmutableString};
 use campfire_sim::{EntityIndex, Position, SimTick, StableId, Tick, TickRate, Ticks};
 
+use crate::abilities::ability_book::AbilityId;
+use crate::combat::damage_kind::DamageKind;
 use crate::combat::health::Health;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::state_value::StateValue;
@@ -45,6 +47,8 @@ pub(crate) struct ScriptView {
     paths: Arc<[Box<str>]>,
     /// The damage kinds the mode declares.
     damage_kinds: Rc<[DeclaredName]>,
+    /// Each loaded ability's name in its package, by ability id.
+    ability_names: Vec<ImmutableString>,
     /// How each installed capability above the core fills its fields of a row, in install order.
     sources: Vec<RowSource>,
     rate: TickRate,
@@ -287,6 +291,7 @@ impl View {
             teams: Rc::default(),
             paths: Arc::default(),
             damage_kinds: Rc::from([]),
+            ability_names: Vec::new(),
             sources: Vec::new(),
             rate,
             now: Tick::ZERO,
@@ -432,10 +437,32 @@ impl View {
             .ok_or_else(|| ApiError::NoStats.fail().into())
     }
 
-    /// Whether the mode declares the damage kind `name`.
-    pub(crate) fn is_damage_kind(&self, name: &str) -> bool {
+    /// The damage kind `name`; an error for one the mode does not declare.
+    pub(crate) fn damage_kind(&self, name: &str) -> Checked<DamageKind> {
         let view = self.0.borrow();
-        view.damage_kinds.iter().any(|kind| kind.as_str() == name)
+        let at = view
+            .damage_kinds
+            .iter()
+            .position(|kind| kind.as_str() == name)
+            .ok_or_else(|| ApiError::UnknownDamageKind.fail())?;
+        Ok(DamageKind::new(
+            u8::try_from(at).expect("the load keeps damage kinds within u8"),
+        ))
+    }
+
+    /// The name of damage kind `kind`.
+    pub(crate) fn damage_kind_name(&self, kind: DamageKind) -> ImmutableString {
+        self.0.borrow().damage_kinds[kind.index()].as_str().into()
+    }
+
+    /// Adds the name of the ability loaded next, which takes the next ability id.
+    pub(crate) fn add_ability(&self, name: &str) {
+        self.0.borrow_mut().ability_names.push(name.into());
+    }
+
+    /// The name of ability `id` in its package.
+    pub(crate) fn ability_name(&self, id: AbilityId) -> ImmutableString {
+        self.0.borrow().ability_names[id.index()].clone()
     }
 
     /// Adds how a capability fills its fields of each row, after those added before it.

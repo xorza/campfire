@@ -43,6 +43,12 @@ pub enum ApiError {
     NoStats,
     /// A stat the mode does not declare.
     UnknownStat,
+    /// A heal or restore of a negative amount.
+    NegativeHeal,
+    /// A change from a pure hook's `ctx`, which only reads.
+    PureCall,
+    /// A `calc_damage` that returns no number.
+    NotAnAmount,
     /// A modifier the calling package does not declare.
     UnknownModifier,
     /// A negative count of a modifier's stacks.
@@ -155,6 +161,9 @@ impl fmt::Display for ApiError {
             ApiError::NoAttack => "unit has no attack",
             ApiError::NoStats => "unit has no stats",
             ApiError::UnknownStat => "stat the mode does not declare",
+            ApiError::NegativeHeal => "amount to heal or restore is negative",
+            ApiError::PureCall => "a pure hook changes nothing",
+            ApiError::NotAnAmount => "calc_damage returns no number",
             ApiError::UnknownModifier => "modifier the package does not declare",
             ApiError::NegativeStacks => "a modifier's stacks are not negative",
             ApiError::NoHealth => "unit has no health",

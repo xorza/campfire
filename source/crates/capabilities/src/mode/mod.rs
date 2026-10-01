@@ -16,6 +16,8 @@ use campfire_sim::{
 
 use crate::combat::CombatSet;
 use crate::combat::assist_window::AssistWindow;
+use crate::combat::attack_kind::AttackKind;
+use crate::combat::damage_weigher::DamageWeigher;
 use crate::combat::deaths::Deaths;
 use crate::mode::calls::Calls;
 use crate::mode::error::ModeError;
@@ -76,7 +78,7 @@ impl Mode {
     /// whose capabilities are installed and whose unit types, abilities and AI are loaded: in
     /// Inputs, the players' mode inputs run `on_mode_input`; in Mode, due timers run `on_timer`,
     /// then the tick's deaths run `on_unit_died`. The map's bounds, paths and grid become the match's,
-    /// and the mode's `assist_window_ms` combat's.
+    /// and the mode's `assist_window_ms`, `attack_kind` and `calc_damage` combat's.
     pub fn install(
         world: &mut World,
         schedule: &mut Schedule,
@@ -95,6 +97,10 @@ impl Mode {
             .data
             .assist_window_ms
             .map(|ms| rate.ticks(ms).unwrap_or(Ticks::new(u64::MAX)));
+        let attack_kind = setup.data.attack_kind.as_ref().map(|name| {
+            view.damage_kind(name.as_str())
+                .expect("the load checked the attack kind")
+        });
         let types = setup
             .unit_types
             .iter()
@@ -120,6 +126,9 @@ impl Mode {
         if let Some(window) = assist_window {
             world.insert_resource(AssistWindow(window));
         }
+        if let Some(kind) = attack_kind {
+            world.insert_resource(AttackKind(kind));
+        }
         view.set_names(Rc::clone(&book.teams), paths.shared_names());
         world.insert_resource(paths);
         world.insert_resource(bounds);
@@ -128,7 +137,15 @@ impl Mode {
         world.insert_resource(Picks(vec![Pick::default(); players]));
         world.insert_resource(PlayerResources::default());
         world.insert_resource(Timers::default());
-        world.insert_non_send(ModeCtx::new(view, book));
+        let weighs = book.schema.hooks.contains(Hook::CalcDamage);
+        let ctx = ModeCtx::new(view, book);
+        if weighs {
+            let weigher = ctx.clone();
+            world.insert_non_send(DamageWeigher::new(move |batch, damage| {
+                Calls::weigh(batch, &weigher, damage)
+            }));
+        }
+        world.insert_non_send(ctx);
         schedule.add_systems((
             mode_inputs
                 .in_set(SimSet::Inputs)

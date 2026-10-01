@@ -5,13 +5,14 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 /// A homing projectile: it flies `speed` a tick towards `target`, and strikes it for `amount` on
-/// arrival, on behalf of `source`.
+/// arrival, on behalf of `source`, a crit when the attack that fired it rolled one.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 pub struct Projectile {
     source: StableId,
     target: StableId,
     speed: Num,
     amount: Num,
+    crit: bool,
 }
 
 impl Projectile {
@@ -21,6 +22,7 @@ impl Projectile {
         target: StableId,
         speed: Num,
         amount: Num,
+        crit: bool,
     ) -> Option<Projectile> {
         if speed.to_bits() <= 0 || amount.to_bits() < 0 {
             return None;
@@ -30,6 +32,7 @@ impl Projectile {
             target,
             speed,
             amount,
+            crit,
         })
     }
 
@@ -48,6 +51,10 @@ impl Projectile {
     pub const fn amount(self) -> Num {
         self.amount
     }
+
+    pub const fn crit(self) -> bool {
+        self.crit
+    }
 }
 
 impl SimComponent for Projectile {
@@ -63,9 +70,17 @@ impl<'de> Deserialize<'de> for Projectile {
             target: StableId,
             speed: Num,
             amount: Num,
+            crit: bool,
         }
         let fields = Fields::deserialize(deserializer)?;
-        Projectile::new(fields.source, fields.target, fields.speed, fields.amount)
+        let Fields {
+            source,
+            target,
+            speed,
+            amount,
+            crit,
+        } = fields;
+        Projectile::new(source, target, speed, amount, crit)
             .ok_or_else(|| D::Error::custom("projectile out of its limits"))
     }
 }

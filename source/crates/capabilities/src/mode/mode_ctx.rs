@@ -41,6 +41,8 @@ pub(crate) struct ModeFrame {
     pub(crate) resources: PlayerResources,
     /// Whether the match ended, before this call or in it.
     pub(crate) ended: bool,
+    /// Whether the running call is a pure hook's, whose `ctx` only reads.
+    pub(crate) pure: bool,
     pub(crate) effects: Vec<ModeEffect>,
     /// The modifier handles the call took.
     pub(crate) handles: Vec<ModifierHandle>,
@@ -99,6 +101,15 @@ impl ModeCtx {
     /// across a call.
     pub(crate) fn frame(&self) -> RefMut<'_, ModeFrame> {
         self.frame.borrow_mut()
+    }
+
+    /// The frame to change, as `frame`; a pure hook's call fails.
+    fn write(&self) -> Checked<RefMut<'_, ModeFrame>> {
+        let frame = self.frame();
+        if frame.pure {
+            return Err(ApiError::PureCall.fail().into());
+        }
+        Ok(frame)
     }
 
     pub(crate) const fn view(&self) -> &View {
@@ -167,8 +178,9 @@ impl ModeCtx {
                 "choose_loadout",
                 |ctx: &mut ModeCtx, player: INT, ids: Array| ctx.choose_loadout(player, &ids),
             )
-            .register_fn("spawn_avatars", |ctx: &mut ModeCtx| {
-                ctx.frame().effects.push(ModeEffect::SpawnAvatars);
+            .register_fn("spawn_avatars", |ctx: &mut ModeCtx| -> Checked<()> {
+                ctx.write()?.effects.push(ModeEffect::SpawnAvatars);
+                Ok(())
             })
             .register_fn(
                 "spawn_unit",
@@ -218,11 +230,14 @@ impl ModeCtx {
                     ctx.add_modifier(&target, id, Some(ticks))
                 },
             )
-            .register_fn("remove", |ctx: &mut ModeCtx, handle: ModifierHandle| {
-                ctx.frame()
-                    .effects
-                    .push(ModeEffect::Modifier(handle.remove()));
-            });
+            .register_fn(
+                "remove",
+                |ctx: &mut ModeCtx, handle: ModifierHandle| -> Checked<()> {
+                    let mut frame = ctx.write()?;
+                    frame.effects.push(ModeEffect::Modifier(handle.remove()));
+                    Ok(())
+                },
+            );
     }
 
     /// Registers `ctx.p` and `ctx.state`, the types that read and write the mode's params and
@@ -288,7 +303,7 @@ impl ModeCtx {
             .ok_or_else(|| ApiError::UnknownState.fail())?;
         let value = StateValue::from_dynamic(field.kind, value)
             .ok_or_else(|| ApiError::WrongStateType.fail())?;
-        self.frame().state[field.index] = value;
+        self.write()?.state[field.index] = value;
         Ok(())
     }
 
@@ -301,7 +316,7 @@ impl ModeCtx {
         duration: Option<Ticks>,
     ) -> Checked<ModifierHandle> {
         let id = self.view.modifier(id)?;
-        let mut frame = self.frame();
+        let mut frame = self.write()?;
         let handle = self
             .view
             .applied_handle(&mut frame.handles, target.id, id, None);
@@ -317,7 +332,7 @@ impl ModeCtx {
 
     /// Ends the match with `result`, once.
     fn end(&self, result: MatchResult) -> Checked<()> {
-        let mut frame = self.frame();
+        let mut frame = self.write()?;
         if frame.ended {
             return Err(ApiError::Ended.fail().into());
         }
@@ -348,14 +363,14 @@ impl ModeCtx {
             .roster
             .avatar(id)
             .expect("an available avatar is the mode's");
-        self.frame().picks.of_mut(slot).avatar = Some(avatar);
+        self.write()?.picks.of_mut(slot).avatar = Some(avatar);
         Ok(())
     }
 
     /// Chooses `ids`, each a loadout entry the mode depends on, none twice, for `player`.
     fn choose_loadout(&self, player: INT, ids: &Array) -> Checked<()> {
         let slot = self.player(player)?;
-        let mut frame = self.frame();
+        let mut frame = self.write()?;
         let loadout = &mut frame.picks.of_mut(slot).loadout;
         loadout.clear();
         for id in ids {
@@ -389,7 +404,7 @@ impl ModeCtx {
             team: self.team(team)?,
             pos,
         };
-        self.frame().effects.push(effect);
+        self.write()?.effects.push(effect);
         Ok(())
     }
 
@@ -409,7 +424,7 @@ impl ModeCtx {
                     .ok_or_else(|| ApiError::UnknownUnitType.fail().into())
             })
             .collect::<Checked<_>>()?;
-        self.frame()
+        self.write()?
             .effects
             .push(ModeEffect::SpawnGroup { team, path, types });
         Ok(())
@@ -419,7 +434,7 @@ impl ModeCtx {
     fn timer(&self, name: &str, ms: INT, repeat: bool, data: &Dynamic) -> Checked<()> {
         let ticks = self.view.ticks(ms)?;
         let data = timer_data(data).map_err(ApiError::fail)?;
-        self.frame().effects.push(ModeEffect::Timer {
+        self.write()?.effects.push(ModeEffect::Timer {
             name: name.to_owned(),
             ticks,
             repeat,
@@ -439,7 +454,7 @@ impl ModeCtx {
             return Err(ApiError::RespawnDespawns.fail().into());
         }
         let ticks = self.view.ticks(ms)?;
-        self.frame().effects.push(ModeEffect::Respawn {
+        self.write()?.effects.push(ModeEffect::Respawn {
             unit: row.id,
             ticks,
         });
@@ -458,7 +473,7 @@ impl ModeCtx {
             .slot(&row, slot)
             .ok_or_else(|| ApiError::NoAbilitySlot.fail())?;
         let effect = ModeEffect::Learn { unit: row.id, slot };
-        let mut frame = self.frame();
+        let mut frame = self.write()?;
         let queued = frame
             .effects
             .iter()
@@ -473,7 +488,7 @@ impl ModeCtx {
 
     fn add_resource(&self, player: INT, name: &str, amount: INT) -> Checked<()> {
         let slot = self.player(player)?;
-        self.frame()
+        self.write()?
             .resources
             .add(slot, name, amount)
             .ok_or_else(|| ApiError::ResourceOverflow.fail().into())

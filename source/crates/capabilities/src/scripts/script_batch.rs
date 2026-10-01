@@ -1,6 +1,6 @@
 use bevy_ecs::world::World;
 use campfire_script::rhai::{Dynamic, FuncArgs};
-use campfire_script::{ScriptError, ScriptHost, ScriptId};
+use campfire_script::{Budget, ScriptError, ScriptHost, ScriptId};
 use campfire_sim::StableId;
 
 use crate::scripts::error::CallError;
@@ -49,6 +49,17 @@ impl ScriptBatch<'_> {
         let budgets = self.world.resource_mut::<ScriptBudgets>().into_inner();
         self.host
             .call(budgets.get_mut(pool), script, hook.name(), args)
+    }
+
+    /// Calls `hook` of `script` with `args` from no pool: only the limit per call bounds it.
+    pub(crate) fn call_pure(
+        &mut self,
+        script: ScriptId,
+        hook: Hook,
+        args: impl FuncArgs,
+    ) -> Result<Dynamic, ScriptError> {
+        self.host
+            .call(&mut Budget::new(u64::MAX), script, hook.name(), args)
     }
 
     /// Records that a call of `hook`, for `unit` if any, failed with `error`.

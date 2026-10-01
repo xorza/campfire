@@ -1,9 +1,12 @@
 use bevy_ecs::world::World;
+use campfire_math::Num;
 use campfire_script::ScriptError;
 use campfire_script::rhai::FuncArgs;
 use campfire_sim::{EntityIndex, SimTick, Tick};
 
 use crate::abilities::ability_slots::AbilitySlots;
+use crate::combat::damage::Damage;
+use crate::combat::damage_handle::DamageHandle;
 use crate::combat::respawn::Respawn;
 use crate::mode::match_end::MatchEnd;
 use crate::mode::mode_ctx::{ModeCtx, ModeEffect};
@@ -11,6 +14,7 @@ use crate::mode::mode_state::ModeState;
 use crate::mode::picks::Picks;
 use crate::mode::player_resources::PlayerResources;
 use crate::mode::timers::Timers;
+use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
@@ -52,6 +56,32 @@ impl Calls<'_, '_> {
         drop(self.batch.call(pool, script, hook, args)?);
         self.commit();
         Ok(())
+    }
+
+    /// `calc_damage` of `damage` in `batch`, its `ctx` pure: the number it returns, an integer
+    /// as a number.
+    pub(crate) fn weigh(
+        batch: &mut ScriptBatch<'_>,
+        ctx: &ModeCtx,
+        damage: Damage,
+    ) -> Result<Num, CallError> {
+        let now = batch.world().resource::<SimTick>().start();
+        let mut calls = Calls { batch, ctx, now };
+        calls.begin();
+        ctx.frame().pure = true;
+        ctx.view().set_caller(0);
+        let script = ctx.book().schema.script;
+        let handle = DamageHandle::new(damage, ctx.view().clone());
+        let returned = calls
+            .batch
+            .call_pure(script, Hook::CalcDamage, (ctx.clone(), handle));
+        ctx.frame().pure = false;
+        let value = returned.map_err(CallError::from_script)?;
+        let amount = match value.as_int() {
+            Ok(int) => Num::from_int(int),
+            Err(_) => value.try_cast::<Num>(),
+        };
+        amount.ok_or(CallError::Api(ApiError::NotAnAmount))
     }
 
     /// Fills the frame with the mode's state as it stands.

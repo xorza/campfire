@@ -2,6 +2,7 @@ script = "scripts/mode.rhai"
 assist_window_ms = 10000
 # The words of this game: its damage kinds, and what its heroes spend.
 damage_kinds = ["physical", "magic", "true"]
+attack_kind = "physical"
 resources = ["mana", "energy"]
 
 # Every stat its units carry, those the engine reads among them: how each combines, and its

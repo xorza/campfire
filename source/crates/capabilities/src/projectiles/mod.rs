@@ -1,14 +1,16 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Without;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
-use bevy_ecs::system::{Commands, Query, ResMut};
+use bevy_ecs::system::{Commands, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_sim::{IdAllocator, Position, SimSet, StateRegistry};
 
 use crate::combat::CombatSet;
+use crate::combat::attack_kind::AttackKind;
+use crate::combat::damage::{Damage, DamageCause};
+use crate::combat::damage_queue::DamageQueue;
 use crate::combat::health::Health;
 use crate::combat::launches::Launches;
-use crate::combat::strikes::{Strike, Strikes};
 use crate::combat::targets::Targets;
 use crate::projectiles::projectile::Projectile;
 
@@ -39,7 +41,8 @@ impl Projectiles {
 fn fly(
     mut commands: Commands<'_, '_>,
     targets: Targets<'_, '_>,
-    mut strikes: ResMut<'_, Strikes>,
+    kind: Res<'_, AttackKind>,
+    mut queue: ResMut<'_, DamageQueue>,
     mut projectiles: Query<'_, '_, (Entity, &mut Position, &Projectile), Without<Health>>,
 ) {
     for (entity, mut position, &projectile) in &mut projectiles {
@@ -51,10 +54,15 @@ fn fly(
             .get()
             .step_toward(target.pos.get(), projectile.speed());
         if moved == target.pos.get() {
-            strikes.0.push(Strike {
-                source: projectile.source(),
+            queue.push(Damage {
+                source: Some(projectile.source()),
                 target: projectile.target(),
                 amount: projectile.amount(),
+                kind: kind.0,
+                cause: DamageCause::Attack {
+                    crit: projectile.crit(),
+                },
+                ability: None,
             });
             commands.entity(entity).despawn();
         } else {
@@ -73,8 +81,14 @@ fn launch(
 ) {
     launches.0.sort_unstable_by_key(|launch| launch.source);
     for launch in launches.0.drain(..) {
-        let projectile = Projectile::new(launch.source, launch.target, launch.speed, launch.amount)
-            .expect("ranged attack stats hold a positive speed and damage that is not negative");
+        let projectile = Projectile::new(
+            launch.source,
+            launch.target,
+            launch.speed,
+            launch.amount,
+            launch.crit,
+        )
+        .expect("ranged attack stats hold a positive speed and damage that is not negative");
         commands.spawn((ids.allocate(), launch.from, projectile));
     }
 }

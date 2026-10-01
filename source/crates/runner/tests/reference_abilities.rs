@@ -140,7 +140,7 @@ fn lash_out_from_its_package_hits_exactly() {
         .read_text(data.script.as_ref().unwrap())
         .unwrap();
     let script = Units::compile(&mut world, &source).unwrap();
-    let lash_out = Abilities::load(&mut world, 0, data, Some(script), 5).unwrap();
+    let lash_out = Abilities::load(&mut world, 0, "lash_out", data, Some(script), 5).unwrap();
 
     let caster = spawn(
         &mut world,

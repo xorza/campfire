@@ -72,6 +72,21 @@ impl Meter {
         }
     }
 
+    /// Adds `amount`, which is not negative, up to the maximum.
+    pub(crate) fn add(&mut self, amount: Num) {
+        debug_assert!(
+            amount >= Num::ZERO,
+            "a meter adds an amount that is not negative"
+        );
+        self.current = self
+            .current
+            .checked_add(amount)
+            .map_or(self.max, |sum| sum.min(self.max));
+        if self.current == self.max {
+            self.carry = 0;
+        }
+    }
+
     /// Takes `amount`, which is not negative, down to 0 at the least.
     pub(crate) fn take(&mut self, amount: Num) {
         debug_assert!(
@@ -125,6 +140,12 @@ mod tests {
         assert_eq!(meter.current(), num(6));
         meter.take(num(7));
         assert!(meter.is_empty());
+        // Adding 3 to 0 of 10 gives 3; 9 more stops at 10; the most a number holds, at 10 too.
+        for (added, current) in [(num(3), num(3)), (num(9), num(10)), (Num::MAX, num(10))] {
+            meter.add(added);
+            assert_eq!(meter.current(), current);
+        }
+        meter.take(num(10));
         // A rise of 5 to 15 raises 0 to 5; a fall to 3 cuts it to 3; a rise to 20 raises it by
         // 17, to 20; a fall to 12 cuts it to 12.
         for (max, current) in [(15, 5), (3, 3), (20, 20), (12, 12)] {

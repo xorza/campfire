@@ -227,7 +227,7 @@ impl<'a> MatchBuild<'a> {
     ) -> Result<AbilityId, StartError> {
         let script = data.script.as_ref().map(|path| self.script(package, path));
         let package = u16::try_from(package).expect("packages fit u16");
-        Abilities::load(self.world, package, data, script, ranks).map_err(|error| {
+        Abilities::load(self.world, package, id, data, script, ranks).map_err(|error| {
             StartError::Ability {
                 ability: id.to_owned(),
                 error,

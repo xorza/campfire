@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 
 use campfire_math::{Num, Vec3};
@@ -14,6 +15,11 @@ use crate::combat::dead::Dead;
 use crate::combat::deaths::Deaths;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;
+use crate::stats::Stats;
+use crate::stats::stat::{EngineStat, Stat};
+use crate::stats::stat_book::StatBook;
+use crate::stats::stat_rule::{Combine, StatRule};
+use crate::stats::unit_stats::UnitStats;
 use crate::units::recent_attack::RecentAttack;
 use crate::units::team::Team;
 
@@ -102,6 +108,16 @@ impl Volley {
         self.world.get::<Health>(entity).unwrap().current().round()
     }
 
+    /// Whether each projectile is a crit, by stable id.
+    fn crits(&self) -> Vec<bool> {
+        let world = &self.world;
+        let projectiles = world.resource::<EntityIndex>().iter();
+        projectiles
+            .filter_map(|(_, entity)| world.get::<Projectile>(entity))
+            .map(|projectile| projectile.crit())
+            .collect()
+    }
+
     /// Where each projectile is, by stable id.
     fn projectiles(&self) -> Vec<Position> {
         let world = &self.world;
@@ -149,6 +165,36 @@ fn a_projectile_flies_to_its_target_and_strikes_on_arrival() {
         tick: Tick::new(12),
     };
     assert_eq!(attackers.iter().collect::<Vec<_>>(), [attack]);
+
+    // The projectile carries the crit its attack rolled as its windup ended: with a crit chance
+    // of 1, every one.
+    let mut crits = Volley::new(true);
+    let rules: BTreeMap<_, _> = [(
+        Stat::Engine(EngineStat::CritChance),
+        StatRule {
+            combine: Combine::Sum,
+            min: None,
+            max: None,
+        },
+    )]
+    .into();
+    Stats::load(
+        &mut crits.world,
+        StatBook::new(&rules, [], RATE, num(10)).unwrap(),
+    );
+    let shooter_id = crits.unit(0, at(0, 0), shooter());
+    let target_id = crits.unit(1, at(5, 0), target());
+    let mut stats = UnitStats::default();
+    stats.refill().push(Num::ONE);
+    let entity = crits.entity(shooter_id);
+    crits.world.entity_mut(entity).insert(stats);
+    crits.attack(shooter_id, target_id);
+    for _ in 0..3 {
+        crits.tick();
+    }
+    assert_eq!(crits.crits(), [true]);
+    // With no crit chance, the one the first volley fired in tick 12 has none.
+    assert_eq!(volley.crits(), [false]);
 
     // Without projectiles, the same attack strikes at the end of its windup, in tick 2.
     let mut instant = Volley::new(false);

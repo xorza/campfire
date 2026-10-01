@@ -204,7 +204,7 @@ impl Match {
 
     fn load(&mut self, data: &AbilityData, source: &str) -> AbilityId {
         let script = Units::compile(&mut self.world, source).unwrap();
-        Abilities::load(&mut self.world, 0, data, Some(script), 5).unwrap()
+        Abilities::load(&mut self.world, 0, "lash_out", data, Some(script), 5).unwrap()
     }
 
     fn spawn(&mut self, team: u8, at: Position, parts: impl Bundle) -> StableId {
@@ -566,7 +566,7 @@ fn an_ability_loads_only_when_its_data_holds() {
     let mut game = Match::new();
     let load = |game: &mut Match, data: &AbilityData, source: &str| {
         let script = Units::compile(&mut game.world, source).unwrap();
-        Abilities::load(&mut game.world, 0, data, Some(script), 5)
+        Abilities::load(&mut game.world, 0, "lash_out", data, Some(script), 5)
     };
     let mut uneven = lash_out();
     uneven.cost = Some(Ranked::PerRank(vec![int(35), int(40)]));
@@ -633,7 +633,7 @@ fn a_capability_field_reads_its_param_at_each_rank() {
     );
     let mut game = Match::new();
     let strike = Units::compile(&mut game.world, STRIKE).unwrap();
-    let id = Abilities::load(&mut game.world, 0, &data, Some(strike), 3).unwrap();
+    let id = Abilities::load(&mut game.world, 0, "strike", &data, Some(strike), 3).unwrap();
     let book = game.world.resource::<AbilityBook>();
     let ranks: Vec<_> = book
         .get(id)
@@ -784,4 +784,42 @@ fn on_cast(ctx, caster, target) {
         (held.shield, held.until),
         (Some(num(125)), Some(Tick::new(t.get() + 31)))
     );
+}
+
+#[test]
+fn a_cast_heals_and_restores_and_a_negative_amount_fails_it() {
+    let mut game = Match::new();
+    let mender = "
+fn on_cast(ctx, caster, target) {
+    ctx.heal(caster, 30);
+    ctx.restore(caster, num(20));
+}
+";
+    let ability = game.load(&lash_out(), mender);
+    let caster = game.caster(ability, 1);
+    let entity = game.world.resource::<EntityIndex>().get(caster).unwrap();
+    game.world.get_mut::<Health>(entity).unwrap().take(num(460));
+    game.world
+        .get_mut::<ResourcePool>(entity)
+        .unwrap()
+        .spend(num(50));
+    // From 40 health and 50 resource: 30 healed and 20 restored as the effects apply, then the
+    // cost of 35: 70 and 35.
+    game.cast(caster, CastTarget::None);
+    assert_eq!((game.health(caster), game.pool(caster)), (70, 35));
+
+    let mut game = Match::new();
+    let negative =
+        "fn on_cast(ctx, caster, target) { ctx.restore(caster, 5); ctx.heal(caster, -1); }";
+    let ability = game.load(&lash_out(), negative);
+    let caster = game.caster(ability, 1);
+    game.cast(caster, CastTarget::None);
+    let refused = game.failures().iter().map(|failure| &failure.error);
+    assert!(
+        refused
+            .clone()
+            .all(|error| matches!(error, CallError::Api(ApiError::NegativeHeal)))
+            && refused.count() == 1
+    );
+    assert_eq!(game.pool(caster), 100);
 }

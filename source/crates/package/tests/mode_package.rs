@@ -1,6 +1,7 @@
 //! Each flaw a package can have fails the load of the reference packages with its own problem.
 
 use std::collections::BTreeMap;
+use std::fmt::Write;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
@@ -124,7 +125,7 @@ fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 60] = [
+const FLAWS: [Flaw; 63] = [
     flaw(
         MANIFEST,
         Edit::Replace(r#"engine = "0.1.0""#, r#"engine = "0.0.9""#),
@@ -303,6 +304,27 @@ const FLAWS: [Flaw; 60] = [
                 }
             )
         },
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace("attack_kind = \"physical\"\n", ""),
+        MODE,
+        |problem| matches!(problem, LoadProblem::NoAttackKind),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace("attack_kind = \"physical\"", "attack_kind = \"fire\""),
+        MODE,
+        |problem| matches!(problem, LoadProblem::UnknownDamageKind { at: Place::AttackKind, kind } if kind == "fire"),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace(
+            "damage_kinds = [\"physical\", \"magic\", \"true\"]\nattack_kind = \"physical\"\n",
+            "damage_kinds = []\n",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::NoDamageKinds),
     ),
     flaw(
         MAP,
@@ -586,6 +608,28 @@ fn every_flaw_of_a_package_fails_its_load_with_its_own_problem() {
             "{flaw:?}: {error}"
         );
     }
+
+    // The three kinds and 253 more are 256, all a byte tells apart; one more fails.
+    let kinds = |count: usize| {
+        let text = String::from_utf8(moba_files()[Path::new(MODE_DATA)].clone()).unwrap();
+        let mut more = String::new();
+        for at in 0..count {
+            write!(more, ", \"k{at}\"").unwrap();
+        }
+        let text = text.replacen(
+            "damage_kinds = [\"physical\", \"magic\", \"true\"]",
+            &format!("damage_kinds = [\"physical\", \"magic\", \"true\"{more}]"),
+            1,
+        );
+        let text: &'static str = Box::leak(text.into_boxed_str());
+        ModePackages::from_package_dir(&edited([(MODE_DATA, Edit::Create(text))]))
+    };
+    assert!(kinds(253).is_ok());
+    let error = kinds(254).unwrap_err();
+    assert!(
+        matches!(*error.problem, LoadProblem::TooManyDamageKinds),
+        "{error}"
+    );
 
     // A hero is no mode.
     let husk = ModePackages::from_dir(&moba().join("heroes/husk")).unwrap_err();

@@ -25,10 +25,14 @@ pub enum EngineStat {
     AttackSpeed,
     AttackSpeedPct,
     AttackDamage,
+    CritChance,
+    LifeSteal,
+    SpellVamp,
+    HealingReceivedPct,
 }
 
 impl EngineStat {
-    pub const ALL: [EngineStat; 10] = [
+    pub const ALL: [EngineStat; 14] = [
         EngineStat::Health,
         EngineStat::HealthRegen,
         EngineStat::Resource,
@@ -39,6 +43,10 @@ impl EngineStat {
         EngineStat::AttackSpeed,
         EngineStat::AttackSpeedPct,
         EngineStat::AttackDamage,
+        EngineStat::CritChance,
+        EngineStat::LifeSteal,
+        EngineStat::SpellVamp,
+        EngineStat::HealingReceivedPct,
     ];
 
     /// The stat named `name`.
@@ -59,6 +67,10 @@ impl EngineStat {
             EngineStat::AttackSpeed => "attack_speed",
             EngineStat::AttackSpeedPct => "attack_speed_pct",
             EngineStat::AttackDamage => "attack_damage",
+            EngineStat::CritChance => "crit_chance",
+            EngineStat::LifeSteal => "life_steal",
+            EngineStat::SpellVamp => "spell_vamp",
+            EngineStat::HealingReceivedPct => "healing_received_pct",
         }
     }
 }

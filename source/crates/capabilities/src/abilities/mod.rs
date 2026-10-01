@@ -20,9 +20,11 @@ use crate::abilities::error::AbilityError;
 use crate::abilities::frame::{Effect, Frame};
 use crate::abilities::resource_pool::ResourcePool;
 use crate::abilities::script_api::Ctx;
+use crate::combat::Combat;
 use crate::combat::CombatSet;
+use crate::combat::damage::{Damage, DamageCause};
+use crate::combat::damage_queue::DamageQueue;
 use crate::combat::dead::Dead;
-use crate::combat::strikes::{Strike, Strikes};
 use crate::combat::targets::Targets;
 use crate::orders::OrdersSet;
 use crate::scripts::error::CallError;
@@ -76,19 +78,23 @@ impl Abilities {
                 .in_set(SimSet::Inputs)
                 .after(OrdersSet::Orders)
                 .after(StatsSet::Expire),
-            hold_passives.in_set(SimSet::Resolve),
+            hold_passives
+                .in_set(SimSet::Resolve)
+                .after(CombatSet::Damage),
             hold_passives.in_set(SimSet::Vision),
         ));
         registry.register_component::<AbilitySlots>();
         registry.register_component::<ResourcePool>();
     }
 
-    /// Loads an ability of `ranks` ranks into the match, which the package load checked, with
-    /// its compiled script exactly when its data names one: its capability fields at each rank,
-    /// times in milliseconds as ticks at the match's rate, rounded up.
+    /// Loads the ability `name` of `package`, of `ranks` ranks, into the match, which the
+    /// package load checked, with its compiled script exactly when its data names one: its
+    /// capability fields at each rank, times in milliseconds as ticks at the match's rate,
+    /// rounded up.
     pub fn load(
         world: &mut World,
         package: u16,
+        name: &str,
         data: &AbilityData,
         script: Option<ScriptId>,
         ranks: u8,
@@ -128,6 +134,7 @@ impl Abilities {
             values,
         );
         world.insert_non_send(host);
+        world.non_send::<View>().add_ability(name);
         Ok(id)
     }
 }
@@ -405,13 +412,20 @@ fn apply(world: &mut World, frame: &mut Frame, now: Tick, entity: Entity, prepar
     let rank = frame.rank;
     for &effect in &frame.effects {
         match effect {
-            Effect::Damage { target, amount } => {
-                world.resource_mut::<Strikes>().0.push(Strike {
-                    source: prepared.caster.id,
-                    target,
-                    amount,
-                });
-            }
+            Effect::Damage {
+                target,
+                amount,
+                kind,
+            } => world.resource_mut::<DamageQueue>().push(Damage {
+                source: Some(prepared.caster.id),
+                target,
+                amount,
+                kind,
+                cause: DamageCause::Effect,
+                ability: Some(ability),
+            }),
+            Effect::Heal { unit, amount } => Combat::heal(world, unit, amount),
+            Effect::Restore { unit, amount } => Combat::restore(world, unit, amount),
             Effect::Modifier(effect) => {
                 let applier = Applier {
                     source: Some(prepared.caster.id),
