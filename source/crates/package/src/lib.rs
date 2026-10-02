@@ -3,6 +3,8 @@
 
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 
+mod avatar_unit;
+mod dependent;
 mod error;
 mod files;
 mod load_check;
@@ -15,6 +17,7 @@ mod package_files;
 mod package_index;
 mod package_store;
 mod package_text;
+mod package_view;
 mod script_facts;
 mod texts;
 
@@ -23,7 +26,7 @@ pub use error::{
     LoadProblem, LocaleProblem, PackageRef, Place, ScriptProblem, StoreError,
 };
 pub use files::avatar_data::AvatarData;
-pub use files::manifest::TickRange;
+pub use files::tick_range::TickRange;
 
 pub use locale_package::LocalePackage;
 pub use mode_packages::ModePackages;

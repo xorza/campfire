@@ -7,7 +7,7 @@ use campfire_content::{Fingerprint, PackagePath};
 use campfire_script::ScriptHost;
 
 use crate::error::{LoadError, LoadProblem, ScriptProblem};
-use crate::files::manifest::PackageHeader;
+use crate::files::package_header::PackageHeader;
 use crate::package_files::PackageFiles;
 use crate::package_text::PackageText;
 use crate::script_facts::ScriptFacts;

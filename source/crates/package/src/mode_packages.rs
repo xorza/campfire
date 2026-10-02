@@ -5,16 +5,19 @@ use std::path::Path;
 
 use campfire_capabilities::{
     BookInput, BookKind, BookPackage, Books, CapabilitySet, DeclaredName, EngineTag, MapData,
-    ModeData, PackageContent, Param, ScriptApi, ScriptBook, StatGraph, UnitTypeFile, Walker,
+    ModeData, PackageContent, Param, ScriptBook, StatGraph, UnitTypeFile, Walker,
 };
-use campfire_content::{Fingerprint, MessageId, PackagePath};
+use campfire_content::Fingerprint;
 use campfire_script::{ScriptHost, ScriptId};
 use campfire_sim::{Capability, TickRate};
 
-use crate::error::{ContentError, Limit, LoadError, LoadProblem, PackageRef, StoreError};
-use crate::files::avatar_data::AvatarData;
-use crate::files::manifest::{Manifest, ModeManifest};
+use crate::avatar_unit::AvatarUnit;
+use crate::dependent::Dependent;
+use crate::dependent::DependentKind;
+use crate::error::{Limit, LoadError, LoadProblem, PackageRef, StoreError};
+use crate::files::manifest::Manifest;
 use crate::files::mode_file::ModeFile;
+use crate::files::mode_manifest::ModeManifest;
 use crate::files::units_data::UnitsData;
 use crate::load_check::LoadCheck;
 use crate::package::Package;
@@ -22,12 +25,12 @@ use crate::package_dir::PackageDir;
 use crate::package_files::PackageFiles;
 use crate::package_index::PackageIndex;
 use crate::package_store::PackageStore;
+use crate::package_view::PackageView;
+use crate::package_view::ViewKind;
 
 const MODE_DATA: &str = "data/mode.toml";
 const UNITS_DATA: &str = "data/units.toml";
 const MAP_DATA: &str = "map/map.toml";
-const AVATAR_DATA: &str = "data/avatar.toml";
-const LOADOUT_DATA: &str = "data/loadout.toml";
 
 /// A mode and the packages it depends on, read and checked: what a match of the mode loads.
 #[derive(Debug)]
@@ -40,45 +43,6 @@ pub struct ModePackages {
     pub(crate) content: PackageContent,
     /// In the order of their names in the mode's manifest.
     pub(crate) dependencies: Vec<Dependent>,
-}
-
-/// A package the mode depends on: it, its content, and its kind.
-#[derive(Debug)]
-pub struct Dependent {
-    pub package: Package,
-    pub content: PackageContent,
-    pub kind: DependentKind,
-}
-
-/// The kind of a package the mode depends on: an avatar, with its one unit type, or a loadout.
-#[derive(Debug)]
-pub enum DependentKind {
-    Avatar(Box<AvatarUnit>),
-    Loadout,
-}
-
-/// An avatar's unit type, and the message of the name players see for it.
-#[derive(Debug)]
-pub struct AvatarUnit {
-    pub name: MessageId,
-    pub unit: UnitTypeFile,
-}
-
-/// One of a mode's packages, as every package is: its place, it, its content, and its kind.
-#[derive(Debug, Clone, Copy)]
-pub struct PackageView<'a> {
-    pub index: PackageIndex,
-    pub package: &'a Package,
-    pub content: &'a PackageContent,
-    pub kind: ViewKind<'a>,
-}
-
-/// The kind of one of a mode's packages.
-#[derive(Debug, Clone, Copy)]
-pub enum ViewKind<'a> {
-    Mode,
-    Avatar(&'a AvatarUnit),
-    Loadout,
 }
 
 impl ModePackages {
@@ -406,17 +370,17 @@ impl ModePackages {
             return Err(fail(LoadProblem::TooMany(Limit::Packages)));
         }
         let ModeFile { data, mut content } = files
-            .read_data(&path(MODE_DATA))
-            .map_err(content_error)
+            .read_data(&PackageDir::engine_path(MODE_DATA))
+            .map_err(LoadProblem::Content)
             .map_err(fail)?;
         let units: UnitsData = files
-            .read_data(&path(UNITS_DATA))
-            .map_err(content_error)
+            .read_data(&PackageDir::engine_path(UNITS_DATA))
+            .map_err(LoadProblem::Content)
             .map_err(fail)?;
         content.units = units.units;
         let map = files
-            .read_data(&path(MAP_DATA))
-            .map_err(content_error)
+            .read_data(&PackageDir::engine_path(MAP_DATA))
+            .map_err(LoadProblem::Content)
             .map_err(fail)?;
         let mode = Package::read(files, &manifest.header, &parser, &api)?;
         let dependencies = dependencies
@@ -436,71 +400,15 @@ impl ModePackages {
     }
 }
 
-impl Dependent {
-    /// The package of `files`, which the mode names `name`: an avatar or loadout package of that
-    /// name.
-    fn read(
-        name: &str,
-        files: &PackageFiles,
-        parser: &ScriptHost,
-        api: &ScriptApi,
-    ) -> Result<Dependent, LoadError> {
-        let fail = |problem| LoadError::of(name, problem);
-        let manifest: Manifest = files
-            .read_data(&path(PackageDir::MANIFEST))
-            .map_err(content_error)
-            .map_err(fail)?;
-        let header = manifest.header();
-        if header.name != name {
-            return Err(fail(LoadProblem::OtherName(header.name.clone())));
-        }
-        let (content, kind) = match &manifest {
-            Manifest::Avatar(_) => {
-                let AvatarData {
-                    name,
-                    unit,
-                    content,
-                } = files
-                    .read_data(&path(AVATAR_DATA))
-                    .map_err(content_error)
-                    .map_err(fail)?;
-                let avatar = AvatarUnit { name, unit };
-                (content, DependentKind::Avatar(Box::new(avatar)))
-            }
-            Manifest::Loadout(_) => {
-                let content = files.read_data(&path(LOADOUT_DATA));
-                let content = content.map_err(content_error).map_err(fail)?;
-                (content, DependentKind::Loadout)
-            }
-            Manifest::Mode(_) | Manifest::Locale(_) => return Err(fail(LoadProblem::WrongKind)),
-        };
-        let package = Package::read(files, header, parser, api)?;
-        Ok(Dependent {
-            package,
-            content,
-            kind,
-        })
-    }
-}
-
 /// The mode manifest of `files`, the package `package`.
 fn read_mode_manifest(
     files: &PackageFiles,
     package: &PackageRef,
 ) -> Result<ModeManifest, LoadError> {
     let fail = |problem| LoadError::new(package.clone(), problem);
-    let manifest = files.read_data(&path(PackageDir::MANIFEST));
-    match manifest.map_err(content_error).map_err(fail)? {
+    let manifest = files.read_data(&PackageDir::engine_path(PackageDir::MANIFEST));
+    match manifest.map_err(LoadProblem::Content).map_err(fail)? {
         Manifest::Mode(manifest) => Ok(manifest),
         _ => Err(fail(LoadProblem::WrongKind)),
     }
-}
-
-/// One of the engine's paths in a package.
-fn path(path: &str) -> PackagePath {
-    PackagePath::parse(path).expect("the engine's paths are in the package")
-}
-
-const fn content_error(error: ContentError) -> LoadProblem {
-    LoadProblem::Content(error)
 }

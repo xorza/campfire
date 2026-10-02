@@ -28,6 +28,11 @@ impl PackageDir {
     /// The file every package has at its root.
     pub const MANIFEST: &str = "manifest.toml";
 
+    /// One of the engine's paths in a package, as `PackageFiles` reads it.
+    pub(crate) fn engine_path(path: &str) -> PackagePath {
+        PackagePath::parse(path).expect("the engine's paths are in the package")
+    }
+
     /// The package on disk at `root`.
     pub fn new(root: impl Into<PathBuf>) -> PackageDir {
         PackageDir {

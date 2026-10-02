@@ -12,11 +12,12 @@ use campfire_content::PackagePath;
 use campfire_math::Num;
 use campfire_sim::{Capability, TickRate};
 
+use crate::dependent::{Dependent, DependentKind};
 use crate::error::{
     ChoiceProblem, CtxMisuse, DeliveryProblem, EffectProblem, Limit, LoadError, LoadProblem, Place,
     ScriptProblem,
 };
-use crate::mode_packages::{Dependent, DependentKind, ModePackages};
+use crate::mode_packages::ModePackages;
 use crate::package::Package;
 use crate::script_facts::{ScriptFacts, ScriptName};
 
