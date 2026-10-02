@@ -36,7 +36,6 @@ pub(crate) mod modifier_id;
 pub(crate) mod owner;
 pub(crate) mod path_id;
 pub(crate) mod predicting;
-pub(crate) mod recent_attack;
 pub(crate) mod relations;
 pub(crate) mod script_view;
 pub(crate) mod spawn_point;

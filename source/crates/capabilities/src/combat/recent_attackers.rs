@@ -5,7 +5,7 @@ use campfire_math::Tick;
 use campfire_sim::{EntityIndex, SimComponent, StableId};
 use serde::{Deserialize, Serialize};
 
-use crate::units::recent_attack::RecentAttack;
+use crate::combat::recent_attack::RecentAttack;
 
 /// Who struck a unit, and the last tick each did, by stable id. An attacker is forgotten once it
 /// no longer exists, so the list never outgrows the units of the match.

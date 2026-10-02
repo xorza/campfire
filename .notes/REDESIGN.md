@@ -143,7 +143,6 @@ capability_set, books
 ### What is left
 
 - **Action kinds.** Each kind registers its rules: its start check, its windup, and what it does when it resolves. Combat registers the attack kind, abilities the cast and production the train. `start_actions` still names the three kinds.
-- **The core row.** `RecentAttack` and the vision and navigation fields leave the core row for their columns.
 - **One table of capabilities.** The install order, `needs`, the layer of each module and the list in `lib.rs` all come from one table in `capability_set`.
 
 ## R5. Stable order and one exactness rule
@@ -223,7 +222,7 @@ A refactor of this size needs a permanent proof that behaviour stays the same. T
 
 | Step | Change | Size |
 |---|---|---|
-| D5 | The core row keeps only the core's fields | S |
+| D5 | Each action kind registers its rules; one table of capabilities | S |
 
 Done when the layer test has no exception left.
 

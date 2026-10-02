@@ -6,7 +6,7 @@ use std::sync::Arc;
 use bevy_ecs::world::{EntityRef, World};
 use campfire_math::{Num, PlayerSlot, Tick, Ticks};
 use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString};
-use campfire_sim::{Capability, EntityIndex, Position, SimTick, StableId, TickRate};
+use campfire_sim::{EntityIndex, Position, SimTick, StableId, TickRate};
 
 use crate::units::action_id::ActionId;
 
@@ -23,12 +23,10 @@ use crate::units::filter::Filter;
 use crate::units::living_unit::LivingUnit;
 use crate::units::owner::Owner;
 use crate::units::path_id::PathId;
-use crate::units::recent_attack::RecentAttack;
 use crate::units::relations::Relations;
 use crate::units::spawn_point::SpawnPoint;
 use crate::units::tag::Tag;
 use crate::units::team::Team;
-use crate::units::team_set::TeamSet;
 use crate::units::teams::Teams;
 use crate::units::track_id::TrackId;
 use crate::units::type_scope::TypeScope;
@@ -66,8 +64,6 @@ pub(crate) struct ScriptView {
     relations: Relations,
     metric: Metric,
     bounds: Bounds,
-    /// The recent attacks on each unit, one run per unit.
-    attacks: Vec<RecentAttack>,
     /// The players' resources the mode declares, by resource id.
     resource_names: Arc<[DeclaredName]>,
     /// What each capability above the core reads of the units, and its getters read besides.
@@ -94,27 +90,18 @@ pub(crate) struct UnitRow {
     /// Whether it may be a target: a living unit with the life pool whose tags let it be one, by
     /// the rule `Targets` holds; combat fills it.
     pub(crate) targetable: bool,
-    /// The path it walks or stands on; `navigation` fills it.
-    pub(crate) path: Option<PathId>,
-    /// The teams that see it; `vision` fills it, and without vision every team does.
-    pub(crate) seen_by: TeamSet,
     /// Its tags and their effects, as the core derives them.
     pub(crate) tags: UnitTags,
-    /// Its run of recent attacks, from `attacks_start` to `attacks_end`.
-    attacks_start: u32,
-    attacks_end: u32,
 }
 
 /// Fills the fields of a unit's row that a capability above the core holds.
 pub(crate) type RowSource = fn(&EntityRef<'_>, &mut RowFill<'_>);
 
-/// A row the view reads, as a capability fills it: its fields, the view's buffers of recent
-/// attacks, to which the row's runs are added, and the columns.
+/// A row the view reads, as a capability fills it: its fields, and the columns.
 #[derive(Debug)]
 pub(crate) struct RowFill<'a> {
     pub(crate) row: &'a mut UnitRow,
     pub(crate) world: &'a World,
-    attacks: &'a mut Vec<RecentAttack>,
     columns: &'a mut ViewColumns,
 }
 
@@ -132,11 +119,6 @@ impl RowFill<'_> {
             .get_mut()
             .expect("a source fills the column its capability added")
     }
-
-    /// Adds `attacks` to the row's run of recent attacks.
-    pub(crate) fn attacked(&mut self, attacks: impl IntoIterator<Item = RecentAttack>) {
-        self.attacks.extend(attacks);
-    }
 }
 
 /// The view as the host and every handle share it.
@@ -151,13 +133,11 @@ impl ScriptView {
         self.bounds = Bounds::of(world);
         self.units.clear();
         self.columns.clear();
-        self.attacks.clear();
         for (id, entity) in world.resource::<EntityIndex>().iter() {
             let unit = world.entity(entity);
             let (Some(&pos), Some(&team)) = (unit.get::<Position>(), unit.get::<Team>()) else {
                 continue;
             };
-            let start = u32::try_from(self.attacks.len()).expect("attacks fit u32");
             let mut row = UnitRow {
                 id,
                 pos,
@@ -169,22 +149,16 @@ impl ScriptView {
                 targetable: false,
                 unit_type: unit.get::<UnitType>().copied(),
                 owner: unit.get::<Owner>().map(|owner| owner.slot()),
-                path: None,
-                seen_by: TeamSet::ALL,
                 tags: unit.get::<UnitTags>().copied().unwrap_or_default(),
-                attacks_start: start,
-                attacks_end: start,
             };
             let mut fill = RowFill {
                 row: &mut row,
                 world,
-                attacks: &mut self.attacks,
                 columns: &mut self.columns,
             };
             for source in &self.sources {
                 source(&unit, &mut fill);
             }
-            row.attacks_end = u32::try_from(self.attacks.len()).expect("attacks fit u32");
             self.units.push(row);
         }
         debug_assert!(
@@ -231,7 +205,6 @@ impl View {
             relations: Relations::default(),
             metric: Metric::default(),
             bounds: Bounds::WORLD,
-            attacks: Vec::new(),
             resource_names: Arc::from([]),
             columns: ViewColumns::default(),
         })))
@@ -307,6 +280,17 @@ impl View {
         let kinds = damage_kinds.iter().map(DeclaredName::as_str);
         view.consts.set_damage_kinds(kinds);
         view.resource_names = resources;
+    }
+
+    /// The tick the units were read in.
+    pub(crate) fn now(&self) -> Tick {
+        self.0.borrow().now
+    }
+
+    /// `ms` in ticks at the match's rate, rounded up, at least one, or all ticks for a time too
+    /// long to count: a window back from now.
+    pub(crate) fn window(&self, ms: u64) -> Ticks {
+        self.0.borrow().rate.window(ms)
     }
 
     /// `ms` in ticks at the match's rate, rounded up, at least one; an error for a negative time
@@ -502,15 +486,15 @@ impl View {
     }
 
     /// The living targets whose bodies come within `radius` of `pos` in the map's metric, as an
-    /// area of that radius reaches, that `filter` selects relative to `of`, by stable id; with
-    /// `visible`, only those `of`'s team sees.
+    /// area of that radius reaches, that `filter` selects relative to `of`, and `seen` lets by
+    /// their rows, by stable id.
     pub(crate) fn find(
         &self,
         of: &Unit,
         pos: Position,
         radius: Num,
         filter: &str,
-        visible: bool,
+        seen: impl Fn(usize) -> bool,
     ) -> Checked<Array> {
         if radius < Num::ZERO {
             return Err(ApiError::NegativeRadius.fail().into());
@@ -519,7 +503,7 @@ impl View {
         let of = of.row();
         let selected = view.selected(&of, filter).map_err(ApiError::fail)?;
         Ok(selected
-            .filter(|(_, row)| !visible || row.seen_by.contains(of.team))
+            .filter(|&(at, _)| seen(at))
             .filter(|(_, row)| {
                 view.metric
                     .reaches(pos, Num::ZERO, radius, row.pos, row.radius)
@@ -529,9 +513,16 @@ impl View {
     }
 
     /// The nearest living target that `radius` from the edge of `of`'s body reaches in the map's
-    /// metric, as a weapon's range does, that `filter` selects relative to it and its team sees,
-    /// by exact distance between centres, the lower stable id on a tie; `()` when there is none.
-    pub(crate) fn nearest_visible(&self, of: &Unit, radius: Num, filter: &str) -> Checked<Dynamic> {
+    /// metric, as a weapon's range does, that `filter` selects relative to it and `seen` lets by
+    /// its row, by exact distance between centres, the lower stable id on a tie; `()` when there
+    /// is none.
+    pub(crate) fn nearest(
+        &self,
+        of: &Unit,
+        radius: Num,
+        filter: &str,
+        seen: impl Fn(usize) -> bool,
+    ) -> Checked<Dynamic> {
         if radius < Num::ZERO {
             return Err(ApiError::NegativeRadius.fail().into());
         }
@@ -540,7 +531,7 @@ impl View {
         let nearest = view
             .selected(&of, filter)
             .map_err(ApiError::fail)?
-            .filter(|(_, row)| row.seen_by.contains(of.team))
+            .filter(|&(at, _)| seen(at))
             .filter(|(_, row)| {
                 view.metric
                     .reaches(of.pos, of.radius, radius, row.pos, row.radius)
@@ -552,32 +543,7 @@ impl View {
         }))
     }
 
-    /// The living units that struck `unit` within the last `ms` milliseconds, rounded up to
-    /// whole ticks, by stable id.
-    pub(crate) fn recent_attackers(&self, unit: &Unit, ms: INT) -> Checked<Array> {
-        let ms = u64::try_from(ms)
-            .ok()
-            .ok_or_else(|| ApiError::NegativeTime.fail())?;
-        let view = self.0.borrow();
-        let window = view.rate.window(ms);
-        let row = unit.row();
-        let run = &view.attacks[row.attacks_start as usize..row.attacks_end as usize];
-        Ok(run
-            .iter()
-            .filter(|attack| {
-                // A strike later than the view's tick, as a rollback can leave, is not recent.
-                view.now.since(attack.tick).is_some_and(|age| age <= window)
-            })
-            .filter_map(|attack| {
-                let at = view.index(attack.source)?;
-                view.units[at]
-                    .alive
-                    .then(|| Dynamic::from(Unit::new(attack.source, at, self.clone())))
-            })
-            .collect())
-    }
-
-    /// `ctx.find`, `ctx.find_visible` and `ctx.nearest_visible`.
+    /// `ctx.find`.
     pub(crate) fn register_queries(api: &mut ApiBuilder<'_>) {
         let find = MemberSpec::call(
             "find",
@@ -585,45 +551,17 @@ impl View {
             "the living targets whose bodies come within `radius` of `pos`, as an area's, that `filter` selects for `of`, seen or not, by stable id",
         )
         .name(3, NameKind::Filter);
-        let visible = MemberSpec::call(
-            "find_visible",
-            "(of, pos, radius, filter)",
-            "as `find`, of the units `of`'s team sees",
-        )
-        .name(3, NameKind::Filter)
-        .capability(Capability::Vision);
-        for (spec, visible) in [(find, false), (visible, true)] {
-            api.bind(
-                spec,
-                move |ctx: &mut Ctx, of: Unit, pos: Position, radius: Num, filter: &str| {
-                    ctx.view().find(&of, pos, radius, filter, visible)
-                },
-            )
-            .bind(
-                spec,
-                move |ctx: &mut Ctx, of: Unit, pos: Position, radius: INT, filter: &str| {
-                    ctx.view()
-                        .find(&of, pos, ApiError::num(radius)?, filter, visible)
-                },
-            );
-        }
-        let nearest = MemberSpec::call(
-            "nearest_visible",
-            "(of, radius, filter)",
-            "the nearest living target, centre to centre, whose body `radius` from the edge of `of`'s reaches, as a weapon's range, that `filter` selects and `of`'s team sees, `()` with none",
-        ).name(2, NameKind::Filter)
-        .capability(Capability::Vision);
         api.bind(
-            nearest,
-            |ctx: &mut Ctx, of: Unit, radius: Num, filter: &str| {
-                ctx.view().nearest_visible(&of, radius, filter)
+            find,
+            |ctx: &mut Ctx, of: Unit, pos: Position, radius: Num, filter: &str| {
+                ctx.view().find(&of, pos, radius, filter, |_| true)
             },
         )
         .bind(
-            nearest,
-            |ctx: &mut Ctx, of: Unit, radius: INT, filter: &str| {
-                ctx.view()
-                    .nearest_visible(&of, ApiError::num(radius)?, filter)
+            find,
+            |ctx: &mut Ctx, of: Unit, pos: Position, radius: INT, filter: &str| {
+                let radius = ApiError::num(radius)?;
+                ctx.view().find(&of, pos, radius, filter, |_| true)
             },
         );
     }

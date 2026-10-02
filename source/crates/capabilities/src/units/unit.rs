@@ -2,7 +2,7 @@ use campfire_math::{Num, Vec3};
 use campfire_script::NumError;
 use campfire_script::Raised;
 use campfire_script::rhai::{Dynamic, INT, ImmutableString, NativeCallContext};
-use campfire_sim::{Capability, Position, StableId};
+use campfire_sim::{Position, StableId};
 
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
@@ -81,10 +81,6 @@ impl Unit {
                 |unit: &mut Unit| unit.view.unit_type_name(&unit.row()),
             )
             .bind(
-                field("path", "the name of the path it walks, `()` with none"),
-                |unit: &mut Unit| unit.view.path_name(unit.row().path),
-            )
-            .bind(
                 field("owner", "its player's slot, `()` with none"),
                 |unit: &mut Unit| {
                     unit.row().owner.map_or(Dynamic::UNIT, |slot| {
@@ -129,20 +125,6 @@ impl Unit {
                 let attitude = unit.view.attitude(unit.row().team, other.row().team);
                 attitude.may_attack()
             },
-        )
-        .bind(
-            method("can_see", "(unit)", "whether its team sees the other unit")
-                .capability(Capability::Vision),
-            |unit: &mut Unit, other: Unit| other.row().seen_by.contains(unit.row().team),
-        )
-        .bind(
-            method(
-                "recent_attackers",
-                "(ms)",
-                "the living units that struck it within the last `ms`, rounded up to whole ticks",
-            )
-            .capability(Capability::Combat),
-            |unit: &mut Unit, ms: INT| unit.view.recent_attackers(unit, ms),
         )
         .bind(
             MemberSpec::operator(ApiOwner::Unit, "==", "whether the two are one unit"),

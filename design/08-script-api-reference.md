@@ -75,7 +75,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `level` | read | stats | since 1.0 | its level |
 | `owner` | read | core | since 1.0 | its player's slot, `()` with none |
 | `params` | read | core | since 1.0 | its unit type's params, unresolved |
-| `path` | read | core | since 1.0 | the name of the path it walks, `()` with none |
+| `path` | read | navigation | since 1.0 | the name of the path it walks, `()` with none |
 | `points` | read | progression | planned | its unspent points |
 | `pool` | `(name)`, `name` a pool | stats | since 1.0 | the current amount of its pool `name` |
 | `pool_max` | `(name)`, `name` a pool | stats | since 1.0 | the maximum of its pool `name` |

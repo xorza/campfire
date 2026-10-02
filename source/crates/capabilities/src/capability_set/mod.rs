@@ -19,6 +19,7 @@ use crate::mode::Mode;
 use crate::mode::match_end::MatchEnd;
 use crate::mode::mode_api::ModeApi;
 use crate::navigation::Navigation;
+use crate::navigation::navigation_api::NavigationApi;
 use crate::orders::Orders;
 use crate::orders::orders_api::OrdersApi;
 use crate::production::Production;
@@ -115,7 +116,7 @@ const CAPABILITIES: [Row; Capability::ALL.len()] = [
     row(Capability::Combat, Combat::install, &[Capability::Stats])
         .applying(Combat::apply_next)
         .registering(CombatApi::register),
-    row(Capability::Navigation, Navigation::install, &[]),
+    row(Capability::Navigation, Navigation::install, &[]).registering(NavigationApi::register),
     row(Capability::Vision, Vision::install, &[Capability::Combat])
         .registering(VisionApi::register),
     row(

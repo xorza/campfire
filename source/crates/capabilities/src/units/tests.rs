@@ -334,6 +334,8 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     assert!(value(&mut scene, "of.alive").as_bool().unwrap());
     assert_eq!(value(&mut scene, "of.owner").as_int(), Ok(2));
     assert!(value(&mut scene, "of.path").is_unit());
+    // With no `vision`, every team sees every unit.
+    assert!(value(&mut scene, "of.can_see(of)").as_bool().unwrap());
     // Its body's radius, 0.75 m; a unit with no body has none.
     let radius = |scene: &mut Scene, unit| {
         let source = "fn probe(ctx, of) { of.radius }";

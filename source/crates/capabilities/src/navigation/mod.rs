@@ -18,6 +18,7 @@ use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::PathWalker;
 use crate::navigation::pathing_grid::PathingGrid;
 use crate::navigation::paths::Paths;
+use crate::navigation::paths_column::PathsColumn;
 use crate::navigation::progress::Progress;
 use crate::navigation::route::Route;
 use crate::navigation::route_planner::{RoutePlanner, Waiting, Walkable};
@@ -42,11 +43,13 @@ pub(crate) mod broadphase;
 pub(crate) mod collider;
 pub(crate) mod destination;
 pub(crate) mod error;
+pub(crate) mod navigation_api;
 pub(crate) mod navigation_rules;
 pub(crate) mod on_path;
 pub(crate) mod path_walker;
 pub(crate) mod pathing_grid;
 pub(crate) mod paths;
+pub(crate) mod paths_column;
 pub(crate) mod progress;
 pub(crate) mod regions;
 pub(crate) mod route;
@@ -78,6 +81,7 @@ impl Navigation {
     /// unit that walks stands within the bounds again.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         if let Some(view) = world.get_non_send::<View>() {
+            view.add_column(PathsColumn::default());
             view.add_source(fill_row);
         }
         world.insert_resource(Paths::default());
@@ -149,7 +153,8 @@ fn track_static_bodies(
 
 /// Fills a row of the script view with the path the unit walks or stands on.
 fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
-    fill.row.path = unit.get::<OnPath>().map(|path| path.get());
+    let path = unit.get::<OnPath>().map(|path| path.get());
+    fill.column::<PathsColumn>().push(path);
 }
 
 /// Keeps each walker's route on its destination. A walker with a new destination asks for a route

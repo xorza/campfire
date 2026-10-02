@@ -4,6 +4,7 @@ use campfire_sim::Capability;
 
 use crate::actions::action_data_field::ActionDataField;
 use crate::actions::actions_column::ActionsColumn;
+use crate::combat::attacks_column::AttacksColumn;
 use crate::combat::combat_effect::CombatEffect;
 use crate::combat::damage_handle::DamageHandle;
 use crate::combat::heal_handle::HealHandle;
@@ -13,7 +14,7 @@ use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::role_set::RoleSet;
-use crate::scripts::script_api::{DataTable, MemberSpec, Status};
+use crate::scripts::script_api::{ApiOwner, DataTable, MemberSpec, Status};
 use crate::stats::stats_column::StatsColumn;
 use crate::units::block::Block;
 use crate::units::tag_effect::TagEffect;
@@ -28,6 +29,7 @@ impl CombatApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         DamageHandle::register(api);
         HealHandle::register(api);
+        CombatApi::register_unit(api);
         let call = |name, signature, description| {
             MemberSpec::call(name, signature, description).capability(Capability::Combat)
         };
@@ -120,6 +122,20 @@ impl CombatApi {
         .data(DataTable::Leech, &["attack", "other"], &[])
         .data(DataTable::Combat, &["on_death"], &[])
         .action_fields(ActionDataField::of(Some(Capability::Combat)));
+    }
+
+    /// What combat adds to a `Unit` handle.
+    fn register_unit(api: &mut ApiBuilder<'_>) {
+        let recent_attackers = MemberSpec::method(
+            ApiOwner::Unit,
+            "recent_attackers",
+            "(ms)",
+            "the living units that struck it within the last `ms`, rounded up to whole ticks",
+        )
+        .capability(Capability::Combat);
+        api.bind(recent_attackers, |unit: &mut Unit, ms: INT| {
+            AttacksColumn::recent_attackers(unit, ms)
+        });
     }
 
     /// Queues `amount` of `kind` damage to `target`, a kind the mode declares.

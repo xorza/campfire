@@ -15,12 +15,14 @@ use crate::units::unit_tags::UnitTags;
 use crate::values::grid::Grid;
 use crate::vision::seen_by::SeenBy;
 use crate::vision::sight::Sight;
+use crate::vision::sight_column::SightColumn;
 use crate::vision::sight_maps::SightMaps;
 use crate::vision::vision_grid::VisionGrid;
 use crate::vision::vision_groups::VisionGroups;
 
 pub(crate) mod seen_by;
 pub(crate) mod sight;
+pub(crate) mod sight_column;
 pub(crate) mod sight_maps;
 pub(crate) mod vision_api;
 pub(crate) mod vision_data;
@@ -39,6 +41,7 @@ impl Vision {
     /// teams that see it. A match sees nothing until its mode gives the grid.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         if let Some(view) = world.get_non_send::<View>() {
+            view.add_column(SightColumn::default());
             view.add_source(fill_row);
         }
         schedule.add_systems(see.in_set(SimSet::Vision));
@@ -69,7 +72,8 @@ impl Vision {
 
 /// Fills a row of the script view with the teams that see the unit.
 fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
-    fill.row.seen_by = Vision::seen_by(unit, fill.world.resource::<Relations>());
+    let seen_by = Vision::seen_by(unit, fill.world.resource::<Relations>());
+    fill.column::<SightColumn>().push(seen_by);
 }
 
 /// Reveals the cells each living unit with a sight sees to its vision group, and those each such

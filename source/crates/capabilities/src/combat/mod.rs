@@ -16,6 +16,7 @@ use crate::actions::targets::Targets;
 use crate::actions::weapon::Weapon;
 use crate::actions::{Actions, ActionsSet};
 use crate::combat::assist_window::AssistWindow;
+use crate::combat::attacks_column::AttacksColumn;
 use crate::combat::combat_bindings::CombatBindings;
 use crate::combat::combat_effect::CombatEffect;
 use crate::combat::combat_event::CombatEvent;
@@ -29,6 +30,7 @@ use crate::combat::kept::Kept;
 use crate::combat::modifier_hooks::ModifierHooks;
 use crate::combat::on_death::OnDeath;
 use crate::combat::pass_queue::{PassEntry, PassQueue};
+use crate::combat::recent_attack::RecentAttack;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::combat::respawn::Respawn;
 use crate::combat::shots::{Shot, Shots};
@@ -54,7 +56,6 @@ use crate::units::dead::Dead;
 use crate::units::modifier_id::ModifierId;
 use crate::units::owner::Owner;
 use crate::units::predicting::Predicting;
-use crate::units::recent_attack::RecentAttack;
 use crate::units::script_view::{RowFill, View};
 use crate::units::spawn_point::SpawnPoint;
 use crate::units::tag_book::TagBook;
@@ -64,6 +65,7 @@ use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
 
 pub(crate) mod assist_window;
+pub(crate) mod attacks_column;
 pub(crate) mod combat_api;
 pub(crate) mod combat_bindings;
 pub(crate) mod combat_data;
@@ -82,6 +84,7 @@ pub(crate) mod kept;
 pub(crate) mod modifier_hooks;
 pub(crate) mod on_death;
 pub(crate) mod pass_queue;
+pub(crate) mod recent_attack;
 pub(crate) mod recent_attackers;
 pub(crate) mod respawn;
 pub(crate) mod shots;
@@ -124,6 +127,7 @@ impl Combat {
     /// go, after the Mode stage saw them.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         if let Some(view) = world.get_non_send::<View>() {
+            view.add_column(AttacksColumn::default());
             view.add_source(fill_row);
         }
         world.insert_resource(PassQueue::default());
@@ -215,9 +219,9 @@ fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
         && fill.world.get_resource::<LifePool>().is_some_and(|life| {
             Targets::targetable(unit.get::<Pools>(), unit.get::<UnitTags>(), life.0)
         });
-    if let Some(recent) = unit.get::<RecentAttackers>() {
-        fill.attacked(recent.iter());
-    }
+    let recent = unit.get::<RecentAttackers>();
+    fill.column::<AttacksColumn>()
+        .push(recent.into_iter().flat_map(RecentAttackers::iter));
 }
 
 /// What tells whether a unit's attack strikes: its id, its slots, its tags, and what it pays the
