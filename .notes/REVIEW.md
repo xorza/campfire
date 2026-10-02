@@ -16,9 +16,3 @@ These costs grow with all units or all entities each tick, while the work concer
 
 - [ ] **Every script batch rebuilds every unit's row** — `capabilities/src/units/script_view.rs:147-195`, `scripts/script_batch.rs:29`. A tick can run about eight batches, each a full rebuild of every row from every row source. Better: keep the rows, and refresh only those whose source components changed since the last build.
 
-## 13. Allocations on frequent paths
-
-
-## 14. Coding guide breaks and small defects
-
-- [ ] **One major struct per file** — `capabilities/src/actions/action_book.rs` (about ten types; `RankValues::all` builds a `LoadedRanks`); `combat/mod.rs` (about 810 lines with the damage-pass API); `units/script_view.rs` (eight types, three of them owned by stats and abilities); `units/unit.rs:200-291` (the `Pos` and `Vector` APIs); `stats/modifier_book.rs:32` (`ModifierId`); `stats/modifiers.rs` (`Instance`, `Application`); `stats/mod.rs` (700 lines, nine systems); `mode/mode_book.rs:326-340` (`SpawnAt`, `GroupUnit`); `mode/resource_id.rs:9-12` (`ResourceAmount`); `package/src/files/manifest.rs`; `package/src/mode_packages.rs` (`Dependent`).

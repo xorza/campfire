@@ -313,7 +313,6 @@ Track I:  H4      F3 after unit script state
   - entity-index walks: B2;
 - **R§13:**
 - **R§14:**
-  - one struct per file: D2, D5, J;
   - server exit code: B4;
   - script fact lists: C4.
 

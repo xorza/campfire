@@ -4,8 +4,8 @@ use bevy_ecs::component::Component;
 use bevy_ecs::system::RunSystemOnce;
 use std::collections::BTreeMap;
 
-use campfire_math::{PlayerSlot, RngSource, SegmentSeed, Ticks, Vec3};
-use campfire_sim::{Capability, IdAllocator, SimUpdate, TypeHash};
+use campfire_math::{Num, PlayerSlot, RngSource, SegmentSeed, Ticks, Vec3};
+use campfire_sim::{Capability, EntityIndex, IdAllocator, SimUpdate, TypeHash};
 
 use super::*;
 use crate::actions::action_book::internals::{self, TestWeapon};
@@ -13,7 +13,11 @@ use crate::actions::action_data::Range;
 use crate::actions::slot_kind::SlotKind;
 use crate::capability_set::internals::TestMatch;
 use crate::combat::armed::Armed;
+use crate::combat::assist_window::AssistWindow;
+use crate::combat::combat_bindings::CombatBindings;
 use crate::combat::combat_rules::{CombatRules, Leech};
+use crate::combat::pass_queue::PassEntry;
+use crate::combat::recent_attack::RecentAttack;
 use crate::players::resource_id::ResourceId;
 use crate::stats::Stats;
 use crate::stats::application::{Application, NewInstance};
@@ -22,6 +26,7 @@ use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::pool_cost::PoolCost;
 use crate::stats::pool_data::PoolData;
 use crate::stats::stat_book::StatBook;
+use crate::stats::stat_id::StatId;
 use crate::stats::stat_rule::StatRule;
 use crate::units::Units;
 use crate::units::filter::Filter;
@@ -903,7 +908,7 @@ fn the_pass_deals_damage_in_its_order_and_credits_the_kill() {
     let c = fight.unit(Team::new(0), at(3, 0, 0), dummy());
     fight.damage(Some(c), target, 10, ATTACK);
     fight.run_until(2);
-    Combat::heal(&mut fight.world, target, num(50));
+    DamagePass::heal(&mut fight.world, target, num(50));
     assert_eq!(fight.health(target), Some(0));
     let attackers = fight.get_ref::<RecentAttackers>(target).unwrap();
     assert!(attackers.iter().all(|attack| attack.source != c));
@@ -997,9 +1002,9 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     assert_eq!(fight.exact_health(target), num(55));
     assert_eq!(fight.exact_health(source), num(185) / 4);
     // A heal of 10 is halved too; one past the maximum stops at it.
-    Combat::heal(&mut fight.world, source, num(10));
+    DamagePass::heal(&mut fight.world, source, num(10));
     assert_eq!(fight.exact_health(source), num(205) / 4);
-    Combat::heal(&mut fight.world, source, num(1000));
+    DamagePass::heal(&mut fight.world, source, num(1000));
     assert_eq!(fight.exact_health(source), num(100));
     // Without the bindings the same stats do nothing: at 50, an attack of 10 heals the source
     // nothing, and a heal of 10 is whole.
@@ -1011,7 +1016,7 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     fight.run_until(3);
     assert_eq!(fight.exact_health(target), num(45));
     assert_eq!(fight.exact_health(source), num(50));
-    Combat::heal(&mut fight.world, source, num(10));
+    DamagePass::heal(&mut fight.world, source, num(10));
     assert_eq!(fight.exact_health(source), num(60));
     // A restore reaches the pool it names, unscaled: a second pool at 50 of 100 takes 20 more,
     // and the life pool keeps its 60.
@@ -1021,7 +1026,7 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     *pools = Pools::new([(PoolId::FIRST, num(100)), (mana, num(100))]).unwrap();
     pools.take(PoolId::FIRST, num(40));
     pools.take(mana, num(50));
-    Combat::restore(&mut fight.world, source, mana, num(20));
+    DamagePass::restore(&mut fight.world, source, mana, num(20));
     let pools = fight.get::<Pools>(source).unwrap();
     assert_eq!(
         (pools.current(PoolId::FIRST), pools.current(mana)),

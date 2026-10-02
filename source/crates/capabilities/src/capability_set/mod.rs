@@ -14,6 +14,7 @@ use crate::areas::areas_api::AreasApi;
 use crate::capability_set::error::CapabilityError;
 use crate::combat::Combat;
 use crate::combat::combat_api::CombatApi;
+use crate::combat::damage_pass::DamagePass;
 use crate::deliveries::deliveries_api::DeliveriesApi;
 use crate::mode::Mode;
 use crate::mode::match_end::MatchEnd;
@@ -114,7 +115,7 @@ const CAPABILITIES: [Row; Capability::ALL.len()] = [
     .applying(Progression::apply_next)
     .registering(ProgressionApi::register),
     row(Capability::Combat, Combat::install, &[Capability::Stats])
-        .applying(Combat::apply_next)
+        .applying(DamagePass::apply_next)
         .registering(CombatApi::register),
     row(Capability::Navigation, Navigation::install, &[]).registering(NavigationApi::register),
     row(Capability::Vision, Vision::install, &[Capability::Combat])
