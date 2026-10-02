@@ -13,7 +13,7 @@ Touches: every capability, the registry, the package loader, the client, the ref
 
 The structural redesign comes first, in the order below, as [Structural rules](design/02-engine-core.md#structural-rules) asks; `.notes/REDESIGN.md` holds each step's shape until the step lands and its part moves into the design. Each step ends with the check chain, both goldens and the structure tests that exist then; a step that changes behaviour names the change. The game model's own steps sit where the redesign makes room for them.
 
-The review of the redesign's diff found two defects and two weak shapes; K1 to K4 close them before F3.
+The review of the redesign's diff found two defects and two weak shapes; K1 to K4 close them before F3. A second review found four more defects, a fact with two owners and two small flaws; K5 to K10 close them, also before F3.
 
 1. **K1: every way that applies a modifier gives its params** ([Stats](design/04-capabilities/stats.md#modifiers), Appliers). Changes behaviour. Size M.
    - Today the load accepts a param when one applier declares it, and an application that does not resolve returns with no error: `ctx.add_modifier(target, "slow", 1000)` in the lancer's `quake.rhai` loads and does nothing. `has_modifier` counts as an application.
@@ -35,4 +35,34 @@ The review of the redesign's diff found two defects and two weak shapes; K1 to K
    - Today an effect type's `CAPABILITY`, its row in `CAPABILITIES` and the type its row's `apply_next` takes are three facts that must agree, and a mismatch panics at the first effect.
    - `Effect` loses `CAPABILITY` and gains `apply(self, world, frame, now)`. `Effects` finds a type's queue by its `TypeId`, as `CallParts` finds a part, and records with each effect the apply of its type. The table's effect column, `DISPATCH`, `Frame::set_dispatch` and the seven `apply_next` go.
    - Test: the effects test with two types of one capability.
-5. **F3**: the handles of new deliveries, which waits for unit script state.
+5. **K5: an `xp` effect follows the rule of `ctx.add_xp`** ([Progression](design/04-capabilities/progression.md#rules)). Changes behaviour. Size S.
+   - Today the effect `xp = { track, amount }` queues with no check, and `Progression::apply` expects the unit and its track: an `xp` effect to a reached unit with no tracks panics in `resolve_casts`, and one to the source panics once the source despawned before its delivery hits. A scaling param that gives a negative amount fires the `debug_assert` of `Experience::add`, and in a release build makes negative experience, which a restore refuses.
+   - Design 04 says a unit without the track fails the call, for the effect as for `ctx.add_xp`. `EffectLists::queue` checks each `xp` effect against the view as `add_xp` does: a unit the view does not hold, a unit without the track, or a negative amount fails the call with `NoTrack` or `NegativeXp`, and the call changes nothing, its list included. The `expect`s of `Progression::apply` then hold for every effect that reaches it.
+   - Tests: an `xp` effect to a reached unit with no tracks, to a source that despawned before its projectile hits, and of a scaling param that gives a negative amount: each fails its call, records its failure, and changes no unit.
+   - The change of behaviour: these calls panicked, and now fail.
+6. **K6: a modifier is the passive of one owner** ([Stats](design/04-capabilities/stats.md#rules), Passives). Changes behaviour. Size S.
+   - Today the passive hold is keyed by the modifier and its source, as every hold of one modifier from one source is one hold. Two actions of one package with one `passive_modifier`, or an avatar's `passive` that one of its actions also names, share it: an unlearned slot releases what a learned slot holds, so the unit has no passive, and two slots at other ranks apply it again in each run of `hold_passives`, three a tick, which resets its shield, interval and state.
+   - A passive names a modifier of its own package, so the load refuses a package where a modifier is the passive of more than one owner: a unit type's `passive`, or an action's `passive_modifier`. The refusal is a `LoadProblem` that names the modifier and both owners.
+   - Tests: a flaw for each pair (two actions; a unit type and an action).
+   - The change of behaviour: such a package loads no more. Reference content that breaks the rule is fixed in the step, and named.
+7. **K7: a restore refuses a state a system panics on** ([Structural rules](design/02-engine-core.md#structural-rules)). After K2. Size M.
+   - Today three flaws restore and then panic or act: a `Route` that waits for an answer with no goal panics in `plan_routes`; a position within the world's bound but outside the map's panics in vision, as no check reads the map's bounds; and a modifier's clock whose interval or shield its modifier does not have reaches the `debug_assert` of `ModifierClocks::renew`, or fires an interval the modifier lacks. The snapshot fuzz flips one byte at a time, so it makes none of them.
+   - `Route` holds the tick it asked in with its goal, `goal: Option<Goal { at, asked }>`, so an ask with no goal cannot be expressed.
+   - The state registry takes a check of a state type from a capability that does not own it: `Units` checks each position against the map's bounds, which the sim crate does not know.
+   - `ModifierClocks::check` compares each clock with its modifier's spec: an interval and a shield exactly when the spec has one.
+   - Tests: a restore test of each flaw above; and a structured fuzz beside the byte flips, which writes into a proving match's snapshot, for each state type, values that pass its decode, restores it, and plays five ticks on what restores.
+   - Design 02's rule of restored state names the structured fuzz among what enforces it.
+8. **K8: a modifier's aura radius and shield are never negative** ([Stats](design/04-capabilities/stats.md#rules), Numbers). Changes behaviour. Size S.
+   - Today the load accepts a negative aura `radius` or `shield`, as a value or a param, the application keeps it, and the decode of `Modifiers` and `ModifierClocks` refuses it: a match makes a state its restore refuses.
+   - The load refuses a negative value, and a per-rank param that is negative at a rank, as it does for an effect's numbers. A scaling param that gives a negative value at an application gives 0, so the sim and the decode keep one rule, as `Area::new` and `MoveStep::new` do.
+   - Design 04's Numbers gains the rule, beside the refusal of a negative fixed time.
+   - Tests: a flaw for a negative value and for a negative rank; an application whose scaling radius and shield are negative holds 0, and its snapshot restores.
+   - The change of behaviour: such a package loads no more, and a negative scaling radius or shield acts as 0.
+9. **K9: each script's hooks have one owner** ([Structural rules](design/02-engine-core.md#structural-rules), Books). Size S.
+   - Design 02 says the hooks a script defines come from what the load read of it. Today `Units::compile` also fills the `ScriptBook` of the server's world, the client and the load build it from `ScriptFacts`, and `ModePackages::books(rate, scripts)` takes it from its caller, so a caller can give another book. Only the lane test checks that the two agree.
+   - `ModePackages` builds its `ScriptBook` once, as the load reads the scripts, and holds it. `books(rate)` takes no book, the load check reads the one it holds, and the match installs a copy as its resource. `Units::compile` only compiles, and `compile_scripts` asserts that the host numbers each script at its place.
+   - Test: the lane test's comparison goes, as there is one book.
+10. **K10: two small flaws**. Size S.
+    - In `package/src/load_check.rs`, the doc line of `modifier_exists` sits on `number_values`: it moves back.
+    - `TickInputs::push` finds each command's body among the payloads by its pointer's address, which holds only while postcard borrows the body from the payload. `Command::read` gives each command its place, from the lengths of what is left to read. Test: the tick inputs test, with an empty body.
+11. **F3**: the handles of new deliveries, which waits for unit script state.
