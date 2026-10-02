@@ -118,6 +118,6 @@ fn a_wave_with_no_wave_to_meet_strikes_the_tower_and_falls_to_it() {
     let full = Num::from_int(1500).unwrap();
     let lost = full - health(local.server(), west);
     let strike = Num::from_int(25).unwrap();
-    assert!(lost > Num::ZERO && lost < full, "{lost:?}");
-    assert_eq!(lost.to_bits() % strike.to_bits(), 0, "{lost:?}");
+    // The wave lands two strikes before the tower fells it.
+    assert_eq!(lost, strike * 2, "{lost:?} of {full:?}");
 }

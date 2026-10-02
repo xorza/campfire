@@ -387,7 +387,7 @@ const FLAWS: [Flaw; 184] = [
         HUSK,
         Edit::Replace("[combat]\n", "[fight]\n"),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Content(_)),
+        |problem| read_fails(problem, "data/avatar.toml", "unknown field `fight`"),
     ),
     // An action delivers a projectile type of its own package, which homes only alone and at a
     // unit, and needs an aim; a weapon's homes. A projectile type is a delivery type alone, a
@@ -1479,7 +1479,7 @@ const FLAWS: [Flaw; 184] = [
         "heroes/rime/data/avatar.toml",
         Edit::Replace(r#"hits = "enemies:avatar""#, r#"hits = "foes:avatar""#),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::Content(_)),
+        |problem| read_fails(problem, "data/avatar.toml", "filter \"foes:avatar\""),
     ),
     flaw(
         "heroes/kensho/data/avatar.toml",

@@ -12,7 +12,7 @@ use campfire_capabilities::{
     Action, ActionSlots, Attitude, Bounds, Combat, Dead, Destination, MatchEnd, MatchResult,
     Metric, Modifiers, MoveStep, Owner, PoolId, Pools, Projectile, Relations, Respawn, Stats, Team,
 };
-use campfire_math::{Num, PlayerSlot, Tick, Vec3};
+use campfire_math::{Num, PlayerSlot, Tick, Ticks, Vec3};
 use campfire_net::{InputChannel, InputMessage, LocalMatch, MatchSetup, PlayerLink, TickHashes};
 use campfire_protocol::{PlayerInput, SeedChain, SessionLog, Signature};
 use campfire_runner::{Runner, Session};
@@ -102,11 +102,14 @@ fn server_and_replay_agree_on_every_tick() {
         assert!(client_hero.contains::<Predicted>() && !client_hero.contains::<Unpredicted>());
         let rollbacks = client_world.resource::<PredictionMetrics>().rollbacks;
         // The client stamps each order with the tick it predicts it in, and runs ahead of the
-        // server, so the server applies it in that tick: nothing is mispredicted.
-        match rollback {
-            RollbackMode::Check => assert_eq!(rollbacks, 0),
-            _ => assert!(rollbacks > 0, "{case} rolled back {rollbacks} times"),
-        }
+        // server, so the server applies it in that tick: nothing is mispredicted, and a client
+        // that checks rolls back never. One that always rolls back does so for each server
+        // update it takes: one a frame of the match, and the one of its start.
+        let expected = match rollback {
+            RollbackMode::Check => 0,
+            _ => u32::try_from(MATCH_FRAMES + 1).unwrap(),
+        };
+        assert_eq!(rollbacks, expected, "{case}");
 
         let link = local.link(0);
         let server_world = local.server_mut().world_mut();
@@ -344,7 +347,9 @@ fn a_fallen_tower_ends_the_match_on_the_server_and_its_client() {
     }
     assert_eq!(hero(local.server()), still);
     assert_eq!(hero(local.client(0)).position, still.position);
-    assert!(local.server().world().resource::<SimTick>().start() > tick);
+    // A step runs one tick of the server's.
+    let after = local.server().world().resource::<SimTick>().start();
+    assert_eq!(after, tick.after(Ticks::new(30)));
 }
 
 #[test]

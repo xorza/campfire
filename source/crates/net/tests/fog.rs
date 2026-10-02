@@ -111,7 +111,14 @@ fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
     let held_from = on_client.iter().position(|&held| held).unwrap();
     let held_until = on_client.iter().rposition(|&held| held).unwrap();
     assert!(on_client[held_from..=held_until].iter().all(|&held| held));
-    assert!(held_until < MATCH_FRAMES - 1);
+    // Frame `f` runs tick `f` past the lobby's ticks, and a tick's message reaches the client a
+    // frame later: it holds the tower from the frame after the first tick that sees it to the
+    // frame after the last.
+    let lobby = server.iter().position(Option::is_some).unwrap();
+    assert_eq!(
+        (held_from, held_until),
+        (first + 1 - lobby, last + 1 - lobby)
+    );
 }
 
 /// The sim tick of the server message that last updated `unit` on the client.

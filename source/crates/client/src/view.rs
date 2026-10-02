@@ -519,6 +519,7 @@ mod tests {
         let from = Vec3::new(1.0, 0.0, 2.0);
         let top = lean_toward(from, Vec3::new(5.0, 0.0, 2.0)) * Vec3::Y;
         let expected = Vec3::new(LEAN.sin(), LEAN.cos(), 0.0);
+        // A rotation in f32 rounds each component to some ulps of 1, below 1e-6.
         assert!(top.abs_diff_eq(expected, 1e-6), "{top}");
         // Towards −z, whatever the target's height: the top to (0, cos 0.35, −sin 0.35).
         let top = lean_toward(from, Vec3::new(1.0, 3.0, -4.0)) * Vec3::Y;

@@ -176,14 +176,31 @@ fn chance_always_takes_one_word() {
 }
 
 #[test]
-fn pick_and_below_stay_in_range() {
+fn below_and_pick_take_the_words_lemires_method_accepts() {
+    // A parallel stream of the same words, read by Lemire's method written apart: a word's
+    // product with the bound gives its high 64 bits, unless its low 64 bits fall below
+    // (2^64 − bound) mod bound, which rejects the word for the next.
     let mut rng = Rng::new(&seed(), RngStream::new("s"), 1, 1);
-    assert_eq!(rng.pick(1), 0);
-    assert_eq!(rng.below(1), 0);
-    for _ in 0..1000 {
-        assert!(rng.pick(3) < 3);
-        assert!(rng.below(u64::MAX) < u64::MAX);
+    let mut words = Rng::new(&seed(), RngStream::new("s"), 1, 1);
+    let mut lemire = |bound: u64| loop {
+        let product = u128::from(words.next_u64()) * u128::from(bound);
+        let threshold = ((1_u128 << 64) - u128::from(bound)) % u128::from(bound);
+        if product & u128::from(u64::MAX) >= threshold {
+            return u64::try_from(product >> 64).unwrap();
+        }
+    };
+    for _ in 0..200 {
+        for bound in [1, 3, 1000, 1 << 63, u64::MAX] {
+            assert_eq!(rng.below(bound), lemire(bound), "{bound}");
+        }
+        assert_eq!(rng.pick(3), usize::try_from(lemire(3)).unwrap());
     }
+    // The rejection at 64 bits: (2^64 − 3) mod 3 = 1, so the word 0, whose low bits are 0,
+    // is rejected, and the word 1, whose product is 3, is not.
+    assert_eq!(
+        [lemire_step::<64>(0, 3), lemire_step::<64>(1, 3)],
+        [None, Some(0)]
+    );
 }
 
 #[test]

@@ -208,17 +208,6 @@ The schedule is a separate field only because `Mode::install` needs it (`mode/te
 
 ### 5.1 Weak bounds where the exact value is known
 
-- [ ] **package** — `mode_package.rs:316` (`[fight]`) and `:964` (`foes:avatar`) accept any `Content(_)`, and `:194` any `OtherEngine(_)`. Use `read_fails` (`:118`).
-- [ ] **net**, now that the round trip is pinned:
-  - `prototype.rs:104` `rollbacks > 0`: the exact count.
-  - `prototype.rs:276` `start() > tick`: `== tick + 30`, which needs one check.
-  - `lane.rs:398-399` `0 < lost < full`: derive the strike count.
-  - `lane.rs:371`: pin the tick.
-  - `fog.rs:514` `held_until < MATCH_FRAMES - 1`: pin the frame.
-- [ ] **math and client**:
-  - `rng/tests.rs:178-187` asserts only `< 3` and `< u64::MAX` for `pick` and `below`. Cross-check against a parallel word stream: for the bounds `[1, 3, 1000, 1 << 63, u64::MAX]`, the expected value is the first `Some` of `lemire_step::<64>(words.next_u64(), bound)`.
-  - `client` `ring.rs:31-35` brackets the end with 0.99 and 1.01. `done` is exactly 1.0 there, so assert `None`.
-  - The client tolerances `1e-6` and `1e-5` (view.rs, gauge.rs, ring.rs) need a reason.
 
 ### 5.2 Missing boundaries and cross-checks
 
@@ -257,7 +246,6 @@ The schedule is a separate field only because `Mode::install` needs it (`mode/te
   - the cross-check `p.round_shr(k) == p.round_div(1 << k)` for k in 1..=126;
   - a 4-limb schoolbook oracle for `product`;
   - the boundaries `round_shr(127)` and the divisor `(1 << 127) - 1`.
-- [ ] **64-bit Lemire rejection** — the full sweeps use `lemire_step::<16>`. Add `[lemire_step::<64>(0, 3), lemire_step::<64>(1, 3)] == [None, Some(0)]`, because (2⁶⁴ − 3) mod 3 = 1.
 - [ ] **Data refusals with no test**:
   - `Thresholds::new` with `[]`, `[0]`, `[100, 100]` and `[300, 100]` (`track_data.rs:25`);
   - `ProjectileData`: speed ≤ 0, and a negative width or range (`projectile_data.rs:49-65`);

@@ -141,6 +141,7 @@ mod tests {
         let health = GaugeKind::Life { shown: None }.layout();
         let quarter = health.fill(0.25);
         assert_eq!(quarter.scale, Vec3::new(0.3, 1.0, THICKNESS));
+        // The fill's centre is an f32 sum of halves of the width, exact to an ulp of 0.45.
         assert!((quarter.translation.x + 0.45).abs() < 1e-6, "{quarter:?}");
         // Out of range, a share holds at the ends.
         assert_eq!(health.fill(1.5).scale.x, WIDE);
