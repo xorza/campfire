@@ -35,6 +35,7 @@ Done when every mechanic design 07 lists runs from the reference heroes' and spe
 ### 6. Sessions
 
 - Checkpoints, crash restore within the restore window, reconnect with the same session key, late join, receipts.
+- Inputs after a server stall: a frame that catches up runs all its ticks before it reads the inputs that arrived in the meantime, so on-time inputs take effect up to a whole burst late. Decide whether the server reads inputs between those ticks, or bounds the burst ([Session log](design/05-protocol-spec.md#session-log)).
 - Players joining and leaving, with their hooks, as the log records them.
 - The local server on a client thread, pause and game speed; saves and loads on one release ([Singleplayer and saves](design/01-campfire-design.md#singleplayer-and-saves)).
 
@@ -44,23 +45,22 @@ Done when a LAN match whose server is killed restores and ends, its log verifyin
 
 - First cuts: `production` (build, gather; the train's cancel, refund, rally points, requirements and supply), region events, `quests` objectives, carry and campaigns, save converters.
 - The RTS skirmish and the RTS mission ([Genre proofs](design/04-capabilities/genres.md#genre-proofs)).
-- `det-ci`: headless matches of each test mode on every OS, comparing their state hashes tick by tick ([Modules](design/02-engine-core.md#modules)).
 
-Done when `det-ci` runs both on every OS with the same hashes.
+Done when both play to their goldens on every OS in CI.
 
 ### 8. Genre proofs: shooter and battle royale
 
 - First cuts: `character` and level geometry, `hitboxes` (rays with lag compensation), item units on the ground, random tables, relevance, teams beyond 63.
 - The CS round and the BR zone.
 
-Done when `det-ci` runs both on every OS with the same hashes.
+Done when both play to their goldens on every OS in CI.
 
 ### 9. Genre proofs: RPG and MMO
 
 - First cuts: `quests` and dialogue, `world` (dormant regions), the game clock, senses, crafting, tracks and perks, sweeps, package overrides, generated maps, scripted systems.
 - The MMO zone, the Diablo level and the RPG town; the test that every pair of capabilities meets in a test mode ([Testing combinations](design/04-capabilities/00-overview.md#testing-combinations)).
 
-Done when `det-ci` runs all three on every OS with the same hashes, and the pair test passes.
+Done when all three play to their goldens on every OS in CI, and the pair test passes.
 
 ### 10. Reference game
 
@@ -72,11 +72,11 @@ Done when two humans and four bots play a whole 3v3 on LAN to its end, and its l
 
 ### 11. Hardening
 
-- `det-ci` bot matches on every commit; each capability's worst tick measured against its stated cost; log tamper tests.
+- Bot matches of the reference MOBA in CI on every commit, each OS's session logs replayed on every other; each capability's worst tick measured against its stated cost; log tamper tests.
 - mDNS; flood limits before signature checks; NIP-49 encrypted key files; several identities in the client.
 - Anti-cheat: detection plugins that read session logs.
 
-Done when a week of `det-ci` runs finds no divergence and every worst tick fits its budget.
+Done when a week of CI runs finds no divergence and every worst tick fits its budget.
 
 ## Milestone 2 — Open network
 
@@ -127,7 +127,7 @@ Done when an item sells between two players with no one holding the money, and a
 
 ### 19. Vehicles
 
-- `physics` with a deterministic backend, heightmap terrain, `det-ci` across every OS.
+- `physics` with a deterministic backend, heightmap terrain, its goldens on every OS.
 
 ### 20. Editors and content
 

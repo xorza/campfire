@@ -3,8 +3,8 @@
 //! of the test lane mode, and a third bot that pins the wrong certificate; then reads their JSON
 //! logs and runs `campfire-verifier` on the session log. It passes when the server, the two bots
 //! and the verifier succeeded and logged no warning or error, every order was logged and took
-//! effect in its stamp tick, the verifier gives the server's final hash, and the third bot exited
-//! with failure and logged why.
+//! effect in its stamp tick, or right after a frame of several ticks it waited for, the verifier
+//! gives the server's final hash, and the third bot exited with failure and logged why.
 //!
 //! Run it with `cargo run -p campfire-lan-check [-- <run root>]`. Each run's logs and session log
 //! go into a new directory below the run root, named for the run's start. `cargo run -p
@@ -20,6 +20,7 @@ use std::time::SystemTime;
 use campfire_log::Logging;
 use campfire_net::{
     InputLogged, LinkLost, Listening, MatchStarted, OrderScript, OrdersSent, SessionWritten,
+    TicksCaughtUp,
 };
 use campfire_package::PackageDir;
 use campfire_verifier::Verified;
@@ -155,7 +156,8 @@ fn play(dir: &Path) -> Result<Verdict, CheckError> {
             scripted,
         });
     }
-    verdict.orders(&server.read_all::<InputLogged>()?, &bots);
+    let caught_up = server.read_all::<TicksCaughtUp>()?;
+    verdict.orders(&server.read_all::<InputLogged>()?, &caught_up, &bots);
     let impostor = ProcessLog::read(Process::Impostor, &Process::Impostor.log_path(dir))?;
     verdict.impostor(played.impostor, &impostor.read_all::<LinkLost>()?);
 

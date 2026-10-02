@@ -189,4 +189,4 @@ interval_ms = 100
 
 ## Testing combinations
 
-Every pair of capabilities a mode may declare together meets in at least one `det-ci` test mode: the reference MOBA, the genre proofs, and as many small mixed modes as the pairs need, as all-pairs testing covers every two-way combination of options with few cases. A test lists the pairs the test modes declare and fails when a pair is missing, so a new capability brings its pairs with it. Interactions of three or more capabilities are tested where a mode needs them.
+Every pair of capabilities a mode may declare together meets in at least one test mode with a golden: the reference MOBA, the genre proofs, and as many small mixed modes as the pairs need, as all-pairs testing covers every two-way combination of options with few cases. A test lists the pairs the test modes declare and fails when a pair is missing, so a new capability brings its pairs with it. Interactions of three or more capabilities are tested where a mode needs them.

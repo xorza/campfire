@@ -38,7 +38,7 @@ A battle royale's shrinking zone is an area unit that damages, through a modifie
 
 ## Genre proofs
 
-Before the MOBA is complete, each target game gets a tiny test mode, not a game, that `det-ci` runs. Each uses only the capabilities of its row, so a MOBA-only choice fails a test early. With the reference MOBA, they cover most pairs of capabilities; small mixed modes cover the rest ([Testing combinations](00-overview.md#testing-combinations)).
+Before the MOBA is complete, each target game gets a tiny test mode, not a game, whose golden CI plays on every OS ([Testing and diagnostics](../02-engine-core.md#testing-and-diagnostics)). Each uses only the capabilities of its row, so a MOBA-only choice fails a test early. With the reference MOBA, they cover most pairs of capabilities; small mixed modes cover the rest ([Testing combinations](00-overview.md#testing-combinations)).
 
 | Proof | Shows |
 | --- | --- |
@@ -53,7 +53,7 @@ Before the MOBA is complete, each target game gets a tiny test mode, not a game,
 ## Main risks
 
 - **Unit counts:** an RTS battle with 1,000+ units must fit the tick budget and the bandwidth. The server sends only what each group sees, so relevance and delta updates carry the load.
-- **Player counts:** 100 players in battle royale, and 1,000+ in one MMO session, need deterministic multithreading and early `det-ci` benchmarks.
+- **Player counts:** 100 players in battle royale, and 1,000+ in one MMO session, need deterministic multithreading and early benchmarks.
 - **Shooter feel:** 64–128 Hz, and lag compensation that the verifier reproduces.
 
 ## Mixed

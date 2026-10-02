@@ -2,7 +2,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_common::{PlayerSlot, Tick};
 use campfire_log::Level;
-use campfire_net::{InputLogged, LinkLost, Listening, MatchStarted, OrdersSent, SessionWritten};
+use campfire_net::{
+    InputLogged, LinkLost, Listening, MatchStarted, OrdersSent, SessionWritten, TicksCaughtUp,
+};
 use campfire_verifier::Verified;
 
 use crate::failure::Failure;
@@ -62,8 +64,14 @@ impl Verdict {
     }
 
     /// Checks that each bot learned its slot and sent every order of its script, and that the
-    /// server logged exactly the inputs the bots sent, each taking effect in its stamp tick.
-    pub(crate) fn orders(&mut self, logged: &[InputLogged], bots: &[BotEvents]) {
+    /// server logged exactly the inputs the bots sent, each taking effect in its stamp tick, or
+    /// after the ticks of a frame that `caught_up` with a stall and that it waited for.
+    pub(crate) fn orders(
+        &mut self,
+        logged: &[InputLogged],
+        caught_up: &[TicksCaughtUp],
+        bots: &[BotEvents],
+    ) {
         let mut sent = BTreeMap::<(PlayerSlot, Tick), usize>::new();
         for (bot, events) in bots.iter().enumerate() {
             let Some(MatchStarted { slot, .. }) = events.started else {
@@ -86,7 +94,8 @@ impl Verdict {
         let mut by_stamp = BTreeMap::<(PlayerSlot, Tick), usize>::new();
         for &InputLogged { slot, stamp, tick } in logged {
             *by_stamp.entry((slot, stamp)).or_default() += 1;
-            if tick != stamp {
+            let waited = caught_up.iter().any(|ticks| ticks.delayed(stamp, tick));
+            if tick != stamp && !waited {
                 self.failures.push(Failure::Moved { slot, stamp, tick });
             }
         }

@@ -57,9 +57,11 @@ fn verified(hash: StateHash) -> Verified {
 }
 
 #[test]
-fn a_match_passes_when_every_order_lands_in_its_stamp_tick_and_the_hashes_agree() {
+fn a_match_passes_when_every_order_lands_in_its_stamp_tick_or_waited_for_a_catch_up() {
     // Bot 0 sends its 2 orders in one message at tick 20; bot 1 one each at 20 and 50; the
-    // server logs all 4, each in its stamp tick, in any order.
+    // server logs all 4, in any order, each in its stamp tick but bot 1's at 50: a frame that
+    // caught up ran ticks 50 to 55, and the server read that input only after them, so it took
+    // effect in 56.
     let listening = Listening {
         certificate: CertificateHash::new([7; 32]),
         server_key: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
@@ -70,13 +72,18 @@ fn a_match_passes_when_every_order_lands_in_its_stamp_tick_and_the_hashes_agree(
     };
     let mut verdict = Verdict::default();
     verdict.listened(&[listening]);
+    let caught_up = TicksCaughtUp {
+        first: Tick::new(50),
+        last: Tick::new(55),
+    };
     verdict.orders(
         &[
             logged(1, 20, 20),
             logged(0, 20, 20),
             logged(0, 20, 20),
-            logged(1, 50, 50),
+            logged(1, 50, 56),
         ],
+        &[caught_up],
         &[bot(Some(0), &[(20, 2)]), bot(Some(1), &[(20, 1), (50, 1)])],
     );
     verdict.hash(Some(&written(hash("aa"))), Some(&verified(hash("aa"))));
@@ -90,13 +97,18 @@ fn a_match_passes_when_every_order_lands_in_its_stamp_tick_and_the_hashes_agree(
 
 #[test]
 fn a_match_fails_by_each_flaw_it_has() {
-    // No listening; slot 0's input stamped 20 applied in 21; of the 2 inputs bot 0 sent at 50,
+    // No listening; slot 0's input stamped 20 applied in 21, before a frame that caught up
+    // from 21, so it waited for none of it; of the 2 inputs bot 0 sent at 50,
     // the server logged 1; bot 0 sent 3 of its 2 orders; bot 1 never started; the verifier's
     // hash differs.
     let mut verdict = Verdict::default();
     verdict.listened(&[]);
     verdict.orders(
         &[logged(0, 20, 21), logged(0, 50, 50)],
+        &[TicksCaughtUp {
+            first: Tick::new(21),
+            last: Tick::new(25),
+        }],
         &[bot(Some(0), &[(20, 1), (50, 2)]), bot(None, &[])],
     );
     verdict.hash(Some(&written(hash("aa"))), Some(&verified(hash("bb"))));

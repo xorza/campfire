@@ -26,6 +26,7 @@ use lightyear::prelude::{
 use tracing::{debug, info, trace, trace_span, warn};
 
 use crate::events::input_logged::InputLogged;
+use crate::events::ticks_caught_up::TicksCaughtUp;
 use crate::events::unit_died::UnitDied;
 use crate::input_message::InputMessage;
 use crate::lobby::Lobby;
@@ -61,8 +62,8 @@ impl PlayerLink {
 }
 
 /// The state hash after each sim tick while the resource exists, from tick 0 when inserted before
-/// the match starts: the check `det-ci` makes on every tick, for tests and for a host that looks
-/// for a divergence. Production hashes only at checkpoints and at the result.
+/// the match starts: the check the goldens make on every tick, for tests and for a host that
+/// looks for a divergence. Production hashes only at checkpoints and at the result.
 #[derive(Resource, Debug, Default)]
 pub struct TickHashes(Vec<StateHash>);
 
@@ -86,11 +87,14 @@ impl Plugin for SimServer {
                 .run_if(resource_exists::<Lobby>),
         );
         // Lightyear keeps a received message for one frame only, and a frame runs no fixed tick
-        // or several, so the inputs are logged in every frame, before its fixed ticks.
+        // or several, so the inputs are logged in every frame, before its fixed ticks; a frame
+        // that runs several is logged, as an input that missed its start waits for all of them.
         app.add_systems(
             RunFixedMainLoop,
-            record_inputs
-                .in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop)
+            (
+                record_inputs.in_set(RunFixedMainLoopSystems::BeforeFixedMainLoop),
+                report_catch_up.in_set(RunFixedMainLoopSystems::AfterFixedMainLoop),
+            )
                 .run_if(resource_exists::<MatchClock>),
         );
         app.add_systems(
@@ -134,6 +138,8 @@ impl SimServer {
         Session::start(world, log, server_seed, packages)?;
         let start = world.resource::<LocalTimeline>().tick() + 1;
         world.insert_resource(MatchClock::new(start));
+        let next = world.resource::<Session>().log().next_tick();
+        world.insert_resource(FrameStart(next));
         for (slot, &client) in (0..).map(PlayerSlot::new).zip(clients) {
             let team = Mode::team_of(world, slot).expect("every player has a team");
             world.entity_mut(client).insert(PlayerLink {
@@ -159,8 +165,10 @@ fn record_inputs(
     mut commands: Commands<'_, '_>,
     mut links: Query<'_, '_, (Entity, &mut PlayerLink, &mut MessageReceiver<InputMessage>)>,
     mut session: ResMut<'_, Session>,
+    mut frame: ResMut<'_, FrameStart>,
     mut applied: Local<'_, Vec<Applied>>,
 ) {
+    frame.0 = session.log().next_tick();
     for (entity, mut link, mut receiver) in &mut links {
         let slot = link.slot.get();
         for message in receiver.receive() {
@@ -207,6 +215,18 @@ fn record_inputs(
                 }
             }
         }
+    }
+}
+
+/// The next tick as the frame's fixed ticks start, which `record_inputs` keeps for
+/// `report_catch_up`; the match's start gives it its first.
+#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+struct FrameStart(Tick);
+
+/// Logs the ticks of a frame that ran more than one, from the next tick as it started.
+fn report_catch_up(session: Res<'_, Session>, start: Res<'_, FrameStart>) {
+    if let Some(caught_up) = TicksCaughtUp::of(start.0, session.log().next_tick()) {
+        caught_up.log();
     }
 }
 

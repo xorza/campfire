@@ -27,6 +27,7 @@ pub use events::listening::Listening;
 pub use events::match_started::MatchStarted;
 pub use events::orders_sent::OrdersSent;
 pub use events::session_written::SessionWritten;
+pub use events::ticks_caught_up::TicksCaughtUp;
 
 pub use input_message::InputMessage;
 

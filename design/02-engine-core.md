@@ -13,7 +13,6 @@ flowchart TB
     end
     subgraph checks["Checks"]
         lancheck["lan-check"]
-        detci["det-ci"]:::planned
     end
     subgraph services["Services"]
         net
@@ -36,7 +35,6 @@ flowchart TB
     server --> net
     net --> runner
     verifier --> runner
-    detci -.-> runner
     lancheck --> verifier
     lancheck --> net
     runner --> package
@@ -68,7 +66,6 @@ Each layer uses the layers below it.
 | `package` | built | Reads a mode's packages and every package it depends on, and runs the load checks of [Script API](08-script-api.md) |
 | `runner` | built | Builds a match from checked packages: wires `sim`, the declared capabilities and `script`, feeds inputs; owns `SessionRules`, which builds a session's terms from the packages and checks terms on the server, the client and the verifier |
 | `verifier` | built | CLI: replays a session log segment, checks the result |
-| `det-ci` | planned | Headless matches of the reference MOBA with its bots on every OS, comparing state hashes |
 | `lan-check` | built | The real server and bot clients over WebTransport on `127.0.0.1`, on request ([Testing and diagnostics](#testing-and-diagnostics)) |
 | `server` | built | Host config, lifecycle, saves, validation, admin; a headless app, and a library the client runs on a thread for singleplayer |
 | `net` | built | Lightyear over QUIC (WebTransport): handshake, replication; internal |
@@ -85,11 +82,11 @@ A module is built when the workspace has its crate, `campfire-<module>` in `sour
 
 `sim` is pure: state and inputs in, next state out; no files, packages or signatures.
 
-`lan-check`, and `det-ci` once it is built, are checks, not engine crates: they live in `source/checks/`, apart from `source/crates/`, and nothing depends on them. Each crate's folder has its package's name, `campfire-` and the module: `source/crates/campfire-math/`, `source/checks/campfire-lan-check/`.
+`lan-check` is a check, not an engine crate: it lives in `source/checks/`, apart from `source/crates/`, and nothing depends on it. Each crate's folder has its package's name, `campfire-` and the module: `source/crates/campfire-math/`, `source/checks/campfire-lan-check/`.
 
-Dependencies: `server` and `client` → `net` → `runner`; `verifier`, and the planned `det-ci`, → `runner` → `package` → `capabilities` → `script`, `sim`; `runner` → `protocol`; `script` and `sim` → `math` → `common`; `protocol` → `common`. `log` depends on no engine crate; the binaries, `net` and `verifier` use it. The runner joins `protocol` and the packages, which name a package by the one `Fingerprint` of `common`. A type enters `common` only when two crates that do not depend on each other both name it, and only as a plain value: construction, parsing, display and serde, and no other logic. `common` depends on `serde` alone. Within `capabilities`, a module imports only from the capabilities below it.
+Dependencies: `server` and `client` → `net` → `runner`; `verifier` → `runner` → `package` → `capabilities` → `script`, `sim`; `runner` → `protocol`; `script` and `sim` → `math` → `common`; `protocol` → `common`. `log` depends on no engine crate; the binaries, `net` and `verifier` use it. The runner joins `protocol` and the packages, which name a package by the one `Fingerprint` of `common`. A type enters `common` only when two crates that do not depend on each other both name it, and only as a plain value: construction, parsing, display and serde, and no other logic. `common` depends on `serde` alone. Within `capabilities`, a module imports only from the capabilities below it.
 
-Outside the engine crates: the reference MOBA and bots. The tests of `package` and `runner`, and `lan-check`, use them as test content, as `det-ci` will; nothing else in the engine depends on them. Bots produce inputs like players, so replays never depend on bot code.
+Outside the engine crates: the reference MOBA and bots. The tests of `package` and `runner`, and `lan-check`, use them as test content; nothing else in the engine depends on them. Bots produce inputs like players, so replays never depend on bot code.
 
 ## Structural rules
 
@@ -136,7 +133,7 @@ Clients can join a running game at any time; they receive the current state of w
 - A match with no save is one segment; a persistent world checkpoints every few minutes, and every save is a checkpoint. Format: Protocol Spec.
 - The verifier replays any segment from its checkpoint. Hosts set how long logs are kept.
 - **Snapshot:** the postcard encoding of every sim component and resource, entities sorted by stable id, component types in an order the engine release fixes, script state maps sorted by key. Its format belongs to the engine release, not the protocol, and carries a data version, which a release raises whenever it changes the format.
-- **State hash:** one BLAKE3 hash for each state type over the same bytes the snapshot holds, then one hash over the list of `(name, type hash)` ([Determinism Core](09-determinism-core.md)). `det-ci` compares it on every tick and, at the first mismatch, the per-type hashes, to name the first divergence.
+- **State hash:** one BLAKE3 hash for each state type over the same bytes the snapshot holds, then one hash over the list of `(name, type hash)` ([Determinism Core](09-determinism-core.md)). The goldens compare it on every tick, on every OS in CI, and at the first mismatch the per-type hashes, to name the first divergence.
 - **No slow tick for a checkpoint:** at the tick boundary the server copies only the components changed since the last checkpoint; a background thread applies them to its copy, encodes and hashes it, and writes the checkpoint record when done.
 
 ## Saves
@@ -172,11 +169,11 @@ A save is a checkpoint a player keeps: the snapshot at a tick boundary, and the 
 
 ## Backends
 
-Collision, pathfinding and visibility each have one interface and pluggable backends, chosen per mode: [Navigation](04-capabilities/navigation.md), [Vision](04-capabilities/vision.md). Collision, within each layer bodies move on: circles on a plane (now), static 3D level geometry, or `physics`. A physics backend may use strictly deterministic floating point inside itself, such as Rapier's [`enhanced-determinism`](https://rapier.rs/docs/user_guides/rust/determinism/) mode, pinned per release and checked by `det-ci`; everything else stays fixed-point, and a NaN panics before it reaches a snapshot.
+Collision, pathfinding and visibility each have one interface and pluggable backends, chosen per mode: [Navigation](04-capabilities/navigation.md), [Vision](04-capabilities/vision.md). Collision, within each layer bodies move on: circles on a plane (now), static 3D level geometry, or `physics`. A physics backend may use strictly deterministic floating point inside itself, such as Rapier's [`enhanced-determinism`](https://rapier.rs/docs/user_guides/rust/determinism/) mode, pinned per release and checked by the goldens on every OS; everything else stays fixed-point, and a NaN panics before it reaches a snapshot.
 
 ## Bevy
 
-- `sim` depends on `bevy_ecs` only and is one schedule, which runs on one thread whatever features a build turns on: a tick's systems are too small to share, and Bevy's parallel executor made a 3v3 tick cost 2.5 times as much. The server and client run it inside Lightyear's fixed tick; the verifier and `det-ci` run it in a bare `World`. The server never links the renderer. Pinned to [Bevy 0.19](https://bevy.org/news/bevy-0-19/); the script API and protocol expose no Bevy types.
+- `sim` depends on `bevy_ecs` only and is one schedule, which runs on one thread whatever features a build turns on: a tick's systems are too small to share, and Bevy's parallel executor made a 3v3 tick cost 2.5 times as much. The server and client run it inside Lightyear's fixed tick; the verifier and the tests run it in a bare `World`. The server never links the renderer. Pinned to [Bevy 0.19](https://bevy.org/news/bevy-0-19/); the script API and protocol expose no Bevy types.
 - Sim systems touch only sim components, so Lightyear's components cannot change a result.
 - The server records the inputs received since the last tick, then runs the tick. It hashes the state at checkpoints and at the result; a hash after every tick is opt-in.
 - Each unit replicates to the clients whose vision group sees it. A client predicts only what its player controls (position, destination, death and respawn), with no input delay: Lightyear keeps its tick ahead by the round trip, so its inputs land in time. A rollback reruns the sim from the server's state. It predicts movement, never a random outcome. The client builds the same books as the server from the packages it holds, at the rate the server's listing names, and installs them with the part of the mode no script runs: the map's metric, bounds, relations and pathing grid, and combat's bindings. So it predicts by the rules the server runs, and keeps no copy of its own. It derives its units' stats, tags and step from their type, level and modifiers, which the server sends, and starts their actions through the core's checks: an attack's or a cast's windup, and the cooldown when it goes off. It runs none of their effects, and no script: damage, launches, costs and a cast's effects come from the server. The server sends the teams' relations as a script changes them, as the client's targets and filters read them. It drops each sent input older than the deepest rollback Lightyear takes.
@@ -202,7 +199,7 @@ Collision, pathfinding and visibility each have one interface and pluggable back
 - **Goldens.** Two pinned records of whole matches prove that a change keeps behaviour: the state golden, a BLAKE3 digest of each tick's state hash, which changes with the state's layout; and the behaviour golden, a digest of each tick's units (id, type, team, position, pools, death), deaths, damage and script failures, which does not. A change of layout alone updates only the state golden; a change of behaviour updates the behaviour golden and names itself. They run on the lane match, the 3v3, and the proving match: a mode in `packages/test` that uses every capability the release runs, owned by the tests, with no balance to keep.
 - **Structure tests**: the layer test, which checks each module's imports against the capability table; the archetype-shuffle test, which plays the proving match with every unit moved to a new archetype before each tick, from the highest stable id down, so that queries meet the units of one archetype in reverse order, and checks both goldens; and the state table test, which checks each capability's state names.
 - **Work record**: at the end of each stage of a redesign, the instruction count of the proving match and the 3v3, and the worst tick against the mean; a stage that makes either worse by more than 10 % says why.
-- **LAN check** (`campfire-lan-check`, on request): the real server and two `client --bot` processes on `127.0.0.1`, and a bot with the wrong certificate that must fail and say why, checked from their JSON logs and by the verifier. Each run keeps its logs in a directory of its own.
+- **LAN check** (`campfire-lan-check`, on request): the real server and two `client --bot` processes on `127.0.0.1`, and a bot with the wrong certificate that must fail and say why, checked from their JSON logs and by the verifier. Every order must take effect in its stamp tick, or in the tick after a frame in which the server caught up with a stall, which the server logs, if the order's stamp is among that frame's ticks. Each run keeps its logs in a directory of its own.
 - **CI** runs the check chain and the LAN check on Linux, Windows and macOS; each platform's verifier then replays every platform's session log.
 - **Logging** goes through `tracing`, never a print. `sim` and `capabilities` log nothing; they report through resources the runner logs. Binaries log to standard error, and to JSON lines with `CAMPFIRE_LOG`. An event a tool reads back is a typed `LogEvent`, with a round-trip test.
 
@@ -220,9 +217,9 @@ Exact versions are pinned across the workspace. Each release tag also pins its R
 | Area | Crate | Notes |
 | --- | --- | --- |
 | Fixed-point numbers, trig, sqrt | Own code in `math` | `Num`: `*` and `/` round to nearest, ties to even; exact decimal parsing; `sqrt` from an `f64` estimate that integer steps correct to the exact root, so the result does not depend on the float; `sin_cos`, `atan2` by series at high internal precision, within 0.501 ulp over the tests' sweeps. `fixed` rounds `*` toward −∞ and constants down, and `fixed_analytics` reaches 48 ulp in `atan2`, so neither is used ([Determinism Core](09-determinism-core.md)) |
-| RNG | `blake3` keyed hash, wrapped in `math` | A PRF by specification, counter-based as in [Random123](https://www.thesalmons.org/john/random123/papers/random123sc11.pdf) but cryptographic, unlike Philox; known-answer vectors run in `det-ci`. Range sampling is own code. No `rand`, which [may change output in minor releases](https://www.rustmax.net/library/rand-book/crate-reprod) |
+| RNG | `blake3` keyed hash, wrapped in `math` | A PRF by specification, counter-based as in [Random123](https://www.thesalmons.org/john/random123/papers/random123sc11.pdf) but cryptographic, unlike Philox; BLAKE3's keyed known-answer vectors run in its tests. Range sampling is own code. No `rand`, which [may change output in minor releases](https://www.rustmax.net/library/rand-book/crate-reprod) |
 | Protocol encoding | `postcard` | [Stable wire format](https://postcard.jamesmunns.com) since 1.0 |
-| State hashes | `blake3` | At checkpoints and the result; per tick in `det-ci` and the goldens |
+| State hashes | `blake3` | At checkpoints and the result; per tick in the goldens |
 | File and package fingerprints | `sha2` | SHA-256, as Blossom addresses blobs |
 | Nostr | `nostr` in `protocol`, for delegations and their signatures; `nostr-sdk` and `nostr-connect` for the planned `identity` and `ownership` | Still alpha |
 | Lightning (`payments`) | `nwc` | Drives the host's own wallet, including [hold invoices](https://getalby.com/blog/build-conditional-payment-logic-into-your-app). No embedded node |

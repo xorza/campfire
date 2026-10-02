@@ -10,7 +10,7 @@ A unit type's `physics` section: its shape, mass and, for a vehicle, its wheels 
 
 ## Rules
 
-- **Backend:** a physics engine such as Rapier in its cross-platform deterministic mode. The only place floating point is allowed in the sim; `det-ci` checks it on every OS ([Collision](../02-engine-core.md#backends)).
+- **Backend:** a physics engine such as Rapier in its cross-platform deterministic mode. The only place floating point is allowed in the sim; the goldens check it on every OS ([Collision](../02-engine-core.md#backends)).
 - **Terrain:** heightmap collision for maps around 8 × 8 km.
 - Ragdolls and debris are client-side presentation.
 
