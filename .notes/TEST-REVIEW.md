@@ -206,14 +206,6 @@ The schedule is a separate field only because `Mode::install` needs it (`mode/te
 
 ## 5. Stronger assertions
 
-### 5.1 Weak bounds where the exact value is known
-
-
-### 5.2 Missing boundaries and cross-checks
-
-- [ ] **`StartError`** — 7 of 11 variants have no test: `OtherMode`, `OtherDependencies`, `UnitKit`, `Ai`, `Ability`, `Mode` and `MatchStart`. If the load check makes them impossible, they become `expect(CHECKED)`. Otherwise give each one a test.
-- [ ] **content** has no tests. `PackagePath` is tested only through 4 refusals in `package_dir/tests.rs:137`. `Version::parse` accepts `01.0.0`, and no test decides if that is correct.
-
 ### 5.3 Failure messages
 
 - [ ] **Loops whose assertion does not name the case**:

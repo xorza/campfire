@@ -2,26 +2,28 @@
 //! its session log and the replay of that log in a bare `World` agree on the state hash after
 //! every tick, and so does the replay of the log's file with the packages a verifier holds.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::num::NonZeroU32;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::Arc;
 
 use campfire_capabilities::{
     Action, ActionSlots, Destination, Order, Owner, PoolId, Pools, Projectile,
 };
 use campfire_log::LogEvent;
 use campfire_math::{Num, Tick, Ticks, Vec3};
-use campfire_package::{ModePackages, PackageStore, StoreError};
+use campfire_package::{ModePackages, PackageDir, PackageStore, StoreError};
 use campfire_protocol::{Applied, Fingerprint, SeedError, ServerSeed, SessionLog, SessionTerms};
 use campfire_runner::{FixedSession, InputRules, Runner, StartError, TermsError};
 use campfire_sim::{EntityIndex, Position, StableId, StateHash};
 use campfire_verifier::{Replay, Verified};
 
-/// Every package, the reference ones and the test ones: what the verifier holds.
 /// The lane mode's life pool, `health`, the first of its pools by name.
 const LIFE: PoolId = PoolId::FIRST;
 
+/// Every package, the reference ones and the test ones: what the verifier holds.
 const PACKAGES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../packages");
 const LANE_MODE: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -71,6 +73,24 @@ const ORDERS: [Sent; 3] = [
 
 fn packages() -> ModePackages {
     ModePackages::from_dir(Path::new(LANE_MODE)).unwrap()
+}
+
+/// Every file under `dir`, by its path from `dir`.
+fn files_under(dir: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
+    let mut files = BTreeMap::new();
+    let mut dirs = vec![PathBuf::new()];
+    while let Some(at) = dirs.pop() {
+        for entry in fs::read_dir(dir.join(&at)).unwrap() {
+            let entry = entry.unwrap();
+            let path = at.join(entry.file_name());
+            if entry.file_type().unwrap().is_dir() {
+                dirs.push(path);
+            } else {
+                files.insert(path, fs::read(entry.path()).unwrap());
+            }
+        }
+    }
+    files
 }
 
 fn store() -> PackageStore {
@@ -413,5 +433,32 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
             })
         ),
         "{refused:?}"
+    );
+
+    // A lane mode whose `on_match_start` throws: the session does not start.
+    let mut files = files_under(&Path::new(PACKAGES).join("test"));
+    let script = PathBuf::from("modes/lane/scripts/mode.rhai");
+    let text = String::from_utf8(files[&script].clone()).unwrap();
+    let start = "fn on_match_start(ctx) {\n";
+    assert!(text.contains(start));
+    let text = text.replacen(
+        start,
+        "fn on_match_start(ctx) {\n    throw \"no start\";\n",
+        1,
+    );
+    files.insert(script, text.into_bytes());
+    let dir = PackageDir::in_memory(Arc::new(files), "modes/lane");
+    let thrown = FixedSession::new(
+        ModePackages::from_package_dir(&dir).unwrap(),
+        NonZeroU32::new(30).unwrap(),
+        1,
+    );
+    let refused = Runner::new(thrown.log(), FixedSession::seed(), thrown.packages()).err();
+    let Some(refused @ StartError::MatchStart(_)) = refused else {
+        panic!("{refused:?}");
+    };
+    assert_eq!(
+        refused.to_string(),
+        r#"the mode's start failed: script call raised "no start""#
     );
 }
