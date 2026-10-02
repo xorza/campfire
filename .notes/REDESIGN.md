@@ -156,7 +156,7 @@ mode
 capability_set: install, the effect dispatch table, the view column table, the layer table
 ```
 
-**Decision (D2): `stats` sits below the action pipeline, and `combat` above both.** `stats` needs nothing of `actions` but the id of an action, which moves to the core; the pipeline needs pools, costs and the passives' modifiers. So the layers run `values`; the core; `stats`; `actions`; `combat`; the capabilities above. For this, `ActionId` and `Dead` move to the core, `DamageKind` to `values`, the life pool becomes a fact of the pool book, `MoveStep` moves to `stats` as the component that holds the move speed's effect, the modifiers' combat hooks move to `combat`, and each ordering of sets is stated by the higher layer.
+**Decision (D2): `stats` sits below the action pipeline, and `combat` above both.** `stats` needs nothing of `actions` but the id of an action, which moves to the core; the pipeline needs pools, costs and the passives' modifiers. So the layers run `values`; the core; `stats`; `actions`; `combat`; the capabilities above. For this, `ActionId` and `Dead` move to the core, `DamageKind` to `values`, the life pool becomes its own resource in `stats`, `MoveStep` moves to `stats` as the component that holds the move speed's effect, the modifiers' combat hooks move to `combat`, and each ordering of sets is stated by the higher layer.
 
 The parts that call upward use hooks that the higher layer registers:
 
@@ -380,7 +380,7 @@ A refactor of this size needs a permanent proof that behaviour stays the same. T
 
 | Step | Change | Size |
 |---|---|---|
-| D2 | `players` in the core; the action pipeline, kind rules, `Targets`, one `pay` and one order applier below combat | M |
+| D2 | One order applier for players, bots and AI. The path orders (`FollowPath`, `Reset`) are navigation's, above `actions`, so the applier needs a hook for them. | M |
 | D3 | Combat `Shots`, drained by projectiles, and a launch payload with no placeholder; the core `Spawner`; production installs its own systems | M |
 | D5 | View columns for each capability; `Unit` handles hold row indexes; the delivery API registered by `deliveries`, and the two `ApiOwner`s go | M |
 
@@ -517,7 +517,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
 - **R§8:**
   - core names every capability: D5;
   - combat launches: D3;
-  - actions and combat: D2;
   - production and mode: D3;
   - the view names progression: D2;
   - script runtime: D4;
@@ -534,7 +533,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - avatar display name: C2.
 - **R§10:**
   - two order appliers: B3, final in D2;
-  - cost paid three ways: D2;
   - Mode-stage events: B2;
   - `finish_trains`: B2;
   - `renew` interval: B2;

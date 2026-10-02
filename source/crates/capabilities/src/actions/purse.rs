@@ -33,3 +33,25 @@ impl Purse<'_> {
         pools && player
     }
 }
+
+/// What a unit pays an action's cost with, as its `Purse` reads it: its pools, and the resources
+/// of the player that owns it, when the match keeps players' resources.
+#[derive(Debug)]
+pub(crate) struct Payer<'a> {
+    pub(crate) pools: Option<&'a mut Pools>,
+    pub(crate) resources: Option<&'a mut PlayerResources>,
+    pub(crate) owner: Option<PlayerSlot>,
+}
+
+impl Payer<'_> {
+    /// Pays `cost` from its pools and `resources` from its player's, which its purse affords:
+    /// every action's cost is paid here.
+    pub(crate) fn pay(self, cost: &PoolCost, resources: &[ResourceAmount]) {
+        if let Some(pools) = self.pools {
+            pools.pay(cost);
+        }
+        if let (Some(owner), Some(amounts)) = (self.owner, self.resources) {
+            amounts.pay(owner, resources);
+        }
+    }
+}

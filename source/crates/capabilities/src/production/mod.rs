@@ -12,7 +12,7 @@ use crate::actions::action_book::ActionBook;
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::{ActionSlots, InProgress};
 use crate::actions::kind_spec::KindSpec;
-use crate::actions::purse::Purse;
+use crate::actions::purse::{Payer, Purse};
 use crate::combat::CombatSet;
 use crate::mode::mode_book::SpawnAt;
 use crate::players::player_resources::PlayerResources;
@@ -150,12 +150,12 @@ fn start_trains(
             continue;
         }
         let values = checked.values;
-        if let Some(pools) = pools.as_deref_mut() {
-            pools.pay(&values.cost);
-        }
-        if let (Some(owner), Some(resources)) = (owner, resources.as_deref_mut()) {
-            resources.pay(owner, checked.action.resource_cost(checked.rank));
-        }
+        let payer = Payer {
+            pools: pools.as_deref_mut(),
+            resources: resources.as_deref_mut(),
+            owner,
+        };
+        payer.pay(&values.cost, checked.action.resource_cost(checked.rank));
         let queued = Queued {
             action: checked.id,
             rank: checked.rank,

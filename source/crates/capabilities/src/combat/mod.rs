@@ -12,7 +12,7 @@ use campfire_sim::{
 
 use crate::actions::action_book::{ActionBook, RankValues};
 use crate::actions::action_slots::ActionSlots;
-use crate::actions::purse::Purse;
+use crate::actions::purse::{Payer, Purse};
 use crate::actions::weapon::Weapon;
 use crate::actions::{Actions, ActionsSet};
 use crate::combat::assist_window::AssistWindow;
@@ -462,12 +462,12 @@ fn strike(
                 hit: None,
             }),
         }
-        if let Some(mut pools) = pools {
-            pools.pay(&values.cost);
-        }
-        if let (Some(owner), Some(resources)) = (owner, resources.as_deref_mut()) {
-            resources.pay(owner, resource_cost);
-        }
+        let payer = Payer {
+            pools: pools.map(Mut::into_inner),
+            resources: resources.as_deref_mut(),
+            owner,
+        };
+        payer.pay(&values.cost, resource_cost);
     }
 }
 

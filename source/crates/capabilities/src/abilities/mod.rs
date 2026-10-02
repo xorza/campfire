@@ -4,7 +4,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{QueryState, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::{Local, Query, Res};
-use bevy_ecs::world::World;
+use bevy_ecs::world::{Mut, World};
 use campfire_math::{Tick, Ticks};
 use campfire_script::ScriptId;
 use campfire_script::rhai::Dynamic;
@@ -17,7 +17,7 @@ use crate::units::action_id::ActionId;
 
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::{ActionSlots, ActionTarget};
-use crate::actions::purse::Purse;
+use crate::actions::purse::{Payer, Purse};
 use crate::areas::Areas;
 use crate::combat::CombatSet;
 
@@ -233,9 +233,14 @@ fn apply(world: &mut World, ctx: &Ctx, now: Tick, entity: Entity, prepared: &Pre
         None => {}
     }
     ctx.apply(world, now);
-    if let Some(mut pools) = world.get_mut::<Pools>(entity) {
-        pools.pay(&prepared.cost);
-    }
+    // The player's resources were paid in the call's frame, before its script ran, so a failed
+    // call pays nothing and the script cannot spend what the cost took.
+    let payer = Payer {
+        pools: world.get_mut::<Pools>(entity).map(Mut::into_inner),
+        resources: None,
+        owner: None,
+    };
+    payer.pay(&prepared.cost, &[]);
     world
         .get_mut::<ActionSlots>(entity)
         .expect("a caster has slots")
@@ -283,11 +288,13 @@ fn prepare(
     let package = checked.action.package;
     frame.begin_cast(world, checked.id, checked.rank, caster.id, package, None)?;
     let resource_cost = checked.action.resource_cost(checked.rank);
-    if let (Some(owner), false) = (owner, resource_cost.is_empty()) {
-        frame
-            .resources_mut()
-            .expect("a purse that affords player resources is a match's")
-            .pay(owner, resource_cost);
+    if !resource_cost.is_empty() {
+        let payer = Payer {
+            pools: None,
+            resources: frame.resources_mut(),
+            owner,
+        };
+        payer.pay(&PoolCost::default(), resource_cost);
     }
     drop(frame);
     let pool = owner.map_or(Pool::Think, Pool::Player);
