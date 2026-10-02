@@ -24,6 +24,7 @@ use crate::navigation::path_walker::{PathEnd, PathWalker};
 use crate::navigation::paths::Paths;
 use crate::production::train_queue::TrainQueue;
 use crate::progression::experience::Experience;
+use crate::progression::track_book::TrackBook;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_book::ScriptBook;
@@ -175,6 +176,9 @@ impl ModeBook {
         let tags = world
             .resource::<TagBook>()
             .unit_tags(unit_type, iter::empty());
+        let level_track = world
+            .get_resource::<TrackBook>()
+            .and_then(TrackBook::level_track);
         let mut unit = world.spawn((
             id,
             pos,
@@ -203,10 +207,10 @@ impl ModeBook {
             unit.insert(Navigation::walker(step));
         }
         if !kit.tracks.is_empty() {
-            unit.insert(Experience::new(kit.tracks));
+            unit.insert(Experience::new(kit.tracks, level_track));
         }
-        if let Some(queue) = kit.queue {
-            unit.insert(TrainQueue::new(queue));
+        if kit.queue.is_some() {
+            unit.insert(TrainQueue::default());
         }
         let actions = self.actions(unit_type);
         if !actions.is_empty() {

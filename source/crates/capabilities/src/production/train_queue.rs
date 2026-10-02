@@ -1,8 +1,8 @@
-use bevy_ecs::entity::Entity;
-use bevy_ecs::world::World;
 use std::num::NonZeroU8;
 
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
 use campfire_math::{Tick, Ticks};
 use campfire_sim::SimComponent;
 use serde::de::Error;
@@ -10,48 +10,44 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_kind::ActionKind;
+use crate::production::production_data::ProductionData;
 use crate::units::action_id::ActionId;
+use crate::units::by_type::ByType;
+use crate::units::unit_type::UnitType;
 
-/// A unit's train queue: the trains it was ordered, in order, at most `capacity`. It makes one at
-/// a time, the head, whose time runs from the tick it reached the head.
-#[derive(Component, Debug, Clone, PartialEq, Eq, Serialize)]
+/// A unit's train queue: the trains it was ordered, in order, at most as many as its type's
+/// `production` section holds. It makes one at a time, the head, whose time runs from the tick it
+/// reached the head.
+#[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct TrainQueue {
-    capacity: NonZeroU8,
     entries: Vec<Queued>,
     /// The tick the head's time ends; none for an empty queue.
     head_done: Option<Tick>,
 }
 
-/// A train in a queue: its action, and the rank it was ordered at.
+/// A train in a queue: its action, the rank it was ordered at, and the time it takes, as its
+/// action's rank gave it when it joined.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Queued {
     pub action: ActionId,
     pub rank: u8,
+    pub time: Ticks,
 }
 
 impl TrainQueue {
-    pub(crate) fn new(capacity: NonZeroU8) -> TrainQueue {
-        TrainQueue {
-            capacity,
-            entries: Vec::with_capacity(usize::from(capacity.get())),
-            head_done: None,
-        }
-    }
-
-    pub(crate) fn has_room(&self) -> bool {
-        self.entries.len() < usize::from(self.capacity.get())
+    /// Whether it holds fewer than `capacity` trains.
+    pub(crate) fn has_room(&self, capacity: NonZeroU8) -> bool {
+        self.entries.len() < usize::from(capacity.get())
     }
 
     pub fn entries(&self) -> &[Queued] {
         &self.entries
     }
 
-    /// Adds `queued` at the end, a queue with room; at the head, its time of `time` runs from
-    /// `now`.
-    pub(crate) fn push(&mut self, queued: Queued, now: Tick, time: Ticks) {
-        debug_assert!(self.has_room(), "a train joins a queue with room");
+    /// Adds `queued` at the end; at the head, its time runs from `now`.
+    pub(crate) fn push(&mut self, queued: Queued, now: Tick) {
         if self.entries.is_empty() {
-            self.head_done = Some(now.after(time));
+            self.head_done = Some(now.after(queued.time));
         }
         self.entries.push(queued);
     }
@@ -63,59 +59,48 @@ impl TrainQueue {
             .and(self.entries.first().copied())
     }
 
-    /// Takes the head away, made at `now`: the next, of `next_time` when there is one, starts its
-    /// time at `now`.
-    pub(crate) fn pop(&mut self, now: Tick, next_time: Option<Ticks>) {
+    /// Takes the head away, made at `now`: the next, if one is, starts its time at `now`.
+    pub(crate) fn pop(&mut self, now: Tick) {
         self.entries.remove(0);
-        debug_assert_eq!(
-            self.entries.is_empty(),
-            next_time.is_none(),
-            "a next time for a next"
-        );
-        self.head_done = next_time.map(|time| now.after(time));
+        self.head_done = self.entries.first().map(|next| now.after(next.time));
     }
 }
 
 impl SimComponent for TrainQueue {
     const NAME: &'static str = "production.train_queue";
 
-    // A train the book lacks, or of a rank past its ranks, has no time or unit to make.
-    fn check(&self, world: &World, _: Entity) -> bool {
+    // A train the book lacks, or of a rank past its ranks, has no unit to make; a queue of a
+    // type that produces nothing, or past what its type holds, breaks the rule of its room.
+    fn check(&self, world: &World, entity: Entity) -> bool {
         let book = world.get_resource::<ActionBook>();
-        self.entries.iter().all(|queued| {
+        let trains = self.entries.iter().all(|queued| {
             book.and_then(|book| book.get(queued.action))
                 .is_some_and(|action| {
                     action.kind.kind() == ActionKind::Train && action.has_rank(queued.rank)
                 })
-        })
+        });
+        let producers = world.get_resource::<ByType<ProductionData>>();
+        let capacity = world
+            .get::<UnitType>(entity)
+            .zip(producers)
+            .and_then(|(&unit_type, producers)| producers.get(unit_type))
+            .map(|production| usize::from(production.queue.get()));
+        trains && capacity.is_some_and(|capacity| self.entries.len() <= capacity)
     }
 }
 
-/// A snapshot is untrusted, so a queue past its capacity, or a head time without a head or
-/// without one, fails to decode.
+/// A snapshot is untrusted, so a head time without a head or without one fails to decode.
 impl<'de> Deserialize<'de> for TrainQueue {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<TrainQueue, D::Error> {
         #[derive(Deserialize)]
         struct Fields {
-            capacity: NonZeroU8,
             entries: Vec<Queued>,
             head_done: Option<Tick>,
         }
-        let Fields {
-            capacity,
-            entries,
-            head_done,
-        } = Fields::deserialize(deserializer)?;
-        if entries.len() > usize::from(capacity.get()) {
-            return Err(D::Error::custom("no more entries than the queue holds"));
-        }
+        let Fields { entries, head_done } = Fields::deserialize(deserializer)?;
         if entries.is_empty() != head_done.is_none() {
             return Err(D::Error::custom("a head time exactly when a head"));
         }
-        Ok(TrainQueue {
-            capacity,
-            entries,
-            head_done,
-        })
+        Ok(TrainQueue { entries, head_done })
     }
 }

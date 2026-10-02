@@ -218,14 +218,12 @@ capability_set, books
 
 ### Problem
 
-- Components hold copies of what the books hold: a queue's capacity, the players' resource count, and a level beside the level track's experience.
+- `Modifiers` holds its instances in nested buffers.
 
 ### Shape
 
 - **Book data leaves the state** (R1):
-  - `TrainQueue` reads its capacity from the kit, and stores each entry's time at push;
-  - `PlayerResources` reads its count from the books;
-  - `Experience` keeps only experience for the level track, and `Level` alone holds the level.
+  - `PlayerResources` keeps its count: it is the width of the state's own rows, which every reader indexes by, and the restore check proves it equals the mode's count. Reading it from a book would make every reader of an amount take the book too.
 - **Flat storage.** The nested `Vec`s of `Modifiers` become one flat buffer per carrier with ranges. This is possible once the book data leaves the instance.
 
 ## T. Proof and test redesign
@@ -291,7 +289,7 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 
 | Step | Change | Needs | Size |
 |---|---|---|---|
-| G2 | Book data out of the state; flat `Modifiers`; the `ModifierStats` and `ModifierClock` split; the queue's times at push | — | M, changes the layout |
+| G2 | Flat `Modifiers`; the `ModifierStats` and `ModifierClock` split | — | M, changes the layout |
 | H1b | `ctx.find` and `nearest_visible` read `BodyGrid` | D5, H1 | S |
 | J | The local fixes in the appendix, and T§5 to T§8 | any time | S each |
 
@@ -411,7 +409,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - `Package` data: C2;
   - load error shapes: C5a;
   - small shapes: J;
-  - train queue times: G2;
   - kill by last death: J;
   - `ctx.projectile` returns `()`: F3;
   - capability set table: A4.

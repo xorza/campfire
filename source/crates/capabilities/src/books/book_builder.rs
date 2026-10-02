@@ -378,6 +378,9 @@ impl<'a> BookBuilder<'a> {
         .with_body(data.navigation.body(file.collision.as_ref()))
         .with_tracks(tracks)
         .with_production(file.production.as_ref());
+        if let Some(production) = file.production {
+            books.producers.set(unit_type, production);
+        }
         let mut slots = Vec::new();
         for (kind, ids) in &file.slots {
             let kind = data.slots.named(kind.as_str()).expect(CHECKED);

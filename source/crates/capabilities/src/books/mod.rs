@@ -16,6 +16,7 @@ use crate::mode::mode_map::ModeMap;
 use crate::mode::mode_setup::{LoadoutSetup, UnitTypeSetup};
 use crate::navigation::walker::Walker;
 use crate::orders::ai::Ai;
+use crate::production::production_data::ProductionData;
 use crate::progression::track_book::TrackBook;
 use crate::progression::tracks_column::TracksColumn;
 use crate::projectiles::projectile_spec::ProjectileSpec;
@@ -59,6 +60,7 @@ pub(crate) struct BookParts {
     ais: ByType<Ai>,
     projectiles: ByType<ProjectileSpec>,
     areas: ByType<AreaSpec>,
+    producers: ByType<ProductionData>,
     units: ModeUnits,
 }
 
@@ -110,6 +112,7 @@ impl Books {
         replace(world, parts.ais);
         replace(world, parts.projectiles);
         replace(world, parts.areas);
+        replace(world, parts.producers);
         ModeInputs {
             units: parts.units,
             books: mode,

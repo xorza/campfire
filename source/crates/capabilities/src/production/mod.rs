@@ -3,7 +3,6 @@ use bevy_ecs::query::{QueryState, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
-use campfire_math::Ticks;
 use campfire_sim::{
     IdAllocator, Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry,
 };
@@ -15,12 +14,15 @@ use crate::actions::kind_spec::KindSpec;
 use crate::actions::purse::{Payer, Purse};
 use crate::combat::CombatSet;
 use crate::players::player_resources::PlayerResources;
+use crate::production::production_data::ProductionData;
 use crate::production::train_queue::{Queued, TrainQueue};
 use crate::stats::pools::Pools;
+use crate::units::by_type::ByType;
 use crate::units::dead::Dead;
 use crate::units::owner::Owner;
 use crate::units::spawner::{SpawnAt, Spawner};
 use crate::units::team::Team;
+use crate::units::unit_type::UnitType;
 use crate::values::attitude::Attitude;
 
 pub(crate) mod production_api;
@@ -42,7 +44,8 @@ impl Production {
     /// Adds production to a match: in Act, after attacks start, ordered trains pass their checks,
     /// pay, and join their unit's queue; in Mode, before the mode's hooks, the trains whose time
     /// ended spawn.
-    pub fn install(_: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
+    pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
+        world.insert_resource(ByType::<ProductionData>::default());
         schedule.add_systems((
             start_trains.in_set(SimSet::Act).after(CombatSet::Attack),
             Production::finish_trains
@@ -91,11 +94,8 @@ impl Production {
                     pos,
                 };
                 spawner.spawn(world, at, owner);
-                let queue = world.get::<TrainQueue>(entity).expect("a producer");
-                let next = queue.entries().get(1).copied();
-                let next = next.map(|next| Production::time(world.resource::<ActionBook>(), next));
                 let mut queue = world.get_mut::<TrainQueue>(entity).expect("a producer");
-                queue.pop(now, next);
+                queue.pop(now);
             }
         }
     }
@@ -113,14 +113,6 @@ impl Production {
         let trains = book.get(slot.action)?.kind.kind() == ActionKind::Train;
         trains.then_some(aim)
     }
-
-    /// The time `queued` takes, at its rank.
-    fn time(book: &ActionBook, queued: Queued) -> Ticks {
-        book.get(queued.action)
-            .expect("a queued train is in the book")
-            .values(queued.rank)
-            .windup
-    }
 }
 
 /// Starts each ordered train, in Act: one that passes the core's checks, and finds a place in
@@ -128,7 +120,7 @@ impl Production {
 /// joins the queue. The order ends either way, and the unit stays free.
 fn start_trains(
     tick: Res<'_, SimTick>,
-    book: Res<'_, ActionBook>,
+    (book, producers): (Res<'_, ActionBook>, Res<'_, ByType<ProductionData>>),
     mut resources: Option<ResMut<'_, PlayerResources>>,
     mut units: Query<
         '_,
@@ -136,6 +128,7 @@ fn start_trains(
         (
             Entity,
             &StableId,
+            &UnitType,
             &mut ActionSlots,
             &mut TrainQueue,
             Option<&mut Pools>,
@@ -146,11 +139,11 @@ fn start_trains(
     mut order: Local<'_, Ordered>,
 ) {
     let now = tick.start();
-    let trains = units.iter().filter_map(|(entity, &id, slots, ..)| {
+    let trains = units.iter().filter_map(|(entity, &id, _, slots, ..)| {
         Production::ordered(slots, &book).map(|_| Keyed { id, entity })
     });
     for &Keyed { entity, .. } in order.sort(trains) {
-        let (_, _, mut slots, mut queue, mut pools, owner) =
+        let (_, _, &unit_type, mut slots, mut queue, mut pools, owner) =
             units.get_mut(entity).expect("a unit in the order");
         let ordered = Production::ordered(&slots, &book).expect("an ordered train");
         slots.stop();
@@ -164,7 +157,8 @@ fn start_trains(
         let Some(checked) = book.check(now, &slots, purse, ordered, no_target, |_| None) else {
             continue;
         };
-        if !queue.has_room() {
+        let capacity = producers.get(unit_type).map(|production| production.queue);
+        if !capacity.is_some_and(|capacity| queue.has_room(capacity)) {
             continue;
         }
         let values = checked.values;
@@ -177,8 +171,9 @@ fn start_trains(
         let queued = Queued {
             action: checked.id,
             rank: checked.rank,
+            time: values.windup,
         };
         slots.cool_down(ordered.slot, now.after(values.cooldown));
-        queue.push(queued, now, values.windup);
+        queue.push(queued, now);
     }
 }

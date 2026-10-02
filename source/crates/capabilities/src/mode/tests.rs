@@ -43,6 +43,7 @@ use crate::navigation::paths::Paths;
 use crate::navigation::route::Route;
 use crate::navigation::walker::Walker;
 use crate::players::resource_id::ResourceId;
+use crate::production::production_data::ProductionData;
 use crate::production::train_queue::{Queued, TrainQueue};
 use crate::progression::Progression;
 use crate::progression::experience::Experience;
@@ -74,6 +75,7 @@ use crate::stats::unit_stats::UnitStats;
 use crate::units::Units;
 use crate::units::action_id::ActionId;
 use crate::units::body::Body;
+use crate::units::by_type::ByType;
 use crate::units::dead::Dead;
 use crate::units::layer::Layer;
 use crate::units::modifier_id::ModifierId;
@@ -1041,28 +1043,25 @@ fn on_level_up(ctx, unit, track, level) {
     game.tick(&[(0, input("hero", "hero-x"))]);
     let mut owned = game.world.query_filtered::<Entity, With<Owner>>();
     let hero = owned.single(&game.world).unwrap();
+    // The `level` track's level is the unit's own; valor keeps its own.
     let progress = |game: &Game| {
         let experience = game.world.get::<Experience>(hero).unwrap();
         let [level, valor] = [0, 1].map(|at| experience.get(TrackId::new(at).unwrap()).unwrap());
+        assert_eq!(level.level, None);
         let unit_level = game.world.get::<Level>(hero).unwrap().get();
-        (
-            level.xp,
-            level.level.get(),
-            valor.xp,
-            valor.level.get(),
-            unit_level,
-        )
+        (level.xp, unit_level, valor.xp, valor.level.map(Level::get))
     };
+
     let half = Num::from_bits(1 << 23);
     // 99 stays below level 2's 100. 1.5 more makes 100.5: level 2, and the unit's level with it.
     // 500 more makes 600.5, past level 3's 300, the last; level 3 adds 50 valor, valor's level 2,
     // and its `on_level_up` runs in the same tick.
     let steps = [
-        ("99", (num(99), 1, Num::ZERO, 1, 1), ""),
-        ("1.5", (num(100) + half, 2, Num::ZERO, 1, 2), "level 2;"),
+        ("99", (num(99), 1, Num::ZERO, Some(1)), ""),
+        ("1.5", (num(100) + half, 2, Num::ZERO, Some(1)), "level 2;"),
         (
             "500",
-            (num(600) + half, 3, num(50), 2, 3),
+            (num(600) + half, 3, num(50), Some(2)),
             "level 2;level 3;valor 2;",
         ),
     ];
@@ -1088,7 +1087,7 @@ fn on_level_up(ctx, unit, track, level) {
         assert_eq!(game.failures(), [Some(error)], "{value}");
         assert_eq!(
             progress(&game),
-            (num(600) + half, 3, num(50), 2, 3),
+            (num(600) + half, 3, num(50), Some(2)),
             "{value}"
         );
     }
@@ -1174,10 +1173,15 @@ fn on_mode_input(ctx, player, name, value) {
     let producer = owned.single(&game.world).unwrap();
     let pools = Pools::new([(PoolId::FIRST, num(10)), (MANA, num(100))]).unwrap();
     let slots = ActionSlots::new([(train, SlotKind::new(0), 1)]);
-    let queue = TrainQueue::new(NonZeroU8::new(2).unwrap());
+    let hero_type = *game.world.get::<UnitType>(producer).unwrap();
+    let production = ProductionData {
+        queue: NonZeroU8::new(2).unwrap(),
+    };
+    let mut producers = game.world.resource_mut::<ByType<ProductionData>>();
+    producers.set(hero_type, production);
     game.world
         .entity_mut(producer)
-        .insert((pools, slots, queue));
+        .insert((pools, slots, TrainQueue::default()));
     let gold = resource("gold").unwrap();
     let player = PlayerSlot::new(0);
     game.world
@@ -2379,17 +2383,28 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     let mut ordered = slots(strike, 1);
     ordered.order(1, ActionTarget::None);
     assert!(!ordered.check(world, grunt));
-    let mut queue = TrainQueue::new(NonZeroU8::MIN);
+    let mut queue = TrainQueue::default();
     let queued = Queued {
         action: strike,
         rank: 1,
+        time: Ticks::new(1),
     };
-    queue.push(queued, Tick::new(0), Ticks::new(1));
-    assert!(!queue.check(world, grunt), "a cast is no train");
+    queue.push(queued, Tick::new(0));
+    assert!(
+        !queue.check(world, grunt),
+        "a cast is no train, and a grunt trains none"
+    );
 
     // Tracks: the mode has two, 0 and 1.
-    let on_tracks = |track| Experience::new(TrackSet::of([TrackId::new(track).unwrap()]));
+    let on_tracks = |track| Experience::new(TrackSet::of([TrackId::new(track).unwrap()]), None);
     assert!(on_tracks(1).check(world, grunt) && !on_tracks(2).check(world, grunt));
+    // Track 0 is the `level` track, whose level is the unit's: one that holds its own is
+    // refused, one that holds none passes.
+    let level_track = |own: bool| {
+        let track = TrackId::new(0).unwrap();
+        Experience::new(TrackSet::of([track]), (!own).then_some(track))
+    };
+    assert!(level_track(false).check(world, grunt) && !level_track(true).check(world, grunt));
     let unit = *world.get::<StableId>(grunt).unwrap();
     let level_up = |track| LevelUp {
         unit,

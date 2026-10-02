@@ -11,8 +11,9 @@ use crate::progression::track_set::TrackSet;
 use crate::stats::level::Level;
 use crate::units::track_id::TrackId;
 
-/// A unit's experience and level on each of its tracks, in the order of their ids. A level is
-/// state, not derived from experience: experience raises it, and never lowers it.
+/// A unit's experience on each of its tracks, in the order of their ids, and its level on each but
+/// the `level` track, whose level is the unit's `Level`. A level is state, not derived from
+/// experience: experience raises it, and never lowers it.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Experience {
     tracks: Vec<TrackXp>,
@@ -23,7 +24,8 @@ pub struct Experience {
 pub struct TrackXp {
     pub track: TrackId,
     pub xp: Num,
-    pub level: Level,
+    /// Its level; none on the `level` track, whose level is the unit's.
+    pub level: Option<Level>,
 }
 
 /// The levels a unit's track went from and to.
@@ -34,12 +36,13 @@ pub(crate) struct Raised {
 }
 
 impl Experience {
-    /// No experience on each of `tracks`, each at level 1.
-    pub(crate) fn new(tracks: TrackSet) -> Experience {
+    /// No experience on each of `tracks`, each at level 1 but `level_track`, the mode's `level`
+    /// track, whose level is the unit's.
+    pub(crate) fn new(tracks: TrackSet, level_track: Option<TrackId>) -> Experience {
         let tracks = tracks.iter().map(|track| TrackXp {
             track,
             xp: Num::ZERO,
-            level: Level::default(),
+            level: (Some(track) != level_track).then(Level::default),
         });
         Experience {
             tracks: tracks.collect(),
@@ -56,8 +59,14 @@ impl Experience {
 
     /// Adds `amount`, not negative, to `track`, which the unit has, at most up to the largest
     /// number: its level rises to the one the experience reaches on `book`'s track, if that is
-    /// higher.
-    pub(crate) fn add(&mut self, track: TrackId, amount: Num, book: &TrackBook) -> Raised {
+    /// higher; on the `level` track, that level is `unit_level`, the unit's.
+    pub(crate) fn add(
+        &mut self,
+        track: TrackId,
+        amount: Num,
+        book: &TrackBook,
+        unit_level: Option<&mut Level>,
+    ) -> Raised {
         debug_assert!(amount >= Num::ZERO, "experience added is not negative");
         let held = self
             .tracks
@@ -65,24 +74,30 @@ impl Experience {
             .find(|held| held.track == track)
             .expect("a unit given experience has the track");
         held.xp = held.xp.checked_add(amount).unwrap_or(Num::MAX);
-        let from = held.level;
-        held.level = from.max(book.level_at(track, held.xp));
-        Raised {
-            from,
-            to: held.level,
-        }
+        let level = match (&mut held.level, unit_level) {
+            (Some(own), _) => own,
+            (None, Some(unit)) => unit,
+            (None, None) => panic!("the level track's level is its unit's"),
+        };
+        let from = *level;
+        *level = from.max(book.level_at(track, held.xp));
+        Raised { from, to: *level }
     }
 }
 
 impl SimComponent for Experience {
     const NAME: &'static str = "progression.experience";
 
-    // A track the mode lacks has no thresholds to count levels by.
+    // A track the mode lacks has no thresholds to count levels by; the `level` track's level is
+    // the unit's, so it holds one of its own exactly on every other track.
     fn check(&self, world: &World, _: Entity) -> bool {
-        let book = world.get_resource::<TrackBook>();
-        self.tracks
-            .iter()
-            .all(|track| book.is_some_and(|book| book.has(track.track)))
+        let Some(book) = world.get_resource::<TrackBook>() else {
+            return self.tracks.is_empty();
+        };
+        self.tracks.iter().all(|track| {
+            let own = track.level.is_some();
+            book.has(track.track) && own != (book.level_track() == Some(track.track))
+        })
     }
 }
 

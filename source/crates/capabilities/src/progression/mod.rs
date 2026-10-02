@@ -1,3 +1,4 @@
+use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::schedule::Schedule;
 use bevy_ecs::world::{EntityRef, Mut, World};
 use campfire_math::Tick;
@@ -58,12 +59,23 @@ impl Progression {
                     .get(unit)
                     .expect("a unit given experience exists");
                 world.resource_scope(|world, book: Mut<'_, TrackBook>| {
-                    let raised = world
-                        .get_mut::<Experience>(entity)
-                        .expect("a unit given experience has tracks")
-                        .add(track, amount, &book);
+                    let mut carrier = world.entity_mut(entity);
+                    let (mut experience, mut level) = carrier
+                        .get_components_mut::<(&mut Experience, Option<&mut Level>)>()
+                        .expect("a unit given experience has tracks");
+                    // The unit's level counts as changed only when it rises, as its stats are
+                    // derived again when it changes.
+                    let unit_level = level
+                        .as_mut()
+                        .map(DetectChangesMut::bypass_change_detection);
+                    let raised = experience.add(track, amount, &book, unit_level);
                     if raised.to == raised.from {
                         return;
+                    }
+                    if let Some(level) = &mut level
+                        && book.level_track() == Some(track)
+                    {
+                        level.set_changed();
                     }
                     let reached = (raised.from.get() + 1..=raised.to.get())
                         .map(|level| Level::new(level).expect("a level past another"));
@@ -71,11 +83,6 @@ impl Progression {
                     level_ups
                         .0
                         .extend(reached.map(|level| LevelUp { unit, track, level }));
-                    if book.level_track() == Some(track) {
-                        *world
-                            .get_mut::<Level>(entity)
-                            .expect("a unit with the level track has a level") = raised.to;
-                    }
                 });
             }
         }
