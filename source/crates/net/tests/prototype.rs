@@ -7,9 +7,10 @@ use std::num::NonZeroU32;
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
+use campfire_capabilities::internals::give_modifier;
 use campfire_capabilities::{
     Action, ActionSlots, Bounds, Combat, Dead, Destination, MatchEnd, MatchResult, Metric,
-    MoveStep, Owner, PoolId, Pools, Projectile, Respawn, Team,
+    Modifiers, MoveStep, Owner, PoolId, Pools, Projectile, Respawn, Stats, Team,
 };
 use campfire_math::{Num, PlayerSlot, Tick, Vec3};
 use campfire_net::{InputChannel, InputMessage, LocalMatch, MatchSetup, PlayerLink, TickHashes};
@@ -332,4 +333,49 @@ fn a_fallen_tower_ends_the_match_on_the_server_and_its_client() {
     assert_eq!(hero(local.server()), still);
     assert_eq!(hero(local.client(0)).position, still.position);
     assert!(local.server().world().resource::<SimTick>().start() > tick);
+}
+
+#[test]
+fn a_slow_and_a_stun_end_on_the_client_in_the_tick_they_end_on_the_server() {
+    let mut local = LocalMatch::new(MatchSetup::solo(RollbackMode::Check, 1, SEED_CHAIN));
+    local.start_match();
+    // The hero walks off the lane, where nothing meets it: 16.5 m at 0.25 m a tick, so it still
+    // walks when both modifiers end, 30 and 15 ticks after the client learns each.
+    local.order(0, move_to(-16, -6));
+    for _ in 0..5 {
+        local.step();
+    }
+    let rollbacks = |local: &LocalMatch| {
+        let world = local.client(0).world();
+        world.resource::<PredictionMetrics>().rollbacks
+    };
+    let carries = |app: &App| {
+        let modifiers = app.world().get::<Modifiers>(hero_entity(app));
+        modifiers.is_some_and(|modifiers| *modifiers != Modifiers::default())
+    };
+    let avatar = local.avatar(0);
+    for name in ["slow", "stun"] {
+        let world = local.server_mut().world_mut();
+        let modifier = Stats::modifier(world, 0, name).unwrap();
+        give_modifier(world, avatar, modifier, None, false);
+        let mut frames = 0;
+        while !carries(local.client(0)) {
+            local.step();
+            frames += 1;
+            assert!(frames < 30, "the client learns the {name}");
+        }
+        // Learning it may roll the client back; from then on it predicts the hero's walk with
+        // the modifier, and without it once it ends, as the server runs it.
+        let learned = rollbacks(&local);
+        while carries(local.server()) || carries(local.client(0)) {
+            local.step();
+            frames += 1;
+            assert!(frames < 60, "the {name} ends");
+        }
+        for _ in 0..10 {
+            local.step();
+        }
+        assert_eq!(rollbacks(&local), learned, "{name}");
+        assert_ne!(hero(local.server()).destination, Destination::default());
+    }
 }

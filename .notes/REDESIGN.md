@@ -45,7 +45,7 @@ Each match has books: `ActionBook`, `ModifierBook`, `StatBook`, `PoolBook`, `Tra
 - **The state** holds book data: `Instance.tags` and each change's stat and op, `TrainQueue.capacity`, `PlayerResources.resources` and `InProgress.kind`.
 - **Several places** resolve names again at run time: aura filters every tick, `unit.stat(name)` on every call, and the stat list, which is held three times.
 
-The copies stay in line only through load order and a `debug_assert`. PLAN step 1 needs the same tables on the client, which today has no way to build them.
+The copies stay in line only through load order and a `debug_assert`. The client needs the same tables, which today has no way to build them.
 
 ### Shape
 
@@ -413,7 +413,7 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 
 PLAN.md's stage 4 steps join this plan as follows:
 
-- **PLAN step 1 (client stats and tags)** can start: the client builds `Books` from the packages, and installs prediction from them (I4).
+- **PLAN step 1 (client relations and actions)** can start: the client builds `Books` from the packages, installs prediction from them (I4), and derives its units' stats and tags.
 
 ### Order
 
@@ -449,7 +449,7 @@ Track S is long and sequential. Track I fills the sessions between its steps.
 
    I recommend adopting it. One reach rule is what players read.
 3. **The effect dispatch** (R3). Typed queues for each capability, as proposed, or keep one `Effect` enum and move it with its dispatch to `capability_set`. With the enum, `scripts` still needs the enum's type, so the cycle stays. I recommend the typed queues.
-4. **View columns** (R3). Columns for each capability, as proposed, or change design 04's overview so the core may name capability fields. Columns cost more code now. They are what PLAN step 1 and every later capability (items, interaction) need. I recommend columns.
+4. **View columns** (R3). Columns for each capability, as proposed, or change design 04's overview so the core may name capability fields. Columns cost more code now. They are what the client's actions and every later capability (items, interaction) need. I recommend columns.
 7. **An attack's damage names its weapon** (R§11). Change the code (`d.ability` is the weapon), or the design (an attack names no action). I recommend the code: a weapon is an action in design 04.
 8. **The proving match** (T). A new mode in `packages/test` that uses every capability. I recommend it. The 3v3 cannot test production or two producers, and its balance changes break unrelated tests.
 9. **The test review's decisions** (T§9):
