@@ -238,7 +238,27 @@ impl Lobby {
             .expect("the lobby's terms come from its own packages");
     }
 
-    /// Seats the player of `link` in the next free slot if their `join` answers `challenge`.
+    /// Frees the seat of each joined link that is no longer connected, so a match starts only
+    /// with live links, and the seat goes to the next player who joins.
+    pub(crate) fn free_seats(
+        mut lobby: ResMut<'_, Lobby>,
+        live: Query<'_, '_, (), (With<Connected>, With<Joined>)>,
+        mut commands: Commands<'_, '_>,
+    ) {
+        lobby.joined.retain(|&(link, _)| {
+            let connected = live.contains(link);
+            if !connected {
+                info!(?link, "a player left the lobby; their seat is free");
+                if let Ok(mut gone) = commands.get_entity(link) {
+                    gone.remove::<Joined>();
+                }
+            }
+            connected
+        });
+    }
+
+    /// Seats the player of `link` in the next free slot if their `join` answers `challenge`,
+    /// and their main key holds no seat yet.
     fn take(
         &mut self,
         link: Entity,
@@ -246,6 +266,14 @@ impl Lobby {
         join: &Join,
     ) -> Result<(), JoinError> {
         let delegation = self.check(challenge, join)?;
+        let main_key = delegation.main_key();
+        if self
+            .joined
+            .iter()
+            .any(|(_, seated)| seated.main_key() == main_key)
+        {
+            return Err(JoinError::Seated);
+        }
         if self.joined.len() == self.players {
             return Err(JoinError::Full);
         }
@@ -274,8 +302,10 @@ mod tests {
     use std::num::NonZeroU32;
     use std::path::Path;
 
+    use bevy_ecs::system::RunSystemOnce;
     use campfire_protocol::secp256k1::{Keypair, SecretKey};
     use campfire_protocol::{ConnectError, DelegationError, DelegationTerms};
+    use lightyear::prelude::{PeerId, RemoteId};
 
     use super::*;
 
@@ -336,14 +366,18 @@ mod tests {
             Err(JoinError::Delegation(DelegationError::NotEvent))
         );
 
-        // Two seats: a refused join takes none, and a third good join finds both taken.
+        // Two seats: a refused join takes none, a second join of one main key takes none, and a
+        // third player finds both taken.
         let good = join([3; 32], delegation.json());
-        let links = [
-            Entity::from_raw_u32(1),
-            Entity::from_raw_u32(2),
-            Entity::from_raw_u32(3),
-        ]
-        .map(Option::unwrap);
+        let player = |main: u8| {
+            let delegation = Delegation::sign(&secp, &keypair(main), &granted, NOW, &[0; 32]);
+            join([3; 32], delegation.json())
+        };
+        let mut world = World::new();
+        let links = [1, 2, 3, 4].map(|peer| {
+            let remote = RemoteId(PeerId::Local(peer));
+            world.spawn((remote, Connected, Joined)).id()
+        });
         assert!(
             lobby
                 .take(links[0], challenge, &join([4; 32], delegation.json()))
@@ -351,9 +385,28 @@ mod tests {
         );
         assert_eq!(lobby.joined(), 0);
         assert_eq!(lobby.take(links[0], challenge, &good), Ok(()));
-        assert_eq!(lobby.take(links[1], challenge, &good), Ok(()));
-        assert_eq!(lobby.take(links[2], challenge, &good), Err(JoinError::Full));
-        let seated: Vec<Entity> = lobby.joined.iter().map(|&(link, _)| link).collect();
-        assert_eq!(seated, links[..2]);
+        assert_eq!(
+            lobby.take(links[1], challenge, &good),
+            Err(JoinError::Seated)
+        );
+        assert_eq!(lobby.take(links[1], challenge, &player(3)), Ok(()));
+        assert_eq!(
+            lobby.take(links[2], challenge, &player(4)),
+            Err(JoinError::Full)
+        );
+        let seated =
+            |lobby: &Lobby| -> Vec<Entity> { lobby.joined.iter().map(|&(link, _)| link).collect() };
+        assert_eq!(seated(&lobby), links[..2]);
+
+        // The first player's link disconnects: their seat is free, their link no longer joined,
+        // and a fourth player takes the seat.
+        world.entity_mut(links[0]).remove::<Connected>();
+        world.insert_resource(lobby);
+        world.run_system_once(Lobby::free_seats).unwrap();
+        assert!(!world.entity(links[0]).contains::<Joined>());
+        let mut lobby = world.remove_resource::<Lobby>().unwrap();
+        assert_eq!(seated(&lobby), [links[1]]);
+        assert_eq!(lobby.take(links[3], challenge, &player(5)), Ok(()));
+        assert_eq!(seated(&lobby), [links[1], links[3]]);
     }
 }

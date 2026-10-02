@@ -11,6 +11,8 @@ pub enum JoinError {
     Connect(ConnectError),
     /// Every slot was taken by the time the join arrived.
     Full,
+    /// The delegation's main key holds a seat already: one identity is one player.
+    Seated,
 }
 
 /// Why an order script does not read.
@@ -52,6 +54,7 @@ impl fmt::Display for JoinError {
             JoinError::Delegation(error) => write!(f, "{error}"),
             JoinError::Connect(error) => write!(f, "{error}"),
             JoinError::Full => f.write_str("every slot is taken"),
+            JoinError::Seated => f.write_str("the main key holds a seat already"),
         }
     }
 }

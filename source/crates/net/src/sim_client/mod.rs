@@ -98,12 +98,14 @@ struct SentInputs {
     payloads: Vec<u8>,
 }
 
-/// What the player's join fixed: the session its signatures name, and what their first input
-/// links to, their delegation's id.
+/// What the player's join fixed: the session its signatures name, what their first input links
+/// to, their delegation's id, and the terms' limits on what one stamp may carry.
 #[derive(Debug, Clone, Copy)]
 struct JoinedSession {
     id: SessionId,
     chain_root: InputHash,
+    max_inputs: u32,
+    max_payload_len: u32,
 }
 
 #[derive(Debug)]
@@ -155,6 +157,8 @@ impl SentInputs {
         self.session = Some(JoinedSession {
             id,
             chain_root: delegation.chain_root(),
+            max_inputs: offer.terms.max_inputs_per_tick,
+            max_payload_len: offer.terms.max_payload_len,
         });
         Ok(Join {
             delegation: delegation.json().to_owned(),
@@ -311,8 +315,10 @@ fn report_deaths(
 type OwnAvatar<'w, 's> = Query<'w, 's, &'static StableId, (With<Owner>, With<Predicted>)>;
 
 /// Adds the bot script's orders due in the tick about to run, for the player's own avatar, then
-/// stamps each pending order with that tick, chains it and keeps it, and sends them all in one
-/// message signed over the chain head after the last.
+/// stamps the pending orders with that tick, up to the session's max inputs per tick, chains each
+/// and keeps it, and sends them in one message signed over the chain head after the last. The
+/// orders past the max wait for the next tick, so the log never refuses the message; an order
+/// whose payload passes the session's max length can never be sent, and is dropped.
 fn send_orders(
     timeline: Res<'_, LocalTimeline>,
     clock: Res<'_, MatchClock>,
@@ -344,24 +350,33 @@ fn send_orders(
             });
         }
     }
-    if pending.0.is_empty() {
-        return;
-    }
-    OrdersSent {
-        stamp,
-        orders: pending.0.len(),
-    }
-    .log();
     let first = inputs.len();
-    for order in pending.0.drain(..) {
+    let stamped = pending.0.len().min(session.max_inputs as usize);
+    for order in pending.0.drain(..stamped) {
         let start = payloads.len();
         payloads.extend_from_slice(&Order::payload(&[order]));
+        if payloads.len() - start > session.max_payload_len as usize {
+            payloads.truncate(start);
+            warn!(
+                ?order,
+                "dropped an order whose payload passes the session's max length"
+            );
+            continue;
+        }
         inputs.push(SentInput {
             stamp,
             payload: start..payloads.len(),
         });
     }
     let sent = &inputs[first..];
+    if sent.is_empty() {
+        return;
+    }
+    OrdersSent {
+        stamp,
+        orders: sent.len(),
+    }
+    .log();
     // The signature goes in the message with the inputs, so a copy of the chain reaches the head
     // first.
     let mut head = *chain;

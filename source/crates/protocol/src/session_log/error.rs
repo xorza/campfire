@@ -14,8 +14,14 @@ pub enum InputError {
     UnknownPlayer,
     /// A payload is longer than the header's max payload length.
     PayloadTooLarge,
-    /// The packet takes the player past the header's max inputs per tick.
+    /// The packet holds more inputs than the header's max inputs per tick, or takes the inputs of
+    /// one stamp past it.
     TooManyInputs,
+    /// An input is stamped before the input before it in the player's chain.
+    StampBack,
+    /// The player's inputs in all pass what its ticks so far hold: the max inputs per tick for
+    /// each tick up to the max input lead past the next.
+    AheadOfTime,
     /// The log's positions, which fit a `u32`, do not reach past the packet.
     LogFull,
     /// The player's session key did not sign the chain head after the packet: the signature is
@@ -29,7 +35,11 @@ impl fmt::Display for InputError {
             InputError::EmptyPacket => f.write_str("packet holds no input"),
             InputError::UnknownPlayer => f.write_str("input from a player not in the session"),
             InputError::PayloadTooLarge => f.write_str("input payload above the max length"),
-            InputError::TooManyInputs => f.write_str("player above the max inputs per tick"),
+            InputError::TooManyInputs => f.write_str("inputs above the max inputs per tick"),
+            InputError::StampBack => f.write_str("input stamped before the input before it"),
+            InputError::AheadOfTime => {
+                f.write_str("more inputs than the ticks up to the max input lead hold")
+            }
             InputError::LogFull => f.write_str("session log full"),
             InputError::BadSignature => {
                 f.write_str("chain head not signed by the player's session key")

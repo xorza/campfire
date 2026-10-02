@@ -19,7 +19,7 @@ use campfire_sim::{SimTick, StableId, StateHash, Tick, TickRate};
 use lightyear::core::tick::TickDuration;
 use lightyear::prelude::{
     LocalTimeline, MessageReceiver, MessageSender, NetworkTarget, PredictionTarget, Replicate,
-    VisibilityExt,
+    Unlink, UnlinkReason, VisibilityExt,
 };
 use tracing::{debug, info, trace, trace_span, warn};
 
@@ -38,13 +38,13 @@ use crate::net_protocol::MatchChannel;
 #[derive(Debug)]
 pub struct SimServer;
 
-/// Which player a client link carries the inputs of, their team, and how many of its messages the
-/// log refused.
+/// Which player a client link carries the inputs of, their team, and whether the log refused one
+/// of its messages, which ended the link.
 #[derive(Component, Debug, Clone, Copy)]
 pub struct PlayerLink {
     slot: PlayerSlot,
     team: Team,
-    refused: u64,
+    refused: bool,
 }
 
 impl PlayerLink {
@@ -52,9 +52,9 @@ impl PlayerLink {
         self.slot
     }
 
-    /// Messages the log refused: a broken chain or signature, or a limit passed. An honest
-    /// client sends none; with the connect handshake, the first one will end the connection.
-    pub const fn refused(self) -> u64 {
+    /// Whether the log refused one of its messages: a broken chain or signature, or a limit
+    /// passed. A client that follows the rules sends none, so the first one ends the link.
+    pub const fn refused(self) -> bool {
         self.refused
     }
 }
@@ -75,7 +75,12 @@ impl Plugin for SimServer {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            (Lobby::offer, Lobby::take_joins, Lobby::start_when_full)
+            (
+                Lobby::free_seats,
+                Lobby::offer,
+                Lobby::take_joins,
+                Lobby::start_when_full,
+            )
                 .chain()
                 .run_if(resource_exists::<Lobby>),
         );
@@ -132,7 +137,7 @@ impl SimServer {
             world.entity_mut(client).insert(PlayerLink {
                 slot,
                 team,
-                refused: 0,
+                refused: false,
             });
             world
                 .get_mut::<MessageSender<MatchStart>>(client)
@@ -146,27 +151,40 @@ impl SimServer {
     }
 }
 
-/// Logs each packet received in this frame, before the next tick runs.
+/// Logs each packet received in this frame, before the next tick runs. A refused packet ends its
+/// link: a client that follows the rules sends none, and its chain no longer matches the log's.
 fn record_inputs(
-    mut links: Query<'_, '_, (&mut PlayerLink, &mut MessageReceiver<InputMessage>)>,
+    mut commands: Commands<'_, '_>,
+    mut links: Query<'_, '_, (Entity, &mut PlayerLink, &mut MessageReceiver<InputMessage>)>,
     mut session: ResMut<'_, Session>,
     mut applied: Local<'_, Vec<Applied>>,
 ) {
-    for (mut link, mut receiver) in &mut links {
+    for (entity, mut link, mut receiver) in &mut links {
         let slot = link.slot.get();
         for message in receiver.receive() {
+            if link.refused {
+                continue;
+            }
+            let next_tick = session.log().next_tick();
             let Some(inputs) = message.inputs(link.slot) else {
                 warn!(
                     slot,
                     "refused an input message whose frames do not fit its payloads"
                 );
-                link.refused += 1;
+                link.refused = true;
+                commands.trigger(Unlink {
+                    entity,
+                    reason: UnlinkReason::UserRequested(Some("broken input message".to_owned())),
+                });
                 continue;
             };
-            let next_tick = session.log().next_tick();
             if let Err(error) = session.record(inputs.clone(), message.signature(), &mut applied) {
-                warn!(slot, next_tick, %error, "refused an input message");
-                link.refused += 1;
+                warn!(slot, next_tick, %error, "refused an input message, which ends the link");
+                link.refused = true;
+                commands.trigger(Unlink {
+                    entity,
+                    reason: UnlinkReason::UserRequested(Some(error.to_string())),
+                });
                 continue;
             }
             for (input, &outcome) in inputs.zip(applied.iter()) {

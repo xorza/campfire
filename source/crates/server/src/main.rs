@@ -150,12 +150,20 @@ fn main() -> ExitCode {
         ))
         .id();
     app.world_mut().trigger(Start { entity: server });
-    app.run();
-    ExitCode::SUCCESS
+    exit_code(app.run())
+}
+
+/// The process's exit code for how the app exited.
+fn exit_code(exit: AppExit) -> ExitCode {
+    match exit {
+        AppExit::Success => ExitCode::SUCCESS,
+        AppExit::Error(code) => ExitCode::from(code.get()),
+    }
 }
 
 /// Once the match started and no player is connected any more, reveals the seed, writes the
-/// session log into the working directory and exits.
+/// session log into the working directory and exits: with an error when the log is not written,
+/// as the session it holds is lost.
 fn end_when_everyone_left(world: &mut World) {
     if !world.contains_resource::<MatchClock>() {
         return;
@@ -172,17 +180,22 @@ fn end_when_everyone_left(world: &mut World) {
     session.log().encode(&mut bytes);
     let id = session.log().header().terms.session_id();
     let file = PathBuf::from(format!("{id}.campfire-log"));
-    let written = fs::write(&file, &bytes);
-    world.write_message(AppExit::Success);
-    match written {
-        Ok(()) => SessionWritten {
-            session: id,
-            file,
-            hash,
+    let exit = match fs::write(&file, &bytes) {
+        Ok(()) => {
+            SessionWritten {
+                session: id,
+                file,
+                hash,
+            }
+            .log();
+            AppExit::Success
         }
-        .log(),
-        Err(error) => error!(file = %file.display(), %error, "could not write the session log"),
-    }
+        Err(error) => {
+            error!(file = %file.display(), %error, "could not write the session log");
+            AppExit::error()
+        }
+    };
+    world.write_message(exit);
 }
 
 /// A fresh server key.

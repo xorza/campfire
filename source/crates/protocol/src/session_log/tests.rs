@@ -97,18 +97,27 @@ struct Sent<'a> {
 /// Inputs as `(slot, stamp, payload)`; a run of one slot's inputs within a tick is one packet.
 type Sends = &'static [(u32, u64, &'static [u8])];
 
-/// What the players send before each tick, 0 to 4. Player 0 sends b, c, e, h, g; player 1 sends
-/// a, d, f, i, j. Before tick 3, e and h are one packet.
+/// What the players send before each tick, 0 to 4, each player's stamps never back. Player 0
+/// sends b, c, g, h, m, n; player 1 sends a, e, f, d, i, j. Before tick 3, e and f are one
+/// packet, g and h another, d and i a third.
 const SCRIPT: [Sends; 5] = [
     &[(1, 0, b"a"), (0, 1, b"b")],
-    &[(0, 1, b"c"), (1, 3, b"d")],
+    &[(0, 1, b"c")],
     &[],
-    &[(1, 1, b"f"), (0, 0, b"e"), (0, 3, b"h"), (1, 6, b"i")],
-    &[(0, 4, b"g"), (1, 4, b"j")],
+    &[
+        (1, 0, b"e"),
+        (1, 1, b"f"),
+        (0, 2, b"g"),
+        (0, 2, b"h"),
+        (1, 5, b"d"),
+        (1, 6, b"i"),
+        (0, 3, b"m"),
+    ],
+    &[(0, 4, b"n"), (1, 6, b"j")],
 ];
 
-/// What the players send after tick 4, which stays unsealed: k applies at 6, l at 5.
-const TAIL: Sends = &[(0, 6, b"k"), (1, 5, b"l")];
+/// What the players send after tick 4, which stays unsealed: k applies at 6, l at 7.
+const TAIL: Sends = &[(0, 6, b"k"), (1, 7, b"l")];
 
 /// The signed packets the script's players send, grouped by the tick they arrive before.
 fn chained() -> Vec<Vec<Sent<'static>>> {
@@ -246,35 +255,38 @@ fn inputs_apply_by_the_delay_rule_in_slot_order() {
         }
         drop(log.seal_tick());
     }
-    // Applied at max(stamp, next tick); late when that is more than 2 ticks after the stamp, early
-    // when the stamp is more than 2 ticks ahead.
+    // Applied at max(stamp, next tick); late when the next tick is more than 2 ticks after the
+    // stamp, early when the stamp is more than 2 ticks ahead; and a player's inputs fill each tick
+    // up to 2, in chain order, the rest spilling to the next. Player 0's g, h and m arrive before
+    // one tick, one past the max of 2, as a network that holds packets groups them: no stamp
+    // holds more than 2, so the log takes all three, and m spills.
     assert_eq!(
         outcomes,
         [
             (&b"a"[..], Applied::At(0)), // stamp 0, before tick 0
             (b"b", Applied::At(1)),      // stamp 1 is ahead of tick 0
-            (b"c", Applied::At(1)),      // stamp 1, before tick 1
-            (b"d", Applied::At(3)),      // stamp 3, before tick 1: 2 ticks ahead, the most allowed
-            (b"f", Applied::At(3)),      // stamp 1, before tick 3: 2 ticks late, the most allowed
+            (b"c", Applied::At(1)),      // stamp 1, before tick 1: the second of tick 1
             (b"e", Applied::Late),       // stamp 0, before tick 3: 3 ticks late
-            (b"h", Applied::At(3)),      // stamp 3, before tick 3
+            (b"f", Applied::At(3)),      // stamp 1, before tick 3: 2 ticks late, the most allowed
+            (b"g", Applied::At(3)),      // stamp 2, before tick 3
+            (b"h", Applied::At(3)),      // the second of player 0's tick 3
+            (b"d", Applied::At(5)),      // stamp 5, before tick 3: 2 ticks ahead, the most allowed
             (b"i", Applied::Early),      // stamp 6, before tick 3: 3 ticks ahead
-            (b"g", Applied::At(4)),      // stamp 4, before tick 4
-            (b"j", Applied::At(4)),      // the chain goes on after the early i
+            (b"m", Applied::At(4)),      // stamp 3, before tick 3: g and h fill it, so tick 4
+            (b"n", Applied::At(4)),      // stamp 4, before tick 4: the second of tick 4
+            (b"j", Applied::At(6)),      // stamp 6, before tick 4: the chain goes on after i
         ]
     );
     assert_eq!(log.next_tick(), 5);
 
-    // Player 0 sends 1, 1, 0, 2 and 1 inputs before the ticks: the count per tick starts again
-    // at each seal, or the 2 before tick 3 would pass the max of 2.
+    // Tick 3 takes player 0's g and h before player 1's f, though f arrived first.
     let applied = record(header(), &chained()).unwrap().applied;
-    // Tick 3 takes player 0's h before player 1's d and f, though h arrived last.
     let expected = per_tick(&[
         &[(1, b"a")],
         &[(0, b"b"), (0, b"c")],
         &[],
-        &[(0, b"h"), (1, b"d"), (1, b"f")],
-        &[(0, b"g"), (1, b"j")],
+        &[(0, b"g"), (0, b"h"), (1, b"f")],
+        &[(0, b"m"), (0, b"n")],
     ]);
     assert_eq!(applied, expected);
 }
@@ -288,15 +300,16 @@ fn a_rewound_log_replays_the_same_ticks_and_ends_as_it_was() {
         &[(1, b"a")],
         &[(0, b"b"), (0, b"c")],
         &[],
-        &[(0, b"h"), (1, b"d"), (1, b"f")],
-        &[(0, b"g"), (1, b"j")],
+        &[(0, b"g"), (0, b"h"), (1, b"f")],
+        &[(0, b"m"), (0, b"n")],
     ]);
     assert_eq!(applied, expected);
-    // Caught up, the log is as it was: the same file, and the tail waits to apply.
+    // Caught up, the log is as it was: the same file, and the inputs held for later ticks, and
+    // the tail, wait to apply.
     assert_eq!(encoded(&log), bytes);
     assert_eq!(
-        [seal(&mut log), seal(&mut log)].to_vec(),
-        per_tick(&[&[(1, b"l")], &[(0, b"k")]])
+        [seal(&mut log), seal(&mut log), seal(&mut log)].to_vec(),
+        per_tick(&[&[(1, b"d")], &[(0, b"k"), (1, b"j")], &[(1, b"l")]])
     );
 
     // A log with no sealed tick rewinds to itself.
@@ -312,17 +325,21 @@ struct Tamper {
     refused: LogError,
 }
 
-/// The tampered sends, each with the packet it makes the log refuse.
-fn tampers() -> [Tamper; 11] {
-    let refused = |tick, error| LogError::Input { tick, error };
+fn refused(tick: u64, error: InputError) -> LogError {
+    LogError::Input { tick, error }
+}
+
+/// Sends with a broken chain or signature, or no player, each with the packet it makes the log
+/// refuse.
+fn broken_sends() -> [Tamper; 8] {
     [
         Tamper {
-            name: "player 0's c dropped: the head after e and h is not the one signed",
+            name: "player 0's c dropped: the head after g and h is not the one signed",
             change: |ticks| drop(ticks[1].remove(0)),
             refused: refused(3, InputError::BadSignature),
         },
         Tamper {
-            name: "player 0's e and h swapped in their packet",
+            name: "player 0's g and h swapped in their packet",
             change: |ticks| ticks[3][1].inputs.swap(0, 1),
             refused: refused(3, InputError::BadSignature),
         },
@@ -375,6 +392,12 @@ fn tampers() -> [Tamper; 11] {
             },
             refused: refused(2, InputError::EmptyPacket),
         },
+    ]
+}
+
+/// Sends past a limit of the terms, each with the packet it makes the log refuse.
+fn sends_past_limits() -> [Tamper; 6] {
+    [
         Tamper {
             name: "player 1's a with 5 payload bytes, one over the max",
             change: |ticks| ticks[0][0] = resent(1, &[&[(0, b"abcde")]], 1).remove(0),
@@ -388,10 +411,36 @@ fn tampers() -> [Tamper; 11] {
             refused: refused(0, InputError::TooManyInputs),
         },
         Tamper {
-            name: "player 1 sends 2 inputs, then 1 more, before tick 0",
+            name: "player 1 sends 2 inputs of stamp 0, then 1 more of stamp 0, before tick 0",
             change: |ticks| {
                 let packets = resent(1, &[&[(0, b"a"), (0, b"x")], &[(0, b"y")]], 1);
                 drop(ticks[0].splice(0..1, packets));
+            },
+            refused: refused(0, InputError::TooManyInputs),
+        },
+        Tamper {
+            name: "player 1 stamps its second input before its first",
+            change: |ticks| ticks[0][0] = resent(1, &[&[(1, b"a"), (0, b"x")]], 1).remove(0),
+            refused: refused(0, InputError::StampBack),
+        },
+        Tamper {
+            name: "player 1 sends 7 inputs before tick 0, where ticks 0 to 2 hold 6",
+            change: |ticks| {
+                let sends: [&[(u64, &[u8])]; 4] = [
+                    &[(0, b"a"), (0, b"x")],
+                    &[(1, b"x"), (1, b"x")],
+                    &[(2, b"x"), (2, b"x")],
+                    &[(3, b"x")],
+                ];
+                drop(ticks[0].splice(0..1, resent(1, &sends, 1)));
+            },
+            refused: refused(0, InputError::AheadOfTime),
+        },
+        Tamper {
+            name: "player 1's packet of 2 inputs of stamp 0 and 1 of stamp 1, one over the max",
+            change: |ticks| {
+                let packet = resent(1, &[&[(0, b"a"), (0, b"x"), (1, b"y")]], 1).remove(0);
+                ticks[0][0] = packet;
             },
             refused: refused(0, InputError::TooManyInputs),
         },
@@ -400,7 +449,7 @@ fn tampers() -> [Tamper; 11] {
 
 #[test]
 fn a_tampered_packet_is_refused() {
-    for case in tampers() {
+    for case in broken_sends().into_iter().chain(sends_past_limits()) {
         let mut ticks = chained();
         (case.change)(&mut ticks);
         // A log file with the same packets is refused for the same packet.
@@ -422,8 +471,8 @@ fn a_tampered_packet_is_refused() {
 
 #[test]
 fn a_packet_past_the_position_bound_is_refused() {
-    // The log's position bound, lowered from 2³² − 1 here: the 10th input, j, needs 10
-    // inputs and 10 payload bytes.
+    // The log's position bound, lowered from 2³² − 1 here: the 12th input, j, needs 12
+    // inputs and 12 payload bytes.
     let bounded = |bound| {
         let mut log = SessionLog::new(header()).unwrap();
         log.position_bound = bound;
@@ -433,11 +482,11 @@ fn a_packet_past_the_position_bound_is_refused() {
         tick: 4,
         error: InputError::LogFull,
     };
-    assert_eq!(bounded(9), Some(full.clone()));
-    assert_eq!(bounded(10), None);
+    assert_eq!(bounded(11), Some(full.clone()));
+    assert_eq!(bounded(12), None);
     let file = encoded(&record(header(), &chained()).unwrap().log);
-    assert_eq!(SessionLog::decode_within(&file, 9).err(), Some(full));
-    assert!(SessionLog::decode_within(&file, 10).is_ok());
+    assert_eq!(SessionLog::decode_within(&file, 11).err(), Some(full));
+    assert!(SessionLog::decode_within(&file, 12).is_ok());
     // The payload bytes count on their own: 1 input of 4 bytes passes a bound of 3.
     let mut log = SessionLog::new(header()).unwrap();
     log.position_bound = 3;
@@ -808,10 +857,11 @@ fn a_log_file_decodes_to_the_same_log() {
     let decoded_again = SessionLog::decode(&bytes).unwrap();
     assert_eq!(replayed(decoded_again).applied, live);
 
-    // The tail waits in both logs: l applies at tick 5, k at 6.
-    let expected = per_tick(&[&[(1, b"l")], &[(0, b"k")]]);
-    assert_eq!([seal(&mut log), seal(&mut log)].to_vec(), expected);
-    assert_eq!([seal(&mut decoded), seal(&mut decoded)].to_vec(), expected);
+    // What waits, waits in both logs: d applies at tick 5, k and j at 6, l at 7.
+    let expected = per_tick(&[&[(1, b"d")], &[(0, b"k"), (1, b"j")], &[(1, b"l")]]);
+    let three = |log: &mut SessionLog| [seal(log), seal(log), seal(log)].to_vec();
+    assert_eq!(three(&mut log), expected);
+    assert_eq!(three(&mut decoded), expected);
 
     // An unpublished log, and one with no ticks, decode too.
     let empty = SessionLog::new(header()).unwrap();

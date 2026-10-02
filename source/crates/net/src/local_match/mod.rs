@@ -358,6 +358,10 @@ impl LocalMatch {
         &self.clients[client]
     }
 
+    pub fn client_mut(&mut self, client: usize) -> &mut App {
+        &mut self.clients[client]
+    }
+
     /// The server's link to `client`.
     pub fn link(&self, client: usize) -> Entity {
         self.links[client]

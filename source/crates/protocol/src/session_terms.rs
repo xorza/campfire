@@ -28,8 +28,9 @@ pub struct SessionTerms {
     pub max_input_lead: u64,
     /// The most bytes an input's payload may hold.
     pub max_payload_len: u32,
-    /// The most inputs a player may send before one tick. With the max payload length, it bounds
-    /// how fast a player can grow the log.
+    /// The most inputs of one stamp, and of one packet, a player may send, and the most of its
+    /// inputs that apply in one tick, the rest waiting for the next. With the max payload length
+    /// and the max input lead, it bounds how fast a player can grow the log.
     pub max_inputs_per_tick: u32,
     /// The server's commitment to its seed chain. It is fresh for every session, so no two
     /// sessions share an id.

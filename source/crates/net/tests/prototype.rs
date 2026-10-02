@@ -6,16 +6,19 @@ use std::num::NonZeroU32;
 
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
+use bevy_ecs::query::With;
 use campfire_capabilities::{
     Action, ActionSlots, Dead, Destination, MatchEnd, MatchResult, MoveStep, Owner, PoolId, Pools,
     Projectile, Respawn, Team,
 };
-use campfire_math::{Num, Vec3};
-use campfire_net::{LocalMatch, MatchSetup, PlayerLink, TickHashes};
-use campfire_protocol::{SeedChain, SessionLog};
+use campfire_math::{Num, PlayerSlot, Vec3};
+use campfire_net::{InputChannel, InputMessage, LocalMatch, MatchSetup, PlayerLink, TickHashes};
+use campfire_protocol::{PlayerInput, SeedChain, SessionLog, Signature};
 use campfire_runner::{Runner, Session};
 use campfire_sim::{EntityIndex, Position, SimTick, Tick, Unpredicted};
-use lightyear::prelude::{Predicted, PredictionMetrics, RollbackMode};
+use lightyear::prelude::{
+    Client, Connected, MessageSender, Predicted, PredictionMetrics, RollbackMode,
+};
 
 const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
 /// Frames of match: one tick each.
@@ -106,13 +109,12 @@ fn server_and_replay_agree_on_every_tick() {
 
         let link = local.link(0);
         let server_world = local.server_mut().world_mut();
-        assert_eq!(
-            server_world
+        assert!(
+            !server_world
                 .entity(link)
                 .get::<PlayerLink>()
                 .unwrap()
-                .refused(),
-            0
+                .refused()
         );
         server_world.resource_mut::<Session>().reveal_seed();
         let live = server_world.resource::<TickHashes>().get().to_vec();
@@ -129,6 +131,56 @@ fn server_and_replay_agree_on_every_tick() {
         }
         assert_eq!(replay.log().next_tick(), ticks);
     }
+}
+
+#[test]
+fn a_burst_of_orders_waits_for_later_stamps_and_a_forged_message_ends_its_link() {
+    let mut local = LocalMatch::new(MatchSetup::solo(RollbackMode::Check, 1, SEED_CHAIN));
+    local.start_match();
+    // Six moves in one frame, past the session's 4 inputs a tick: the client stamps 4 now and 2
+    // in the next tick, so the server refuses none, and the last move is where the hero ends.
+    for x in 1..=5 {
+        local.order(0, move_to(x, 1));
+    }
+    local.order(0, move_to(-2, 5));
+    for _ in 0..80 {
+        local.step();
+    }
+    let arrived = Hero {
+        position: Position::new(Vec3::new(num(-2), Num::ZERO, num(5))).unwrap(),
+        destination: Destination::default(),
+    };
+    assert_eq!(hero(local.server()), arrived);
+    let link = local.link(0);
+    let refused = |local: &LocalMatch| {
+        let link = local.server().world().entity(link);
+        (
+            link.get::<PlayerLink>().unwrap().refused(),
+            link.contains::<Connected>(),
+        )
+    };
+    assert_eq!(refused(&local), (false, true));
+
+    // A message whose signature the player's session key did not make: the server refuses it,
+    // and ends the link.
+    let forged = InputMessage::new(
+        [PlayerInput {
+            slot: PlayerSlot::new(0),
+            stamp: 0,
+            payload: b"",
+        }],
+        Signature::from_bytes([0; 64]),
+    );
+    let world = local.client_mut(0).world_mut();
+    let mut senders = world.query_filtered::<&mut MessageSender<InputMessage>, With<Client>>();
+    senders
+        .single_mut(world)
+        .unwrap()
+        .send::<InputChannel>(forged);
+    for _ in 0..5 {
+        local.step();
+    }
+    assert_eq!(refused(&local), (true, false));
 }
 
 #[test]
