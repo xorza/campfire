@@ -36,8 +36,9 @@ pub struct UnitKit {
 impl UnitKit {
     /// The kit of `unit_type`, of the stats `book` gives it, with `combat` and `pools`, each
     /// with the stat of its maximum. Each pool's maximum is that stat at level 1, and its move
-    /// step is the book's at level 1 at `rate`, as a refresh computes them. A type with `combat`
-    /// has the life pool `life`, which a mode with no combat lacks.
+    /// step is the book's at level 1 at `rate`, as a refresh computes them. A type has `combat`
+    /// exactly when it has the life pool `life`, which a mode with no combat lacks: a unit that
+    /// can die is one that combat kills.
     pub(crate) fn new<'a>(
         book: &StatBook,
         unit_type: UnitType,
@@ -62,15 +63,13 @@ impl UnitKit {
         }
         let pools =
             (!maxes.is_empty()).then(|| Pools::new(maxes).expect("each maximum is positive"));
-        let on_death = combat
-            .map(|combat| {
-                let life = life.and_then(|life| pools?.max(life));
-                if life.is_none() {
-                    return Err(UnitKitError::NoLifePool);
-                }
-                Ok(combat.on_death)
-            })
-            .transpose()?;
+        let has_life = life.and_then(|life| pools?.max(life)).is_some();
+        let on_death = match (combat, has_life) {
+            (Some(combat), true) => Some(combat.on_death),
+            (Some(_), false) => return Err(UnitKitError::NoLifePool),
+            (None, true) => return Err(UnitKitError::NoCombat),
+            (None, false) => None,
+        };
         let step = given(&Stat::Engine(EngineStat::MoveSpeed)).map(|_| {
             let step = book
                 .step(&values, rate)

@@ -4,6 +4,7 @@ use campfire_math::Num;
 use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
 
 use crate::stats::life_pool::LifePool;
+use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::units::block::Block;
 use crate::units::body::Body;
@@ -90,8 +91,15 @@ impl Targets<'_, '_> {
     /// `target`, when it is a living unit that may be a target.
     pub(crate) fn living(&self, target: StableId) -> Option<LivingUnit> {
         let row = self.units.get(self.index.get(target)?).ok()?;
-        let blocked = UnitTags::effects_of(row.5).blocks(Block::Target);
-        self.body(row).filter(|_| !blocked)
+        Targets::targetable(Some(row.3), row.5, self.life.0).then(|| self.body(row))?
+    }
+
+    /// Whether a unit that has not died, with `pools` and `tags`, may be a target: it has the
+    /// life pool `life`, and its tags let it be one. This is the one rule of a target, which the
+    /// script view reads too.
+    pub(crate) fn targetable(pools: Option<&Pools>, tags: Option<&UnitTags>, life: PoolId) -> bool {
+        pools.is_some_and(|pools| pools.max(life).is_some())
+            && !UnitTags::effects_of(tags).blocks(Block::Target)
     }
 
     /// Every living unit with the life pool, those whose tags block it as a target among them:

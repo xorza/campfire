@@ -11,6 +11,7 @@ use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
+use crate::stats::pools::Pools;
 use crate::units::tag_effects::TagEffects;
 use crate::units::unit::Unit;
 use crate::values::attitude::Attitude;
@@ -62,9 +63,12 @@ impl Scene {
     }
 
     /// A unit of `team` at (`x`, `z`) that sees `sight` meters, if it sees.
+    /// A unit of `team` at `x`, `z` with the life pool, so it may be a target, and seeing
+    /// `sight` when given.
     fn spawn(&mut self, team: u8, x: i64, z: i64, sight: Option<i64>) -> StableId {
         let id = self.world.resource_mut::<IdAllocator>().allocate();
-        let mut unit = self.world.spawn((id, at(x, z), Team::new(team)));
+        let life = Pools::life(num(100));
+        let mut unit = self.world.spawn((id, at(x, z), Team::new(team), life));
         if let Some(range) = sight {
             unit.insert(Sight::new(num(range)).unwrap());
         }
@@ -125,6 +129,10 @@ fn each_team_sees_the_cells_its_living_units_reveal() {
     let dead = scene.spawn(2, 5, 5, Some(20));
     let entity = scene.entity(dead);
     scene.world.entity_mut(entity).insert(Dead);
+    // An enemy with no life pool, as a projectile is, is no target: no query finds it.
+    let shell = scene.spawn(1, 1, 0, None);
+    let entity = scene.entity(shell);
+    scene.world.entity_mut(entity).remove::<Pools>();
     let team = |index| TeamSet::of(Team::new(index));
 
     // Before the first Vision stage each unit is seen by its team alone.
@@ -135,6 +143,7 @@ fn each_team_sees_the_cells_its_living_units_reveal() {
         teams,
         [team(0), team(1).with(Team::new(0)), team(1), team(2)]
     );
+    assert!(scene.seen_by(shell).contains(Team::new(0)));
 
     // Seen through the view: `find` returns both enemies within 10 m, `find_visible` and
     // `nearest_visible` only the one team 0 sees, and `can_see` asks the other's teams.

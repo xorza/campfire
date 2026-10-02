@@ -95,9 +95,9 @@ fn a_kit_takes_its_values_at_level_1_from_the_stat_book() {
     let speed = |base: i64| {
         caster(|stats| stats.get_mut(&MOVE_SPEED).unwrap().base = Num::from_int(base).unwrap())
     };
-    let fast = self::kit(&speed(7), None, life(&health), 30).unwrap();
+    let fast = self::kit(&speed(7), Some(&stay), life(&health), 30).unwrap();
     assert_eq!(fast.step.unwrap().get(), Num::from_bits(3_355_443));
-    let backward = self::kit(&speed(-1), None, life(&health), 30).unwrap();
+    let backward = self::kit(&speed(-1), Some(&stay), life(&health), 30).unwrap();
     assert_eq!(backward.step.unwrap().get(), Num::ZERO);
 
     // No combat section, no move speed, no pools: nothing of any.
@@ -118,7 +118,7 @@ fn a_kit_takes_its_values_at_level_1_from_the_stat_book() {
         stats.insert(mana.clone(), value);
     });
     let pools = [(PoolId::FIRST, &health), (PoolId::new(2).unwrap(), &mana)];
-    let kit = self::kit(&with_mana, None, pools, 30).unwrap();
+    let kit = self::kit(&with_mana, Some(&stay), pools, 30).unwrap();
     let pools = kit.pools.unwrap();
     let maxes = [0, 1, 2].map(|at| pools.max(PoolId::new(at).unwrap()));
     assert_eq!(maxes, [Some(decimal("280")), None, Some(decimal("100"))]);
@@ -128,7 +128,7 @@ fn a_kit_takes_its_values_at_level_1_from_the_stat_book() {
         min: None,
         max: Some(decimal("200")),
     };
-    let kit = kit_of(&caster(|_| ()), None, life(&health), 30, rule).unwrap();
+    let kit = kit_of(&caster(|_| ()), Some(&stay), life(&health), 30, rule).unwrap();
     assert_eq!(kit.pools.unwrap().max(PoolId::FIRST), Some(decimal("200")));
 }
 
@@ -153,7 +153,10 @@ fn a_kit_refuses_values_that_make_no_unit() {
     for (stats, error) in cases {
         assert_eq!(kit(&stats, Some(&despawn), life(&health), 30), Err(error));
     }
-    // A type with combat but without the life pool makes no unit.
+    // A type with combat but without the life pool makes no unit, and nor does one with the life
+    // pool but without combat, which would die and never be dead.
     let no_life = kit(&caster(|_| ()), Some(&despawn), [], 30);
     assert_eq!(no_life, Err(UnitKitError::NoLifePool));
+    let no_combat = kit(&caster(|_| ()), None, life(&health), 30);
+    assert_eq!(no_combat, Err(UnitKitError::NoCombat));
 }

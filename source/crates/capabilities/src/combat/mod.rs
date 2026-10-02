@@ -13,6 +13,7 @@ use campfire_sim::{
 use crate::actions::action_book::{ActionBook, RankValues};
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::purse::{Payer, Purse};
+use crate::actions::targets::Targets;
 use crate::actions::weapon::Weapon;
 use crate::actions::{Actions, ActionsSet};
 use crate::combat::assist_window::AssistWindow;
@@ -202,11 +203,16 @@ impl Combat {
     }
 }
 
-/// Fills a row of the script view with what combat holds: whether the unit lives and whether it
-/// stays when dead, and who struck it recently.
+/// Fills a row of the script view with what combat holds: whether the unit lives, whether it may
+/// be a target, whether it stays when dead, and who struck it recently.
 fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
-    fill.row.alive = !unit.contains::<Dead>();
+    let alive = !unit.contains::<Dead>();
+    fill.row.alive = alive;
     fill.row.stays = unit.get::<OnDeath>() == Some(&OnDeath::Stay);
+    fill.row.targetable = alive
+        && fill.world.get_resource::<LifePool>().is_some_and(|life| {
+            Targets::targetable(unit.get::<Pools>(), unit.get::<UnitTags>(), life.0)
+        });
     if let Some(recent) = unit.get::<RecentAttackers>() {
         fill.attacked(recent.iter());
     }

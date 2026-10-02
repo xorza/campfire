@@ -17,7 +17,6 @@ use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_api::MemberSpec;
 use crate::scripts::script_consts::ScriptConsts;
-use crate::units::block::Block;
 use crate::units::body::Body;
 use crate::units::engine_tag::EngineTag;
 use crate::units::filter::Filter;
@@ -92,6 +91,9 @@ pub(crate) struct UnitRow {
     pub(crate) alive: bool,
     /// Whether it stays when dead, for the mode to respawn.
     pub(crate) stays: bool,
+    /// Whether it may be a target: a living unit with the life pool whose tags let it be one, by
+    /// the rule `Targets` holds; combat fills it.
+    pub(crate) targetable: bool,
     /// The path it walks or stands on; `navigation` fills it.
     pub(crate) path: Option<PathId>,
     /// The teams that see it; `vision` fills it, and without vision every team does.
@@ -111,6 +113,7 @@ pub(crate) type RowSource = fn(&EntityRef<'_>, &mut RowFill<'_>);
 #[derive(Debug)]
 pub(crate) struct RowFill<'a> {
     pub(crate) row: &'a mut UnitRow,
+    pub(crate) world: &'a World,
     attacks: &'a mut Vec<RecentAttack>,
     columns: &'a mut ViewColumns,
 }
@@ -163,6 +166,7 @@ impl ScriptView {
                 spawn: unit.get::<SpawnPoint>().map(|spawn| spawn.get()),
                 alive: true,
                 stays: false,
+                targetable: false,
                 unit_type: unit.get::<UnitType>().copied(),
                 owner: unit.get::<Owner>().map(|owner| owner.slot()),
                 path: None,
@@ -173,6 +177,7 @@ impl ScriptView {
             };
             let mut fill = RowFill {
                 row: &mut row,
+                world,
                 attacks: &mut self.attacks,
                 columns: &mut self.columns,
             };
@@ -206,9 +211,8 @@ impl ScriptView {
         let filter = Filter::parse(filter, &self.types)?;
         let of = of.team;
         Ok(self.units.iter().enumerate().filter(move |(_, row)| {
-            let targetable = !row.tags.effects.blocks(Block::Target);
             let attitude = self.relations.between(of, row.team);
-            row.alive && targetable && filter.selects(attitude, row.tags.tags)
+            row.targetable && filter.selects(attitude, row.tags.tags)
         }))
     }
 }
@@ -446,9 +450,7 @@ impl View {
 
     /// Unit `id`, when it is a living unit that may be a target.
     pub(crate) fn living(&self, id: StableId) -> Option<LivingUnit> {
-        let row = self
-            .row(id)
-            .filter(|row| row.alive && !row.tags.effects.blocks(Block::Target))?;
+        let row = self.row(id).filter(|row| row.targetable)?;
         Some(LivingUnit {
             id,
             pos: row.pos,

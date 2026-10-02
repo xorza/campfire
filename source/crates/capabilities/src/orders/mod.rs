@@ -1,8 +1,8 @@
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{Has, QueryState, With, Without};
+use bevy_ecs::query::{Added, Has, QueryState, With, Without};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
-use bevy_ecs::system::{Local, Query, Res, ResMut};
+use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::{Mut, World};
 use campfire_math::{Tick, Ticks};
 use campfire_script::{ScriptError, ScriptId};
@@ -93,7 +93,7 @@ impl Orders {
             return;
         }
         world.insert_resource(ByType::<Ai>::default());
-        schedule.add_systems(think.in_set(SimSet::Think));
+        schedule.add_systems((end_dead_resets, think).chain().in_set(SimSet::Think));
     }
 
     /// The think period of `data` at `rate`, a tick at the least, for a script that defines
@@ -258,11 +258,15 @@ struct Due {
     period: Ticks,
 }
 
-/// A reset that ends this tick: its unit, and whether it died.
-#[derive(Debug, Clone, Copy)]
-struct Ended {
-    entity: Entity,
-    dead: bool,
+/// Ends the reset of each unit that died since the last Think stage, with nothing more: its AI
+/// thinks free of it when it lives again. No order reaches a dead unit, so it starts no reset.
+fn end_dead_resets(
+    mut commands: Commands<'_, '_>,
+    units: Query<'_, '_, Entity, (Added<Dead>, With<Resetting>)>,
+) {
+    for entity in &units {
+        commands.entity(entity).remove::<Resetting>();
+    }
 }
 
 /// Runs `on_think` for each living unit of a type with AI that is due, those due longest first,
@@ -271,23 +275,22 @@ struct Ended {
 /// then a period after each think. Each call's orders apply when it returns; a failed call's do
 /// not. A unit whose call finds the think pool spent stays due, so under load AI thinks later,
 /// and no unit misses its turn for good. First, each reset whose unit arrived, its destination
-/// dropped, ends with its pools full, and each whose unit died ends with nothing more: its AI
-/// thinks free of it.
+/// dropped, ends with its pools full.
 fn think(
     world: &mut World,
-    resetting: &mut QueryState<(Entity, Has<Dead>, Option<&Destination>), With<Resetting>>,
+    resetting: &mut QueryState<(Entity, Option<&Destination>), (With<Resetting>, Without<Dead>)>,
     thinkers: &mut QueryState<(Entity, &StableId, &UnitType, Option<&NextThink>), Without<Dead>>,
-    (mut due, mut reset): (Local<'_, Vec<Due>>, Local<'_, Vec<Ended>>),
+    (mut due, mut reset): (Local<'_, Vec<Due>>, Local<'_, Vec<Entity>>),
 ) {
     let now = world.resource::<SimTick>().start();
     reset.clear();
     reset.extend(
         resetting
             .iter(world)
-            .filter(|(_, dead, destination)| {
-                *dead || destination.is_none_or(|destination| destination.get().is_none())
+            .filter(|(_, destination)| {
+                destination.is_none_or(|destination| destination.get().is_none())
             })
-            .map(|(entity, dead, _)| Ended { entity, dead }),
+            .map(|(entity, _)| entity),
     );
     due.clear();
     let book = world.resource::<ByType<Ai>>();
@@ -311,10 +314,10 @@ fn think(
             });
         }
     }
-    for &Ended { entity, dead } in &*reset {
+    for &entity in &*reset {
         let mut unit = world.entity_mut(entity);
         unit.remove::<Resetting>();
-        if let (false, Some(mut pools)) = (dead, unit.get_mut::<Pools>()) {
+        if let Some(mut pools) = unit.get_mut::<Pools>() {
             pools.fill();
         }
     }

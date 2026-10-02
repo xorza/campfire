@@ -14,6 +14,8 @@ pub enum UnitKitError {
     NotPositive(Stat),
     /// It has a `combat` section but not the life pool.
     NoLifePool,
+    /// It has the life pool but no `combat` section.
+    NoCombat,
 }
 
 /// Why the mode's teams, relations or map do not load: they name what the mode does not have.
@@ -51,6 +53,7 @@ impl fmt::Display for UnitKitError {
             UnitKitError::MissingStat(stat) => write!(f, "stat {stat} is not declared"),
             UnitKitError::NotPositive(stat) => write!(f, "stat {stat} is not positive"),
             UnitKitError::NoLifePool => f.write_str("a unit type with combat lacks the life pool"),
+            UnitKitError::NoCombat => f.write_str("a unit type with the life pool lacks combat"),
         }
     }
 }

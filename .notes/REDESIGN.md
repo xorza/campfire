@@ -13,7 +13,7 @@ References: `R§n` is group n of `REVIEW.md`, `T§n` is group n of `TEST-REVIEW.
 | R1 Immutable books, built at load, shared | Package data is copied into the view, the frame and the state, and looked up by name after the load | R§7, R§9, R§11, R§12 |
 | R2 One load pipeline | The load check and the match build each validate and compute | R§6, R§1, R§9 |
 | R3 Strict layers with registered hooks | Lower modules import higher ones, and the core names every capability | R§8, R§10 |
-| R4 One rule of unit life and reach | "Living", "dead", "target" and "within reach" have several definitions | R§3 |
+| R4 One rule of reach | "Within reach" and "seen" have several definitions | R§3 |
 | R5 Stable order and one exactness rule | Some systems spend or allocate in query order, and some arithmetic rounds its own way | R§4, R§12 |
 | R6 A limit on work per tick, and fresh shared indexes | Navigation, vision, deliveries and the view have no work limit and no shared index | R§5, R§12 |
 | R7 State holds only state, and a restore is checked | Components store book data, and decoded state is trusted | R§1, R§7, R§10 |
@@ -148,23 +148,15 @@ capability_set, books
 - **The core row.** `RecentAttack` and the vision and navigation fields leave the core row for their columns.
 - **One table of capabilities.** The install order, `needs`, the layer of each module and the list in `lib.rs` all come from one table in `capability_set`.
 
-## R4. One rule of unit life and reach
+## R4. One rule of reach
 
 ### Problem
 
-- `Targets`, `View::living` and `Combat::living` give three answers to "is this a living target".
-- A unit with the life pool and no `[combat]` dies and is never dead.
-- `die` leaves a cast under way.
 - Script queries and auras measure from centres. Combat, areas and line projectiles measure from body edges. Homing projectiles hit at the centre.
 - A new unit is not seen by its own vision group in its first tick.
 
 ### Shape
 
-- **The life rule.**
-  - A unit type with the life pool needs a `[combat]` section. `Books::build` refuses one without it. No reference unit type breaks this rule today.
-  - `Combat::die` is the one place where a unit dies. It inserts `Dead`, records the death, clears the attack target, and stops every action under way or ordered (`ActionSlots::stop`).
-  - Navigation and orders react to `Added<Dead>` with a query of their own. They need no hook from combat.
-- **The target rule.** `Targets` lives in the `actions` layer, and it is the only predicate of a living target. The view's row holds the life-pool flag and reads the same rule, so `ctx.find`, `nearest_visible` and a cast's check at delivery agree with combat.
 - **The reach rule.** One `Reach` helper decides every reach, edge to edge, in the map's metric:
 
   ```rust
@@ -347,8 +339,7 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 
 | Step | Change | Needs | Size |
 |---|---|---|---|
-| E1 | The view reads the target rule; navigation and orders react to `Added<Dead>` | B | S |
-| E2 | `Reach` everywhere: queries, auras, homing hits; the aura rule; vision from spawn; new reference radii if decision 2 asks for them | E1 | M, changes behaviour |
+| E2 | `Reach` everywhere: queries, auras, homing hits; the aura rule; vision from spawn; new reference radii if decision 2 asks for them | B | M, changes behaviour |
 | F2 | `mul_div` and `round_ties_even`; the metric in scripts and homing; hit order by `along`; `RngStream`; ids at call time, so `ctx.projectile` and `ctx.area` return handles; the trig bound in design 09 | B | M, changes behaviour |
 | G1 | `register_*_checked` and a check for every type; absent resources removed; the state table test; the snapshot fuzz | A | M |
 | H1 | `BodyGrid`, read by deliveries and auras; one `(group, unit)` hit store; stuck walkers through the grid | B | M |
@@ -369,7 +360,7 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 ```
 Track S:  D5
 
-Track I:  E1 → E2      F2      G1      H1, H4      H2 → H3
+Track I:  E2      F2      G1      H1, H4      H2 → H3
 
 Joins:    G1 → G2      D5 + H1 → H1b
 ```
@@ -421,9 +412,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - lobby crash: B4;
   - several seats: B4.
 - **R§3:**
-  - cast survives death: B1;
-  - die and never dead: B1;
-  - three living rules: E1;
   - queries from centres: E2;
   - aura from centre: E2;
   - homing at centre: E2;

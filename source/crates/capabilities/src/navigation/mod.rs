@@ -1,7 +1,7 @@
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{Allow, Has, With, Without};
+use bevy_ecs::query::{Added, Allow, Has, With, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::{EntityRef, World};
@@ -80,7 +80,7 @@ impl Navigation {
         world.insert_resource(BodyIndex::new(Body::MAX_RADIUS));
         schedule.add_systems((
             track_static_bodies.in_set(SimSet::Inputs),
-            (route_units, plan_routes, steer, move_units)
+            (forget_dead, route_units, plan_routes, steer, move_units)
                 .chain()
                 .in_set(SimSet::Move),
             (track_static_bodies, collide)
@@ -397,10 +397,21 @@ fn steer(
     }
 }
 
-/// Walks each unit along its route, a step a tick: past each waypoint it reaches, on to the next
-/// with the rest of its step. Past the last it has arrived, and drops its destination and its
-/// route. A unit whose route waits for the planner walks the one it has, if any. A dead unit stays
-/// where it fell, and forgets where it walked to; one its tags stop keeps both.
+/// Makes each unit that died since the last Move stage forget where it walked to. No order
+/// reaches a dead unit, so it walks nowhere until it lives again.
+fn forget_dead(mut units: Query<'_, '_, (&mut Destination, &mut Route), Added<Dead>>) {
+    for (mut destination, mut route) in &mut units {
+        if destination.get().is_some() {
+            destination.set(None);
+            route.clear();
+        }
+    }
+}
+
+/// Walks each living unit along its route, a step a tick: past each waypoint it reaches, on to
+/// the next with the rest of its step. Past the last it has arrived, and drops its destination and
+/// its route. A unit whose route waits for the planner walks the one it has, if any. One its tags
+/// stop keeps both.
 fn move_units(
     mut units: Query<
         '_,
@@ -411,17 +422,12 @@ fn move_units(
             &mut Route,
             &MoveStep,
             Option<&UnitTags>,
-            Has<Dead>,
         ),
+        Without<Dead>,
     >,
 ) {
-    for (mut position, mut destination, mut route, step, tags, dead) in &mut units {
+    for (mut position, mut destination, mut route, step, tags) in &mut units {
         if destination.get().is_none() {
-            continue;
-        }
-        if dead {
-            destination.set(None);
-            route.clear();
             continue;
         }
         if !walks(Some(&destination), tags) {

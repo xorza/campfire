@@ -11,7 +11,6 @@ use super::*;
 use crate::actions::action_book::internals::{self, TestWeapon};
 use crate::actions::action_data::Range;
 use crate::actions::slot_kind::SlotKind;
-use crate::actions::targets::Targets;
 use crate::capability_set::internals::TestMatch;
 use crate::combat::armed::Armed;
 use crate::combat::combat_rules::{CombatRules, Leech};
