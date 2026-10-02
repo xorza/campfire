@@ -235,6 +235,13 @@ impl<'a> LoadCheck<'a> {
         let slotted = match &dependent.kind {
             DependentKind::Avatar(avatar) => {
                 let at = Place::Avatar(package.name.clone());
+                if !package.text.gives(avatar.name.as_str()) {
+                    return Err(LoadProblem::Unknown {
+                        of: NameKind::Message,
+                        at,
+                        name: avatar.name.to_string(),
+                    });
+                }
                 if avatar.unit.orders.is_some() {
                     return Err(LoadProblem::AvatarOrders);
                 }

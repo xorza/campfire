@@ -1,4 +1,4 @@
-name = "Gale"
+name = "hero-name"
 tags = ["support"]
 pools = ["health", "mana"]
 tracks = ["level"]

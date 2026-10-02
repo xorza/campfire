@@ -1,0 +1,14 @@
+name = "moba-de"
+version = "0.1.0"
+api = "1.0"
+language = "de"
+kind = "locale"
+
+# The heroes' text in German.
+[dependencies]
+hero-cinder = { path = "../../heroes/cinder" }
+hero-gale = { path = "../../heroes/gale" }
+hero-husk = { path = "../../heroes/husk" }
+hero-kensho = { path = "../../heroes/kensho" }
+hero-rime = { path = "../../heroes/rime" }
+hero-veil = { path = "../../heroes/veil" }

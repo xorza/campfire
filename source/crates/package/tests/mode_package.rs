@@ -1,10 +1,7 @@
 //! Each flaw a package can have fails the load of the reference packages with its own problem.
 
-use std::collections::BTreeMap;
 use std::fmt::Write;
-use std::fs;
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, OnceLock};
+use std::path::Path;
 
 use campfire_capabilities::{
     ActionField, ActionKind, EffectData, EffectTo, Effecting, EngineTag, Hook, MapProblem,
@@ -12,61 +9,11 @@ use campfire_capabilities::{
 };
 use campfire_package::{
     ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem, EffectProblem, Limit, LoadError,
-    LoadProblem, ModePackages, NameKind, PackageDir, PackageRef, Place,
+    LoadProblem, LocaleProblem, ModePackages, NameKind, PackageRef, Place,
 };
 use campfire_sim::Capability;
 
-fn moba() -> PathBuf {
-    PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packages/moba"))
-}
-
-/// Every file of the reference packages, by its path from their root, read from disk once.
-fn moba_files() -> &'static BTreeMap<PathBuf, Vec<u8>> {
-    static FILES: OnceLock<BTreeMap<PathBuf, Vec<u8>>> = OnceLock::new();
-    FILES.get_or_init(|| {
-        let mut files = BTreeMap::new();
-        read_tree(&moba(), Path::new(""), &mut files);
-        files
-    })
-}
-
-fn read_tree(dir: &Path, at: &Path, files: &mut BTreeMap<PathBuf, Vec<u8>>) {
-    for entry in fs::read_dir(dir).unwrap() {
-        let entry = entry.unwrap();
-        let path = at.join(entry.file_name());
-        if entry.file_type().unwrap().is_dir() {
-            read_tree(&entry.path(), &path, files);
-        } else {
-            files.insert(path, fs::read(entry.path()).unwrap());
-        }
-    }
-}
-
-/// The reference packages in memory with `edits` made, each to a file by its path from their
-/// root: their 3v3.
-fn edited<'a>(edits: impl IntoIterator<Item = (&'a str, Edit)>) -> PackageDir {
-    let mut files = moba_files().clone();
-    for (file, edit) in edits {
-        let path = PathBuf::from(file);
-        let text = match edit {
-            Edit::Replace(from, to) => {
-                let text = String::from_utf8(files[&path].clone()).unwrap();
-                assert!(text.contains(from), "{file}: {from}");
-                text.replacen(from, to, 1)
-            }
-            Edit::Create(text) => text.to_owned(),
-        };
-        files.insert(path, text.into_bytes());
-    }
-    PackageDir::in_memory(Arc::new(files), "modes/3v3")
-}
-
-/// Text put in place of the first of another, or the text of a new file.
-#[derive(Debug, Clone, Copy)]
-enum Edit {
-    Replace(&'static str, &'static str),
-    Create(&'static str),
-}
+use crate::moba::{Edit, edited, moba, moba_files};
 
 /// A flaw, the package it is in, and the problem it fails the load with.
 #[derive(Debug)]
@@ -99,6 +46,7 @@ const UNITS: &str = "modes/3v3/data/units.toml";
 const MAP: &str = "modes/3v3/map/map.toml";
 const HUSK: &str = "heroes/husk/data/avatar.toml";
 const HUSK_MANIFEST: &str = "heroes/husk/manifest.toml";
+const HUSK_TEXT: &str = "heroes/husk/locale/en.ftl";
 const GALE: &str = "heroes/gale/data/avatar.toml";
 const CINDER: &str = "heroes/cinder/data/avatar.toml";
 const VEIL: &str = "heroes/veil/data/avatar.toml";
@@ -260,7 +208,7 @@ fn more_tracks_than_a_unit_holds_fail_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 163] = [
+const FLAWS: [Flaw; 171] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -1112,6 +1060,63 @@ const FLAWS: [Flaw; 163] = [
         "hero-kensho",
         |problem| read_fails(problem, "data/avatar.toml", r#""Left" is not a name"#),
     ),
+    // Human text: each message an avatar names has a value in its own language's file, and each
+    // file under `locale/` is `<language>.ftl`, parses, defines no message twice, and in another
+    // language defines only the own file's messages.
+    flaw(
+        HUSK,
+        Edit::Replace(r#"name = "hero-name""#, r#"name = "hero-nam""#),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Message, at: Place::Avatar(package), name } if package == "hero-husk" && name == "hero-nam"),
+    ),
+    flaw(
+        HUSK,
+        Edit::Replace(r#"name = "hero-name""#, r#"name = "hero name""#),
+        "hero-husk",
+        |problem| {
+            read_fails(
+                problem,
+                "data/avatar.toml",
+                r#""hero name" is not a message id"#,
+            )
+        },
+    ),
+    flaw(
+        HUSK_TEXT,
+        Edit::Replace("hero-name = Husk", "hero-name =\n    .short = Hu"),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Message, name, .. } if name == "hero-name"),
+    ),
+    flaw(
+        HUSK_TEXT,
+        Edit::Replace("hero-name = Husk", "hero-name Husk"),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::Locale { path, problem: LocaleProblem::Parse(_) } if path.as_str() == "locale/en.ftl"),
+    ),
+    flaw(
+        HUSK_TEXT,
+        Edit::Replace("hero-name = Husk", "hero-name = Husk\nhero-name = Hulk"),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::Locale { problem: LocaleProblem::Repeated(id), .. } if id.as_str() == "hero-name"),
+    ),
+    flaw(
+        "heroes/husk/locale/de.ftl",
+        Edit::Create("hero-nme = Hülse\n"),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::Locale { path, problem: LocaleProblem::Stray(id) } if path.as_str() == "locale/de.ftl" && id.as_str() == "hero-nme"),
+    ),
+    flaw(
+        "heroes/husk/locale/de_DE.ftl",
+        Edit::Create("hero-name = Hülse\n"),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::Locale { path, problem: LocaleProblem::FileName } if path.as_str() == "locale/de_DE.ftl"),
+    ),
+    flaw(
+        HUSK_MANIFEST,
+        Edit::Replace(r#"language = "en""#, r#"language = "EN""#),
+        "hero-husk",
+        |problem| manifest_fails(problem, r#""EN" is not a language identifier"#),
+    ),
     // 2⁴⁰ is past the 2³⁹ a number holds.
     flaw(
         HUSK,
@@ -1664,7 +1669,7 @@ const FLAWS: [Flaw; 163] = [
             (
                 "more/manifest.toml",
                 Edit::Create(
-                    "name = \"more-spells\"\nversion = \"0.1.0\"\napi = \"1.0\"\nkind = \"loadout\"\n",
+                    "name = \"more-spells\"\nversion = \"0.1.0\"\napi = \"1.0\"\nlanguage = \"en\"\nkind = \"loadout\"\n",
                 ),
             ),
             (

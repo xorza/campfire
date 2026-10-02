@@ -1,4 +1,4 @@
-name = "Lancer"
+name = "hero-name"
 tags = ["test"]
 params = { xp = 80, basics = 3 }
 pools = ["health", "mana"]

@@ -5,15 +5,17 @@ use campfire_content::{Fingerprint, PackagePath};
 use campfire_script::ScriptHost;
 
 use crate::error::{LoadError, LoadProblem, PackageRef};
+use crate::files::manifest::PackageHeader;
 use crate::files::units_data::UnitTypeFile;
 use crate::package_files::PackageFiles;
+use crate::package_text::PackageText;
 use crate::script_facts::ScriptFacts;
 
 /// Where a package holds its game scripts.
 const SCRIPTS: &str = "scripts";
 
-/// A package as the load read it: its name, fingerprint and target release, and each of its
-/// scripts.
+/// A package as the load read it: its name, fingerprint and target release, each of its
+/// scripts, and its human text.
 #[derive(Debug)]
 pub struct Package {
     pub name: String,
@@ -21,6 +23,7 @@ pub struct Package {
     pub(crate) api: ApiVersion,
     /// Every file under `scripts/`, by path.
     pub scripts: Vec<Script>,
+    pub text: PackageText,
 }
 
 #[derive(Debug)]
@@ -31,13 +34,13 @@ pub struct Script {
 }
 
 impl Package {
-    /// The package of `files`, named `name` and targeting `api`, with every script it holds.
+    /// The package of `files`, of `header`, with every script it holds and its text.
     pub(crate) fn read(
         files: &PackageFiles,
-        name: String,
-        api: ApiVersion,
+        header: &PackageHeader,
         parser: &ScriptHost,
     ) -> Result<Package, LoadError> {
+        let name = header.name.clone();
         let fail = |problem| LoadError {
             package: PackageRef::Name(name.clone()),
             problem: Box::new(problem),
@@ -59,11 +62,13 @@ impl Package {
                 source: source.to_owned(),
             });
         }
+        let text = PackageText::read(files, &header.language).map_err(fail)?;
         Ok(Package {
             name,
             fingerprint: files.fingerprint(),
-            api,
+            api: header.api,
             scripts,
+            text,
         })
     }
 

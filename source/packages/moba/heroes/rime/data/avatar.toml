@@ -1,4 +1,4 @@
-name = "Rime"
+name = "hero-name"
 tags = ["marksman"]
 pools = ["health", "mana"]
 tracks = ["level"]

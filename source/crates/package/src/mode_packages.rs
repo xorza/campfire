@@ -6,7 +6,7 @@ use campfire_capabilities::{
     CollisionData, DeclaredName, EngineStat, EngineTag, MapData, ModeData, Param, Stat, StatGraph,
     StatsData, Walker,
 };
-use campfire_content::{Fingerprint, PackagePath};
+use campfire_content::{Fingerprint, MessageId, PackagePath};
 use campfire_script::ScriptHost;
 
 use crate::error::{ContentError, Limit, LoadError, LoadProblem, PackageRef, StoreError};
@@ -56,10 +56,10 @@ pub enum DependentKind {
     Loadout,
 }
 
-/// An avatar's unit type, and the name players see for it.
+/// An avatar's unit type, and the message of the name players see for it.
 #[derive(Debug)]
 pub struct AvatarUnit {
-    pub name: String,
+    pub name: MessageId,
     pub unit: UnitTypeFile,
 }
 
@@ -346,7 +346,7 @@ impl ModePackages {
             .read_data(&path(MAP_DATA))
             .map_err(content_error)
             .map_err(fail)?;
-        let mode = Package::read(files, name.clone(), manifest.header.api, &parser)?;
+        let mode = Package::read(files, &manifest.header, &parser)?;
         let dependencies = dependencies
             .iter()
             .map(|(name, files)| Dependent::read(name, files, &parser))
@@ -398,9 +398,9 @@ impl Dependent {
                 let content = content.map_err(content_error).map_err(fail)?;
                 (content, DependentKind::Loadout)
             }
-            Manifest::Mode(_) => return Err(fail(LoadProblem::WrongKind)),
+            Manifest::Mode(_) | Manifest::Locale(_) => return Err(fail(LoadProblem::WrongKind)),
         };
-        let package = Package::read(files, name.to_owned(), header.api, parser)?;
+        let package = Package::read(files, header, parser)?;
         Ok(Dependent {
             package,
             content,

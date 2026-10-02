@@ -12,10 +12,13 @@ campfire-math.workspace = true
 campfire-script.workspace = true
 campfire-sim.workspace = true
 
+fluent-bundle.workspace = true
+fluent-syntax.workspace = true
 postcard.workspace = true
 serde.workspace = true
 sha2.workspace = true
 toml.workspace = true
+unic-langid.workspace = true
 
 [lints]
 workspace = true

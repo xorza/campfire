@@ -164,7 +164,7 @@ fn a_package_reads_its_own_files_only() {
     let path = |text| PackagePath::parse(text).unwrap();
     let husk = husk().read().unwrap();
     let hero: Hero = husk.read_data(&path("data/avatar.toml")).unwrap();
-    assert_eq!(hero.name, "Husk");
+    assert_eq!(hero.name, "hero-name");
     assert_eq!(hero.slots["basic"][2], "lash_out");
     assert!(hero.actions.contains_key("lash_out"));
     let script = husk.read_text(&path("scripts/lash_out.rhai")).unwrap();

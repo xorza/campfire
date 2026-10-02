@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 
 use campfire_capabilities::{ApiVersion, CapabilitySet, ScriptLimits, Speed, TeamManifest};
+use campfire_content::Language;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
@@ -15,16 +16,27 @@ pub enum Manifest {
     Mode(ModeManifest),
     Avatar(PackageHeader),
     Loadout(PackageHeader),
+    Locale(LocaleManifest),
 }
 
-/// What every manifest starts with: the package's name and version, and the package API version
-/// it targets.
+/// What every manifest starts with: the package's name and version, the package API version it
+/// targets, and the language of its own text.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PackageHeader {
     pub name: String,
     pub version: Version,
     pub api: ApiVersion,
+    pub language: Language,
+}
+
+/// A locale package's manifest: its header's fields, and the packages it translates, in one
+/// table.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LocaleManifest {
+    pub header: PackageHeader,
+    /// By name; in the workspace each is a path, relative to the manifest.
+    pub dependencies: BTreeMap<String, Dependency>,
 }
 
 /// A mode's manifest: its header's fields, then the rules its matches run by, in one table.
@@ -125,6 +137,7 @@ impl Manifest {
         match self {
             Manifest::Mode(mode) => &mode.header,
             Manifest::Avatar(header) | Manifest::Loadout(header) => header,
+            Manifest::Locale(locale) => &locale.header,
         }
     }
 }
@@ -138,6 +151,7 @@ impl<'de> Deserialize<'de> for ModeManifest {
             name: String,
             version: Version,
             api: ApiVersion,
+            language: Language,
             capabilities: CapabilitySet,
             tick_hz: TickRange,
             teams: Vec<TeamManifest>,
@@ -153,6 +167,7 @@ impl<'de> Deserialize<'de> for ModeManifest {
                 name: fields.name,
                 version: fields.version,
                 api: fields.api,
+                language: fields.language,
             },
             capabilities: fields.capabilities,
             tick_hz: fields.tick_hz,
@@ -160,6 +175,31 @@ impl<'de> Deserialize<'de> for ModeManifest {
             backends: fields.backends,
             max_move_speed: fields.max_move_speed,
             script_limits: fields.script_limits,
+            dependencies: fields.dependencies,
+        })
+    }
+}
+
+/// The flat table of a locale package's manifest, its header's fields beside its dependencies.
+impl<'de> Deserialize<'de> for LocaleManifest {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<LocaleManifest, D::Error> {
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct Fields {
+            name: String,
+            version: Version,
+            api: ApiVersion,
+            language: Language,
+            dependencies: BTreeMap<String, Dependency>,
+        }
+        let fields = Fields::deserialize(deserializer)?;
+        Ok(LocaleManifest {
+            header: PackageHeader {
+                name: fields.name,
+                version: fields.version,
+                api: fields.api,
+                language: fields.language,
+            },
             dependencies: fields.dependencies,
         })
     }

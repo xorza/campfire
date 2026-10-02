@@ -1,4 +1,4 @@
-name = "Husk"
+name = "hero-name"
 tags = ["tank"]
 pools = ["health", "mana"]
 tracks = ["level"]

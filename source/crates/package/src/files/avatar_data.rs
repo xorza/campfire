@@ -1,3 +1,4 @@
+use campfire_content::MessageId;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
@@ -8,7 +9,8 @@ use crate::files::units_data::UnitTypeFile;
 /// fields sit at the top of the table, and its content.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AvatarData {
-    pub name: String,
+    /// The message of the name players see.
+    pub name: MessageId,
     pub unit: UnitTypeFile,
     pub content: PackageContent,
 }
@@ -17,7 +19,7 @@ impl<'de> Deserialize<'de> for AvatarData {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<AvatarData, D::Error> {
         #[derive(Debug, Deserialize)]
         struct Fields {
-            name: String,
+            name: MessageId,
             #[serde(flatten)]
             rest: toml::Table,
         }

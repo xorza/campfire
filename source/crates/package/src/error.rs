@@ -7,9 +7,10 @@ use campfire_capabilities::{
     ActionField, ActionKind, ActionSlots, ApiVersion, DeclaredName, EngineTag, Hook, MapProblem,
     ModeError, PlannedEffect, Pools, ResourceId, Stat, TrackId,
 };
-use campfire_content::{Fingerprint, PackagePath};
+use campfire_content::{Fingerprint, MessageId, PackagePath};
 use campfire_script::ScriptError;
 use campfire_sim::Capability;
+use fluent_syntax::parser::ParserError;
 use toml::de::Error as TomlError;
 
 /// Why a package file does not load. Packages are untrusted, so each is an expected failure.
@@ -240,6 +241,25 @@ pub enum LoadProblem {
     },
     /// A unit type or a modifier at `at` carries a tag only the engine gives.
     EngineTag { at: Place, tag: EngineTag },
+    /// A file of human text at `path`.
+    Locale {
+        path: PackagePath,
+        problem: LocaleProblem,
+    },
+}
+
+/// What is wrong with a file of human text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LocaleProblem {
+    /// Its name is not `<language>.ftl`, or in a locale package `<package>/<language>.ftl` of a
+    /// package it depends on, the language an identifier in its canonical spelling.
+    FileName,
+    /// It does not parse as Fluent, first at this error.
+    Parse(ParserError),
+    /// It defines the message twice.
+    Repeated(MessageId),
+    /// A translation defines the message, which the file of its package's own language does not.
+    Stray(MessageId),
 }
 
 /// What is wrong with an effect of an action's list.
@@ -442,6 +462,24 @@ impl fmt::Display for Place {
     }
 }
 
+impl fmt::Display for LocaleProblem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LocaleProblem::FileName => {
+                f.write_str("not <language>.ftl, its language in its canonical spelling")
+            }
+            LocaleProblem::Parse(error) => write!(f, "{error}"),
+            LocaleProblem::Repeated(id) => write!(f, "message {id} twice"),
+            LocaleProblem::Stray(id) => {
+                write!(
+                    f,
+                    "message {id}, which the package's own language does not define"
+                )
+            }
+        }
+    }
+}
+
 /// What kind of name a load did not find.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NameKind {
@@ -457,6 +495,7 @@ pub enum NameKind {
     DamageKind,
     Track,
     UnitType,
+    Message,
 }
 
 /// What a mode declares more of than a match holds.
@@ -504,6 +543,7 @@ impl fmt::Display for NameKind {
             NameKind::DamageKind => "damage kind",
             NameKind::Track => "track",
             NameKind::UnitType => "unit type",
+            NameKind::Message => "message",
         })
     }
 }
@@ -632,6 +672,7 @@ impl fmt::Display for LoadProblem {
             LoadProblem::NoLifePool => f.write_str("combat with no [combat] life"),
             LoadProblem::LifePoolMissing(at) => write!(f, "{at}: combat without the life pool"),
             LoadProblem::CombatMissing(at) => write!(f, "{at}: the life pool without combat"),
+            LoadProblem::Locale { path, problem } => write!(f, "{path}: {problem}"),
             LoadProblem::EngineTag { at, tag } => {
                 write!(f, "{at}: {:?}, a tag only the engine gives", tag.name())
             }
