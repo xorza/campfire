@@ -37,7 +37,7 @@ impl AreasApi {
         let launcher = Delivering::of(ctx, |shape| shape == DeliveryShape::Area)?;
         ctx.queue(AreaEffect {
             by: launcher.by,
-            unit_type: launcher.unit_type,
+            unit_type: launcher.delivery.unit_type,
             at,
         })
     }

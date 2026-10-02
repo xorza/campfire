@@ -278,6 +278,7 @@ pub(crate) mod internals {
     use crate::actions::action_names::ActionNames;
     use crate::actions::error::ActionError;
     use crate::combat::damage_kind::DamageKind;
+    use crate::projectiles::projectile_spec::ProjectileSpec;
     use crate::scripts::script_book::ScriptBook;
     use crate::stats::modifier_book::ModifierBook;
     use crate::stats::modifier_book::ModifierId;
@@ -285,6 +286,7 @@ pub(crate) mod internals {
     use crate::stats::stat::Stat;
     use crate::stats::stat_book::StatBook;
     use crate::stats::stat_id::StatId;
+    use crate::units::by_type::ByType;
     use crate::units::filter::Filter;
     use crate::units::script_view::View;
     use crate::units::type_scope::TypeScope;
@@ -313,6 +315,7 @@ pub(crate) mod internals {
             let rate = *world.resource::<TickRate>();
             let view = world.non_send::<View>().clone();
             let names = MatchNames {
+                world,
                 view: &view,
                 modifiers: world.resource::<ModifierBook>(),
             };
@@ -329,10 +332,11 @@ pub(crate) mod internals {
         }
     }
 
-    /// The names of an action's data as a match's world resolves them: its view, and its book of
-    /// modifiers.
+    /// The names of an action's data as a match's world resolves them: its view, its book of
+    /// modifiers, and the world's projectile specs.
     #[derive(Debug)]
     struct MatchNames<'w> {
+        world: &'w World,
         view: &'w View,
         modifiers: &'w ModifierBook,
     }
@@ -364,6 +368,15 @@ pub(crate) mod internals {
             self.modifiers
                 .named(package, name.as_str())
                 .expect("the load checked the modifier")
+        }
+
+        fn homes(&self, package: u16, name: &DeclaredName) -> bool {
+            let unit_type = self.unit_type(package, name);
+            let specs = self.world.resource::<ByType<ProjectileSpec>>();
+            specs
+                .get(unit_type)
+                .expect("a test loads a projectile type's spec before its action")
+                .homing
         }
 
         fn unit_type(&self, package: u16, name: &DeclaredName) -> UnitType {

@@ -89,6 +89,8 @@ The copies stay in line only through load order and a `debug_assert`. PLAN step 
   - "Spawn a projectile type" then cannot be expressed.
   - `ByType<ProjectileSpec>` and `ByType<AreaSpec>` go away.
   - The type's tags are held once, in this entry.
+
+  The layer rule blocks this shape: `UnitTypes` is in `units`, and a role that holds `UnitKit`, `ProjectileSpec` and `AreaSpec` imports three higher layers. So each capability keeps its `ByType` book, and an action's delivery says whether its projectiles home (C8). The one store of type tags waits for the test harness (T§2.1): the test worlds build their tag books after they load types, which a single store refuses.
 - **Engine tags take reserved `TagId`s:** `avatar`, `projectile`, `area` and, later, `item`. A tag name is a checked `TagName` newtype, so `a:b`, `!x` and `""` fail where they enter. A package that declares an engine tag fails at load.
 
 ### What goes away
@@ -588,7 +590,7 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - instance book data: G2;
   - package data in state: G2;
   - level twice: G2;
-  - tags twice: C8;
+  - tags twice: with the harness (T§2.1);
   - stat list three times: C6a;
   - call package: D4;
   - cast kind in state: G2;

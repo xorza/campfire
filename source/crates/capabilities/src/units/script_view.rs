@@ -65,9 +65,6 @@ pub(crate) struct ScriptView {
     actions: ActionBook,
     /// The names scripts read, as they read them.
     consts: ScriptConsts,
-    /// Whether each unit type is a projectile type that homes, by unit type; a type past its
-    /// end does not.
-    homing: Vec<bool>,
     /// How each installed capability above the core fills its fields of a row, in install order.
     sources: Vec<RowSource>,
     rate: TickRate,
@@ -325,7 +322,6 @@ impl View {
             paths: Arc::default(),
             consts: ScriptConsts::default(),
             actions: ActionBook::default(),
-            homing: Vec::new(),
             sources: Vec::new(),
             rate,
             now: Tick::ZERO,
@@ -560,24 +556,6 @@ impl View {
         let mut view = self.0.borrow_mut();
         view.consts.set_actions(book.names());
         view.actions = book;
-    }
-
-    /// Marks `unit_type` as a projectile type that homes.
-    pub(crate) fn set_homing(&self, unit_type: UnitType) {
-        let homing = &mut self.0.borrow_mut().homing;
-        let index = unit_type.index();
-        if homing.len() <= index {
-            homing.resize(index + 1, false);
-        }
-        homing[index] = true;
-    }
-
-    /// Whether `unit_type` is a projectile type that homes on a unit.
-    pub(crate) fn homes(&self, unit_type: UnitType) -> bool {
-        let view = self.0.borrow();
-        view.homing
-            .get(unit_type.index())
-            .is_some_and(|&homes| homes)
     }
 
     /// How ability `id` delivers, if other than at once.

@@ -165,7 +165,7 @@ fn apply(world: &mut World, ctx: &Ctx, now: Tick, entity: Entity, prepared: &Pre
     match book.get(by.action).and_then(|action| action.delivery) {
         Some(Delivery {
             unit_type,
-            shape: DeliveryShape::Projectile(fan),
+            shape: DeliveryShape::Projectile { fan, .. },
         }) => {
             Projectiles::deliver(world, by, from, unit_type, fan, prepared.aim);
         }

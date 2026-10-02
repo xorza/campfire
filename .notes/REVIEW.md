@@ -80,7 +80,6 @@ The package load should be the one place that refuses bad data. Today some check
 
 Each item is a second copy of data that one book owns. The copies are kept in line by load order, by hand or not at all.
 
-- [ ] **The script view copies the projectile types that home** — `capabilities/src/units/script_view.rs`, `books/mod.rs`. It keeps its own list, filled at install from the projectile specs. Better: the action's delivery says whether it homes (C8).
 - [ ] **Instances store book data in state** — `capabilities/src/stats/modifiers.rs:51-53,75-80`. `Instance.tags`, and each change's stat and op, copy the book. They are hashed, snapshotted and trusted on restore, so a forged snapshot can grant any tags. Better: read them from the book by `instance.id`.
 - [ ] **Package data is copied into match state** — `capabilities/src/mode/player_resources.rs:14`, `production/train_queue.rs:14`. `PlayerResources.resources` and `TrainQueue.capacity` are package data, hashed and snapshotted. Better: read each from its book.
 - [ ] **The level track's level is stored twice** — `capabilities/src/progression/mod.rs:84-88`, `progression/experience.rs:21-25`. It is in `Experience` and in `Level`, and nothing checks that they agree. Better: `Experience` keeps only the experience for the level track.

@@ -74,10 +74,11 @@ pub(crate) struct Delivery {
     pub(crate) shape: DeliveryShape,
 }
 
-/// The shape of a delivery: a fan of projectiles, or an area.
+/// The shape of a delivery: a fan of projectiles, which home on a unit when their type does, or
+/// an area.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DeliveryShape {
-    Projectile(Fan),
+    Projectile { fan: Fan, homes: bool },
     Area,
 }
 
@@ -158,14 +159,18 @@ impl ActionParts {
             }
             kind => panic!("the load runs no {kind:?}"),
         };
-        let delivery = data.delivery.as_ref().map(|delivery| Delivery {
-            unit_type: names.unit_type(package, delivery.unit_type()),
-            shape: match *delivery {
+        let delivery = data.delivery.as_ref().map(|delivery| {
+            let unit_type = names.unit_type(package, delivery.unit_type());
+            let shape = match *delivery {
                 DeliveryData::Projectile {
                     count, spread_deg, ..
-                } => DeliveryShape::Projectile(Fan { count, spread_deg }),
+                } => DeliveryShape::Projectile {
+                    fan: Fan { count, spread_deg },
+                    homes: names.homes(package, delivery.unit_type()),
+                },
                 DeliveryData::Area { .. } => DeliveryShape::Area,
-            },
+            };
+            Delivery { unit_type, shape }
         });
         Ok(ActionParts {
             kind,
@@ -472,10 +477,13 @@ pub(crate) mod internals {
     pub(crate) fn weapon(book: &mut ActionBook, weapon: TestWeapon) -> ActionId {
         let delivery = weapon.projectile.map(|unit_type| Delivery {
             unit_type,
-            shape: DeliveryShape::Projectile(Fan {
-                count: NonZeroU8::MIN,
-                spread_deg: Num::ZERO,
-            }),
+            shape: DeliveryShape::Projectile {
+                fan: Fan {
+                    count: NonZeroU8::MIN,
+                    spread_deg: Num::ZERO,
+                },
+                homes: true,
+            },
         });
         let id = ActionId(u32::try_from(book.actions.len()).unwrap());
         Arc::make_mut(&mut book.actions).push(Action {

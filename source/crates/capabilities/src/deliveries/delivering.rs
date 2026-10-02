@@ -1,11 +1,10 @@
 use campfire_sim::StableId;
 use serde::{Deserialize, Serialize};
 
-use crate::actions::action_book::{ActionId, DeliveryShape};
+use crate::actions::action_book::{ActionId, Delivery, DeliveryShape};
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::role_set::RoleSet;
-use crate::units::unit_type::UnitType;
 
 /// What a delivery belongs to: the unit that delivers it, and its action at `rank`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -15,11 +14,11 @@ pub(crate) struct Delivering {
     pub(crate) rank: u8,
 }
 
-/// One more delivery a call launches: what it belongs to, and the unit type it delivers.
+/// One more delivery a call launches: what it belongs to, and its action's delivery.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Launcher {
     pub(crate) by: Delivering,
-    pub(crate) unit_type: UnitType,
+    pub(crate) delivery: Delivery,
 }
 
 impl Delivering {
@@ -43,9 +42,6 @@ impl Delivering {
             action,
             rank,
         };
-        Ok(Launcher {
-            by,
-            unit_type: delivery.unit_type,
-        })
+        Ok(Launcher { by, delivery })
     }
 }

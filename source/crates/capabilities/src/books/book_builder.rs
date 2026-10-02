@@ -346,9 +346,6 @@ impl<'a> BookBuilder<'a> {
             books.types.give_tag(unit_type, EngineTag::Projectile.tag());
             let spec = ProjectileSpec::of(projectile, &books.types, rate);
             books.projectiles.set(unit_type, spec);
-            if projectile.homing {
-                books.homing.push(unit_type);
-            }
         }
         if let Some(area) = &file.area {
             books.types.give_tag(unit_type, EngineTag::Area.tag());
@@ -425,6 +422,12 @@ impl ActionNames for BuildNames<'_> {
     fn unit_type(&self, package: u16, name: &DeclaredName) -> UnitType {
         let scope = TypeScope::of_package(package);
         self.types.named(scope, name.as_str()).expect(CHECKED)
+    }
+
+    fn homes(&self, package: u16, name: &DeclaredName) -> bool {
+        let units = &self.input.packages[usize::from(package)].content.units;
+        let projectile = units.get(name).and_then(|file| file.projectile.as_ref());
+        projectile.expect(CHECKED).homing
     }
 }
 

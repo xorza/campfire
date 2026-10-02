@@ -19,7 +19,6 @@ use crate::scripts::ctx::Ctx;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::param_book::{ParamBook, ParamTables};
 use crate::units::by_type::ByType;
-use crate::units::unit_type::UnitType;
 use crate::units::unit_types::UnitTypes;
 
 pub(crate) mod book_builder;
@@ -52,8 +51,6 @@ pub(crate) struct BookParts {
     ais: ByType<Ai>,
     projectiles: ByType<ProjectileSpec>,
     areas: ByType<AreaSpec>,
-    /// The projectile types that home.
-    homing: Vec<UnitType>,
     units: ModeUnits,
 }
 
@@ -107,9 +104,6 @@ impl Books {
             world.insert_resource(tracks);
         }
         view.set_actions(parts.actions.clone());
-        for &unit_type in &parts.homing {
-            view.set_homing(unit_type);
-        }
         replace(world, parts.modifiers);
         replace(world, parts.actions);
         replace(world, parts.effects);

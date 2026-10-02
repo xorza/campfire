@@ -333,9 +333,6 @@ pub(crate) mod internals {
                 types.give_tag(unit_type, EngineTag::Projectile.tag());
                 ProjectileSpec::of(data, &types, rate)
             };
-            if data.homing {
-                view.set_homing(unit_type);
-            }
             world
                 .resource_mut::<ByType<ProjectileSpec>>()
                 .set(unit_type, spec);

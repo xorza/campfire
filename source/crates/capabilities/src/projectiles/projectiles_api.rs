@@ -57,13 +57,19 @@ impl ProjectilesApi {
     /// Queues a projectile of the running action, which delivers projectiles, from its acting
     /// unit; an error for a form its type does not fly in.
     fn launch(ctx: &Ctx, from: Position, toward: Toward) -> Checked<()> {
-        let launcher = Delivering::of(ctx, |shape| matches!(shape, DeliveryShape::Projectile(_)))?;
-        if ctx.view().homes(launcher.unit_type) != matches!(toward, Toward::Unit(_)) {
+        let launcher = Delivering::of(ctx, |shape| {
+            matches!(shape, DeliveryShape::Projectile { .. })
+        })?;
+        let homes = matches!(
+            launcher.delivery.shape,
+            DeliveryShape::Projectile { homes: true, .. }
+        );
+        if homes != matches!(toward, Toward::Unit(_)) {
             return Err(ApiError::OtherFlight.fail().into());
         }
         ctx.queue(ProjectileEffect {
             by: launcher.by,
-            unit_type: launcher.unit_type,
+            unit_type: launcher.delivery.unit_type,
             from,
             toward,
         })
