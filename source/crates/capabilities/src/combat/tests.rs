@@ -872,7 +872,7 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
         shield(1, Some(50), 20),
         shield(2, Some(30), 10),
     ]
-    .map(|instance| Application::refresh(instance));
+    .map(Application::refresh);
     fight.sim.insert(target, Modifiers::bundle(shields));
     let shields = |fight: &Fight| {
         let clocks = fight.sim.try_get::<ModifierClocks>(target).unwrap();

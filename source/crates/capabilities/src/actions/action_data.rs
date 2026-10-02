@@ -363,6 +363,8 @@ impl<'de> Deserialize<'de> for Range {
 
 #[cfg(test)]
 pub(crate) mod internals {
+    use std::collections::BTreeMap;
+
     use crate::actions::action_data::{ActionData, Targeting};
     use crate::actions::action_kind::ActionKind;
 
@@ -375,7 +377,7 @@ pub(crate) mod internals {
                 targeting,
                 range: None,
                 cooldown_ms: None,
-                cost: Default::default(),
+                cost: BTreeMap::new(),
                 windup_ms: None,
                 clamp_to_range: false,
                 toggle: None,
@@ -390,8 +392,8 @@ pub(crate) mod internals {
                 damage: None,
                 damage_kind: None,
                 unit_type: None,
-                params: Default::default(),
-                projectile_state: Default::default(),
+                params: BTreeMap::new(),
+                projectile_state: BTreeMap::new(),
                 on_resolve: Vec::new(),
                 on_hit: Vec::new(),
                 on_end: Vec::new(),
