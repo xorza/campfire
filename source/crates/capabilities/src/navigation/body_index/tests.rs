@@ -1,15 +1,10 @@
 use campfire_sim::IdAllocator;
 
 use super::*;
-
-fn num(value: i64) -> Num {
-    Num::from_int(value).unwrap()
-}
-
 fn body(id: StableId, x: i64, z: i64, radius: Num) -> IndexedBody {
     IndexedBody {
         id,
-        at: Position::new(Vec3::new(num(x), Num::ZERO, num(z))).unwrap(),
+        at: Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap(),
         radius,
         layer: Layer::FIRST,
     }
@@ -17,9 +12,14 @@ fn body(id: StableId, x: i64, z: i64, radius: Num) -> IndexedBody {
 
 fn near_on(index: &BodyIndex, layer: Layer, x: i64, z: i64, reach: Num) -> Vec<StableId> {
     let mut found = Vec::new();
-    index.near(layer, Vec3::new(num(x), Num::ZERO, num(z)), reach, |body| {
-        found.push(body.id);
-    });
+    index.near(
+        layer,
+        Vec3::new(Num::int(x), Num::ZERO, Num::int(z)),
+        reach,
+        |body| {
+            found.push(body.id);
+        },
+    );
     found
 }
 
@@ -37,7 +37,7 @@ fn the_index_finds_each_body_near_once_and_follows_its_changes() {
     // 1 m at (3, 3) covers buckets 1 to 2, 4 of them; one at (40, 0), buckets 19 to 20 along x
     // and −1 to 0 along z.
     let bodies = [
-        body(wide, 0, 0, num(5)),
+        body(wide, 0, 0, Num::int(5)),
         body(small, 3, 3, Num::ONE),
         body(far, 40, 0, Num::ONE),
     ];
@@ -55,13 +55,13 @@ fn the_index_finds_each_body_near_once_and_follows_its_changes() {
     assert_eq!(near(&index, 3, 3, Num::ONE), [wide, small]);
     assert_eq!(near(&index, 0, 0, Num::ONE), [wide]);
     assert_eq!(near(&index, 20, 0, Num::ONE), []);
-    assert_eq!(near(&index, 20, 0, num(20)), [wide, far, small]);
+    assert_eq!(near(&index, 20, 0, Num::int(20)), [wide, far, small]);
 
     // The wide body moves to (40, 20): it is taken away and put in again; the small body
     // goes, and a new one comes.
     let new = ids.allocate();
     let moved = [
-        body(wide, 40, 20, num(5)),
+        body(wide, 40, 20, Num::int(5)),
         body(far, 40, 0, Num::ONE),
         body(new, -10, -10, Num::ONE),
     ];
@@ -93,12 +93,12 @@ fn the_index_finds_each_body_near_once_and_follows_its_changes() {
     assert_eq!(near(&index, -10, -10, Num::ONE), [new]);
     assert_eq!(near_on(&index, air, -10, -10, Num::ONE), [above]);
     assert_eq!(near_on(&index, Layer::new(2), -10, -10, Num::ONE), []);
-    let at = |x| Position::new(Vec3::new(num(x), Num::ZERO, num(-13))).unwrap();
+    let at = |x| Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(-13))).unwrap();
     let (beside, past) = (Segment::new(at(-12), at(-7)), Segment::new(at(30), at(31)));
     for (layer, blocked) in [(Layer::FIRST, true), (air, true), (Layer::new(2), false)] {
         let walker = Walker {
             layer,
-            radius: num(3),
+            radius: Num::int(3),
         };
         // 3 m from each center to the segment along z = −13: within the radii's 1 + 3 = 4 m.
         assert_eq!(index.blocks(beside, walker), blocked, "{layer:?}");
@@ -129,7 +129,7 @@ fn a_search_meets_exactly_the_bodies_whose_buckets_it_covers() {
     assert!(index.update(&bodies));
     let bucket = index.bucket;
     for (x, z, reach) in [(0, 0, 1), (5, -7, 3), (-17, 11, 0), (13, 13, 6), (2, 19, 2)] {
-        let reach = num(reach);
+        let reach = Num::int(reach);
         let mut met = near(&index, x, z, reach);
         let count = met.len();
         met.sort_unstable();
@@ -141,15 +141,16 @@ fn a_search_meets_exactly_the_bodies_whose_buckets_it_covers() {
             .iter()
             .filter(|body| {
                 let at = body.at.get();
-                let rows = BodyIndex::buckets(bucket, num(z), reach);
-                let columns = BodyIndex::buckets(bucket, num(x), reach);
+                let rows = BodyIndex::buckets(bucket, Num::int(z), reach);
+                let columns = BodyIndex::buckets(bucket, Num::int(x), reach);
                 meets(BodyIndex::buckets(bucket, at.z, body.radius), rows)
                     && meets(BodyIndex::buckets(bucket, at.x, body.radius), columns)
             })
             .map(|body| body.id)
             .collect();
         assert_eq!(met, expected, "({x}, {z})");
-        let point = |x: i64, z: i64| Position::new(Vec3::new(num(x), Num::ZERO, num(z))).unwrap();
+        let point =
+            |x: i64, z: i64| Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap();
         let segment = Segment::new(point(x, z), point(x + 4, z - 2));
         let walker = Walker {
             layer: Layer::FIRST,

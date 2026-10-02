@@ -95,11 +95,15 @@ fn on_level_up(ctx, unit, track, level) {
     // 500 more makes 600.5, past level 3's 300, the last; level 3 adds 50 valor, valor's level 2,
     // and its `on_level_up` runs in the same tick.
     let steps = [
-        ("99", (num(99), 1, Num::ZERO, Some(1)), ""),
-        ("1.5", (num(100) + half, 2, Num::ZERO, Some(1)), "level 2;"),
+        ("99", (Num::int(99), 1, Num::ZERO, Some(1)), ""),
+        (
+            "1.5",
+            (Num::int(100) + half, 2, Num::ZERO, Some(1)),
+            "level 2;",
+        ),
         (
             "500",
-            (num(600) + half, 3, num(50), Some(2)),
+            (Num::int(600) + half, 3, Num::int(50), Some(2)),
             "level 2;level 3;valor 2;",
         ),
     ];
@@ -125,7 +129,7 @@ fn on_level_up(ctx, unit, track, level) {
         assert_eq!(game.failures(), [Some(error)], "{value}");
         assert_eq!(
             progress(&game),
-            (num(600) + half, 3, num(50), Some(2)),
+            (Num::int(600) + half, 3, Num::int(50), Some(2)),
             "{value}"
         );
     }
@@ -163,7 +167,7 @@ fn on_input(ctx, player, name, value) {
         let experience = game.sim.world.get::<Experience>(x).unwrap();
         experience.get(TrackId::new(0).unwrap()).unwrap().xp
     };
-    assert_eq!(xp(&game), num(175));
+    assert_eq!(xp(&game), Num::int(175));
     assert_eq!(game.sim.world.get::<Level>(x).unwrap().get(), 2);
     // Y died in tick 1, and the mode set its respawn from the end of tick 1, the start of tick
     // 2: 1500 ms is 15 ticks at 10 a second, so Y is dead through tick 16 and back in tick 17.

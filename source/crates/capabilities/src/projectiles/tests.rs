@@ -22,13 +22,8 @@ use crate::units::dead::Dead;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::damage_kind::DamageKind;
-
-fn num(value: i64) -> Num {
-    Num::from_int(value).unwrap()
-}
-
 fn at(x: i64, z: i64) -> Position {
-    Position::new(Vec3::new(num(x), Num::ZERO, num(z))).unwrap()
+    Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap()
 }
 
 /// Half a meter.
@@ -44,21 +39,21 @@ fn projectile(homing: bool, width: Num, range: Option<Num>, stop_on_hit: bool) -
         range,
         homing,
         stop_on_hit,
-        ..ProjectileData::flying(num(15))
+        ..ProjectileData::flying(Num::int(15))
     }
 }
 
 /// 30 damage within 8 m, fired 2 ticks after the start of an attack every 10 ticks, its
 /// projectiles of the homing type `bolt`.
 fn shooter(bolt: UnitType) -> Armed {
-    Armed::melee(num(100), num(8), 2, 10, num(30))
+    Armed::melee(Num::int(100), Num::int(8), 2, 10, Num::int(30))
         .ranged(bolt)
         .on_death(OnDeath::Stay)
 }
 
 /// 100 health; never attacks; stays when it dies.
 fn target() -> Armed {
-    Armed::unarmed(num(100)).on_death(OnDeath::Stay)
+    Armed::unarmed(Num::int(100)).on_death(OnDeath::Stay)
 }
 
 #[derive(Debug)]
@@ -85,8 +80,14 @@ impl Volley {
         let world = &mut sim.world;
         let types = [
             ("bolt", projectile(true, Num::ZERO, None, false)),
-            ("lance", projectile(false, Num::ONE, Some(num(6)), false)),
-            ("dart", projectile(false, Num::ZERO, Some(num(6)), true)),
+            (
+                "lance",
+                projectile(false, Num::ONE, Some(Num::int(6)), false),
+            ),
+            (
+                "dart",
+                projectile(false, Num::ZERO, Some(Num::int(6)), true),
+            ),
         ];
         let [bolt, lance, dart] = types.map(|(name, data)| {
             let unit_type =
@@ -126,7 +127,7 @@ impl Volley {
             },
             payload: LaunchPayload::Attack {
                 action: ActionId::nth(0),
-                amount: num(10),
+                amount: Num::int(10),
                 kind: DamageKind::new(0),
                 roll: Num::ZERO,
             },
@@ -278,7 +279,7 @@ fn a_projectile_that_outlives_its_source_kills_with_no_killer() {
         let victim = volley.unit(1, at(5, 0), target());
         let victim_entity = volley.sim.entity(victim);
         let mut pools = volley.sim.world.get_mut::<Pools>(victim_entity).unwrap();
-        pools.take(PoolId::FIRST, num(40));
+        pools.take(PoolId::FIRST, Num::int(40));
         for shooter in shooters {
             volley.attack(shooter, victim);
         }
@@ -332,11 +333,11 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
     // The lance's reach is half its width, 0.5 m, and these bodies have no radius. Its path runs
     // along x from 0 to 6: 0.5 m beside it and 0.5 m past its end are in reach, one bit more is
     // not, and an ally is never hit.
-    let beside = volley.unit(1, point(num(2), half()), target());
-    let wide = volley.unit(1, point(num(3), half() + e), target());
+    let beside = volley.unit(1, point(Num::int(2), half()), target());
+    let wide = volley.unit(1, point(Num::int(3), half() + e), target());
     let ally = volley.unit(0, at(1, 0), target());
-    let past = volley.unit(1, point(num(6) + half(), Num::ZERO), target());
-    let beyond = volley.unit(1, point(num(6) + half() + e, Num::ZERO), target());
+    let past = volley.unit(1, point(Num::int(6) + half(), Num::ZERO), target());
+    let beyond = volley.unit(1, point(Num::int(6) + half() + e, Num::ZERO), target());
     volley.fire_line(source, volley.lance);
 
     // It launches in tick 0 and flies half a meter a tick from tick 1: 6 m is ticks 1 to 12, and
@@ -344,7 +345,10 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
     for _ in 0..12 {
         volley.sim.step();
     }
-    assert_eq!(volley.projectiles(), [point(num(5) + half(), Num::ZERO)]);
+    assert_eq!(
+        volley.projectiles(),
+        [point(Num::int(5) + half(), Num::ZERO)]
+    );
     volley.sim.step();
     assert_eq!(volley.projectiles(), []);
     let healths = [beside, wide, ally, past, beyond].map(|unit| volley.sim.health(unit));
@@ -360,7 +364,10 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
     for _ in 0..6 {
         volley.sim.step();
     }
-    assert_eq!(volley.projectiles(), [point(num(2) + half(), Num::ZERO)]);
+    assert_eq!(
+        volley.projectiles(),
+        [point(Num::int(2) + half(), Num::ZERO)]
+    );
     volley.sim.step();
     assert_eq!(volley.projectiles(), []);
     let healths = [first, second, behind].map(|unit| volley.sim.health(unit));
@@ -376,7 +383,7 @@ fn a_projectile_reads_only_with_a_positive_speed_and_no_negative_width_or_range(
     assert_eq!(
         read("speed = 20\nwidth = 0\nrange = 0").unwrap(),
         ProjectileData {
-            speed: num(20),
+            speed: Num::int(20),
             range: Some(Num::ZERO),
             ..plain
         }

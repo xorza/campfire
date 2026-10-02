@@ -10,13 +10,8 @@ use crate::units::tag_effects::TagEffects;
 use crate::units::unit::Unit;
 use crate::values::attitude::Attitude;
 use crate::values::bounds::Bounds;
-
-fn num(value: i64) -> Num {
-    Num::from_int(value).unwrap()
-}
-
 fn at(x: i64, z: i64) -> Position {
-    Position::new(Vec3::new(num(x), Num::ZERO, num(z))).unwrap()
+    Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap()
 }
 
 /// A match of teams with vision on a grid of 1 m cells from (−10, −10) to (10, 10).
@@ -37,8 +32,9 @@ impl Scene {
         let scripts = ScriptBudgets::new(limits, 1);
         let declared = [Capability::Stats, Capability::Combat, Capability::Vision];
         let mut sim = TestMatch::server(&declared, scripts);
-        let bounds = Bounds::new([num(-10), num(-10)], [num(10), num(10)]).unwrap();
-        let grid = Grid::new(num(1), bounds).unwrap();
+        let bounds =
+            Bounds::new([Num::int(-10), Num::int(-10)], [Num::int(10), Num::int(10)]).unwrap();
+        let grid = Grid::new(Num::int(1), bounds).unwrap();
         Vision::load_grid(&mut sim.world, grid, teams);
         Scene { sim }
     }
@@ -47,10 +43,10 @@ impl Scene {
     /// `sight` when given.
     fn spawn(&mut self, team: u8, x: i64, z: i64, sight: Option<i64>) -> StableId {
         let id = self.sim.world.resource_mut::<IdAllocator>().allocate();
-        let life = Pools::life(num(100));
+        let life = Pools::life(Num::int(100));
         let mut unit = self.sim.world.spawn((id, at(x, z), Team::new(team), life));
         if let Some(range) = sight {
-            unit.insert(Sight::new(num(range)).unwrap());
+            unit.insert(Sight::new(Num::int(range)).unwrap());
         }
         id
     }

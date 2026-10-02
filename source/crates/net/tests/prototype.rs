@@ -21,15 +21,10 @@ use lightyear::prelude::{Client, Connected, MessageSender, Predicted, RollbackMo
 
 /// Frames of match: one tick each.
 const MATCH_FRAMES: usize = 120;
-
-const fn num(value: i64) -> Num {
-    Num::from_int(value).unwrap()
-}
-
 const fn move_to(x: i64, z: i64) -> Action {
     Action::Move {
-        x: num(x),
-        z: num(z),
+        x: Num::int(x),
+        z: Num::int(z),
     }
 }
 
@@ -100,7 +95,7 @@ fn server_and_replay_agree_on_every_tick() {
         }
 
         let arrived = Hero {
-            position: Position::new(Vec3::new(num(-2), Num::ZERO, num(5))).unwrap(),
+            position: Position::new(Vec3::new(Num::int(-2), Num::ZERO, Num::int(5))).unwrap(),
             destination: Destination::default(),
         };
         assert_eq!(hero(local.server()), arrived, "{case}");
@@ -173,7 +168,7 @@ fn a_burst_of_orders_waits_for_later_stamps_and_a_forged_message_ends_its_link()
         frames += 1;
     }
     let arrived = Hero {
-        position: Position::new(Vec3::new(num(-2), Num::ZERO, num(5))).unwrap(),
+        position: Position::new(Vec3::new(Num::int(-2), Num::ZERO, Num::int(5))).unwrap(),
         destination: Destination::default(),
     };
     assert_eq!(hero(local.server()), arrived);
@@ -260,7 +255,7 @@ fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_
         local.step();
     }
     let at = |x, z| Hero {
-        position: Position::new(Vec3::new(num(x), Num::ZERO, num(z))).unwrap(),
+        position: Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap(),
         destination: Destination::default(),
     };
     assert_eq!(hero(local.server()), at(4, 0));
@@ -293,7 +288,7 @@ fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_
     assert_eq!(hero(local.server()), at(0, -2));
     assert_eq!(hero(local.client(0)), at(0, -2));
     assert!(!dead(local.client(0)));
-    assert_eq!(health(local.client(0)), num(600));
+    assert_eq!(health(local.client(0)), Num::int(600));
     assert_eq!(rollbacks(&local), 1);
 }
 

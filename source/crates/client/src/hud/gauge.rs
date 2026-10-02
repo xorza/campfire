@@ -178,10 +178,9 @@ mod tests {
 
     #[test]
     fn a_share_is_current_over_max_within_zero_and_one() {
-        let num = |value| Num::from_int(value).unwrap();
-        assert_eq!(share(num(150), num(600)), 0.25);
-        assert_eq!(share(num(700), num(600)), 1.0);
-        assert_eq!(share(num(5), Num::ZERO), 0.0);
-        assert_eq!(share(Num::ZERO, num(600)), 0.0);
+        assert_eq!(share(Num::int(150), Num::int(600)), 0.25);
+        assert_eq!(share(Num::int(700), Num::int(600)), 1.0);
+        assert_eq!(share(Num::int(5), Num::ZERO), 0.0);
+        assert_eq!(share(Num::ZERO, Num::int(600)), 0.0);
     }
 }

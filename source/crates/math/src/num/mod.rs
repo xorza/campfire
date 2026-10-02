@@ -65,6 +65,15 @@ impl Num {
         }
     }
 
+    /// `value`, which must lie in `−2³⁹ ≤ value < 2³⁹`, as a constant or a literal does; for a
+    /// value from data, `from_int`.
+    pub const fn int(value: i64) -> Num {
+        match Num::from_int(value) {
+            Some(num) => num,
+            None => panic!("an integer within a number's range"),
+        }
+    }
+
     /// Exact conversion; `None` for a value with a fraction.
     pub const fn to_int(self) -> Option<i64> {
         if self.0 & Self::FRAC_MASK == 0 {

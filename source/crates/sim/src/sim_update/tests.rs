@@ -14,7 +14,7 @@ use crate::stable_id::StableId;
 use crate::state_registry::{StateHash, StateRegistry};
 use crate::tick_inputs::TickInput;
 
-/// The MOBA's 30 ticks a second.
+/// 30 ticks a second: the rate these tests run at, which no game sets.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
 
 const SEED: SegmentSeed = SegmentSeed::new([7; 32]);

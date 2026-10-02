@@ -16,8 +16,7 @@ const MATCH_TICKS: u64 = 600;
 const RESPAWN_TICKS: u64 = 150;
 
 fn at(x: i64, z: i64) -> Position {
-    let num = |value| Num::from_int(value).unwrap();
-    Position::new(Vec3::new(num(x), Num::ZERO, num(z))).unwrap()
+    Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap()
 }
 
 /// Where a hero stands in an app, and whether it is dead.
@@ -263,24 +262,23 @@ fn cast(link: LinkModel) -> [u32; 2] {
     // strikes. The walker spent 40 mana twice, the runner 30 once, and each ability is ready
     // again after its last cast's cooldown: on the server and on both clients.
     assert_eq!(hits, [vec![140], vec![100, 190, 308, 328, 348]]);
-    let num = |value| Num::from_int(value).unwrap();
-    let edge = |x| Position::new(Vec3::new(x, Num::ZERO, num(8))).unwrap();
+    let edge = |x| Position::new(Vec3::new(x, Num::ZERO, Num::int(8))).unwrap();
     let expected = [
         (
             walker,
             Caster {
                 pos: edge(Num::ZERO),
-                health: num(600 - 80),
-                mana: Some(num(100 - 40 - 40)),
+                health: Num::int(600 - 80),
+                mana: Some(Num::int(100 - 40 - 40)),
                 ready_at: Some(Tick::new(190 + 90)),
             },
         ),
         (
             runner,
             Caster {
-                pos: edge(num(1) + Num::from_bits(1 << 23)),
-                health: num(600 - 100 - 100 - 3 * 60),
-                mana: Some(num(100 - 30)),
+                pos: edge(Num::int(1) + Num::from_bits(1 << 23)),
+                health: Num::int(600 - 100 - 100 - 3 * 60),
+                mana: Some(Num::int(100 - 30)),
                 ready_at: Some(Tick::new(140 + 60)),
             },
         ),

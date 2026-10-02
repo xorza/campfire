@@ -88,13 +88,19 @@ mod tests {
 
     #[test]
     fn reach_counts_the_ground_plane_only() {
-        let num = |value| Num::from_int(value).unwrap();
-        let at = |x, y, z| Position::new(Vec3::new(num(x), num(y), num(z))).unwrap();
+        let at = |x, y, z| Position::new(Vec3::new(Num::int(x), Num::int(y), Num::int(z))).unwrap();
         // 3 m along x and 4 m along z: 5 m on the ground, whatever the heights.
         let (from, to) = (at(1, 0, 1), at(4, 9, 5));
-        assert_eq!(from.ground_offset(to), Vec3::new(num(3), Num::ZERO, num(4)));
-        let reaches = [num(5) - Num::EPSILON, num(5), num(5) + Num::EPSILON]
-            .map(|radius| from.within_ground(to, radius));
+        assert_eq!(
+            from.ground_offset(to),
+            Vec3::new(Num::int(3), Num::ZERO, Num::int(4))
+        );
+        let reaches = [
+            Num::int(5) - Num::EPSILON,
+            Num::int(5),
+            Num::int(5) + Num::EPSILON,
+        ]
+        .map(|radius| from.within_ground(to, radius));
         assert_eq!(reaches, [false, true, true]);
         assert_eq!(Position::ORIGIN.get(), Vec3::ZERO);
     }

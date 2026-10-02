@@ -191,8 +191,8 @@ impl ProvingMatch {
             Plan::Move { x, z } => (
                 hero,
                 Action::Move {
-                    x: num(x),
-                    z: num(z),
+                    x: Num::int(x),
+                    z: Num::int(z),
                 },
             ),
             Plan::AttackBoulder => (
@@ -211,7 +211,7 @@ impl ProvingMatch {
             Plan::Cast { slot, at } => {
                 let target = match at {
                     Aim::Nothing => ActionTarget::None,
-                    Aim::Point { x, z } => ActionTarget::Point(ground(num(x), num(z))),
+                    Aim::Point { x, z } => ActionTarget::Point(ground(Num::int(x), Num::int(z))),
                     Aim::EnemyHeroPoint => ActionTarget::Point(units.position(enemy)),
                     Aim::EnemyHero => ActionTarget::Unit(enemy),
                 };
@@ -281,11 +281,6 @@ fn owned_by(unit: &EntityRef<'_>, slot: u32) -> bool {
     unit.get::<Owner>()
         .is_some_and(|owner| owner.slot().get() == slot)
 }
-
-const fn num(value: i64) -> Num {
-    Num::from_int(value).expect("a small integer")
-}
-
 const fn ground(x: Num, z: Num) -> Position {
     Position::new(Vec3::new(x, Num::ZERO, z)).expect("a point of the map")
 }

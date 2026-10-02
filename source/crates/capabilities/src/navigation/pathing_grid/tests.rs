@@ -4,11 +4,6 @@ use campfire_sim::{IdAllocator, Position};
 use super::*;
 use crate::units::layer::Layer;
 use crate::values::bounds::Bounds;
-
-fn num(value: i64) -> Num {
-    Num::from_int(value).unwrap()
-}
-
 fn half() -> Num {
     Num::from_bits(1 << 23)
 }
@@ -50,9 +45,9 @@ fn drawn(grid: &PathingGrid, walker: Walker) -> Vec<String> {
 /// A grid over the 6 × 6 cells for walkers of 1 m and 0.5 m on the ground, and of 1 m in
 /// the air.
 fn grid() -> PathingGrid {
-    let bounds = Bounds::new([num(-3), num(-3)], [num(3), num(3)]).unwrap();
+    let bounds = Bounds::new([Num::int(-3), Num::int(-3)], [Num::int(3), Num::int(3)]).unwrap();
     PathingGrid::new(
-        Grid::new(num(1), bounds).unwrap(),
+        Grid::new(Num::int(1), bounds).unwrap(),
         vec![air(), ground(Num::ONE), ground(half()), ground(half())],
     )
 }
@@ -96,13 +91,13 @@ fn a_static_body_blocks_the_cells_closer_than_the_two_radii() {
     // exactly 1 m off, on the edge, and open.
     let post = IndexedBody {
         id: ids.allocate(),
-        at: at(num(2), -(num(1) + half())),
+        at: at(Num::int(2), -(Num::int(1) + half())),
         radius: half(),
         layer: Layer::FIRST,
     };
     let corner = IndexedBody {
         id: ids.allocate(),
-        at: at(-(num(2) + half()), num(2) + half()),
+        at: at(-(Num::int(2) + half()), Num::int(2) + half()),
         radius: half(),
         layer: Layer::FIRST,
     };
@@ -140,7 +135,7 @@ fn a_static_body_blocks_the_cells_closer_than_the_two_radii() {
 
     // The post moves a meter along z, to (2, −0.5).
     let moved = IndexedBody {
-        at: at(num(2), -half()),
+        at: at(Num::int(2), -half()),
         ..post
     };
     follow(&mut grid, &mut index, &[tower, moved, corner]);

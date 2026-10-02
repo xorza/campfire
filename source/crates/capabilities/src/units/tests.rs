@@ -30,19 +30,14 @@ use crate::units::unit_type_data::UnitTypeData;
 use crate::values::bounds::Bounds;
 use crate::values::scalar::Scalar;
 use crate::values::stat::Stat;
-
-fn num(value: i64) -> Num {
-    Num::from_int(value).unwrap()
-}
-
 fn at(x: i64, y: i64, z: i64) -> Position {
-    Position::new(Vec3::new(num(x), num(y), num(z))).unwrap()
+    Position::new(Vec3::new(Num::int(x), Num::int(y), Num::int(z))).unwrap()
 }
 
 /// A unit of 10 health, the life pool the first of the scene's pools, `health` and `mana`, with
 /// a weapon of 2 m.
 fn unit() -> Armed {
-    Armed::melee(num(10), num(2), 0, 1, Num::ZERO).on_death(OnDeath::Stay)
+    Armed::melee(Num::int(10), Num::int(2), 0, 1, Num::ZERO).on_death(OnDeath::Stay)
 }
 
 #[derive(Debug)]
@@ -122,7 +117,7 @@ fn queries_select_living_units_by_filter_and_exact_distance() {
     // A query reaches a body to its edge, as an area does: far, at 6 m, with a body of 1 m comes
     // within 5 m. `nearest_visible` reaches from the edge of `of`'s body too, as a weapon's
     // range: 2 m reaches high, 3 m away, only once `of` has a body of 1 m.
-    let body = Body::new(num(1)).unwrap();
+    let body = Body::new(Num::int(1)).unwrap();
     scene.sim.insert(far, body);
     assert_eq!(find(&mut scene, "enemies"), [high, east, west, edge, far]);
     let near_two = r#"fn probe(ctx, of) { ctx.nearest_visible(of, num(2), "enemies") }"#;
@@ -184,7 +179,7 @@ fn a_position_measures_reach_and_distance_in_the_maps_metric() {
     // y = 12 is 3 m away on a planar map, and √153 ≈ 12.37 m on a spatial one, 207522701.02 in 24
     // fraction bits.
     let metrics = [
-        (Metric::Planar, [true, false, true, true, true], num(3)),
+        (Metric::Planar, [true, false, true, true, true], Num::int(3)),
         (
             Metric::Spatial,
             [true, false, false, false, true],
@@ -203,7 +198,7 @@ fn a_position_measures_reach_and_distance_in_the_maps_metric() {
             .iter()
             .map(|at| at.clone().cast::<Num>())
             .collect();
-        assert_eq!(read_distance, [num(5), distance], "{metric:?}");
+        assert_eq!(read_distance, [Num::int(5), distance], "{metric:?}");
     }
     let error = scene
         .sim
@@ -219,7 +214,7 @@ fn the_view_reads_the_maps_bounds_or_the_worlds() {
     // A match with no mode has the whole world's bounds; a mode's map gives its own.
     view.read(&scene.sim.world);
     assert_eq!(view.bounds(), Bounds::WORLD);
-    let bounds = Bounds::new([num(-10), num(-5)], [num(10), num(6)]).unwrap();
+    let bounds = Bounds::new([Num::int(-10), Num::int(-5)], [Num::int(10), Num::int(6)]).unwrap();
     scene.sim.world.insert_resource(bounds);
     view.read(&scene.sim.world);
     assert_eq!(view.bounds(), bounds);
@@ -229,7 +224,7 @@ fn the_view_reads_the_maps_bounds_or_the_worlds() {
 fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let mut scene = Scene::new();
     let window = ("help_window_ms", Scalar::Int(2000));
-    let range = ("aggro_range", Scalar::Decimal(num(7)));
+    let range = ("aggro_range", Scalar::Decimal(Num::int(7)));
     let hero = scene.unit_type(&["avatar"], &[window, range]);
     // On a path, but the scene has no `navigation` to fill `unit.path`.
     let owner = Owner::new(PlayerSlot::new(2));
@@ -240,7 +235,7 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     let near = scene.unit(at(3, 0, 4), 1, ());
     let recent = scene.unit(at(9, 0, 0), 1, ());
     let fallen = scene.unit(at(9, 0, 1), 1, Dead);
-    let health_only = (Team::new(1), Pools::life(num(1)));
+    let health_only = (Team::new(1), Pools::life(Num::int(1)));
     let bare = scene.sim.spawn(at(9, 0, 2), health_only);
     let entity = scene.sim.entity(of);
     scene
@@ -292,9 +287,12 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     );
     assert_eq!(
         value(&mut scene, "of.params.aggro_range").cast::<Num>(),
-        num(7)
+        Num::int(7)
     );
-    assert_eq!(value(&mut scene, "of.attack_range").cast::<Num>(), num(2));
+    assert_eq!(
+        value(&mut scene, "of.attack_range").cast::<Num>(),
+        Num::int(2)
+    );
     assert!(
         value(&mut scene, "of.target.is_enemy_of(of)")
             .as_bool()
@@ -344,15 +342,15 @@ fn a_handle_reads_its_units_level_pools_and_stats() {
     let names = ["armor", "health"].map(|name| Stat::named(name).unwrap());
     StatsColumn::share_stat_names(scene.sim.world.non_send::<View>(), Arc::from(names));
     let mut stats = UnitStats::default();
-    stats.refill().extend([num(25), num(10)]);
+    stats.refill().extend([Num::int(25), Num::int(10)]);
     let of = scene.unit(at(0, 0, 0), 0, Level::new(3).unwrap());
     let entity = scene.sim.entity(of);
     scene.sim.insert(of, stats);
     let mut pools = scene.sim.world.get_mut::<Pools>(entity).unwrap();
-    pools.take(PoolId::FIRST, num(4));
+    pools.take(PoolId::FIRST, Num::int(4));
     let bare = scene
         .sim
-        .spawn(at(1, 0, 0), (Team::new(1), Pools::life(num(1))));
+        .spawn(at(1, 0, 0), (Team::new(1), Pools::life(Num::int(1))));
     let shell = scene.sim.spawn(at(2, 0, 0), Team::new(1));
 
     let read = |scene: &mut Scene, unit, expression: &str| scene.sim.read(expression, unit);
@@ -360,19 +358,19 @@ fn a_handle_reads_its_units_level_pools_and_stats() {
     assert_eq!(value(&mut scene, "of.level").as_int(), Ok(3));
     assert_eq!(
         value(&mut scene, r#"of.pool("health")"#).cast::<Num>(),
-        num(6)
+        Num::int(6)
     );
     assert_eq!(
         value(&mut scene, r#"of.pool_max("health")"#).cast::<Num>(),
-        num(10)
+        Num::int(10)
     );
     assert_eq!(
         value(&mut scene, r#"of.stat("armor")"#).cast::<Num>(),
-        num(25)
+        Num::int(25)
     );
     assert_eq!(
         value(&mut scene, r#"of.stat("health")"#).cast::<Num>(),
-        num(10)
+        Num::int(10)
     );
 
     let refusals = [

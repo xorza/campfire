@@ -23,7 +23,7 @@ fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early
     );
     // The map's grid is the match's, for its 3 teams: a, b and the neutral one.
     let vision = *game.sim.world.resource::<VisionGrid>();
-    let grid = Grid::new(num(1), map().bounds).unwrap();
+    let grid = Grid::new(Num::int(1), map().bounds).unwrap();
     assert_eq!((vision.grid, vision.teams), (grid, 3));
     assert_eq!(*game.sim.world.resource::<Bounds>(), map().bounds);
     // Each unit type has the tag of the layer it moves on: the tower, of the second layer, `air`;
@@ -100,7 +100,7 @@ fn on_mode_input(ctx, player, name, value) {
     files.map = raised(files.map, 3);
     let mut game = Game::start(script, ScriptLimits::ROOMY, files).unwrap();
     assert_eq!(*game.sim.world.resource::<Metric>(), Metric::Spatial);
-    let up = |x| Position::new(Vec3::new(num(x), num(3), Num::ZERO)).unwrap();
+    let up = |x| Position::new(Vec3::new(Num::int(x), Num::int(3), Num::ZERO)).unwrap();
     let walkers = |game: &Game| <[_; 3]>::try_from(&game.units()[1..]).unwrap();
     assert_eq!(
         walkers(&game),

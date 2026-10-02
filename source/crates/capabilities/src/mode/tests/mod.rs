@@ -269,11 +269,6 @@ fn share_xp(ctx, unit) {
     }
 }
 "#;
-
-fn num(value: i64) -> Num {
-    Num::from_int(value).unwrap()
-}
-
 /// A marker `name` with `tag` at (`x`, `z`), of `team` if it names one, with `params`.
 fn marker(
     name: &str,
@@ -293,7 +288,7 @@ fn marker(
 }
 
 fn at(x: i64, z: i64) -> Position {
-    Position::new(Vec3::new(num(x), Num::ZERO, num(z))).unwrap()
+    Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap()
 }
 
 fn field(kind: StateType, default: Option<StateDefault>) -> StateDecl {
@@ -303,7 +298,7 @@ fn field(kind: StateType, default: Option<StateDefault>) -> StateDecl {
 /// The unit kit of a grunt: 10 health, combat that keeps it when it dies, and a step of 1 m.
 fn grunt() -> UnitKit {
     UnitKit {
-        pools: Some(Pools::life(num(10))),
+        pools: Some(Pools::life(Num::int(10))),
         on_death: Some(OnDeath::Stay),
         step: Some(MoveStep::new(Num::ONE).unwrap()),
         sight: None,
@@ -317,7 +312,7 @@ fn grunt() -> UnitKit {
 /// `valor`, of level 2 at 50.
 fn tracks() -> BTreeMap<DeclaredName, TrackData> {
     let track = |levels: &[i64], level| TrackData {
-        levels: Thresholds::new(levels.iter().map(|&value| num(value))).unwrap(),
+        levels: Thresholds::new(levels.iter().map(|&value| Num::int(value))).unwrap(),
         level,
     };
     [
@@ -357,7 +352,9 @@ fn map() -> MapData {
             marker("b_spawn", "spawn", (0, 5), Some("b"), &[]),
             marker("camp", "camp", (0, 0), None, slice::from_ref(&grunt)),
         ],
-        ..MapData::planar(Bounds::new([num(-10), num(-5)], [num(10), num(6)]).unwrap())
+        ..MapData::planar(
+            Bounds::new([Num::int(-10), Num::int(-5)], [Num::int(10), Num::int(6)]).unwrap(),
+        )
     }
 }
 
@@ -610,7 +607,7 @@ fn setup(
                 tower_type,
                 UnitKit {
                     step: None,
-                    body: Body::new(num(1)).map(|body| body.on(Layer::new(1))),
+                    body: Body::new(Num::int(1)).map(|body| body.on(Layer::new(1))),
                     ..grunt()
                 },
             ),
@@ -706,7 +703,7 @@ impl Game {
         let setup = setup(&files, script, types, spell, strike, blessing);
         let books = {
             let view = world.non_send::<View>();
-            let stats = StatBook::new(&files.data.stats, [], num(10));
+            let stats = StatBook::new(&files.data.stats, [], Num::int(10));
             let relations = &files.data.relations;
             let unit_type = |name: &str| view.unit_type_named(name);
             let map = ModeMap::resolve(&files.map, &files.teams, relations, unit_type).unwrap();
@@ -872,7 +869,7 @@ impl Game {
             id,
             at(0, 0),
             Team::new(team),
-            Pools::life(num(1000)),
+            Pools::life(Num::int(1000)),
             grunt,
             Level::default(),
             UnitStats::default(),
@@ -897,7 +894,7 @@ impl Game {
             .push_damage(Damage {
                 source,
                 target,
-                amount: num(amount),
+                amount: Num::int(amount),
                 kind: DamageKind::new(u8::try_from(kind).unwrap()),
                 cause,
                 ability: None,

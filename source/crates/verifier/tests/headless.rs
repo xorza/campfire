@@ -110,11 +110,6 @@ fn session() -> FixedSession {
     };
     FixedSession::with_rules(packages(), NonZeroU32::new(30).unwrap(), 1, rules)
 }
-
-const fn num(value: i64) -> Num {
-    Num::from_int(value).unwrap()
-}
-
 #[derive(Debug, PartialEq, Eq)]
 struct Hero {
     position: Position,
@@ -159,8 +154,8 @@ fn run(orders: &[&Sent], ticks: u64) -> Run {
             let payload = Order::payload(&[Order {
                 unit: hero,
                 action: Action::Move {
-                    x: num(sent.x),
-                    z: num(sent.z),
+                    x: Num::int(sent.x),
+                    z: Num::int(sent.z),
                 },
             }]);
             assert_eq!(
@@ -184,7 +179,7 @@ fn run_and_replay_agree_on_every_tick() {
         trail: live,
     } = run(&ORDERS.each_ref(), TICKS);
     let arrived = Hero {
-        position: Position::new(Vec3::new(num(-2), Num::ZERO, num(5))).unwrap(),
+        position: Position::new(Vec3::new(Num::int(-2), Num::ZERO, Num::int(5))).unwrap(),
         destination: Destination::default(),
     };
     assert_eq!(hero(&runner), arrived);

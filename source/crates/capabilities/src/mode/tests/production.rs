@@ -24,7 +24,7 @@ fn on_mode_input(ctx, player, name, value) {
     // Hero X becomes a producer of a queue of 2, with 100 mana, and its player holds 15 gold.
     let mut owned = world.query_filtered::<Entity, With<Owner>>();
     let producer = owned.single(world).unwrap();
-    let pools = Pools::new([(PoolId::FIRST, num(10)), (MANA, num(100))]).unwrap();
+    let pools = Pools::new([(PoolId::FIRST, Num::int(10)), (MANA, Num::int(100))]).unwrap();
     let slots = ActionSlots::new([(train, SlotKind::new(0), 1)]);
     let hero_type = *world.get::<UnitType>(producer).unwrap();
     let production = ProductionData {

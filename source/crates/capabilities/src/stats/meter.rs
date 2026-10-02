@@ -125,48 +125,50 @@ impl<'de> Deserialize<'de> for Meter {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn num(value: i64) -> Num {
-        Num::from_int(value).unwrap()
-    }
-
     #[test]
     fn a_meter_holds_0_to_its_positive_max() {
         assert_eq!(Meter::new(Num::ZERO), None);
         assert_eq!(Meter::new(-Num::EPSILON), None);
-        let mut meter = Meter::new(num(10)).unwrap();
-        assert_eq!((meter.current(), meter.max()), (num(10), num(10)));
-        meter.take(num(4));
-        assert_eq!(meter.current(), num(6));
-        meter.take(num(7));
+        let mut meter = Meter::new(Num::int(10)).unwrap();
+        assert_eq!((meter.current(), meter.max()), (Num::int(10), Num::int(10)));
+        meter.take(Num::int(4));
+        assert_eq!(meter.current(), Num::int(6));
+        meter.take(Num::int(7));
         assert!(meter.is_empty());
         // Adding 3 to 0 of 10 gives 3; 9 more stops at 10; the most a number holds, at 10 too.
-        for (added, current) in [(num(3), num(3)), (num(9), num(10)), (Num::MAX, num(10))] {
+        for (added, current) in [
+            (Num::int(3), Num::int(3)),
+            (Num::int(9), Num::int(10)),
+            (Num::MAX, Num::int(10)),
+        ] {
             meter.add(added);
             assert_eq!(meter.current(), current);
         }
-        meter.take(num(10));
+        meter.take(Num::int(10));
         // A rise of 5 to 15 raises 0 to 5; a fall to 3 cuts it to 3; a rise to 20 raises it by
         // 17, to 20; a fall to 12 cuts it to 12.
         for (max, current) in [(15, 5), (3, 3), (20, 20), (12, 12)] {
-            meter.set_max(num(max));
-            assert_eq!((meter.current(), meter.max()), (num(current), num(max)));
+            meter.set_max(Num::int(max));
+            assert_eq!(
+                (meter.current(), meter.max()),
+                (Num::int(current), Num::int(max))
+            );
         }
 
         // 1 a second at 3 ticks a second, from 2 of 12: 2²⁴ bits ÷ 3 is 5 592 405, a third of a
         // bit left; the third tick carries two thirds, 1 more: 2²⁴ in all, exactly 1.
-        meter.take(num(10));
+        meter.take(Num::int(10));
         for gain in [5_592_405, 5_592_405, 5_592_406] {
             let before = meter.current();
             meter.regen(Num::ONE, 3);
             assert_eq!(meter.current() - before, Num::from_bits(gain));
         }
-        assert_eq!(meter.current(), num(3));
+        assert_eq!(meter.current(), Num::int(3));
         // Full, or empty, it drops the remainder.
-        meter.set_max(num(3));
+        meter.set_max(Num::int(3));
         meter.regen(Num::ONE, 3);
-        assert_eq!((meter.current(), meter.carry), (num(3), 0));
-        meter.regen(-num(9), 3);
+        assert_eq!((meter.current(), meter.carry), (Num::int(3), 0));
+        meter.regen(-Num::int(9), 3);
         assert_eq!((meter.current(), meter.carry), (Num::ZERO, 0));
 
         for (current, max, reads) in [
@@ -176,7 +178,8 @@ mod tests {
             (-1, 10, false),
             (0, 0, false),
         ] {
-            let encoded = postcard::to_allocvec(&(num(current), num(max), 0_u32)).unwrap();
+            let encoded =
+                postcard::to_allocvec(&(Num::int(current), Num::int(max), 0_u32)).unwrap();
             let decoded = postcard::from_bytes::<Meter>(&encoded);
             assert_eq!(decoded.is_ok(), reads, "{current} of {max}");
         }

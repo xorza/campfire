@@ -7,8 +7,7 @@ use crate::values::bounds::Bounds;
 
 /// A grid of 1 m cells from the origin, `columns` by `rows`.
 fn grid(columns: i64, rows: i64) -> Grid {
-    let num = |value: i64| Num::from_int(value).unwrap();
-    let bounds = Bounds::new([Num::ZERO; 2], [num(columns), num(rows)]).unwrap();
+    let bounds = Bounds::new([Num::ZERO; 2], [Num::int(columns), Num::int(rows)]).unwrap();
     Grid::new(Num::ONE, bounds).unwrap()
 }
 

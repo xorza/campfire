@@ -53,7 +53,7 @@ fn on_mode_input(ctx, player, name, value) {
         .push_damage(Damage {
             source: Some(four),
             target: one,
-            amount: num(10),
+            amount: Num::int(10),
             kind: DamageKind::new(0),
             cause: DamageCause::Effect,
             ability: None,
@@ -87,7 +87,7 @@ fn on_mode_input(ctx, player, name, value) {
     assert!(!game.sim.world.entity(victim).contains::<Dead>());
     assert_eq!(game.sim.world.get::<Position>(victim), Some(&at(0, 0)));
     let pools = game.sim.world.get::<Pools>(victim).unwrap();
-    assert_eq!(pools.current(PoolId::FIRST), Some(num(10)));
+    assert_eq!(pools.current(PoolId::FIRST), Some(Num::int(10)));
 
     // A living unit, and a dead one whose type despawns, cannot respawn.
     game.tick(&[(0, input("probe", "tower"))]);

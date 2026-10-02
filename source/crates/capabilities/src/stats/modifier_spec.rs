@@ -222,8 +222,8 @@ mod tests {
     use std::num::NonZeroU32;
     use std::sync::Arc;
 
+    use crate::capability_set::test_match::TestMatch;
     use campfire_math::{Num, Ticks};
-    use campfire_sim::TickRate;
 
     use crate::stats::error::ModifierProblem;
     use crate::stats::modifier_data::{AuraData, ModifierData, Reapply};
@@ -291,7 +291,7 @@ mod tests {
             params: BTreeMap::from([(name("bind_ms"), one.clone()), (name("slow"), one)]),
             state: BTreeMap::new(),
         };
-        let rate = TickRate::new(NonZeroU32::new(30).unwrap());
+        let rate = TestMatch::RATE;
         let stats = ["armor", "move_speed"].map(|stat| Stat::named(stat).unwrap());
         let names = SpecNames {
             stat: |stat: &Stat| StatId::new(stats.iter().position(|at| at == stat).unwrap()),

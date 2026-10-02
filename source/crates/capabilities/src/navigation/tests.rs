@@ -13,13 +13,8 @@ use crate::values::declared_name::DeclaredName;
 use crate::values::scalar::Scalar;
 
 const ONE: i64 = 1 << 24;
-
-fn num(value: i64) -> Num {
-    Num::from_int(value).unwrap()
-}
-
 fn at(x: i64, y: i64, z: i64) -> Position {
-    Position::new(Vec3::new(num(x), num(y), num(z))).unwrap()
+    Position::new(Vec3::new(Num::int(x), Num::int(y), Num::int(z))).unwrap()
 }
 
 /// The second layer, as an RTS's air.
@@ -46,7 +41,7 @@ impl Walk {
 
     /// Loads a pathing grid of `cell` cells from `min` to `max` for `walkers`.
     fn load_pathing(&mut self, cell: Num, min: [i64; 2], max: [i64; 2], walkers: Vec<Walker>) {
-        let bounds = Bounds::new(min.map(num), max.map(num)).unwrap();
+        let bounds = Bounds::new(min.map(Num::int), max.map(Num::int)).unwrap();
         let grid = Grid::new(cell, bounds).unwrap();
         Navigation::load_pathing(&mut self.sim.world, grid, walkers);
     }
@@ -111,7 +106,7 @@ fn a_unit_walks_to_its_destination_exactly() {
         *walk.sim.get::<Position>(slanted),
         Position::new(Vec3::new(
             Num::from_bits(4 * ONE + 10_066_330),
-            num(2),
+            Num::int(2),
             Num::from_bits(13_421_773)
         ))
         .unwrap()
@@ -131,9 +126,9 @@ fn a_unit_walks_to_its_destination_exactly() {
 fn every_unit_that_walks_ends_the_tick_within_the_bounds() {
     let mut walk = Walk::new();
     assert_eq!(*walk.sim.world.resource::<Bounds>(), Bounds::WORLD);
-    walk.sim
-        .world
-        .insert_resource(Bounds::new([num(-4), num(-4)], [num(4), num(4)]).unwrap());
+    walk.sim.world.insert_resource(
+        Bounds::new([Num::int(-4), Num::int(-4)], [Num::int(4), Num::int(4)]).unwrap(),
+    );
     // Outside the bounds at x = 6: clamped to the edge x = 4, at its height and its z.
     let outside = walk.unit(at(6, 1, 2), None);
     // From x = 3 a meter towards x = 5: it arrives at 4, then walks on to 5 and back to 4.
@@ -191,7 +186,7 @@ fn bodies_part_and_block_the_way() {
         [a, b].map(|unit| *walk.sim.get::<Position>(unit)),
         [at(1, 0, 0), at(2, 0, 0)]
     );
-    let c_at = Position::new(Vec3::new(num(-6), Num::ZERO, num(2) + half)).unwrap();
+    let c_at = Position::new(Vec3::new(Num::int(-6), Num::ZERO, Num::int(2) + half)).unwrap();
     assert_eq!(
         [c, tower].map(|unit| *walk.sim.get::<Position>(unit)),
         [c_at, at(-6, 0, 4)]
@@ -330,7 +325,7 @@ fn a_walker_goes_round_units_that_stand_in_its_way() {
     let half = Num::from_bits(1 << 23);
     let quarter = Num::from_bits(1 << 22);
     let creep_radius = Num::from_bits((35 << Num::FRAC_BITS) / 100);
-    let creep_at = Position::new(Vec3::new(num(2), Num::ZERO, half)).unwrap();
+    let creep_at = Position::new(Vec3::new(Num::int(2), Num::ZERO, half)).unwrap();
     for planned in [true, false] {
         let mut walk = Walk::new();
         if planned {
@@ -446,7 +441,7 @@ fn an_air_unit_passes_over_a_ground_unit_and_a_wall() {
     // √2.5 ≈ 1.58 m from the tower at (6, 1), and the lower cell number wins. It walks straight
     // there, √12.5 ≈ 3.54 m, so it arrives in tick 4.
     let walking = walk.body(at(1, 0, 1), Some(at(11, 0, 1)), Some(Num::ONE), half);
-    let short = Position::new(Vec3::new(num(4) + half, Num::ZERO, half)).unwrap();
+    let short = Position::new(Vec3::new(Num::int(4) + half, Num::ZERO, half)).unwrap();
     let mut flown = Vec::new();
     for _ in 0..12 {
         walk.sim.step();
@@ -467,7 +462,7 @@ fn routes_wait_past_the_limit_of_work_in_the_order_asked() {
     let mut walk = Walk::new();
     walk.load_pathing(Num::ONE, [0, 0], [16, 1], vec![ground(Num::ZERO)]);
     let half = Num::from_bits(1 << 23);
-    let place = |x: i64| Position::new(Vec3::new(num(x) + half, Num::ZERO, half)).unwrap();
+    let place = |x: i64| Position::new(Vec3::new(Num::int(x) + half, Num::ZERO, half)).unwrap();
     let (start, far, near) = (place(0), place(15), place(3));
     let units = [None, Some(far), Some(near), Some(far)].map(|goal| walk.unit(start, goal));
     let waiting = |walk: &Walk| {
@@ -511,7 +506,9 @@ fn a_walker_steers_with_the_work_the_routes_left() {
     // with two, they do 46, and the walker keeps its route, and steers in tick 2.
     let quarter = Num::from_bits(1 << 22);
     let half = Num::from_bits(1 << 23);
-    let place = |x: i64, z: i64| Position::new(Vec3::new(num(x) + half, Num::ZERO, num(z) + half));
+    let place = |x: i64, z: i64| {
+        Position::new(Vec3::new(Num::int(x) + half, Num::ZERO, Num::int(z) + half))
+    };
     let goal = place(11, 1).unwrap();
     for (askers, steered) in [(0, [true, true]), (1, [true, true]), (2, [false, true])] {
         let mut walk = Walk::new();
@@ -544,7 +541,9 @@ fn a_walker_asks_again_only_for_a_static_body_put_in_its_way() {
     // walker asks again in the next tick, and goes round it.
     let quarter = Num::from_bits(1 << 22);
     let half = Num::from_bits(1 << 23);
-    let place = |x: i64, z: i64| Position::new(Vec3::new(num(x) + half, Num::ZERO, num(z) + half));
+    let place = |x: i64, z: i64| {
+        Position::new(Vec3::new(Num::int(x) + half, Num::ZERO, Num::int(z) + half))
+    };
     let mut walk = Walk::new();
     walk.load_pathing(Num::ONE, [0, 0], [8, 3], vec![ground(quarter)]);
     let goal = place(7, 1).unwrap();
@@ -578,7 +577,9 @@ fn a_walker_that_arrives_short_waits_there_until_a_static_body_goes() {
     // cell it reaches, (3.5, 1.5), 3 m on, which it arrives at in tick 2, a meter a tick.
     let quarter = Num::from_bits(1 << 22);
     let half = Num::from_bits(1 << 23);
-    let place = |x: i64, z: i64| Position::new(Vec3::new(num(x) + half, Num::ZERO, num(z) + half));
+    let place = |x: i64, z: i64| {
+        Position::new(Vec3::new(Num::int(x) + half, Num::ZERO, Num::int(z) + half))
+    };
     let goal = place(6, 1).unwrap();
     let walled = || {
         let mut walk = Walk::new();
@@ -669,7 +670,9 @@ fn a_map_loads_only_if_the_widest_walker_reaches_every_waypoint_and_stands_on_ev
             .chain([placed("creep", (1, 1))])
             .collect(),
         markers: vec![marker("spawn", (1, 1)), marker("camp", camp)],
-        ..MapData::planar(Bounds::new([num(0), num(0)], [num(10), num(4)]).unwrap())
+        ..MapData::planar(
+            Bounds::new([Num::int(0), Num::int(0)], [Num::int(10), Num::int(4)]).unwrap(),
+        )
     };
     // A tower stands on the ground, a cloud of the same width in the air.
     let body_of = |unit_type: &str| {

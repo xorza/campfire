@@ -11,16 +11,11 @@ use lightyear::prelude::{ConfirmHistory, ReplicationCheckpointMap};
 
 /// Frames of match: one tick each.
 const MATCH_FRAMES: usize = 90;
-
-const fn num(value: i64) -> Num {
-    Num::from_int(value).unwrap()
-}
-
 /// A move along the hero's line from its spawn, z = −2.
 const fn move_to(x: i64) -> Action {
     Action::Move {
-        x: num(x),
-        z: num(-2),
+        x: Num::int(x),
+        z: Num::int(-2),
     }
 }
 
@@ -48,7 +43,7 @@ fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
         .world_mut()
         .remove_resource::<TickHashes>();
     assert!(hashes.is_some());
-    let east_tower = Position::new(Vec3::new(num(8), Num::ZERO, num(-3))).unwrap();
+    let east_tower = Position::new(Vec3::new(Num::int(8), Num::ZERO, Num::int(-3))).unwrap();
     let (tower, tower_entity) = unit(local.server(), |app, entity| {
         app.world().get::<Position>(entity) == Some(&east_tower)
     });

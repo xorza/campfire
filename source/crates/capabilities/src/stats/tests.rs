@@ -44,11 +44,6 @@ use crate::values::stat::Stat;
 use bevy_ecs::entity::Entity;
 use campfire_math::Num;
 use campfire_sim::Position;
-
-fn num(value: i64) -> Num {
-    Num::from_int(value).unwrap()
-}
-
 /// `value` sixteenths.
 fn sixteenths(value: i64) -> Num {
     Num::from_bits(value << (Num::FRAC_BITS - 4))
@@ -60,10 +55,10 @@ fn rules() -> BTreeMap<Stat, StatRule> {
     let free = StatRule::default();
     let speed = StatRule {
         min: None,
-        max: Some(num(5)),
+        max: Some(Num::int(5)),
     };
     let armor = StatRule {
-        min: Some(num(-30)),
+        min: Some(Num::int(-30)),
         max: None,
     };
     let named = [
@@ -131,7 +126,7 @@ fn stat_match(types: &[StatsData]) -> TestMatch {
         let unit_type = UnitType::new(u16::try_from(at).unwrap());
         (unit_type, data)
     });
-    let book = StatBook::new(&rules(), types, num(6));
+    let book = StatBook::new(&rules(), types, Num::int(6));
     let pools = PoolBook::new(&pools(), &book);
     Stats::load(&mut game.world, book, pools);
     game
@@ -167,12 +162,16 @@ fn a_units_stats_follow_its_type_and_level_within_their_limits() {
     // A hero of health 380 + 76 a level, regen 1.5, mana 250 + 45, attack damage 51 + 3,
     // attack speed 0.625 + 0.0625 and move speed 4 + 0.25.
     let hero = stats(&[
-        (stat("health"), num(380), num(76)),
+        (stat("health"), Num::int(380), Num::int(76)),
         (stat("health_regen"), sixteenths(24), Num::ZERO),
-        (stat("mana"), num(250), num(45)),
-        (stat("attack_damage"), num(51), num(3)),
+        (stat("mana"), Num::int(250), Num::int(45)),
+        (stat("attack_damage"), Num::int(51), Num::int(3)),
         (stat("attack_speed"), sixteenths(10), sixteenths(1)),
-        (Stat::Engine(EngineStat::MoveSpeed), num(4), sixteenths(4)),
+        (
+            Stat::Engine(EngineStat::MoveSpeed),
+            Num::int(4),
+            sixteenths(4),
+        ),
     ]);
     let mut game = stat_match(&[hero]);
     let units = [unit(&mut game, 0)];
@@ -195,9 +194,9 @@ fn a_units_stats_follow_its_type_and_level_within_their_limits() {
     // second; damage 51; full health of 380 and mana of 250.
     let (step, rate, damage, pools) = get(&game);
     assert_eq!(step, Num::from_bits(2_236_962));
-    assert_eq!((rate, damage), (sixteenths(10), num(51)));
-    assert_eq!(amounts(pools, HEALTH), (num(380), num(380)));
-    assert_eq!(amounts(pools, MANA), (num(250), num(250)));
+    assert_eq!((rate, damage), (sixteenths(10), Num::int(51)));
+    assert_eq!(amounts(pools, HEALTH), (Num::int(380), Num::int(380)));
+    assert_eq!(amounts(pools, MANA), (Num::int(250), Num::int(250)));
 
     // Down 80 to 300 of 380, then at level 18: health 380 + 76 × 17 = 1672, the pool up by the
     // 1292 the maximum rose, to 1592, plus the regen of the tick that runs, 1.5 ÷ 30 = 0.05,
@@ -206,28 +205,31 @@ fn a_units_stats_follow_its_type_and_level_within_their_limits() {
     // 5, 5 × 2²⁴ ÷ 30 = 2 796 202.67, to 2 796 203. Mana, full and with no regen, rises with its
     // maximum, to 250 + 45 × 17 = 1015.
     let mut pools = game.world.get_mut::<Pools>(units[0]).unwrap();
-    pools.take(HEALTH, num(80));
+    pools.take(HEALTH, Num::int(80));
     *game.world.get_mut::<Level>(units[0]).unwrap() = Level::new(18).unwrap();
     game.world.run_schedule(SimUpdate);
     let (step, rate, damage, pools) = get(&game);
     assert_eq!(step, Num::from_bits(2_796_203));
-    assert_eq!((rate, damage), (sixteenths(27), num(102)));
+    assert_eq!((rate, damage), (sixteenths(27), Num::int(102)));
     let regen = Num::from_bits(838_860);
-    assert_eq!(amounts(pools, HEALTH), (num(1592) + regen, num(1672)));
-    assert_eq!(amounts(pools, MANA), (num(1015), num(1015)));
+    assert_eq!(
+        amounts(pools, HEALTH),
+        (Num::int(1592) + regen, Num::int(1672))
+    );
+    assert_eq!(amounts(pools, MANA), (Num::int(1015), Num::int(1015)));
 
     // Over the next 29 ticks the regen adds the rest of the second: 30 ticks gain exactly 1.5.
     for _ in 0..29 {
         game.world.run_schedule(SimUpdate);
     }
     let pools = game.world.get::<Pools>(units[0]).unwrap();
-    assert_eq!(pools.current(HEALTH), Some(num(1592) + sixteenths(24)));
+    assert_eq!(pools.current(HEALTH), Some(Num::int(1592) + sixteenths(24)));
 
     // Back to level 1: the maximum falls to 380, and the current amount to it.
     *game.world.get_mut::<Level>(units[0]).unwrap() = Level::default();
     game.world.run_schedule(SimUpdate);
     let (_, _, _, pools) = get(&game);
-    assert_eq!(amounts(pools, HEALTH), (num(380), num(380)));
+    assert_eq!(amounts(pools, HEALTH), (Num::int(380), Num::int(380)));
 }
 
 /// An application from `source` of modifier `id`, changing `stat` by `value` a stack with `op`,
@@ -256,7 +258,7 @@ fn a_stat_is_its_base_plus_adds_times_pcts_times_the_largest_cut() {
         )]
         .into(),
     );
-    let tenths = |tenths: i64| num(tenths) / 10;
+    let tenths = |tenths: i64| Num::int(tenths) / 10;
     let value = |changes: &[(StatOp, Num, u32)]| {
         let mut game = stat_match(slice::from_ref(&armored));
         let armor = game
@@ -280,14 +282,14 @@ fn a_stat_is_its_base_plus_adds_times_pcts_times_the_largest_cut() {
         let stats = game.world.get::<UnitStats>(armored_unit).unwrap();
         stats.values()[armor.index()]
     };
-    assert_eq!(value(&[]), num(14));
+    assert_eq!(value(&[]), Num::int(14));
     // Adds of 6 and of −1 three times: 17. Pcts of 0.3, 5 033 164.8 bits to 5 033 165, and of
     // −0.1, 1 677 721.6 to 1 677 722: 2²⁴ + 3 355 443 = 20 132 659 bits. Cuts of 0.1 and 0.25,
     // only the larger counting: 0.75. 17 × 20 132 659 × 0.75 = 256 691 402.25 bits, rounded once
     // to 256 691 402.
     let mixed = [
-        (StatOp::Add, num(6), 1),
-        (StatOp::Add, num(-1), 3),
+        (StatOp::Add, Num::int(6), 1),
+        (StatOp::Add, Num::int(-1), 3),
         (StatOp::Pct, tenths(3), 1),
         (StatOp::Pct, tenths(-1), 1),
         (StatOp::Cut, tenths(1), 1),
@@ -300,20 +302,23 @@ fn a_stat_is_its_base_plus_adds_times_pcts_times_the_largest_cut() {
     // A negative value keeps its sign: (14 − 20) × 1.5 × 0.75 = −6.75. Past the limit, (14 − 40)
     // × 1.5 = −39 stops at −30.
     let negative = [
-        (StatOp::Add, num(-20), 1),
+        (StatOp::Add, Num::int(-20), 1),
         (StatOp::Pct, sixteenths(8), 1),
         (StatOp::Cut, sixteenths(4), 1),
     ];
-    assert_eq!(value(&negative), -num(6) - sixteenths(12));
-    let floored = [(StatOp::Add, num(-40), 1), (StatOp::Pct, sixteenths(8), 1)];
-    assert_eq!(value(&floored), num(-30));
+    assert_eq!(value(&negative), -Num::int(6) - sixteenths(12));
+    let floored = [
+        (StatOp::Add, Num::int(-40), 1),
+        (StatOp::Pct, sixteenths(8), 1),
+    ];
+    assert_eq!(value(&floored), Num::int(-30));
 }
 
 #[test]
 fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
     // Move speed 4. The tags: 0 detects, and is the type's own; 1, `slowed`, has no effect; 2,
     // `slow_immune`, makes immune to 1.
-    let walker = stats(&[(Stat::Engine(EngineStat::MoveSpeed), num(4), Num::ZERO)]);
+    let walker = stats(&[(Stat::Engine(EngineStat::MoveSpeed), Num::int(4), Num::ZERO)]);
     let mut game = stat_match(&[walker]);
     let [sight, slowed, slow_immune] = [0, 1, 2].map(Tag::new);
     let effects = [
@@ -416,7 +421,7 @@ fn a_modifier_that_reads_a_param_applies_in_a_match_with_no_scripts() {
     // Move speed 4, and a modifier whose cut reads its own param of 0.5: it applies, as the
     // stats read the params from the param book. 4 × 0.5 = 2 m/s, 2 × 2²⁴ ÷ 30 = 1 118 481.07
     // bits, to 1 118 481.
-    let walker = stats(&[(Stat::Engine(EngineStat::MoveSpeed), num(4), Num::ZERO)]);
+    let walker = stats(&[(Stat::Engine(EngineStat::MoveSpeed), Num::int(4), Num::ZERO)]);
     let mut game = stat_match(&[walker]);
     let unit = unit(&mut game, 0);
     game.world.entity_mut(unit).insert(Modifiers::default());
@@ -459,7 +464,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     let limits = ScriptLimits::ROOMY;
     let scripts = ScriptBudgets::new(limits, 1);
     let mut game = TestMatch::server(&[Capability::Stats], scripts);
-    let book = StatBook::new(&rules(), [], num(6));
+    let book = StatBook::new(&rules(), [], Num::int(6));
     Stats::load(&mut game.world, book, PoolBook::default());
     // A presence of 2 m on allies, holding `inspired`.
     let presence = AuraData {
@@ -469,7 +474,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     };
     Stats::load_modifier(&mut game.world, 0, "inspired", &data(None), None);
     Stats::load_modifier(&mut game.world, 0, "presence", &data(Some(presence)), None);
-    let at = |x: i64| Position::new(Vec3::new(num(x), Num::ZERO, Num::ZERO)).unwrap();
+    let at = |x: i64| Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::ZERO)).unwrap();
     let spawn = |game: &mut TestMatch, x: i64, team: u8| {
         game.spawn(at(x), (Team::new(team), Modifiers::default()))
     };
@@ -488,7 +493,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     });
     let holder = entity(&game, carrier);
     let mut presence_carrier = CarriedMut::of(&mut game.world, holder).unwrap();
-    presence_carrier.apply(aura(presence, carrier, num(2)));
+    presence_carrier.apply(aura(presence, carrier, Num::int(2)));
     let holds = |game: &TestMatch, id: StableId| {
         let modifiers = game.world.get::<Modifiers>(entity(game, id)).unwrap();
         modifiers
@@ -506,7 +511,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     // The near ally leaves, and the far one comes to 3 m with a body of 1 m: its edge is within
     // 2 m, as an area's radius reaches it.
     *game.world.get_mut::<Position>(entity(&game, near)).unwrap() = at(5);
-    let moved = (at(-3), Body::new(num(1)).unwrap());
+    let moved = (at(-3), Body::new(Num::int(1)).unwrap());
     game.world.entity_mut(entity(&game, far)).insert(moved);
     game.world.run_schedule(SimUpdate);
     assert_eq!([near, far].map(|id| holds(&game, id)), [false, true]);
@@ -547,7 +552,7 @@ fn a_modifier_another_capability_holds_lasts_only_its_tick() {
     let limits = ScriptLimits::ROOMY;
     let scripts = ScriptBudgets::new(limits, 1);
     let mut game = TestMatch::server(&[Capability::Stats], scripts);
-    let book = StatBook::new(&rules(), [], num(6));
+    let book = StatBook::new(&rules(), [], Num::int(6));
     Stats::load(&mut game.world, book, PoolBook::default());
     Stats::load_modifier(&mut game.world, 0, "inspired", &modifier_data(None), None);
     let id = game.spawn(Position::ORIGIN, (Team::new(0), Modifiers::default()));
@@ -582,7 +587,7 @@ fn a_modifier_another_capability_holds_lasts_only_its_tick() {
 fn a_restored_unit_derives_its_stats_and_tags_again() {
     // A walker of move speed 4, stunned by a modifier that grants tag 0, which blocks moving, and
     // slowed by another's cut of 0.5: move speed 4 × (1 − 0.5) = 2.
-    let walker = stats(&[(Stat::Engine(EngineStat::MoveSpeed), num(4), Num::ZERO)]);
+    let walker = stats(&[(Stat::Engine(EngineStat::MoveSpeed), Num::int(4), Num::ZERO)]);
     let stunned = Tag::new(0);
     let start = || {
         let mut game = stat_match(slice::from_ref(&walker));
@@ -632,7 +637,7 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
     restored.world.run_schedule(SimUpdate);
     for (world, entity) in [(&game.world, walker), (&restored.world, copy)] {
         let stats = world.get::<UnitStats>(entity).unwrap();
-        assert_eq!(stats.values()[speed.index()], num(2));
+        assert_eq!(stats.values()[speed.index()], Num::int(2));
         let tags = world.get::<UnitTags>(entity);
         assert!(UnitTags::effects_of(tags).blocks(Block::Move));
     }

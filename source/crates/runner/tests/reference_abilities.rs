@@ -42,11 +42,6 @@ fn abilities(name: &str) -> AvatarData {
     let path = PackagePath::parse("data/avatar.toml").unwrap();
     hero(name).read_data(&path).unwrap()
 }
-
-const fn num(value: i64) -> Num {
-    Num::from_int(value).unwrap()
-}
-
 /// The 3v3's books at 30 ticks a second for one player, with no mode: no `calc_damage` weighs a
 /// hit, so each one lands as its ability deals it.
 fn arena() -> Arena {
@@ -63,7 +58,7 @@ fn spawn_with(
     pools: (i64, i64),
     parts: impl Bundle,
 ) -> StableId {
-    let at = Position::new(Vec3::new(num(x), Num::ZERO, Num::ZERO)).unwrap();
+    let at = Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::ZERO)).unwrap();
     spawn_at(arena, team, at, pools, parts)
 }
 
@@ -78,7 +73,7 @@ fn spawn_at(
     let pools = [("health", 500), ("mana", mana), ("energy", energy)]
         .into_iter()
         .filter(|&(_, max)| max > 0)
-        .map(|(pool, max)| (arena.pool(pool), num(max)));
+        .map(|(pool, max)| (arena.pool(pool), Num::int(max)));
     let pools = Pools::new(pools).unwrap();
     let world = arena.world_mut();
     let id = world.resource_mut::<IdAllocator>().allocate();
@@ -108,7 +103,7 @@ fn pool(arena: &Arena, id: StableId, name: &str) -> Num {
 fn arm(arena: &mut Arena, unit: StableId, damage: i64, period: u64) {
     let world = arena.world_mut();
     let entity = world.resource::<EntityIndex>().get(unit).unwrap();
-    let arms = Arms::melee(num(2), 0, period, num(damage));
+    let arms = Arms::melee(Num::int(2), 0, period, Num::int(damage));
     let parts = arms.parts(world);
     world.entity_mut(entity).insert(parts);
 }
@@ -160,7 +155,7 @@ fn areas(arena: &mut Arena) -> usize {
 
 /// The point `x`, `z` thousandths of a meter from the origin.
 fn milli(x: i64, z: i64) -> Position {
-    let at = |value: i64| num(value).checked_div_int(1000).unwrap();
+    let at = |value: i64| Num::int(value).checked_div_int(1000).unwrap();
     Position::new(Vec3::new(at(x), Num::ZERO, at(z))).unwrap()
 }
 
@@ -231,7 +226,7 @@ fn every_reference_ability_reads_into_the_schema() {
     assert_eq!(ranges[1], RangeField::Range(Range::Meters(half * 65)));
     let wraps = &husk.content.actions["grasping_wraps"];
     assert_eq!(wraps.targeting, Targeting::Direction);
-    let eleven = RangeField::Range(Range::Meters(num(11)));
+    let eleven = RangeField::Range(Range::Meters(Num::int(11)));
     assert_eq!(wraps.range, Some(Ranked::One(eleven)));
 }
 
@@ -290,7 +285,7 @@ fn veils_dusk_mark_detonates_once_on_veils_next_damage() {
     let pools = *world.get::<Pools>(entity).unwrap();
     world
         .entity_mut(entity)
-        .insert(internals::spent(pools, energy, num(100)));
+        .insert(internals::spent(pools, energy, Num::int(100)));
     let other = spawn(&mut arena, 0, 0, player);
     let marked = spawn(&mut arena, 1, 1, Modifiers::default());
     let marks = |arena: &Arena| !carried(arena, marked).is_empty();
@@ -305,7 +300,7 @@ fn veils_dusk_mark_detonates_once_on_veils_next_damage() {
     // to 125. The detonation is Dusk Mark's own damage, and the mark is gone: it detonates once.
     arena.tick(0, &[attack(veil, marked)]);
     assert_eq!((health(&arena, marked), marks(&arena)), (370, false));
-    assert_eq!(pool(&arena, veil, "energy"), num(125));
+    assert_eq!(pool(&arena, veil, "energy"), Num::int(125));
     assert!(arena.failures().is_empty(), "{:?}", arena.failures());
 }
 
@@ -352,7 +347,7 @@ fn rimes_fan_of_frost_from_its_package_hits_exactly_the_units_in_reach_once_each
     assert_eq!(missed.map(|unit| health(&arena, unit)), [500; 5]);
     assert_eq!(hit.map(slowed), [true; 4]);
     assert_eq!(missed.map(slowed), [false; 5]);
-    assert_eq!(pool(&arena, caster, "mana"), num(40));
+    assert_eq!(pool(&arena, caster, "mana"), Num::int(40));
     assert!(arena.failures().is_empty(), "{:?}", arena.failures());
 }
 
@@ -370,13 +365,13 @@ fn rimes_snow_owl_flies_to_its_point_and_ends_there() {
     // Aimed at a point 7 m out, within its 25 m range: it launches in tick 0, and flies 14/30 m
     // a tick, 7 829 367 bits rounded, from tick 1. Fifteen steps are 7 bits short of 7 m, and the
     // sixteenth ends it on the point, where its `on_end` runs.
-    let point = Position::new(Vec3::new(num(7), Num::ZERO, Num::ZERO)).unwrap();
+    let point = Position::new(Vec3::new(Num::int(7), Num::ZERO, Num::ZERO)).unwrap();
     arena.tick(0, &[cast(caster, ActionTarget::Point(point))]);
     for _ in 1..=15 {
         arena.step();
     }
     let short = Num::from_bits(15 * 7_829_367);
-    assert_eq!(short, num(7) - Num::from_bits(7));
+    assert_eq!(short, Num::int(7) - Num::from_bits(7));
     let flying = Position::new(Vec3::new(short, Num::ZERO, Num::ZERO)).unwrap();
     assert_eq!(owls(&mut arena), [flying]);
     arena.step();
@@ -427,7 +422,7 @@ fn cinders_eruption_from_its_package_erupts_on_the_units_in_reach_after_its_dela
     let ablaze = |unit| carried(&arena, unit) == [(kindle, Some(caster))];
     assert_eq!(units.map(ablaze), [true, true, false, true, false]);
     assert_eq!(areas(&mut arena), 0);
-    assert_eq!(pool(&arena, caster, "mana"), num(30));
+    assert_eq!(pool(&arena, caster, "mana"), Num::int(30));
     assert!(arena.failures().is_empty(), "{:?}", arena.failures());
 }
 
@@ -461,7 +456,7 @@ fn veils_smoke_ring_from_its_package_holds_its_modifiers_on_the_units_inside_whi
     // tick's Resolve. It lasts 8000 ms, 240 ticks, and ends in tick 240.
     arena.tick(0, &[cast(caster, ActionTarget::None)]);
     assert_eq!(held(&arena), inside);
-    assert_eq!(pool(&arena, caster, "energy"), num(20));
+    assert_eq!(pool(&arena, caster, "energy"), Num::int(20));
     // The near enemy steps out to 4 m: its slow ends in the next tick's Resolve.
     for _ in 1..100 {
         arena.step();
@@ -469,7 +464,7 @@ fn veils_smoke_ring_from_its_package_holds_its_modifiers_on_the_units_inside_whi
     let world = arena.world_mut();
     let entity = world.resource::<EntityIndex>().get(near).unwrap();
     *world.get_mut::<Position>(entity).unwrap() =
-        Position::new(Vec3::new(num(4), Num::ZERO, Num::ZERO)).unwrap();
+        Position::new(Vec3::new(Num::int(4), Num::ZERO, Num::ZERO)).unwrap();
     arena.step();
     let mut left = inside.clone();
     left[1] = vec![];

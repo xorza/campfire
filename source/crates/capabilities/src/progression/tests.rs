@@ -7,11 +7,6 @@ use crate::progression::track_data::Thresholds;
 use crate::progression::track_data::TrackData;
 use crate::units::track_id::TrackId;
 use crate::values::declared_name::DeclaredName;
-
-fn num(value: i64) -> Num {
-    Num::from_int(value).unwrap()
-}
-
 fn track(at: usize) -> TrackId {
     TrackId::new(at).unwrap()
 }
@@ -19,7 +14,7 @@ fn track(at: usize) -> TrackId {
 /// `level`, levels 2 at 100 and 3 at 300; `valor`, level 2 at 50.
 fn book() -> TrackBook {
     let data = |levels: &[i64], level| TrackData {
-        levels: Thresholds::new(levels.iter().map(|&value| num(value))).unwrap(),
+        levels: Thresholds::new(levels.iter().map(|&value| Num::int(value))).unwrap(),
         level,
     };
     let tracks = [
@@ -38,10 +33,10 @@ fn a_level_is_reached_exactly_at_its_threshold_and_never_falls() {
     assert_eq!(book.names().nth(1), Some("valor"));
     // A threshold met is a level: 99.99… is 1, 100 is 2, 299 is 2, 300 and anything past are 3.
     let level = |xp| book.level_at(track(0), xp).get();
-    let below = num(100) - Num::EPSILON;
-    let levels = [below, num(100), num(299), num(300), Num::MAX].map(level);
+    let below = Num::int(100) - Num::EPSILON;
+    let levels = [below, Num::int(100), Num::int(299), Num::int(300), Num::MAX].map(level);
     assert_eq!(levels, [1, 2, 2, 3, 3]);
-    assert_eq!(book.level_at(track(1), num(50)).get(), 2);
+    assert_eq!(book.level_at(track(1), Num::int(50)).get(), 2);
 
     // Experience adds up to the largest number at most, and a level set past what it reaches
     // stays: a level is state. The `level` track's level is the unit's, which the add raises;
@@ -54,7 +49,7 @@ fn a_level_is_reached_exactly_at_its_threshold_and_never_falls() {
         Some(Level::default())
     );
     let mut unit_level = Level::default();
-    let raised = experience.add(track(0), num(150), &book, Some(&mut unit_level));
+    let raised = experience.add(track(0), Num::int(150), &book, Some(&mut unit_level));
     assert_eq!(
         (raised.from.get(), raised.to.get(), unit_level.get()),
         (1, 2, 2)
@@ -67,7 +62,7 @@ fn a_level_is_reached_exactly_at_its_threshold_and_never_falls() {
     assert_eq!(experience.get(track(0)).unwrap().xp, Num::MAX);
     let mut ahead = Experience::new(TrackSet::of([track(1)]), level_track);
     ahead.tracks_mut()[0].level = Level::new(5);
-    let raised = ahead.add(track(1), num(60), &book, None);
+    let raised = ahead.add(track(1), Num::int(60), &book, None);
     assert_eq!((raised.from.get(), raised.to.get()), (5, 5));
     assert_eq!(ahead.get(track(0)), None);
 }
@@ -87,15 +82,15 @@ fn a_snapshot_with_tracks_out_of_order_or_negative_experience_fails_to_decode() 
         let bytes = postcard::to_allocvec(&Fields { tracks }).unwrap();
         postcard::from_bytes::<Experience>(&bytes)
     };
-    assert!(decode(vec![held(0, num(5)), held(3, Num::ZERO)]).is_ok());
-    assert!(decode(vec![held(3, num(5)), held(0, num(5))]).is_err());
-    assert!(decode(vec![held(1, num(5)), held(1, num(5))]).is_err());
+    assert!(decode(vec![held(0, Num::int(5)), held(3, Num::ZERO)]).is_ok());
+    assert!(decode(vec![held(3, Num::int(5)), held(0, Num::int(5))]).is_err());
+    assert!(decode(vec![held(1, Num::int(5)), held(1, Num::int(5))]).is_err());
     assert!(decode(vec![held(0, -Num::EPSILON)]).is_err());
 }
 
 #[test]
 fn thresholds_are_positive_and_strictly_ascending_as_built_and_as_read() {
-    let thresholds = |levels: &[i64]| Thresholds::new(levels.iter().map(|&value| num(value)));
+    let thresholds = |levels: &[i64]| Thresholds::new(levels.iter().map(|&value| Num::int(value)));
     for refused in [
         &[][..],
         &[0],
@@ -106,17 +101,17 @@ fn thresholds_are_positive_and_strictly_ascending_as_built_and_as_read() {
     ] {
         assert_eq!(thresholds(refused), None, "{refused:?}");
     }
-    assert_eq!(thresholds(&[1]).unwrap().get(), [num(1)]);
+    assert_eq!(thresholds(&[1]).unwrap().get(), [Num::int(1)]);
     assert_eq!(
         thresholds(&[100, 101, 300]).unwrap().get(),
-        [num(100), num(101), num(300)]
+        [Num::int(100), Num::int(101), Num::int(300)]
     );
     let read = |text: &str| toml::from_str::<TrackData>(text);
     let refusal = |text: &str| read(text).unwrap_err().message().to_owned();
     assert_eq!(
         read("levels = [\"0.5\", 300]\nlevel = true").unwrap(),
         TrackData {
-            levels: Thresholds::new([Num::ONE.checked_div_int(2).unwrap(), num(300)]).unwrap(),
+            levels: Thresholds::new([Num::ONE.checked_div_int(2).unwrap(), Num::int(300)]).unwrap(),
             level: true,
         }
     );

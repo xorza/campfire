@@ -12,18 +12,18 @@ fn the_3v3s_calc_damage_weighs_each_hit_exactly() {
             ("damage_dealt_pct", half),
             ("crit_chance", Num::ONE / 4),
             ("armor_pen_pct", half),
-            ("armor_pen", num(10)),
+            ("armor_pen", Num::int(10)),
         ],
     );
     let armored = game.fighter(
         1,
         &[
-            ("armor", num(120)),
-            ("magic_resist", num(60)),
-            ("physical_block", num(5)),
+            ("armor", Num::int(120)),
+            ("magic_resist", Num::int(60)),
+            ("physical_block", Num::int(5)),
         ],
     );
-    let exposed = game.fighter(1, &[("armor", num(-100))]);
+    let exposed = game.fighter(1, &[("armor", Num::int(-100))]);
     game.tick(&[]);
     let crit = DamageCause::Attack {
         roll: Num::from_bits((1 << Num::FRAC_BITS) / 4 - 1),
@@ -46,8 +46,8 @@ fn the_3v3s_calc_damage_weighs_each_hit_exactly() {
     game.damage(None, exposed, 100, "physical", lowest);
     game.tick(&[]);
     assert!(game.failures().is_empty());
-    assert_eq!(game.sim.life(armored), num(1000 - 95 - 75));
-    assert_eq!(game.sim.life(exposed), num(1000 - 225 - 150 - 150));
+    assert_eq!(game.sim.life(armored), Num::int(1000 - 95 - 75));
+    assert_eq!(game.sim.life(exposed), Num::int(1000 - 225 - 150 - 150));
 }
 
 #[test]
@@ -86,7 +86,7 @@ fn calc_heal(ctx, h) {
         game.failures(),
         [Some(ApiError::PureCall), Some(ApiError::NotAnAmount)]
     );
-    assert_eq!(game.sim.life(target), num(950));
+    assert_eq!(game.sim.life(target), Num::int(950));
     let timers = game.sim.world.resource::<Timers>();
     assert!(timers.due(Tick::new(u64::MAX)).is_none());
 
@@ -96,7 +96,7 @@ fn calc_heal(ctx, h) {
         game.sim.world.resource_mut::<PassQueue>().push_heal(Heal {
             source: Some(source),
             target,
-            amount: num(amount),
+            amount: Num::int(amount),
             cause,
             ability: None,
             depth: 0,
@@ -104,5 +104,5 @@ fn calc_heal(ctx, h) {
     }
     game.tick(&[]);
     assert_eq!(game.failures(), []);
-    assert_eq!(game.sim.life(target), num(961));
+    assert_eq!(game.sim.life(target), Num::int(961));
 }

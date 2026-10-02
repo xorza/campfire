@@ -132,71 +132,79 @@ impl<'de> Deserialize<'de> for Bounds {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn num(value: i64) -> Num {
-        Num::from_int(value).unwrap()
-    }
-
     fn at(x: Num, y: Num, z: Num) -> Position {
         Position::new(Vec3::new(x, y, z)).unwrap()
     }
 
     #[test]
     fn bounds_hold_their_closed_rectangle_and_clamp_to_it() {
-        let bounds = Bounds::new([num(-2), num(-1)], [num(4), num(3)]).unwrap();
+        let bounds = Bounds::new([Num::int(-2), Num::int(-1)], [Num::int(4), Num::int(3)]).unwrap();
         let e = Num::EPSILON;
         // Corners and edges are inside; a bit past any edge is not. Height never counts.
         for (x, z, inside) in [
-            (num(-2), num(-1), true),
-            (num(4), num(3), true),
-            (num(4), num(0), true),
-            (num(4) + e, num(0), false),
-            (num(-2) - e, num(0), false),
-            (num(0), num(3) + e, false),
-            (num(0), num(-1) - e, false),
+            (Num::int(-2), Num::int(-1), true),
+            (Num::int(4), Num::int(3), true),
+            (Num::int(4), Num::int(0), true),
+            (Num::int(4) + e, Num::int(0), false),
+            (Num::int(-2) - e, Num::int(0), false),
+            (Num::int(0), Num::int(3) + e, false),
+            (Num::int(0), Num::int(-1) - e, false),
         ] {
-            assert_eq!(bounds.contains(at(x, num(50), z)), inside, "{x:?} {z:?}");
+            assert_eq!(
+                bounds.contains(at(x, Num::int(50), z)),
+                inside,
+                "{x:?} {z:?}"
+            );
         }
         // (9, 9) clamps to the corner (4, 3), (−5, 1) to the left edge at z = 1, and a point
         // inside stays, each at its own height.
         assert_eq!(
-            bounds.clamp(at(num(9), num(7), num(9))),
-            at(num(4), num(7), num(3))
+            bounds.clamp(at(Num::int(9), Num::int(7), Num::int(9))),
+            at(Num::int(4), Num::int(7), Num::int(3))
         );
         assert_eq!(
-            bounds.clamp(at(num(-5), num(5), num(1))),
-            at(num(-2), num(5), num(1))
+            bounds.clamp(at(Num::int(-5), Num::int(5), Num::int(1))),
+            at(Num::int(-2), Num::int(5), Num::int(1))
         );
         assert_eq!(
-            bounds.clamp(at(num(1), num(0), num(2))),
-            at(num(1), num(0), num(2))
+            bounds.clamp(at(Num::int(1), Num::int(0), Num::int(2))),
+            at(Num::int(1), Num::int(0), Num::int(2))
         );
-        assert_eq!(bounds.clamp_ground([num(-9), num(-9)]), [num(-2), num(-1)]);
         assert_eq!(
-            bounds.ground_point([num(9), num(-9)], at(num(1), num(6), num(2))),
-            at(num(4), num(6), num(-1))
+            bounds.clamp_ground([Num::int(-9), Num::int(-9)]),
+            [Num::int(-2), Num::int(-1)]
+        );
+        assert_eq!(
+            bounds.ground_point(
+                [Num::int(9), Num::int(-9)],
+                at(Num::int(1), Num::int(6), Num::int(2))
+            ),
+            at(Num::int(4), Num::int(6), Num::int(-1))
         );
 
         let past = Position::BOUND + e;
         for (min, max) in [
-            ([num(0), num(0)], [num(0), num(1)]),
-            ([num(1), num(0)], [num(0), num(1)]),
-            ([num(0), num(0)], [past, num(1)]),
-            ([num(0), -past], [num(1), num(1)]),
+            ([Num::int(0), Num::int(0)], [Num::int(0), Num::int(1)]),
+            ([Num::int(1), Num::int(0)], [Num::int(0), Num::int(1)]),
+            ([Num::int(0), Num::int(0)], [past, Num::int(1)]),
+            ([Num::int(0), -past], [Num::int(1), Num::int(1)]),
         ] {
             assert_eq!(Bounds::new(min, max), None, "{min:?} {max:?}");
         }
-        assert!(Bounds::WORLD.contains(at(-Position::BOUND, num(0), Position::BOUND)));
+        assert!(Bounds::WORLD.contains(at(-Position::BOUND, Num::int(0), Position::BOUND)));
 
         // From (0, 0, 1): 4 to the right edge along +x, 2 to the bottom along −z, and from a
         // point past the right edge, 0. Straight up, the path leaves at the world's height.
         let x = Vec3::new(Num::ONE, Num::ZERO, Num::ZERO);
         let z = Vec3::new(Num::ZERO, Num::ZERO, -Num::ONE);
         let up = Vec3::new(Num::ZERO, Num::ONE, Num::ZERO);
-        let origin = at(num(0), num(0), num(1));
-        assert_eq!(bounds.exit(origin, x), num(4));
-        assert_eq!(bounds.exit(origin, z), num(2));
-        assert_eq!(bounds.exit(at(num(5), num(0), num(1)), x), Num::ZERO);
+        let origin = at(Num::int(0), Num::int(0), Num::int(1));
+        assert_eq!(bounds.exit(origin, x), Num::int(4));
+        assert_eq!(bounds.exit(origin, z), Num::int(2));
+        assert_eq!(
+            bounds.exit(at(Num::int(5), Num::int(0), Num::int(1)), x),
+            Num::ZERO
+        );
         assert_eq!(bounds.exit(origin, up), Position::BOUND);
     }
 }

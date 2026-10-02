@@ -86,8 +86,7 @@ mod tests {
     use super::*;
 
     fn at(x: i64, y: i64, z: i64) -> Position {
-        let num = |value| Num::from_int(value).unwrap();
-        Position::new(Vec3::new(num(x), num(y), num(z))).unwrap()
+        Position::new(Vec3::new(Num::int(x), Num::int(y), Num::int(z))).unwrap()
     }
 
     #[test]

@@ -125,20 +125,21 @@ impl StatsCall {
 
 #[cfg(test)]
 mod tests {
-    use std::num::NonZeroU32;
+
     use std::ptr;
     use std::sync::Arc;
 
-    use campfire_sim::{IdAllocator, TickRate};
+    use campfire_sim::IdAllocator;
 
     use super::*;
+    use crate::capability_set::test_match::TestMatch;
     use crate::scripts::state_value::StateValue;
     use crate::stats::modifier_handle::HandleOf;
     use crate::units::script_view::View;
 
     #[test]
     fn a_handle_no_script_holds_serves_the_next_call_again() {
-        let view = View::new(TickRate::new(NonZeroU32::new(30).unwrap()));
+        let view = View::new(TestMatch::RATE);
         let carrier = IdAllocator::default().allocate();
         let of = |stacks| HandleOf {
             carrier,

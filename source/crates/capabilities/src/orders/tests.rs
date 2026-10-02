@@ -133,13 +133,8 @@ fn on_think(ctx, unit) {
     }
 }
 ";
-
-fn num(value: i64) -> Num {
-    Num::from_int(value).unwrap()
-}
-
 fn at(x: i64, y: i64, z: i64) -> Position {
-    Position::new(Vec3::new(num(x), num(y), num(z))).unwrap()
+    Position::new(Vec3::new(Num::int(x), Num::int(y), Num::int(z))).unwrap()
 }
 
 fn raw(x: i64, y: i64, z: i64) -> Position {
@@ -154,7 +149,14 @@ fn raw(x: i64, y: i64, z: i64) -> Position {
 /// `health`, and `damage` within `range`, a windup and a period in ticks; `Stay` on death, as a
 /// hero.
 fn combatant(health: i64, range: i64, windup: u64, period: u64, damage: i64) -> Armed {
-    Armed::melee(num(health), num(range), windup, period, num(damage)).on_death(OnDeath::Stay)
+    Armed::melee(
+        Num::int(health),
+        Num::int(range),
+        windup,
+        period,
+        Num::int(damage),
+    )
+    .on_death(OnDeath::Stay)
 }
 
 /// 100 health, and 30 damage within 2 m, 2 ticks after the start of an attack every 5 ticks.
@@ -309,8 +311,8 @@ fn move_to(unit: StableId, x: i64, z: i64) -> Vec<u8> {
     Order::payload(&[Order {
         unit,
         action: Action::Move {
-            x: num(x),
-            z: num(z),
+            x: Num::int(x),
+            z: Num::int(z),
         },
     }])
 }
@@ -417,7 +419,7 @@ fn only_its_players_orders_in_the_orders_capability_move_a_unit() {
         unit: first,
         action: Action::Move {
             x: Position::BOUND + Num::EPSILON,
-            z: -num(1),
+            z: -Num::int(1),
         },
     }]);
     let edge = Order::payload(&[Order {
@@ -435,8 +437,8 @@ fn only_its_players_orders_in_the_orders_capability_move_a_unit() {
     let order = Order {
         unit: first,
         action: Action::Move {
-            x: num(9),
-            z: num(9),
+            x: Num::int(9),
+            z: Num::int(9),
         },
     }
     .encode();
@@ -458,11 +460,11 @@ fn only_its_players_orders_in_the_orders_capability_move_a_unit() {
     assert_eq!(game.position(first), at(1, 0, -1));
     assert_eq!(
         game.destination(first),
-        Some(Position::new(Vec3::new(Position::BOUND, Num::ZERO, -num(1))).unwrap())
+        Some(Position::new(Vec3::new(Position::BOUND, Num::ZERO, -Num::int(1))).unwrap())
     );
     assert_eq!(
         game.destination(second),
-        Some(Position::new(Vec3::new(Position::BOUND, num(2), Num::ZERO)).unwrap())
+        Some(Position::new(Vec3::new(Position::BOUND, Num::int(2), Num::ZERO)).unwrap())
     );
 }
 
@@ -577,7 +579,7 @@ fn standing() -> Armed {
 }
 
 fn meters(value: i64) -> Scalar {
-    Scalar::Decimal(num(value))
+    Scalar::Decimal(Num::int(value))
 }
 
 #[test]
@@ -803,7 +805,7 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
     let mut armed = |aim: &str| {
         let weapon = TestWeapon::new(
             Filter::parse(aim, &UnitTypes::default()).unwrap(),
-            Range::Meters(num(20)),
+            Range::Meters(Num::int(20)),
             Ticks::new(2),
         );
         let weapon = internals::weapon(&mut game.sim.world, weapon);
@@ -925,10 +927,12 @@ fn a_path_walker_that_arrives_short_of_its_waypoint_waits_there() {
     // waypoint as it spawns, walks to the nearest cell it reaches, (3.5, 1.5), 3 m on, in
     // ticks 0 to 2. There it waits, with no destination: it never asks for the route again.
     let half = Num::from_bits(1 << 23);
-    let place = |x: i64, z: i64| Position::new(Vec3::new(num(x) + half, Num::ZERO, num(z) + half));
+    let place = |x: i64, z: i64| {
+        Position::new(Vec3::new(Num::int(x) + half, Num::ZERO, Num::int(z) + half))
+    };
     let waypoints = [place(0, 1).unwrap(), place(6, 1).unwrap()];
     let mut game = Match::with_paths(Paths::new([("mid", &waypoints[..])]));
-    let bounds = Bounds::new([num(0), num(0)], [num(8), num(3)]).unwrap();
+    let bounds = Bounds::new([Num::int(0), Num::int(0)], [Num::int(8), Num::int(3)]).unwrap();
     let ground = Walker {
         layer: Layer::FIRST,
         radius: Num::ZERO,
@@ -1022,7 +1026,7 @@ fn a_monster_pulled_past_its_leash_walks_home_ignoring_its_attacker_and_heals() 
     let mut unit = game.sim.world.entity_mut(entity);
     unit.get_mut::<Pools>()
         .unwrap()
-        .take(PoolId::FIRST, num(60));
+        .take(PoolId::FIRST, Num::int(60));
     unit.insert((Resetting, Dead));
     game.tick(&[]);
     assert!(!resets(&game));

@@ -87,7 +87,7 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     // A route of the grunt, of the mode's one kind of walker, until its body grows past it.
     let route = game.sim.world.get::<Route>(grunt).unwrap().clone();
     assert!(route.check(&game.sim.world, grunt));
-    let wide = Body::new(num(3)).unwrap();
+    let wide = Body::new(Num::int(3)).unwrap();
     game.sim.world.entity_mut(grunt).insert(wide);
     assert!(!route.check(&game.sim.world, grunt));
     assert!(!Destination::default().check(&game.sim.world, grunt));
@@ -100,7 +100,7 @@ fn a_restore_check_refuses_modifiers_the_book_lacks() {
     let mut game = Game::new(SCRIPT, ScriptLimits::ROOMY);
     // A modifier of the book, with a value for its one change and no state, as the fighter's is;
     // not one the book lacks, nor one of other state or another count of changes.
-    let fighter = game.fighter(0, &[("armor", num(1))]);
+    let fighter = game.fighter(0, &[("armor", Num::int(1))]);
     let fighter = game.entity(fighter.get());
     let world = &game.sim.world;
     let modifiers = world.get::<Modifiers>(fighter).unwrap();
@@ -113,7 +113,7 @@ fn a_restore_check_refuses_modifiers_the_book_lacks() {
     );
     let modifier = modifiers.iter().next().unwrap().id;
     let one = StatShare {
-        value: num(1),
+        value: Num::int(1),
         live: None,
     };
     let applied = |id, stats: Vec<StatShare>, state: Vec<StateValue>| Application {

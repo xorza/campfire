@@ -61,11 +61,6 @@ impl Order {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn num(value: i64) -> Num {
-        Num::from_int(value).unwrap()
-    }
-
     fn id(value: u8) -> StableId {
         postcard::from_bytes(&[value]).unwrap()
     }
@@ -75,7 +70,7 @@ mod tests {
         let order = Order {
             unit: id(4),
             action: Action::Move {
-                x: num(-3),
+                x: Num::int(-3),
                 z: Num::from_bits(5),
             },
         };

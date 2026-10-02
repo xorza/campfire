@@ -16,9 +16,9 @@ fn probe(ctx, unit) {
     let actor = game.fighter(0, &[]);
     let target = game.fighter(1, &[]);
     let entity = game.sim.entity(target);
-    let mut pools = Pools::new([(PoolId::FIRST, num(1000)), (MANA, num(100))]).unwrap();
-    pools.take(PoolId::FIRST, num(20));
-    pools.take(MANA, num(50));
+    let mut pools = Pools::new([(PoolId::FIRST, Num::int(1000)), (MANA, Num::int(100))]).unwrap();
+    pools.take(PoolId::FIRST, Num::int(20));
+    pools.take(MANA, Num::int(50));
     game.sim.insert(target, pools);
     // Each role in turn: 3 restored and 5 gold given as its effects apply, then 10 dealt and 4
     // healed in the tick's pass, in the order queued: from 980 to 974, and so on; the pool from
@@ -45,11 +45,15 @@ fn probe(ctx, unit) {
             (Ok(1), Ok(1)),
             "{role:?}"
         );
-        assert_eq!(game.sim.life(target), num(980 - 6 * at), "{role:?}");
+        assert_eq!(game.sim.life(target), Num::int(980 - 6 * at), "{role:?}");
         game.tick(&[]);
-        assert_eq!(game.sim.life(target), num(980 - 6 * (at + 1)), "{role:?}");
+        assert_eq!(
+            game.sim.life(target),
+            Num::int(980 - 6 * (at + 1)),
+            "{role:?}"
+        );
         let pool = game.sim.world.get::<Pools>(entity).unwrap().current(MANA);
-        assert_eq!(pool, Some(num(50 + 3 * (at + 1))), "{role:?}");
+        assert_eq!(pool, Some(Num::int(50 + 3 * (at + 1))), "{role:?}");
     }
     // A call given to other roles fails in this one, when it runs.
     let refused = [

@@ -131,7 +131,7 @@ fn on_level_up(ctx, unit, track, level) {
             .push_damage(Damage {
                 source: tower,
                 target,
-                amount: num(10),
+                amount: Num::int(10),
                 kind: DamageKind::new(0),
                 cause: DamageCause::Effect,
                 ability: None,

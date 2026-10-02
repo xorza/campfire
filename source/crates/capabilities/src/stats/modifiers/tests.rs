@@ -7,11 +7,6 @@ use super::*;
 use crate::scripts::state_value::StateValue;
 use crate::stats::lifetime::Lifetime;
 use crate::stats::modifier_clocks::Interval;
-
-fn num(value: i64) -> Num {
-    Num::from_int(value).unwrap()
-}
-
 /// An application of modifier `id` from `source`, reapplied as `reapply`, up to
 /// `max_stacks`, adding `armor` a stack, holding until tick `until`, and with `stack` =
 /// `(now, life)`, its stack applied in tick `now` for `life` ticks.
@@ -38,7 +33,7 @@ fn applied(
             stack_life,
             stack_ends: stack_ends.into_iter().collect(),
             stats: vec![StatShare {
-                value: num(armor),
+                value: Num::int(armor),
                 live: None,
             }],
             state: vec![StateValue::Int(7)],
@@ -150,7 +145,7 @@ fn modifiers_refresh_stack_to_their_limit_ignore_and_end() {
     );
     assert_eq!(
         (held.shares[0].value, &clocks.state(at)[0]),
-        (num(10), &StateValue::Int(9))
+        (Num::int(10), &StateValue::Int(9))
     );
     // From another source, another instance, kept after the first by source.
     modifiers.apply(
@@ -182,7 +177,7 @@ fn modifiers_refresh_stack_to_their_limit_ignore_and_end() {
     let ignored = modifiers.get(ModifierId::new(2), None).unwrap();
     assert_eq!(
         (ignored.shares[0].value, ignored.lifetime.until()),
-        (num(3), Some(Tick::new(8)))
+        (Num::int(3), Some(Tick::new(8)))
     );
     assert_eq!(stacks(&modifiers), [(0, 1), (0, 1), (1, 3), (2, 1)]);
 
