@@ -9,6 +9,7 @@ mod load_check;
 mod mode_packages;
 mod package;
 mod package_dir;
+mod package_files;
 mod package_store;
 mod script_facts;
 
@@ -27,7 +28,8 @@ pub use files::version::Version;
 pub use mode_packages::{Content, Dependent, ModePackages};
 pub use package::{Package, Script};
 pub use package_dir::PackageDir;
-pub use package_store::PackageStore;
+pub use package_files::PackageFiles;
+pub use package_store::{PackageStore, StoreFailure};
 
 /// The tag of this engine release: what a package targets and a session's terms name.
 pub const RELEASE: &str = env!("CARGO_PKG_VERSION");

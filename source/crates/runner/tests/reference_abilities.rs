@@ -20,7 +20,7 @@ use campfire_capabilities::{
 use campfire_capabilities::{Modifiers, ScriptFailure, ScriptFailures};
 use campfire_content::PackagePath;
 use campfire_math::{Num, PlayerSlot, SegmentSeed, Vec3};
-use campfire_package::{AvatarData, PackageDir};
+use campfire_package::{AvatarData, PackageDir, PackageFiles};
 use campfire_script::ScriptId;
 use campfire_sim::{
     Capability, EntityIndex, IdAllocator, Position, SimUpdate, StableId, StateRegistry, TickInput,
@@ -32,11 +32,12 @@ const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
 
 const HEROES: [&str; 6] = ["cinder", "gale", "husk", "kensho", "rime", "veil"];
 
-fn hero(name: &str) -> PackageDir {
-    PackageDir::new(format!(
+fn hero(name: &str) -> PackageFiles {
+    let dir = PackageDir::new(format!(
         "{}/../../packages/moba/heroes/{name}",
         env!("CARGO_MANIFEST_DIR")
-    ))
+    ));
+    dir.read().unwrap()
 }
 
 /// The hero `name`, as its data file declares it.
@@ -212,8 +213,8 @@ fn reference_world() -> World {
 
 /// The script at `path` of the hero `name`, compiled.
 fn compile(world: &mut World, name: &str, path: &PackagePath) -> ScriptId {
-    let source = hero(name).read_text(path).unwrap();
-    Units::compile(world, &source).unwrap()
+    let hero = hero(name);
+    Units::compile(world, hero.read_text(path).unwrap()).unwrap()
 }
 
 /// Runs a tick in which player 0 orders each of `orders`.

@@ -27,6 +27,8 @@ pub enum ContentError {
     NotAFile(PathBuf),
     /// A path in a package is not UTF-8, so no file list can name it.
     NotUtf8(PathBuf),
+    /// A file's name in a package is no package path, as one holding `\` is not.
+    NotPath(PathBuf),
 }
 
 impl fmt::Display for ContentError {
@@ -39,6 +41,9 @@ impl fmt::Display for ContentError {
                 write!(f, "{}: neither a file nor a directory", path.display())
             }
             ContentError::NotUtf8(path) => write!(f, "{}: path is not UTF-8", path.display()),
+            ContentError::NotPath(path) => {
+                write!(f, "{}: no path a package can name", path.display())
+            }
         }
     }
 }
@@ -46,7 +51,7 @@ impl fmt::Display for ContentError {
 impl Error for ContentError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            ContentError::NotAFile(_) | ContentError::NotUtf8(_) => None,
+            ContentError::NotAFile(_) | ContentError::NotUtf8(_) | ContentError::NotPath(_) => None,
             ContentError::Io { error, .. } | ContentError::Scan { error, .. } => Some(error),
             ContentError::Data { error, .. } => Some(error),
         }

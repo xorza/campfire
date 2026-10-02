@@ -43,9 +43,7 @@ impl Session {
         assert_eq!(log.next_tick(), 0, "a session starts before its first tick");
         let header = log.header();
         let terms = &header.terms;
-        if terms.release != RELEASE {
-            return Err(StartError::OtherRelease(terms.release.clone()));
-        }
+        Session::check_release(terms)?;
         if terms.mode != in_terms(packages.fingerprint()) {
             return Err(StartError::OtherMode);
         }
@@ -78,11 +76,13 @@ impl Session {
         Ok(())
     }
 
-    /// The mode and the dependencies `terms` name, from `store`, as a verifier holds them.
+    /// The mode and the dependencies `terms` name, from `store`, as a verifier holds them; an
+    /// error for terms of another release first, as its packages may not read in this one.
     pub fn packages(
         store: &PackageStore,
         terms: &SessionTerms,
     ) -> Result<ModePackages, StartError> {
+        Session::check_release(terms)?;
         let dependencies: Vec<_> = terms
             .dependencies
             .iter()
@@ -90,6 +90,14 @@ impl Session {
             .collect();
         ModePackages::from_store(store, of_package(terms.mode), &dependencies)
             .map_err(StartError::Packages)
+    }
+
+    /// An error for `terms` of another engine release than this one.
+    fn check_release(terms: &SessionTerms) -> Result<(), StartError> {
+        if terms.release != RELEASE {
+            return Err(StartError::OtherRelease(terms.release.clone()));
+        }
+        Ok(())
     }
 
     /// The mode of `packages` as session terms name it.

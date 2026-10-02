@@ -427,6 +427,11 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
     };
     let refused = [
         other(|terms| terms.release = "0.0.9".to_owned()),
+        // Another release first: its packages need not read in this one.
+        other(|terms| {
+            terms.release = "0.0.9".to_owned();
+            terms.mode = Fingerprint::new([0; 32]);
+        }),
         other(|terms| terms.mode = Fingerprint::new([0; 32])),
         other(|terms| terms.dependencies[0] = Fingerprint::new([0; 32])),
         other(|terms| terms.dependencies.clear()),
@@ -437,6 +442,7 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
             &refused,
             [
                 Some(StartError::OtherRelease(release)),
+                Some(StartError::OtherRelease(_)),
                 Some(StartError::Packages(StoreError::UnknownMode)),
                 Some(StartError::Packages(StoreError::MissingDependency(dependency))),
                 Some(StartError::Packages(StoreError::DependencyCount)),

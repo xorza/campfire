@@ -7,7 +7,7 @@ use campfire_script::ScriptHost;
 use crate::error::{LoadError, LoadProblem};
 use crate::files::units_data::UnitTypeFile;
 use crate::files::version::Version;
-use crate::package_dir::PackageDir;
+use crate::package_files::PackageFiles;
 use crate::script_facts::ScriptFacts;
 
 /// Where a package holds its game scripts.
@@ -32,9 +32,9 @@ pub struct Script {
 }
 
 impl Package {
-    /// The package in `dir`, named `name` and targeting `engine`, with every script it holds.
+    /// The package of `files`, named `name` and targeting `engine`, with every script it holds.
     pub(crate) fn read(
-        dir: &PackageDir,
+        files: &PackageFiles,
         name: String,
         engine: Version,
         parser: &ScriptHost,
@@ -43,18 +43,12 @@ impl Package {
             package: name.clone(),
             problem: Box::new(problem),
         };
-        let fingerprint = dir
-            .fingerprint()
-            .map_err(|error| fail(LoadProblem::Content(error)))?;
         let mut scripts = Vec::new();
-        let paths = dir
-            .files_under(SCRIPTS)
-            .map_err(|error| fail(LoadProblem::Content(error)))?;
-        for path in paths {
-            let source = dir
-                .read_text(&path)
+        for path in files.files_under(SCRIPTS) {
+            let source = files
+                .read_text(path)
                 .map_err(|error| fail(LoadProblem::Content(error)))?;
-            let ast = parser.parse(&source).map_err(|error| {
+            let ast = parser.parse(source).map_err(|error| {
                 fail(LoadProblem::Script {
                     path: path.clone(),
                     error,
@@ -62,13 +56,13 @@ impl Package {
             })?;
             scripts.push(Script {
                 facts: ScriptFacts::read(&ast),
-                path,
-                source,
+                path: path.clone(),
+                source: source.to_owned(),
             });
         }
         Ok(Package {
             name,
-            fingerprint,
+            fingerprint: files.fingerprint(),
             engine,
             scripts,
         })

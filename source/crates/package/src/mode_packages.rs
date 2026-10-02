@@ -18,6 +18,7 @@ use crate::files::units_data::{UnitTypeFile, UnitsData};
 use crate::load_check::LoadCheck;
 use crate::package::Package;
 use crate::package_dir::PackageDir;
+use crate::package_files::PackageFiles;
 use crate::package_store::PackageStore;
 
 const MODE_DATA: &str = "data/mode.toml";
@@ -59,15 +60,31 @@ impl ModePackages {
         ModePackages::from_package_dir(&PackageDir::new(dir))
     }
 
-    /// The mode in `mode`, and its dependencies at the paths its manifest gives from it.
+    /// The mode in `mode`, and its dependencies at the paths its manifest gives from it, each
+    /// read once.
     pub fn from_package_dir(mode: &PackageDir) -> Result<ModePackages, LoadError> {
-        let manifest = read_mode_manifest(mode)?;
+        let label = mode.root().display().to_string();
+        let read = |dir: &PackageDir, package: &str| {
+            dir.read().map_err(|error| LoadError {
+                package: package.to_owned(),
+                problem: Box::new(LoadProblem::Content(error)),
+            })
+        };
+        let files = read(mode, &label)?;
+        let manifest = read_mode_manifest(&files, &label)?;
         let dependencies = manifest
             .dependencies
             .iter()
-            .map(|(name, dependency)| (name.clone(), mode.join(Path::new(&dependency.path))))
-            .collect::<Vec<_>>();
-        ModePackages::assemble(mode, manifest, &dependencies)
+            .map(|(name, dependency)| {
+                let dir = mode.join(Path::new(&dependency.path));
+                Ok((name.clone(), read(&dir, name)?))
+            })
+            .collect::<Result<Vec<_>, LoadError>>()?;
+        let dependencies: Vec<_> = dependencies
+            .iter()
+            .map(|(name, files)| (name.clone(), files))
+            .collect();
+        ModePackages::assemble(&files, manifest, &dependencies)
     }
 
     /// The mode of the fingerprint `mode`, and each dependency its manifest names by the
@@ -77,8 +94,8 @@ impl ModePackages {
         mode: Fingerprint,
         dependencies: &[Fingerprint],
     ) -> Result<ModePackages, StoreError> {
-        let dir = store.get(mode).ok_or(StoreError::UnknownMode)?.clone();
-        let manifest = read_mode_manifest(&dir).map_err(StoreError::Load)?;
+        let files = store.get(mode).ok_or(StoreError::UnknownMode)?;
+        let manifest = read_mode_manifest(files, &mode.to_string()).map_err(StoreError::Load)?;
         if manifest.dependencies.len() != dependencies.len() {
             return Err(StoreError::DependencyCount);
         }
@@ -87,13 +104,13 @@ impl ModePackages {
             .keys()
             .zip(dependencies)
             .map(|(name, &fingerprint)| {
-                let dir = store
+                let files = store
                     .get(fingerprint)
                     .ok_or_else(|| StoreError::MissingDependency(name.clone()))?;
-                Ok((name.clone(), dir.clone()))
+                Ok((name.clone(), files))
             })
             .collect::<Result<Vec<_>, StoreError>>()?;
-        ModePackages::assemble(&dir, manifest, &dependencies).map_err(StoreError::Load)
+        ModePackages::assemble(files, manifest, &dependencies).map_err(StoreError::Load)
     }
 
     pub const fn fingerprint(&self) -> Fingerprint {
@@ -298,9 +315,9 @@ impl ModePackages {
 
     /// Reads the mode's data and each dependency, and runs the load checks.
     fn assemble(
-        dir: &PackageDir,
+        files: &PackageFiles,
         manifest: ModeManifest,
-        dependencies: &[(String, PackageDir)],
+        dependencies: &[(String, &PackageFiles)],
     ) -> Result<ModePackages, LoadError> {
         let parser = ScriptHost::new(manifest.script_limits.per_call);
         let name = manifest.header.name.clone();
@@ -308,22 +325,22 @@ impl ModePackages {
             package: name.clone(),
             problem: Box::new(problem),
         };
-        let data = dir
+        let data = files
             .read_data(&path(MODE_DATA))
             .map_err(content)
             .map_err(fail)?;
-        let units = dir
+        let units = files
             .read_data(&path(UNITS_DATA))
             .map_err(content)
             .map_err(fail)?;
-        let map = dir
+        let map = files
             .read_data(&path(MAP_DATA))
             .map_err(content)
             .map_err(fail)?;
-        let mode = Package::read(dir, name.clone(), manifest.header.engine, &parser)?;
+        let mode = Package::read(files, name.clone(), manifest.header.engine, &parser)?;
         let dependencies = dependencies
             .iter()
-            .map(|(name, dir)| Dependent::read(name, dir, &parser))
+            .map(|(name, files)| Dependent::read(name, files, &parser))
             .collect::<Result<_, _>>()?;
         let packages = ModePackages {
             mode,
@@ -353,13 +370,14 @@ impl Dependent {
         format!("{}/{id}", self.package.name)
     }
 
-    /// The package in `dir`, which the mode names `name`: an avatar or loadout package of that name.
-    fn read(name: &str, dir: &PackageDir, parser: &ScriptHost) -> Result<Dependent, LoadError> {
+    /// The package of `files`, which the mode names `name`: an avatar or loadout package of that
+    /// name.
+    fn read(name: &str, files: &PackageFiles, parser: &ScriptHost) -> Result<Dependent, LoadError> {
         let fail = |problem| LoadError {
             package: name.to_owned(),
             problem: Box::new(problem),
         };
-        let manifest: Manifest = dir
+        let manifest: Manifest = files
             .read_data(&path(PackageDir::MANIFEST))
             .map_err(content)
             .map_err(fail)?;
@@ -369,27 +387,29 @@ impl Dependent {
         }
         let content = match &manifest {
             Manifest::Avatar(_) => Content::Avatar(Box::new(
-                dir.read_data(&path(AVATAR_DATA))
+                files
+                    .read_data(&path(AVATAR_DATA))
                     .map_err(content)
                     .map_err(fail)?,
             )),
             Manifest::Loadout(_) => {
-                let data = dir.read_data(&path(LOADOUT_DATA));
+                let data = files.read_data(&path(LOADOUT_DATA));
                 Content::Loadout(data.map_err(content).map_err(fail)?)
             }
             Manifest::Mode(_) => return Err(fail(LoadProblem::WrongKind)),
         };
-        let package = Package::read(dir, name.to_owned(), header.engine, parser)?;
+        let package = Package::read(files, name.to_owned(), header.engine, parser)?;
         Ok(Dependent { package, content })
     }
 }
 
-fn read_mode_manifest(dir: &PackageDir) -> Result<ModeManifest, LoadError> {
+/// The mode manifest of `files`, a package a load names `label`.
+fn read_mode_manifest(files: &PackageFiles, label: &str) -> Result<ModeManifest, LoadError> {
     let fail = |problem| LoadError {
-        package: dir.root().display().to_string(),
+        package: label.to_owned(),
         problem: Box::new(problem),
     };
-    let manifest = dir.read_data(&path(PackageDir::MANIFEST));
+    let manifest = files.read_data(&path(PackageDir::MANIFEST));
     match manifest.map_err(content).map_err(fail)? {
         Manifest::Mode(manifest) => Ok(manifest),
         _ => Err(fail(LoadProblem::WrongKind)),
