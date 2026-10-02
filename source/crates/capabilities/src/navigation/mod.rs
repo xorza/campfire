@@ -1,8 +1,7 @@
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::ROQueryItem;
-use bevy_ecs::query::{Added, Allow, Has, With, Without};
+use bevy_ecs::query::{Added, Allow, Has, ROQueryItem, With, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
@@ -416,9 +415,6 @@ fn move_units(
     >,
 ) {
     for (mut position, mut destination, mut route, mut progress, step, tags) in &mut units {
-        if destination.get().is_none() {
-            continue;
-        }
         if !walks(Some(&destination), tags) {
             continue;
         }

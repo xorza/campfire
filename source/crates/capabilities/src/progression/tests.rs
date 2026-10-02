@@ -1,15 +1,15 @@
 use campfire_math::Num;
+use campfire_sim::{Capability, Position};
 use serde::Serialize;
 
-use super::*;
 use crate::capability_set::test_match::TestMatch;
 use crate::progression::experience::TrackXp;
-use crate::progression::track_data::Thresholds;
-use crate::progression::track_data::TrackData;
+use crate::progression::track_data::{Thresholds, TrackData};
 use crate::units::team::Team;
 use crate::units::track_id::TrackId;
 use crate::values::declared_name::DeclaredName;
-use campfire_sim::{Capability, Position};
+
+use super::*;
 fn track(at: usize) -> TrackId {
     TrackId::new(at).unwrap()
 }

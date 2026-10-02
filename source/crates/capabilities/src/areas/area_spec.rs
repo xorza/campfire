@@ -6,7 +6,6 @@ use crate::units::filter::Filter;
 use crate::units::modifier_id::ModifierId;
 use crate::units::unit_types::UnitTypes;
 use crate::values::declared_name::DeclaredName;
-use crate::values::relation::Relation;
 
 /// An area type as a match runs it: its radius, its delay and its duration in ticks, what it
 /// reaches, and the modifiers it holds inside.
@@ -38,10 +37,7 @@ impl AreaSpec {
         rate: TickRate,
         modifier: impl Fn(&DeclaredName) -> ModifierId,
     ) -> Option<AreaSpec> {
-        let affects = match &data.affects {
-            Some(filter) => Filter::resolve(filter, types),
-            None => Ok(Filter::of_relation(Relation::Enemies)),
-        };
+        let affects = Filter::resolve_or_enemies(data.affects.as_ref(), types);
         let inside = |name: &Option<DeclaredName>| name.as_ref().map(&modifier);
         Some(AreaSpec {
             radius: data.radius,

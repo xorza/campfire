@@ -1103,7 +1103,7 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// Every stat in `stats` is one the engine reads or the mode declares.
+    /// Every stat in `stats` is one the mode declares.
     fn stats_declared<'s>(
         &self,
         stats: impl IntoIterator<Item = &'s Stat>,
@@ -1131,8 +1131,8 @@ impl<'a> LoadCheck<'a> {
         })
     }
 
-    /// A script's filter: its relation is `enemies`, `allies` or `all`, and its tag, if any, one
-    /// a unit type of the mode declares.
+    /// A script's filter: a relation, such as `enemies`, with its tags, if any, after a `:`, each
+    /// one the mode's packages name.
     fn filter_text(&self, filter: &str, at: &Place) -> Result<(), LoadProblem> {
         match FilterData::parse(filter) {
             Some(data) => self.filter_data(&data, at),
@@ -1187,7 +1187,6 @@ impl<'a> PackageNames<'a> {
     }
 }
 
-/// `id` is one of `modifiers`.
 /// The values `number` of `action` can have, each rank's: its own, or its param's; a scaling
 /// param gives its base's, as its source's stats add to it only as it runs. None for a param the
 /// action does not declare, which the action's checks refuse.
@@ -1238,6 +1237,7 @@ fn own_tags(tags: &[DeclaredName], at: &Place) -> Result<(), LoadProblem> {
     }
 }
 
+/// `id` is one of `modifiers`.
 fn modifier_exists(
     modifiers: &BTreeMap<DeclaredName, ModifierData>,
     id: &str,

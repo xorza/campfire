@@ -255,7 +255,7 @@ fn a_module_imports_only_from_its_layer_and_below() {
 /// call, which resolves the names it is given once, or in the load, which resolves the
 /// packages' names once; but the one marked, which runs as a modifier applies. The test fails
 /// when a lookup appears and when one listed here is gone.
-const LOOKUPS: [(&str, &str); 54] = [
+const LOOKUPS: [(&str, &str); 58] = [
     // The load.
     ("actions/slot_kinds.rs", "named"),
     ("books/book_builder.rs", "cost_target_named"),
@@ -267,6 +267,7 @@ const LOOKUPS: [(&str, &str); 54] = [
     ("mode/mode_map.rs", "named"),
     ("mode/unit_kit/mod.rs", "named"),
     ("navigation/navigation_rules.rs", "layer_named"),
+    ("scripts/script_api/mod.rs", "sorted_named"),
     ("stats/modifier_book.rs", "named"),
     ("stats/pool_book.rs", "named"),
     // The load, and a filter a script names.
@@ -275,6 +276,7 @@ const LOOKUPS: [(&str, &str); 54] = [
     // Script calls, and the mode inputs, whose names enter with the players' inputs.
     ("combat/combat_api.rs", "damage_kind_named"),
     ("combat/combat_api.rs", "pool_named"),
+    ("mode/marker.rs", "named"),
     ("mode/mod.rs", "input_type_named"),
     ("mode/mode_api.rs", "named"),
     ("mode/mode_api.rs", "path_named"),
@@ -284,6 +286,8 @@ const LOOKUPS: [(&str, &str); 54] = [
     ("mode/mode_call.rs", "param_named"),
     ("mode/mode_schema.rs", "get_named"),
     ("mode/mode_schema.rs", "named"),
+    ("mode/mode_setup.rs", "sorted_named"),
+    ("mode/roster.rs", "named"),
     ("navigation/paths.rs", "named"),
     ("progression/progression_api.rs", "track_named"),
     ("progression/tracks_column.rs", "named"),

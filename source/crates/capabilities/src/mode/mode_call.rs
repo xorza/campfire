@@ -11,7 +11,7 @@ use crate::scripts::call_part::CallPart;
 use crate::scripts::call_start::CallStart;
 use crate::scripts::error::CallError;
 use crate::scripts::frame::Frame;
-use crate::scripts::hook::ScriptRole;
+use crate::scripts::script_role::ScriptRole;
 use crate::scripts::state_value::StateValue;
 
 /// What the mode adds to the call frame: the mode's params, which a mode's or an AI's call reads;

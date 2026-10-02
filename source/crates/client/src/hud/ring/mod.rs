@@ -8,7 +8,7 @@ pub(crate) struct Ring {
 }
 
 /// How long a ring shows.
-pub(crate) const RING_SECONDS: f32 = 0.35;
+const RING_SECONDS: f32 = 0.35;
 
 impl Ring {
     /// How wide the ring is `at` seconds of app time, as a multiple of its first width; `None`

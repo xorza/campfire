@@ -3,7 +3,8 @@ use campfire_sim::Capability;
 
 use crate::combat::damage::{Damage, DamageCause};
 use crate::scripts::api_builder::ApiBuilder;
-use crate::scripts::script_api::{ApiOwner, MemberSpec};
+use crate::scripts::script_api::api_owner::ApiOwner;
+use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::units::hit_handle::HitHandle;
 use crate::units::script_view::View;
 

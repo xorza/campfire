@@ -1,7 +1,7 @@
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
 use crate::scripts::hook::Hook;
-use crate::scripts::script_api::Status;
+use crate::scripts::script_api::status::Status;
 use crate::units::hit_handle::HitHandle;
 
 /// The script API of the deliveries that projectiles and areas make, where they run: the hit

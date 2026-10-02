@@ -1,7 +1,6 @@
 use std::error::Error;
-use std::fmt;
-use std::io;
 use std::path::PathBuf;
+use std::{fmt, io};
 
 use campfire_capabilities::{
     ActionDataField, ActionError, ActionField, ActionKind, ActionSlots, AiError, ApiVersion,
@@ -368,29 +367,32 @@ impl fmt::Display for DeliveryProblem {
             ),
             DeliveryProblem::WrongSection { action, unit_type } => write!(
                 f,
-                "action {action:?} delivers unit type {unit_type:?}, which has no section of \
+                "action \"{action}\" delivers unit type \"{unit_type}\", which has no section of \
                  its delivery's kind"
             ),
             DeliveryProblem::NoAim(action) => {
                 write!(
                     f,
-                    "action {action:?} aims at nothing, and a projectile needs an aim"
+                    "action \"{action}\" aims at nothing, and a projectile needs an aim"
                 )
             }
             DeliveryProblem::Homing(action) => write!(
                 f,
-                "action {action:?}: a homing projectile flies one at a time, at a unit target"
+                "action \"{action}\": a homing projectile flies one at a time, at a unit target"
             ),
             DeliveryProblem::AreaDirection(action) => write!(
                 f,
-                "action {action:?}: an area lands on a point, a unit or the caster, not along a \
+                "action \"{action}\": an area lands on a point, a unit or the caster, not along a \
                  direction"
             ),
             DeliveryProblem::Weapon(action) => {
-                write!(f, "weapon {action:?}: its delivery is a homing projectile")
+                write!(
+                    f,
+                    "weapon \"{action}\": its delivery is a homing projectile"
+                )
             }
             DeliveryProblem::Trained(action) => {
-                write!(f, "train {action:?} makes a projectile or an area type")
+                write!(f, "train \"{action}\" makes a projectile or an area type")
             }
             DeliveryProblem::AreaTime(at) => {
                 write!(f, "{at}: a time too large to count in ticks")
@@ -636,9 +638,12 @@ impl fmt::Display for LoadProblem {
                     "{at} uses {capability:?}, which the mode does not declare"
                 )
             }
-            LoadProblem::UnknownSlot(id) => write!(f, "a slot names no action {id:?}"),
+            LoadProblem::UnknownSlot(id) => write!(f, "a slot names no action \"{id}\""),
             LoadProblem::ActionField { action, field } => {
-                write!(f, "action {action:?}: {field:?} gives no value of its kind")
+                write!(
+                    f,
+                    "action \"{action}\": {field:?} gives no value of its kind"
+                )
             }
             LoadProblem::TooMany(limit) => write!(f, "{limit}"),
             LoadProblem::LevelTracks => f.write_str("more than one `level` track"),
@@ -650,37 +655,39 @@ impl fmt::Display for LoadProblem {
                 f.write_str("the mode declares navigation, and its map has no [navigation] cells")
             }
             LoadProblem::Map(problem) => write!(f, "{problem}"),
-            LoadProblem::Unslotted(id) => write!(f, "action {id:?} is in no slot"),
+            LoadProblem::Unslotted(id) => write!(f, "action \"{id}\" is in no slot"),
             LoadProblem::AvatarOrders => f.write_str("an avatar takes no `orders`: bots play it"),
-            LoadProblem::NoQueue(id) => write!(f, "train {id:?} sits on a unit type with no queue"),
+            LoadProblem::NoQueue(id) => {
+                write!(f, "train \"{id}\" sits on a unit type with no queue")
+            }
             LoadProblem::KindField { action, field } => write!(
                 f,
-                "action {action:?}: its kind needs or refuses `{}`",
+                "action \"{action}\": its kind needs or refuses `{}`",
                 field.name()
             ),
             LoadProblem::AttackAims(action) => {
-                write!(f, "action {action:?}: an attack aims at a unit")
+                write!(f, "action \"{action}\": an attack aims at a unit")
             }
             LoadProblem::GlobalAttack(action) => {
-                write!(f, "action {action:?}: an attack's range is in meters")
+                write!(f, "action \"{action}\": an attack's range is in meters")
             }
             LoadProblem::TrainAims(action) => {
-                write!(f, "action {action:?}: a train takes no target")
+                write!(f, "action \"{action}\": a train takes no target")
             }
             LoadProblem::KindNotRun { action, kind } => {
                 write!(
                     f,
-                    "action {action:?}: the release does not run {kind:?} yet"
+                    "action \"{action}\": the release does not run {kind:?} yet"
                 )
             }
             LoadProblem::ActionRanks(id) => {
-                write!(f, "action {id:?} sits in slot kinds of other ranks")
+                write!(f, "action \"{id}\" sits in slot kinds of other ranks")
             }
             LoadProblem::Mode(error) => write!(f, "{error}"),
             LoadProblem::RankCount { action, ranks } => {
                 write!(
                     f,
-                    "action {action:?}: a per-rank array without {ranks} entries"
+                    "action \"{action}\": a per-rank array without {ranks} entries"
                 )
             }
             LoadProblem::Script { path, problem } => write!(f, "{path}: {problem}"),
@@ -700,9 +707,9 @@ impl fmt::Display for LoadProblem {
             LoadProblem::Locale { path, problem } => write!(f, "{path}: {problem}"),
             LoadProblem::UnitKit { at, error } => write!(f, "{at}: {error}"),
             LoadProblem::Ai { at, error } => write!(f, "{at}: {error}"),
-            LoadProblem::Action { action, error } => write!(f, "action {action:?}: {error}"),
+            LoadProblem::Action { action, error } => write!(f, "action \"{action}\": {error}"),
             LoadProblem::Modifier { modifier, problem } => {
-                write!(f, "modifier {modifier:?}: {problem}")
+                write!(f, "modifier \"{modifier}\": {problem}")
             }
             LoadProblem::EngineTag { at, tag } => {
                 write!(f, "{at}: {:?}, a tag only the engine gives", tag.name())
@@ -712,7 +719,7 @@ impl fmt::Display for LoadProblem {
                 action,
                 list,
                 problem,
-            } => write!(f, "action {action:?}, `{}`: {problem}", list.name()),
+            } => write!(f, "action \"{action}\", `{}`: {problem}", list.name()),
         }
     }
 }

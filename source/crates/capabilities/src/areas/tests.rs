@@ -1,6 +1,6 @@
+use campfire_sim::Capability;
 use serde::Serialize;
 
-use super::*;
 use crate::actions::action_book;
 use crate::areas::area_data::{AreaData, AreaInside};
 use crate::capability_set::test_match::TestMatch;
@@ -12,7 +12,8 @@ use crate::units::type_scope::TypeScope;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::units::unit_types::UnitTypes;
 use crate::values::relation::Relation;
-use campfire_sim::Capability;
+
+use super::*;
 
 #[test]
 fn an_area_that_triggers_after_it_ends_fails_to_decode() {

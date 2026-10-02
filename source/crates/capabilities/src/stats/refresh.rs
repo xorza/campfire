@@ -48,12 +48,12 @@ impl Refresh {
     }
 
     /// Derives the stats and tags of every unit whose level or modifiers changed, that is new, or
-    /// that carries a live change, and sets what holds their effect: how far it walks a tick and its
-    /// pools' maxima, a pool keeping the rule of stats.md. A
-    /// modifier its tags' immunities suppress gives no tags and no stats. Each stat is computed for
-    /// every refreshing unit in the stat book's order, so a live change reads its source's stats
-    /// once they are final; a live change that does not resolve keeps the value it last had. An
-    /// effect whose stat the mode does not declare keeps what the unit's kit gave it.
+    /// that carries a live change, and sets what holds their effect: how far it walks a tick and
+    /// its pools' maxima, a pool keeping the rule of stats.md. A modifier its tags' immunities
+    /// suppress gives no tags and no stats. Each stat is computed for every refreshing unit in the
+    /// stat book's order, so a live change reads its source's stats once they are final; a live
+    /// change that does not resolve keeps the value it last had. An effect whose stat the mode does
+    /// not declare keeps what the unit's kit gave it.
     pub(crate) fn run(
         (book, pool_book, tag_book, modifier_book, index): (
             Option<Res<'_, StatBook>>,

@@ -6,7 +6,8 @@ use campfire_sim::Position;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
-use crate::scripts::script_api::{ApiOwner, MemberSpec};
+use crate::scripts::script_api::api_owner::ApiOwner;
+use crate::scripts::script_api::member_spec::MemberSpec;
 
 /// The script API of positions and vectors: `Pos` with `distance_to`, `within` and
 /// `direction_to`, and `Vector` with `rotated_deg`.

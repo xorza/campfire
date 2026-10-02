@@ -35,8 +35,7 @@ use crate::net_protocol::MatchChannel;
 
 /// Runs a session on a Lightyear server: while a `Lobby` is open, lets players join; then records
 /// the packets players send, runs one sim tick in each fixed tick, and sends each client the units
-/// its team sees. It hashes the state after a tick only
-/// while the world holds `TickHashes`.
+/// its team sees. It hashes the state after a tick only while the world holds `TickHashes`.
 #[derive(Debug)]
 pub struct SimServer;
 

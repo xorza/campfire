@@ -123,7 +123,7 @@ impl ScriptHost {
 
     pub fn compile(&mut self, source: &str) -> Result<ScriptId, ScriptError> {
         let ast = self.parse(source)?;
-        let id = ScriptId(u32::try_from(self.scripts.len()).expect("scripts fit u32"));
+        let id = ScriptId::nth(self.scripts.len());
         self.scripts.push(ast);
         Ok(id)
     }
@@ -164,7 +164,7 @@ impl ScriptHost {
         let result = self.engine.call_fn_with_options::<Dynamic>(
             CallFnOptions::new().eval_ast(false),
             &mut Scope::new(),
-            &self.scripts[script.0 as usize],
+            &self.scripts[script.index()],
             hook,
             args,
         );

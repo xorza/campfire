@@ -1,7 +1,7 @@
-use bevy_ecs::world::World;
 use std::array;
 
 use bevy_ecs::resource::Resource;
+use bevy_ecs::world::World;
 use campfire_sim::SimResource;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};

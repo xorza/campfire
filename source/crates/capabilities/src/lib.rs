@@ -40,13 +40,15 @@ mod vision;
 
 pub use abilities::Abilities;
 pub use actions::Actions;
-pub use actions::action_data::{ActionData, Range, RangeField, Targeting};
+pub use actions::action_data::{ActionData, RangeField, Targeting};
 pub use actions::action_data_field::ActionDataField;
 pub use actions::action_kind::ActionKind;
-pub use actions::action_slots::{ActionSlot, ActionSlots, ActionTarget};
+pub use actions::action_slots::{ActionSlot, ActionSlots};
+pub use actions::action_target::ActionTarget;
 pub use actions::delivery_data::DeliveryData;
 pub use actions::effect_data::{EffectData, EffectTo, Effecting, PlannedEffect};
 pub use actions::error::{ActionError, ActionField};
+pub use actions::range::Range;
 pub use actions::slot_kind::SlotKind;
 
 pub use areas::Areas;
@@ -111,10 +113,15 @@ pub use projectiles::projectile::Projectile;
 
 pub use scripts::api_version::ApiVersion;
 pub use scripts::error::CallError;
-pub use scripts::hook::{Hook, ScriptRole};
+pub use scripts::hook::Hook;
 pub use scripts::name_kind::NameKind;
+pub use scripts::script_role::ScriptRole;
 
-pub use scripts::script_api::{ApiOwner, MemberKind, NameArgs, ScriptApi};
+pub use scripts::script_api::{MemberKind, ScriptApi};
+
+pub use scripts::script_api::api_owner::ApiOwner;
+
+pub use scripts::script_api::member_spec::NameArgs;
 pub use scripts::script_book::ScriptBook;
 pub use scripts::script_budgets::ScriptBudgets;
 pub use scripts::script_failures::{ScriptFailure, ScriptFailures};

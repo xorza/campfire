@@ -2,7 +2,9 @@ use bevy_ecs::change_detection::Mut;
 use campfire_math::Num;
 use campfire_sim::{Capability, Position, StableId};
 
-use crate::actions::action_slots::{ActionSlots, ActionTarget};
+use crate::actions::action_slots::ActionSlots;
+
+use crate::actions::action_target::ActionTarget;
 use crate::navigation::destination::Destination;
 use crate::navigation::path_walker::PathWalker;
 use crate::scripts::effects::Effect;

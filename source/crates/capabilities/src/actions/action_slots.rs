@@ -2,11 +2,12 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_math::Tick;
-use campfire_sim::{EntityIndex, Position, SimComponent, StableId};
+use campfire_sim::{SimComponent, StableId};
 use serde::{Deserialize, Serialize};
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_kind::ActionKind;
+use crate::actions::action_target::ActionTarget;
 use crate::actions::slot_kind::SlotKind;
 use crate::units::action_id::ActionId;
 
@@ -54,37 +55,6 @@ pub(crate) enum InProgress {
 pub(crate) struct SlotAim {
     pub(crate) slot: u8,
     pub(crate) target: ActionTarget,
-}
-
-/// What an action is aimed at: nothing, a unit, or a point, which an action that aims at a
-/// direction aims through.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum ActionTarget {
-    None,
-    Unit(StableId),
-    Point(Position),
-}
-
-impl ActionTarget {
-    /// The point it names in `world`: its point, or where its unit stands; `None` for no
-    /// target, or a unit that is gone.
-    pub(crate) fn point(self, world: &World) -> Option<Position> {
-        match self {
-            ActionTarget::None => None,
-            ActionTarget::Point(at) => Some(at),
-            ActionTarget::Unit(unit) => {
-                let entity = world.resource::<EntityIndex>().get(unit)?;
-                world.get::<Position>(entity).copied()
-            }
-        }
-    }
-
-    pub(crate) const fn unit(self) -> Option<StableId> {
-        match self {
-            ActionTarget::Unit(unit) => Some(unit),
-            ActionTarget::None | ActionTarget::Point(_) => None,
-        }
-    }
 }
 
 impl InProgress {

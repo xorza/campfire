@@ -5,7 +5,7 @@ use crate::scripts::call_part::CallPart;
 use crate::scripts::call_start::CallStart;
 use crate::scripts::error::CallError;
 use crate::scripts::frame::Frame;
-use crate::scripts::hook::ScriptRole;
+use crate::scripts::script_role::ScriptRole;
 use crate::stats::Stats;
 use crate::stats::modifier_handle::ModifierHandle;
 use crate::stats::param_book::ParamBook;
@@ -29,13 +29,6 @@ pub(crate) struct StatsCall {
     pub(crate) handles: Vec<ModifierHandle>,
     /// The handles of earlier calls that no script holds, for new handles to fill again.
     spare: Vec<ModifierHandle>,
-}
-
-impl StatsCall {
-    /// A handle of an earlier call that no script holds, to fill again.
-    pub(crate) fn spare(&mut self) -> Option<ModifierHandle> {
-        self.spare.pop()
-    }
 }
 
 impl CallPart for StatsCall {
@@ -99,6 +92,11 @@ impl CallPart for StatsCall {
 }
 
 impl StatsCall {
+    /// A handle of an earlier call that no script holds, to fill again.
+    pub(crate) fn spare(&mut self) -> Option<ModifierHandle> {
+        self.spare.pop()
+    }
+
     /// Shares the params of every ability and every modifier, as the load built them, with
     /// `frame`.
     pub(crate) fn share_params(frame: &mut Frame, params: ParamBook) {

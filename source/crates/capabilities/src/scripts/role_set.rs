@@ -1,4 +1,4 @@
-use crate::scripts::hook::ScriptRole;
+use crate::scripts::script_role::ScriptRole;
 
 /// The script roles a name of the script API serves.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

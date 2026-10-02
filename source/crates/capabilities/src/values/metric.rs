@@ -99,16 +99,14 @@ impl Approach {
         let length = path.length_squared_bits();
         let raw = |v: Vec3| [v.x, v.y, v.z].map(|n| i128::from(n.to_bits()));
         let along: i128 = raw(off).iter().zip(raw(path)).map(|(a, b)| a * b).sum();
-        let Some(reach) = (reach >= Num::ZERO).then(|| {
-            let bits = u128::from(reach.to_bits().cast_unsigned());
-            bits * bits
-        }) else {
-            let share = PathShare { along: 0, length };
+        if reach < Num::ZERO {
             return Approach {
                 nearest: Ordering::Greater,
-                share,
+                share: PathShare { along: 0, length },
             };
-        };
+        }
+        let reach = u128::from(reach.to_bits().cast_unsigned());
+        let reach = reach * reach;
         if length == 0 || along <= 0 {
             return Approach {
                 nearest: off.length_squared_bits().cmp(&reach),

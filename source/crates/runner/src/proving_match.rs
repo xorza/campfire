@@ -72,78 +72,27 @@ const SCRIPT: [Scripted; 17] = [
     order(2, 1, Plan::Train { barracks: 0 }),
     order(3, 0, Plan::Move { x: -1, z: -1 }),
     order(3, 1, Plan::Move { x: 2, z: 2 }),
-    order(
-        30,
-        0,
-        Plan::Cast {
-            slot: 0,
-            at: Aim::EnemyHeroPoint,
-        },
-    ),
-    order(
-        40,
-        1,
-        Plan::Cast {
-            slot: 0,
-            at: Aim::EnemyHero,
-        },
-    ),
-    order(
-        60,
-        0,
-        Plan::Cast {
-            slot: 1,
-            at: Aim::EnemyHeroPoint,
-        },
-    ),
-    order(
-        70,
-        1,
-        Plan::Cast {
-            slot: 1,
-            at: Aim::Nothing,
-        },
-    ),
-    order(
-        80,
-        0,
-        Plan::Cast {
-            slot: 2,
-            at: Aim::Nothing,
-        },
-    ),
+    cast(30, 0, 0, Aim::EnemyHeroPoint),
+    cast(40, 1, 0, Aim::EnemyHero),
+    cast(60, 0, 1, Aim::EnemyHeroPoint),
+    cast(70, 1, 1, Aim::Nothing),
+    cast(80, 0, 2, Aim::Nothing),
     order(105, 0, Plan::Train { barracks: 1 }),
     order(105, 0, Plan::Train { barracks: 0 }),
     order(120, 0, Plan::AttackBoulder),
     order(160, 1, Plan::Move { x: -6, z: -1 }),
-    order(
-        200,
-        0,
-        Plan::Cast {
-            slot: 0,
-            at: Aim::EnemyHeroPoint,
-        },
-    ),
-    order(
-        260,
-        1,
-        Plan::Cast {
-            slot: 0,
-            at: Aim::EnemyHero,
-        },
-    ),
-    order(
-        260,
-        0,
-        Plan::Cast {
-            slot: 1,
-            at: Aim::Point { x: -4, z: -1 },
-        },
-    ),
+    cast(200, 0, 0, Aim::EnemyHeroPoint),
+    cast(260, 1, 0, Aim::EnemyHero),
+    cast(260, 0, 1, Aim::Point { x: -4, z: -1 }),
 ];
 
 const fn order(stamp: u64, slot: u32, plan: Plan) -> Scripted {
     Scripted { stamp, slot, plan }
+}
+
+/// A cast by the player `slot`'s hero of its ability slot `ability` at `at`.
+const fn cast(stamp: u64, slot: u32, ability: u8, at: Aim) -> Scripted {
+    order(stamp, slot, Plan::Cast { slot: ability, at })
 }
 
 impl ProvingMatch {

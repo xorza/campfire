@@ -97,7 +97,8 @@ impl Targets<'_, '_> {
     /// `target`, when it is a living unit that may be a target.
     pub(crate) fn living(&self, target: StableId) -> Option<LivingUnit> {
         let row = self.units.get(self.index.get(target)?).ok()?;
-        Targets::targetable(Some(row.3), row.5, self.life.0).then(|| self.body(row))?
+        let (_, _, _, pools, _, tags) = row;
+        Targets::targetable(Some(pools), tags, self.life.0).then(|| self.body(row))?
     }
 
     /// Whether a unit that has not died, with `pools` and `tags`, may be a target: it has the

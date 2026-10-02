@@ -26,9 +26,7 @@ impl<T> Ranked<T> {
             Ranked::PerRank(values) => values,
         }
     }
-}
 
-impl<T> Ranked<T> {
     /// The value at `rank`, from 1; `None` past the last rank.
     pub fn get(&self, rank: u8) -> Option<&T> {
         match self {

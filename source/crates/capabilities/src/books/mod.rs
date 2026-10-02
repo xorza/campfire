@@ -13,7 +13,7 @@ use crate::books::book_input::BookInput;
 use crate::books::error::BookError;
 use crate::mode::mode_books::ModeBooks;
 use crate::mode::mode_map::ModeMap;
-use crate::mode::mode_setup::{LoadoutSetup, UnitTypeSetup};
+use crate::mode::mode_units::ModeUnits;
 use crate::navigation::walker::Walker;
 use crate::orders::ai::Ai;
 use crate::production::production_data::ProductionData;
@@ -62,15 +62,6 @@ pub(crate) struct BookParts {
     areas: ByType<AreaSpec>,
     producers: ByType<ProductionData>,
     units: ModeUnits,
-}
-
-/// The mode's unit types that stand, its avatars' among them, its avatars by their packages'
-/// names, and its loadout's entries.
-#[derive(Debug, Default)]
-pub struct ModeUnits {
-    pub unit_types: Vec<UnitTypeSetup>,
-    pub avatars: Vec<String>,
-    pub loadout: Vec<LoadoutSetup>,
 }
 
 /// What the mode's install takes from the books: its unit types, avatars and loadout, and the

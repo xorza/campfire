@@ -72,26 +72,26 @@ impl fmt::Display for ModeError {
             ModeError::RepeatedRelation(a, b) => {
                 write!(
                     f,
-                    "a relation of {a:?} and {b:?} again, or of a team to itself"
+                    "a relation of \"{a}\" and \"{b}\" again, or of a team to itself"
                 )
             }
             ModeError::RepeatedName(name) => {
-                write!(f, "{name:?} names two teams, paths or markers")
+                write!(f, "\"{name}\" names two teams, paths or markers")
             }
-            ModeError::UnknownTeam(name) => write!(f, "no team {name:?}"),
-            ModeError::UnknownUnitType(name) => write!(f, "no unit type {name:?}"),
-            ModeError::UnknownPath(name) => write!(f, "no path {name:?}"),
+            ModeError::UnknownTeam(name) => write!(f, "no team \"{name}\""),
+            ModeError::UnknownUnitType(name) => write!(f, "no unit type \"{name}\""),
+            ModeError::UnknownPath(name) => write!(f, "no path \"{name}\""),
             ModeError::NoPathToWalk(unit_type) => {
-                write!(f, "a placed {unit_type:?} walks from an end of no path")
+                write!(f, "a placed \"{unit_type}\" walks from an end of no path")
             }
             ModeError::PointShape => f.write_str("a point of the map does not fit its metric"),
             ModeError::Region(marker) => {
                 write!(
                     f,
-                    "marker {marker:?}: the region is no box within the bounds, or has a point too"
+                    "marker \"{marker}\": the region is no box within the bounds, or has a point too"
                 )
             }
-            ModeError::EmptyPath(name) => write!(f, "path {name:?} has no waypoint"),
+            ModeError::EmptyPath(name) => write!(f, "path \"{name}\" has no waypoint"),
             ModeError::OutOfBounds => f.write_str("a map point is outside the map's bounds"),
             ModeError::Grid => f.write_str(
                 "the grid needs a positive cell within the world's bound and at most 2²² cells",

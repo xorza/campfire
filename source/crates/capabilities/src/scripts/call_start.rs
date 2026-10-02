@@ -1,6 +1,6 @@
 use campfire_sim::StableId;
 
-use crate::scripts::hook::ScriptRole;
+use crate::scripts::script_role::ScriptRole;
 use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
 use crate::values::hit::Hit;

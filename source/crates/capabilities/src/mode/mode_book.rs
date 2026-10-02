@@ -107,7 +107,7 @@ impl ModeBook {
             .expect("the session checked its players against the teams' slots");
         let mut types = ByType::default();
         let mut actions = Vec::new();
-        for unit_type in &setup.unit_types {
+        for unit_type in &setup.units.unit_types {
             let start = actions.len();
             actions.extend_from_slice(&unit_type.actions);
             let held = ModeType {
@@ -119,7 +119,7 @@ impl ModeBook {
         }
         ModeBook {
             schema: ModeSchema::new(setup.script, scripts, setup.data),
-            roster: Roster::new(setup.avatars, setup.loadout),
+            roster: Roster::new(setup.units.avatars, &setup.units.loadout),
             teams: Rc::new(teams),
             choices: ChoiceBook::new(&setup.data.choices),
             slot_kinds: setup.data.slots.clone(),

@@ -3,8 +3,9 @@ use std::hint::black_box;
 use criterion::Criterion;
 
 use crate::num::Num;
-use crate::rng::rng_source::{RngSource, SegmentSeed};
+use crate::rng::rng_source::RngSource;
 use crate::rng::rng_stream::RngStream;
+use crate::rng::segment_seed::SegmentSeed;
 
 pub fn rng(c: &mut Criterion) {
     let mut source = RngSource::new(SegmentSeed::new([7; 32]));

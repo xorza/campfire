@@ -1,12 +1,12 @@
 use std::hint::black_box;
 
+use campfire_math::{PlayerSlot, Tick};
 use criterion::Criterion;
 use secp256k1::{Keypair, Secp256k1, SecretKey};
 
 use crate::input_chain::InputChain;
 use crate::input_hash::InputHash;
 use crate::session_id::SessionId;
-use campfire_math::{PlayerSlot, Tick};
 
 /// The per-packet cost of the chain-head signature: the client signs the chain head once per
 /// packet with its session key, and the log checks it once per packet.

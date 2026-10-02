@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::str::FromStr;
 
 use campfire_content::PackagePath;
 use campfire_math::Num;
@@ -7,15 +6,15 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
 use crate::actions::action_kind::ActionKind;
+use crate::actions::cost_target::CostTarget;
 use crate::actions::delivery_data::DeliveryData;
 use crate::actions::effect_data::EffectData;
 use crate::actions::error::ActionField;
+use crate::actions::range::Range;
 use crate::players::resource_amount::ResourceAmount;
-use crate::players::resource_id::ResourceId;
 use crate::scripts::hook::Hook;
 use crate::scripts::state_decl::StateDecl;
 use crate::stats::pool_cost::PoolCost;
-use crate::stats::pool_id::PoolId;
 use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
 use crate::values::number::{Number, ParamRef};
@@ -300,14 +299,6 @@ pub struct RankFields {
     pub windup_ms: u64,
 }
 
-/// What a name of a cost takes from: a pool of the unit, or a resource of its player; the mode's
-/// pools and player resources never share a name.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum CostTarget {
-    Pool(PoolId),
-    Resource(ResourceId),
-}
-
 /// What an action targets. In data: `none`, `point`, `direction`, or a filter of the units it
 /// may target, such as `enemies` or `enemies:avatar`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -326,13 +317,6 @@ pub enum RangeField {
     Param(ParamRef),
 }
 
-/// How far an action reaches. In data: meters as a decimal string, or `global`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Range {
-    Meters(Num),
-    Global,
-}
-
 impl<'de> Deserialize<'de> for Targeting {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Targeting, D::Error> {
         let text = String::deserialize(deserializer)?;
@@ -344,20 +328,6 @@ impl<'de> Deserialize<'de> for Targeting {
                 .map(Targeting::Unit)
                 .ok_or_else(|| Error::custom(format!("unknown targeting {filter:?}"))),
         }
-    }
-}
-
-impl<'de> Deserialize<'de> for Range {
-    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Range, D::Error> {
-        let text = String::deserialize(deserializer)?;
-        if text == "global" {
-            return Ok(Range::Global);
-        }
-        Num::from_str(&text)
-            .ok()
-            .filter(|meters| *meters >= Num::ZERO)
-            .map(Range::Meters)
-            .ok_or_else(|| Error::custom(format!("range {text:?} is not meters or global")))
     }
 }
 

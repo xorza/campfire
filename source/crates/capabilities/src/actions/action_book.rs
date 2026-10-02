@@ -5,12 +5,13 @@ use campfire_math::{Num, Tick};
 use campfire_script::ScriptId;
 use campfire_sim::{Position, StableId};
 
-use crate::actions::action::Action;
-use crate::actions::action::Aim;
-use crate::actions::action_data::{ActionData, Range};
+use crate::actions::action::{Action, Aim};
+use crate::actions::action_data::ActionData;
 use crate::actions::action_parts::ActionParts;
-use crate::actions::action_slots::{ActionSlots, ActionTarget, SlotAim};
+use crate::actions::action_slots::{ActionSlots, SlotAim};
+use crate::actions::action_target::ActionTarget;
 use crate::actions::purse::Purse;
+use crate::actions::range::Range;
 use crate::actions::rank_values::RankValues;
 use crate::actions::targets::Targets;
 use crate::scripts::hook::Hook;
@@ -185,30 +186,30 @@ impl Checked<'_> {
 
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
-    use crate::stats::stat_id::StatId;
-    use campfire_math::{Num, Ticks};
-
     use std::num::NonZeroU8;
     use std::sync::Arc;
 
+    use bevy_ecs::world::World;
+    use campfire_math::{Num, Ticks};
+
     use crate::actions::action::{Action, Aim};
     use crate::actions::action_book::ActionBook;
-    use crate::actions::action_data::Range;
     use crate::actions::actions_column::ActionsColumn;
     use crate::actions::delivery::{Delivery, DeliveryShape};
     use crate::actions::fan::Fan;
     use crate::actions::kind_spec::KindSpec;
+    use crate::actions::range::Range;
     use crate::actions::rank_values::RankValues;
     use crate::actions::weapon::Weapon;
     use crate::players::resource_amount::ResourceAmount;
     use crate::scripts::hook_set::HookSet;
     use crate::stats::pool_cost::PoolCost;
+    use crate::stats::stat_id::StatId;
     use crate::units::action_id::ActionId;
     use crate::units::filter::Filter;
     use crate::units::script_view::View;
     use crate::units::unit_type::UnitType;
     use crate::values::damage_kind::DamageKind;
-    use bevy_ecs::world::World;
 
     /// A weapon tests arm units with: what it aims at, its range, its windup, the type of the
     /// homing projectile it fires, if it fires one, the places among its unit's stats of its
@@ -244,7 +245,6 @@ pub(crate) mod internals {
 
     /// Adds `weapon` to the action book of `world`, which deals damage of the first kind.
     pub(crate) fn weapon(world: &mut World, weapon: TestWeapon) -> ActionId {
-        let mut book = world.resource_mut::<ActionBook>();
         let delivery = weapon.projectile.map(|unit_type| Delivery {
             unit_type,
             shape: DeliveryShape::Projectile {
@@ -255,31 +255,30 @@ pub(crate) mod internals {
                 homes: true,
             },
         });
-        let id = ActionId::nth(u32::try_from(book.actions.len()).unwrap());
-        Arc::make_mut(&mut book.actions).push(Action {
-            package: 0,
-            name: "weapon".into(),
-            kind: KindSpec::Attack(Weapon {
-                rate: weapon.rate,
-                damage: weapon.damage,
-                kind: DamageKind::new(0),
-            }),
-            passive: None,
-            aim: Aim::Unit(weapon.aim),
-            ranks: vec![RankValues {
-                range: weapon.range,
-                cooldown: Ticks::ZERO,
-                cost: weapon.cost,
-                windup: weapon.windup,
-            }],
-            resource_costs: weapon.resource_cost.into_iter().collect(),
-            script: None,
-            hooks: HookSet::default(),
-            delivery,
-        });
-        let book = book.clone();
-        ActionsColumn::share(world.non_send::<View>(), book);
-        id
+        push(
+            world,
+            Action {
+                package: 0,
+                name: "weapon".into(),
+                kind: KindSpec::Attack(Weapon {
+                    rate: weapon.rate,
+                    damage: weapon.damage,
+                    kind: DamageKind::new(0),
+                }),
+                passive: None,
+                aim: Aim::Unit(weapon.aim),
+                ranks: vec![RankValues {
+                    range: weapon.range,
+                    cooldown: Ticks::ZERO,
+                    cost: weapon.cost,
+                    windup: weapon.windup,
+                }],
+                resource_costs: weapon.resource_cost.into_iter().collect(),
+                script: None,
+                hooks: HookSet::default(),
+                delivery,
+            },
+        )
     }
 
     impl ActionBook {
@@ -302,25 +301,33 @@ pub(crate) mod internals {
         time: Ticks,
         resource_cost: Option<ResourceAmount>,
     ) -> ActionId {
+        push(
+            world,
+            Action {
+                package: 0,
+                name: "train".into(),
+                kind: KindSpec::Train(unit),
+                passive: None,
+                aim: Aim::None,
+                ranks: vec![RankValues {
+                    range: Range::Global,
+                    cooldown: Ticks::ZERO,
+                    cost: PoolCost::default(),
+                    windup: time,
+                }],
+                resource_costs: resource_cost.into_iter().collect(),
+                script: None,
+                hooks: HookSet::default(),
+                delivery: None,
+            },
+        )
+    }
+
+    /// Adds `action` to the action book of `world`, and shares the book with the script view.
+    fn push(world: &mut World, action: Action) -> ActionId {
         let mut book = world.resource_mut::<ActionBook>();
         let id = ActionId::nth(u32::try_from(book.actions.len()).unwrap());
-        Arc::make_mut(&mut book.actions).push(Action {
-            package: 0,
-            name: "train".into(),
-            kind: KindSpec::Train(unit),
-            passive: None,
-            aim: Aim::None,
-            ranks: vec![RankValues {
-                range: Range::Global,
-                cooldown: Ticks::ZERO,
-                cost: PoolCost::default(),
-                windup: time,
-            }],
-            resource_costs: resource_cost.into_iter().collect(),
-            script: None,
-            hooks: HookSet::default(),
-            delivery: None,
-        });
+        Arc::make_mut(&mut book.actions).push(action);
         let book = book.clone();
         ActionsColumn::share(world.non_send::<View>(), book);
         id

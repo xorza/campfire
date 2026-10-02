@@ -19,7 +19,9 @@ use crate::actions::delivery::{Delivery, DeliveryShape};
 use crate::scripts::call_start::CallStart;
 use crate::units::action_id::ActionId;
 
-use crate::actions::action_slots::{ActionSlots, ActionTarget, InProgress};
+use crate::actions::action_slots::{ActionSlots, InProgress};
+
+use crate::actions::action_target::ActionTarget;
 use crate::actions::purse::{Payer, Purse};
 use crate::areas::Areas;
 use crate::combat::CombatSet;
@@ -412,8 +414,7 @@ fn run(batch: &mut ScriptBatch<'_>, ctx: &Ctx, prepared: &mut Prepared) -> Resul
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::abilities::Abilities;
-    use crate::abilities::effect_lists::EffectLists;
-    use crate::abilities::effect_lists::Listed;
+    use crate::abilities::effect_lists::{EffectLists, Listed};
     use crate::abilities::effect_names::EffectNames;
     use crate::actions::action_data::ActionData;
     use crate::progression::tracks_column::TracksColumn;

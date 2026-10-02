@@ -57,13 +57,13 @@ impl<'de> Deserialize<'de> for ProjectileData {
             Some(width) => at_least(width, Num::ZERO)
                 .ok_or_else(|| D::Error::custom("a projectile's width is not negative"))?,
         };
-        let range = match fields.range {
-            None => None,
-            Some(range) => Some(
+        let range = fields
+            .range
+            .map(|range| {
                 at_least(range, Num::ZERO)
-                    .ok_or_else(|| D::Error::custom("a projectile's range is not negative"))?,
-            ),
-        };
+                    .ok_or_else(|| D::Error::custom("a projectile's range is not negative"))
+            })
+            .transpose()?;
         Ok(ProjectileData {
             speed,
             width,

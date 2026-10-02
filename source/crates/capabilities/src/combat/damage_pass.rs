@@ -351,7 +351,8 @@ impl DamagePass {
     fn heal_living(world: &mut World, entity: Entity, amount: Num) {
         let bindings = *world.resource::<CombatBindings>();
         let LifePool(life) = *world.resource::<LifePool>();
-        let received = Num::ONE + DamagePass::stat(world, entity, bindings.heal_scale);
+        let scale = DamagePass::stat(world, entity, bindings.heal_scale);
+        let received = Num::ONE.checked_add(scale).unwrap_or(Num::MAX);
         let amount = scaled(amount, received);
         if amount > Num::ZERO {
             let mut pools = world.get_mut::<Pools>(entity).expect("a living unit");

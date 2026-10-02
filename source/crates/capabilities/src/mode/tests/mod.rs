@@ -13,7 +13,7 @@ use crate::actions::Actions;
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_data::{ActionData, Targeting};
 use crate::actions::action_kind::ActionKind;
-use crate::actions::action_slots::ActionTarget;
+use crate::actions::action_target::ActionTarget;
 use crate::actions::slot_kind::SlotKind;
 use crate::actions::slot_kinds::{SlotKindData, SlotKinds};
 use crate::capability_set::test_match::TestMatch;
@@ -25,12 +25,12 @@ use crate::combat::pass_queue::PassQueue;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::mode::choice_data::{ChoiceData, Offers};
 use crate::mode::error::ModeError;
-use crate::mode::map_data::{GridData, MarkerData, PathData, PlacedUnitData};
-use crate::mode::map_data::{MapData, MapPoint};
+use crate::mode::map_data::{GridData, MapData, MapPoint, MarkerData, PathData, PlacedUnitData};
 use crate::mode::match_end::MatchResult;
 use crate::mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
 use crate::mode::mode_setup::{LoadoutSetup, SlotAction, UnitTypeSetup};
 use crate::mode::mode_state_decl::{ModeStateDecl, SyncTo};
+use crate::mode::mode_units::ModeUnits;
 use crate::mode::offer::Offer;
 use crate::mode::relation_data::RelationData;
 use crate::mode::team_manifest::TeamManifest;
@@ -51,10 +51,10 @@ use crate::progression::track_set::TrackSet;
 use crate::scripts::call_start::CallStart;
 use crate::scripts::error::ApiError;
 use crate::scripts::error::internals::FailureKind;
-use crate::scripts::hook::ScriptRole;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::script_limits::ScriptLimits;
+use crate::scripts::script_role::ScriptRole;
 use crate::scripts::state_decl::{StateDecl, StateDefault, StateType};
 use crate::scripts::state_value::StateValue;
 use crate::stats;
@@ -590,30 +590,32 @@ fn setup(
         data: &files.data,
         teams: &files.teams,
         players: 3,
-        unit_types: vec![
-            unit(grunt_type, grunt()),
-            UnitTypeSetup {
-                actions: vec![SlotAction {
-                    kind: SlotKind::new(0),
-                    ability: strike,
-                }],
-                ..unit(x, hero)
-            },
-            UnitTypeSetup {
-                passive: Some(blessing),
-                ..unit(y, hero)
-            },
-            unit(
-                tower_type,
-                UnitKit {
-                    step: None,
-                    body: Body::new(Num::int(1)).map(|body| body.on(Layer::new(1))),
-                    ..grunt()
+        units: ModeUnits {
+            unit_types: vec![
+                unit(grunt_type, grunt()),
+                UnitTypeSetup {
+                    actions: vec![SlotAction {
+                        kind: SlotKind::new(0),
+                        ability: strike,
+                    }],
+                    ..unit(x, hero)
                 },
-            ),
-        ],
-        avatars: vec!["hero-x".to_owned(), "hero-y".to_owned()],
-        loadout: vec![spell],
+                UnitTypeSetup {
+                    passive: Some(blessing),
+                    ..unit(y, hero)
+                },
+                unit(
+                    tower_type,
+                    UnitKit {
+                        step: None,
+                        body: Body::new(Num::int(1)).map(|body| body.on(Layer::new(1))),
+                        ..grunt()
+                    },
+                ),
+            ],
+            avatars: ["hero-x", "hero-y"].into_iter().collect(),
+            loadout: spell,
+        },
         walkers: vec![Walker::of(grunt().body.as_ref())],
     }
 }
@@ -689,10 +691,8 @@ impl Game {
         // A spell has one rank; hero X's ability, 2.
         let strike = Actions::load(world, 0, "strike", &blink, None, 2).unwrap();
         let blink = Actions::load(world, 0, "blink", &blink, None, 1).unwrap();
-        let spell = LoadoutSetup {
-            id: "blink".to_owned(),
-            ability: blink,
-        };
+        let mut spell = LoadoutSetup::default();
+        spell.push("blink", blink);
         let types = [grunt_type, tower_type, x, y];
         Progression::load(world, &files.data.tracks);
         for (name, data) in &files.modifiers {
@@ -707,7 +707,7 @@ impl Game {
             let relations = &files.data.relations;
             let unit_type = |name: &str| view.unit_type_named(name);
             let map = ModeMap::resolve(&files.map, &files.teams, relations, unit_type).unwrap();
-            let unit_types = &setup.unit_types;
+            let unit_types = &setup.units.unit_types;
             ModeBooks::build(&files.data, unit_types, &mut view.types_mut(), stats, map)
         };
         sim.install(|world, schedule, registry| {

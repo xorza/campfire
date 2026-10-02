@@ -6,7 +6,7 @@ use campfire_sim::{Capability, EntityIndex};
 
 use super::*;
 use crate::actions::action_book::internals::{self, TestWeapon};
-use crate::actions::action_data::Range;
+use crate::actions::range::Range;
 use crate::actions::slot_kind::SlotKind;
 use crate::capability_set::test_match::TestMatch;
 use crate::combat::assist_window::AssistWindow;
@@ -879,6 +879,16 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     assert_eq!(fight.sim.life(source), Num::int(205) / 4);
     DamagePass::heal(&mut fight.sim.world, source, Num::int(1000));
     assert_eq!(fight.sim.life(source), Num::int(100));
+    // A heal scale at the largest number, one past which no number holds, scales as the largest:
+    // a heal of 1 from 40 fills the pool.
+    fight.stats(source, [Num::MAX, half, Num::ONE / 4]);
+    fight
+        .sim
+        .get_mut::<Pools>(source)
+        .take(PoolId::FIRST, Num::int(60));
+    DamagePass::heal(&mut fight.sim.world, source, Num::ONE);
+    assert_eq!(fight.sim.life(source), Num::int(100));
+    fight.stats(source, [-half, half, Num::ONE / 4]);
     // Without the bindings the same stats do nothing: at 50, an attack of 10 heals the source
     // nothing, and a heal of 10 is whole.
     super::internals::bind_life(&mut fight.sim.world, PoolId::FIRST);

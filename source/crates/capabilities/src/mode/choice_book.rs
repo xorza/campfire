@@ -69,8 +69,7 @@ impl ChoiceBook {
         }
         (0..players).all(|row| {
             self.choices.iter().all(|choice| {
-                let start = row * self.width;
-                choices.0[start + choice.run.start..start + choice.run.end]
+                choices.0[self.run(row, choice)]
                     .iter()
                     .flatten()
                     .all(|&offer| roster.holds(choice.offers, offer))
@@ -85,7 +84,7 @@ impl ChoiceBook {
         slot: PlayerSlot,
         choice: &Choice,
     ) -> Option<&'a [Option<Offer>]> {
-        let values = &choices.0[self.run(slot, choice)];
+        let values = &choices.0[self.run(slot.index(), choice)];
         values.iter().all(Option::is_some).then_some(values)
     }
 
@@ -97,7 +96,7 @@ impl ChoiceBook {
         choice: &Choice,
         values: &[Offer],
     ) {
-        let run = self.run(slot, choice);
+        let run = self.run(slot.index(), choice);
         debug_assert_eq!(run.len(), values.len(), "a choice's count of values");
         for (held, &value) in choices.0[run].iter_mut().zip(values) {
             *held = Some(value);
@@ -113,16 +112,14 @@ impl ChoiceBook {
         offer: Offer,
     ) -> bool {
         let rows = choices.0.len().checked_div(self.width).unwrap_or(0);
-        (0..rows).filter(|&row| row != slot.index()).any(|row| {
-            let start = row * self.width;
-            let run = start + choice.run.start..start + choice.run.end;
-            choices.0[run].contains(&Some(offer))
-        })
+        (0..rows)
+            .filter(|&row| row != slot.index())
+            .any(|row| choices.0[self.run(row, choice)].contains(&Some(offer)))
     }
 
-    /// Where the values of `slot` for `choice` sit.
-    const fn run(&self, slot: PlayerSlot, choice: &Choice) -> Range<usize> {
-        let start = slot.index() * self.width;
+    /// Where the values of the player in row `row`, its slot's index, for `choice` sit.
+    const fn run(&self, row: usize, choice: &Choice) -> Range<usize> {
+        let start = row * self.width;
         start + choice.run.start..start + choice.run.end
     }
 }

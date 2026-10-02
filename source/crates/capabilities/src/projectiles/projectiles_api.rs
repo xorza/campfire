@@ -9,7 +9,8 @@ use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::role_set::RoleSet;
-use crate::scripts::script_api::{DataTable, MemberSpec};
+use crate::scripts::script_api::data_table::DataTable;
+use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::units::unit::Unit;
 
 /// The script API of `projectiles`: `ctx.projectile`, and the data of a projectile type.

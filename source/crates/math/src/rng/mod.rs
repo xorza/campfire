@@ -1,13 +1,14 @@
 use blake3::{Hasher, OutputReader};
 
 use crate::num::Num;
-use crate::rng::rng_source::SegmentSeed;
 use crate::rng::rng_stream::RngStream;
+use crate::rng::segment_seed::SegmentSeed;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
 pub(crate) mod rng_source;
 pub(crate) mod rng_stream;
+pub(crate) mod segment_seed;
 
 /// Starts every message, so no other use of a segment seed can produce the same output.
 const DOMAIN: &[u8] = b"campfire/rng/v1";

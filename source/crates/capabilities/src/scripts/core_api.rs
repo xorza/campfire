@@ -4,7 +4,9 @@ use campfire_sim::Capability;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
 use crate::scripts::ctx::{Ctx, Params};
-use crate::scripts::script_api::{DataTable, MemberSpec, Status};
+use crate::scripts::script_api::data_table::DataTable;
+use crate::scripts::script_api::member_spec::MemberSpec;
+use crate::scripts::script_api::status::Status;
 use crate::units::block::Block;
 use crate::units::tag_effect::TagEffect;
 

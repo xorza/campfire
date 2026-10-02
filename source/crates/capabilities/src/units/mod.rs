@@ -75,8 +75,8 @@ pub struct Units;
 
 impl Units {
     /// Adds the core to a match, on a planar map until the mode sets its own. With `budgets`,
-    /// scripts run within them: in Inputs,
-    /// every pool starts full and the last tick's failures clear. A client runs no scripts.
+    /// scripts run within them: in Inputs, every pool starts full and the last tick's failures
+    /// clear. A client runs no scripts.
     pub fn install(
         world: &mut World,
         schedule: &mut Schedule,
@@ -93,9 +93,9 @@ impl Units {
         world.insert_resource(Relations::default());
         registry.register_resource::<Relations>();
         world.insert_resource(Metric::default());
+        world.insert_resource(ScriptBook::default());
         let Some(budgets) = budgets else {
             world.insert_non_send(view);
-            world.insert_resource(ScriptBook::default());
             return;
         };
         let ctx = Ctx::new(view.clone());
@@ -105,7 +105,6 @@ impl Units {
         world.insert_non_send(ctx);
         world.insert_non_send(view);
         world.insert_non_send(host);
-        world.insert_resource(ScriptBook::default());
         world.insert_non_send(ScriptFailures::default());
         world.insert_resource(budgets);
         schedule.add_systems(

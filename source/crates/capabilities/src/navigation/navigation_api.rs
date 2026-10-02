@@ -2,7 +2,8 @@ use campfire_sim::Capability;
 
 use crate::navigation::paths_column::PathsColumn;
 use crate::scripts::api_builder::ApiBuilder;
-use crate::scripts::script_api::{ApiOwner, MemberSpec};
+use crate::scripts::script_api::api_owner::ApiOwner;
+use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::units::unit::Unit;
 
 /// The script API of `navigation`: `unit.path`.

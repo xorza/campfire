@@ -1,9 +1,9 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
+use campfire_math::{Tick, Ticks};
 use serde::{Deserialize, Serialize};
 
 use crate::sim_state::SimResource;
-use campfire_math::{Tick, Ticks};
 
 /// The number of the tick that runs now, and between ticks the number of the next one. A match
 /// starts at tick 0. It is state: the tick keys every random draw.

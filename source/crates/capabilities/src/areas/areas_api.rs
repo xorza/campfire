@@ -7,7 +7,8 @@ use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::Checked;
 use crate::scripts::role_set::RoleSet;
-use crate::scripts::script_api::{DataTable, MemberSpec};
+use crate::scripts::script_api::data_table::DataTable;
+use crate::scripts::script_api::member_spec::MemberSpec;
 
 /// The script API of `areas`: `ctx.area`, and the data of an area type.
 #[derive(Debug)]

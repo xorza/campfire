@@ -14,7 +14,7 @@ use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::name_kind::NameKind;
-use crate::scripts::script_api::MemberSpec;
+use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::scripts::script_consts::ScriptConsts;
 use crate::units::action_id::ActionId;
 use crate::units::body::Body;
@@ -586,7 +586,7 @@ pub(crate) mod internals {
     use crate::stats::stats_column::StatsColumn;
     use std::cell::RefMut;
 
-    use crate::actions::action_data::CostTarget;
+    use crate::actions::cost_target::CostTarget;
     use crate::scripts::error::ApiError;
     use crate::stats::stat_id::StatId;
     use crate::units::filter::Filter;

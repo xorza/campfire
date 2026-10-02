@@ -80,6 +80,7 @@ pub(crate) mod mode_schema;
 pub(crate) mod mode_setup;
 pub(crate) mod mode_state;
 pub(crate) mod mode_state_decl;
+pub(crate) mod mode_units;
 pub(crate) mod new_unit;
 pub(crate) mod offer;
 pub(crate) mod placed_unit;
@@ -96,12 +97,12 @@ pub(crate) mod unit_kit;
 pub struct Mode;
 
 impl Mode {
-    /// Adds the mode of `setup`, whose books the book builder built, to a match
-    /// whose capabilities are installed and whose unit types, abilities and AI are loaded: in
-    /// Inputs, the players' mode inputs run `on_mode_input`; in Mode, the trains whose time ended
-    /// spawn, due timers run `on_timer`, the tick's deaths run `on_unit_died`, and the levels
-    /// reached run `on_level_up`. The map's ground, paths and grid become the match's, and the
-    /// mode's `[combat]` and `calc_damage` combat's.
+    /// Adds the mode of `setup`, whose books the book builder built, to a match whose capabilities
+    /// are installed and whose unit types, abilities and AI are loaded: in Inputs, the players'
+    /// mode inputs run `on_mode_input`; in Mode, the trains whose time ended spawn, due timers run
+    /// `on_timer`, the tick's deaths run `on_unit_died`, and the levels reached run `on_level_up`.
+    /// The map's ground, paths and grid become the match's, and the mode's `[combat]` and
+    /// `calc_damage` combat's.
     pub fn install(
         world: &mut World,
         schedule: &mut Schedule,

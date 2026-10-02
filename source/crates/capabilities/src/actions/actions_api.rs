@@ -6,7 +6,8 @@ use crate::actions::action_data_field::ActionDataField;
 use crate::actions::actions_column::ActionsColumn;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::error::{ApiError, Checked};
-use crate::scripts::script_api::{ApiOwner, MemberSpec};
+use crate::scripts::script_api::api_owner::ApiOwner;
+use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::units::unit::Unit;
 
 /// The script API of the action pipeline: what a unit's actions give it, and the fields of an

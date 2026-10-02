@@ -22,17 +22,17 @@ impl fmt::Display for MapProblem {
         match self {
             MapProblem::MarkerBlocked { marker } => write!(
                 f,
-                "a placed unit stands so near marker {marker:?} that the widest unit that walks \
+                "a placed unit stands so near marker \"{marker}\" that the widest unit that walks \
                  cannot stand on it"
             ),
             MapProblem::WaypointBlocked { path, waypoint } => write!(
                 f,
-                "a placed unit stands so near waypoint {waypoint} of path {path:?} that the widest \
+                "a placed unit stands so near waypoint {waypoint} of path \"{path}\" that the widest \
                  unit that walks cannot stand on it"
             ),
             MapProblem::WaypointUnreachable { path, waypoint } => write!(
                 f,
-                "the placed units close every way to waypoint {waypoint} of path {path:?} from the \
+                "the placed units close every way to waypoint {waypoint} of path \"{path}\" from the \
                  one before it"
             ),
         }

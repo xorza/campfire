@@ -19,6 +19,7 @@ use crate::values::bounds::Bounds;
 use crate::values::declared_name::DeclaredName;
 use crate::values::grid::Grid;
 use crate::values::metric::Metric;
+use crate::values::name_list::NameList;
 use crate::vision::vision_grid::VisionGrid;
 
 /// The mode's map and the relations of its teams, every name resolved once, as the book builder
@@ -48,7 +49,7 @@ pub(crate) struct MapGround {
 #[derive(Debug, Clone)]
 pub(crate) struct MarkerSpec {
     pub(crate) name: Box<str>,
-    pub(crate) tags: Box<[Box<str>]>,
+    pub(crate) tags: NameList,
     pub(crate) pos: Option<Position>,
     pub(crate) team: Option<Team>,
     pub(crate) params: BTreeMap<DeclaredName, ModeParam>,
@@ -72,11 +73,11 @@ impl ModeMap {
     /// `unit_type`, which knows the mode's types that stand. An error for what it names that the
     /// mode does not have: teams that share a name or more than `Team::LIMIT`, or more than
     /// `VisionGrid::MAX_TEAMS` with a vision grid; a relation of a team to itself, of a team the
-    /// mode lacks, or of a pair named before; and in the map,
-    /// grids that make no grid of its bounds, a path with no waypoint or another's name, a
-    /// placed unit of a type, team or path it lacks, or that walks from an end of no path, a
-    /// marker of another's name, a team it lacks, or with a point and a region or a region
-    /// outside the bounds, and any point that does not fit its metric or its bounds.
+    /// mode lacks, or of a pair named before; and in the map, grids that make no grid of its
+    /// bounds, a path with no waypoint or another's name, a placed unit of a type, team or path it
+    /// lacks, or that walks from an end of no path, a marker of another's name, a team it lacks, or
+    /// with a point and a region or a region outside the bounds, and any point that does not fit
+    /// its metric or its bounds.
     pub(crate) fn resolve(
         map: &MapData,
         teams: &[TeamManifest],
@@ -161,7 +162,7 @@ impl ModeMap {
             }
             markers.push(MarkerSpec {
                 name: marker.name.as_str().into(),
-                tags: marker.tags.iter().map(|tag| tag.as_str().into()).collect(),
+                tags: marker.tags.iter().map(DeclaredName::as_str).collect(),
                 pos: marker.pos.as_ref().map(point).transpose()?,
                 team: marker_team,
                 params: marker.params.clone(),

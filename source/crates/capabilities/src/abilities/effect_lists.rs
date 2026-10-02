@@ -6,8 +6,7 @@ use campfire_sim::{StableId, TickRate};
 
 use crate::abilities::effect_names::EffectNames;
 use crate::actions::action_data::ActionData;
-use crate::actions::effect_data::EffectTo;
-use crate::actions::effect_data::{EffectData, Effecting};
+use crate::actions::effect_data::{EffectData, EffectTo, Effecting};
 use crate::combat::combat_effect::CombatEffect;
 use crate::progression::progression_effect::ProgressionEffect;
 use crate::scripts::frame::Frame;
@@ -112,10 +111,9 @@ impl EffectLists {
                 }
                 EffectTo::Source => acting.expect("an action's list runs for its acting unit"),
             };
-            let number = |frame: &Frame, amount| Amount::number(amount, frame);
             match listed.does {
                 Does::Damage { amount, kind } => {
-                    let amount = number(frame, amount);
+                    let amount = amount.number(frame);
                     frame.effects.push(CombatEffect::Damage {
                         target: unit,
                         amount,
@@ -123,11 +121,11 @@ impl EffectLists {
                     });
                 }
                 Does::Heal { amount } => {
-                    let amount = number(frame, amount);
+                    let amount = amount.number(frame);
                     frame.effects.push(CombatEffect::Heal { unit, amount });
                 }
                 Does::Restore { pool, amount } => {
-                    let amount = number(frame, amount);
+                    let amount = amount.number(frame);
                     frame
                         .effects
                         .push(CombatEffect::Restore { unit, pool, amount });
@@ -135,7 +133,7 @@ impl EffectLists {
                 Does::Modifier { id, duration_ms } => {
                     let duration = duration_ms.map(|ms| {
                         // Whole, as the load checked, so the floor is exact.
-                        let ms = number(frame, ms).floor();
+                        let ms = ms.number(frame).floor();
                         let ms =
                             u64::try_from(ms).expect("the load checked a duration not negative");
                         rate.duration(ms)
@@ -148,7 +146,7 @@ impl EffectLists {
                     });
                 }
                 Does::Xp { track, amount } => {
-                    let amount = number(frame, amount);
+                    let amount = amount.number(frame);
                     frame.effects.push(ProgressionEffect::AddXp {
                         unit,
                         track,

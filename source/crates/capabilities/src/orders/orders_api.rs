@@ -8,7 +8,9 @@ use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::hook::Hook;
 use crate::scripts::role_set::RoleSet;
-use crate::scripts::script_api::{DataTable, MemberSpec, Status};
+use crate::scripts::script_api::data_table::DataTable;
+use crate::scripts::script_api::member_spec::MemberSpec;
+use crate::scripts::script_api::status::Status;
 use crate::units::unit::Unit;
 
 /// The script API of `orders`: the orders an AI gives the unit that thinks.

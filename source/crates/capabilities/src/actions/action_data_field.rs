@@ -3,7 +3,7 @@ use campfire_sim::Capability;
 use crate::actions::action_data::ActionData;
 use crate::actions::action_kind::ActionKind;
 use crate::scripts::api_version::ApiVersion;
-use crate::scripts::script_api::Status;
+use crate::scripts::script_api::status::Status;
 
 /// A field of an action's data, `[actions.<id>]`: the one table of which kinds of action take
 /// each field, which need it, which capability runs it, and whether the release runs it yet.

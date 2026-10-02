@@ -1,10 +1,10 @@
 use std::collections::BTreeMap;
 use std::slice;
 
-use campfire_math::Vec3;
-use campfire_sim::{Capability, IdAllocator, SimUpdate};
+use bevy_ecs::entity::Entity;
+use campfire_math::{Num, Vec3};
+use campfire_sim::{Capability, IdAllocator, Position, SimUpdate};
 
-use super::*;
 use crate::capability_set::test_match::TestMatch;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
@@ -12,8 +12,7 @@ use crate::stats::application::{Application, NewInstance};
 use crate::stats::held_modifiers::Held;
 use crate::stats::instance::StatShare;
 use crate::stats::lifetime::Hold;
-use crate::stats::modifier_data::ModifierData;
-use crate::stats::modifier_data::{AuraData, Reapply};
+use crate::stats::modifier_data::{AuraData, ModifierData, Reapply};
 use crate::stats::move_step::MoveStep;
 use crate::stats::pool_data::PoolData;
 use crate::stats::pool_id::PoolId;
@@ -39,11 +38,9 @@ use crate::values::number::{Number, ParamRef};
 use crate::values::param::Param;
 use crate::values::ranked::Ranked;
 use crate::values::scalar::Scalar;
-use crate::values::stat::EngineStat;
-use crate::values::stat::Stat;
-use bevy_ecs::entity::Entity;
-use campfire_math::Num;
-use campfire_sim::Position;
+use crate::values::stat::{EngineStat, Stat};
+
+use super::*;
 /// `value` sixteenths.
 fn sixteenths(value: i64) -> Num {
     Num::from_bits(value << (Num::FRAC_BITS - 4))

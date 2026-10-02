@@ -1,4 +1,4 @@
-use crate::actions::action_data::CostTarget;
+use crate::actions::cost_target::CostTarget;
 use crate::stats::stat_id::StatId;
 use crate::units::filter::Filter;
 use crate::units::modifier_id::ModifierId;

@@ -34,7 +34,7 @@ impl Orders {
         if !buttons.just_pressed(MouseButton::Right) {
             return;
         }
-        let (Some(avatar), Some(point)) = (pointer.own_hero(), pointer.ground()) else {
+        let (Some(avatar), Some(point)) = (pointer.own_avatar(), pointer.ground()) else {
             return;
         };
         let action = match pointer.unit_at(point) {
@@ -57,7 +57,7 @@ impl Orders {
         pointer: Pointer<'_, '_>,
         mut orders: ResMut<'_, PendingOrders>,
     ) {
-        let Some(avatar) = pointer.own_hero() else {
+        let Some(avatar) = pointer.own_avatar() else {
             return;
         };
         for (slot, &key) in (0..).zip(&CAST_KEYS) {

@@ -40,12 +40,11 @@ impl<'a> ParamSource<'a> {
         let book = world.get_resource::<StatBook>()?;
         let entity = world.resource::<EntityIndex>().get(unit)?;
         let unit = world.entity(entity);
-        let parts = (unit.get::<Level>(), unit.get::<UnitStats>());
         Some(ParamSource::of_parts(
             book,
             *unit.get::<UnitType>()?,
-            parts.0,
-            parts.1,
+            unit.get::<Level>(),
+            unit.get::<UnitStats>(),
         ))
     }
 

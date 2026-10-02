@@ -2,9 +2,10 @@ use campfire_script::rhai::{Engine, RhaiNativeFunc, Variant};
 
 use crate::scripts::api_version::ApiVersion;
 use crate::scripts::hook::Hook;
-use crate::scripts::script_api::{
-    DataTable, HookStatus, MemberKind, MemberSpec, ScriptApi, Status,
-};
+use crate::scripts::script_api::data_table::DataTable;
+use crate::scripts::script_api::member_spec::MemberSpec;
+use crate::scripts::script_api::status::Status;
+use crate::scripts::script_api::{HookStatus, MemberKind, ScriptApi};
 use crate::units::tag_effect::TagEffect;
 
 /// Rhai's names for a property's getter and setter, and a type's indexer, which its

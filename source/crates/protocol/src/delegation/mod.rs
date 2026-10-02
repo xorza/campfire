@@ -1,3 +1,4 @@
+use campfire_math::Bytes32;
 use nostr::event::{Event, Kind, Tag, UnsignedEvent};
 use nostr::key::{Keys, SecretKey};
 use nostr::types::Timestamp;
@@ -7,7 +8,6 @@ use crate::delegation::delegation_tag::DelegationTag;
 use crate::delegation::error::{DelegationError, ScopeError};
 use crate::input_hash::InputHash;
 use crate::session_id::SessionId;
-use campfire_math::Bytes32;
 
 pub(crate) mod delegation_tag;
 pub(crate) mod error;

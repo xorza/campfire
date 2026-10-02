@@ -5,9 +5,10 @@ use campfire_script::ScriptId;
 
 use crate::abilities::effect_lists::Listed;
 use crate::abilities::effect_names::EffectNames;
-use crate::actions::action_data::{ActionData, CostTarget};
+use crate::actions::action_data::ActionData;
 use crate::actions::action_names::ActionNames;
 use crate::actions::action_parts::ActionParts;
+use crate::actions::cost_target::CostTarget;
 use crate::areas::area_spec::AreaSpec;
 use crate::books::book_input::{BookInput, BookKind, BookPackage};
 use crate::books::error::BookError;
@@ -16,7 +17,7 @@ use crate::books::{BookParts, Books};
 use crate::combat::on_death::OnDeath;
 use crate::mode::mode_books::ModeBooks;
 use crate::mode::mode_map::ModeMap;
-use crate::mode::mode_setup::{LoadoutSetup, SlotAction, UnitTypeSetup};
+use crate::mode::mode_setup::{SlotAction, UnitTypeSetup};
 use crate::mode::unit_kit::{KitSections, UnitKit};
 use crate::orders::ai::Ai;
 use crate::progression::track_book::TrackBook;
@@ -132,18 +133,16 @@ impl<'a> BookBuilder<'a> {
                     let actions = self.actions(index, package, |id| ranks.get(id).copied())?;
                     let unit = Standing::new(package.name, unit, true);
                     self.unit_type(index, unit, &actions)?;
-                    self.books.units.avatars.push(package.name.to_owned());
+                    self.books.units.avatars.push(package.name);
                 }
                 BookKind::Loadout => {
                     for (name, file) in units {
                         self.delivery(index, name, file)?;
                     }
                     let actions = self.actions(index, package, |_| Some(loadout_ranks))?;
-                    let entries = actions.into_iter().map(|(id, ability)| LoadoutSetup {
-                        id: id.to_owned(),
-                        ability,
-                    });
-                    self.books.units.loadout.extend(entries);
+                    for (id, ability) in actions {
+                        self.books.units.loadout.push(id, ability);
+                    }
                 }
             }
         }

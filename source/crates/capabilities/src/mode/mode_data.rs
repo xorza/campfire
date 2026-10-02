@@ -4,7 +4,7 @@ use campfire_content::PackagePath;
 use campfire_script::rhai::{Dynamic, ImmutableString};
 use serde::Deserialize;
 
-use crate::actions::action_data::CostTarget;
+use crate::actions::cost_target::CostTarget;
 use crate::actions::slot_kinds::SlotKinds;
 use crate::combat::combat_rules::CombatRules;
 use crate::mode::choice_data::ChoiceData;

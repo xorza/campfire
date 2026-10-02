@@ -4,7 +4,7 @@ use campfire_math::Num;
 use campfire_sim::{Capability, Command, StableId};
 use serde::{Deserialize, Serialize};
 
-use crate::actions::action_slots::ActionTarget;
+use crate::actions::action_target::ActionTarget;
 
 /// An order to one unit: the body of an `orders` command. Players, bots and AI issue the same
 /// orders; an order to a group is one command per unit.

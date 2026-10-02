@@ -4,7 +4,6 @@ use campfire_sim::TickRate;
 use crate::projectiles::projectile_data::ProjectileData;
 use crate::units::filter::Filter;
 use crate::units::unit_types::UnitTypes;
-use crate::values::relation::Relation;
 
 /// A projectile type as a match runs it: its speed a tick, its width, its range if it has its
 /// own, whether it homes, stops at its first hit, or hits a unit once a cast, and what it hits.
@@ -23,10 +22,7 @@ impl ProjectileSpec {
     /// The spec of `data`, which the package load checked: its speed a tick at `rate`, and
     /// what it hits among the tags of `types`.
     pub(crate) fn of(data: &ProjectileData, types: &UnitTypes, rate: TickRate) -> ProjectileSpec {
-        let hits = match &data.hits {
-            Some(filter) => Filter::resolve(filter, types),
-            None => Ok(Filter::of_relation(Relation::Enemies)),
-        };
+        let hits = Filter::resolve_or_enemies(data.hits.as_ref(), types);
         ProjectileSpec {
             speed: data
                 .speed

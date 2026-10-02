@@ -1,14 +1,15 @@
 use std::num::NonZeroU32;
 
+use campfire_math::{NotHex, Ticks};
 use secp256k1::{SecretKey, XOnlyPublicKey};
 
-use super::*;
 use crate::delegation::DelegationTerms;
 use crate::delegation::error::ScopeError;
 use crate::fingerprint::Fingerprint;
 use crate::seed_chain::SeedChain;
 use crate::session_id::SessionId;
-use campfire_math::{NotHex, Ticks};
+
+use super::*;
 
 const NOW: u64 = 1_700_000_000;
 const EXPIRATION: u64 = NOW + 60;

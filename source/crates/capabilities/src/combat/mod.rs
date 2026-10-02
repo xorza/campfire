@@ -1,6 +1,5 @@
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{Has, ROQueryItem};
-use bevy_ecs::query::{QueryState, With, Without};
+use bevy_ecs::query::{Has, QueryState, ROQueryItem, With, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::{Mut, World};
@@ -10,7 +9,8 @@ use campfire_sim::{
 };
 
 use crate::actions::action_book::ActionBook;
-use crate::actions::action_slots::{ActionSlots, ActionTarget, InProgress, SlotAim};
+use crate::actions::action_slots::{ActionSlots, InProgress, SlotAim};
+use crate::actions::action_target::ActionTarget;
 use crate::actions::purse::{Payer, Purse};
 use crate::actions::rank_values::RankValues;
 use crate::actions::targets::Targets;
@@ -170,9 +170,7 @@ impl Combat {
         registry.register_component::<RecentAttackers>();
         registry.register_component::<Respawn>();
     }
-}
 
-impl Combat {
     /// The target of the attack of a unit with `slots` whose windup ends by `now`, if one does.
     fn going_off(slots: &ActionSlots, now: Tick) -> Option<StableId> {
         let target = slots.attacking()?;
@@ -466,12 +464,12 @@ fn run_intervals(
 /// Delivers each attack whose windup ends this tick, in the order of its attacker's stable id: it
 /// queues the damage of its weapon's damage stat, of its kind, or a shot when the weapon fires a
 /// projectile, which `projectiles` launches, as the load gives such a weapon only to a match with
-/// projectiles. Each draws its roll now, at least 0 and less than 1,
-/// which `calc_damage` reads. The weapon's cost is paid, in pools and its player's resources, and
-/// it is ready again a period from the attack's start, the tick rate over its rate stat. A windup
-/// whose attacker's tags keep it from attacking, or that no longer affords its cost, stops instead,
-/// and spends nothing. A client that predicts the attack only makes the weapon ready again, as
-/// the damage, the launch and the cost come from the server.
+/// projectiles. Each draws its roll now, at least 0 and less than 1, which `calc_damage` reads.
+/// The weapon's cost is paid, in pools and its player's resources, and it is ready again a period
+/// from the attack's start, the tick rate over its rate stat. A windup whose attacker's tags keep
+/// it from attacking, or that no longer affords its cost, stops instead, and spends nothing. A
+/// client that predicts the attack only makes the weapon ready again, as the damage, the launch
+/// and the cost come from the server.
 fn strike(
     (tick, rate, rng, book): (
         Res<'_, SimTick>,
@@ -673,8 +671,8 @@ pub(crate) mod internals {
     use crate::units::team::Team;
 
     use crate::actions::action_book::internals::{self, TestWeapon};
-    use crate::actions::action_data::Range;
     use crate::actions::action_slots::ActionSlots;
+    use crate::actions::range::Range;
     use crate::actions::slot_kind::SlotKind;
     #[cfg(test)]
     use crate::combat::combat_bindings::CombatBindings;

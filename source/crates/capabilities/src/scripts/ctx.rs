@@ -10,8 +10,8 @@ use campfire_sim::StableId;
 use crate::scripts::effects::Effect;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::frame::Frame;
-use crate::scripts::hook::ScriptRole;
 use crate::scripts::role_set::RoleSet;
+use crate::scripts::script_role::ScriptRole;
 use crate::units::script_view::View;
 
 /// `ctx` in every script: what one call reads, and the effects it queues. Every role's call goes

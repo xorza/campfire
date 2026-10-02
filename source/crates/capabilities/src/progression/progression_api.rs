@@ -10,7 +10,10 @@ use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::hook::Hook;
 use crate::scripts::name_kind::NameKind;
-use crate::scripts::script_api::{ApiOwner, DataTable, MemberSpec, Status};
+use crate::scripts::script_api::api_owner::ApiOwner;
+use crate::scripts::script_api::data_table::DataTable;
+use crate::scripts::script_api::member_spec::MemberSpec;
+use crate::scripts::script_api::status::Status;
 use crate::units::unit::Unit;
 
 /// The script API of `progression`: `ctx.add_xp` and `on_level_up`; reads of a unit's progress,

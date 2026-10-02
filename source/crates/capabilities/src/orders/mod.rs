@@ -13,9 +13,9 @@ use campfire_sim::{
 
 use crate::actions::ActionsSet;
 use crate::actions::action_book::ActionBook;
-use crate::actions::action_data::Range;
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::ActionSlots;
+use crate::actions::range::Range;
 use crate::actions::targets::Targets;
 use crate::combat::CombatSet;
 use crate::navigation::destination::Destination;

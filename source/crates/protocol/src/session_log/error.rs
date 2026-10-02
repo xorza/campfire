@@ -1,8 +1,9 @@
 use std::error::Error;
 use std::fmt;
 
-use crate::delegation::error::{DelegationError, ScopeError};
 use campfire_math::{PlayerSlot, Tick};
+
+use crate::delegation::error::{DelegationError, ScopeError};
 
 /// Why the log refused a packet of inputs. Packets come from the network, so each is an expected
 /// failure.

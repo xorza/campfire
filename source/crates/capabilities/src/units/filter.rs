@@ -6,6 +6,9 @@ use crate::values::attitude::Attitude;
 use crate::values::filter_data::{FilterData, FilterSyntax};
 use crate::values::relation::Relation;
 
+/// The engine tags of delivery units, which a filter leaves out unless it names one.
+const DELIVERY: [EngineTag; 2] = [EngineTag::Projectile, EngineTag::Area];
+
 /// A filter as a match runs it: a relation, the tags a unit must have, and those it must not,
 /// among them the tags of delivery units, `projectile` and `area`, but one it must have.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,12 +32,23 @@ impl Filter {
         Filter::of(data.relation, terms, types)
     }
 
+    /// The run-time form of `data`, as `resolve` gives it, or with none, the filter of enemies
+    /// alone.
+    pub(crate) fn resolve_or_enemies(
+        data: Option<&FilterData>,
+        types: &UnitTypes,
+    ) -> Result<Filter, ApiError> {
+        data.map_or(Ok(Filter::of_relation(Relation::Enemies)), |data| {
+            Filter::resolve(data, types)
+        })
+    }
+
     /// The filter of `relation` alone: every unit it selects, but delivery units.
     pub(crate) fn of_relation(relation: Relation) -> Filter {
         Filter {
             relation,
             all: TagSet::default(),
-            none: TagSet::of([EngineTag::Projectile, EngineTag::Area].map(EngineTag::tag)),
+            none: TagSet::of(DELIVERY.map(EngineTag::tag)),
         }
     }
 
@@ -56,7 +70,7 @@ impl Filter {
                 filter.all = filter.all.with(tag);
             }
         }
-        for tag in [EngineTag::Projectile, EngineTag::Area].map(EngineTag::tag) {
+        for tag in DELIVERY.map(EngineTag::tag) {
             if !filter.all.contains(tag) {
                 filter.none = filter.none.with(tag);
             }

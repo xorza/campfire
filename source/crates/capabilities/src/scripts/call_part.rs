@@ -6,7 +6,7 @@ use campfire_script::rhai::Dynamic;
 
 use crate::scripts::call_start::CallStart;
 use crate::scripts::error::CallError;
-use crate::scripts::hook::ScriptRole;
+use crate::scripts::script_role::ScriptRole;
 
 /// A capability's own part of the call frame: what a call reads besides the core's, such as its
 /// params or the mode's state, and what it wrote that applies once its effects did. The core

@@ -7,7 +7,8 @@ use campfire_sim::{Capability, IdAllocator, Position, StableId};
 use serde::Serialize;
 
 use crate::actions::action_book::internals;
-use crate::actions::action_slots::{ActionSlots, ActionTarget};
+use crate::actions::action_slots::ActionSlots;
+use crate::actions::action_target::ActionTarget;
 use crate::actions::slot_kind::SlotKind;
 use crate::capability_set::test_match::TestMatch;
 use crate::players::player_resources::PlayerResources;

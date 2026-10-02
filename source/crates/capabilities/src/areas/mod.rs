@@ -5,7 +5,7 @@ use bevy_ecs::world::World;
 use campfire_math::{Num, Tick, Ticks};
 use campfire_sim::{Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry};
 
-use crate::actions::action_slots::ActionTarget;
+use crate::actions::action_target::ActionTarget;
 use crate::areas::area::Area;
 
 use crate::actions::targets::Targets;

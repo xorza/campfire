@@ -26,7 +26,7 @@ pub enum CallError {
 pub enum ApiError {
     /// A param the ability or the unit type does not declare.
     UnknownParam,
-    /// A filter whose relation is not `enemies`, `allies` or `all`.
+    /// A filter that is not a relation, such as `enemies`, with its tags, if any, after a `:`.
     UnknownFilter,
     /// A filter's tag that no unit type of the match declares.
     UnknownTag,
@@ -188,7 +188,7 @@ impl fmt::Display for ApiError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             ApiError::UnknownParam => "param is not declared",
-            ApiError::UnknownFilter => "filter is not enemies, allies or all",
+            ApiError::UnknownFilter => "filter is not a relation with its tags",
             ApiError::UnknownTag => "tag is not declared by any unit type",
             ApiError::NegativeRadius => "radius is negative",
             ApiError::NegativeTime => "time is negative",

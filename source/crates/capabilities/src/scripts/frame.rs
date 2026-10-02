@@ -8,7 +8,7 @@ use crate::scripts::call_part::{CallPart, CallParts};
 use crate::scripts::call_start::CallStart;
 use crate::scripts::effects::{ApplyEffect, Effects};
 use crate::scripts::error::CallError;
-use crate::scripts::hook::ScriptRole;
+use crate::scripts::script_role::ScriptRole;
 use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
 use crate::values::hit::Hit;
@@ -24,8 +24,8 @@ pub(crate) struct Frame {
     /// Its acting unit: a cast's caster, a modifier's source, the unit that thinks; none for the
     /// mode.
     acting: Option<StableId>,
-    /// The ability whose params it reads, at `rank`, and its modifier's.
-    ability: Option<ActionId>,
+    /// The action whose params it reads, at `rank`, and its modifier's.
+    action: Option<ActionId>,
     rank: u8,
     modifier: Option<ModifierId>,
     /// The depth of the chain of combat events it runs in: 0 for a cast.
@@ -59,9 +59,8 @@ impl Frame {
         self.acting
     }
 
-    /// The action whose params it reads, and at which rank.
     pub(crate) const fn action(&self) -> Option<ActionId> {
-        self.ability
+        self.action
     }
 
     pub(crate) const fn rank(&self) -> u8 {
@@ -145,7 +144,7 @@ impl Frame {
         let CallStart {
             role,
             acting,
-            action: ability,
+            action,
             rank,
             modifier,
             package,
@@ -154,7 +153,7 @@ impl Frame {
         } = start;
         self.role = Some(role);
         self.acting = acting;
-        self.ability = ability;
+        self.action = action;
         self.rank = rank;
         self.modifier = modifier;
         self.package = package;
@@ -166,7 +165,7 @@ impl Frame {
     }
 
     /// Applies the effects the call that ran queued, in order, each by its capability, from
-    /// the call's acting unit and its ability at its rank, in tick `now`. Then what the call
+    /// the call's acting unit and its action at its rank, in tick `now`. Then what the call
     /// wrote to each part applies, then to the players' resources.
     pub(crate) fn apply(&mut self, world: &mut World, now: Tick) {
         for at in 0..self.effects.order().len() {
