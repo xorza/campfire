@@ -218,14 +218,10 @@ The suite takes about 4 s. These times were measured with no other load:
 | Test | Idle | Notes |
 |---|---|---|
 | `match_3v3::a_3v3_match_replays_to_the_same_hashes` | 0.35–0.61 s | 0.995 s and 1.47 s were measured under load |
-| `session_log::every_flip_of_a_log_file_is_refused` | 0.53 s | 85 % schnorr verification |
+| `session_log::every_truncation_and_every_flip…` | 0.20 s | a minimal log |
 | `mode_package::every_flaw…` | 0.36 s | 1.24 s under load |
-| `verifier headless::every_corruption…` | 0.13–0.23 s | a copy of the protocol sweep |
 | net scenarios | 0.05–0.30 s each | the binary takes 0.29 s in parallel |
 
-- [ ] **Delete `verifier/tests/headless.rs:348-371` `every_corruption_of_a_log_file_is_refused`** — it repeats `protocol/src/session_log/tests.rs:890-924` with the same masks and the same comment. It calls only `SessionLog::decode`, and for truncation it checks only `is_err()`, where protocol checks `NotLog` and `Truncated`. `headless.rs:385-406` still tests the binary end to end.
-- [ ] **A minimal log for the flip and truncation sweeps** — `published()` holds 11 packets, so a flip in the packet region costs about 8 signature checks. A log of 2 players, 1 tick with 1 packet of 2 inputs, 1 tail packet and the seed has every byte class with 3 signatures. The estimate is 0.53 → 0.17 s for flips and 0.15 → 0.05 s for truncation, with all 3 masks. Put the two sweeps in one loop.
-- [ ] **`match_3v3` keeps its claims at its current cost** — of its time, 68 % is ticks, 31 % is state hashes (about 27 µs each) and 4 % is setup. Fewer ticks is not possible (1199, 2399 and 2499 are content times at the mode's lowest rate). Hashes only at checkpoints would miss a divergence that converges again. Better: keep the test, and if wall time becomes a problem, give it a budget in instructions (`perf stat -e instructions:u`, about 6 G) instead of seconds. The hash cost and the cost of an empty pick tick (about 31 µs) are engine performance items for `REVIEW.md`, not test items.
 - [ ] **`every_flaw…` has room for about 390 flaws** — at about 2.5 ms each, it passes 1 s idle near 390 flaws. When it grows, split the table by area (manifest, mode data, map, heroes, scripts) into tests that run in parallel.
 
 ## 9. Decisions for you

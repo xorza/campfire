@@ -948,31 +948,51 @@ fn a_log_file_has_its_layout() {
     ));
 }
 
+/// The smallest log with every kind of byte a log file holds: the header of 2 players, 1 tick
+/// with 1 packet of 2 inputs, 1 packet after the tick, and the revealed seed.
+fn minimal() -> SessionLog {
+    let mut log = SessionLog::new(header()).unwrap();
+    let mut applied = Vec::new();
+    let sent = resent(1, &[&[(0, b"a"), (0, b"b")], &[(1, b"c")]], 1);
+    log.record(
+        sent[0].inputs.iter().copied(),
+        &sent[0].signature,
+        &mut applied,
+    )
+    .unwrap();
+    drop(log.seal_tick());
+    log.record(
+        sent[1].inputs.iter().copied(),
+        &sent[1].signature,
+        &mut applied,
+    )
+    .unwrap();
+    log.reveal_seed(server_seed());
+    log
+}
+
 #[test]
-fn every_truncation_of_a_log_file_is_refused() {
-    let bytes = encoded(&published());
+fn every_truncation_and_every_flip_of_a_log_file_is_refused() {
+    // A signature, a chain link or the commitment covers every byte: the session id hashes the
+    // terms, each main key signs its delegation with the contribution, each session key its
+    // inputs, and the reveal checks against the commitment.
+    let bytes = encoded(&minimal());
+    assert_eq!(
+        SessionLog::decode(&bytes).map(|log| log.next_tick()),
+        Ok(Tick::new(1))
+    );
     let tag = b"campfire/session-log/v1".len();
-    for len in 0..bytes.len() {
-        let expected = if len < tag {
+    for at in 0..bytes.len() {
+        let expected = if at < tag {
             LogError::NotLog
         } else {
             LogError::Truncated
         };
         assert_eq!(
-            SessionLog::decode(&bytes[..len]).err(),
+            SessionLog::decode(&bytes[..at]).err(),
             Some(expected),
-            "truncated to {len} bytes"
+            "truncated to {at} bytes"
         );
-    }
-}
-
-#[test]
-fn every_flip_of_a_log_file_is_refused() {
-    // A signature, a chain link or the commitment covers every byte: the session id hashes the
-    // terms, each main key signs its delegation with the contribution, each session key its
-    // inputs, and the reveal checks against the commitment.
-    let bytes = encoded(&published());
-    for at in 0..bytes.len() {
         for flip in [0x01, 0x80, 0xFF] {
             let mut corrupt = bytes.clone();
             corrupt[at] ^= flip;

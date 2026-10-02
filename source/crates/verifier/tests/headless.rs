@@ -312,30 +312,6 @@ fn encoded(log: &SessionLog) -> Vec<u8> {
 }
 
 #[test]
-fn every_corruption_of_a_log_file_is_refused() {
-    let bytes = encoded(run(&ORDERS.each_ref(), TICKS).runner.log());
-    for len in 0..bytes.len() {
-        assert!(
-            SessionLog::decode(&bytes[..len]).is_err(),
-            "truncated to {len} bytes"
-        );
-    }
-    // A signature, a chain link or the commitment covers every byte: the session id hashes the
-    // terms, which the delegation and every order sign, and the main key signs the contribution
-    // in the delegation.
-    for at in 0..bytes.len() {
-        for flip in [0x01, 0x80, 0xFF] {
-            let mut corrupt = bytes.clone();
-            corrupt[at] ^= flip;
-            assert!(
-                SessionLog::decode(&corrupt).is_err(),
-                "byte {at} ^ {flip:#x}"
-            );
-        }
-    }
-}
-
-#[test]
 fn the_binary_logs_the_last_state_hash() {
     let Run { runner, hashes } = run(&ORDERS.each_ref(), TICKS);
     // A directory of this run's own, which goes when the test ends, passed or failed.
