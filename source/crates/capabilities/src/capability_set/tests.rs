@@ -155,12 +155,14 @@ const LAYERS: [(&str, u8); 19] = [
 ];
 
 /// Visits each source file under `dir` with its production code: the code before the file's
-/// first test gate, in every file but `tests.rs` and `bench.rs`.
+/// first test gate, in every file but `tests.rs`, `bench.rs` and those of a `tests` directory.
 fn production(dir: &Path, visit: &mut impl FnMut(&Path, &str)) {
     for entry in fs::read_dir(dir).unwrap() {
         let path = entry.unwrap().path();
         if path.is_dir() {
-            production(&path, visit);
+            if !path.ends_with("tests") {
+                production(&path, visit);
+            }
             continue;
         }
         let source = path.extension().is_some_and(|extension| extension == "rs");

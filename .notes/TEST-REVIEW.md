@@ -14,9 +14,6 @@ Paths are relative to `source/crates/`. Line numbers are at `c38f0da`. Each item
 
 ## 2. Harnesses
 
-### 2.3 Mode harness
-
-- [ ] **`mode/tests.rs` is 2129 lines with about 106 imports** — it also tests production (1079-1181), experience (944-1076), modifiers (1184-1267, 2083-2129), `calc_damage` (1608-1774) and roles and relations. These tests need the mode, and the layer rule (`lib.rs:1-5`) stops them from moving down into their own capability. Better: split by concern into `mode/tests/{mod.rs, start.rs, inputs.rs, progression.rs, production.rs, modifiers.rs, damage.rs, roles.rs, match_end.rs}` (group 9).
 ### 2.4 Runner and verifier
 
 - [ ] **`HashTrail`: one live-against-replay check** — the comparison is written 5 times with 3 different end checks, and two of them have no end check:
@@ -141,7 +138,6 @@ These items depend on rules that the style guide does not settle. The harness wo
 1. **How a module harness extends `TestMatch`.** "`impl` blocks only in the struct's own file" stops a module from adding methods to `TestMatch`. The choices are a wrapper with a named field (`walk.sim.step()`), or a wrapper with `Deref` / `DerefMut` to `TestMatch`. `Deref` used as inheritance is an anti-pattern, but it stays in test code. Both reviews of capabilities recommend the named field.
 2. **A home for a harness type.** "Test code sits at the end of the production file it reaches into" gives no home to a type that reaches into nothing, such as `TestMatch`, `HashTrail`, `FixedSession` or `Arena`. The `reference_3v3.rs` file is already a gated file of its own. Confirm that a gated file of its own (`test_match.rs`, `hash_trail.rs`, `fixed_session.rs`) is the rule. If it is not, `capability_set/mod.rs` must move its `mod tests` to `tests.rs` to make room.
 3. **Sharing across crates.** `runner` needs `TestMatch`, so the gate becomes `any(test, feature = "internals")`, with an export from `campfire_capabilities::internals`. It is a feature edit in runner's dev-dependencies, not a new dependency.
-4. **A `tests/` directory for `mode/tests.rs`.** The rule names only `foo/{mod.rs, tests.rs}`. The layer rule stops the production, progression and damage tests from moving down, so the split needs `mode/tests/*.rs`.
 6. **`Num` from an integer in tests.** Choose one: a production `const fn Num::int(i64) -> Num` that panics on overflow, or a gated one in `math` `internals`. The gated one needs `campfire-math` with `internals` in the dev-dependencies of 8 crates.
 7. **The silent skip of integration tests.** `runner` and `net` set `required-features = ["internals"]`. Plain `cargo test -p campfire-runner` builds 0 tests and skips all 9 integration tests with no message. The verification chain uses `--all-features`, so it is not affected. A self dev-dependency with `internals` fixes it, but that is a manifest change. You can also accept the skip.
 9. **proptest in capabilities.** It is a workspace dependency, but only `math` uses it. The tables in 5.2 give most of the value without it. Adding it to `campfire-capabilities` dev-dependencies needs your approval.
