@@ -5,7 +5,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 
 use crate::abilities::effect_lists::EffectLists;
-use crate::actions::action_book::{ActionBook, ActionId, Delivery};
+use crate::actions::action_book::ActionBook;
 use crate::areas::area_spec::AreaSpec;
 use crate::books::book_builder::BookBuilder;
 use crate::books::book_input::BookInput;
@@ -48,16 +48,14 @@ pub(crate) struct BookParts {
     actions: ActionBook,
     /// Every action's and modifier's params.
     params: ParamTables,
-    /// Each action's name and how it delivers, by action id.
-    abilities: Vec<AbilityName>,
+    /// Each action's name, by action id.
+    ability_names: Vec<Box<str>>,
     effects: EffectLists,
     ais: ByType<Ai>,
     projectiles: ByType<ProjectileSpec>,
     areas: ByType<AreaSpec>,
     /// The projectile types that home.
     homing: Vec<UnitType>,
-    /// Each train's and delivery's unit type.
-    spawns: Vec<Spawn>,
     units: ModeUnits,
 }
 
@@ -76,20 +74,6 @@ pub struct ModeUnits {
 pub struct ModeInputs {
     pub units: ModeUnits,
     pub books: ModeBooks,
-}
-
-/// An action's name, and how it delivers.
-#[derive(Debug)]
-struct AbilityName {
-    name: Box<str>,
-    delivery: Option<Delivery>,
-}
-
-/// An action that spawns a unit type, and the type.
-#[derive(Debug, Clone, Copy)]
-struct Spawn {
-    action: ActionId,
-    unit_type: UnitType,
 }
 
 impl Books {
@@ -116,22 +100,18 @@ impl Books {
         let ctx = world.non_send::<Ctx>().clone();
         let view = ctx.view();
         view.set_types(parts.types);
-        for info in parts.modifiers.infos() {
-            view.add_modifier(info);
-        }
+        view.set_modifiers(parts.modifiers.clone());
         let params = ParamBook::new(parts.params);
         ctx.frame().set_params(params.clone());
         world.insert_resource(params);
         if let Some(tracks) = parts.tracks {
-            view.set_track_names(tracks.names());
+            view.set_tracks(tracks.clone());
             world.insert_resource(tracks);
         }
-        for ability in &parts.abilities {
-            view.add_ability(&ability.name, ability.delivery);
+        for name in &parts.ability_names {
+            view.add_ability(name);
         }
-        for spawn in &parts.spawns {
-            view.bind_spawn(spawn.action, spawn.unit_type);
-        }
+        view.set_actions(parts.actions.clone());
         for &unit_type in &parts.homing {
             view.set_homing(unit_type);
         }

@@ -1,4 +1,5 @@
 use std::cmp::Ordering;
+use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 use campfire_script::ScriptId;
@@ -12,23 +13,22 @@ use crate::scripts::hook_set::HookSet;
 use crate::scripts::script_book::ScriptBook;
 use crate::stats::error::ModifierError;
 use crate::stats::modifier_data::{ModifierData, Reapply};
-use crate::stats::modifier_handle::StateField;
 use crate::stats::modifier_spec::{ModifierSpec, ParamPlace, SpecNames, SpecNumber, SpecTime};
 use crate::stats::modifiers::{Application, Instance, Interval, StackEnd, StatShare};
 use crate::stats::param_read::ParamRead;
 use crate::stats::stat::Stat;
 use crate::stats::stat_id::StatId;
-use crate::units::script_view::ModifierInfo;
 use crate::units::tag_set::TagSet;
 use crate::units::unit_types::UnitTypes;
 use crate::values::declared_name::DeclaredName;
 
 /// The modifiers a match loaded, of every package: the mode, package 0, and each package it
 /// depends on, in the order of its manifest. Package data, not state: a restore loads it from the
-/// packages, as a new match does. Ids follow the order of package, then name.
-#[derive(Resource, Debug, Default)]
+/// packages, as a new match does. Ids follow the order of package, then name. A clone shares
+/// the entries, as the script view reads them.
+#[derive(Resource, Debug, Clone, Default)]
 pub(crate) struct ModifierBook {
-    entries: Vec<ModifierEntry>,
+    entries: Arc<Vec<ModifierEntry>>,
 }
 
 /// A modifier, by its place in the book.
@@ -38,7 +38,7 @@ pub struct ModifierId(u16);
 
 /// A loaded modifier: its package, its name there, its spec, and its compiled script with the
 /// combat events it hears.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct ModifierEntry {
     pub(crate) package: u16,
     pub(crate) name: Box<str>,
@@ -126,8 +126,9 @@ impl ModifierBook {
             })
             .collect::<Result<Vec<_>, _>>()?;
         let entries = modifiers.iter().zip(specs).zip(tags);
+        let book = Arc::make_mut(&mut self.entries);
         for ((modifier, spec), tags) in entries {
-            self.entries.push(ModifierEntry {
+            book.push(ModifierEntry {
                 package,
                 name: modifier.name.as_str().into(),
                 spec,
@@ -137,11 +138,6 @@ impl ModifierBook {
             });
         }
         Ok(())
-    }
-
-    /// Each modifier as scripts name it, by id.
-    pub(crate) fn infos(&self) -> impl Iterator<Item = ModifierInfo> + '_ {
-        self.entries.iter().map(ModifierEntry::info)
     }
 
     /// The modifier `name` of `package`.
@@ -232,11 +228,7 @@ impl ModifierBook {
             shield: value(spec.shield.as_ref())?,
             stats: shares.collect::<Option<_>>()?,
             tags: entry.tags,
-            state: spec
-                .state
-                .values()
-                .map(|decl| decl.initial.clone())
-                .collect(),
+            state: spec.initial.to_vec(),
         };
         Some(Application {
             instance,
@@ -262,23 +254,6 @@ pub(crate) struct Applier {
 }
 
 impl ModifierEntry {
-    /// The modifier as scripts name it.
-    pub(crate) fn info(&self) -> ModifierInfo {
-        let fields = self.spec.state.iter().map(|(name, decl)| StateField {
-            name: name.as_str().into(),
-            kind: decl.kind,
-        });
-        let initial = self.spec.state.values().map(|decl| decl.initial.clone());
-        ModifierInfo {
-            package: self.package,
-            name: self.name.clone(),
-            fields: fields.collect(),
-            initial: initial.collect(),
-            reapply: self.spec.reapply,
-            max_stacks: self.spec.max_stacks,
-        }
-    }
-
     /// How it sorts against the modifier `name` of `package`: by package, then name.
     fn order(&self, package: u16, name: &str) -> Ordering {
         self.package
@@ -288,10 +263,6 @@ impl ModifierEntry {
 }
 
 impl ModifierId {
-    pub(crate) const fn new(index: u16) -> ModifierId {
-        ModifierId(index)
-    }
-
     /// The modifier at `index` of the book.
     fn at(index: usize) -> ModifierId {
         ModifierId(u16::try_from(index).expect("modifiers fit u16"))
@@ -311,3 +282,14 @@ const MODIFIER_HOOKS: [Hook; 6] = [
     Hook::OnKill,
     Hook::OnTakedown,
 ];
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::stats::modifier_book::ModifierId;
+
+    impl ModifierId {
+        pub(crate) const fn new(index: u16) -> ModifierId {
+            ModifierId(index)
+        }
+    }
+}

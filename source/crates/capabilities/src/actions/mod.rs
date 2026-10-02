@@ -305,15 +305,15 @@ pub(crate) mod internals {
                 .get(action)
                 .expect("a loaded action")
                 .package;
-            let view = world.non_send::<View>();
-            let unit_type = view
+            let unit_type = world
+                .non_send::<View>()
                 .types_mut()
                 .named(TypeScope::of_package(package), name)
                 .expect("the load checked an action's unit type");
-            view.bind_spawn(action, unit_type);
-            world
-                .resource_mut::<ActionBook>()
-                .bind_spawn(action, unit_type);
+            let mut book = world.resource_mut::<ActionBook>();
+            book.bind_spawn(action, unit_type);
+            let book = book.clone();
+            world.non_send::<View>().set_actions(book);
         }
 
         /// Loads the action `name` of `package`, of `ranks` ranks, into the match, which the
@@ -341,11 +341,9 @@ pub(crate) mod internals {
             });
             let places = StatBook::places(world, data.params.values().flat_map(Param::stats));
             ParamBook::load_action(world, id, &data.params, |stat| places[stat]);
-            let delivery = world
-                .resource::<ActionBook>()
-                .get(id)
-                .and_then(|action| action.delivery);
-            world.non_send::<View>().add_ability(name, delivery);
+            let view = world.non_send::<View>();
+            view.add_ability(name);
+            view.set_actions(world.resource::<ActionBook>().clone());
             Ok(id)
         }
     }

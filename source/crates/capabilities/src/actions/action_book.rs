@@ -1,4 +1,5 @@
 use std::num::NonZeroU8;
+use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 use campfire_math::Num;
@@ -30,10 +31,11 @@ use crate::values::attitude::Attitude;
 use crate::values::declared_name::DeclaredName;
 
 /// The actions a match loaded, times in ticks and scripts compiled. Package data, not state: a
-/// restore loads it from the packages, as a new match does.
-#[derive(Resource, Debug, Default)]
+/// restore loads it from the packages, as a new match does. A clone shares the actions, as the
+/// script view reads them.
+#[derive(Resource, Debug, Clone, Default)]
 pub(crate) struct ActionBook {
-    actions: Vec<Action>,
+    actions: Arc<Vec<Action>>,
 }
 
 /// An action, by its place in the book.
@@ -42,7 +44,7 @@ pub(crate) struct ActionBook {
 pub struct ActionId(u32);
 
 /// An action as a match runs it.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(crate) struct Action {
     /// Its package: 0 the mode, then each package the mode depends on.
     pub(crate) package: u16,
@@ -195,7 +197,7 @@ impl ActionBook {
             DeliveryData::Area { .. } => Delivery::Area,
         });
         let id = ActionId(u32::try_from(self.actions.len()).expect("actions fit u32"));
-        self.actions.push(Action {
+        Arc::make_mut(&mut self.actions).push(Action {
             package,
             kind: data.kind,
             weapon,
@@ -213,7 +215,7 @@ impl ActionBook {
 
     /// Binds `id` to the unit type it spawns: a train's unit, or its delivery's projectile.
     pub(crate) fn bind_spawn(&mut self, id: ActionId, unit_type: UnitType) {
-        let action = &mut self.actions[id.index()];
+        let action = &mut Arc::make_mut(&mut self.actions)[id.index()];
         debug_assert!(
             action.kind == ActionKind::Train || action.delivery.is_some(),
             "only a train or a delivery spawns a unit type"
@@ -419,6 +421,7 @@ pub(crate) mod internals {
     use campfire_sim::Ticks;
 
     use std::num::NonZeroU8;
+    use std::sync::Arc;
 
     use crate::actions::action_book::{
         Action, ActionBook, ActionId, Aim, Delivery, Fan, RankValues,
@@ -457,7 +460,7 @@ pub(crate) mod internals {
             })
         });
         let id = ActionId(u32::try_from(book.actions.len()).unwrap());
-        book.actions.push(Action {
+        Arc::make_mut(&mut book.actions).push(Action {
             package: 0,
             kind: ActionKind::Attack,
             weapon: Some(Weapon {
@@ -486,7 +489,7 @@ pub(crate) mod internals {
     #[cfg(test)]
     pub(crate) fn train(book: &mut ActionBook) -> ActionId {
         let id = ActionId(u32::try_from(book.actions.len()).unwrap());
-        book.actions.push(Action {
+        Arc::make_mut(&mut book.actions).push(Action {
             package: 0,
             kind: ActionKind::Train,
             weapon: None,

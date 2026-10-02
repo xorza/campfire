@@ -1,13 +1,15 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
+use std::sync::Arc;
 
 use campfire_math::Num;
 use campfire_sim::{TickRate, Ticks};
 
-use crate::scripts::state_decl::StateDecl;
+use crate::scripts::state_value::StateValue;
 use crate::stats::error::ModifierProblem;
 use crate::stats::modifier_book::ModifierId;
 use crate::stats::modifier_data::{ModifierData, Reapply};
+use crate::stats::modifier_handle::StateField;
 use crate::stats::stat::Stat;
 use crate::stats::stat_id::StatId;
 use crate::stats::stat_op::StatOp;
@@ -35,7 +37,9 @@ pub(crate) struct ModifierSpec {
     pub(crate) aura: Option<AuraSpec>,
     /// The units of its player a player modifier holds on; absent, all of them.
     pub(crate) affects: Option<Filter>,
-    pub(crate) state: BTreeMap<DeclaredName, StateDecl>,
+    /// Its script state's fields, in the order of their names, and each one's first value.
+    pub(crate) fields: Arc<[StateField]>,
+    pub(crate) initial: Box<[StateValue]>,
 }
 
 /// A change of the stat at `stat` by `op`, of `value` a stack.
@@ -131,7 +135,19 @@ impl ModifierSpec {
             shield: data.shield.as_ref().map(number).transpose()?,
             aura: aura.transpose()?,
             affects: data.affects.as_ref().map(filter),
-            state: data.state.clone(),
+            fields: data
+                .state
+                .iter()
+                .map(|(name, decl)| StateField {
+                    name: name.as_str().into(),
+                    kind: decl.kind,
+                })
+                .collect(),
+            initial: data
+                .state
+                .values()
+                .map(|decl| decl.initial.clone())
+                .collect(),
         })
     }
 }
@@ -204,6 +220,7 @@ fn ticks(ms: Num, rate: TickRate) -> Option<Ticks> {
 mod tests {
     use std::collections::BTreeMap;
     use std::num::NonZeroU32;
+    use std::sync::Arc;
 
     use campfire_math::Num;
     use campfire_sim::{TickRate, Ticks};
@@ -314,7 +331,8 @@ mod tests {
                 modifier: ModifierId::new(7),
             }),
             affects: Some(filter("allies:!rooted")),
-            state: BTreeMap::new(),
+            fields: Arc::from([]),
+            initial: Box::new([]),
         };
         assert_eq!(ModifierSpec::of(&data, &names), Ok(expected));
         assert_ne!(filter("enemies:rooted"), filter("allies:!rooted"));

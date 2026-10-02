@@ -1,5 +1,6 @@
 use std::cell::{RefCell, RefMut};
 use std::rc::Rc;
+use std::sync::Arc;
 
 use campfire_script::rhai::{Dynamic, INT, ImmutableString};
 use campfire_sim::{Capability, StableId};
@@ -29,7 +30,7 @@ pub(crate) struct HandleData {
     pub(crate) state: Vec<StateValue>,
     pub(crate) written: bool,
     pub(crate) removed: bool,
-    fields: Rc<[StateField]>,
+    fields: Arc<[StateField]>,
     view: View,
 }
 
@@ -53,7 +54,7 @@ impl ModifierHandle {
         source: Option<StableId>,
         stacks: u32,
         state: Vec<StateValue>,
-        fields: Rc<[StateField]>,
+        fields: Arc<[StateField]>,
         view: View,
     ) -> ModifierHandle {
         ModifierHandle(Rc::new(RefCell::new(HandleData {

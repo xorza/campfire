@@ -642,7 +642,7 @@ pub(crate) mod internals {
             let id = book
                 .find(package, name.as_str())
                 .expect("the modifier loaded");
-            world.non_send::<View>().add_modifier(book.get(id).info());
+            world.non_send::<View>().set_modifiers(book.clone());
             let places = StatBook::places(world, data.params.values().flat_map(Param::stats));
             ParamBook::load_modifier(world, id, &data.params, |stat| places[stat]);
         }

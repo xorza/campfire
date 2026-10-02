@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 use std::fmt;
-use std::num::NonZeroU32;
 use std::ops::Range;
 use std::rc::Rc;
 use std::sync::Arc;
@@ -10,10 +9,11 @@ use campfire_math::{Num, PlayerSlot, Vec3};
 use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString};
 use campfire_sim::{Capability, EntityIndex, Position, SimTick, StableId, Tick, TickRate, Ticks};
 
-use crate::actions::action_book::{Action, ActionId, Delivery};
+use crate::actions::action_book::{Action, ActionBook, ActionId, Delivery};
 
 use crate::combat::damage_kind::DamageKind;
 use crate::mode::resource_id::ResourceId;
+use crate::progression::track_book::TrackBook;
 use crate::progression::track_id::TrackId;
 use crate::progression::track_set::TrackSet;
 use crate::scripts::api_builder::ApiBuilder;
@@ -22,9 +22,9 @@ use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_api::MemberSpec;
 use crate::scripts::state_value::StateValue;
+use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_book::ModifierId;
-use crate::stats::modifier_data::Reapply;
-use crate::stats::modifier_handle::{ModifierHandle, StateField};
+use crate::stats::modifier_handle::ModifierHandle;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::stat::Stat;
@@ -65,11 +65,7 @@ pub(crate) struct ScriptView {
     damage_kinds: Rc<[DeclaredName]>,
     /// Each loaded ability's name in its package, by ability id.
     ability_names: Vec<ImmutableString>,
-    /// How each loaded ability delivers, if other than at once, by ability id.
-    delivers: Vec<Option<Delivery>>,
-    /// The unit type each loaded ability spawns, once bound, by ability id: a train's unit, or
-    /// its delivery's.
-    spawns: Vec<Option<UnitType>>,
+    actions: ActionBook,
     /// Whether each unit type is a projectile type that homes, by unit type; a type past its
     /// end does not.
     homing: Vec<bool>,
@@ -95,10 +91,10 @@ pub(crate) struct ScriptView {
     /// The players' resources the mode declares, by resource id.
     resource_names: Rc<[DeclaredName]>,
     /// The tracks the mode declares, by track id.
-    track_names: Rc<[DeclaredName]>,
+    tracks: TrackBook,
     /// Every modifier, by id, the modifiers each unit carries, one run per unit, and their
     /// script state, one run per modifier.
-    modifier_info: Vec<ModifierInfo>,
+    modifier_book: ModifierBook,
     modifiers: Vec<ModifierRow>,
     modifier_state: Vec<StateValue>,
 }
@@ -155,18 +151,6 @@ pub(crate) struct ModifierRow {
     pub(crate) source: Option<StableId>,
     pub(crate) stacks: u32,
     pub(crate) state: Range<u32>,
-}
-
-/// A modifier as scripts name it: its package and name, its state's fields and their first
-/// values, and how a second application from one source acts, up to how many stacks.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ModifierInfo {
-    pub(crate) package: u16,
-    pub(crate) name: Box<str>,
-    pub(crate) fields: Rc<[StateField]>,
-    pub(crate) initial: Rc<[StateValue]>,
-    pub(crate) reapply: Reapply,
-    pub(crate) max_stacks: Option<NonZeroU32>,
 }
 
 /// An ability slot as the view read it: the rank of its ability, 0 while not learned, how many
@@ -241,6 +225,11 @@ impl RowFill<'_> {
 pub(crate) struct View(Rc<RefCell<ScriptView>>);
 
 impl ScriptView {
+    /// The loaded action `id`.
+    fn action(&self, id: ActionId) -> &Action {
+        self.actions.get(id).expect("an action of the match")
+    }
+
     fn read(&mut self, world: &World) {
         self.now = world.resource::<SimTick>().start();
         self.relations.clone_from(world.resource::<Relations>());
@@ -336,8 +325,7 @@ impl View {
             paths: Arc::default(),
             damage_kinds: Rc::from([]),
             ability_names: Vec::new(),
-            delivers: Vec::new(),
-            spawns: Vec::new(),
+            actions: ActionBook::default(),
             homing: Vec::new(),
             sources: Vec::new(),
             rate,
@@ -350,9 +338,9 @@ impl View {
             stat_names: Rc::from([]),
             pool_names: Rc::from([]),
             resource_names: Rc::from([]),
-            track_names: Rc::from([]),
+            tracks: TrackBook::default(),
             stats: Vec::new(),
-            modifier_info: Vec::new(),
+            modifier_book: ModifierBook::default(),
             modifiers: Vec::new(),
             modifier_state: Vec::new(),
         })))
@@ -389,28 +377,20 @@ impl View {
         Ok(ticks.ok_or_else(|| ApiError::TimeTooLarge.fail())?)
     }
 
-    /// Adds the modifier the match loaded next, which takes the next id: modifiers load by
-    /// package, then name.
     /// Sets the match's unit types and tags, as the load built them.
     pub(crate) fn set_types(&self, types: UnitTypes) {
         self.0.borrow_mut().types = types;
     }
 
-    pub(crate) fn add_modifier(&self, info: ModifierInfo) {
-        self.0.borrow_mut().modifier_info.push(info);
+    /// Shares the match's modifiers, as the load built them.
+    pub(crate) fn set_modifiers(&self, book: ModifierBook) {
+        self.0.borrow_mut().modifier_book = book;
     }
 
     /// The modifier `name` of `package`; an error when it declares none.
     pub(crate) fn modifier(&self, package: u16, name: &str) -> Checked<ModifierId> {
-        let view = self.0.borrow();
-        let at = view
-            .modifier_info
-            .binary_search_by(|info| info.package.cmp(&package).then((*info.name).cmp(name)))
-            .ok()
-            .ok_or_else(|| ApiError::UnknownModifier.fail())?;
-        Ok(ModifierId::new(
-            u16::try_from(at).expect("modifiers fit u16"),
-        ))
+        let found = self.0.borrow().modifier_book.find(package, name);
+        Ok(found.ok_or_else(|| ApiError::UnknownModifier.fail())?)
     }
 
     /// Whether the unit of `row` carries the modifier `name` of `package`.
@@ -434,16 +414,16 @@ impl View {
         source: Option<StableId>,
     ) -> ModifierHandle {
         let view = self.0.borrow();
-        let info = &view.modifier_info[id.index()];
+        let spec = &view.modifier_book.get(id).spec;
         if let Some(handle) = handles.iter().find(|handle| handle.is(carrier, id, source)) {
             let mut data = handle.data();
             if data.removed {
                 data.removed = false;
                 data.written = false;
                 data.stacks = 1;
-                data.state.clone_from_slice(&info.initial);
+                data.state.clone_from_slice(&spec.initial);
             } else {
-                data.stacks = info.reapply.stacks(data.stacks, info.max_stacks);
+                data.stacks = spec.reapply.stacks(data.stacks, spec.max_stacks);
             }
             return handle.clone();
         }
@@ -456,10 +436,10 @@ impl View {
             Some(held) => {
                 let state =
                     &view.modifier_state[held.state.start as usize..held.state.end as usize];
-                let stacks = info.reapply.stacks(held.stacks, info.max_stacks);
+                let stacks = spec.reapply.stacks(held.stacks, spec.max_stacks);
                 (stacks, state.to_vec())
             }
-            None => (1, info.initial.to_vec()),
+            None => (1, spec.initial.to_vec()),
         };
         drop(view);
         let handle = self.held_handle(carrier, id, source, stacks, state);
@@ -477,7 +457,7 @@ impl View {
         stacks: u32,
         state: Vec<StateValue>,
     ) -> ModifierHandle {
-        let fields = Rc::clone(&self.0.borrow().modifier_info[id.index()].fields);
+        let fields = Arc::clone(&self.0.borrow().modifier_book.get(id).spec.fields);
         ModifierHandle::new(carrier, id, source, stacks, state, fields, self.clone())
     }
 
@@ -554,25 +534,20 @@ impl View {
         ))
     }
 
-    /// Sets the tracks the mode declares.
-    pub(crate) fn set_track_names(&self, track_names: Rc<[DeclaredName]>) {
-        self.0.borrow_mut().track_names = track_names;
+    /// Shares the tracks the mode declares.
+    pub(crate) fn set_tracks(&self, tracks: TrackBook) {
+        self.0.borrow_mut().tracks = tracks;
     }
 
     /// The track `name`; an error for one the mode does not declare.
     pub(crate) fn track(&self, name: &str) -> Checked<TrackId> {
-        let view = self.0.borrow();
-        let at = view
-            .track_names
-            .iter()
-            .position(|track| track.as_str() == name)
-            .ok_or_else(|| ApiError::UnknownTrack.fail())?;
-        Ok(TrackId::new(at).expect("the load keeps tracks within their limit"))
+        let found = self.0.borrow().tracks.id(name);
+        Ok(found.ok_or_else(|| ApiError::UnknownTrack.fail())?)
     }
 
     /// The name of track `track`.
     pub(crate) fn track_name(&self, track: TrackId) -> ImmutableString {
-        self.0.borrow().track_names[track.index()].as_str().into()
+        self.0.borrow().tracks.name(track).as_str().into()
     }
 
     /// The name of damage kind `kind`.
@@ -580,18 +555,14 @@ impl View {
         self.0.borrow().damage_kinds[kind.index()].as_str().into()
     }
 
-    /// Adds the name of the ability loaded next, which takes the next ability id, and how it
-    /// delivers.
-    pub(crate) fn add_ability(&self, name: &str, delivers: Option<Delivery>) {
-        let mut view = self.0.borrow_mut();
-        view.ability_names.push(name.into());
-        view.delivers.push(delivers);
-        view.spawns.push(None);
+    /// Adds the name of the ability loaded next, which takes the next ability id.
+    pub(crate) fn add_ability(&self, name: &str) {
+        self.0.borrow_mut().ability_names.push(name.into());
     }
 
-    /// Binds ability `id` to the unit type it spawns.
-    pub(crate) fn bind_spawn(&self, id: ActionId, unit_type: UnitType) {
-        self.0.borrow_mut().spawns[id.index()] = Some(unit_type);
+    /// Shares the match's actions, as the load built them.
+    pub(crate) fn set_actions(&self, book: ActionBook) {
+        self.0.borrow_mut().actions = book;
     }
 
     /// Marks `unit_type` as a projectile type that homes.
@@ -607,7 +578,10 @@ impl View {
     /// Whether the projectiles ability `id` launches home on a unit.
     pub(crate) fn launches_homing(&self, id: ActionId) -> bool {
         let view = self.0.borrow();
-        let unit_type = view.spawns[id.index()].expect("a delivery binds its unit type");
+        let unit_type = view
+            .action(id)
+            .spawns
+            .expect("a delivery binds its unit type");
         view.homing
             .get(unit_type.index())
             .is_some_and(|&homes| homes)
@@ -615,7 +589,7 @@ impl View {
 
     /// How ability `id` delivers, if other than at once.
     pub(crate) fn delivers(&self, id: ActionId) -> Option<Delivery> {
-        self.0.borrow().delivers[id.index()]
+        self.0.borrow().action(id).delivery
     }
 
     /// The name of ability `id` in its package.

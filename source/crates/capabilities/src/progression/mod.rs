@@ -99,7 +99,7 @@ pub(crate) mod internals {
         /// Loads the mode's `tracks`, which the package load checked, into the match.
         pub fn load(world: &mut World, tracks: &BTreeMap<DeclaredName, TrackData>) {
             let book = TrackBook::new(tracks);
-            world.non_send::<View>().set_track_names(book.names());
+            world.non_send::<View>().set_tracks(book.clone());
             world.insert_resource(book);
         }
     }

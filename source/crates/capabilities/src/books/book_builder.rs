@@ -9,10 +9,10 @@ use crate::actions::action_book::{ActionId, ActionParts};
 use crate::actions::action_data::{ActionData, CostTarget};
 use crate::actions::action_names::ActionNames;
 use crate::areas::area_spec::AreaSpec;
+use crate::books::BookParts;
 use crate::books::book_input::{BookInput, BookKind, BookPackage};
 use crate::books::error::BookError;
 use crate::books::unit_type_file::UnitTypeFile;
-use crate::books::{AbilityName, BookParts, Spawn};
 use crate::combat::damage_kind::DamageKind;
 use crate::combat::on_death::OnDeath;
 use crate::mode::mode_setup::{LoadoutSetup, SlotAction, UnitTypeSetup};
@@ -125,7 +125,6 @@ impl<'a> BookBuilder<'a> {
             let scope = TypeScope::of_package(package);
             let unit_type = self.books.types.named(scope, name.as_str()).expect(CHECKED);
             self.books.actions.bind_spawn(action, unit_type);
-            self.books.spawns.push(Spawn { action, unit_type });
         }
         Ok(self.books)
     }
@@ -220,11 +219,7 @@ impl<'a> BookBuilder<'a> {
             .params
             .push_action(&data.params, |stat| self.input.stat(stat));
         debug_assert_eq!(run, action.index(), "one run of params per ability");
-        let delivery = books.actions.get(action).and_then(|held| held.delivery);
-        books.abilities.push(AbilityName {
-            name: id.as_str().into(),
-            delivery,
-        });
+        books.ability_names.push(id.as_str().into());
         if !(data.on_resolve.is_empty() && data.on_hit.is_empty() && data.on_end.is_empty()) {
             let names = BuildNames {
                 input: self.input,
@@ -288,7 +283,7 @@ impl<'a> BookBuilder<'a> {
         });
         let tracks = TrackSet::of(file.tracks.iter().map(|track| {
             let tracks = books.tracks.as_ref().expect(CHECKED);
-            tracks.id(track).expect(CHECKED)
+            tracks.id(track.as_str()).expect(CHECKED)
         }));
         let kit = UnitKit::new(file.stats.as_ref(), combat.as_ref(), pools, self.rules)
             .map_err(|error| BookError::Kit {
@@ -443,7 +438,7 @@ impl EffectNames for BuildNames<'_> {
 
     fn track(&self, name: &DeclaredName) -> TrackId {
         self.tracks
-            .and_then(|tracks| tracks.id(name))
+            .and_then(|tracks| tracks.id(name.as_str()))
             .expect(CHECKED)
     }
 }
