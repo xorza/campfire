@@ -670,7 +670,7 @@ pub(crate) mod internals {
     /// Gives a match with no mode the stat book of `rules`, at `rate`, with no unit type and no
     /// pool.
     pub fn load_stats(world: &mut World, rules: &BTreeMap<Stat, StatRule>, rate: TickRate) {
-        let book = StatBook::new(rules, [], rate, Num::MAX).expect("rules of no type's value");
+        let book = StatBook::new(rules, [], rate, Num::MAX);
         Stats::load(world, book, PoolBook::default());
     }
 

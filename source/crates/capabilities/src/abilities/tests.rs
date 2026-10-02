@@ -171,13 +171,9 @@ fn lash_out() -> ActionData {
                 DeclaredName::new("damage").unwrap(),
                 Param::Scaling(Scaling {
                     base: Ranked::PerRank(scalars(&[75, 100, 125, 150, 175])),
-                    per_level: None,
+                    per_level: Num::ZERO,
                     bonus: BTreeMap::new(),
-                    ratios: [(
-                        Stat::named("ability_power").unwrap(),
-                        Scalar::Decimal(halves(1)),
-                    )]
-                    .into(),
+                    ratios: [(Stat::named("ability_power").unwrap(), halves(1))].into(),
                 }),
             ),
             (
@@ -965,7 +961,7 @@ fn a_unit_target_is_one_its_filter_selects_tag_and_all() {
 fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
     let mut game = Match::with(LIMITS, &declared);
-    let stats = StatBook::new(&BTreeMap::new(), [], RATE, num(6)).unwrap();
+    let stats = StatBook::new(&BTreeMap::new(), [], RATE, num(6));
     Stats::load(&mut game.world, stats, PoolBook::default());
     // A guard whose shield is Lash Out's damage at its rank: 75, then 100.
     let guard = ModifierData {
@@ -1028,7 +1024,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     // A weapon's passive holds as well, in a match with no abilities: a ward of 40 from its
     // first tick.
     let mut game = Match::with(LIMITS, &[Capability::Stats, Capability::Combat]);
-    let stats = StatBook::new(&BTreeMap::new(), [], RATE, num(6)).unwrap();
+    let stats = StatBook::new(&BTreeMap::new(), [], RATE, num(6));
     Stats::load(&mut game.world, stats, PoolBook::default());
     let ward = ModifierData {
         shield: Some(int(40)),
@@ -1068,7 +1064,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
 fn a_cast_applies_a_modifier_from_its_caster_with_its_abilitys_params() {
     let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
     let mut game = Match::with(LIMITS, &declared);
-    let stats = StatBook::new(&BTreeMap::new(), [], RATE, num(6)).unwrap();
+    let stats = StatBook::new(&BTreeMap::new(), [], RATE, num(6));
     Stats::load(&mut game.world, stats, PoolBook::default());
     let mark = ModifierData {
         script: None,
@@ -1145,7 +1141,7 @@ fn on_resolve(ctx, caster, target) {
 fn stun_run() -> Vec<(StateHash, bool)> {
     let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
     let mut game = Match::with(LIMITS, &declared);
-    let stats = StatBook::new(&BTreeMap::new(), [], RATE, num(6)).unwrap();
+    let stats = StatBook::new(&BTreeMap::new(), [], RATE, num(6));
     Stats::load(&mut game.world, stats, PoolBook::default());
     let stun = ModifierData {
         script: None,
@@ -1273,7 +1269,7 @@ impl Match {
     fn with_modifiers(source: &str, modifiers: &[(&str, ModifierData)]) -> Match {
         let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
         let mut game = Match::with(LIMITS, &declared);
-        let stats = StatBook::new(&BTreeMap::new(), [], RATE, num(6)).unwrap();
+        let stats = StatBook::new(&BTreeMap::new(), [], RATE, num(6));
         Stats::load(&mut game.world, stats, PoolBook::default());
         let script = Units::compile(&mut game.world, source).unwrap();
         let mut sorted = modifiers.to_vec();
@@ -1477,12 +1473,12 @@ fn scaling(base: Scalar, per_level: i64, ratios: &[(&str, Num)], bonus: &[(&str,
     let by_name = |pairs: &[(&str, Num)]| {
         pairs
             .iter()
-            .map(|&(name, ratio)| (Stat::named(name).unwrap(), Scalar::Decimal(ratio)))
+            .map(|&(name, ratio)| (Stat::named(name).unwrap(), ratio))
             .collect()
     };
     Param::Scaling(Scaling {
         base: Ranked::One(base),
-        per_level: Some(Scalar::Int(per_level)),
+        per_level: Num::from_int(per_level).unwrap(),
         ratios: by_name(ratios),
         bonus: by_name(bonus),
     })
@@ -1507,14 +1503,14 @@ fn a_scaling_param_reads_its_sources_level_stats_and_bonus() {
     .unwrap();
     let attack_damage = Stat::named("attack_damage").unwrap();
     let growth = StatValue {
-        base: Scalar::Int(50),
-        per_level: Some(Scalar::Int(5)),
+        base: Num::from_int(50).unwrap(),
+        per_level: Num::from_int(5).unwrap(),
     };
     let growth = StatsData([(attack_damage, growth)].into());
     let rules: BTreeMap<_, _> = scaling_stats()
         .map(|stat| (stat, StatRule::default()))
         .into();
-    let book = StatBook::new(&rules, [(caster_type, &growth)], RATE, num(6)).unwrap();
+    let book = StatBook::new(&rules, [(caster_type, &growth)], RATE, num(6));
     Stats::load(&mut game.world, book, PoolBook::default());
     let boost = changing(
         &[("attack_damage", int(20)), ("ability_power", int(40))],
@@ -1589,8 +1585,8 @@ fn a_live_change_follows_its_source_in_the_order_of_the_stats_it_reads() {
     .unwrap();
     let attack_damage = Stat::named("attack_damage").unwrap();
     let growth = StatValue {
-        base: Scalar::Int(53),
-        per_level: None,
+        base: Num::from_int(53).unwrap(),
+        per_level: Num::ZERO,
     };
     let growth = StatsData([(attack_damage.clone(), growth)].into());
     let [spell_vamp, armor] = ["spell_vamp", "armor"].map(|name| Stat::named(name).unwrap());
@@ -1601,7 +1597,6 @@ fn a_live_change_follows_its_source_in_the_order_of_the_stats_it_reads() {
         .map(|stat| (stat, StatRule::default()))
         .into();
     let book = StatBook::new(&rules, [(veil_type, &growth)], RATE, num(6))
-        .unwrap()
         .with_order(graph.order().unwrap());
     let place = |stat: &Stat| usize::from(book.index(stat).unwrap());
     let places = [&attack_damage, &spell_vamp, &armor].map(place);
@@ -1719,7 +1714,7 @@ fn a_delivery_hook_reads_its_projectile_and_the_unit_its_cast_aimed_at() {
     // The damage the hook deals carries the bolt's hit, which the target's `watch` reads, and
     // answers with 1 damage to its source: the hit's target, the unit the cast aimed at, after
     // 3 m flown.
-    let stats = StatBook::new(&BTreeMap::new(), [], RATE, num(6)).unwrap();
+    let stats = StatBook::new(&BTreeMap::new(), [], RATE, num(6));
     Stats::load(&mut game.world, stats, PoolBook::default());
     let watch = r#"
         fn on_damage_taken(ctx, m, d) {
@@ -1884,7 +1879,7 @@ fn fan_of_frost_from_data_alone_hits_exactly_the_units_in_reach() {
             Capability::Projectiles,
         ],
     );
-    let stats = StatBook::new(&BTreeMap::new(), [], RATE, num(6)).unwrap();
+    let stats = StatBook::new(&BTreeMap::new(), [], RATE, num(6));
     Stats::load(&mut game.world, stats, PoolBook::default());
     let chilled = ModifierData {
         duration_ms: Some(int(2000)),

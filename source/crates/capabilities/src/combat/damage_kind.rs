@@ -8,6 +8,9 @@ use serde::{Deserialize, Serialize};
 pub(crate) struct DamageKind(u8);
 
 impl DamageKind {
+    /// The most damage kinds a mode declares: as many as a byte tells apart.
+    pub(crate) const LIMIT: usize = 1 << u8::BITS;
+
     pub(crate) const fn new(index: u8) -> DamageKind {
         DamageKind(index)
     }

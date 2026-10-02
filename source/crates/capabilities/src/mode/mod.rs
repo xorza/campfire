@@ -131,7 +131,6 @@ impl Mode {
             .iter()
             .map(|setup| (setup.unit_type, &setup.stats));
         let stats = StatBook::new(&setup.data.stats, types, rate, setup.max_move_speed)
-            .ok_or(ModeError::StatValue)?
             .with_order(setup.stat_order.clone());
         let pools = &setup.data.pools;
         let bindings = CombatBindings::new(&setup.data.combat, pools, &stats);

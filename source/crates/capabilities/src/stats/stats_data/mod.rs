@@ -11,12 +11,15 @@ use crate::values::scalar::Scalar;
 #[serde(transparent)]
 pub struct StatsData(pub BTreeMap<Stat, StatValue>);
 
-/// `{ base, per_level }`: the value at level `n` is `base + per_level × (n − 1)`.
+/// `{ base, per_level }`: the value at level `n` is `base + per_level × (n − 1)`, `per_level`
+/// 0 when it gives none.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StatValue {
-    pub base: Scalar,
-    pub per_level: Option<Scalar>,
+    #[serde(deserialize_with = "Scalar::num")]
+    pub base: Num,
+    #[serde(default, deserialize_with = "Scalar::num")]
+    pub per_level: Num,
 }
 
 impl StatsData {
@@ -28,9 +31,10 @@ impl StatsData {
     /// `stat` at `level`, from 1; `None` when the type does not declare it, or it overflows.
     pub fn at(&self, stat: &Stat, level: u32) -> Option<Num> {
         let value = self.0.get(stat)?;
-        let base = value.base.to_num()?;
-        let per_level = value.per_level.map_or(Some(Num::ZERO), Scalar::to_num)?;
-        base.checked_add(per_level.checked_mul_int(i64::from(level.checked_sub(1)?))?)
+        let levels = i64::from(level.checked_sub(1)?);
+        value
+            .base
+            .checked_add(value.per_level.checked_mul_int(levels)?)
     }
 }
 

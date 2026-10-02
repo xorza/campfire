@@ -2,10 +2,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::{iter, slice};
 
 use campfire_capabilities::{
-    ActionData, ActionKind, ActionSlots, ApiOwner, ApiVersion, CollisionData, DeclaredName,
-    DeliveryData, EffectTo, Effecting, EngineStat, EngineTag, FilterData, Hook, MemberKind, Mode,
-    ModifierData, Navigation, Number, Offers, Param, Pools, Range, RangeField, ResourceId, Scalar,
-    ScriptApi, ScriptRole, Stat, Targeting, TrackId, UnitTypeData,
+    ActionData, ActionKind, ActionSlots, ApiOwner, ApiVersion, CollisionData, CombatRules,
+    DeclaredName, DeliveryData, EffectTo, Effecting, EngineStat, EngineTag, FilterData, Hook,
+    MemberKind, Mode, ModifierData, Navigation, Number, Offers, Param, Pools, Range, RangeField,
+    ResourceId, Scalar, ScriptApi, ScriptRole, Stat, Targeting, TrackId, UnitTypeData,
 };
 use campfire_content::PackagePath;
 use campfire_math::Num;
@@ -234,7 +234,7 @@ impl<'a> LoadCheck<'a> {
         let (actions, modifiers) = (&content.actions, &content.modifiers);
         let slotted = match &dependent.kind {
             DependentKind::Avatar(avatar) => {
-                let at = Place::Avatar(avatar.name.clone());
+                let at = Place::Avatar(package.name.clone());
                 if avatar.unit.orders.is_some() {
                     return Err(LoadProblem::AvatarOrders);
                 }
@@ -566,11 +566,11 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// The mode's damage kinds: with `combat`, at least one; never more than a byte tells apart.
+    /// The mode's damage kinds: with `combat`, at least one; never more than a match holds.
     fn damage_kinds(&self) -> Result<(), LoadProblem> {
         let data = &self.packages.data;
         let kinds = &data.combat.damage_kinds;
-        if kinds.len() > usize::from(u8::MAX) + 1 {
+        if kinds.len() > CombatRules::DAMAGE_KIND_LIMIT {
             return Err(LoadProblem::TooMany(Limit::DamageKinds));
         }
         if !self

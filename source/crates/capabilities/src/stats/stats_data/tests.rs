@@ -11,16 +11,13 @@ fn a_stat_grows_by_its_per_level_from_level_1() {
     let stats = StatsData(BTreeMap::from([
         (
             health.clone(),
-            value(Scalar::Int(472), Some(Scalar::Int(84))),
+            value(Num::from_int(472).unwrap(), Num::from_int(84).unwrap()),
         ),
         (
             attack_damage.clone(),
-            value(
-                Scalar::Int(47),
-                Some(Scalar::Decimal(Num::from_str("3.8").unwrap())),
-            ),
+            value(Num::from_int(47).unwrap(), Num::from_str("3.8").unwrap()),
         ),
-        (armor.clone(), value(Scalar::Int(18), None)),
+        (armor.clone(), value(Num::from_int(18).unwrap(), Num::ZERO)),
     ]));
     // 472 + 84 × 2 at level 3; 47 + 3.8 at level 2; 18 at any level; an undeclared stat and
     // level 0 give none.

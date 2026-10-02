@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
+use crate::combat::damage_kind::DamageKind;
 use crate::stats::pool_data::PoolData;
 use crate::stats::pool_id::PoolId;
 use crate::stats::stat::Stat;
@@ -34,6 +35,9 @@ pub struct Leech {
 }
 
 impl CombatRules {
+    /// The most damage kinds it declares.
+    pub const DAMAGE_KIND_LIMIT: usize = DamageKind::LIMIT;
+
     /// The id among `pools` of the life pool it names, which the load checked `pools` declares;
     /// `None` when it names none.
     pub fn life_pool(&self, pools: &BTreeMap<DeclaredName, PoolData>) -> Option<PoolId> {

@@ -59,23 +59,20 @@ impl ParamTable {
                 Param::Ranked(ranked) => ParamValue::Ranked(ranked.clone()),
                 Param::Scaling(scaling) => {
                     let first = self.ratios.len();
-                    let ratio =
-                        |value: Scalar| value.to_num().expect("the load checked the ratios");
-                    let whole = scaling.ratios.iter().map(|(name, &value)| StatRatio {
+                    let whole = scaling.ratios.iter().map(|(name, &ratio)| StatRatio {
                         stat: stat(name),
-                        ratio: ratio(value),
+                        ratio,
                         bonus: false,
                     });
-                    let bonus = scaling.bonus.iter().map(|(name, &value)| StatRatio {
+                    let bonus = scaling.bonus.iter().map(|(name, &ratio)| StatRatio {
                         stat: stat(name),
-                        ratio: ratio(value),
+                        ratio,
                         bonus: true,
                     });
                     self.ratios.extend(whole.chain(bonus));
-                    let per_level = scaling.per_level.map_or(Some(Num::ZERO), Scalar::to_num);
                     ParamValue::Scaled(Scaled {
                         base: scaling.base.clone(),
-                        per_level: per_level.expect("the load checked the gain a level"),
+                        per_level: scaling.per_level,
                         ratios_start: u32::try_from(first).expect("ratios fit u32"),
                         ratios_end: u32::try_from(self.ratios.len()).expect("ratios fit u32"),
                     })

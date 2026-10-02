@@ -260,7 +260,7 @@ fn more_tracks_than_a_unit_holds_fail_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 160] = [
+const FLAWS: [Flaw; 163] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -1112,6 +1112,49 @@ const FLAWS: [Flaw; 160] = [
         "hero-kensho",
         |problem| read_fails(problem, "data/avatar.toml", r#""Left" is not a name"#),
     ),
+    // 2⁴⁰ is past the 2³⁹ a number holds.
+    flaw(
+        HUSK,
+        Edit::Replace("health = { base = 472,", "health = { base = 1099511627776,"),
+        "hero-husk",
+        |problem| {
+            read_fails(
+                problem,
+                "data/avatar.toml",
+                "Int(1099511627776) is past what a number holds",
+            )
+        },
+    ),
+    flaw(
+        HUSK,
+        Edit::Replace(
+            "health = { base = 472, per_level = 84 }",
+            "health = { base = 472, per_level = 1099511627776 }",
+        ),
+        "hero-husk",
+        |problem| {
+            read_fails(
+                problem,
+                "data/avatar.toml",
+                "Int(1099511627776) is past what a number holds",
+            )
+        },
+    ),
+    flaw(
+        "heroes/veil/data/avatar.toml",
+        Edit::Replace(
+            r#"bonus = { attack_damage = "0.00167" }"#,
+            "bonus = { attack_damage = 1099511627776 }",
+        ),
+        "hero-veil",
+        |problem| {
+            read_fails(
+                problem,
+                "data/avatar.toml",
+                "data did not match any variant of untagged enum Param",
+            )
+        },
+    ),
     flaw(
         HUSK,
         Edit::Replace("[actions.lash_out]", "[actions.lash-out]"),
@@ -1396,7 +1439,7 @@ const FLAWS: [Flaw; 160] = [
             r#"ultimates = ["tomb_bind"]"#,
         ),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Choice(ChoiceProblem::UnknownSlotKind { at: Place::Avatar(name), kind }) if name == "Husk" && kind == "ultimates"),
+        |problem| matches!(problem, LoadProblem::Choice(ChoiceProblem::UnknownSlotKind { at: Place::Avatar(name), kind }) if name == "hero-husk" && kind == "ultimates"),
     ),
     flaw(
         HUSK,

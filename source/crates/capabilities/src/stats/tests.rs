@@ -99,8 +99,8 @@ fn stats(values: &[(Stat, Num, Num)]) -> StatsData {
             .iter()
             .map(|(stat, base, per_level)| {
                 let value = StatValue {
-                    base: Scalar::Decimal(*base),
-                    per_level: Some(Scalar::Decimal(*per_level)),
+                    base: *base,
+                    per_level: *per_level,
                 };
                 (stat.clone(), value)
             })
@@ -115,7 +115,7 @@ fn stat_match(types: &[StatsData]) -> TestMatch {
         let unit_type = UnitType::new(u16::try_from(at).unwrap());
         (unit_type, data)
     });
-    let book = StatBook::new(&rules(), types, RATE, num(6)).unwrap();
+    let book = StatBook::new(&rules(), types, RATE, num(6));
     let pools = PoolBook::new(&pools(), &book);
     Stats::load(&mut game.world, book, pools);
     game.world.add_schedule(mem::take(&mut game.schedule));
@@ -253,8 +253,8 @@ fn a_stat_is_its_base_plus_adds_times_pcts_times_the_largest_cut() {
         [(
             armor_stat(),
             StatValue {
-                base: Scalar::Int(10),
-                per_level: Some(Scalar::Int(2)),
+                base: Num::from_int(10).unwrap(),
+                per_level: Num::from_int(2).unwrap(),
             },
         )]
         .into(),
@@ -446,7 +446,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     };
     let scripts = internals::bare(limits, 1);
     let mut game = TestMatch::new(&[Capability::Stats], RATE, Some(scripts));
-    let book = StatBook::new(&rules(), [], RATE, num(6)).unwrap();
+    let book = StatBook::new(&rules(), [], RATE, num(6));
     Stats::load(&mut game.world, book, PoolBook::default());
     // A presence of 2 m on allies, holding `inspired`.
     let presence = AuraData {

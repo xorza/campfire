@@ -4,7 +4,6 @@ use std::str::FromStr;
 
 use super::*;
 use crate::stats::stats_data::StatValue;
-use crate::values::scalar::Scalar;
 
 fn decimal(text: &str) -> Num {
     Num::from_str(text).unwrap()
@@ -30,8 +29,8 @@ fn life(health: &Stat) -> [(PoolId, &Stat); 1] {
 /// The 3v3's caster creep, its stats the pool's and the kit's, with `change` applied.
 fn caster(change: impl FnOnce(&mut BTreeMap<Stat, StatValue>)) -> StatsData {
     let base = |text: &str| StatValue {
-        base: Scalar::Decimal(decimal(text)),
-        per_level: None,
+        base: decimal(text),
+        per_level: Num::ZERO,
     };
     let mut stats = BTreeMap::from([
         (health(), base("280")),
@@ -76,7 +75,7 @@ fn a_kit_counts_its_stats_in_ticks_at_the_rate() {
         stats
             .get_mut(&Stat::Engine(EngineStat::MoveSpeed))
             .unwrap()
-            .base = Scalar::Int(7);
+            .base = Num::from_int(7).unwrap();
     });
     let kit = UnitKit::new(Some(&fast), None, life(&health), rules(30)).unwrap();
     assert_eq!(kit.step.unwrap().get(), Num::from_bits(3_355_443));
@@ -93,8 +92,8 @@ fn a_kit_counts_its_stats_in_ticks_at_the_rate() {
     let mana = Stat::named("mana").unwrap();
     let with_mana = caster(|stats| {
         let value = StatValue {
-            base: Scalar::Int(100),
-            per_level: Some(Scalar::Int(20)),
+            base: Num::from_int(100).unwrap(),
+            per_level: Num::from_int(20).unwrap(),
         };
         stats.insert(mana.clone(), value);
     });
@@ -116,7 +115,7 @@ fn a_kit_refuses_values_that_make_no_unit() {
         ),
         (
             caster(|stats| {
-                stats.get_mut(&health()).unwrap().base = Scalar::Int(0);
+                stats.get_mut(&health()).unwrap().base = Num::from_int(0).unwrap();
             }),
             UnitKitError::NotPositive(health()),
         ),
@@ -125,7 +124,7 @@ fn a_kit_refuses_values_that_make_no_unit() {
                 stats
                     .get_mut(&Stat::Engine(EngineStat::MoveSpeed))
                     .unwrap()
-                    .base = Scalar::Int(-1);
+                    .base = Num::from_int(-1).unwrap();
             }),
             UnitKitError::Negative(Stat::Engine(EngineStat::MoveSpeed)),
         ),

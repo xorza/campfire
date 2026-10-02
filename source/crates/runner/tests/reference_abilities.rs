@@ -140,7 +140,7 @@ fn every_reference_ability_reads_into_the_schema() {
     };
     assert_eq!(base.at(2), Some(Scalar::Int(100)));
     let ability_power = Stat::named("ability_power").unwrap();
-    assert_eq!(*ratios, [(ability_power, Scalar::Decimal(half))].into());
+    assert_eq!(*ratios, [(ability_power, half)].into());
     assert!(bonus.is_empty());
     // Veil's spell vamp scales with bonus attack damage: 0.00167 × 2²⁴ = 28 017.95 bits, to
     // 28 018.
@@ -151,7 +151,7 @@ fn every_reference_ability_reads_into_the_schema() {
         panic!("spell vamp scales");
     };
     let attack_damage = Stat::named("attack_damage").unwrap();
-    let ratio = Scalar::Decimal(Num::from_bits(28_018));
+    let ratio = Num::from_bits(28_018);
     assert_eq!(*bonus, [(attack_damage, ratio)].into());
     assert!(ratios.is_empty());
     // Rime's Snow Owl reaches farther at each rank.

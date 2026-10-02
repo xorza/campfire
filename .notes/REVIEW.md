@@ -78,7 +78,6 @@ The package load should be the one place that refuses bad data. Today some check
 - [ ] **The map is checked, then resolved again by name** — `capabilities/src/mode/mod.rs:262-391`, `mode/mode_book.rs:132-164`, `mode/mod.rs:206-221`. Install resolves the same names with about a dozen `expect("the check passed")`. Better: one `MapData` method that turns the map into resolved data once.
 - [ ] **`UnitTypeError` is a `Result` that every caller expects** — `capabilities/src/units/error.rs`, `units/mod.rs:128-153`. The load check already refuses these cases. Its message also says the tag limit is 64, but `Tag::LIMIT` is 256. Better: an `assert!`, and no error type.
 - [ ] **`CollisionData` throws its checked `Body` away** — `capabilities/src/units/collision_data.rs:13-37`, `navigation/navigation_rules.rs:31`. Better: store the `Body`.
-- [ ] **`Scalar::Int` can overflow `Num`, and every consumer handles that** — `capabilities/src/values/scalar.rs:11-22`, `stats/stats_data/mod.rs:18-19`, `stats/stat_book.rs:47-52`, `stats/param_table.rs:62,77`. Better: stat values, ratios and `per_level` read as a checked `Num`.
 - [ ] **The life pool uses a placeholder** — `runner/src/match_build.rs:71`, `capabilities/src/combat/combat_bindings.rs:33`. With no combat, `PoolId::FIRST` stands for "no life pool". Better: `Option<PoolId>`.
 
 ## 7. Package books are copied into the script view, the frame and the state
@@ -120,8 +119,6 @@ The rule is "no data in strings": a name from data becomes a checked type where 
 - [ ] **Action data mixes strings and checked names** — `capabilities/src/actions/action_data.rs:47,52,65,68,71`, `actions/delivery_data.rs:14,19`. `hold`, `passive_modifier`, `unit_type`, the param and state keys and the delivery's unit type are `String`, while cost keys and `damage_kind` are `DeclaredName`. Better: all `DeclaredName`.
 - [ ] **RNG streams are named by strings** — `math/src/rng/mod.rs:31`, `math/src/rng/rng_source.rs:67`, `sim/src/sim_rng.rs:20`. They are a fixed engine set. The debug build also copies each name into a `Mutex<BTreeSet<String>>` on every open. Better: an enum or a fixed-bytes newtype.
 - [ ] **The default filter is parsed from a string** — `capabilities/src/units/filter.rs:17-23`, used by `projectiles/mod.rs:80` and `areas/mod.rs:83`. Better: a `Filter` constructor from a `Relation`.
-- [ ] **An avatar is named by its display name in errors** — `package/src/files/avatar_data.rs:14`, `package/src/load_check.rs:236`. Everywhere else it is named by its package. Better: `Place::Avatar` names the package, and the display name goes to locale.
-
 ## 10. Parallel code paths apply one rule differently
 
 One operation is written twice or three times, and the copies disagree.
@@ -136,7 +133,6 @@ One operation is written twice or three times, and the copies disagree.
 - [ ] **"A unit type walks" is defined twice** — `package/src/mode_packages.rs:207-214`, `package/src/load_check.rs:119-128`. The avatar rules that `AvatarData` promises are applied in `runner/src/match_build.rs:200-205`. Better: `UnitTypeFile::walks()`, and an `AvatarData` method that gives the effective unit type.
 - [ ] **Hooks' parameter counts are kept twice** — `capabilities/src/scripts/hook.rs:119-140`. `Hook::params()` counts what the registered signature already names. Only a test keeps them equal. Better: derive one from the other.
 - [ ] **A constant is copied into a message** — `capabilities/src/scripts/error.rs:429`. `ChainTooDeep` says "16 deep", which copies `MAX_DEPTH` in `stats/modifier_hooks.rs:23`.
-- [ ] **The damage-kind limit is a literal** — `package/src/load_check.rs:568`. Every other limit is its id type's `LIMIT`. Better: `DamageKind::LIMIT`.
 - [ ] **`walk_to` repeats a framework method** — `capabilities/src/orders/mod.rs:437-443`. `walk_to` writes `set_if_neq` again.
 - [ ] **`IndexedBody` and collision math are written several times** — `capabilities/src/navigation/mod.rs:118-123,188-193,368-373` build `IndexedBody` by hand three times; `navigation/collider.rs:436-454` computes `overlaps` twice in `part`. Better: `IndexedBody::new`, and one helper for the distance and reach.
 

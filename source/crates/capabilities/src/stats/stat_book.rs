@@ -9,7 +9,6 @@ use crate::stats::stat_rule::StatRule;
 use crate::stats::stat_totals::StatTotals;
 use crate::stats::stats_data::StatsData;
 use crate::units::unit_type::UnitType;
-use crate::values::scalar::Scalar;
 
 /// The stats of a match: each the mode declares, in order, with its rule, and each unit type's
 /// value at level 1 and gain a level; with the tick rate and the move speed cap the engine's
@@ -42,14 +41,13 @@ struct Growth {
 
 impl StatBook {
     /// The book of the stats `rules` declares, for unit types `types`, each with its `stats`
-    /// section, at `rate` under the cap `max_move_speed`; `None` when a type's value is not a
-    /// number.
+    /// section, at `rate` under the cap `max_move_speed`.
     pub(crate) fn new<'a>(
         rules: &BTreeMap<Stat, StatRule>,
         types: impl IntoIterator<Item = (UnitType, &'a StatsData)>,
         rate: TickRate,
         max_move_speed: Num,
-    ) -> Option<StatBook> {
+    ) -> StatBook {
         let stats: Vec<Stat> = rules.keys().cloned().collect();
         let stats_len = u16::try_from(stats.len()).expect("stats fit u16");
         let mut engine = [None; EngineStat::ALL.len()];
@@ -68,14 +66,13 @@ impl StatBook {
                 let Ok(at) = stats.binary_search(stat) else {
                     continue;
                 };
-                let per_level = value.per_level.map_or(Some(Num::ZERO), Scalar::to_num);
                 growth[first + at] = Some(Growth {
-                    base: value.base.to_num()?,
-                    per_level: per_level?,
+                    base: value.base,
+                    per_level: value.per_level,
                 });
             }
         }
-        Some(StatBook {
+        StatBook {
             stats,
             rules: rules.values().copied().collect(),
             engine,
@@ -84,7 +81,7 @@ impl StatBook {
             positions: (0..stats_len).collect(),
             rate,
             max_move_speed,
-        })
+        }
     }
 
     pub(crate) const fn rate(&self) -> TickRate {

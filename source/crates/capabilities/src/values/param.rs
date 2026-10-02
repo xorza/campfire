@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use campfire_math::Num;
 use serde::Deserialize;
 
 use crate::stats::stat::Stat;
@@ -22,11 +23,12 @@ pub enum Param {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Scaling {
     pub base: Ranked<Scalar>,
-    pub per_level: Option<Scalar>,
-    #[serde(default)]
-    pub bonus: BTreeMap<Stat, Scalar>,
-    #[serde(flatten)]
-    pub ratios: BTreeMap<Stat, Scalar>,
+    #[serde(default, deserialize_with = "Scalar::num")]
+    pub per_level: Num,
+    #[serde(default, deserialize_with = "Scalar::nums")]
+    pub bonus: BTreeMap<Stat, Num>,
+    #[serde(flatten, deserialize_with = "Scalar::nums")]
+    pub ratios: BTreeMap<Stat, Num>,
 }
 
 impl Param {
