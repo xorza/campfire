@@ -5,10 +5,10 @@ use bevy_ecs::world::World;
 use campfire_capabilities::{
     Abilities, ActionData, ActionId, Actions, Areas, DeclaredName, KitRules, LoadoutSetup,
     MatchScripts, Mode, ModeSetup, OnDeath, Orders, PoolId, Progression, Projectiles, SlotAction,
-    Stat, Stats, TypeScope, UnitKit, UnitTypeSetup, Units,
+    Stat, Stats, TypeScope, UnitKit, UnitTypeFile, UnitTypeSetup, Units,
 };
 use campfire_content::PackagePath;
-use campfire_package::{ModePackages, PackageView, UnitTypeFile, ViewKind};
+use campfire_package::{ModePackages, PackageView, ViewKind};
 use campfire_script::ScriptId;
 use campfire_sim::{Capability, StateRegistry, TickRate};
 

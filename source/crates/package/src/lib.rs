@@ -27,8 +27,7 @@ pub use files::manifest::{
     Backends, CollisionBackend, Dependency, LocaleManifest, Manifest, ModeManifest, PackageHeader,
     PathfindingBackend, TickRange, VisibilityBackend,
 };
-pub use files::package_content::PackageContent;
-pub use files::units_data::{UnitTypeFile, UnitsData};
+pub use files::units_data::UnitsData;
 pub use files::version::Version;
 pub use locale_package::LocalePackage;
 pub use mode_packages::{

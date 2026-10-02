@@ -1,14 +1,13 @@
 use std::collections::BTreeMap;
 
 use campfire_capabilities::{
-    ActionData, ApiVersion, DeclaredName, DeliveryData, NameKind, ScriptApi,
+    ActionData, ApiVersion, DeclaredName, DeliveryData, NameKind, ScriptApi, UnitTypeFile,
 };
 use campfire_content::{Fingerprint, PackagePath};
 use campfire_script::ScriptHost;
 
 use crate::error::{LoadError, LoadProblem, ScriptProblem};
 use crate::files::manifest::PackageHeader;
-use crate::files::units_data::UnitTypeFile;
 use crate::package_files::PackageFiles;
 use crate::package_text::PackageText;
 use crate::script_facts::ScriptFacts;

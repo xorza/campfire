@@ -20,6 +20,7 @@
 mod abilities;
 mod actions;
 mod areas;
+mod books;
 mod capability_set;
 mod combat;
 mod deliveries;
@@ -52,6 +53,8 @@ pub use actions::slot_kinds::{SlotKindData, SlotKinds};
 pub use areas::Areas;
 pub use areas::area::Area;
 pub use areas::area_data::{AreaData, AreaInside};
+pub use books::package_content::PackageContent;
+pub use books::unit_type_file::UnitTypeFile;
 pub use capability_set::CapabilitySet;
 pub use capability_set::error::CapabilityError;
 pub use combat::Combat;

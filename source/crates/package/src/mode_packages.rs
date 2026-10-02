@@ -3,8 +3,8 @@ use std::iter;
 use std::path::Path;
 
 use campfire_capabilities::{
-    CollisionData, DeclaredName, EngineStat, EngineTag, MapData, ModeData, Param, ScriptApi,
-    ScriptBook, Stat, StatGraph, StatsData, Walker,
+    CollisionData, DeclaredName, EngineStat, EngineTag, MapData, ModeData, PackageContent, Param,
+    ScriptApi, ScriptBook, Stat, StatGraph, StatsData, UnitTypeFile, Walker,
 };
 use campfire_content::{Fingerprint, MessageId, PackagePath};
 use campfire_script::ScriptHost;
@@ -13,8 +13,7 @@ use crate::error::{ContentError, Limit, LoadError, LoadProblem, PackageRef, Stor
 use crate::files::avatar_data::AvatarData;
 use crate::files::manifest::{Manifest, ModeManifest};
 use crate::files::mode_file::ModeFile;
-use crate::files::package_content::PackageContent;
-use crate::files::units_data::{UnitTypeFile, UnitsData};
+use crate::files::units_data::UnitsData;
 use crate::load_check::LoadCheck;
 use crate::package::Package;
 use crate::package_dir::PackageDir;

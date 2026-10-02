@@ -6,7 +6,7 @@ use campfire_capabilities::{
     DeclaredName, DeliveryData, EffectTo, Effecting, EngineStat, EngineTag, FilterData, Hook,
     KitRules, MemberKind, Mode, ModifierData, NameKind, Navigation, Number, Offers, Orders, Param,
     PoolId, Pools, Range, RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Stat, Targeting,
-    TrackId, UnitKit, UnitTypeData,
+    TrackId, UnitKit, UnitTypeData, UnitTypeFile,
 };
 use campfire_content::PackagePath;
 use campfire_math::Num;
@@ -16,7 +16,6 @@ use crate::error::{
     ChoiceProblem, CtxMisuse, DeliveryProblem, EffectProblem, Limit, LoadError, LoadProblem, Place,
     ScriptProblem,
 };
-use crate::files::units_data::UnitTypeFile;
 use crate::mode_packages::{Dependent, DependentKind, ModePackages};
 use crate::package::Package;
 use crate::script_facts::{ScriptFacts, ScriptName};

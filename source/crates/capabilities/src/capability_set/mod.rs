@@ -409,7 +409,7 @@ mod tests {
 
     /// The layer of each module of the crate, lowest first: a module imports from its own layer
     /// and the layers below, as design 02's structural rules ask. `lib.rs` sits above them all.
-    const LAYERS: [(&str, u8); 17] = [
+    const LAYERS: [(&str, u8); 18] = [
         ("values", 0),
         ("units", 1),
         ("scripts", 1),
@@ -427,6 +427,7 @@ mod tests {
         ("orders", 5),
         ("mode", 6),
         ("capability_set", 7),
+        ("books", 7),
     ];
 
     /// The imports from a higher layer that the code holds today, each a module and the one it
