@@ -312,3 +312,117 @@ fn a_window_marks_exactly_its_cells_among_all_its_blockers_cells() {
         assert!(marked.contains(&true), "{window:?}");
     }
 }
+
+/// The cheapest cost from cell `from` to each cell of `clearance`, by the moves a route takes:
+/// 10 a straight step and 14 a diagonal one, a diagonal only past two open cells; `None` for a
+/// cell no route from `from` reaches.
+fn costs_from(clearance: Clearance<'_>, from: usize) -> Vec<Option<u32>> {
+    let grid = clearance.grid();
+    let (columns, rows) = (grid.columns(), grid.rows());
+    let open = |x: usize, z: usize| x < columns && z < rows && clearance.open(z * columns + x);
+    let mut costs = vec![None; grid.cells()];
+    let mut heap = BinaryHeap::from([Reverse((0_u32, from))]);
+    while let Some(Reverse((cost, cell))) = heap.pop() {
+        if costs[cell].is_some() {
+            continue;
+        }
+        costs[cell] = Some(cost);
+        let (x, z) = (cell % columns, cell / columns);
+        for (dx, dz) in [
+            (-1, -1),
+            (0, -1),
+            (1, -1),
+            (-1, 0),
+            (1, 0),
+            (-1, 1),
+            (0, 1),
+            (1, 1),
+        ] {
+            let (nx, nz) = (x.wrapping_add_signed(dx), z.wrapping_add_signed(dz));
+            if !open(nx, nz) {
+                continue;
+            }
+            let diagonal = dx != 0 && dz != 0;
+            if diagonal && !(open(nx, z) && open(x, nz)) {
+                continue;
+            }
+            let step = if diagonal { 14 } else { 10 };
+            heap.push(Reverse((cost + step, nz * columns + nx)));
+        }
+    }
+    costs
+}
+
+#[test]
+fn a_route_costs_what_a_search_of_every_cell_finds() {
+    // Maps of 16 by 12 cells, a post on about one cell in 6, 4 and 3, routes between the centers
+    // of open cells. A goal a route reaches costs the cheapest way there; one it does not ends on
+    // the cell nearest it among those it reaches, ties to the lower number, at that cell's cost,
+    // and so the regions say. Every leg of a route is clear of every post, and a search expands
+    // no more cells than are open.
+    let mut state = 7_u64;
+    let mut draw = |bound: u64| {
+        state = state
+            .wrapping_mul(6_364_136_223_846_793_005)
+            .wrapping_add(1_442_695_040_888_963_407);
+        (state >> 33) % bound
+    };
+    for odds in [6, 4, 3] {
+        let rows: Vec<String> = (0..12)
+            .map(|_| {
+                (0..16)
+                    .map(|_| if draw(odds) == 0 { '#' } else { '.' })
+                    .collect()
+            })
+            .collect();
+        let rows: Vec<&str> = rows.iter().map(String::as_str).collect();
+        let (grid, statics) = walled(&rows);
+        let clearance = grid.clearance(walker());
+        let cells = clearance.grid();
+        let walkable = Walkable {
+            clearance,
+            statics: &statics,
+            short: None,
+        };
+        let regions = clearance.regions();
+        let mut planner = RoutePlanner::new(cells);
+        let open: Vec<usize> = (0..cells.cells())
+            .filter(|&cell| clearance.open(cell))
+            .collect();
+        let mut waypoints = Vec::new();
+        for &from in open.iter().step_by(7) {
+            let costs = costs_from(clearance, from);
+            let start = cells.center(from, Num::ZERO);
+            for &to in open.iter().step_by(5) {
+                let goal = cells.center(to, Num::ZERO);
+                let route = planner.plan(walkable, start, goal, &mut waypoints);
+                let connected = regions.reach(from).meets(regions.reach(to));
+                assert_eq!(costs[to].is_some(), connected, "{rows:?} {from} {to}");
+                let expected = costs[to].map_or_else(
+                    || {
+                        let found = (0..cells.cells()).filter(|&cell| costs[cell].is_some());
+                        let nearest = found
+                            .min_by_key(|&cell| (cells.center_distance(cell, goal), cell))
+                            .unwrap();
+                        (costs[nearest].unwrap(), false)
+                    },
+                    |cost| (cost, true),
+                );
+                assert_eq!(
+                    (route.cost, route.reached),
+                    expected,
+                    "{rows:?} {from} {to}"
+                );
+                assert!(route.expanded as usize <= open.len());
+                let mut at = start;
+                for &next in &waypoints {
+                    assert!(
+                        !walkable.blocks(Segment::new(at, next)),
+                        "{rows:?} {from} {to}"
+                    );
+                    at = next;
+                }
+            }
+        }
+    }
+}

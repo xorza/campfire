@@ -133,6 +133,33 @@ fn regions_join_exactly_the_cells_a_flood_fill_joins() {
         let blocked = scatter(scattered.cells(), seed, odds);
         check(&scattered, &blocked, &Regions::new(&scattered, &blocked));
     }
+
+    // Shapes smaller than a chunk, a line either way, whole chunks and one a cell past them,
+    // each all open, all blocked, a checkerboard and scattered. A checkerboard isolates each
+    // open cell: 2048 regions in a chunk, and a blocked cell beside four sets, each a place of
+    // its reach.
+    let shapes = [(1, 1), (1, 130), (130, 1), (64, 64), (128, 64), (65, 63)];
+    for (columns, rows) in shapes {
+        let shape = grid(columns, rows);
+        let cells = shape.cells();
+        let columns = usize::try_from(columns).unwrap();
+        let fill = |blocks: &dyn Fn(usize) -> bool| {
+            let mut blocked = vec![0; cells.div_ceil(64)];
+            for cell in (0..cells).filter(|&cell| blocks(cell)) {
+                blocked[cell / 64] |= 1 << (cell % 64);
+            }
+            blocked
+        };
+        let patterns = [
+            fill(&|_| false),
+            fill(&|_| true),
+            fill(&|cell| (cell % columns + cell / columns) % 2 == 1),
+            scatter(cells, 5, 3),
+        ];
+        for blocked in patterns {
+            check(&shape, &blocked, &Regions::new(&shape, &blocked));
+        }
+    }
 }
 
 #[test]

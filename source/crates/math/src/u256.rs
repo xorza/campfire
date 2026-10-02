@@ -160,5 +160,83 @@ mod tests {
             Some(113_427_455_640_312_821_154_458_202_477_256_070_485 + 2)
         );
         assert_eq!(U256::product(1 << 64, 1 << 64).round_div(1), None);
+
+        // 2¹²⁹ − 1 halved is 2¹²⁸ − 0.5: its floor is u128::MAX, odd, so the tie rounds up, past
+        // u128, by the shift and by the division alike.
+        let odd = U256 {
+            high: 1,
+            low: u128::MAX,
+        };
+        assert_eq!((odd.round_shr(1), odd.round_div(2)), (None, None));
+        // The widest shift and the widest divisor: 2²⁵⁴ shifted by 127 is 2¹²⁷; (2¹²⁷ − 1)² over
+        // 2¹²⁷ − 1 is 2¹²⁷ − 1.
+        assert_eq!(
+            U256::product(1 << 127, 1 << 127).round_shr(127),
+            Some(1 << 127)
+        );
+        let widest = (1 << 127) - 1;
+        assert_eq!(
+            U256::product(widest, widest).round_div(widest),
+            Some(widest)
+        );
+    }
+
+    /// The product of `a` and `b` by schoolbook multiplication of 32-bit limbs.
+    fn schoolbook(a: u128, b: u128) -> U256 {
+        let limbs = |value: u128| {
+            [0, 1, 2, 3]
+                .map(|at| u32::try_from((value >> (32 * at)) & u128::from(u32::MAX)).unwrap())
+        };
+        let (a, b) = (limbs(a), limbs(b));
+        let mut out = [0_u64; 8];
+        for (i, &x) in a.iter().enumerate() {
+            let mut carry = 0_u64;
+            for (j, &y) in b.iter().enumerate() {
+                let sum = u64::from(x) * u64::from(y) + (out[i + j] & 0xFFFF_FFFF) + carry;
+                out[i + j] = sum & 0xFFFF_FFFF;
+                carry = sum >> 32;
+            }
+            out[i + 4] = carry;
+        }
+        let join = |half: &[u64]| {
+            half.iter()
+                .rev()
+                .fold(0_u128, |acc, &limb| acc << 32 | u128::from(limb))
+        };
+        U256 {
+            high: join(&out[4..]),
+            low: join(&out[..4]),
+        }
+    }
+
+    #[test]
+    fn products_match_schoolbook_and_shifts_match_divisions() {
+        let values = [
+            0,
+            1,
+            3,
+            (1 << 32) - 1,
+            1 << 32,
+            (1 << 64) + 3,
+            0xDEAD_BEEF_0123_4567_89AB_CDEF_F00D_CAFE,
+            (1 << 127) - 1,
+            1 << 127,
+            u128::MAX - 1,
+            u128::MAX,
+        ];
+        for &a in &values {
+            for &b in &values {
+                let product = U256::product(a, b);
+                assert_eq!(product, schoolbook(a, b), "{a} {b}");
+                // A shift by k is a division by 2^k, rounded the same way.
+                for k in 1..=126 {
+                    assert_eq!(
+                        product.round_shr(k),
+                        product.round_div(1 << k),
+                        "{a} {b} {k}"
+                    );
+                }
+            }
+        }
     }
 }
