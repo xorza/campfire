@@ -12,7 +12,7 @@ use crate::files::version::Version;
 /// the rules its matches run by.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
-pub enum Manifest {
+pub(crate) enum Manifest {
     Mode(ModeManifest),
     Avatar(PackageHeader),
     Loadout(PackageHeader),
@@ -33,7 +33,7 @@ pub struct PackageHeader {
 /// A locale package's manifest: its header's fields, and the packages it translates, in one
 /// table.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct LocaleManifest {
+pub(crate) struct LocaleManifest {
     pub header: PackageHeader,
     /// By name; in the workspace each is a path, relative to the manifest.
     pub dependencies: BTreeMap<String, Dependency>,
@@ -146,7 +146,7 @@ impl<'de> Deserialize<'de> for TickRange {
 }
 
 impl Manifest {
-    pub const fn header(&self) -> &PackageHeader {
+    pub(crate) const fn header(&self) -> &PackageHeader {
         match self {
             Manifest::Mode(mode) => &mode.header,
             Manifest::Avatar(header) | Manifest::Loadout(header) => header,

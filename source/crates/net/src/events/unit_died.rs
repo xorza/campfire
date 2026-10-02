@@ -8,7 +8,7 @@ use tracing::{debug, info};
 /// A unit of `team` died in `tick`, dealt its last damage by `killer` if any; an avatar names the
 /// player whose it was. The server logs an avatar's death at `info`, any other at `debug`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-pub struct UnitDied {
+pub(crate) struct UnitDied {
     pub tick: Tick,
     pub unit: StableId,
     #[serde(default)]

@@ -12,11 +12,11 @@ use crate::units::script_view::View;
 /// by modifier, each once.
 #[derive(Resource, Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct PlayerModifiers(Vec<PlayerModifier>);
+pub(crate) struct PlayerModifiers(Vec<PlayerModifier>);
 
 /// A modifier a player holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct PlayerModifier {
+pub(crate) struct PlayerModifier {
     pub player: PlayerSlot,
     pub modifier: ModifierId,
 }

@@ -10,7 +10,7 @@ impl PathId {
         PathId(u32::try_from(index).expect("paths fit u32"))
     }
 
-    pub const fn index(self) -> usize {
+    pub(crate) const fn index(self) -> usize {
         self.0 as usize
     }
 }

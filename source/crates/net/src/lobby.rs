@@ -72,7 +72,7 @@ pub(crate) struct Offered {
 
 /// A link whose player joined the session.
 #[derive(Component, Debug, Clone, Copy)]
-pub struct Joined;
+pub(crate) struct Joined;
 
 /// The connected links still to answer, with their offer if one went out.
 type OfferLinks<'w, 's> = Query<
@@ -101,7 +101,7 @@ type JoinLinks<'w, 's> = Query<
 
 /// Why the server refused a link's join. The link stays connected and receives nothing more.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
-pub struct JoinRefused(pub JoinError);
+pub(crate) struct JoinRefused(pub JoinError);
 
 impl Lobby {
     /// A session of the mode `packages` holds, by the setup's rules; an error when the mode does

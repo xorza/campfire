@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 /// parses and checks, and the session key's signature over the challenge and the certificate hash
 /// the client verified.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Join {
+pub(crate) struct Join {
     pub delegation: String,
     pub answer: Signature,
 }

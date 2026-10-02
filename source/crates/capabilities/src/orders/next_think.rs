@@ -9,14 +9,14 @@ use serde::{Deserialize, Serialize};
 /// keeps it, so it stays due, and goes first in the next tick, before the units due later.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct NextThink(Tick);
+pub(crate) struct NextThink(Tick);
 
 impl NextThink {
-    pub const fn new(tick: Tick) -> NextThink {
+    pub(crate) const fn new(tick: Tick) -> NextThink {
         NextThink(tick)
     }
 
-    pub const fn get(self) -> Tick {
+    pub(crate) const fn get(self) -> Tick {
         self.0
     }
 }

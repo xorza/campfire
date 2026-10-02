@@ -22,11 +22,11 @@ pub struct InputChannel;
 
 /// Carries the offer, the match start and end, and the relations as they change, to the client.
 #[derive(Debug)]
-pub struct MatchChannel;
+pub(crate) struct MatchChannel;
 
 /// Carries a player's join to the server.
 #[derive(Debug)]
-pub struct JoinChannel;
+pub(crate) struct JoinChannel;
 
 /// What the server and the client must register alike, in the same order: the messages, their
 /// channels, and the sim components that replicate. The client predicts where its own units are,

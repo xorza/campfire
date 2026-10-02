@@ -11,14 +11,14 @@ use crate::units::path_id::PathId;
 /// `unit.path` reads it.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct OnPath(PathId);
+pub(crate) struct OnPath(PathId);
 
 impl OnPath {
-    pub const fn new(path: PathId) -> OnPath {
+    pub(crate) const fn new(path: PathId) -> OnPath {
         OnPath(path)
     }
 
-    pub const fn get(self) -> PathId {
+    pub(crate) const fn get(self) -> PathId {
         self.0
     }
 }

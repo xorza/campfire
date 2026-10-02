@@ -11,7 +11,7 @@ use crate::scripts::ctx::Ctx;
 /// of the mode's choices, `None` where the player has not chosen.
 #[derive(Resource, Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct Choices(pub(crate) Vec<Option<Offer>>);
+pub(crate) struct Choices(pub(crate) Vec<Option<Offer>>);
 
 impl SimResource for Choices {
     const NAME: &'static str = "mode.choices";

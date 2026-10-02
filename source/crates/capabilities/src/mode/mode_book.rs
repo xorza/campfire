@@ -68,7 +68,7 @@ pub(crate) struct ModeBook {
     /// The units the map places from the start.
     pub(crate) placed: Vec<PlacedUnit>,
     /// `ctx.map`, as scripts read it, and where avatars spawn.
-    pub(crate) map: GameMap,
+    map: GameMap,
 }
 
 /// A unit of the map, names resolved: on its path, if it names one.
@@ -147,7 +147,7 @@ impl ModeBook {
             .map_or(&[], |run| &self.actions[run.clone()])
     }
 
-    pub(crate) fn kit(&self, unit_type: UnitType) -> Option<UnitKit> {
+    pub(super) fn kit(&self, unit_type: UnitType) -> Option<UnitKit> {
         self.kits.get(unit_type).copied()
     }
 

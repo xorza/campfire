@@ -13,8 +13,8 @@ mod vec3;
 
 pub use bytes32::Bytes32;
 pub use bytes32::error::NotHex;
+pub use num::Num;
 pub use num::error::ParseNumError;
-pub use num::{Num, SinCos};
 pub use player_slot::PlayerSlot;
 pub use rng::Rng;
 pub use rng::rng_source::{RngSource, SegmentSeed};

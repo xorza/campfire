@@ -23,22 +23,16 @@ pub use error::{
     LoadProblem, LocaleProblem, PackageRef, Place, ScriptProblem, StoreError,
 };
 pub use files::avatar_data::AvatarData;
-pub use files::manifest::{
-    Backends, CollisionBackend, Dependency, LocaleManifest, Manifest, ModeManifest, PackageHeader,
-    PathfindingBackend, TickRange, VisibilityBackend,
-};
-pub use files::units_data::UnitsData;
-pub use files::version::Version;
+pub use files::manifest::TickRange;
+
 pub use locale_package::LocalePackage;
-pub use mode_packages::{
-    AvatarUnit, Dependent, DependentKind, ModePackages, PackageView, ViewKind,
-};
-pub use package::{Package, Script};
+pub use mode_packages::ModePackages;
+pub use package::Script;
 pub use package_dir::PackageDir;
 pub use package_files::PackageFiles;
-pub use package_index::PackageIndex;
+
 pub use package_store::{PackageStore, StoreFailure};
-pub use package_text::PackageText;
+
 pub use texts::Texts;
 
 /// The tag of this engine release: what a session's terms name, so a replay runs the code that

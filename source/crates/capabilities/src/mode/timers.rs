@@ -10,7 +10,7 @@ use crate::scripts::state_value::StateValue;
 /// `SimTick::start` and `SimTick::end` give them: the Mode stage is at its tick's end, so a timer
 /// never fires early.
 #[derive(Resource, Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Timers {
+pub(crate) struct Timers {
     /// Sorted by due time, then by when each was set.
     timers: Vec<Timer>,
     /// Orders timers due at the same time by when they were set.
@@ -19,7 +19,7 @@ pub struct Timers {
 
 /// A timer: the name and data `on_timer` receives, when it is due, and its period if it repeats.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Timer {
+pub(crate) struct Timer {
     pub name: String,
     pub due: Tick,
     seq: u64,

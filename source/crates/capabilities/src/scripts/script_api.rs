@@ -144,7 +144,7 @@ pub enum Status {
 /// A name as the code that binds it describes it: an `ApiMember` with one form.
 #[must_use]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct MemberSpec {
+pub(crate) struct MemberSpec {
     pub owner: ApiOwner,
     pub name: &'static str,
     pub kind: MemberKind,
@@ -557,15 +557,15 @@ impl ApiMember {
 
 impl MemberSpec {
     /// The most arguments a member's name roles reach.
-    pub const ARGS: usize = 4;
+    pub(crate) const ARGS: usize = 4;
 
     /// A value of `ctx`, for every role and of the core until said otherwise.
-    pub const fn value(name: &'static str, description: &'static str) -> MemberSpec {
+    pub(crate) const fn value(name: &'static str, description: &'static str) -> MemberSpec {
         MemberSpec::new(ApiOwner::Ctx, name, MemberKind::Value, "", description)
     }
 
     /// A call of `ctx`, in the form `signature`.
-    pub const fn call(
+    pub(crate) const fn call(
         name: &'static str,
         signature: &'static str,
         description: &'static str,
@@ -580,7 +580,7 @@ impl MemberSpec {
     }
 
     /// A field of `owner`'s handle.
-    pub const fn field(
+    pub(crate) const fn field(
         owner: ApiOwner,
         name: &'static str,
         description: &'static str,
@@ -589,7 +589,7 @@ impl MemberSpec {
     }
 
     /// A method of `owner`'s handle, in the form `signature`.
-    pub const fn method(
+    pub(crate) const fn method(
         owner: ApiOwner,
         name: &'static str,
         signature: &'static str,
@@ -599,7 +599,7 @@ impl MemberSpec {
     }
 
     /// The operator `name` on `owner`'s handles.
-    pub const fn operator(
+    pub(crate) const fn operator(
         owner: ApiOwner,
         name: &'static str,
         description: &'static str,
@@ -627,19 +627,19 @@ impl MemberSpec {
     }
 
     /// The same, for `roles` only.
-    pub const fn roles(mut self, roles: RoleSet) -> MemberSpec {
+    pub(crate) const fn roles(mut self, roles: RoleSet) -> MemberSpec {
         self.roles = roles;
         self
     }
 
     /// The same, of `capability`.
-    pub const fn capability(mut self, capability: Capability) -> MemberSpec {
+    pub(crate) const fn capability(mut self, capability: Capability) -> MemberSpec {
         self.capability = Some(capability);
         self
     }
 
     /// The same, its argument at `at`, the receiver aside, a name of `kind`.
-    pub const fn name(mut self, at: usize, kind: NameKind) -> MemberSpec {
+    pub(crate) const fn name(mut self, at: usize, kind: NameKind) -> MemberSpec {
         self.names[at] = Some(kind);
         self
     }

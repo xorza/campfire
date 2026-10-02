@@ -27,19 +27,19 @@ pub use events::listening::Listening;
 pub use events::match_started::MatchStarted;
 pub use events::orders_sent::OrdersSent;
 pub use events::session_written::SessionWritten;
-pub use events::unit_died::UnitDied;
+
 pub use input_message::InputMessage;
-pub use join::Join;
-pub use lobby::{JoinRefused, Joined, Lobby, LobbySetup};
+
+pub use lobby::{Lobby, LobbySetup};
 #[cfg(feature = "internals")]
 pub use local_match::link_model::LinkModel;
 #[cfg(feature = "internals")]
 pub use local_match::{LocalMatch, MatchSetup};
 pub use match_clock::MatchClock;
-pub use match_start::MatchStart;
-pub use net_protocol::{InputChannel, JoinChannel, MatchChannel, NetProtocol};
-pub use offer::Offer;
-pub use order_script::{OrderScript, ScriptedOrder};
+
+pub use net_protocol::{InputChannel, NetProtocol};
+
+pub use order_script::OrderScript;
 pub use sim_client::bot_script::BotScript;
 pub use sim_client::join_state::JoinState;
 pub use sim_client::server_pin::ServerPin;

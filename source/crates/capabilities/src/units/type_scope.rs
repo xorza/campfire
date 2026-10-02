@@ -3,7 +3,7 @@
 /// delivery types, by their ids in it: what only its actions name. So two packages' types never
 /// share a name.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum TypeScope {
+pub(crate) enum TypeScope {
     Mode,
     /// The package of this index, another than the mode.
     Package(u16),
@@ -12,7 +12,7 @@ pub enum TypeScope {
 impl TypeScope {
     /// The scope the actions of package `package` name their delivery types in: the mode's for
     /// the mode, 0, else the package's own.
-    pub const fn of_package(package: u16) -> TypeScope {
+    pub(crate) const fn of_package(package: u16) -> TypeScope {
         match package {
             0 => TypeScope::Mode,
             package => TypeScope::Package(package),
