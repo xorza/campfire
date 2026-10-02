@@ -25,6 +25,7 @@ use crate::navigation::walker::Walker;
 use crate::stats::move_step::MoveStep;
 use crate::units::block::Block;
 use crate::units::body::Body;
+use crate::units::body_grid::Placed;
 use crate::units::dead::Dead;
 use crate::units::script_view::{RowFill, View};
 use crate::units::unit_tags::UnitTags;
@@ -250,6 +251,49 @@ fn plan_routes(
     }
 }
 
+/// The units that move, which steering reads as bodies.
+type SteeredBodies<'w, 's> = Query<
+    'w,
+    's,
+    (
+        &'static StableId,
+        &'static Position,
+        &'static Body,
+        Option<&'static Destination>,
+        Option<&'static UnitTags>,
+        Entity,
+    ),
+    (With<MoveStep>, Without<Dead>, Allow<Unpredicted>),
+>;
+
+/// Reads `bodies` into `steering`: those that stand by stable id, and those that walk into its
+/// grid.
+fn index_bodies(steering: &mut Steering, bodies: &SteeredBodies<'_, '_>) {
+    steering.still.clear();
+    for (&id, &at, body, destination, tags, _) in bodies {
+        if !walks(destination, tags) {
+            steering.still.push(IndexedBody {
+                id,
+                at,
+                radius: body.radius(),
+                layer: body.layer(),
+            });
+        }
+    }
+    steering.still.sort_unstable_by_key(|body| body.id);
+    let walking = bodies
+        .iter()
+        .filter(|(.., destination, tags, _)| walks(*destination, *tags));
+    steering
+        .walking
+        .rebuild(walking.map(|(&id, &at, body, .., entity)| Placed {
+            id,
+            entity,
+            at,
+            radius: body.radius(),
+        }));
+}
+
 /// Steers walkers round the units in their way. A walker whose next stretch, as far as its
 /// window reaches, would overlap a unit of its layer that stands plans a short route in the window, the cells
 /// up to `Steering::WINDOW` from its own, with the units that stand there as blockers. So does a
@@ -265,18 +309,7 @@ fn steer(
     grid: Option<Res<'_, PathingGrid>>,
     statics: Res<'_, BodyIndex>,
     mut planner: Option<ResMut<'_, RoutePlanner>>,
-    bodies: Query<
-        '_,
-        '_,
-        (
-            &StableId,
-            &Position,
-            &Body,
-            Option<&Destination>,
-            Option<&UnitTags>,
-        ),
-        (With<MoveStep>, Without<Dead>, Allow<Unpredicted>),
-    >,
+    bodies: SteeredBodies<'_, '_>,
     mut walkers: Query<
         '_,
         '_,
@@ -301,23 +334,7 @@ fn steer(
         .as_deref_mut()
         .expect("a pathing grid comes with its planner");
     let steering = &mut *steering;
-    steering.still.clear();
-    steering.walking.clear();
-    for (&id, &at, body, destination, tags) in &bodies {
-        let body = IndexedBody {
-            id,
-            at,
-            radius: body.radius(),
-            layer: body.layer(),
-        };
-        if walks(destination, tags) {
-            steering.walking.push(body);
-        } else {
-            steering.still.push(body);
-        }
-    }
-    steering.still.sort_unstable_by_key(|body| body.id);
-    steering.walking.sort_unstable_by_key(|body| body.id);
+    index_bodies(steering, &bodies);
     let standing = steering.standing.get_or_insert_with(|| statics.sibling());
     standing.update(&steering.still);
     let stuck_ticks = rate
@@ -363,21 +380,25 @@ fn steer(
             // A walker that keeps this one back counts as standing half their reach to this one's
             // left, so this one goes round it on its right; two that meet head on so pass on
             // opposite sides, whatever the cells make of their sides.
-            let ours = steering
+            steering
                 .walking
-                .iter()
-                .filter(|other| other.layer == walker.layer);
-            let shifted = ours.filter_map(|other| {
-                let reach = walker.radius + other.radius;
-                let touching = other.at.within_ground(at, reach + step.get());
-                let shift = left * Num::from_bits(reach.to_bits() / 2);
-                let moved = Position::new(other.at.get() + shift);
-                (other.id != id && touching).then(|| IndexedBody {
-                    at: moved.expect("a shift of a body's reach stays within the bound"),
-                    ..*other
-                })
-            });
-            steering.blockers.extend(shifted);
+                .visit_near(at, walker.radius + step.get(), |other| {
+                    let (_, _, body, ..) = bodies.get(other.entity).expect("an indexed walker");
+                    let layer = body.layer();
+                    let reach = walker.radius + other.radius;
+                    let touching = other.at.within_ground(at, reach + step.get());
+                    if other.id == id || !touching || layer != walker.layer {
+                        return;
+                    }
+                    let shift = left * Num::from_bits(reach.to_bits() / 2);
+                    let moved = Position::new(other.at.get() + shift);
+                    steering.blockers.push(IndexedBody {
+                        id: other.id,
+                        at: moved.expect("a shift of a body's reach stays within the bound"),
+                        radius: other.radius,
+                        layer,
+                    });
+                });
         }
         let walkable = Walkable {
             clearance,

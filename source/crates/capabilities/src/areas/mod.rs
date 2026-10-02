@@ -21,8 +21,8 @@ use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
 use crate::stats::StatsSet;
 use crate::stats::held_modifiers::{Held, HeldModifiers};
+use crate::units::body_grid::BodyGrid;
 use crate::units::by_type::ByType;
-
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
 use crate::values::attitude::Attitude;
@@ -121,9 +121,19 @@ fn trigger(
     (specs, tick): (Res<'_, ByType<AreaSpec>>, Res<'_, SimTick>),
     mut deliveries: ResMut<'_, Deliveries>,
     mut areas: Query<'_, '_, (Entity, &StableId, &Position, &Team, &UnitType, &mut Area)>,
-    (mut order, mut reached): (Local<'_, Ordered>, Local<'_, Vec<StableId>>),
+    (mut order, mut reached, mut grid): (
+        Local<'_, Ordered>,
+        Local<'_, Vec<StableId>>,
+        Local<'_, BodyGrid>,
+    ),
 ) {
     let now = tick.start();
+    let triggers = areas
+        .iter()
+        .any(|(.., area)| area.triggers_at().is_some_and(|at| at <= now));
+    if triggers {
+        grid.rebuild(targets.placed());
+    }
     let placed = areas.iter().map(|(entity, &id, ..)| Keyed { id, entity });
     for &Keyed { id, entity } in order.sort(placed) {
         let (_, _, &pos, &team, &unit_type, mut area) =
@@ -147,16 +157,17 @@ fn trigger(
         if area.triggers_at().is_some_and(|at| at <= now) {
             let spec = specs.get(unit_type).expect("an area's type has a spec");
             reached.clear();
-            reached.extend(
-                targets
-                    .bodies()
-                    .filter(|unit| {
-                        let attitude = targets.attitude(team, unit.team);
-                        spec.affects.selects(attitude, unit.tags)
-                            && targets.reaches(pos, Num::ZERO, spec.radius, unit)
-                    })
-                    .map(|unit| unit.id),
-            );
+            grid.visit_near(pos, spec.radius, |body| {
+                let Some(unit) = targets.body_of(body.id) else {
+                    return;
+                };
+                let attitude = targets.attitude(team, unit.team);
+                if spec.affects.selects(attitude, unit.tags)
+                    && targets.reaches(pos, Num::ZERO, spec.radius, &unit)
+                {
+                    reached.push(unit.id);
+                }
+            });
             reached.sort_unstable();
             let hits = reached
                 .iter()
@@ -210,16 +221,28 @@ fn hold_inside(
     specs: Res<'_, ByType<AreaSpec>>,
     mut held: ResMut<'_, HeldModifiers>,
     areas: Query<'_, '_, (&Position, &Team, &UnitType, &Area)>,
+    mut grid: Local<'_, BodyGrid>,
 ) {
-    for (&pos, &team, &unit_type, area) in &areas {
+    let holding = |unit_type| {
         let spec = specs.get(unit_type).expect("an area's type has a spec");
-        if spec.inside == Inside::default() {
+        (spec.inside != Inside::default()).then_some(spec)
+    };
+    if !areas
+        .iter()
+        .any(|(_, _, &unit_type, _)| holding(unit_type).is_some())
+    {
+        return;
+    }
+    grid.rebuild(targets.placed());
+    for (&pos, &team, &unit_type, area) in &areas {
+        let Some(spec) = holding(unit_type) else {
             continue;
-        }
-        for unit in targets.bodies() {
-            if !targets.reaches(pos, Num::ZERO, spec.radius, &unit) {
-                continue;
-            }
+        };
+        grid.visit_near(pos, spec.radius, |body| {
+            let reaches = |unit: &_| targets.reaches(pos, Num::ZERO, spec.radius, unit);
+            let Some(unit) = targets.body_of(body.id).filter(reaches) else {
+                return;
+            };
             let by = area.by();
             let modifier = match targets.attitude(team, unit.team) {
                 _ if unit.id == by.source => spec.inside.caster,
@@ -235,7 +258,7 @@ fn hold_inside(
                     rank: by.rank,
                 });
             }
-        }
+        });
     }
 }
 

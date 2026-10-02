@@ -14,14 +14,13 @@ use crate::units::script_view::View;
 use crate::units::unit_type::UnitType;
 use crate::values::damage_kind::DamageKind;
 
-/// A projectile unit in flight: whose it is, how it flies, at its type's speed, what it carries,
-/// and the units it struck, each once.
+/// A projectile unit in flight: whose it is, how it flies, at its type's speed, and what it
+/// carries.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Projectile {
     source: StableId,
     flight: Flight,
     payload: Payload,
-    struck: Vec<StableId>,
 }
 
 /// How a projectile flies: homing on a unit, or along a line, a unit vector on the ground or in
@@ -78,7 +77,6 @@ impl Projectile {
             source,
             flight,
             payload,
-            struck: Vec::new(),
         })
     }
 
@@ -92,16 +90,6 @@ impl Projectile {
 
     pub(crate) const fn payload(&self) -> Payload {
         self.payload
-    }
-
-    /// Whether it struck `unit`.
-    pub(crate) fn struck(&self, unit: StableId) -> bool {
-        self.struck.contains(&unit)
-    }
-
-    pub(crate) fn strike(&mut self, unit: StableId) {
-        debug_assert!(!self.struck(unit), "a projectile strikes a unit once");
-        self.struck.push(unit);
     }
 
     /// Counts `flown` meters flown in all.
@@ -144,8 +132,7 @@ impl SimComponent for Projectile {
     }
 }
 
-/// A snapshot is untrusted, so a projectile `new` refuses, or one that struck a unit twice,
-/// fails to decode.
+/// A snapshot is untrusted, so a projectile that `new` refuses fails to decode.
 impl<'de> Deserialize<'de> for Projectile {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Projectile, D::Error> {
         #[derive(Deserialize)]
@@ -153,22 +140,13 @@ impl<'de> Deserialize<'de> for Projectile {
             source: StableId,
             flight: Flight,
             payload: Payload,
-            struck: Vec<StableId>,
         }
         let Fields {
             source,
             flight,
             payload,
-            struck,
         } = Fields::deserialize(deserializer)?;
-        let mut projectile = Projectile::new(source, flight, payload)
-            .ok_or_else(|| D::Error::custom("projectile out of its limits"))?;
-        for unit in struck {
-            if projectile.struck(unit) {
-                return Err(D::Error::custom("a unit struck twice"));
-            }
-            projectile.strike(unit);
-        }
-        Ok(projectile)
+        Projectile::new(source, flight, payload)
+            .ok_or_else(|| D::Error::custom("projectile out of its limits"))
     }
 }

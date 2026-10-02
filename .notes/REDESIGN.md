@@ -253,7 +253,6 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 | Step | Change | Needs | Size |
 |---|---|---|---|
 | F3 | Ids at call time, so `ctx.projectile` and `ctx.area` return handles whose `.state` the call writes | Unit script state: a unit's `[state]` and `unit.state`, which the API does not have yet, so a handle alone would give a script nothing to use | M, changes behaviour |
-| H1 | `BodyGrid`, read by deliveries and auras; one `(group, unit)` hit store; stuck walkers through the grid | B | M |
 | H2 | `NavBudget`; short routes within their window; "arrived short"; re-asks after removals; the blocker query and clipping; `Progress` reset; blocked map cells in the exact tests; `Steering` methods; `Route::clear` keeps its buffer | B3 | M, changes behaviour |
 | H3 | Incremental regions; routes tested only against added bodies; the body index's first-cell flag and early stop | H2 | M |
 | H4 | Incremental view rows | B | M |
@@ -262,7 +261,7 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 
 | Step | Change | Needs | Size |
 |---|---|---|---|
-| H1b | `ctx.find` and `nearest_visible` read `BodyGrid` | D5, H1 | S |
+| H1b | `ctx.find` and `nearest_visible` read `BodyGrid` | D5 | S |
 | J | The local fixes in the appendix, and T§5 to T§8 | any time | S each |
 
 ### Order
@@ -270,9 +269,9 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 ```
 Track S:  D5
 
-Track I:  H1, H4      H2 → H3      F3 after unit script state
+Track I:  H4      H2 → H3      F3 after unit script state
 
-Joins:    D5 + H1 → H1b
+Joins:    D5 → H1b
 ```
 
 Track S is long and sequential. Track I fills the sessions between its steps.
@@ -327,7 +326,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - short route never planned again: H2;
   - blocker reach: H2;
   - blocker cells: H2;
-  - stuck walkers O(W²): H1;
   - body index waste: H3;
   - `Progress`: H2;
   - map-blocked cells: H2.
@@ -377,11 +375,8 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - `ctx.projectile` returns `()`: F3;
   - capability set table: A4.
 - **R§12:**
-  - no spatial delivery query: H1;
   - batch rebuilds: H4;
   - entity-index walks: B2;
-  - `cast_hits.keep`: H1;
-  - `struck`: H1;
   - `RecentAttackers`: J;
   - client gauges: J;
   - commands parsed twice: J;
@@ -390,7 +385,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - `Route::clear`: H2;
   - stable sort: J;
   - applied handle: D5;
-  - fan allocation: H1;
   - scripts parsed twice: C5b.
 - **R§14:**
   - one struct per file: D2, D5, J;

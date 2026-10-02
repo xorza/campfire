@@ -6,20 +6,23 @@ use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::pass_queue::PassQueue;
 use crate::deliveries::Deliveries;
 use crate::deliveries::delivered::Delivered;
-use crate::projectiles::cast_hits::{CastHit, CastHits};
 use crate::projectiles::projectile::{Flight, Payload, Projectile};
 use crate::projectiles::projectile_spec::ProjectileSpec;
+use crate::projectiles::struck_units::{Struck, StruckUnits};
 use crate::scripts::hook::Hook;
+use crate::units::body_grid::BodyGrid;
 use crate::units::team::Team;
 use crate::values::hit::Hit;
 
-/// The flights of a tick: where their hits and ends go, the units each cast hit while its
-/// projectiles fly, and a scratch list of the units a line's step meets, by share of the step.
+/// The flights of a tick: where their hits and ends go, the units each line struck while it
+/// flies, the bodies a line may meet, indexed as the stage began, and a scratch list
+/// of the units a line's step meets, by share of the step.
 #[derive(Debug)]
 pub(crate) struct Flights<'a> {
     pub(crate) queue: &'a mut PassQueue,
     pub(crate) deliveries: &'a mut Deliveries,
-    pub(crate) cast_hits: &'a mut CastHits,
+    pub(crate) struck: &'a mut StruckUnits,
+    pub(crate) grid: &'a BodyGrid,
     pub(crate) met: &'a mut Vec<(u128, StableId)>,
 }
 
@@ -32,6 +35,17 @@ pub(crate) struct Aloft<'a> {
     pub(crate) spec: ProjectileSpec,
     pub(crate) position: &'a mut Position,
     pub(crate) projectile: &'a mut Projectile,
+}
+
+impl Aloft<'_> {
+    /// What its hits are kept by: its cast for a type that strikes a unit once a cast, or
+    /// itself.
+    pub(crate) fn strikes_by(&self) -> StableId {
+        match self.projectile.payload() {
+            Payload::Action { group, .. } if self.spec.once_per_cast => group,
+            _ => self.id,
+        }
+    }
 }
 
 impl Flights<'_> {
@@ -111,6 +125,7 @@ impl Flights<'_> {
         range: Num,
         aimed: Option<StableId>,
     ) -> bool {
+        let by = aloft.strikes_by();
         let Aloft {
             id,
             team,
@@ -132,30 +147,29 @@ impl Flights<'_> {
             self.end(projectile, line(from, flown));
             return true;
         };
-        let group = match projectile.payload() {
-            Payload::Action { group, .. } if spec.once_per_cast => Some(group),
-            _ => None,
-        };
         let metric = targets.metric();
         self.met.clear();
-        for unit in targets.units() {
-            let cast_hit = group.is_some_and(|group| {
-                let hit = CastHit {
-                    group,
-                    unit: unit.id,
-                };
-                self.cast_hits.contains(hit)
-            });
+        let (start, end) = (from.get(), to.get());
+        let half = spec.width / 2;
+        let low = [start.x.min(end.x), start.z.min(end.z)]
+            .map(|axis| axis.checked_sub(half).unwrap_or(Num::MIN));
+        let high = [start.x.max(end.x), start.z.max(end.z)]
+            .map(|axis| axis.checked_add(half).unwrap_or(Num::MAX));
+        let (met, struck) = (&mut *self.met, &*self.struck);
+        self.grid.visit(low, high, |body| {
+            let Some(unit) = targets.living(body.id) else {
+                return;
+            };
             let selects = spec
                 .hits
                 .selects(targets.attitude(team, unit.team), unit.tags);
-            if projectile.struck(unit.id) || cast_hit || !selects {
-                continue;
+            if !selects || struck.contains(Struck { by, unit: unit.id }) {
+                return;
             }
-            if let Some(share) = metric.meets(from, to, unit.pos, spec.width / 2 + unit.radius) {
-                self.met.push((share.along, unit.id));
+            if let Some(share) = metric.meets(from, to, unit.pos, half + unit.radius) {
+                met.push((share.along, unit.id));
             }
-        }
+        });
         // Every share of a step has the step's squared length below it, so the raw `along`
         // orders the nearest points exactly.
         self.met.sort_unstable();
@@ -177,10 +191,7 @@ impl Flights<'_> {
                 .and_then(Position::new)
                 .expect("a point of a step within the bound");
             let hit = line(pos, flown + travelled);
-            projectile.strike(unit);
-            if let Some(group) = group {
-                self.cast_hits.insert(CastHit { group, unit });
-            }
+            self.struck.insert(Struck { by, unit });
             self.strike(projectile, unit, hit);
             if spec.stop_on_hit {
                 self.end(projectile, hit);

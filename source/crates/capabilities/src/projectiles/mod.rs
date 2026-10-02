@@ -17,15 +17,16 @@ use crate::combat::shots::Shots;
 use crate::deliveries::delivering::Delivering;
 use crate::deliveries::delivery_spawner::DeliverySpawner;
 use crate::deliveries::{Deliveries, DeliverySet};
-use crate::projectiles::cast_hits::CastHits;
 use crate::projectiles::flights::{Aloft, Flights};
 use crate::projectiles::launches::{Launch, LaunchPayload, Launches};
 use crate::projectiles::projectile::{Flight, Payload, Projectile};
 
 use crate::projectiles::projectile_effect::{ProjectileEffect, Toward};
 use crate::projectiles::projectile_spec::ProjectileSpec;
+use crate::projectiles::struck_units::StruckUnits;
 use crate::scripts::frame::Frame;
 use crate::stats::pools::Pools;
+use crate::units::body_grid::BodyGrid;
 use crate::units::by_type::ByType;
 
 use crate::units::team::Team;
@@ -33,7 +34,6 @@ use crate::units::unit_type::UnitType;
 use crate::values::bounds::Bounds;
 use crate::values::metric::Metric;
 
-pub(crate) mod cast_hits;
 pub(crate) mod flights;
 pub(crate) mod launches;
 pub(crate) mod projectile;
@@ -41,6 +41,7 @@ pub(crate) mod projectile_data;
 pub(crate) mod projectile_effect;
 pub(crate) mod projectile_spec;
 pub(crate) mod projectiles_api;
+pub(crate) mod struck_units;
 
 /// The `projectiles` capability: projectile units, which ranged attacks fire and actions
 /// deliver. It builds on combat, which a match installs too.
@@ -54,7 +55,7 @@ impl Projectiles {
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         Deliveries::install(world, schedule);
         world.insert_resource(Launches::default());
-        world.insert_resource(CastHits::default());
+        world.insert_resource(StruckUnits::default());
         world.insert_resource(ByType::<ProjectileSpec>::default());
         schedule.add_systems((
             fly.in_set(DeliverySet::Fly),
@@ -62,7 +63,7 @@ impl Projectiles {
             launch.in_set(CombatSet::Launch),
         ));
         registry.register_component::<Projectile>();
-        registry.register_resource::<CastHits>();
+        registry.register_resource::<StruckUnits>();
     }
 
     /// Applies the next projectile the call in `frame` queued.
@@ -87,12 +88,12 @@ impl Projectiles {
                 Flight::Line {
                     direction,
                     flown: Num::ZERO,
-                    range: Projectiles::reach(world, range, from, direction),
+                    range: Projectiles::reach(Bounds::of(world), range, from, direction),
                     aimed: None,
                 }
             }
         };
-        Projectiles::push(world, effect.by, effect.unit_type, from, &[flight]);
+        Projectiles::push(world, effect.by, effect.unit_type, from, [flight]);
     }
 
     /// Launches `fan`, the delivery of `by`, which aimed at `target` from `from`: a homing
@@ -119,7 +120,7 @@ impl Projectiles {
                 target: unit,
                 flown: Num::ZERO,
             };
-            Projectiles::push(world, by, unit_type, from, &[homing]);
+            Projectiles::push(world, by, unit_type, from, [homing]);
             return;
         }
         let Some(at) = target.point(world) else {
@@ -136,18 +137,17 @@ impl Projectiles {
         } else {
             range
         };
-        let flights: Vec<Flight> = (0..fan.count.get())
-            .map(|at| {
-                let direction = aim.rotated_y(fan.turn(at).sin_cos());
-                Flight::Line {
-                    direction,
-                    flown: Num::ZERO,
-                    range: Projectiles::reach(world, range, from, direction),
-                    aimed: target.unit(),
-                }
-            })
-            .collect();
-        Projectiles::push(world, by, unit_type, from, &flights);
+        let bounds = Bounds::of(world);
+        let flights = (0..fan.count.get()).map(|at| {
+            let direction = aim.rotated_y(fan.turn(at).sin_cos());
+            Flight::Line {
+                direction,
+                flown: Num::ZERO,
+                range: Projectiles::reach(bounds, range, from, direction),
+                aimed: target.unit(),
+            }
+        });
+        Projectiles::push(world, by, unit_type, from, flights);
     }
 
     /// The range of a line projectile of `unit_type` of `by`: its type's, or else its action's
@@ -169,8 +169,8 @@ impl Projectiles {
 
     /// How far a line of `range` flies from `from` along `direction`: up to the edge of the map's
     /// bounds, which a global range flies to.
-    fn reach(world: &World, range: Option<Num>, from: Position, direction: Vec3) -> Num {
-        let exit = Bounds::of(world).exit(from, direction);
+    fn reach(bounds: Bounds, range: Option<Num>, from: Position, direction: Vec3) -> Num {
+        let exit = bounds.exit(from, direction);
         range.map_or(exit, |range| range.min(exit))
     }
 
@@ -180,13 +180,13 @@ impl Projectiles {
         by: Delivering,
         unit_type: UnitType,
         from: Position,
-        flights: &[Flight],
+        flights: impl IntoIterator<Item = Flight>,
     ) {
         let mut launches = world.resource_mut::<Launches>();
         let cast = launches.cast();
         launches
             .launches
-            .extend(flights.iter().map(|&flight| Launch {
+            .extend(flights.into_iter().map(|flight| Launch {
                 source: by.source,
                 from,
                 unit_type,
@@ -202,14 +202,15 @@ impl Projectiles {
 
 /// Flies each projectile a step, in the order of their stable ids, as `Flights::fly` says. An
 /// attack's hit deals its damage; an action's hits and ends run its hooks, and an ended
-/// projectile despawns after them. A cast's hits are kept while any of its projectiles flies.
+/// projectile despawns after them. A line's hits are kept while it flies, and a cast's, for a
+/// type that strikes a unit once a cast, while any of its projectiles flies.
 fn fly(
     targets: Targets<'_, '_>,
     specs: Res<'_, ByType<ProjectileSpec>>,
-    (mut queue, mut deliveries, mut cast_hits): (
+    (mut queue, mut deliveries, mut struck): (
         ResMut<'_, PassQueue>,
         ResMut<'_, Deliveries>,
-        ResMut<'_, CastHits>,
+        ResMut<'_, StruckUnits>,
     ),
     mut projectiles: Query<
         '_,
@@ -229,12 +230,20 @@ fn fly(
         Local<'_, Vec<(u128, StableId)>>,
         Local<'_, Vec<StableId>>,
     ),
+    mut grid: Local<'_, BodyGrid>,
 ) {
     flying.clear();
+    let lines = projectiles
+        .iter()
+        .any(|(.., projectile, _, _)| matches!(projectile.flight(), Flight::Line { .. }));
+    if lines {
+        grid.rebuild(targets.placed());
+    }
     let mut flights = Flights {
         queue: &mut queue,
         deliveries: &mut deliveries,
-        cast_hits: &mut cast_hits,
+        struck: &mut struck,
+        grid: &grid,
         met: &mut met,
     };
     let aloft = projectiles
@@ -253,13 +262,16 @@ fn fly(
             position: &mut position,
             projectile: &mut projectile,
         };
+        let by = aloft.strikes_by();
         if flights.fly(&targets, aloft) {
             flights.deliveries.ended.push(entity);
-        } else if let Payload::Action { group, .. } = projectile.payload() {
-            flying.push(group);
+        } else {
+            flying.push(by);
         }
     }
-    flights.cast_hits.keep(|group| flying.contains(&group));
+    flying.sort_unstable();
+    flying.dedup();
+    flights.struck.keep(&flying);
 }
 
 /// Makes each of the tick's shots a launch, a cast of its own, homing on its target from where

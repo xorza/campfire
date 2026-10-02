@@ -1,3 +1,4 @@
+use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Allow, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_math::Num;
@@ -8,6 +9,7 @@ use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::units::block::Block;
 use crate::units::body::Body;
+use crate::units::body_grid::Placed;
 use crate::units::dead::Dead;
 use crate::units::living_unit::LivingUnit;
 use crate::units::relations::Relations;
@@ -31,6 +33,7 @@ pub(crate) struct Targets<'w, 's> {
         'w,
         's,
         (
+            Entity,
             &'static StableId,
             &'static Position,
             &'static Team,
@@ -41,6 +44,17 @@ pub(crate) struct Targets<'w, 's> {
         (Without<Dead>, Allow<Unpredicted>),
     >,
 }
+
+/// A row of the units `Targets` holds.
+type TargetRow<'a> = (
+    Entity,
+    &'a StableId,
+    &'a Position,
+    &'a Team,
+    &'a Pools,
+    Option<&'a Body>,
+    Option<&'a UnitTags>,
+);
 
 impl Targets<'_, '_> {
     /// `target`, when it is a living unit `team` may attack.
@@ -83,15 +97,10 @@ impl Targets<'_, '_> {
         self.metric.reaches(from, radius, range, at, Num::ZERO)
     }
 
-    /// Every living unit that may be a target, in no order.
-    pub(crate) fn units(&self) -> impl Iterator<Item = LivingUnit> + '_ {
-        self.units.iter().filter_map(|(&id, ..)| self.living(id))
-    }
-
     /// `target`, when it is a living unit that may be a target.
     pub(crate) fn living(&self, target: StableId) -> Option<LivingUnit> {
         let row = self.units.get(self.index.get(target)?).ok()?;
-        Targets::targetable(Some(row.3), row.5, self.life.0).then(|| self.body(row))?
+        Targets::targetable(Some(row.4), row.6, self.life.0).then(|| self.body(row))?
     }
 
     /// Whether a unit that has not died, with `pools` and `tags`, may be a target: it has the
@@ -102,24 +111,30 @@ impl Targets<'_, '_> {
             && !UnitTags::effects_of(tags).blocks(Block::Target)
     }
 
-    /// Every living unit with the life pool, those whose tags block it as a target among them:
-    /// the units an area reaches, in no order.
-    pub(crate) fn bodies(&self) -> impl Iterator<Item = LivingUnit> + '_ {
-        self.units.iter().filter_map(|row| self.body(row))
+    /// Every living unit with the life pool, those whose tags block it as a target among them,
+    /// as a body to index: the units an area reaches, in no order.
+    pub(crate) fn placed(&self) -> impl Iterator<Item = Placed> + '_ {
+        self.units
+            .iter()
+            .filter_map(|(entity, &id, &at, _, pools, body, _)| {
+                pools.max(self.life.0)?;
+                Some(Placed {
+                    id,
+                    entity,
+                    at,
+                    radius: Body::radius_of(body),
+                })
+            })
+    }
+
+    /// The living unit `id` when it has the life pool, whose tags block it as a target or not:
+    /// a unit an area reaches.
+    pub(crate) fn body_of(&self, id: StableId) -> Option<LivingUnit> {
+        self.body(self.units.get(self.index.get(id)?).ok()?)
     }
 
     /// The unit of `row`, when it has the life pool.
-    fn body(
-        &self,
-        (&id, &pos, &team, pools, body, tags): (
-            &StableId,
-            &Position,
-            &Team,
-            &Pools,
-            Option<&Body>,
-            Option<&UnitTags>,
-        ),
-    ) -> Option<LivingUnit> {
+    fn body(&self, (_, &id, &pos, &team, pools, body, tags): TargetRow<'_>) -> Option<LivingUnit> {
         pools.max(self.life.0)?;
         Some(LivingUnit {
             id,

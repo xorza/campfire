@@ -16,7 +16,6 @@ The worst case per tick is the metric. These systems let one tick pay for a scan
 - [ ] **A short route is never planned again when a way opens** — `capabilities/src/navigation/mod.rs:234-241`. Only routes that bodies now block are planned again. Better: also ask again for unreached routes when bodies are removed.
 - [ ] **Steering's blocker query has a fixed reach** — `capabilities/src/navigation/mod.rs:418`. It reaches twice the window, whatever the walker's width, so a walker wider than about 7.5 cells misses blockers. Better: compute the reach from the window and the walker's radius.
 - [ ] **Steering visits every cell of a blocker** — `capabilities/src/navigation/route_planner.rs:280-290`. Better: clip each blocker's span to the window first.
-- [ ] **Stuck walkers search each other in O(W²)** — `capabilities/src/navigation/mod.rs:427-441`. Better: a spatial lookup of walkers.
 - [ ] **The body index does work it then throws away** — `capabilities/src/navigation/body_index.rs:196-269`. `meeting` computes each body's bucket range again for every entry, and `blocks` keeps searching after it finds a blocker. Better: store a first-cell flag in `Entry`, and let the visitor stop early.
 - [ ] **`Progress` keeps the stuck count of the last walk** — `capabilities/src/navigation/progress.rs:143-156`, `navigation/mod.rs:394`. Better: reset it when a route is asked for or cleared.
 - [ ] **Map-blocked cells are not in the exact tests** — `capabilities/src/navigation/pathing_grid.rs:37-41`, `navigation/route_planner.rs:119-130`. The tests know only bodies. Once a map blocks cells, smoothing and the straight-goal shortcut will cross them. Better: the exact tests also read the clearance.
@@ -63,10 +62,7 @@ These types hold their rules in `expect`s, sentinels or loose fields, not in the
 
 These costs grow with all units or all entities each tick, while the work concerns a few.
 
-- [ ] **No delivery query is spatial** — `capabilities/src/projectiles/flights.rs:140`, `areas/mod.rs:183,251`, `combat/targets.rs:86-88`. Each line projectile tests every unit each tick, each area with `inside` modifiers scans every body each tick, and `Targets::units` fetches each row a second time. Better: one sorted cell index of bodies per tick, as the broadphase builds, and `units()` builds from the row it has.
 - [ ] **Every script batch rebuilds every unit's row** — `capabilities/src/units/script_view.rs:147-195`, `scripts/script_batch.rs:29`. A tick can run about eight batches, each a full rebuild of every row from every row source. Better: keep the rows, and refresh only those whose source components changed since the last build.
-- [ ] **`cast_hits.keep` is O(hits × projectiles)** — `capabilities/src/projectiles/mod.rs:299`. `flying` is unsorted and repeats groups. Better: sort and dedup, or merge with `CastHits`.
-- [ ] **Each projectile owns a `struck` list** — `capabilities/src/projectiles/projectile.rs:17,89-96`. It allocates on the first hit, is searched linearly in the hit loop, and duplicates `CastHits`. Better: one sorted flat store of (group, unit).
 - [ ] **`RecentAttackers` scans its list on every damage** — `capabilities/src/combat/mod.rs:806-808`, `combat/recent_attackers.rs:21`. `record` looks up every entry in the index, and `respawn` drops its buffer. Better: prune on despawn or on read, and `clear()` on respawn.
 - [ ] **The client marks every gauge and drawing changed every frame** — `client/src/hud/mod.rs:306-313,336`, `client/src/view.rs:317,368-371`. Better: `set_if_neq`, and skip finished glides.
 - [ ] **Commands are parsed twice, and every tick** — `sim/src/command.rs:35-60`, `capabilities/src/orders/mod.rs:191`, `mode/mod.rs:444`. Better: validate once when the input is stored, and keep flat command ranges.
@@ -78,7 +74,6 @@ These costs grow with all units or all entities each tick, while the work concer
 - [ ] **`Route::clear` frees its waypoint buffer** — `capabilities/src/navigation/route.rs:481-483,497-498`. Every arrival allocates again, and `splice` moves memory twice. Better: clear the fields and keep the capacity, and one `splice`.
 - [ ] **A stable sort allocates in each refresh pass** — `capabilities/src/stats/refresh_scratch.rs:114`. Order within a stat does not matter. Better: `sort_unstable_by_key`.
 - [ ] **An applied handle allocates its state** — `capabilities/src/units/script_view.rs:461,463`. Better: reuse the frame's buffers.
-- [ ] **Each fan allocates its flights** — `capabilities/src/projectiles/mod.rs:170-185`. Better: extend `Launches` directly.
 - [ ] **Each script is parsed twice** — `package/src/package.rs:57`, `runner/src/match_build.rs:313-326`. Better: keep the AST and let the host take it.
 
 ## 14. Coding guide breaks and small defects

@@ -11,8 +11,8 @@ use crate::combat::armed::Armed;
 use crate::combat::deaths::Deaths;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;
-use crate::projectiles::cast_hits::CastHit;
 use crate::projectiles::projectile_data::ProjectileData;
+use crate::projectiles::struck_units::Struck;
 use crate::stats::pool_id::PoolId;
 use crate::units::Units;
 use crate::units::action_id::ActionId;
@@ -295,14 +295,11 @@ fn a_projectile_whose_target_dies_or_goes_first_ends_without_a_hit() {
         .unwrap();
     assert_eq!(volley.registry.hash(&restored.world), hash);
     assert_eq!(restored.projectiles(), volley.projectiles());
-    // A cast's hits decode only in order, each once: the ids were allocated in order.
+    // The struck units decode only in order, each once: the ids were allocated in order.
     let decode = |hits: &[(StableId, StableId)]| {
-        let hits: Vec<CastHit> = hits
-            .iter()
-            .map(|&(group, unit)| CastHit { group, unit })
-            .collect();
+        let hits: Vec<Struck> = hits.iter().map(|&(by, unit)| Struck { by, unit }).collect();
         let bytes = postcard::to_allocvec(&hits).unwrap();
-        postcard::from_bytes::<CastHits>(&bytes)
+        postcard::from_bytes::<StruckUnits>(&bytes)
     };
     assert!(decode(&[(first, doomed), (first, gone), (second, doomed)]).is_ok());
     assert!(decode(&[(first, gone), (first, doomed)]).is_err());

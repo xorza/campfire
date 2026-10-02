@@ -23,6 +23,7 @@ pub(crate) mod action_id;
 pub(crate) mod bits256;
 pub(crate) mod block;
 pub(crate) mod body;
+pub(crate) mod body_grid;
 pub(crate) mod by_type;
 pub(crate) mod collision_data;
 pub(crate) mod dead;
