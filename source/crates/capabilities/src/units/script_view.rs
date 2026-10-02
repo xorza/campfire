@@ -189,8 +189,12 @@ impl ScriptView {
     }
 
     fn row(&self, id: StableId) -> Option<UnitRow> {
-        let index = self.units.binary_search_by_key(&id, |row| row.id).ok()?;
-        Some(self.units[index])
+        Some(self.units[self.index(id)?])
+    }
+
+    /// The place of unit `id` among the rows, when the view read it.
+    fn index(&self, id: StableId) -> Option<usize> {
+        self.units.binary_search_by_key(&id, |row| row.id).ok()
     }
 
     /// The living units that may be targets and that `filter` selects relative to `of`.
@@ -198,10 +202,10 @@ impl ScriptView {
         &'a self,
         of: &UnitRow,
         filter: &str,
-    ) -> Result<impl Iterator<Item = &'a UnitRow>, ApiError> {
+    ) -> Result<impl Iterator<Item = (usize, &'a UnitRow)>, ApiError> {
         let filter = Filter::parse(filter, &self.types)?;
         let of = of.team;
-        Ok(self.units.iter().filter(move |row| {
+        Ok(self.units.iter().enumerate().filter(move |(_, row)| {
             let targetable = !row.tags.effects.blocks(Block::Target);
             let attitude = self.relations.between(of, row.team);
             row.alive && targetable && filter.selects(attitude, row.tags.tags)
@@ -354,8 +358,7 @@ impl View {
 
     /// The place among the rows of unit `id`, when the view read it.
     pub(crate) fn row_index(&self, id: StableId) -> Option<usize> {
-        let view = self.0.borrow();
-        view.units.binary_search_by_key(&id, |row| row.id).ok()
+        self.0.borrow().index(id)
     }
 
     /// The name of `team`.
@@ -405,12 +408,13 @@ impl View {
     }
 
     /// Every unit, living or dead, that `keep` keeps, by stable id.
-    fn units_where(&self, keep: impl FnMut(&&UnitRow) -> bool) -> Array {
+    fn units_where(&self, mut keep: impl FnMut(&UnitRow) -> bool) -> Array {
         let view = self.0.borrow();
         view.units
             .iter()
-            .filter(keep)
-            .map(|row| Dynamic::from(Unit::new(row.id, self.clone())))
+            .enumerate()
+            .filter(|(_, row)| keep(row))
+            .map(|(at, row)| Dynamic::from(Unit::new(row.id, at, self.clone())))
             .collect()
     }
 
@@ -429,9 +433,15 @@ impl View {
         self.0.borrow().row(id)
     }
 
+    /// The row at `at` among the rows, as a handle names it.
+    pub(crate) fn row_at(&self, at: usize) -> UnitRow {
+        self.0.borrow().units[at]
+    }
+
     /// The handle of unit `id`, when the view read it.
     pub(crate) fn unit(&self, id: StableId) -> Option<Unit> {
-        self.row(id).map(|_| Unit::new(id, self.clone()))
+        let at = self.row_index(id)?;
+        Some(Unit::new(id, at, self.clone()))
     }
 
     /// Unit `id`, when it is a living unit that may be a target.
@@ -472,9 +482,9 @@ impl View {
         let of = of.row();
         let selected = view.selected(&of, filter).map_err(ApiError::fail)?;
         Ok(selected
-            .filter(|row| !visible || row.seen_by.contains(of.team))
-            .filter(|row| view.metric.within(pos, row.pos, radius))
-            .map(|row| Dynamic::from(Unit::new(row.id, self.clone())))
+            .filter(|(_, row)| !visible || row.seen_by.contains(of.team))
+            .filter(|(_, row)| view.metric.within(pos, row.pos, radius))
+            .map(|(at, row)| Dynamic::from(Unit::new(row.id, at, self.clone())))
             .collect())
     }
 
@@ -490,12 +500,12 @@ impl View {
         let nearest = view
             .selected(&of, filter)
             .map_err(ApiError::fail)?
-            .filter(|row| row.seen_by.contains(of.team))
-            .map(|row| (view.metric.offset(of.pos, row.pos), row.id))
-            .filter(|&(offset, _)| Vec3::ZERO.within(offset, radius))
-            .min_by_key(|&(offset, id)| (offset.length_squared_bits(), id));
-        Ok(nearest.map_or(Dynamic::UNIT, |(_, id)| {
-            Dynamic::from(Unit::new(id, self.clone()))
+            .filter(|(_, row)| row.seen_by.contains(of.team))
+            .map(|(at, row)| (view.metric.offset(of.pos, row.pos), row.id, at))
+            .filter(|&(offset, ..)| Vec3::ZERO.within(offset, radius))
+            .min_by_key(|&(offset, id, _)| (offset.length_squared_bits(), id));
+        Ok(nearest.map_or(Dynamic::UNIT, |(_, id, at)| {
+            Dynamic::from(Unit::new(id, at, self.clone()))
         }))
     }
 
@@ -515,8 +525,12 @@ impl View {
                 // A strike later than the view's tick, as a rollback can leave, is not recent.
                 view.now.since(attack.tick).is_some_and(|age| age <= window)
             })
-            .filter(|attack| view.row(attack.source).is_some_and(|source| source.alive))
-            .map(|attack| Dynamic::from(Unit::new(attack.source, self.clone())))
+            .filter_map(|attack| {
+                let at = view.index(attack.source)?;
+                view.units[at]
+                    .alive
+                    .then(|| Dynamic::from(Unit::new(attack.source, at, self.clone())))
+            })
             .collect())
     }
 

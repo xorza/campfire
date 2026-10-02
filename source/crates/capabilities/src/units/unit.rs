@@ -15,6 +15,8 @@ use crate::units::script_view::{UnitRow, View};
 #[derive(Debug, Clone)]
 pub(crate) struct Unit {
     pub(crate) id: StableId,
+    /// Its place among the rows of its view, which does not change within a call.
+    row: usize,
     view: View,
 }
 
@@ -25,8 +27,8 @@ pub(crate) struct UnitParams(Unit);
 
 impl Unit {
     /// Only the view makes a handle, of a unit it read: `View::unit` for any other code.
-    pub(super) const fn new(id: StableId, view: View) -> Unit {
-        Unit { id, view }
+    pub(super) const fn new(id: StableId, row: usize, view: View) -> Unit {
+        Unit { id, row, view }
     }
 
     pub(crate) const fn view(&self) -> &View {
@@ -34,17 +36,13 @@ impl Unit {
     }
 
     /// The unit's place among its view's rows.
-    pub(crate) fn row_index(&self) -> usize {
-        self.view
-            .row_index(self.id)
-            .expect("a handle's unit is in its view")
+    pub(crate) const fn row_index(&self) -> usize {
+        self.row
     }
 
     /// The unit's row. A handle comes only from its view's rows, and lives only within a call.
     pub(crate) fn row(&self) -> UnitRow {
-        self.view
-            .row(self.id)
-            .expect("a handle's unit is in its view")
+        self.view.row_at(self.row)
     }
 
     /// The `Unit` handle's fields and methods, and `Pos` with `distance_to` and `within`.
