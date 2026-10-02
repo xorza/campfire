@@ -1,5 +1,5 @@
 use bevy_ecs::query::Without;
-use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
+use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Query, Res};
 use bevy_ecs::world::{EntityRef, World};
 
@@ -13,10 +13,8 @@ use crate::stats::param_book::ParamBook;
 use crate::actions::action_slots::{ActionSlots, ActionTarget, InProgress};
 
 use crate::actions::purse::Purse;
-use crate::combat::CombatSet;
 
-use crate::combat::targets::Targets;
-use crate::orders::OrdersSet;
+use crate::actions::targets::Targets;
 use crate::players::player_resources::PlayerResources;
 use crate::units::dead::Dead;
 
@@ -50,11 +48,25 @@ pub(crate) mod kind_spec;
 pub(crate) mod purse;
 pub(crate) mod slot_kind;
 pub(crate) mod slot_kinds;
+pub(crate) mod targets;
 pub(crate) mod weapon;
 
 /// The core's actions: every action a match loads, and the slots units hold them in.
 #[derive(Debug)]
 pub struct Actions;
+
+/// The systems of the action pipeline, for the capabilities built on it to order theirs against.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum ActionsSet {
+    /// In `SimSet::Act`: what each unit was ordered starts, and attacks start.
+    Start,
+    /// In `SimSet::Inputs`, once the tick's orders and expiries are in: passives hold as the
+    /// slots stand.
+    HoldAtInputs,
+    /// In `SimSet::Resolve`, once the tick's damage is dealt and before units die: passives hold
+    /// as the slots stand.
+    HoldAtResolve,
+}
 
 impl Actions {
     /// Adds the actions to a match, with none loaded yet, and to the rows of its `view`.
@@ -69,15 +81,14 @@ impl Actions {
     /// target is one combat finds.
     pub(crate) fn schedule(schedule: &mut Schedule) {
         schedule.add_systems((
-            start_actions.in_set(SimSet::Act).in_set(CombatSet::Attack),
+            start_actions.in_set(SimSet::Act).in_set(ActionsSet::Start),
             hold_passives
                 .in_set(SimSet::Inputs)
-                .after(OrdersSet::Orders)
+                .in_set(ActionsSet::HoldAtInputs)
                 .after(StatsSet::Expire),
             hold_passives
                 .in_set(SimSet::Resolve)
-                .after(CombatSet::Damage)
-                .before(CombatSet::Die),
+                .in_set(ActionsSet::HoldAtResolve),
             hold_passives.in_set(SimSet::Vision),
         ));
     }

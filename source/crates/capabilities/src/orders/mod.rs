@@ -9,13 +9,14 @@ use campfire_sim::{
     Command, EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, TickInputs, TickRate,
 };
 
+use crate::actions::ActionsSet;
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_data::Range;
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::action_slots::ActionTarget;
+use crate::actions::targets::Targets;
 use crate::combat::CombatSet;
-use crate::combat::targets::Targets;
 use crate::navigation::destination::Destination;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::PathWalker;
@@ -82,6 +83,7 @@ impl Orders {
                 .in_set(SimSet::Act)
                 .before(CombatSet::Attack),
         ));
+        schedule.configure_sets(ActionsSet::HoldAtInputs.after(OrdersSet::Orders));
         registry.register_component::<NextThink>();
         registry.register_component::<Resetting>();
         if !world.contains_non_send::<Ctx>() {

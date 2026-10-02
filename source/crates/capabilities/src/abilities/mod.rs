@@ -21,7 +21,7 @@ use crate::actions::purse::Purse;
 use crate::areas::Areas;
 use crate::combat::CombatSet;
 
-use crate::combat::targets::Targets;
+use crate::actions::targets::Targets;
 use crate::deliveries::delivering::Delivering;
 use crate::players::player_resources::PlayerResources;
 use crate::units::dead::Dead;

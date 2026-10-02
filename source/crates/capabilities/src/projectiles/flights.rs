@@ -1,9 +1,9 @@
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, StableId};
 
+use crate::actions::targets::Targets;
 use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::pass_queue::PassQueue;
-use crate::combat::targets::Targets;
 use crate::deliveries::Deliveries;
 use crate::deliveries::delivered::Delivered;
 use crate::projectiles::cast_hits::{CastHit, CastHits};

@@ -10,11 +10,11 @@ use campfire_sim::{
     TickRate,
 };
 
-use crate::actions::Actions;
 use crate::actions::action_book::{ActionBook, RankValues};
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::purse::Purse;
 use crate::actions::weapon::Weapon;
+use crate::actions::{Actions, ActionsSet};
 use crate::combat::assist_window::AssistWindow;
 use crate::combat::combat_bindings::CombatBindings;
 use crate::combat::combat_effect::CombatEffect;
@@ -83,7 +83,6 @@ pub(crate) mod on_death;
 pub(crate) mod pass_queue;
 pub(crate) mod recent_attackers;
 pub(crate) mod respawn;
-pub(crate) mod targets;
 
 /// The random stream an attack's roll draws from, for its attacker in its tick.
 pub(crate) const ROLL_STREAM: &str = "combat.roll";
@@ -135,6 +134,10 @@ impl Combat {
                 .in_set(SimSet::Hit)
                 .after(CombatSet::Strike),
             CombatSet::Die.before(StatsSet::Hold),
+            ActionsSet::Start.in_set(CombatSet::Attack),
+            ActionsSet::HoldAtResolve
+                .after(CombatSet::Damage)
+                .before(CombatSet::Die),
         ));
         Actions::schedule(schedule);
         schedule.add_systems((

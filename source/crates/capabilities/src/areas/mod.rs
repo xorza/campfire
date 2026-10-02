@@ -8,11 +8,11 @@ use campfire_sim::{Keyed, Ordered, Position, SimSet, SimTick, StableId, StateReg
 use crate::actions::action_slots::ActionTarget;
 use crate::areas::area::Area;
 
+use crate::actions::targets::Targets;
 use crate::areas::area_effect::AreaEffect;
 use crate::areas::area_launches::{AreaLaunch, AreaLaunches};
 use crate::areas::area_spec::{AreaSpec, Inside};
 use crate::combat::CombatSet;
-use crate::combat::targets::Targets;
 use crate::deliveries::delivered::Delivered;
 use crate::deliveries::delivering::Delivering;
 use crate::deliveries::delivery_spawner::DeliverySpawner;
