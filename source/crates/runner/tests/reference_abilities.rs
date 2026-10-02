@@ -17,7 +17,7 @@ use campfire_capabilities::{
     Range, RangeField, Ranked, RecentAttackers, Scalar, Scaling, ScriptLimits, SlotKind, Stat,
     StatRule, Stats, Targeting, Team, Units,
 };
-use campfire_capabilities::{Modifiers, ScriptFailures};
+use campfire_capabilities::{Modifiers, ScriptFailure, ScriptFailures};
 use campfire_content::PackagePath;
 use campfire_math::{Num, PlayerSlot, SegmentSeed, Vec3};
 use campfire_package::{AvatarData, PackageDir};
@@ -203,6 +203,7 @@ fn reference_world() -> World {
     let set = CapabilitySet::new(&declared).unwrap();
     set.install(&mut world, &mut schedule, &mut registry, Some(scripts));
     world.add_schedule(schedule);
+    world.insert_non_send(Failed::default());
     let changed = ["move_speed", "armor", "magic_resist"]
         .map(|name| (Stat::named(name).unwrap(), StatRule::default()));
     internals::load_stats(&mut world, &BTreeMap::from(changed), RATE);
@@ -222,7 +223,24 @@ fn tick(world: &mut World, orders: &[Order]) {
         slot: PlayerSlot::new(0),
         payload: &payload,
     });
+    step(world);
+}
+
+/// Every script failure of the ticks `step` ran, in order. `ScriptFailures` keeps only the last
+/// tick's.
+#[derive(Debug, Default)]
+struct Failed(Vec<ScriptFailure>);
+
+/// Runs one tick, and keeps its script failures.
+fn step(world: &mut World) {
     world.run_schedule(SimUpdate);
+    let failures = world.non_send::<ScriptFailures>().get().to_vec();
+    world.non_send_mut::<Failed>().0.extend(failures);
+}
+
+/// Every script failure since the match began.
+fn failures(world: &World) -> &[ScriptFailure] {
+    &world.non_send::<Failed>().0
 }
 
 #[test]
@@ -308,12 +326,12 @@ fn kenshos_twin_cut_hits_twice_on_each_seventh_attack_and_never_answers_itself()
     tick(&mut world, &[attack(blade, dummy)]);
     let mut healths = vec![health(&world, dummy)];
     for _ in 1..=130 {
-        world.run_schedule(SimUpdate);
+        step(&mut world);
         healths.push(health(&world, dummy));
     }
     let at = |tick: usize| healths[tick];
     assert_eq!([at(50), at(60), at(120), at(130)], [380, 340, 220, 180]);
-    assert!(world.non_send::<ScriptFailures>().get().is_empty());
+    assert!(failures(&world).is_empty(), "{:?}", failures(&world));
 }
 
 #[test]
@@ -351,7 +369,7 @@ fn veils_dusk_mark_detonates_once_on_veils_next_damage() {
     tick(&mut world, &[attack(veil_unit, marked)]);
     assert_eq!((health(&world, marked), marks(&world)), (370, false));
     assert_eq!(pool(&world, veil_unit, ENERGY), num(125));
-    assert!(world.non_send::<ScriptFailures>().get().is_empty());
+    assert!(failures(&world).is_empty(), "{:?}", failures(&world));
 }
 
 #[test]
@@ -404,7 +422,7 @@ fn rimes_fan_of_frost_from_its_package_hits_exactly_the_units_in_reach_once_each
     );
     // The cast resolves after its windup of 8 ticks, and the arrows fly 0.5 m a tick for 24.
     for _ in 0..40 {
-        world.run_schedule(SimUpdate);
+        step(&mut world);
     }
     let projectiles = world.resource::<EntityIndex>().iter();
     assert_eq!(
@@ -426,7 +444,7 @@ fn rimes_fan_of_frost_from_its_package_hits_exactly_the_units_in_reach_once_each
     assert_eq!(hit.map(slowed), [true; 4]);
     assert_eq!(missed.map(slowed), [false; 5]);
     assert_eq!(pool(&world, caster, MANA), num(40));
-    assert!(world.non_send::<ScriptFailures>().get().is_empty());
+    assert!(failures(&world).is_empty(), "{:?}", failures(&world));
 }
 
 #[test]
@@ -468,17 +486,17 @@ fn rimes_snow_owl_flies_to_its_point_and_ends_there() {
         }],
     );
     for _ in 1..=15 {
-        world.run_schedule(SimUpdate);
+        step(&mut world);
     }
     let short = Num::from_bits(15 * 7_829_367);
     assert_eq!(short, num(7) - Num::from_bits(7));
     let flying = Position::new(Vec3::new(short, Num::ZERO, Num::ZERO)).unwrap();
     assert_eq!(owls(&world), [flying]);
-    world.run_schedule(SimUpdate);
+    step(&mut world);
     assert_eq!(owls(&world), []);
     // Its `on_end` ran, for its caster, and failed only on `ctx.reveal`, which vision plans.
-    let failures = world.non_send::<ScriptFailures>().get();
-    assert_eq!(failures.len(), 1);
+    let failures = failures(&world);
+    assert_eq!(failures.len(), 1, "{failures:?}");
     assert_eq!(
         (failures[0].unit, failures[0].hook),
         (Some(caster), Hook::OnEnd)
@@ -553,11 +571,11 @@ fn cinders_eruption_from_its_package_erupts_on_the_units_in_reach_after_its_dela
     );
     let units = [center, edge, beyond, burning, ally];
     for _ in 1..27 {
-        world.run_schedule(SimUpdate);
+        step(&mut world);
     }
     assert_eq!(units.map(|unit| health(&world, unit)), [500; 5]);
     assert_eq!(areas(&mut world), 1);
-    world.run_schedule(SimUpdate);
+    step(&mut world);
     // Rank 1 deals 75, and 1.25 × 75 = 93.75 to a unit ablaze: 500 → 406.25. Each unit hit is
     // ablaze after, and the area ends with its eruption.
     assert_eq!(
@@ -568,7 +586,7 @@ fn cinders_eruption_from_its_package_erupts_on_the_units_in_reach_after_its_dela
     assert_eq!(units.map(ablaze), [true, true, false, true, false]);
     assert_eq!(areas(&mut world), 0);
     assert_eq!(pool(&world, caster, MANA), num(30));
-    assert!(world.non_send::<ScriptFailures>().get().is_empty());
+    assert!(failures(&world).is_empty(), "{:?}", failures(&world));
 }
 
 #[test]
@@ -630,22 +648,22 @@ fn veils_smoke_ring_from_its_package_holds_its_modifiers_on_the_units_inside_whi
     assert_eq!(pool(&world, caster, ENERGY), num(20));
     // The near enemy steps out to 4 m: its slow ends in the next tick's Resolve.
     for _ in 1..100 {
-        world.run_schedule(SimUpdate);
+        step(&mut world);
     }
     let entity = world.resource::<EntityIndex>().get(near).unwrap();
     *world.get_mut::<Position>(entity).unwrap() =
         Position::new(Vec3::new(num(4), Num::ZERO, Num::ZERO)).unwrap();
-    world.run_schedule(SimUpdate);
+    step(&mut world);
     let mut left = inside.clone();
     left[1] = vec![];
     assert_eq!(carried(&world), left);
     for _ in 101..240 {
-        world.run_schedule(SimUpdate);
+        step(&mut world);
     }
     assert_eq!(carried(&world), left);
     assert_eq!(areas(&mut world), 1);
-    world.run_schedule(SimUpdate);
+    step(&mut world);
     assert_eq!(carried(&world), [vec![], vec![], vec![], vec![], vec![]]);
     assert_eq!(areas(&mut world), 0);
-    assert!(world.non_send::<ScriptFailures>().get().is_empty());
+    assert!(failures(&world).is_empty(), "{:?}", failures(&world));
 }

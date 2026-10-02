@@ -169,7 +169,16 @@ fn queries_select_living_units_by_filter_and_exact_distance() {
     assert_eq!(find(&mut scene, "enemies:creep:!creep"), []);
     assert_eq!(find(&mut scene, "allies"), [of, ally]);
     assert_eq!(find(&mut scene, "all"), [of, high, east, west, edge, ally]);
-    assert!(far.get() > 0 && dead.get() > 0 && hidden.get() > 0 && guarded.get() > 0);
+    // At 6 m the far one is in, so the radius kept it out; the dead one and the two that are no
+    // target stay out at any radius.
+    let within_six = r#"fn probe(ctx, of) { ctx.find(of, of.pos, 6, "enemies") }"#;
+    let found = Scene::ids(scene.probe(within_six, of).unwrap());
+    assert_eq!(found, [high, east, west, edge, far]);
+    assert!(
+        ![dead, hidden, guarded]
+            .iter()
+            .any(|unit| found.contains(unit))
+    );
     // In space, the high one is √(81 + 9) ≈ 9.49 m away: out of reach, and no longer the nearest.
     scene.world.insert_resource(Metric::Spatial);
     assert_eq!(find(&mut scene, "enemies"), [east, west, edge]);

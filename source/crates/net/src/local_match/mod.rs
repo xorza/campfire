@@ -1,7 +1,7 @@
 use std::path::Path;
 use std::time::Duration;
 
-use bevy_app::{App, PostUpdate, TaskPoolPlugin};
+use bevy_app::{App, First, PostUpdate, TaskPoolPlugin, Update};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::Add;
 use bevy_ecs::observer::On;
@@ -20,6 +20,7 @@ use lightyear::prelude::server::{RawServer, ServerPlugins};
 use lightyear::prelude::{
     Client, Connect, Connected, Link, LinkOf, LinkSystems, Linked, LocalTimelineSync, PeerAddr,
     PredictionManager, ReplicationReceiver, ReplicationSender, RollbackMode, SyncConfig,
+    SyncSystems,
 };
 use lightyear::transport::plugin::TransportSystems;
 
@@ -459,10 +460,15 @@ fn run_in_order(app: &mut App) {
 fn pass_through_delay_lines(app: &mut App) {
     app.add_systems(
         PostUpdate,
-        DelayLine::pass
-            .after(TransportSystems::Send)
-            .before(LinkSystems::Send),
+        (
+            DelayLine::pass
+                .after(TransportSystems::Send)
+                .before(LinkSystems::Send),
+            DelayLine::pin_round_trip.before(SyncSystems::Sync),
+        ),
     );
+    app.add_systems(First, DelayLine::pin_round_trip);
+    app.add_systems(Update, DelayLine::pin_round_trip);
 }
 
 fn keypair(secret: u8) -> Keypair {

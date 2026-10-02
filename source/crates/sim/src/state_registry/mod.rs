@@ -134,8 +134,9 @@ impl StateRegistry {
         }
     }
 
-    /// Restores `snapshot` into `world`, which must hold no sim entities. On an error the world is
-    /// left partly restored and should be discarded.
+    /// Restores `snapshot` into `world`, which must hold no sim entities, and refuses bytes that
+    /// are not the canonical encoding of what they restore. On an error the world is left partly
+    /// restored and should be discarded.
     pub fn restore(&self, snapshot: &[u8], world: &mut World) -> Result<(), SnapshotError> {
         assert!(
             world
@@ -193,6 +194,13 @@ impl StateRegistry {
                 .is_some_and(|allocator| allocator.issued(last_id))
         {
             return Err(SnapshotError::AllocatorBehind);
+        }
+        // Postcard accepts some encodings that are not its own, such as an overlong varint, so
+        // only a second encoding shows that no other bytes restore to this state.
+        let mut canonical = Vec::with_capacity(snapshot.len());
+        self.snapshot(world, &mut canonical);
+        if canonical != snapshot {
+            return Err(SnapshotError::NotCanonical);
         }
         Ok(())
     }

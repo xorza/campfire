@@ -97,6 +97,8 @@ const DAMAGE_KINDS: [&str; 3] = ["physical", "magic", "true"];
 /// The pools the scripts name, the life pool first, as it is until a mode binds one. The mode's
 /// data declares none, so no stat sets their maxima.
 const POOLS: [&str; 2] = ["health", "mana"];
+/// The players' resources the mode declares.
+const RESOURCES: [&str; 2] = ["gold", "gems"];
 const MANA: PoolId = PoolId::new(1).unwrap();
 
 const STATS_3V3: [&str; 9] = [
@@ -457,6 +459,12 @@ fn choices() -> BTreeMap<DeclaredName, ChoiceData> {
     .into()
 }
 
+/// The resource `name` of the mode's `RESOURCES`.
+fn resource(name: &str) -> Option<ResourceId> {
+    let names = RESOURCES.map(|name| DeclaredName::new(name).unwrap());
+    ResourceId::of(&names, name)
+}
+
 fn mode_files() -> ModeFiles {
     let text = |text: &str| ListEntry::Text(text.to_owned());
     ModeFiles {
@@ -516,7 +524,7 @@ fn mode_files() -> ModeFiles {
                 ("hero_xp_base", ModeParam::Value(Scalar::Int(150))),
                 ("hero_xp_per_level", ModeParam::Value(Scalar::Int(25))),
                 ("respawn_base_ms", ModeParam::Value(Scalar::Int(1000))),
-                ("respawn_per_level_ms", ModeParam::Value(Scalar::Int(0))),
+                ("respawn_per_level_ms", ModeParam::Value(Scalar::Int(500))),
             ]
             .map(|(name, param)| (name.to_owned(), param))
             .into(),
@@ -530,7 +538,7 @@ fn mode_files() -> ModeFiles {
                 .map(|name| (Stat::named(name).unwrap(), StatRule::default()))
                 .into(),
             pools: BTreeMap::new(),
-            resources: ["gold", "gems"]
+            resources: RESOURCES
                 .map(|name| DeclaredName::new(name).unwrap())
                 .into(),
             relations: vec![RelationData {
@@ -639,7 +647,7 @@ impl Game {
                 .into(),
             stats: STATS_3V3.map(|name| Stat::named(name).unwrap()).into(),
             pools: POOLS.map(|pool| DeclaredName::new(pool).unwrap()).into(),
-            resources: mode_files().data.resources.as_slice().into(),
+            resources: files.data.resources.as_slice().into(),
         };
         let declared = [
             Capability::Stats,
@@ -1032,7 +1040,7 @@ fn on_level_up(ctx, unit, track, level) {
 fn a_hero_dead_beside_an_enemy_hero_gives_it_experience_and_comes_back() {
     // The 3v3's `on_unit_died` as it is: hero Y, 10 m from hero X, dies to the mode's damage,
     // with no killer. X takes all of Y's 150 + 25 × 1 experience, past level 2's 100, and Y
-    // comes back 1000 ms later, 30 ticks, as the call that gave the experience did not fail.
+    // comes back after 1000 + 500 × 1 ms, as the call that gave the experience did not fail.
     let killer = r#"
 fn on_mode_input(ctx, player, name, value) {
     if name == "hero" {
@@ -1069,9 +1077,17 @@ fn on_mode_input(ctx, player, name, value) {
     };
     assert_eq!(xp(&game), num(175));
     assert_eq!(game.world.get::<Level>(x).unwrap().get(), 2);
-    for _ in 0..30 {
+    // Y died in tick 1, and the mode set its respawn from the end of tick 1, the start of tick
+    // 2: 1500 ms is 15 ticks at 10 a second, so Y is dead through tick 16 and back in tick 17.
+    assert_eq!(
+        game.world.get::<Respawn>(y),
+        Some(&Respawn { at: Tick::new(17) })
+    );
+    for _ in 2..=16 {
         game.tick(&[]);
+        assert!(game.world.get::<Dead>(y).is_some());
     }
+    game.tick(&[]);
     assert!(game.world.get::<Dead>(y).is_none());
 }
 
@@ -1105,7 +1121,7 @@ fn on_mode_input(ctx, player, name, value) {
     game.world
         .entity_mut(producer)
         .insert((pools, slots, queue));
-    let gold = ResourceId::of(&mode_files().data.resources, "gold").unwrap();
+    let gold = resource("gold").unwrap();
     let player = PlayerSlot::new(0);
     game.world
         .resource_mut::<PlayerResources>()
@@ -1302,17 +1318,14 @@ fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
     // not declare fails, as a sum past what an integer holds does.
     let resources = game.world.resource::<PlayerResources>();
     let amount = |slot, name| {
-        let resource = ResourceId::of(&mode_files().data.resources, name).unwrap();
+        let resource = resource(name).unwrap();
         resources.amount(PlayerSlot::new(slot), resource)
     };
     assert_eq!(
         [amount(1, "gold"), amount(1, "gems"), amount(0, "gold")],
         [16, i64::MAX, 0]
     );
-    assert_eq!(
-        ResourceId::of(&mode_files().data.resources, "gems").map(ResourceId::index),
-        Some(1)
-    );
+    assert_eq!(resource("gems").map(ResourceId::index), Some(1));
     assert_eq!(
         game.failures(),
         [
@@ -1839,7 +1852,7 @@ fn probe(ctx, unit) {
     // call.
     let gold = |game: &Game| {
         let resources = game.world.resource::<PlayerResources>();
-        let gold = ResourceId::of(&mode_files().data.resources, "gold").unwrap();
+        let gold = resource("gold").unwrap();
         resources.amount(PlayerSlot::new(0), gold)
     };
     for (at, role) in ScriptRole::ALL.into_iter().enumerate() {

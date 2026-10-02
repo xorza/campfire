@@ -7,31 +7,10 @@ Paths are relative to `source/crates/`. Line numbers are at `c38f0da`. Each item
 ## Summary
 
 - The suite has 316 tests and passes. Assertions are mostly exact, and most expected values have a derivation in a comment. That part is good.
-- The net scenario tests are not deterministic. Lightyear measures the round trip with `Instant::now()`. Under CPU load, 21 of 192 runs failed (group 1).
-- Five tests have a defect that lets a wrong engine pass (group 1).
 - Setup is the main cost. In capabilities, seven module harnesses wrap `TestMatch` and each writes the same dozen helpers again. In abilities, combat, stats and projectiles, 52 % of the test-body lines are setup (group 2).
 - Small helpers are copied across crates: `num()` 23 times, the 30 Hz `RATE` 11 times, `SEED_CHAIN` 7 times, `keypair` 9 times, SplitMix64 5 times (group 3).
 - No test is over 1 s when the machine is idle. The slowest are near 0.5 s by design (group 7).
 - No new dependency is necessary. Group 9 lists the decisions that the style guide does not settle.
-
-## 1. Tests that can pass when the engine is wrong
-
-- [ ] **The net scenarios depend on the wall clock** — `net/src/local_match/mod.rs:100,228-231,407-423`. Lightyear measures the round trip with `Instant::now()` (`lightyear_sync-0.30.1/src/ping/plugin.rs:60,65,89`). The round trip sets the input delay, the reliable resend and the remote timeline. Under oversubscription (48 test processes on 32 threads), the delayed-link scenarios failed 21 of 192 runs:
-  - rollback counts of `[11, 5]` or `[2, 0]` where the test expects `[1, 0]`;
-  - an order not applied (`scenario.rs:167`);
-  - a client that ends at a different position from the server (`scenario.rs:138,299,374`).
-
-  The doc at `mod.rs:100` says "every run repeats exactly", which is false. A scratch copy tried one fix: a system in `First`, `Update` and `PostUpdate.before(SyncSystems::Sync)` sets `Link::stats.{rtt, jitter}` and `PingManager::rtt_estimator_ewma.final_stats` (both `pub`) to `Duration::ZERO`. With the fix, 0 of 400 runs failed under the same load, and no expected value changed. Better: `DelayLine::pin_round_trip` in `delay_line.rs`, with a note that the `=0.30.1` pin keeps the two fields stable. After that, pin the round trip to the link model's own value, and remove the `jitter_margin` workaround at `mod.rs:407-423`. That step needs new derivations of the expected values. Also check that the join order (`play_by_team`) is then fixed.
-- [ ] **"No script failed" sees only the last tick** — `runner/tests/reference_abilities.rs:316,354,429,571,650`. `ScriptFailures` empties each tick (`capabilities/src/scripts/script_failures.rs:6-7`). These asserts run after 40–240 ticks, so a failure in an earlier tick passes. For example, at `:429` the arrows hit at ticks 8–32 and the test checks tick 40. The asserts also print nothing. Better: the harness steps one tick at a time and keeps every failure (`ScriptFailure` is `Clone`), and each test ends with `assert_eq!(arena.failures(), [])`. `match_3v3.rs:73-78` already does this.
-- [ ] **The respawn test derives the wrong tick count and checks a range** — `capabilities/src/mode/tests.rs:1035,1072`. The comment says 1000 ms is 30 ticks, but the mode runs at 10 Hz (`:85`), so it is 10 ticks. The test then steps 30 times and checks that Y lives, which passes for any respawn delay from 0 to 30 ticks. Better: assert `Respawn { at: Tick::new(t + 11) }`, then step tick by tick, so that Y is dead at the last tick before the boundary and alive at it. The test at `:1522-1531` already does this. `respawn_per_level_ms` is 0, so the `per_level × level` term of `DEATHS_3V3` is not tested.
-- [ ] **A refused cast is not checked to spend nothing** — `capabilities/src/abilities/tests.rs:533-548`. The loop of 8 refused casts checks only the enemy's health. A refused cast that paid mana or rage, or that started its cooldown, passes. Better: keep `(mana, rage, ready_at)` for each case and assert that it does not change. Also add the case where the cost is exactly what is left. Today the tests check only the side below the cost.
-- [ ] **Asserts that assert nothing**:
-  - `capabilities/src/units/tests.rs:172`: `assert!(far.get() > 0 && dead.get() > 0 && …)` only keeps bindings in use. Better: a positive control. At radius 6, `far` is found, and `dead`, `hidden` and `guarded` are not.
-  - `sim/src/state_registry/tests.rs:236-245` `corruption_never_panics`: when `restore` gives `Ok`, assert that the world snapshots to the same bytes again. This also shows whether an overlong varint is accepted.
-- [ ] **Latent fixture defects**:
-  - `mode/tests.rs:642`: `Game::start(script, limits, files)` reads `resources` from a new `mode_files()`, not from `files`. Four more sites (`:1108,1305,1313,1842`) build the full fixture again only to read `resources`.
-  - `abilities/tests.rs:263`: `Match::load` loads every action under the name `"lash_out"`. In 11 tests, `strike` has that name too, and `d.ability` reads it (`damage_handle.rs:72`). Better: `load(name, data, source)`.
-  - `stats/tests.rs:461`: the aura test spawns units with a second `IdAllocator::default()`. A later `allocate()` from the world's allocator gives an id that `EntityIndex` already holds.
 
 ## 2. Harnesses
 
@@ -166,7 +145,7 @@ The schedule is a separate field only because `Mode::install` needs it (`mode/te
   The headless fixture goes from about 94 lines to about 25, and `Reference3v3` to about 40. Keep the same key bytes, so that no hash changes.
 - [ ] **An `Arena` for `reference_abilities.rs`** — `reference_world()` (`:170-210`) copies `TestMatch::new`, because `TestMatch` is `#[cfg(test)]`. Its `ScriptLimits` (`:175-180`) are copied from the abilities tests, not from the 3v3 manifest. Each test then loads by hand what `MatchBuild` loads: 7× `compile`, 6× `Actions::load(…, 0, …, 5)`, 8× `load_type`, 4× `bind_spawn` and 5× `load_modifier`, about 52 lines. The `Order { … Action::Slot … }` literal (9 lines) appears 5 times, and `run_schedule` is called by hand 11 times. Better:
   1. Gate `TestMatch` `any(test, feature = "internals")` and export it through `campfire_capabilities::internals`.
-  2. Add an `Arena` with `step`, `steps`, `cast(caster, slot, target)` and `failures()` (see group 1), and `hero(name) -> HeroLoad { actions, modifiers }`. `hero` loads in the order of `MatchBuild::run` (`match_build.rs:86-129`).
+  2. Add an `Arena` with `step`, `steps`, `cast(caster, slot, target)` and `failures()` (as `reference_abilities.rs` keeps them across ticks), and `hero(name) -> HeroLoad { actions, modifiers }`. `hero` loads in the order of `MatchBuild::run` (`match_build.rs:86-129`).
   3. Later, load through `MatchBuild` itself without `Mode::start`.
 
   `every_reference_ability_reads…` (`:98-110`) repeats what `Reference3v3::load()` checks, and its Veil check repeats abilities:1503-1566. Remove it or make it shorter.
@@ -205,6 +184,7 @@ The schedule is a separate field only because `Mode::install` needs it (`mode/te
   ```
 
   This saves about 200 lines. The route scenario (scenario.rs:323-379 + 452-462) goes from 68 lines to about 30, and prototype.rs:107-130 goes from 24 lines to 3.
+- [ ] **The round trip pinned to the link model** — `net/src/local_match/delay_line.rs` pins the measured round trip to zero, and `mod.rs` adds the modeled round trip to the sync margin. Better: pin the round trip to the link model's own value, and remove the `jitter_margin` workaround in `LocalMatch::client`. That step needs new derivations of the expected values. Also check that the join order (`play_by_team`) is then fixed.
 - [ ] **net's `internals` is not like the other crates** — `lib.rs:13` gates `mod local_match` on `feature = "internals"` only, and `lib.rs:34-37` re-exports `LocalMatch`, `MatchSetup` and `LinkModel` at the root. `campfire_log` uses `pub mod internals { pub use … }`. Better: the same facade.
 
 ### 2.6 Protocol and package
@@ -269,7 +249,7 @@ The schedule is a separate field only because `Mode::install` needs it (`mode/te
   - `:159-173`: 20 levels pass and 40 fail. The boundary is `down(32)` ok and `down(33)` err.
   - `:109-111` `is_err()`: pin `Runtime("Too many modules imported")` and `Runtime("Function not found: sleep (i64)…")` / `timestamp ()`.
 - [ ] **package** — `mode_package.rs:316` (`[fight]`) and `:964` (`foes:avatar`) accept any `Content(_)`, and `:194` any `OtherEngine(_)`. Use `read_fails` (`:118`).
-- [ ] **net**, after group 1:
+- [ ] **net**, now that the round trip is pinned:
   - `prototype.rs:104` `rollbacks > 0`: the exact count.
   - `prototype.rs:276` `start() > tick`: `== tick + 30`, which needs one check.
   - `lane.rs:398-399` `0 < lost < full`: derive the strike count.
@@ -434,9 +414,8 @@ These items depend on rules that the style guide does not settle. The harness wo
 
 ## Order of work
 
-1. Group 1: the net round trip pin, the failures across ticks in `reference_abilities`, the respawn test, refused casts, the empty asserts and the fixture defects.
-2. The decisions in group 9, items 1–3.
-3. `TestMatch` as the running harness, with its helpers beside their types (2.1, 2.2). Then the module harnesses become thin wrappers.
-4. `LocalMatch` methods, `HashTrail` and `FixedSession` (2.4, 2.5). `HashTrail` then serves net, runner and verifier.
-5. The exact readers and assertions (5.1), the crate-wide state sweep (group 4), and the delete in group 7.
-6. The cross-checks and boundaries (5.2), the content decoupling (group 6), and layout (group 8).
+1. The decisions in group 9, items 1–3.
+2. `TestMatch` as the running harness, with its helpers beside their types (2.1, 2.2). Then the module harnesses become thin wrappers.
+3. `LocalMatch` methods, `HashTrail` and `FixedSession` (2.4, 2.5). `HashTrail` then serves net, runner and verifier.
+4. The exact readers and assertions (5.1), the crate-wide state sweep (group 4), and the delete in group 7.
+5. The cross-checks and boundaries (5.2), the content decoupling (group 6), and layout (group 8).

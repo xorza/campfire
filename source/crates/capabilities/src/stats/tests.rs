@@ -458,10 +458,9 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     Stats::load_modifier(&mut game.world, 0, "inspired", &data(None), None);
     Stats::load_modifier(&mut game.world, 0, "presence", &data(Some(presence)), None);
     game.world.add_schedule(mem::take(&mut game.schedule));
-    let mut ids = IdAllocator::default();
     let at = |x: i64| Position::new(Vec3::new(num(x), Num::ZERO, Num::ZERO)).unwrap();
-    let mut spawn = |game: &mut TestMatch, x: i64, team: u8| {
-        let id = ids.allocate();
+    let spawn = |game: &mut TestMatch, x: i64, team: u8| {
+        let id = game.world.resource_mut::<IdAllocator>().allocate();
         let team = Team::new(team);
         game.world.spawn((id, at(x), team, Modifiers::default()));
         id

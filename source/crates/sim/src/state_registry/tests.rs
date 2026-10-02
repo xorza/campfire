@@ -233,13 +233,21 @@ fn every_truncation_is_refused() {
 }
 
 #[test]
-fn corruption_never_panics() {
+fn corruption_never_panics_and_what_restores_snapshots_to_the_same_bytes() {
     let bytes = snapshot(&varied_world());
     for at in 0..bytes.len() {
         for flip in [0x01, 0x80, 0xFF] {
             let mut corrupt = bytes.clone();
             corrupt[at] ^= flip;
-            let _outcome = restore(&corrupt);
+            // A flip that restores must be a state of its own: no two byte strings restore to one
+            // state.
+            if let Ok(world) = restore(&corrupt) {
+                assert_eq!(
+                    snapshot(&world),
+                    corrupt,
+                    "byte {at} flipped by {flip:#04x}"
+                );
+            }
         }
     }
 }

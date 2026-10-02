@@ -258,9 +258,10 @@ impl Match {
         Match { world, registry }
     }
 
-    fn load(&mut self, data: &ActionData, source: &str) -> ActionId {
+    /// Loads `data` as the action `name` of package 0, of 5 ranks, with its script `source`.
+    fn load(&mut self, name: &str, data: &ActionData, source: &str) -> ActionId {
         let script = Units::compile(&mut self.world, source).unwrap();
-        Actions::load(&mut self.world, 0, "lash_out", data, Some(script), 5).unwrap()
+        Actions::load(&mut self.world, 0, name, data, Some(script), 5).unwrap()
     }
 
     /// A unit of `team` with 500 health that stays when it dies, and `parts`, with no slots
@@ -392,7 +393,11 @@ impl Match {
 #[test]
 fn damage_of_a_kind_the_mode_does_not_declare_fails_the_cast() {
     let mut game = Match::new();
-    let fire = game.load(&lash_out(), &LASH_OUT.replace(r#""magic""#, r#""fire""#));
+    let fire = game.load(
+        "fire",
+        &lash_out(),
+        &LASH_OUT.replace(r#""magic""#, r#""fire""#),
+    );
     let husk = game.caster(fire, 2);
     let near = game.spawn(1, at(num(3), Num::ZERO, Num::ZERO), ());
     game.cast(husk, ActionTarget::None);
@@ -414,8 +419,8 @@ fn lash_out_hits_every_enemy_within_its_radius_exactly() {
     let mut game = Match::new();
     // Strike's one param name comes first in the frame, so Lash Out's three follow from the
     // second.
-    game.load(&strike(), STRIKE);
-    let lash_out = game.load(&lash_out(), LASH_OUT);
+    game.load("strike", &strike(), STRIKE);
+    let lash_out = game.load("lash_out", &lash_out(), LASH_OUT);
     let husk = game.caster(lash_out, 2);
     let near = game.spawn(1, at(num(3), Num::ZERO, Num::ZERO), ());
     // At exactly 3.5 m: within the radius.
@@ -467,7 +472,7 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
         Capability::Orders,
     ];
     let mut game = Match::with(LIMITS, &declared);
-    let strike = game.load(&strike(), STRIKE);
+    let strike = game.load("strike", &strike(), STRIKE);
     let caster = game.caster(strike, 1);
     let enemy = game.spawn(1, at(num(5), Num::ZERO, Num::ZERO), ());
     // Eleven units whose AI spins, all due in every tick: ten calls fail at the 10 000 limit and
@@ -498,7 +503,7 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
 #[test]
 fn a_cast_passes_its_checks_or_does_nothing() {
     let mut game = Match::new();
-    let strike = game.load(&strike(), STRIKE);
+    let strike = game.load("strike", &strike(), STRIKE);
     let caster = game.caster(strike, 1);
     let mut caster_at = |x: i64, rank: u8, mana: i64, rage: i64| {
         let unit = game.spawn(
@@ -516,6 +521,7 @@ fn a_cast_passes_its_checks_or_does_nothing() {
     let poor = caster_at(2, 1, 5, 20);
     let calm = caster_at(2, 1, 100, 3);
     let spent = caster_at(2, 1, 100, 20);
+    let exact = caster_at(2, 1, 10, 4);
     let entity = game.world.resource::<EntityIndex>().get(spent).unwrap();
     game.world
         .get_mut::<Pools>(entity)
@@ -529,7 +535,14 @@ fn a_cast_passes_its_checks_or_does_nothing() {
 
     // An ally, an untargetable enemy, a unit beyond 5 m, and no target at all are refused; so
     // are a slot not learned, and a cost of 10 mana and 4 rage against 5 mana, 3 rage, or 9
-    // mana left of 100.
+    // mana left of 100. A refused cast spends no mana or rage, and starts no cooldown.
+    let spending = |game: &Match, unit| {
+        (
+            game.pool(unit),
+            game.pool_of(unit, RAGE),
+            game.slot(unit).ready_at,
+        )
+    };
     for (unit, target) in [
         (caster, ActionTarget::Unit(ally)),
         (caster, ActionTarget::Unit(hidden)),
@@ -540,8 +553,10 @@ fn a_cast_passes_its_checks_or_does_nothing() {
         (calm, ActionTarget::Unit(enemy)),
         (spent, ActionTarget::Unit(enemy)),
     ] {
+        let before = spending(&game, unit);
         game.cast(unit, target);
         assert_eq!(game.health(enemy), 500, "{unit:?} at {target:?}");
+        assert_eq!(spending(&game, unit), before, "{unit:?} at {target:?}");
     }
     let healths = [far, ally, hidden].map(|unit| game.health(unit));
     assert_eq!(healths, [500, 500, 500]);
@@ -554,6 +569,10 @@ fn a_cast_passes_its_checks_or_does_nothing() {
     assert_eq!(game.health(enemy), 450);
     assert_eq!((game.pool(caster), game.pool_of(caster, RAGE)), (90, 16));
     assert_eq!(game.slot(caster).ready_at, Tick::new(39));
+    // A cost of exactly what is left is paid: 10 mana and 4 rage of 10 and 4, in tick 9.
+    game.cast(exact, ActionTarget::Unit(enemy));
+    assert_eq!(game.health(enemy), 400);
+    assert_eq!(spending(&game, exact), (0, 0, Tick::new(40)));
 
     // The range counts from the edge of each body: once the unit 6 m off has a body of 1 m, it
     // is within 5 m, and takes 50 in tick 39.
@@ -573,7 +592,7 @@ fn a_cost_in_a_pool_and_a_player_resource_is_checked_and_paid_together() {
     let mut cost = cost("mana", int(10));
     cost.insert(DeclaredName::new("gold").unwrap(), Ranked::One(int(30)));
     let data = ActionData { cost, ..strike() };
-    let strike = game.load(&data, STRIKE);
+    let strike = game.load("strike", &data, STRIKE);
     let caster = game.caster(strike, 1);
     let ownerless = game.spawn(
         0,
@@ -618,7 +637,7 @@ fn a_cast_its_casters_tags_stop_is_kept_and_an_interrupted_one_spends_nothing() 
         windup_ms: Some(Ranked::One(int(100))),
         ..strike()
     };
-    let strike = game.load(&data, STRIKE);
+    let strike = game.load("strike", &data, STRIKE);
     let caster = game.caster(strike, 1);
     let enemy = game.spawn(1, at(num(5), Num::ZERO, Num::ZERO), ());
     let target = ActionTarget::Unit(enemy);
@@ -710,7 +729,7 @@ fn a_failed_script_changes_nothing_and_fails_the_same_way_everywhere() {
         let mut spent = Vec::new();
         for ordered in [true, false] {
             let mut game = Match::new();
-            let ability = game.load(&data, script);
+            let ability = game.load("ability", &data, script);
             let caster = game.caster(ability, 1);
             let enemy = game.spawn(1, at(num(1), Num::ZERO, Num::ZERO), ());
             if ordered {
@@ -757,8 +776,12 @@ fn a_cast_draws_from_its_casters_player_pool() {
             params: BTreeMap::new(),
             ..lash_out()
         };
-        let spin = game.load(&data, "fn on_resolve(ctx, caster, target) { loop {} }");
-        let strike = game.load(&strike(), STRIKE);
+        let spin = game.load(
+            "spin",
+            &data,
+            "fn on_resolve(ctx, caster, target) { loop {} }",
+        );
+        let strike = game.load("strike", &strike(), STRIKE);
         let spinner = game.caster(spin, 1);
         let striker = game.spawn(
             0,
@@ -911,7 +934,7 @@ fn a_unit_target_is_one_its_filter_selects_tag_and_all() {
     let (hero, creep) = (load_type("avatar"), load_type("creep"));
     let mut heroes_only = strike();
     heroes_only.targeting = Targeting::Unit(FilterData::parse("enemies:avatar").unwrap());
-    let strike = game.load(&heroes_only, STRIKE);
+    let strike = game.load("strike", &heroes_only, STRIKE);
     let caster = game.caster(strike, 1);
     let enemy_creep = game.spawn(1, at(num(3), Num::ZERO, Num::ZERO), creep);
     let enemy_hero = game.spawn(1, at(num(4), Num::ZERO, Num::ZERO), hero);
@@ -948,7 +971,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     let mut data = lash_out();
     data.passive_modifier = Some("guard".to_owned());
     data.passive_while_ready = true;
-    let ability = game.load(&data, LASH_OUT);
+    let ability = game.load("lash_out", &data, LASH_OUT);
     let caster = game.caster(ability, 0);
     let entity = game.world.resource::<EntityIndex>().get(caster).unwrap();
     game.world.entity_mut(entity).insert(Modifiers::default());
@@ -1053,7 +1076,7 @@ fn on_resolve(ctx, caster, target) {
     if m.stacks != 1 { throw "a new modifier's handle has one stack"; }
 }
 "#;
-    let ability = game.load(&lash_out(), marker);
+    let ability = game.load("lash_out", &lash_out(), marker);
     let caster = game.caster(ability, 3);
     let entity = game.world.resource::<EntityIndex>().get(caster).unwrap();
     game.world.entity_mut(entity).insert(Modifiers::default());
@@ -1096,7 +1119,7 @@ fn stun_run() -> Vec<(StateHash, bool)> {
     let book = game.world.non_send::<View>().types_mut().tag_book(&effects);
     Units::load_tags(&mut game.world, book);
     let script = r#"fn on_resolve(ctx, caster, target) { ctx.add_modifier(target, "stun", 100); }"#;
-    let strike = game.load(&strike(), script);
+    let strike = game.load("strike", &strike(), script);
     let caster = game.caster(strike, 1);
     let target_type = Units::load_type(&mut game.world, "target", &UnitTypeData::default());
     let parts = (
@@ -1143,7 +1166,7 @@ fn on_resolve(ctx, caster, target) {
     ctx.restore(caster, \"mana\", num(20));
 }
 ";
-    let ability = game.load(&lash_out(), mender);
+    let ability = game.load("lash_out", &lash_out(), mender);
     let caster = game.caster(ability, 1);
     let entity = game.world.resource::<EntityIndex>().get(caster).unwrap();
     let mut pools = game.world.get_mut::<Pools>(entity).unwrap();
@@ -1156,7 +1179,7 @@ fn on_resolve(ctx, caster, target) {
 
     let mut game = Match::new();
     let negative = "fn on_resolve(ctx, caster, target) { ctx.restore(caster, \"mana\", 5); ctx.heal(caster, -1); }";
-    let ability = game.load(&lash_out(), negative);
+    let ability = game.load("lash_out", &lash_out(), negative);
     let caster = game.caster(ability, 1);
     game.cast(caster, ActionTarget::None);
     let refused = game.failures().iter().map(|failure| &failure.error);
@@ -1472,7 +1495,7 @@ fn on_resolve(ctx, caster, target) {
     ctx.add_modifier(target, "mark");
 }
 "#;
-    let ability = game.load(&data, script);
+    let ability = game.load("ability", &data, script);
     let caster = game.caster(ability, 2);
     let entity = game.world.resource::<EntityIndex>().get(caster).unwrap();
     let parts = (caster_type, Level::new(3).unwrap(), UnitStats::default());
@@ -1624,7 +1647,7 @@ fn a_delivery_hook_reads_its_projectile_and_the_unit_its_cast_aimed_at() {
             }
         }
     "#;
-    let ability = game.load(&shot, source);
+    let ability = game.load("shot", &shot, source);
     Actions::bind_spawn(&mut game.world, ability, "bolt");
     let caster = game.caster(ability, 1);
     let target = game.spawn(1, at(num(3), Num::ZERO, Num::ZERO), ());
@@ -1679,7 +1702,7 @@ fn an_area_reaches_the_bodies_within_its_radius_once_at_its_delay_and_ends() {
                 }
             }
         "#;
-        let ability = game.load(&shot, source);
+        let ability = game.load("shot", &shot, source);
         Actions::bind_spawn(&mut game.world, ability, "blast");
         let caster = game.caster(ability, 1);
         // The area lands on (4, 0, 0), of radius 2: a body of no radius 2 m away is inside it and

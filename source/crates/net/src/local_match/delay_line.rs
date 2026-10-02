@@ -1,7 +1,9 @@
+use std::time::Duration;
+
 use bevy_ecs::component::Component;
 use bevy_ecs::system::Query;
 use lightyear::link::SendPayload;
-use lightyear::prelude::Link;
+use lightyear::prelude::{Link, PingManager};
 
 use crate::local_match::link_model::LinkModel;
 
@@ -54,6 +56,23 @@ impl DelayLine {
             let due = line.held.partition_point(|held| held.due <= now);
             for held in line.held.drain(..due) {
                 link.send.push(held.payload);
+            }
+        }
+    }
+
+    /// Sets every link's measured round trip and jitter to zero. Lightyear measures them by the
+    /// wall clock, which a step of a local match hardly takes, so under load they vary from run
+    /// to run and change the input timeline. The `=0.30.1` pin of Lightyear keeps the two fields
+    /// this writes where they are; the modeled round trip reaches the timeline through the sync
+    /// margin instead.
+    pub(crate) fn pin_round_trip(mut links: Query<'_, '_, (&mut Link, Option<&mut PingManager>)>) {
+        for (mut link, ping) in &mut links {
+            link.stats.rtt = Duration::ZERO;
+            link.stats.jitter = Duration::ZERO;
+            if let Some(mut ping) = ping {
+                let stats = &mut ping.rtt_estimator_ewma.final_stats;
+                stats.rtt = Duration::ZERO;
+                stats.jitter = Duration::ZERO;
             }
         }
     }
