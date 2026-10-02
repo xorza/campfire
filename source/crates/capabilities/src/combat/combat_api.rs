@@ -14,6 +14,7 @@ use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::{DataTable, MemberSpec, Status};
+use crate::stats::stats_column::StatsColumn;
 use crate::units::block::Block;
 use crate::units::tag_effect::TagEffect;
 use crate::units::unit::Unit;
@@ -137,7 +138,7 @@ impl CombatApi {
 
     /// Queues a restore of `amount` of `unit`'s pool `name`, a pool the mode declares.
     fn restore(ctx: &Ctx, unit: &Unit, name: &str, amount: Num) -> Checked<()> {
-        let pool = ctx.view().pool_named(name)?;
+        let pool = StatsColumn::pool_named(ctx.view(), name)?;
         CombatApi::mend(ctx, amount, |amount| CombatEffect::Restore {
             unit: unit.id,
             pool,

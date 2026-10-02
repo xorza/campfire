@@ -9,8 +9,6 @@ use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_api::{ApiOwner, MemberSpec};
-use crate::stats::pool_id::PoolId;
-use crate::stats::pools::Pools;
 use crate::units::script_view::{UnitRow, View};
 
 /// A unit as a script holds it, `Unit` in scripts: its values as the view read them.
@@ -49,16 +47,6 @@ impl Unit {
             .expect("a handle's unit is in its view")
     }
 
-    /// What `read` gives of its pool `name`; an error for a pool the mode does not declare, or
-    /// one the unit does not have.
-    fn pool(&self, name: &str, read: fn(&Pools, PoolId) -> Option<Num>) -> Checked<Num> {
-        let pool = self.view.pool_named(name)?;
-        self.row()
-            .pools
-            .and_then(|pools| read(&pools, pool))
-            .ok_or_else(|| ApiError::NoPool.fail().into())
-    }
-
     /// The `Unit` handle's fields and methods, and `Pos` with `distance_to` and `within`.
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         Unit::register_fields(api);
@@ -86,13 +74,6 @@ impl Unit {
             .bind(
                 field("params", "its unit type's params, unresolved"),
                 |unit: &mut Unit| UnitParams(unit.clone()),
-            )
-            .bind(
-                field("level", "its level").capability(Capability::Stats),
-                |unit: &mut Unit| -> Checked<INT> {
-                    let level = unit.row().level.ok_or_else(|| ApiError::NoStats.fail())?;
-                    Ok(INT::from(level))
-                },
             )
             .bind(field("team", "its team's name"), |unit: &mut Unit| {
                 unit.view.team_name(unit.row().team)
@@ -129,24 +110,6 @@ impl Unit {
             MemberSpec::method(ApiOwner::Unit, name, signature, description)
         };
         api.bind(
-            method("stat", "(name)", "its value of a stat the mode declares")
-                .name(0, NameKind::Stat)
-                .capability(Capability::Stats),
-            |unit: &mut Unit, name: &str| unit.view.stat_named(&unit.row(), name),
-        )
-        .bind(
-            method("pool", "(name)", "the current amount of its pool `name`")
-                .name(0, NameKind::Pool)
-                .capability(Capability::Stats),
-            |unit: &mut Unit, name: &str| unit.pool(name, Pools::current),
-        )
-        .bind(
-            method("pool_max", "(name)", "the maximum of its pool `name`")
-                .name(0, NameKind::Pool)
-                .capability(Capability::Stats),
-            |unit: &mut Unit, name: &str| unit.pool(name, Pools::max),
-        )
-        .bind(
             method(
                 "has_tag",
                 "(tag)",
@@ -156,19 +119,6 @@ impl Unit {
             |unit: &mut Unit, name: &str| -> Checked<bool> {
                 let tag = unit.view.tag_named(name).map_err(ApiError::fail)?;
                 Ok(unit.row().tags.tags.contains(tag))
-            },
-        )
-        .bind(
-            method(
-                "has_modifier",
-                "(id)",
-                "whether it carries the modifier of the script's package",
-            )
-            .name(0, NameKind::Modifier)
-            .capability(Capability::Stats),
-            |call: NativeCallContext<'_>, unit: &mut Unit, id: &str| {
-                let package = Ctx::of_call(&call).frame().package();
-                unit.view.has_modifier(&unit.row(), package, id)
             },
         )
         .bind(

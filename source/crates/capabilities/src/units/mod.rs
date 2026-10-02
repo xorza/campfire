@@ -9,7 +9,6 @@ use crate::scripts::ctx::Ctx;
 use crate::scripts::script_book::ScriptBook;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
-use crate::stats::param_book::ParamBook;
 use crate::units::body::Body;
 use crate::units::owner::Owner;
 use crate::units::relations::Relations;
@@ -95,7 +94,6 @@ impl Units {
         let Some(budgets) = budgets else {
             world.insert_non_send(view);
             world.insert_resource(ScriptBook::default());
-            world.insert_resource(ParamBook::default());
             return;
         };
         let ctx = Ctx::new(view.clone());
@@ -106,7 +104,6 @@ impl Units {
         world.insert_non_send(view);
         world.insert_non_send(host);
         world.insert_resource(ScriptBook::default());
-        world.insert_resource(ParamBook::default());
         world.insert_non_send(ScriptFailures::default());
         world.insert_resource(budgets);
         schedule.add_systems(
@@ -142,6 +139,7 @@ fn begin_tick(
 
 #[cfg(test)]
 pub(crate) mod internals {
+    use crate::stats::stats_column::StatsColumn;
     use std::sync::Arc;
 
     use crate::units::Units;
@@ -169,7 +167,7 @@ pub(crate) mod internals {
             };
             let view = world.non_send::<View>();
             view.set_mode_names(&names(damage_kinds), names(resources));
-            view.set_pool_names(names(pools));
+            StatsColumn::share_pool_names(view, names(pools));
         }
 
         /// Declares every tag the match's packages name, in their order, after the engine's tags,

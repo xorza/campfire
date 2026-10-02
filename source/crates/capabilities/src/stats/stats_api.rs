@@ -1,5 +1,5 @@
 use campfire_math::Ticks;
-use campfire_script::rhai::INT;
+use campfire_script::rhai::{INT, NativeCallContext};
 use campfire_sim::Capability;
 
 use crate::scripts::api_builder::ApiBuilder;
@@ -8,9 +8,11 @@ use crate::scripts::ctx::Ctx;
 use crate::scripts::error::Checked;
 use crate::scripts::hook::Hook;
 use crate::scripts::name_kind::NameKind;
-use crate::scripts::script_api::{DataTable, MemberSpec, Status};
+use crate::scripts::script_api::{ApiOwner, DataTable, MemberSpec, Status};
 use crate::stats::modifier_effect::ModifierEffect;
 use crate::stats::modifier_handle::ModifierHandle;
+use crate::stats::pools::Pools;
+use crate::stats::stats_column::StatsColumn;
 use crate::units::tag_effect::TagEffect;
 use crate::units::unit::Unit;
 
@@ -20,8 +22,60 @@ use crate::units::unit::Unit;
 pub(crate) struct StatsApi;
 
 impl StatsApi {
+    /// What a unit's stats give it: its level, its stats, its pools and the modifiers it
+    /// carries.
+    fn register_unit(api: &mut ApiBuilder<'_>) {
+        let field = |name, description| {
+            MemberSpec::field(ApiOwner::Unit, name, description).capability(Capability::Stats)
+        };
+        let method = |name, signature, description| {
+            MemberSpec::method(ApiOwner::Unit, name, signature, description)
+                .capability(Capability::Stats)
+        };
+        api.bind(
+            field("level", "its level"),
+            |unit: &mut Unit| -> Checked<INT> {
+                let level = StatsColumn::level(unit.view(), unit.row_index())?;
+                Ok(INT::from(level))
+            },
+        )
+        .bind(
+            method("stat", "(name)", "its value of a stat the mode declares")
+                .name(0, NameKind::Stat),
+            |unit: &mut Unit, name: &str| {
+                StatsColumn::stat_named(unit.view(), unit.row_index(), name)
+            },
+        )
+        .bind(
+            method("pool", "(name)", "the current amount of its pool `name`")
+                .name(0, NameKind::Pool),
+            |unit: &mut Unit, name: &str| {
+                StatsColumn::pool(unit.view(), unit.row_index(), name, Pools::current)
+            },
+        )
+        .bind(
+            method("pool_max", "(name)", "the maximum of its pool `name`").name(0, NameKind::Pool),
+            |unit: &mut Unit, name: &str| {
+                StatsColumn::pool(unit.view(), unit.row_index(), name, Pools::max)
+            },
+        )
+        .bind(
+            method(
+                "has_modifier",
+                "(id)",
+                "whether it carries the modifier of the script's package",
+            )
+            .name(0, NameKind::Modifier),
+            |call: NativeCallContext<'_>, unit: &mut Unit, id: &str| {
+                let package = Ctx::of_call(&call).frame().package();
+                StatsColumn::has_modifier(unit.view(), unit.row_index(), package, id)
+            },
+        );
+    }
+
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         ModifierHandle::register(api);
+        StatsApi::register_unit(api);
         let call = |name, signature, description| {
             MemberSpec::call(name, signature, description).capability(Capability::Stats)
         };
@@ -92,7 +146,7 @@ impl StatsApi {
     /// Queues modifier `id` of the call's package for `player`, one of the session's.
     fn add_player_modifier(ctx: &Ctx, player: INT, id: &str) -> Checked<()> {
         let player = ctx.view().player(player)?;
-        let id = ctx.view().modifier_named(ctx.frame().package(), id)?;
+        let id = StatsColumn::modifier_named(ctx.view(), ctx.frame().package(), id)?;
         ctx.queue(ModifierEffect::AddPlayer { player, id })
     }
 
@@ -104,12 +158,11 @@ impl StatsApi {
         id: &str,
         duration: Option<Ticks>,
     ) -> Checked<ModifierHandle> {
-        let id = ctx.view().modifier_named(ctx.frame().package(), id)?;
+        let id = StatsColumn::modifier_named(ctx.view(), ctx.frame().package(), id)?;
         let mut frame = ctx.write()?;
         let source = frame.acting();
-        let handle = ctx
-            .view()
-            .applied_handle(&mut frame.handles, target.id, id, source);
+        let handle =
+            StatsColumn::applied_handle(ctx.view(), &mut frame.handles, target.id, id, source);
         frame.effects.push(ModifierEffect::Add {
             target: target.id,
             id,

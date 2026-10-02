@@ -344,6 +344,7 @@ pub(crate) mod internals {
     use crate::stats::Stats;
     use crate::stats::param_book::ParamBook;
     use crate::stats::pool_id::PoolId;
+    use crate::stats::stats_column::StatsColumn;
     use crate::units::action_id::ActionId;
     use crate::units::modifier_id::ModifierId;
     use crate::units::script_view::View;
@@ -400,8 +401,7 @@ pub(crate) mod internals {
         }
 
         fn pool(&self, name: &DeclaredName) -> PoolId {
-            self.view
-                .pool_id_named(name.as_str())
+            StatsColumn::pool_id_named(self.view, name.as_str())
                 .expect("the load checked an effect's pool")
         }
 

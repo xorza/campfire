@@ -15,6 +15,7 @@ use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifiers::Modifiers;
+use crate::stats::stats_column::StatsColumn;
 use crate::units::modifier_id::ModifierId;
 use crate::units::owner::Owner;
 use crate::units::tag_book::TagBook;
@@ -169,7 +170,8 @@ impl ModifierHooks {
         let script = entry
             .script
             .expect("a modifier whose script defines a hook has one");
-        let handle = self.ctx.view().held_handle(
+        let handle = StatsColumn::held_handle(
+            self.ctx.view(),
             carrier,
             heard.id,
             heard.source,

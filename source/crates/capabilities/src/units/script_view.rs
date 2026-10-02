@@ -1,6 +1,5 @@
 use std::cell::RefCell;
 use std::fmt;
-use std::ops::Range;
 use std::rc::Rc;
 use std::sync::Arc;
 
@@ -18,17 +17,11 @@ use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_api::MemberSpec;
 use crate::scripts::script_consts::ScriptConsts;
-use crate::scripts::state_value::StateValue;
-use crate::stats::modifier_book::ModifierBook;
-use crate::stats::modifier_handle::ModifierHandle;
-use crate::stats::pool_id::PoolId;
-use crate::stats::pools::Pools;
 use crate::units::block::Block;
 use crate::units::body::Body;
 use crate::units::engine_tag::EngineTag;
 use crate::units::filter::Filter;
 use crate::units::living_unit::LivingUnit;
-use crate::units::modifier_id::ModifierId;
 use crate::units::owner::Owner;
 use crate::units::path_id::PathId;
 use crate::units::recent_attack::RecentAttack;
@@ -50,7 +43,6 @@ use crate::values::bounds::Bounds;
 use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
 use crate::values::metric::Metric;
-use crate::values::stat::Stat;
 
 /// What scripts see: the match's unit types, and its units, those with a team, as the running
 /// phase of the tick began. The units are read again before each phase that runs
@@ -77,20 +69,10 @@ pub(crate) struct ScriptView {
     bounds: Bounds,
     /// The recent attacks on each unit, one run per unit.
     attacks: Vec<RecentAttack>,
-    /// The stats the mode declares, in order, and each unit's values of them, one run per unit.
-    stat_names: Arc<[Stat]>,
-    stats: Vec<Num>,
-    /// The pools the mode declares, by pool id.
-    pool_names: Arc<[DeclaredName]>,
     /// The players' resources the mode declares, by resource id.
     resource_names: Arc<[DeclaredName]>,
     /// What each capability above the core reads of the units, and its getters read besides.
     columns: ViewColumns,
-    /// Every modifier, by id, the modifiers each unit carries, one run per unit, and their
-    /// script state, one run per modifier.
-    modifier_book: ModifierBook,
-    modifiers: Vec<ModifierRow>,
-    modifier_state: Vec<StateValue>,
 }
 
 /// A unit as the view read it.
@@ -112,9 +94,6 @@ pub(crate) struct UnitRow {
     pub(crate) stays: bool,
     /// The path it walks or stands on; `navigation` fills it.
     pub(crate) path: Option<PathId>,
-    /// Its level and pools; `stats` fills them, and its run of stats.
-    pub(crate) level: Option<u32>,
-    pub(crate) pools: Option<Pools>,
     /// The teams that see it; `vision` fills it, and without vision every team does.
     pub(crate) seen_by: TeamSet,
     /// Its tags and their effects, as the core derives them.
@@ -122,22 +101,6 @@ pub(crate) struct UnitRow {
     /// Its run of recent attacks, from `attacks_start` to `attacks_end`.
     attacks_start: u32,
     attacks_end: u32,
-    /// Its run of stats, in the order of the view's stat names, empty for a unit with none.
-    stats_start: u32,
-    stats_end: u32,
-    /// Its run of modifiers, by id, then source.
-    modifiers_start: u32,
-    modifiers_end: u32,
-}
-
-/// A modifier a unit carries, as the view read it: which, from whom, its stacks, and its run of
-/// script state.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ModifierRow {
-    pub(crate) id: ModifierId,
-    pub(crate) source: Option<StableId>,
-    pub(crate) stacks: u32,
-    pub(crate) state: Range<u32>,
 }
 
 /// Fills the fields of a unit's row that a capability above the core holds.
@@ -149,9 +112,6 @@ pub(crate) type RowSource = fn(&EntityRef<'_>, &mut RowFill<'_>);
 pub(crate) struct RowFill<'a> {
     pub(crate) row: &'a mut UnitRow,
     attacks: &'a mut Vec<RecentAttack>,
-    stats: &'a mut Vec<Num>,
-    modifiers: &'a mut Vec<ModifierRow>,
-    modifier_state: &'a mut Vec<StateValue>,
     columns: &'a mut ViewColumns,
 }
 
@@ -168,30 +128,6 @@ impl RowFill<'_> {
         self.columns
             .get_mut()
             .expect("a source fills the column its capability added")
-    }
-
-    /// Adds `instance` to the row's run of modifiers, which the caller adds in order.
-    pub(crate) fn modified(
-        &mut self,
-        id: ModifierId,
-        source: Option<StableId>,
-        stacks: u32,
-        state: &[StateValue],
-    ) {
-        let start = u32::try_from(self.modifier_state.len()).expect("state fits u32");
-        self.modifier_state.extend_from_slice(state);
-        let end = u32::try_from(self.modifier_state.len()).expect("state fits u32");
-        self.modifiers.push(ModifierRow {
-            id,
-            source,
-            stacks,
-            state: start..end,
-        });
-    }
-
-    /// Adds `stats`, in the order of the view's stat names, as the row's run of stats.
-    pub(crate) fn stated(&mut self, stats: &[Num]) {
-        self.stats.extend_from_slice(stats);
     }
 
     /// Adds `attacks` to the row's run of recent attacks.
@@ -213,17 +149,12 @@ impl ScriptView {
         self.units.clear();
         self.columns.clear();
         self.attacks.clear();
-        self.stats.clear();
-        self.modifiers.clear();
-        self.modifier_state.clear();
         for (id, entity) in world.resource::<EntityIndex>().iter() {
             let unit = world.entity(entity);
             let (Some(&pos), Some(&team)) = (unit.get::<Position>(), unit.get::<Team>()) else {
                 continue;
             };
             let start = u32::try_from(self.attacks.len()).expect("attacks fit u32");
-            let stats_start = u32::try_from(self.stats.len()).expect("stats fit u32");
-            let modifiers_start = u32::try_from(self.modifiers.len()).expect("modifiers fit u32");
             let mut row = UnitRow {
                 id,
                 pos,
@@ -235,31 +166,20 @@ impl ScriptView {
                 unit_type: unit.get::<UnitType>().copied(),
                 owner: unit.get::<Owner>().map(|owner| owner.slot()),
                 path: None,
-                level: None,
-                pools: None,
                 seen_by: TeamSet::ALL,
                 tags: unit.get::<UnitTags>().copied().unwrap_or_default(),
                 attacks_start: start,
                 attacks_end: start,
-                stats_start,
-                stats_end: stats_start,
-                modifiers_start,
-                modifiers_end: modifiers_start,
             };
             let mut fill = RowFill {
                 row: &mut row,
                 attacks: &mut self.attacks,
-                stats: &mut self.stats,
-                modifiers: &mut self.modifiers,
-                modifier_state: &mut self.modifier_state,
                 columns: &mut self.columns,
             };
             for source in &self.sources {
                 source(&unit, &mut fill);
             }
             row.attacks_end = u32::try_from(self.attacks.len()).expect("attacks fit u32");
-            row.stats_end = u32::try_from(self.stats.len()).expect("stats fit u32");
-            row.modifiers_end = u32::try_from(self.modifiers.len()).expect("modifiers fit u32");
             self.units.push(row);
         }
         debug_assert!(
@@ -304,14 +224,8 @@ impl View {
             metric: Metric::default(),
             bounds: Bounds::WORLD,
             attacks: Vec::new(),
-            stat_names: Arc::from([]),
-            pool_names: Arc::from([]),
             resource_names: Arc::from([]),
             columns: ViewColumns::default(),
-            stats: Vec::new(),
-            modifier_book: ModifierBook::default(),
-            modifiers: Vec::new(),
-            modifier_state: Vec::new(),
         })))
     }
 
@@ -375,130 +289,9 @@ impl View {
         view.consts.set_unit_types(view.types.names());
     }
 
-    /// Shares the match's modifiers, as the load built them.
-    pub(crate) fn set_modifiers(&self, book: ModifierBook) {
-        self.0.borrow_mut().modifier_book = book;
-    }
-
-    /// The modifier `name` of `package`; an error when it declares none.
-    pub(crate) fn modifier_named(&self, package: u16, name: &str) -> Checked<ModifierId> {
-        let found = self.0.borrow().modifier_book.named(package, name);
-        Ok(found.ok_or_else(|| ApiError::UnknownModifier.fail())?)
-    }
-
-    /// Whether the unit of `row` carries the modifier `name` of `package`.
-    pub(crate) fn has_modifier(&self, row: &UnitRow, package: u16, name: &str) -> Checked<bool> {
-        let id = self.modifier_named(package, name)?;
-        let view = self.0.borrow();
-        let run = &view.modifiers[row.modifiers_start as usize..row.modifiers_end as usize];
-        Ok(run.iter().any(|modifier| modifier.id == id))
-    }
-
-    /// The handle of the instance of `id` from `source` on `carrier` that an application in the
-    /// running call adds or applies again, as the call sees it: a new one's one stack and first
-    /// state, or a held one's, a stack more when it stacks, up to its limit. An instance the call
-    /// took a handle to before, in `handles`, keeps that handle, so the call sees one instance
-    /// once; one it removed is new again.
-    pub(crate) fn applied_handle(
-        &self,
-        handles: &mut Vec<ModifierHandle>,
-        carrier: StableId,
-        id: ModifierId,
-        source: Option<StableId>,
-    ) -> ModifierHandle {
-        let view = self.0.borrow();
-        let spec = &view.modifier_book.get(id).spec;
-        if let Some(handle) = handles.iter().find(|handle| handle.is(carrier, id, source)) {
-            let mut data = handle.data();
-            if data.removed {
-                data.removed = false;
-                data.written = false;
-                data.stacks = 1;
-                data.state.clone_from_slice(&spec.initial);
-            } else {
-                data.stacks = spec.reapply.stacks(data.stacks, spec.max_stacks);
-            }
-            return handle.clone();
-        }
-        let held = view.row(carrier).and_then(|row| {
-            let run = &view.modifiers[row.modifiers_start as usize..row.modifiers_end as usize];
-            run.iter()
-                .find(|modifier| modifier.id == id && modifier.source == source)
-        });
-        let (stacks, state) = match held {
-            Some(held) => {
-                let state =
-                    &view.modifier_state[held.state.start as usize..held.state.end as usize];
-                let stacks = spec.reapply.stacks(held.stacks, spec.max_stacks);
-                (stacks, state.to_vec())
-            }
-            None => (1, spec.initial.to_vec()),
-        };
-        drop(view);
-        let handle = self.held_handle(carrier, id, source, stacks, state);
-        handles.push(handle.clone());
-        handle
-    }
-
-    /// The handle of `carrier`'s instance of `id` from `source`, as a call sees it: `stacks`
-    /// and `state`.
-    pub(crate) fn held_handle(
-        &self,
-        carrier: StableId,
-        id: ModifierId,
-        source: Option<StableId>,
-        stacks: u32,
-        state: Vec<StateValue>,
-    ) -> ModifierHandle {
-        let fields = Arc::clone(&self.0.borrow().modifier_book.get(id).spec.fields);
-        ModifierHandle::new(carrier, id, source, stacks, state, fields, self.clone())
-    }
-
-    /// Sets the stats the mode declares, in the order units' runs of stats hold them.
-    pub(crate) fn set_stat_names(&self, names: Arc<[Stat]>) {
-        self.0.borrow_mut().stat_names = names;
-    }
-
     /// How `of` regards `other`, as the units were read.
     pub(crate) fn attitude(&self, of: Team, other: Team) -> Attitude {
         self.0.borrow().relations.between(of, other)
-    }
-
-    /// The value of stat `name` of `row`; an error for a stat the mode does not declare, or a
-    /// unit with no stats.
-    pub(crate) fn stat_named(&self, row: &UnitRow, name: &str) -> Checked<Num> {
-        let view = self.0.borrow();
-        let at = view
-            .stat_names
-            .binary_search_by(|stat| stat.order_to(name))
-            .ok()
-            .ok_or_else(|| ApiError::UnknownStat.fail())?;
-        let run = &view.stats[row.stats_start as usize..row.stats_end as usize];
-        run.get(at)
-            .copied()
-            .ok_or_else(|| ApiError::NoStats.fail().into())
-    }
-
-    /// Sets the pools the mode declares, by pool id.
-    pub(crate) fn set_pool_names(&self, names: Arc<[DeclaredName]>) {
-        self.0.borrow_mut().pool_names = names;
-    }
-
-    /// The pool `name`; an error for one the mode does not declare.
-    pub(crate) fn pool_named(&self, name: &str) -> Checked<PoolId> {
-        self.pool_id_named(name)
-            .ok_or_else(|| ApiError::UnknownPool.fail().into())
-    }
-
-    /// The pool `name`; `None` for one the mode does not declare.
-    pub(crate) fn pool_id_named(&self, name: &str) -> Option<PoolId> {
-        let view = self.0.borrow();
-        let at = view
-            .pool_names
-            .iter()
-            .position(|pool| pool.as_str() == name)?;
-        let pool = u8::try_from(at).ok().and_then(PoolId::new);
-        Some(pool.expect("the load keeps the pools within the limit"))
     }
 
     /// The player resource `name`; `None` for one the mode does not declare.
@@ -788,6 +581,7 @@ impl fmt::Debug for View {
 
 #[cfg(test)]
 pub(crate) mod internals {
+    use crate::stats::stats_column::StatsColumn;
     use std::cell::RefMut;
 
     use crate::actions::action_data::CostTarget;
@@ -817,14 +611,14 @@ pub(crate) mod internals {
         /// The place of `stat` among the stats the mode declares; `None` when it does not
         /// declare it.
         pub(crate) fn stat_index(&self, stat: &Stat) -> Option<StatId> {
-            let at = self.0.borrow().stat_names.binary_search(stat).ok()?;
-            Some(StatId::new(at))
+            self.column(|column: &StatsColumn| column.stat_index(stat))
+                .flatten()
         }
 
         /// What a cost named `name` takes from: a pool, or else a player resource; `None` for
         /// a name the mode declares neither as.
         pub(crate) fn cost_target(&self, name: &str) -> Option<CostTarget> {
-            let pool = self.pool_id_named(name).map(CostTarget::Pool);
+            let pool = StatsColumn::pool_id_named(self, name).map(CostTarget::Pool);
             pool.or_else(|| self.resource_named(name).map(CostTarget::Resource))
         }
     }

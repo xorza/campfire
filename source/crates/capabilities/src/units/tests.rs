@@ -21,6 +21,7 @@ use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::level::Level;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
+use crate::stats::stats_column::StatsColumn;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::block::Block;
 use crate::units::dead::Dead;
@@ -389,10 +390,7 @@ fn a_handle_reads_its_units_level_pools_and_stats() {
     // Level 3, with armor 25 and health 10 among the mode's stats; its health pool of 10, 4
     // taken, and no mana pool. One unit has a pool and no stats, one neither.
     let names = ["armor", "health"].map(|name| Stat::named(name).unwrap());
-    scene
-        .world
-        .non_send::<View>()
-        .set_stat_names(Arc::from(names));
+    StatsColumn::share_stat_names(scene.world.non_send::<View>(), Arc::from(names));
     let mut stats = UnitStats::default();
     stats.refill().extend([num(25), num(10)]);
     let of = scene.unit(at(0, 0, 0), 0, Level::new(3).unwrap());

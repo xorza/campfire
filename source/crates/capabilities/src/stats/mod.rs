@@ -28,6 +28,7 @@ use crate::stats::pool_book::PoolBook;
 use crate::stats::pools::Pools;
 use crate::stats::refresh_scratch::{RefreshScratch, Refreshing};
 use crate::stats::stat_book::StatBook;
+use crate::stats::stats_column::StatsColumn;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::dead::Dead;
 use crate::units::modifier_id::ModifierId;
@@ -76,6 +77,7 @@ pub(crate) mod stat_op;
 pub(crate) mod stat_rule;
 pub(crate) mod stat_totals;
 pub(crate) mod stats_api;
+pub(crate) mod stats_column;
 pub(crate) mod stats_data;
 pub(crate) mod unit_stats;
 
@@ -103,9 +105,11 @@ impl Stats {
     /// loads none, nothing changes.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         if let Some(view) = world.get_non_send::<View>() {
+            view.add_column(StatsColumn::default());
             view.add_source(fill_row);
         }
         world.insert_resource(ModifierBook::default());
+        world.insert_resource(ParamBook::default());
         world.insert_resource(PlayerModifiers::default());
         world.insert_resource(HeldModifiers::default());
         registry.register_resource::<PlayerModifiers>();
@@ -144,8 +148,8 @@ impl Stats {
     /// Gives the match the mode's stat book and pool book, whose names its scripts read.
     pub(crate) fn load(world: &mut World, book: StatBook, pools: PoolBook) {
         let view = world.non_send::<View>();
-        view.set_stat_names(book.names());
-        view.set_pool_names(pools.names());
+        StatsColumn::share_stat_names(view, book.names());
+        StatsColumn::share_pool_names(view, pools.names());
         world.insert_resource(book);
         world.insert_resource(pools);
     }
@@ -394,25 +398,15 @@ fn apply_held(
     }
 }
 
-/// Fills a row of the script view with the unit's level, stats and modifiers.
+/// Adds the unit's level, pools, stats and modifiers to the stats' column of the script view.
 fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
-    fill.row.level = unit.get::<Level>().map(|level| level.get());
-    fill.row.pools = unit.get::<Pools>().copied();
-    if let Some(stats) = unit.get::<UnitStats>() {
-        fill.stated(stats.values());
-    }
-    for instance in unit
-        .get::<Modifiers>()
-        .into_iter()
-        .flat_map(Modifiers::iter)
-    {
-        fill.modified(
-            instance.id,
-            instance.source,
-            instance.stacks,
-            &instance.state,
-        );
-    }
+    let stats = unit.get::<UnitStats>().map_or(&[][..], UnitStats::values);
+    fill.column::<StatsColumn>().push(
+        unit.get::<Level>().map(|level| level.get()),
+        unit.get::<Pools>().copied(),
+        stats,
+        unit.get::<Modifiers>(),
+    );
 }
 
 /// Gives each unit of a type that lacks them the parts its stats and tags derive into, which a
@@ -656,6 +650,7 @@ pub(crate) mod loads {
     use crate::stats::pool_book::PoolBook;
     use crate::stats::stat_book::StatBook;
     use crate::stats::stat_rule::StatRule;
+    use crate::stats::stats_column::StatsColumn;
     use crate::units::script_view::View;
     use crate::values::declared_name::DeclaredName;
     use crate::values::param::Param;
@@ -696,7 +691,7 @@ pub(crate) mod loads {
             let id = book
                 .named(package, name.as_str())
                 .expect("the modifier loaded");
-            world.non_send::<View>().set_modifiers(book.clone());
+            StatsColumn::share_modifiers(world.non_send::<View>(), book.clone());
             let places = StatBook::places(world, data.params.values().flat_map(Param::stats));
             ParamBook::load_modifier(world, id, &data.params, |stat| places[stat]);
         }
@@ -704,7 +699,7 @@ pub(crate) mod loads {
         /// Gives a match with no mode the stat book `book`, with no pool stats; the pools its
         /// scripts name stay named.
         pub(crate) fn load_book(world: &mut World, book: StatBook) {
-            world.non_send::<View>().set_stat_names(book.names());
+            StatsColumn::share_stat_names(world.non_send::<View>(), book.names());
             world.insert_resource(book);
             world.insert_resource(PoolBook::default());
         }
