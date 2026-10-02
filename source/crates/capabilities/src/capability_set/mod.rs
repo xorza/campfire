@@ -597,7 +597,9 @@ mod tests {
         let src = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src"));
         let mut found = Vec::new();
         production(src, &mut |path, code| {
-            let file = path.strip_prefix(src).unwrap().to_str().unwrap().to_owned();
+            let parts = path.strip_prefix(src).unwrap().iter();
+            let parts: Vec<&str> = parts.map(|part| part.to_str().unwrap()).collect();
+            let file = parts.join("/");
             for line in code.lines() {
                 if line.trim_start().starts_with("//") {
                     continue;
