@@ -2047,10 +2047,6 @@ version = "0.1.0"
 [[package]]
 name = "campfire-identity"
 version = "0.1.0"
-dependencies = [
- "campfire-protocol",
- "nostr",
-]
 
 [[package]]
 name = "campfire-lan-check"

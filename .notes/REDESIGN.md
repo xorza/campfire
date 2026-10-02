@@ -319,7 +319,6 @@ Track I:  H4      F3 after unit script state
 - **R§12:**
   - batch rebuilds: H4;
   - entity-index walks: B2;
-  - `RecentAttackers`: J;
   - client gauges: J;
   - commands parsed twice: J;
   - small scans: J.
@@ -331,10 +330,7 @@ Track I:  H4      F3 after unit script state
   - visibility: J;
   - tuple return and arguments: D4 (`CallStart`), J;
   - small simplifications: J;
-  - hidden rule: J (stats.md);
   - server exit code: B4;
-  - `RUST_LOG`: J;
-  - `identity` crate: J;
   - script fact lists: C4.
 
 ### TEST-REVIEW.md

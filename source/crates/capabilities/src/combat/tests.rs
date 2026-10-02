@@ -206,6 +206,19 @@ fn an_attack_winds_up_and_strikes_each_period() {
     assert_eq!(recent.iter().collect::<Vec<_>>(), [attack(fighter, 4)]);
     recent.record(fighter, Tick::new(6), index);
     assert_eq!(recent.iter().collect::<Vec<_>>(), [attack(fighter, 6)]);
+    // One that despawned stays while known attackers strike again, and goes when a new one
+    // comes: the list never outgrows the units of the match.
+    let held = |attacks: &[RecentAttack]| {
+        let bytes = postcard::to_allocvec(attacks).unwrap();
+        postcard::from_bytes::<RecentAttackers>(&bytes).unwrap()
+    };
+    let mut recent = held(&[attack(dummy, 3), attack(fighter, 4)]);
+    recent.record(fighter, Tick::new(7), index);
+    let attacks = recent.iter().collect::<Vec<_>>();
+    assert_eq!(attacks, [attack(dummy, 3), attack(fighter, 7)]);
+    let mut recent = held(&[attack(dummy, 3)]);
+    recent.record(fighter, Tick::new(8), index);
+    assert_eq!(recent.iter().collect::<Vec<_>>(), [attack(fighter, 8)]);
 }
 
 #[test]

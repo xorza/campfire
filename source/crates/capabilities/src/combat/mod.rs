@@ -750,11 +750,13 @@ impl Combat {
         if killed {
             world.resource_scope(|world, mut deaths: Mut<'_, Deaths>| {
                 let window = world.get_resource::<AssistWindow>().map(|window| window.0);
+                let index = world.resource::<EntityIndex>();
                 let assisted = |attack: &RecentAttack| {
                     let within = window
                         .zip(now.since(attack.tick))
                         .is_some_and(|(window, since)| since <= window);
-                    Some(attack.source) != damage.source && within
+                    let exists = index.get(attack.source).is_some();
+                    Some(attack.source) != damage.source && within && exists
                 };
                 let assisters = world
                     .get::<RecentAttackers>(entity)
@@ -997,7 +999,7 @@ fn respawn(
         pools.fill();
         *position = spawn.get();
         if let Some(mut attackers) = attackers {
-            *attackers = RecentAttackers::default();
+            attackers.clear();
         }
         commands.entity(entity).remove::<(Dead, Respawn)>();
     }

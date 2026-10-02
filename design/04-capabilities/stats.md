@@ -47,7 +47,7 @@ The damage rules that read a stat bind it by the mode's name in `[combat]` ([Com
 
 ### Pools
 
-A mode declares at most eight pools, so a unit's pools are a fixed array that a rollback copies without an allocation. A pool is an amount from 0 to the value of its `max` stat, which its `regen` stat refills while its unit lives. When a pool's maximum rises, its current amount rises by as much; when the maximum falls, the current amount stays, unless it is now above the maximum. This is League of Legends' rule; Dota 2 keeps the fraction instead, which needs a rounding the engine does not take. Health is the pool `[combat] life` names; costs, restores and shields name the others.
+A mode declares at most eight pools, so a unit's pools are a fixed array that a rollback copies without an allocation. A pool is an amount from 0 to the value of its `max` stat, which its `regen` stat refills while its unit lives. When a pool's maximum rises, its current amount rises by as much; when the maximum falls, the current amount stays, unless it is now above the maximum. This is League of Legends' rule; Dota 2 keeps the fraction instead, which needs a rounding the engine does not take. A unit type's maximum of each pool is positive at level 1, or the type fails to load; a modifier that later lowers it to 0 or below leaves it at the smallest positive number, so a pool always has a maximum. Health is the pool `[combat] life` names; costs, restores and shields name the others.
 
 ### Modifiers
 
