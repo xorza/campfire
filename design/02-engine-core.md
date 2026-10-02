@@ -38,6 +38,23 @@ Dependencies: `server`, `client`, `verifier`, `det-ci` → `runner` → `package
 
 Outside the engine crates: the reference MOBA and bots. `det-ci` uses both as test content; nothing else in the engine depends on them. Bots produce inputs like players, so replays never depend on bot code.
 
+## Structural rules
+
+These rules keep the code's structure from drifting. Each has a test that fails when it is broken, because a rule that only a review checks drifts again.
+
+| Rule | Enforced by |
+| --- | --- |
+| One owner for each fact. A fact from the packages lives in one immutable book; a fact of the match lives in state; a fact of the running call lives in the frame. Nothing else holds a copy. | The state table test; the behaviour golden |
+| A name becomes an id where it enters. After the load, no system looks up a name; a script call resolves its name once per call, with no allocation. | The book builder's tests; an allowlist test of name lookups |
+| The load refuses everything a match can refuse. A match start fails only on session terms: players, tick rate and seed. | `StartError` has no data case |
+| A layer calls a higher layer only through a hook the higher layer registers. | The layer test |
+| Every order that matters is by stable id, and every rounding uses one helper. | The archetype-shuffle test |
+| Each tick's work has a fixed limit, or a cost in proportion to the units that take part: no tick pays for a scan or a rebuild the other ticks do not. | The work record; the navigation bench |
+| Restored state is checked like package data: a restore gives an error for every flaw, never a panic. | The state table test; the snapshot fuzz |
+| Each rule of a network session has one owner on each side, and a client that follows the rules is never refused. | The net scenarios under load |
+
+The structural redesign that brings the code to these rules, and its steps, are in `PLAN.md`.
+
 ## Capabilities
 
 The core has no genre code; a mode combines capabilities, one native mechanism each: [Capabilities](04-capabilities/00-overview.md).
@@ -127,6 +144,9 @@ Collision, pathfinding and visibility each have one interface and pluggable back
 ## Testing and diagnostics
 
 - **Match scenarios** run whole matches between scripted players (`OrderScript`) in the test suite, through a modeled link of delay, jitter and loss on a manual clock, so each run repeats. Lightyear measures round trips by the wall clock, so the harness adds the modeled round trip to the sync margin, and its frame costs under delay are not real ones.
+- **Goldens.** Two pinned records of whole matches prove that a change keeps behaviour: the state golden, a BLAKE3 digest of each tick's state hash, which changes with the state's layout; and the behaviour golden, a digest of each tick's units (id, type, team, position, pools, death), deaths, damage and script failures, which does not. A change of layout alone updates only the state golden; a change of behaviour updates the behaviour golden and names itself. They run on the lane match, the 3v3, and the proving match: a mode in `packages/test` that uses every capability the release runs, owned by the tests, with no balance to keep.
+- **Structure tests**: the layer test, which checks each module's imports against the capability table; the archetype-shuffle test, which plays a match twice with the units' archetypes changed and compares the behaviour golden; and the state table test, which checks each capability's state names and the restore check of each.
+- **Work record**: at the end of each stage of a redesign, the instruction count of the proving match and the 3v3, and the worst tick against the mean; a stage that makes either worse by more than 10 % says why.
 - **LAN check** (`campfire-lan-check`, on request): the real server and two `client --bot` processes on `127.0.0.1`, and a bot with the wrong certificate that must fail and say why, checked from their JSON logs and by the verifier. Each run keeps its logs in a directory of its own.
 - **CI** runs the check chain and the LAN check on Linux, Windows and macOS; each platform's verifier then replays every platform's session log.
 - **Logging** goes through `tracing`, never a print. `sim` and `capabilities` log nothing; they report through resources the runner logs. Binaries log to standard error, and to JSON lines with `CAMPFIRE_LOG`. An event a tool reads back is a typed `LogEvent`, with a round-trip test.
