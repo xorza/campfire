@@ -54,7 +54,7 @@ impl Arena {
         let at = self
             .packages
             .packages()
-            .position(|view| view.package.name == name)
+            .position(|view| view.package.header.name == name)
             .unwrap_or_else(|| panic!("no package {name}"));
         u16::try_from(at).unwrap()
     }

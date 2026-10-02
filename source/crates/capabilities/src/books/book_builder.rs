@@ -48,6 +48,8 @@ const CHECKED: &str = "the load checked it";
 pub(crate) struct BookBuilder<'a> {
     input: &'a BookInput<'a>,
     books: BookParts,
+    /// The mode's stats, for every unit type, which every stat the packages name resolves by.
+    stats: StatBook,
     /// The life pool, none when the mode names none.
     life: Option<PoolId>,
     /// Where each package's scripts start among the match's.
@@ -70,6 +72,8 @@ impl<'f> Standing<'f> {
 }
 
 impl<'a> BookBuilder<'a> {
+    /// The builder of `input`'s books, its tags and unit types declared, in the order their ids
+    /// follow, and its stat book built for them.
     pub(crate) fn new(input: &'a BookInput<'a>) -> BookBuilder<'a> {
         let data = input.data;
         let mut script_starts = Vec::with_capacity(input.packages.len());
@@ -78,9 +82,17 @@ impl<'a> BookBuilder<'a> {
             script_starts.push(start);
             start += package.scripts.len();
         }
+        let mut books = BookParts::default();
+        for name in &input.tag_names {
+            books.types.declare(name);
+        }
+        for (index, package) in (0..).zip(&input.packages) {
+            BookBuilder::declare_types(&mut books.types, index, package);
+        }
         BookBuilder {
             input,
-            books: BookParts::default(),
+            stats: BookBuilder::stat_book(input, &books.types),
+            books,
             life: data.combat.life_pool(&data.pools),
             script_starts,
         }
@@ -88,19 +100,12 @@ impl<'a> BookBuilder<'a> {
 
     pub(crate) fn build(mut self) -> Result<Books, BookError> {
         let input = self.input;
-        for name in &input.tag_names {
-            self.books.types.declare(name);
-        }
         if input.progression {
             self.books.tracks = Some(TrackBook::new(&input.data.tracks));
         }
         for (index, package) in (0..).zip(&input.packages) {
             self.modifiers(index, package)?;
         }
-        for (index, package) in (0..).zip(&input.packages) {
-            self.declare_types(index, package);
-        }
-        let stats = self.stat_book();
         let loadout_ranks = input.data.loadout_ranks();
         for (index, package) in (0..).zip(&input.packages) {
             let units = &package.content.units;
@@ -113,7 +118,7 @@ impl<'a> BookBuilder<'a> {
                             self.delivery(index, name, file)?;
                         } else {
                             let unit = Standing::new(name.as_str(), file, false);
-                            self.unit_type(index, unit, &actions, &stats)?;
+                            self.unit_type(index, unit, &actions)?;
                         }
                     }
                 }
@@ -124,7 +129,7 @@ impl<'a> BookBuilder<'a> {
                     let ranks = self.slotted_ranks([unit]);
                     let actions = self.actions(index, package, |id| ranks.get(id).copied())?;
                     let unit = Standing::new(package.name, unit, true);
-                    self.unit_type(index, unit, &actions, &stats)?;
+                    self.unit_type(index, unit, &actions)?;
                     self.books.units.avatars.push(package.name.to_owned());
                 }
                 BookKind::Loadout => {
@@ -141,6 +146,7 @@ impl<'a> BookBuilder<'a> {
             }
         }
         let mut parts = self.books;
+        let stats = self.stats;
         let mode_units = &input.packages[0].content.units;
         let types = &parts.types;
         let standing = |name: &str| {
@@ -161,9 +167,7 @@ impl<'a> BookBuilder<'a> {
 
     /// The stat book of the mode's stats, with each unit type that stands and its `stats`
     /// section, refreshed in the input's order.
-    fn stat_book(&self) -> StatBook {
-        let input = self.input;
-        let types = &self.books.types;
+    fn stat_book(input: &BookInput<'_>, types: &UnitTypes) -> StatBook {
         let standing = input.packages.iter().flat_map(|package| {
             let units = package.content.units.iter();
             let mode = units
@@ -180,15 +184,14 @@ impl<'a> BookBuilder<'a> {
             Some((unit_type, file.stats.as_ref()?))
         });
         let max_move_speed = input.max_move_speed.get();
-        StatBook::new(&input.data.stats, setups, input.rate, max_move_speed)
+        StatBook::new(&input.data.stats, setups, max_move_speed)
             .with_order(input.stat_order.clone())
     }
 
     /// Declares the unit types of the package at `index` in the order its own load reads them,
     /// which numbers them: the mode's by name, each a delivery type or one that stands; a
     /// package's delivery types by name, then its avatar.
-    fn declare_types(&mut self, index: u16, package: &BookPackage<'_>) {
-        let types = &mut self.books.types;
+    fn declare_types(types: &mut UnitTypes, index: u16, package: &BookPackage<'_>) {
         for (name, file) in &package.content.units {
             let scope = match package.kind {
                 BookKind::Mode if !file.delivers() => TypeScope::Mode,
@@ -216,11 +219,12 @@ impl<'a> BookBuilder<'a> {
             })
             .collect();
         let input = self.input;
+        let stats = &self.stats;
         let books = &mut self.books;
         let load = ModifierLoad {
             scripts: input.scripts,
             types: &mut books.types,
-            stat: |stat: &Stat| input.stat(stat),
+            stat: |stat: &Stat| stats.named(stat).expect(CHECKED),
             rate: input.rate,
         };
         books
@@ -232,9 +236,9 @@ impl<'a> BookBuilder<'a> {
                 problem: error.problem,
             })?;
         for modifier in &modifiers {
-            books
-                .params
-                .push_modifier(&modifier.data.params, |stat| input.stat(stat));
+            books.params.push_modifier(&modifier.data.params, |stat| {
+                stats.named(stat).expect(CHECKED)
+            });
         }
         Ok(())
     }
@@ -270,6 +274,7 @@ impl<'a> BookBuilder<'a> {
         let script = data.script.as_ref().map(|path| self.script(index, path));
         let names = BuildNames {
             input: self.input,
+            stats: &self.stats,
             types: &self.books.types,
             modifiers: &self.books.modifiers,
             tracks: self.books.tracks.as_ref(),
@@ -292,11 +297,12 @@ impl<'a> BookBuilder<'a> {
                 .load(self.input.scripts, index, id.as_str(), data, script, parts);
         let run = books
             .params
-            .push_action(&data.params, |stat| self.input.stat(stat));
+            .push_action(&data.params, |stat| self.stats.named(stat).expect(CHECKED));
         debug_assert_eq!(run, action.index(), "one run of params per ability");
         if !(data.on_resolve.is_empty() && data.on_hit.is_empty() && data.on_end.is_empty()) {
             let names = BuildNames {
                 input: self.input,
+                stats: &self.stats,
                 types: &books.types,
                 modifiers: &books.modifiers,
                 tracks: books.tracks.as_ref(),
@@ -318,7 +324,6 @@ impl<'a> BookBuilder<'a> {
         index: u16,
         unit: Standing<'_>,
         actions: &BTreeMap<&str, ActionId>,
-        stats: &StatBook,
     ) -> Result<(), BookError> {
         let Standing { name, file, avatar } = unit;
         let data = self.input.data;
@@ -353,16 +358,24 @@ impl<'a> BookBuilder<'a> {
             let tracks = books.tracks.as_ref().expect(CHECKED);
             tracks.named(track.as_str()).expect(CHECKED)
         }));
-        let kit = UnitKit::new(stats, unit_type, combat.as_ref(), pools, self.life)
-            .map_err(|error| BookError::Kit {
-                package: index,
-                unit_type: name.to_owned(),
-                error,
-            })?
-            .with_vision(file.vision.as_ref())
-            .with_body(data.navigation.body(file.collision.as_ref()))
-            .with_tracks(tracks)
-            .with_production(file.production.as_ref());
+        let rate = self.input.rate;
+        let kit = UnitKit::new(
+            &self.stats,
+            unit_type,
+            combat.as_ref(),
+            pools,
+            self.life,
+            rate,
+        )
+        .map_err(|error| BookError::Kit {
+            package: index,
+            unit_type: name.to_owned(),
+            error,
+        })?
+        .with_vision(file.vision.as_ref())
+        .with_body(data.navigation.body(file.collision.as_ref()))
+        .with_tracks(tracks)
+        .with_production(file.production.as_ref());
         let mut slots = Vec::new();
         for (kind, ids) in &file.slots {
             let kind = data.slots.named(kind.as_str()).expect(CHECKED);
@@ -447,6 +460,7 @@ impl<'a> BookBuilder<'a> {
 #[derive(Debug)]
 struct BuildNames<'b> {
     input: &'b BookInput<'b>,
+    stats: &'b StatBook,
     types: &'b UnitTypes,
     modifiers: &'b ModifierBook,
     tracks: Option<&'b TrackBook>,
@@ -458,7 +472,7 @@ struct BuildNames<'b> {
 
 impl ActionNames for BuildNames<'_> {
     fn stat(&self, stat: &Stat) -> StatId {
-        self.input.stat(stat)
+        self.stats.named(stat).expect(CHECKED)
     }
 
     fn damage_kind(&self, name: &DeclaredName) -> DamageKind {

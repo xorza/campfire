@@ -310,7 +310,7 @@ impl Match {
     /// Gives the match a stat book of the stats the scaling params name, with no unit type.
     fn load_stats(&mut self) {
         let rules = scaling_stats().map(|stat| (stat, StatRule::default()));
-        stats::loads::load_stats(&mut self.world, &BTreeMap::from(rules), RATE);
+        stats::loads::load_stats(&mut self.world, &BTreeMap::from(rules));
     }
 
     /// Loads `data` as the action `name` of package 0, of 5 ranks, with its script `source`.
@@ -1566,7 +1566,7 @@ fn a_scaling_param_reads_its_sources_level_stats_and_bonus() {
     let rules: BTreeMap<_, _> = scaling_stats()
         .map(|stat| (stat, StatRule::default()))
         .into();
-    let book = StatBook::new(&rules, [(caster_type, &growth)], RATE, num(6));
+    let book = StatBook::new(&rules, [(caster_type, &growth)], num(6));
     Stats::load_book(&mut game.world, book);
     let boost = changing(
         &[("attack_damage", int(20)), ("ability_power", int(40))],
@@ -1651,8 +1651,8 @@ fn a_live_change_follows_its_source_in_the_order_of_the_stats_it_reads() {
     let rules: BTreeMap<_, _> = scaling_stats()
         .map(|stat| (stat, StatRule::default()))
         .into();
-    let book = StatBook::new(&rules, [(veil_type, &growth)], RATE, num(6))
-        .with_order(graph.order().unwrap());
+    let book =
+        StatBook::new(&rules, [(veil_type, &growth)], num(6)).with_order(graph.order().unwrap());
     let place = |stat: &Stat| book.named(stat).unwrap().index();
     let places = [&attack_damage, &spell_vamp, &armor].map(place);
     Stats::load_book(&mut game.world, book);

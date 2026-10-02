@@ -1,6 +1,7 @@
 use std::num::NonZeroU8;
 
 use campfire_math::Num;
+use campfire_sim::TickRate;
 
 use crate::combat::combat_data::CombatData;
 use crate::combat::on_death::OnDeath;
@@ -35,14 +36,15 @@ pub struct UnitKit {
 impl UnitKit {
     /// The kit of `unit_type`, of the stats `book` gives it, with `combat` and `pools`, each
     /// with the stat of its maximum. Each pool's maximum is that stat at level 1, and its move
-    /// step is the book's at level 1, as a refresh computes them. A type with `combat` has the
-    /// life pool `life`, which a mode with no combat lacks.
+    /// step is the book's at level 1 at `rate`, as a refresh computes them. A type with `combat`
+    /// has the life pool `life`, which a mode with no combat lacks.
     pub(crate) fn new<'a>(
         book: &StatBook,
         unit_type: UnitType,
         combat: Option<&CombatData>,
         pools: impl IntoIterator<Item = (PoolId, &'a Stat)>,
         life: Option<PoolId>,
+        rate: TickRate,
     ) -> Result<UnitKit, UnitKitError> {
         let values = book.base_values(unit_type, 1);
         let given = |stat: &Stat| {
@@ -71,7 +73,7 @@ impl UnitKit {
             .transpose()?;
         let step = given(&Stat::Engine(EngineStat::MoveSpeed)).map(|_| {
             let step = book
-                .step(&values)
+                .step(&values, rate)
                 .expect("a type gives only a stat the mode declares");
             MoveStep::new(step).expect("the book's step is never negative")
         });

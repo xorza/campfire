@@ -39,7 +39,6 @@ use crate::units::tag_book::TagBook;
 use crate::units::team::Team;
 use crate::units::teams::Teams;
 use crate::units::unit_type::UnitType;
-use crate::values::bounds::Bounds;
 
 /// The mode's package data as a match runs it, names resolved: package data, not state. A restore
 /// loads it from the packages, as a new match does.
@@ -48,7 +47,6 @@ pub(crate) struct ModeBook {
     pub(crate) schema: ModeSchema,
     pub(crate) roster: Roster,
     pub(crate) teams: Rc<Teams>,
-    pub(crate) bounds: Bounds,
     pub(crate) choices: ChoiceBook,
     pub(crate) slot_kinds: SlotKinds,
     /// The ranks of every loadout entry.
@@ -77,11 +75,10 @@ pub(crate) struct PlacedUnit {
 
 impl ModeBook {
     /// The book of `setup`, whose script defines the hooks `scripts` gives, for players the teams
-    /// seat, within `bounds`, with the units its map places and `map` as scripts read it.
+    /// seat, with the units its map places and `map` as scripts read it.
     pub(crate) fn new(
         setup: ModeSetup<'_>,
         scripts: &ScriptBook,
-        bounds: Bounds,
         placed: Vec<PlacedUnit>,
         map: GameMap,
     ) -> ModeBook {
@@ -107,7 +104,6 @@ impl ModeBook {
             schema: ModeSchema::new(setup.script, scripts, setup.data),
             roster: Roster::new(setup.avatars, setup.loadout),
             teams: Rc::new(teams),
-            bounds,
             choices: ChoiceBook::new(&setup.data.choices),
             slot_kinds: setup.data.slots.clone(),
             loadout_ranks: setup.data.loadout_ranks(),

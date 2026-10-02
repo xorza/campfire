@@ -125,7 +125,6 @@ impl Mode {
         let book = ModeBook::new(
             setup,
             world.resource::<ScriptBook>(),
-            bounds,
             placed,
             GameMap::new(paths.names().map(ImmutableString::from), &markers),
         );

@@ -79,12 +79,7 @@ fn main() -> ExitCode {
     let certificate =
         CertificateHash::new(*identity.certificate_chain().as_slice()[0].hash().as_ref());
     let server_key = keypair();
-    let players = packages
-        .manifest()
-        .teams
-        .iter()
-        .map(|team| team.slots as usize)
-        .sum();
+    let players = usize::try_from(packages.manifest().slots()).expect("the slots fit usize");
     let lobby = Lobby::new(LobbySetup {
         packages,
         server_key: server_key.x_only_public_key().0.serialize(),

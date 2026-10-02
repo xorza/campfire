@@ -700,7 +700,7 @@ impl Game {
         load("bolt", "projectile");
         // The stats first, as a match's books know them before any action or modifier; the mode's
         // books give the full book at install.
-        stats::loads::load_stats(&mut world, &files.data.stats, RATE);
+        stats::loads::load_stats(&mut world, &files.data.stats);
         let blink = blink_data();
         // A spell has one rank; hero X's ability, 2.
         let strike = Actions::load(&mut world, 0, "strike", &blink, None, 2).unwrap();
@@ -719,7 +719,7 @@ impl Game {
         let setup = setup(&files, script, types, spell, strike, blessing);
         let books = {
             let view = world.non_send::<View>();
-            let stats = StatBook::new(&files.data.stats, [], RATE, num(10));
+            let stats = StatBook::new(&files.data.stats, [], num(10));
             let relations = &files.data.relations;
             let unit_type = |name: &str| view.unit_type_named(name);
             let map = ModeMap::resolve(&files.map, &files.teams, relations, unit_type).unwrap();

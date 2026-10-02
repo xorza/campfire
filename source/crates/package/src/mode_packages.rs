@@ -234,7 +234,7 @@ impl ModePackages {
 
     pub fn book_input<'a>(&'a self, rate: TickRate, scripts: &'a ScriptBook) -> BookInput<'a> {
         let packages = self.packages().map(|view| BookPackage {
-            name: &view.package.name,
+            name: &view.package.header.name,
             content: view.content,
             kind: match view.kind {
                 ViewKind::Mode => BookKind::Mode,
@@ -283,7 +283,7 @@ impl ModePackages {
         self.dependencies
             .iter()
             .filter(|dependent| matches!(dependent.kind, DependentKind::Avatar(_)))
-            .map(|dependent| dependent.package.name.as_str())
+            .map(|dependent| dependent.package.header.name.as_str())
     }
 
     fn avatars(&self) -> impl Iterator<Item = &AvatarUnit> {

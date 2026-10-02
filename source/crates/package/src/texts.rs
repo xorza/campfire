@@ -46,7 +46,7 @@ impl Texts {
                     .push(Arc::clone(&file.resource));
             }
             for locale in &locales {
-                for (language, file) in locale.of(&package.name) {
+                for (language, file) in locale.of(&package.header.name) {
                     if let Some(id) = file.stray(text.own()) {
                         let problem = LoadProblem::Locale {
                             path: file.path.clone(),
@@ -68,7 +68,7 @@ impl Texts {
                 own: text.language.clone(),
                 bundles,
             };
-            texts.packages.insert(package.name.clone(), bundles);
+            texts.packages.insert(package.header.name.clone(), bundles);
         }
         Ok(texts)
     }

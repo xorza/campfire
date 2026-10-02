@@ -63,7 +63,7 @@ fn the_lane_matchs_hashes_do_not_change_with_its_heroes_text() {
     let walker = |packages: &ModePackages| {
         let walker = packages
             .packages()
-            .find(|view| view.package.name == "hero-walker");
+            .find(|view| view.package.header.name == "hero-walker");
         walker.unwrap().package.fingerprint
     };
     assert_ne!(walker(&plain), walker(&reworded));

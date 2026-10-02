@@ -8,7 +8,9 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Commands, Local, ParamSet, Query, Res};
 use bevy_ecs::world::{EntityRef, World};
 use campfire_math::Num;
-use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, Tick, Ticks};
+use campfire_sim::{
+    EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, Tick, TickRate, Ticks,
+};
 
 use crate::combat::CombatSet;
 use crate::combat::combat_events::CombatEvents;
@@ -211,10 +213,11 @@ impl Stats {
             return;
         }
         let now = world.resource::<SimTick>().start();
-        let (Some(book), Some(stats)) = (
-            world.get_resource::<ModifierBook>(),
-            world.get_resource::<StatBook>(),
-        ) else {
+        let rate = *world.resource::<TickRate>();
+        if !world.contains_resource::<StatBook>() {
+            return;
+        }
+        let Some(book) = world.get_resource::<ModifierBook>() else {
             return;
         };
         let source = applier
@@ -225,7 +228,6 @@ impl Stats {
             let (ability, rank) = (applier.ability, applier.rank);
             params.modifier_param(id, ability, rank, place, source.as_ref())
         };
-        let rate = stats.rate();
         let Some(application) = book.application(id, applier, duration, now, rate, param) else {
             return;
         };
@@ -292,10 +294,10 @@ fn clear_dead_modifiers(mut dead: Query<'_, '_, &mut Modifiers, Added<Dead>>) {
 /// from no source. Each ends on a unit that left it. An aura's modifier resolves its numbers from
 /// the ability that gave the aura, a player modifier's at rank 1; neither has a duration.
 fn apply_held(
-    (book, stats, tick, metric, players, others): (
+    (book, stats, (tick, rate), metric, players, others): (
         Option<Res<'_, ModifierBook>>,
         Option<Res<'_, StatBook>>,
-        Res<'_, SimTick>,
+        (Res<'_, SimTick>, Res<'_, TickRate>),
         Res<'_, Metric>,
         Res<'_, PlayerModifiers>,
         Res<'_, HeldModifiers>,
@@ -318,10 +320,10 @@ fn apply_held(
     >,
     mut held: Local<'_, Vec<Held>>,
 ) {
-    let (Some(book), Some(stats)) = (book, stats) else {
+    let (Some(book), Some(_)) = (book, stats) else {
         return;
     };
-    let rate = stats.rate();
+    let rate = *rate;
     held.clear();
     held.extend_from_slice(&others.0);
     for (&target, _, _, tags, owner, _) in &units {
@@ -455,7 +457,7 @@ fn refresh_stats(
         Option<Res<'_, TagBook>>,
         Res<'_, EntityIndex>,
     ),
-    params: Res<'_, ParamBook>,
+    (params, rate): (Res<'_, ParamBook>, Res<'_, TickRate>),
     mut commands: Commands<'_, '_>,
     mut units: ParamSet<
         '_,
@@ -546,7 +548,7 @@ fn refresh_stats(
         let values = scratch.values(unit, count);
         let refill = stats.refill();
         refill.extend_from_slice(values);
-        if let (Some(mut step), Some(value)) = (step, book.step(values)) {
+        if let (Some(mut step), Some(value)) = (step, book.step(values, *rate)) {
             step.set_if_neq(MoveStep::new(value).expect("a step is at least 0"));
         }
         if let Some(mut pools) = pools {
@@ -563,13 +565,17 @@ fn refresh_stats(
 /// Adds each living unit's regen to its pools: each pool's `regen` stat a second, the tick
 /// rate's share a tick, the remainder carried so a second gains exactly the regen.
 fn regenerate(
-    (book, pool_book): (Option<Res<'_, StatBook>>, Option<Res<'_, PoolBook>>),
+    (book, pool_book, rate): (
+        Option<Res<'_, StatBook>>,
+        Option<Res<'_, PoolBook>>,
+        Res<'_, TickRate>,
+    ),
     mut units: Query<'_, '_, (&UnitStats, &mut Pools), Without<Dead>>,
 ) {
-    let (Some(book), Some(pool_book)) = (book, pool_book) else {
+    let (Some(_), Some(pool_book)) = (book, pool_book) else {
         return;
     };
-    let hz = book.rate().hz().get();
+    let hz = rate.hz().get();
     for (stats, mut pools) in &mut units {
         let values = stats.values();
         let mut changed = *pools;
@@ -713,10 +719,10 @@ pub(crate) mod loads {
         }
     }
 
-    /// Gives a match with no mode the stat book of `rules`, at `rate`, with no unit type and no
-    /// pool stats; the pools its scripts name stay named.
-    pub(crate) fn load_stats(world: &mut World, rules: &BTreeMap<Stat, StatRule>, rate: TickRate) {
-        Stats::load_book(world, StatBook::new(rules, [], rate, Num::MAX));
+    /// Gives a match with no mode the stat book of `rules`, with no unit type and no pool stats;
+    /// the pools its scripts name stay named.
+    pub(crate) fn load_stats(world: &mut World, rules: &BTreeMap<Stat, StatRule>) {
+        Stats::load_book(world, StatBook::new(rules, [], Num::MAX));
     }
 }
 

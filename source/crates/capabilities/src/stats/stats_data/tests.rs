@@ -1,7 +1,4 @@
-use std::num::NonZeroU32;
 use std::str::FromStr;
-
-use campfire_sim::TickRate;
 
 use super::*;
 use crate::stats::stat::EngineStat;
@@ -30,14 +27,8 @@ fn a_stat_grows_by_its_per_level_from_level_1() {
     // The stat book's ids: move speed, an engine stat, first, then armor, attack damage, health.
     let rules = [&move_speed, &armor, &attack_damage, &health]
         .map(|stat| (stat.clone(), StatRule::default()));
-    let rate = TickRate::new(NonZeroU32::new(30).unwrap());
     let unit_type = UnitType::new(0);
-    let book = StatBook::new(
-        &BTreeMap::from(rules),
-        [(unit_type, &stats)],
-        rate,
-        Num::MAX,
-    );
+    let book = StatBook::new(&BTreeMap::from(rules), [(unit_type, &stats)], Num::MAX);
     // 472 + 84 × 2 at level 3; 47 + 3.8 at level 2; 18 at any level; a stat the type does not
     // give is 0.
     let at =

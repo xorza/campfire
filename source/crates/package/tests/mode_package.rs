@@ -125,7 +125,7 @@ fn an_effect_to_the_source_reads_and_any_other_to_does_not() {
     let rime = packages
         .dependencies()
         .iter()
-        .find(|dependent| dependent.package.name == "hero-rime")
+        .find(|dependent| dependent.package.header.name == "hero-rime")
         .unwrap();
     let heal = EffectData {
         does: Effecting::Heal {

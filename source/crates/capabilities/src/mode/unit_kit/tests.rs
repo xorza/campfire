@@ -2,8 +2,6 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 use std::str::FromStr;
 
-use campfire_sim::TickRate;
-
 use super::*;
 use crate::stats::stat_rule::StatRule;
 use crate::stats::stats_data::{StatValue, StatsData};
@@ -56,8 +54,8 @@ fn kit_of<'a>(
         (MOVE_SPEED, StatRule::default()),
     ]);
     let rate = TickRate::new(NonZeroU32::new(hz).unwrap());
-    let book = StatBook::new(&rules, [(TYPE, stats)], rate, decimal("6.0"));
-    UnitKit::new(&book, TYPE, combat, pools, Some(PoolId::FIRST))
+    let book = StatBook::new(&rules, [(TYPE, stats)], decimal("6.0"));
+    UnitKit::new(&book, TYPE, combat, pools, Some(PoolId::FIRST), rate)
 }
 
 fn kit<'a>(

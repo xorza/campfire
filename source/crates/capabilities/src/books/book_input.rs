@@ -8,7 +8,6 @@ use crate::mode::map_data::MapData;
 use crate::mode::mode_data::ModeData;
 use crate::mode::team_manifest::TeamManifest;
 use crate::scripts::script_book::ScriptBook;
-use crate::stats::stat::Stat;
 use crate::stats::stat_id::StatId;
 use crate::values::declared_name::DeclaredName;
 use crate::values::speed::Speed;
@@ -37,12 +36,6 @@ pub struct BookInput<'a> {
 }
 
 impl BookInput<'_> {
-    /// The place of `stat` among the mode's stats, which the load checked it declares.
-    pub(crate) fn stat(&self, stat: &Stat) -> StatId {
-        let at = self.data.stats.keys().position(|held| held == stat);
-        StatId::new(at.expect("the load checked the stat"))
-    }
-
     /// The damage kind `name`, which the load checked the mode declares.
     pub(crate) fn damage_kind(&self, name: &DeclaredName) -> DamageKind {
         let kinds = &self.data.combat.damage_kinds;

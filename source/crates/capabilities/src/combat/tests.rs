@@ -777,7 +777,7 @@ fn load_damage_stats(world: &mut World) {
     let rules: BTreeMap<_, _> = [&heal, &attack, &other]
         .map(|stat| (stat.clone(), StatRule::default()))
         .into();
-    let book = StatBook::new(&rules, [], RATE, num(10));
+    let book = StatBook::new(&rules, [], num(10));
     let health = DeclaredName::new("health").unwrap();
     let combat = CombatRules {
         life: Some(health.clone()),

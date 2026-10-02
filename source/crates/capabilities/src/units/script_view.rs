@@ -49,6 +49,7 @@ use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_types::UnitTypes;
 use crate::values::attitude::Attitude;
+use crate::values::bounds::Bounds;
 use crate::values::declared_name::DeclaredName;
 use crate::values::metric::Metric;
 
@@ -75,6 +76,7 @@ pub(crate) struct ScriptView {
     /// How the teams regard each other, as the units were read.
     relations: Relations,
     metric: Metric,
+    bounds: Bounds,
     /// The recent attacks on each unit, one run per unit.
     attacks: Vec<RecentAttack>,
     /// The ability slots of each unit, one run per unit.
@@ -231,6 +233,7 @@ impl ScriptView {
         self.now = world.resource::<SimTick>().start();
         self.relations.clone_from(world.resource::<Relations>());
         self.metric = *world.resource::<Metric>();
+        self.bounds = Bounds::of(world);
         self.units.clear();
         self.attacks.clear();
         self.slots.clear();
@@ -328,6 +331,7 @@ impl View {
             units: Vec::new(),
             relations: Relations::default(),
             metric: Metric::default(),
+            bounds: Bounds::WORLD,
             attacks: Vec::new(),
             slots: Vec::new(),
             stat_names: Arc::from([]),
@@ -344,6 +348,11 @@ impl View {
     /// Reads the units of `world` for the phase that begins.
     pub(crate) fn read(&self, world: &World) {
         self.0.borrow_mut().read(world);
+    }
+
+    /// The map's bounds, as the units were read.
+    pub(crate) fn bounds(&self) -> Bounds {
+        self.0.borrow().bounds
     }
 
     pub(crate) fn metric(&self) -> Metric {

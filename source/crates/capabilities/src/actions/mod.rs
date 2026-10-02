@@ -3,7 +3,7 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::{Query, Res};
 use bevy_ecs::world::{EntityRef, World};
 
-use campfire_sim::{Position, SimSet, SimTick, StableId, StateRegistry};
+use campfire_sim::{Position, SimSet, SimTick, StableId, StateRegistry, TickRate};
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_data::Range;
@@ -193,12 +193,15 @@ fn hold_passives(
     actions: Res<'_, ActionBook>,
     book: Option<Res<'_, ModifierBook>>,
     stats: Option<Res<'_, StatBook>>,
-    tick: Res<'_, SimTick>,
+    (tick, rate): (Res<'_, SimTick>, Res<'_, TickRate>),
     params: Res<'_, ParamBook>,
     sources: ParamSources<'_, '_>,
     mut units: Query<'_, '_, (&StableId, &ActionSlots, &mut Modifiers)>,
 ) {
-    let (Some(book), Some(stats)) = (book, stats) else {
+    if stats.is_none() {
+        return;
+    }
+    let Some(book) = book else {
         return;
     };
     let now = tick.start();
@@ -233,7 +236,7 @@ fn hold_passives(
                 params.modifier_param(passive.modifier, ability, rank, place, source.as_ref())
             };
             if let Some(application) =
-                book.application(passive.modifier, applier, None, now, stats.rate(), param)
+                book.application(passive.modifier, applier, None, now, *rate, param)
             {
                 modifiers.apply(application);
             }

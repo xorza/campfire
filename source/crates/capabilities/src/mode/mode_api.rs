@@ -545,7 +545,7 @@ impl ModeApi {
     ) -> Checked<NewUnit> {
         ctx.require(RoleSet::MODE)?;
         let book = ctx.mode_or_fail()?;
-        if !book.bounds.contains(pos) {
+        if !ctx.view().bounds().contains(pos) {
             return Err(ApiError::OutOfBounds.fail().into());
         }
         let unit_type = ModeApi::unit_type(ctx, book, unit_type)?;

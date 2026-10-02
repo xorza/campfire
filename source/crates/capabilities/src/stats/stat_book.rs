@@ -13,8 +13,8 @@ use crate::stats::stats_data::StatsData;
 use crate::units::unit_type::UnitType;
 
 /// The stats of a match: each the mode declares, in order, with its rule, and each unit type's
-/// value at level 1 and gain a level; with the tick rate and the move speed cap the engine's
-/// formulas take. Package data, not state.
+/// value at level 1 and gain a level; with the move speed cap the engine's formulas take.
+/// Package data, not state.
 #[derive(Resource, Debug)]
 pub(crate) struct StatBook {
     /// Shared with the script view, which names them to scripts.
@@ -31,7 +31,6 @@ pub(crate) struct StatBook {
     order: Vec<StatId>,
     /// Each stat's position in `order`, by its id.
     positions: Vec<u16>,
-    rate: TickRate,
     max_move_speed: Num,
 }
 
@@ -44,11 +43,10 @@ struct Growth {
 
 impl StatBook {
     /// The book of the stats `rules` declares, for unit types `types`, each with its `stats`
-    /// section, at `rate` under the cap `max_move_speed`.
+    /// section, under the cap `max_move_speed`.
     pub(crate) fn new<'a>(
         rules: &BTreeMap<Stat, StatRule>,
         types: impl IntoIterator<Item = (UnitType, &'a StatsData)>,
-        rate: TickRate,
         max_move_speed: Num,
     ) -> StatBook {
         let stats: Arc<[Stat]> = rules.keys().cloned().collect();
@@ -82,13 +80,8 @@ impl StatBook {
             engine,
             growth,
             positions: (0..stats_len).collect(),
-            rate,
             max_move_speed,
         }
-    }
-
-    pub(crate) const fn rate(&self) -> TickRate {
-        self.rate
     }
 
     /// The book with the stats in `order`, a permutation of their places, as a stat graph of
@@ -190,14 +183,14 @@ impl StatBook {
         self.engine[stat as usize].map(|at| values[at])
     }
 
-    /// How far a unit with `values` walks a tick: its `move_speed`, from 0 to the manifest's
-    /// `max_move_speed`, divided by the tick rate, rounded once; `None` when the mode declares no
-    /// move speed.
-    pub(crate) fn step(&self, values: &[Num]) -> Option<Num> {
+    /// How far a unit with `values` walks a tick at `rate`: its `move_speed`, from 0 to the
+    /// manifest's `max_move_speed`, divided by the tick rate, rounded once; `None` when the mode
+    /// declares no move speed.
+    pub(crate) fn step(&self, values: &[Num], rate: TickRate) -> Option<Num> {
         let speed = self
             .engine(values, EngineStat::MoveSpeed)?
             .clamp(Num::ZERO, self.max_move_speed);
-        let hz = i64::from(self.rate.hz().get());
+        let hz = i64::from(rate.hz().get());
         Some(speed.checked_div_int(hz).expect("a speed a tick fits"))
     }
 }

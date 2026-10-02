@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use campfire_capabilities::{
-    ActionData, ApiVersion, DeclaredName, DeliveryData, NameKind, ScriptApi, UnitTypeFile,
+    ActionData, DeclaredName, DeliveryData, NameKind, ScriptApi, UnitTypeFile,
 };
 use campfire_content::{Fingerprint, PackagePath};
 use campfire_script::ScriptHost;
@@ -15,13 +15,12 @@ use crate::script_facts::ScriptFacts;
 /// Where a package holds its game scripts.
 const SCRIPTS: &str = "scripts";
 
-/// A package as the load read it: its name, fingerprint and target release, each of its
-/// scripts, and its human text.
+/// A package as the load read it: its header, its fingerprint, each of its scripts, and its
+/// human text.
 #[derive(Debug)]
 pub struct Package {
-    pub name: String,
+    pub header: PackageHeader,
     pub fingerprint: Fingerprint,
-    pub(crate) api: ApiVersion,
     /// Every file under `scripts/`, by path.
     pub scripts: Vec<Script>,
     pub text: PackageText,
@@ -63,9 +62,8 @@ impl Package {
         }
         let text = PackageText::read(files, &header.language).map_err(fail)?;
         Ok(Package {
-            name,
+            header: header.clone(),
             fingerprint: files.fingerprint(),
-            api: header.api,
             scripts,
             text,
         })

@@ -65,7 +65,7 @@ impl<'a> LoadCheck<'a> {
         for dependent in &packages.dependencies {
             unit_types += dependent.content.units.len();
             if matches!(dependent.kind, DependentKind::Avatar(_)) {
-                let name = &dependent.package.name;
+                let name = &dependent.package.header.name;
                 if units.contains_key(name.as_str()) {
                     return Err(fail(LoadProblem::RepeatedUnitType(name.clone())));
                 }
@@ -82,9 +82,9 @@ impl<'a> LoadCheck<'a> {
                 .map(|dependent| &dependent.package),
         );
         for package in every {
-            if !ApiVersion::RELEASE.loads(package.api) {
-                let problem = LoadProblem::OtherApi(package.api);
-                return Err(LoadError::of(&package.name, problem));
+            if !ApiVersion::RELEASE.loads(package.header.api) {
+                let problem = LoadProblem::OtherApi(package.header.api);
+                return Err(LoadError::of(&package.header.name, problem));
             }
         }
         let check = LoadCheck {
@@ -99,7 +99,7 @@ impl<'a> LoadCheck<'a> {
         for dependent in &packages.dependencies {
             check
                 .dependent(dependent)
-                .map_err(|problem| LoadError::of(&dependent.package.name, problem))?;
+                .map_err(|problem| LoadError::of(&dependent.package.header.name, problem))?;
         }
         packages
             .stat_graph()
@@ -119,7 +119,7 @@ impl<'a> LoadCheck<'a> {
         let at = |package: u16, unit_type: String| {
             let view = packages.packages().nth(usize::from(package));
             let package = &view.expect("the books name a package").package;
-            if package.name == unit_type {
+            if package.header.name == unit_type {
                 return Place::Avatar(unit_type);
             }
             Place::UnitType(DeclaredName::new(&unit_type).expect("a unit type's id is a name"))
@@ -177,7 +177,7 @@ impl<'a> LoadCheck<'a> {
         };
         let view = packages.packages().nth(usize::from(package));
         LoadError::of(
-            &view.expect("the books name a package").package.name,
+            &view.expect("the books name a package").package.header.name,
             problem,
         )
     }
@@ -274,7 +274,7 @@ impl<'a> LoadCheck<'a> {
             let actions = dependent.content.actions.keys();
             if let Some(id) = actions.clone().find(|&id| !seen.insert(id)) {
                 let problem = LoadProblem::RepeatedLoadout(id.clone());
-                return Err(LoadError::of(&dependent.package.name, problem));
+                return Err(LoadError::of(&dependent.package.header.name, problem));
             }
         }
         Ok(())
@@ -290,7 +290,7 @@ impl<'a> LoadCheck<'a> {
         let (actions, modifiers) = (&content.actions, &content.modifiers);
         let slotted = match &dependent.kind {
             DependentKind::Avatar(avatar) => {
-                let at = Place::Avatar(package.name.clone());
+                let at = Place::Avatar(package.header.name.clone());
                 if !package.text.gives(avatar.name.as_str()) {
                     return Err(LoadProblem::Unknown {
                         of: NameKind::Message,

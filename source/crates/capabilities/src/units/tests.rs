@@ -30,6 +30,7 @@ use crate::units::type_scope::TypeScope;
 use crate::units::unit::Unit;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type_data::UnitTypeData;
+use crate::values::bounds::Bounds;
 use crate::values::declared_name::DeclaredName;
 use crate::values::scalar::Scalar;
 
@@ -258,6 +259,19 @@ fn a_position_measures_reach_and_distance_in_the_maps_metric() {
         .probe("fn probe(ctx, of) { of.pos.within(of.pos, -1) }", of)
         .unwrap_err();
     assert!(matches!(error, CallError::Api(ApiError::NegativeRadius)));
+}
+
+#[test]
+fn the_view_reads_the_maps_bounds_or_the_worlds() {
+    let mut scene = Scene::new();
+    let view = scene.world.non_send::<View>().clone();
+    // A match with no mode has the whole world's bounds; a mode's map gives its own.
+    view.read(&scene.world);
+    assert_eq!(view.bounds(), Bounds::WORLD);
+    let bounds = Bounds::new([num(-10), num(-5)], [num(10), num(6)]).unwrap();
+    scene.world.insert_resource(bounds);
+    view.read(&scene.world);
+    assert_eq!(view.bounds(), bounds);
 }
 
 #[test]

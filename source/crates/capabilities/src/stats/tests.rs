@@ -4,7 +4,7 @@ use std::num::NonZeroU32;
 use std::slice;
 
 use campfire_math::Vec3;
-use campfire_sim::{Capability, IdAllocator, SimUpdate, TickRate};
+use campfire_sim::{Capability, IdAllocator, SimUpdate};
 
 use super::*;
 use crate::capability_set::internals::TestMatch;
@@ -122,7 +122,7 @@ fn stat_match(types: &[StatsData]) -> TestMatch {
         let unit_type = UnitType::new(u16::try_from(at).unwrap());
         (unit_type, data)
     });
-    let book = StatBook::new(&rules(), types, RATE, num(6));
+    let book = StatBook::new(&rules(), types, num(6));
     let pools = PoolBook::new(&pools(), &book);
     Stats::load(&mut game.world, book, pools);
     game.world.add_schedule(mem::take(&mut game.schedule));
@@ -488,7 +488,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     };
     let scripts = ScriptBudgets::new(limits, 1);
     let mut game = TestMatch::new(&[Capability::Stats], RATE, Some(scripts));
-    let book = StatBook::new(&rules(), [], RATE, num(6));
+    let book = StatBook::new(&rules(), [], num(6));
     Stats::load(&mut game.world, book, PoolBook::default());
     // A presence of 2 m on allies, holding `inspired`.
     let presence = AuraData {
