@@ -2191,6 +2191,118 @@ fn an_area_reaches_the_bodies_within_its_radius_once_at_its_delay_and_ends() {
 }
 
 #[test]
+fn an_area_holds_its_inside_modifiers_by_attitude_and_hits_what_its_filter_selects() {
+    let declared = [
+        Capability::Stats,
+        Capability::Combat,
+        Capability::Abilities,
+        Capability::Areas,
+    ];
+    let mut game = Match::with(LIMITS, &declared);
+    let typed = |name: &str| UnitTypeData {
+        tags: vec![DeclaredName::new(name).unwrap()],
+        params: BTreeMap::new(),
+    };
+    let grunt = Units::load_type(&mut game.world, TypeScope::Mode, "grunt", &typed("grunt"));
+    let field = Units::load_type(
+        &mut game.world,
+        TypeScope::Mode,
+        "field",
+        &UnitTypeData::default(),
+    );
+    game.load_stats();
+    let [cover, rally, slow] = ["cover", "rally", "slow"].map(|name| {
+        Stats::load_modifier(&mut game.world, 0, name, &changing(&[], &[], None), None);
+        Stats::modifier(&game.world, 0, name).unwrap()
+    });
+    // Radius 2 and 100 ms, 3 ticks at 30 a second; it hits only enemy grunts, and holds a
+    // modifier of its own on its caster, its caster's allies and its enemies.
+    let data = AreaData {
+        radius: num(2),
+        delay_ms: 0,
+        duration_ms: 100,
+        affects: Some(FilterData::parse("enemies:grunt").unwrap()),
+        inside: AreaInside {
+            caster: Some(DeclaredName::new("cover").unwrap()),
+            allies: Some(DeclaredName::new("rally").unwrap()),
+            enemies: Some(DeclaredName::new("slow").unwrap()),
+        },
+    };
+    Areas::load_type(&mut game.world, field, 0, &data);
+    // The tag book, which a match's stats derive each unit's tags from, once every type is tagged.
+    let book = game
+        .world
+        .non_send::<View>()
+        .types_mut()
+        .tag_book(&BTreeMap::new());
+    game.world.insert_resource(book);
+    let shot = ActionData {
+        targeting: Targeting::Point,
+        delivery: Some(DeliveryData::Area {
+            unit_type: DeclaredName::new("field").unwrap(),
+        }),
+        ..strike()
+    };
+    let source = r#"
+        fn on_hit(ctx, caster, target, hit) {
+            ctx.damage(target, 50, "true");
+        }
+    "#;
+    let ability = game.load("shot", &shot, source);
+    let caster = game.caster(ability, 1);
+    let entity = game.world.resource::<EntityIndex>().get(caster).unwrap();
+    game.world.entity_mut(entity).insert(Modifiers::default());
+    // The area lands on (1, 0, 0), with its caster 1 m away. Inside it: an ally, an enemy grunt,
+    // an enemy of no type, and one whose tags block it as a target. Outside it, 3 m away: an ally
+    // and an enemy grunt.
+    let point = |x: i64, z: i64| at(num(x), Num::ZERO, num(z));
+    let none = Modifiers::default;
+    let ally = game.spawn(0, point(1, 1), none());
+    let enemy_grunt = game.spawn(1, point(2, 0), (grunt, Level::default(), none()));
+    let enemy = game.spawn(1, point(1, -1), none());
+    let hidden = game.spawn(1, point(0, 0), none());
+    game.set_blocks(hidden, &[Block::Target]);
+    let far_ally = game.spawn(0, point(4, 0), none());
+    let far_grunt = game.spawn(1, point(1, 3), (grunt, Level::default(), none()));
+    let units = [
+        caster,
+        ally,
+        enemy_grunt,
+        enemy,
+        hidden,
+        far_ally,
+        far_grunt,
+    ];
+    let held = |game: &Match| units.map(|unit| stats::internals::carried(&game.world, unit));
+    let from_caster = |id| vec![(id, Some(caster))];
+    let inside = [
+        from_caster(cover),
+        from_caster(rally),
+        from_caster(slow),
+        from_caster(slow),
+        from_caster(slow),
+        vec![],
+        vec![],
+    ];
+
+    // It lands in tick 0 and holds its modifiers from that tick, on the hidden enemy too. It
+    // triggers in tick 1, where its filter decides alone: 50 to the enemy grunt inside, and to no
+    // other.
+    game.cast(caster, ActionTarget::Point(point(1, 0)));
+    game.run_until(1);
+    assert_eq!(held(&game), inside);
+    game.run_until(2);
+    let healths = units.map(|unit| game.health(unit));
+    assert_eq!(healths, [500, 500, 450, 500, 500, 500, 500]);
+    // It ends in tick 3, and its modifiers with it.
+    game.run_until(3);
+    assert_eq!(held(&game), inside);
+    game.run_until(4);
+    assert_eq!(held(&game), [const { Vec::new() }; 7]);
+    assert!(game.failures().is_empty(), "{:?}", game.failures());
+}
+
+#[test]
 fn a_cast_under_way_ends_when_its_caster_dies() {
     // Strike with a windup of 200 ms, 6 ticks: cast in tick 0, it would resolve in tick 6. The
     // caster dies in tick 2 and comes back in tick 4, before the cast's time, and the cast is

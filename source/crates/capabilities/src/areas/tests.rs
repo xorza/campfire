@@ -1,6 +1,7 @@
 use serde::Serialize;
 
 use super::*;
+use crate::areas::area_data::{AreaData, AreaInside};
 use crate::units::engine_tag::EngineTag;
 use crate::units::filter::Filter;
 use crate::units::tag_set::TagSet;
@@ -61,5 +62,27 @@ fn a_filter_selects_a_delivery_unit_only_when_it_names_its_tag() {
     ] {
         let selects = units.map(|tags| parse(filter).selects(Attitude::Hostile, tags));
         assert_eq!(selects, selected, "{filter}");
+    }
+}
+
+#[test]
+fn an_area_reads_only_with_a_radius_that_is_not_negative() {
+    let read = |text: &str| toml::from_str::<AreaData>(text);
+    assert_eq!(
+        read("radius = 0").unwrap(),
+        AreaData {
+            radius: Num::ZERO,
+            delay_ms: 0,
+            duration_ms: 0,
+            affects: None,
+            inside: AreaInside::default(),
+        }
+    );
+    for refused in ["radius = -1", "radius = \"-0.5\""] {
+        let message = read(refused).unwrap_err().message().to_owned();
+        assert!(
+            message.starts_with("an area's radius is not negative"),
+            "{refused}"
+        );
     }
 }

@@ -411,3 +411,52 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
     let healths = [first, second, behind].map(|unit| volley.health(unit));
     assert_eq!(healths, [90, 100, 100]);
 }
+
+#[test]
+fn a_projectile_reads_only_with_a_positive_speed_and_no_negative_width_or_range() {
+    let read = |text: &str| toml::from_str::<ProjectileData>(text);
+    let refusal = |text: &str| read(text).unwrap_err().message().to_owned();
+    let plain = ProjectileData {
+        speed: Num::ONE.checked_div_int(2).unwrap(),
+        width: Num::ZERO,
+        range: None,
+        homing: false,
+        stop_on_hit: false,
+        once_per_cast: false,
+        hits: None,
+        gravity: None,
+        sight_radius: None,
+        collide: None,
+    };
+    assert_eq!(read("speed = \"0.5\"").unwrap(), plain);
+    assert_eq!(
+        read("speed = 20\nwidth = 0\nrange = 0").unwrap(),
+        ProjectileData {
+            speed: num(20),
+            range: Some(Num::ZERO),
+            ..plain
+        }
+    );
+    for (text, message) in [
+        ("speed = 0", "a projectile's speed is positive"),
+        ("speed = \"-0.5\"", "a projectile's speed is positive"),
+        (
+            "speed = 9223372036854775807",
+            "a projectile's speed is positive",
+        ),
+        (
+            "speed = 20\nwidth = -1",
+            "a projectile's width is not negative",
+        ),
+        (
+            "speed = 20\nwidth = \"-0.001\"",
+            "a projectile's width is not negative",
+        ),
+        (
+            "speed = 20\nrange = -1",
+            "a projectile's range is not negative",
+        ),
+    ] {
+        assert!(refusal(text).starts_with(message), "{text}");
+    }
+}

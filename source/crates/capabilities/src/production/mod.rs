@@ -177,3 +177,6 @@ fn start_trains(
         queue.push(queued, now);
     }
 }
+
+#[cfg(test)]
+mod tests;

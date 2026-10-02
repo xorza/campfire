@@ -92,3 +92,43 @@ fn a_snapshot_with_tracks_out_of_order_or_negative_experience_fails_to_decode() 
     assert!(decode(vec![held(1, num(5)), held(1, num(5))]).is_err());
     assert!(decode(vec![held(0, -Num::EPSILON)]).is_err());
 }
+
+#[test]
+fn thresholds_are_positive_and_strictly_ascending_as_built_and_as_read() {
+    let thresholds = |levels: &[i64]| Thresholds::new(levels.iter().map(|&value| num(value)));
+    for refused in [
+        &[][..],
+        &[0],
+        &[-5, 100],
+        &[100, 100],
+        &[300, 100],
+        &[100, 300, 200],
+    ] {
+        assert_eq!(thresholds(refused), None, "{refused:?}");
+    }
+    assert_eq!(thresholds(&[1]).unwrap().get(), [num(1)]);
+    assert_eq!(
+        thresholds(&[100, 101, 300]).unwrap().get(),
+        [num(100), num(101), num(300)]
+    );
+    let read = |text: &str| toml::from_str::<TrackData>(text);
+    let refusal = |text: &str| read(text).unwrap_err().message().to_owned();
+    assert_eq!(
+        read("levels = [\"0.5\", 300]\nlevel = true").unwrap(),
+        TrackData {
+            levels: Thresholds::new([Num::ONE.checked_div_int(2).unwrap(), num(300)]).unwrap(),
+            level: true,
+        }
+    );
+    for refused in ["levels = []", "levels = [0]", "levels = [300, 100]"] {
+        assert!(
+            refusal(refused).starts_with("a track has a level 2"),
+            "{refused}"
+        );
+    }
+    // An integer past what a number holds fails before the order is checked.
+    assert!(
+        refusal("levels = [9223372036854775807]")
+            .starts_with("a level's experience is beyond a number")
+    );
+}

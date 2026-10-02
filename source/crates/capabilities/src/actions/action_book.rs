@@ -276,9 +276,15 @@ pub(crate) mod internals {
         }
     }
 
-    /// Adds a train of `unit` of no cost and no time to the action book of `world`.
+    /// Adds a train of `unit` that takes `time` and costs `resource_cost`, no pool and no
+    /// cooldown, to the action book of `world`.
     #[cfg(test)]
-    pub(crate) fn train(world: &mut World, unit: UnitType) -> ActionId {
+    pub(crate) fn train(
+        world: &mut World,
+        unit: UnitType,
+        time: Ticks,
+        resource_cost: Option<ResourceAmount>,
+    ) -> ActionId {
         let mut book = world.resource_mut::<ActionBook>();
         let id = ActionId::nth(u32::try_from(book.actions.len()).unwrap());
         Arc::make_mut(&mut book.actions).push(Action {
@@ -291,9 +297,9 @@ pub(crate) mod internals {
                 range: Range::Global,
                 cooldown: Ticks::ZERO,
                 cost: PoolCost::default(),
-                windup: Ticks::ZERO,
+                windup: time,
             }],
-            resource_costs: Box::new([]),
+            resource_costs: resource_cost.into_iter().collect(),
             script: None,
             hooks: HookSet::default(),
             delivery: None,

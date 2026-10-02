@@ -2012,6 +2012,7 @@ dependencies = [
  "criterion 0.8.2",
  "postcard",
  "serde",
+ "toml",
 ]
 
 [[package]]

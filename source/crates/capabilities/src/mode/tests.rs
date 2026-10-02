@@ -1222,16 +1222,16 @@ fn on_mode_input(ctx, player, name, value) {
         units.filter(|&(&unit_type, ..)| unit_type != hero).count()
     };
 
-    // Ticks 0 and 1 of the queue each order a train: each pays 30 mana and 5 gold at once. The
-    // first's 3 ticks run from time 0 to time 3, the end of tick 2, so its unit spawns in tick 2's
-    // Mode stage; the second's run from then to time 6, tick 5. A third, ordered in tick 2's Act
-    // stage, before the first spawns, finds the queue full: nothing is paid.
+    // The pick ran tick 0. Ticks 1 and 2 each order a train: each pays 30 mana and 5 gold at once.
+    // The first's 3 ticks run from time 1 to time 4, the end of tick 3, so its unit spawns in tick
+    // 3's Mode stage; the second's run from then to time 7, tick 6. A third, ordered in tick 3's
+    // Act stage, before the first spawns, finds the queue full: nothing is paid.
     let steps = [
         (true, (70, 10), 0),
         (true, (40, 5), 0),
         (true, (40, 5), 1),
         (false, (40, 5), 1),
-        // Room again: a third pays, and runs from time 6 to time 9, the end of tick 8.
+        // Room again: a third pays, and runs from time 7 to time 10, the end of tick 9.
         (true, (10, 0), 1),
         (false, (10, 0), 2),
         (false, (10, 0), 2),
@@ -1240,7 +1240,8 @@ fn on_mode_input(ctx, player, name, value) {
         (false, (10, 0), 3),
         (false, (10, 0), 3),
     ];
-    for (at, (ordered, expected, made)) in steps.into_iter().enumerate() {
+    for (at, (ordered, expected, made)) in (1..).zip(steps) {
+        assert_eq!(game.world.resource::<SimTick>().start().get(), at);
         if ordered {
             order(&mut game);
         }

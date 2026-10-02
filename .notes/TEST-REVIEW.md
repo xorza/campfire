@@ -211,19 +211,6 @@ The schedule is a separate field only because `Mode::install` needs it (`mode/te
 
 ### 5.2 Missing boundaries and cross-checks
 
-- [ ] **Data refusals with no test**:
-  - `Thresholds::new` with `[]`, `[0]`, `[100, 100]` and `[300, 100]` (`track_data.rs:25`);
-  - `ProjectileData`: speed ≤ 0, and a negative width or range (`projectile_data.rs:49-65`);
-  - `AreaData` with a negative radius (`area_data.rs:61`);
-  - `TrainQueue` decode refusals (`train_queue.rs:93-98`). Every other component with a checked decode has such a test.
-- [ ] **Production has no tests of its own** — the only test is `mode:1078`, which needs the full test mode. These cases have no test:
-  - a dead producer's queue, which waits;
-  - a zero-time train, which spawns in the same tick (the `while let` at `production/mod.rs:59`);
-  - two producers, which spawn in stable-id order;
-  - a producer with no owner and a resource cost.
-
-  The `"tick {at}"` messages of the mode test are one tick off, because the hero pick already ran tick 0.
-- [ ] **Areas** — `inside.allies` and a custom `affects` filter have no test. `areas/tests.rs` holds only decode and filter tests, and the one area behaviour test is in `abilities:1641`.
 - [ ] **`StartError`** — 7 of 11 variants have no test: `OtherMode`, `OtherDependencies`, `UnitKit`, `Ai`, `Ability`, `Mode` and `MatchStart`. If the load check makes them impossible, they become `expect(CHECKED)`. Otherwise give each one a test.
 - [ ] **content** has no tests. `PackagePath` is tested only through 4 refusals in `package_dir/tests.rs:137`. `Version::parse` accepts `01.0.0`, and no test decides if that is correct.
 

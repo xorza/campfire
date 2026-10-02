@@ -19,6 +19,9 @@ criterion = { workspace = true, optional = true }
 postcard.workspace = true
 serde.workspace = true
 
+[dev-dependencies]
+toml.workspace = true
+
 [[bench]]
 name = "collision"
 harness = false
