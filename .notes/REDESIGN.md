@@ -253,7 +253,7 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 | Step | Change | Needs | Size |
 |---|---|---|---|
 | F3 | Ids at call time, so `ctx.projectile` and `ctx.area` return handles whose `.state` the call writes | Unit script state: a unit's `[state]` and `unit.state`, which the API does not have yet, so a handle alone would give a script nothing to use | M, changes behaviour |
-| H2 | `NavBudget`; short routes within their window; "arrived short"; re-asks after removals; the blocker query and clipping; `Progress` reset; blocked map cells in the exact tests; `Steering` methods; `Route::clear` keeps its buffer | B3 | M, changes behaviour |
+| H2 | "Arrived short"; re-asks after removals; `Progress` reset; blocked map cells in the exact tests; `Route::clear` keeps its buffer | B3 | M, changes behaviour |
 | H3 | Incremental regions; routes tested only against added bodies; the body index's first-cell flag and early stop | H2 | M |
 | H4 | Incremental view rows | B | M |
 
@@ -317,15 +317,11 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - homing and line types: B2;
 - **R§5:**
   - stall and lost order: B3;
-  - steering budget: H2;
-  - route budget: H2;
   - region rebuild: H3;
   - routes tested again: H3;
   - chaser starved: B3;
   - unreachable waypoint: H2;
   - short route never planned again: H2;
-  - blocker reach: H2;
-  - blocker cells: H2;
   - body index waste: H3;
   - `Progress`: H2;
   - map-blocked cells: H2.
@@ -393,7 +389,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - `Debug`: J;
   - `const fn`: J;
   - `bench` feature: J;
-  - steering methods: H2;
   - raw-bit arithmetic: J;
   - stale comments: J;
   - small simplifications: J;

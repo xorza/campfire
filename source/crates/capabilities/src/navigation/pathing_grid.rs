@@ -111,10 +111,6 @@ impl PathingGrid {
         }
     }
 
-    pub(crate) const fn cells(&self) -> usize {
-        self.grid.cells()
-    }
-
     /// The side of a cell.
     pub(crate) const fn cell(&self) -> Num {
         self.grid.cell()

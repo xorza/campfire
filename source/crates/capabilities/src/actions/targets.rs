@@ -123,6 +123,7 @@ impl Targets<'_, '_> {
                     entity,
                     at,
                     radius: Body::radius_of(body),
+                    layer: Body::layer_of(body),
                 })
             })
     }

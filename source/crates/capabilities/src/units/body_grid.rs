@@ -2,6 +2,8 @@ use bevy_ecs::entity::Entity;
 use campfire_math::Num;
 use campfire_sim::{Position, StableId};
 
+use crate::units::layer::Layer;
+
 /// The bodies of a stage, as a sorted index of cells of the ground plane: a query of a box visits
 /// the bodies of the cells it covers, grown by the widest body, so it meets every body that may
 /// reach into the box, each once, and few others. A sort, not a grid over the map, as a map may
@@ -18,24 +20,26 @@ pub(crate) struct BodyGrid {
     entries: Vec<GridBody>,
 }
 
-/// A body of the grid: its unit, where it stands, its radius and its cell.
+/// A body of the grid: its unit, where it stands, its radius, its layer and its cell.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct GridBody {
     pub(crate) id: StableId,
     pub(crate) entity: Entity,
     pub(crate) at: Position,
     pub(crate) radius: Num,
+    pub(crate) layer: Layer,
     row: i64,
     column: i64,
 }
 
-/// A body to index: its unit, where it stands, and its radius, 0 for a point.
+/// A body to index: its unit, where it stands, its radius, 0 for a point, and its layer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Placed {
     pub(crate) id: StableId,
     pub(crate) entity: Entity,
     pub(crate) at: Position,
     pub(crate) radius: Num,
+    pub(crate) layer: Layer,
 }
 
 impl BodyGrid {
@@ -48,6 +52,7 @@ impl BodyGrid {
                 entity: placed.entity,
                 at: placed.at,
                 radius: placed.radius,
+                layer: placed.layer,
                 row: 0,
                 column: 0,
             }));
@@ -133,6 +138,7 @@ mod tests {
             entity: world.spawn_empty().id(),
             at: Position::new(Vec3::new(m(x), Num::ZERO, m(z))).unwrap(),
             radius: m(radius),
+            layer: Layer::FIRST,
         }
     }
 

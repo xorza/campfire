@@ -2,7 +2,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_math::Tick;
-use campfire_sim::{Position, SimComponent, StableId};
+use campfire_sim::{Position, SimComponent};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -19,15 +19,6 @@ pub struct Route {
     next: u32,
     /// Whether the last waypoint is the goal, not the nearest place to it the walker reaches.
     reached: bool,
-}
-
-/// A walker whose route waits for the planner, in the order routes are planned: by the tick it
-/// asked in, then by stable id.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub(crate) struct Waiting {
-    pub(crate) tick: Tick,
-    pub(crate) id: StableId,
-    pub(crate) entity: Entity,
 }
 
 impl Route {

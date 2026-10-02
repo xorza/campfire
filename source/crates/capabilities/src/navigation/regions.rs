@@ -138,13 +138,15 @@ impl Regions {
     /// The cell of a region in `reach` whose center on `grid` is nearest `goal`, ties to the lower
     /// number; `None` when `reach` is empty. Regions go in order of how near their box comes to
     /// the goal, and each is scanned until a box comes no nearer than the best cell found.
-    /// `candidates` is a buffer the caller keeps.
+    /// `candidates` is a buffer the caller keeps; each region and each cell scanned counts in
+    /// `work`.
     pub(crate) fn nearest(
         &self,
         grid: &Grid,
         reach: Reach,
         goal: Position,
         candidates: &mut Vec<Candidate>,
+        work: &mut u32,
     ) -> Option<usize> {
         candidates.clear();
         candidates.extend(
@@ -158,6 +160,7 @@ impl Regions {
                 }),
         );
         candidates.sort_unstable();
+        *work += u32::try_from(self.all.len()).expect("regions fit their cells");
         let mut best: Option<(u128, usize)> = None;
         for candidate in &*candidates {
             if best.is_some_and(|(distance, _)| candidate.bound > distance) {
@@ -169,6 +172,8 @@ impl Regions {
                 .partition_point(|&start| start <= candidate.region)
                 - 1;
             let label = candidate.region - self.starts[chunk] + 1;
+            let [columns, rows] = [0, 1].map(|axis| region.high[axis] - region.low[axis] + 1);
+            *work += columns * rows;
             for row in widen(region.low[1])..=widen(region.high[1]) {
                 for column in widen(region.low[0])..=widen(region.high[0]) {
                     let cell = row * self.columns + column;
@@ -470,7 +475,10 @@ mod tests {
             let brute = (0..component.len())
                 .filter(|&other| regions.set(other).is_some_and(|set| reach.contains(set)))
                 .min_by_key(|&other| (grid.center_distance(other, goal), other));
-            assert_eq!(regions.nearest(grid, reach, goal, &mut candidates), brute);
+            assert_eq!(
+                regions.nearest(grid, reach, goal, &mut candidates, &mut 0),
+                brute
+            );
         }
     }
 

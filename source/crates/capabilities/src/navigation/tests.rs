@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 
 use bevy_ecs::component::Component;
-use campfire_math::Tick;
+use campfire_math::{Tick, Vec3};
 use campfire_sim::{Capability, EntityIndex, IdAllocator, SimUpdate, TypeHash};
 
 use super::*;
@@ -109,6 +109,11 @@ impl Walk {
     fn get<C: Component + Copy>(&self, id: StableId) -> C {
         let entity = self.world.resource::<EntityIndex>().get(id).unwrap();
         *self.world.entity(entity).get::<C>().unwrap()
+    }
+
+    fn get_route(&self, id: StableId) -> &Route {
+        let entity = self.world.resource::<EntityIndex>().get(id).unwrap();
+        self.world.get::<Route>(entity).unwrap()
     }
 
     fn tick(&mut self) {
@@ -472,9 +477,11 @@ fn an_air_unit_passes_over_a_ground_unit_and_a_wall() {
 }
 
 #[test]
-fn routes_wait_past_the_limit_of_expanded_cells_in_the_order_asked() {
-    // A row of 16 cells of 1 m: a route along it expands each cell from the start to the goal
-    // once, 16 to the far end, 4 to x = 3.5. A tick expands up to the grid's 16 cells.
+fn routes_wait_past_the_limit_of_work_in_the_order_asked() {
+    // A row of 16 cells of 1 m: a route along it tests its goal, expands each cell from the start
+    // to the goal once, and tests the line from the start to each cell but the two nearest it:
+    // 1 + 16 + 14 = 31 to the far end, 1 + 4 + 2 = 7 to x = 3.5, 1 + 15 + 13 = 29 to x = 14.5.
+    // A tick does up to the grid's 16.
     let mut walk = Walk::new();
     let bounds = Bounds::new([num(0), num(0)], [num(16), num(1)]).unwrap();
     Navigation::load_pathing(
@@ -492,15 +499,15 @@ fn routes_wait_past_the_limit_of_expanded_cells_in_the_order_asked() {
             walk.world.get::<Route>(entity).unwrap().asked().is_some()
         })
     };
-    // The last three ask in tick 0; the second expands 16 and meets the limit.
+    // The last three ask in tick 0; the second does 31 and meets the limit.
     walk.tick();
     assert_eq!(waiting(&walk), [false, false, true, true]);
     let second = walk.world.resource::<EntityIndex>().get(units[1]).unwrap();
     assert_eq!(walk.world.get::<Route>(second).unwrap().ahead(), [far]);
     // The first, of the lowest id, asks in tick 1, after the rest. The last asks again in tick
-    // 1, for x = 14.5, and keeps its place of tick 0. So the third and the last go first, 4 and
-    // 15, which meets the limit, and the first waits; had the last's ask moved to tick 1, the
-    // first would go before it, 4, and none would wait.
+    // 1, for x = 14.5, and keeps its place of tick 0. So the third and the last go first, 7 and
+    // 29, which meets the limit, and the first waits; had the last's ask moved to tick 1, the
+    // first and the third would go before it, 7 each, and none would wait.
     let first = walk.world.resource::<EntityIndex>().get(units[0]).unwrap();
     let mut destination = walk.world.get_mut::<Destination>(first).unwrap();
     destination.set(Some(near));
@@ -511,6 +518,40 @@ fn routes_wait_past_the_limit_of_expanded_cells_in_the_order_asked() {
     assert_eq!(waiting(&walk), [true, false, false, false]);
     walk.tick();
     assert_eq!(waiting(&walk), [false; 4]);
+}
+
+#[test]
+fn a_walker_steers_with_the_work_the_routes_left() {
+    // A walker of 0.25 m from (0.5, 1.5) to (11.5, 1.5) on 12 by 3 cells of 1 m, a limit of 36:
+    // its route in tick 0 is the straight line, 1 + 12 + 10 = 23. After it, a unit of 0.25 m
+    // stands on the line at (3.5, 1.5), and walkers with no body ask for routes along z = 0.5,
+    // 23 each. With none or one, work is left in tick 1, and the walker steers round the unit;
+    // with two, they do 46, and the walker keeps its route, and steers in tick 2.
+    let quarter = Num::from_bits(1 << 22);
+    let half = Num::from_bits(1 << 23);
+    let place = |x: i64, z: i64| Position::new(Vec3::new(num(x) + half, Num::ZERO, num(z) + half));
+    let goal = place(11, 1).unwrap();
+    for (askers, steered) in [(0, [true, true]), (1, [true, true]), (2, [false, true])] {
+        let mut walk = Walk::new();
+        let bounds = Bounds::new([num(0), num(0)], [num(12), num(3)]).unwrap();
+        Navigation::load_pathing(
+            &mut walk.world,
+            Grid::new(Num::ONE, bounds).unwrap(),
+            vec![ground(Num::ZERO), ground(quarter)],
+        );
+        let walker = walk.body(place(0, 1).unwrap(), Some(goal), Some(quarter), quarter);
+        walk.tick();
+        assert_eq!(walk.get_route(walker).ahead(), [goal]);
+        walk.body(place(3, 1).unwrap(), None, Some(quarter), quarter);
+        for _ in 0..askers {
+            walk.unit(place(0, 0).unwrap(), Some(place(11, 0).unwrap()));
+        }
+        let ticks = [(); 2].map(|()| {
+            walk.tick();
+            walk.get_route(walker).ahead() != [goal]
+        });
+        assert_eq!(ticks, steered, "{askers}");
+    }
 }
 
 #[test]
