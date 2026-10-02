@@ -10,6 +10,7 @@ use campfire_sim::{
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::{ActionSlots, InProgress};
+use crate::actions::kind_spec::KindSpec;
 use crate::actions::purse::Purse;
 use crate::combat::CombatSet;
 use crate::combat::dead::Dead;
@@ -62,11 +63,10 @@ impl Production {
                 .get::<TrainQueue>(entity)
                 .and_then(|queue| queue.done(now))
             {
-                let unit_type = world
-                    .resource::<ActionBook>()
-                    .get(head.action)
-                    .and_then(|action| action.spawns)
-                    .expect("a train's unit type binds as the mode loads");
+                let action = world.resource::<ActionBook>().get(head.action);
+                let Some(KindSpec::Train(unit_type)) = action.map(|action| action.kind) else {
+                    panic!("a train queues only trains");
+                };
                 let producer = world.entity(entity);
                 let team = *producer.get::<Team>().expect("a producer has a team");
                 let pos = *producer.get::<Position>().expect("a producer stands");

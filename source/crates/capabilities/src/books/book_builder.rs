@@ -30,6 +30,7 @@ use crate::stats::stat_id::StatId;
 use crate::units::engine_tag::EngineTag;
 use crate::units::filter::Filter;
 use crate::units::type_scope::TypeScope;
+use crate::units::unit_type::UnitType;
 use crate::units::unit_types::UnitTypes;
 use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
@@ -38,8 +39,8 @@ use crate::values::filter_data::FilterData;
 const CHECKED: &str = "the load checked it";
 
 /// Builds a match's books from its packages, in the order a match loads them: the tags, the
-/// tracks and every package's modifiers first; then each package's actions and unit types, the
-/// mode's, then each dependency's; then the unit type each train and delivery spawns.
+/// tracks and every package's modifiers first; then every package's unit types, by name; then
+/// each package's actions and the unit types' parts, the mode's, then each dependency's.
 #[derive(Debug)]
 pub(crate) struct BookBuilder<'a> {
     input: &'a BookInput<'a>,
@@ -47,8 +48,6 @@ pub(crate) struct BookBuilder<'a> {
     rules: KitRules,
     /// Where each package's scripts start among the match's.
     script_starts: Vec<usize>,
-    /// Each train and delivery, its package, and the name of the unit type it spawns there.
-    spawns: Vec<(ActionId, u16, &'a DeclaredName)>,
 }
 
 impl<'a> BookBuilder<'a> {
@@ -69,7 +68,6 @@ impl<'a> BookBuilder<'a> {
                 life: data.combat.life_pool(&data.pools),
             },
             script_starts,
-            spawns: Vec::new(),
         }
     }
 
@@ -83,6 +81,9 @@ impl<'a> BookBuilder<'a> {
         }
         for (index, package) in (0..).zip(&input.packages) {
             self.modifiers(index, package)?;
+        }
+        for (index, package) in (0..).zip(&input.packages) {
+            self.declare_types(index, package);
         }
         let loadout_ranks = input.data.loadout_ranks();
         for (index, package) in (0..).zip(&input.packages) {
@@ -121,12 +122,26 @@ impl<'a> BookBuilder<'a> {
                 }
             }
         }
-        for &(action, package, name) in &self.spawns {
-            let scope = TypeScope::of_package(package);
-            let unit_type = self.books.types.named(scope, name.as_str()).expect(CHECKED);
-            self.books.actions.bind_spawn(action, unit_type);
-        }
         Ok(self.books)
+    }
+
+    /// Declares the unit types of the package at `index` in the order its own load reads them,
+    /// which numbers them: the mode's by name, each a delivery type or one that stands; a
+    /// package's delivery types by name, then its avatar.
+    fn declare_types(&mut self, index: u16, package: &BookPackage<'_>) {
+        let types = &mut self.books.types;
+        for (name, file) in &package.content.units {
+            let scope = match package.kind {
+                BookKind::Mode if !file.delivers() => TypeScope::Mode,
+                BookKind::Mode | BookKind::Avatar(_) | BookKind::Loadout => {
+                    TypeScope::of_package(index)
+                }
+            };
+            types.load(scope, name.as_str(), &file.core);
+        }
+        if let BookKind::Avatar(unit) = package.kind {
+            types.load(TypeScope::Mode, package.name, &unit.core);
+        }
     }
 
     /// The modifiers of the package at `index`, by name.
@@ -233,12 +248,6 @@ impl<'a> BookBuilder<'a> {
             let lists = Listed::lists_of(data, &names);
             books.effects.push(action, lists);
         }
-        if let Some(unit_type) = &data.unit_type {
-            self.spawns.push((action, index, unit_type));
-        }
-        if let Some(delivery) = &data.delivery {
-            self.spawns.push((action, index, delivery.unit_type()));
-        }
         Ok(action)
     }
 
@@ -255,7 +264,7 @@ impl<'a> BookBuilder<'a> {
     ) -> Result<(), BookError> {
         let data = self.input.data;
         let books = &mut self.books;
-        let unit_type = books.types.load(TypeScope::Mode, name, &file.core);
+        let unit_type = books.types.named(TypeScope::Mode, name).expect(CHECKED);
         let mut combat = file.combat.clone();
         if avatar {
             books.types.give_tag(unit_type, EngineTag::Avatar.tag());
@@ -332,7 +341,7 @@ impl<'a> BookBuilder<'a> {
         let rate = self.input.rate;
         let books = &mut self.books;
         let scope = TypeScope::of_package(index);
-        let unit_type = books.types.load(scope, name.as_str(), &file.core);
+        let unit_type = books.types.named(scope, name.as_str()).expect(CHECKED);
         if let Some(projectile) = &file.projectile {
             books.types.give_tag(unit_type, EngineTag::Projectile.tag());
             let spec = ProjectileSpec::of(projectile, &books.types, rate);
@@ -411,6 +420,11 @@ impl ActionNames for BuildNames<'_> {
 
     fn modifier(&self, package: u16, name: &DeclaredName) -> ModifierId {
         self.modifiers.named(package, name.as_str()).expect(CHECKED)
+    }
+
+    fn unit_type(&self, package: u16, name: &DeclaredName) -> UnitType {
+        let scope = TypeScope::of_package(package);
+        self.types.named(scope, name.as_str()).expect(CHECKED)
     }
 }
 

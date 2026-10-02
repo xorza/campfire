@@ -1,6 +1,6 @@
 use campfire_sim::{Capability, Position};
 
-use crate::actions::action_book::Delivery;
+use crate::actions::action_book::DeliveryShape;
 use crate::areas::area_effect::AreaEffect;
 use crate::deliveries::delivering::Delivering;
 use crate::scripts::api_builder::ApiBuilder;
@@ -34,7 +34,11 @@ impl AreasApi {
 
     /// Queues an area of the running action, which delivers areas, from its acting unit.
     fn land(ctx: &Ctx, at: Position) -> Checked<()> {
-        let by = Delivering::of(ctx, |delivery| delivery == Delivery::Area)?;
-        ctx.queue(AreaEffect { by, at })
+        let launcher = Delivering::of(ctx, |shape| shape == DeliveryShape::Area)?;
+        ctx.queue(AreaEffect {
+            by: launcher.by,
+            unit_type: launcher.unit_type,
+            at,
+        })
     }
 }

@@ -80,7 +80,7 @@ impl Projectiles {
                 let Some(direction) = direction.normalized() else {
                     return;
                 };
-                let range = Projectiles::range(world, effect.by);
+                let range = Projectiles::range(world, effect.by, effect.unit_type);
                 Flight::Line {
                     direction,
                     flown: Num::ZERO,
@@ -89,7 +89,7 @@ impl Projectiles {
                 }
             }
         };
-        Projectiles::push(world, effect.by, from, &[flight]);
+        Projectiles::push(world, effect.by, effect.unit_type, from, &[flight]);
     }
 
     /// Launches `fan`, the delivery of `by`, which aimed at `target` from `from`: a homing
@@ -100,14 +100,12 @@ impl Projectiles {
         world: &mut World,
         by: Delivering,
         from: Position,
+        unit_type: UnitType,
         fan: Fan,
         target: ActionTarget,
     ) {
         let book = world.resource::<ActionBook>();
         let delivers = book.get(by.action).expect("a cast's action is in the book");
-        let unit_type = delivers
-            .spawns
-            .expect("a delivery binds its projectile type");
         let to_point = delivers.aim == Aim::Point;
         let spec = *world
             .resource::<ByType<ProjectileSpec>>()
@@ -118,7 +116,7 @@ impl Projectiles {
                 target: unit,
                 flown: Num::ZERO,
             };
-            Projectiles::push(world, by, from, &[homing]);
+            Projectiles::push(world, by, unit_type, from, &[homing]);
             return;
         }
         let Some(at) = target.point(world) else {
@@ -128,7 +126,7 @@ impl Projectiles {
         let Some(aim) = offset.normalized() else {
             return;
         };
-        let range = Projectiles::range(world, by);
+        let range = Projectiles::range(world, by, unit_type);
         let distance = offset.length();
         let range = if to_point {
             Some(range.map_or(distance, |range| range.min(distance)))
@@ -153,17 +151,16 @@ impl Projectiles {
                 }
             })
             .collect();
-        Projectiles::push(world, by, from, &flights);
+        Projectiles::push(world, by, unit_type, from, &flights);
     }
 
-    /// The range of a line projectile of `by`: its type's, or else its action's at its rank;
-    /// `None` for a global range.
-    fn range(world: &World, by: Delivering) -> Option<Num> {
+    /// The range of a line projectile of `unit_type` of `by`: its type's, or else its action's
+    /// at its rank; `None` for a global range.
+    fn range(world: &World, by: Delivering, unit_type: UnitType) -> Option<Num> {
         let book = world.resource::<ActionBook>();
         let action = book
             .get(by.action)
             .expect("a delivery's action is in the book");
-        let unit_type = action.spawns.expect("a delivery binds its projectile type");
         let spec = world
             .resource::<ByType<ProjectileSpec>>()
             .get(unit_type)
@@ -181,13 +178,14 @@ impl Projectiles {
         range.map_or(exit, |range| range.min(exit))
     }
 
-    /// Queues `flights` from `from` as one cast of `by`.
-    fn push(world: &mut World, by: Delivering, from: Position, flights: &[Flight]) {
-        let unit_type = world
-            .resource::<ActionBook>()
-            .get(by.action)
-            .and_then(|action| action.spawns)
-            .expect("a delivery binds its projectile type");
+    /// Queues `flights` of `unit_type` from `from` as one cast of `by`.
+    fn push(
+        world: &mut World,
+        by: Delivering,
+        unit_type: UnitType,
+        from: Position,
+        flights: &[Flight],
+    ) {
         let mut launches = world.resource_mut::<Launches>();
         let cast = launches.cast();
         launches

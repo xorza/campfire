@@ -7,7 +7,6 @@ use campfire_sim::{
     Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry, Tick, Ticks,
 };
 
-use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::ActionTarget;
 use crate::areas::area::Area;
 
@@ -76,28 +75,35 @@ impl Areas {
     /// where it says.
     pub(crate) fn apply(world: &mut World, effect: AreaEffect) {
         let at = Bounds::of(world).clamp(effect.at);
-        Areas::push(world, effect.by, at, None);
+        Areas::push(world, effect.by, effect.unit_type, at, None);
     }
 
-    /// Lands the area of `by`, which aimed at `target` from `from`: on the point it aimed at,
-    /// where the unit it aimed at stands, or at `from` for an action that aims at nothing;
-    /// nothing for a unit that is gone.
-    pub(crate) fn deliver(world: &mut World, by: Delivering, from: Position, target: ActionTarget) {
+    /// Lands the area of `unit_type` of `by`, which aimed at `target` from `from`: on the point it
+    /// aimed at, where the unit it aimed at stands, or at `from` for an action that aims at
+    /// nothing; nothing for a unit that is gone.
+    pub(crate) fn deliver(
+        world: &mut World,
+        by: Delivering,
+        from: Position,
+        unit_type: UnitType,
+        target: ActionTarget,
+    ) {
         let at = match target.point(world) {
             Some(at) => at,
             None if target == ActionTarget::None => from,
             None => return,
         };
-        Areas::push(world, by, at, target.unit());
+        Areas::push(world, by, unit_type, at, target.unit());
     }
 
-    /// Queues an area of `by` to land at `at`, aimed at `aimed`.
-    fn push(world: &mut World, by: Delivering, at: Position, aimed: Option<StableId>) {
-        let unit_type = world
-            .resource::<ActionBook>()
-            .get(by.action)
-            .and_then(|action| action.spawns)
-            .expect("a delivery binds its area type");
+    /// Queues an area of `unit_type` of `by` to land at `at`, aimed at `aimed`.
+    fn push(
+        world: &mut World,
+        by: Delivering,
+        unit_type: UnitType,
+        at: Position,
+        aimed: Option<StableId>,
+    ) {
         world.resource_mut::<AreaLaunches>().0.push(AreaLaunch {
             by,
             at,

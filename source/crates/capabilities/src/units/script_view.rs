@@ -116,6 +116,7 @@ pub(crate) struct UnitRow {
     /// Whether it stays when dead, for the mode to respawn.
     pub(crate) stays: bool,
     pub(crate) target: Option<StableId>,
+    /// The range of its first weapon, in meters; none for a unit with no weapon.
     pub(crate) attack_range: Option<Num>,
     /// The path it walks or stands on; `navigation` fills it.
     pub(crate) path: Option<PathId>,
@@ -571,13 +572,9 @@ impl View {
         homing[index] = true;
     }
 
-    /// Whether the projectiles ability `id` launches home on a unit.
-    pub(crate) fn launches_homing(&self, id: ActionId) -> bool {
+    /// Whether `unit_type` is a projectile type that homes on a unit.
+    pub(crate) fn homes(&self, unit_type: UnitType) -> bool {
         let view = self.0.borrow();
-        let unit_type = view
-            .action(id)
-            .spawns
-            .expect("a delivery binds its unit type");
         view.homing
             .get(unit_type.index())
             .is_some_and(|&homes| homes)

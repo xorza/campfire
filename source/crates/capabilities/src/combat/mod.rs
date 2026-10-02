@@ -168,10 +168,13 @@ impl Combat {
             .expect("a slot's action is in the book");
         Wielded {
             slot: underway.slot,
-            weapon: action.weapon.expect("an attack's action is a weapon"),
+            weapon: action
+                .kind
+                .weapon()
+                .expect("an attack's action is a weapon"),
             values: action.values(slot.rank),
             resource_cost: action.resource_cost(slot.rank),
-            projectile: action.spawns,
+            projectile: action.delivery.map(|delivery| delivery.unit_type),
         }
     }
 
@@ -729,7 +732,7 @@ impl Combat {
                 let book = world.resource::<ActionBook>();
                 let first = unit.get::<ActionSlots>().and_then(|slots| {
                     let slot = slots.slot(book.weapon_for(slots, None)?)?;
-                    book.get(slot.action)?.weapon
+                    book.get(slot.action)?.kind.weapon()
                 });
                 let Some(weapon) = first else {
                     return;

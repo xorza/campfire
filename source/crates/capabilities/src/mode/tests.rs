@@ -1165,7 +1165,6 @@ fn on_mode_input(ctx, player, name, value) {
         ..blink_data()
     };
     let train = Actions::load(&mut game.world, 0, "train_grunt", &train, None, 1).unwrap();
-    Actions::bind_spawn(&mut game.world, train, "grunt");
     // Hero X becomes a producer of a queue of 2, with 100 mana, and its player holds 15 gold.
     let mut owned = game.world.query_filtered::<Entity, With<Owner>>();
     let producer = owned.single(&game.world).unwrap();

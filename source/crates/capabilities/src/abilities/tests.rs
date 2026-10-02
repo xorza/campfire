@@ -1703,7 +1703,6 @@ fn a_delivery_hook_reads_its_projectile_and_the_unit_its_cast_aimed_at() {
         }
     "#;
     let ability = game.load("shot", &shot, source);
-    Actions::bind_spawn(&mut game.world, ability, "bolt");
     let caster = game.caster(ability, 1);
     let target = game.spawn(1, at(num(3), Num::ZERO, Num::ZERO), ());
     // The damage the hook deals carries the bolt's hit, which the target's `watch` reads, and
@@ -1788,7 +1787,6 @@ fn a_script_launches_a_projectile_only_in_the_form_its_type_flies() {
             };
             let source = format!("fn on_resolve(ctx, caster, target) {{ {call}; }}");
             let ability = game.load("shot", &shot, &source);
-            Actions::bind_spawn(&mut game.world, ability, "bolt");
             let caster = game.caster(ability, 1);
             let target = game.spawn(1, at(num(3), Num::ZERO, Num::ZERO), ());
             game.cast(caster, ActionTarget::Unit(target));
@@ -1904,7 +1902,6 @@ fn fan_of_frost_from_data_alone_hits_exactly_the_units_in_reach() {
     let fan = fan_of_frost();
     let ability = Actions::load(&mut game.world, 0, "fan_of_frost", &fan, None, 1).unwrap();
     Abilities::load_effects(&mut game.world, ability, 0, &fan);
-    Actions::bind_spawn(&mut game.world, ability, "frost_arrow");
     let caster = game.caster(ability, 1);
     // Bodiless units: on the middle arrow 4 m out; on the outer arrow 4 m out, at 15 degrees,
     // (3.8637, 1.0353); between two arrows at 4 m, 3.75 degrees off each, 0.26 m from each line,
@@ -2004,7 +2001,6 @@ fn an_area_reaches_the_bodies_within_its_radius_once_at_its_delay_and_ends() {
             }
         "#;
         let ability = game.load("shot", &shot, source);
-        Actions::bind_spawn(&mut game.world, ability, "blast");
         let caster = game.caster(ability, 1);
         // The area lands on (4, 0, 0), of radius 2: a body of no radius 2 m away is inside it and
         // one a bit farther is not; a body of radius 0.5 2.5 m away touches it; an enemy whose

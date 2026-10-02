@@ -343,6 +343,9 @@ fn veils_dusk_mark_detonates_once_on_veils_next_damage() {
     let mark = &veil.content.modifiers["dusk_mark"];
     let script = compile(&mut world, "veil", mark.script.as_ref().unwrap());
     Stats::load_modifier(&mut world, 0, "dusk_mark", mark, Some(script));
+    let bolt = &veil.content.units["dusk_mark"];
+    let bolt_type = Units::load_type(&mut world, TypeScope::Mode, "dusk_mark", &bolt.core);
+    Projectiles::load_type(&mut world, bolt_type, bolt.projectile.as_ref().unwrap());
     let data = &veil.content.actions["dusk_mark"];
     let ability = Actions::load(&mut world, 0, "dusk_mark", data, Some(script), 5).unwrap();
     let player = Owner::new(PlayerSlot::new(0));
@@ -387,7 +390,6 @@ fn rimes_fan_of_frost_from_its_package_hits_exactly_the_units_in_reach_once_each
     assert_eq!(data.script, None);
     let fan = Actions::load(&mut world, 0, "fan_of_frost", data, None, 5).unwrap();
     Abilities::load_effects(&mut world, fan, 0, data);
-    Actions::bind_spawn(&mut world, fan, "frost_arrow");
 
     let player = Owner::new(PlayerSlot::new(0));
     let slots = ActionSlots::new([(fan, SlotKind::new(0), 1)]);
@@ -463,7 +465,6 @@ fn rimes_snow_owl_flies_to_its_point_and_ends_there() {
     let owl_type = Units::load_type(&mut world, TypeScope::Mode, "snow_owl", &owl.core);
     Projectiles::load_type(&mut world, owl_type, owl.projectile.as_ref().unwrap());
     let snow_owl = Actions::load(&mut world, 0, "snow_owl", data, Some(script), 5).unwrap();
-    Actions::bind_spawn(&mut world, snow_owl, "snow_owl");
     let player = Owner::new(PlayerSlot::new(0));
     let slots = ActionSlots::new([(snow_owl, SlotKind::new(0), 1)]);
     let caster = spawn(&mut world, 0, 0, (player, slots));
@@ -534,7 +535,6 @@ fn cinders_eruption_from_its_package_erupts_on_the_units_in_reach_after_its_dela
     let data = &cinder.content.actions["eruption"];
     let script = compile(&mut world, "cinder", data.script.as_ref().unwrap());
     let eruption = Actions::load(&mut world, 0, "eruption", data, Some(script), 5).unwrap();
-    Actions::bind_spawn(&mut world, eruption, "eruption");
 
     let player = Owner::new(PlayerSlot::new(0));
     let slots = ActionSlots::new([(eruption, SlotKind::new(0), 1)]);
@@ -604,7 +604,6 @@ fn veils_smoke_ring_from_its_package_holds_its_modifiers_on_the_units_inside_whi
     let data = &veil.content.actions["smoke_ring"];
     assert_eq!(data.script, None);
     let ring = Actions::load(&mut world, 0, "smoke_ring", data, None, 5).unwrap();
-    Actions::bind_spawn(&mut world, ring, "smoke_ring");
 
     let player = Owner::new(PlayerSlot::new(0));
     let slots = ActionSlots::new([(ring, SlotKind::new(0), 1)]);

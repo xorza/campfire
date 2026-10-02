@@ -4,6 +4,7 @@ use crate::stats::modifier_book::ModifierId;
 use crate::stats::stat::Stat;
 use crate::stats::stat_id::StatId;
 use crate::units::filter::Filter;
+use crate::units::unit_type::UnitType;
 use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
 
@@ -18,4 +19,6 @@ pub(crate) trait ActionNames {
     fn filter(&self, filter: &FilterData) -> Filter;
     /// The modifier `name` of `package`.
     fn modifier(&self, package: u16, name: &DeclaredName) -> ModifierId;
+    /// The unit type `name` in the scope that `package` names types in.
+    fn unit_type(&self, package: u16, name: &DeclaredName) -> UnitType;
 }

@@ -13,7 +13,7 @@ use campfire_sim::{
 
 use crate::abilities::effect_lists::EffectLists;
 
-use crate::actions::action_book::{ActionBook, ActionId, Delivery};
+use crate::actions::action_book::{ActionBook, ActionId, Delivery, DeliveryShape};
 
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::{ActionSlots, ActionTarget};
@@ -163,10 +163,16 @@ fn apply(world: &mut World, ctx: &Ctx, now: Tick, entity: Entity, prepared: &Pre
     };
     let book = world.resource::<ActionBook>();
     match book.get(by.action).and_then(|action| action.delivery) {
-        Some(Delivery::Projectile(fan)) => {
-            Projectiles::deliver(world, by, from, fan, prepared.aim);
+        Some(Delivery {
+            unit_type,
+            shape: DeliveryShape::Projectile(fan),
+        }) => {
+            Projectiles::deliver(world, by, from, unit_type, fan, prepared.aim);
         }
-        Some(Delivery::Area) => Areas::deliver(world, by, from, prepared.aim),
+        Some(Delivery {
+            unit_type,
+            shape: DeliveryShape::Area,
+        }) => Areas::deliver(world, by, from, unit_type, prepared.aim),
         None => {}
     }
     ctx.apply(world, now);

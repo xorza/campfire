@@ -448,7 +448,10 @@ fn a_hero_walks_to_its_players_target() {
 fn a_slot_order_starts_a_cast_or_a_train_and_no_other_kind() {
     let (mut game, [hero, _]) = two_heroes();
     // Its weapon in slot 0, and a train in slot 1.
-    let train = internals::train(&mut game.world.resource_mut::<ActionBook>());
+    let train = internals::train(
+        &mut game.world.resource_mut::<ActionBook>(),
+        UnitType::new(0),
+    );
     let entity = game.world.resource::<EntityIndex>().get(hero).unwrap();
     let mut slots = game.world.get_mut::<ActionSlots>(entity).unwrap();
     slots.grant(SlotKind::new(0), &[train], 1);

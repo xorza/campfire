@@ -45,6 +45,7 @@ pub(crate) mod action_slots;
 pub(crate) mod delivery_data;
 pub(crate) mod effect_data;
 pub(crate) mod error;
+pub(crate) mod kind_spec;
 pub(crate) mod purse;
 pub(crate) mod slot_kind;
 pub(crate) mod slot_kinds;
@@ -247,12 +248,12 @@ fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
     };
     let book = fill.world.resource::<ActionBook>();
     fill.row.target = slots.attack_target();
-    fill.row.attack_range =
-        book.weapon_for(slots, None)
-            .and_then(|slot| match book.range(slots, slot) {
-                Range::Meters(range) => Some(range),
-                Range::Global => None,
-            });
+    fill.row.attack_range = book.weapon_for(slots, None).map(|slot| {
+        let Range::Meters(range) = book.range(slots, slot) else {
+            panic!("the load gives every attack a range in meters");
+        };
+        range
+    });
     let rows = slots.iter().map(|slot| {
         let action = book
             .get(slot.action)
@@ -287,6 +288,7 @@ pub(crate) mod internals {
     use crate::units::filter::Filter;
     use crate::units::script_view::View;
     use crate::units::type_scope::TypeScope;
+    use crate::units::unit_type::UnitType;
     use crate::values::declared_name::DeclaredName;
     use crate::values::filter_data::FilterData;
     use crate::values::param::Param;
@@ -296,26 +298,6 @@ pub(crate) mod internals {
     use campfire_sim::TickRate;
 
     impl Actions {
-        /// Binds `action` to the unit type `name` it spawns, once the match's unit types load: a
-        /// train's unit, or its delivery's projectile, one the package load checked, in the scope its
-        /// package names types in.
-        pub fn bind_spawn(world: &mut World, action: ActionId, name: &str) {
-            let package = world
-                .resource::<ActionBook>()
-                .get(action)
-                .expect("a loaded action")
-                .package;
-            let unit_type = world
-                .non_send::<View>()
-                .types_mut()
-                .named(TypeScope::of_package(package), name)
-                .expect("the load checked an action's unit type");
-            let mut book = world.resource_mut::<ActionBook>();
-            book.bind_spawn(action, unit_type);
-            let book = book.clone();
-            world.non_send::<View>().set_actions(book);
-        }
-
         /// Loads the action `name` of `package`, of `ranks` ranks, into the match, which the
         /// package load checked, with its compiled script exactly when its data names one: its
         /// capability fields at each rank, times in milliseconds as ticks at the match's rate,
@@ -382,6 +364,14 @@ pub(crate) mod internals {
             self.modifiers
                 .named(package, name.as_str())
                 .expect("the load checked the modifier")
+        }
+
+        fn unit_type(&self, package: u16, name: &DeclaredName) -> UnitType {
+            let scope = TypeScope::of_package(package);
+            self.view
+                .types_mut()
+                .named(scope, name.as_str())
+                .expect("a test loads an action's unit type before the action")
         }
     }
 }

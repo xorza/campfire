@@ -588,7 +588,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - instance book data: G2;
   - package data in state: G2;
   - level twice: G2;
-  - delivery unit type: C8;
   - tags twice: C8;
   - stat list three times: C6a;
   - call package: D4;
@@ -632,11 +631,9 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - `walk_to`: J;
   - `IndexedBody`: J.
 - **R§11:**
-  - `Action` options: C8;
   - `Delivered` hooks: J (`enum Reach`);
   - placeholder group: D3;
   - `Hit::direction`: F2;
-  - `attack_range`: C8;
   - `passive` and `held`: G2;
   - `weapon_fields`: C8;
   - `UnitKit`: C5a;

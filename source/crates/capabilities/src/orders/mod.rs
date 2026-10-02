@@ -227,7 +227,7 @@ fn apply_orders(
                     let kind = slots
                         .slot(slot)
                         .and_then(|held| book.get(held.action))
-                        .map(|action| action.kind);
+                        .map(|action| action.kind.kind());
                     let target = match target {
                         ActionTarget::Point(at) => {
                             let at = at.get();

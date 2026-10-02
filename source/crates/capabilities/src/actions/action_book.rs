@@ -13,6 +13,7 @@ use crate::actions::action_names::ActionNames;
 use crate::actions::action_slots::{ActionSlots, ActionTarget, InProgress};
 use crate::actions::delivery_data::DeliveryData;
 use crate::actions::error::ActionError;
+use crate::actions::kind_spec::KindSpec;
 use crate::actions::purse::Purse;
 use crate::actions::weapon::Weapon;
 use crate::combat::targets::Targets;
@@ -49,9 +50,7 @@ pub(crate) struct Action {
     /// Its package: 0 the mode, then each package the mode depends on, and its name there.
     pub(crate) package: u16,
     pub(crate) name: Box<str>,
-    pub(crate) kind: ActionKind,
-    /// What it deals as an `attack`; none for another kind.
-    pub(crate) weapon: Option<Weapon>,
+    pub(crate) kind: KindSpec,
     /// The modifier its unit holds while it has a rank, and whether only while it is ready.
     pub(crate) passive: Option<Passive>,
     pub(crate) aim: Aim,
@@ -66,14 +65,18 @@ pub(crate) struct Action {
     hooks: HookSet,
     /// How it delivers, other than at once.
     pub(crate) delivery: Option<Delivery>,
-    /// The unit type it spawns, once the match's unit types load: a train's unit, or its
-    /// delivery's projectile.
-    pub(crate) spawns: Option<UnitType>,
 }
 
-/// How an action delivers, as a match runs it: a fan of projectiles, or an area.
+/// How an action delivers, as a match runs it: the unit type it delivers, and its shape.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum Delivery {
+pub(crate) struct Delivery {
+    pub(crate) unit_type: UnitType,
+    pub(crate) shape: DeliveryShape,
+}
+
+/// The shape of a delivery: a fan of projectiles, or an area.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum DeliveryShape {
     Projectile(Fan),
     Area,
 }
@@ -104,14 +107,15 @@ pub(crate) enum Aim {
     Unit(Filter),
 }
 
-/// What an action's data gives, resolved against the match: its passive, its aim, its fields at
-/// each rank and, for a weapon, what it deals.
+/// What an action's data gives, resolved against the match: its kind with what the kind needs,
+/// its passive, its aim, its fields at each rank, and how it delivers.
 #[derive(Debug)]
 pub(crate) struct ActionParts {
+    pub(crate) kind: KindSpec,
     pub(crate) passive: Option<Passive>,
     pub(crate) aim: Aim,
     pub(crate) ranks: LoadedRanks,
-    pub(crate) weapon: Option<Weapon>,
+    pub(crate) delivery: Option<Delivery>,
 }
 
 impl ActionParts {
@@ -135,19 +139,40 @@ impl ActionParts {
             Targeting::Unit(filter) => Aim::Unit(names.filter(filter)),
         };
         let ranks = RankValues::all(data, ranks, rate, |name| names.cost_target(name))?;
-        let weapon = match (&data.rate, &data.damage, &data.damage_kind) {
-            (Some(rate), Some(damage), Some(kind)) => Some(Weapon {
-                rate: names.stat(rate),
-                damage: names.stat(damage),
-                kind: names.damage_kind(kind),
-            }),
-            _ => None,
+        let kind = match data.kind {
+            ActionKind::Cast => KindSpec::Cast,
+            ActionKind::Attack => {
+                let checked = "the load checked an attack's weapon fields";
+                KindSpec::Attack(Weapon {
+                    rate: names.stat(data.rate.as_ref().expect(checked)),
+                    damage: names.stat(data.damage.as_ref().expect(checked)),
+                    kind: names.damage_kind(data.damage_kind.as_ref().expect(checked)),
+                })
+            }
+            ActionKind::Train => {
+                let unit = data
+                    .unit_type
+                    .as_ref()
+                    .expect("the load checked a train's unit");
+                KindSpec::Train(names.unit_type(package, unit))
+            }
+            kind => panic!("the load runs no {kind:?}"),
         };
+        let delivery = data.delivery.as_ref().map(|delivery| Delivery {
+            unit_type: names.unit_type(package, delivery.unit_type()),
+            shape: match *delivery {
+                DeliveryData::Projectile {
+                    count, spread_deg, ..
+                } => DeliveryShape::Projectile(Fan { count, spread_deg }),
+                DeliveryData::Area { .. } => DeliveryShape::Area,
+            },
+        });
         Ok(ActionParts {
+            kind,
             passive,
             aim,
             ranks,
-            weapon,
+            delivery,
         })
     }
 }
@@ -182,10 +207,11 @@ impl ActionBook {
         parts: ActionParts,
     ) -> ActionId {
         let ActionParts {
+            kind,
             passive,
             aim,
             ranks,
-            weapon,
+            delivery,
         } = parts;
         assert_eq!(
             data.script.is_some(),
@@ -193,18 +219,11 @@ impl ActionBook {
             "an action has a script exactly when its data names one"
         );
         let hooks = scripts.defines(script, &[Hook::OnResolve, Hook::OnHit, Hook::OnEnd]);
-        let delivery = data.delivery.as_ref().map(|delivery| match *delivery {
-            DeliveryData::Projectile {
-                count, spread_deg, ..
-            } => Delivery::Projectile(Fan { count, spread_deg }),
-            DeliveryData::Area { .. } => Delivery::Area,
-        });
         let id = ActionId(u32::try_from(self.actions.len()).expect("actions fit u32"));
         Arc::make_mut(&mut self.actions).push(Action {
             package,
             name: name.into(),
-            kind: data.kind,
-            weapon,
+            kind,
             passive,
             aim,
             ranks: ranks.values,
@@ -212,19 +231,8 @@ impl ActionBook {
             script,
             hooks,
             delivery,
-            spawns: None,
         });
         id
-    }
-
-    /// Binds `id` to the unit type it spawns: a train's unit, or its delivery's projectile.
-    pub(crate) fn bind_spawn(&mut self, id: ActionId, unit_type: UnitType) {
-        let action = &mut Arc::make_mut(&mut self.actions)[id.index()];
-        debug_assert!(
-            action.kind == ActionKind::Train || action.delivery.is_some(),
-            "only a train or a delivery spawns a unit type"
-        );
-        action.spawns = Some(unit_type);
     }
 
     /// Every action's name, by id.
@@ -362,7 +370,7 @@ impl Action {
     /// unit; `None` for another kind.
     pub(crate) const fn weapon_filter(&self) -> Option<Filter> {
         match (self.kind, self.aim) {
-            (ActionKind::Attack, Aim::Unit(filter)) => Some(filter),
+            (KindSpec::Attack(_), Aim::Unit(filter)) => Some(filter),
             _ => None,
         }
     }
@@ -433,10 +441,10 @@ pub(crate) mod internals {
     use std::sync::Arc;
 
     use crate::actions::action_book::{
-        Action, ActionBook, ActionId, Aim, Delivery, Fan, RankValues,
+        Action, ActionBook, ActionId, Aim, Delivery, DeliveryShape, Fan, RankValues,
     };
     use crate::actions::action_data::Range;
-    use crate::actions::action_kind::ActionKind;
+    use crate::actions::kind_spec::KindSpec;
     use crate::actions::weapon::Weapon;
     use crate::combat::damage_kind::DamageKind;
     use crate::mode::resource_id::ResourceAmount;
@@ -462,18 +470,18 @@ pub(crate) mod internals {
 
     /// Adds `weapon` to `book`, which deals damage of the first kind.
     pub(crate) fn weapon(book: &mut ActionBook, weapon: TestWeapon) -> ActionId {
-        let delivery = weapon.projectile.map(|_| {
-            Delivery::Projectile(Fan {
+        let delivery = weapon.projectile.map(|unit_type| Delivery {
+            unit_type,
+            shape: DeliveryShape::Projectile(Fan {
                 count: NonZeroU8::MIN,
                 spread_deg: Num::ZERO,
-            })
+            }),
         });
         let id = ActionId(u32::try_from(book.actions.len()).unwrap());
         Arc::make_mut(&mut book.actions).push(Action {
             package: 0,
             name: "weapon".into(),
-            kind: ActionKind::Attack,
-            weapon: Some(Weapon {
+            kind: KindSpec::Attack(Weapon {
                 rate: weapon.rate,
                 damage: weapon.damage,
                 kind: DamageKind::new(0),
@@ -490,20 +498,18 @@ pub(crate) mod internals {
             script: None,
             hooks: HookSet::default(),
             delivery,
-            spawns: weapon.projectile,
         });
         id
     }
 
-    /// Adds a train of no cost and no time to `book`, its unit type yet unbound.
+    /// Adds a train of `unit` of no cost and no time to `book`.
     #[cfg(test)]
-    pub(crate) fn train(book: &mut ActionBook) -> ActionId {
+    pub(crate) fn train(book: &mut ActionBook, unit: UnitType) -> ActionId {
         let id = ActionId(u32::try_from(book.actions.len()).unwrap());
         Arc::make_mut(&mut book.actions).push(Action {
             package: 0,
             name: "train".into(),
-            kind: ActionKind::Train,
-            weapon: None,
+            kind: KindSpec::Train(unit),
             passive: None,
             aim: Aim::None,
             ranks: vec![RankValues {
@@ -516,7 +522,6 @@ pub(crate) mod internals {
             script: None,
             hooks: HookSet::default(),
             delivery: None,
-            spawns: None,
         });
         id
     }
