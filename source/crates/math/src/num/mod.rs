@@ -65,6 +65,15 @@ impl Num {
         }
     }
 
+    /// Exact conversion; `None` for a value with a fraction.
+    pub const fn to_int(self) -> Option<i64> {
+        if self.0 & Self::FRAC_MASK == 0 {
+            Some(self.floor())
+        } else {
+            None
+        }
+    }
+
     pub const fn floor(self) -> i64 {
         self.0 >> Self::FRAC_BITS
     }

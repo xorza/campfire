@@ -39,6 +39,7 @@ fn floor_ceil_round() {
         (-(2 * ONE + HALF) + 1, -3, -2, -2),
         (i64::MAX, (1 << 39) - 1, 1 << 39, 1 << 39),
         (i64::MIN, -(1 << 39), -(1 << 39), -(1 << 39)),
+        (-2 * ONE, -2, -2, -2),
     ];
     for (bits, floor, ceil, round) in cases {
         let x = n(bits);
@@ -47,6 +48,8 @@ fn floor_ceil_round() {
             (floor, ceil, round),
             "bits {bits}"
         );
+        // Exactly the whole numbers, whose floor is their ceiling, convert.
+        assert_eq!(x.to_int(), (floor == ceil).then_some(floor), "bits {bits}");
     }
 }
 

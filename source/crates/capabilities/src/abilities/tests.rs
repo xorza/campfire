@@ -413,7 +413,11 @@ impl Match {
     }
 
     fn pool_of(&self, id: StableId, pool: PoolId) -> i64 {
-        self.get::<Pools>(id).current(pool).unwrap().round()
+        self.get::<Pools>(id)
+            .current(pool)
+            .unwrap()
+            .to_int()
+            .expect("a whole amount")
     }
 
     fn slot(&self, id: StableId) -> ActionSlot {
@@ -549,17 +553,26 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
     let spin = "fn on_think(ctx, unit) { loop {} }";
     let spin = Units::compile(&mut game.world, spin).unwrap();
     Orders::load_ai(&mut game.world, spinner, &ai, spin).unwrap();
-    for z in 0..11 {
-        game.spawn(2, at(Num::ZERO, Num::ZERO, num(20 + z)), spinner);
-    }
+    let spinners: Vec<_> = (0..11)
+        .map(|z| game.spawn(2, at(Num::ZERO, Num::ZERO, num(20 + z)), spinner))
+        .collect();
 
     // The cast in the same tick draws from its player's pool, whole: 500 → 450, 100 → 90.
     game.cast(caster, ActionTarget::Unit(enemy));
     assert_eq!(game.health(enemy), 450);
     assert_eq!(game.pool(caster), 90);
+    // The think pool runs out after 10 of the spinning calls: the first 10 spinners, by stable
+    // id, spend it, and the last stays due.
     let failures = game.failures();
-    assert_eq!(failures.len(), 10);
-    assert!(failures.iter().all(|failure| failure.hook == Hook::OnThink));
+    let failed: Vec<_> = failures
+        .iter()
+        .map(|failure| (failure.unit, failure.hook))
+        .collect();
+    let expected: Vec<_> = spinners[..10]
+        .iter()
+        .map(|&id| (Some(id), Hook::OnThink))
+        .collect();
+    assert_eq!(failed, expected);
     let mut budgets = game.world.resource_mut::<ScriptBudgets>();
     assert_eq!(budgets.get_mut(Pool::Think).left(), 0);
 }
@@ -914,7 +927,10 @@ fn an_ability_loads_only_when_its_data_holds() {
     // The data's rules, which the package load checks: two costs for five ranks, and the field
     // that does not hold at rank 1. A scaling param is the caster's value, which no cooldown may
     // take.
-    assert!(lash_out().check_ranks(5) && !uneven.check_ranks(5));
+    assert_eq!(
+        [lash_out().check_ranks(5), uneven.check_ranks(5)],
+        [true, false]
+    );
     for (data, field) in [
         (scaled, ActionField::Cooldown),
         (negative, ActionField::Cost),
@@ -928,13 +944,11 @@ fn an_ability_loads_only_when_its_data_holds() {
         assert_eq!(data.fields_at(1, pool).err(), Some(field), "{field:?}");
     }
     // What only a match's rate decides: i64::MAX ms counts in no tick.
-    assert!(matches!(
-        load(&mut game, &forever, LASH_OUT),
-        Err(ActionError::TimeTooLarge)
-    ));
-    assert!(load(&mut game, &lash_out(), LASH_OUT).is_ok());
+    let forever = load(&mut game, &forever, LASH_OUT);
+    assert_eq!(forever, Err(ActionError::TimeTooLarge));
+    assert_eq!(load(&mut game, &lash_out(), LASH_OUT), Ok(ActionId::nth(0)));
     // A direction loads, as every targeting does; no cast can aim one yet.
-    assert!(load(&mut game, &aimed, LASH_OUT).is_ok());
+    assert_eq!(load(&mut game, &aimed, LASH_OUT), Ok(ActionId::nth(1)));
 
     // A script may serve only the ability's modifiers: a cast of rank 1 in tick 0 then runs no
     // script, and spends 35 of 100 and its 10 000 ms, 300 ticks at 30 a second.
@@ -979,11 +993,16 @@ fn a_capability_field_reads_its_param_at_each_rank() {
         .unwrap()
         .ranks
         .iter()
-        .map(|values| (values.cooldown.get(), values.cost.get(MANA).round()))
+        .map(|values| {
+            (
+                values.cooldown.get(),
+                values.cost.get(MANA).to_int().expect("a whole cost"),
+            )
+        })
         .collect();
     assert_eq!(ranks, [(30, 5), (60, 7), (90, 9)]);
     // Three ranks of an array of 3 is the rank count; five is not.
-    assert!(data.check_ranks(3) && !data.check_ranks(5));
+    assert_eq!([data.check_ranks(3), data.check_ranks(5)], [true, false]);
 }
 
 #[test]

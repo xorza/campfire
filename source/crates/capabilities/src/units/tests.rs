@@ -266,10 +266,16 @@ fn a_position_measures_reach_and_distance_in_the_maps_metric() {
     for (metric, within, distance) in metrics {
         scene.world.insert_resource(metric);
         let read = scene.probe(probe, of).unwrap().cast::<Array>();
-        let read_within = read[..5].iter().map(|reach| reach.as_bool().unwrap());
-        assert!(read_within.eq(within), "{metric:?}");
-        let read_distance = read[5..].iter().map(|at| at.clone().cast::<Num>());
-        assert!(read_distance.eq([num(5), distance]), "{metric:?}");
+        let read_within: Vec<_> = read[..5]
+            .iter()
+            .map(|reach| reach.as_bool().unwrap())
+            .collect();
+        assert_eq!(read_within, within, "{metric:?}");
+        let read_distance: Vec<_> = read[5..]
+            .iter()
+            .map(|at| at.clone().cast::<Num>())
+            .collect();
+        assert_eq!(read_distance, [num(5), distance], "{metric:?}");
     }
     let error = scene
         .probe("fn probe(ctx, of) { of.pos.within(of.pos, -1) }", of)

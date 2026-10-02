@@ -324,22 +324,29 @@ fn a_walker_goes_round_a_tower_and_never_touches_it() {
         walk.body(at(0, 0, 0), None, None, tower_radius);
         let walker = walk.body(at(-4, 0, 0), Some(at(4, 0, 0)), Some(quarter), half);
         let mut closest = u128::MAX;
-        for _ in 0..80 {
+        let mut arrived = None;
+        for tick in 0..80 {
             walk.tick();
             let offset = walk.get::<Position>(walker).get();
             closest = closest.min(offset.length_squared_bits());
+            if arrived.is_none() && walk.get::<Destination>(walker).get().is_none() {
+                arrived = Some(tick);
+            }
         }
-        let arrived = walk.get::<Destination>(walker).get().is_none();
         if planned {
             assert!(
                 closest >= reach * reach,
                 "{closest} against {}",
                 reach * reach
             );
-            assert!(arrived);
+            // Three ticks more than the 32 a straight 8 m takes, a quarter meter a tick.
+            assert_eq!(arrived, Some(34));
             assert_eq!(walk.get::<Position>(walker), at(4, 0, 0));
         } else {
-            assert!(!arrived);
+            // It stops against the tower, the two radii from its centre, pressed there.
+            assert_eq!(arrived, None);
+            let stop = Position::new(Vec3::new(-(tower_radius + half), Num::ZERO, Num::ZERO));
+            assert_eq!(walk.get::<Position>(walker), stop.unwrap());
         }
     }
 }
@@ -376,21 +383,27 @@ fn a_walker_goes_round_units_that_stand_in_its_way() {
         let creep = walk.body(creep_at, None, Some(quarter), creep_radius);
         let walker = walk.body(at(-4, 0, 0), Some(at(4, 0, 0)), Some(quarter), half);
         let mut touched = false;
-        for _ in 0..80 {
+        let mut arrived = None;
+        for tick in 0..80 {
             walk.tick();
             let pos = walk.get::<Position>(walker);
             touched |= overlap(pos, half, at(0, 0, 0), half);
             touched |= overlap(pos, half, creep_at, creep_radius);
+            if arrived.is_none() && walk.get::<Destination>(walker).get().is_none() {
+                arrived = Some(tick);
+            }
         }
-        let arrived = walk.get::<Destination>(walker).get().is_none();
         let still = [walk.get::<Position>(hero), walk.get::<Position>(creep)];
         if planned {
             assert!(!touched);
-            assert!(arrived);
+            // Seven ticks more than the 32 a straight 8 m takes, round both.
+            assert_eq!(arrived, Some(38));
             assert_eq!(walk.get::<Position>(walker), at(4, 0, 0));
             assert_eq!(still, [at(0, 0, 0), creep_at]);
         } else {
-            assert!(!arrived);
+            // Against the hero, the two radii, 1 m, from its centre.
+            assert_eq!(arrived, None);
+            assert_eq!(walk.get::<Position>(walker), at(-1, 0, 0));
         }
     }
 }
@@ -416,7 +429,8 @@ fn two_walkers_that_meet_head_on_pass_on_opposite_sides() {
         let east = walk.body(at(-4, 0, 0), Some(at(4, 0, 0)), Some(quarter), half);
         let west = walk.body(at(4, 0, 0), Some(at(-4, 0, 0)), Some(quarter), half);
         let mut sides = [Num::ZERO; 2];
-        for _ in 0..120 {
+        let mut arrived = [None; 2];
+        for tick in 0..120 {
             walk.tick();
             for (side, unit) in sides.iter_mut().zip([east, west]) {
                 let z = walk.get::<Position>(unit).get().z;
@@ -424,15 +438,24 @@ fn two_walkers_that_meet_head_on_pass_on_opposite_sides() {
                     *side = z;
                 }
             }
+            for (at, unit) in arrived.iter_mut().zip([east, west]) {
+                if at.is_none() && walk.get::<Destination>(unit).get().is_none() {
+                    *at = Some(tick);
+                }
+            }
         }
-        let arrived = [east, west].map(|unit| walk.get::<Destination>(unit).get().is_none());
         if planned {
-            assert_eq!(arrived, [true, true]);
+            // Seven ticks more each than the 32 a straight 8 m takes, round the other.
+            assert_eq!(arrived, [Some(38); 2]);
             assert_eq!(walk.get::<Position>(east), at(4, 0, 0));
             assert_eq!(walk.get::<Position>(west), at(-4, 0, 0));
             assert!(sides[0] < Num::ZERO && sides[1] > Num::ZERO, "{sides:?}");
         } else {
-            assert_eq!(arrived, [false, false]);
+            // Pressed together, each half a metre from where they met, at x = 0.
+            assert_eq!(arrived, [None; 2]);
+            let half_x = |x: Num| Position::new(Vec3::new(x, Num::ZERO, Num::ZERO)).unwrap();
+            let pressed = [east, west].map(|unit| walk.get::<Position>(unit));
+            assert_eq!(pressed, [half_x(-half), half_x(half)]);
         }
     }
 }

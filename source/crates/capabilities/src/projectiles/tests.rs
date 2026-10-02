@@ -170,7 +170,11 @@ impl Volley {
     fn health(&self, id: StableId) -> i64 {
         let entity = self.entity(id);
         let pools = self.world.get::<Pools>(entity).unwrap();
-        pools.current(PoolId::FIRST).unwrap().round()
+        pools
+            .current(PoolId::FIRST)
+            .unwrap()
+            .to_int()
+            .expect("a whole amount")
     }
 
     /// The roll each projectile carries, by stable id.

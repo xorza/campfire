@@ -208,21 +208,6 @@ The schedule is a separate field only because `Mode::install` needs it (`mode/te
 
 ### 5.1 Weak bounds where the exact value is known
 
-- [ ] **Health is read rounded** — `round()` at abilities:358 (every pool), combat:137, projectiles:173 and orders:320. A health of 449.5 shows as 450. combat also has `exact_health` (839). Better: one exact reader (`Pools::life_left`) and `num(450)`, at about 60 assert sites.
-- [ ] **capabilities**:
-  - combat:240 `started.is_some()`: the start tick is known.
-  - abilities:845-851 uses `matches!` and `is_ok()`, but `ActionError` is `PartialEq` and ids are sequential, so assert `Ok(ActionId(n))`.
-  - abilities:831,898 `a && !b` cannot show which side broke.
-  - abilities:492 checks only `len == 10`. Assert the `(unit, hook)` list.
-  - `values/metric.rs:105-110` `is_some()`: planar at (4, 3, 2) gives `(40 << 48, 100 << 48)`.
-  - `units/tests.rs:247,249` `assert!(iter.eq(..))` prints no values.
-- [ ] **Navigation "planned or not"** — `navigation/tests.rs:296-429`:
-  - The unplanned runs assert only `!arrived`. Pin the stop positions: the walker against the tower stops 0.9 + 0.5 short of the tower's centre, and the head-on pair stops symmetric about 0 and 1 m apart.
-  - The bare 80- and 120-tick loops (318, 370, 410) should assert the arrival tick. The straight path is 32 ticks.
-- [ ] **script** — `script_host/tests.rs`:
-  - `:157` `other.left() < 1500`: `one()` costs exactly 3 operations, so `== 1497`.
-  - `:159-173`: 20 levels pass and 40 fail. The boundary is `down(32)` ok and `down(33)` err.
-  - `:109-111` `is_err()`: pin `Runtime("Too many modules imported")` and `Runtime("Function not found: sleep (i64)…")` / `timestamp ()`.
 - [ ] **package** — `mode_package.rs:316` (`[fight]`) and `:964` (`foes:avatar`) accept any `Content(_)`, and `:194` any `OtherEngine(_)`. Use `read_fails` (`:118`).
 - [ ] **net**, now that the round trip is pinned:
   - `prototype.rs:104` `rollbacks > 0`: the exact count.

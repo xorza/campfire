@@ -327,8 +327,13 @@ impl Match {
 
     /// `None` once the unit despawned.
     fn health(&self, id: StableId) -> Option<i64> {
-        self.get::<Pools>(id)
-            .map(|pools| pools.current(PoolId::FIRST).unwrap().round())
+        self.get::<Pools>(id).map(|pools| {
+            pools
+                .current(PoolId::FIRST)
+                .unwrap()
+                .to_int()
+                .expect("a whole amount")
+        })
     }
 
     fn slots(&self, id: StableId) -> &ActionSlots {

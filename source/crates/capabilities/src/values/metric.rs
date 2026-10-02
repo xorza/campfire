@@ -227,9 +227,11 @@ mod tests {
         }
         // 3 m up: a planar map ignores the height, a spatial one counts it, √(4 + 9) > 3.
         let above = at(4, 3, 2);
-        assert!(Metric::Planar.meets(from, to, above, num(2)).is_some());
-        assert!(Metric::Spatial.meets(from, to, above, num(3)).is_none());
-        assert!(Metric::Spatial.meets(from, to, above, num(4)).is_some());
+        // Its share of the path is the point's along it, 4 m of 10, either way.
+        let along = Some((40_u128 << 48, length));
+        assert_eq!(share(Metric::Planar.meets(from, to, above, num(2))), along);
+        assert_eq!(share(Metric::Spatial.meets(from, to, above, num(3))), None);
+        assert_eq!(share(Metric::Spatial.meets(from, to, above, num(4))), along);
         // A path of no length meets what is within reach of its point.
         let still = Metric::Planar.meets(from, from, at(0, 0, 1), num(1));
         assert_eq!(share(still), Some((0, 0)));

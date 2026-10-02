@@ -139,8 +139,13 @@ impl Fight {
 
     /// `None` once the unit despawned.
     fn health(&self, id: StableId) -> Option<i64> {
-        self.get::<Pools>(id)
-            .map(|pools| pools.current(PoolId::FIRST).unwrap().round())
+        self.get::<Pools>(id).map(|pools| {
+            pools
+                .current(PoolId::FIRST)
+                .unwrap()
+                .to_int()
+                .expect("a whole amount")
+        })
     }
 
     /// The attack of unit `id`, whose one weapon sits in its first slot.
@@ -256,10 +261,11 @@ fn a_range_counts_from_the_edge_of_each_body_in_the_maps_metric() {
         }
         fight.attack(fighter, dummy);
         fight.run_until(1);
+        // An attack in range starts in tick 0, its first.
         let started = fight.state(fighter).started();
         assert_eq!(
-            started.is_some(),
-            starts,
+            started,
+            starts.then_some(Tick::ZERO),
             "{dummy_x:?} {dummy_y} {bodies} {metric:?}"
         );
     }
@@ -464,7 +470,11 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
     fight.attack(unit, dummy);
     let paid = |fight: &Fight| {
         let pools = fight.get::<Pools>(unit).unwrap();
-        let mana = pools.current(mana).unwrap().round();
+        let mana = pools
+            .current(mana)
+            .unwrap()
+            .to_int()
+            .expect("a whole amount");
         let gold = fight
             .world
             .resource::<PlayerResources>()
