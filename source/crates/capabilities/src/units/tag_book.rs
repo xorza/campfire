@@ -2,7 +2,6 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 
-use crate::units::by_type::ByType;
 use crate::units::tag::Tag;
 use crate::units::tag_effects::TagEffects;
 use crate::units::tag_set::TagSet;
@@ -19,7 +18,8 @@ pub(crate) struct TagBook {
     /// The tags that make their unit immune to some: a modifier that grants one is never
     /// suppressed, so no order of modifiers changes what is.
     granting: TagSet,
-    type_tags: ByType<TagSet>,
+    /// Each unit type's own tags, by type.
+    type_tags: Vec<TagSet>,
 }
 
 impl TagBook {
@@ -39,9 +39,22 @@ impl TagBook {
             book.immune.push(immune);
         }
         for (unit_type, tags) in types {
-            book.type_tags.set(unit_type, tags);
+            let at = unit_type.index();
+            if book.type_tags.len() <= at {
+                book.type_tags.resize(at + 1, TagSet::default());
+            }
+            book.type_tags[at] = tags;
         }
         book
+    }
+
+    /// The own tags of `unit_type`, those of its data and of its sections; none for a type the
+    /// book was not given.
+    pub(crate) fn own(&self, unit_type: UnitType) -> TagSet {
+        self.type_tags
+            .get(unit_type.index())
+            .copied()
+            .unwrap_or_default()
     }
 
     /// The tags of a unit of `unit_type` whose modifiers grant `granted`, each set one held
@@ -52,7 +65,7 @@ impl TagBook {
         unit_type: UnitType,
         granted: impl Iterator<Item = TagSet> + Clone,
     ) -> UnitTags {
-        let own = self.type_tags.get(unit_type).copied().unwrap_or_default();
+        let own = self.own(unit_type);
         let granting = granted.clone().filter(|tags| tags.meets(self.granting));
         let immune = granting
             .fold(own, TagSet::union)

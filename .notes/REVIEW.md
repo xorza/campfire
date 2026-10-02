@@ -4,22 +4,6 @@ When you address an item, delete it. When a group is empty, delete its heading.
 
 Paths are relative to `source/crates/`. Each item gives the place, the problem and a better shape. The groups are sorted by severity and benefit, and the items in each group by severity.
 
-## 7. Package books are copied into the script view, the frame and the state
-
-Each item is a second copy of data that one book owns. The copies are kept in line by load order, by hand or not at all.
-
-- [ ] **A unit type's tags are stored twice** — `capabilities/src/units/unit_types.rs:33-37,91-95,139-145`, `units/tag_book.rs:22`. After the copy into `TagBook`, production reads only that copy, and a later `give_tag` would diverge. `TagBook.type_tags` is a `ByType` though every type has tags. Better: one store, a `Vec<TagSet>` by type.
-
-## 9. Names from data stay strings
-
-The rule is "no data in strings": a name from data becomes a checked type where it enters. These names do not.
-
-- [ ] **Action data mixes strings and checked names** — `capabilities/src/actions/action_data.rs:47,52,65,68,71`, `actions/delivery_data.rs:14,19`. `hold`, `passive_modifier`, `unit_type`, the param and state keys and the delivery's unit type are `String`, while cost keys and `damage_kind` are `DeclaredName`. Better: all `DeclaredName`.
-## 10. Parallel code paths apply one rule differently
-
-One operation is written twice or three times, and the copies disagree.
-
-
 ## 11. Data shapes allow states that should not exist
 
 These types hold their rules in `expect`s, sentinels or loose fields, not in their shape.

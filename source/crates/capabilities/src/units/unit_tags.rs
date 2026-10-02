@@ -26,6 +26,7 @@ pub(crate) mod internals {
 
     use crate::units::block::Block;
     use crate::units::script_view::View;
+    use crate::units::tag_book::TagBook;
     use crate::units::tag_effects::TagEffects;
     use crate::units::unit_tags::UnitTags;
     use crate::units::unit_type::UnitType;
@@ -37,7 +38,10 @@ pub(crate) mod internals {
             let Some(&unit_type) = world.get::<UnitType>(entity) else {
                 return;
             };
-            let tags = world.non_send::<View>().types_mut().tags(unit_type);
+            let tags = match world.get_resource::<TagBook>() {
+                Some(book) => book.own(unit_type),
+                None => world.non_send::<View>().types_mut().tags(unit_type),
+            };
             world.entity_mut(entity).insert(UnitTags {
                 tags,
                 ..UnitTags::default()

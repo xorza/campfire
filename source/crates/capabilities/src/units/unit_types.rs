@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::mem;
 
 use crate::units::engine_tag::EngineTag;
 use crate::units::tag::Tag;
@@ -127,9 +128,9 @@ impl UnitTypes {
         Some(Tag::new(index))
     }
 
-    /// The book of the effects `data` gives the tags, by name, and of the types' own tags. A
-    /// tag `data` does not name has none.
-    pub(crate) fn tag_book(&self, data: &BTreeMap<DeclaredName, TagData>) -> TagBook {
+    /// The book of the effects `data` gives the tags, by name, and of the types' own tags, which
+    /// it takes: from then on the book alone holds them. A tag `data` does not name has none.
+    pub(crate) fn tag_book(&mut self, data: &BTreeMap<DeclaredName, TagData>) -> TagBook {
         let tags = self.tag_names.iter().map(|name| {
             let Some(data) = data.get(&**name) else {
                 return (TagEffects::default(), TagSet::default());
@@ -140,13 +141,14 @@ impl UnitTypes {
             });
             (TagEffects::of(data), TagSet::of(immune))
         });
-        let types = self.types.iter().enumerate().map(|(at, entry)| {
+        let effects: Vec<_> = tags.collect();
+        let types = self.types.iter_mut().enumerate().map(|(at, entry)| {
             (
                 UnitType::new(u16::try_from(at).expect("types fit u16")),
-                entry.tags,
+                mem::take(&mut entry.tags),
             )
         });
-        TagBook::new(tags, types)
+        TagBook::new(effects, types)
     }
 
     /// The param `name` of `unit_type`, if it declares one.
