@@ -9,6 +9,8 @@ use crate::actions::action_data::ActionData;
 use crate::actions::effect_data::{EffectData, EffectTo, Effecting};
 use crate::combat::combat_effect::CombatEffect;
 use crate::progression::progression_effect::ProgressionEffect;
+use crate::progression::tracks_column::TracksColumn;
+use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
 use crate::stats::modifier_effect::ModifierEffect;
@@ -16,6 +18,7 @@ use crate::stats::pool_id::PoolId;
 use crate::stats::stats_call::StatsCall;
 use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
+use crate::units::script_view::View;
 use crate::units::track_id::TrackId;
 use crate::values::damage_kind::DamageKind;
 use crate::values::number::Number;
@@ -96,13 +99,16 @@ impl EffectLists {
     }
 
     /// Queues `list` in `frame`, a call of its action at its rank: each effect to `reached`, the
-    /// unit the list reached, or to the acting unit; its durations at `rate`.
+    /// unit the list reached, or to the acting unit; its durations at `rate`. Experience to a
+    /// unit `view` does not hold, or that does not have the track, fails the call, as
+    /// `ctx.add_xp` does.
     pub(crate) fn queue(
         list: &[Listed],
         frame: &mut Frame,
+        view: &View,
         reached: Option<StableId>,
         rate: TickRate,
-    ) {
+    ) -> Result<(), CallError> {
         let acting = frame.acting();
         for listed in list {
             let unit = match listed.to {
@@ -146,6 +152,9 @@ impl EffectLists {
                     });
                 }
                 Does::Xp { track, amount } => {
+                    if !TracksColumn::has(view, unit, track) {
+                        return Err(CallError::Api(ApiError::NoTrack));
+                    }
                     let amount = amount.number(frame);
                     frame.effects.push(ProgressionEffect::AddXp {
                         unit,
@@ -155,6 +164,7 @@ impl EffectLists {
                 }
             }
         }
+        Ok(())
     }
 }
 

@@ -30,6 +30,10 @@ use crate::combat::recent_attackers::RecentAttackers;
 use crate::orders::Orders;
 use crate::orders::ai_data::AiData;
 use crate::players::resource_id::ResourceId;
+use crate::progression::Progression;
+use crate::progression::experience::Experience;
+use crate::progression::track_data::{Thresholds, TrackData};
+use crate::progression::track_set::TrackSet;
 use crate::projectiles::projectile::Projectile;
 use crate::projectiles::projectile_data::ProjectileData;
 use crate::scripts::error::ApiError;
@@ -58,6 +62,7 @@ use crate::stats::unit_stats::UnitStats;
 use crate::units::Units;
 use crate::units::script_view::View;
 use crate::units::tag_data::TagData;
+use crate::units::track_id::TrackId;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
@@ -1211,6 +1216,148 @@ fn on_resolve(ctx, caster, target) {
     assert_eq!(game.pool(caster), 100);
 }
 
+/// A match of stats, combat, abilities, progression and `more`, with the stats the scaling
+/// params name and the track `valor`, a level at 50, which is not the unit's level.
+fn with_valor(more: &[Capability]) -> (Match, TrackId) {
+    let declared = [
+        Capability::Stats,
+        Capability::Combat,
+        Capability::Abilities,
+        Capability::Progression,
+    ];
+    let declared: Vec<Capability> = declared.into_iter().chain(more.iter().copied()).collect();
+    let mut game = Match::with(ScriptLimits::ROOMY, &declared);
+    game.load_stats();
+    let valor = TrackData {
+        levels: Thresholds::new([Num::int(50)]).unwrap(),
+        level: false,
+    };
+    let tracks = BTreeMap::from([(DeclaredName::new("valor").unwrap(), valor)]);
+    Progression::load(&mut game.sim.world, &tracks);
+    (game, TrackId::new(0).unwrap())
+}
+
+/// `effecting` to `to`.
+const fn effect(effecting: Effecting, to: EffectTo) -> EffectData {
+    EffectData {
+        does: effecting,
+        to,
+    }
+}
+
+/// 10 experience on `valor`.
+fn valor_xp() -> Effecting {
+    Effecting::Xp {
+        track: DeclaredName::new("valor").unwrap(),
+        amount: int(10),
+    }
+}
+
+/// The `damage` param as true damage.
+fn true_damage() -> Effecting {
+    Effecting::Damage {
+        amount: param("damage"),
+        kind: DeclaredName::new("true").unwrap(),
+    }
+}
+
+#[test]
+fn an_xp_effect_to_a_unit_without_the_track_fails_its_cast_as_add_xp_does() {
+    // Strike's list deals its 50 damage to the unit it aims at, then gives it 10 experience on
+    // `valor`: a unit with the track takes both, and the cast pays its 10 mana; a unit without
+    // the track fails the cast, which changes nothing, its damage, cost and cooldown included.
+    let (mut game, valor) = with_valor(&[]);
+    let data = ActionData {
+        script: None,
+        on_resolve: vec![
+            effect(true_damage(), EffectTo::Reached),
+            effect(valor_xp(), EffectTo::Reached),
+        ],
+        ..strike()
+    };
+    let ability = Actions::load(&mut game.sim.world, 0, "strike", &data, None, 1).unwrap();
+    Abilities::load_effects(&mut game.sim.world, ability, 0, &data);
+    let tracked = game.spawn(
+        1,
+        ground(Num::int(1), Num::ZERO),
+        Experience::new(TrackSet::of([valor]), None),
+    );
+    let untracked = game.spawn(1, ground(Num::int(-1), Num::ZERO), ());
+    let [first, second] = [(); 2].map(|()| game.caster(ability, 1));
+    game.cast(first, ActionTarget::Unit(tracked));
+    assert_eq!(game.failed_calls(), []);
+    let xp = game.sim.get::<Experience>(tracked).get(valor).unwrap().xp;
+    assert_eq!(
+        (game.sim.health(tracked), xp, game.pool(first)),
+        (450, Num::int(10), 90)
+    );
+    game.cast(second, ActionTarget::Unit(untracked));
+    let failed = FailedCall {
+        unit: Some(second),
+        hook: Hook::OnResolve,
+        kind: FailureKind::Api(ApiError::NoTrack),
+    };
+    assert_eq!(game.failed_calls(), [failed]);
+    assert_eq!((game.sim.health(untracked), game.pool(second)), (500, 100));
+    assert_eq!(game.slot(second).ready_at, Tick::ZERO);
+}
+
+#[test]
+fn an_xp_effect_to_a_source_that_despawned_fails_its_hit() {
+    // A bolt at 0.5 m a tick whose hit deals its 50 damage to the unit it reaches and gives its
+    // caster 10 experience on `valor`. The caster despawns as the bolt flies: the hit fails, and
+    // the enemy 4 m out takes no damage.
+    let (mut game, valor) = with_valor(&[Capability::Projectiles]);
+    let bolt = Units::load_type(
+        &mut game.sim.world,
+        TypeScope::Mode,
+        "bolt",
+        &UnitTypeData::default(),
+    );
+    let flight = ProjectileData {
+        width: halves(1),
+        range: Some(Num::int(6)),
+        ..ProjectileData::flying(Num::int(15))
+    };
+    Projectiles::load_type(&mut game.sim.world, bolt, &flight);
+    let data = ActionData {
+        script: None,
+        targeting: Targeting::Direction,
+        range: None,
+        delivery: Some(DeliveryData::Projectile {
+            unit_type: DeclaredName::new("bolt").unwrap(),
+            count: NonZeroU8::new(1).unwrap(),
+            spread_deg: Num::ZERO,
+        }),
+        on_hit: vec![
+            effect(true_damage(), EffectTo::Reached),
+            effect(valor_xp(), EffectTo::Source),
+        ],
+        ..strike()
+    };
+    let ability = Actions::load(&mut game.sim.world, 0, "bolt", &data, None, 1).unwrap();
+    Abilities::load_effects(&mut game.sim.world, ability, 0, &data);
+    let caster = game.caster(ability, 1);
+    game.sim
+        .insert(caster, Experience::new(TrackSet::of([valor]), None));
+    let enemy = game.spawn(1, ground(Num::int(4), Num::ZERO), ());
+    game.cast(caster, ActionTarget::Point(ground(Num::int(10), Num::ZERO)));
+    let entity = game.sim.entity(caster);
+    game.sim.world.despawn(entity);
+    let mut failed = Vec::new();
+    while game.sim.now() < Tick::new(16) {
+        game.sim.step();
+        failed.extend(game.failed_calls());
+    }
+    let hit = FailedCall {
+        unit: Some(caster),
+        hook: Hook::OnHit,
+        kind: FailureKind::Api(ApiError::NoTrack),
+    };
+    assert_eq!(failed, [hit]);
+    assert_eq!(game.sim.health(enemy), 500);
+}
+
 /// A modifier of no duration that runs `script`, with an interval of `interval_ms` and the
 /// params `params`.
 fn scripted(interval_ms: Option<i64>, params: &[(&str, i64)]) -> ModifierData {
@@ -1836,10 +1983,6 @@ fn a_script_launches_a_projectile_only_in_the_form_its_type_flies() {
 /// direction, whose hits deal the `damage` param, 30, as physical damage, apply `chilled`, and
 /// restore 2 mana to the caster.
 fn fan_of_frost() -> ActionData {
-    let effect = |does| EffectData {
-        does,
-        to: EffectTo::Reached,
-    };
     ActionData {
         script: None,
         targeting: Targeting::Direction,
@@ -1850,23 +1993,27 @@ fn fan_of_frost() -> ActionData {
             spread_deg: Num::int(30),
         }),
         on_hit: vec![
-            effect(Effecting::Damage {
-                amount: Number::Param(ParamRef {
-                    param: DeclaredName::new("damage").unwrap(),
-                }),
-                kind: DeclaredName::new("physical").unwrap(),
-            }),
-            effect(Effecting::Modifier {
-                id: DeclaredName::new("chilled").unwrap(),
-                duration_ms: None,
-            }),
-            EffectData {
-                does: Effecting::Restore {
-                    pool: DeclaredName::new("mana").unwrap(),
-                    amount: Number::Value(Scalar::Int(2)),
+            effect(
+                Effecting::Damage {
+                    amount: param("damage"),
+                    kind: DeclaredName::new("physical").unwrap(),
                 },
-                to: EffectTo::Source,
-            },
+                EffectTo::Reached,
+            ),
+            effect(
+                Effecting::Modifier {
+                    id: DeclaredName::new("chilled").unwrap(),
+                    duration_ms: None,
+                },
+                EffectTo::Reached,
+            ),
+            effect(
+                Effecting::Restore {
+                    pool: DeclaredName::new("mana").unwrap(),
+                    amount: int(2),
+                },
+                EffectTo::Source,
+            ),
         ],
         params: BTreeMap::from([(
             DeclaredName::new("damage").unwrap(),

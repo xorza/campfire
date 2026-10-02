@@ -1,3 +1,5 @@
+use campfire_sim::StableId;
+
 use crate::progression::track_book::TrackBook;
 use crate::progression::track_set::TrackSet;
 use crate::scripts::error::{ApiError, Checked};
@@ -45,8 +47,11 @@ impl TracksColumn {
             .ok_or_else(|| ApiError::UnknownTrack.fail())?)
     }
 
-    /// Whether the unit in row `row` of the view has `track`.
-    pub(crate) fn has(view: &View, row: usize, track: TrackId) -> bool {
+    /// Whether `unit` has `track`; false for a unit the view does not hold.
+    pub(crate) fn has(view: &View, unit: StableId, track: TrackId) -> bool {
+        let Some(row) = view.row_index(unit) else {
+            return false;
+        };
         view.column(|column: &TracksColumn| column.rows[row].contains(track))
             .unwrap_or(false)
     }

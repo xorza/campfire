@@ -135,7 +135,11 @@ fn run_hooks(world: &mut World, due: &[Delivered]) {
                 .get_resource::<EffectLists>()
                 .map_or(&[][..], |lists| lists.of(by.action, hook));
             let rate = *world.resource::<TickRate>();
-            EffectLists::queue(list, &mut ctx.frame(), reach.unit(), rate);
+            let queued = EffectLists::queue(list, &mut ctx.frame(), ctx.view(), reach.unit(), rate);
+            if let Err(error) = queued {
+                batch.record(Some(by.source), hook, error);
+                continue;
+            }
             let Some(script) = script else {
                 ctx.apply(batch.world(), now);
                 continue;

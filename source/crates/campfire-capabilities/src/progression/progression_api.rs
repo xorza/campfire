@@ -72,8 +72,7 @@ impl ProgressionApi {
         if amount < Num::ZERO {
             return Err(ApiError::NegativeXp.fail().into());
         }
-        let row = view.row_index(unit.id);
-        if !row.is_some_and(|row| TracksColumn::has(view, row, track)) {
+        if !TracksColumn::has(view, unit.id, track) {
             return Err(ApiError::NoTrack.fail().into());
         }
         ctx.queue(ProgressionEffect::AddXp {

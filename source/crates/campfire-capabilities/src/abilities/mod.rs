@@ -398,7 +398,13 @@ fn run(batch: &mut ScriptBatch<'_>, ctx: &Ctx, prepared: &mut Prepared) -> Resul
         .resource::<EffectLists>()
         .of(prepared.action, Hook::OnResolve);
     let rate = *world.resource::<TickRate>();
-    EffectLists::queue(list, &mut ctx.frame(), prepared.aim.unit(), rate);
+    EffectLists::queue(
+        list,
+        &mut ctx.frame(),
+        ctx.view(),
+        prepared.aim.unit(),
+        rate,
+    )?;
     let Some(script) = prepared.on_resolve else {
         return Ok(());
     };

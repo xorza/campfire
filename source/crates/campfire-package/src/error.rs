@@ -197,6 +197,12 @@ pub enum LoadProblem {
     /// types, an entry of two loadout packages, a pool or an action twice in a unit type's pools
     /// or slots, a name twice in one of the mode's lists.
     Repeated { at: Place, name: String },
+    /// A modifier is the passive of two owners of its package, unit types by `passive` and
+    /// actions by `passive_modifier`, which would share its hold.
+    SharedPassive {
+        modifier: DeclaredName,
+        owners: [Place; 2],
+    },
     /// Live stat changes across the mode's modifiers read each other in a loop, through these
     /// stats.
     StatLoop(Vec<Stat>),
@@ -625,6 +631,10 @@ impl fmt::Display for ChoiceProblem {
 }
 
 impl fmt::Display for LoadProblem {
+    #[expect(
+        clippy::too_many_lines,
+        reason = "one arm for each problem, and the problems are many"
+    )]
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             LoadProblem::Content(error) => write!(f, "{error}"),
@@ -697,6 +707,13 @@ impl fmt::Display for LoadProblem {
             LoadProblem::Script { path, problem } => write!(f, "{path}: {problem}"),
             LoadProblem::Unknown { at, name, of } => write!(f, "{at}: no {of} {name:?}"),
             LoadProblem::Repeated { at, name } => write!(f, "{at}: {name:?} twice"),
+            LoadProblem::SharedPassive {
+                modifier,
+                owners: [first, second],
+            } => write!(
+                f,
+                "modifier {modifier} is the passive of both {first} and {second}"
+            ),
             LoadProblem::StatLoop(stats) => {
                 let names: Vec<String> = stats.iter().map(Stat::to_string).collect();
                 write!(

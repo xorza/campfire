@@ -36,7 +36,7 @@ use crate::units::unit_type_data::UnitTypeData;
 use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
 use crate::values::number::{Number, ParamRef};
-use crate::values::param::Param;
+use crate::values::param::{Param, Scaling};
 use crate::values::ranked::Ranked;
 use crate::values::scalar::Scalar;
 use crate::values::stat::{EngineStat, Stat};
@@ -454,6 +454,72 @@ fn aura(id: ModifierId, carrier: StableId, radius: Num) -> Application {
         reapply: Reapply::Refresh,
         max_stacks: None,
     }
+}
+
+/// A match of a unit type of armor 10, and the modifier `warding`, whose aura's radius and
+/// shield read the own params `reach` and `ward`: 0 and −1 per point of its source's armor, and
+/// 0 and −2 per point.
+fn warding_match() -> (TestMatch, ModifierId) {
+    let armored = stats(&[(armor_stat(), Num::int(10), Num::ZERO)]);
+    let mut game = stat_match(&[armored]);
+    Units::load_type(
+        &mut game.world,
+        TypeScope::Mode,
+        "armored",
+        &UnitTypeData::default(),
+    );
+    Stats::load_modifier(&mut game.world, 0, "heartened", &modifier_data(None), None);
+    let param = |name: &str| {
+        Number::Param(ParamRef {
+            param: DeclaredName::new(name).unwrap(),
+        })
+    };
+    let against_armor = |per_point: i64| {
+        Param::Scaling(Scaling {
+            base: Ranked::One(Scalar::Int(0)),
+            per_level: Num::ZERO,
+            bonus: BTreeMap::new(),
+            ratios: BTreeMap::from([(armor_stat(), Num::int(per_point))]),
+        })
+    };
+    let data = ModifierData {
+        shield: Some(param("ward")),
+        params: BTreeMap::from([
+            (DeclaredName::new("reach").unwrap(), against_armor(-1)),
+            (DeclaredName::new("ward").unwrap(), against_armor(-2)),
+        ]),
+        ..modifier_data(Some(AuraData {
+            radius: param("reach"),
+            affects: FilterData::parse("allies").unwrap(),
+            modifier: DeclaredName::new("heartened").unwrap(),
+        }))
+    };
+    Stats::load_modifier(&mut game.world, 0, "warding", &data, None);
+    let warding = Stats::modifier(&game.world, 0, "warding").unwrap();
+    (game, warding)
+}
+
+#[test]
+fn a_scaling_aura_radius_and_shield_below_zero_hold_zero_and_restore() {
+    // The load refuses a negative value and rank, but a scaling param still gives one as it
+    // applies: −1 × 10 armor is −10 m of reach, and −2 × 10 is −20 of shield. Each holds 0, as
+    // the decode of an instance refuses one below zero, so the snapshot restores.
+    let (mut game, warding) = warding_match();
+    let unit = unit(&mut game, 0);
+    game.world.entity_mut(unit).insert(Modifiers::default());
+    game.step();
+    let id = *game.world.get::<StableId>(unit).unwrap();
+    internals::give_modifier(&mut game.world, id, warding, Some((id, None, 1)), false);
+    let modifiers = game.world.get::<Modifiers>(unit).unwrap();
+    let carried = modifiers.get(warding, Some(id)).unwrap();
+    let clocks = game.world.get::<ModifierClocks>(unit).unwrap();
+    let shield = clocks.shield_of(modifiers, warding, Some(id));
+    assert_eq!(
+        (carried.instance.aura_radius, shield),
+        (Some(Num::ZERO), Some(Num::ZERO))
+    );
+    let (mut fresh, _) = warding_match();
+    game.restore_into(&mut fresh);
 }
 
 #[test]

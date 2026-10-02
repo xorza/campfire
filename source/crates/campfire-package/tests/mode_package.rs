@@ -273,7 +273,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-static FLAWS: [Flaw; 185] = [
+static FLAWS: [Flaw; 192] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -1187,6 +1187,67 @@ static FLAWS: [Flaw; 185] = [
         package: "eruption",
         refused: |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::AreaTime(name)) if name == "eruption"),
     },
+    // A modifier is the passive of one owner of its package: Husk's avatar holds
+    // `withering_touch`, and Lash Out `lash_out_guard`.
+    flaw(
+        HUSK,
+        Edit::Set("actions.lash_out.passive_modifier", r#""withering_touch""#),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::SharedPassive { modifier, owners: [Place::Avatar(avatar), Place::Action(action)] } if modifier == "withering_touch" && avatar == "hero-husk" && action == "lash_out"),
+    ),
+    flaw(
+        HUSK,
+        Edit::Set("actions.dread.passive_modifier", r#""lash_out_guard""#),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::SharedPassive { modifier, owners: [Place::Action(first), Place::Action(second)] } if modifier == "lash_out_guard" && first == "dread" && second == "lash_out"),
+    ),
+    // The same of the mode, a unit type's and an action's, and of a loadout, two actions'.
+    Flaw {
+        file: UNITS,
+        edit: Edit::Set("units.tower.passive", r#""warden_blessing""#),
+        also: &[(
+            MODE_DATA,
+            Edit::Set(
+                "actions.tower_attack.passive_modifier",
+                r#""warden_blessing""#,
+            ),
+        )],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::SharedPassive { modifier, owners: [Place::UnitType(tower), Place::Action(action)] } if modifier == "warden_blessing" && tower == "tower" && action == "tower_attack"),
+    },
+    Flaw {
+        file: "spells/data/loadout.toml",
+        edit: Edit::Set("actions.blink.passive_modifier", r#""haste""#),
+        also: &[(
+            "spells/data/loadout.toml",
+            Edit::Set("actions.haste.passive_modifier", r#""haste""#),
+        )],
+        package: "player-spells",
+        refused: |problem| matches!(problem, LoadProblem::SharedPassive { modifier, owners: [Place::Action(first), Place::Action(second)] } if modifier == "haste" && first == "blink" && second == "haste"),
+    },
+    // An aura's radius and a shield are never negative: as Gale's Fair Wind's value, as a rank
+    // of the Wind Shield action's param its modifier reads, or as the modifier's own param.
+    flaw(
+        GALE,
+        Edit::Set("modifiers.fair_wind.aura.radius", r#""-1.0""#),
+        "hero-gale",
+        |problem| matches!(problem, LoadProblem::Modifier { modifier, problem: ModifierProblem::Negative } if modifier == "fair_wind"),
+    ),
+    flaw(
+        GALE,
+        Edit::Set(
+            "actions.wind_shield.params.shield.base",
+            "[80, 120, -1, 200, 240]",
+        ),
+        "hero-gale",
+        |problem| matches!(problem, LoadProblem::Modifier { modifier, problem: ModifierProblem::Negative } if modifier == "wind_shield"),
+    ),
+    flaw(
+        GALE,
+        Edit::Set("modifiers.wind_shield.params.shield", "-5"),
+        "hero-gale",
+        |problem| matches!(problem, LoadProblem::Modifier { modifier, problem: ModifierProblem::Negative } if modifier == "wind_shield"),
+    ),
     // A name a script gives the API, as the registry marks the argument: a tag, a track, a unit
     // type of the mode's scope, a team.
     flaw(

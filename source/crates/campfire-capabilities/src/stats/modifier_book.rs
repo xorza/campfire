@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 use campfire_common::{Tick, Ticks};
+use campfire_math::Num;
 use campfire_script::ScriptId;
 use campfire_sim::TickRate;
 
@@ -190,6 +191,9 @@ impl ModifierBook {
             Some(number) => read(number).map(|read| Some(read.value)),
             None => Some(None),
         };
+        // The load refuses a negative value and rank; a scaling param can still give one.
+        let not_negative =
+            |number| value(number).map(|value| value.map(|value| value.max(Num::ZERO)));
         let ticks = |time: Option<&SpecTime>| match time {
             Some(time) => time
                 .ticks(rate, |place| param(place).map(|read| read.value))
@@ -228,12 +232,12 @@ impl ModifierBook {
                 from.hold,
                 duration.map_or(Ends::Never, |ticks| Ends::At(Instance::end(now, ticks))),
             ),
-            aura_radius: value(spec.aura.as_ref().map(|aura| &aura.radius))?,
+            aura_radius: not_negative(spec.aura.as_ref().map(|aura| &aura.radius))?,
             stacks: u32::from(!counts),
             stack_life,
             stack_ends: first.into_iter().collect(),
             interval,
-            shield: value(spec.shield.as_ref())?,
+            shield: not_negative(spec.shield.as_ref())?,
             stats: shares.collect::<Option<_>>()?,
             state: spec.initial.to_vec(),
         };

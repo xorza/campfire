@@ -4,9 +4,9 @@ use std::{iter, slice};
 use campfire_capabilities::{
     ActionData, ActionDataField, ActionKind, ActionSlots, ApiOwner, ApiVersion, BookError, Books,
     CollisionData, CombatRules, DeclaredName, DeliveryData, EffectTo, Effecting, EngineTag,
-    FilterData, Hook, MemberKind, ModifierData, NameKind, Number, Offers, PackagePath, Param,
-    Pools, Range, RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Stat, Targeting, TrackId,
-    TypePlace, UnitTypeData, UnitTypeFile,
+    FilterData, Hook, MemberKind, ModifierData, ModifierProblem, NameKind, Number, Offers,
+    PackagePath, Param, Pools, Range, RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Stat,
+    Targeting, TrackId, TypePlace, UnitTypeData, UnitTypeFile,
 };
 use campfire_math::Num;
 use campfire_sim::{Capability, TickRate};
@@ -227,6 +227,10 @@ impl<'a> LoadCheck<'a> {
             let at = Place::UnitType(name.clone());
             self.unit_type(unit_type, &at, &content.actions, &content.modifiers)?;
         }
+        let held = units.iter().filter_map(|(name, unit_type)| {
+            Some((Place::UnitType(name.clone()), unit_type.passive.as_ref()?))
+        });
+        passives_held_once(held.chain(action_passives(&content.actions)))?;
         if !packages.map.paths.is_empty() {
             self.require(Capability::Navigation, &Place::Paths)?;
         }
@@ -303,6 +307,8 @@ impl<'a> LoadCheck<'a> {
                     return Err(LoadProblem::Delivery(DeliveryProblem::NotDelivery(at)));
                 }
                 self.unit_type(&avatar.unit, &at, actions, modifiers)?;
+                let held = avatar.unit.passive.as_ref().map(|passive| (at, passive));
+                passives_held_once(held.into_iter().chain(action_passives(actions)))?;
                 let ranks = self.slotted_ranks([&avatar.unit])?;
                 let unslotted = actions.keys().find(|id| !ranks.contains_key(id.as_str()));
                 if let Some(id) = unslotted {
@@ -310,7 +316,10 @@ impl<'a> LoadCheck<'a> {
                 }
                 Some(ranks)
             }
-            DependentKind::Loadout => None,
+            DependentKind::Loadout => {
+                passives_held_once(action_passives(actions))?;
+                None
+            }
         };
         for (id, unit_type) in &content.units {
             let at = Place::UnitType(id.clone());
@@ -425,6 +434,12 @@ impl<'a> LoadCheck<'a> {
                     of: NameKind::Param,
                     at,
                     name: name.to_string(),
+                });
+            }
+            if negative_radius_or_shield(modifier, by) {
+                return Err(LoadProblem::Modifier {
+                    modifier: id.clone(),
+                    problem: ModifierProblem::Negative,
                 });
             }
             if let Some(script) = &modifier.script {
@@ -1180,12 +1195,45 @@ impl<'a> PackageNames<'a> {
 fn number_values<'n>(action: &'n ActionData, number: &'n Number) -> &'n [Scalar] {
     match number {
         Number::Value(value) => slice::from_ref(value),
-        Number::Param(reference) => match action.params.get(&reference.param) {
-            Some(Param::Ranked(ranked)) => ranked.values(),
-            Some(Param::Scaling(scaling)) => scaling.base.values(),
-            None => &[],
-        },
+        Number::Param(reference) => action
+            .params
+            .get(&reference.param)
+            .map_or(&[], param_values),
     }
+}
+
+/// The values `param` can have, each rank's; a scaling param's base's, as its source's stats add
+/// to it only as it applies.
+fn param_values(param: &Param) -> &[Scalar] {
+    match param {
+        Param::Ranked(ranked) => ranked.values(),
+        Param::Scaling(scaling) => scaling.base.values(),
+    }
+}
+
+/// Whether the aura radius or the shield of `modifier` is negative: as a value, or at a rank of
+/// its own param, or, for a param it does not declare, of the param of an action `by` that
+/// applies it.
+fn negative_radius_or_shield(modifier: &ModifierData, by: &[&ActionData]) -> bool {
+    let negative = |values: &[Scalar]| {
+        values
+            .iter()
+            .any(|value| value.to_num().is_some_and(|value| value < Num::ZERO))
+    };
+    let numbers = [
+        modifier.aura.as_ref().map(|aura| &aura.radius),
+        modifier.shield.as_ref(),
+    ];
+    numbers.into_iter().flatten().any(|number| match number {
+        Number::Value(value) => negative(slice::from_ref(value)),
+        Number::Param(reference) => match modifier.params.get(&reference.param) {
+            Some(param) => negative(param_values(param)),
+            None => by
+                .iter()
+                .filter_map(|action| action.params.get(&reference.param))
+                .any(|param| negative(param_values(param))),
+        },
+    })
 }
 
 /// An effect's number: at least 0 and a sim number at every rank.
@@ -1210,6 +1258,33 @@ fn whole_ms(action: &ActionData, duration: &Number) -> bool {
         && number_values(action, duration)
             .iter()
             .all(|value| matches!(value, Scalar::Int(ms) if u32::try_from(*ms).is_ok()))
+}
+
+/// The passive of each of `actions`, by its place.
+fn action_passives(
+    actions: &BTreeMap<DeclaredName, ActionData>,
+) -> impl Iterator<Item = (Place, &DeclaredName)> {
+    actions.iter().filter_map(|(id, action)| {
+        Some((Place::Action(id.clone()), action.passive_modifier.as_ref()?))
+    })
+}
+
+/// Each modifier the passive of one of `owners` at most, the unit types and actions of one
+/// package, each with the modifier it holds as its passive.
+fn passives_held_once<'p>(
+    owners: impl IntoIterator<Item = (Place, &'p DeclaredName)>,
+) -> Result<(), LoadProblem> {
+    let mut held: BTreeMap<&DeclaredName, Place> = BTreeMap::new();
+    for (owner, modifier) in owners {
+        if let Some(first) = held.get(modifier) {
+            return Err(LoadProblem::SharedPassive {
+                modifier: modifier.clone(),
+                owners: [first.clone(), owner],
+            });
+        }
+        held.insert(modifier, owner);
+    }
+    Ok(())
 }
 
 /// The tags a unit type or a modifier at `at` carries: none the engine's, which only the engine
