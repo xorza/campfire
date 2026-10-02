@@ -14,7 +14,7 @@ use crate::scripts::frame::Frame;
 use crate::stats::held_modifiers::{Held, HeldModifiers};
 use crate::stats::level::Level;
 use crate::stats::live_shares::LiveShares;
-use crate::stats::modifier_book::{Applier, ModifierBook, ModifierId};
+use crate::stats::modifier_book::{Applier, ModifierBook};
 use crate::stats::modifier_effect::ModifierEffect;
 use crate::stats::modifier_handle::ModifierHandle;
 use crate::stats::modifier_spec::ParamPlace;
@@ -30,6 +30,7 @@ use crate::stats::refresh_scratch::{RefreshScratch, Refreshing};
 use crate::stats::stat_book::StatBook;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::dead::Dead;
+use crate::units::modifier_id::ModifierId;
 use crate::units::owner::Owner;
 use crate::units::relations::Relations;
 use crate::units::script_view::{RowFill, View};
@@ -583,10 +584,11 @@ pub(crate) mod internals {
     use campfire_sim::{EntityIndex, StableId};
 
     use crate::stats::Stats;
-    use crate::stats::modifier_book::{Applier, ModifierBook, ModifierId};
+    use crate::stats::modifier_book::{Applier, ModifierBook};
     use crate::stats::modifier_effect::ModifierEffect;
     use crate::stats::modifiers::Modifiers;
     use crate::units::action_id::ActionId;
+    use crate::units::modifier_id::ModifierId;
 
     impl Stats {
         /// The modifier `name` of `package`, as the match loaded it.

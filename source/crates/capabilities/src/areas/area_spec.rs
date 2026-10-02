@@ -2,8 +2,8 @@ use campfire_math::{Num, Ticks};
 use campfire_sim::TickRate;
 
 use crate::areas::area_data::AreaData;
-use crate::stats::modifier_book::ModifierId;
 use crate::units::filter::Filter;
+use crate::units::modifier_id::ModifierId;
 use crate::units::unit_types::UnitTypes;
 use crate::values::declared_name::DeclaredName;
 use crate::values::relation::Relation;

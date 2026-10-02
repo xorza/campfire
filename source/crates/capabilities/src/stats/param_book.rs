@@ -5,13 +5,13 @@ use bevy_ecs::resource::Resource;
 use campfire_math::Num;
 
 use crate::stats::live_param::{LiveParam, ParamOwner};
-use crate::stats::modifier_book::ModifierId;
 use crate::stats::modifier_spec::ParamPlace;
 use crate::stats::param_read::ParamRead;
 use crate::stats::param_source::ParamSource;
 use crate::stats::param_table::ParamTable;
 use crate::stats::stat_id::StatId;
 use crate::units::action_id::ActionId;
+use crate::units::modifier_id::ModifierId;
 use crate::values::declared_name::DeclaredName;
 use crate::values::param::Param;
 use crate::values::stat::Stat;
@@ -122,10 +122,10 @@ pub(crate) mod internals {
     use bevy_ecs::world::World;
 
     use crate::scripts::ctx::Ctx;
-    use crate::stats::modifier_book::ModifierId;
     use crate::stats::param_book::ParamBook;
     use crate::stats::stat_id::StatId;
     use crate::units::action_id::ActionId;
+    use crate::units::modifier_id::ModifierId;
     use crate::values::declared_name::DeclaredName;
     use crate::values::param::Param;
     use crate::values::stat::Stat;

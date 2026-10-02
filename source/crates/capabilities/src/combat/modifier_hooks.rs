@@ -13,8 +13,9 @@ use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
-use crate::stats::modifier_book::{ModifierBook, ModifierId};
+use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifiers::Modifiers;
+use crate::units::modifier_id::ModifierId;
 use crate::units::owner::Owner;
 use crate::units::tag_book::TagBook;
 

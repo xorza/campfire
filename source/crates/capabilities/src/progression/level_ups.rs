@@ -2,8 +2,8 @@ use bevy_ecs::resource::Resource;
 use campfire_sim::{SimResource, StableId};
 use serde::{Deserialize, Serialize};
 
-use crate::progression::track_id::TrackId;
 use crate::stats::level::Level;
+use crate::units::track_id::TrackId;
 
 /// The levels units reached, in the order reached, whose `on_level_up` has yet to run. The Mode
 /// stage runs the calls from the front; the level-ups whose call found the mode pool spent stay,

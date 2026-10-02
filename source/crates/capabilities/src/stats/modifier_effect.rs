@@ -2,7 +2,7 @@ use campfire_math::{PlayerSlot, Ticks};
 use campfire_sim::{Capability, StableId};
 
 use crate::scripts::effects::Effect;
-use crate::stats::modifier_book::ModifierId;
+use crate::units::modifier_id::ModifierId;
 
 /// A change to a unit's modifiers that a call queued.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

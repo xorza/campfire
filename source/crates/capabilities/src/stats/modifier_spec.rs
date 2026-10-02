@@ -7,12 +7,12 @@ use campfire_sim::TickRate;
 
 use crate::scripts::state_value::StateValue;
 use crate::stats::error::ModifierProblem;
-use crate::stats::modifier_book::ModifierId;
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifier_handle::StateField;
 use crate::stats::stat_id::StatId;
 use crate::stats::stat_op::StatOp;
 use crate::units::filter::Filter;
+use crate::units::modifier_id::ModifierId;
 use crate::units::unit_types::UnitTypes;
 use crate::values::declared_name::DeclaredName;
 use crate::values::number::Number;
@@ -226,7 +226,6 @@ mod tests {
     use campfire_sim::TickRate;
 
     use crate::stats::error::ModifierProblem;
-    use crate::stats::modifier_book::ModifierId;
     use crate::stats::modifier_data::{AuraData, ModifierData, Reapply};
     use crate::stats::modifier_spec::{
         AuraSpec, ModifierSpec, ParamPlace, SpecChange, SpecNames, SpecNumber, SpecTime,
@@ -235,6 +234,7 @@ mod tests {
     use crate::stats::stat_id::StatId;
     use crate::stats::stat_op::StatOp;
     use crate::units::filter::Filter;
+    use crate::units::modifier_id::ModifierId;
     use crate::units::unit_types::UnitTypes;
     use crate::values::declared_name::DeclaredName;
     use crate::values::filter_data::FilterData;

@@ -3,7 +3,7 @@ use campfire_math::PlayerSlot;
 use campfire_sim::SimResource;
 use serde::{Deserialize, Serialize};
 
-use crate::stats::modifier_book::ModifierId;
+use crate::units::modifier_id::ModifierId;
 
 /// The modifiers each player holds for the units it owns, as an RTS's upgrades: by player, then
 /// by modifier, each once.

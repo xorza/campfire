@@ -8,11 +8,11 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::scripts::state_value::StateValue;
 use crate::stats::live_param::LiveParam;
-use crate::stats::modifier_book::ModifierId;
 use crate::stats::modifier_data::Reapply;
 use crate::stats::stat_id::StatId;
 use crate::stats::stat_op::StatOp;
 use crate::units::action_id::ActionId;
+use crate::units::modifier_id::ModifierId;
 use crate::units::tag_set::TagSet;
 
 /// The modifiers a unit carries, by id, then source, one instance of an id from each source.

@@ -12,12 +12,12 @@ use crate::scripts::error::CallError;
 use crate::scripts::hook::ScriptRole;
 use crate::scripts::state_value::StateValue;
 use crate::stats::Stats;
-use crate::stats::modifier_book::ModifierId;
 use crate::stats::modifier_handle::ModifierHandle;
 use crate::stats::param_book::ParamBook;
 use crate::stats::param_source::ParamSource;
 use crate::stats::param_table::ParamTable;
 use crate::units::action_id::ActionId;
+use crate::units::modifier_id::ModifierId;
 
 use crate::values::hit::Hit;
 

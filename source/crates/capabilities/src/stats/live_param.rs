@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
-use crate::stats::modifier_book::ModifierId;
 use crate::units::action_id::ActionId;
+use crate::units::modifier_id::ModifierId;
 
 /// The scaling param a live stat change reads, computed again from its source at each refresh:
 /// the param at `at` of its owner's run.

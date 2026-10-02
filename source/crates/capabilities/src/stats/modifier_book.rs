@@ -4,7 +4,6 @@ use std::sync::Arc;
 use bevy_ecs::resource::Resource;
 use campfire_math::{Tick, Ticks};
 use campfire_script::ScriptId;
-use serde::{Deserialize, Serialize};
 
 use campfire_sim::{StableId, TickRate};
 
@@ -18,6 +17,7 @@ use crate::stats::modifiers::{Application, Instance, Interval, StackEnd, StatSha
 use crate::stats::param_read::ParamRead;
 use crate::stats::stat_id::StatId;
 use crate::units::action_id::ActionId;
+use crate::units::modifier_id::ModifierId;
 use crate::units::tag_set::TagSet;
 use crate::units::unit_types::UnitTypes;
 use crate::values::declared_name::DeclaredName;
@@ -31,11 +31,6 @@ use crate::values::stat::Stat;
 pub(crate) struct ModifierBook {
     entries: Arc<Vec<ModifierEntry>>,
 }
-
-/// A modifier, by its place in the book.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ModifierId(u16);
 
 /// A loaded modifier: its package, its name there, its spec, and its compiled script with the
 /// combat events it hears.
@@ -110,7 +105,7 @@ impl ModifierBook {
             modifier: |name: &str| {
                 let at = modifiers.binary_search_by(|modifier| modifier.name.as_str().cmp(name));
                 match at {
-                    Ok(at) => ModifierId::at(start + at),
+                    Ok(at) => ModifierId::nth(start + at),
                     Err(_) => self
                         .named(package, name)
                         .expect("the load checked the aura's modifier"),
@@ -147,7 +142,7 @@ impl ModifierBook {
             .entries
             .binary_search_by(|entry| entry.order(package, name))
             .ok()?;
-        Some(ModifierId::at(at))
+        Some(ModifierId::nth(at))
     }
 
     pub(crate) fn get(&self, id: ModifierId) -> &ModifierEntry {
@@ -263,17 +258,6 @@ impl ModifierEntry {
     }
 }
 
-impl ModifierId {
-    /// The modifier at `index` of the book.
-    fn at(index: usize) -> ModifierId {
-        ModifierId(u16::try_from(index).expect("modifiers fit u16"))
-    }
-
-    pub(crate) const fn index(self) -> usize {
-        self.0 as usize
-    }
-}
-
 /// The hooks of a modifier's script that combat events call.
 const MODIFIER_HOOKS: [Hook; 6] = [
     Hook::OnAttack,
@@ -283,14 +267,3 @@ const MODIFIER_HOOKS: [Hook; 6] = [
     Hook::OnKill,
     Hook::OnTakedown,
 ];
-
-#[cfg(test)]
-pub(crate) mod internals {
-    use crate::stats::modifier_book::ModifierId;
-
-    impl ModifierId {
-        pub(crate) const fn new(index: u16) -> ModifierId {
-            ModifierId(index)
-        }
-    }
-}

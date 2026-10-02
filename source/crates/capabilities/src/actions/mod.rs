@@ -310,13 +310,13 @@ pub(crate) mod loads {
     use crate::projectiles::projectile_spec::ProjectileSpec;
     use crate::scripts::script_book::ScriptBook;
     use crate::stats::modifier_book::ModifierBook;
-    use crate::stats::modifier_book::ModifierId;
     use crate::stats::param_book::ParamBook;
     use crate::stats::stat_book::StatBook;
     use crate::stats::stat_id::StatId;
     use crate::units::action_id::ActionId;
     use crate::units::by_type::ByType;
     use crate::units::filter::Filter;
+    use crate::units::modifier_id::ModifierId;
     use crate::units::script_view::View;
     use crate::units::type_scope::TypeScope;
     use crate::units::unit_type::UnitType;

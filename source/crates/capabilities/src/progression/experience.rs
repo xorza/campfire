@@ -5,9 +5,9 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::progression::track_book::TrackBook;
-use crate::progression::track_id::TrackId;
 use crate::progression::track_set::TrackSet;
 use crate::stats::level::Level;
+use crate::units::track_id::TrackId;
 
 /// A unit's experience and level on each of its tracks, in the order of their ids. A level is
 /// state, not derived from experience: experience raises it, and never lowers it.

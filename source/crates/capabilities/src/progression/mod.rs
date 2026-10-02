@@ -19,7 +19,6 @@ pub(crate) mod progression_api;
 pub(crate) mod progression_effect;
 pub(crate) mod track_book;
 pub(crate) mod track_data;
-pub(crate) mod track_id;
 pub(crate) mod track_set;
 
 /// The `progression` capability: experience on tracks, and the levels it reaches.

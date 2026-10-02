@@ -1,6 +1,6 @@
-use crate::progression::track_id::TrackId;
-use crate::stats::modifier_book::ModifierId;
 use crate::stats::pool_id::PoolId;
+use crate::units::modifier_id::ModifierId;
+use crate::units::track_id::TrackId;
 use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
 

@@ -1,7 +1,7 @@
 use campfire_script::rhai::ImmutableString;
 
-use crate::progression::track_id::TrackId;
 use crate::units::action_id::ActionId;
+use crate::units::track_id::TrackId;
 use crate::units::unit_type::UnitType;
 use crate::values::damage_kind::DamageKind;
 

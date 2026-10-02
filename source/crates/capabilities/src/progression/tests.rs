@@ -5,7 +5,7 @@ use super::*;
 use crate::progression::experience::TrackXp;
 use crate::progression::track_data::Thresholds;
 use crate::progression::track_data::TrackData;
-use crate::progression::track_id::TrackId;
+use crate::units::track_id::TrackId;
 use crate::values::declared_name::DeclaredName;
 
 fn num(value: i64) -> Num {
