@@ -832,6 +832,7 @@ pub(crate) mod internals {
 
     use crate::actions::action_book::ActionBook;
     use crate::actions::action_book::internals::{self, TestWeapon};
+    use crate::actions::action_data::Range;
     use crate::actions::action_slots::ActionSlots;
     use crate::actions::slot_kind::SlotKind;
     use crate::stats::pool_cost::PoolCost;
@@ -895,7 +896,7 @@ pub(crate) mod internals {
         pub fn parts(self, world: &mut World, hz: u32) -> ArmsParts {
             let weapon = TestWeapon {
                 aim: Filter::parse("enemies", &UnitTypes::default()).unwrap(),
-                range: self.range,
+                range: Range::Meters(self.range),
                 windup: self.windup,
                 projectile: self.projectile,
                 rate: 0,

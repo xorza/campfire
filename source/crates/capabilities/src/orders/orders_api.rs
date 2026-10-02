@@ -25,7 +25,7 @@ impl OrdersApi {
             order(
                 "order_attack",
                 "(unit, target)",
-                "`unit`, which has an attack, attacks `target`, a living enemy",
+                "`unit` attacks `target`, a living enemy that one of its weapons selects",
             ),
             |ctx: &mut Ctx, unit: Unit, target: Unit| OrdersApi::attack(ctx, &unit, &target),
         )
@@ -64,15 +64,16 @@ impl OrdersApi {
         .data(DataTable::Ai, &["ai", "think_ms"], &[]);
     }
 
-    /// Queues an attack of `unit`, which has an attack, on `target`, a living enemy.
+    /// Queues an attack of `unit` on `target`, a living enemy that one of its learned weapons
+    /// selects, as the attack order of a player needs.
     fn attack(ctx: &Ctx, unit: &Unit, target: &Unit) -> Checked<()> {
         let (ordered, target) = (unit.row(), target.row());
-        if ordered.attack_range.is_none() {
-            return Err(ApiError::NoAttack.fail().into());
-        }
         let attitude = ctx.view().attitude(ordered.team, target.team);
         if !target.alive || !attitude.may_attack() {
             return Err(ApiError::NotAnEnemy.fail().into());
+        }
+        if !ctx.view().armed_against(&ordered, &target) {
+            return Err(ApiError::NoAttack.fail().into());
         }
         OrdersApi::order(ctx, unit, AiOrder::Attack { target: target.id })
     }

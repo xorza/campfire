@@ -9,6 +9,7 @@ use campfire_sim::{Capability, IdAllocator, SimUpdate, Ticks, TypeHash};
 
 use super::*;
 use crate::actions::action_book::internals::{self, TestWeapon};
+use crate::actions::action_data::Range;
 use crate::actions::slot_kind::SlotKind;
 use crate::capability_set::internals::TestMatch;
 use crate::combat::armed::Armed;
@@ -271,7 +272,7 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
             .unwrap();
         let weapon = TestWeapon {
             aim,
-            range: num(range),
+            range: Range::Meters(num(range)),
             windup: Ticks::new(windup),
             projectile: None,
             rate: 0,
@@ -416,7 +417,7 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
     let mana = PoolId::new(1).unwrap();
     let weapon = TestWeapon {
         aim: Filter::parse("enemies", &UnitTypes::default()).unwrap(),
-        range: num(2),
+        range: Range::Meters(num(2)),
         windup: Ticks::new(2),
         projectile: None,
         rate: 0,

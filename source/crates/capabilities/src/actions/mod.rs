@@ -314,8 +314,8 @@ fn hold_passives(
     }
 }
 
-/// Fills a row of the script view with a unit's actions: each slot's rank and its action's
-/// ranks, the attack target, and the range of its first weapon, which it has to attack at all.
+/// Fills a row of the script view with a unit's actions: each slot's rank, its action's ranks and
+/// its weapon filter, the attack target, and the range of its first weapon.
 fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
     let Some(slots) = unit.get::<ActionSlots>() else {
         return;
@@ -335,6 +335,7 @@ fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
         SlotRow {
             rank: slot.rank,
             ranks: u8::try_from(action.ranks.len()).expect("an action has few ranks"),
+            weapon: action.weapon_filter(),
         }
     });
     fill.slotted(rows);

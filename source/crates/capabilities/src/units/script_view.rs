@@ -10,7 +10,7 @@ use campfire_math::{Num, PlayerSlot, Vec3};
 use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString, NativeCallContext};
 use campfire_sim::{Capability, EntityIndex, Position, SimTick, StableId, Tick, TickRate, Ticks};
 
-use crate::actions::action_book::{ActionId, Delivery};
+use crate::actions::action_book::{Action, ActionId, Delivery};
 use crate::actions::action_data::CostTarget;
 use crate::combat::damage_kind::DamageKind;
 use crate::mode::resource_id::ResourceId;
@@ -169,12 +169,13 @@ pub(crate) struct ModifierInfo {
     pub(crate) max_stacks: Option<NonZeroU32>,
 }
 
-/// An ability slot as the view read it: the rank of its ability, 0 while not learned, and how
-/// many ranks the ability has.
+/// An ability slot as the view read it: the rank of its ability, 0 while not learned, how many
+/// ranks the ability has, and the filter of the units it may attack when it is a weapon.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SlotRow {
     pub(crate) rank: u8,
     pub(crate) ranks: u8,
+    pub(crate) weapon: Option<Filter>,
 }
 
 /// Fills the fields of a unit's row that a capability above the core holds.
@@ -736,6 +737,16 @@ impl View {
         let view = self.0.borrow();
         let run = &view.slots[row.slots_start as usize..row.slots_end as usize];
         run.get(usize::from(slot)).copied()
+    }
+
+    /// Whether a learned weapon of `row` selects `target`, as `row` regards it.
+    pub(crate) fn armed_against(&self, row: &UnitRow, target: &UnitRow) -> bool {
+        let view = self.0.borrow();
+        let attitude = view.relations.between(row.team, target.team);
+        let run = &view.slots[row.slots_start as usize..row.slots_end as usize];
+        let target = Some((attitude, target.tags.tags));
+        run.iter()
+            .any(|slot| Action::arms(slot.rank, slot.weapon, target))
     }
 
     /// The handle of unit `id`, when the view read it.

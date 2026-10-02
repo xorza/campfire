@@ -494,11 +494,16 @@ fn routes_wait_past_the_limit_of_expanded_cells_in_the_order_asked() {
     assert_eq!(waiting(&walk), [false, false, true, true]);
     let second = walk.world.resource::<EntityIndex>().get(units[1]).unwrap();
     assert_eq!(walk.world.get::<Route>(second).unwrap().ahead(), [far]);
-    // The first, of the lowest id, asks in tick 1, after the rest: they go first, 4 and 16, and
-    // it waits.
+    // The first, of the lowest id, asks in tick 1, after the rest. The last asks again in tick
+    // 1, for x = 14.5, and keeps its place of tick 0. So the third and the last go first, 4 and
+    // 15, which meets the limit, and the first waits; had the last's ask moved to tick 1, the
+    // first would go before it, 4, and none would wait.
     let first = walk.world.resource::<EntityIndex>().get(units[0]).unwrap();
     let mut destination = walk.world.get_mut::<Destination>(first).unwrap();
     destination.set(Some(near));
+    let last = walk.world.resource::<EntityIndex>().get(units[3]).unwrap();
+    let mut destination = walk.world.get_mut::<Destination>(last).unwrap();
+    destination.set(Some(place(14)));
     walk.tick();
     assert_eq!(waiting(&walk), [true, false, false, false]);
     walk.tick();

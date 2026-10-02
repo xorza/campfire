@@ -449,7 +449,9 @@ fn steer(
             }),
         };
         let outcome = planner.plan(walkable, at, goal, &mut steering.short);
-        if outcome.reached || last {
+        // A plan with no cell to stand in would splice nothing in, and the walker would drop its
+        // destination; it keeps its route, and steers again.
+        if !steering.short.is_empty() && (outcome.reached || last) {
             route.splice(&steering.short, skipped, outcome.reached);
             progress.reset();
         }

@@ -241,19 +241,10 @@ impl ActionBook {
         target: Option<(Attitude, TagSet)>,
     ) -> Option<u8> {
         let at = slots.iter().position(|slot| {
-            if slot.rank == 0 {
-                return false;
-            }
             let action = self
                 .get(slot.action)
                 .expect("a slot's action is in the book");
-            match (action.kind, action.aim, target) {
-                (ActionKind::Attack, _, None) => true,
-                (ActionKind::Attack, Aim::Unit(filter), Some((attitude, tags))) => {
-                    filter.selects(attitude, tags)
-                }
-                _ => false,
-            }
+            Action::arms(slot.rank, action.weapon_filter(), target)
         })?;
         Some(u8::try_from(at).expect("a unit's slots fit u8"))
     }
@@ -321,6 +312,29 @@ impl Action {
         let per_rank = self.resource_costs.len() / self.ranks.len().max(1);
         let start = usize::from(rank - 1) * per_rank;
         &self.resource_costs[start..start + per_rank]
+    }
+
+    /// The filter of the units it may attack, for a weapon, which the load lets aim only at a
+    /// unit; `None` for another kind.
+    pub(crate) const fn weapon_filter(&self) -> Option<Filter> {
+        match (self.kind, self.aim) {
+            (ActionKind::Attack, Aim::Unit(filter)) => Some(filter),
+            _ => None,
+        }
+    }
+
+    /// Whether a slot at `rank` whose action has the weapon filter `weapon` arms its unit
+    /// against a unit of `tags` it regards with `attitude`, or with `None`, against any: the one
+    /// rule of `ActionBook::weapon_for` and of the script view.
+    pub(crate) fn arms(
+        rank: u8,
+        weapon: Option<Filter>,
+        target: Option<(Attitude, TagSet)>,
+    ) -> bool {
+        rank > 0
+            && weapon.is_some_and(|filter| {
+                target.is_none_or(|(attitude, tags)| filter.selects(attitude, tags))
+            })
     }
 }
 
@@ -391,7 +405,7 @@ pub(crate) mod internals {
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub(crate) struct TestWeapon {
         pub(crate) aim: Filter,
-        pub(crate) range: Num,
+        pub(crate) range: Range,
         pub(crate) windup: Ticks,
         pub(crate) projectile: Option<UnitType>,
         pub(crate) rate: u16,
@@ -420,7 +434,7 @@ pub(crate) mod internals {
             passive: None,
             aim: Aim::Unit(weapon.aim),
             ranks: vec![RankValues {
-                range: Range::Meters(weapon.range),
+                range: weapon.range,
                 cooldown: Ticks::ZERO,
                 cost: weapon.cost,
                 windup: weapon.windup,

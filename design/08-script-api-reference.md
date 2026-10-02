@@ -32,7 +32,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `learn` | `(avatar, slot)` | mode | abilities | runs | the ability in `slot` a rank more, up to its last |
 | `map` | read | every role | core | runs | the map: its paths and its markers |
 | `nearest_visible` | `(of, radius, filter)` | every role | vision | runs | the nearest living unit within `radius` of `of` that `filter` selects and `of`'s team sees, `()` with none |
-| `order_attack` | `(unit, target)` | AI | orders | runs | `unit`, which has an attack, attacks `target`, a living enemy |
+| `order_attack` | `(unit, target)` | AI | orders | runs | `unit` attacks `target`, a living enemy that one of its weapons selects |
 | `order_follow_path` | `(unit)` | AI | orders | runs | `unit` drops its target and walks its path again |
 | `order_move` | `(unit, pos)` | AI | orders | runs | `unit` drops its target and walks to `pos`, within the map, off its path |
 | `order_reset` | `(unit)` | AI | orders | runs | `unit` drops its target and walks home, taking no order until there, where its pools fill |

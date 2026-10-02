@@ -8,7 +8,7 @@ use campfire_math::{Num, PlayerSlot, Vec3};
 use campfire_sim::{Capability, IdAllocator, SimUpdate, TickInput, TypeHash};
 
 use super::*;
-use crate::actions::action_book::internals;
+use crate::actions::action_book::internals::{self, TestWeapon};
 use crate::actions::slot_kind::SlotKind;
 use crate::capability_set::internals::TestMatch;
 use crate::combat::armed::Armed;
@@ -19,12 +19,15 @@ use crate::scripts::error::ApiError;
 use crate::scripts::match_scripts::MatchScripts;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::script_limits::ScriptLimits;
+use crate::stats::pool_cost::PoolCost;
 use crate::stats::pool_id::PoolId;
 use crate::units::Units;
+use crate::units::filter::Filter;
 use crate::units::path_id::PathId;
 use crate::units::script_view::View;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type_data::UnitTypeData;
+use crate::units::unit_types::UnitTypes;
 use crate::values::scalar::Scalar;
 
 /// The MOBA's 30 ticks a second.
@@ -856,6 +859,49 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
         CallError::Api(ApiError::NoSpawnPlace)
     ));
     assert!(game.get::<Resetting>(homeless).is_none());
+
+    // An attack order needs a learned weapon whose filter selects the target. Units 4 and 5 order
+    // an attack on the enemy, 9 m off, in ticks 4 and 5: the first's weapon has a global range,
+    // and no `attack_range`, and attacks; the second's aims only at allies, and its call fails.
+    let striker = game.unit_type(
+        &[],
+        &[],
+        Some(r#"fn on_think(ctx, unit) { ctx.order_attack(unit, ctx.find(unit, unit.pos, 20, "enemies")[0]); }"#),
+    );
+    let mut armed = |aim: &str, range| {
+        let weapon = TestWeapon {
+            aim: Filter::parse(aim, &UnitTypes::default()).unwrap(),
+            range,
+            windup: Ticks::new(2),
+            projectile: None,
+            rate: 0,
+            damage: 1,
+            cost: PoolCost::default(),
+            resource_cost: None,
+        };
+        let weapon = internals::weapon(&mut game.world.resource_mut::<ActionBook>(), weapon);
+        let slots = ActionSlots::new([(weapon, SlotKind::new(0), 1)]);
+        let stats = game.arm(standing(), Team::new(0));
+        let unit = game.spawn(at(0, 0, 0), (striker, stats));
+        let entity = game.world.resource::<EntityIndex>().get(unit).unwrap();
+        game.world.entity_mut(entity).insert(slots);
+        unit
+    };
+    let global = armed("enemies", Range::Global);
+    let friendly = armed("allies", Range::Meters(num(20)));
+    assert_eq!([global.get(), friendly.get()], [4, 5]);
+    game.run_until(4);
+    game.tick(&[]);
+    assert_eq!(game.target(global), Some(enemy));
+    assert!(game.world.non_send::<ScriptFailures>().get().is_empty());
+    game.tick(&[]);
+    let failures = game.world.non_send::<ScriptFailures>().get();
+    assert_eq!(failures.len(), 1);
+    assert!(matches!(
+        (failures[0].unit, &failures[0].error),
+        (Some(unit), CallError::Api(ApiError::NoAttack)) if unit == friendly
+    ));
+    assert_eq!(game.target(friendly), None);
 }
 
 #[test]

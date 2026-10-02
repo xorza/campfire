@@ -40,10 +40,13 @@ impl Route {
     }
 
     /// Asks the planner in `tick` for a route to `goal`; the walker keeps to the route it has
-    /// until the planner answers.
+    /// until the planner answers. An ask while one waits changes the goal and keeps the first
+    /// tick, so a walker whose goal moves each tick keeps its place among the routes that wait.
     pub(crate) const fn ask(&mut self, goal: Position, tick: Tick) {
         self.goal = Some(goal);
-        self.asked = Some(tick);
+        if self.asked.is_none() {
+            self.asked = Some(tick);
+        }
     }
 
     /// Takes the planner's answer: `waypoints`, the last the goal when `reached`.

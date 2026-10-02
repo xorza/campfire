@@ -46,7 +46,8 @@ pub enum ApiError {
     NegativeXp,
     /// An integer beyond a `Num`, which reaches 2³⁹.
     IntegerBeyondNum,
-    /// An attack field or order for a unit that has no attack.
+    /// An attack field or order for a unit that has no attack, or an attack order on a target
+    /// none of its weapons selects.
     NoAttack,
     /// A stat or level field of a unit that has no stats.
     NoStats,
@@ -198,7 +199,7 @@ impl fmt::Display for ApiError {
             ApiError::NoDelivery => "the action delivers no unit of that kind",
             ApiError::NegativeXp => "experience is negative",
             ApiError::IntegerBeyondNum => "integer is beyond a Num",
-            ApiError::NoAttack => "unit has no attack",
+            ApiError::NoAttack => "unit has no attack for the target",
             ApiError::NoStats => "unit has no stats",
             ApiError::UnknownStat => "stat the mode does not declare",
             ApiError::ChainTooDeep => "a chain of combat events 16 deep",
