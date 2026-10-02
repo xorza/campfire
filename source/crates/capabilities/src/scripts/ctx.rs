@@ -1,3 +1,4 @@
+use std::any::Any;
 use std::cell::{OnceCell, RefCell, RefMut};
 use std::rc::Rc;
 
@@ -6,14 +7,12 @@ use campfire_math::Tick;
 use campfire_script::rhai::{Dynamic, NativeCallContext};
 use campfire_sim::StableId;
 
-use crate::mode::mode_book::ModeBook;
 use crate::scripts::effects::Effect;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::frame::Frame;
 use crate::scripts::hook::ScriptRole;
 use crate::scripts::role_set::RoleSet;
 use crate::units::script_view::View;
-use crate::values::scalar::Scalar;
 
 /// `ctx` in every script: what one call reads, and the effects it queues. Every role's call goes
 /// through it, its frame saying whose call it is. Effects apply only after the call returns
@@ -22,8 +21,8 @@ use crate::values::scalar::Scalar;
 pub(crate) struct Ctx {
     frame: Rc<RefCell<Frame>>,
     view: View,
-    /// The match's mode, once it installs.
-    mode: Rc<OnceCell<Rc<ModeBook>>>,
+    /// The match's mode, once it installs, which only the mode reads as its own type.
+    mode: Rc<OnceCell<Rc<dyn Any>>>,
 }
 
 /// `ctx.p`: the running call's params, by name: an ability's, a modifier's then its ability's,
@@ -90,18 +89,13 @@ impl Ctx {
     }
 
     /// Gives the match its mode.
-    pub(crate) fn set_mode(&self, mode: ModeBook) {
-        assert!(self.mode.set(Rc::new(mode)).is_ok(), "a match has one mode");
+    pub(crate) fn set_mode(&self, mode: Rc<dyn Any>) {
+        assert!(self.mode.set(mode).is_ok(), "a match has one mode");
     }
 
     /// The match's mode, if it installed.
-    pub(crate) fn mode(&self) -> Option<&ModeBook> {
+    pub(crate) fn mode(&self) -> Option<&dyn Any> {
         self.mode.get().map(|mode| &**mode)
-    }
-
-    /// The match's mode; an error in a match with none.
-    pub(crate) fn mode_or_fail(&self) -> Checked<&ModeBook> {
-        self.mode().ok_or_else(|| ApiError::NoMode.fail().into())
     }
 
     /// Applies the effects of the call that ran, in tick `now`.
@@ -115,14 +109,11 @@ impl Params {
     pub(crate) fn get(&self, name: &str) -> Checked<Dynamic> {
         let ctx = &self.0;
         let role = ctx.frame().role();
-        let value = match role {
-            Some(ScriptRole::Action | ScriptRole::Modifier) => {
-                ctx.frame().param_named(name).map(Scalar::to_dynamic)
-            }
-            Some(ScriptRole::Mode | ScriptRole::Ai) | None => {
-                ctx.mode_or_fail()?.schema.param_named(name)
-            }
-        };
+        let modes = !matches!(role, Some(ScriptRole::Action | ScriptRole::Modifier));
+        if modes && ctx.mode().is_none() {
+            return Err(ApiError::NoMode.fail().into());
+        }
+        let value = ctx.frame().param_named(name);
         value.ok_or_else(|| ApiError::UnknownParam.fail().into())
     }
 }

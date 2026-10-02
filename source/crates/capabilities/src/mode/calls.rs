@@ -10,6 +10,7 @@ use crate::combat::heal::Heal;
 use crate::combat::heal_handle::HealHandle;
 use crate::mode::choices::Choices;
 use crate::mode::mode_book::ModeBook;
+use crate::mode::mode_call::ModeCall;
 use crate::mode::mode_state::ModeState;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, CallError};
@@ -40,9 +41,7 @@ impl Calls<'_, '_> {
 
     /// The match's mode.
     pub(crate) fn book(&self) -> &ModeBook {
-        self.ctx
-            .mode()
-            .expect("mode calls run in a match with a mode")
+        ModeBook::of(self.ctx).expect("mode calls run in a match with a mode")
     }
 
     /// Runs `hook` with `args` from `pool`: on success its state, choices and ids commit and its
@@ -115,8 +114,9 @@ impl Calls<'_, '_> {
         let world = self.batch.world();
         {
             let frame = self.ctx.frame();
-            world.resource_mut::<ModeState>().0.clone_from(&frame.state);
-            world.resource_mut::<Choices>().clone_from(&frame.choices);
+            let call = ModeCall::of(&frame);
+            world.resource_mut::<ModeState>().0.clone_from(&call.state);
+            world.resource_mut::<Choices>().clone_from(&call.choices);
             world.resource_mut::<IdAllocator>().clone_from(&frame.ids);
         }
         self.ctx.apply(world, self.now);

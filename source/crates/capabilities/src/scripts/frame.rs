@@ -1,36 +1,24 @@
 use bevy_ecs::world::World;
 use campfire_math::Tick;
+use campfire_script::rhai::Dynamic;
 use campfire_sim::{Capability, IdAllocator, StableId};
 
-use crate::mode::choices::Choices;
-use crate::mode::match_end::MatchEnd;
-use crate::mode::mode_state::ModeState;
 use crate::players::player_resources::PlayerResources;
+use crate::scripts::call_part::{CallPart, CallParts};
 use crate::scripts::call_start::CallStart;
 use crate::scripts::effects::{ApplyEffect, Effects};
 use crate::scripts::error::CallError;
 use crate::scripts::hook::ScriptRole;
-use crate::scripts::state_value::StateValue;
-use crate::stats::Stats;
-use crate::stats::modifier_handle::ModifierHandle;
-use crate::stats::param_book::ParamBook;
-use crate::stats::param_source::ParamSource;
-use crate::stats::param_table::ParamTable;
 use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
-
 use crate::values::hit::Hit;
 
-use crate::values::scalar::Scalar;
-
 /// What the running call reads and queues, beside the units the view holds: its role, its
-/// acting unit, its params, the mode's state as a mode call sees it, and the effects it
-/// queued. One frame serves the whole match, its buffers cleared and filled again, so a call
-/// allocates none of them.
+/// acting unit, what each capability's part of it holds, such as its params or the mode's state,
+/// and the effects it queued. One frame serves the whole match, its buffers cleared and filled
+/// again, so a call allocates none of them.
 #[derive(Debug, Default)]
 pub(crate) struct Frame {
-    /// Every loaded ability's and modifier's params, which the stat engine reads too.
-    params: ParamBook,
     /// The running call's role; none between calls.
     role: Option<ScriptRole>,
     /// Its acting unit: a cast's caster, a modifier's source, the unit that thinks; none for the
@@ -46,18 +34,10 @@ pub(crate) struct Frame {
     package: u16,
     /// The hit a delivery's hook runs for.
     hit: Option<Hit>,
-    /// Its params at its rank, in the order of their names: its ability's, and its modifier's.
-    values: Vec<Scalar>,
-    modifier_values: Vec<Scalar>,
     /// Whether it is a pure hook's, whose `ctx` only reads.
     pub(crate) pure: bool,
-    /// The mode's state and players' choices as a mode call sees them, which it writes and reads
-    /// back; the stable ids as a mode call takes them for the units it spawns; whether the match
-    /// ended, before the call or in it.
-    pub(crate) state: Vec<StateValue>,
-    pub(crate) choices: Choices,
+    /// The stable ids as a mode call takes them for the units it spawns.
     pub(crate) ids: IdAllocator,
-    pub(crate) ended: bool,
     /// The players' resources as the call sees them, when the match has them, and whether the
     /// call changed them.
     resources: Option<PlayerResources>,
@@ -66,16 +46,11 @@ pub(crate) struct Frame {
     /// How each capability applies its effects, by capability index; the capability table
     /// gives it at install.
     dispatch: [Option<ApplyEffect>; Capability::ALL.len()],
-    /// The modifier handles the call took, which write back when it applies.
-    pub(crate) handles: Vec<ModifierHandle>,
+    /// What each capability reads and writes of a call besides the core's.
+    parts: CallParts,
 }
 
 impl Frame {
-    /// Sets the params of every ability and every modifier, as the load built them.
-    pub(crate) fn set_params(&mut self, params: ParamBook) {
-        self.params = params;
-    }
-
     pub(crate) const fn role(&self) -> Option<ScriptRole> {
         self.role
     }
@@ -113,9 +88,24 @@ impl Frame {
         self.dispatch = dispatch;
     }
 
+    /// Adds `part`, which every call readies, and which applies what a call wrote to it.
+    pub(crate) fn add_part<P: CallPart>(&mut self, part: P) {
+        self.parts.add(part);
+    }
+
+    /// The part of type `P`, when one was added.
+    pub(crate) fn part<P: CallPart>(&self) -> Option<&P> {
+        self.parts.get()
+    }
+
+    /// The part of type `P`, to change, when one was added.
+    pub(crate) fn part_mut<P: CallPart>(&mut self) -> Option<&mut P> {
+        self.parts.get_mut()
+    }
+
     /// Starts a cast of `ability` of `package` at `rank` by `caster` in `world`, or a hook of its
-    /// delivery for `hit`, with its params at that rank; a param that overflows there fails the
-    /// cast.
+    /// delivery for `hit`; a part that fails to ready, as a param that overflows at that rank,
+    /// fails the cast.
     pub(crate) fn begin_cast(
         &mut self,
         world: &World,
@@ -125,8 +115,6 @@ impl Frame {
         package: u16,
         hit: Option<Hit>,
     ) -> Result<(), CallError> {
-        self.read_resources(world);
-        let source = ParamSource::of(world, caster);
         let start = CallStart {
             role: ScriptRole::Action,
             acting: Some(caster),
@@ -137,12 +125,12 @@ impl Frame {
             depth: 0,
             hit,
         };
-        self.begin(start, source.as_ref())
+        self.begin(world, start)
     }
 
     /// Starts a hook of `modifier` of `package` at chain depth `depth`, whose instance came from
-    /// `source` by `ability` at `rank`: the modifier's params, then the ability's, at that rank;
-    /// a param that overflows there fails the call.
+    /// `source` by `ability` at `rank`; a part that fails to ready, as a param that overflows at
+    /// that rank, fails the call.
     #[expect(
         clippy::too_many_arguments,
         reason = "a hook's parts, each from the instance or the event that runs it"
@@ -157,8 +145,6 @@ impl Frame {
         package: u16,
         depth: u8,
     ) -> Result<(), CallError> {
-        self.read_resources(world);
-        let from = source.and_then(|source| ParamSource::of(world, source));
         let start = CallStart {
             role: ScriptRole::Modifier,
             acting: source,
@@ -169,32 +155,25 @@ impl Frame {
             depth,
             hit: None,
         };
-        self.begin(start, from.as_ref())
+        self.begin(world, start)
     }
 
     /// Starts `on_think` for `unit` in `world`.
     pub(crate) fn begin_think(&mut self, world: &World, unit: StableId) {
-        self.read_resources(world);
         let start = CallStart {
             acting: Some(unit),
             ..CallStart::mode(ScriptRole::Ai)
         };
-        self.begin(start, None)
+        self.begin(world, start)
             .expect("a call with no params overflows none");
     }
 
-    /// Starts a mode call, with the mode's state, choices, resources and stable ids as `world`
-    /// holds them, for the call to read and write; `pure` for a hook whose `ctx` only reads.
+    /// Starts a mode call, with the resources and stable ids as `world` holds them, for the call
+    /// to read and write; `pure` for a hook whose `ctx` only reads.
     pub(crate) fn begin_mode(&mut self, world: &World, pure: bool) {
-        self.read_resources(world);
-        self.begin(CallStart::mode(ScriptRole::Mode), None)
+        self.begin(world, CallStart::mode(ScriptRole::Mode))
             .expect("a call with no params overflows none");
-        self.state.clear();
-        self.state
-            .extend_from_slice(&world.resource::<ModeState>().0);
-        self.choices.clone_from(world.resource::<Choices>());
         self.ids.clone_from(world.resource::<IdAllocator>());
-        self.ended = world.contains_resource::<MatchEnd>();
         self.pure = pure;
     }
 
@@ -214,12 +193,9 @@ impl Frame {
         self.resources.as_mut()
     }
 
-    /// Starts the call `start`, its params at its rank read from `source`.
-    fn begin(
-        &mut self,
-        start: CallStart,
-        source: Option<&ParamSource<'_>>,
-    ) -> Result<(), CallError> {
+    /// Starts the call `start` in `world`, every part readied for it.
+    fn begin(&mut self, world: &World, start: CallStart) -> Result<(), CallError> {
+        self.read_resources(world);
         let CallStart {
             role,
             acting,
@@ -240,29 +216,12 @@ impl Frame {
         self.hit = hit;
         self.pure = false;
         self.effects.clear();
-        self.handles.clear();
-        let fill = |values: &mut Vec<Scalar>, table: &ParamTable, run: Option<usize>| {
-            values.clear();
-            let Some(run) = run else {
-                return Ok(());
-            };
-            let count = table.len(run);
-            values.reserve_exact(count);
-            for at in 0..count {
-                let value = table.value(run, at, rank, source);
-                values.push(value.ok_or(CallError::ParamOverflow)?);
-            }
-            Ok(())
-        };
-        let run = ability.map(ActionId::index);
-        fill(&mut self.values, self.params.actions(), run)?;
-        let run = modifier.map(ModifierId::index);
-        fill(&mut self.modifier_values, self.params.modifiers(), run)
+        self.parts.begin(world, &start)
     }
 
     /// Applies the effects the call that ran queued, in order, each by its capability, from
     /// the call's acting unit and its ability at its rank, in tick `now`. Then what the call
-    /// wrote to modifier handles applies.
+    /// wrote to each part applies, then to the players' resources.
     pub(crate) fn apply(&mut self, world: &mut World, now: Tick) {
         for at in 0..self.effects.order().len() {
             let capability = self.effects.order()[at];
@@ -271,9 +230,7 @@ impl Frame {
             apply(world, self, now);
         }
         self.effects.clear();
-        for handle in self.handles.drain(..) {
-            Stats::write_handle(world, &handle);
-        }
+        self.parts.apply(world);
         if let (true, Some(resources)) = (self.resources_written, &self.resources) {
             world
                 .resource_mut::<PlayerResources>()
@@ -281,21 +238,8 @@ impl Frame {
         }
     }
 
-    /// The running call's ability's param at `at`, at its rank.
-    pub(crate) fn ability_value(&self, at: usize) -> Scalar {
-        self.values[at]
-    }
-
-    /// The running call's param `name`: its modifier's, then its ability's, if either declares
-    /// one.
-    pub(crate) fn param_named(&self, name: &str) -> Option<Scalar> {
-        let own = self.modifier.and_then(|modifier| {
-            let at = self.params.modifiers().named(modifier.index(), name)?;
-            Some(self.modifier_values[at])
-        });
-        own.or_else(|| {
-            let at = self.params.actions().named(self.ability?.index(), name)?;
-            Some(self.values[at])
-        })
+    /// The running call's param `name`, of the part that holds its role's params.
+    pub(crate) fn param_named(&self, name: &str) -> Option<Dynamic> {
+        self.parts.param_named(self.role, name)
     }
 }

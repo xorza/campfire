@@ -14,6 +14,7 @@ use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
 use crate::stats::modifier_effect::ModifierEffect;
 use crate::stats::pool_id::PoolId;
+use crate::stats::stats_call::StatsCall;
 use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
 use crate::units::track_id::TrackId;
@@ -219,8 +220,7 @@ impl Amount {
     fn number(self, frame: &Frame) -> Num {
         match self {
             Amount::Value(value) => value,
-            Amount::Param(at) => frame
-                .ability_value(at)
+            Amount::Param(at) => StatsCall::ability_value(frame, at)
                 .to_num()
                 .expect("the load checked that an effect's param is a number")
                 .max(Num::ZERO),

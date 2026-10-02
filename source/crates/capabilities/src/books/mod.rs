@@ -22,6 +22,7 @@ use crate::projectiles::projectile_spec::ProjectileSpec;
 use crate::scripts::ctx::Ctx;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::param_book::{ParamBook, ParamTables};
+use crate::stats::stats_call::StatsCall;
 use crate::stats::stats_column::StatsColumn;
 use crate::units::by_type::ByType;
 use crate::units::predicting::Predicting;
@@ -95,7 +96,7 @@ impl Books {
         StatsColumn::share_modifiers(&view, parts.modifiers.clone());
         let params = ParamBook::new(parts.params);
         if let Some(ctx) = world.get_non_send::<Ctx>() {
-            ctx.frame().set_params(params.clone());
+            StatsCall::share_params(&mut ctx.frame(), params.clone());
         }
         world.insert_resource(params);
         if let Some(tracks) = parts.tracks {

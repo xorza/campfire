@@ -30,6 +30,7 @@ use crate::mode::game_map::GameMap;
 use crate::mode::match_end::MatchEnd;
 use crate::mode::mode_book::ModeBook;
 use crate::mode::mode_books::ModeBooks;
+use crate::mode::mode_call::ModeCall;
 use crate::mode::mode_effect::ModeEffect;
 use crate::mode::mode_input::{InputValue, ModeInput};
 use crate::mode::mode_map::ModeMap;
@@ -68,6 +69,7 @@ pub(crate) mod match_end;
 pub(crate) mod mode_api;
 pub(crate) mod mode_book;
 pub(crate) mod mode_books;
+pub(crate) mod mode_call;
 pub(crate) mod mode_data;
 pub(crate) mod mode_effect;
 pub(crate) mod mode_input;
@@ -140,10 +142,12 @@ impl Mode {
         world.insert_resource(UnansweredDeaths::default());
         let hooks = book.schema.hooks;
         let ctx = world.non_send::<Ctx>().clone();
+        let book = Rc::new(book);
+        ctx.frame().add_part(ModeCall::new(Rc::clone(&book)));
         ctx.set_mode(book);
         let spawning = ctx.clone();
         world.insert_non_send(Spawner::new(move |world, at, owner| {
-            let mode = spawning.mode().expect("the mode installed");
+            let mode = ModeBook::of(&spawning).expect("the mode installed");
             mode.spawn_owned(world, at, owner)
         }));
         if hooks.contains(Hook::CalcDamage) {
@@ -179,7 +183,7 @@ impl Mode {
     /// The team of player `slot` in the match in `world`; `None` before the mode installs, or for
     /// a slot the session does not have.
     pub fn team_of(world: &World, slot: PlayerSlot) -> Option<Team> {
-        world.get_non_send::<Ctx>()?.mode()?.teams.of(slot)
+        ModeBook::of(world.get_non_send::<Ctx>()?)?.teams.of(slot)
     }
 
     /// Applies the next mode effect the call in `frame` queued, in tick `now`, by the match's
@@ -187,9 +191,7 @@ impl Mode {
     pub(crate) fn apply_next(world: &mut World, frame: &mut Frame, now: Tick) {
         let effect = frame.effects.take::<ModeEffect>();
         let ctx = world.non_send::<Ctx>().clone();
-        let mode = ctx
-            .mode()
-            .expect("a mode effect comes from a match with a mode");
+        let mode = ModeBook::of(&ctx).expect("a mode effect comes from a match with a mode");
         Mode::apply_effect(world, mode, now, effect);
     }
 
@@ -248,7 +250,7 @@ impl Mode {
     /// rules.
     pub fn start(world: &mut World) -> Result<(), CallError> {
         let ctx = world.non_send::<Ctx>().clone();
-        let book = ctx.mode().expect("a match with a mode");
+        let book = ModeBook::of(&ctx).expect("a match with a mode");
         for placed in &book.placed {
             let at = SpawnAt {
                 id: world.resource_mut::<IdAllocator>().allocate(),
@@ -284,8 +286,7 @@ fn mode_inputs(
     mut inputs: Local<'_, Vec<Input>>,
 ) {
     let ctx = world.non_send::<Ctx>().clone();
-    if !ctx
-        .mode()
+    if !ModeBook::of(&ctx)
         .expect("a match with a mode")
         .schema
         .hooks
@@ -381,7 +382,10 @@ fn run_timers(world: &mut World) {
 /// stays, dead, until then.
 fn unit_deaths(world: &mut World, mut units: Local<'_, Vec<Option<Entity>>>) {
     let ctx = world.non_send::<Ctx>().clone();
-    let hooks = ctx.mode().expect("a match with a mode").schema.hooks;
+    let hooks = ModeBook::of(&ctx)
+        .expect("a match with a mode")
+        .schema
+        .hooks;
     if !hooks.contains(Hook::OnUnitDied) {
         return;
     }
@@ -442,7 +446,10 @@ fn level_ups(world: &mut World, mut due: Local<'_, Vec<LevelUp>>) {
         return;
     }
     let ctx = world.non_send::<Ctx>().clone();
-    let hooks = ctx.mode().expect("a match with a mode").schema.hooks;
+    let hooks = ModeBook::of(&ctx)
+        .expect("a match with a mode")
+        .schema
+        .hooks;
     if !hooks.contains(Hook::OnLevelUp) {
         world.resource_mut::<LevelUps>().0.clear();
         return;

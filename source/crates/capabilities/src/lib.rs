@@ -4,8 +4,9 @@
 //! paths, the script view and runtime, and the players' resources); `stats`; `actions`; `combat`;
 //! `deliveries`, `projectiles`, `areas`, `abilities`, `navigation`, `vision`, `progression` and
 //! `production`; `orders`; the `mode`; and `capability_set`, which installs them. The layer test
-//! in `capability_set` holds this list, and the imports that still break it. A capability gives
-//! the script view its fields of a unit through a row source.
+//! in `capability_set` holds this list, and fails on any import from a higher layer. A capability
+//! gives the script view its fields of a unit through its column, and the call frame what a call
+//! reads besides the core's through its part.
 
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 #![allow(

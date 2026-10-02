@@ -764,8 +764,7 @@ impl Game {
     /// The state field `name`: the state holds the fields in the order of their names.
     fn field(&self, name: &str) -> StateValue {
         let ctx = self.world.non_send::<Ctx>();
-        let at = ctx
-            .mode()
+        let at = ModeBook::of(ctx)
             .unwrap()
             .schema
             .state_field_named(name)

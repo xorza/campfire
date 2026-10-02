@@ -24,6 +24,8 @@ use crate::navigation::path_walker::{PathEnd, PathWalker};
 use crate::navigation::paths::Paths;
 use crate::production::train_queue::TrainQueue;
 use crate::progression::experience::Experience;
+use crate::scripts::ctx::Ctx;
+use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_book::ScriptBook;
 use crate::stats::Stats;
 use crate::stats::level::Level;
@@ -77,6 +79,16 @@ pub(crate) struct PlacedUnit {
 }
 
 impl ModeBook {
+    /// The mode of the match `ctx` runs in, once it installed.
+    pub(crate) fn of(ctx: &Ctx) -> Option<&ModeBook> {
+        ctx.mode()?.downcast_ref()
+    }
+
+    /// The mode of the match `ctx` runs in; an error in a match with none.
+    pub(crate) fn of_or_fail(ctx: &Ctx) -> Checked<&ModeBook> {
+        ModeBook::of(ctx).ok_or_else(|| ApiError::NoMode.fail().into())
+    }
+
     /// The book of `setup`, whose script defines the hooks `scripts` gives, for players the teams
     /// seat, with the units its map places and `map` as scripts read it.
     pub(crate) fn new(

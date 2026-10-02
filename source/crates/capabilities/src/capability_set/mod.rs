@@ -488,11 +488,6 @@ mod tests {
         ("books", 8),
     ];
 
-    /// The imports from a higher layer that the code holds today, each a module and the one it
-    /// imports. Each step of the structural redesign's layers removes its own; the test fails
-    /// when a new one appears, and when one listed here is gone, so the list only shrinks.
-    const KNOWN_BREAKS: [(&str, &str); 2] = [("scripts", "mode"), ("scripts", "stats")];
-
     /// Visits each source file under `dir` with its production code: the code before the file's
     /// first test gate, in every file but `tests.rs` and `bench.rs`.
     fn production(dir: &Path, visit: &mut impl FnMut(&Path, &str)) {
@@ -557,11 +552,7 @@ mod tests {
             .collect();
         upward.sort();
         upward.dedup();
-        let known: Vec<(String, String)> = KNOWN_BREAKS
-            .iter()
-            .map(|&(from, to)| (from.to_owned(), to.to_owned()))
-            .collect();
-        assert_eq!(upward, known, "imports from a higher layer");
+        assert_eq!(upward, [], "imports from a higher layer");
     }
 
     /// Every lookup by name that the production code calls, by file: a method or function whose
@@ -569,7 +560,7 @@ mod tests {
     /// call, which resolves the names it is given once, or in the load, which resolves the
     /// packages' names once; but the one marked, which runs as a modifier applies. The test fails
     /// when a lookup appears and when one listed here is gone.
-    const LOOKUPS: [(&str, &str); 47] = [
+    const LOOKUPS: [(&str, &str); 50] = [
         // The load.
         ("actions/slot_kinds.rs", "named"),
         ("books/book_builder.rs", "cost_target_named"),
@@ -595,16 +586,19 @@ mod tests {
         ("mode/mode_api.rs", "resource_named"),
         ("mode/mode_api.rs", "state_field_named"),
         ("mode/mode_api.rs", "unit_type_named"),
+        ("mode/mode_call.rs", "param_named"),
         ("mode/mode_schema.rs", "get_named"),
         ("mode/mode_schema.rs", "named"),
         ("progression/progression_api.rs", "track_named"),
         ("progression/tracks_column.rs", "named"),
         ("scripts/ctx.rs", "param_named"),
-        ("scripts/frame.rs", "named"),
+        ("scripts/call_part.rs", "param_named"),
+        ("scripts/frame.rs", "param_named"),
         ("stats/modifier_handle.rs", "field_named"),
         ("stats/param_table.rs", "named"),
         ("stats/stats_api.rs", "modifier_named"),
         ("stats/stats_api.rs", "stat_named"),
+        ("stats/stats_call.rs", "named"),
         ("stats/stats_column.rs", "modifier_named"),
         ("stats/stats_column.rs", "named"),
         ("stats/stats_column.rs", "pool_id_named"),

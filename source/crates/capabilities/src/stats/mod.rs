@@ -10,6 +10,7 @@ use bevy_ecs::world::{EntityRef, World};
 use campfire_math::{Num, Tick, Ticks};
 use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, TickRate};
 
+use crate::scripts::ctx::Ctx;
 use crate::scripts::frame::Frame;
 use crate::stats::held_modifiers::{Held, HeldModifiers};
 use crate::stats::level::Level;
@@ -28,6 +29,7 @@ use crate::stats::pool_book::PoolBook;
 use crate::stats::pools::Pools;
 use crate::stats::refresh_scratch::{RefreshScratch, Refreshing};
 use crate::stats::stat_book::StatBook;
+use crate::stats::stats_call::StatsCall;
 use crate::stats::stats_column::StatsColumn;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::dead::Dead;
@@ -77,6 +79,7 @@ pub(crate) mod stat_op;
 pub(crate) mod stat_rule;
 pub(crate) mod stat_totals;
 pub(crate) mod stats_api;
+pub(crate) mod stats_call;
 pub(crate) mod stats_column;
 pub(crate) mod stats_data;
 pub(crate) mod unit_stats;
@@ -110,6 +113,9 @@ impl Stats {
         }
         world.insert_resource(ModifierBook::default());
         world.insert_resource(ParamBook::default());
+        if let Some(ctx) = world.get_non_send::<Ctx>() {
+            ctx.frame().add_part(StatsCall::default());
+        }
         world.insert_resource(PlayerModifiers::default());
         world.insert_resource(HeldModifiers::default());
         registry.register_resource::<PlayerModifiers>();

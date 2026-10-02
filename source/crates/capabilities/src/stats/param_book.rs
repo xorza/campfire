@@ -116,6 +116,7 @@ impl ParamTables {
 
 #[cfg(test)]
 pub(crate) mod internals {
+    use crate::stats::stats_call::StatsCall;
     use std::collections::BTreeMap;
     use std::sync::Arc;
 
@@ -162,8 +163,8 @@ pub(crate) mod internals {
         /// Gives `world`'s script frame, when it has one, the book as it is now.
         fn share(world: &World) {
             if let Some(ctx) = world.get_non_send::<Ctx>() {
-                ctx.frame()
-                    .set_params(world.resource::<ParamBook>().clone());
+                let params = world.resource::<ParamBook>().clone();
+                StatsCall::share_params(&mut ctx.frame(), params);
             }
         }
     }

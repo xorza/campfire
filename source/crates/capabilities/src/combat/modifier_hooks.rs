@@ -15,6 +15,7 @@ use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifiers::Modifiers;
+use crate::stats::stats_call::StatsCall;
 use crate::stats::stats_column::StatsColumn;
 use crate::units::modifier_id::ModifierId;
 use crate::units::owner::Owner;
@@ -197,7 +198,9 @@ impl ModifierHooks {
             batch.record(Some(carrier), hook, error);
             return;
         }
-        self.ctx.frame().handles.push(handle.clone());
+        StatsCall::of_mut(&mut self.ctx.frame())
+            .handles
+            .push(handle.clone());
         let ctx = self.ctx.clone();
         let called = match arg {
             Some(arg) => batch.call(pool, script, hook, (ctx, handle, arg)),

@@ -12,6 +12,7 @@ use crate::scripts::script_api::{ApiOwner, DataTable, MemberSpec, Status};
 use crate::stats::modifier_effect::ModifierEffect;
 use crate::stats::modifier_handle::ModifierHandle;
 use crate::stats::pools::Pools;
+use crate::stats::stats_call::StatsCall;
 use crate::stats::stats_column::StatsColumn;
 use crate::units::tag_effect::TagEffect;
 use crate::units::unit::Unit;
@@ -161,8 +162,8 @@ impl StatsApi {
         let id = StatsColumn::modifier_named(ctx.view(), ctx.frame().package(), id)?;
         let mut frame = ctx.write()?;
         let source = frame.acting();
-        let handle =
-            StatsColumn::applied_handle(ctx.view(), &mut frame.handles, target.id, id, source);
+        let handles = &mut StatsCall::of_mut(&mut frame).handles;
+        let handle = StatsColumn::applied_handle(ctx.view(), handles, target.id, id, source);
         frame.effects.push(ModifierEffect::Add {
             target: target.id,
             id,

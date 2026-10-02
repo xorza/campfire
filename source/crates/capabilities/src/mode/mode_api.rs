@@ -8,6 +8,7 @@ use crate::mode::game_map::GameMap;
 use crate::mode::marker::Marker;
 use crate::mode::match_end::MatchResult;
 use crate::mode::mode_book::{GroupUnit, ModeBook};
+use crate::mode::mode_call::ModeCall;
 use crate::mode::mode_effect::ModeEffect;
 use crate::mode::new_unit::NewUnit;
 use crate::navigation::path_walker::PathEnd;
@@ -82,7 +83,7 @@ impl ModeApi {
         api.bind(
             MemberSpec::value("teams", "the playing teams' names, the teams with slots"),
             |ctx: &mut Ctx| -> Checked<Array> {
-                let teams = &ctx.mode_or_fail()?.teams;
+                let teams = &ModeBook::of_or_fail(ctx)?.teams;
                 let name = |&team| teams.name(team).expect("a team of the match");
                 Ok(teams
                     .playing()
@@ -93,13 +94,15 @@ impl ModeApi {
         )
         .bind(
             MemberSpec::value("players", "how many players the session has").roles(RoleSet::MODE),
-            |ctx: &mut Ctx| -> Checked<INT> { Ok(INT::from(ctx.mode_or_fail()?.teams.players())) },
+            |ctx: &mut Ctx| -> Checked<INT> {
+                Ok(INT::from(ModeBook::of_or_fail(ctx)?.teams.players()))
+            },
         )
         .bind(
             MemberSpec::call("team_of", "(player)", "the name of `player`'s team")
                 .roles(RoleSet::MODE),
             |ctx: &mut Ctx, player: INT| -> Checked<Dynamic> {
-                let book = ctx.mode_or_fail()?;
+                let book = ModeBook::of_or_fail(ctx)?;
                 let slot = book.teams.player(player)?;
                 let team = book
                     .teams
@@ -110,7 +113,7 @@ impl ModeApi {
         )
         .bind(
             MemberSpec::value("map", "the map: its paths and its markers"),
-            |ctx: &mut Ctx| -> Checked<GameMap> { Ok(ctx.mode_or_fail()?.map()) },
+            |ctx: &mut Ctx| -> Checked<GameMap> { Ok(ModeBook::of_or_fail(ctx)?.map()) },
         )
         .bind(
             MemberSpec::value(
@@ -128,7 +131,7 @@ impl ModeApi {
             )
             .name(0, NameKind::Team),
             |ctx: &mut Ctx, team: &str| -> Checked<Dynamic> {
-                let book = ctx.mode_or_fail()?;
+                let book = ModeBook::of_or_fail(ctx)?;
                 let team = ModeApi::team(book, team)?;
                 let enemy = book
                     .teams
@@ -144,7 +147,7 @@ impl ModeApi {
         );
         api.bind(avatars, |ctx: &mut Ctx| ctx.view().avatars(None))
             .bind(avatars, |ctx: &mut Ctx, team: &str| -> Checked<Array> {
-                let team = ModeApi::team(ctx.mode_or_fail()?, team)?;
+                let team = ModeApi::team(ModeBook::of_or_fail(ctx)?, team)?;
                 Ok(ctx.view().avatars(Some(team)))
             })
             .bind(
@@ -267,7 +270,7 @@ impl ModeApi {
         .bind(
             grant,
             |ctx: &mut Ctx, unit: NewUnit, kind: &str, ids: Array| {
-                let book = ctx.mode_or_fail()?;
+                let book = ModeBook::of_or_fail(ctx)?;
                 let slots = book.actions(unit.unit_type).len();
                 ModeApi::grant(ctx, unit.id, slots, kind, &ids)
             },
@@ -351,7 +354,7 @@ impl ModeApi {
             },
         )
         .bind(end, |ctx: &mut Ctx, team: &str| -> Checked<()> {
-            let team = ModeApi::team(ctx.mode_or_fail()?, team)?;
+            let team = ModeApi::team(ModeBook::of_or_fail(ctx)?, team)?;
             ModeApi::end(ctx, MatchResult::Won(team))
         })
         .bind(end, |ctx: &mut Ctx, (): ()| {
@@ -407,24 +410,22 @@ impl ModeApi {
 
     fn state(ctx: &Ctx, name: &str) -> Checked<Dynamic> {
         ctx.require(RoleSet::MODE)?;
-        let field = ctx
-            .mode_or_fail()?
+        let field = ModeBook::of_or_fail(ctx)?
             .schema
             .state_field_named(name)
             .ok_or_else(|| ApiError::UnknownState.fail())?;
-        Ok(ctx.frame().state[field.index].to_dynamic(ctx.view()))
+        Ok(ModeCall::of(&ctx.frame()).state[field.index].to_dynamic(ctx.view()))
     }
 
     fn set_state(ctx: &Ctx, name: &str, value: &Dynamic) -> Checked<()> {
         ctx.require(RoleSet::MODE)?;
-        let field = ctx
-            .mode_or_fail()?
+        let field = ModeBook::of_or_fail(ctx)?
             .schema
             .state_field_named(name)
             .ok_or_else(|| ApiError::UnknownState.fail())?;
         let value = StateValue::from_dynamic(field.kind, value)
             .ok_or_else(|| ApiError::WrongStateType.fail())?;
-        ctx.write()?.state[field.index] = value;
+        ModeCall::of_mut(&mut *ctx.write()?).state[field.index] = value;
         Ok(())
     }
 
@@ -432,17 +433,18 @@ impl ModeApi {
     fn end(ctx: &Ctx, result: MatchResult) -> Checked<()> {
         ctx.require(RoleSet::MODE)?;
         let mut frame = ctx.write()?;
-        if frame.ended {
+        let call = ModeCall::of_mut(&mut frame);
+        if call.ended {
             return Err(ApiError::Ended.fail().into());
         }
-        frame.ended = true;
+        call.ended = true;
         frame.effects.push(ModeEffect::End(result));
         Ok(())
     }
 
     /// The choice `name` of the mode of `ctx`.
     fn choice<'a>(ctx: &'a Ctx, name: &str) -> Checked<&'a Choice> {
-        let book = ctx.mode_or_fail()?;
+        let book = ModeBook::of_or_fail(ctx)?;
         book.choices
             .named(name)
             .ok_or_else(|| ApiError::UnknownChoice.fail().into())
@@ -451,7 +453,7 @@ impl ModeApi {
     /// Records `values` as what `player` chose of `choice`.
     fn choose(ctx: &Ctx, player: INT, choice: &str, values: &Array) -> Checked<()> {
         ctx.require(RoleSet::MODE)?;
-        let book = ctx.mode_or_fail()?;
+        let book = ModeBook::of_or_fail(ctx)?;
         let slot = book.teams.player(player)?;
         let choice = ModeApi::choice(ctx, choice)?;
         if values.len() != choice.count() {
@@ -471,23 +473,27 @@ impl ModeApi {
             offers.push(offer);
         }
         let mut frame = ctx.write()?;
-        let taken = |&offer| book.choices.taken(&frame.choices, slot, choice, offer);
+        let call = ModeCall::of_mut(&mut frame);
+        let taken = |&offer| book.choices.taken(&call.choices, slot, choice, offer);
         if choice.unique && offers.iter().any(taken) {
             return Err(ApiError::ChoiceTaken.fail().into());
         }
         book.choices
-            .choose(&mut frame.choices, slot, choice, &offers);
+            .choose(&mut call.choices, slot, choice, &offers);
         Ok(())
     }
 
     /// The values `player` chose of `choice`, in order, empty before the player chose.
     fn chosen(ctx: &Ctx, player: INT, choice: &str) -> Checked<Array> {
         ctx.require(RoleSet::MODE)?;
-        let book = ctx.mode_or_fail()?;
+        let book = ModeBook::of_or_fail(ctx)?;
         let slot = book.teams.player(player)?;
         let choice = ModeApi::choice(ctx, choice)?;
         let frame = ctx.frame();
-        let Some(values) = book.choices.chosen(&frame.choices, slot, choice) else {
+        let Some(values) = book
+            .choices
+            .chosen(&ModeCall::of(&frame).choices, slot, choice)
+        else {
             return Ok(Array::new());
         };
         Ok(values
@@ -503,7 +509,7 @@ impl ModeApi {
     /// chose it in a unique choice.
     fn available(ctx: &Ctx, player: INT, choice: &str, value: &str) -> Checked<bool> {
         ctx.require(RoleSet::MODE)?;
-        let book = ctx.mode_or_fail()?;
+        let book = ModeBook::of_or_fail(ctx)?;
         let slot = book.teams.player(player)?;
         let choice = ModeApi::choice(ctx, choice)?;
         let offer = book
@@ -512,7 +518,7 @@ impl ModeApi {
             .ok_or_else(|| ApiError::UnknownChoiceValue.fail())?;
         let taken = book
             .choices
-            .taken(&ctx.frame().choices, slot, choice, offer);
+            .taken(&ModeCall::of(&ctx.frame()).choices, slot, choice, offer);
         Ok(!(choice.unique && taken))
     }
 
@@ -535,7 +541,7 @@ impl ModeApi {
         player: Option<INT>,
     ) -> Checked<NewUnit> {
         ctx.require(RoleSet::MODE)?;
-        let book = ctx.mode_or_fail()?;
+        let book = ModeBook::of_or_fail(ctx)?;
         if !ctx.view().bounds().contains(pos) {
             return Err(ApiError::OutOfBounds.fail().into());
         }
@@ -557,7 +563,7 @@ impl ModeApi {
     /// before the grants this call queued.
     fn grant(ctx: &Ctx, unit: StableId, slots: usize, kind: &str, ids: &Array) -> Checked<()> {
         ctx.require(RoleSet::MODE)?;
-        let book = ctx.mode_or_fail()?;
+        let book = ModeBook::of_or_fail(ctx)?;
         let kind = book
             .slot_kinds
             .named(kind)
@@ -601,7 +607,7 @@ impl ModeApi {
     /// the id the call takes for it.
     fn spawn_group(ctx: &Ctx, team: &str, path: &str, from: &str, types: &Array) -> Checked<()> {
         ctx.require(RoleSet::MODE)?;
-        let book = ctx.mode_or_fail()?;
+        let book = ModeBook::of_or_fail(ctx)?;
         let team = ModeApi::team(book, team)?;
         let from = PathEnd::named(from).ok_or_else(|| ApiError::UnknownPathEnd.fail())?;
         let path = ctx
@@ -690,7 +696,7 @@ impl ModeApi {
 
     /// Queues a change of how teams `a` and `b`, two of the mode's, regard each other.
     fn set_relation(ctx: &Ctx, a: &str, b: &str, relation: &str) -> Checked<()> {
-        let book = ctx.mode_or_fail()?;
+        let book = ModeBook::of_or_fail(ctx)?;
         let (a, b) = (ModeApi::team(book, a)?, ModeApi::team(book, b)?);
         let attitude = Attitude::named(relation).ok_or_else(|| ApiError::UnknownRelation.fail())?;
         if a == b {
@@ -700,7 +706,7 @@ impl ModeApi {
     }
 
     fn add_resource(ctx: &Ctx, player: INT, name: &str, amount: INT) -> Checked<()> {
-        let book = ctx.mode_or_fail()?;
+        let book = ModeBook::of_or_fail(ctx)?;
         let slot = book.teams.player(player)?;
         let resource = ctx
             .view()

@@ -171,13 +171,7 @@ The parts that call upward use hooks that the higher layer registers:
   - Each kind registers its rules: its start check, its windup, and what it does when it resolves. Combat registers the attack kind, abilities the cast and production the train.
   - Every kind pays its whole cost at one point of the pipeline.
 - **Orders.** One applier in `actions` checks and applies each order kind for every source: a player's command, a bot's input and an AI effect. An attack order needs a weapon whose filter selects the target, through `book.weapon_for`. This follows control.md: "players, bots and AI issue the same orders".
-- **View columns.**
-  - `UnitRow` keeps only the core: id, position, team, type, owner, tags, life flags and radius.
-  - Each capability owns a column, which is a flat `Vec` by row, and the script getters that read it. The capability registers both through the `RowSource` it has today.
-  - `RecentAttack`, `SlotRow`, `ModifierRow` and the stacking logic leave the core.
-  - A `Unit` handle holds its row index, so a getter copies no row.
-
-  This is what design 04's overview says: "the core names no capability".
+- **View columns** are in place: each capability owns its column of the script view, and its part of the call frame. What is left: a `Unit` handle holds its row index, so a getter copies no row; `RecentAttack` and the vision and navigation fields leave the core row.
 - **The delivery script API** is registered where it runs: `deliveries` registers `on_hit`, `on_end` and `Hit`. `ApiOwner::Projectile` and `ApiOwner::Area` go away, because `hit.delivery` is a `Unit`.
 - **The call's package moves into the frame.** `CallStart { role, acting, action, rank, package, depth }` is the one argument of `Frame::begin`. `view.set_caller`, and the four call sites that must remember it, go away.
 - **One table of capabilities.** The install order, `needs`, the layer of each module and the list in `lib.rs` all come from one table in `capability_set`.
@@ -372,7 +366,7 @@ A refactor of this size needs a permanent proof that behaviour stays the same. T
 | Step | Change | Size |
 |---|---|---|
 | D2 | One order applier for players, bots and AI. The path orders (`FollowPath`, `Reset`) are navigation's, above `actions`, so the applier needs a hook for them. | M |
-| D5 | View columns for each capability; `Unit` handles hold row indexes; the delivery API registered by `deliveries`, and the two `ApiOwner`s go | M |
+| D5 | `Unit` handles hold row indexes; the delivery API registered by `deliveries`, and the two `ApiOwner`s go | M |
 
 Done when the layer test has no exception left.
 
@@ -505,8 +499,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - call package: D4;
   - cast kind in state: G2;
 - **R§8:**
-  - core names every capability: D5;
-  - the view names progression: D2;
   - script runtime: D4;
   - delivery API registration: D5;
   - layer list: A4.
