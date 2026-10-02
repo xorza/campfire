@@ -1,7 +1,8 @@
 //! The reference heroes' abilities as their packages hold them: every ability's data reads into
 //! the typed schema, and Husk's Lash Out, Kensho's Twin Cut, Veil's Dusk Mark and Smoke Ring,
 //! Rime's Fan of Frost and Snow Owl, and Cinder's Eruption, loaded as a match of the 3v3 loads
-//! them, act exactly.
+//! them, act exactly. The tests pin the content's values, so a change to the content changes them,
+//! by design.
 
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;

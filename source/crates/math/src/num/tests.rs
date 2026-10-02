@@ -4,6 +4,11 @@ use proptest::prelude::*;
 
 use super::*;
 
+/// The cases of each property a run, of new random inputs each run, as proptest draws by
+/// default: a failure saves its seed under `proptest-regressions/`, which goes into version
+/// control, so every later run tries it first.
+const CASES: u32 = 10_000;
+
 const ONE: i64 = 1 << 24;
 const HALF: i64 = 1 << 23;
 const QUARTER: i64 = 1 << 22;
@@ -206,7 +211,7 @@ fn bits() -> impl Strategy<Value = i64> {
 }
 
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(10_000))]
+    #![proptest_config(ProptestConfig::with_cases(CASES))]
 
     #[test]
     fn add_sub_match_exact_sums(a in bits(), b in bits()) {
@@ -507,7 +512,7 @@ fn sqrt_rounds_to_nearest(a: i64) -> bool {
 }
 
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(10_000))]
+    #![proptest_config(ProptestConfig::with_cases(CASES))]
 
     #[test]
     fn display_parses_back(a in bits()) {

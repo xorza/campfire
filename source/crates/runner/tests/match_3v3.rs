@@ -1,5 +1,6 @@
 //! The reference 3v3 as its packages hold it plays a match with no failed call that replays to the
-//! same state hashes.
+//! same state hashes. The test pins the content's units and slots, so a change to the content
+//! changes it, by design.
 
 use campfire_capabilities::{
     ActionSlot, ActionSlots, ModeParam, ModeState, Owner, PathWalker, PlayerResources, ResourceId,

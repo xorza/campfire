@@ -113,8 +113,7 @@ fn registry() -> StateRegistry {
 }
 
 /// A spawn, a reader of the tick inputs, two independent systems in one step, and a reader of the
-/// tick; `reversed` adds the
-/// same systems in the opposite order.
+/// tick; `reversed` adds the same systems in the opposite order.
 fn workload(reversed: bool) -> Schedule {
     let mut systems: [ScheduleConfigs<ScheduleSystem>; 5] = [
         spawn_unit.in_set(SimSet::Inputs),

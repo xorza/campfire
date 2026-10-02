@@ -1,0 +1,651 @@
+use std::fmt::{self, Write};
+
+use campfire_script::ScriptHost;
+use campfire_script::rhai::Engine;
+use campfire_sim::Capability;
+
+use crate::scripts::api_builder::ApiBuilder;
+use crate::scripts::api_version::ApiVersion;
+use crate::scripts::core_api::CoreApi;
+use crate::scripts::hook::{Hook, ScriptRole};
+use crate::scripts::name_kind::NameKind;
+use crate::scripts::role_set::RoleSet;
+use crate::units::position_api::PositionApi;
+use crate::units::script_view::View;
+use crate::units::tag_effect::TagEffect;
+use crate::units::unit::Unit;
+
+/// The script API as the engine binds it: every name a script may use, each recorded by the
+/// call that binds it, or planned, by design 08, and bound by no code yet. The load check and
+/// the reference read it; nothing else lists the names.
+#[derive(Debug)]
+pub struct ScriptApi {
+    /// Sorted by owner, then name.
+    members: Vec<ApiMember>,
+    /// Each hook, each unit state, and each data field: whether it runs.
+    hooks: Vec<HookStatus>,
+    tag_effects: Vec<TagEffectStatus>,
+    data: Vec<DataField>,
+    /// The names of the functions the engine has before the API binds: Rhai's packages and
+    /// `Num`'s, getters as `get$<field>`; sorted.
+    builtins: Vec<String>,
+}
+
+/// Whether the release calls a hook.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct HookStatus {
+    pub hook: Hook,
+    pub status: Status,
+}
+
+/// Whether the release honours an effect a tag may have.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TagEffectStatus {
+    pub effect: TagEffect,
+    pub status: Status,
+}
+
+/// A field of a data file's table, by its name in the file: whether the release reads it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct DataField {
+    pub table: DataTable,
+    pub name: &'static str,
+    pub status: Status,
+}
+
+/// A table of the data files.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum DataTable {
+    Mode,
+    ModeCombat,
+    ModeNavigation,
+    SlotKind,
+    Choice,
+    Leech,
+    Relation,
+    Action,
+    Effect,
+    Delivery,
+    Projectile,
+    Area,
+    AreaInside,
+    Track,
+    Modifier,
+    Aura,
+    Combat,
+    Production,
+    Vision,
+    Collision,
+    Ai,
+    Tag,
+}
+
+/// The opening of the generated reference.
+const REFERENCE_HEAD: &str = "# Campfire — Script API reference
+
+Generated from the script API's registry ([One source](08-script-api.md#one-source)); do not edit it. A test fails when it differs from what the registry writes; run that test with `CAMPFIRE_BLESS=1` to write it again. A name that runs is bound by the code that runs it; a planned one is one design 08 gives that the release does not run yet. The rules of the API are [design 08](08-script-api.md).
+";
+
+/// A name of the script API: whose it is, what it is, who may use it, and whether it runs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ApiMember {
+    pub owner: ApiOwner,
+    pub name: &'static str,
+    pub kind: MemberKind,
+    pub roles: RoleSet,
+    pub capability: Option<Capability>,
+    /// Each form it is called in, as `(target, amount, kind)`; empty for a value or field.
+    pub signatures: Vec<&'static str>,
+    pub description: &'static str,
+    /// Whether a script may write it, as `m.stacks`.
+    pub writable: bool,
+    pub status: Status,
+    /// What each of its arguments names, by place, `None` for one that names nothing.
+    pub names: NameArgs,
+}
+
+/// What each argument of a call or a method names, by place, the receiver aside: the load
+/// checks a literal an argument of a name kind is given.
+pub type NameArgs = [Option<NameKind>; MemberSpec::ARGS];
+
+/// What a script holds a name on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub enum ApiOwner {
+    Ctx,
+    Unit,
+    Modifier,
+    Hit,
+    Damage,
+    Heal,
+    Position,
+    Vector,
+    GameMap,
+    Marker,
+}
+
+/// How a script uses a name: reads a value of `ctx`, calls `ctx`, reads a handle's field, calls
+/// a handle's method, or applies an operator to it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MemberKind {
+    Value,
+    Call,
+    Field,
+    Method,
+    Operator,
+}
+
+/// Whether the release runs a name, since the package API version it came in, or design 08
+/// plans it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Status {
+    Runs(ApiVersion),
+    Planned,
+}
+
+/// A name as the code that binds it describes it: an `ApiMember` with one form.
+#[must_use]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct MemberSpec {
+    pub owner: ApiOwner,
+    pub name: &'static str,
+    pub kind: MemberKind,
+    pub roles: RoleSet,
+    pub capability: Option<Capability>,
+    pub signature: &'static str,
+    pub description: &'static str,
+    pub names: NameArgs,
+}
+
+impl ScriptApi {
+    /// The script API of the release, with each capability's API `apis` registers, recorded as
+    /// a match's engine binds it, with the names the engine has before.
+    pub(crate) fn release(apis: impl IntoIterator<Item = fn(&mut ApiBuilder<'_>)>) -> ScriptApi {
+        let mut host = ScriptHost::new(1);
+        let builtins = ScriptApi::functions(host.engine_mut());
+        let mut api = ScriptApi::bind(host.engine_mut(), apis);
+        api.builtins = builtins;
+        api
+    }
+
+    /// The names of every function `engine` has, sorted, without repeats.
+    fn functions(engine: &Engine) -> Vec<String> {
+        let mut names =
+            engine.collect_fn_metadata(None, |info| Some(info.metadata.name.to_string()), true);
+        names.sort_unstable();
+        names.dedup();
+        names
+    }
+
+    /// Binds the core's script API into `engine`, then each capability's API `apis` registers,
+    /// and records it.
+    pub(crate) fn bind(
+        engine: &mut Engine,
+        apis: impl IntoIterator<Item = fn(&mut ApiBuilder<'_>)>,
+    ) -> ScriptApi {
+        let mut api = ScriptApi {
+            members: Vec::new(),
+            hooks: Vec::new(),
+            tag_effects: Vec::new(),
+            data: Vec::new(),
+            builtins: Vec::new(),
+        };
+        let mut builder = ApiBuilder::new(engine, &mut api);
+        CoreApi::register(&mut builder);
+        Unit::register(&mut builder);
+        PositionApi::register(&mut builder);
+        View::register_queries(&mut builder);
+        for register in apis {
+            register(&mut builder);
+        }
+        api
+    }
+
+    pub fn hooks(&self) -> &[HookStatus] {
+        &self.hooks
+    }
+
+    pub fn tag_effects(&self) -> &[TagEffectStatus] {
+        &self.tag_effects
+    }
+
+    pub fn data(&self) -> &[DataField] {
+        &self.data
+    }
+
+    /// Whether the engine has a function `name` of its own, before the API: `get$<field>` for a
+    /// field.
+    pub fn builtin(&self, name: &str) -> bool {
+        self.builtins
+            .binary_search_by(|held| held.as_str().cmp(name))
+            .is_ok()
+    }
+
+    /// The script API's reference, in Markdown: every name, hook, state and data field, with
+    /// whether the release runs it.
+    pub fn reference(&self) -> String {
+        let mut out = String::from(REFERENCE_HEAD);
+        self.write_reference(&mut out)
+            .expect("a string takes any text");
+        out
+    }
+
+    fn write_reference(&self, out: &mut String) -> fmt::Result {
+        let roles = |roles: RoleSet| {
+            if roles == RoleSet::ALL {
+                "every role".to_owned()
+            } else {
+                let names: Vec<_> = roles.iter().map(ScriptRole::name).collect();
+                names.join(", ")
+            }
+        };
+        let capability =
+            |capability: Option<Capability>| capability.map_or("core", Capability::name);
+        for owner in ApiOwner::ALL {
+            let members = self.members.iter().filter(|member| member.owner == owner);
+            let ctx = owner == ApiOwner::Ctx;
+            write!(out, "\n## {}\n\n", owner.title())?;
+            out.push_str(if ctx {
+                "| Name | Form | Roles | Capability | Status | What it is |\n| --- | --- | --- | --- | --- | --- |\n"
+            } else {
+                "| Name | Form | Capability | Status | What it is |\n| --- | --- | --- | --- | --- |\n"
+            });
+            for member in members {
+                let form = match (member.kind, member.writable) {
+                    (MemberKind::Field | MemberKind::Value, true) => "written and read".to_owned(),
+                    (MemberKind::Field | MemberKind::Value, false) => "read".to_owned(),
+                    (MemberKind::Operator, _) => "operator".to_owned(),
+                    (MemberKind::Call | MemberKind::Method, _) => {
+                        let forms: Vec<_> = member
+                            .signatures
+                            .iter()
+                            .map(|signature| format!("`{signature}`"))
+                            .collect();
+                        forms.join(" ") + member.name_args_text().as_str()
+                    }
+                };
+                let roles = if ctx {
+                    format!(" {} |", roles(member.roles))
+                } else {
+                    String::new()
+                };
+                writeln!(
+                    out,
+                    "| `{}` | {form} |{roles} {} | {} | {} |",
+                    member.name,
+                    capability(member.capability),
+                    member.status,
+                    member.description,
+                )?;
+            }
+        }
+        out.push_str(
+            "\n## Hooks\n\n| Hook | Role | Capability | Status |\n| --- | --- | --- | --- |\n",
+        );
+        for status in Hook::ALL
+            .iter()
+            .filter_map(|&hook| self.hooks.iter().find(|status| status.hook == hook))
+        {
+            let hook = status.hook;
+            writeln!(
+                out,
+                "| `{}({})` | {} | {} | {} |",
+                hook.name(),
+                hook.param_names().join(", "),
+                hook.role().name(),
+                capability(hook.capability()),
+                status.status,
+            )?;
+        }
+        out.push_str("\n## Tag effects\n\n| Effect | Status |\n| --- | --- |\n");
+        for status in &self.tag_effects {
+            writeln!(out, "| `{}` | {} |", status.effect.name(), status.status)?;
+        }
+        out.push_str("\n## Data fields\n");
+        for table in DataTable::ALL {
+            writeln!(
+                out,
+                "\n### {}\n\n| Field | Status |\n| --- | --- |",
+                table.title()
+            )?;
+            for field in self.data.iter().filter(|field| field.table == table) {
+                writeln!(out, "| `{}` | {} |", field.name, field.status)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// Records whether the release calls a hook.
+    pub(crate) fn record_hook(&mut self, hook: HookStatus) {
+        assert!(
+            self.hooks.iter().all(|held| held.hook != hook.hook),
+            "{:?} is recorded once",
+            hook.hook
+        );
+        self.hooks.push(hook);
+    }
+
+    /// Records whether the release honours `effect`.
+    pub(crate) fn record_tag_effect(&mut self, effect: TagEffect, status: Status) {
+        assert!(
+            self.tag_effects.iter().all(|held| held.effect != effect),
+            "{effect:?} is recorded once"
+        );
+        self.tag_effects.push(TagEffectStatus { effect, status });
+    }
+
+    /// Records the fields of `table`: `runs`, which the release reads, and `planned`.
+    pub(crate) fn record_data(
+        &mut self,
+        table: DataTable,
+        runs: &[&'static str],
+        planned: &[&'static str],
+    ) {
+        for (names, status) in [
+            (runs, Status::Runs(ApiVersion::FIRST)),
+            (planned, Status::Planned),
+        ] {
+            for &name in names {
+                self.record_field(table, name, status);
+            }
+        }
+    }
+
+    /// Records the field `name` of `table`, of `status`.
+    pub(crate) fn record_field(&mut self, table: DataTable, name: &'static str, status: Status) {
+        self.data.push(DataField {
+            table,
+            name,
+            status,
+        });
+    }
+
+    /// The member `name` of `owner`.
+    pub fn member(&self, owner: ApiOwner, name: &str) -> Option<&ApiMember> {
+        let at = self
+            .members
+            .binary_search_by(|member| (member.owner, member.name).cmp(&(owner, name)))
+            .ok()?;
+        Some(&self.members[at])
+    }
+
+    /// What the arguments of the method `name` of any handle name: every handle with a method
+    /// of that name gives the same, so a script's literal is checked whatever value it calls it
+    /// on.
+    pub fn method_names(&self, name: &str) -> Option<NameArgs> {
+        self.members
+            .iter()
+            .find(|member| {
+                member.owner != ApiOwner::Ctx
+                    && member.kind == MemberKind::Method
+                    && member.name == name
+            })
+            .map(|member| member.names)
+    }
+
+    pub fn members(&self) -> &[ApiMember] {
+        &self.members
+    }
+
+    /// Records a form of `spec`, written when `writable`, with `status`; a second form of a
+    /// name already recorded adds its signature and its writing, and must agree on the rest.
+    pub(crate) fn record(&mut self, spec: MemberSpec, writable: bool, status: Status) {
+        let key = (spec.owner, spec.name);
+        let signatures = (!spec.signature.is_empty()).then_some(spec.signature);
+        match self
+            .members
+            .binary_search_by(|held| (held.owner, held.name).cmp(&key))
+        {
+            Ok(at) => {
+                let held = &mut self.members[at];
+                assert!(
+                    (
+                        held.kind,
+                        held.roles,
+                        held.capability,
+                        held.status,
+                        held.names
+                    ) == (spec.kind, spec.roles, spec.capability, status, spec.names),
+                    "the forms of {:?}.{} agree",
+                    spec.owner,
+                    spec.name
+                );
+                if let Some(signature) = signatures
+                    && !held.signatures.contains(&signature)
+                {
+                    held.signatures.push(signature);
+                }
+                held.writable |= writable;
+            }
+            Err(at) => self.members.insert(
+                at,
+                ApiMember {
+                    owner: spec.owner,
+                    name: spec.name,
+                    kind: spec.kind,
+                    roles: spec.roles,
+                    capability: spec.capability,
+                    signatures: signatures.into_iter().collect(),
+                    description: spec.description,
+                    writable,
+                    status,
+                    names: spec.names,
+                },
+            ),
+        }
+    }
+}
+
+impl ApiOwner {
+    pub const ALL: [ApiOwner; 10] = [
+        ApiOwner::Ctx,
+        ApiOwner::Unit,
+        ApiOwner::Modifier,
+        ApiOwner::Hit,
+        ApiOwner::Damage,
+        ApiOwner::Heal,
+        ApiOwner::Position,
+        ApiOwner::Vector,
+        ApiOwner::GameMap,
+        ApiOwner::Marker,
+    ];
+
+    /// The owner as the reference titles it.
+    pub const fn title(self) -> &'static str {
+        match self {
+            ApiOwner::Ctx => "`ctx`",
+            ApiOwner::Unit => "Unit",
+            ApiOwner::Modifier => "Modifier `m`",
+            ApiOwner::Hit => "Hit `hit`",
+            ApiOwner::Damage => "Damage `d`",
+            ApiOwner::Heal => "Heal `h`",
+            ApiOwner::Position => "Position",
+            ApiOwner::Vector => "Vector",
+            ApiOwner::GameMap => "Map, `ctx.map`",
+            ApiOwner::Marker => "Marker, of `ctx.map.markers(tag)`",
+        }
+    }
+}
+
+/// As the reference shows it: `since <version>`, or `planned`.
+impl fmt::Display for Status {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Status::Runs(since) => write!(f, "since {since}"),
+            Status::Planned => f.write_str("planned"),
+        }
+    }
+}
+
+impl DataTable {
+    pub const ALL: [DataTable; 22] = [
+        DataTable::Mode,
+        DataTable::ModeCombat,
+        DataTable::ModeNavigation,
+        DataTable::SlotKind,
+        DataTable::Choice,
+        DataTable::Leech,
+        DataTable::Relation,
+        DataTable::Action,
+        DataTable::Effect,
+        DataTable::Delivery,
+        DataTable::Projectile,
+        DataTable::Area,
+        DataTable::AreaInside,
+        DataTable::Track,
+        DataTable::Modifier,
+        DataTable::Aura,
+        DataTable::Combat,
+        DataTable::Production,
+        DataTable::Vision,
+        DataTable::Collision,
+        DataTable::Ai,
+        DataTable::Tag,
+    ];
+
+    /// The table as the reference titles it.
+    pub const fn title(self) -> &'static str {
+        match self {
+            DataTable::Mode => "`data/mode.toml`",
+            DataTable::ModeCombat => "The mode's `[combat]`",
+            DataTable::ModeNavigation => "The mode's `[navigation]`",
+            DataTable::SlotKind => "A slot kind, `[[slots]]`",
+            DataTable::Choice => "A choice, `[choices.<name>]`",
+            DataTable::Leech => "The mode's `[combat] leech`",
+            DataTable::Relation => "A pair of teams, `[[relations]]`",
+            DataTable::Action => "An action, `[actions.<id>]`",
+            DataTable::Effect => "An effect of an action's `on_resolve`, `on_hit` or `on_end`",
+            DataTable::Delivery => "An action's `delivery`",
+            DataTable::Projectile => "A unit type's `projectile`",
+            DataTable::Area => "A unit type's `area`",
+            DataTable::AreaInside => "An area's `inside`",
+            DataTable::Track => "A track, `[tracks.<name>]`",
+            DataTable::Modifier => "A modifier, `[modifiers.<id>]`",
+            DataTable::Aura => "A modifier's `aura`",
+            DataTable::Combat => "A unit type's `combat`",
+            DataTable::Production => "A unit type's `production`",
+            DataTable::Vision => "A unit type's `vision`",
+            DataTable::Collision => "A unit type's `collision`",
+            DataTable::Ai => "A unit type's `orders`",
+            DataTable::Tag => "A tag's effects, `[tags.<name>]`",
+        }
+    }
+}
+
+impl ApiMember {
+    /// Its arguments that name something, as the reference lists them after its forms:
+    /// `, `id` a modifier`, by their names in its first form.
+    fn name_args_text(&self) -> String {
+        let Some(first) = self.signatures.first() else {
+            return String::new();
+        };
+        let params = first
+            .trim_start_matches('(')
+            .split(')')
+            .next()
+            .unwrap_or_default();
+        let params: Vec<&str> = params.split(", ").collect();
+        let mut named = String::new();
+        for (at, kind) in self.names.iter().enumerate() {
+            if let Some(kind) = kind {
+                let param = params
+                    .get(at)
+                    .expect("a name role is within the first form");
+                write!(named, ", `{param}` a {kind}").expect("text writes into a string");
+            }
+        }
+        named
+    }
+}
+
+impl MemberSpec {
+    /// The most arguments a member's name roles reach.
+    pub(crate) const ARGS: usize = 4;
+
+    /// A value of `ctx`, for every role and of the core until said otherwise.
+    pub(crate) const fn value(name: &'static str, description: &'static str) -> MemberSpec {
+        MemberSpec::new(ApiOwner::Ctx, name, MemberKind::Value, "", description)
+    }
+
+    /// A call of `ctx`, in the form `signature`.
+    pub(crate) const fn call(
+        name: &'static str,
+        signature: &'static str,
+        description: &'static str,
+    ) -> MemberSpec {
+        MemberSpec::new(
+            ApiOwner::Ctx,
+            name,
+            MemberKind::Call,
+            signature,
+            description,
+        )
+    }
+
+    /// A field of `owner`'s handle.
+    pub(crate) const fn field(
+        owner: ApiOwner,
+        name: &'static str,
+        description: &'static str,
+    ) -> MemberSpec {
+        MemberSpec::new(owner, name, MemberKind::Field, "", description)
+    }
+
+    /// A method of `owner`'s handle, in the form `signature`.
+    pub(crate) const fn method(
+        owner: ApiOwner,
+        name: &'static str,
+        signature: &'static str,
+        description: &'static str,
+    ) -> MemberSpec {
+        MemberSpec::new(owner, name, MemberKind::Method, signature, description)
+    }
+
+    /// The operator `name` on `owner`'s handles.
+    pub(crate) const fn operator(
+        owner: ApiOwner,
+        name: &'static str,
+        description: &'static str,
+    ) -> MemberSpec {
+        MemberSpec::new(owner, name, MemberKind::Operator, "", description)
+    }
+
+    const fn new(
+        owner: ApiOwner,
+        name: &'static str,
+        kind: MemberKind,
+        signature: &'static str,
+        description: &'static str,
+    ) -> MemberSpec {
+        MemberSpec {
+            owner,
+            name,
+            kind,
+            roles: RoleSet::ALL,
+            capability: None,
+            signature,
+            description,
+            names: [None; MemberSpec::ARGS],
+        }
+    }
+
+    /// The same, for `roles` only.
+    pub(crate) const fn roles(mut self, roles: RoleSet) -> MemberSpec {
+        self.roles = roles;
+        self
+    }
+
+    /// The same, of `capability`.
+    pub(crate) const fn capability(mut self, capability: Capability) -> MemberSpec {
+        self.capability = Some(capability);
+        self
+    }
+
+    /// The same, its argument at `at`, the receiver aside, a name of `kind`.
+    pub(crate) const fn name(mut self, at: usize, kind: NameKind) -> MemberSpec {
+        self.names[at] = Some(kind);
+        self
+    }
+}
+
+#[cfg(test)]
+mod tests;

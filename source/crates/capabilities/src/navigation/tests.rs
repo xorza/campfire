@@ -836,41 +836,6 @@ fn a_dead_unit_forgets_its_destination_and_a_stopped_one_keeps_it() {
 }
 
 #[test]
-fn paths_count_waypoints_in_either_direction() {
-    let paths = Paths::new([
-        ("near", &[at(0, 0, 0), at(1, 0, 0)][..]),
-        ("far", &[at(5, 0, 5)][..]),
-    ]);
-    assert_eq!(paths.count(), 2);
-    assert_eq!(
-        (paths.named("far"), paths.named("none")),
-        (Some(PathId::new(1)), None)
-    );
-    assert_eq!(
-        (paths.name(PathId::new(0)), paths.name(PathId::new(1))),
-        ("near", "far")
-    );
-    let walk = |path, direction| {
-        (0..3)
-            .map(|index| paths.waypoint(path, index, direction))
-            .collect::<Vec<_>>()
-    };
-    assert_eq!(
-        walk(PathId::new(0), PathEnd::Start),
-        [Some(at(0, 0, 0)), Some(at(1, 0, 0)), None]
-    );
-    assert_eq!(
-        walk(PathId::new(0), PathEnd::End),
-        [Some(at(1, 0, 0)), Some(at(0, 0, 0)), None]
-    );
-    assert_eq!(
-        walk(PathId::new(1), PathEnd::End),
-        [Some(at(5, 0, 5)), None, None]
-    );
-    assert_eq!(walk(PathId::new(2), PathEnd::Start), [None, None, None]);
-}
-
-#[test]
 fn every_navigation_type_is_state() {
     let mut walk = Walk::new();
     let unit = walk.unit(at(0, 0, 0), Some(at(0, 0, 5)));
@@ -916,17 +881,4 @@ fn every_navigation_type_is_state() {
     restored.world.insert_resource(lane());
     registry.restore(&snapshot, &mut restored.world).unwrap();
     assert_eq!(registry.hash(&restored.world), hash);
-}
-
-#[test]
-fn move_steps_are_never_negative() {
-    assert_eq!(MoveStep::new(-Num::EPSILON), None);
-    assert_eq!(MoveStep::new(Num::ZERO).map(MoveStep::get), Some(Num::ZERO));
-    let negative = postcard::to_allocvec(&-Num::EPSILON).unwrap();
-    assert!(postcard::from_bytes::<MoveStep>(&negative).is_err());
-    let one = postcard::to_allocvec(&Num::ONE).unwrap();
-    assert_eq!(
-        postcard::from_bytes::<MoveStep>(&one).ok(),
-        MoveStep::new(Num::ONE)
-    );
 }

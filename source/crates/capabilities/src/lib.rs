@@ -171,7 +171,7 @@ pub use values::stat::{EngineStat, Stat};
 pub use vision::Vision;
 pub use vision::seen_by::SeenBy;
 
-#[cfg(feature = "internals")]
+#[cfg(any(test, feature = "internals"))]
 pub mod internals {
     pub use crate::combat::internals::Arms;
     pub use crate::stats::internals::{carried, give_modifier};

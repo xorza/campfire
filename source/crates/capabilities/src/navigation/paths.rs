@@ -78,3 +78,50 @@ impl Paths {
         (at < len).then(|| self.points[(range.start + at) as usize])
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use campfire_math::{Num, Vec3};
+
+    use super::*;
+
+    fn at(x: i64, y: i64, z: i64) -> Position {
+        let num = |value| Num::from_int(value).unwrap();
+        Position::new(Vec3::new(num(x), num(y), num(z))).unwrap()
+    }
+
+    #[test]
+    fn paths_count_waypoints_in_either_direction() {
+        let paths = Paths::new([
+            ("near", &[at(0, 0, 0), at(1, 0, 0)][..]),
+            ("far", &[at(5, 0, 5)][..]),
+        ]);
+        assert_eq!(paths.count(), 2);
+        assert_eq!(
+            (paths.named("far"), paths.named("none")),
+            (Some(PathId::new(1)), None)
+        );
+        assert_eq!(
+            (paths.name(PathId::new(0)), paths.name(PathId::new(1))),
+            ("near", "far")
+        );
+        let walk = |path, direction| {
+            (0..3)
+                .map(|index| paths.waypoint(path, index, direction))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            walk(PathId::new(0), PathEnd::Start),
+            [Some(at(0, 0, 0)), Some(at(1, 0, 0)), None]
+        );
+        assert_eq!(
+            walk(PathId::new(0), PathEnd::End),
+            [Some(at(1, 0, 0)), Some(at(0, 0, 0)), None]
+        );
+        assert_eq!(
+            walk(PathId::new(1), PathEnd::End),
+            [Some(at(5, 0, 5)), None, None]
+        );
+        assert_eq!(walk(PathId::new(2), PathEnd::Start), [None, None, None]);
+    }
+}

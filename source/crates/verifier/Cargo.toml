@@ -21,6 +21,8 @@ campfire-log = { workspace = true, features = ["internals"] }
 campfire-runner = { workspace = true, features = ["internals"] }
 campfire-capabilities.workspace = true
 
+tempfile.workspace = true
+
 [lints]
 workspace = true
 

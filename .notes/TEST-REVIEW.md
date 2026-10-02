@@ -211,13 +211,6 @@ The schedule is a separate field only because `Mode::install` needs it (`mode/te
   2. Edit TOML by path for value flaws (`toml` is already a dependency of package).
   3. Later, a complete `packages/test` fixture that the flaw table owns.
 - [ ] **`package_dir/tests.rs:116-150` asserts Husk** — its name, `slots["basic"][2]` and the start of its script. Move it to `packages/test/heroes/walker`.
-- [ ] **`reference_abilities` and `match_3v3` test content** — they change when the content changes, by design. Say so in the module doc. The doc at `reference_abilities.rs:1-4` also omits Snow Owl.
-- [ ] **The verifier subprocess is not hermetic**:
-  - `headless.rs:375-376,395` writes `headless.log` and `headless-truncated.log` into the shared `CARGO_TARGET_TMPDIR`. Two cargo runs at the same time race on them, and nothing removes them. Add `process::id()` to the names, and remove the files at the end.
-  - `headless.rs:380-386`: the spawned verifier inherits `CAMPFIRE_LOG` and `CAMPFIRE_LOG_FILTER` (`log/logging.rs:36`). Add `env_remove` for both.
-- [ ] **lan-check** — `run_dir.rs:96-106` leaves its per-PID temp dir behind when an assert fails before the cleanup. A `Drop` guard fixes it.
-- [ ] **proptest uses a random seed** — `num/tests.rs:185,457` and `vec3/tests.rs:178` run with `with_cases(10_000)` and `RngSeed::Random`. A failure replays with `PROPTEST_RNG_SEED`, but no `proptest-regressions/` directory exists. Choose `RngSeed::Fixed` (the same inputs each run), or keep Random and commit the regressions when they appear. Put one config constant in each file.
-
 ## 7. Time
 
 The suite takes about 4 s. These times were measured with no other load:
@@ -235,40 +228,6 @@ The suite takes about 4 s. These times were measured with no other load:
 - [ ] **`match_3v3` keeps its claims at its current cost** — of its time, 68 % is ticks, 31 % is state hashes (about 27 µs each) and 4 % is setup. Fewer ticks is not possible (1199, 2399 and 2499 are content times at the mode's lowest rate). Hashes only at checkpoints would miss a divergence that converges again. Better: keep the test, and if wall time becomes a problem, give it a budget in instructions (`perf stat -e instructions:u`, about 6 G) instead of seconds. The hash cost and the cost of an empty pick tick (about 31 µs) are engine performance items for `REVIEW.md`, not test items.
 - [ ] **`every_flaw…` has room for about 390 flaws** — at about 2.5 ms each, it passes 1 s idle near 390 flaws. When it grows, split the table by area (manifest, mode data, map, heroes, scripts) into tests that run in parallel.
 
-## 8. Layout and style
-
-- [ ] **Inline tests over the split line** (more than 150 lines, or more than 40 % of the file):
-
-  | File | Test lines | Share |
-  |---|---|---|
-  | `capabilities/src/scripts/script_api.rs` | 232 | 28 % |
-  | `checks/lan-check/src/verdict.rs` | 200 | 57 % |
-  | `capabilities/src/stats/modifiers.rs` | 180 | 32 % |
-  | `capabilities/src/navigation/route_planner.rs` | 171 | 28 % |
-  | `capabilities/src/navigation/regions.rs` | 167 | 31 % |
-  | `capabilities/src/navigation/pathing_grid.rs` | 152 | 48 % |
-  | `capabilities/src/navigation/collider.rs` | 101 | 51 % |
-  | `net/src/order_script.rs` | 97 | 49 % |
-  | `math/src/u256.rs` | 75 | 45 % |
-  | `checks/lan-check/src/process_log.rs` | 60 | 42 % |
-  | `capabilities/src/actions/weapon.rs` | 49 | 56 % |
-  | `net/src/events/unit_died.rs` | 54 | 51 % |
-  | `sim/src/command.rs` | 54 | 43 % |
-
-  Four more files pass 40 % only because they are small: `log_line.rs`, `segment.rs`, `tick_rate.rs` and `hook_set.rs`. See group 9.
-- [ ] **Tests in the file of another type**:
-  - `navigation/tests.rs:657-690` (`Paths`) goes to `paths.rs`;
-  - `navigation/tests.rs:736-747` (`MoveStep`) goes to `move_step.rs`;
-  - `orders/tests.rs:374-410` (`Order` encoding) goes to `order.rs`;
-  - the hook arity and `Block` serde checks in `script_api.rs` `the_reference_is_what_the_registry_writes` (`:768-790`) go to `hook.rs` and `block.rs`.
-- [ ] **Coding guide**:
-  - Tuple returns: `orders/tests.rs:413` `two_heroes() -> (Match, [StableId; 2])` and `route_planner.rs:455` `walled() -> (PathingGrid, BodyIndex)`.
-  - `#[derive(Debug)]` is missing on `FieldNames<'a>` (`script_api.rs:~655`).
-- [ ] **Comment defects**:
-  - `headless.rs:25-27`: the doc of `PACKAGES` sits on `LIFE`.
-  - `sim_update/tests.rs:98-100`: a doc sentence breaks in the middle.
-- [ ] **Build warnings without `--all-features`** — `cargo test -p campfire-capabilities` without features gives 14 warnings: unused `stats::internals` fns and `pub` items in `combat::internals` that nothing can reach.
-
 ## 9. Decisions for you
 
 These items depend on rules that the style guide does not settle. The harness work in group 2 needs answers to the first three.
@@ -280,9 +239,7 @@ These items depend on rules that the style guide does not settle. The harness wo
 5. **`#[derive(Default)]` on `ModifierData`** adds to its public API. The other choice is a test constructor in `internals`.
 6. **`Num` from an integer in tests.** Choose one: a production `const fn Num::int(i64) -> Num` that panics on overflow, or a gated one in `math` `internals`. The gated one needs `campfire-math` with `internals` in the dev-dependencies of 8 crates.
 7. **The silent skip of integration tests.** `runner` and `net` set `required-features = ["internals"]`. Plain `cargo test -p campfire-runner` builds 0 tests and skips all 9 integration tests with no message. The verification chain uses `--all-features`, so it is not affected. A self dev-dependency with `internals` fixes it, but that is a manifest change. You can also accept the skip.
-8. **A size floor for the 40 % split rule.** `hook_set.rs` (42 lines), `tick_rate.rs`, `log_line.rs`, `segment.rs` and several files in the group 8 table pass 40 % only because they are small.
 9. **proptest in capabilities.** It is a workspace dependency, but only `math` uses it. The tables in 5.2 give most of the value without it. Adding it to `campfire-capabilities` dev-dependencies needs your approval.
-10. **The proptest seed policy** (group 6).
 
 ## Order of work
 

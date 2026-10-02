@@ -21,10 +21,17 @@ fn walker() -> Walker {
     }
 }
 
+/// A grid and the posts that block its cells.
+#[derive(Debug)]
+struct Walled {
+    grid: PathingGrid,
+    statics: BodyIndex,
+}
+
 /// 1 m cells from the origin, rows from z = 0, with a post of 0.25 m on the center of each
 /// `#`, for walkers of 0.25 m: a post blocks its own cell, whose center is on it, and not its
 /// neighbors', 1 m off; the walker's center keeps 0.5 m from it.
-fn walled(rows: &[&str]) -> (PathingGrid, BodyIndex) {
+fn walled(rows: &[&str]) -> Walled {
     let quarter = Num::from_bits(1 << (Num::FRAC_BITS - 2));
     let size = |count: usize| Num::from_int(i64::try_from(count).unwrap()).unwrap();
     let bounds = Bounds::new([Num::ZERO; 2], [size(rows[0].len()), size(rows.len())]);
@@ -50,7 +57,7 @@ fn walled(rows: &[&str]) -> (PathingGrid, BodyIndex) {
     let mut statics = BodyIndex::new(quarter);
     statics.update(&posts);
     grid.update(&statics);
-    (grid, statics)
+    Walled { grid, statics }
 }
 
 #[test]
@@ -58,7 +65,7 @@ fn a_route_goes_through_the_gap_and_never_across_a_blocked_corner() {
     // A wall down column 3 over rows 0 to 2, then down column 4 over rows 3 and 4. Cells (3, 2)
     // and (4, 3) meet at a corner, which a diagonal step from (3, 3) to (4, 2) would cut: the
     // route must go round through row 5.
-    let (grid, statics) = walled(&[
+    let Walled { grid, statics } = walled(&[
         "...#....", "...#....", "...#....", "....#...", "....#...", "........",
     ]);
     let clearance = grid.clearance(walker());
@@ -141,7 +148,10 @@ fn a_route_goes_through_the_gap_and_never_across_a_blocked_corner() {
     // the wall to learn that it fails. Its work: the test of the goal, the 2 regions and the
     // 12 cells of the start's scanned, the 4 cells expanded, and two lines tested, to (2.5,
     // 1.5) and to (3.5, 1.5): 21.
-    let (closed, closed_statics) = walled(&["....#...", "....#...", "....#..."]);
+    let Walled {
+        grid: closed,
+        statics: closed_statics,
+    } = walled(&["....#...", "....#...", "....#..."]);
     let closed_clearance = closed.clearance(walker());
     let closed_walkable = Walkable {
         clearance: closed_clearance,
@@ -178,7 +188,7 @@ fn a_route_goes_through_the_gap_and_never_across_a_blocked_corner() {
 
 /// Posts on a 9 by 7 grid, and windows of 2 cells each way around cells at its corners, edges
 /// and middle.
-fn scattered() -> (PathingGrid, BodyIndex) {
+fn scattered() -> Walled {
     walled(&[
         "#..#.##..",
         ".#...#..#",
@@ -199,7 +209,7 @@ fn the_nearest_open_cell_is_the_nearest_of_the_grid_or_the_window_by_every_cell(
     // Goals at every quarter meter from (-1, -1) m to (10, 8) m, outside the grid too, over the
     // whole grid and over the windows: the rings must find what a scan of every cell a walker
     // may stand in finds, the nearest center, ties to the lower number.
-    let (grid, statics) = scattered();
+    let Walled { grid, statics } = scattered();
     let clearance = grid.clearance(walker());
     let cells = clearance.grid();
     let columns = cells.columns();
@@ -239,7 +249,10 @@ fn the_nearest_open_cell_is_the_nearest_of_the_grid_or_the_window_by_every_cell(
     // A window with no cell a walker may stand in holds no nearest cell, and a short route in
     // it plans nothing: no waypoint, not reached. Its work: the test of the goal, and the
     // rings out from the goal's cell (0, 0) to the window's 9 cells, 1, 3 and 5 of them.
-    let (walls, statics) = walled(&["#####"; 5]);
+    let Walled {
+        grid: walls,
+        statics,
+    } = walled(&["#####"; 5]);
     let clearance = walls.clearance(walker());
     let walkable = Walkable {
         clearance,
@@ -268,7 +281,7 @@ fn the_nearest_open_cell_is_the_nearest_of_the_grid_or_the_window_by_every_cell(
 fn a_window_marks_exactly_its_cells_among_all_its_blockers_cells() {
     // Posts of 0.25 m to 2.5 m inside, across the edges of and outside the windows: the marks
     // of each, each blocker's runs of cells cut to it, are its cells among all their cells.
-    let (grid, statics) = scattered();
+    let Walled { grid, statics } = scattered();
     let clearance = grid.clearance(walker());
     let cells = clearance.grid();
     let columns = cells.columns();
@@ -376,7 +389,7 @@ fn a_route_costs_what_a_search_of_every_cell_finds() {
             })
             .collect();
         let rows: Vec<&str> = rows.iter().map(String::as_str).collect();
-        let (grid, statics) = walled(&rows);
+        let Walled { grid, statics } = walled(&rows);
         let clearance = grid.clearance(walker());
         let cells = clearance.grid();
         let walkable = Walkable {

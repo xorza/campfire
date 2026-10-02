@@ -19,6 +19,7 @@ use campfire_protocol::{Applied, Fingerprint, SeedError, ServerSeed, SessionLog,
 use campfire_runner::{FixedSession, InputRules, Runner, StartError, TermsError};
 use campfire_sim::{EntityIndex, Position, StableId, StateHash};
 use campfire_verifier::{Replay, Verified};
+use tempfile::TempDir;
 
 /// The lane mode's life pool, `health`, the first of its pools by name.
 const LIFE: PoolId = PoolId::FIRST;
@@ -337,15 +338,19 @@ fn every_corruption_of_a_log_file_is_refused() {
 #[test]
 fn the_binary_logs_the_last_state_hash() {
     let Run { runner, hashes } = run(&ORDERS.each_ref(), TICKS);
-    let dir = env!("CARGO_TARGET_TMPDIR");
+    // A directory of this run's own, which goes when the test ends, passed or failed.
+    let scratch = TempDir::new_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
+    let dir = scratch.path().to_str().unwrap();
     let path = format!("{dir}/headless.log");
     fs::write(&path, encoded(runner.log())).unwrap();
-    // Logged without color, as standard error is not a terminal here, and at `info`, whatever the
-    // environment says.
+    // Logged without color, as standard error is not a terminal here, at `info`, and to no file,
+    // whatever the environment says.
     let verifier = |args: &[&str]| {
         Command::new(env!("CARGO_BIN_EXE_campfire-verifier"))
             .args(args)
             .env("RUST_LOG", "info")
+            .env_remove("CAMPFIRE_LOG")
+            .env_remove("CAMPFIRE_LOG_FILTER")
             .output()
             .unwrap()
     };

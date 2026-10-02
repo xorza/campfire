@@ -379,71 +379,29 @@ fn attack(unit: StableId, target: StableId) -> Vec<u8> {
     }])
 }
 
-fn id(value: u8) -> StableId {
-    postcard::from_bytes(&[value]).unwrap()
-}
-
-#[test]
-fn orders_decode_exactly() {
-    let order = Order {
-        unit: id(4),
-        action: Action::Move {
-            x: num(-3),
-            z: Num::from_bits(5),
-        },
-    };
-    let body = order.encode();
-    assert_eq!(Order::decode(&body), Some(order));
-    assert_eq!(Order::decode(&[body.as_slice(), &[0]].concat()), None);
-    assert_eq!(Order::decode(&body[..body.len() - 1]), None);
-    assert_eq!(Order::decode(&[]), None);
-
-    // The unit's id, then variant 1 with the target's id, each a varint: 300 = 0xAC 0x02.
-    let target = postcard::from_bytes::<StableId>(&[0xAC, 0x02]).unwrap();
-    let attack = Order {
-        unit: target,
-        action: Action::Attack { target },
-    };
-    assert_eq!(attack.encode(), [0xAC, 0x02, 1, 0xAC, 0x02]);
-    assert_eq!(Order::decode(&[0xAC, 0x02, 1, 0xAC, 0x02]), Some(attack));
-    // Variant 2 does not exist.
-    assert_eq!(Order::decode(&[0, 2, 0]), None);
-
-    // A payload is a list of `orders` commands, one per order.
-    let payload = Order::payload(&[order, attack]);
-    let mut commands = Vec::new();
-    assert!(Command::read(&payload, |command| commands.push(command)));
-    assert_eq!(commands.len(), 2);
-    assert!(
-        commands
-            .iter()
-            .all(|command| command.capability == Capability::Orders)
-    );
-    assert_eq!(commands[1].body, attack.encode());
-
-    // A written payload follows what the buffer holds: 1 command, of capability 5 (`orders`),
-    // its 5 body bytes; then the move's payload, the body buffer reused.
-    let mut out = vec![9];
-    let mut body = Vec::new();
-    attack.write_payload(&mut body, &mut out);
-    assert_eq!(out, [9, 1, 5, 5, 0xAC, 0x02, 1, 0xAC, 0x02]);
-    order.write_payload(&mut body, &mut out);
-    assert_eq!(out[9..], Order::payload(&[order]));
+/// A match and its two heroes.
+#[derive(Debug)]
+struct TwoHeroes {
+    game: Match,
+    heroes: [StableId; 2],
 }
 
 /// Heroes of slots 0 and 1, a meter a tick: slot 0 at the origin, slot 1 at x = 4 and y = 2.
-fn two_heroes() -> (Match, [StableId; 2]) {
+fn two_heroes() -> TwoHeroes {
     let mut game = Match::new();
     let heroes = [
         game.hero(0, Team::new(0), at(0, 0, 0), fighter_stats()),
         game.hero(1, Team::new(0), at(4, 2, 0), fighter_stats()),
     ];
-    (game, heroes)
+    TwoHeroes { game, heroes }
 }
 
 #[test]
 fn a_hero_walks_to_its_players_target() {
-    let (mut game, [first, second]) = two_heroes();
+    let TwoHeroes {
+        mut game,
+        heroes: [first, second],
+    } = two_heroes();
     game.tick(&[(0, &move_to(first, 0, 5))]);
     // Straight along z, one meter a tick: exact, and done in the fifth tick.
     assert_eq!(game.position(first), at(0, 0, 1));
@@ -467,7 +425,10 @@ fn a_hero_walks_to_its_players_target() {
 
 #[test]
 fn a_slot_order_starts_a_cast_or_a_train_and_no_other_kind() {
-    let (mut game, [hero, _]) = two_heroes();
+    let TwoHeroes {
+        mut game,
+        heroes: [hero, _],
+    } = two_heroes();
     // Its weapon in slot 0, and a train in slot 1.
     let train = internals::train(&mut game.world, UnitType::new(0), Ticks::ZERO, None);
     let entity = game.world.resource::<EntityIndex>().get(hero).unwrap();
@@ -500,7 +461,10 @@ fn a_slot_order_starts_a_cast_or_a_train_and_no_other_kind() {
 
 #[test]
 fn only_its_players_orders_in_the_orders_capability_move_a_unit() {
-    let (mut game, [first, second]) = two_heroes();
+    let TwoHeroes {
+        mut game,
+        heroes: [first, second],
+    } = two_heroes();
     game.tick(&[(0, &move_to(first, 0, 5)), (0, &move_to(first, 0, -5))]);
     // The last order in a tick wins.
     assert_eq!(game.position(first), at(0, 0, -1));

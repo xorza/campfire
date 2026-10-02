@@ -2,6 +2,11 @@ use proptest::prelude::*;
 
 use super::*;
 
+/// The cases of each property a run, of new random inputs each run, as proptest draws by
+/// default: a failure saves its seed under `proptest-regressions/`, which goes into version
+/// control, so every later run tries it first.
+const CASES: u32 = 10_000;
+
 const ONE: i64 = 1 << 24;
 const HALF: i64 = 1 << 23;
 
@@ -175,7 +180,7 @@ fn vector() -> impl Strategy<Value = Vec3> {
 }
 
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(10_000))]
+    #![proptest_config(ProptestConfig::with_cases(CASES))]
 
     #[test]
     fn length_is_the_nearest_root(a in vector()) {

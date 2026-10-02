@@ -68,9 +68,9 @@ impl RunDir {
 
 #[cfg(test)]
 mod tests {
-    use std::env;
-    use std::process;
     use std::time::Duration;
+
+    use tempfile::TempDir;
 
     use super::*;
 
@@ -93,7 +93,9 @@ mod tests {
             "2000-02-29T23-59-59.999Z"
         );
 
-        let root = env::temp_dir().join(format!("campfire-lan-check-test-{}", process::id()));
+        // Below a directory that goes when the test ends, passed or failed.
+        let scratch = TempDir::new().unwrap();
+        let root = scratch.path().join("runs");
         let first = RunDir::create(&root, at(1_000)).unwrap();
         fs::write(first.path().join("server.jsonl"), "kept").unwrap();
         let second = RunDir::create(&root, at(2_000)).unwrap();
@@ -103,6 +105,5 @@ mod tests {
             "kept"
         );
         assert!(RunDir::create(&root, at(1_000)).is_err());
-        fs::remove_dir_all(&root).unwrap();
     }
 }

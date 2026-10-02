@@ -42,3 +42,21 @@ impl<'de> Deserialize<'de> for MoveStep {
             .ok_or_else(|| D::Error::custom("negative move step"))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn move_steps_are_never_negative() {
+        assert_eq!(MoveStep::new(-Num::EPSILON), None);
+        assert_eq!(MoveStep::new(Num::ZERO).map(MoveStep::get), Some(Num::ZERO));
+        let negative = postcard::to_allocvec(&-Num::EPSILON).unwrap();
+        assert!(postcard::from_bytes::<MoveStep>(&negative).is_err());
+        let one = postcard::to_allocvec(&Num::ONE).unwrap();
+        assert_eq!(
+            postcard::from_bytes::<MoveStep>(&one).ok(),
+            MoveStep::new(Num::ONE)
+        );
+    }
+}
