@@ -60,3 +60,23 @@ impl RestoreTarget {
         self.registry.hash(&self.world)
     }
 }
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use campfire_sim::internals::Draws;
+
+    use crate::restore_target::RestoreTarget;
+
+    impl RestoreTarget {
+        /// The name of each state type the match registers.
+        pub fn state_names(&self) -> Vec<&'static str> {
+            self.registry.names().collect()
+        }
+
+        /// Puts a drawn value of the state type `name` in place of one holder's in what it
+        /// holds; false when nothing holds one, or no draw decodes.
+        pub fn scramble(&mut self, name: &str, draws: &mut Draws) -> bool {
+            self.registry.scramble(&mut self.world, name, draws)
+        }
+    }
+}

@@ -5,6 +5,8 @@ use serde::Serialize;
 use crate::actions::action_book;
 use crate::areas::area_data::{AreaData, AreaInside};
 use crate::capability_set::test_match::TestMatch;
+use crate::stats::Stats;
+use crate::stats::modifier_data::ModifierData;
 use crate::units::Units;
 use crate::units::engine_tag::EngineTag;
 use crate::units::filter::Filter;
@@ -12,6 +14,8 @@ use crate::units::tag_set::TagSet;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::units::unit_types::UnitTypes;
+use crate::values::declared_name::DeclaredName;
+use crate::values::number::{Number, ParamRef};
 use crate::values::relation::Relation;
 
 use super::*;
@@ -137,4 +141,30 @@ fn an_area_is_state_and_restores() {
     assert!(check(Some(Tick::LIMIT), Tick::LIMIT));
     assert!(!check(None, past));
     assert!(!check(Some(past), past));
+    // An area that holds Rally on allies, which reads its action's `ward`: the train, which
+    // declares none, cannot have delivered it, as Rally would fail as an ally takes it.
+    let ward = DeclaredName::new("ward").unwrap();
+    let rally = ModifierData {
+        shield: Some(Number::Param(ParamRef { param: ward })),
+        ..ModifierData::default()
+    };
+    Stats::load_modifier(&mut sim.world, 0, "rally", &rally, None);
+    let data = UnitTypeData::default();
+    let warding = Units::load_type(&mut sim.world, TypeScope::Mode, "warding", &data);
+    let inside = AreaInside {
+        allies: Some(DeclaredName::new("rally").unwrap()),
+        ..AreaInside::default()
+    };
+    let area = AreaData {
+        radius: Num::int(2),
+        delay_ms: 0,
+        duration_ms: 0,
+        affects: None,
+        inside,
+    };
+    Areas::load_type(&mut sim.world, warding, 0, &area);
+    let warded = sim.spawn(Position::ORIGIN, (Team::new(0), warding));
+    let area = Area::new(by, None, None, Tick::LIMIT).unwrap();
+    assert!(area.check(&sim.world, entity));
+    assert!(!area.check(&sim.world, sim.entity(warded)));
 }

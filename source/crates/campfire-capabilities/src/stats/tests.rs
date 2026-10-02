@@ -4,7 +4,7 @@ use std::slice;
 use bevy_ecs::entity::Entity;
 use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
-use campfire_sim::{Capability, IdAllocator, Position, SimUpdate};
+use campfire_sim::{Capability, IdAllocator, Position, SimComponent, SimUpdate};
 
 use crate::capability_set::test_match::TestMatch;
 use crate::scripts::script_budgets::ScriptBudgets;
@@ -13,6 +13,7 @@ use crate::stats::application::{Application, NewInstance};
 use crate::stats::held_modifiers::Held;
 use crate::stats::instance::StatShare;
 use crate::stats::lifetime::Hold;
+use crate::stats::modifier_clocks::Clock;
 use crate::stats::modifier_data::{AuraData, ModifierData, Reapply};
 use crate::stats::move_step::MoveStep;
 use crate::stats::pool_data::PoolData;
@@ -266,8 +267,7 @@ fn a_stat_is_its_base_plus_adds_times_pcts_times_the_largest_cut() {
             .unwrap();
         let mut applications = Vec::new();
         for (at, &(op, value, stacks)) in changes.iter().enumerate() {
-            let mut book = game.world.resource_mut::<ModifierBook>();
-            book.push_changes(&[(armor, op)], TagSet::default());
+            ModifierBook::push_changes(&mut game.world, &[(armor, op)], TagSet::default());
             let id = u16::try_from(at).unwrap();
             for _ in 0..stacks {
                 applications.push(share(id, None, value, Reapply::Stack));
@@ -335,7 +335,6 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
     let (first, second) = (Some(ids.allocate()), Some(ids.allocate()));
     // The modifiers, by id: a slowing cut, an add, a pct, an untagged cut, an immunity, and a
     // cut that grants both `slowed` and the immunity to it.
-    let mut book = game.world.resource_mut::<ModifierBook>();
     let modifiers = [
         (StatOp::Cut, TagSet::of([slowed])),
         (StatOp::Add, TagSet::default()),
@@ -345,7 +344,7 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
         (StatOp::Cut, TagSet::of([slowed, slow_immune])),
     ];
     for (op, tags) in modifiers {
-        book.push_changes(&[(speed, op)], tags);
+        ModifierBook::push_changes(&mut game.world, &[(speed, op)], tags);
     }
     let slowing = |source, value| share(0, source, value, Reapply::Refresh);
     // Cuts of 0.25 and 0.5 from two sources, each `slowed`: only the larger counts. An add of
@@ -458,7 +457,7 @@ fn aura(id: ModifierId, carrier: StableId, radius: Num) -> Application {
 
 /// A match of a unit type of armor 10, and the modifier `warding`, whose aura's radius and
 /// shield read the own params `reach` and `ward`: 0 and −1 per point of its source's armor, and
-/// 0 and −2 per point.
+/// 0 and −2 per point; and which runs an interval each second.
 fn warding_match() -> (TestMatch, ModifierId) {
     let armored = stats(&[(armor_stat(), Num::int(10), Num::ZERO)]);
     let mut game = stat_match(&[armored]);
@@ -476,7 +475,7 @@ fn warding_match() -> (TestMatch, ModifierId) {
     };
     let against_armor = |per_point: i64| {
         Param::Scaling(Scaling {
-            base: Ranked::One(Scalar::Int(0)),
+            base: Ranked::One(Num::ZERO),
             per_level: Num::ZERO,
             bonus: BTreeMap::new(),
             ratios: BTreeMap::from([(armor_stat(), Num::int(per_point))]),
@@ -484,6 +483,7 @@ fn warding_match() -> (TestMatch, ModifierId) {
     };
     let data = ModifierData {
         shield: Some(param("ward")),
+        interval_ms: Some(Number::Value(Scalar::Int(1000))),
         params: BTreeMap::from([
             (DeclaredName::new("reach").unwrap(), against_armor(-1)),
             (DeclaredName::new("ward").unwrap(), against_armor(-2)),
@@ -520,6 +520,39 @@ fn a_scaling_aura_radius_and_shield_below_zero_hold_zero_and_restore() {
     );
     let (mut fresh, _) = warding_match();
     game.restore_into(&mut fresh);
+}
+
+#[test]
+fn a_restored_clock_has_the_interval_and_the_shield_its_modifier_has_within_the_limit() {
+    // The warding unit's clock, as the application made it, has an interval and a shield, as
+    // its modifier does. Without either, the clock would not do what its modifier does; with an
+    // interval past the limit, its next tick would overflow.
+    let (mut game, warding) = warding_match();
+    let unit = unit(&mut game, 0);
+    game.world.entity_mut(unit).insert(Modifiers::default());
+    game.step();
+    let id = *game.world.get::<StableId>(unit).unwrap();
+    internals::give_modifier(&mut game.world, id, warding, Some((id, None, 1)), false);
+    let made = game.world.get::<ModifierClocks>(unit).unwrap().clone();
+    let check = |change: fn(&mut Clock)| {
+        let mut clocks = made.clone();
+        change(clocks.clock_mut(0));
+        clocks.check(&game.world, unit)
+    };
+    let limit = |clock: &mut Clock| {
+        let interval = clock.interval.as_mut().unwrap();
+        (interval.every, interval.next) = (Ticks::LIMIT, Tick::LIMIT);
+    };
+    assert!(check(|_| ()) && check(limit));
+    assert!(!check(|clock| clock.interval = None));
+    assert!(!check(|clock| clock.shield = None));
+    let past_every = |clock: &mut Clock| {
+        clock.interval.as_mut().unwrap().every = Ticks::new(Ticks::LIMIT.get() + 1);
+    };
+    let past_next = |clock: &mut Clock| {
+        clock.interval.as_mut().unwrap().next = Tick::new(Tick::LIMIT.get() + 1);
+    };
+    assert!(!check(past_every) && !check(past_next));
 }
 
 #[test]
@@ -670,9 +703,9 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
         );
         let speed = game.world.resource::<StatBook>();
         let speed = speed.named(&Stat::Engine(EngineStat::MoveSpeed)).unwrap();
-        let mut book = game.world.resource_mut::<ModifierBook>();
-        book.push_changes(&[(speed, StatOp::Add)], TagSet::of([stunned]));
-        book.push_changes(&[(speed, StatOp::Cut)], TagSet::default());
+        let stunning = TagSet::of([stunned]);
+        ModifierBook::push_changes(&mut game.world, &[(speed, StatOp::Add)], stunning);
+        ModifierBook::push_changes(&mut game.world, &[(speed, StatOp::Cut)], TagSet::default());
         game
     };
     let mut game = start();

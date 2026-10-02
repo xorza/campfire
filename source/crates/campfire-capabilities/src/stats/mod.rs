@@ -161,7 +161,7 @@ impl Stats {
 
     /// Applies `effect`, which a call by `applier` queued. An added modifier's numbers resolve
     /// now, its params read from the param book, of its source as it is now; nothing is added to a
-    /// dead or gone unit, one that carries no modifiers, or when a number does not resolve.
+    /// dead or gone unit, or one that carries no modifiers.
     pub(crate) fn apply_effect(world: &mut World, effect: ModifierEffect, applier: Applier) {
         match effect {
             ModifierEffect::Add {
@@ -213,9 +213,7 @@ impl Stats {
             let (ability, rank) = (applier.ability, applier.rank);
             params.modifier_param(id, ability, rank, place, source.as_ref())
         };
-        let Some(application) = book.application(id, applier, duration, now, rate, param) else {
-            return;
-        };
+        let application = book.application(id, applier, duration, now, rate, param);
         if let Some(mut carried) = CarriedMut::of(world, entity) {
             carried.apply(application);
         }

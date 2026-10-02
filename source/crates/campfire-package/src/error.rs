@@ -3,11 +3,12 @@ use std::path::PathBuf;
 use std::{fmt, io};
 
 use crate::message_id::MessageId;
+use crate::modifier_ways::Way;
 
 use campfire_capabilities::{
     ActionDataField, ActionError, ActionField, ActionKind, ActionSlots, AiError, ApiVersion,
     DeclaredName, EngineTag, Hook, MapProblem, ModeError, ModifierProblem, NameKind, PackagePath,
-    PlannedEffect, Pools, ResourceId, Stat, TrackId, UnitKitError,
+    ParamProblem, PlannedEffect, Pools, ResourceId, Stat, TrackId, UnitKitError,
 };
 use campfire_common::Fingerprint;
 use campfire_script::ScriptError;
@@ -243,6 +244,15 @@ pub enum LoadProblem {
     Modifier {
         modifier: DeclaredName,
         problem: ModifierProblem,
+    },
+    /// A param a modifier reads does not hold as the modifier reads it.
+    ModifierParam {
+        modifier: DeclaredName,
+        param: DeclaredName,
+        /// The way that applies the modifier the problem is of; none for its own param, whatever
+        /// applies it.
+        way: Option<Way>,
+        problem: ParamProblem,
     },
     /// A file of human text at `path`.
     Locale {
@@ -732,6 +742,24 @@ impl fmt::Display for LoadProblem {
             LoadProblem::Modifier { modifier, problem } => {
                 write!(f, "modifier \"{modifier}\": {problem}")
             }
+            LoadProblem::ModifierParam {
+                modifier,
+                param,
+                way: Some(way),
+                problem,
+            } => write!(
+                f,
+                "modifier \"{modifier}\", param {param}, by {way}: {problem}"
+            ),
+            LoadProblem::ModifierParam {
+                modifier,
+                param,
+                way: None,
+                problem,
+            } => write!(
+                f,
+                "modifier \"{modifier}\", its own param {param}: {problem}"
+            ),
             LoadProblem::EngineTag { at, tag } => {
                 write!(f, "{at}: {:?}, a tag only the engine gives", tag.name())
             }

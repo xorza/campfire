@@ -1,6 +1,9 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 
+use campfire_common::Ticks;
+use campfire_math::Num;
+use campfire_sim::TickRate;
 use serde::Deserialize;
 
 use crate::scripts::state_decl::StateDecl;
@@ -43,6 +46,24 @@ pub struct ModifierData {
 }
 
 impl ModifierData {
+    /// `ms` milliseconds of one of its times, up to the next whole one, in ticks at `rate`;
+    /// `None` for a negative time or one too large to count.
+    pub fn ticks(ms: Num, rate: TickRate) -> Option<Ticks> {
+        let ms = u64::try_from(ms.ceil()).ok()?;
+        rate.duration(ms)
+    }
+
+    /// Its times, as its data gives them: its duration, its interval and its stacks' expiry.
+    pub fn times(&self) -> impl Iterator<Item = &Number> {
+        [
+            self.duration_ms.as_ref(),
+            self.interval_ms.as_ref(),
+            self.stacks_expire_ms.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+    }
+
     /// Every number field that reads a param, `{ param = "<name>" }`: the names it reads.
     pub fn param_refs(&self) -> impl Iterator<Item = &DeclaredName> + '_ {
         [

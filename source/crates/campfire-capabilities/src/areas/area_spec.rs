@@ -53,3 +53,12 @@ impl AreaSpec {
         })
     }
 }
+
+impl Inside {
+    /// Each modifier it holds, on the source, its allies and the units that may be attacked.
+    pub(crate) fn modifiers(self) -> impl Iterator<Item = ModifierId> {
+        [self.caster, self.allies, self.enemies]
+            .into_iter()
+            .flatten()
+    }
+}

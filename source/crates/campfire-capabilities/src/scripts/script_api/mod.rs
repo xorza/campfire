@@ -6,6 +6,7 @@ use campfire_sim::Capability;
 
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
+use crate::scripts::applies::Applies;
 use crate::scripts::core_api::CoreApi;
 use crate::scripts::hook::Hook;
 use crate::scripts::role_set::RoleSet;
@@ -85,6 +86,8 @@ pub struct ApiMember {
     pub status: Status,
     /// What each of its arguments names, by place, `None` for one that names nothing.
     pub names: NameArgs,
+    /// How its argument that names a modifier applies it; none for one that only names it.
+    pub applies: Option<Applies>,
 }
 
 /// How a script uses a name: reads a value of `ctx`, calls `ctx`, reads a handle's field, calls
@@ -371,6 +374,7 @@ impl ScriptApi {
                     writable,
                     status,
                     names: spec.names,
+                    applies: spec.applies,
                 },
             ),
         }

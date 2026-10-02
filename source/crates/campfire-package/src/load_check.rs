@@ -5,8 +5,8 @@ use campfire_capabilities::{
     ActionData, ActionDataField, ActionKind, ActionSlots, ApiOwner, ApiVersion, BookError, Books,
     CollisionData, CombatRules, DeclaredName, DeliveryData, EffectTo, Effecting, EngineTag,
     FilterData, Hook, MemberKind, ModifierData, ModifierProblem, NameKind, Number, Offers,
-    PackagePath, Param, Pools, Range, RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Stat,
-    Targeting, TrackId, TypePlace, UnitTypeData, UnitTypeFile,
+    PackagePath, Param, ParamProblem, Pools, Range, RangeField, ResourceId, Scalar, ScriptApi,
+    ScriptRole, Stat, Targeting, TrackId, TypePlace, UnitTypeData, UnitTypeFile,
 };
 use campfire_math::Num;
 use campfire_sim::{Capability, TickRate};
@@ -17,7 +17,9 @@ use crate::error::{
     ScriptProblem,
 };
 use crate::mode_packages::ModePackages;
+use crate::modifier_ways::{ModifierWays, Way};
 use crate::package::Package;
+use crate::package_view::PackageView;
 use crate::script_facts::{ScriptFacts, ScriptName};
 
 /// Design 08's checks at package load, over a mode and every package it depends on: data matches
@@ -104,9 +106,9 @@ impl<'a> LoadCheck<'a> {
         };
         check.mode().map_err(fail)?;
         check.loadout()?;
-        for dependent in &packages.dependencies {
+        for (view, dependent) in packages.packages().skip(1).zip(&packages.dependencies) {
             check
-                .dependent(dependent)
+                .dependent(view, dependent)
                 .map_err(|problem| LoadError::of(&dependent.package.header.name, problem))?;
         }
         packages
@@ -257,8 +259,9 @@ impl<'a> LoadCheck<'a> {
         let ranks = self.slotted_ranks(units.values())?;
         let ranks = |id: &str| ranks.get(id).copied().unwrap_or(1);
         self.actions(&content.actions, units, ranks, &mut names)?;
-        let appliers = packages.mode.appliers(&content.actions, units);
-        self.modifiers(&mut names, &appliers)?;
+        let view = packages.packages().next().expect("the mode, first");
+        let ways = packages.modifier_ways(view);
+        self.modifiers(&mut names, &ways, &content.actions, ranks)?;
         self.scripts(&names)
     }
 
@@ -285,7 +288,11 @@ impl<'a> LoadCheck<'a> {
     /// action of the package in its slots, and each action with the ranks of its kind; a
     /// loadout's actions, each with the ranks of the slot kind its choice fills; and its delivery
     /// types.
-    fn dependent(&self, dependent: &'a Dependent) -> Result<(), LoadProblem> {
+    fn dependent(
+        &self,
+        view: PackageView<'a>,
+        dependent: &'a Dependent,
+    ) -> Result<(), LoadProblem> {
         let package = &dependent.package;
         let content = &dependent.content;
         let (actions, modifiers) = (&content.actions, &content.modifiers);
@@ -331,8 +338,8 @@ impl<'a> LoadCheck<'a> {
         let ranks = |id: &str| slotted.as_ref().map_or(loadout_ranks, |ranks| ranks[id]);
         let mut names = PackageNames::new(package, modifiers);
         self.actions(actions, &content.units, ranks, &mut names)?;
-        let appliers = package.appliers(actions, &content.units);
-        self.modifiers(&mut names, &appliers)?;
+        let ways = self.packages.modifier_ways(view);
+        self.modifiers(&mut names, &ways, actions, ranks)?;
         self.scripts(&names)
     }
 
@@ -398,12 +405,14 @@ impl<'a> LoadCheck<'a> {
     }
 
     /// The package's modifiers: the capability, the modifiers, filters and params each names, and
-    /// the roles of their scripts. A modifier reads its own params, then those of the abilities
-    /// that apply it, `appliers`.
+    /// the roles of their scripts. A modifier reads its own params, then those each of its `ways`
+    /// gives, of `actions` at the ranks `ranks` gives them.
     fn modifiers(
         &self,
         names: &mut PackageNames<'a>,
-        appliers: &BTreeMap<&str, Vec<&'a ActionData>>,
+        ways: &ModifierWays<'_>,
+        actions: &'a BTreeMap<DeclaredName, ActionData>,
+        ranks: impl Fn(&str) -> u8,
     ) -> Result<(), LoadProblem> {
         for (id, modifier) in names.modifiers {
             let at = Place::Modifier(id.clone());
@@ -418,24 +427,65 @@ impl<'a> LoadCheck<'a> {
                 modifier_exists(names.modifiers, aura.modifier.as_str(), &at)?;
                 self.filter_data(&aura.affects, &at)?;
             }
-            let by = appliers.get(id.as_str()).map_or(&[][..], Vec::as_slice);
+            let by: Vec<&ActionData> = ways.actions_of(id.as_str(), actions).collect();
+            let ways: Vec<&Way> = ways.of_modifier(id.as_str()).collect();
+            let script = modifier
+                .script
+                .as_ref()
+                .and_then(|path| names.package.script(path));
+            let scripted = script
+                .into_iter()
+                .flat_map(|script| &script.facts.params)
+                .filter_map(|name| DeclaredName::new(name));
+            let reads: BTreeSet<DeclaredName> =
+                modifier.param_refs().cloned().chain(scripted).collect();
+            for param in &reads {
+                // A param nothing declares is unknown, not a way's to give: where the modifier's
+                // numbers read it, here; where its script does, as the script's checks find it.
+                let declared = modifier.params.contains_key(param)
+                    || by.iter().any(|action| action.params.contains_key(param));
+                if !declared {
+                    if modifier.param_refs().any(|read| read == param) {
+                        return Err(LoadProblem::Unknown {
+                            of: NameKind::Param,
+                            at,
+                            name: param.to_string(),
+                        });
+                    }
+                    continue;
+                }
+                let number = modifier.param_refs().any(|read| read == param);
+                self.modifier_param(modifier, param, number, &ways, actions)
+                    .map_err(|(way, problem)| LoadProblem::ModifierParam {
+                        modifier: id.clone(),
+                        param: param.clone(),
+                        way: way.cloned(),
+                        problem,
+                    })?;
+            }
+            for (param, own) in &modifier.params {
+                let short = own.ranks().and_then(|held| {
+                    ways.iter().copied().find(|way| match way {
+                        Way::Action(action) => held < usize::from(ranks(action.as_str())),
+                        Way::NoAction => false,
+                    })
+                });
+                if let Some(way) = short {
+                    return Err(LoadProblem::ModifierParam {
+                        modifier: id.clone(),
+                        param: param.clone(),
+                        way: Some(way.clone()),
+                        problem: ParamProblem::Short,
+                    });
+                }
+            }
             let readable: BTreeSet<&str> = modifier
                 .params
                 .keys()
                 .chain(by.iter().flat_map(|ability| ability.params.keys()))
                 .map(DeclaredName::as_str)
                 .collect();
-            let unread = modifier
-                .param_refs()
-                .find(|name| !readable.contains(name.as_str()));
-            if let Some(name) = unread {
-                return Err(LoadProblem::Unknown {
-                    of: NameKind::Param,
-                    at,
-                    name: name.to_string(),
-                });
-            }
-            if negative_radius_or_shield(modifier, by) {
+            if negative_radius_or_shield(modifier, &by) {
                 return Err(LoadProblem::Modifier {
                     modifier: id.clone(),
                     problem: ModifierProblem::Negative,
@@ -444,6 +494,51 @@ impl<'a> LoadCheck<'a> {
             if let Some(script) = &modifier.script {
                 names.serve(script, ScriptRole::Modifier, readable.iter().copied());
             }
+        }
+        Ok(())
+    }
+
+    /// The param `param` that `modifier` reads, a `number` of it or only its script, as each of
+    /// `ways` gives it: its own, whatever applies it, or else each way's action's, which no way
+    /// with no action has. What a number reads holds a number at every rank, and where a time
+    /// reads it, no scaling param and a time that counts in ticks; a failure is of the way, none
+    /// for the modifier's own param.
+    fn modifier_param<'w>(
+        &self,
+        modifier: &ModifierData,
+        param: &DeclaredName,
+        number: bool,
+        ways: &[&'w Way],
+        actions: &BTreeMap<DeclaredName, ActionData>,
+    ) -> Result<(), (Option<&'w Way>, ParamProblem)> {
+        let time = modifier.times().any(|number| number.param() == Some(param));
+        let holds = |value: &Param| {
+            if !number {
+                return Ok(());
+            }
+            let numbers: Option<Vec<Num>> = param_numbers(value).collect();
+            let numbers = numbers.ok_or(ParamProblem::Overflow)?;
+            if time && matches!(value, Param::Scaling(_)) {
+                return Err(ParamProblem::ScalingTime);
+            }
+            let counts = |&ms: &Num| ModifierData::ticks(ms, self.rate).is_some();
+            if time && !numbers.iter().all(counts) {
+                return Err(ParamProblem::Time);
+            }
+            Ok(())
+        };
+        if let Some(own) = modifier.params.get(param) {
+            return holds(own).map_err(|problem| (None, problem));
+        }
+        for &way in ways {
+            let given = match way {
+                Way::Action(action) => actions
+                    .get(action)
+                    .and_then(|action| action.params.get(param)),
+                Way::NoAction => None,
+            };
+            let given = given.ok_or((Some(way), ParamProblem::Missing))?;
+            holds(given).map_err(|problem| (Some(way), problem))?;
         }
         Ok(())
     }
@@ -1188,49 +1283,50 @@ impl<'a> PackageNames<'a> {
     }
 }
 
-/// The values `number` of `action` can have, each rank's: its own, or its param's; a scaling
-/// param gives its base's, as its source's stats add to it only as it runs. None for a param the
-/// action does not declare, which the action's checks refuse.
-fn number_values<'n>(action: &'n ActionData, number: &'n Number) -> &'n [Scalar] {
-    match number {
-        Number::Value(value) => slice::from_ref(value),
-        Number::Param(reference) => action
-            .params
-            .get(&reference.param)
-            .map_or(&[], param_values),
-    }
+/// The values `number` of `action` can have, each rank's, as numbers, `None` for one past what
+/// a number holds: its own, or its param's. None for a param the action does not declare, which
+/// the action's checks refuse.
+fn number_values<'n>(
+    action: &'n ActionData,
+    number: &'n Number,
+) -> impl Iterator<Item = Option<Num>> + 'n {
+    let (value, param) = match number {
+        Number::Value(value) => (Some(value.to_num()), None),
+        Number::Param(reference) => (None, action.params.get(&reference.param)),
+    };
+    value
+        .into_iter()
+        .chain(param.into_iter().flat_map(param_numbers))
 }
 
-/// The values `param` can have, each rank's; a scaling param's base's, as its source's stats add
-/// to it only as it applies.
-fn param_values(param: &Param) -> &[Scalar] {
-    match param {
-        Param::Ranked(ranked) => ranked.values(),
-        Param::Scaling(scaling) => scaling.base.values(),
-    }
+/// The values `param` can have, each rank's, as numbers, `None` for one past what a number
+/// holds; a scaling param's base's, as its source's stats add to it only as it applies.
+fn param_numbers(param: &Param) -> impl Iterator<Item = Option<Num>> + '_ {
+    let (ranked, base): (&[Scalar], &[Num]) = match param {
+        Param::Ranked(ranked) => (ranked.values(), &[]),
+        Param::Scaling(scaling) => (&[], scaling.base.values()),
+    };
+    let ranked = ranked.iter().map(|value| value.to_num());
+    ranked.chain(base.iter().copied().map(Some))
 }
 
 /// Whether the aura radius or the shield of `modifier` is negative: as a value, or at a rank of
 /// its own param, or, for a param it does not declare, of the param of an action `by` that
 /// applies it.
 fn negative_radius_or_shield(modifier: &ModifierData, by: &[&ActionData]) -> bool {
-    let negative = |values: &[Scalar]| {
-        values
-            .iter()
-            .any(|value| value.to_num().is_some_and(|value| value < Num::ZERO))
-    };
+    let negative = |value: Option<Num>| value.is_some_and(|value| value < Num::ZERO);
     let numbers = [
         modifier.aura.as_ref().map(|aura| &aura.radius),
         modifier.shield.as_ref(),
     ];
     numbers.into_iter().flatten().any(|number| match number {
-        Number::Value(value) => negative(slice::from_ref(value)),
+        Number::Value(value) => negative(value.to_num()),
         Number::Param(reference) => match modifier.params.get(&reference.param) {
-            Some(param) => negative(param_values(param)),
+            Some(param) => param_numbers(param).any(negative),
             None => by
                 .iter()
                 .filter_map(|action| action.params.get(&reference.param))
-                .any(|param| negative(param_values(param))),
+                .any(|param| param_numbers(param).any(negative)),
         },
     })
 }
@@ -1238,8 +1334,7 @@ fn negative_radius_or_shield(modifier: &ModifierData, by: &[&ActionData]) -> boo
 /// An effect's number: at least 0 and a sim number at every rank.
 fn number_holds(action: &ActionData, number: &Number) -> Result<(), EffectProblem> {
     for value in number_values(action, number) {
-        let value = value.to_num().ok_or(EffectProblem::Overflow)?;
-        if value < Num::ZERO {
+        if value.ok_or(EffectProblem::Overflow)? < Num::ZERO {
             return Err(EffectProblem::Negative);
         }
     }
@@ -1249,14 +1344,16 @@ fn number_holds(action: &ActionData, number: &Number) -> Result<(), EffectProble
 /// A modifier's duration: whole milliseconds within a `u32` at every rank, and no scaling param,
 /// whose value only a call knows.
 fn whole_ms(action: &ActionData, duration: &Number) -> bool {
-    let scaling = duration
-        .param()
-        .and_then(|name| action.params.get(name))
-        .is_some_and(|param| matches!(param, Param::Scaling(_)));
-    !scaling
-        && number_values(action, duration)
-            .iter()
-            .all(|value| matches!(value, Scalar::Int(ms) if u32::try_from(*ms).is_ok()))
+    let values = match duration {
+        Number::Value(value) => slice::from_ref(value),
+        Number::Param(reference) => match action.params.get(&reference.param) {
+            Some(Param::Ranked(ranked)) => ranked.values(),
+            Some(Param::Scaling(_)) => return false,
+            None => &[],
+        },
+    };
+    let whole = |value: &Scalar| matches!(value, Scalar::Int(ms) if u32::try_from(*ms).is_ok());
+    values.iter().all(whole)
 }
 
 /// The passive of each of `actions`, by its place.

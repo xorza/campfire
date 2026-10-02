@@ -5,13 +5,13 @@ use std::num::NonZeroU32;
 use std::path::Path;
 
 use campfire_capabilities::{
-    ActionDataField, ActionError, ActionField, ActionKind, AiError, EffectData, EffectTo,
-    Effecting, EngineTag, Hook, MapProblem, ModeError, ModifierProblem, NameKind, Number,
-    PlannedEffect, Scalar, SyncTo, UnitKitError,
+    ActionDataField, ActionError, ActionField, ActionKind, AiError, DeclaredName, EffectData,
+    EffectTo, Effecting, EngineTag, Hook, MapProblem, ModeError, ModifierProblem, NameKind, Number,
+    ParamProblem, PlannedEffect, Scalar, SyncTo, UnitKitError,
 };
 use campfire_package::{
     ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem, EffectProblem, Limit, LoadError,
-    LoadProblem, LocaleProblem, ModePackages, PackageRef, Place, ScriptProblem,
+    LoadProblem, LocaleProblem, ModePackages, PackageRef, Place, ScriptProblem, Way,
 };
 use campfire_sim::{Capability, TickRate};
 
@@ -56,6 +56,8 @@ const RIME: &str = "heroes/rime/data/avatar.toml";
 /// Rime's Fan of Frost's `on_hit` effect that slows.
 const SLOWS: &str = r#"{ modifier = { id = "slow", duration_ms = { param = "slow_ms" } } },"#;
 const LASH_OUT: &str = "heroes/husk/scripts/lash_out.rhai";
+/// The script of Rime's passive.
+const STILLNESS: &str = "heroes/rime/scripts/stillness.rhai";
 const CREEP_AI: &str = "modes/3v3/scripts/creep_ai.rhai";
 const MODE: &str = "moba-3v3";
 /// A package whose manifest does not read has no name, so its directory names it.
@@ -67,6 +69,16 @@ const RECRUIT: &str = "[actions.recruit]\nkind = \"train\"\ntargeting = \"none\"
 /// The manifest's capabilities with `production`.
 const PRODUCTION: Edit<'static> =
     Edit::Replace(r#""progression"]"#, r#""progression", "production"]"#);
+
+/// Whether `problem` is Rime's Slow's `slow` param failing for `kind` by `way`.
+fn slow_fails(problem: &LoadProblem, way: Option<&Way>, kind: ParamProblem) -> bool {
+    matches!(problem, LoadProblem::ModifierParam { modifier, param, way: found, problem } if modifier == "slow" && param == "slow" && found.as_ref() == way && *problem == kind)
+}
+
+/// The way of the action `name`.
+fn by(name: &str) -> Way {
+    Way::Action(DeclaredName::new(name).unwrap())
+}
 
 /// Whether `problem` is the manifest failing to read with a message that starts with `message`.
 fn manifest_fails(problem: &LoadProblem, message: &str) -> bool {
@@ -272,7 +284,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-static FLAWS: [Flaw; 192] = [
+static FLAWS: [Flaw; 198] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -1247,6 +1259,61 @@ static FLAWS: [Flaw; 192] = [
         "hero-gale",
         |problem| matches!(problem, LoadProblem::Modifier { modifier, problem: ModifierProblem::Negative } if modifier == "wind_shield"),
     ),
+    // A way that applies a modifier gives each param it reads and does not declare: Rime's Slow
+    // reads `slow` of Fan of Frost, which applies it on hit; of Chill Arrows, whose held
+    // modifier's script applies it; of Snow Owl, whose passive's aura applies it; and of no
+    // action, with which her own passive's script applies it.
+    flaw(
+        RIME,
+        Edit::Remove("actions.fan_of_frost.params.slow"),
+        "hero-rime",
+        |problem| slow_fails(problem, Some(&by("fan_of_frost")), ParamProblem::Missing),
+    ),
+    flaw(
+        RIME,
+        Edit::Remove("actions.chill_arrows.params.slow"),
+        "hero-rime",
+        |problem| slow_fails(problem, Some(&by("chill_arrows")), ParamProblem::Missing),
+    ),
+    flaw(
+        RIME,
+        Edit::Set(
+            "modifiers.snow_owl_bounty.aura",
+            r#"{ radius = "1.0", affects = "enemies", modifier = "slow" }"#,
+        ),
+        "hero-rime",
+        |problem| slow_fails(problem, Some(&by("snow_owl")), ParamProblem::Missing),
+    ),
+    flaw(
+        STILLNESS,
+        Edit::Replace(
+            "m.stacks += 1;",
+            "m.stacks += 1;\n    ctx.add_modifier(m.carrier, \"slow\");",
+        ),
+        "hero-rime",
+        |problem| slow_fails(problem, Some(&Way::NoAction), ParamProblem::Missing),
+    ),
+    // Its own per-rank param has a value at each rank of each action that applies it, and a
+    // time reads no scaling param, whose value only the source knows as it applies.
+    flaw(
+        RIME,
+        Edit::Set("modifiers.slow.params.slow", r#"["0.1", "0.2", "0.3"]"#),
+        "hero-rime",
+        |problem| slow_fails(problem, Some(&by("chill_arrows")), ParamProblem::Short),
+    ),
+    Flaw {
+        file: RIME,
+        edit: Edit::Set("modifiers.stun.duration_ms", r#"{ param = "stun_ms" }"#),
+        also: &[(
+            RIME,
+            Edit::Set(
+                "modifiers.stun.params.stun_ms",
+                r#"{ base = 1000, ability_power = "1.0" }"#,
+            ),
+        )],
+        package: "hero-rime",
+        refused: |problem| matches!(problem, LoadProblem::ModifierParam { modifier, param, way: None, problem: ParamProblem::ScalingTime } if modifier == "stun" && param == "stun_ms"),
+    },
     // A name a script gives the API, as the registry marks the argument: a tag, a track, a unit
     // type of the mode's scope, a team.
     flaw(
@@ -1901,6 +1968,14 @@ fn every_flaw_of_a_package_fails_its_load_with_its_own_problem() {
         };
         assert!(named && (flaw.refused)(problem), "{flaw:?}: {error}");
     }
+
+    // `has_modifier` only names a modifier: Rime's passive's script may ask for the Slow it
+    // gives no param of, where an application of it is a flaw.
+    let asks = Edit::Replace(
+        "m.stacks += 1;",
+        r#"if m.carrier.has_modifier("slow") { m.stacks += 1; }"#,
+    );
+    assert!(ModePackages::from_package_dir(&edited([(STILLNESS, asks)])).is_ok());
 
     // The three kinds and 253 more are 256, all a byte tells apart; one more fails.
     let kinds = |count: usize| {

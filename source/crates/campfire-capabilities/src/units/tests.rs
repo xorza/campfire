@@ -4,7 +4,7 @@ use bevy_ecs::bundle::Bundle;
 use campfire_common::{PlayerSlot, Tick};
 use campfire_math::{Num, Vec3};
 use campfire_script::rhai::Array;
-use campfire_sim::{Capability, EntityIndex, Position, SimTick, StableId};
+use campfire_sim::{Capability, SimComponent, SimTick, SnapshotError, StableId};
 
 use super::*;
 use crate::actions::action_slots::ActionSlots;
@@ -28,7 +28,6 @@ use crate::units::type_scope::TypeScope;
 use crate::units::unit::Unit;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type_data::UnitTypeData;
-use crate::values::bounds::Bounds;
 use crate::values::scalar::Scalar;
 use crate::values::stat::Stat;
 fn at(x: i64, y: i64, z: i64) -> Position {
@@ -219,6 +218,23 @@ fn the_view_reads_the_maps_bounds_or_the_worlds() {
     scene.sim.world.insert_resource(bounds);
     view.read(&mut scene.sim.world);
     assert_eq!(view.bounds(), bounds);
+
+    // A restored unit stands within the map's bounds, as every system keeps it: on the edge at
+    // x = 10 it restores; a little past it, though well within the world's bound, it does not.
+    let restores = |x: Num| {
+        let mut scene = Scene::new();
+        scene.sim.world.insert_resource(bounds);
+        let at = Position::new(Vec3::new(x, Num::ZERO, Num::ZERO)).unwrap();
+        scene.sim.spawn(at, ());
+        let mut snapshot = Vec::new();
+        scene.sim.registry.snapshot(&scene.sim.world, &mut snapshot);
+        let mut fresh = Scene::new();
+        fresh.sim.world.insert_resource(bounds);
+        scene.sim.registry.restore(&snapshot, &mut fresh.sim.world)
+    };
+    assert_eq!(restores(Num::int(10)), Ok(()));
+    let past = restores(Num::int(10) + Num::EPSILON);
+    assert_eq!(past, Err(SnapshotError::Invalid(Position::NAME)));
 }
 
 #[test]

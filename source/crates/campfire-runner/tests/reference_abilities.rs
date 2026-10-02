@@ -201,7 +201,7 @@ fn every_reference_ability_reads_into_the_schema() {
     else {
         panic!("damage scales");
     };
-    assert_eq!(base.at(2), Some(Scalar::Int(100)));
+    assert_eq!(base.at(2), Some(Num::int(100)));
     let ability_power = Stat::named("ability_power").unwrap();
     assert_eq!(*ratios, [(ability_power, half)].into());
     assert!(bonus.is_empty());

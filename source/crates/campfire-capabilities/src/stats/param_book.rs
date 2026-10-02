@@ -3,8 +3,11 @@ use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 use campfire_math::Num;
+use campfire_sim::TickRate;
 
+use crate::scripts::error::ParamProblem;
 use crate::stats::live_param::{LiveParam, ParamOwner};
+use crate::stats::modifier_data::ModifierData;
 use crate::stats::modifier_spec::ParamPlace;
 use crate::stats::param_read::ParamRead;
 use crate::stats::param_source::ParamSource;
@@ -52,8 +55,8 @@ impl ParamBook {
     }
 
     /// The param at `place` a modifier's number reads: `modifier`'s own, or that of `ability`,
-    /// which applied it, at `rank`, of `source`; `None` when that ability declares none of its
-    /// name or it does not resolve. A scaling table's is live, read again as its source changes.
+    /// which applied it, at `rank`, of `source`, as its way checked it holds. A scaling table's
+    /// is live, read again as its source changes.
     pub(crate) fn modifier_param(
         &self,
         modifier: ModifierId,
@@ -61,22 +64,56 @@ impl ParamBook {
         rank: u8,
         place: &ParamPlace,
         source: Option<&ParamSource<'_>>,
-    ) -> Option<ParamRead> {
+    ) -> ParamRead {
+        const CHECKED: &str = "its way checked the param";
         let (owner, at) = match place {
             ParamPlace::Own(at) => (ParamOwner::Modifier(modifier), usize::from(*at)),
             ParamPlace::Applier(name) => {
-                let ability = ability?;
-                let at = self.actions().named(ability.index(), name.as_str())?;
-                (ParamOwner::Action(ability), at)
+                let ability = ability.expect(CHECKED);
+                let at = self.actions().named(ability.index(), name.as_str());
+                (ParamOwner::Action(ability), at.expect(CHECKED))
             }
         };
         let TableRun { table, run } = self.table(owner);
-        let value = table.value(run, at, rank, source)?.to_num()?;
+        let value = table.value(run, at, rank, source).to_num().expect(CHECKED);
         let live = table.scales(run, at).then(|| LiveParam {
             owner,
             at: u16::try_from(at).expect("params fit u16"),
         });
-        Some(ParamRead { value, live })
+        ParamRead { value, live }
+    }
+
+    /// Whether `ability` at `rank`, or no ability, gives the param `name` a modifier reads where
+    /// it declares none: a value at `rank` that is a number, or with a `rate` a time in ticks at
+    /// it, which no scaling table gives, as its source's stats are known only as the modifier
+    /// applies.
+    pub(crate) fn gives(
+        &self,
+        ability: Option<ActionId>,
+        rank: u8,
+        name: &DeclaredName,
+        rate: Option<TickRate>,
+    ) -> Result<(), ParamProblem> {
+        let ability = ability.ok_or(ParamProblem::Missing)?;
+        let (table, run) = (self.actions(), ability.index());
+        let at = table
+            .named(run, name.as_str())
+            .ok_or(ParamProblem::Missing)?;
+        if !table.has_rank(run, at, rank) {
+            return Err(ParamProblem::Short);
+        }
+        if table.scales(run, at) {
+            return match rate {
+                Some(_) => Err(ParamProblem::ScalingTime),
+                None => Ok(()),
+            };
+        }
+        let value = table.value(run, at, rank, None).to_num();
+        let value = value.ok_or(ParamProblem::Overflow)?;
+        match rate {
+            Some(rate) if ModifierData::ticks(value, rate).is_none() => Err(ParamProblem::Time),
+            _ => Ok(()),
+        }
     }
 
     /// Whether it holds the params of `ability`.
@@ -84,10 +121,14 @@ impl ParamBook {
         self.actions().has_run(ability.index())
     }
 
-    /// Whether `live` names a param it holds.
-    pub(crate) fn has_live(&self, live: LiveParam) -> bool {
+    /// Whether `live` names a scaling param it holds, with a value at `rank`.
+    pub(crate) fn holds_live(&self, live: LiveParam, rank: u8) -> bool {
         let TableRun { table, run } = self.table(live.owner);
-        table.has_run(run) && usize::from(live.at) < table.len(run)
+        let at = usize::from(live.at);
+        table.has_run(run)
+            && at < table.len(run)
+            && table.scales(run, at)
+            && table.has_rank(run, at, rank)
     }
 
     /// The value of live param `live` at `rank` of `source`.
@@ -96,11 +137,10 @@ impl ParamBook {
         live: LiveParam,
         rank: u8,
         source: Option<&ParamSource<'_>>,
-    ) -> Option<Num> {
+    ) -> Num {
         let TableRun { table, run } = self.table(live.owner);
-        table
-            .value(run, usize::from(live.at), rank, source)?
-            .to_num()
+        let value = table.value(run, usize::from(live.at), rank, source);
+        value.to_num().expect("its way checked the param")
     }
 
     /// The table of `owner`'s params, and its run there.

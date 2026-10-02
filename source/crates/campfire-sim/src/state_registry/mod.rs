@@ -38,6 +38,15 @@ const BODY_LEN_BYTES: usize = size_of::<u64>();
 #[derive(Debug)]
 pub struct StateRegistry {
     entries: Vec<Entry>,
+    foreign: Vec<ForeignCheck>,
+}
+
+/// A rule of the registered state type `name` that a capability other than its owner knows,
+/// checked as the type's own check is.
+#[derive(Debug)]
+struct ForeignCheck {
+    name: &'static str,
+    check: fn(&World) -> bool,
 }
 
 #[derive(Debug)]
@@ -47,6 +56,8 @@ struct Entry {
     decode: fn(&mut World, &[u8]) -> Result<(), SnapshotError>,
     /// Whether every value of the type keeps its rules, once everything is decoded.
     check: fn(&World) -> bool,
+    #[cfg(any(test, feature = "internals"))]
+    scramble: fn(&mut World, &mut internals::Draws) -> bool,
 }
 
 /// The hash of one registered type.
@@ -102,12 +113,15 @@ impl StateRegistry {
     pub fn new() -> StateRegistry {
         let mut registry = StateRegistry {
             entries: Vec::new(),
+            foreign: Vec::new(),
         };
         let entities = Entry {
             name: ENTITIES,
             encode: encode_entities,
             decode: decode_entities,
             check: |_| true,
+            #[cfg(any(test, feature = "internals"))]
+            scramble: |_, _| false,
         };
         registry.register(entities);
         registry.register_resource::<IdAllocator>();
@@ -122,6 +136,22 @@ impl StateRegistry {
             encode: encode_component::<C>,
             decode: decode_component::<C>,
             check: check_component::<C>,
+            #[cfg(any(test, feature = "internals"))]
+            scramble: internals::scramble_component::<C>,
+        });
+    }
+
+    /// Adds `check` to the restore checks of `C`, a registered type: a rule of it that a
+    /// capability other than its owner knows, which `C::check` cannot see.
+    pub fn add_check<C: SimComponent>(&mut self, check: fn(&World) -> bool) {
+        assert!(
+            self.entries.iter().any(|entry| entry.name == C::NAME),
+            "{} is registered before a check is added to it",
+            C::NAME
+        );
+        self.foreign.push(ForeignCheck {
+            name: C::NAME,
+            check,
         });
     }
 
@@ -131,6 +161,8 @@ impl StateRegistry {
             encode: encode_resource::<R>,
             decode: decode_resource::<R>,
             check: check_resource::<R>,
+            #[cfg(any(test, feature = "internals"))]
+            scramble: internals::scramble_resource::<R>,
         });
     }
 
@@ -226,6 +258,9 @@ impl StateRegistry {
         }
         if let Some(entry) = self.entries.iter().find(|entry| !(entry.check)(world)) {
             return Err(SnapshotError::Invalid(entry.name));
+        }
+        if let Some(foreign) = self.foreign.iter().find(|foreign| !(foreign.check)(world)) {
+            return Err(SnapshotError::Invalid(foreign.name));
         }
         // Postcard accepts some encodings that are not its own, such as an overlong varint, so
         // only a second encoding shows that no other bytes restore to this state.
@@ -411,6 +446,9 @@ fn check_resource<R: SimResource>(world: &World) -> bool {
         .get_resource::<R>()
         .is_none_or(|resource| resource.check(world))
 }
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals;
 
 #[cfg(test)]
 mod tests;

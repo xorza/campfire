@@ -9,6 +9,7 @@ use serde::{Deserialize, Deserializer, Serialize};
 use crate::actions::action_book::ActionBook;
 use crate::areas::area_spec::AreaSpec;
 use crate::deliveries::delivering::Delivering;
+use crate::stats::modifier_book::ModifierBook;
 use crate::units::by_type::ByType;
 use crate::units::unit_type::UnitType;
 
@@ -65,19 +66,23 @@ impl SimComponent for Area {
     const NAME: &'static str = "areas.area";
 
     // An area of a type with no area section, or of an action the book lacks or at a rank past
-    // its ranks, has no rules for its trigger or its hooks.
+    // its ranks, has no rules for its trigger or its hooks; and one whose action does not give a
+    // param its inside modifiers read would fail as a unit takes one.
     fn check(&self, world: &World, entity: Entity) -> bool {
-        let lands = world
+        let spec = world
             .get::<UnitType>(entity)
             .zip(world.get_resource::<ByType<AreaSpec>>())
-            .is_some_and(|(&unit_type, specs)| specs.get(unit_type).is_some());
+            .and_then(|(&unit_type, specs)| specs.get(unit_type));
         let book = world.get_resource::<ActionBook>();
         let by = book
             .and_then(|book| book.get(self.by.action))
             .is_some_and(|action| action.has_rank(self.by.rank));
+        let Delivering { action, rank, .. } = self.by;
+        let applies = |modifier| ModifierBook::has_way_in(world, modifier, Some(action), rank);
+        let holds = |spec: &AreaSpec| spec.inside.modifiers().all(applies);
         let times =
             self.triggers_at.is_none_or(|at| at <= Tick::LIMIT) && self.ends_at <= Tick::LIMIT;
-        lands && by && times
+        by && spec.is_some_and(holds) && times
     }
 }
 

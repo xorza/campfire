@@ -46,26 +46,23 @@ impl CallPart for StatsCall {
         let fill = |values: &mut Vec<Scalar>, table: &ParamTable, run: Option<usize>| {
             values.clear();
             let Some(run) = run else {
-                return Ok(());
+                return;
             };
             let count = table.len(run);
             values.reserve_exact(count);
-            for at in 0..count {
-                let value = table.value(run, at, rank, source.as_ref());
-                values.push(value.ok_or(CallError::ParamOverflow)?);
-            }
-            Ok(())
+            values.extend((0..count).map(|at| table.value(run, at, rank, source.as_ref())));
         };
         fill(
             &mut self.values,
             self.params.actions(),
             self.ability.map(ActionId::index),
-        )?;
+        );
         fill(
             &mut self.modifier_values,
             self.params.modifiers(),
             self.modifier.map(ModifierId::index),
-        )
+        );
+        Ok(())
     }
 
     /// An ability's or a modifier's call reads its modifier's params, then its ability's.
@@ -105,6 +102,18 @@ impl StatsCall {
         }
     }
 
+    /// The stats' part of `frame`; stats adds it as it installs.
+    pub(crate) fn of(frame: &Frame) -> &StatsCall {
+        frame
+            .part()
+            .expect("a match whose calls read params or apply modifiers has stats")
+    }
+
+    /// Every loaded ability's and modifier's params.
+    pub(crate) const fn params(&self) -> &ParamBook {
+        &self.params
+    }
+
     /// The stats' part of `frame`, to change; stats adds it as it installs.
     pub(crate) fn of_mut(frame: &mut Frame) -> &mut StatsCall {
         frame
@@ -114,10 +123,7 @@ impl StatsCall {
 
     /// The running call's ability's param at `at`, at its rank.
     pub(crate) fn ability_value(frame: &Frame, at: usize) -> Scalar {
-        let part = frame
-            .part::<StatsCall>()
-            .expect("a call that reads an ability's params runs in a match with stats");
-        part.values[at]
+        StatsCall::of(frame).values[at]
     }
 }
 

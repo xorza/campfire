@@ -151,6 +151,28 @@ impl ModifierSpec {
                 .collect(),
         })
     }
+
+    /// The places of the params its numbers read: its stat changes', its shield's and its aura's
+    /// radius's.
+    pub(crate) fn number_params(&self) -> impl Iterator<Item = &ParamPlace> {
+        let changes = self.stats.iter().map(|change| &change.value);
+        let numbers = changes
+            .chain(&self.shield)
+            .chain(self.aura.iter().map(|aura| &aura.radius));
+        numbers.filter_map(|number| match number {
+            SpecNumber::Param(place) => Some(place),
+            SpecNumber::Value(_) => None,
+        })
+    }
+
+    /// The places of the params its times read: its duration's, its interval's and its stacks'.
+    pub(crate) fn time_params(&self) -> impl Iterator<Item = &ParamPlace> {
+        let times = [&self.duration, &self.interval, &self.stacks_expire];
+        times.into_iter().flatten().filter_map(|time| match time {
+            SpecTime::Param(place) => Some(place),
+            SpecTime::Fixed(_) => None,
+        })
+    }
 }
 
 impl SpecNumber {
@@ -181,26 +203,32 @@ impl SpecTime {
     ) -> Result<SpecTime, ModifierProblem> {
         match SpecNumber::of(number, params)? {
             SpecNumber::Value(ms) => Ok(SpecTime::Fixed(
-                ticks(ms, rate).ok_or(ModifierProblem::Time)?,
+                ModifierData::ticks(ms, rate).ok_or(ModifierProblem::Time)?,
             )),
             SpecNumber::Param(place) => Ok(SpecTime::Param(place)),
         }
     }
 
-    /// Its ticks at `rate`, a param's read by `param`; `None` when it does not resolve.
-    pub(crate) fn ticks(
-        &self,
-        rate: TickRate,
-        param: impl Fn(&ParamPlace) -> Option<Num>,
-    ) -> Option<Ticks> {
+    /// Its ticks at `rate`, a param's read by `param`, which its way checked counts in ticks.
+    pub(crate) fn ticks(&self, rate: TickRate, param: impl Fn(&ParamPlace) -> Num) -> Ticks {
         match self {
-            SpecTime::Fixed(ticks) => Some(*ticks),
-            SpecTime::Param(place) => ticks(param(place)?, rate),
+            SpecTime::Fixed(ticks) => *ticks,
+            SpecTime::Param(place) => {
+                ModifierData::ticks(param(place), rate).expect("its way checked the time")
+            }
         }
     }
 }
 
 impl ParamPlace {
+    /// The name of the applier's param it is; none for one of the modifier's own.
+    pub(crate) const fn applier(&self) -> Option<&DeclaredName> {
+        match self {
+            ParamPlace::Own(_) => None,
+            ParamPlace::Applier(name) => Some(name),
+        }
+    }
+
     /// Where the param `name` of a modifier whose own params are `params` is.
     fn of<V>(name: &DeclaredName, params: &BTreeMap<DeclaredName, V>) -> ParamPlace {
         match params.keys().position(|own| own == name) {
@@ -208,13 +236,6 @@ impl ParamPlace {
             None => ParamPlace::Applier(name.clone()),
         }
     }
-}
-
-/// `ms` milliseconds, up to the next whole one, in ticks at `rate`; `None` for a negative time or
-/// one too large to count.
-fn ticks(ms: Num, rate: TickRate) -> Option<Ticks> {
-    let ms = u64::try_from(ms.ceil()).ok()?;
-    rate.duration(ms)
 }
 
 #[cfg(test)]

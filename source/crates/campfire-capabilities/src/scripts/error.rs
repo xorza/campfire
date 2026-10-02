@@ -13,8 +13,6 @@ pub(crate) type Checked<T> = Result<T, Box<EvalAltResult>>;
 /// Why a script call failed. A failed call changes nothing.
 #[derive(Debug, Clone)]
 pub enum CallError {
-    /// A param of the ability overflows at its rank.
-    ParamOverflow,
     /// The script API refused a call.
     Api(ApiError),
     /// The script failed otherwise.
@@ -69,6 +67,9 @@ pub enum ApiError {
     NotAnAmount,
     /// A modifier the calling package does not declare.
     UnknownModifier,
+    /// A modifier whose param, as the call's action at its rank or no action gives it, does not
+    /// hold for `problem`.
+    ModifierParam(ParamProblem),
     /// A negative count of a modifier's stacks.
     NegativeStacks,
     /// A pool the unit does not have.
@@ -141,6 +142,22 @@ pub enum ApiError {
     OtherFlight,
 }
 
+/// Why a param a modifier reads does not hold.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ParamProblem {
+    /// The way gives no such param: an action that does not declare it, or no action at all.
+    Missing,
+    /// A per-rank param, the modifier's own or its action's, has no value at the rank the way
+    /// applies it at.
+    Short,
+    /// A value, at a rank, is past what a number holds.
+    Overflow,
+    /// A time reads a scaling param, whose value only its source knows as it applies.
+    ScalingTime,
+    /// A time, at a rank, is negative or too large to count in ticks.
+    Time,
+}
+
 impl CallError {
     /// A failed call's error: the API's own when it refused the call.
     pub(crate) fn from_script(error: ScriptError) -> CallError {
@@ -167,7 +184,6 @@ impl ApiError {
 impl fmt::Display for CallError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            CallError::ParamOverflow => f.write_str("a param overflows at the ability's rank"),
             CallError::Api(error) => write!(f, "the script API refused a call: {error}"),
             CallError::Script(error) => write!(f, "{error}"),
         }
@@ -179,7 +195,6 @@ impl Error for CallError {
         match self {
             CallError::Api(error) => Some(error),
             CallError::Script(error) => Some(error),
-            CallError::ParamOverflow => None,
         }
     }
 }
@@ -214,6 +229,12 @@ impl fmt::Display for ApiError {
             ApiError::PureCall => "a pure hook changes nothing",
             ApiError::NotAnAmount => "calc_damage returns no number",
             ApiError::UnknownModifier => "modifier the package does not declare",
+            ApiError::ModifierParam(problem) => {
+                return write!(
+                    f,
+                    "a param of the modifier, as the call applies it: {problem}"
+                );
+            }
             ApiError::NegativeStacks => "a modifier's stacks are not negative",
             ApiError::NoPool => "unit has no such pool",
             ApiError::UnknownPool => "pool the mode does not declare",
@@ -256,6 +277,20 @@ impl fmt::Display for ApiError {
 
 impl Error for ApiError {}
 
+impl fmt::Display for ParamProblem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            ParamProblem::Missing => "the way gives no such param",
+            ParamProblem::Short => "no value at a rank the way applies it at",
+            ParamProblem::Overflow => "a value past what a number holds",
+            ParamProblem::ScalingTime => "a time that reads a scaling param",
+            ParamProblem::Time => "a time negative or too large to count in ticks",
+        })
+    }
+}
+
+impl Error for ParamProblem {}
+
 #[cfg(test)]
 pub(crate) mod internals {
     use campfire_script::{NumError, ScriptError};
@@ -266,7 +301,6 @@ pub(crate) mod internals {
     /// a script raised, the `NumError`, none for another value.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub(crate) enum FailureKind {
-        ParamOverflow,
         Api(ApiError),
         Compile,
         CallLimit,
@@ -278,7 +312,6 @@ pub(crate) mod internals {
     impl CallError {
         pub(crate) fn kind(&self) -> FailureKind {
             match self {
-                CallError::ParamOverflow => FailureKind::ParamOverflow,
                 CallError::Api(api) => FailureKind::Api(*api),
                 CallError::Script(ScriptError::Compile(_)) => FailureKind::Compile,
                 CallError::Script(ScriptError::CallLimit) => FailureKind::CallLimit,

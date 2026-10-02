@@ -50,7 +50,8 @@ impl Position {
 impl SimComponent for Position {
     const NAME: &'static str = "sim.position";
 
-    // Its decode keeps it within the bound.
+    // Its decode keeps it within the world's bound; the capability that knows the map's adds
+    // that check.
     fn check(&self, _: &World, _: Entity) -> bool {
         true
     }

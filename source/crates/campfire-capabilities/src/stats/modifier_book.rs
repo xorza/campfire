@@ -2,11 +2,13 @@ use std::cmp::Ordering;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
+use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
 use campfire_math::Num;
 use campfire_script::ScriptId;
 use campfire_sim::TickRate;
 
+use crate::scripts::error::ParamProblem;
 use crate::scripts::hook::Hook;
 use crate::scripts::hook_set::HookSet;
 use crate::scripts::script_book::ScriptBook;
@@ -18,8 +20,10 @@ use crate::stats::lifetime::{Ends, Hold, Lifetime};
 use crate::stats::modifier_clocks::Interval;
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifier_spec::{ModifierSpec, ParamPlace, SpecNames, SpecNumber, SpecTime};
+use crate::stats::param_book::ParamBook;
 use crate::stats::param_read::ParamRead;
 use crate::stats::stat_id::StatId;
+use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
 use crate::units::tag_set::TagSet;
 use crate::units::unit_types::UnitTypes;
@@ -162,13 +166,71 @@ impl ModifierBook {
         &self.entries[id.index()]
     }
 
-    /// `id` as applied in tick `now` from `source`, by `ability` at its rank or by none: its
-    /// numbers resolved by `param`, from its own params, then the ability's, of its source as it
-    /// is now, its times in ticks at `rate`; a stat change that reads a scaling table keeps
-    /// reading it, live. Its duration is `duration` when a call names one; `None` when a number
-    /// does not resolve. A passive or an aura holds while its ability or carrier keeps it, so it
-    /// has no duration, and a passive applied again at another rank refreshes; a passive whose
-    /// stacks end one by one counts them from none.
+    /// Whether `ability` at `rank`, or no ability at rank 1, applies `id` with every param its
+    /// numbers read: each of its own params has a value at `rank`, and `ability` gives each it
+    /// does not declare, as a time in ticks at `rate` where a time reads it. The load checks the
+    /// ways its packages name; a call checks the way of a name it computes.
+    pub(crate) fn check_way(
+        &self,
+        id: ModifierId,
+        ability: Option<ActionId>,
+        rank: u8,
+        params: &ParamBook,
+        rate: TickRate,
+    ) -> Result<(), ParamProblem> {
+        if !params.modifiers().holds_rank(id.index(), rank) {
+            return Err(ParamProblem::Short);
+        }
+        let spec = &self.get(id).spec;
+        for name in spec.number_params().filter_map(ParamPlace::applier) {
+            params.gives(ability, rank, name, None)?;
+        }
+        for name in spec.time_params().filter_map(ParamPlace::applier) {
+            params.gives(ability, rank, name, Some(rate))?;
+        }
+        Ok(())
+    }
+
+    /// Whether `id` and `ability`, when one, are a modifier and an action the books hold, and
+    /// `ability` at `rank`, or no ability, applies `id` as `check_way` asks at `rate`.
+    pub(crate) fn has_way(
+        &self,
+        id: ModifierId,
+        ability: Option<ActionId>,
+        rank: u8,
+        params: &ParamBook,
+        rate: TickRate,
+    ) -> bool {
+        self.entry(id).is_some()
+            && ability.is_none_or(|ability| params.has_action(ability))
+            && self.check_way(id, ability, rank, params, rate).is_ok()
+    }
+
+    /// `has_way` of `world`'s books at its rate; false in a match with no stats.
+    pub(crate) fn has_way_in(
+        world: &World,
+        id: ModifierId,
+        ability: Option<ActionId>,
+        rank: u8,
+    ) -> bool {
+        let books = (
+            world.get_resource::<ModifierBook>(),
+            world.get_resource::<ParamBook>(),
+            world.get_resource::<TickRate>(),
+        );
+        let (Some(book), Some(params), Some(&rate)) = books else {
+            return false;
+        };
+        book.has_way(id, ability, rank, params, rate)
+    }
+
+    /// `id` as applied in tick `now` from `source`, by `ability` at its rank or by none, a way
+    /// checked: its numbers resolved by `param`, from its own params, then the ability's, of its
+    /// source as it is now, its times in ticks at `rate`; a stat change that reads a scaling
+    /// table keeps reading it, live. Its duration is `duration` when a call names one. A passive
+    /// or an aura holds while its ability or carrier keeps it, so it has no duration, and a
+    /// passive applied again at another rank refreshes; a passive whose stacks end one by one
+    /// counts them from none.
     pub(crate) fn application(
         &self,
         id: ModifierId,
@@ -176,46 +238,38 @@ impl ModifierBook {
         duration: Option<Ticks>,
         now: Tick,
         rate: TickRate,
-        param: impl Fn(&ParamPlace) -> Option<ParamRead>,
-    ) -> Option<Application> {
+        param: impl Fn(&ParamPlace) -> ParamRead,
+    ) -> Application {
         let entry = self.get(id);
         let spec = &entry.spec;
         let read = |number: &SpecNumber| match number {
-            SpecNumber::Value(value) => Some(ParamRead {
+            SpecNumber::Value(value) => ParamRead {
                 value: *value,
                 live: None,
-            }),
+            },
             SpecNumber::Param(place) => param(place),
-        };
-        let value = |number: Option<&SpecNumber>| match number {
-            Some(number) => read(number).map(|read| Some(read.value)),
-            None => Some(None),
         };
         // The load refuses a negative value and rank; a scaling param can still give one.
         let not_negative =
-            |number| value(number).map(|value| value.map(|value| value.max(Num::ZERO)));
-        let ticks = |time: Option<&SpecTime>| match time {
-            Some(time) => time
-                .ticks(rate, |place| param(place).map(|read| read.value))
-                .map(Some),
-            None => Some(None),
-        };
+            |number: Option<&SpecNumber>| number.map(|number| read(number).value.max(Num::ZERO));
+        let ticks =
+            |time: Option<&SpecTime>| time.map(|time| time.ticks(rate, |place| param(place).value));
         let duration = match duration {
             _ if from.hold.is_some() => None,
             Some(duration) => Some(duration),
-            None => ticks(spec.duration.as_ref())?,
+            None => ticks(spec.duration.as_ref()),
         };
-        let stack_life = ticks(spec.stacks_expire.as_ref())?;
-        let interval = ticks(spec.interval.as_ref())?.map(|every| Interval {
+        let stack_life = ticks(spec.stacks_expire.as_ref());
+        let interval = ticks(spec.interval.as_ref()).map(|every| Interval {
             every,
             next: now.after(every),
         });
         let shares = spec.stats.iter().map(|change| {
-            let read = read(&change.value)?;
-            Some(StatShare {
+            let read = read(&change.value);
+            StatShare {
                 value: read.value,
                 live: read.live,
-            })
+            }
         });
         let passive = from.hold == Some(Hold::Passive);
         let counts = passive && stack_life.is_some();
@@ -232,16 +286,16 @@ impl ModifierBook {
                 from.hold,
                 duration.map_or(Ends::Never, |ticks| Ends::At(Instance::end(now, ticks))),
             ),
-            aura_radius: not_negative(spec.aura.as_ref().map(|aura| &aura.radius))?,
+            aura_radius: not_negative(spec.aura.as_ref().map(|aura| &aura.radius)),
             stacks: u32::from(!counts),
             stack_life,
             stack_ends: first.into_iter().collect(),
             interval,
-            shield: not_negative(spec.shield.as_ref())?,
-            stats: shares.collect::<Option<_>>()?,
+            shield: not_negative(spec.shield.as_ref()),
+            stats: shares.collect(),
             state: spec.initial.to_vec(),
         };
-        Some(Application {
+        Application {
             instance,
             reapply: if passive {
                 Reapply::Refresh
@@ -249,7 +303,7 @@ impl ModifierBook {
                 spec.reapply
             },
             max_stacks: spec.max_stacks,
-        })
+        }
     }
 }
 
@@ -280,22 +334,28 @@ pub(crate) mod internals {
     use crate::stats::modifier_book::{ModifierBook, ModifierEntry};
     use crate::stats::modifier_data::Reapply;
     use crate::stats::modifier_spec::{ModifierSpec, SpecChange, SpecNumber};
+    use std::collections::BTreeMap;
+
+    use bevy_ecs::world::World;
+    use campfire_math::Num;
+
+    use crate::stats::param_book::ParamBook;
     use crate::stats::stat_id::StatId;
     use crate::stats::stat_op::StatOp;
     use crate::units::modifier_id::ModifierId;
     use crate::units::tag_set::TagSet;
-    use campfire_math::Num;
 
     impl ModifierBook {
-        /// Adds a modifier of no script, times or state that changes each stat of `changes` by
-        /// its op, by a value its instances hold, and grants `tags`: what a test's instances are
-        /// instances of. Its id, after every modifier before it.
+        /// Adds to `world`'s books a modifier of no params, script, times or state that changes
+        /// each stat of `changes` by its op, by a value its instances hold, and grants `tags`:
+        /// what a test's instances are instances of. Its id, after every modifier before it.
         pub(crate) fn push_changes(
-            &mut self,
+            world: &mut World,
             changes: &[(StatId, StatOp)],
             tags: TagSet,
         ) -> ModifierId {
-            let book = Arc::make_mut(&mut self.entries);
+            let mut modifiers = world.resource_mut::<ModifierBook>();
+            let book = Arc::make_mut(&mut modifiers.entries);
             let at = book.len();
             let stats = changes.iter().map(|&(stat, op)| SpecChange {
                 stat,
@@ -322,12 +382,142 @@ pub(crate) mod internals {
                 hooks: HookSet::default(),
                 tags,
             });
-            ModifierId::nth(at)
+            let id = ModifierId::nth(at);
+            ParamBook::load_modifier(world, id, &BTreeMap::new(), |_| StatId::new(0));
+            id
         }
 
         /// Makes modifier `id` grant `tags`, as a test's data would.
         pub(crate) fn grant_tags(&mut self, id: ModifierId, tags: TagSet) {
             Arc::make_mut(&mut self.entries)[id.index()].tags = tags;
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use campfire_math::Num;
+
+    use crate::capability_set::test_match::TestMatch;
+    use crate::scripts::error::ParamProblem;
+    use crate::scripts::error::ParamProblem::{Missing, Overflow, ScalingTime, Short, Time};
+    use crate::scripts::script_book::ScriptBook;
+    use crate::stats::live_param::{LiveParam, ParamOwner};
+    use crate::stats::modifier_book::{ModifierBook, ModifierLoad, PackageModifier};
+    use crate::stats::modifier_data::ModifierData;
+    use crate::stats::param_book::{ParamBook, ParamTables};
+    use crate::stats::stat_id::StatId;
+    use crate::units::action_id::ActionId;
+    use crate::units::modifier_id::ModifierId;
+    use crate::units::unit_types::UnitTypes;
+    use crate::values::declared_name::DeclaredName;
+    use crate::values::number::{Number, ParamRef};
+    use crate::values::param::{Param, Scaling};
+    use crate::values::ranked::Ranked;
+    use crate::values::scalar::Scalar;
+
+    fn name(text: &str) -> DeclaredName {
+        DeclaredName::new(text).unwrap()
+    }
+
+    fn param(text: &str) -> Number {
+        Number::Param(ParamRef { param: name(text) })
+    }
+
+    #[test]
+    fn a_way_applies_a_modifier_only_when_it_gives_each_param_the_modifier_reads() {
+        // The action's params: 2⁴⁰, past a number's 2³⁹; −5 ms; 100 and 200 ms at its 2 ranks;
+        // and a scaling table of 2 ranks.
+        let int = |value| Param::Ranked(Ranked::One(Scalar::Int(value)));
+        let scaling = Param::Scaling(Scaling {
+            base: Ranked::PerRank(vec![Num::ONE, Num::ONE]),
+            per_level: Num::ZERO,
+            bonus: BTreeMap::new(),
+            ratios: BTreeMap::new(),
+        });
+        let per_rank = Ranked::PerRank(vec![Scalar::Int(100), Scalar::Int(200)]);
+        let action = BTreeMap::from([
+            (name("huge"), int(1 << 40)),
+            (name("late"), int(-5)),
+            (name("pace"), Param::Ranked(per_rank)),
+            (name("power"), scaling),
+        ]);
+        // By name, each modifier reads one param, as a shield or as a duration; `own` declares
+        // its param, of one rank.
+        let shield = |read| ModifierData {
+            shield: Some(param(read)),
+            ..ModifierData::default()
+        };
+        let lasting = |read| ModifierData {
+            duration_ms: Some(param(read)),
+            ..ModifierData::default()
+        };
+        let own = ModifierData {
+            params: BTreeMap::from([(
+                name("own"),
+                Param::Ranked(Ranked::PerRank(vec![Scalar::Int(1)])),
+            )]),
+            ..shield("own")
+        };
+        let data = [
+            ("absent", shield("absent")),
+            ("huge", shield("huge")),
+            ("late", lasting("late")),
+            ("own", own),
+            ("pace", lasting("pace")),
+            ("power", lasting("power")),
+            ("scaled", shield("power")),
+        ]
+        .map(|(id, data)| (name(id), data));
+        let rate = TestMatch::RATE;
+        let mut book = ModifierBook::default();
+        let load = ModifierLoad {
+            scripts: &ScriptBook::default(),
+            types: &mut UnitTypes::default(),
+            stat: |_: &_| StatId::new(0),
+            rate,
+        };
+        let modifiers = data.each_ref().map(|(name, data)| PackageModifier {
+            name,
+            data,
+            script: None,
+        });
+        book.load(load, 0, &modifiers).unwrap();
+        let mut tables = ParamTables::default();
+        tables.push_action(&action, |_| StatId::new(0));
+        for (_, data) in &data {
+            tables.push_modifier(&data.params, |_| StatId::new(0));
+        }
+        let params = ParamBook::new(tables);
+        let ways = |ability, rank| -> Vec<Option<ParamProblem>> {
+            let check = |at| book.check_way(ModifierId::nth(at), ability, rank, &params, rate);
+            (0..data.len()).map(|at| check(at).err()).collect()
+        };
+        // By the action at rank 2: no `absent`; 2⁴⁰ past a number; −5 ms no time; `own` has no
+        // second rank; 200 ms holds; a time of a scaling table does not, and a shield of it does.
+        let action = Some(ActionId::nth(0));
+        let by_action = [Missing, Overflow, Time, Short].map(Some);
+        let by_action = [by_action.as_slice(), &[None, Some(ScalingTime), None]].concat();
+        assert_eq!(ways(action, 2), by_action);
+        // At rank 1 `own` holds too; at rank 3 no per-rank param has a value, the action's as
+        // its own; with no action, only `own`, which declares its param, holds.
+        assert_eq!(ways(action, 1)[3], None);
+        let past = [Missing, Overflow, Time, Short, Short, Short, Short].map(Some);
+        assert_eq!(ways(action, 3), past);
+        let mut no_action = vec![Some(Missing); data.len()];
+        no_action[3] = None;
+        assert_eq!(ways(None, 1), no_action);
+        // A live param is the action's scaling table, at a rank it has: not 2⁴⁰, which is no
+        // table, nor a place past its params, nor rank 3.
+        let live = |at| LiveParam {
+            owner: ParamOwner::Action(ActionId::nth(0)),
+            at,
+        };
+        assert!(params.holds_live(live(3), 2));
+        assert!(!params.holds_live(live(0), 2));
+        assert!(!params.holds_live(live(4), 2));
+        assert!(!params.holds_live(live(3), 3));
     }
 }

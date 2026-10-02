@@ -13,6 +13,7 @@ use crate::stats::modifiers::Modifiers;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::stats_call::StatsCall;
+use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
 use crate::units::script_view::View;
 use crate::units::view_column::ViewColumn;
@@ -194,6 +195,24 @@ impl StatsColumn {
         StatsColumn::read(view, |column| {
             let found = column.modifier_book.named(package, name);
             Ok(found.ok_or_else(|| ApiError::UnknownModifier.fail())?)
+        })
+    }
+
+    /// Whether `ability` at `rank`, or no ability at rank 1, applies modifier `id` with every
+    /// param it reads, of `call`'s params; an error with the param's problem when not.
+    pub(crate) fn check_way(
+        view: &View,
+        call: &StatsCall,
+        id: ModifierId,
+        ability: Option<ActionId>,
+        rank: u8,
+    ) -> Checked<()> {
+        let rate = view.rate();
+        StatsColumn::read(view, |column| {
+            let checked = column
+                .modifier_book
+                .check_way(id, ability, rank, call.params(), rate);
+            Ok(checked.map_err(|problem| ApiError::ModifierParam(problem).fail())?)
         })
     }
 

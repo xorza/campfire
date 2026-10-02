@@ -8,26 +8,32 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::navigation::pathing_grid::PathingGrid;
 
-/// A walker's long route to its destination: the goal it serves, the tick it asked the planner
-/// for a route there while it waits for one, and the waypoints of the route planned last, the
-/// next one first among those left. A unit with no destination has no goal.
+/// A walker's long route to its destination: the goal it serves, with the tick it asked the
+/// planner for a route there while it waits for one, and the waypoints of the route planned last,
+/// the next one first among those left. A unit with no destination has no goal, and so no ask.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize)]
 pub struct Route {
-    goal: Option<Position>,
-    asked: Option<Tick>,
+    goal: Option<Goal>,
     waypoints: Vec<Position>,
     next: u32,
     /// Whether the last waypoint is the goal, not the nearest place to it the walker reaches.
     reached: bool,
 }
 
+/// Where a route goes, and the tick it asked for a route there while it waits for one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+struct Goal {
+    at: Position,
+    asked: Option<Tick>,
+}
+
 impl Route {
-    pub(crate) const fn goal(&self) -> Option<Position> {
-        self.goal
+    pub(crate) fn goal(&self) -> Option<Position> {
+        self.goal.map(|goal| goal.at)
     }
 
-    pub(crate) const fn asked(&self) -> Option<Tick> {
-        self.asked
+    pub(crate) fn asked(&self) -> Option<Tick> {
+        self.goal.and_then(|goal| goal.asked)
     }
 
     pub(crate) const fn reached(&self) -> bool {
@@ -37,27 +43,34 @@ impl Route {
     /// Whether the walker arrived where its route ends short of its goal: no ask waits, no
     /// waypoint is left, and the last was not the goal. It stays so until it asks again.
     pub(crate) fn arrived_short(&self) -> bool {
-        self.goal.is_some() && self.asked.is_none() && !self.reached && self.ahead().is_empty()
+        self.goal.is_some_and(|goal| goal.asked.is_none())
+            && !self.reached
+            && self.ahead().is_empty()
     }
 
     /// Whether it arrived short of `goal`.
     pub(crate) fn arrived_short_of(&self, goal: Position) -> bool {
-        self.goal == Some(goal) && self.arrived_short()
+        self.goal() == Some(goal) && self.arrived_short()
     }
 
     /// Asks the planner in `tick` for a route to `goal`; the walker keeps to the route it has
     /// until the planner answers. An ask while one waits changes the goal and keeps the first
     /// tick, so a walker whose goal moves each tick keeps its place among the routes that wait.
-    pub(crate) const fn ask(&mut self, goal: Position, tick: Tick) {
-        self.goal = Some(goal);
-        if self.asked.is_none() {
-            self.asked = Some(tick);
-        }
+    pub(crate) fn ask(&mut self, goal: Position, tick: Tick) {
+        let asked = self.asked().unwrap_or(tick);
+        self.goal = Some(Goal {
+            at: goal,
+            asked: Some(asked),
+        });
     }
 
-    /// Takes the planner's answer: `waypoints`, the last the goal when `reached`.
+    /// Takes the planner's answer to its ask: `waypoints`, the last the goal when `reached`.
     pub(crate) fn answer(&mut self, waypoints: &[Position], reached: bool) {
-        self.asked = None;
+        let goal = self
+            .goal
+            .as_mut()
+            .expect("an answer to an ask, which has a goal");
+        goal.asked = None;
         self.waypoints.clear();
         self.waypoints.extend_from_slice(waypoints);
         self.next = 0;
@@ -66,19 +79,21 @@ impl Route {
 
     /// Serves `goal` in place of the goal the route reaches, as its last waypoint.
     pub(crate) fn move_goal(&mut self, goal: Position) {
-        debug_assert!(self.reached && self.asked.is_none());
+        debug_assert!(self.reached && self.asked().is_none());
         let last = self
             .waypoints
             .last_mut()
             .expect("a route that reaches its goal");
         *last = goal;
-        self.goal = Some(goal);
+        self.goal = Some(Goal {
+            at: goal,
+            asked: None,
+        });
     }
 
     /// Forgets the goal and the route, and keeps the buffer of waypoints.
     pub(crate) fn clear(&mut self) {
         self.goal = None;
-        self.asked = None;
         self.waypoints.clear();
         self.next = 0;
         self.reached = false;
@@ -114,7 +129,7 @@ impl SimComponent for Route {
     // Its decode keeps the next waypoint within the route; a route is planned over the cells of
     // its unit's kind of walker, which must be one the mode has.
     fn check(&self, world: &World, entity: Entity) -> bool {
-        let asked = self.asked.is_none_or(|asked| asked <= Tick::LIMIT);
+        let asked = self.asked().is_none_or(|asked| asked <= Tick::LIMIT);
         PathingGrid::serves(world, entity) && asked
     }
 }
@@ -124,15 +139,13 @@ impl<'de> Deserialize<'de> for Route {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Route, D::Error> {
         #[derive(Debug, Deserialize)]
         struct Fields {
-            goal: Option<Position>,
-            asked: Option<Tick>,
+            goal: Option<Goal>,
             waypoints: Vec<Position>,
             next: u32,
             reached: bool,
         }
         let Fields {
             goal,
-            asked,
             waypoints,
             next,
             reached,
@@ -142,7 +155,6 @@ impl<'de> Deserialize<'de> for Route {
         }
         Ok(Route {
             goal,
-            asked,
             waypoints,
             next,
             reached,

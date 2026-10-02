@@ -49,8 +49,8 @@ use crate::progression::experience::Experience;
 use crate::progression::track_data::{Thresholds, TrackData};
 use crate::progression::track_set::TrackSet;
 use crate::scripts::call_start::CallStart;
-use crate::scripts::error::ApiError;
 use crate::scripts::error::internals::FailureKind;
+use crate::scripts::error::{ApiError, ParamProblem};
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::script_limits::ScriptLimits;
@@ -97,7 +97,7 @@ use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
 use crate::values::grid::Grid;
 use crate::values::metric::Metric;
-use crate::values::number::Number;
+use crate::values::number::{Number, ParamRef};
 use crate::values::package_path::PackagePath;
 use crate::values::ranked::Ranked;
 use crate::values::scalar::Scalar;
@@ -417,6 +417,15 @@ fn drill() -> ModifierData {
     }
 }
 
+/// A shield of the `ward` of the action that applies it, which the mode, with none, never gives.
+fn rally() -> ModifierData {
+    let ward = DeclaredName::new("ward").unwrap();
+    ModifierData {
+        shield: Some(Number::Param(ParamRef { param: ward })),
+        ..ModifierData::default()
+    }
+}
+
 /// The test mode's slot kinds: `basic`, of 2 ranks, and `spell`, learned from the spawn.
 fn slot_kinds() -> SlotKinds {
     let kind = |name, ranks| SlotKindData {
@@ -545,6 +554,7 @@ fn mode_files() -> ModeFiles {
         modifiers: [
             ("blessing".to_owned(), blessing()),
             ("drill".to_owned(), drill()),
+            ("rally".to_owned(), rally()),
         ]
         .into(),
         map: map(),
@@ -842,8 +852,7 @@ impl Game {
                 )
             })
             .collect();
-        let mut modifiers = self.sim.world.resource_mut::<ModifierBook>();
-        let id = modifiers.push_changes(&changes, TagSet::default());
+        let id = ModifierBook::push_changes(&mut self.sim.world, &changes, TagSet::default());
         let shares = stats
             .iter()
             .map(|&(_, value)| StatShare { value, live: None });

@@ -250,18 +250,21 @@ impl SimComponent for ActionSlots {
             book.get(slot.action)
                 .is_some_and(|action| action.slots_at(slot.rank))
         };
-        // An attack under way started its windup before it resolves, no sooner than tick 0.
+        // An attack under way is at one of its action's ranks, and started its windup before it
+        // resolves, no sooner than tick 0.
         let underway = self.underway.is_none_or(|underway| {
             let slot = self.slots.get(usize::from(underway.slot()));
             let action = slot.and_then(|slot| Some((slot.rank, book.get(slot.action)?)));
             let attacks = matches!(underway, InProgress::Attack { .. });
             action.is_some_and(|(rank, action)| {
-                let windup = action.values(rank).windup;
-                let started = !attacks
-                    || underway
+                let started = || {
+                    let windup = action.values(rank).windup;
+                    underway
                         .resolves_at()
-                        .is_some_and(|at| at.get() >= windup.get());
-                (action.kind.kind() == ActionKind::Attack) == attacks && started
+                        .is_some_and(|at| at.get() >= windup.get())
+                };
+                let attack = !attacks || (action.has_rank(rank) && started());
+                (action.kind.kind() == ActionKind::Attack) == attacks && attack
             })
         });
         let times = self.slots.iter().all(|slot| slot.ready_at <= Tick::LIMIT)

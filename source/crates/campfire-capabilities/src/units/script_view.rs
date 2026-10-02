@@ -273,6 +273,11 @@ impl View {
         self.0.borrow().now
     }
 
+    /// The match's tick rate.
+    pub(crate) fn rate(&self) -> TickRate {
+        self.0.borrow().rate
+    }
+
     /// `ms` in ticks at the match's rate, rounded up, at least one, or all ticks for a time too
     /// long to count: a window back from now.
     pub(crate) fn window(&self, ms: u64) -> Ticks {

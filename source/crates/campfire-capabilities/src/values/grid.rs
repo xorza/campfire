@@ -148,7 +148,7 @@ impl Grid {
         // center is within 8 bounds: 2⁴⁸ halves, which leaves i64 room for sums, and i128 for
         // squares.
         let twice = |value: Num| 2 * value.to_bits();
-        let reach = twice(radius).min(8 * twice(Position::BOUND));
+        let reach = 2 * radius.to_bits().min(8 * Position::BOUND.to_bits());
         let size = self.size.map(i64::from);
         let min = self.bounds.min();
         let from = [twice(at.x) - twice(min[0]), twice(at.z) - twice(min[1])];
@@ -239,6 +239,11 @@ mod tests {
         let reach = Num::from_bits((159 << 24) / 100);
         assert_eq!(reveal(reach), [0, 1, 2, 3, 4, 5, 6, 7, 9, 10]);
         assert!(reveal(Num::ZERO).is_empty());
+        // A radius past every center, the largest number among them, reveals every cell: the
+        // reach stops at 8 bounds before it doubles.
+        let every: Vec<usize> = (0..grid.cells()).collect();
+        assert_eq!(reveal(Num::MAX), every);
+        assert_eq!(reveal(Position::BOUND), every);
 
         // Against each cell's center tested alone, in halves of a bit, from points on and off
         // the grid, on cell lines and between them, with radii that end on centers and between.

@@ -1,8 +1,4 @@
-use std::collections::BTreeMap;
-
-use campfire_capabilities::{
-    ActionData, DeclaredName, DeliveryData, NameKind, PackagePath, ScriptApi, UnitTypeFile,
-};
+use campfire_capabilities::{PackagePath, ScriptApi};
 use campfire_common::Fingerprint;
 use campfire_script::ScriptHost;
 
@@ -72,38 +68,6 @@ impl Package {
     /// The script at `path`.
     pub(crate) fn script(&self, path: &PackagePath) -> Option<&Script> {
         Some(&self.scripts[self.script_index(path)?])
-    }
-
-    /// The abilities of `abilities`, this package's, that apply each modifier: those whose data
-    /// names it, those whose area type of `units` holds it inside, and those whose script adds
-    /// it.
-    pub(crate) fn appliers<'a>(
-        &'a self,
-        abilities: &'a BTreeMap<DeclaredName, ActionData>,
-        units: &'a BTreeMap<DeclaredName, UnitTypeFile>,
-    ) -> BTreeMap<&'a str, Vec<&'a ActionData>> {
-        let mut appliers: BTreeMap<&str, Vec<&ActionData>> = BTreeMap::new();
-        for ability in abilities.values() {
-            let inside = match &ability.delivery {
-                Some(DeliveryData::Area { unit_type }) => units
-                    .get(unit_type)
-                    .and_then(|unit_type| unit_type.area.as_ref()),
-                _ => None,
-            }
-            .into_iter()
-            .flat_map(|area| area.inside.modifiers());
-            let scripted = ability
-                .script
-                .as_ref()
-                .and_then(|path| self.script(path))
-                .into_iter()
-                .flat_map(|script| script.facts.names_of(NameKind::Modifier));
-            let named = ability.modifiers().chain(inside).map(DeclaredName::as_str);
-            for id in named.chain(scripted) {
-                appliers.entry(id).or_default().push(ability);
-            }
-        }
-        appliers
     }
 
     /// The place of the script at `path` in `scripts`.

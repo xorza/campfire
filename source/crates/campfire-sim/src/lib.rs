@@ -39,6 +39,11 @@ pub use tick_inputs::{PlayerCommand, TickInput, TickInputs};
 pub use tick_rate::TickRate;
 pub use unpredicted::Unpredicted;
 
+#[cfg(feature = "internals")]
+pub mod internals {
+    pub use crate::state_registry::internals::Draws;
+}
+
 #[cfg(feature = "bench")]
 pub mod bench {
     pub use crate::state_registry::bench::state_hash;

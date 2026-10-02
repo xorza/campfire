@@ -584,6 +584,21 @@ fn every_combat_type_is_state_and_restores() {
     assert!(slots(2, 0) && slots(Tick::LIMIT.get(), Tick::LIMIT.get()));
     assert!(!slots(1, 0));
     assert!(!slots(past, 0) && !slots(2, past));
+    // An attack under way at a rank its weapon lacks is refused, not read past the weapon's
+    // ranks: 0, before it is learned, and 30, past its one.
+    let weapon = restored
+        .sim
+        .get::<ActionSlots>(fighter)
+        .slot(0)
+        .unwrap()
+        .action;
+    let ranked = |rank| {
+        let mut slots = ActionSlots::new([(weapon, SlotKind::new(0), rank)]);
+        slots.set_attack_target(Some(doomed));
+        slots.start_attack(0, Tick::new(2));
+        slots.check(&restored.sim.world, entity)
+    };
+    assert!(ranked(1) && !ranked(0) && !ranked(30));
 }
 
 #[test]

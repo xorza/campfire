@@ -42,14 +42,14 @@ impl PlayerModifiers {
 impl SimResource for PlayerModifiers {
     const NAME: &'static str = "stats.player_modifiers";
 
-    // A modifier the book lacks, or a player the session lacks, would be read past their places;
-    // `add` and `of` find a player's modifiers only in order, each once.
+    // A modifier the book lacks, or a player the session lacks, would be read past their places,
+    // and one that reads a param no action gives would fail as its units take it; `add` and `of`
+    // find a player's modifiers only in order, each once.
     fn check(&self, world: &World) -> bool {
-        let book = world.get_resource::<ModifierBook>();
         let view = world.get_non_send::<View>();
         self.0.is_sorted_by(|a, b| a < b)
             && self.0.iter().all(|held| {
-                book.is_some_and(|book| book.entry(held.modifier).is_some())
+                ModifierBook::has_way_in(world, held.modifier, None, 1)
                     && view.is_none_or(|view| view.has_player(held.player))
             })
     }

@@ -120,8 +120,8 @@ impl RefreshScratch {
 
     /// Computes every unit's values, each stat for every unit in `book`'s order: first its live
     /// changes, each live param of its source in `params`, a refreshing unit as computed so far or
-    /// another as `other` gives it, the value it last had when it does not resolve or its source
-    /// is gone; then the stat's value from its totals.
+    /// another as `other` gives it, the value it last had when its source is gone; then the
+    /// stat's value from its totals.
     pub(crate) fn compute<'q>(
         &mut self,
         book: &StatBook,
@@ -147,11 +147,10 @@ impl RefreshScratch {
                     None => other(id),
                 });
                 let value = match source {
-                    Some(None) => None,
+                    Some(None) => term.value,
                     Some(Some(source)) => params.live_value(term.live, term.rank, Some(&source)),
                     None => params.live_value(term.live, term.rank, None),
-                }
-                .unwrap_or(term.value);
+                };
                 self.lives[next].value = value;
                 next += 1;
                 let change = i128::from(value.to_bits()) * i128::from(term.stacks);

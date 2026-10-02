@@ -7,6 +7,8 @@ pub struct U256 {
 }
 
 impl U256 {
+    pub const ZERO: U256 = U256 { high: 0, low: 0 };
+
     /// The exact product `a × b`, from four products of 64-bit halves.
     pub const fn product(a: u128, b: u128) -> U256 {
         const HALF: u32 = 64;
@@ -80,6 +82,18 @@ impl U256 {
             return None;
         };
         match high.checked_add(carry as u128) {
+            Some(high) => Some(U256 { high, low }),
+            None => None,
+        }
+    }
+
+    /// `self − other`; `None` below 0.
+    pub const fn checked_sub(self, other: U256) -> Option<U256> {
+        let (low, borrow) = self.low.overflowing_sub(other.low);
+        let Some(high) = self.high.checked_sub(other.high) else {
+            return None;
+        };
+        match high.checked_sub(borrow as u128) {
             Some(high) => Some(U256 { high, low }),
             None => None,
         }

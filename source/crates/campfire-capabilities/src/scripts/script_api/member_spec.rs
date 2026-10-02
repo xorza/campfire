@@ -1,5 +1,6 @@
 use campfire_sim::Capability;
 
+use crate::scripts::applies::Applies;
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::MemberKind;
@@ -17,6 +18,8 @@ pub(crate) struct MemberSpec {
     pub signature: &'static str,
     pub description: &'static str,
     pub names: NameArgs,
+    /// How its argument that names a modifier applies it; none for one that only names it.
+    pub applies: Option<Applies>,
 }
 
 /// What each argument of a call or a method names, by place, the receiver aside: the load
@@ -90,6 +93,7 @@ impl MemberSpec {
             signature,
             description,
             names: [None; MemberSpec::ARGS],
+            applies: None,
         }
     }
 
@@ -102,6 +106,12 @@ impl MemberSpec {
     /// The same, of `capability`.
     pub(crate) const fn capability(mut self, capability: Capability) -> MemberSpec {
         self.capability = Some(capability);
+        self
+    }
+
+    /// The same, its argument that names a modifier applying it as `applies` says.
+    pub(crate) const fn applies(mut self, applies: Applies) -> MemberSpec {
+        self.applies = Some(applies);
         self
     }
 

@@ -37,6 +37,12 @@ fn products_and_sums_are_exact() {
         low: u128::MAX,
     };
     assert_eq!(top.checked_add(one), None);
+    // A borrow from the high half; a difference of 0; and below 0, none.
+    let carried = U256 { high: 1, low: 0 };
+    assert_eq!(carried.checked_sub(one), Some(one_short));
+    assert_eq!(top.checked_sub(top), Some(U256::ZERO));
+    assert_eq!(one_short.checked_sub(carried), None);
+    assert_eq!(U256::ZERO.checked_sub(one), None);
 
     // The order compares the high half first.
     assert!(

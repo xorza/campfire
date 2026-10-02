@@ -113,7 +113,8 @@ pub use projectiles::Projectiles;
 pub use projectiles::projectile::Projectile;
 
 pub use scripts::api_version::ApiVersion;
-pub use scripts::error::CallError;
+pub use scripts::applies::Applies;
+pub use scripts::error::{CallError, ParamProblem};
 pub use scripts::hook::Hook;
 pub use scripts::name_kind::NameKind;
 pub use scripts::script_role::ScriptRole;

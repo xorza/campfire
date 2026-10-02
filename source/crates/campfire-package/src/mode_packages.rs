@@ -4,8 +4,8 @@ use std::iter;
 use std::path::Path;
 
 use campfire_capabilities::{
-    BookInput, BookKind, BookPackage, Books, CapabilitySet, DeclaredName, EngineTag, MapData,
-    ModeData, PackageContent, Param, ScriptBook, StatGraph, UnitTypeFile, Walker,
+    ActionData, BookInput, BookKind, BookPackage, Books, CapabilitySet, DeclaredName, EngineTag,
+    MapData, ModeData, PackageContent, Param, ScriptBook, StatGraph, UnitTypeFile, Walker,
 };
 use campfire_common::Fingerprint;
 use campfire_script::{ScriptHost, ScriptId};
@@ -20,6 +20,7 @@ use crate::files::mode_file::ModeFile;
 use crate::files::mode_manifest::ModeManifest;
 use crate::files::units_data::UnitsData;
 use crate::load_check::LoadCheck;
+use crate::modifier_ways::ModifierWays;
 use crate::package::Package;
 use crate::package_dir::PackageDir;
 use crate::package_files::PackageFiles;
@@ -272,16 +273,23 @@ impl ModePackages {
         &self.map
     }
 
+    /// The ways each modifier of `view`, one of its packages, is applied.
+    pub(crate) fn modifier_ways<'a>(&'a self, view: PackageView<'a>) -> ModifierWays<'a> {
+        let mode_script = matches!(view.kind, ViewKind::Mode).then_some(&self.data.script);
+        ModifierWays::of(view, mode_script)
+    }
+
     /// Which stats each live stat change reads and which it changes, across the modifiers of the
     /// mode and of each package it depends on: a change that reads a param its modifier, or else
-    /// an ability that applies it, declares as a scaling table reads each stat the table names.
+    /// an action of a way that applies it, declares as a scaling table reads each stat the table
+    /// names.
     pub fn stat_graph(&self) -> StatGraph {
         let mut graph = StatGraph::new(self.data.stats.keys().cloned());
         for view in self.packages() {
             let content = view.content;
-            let appliers = view.package.appliers(&content.actions, &content.units);
+            let ways = self.modifier_ways(view);
             for (id, modifier) in &content.modifiers {
-                let by = appliers.get(id.as_str()).map_or(&[][..], Vec::as_slice);
+                let by: Vec<&ActionData> = ways.actions_of(id.as_str(), &content.actions).collect();
                 for (changed, change) in &modifier.stats {
                     let Some(name) = change.value.param() else {
                         continue;

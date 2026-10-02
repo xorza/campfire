@@ -1,6 +1,6 @@
 use std::ptr;
 
-use campfire_capabilities::{ApiOwner, MemberKind, NameArgs, NameKind, ScriptApi};
+use campfire_capabilities::{ApiOwner, Applies, MemberKind, NameArgs, NameKind, ScriptApi};
 use campfire_script::rhai::{AST, ASTNode, Expr, FnCallExpr, Stmt};
 
 use crate::error::{CtxMisuse, LoadProblem, Place};
@@ -44,11 +44,13 @@ pub(crate) struct CtxUse {
     pub(crate) kind: MemberKind,
 }
 
-/// A literal a script gives an argument that names something of `kind`.
+/// A literal a script gives an argument that names something of `kind`, and, for a modifier,
+/// how the call applies it; none when it only names it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ScriptName {
     pub(crate) kind: NameKind,
     pub(crate) name: String,
+    pub(crate) applies: Option<Applies>,
 }
 
 impl ScriptName {
@@ -110,7 +112,7 @@ impl ScriptFacts {
                     if let Expr::MethodCall(call, _) = &dot.rhs
                         && !on_ctx
                     {
-                        facts.read_names(api.method_names(&call.name), call);
+                        facts.read_names(api.method_names(&call.name), None, call);
                     }
                 }
                 Some(ASTNode::Expr(expr)) if variable(expr) == Some(CTX) => {
@@ -144,7 +146,8 @@ impl ScriptFacts {
                 });
                 let member = api.member(ApiOwner::Ctx, &call.name);
                 let member = member.filter(|member| member.kind == MemberKind::Call);
-                self.read_names(member.map(|member| member.names), call);
+                let applies = member.and_then(|member| member.applies);
+                self.read_names(member.map(|member| member.names), applies, call);
             }
             Expr::Dot(inner, ..) | Expr::Index(inner, ..) => {
                 let Some(name) = property(&inner.lhs) else {
@@ -195,22 +198,27 @@ impl ScriptFacts {
         }
     }
 
-    /// The names of `kind` it gives the API.
-    pub(crate) fn names_of(&self, kind: NameKind) -> impl Iterator<Item = &str> {
-        self.names
-            .iter()
-            .filter(move |named| named.kind == kind)
-            .map(|named| named.name.as_str())
-    }
-
-    /// The literals `call` gives the arguments that `names` marks as names.
-    fn read_names(&mut self, names: Option<NameArgs>, call: &FnCallExpr) {
+    /// The literals `call` gives the arguments that `names` marks as names, a modifier's with
+    /// how the call `applies` it.
+    fn read_names(&mut self, names: Option<NameArgs>, applies: Option<Applies>, call: &FnCallExpr) {
         for (at, kind) in names.into_iter().flatten().enumerate() {
             let literal = call.args.get(at).and_then(string);
             if let (Some(kind), Some(name)) = (kind, literal) {
-                self.names.push(ScriptName { kind, name });
+                let applies = applies.filter(|_| kind == NameKind::Modifier);
+                self.names.push(ScriptName {
+                    kind,
+                    name,
+                    applies,
+                });
             }
         }
+    }
+
+    /// The modifiers it applies by a literal name, each with how its call applies it.
+    pub(crate) fn applied(&self) -> impl Iterator<Item = (&str, Applies)> {
+        self.names
+            .iter()
+            .filter_map(|named| Some((named.name.as_str(), named.applies?)))
     }
 
     fn value(&mut self, name: &str) {

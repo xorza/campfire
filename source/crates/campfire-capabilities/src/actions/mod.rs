@@ -151,11 +151,7 @@ fn hold_passives(
                 let (ability, rank) = (Some(slot.action), slot.rank);
                 params.modifier_param(passive.modifier, ability, rank, place, source.as_ref())
             };
-            if let Some(application) =
-                book.application(passive.modifier, applier, None, now, *rate, param)
-            {
-                carried.apply(application);
-            }
+            carried.apply(book.application(passive.modifier, applier, None, now, *rate, param));
         }
     }
 }

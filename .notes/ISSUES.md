@@ -6,3 +6,4 @@
 - A map cannot block cells: design 04's navigation gives `[navigation]` the cells its map blocks on each layer, but the map data and `PathingGrid` hold none. The exact tests of a route, smoothing and the straight-goal shortcut, know only bodies.
 - The LAN check failed once on the macOS CI runner and passed on the next run of the same code: "the input of slot 0 stamped 50 took effect in tick 56" (run 37023491620).
 - `campfire-runner/src/runner/bench.rs` imports `Tick` at the end of the file, after its code.
+- A `cargo test --workspace` build turns on Bevy's `multi_threaded` feature for every crate by feature unification, so the runner's tests run their schedules on the multi-threaded executor: the 3v3 replay test takes 1.2 s there, with 479 000 context switches, against 0.45 s and 551 in a `-p campfire-runner` build, and three runner tests pass 1 s.

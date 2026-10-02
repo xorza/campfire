@@ -156,12 +156,8 @@ impl HeldPass {
                     let (ability, rank) = (entry.ability, entry.rank);
                     params.modifier_param(entry.modifier, ability, rank, place, source.as_ref())
                 };
-                let Some(application) =
-                    book.application(entry.modifier, applier, None, tick.start(), rate, param)
-                else {
-                    continue;
-                };
-                carried.apply(application);
+                let start = tick.start();
+                carried.apply(book.application(entry.modifier, applier, None, start, rate, param));
             }
         }
     }

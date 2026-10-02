@@ -3,7 +3,7 @@ use bevy_ecs::system::{NonSendMut, ResMut};
 use bevy_ecs::world::World;
 use campfire_script::rhai::Dynamic;
 use campfire_script::{ScriptError, ScriptHost, ScriptId};
-use campfire_sim::{SimSet, StateRegistry, TickRate};
+use campfire_sim::{EntityIndex, Position, SimSet, StateRegistry, TickRate};
 
 use crate::scripts::ctx::Ctx;
 use crate::scripts::script_budgets::ScriptBudgets;
@@ -15,6 +15,7 @@ use crate::units::script_view::View;
 use crate::units::spawn_point::SpawnPoint;
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
+use crate::values::bounds::Bounds;
 use crate::values::metric::Metric;
 
 pub(crate) mod action_id;
@@ -85,6 +86,7 @@ impl Units {
         let rate = *world.resource::<TickRate>();
         let view = View::new(rate);
         registry.register_component::<Body>();
+        registry.add_check::<Position>(Units::within_bounds);
         registry.register_component::<Owner>();
         registry.register_component::<SpawnPoint>();
         registry.register_component::<Team>();
@@ -110,6 +112,17 @@ impl Units {
                 .in_set(SimSet::Inputs)
                 .in_set(UnitsSet::BeginTick),
         );
+    }
+
+    /// Whether every unit stands within the match's bounds, as every system keeps it, and as
+    /// vision and navigation index the map's cells by it.
+    fn within_bounds(world: &World) -> bool {
+        let bounds = Bounds::of(world);
+        world.resource::<EntityIndex>().iter().all(|(_, entity)| {
+            world
+                .get::<Position>(entity)
+                .is_none_or(|&at| bounds.contains(at))
+        })
     }
 
     /// Compiles `source` in the match's script host, once for every capability that runs it.

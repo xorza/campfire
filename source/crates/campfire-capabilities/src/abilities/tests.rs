@@ -133,7 +133,6 @@ fn cost(name: &str, amount: Number) -> BTreeMap<DeclaredName, Ranked<Number>> {
 /// Husk's Lash Out as its data declares it: no target, a cooldown of 10 s down to 6 s, 35 of the
 /// caster's mana, and damage within 3.5 m of 75 to 175, plus half the caster's ability power.
 fn lash_out() -> ActionData {
-    let scalars = |values: &[i64]| values.iter().map(|&value| Scalar::Int(value)).collect();
     ActionData {
         script: Some(PackagePath::parse("scripts/lash_out.rhai").unwrap()),
         cooldown_ms: Some(Ranked::PerRank(
@@ -148,7 +147,7 @@ fn lash_out() -> ActionData {
             (
                 DeclaredName::new("damage").unwrap(),
                 Param::Scaling(Scaling {
-                    base: Ranked::PerRank(scalars(&[75, 100, 125, 150, 175])),
+                    base: Ranked::PerRank([75, 100, 125, 150, 175].map(Num::int).to_vec()),
                     per_level: Num::ZERO,
                     bonus: BTreeMap::new(),
                     ratios: [(Stat::named("ability_power").unwrap(), halves(1))].into(),
@@ -1560,7 +1559,7 @@ fn changing(
 
 /// A scaling table of `base` at every rank, `per_level`, and `ratios` and `bonus` by stat name.
 fn scaling(
-    base: Ranked<Scalar>,
+    base: Ranked<Num>,
     per_level: i64,
     ratios: &[(&str, Num)],
     bonus: &[(&str, Num)],
@@ -1612,13 +1611,16 @@ fn a_scaling_param_reads_its_sources_level_stats_and_bonus() {
         None,
     );
     Stats::load_modifier(&mut game.sim.world, 0, "boost", &boost, None);
-    let mark = changing(&[], &[], Some(param("power")));
+    let mark = ModifierData {
+        shield: Some(param("power")),
+        ..ModifierData::default()
+    };
     Stats::load_modifier(&mut game.sim.world, 0, "mark", &mark, None);
     // Power: 100 a rank, 10 a level, half the ability power and 1.5 times the bonus attack
     // damage.
     let half = Num::HALF;
     let power = scaling(
-        Ranked::PerRank([100, 200, 300, 400, 500].map(Scalar::Int).to_vec()),
+        Ranked::PerRank([100, 200, 300, 400, 500].map(Num::int).to_vec()),
         10,
         &[("ability_power", half)],
         &[("attack_damage", half * 3)],
@@ -1631,7 +1633,7 @@ fn a_scaling_param_reads_its_sources_level_stats_and_bonus() {
     let script = r#"
 fn on_resolve(ctx, caster, target) {
     ctx.damage(target, ctx.p.power, "true");
-    ctx.add_modifier(target, "mark");
+    ctx.add_modifier(caster, "mark");
 }
 "#;
     let ability = game.load("ability", &data, script);
@@ -1640,23 +1642,18 @@ fn on_resolve(ctx, caster, target) {
     game.sim.insert(caster, parts);
     game.give(caster, "boost");
     let target = game.spawn(1, ground(Num::int(5), Num::ZERO), Modifiers::default());
-    let t = game.sim.world.resource::<SimTick>().start();
     game.cast(caster, ActionTarget::Unit(target));
 
     // At rank 2 and level 3: 200 + 10 × 2 + 0.5 × 40 + 1.5 × (80 − 60) = 270, which the script
-    // deals, 500 → 230, and the mark lasts: 270 ms at 30 ticks a second, 8.1 ticks, up to 9,
-    // so it ends as tick t + 10 starts.
+    // deals, 500 → 230, and the shield of the caster's mark holds.
     assert_eq!(game.failed_calls(), []);
     assert_eq!(game.sim.health(target), 230);
     let mark = Stats::modifier(&game.sim.world, 0, "mark").unwrap();
-    let marked = game
-        .sim
-        .get::<Modifiers>(target)
-        .get(mark, Some(caster))
-        .unwrap()
-        .lifetime
-        .until();
-    assert_eq!(marked, Some(Tick::new(t.get() + 10)));
+    let entity = game.sim.entity(caster);
+    let modifiers = game.sim.world.get::<Modifiers>(entity).unwrap();
+    let clocks = game.sim.world.get::<ModifierClocks>(entity).unwrap();
+    let shield = clocks.shield_of(modifiers, mark, Some(caster));
+    assert_eq!(shield, Some(Num::int(270)));
 }
 
 /// Veil's match: Veil has attack damage 53 at level 1. Dual Path gives her spell vamp of 0.06 and
@@ -1701,14 +1698,14 @@ impl VeilMatch {
         let places = [&attack_damage, &spell_vamp, &armor].map(place);
         Stats::load_book(&mut game.sim.world, book);
         let vamp = scaling(
-            Ranked::One(Scalar::Decimal(decimal("0.06"))),
+            Ranked::One(decimal("0.06")),
             0,
             &[],
             &[("attack_damage", decimal("0.00167"))],
         );
         let dual_path = changing(&[("spell_vamp", param("vamp"))], &[("vamp", vamp)], None);
         let guard = scaling(
-            Ranked::One(Scalar::Int(0)),
+            Ranked::One(Num::ZERO),
             0,
             &[("spell_vamp", Num::int(10))],
             &[],

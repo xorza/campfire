@@ -5,7 +5,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
 use campfire_math::Num;
-use campfire_sim::{SimComponent, StableId};
+use campfire_sim::{SimComponent, StableId, TickRate};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
@@ -474,21 +474,33 @@ impl Deref for Carried<'_> {
 
 impl Carried<'_> {
     /// Whether its modifier, its ability's params and each live param it reads are ones the books
-    /// hold, and it has a value for each of its modifier's stat changes.
-    pub(crate) fn fits(&self, modifiers: &ModifierBook, params: &ParamBook) -> bool {
-        let Some(entry) = modifiers.entry(self.instance.id) else {
+    /// hold, its way gives every param its modifier and its aura's read, as an application
+    /// checks at `rate`, and it has a value for each of its modifier's stat changes.
+    pub(crate) fn fits(
+        &self,
+        modifiers: &ModifierBook,
+        params: &ParamBook,
+        rate: TickRate,
+    ) -> bool {
+        let Instance {
+            id, ability, rank, ..
+        } = *self.instance;
+        let Some(entry) = modifiers.entry(id) else {
             return false;
         };
-        let ability = self
-            .instance
-            .ability
-            .is_none_or(|ability| params.has_action(ability));
+        let way = |id| modifiers.has_way(id, ability, rank, params, rate);
+        let applies = way(id)
+            && entry
+                .spec
+                .aura
+                .as_ref()
+                .is_none_or(|aura| way(aura.modifier));
         let shares = self.shares.len() == entry.spec.stats.len()
             && self
                 .shares
                 .iter()
-                .all(|share| share.live.is_none_or(|live| params.has_live(live)));
-        ability && shares
+                .all(|share| share.live.is_none_or(|live| params.holds_live(live, rank)));
+        applies && shares
     }
 
     /// Whether its end, its stacks' life and each stack's end are times a match makes.
@@ -509,23 +521,25 @@ impl SimComponent for Modifiers {
     const NAME: &'static str = "stats.modifiers";
 
     // A modifier, a param the books lack, or another count of shares than its modifier's changes,
-    // would be read past the books' places; its clocks are one for each instance; and a stack's
-    // life past the limit would overflow its next end.
+    // would be read past the books' places, and a way that lacks a param would fail the next
+    // application of it or its aura's; its clocks are one for each instance; and a stack's life
+    // past the limit would overflow its next end.
     fn check(&self, world: &World, entity: Entity) -> bool {
         let books = (
             world.get_resource::<ModifierBook>(),
             world.get_resource::<ParamBook>(),
+            world.get_resource::<TickRate>(),
         );
         let clocks = world
             .get::<ModifierClocks>(entity)
             .is_some_and(|clocks| clocks.len() == self.instances.len());
-        let (Some(modifiers), Some(params)) = books else {
+        let (Some(modifiers), Some(params), Some(&rate)) = books else {
             return self.instances.is_empty() && clocks;
         };
         clocks
             && self
                 .iter()
-                .all(|carried| carried.fits(modifiers, params) && carried.within_limit())
+                .all(|carried| carried.fits(modifiers, params, rate) && carried.within_limit())
     }
 }
 

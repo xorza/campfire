@@ -22,7 +22,8 @@ pub enum Param {
 /// type's value.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Scaling {
-    pub base: Ranked<Scalar>,
+    #[serde(deserialize_with = "Scalar::ranked_num")]
+    pub base: Ranked<Num>,
     #[serde(default, deserialize_with = "Scalar::num")]
     pub per_level: Num,
     #[serde(default, deserialize_with = "Scalar::nums")]

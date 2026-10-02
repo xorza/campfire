@@ -26,6 +26,8 @@ fn on_input(ctx, player, name, value) {
         ctx.state.seen = renewed.stacks * 10 + renewed.state.count;
     } else if value == "unknown" {
         ctx.add_modifier(hero, "curse");
+    } else if value == "rally" {
+        ctx.add_modifier(hero, "ral" + "ly");
     }
 }
 "#;
@@ -78,11 +80,12 @@ fn on_input(ctx, player, name, value) {
     game.tick(&[(0, input("probe", "renew"))]);
     assert_eq!(game.field("seen"), StateValue::Int(10));
     assert_eq!(held(&game), [(1, Some(u + 4), vec![StateValue::Int(0)])]);
-    game.tick(&[(0, input("probe", "unknown"))]);
-    assert_eq!(
-        game.failures(),
-        [FailureKind::Api(ApiError::UnknownModifier)]
-    );
+    // A name the package does not declare fails; so does one the script computes, of a modifier
+    // that reads a param of its applier's action, which the mode does not have.
+    game.tick(&[(0, input("probe", "unknown")), (0, input("probe", "rally"))]);
+    let missing = ApiError::ModifierParam(ParamProblem::Missing);
+    let refused = [ApiError::UnknownModifier, missing];
+    assert_eq!(game.failures(), refused.map(FailureKind::Api));
 }
 
 #[test]
@@ -102,6 +105,8 @@ fn on_mode_input(ctx, player, name, value) {
         ctx.add_player_modifier(1, "march");
     } else if value == "nobody" {
         ctx.add_player_modifier(9, "drill");
+    } else if value == "rally" {
+        ctx.add_player_modifier(1, "ral" + "ly");
     }
 }
 "#;
@@ -134,11 +139,14 @@ fn on_mode_input(ctx, player, name, value) {
     let held = game.sim.world.resource::<PlayerModifiers>();
     assert_eq!(held.of(PlayerSlot::new(1)).collect::<Vec<_>>(), [drill]);
     assert_eq!(held.of(PlayerSlot::new(0)).count(), 0);
-    // A modifier the package does not declare, and a player the session does not have, fail.
+    // A modifier the package does not declare, a player the session does not have, and a
+    // modifier that reads a param of an action, which a player's never has, fail.
     game.tick(&[
         (1, input("probe", "stranger")),
         (1, input("probe", "nobody")),
+        (1, input("probe", "rally")),
     ]);
-    let refused = [ApiError::UnknownModifier, ApiError::UnknownPlayer];
+    let missing = ApiError::ModifierParam(ParamProblem::Missing);
+    let refused = [ApiError::UnknownModifier, ApiError::UnknownPlayer, missing];
     assert_eq!(game.failures(), refused.map(FailureKind::Api));
 }

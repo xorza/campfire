@@ -169,7 +169,8 @@ impl SimComponent for ModifierClocks {
 
     // A clock for an instance its unit lacks, or state of other fields than its modifier's,
     // would be read past the instance's or the modifier's places; an interval past the limit
-    // would overflow its next tick.
+    // would overflow its next tick; and an interval or a shield its modifier lacks, or none where
+    // it has one, would act on what the modifier does not do.
     fn check(&self, world: &World, entity: Entity) -> bool {
         let (Some(modifiers), Some(book)) = (
             world.get::<Modifiers>(entity),
@@ -186,12 +187,15 @@ impl SimComponent for ModifierClocks {
             && modifiers.len() == self.clocks.len()
             && modifiers.iter().enumerate().all(|(at, carried)| {
                 book.entry(carried.instance.id).is_some_and(|entry| {
-                    let fields = &entry.spec.fields;
+                    let spec = &entry.spec;
+                    let clock = &self.clocks[at];
                     let state = self.state(at);
-                    state.len() == fields.len()
+                    clock.interval.is_some() == spec.interval.is_some()
+                        && clock.shield.is_some() == spec.shield.is_some()
+                        && state.len() == spec.fields.len()
                         && state
                             .iter()
-                            .zip(fields.iter())
+                            .zip(spec.fields.iter())
                             .all(|(value, field)| value.kind() == field.kind)
                 })
             })
@@ -229,7 +233,7 @@ pub(crate) mod internals {
     use campfire_math::Num;
     use campfire_sim::StableId;
 
-    use crate::stats::modifier_clocks::ModifierClocks;
+    use crate::stats::modifier_clocks::{Clock, ModifierClocks};
     use crate::stats::modifiers::Modifiers;
     use crate::units::modifier_id::ModifierId;
 
@@ -242,6 +246,11 @@ pub(crate) mod internals {
             source: Option<StableId>,
         ) -> Option<Num> {
             self.shield(modifiers.position(id, source)?)
+        }
+
+        /// The clock of the instance at `at`, to change as a flawed snapshot would.
+        pub(crate) fn clock_mut(&mut self, at: usize) -> &mut Clock {
+            &mut self.clocks[at]
         }
     }
 }

@@ -4,6 +4,7 @@ use campfire_sim::Capability;
 
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
+use crate::scripts::applies::Applies;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::Checked;
 use crate::scripts::hook::Hook;
@@ -86,8 +87,12 @@ impl StatsApi {
         let add = call(
             "add_modifier",
             "(unit, id) or (unit, id, duration_ms)",
-            "applies the modifier `id` of the script's package to `unit` from the acting unit, and returns its handle",
-        ).name(1, NameKind::Modifier);
+            "applies the modifier `id` of the script's package to `unit` from the acting unit, with \
+             the call's action at its rank, which gives each param the modifier reads and does not \
+             declare, and returns its handle",
+        )
+        .name(1, NameKind::Modifier)
+        .applies(Applies::WithAction);
         api.bind(add, |ctx: &mut Ctx, target: Unit, id: &str| {
             StatsApi::add_modifier(ctx, &target, id, None)
         })
@@ -100,9 +105,11 @@ impl StatsApi {
                 "add_player_modifier",
                 "(player, id)",
                 "gives `player` the modifier `id` of the script's package, which every living unit \
-                 it owns that the modifier's `affects` selects holds from no source",
+                 it owns that the modifier's `affects` selects holds from no source and with no \
+                 action, so the modifier declares each param it reads",
             )
-            .name(1, NameKind::Modifier),
+            .name(1, NameKind::Modifier)
+            .applies(Applies::WithoutAction),
             |ctx: &mut Ctx, player: INT, id: &str| StatsApi::add_player_modifier(ctx, player, id),
         )
         .bind(
@@ -147,15 +154,18 @@ impl StatsApi {
         .data(DataTable::Aura, &["radius", "affects", "modifier"], &[]);
     }
 
-    /// Queues modifier `id` of the call's package for `player`, one of the session's.
+    /// Queues modifier `id` of the call's package for `player`, one of the session's; an error
+    /// when `id` reads a param it does not declare.
     fn add_player_modifier(ctx: &Ctx, player: INT, id: &str) -> Checked<()> {
         let player = ctx.view().player(player)?;
         let id = StatsColumn::modifier_named(ctx.view(), ctx.frame().package(), id)?;
+        StatsColumn::check_way(ctx.view(), StatsCall::of(&ctx.frame()), id, None, 1)?;
         ctx.queue(ModifierEffect::AddPlayer { player, id })
     }
 
     /// Queues modifier `id` of the call's package on `target`, from the acting unit, for
-    /// `duration` when given, and gives its handle.
+    /// `duration` when given, and gives its handle; an error when the call's action at its rank
+    /// does not give a param `id` reads.
     fn add_modifier(
         ctx: &Ctx,
         target: &Unit,
@@ -164,8 +174,9 @@ impl StatsApi {
     ) -> Checked<ModifierHandle> {
         let id = StatsColumn::modifier_named(ctx.view(), ctx.frame().package(), id)?;
         let mut frame = ctx.write()?;
-        let source = frame.acting();
+        let (source, ability, rank) = (frame.acting(), frame.action(), frame.rank());
         let call = StatsCall::of_mut(&mut frame);
+        StatsColumn::check_way(ctx.view(), call, id, ability, rank)?;
         let handle = StatsColumn::applied_handle(ctx.view(), call, target.id, id, source);
         frame.effects.push(ModifierEffect::Add {
             target: target.id,

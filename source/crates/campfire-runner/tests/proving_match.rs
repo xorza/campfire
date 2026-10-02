@@ -7,6 +7,7 @@ use campfire_capabilities::{
 };
 use campfire_runner::internals::{FixedMatch, Golden, ProvingMatch, RestoreTarget};
 use campfire_sim::EntityIndex;
+use campfire_sim::internals::Draws;
 
 /// What the match showed over its ticks.
 #[derive(Debug, Default)]
@@ -161,4 +162,50 @@ fn a_snapshot_restores_and_a_flawed_one_never_panics() {
             }
         }
     }
+}
+
+/// The draws of each state type: enough to reach each edge of its numbers, few enough to keep
+/// the test fast.
+const DRAWS: usize = 16;
+
+/// Drawn values of each state type in turn, each a value its decode accepts with every number at
+/// an edge such as the limit, put in place of one holder's in a snapshot of the proving match:
+/// each restores or is refused, and what restores plays on with no panic. A byte flip seldom
+/// makes a value that decodes, so this reaches the checks the flips do not.
+#[test]
+fn a_snapshot_of_drawn_values_restores_or_is_refused_and_never_panics() {
+    let proving = ProvingMatch::load();
+    let mut fixed = proving.start();
+    for tick in 0..60 {
+        ProvingMatch::play_tick(&mut fixed, tick);
+    }
+    let mut target = RestoreTarget::new(proving.packages(), ProvingMatch::PLAYERS);
+    let mut base = Vec::new();
+    target.snapshot(fixed.runner().world(), &mut base);
+    let mut draws = Draws::new(7);
+    let (mut restored, mut refused) = (0, 0);
+    let mut flawed = Vec::new();
+    for name in target.state_names() {
+        for _ in 0..DRAWS {
+            target.restore(&base).unwrap();
+            if !target.scramble(name, &mut draws) {
+                continue;
+            }
+            flawed.clear();
+            target.snapshot_own(&mut flawed);
+            if target.restore(&flawed).is_ok() {
+                restored += 1;
+                for _ in 0..5 {
+                    target.run_tick();
+                }
+            } else {
+                refused += 1;
+            }
+        }
+    }
+    // The draws reach both outcomes, so the checks are exercised, not passed over.
+    assert!(
+        restored > 0 && refused > 0,
+        "{restored} restored, {refused} refused"
+    );
 }
