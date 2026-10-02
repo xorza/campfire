@@ -6,10 +6,13 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
-use campfire_capabilities::{ActionField, ActionKind, MapProblem, ModeError};
+use campfire_capabilities::{
+    ActionField, ActionKind, EffectData, EffectTo, Effecting, Hook, MapProblem, ModeError, Number,
+    PlannedEffect, Scalar,
+};
 use campfire_package::{
-    ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem, Limit, LoadError, LoadProblem,
-    ModePackages, NameKind, PackageDir, Place,
+    ChoiceProblem, Content, ContentError, CtxMisuse, DeliveryProblem, EffectProblem, Limit,
+    LoadError, LoadProblem, ModePackages, NameKind, PackageDir, Place,
 };
 use campfire_sim::Capability;
 
@@ -98,6 +101,9 @@ const HUSK: &str = "heroes/husk/data/avatar.toml";
 const GALE: &str = "heroes/gale/data/avatar.toml";
 const CINDER: &str = "heroes/cinder/data/avatar.toml";
 const VEIL: &str = "heroes/veil/data/avatar.toml";
+const RIME: &str = "heroes/rime/data/avatar.toml";
+/// Rime's Fan of Frost's `on_hit` effect that slows.
+const SLOWS: &str = r#"{ modifier = { id = "slow", duration_ms = { param = "slow_ms" } } },"#;
 const LASH_OUT: &str = "heroes/husk/scripts/lash_out.rhai";
 const CREEP_AI: &str = "modes/3v3/scripts/creep_ai.rhai";
 const MODE: &str = "moba-3v3";
@@ -141,6 +147,39 @@ fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
 }
 
 #[test]
+fn an_effect_to_the_source_reads_and_any_other_to_does_not() {
+    // Rime's Fan of Frost's hits also heal its caster by 1: the list reads it after the slow.
+    let to_source = Edit::Replace(
+        SLOWS,
+        r#"{ modifier = { id = "slow", duration_ms = { param = "slow_ms" } } },
+    { heal = { amount = 1 }, to = "source" },"#,
+    );
+    let packages = ModePackages::from_package_dir(&edited([(RIME, to_source)])).unwrap();
+    let rime = packages
+        .dependencies()
+        .iter()
+        .find(|dependent| dependent.package.name == "hero-rime")
+        .unwrap();
+    let Content::Avatar(avatar) = &rime.content else {
+        panic!("Rime is an avatar");
+    };
+    let heal = EffectData {
+        does: Effecting::Heal {
+            amount: Number::Value(Scalar::Int(1)),
+        },
+        to: EffectTo::Source,
+    };
+    assert_eq!(avatar.actions["fan_of_frost"].on_hit.last(), Some(&heal));
+    // `to` names the source alone.
+    let to_target = Edit::Replace(SLOWS, r#"{ heal = { amount = 1 }, to = "target" },"#);
+    let error = ModePackages::from_package_dir(&edited([(RIME, to_target)])).unwrap_err();
+    assert!(
+        read_fails(&error.problem, "data/avatar.toml", "unknown variant"),
+        "{error}"
+    );
+}
+
+#[test]
 fn more_layers_than_tags_a_match_holds_fail_the_load() {
     // 257 layers, each a tag, past the 256 tags a match holds.
     let names: Vec<String> = (0..=256).map(|at| format!("\"layer{at}\"")).collect();
@@ -174,7 +213,7 @@ fn more_tracks_than_a_unit_holds_fail_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 141] = [
+const FLAWS: [Flaw; 150] = [
     flaw(
         MANIFEST,
         Edit::Replace(r#"engine = "0.1.0""#, r#"engine = "0.0.9""#),
@@ -468,6 +507,118 @@ const FLAWS: [Flaw; 141] = [
         ),
         MODE,
         |problem| matches!(problem, LoadProblem::RepeatedUnitType(name) if name == "hero-husk/grasping_wraps"),
+    ),
+    flaw(
+        RIME,
+        Edit::Replace(SLOWS, r#"{ purge = { tag = "slowed" } },"#),
+        "hero-rime",
+        |problem| matches!(problem, LoadProblem::Effect { action, list: Hook::OnHit, problem: EffectProblem::Planned(PlannedEffect::Purge) } if action == "fan_of_frost"),
+    ),
+    flaw(
+        RIME,
+        Edit::Replace(
+            SLOWS,
+            r#"{ heal = { amount = 1 }, restore = { pool = "mana", amount = 1 } },"#,
+        ),
+        "hero-rime",
+        |problem| read_fails(problem, "data/avatar.toml", "exactly one effect"),
+    ),
+    flaw(
+        RIME,
+        Edit::Replace("on_hit = [", "on_end = ["),
+        "hero-rime",
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Effect {
+                    list: Hook::OnEnd,
+                    problem: EffectProblem::NoUnit,
+                    ..
+                }
+            )
+        },
+    ),
+    flaw(
+        RIME,
+        Edit::Replace("on_hit = [", "on_resolve = ["),
+        "hero-rime",
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Effect {
+                    list: Hook::OnResolve,
+                    problem: EffectProblem::NoUnit,
+                    ..
+                }
+            )
+        },
+    ),
+    flaw(
+        RIME,
+        Edit::Replace(
+            "delivery = { projectile = \"frost_arrow\", count = 7, spread_deg = \"57.5\" }\n",
+            "",
+        ),
+        "hero-rime",
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Effect {
+                    list: Hook::OnHit,
+                    problem: EffectProblem::NoDelivery,
+                    ..
+                }
+            )
+        },
+    ),
+    flaw(
+        RIME,
+        Edit::Replace(
+            "base = [40, 50, 60, 70, 80]",
+            "base = [40, 50, -60, 70, 80]",
+        ),
+        "hero-rime",
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Effect {
+                    problem: EffectProblem::Negative,
+                    ..
+                }
+            )
+        },
+    ),
+    flaw(
+        RIME,
+        Edit::Replace(
+            "slow_ms = 2000\n\n[actions.snow_owl]",
+            "slow_ms = \"2000.5\"\n\n[actions.snow_owl]",
+        ),
+        "hero-rime",
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Effect {
+                    problem: EffectProblem::Duration,
+                    ..
+                }
+            )
+        },
+    ),
+    flaw(
+        RIME,
+        Edit::Replace(r#"kind = "physical" } }"#, r#"kind = "frost" } }"#),
+        "hero-rime",
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::DamageKind, name, .. } if name == "frost"),
+    ),
+    flaw(
+        RIME,
+        Edit::Replace(
+            r#"id = "slow", duration_ms"#,
+            r#"id = "frozen", duration_ms"#,
+        ),
+        "hero-rime",
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Modifier, name, .. } if name == "frozen"),
     ),
     flaw(
         HUSK,

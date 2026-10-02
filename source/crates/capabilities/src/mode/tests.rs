@@ -333,6 +333,9 @@ fn blink_data() -> ActionData {
         damage_kind: None,
         params: BTreeMap::new(),
         projectile_state: BTreeMap::new(),
+        on_resolve: Vec::new(),
+        on_hit: Vec::new(),
+        on_end: Vec::new(),
         unit_type: None,
     }
 }

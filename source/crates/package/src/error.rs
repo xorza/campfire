@@ -4,8 +4,8 @@ use std::io;
 use std::path::PathBuf;
 
 use campfire_capabilities::{
-    ActionField, ActionKind, ActionSlots, DeclaredName, MapProblem, ModeError, Pools, ResourceId,
-    Stat, TrackId,
+    ActionField, ActionKind, ActionSlots, DeclaredName, Hook, MapProblem, ModeError, PlannedEffect,
+    Pools, ResourceId, Stat, TrackId,
 };
 use campfire_content::PackagePath;
 use campfire_script::ScriptError;
@@ -205,8 +205,56 @@ pub enum LoadProblem {
     RepeatedName(DeclaredName),
     /// A projectile or an area type, or what delivers or makes one.
     Delivery(DeliveryProblem),
+    /// An effect of the action's list, the one before `list`.
+    Effect {
+        action: String,
+        list: Hook,
+        problem: EffectProblem,
+    },
     /// A field of mode state has no `sync`, or another state field has one.
     StateSync(String),
+}
+
+/// What is wrong with an effect of an action's list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EffectProblem {
+    /// An effect the release does not run yet.
+    Planned(PlannedEffect),
+    /// A list of a delivery's hit or end on an action that delivers nothing, which never runs.
+    NoDelivery,
+    /// An effect to the unit reached in a list that reaches none: `on_end`, or `on_resolve` of
+    /// an action that aims at no unit.
+    NoUnit,
+    /// A number below zero, at some rank.
+    Negative,
+    /// A number past what a sim number holds, at some rank.
+    Overflow,
+    /// A modifier's duration that is not a whole number of milliseconds within a `u32` at each
+    /// rank, as a scaling param is not.
+    Duration,
+}
+
+impl fmt::Display for EffectProblem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EffectProblem::Planned(effect) => {
+                write!(
+                    f,
+                    "`{}` is an effect the release does not run yet",
+                    effect.name()
+                )
+            }
+            EffectProblem::NoDelivery => f.write_str("the action delivers nothing to hit or end"),
+            EffectProblem::NoUnit => {
+                f.write_str("an effect to the unit reached, where the list reaches none")
+            }
+            EffectProblem::Negative => f.write_str("a number below zero"),
+            EffectProblem::Overflow => f.write_str("a number past a sim number"),
+            EffectProblem::Duration => f.write_str(
+                "a duration that is no whole number of milliseconds within a u32 at each rank",
+            ),
+        }
+    }
 }
 
 /// What is wrong with a projectile or an area type, or with what delivers or makes one.
@@ -552,6 +600,11 @@ impl fmt::Display for LoadProblem {
             LoadProblem::CombatMissing(at) => write!(f, "{at}: the life pool without combat"),
             LoadProblem::RepeatedName(name) => write!(f, "the mode declares {name:?} twice"),
             LoadProblem::Delivery(problem) => write!(f, "{problem}"),
+            LoadProblem::Effect {
+                action,
+                list,
+                problem,
+            } => write!(f, "action {action:?}, `{}`: {problem}", list.name()),
             LoadProblem::StateSync(field) => write!(f, "state {field:?}: sync where it has none"),
         }
     }

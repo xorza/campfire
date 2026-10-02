@@ -305,6 +305,17 @@ impl Frame {
         }
     }
 
+    /// The place of param `name` among the params of `ability`, which the frame holds at a call's
+    /// rank; `None` when the ability declares none of that name.
+    pub(crate) fn find_param(&self, ability: ActionId, name: &str) -> Option<usize> {
+        self.params.find(ability.index(), name)
+    }
+
+    /// The running call's ability's param at `at`, at its rank.
+    pub(crate) fn ability_value(&self, at: usize) -> Scalar {
+        self.values[at]
+    }
+
     /// Param `name` a modifier's number reads: `modifier`'s own, then that of `ability`, which
     /// applied it, at `rank`, of `source`; `None` when neither declares it or it does not resolve.
     /// A scaling table's is live, read again as its source changes.

@@ -105,8 +105,8 @@ fn a_3v3_match_replays_to_the_same_hashes() {
     let phase = &world.resource::<ModeState>().get()[1];
     assert_eq!(phase, &StateValue::Text("play".to_owned()));
     // Each script file compiles once, however many abilities or unit types run it: the mode's 4,
-    // the six heroes' 5, 4, 5, 5, 5 and 4, and the spells' 6 make 38.
-    assert_eq!(world.non_send::<ScriptHost>().compiled(), 38);
+    // the six heroes' 5, 4, 5, 5, 4 and 4, and the spells' 6 make 37.
+    assert_eq!(world.non_send::<ScriptHost>().compiled(), 37);
 
     // The map's 14 structures from the start; at the pick's end, the 6 heroes at their teams'
     // spawns, slots 0 to 2 north and 3 to 5 south, and the 5 neutral camps.

@@ -312,6 +312,9 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `script` | runs |
 | `cooldown_ms` | runs |
 | `params` | runs |
+| `on_resolve` | runs |
+| `on_hit` | runs |
+| `on_end` | runs |
 | `clamp_to_range` | planned |
 | `toggle` | planned |
 | `channel` | planned |
@@ -321,6 +324,23 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `projectile_state` | planned |
 | `unit_type` | runs |
 | `delivery` | runs |
+
+### An effect of an action's `on_resolve`, `on_hit` or `on_end`
+
+| Field | Status |
+| --- | --- |
+| `damage` | runs |
+| `heal` | runs |
+| `restore` | runs |
+| `modifier` | runs |
+| `xp` | runs |
+| `to` | runs |
+| `purge` | planned |
+| `spawn` | planned |
+| `launch` | planned |
+| `move` | planned |
+| `loot` | planned |
+| `noise` | planned |
 
 ### An action's `delivery`
 

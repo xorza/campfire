@@ -37,6 +37,7 @@ pub(crate) mod action_data;
 pub(crate) mod action_kind;
 pub(crate) mod action_slots;
 pub(crate) mod delivery_data;
+pub(crate) mod effect_data;
 pub(crate) mod error;
 pub(crate) mod purse;
 pub(crate) mod slot_kind;

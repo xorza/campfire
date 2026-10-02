@@ -8,8 +8,10 @@ use serde::{Deserialize, Deserializer};
 
 use crate::actions::action_kind::ActionKind;
 use crate::actions::delivery_data::DeliveryData;
+use crate::actions::effect_data::EffectData;
 use crate::actions::error::ActionField;
 use crate::mode::resource_id::{ResourceAmount, ResourceId};
+use crate::scripts::hook::Hook;
 use crate::scripts::state_decl::StateDecl;
 use crate::stats::pool_cost::PoolCost;
 use crate::stats::pool_id::PoolId;
@@ -69,6 +71,15 @@ pub struct ActionData {
     /// The state of each projectile the action fires.
     #[serde(default)]
     pub projectile_state: BTreeMap<String, StateDecl>,
+    /// The effects of its resolve, which queue before its script's `on_resolve`.
+    #[serde(default)]
+    pub on_resolve: Vec<EffectData>,
+    /// The effects of each hit of its delivery, which queue before `on_hit`.
+    #[serde(default)]
+    pub on_hit: Vec<EffectData>,
+    /// The effects of its delivery's end, which queue before `on_end`.
+    #[serde(default)]
+    pub on_end: Vec<EffectData>,
 }
 
 /// A toggle's cost, in each pool of the caster it names.
@@ -131,7 +142,7 @@ impl ActionData {
     }
 
     /// Whether it has a field only a cast runs: a script or params, a cooldown, a clamp to range,
-    /// a toggle, a channel, a hold, charges, a charge, or projectile state.
+    /// a toggle, a channel, a hold, charges, a charge, projectile state, or an effect list.
     pub fn cast_fields(&self) -> bool {
         self.cooldown_ms.is_some() || self.cast_only_fields()
     }
@@ -146,9 +157,12 @@ impl ActionData {
     }
 
     /// Whether it has a field that no kind but a cast runs: a script or params, a clamp to range,
-    /// a toggle, a channel, a hold, charges, a charge, or projectile state.
+    /// a toggle, a channel, a hold, charges, a charge, projectile state, or an effect list.
     fn cast_only_fields(&self) -> bool {
         self.script.is_some()
+            || !self.on_resolve.is_empty()
+            || !self.on_hit.is_empty()
+            || !self.on_end.is_empty()
             || !self.params.is_empty()
             || self.clamp_to_range
             || self.toggle.is_some()
@@ -272,14 +286,39 @@ impl ActionData {
                     RangeField::Param(reference) => Some(reference.param.as_str()),
                 }),
         )
+        .chain(
+            self.effects()
+                .flat_map(|effect| effect.does.numbers())
+                .filter_map(Number::param),
+        )
     }
 
-    /// The ids of the modifiers its data names: the one it holds and its passive.
+    /// The ids of the modifiers its data names: the one it holds, its passive, and those its
+    /// effect lists apply.
     pub fn modifiers(&self) -> impl Iterator<Item = &str> + '_ {
+        let effects = self.effects().filter_map(|effect| effect.does.modifier());
         [self.hold.as_ref(), self.passive_modifier.as_ref()]
             .into_iter()
             .flatten()
             .map(String::as_str)
+            .chain(effects)
+    }
+
+    /// Its effect lists, each with the hook it runs before: `on_resolve`, `on_hit`, `on_end`.
+    pub fn effect_lists(&self) -> [(Hook, &[EffectData]); 3] {
+        [
+            (Hook::OnResolve, &self.on_resolve[..]),
+            (Hook::OnHit, &self.on_hit[..]),
+            (Hook::OnEnd, &self.on_end[..]),
+        ]
+    }
+
+    /// Every effect of its lists.
+    fn effects(&self) -> impl Iterator<Item = &EffectData> + '_ {
+        self.on_resolve
+            .iter()
+            .chain(&self.on_hit)
+            .chain(&self.on_end)
     }
 
     /// The filter its data names: its targeting's.

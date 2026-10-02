@@ -45,6 +45,7 @@ pub use actions::action_data::{
 pub use actions::action_kind::ActionKind;
 pub use actions::action_slots::{ActionSlot, ActionSlots, ActionTarget};
 pub use actions::delivery_data::DeliveryData;
+pub use actions::effect_data::{EffectData, EffectTo, Effecting, PlannedEffect};
 pub use actions::error::{ActionError, ActionField};
 pub use actions::slot_kind::SlotKind;
 pub use actions::slot_kinds::{SlotKindData, SlotKinds};

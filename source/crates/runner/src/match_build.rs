@@ -3,9 +3,9 @@ use std::collections::BTreeMap;
 use bevy_ecs::schedule::Schedule;
 use bevy_ecs::world::World;
 use campfire_capabilities::{
-    ActionData, ActionId, Actions, Areas, DeclaredName, KitRules, LoadoutSetup, MatchScripts, Mode,
-    ModeSetup, OnDeath, Orders, PoolId, Progression, Projectiles, SlotAction, Stat, Stats, UnitKit,
-    UnitTypeData, UnitTypeSetup, Units,
+    Abilities, ActionData, ActionId, Actions, Areas, DeclaredName, KitRules, LoadoutSetup,
+    MatchScripts, Mode, ModeSetup, OnDeath, Orders, PoolId, Progression, Projectiles, SlotAction,
+    Stat, Stats, UnitKit, UnitTypeData, UnitTypeSetup, Units,
 };
 use campfire_content::PackagePath;
 use campfire_package::{Content, ModePackages, Package, UnitTypeFile};
@@ -293,6 +293,9 @@ impl<'a> MatchBuild<'a> {
                     error,
                 }
             })?;
+        if !(data.on_resolve.is_empty() && data.on_hit.is_empty() && data.on_end.is_empty()) {
+            Abilities::load_effects(self.world, action, package, data);
+        }
         if let Some(unit_type) = &data.unit_type {
             self.spawns.push((action, unit_type.clone()));
         }

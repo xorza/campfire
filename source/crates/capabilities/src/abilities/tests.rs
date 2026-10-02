@@ -9,13 +9,14 @@ use bevy_ecs::world::Mut;
 use campfire_content::PackagePath;
 use campfire_math::{Num, PlayerSlot, Vec3};
 use campfire_script::{NumError, ScriptError};
-use campfire_sim::{Capability, EntityIndex, IdAllocator, SimUpdate, StateHash, TickRate};
+use campfire_sim::{Capability, EntityIndex, IdAllocator, SimUpdate, StateHash};
 
 use super::*;
 use crate::actions::Actions;
-use crate::actions::action_data::{ActionData, CostTarget, Range, RangeField, Targeting};
+use crate::actions::action_data::{CostTarget, Range, RangeField, Targeting};
 use crate::actions::action_slots::{ActionSlot, InProgress};
 use crate::actions::delivery_data::DeliveryData;
+use crate::actions::effect_data::EffectTo;
 use crate::actions::error::{ActionError, ActionField};
 use crate::actions::slot_kind::SlotKind;
 use crate::areas::area::Area;
@@ -38,7 +39,6 @@ use crate::scripts::match_scripts::MatchScripts;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::{ScriptFailure, ScriptFailures};
 use crate::scripts::script_limits::ScriptLimits;
-use crate::stats::Stats;
 use crate::stats::level::Level;
 use crate::stats::modifier_book::{Applier, ModifierBook};
 use crate::stats::modifier_data::{ModifierData, Reapply};
@@ -61,7 +61,7 @@ use crate::units::tag_data::TagData;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
-use crate::values::number::{Number, ParamRef};
+use crate::values::number::ParamRef;
 use crate::values::param::Param;
 use crate::values::param::Scaling;
 use crate::values::ranked::Ranked;
@@ -158,6 +158,9 @@ fn lash_out() -> ActionData {
         damage_kind: None,
         unit_type: None,
         projectile_state: BTreeMap::new(),
+        on_resolve: Vec::new(),
+        on_hit: Vec::new(),
+        on_end: Vec::new(),
         params: BTreeMap::from([
             (
                 "radius".to_owned(),
@@ -212,6 +215,9 @@ fn strike() -> ActionData {
         damage_kind: None,
         unit_type: None,
         projectile_state: BTreeMap::new(),
+        on_resolve: Vec::new(),
+        on_hit: Vec::new(),
+        on_end: Vec::new(),
         params: BTreeMap::from([(
             "damage".to_owned(),
             Param::Ranked(Ranked::One(Scalar::Int(50))),
@@ -1780,6 +1786,145 @@ fn a_script_launches_a_projectile_only_in_the_form_its_type_flies() {
             }
         }
     }
+}
+
+/// Fan of Frost as data alone: five arrows of `frost_arrow` over 30 degrees, aimed along a
+/// direction, whose hits deal the `damage` param, 30, as physical damage, apply `chilled`, and
+/// restore 2 mana to the caster.
+fn fan_of_frost() -> ActionData {
+    let effect = |does| EffectData {
+        does,
+        to: EffectTo::Reached,
+    };
+    ActionData {
+        script: None,
+        targeting: Targeting::Direction,
+        range: None,
+        delivery: Some(DeliveryData::Projectile {
+            unit_type: "frost_arrow".to_owned(),
+            count: NonZeroU8::new(5).unwrap(),
+            spread_deg: num(30),
+        }),
+        on_hit: vec![
+            effect(Effecting::Damage {
+                amount: Number::Param(ParamRef {
+                    param: "damage".to_owned(),
+                }),
+                kind: DeclaredName::new("physical").unwrap(),
+            }),
+            effect(Effecting::Modifier {
+                id: "chilled".to_owned(),
+                duration_ms: None,
+            }),
+            EffectData {
+                does: Effecting::Restore {
+                    pool: DeclaredName::new("mana").unwrap(),
+                    amount: Number::Value(Scalar::Int(2)),
+                },
+                to: EffectTo::Source,
+            },
+        ],
+        params: BTreeMap::from([(
+            "damage".to_owned(),
+            Param::Ranked(Ranked::One(Scalar::Int(30))),
+        )]),
+        ..strike()
+    }
+}
+
+#[test]
+fn fan_of_frost_from_data_alone_hits_exactly_the_units_in_reach() {
+    // Rime's Fan of Frost as design 04 writes it, with no script: five arrows of 0.5 m wide,
+    // fanned over 30 degrees around the aim along +x, each for 6 m at half a meter a tick, whose
+    // hits deal the `damage` param, 30, and apply `chilled`; and each hit restores 2 mana to the
+    // caster.
+    let mut game = Match::with(
+        LIMITS,
+        &[
+            Capability::Stats,
+            Capability::Combat,
+            Capability::Abilities,
+            Capability::Projectiles,
+        ],
+    );
+    let stats = StatBook::new(&BTreeMap::new(), [], RATE, num(6)).unwrap();
+    Stats::load(&mut game.world, stats, PoolBook::default());
+    let chilled = ModifierData {
+        duration_ms: Some(int(2000)),
+        ..scripted(None, &[])
+    };
+    let chilled = ModifierData {
+        script: None,
+        ..chilled
+    };
+    Stats::load_modifier(&mut game.world, 0, "chilled", &chilled, None);
+    let arrow = Units::load_type(&mut game.world, "frost_arrow", &UnitTypeData::default()).unwrap();
+    let data = ProjectileData {
+        speed: num(15),
+        width: halves(1),
+        range: Some(num(6)),
+        homing: false,
+        stop_on_hit: false,
+        once_per_cast: false,
+        hits: None,
+        gravity: None,
+        sight_radius: None,
+        collide: None,
+    };
+    Projectiles::load_type(&mut game.world, arrow, &data);
+    let fan = fan_of_frost();
+    let ability = Actions::load(&mut game.world, 0, "fan_of_frost", &fan, None, 1).unwrap();
+    Abilities::load_effects(&mut game.world, ability, 0, &fan);
+    Actions::bind_spawn(&mut game.world, ability, "frost_arrow");
+    let caster = game.caster(ability, 1);
+    // Bodiless units: on the middle arrow 4 m out; on the outer arrow 4 m out, at 15 degrees,
+    // (3.8637, 1.0353); between two arrows at 4 m, 3.75 degrees off each, 0.26 m from each line,
+    // past its 0.25; at 26.6 degrees, past the fan; 8 m out on the middle line, past the range;
+    // behind the caster; and an ally of the caster's on the middle line.
+    let point = |x: Num, z: Num| at(x, Num::ZERO, z);
+    let decimal = |text: &str| text.parse::<Num>().unwrap();
+    let enemies = [
+        point(num(4), Num::ZERO),
+        point(decimal("3.8637"), decimal("1.0353")),
+        point(decimal("3.9914"), decimal("0.2617")),
+        point(num(4), num(2)),
+        point(num(8), Num::ZERO),
+        point(num(-2), Num::ZERO),
+    ]
+    .map(|pos| game.spawn(1, pos, ()));
+    let ally = game.spawn(0, point(num(2), Num::ZERO), ());
+    for unit in enemies.iter().chain([&ally]) {
+        let entity = game.world.resource::<EntityIndex>().get(*unit).unwrap();
+        game.world.entity_mut(entity).insert(Modifiers::default());
+    }
+    game.cast(caster, ActionTarget::Point(point(num(10), Num::ZERO)));
+    game.run_until(16);
+    let chill = Stats::modifier(&game.world, 0, "chilled").unwrap();
+    let struck = |unit: StableId| {
+        let entity = game.world.resource::<EntityIndex>().get(unit).unwrap();
+        let chilled = game
+            .world
+            .get::<Modifiers>(entity)
+            .unwrap()
+            .get(chill, Some(caster));
+        (game.health(unit), chilled.is_some())
+    };
+    let reached = enemies.map(struck);
+    assert_eq!(
+        reached,
+        [
+            (470, true),
+            (470, true),
+            (500, false),
+            (500, false),
+            (500, false),
+            (500, false),
+        ]
+    );
+    assert_eq!(struck(ally), (500, false));
+    // The caster paid its 10 mana of 100, and two hits gave back 2 each.
+    assert_eq!(game.pool(caster), 94);
+    assert!(game.failures().is_empty(), "{:?}", game.failures());
 }
 
 #[test]

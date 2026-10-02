@@ -8,12 +8,15 @@ use bevy_ecs::world::World;
 use campfire_script::ScriptId;
 use campfire_script::rhai::Dynamic;
 use campfire_sim::{
-    Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry, Tick, Ticks,
+    Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry, Tick, TickRate, Ticks,
 };
 
+use crate::abilities::effect_lists::{Amount, Does, EffectLists, Listed};
 use crate::actions::action_book::{ActionBook, ActionId, Delivery};
+use crate::actions::action_data::ActionData;
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::{ActionSlots, ActionTarget};
+use crate::actions::effect_data::{EffectData, Effecting};
 use crate::actions::purse::Purse;
 use crate::areas::Areas;
 use crate::combat::CombatSet;
@@ -26,6 +29,7 @@ use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
+use crate::stats::Stats;
 use crate::stats::pool_cost::PoolCost;
 use crate::stats::pools::Pools;
 use crate::units::block::Block;
@@ -33,8 +37,10 @@ use crate::units::owner::Owner;
 use crate::units::team::Team;
 use crate::units::unit::Unit;
 use crate::units::unit_tags::UnitTags;
+use crate::values::number::Number;
 
 pub(crate) mod abilities_api;
+pub(crate) mod effect_lists;
 
 /// The `abilities` capability: abilities in slots, cast through their checks, with the effect a
 /// script describes.
@@ -51,12 +57,70 @@ impl Abilities {
         if !world.contains_non_send::<Ctx>() {
             return;
         }
+        world.insert_resource(EffectLists::default());
         schedule.add_systems(
             resolve_casts
                 .in_set(SimSet::Hit)
                 .after(CombatSet::Strike)
                 .before(CombatSet::Launch),
         );
+    }
+
+    /// Loads the effect lists of `action` of `package`, which loaded last from `data`, which the
+    /// package load checked: each name resolved to its id, each param to its place among the
+    /// action's params.
+    pub fn load_effects(world: &mut World, action: ActionId, package: u16, data: &ActionData) {
+        const CHECKED: &str = "the load checked each name of an effect list";
+        let ctx = world.non_send::<Ctx>().clone();
+        let view = ctx.view();
+        let frame = ctx.frame();
+        let amount = |number: &Number| match number {
+            Number::Value(value) => Amount::Value(value.to_num().expect(CHECKED)),
+            Number::Param(reference) => {
+                Amount::Param(frame.find_param(action, &reference.param).expect(CHECKED))
+            }
+        };
+        let resolve = |effect: &EffectData| {
+            let does = match &effect.does {
+                Effecting::Damage {
+                    amount: number,
+                    kind,
+                } => Does::Damage {
+                    amount: amount(number),
+                    kind: view.damage_kind(kind.as_str()).expect(CHECKED),
+                },
+                Effecting::Heal { amount: number } => Does::Heal {
+                    amount: amount(number),
+                },
+                Effecting::Restore {
+                    pool,
+                    amount: number,
+                } => Does::Restore {
+                    pool: view.pool_id(pool.as_str()).expect(CHECKED),
+                    amount: amount(number),
+                },
+                Effecting::Modifier { id, duration_ms } => Does::Modifier {
+                    id: Stats::modifier(world, package, id).expect(CHECKED),
+                    duration_ms: duration_ms.as_ref().map(amount),
+                },
+                Effecting::Xp {
+                    track,
+                    amount: number,
+                } => Does::Xp {
+                    track: view.track(track.as_str()).expect(CHECKED),
+                    amount: amount(number),
+                },
+                Effecting::Planned(_) => unreachable!("{CHECKED}"),
+            };
+            Listed {
+                does,
+                to: effect.to,
+            }
+        };
+        let lists = [&data.on_resolve, &data.on_hit, &data.on_end]
+            .map(|list| list.iter().map(resolve).collect::<Vec<_>>());
+        drop(frame);
+        world.resource_mut::<EffectLists>().push(action, lists);
     }
 }
 
@@ -230,8 +294,15 @@ fn prepare(
     }))
 }
 
-/// Runs the prepared cast's `on_resolve`, which queues its effects in the frame.
+/// Queues the prepared cast's `on_resolve` list in the frame, to the unit it aimed at, then runs
+/// its script's `on_resolve`, which queues its own effects after it.
 fn run(batch: &mut ScriptBatch<'_>, ctx: &Ctx, prepared: &mut Prepared) -> Result<(), CallError> {
+    let world = batch.world();
+    let list = world
+        .resource::<EffectLists>()
+        .of(prepared.action, Hook::OnResolve);
+    let rate = *world.resource::<TickRate>();
+    EffectLists::queue(list, &mut ctx.frame(), prepared.aim.unit(), rate);
     let Some(script) = prepared.on_resolve else {
         return Ok(());
     };

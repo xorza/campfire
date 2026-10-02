@@ -72,6 +72,7 @@ pub enum DataTable {
     Leech,
     Relation,
     Action,
+    Effect,
     Delivery,
     Projectile,
     Area,
@@ -456,7 +457,7 @@ impl Status {
 }
 
 impl DataTable {
-    pub const ALL: [DataTable; 21] = [
+    pub const ALL: [DataTable; 22] = [
         DataTable::Mode,
         DataTable::ModeCombat,
         DataTable::ModeNavigation,
@@ -465,6 +466,7 @@ impl DataTable {
         DataTable::Leech,
         DataTable::Relation,
         DataTable::Action,
+        DataTable::Effect,
         DataTable::Delivery,
         DataTable::Projectile,
         DataTable::Area,
@@ -491,6 +493,7 @@ impl DataTable {
             DataTable::Leech => "The mode's `[combat] leech`",
             DataTable::Relation => "A pair of teams, `[[relations]]`",
             DataTable::Action => "An action, `[actions.<id>]`",
+            DataTable::Effect => "An effect of an action's `on_resolve`, `on_hit` or `on_end`",
             DataTable::Delivery => "An action's `delivery`",
             DataTable::Projectile => "A unit type's `projectile`",
             DataTable::Area => "A unit type's `area`",
@@ -601,6 +604,7 @@ mod tests {
     use super::*;
     use crate::actions::action_data::ActionData;
     use crate::actions::delivery_data::DeliveryData;
+    use crate::actions::effect_data::EffectData;
     use crate::actions::slot_kinds::SlotKindData;
     use crate::areas::area_data::{AreaData, AreaInside};
     use crate::combat::combat_data::CombatData;
@@ -795,6 +799,7 @@ mod tests {
             (DataTable::Leech, serde_fields::<Leech>()),
             (DataTable::Relation, serde_fields::<RelationData>()),
             (DataTable::Action, serde_fields::<ActionData>()),
+            (DataTable::Effect, serde_fields::<EffectData>()),
             (DataTable::Delivery, serde_fields::<DeliveryData>()),
             (DataTable::Projectile, serde_fields::<ProjectileData>()),
             (DataTable::Area, serde_fields::<AreaData>()),

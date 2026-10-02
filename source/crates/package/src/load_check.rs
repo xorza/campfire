@@ -1,10 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::iter;
+use std::{iter, slice};
 
 use campfire_capabilities::{
     ActionData, ActionKind, ActionSlots, ApiOwner, CollisionData, DeclaredName, DeliveryData,
-    EngineStat, FilterData, Hook, MemberKind, Mode, ModifierData, Navigation, Offers, Param, Pools,
-    Range, RangeField, ResourceId, ScriptApi, ScriptRole, Stat, Targeting, TrackId, UnitTypeData,
+    EffectTo, Effecting, EngineStat, FilterData, Hook, MemberKind, Mode, ModifierData, Navigation,
+    Number, Offers, Param, Pools, Range, RangeField, ResourceId, Scalar, ScriptApi, ScriptRole,
+    Stat, Targeting, TrackId, UnitTypeData,
 };
 use campfire_content::PackagePath;
 use campfire_math::Num;
@@ -12,7 +13,8 @@ use campfire_sim::Capability;
 
 use crate::RELEASE_VERSION;
 use crate::error::{
-    ChoiceProblem, CtxMisuse, DeliveryProblem, Limit, LoadError, LoadProblem, NameKind, Place,
+    ChoiceProblem, CtxMisuse, DeliveryProblem, EffectProblem, Limit, LoadError, LoadProblem,
+    NameKind, Place,
 };
 use crate::files::units_data::UnitTypeFile;
 use crate::mode_packages::{Content, Dependent, ModePackages};
@@ -302,6 +304,7 @@ impl<'a> LoadCheck<'a> {
             let at = Place::Action(id.clone());
             self.kind(id, ability)?;
             self.ranked(id, ability, ranks(id))?;
+            self.effects(id, ability)?;
             if let Some(delivery) = &ability.delivery {
                 let capability = match delivery {
                     DeliveryData::Projectile { .. } => Capability::Projectiles,
@@ -658,6 +661,75 @@ impl<'a> LoadCheck<'a> {
                     action: id.to_owned(),
                     kind,
                 });
+            }
+        }
+        Ok(())
+    }
+
+    /// The effect lists of `action`, whose id is `id`: each effect one the release runs, of a
+    /// capability the mode declares and a name it declares, in a list that runs, to a unit the
+    /// list reaches; and each number at least 0 and a sim number at every rank, a duration whole
+    /// milliseconds within a `u32`. The modifiers and params they name, the action's checks find.
+    fn effects(&self, id: &str, action: &ActionData) -> Result<(), LoadProblem> {
+        let data = &self.packages.data;
+        let at = Place::Action(id.to_owned());
+        for (list, effects) in action.effect_lists() {
+            let fail = |problem| LoadProblem::Effect {
+                action: id.to_owned(),
+                list,
+                problem,
+            };
+            if !effects.is_empty() && list != Hook::OnResolve && action.delivery.is_none() {
+                return Err(fail(EffectProblem::NoDelivery));
+            }
+            let reaches = match list {
+                Hook::OnResolve => matches!(action.targeting, Targeting::Unit(_)),
+                _ => list == Hook::OnHit,
+            };
+            for effect in effects {
+                if effect.to == EffectTo::Reached && !reaches {
+                    return Err(fail(EffectProblem::NoUnit));
+                }
+                let unknown = |of, name: &DeclaredName| LoadProblem::Unknown {
+                    of,
+                    at: at.clone(),
+                    name: name.to_string(),
+                };
+                match &effect.does {
+                    Effecting::Planned(planned) => {
+                        return Err(fail(EffectProblem::Planned(*planned)));
+                    }
+                    Effecting::Damage { kind, .. } => {
+                        self.require(Capability::Combat, &at)?;
+                        if !data.combat.damage_kinds.contains(kind) {
+                            return Err(unknown(NameKind::DamageKind, kind));
+                        }
+                    }
+                    Effecting::Heal { .. } => self.require(Capability::Combat, &at)?,
+                    Effecting::Restore { pool, .. } => {
+                        self.require(Capability::Combat, &at)?;
+                        if !data.pools.contains_key(pool) {
+                            return Err(unknown(NameKind::Pool, pool));
+                        }
+                    }
+                    Effecting::Modifier { duration_ms, .. } => {
+                        self.require(Capability::Stats, &at)?;
+                        if let Some(duration) = duration_ms
+                            && !whole_ms(action, duration)
+                        {
+                            return Err(fail(EffectProblem::Duration));
+                        }
+                    }
+                    Effecting::Xp { track, .. } => {
+                        self.require(Capability::Progression, &at)?;
+                        if !data.tracks.contains_key(track) {
+                            return Err(unknown(NameKind::Track, track));
+                        }
+                    }
+                }
+                for number in effect.does.numbers() {
+                    number_holds(action, number).map_err(fail)?;
+                }
             }
         }
         Ok(())
@@ -1044,6 +1116,44 @@ impl<'a> PackageNames<'a> {
 }
 
 /// `id` is one of `modifiers`.
+/// The values `number` of `action` can have, each rank's: its own, or its param's; a scaling
+/// param gives its base's, as its source's stats add to it only as it runs. None for a param the
+/// action does not declare, which the action's checks refuse.
+fn number_values<'n>(action: &'n ActionData, number: &'n Number) -> &'n [Scalar] {
+    match number {
+        Number::Value(value) => slice::from_ref(value),
+        Number::Param(reference) => match action.params.get(&reference.param) {
+            Some(Param::Ranked(ranked)) => ranked.values(),
+            Some(Param::Scaling(scaling)) => scaling.base.values(),
+            None => &[],
+        },
+    }
+}
+
+/// An effect's number: at least 0 and a sim number at every rank.
+fn number_holds(action: &ActionData, number: &Number) -> Result<(), EffectProblem> {
+    for value in number_values(action, number) {
+        let value = value.to_num().ok_or(EffectProblem::Overflow)?;
+        if value < Num::ZERO {
+            return Err(EffectProblem::Negative);
+        }
+    }
+    Ok(())
+}
+
+/// A modifier's duration: whole milliseconds within a `u32` at every rank, and no scaling param,
+/// whose value only a call knows.
+fn whole_ms(action: &ActionData, duration: &Number) -> bool {
+    let scaling = duration
+        .param()
+        .and_then(|name| action.params.get(name))
+        .is_some_and(|param| matches!(param, Param::Scaling(_)));
+    !scaling
+        && number_values(action, duration)
+            .iter()
+            .all(|value| matches!(value, Scalar::Int(ms) if u32::try_from(*ms).is_ok()))
+}
+
 fn modifier_exists(
     modifiers: &BTreeMap<String, ModifierData>,
     id: &str,

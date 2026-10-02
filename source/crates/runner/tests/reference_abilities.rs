@@ -12,10 +12,10 @@ use bevy_ecs::world::World;
 
 use campfire_capabilities::internals::{self, Arms};
 use campfire_capabilities::{
-    Action, ActionSlots, ActionTarget, Actions, Area, Areas, CapabilitySet, DeclaredName, Hook,
-    MatchScripts, Number, OnDeath, Order, Owner, Param, PoolId, Pools, Projectile, Projectiles,
-    Range, RangeField, Ranked, RecentAttackers, Scalar, Scaling, ScriptLimits, SlotKind, Stat,
-    StatRule, Stats, Targeting, Team, Units,
+    Abilities, Action, ActionSlots, ActionTarget, Actions, Area, Areas, CapabilitySet,
+    DeclaredName, Hook, MatchScripts, Number, OnDeath, Order, Owner, Param, PoolId, Pools,
+    Projectile, Projectiles, Range, RangeField, Ranked, RecentAttackers, Scalar, Scaling,
+    ScriptLimits, SlotKind, Stat, StatRule, Stats, Targeting, Team, Units,
 };
 use campfire_capabilities::{Modifiers, ScriptFailure, ScriptFailures};
 use campfire_content::PackagePath;
@@ -380,9 +380,11 @@ fn rimes_fan_of_frost_from_its_package_hits_exactly_the_units_in_reach_once_each
     let arrow = &rime.units["frost_arrow"];
     let frost_arrow = Units::load_type(&mut world, "rime/frost_arrow", &arrow.core).unwrap();
     Projectiles::load_type(&mut world, frost_arrow, arrow.projectile.as_ref().unwrap());
+    // Fan of Frost runs no script: its data's `on_hit` deals its damage and applies its slow.
     let data = &rime.actions["fan_of_frost"];
-    let script = compile(&mut world, "rime", data.script.as_ref().unwrap());
-    let fan = Actions::load(&mut world, 0, "fan_of_frost", data, Some(script), 5).unwrap();
+    assert_eq!(data.script, None);
+    let fan = Actions::load(&mut world, 0, "fan_of_frost", data, None, 5).unwrap();
+    Abilities::load_effects(&mut world, fan, 0, data);
     Actions::bind_spawn(&mut world, fan, "rime/frost_arrow");
 
     let player = Owner::new(PlayerSlot::new(0));
