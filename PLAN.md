@@ -17,3 +17,19 @@ The structural redesign comes first, in the order below, as [Structural rules](d
    - Today `ctx.projectile` and `ctx.area` take their unit's id only later, so they return `()`, and Cinder's `chain_fire.rhai` cannot use the result.
    - A unit that a call creates takes its id when it is queued, as `spawn_unit` does. Calls run in a stable order, so the ids stay in a stable order. `ctx.projectile` and `ctx.area` return a `Unit` handle that the same call can use, and whose `.state` it writes.
    - It waits for unit script state, a unit's `[state]` and `unit.state`, which the API does not have yet: a handle alone gives a script nothing to use.
+2. **N1: scripts compile in strict variables mode** ([Engine enums](design/08-script-api.md#engine-enums), Strict variables). Changes behaviour. Size S.
+   - Today a script compiles with a variable that nothing defines, and fails only when that line runs: a typo is a script error in a match, not a load error.
+   - `ScriptHost` sets Rhai's strict variables mode. A script that reads a variable before any `let`, `const`, parameter or loop defines it fails the load as a compile error.
+   - Tests: a flaw for an undefined variable in a hook, and one in a function of the script; a closure that reads a variable around it still loads.
+   - The change of behaviour: such a script fails the load, where its call failed. Reference content that breaks the rule is fixed in the step, and named.
+3. **N2: engine enums** ([Engine enums](design/08-script-api.md#engine-enums)). Changes the script API. Size M.
+   - Today `set_relation` and `spawn_group` take `"hostile"` or `"start"` as strings: a typo in a literal is found only when the call runs, as `UnknownRelation` or `UnknownPathEnd`.
+   - The registry gets one builder call for an enum: it binds a static module of constants for the members, records the enum and its members, and the reference lists them. `Relation` and `PathEnd` are the two enums, over `Attitude` and `PathEnd`, each with `named(text)`, `==`, `!=` and `to_string`.
+   - `set_relation` and `spawn_group` take the types. The registry marks those arguments as enum arguments; the load refuses a string literal given to one, and a `Module::member` path of no registered enum or member, each a `ScriptProblem` that names the script, the call or path, and the enum.
+   - The reference modes pass their markers' `from` param through `PathEnd::named`. No release has shipped, so package API 1.0 changes in place.
+   - Tests: a flaw for each refusal (a string literal for an enum argument, an unknown member, an unknown enum module); a call with a member, and with a member from `named`; `named` of a text that names no member fails the call; the reference lists both enums.
+4. **N3: editor definitions** ([Editor definitions](design/08-script-api.md#editor-definitions)). Size S.
+   - First, a measure: generate the file once by hand from the engine the registry builds, open the reference scripts with Rhai's VS Code extension, and record what it completes and what it flags: enum members, global functions, signatures, descriptions. The step goes on only if it completes enum members and signatures.
+   - `campfire-script` gets a feature that turns on Rhai's `metadata`; only the test that writes the file uses it. Each registration gives its description as the function's doc comment.
+   - A test writes `campfire.d.rhai` beside the reference packages, and fails when the checked-in file differs, blessed with `CAMPFIRE_BLESS=1` as the reference is.
+   - Tests: the checked-in file is what the registry writes; it holds each enum's members and a registered call's description.
