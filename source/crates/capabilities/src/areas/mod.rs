@@ -4,13 +4,13 @@ use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{
-    Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry, Tick, TickRate, Ticks,
+    Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry, Tick, Ticks,
 };
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::ActionTarget;
 use crate::areas::area::Area;
-use crate::areas::area_data::AreaData;
+
 use crate::areas::area_effect::AreaEffect;
 use crate::areas::area_launches::{AreaLaunch, AreaLaunches};
 use crate::areas::area_spec::{AreaSpec, Inside};
@@ -22,16 +22,15 @@ use crate::deliveries::delivery_spawner::DeliverySpawner;
 use crate::deliveries::{Deliveries, DeliverySet};
 use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
+use crate::stats::StatsSet;
 use crate::stats::held_modifiers::{Held, HeldModifiers};
-use crate::stats::{Stats, StatsSet};
 use crate::units::by_type::ByType;
-use crate::units::engine_tag::EngineTag;
-use crate::units::script_view::View;
+
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
 use crate::values::attitude::Attitude;
 use crate::values::bounds::Bounds;
-use crate::values::declared_name::DeclaredName;
+
 use crate::values::hit::Hit;
 
 pub(crate) mod area;
@@ -66,26 +65,6 @@ impl Areas {
                 .before(StatsSet::Hold),
         ));
         registry.register_component::<Area>();
-    }
-
-    /// Makes `unit_type` of `package` an area type of `data`, tagged `area`, its times in ticks
-    /// at the match's rate, rounded up, which the package load checked: its `affects` filter
-    /// names tags of the match's, and its `inside` modifiers of the package.
-    pub fn load_type(world: &mut World, unit_type: UnitType, package: u16, data: &AreaData) {
-        let rate = *world.resource::<TickRate>();
-        let view = world.non_send::<View>().clone();
-        let modifier = |name: &DeclaredName| {
-            Stats::modifier(world, package, name.as_str())
-                .expect("the load checked an area's modifiers")
-        };
-        let spec = {
-            let mut types = view.types_mut();
-            types.give_tag(unit_type, EngineTag::Area.tag());
-            AreaSpec::of(data, &types, rate, modifier).expect("an area's time in ticks fits")
-        };
-        world
-            .resource_mut::<ByType<AreaSpec>>()
-            .set(unit_type, spec);
     }
 
     /// Applies the next area the call in `frame` queued.
@@ -253,6 +232,43 @@ fn hold_inside(
                     rank: by.rank,
                 });
             }
+        }
+    }
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use crate::areas::Areas;
+    use crate::areas::area_data::AreaData;
+    use crate::areas::area_spec::AreaSpec;
+    use crate::stats::Stats;
+    use crate::units::by_type::ByType;
+    use crate::units::engine_tag::EngineTag;
+    use crate::units::script_view::View;
+    use crate::units::unit_type::UnitType;
+    use crate::values::declared_name::DeclaredName;
+    use bevy_ecs::world::World;
+    use campfire_sim::TickRate;
+
+    impl Areas {
+        /// Makes `unit_type` of `package` an area type of `data`, tagged `area`, its times in ticks
+        /// at the match's rate, rounded up, which the package load checked: its `affects` filter
+        /// names tags of the match's, and its `inside` modifiers of the package.
+        pub fn load_type(world: &mut World, unit_type: UnitType, package: u16, data: &AreaData) {
+            let rate = *world.resource::<TickRate>();
+            let view = world.non_send::<View>().clone();
+            let modifier = |name: &DeclaredName| {
+                Stats::modifier(world, package, name.as_str())
+                    .expect("the load checked an area's modifiers")
+            };
+            let spec = {
+                let mut types = view.types_mut();
+                types.give_tag(unit_type, EngineTag::Area.tag());
+                AreaSpec::of(data, &types, rate, modifier).expect("an area's time in ticks fits")
+            };
+            world
+                .resource_mut::<ByType<AreaSpec>>()
+                .set(unit_type, spec);
         }
     }
 }

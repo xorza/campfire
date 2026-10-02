@@ -1,6 +1,7 @@
 use serde::Serialize;
 
 use super::*;
+use crate::units::engine_tag::EngineTag;
 use crate::units::filter::Filter;
 use crate::units::tag_set::TagSet;
 use crate::units::unit_types::UnitTypes;

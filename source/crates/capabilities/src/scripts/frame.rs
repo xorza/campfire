@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_sim::{Capability, IdAllocator, StableId, Tick};
@@ -21,10 +19,9 @@ use crate::stats::modifier_handle::ModifierHandle;
 use crate::stats::param_read::ParamRead;
 use crate::stats::param_source::ParamSource;
 use crate::stats::param_table::ParamTable;
-use crate::stats::stat::Stat;
-use crate::values::declared_name::DeclaredName;
+
 use crate::values::hit::Hit;
-use crate::values::param::Param;
+
 use crate::values::scalar::Scalar;
 
 /// What the running call reads and queues, beside the units the view holds: its role, its
@@ -81,30 +78,6 @@ impl Frame {
     pub(crate) fn set_params(&mut self, abilities: ParamTable, modifiers: ParamTable) {
         self.params = abilities;
         self.modifier_params = modifiers;
-    }
-
-    /// Adds the params of `ability`, the one the book loads next, each stat at its place `stat`
-    /// gives.
-    pub(crate) fn add_params(
-        &mut self,
-        ability: ActionId,
-        params: &BTreeMap<DeclaredName, Param>,
-        stat: impl Fn(&Stat) -> u16,
-    ) {
-        let run = self.params.push(params, stat);
-        debug_assert_eq!(run, ability.index(), "one run of params per ability");
-    }
-
-    /// Adds the params of `modifier`, the one the book loaded last, each stat at its place
-    /// `stat` gives.
-    pub(crate) fn add_modifier_params(
-        &mut self,
-        modifier: ModifierId,
-        params: &BTreeMap<DeclaredName, Param>,
-        stat: impl Fn(&Stat) -> u16,
-    ) {
-        let run = self.modifier_params.push(params, stat);
-        debug_assert_eq!(run, modifier.index(), "one run of params per modifier");
     }
 
     pub(crate) const fn role(&self) -> Option<ScriptRole> {
@@ -312,12 +285,6 @@ impl Frame {
         }
     }
 
-    /// The place of param `name` among the params of `ability`, which the frame holds at a call's
-    /// rank; `None` when the ability declares none of that name.
-    pub(crate) fn find_param(&self, ability: ActionId, name: &str) -> Option<usize> {
-        self.params.find(ability.index(), name)
-    }
-
     /// The running call's ability's param at `at`, at its rank.
     pub(crate) fn ability_value(&self, at: usize) -> Scalar {
         self.values[at]
@@ -384,5 +351,48 @@ impl Frame {
             let at = self.params.find(self.ability?.index(), name)?;
             Some(self.values[at])
         })
+    }
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use crate::actions::action_book::ActionId;
+    use crate::scripts::frame::Frame;
+    use crate::stats::modifier_book::ModifierId;
+    use crate::stats::stat::Stat;
+    use crate::values::declared_name::DeclaredName;
+    use crate::values::param::Param;
+    use std::collections::BTreeMap;
+
+    impl Frame {
+        /// Adds the params of `ability`, the one the book loads next, each stat at its place `stat`
+        /// gives.
+        pub(crate) fn add_params(
+            &mut self,
+            ability: ActionId,
+            params: &BTreeMap<DeclaredName, Param>,
+            stat: impl Fn(&Stat) -> u16,
+        ) {
+            let run = self.params.push(params, stat);
+            debug_assert_eq!(run, ability.index(), "one run of params per ability");
+        }
+
+        /// Adds the params of `modifier`, the one the book loaded last, each stat at its place
+        /// `stat` gives.
+        pub(crate) fn add_modifier_params(
+            &mut self,
+            modifier: ModifierId,
+            params: &BTreeMap<DeclaredName, Param>,
+            stat: impl Fn(&Stat) -> u16,
+        ) {
+            let run = self.modifier_params.push(params, stat);
+            debug_assert_eq!(run, modifier.index(), "one run of params per modifier");
+        }
+
+        /// The place of param `name` among the params of `ability`, which the frame holds at a call's
+        /// rank; `None` when the ability declares none of that name.
+        pub(crate) fn find_param(&self, ability: ActionId, name: &str) -> Option<usize> {
+            self.params.find(ability.index(), name)
+        }
     }
 }

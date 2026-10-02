@@ -26,8 +26,10 @@ use crate::stats::stat::Stat;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::block::Block;
 use crate::units::path_id::PathId;
+use crate::units::type_scope::TypeScope;
 use crate::units::unit::Unit;
 use crate::units::unit_tags::UnitTags;
+use crate::units::unit_type_data::UnitTypeData;
 use crate::values::declared_name::DeclaredName;
 use crate::values::scalar::Scalar;
 
@@ -95,7 +97,7 @@ impl Scene {
                 .collect::<BTreeMap<_, _>>(),
         };
         let name = format!("type {}", self.world.non_send::<View>().types_count());
-        Units::load_type(&mut self.world, TypeScope::Mode, &name, &data).unwrap()
+        Units::load_type(&mut self.world, TypeScope::Mode, &name, &data)
     }
 
     /// A `unit()` of `team` with `parts`.
@@ -441,18 +443,10 @@ fn a_unit_type_name_is_one_types_only_in_its_scope() {
     let mut scene = Scene::new();
     let data = UnitTypeData::default();
     let mut load = |scope, name| Units::load_type(&mut scene.world, scope, name, &data);
-    let first = load(TypeScope::Mode, "grunt").unwrap();
-    assert_eq!(
-        load(TypeScope::Mode, "grunt"),
-        Err(UnitTypeError::RepeatedName)
-    );
-    let second = load(TypeScope::Mode, "tower").unwrap();
+    let first = load(TypeScope::Mode, "grunt");
+    let second = load(TypeScope::Mode, "tower");
     // A package's own scope holds a `grunt` of its own, which a mode name does not reach.
-    let theirs = load(TypeScope::Package(1), "grunt").unwrap();
-    assert_eq!(
-        load(TypeScope::Package(1), "grunt"),
-        Err(UnitTypeError::RepeatedName)
-    );
+    let theirs = load(TypeScope::Package(1), "grunt");
     let view = scene.world.non_send::<View>();
     assert_eq!(
         (view.unit_type("grunt"), view.unit_type("tower")),
@@ -463,4 +457,13 @@ fn a_unit_type_name_is_one_types_only_in_its_scope() {
     assert_eq!(types.named(TypeScope::Package(1), "grunt"), Some(theirs));
     assert_eq!(types.named(TypeScope::Package(2), "grunt"), None);
     assert_ne!(theirs, first);
+}
+
+#[test]
+#[should_panic(expected = "a scope names a type once")]
+fn a_type_named_twice_in_one_scope_is_a_logic_error() {
+    let mut scene = Scene::new();
+    let data = UnitTypeData::default();
+    Units::load_type(&mut scene.world, TypeScope::Package(1), "grunt", &data);
+    Units::load_type(&mut scene.world, TypeScope::Package(1), "grunt", &data);
 }

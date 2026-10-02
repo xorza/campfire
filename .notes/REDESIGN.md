@@ -122,7 +122,6 @@ Match::install(world, &Books, SessionTerms)    cannot fail on data
   - It is a pure function of the packages, so it can be tested with no world.
 - **Times are checked at the fastest tick rate in the manifest's range.** That rate gives the largest tick counts, so a time that fits at that rate fits at every allowed rate. The tick values themselves are derived at match start, from the session's rate. That derivation cannot fail.
 - **`ModePackages` holds the `Books`.** `MatchBuild` becomes `Match::install`, with no `.expect(CHECKED)`. `StartError` keeps only the session-term cases.
-- **Each script is parsed once.** The AST stays in `Script`, and the match host compiles from it.
 
 ## R3. Strict layers with registered hooks
 
@@ -419,7 +418,6 @@ This stage is the backbone. Its steps run in order.
 
 | Step | Change | Size |
 |---|---|---|
-| C5b | `Books::build` in capabilities, called by the load check, which keeps its own checks and compares the results; `ScriptPlace`; `ModePackages` holds the books; `Match::install` reads them; `StartError` shrinks to the session terms and the mode's start; each script parsed once; the old checks and the `.expect(CHECKED)` go | M |
 | C6a | Typed ids from one list each (`StatId` and the others); one ms-to-ticks conversion; `Option<PoolId>` for the life pool; `Filter::of(Relation)` | M |
 | C6b | The modifier runtime spec; param tables in the books; aura and player-modifier filters resolved; stats no longer reads the frame | M |
 | C7 | The view and the frame read the books through `Arc`; `ScriptConsts`; `MatchScripts` goes; the allowlist test of name lookups | M |
@@ -475,7 +473,7 @@ PLAN.md's stage 4 steps join this plan as follows:
 ### Order
 
 ```
-Track S:  C5b → C6a → C6b → C7 → C8 → C9 → D2 → D3 → D5 → D6
+Track S:  C6a → C6b → C7 → C8 → C9 → D2 → D3 → D5 → D6
                                   └ (C7 + I4) PLAN 2
 
 Track I:  E1 → E2      F2      G1      H1, H4      H2 → H3

@@ -151,7 +151,6 @@ pub use units::block::Block;
 pub use units::body::Body;
 pub use units::collision_data::CollisionData;
 pub use units::engine_tag::EngineTag;
-pub use units::error::UnitTypeError;
 pub use units::layer::Layer;
 pub use units::owner::Owner;
 pub use units::path_id::PathId;

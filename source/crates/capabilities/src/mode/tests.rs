@@ -683,13 +683,13 @@ impl Game {
             mut registry,
         } = TestMatch::new(&declared, RATE, Some(scripts));
         let layers = files.data.navigation.layers.iter();
-        Units::declare_tags(&mut world, layers.map(DeclaredName::as_str)).unwrap();
+        Units::declare_tags(&mut world, layers.map(DeclaredName::as_str));
         let mut load = |name: &str, tag: &str| {
             let data = UnitTypeData {
                 tags: vec![DeclaredName::new(tag).unwrap()],
                 params: BTreeMap::new(),
             };
-            Units::load_type(&mut world, TypeScope::Mode, name, &data).unwrap()
+            Units::load_type(&mut world, TypeScope::Mode, name, &data)
         };
         let (grunt_type, tower_type) = (load("grunt", "grunt"), load("tower", "tower"));
         let (x, y) = (load("hero-x", "avatar"), load("hero-y", "avatar"));
@@ -1094,7 +1094,7 @@ fn on_mode_input(ctx, player, name, value) {
         tags: vec![DeclaredName::new("core").unwrap()],
         params: BTreeMap::new(),
     };
-    Units::load_type(&mut game.world, TypeScope::Mode, "core", &core).unwrap();
+    Units::load_type(&mut game.world, TypeScope::Mode, "core", &core);
     game.tick(&[(0, input("hero", "hero-x")), (2, input("hero", "hero-y"))]);
     let hero = |game: &mut Game, slot| {
         let mut owned = game.world.query::<(Entity, &Owner)>();

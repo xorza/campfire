@@ -34,7 +34,7 @@ use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
-use crate::scripts::script_book::ScriptBook;
+
 use crate::stats::StatsSet;
 use crate::stats::pools::Pools;
 use crate::units::body::Body;
@@ -89,20 +89,6 @@ impl Orders {
         }
         world.insert_resource(ByType::<Ai>::default());
         schedule.add_systems(think.in_set(SimSet::Think));
-    }
-
-    /// Gives `unit_type` its AI, with its compiled script: the think period in milliseconds
-    /// becomes whole ticks at the match's rate, rounded up, and at least one.
-    pub fn load_ai(
-        world: &mut World,
-        unit_type: UnitType,
-        data: &AiData,
-        script: ScriptId,
-    ) -> Result<(), AiError> {
-        let rate = *world.resource::<TickRate>();
-        let ai = Ai::of(data, script, world.resource::<ScriptBook>(), rate)?;
-        world.resource_mut::<ByType<Ai>>().set(unit_type, ai);
-        Ok(())
     }
 
     /// The think period of `data` at `rate`, a tick at the least, for a script that defines
@@ -454,6 +440,36 @@ fn chase(
 fn walk_to(destination: &mut Mut<'_, Destination>, target: Option<Position>) {
     if destination.get() != target {
         destination.set(target);
+    }
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use crate::orders::Orders;
+    use crate::orders::ai::Ai;
+    use crate::orders::ai_data::AiData;
+    use crate::orders::error::AiError;
+    use crate::scripts::script_book::ScriptBook;
+    use crate::units::by_type::ByType;
+    use crate::units::unit_type::UnitType;
+    use bevy_ecs::world::World;
+    use campfire_script::ScriptId;
+    use campfire_sim::TickRate;
+
+    impl Orders {
+        /// Gives `unit_type` its AI, with its compiled script: the think period in milliseconds
+        /// becomes whole ticks at the match's rate, rounded up, and at least one.
+        pub fn load_ai(
+            world: &mut World,
+            unit_type: UnitType,
+            data: &AiData,
+            script: ScriptId,
+        ) -> Result<(), AiError> {
+            let rate = *world.resource::<TickRate>();
+            let ai = Ai::of(data, script, world.resource::<ScriptBook>(), rate)?;
+            world.resource_mut::<ByType<Ai>>().set(unit_type, ai);
+            Ok(())
+        }
     }
 }
 

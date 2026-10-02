@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 
 use crate::units::engine_tag::EngineTag;
-use crate::units::error::UnitTypeError;
 use crate::units::tag::Tag;
 use crate::units::tag_book::TagBook;
 use crate::units::tag_data::TagData;
@@ -48,23 +47,18 @@ impl Default for UnitTypes {
 }
 
 impl UnitTypes {
-    /// Loads `data` as the type `name` of `scope`: its tags join the match's, and its params are
-    /// kept for `unit.params`.
-    pub(crate) fn load(
-        &mut self,
-        scope: TypeScope,
-        name: &str,
-        data: &UnitTypeData,
-    ) -> Result<UnitType, UnitTypeError> {
-        let index = u16::try_from(self.types.len())
-            .ok()
-            .ok_or(UnitTypeError::TooManyTypes)?;
+    /// Loads `data` as the type `name` of `scope`, which the package load checked names no other
+    /// type there, within the most types a match loads: its tags join the match's, and its params
+    /// are kept for `unit.params`.
+    pub(crate) fn load(&mut self, scope: TypeScope, name: &str, data: &UnitTypeData) -> UnitType {
+        let index =
+            u16::try_from(self.types.len()).expect("the load keeps the unit types within u16");
         let Err(at) = self.find(scope, name) else {
-            return Err(UnitTypeError::RepeatedName);
+            panic!("a scope names a type once, which the load checked: {name}");
         };
         let mut tags = TagSet::default();
         for name in &data.tags {
-            tags = tags.with(self.declare(name.as_str())?);
+            tags = tags.with(self.declare(name.as_str()));
         }
         let params = data
             .params
@@ -78,19 +72,21 @@ impl UnitTypes {
             name: name.into(),
             tags,
         });
-        Ok(UnitType::new(index))
+        UnitType::new(index)
     }
 
-    /// The tag `name`, which joins the match's tags if it is new.
-    pub(crate) fn declare(&mut self, name: &str) -> Result<Tag, UnitTypeError> {
+    /// The tag `name`, which joins the match's tags if it is new, within the most tags a match
+    /// has, which the package load counted.
+    pub(crate) fn declare(&mut self, name: &str) -> Tag {
         if let Some(tag) = self.tag(name) {
-            return Ok(tag);
+            return tag;
         }
-        if self.tag_names.len() == Tag::LIMIT {
-            return Err(UnitTypeError::TooManyTags);
-        }
+        assert!(
+            self.tag_names.len() < Tag::LIMIT,
+            "the load counted the tags"
+        );
         self.tag_names.push(name.into());
-        Ok(Tag::new(self.tag_names.len() - 1))
+        Tag::new(self.tag_names.len() - 1)
     }
 
     /// Gives `unit_type` the tag `tag` too, as the engine tags a type by its sections.

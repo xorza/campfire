@@ -6,9 +6,8 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, Changed, Has, Or, With, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Commands, Local, NonSend, ParamSet, Query, Res};
-use bevy_ecs::world::{EntityRef, Mut, World};
+use bevy_ecs::world::{EntityRef, World};
 use campfire_math::Num;
-use campfire_script::ScriptId;
 use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, Tick, Ticks};
 
 use crate::combat::CombatSet;
@@ -17,12 +16,10 @@ use crate::combat::dead::Dead;
 use crate::navigation::move_step::MoveStep;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::frame::Frame;
-use crate::scripts::script_book::ScriptBook;
 use crate::stats::held_modifiers::{Held, HeldModifiers};
 use crate::stats::level::Level;
 use crate::stats::live_shares::LiveShares;
 use crate::stats::modifier_book::{Applier, ModifierBook, ModifierId};
-use crate::stats::modifier_data::ModifierData;
 use crate::stats::modifier_effect::ModifierEffect;
 use crate::stats::modifier_handle::ModifierHandle;
 use crate::stats::modifier_hooks::ModifierHooks;
@@ -33,7 +30,6 @@ use crate::stats::player_modifiers::{PlayerModifier, PlayerModifiers};
 use crate::stats::pool_book::PoolBook;
 use crate::stats::pools::Pools;
 use crate::stats::refresh_scratch::{RefreshScratch, Refreshing};
-use crate::stats::stat::Stat;
 use crate::stats::stat_book::StatBook;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::owner::Owner;
@@ -264,37 +260,6 @@ impl Stats {
             instance.set_stacks(data.stacks, now);
             instance.state.clone_from(&data.state);
         }
-    }
-
-    /// Loads `data` as the modifier `name` of `package`: 0 the mode, then each package it
-    /// depends on, in its manifest's order, with its compiled `script` exactly when its data
-    /// names one. Modifiers load by package, then name.
-    pub fn load_modifier(
-        world: &mut World,
-        package: u16,
-        name: &str,
-        data: &ModifierData,
-        script: Option<ScriptId>,
-    ) {
-        let id = world.resource_scope(|world, mut book: Mut<'_, ModifierBook>| {
-            let scripts = world.resource::<ScriptBook>();
-            let view = world.non_send::<View>();
-            let mut types = view.types_mut();
-            book.load(scripts, &mut types, package, name, data, script)
-        });
-        if let Some(view) = world.get_non_send::<View>() {
-            view.add_modifier(world.resource::<ModifierBook>().get(id).info());
-        }
-        if let (Some(ctx), Some(view)) = (world.get_non_send::<Ctx>(), world.get_non_send::<View>())
-        {
-            let stat = |stat: &Stat| view.stat_index(stat).expect("the load checked the stats");
-            ctx.frame().add_modifier_params(id, &data.params, stat);
-        }
-    }
-
-    /// The modifier `name` of `package`, as `load_modifier` loaded it.
-    pub fn modifier(world: &World, package: u16, name: &str) -> Option<ModifierId> {
-        world.resource::<ModifierBook>().find(package, name)
     }
 }
 
@@ -642,6 +607,47 @@ pub(crate) mod internals {
     use crate::stats::stat::Stat;
     use crate::stats::stat_book::StatBook;
     use crate::stats::stat_rule::StatRule;
+    use bevy_ecs::world::Mut;
+    use campfire_script::ScriptId;
+
+    use crate::scripts::script_book::ScriptBook;
+    use crate::stats::modifier_book::ModifierBook;
+    use crate::stats::modifier_data::ModifierData;
+    use crate::units::script_view::View;
+
+    impl Stats {
+        /// Loads `data` as the modifier `name` of `package`: 0 the mode, then each package it
+        /// depends on, in its manifest's order, with its compiled `script` exactly when its data
+        /// names one. Modifiers load by package, then name.
+        pub fn load_modifier(
+            world: &mut World,
+            package: u16,
+            name: &str,
+            data: &ModifierData,
+            script: Option<ScriptId>,
+        ) {
+            let id = world.resource_scope(|world, mut book: Mut<'_, ModifierBook>| {
+                let scripts = world.resource::<ScriptBook>();
+                let view = world.non_send::<View>();
+                let mut types = view.types_mut();
+                book.load(scripts, &mut types, package, name, data, script)
+            });
+            if let Some(view) = world.get_non_send::<View>() {
+                view.add_modifier(world.resource::<ModifierBook>().get(id).info());
+            }
+            if let (Some(ctx), Some(view)) =
+                (world.get_non_send::<Ctx>(), world.get_non_send::<View>())
+            {
+                let stat = |stat: &Stat| view.stat_index(stat).expect("the load checked the stats");
+                ctx.frame().add_modifier_params(id, &data.params, stat);
+            }
+        }
+
+        /// The modifier `name` of `package`, as `load_modifier` loaded it.
+        pub fn modifier(world: &World, package: u16, name: &str) -> Option<ModifierId> {
+            world.resource::<ModifierBook>().find(package, name)
+        }
+    }
 
     /// Gives a match with no mode the stat book of `rules`, at `rate`, with no unit type and no
     /// pool.

@@ -13,16 +13,13 @@ use crate::scripts::script_book::ScriptBook;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::units::body::Body;
-use crate::units::error::UnitTypeError;
 use crate::units::owner::Owner;
 use crate::units::relations::Relations;
 use crate::units::script_view::View;
 use crate::units::spawn_point::SpawnPoint;
 use crate::units::tag_book::TagBook;
 use crate::units::team::Team;
-use crate::units::type_scope::TypeScope;
 use crate::units::unit_type::UnitType;
-use crate::units::unit_type_data::UnitTypeData;
 use crate::values::metric::Metric;
 
 pub(crate) mod block;
@@ -30,7 +27,6 @@ pub(crate) mod body;
 pub(crate) mod by_type;
 pub(crate) mod collision_data;
 pub(crate) mod engine_tag;
-pub(crate) mod error;
 pub(crate) mod filter;
 pub(crate) mod hit_handle;
 pub(crate) mod layer;
@@ -136,35 +132,9 @@ impl Units {
         Ok(script)
     }
 
-    /// Declares every tag the match's packages name, in their order, after the engine's tags,
-    /// before any type, modifier or filter names one, so the tags are numbered the same however
-    /// the packages load.
-    pub fn declare_tags<'a>(
-        world: &mut World,
-        names: impl IntoIterator<Item = &'a str>,
-    ) -> Result<(), UnitTypeError> {
-        let view = world.non_send::<View>();
-        let mut types = view.types_mut();
-        for name in names {
-            types.declare(name)?;
-        }
-        Ok(())
-    }
-
     /// Gives the match its tags' effects and its unit types' own tags.
     pub(crate) fn load_tags(world: &mut World, book: TagBook) {
         world.insert_resource(book);
-    }
-
-    /// Loads the unit type `name` of `scope`, with its core fields: its tags and its params. A
-    /// name is one type's only in its scope.
-    pub fn load_type(
-        world: &mut World,
-        scope: TypeScope,
-        name: &str,
-        data: &UnitTypeData,
-    ) -> Result<UnitType, UnitTypeError> {
-        world.non_send::<View>().types_mut().load(scope, name, data)
     }
 }
 
@@ -174,6 +144,40 @@ fn begin_tick(
 ) {
     budgets.begin_tick();
     failures.0.clear();
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use crate::units::Units;
+    use crate::units::script_view::View;
+    use crate::units::type_scope::TypeScope;
+    use crate::units::unit_type::UnitType;
+    use crate::units::unit_type_data::UnitTypeData;
+    use bevy_ecs::world::World;
+
+    impl Units {
+        /// Declares every tag the match's packages name, in their order, after the engine's tags,
+        /// before any type, modifier or filter names one, so the tags are numbered the same however
+        /// the packages load.
+        pub fn declare_tags<'a>(world: &mut World, names: impl IntoIterator<Item = &'a str>) {
+            let view = world.non_send::<View>();
+            let mut types = view.types_mut();
+            for name in names {
+                types.declare(name);
+            }
+        }
+
+        /// Loads the unit type `name` of `scope`, with its core fields: its tags and its params. A
+        /// name is one type's only in its scope.
+        pub fn load_type(
+            world: &mut World,
+            scope: TypeScope,
+            name: &str,
+            data: &UnitTypeData,
+        ) -> UnitType {
+            world.non_send::<View>().types_mut().load(scope, name, data)
+        }
+    }
 }
 
 #[cfg(test)]

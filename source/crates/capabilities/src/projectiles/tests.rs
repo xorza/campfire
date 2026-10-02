@@ -14,11 +14,13 @@ use crate::combat::deaths::Deaths;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::projectiles::cast_hits::CastHit;
+use crate::projectiles::projectile_data::ProjectileData;
 use crate::stats::pool_id::PoolId;
 use crate::units::Units;
 use crate::units::recent_attack::RecentAttack;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_type_data::UnitTypeData;
+use campfire_sim::TickRate;
 
 /// The MOBA's 30 ticks a second.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
@@ -103,8 +105,7 @@ impl Volley {
         ];
         let [bolt, lance, dart] = types.map(|(name, data)| {
             let unit_type =
-                Units::load_type(&mut world, TypeScope::Mode, name, &UnitTypeData::default())
-                    .unwrap();
+                Units::load_type(&mut world, TypeScope::Mode, name, &UnitTypeData::default());
             if projectiles {
                 Projectiles::load_type(&mut world, unit_type, &data);
             }

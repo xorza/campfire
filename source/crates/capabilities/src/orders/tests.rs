@@ -265,7 +265,7 @@ impl Match {
                 .collect(),
         };
         let name = format!("type {}", self.world.non_send::<View>().types_count());
-        let unit_type = Units::load_type(&mut self.world, TypeScope::Mode, &name, &data).unwrap();
+        let unit_type = Units::load_type(&mut self.world, TypeScope::Mode, &name, &data);
         if let Some(source) = ai {
             let ai = AiData {
                 ai: PackagePath::parse("scripts/ai.rhai").unwrap(),

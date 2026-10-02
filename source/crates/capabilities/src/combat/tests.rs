@@ -259,7 +259,7 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
             tags: vec![DeclaredName::new(tag).unwrap()],
             params: BTreeMap::new(),
         };
-        Units::load_type(&mut fight.world, TypeScope::Mode, tag, &data).unwrap()
+        Units::load_type(&mut fight.world, TypeScope::Mode, tag, &data)
     });
     let hover = UnitTypeData {
         tags: ["ground", "air"]
@@ -267,7 +267,7 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
             .into(),
         params: BTreeMap::new(),
     };
-    let hover = Units::load_type(&mut fight.world, TypeScope::Mode, "hover", &hover).unwrap();
+    let hover = Units::load_type(&mut fight.world, TypeScope::Mode, "hover", &hover);
     let weapon = |fight: &mut Fight, aim: &str, range, windup, damage| {
         let view = fight.world.non_send::<View>().clone();
         let aim = view

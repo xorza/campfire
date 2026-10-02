@@ -1,4 +1,4 @@
-use std::cell::{RefCell, RefMut};
+use std::cell::RefCell;
 use std::fmt;
 use std::num::NonZeroU32;
 use std::ops::Range;
@@ -11,7 +11,7 @@ use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString};
 use campfire_sim::{Capability, EntityIndex, Position, SimTick, StableId, Tick, TickRate, Ticks};
 
 use crate::actions::action_book::{Action, ActionId, Delivery};
-use crate::actions::action_data::CostTarget;
+
 use crate::combat::damage_kind::DamageKind;
 use crate::mode::resource_id::ResourceId;
 use crate::progression::track_id::TrackId;
@@ -368,10 +368,6 @@ impl View {
         self.0.borrow().metric
     }
 
-    pub(crate) fn types_mut(&self) -> RefMut<'_, UnitTypes> {
-        RefMut::map(self.0.borrow_mut(), |view| &mut view.types)
-    }
-
     /// Names the teams and the paths.
     pub(crate) fn set_names(&self, teams: Rc<Teams>, paths: Arc<[Box<str>]>) {
         let mut view = self.0.borrow_mut();
@@ -498,12 +494,6 @@ impl View {
         self.0.borrow().relations.between(of, other)
     }
 
-    /// The place of `stat` among the stats the mode declares; `None` when it does not declare it.
-    pub(crate) fn stat_index(&self, stat: &Stat) -> Option<u16> {
-        let at = self.0.borrow().stat_names.binary_search(stat).ok()?;
-        Some(u16::try_from(at).expect("stats fit u16"))
-    }
-
     /// The value of stat `name` of `row`; an error for a stat the mode does not declare, or a
     /// unit with no stats.
     pub(crate) fn stat(&self, row: &UnitRow, name: &str) -> Checked<Num> {
@@ -552,13 +542,6 @@ impl View {
     /// How many player resources the mode declares.
     pub(crate) fn resource_count(&self) -> usize {
         self.0.borrow().resource_names.len()
-    }
-
-    /// What a cost named `name` takes from: a pool, or else a player resource; `None` for a
-    /// name the mode declares neither as.
-    pub(crate) fn cost_target(&self, name: &str) -> Option<CostTarget> {
-        let pool = self.pool_id(name).map(CostTarget::Pool);
-        pool.or_else(|| self.resource(name).map(CostTarget::Resource))
     }
 
     /// The damage kind `name`; an error for one the mode does not declare.
@@ -892,14 +875,38 @@ impl fmt::Debug for View {
     }
 }
 
-#[cfg(test)]
+#[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
-    use super::*;
+    use std::cell::RefMut;
+
+    use crate::actions::action_data::CostTarget;
+    use crate::stats::stat::Stat;
+    use crate::units::script_view::View;
+    use crate::units::unit_types::UnitTypes;
 
     impl View {
         /// How many unit types the match loaded, for a test to name the next one.
+        #[cfg(test)]
         pub(crate) fn types_count(&self) -> usize {
             self.0.borrow().types.count()
+        }
+
+        pub(crate) fn types_mut(&self) -> RefMut<'_, UnitTypes> {
+            RefMut::map(self.0.borrow_mut(), |view| &mut view.types)
+        }
+
+        /// The place of `stat` among the stats the mode declares; `None` when it does not
+        /// declare it.
+        pub(crate) fn stat_index(&self, stat: &Stat) -> Option<u16> {
+            let at = self.0.borrow().stat_names.binary_search(stat).ok()?;
+            Some(u16::try_from(at).expect("stats fit u16"))
+        }
+
+        /// What a cost named `name` takes from: a pool, or else a player resource; `None` for
+        /// a name the mode declares neither as.
+        pub(crate) fn cost_target(&self, name: &str) -> Option<CostTarget> {
+            let pool = self.pool_id(name).map(CostTarget::Pool);
+            pool.or_else(|| self.resource(name).map(CostTarget::Resource))
         }
     }
 }

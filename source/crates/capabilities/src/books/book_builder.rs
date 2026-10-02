@@ -75,7 +75,7 @@ impl<'a> BookBuilder<'a> {
     pub(crate) fn build(mut self) -> Result<BookParts, BookError> {
         let input = self.input;
         for name in &input.tag_names {
-            self.books.types.declare(name).expect(CHECKED);
+            self.books.types.declare(name);
         }
         if input.progression {
             self.books.tracks = Some(TrackBook::new(&input.data.tracks));
@@ -243,10 +243,7 @@ impl<'a> BookBuilder<'a> {
     ) -> Result<(), BookError> {
         let data = self.input.data;
         let books = &mut self.books;
-        let unit_type = books
-            .types
-            .load(TypeScope::Mode, name, &file.core)
-            .expect(CHECKED);
+        let unit_type = books.types.load(TypeScope::Mode, name, &file.core);
         let mut combat = file.combat.clone();
         if avatar {
             books.types.give_tag(unit_type, EngineTag::Avatar.tag());
@@ -323,10 +320,7 @@ impl<'a> BookBuilder<'a> {
         let rate = self.input.rate;
         let books = &mut self.books;
         let scope = TypeScope::of_package(index);
-        let unit_type = books
-            .types
-            .load(scope, name.as_str(), &file.core)
-            .expect(CHECKED);
+        let unit_type = books.types.load(scope, name.as_str(), &file.core);
         if let Some(projectile) = &file.projectile {
             books.types.give_tag(unit_type, EngineTag::Projectile.tag());
             let spec = ProjectileSpec::of(projectile, &books.types, rate);

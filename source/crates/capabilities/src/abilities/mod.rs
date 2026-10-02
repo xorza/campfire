@@ -11,39 +11,37 @@ use campfire_sim::{
     Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry, Tick, TickRate, Ticks,
 };
 
-use crate::abilities::effect_lists::{EffectLists, Listed};
-use crate::abilities::effect_names::EffectNames;
+use crate::abilities::effect_lists::EffectLists;
+
 use crate::actions::action_book::{ActionBook, ActionId, Delivery};
-use crate::actions::action_data::ActionData;
+
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::{ActionSlots, ActionTarget};
 use crate::actions::purse::Purse;
 use crate::areas::Areas;
 use crate::combat::CombatSet;
-use crate::combat::damage_kind::DamageKind;
+
 use crate::combat::dead::Dead;
 use crate::deliveries::delivering::Delivering;
 use crate::mode::player_resources::PlayerResources;
-use crate::progression::track_id::TrackId;
+
 use crate::projectiles::Projectiles;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
-use crate::scripts::frame::Frame;
+
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
-use crate::stats::Stats;
-use crate::stats::modifier_book::ModifierId;
+
 use crate::stats::pool_cost::PoolCost;
-use crate::stats::pool_id::PoolId;
+
 use crate::stats::pools::Pools;
 use crate::units::block::Block;
 use crate::units::owner::Owner;
-use crate::units::script_view::View;
+
 use crate::units::team::Team;
 use crate::units::unit::Unit;
 use crate::units::unit_tags::UnitTags;
-use crate::values::declared_name::DeclaredName;
 
 pub(crate) mod abilities_api;
 pub(crate) mod effect_lists;
@@ -71,25 +69,6 @@ impl Abilities {
                 .after(CombatSet::Strike)
                 .before(CombatSet::Launch),
         );
-    }
-
-    /// Loads the effect lists of `action` of `package`, which loaded last from `data`, which the
-    /// package load checked: each name resolved to its id, each param to its place among the
-    /// action's params.
-    pub fn load_effects(world: &mut World, action: ActionId, package: u16, data: &ActionData) {
-        let ctx = world.non_send::<Ctx>().clone();
-        let lists = {
-            let frame = ctx.frame();
-            let names = MatchEffectNames {
-                world,
-                view: ctx.view(),
-                frame: &frame,
-                action,
-                package,
-            };
-            Listed::lists_of(data, &names)
-        };
-        world.resource_mut::<EffectLists>().push(action, lists);
     }
 }
 
@@ -284,47 +263,88 @@ fn run(batch: &mut ScriptBatch<'_>, ctx: &Ctx, prepared: &mut Prepared) -> Resul
         .map_err(CallError::from_script)
 }
 
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use crate::abilities::Abilities;
+    use crate::abilities::effect_lists::EffectLists;
+    use crate::abilities::effect_lists::Listed;
+    use crate::abilities::effect_names::EffectNames;
+    use crate::actions::action_book::ActionId;
+    use crate::actions::action_data::ActionData;
+    use crate::combat::damage_kind::DamageKind;
+    use crate::progression::track_id::TrackId;
+    use crate::scripts::ctx::Ctx;
+    use crate::scripts::frame::Frame;
+    use crate::stats::Stats;
+    use crate::stats::modifier_book::ModifierId;
+    use crate::stats::pool_id::PoolId;
+    use crate::units::script_view::View;
+    use crate::values::declared_name::DeclaredName;
+    use bevy_ecs::world::World;
+
+    impl Abilities {
+        /// Loads the effect lists of `action` of `package`, which loaded last from `data`, which the
+        /// package load checked: each name resolved to its id, each param to its place among the
+        /// action's params.
+        pub fn load_effects(world: &mut World, action: ActionId, package: u16, data: &ActionData) {
+            let ctx = world.non_send::<Ctx>().clone();
+            let lists = {
+                let frame = ctx.frame();
+                let names = MatchEffectNames {
+                    world,
+                    view: ctx.view(),
+                    frame: &frame,
+                    action,
+                    package,
+                };
+                Listed::lists_of(data, &names)
+            };
+            world.resource_mut::<EffectLists>().push(action, lists);
+        }
+    }
+
+    /// The names of an action's effect lists as a match's world resolves them: its view, the frame
+    /// that holds the action's params, and the modifiers of the action's package.
+    #[derive(Debug)]
+    struct MatchEffectNames<'w> {
+        world: &'w World,
+        view: &'w View,
+        frame: &'w Frame,
+        action: ActionId,
+        package: u16,
+    }
+
+    impl EffectNames for MatchEffectNames<'_> {
+        fn param(&self, name: &DeclaredName) -> usize {
+            self.frame
+                .find_param(self.action, name.as_str())
+                .expect("the load checked an effect's param")
+        }
+
+        fn damage_kind(&self, name: &DeclaredName) -> DamageKind {
+            self.view
+                .damage_kind(name.as_str())
+                .expect("the load checked an effect's damage kind")
+        }
+
+        fn pool(&self, name: &DeclaredName) -> PoolId {
+            self.view
+                .pool_id(name.as_str())
+                .expect("the load checked an effect's pool")
+        }
+
+        fn modifier(&self, name: &DeclaredName) -> ModifierId {
+            Stats::modifier(self.world, self.package, name.as_str())
+                .expect("the load checked an effect's modifier")
+        }
+
+        fn track(&self, name: &DeclaredName) -> TrackId {
+            self.view
+                .track(name.as_str())
+                .expect("the load checked an effect's track")
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests;
-
-/// The names of an action's effect lists as a match's world resolves them: its view, the frame
-/// that holds the action's params, and the modifiers of the action's package.
-#[derive(Debug)]
-struct MatchEffectNames<'w> {
-    world: &'w World,
-    view: &'w View,
-    frame: &'w Frame,
-    action: ActionId,
-    package: u16,
-}
-
-impl EffectNames for MatchEffectNames<'_> {
-    fn param(&self, name: &DeclaredName) -> usize {
-        self.frame
-            .find_param(self.action, name.as_str())
-            .expect("the load checked an effect's param")
-    }
-
-    fn damage_kind(&self, name: &DeclaredName) -> DamageKind {
-        self.view
-            .damage_kind(name.as_str())
-            .expect("the load checked an effect's damage kind")
-    }
-
-    fn pool(&self, name: &DeclaredName) -> PoolId {
-        self.view
-            .pool_id(name.as_str())
-            .expect("the load checked an effect's pool")
-    }
-
-    fn modifier(&self, name: &DeclaredName) -> ModifierId {
-        Stats::modifier(self.world, self.package, name.as_str())
-            .expect("the load checked an effect's modifier")
-    }
-
-    fn track(&self, name: &DeclaredName) -> TrackId {
-        self.view
-            .track(name.as_str())
-            .expect("the load checked an effect's track")
-    }
-}

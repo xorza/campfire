@@ -1,42 +1,40 @@
 use bevy_ecs::query::Without;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::{NonSend, Query, Res};
-use bevy_ecs::world::{EntityRef, Mut, World};
-use campfire_script::ScriptId;
-use campfire_sim::{Position, SimSet, SimTick, StableId, StateRegistry, TickRate};
+use bevy_ecs::world::{EntityRef, World};
 
-use crate::actions::action_book::{ActionBook, ActionId, ActionParts};
-use crate::actions::action_data::{ActionData, CostTarget, Range};
+use campfire_sim::{Position, SimSet, SimTick, StableId, StateRegistry};
+
+use crate::actions::action_book::ActionBook;
+use crate::actions::action_data::Range;
 use crate::actions::action_kind::ActionKind;
-use crate::actions::action_names::ActionNames;
+
 use crate::actions::action_slots::{ActionSlots, ActionTarget, InProgress};
-use crate::actions::error::ActionError;
+
 use crate::actions::purse::Purse;
 use crate::combat::CombatSet;
-use crate::combat::damage_kind::DamageKind;
+
 use crate::combat::dead::Dead;
 use crate::combat::targets::Targets;
 use crate::mode::player_resources::PlayerResources;
 use crate::orders::OrdersSet;
 use crate::scripts::ctx::Ctx;
-use crate::scripts::script_book::ScriptBook;
+
 use crate::stats::StatsSet;
-use crate::stats::modifier_book::{Applier, ModifierBook, ModifierId};
+use crate::stats::modifier_book::{Applier, ModifierBook};
 use crate::stats::modifiers::Modifiers;
 use crate::stats::param_sources::ParamSources;
 use crate::stats::pools::Pools;
-use crate::stats::stat::Stat;
+
 use crate::stats::stat_book::StatBook;
 use crate::units::block::Block;
 use crate::units::body::Body;
-use crate::units::filter::Filter;
+
 use crate::units::owner::Owner;
 use crate::units::script_view::{RowFill, SlotRow, View};
 use crate::units::team::Team;
-use crate::units::type_scope::TypeScope;
+
 use crate::units::unit_tags::UnitTags;
-use crate::values::declared_name::DeclaredName;
-use crate::values::filter_data::FilterData;
 
 pub(crate) mod action_book;
 pub(crate) mod action_data;
@@ -79,60 +77,6 @@ impl Actions {
                 .before(CombatSet::Die),
             hold_passives.in_set(SimSet::Vision),
         ));
-    }
-
-    /// Binds `action` to the unit type `name` it spawns, once the match's unit types load: a
-    /// train's unit, or its delivery's projectile, one the package load checked, in the scope its
-    /// package names types in.
-    pub fn bind_spawn(world: &mut World, action: ActionId, name: &str) {
-        let package = world
-            .resource::<ActionBook>()
-            .get(action)
-            .expect("a loaded action")
-            .package;
-        let view = world.non_send::<View>();
-        let unit_type = view
-            .types_mut()
-            .named(TypeScope::of_package(package), name)
-            .expect("the load checked an action's unit type");
-        view.bind_spawn(action, unit_type);
-        world
-            .resource_mut::<ActionBook>()
-            .bind_spawn(action, unit_type);
-    }
-
-    /// Loads the action `name` of `package`, of `ranks` ranks, into the match, which the
-    /// package load checked, with its compiled script exactly when its data names one: its
-    /// capability fields at each rank, times in milliseconds as ticks at the match's rate,
-    /// rounded up.
-    pub fn load(
-        world: &mut World,
-        package: u16,
-        name: &str,
-        data: &ActionData,
-        script: Option<ScriptId>,
-        ranks: u8,
-    ) -> Result<ActionId, ActionError> {
-        let rate = *world.resource::<TickRate>();
-        let view = world.non_send::<View>().clone();
-        let names = MatchNames {
-            view: &view,
-            modifiers: world.resource::<ModifierBook>(),
-        };
-        let parts = ActionParts::of(data, package, ranks, rate, &names)?;
-        let id = world.resource_scope(|world, mut actions: Mut<'_, ActionBook>| {
-            let scripts = world.resource::<ScriptBook>();
-            actions.load(scripts, package, data, script, parts)
-        });
-        let ctx = world.non_send::<Ctx>().clone();
-        let stat = |stat: &Stat| view.stat_index(stat).expect("the load checked the stats");
-        ctx.frame().add_params(id, &data.params, stat);
-        let delivery = world
-            .resource::<ActionBook>()
-            .get(id)
-            .and_then(|action| action.delivery);
-        world.non_send::<View>().add_ability(name, delivery);
-        Ok(id)
     }
 }
 
@@ -322,40 +266,123 @@ fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
     fill.slotted(rows);
 }
 
-/// The names of an action's data as a match's world resolves them: its view, and its book of
-/// modifiers.
-#[derive(Debug)]
-struct MatchNames<'w> {
-    view: &'w View,
-    modifiers: &'w ModifierBook,
-}
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use crate::actions::Actions;
+    use crate::actions::action_book::ActionBook;
+    use crate::actions::action_book::ActionId;
+    use crate::actions::action_book::ActionParts;
+    use crate::actions::action_data::ActionData;
+    use crate::actions::action_data::CostTarget;
+    use crate::actions::action_names::ActionNames;
+    use crate::actions::error::ActionError;
+    use crate::combat::damage_kind::DamageKind;
+    use crate::scripts::ctx::Ctx;
+    use crate::scripts::script_book::ScriptBook;
+    use crate::stats::modifier_book::ModifierBook;
+    use crate::stats::modifier_book::ModifierId;
+    use crate::stats::stat::Stat;
+    use crate::units::filter::Filter;
+    use crate::units::script_view::View;
+    use crate::units::type_scope::TypeScope;
+    use crate::values::declared_name::DeclaredName;
+    use crate::values::filter_data::FilterData;
+    use bevy_ecs::world::Mut;
+    use bevy_ecs::world::World;
+    use campfire_script::ScriptId;
+    use campfire_sim::TickRate;
 
-impl ActionNames for MatchNames<'_> {
-    fn stat(&self, stat: &Stat) -> u16 {
-        self.view
-            .stat_index(stat)
-            .expect("the load checked the stats")
+    impl Actions {
+        /// Binds `action` to the unit type `name` it spawns, once the match's unit types load: a
+        /// train's unit, or its delivery's projectile, one the package load checked, in the scope its
+        /// package names types in.
+        pub fn bind_spawn(world: &mut World, action: ActionId, name: &str) {
+            let package = world
+                .resource::<ActionBook>()
+                .get(action)
+                .expect("a loaded action")
+                .package;
+            let view = world.non_send::<View>();
+            let unit_type = view
+                .types_mut()
+                .named(TypeScope::of_package(package), name)
+                .expect("the load checked an action's unit type");
+            view.bind_spawn(action, unit_type);
+            world
+                .resource_mut::<ActionBook>()
+                .bind_spawn(action, unit_type);
+        }
+
+        /// Loads the action `name` of `package`, of `ranks` ranks, into the match, which the
+        /// package load checked, with its compiled script exactly when its data names one: its
+        /// capability fields at each rank, times in milliseconds as ticks at the match's rate,
+        /// rounded up.
+        pub fn load(
+            world: &mut World,
+            package: u16,
+            name: &str,
+            data: &ActionData,
+            script: Option<ScriptId>,
+            ranks: u8,
+        ) -> Result<ActionId, ActionError> {
+            let rate = *world.resource::<TickRate>();
+            let view = world.non_send::<View>().clone();
+            let names = MatchNames {
+                view: &view,
+                modifiers: world.resource::<ModifierBook>(),
+            };
+            let parts = ActionParts::of(data, package, ranks, rate, &names)?;
+            let id = world.resource_scope(|world, mut actions: Mut<'_, ActionBook>| {
+                let scripts = world.resource::<ScriptBook>();
+                actions.load(scripts, package, data, script, parts)
+            });
+            let ctx = world.non_send::<Ctx>().clone();
+            let stat = |stat: &Stat| view.stat_index(stat).expect("the load checked the stats");
+            ctx.frame().add_params(id, &data.params, stat);
+            let delivery = world
+                .resource::<ActionBook>()
+                .get(id)
+                .and_then(|action| action.delivery);
+            world.non_send::<View>().add_ability(name, delivery);
+            Ok(id)
+        }
     }
 
-    fn damage_kind(&self, name: &DeclaredName) -> DamageKind {
-        self.view
-            .damage_kind(name.as_str())
-            .expect("the load checked the damage kind")
+    /// The names of an action's data as a match's world resolves them: its view, and its book of
+    /// modifiers.
+    #[derive(Debug)]
+    struct MatchNames<'w> {
+        view: &'w View,
+        modifiers: &'w ModifierBook,
     }
 
-    fn cost_target(&self, name: &DeclaredName) -> Option<CostTarget> {
-        self.view.cost_target(name.as_str())
-    }
+    impl ActionNames for MatchNames<'_> {
+        fn stat(&self, stat: &Stat) -> u16 {
+            self.view
+                .stat_index(stat)
+                .expect("the load checked the stats")
+        }
 
-    fn filter(&self, filter: &FilterData) -> Filter {
-        self.view
-            .resolve_filter(filter)
-            .expect("the load checked the filter's tags")
-    }
+        fn damage_kind(&self, name: &DeclaredName) -> DamageKind {
+            self.view
+                .damage_kind(name.as_str())
+                .expect("the load checked the damage kind")
+        }
 
-    fn modifier(&self, package: u16, name: &DeclaredName) -> ModifierId {
-        self.modifiers
-            .find(package, name.as_str())
-            .expect("the load checked the modifier")
+        fn cost_target(&self, name: &DeclaredName) -> Option<CostTarget> {
+            self.view.cost_target(name.as_str())
+        }
+
+        fn filter(&self, filter: &FilterData) -> Filter {
+            self.view
+                .resolve_filter(filter)
+                .expect("the load checked the filter's tags")
+        }
+
+        fn modifier(&self, package: u16, name: &DeclaredName) -> ModifierId {
+            self.modifiers
+                .find(package, name.as_str())
+                .expect("the load checked the modifier")
+        }
     }
 }

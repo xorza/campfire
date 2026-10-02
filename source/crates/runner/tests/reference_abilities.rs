@@ -379,8 +379,7 @@ fn rimes_fan_of_frost_from_its_package_hits_exactly_the_units_in_reach_once_each
     let rime = abilities("rime");
     Stats::load_modifier(&mut world, 0, "slow", &rime.content.modifiers["slow"], None);
     let arrow = &rime.content.units["frost_arrow"];
-    let frost_arrow =
-        Units::load_type(&mut world, TypeScope::Mode, "frost_arrow", &arrow.core).unwrap();
+    let frost_arrow = Units::load_type(&mut world, TypeScope::Mode, "frost_arrow", &arrow.core);
     Projectiles::load_type(&mut world, frost_arrow, arrow.projectile.as_ref().unwrap());
     // Fan of Frost runs no script: its data's `on_hit` deals its damage and applies its slow.
     let data = &rime.content.actions["fan_of_frost"];
@@ -460,7 +459,7 @@ fn rimes_snow_owl_flies_to_its_point_and_ends_there() {
     let bounty = &rime.content.modifiers["snow_owl_bounty"];
     Stats::load_modifier(&mut world, 0, "snow_owl_bounty", bounty, Some(script));
     let owl = &rime.content.units["snow_owl"];
-    let owl_type = Units::load_type(&mut world, TypeScope::Mode, "snow_owl", &owl.core).unwrap();
+    let owl_type = Units::load_type(&mut world, TypeScope::Mode, "snow_owl", &owl.core);
     Projectiles::load_type(&mut world, owl_type, owl.projectile.as_ref().unwrap());
     let snow_owl = Actions::load(&mut world, 0, "snow_owl", data, Some(script), 5).unwrap();
     Actions::bind_spawn(&mut world, snow_owl, "snow_owl");
@@ -529,7 +528,7 @@ fn cinders_eruption_from_its_package_erupts_on_the_units_in_reach_after_its_dela
     let cinder = abilities("cinder");
     load_modifiers(&mut world, "cinder", &cinder);
     let file = &cinder.content.units["eruption"];
-    let unit_type = Units::load_type(&mut world, TypeScope::Mode, "eruption", &file.core).unwrap();
+    let unit_type = Units::load_type(&mut world, TypeScope::Mode, "eruption", &file.core);
     Areas::load_type(&mut world, unit_type, 0, file.area.as_ref().unwrap());
     let data = &cinder.content.actions["eruption"];
     let script = compile(&mut world, "cinder", data.script.as_ref().unwrap());
@@ -599,8 +598,7 @@ fn veils_smoke_ring_from_its_package_holds_its_modifiers_on_the_units_inside_whi
     let veil = abilities("veil");
     load_modifiers(&mut world, "veil", &veil);
     let file = &veil.content.units["smoke_ring"];
-    let unit_type =
-        Units::load_type(&mut world, TypeScope::Mode, "smoke_ring", &file.core).unwrap();
+    let unit_type = Units::load_type(&mut world, TypeScope::Mode, "smoke_ring", &file.core);
     Areas::load_type(&mut world, unit_type, 0, file.area.as_ref().unwrap());
     let data = &veil.content.actions["smoke_ring"];
     assert_eq!(data.script, None);

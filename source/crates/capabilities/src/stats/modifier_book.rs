@@ -61,11 +61,7 @@ impl ModifierBook {
         script: Option<ScriptId>,
     ) -> ModifierId {
         let hooks = scripts.defines(script, &MODIFIER_HOOKS);
-        let declare = |name: &DeclaredName| {
-            types
-                .declare(name.as_str())
-                .expect("the load counted the tags")
-        };
+        let declare = |name: &DeclaredName| types.declare(name.as_str());
         let tags = TagSet::of(data.tags.iter().map(declare));
         assert!(
             self.entries

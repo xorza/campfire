@@ -5,7 +5,7 @@ use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_math::{Num, Vec3};
 
-use campfire_sim::{Keyed, Ordered, Position, StableId, StateRegistry, Tick, TickRate};
+use campfire_sim::{Keyed, Ordered, Position, StableId, StateRegistry, Tick};
 
 use crate::actions::action_book::{ActionBook, Aim, Fan};
 use crate::actions::action_data::Range;
@@ -20,14 +20,13 @@ use crate::deliveries::{Deliveries, DeliverySet};
 use crate::projectiles::cast_hits::CastHits;
 use crate::projectiles::flights::{Aloft, Flights};
 use crate::projectiles::projectile::{Flight, Payload, Projectile};
-use crate::projectiles::projectile_data::ProjectileData;
+
 use crate::projectiles::projectile_effect::{ProjectileEffect, Toward};
 use crate::projectiles::projectile_spec::ProjectileSpec;
 use crate::scripts::frame::Frame;
 use crate::stats::pools::Pools;
 use crate::units::by_type::ByType;
-use crate::units::engine_tag::EngineTag;
-use crate::units::script_view::View;
+
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
 use crate::values::bounds::Bounds;
@@ -61,25 +60,6 @@ impl Projectiles {
         ));
         registry.register_component::<Projectile>();
         registry.register_resource::<CastHits>();
-    }
-
-    /// Makes `unit_type` a projectile type of `data`, tagged `projectile`, its speed a tick at
-    /// the match's rate, which the package load checked: its `hits` filter names tags of the
-    /// match's.
-    pub fn load_type(world: &mut World, unit_type: UnitType, data: &ProjectileData) {
-        let rate = *world.resource::<TickRate>();
-        let view = world.non_send::<View>().clone();
-        let spec = {
-            let mut types = view.types_mut();
-            types.give_tag(unit_type, EngineTag::Projectile.tag());
-            ProjectileSpec::of(data, &types, rate)
-        };
-        if data.homing {
-            view.set_homing(unit_type);
-        }
-        world
-            .resource_mut::<ByType<ProjectileSpec>>()
-            .set(unit_type, spec);
     }
 
     /// Applies the next projectile the call in `frame` queued.
@@ -329,6 +309,40 @@ fn launch(mut spawner: DeliverySpawner<'_, '_>, mut launches: ResMut<'_, Launche
         });
     }
     launches.clear();
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use crate::projectiles::Projectiles;
+    use crate::projectiles::projectile_data::ProjectileData;
+    use crate::projectiles::projectile_spec::ProjectileSpec;
+    use crate::units::by_type::ByType;
+    use crate::units::engine_tag::EngineTag;
+    use crate::units::script_view::View;
+    use crate::units::unit_type::UnitType;
+    use bevy_ecs::world::World;
+    use campfire_sim::TickRate;
+
+    impl Projectiles {
+        /// Makes `unit_type` a projectile type of `data`, tagged `projectile`, its speed a tick at
+        /// the match's rate, which the package load checked: its `hits` filter names tags of the
+        /// match's.
+        pub fn load_type(world: &mut World, unit_type: UnitType, data: &ProjectileData) {
+            let rate = *world.resource::<TickRate>();
+            let view = world.non_send::<View>().clone();
+            let spec = {
+                let mut types = view.types_mut();
+                types.give_tag(unit_type, EngineTag::Projectile.tag());
+                ProjectileSpec::of(data, &types, rate)
+            };
+            if data.homing {
+                view.set_homing(unit_type);
+            }
+            world
+                .resource_mut::<ByType<ProjectileSpec>>()
+                .set(unit_type, spec);
+        }
+    }
 }
 
 #[cfg(test)]

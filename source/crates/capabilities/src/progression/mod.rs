@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use bevy_ecs::schedule::Schedule;
 use bevy_ecs::world::{EntityRef, Mut, World};
 use campfire_sim::{EntityIndex, StateRegistry, Tick};
@@ -8,12 +6,11 @@ use crate::progression::experience::Experience;
 use crate::progression::level_ups::{LevelUp, LevelUps};
 use crate::progression::progression_effect::ProgressionEffect;
 use crate::progression::track_book::TrackBook;
-use crate::progression::track_data::TrackData;
+
 use crate::progression::track_set::TrackSet;
 use crate::scripts::frame::Frame;
 use crate::stats::level::Level;
 use crate::units::script_view::{RowFill, View};
-use crate::values::declared_name::DeclaredName;
 
 pub(crate) mod experience;
 pub(crate) mod level_ups;
@@ -36,13 +33,6 @@ impl Progression {
         world.insert_resource(LevelUps::default());
         registry.register_component::<Experience>();
         registry.register_resource::<LevelUps>();
-    }
-
-    /// Loads the mode's `tracks`, which the package load checked, into the match.
-    pub fn load(world: &mut World, tracks: &BTreeMap<DeclaredName, TrackData>) {
-        let book = TrackBook::new(tracks);
-        world.non_send::<View>().set_track_names(book.names());
-        world.insert_resource(book);
     }
 
     /// Applies the next progression effect the call in `frame` queued.
@@ -93,6 +83,26 @@ fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
     fill.row.tracks = unit
         .get::<Experience>()
         .map_or(TrackSet::default(), Experience::tracks);
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use crate::progression::Progression;
+    use crate::progression::track_book::TrackBook;
+    use crate::progression::track_data::TrackData;
+    use crate::units::script_view::View;
+    use crate::values::declared_name::DeclaredName;
+    use bevy_ecs::world::World;
+    use std::collections::BTreeMap;
+
+    impl Progression {
+        /// Loads the mode's `tracks`, which the package load checked, into the match.
+        pub fn load(world: &mut World, tracks: &BTreeMap<DeclaredName, TrackData>) {
+            let book = TrackBook::new(tracks);
+            world.non_send::<View>().set_track_names(book.names());
+            world.insert_resource(book);
+        }
+    }
 }
 
 #[cfg(test)]

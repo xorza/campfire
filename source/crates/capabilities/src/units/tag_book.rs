@@ -116,21 +116,21 @@ mod tests {
     fn a_units_tags_take_their_effects_from_the_modes_data() {
         let mut types = UnitTypes::default();
         let names = ["stunned", "slowed", "slow_immune", "true_sight"];
-        let [stunned, slowed, slow_immune, sight] = names.map(|name| types.declare(name).unwrap());
+        let [stunned, slowed, slow_immune, sight] = names.map(|name| types.declare(name));
         // The engine's tags hold the first places, and to declare one finds it.
         assert_eq!(
             [stunned, slowed, slow_immune, sight].map(Tag::index),
             [3, 4, 5, 6]
         );
-        let engine = EngineTag::ALL.map(|tag| types.declare(tag.name()).unwrap());
+        let engine = EngineTag::ALL.map(|tag| types.declare(tag.name()));
         assert_eq!(engine, EngineTag::ALL.map(EngineTag::tag));
         assert_eq!(engine.map(Tag::index), [0, 1, 2]);
-        assert_eq!(types.declare("tower").unwrap().index(), 7);
+        assert_eq!(types.declare("tower").index(), 7);
         let tower = UnitTypeData {
             tags: vec![DeclaredName::new("true_sight").unwrap()],
             params: BTreeMap::new(),
         };
-        let tower = types.load(TypeScope::Mode, "tower", &tower).unwrap();
+        let tower = types.load(TypeScope::Mode, "tower", &tower);
         let data = |blocks: &[Block], detects, immune: &[&str]| TagData {
             blocks: blocks.to_vec(),
             hidden: false,
