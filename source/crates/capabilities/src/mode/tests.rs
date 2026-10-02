@@ -196,6 +196,18 @@ fn pick(ctx, player, hero) {
 }
 "#;
 
+/// `on_mode_input` that picks the hero a `hero` input names, as `PICK` does, and passes any other
+/// input to the script's own `on_input`.
+const PICKING: &str = r#"
+fn on_mode_input(ctx, player, name, value) {
+    if name == "hero" {
+        pick(ctx, player, value);
+        return;
+    }
+    on_input(ctx, player, name, value);
+}
+"#;
+
 /// The reference 3v3's `on_unit_died`, `hero_died` and `share_xp` as they were when these tests
 /// were written.
 const DEATHS_3V3: &str = r#"
@@ -624,6 +636,24 @@ impl Game {
         Game::start(script, limits, mode_files()).unwrap()
     }
 
+    /// A match of `script`, whose `on_input` takes every mode input but a pick of a hero.
+    fn picking(script: &str, limits: ScriptLimits) -> Game {
+        Game::new(&format!("{script}{PICKING}"), limits)
+    }
+
+    /// Player `slot` picks `hero` in a tick: the hero it then owns.
+    fn pick(&mut self, slot: u32, hero: &str) -> Entity {
+        self.tick(&[(slot, input("hero", hero))]);
+        let player = PlayerSlot::new(slot);
+        let mut owned = self.sim.world.query::<(Entity, &Owner)>();
+        let mut heroes = owned
+            .iter(&self.sim.world)
+            .filter(|(_, owner)| owner.slot() == player);
+        let (hero, _) = heroes.next().expect("the player picked a hero");
+        assert!(heroes.next().is_none(), "the player owns one hero");
+        hero
+    }
+
     /// The match `new` gives, of the mode `files`; an error when the mode's start fails.
     fn start(script: &str, limits: ScriptLimits, files: ModeFiles) -> Result<Game, CallError> {
         let scripts = ScriptBudgets::new(limits, 3);
@@ -964,11 +994,7 @@ fn on_mode_input(ctx, player, name, value) {
 #[test]
 fn experience_raises_levels_and_each_level_reached_runs_on_level_up_in_the_tick() {
     let leveler = r#"
-fn on_mode_input(ctx, player, name, value) {
-    if name == "hero" {
-        pick(ctx, player, value);
-        return;
-    }
+fn on_input(ctx, player, name, value) {
     let hero = ctx.avatars()[0];
     if value == "99" {
         ctx.add_xp(hero, "level", 99);
@@ -992,10 +1018,8 @@ fn on_level_up(ctx, unit, track, level) {
     }
 }
 "#;
-    let mut game = Game::new(leveler, ScriptLimits::ROOMY);
-    game.tick(&[(0, input("hero", "hero-x"))]);
-    let mut owned = game.sim.world.query_filtered::<Entity, With<Owner>>();
-    let hero = owned.single(&game.sim.world).unwrap();
+    let mut game = Game::picking(leveler, ScriptLimits::ROOMY);
+    let hero = game.pick(0, "hero-x");
     // The `level` track's level is the unit's own; valor keeps its own.
     let progress = |game: &Game| {
         let experience = game.sim.world.get::<Experience>(hero).unwrap();
@@ -1052,16 +1076,12 @@ fn a_hero_dead_beside_an_enemy_hero_gives_it_experience_and_comes_back() {
     // with no killer. X takes all of Y's 150 + 25 × 1 experience, past level 2's 100, and Y
     // comes back after 1000 + 500 × 1 ms, as the call that gave the experience did not fail.
     let killer = r#"
-fn on_mode_input(ctx, player, name, value) {
-    if name == "hero" {
-        pick(ctx, player, value);
-        return;
-    }
+fn on_input(ctx, player, name, value) {
     ctx.damage(ctx.avatars("b")[0], 1000, "physical");
 }
 "#;
     let script = format!("{killer}{DEATHS_3V3}");
-    let mut game = Game::new(&script, ScriptLimits::ROOMY);
+    let mut game = Game::picking(&script, ScriptLimits::ROOMY);
     // The 3v3's tag of its cores, which `on_unit_died` reads first.
     let core = UnitTypeData::tagged(&["core"]);
     Units::load_type(&mut game.sim.world, TypeScope::Mode, "core", &core);
@@ -1214,11 +1234,7 @@ fn on_mode_input(ctx, player, name, value) {
 #[test]
 fn a_mode_applies_a_modifier_writes_its_handle_and_sees_it_end() {
     let blesser = r#"
-fn on_mode_input(ctx, player, name, value) {
-    if name == "hero" {
-        pick(ctx, player, value);
-        return;
-    }
+fn on_input(ctx, player, name, value) {
     let hero = ctx.avatars()[0];
     if value == "bless" {
         let m = ctx.add_modifier(hero, "blessing", 100);
@@ -1244,10 +1260,8 @@ fn on_mode_input(ctx, player, name, value) {
     }
 }
 "#;
-    let mut game = Game::new(blesser, ScriptLimits::ROOMY);
-    game.tick(&[(0, input("hero", "hero-x"))]);
-    let mut owned = game.sim.world.query_filtered::<Entity, With<Owner>>();
-    let hero = owned.single(&game.sim.world).unwrap();
+    let mut game = Game::picking(blesser, ScriptLimits::ROOMY);
+    let hero = game.pick(0, "hero-x");
     let held = |game: &Game| {
         let modifiers = game.sim.world.get::<Modifiers>(hero).unwrap();
         let clocks = game.sim.world.get::<ModifierClocks>(hero).unwrap();
@@ -1739,14 +1753,41 @@ fn on_mode_input(ctx, player, name, value) {
     assert_eq!(game.sim.world.get_resource::<MatchEnd>(), Some(&draw));
 }
 
-/// The reference 3v3's `calc_damage` and the function it calls, as its package holds them.
-fn calc_damage_3v3() -> &'static str {
-    const MODE_3V3: &str = include_str!("../../../../packages/moba/modes/3v3/scripts/mode.rhai");
-    let start = MODE_3V3.find("// A source that is gone").unwrap();
-    let body = MODE_3V3.find("fn calc_damage(ctx, d) {").unwrap();
-    let end = body + MODE_3V3[body..].find("\n}\n").unwrap() + 3;
-    &MODE_3V3[start..end]
+/// The reference 3v3's `source_stat` and `calc_damage` as they were when these tests were written:
+/// the engine's tests keep their own copy, so a balance change to the 3v3 changes none of them.
+const CALC_DAMAGE_3V3: &str = r#"
+// A source that is gone, as from a projectile that outlived it, has no bonus and no penetration.
+fn source_stat(d, name) {
+    let source = d.source;
+    if source == () { 0 } else { source.stat(name) }
 }
+
+fn calc_damage(ctx, d) {
+    let amount = d.amount * (1 + source_stat(d, "damage_dealt_pct"));
+    if d.roll != () && d.roll < source_stat(d, "crit_chance") {
+        amount *= 2;
+    }
+    if d.kind == "true" {
+        return amount;
+    }
+    let physical = d.kind == "physical";
+    let resist = if physical { d.target.stat("armor") } else { d.target.stat("magic_resist") };
+    let pen_pct = source_stat(d, if physical { "armor_pen_pct" } else { "magic_pen_pct" });
+    let pen_flat = source_stat(d, if physical { "armor_pen" } else { "magic_pen" });
+    if resist > 0 {
+        resist = (resist * (1 - pen_pct) - pen_flat).max(0);
+    }
+    if resist >= 0 {
+        amount = amount * 100 / (100 + resist);
+    } else {
+        amount = amount * (2 - num(100) / (100 - resist));
+    }
+    if physical {
+        amount = (amount - d.target.stat("physical_block")).max(0);
+    }
+    amount
+}
+"#;
 
 impl Game {
     /// A grunt of 1000 health on `team`, whose modifier adds `stats` by name.
@@ -1819,7 +1860,7 @@ impl Game {
 
 #[test]
 fn the_3v3s_calc_damage_weighs_each_hit_exactly() {
-    let mut game = Game::new(calc_damage_3v3(), ScriptLimits::ROOMY);
+    let mut game = Game::new(CALC_DAMAGE_3V3, ScriptLimits::ROOMY);
     let half = Num::ONE / 2;
     // The source deals 50% more, crits on a roll below 0.25, ignores half of armor, then 10
     // more.
@@ -2125,11 +2166,7 @@ fn on_mode_input(ctx, player, name, value) {
 #[test]
 fn choices_hold_each_players_values_and_grants_fill_a_slot_kind() {
     let script = r#"
-fn on_mode_input(ctx, player, name, value) {
-    if name == "hero" {
-        pick(ctx, player, value);
-        return;
-    }
+fn on_input(ctx, player, name, value) {
     if value == "read" {
         let duo = ctx.chosen(player, "duo");
         ctx.state.kind = if duo.is_empty() { "none" } else { duo[0] + "," + duo[1] };
@@ -2158,7 +2195,7 @@ fn on_mode_input(ctx, player, name, value) {
     }
 }
 "#;
-    let mut game = Game::new(script, ScriptLimits::ROOMY);
+    let mut game = Game::picking(script, ScriptLimits::ROOMY);
     let probe = |value| input("probe", value);
     let read = |game: &Game| ["kind", "seen", "team"].map(|name| game.field(name));
     let text = |text: &str| StateValue::Text(text.to_owned());

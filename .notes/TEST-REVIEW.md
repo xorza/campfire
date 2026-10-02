@@ -14,16 +14,9 @@ Paths are relative to `source/crates/`. Line numbers are at `c38f0da`. Each item
 
 ## 2. Harnesses
 
-### 2.2 Data constructors (capabilities)
-
-- [ ] **Pathing grids** are built in four places: `regions.rs:380`, `route_planner.rs:455` (`walled`, which parses an ASCII map), `pathing_grid.rs:206` (`drawn`, which prints one), and `navigation/tests.rs`, whose loads go through `Walk::load_pathing` now. Better: `PathingGrid::from_ascii` and `draw` in `pathing_grid.rs` internals.
-
 ### 2.3 Mode harness
 
-- [ ] **A pick prelude** — 7 scripts start with `if name == "hero" { pick(...); return; }`, and 10 tests first tick `input("hero", "hero-x")`. Better: a `PICKING` prelude, plus `Game::picking(src, limits)` and `Game::pick(slot, hero) -> Entity`. These replace the 4 `query_filtered::<Entity, With<Owner>>().single()` lookups (918, 976, 1100, 1218) and the search at 1055. This saves about 60 lines.
 - [ ] **`mode/tests.rs` is 2129 lines with about 106 imports** — it also tests production (1079-1181), experience (944-1076), modifiers (1184-1267, 2083-2129), `calc_damage` (1608-1774) and roles and relations. These tests need the mode, and the layer rule (`lib.rs:1-5`) stops them from moving down into their own capability. Better: split by concern into `mode/tests/{mod.rs, start.rs, inputs.rs, progression.rs, production.rs, modifiers.rs, damage.rs, roles.rs, match_end.rs}` (group 9).
-- [ ] **`calc_damage_3v3()` cuts the live package at a comment** — `mode/tests.rs:1608-1614` cuts at `find("// A source that is gone")`. The orders and mode tests otherwise keep frozen copies of reference scripts (`CREEP_AI`, `DEATHS_3V3`). Choose one policy. If the cut stays, cut at a function name.
-
 ### 2.4 Runner and verifier
 
 - [ ] **`HashTrail`: one live-against-replay check** — the comparison is written 5 times with 3 different end checks, and two of them have no end check:
