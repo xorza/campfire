@@ -40,14 +40,26 @@ impl<'a> ParamSource<'a> {
         let book = world.get_resource::<StatBook>()?;
         let entity = world.resource::<EntityIndex>().get(unit)?;
         let unit = world.entity(entity);
-        let level = unit.get::<Level>().map_or(1, |level| level.get());
-        let values = unit.get::<UnitStats>().map_or(&[][..], UnitStats::values);
-        Some(ParamSource::new(
+        let parts = (unit.get::<Level>(), unit.get::<UnitStats>());
+        Some(ParamSource::of_parts(
             book,
             *unit.get::<UnitType>()?,
-            level,
-            values,
+            parts.0,
+            parts.1,
         ))
+    }
+
+    /// A unit of `unit_type` as a source, of its `level`, 1 with none, and its `stats`, each 0
+    /// before they are derived: how every reader of a unit's parts sees it as a source.
+    pub(crate) fn of_parts(
+        book: &'a StatBook,
+        unit_type: UnitType,
+        level: Option<&Level>,
+        stats: Option<&'a UnitStats>,
+    ) -> ParamSource<'a> {
+        let level = level.map_or(1, |level| level.get());
+        let values = stats.map_or(&[][..], UnitStats::values);
+        ParamSource::new(book, unit_type, level, values)
     }
 
     pub(crate) const fn level(&self) -> u32 {

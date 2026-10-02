@@ -7,6 +7,7 @@ use campfire_sim::{Position, SimSet, SimTick, StableId, StateRegistry, TickRate}
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_kind::ActionKind;
+use crate::stats::lifetime::Hold;
 use crate::stats::param_book::ParamBook;
 
 use crate::actions::action_slots::{ActionSlots, ActionTarget, InProgress};
@@ -228,11 +229,12 @@ fn hold_passives(
             };
             let held = modifiers
                 .get(passive.modifier, Some(id))
+                .filter(|instance| instance.lifetime.held_by(Hold::Passive))
                 .map(|instance| instance.rank);
             let holds = slot.rank > 0 && (!passive.while_ready || slot.ready_at <= now);
             if !holds {
                 if held.is_some() {
-                    modifiers.remove(passive.modifier, Some(id));
+                    modifiers.release(passive.modifier, Some(id), Hold::Passive);
                 }
                 continue;
             }
@@ -243,8 +245,7 @@ fn hold_passives(
                 source: Some(id),
                 ability: Some(slot.action),
                 rank: slot.rank,
-                passive: true,
-                held: false,
+                hold: Some(Hold::Passive),
             };
             let source = sources.get(id);
             let param = |place: &ParamPlace| {

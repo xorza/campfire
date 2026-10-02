@@ -211,7 +211,6 @@ fn hold_inside(
     mut held: ResMut<'_, HeldModifiers>,
     areas: Query<'_, '_, (&Position, &Team, &UnitType, &Area)>,
 ) {
-    held.0.clear();
     for (&pos, &team, &unit_type, area) in &areas {
         let spec = specs.get(unit_type).expect("an area's type has a spec");
         if spec.inside == Inside::default() {

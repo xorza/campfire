@@ -11,6 +11,7 @@ use crate::scripts::hook::Hook;
 use crate::scripts::hook_set::HookSet;
 use crate::scripts::script_book::ScriptBook;
 use crate::stats::error::ModifierError;
+use crate::stats::lifetime::{Ends, Hold, Lifetime};
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifier_spec::{ModifierSpec, ParamPlace, SpecNames, SpecNumber, SpecTime};
 use crate::stats::modifiers::{Application, Instance, Interval, StackEnd, StatShare};
@@ -190,7 +191,7 @@ impl ModifierBook {
             None => Some(None),
         };
         let duration = match duration {
-            _ if from.passive || from.held => None,
+            _ if from.hold.is_some() => None,
             Some(duration) => Some(duration),
             None => ticks(spec.duration.as_ref())?,
         };
@@ -208,7 +209,8 @@ impl ModifierBook {
                 live: read.live,
             })
         });
-        let counts = from.passive && stack_life.is_some();
+        let passive = from.hold == Some(Hold::Passive);
+        let counts = passive && stack_life.is_some();
         let first = stack_life.filter(|_| !counts).map(|ticks| StackEnd {
             until: Instance::end(now, ticks),
             count: 1,
@@ -218,11 +220,12 @@ impl ModifierBook {
             source: from.source,
             ability: from.ability,
             rank: from.rank,
-            passive: from.passive,
-            held: from.held,
+            lifetime: Lifetime::new(
+                from.hold,
+                duration.map_or(Ends::Never, |ticks| Ends::At(Instance::end(now, ticks))),
+            ),
             aura_radius: value(spec.aura.as_ref().map(|aura| &aura.radius))?,
             stacks: u32::from(!counts),
-            until: duration.map(|ticks| Instance::end(now, ticks)),
             stack_life,
             stack_ends: first.into_iter().collect(),
             interval,
@@ -233,7 +236,7 @@ impl ModifierBook {
         };
         Some(Application {
             instance,
-            reapply: if from.passive {
+            reapply: if passive {
                 Reapply::Refresh
             } else {
                 spec.reapply
@@ -244,14 +247,14 @@ impl ModifierBook {
 }
 
 /// Who applies a modifier: its source, none from the mode; the ability that applies it, at
-/// `rank`, rank 1 with none; and whether it is a passive, or held by an aura or a player.
+/// `rank`, rank 1 with none; and what holds it, a passive or an aura, an area or a player, or
+/// none for an application of its own.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Applier {
     pub(crate) source: Option<StableId>,
     pub(crate) ability: Option<ActionId>,
     pub(crate) rank: u8,
-    pub(crate) passive: bool,
-    pub(crate) held: bool,
+    pub(crate) hold: Option<Hold>,
 }
 
 impl ModifierEntry {

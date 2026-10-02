@@ -16,6 +16,7 @@ use crate::combat::armed::Armed;
 use crate::combat::combat_rules::{CombatRules, Leech};
 use crate::players::resource_id::ResourceId;
 use crate::stats::Stats;
+use crate::stats::lifetime::{Ends, Lifetime};
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifiers::{Application, Instance};
 use crate::stats::pool_cost::PoolCost;
@@ -928,11 +929,12 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
         source: None,
         ability: None,
         rank: 1,
-        passive: false,
-        held: false,
         aura_radius: None,
         stacks: 1,
-        until: until.map(Tick::new),
+        lifetime: Lifetime::new(
+            None,
+            until.map_or(Ends::Never, |until| Ends::At(Tick::new(until))),
+        ),
         stack_life: None,
         stack_ends: Vec::new(),
         interval: None,

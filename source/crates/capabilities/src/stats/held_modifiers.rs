@@ -5,7 +5,8 @@ use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
 
 /// The modifiers capabilities other than stats hold on units this tick, which `StatsSet::Hold`
-/// holds as it holds auras': filled again each tick before it. Not state.
+/// holds as it holds auras': each producer adds to it before that set, which takes all it holds,
+/// so every producer's entries reach it, and none outlives its tick. Not state.
 #[derive(Resource, Debug, Default)]
 pub(crate) struct HeldModifiers(pub(crate) Vec<Held>);
 

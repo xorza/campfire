@@ -29,6 +29,7 @@ use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_book::ScriptBook;
 use crate::stats::Stats;
 use crate::stats::level::Level;
+use crate::stats::lifetime::Hold;
 use crate::stats::modifier_book::Applier;
 use crate::stats::modifier_effect::ModifierEffect;
 use crate::stats::modifiers::Modifiers;
@@ -221,8 +222,7 @@ impl ModeBook {
                 source: Some(id),
                 ability: None,
                 rank: 1,
-                passive: true,
-                held: false,
+                hold: Some(Hold::Passive),
             };
             let add = ModifierEffect::Add {
                 target: id,

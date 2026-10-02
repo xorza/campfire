@@ -15,7 +15,7 @@ References: `R§n` is group n of `REVIEW.md`, `T§n` is group n of `TEST-REVIEW.
 | R3 Strict layers with registered hooks | Lower modules import higher ones, and the core names every capability | R§8, R§10 |
 | R5 Stable order and one exactness rule | Some systems spend or allocate in query order, and some arithmetic rounds its own way | R§4, R§12 |
 | R6 A limit on work per tick, and fresh shared indexes | Navigation, vision, deliveries and the view have no work limit and no shared index | R§5, R§12 |
-| R7 State holds only state, and a restore is checked | Components store book data, and decoded state is trusted | R§1, R§7, R§10 |
+| R7 State holds only state | Components store book data, and decoded state is trusted | R§1, R§7, R§10 |
 | T Proof and test redesign | Refactors have no permanent proof of equal behaviour, and every module writes its own harness | T§1 to T§8 |
 
 ## Rules
@@ -214,11 +214,11 @@ capability_set, books
 
   A DoT tick or a shield absorb then does not re-derive the unit's stats.
 
-## R7. State holds only state, and a restore is checked
+## R7. State holds only state
 
 ### Problem
 
-- An instance that is both held and timed loses one of its two lifetimes.
+- Components hold copies of what the books hold: an instance's tags and its stats' places and operations, a queue's capacity, the players' resource count, an order's kind, and a level beside the level track's experience.
 
 ### Shape
 
@@ -228,16 +228,6 @@ capability_set, books
   - `PlayerResources` reads its count from the books;
   - `InProgress` reads its kind from the book;
   - `Experience` keeps only experience for the level track, and `Level` alone holds the level.
-- **The lifetime of a modifier.**
-
-  ```rust
-  struct Lifetime { holds: HoldSet, until: Option<Tick> }   // HoldSet: Passive | Aura | Area | Player, as bits
-  ```
-
-  - An instance ends only when no hold remains and its time is up. A timed copy over a held copy keeps both lifetimes.
-  - The `passive` and `held` bools go away, and `renew` takes the new interval.
-  - One `ParamSource::of` builds a unit as a param source for every caller.
-  - The consumer of `HeldModifiers` clears it after `apply_held`.
 - **Flat storage.** The nested `Vec`s of `Modifiers` become one flat buffer per carrier with ranges. This is possible once the book data leaves the instance.
 
 ## T. Proof and test redesign
@@ -303,7 +293,7 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 
 | Step | Change | Needs | Size |
 |---|---|---|---|
-| G2 | Book data out of the state; `Lifetime`; one `ParamSource::of`; flat `Modifiers`; the `ModifierStats` and `ModifierClock` split; the queue's times at push | — | M, changes the layout |
+| G2 | Book data out of the state; flat `Modifiers`; the `ModifierStats` and `ModifierClock` split; the queue's times at push | — | M, changes the layout |
 | H1b | `ctx.find` and `nearest_visible` read `BodyGrid` | D5, H1 | S |
 | J | The local fixes in the appendix, and T§5 to T§8 | any time | S each |
 
@@ -419,7 +409,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
 - **R§11:**
   - `Delivered` hooks: J (`enum Reach`);
   - placeholder group: D3;
-  - `passive` and `held`: G2;
   - `UnitKit`: C5a;
   - `Package` data: C2;
   - load error shapes: C5a;
@@ -427,7 +416,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - train queue times: G2;
   - kill by last death: J;
   - `ctx.projectile` returns `()`: F3;
-  - `HeldModifiers` clear: G2;
   - capability set table: A4.
 - **R§12:**
   - no spatial delivery query: H1;

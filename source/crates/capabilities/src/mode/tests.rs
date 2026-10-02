@@ -58,6 +58,7 @@ use crate::scripts::state_value::StateValue;
 use crate::stats;
 use crate::stats::Stats;
 use crate::stats::level::Level;
+use crate::stats::lifetime::{Ends, Hold, Lifetime};
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifiers::Modifiers;
 use crate::stats::modifiers::{Application, Instance, StatShare};
@@ -1297,7 +1298,7 @@ fn on_mode_input(ctx, player, name, value) {
             .map(|instance| {
                 (
                     instance.stacks,
-                    instance.until.map(Tick::get),
+                    instance.lifetime.until().map(Tick::get),
                     instance.state.clone(),
                 )
             })
@@ -1354,8 +1355,8 @@ fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
         .map(|instance| {
             (
                 instance.source,
-                instance.passive,
-                instance.until,
+                instance.lifetime.held_by(Hold::Passive),
+                instance.lifetime.until(),
                 instance.stacks,
             )
         })
@@ -1793,11 +1794,9 @@ impl Game {
             source: None,
             ability: None,
             rank: 1,
-            passive: false,
-            held: false,
             aura_radius: None,
             stacks: 1,
-            until: None,
+            lifetime: Lifetime::new(None, Ends::Never),
             stack_life: None,
             stack_ends: Vec::new(),
             interval: None,
@@ -2292,7 +2291,9 @@ fn on_mode_input(ctx, player, name, value) {
         for (id, entity) in game.world.resource::<EntityIndex>().iter() {
             let modifiers = game.world.get::<Modifiers>(entity).unwrap();
             if let Some(instance) = modifiers.get(drill, None) {
-                assert!(instance.held && instance.until.is_none());
+                assert!(
+                    instance.lifetime.held_by(Hold::Held) && instance.lifetime.until().is_none()
+                );
                 held.push(id.get());
             }
         }

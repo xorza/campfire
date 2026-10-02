@@ -5,7 +5,7 @@ use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, Changed, Has, Or, With, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
-use bevy_ecs::system::{Commands, Local, ParamSet, Query, Res};
+use bevy_ecs::system::{Commands, Local, ParamSet, Query, Res, ResMut};
 use bevy_ecs::world::{EntityRef, World};
 use campfire_math::{Num, Tick, Ticks};
 use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, TickRate};
@@ -14,6 +14,7 @@ use crate::scripts::ctx::Ctx;
 use crate::scripts::frame::Frame;
 use crate::stats::held_modifiers::{Held, HeldModifiers};
 use crate::stats::level::Level;
+use crate::stats::lifetime::Hold;
 use crate::stats::live_shares::LiveShares;
 use crate::stats::modifier_book::{Applier, ModifierBook};
 use crate::stats::modifier_effect::ModifierEffect;
@@ -50,6 +51,7 @@ pub(crate) mod error;
 pub(crate) mod held_modifiers;
 pub(crate) mod level;
 pub(crate) mod life_pool;
+pub(crate) mod lifetime;
 pub(crate) mod live_param;
 pub(crate) mod live_shares;
 pub(crate) mod meter;
@@ -169,8 +171,7 @@ impl Stats {
             source: frame.acting(),
             ability: frame.action(),
             rank: frame.rank(),
-            passive: false,
-            held: false,
+            hold: None,
         };
         Stats::apply_effect(world, effect, applier);
     }
@@ -297,13 +298,13 @@ fn clear_dead_modifiers(mut dead: Query<'_, '_, &mut Modifiers, Added<Dead>>) {
 /// from no source. Each ends on a unit that left it. An aura's modifier resolves its numbers from
 /// the ability that gave the aura, a player modifier's at rank 1; neither has a duration.
 fn apply_held(
-    (book, stats, (tick, rate), metric, players, others): (
+    (book, stats, (tick, rate), metric, players, mut others): (
         Option<Res<'_, ModifierBook>>,
         Option<Res<'_, StatBook>>,
         (Res<'_, SimTick>, Res<'_, TickRate>),
         Res<'_, Metric>,
         Res<'_, PlayerModifiers>,
-        Res<'_, HeldModifiers>,
+        ResMut<'_, HeldModifiers>,
     ),
     params: Res<'_, ParamBook>,
     sources: ParamSources<'_, '_>,
@@ -330,7 +331,7 @@ fn apply_held(
     };
     let rate = *rate;
     held.clear();
-    held.extend_from_slice(&others.0);
+    held.extend(others.0.drain(..));
     for (&target, _, _, tags, owner, _, _) in &units {
         let Some(owner) = owner else {
             continue;
@@ -393,15 +394,19 @@ fn apply_held(
             modifiers.set_changed();
         }
         for entry in mine {
-            if modifiers.get(entry.modifier, entry.source).is_some() {
-                continue;
+            match modifiers.get(entry.modifier, entry.source) {
+                Some(instance) if instance.lifetime.held_by(Hold::Held) => continue,
+                Some(_) => {
+                    modifiers.hold(entry.modifier, entry.source, Hold::Held);
+                    continue;
+                }
+                None => {}
             }
             let applier = Applier {
                 source: entry.source,
                 ability: entry.ability,
                 rank: entry.rank,
-                passive: false,
-                held: true,
+                hold: Some(Hold::Held),
             };
             let source = entry.source.and_then(|source| sources.get(source));
             let param = |place: &ParamPlace| {
@@ -535,11 +540,11 @@ fn refresh_stats(
     let sources = units.p1();
     let other = |id| {
         let (&unit_type, level, stats) = sources.get(index.get(id)?).ok()?;
-        Some(ParamSource::new(
+        Some(ParamSource::of_parts(
             &book,
             unit_type,
-            level.get(),
-            stats.values(),
+            Some(level),
+            Some(stats),
         ))
     };
     scratch.compute(&book, &params, other);
@@ -598,6 +603,7 @@ pub(crate) mod internals {
     use campfire_sim::{EntityIndex, StableId};
 
     use crate::stats::Stats;
+    use crate::stats::lifetime::Hold;
     use crate::stats::modifier_book::{Applier, ModifierBook};
     use crate::stats::modifier_effect::ModifierEffect;
     use crate::stats::modifiers::Modifiers;
@@ -627,8 +633,7 @@ pub(crate) mod internals {
             source,
             ability,
             rank,
-            passive,
-            held: false,
+            hold: passive.then_some(Hold::Passive),
         };
         let add = ModifierEffect::Add {
             target,

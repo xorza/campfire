@@ -9,6 +9,7 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::scripts::state_value::StateValue;
+use crate::stats::lifetime::{Ends, Hold, Lifetime};
 use crate::stats::live_param::LiveParam;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_data::Reapply;
@@ -35,15 +36,12 @@ pub(crate) struct Instance {
     /// at its rank on the source.
     pub(crate) ability: Option<ActionId>,
     pub(crate) rank: u8,
-    /// Whether it is an ability's passive, which a death keeps, and whether an aura or its
-    /// carrier's player holds it.
-    pub(crate) passive: bool,
-    pub(crate) held: bool,
+    /// What keeps it: an ability's passive, which a death keeps, an aura, an area or its
+    /// carrier's player, and an application of its own.
+    pub(crate) lifetime: Lifetime,
     /// The radius of the aura it gives, when its modifier has one.
     pub(crate) aura_radius: Option<Num>,
     pub(crate) stacks: u32,
-    /// The first tick it no longer holds; none until removed.
-    pub(crate) until: Option<Tick>,
     /// How long each stack holds, when its stacks end one by one.
     pub(crate) stack_life: Option<Ticks>,
     /// With a stack life, when its stacks end: by tick, ascending, their counts adding to its
@@ -151,6 +149,22 @@ impl Modifiers {
         }
     }
 
+    /// Lets `hold` keep the instance of `id` from `source` too, which it carries.
+    pub(crate) fn hold(&mut self, id: ModifierId, source: Option<StableId>, hold: Hold) {
+        let at = self.find(id, source).expect("an instance it carries");
+        self.0[at].lifetime.hold(hold);
+    }
+
+    /// Lets go of `hold` on the instance of `id` from `source`, which ends when nothing else
+    /// keeps it.
+    pub(crate) fn release(&mut self, id: ModifierId, source: Option<StableId>, hold: Hold) {
+        if let Ok(at) = self.find(id, source)
+            && !self.0[at].lifetime.release(hold)
+        {
+            self.0.remove(at);
+        }
+    }
+
     /// Removes the instance of `id` from `source`; whether it held one.
     pub(crate) fn remove(&mut self, id: ModifierId, source: Option<StableId>) -> bool {
         let Ok(at) = self.find(id, source) else {
@@ -161,11 +175,11 @@ impl Modifiers {
     }
 
     /// Ends what no longer holds as tick `now` starts: each stack whose end it reached, then
-    /// each instance whose end it reached, or whose stacks ending one by one all ended, but a
-    /// passive, which stays with none; whether any ended.
+    /// each instance that nothing keeps once its application's end is reached, or whose stacks
+    /// ending one by one all ended, but a passive, which stays with none; whether any ended.
     pub(crate) fn expire(&mut self, now: Tick) -> bool {
         let ends = |instance: &Instance| {
-            instance.until.is_some_and(|until| until <= now)
+            matches!(instance.lifetime.applied, Some(Ends::At(until)) if until <= now)
                 || instance
                     .stack_ends
                     .first()
@@ -184,10 +198,10 @@ impl Modifiers {
                     .sum();
                 instance.stacks -= count;
                 if instance.stacks == 0 {
-                    return instance.passive;
+                    return instance.lifetime.held_by(Hold::Passive);
                 }
             }
-            instance.until.is_none_or(|until| until > now)
+            instance.lifetime.lasts(now)
         });
         true
     }
@@ -224,7 +238,10 @@ impl Modifiers {
                 .enumerate()
                 .filter(|(_, instance)| instance.shield.is_some_and(|shield| shield > Num::ZERO))
                 .filter(|(_, instance)| takes_effect(instance.tags))
-                .min_by_key(|&(at, instance)| (instance.until.is_none(), instance.until, at))
+                .min_by_key(|&(at, instance)| {
+                    let until = instance.lifetime.until();
+                    (until.is_none(), until, at)
+                })
                 .map(|(at, _)| at);
             let Some(at) = soonest else {
                 break;
@@ -245,19 +262,25 @@ impl Modifiers {
 
     /// Ends every instance a death ends: all but passives.
     pub(crate) fn clear_on_death(&mut self) {
-        self.0.retain(|instance| instance.passive);
+        self.0
+            .retain(|instance| instance.lifetime.held_by(Hold::Passive));
     }
 
-    /// Ends every instance an aura or a player holds that `holds` no longer keeps; whether any
-    /// ended.
+    /// Lets go of the hold of every instance an aura, an area or a player holds that `holds` no
+    /// longer keeps, each ending when nothing else keeps it; whether any changed.
     pub(crate) fn release_held(
         &mut self,
         mut holds: impl FnMut(ModifierId, Option<StableId>) -> bool,
     ) -> bool {
-        let before = self.0.len();
-        self.0
-            .retain(|instance| !instance.held || holds(instance.id, instance.source));
-        self.0.len() != before
+        let mut changed = false;
+        self.0.retain_mut(|instance| {
+            if !instance.lifetime.held_by(Hold::Held) || holds(instance.id, instance.source) {
+                return true;
+            }
+            changed = true;
+            instance.lifetime.release(Hold::Held)
+        });
+        changed
     }
 
     fn find(&self, id: ModifierId, source: Option<StableId>) -> Result<usize, usize> {
@@ -302,14 +325,15 @@ impl Instance {
         now.after(ticks).after(Ticks::ONE)
     }
 
-    /// Takes the numbers and ends of `new`, an application of the same modifier from the same
-    /// source, keeping the stacks, when they end, and the script state. Its interval takes the
-    /// new length from the next on, and the next keeps its tick, so no refresh puts it off.
+    /// Takes the numbers of `new`, an application of the same modifier from the same source, and
+    /// joins its lifetime, keeping the stacks, when they end, and the script state. Its interval
+    /// takes the new length from the next on, and the next keeps its tick, so no refresh puts
+    /// it off.
     fn renew(&mut self, new: Instance) {
         let Instance {
             ability,
             rank,
-            until,
+            lifetime,
             stack_life,
             aura_radius,
             shield,
@@ -327,7 +351,7 @@ impl Instance {
         }
         self.ability = ability;
         self.rank = rank;
-        self.until = until;
+        self.lifetime = self.lifetime.joined(lifetime);
         self.stack_life = stack_life;
         self.aura_radius = aura_radius;
         self.shield = shield;
@@ -474,11 +498,12 @@ mod tests {
                 source,
                 ability: None,
                 rank: 1,
-                passive: false,
-                held: false,
                 aura_radius: None,
                 stacks: 1,
-                until: until.map(Tick::new),
+                lifetime: Lifetime::new(
+                    None,
+                    until.map_or(Ends::Never, |until| Ends::At(Tick::new(until))),
+                ),
                 stack_life,
                 stack_ends: stack_ends.into_iter().collect(),
                 interval: None,
@@ -510,6 +535,47 @@ mod tests {
     }
 
     #[test]
+    fn a_hold_and_a_timed_application_of_one_instance_keep_both_lifetimes() {
+        let mut ids = IdAllocator::default();
+        let a = Some(ids.allocate());
+        let id = ModifierId::new(0);
+        let held = || {
+            let mut held = applied(0, a, Reapply::Refresh, None, 1, None, None);
+            held.instance.lifetime = Lifetime::new(Some(Hold::Held), Ends::Never);
+            held
+        };
+        let timed = || applied(0, a, Reapply::Refresh, None, 1, Some(6), None);
+        // Held by an aura, then applied until tick 6: the aura lets go in tick 2, and the
+        // application keeps it through tick 5.
+        let mut modifiers = Modifiers::default();
+        modifiers.apply(held());
+        modifiers.apply(timed());
+        assert!(modifiers.release_held(|_, _| false));
+        assert!(modifiers.get(id, a).is_some());
+        modifiers.expire(Tick::new(5));
+        assert!(modifiers.get(id, a).is_some());
+        modifiers.expire(Tick::new(6));
+        assert!(modifiers.get(id, a).is_none());
+        // Applied until tick 6, then held: past tick 6 the hold keeps it, with no end; when the
+        // aura lets go, it ends.
+        let mut modifiers = Modifiers::default();
+        modifiers.apply(timed());
+        modifiers.hold(id, a, Hold::Held);
+        modifiers.expire(Tick::new(8));
+        let kept = modifiers.get(id, a).unwrap();
+        assert_eq!(kept.lifetime.until(), None);
+        assert!(modifiers.release_held(|_, _| false));
+        assert!(modifiers.get(id, a).is_none());
+        // A passive whose rank no longer keeps it lets go of its hold alone: an application of
+        // its own, with no end, keeps it.
+        let mut modifiers = Modifiers::default();
+        modifiers.apply(applied(0, a, Reapply::Refresh, None, 1, None, None));
+        modifiers.hold(id, a, Hold::Passive);
+        modifiers.release(id, a, Hold::Passive);
+        assert!(modifiers.get(id, a).is_some());
+    }
+
+    #[test]
     fn modifiers_refresh_stack_to_their_limit_ignore_and_end() {
         let mut ids = IdAllocator::default();
         let (a, b) = (Some(ids.allocate()), Some(ids.allocate()));
@@ -520,7 +586,10 @@ mod tests {
         modifiers.get_mut(ModifierId::new(0), a).unwrap().state[0] = StateValue::Int(9);
         modifiers.apply(applied(0, a, Reapply::Refresh, None, 10, Some(20), None));
         let held = modifiers.get(ModifierId::new(0), a).unwrap();
-        assert_eq!((held.stacks, held.until), (1, Some(Tick::new(20))));
+        assert_eq!(
+            (held.stacks, held.lifetime.until()),
+            (1, Some(Tick::new(20)))
+        );
         assert_eq!(
             (held.stats[0].value, &held.state[0]),
             (num(10), &StateValue::Int(9))
@@ -558,7 +627,7 @@ mod tests {
         modifiers.apply(applied(2, None, Reapply::Ignore, None, 30, Some(80), None));
         let ignored = modifiers.get(ModifierId::new(2), None).unwrap();
         assert_eq!(
-            (ignored.stats[0].value, ignored.until),
+            (ignored.stats[0].value, ignored.lifetime.until()),
             (num(3), Some(Tick::new(8)))
         );
         assert_eq!(stacks(&modifiers), [(0, 1), (0, 1), (1, 3), (2, 1)]);
@@ -593,14 +662,16 @@ mod tests {
         // A passive whose last stack ends stays, with none: one stack of 2 ticks applied in
         // tick 16 ends as 19 starts.
         modifiers.apply(applied(3, a, Reapply::Stack, None, 1, None, Some((16, 2))));
-        modifiers.get_mut(ModifierId::new(3), a).unwrap().passive = true;
+        modifiers.get_mut(ModifierId::new(3), a).unwrap().lifetime =
+            Lifetime::new(Some(Hold::Passive), Ends::Never);
         assert!(modifiers.expire(Tick::new(19)));
         assert_eq!(modifiers.get(ModifierId::new(3), a).unwrap().stacks, 0);
 
         // Removing one, then a death, which keeps only passives.
         assert!(modifiers.remove(ModifierId::new(0), b));
         assert!(!modifiers.remove(ModifierId::new(0), b));
-        modifiers.get_mut(ModifierId::new(0), a).unwrap().passive = true;
+        modifiers.get_mut(ModifierId::new(0), a).unwrap().lifetime =
+            Lifetime::new(Some(Hold::Passive), Ends::Never);
         modifiers.clear_on_death();
         assert_eq!(stacks(&modifiers), [(0, 1), (3, 0)]);
     }

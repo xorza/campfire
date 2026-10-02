@@ -40,6 +40,7 @@ use crate::scripts::script_limits::ScriptLimits;
 use crate::stats;
 use crate::stats::Stats;
 use crate::stats::level::Level;
+use crate::stats::lifetime::Hold;
 use crate::stats::modifier_book::{Applier, ModifierBook};
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifier_effect::ModifierEffect;
@@ -1045,7 +1046,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     let shield = |game: &Match| {
         let modifiers = game.world.get::<Modifiers>(entity).unwrap();
         let held = modifiers.get(id, Some(caster))?;
-        assert!(held.passive && held.until.is_none());
+        assert!(held.lifetime.held_by(Hold::Passive) && held.lifetime.until().is_none());
         held.shield
     };
     let learn = |game: &mut Match| {
@@ -1160,7 +1161,7 @@ fn on_resolve(ctx, caster, target) {
     let held = modifiers.get(id, Some(caster)).unwrap();
     assert_eq!((held.ability, held.rank), (Some(ability), 3));
     assert_eq!(
-        (held.shield, held.until),
+        (held.shield, held.lifetime.until()),
         (Some(num(125)), Some(Tick::new(t.get() + 31)))
     );
 
@@ -1340,8 +1341,7 @@ impl Match {
             source: Some(unit),
             ability: None,
             rank: 1,
-            passive: false,
-            held: false,
+            hold: None,
         };
         let add = ModifierEffect::Add {
             target: unit,
@@ -1618,7 +1618,8 @@ fn on_resolve(ctx, caster, target) {
         .get_ref::<Modifiers>(target)
         .get(mark, Some(caster))
         .unwrap()
-        .until;
+        .lifetime
+        .until();
     assert_eq!(marked, Some(Tick::new(t.get() + 10)));
 }
 

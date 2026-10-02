@@ -10,6 +10,7 @@ use super::*;
 use crate::capability_set::internals::TestMatch;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
+use crate::stats::lifetime::{Ends, Lifetime};
 use crate::stats::modifier_data::ModifierData;
 use crate::stats::modifier_data::{AuraData, Reapply};
 use crate::stats::modifiers::{Application, Instance, StatShare};
@@ -251,11 +252,9 @@ fn share(
             source,
             ability: None,
             rank: 1,
-            passive: false,
-            held: false,
             aura_radius: None,
             stacks: 1,
-            until: None,
+            lifetime: Lifetime::new(None, Ends::Never),
             stack_life: None,
             stack_ends: Vec::new(),
             interval: None,
@@ -487,11 +486,9 @@ fn aura(id: ModifierId, carrier: StableId, radius: Num) -> Application {
             source: Some(carrier),
             ability: None,
             rank: 1,
-            passive: false,
-            held: false,
             aura_radius: Some(radius),
             stacks: 1,
-            until: None,
+            lifetime: Lifetime::new(None, Ends::Never),
             stack_life: None,
             stack_ends: Vec::new(),
             interval: None,
@@ -556,7 +553,9 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
         let modifiers = game.world.get::<Modifiers>(entity(game, id)).unwrap();
         modifiers
             .get(inspired, Some(carrier))
-            .is_some_and(|instance| instance.held && instance.until.is_none())
+            .is_some_and(|instance| {
+                instance.lifetime.held_by(Hold::Held) && instance.lifetime.until().is_none()
+            })
     };
     game.world.run_schedule(SimUpdate);
     // The carrier is its own ally, within 0 m of itself.
@@ -602,6 +601,51 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     game.world.entity_mut(dead).insert(Dead);
     game.world.run_schedule(SimUpdate);
     assert_eq!([carrier, far].map(|id| holds(&game, id)), [false, false]);
+}
+
+#[test]
+fn a_modifier_another_capability_holds_lasts_only_its_tick() {
+    let limits = ScriptLimits {
+        per_call: 10_000,
+        player: 10_000,
+        think: 10_000,
+        mode: 10_000,
+    };
+    let scripts = ScriptBudgets::new(limits, 1);
+    let mut game = TestMatch::new(&[Capability::Stats], RATE, Some(scripts));
+    let book = StatBook::new(&rules(), [], num(6));
+    Stats::load(&mut game.world, book, PoolBook::default());
+    Stats::load_modifier(&mut game.world, 0, "inspired", &modifier_data(None), None);
+    game.world.add_schedule(mem::take(&mut game.schedule));
+    let id = game.world.resource_mut::<IdAllocator>().allocate();
+    let unit = game
+        .world
+        .spawn((id, Position::ORIGIN, Team::new(0), Modifiers::default()))
+        .id();
+    let inspired = game
+        .world
+        .resource::<ModifierBook>()
+        .named(0, "inspired")
+        .unwrap();
+    // A capability lists the hold for one tick, as an area does: the tick holds it, and takes
+    // the list, so the next tick, with nothing listed, lets go of it.
+    let held = Held {
+        target: id,
+        modifier: inspired,
+        source: None,
+        ability: None,
+        rank: 1,
+    };
+    game.world.resource_mut::<HeldModifiers>().0.push(held);
+    game.world.run_schedule(SimUpdate);
+    let holds = |game: &TestMatch| {
+        let modifiers = game.world.get::<Modifiers>(unit).unwrap();
+        modifiers.get(inspired, None).is_some()
+    };
+    assert!(holds(&game));
+    assert!(game.world.resource::<HeldModifiers>().0.is_empty());
+    game.world.run_schedule(SimUpdate);
+    assert!(!holds(&game));
 }
 
 #[test]
