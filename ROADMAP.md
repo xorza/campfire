@@ -26,7 +26,7 @@ Done when the 3v3 match plays as before on the model, with no failed call of its
 - Progression: points, the `learn` order and perks ([Progression](design/04-capabilities/progression.md)).
 - Action values and bookkeeping; channels, toggles and `ctx.reveal` ([Actions](design/04-capabilities/actions.md)).
 - Forced movement: dash, knock back, teleport ([Navigation](design/04-capabilities/navigation.md#forced-movement)).
-- The package load refuses a planned name, once no reference package uses one: design 08 accepts a planned name at load, so a script that uses one loads and fails at each call, as Rime's Fan of Frost does on `ctx.projectile`.
+- The package load refuses a planned name, once no reference package uses one: design 08 accepts a planned name at load, so a script that uses one loads and fails at each call, as Rime's Snow Owl does on `ctx.reveal`.
 - Items for the MOBA: inventory, equipment, the shop, item actions and passives ([Items](design/04-capabilities/items.md)).
 
 Done when every mechanic design 07 lists runs from the reference heroes' and spells' packages, and none uses a planned name.

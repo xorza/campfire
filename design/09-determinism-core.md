@@ -9,7 +9,7 @@ Numbers, vectors, randomness, stable ids and the state hash: the base every resu
 - **D3. Coordinates stay within ±2²⁰ m.** Exact squared distances fit a `u128` with room to spare: `3 · (2⁴⁵)² < 2⁹²`.
 - **D4. `proptest` for tests, `criterion` behind `bench`,** each added with the first code that uses it. Differential tests find rounding cases no table lists; the worst tick must be measured.
 - **D5. One BLAKE3 hash per component type, then a hash over those.** The first divergence names its component type at once.
-- **D6. No `fixed` or `fixed_analytics`; own parser, constants and trig.** `fixed` rounds `*` toward −∞ and its constants down; `fixed_analytics` reaches 48 ulp in `atan2`. Own series at high internal precision reach 1–2 ulp.
+- **D6. No `fixed` or `fixed_analytics`; own parser, constants and trig.** `fixed` rounds `*` toward −∞ and its constants down; `fixed_analytics` reaches 48 ulp in `atan2`. Own series at high internal precision stay within 0.501 ulp over the tests' sweeps.
 
 ## Design
 

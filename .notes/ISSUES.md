@@ -9,3 +9,4 @@
 - A `cargo test --workspace` build turns on Bevy's `multi_threaded` feature for every crate by feature unification, so the runner's tests run their schedules on the multi-threaded executor: the 3v3 replay test takes 1.2 s there, with 479 000 context switches, against 0.45 s and 551 in a `-p campfire-runner` build, and three runner tests pass 1 s.
 - The `Capability` enum of `campfire-sim` names `hitscan` and `persistence`, which design 04's capability table does not have; the table names `hitboxes`, `items`, `quests`, `interaction` and `world`, which the enum does not have.
 - `hold_passives` of `actions` and `despawn_dead` of `combat` run in the Vision stage, which design 04's tick stage table gives only to `vision`.
+- Design 08 gives `ctx.save`, `ctx.carry`, `ctx.generate` and the hook `on_generate`, which the script API registry does not hold, not even as planned names.

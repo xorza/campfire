@@ -106,15 +106,20 @@ An effect list is an array of effects, each one table; the effects queue in orde
 | `loot = { table, level }` | Rolls a random table and drops what it gives where the unit stands ([Random tables](00-overview.md#random-tables)) |
 | `noise = { radius }` | A noise that units within the radius hear ([Senses](vision.md#senses)) |
 
-Every effect takes `to = "source"` to apply to the acting unit instead; a list that reaches no unit, `on_end` or the `on_resolve` of an action that aims at no unit, holds only such effects. Numbers take `{ param = "<name>" }`, and are not negative at any rank; a scaling param that its source's stats take below zero counts as zero. A modifier's `duration_ms` is whole milliseconds. An effect list runs before the script hook of the same name, in one call with it: the list's effects queue first, then the hook's, and a hook that fails applies neither, as a cast that fails spends nothing; a list whose hook the script does not define applies alone. So a hook adds only what data cannot say. The release runs the lists of a cast, and the effects the [reference](../08-script-api-reference.md) marks as running; the load refuses a planned effect, and a list on an attack, whose `on_hit` is planned. One example, Rime's Fan of Frost:
+Every effect takes `to = "source"` to apply to the acting unit instead; a list that reaches no unit, `on_end` or the `on_resolve` of an action that aims at no unit, holds only such effects. Numbers take `{ param = "<name>" }`, and are not negative at any rank; a scaling param that its source's stats take below zero counts as zero. A modifier's `duration_ms` is whole milliseconds. An effect list runs before the script hook of the same name, in one call with it: the list's effects queue first, then the hook's, and a hook that fails applies neither, as a cast that fails spends nothing; a list whose hook the script does not define applies alone. So a hook adds only what data cannot say. The release runs the lists of a cast, and the effects the [reference](../08-script-api-reference.md) marks as running; the load refuses a planned effect, and a list on an attack, whose `on_hit` is planned. One example, Rime's Fan of Frost, as her package holds it:
 
 ```toml
 [actions.fan_of_frost]
 targeting = "direction"
-cost = { mana = [60, 65, 70, 75, 80] }
-cooldown_ms = 9000
-delivery = { projectile = "frost_arrow", count = 5, spread_deg = 30 }
-on_hit = [{ damage = { amount = { param = "damage" }, kind = "physical" } }, { modifier = { id = "chilled" } }]
+range = "12.0"
+cooldown_ms = [16000, 13000, 10000, 7000, 4000]
+cost = { mana = 60 }
+windup_ms = 250
+delivery = { projectile = "frost_arrow", count = 7, spread_deg = "57.5" }
+on_hit = [
+    { damage = { amount = { param = "damage" }, kind = "physical" } },
+    { modifier = { id = "slow", duration_ms = { param = "slow_ms" } } },
+]
 ```
 
 ### Who starts an action

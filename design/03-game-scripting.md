@@ -59,9 +59,9 @@ The sim runs each tick in the engine's fixed stages ([Tick stages](04-capabiliti
 One mode script (`scripts/mode.rhai`) owns the rules. The engine knows only waiting, running and ended; everything inside running is the script's.
 
 - **Phases** (hero pick, warmup, rounds, buy time, overtime) are script state, not engine states.
-- **Hooks:** `on_match_start` (running begins), `on_player_join`, `on_player_leave`, `on_timer`, `on_mode_input`, plus event hooks from the capabilities in use. A rule that runs each tick or interval over many units is a scripted system ([Scripted systems](04-capabilities/00-overview.md#scripted-systems)). A hook is named `on_<event>` for what happened, or `calc_<value>` for a pure hook that returns a value; every hook takes `ctx` first.
+- **Hooks:** `on_match_start` (running begins), `on_player_join`, `on_player_leave`, `on_timer`, `on_mode_input`, plus event hooks from the capabilities in use; how hooks are named and called is [Script API](08-script-api.md#rules)'s. A rule that runs each tick or interval over many units is a scripted system ([Scripted systems](04-capabilities/00-overview.md#scripted-systems)).
 - **Primitives:** timers, freeze and unfreeze, respawn and reset, team changes and relations, players' choices, named per-player resources (e.g. `gold`), scoreboard data.
-- **Timers** are set in milliseconds and rounded up to whole ticks (at least one), so a timer never fires early and modes behave the same at any tick rate to within one tick.
+- **Timers** never fire early, so modes behave the same at any tick rate to within one tick ([Mode calls](08-script-api.md#ctx)).
 - **End:** `ctx.end(team)` names the winning team, and `ctx.end(())` a draw; callable once. The result is sim state, so the final state hash proves it, and from the next stage on no stage runs. Optional: a persistent world never calls it.
 - **Saves and carry:** `ctx.save()` asks for a save at the end of the tick; `ctx.carry` reads what the session loaded and writes what it hands on, in the mode's declared `[carry]` schema ([Saves](02-engine-core.md#saves)).
 
@@ -71,7 +71,7 @@ Units, actions, items, AI hooks and commands come from [capabilities](04-capabil
 
 ## Script state
 
-Script state is declared, never invented at run time. The mode declares its fields in `data/mode.toml` and each unit type in its own data file, under `[state]`: type (one of the [state types](08-script-api.md#data-files)), default, and replication (`none`, `owner`, `team`, `all`). A `state_version` sits beside them for migrations. A write to an undeclared field, or of the wrong type, is a script error.
+Script state is declared, never invented at run time. The mode declares its fields in `data/mode.toml` and each unit type in its own data file, under `[state]`: type (one of the [state types](08-script-api.md#data-files)), `default`, and `sync`, the clients that receive it (`none`, `owner`, `team` or `all`). A `state_version` sits beside them for migrations. A write to an undeclared field, or of the wrong type, is a script error.
 
 ```toml
 state_version = 1

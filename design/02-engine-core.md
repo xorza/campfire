@@ -61,15 +61,15 @@ Each layer uses the layers below it.
 | --- | --- | --- |
 | `common` | built | The vocabulary that crates which do not depend on each other share: the player slot, ticks, segment seed and 32-byte values written as hex, and a package's fingerprint |
 | `math` | built | Fixed-point numbers, 3D vectors, trig, exact 256-bit products, counter-based RNG |
-| `protocol` | built | Session log format (see Protocol Spec) |
+| `protocol` | built | The open protocol: signatures, session key delegations, the connection's handshake, input chains, the seed chain and the session log ([Protocol Spec](05-protocol-spec.md)) |
 | `sim` | built | Deterministic state and systems on `bevy_ecs`; no genre code |
-| `script` | built | Rhai host and core script API |
+| `script` | built | The Rhai host: compiles scripts, and runs each call under its limits; the script API itself is in `capabilities` ([Script API](08-script-api.md)) |
 | `capabilities` | built | Mechanisms a mode combines, a module each: `combat`, `navigation`, `orders` and the rest ([Capabilities](04-capabilities/00-overview.md)) |
 | `package` | built | Reads a mode's packages and every package it depends on, and runs the load checks of [Script API](08-script-api.md) |
 | `runner` | built | Builds a match from checked packages: wires `sim`, the declared capabilities and `script`, feeds inputs; owns `SessionRules`, which builds a session's terms from the packages and checks terms on the server, the client and the verifier |
 | `verifier` | built | CLI: replays a session log segment, checks the result |
 | `det-ci` | planned | Headless matches of the reference MOBA with its bots on every OS, comparing state hashes |
-| `lan-check` | built | On request: the real server and two `client --bot` processes over WebTransport on `127.0.0.1`, and a bot with the wrong certificate that must fail and say why, checked from their JSON logs and by the verifier |
+| `lan-check` | built | The real server and bot clients over WebTransport on `127.0.0.1`, on request ([Testing and diagnostics](#testing-and-diagnostics)) |
 | `server` | built | Host config, lifecycle, saves, validation, admin; a headless app, and a library the client runs on a thread for singleplayer |
 | `net` | built | Lightyear over QUIC (WebTransport): handshake, replication; internal |
 | `log` | built | The binaries' log output: text on standard error, and JSON lines into a file; the events a tool reads back from those lines |
@@ -108,8 +108,6 @@ These rules keep the code's structure from drifting. Each has a test that fails 
 | `common` depends on no crate but `serde`. | The manifest test of `common` |
 
 **Books.** A match's books are built by one pure function of its packages and a tick rate, with no world: the unit types and their tags, the tracks, the modifiers and the actions with their params and effect lists, the AIs, and the projectile and area specs. The package load calls it at the fastest rate the manifest allows, where a time counts the most ticks, so what the books cannot hold fails the load; a match calls it at its own rate and puts what it gives in place. The order of every id is the order the builder loads in: the tags, the tracks, every package's modifiers, then each package's actions and unit types, the mode's first. A script is named by its place in the order a match compiles them, and the hooks it defines come from what the load read of it, so no book needs a script host.
-
-The structural redesign that brings the code to these rules, and its steps, are in `PLAN.md`.
 
 ## Capabilities
 
@@ -152,7 +150,7 @@ A save is a checkpoint a player keeps: the snapshot at a tick boundary, and the 
 
 ## Scripting
 
-`script` is its own crate in the deterministic core, so `sim` is testable without Rhai and modders get a stable API. Scripts run inside the sim tick.
+`script` is its own crate in the deterministic core, so `sim` is testable without Rhai. Scripts run inside the sim tick; the API they call is the registry's ([Script API](08-script-api.md)).
 
 - **Narrow game API.** Scripts never touch the ECS; they call the script API.
 - **No `bevy_mod_scripting`.** It exposes all Bevy types and [pins Bevy patch versions](https://lib.rs/crates/bevy_mod_scripting_script).
@@ -195,6 +193,7 @@ Collision, pathfinding and visibility each have one interface and pluggable back
 ## Creator tools
 
 - **Data schemas.** A JSON Schema for every data file is generated from the same types the engine reads, as the script API reference is generated from the registry, and a test fails when the checked-in schemas differ; an editor such as VS Code then completes and checks a package's TOML as a creator types. Generating them needs a schema crate, to be chosen and approved when the work starts.
+- **Script definitions.** A Rhai definition file of the whole script API is generated from the registry, for completion and signatures in an editor ([Editor definitions](08-script-api.md#editor-definitions)).
 - **Hot reload.** A local session in dev mode reloads changed scripts, data and text without a restart, as Roblox Studio and Dota 2's workshop tools do. A reload is no input the log can replay, so a dev session's terms say it is one, the verifier refuses its log, and a dev session takes no payments.
 
 ## Testing and diagnostics
@@ -220,10 +219,10 @@ Exact versions are pinned across the workspace. Each release tag also pins its R
 
 | Area | Crate | Notes |
 | --- | --- | --- |
-| Fixed-point numbers, trig, sqrt | Own code in `math` | `Num`: `*` and `/` round to nearest, ties to even; exact decimal parsing; `sqrt` from an `f64` estimate that integer steps correct to the exact root, so the result does not depend on the float; `sin_cos`, `atan2` by series at high internal precision, within 1–2 ulp. `fixed` rounds `*` toward −∞ and constants down, and `fixed_analytics` reaches 48 ulp in `atan2`, so neither is used ([Determinism Core](09-determinism-core.md)) |
+| Fixed-point numbers, trig, sqrt | Own code in `math` | `Num`: `*` and `/` round to nearest, ties to even; exact decimal parsing; `sqrt` from an `f64` estimate that integer steps correct to the exact root, so the result does not depend on the float; `sin_cos`, `atan2` by series at high internal precision, within 0.501 ulp over the tests' sweeps. `fixed` rounds `*` toward −∞ and constants down, and `fixed_analytics` reaches 48 ulp in `atan2`, so neither is used ([Determinism Core](09-determinism-core.md)) |
 | RNG | `blake3` keyed hash, wrapped in `math` | A PRF by specification, counter-based as in [Random123](https://www.thesalmons.org/john/random123/papers/random123sc11.pdf) but cryptographic, unlike Philox; known-answer vectors run in `det-ci`. Range sampling is own code. No `rand`, which [may change output in minor releases](https://www.rustmax.net/library/rand-book/crate-reprod) |
 | Protocol encoding | `postcard` | [Stable wire format](https://postcard.jamesmunns.com) since 1.0 |
 | State hashes | `blake3` | At checkpoints and the result; per tick in `det-ci` and the goldens |
 | File and package fingerprints | `sha2` | SHA-256, as Blossom addresses blobs |
-| Nostr (`identity`, `ownership`) | `nostr`, `nostr-sdk`, `nostr-connect` | Still alpha |
+| Nostr | `nostr` in `protocol`, for delegations and their signatures; `nostr-sdk` and `nostr-connect` for the planned `identity` and `ownership` | Still alpha |
 | Lightning (`payments`) | `nwc` | Drives the host's own wallet, including [hold invoices](https://getalby.com/blog/build-conditional-payment-logic-into-your-app). No embedded node |

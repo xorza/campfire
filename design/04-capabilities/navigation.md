@@ -63,7 +63,7 @@ In the Collide stage, after Move, each pair of living bodies on one layer that o
 
 ## Script API
 
-`ctx.map` with `paths` and `markers(tag)`; `ctx.spawn_group(team, path, from, types)`, `from` the path's `"start"` or `"end"`; `ctx.dash`, `ctx.knock_back`, `ctx.teleport`; `unit.path`, `unit.pos`, `unit.radius`.
+`ctx.map` with `paths` and `markers(tag)`; `ctx.spawn_group(team, path, from, types)`, `from` the path's end, `PathEnd::Start` or `PathEnd::End` ([Engine enums](../08-script-api.md#engine-enums)); `ctx.dash`, `ctx.knock_back`, `ctx.teleport`; `unit.path`, `unit.pos`, `unit.radius`.
 
 ## Network
 

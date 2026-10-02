@@ -36,7 +36,7 @@ Every capability says its mechanism in the same few terms, so that capabilities 
 | `progression` | built | Experience on tracks, levels, points to learn ranks, perks, veterancy | [Progression](progression.md) |
 | `quests` | planned | Quests with stages and objectives, dialogue with topics and choices, campaign objectives | [Quests](quests.md) |
 | `interaction` | planned | The use action on objects: doors, containers, plant and defuse, capture points, dialogue, entering vehicles and buildings | [Interaction](interaction.md) |
-| `production` | built | The train, build and gather actions, construction on the grid, tech, player modifiers | [Production](production.md) |
+| `production` | built | The train, build and gather actions, construction on the grid, tech | [Production](production.md) |
 | `physics` | planned | Vehicles, rigid bodies, heightmap terrain | [Physics](physics.md) |
 | `world` | planned | Large worlds: regions that sleep, parallel regions, streaming | [World](world.md) |
 
@@ -69,7 +69,7 @@ teams = ["alliance", "horde"]
 relation = "hostile"
 ```
 
-A pair not named is `hostile`, and a team is `friendly` to itself. `ctx.set_relation(a, b, relation)` changes a pair, `relation` a member of `Relation`, such as `Relation::Hostile` ([Engine enums](../08-script-api.md#engine-enums)), and the relations are state; the server sends them to every client in each tick a script changes them. Filters read them: `enemies` selects the units that may be attacked, hostile and neutral; `hostiles` only hostile ones; `neutrals` only neutral ones; `allies` friendly ones; `all` every one. A neutral unit may be attacked, but does not seek a fight: an AI chooses its targets with `hostiles`, so a neutral monster fights back only when a script makes its team hostile or orders it, as a neutral monster does in WoW. Two friendly teams share vision unless their relation says `vision = false`, as StarCraft's allies choose whether to share it; teams that share vision form a **vision group**, which sees as one. A MOBA's camps are on one more team, hostile to every other.
+A pair not named is `hostile`, and a team is `friendly` to itself. `ctx.set_relation(a, b, relation)` changes a pair, `relation` a member of `Relation`, such as `Relation::Hostile` ([Engine enums](../08-script-api.md#engine-enums)), and the relations are state; the server sends them to every client in each tick a script changes them. Filters read them ([Filters](../08-script-api.md#filters)). A neutral unit may be attacked, but does not seek a fight: an AI chooses its targets with `hostiles`, so a neutral monster fights back only when a script makes its team hostile or orders it, as a neutral monster does in WoW. Two friendly teams share vision unless their relation says `vision = false`, as StarCraft's allies choose whether to share it; teams that share vision form a **vision group**, which sees as one. A MOBA's camps are on one more team, hostile to every other.
 
 ## Space and map
 
@@ -149,7 +149,7 @@ The team and the owner come from the spawn, not the unit type. A section of a ca
 
 ## Script API
 
-`ctx`, the handles and the hooks are made of the declared capabilities' parts: a mode without `combat` has no `ctx.damage` and no `on_unit_died`. The package load checks refuse a call, a field or a hook of a capability the mode did not declare. Hooks are named `on_<event>` for what happened, and `calc_<value>` for a pure hook that returns a value; every hook takes `ctx` first. An event's data list and its script hook share the name: an action's `on_hit` effects run, then its `on_hit` hook. [Script API](../08-script-api.md) lists each capability's part.
+`ctx`, the handles and the hooks are made of the declared capabilities' parts: a mode without `combat` has no `ctx.damage` and no `on_unit_died`. The package load checks refuse a call, a field or a hook of a capability the mode did not declare. How hooks are named, and how an event's data list and its hook share a name, is [Script API](../08-script-api.md#rules)'s; the [reference](../08-script-api-reference.md) lists each capability's part.
 
 ## Tick rate
 

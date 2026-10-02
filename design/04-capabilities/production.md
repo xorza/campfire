@@ -20,12 +20,12 @@ Selection and control groups are client-side; orders name the units they go to.
 
 ## State and derived
 
-- **State:** each queue, each construction's progress, each node's amount, each worker's load; the players' resources and modifiers.
+- **State:** each queue, each construction's progress, each node's amount, each worker's load. The players' resources are the core's, and their modifiers are `stats`'s ([Modifiers](stats.md#modifiers)).
 - **Derived:** the grid's occupancy, from the buildings.
 
 ## Script API
 
-`ctx.add_resource(player, name, amount)`, `ctx.add_player_modifier(player, id)`; the action hooks.
+The action hooks of its kinds. An RTS mode pays with the core's `ctx.add_resource(player, name, amount)` and upgrades with `stats`' `ctx.add_player_modifier(player, id)`.
 
 ## Network
 
