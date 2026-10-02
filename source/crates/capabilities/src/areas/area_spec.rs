@@ -1,5 +1,5 @@
-use campfire_math::Num;
-use campfire_sim::{TickRate, Ticks};
+use campfire_math::{Num, Ticks};
+use campfire_sim::TickRate;
 
 use crate::areas::area_data::AreaData;
 use crate::stats::modifier_book::ModifierId;

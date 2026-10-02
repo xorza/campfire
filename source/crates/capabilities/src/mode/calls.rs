@@ -1,8 +1,8 @@
 use bevy_ecs::world::World;
-use campfire_math::Num;
+use campfire_math::{Num, Tick};
 use campfire_script::ScriptError;
 use campfire_script::rhai::{Dynamic, FuncArgs};
-use campfire_sim::{IdAllocator, SimTick, Tick};
+use campfire_sim::{IdAllocator, SimTick};
 
 use crate::combat::damage::Damage;
 use crate::combat::damage_handle::DamageHandle;

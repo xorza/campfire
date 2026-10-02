@@ -2,6 +2,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::world::{Mut, World};
 use campfire_capabilities::{Mode, ScriptFailures};
 use campfire_content::Fingerprint as PackageFingerprint;
+use campfire_math::Tick;
 use campfire_package::{ModePackages, PackageStore, RELEASE};
 use campfire_protocol::{
     Applied, Fingerprint, InputError, PlayerInput, ServerSeed, SessionLog, SessionTerms, Signature,
@@ -40,7 +41,11 @@ impl Session {
         server_seed: ServerSeed,
         packages: &ModePackages,
     ) -> Result<(), StartError> {
-        assert_eq!(log.next_tick(), 0, "a session starts before its first tick");
+        assert_eq!(
+            log.next_tick(),
+            Tick::new(0),
+            "a session starts before its first tick"
+        );
         let header = log.header();
         let terms = &header.terms;
         Session::check_release(terms)?;
@@ -133,7 +138,7 @@ impl Session {
     pub fn run_tick(world: &mut World) {
         world.resource_scope(|world, mut session: Mut<'_, Session>| {
             debug_assert_eq!(
-                world.resource::<SimTick>().start().get(),
+                world.resource::<SimTick>().start(),
                 session.log.next_tick(),
                 "the sim and the log are at the same tick"
             );

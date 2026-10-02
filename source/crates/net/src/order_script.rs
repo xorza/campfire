@@ -1,5 +1,6 @@
 use campfire_capabilities::{Action, ActionTarget, Scalar};
-use campfire_sim::{StableId, Tick};
+use campfire_math::Tick;
+use campfire_sim::StableId;
 use serde::Deserialize;
 
 use crate::error::OrderScriptError;

@@ -7,10 +7,8 @@ use bevy_ecs::query::{Added, Changed, Has, Or, With, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Commands, Local, ParamSet, Query, Res};
 use bevy_ecs::world::{EntityRef, World};
-use campfire_math::Num;
-use campfire_sim::{
-    EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, Tick, TickRate, Ticks,
-};
+use campfire_math::{Num, Tick, Ticks};
+use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, TickRate};
 
 use crate::combat::CombatSet;
 use crate::combat::combat_events::CombatEvents;

@@ -5,9 +5,9 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use bevy_ecs::world::{EntityRef, World};
-use campfire_math::{Num, PlayerSlot, Vec3};
+use campfire_math::{Num, PlayerSlot, Tick, Ticks, Vec3};
 use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString};
-use campfire_sim::{Capability, EntityIndex, Position, SimTick, StableId, Tick, TickRate, Ticks};
+use campfire_sim::{Capability, EntityIndex, Position, SimTick, StableId, TickRate};
 
 use crate::actions::action_book::{Action, ActionBook, ActionId, Delivery};
 

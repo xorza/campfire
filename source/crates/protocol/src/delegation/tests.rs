@@ -49,7 +49,7 @@ fn tags(change: impl FnOnce(&mut Vec<Vec<String>>)) -> Vec<Tag> {
     let mut tags = vec![
         vec![
             DelegationTag::SessionKey.name().to_owned(),
-            hex::encode(&terms().session_key.serialize()),
+            Bytes32::new(terms().session_key.serialize()).to_string(),
         ],
         vec![DelegationTag::ServerKey.name().to_owned(), "29".repeat(32)],
         vec![DelegationTag::SessionId.name().to_owned(), "1f".repeat(32)],

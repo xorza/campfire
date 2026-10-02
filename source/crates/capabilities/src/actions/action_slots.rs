@@ -1,6 +1,7 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::world::World;
-use campfire_sim::{EntityIndex, Position, SimComponent, StableId, Tick};
+use campfire_math::Tick;
+use campfire_sim::{EntityIndex, Position, SimComponent, StableId};
 use serde::{Deserialize, Serialize};
 
 use crate::actions::action_book::ActionId;

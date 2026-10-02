@@ -1,3 +1,5 @@
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 
 /// A time in the match, in ticks from its start: tick `t` starts at time `t` and ends at `t + 1`.
@@ -40,6 +42,13 @@ impl Tick {
     }
 }
 
+/// As its number.
+impl fmt::Display for Tick {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+
 impl Ticks {
     pub const ZERO: Ticks = Ticks(0);
     pub const ONE: Ticks = Ticks(1);
@@ -66,5 +75,6 @@ mod tests {
         assert_eq!(start.after(Ticks::ZERO), start);
         let encoded = postcard::to_allocvec(&(Tick::new(300), Ticks::new(300))).unwrap();
         assert_eq!(encoded, postcard::to_allocvec(&(300_u64, 300_u32)).unwrap());
+        assert_eq!(Tick::new(300).to_string(), "300");
     }
 }

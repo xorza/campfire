@@ -1,9 +1,8 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use campfire_log::Level;
-use campfire_math::PlayerSlot;
+use campfire_math::{PlayerSlot, Tick};
 use campfire_net::{InputLogged, LinkLost, Listening, MatchStarted, OrdersSent, SessionWritten};
-use campfire_sim::Tick;
 use campfire_verifier::Verified;
 
 use crate::failure::Failure;

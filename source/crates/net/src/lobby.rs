@@ -4,6 +4,7 @@ use bevy_ecs::query::{With, Without};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Query, Res, ResMut};
 use bevy_ecs::world::World;
+use campfire_math::Ticks;
 use campfire_package::{ModePackages, RELEASE};
 use campfire_protocol::secp256k1::{Secp256k1, VerifyOnly};
 use campfire_protocol::{
@@ -24,9 +25,9 @@ use crate::offer::Offer;
 use crate::sim_server::SimServer;
 
 /// The most ticks an input may land after its stamp.
-const MAX_INPUT_DELAY: u64 = 10;
+const MAX_INPUT_DELAY: Ticks = Ticks::new(10);
 /// The most ticks an input's stamp may be ahead of the next tick.
-const MAX_INPUT_LEAD: u64 = 30;
+const MAX_INPUT_LEAD: Ticks = Ticks::new(30);
 const MAX_PAYLOAD_LEN: u32 = 64;
 const MAX_INPUTS_PER_TICK: u32 = 4;
 /// Ticks between two sends of an offer that got no answer.

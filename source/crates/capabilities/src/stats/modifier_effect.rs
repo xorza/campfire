@@ -1,5 +1,5 @@
-use campfire_math::PlayerSlot;
-use campfire_sim::{Capability, StableId, Ticks};
+use campfire_math::{PlayerSlot, Ticks};
+use campfire_sim::{Capability, StableId};
 
 use crate::scripts::effects::Effect;
 use crate::stats::modifier_book::ModifierId;

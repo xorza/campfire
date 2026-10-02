@@ -3,8 +3,7 @@ use bevy::ecs::entity::Entity;
 use bevy::math::{Quat, Vec3};
 use bevy::transform::components::Transform;
 use campfire_capabilities::PoolId;
-use campfire_math::Num;
-use campfire_sim::{Tick, Ticks};
+use campfire_math::{Num, Tick, Ticks};
 
 use crate::view;
 

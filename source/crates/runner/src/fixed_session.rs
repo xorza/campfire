@@ -1,6 +1,6 @@
 use std::num::NonZeroU32;
 
-use campfire_math::PlayerSlot;
+use campfire_math::{PlayerSlot, Ticks};
 use campfire_package::{ModePackages, RELEASE};
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
 use campfire_protocol::{
@@ -25,8 +25,8 @@ pub struct FixedSession {
 /// largest payload, and the most a player sends a tick.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct InputRules {
-    pub max_input_delay: u64,
-    pub max_input_lead: u64,
+    pub max_input_delay: Ticks,
+    pub max_input_lead: Ticks,
     pub max_payload_len: u32,
     pub max_inputs_per_tick: u32,
 }
@@ -34,8 +34,8 @@ pub struct InputRules {
 impl InputRules {
     /// Limits no test reaches.
     pub const ROOMY: InputRules = InputRules {
-        max_input_delay: 10,
-        max_input_lead: 10,
+        max_input_delay: Ticks::new(10),
+        max_input_lead: Ticks::new(10),
         max_payload_len: 256,
         max_inputs_per_tick: 4,
     };

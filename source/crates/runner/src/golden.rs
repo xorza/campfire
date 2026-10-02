@@ -5,9 +5,9 @@ use std::{env, fs};
 use campfire_capabilities::{
     Dead, Deaths, Owner, PlayerResources, Pools, ResourceId, ScriptFailures, Team,
 };
-use campfire_math::PlayerSlot;
+use campfire_math::{PlayerSlot, Tick};
 use campfire_package::ModePackages;
-use campfire_sim::{EntityIndex, Position, SimTick, StableId, StateHash, Tick};
+use campfire_sim::{EntityIndex, Position, SimTick, StableId, StateHash};
 
 use crate::runner::Runner;
 

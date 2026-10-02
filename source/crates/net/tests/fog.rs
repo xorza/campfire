@@ -5,10 +5,10 @@ use std::num::NonZeroU32;
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use campfire_capabilities::{Action, Owner, SeenBy, Team};
-use campfire_math::{Num, Vec3};
+use campfire_math::{Num, Tick, Vec3};
 use campfire_net::{LocalMatch, MatchClock, MatchSetup, TickHashes};
 use campfire_protocol::SeedChain;
-use campfire_sim::{EntityIndex, Position, SimTick, StableId, Tick, Unpredicted};
+use campfire_sim::{EntityIndex, Position, SimTick, StableId, Unpredicted};
 use lightyear::prelude::{ConfirmHistory, ReplicationCheckpointMap, RollbackMode};
 
 const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);

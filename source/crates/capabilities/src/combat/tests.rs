@@ -4,8 +4,8 @@ use bevy_ecs::component::Component;
 use bevy_ecs::system::RunSystemOnce;
 use std::collections::BTreeMap;
 
-use campfire_math::{PlayerSlot, RngSource, SegmentSeed, Vec3};
-use campfire_sim::{Capability, IdAllocator, SimUpdate, Ticks, TypeHash};
+use campfire_math::{PlayerSlot, RngSource, SegmentSeed, Ticks, Vec3};
+use campfire_sim::{Capability, IdAllocator, SimUpdate, TypeHash};
 
 use super::*;
 use crate::actions::action_book::internals::{self, TestWeapon};

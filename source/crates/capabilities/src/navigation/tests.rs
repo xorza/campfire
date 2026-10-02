@@ -2,7 +2,8 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 
 use bevy_ecs::component::Component;
-use campfire_sim::{Capability, EntityIndex, SimUpdate, Tick, TypeHash};
+use campfire_math::Tick;
+use campfire_sim::{Capability, EntityIndex, SimUpdate, TypeHash};
 
 use super::*;
 use crate::capability_set::internals::TestMatch;

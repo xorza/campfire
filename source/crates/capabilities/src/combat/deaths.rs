@@ -1,8 +1,8 @@
 use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
-use campfire_math::PlayerSlot;
-use campfire_sim::{StableId, Tick};
+use campfire_math::{PlayerSlot, Tick};
+use campfire_sim::StableId;
 
 use crate::units::owner::Owner;
 use crate::units::team::Team;

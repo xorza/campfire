@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fmt;
 
 use crate::delegation::error::DelegationError;
-use campfire_math::PlayerSlot;
+use campfire_math::{PlayerSlot, Tick};
 
 /// Why the log refused a packet of inputs. Packets come from the network, so each is an expected
 /// failure.
@@ -117,7 +117,7 @@ pub enum LogError {
     /// The header does not start a log.
     Header(HeaderError),
     /// The log refuses a packet logged before `tick`, as it refuses one from the network.
-    Input { tick: u64, error: InputError },
+    Input { tick: Tick, error: InputError },
     /// The revealed server seed is not the first segment's seed of the chain the header commits
     /// to.
     WrongSeed,

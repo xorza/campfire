@@ -1,6 +1,7 @@
 use std::num::NonZeroU32;
 
 use blake3::Hasher;
+use campfire_math::Ticks;
 use serde::{Deserialize, Serialize};
 
 use crate::fingerprint::Fingerprint;
@@ -21,11 +22,11 @@ pub struct SessionTerms {
     /// Ticks a second, fixed for the whole session.
     pub tick_hz: NonZeroU32,
     /// The most ticks an input may land after its stamp; a later one is logged as late.
-    pub max_input_delay: u64,
+    pub max_input_delay: Ticks,
     /// The most ticks an input's stamp may be ahead of the next tick; a further one is logged as
     /// early. The server holds each input until its tick, so this bounds what a client can make
     /// it hold.
-    pub max_input_lead: u64,
+    pub max_input_lead: Ticks,
     /// The most bytes an input's payload may hold.
     pub max_payload_len: u32,
     /// The most inputs of one stamp, and of one packet, a player may send, and the most of its
@@ -54,8 +55,8 @@ impl SessionTerms {
             .update(SESSION_ID_DOMAIN)
             .update(&self.server_key)
             .update(&self.tick_hz.get().to_le_bytes())
-            .update(&self.max_input_delay.to_le_bytes())
-            .update(&self.max_input_lead.to_le_bytes())
+            .update(&self.max_input_delay.get().to_le_bytes())
+            .update(&self.max_input_lead.get().to_le_bytes())
             .update(&self.max_payload_len.to_le_bytes())
             .update(&self.max_inputs_per_tick.to_le_bytes())
             .update(self.seed_commitment.as_bytes())

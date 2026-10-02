@@ -163,9 +163,9 @@ fn build_order_does_not_matter() {
     let mut bytes = [0; 32];
     bytes[0] = 0x0a;
     bytes[31] = 0xff;
-    let written = StateHash(bytes).to_string();
+    let written = StateHash(Bytes32::new(bytes)).to_string();
     assert_eq!(written, format!("0a{}ff", "00".repeat(30)));
-    assert_eq!(written.parse(), Ok(StateHash(bytes)));
+    assert_eq!(written.parse(), Ok(StateHash(Bytes32::new(bytes))));
     assert_eq!(written.to_uppercase().parse::<StateHash>(), Err(NotHex));
 }
 

@@ -22,7 +22,7 @@ pub fn tick_3v3(c: &mut Criterion) {
         b.iter_custom(|ticks| {
             let mut spent = Duration::ZERO;
             for _ in 0..ticks {
-                if runner.log().next_tick() == TICKS {
+                if runner.log().next_tick() == Tick::new(TICKS) {
                     runner = reference.start();
                 }
                 spent += timed_tick(&mut runner);
@@ -54,3 +54,4 @@ fn timed_tick(runner: &mut Runner) -> Duration {
     black_box(&runner);
     spent
 }
+use campfire_math::Tick;

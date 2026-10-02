@@ -4,8 +4,8 @@ use bevy::ecs::message::MessageWriter;
 use bevy::ecs::query::With;
 use bevy::ecs::resource::Resource;
 use bevy::ecs::system::{Commands, Res, ResMut, Single};
+use campfire_math::Tick;
 use campfire_net::{BotScript, MatchClock, OrderScript};
-use campfire_sim::Tick;
 use lightyear::prelude::{Client, Disconnect, Disconnected, LocalTimeline};
 use tracing::info;
 

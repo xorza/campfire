@@ -2,9 +2,9 @@ use std::num::NonZeroU8;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
-use campfire_math::Num;
+use campfire_math::{Num, Tick, Ticks};
 use campfire_script::ScriptId;
-use campfire_sim::{Position, StableId, Tick, TickRate, Ticks};
+use campfire_sim::{Position, StableId, TickRate};
 use serde::{Deserialize, Serialize};
 
 use crate::actions::action_data::{ActionData, CostTarget, Range, Targeting};
@@ -439,8 +439,7 @@ impl RankValues {
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
     use crate::stats::stat_id::StatId;
-    use campfire_math::Num;
-    use campfire_sim::Ticks;
+    use campfire_math::{Num, Ticks};
 
     use std::num::NonZeroU8;
     use std::sync::Arc;

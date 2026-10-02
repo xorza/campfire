@@ -5,11 +5,11 @@ use std::num::NonZeroU32;
 
 use bevy_app::App;
 use campfire_capabilities::{ActionSlots, Body, Dead, MoveStep, PoolId, Pools, SeenBy, Team};
-use campfire_math::{Num, Vec3};
+use campfire_math::{Num, Tick, Vec3};
 use campfire_net::{LinkModel, LocalMatch, MatchSetup, TickHashes};
 use campfire_protocol::{SeedChain, SessionLog};
 use campfire_runner::{Runner, Session};
-use campfire_sim::{EntityIndex, Position, SimTick, StableId, Tick};
+use campfire_sim::{EntityIndex, Position, SimTick, StableId};
 use lightyear::prelude::PredictionMetrics;
 
 const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
@@ -161,12 +161,14 @@ fn check_log(local: &mut LocalMatch, inputs: usize) {
     let ticks = decoded.next_tick();
     let mut rewound = decoded.rewound();
     let mut applied = Vec::new();
-    for tick in 0..ticks {
+    for tick in 0..ticks.get() {
         applied.extend(rewound.seal_tick().map(|input| (input.stamp, tick)));
     }
     assert_eq!(applied.len(), inputs);
     assert!(
-        applied.iter().all(|&(stamp, tick)| stamp == tick),
+        applied
+            .iter()
+            .all(|&(stamp, tick)| stamp == Tick::new(tick)),
         "{applied:?}"
     );
     let decoded = SessionLog::decode(&file).unwrap();

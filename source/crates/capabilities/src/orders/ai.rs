@@ -1,5 +1,6 @@
+use campfire_math::Ticks;
 use campfire_script::ScriptId;
-use campfire_sim::{TickRate, Ticks};
+use campfire_sim::TickRate;
 
 use crate::orders::Orders;
 use crate::orders::ai_data::AiData;

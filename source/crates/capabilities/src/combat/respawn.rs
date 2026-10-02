@@ -1,5 +1,6 @@
 use bevy_ecs::component::Component;
-use campfire_sim::{SimComponent, Tick};
+use campfire_math::Tick;
+use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
 /// When a dead unit comes back: at the start of tick `at`, at its spawn point, with full health.

@@ -1,5 +1,6 @@
 use bevy_ecs::component::Component;
-use campfire_sim::{SimComponent, Tick};
+use campfire_math::Tick;
+use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
 /// The tick a unit that thinks is due in again. A unit whose call found the think pool spent

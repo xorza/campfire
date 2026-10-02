@@ -4,9 +4,9 @@ use bevy_ecs::query::{QueryState, With, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::{EntityRef, Mut, World};
-use campfire_math::Num;
+use campfire_math::{Num, Tick};
 use campfire_sim::{
-    EntityIndex, Keyed, Ordered, Position, SimRng, SimSet, SimTick, StableId, StateRegistry, Tick,
+    EntityIndex, Keyed, Ordered, Position, SimRng, SimSet, SimTick, StableId, StateRegistry,
     TickRate,
 };
 
@@ -896,8 +896,7 @@ pub(crate) mod internals {
     use crate::stats::stat_id::StatId;
     use bevy_ecs::bundle::Bundle;
     use bevy_ecs::world::World;
-    use campfire_math::Num;
-    use campfire_sim::Ticks;
+    use campfire_math::{Num, Ticks};
 
     use crate::actions::action_book::internals::{self, TestWeapon};
     use crate::actions::action_data::Range;

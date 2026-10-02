@@ -2,10 +2,8 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
-use campfire_math::{Num, Vec3};
-use campfire_sim::{
-    Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry, Tick, Ticks,
-};
+use campfire_math::{Num, Tick, Ticks, Vec3};
+use campfire_sim::{Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry};
 
 use crate::actions::action_slots::ActionTarget;
 use crate::areas::area::Area;

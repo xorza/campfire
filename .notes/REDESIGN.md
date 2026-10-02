@@ -441,8 +441,7 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 | H2 | `NavBudget`; short routes within their window; "arrived short"; re-asks after removals; the blocker query and clipping; `Progress` reset; blocked map cells in the exact tests; `Steering` methods; `Route::clear` keeps its buffer | B3 | M, changes behaviour |
 | H3 | Incremental regions; routes tested only against added bodies; the body index's first-cell flag and early stop | H2 | M |
 | H4 | Vision dirty words, detectors only, and the group limit; incremental view rows; filters parsed once | B | M |
-| I1 | `Tick` and `Ticks` in `math`; `Bytes32`; typed ticks in the log | B4 | M |
-| I2 | `SessionRules` with one `fits`; the client takes its rate from the offer; the delegation check once; one key type | I1 | M |
+| I2 | `SessionRules` with one `fits`; the client takes its rate from the offer; the delegation check once; one key type | B4 | M |
 | I3 | `JoinState` as one enum; a refusal ends the link; `SentInputs` pruned; one order buffer | I2 | S |
 
 ### Joins of the two tracks
@@ -467,7 +466,7 @@ Track S:  D2 → D3 → D5 → D6
                        └ I4 → PLAN 2
 
 Track I:  E1 → E2      F2      G1      H1, H4      H2 → H3
-          I1 → I2 → I3
+          I2 → I3
 
 Joins:    G1 → G2      D5 + H1 → H1b      I2 → I4
 ```
@@ -590,7 +589,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - script runtime: D4;
   - delivery API registration: D5;
   - `values` runtime types: D6;
-  - `math` and `Tick`: I1;
   - layer list: A4.
 - **R§9:**
   - tag names: C3;

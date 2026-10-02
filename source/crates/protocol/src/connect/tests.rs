@@ -7,7 +7,7 @@ use crate::delegation::DelegationTerms;
 use crate::fingerprint::Fingerprint;
 use crate::seed_chain::SeedChain;
 use crate::session_id::SessionId;
-use campfire_math::NotHex;
+use campfire_math::{NotHex, Ticks};
 
 const NOW: u64 = 1_700_000_000;
 const EXPIRATION: u64 = NOW + 60;
@@ -21,8 +21,8 @@ fn terms() -> SessionTerms {
     SessionTerms {
         server_key: [8; 32],
         tick_hz: NonZeroU32::new(30).unwrap(),
-        max_input_delay: 10,
-        max_input_lead: 30,
+        max_input_delay: Ticks::new(10),
+        max_input_lead: Ticks::new(30),
         max_payload_len: 64,
         max_inputs_per_tick: 4,
         seed_commitment: SeedChain::new([6; 32], NonZeroU32::MIN).commitment(),

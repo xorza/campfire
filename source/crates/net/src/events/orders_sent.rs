@@ -1,5 +1,5 @@
 use campfire_log::LogEvent;
-use campfire_sim::Tick;
+use campfire_math::Tick;
 use serde::Deserialize;
 use tracing::debug;
 

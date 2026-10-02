@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use bevy_ecs::resource::Resource;
 
-use crate::tick::Ticks;
+use campfire_math::Ticks;
 
 /// Ticks a second, fixed for the whole match by the session's terms. Data gives times in
 /// milliseconds and rates per second; they become ticks with it.

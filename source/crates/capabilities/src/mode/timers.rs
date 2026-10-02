@@ -1,5 +1,6 @@
 use bevy_ecs::resource::Resource;
-use campfire_sim::{SimResource, Tick, Ticks};
+use campfire_math::{Tick, Ticks};
+use campfire_sim::SimResource;
 use serde::{Deserialize, Serialize};
 
 use crate::scripts::state_value::StateValue;

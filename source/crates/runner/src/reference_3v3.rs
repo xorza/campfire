@@ -2,6 +2,7 @@ use std::num::NonZeroU32;
 use std::path::Path;
 
 use campfire_capabilities::{InputValue, ModeInput};
+use campfire_math::Tick;
 use campfire_package::ModePackages;
 use campfire_protocol::ServerSeed;
 
@@ -61,7 +62,7 @@ impl Reference3v3 {
                     value: InputValue::StringList(vec!["haste", "mend"]),
                 },
             ]);
-            fixed.send(slot, 0, &payload);
+            fixed.send(slot, Tick::new(0), &payload);
         }
         fixed.into_runner()
     }

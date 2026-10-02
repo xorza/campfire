@@ -1,5 +1,6 @@
+use campfire_math::Ticks;
 use campfire_script::rhai::INT;
-use campfire_sim::{Capability, Ticks};
+use campfire_sim::Capability;
 
 use crate::mode::mode_api::ModeApi;
 use crate::scripts::api_builder::ApiBuilder;

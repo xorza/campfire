@@ -3,9 +3,9 @@ use bevy_ecs::query::Without;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
-use campfire_math::{Num, Vec3};
+use campfire_math::{Num, Tick, Vec3};
 
-use campfire_sim::{Keyed, Ordered, Position, StableId, StateRegistry, Tick};
+use campfire_sim::{Keyed, Ordered, Position, StableId, StateRegistry};
 
 use crate::actions::action_book::{ActionBook, Aim, Fan};
 use crate::actions::action_data::Range;

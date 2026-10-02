@@ -2,10 +2,11 @@ use std::cmp::Ordering;
 use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
+use campfire_math::{Tick, Ticks};
 use campfire_script::ScriptId;
 use serde::{Deserialize, Serialize};
 
-use campfire_sim::{StableId, Tick, TickRate, Ticks};
+use campfire_sim::{StableId, TickRate};
 
 use crate::actions::action_book::ActionId;
 use crate::scripts::hook::Hook;

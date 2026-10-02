@@ -9,11 +9,11 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::Local;
 use bevy_ecs::world::{Mut, World};
-use campfire_math::PlayerSlot;
+use campfire_math::{PlayerSlot, Tick};
 use campfire_script::ScriptError;
 use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString};
 use campfire_sim::{
-    Command, EntityIndex, IdAllocator, SimSet, SimTick, StateRegistry, Tick, TickInputs, TickRate,
+    Command, EntityIndex, IdAllocator, SimSet, SimTick, StateRegistry, TickInputs, TickRate,
 };
 
 use crate::actions::action_slots::ActionSlots;

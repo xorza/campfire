@@ -11,7 +11,7 @@ use campfire_capabilities::{
     Action, ActionSlots, Destination, Order, Owner, PoolId, Pools, Projectile,
 };
 use campfire_log::LogEvent;
-use campfire_math::{Num, Vec3};
+use campfire_math::{Num, Tick, Ticks, Vec3};
 use campfire_package::{ModePackages, PackageStore, StoreError};
 use campfire_protocol::{Applied, Fingerprint, SeedError, ServerSeed, SessionLog, SessionTerms};
 use campfire_runner::{FixedSession, InputRules, Runner, StartError};
@@ -49,7 +49,7 @@ const ORDERS: [Sent; 3] = [
         stamp: 0,
         x: 0,
         z: 5,
-        applied: Applied::At(0),
+        applied: Applied::At(Tick::new(0)),
     },
     // Stamped 2 ticks ahead; 2 m along −x: ticks 22 to 29.
     Sent {
@@ -57,7 +57,7 @@ const ORDERS: [Sent; 3] = [
         stamp: 22,
         x: -2,
         z: 5,
-        applied: Applied::At(22),
+        applied: Applied::At(Tick::new(22)),
     },
     // 4 ticks after its stamp, past the max delay of 3: logged, never applied.
     Sent {
@@ -81,8 +81,8 @@ fn store() -> PackageStore {
 /// may come 3 ticks late or early.
 fn session() -> FixedSession {
     let rules = InputRules {
-        max_input_delay: 3,
-        max_input_lead: 3,
+        max_input_delay: Ticks::new(3),
+        max_input_lead: Ticks::new(3),
         max_payload_len: 64,
         max_inputs_per_tick: 4,
     };
@@ -142,7 +142,7 @@ fn run(orders: &[&Sent], ticks: u64) -> Run {
                 },
             }]);
             assert_eq!(
-                fixed.send(0, sent.stamp, &payload),
+                fixed.send(0, Tick::new(sent.stamp), &payload),
                 sent.applied,
                 "{sent:?}"
             );
@@ -193,7 +193,7 @@ const INTO_REACH: Sent = Sent {
     stamp: 0,
     x: 1,
     z: -2,
-    applied: Applied::At(0),
+    applied: Applied::At(Tick::new(0)),
 };
 
 /// What a tick left: the attack target of the towers, units 0 and 1, and of the creeps, 3 to 6;

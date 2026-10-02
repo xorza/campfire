@@ -7,7 +7,7 @@ use crate::delegation::delegation_tag::DelegationTag;
 use crate::delegation::error::DelegationError;
 use crate::input_hash::InputHash;
 use crate::session_id::SessionId;
-use campfire_math::hex;
+use campfire_math::Bytes32;
 
 pub(crate) mod delegation_tag;
 pub(crate) mod error;
@@ -55,16 +55,19 @@ impl Delegation {
         let tags = [
             custom(
                 DelegationTag::SessionKey,
-                hex::encode(&terms.session_key.serialize()),
+                Bytes32::new(terms.session_key.serialize()).to_string(),
             ),
-            custom(DelegationTag::ServerKey, hex::encode(&terms.server_key)),
+            custom(
+                DelegationTag::ServerKey,
+                Bytes32::new(terms.server_key).to_string(),
+            ),
             custom(
                 DelegationTag::SessionId,
-                hex::encode(terms.session_id.as_bytes()),
+                Bytes32::new(*terms.session_id.as_bytes()).to_string(),
             ),
             custom(
                 DelegationTag::SeedContribution,
-                hex::encode(&terms.seed_contribution),
+                Bytes32::new(terms.seed_contribution).to_string(),
             ),
             custom(DelegationTag::Expiration, terms.expiration.to_string()),
         ];
@@ -98,21 +101,18 @@ impl Delegation {
         if event.kind != Kind::from_u16(KIND) {
             return Err(DelegationError::WrongKind);
         }
-        let session_key = hex::decode(tag(&event, DelegationTag::SessionKey)?)
+        let bytes = |name: DelegationTag| -> Result<[u8; 32], DelegationError> {
+            let parsed = tag(&event, name)?.parse::<Bytes32>().ok();
+            parsed
+                .map(Bytes32::get)
+                .ok_or(DelegationError::MalformedTag(name))
+        };
+        let session_key = XOnlyPublicKey::from_byte_array(&bytes(DelegationTag::SessionKey)?)
             .ok()
-            .and_then(|bytes| XOnlyPublicKey::from_byte_array(&bytes).ok())
             .ok_or(DelegationError::MalformedTag(DelegationTag::SessionKey))?;
-        let server_key = hex::decode(tag(&event, DelegationTag::ServerKey)?)
-            .ok()
-            .ok_or(DelegationError::MalformedTag(DelegationTag::ServerKey))?;
-        let session_id = hex::decode(tag(&event, DelegationTag::SessionId)?)
-            .ok()
-            .ok_or(DelegationError::MalformedTag(DelegationTag::SessionId))?;
-        let seed_contribution = hex::decode(tag(&event, DelegationTag::SeedContribution)?)
-            .ok()
-            .ok_or(DelegationError::MalformedTag(
-                DelegationTag::SeedContribution,
-            ))?;
+        let server_key = bytes(DelegationTag::ServerKey)?;
+        let session_id = bytes(DelegationTag::SessionId)?;
+        let seed_contribution = bytes(DelegationTag::SeedContribution)?;
         let expiration = tag(&event, DelegationTag::Expiration)?
             .parse()
             .ok()

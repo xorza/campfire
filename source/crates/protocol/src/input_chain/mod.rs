@@ -1,4 +1,5 @@
 use blake3::Hasher;
+use campfire_math::Tick;
 use secp256k1::{Keypair, Secp256k1, Signing, Verification, XOnlyPublicKey, schnorr};
 
 use crate::input_hash::InputHash;
@@ -45,14 +46,14 @@ impl InputChain {
     /// The player's next input, stamped for `stamp`. The head moves on to `BLAKE3(domain ‖
     /// previous head ‖ u32 slot ‖ u64 seq ‖ u64 stamp ‖ payload)`, little-endian, seq counting
     /// the player's inputs from 0; the payload comes last, so it needs no length.
-    pub fn extend<'a>(&mut self, stamp: u64, payload: &'a [u8]) -> PlayerInput<'a> {
+    pub fn extend<'a>(&mut self, stamp: Tick, payload: &'a [u8]) -> PlayerInput<'a> {
         let mut hasher = Hasher::new();
         hasher
             .update(HASH_DOMAIN)
             .update(self.head.as_bytes())
             .update(&self.slot.get().to_le_bytes())
             .update(&self.next_seq.to_le_bytes())
-            .update(&stamp.to_le_bytes())
+            .update(&stamp.get().to_le_bytes())
             .update(payload);
         self.head = InputHash::new(*hasher.finalize().as_bytes());
         self.next_seq = self.next_seq.checked_add(1).expect("input seq exhausted");

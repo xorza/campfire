@@ -1,4 +1,5 @@
-use campfire_sim::{StableId, Tick};
+use campfire_math::Tick;
+use campfire_sim::StableId;
 use serde::{Deserialize, Serialize};
 
 /// The last tick `source` struck.

@@ -3,7 +3,7 @@ use std::str::FromStr;
 
 use bevy_ecs::world::World;
 use blake3::Hasher;
-use campfire_math::{NotHex, hex};
+use campfire_math::{Bytes32, NotHex};
 use serde::de::DeserializeOwned;
 
 use crate::entity_index::EntityIndex;
@@ -56,11 +56,11 @@ pub struct TypeHash {
 
 /// The hash of the whole simulated state. It writes, and reads back, as 64 lowercase hex digits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct StateHash([u8; 32]);
+pub struct StateHash(Bytes32);
 
 impl StateHash {
     pub const fn as_bytes(&self) -> &[u8; 32] {
-        &self.0
+        self.0.as_bytes()
     }
 
     /// The hash of `bytes` under a domain of its own: a digest of values that a test or a check
@@ -68,7 +68,7 @@ impl StateHash {
     pub fn of(bytes: &[u8]) -> StateHash {
         let mut hasher = Hasher::new();
         hasher.update(DIGEST_DOMAIN).update(bytes);
-        StateHash(*hasher.finalize().as_bytes())
+        StateHash(Bytes32::new(*hasher.finalize().as_bytes()))
     }
 }
 
@@ -252,13 +252,13 @@ impl StateRegistry {
                 });
             }
         }
-        StateHash(*total.finalize().as_bytes())
+        StateHash(Bytes32::new(*total.finalize().as_bytes()))
     }
 }
 
 impl fmt::Display for StateHash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&hex::encode(&self.0))
+        self.0.fmt(f)
     }
 }
 
@@ -266,7 +266,7 @@ impl FromStr for StateHash {
     type Err = NotHex;
 
     fn from_str(text: &str) -> Result<StateHash, NotHex> {
-        hex::decode(text).map(StateHash)
+        text.parse().map(StateHash)
     }
 }
 

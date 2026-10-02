@@ -1,6 +1,7 @@
 use std::num::NonZeroU32;
 
 use campfire_capabilities::{Bounds, CapabilitySet, Metric};
+use campfire_math::Ticks;
 use campfire_package::RELEASE;
 use campfire_protocol::secp256k1::SecretKey;
 use campfire_protocol::{CertificateHash, ConnectChallenge, Fingerprint, SeedChain, SessionTerms};
@@ -43,8 +44,8 @@ fn offer(change: impl FnOnce(&mut SessionTerms)) -> Offer {
     let mut terms = SessionTerms {
         server_key: [8; 32],
         tick_hz: NonZeroU32::new(30).unwrap(),
-        max_input_delay: 10,
-        max_input_lead: 30,
+        max_input_delay: Ticks::new(10),
+        max_input_lead: Ticks::new(30),
         max_payload_len: 64,
         max_inputs_per_tick: 4,
         seed_commitment: SeedChain::new([7; 32], NonZeroU32::MIN).commitment(),

@@ -3,10 +3,10 @@ use bevy_ecs::query::{Has, QueryState, With, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Local, Query, Res};
 use bevy_ecs::world::{Mut, World};
+use campfire_math::{Tick, Ticks};
 use campfire_script::{ScriptError, ScriptId};
 use campfire_sim::{
-    Command, EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, Tick, TickInputs,
-    TickRate, Ticks,
+    Command, EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, TickInputs, TickRate,
 };
 
 use crate::actions::action_book::ActionBook;

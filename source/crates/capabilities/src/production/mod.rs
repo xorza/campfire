@@ -3,8 +3,9 @@ use bevy_ecs::query::{QueryState, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
+use campfire_math::Ticks;
 use campfire_sim::{
-    IdAllocator, Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry, Ticks,
+    IdAllocator, Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry,
 };
 
 use crate::actions::action_book::ActionBook;

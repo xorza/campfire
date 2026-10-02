@@ -4,7 +4,7 @@ use std::mem;
 use std::ops::Range;
 
 use blake3::Hasher;
-use campfire_math::{PlayerSlot, SegmentSeed};
+use campfire_math::{PlayerSlot, SegmentSeed, Tick, Ticks};
 use secp256k1::{Secp256k1, VerifyOnly};
 use serde::{Deserialize, Serialize};
 
@@ -64,7 +64,7 @@ impl SessionHeader {
 /// When a logged input takes effect.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Applied {
-    At(u64),
+    At(Tick),
     /// It arrived more than the max input delay after its stamp. It stays in the chain but never
     /// takes effect.
     Late,
@@ -114,7 +114,7 @@ pub struct SessionLog {
 /// the inputs in all.
 #[derive(Debug, Clone, Copy, Default)]
 struct StampCount {
-    last: Option<u64>,
+    last: Option<Tick>,
     at_last: u32,
     total: u64,
 }
@@ -122,14 +122,14 @@ struct StampCount {
 /// The last tick a player's inputs were scheduled to apply in, and how many apply there.
 #[derive(Debug, Clone, Copy, Default)]
 struct Spill {
-    tick: u64,
+    tick: Tick,
     count: u32,
 }
 
 #[derive(Debug)]
 struct LoggedInput {
     slot: PlayerSlot,
-    stamp: u64,
+    stamp: Tick,
     payload: Range<u32>,
 }
 
@@ -145,7 +145,7 @@ struct PacketEnd {
 /// who acts first.
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord)]
 struct Due {
-    tick: u64,
+    tick: Tick,
     slot: PlayerSlot,
     index: u32,
 }
@@ -162,10 +162,10 @@ struct Packet<'a> {
 impl StampCount {
     /// Counts one more input, stamped `stamp`; an error for a stamp before the last, or one
     /// more than `max` inputs of one stamp.
-    const fn add(&mut self, stamp: u64, max: u32) -> Result<(), InputError> {
+    const fn add(&mut self, stamp: Tick, max: u32) -> Result<(), InputError> {
         match self.last {
-            Some(last) if stamp < last => return Err(InputError::StampBack),
-            Some(last) if stamp == last => {
+            Some(last) if stamp.get() < last.get() => return Err(InputError::StampBack),
+            Some(last) if stamp.get() == last.get() => {
                 if self.at_last == max {
                     return Err(InputError::TooManyInputs);
                 }
@@ -184,14 +184,14 @@ impl StampCount {
 impl Spill {
     /// The tick an input that may apply from tick `earliest` on applies in: the first, from
     /// there and from the last, that fewer than `max` of the player's inputs fill.
-    const fn take(&mut self, earliest: u64, max: u32) -> u64 {
-        if self.count == 0 || earliest > self.tick {
+    const fn take(&mut self, earliest: Tick, max: u32) -> Tick {
+        if self.count == 0 || earliest.get() > self.tick.get() {
             self.tick = earliest;
             self.count = 1;
         } else if self.count < max {
             self.count += 1;
         } else {
-            self.tick += 1;
+            self.tick = self.tick.after(Ticks::ONE);
             self.count = 1;
         }
         self.tick
@@ -273,8 +273,8 @@ impl SessionLog {
     }
 
     /// The tick that the inputs recorded now arrive before.
-    pub fn next_tick(&self) -> u64 {
-        u64::try_from(self.tick_ends.len()).expect("tick count fits u64")
+    pub fn next_tick(&self) -> Tick {
+        Tick::new(u64::try_from(self.tick_ends.len()).expect("tick count fits u64"))
     }
 
     /// Logs a player's packet before the next tick: `inputs`, all of one slot, in the order sent,
@@ -324,7 +324,8 @@ impl SessionLog {
         }
         let ticks = self
             .next_tick()
-            .saturating_add(terms.max_input_lead)
+            .get()
+            .saturating_add(terms.max_input_lead.get())
             .saturating_add(1);
         if stamps.total > ticks.saturating_mul(u64::from(terms.max_inputs_per_tick)) {
             return Err(InputError::AheadOfTime);
@@ -370,7 +371,7 @@ impl SessionLog {
     /// each player's chain order.
     pub fn seal_tick(&mut self) -> impl ExactSizeIterator<Item = PlayerInput<'_>> {
         let tick = self.next_tick();
-        let replayed = usize::try_from(tick).expect("tick fits usize");
+        let replayed = usize::try_from(tick.get()).expect("tick fits usize");
         let end = match self.to_replay.get(replayed) {
             Some(&end) => {
                 let start = self.tick_ends.last().copied().unwrap_or(0);
@@ -567,16 +568,16 @@ impl SessionLog {
     }
 
     /// When an input stamped `stamp`, logged now, applies.
-    fn applied(&self, stamp: u64) -> Applied {
+    fn applied(&self, stamp: Tick) -> Applied {
         let next = self.next_tick();
         if next
-            .checked_sub(stamp)
+            .since(stamp)
             .is_some_and(|delay| delay > self.header.terms.max_input_delay)
         {
             return Applied::Late;
         }
         if stamp
-            .checked_sub(next)
+            .since(next)
             .is_some_and(|lead| lead > self.header.terms.max_input_lead)
         {
             return Applied::Early;

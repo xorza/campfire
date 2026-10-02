@@ -1,7 +1,8 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::Res;
-use campfire_sim::{SimResource, SimSet, Tick};
+use campfire_math::Tick;
+use campfire_sim::{SimResource, SimSet};
 use serde::{Deserialize, Serialize};
 
 use crate::units::team::Team;

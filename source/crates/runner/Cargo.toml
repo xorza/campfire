@@ -6,13 +6,13 @@ license.workspace = true
 autotests = false
 
 [features]
-internals = ["dep:campfire-math", "campfire-capabilities/internals"]
+internals = ["campfire-capabilities/internals"]
 bench = ["internals", "dep:criterion"]
 
 [dependencies]
 campfire-capabilities.workspace = true
 campfire-content.workspace = true
-campfire-math = { workspace = true, optional = true }
+campfire-math.workspace = true
 campfire-package.workspace = true
 campfire-protocol.workspace = true
 campfire-script.workspace = true
@@ -21,9 +21,6 @@ campfire-sim.workspace = true
 bevy_ecs.workspace = true
 criterion = { workspace = true, optional = true }
 tracing.workspace = true
-
-[dev-dependencies]
-campfire-math.workspace = true
 
 [lints]
 workspace = true

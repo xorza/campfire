@@ -1,8 +1,8 @@
 use bevy_ecs::component::Component;
-use campfire_math::Num;
+use campfire_math::{Num, Tick, Ticks};
 use std::num::NonZeroU32;
 
-use campfire_sim::{SimComponent, StableId, Tick, Ticks};
+use campfire_sim::{SimComponent, StableId};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 

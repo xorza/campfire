@@ -2,8 +2,9 @@ use std::cell::{OnceCell, RefCell, RefMut};
 use std::rc::Rc;
 
 use bevy_ecs::world::World;
+use campfire_math::Tick;
 use campfire_script::rhai::{Dynamic, NativeCallContext};
-use campfire_sim::{StableId, Tick};
+use campfire_sim::StableId;
 
 use crate::mode::mode_book::ModeBook;
 use crate::scripts::effects::Effect;

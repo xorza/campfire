@@ -1,5 +1,5 @@
 use bevy_ecs::resource::Resource;
-use campfire_sim::Tick;
+use campfire_math::Tick;
 use lightyear::prelude::Tick as NetTick;
 
 /// Maps Lightyear's ticks to sim ticks: sim tick 0 is the Lightyear tick the match started in.

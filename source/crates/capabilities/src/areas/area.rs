@@ -1,5 +1,6 @@
 use bevy_ecs::component::Component;
-use campfire_sim::{SimComponent, StableId, Tick};
+use campfire_math::Tick;
+use campfire_sim::{SimComponent, StableId};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 

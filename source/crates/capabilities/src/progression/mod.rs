@@ -1,6 +1,7 @@
 use bevy_ecs::schedule::Schedule;
 use bevy_ecs::world::{EntityRef, Mut, World};
-use campfire_sim::{EntityIndex, StateRegistry, Tick};
+use campfire_math::Tick;
+use campfire_sim::{EntityIndex, StateRegistry};
 
 use crate::progression::experience::Experience;
 use crate::progression::level_ups::{LevelUp, LevelUps};

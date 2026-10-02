@@ -11,11 +11,11 @@ use campfire_capabilities::{
     Area, Deaths, MatchEnd, MatchResult, Mode, Owner, Projectile, SeenBy, Team, TeamSet,
 };
 use campfire_log::LogEvent;
-use campfire_math::PlayerSlot;
+use campfire_math::{PlayerSlot, Tick};
 use campfire_package::ModePackages;
 use campfire_protocol::{Applied, ServerSeed, SessionLog};
 use campfire_runner::{Session, StartError};
-use campfire_sim::{SimTick, StableId, StateHash, Tick, TickRate};
+use campfire_sim::{SimTick, StableId, StateHash, TickRate};
 use lightyear::core::tick::TickDuration;
 use lightyear::prelude::{
     LocalTimeline, MessageReceiver, MessageSender, NetworkTarget, PredictionTarget, Replicate,
@@ -179,7 +179,7 @@ fn record_inputs(
                 continue;
             };
             if let Err(error) = session.record(inputs.clone(), message.signature(), &mut applied) {
-                warn!(slot, next_tick, %error, "refused an input message, which ends the link");
+                warn!(slot, %next_tick, %error, "refused an input message, which ends the link");
                 link.refused = true;
                 commands.trigger(Unlink {
                     entity,
@@ -191,14 +191,14 @@ fn record_inputs(
                 match outcome {
                     Applied::At(tick) => InputLogged {
                         slot: link.slot,
-                        stamp: Tick::new(input.stamp),
-                        tick: Tick::new(tick),
+                        stamp: input.stamp,
+                        tick,
                     }
                     .log(),
                     Applied::Late | Applied::Early => warn!(
                         slot,
-                        stamp = input.stamp,
-                        next_tick,
+                        %input.stamp,
+                        %next_tick,
                         ?outcome,
                         "logged an input that never takes effect"
                     ),

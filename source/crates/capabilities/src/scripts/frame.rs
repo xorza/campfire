@@ -1,5 +1,6 @@
 use bevy_ecs::world::World;
-use campfire_sim::{Capability, IdAllocator, StableId, Tick};
+use campfire_math::Tick;
+use campfire_sim::{Capability, IdAllocator, StableId};
 
 use crate::actions::action_book::ActionId;
 use crate::mode::choices::Choices;

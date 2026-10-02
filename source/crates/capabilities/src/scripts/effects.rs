@@ -3,7 +3,8 @@ use std::collections::VecDeque;
 use std::fmt::Debug;
 
 use bevy_ecs::world::World;
-use campfire_sim::{Capability, Tick};
+use campfire_math::Tick;
+use campfire_sim::Capability;
 
 use crate::scripts::frame::Frame;
 

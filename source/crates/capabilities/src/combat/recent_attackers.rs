@@ -1,5 +1,6 @@
 use bevy_ecs::component::Component;
-use campfire_sim::{EntityIndex, SimComponent, StableId, Tick};
+use campfire_math::Tick;
+use campfire_sim::{EntityIndex, SimComponent, StableId};
 use serde::{Deserialize, Serialize};
 
 use crate::units::recent_attack::RecentAttack;

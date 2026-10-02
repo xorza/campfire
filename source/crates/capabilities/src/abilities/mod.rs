@@ -5,11 +5,10 @@ use bevy_ecs::query::{QueryState, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::Local;
 use bevy_ecs::world::World;
+use campfire_math::{Tick, Ticks};
 use campfire_script::ScriptId;
 use campfire_script::rhai::Dynamic;
-use campfire_sim::{
-    Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry, Tick, TickRate, Ticks,
-};
+use campfire_sim::{Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry, TickRate};
 
 use crate::abilities::effect_lists::EffectLists;
 

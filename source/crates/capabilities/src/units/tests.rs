@@ -4,10 +4,10 @@ use std::sync::Arc;
 
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::entity::Entity;
-use campfire_math::{Num, PlayerSlot, Vec3};
+use campfire_math::{Num, PlayerSlot, Tick, Vec3};
 use campfire_script::Budget;
 use campfire_script::rhai::Array;
-use campfire_sim::{Capability, EntityIndex, IdAllocator, Position, SimTick, StableId, Tick};
+use campfire_sim::{Capability, EntityIndex, IdAllocator, Position, SimTick, StableId};
 
 use super::*;
 use crate::actions::action_slots::ActionSlots;

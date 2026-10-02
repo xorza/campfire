@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
-use campfire_math::Num;
-use campfire_sim::{TickRate, Ticks};
+use campfire_math::{Num, Ticks};
+use campfire_sim::TickRate;
 
 use crate::scripts::state_value::StateValue;
 use crate::stats::error::ModifierProblem;
@@ -222,8 +222,8 @@ mod tests {
     use std::num::NonZeroU32;
     use std::sync::Arc;
 
-    use campfire_math::Num;
-    use campfire_sim::{TickRate, Ticks};
+    use campfire_math::{Num, Ticks};
+    use campfire_sim::TickRate;
 
     use crate::stats::error::ModifierProblem;
     use crate::stats::modifier_book::ModifierId;

@@ -1,5 +1,4 @@
-use campfire_math::Num;
-use campfire_sim::Ticks;
+use campfire_math::{Num, Ticks};
 
 use crate::combat::damage_kind::DamageKind;
 use crate::stats::stat_id::StatId;

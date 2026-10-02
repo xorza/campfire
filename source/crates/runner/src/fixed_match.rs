@@ -1,3 +1,4 @@
+use campfire_math::Tick;
 use campfire_protocol::secp256k1::Secp256k1;
 use campfire_protocol::{Applied, InputChain, SessionId};
 
@@ -30,7 +31,7 @@ impl FixedMatch {
 
     /// Sends player `slot`'s input of `payload` stamped for `stamp`, in a packet of its own; how
     /// it applies.
-    pub fn send(&mut self, slot: u32, stamp: u64, payload: &[u8]) -> Applied {
+    pub fn send(&mut self, slot: u32, stamp: Tick, payload: &[u8]) -> Applied {
         let chain = &mut self.chains[usize::try_from(slot).unwrap()];
         let input = chain.extend(stamp, payload);
         let signature = chain.sign(

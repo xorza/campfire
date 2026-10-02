@@ -1,4 +1,4 @@
-use campfire_math::PlayerSlot;
+use campfire_math::{PlayerSlot, Tick};
 use campfire_protocol::{PlayerInput, Signature};
 use serde::{Deserialize, Serialize};
 
@@ -15,7 +15,7 @@ pub struct InputMessage {
 /// One input of a message, without its payload.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 struct InputFrame {
-    stamp: u64,
+    stamp: Tick,
     payload_len: u32,
 }
 
@@ -83,7 +83,11 @@ mod tests {
             stamp,
             payload,
         };
-        let sent = [input(7, &b"ab"[..]), input(7, b""), input(8, b"cde")];
+        let sent = [
+            input(Tick::new(7), &b"ab"[..]),
+            input(Tick::new(7), b""),
+            input(Tick::new(8), b"cde"),
+        ];
         let message = InputMessage::new(sent, signature);
         assert_eq!(message.payloads, b"abcde");
         let received: Vec<_> = message.inputs(slot).unwrap().collect();

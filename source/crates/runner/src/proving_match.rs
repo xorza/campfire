@@ -3,7 +3,7 @@ use std::path::Path;
 
 use bevy_ecs::world::EntityRef;
 use campfire_capabilities::{Action, ActionTarget, Experience, Order, Owner, Team, TrainQueue};
-use campfire_math::{Num, Vec3};
+use campfire_math::{Num, Tick, Vec3};
 use campfire_package::ModePackages;
 use campfire_sim::{EntityIndex, Position, StableId};
 
@@ -177,7 +177,7 @@ impl ProvingMatch {
     pub fn play_tick(fixed: &mut FixedMatch, tick: u64) {
         for scripted in SCRIPT.iter().filter(|scripted| scripted.stamp == tick) {
             let order = ProvingMatch::resolve(fixed, scripted);
-            fixed.send(scripted.slot, tick, &Order::payload(&[order]));
+            fixed.send(scripted.slot, Tick::new(tick), &Order::payload(&[order]));
         }
         fixed.runner_mut().run_tick();
     }

@@ -11,11 +11,11 @@ use campfire_capabilities::{
     Action, ActionSlots, Dead, Destination, MatchEnd, MatchResult, MoveStep, Owner, PoolId, Pools,
     Projectile, Respawn, Team,
 };
-use campfire_math::{Num, PlayerSlot, Vec3};
+use campfire_math::{Num, PlayerSlot, Tick, Vec3};
 use campfire_net::{InputChannel, InputMessage, LocalMatch, MatchSetup, PlayerLink, TickHashes};
 use campfire_protocol::{PlayerInput, SeedChain, SessionLog, Signature};
 use campfire_runner::{Runner, Session};
-use campfire_sim::{EntityIndex, Position, SimTick, Tick, Unpredicted};
+use campfire_sim::{EntityIndex, Position, SimTick, Unpredicted};
 use lightyear::prelude::{
     Client, Connected, MessageSender, Predicted, PredictionMetrics, RollbackMode,
 };
@@ -129,7 +129,7 @@ fn server_and_replay_agree_on_every_tick() {
             replay.run_tick();
             assert_eq!(replay.state_hash(), *live, "{case}, tick {tick}");
         }
-        assert_eq!(replay.log().next_tick(), ticks);
+        assert_eq!(replay.log().next_tick(), Tick::new(ticks));
     }
 }
 
@@ -166,7 +166,7 @@ fn a_burst_of_orders_waits_for_later_stamps_and_a_forged_message_ends_its_link()
     let forged = InputMessage::new(
         [PlayerInput {
             slot: PlayerSlot::new(0),
-            stamp: 0,
+            stamp: Tick::new(0),
             payload: b"",
         }],
         Signature::from_bytes([0; 64]),

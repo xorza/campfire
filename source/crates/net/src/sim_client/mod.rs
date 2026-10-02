@@ -11,11 +11,11 @@ use bevy_ecs::system::{Commands, Query, Res, ResMut, Single};
 use bevy_ecs::world::{Mut, World};
 use campfire_capabilities::{Combat, Dead, MatchEnd, Navigation, Order, Owner};
 use campfire_log::LogEvent;
-use campfire_math::SegmentSeed;
+use campfire_math::{SegmentSeed, Tick};
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SignOnly};
 use campfire_protocol::{Delegation, DelegationTerms, InputChain, InputHash, SessionId};
 use campfire_sim::{
-    SimTick, SimUpdate, StableId, StateRegistry, Tick, TickInput, TickInputs, TickRate, Unpredicted,
+    SimTick, SimUpdate, StableId, StateRegistry, TickInput, TickInputs, TickRate, Unpredicted,
 };
 use lightyear::prelude::client::{InputDelayConfig, InputTimelineConfig};
 use lightyear::prelude::{
@@ -381,14 +381,14 @@ fn send_orders(
     // first.
     let mut head = *chain;
     for input in sent {
-        head.extend(stamp.get(), &payloads[input.payload.clone()]);
+        head.extend(Tick::new(stamp.get()), &payloads[input.payload.clone()]);
     }
     let mut aux = [0; 32];
     (client.entropy)(&mut aux);
     let signature = head.sign(secp, &client.session_key, session.id, &aux);
     let chained = sent
         .iter()
-        .map(|input| chain.extend(stamp.get(), &payloads[input.payload.clone()]));
+        .map(|input| chain.extend(Tick::new(stamp.get()), &payloads[input.payload.clone()]));
     sender.send::<InputChannel>(InputMessage::new(chained, signature));
     debug_assert_eq!(*chain, head, "the message's inputs end at the signed head");
 }

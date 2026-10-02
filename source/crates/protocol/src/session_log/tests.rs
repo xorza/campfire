@@ -52,8 +52,8 @@ fn terms() -> SessionTerms {
     SessionTerms {
         server_key: SERVER_KEY,
         tick_hz: TICK_HZ,
-        max_input_delay: MAX_DELAY,
-        max_input_lead: MAX_LEAD,
+        max_input_delay: Ticks::new(MAX_DELAY),
+        max_input_lead: Ticks::new(MAX_LEAD),
         max_payload_len: MAX_PAYLOAD_LEN,
         max_inputs_per_tick: MAX_INPUTS_PER_TICK,
         seed_commitment: SEED_CHAIN.commitment(),
@@ -140,7 +140,7 @@ fn chain(script: &[Sends]) -> Vec<Vec<Sent<'static>>> {
             let mut last_slot = None;
             for &(slot, stamp, payload) in *sends {
                 let chain = &mut chains[slot as usize];
-                let input = chain.extend(stamp, payload);
+                let input = chain.extend(Tick::new(stamp), payload);
                 let signature = chain.sign(&secp, &keys[slot as usize], session_id(), &AUX);
                 match packets.last_mut() {
                     Some(packet) if last_slot == Some(slot) => {
@@ -169,7 +169,7 @@ fn resent(slot: u32, packets: &[&[(u64, &'static [u8])]], signer: u32) -> Vec<Se
         .map(|sends| {
             let inputs = sends
                 .iter()
-                .map(|&(stamp, payload)| chain.extend(stamp, payload))
+                .map(|&(stamp, payload)| chain.extend(Tick::new(stamp), payload))
                 .collect();
             let signature = chain.sign(&secp, &session_key(signer), session_id(), &AUX);
             Sent { inputs, signature }
@@ -215,7 +215,10 @@ fn record_into(mut log: SessionLog, ticks: &[Vec<Sent<'_>>]) -> Result<Recorded,
                 &packet.signature,
                 &mut outcomes,
             )
-            .map_err(|error| LogError::Input { tick, error })?;
+            .map_err(|error| LogError::Input {
+                tick: Tick::new(tick),
+                error,
+            })?;
         }
         applied.push(seal(&mut log));
     }
@@ -233,7 +236,7 @@ fn seal(log: &mut SessionLog) -> Vec<(u32, Vec<u8>)> {
 fn replayed(log: SessionLog) -> Recorded {
     let ticks = log.next_tick();
     let mut log = log.rewound();
-    let applied = (0..ticks).map(|_| seal(&mut log)).collect();
+    let applied = (0..ticks.get()).map(|_| seal(&mut log)).collect();
     Recorded { log, applied }
 }
 
@@ -263,21 +266,21 @@ fn inputs_apply_by_the_delay_rule_in_slot_order() {
     assert_eq!(
         outcomes,
         [
-            (&b"a"[..], Applied::At(0)), // stamp 0, before tick 0
-            (b"b", Applied::At(1)),      // stamp 1 is ahead of tick 0
-            (b"c", Applied::At(1)),      // stamp 1, before tick 1: the second of tick 1
-            (b"e", Applied::Late),       // stamp 0, before tick 3: 3 ticks late
-            (b"f", Applied::At(3)),      // stamp 1, before tick 3: 2 ticks late, the most allowed
-            (b"g", Applied::At(3)),      // stamp 2, before tick 3
-            (b"h", Applied::At(3)),      // the second of player 0's tick 3
-            (b"d", Applied::At(5)),      // stamp 5, before tick 3: 2 ticks ahead, the most allowed
-            (b"i", Applied::Early),      // stamp 6, before tick 3: 3 ticks ahead
-            (b"m", Applied::At(4)),      // stamp 3, before tick 3: g and h fill it, so tick 4
-            (b"n", Applied::At(4)),      // stamp 4, before tick 4: the second of tick 4
-            (b"j", Applied::At(6)),      // stamp 6, before tick 4: the chain goes on after i
+            (&b"a"[..], Applied::At(Tick::new(0))), // stamp 0, before tick 0
+            (b"b", Applied::At(Tick::new(1))),      // stamp 1 is ahead of tick 0
+            (b"c", Applied::At(Tick::new(1))),      // stamp 1, before tick 1: the second of tick 1
+            (b"e", Applied::Late),                  // stamp 0, before tick 3: 3 ticks late
+            (b"f", Applied::At(Tick::new(3))), // stamp 1, before tick 3: 2 ticks late, the most allowed
+            (b"g", Applied::At(Tick::new(3))), // stamp 2, before tick 3
+            (b"h", Applied::At(Tick::new(3))), // the second of player 0's tick 3
+            (b"d", Applied::At(Tick::new(5))), // stamp 5, before tick 3: 2 ticks ahead, the most allowed
+            (b"i", Applied::Early),            // stamp 6, before tick 3: 3 ticks ahead
+            (b"m", Applied::At(Tick::new(4))), // stamp 3, before tick 3: g and h fill it, so tick 4
+            (b"n", Applied::At(Tick::new(4))), // stamp 4, before tick 4: the second of tick 4
+            (b"j", Applied::At(Tick::new(6))), // stamp 6, before tick 4: the chain goes on after i
         ]
     );
-    assert_eq!(log.next_tick(), 5);
+    assert_eq!(log.next_tick(), Tick::new(5));
 
     // Tick 3 takes player 0's g and h before player 1's f, though f arrived first.
     let applied = record(header(), &chained()).unwrap().applied;
@@ -314,7 +317,7 @@ fn a_rewound_log_replays_the_same_ticks_and_ends_as_it_was() {
 
     // A log with no sealed tick rewinds to itself.
     let empty = SessionLog::new(header()).unwrap().rewound();
-    assert_eq!(empty.next_tick(), 0);
+    assert_eq!(empty.next_tick(), Tick::new(0));
 }
 
 /// A change to the sent packets, and the first packet it makes the log refuse.
@@ -326,7 +329,10 @@ struct Tamper {
 }
 
 fn refused(tick: u64, error: InputError) -> LogError {
-    LogError::Input { tick, error }
+    LogError::Input {
+        tick: Tick::new(tick),
+        error,
+    }
 }
 
 /// Sends with a broken chain or signature, or no player, each with the packet it makes the log
@@ -373,7 +379,7 @@ fn broken_sends() -> [Tamper; 8] {
                 ticks[2].push(Sent {
                     inputs: vec![PlayerInput {
                         slot: PlayerSlot::new(2),
-                        stamp: 2,
+                        stamp: Tick::new(2),
                         payload: b"x",
                     }],
                     signature,
@@ -479,7 +485,7 @@ fn a_packet_past_the_position_bound_is_refused() {
         record_into(log, &chained()).err()
     };
     let full = LogError::Input {
-        tick: 4,
+        tick: Tick::new(4),
         error: InputError::LogFull,
     };
     assert_eq!(bounded(11), Some(full.clone()));
@@ -531,9 +537,9 @@ fn a_refused_packet_leaves_the_log_unchanged() {
         Err(InputError::TooManyInputs)
     );
     assert_eq!(submit(&mut log, b, &mut applied), Ok(()));
-    assert_eq!(applied, [Applied::At(1)]);
+    assert_eq!(applied, [Applied::At(Tick::new(1))]);
     assert_eq!(submit(&mut log, c, &mut applied), Ok(()));
-    assert_eq!(applied, [Applied::At(1)]);
+    assert_eq!(applied, [Applied::At(Tick::new(1))]);
 }
 
 #[test]
@@ -559,8 +565,8 @@ fn a_delegation_for_another_server_or_session_is_refused() {
     let changes: [fn(&mut SessionTerms); 11] = [
         |terms| terms.server_key[0] ^= 1,
         |terms| terms.tick_hz = NonZeroU32::new(301).unwrap(),
-        |terms| terms.max_input_delay += 1,
-        |terms| terms.max_input_lead += 1,
+        |terms| terms.max_input_delay = Ticks::new(terms.max_input_delay.get() + 1),
+        |terms| terms.max_input_lead = Ticks::new(terms.max_input_lead.get() + 1),
         |terms| terms.max_payload_len += 1,
         |terms| terms.max_inputs_per_tick += 1,
         |terms| terms.seed_commitment = SeedChain::new([6; 32], NonZeroU32::MIN).commitment(),
@@ -708,7 +714,7 @@ fn the_hash_and_the_signature_cover_every_field_in_their_layout() {
     let head = |slot: u32, root: InputHash, inputs: &[(u64, &[u8])]| {
         let mut chain = InputChain::new(PlayerSlot::new(slot), root);
         for &(stamp, payload) in inputs {
-            chain.extend(stamp, payload);
+            chain.extend(Tick::new(stamp), payload);
         }
         chain.head()
     };
@@ -764,13 +770,13 @@ fn the_hash_and_the_signature_cover_every_field_in_their_layout() {
 
     // Another session, key or head, and the signature does not hold.
     let mut chain = InputChain::new(PlayerSlot::new(1), root(1));
-    chain.extend(0, b"a");
+    chain.extend(Tick::new(0), b"a");
     assert!(chain.signed_by(&secp, &key, session_id(), &a.signature));
     let other_session = SessionId::new([32; 32]);
     assert!(!chain.signed_by(&secp, &key, other_session, &a.signature));
     let other_key = session_key(0).x_only_public_key().0;
     assert!(!chain.signed_by(&secp, &other_key, session_id(), &a.signature));
-    chain.extend(0, b"b");
+    chain.extend(Tick::new(0), b"b");
     assert!(!chain.signed_by(&secp, &key, session_id(), &a.signature));
 }
 
@@ -851,7 +857,7 @@ fn a_log_file_decodes_to_the_same_log() {
     let mut decoded = SessionLog::decode(&bytes).unwrap();
     assert_eq!(decoded.header(), log.header());
     assert_eq!(decoded.revealed_seed(), Some(server_seed()));
-    assert_eq!(decoded.next_tick(), 5);
+    assert_eq!(decoded.next_tick(), Tick::new(5));
     assert_eq!(encoded(&decoded), bytes);
     let live = record(header(), &sent).unwrap().applied;
     let decoded_again = SessionLog::decode(&bytes).unwrap();
