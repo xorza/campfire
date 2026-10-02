@@ -15,7 +15,6 @@ use crate::actions::slot_kind::SlotKind;
 use crate::actions::slot_kinds::SlotKinds;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::mode::choice_book::ChoiceBook;
-use crate::mode::error::ModeError;
 use crate::mode::game_map::GameMap;
 use crate::mode::map_data::MapData;
 use crate::mode::marker::{Marker, MarkerInfo};
@@ -82,20 +81,20 @@ pub(crate) struct PlacedUnit {
 }
 
 impl ModeBook {
-    /// The book of `setup`, which passed `Mode::check`, whose script `host` compiled, its names
-    /// resolved through `view` and `paths`; an error when the teams have fewer slots than the
-    /// players.
+    /// The book of `setup`, which passed `Mode::check`, whose script defines the hooks `scripts`
+    /// gives, its names resolved through `view` and `paths`, for players the teams seat.
     pub(crate) fn new(
         setup: ModeSetup<'_>,
         scripts: &ScriptBook,
         view: &View,
         paths: &Paths,
-    ) -> Result<ModeBook, ModeError> {
+    ) -> ModeBook {
         let teams = setup
             .teams
             .iter()
             .map(|team| (team.name.as_str(), team.slots));
-        let teams = Teams::new(teams, setup.players).ok_or(ModeError::TooManyPlayers)?;
+        let teams = Teams::new(teams, setup.players)
+            .expect("the session checked its players against the teams' slots");
         let (mut kits, mut passives, mut action_runs) =
             (ByType::default(), ByType::default(), ByType::default());
         let mut actions = Vec::new();
@@ -124,7 +123,7 @@ impl ModeBook {
             map: GameMap::default(),
         };
         book.set_map(setup.map, view, paths);
-        Ok(book)
+        book
     }
 
     /// Resolves the names of `map`, which the check found, unit types through `view`: its paths,

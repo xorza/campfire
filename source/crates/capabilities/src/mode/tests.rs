@@ -61,10 +61,12 @@ use crate::stats::player_modifiers::PlayerModifiers;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::stat::Stat;
+use crate::stats::stat_book::StatBook;
 use crate::stats::stat_op::StatOp;
 use crate::stats::stat_rule::StatRule;
 use crate::stats::stats_data::StatsData;
 use crate::stats::unit_stats::UnitStats;
+use crate::units::body::Body;
 use crate::units::layer::Layer;
 use crate::units::owner::Owner;
 use crate::units::path_id::PathId;
@@ -637,8 +639,6 @@ fn setup(
         avatars: vec!["hero-x".to_owned(), "hero-y".to_owned()],
         loadout: vec![spell],
         walkers: vec![Walker::of(grunt().body.as_ref())],
-        max_move_speed: num(10),
-        stat_order: (0..u16::try_from(STATS_3V3.len()).unwrap()).collect(),
     }
 }
 
@@ -711,7 +711,20 @@ impl Game {
         let script = Units::compile(&mut world, &format!("{script}{PICK}")).unwrap();
         let blessing = Stats::modifier(&world, 0, "blessing").unwrap();
         let setup = setup(&files, script, types, spell, strike, blessing);
-        Mode::install(&mut world, &mut schedule, &mut registry, setup).unwrap();
+        let books = {
+            let view = world.non_send::<View>();
+            let order = (0..u16::try_from(STATS_3V3.len()).unwrap()).collect();
+            let unit_types = &setup.unit_types;
+            ModeBooks::build(
+                &files.data,
+                unit_types,
+                &mut view.types_mut(),
+                RATE,
+                num(10),
+                order,
+            )
+        };
+        Mode::install(&mut world, &mut schedule, &mut registry, setup, books);
         world.add_schedule(schedule);
         Mode::start(&mut world)?;
         Ok(Game {

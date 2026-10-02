@@ -1,4 +1,3 @@
-use campfire_math::Num;
 use campfire_script::ScriptId;
 
 use crate::actions::action_book::ActionId;
@@ -34,11 +33,6 @@ pub struct ModeSetup<'a> {
     /// Each kind of unit that walks, by its layer and its body's radius: the clearances of the
     /// map's pathing grid.
     pub walkers: Vec<Walker>,
-    /// The manifest's move speed cap, in meters a second.
-    pub max_move_speed: Num,
-    /// The places of the mode's stats in the order the stats refresh computes them, which the
-    /// mode's stat graph gives.
-    pub stat_order: Vec<u16>,
 }
 
 /// A unit type the mode spawns, loaded, with its kit: a type of the mode's `units.toml`, or an

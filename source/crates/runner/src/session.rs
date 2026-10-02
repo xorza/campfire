@@ -65,7 +65,11 @@ impl Session {
         let mut schedule = SimUpdate::schedule();
         let mut state = StateRegistry::new();
         let players = u32::try_from(header.players.len()).expect("the log counts players in u32");
-        MatchBuild::run(packages, world, &mut schedule, &mut state, players)?;
+        let slots = packages.manifest().slots();
+        if u64::from(players) > slots {
+            return Err(StartError::Players { players, slots });
+        }
+        MatchBuild::run(packages, world, &mut schedule, &mut state, players);
         world.add_schedule(schedule);
         Mode::start(world).map_err(StartError::MatchStart)?;
         world.insert_resource(Session {

@@ -57,7 +57,7 @@ pub use books::book_input::{BookInput, BookKind, BookPackage};
 pub use books::error::BookError;
 pub use books::package_content::PackageContent;
 pub use books::unit_type_file::UnitTypeFile;
-pub use books::{Books, ModeUnits};
+pub use books::{Books, ModeInputs, ModeUnits};
 pub use capability_set::CapabilitySet;
 pub use capability_set::error::CapabilityError;
 pub use combat::Combat;
@@ -76,6 +76,7 @@ pub use mode::map_data::{
     GridData, MapData, MapPoint, MarkerData, PathData, PlacedUnitData, RegionData,
 };
 pub use mode::match_end::{MatchEnd, MatchResult};
+pub use mode::mode_books::ModeBooks;
 pub use mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
 pub use mode::mode_input::{InputValue, ModeInput};
 pub use mode::mode_setup::{LoadoutSetup, ModeSetup, SlotAction, UnitTypeSetup};

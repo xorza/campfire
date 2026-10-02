@@ -20,7 +20,6 @@ use campfire_sim::{
 use crate::actions::action_slots::ActionSlots;
 use crate::combat::CombatSet;
 use crate::combat::assist_window::AssistWindow;
-use crate::combat::combat_bindings::CombatBindings;
 use crate::combat::damage_weigher::DamageWeigher;
 use crate::combat::deaths::Deaths;
 use crate::combat::heal_weigher::HealWeigher;
@@ -32,6 +31,7 @@ use crate::mode::error::ModeError;
 use crate::mode::map_data::{MapData, MapPoint};
 use crate::mode::match_end::MatchEnd;
 use crate::mode::mode_book::{ModeBook, SpawnAt};
+use crate::mode::mode_books::ModeBooks;
 use crate::mode::mode_effect::ModeEffect;
 use crate::mode::mode_input::{InputValue, ModeInput};
 use crate::mode::mode_setup::ModeSetup;
@@ -55,12 +55,8 @@ use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_book::ScriptBook;
 use crate::stats::Stats;
-use crate::stats::pool_book::PoolBook;
-use crate::stats::stat_book::StatBook;
-use crate::units::body::Body;
 use crate::units::relations::Relations;
 use crate::units::script_view::View;
-use crate::units::tag_book::TagBook;
 use crate::units::team::Team;
 use crate::units::{Units, UnitsSet};
 use crate::values::declared_name::DeclaredName;
@@ -77,6 +73,7 @@ pub(crate) mod marker;
 pub(crate) mod match_end;
 pub(crate) mod mode_api;
 pub(crate) mod mode_book;
+pub(crate) mod mode_books;
 pub(crate) mod mode_data;
 pub(crate) mod mode_effect;
 pub(crate) mod mode_input;
@@ -112,7 +109,8 @@ impl Mode {
         schedule: &mut Schedule,
         registry: &mut StateRegistry,
         setup: ModeSetup<'_>,
-    ) -> Result<(), ModeError> {
+        books: ModeBooks,
+    ) {
         let view = world.non_send::<View>().clone();
         let rate = *world.resource::<TickRate>();
         let paths = Mode::paths(setup.map);
@@ -127,18 +125,14 @@ impl Mode {
             .combat
             .assist_window_ms
             .map(|ms| rate.ticks(ms).unwrap_or(Ticks::new(u64::MAX)));
-        let types = setup
-            .unit_types
-            .iter()
-            .map(|setup| (setup.unit_type, &setup.stats));
-        let stats = StatBook::new(&setup.data.stats, types, rate, setup.max_move_speed)
-            .with_order(setup.stat_order.clone());
-        let pools = &setup.data.pools;
-        let bindings = CombatBindings::new(&setup.data.combat, pools, &stats);
-        let pool_book = PoolBook::new(pools, &stats);
-        let tags = Mode::tag_book(&view, &setup);
+        let ModeBooks {
+            stats,
+            pools: pool_book,
+            tags,
+            bindings,
+        } = books;
         let data = setup.data;
-        let book = ModeBook::new(setup, world.resource::<ScriptBook>(), &view, &paths)?;
+        let book = ModeBook::new(setup, world.resource::<ScriptBook>(), &view, &paths);
         let mut relations = Relations::default();
         for relation in &data.relations {
             let [a, b] = relation
@@ -205,24 +199,6 @@ impl Mode {
         registry.register_resource::<PlayerResources>();
         registry.register_resource::<Timers>();
         registry.register_resource::<UnansweredDeaths>();
-        Ok(())
-    }
-
-    /// The book of the mode's tags: their effects, and each unit type's own tags, the name of
-    /// the layer it moves on among them, when the mode names its layers.
-    fn tag_book(view: &View, setup: &ModeSetup<'_>) -> TagBook {
-        let mut types = view.types_mut();
-        let layers = &setup.data.navigation.layers;
-        for unit_type in &setup.unit_types {
-            let layer = Body::layer_of(unit_type.kit.body.as_ref());
-            if let Some(name) = layers.get(usize::from(layer.index())) {
-                let tag = types
-                    .tag(name.as_str())
-                    .expect("the match declared every tag its packages name");
-                types.give_tag(unit_type.unit_type, tag);
-            }
-        }
-        types.tag_book(&setup.data.tags)
     }
 
     /// The paths of `map`, which passed the check.

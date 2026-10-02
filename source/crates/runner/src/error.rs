@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fmt;
 use std::num::NonZeroU32;
 
-use campfire_capabilities::{CallError, ModeError};
+use campfire_capabilities::CallError;
 use campfire_package::StoreError;
 use campfire_protocol::SeedError;
 
@@ -22,8 +22,8 @@ pub enum StartError {
     OtherDependencies,
     /// The store does not give the packages the terms name.
     Packages(StoreError),
-    /// The mode's setup does not start a match.
-    Mode(ModeError),
+    /// More players than the mode's teams have slots.
+    Players { players: u32, slots: u64 },
     /// The mode script's `on_match_start` failed.
     MatchStart(CallError),
 }
@@ -46,7 +46,12 @@ impl fmt::Display for StartError {
                 f.write_str("the dependencies are not the ones the session names")
             }
             StartError::Packages(error) => write!(f, "{error}"),
-            StartError::Mode(error) => write!(f, "{error}"),
+            StartError::Players { players, slots } => {
+                write!(
+                    f,
+                    "{players} players, and the mode's teams have {slots} slots"
+                )
+            }
             StartError::MatchStart(error) => write!(f, "the mode's start failed: {error}"),
         }
     }
@@ -57,7 +62,6 @@ impl Error for StartError {
         match self {
             StartError::Seed(error) => Some(error),
             StartError::Packages(error) => Some(error),
-            StartError::Mode(error) => Some(error),
             StartError::MatchStart(error) => Some(error),
             _ => None,
         }

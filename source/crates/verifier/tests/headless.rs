@@ -451,4 +451,21 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
         ),
         "{refused:?}"
     );
+
+    // Three players, and the lane's two teams seat one each.
+    let mut header = header();
+    header.players = vec![header.players[0].clone(); 3];
+    let mut log = SessionLog::new(header).unwrap();
+    log.reveal_seed(SEED_CHAIN.seed(0));
+    let refused = Replay::new(log, &store).err();
+    assert!(
+        matches!(
+            refused,
+            Some(StartError::Players {
+                players: 3,
+                slots: 2
+            })
+        ),
+        "{refused:?}"
+    );
 }

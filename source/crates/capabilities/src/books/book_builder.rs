@@ -12,7 +12,7 @@ use crate::areas::area_spec::AreaSpec;
 use crate::books::book_input::{BookInput, BookKind, BookPackage};
 use crate::books::error::BookError;
 use crate::books::unit_type_file::UnitTypeFile;
-use crate::books::{AbilityName, Books, Spawn};
+use crate::books::{AbilityName, BookParts, Spawn};
 use crate::combat::damage_kind::DamageKind;
 use crate::combat::on_death::OnDeath;
 use crate::mode::mode_setup::{LoadoutSetup, SlotAction, UnitTypeSetup};
@@ -42,7 +42,7 @@ const CHECKED: &str = "the load checked it";
 #[derive(Debug)]
 pub(crate) struct BookBuilder<'a> {
     input: &'a BookInput<'a>,
-    books: Books,
+    books: BookParts,
     rules: KitRules,
     /// Where each package's scripts start among the match's.
     script_starts: Vec<usize>,
@@ -61,7 +61,7 @@ impl<'a> BookBuilder<'a> {
         }
         BookBuilder {
             input,
-            books: Books::default(),
+            books: BookParts::default(),
             rules: KitRules {
                 rate: input.rate,
                 max_move_speed: input.max_move_speed,
@@ -72,7 +72,7 @@ impl<'a> BookBuilder<'a> {
         }
     }
 
-    pub(crate) fn build(mut self) -> Result<Books, BookError> {
+    pub(crate) fn build(mut self) -> Result<BookParts, BookError> {
         let input = self.input;
         for name in &input.tag_names {
             self.books.types.declare(name).expect(CHECKED);

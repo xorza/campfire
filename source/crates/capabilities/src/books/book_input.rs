@@ -25,6 +25,9 @@ pub struct BookInput<'a> {
     pub packages: Vec<BookPackage<'a>>,
     pub scripts: &'a ScriptBook,
     pub rate: TickRate,
+    /// The places of the mode's stats in the order the stats refresh computes them, which the
+    /// mode's stat graph gives.
+    pub stat_order: Vec<u16>,
 }
 
 impl BookInput<'_> {

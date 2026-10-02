@@ -23,20 +23,19 @@ impl Teams {
         players: u32,
     ) -> Option<Teams> {
         let mut built = Teams::default();
+        let mut unseated = players;
         for (index, (name, slots)) in teams.into_iter().enumerate() {
             built.names.push(name.into());
             let team = Team::new(u8::try_from(index).expect("teams fit u8"));
             if slots > 0 {
                 built.playing.push(team);
             }
-            built.slots.extend((0..slots).map(|_| team));
+            // Only the players' slots are kept, so a team of many slots costs no more.
+            let seated = slots.min(unseated);
+            built.slots.extend((0..seated).map(|_| team));
+            unseated -= seated;
         }
-        let players = usize::try_from(players).expect("players fit usize");
-        if built.slots.len() < players {
-            return None;
-        }
-        built.slots.truncate(players);
-        Some(built)
+        (unseated == 0).then_some(built)
     }
 
     /// The team named `name`.
@@ -105,6 +104,10 @@ mod tests {
         // Fewer players than slots leave the last slots empty; more players than slots fail.
         assert_eq!(Teams::new([("a", 2), ("b", 1)], 1).unwrap().players(), 1);
         assert_eq!(Teams::new([("a", 2), ("b", 1)], 4), None);
+        // A team of 2³² − 1 slots seats the 2 players and keeps 2 slots, both its own.
+        let wide = Teams::new([("a", u32::MAX), ("b", 1)], 2).unwrap();
+        assert_eq!(wide.slots, [team(0), team(0)]);
+        assert_eq!(wide.playing(), [team(0), team(1)]);
         assert!(Teams::default().playing().is_empty());
         // A battle royale's 100 one-player teams: player 99 on team 99, every team playing.
         let solo_names: Vec<String> = (0..100).map(|at| format!("solo{at}")).collect();

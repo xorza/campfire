@@ -56,6 +56,13 @@ pub struct ModeManifest {
     pub dependencies: BTreeMap<String, Dependency>,
 }
 
+impl ModeManifest {
+    /// How many player slots its teams have together.
+    pub fn slots(&self) -> u64 {
+        self.teams.iter().map(|team| u64::from(team.slots)).sum()
+    }
+}
+
 /// The tick rates a session may choose, in ticks a second: `min ≤ default ≤ max`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TickRange {

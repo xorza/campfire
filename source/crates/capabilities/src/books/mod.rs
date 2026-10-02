@@ -10,6 +10,7 @@ use crate::areas::area_spec::AreaSpec;
 use crate::books::book_builder::BookBuilder;
 use crate::books::book_input::BookInput;
 use crate::books::error::BookError;
+use crate::mode::mode_books::ModeBooks;
 use crate::mode::mode_setup::{LoadoutSetup, UnitTypeSetup};
 use crate::orders::ai::Ai;
 use crate::progression::track_book::TrackBook;
@@ -27,11 +28,20 @@ pub(crate) mod error;
 pub(crate) mod package_content;
 pub(crate) mod unit_type_file;
 
-/// The books of a match, built once from its packages at its tick rate: its unit types and
-/// tags, its tracks, its modifiers and actions with their params and effect lists, its AIs, and
-/// its projectile and area specs; and what the mode's book takes from them.
-#[derive(Debug, Default)]
+/// The books of a match, built once from its packages at its tick rate: what the builder loads
+/// package by package, and the books of the mode's own rules, which read the unit types it
+/// loaded.
+#[derive(Debug)]
 pub struct Books {
+    parts: BookParts,
+    mode: ModeBooks,
+}
+
+/// What the builder loads package by package: the unit types and tags, the tracks, the
+/// modifiers and actions with their params and effect lists, the AIs, the projectile and area
+/// specs, and what the mode's book takes from them.
+#[derive(Debug, Default)]
+pub(crate) struct BookParts {
     types: UnitTypes,
     tracks: Option<TrackBook>,
     modifiers: ModifierBook,
@@ -51,13 +61,21 @@ pub struct Books {
     units: ModeUnits,
 }
 
-/// What the mode's book takes from the books: the mode's unit types that stand, its avatars'
-/// among them, its avatars by their packages' names, and its loadout's entries.
+/// The mode's unit types that stand, its avatars' among them, its avatars by their packages'
+/// names, and its loadout's entries.
 #[derive(Debug, Default)]
 pub struct ModeUnits {
     pub unit_types: Vec<UnitTypeSetup>,
     pub avatars: Vec<String>,
     pub loadout: Vec<LoadoutSetup>,
+}
+
+/// What the mode's install takes from the books: its unit types, avatars and loadout, and the
+/// books of its own rules.
+#[derive(Debug)]
+pub struct ModeInputs {
+    pub units: ModeUnits,
+    pub books: ModeBooks,
 }
 
 /// An action's name, and how it delivers.
@@ -78,43 +96,56 @@ impl Books {
     /// The books of `input`, which the package load checked; an error for what the check does
     /// not see and the books cannot hold.
     pub fn build(input: &BookInput<'_>) -> Result<Books, BookError> {
-        BookBuilder::new(input).build()
+        let mut parts = BookBuilder::new(input).build()?;
+        let mode = ModeBooks::build(
+            input.data,
+            &parts.units.unit_types,
+            &mut parts.types,
+            input.rate,
+            input.max_move_speed.get(),
+            input.stat_order.clone(),
+        );
+        Ok(Books { parts, mode })
     }
 
     /// Puts the books in `world`, a match whose capabilities are installed and whose scripts are
     /// compiled, each in the resource of the capability that reads it, and the view's and the
     /// frame's copies; what the mode's book takes stays.
-    pub fn install(self, world: &mut World) -> ModeUnits {
+    pub fn install(self, world: &mut World) -> ModeInputs {
+        let Books { parts, mode } = self;
         let ctx = world.non_send::<Ctx>().clone();
         let view = ctx.view();
-        view.set_types(self.types);
-        for info in self.modifiers.infos() {
+        view.set_types(parts.types);
+        for info in parts.modifiers.infos() {
             view.add_modifier(info);
         }
         {
             let mut frame = ctx.frame();
-            frame.set_params(self.action_params, self.modifier_params);
+            frame.set_params(parts.action_params, parts.modifier_params);
         }
-        if let Some(tracks) = self.tracks {
+        if let Some(tracks) = parts.tracks {
             view.set_track_names(tracks.names());
             world.insert_resource(tracks);
         }
-        for ability in &self.abilities {
+        for ability in &parts.abilities {
             view.add_ability(&ability.name, ability.delivery);
         }
-        for spawn in &self.spawns {
+        for spawn in &parts.spawns {
             view.bind_spawn(spawn.action, spawn.unit_type);
         }
-        for &unit_type in &self.homing {
+        for &unit_type in &parts.homing {
             view.set_homing(unit_type);
         }
-        replace(world, self.modifiers);
-        replace(world, self.actions);
-        replace(world, self.effects);
-        replace(world, self.ais);
-        replace(world, self.projectiles);
-        replace(world, self.areas);
-        self.units
+        replace(world, parts.modifiers);
+        replace(world, parts.actions);
+        replace(world, parts.effects);
+        replace(world, parts.ais);
+        replace(world, parts.projectiles);
+        replace(world, parts.areas);
+        ModeInputs {
+            units: parts.units,
+            books: mode,
+        }
     }
 }
 

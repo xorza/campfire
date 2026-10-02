@@ -220,6 +220,10 @@ impl ModePackages {
             packages: packages.collect(),
             scripts,
             rate,
+            stat_order: self
+                .stat_graph()
+                .order()
+                .expect("the load checked the stat graph"),
         }
     }
 

@@ -28,8 +28,6 @@ pub enum ModeError {
     RepeatedRelation(DeclaredName, DeclaredName),
     /// Two teams, or two paths, share a name.
     RepeatedName(DeclaredName),
-    /// More players than the teams have slots.
-    TooManyPlayers,
     UnknownTeam(DeclaredName),
     UnknownUnitType(DeclaredName),
     UnknownPath(DeclaredName),
@@ -74,7 +72,6 @@ impl fmt::Display for ModeError {
                 )
             }
             ModeError::RepeatedName(name) => write!(f, "{name:?} names two teams or paths"),
-            ModeError::TooManyPlayers => f.write_str("more players than slots"),
             ModeError::UnknownTeam(name) => write!(f, "no team {name:?}"),
             ModeError::UnknownUnitType(name) => write!(f, "no unit type {name:?}"),
             ModeError::UnknownPath(name) => write!(f, "no path {name:?}"),

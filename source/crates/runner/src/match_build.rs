@@ -1,11 +1,9 @@
 use bevy_ecs::schedule::Schedule;
 use bevy_ecs::world::World;
-use campfire_capabilities::{Books, MatchScripts, Mode, ModeSetup, ScriptBook, Units};
+use campfire_capabilities::{Books, MatchScripts, Mode, ModeInputs, ModeSetup, ScriptBook, Units};
 use campfire_package::ModePackages;
 use campfire_script::ScriptId;
 use campfire_sim::{StateRegistry, TickRate};
-
-use crate::error::StartError;
 
 /// What the package load checked, which a match build trusts.
 const CHECKED: &str = "the load checked it";
@@ -25,7 +23,7 @@ impl MatchBuild {
         schedule: &mut Schedule,
         registry: &mut StateRegistry,
         players: u32,
-    ) -> Result<(), StartError> {
+    ) {
         let manifest = packages.manifest();
         let data = packages.data();
         let scripts = MatchScripts {
@@ -47,7 +45,7 @@ impl MatchBuild {
         let rate = *world.resource::<TickRate>();
         let compiled = world.resource::<ScriptBook>().clone();
         let books = Books::build(&packages.book_input(rate, &compiled)).expect(CHECKED);
-        let units = books.install(world);
+        let ModeInputs { units, books } = books.install(world);
         let mode = &packages
             .packages()
             .next()
@@ -64,9 +62,7 @@ impl MatchBuild {
             avatars: units.avatars,
             loadout: units.loadout,
             walkers: packages.walkers(),
-            max_move_speed: manifest.max_move_speed.get(),
-            stat_order: packages.stat_graph().order().expect(CHECKED),
         };
-        Mode::install(world, schedule, registry, setup).map_err(StartError::Mode)
+        Mode::install(world, schedule, registry, setup, books);
     }
 }
