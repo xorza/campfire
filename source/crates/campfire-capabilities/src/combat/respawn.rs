@@ -14,8 +14,7 @@ pub struct Respawn {
 impl SimComponent for Respawn {
     const NAME: &'static str = "combat.respawn";
 
-    // A tick, which every match may reach.
     fn check(&self, _: &World, _: Entity) -> bool {
-        true
+        self.at <= Tick::LIMIT
     }
 }

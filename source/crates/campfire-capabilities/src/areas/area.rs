@@ -75,7 +75,9 @@ impl SimComponent for Area {
         let by = book
             .and_then(|book| book.get(self.by.action))
             .is_some_and(|action| action.has_rank(self.by.rank));
-        lands && by
+        let times =
+            self.triggers_at.is_none_or(|at| at <= Tick::LIMIT) && self.ends_at <= Tick::LIMIT;
+        lands && by && times
     }
 }
 

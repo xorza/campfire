@@ -80,13 +80,20 @@ impl SimResource for Timers {
     const NAME: &'static str = "mode.timers";
 
     // The earliest timer fires first only while they keep their order, and a new one is set last
-    // among those due with it only while its number is the highest.
+    // among those due with it only while its number is the highest. A repeating timer of no
+    // ticks would be due again as it fires, in the same tick, without end.
     fn check(&self, _: &World) -> bool {
         let ordered = self
             .timers
             .windows(2)
             .all(|two| (two[0].due, two[0].seq) > (two[1].due, two[1].seq));
-        ordered && self.timers.iter().all(|timer| timer.seq < self.next_seq)
+        let each = self.timers.iter().all(|timer| {
+            let repeats = timer
+                .every
+                .is_none_or(|every| (Ticks::ONE..=Ticks::LIMIT).contains(&every));
+            timer.seq < self.next_seq && timer.due <= Tick::LIMIT && repeats
+        });
+        ordered && each && self.next_seq <= Tick::LIMIT.get()
     }
 }
 
@@ -109,5 +116,29 @@ mod tests {
         let mut behind = timers;
         behind.next_seq = 1;
         assert!(!behind.check(&world));
+
+        // A repeating timer of the longest period, due at the limit, with the count of timers at
+        // the limit: it fires, and sets itself 2⁶² ticks on, within a `u64`. A period or a count
+        // past the limit, or a period of no ticks, fails.
+        let mut last = Timers::default();
+        last.set(Tick::ZERO, "t".to_owned(), Ticks::LIMIT, true, None);
+        last.next_seq = Tick::LIMIT.get();
+        assert!(last.check(&world));
+        let mut fired = last.clone();
+        fired.fire();
+        assert_eq!(fired.timers[0].due, Tick::new(1 << 63));
+        let changed = |change: fn(&mut Timers)| {
+            let mut timers = last.clone();
+            change(&mut timers);
+            timers.check(&world)
+        };
+        assert!(!changed(|timers| timers.next_seq += 1));
+        assert!(!changed(
+            |timers| timers.timers[0].due = Tick::new(Tick::LIMIT.get() + 1)
+        ));
+        assert!(!changed(
+            |timers| timers.timers[0].every = Some(Ticks::new(Tick::LIMIT.get() + 1))
+        ));
+        assert!(!changed(|timers| timers.timers[0].every = Some(Ticks::ZERO)));
     }
 }

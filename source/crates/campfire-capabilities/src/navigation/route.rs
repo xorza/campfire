@@ -114,7 +114,8 @@ impl SimComponent for Route {
     // Its decode keeps the next waypoint within the route; a route is planned over the cells of
     // its unit's kind of walker, which must be one the mode has.
     fn check(&self, world: &World, entity: Entity) -> bool {
-        PathingGrid::serves(world, entity)
+        let asked = self.asked.is_none_or(|asked| asked <= Tick::LIMIT);
+        PathingGrid::serves(world, entity) && asked
     }
 }
 

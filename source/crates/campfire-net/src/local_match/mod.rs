@@ -187,7 +187,7 @@ impl LocalMatch {
                     ),
                     Linked,
                     server_io,
-                    DelayLine::new(setup.link, setup.server_frames, stream),
+                    DelayLine::new(setup.link, setup.server_frames, stream, tick),
                 ))
                 .id();
             links.push(link);
@@ -466,21 +466,8 @@ impl ClientApp {
             tick_duration: tick,
         });
         client.add_plugins((NetProtocol, sim_client));
-        // Lightyear keeps the client ahead of its estimate of the server's tick by half the
-        // round trip and the sync margin, and advances that estimate by the other half. It
-        // measures the round trip by the wall clock, which a step of this match hardly takes, so
-        // the margin carries the round trip the link model adds, at its worst, in ticks: the
-        // uplink's delay and jitter, as much again for the downlink, and the drift the sync
-        // allows before it corrects the lead.
-        let sync = SyncConfig::default();
-        let round_trip = u16::try_from(2 * (setup.link.delay + setup.link.jitter))
-            .expect("a delay of a few steps");
-        let margin = f32::from(round_trip) + sync.error_margin;
         client.insert_resource(InputTimelineConfig::new(
-            SyncConfig {
-                jitter_margin: margin,
-                ..sync
-            },
+            SyncConfig::default(),
             InputDelayConfig::no_input_delay(),
         ));
         client.insert_resource(TimeUpdateStrategy::ManualDuration(tick));
@@ -495,7 +482,7 @@ impl ClientApp {
                 RawClient,
                 ReplicationReceiver,
                 io,
-                DelayLine::new(setup.link, 1, stream),
+                DelayLine::new(setup.link, 1, stream, tick),
             ))
             .id();
         ClientApp {

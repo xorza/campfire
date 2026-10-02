@@ -168,7 +168,8 @@ impl SimComponent for ModifierClocks {
     const NAME: &'static str = "stats.modifier_clocks";
 
     // A clock for an instance its unit lacks, or state of other fields than its modifier's,
-    // would be read past the instance's or the modifier's places.
+    // would be read past the instance's or the modifier's places; an interval past the limit
+    // would overflow its next tick.
     fn check(&self, world: &World, entity: Entity) -> bool {
         let (Some(modifiers), Some(book)) = (
             world.get::<Modifiers>(entity),
@@ -176,7 +177,13 @@ impl SimComponent for ModifierClocks {
         ) else {
             return self.clocks.is_empty();
         };
-        modifiers.len() == self.clocks.len()
+        let intervals = self.clocks.iter().all(|clock| {
+            clock.interval.is_none_or(|interval| {
+                interval.every <= Ticks::LIMIT && interval.next <= Tick::LIMIT
+            })
+        });
+        intervals
+            && modifiers.len() == self.clocks.len()
             && modifiers.iter().enumerate().all(|(at, carried)| {
                 book.entry(carried.instance.id).is_some_and(|entry| {
                     let fields = &entry.spec.fields;

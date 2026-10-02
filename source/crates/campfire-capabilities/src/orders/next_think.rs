@@ -24,8 +24,7 @@ impl NextThink {
 impl SimComponent for NextThink {
     const NAME: &'static str = "orders.next_think";
 
-    // A tick, which every match may reach.
     fn check(&self, _: &World, _: Entity) -> bool {
-        true
+        self.0 <= Tick::LIMIT
     }
 }

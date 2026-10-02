@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 
 use campfire_common::{PlayerSlot, SegmentSeed, Ticks};
 use campfire_math::{Num, RngSource, Vec3};
-use campfire_sim::{Capability, EntityIndex};
+use campfire_sim::{Capability, EntityIndex, SimComponent};
 
 use super::*;
 use crate::actions::action_book::internals::{self, TestWeapon};
@@ -568,6 +568,22 @@ fn every_combat_type_is_state_and_restores() {
         restored.sim.try_get::<ActionSlots>(fighter),
         fight.sim.try_get::<ActionSlots>(fighter)
     );
+
+    // The fighter's attack winds up 2 ticks: under way, it resolves in tick 2 at the soonest,
+    // where it started in tick 0, and at the limit at the latest, as its weapon is ready at the
+    // latest.
+    let entity = restored.sim.entity(fighter);
+    let past = Tick::LIMIT.get() + 1;
+    let slots = |resolves_at: u64, ready_at: u64| {
+        let mut slots = restored.sim.get::<ActionSlots>(fighter).clone();
+        slots.set_attack_target(Some(doomed));
+        slots.start_attack(0, Tick::new(resolves_at));
+        slots.cool_down(0, Tick::new(ready_at));
+        slots.check(&restored.sim.world, entity)
+    };
+    assert!(slots(2, 0) && slots(Tick::LIMIT.get(), Tick::LIMIT.get()));
+    assert!(!slots(1, 0));
+    assert!(!slots(past, 0) && !slots(2, past));
 }
 
 #[test]

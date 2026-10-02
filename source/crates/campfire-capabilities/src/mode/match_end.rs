@@ -56,11 +56,12 @@ impl SimResource for MatchEnd {
 
     // A winner that is not one of the mode's teams has no name to report.
     fn check(&self, world: &World) -> bool {
-        match self.result {
+        let named = match self.result {
             MatchResult::Won(team) => world
                 .get_non_send::<View>()
                 .is_none_or(|view| view.has_team(team)),
             MatchResult::Draw => true,
-        }
+        };
+        named && self.tick <= Tick::LIMIT
     }
 }

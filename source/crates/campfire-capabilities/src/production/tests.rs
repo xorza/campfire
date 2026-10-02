@@ -4,7 +4,7 @@ use std::rc::Rc;
 
 use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_math::{Num, Vec3};
-use campfire_sim::{Capability, IdAllocator, Position, StableId};
+use campfire_sim::{Capability, IdAllocator, Position, SimComponent, StableId};
 use serde::Serialize;
 
 use crate::actions::action_book::internals;
@@ -258,6 +258,21 @@ fn a_train_queue_is_state_and_restores() {
     let mut restored = Shop::new();
     internals::train(&mut restored.sim.world, restored.grunt, Ticks::new(3), None);
     shop.sim.restore_into(&mut restored.sim);
+    // A train of the longest time, pushed at tick 0, is done at the limit; pushed a tick later,
+    // or a tick longer, it fails.
+    let entity = restored.sim.entity(id);
+    let check = |pushed: u64, time: u64| {
+        let mut queue = TrainQueue::default();
+        let queued = Queued {
+            action: train,
+            rank: 1,
+            time: Ticks::new(time),
+        };
+        queue.push(queued, Tick::new(pushed));
+        queue.check(&restored.sim.world, entity)
+    };
+    assert!(check(0, Tick::LIMIT.get()));
+    assert!(!check(1, Tick::LIMIT.get()) && !check(0, Tick::LIMIT.get() + 1));
     assert_eq!(
         restored.sim.get::<TrainQueue>(id),
         shop.sim.get::<TrainQueue>(id)

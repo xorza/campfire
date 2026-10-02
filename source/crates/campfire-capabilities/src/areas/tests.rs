@@ -1,5 +1,5 @@
 use campfire_common::Tick;
-use campfire_sim::Capability;
+use campfire_sim::{Capability, SimComponent};
 use serde::Serialize;
 
 use crate::actions::action_book;
@@ -127,4 +127,14 @@ fn an_area_is_state_and_restores() {
     loads(&mut restored);
     sim.restore_into(&mut restored);
     assert_eq!(restored.get::<Area>(id), sim.get::<Area>(id));
+    // Its times are at most the limit: either a tick past it fails.
+    let entity = sim.entity(id);
+    let past = Tick::new(Tick::LIMIT.get() + 1);
+    let check = |triggers_at, ends_at| {
+        let area = Area::new(by, None, triggers_at, ends_at).unwrap();
+        area.check(&sim.world, entity)
+    };
+    assert!(check(Some(Tick::LIMIT), Tick::LIMIT));
+    assert!(!check(None, past));
+    assert!(!check(Some(past), past));
 }

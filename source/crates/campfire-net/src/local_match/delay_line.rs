@@ -14,6 +14,8 @@ pub(crate) struct DelayLine {
     model: LinkModel,
     /// Frames per step of the match.
     frames: u32,
+    /// The model's worst round trip: each way's delay and jitter, in steps.
+    round_trip: Duration,
     frame: u64,
     /// The state of a `SplitMix64` draw, seeded by the model.
     draw: u64,
@@ -30,12 +32,21 @@ struct Held {
 }
 
 impl DelayLine {
-    /// A line of `model` in an app that runs `frames` frames a step; `stream` keeps the draws of
-    /// two lines with the same model apart.
-    pub(crate) const fn new(model: LinkModel, frames: u32, stream: u64) -> DelayLine {
+    /// A line of `model` in an app that runs `frames` frames a step of `step`; `stream` keeps
+    /// the draws of two lines with the same model apart.
+    pub(crate) const fn new(
+        model: LinkModel,
+        frames: u32,
+        stream: u64,
+        step: Duration,
+    ) -> DelayLine {
+        let steps = 2 * (model.delay + model.jitter);
         DelayLine {
             model,
             frames,
+            round_trip: step
+                .checked_mul(steps)
+                .expect("a round trip of a few steps"),
             frame: 0,
             draw: model.seed ^ stream.wrapping_mul(0x9E37_79B9_7F4A_7C15),
             held: Vec::new(),
@@ -60,18 +71,21 @@ impl DelayLine {
         }
     }
 
-    /// Sets every link's measured round trip and jitter to zero. Lightyear measures them by the
-    /// wall clock, which a step of a local match hardly takes, so under load they vary from run
-    /// to run and change the input timeline. The `=0.30.1` pin of Lightyear keeps the two fields
-    /// this writes where they are; the modeled round trip reaches the timeline through the sync
-    /// margin instead.
-    pub(crate) fn pin_round_trip(mut links: Query<'_, '_, (&mut Link, Option<&mut PingManager>)>) {
-        for (mut link, ping) in &mut links {
-            link.stats.rtt = Duration::ZERO;
+    /// Sets every link's measured round trip to its model's worst, and its jitter to zero.
+    /// Lightyear measures them by the wall clock, which a step of a local match hardly takes, so
+    /// under load they vary from run to run and change the input timeline. The model's jitter is
+    /// bounded, so its worst round trip, not a mean with a margin of jitter, is the round trip a
+    /// lead must cover for no input to arrive late. The `=0.30.1` pin of Lightyear keeps the two
+    /// fields this writes where they are.
+    pub(crate) fn pin_round_trip(
+        mut links: Query<'_, '_, (&mut Link, Option<&mut PingManager>, &DelayLine)>,
+    ) {
+        for (mut link, ping, line) in &mut links {
+            link.stats.rtt = line.round_trip;
             link.stats.jitter = Duration::ZERO;
             if let Some(mut ping) = ping {
                 let stats = &mut ping.rtt_estimator_ewma.final_stats;
-                stats.rtt = Duration::ZERO;
+                stats.rtt = line.round_trip;
                 stats.jitter = Duration::ZERO;
             }
         }
@@ -103,5 +117,20 @@ impl DelayLine {
         mixed = (mixed ^ (mixed >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
         mixed = (mixed ^ (mixed >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
         mixed ^ (mixed >> 31)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_line_pins_its_models_worst_round_trip() {
+        // Each way's delay and jitter, twice: 2 × (3 + 2) = 10 steps of 50 ms through `DELAYED`,
+        // 500 ms; none through a perfect link.
+        let step = Duration::from_millis(50);
+        let round_trip = |model| DelayLine::new(model, 1, 0, step).round_trip;
+        assert_eq!(round_trip(LinkModel::DELAYED), Duration::from_millis(500));
+        assert_eq!(round_trip(LinkModel::PERFECT), Duration::ZERO);
     }
 }

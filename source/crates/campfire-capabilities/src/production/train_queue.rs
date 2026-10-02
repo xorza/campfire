@@ -85,7 +85,12 @@ impl SimComponent for TrainQueue {
             .zip(producers)
             .and_then(|(&unit_type, producers)| producers.get(unit_type))
             .map(|production| usize::from(production.queue.get()));
-        trains && capacity.is_some_and(|capacity| self.entries.len() <= capacity)
+        let times = self.head_done.is_none_or(|done| done <= Tick::LIMIT)
+            && self
+                .entries
+                .iter()
+                .all(|queued| queued.time <= Ticks::LIMIT);
+        trains && capacity.is_some_and(|capacity| self.entries.len() <= capacity) && times
     }
 }
 

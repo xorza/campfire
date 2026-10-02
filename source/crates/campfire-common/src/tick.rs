@@ -19,6 +19,9 @@ pub struct Ticks(u64);
 
 impl Tick {
     pub const ZERO: Tick = Tick(0);
+    /// The latest time a match makes, and the most of every count its state holds: 2⁶², which no
+    /// match reaches, so no sum of two restored values overflows.
+    pub const LIMIT: Tick = Tick(1 << 62);
 
     pub const fn new(tick: u64) -> Tick {
         Tick(tick)
@@ -52,6 +55,8 @@ impl fmt::Display for Tick {
 impl Ticks {
     pub const ZERO: Ticks = Ticks(0);
     pub const ONE: Ticks = Ticks(1);
+    /// The longest time a match makes: `Tick::LIMIT`'s.
+    pub const LIMIT: Ticks = Ticks(Tick::LIMIT.0);
 
     pub const fn new(ticks: u64) -> Ticks {
         Ticks(ticks)
@@ -76,5 +81,7 @@ mod tests {
         let encoded = postcard::to_allocvec(&(Tick::new(300), Ticks::new(300))).unwrap();
         assert_eq!(encoded, postcard::to_allocvec(&(300_u64, 300_u32)).unwrap());
         assert_eq!(Tick::new(300).to_string(), "300");
+        // Two values at the limit sum to 2⁶³, within a `u64`.
+        assert_eq!(Tick::LIMIT.after(Ticks::LIMIT), Tick::new(1 << 63));
     }
 }

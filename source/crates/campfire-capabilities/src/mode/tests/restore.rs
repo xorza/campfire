@@ -1,4 +1,8 @@
 use super::*;
+use crate::orders::next_think::NextThink;
+use crate::stats::instance::StackEnd;
+use crate::stats::lifetime::{Ends, Lifetime};
+use crate::stats::modifier_clocks::Interval;
 
 /// Each state type's restore check lets the match's own values through, and refuses one that
 /// names what the match lacks or has another shape than the mode's.
@@ -93,6 +97,30 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     assert!(!Destination::default().check(&game.sim.world, grunt));
 }
 
+/// Each time a unit, the match's end and a route hold is at most `Tick::LIMIT`, which no match
+/// reaches, so no sum of two restored times overflows: each passes at the limit, and fails a tick
+/// past it.
+#[test]
+fn a_restore_check_keeps_each_time_within_the_limit() {
+    let game = Game::new(SCRIPT, ScriptLimits::ROOMY);
+    let grunt = game.entity(2);
+    let world = &game.sim.world;
+    let unit = *world.get::<StableId>(grunt).unwrap();
+    let past = Tick::new(Tick::LIMIT.get() + 1);
+    for (at, holds) in [(Tick::LIMIT, true), (past, false)] {
+        assert_eq!(NextThink::new(at).check(world, grunt), holds, "{at}");
+        assert_eq!(Respawn { at }.check(world, grunt), holds, "{at}");
+        let ended = MatchEnd::new(at, MatchResult::Draw);
+        assert_eq!(ended.check(world), holds, "{at}");
+        let mut attackers = RecentAttackers::default();
+        attackers.record(unit, at, world.resource::<EntityIndex>());
+        assert_eq!(attackers.check(world, grunt), holds, "{at}");
+        let mut route = world.get::<Route>(grunt).unwrap().clone();
+        route.ask(*world.get::<Position>(grunt).unwrap(), at);
+        assert_eq!(route.check(world, grunt), holds, "{at}");
+    }
+}
+
 /// The restore checks of a unit's modifiers, their clocks and the players' modifiers let the
 /// match's own through, and refuse one the book lacks or of another shape.
 #[test]
@@ -140,6 +168,45 @@ fn a_restore_check_refuses_modifiers_the_book_lacks() {
     assert!(!modifiers_of(applied(modifier, Vec::new(), Vec::new())).check(world, fighter));
     let state = vec![StateValue::Bool(true)];
     assert!(!clocks_of(applied(modifier, vec![one], state)).check(world, fighter));
+    // Its end, its stacks' life and end, and its interval's period and next tick are at most
+    // the limit, so no sum of two overflows: each passes there, and fails a tick past it.
+    let past = Tick::new(Tick::LIMIT.get() + 1);
+    let longer = Ticks::new(Ticks::LIMIT.get() + 1);
+    let timed = |ends: Tick, life: Ticks, stack_end: Tick, every: Ticks, next: Tick| Application {
+        instance: NewInstance {
+            stats: vec![one],
+            lifetime: Lifetime::new(None, Ends::At(ends)),
+            stack_life: Some(life),
+            stack_ends: vec![StackEnd {
+                until: stack_end,
+                count: 1,
+            }],
+            interval: Some(Interval { every, next }),
+            ..NewInstance::bare(modifier, None)
+        },
+        reapply: Reapply::Refresh,
+        max_stacks: None,
+    };
+    // Each case, and whether the modifiers, then the clocks, hold it: an interval is the clocks'.
+    let (at, life) = (Tick::LIMIT, Ticks::LIMIT);
+    let cases = [
+        (timed(at, life, at, life, at), true, true),
+        (timed(past, life, at, life, at), false, true),
+        (timed(at, longer, at, life, at), false, true),
+        (timed(at, life, past, life, at), false, true),
+        (timed(at, life, at, longer, at), true, false),
+        (timed(at, life, at, life, past), true, false),
+    ];
+    for (case, (application, modifiers_hold, clocks_hold)) in cases.into_iter().enumerate() {
+        let modifiers = modifiers_of(application.clone());
+        assert_eq!(
+            modifiers.check(world, fighter),
+            modifiers_hold,
+            "case {case}"
+        );
+        let clocks = clocks_of(application);
+        assert_eq!(clocks.check(world, fighter), clocks_hold, "case {case}");
+    }
     let mut held = PlayerModifiers::default();
     held.add(PlayerModifier {
         player: PlayerSlot::new(0),

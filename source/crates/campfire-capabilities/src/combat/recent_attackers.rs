@@ -46,6 +46,6 @@ impl SimComponent for RecentAttackers {
 
     // Each attacker may be gone, which every reader allows.
     fn check(&self, _: &World, _: Entity) -> bool {
-        true
+        self.0.iter().all(|attack| attack.tick <= Tick::LIMIT)
     }
 }
