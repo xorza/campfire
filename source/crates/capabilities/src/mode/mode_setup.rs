@@ -75,6 +75,10 @@ impl LoadoutSetup {
 
     /// The place of the entry `id`, in entries sorted by id.
     pub(crate) fn sorted_place(&self, id: &str) -> Option<usize> {
+        debug_assert!(
+            self.ids.iter().is_sorted(),
+            "a loadout searched by id is sorted"
+        );
         self.ids.sorted_named(0..self.len(), id)
     }
 
@@ -111,5 +115,15 @@ mod tests {
             ["arc", "blink", "haste", "bolt"].map(|id| sorted.sorted_place(id)),
             [Some(0), Some(1), Some(2), None]
         );
+    }
+
+    #[test]
+    #[cfg(debug_assertions)]
+    #[should_panic(expected = "a loadout searched by id is sorted")]
+    fn a_loadout_not_sorted_is_not_searched_by_id() {
+        let mut loadout = LoadoutSetup::default();
+        loadout.push("haste", ActionId::nth(0));
+        loadout.push("arc", ActionId::nth(1));
+        loadout.sorted_place("arc");
     }
 }
