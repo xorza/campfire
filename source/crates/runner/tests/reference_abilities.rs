@@ -249,7 +249,7 @@ fn lash_out_from_its_package_hits_exactly() {
     let mut world = reference_world();
     let husk = abilities("husk");
     for (name, modifier) in &husk.content.modifiers {
-        Stats::load_modifier(&mut world, 0, name, modifier, None);
+        Stats::load_modifier(&mut world, 0, name.as_str(), modifier, None);
     }
     let data = &husk.content.actions["lash_out"];
     let script = compile(&mut world, "husk", data.script.as_ref().unwrap());
@@ -514,7 +514,7 @@ fn load_modifiers(world: &mut World, name: &str, data: &AvatarData) {
             .script
             .as_ref()
             .map(|path| compile(world, name, path));
-        Stats::load_modifier(world, 0, id, modifier, script);
+        Stats::load_modifier(world, 0, id.as_str(), modifier, script);
     }
 }
 

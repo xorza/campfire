@@ -1,5 +1,6 @@
 use serde::Deserialize;
 
+use crate::values::declared_name::DeclaredName;
 use crate::values::scalar::Scalar;
 
 /// A number field of data: a value, or `{ param = "<name>" }`, which reads the param of that name
@@ -15,12 +16,12 @@ pub enum Number {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ParamRef {
-    pub param: String,
+    pub param: DeclaredName,
 }
 
 impl Number {
     /// The param it reads, if it reads one.
-    pub fn param(&self) -> Option<&str> {
+    pub fn param(&self) -> Option<&DeclaredName> {
         match self {
             Number::Value(_) => None,
             Number::Param(reference) => Some(&reference.param),

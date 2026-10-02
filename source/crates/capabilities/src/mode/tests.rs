@@ -1115,7 +1115,7 @@ fn on_mode_input(ctx, player, name, value) {
         kind: ActionKind::Train,
         cost: [(cost[0].clone(), int(30)), (cost[1].clone(), int(5))].into(),
         windup_ms: Some(int(300)),
-        unit_type: Some("grunt".to_owned()),
+        unit_type: Some(DeclaredName::new("grunt").unwrap()),
         ..blink_data()
     };
     let train = Actions::load(&mut game.world, 0, "train_grunt", &train, None, 1).unwrap();

@@ -4,6 +4,7 @@ use campfire_math::Num;
 
 use crate::stats::param_source::ParamSource;
 use crate::stats::stat::Stat;
+use crate::values::declared_name::DeclaredName;
 use crate::values::name_table::NameTable;
 use crate::values::param::Param;
 use crate::values::ranked::Ranked;
@@ -49,7 +50,7 @@ impl ParamTable {
     /// gives its index. Every value is a number, which the load checked.
     pub(crate) fn push(
         &mut self,
-        params: &BTreeMap<String, Param>,
+        params: &BTreeMap<DeclaredName, Param>,
         stat: impl Fn(&Stat) -> u16,
     ) -> usize {
         let mut values = Vec::with_capacity(params.len());

@@ -146,29 +146,35 @@ pub enum LoadProblem {
     /// The map cannot be walked as the mode needs.
     Map(MapProblem),
     /// A unit type's slot names an action its package does not have.
-    UnknownSlot(String),
+    UnknownSlot(DeclaredName),
     /// An avatar's action is in none of its slots, so it has no rank count.
-    Unslotted(String),
+    Unslotted(DeclaredName),
     /// An avatar names an AI: a player controls it, and a bot plays it through player inputs.
     AvatarOrders,
     /// A unit type holds this train, and has no `production` section to queue it.
-    NoQueue(String),
+    NoQueue(DeclaredName),
     /// A unit type's action is in two slots.
-    RepeatedSlot(String),
+    RepeatedSlot(DeclaredName),
     /// Unit types place the action in slot kinds of other ranks.
-    ActionRanks(String),
+    ActionRanks(DeclaredName),
     /// A weapon without `rate`, `damage` or `damage_kind`, a unit target or a range in meters,
     /// or with a field only a cast runs; a train without its `unit_type`, or with a field it does
     /// not run; or another kind of action with one of a weapon's or a train's fields.
-    KindField(String),
+    KindField(DeclaredName),
     /// An action of a kind the release does not run yet.
-    KindNotRun { action: String, kind: ActionKind },
+    KindNotRun {
+        action: DeclaredName,
+        kind: ActionKind,
+    },
     /// Two loadout packages hold a loadout entry of this id.
-    RepeatedLoadout(String),
+    RepeatedLoadout(DeclaredName),
     /// The mode's teams or map name what it does not have.
     Mode(ModeError),
     /// A capability field of an ability does not hold at a rank.
-    ActionField { action: String, field: ActionField },
+    ActionField {
+        action: DeclaredName,
+        field: ActionField,
+    },
     /// The mode declares more of something than a match holds.
     TooMany(Limit),
     /// More than one of the mode's tracks is the `level` track.
@@ -177,7 +183,7 @@ pub enum LoadProblem {
     /// unit types.
     RepeatedUnitType(String),
     /// A per-rank array of an ability has another length than its ranks.
-    RankCount { action: String, ranks: u8 },
+    RankCount { action: DeclaredName, ranks: u8 },
     /// A script file no data names.
     UnreferencedScript(PackagePath),
     /// Data names a script the package does not hold.
@@ -228,7 +234,7 @@ pub enum LoadProblem {
     Delivery(DeliveryProblem),
     /// An effect of the action's list, the one before `list`.
     Effect {
-        action: String,
+        action: DeclaredName,
         list: Hook,
         problem: EffectProblem,
     },
@@ -290,17 +296,20 @@ pub enum DeliveryProblem {
     /// unit that stands; a dependency's unit type is no delivery type; or an avatar is one.
     NotDelivery(Place),
     /// An action's `delivery` names a unit type of its package with no section of its kind.
-    WrongSection { action: String, unit_type: String },
+    WrongSection {
+        action: DeclaredName,
+        unit_type: DeclaredName,
+    },
     /// An action that aims at nothing delivers a projectile, which has no way to fly.
-    NoAim(String),
+    NoAim(DeclaredName),
     /// An action's projectile homes, and the action aims at no unit, or launches more than one.
-    Homing(String),
+    Homing(DeclaredName),
     /// An action that aims along a direction delivers an area, which lands on a point.
-    AreaDirection(String),
+    AreaDirection(DeclaredName),
     /// A weapon's delivery is no homing projectile.
-    Weapon(String),
+    Weapon(DeclaredName),
     /// A train makes a projectile or an area type, whose units only actions deliver.
-    Trained(String),
+    Trained(DeclaredName),
 }
 
 impl fmt::Display for DeliveryProblem {
@@ -350,10 +359,11 @@ impl fmt::Display for DeliveryProblem {
 /// Where in a package a load problem is.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Place {
-    UnitType(String),
+    UnitType(DeclaredName),
+    /// By its package's name.
     Avatar(String),
-    Action(String),
-    Modifier(String),
+    Action(DeclaredName),
+    Modifier(DeclaredName),
     Script(PackagePath),
     /// The map's paths.
     Paths,

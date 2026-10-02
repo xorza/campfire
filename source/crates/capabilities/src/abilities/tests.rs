@@ -99,7 +99,7 @@ fn int(value: i64) -> Number {
 
 fn param(name: &str) -> Number {
     Number::Param(ParamRef {
-        param: name.to_owned(),
+        param: DeclaredName::new(name).unwrap(),
     })
 }
 
@@ -164,11 +164,11 @@ fn lash_out() -> ActionData {
         on_end: Vec::new(),
         params: BTreeMap::from([
             (
-                "radius".to_owned(),
+                DeclaredName::new("radius").unwrap(),
                 Param::Ranked(Ranked::One(Scalar::Decimal(halves(7)))),
             ),
             (
-                "damage".to_owned(),
+                DeclaredName::new("damage").unwrap(),
                 Param::Scaling(Scaling {
                     base: Ranked::PerRank(scalars(&[75, 100, 125, 150, 175])),
                     per_level: None,
@@ -181,7 +181,7 @@ fn lash_out() -> ActionData {
                 }),
             ),
             (
-                "cooldown_cut_ms".to_owned(),
+                DeclaredName::new("cooldown_cut_ms").unwrap(),
                 Param::Ranked(Ranked::One(Scalar::Int(500))),
             ),
         ]),
@@ -220,7 +220,7 @@ fn strike() -> ActionData {
         on_hit: Vec::new(),
         on_end: Vec::new(),
         params: BTreeMap::from([(
-            "damage".to_owned(),
+            DeclaredName::new("damage").unwrap(),
             Param::Ranked(Ranked::One(Scalar::Int(50))),
         )]),
     }
@@ -860,7 +860,7 @@ fn an_ability_loads_only_when_its_data_holds() {
     poolless.cost = cost("focus", int(1));
     let mut unknown = lash_out();
     unknown.range = Some(Ranked::One(RangeField::Param(ParamRef {
-        param: "reach".to_owned(),
+        param: DeclaredName::new("reach").unwrap(),
     })));
     // The data's rules, which the package load checks: two costs for five ranks, and the field
     // that does not hold at rank 1. A scaling param is the caster's value, which no cooldown may
@@ -913,10 +913,12 @@ fn a_capability_field_reads_its_param_at_each_rank() {
             values.iter().map(|&value| Scalar::Int(value)).collect(),
         ))
     };
-    data.params
-        .insert("cd".to_owned(), per_rank(&[1000, 2000, 3000]));
     data.params.insert(
-        "price".to_owned(),
+        DeclaredName::new("cd").unwrap(),
+        per_rank(&[1000, 2000, 3000]),
+    );
+    data.params.insert(
+        DeclaredName::new("price").unwrap(),
         Param::Ranked(Ranked::One(Scalar::Int(7))),
     );
     let mut game = Match::new();
@@ -983,7 +985,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     };
     Stats::load_modifier(&mut game.world, 0, "guard", &guard, None);
     let mut data = lash_out();
-    data.passive_modifier = Some("guard".to_owned());
+    data.passive_modifier = Some(DeclaredName::new("guard").unwrap());
     data.passive_while_ready = true;
     let ability = game.load("lash_out", &data, LASH_OUT);
     let caster = game.caster(ability, 0);
@@ -1043,7 +1045,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     claws.rate = Some(Stat::named("armor").unwrap());
     claws.damage = Some(Stat::named("attack_damage").unwrap());
     claws.damage_kind = Some(DeclaredName::new("physical").unwrap());
-    claws.passive_modifier = Some("ward".to_owned());
+    claws.passive_modifier = Some(DeclaredName::new("ward").unwrap());
     let claws = Actions::load(&mut game.world, 0, "claws", &claws, None, 1).unwrap();
     let slots = ActionSlots::new([(claws, SlotKind::new(0), 1)]);
     let beast = game.spawn(0, at(Num::ZERO, Num::ZERO, Num::ZERO), slots);
@@ -1256,7 +1258,7 @@ fn scripted(interval_ms: Option<i64>, params: &[(&str, i64)]) -> ModifierData {
             .iter()
             .map(|&(name, value)| {
                 (
-                    name.to_owned(),
+                    DeclaredName::new(name).unwrap(),
                     Param::Ranked(Ranked::One(Scalar::Int(value))),
                 )
             })
@@ -1464,7 +1466,7 @@ fn changing(
         affects: None,
         params: params
             .iter()
-            .map(|(name, param)| ((*name).to_owned(), param.clone()))
+            .map(|(name, param)| (DeclaredName::new(name).unwrap(), param.clone()))
             .collect(),
         state: BTreeMap::new(),
     }
@@ -1537,7 +1539,7 @@ fn a_scaling_param_reads_its_sources_level_stats_and_bonus() {
     power.base = Ranked::PerRank([100, 200, 300, 400, 500].map(Scalar::Int).to_vec());
     let data = ActionData {
         kind: ActionKind::Cast,
-        params: [("power".to_owned(), Param::Scaling(power))].into(),
+        params: [(DeclaredName::new("power").unwrap(), Param::Scaling(power))].into(),
         ..strike()
     };
     let script = r#"
@@ -1690,7 +1692,7 @@ fn a_delivery_hook_reads_its_projectile_and_the_unit_its_cast_aimed_at() {
     Projectiles::load_type(&mut game.world, bolt, &data);
     let shot = ActionData {
         delivery: Some(DeliveryData::Projectile {
-            unit_type: "bolt".to_owned(),
+            unit_type: DeclaredName::new("bolt").unwrap(),
             count: NonZeroU8::MIN,
             spread_deg: Num::ZERO,
         }),
@@ -1790,7 +1792,7 @@ fn a_script_launches_a_projectile_only_in_the_form_its_type_flies() {
             Projectiles::load_type(&mut game.world, bolt, &data);
             let shot = ActionData {
                 delivery: Some(DeliveryData::Projectile {
-                    unit_type: "bolt".to_owned(),
+                    unit_type: DeclaredName::new("bolt").unwrap(),
                     count: NonZeroU8::MIN,
                     spread_deg: Num::ZERO,
                 }),
@@ -1836,19 +1838,19 @@ fn fan_of_frost() -> ActionData {
         targeting: Targeting::Direction,
         range: None,
         delivery: Some(DeliveryData::Projectile {
-            unit_type: "frost_arrow".to_owned(),
+            unit_type: DeclaredName::new("frost_arrow").unwrap(),
             count: NonZeroU8::new(5).unwrap(),
             spread_deg: num(30),
         }),
         on_hit: vec![
             effect(Effecting::Damage {
                 amount: Number::Param(ParamRef {
-                    param: "damage".to_owned(),
+                    param: DeclaredName::new("damage").unwrap(),
                 }),
                 kind: DeclaredName::new("physical").unwrap(),
             }),
             effect(Effecting::Modifier {
-                id: "chilled".to_owned(),
+                id: DeclaredName::new("chilled").unwrap(),
                 duration_ms: None,
             }),
             EffectData {
@@ -1860,7 +1862,7 @@ fn fan_of_frost() -> ActionData {
             },
         ],
         params: BTreeMap::from([(
-            "damage".to_owned(),
+            DeclaredName::new("damage").unwrap(),
             Param::Ranked(Ranked::One(Scalar::Int(30))),
         )]),
         ..strike()
@@ -1999,7 +2001,7 @@ fn an_area_reaches_the_bodies_within_its_radius_once_at_its_delay_and_ends() {
         let shot = ActionData {
             targeting: Targeting::Point,
             delivery: Some(DeliveryData::Area {
-                unit_type: "blast".to_owned(),
+                unit_type: DeclaredName::new("blast").unwrap(),
             }),
             ..strike()
         };

@@ -10,7 +10,7 @@ use serde::{Deserialize, Deserializer};
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct UnitsData {
-    pub units: BTreeMap<String, UnitTypeFile>,
+    pub units: BTreeMap<DeclaredName, UnitTypeFile>,
 }
 
 /// A unit type as its data file declares it: the core's tags and params, and a section for each
@@ -21,9 +21,9 @@ pub struct UnitTypeFile {
     pub core: UnitTypeData,
     pub pools: Vec<DeclaredName>,
     /// Its package's actions in each slot kind, in order.
-    pub slots: BTreeMap<DeclaredName, Vec<String>>,
+    pub slots: BTreeMap<DeclaredName, Vec<DeclaredName>>,
     /// A modifier of its package it holds from its spawn, from itself.
-    pub passive: Option<String>,
+    pub passive: Option<DeclaredName>,
     pub stats: Option<StatsData>,
     pub combat: Option<CombatData>,
     pub orders: Option<AiData>,
@@ -86,12 +86,12 @@ impl<'de> Deserialize<'de> for UnitTypeFile {
             #[serde(default)]
             tags: Vec<DeclaredName>,
             #[serde(default)]
-            params: BTreeMap<String, Scalar>,
+            params: BTreeMap<DeclaredName, Scalar>,
             #[serde(default)]
             pools: Vec<DeclaredName>,
             #[serde(default)]
-            slots: BTreeMap<DeclaredName, Vec<String>>,
-            passive: Option<String>,
+            slots: BTreeMap<DeclaredName, Vec<DeclaredName>>,
+            passive: Option<DeclaredName>,
             stats: Option<StatsData>,
             combat: Option<CombatData>,
             orders: Option<AiData>,

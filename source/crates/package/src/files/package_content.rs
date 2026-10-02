@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use campfire_capabilities::{ActionData, ModifierData};
+use campfire_capabilities::{ActionData, DeclaredName, ModifierData};
 use serde::Deserialize;
 use serde::de::Error;
 
@@ -12,11 +12,11 @@ use crate::files::units_data::UnitTypeFile;
 #[serde(deny_unknown_fields)]
 pub struct PackageContent {
     #[serde(default)]
-    pub actions: BTreeMap<String, ActionData>,
+    pub actions: BTreeMap<DeclaredName, ActionData>,
     #[serde(default)]
-    pub modifiers: BTreeMap<String, ModifierData>,
+    pub modifiers: BTreeMap<DeclaredName, ModifierData>,
     #[serde(default)]
-    pub units: BTreeMap<String, UnitTypeFile>,
+    pub units: BTreeMap<DeclaredName, UnitTypeFile>,
 }
 
 /// The keys of a data file's table that hold a package's content.

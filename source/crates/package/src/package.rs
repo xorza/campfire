@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use campfire_capabilities::{ActionData, ApiVersion, DeliveryData};
+use campfire_capabilities::{ActionData, ApiVersion, DeclaredName, DeliveryData};
 use campfire_content::{Fingerprint, PackagePath};
 use campfire_script::ScriptHost;
 
@@ -77,8 +77,8 @@ impl Package {
     /// it.
     pub(crate) fn appliers<'a>(
         &'a self,
-        abilities: &'a BTreeMap<String, ActionData>,
-        units: &'a BTreeMap<String, UnitTypeFile>,
+        abilities: &'a BTreeMap<DeclaredName, ActionData>,
+        units: &'a BTreeMap<DeclaredName, UnitTypeFile>,
     ) -> BTreeMap<&'a str, Vec<&'a ActionData>> {
         let mut appliers: BTreeMap<&str, Vec<&ActionData>> = BTreeMap::new();
         for ability in abilities.values() {
@@ -96,7 +96,8 @@ impl Package {
                 .and_then(|path| self.script(path))
                 .into_iter()
                 .flat_map(|script| script.facts.modifiers.iter().map(String::as_str));
-            for id in ability.modifiers().chain(inside).chain(scripted) {
+            let named = ability.modifiers().chain(inside).map(DeclaredName::as_str);
+            for id in named.chain(scripted) {
                 appliers.entry(id).or_default().push(ability);
             }
         }

@@ -2,6 +2,7 @@ use campfire_math::Num;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
+use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
 use crate::values::scalar::Scalar;
 
@@ -24,18 +25,17 @@ pub struct AreaData {
 #[serde(deny_unknown_fields)]
 pub struct AreaInside {
     #[serde(rename = "self")]
-    pub caster: Option<String>,
-    pub allies: Option<String>,
-    pub enemies: Option<String>,
+    pub caster: Option<DeclaredName>,
+    pub allies: Option<DeclaredName>,
+    pub enemies: Option<DeclaredName>,
 }
 
 impl AreaInside {
     /// The ids of the modifiers it names.
-    pub fn modifiers(&self) -> impl Iterator<Item = &str> + '_ {
+    pub fn modifiers(&self) -> impl Iterator<Item = &DeclaredName> + '_ {
         [&self.caster, &self.allies, &self.enemies]
             .into_iter()
             .flatten()
-            .map(String::as_str)
     }
 }
 

@@ -14,7 +14,7 @@ pub struct UnitTypeData {
     #[serde(default)]
     pub tags: Vec<DeclaredName>,
     #[serde(default)]
-    pub params: BTreeMap<String, Scalar>,
+    pub params: BTreeMap<DeclaredName, Scalar>,
 }
 
 impl UnitTypeData {

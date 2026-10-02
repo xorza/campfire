@@ -46,12 +46,12 @@ pub struct ActionData {
     pub toggle: Option<Toggle>,
     pub channel: Option<ChannelData>,
     /// The modifier held while the toggle is on or the channel runs.
-    pub hold: Option<String>,
+    pub hold: Option<DeclaredName>,
     pub charges: Option<ChargesData>,
     /// A charged cast.
     pub charge: Option<ChargeData>,
     /// The modifier held while the action has a rank.
-    pub passive_modifier: Option<String>,
+    pub passive_modifier: Option<DeclaredName>,
     /// The passive modifier is held only while the action is off cooldown.
     #[serde(default)]
     pub passive_while_ready: bool,
@@ -64,10 +64,10 @@ pub struct ActionData {
     /// The kind of damage a weapon deals, an `attack`'s alone.
     pub damage_kind: Option<DeclaredName>,
     /// The mode's unit type a `train` makes, a train's alone.
-    pub unit_type: Option<String>,
+    pub unit_type: Option<DeclaredName>,
     /// Values for the script, as `ctx.p` reads them.
     #[serde(default)]
-    pub params: BTreeMap<String, Param>,
+    pub params: BTreeMap<DeclaredName, Param>,
     /// The state of each projectile the action fires.
     #[serde(default)]
     pub projectile_state: BTreeMap<String, StateDecl>,
@@ -219,7 +219,7 @@ impl ActionData {
             };
             let value = match ranked.get(rank).ok_or(field)? {
                 Number::Value(value) => *value,
-                Number::Param(reference) => param_at(&reference.param, field)?,
+                Number::Param(reference) => param_at(reference.param.as_str(), field)?,
             };
             match value {
                 Scalar::Int(value) => u64::try_from(value).ok(),
@@ -232,7 +232,7 @@ impl ActionData {
             Some(ranked) => match ranked.get(rank).ok_or(ActionField::Range)? {
                 RangeField::Range(range) => *range,
                 RangeField::Param(reference) => {
-                    let meters = param_at(&reference.param, ActionField::Range)?.to_num();
+                    let meters = param_at(reference.param.as_str(), ActionField::Range)?.to_num();
                     let meters = meters.filter(|meters| *meters >= Num::ZERO);
                     Range::Meters(meters.ok_or(ActionField::Range)?)
                 }
@@ -262,7 +262,7 @@ impl ActionData {
     }
 
     /// Every number field that reads a param, `{ param = "<name>" }`: the names it reads.
-    pub fn param_refs(&self) -> impl Iterator<Item = &str> + '_ {
+    pub fn param_refs(&self) -> impl Iterator<Item = &DeclaredName> + '_ {
         [
             self.cooldown_ms.as_ref(),
             self.windup_ms.as_ref(),
@@ -283,7 +283,7 @@ impl ActionData {
                 .flat_map(Ranked::values)
                 .filter_map(|range| match range {
                     RangeField::Range(_) => None,
-                    RangeField::Param(reference) => Some(reference.param.as_str()),
+                    RangeField::Param(reference) => Some(&reference.param),
                 }),
         )
         .chain(
@@ -295,12 +295,11 @@ impl ActionData {
 
     /// The ids of the modifiers its data names: the one it holds, its passive, and those its
     /// effect lists apply.
-    pub fn modifiers(&self) -> impl Iterator<Item = &str> + '_ {
+    pub fn modifiers(&self) -> impl Iterator<Item = &DeclaredName> + '_ {
         let effects = self.effects().filter_map(|effect| effect.does.modifier());
         [self.hold.as_ref(), self.passive_modifier.as_ref()]
             .into_iter()
             .flatten()
-            .map(String::as_str)
             .chain(effects)
     }
 

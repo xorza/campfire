@@ -32,6 +32,7 @@ use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
 use crate::values::attitude::Attitude;
 use crate::values::bounds::Bounds;
+use crate::values::declared_name::DeclaredName;
 use crate::values::hit::Hit;
 
 pub(crate) mod area;
@@ -82,9 +83,10 @@ impl Areas {
                 None => Filter::parse("enemies", &types),
             }
         };
-        let modifier = |name: &Option<String>| {
+        let modifier = |name: &Option<DeclaredName>| {
             name.as_ref().map(|name| {
-                Stats::modifier(world, package, name).expect("the load checked an area's modifiers")
+                Stats::modifier(world, package, name.as_str())
+                    .expect("the load checked an area's modifiers")
             })
         };
         let ticks = |ms| rate.ticks(ms).expect("an area's time in ticks fits");

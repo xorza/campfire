@@ -98,6 +98,7 @@ const MANIFEST: &str = "modes/3v3/manifest.toml";
 const UNITS: &str = "modes/3v3/data/units.toml";
 const MAP: &str = "modes/3v3/map/map.toml";
 const HUSK: &str = "heroes/husk/data/avatar.toml";
+const HUSK_MANIFEST: &str = "heroes/husk/manifest.toml";
 const GALE: &str = "heroes/gale/data/avatar.toml";
 const CINDER: &str = "heroes/cinder/data/avatar.toml";
 const VEIL: &str = "heroes/veil/data/avatar.toml";
@@ -182,27 +183,14 @@ fn an_effect_to_the_source_reads_and_any_other_to_does_not() {
 #[test]
 fn a_mode_type_may_share_its_name_with_a_dependencys_delivery_type() {
     // Husk's `grasping_wraps` is in Husk's own scope, the mode's `grasping_wraps` in the
-    // mode's, so both load; and a package name or an id holds `/` with no harm.
-    let edits = [
-        (
-            UNITS,
-            Edit::Replace(
-                "[units.tower_bolt]\n",
-                "[units.grasping_wraps]\nprojectile = { speed = \"20\" }\n\n[units.tower_bolt]\n",
-            ),
+    // mode's, so both load.
+    let edits = [(
+        UNITS,
+        Edit::Replace(
+            "[units.tower_bolt]\n",
+            "[units.grasping_wraps]\nprojectile = { speed = \"20\" }\n\n[units.tower_bolt]\n",
         ),
-        (
-            HUSK,
-            Edit::Replace("[units.grasping_wraps]", "[units.\"x/grasping_wraps\"]"),
-        ),
-        (
-            HUSK,
-            Edit::Replace(
-                r#"projectile = "grasping_wraps""#,
-                r#"projectile = "x/grasping_wraps""#,
-            ),
-        ),
-    ];
+    )];
     let packages = ModePackages::from_package_dir(&edited(edits)).unwrap();
     assert!(packages.content().units.contains_key("grasping_wraps"));
 }
@@ -257,7 +245,7 @@ fn more_tracks_than_a_unit_holds_fail_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 156] = [
+const FLAWS: [Flaw; 159] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -917,15 +905,19 @@ const FLAWS: [Flaw; 156] = [
             )
         },
     ),
-    flaw(
-        UNITS,
-        Edit::Replace(
-            "[units.melee_creep]",
-            "[units.hero-husk]\n\n[units.melee_creep]",
-        ),
-        MODE,
-        |problem| matches!(problem, LoadProblem::RepeatedUnitType(name) if name == "hero-husk"),
-    ),
+    Flaw {
+        file: UNITS,
+        edit: Edit::Replace("[units.melee_creep]", "[units.husk]\n\n[units.melee_creep]"),
+        also: &[
+            (MANIFEST, Edit::Replace("hero-husk = {", "husk = {")),
+            (
+                HUSK_MANIFEST,
+                Edit::Replace(r#"name = "hero-husk""#, r#"name = "husk""#),
+            ),
+        ],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::RepeatedUnitType(name) if name == "husk"),
+    },
     flaw(
         LASH_OUT,
         Edit::Replace("ctx.find(", "ctx.finds("),
@@ -1098,6 +1090,30 @@ const FLAWS: [Flaw; 156] = [
         Edit::Replace(r#"tags = ["tank"]"#, r#"tags = ["tank:front"]"#),
         "hero-husk",
         |problem| read_fails(problem, "data/avatar.toml", r#""tank:front" is not a name"#),
+    ),
+    flaw(
+        HUSK,
+        Edit::Replace("[actions.lash_out]", "[actions.lash-out]"),
+        "hero-husk",
+        |problem| read_fails(problem, "data/avatar.toml", r#""lash-out" is not a name"#),
+    ),
+    flaw(
+        RIME,
+        Edit::Replace(r#"{ param = "slow_ms" }"#, r#"{ param = "slow ms" }"#),
+        "hero-rime",
+        |problem| {
+            read_fails(
+                problem,
+                "data/avatar.toml",
+                "data did not match any variant of untagged enum Number",
+            )
+        },
+    ),
+    flaw(
+        RIME,
+        Edit::Replace(r#"hits = "enemies:avatar""#, r#"hits = "enemies:Avatar""#),
+        "hero-rime",
+        |problem| read_fails(problem, "data/avatar.toml", r#"filter "enemies:Avatar""#),
     ),
     flaw(
         MANIFEST,

@@ -411,7 +411,7 @@ fn apply_held(
                 .expect("the load checked the aura's filter");
             let package = book.get(instance.id).package;
             let modifier = book
-                .find(package, &aura.modifier)
+                .find(package, aura.modifier.as_str())
                 .expect("the load checked the aura's modifier");
             for (&target, &pos, &other, tags, _, _) in &units {
                 let tags = tags.map_or(TagSet::default(), |tags| tags.tags);

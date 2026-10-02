@@ -452,7 +452,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     let presence = AuraData {
         radius: Number::Value(Scalar::Int(2)),
         affects: FilterData::parse("allies").unwrap(),
-        modifier: "inspired".to_owned(),
+        modifier: DeclaredName::new("inspired").unwrap(),
     };
     Stats::load_modifier(&mut game.world, 0, "inspired", &data(None), None);
     Stats::load_modifier(&mut game.world, 0, "presence", &data(Some(presence)), None);

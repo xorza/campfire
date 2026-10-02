@@ -76,9 +76,11 @@ impl Abilities {
         let frame = ctx.frame();
         let amount = |number: &Number| match number {
             Number::Value(value) => Amount::Value(value.to_num().expect(CHECKED)),
-            Number::Param(reference) => {
-                Amount::Param(frame.find_param(action, &reference.param).expect(CHECKED))
-            }
+            Number::Param(reference) => Amount::Param(
+                frame
+                    .find_param(action, reference.param.as_str())
+                    .expect(CHECKED),
+            ),
         };
         let resolve = |effect: &EffectData| {
             let does = match &effect.does {
@@ -100,7 +102,7 @@ impl Abilities {
                     amount: amount(number),
                 },
                 Effecting::Modifier { id, duration_ms } => Does::Modifier {
-                    id: Stats::modifier(world, package, id).expect(CHECKED),
+                    id: Stats::modifier(world, package, id.as_str()).expect(CHECKED),
                     duration_ms: duration_ms.as_ref().map(amount),
                 },
                 Effecting::Xp {

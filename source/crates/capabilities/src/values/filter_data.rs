@@ -3,6 +3,7 @@ use std::fmt;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
+use crate::values::declared_name::DeclaredName;
 use crate::values::relation::Relation;
 
 /// A filter in data, such as an area's `affects`: a relation, then tags after colons, each one
@@ -17,7 +18,7 @@ pub struct FilterData {
 /// A tag of a filter: one the unit must have, or, negated, one it must not.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FilterTag {
-    pub name: String,
+    pub name: DeclaredName,
     pub negated: bool,
 }
 
@@ -37,17 +38,19 @@ pub(crate) struct TagTerm<'a> {
 }
 
 impl FilterData {
-    /// `text` as a filter; `None` unless its relation is one of the relations and no tag of it
-    /// is empty.
+    /// `text` as a filter; `None` unless its relation is one of the relations and each of its
+    /// tags is a name.
     pub fn parse(text: &str) -> Option<FilterData> {
         let syntax = FilterSyntax::parse(text)?;
-        let tags = syntax.tags().map(|term| FilterTag {
-            name: term.name.to_owned(),
-            negated: term.negated,
+        let tags = syntax.tags().map(|term| {
+            Some(FilterTag {
+                name: DeclaredName::new(term.name)?,
+                negated: term.negated,
+            })
         });
         Some(FilterData {
             relation: syntax.relation,
-            tags: tags.collect(),
+            tags: tags.collect::<Option<_>>()?,
         })
     }
 }

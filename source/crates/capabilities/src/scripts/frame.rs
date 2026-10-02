@@ -22,6 +22,7 @@ use crate::stats::param_read::ParamRead;
 use crate::stats::param_source::ParamSource;
 use crate::stats::param_table::ParamTable;
 use crate::stats::stat::Stat;
+use crate::values::declared_name::DeclaredName;
 use crate::values::hit::Hit;
 use crate::values::param::Param;
 use crate::values::scalar::Scalar;
@@ -81,7 +82,7 @@ impl Frame {
     pub(crate) fn add_params(
         &mut self,
         ability: ActionId,
-        params: &BTreeMap<String, Param>,
+        params: &BTreeMap<DeclaredName, Param>,
         stat: impl Fn(&Stat) -> u16,
     ) {
         let run = self.params.push(params, stat);
@@ -93,7 +94,7 @@ impl Frame {
     pub(crate) fn add_modifier_params(
         &mut self,
         modifier: ModifierId,
-        params: &BTreeMap<String, Param>,
+        params: &BTreeMap<DeclaredName, Param>,
         stat: impl Fn(&Stat) -> u16,
     ) {
         let run = self.modifier_params.push(params, stat);

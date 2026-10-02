@@ -4,6 +4,7 @@ use campfire_math::Num;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
+use crate::values::declared_name::DeclaredName;
 use crate::values::scalar::Scalar;
 
 /// An action's `delivery`: the unit type of its package it launches, a projectile type with
@@ -11,18 +12,18 @@ use crate::values::scalar::Scalar;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum DeliveryData {
     Projectile {
-        unit_type: String,
+        unit_type: DeclaredName,
         count: NonZeroU8,
         spread_deg: Num,
     },
     Area {
-        unit_type: String,
+        unit_type: DeclaredName,
     },
 }
 
 impl DeliveryData {
     /// The name of the unit type it launches, in its package.
-    pub fn unit_type(&self) -> &str {
+    pub fn unit_type(&self) -> &DeclaredName {
         match self {
             DeliveryData::Projectile { unit_type, .. } | DeliveryData::Area { unit_type } => {
                 unit_type
@@ -39,8 +40,8 @@ impl<'de> Deserialize<'de> for DeliveryData {
         #[derive(Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
-            projectile: Option<String>,
-            area: Option<String>,
+            projectile: Option<DeclaredName>,
+            area: Option<DeclaredName>,
             count: Option<NonZeroU8>,
             spread_deg: Option<Scalar>,
         }

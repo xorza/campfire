@@ -91,7 +91,7 @@ impl Scene {
                 .collect(),
             params: params
                 .iter()
-                .map(|&(name, value)| (name.to_owned(), value))
+                .map(|&(name, value)| (DeclaredName::new(name).unwrap(), value))
                 .collect::<BTreeMap<_, _>>(),
         };
         let name = format!("type {}", self.world.non_send::<View>().types_count());

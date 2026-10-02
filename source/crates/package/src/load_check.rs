@@ -44,7 +44,7 @@ struct PackageNames<'a> {
     roles: BTreeMap<&'a PackagePath, BTreeSet<ScriptRole>>,
     /// The params each script's `ctx.p` may read.
     params: BTreeMap<&'a PackagePath, BTreeSet<&'a str>>,
-    modifiers: &'a BTreeMap<String, ModifierData>,
+    modifiers: &'a BTreeMap<DeclaredName, ModifierData>,
 }
 
 impl<'a> LoadCheck<'a> {
@@ -67,7 +67,7 @@ impl<'a> LoadCheck<'a> {
             unit_types += dependent.content.units.len();
             if matches!(dependent.kind, DependentKind::Avatar(_)) {
                 let name = &dependent.package.name;
-                if units.contains_key(name) {
+                if units.contains_key(name.as_str()) {
                     return Err(fail(LoadProblem::RepeatedUnitType(name.clone())));
                 }
                 unit_types += 1;
@@ -280,7 +280,7 @@ impl<'a> LoadCheck<'a> {
     ) -> Result<BTreeMap<&'u str, u8>, LoadProblem> {
         self.packages
             .slotted_ranks(types)
-            .map_err(|id| LoadProblem::ActionRanks(id.to_owned()))
+            .map_err(|id| LoadProblem::ActionRanks(id.clone()))
     }
 
     /// A package's `actions`, each with the ranks `ranks` gives it and its delivery one of the
@@ -288,15 +288,15 @@ impl<'a> LoadCheck<'a> {
     /// and the modifiers, filters, stats and params it names.
     fn actions(
         &self,
-        actions: &'a BTreeMap<String, ActionData>,
-        units: &BTreeMap<String, UnitTypeFile>,
+        actions: &'a BTreeMap<DeclaredName, ActionData>,
+        units: &BTreeMap<DeclaredName, UnitTypeFile>,
         ranks: impl Fn(&str) -> u8,
         names: &mut PackageNames<'a>,
     ) -> Result<(), LoadProblem> {
         for (id, ability) in actions {
             let at = Place::Action(id.clone());
             self.kind(id, ability)?;
-            self.ranked(id, ability, ranks(id))?;
+            self.ranked(id, ability, ranks(id.as_str()))?;
             self.effects(id, ability)?;
             if let Some(delivery) = &ability.delivery {
                 let capability = match delivery {
@@ -307,7 +307,7 @@ impl<'a> LoadCheck<'a> {
                 delivery_holds(id, ability, delivery, units)?;
             }
             for modifier in ability.modifiers() {
-                modifier_exists(names.modifiers, modifier, &at)?;
+                modifier_exists(names.modifiers, modifier.as_str(), &at)?;
             }
             for filter in ability.filters() {
                 self.filter_data(filter, &at)?;
@@ -318,7 +318,7 @@ impl<'a> LoadCheck<'a> {
                     return Err(LoadProblem::Unknown {
                         of: NameKind::Param,
                         at,
-                        name: name.to_owned(),
+                        name: name.to_string(),
                     });
                 }
             }
@@ -326,7 +326,7 @@ impl<'a> LoadCheck<'a> {
                 names.serve(
                     script,
                     ScriptRole::Action,
-                    ability.params.keys().map(String::as_str),
+                    ability.params.keys().map(DeclaredName::as_str),
                 );
             }
         }
@@ -351,7 +351,7 @@ impl<'a> LoadCheck<'a> {
                 self.filter_data(affects, &at)?;
             }
             if let Some(aura) = &modifier.aura {
-                modifier_exists(names.modifiers, &aura.modifier, &at)?;
+                modifier_exists(names.modifiers, aura.modifier.as_str(), &at)?;
                 self.filter_data(&aura.affects, &at)?;
             }
             let by = appliers.get(id.as_str()).map_or(&[][..], Vec::as_slice);
@@ -359,13 +359,16 @@ impl<'a> LoadCheck<'a> {
                 .params
                 .keys()
                 .chain(by.iter().flat_map(|ability| ability.params.keys()))
-                .map(String::as_str)
+                .map(DeclaredName::as_str)
                 .collect();
-            if let Some(name) = modifier.param_refs().find(|name| !readable.contains(name)) {
+            let unread = modifier
+                .param_refs()
+                .find(|name| !readable.contains(name.as_str()));
+            if let Some(name) = unread {
                 return Err(LoadProblem::Unknown {
                     of: NameKind::Param,
                     at,
-                    name: name.to_owned(),
+                    name: name.to_string(),
                 });
             }
             if let Some(script) = &modifier.script {
@@ -592,8 +595,8 @@ impl<'a> LoadCheck<'a> {
     /// An action of a kind the release runs, with the capability of its kind: a `cast` of
     /// `abilities`, with no weapon field; an `attack` of `combat`, with all three, a unit target,
     /// a range in meters, its stats declared and its damage kind the mode's.
-    fn kind(&self, id: &str, action: &ActionData) -> Result<(), LoadProblem> {
-        let at = Place::Action(id.to_owned());
+    fn kind(&self, id: &DeclaredName, action: &ActionData) -> Result<(), LoadProblem> {
+        let at = Place::Action(id.clone());
         let fields = action.weapon_fields();
         let trains = action.unit_type.is_some();
         match action.kind {
@@ -617,7 +620,7 @@ impl<'a> LoadCheck<'a> {
                         return Err(LoadProblem::Unknown {
                             of: NameKind::UnitType,
                             at,
-                            name: name.clone(),
+                            name: name.to_string(),
                         });
                     }
                     Some(unit_type) if unit_type.delivers() => {
@@ -654,7 +657,7 @@ impl<'a> LoadCheck<'a> {
             }
             kind => {
                 return Err(LoadProblem::KindNotRun {
-                    action: id.to_owned(),
+                    action: id.clone(),
                     kind,
                 });
             }
@@ -666,12 +669,12 @@ impl<'a> LoadCheck<'a> {
     /// capability the mode declares and a name it declares, in a list that runs, to a unit the
     /// list reaches; and each number at least 0 and a sim number at every rank, a duration whole
     /// milliseconds within a `u32`. The modifiers and params they name, the action's checks find.
-    fn effects(&self, id: &str, action: &ActionData) -> Result<(), LoadProblem> {
+    fn effects(&self, id: &DeclaredName, action: &ActionData) -> Result<(), LoadProblem> {
         let data = &self.packages.data;
-        let at = Place::Action(id.to_owned());
+        let at = Place::Action(id.clone());
         for (list, effects) in action.effect_lists() {
             let fail = |problem| LoadProblem::Effect {
-                action: id.to_owned(),
+                action: id.clone(),
                 list,
                 problem,
             };
@@ -826,8 +829,8 @@ impl<'a> LoadCheck<'a> {
         &self,
         unit_type: &UnitTypeFile,
         at: &Place,
-        actions: &BTreeMap<String, ActionData>,
-        modifiers: &BTreeMap<String, ModifierData>,
+        actions: &BTreeMap<DeclaredName, ActionData>,
+        modifiers: &BTreeMap<DeclaredName, ModifierData>,
     ) -> Result<(), LoadProblem> {
         let sections = [
             (unit_type.stats.is_some(), Capability::Stats),
@@ -856,7 +859,7 @@ impl<'a> LoadCheck<'a> {
                 self.filter_data(affects, at)?;
             }
             for modifier in area.inside.modifiers() {
-                modifier_exists(modifiers, modifier, at)?;
+                modifier_exists(modifiers, modifier.as_str(), at)?;
             }
         }
         if let Some(projectile) = &unit_type.projectile {
@@ -896,7 +899,7 @@ impl<'a> LoadCheck<'a> {
             }
         }
         if let Some(passive) = &unit_type.passive {
-            modifier_exists(modifiers, passive, at)?;
+            modifier_exists(modifiers, passive.as_str(), at)?;
         }
         let tracks = &self.packages.data.tracks;
         if let Some(track) = unit_type
@@ -999,7 +1002,12 @@ impl<'a> LoadCheck<'a> {
 
     /// Every per-rank array of `ability` has `ranks` entries, each pool its cost names is one
     /// the mode declares, and each capability field holds at every rank.
-    fn ranked(&self, id: &str, ability: &ActionData, ranks: u8) -> Result<(), LoadProblem> {
+    fn ranked(
+        &self,
+        id: &DeclaredName,
+        ability: &ActionData,
+        ranks: u8,
+    ) -> Result<(), LoadProblem> {
         let data = &self.packages.data;
         if let Some(name) = ability
             .cost_names()
@@ -1007,13 +1015,13 @@ impl<'a> LoadCheck<'a> {
         {
             return Err(LoadProblem::Unknown {
                 of: NameKind::Cost,
-                at: Place::Action(id.to_owned()),
+                at: Place::Action(id.clone()),
                 name: name.to_string(),
             });
         }
         if !ability.check_ranks(usize::from(ranks)) {
             return Err(LoadProblem::RankCount {
-                action: id.to_owned(),
+                action: id.clone(),
                 ranks,
             });
         }
@@ -1021,7 +1029,7 @@ impl<'a> LoadCheck<'a> {
             ability
                 .fields_at(rank, |name| data.cost_target(name))
                 .map_err(|field| LoadProblem::ActionField {
-                    action: id.to_owned(),
+                    action: id.clone(),
                     field,
                 })?;
         }
@@ -1090,7 +1098,7 @@ impl<'a> LoadCheck<'a> {
 impl<'a> PackageNames<'a> {
     fn new(
         package: &'a Package,
-        modifiers: &'a BTreeMap<String, ModifierData>,
+        modifiers: &'a BTreeMap<DeclaredName, ModifierData>,
     ) -> PackageNames<'a> {
         PackageNames {
             package,
@@ -1164,7 +1172,7 @@ fn own_tags(tags: &[DeclaredName], at: &Place) -> Result<(), LoadProblem> {
 }
 
 fn modifier_exists(
-    modifiers: &BTreeMap<String, ModifierData>,
+    modifiers: &BTreeMap<DeclaredName, ModifierData>,
     id: &str,
     at: &Place,
 ) -> Result<(), LoadProblem> {
@@ -1182,23 +1190,24 @@ fn modifier_exists(
 /// section of its kind. A projectile needs an aim, and homes alone and at a unit; an area lands
 /// on a point, a unit or the caster, not along a direction; a weapon's is a homing projectile.
 fn delivery_holds(
-    id: &str,
+    id: &DeclaredName,
     action: &ActionData,
     delivery: &DeliveryData,
-    units: &BTreeMap<String, UnitTypeFile>,
+    units: &BTreeMap<DeclaredName, UnitTypeFile>,
 ) -> Result<(), LoadProblem> {
-    let fail =
-        |problem: fn(String) -> DeliveryProblem| Err(LoadProblem::Delivery(problem(id.to_owned())));
+    let fail = |problem: fn(DeclaredName) -> DeliveryProblem| {
+        Err(LoadProblem::Delivery(problem(id.clone())))
+    };
     let name = delivery.unit_type();
     let unit_type = units.get(name).ok_or_else(|| LoadProblem::Unknown {
         of: NameKind::UnitType,
-        at: Place::Action(id.to_owned()),
-        name: name.to_owned(),
+        at: Place::Action(id.clone()),
+        name: name.to_string(),
     })?;
     let wrong_section = || {
         Err(LoadProblem::Delivery(DeliveryProblem::WrongSection {
-            action: id.to_owned(),
-            unit_type: name.to_owned(),
+            action: id.clone(),
+            unit_type: name.clone(),
         }))
     };
     let homing = match delivery {

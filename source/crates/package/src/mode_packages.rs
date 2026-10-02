@@ -240,7 +240,7 @@ impl ModePackages {
     pub fn slotted_ranks<'u>(
         &self,
         types: impl IntoIterator<Item = &'u UnitTypeFile>,
-    ) -> Result<BTreeMap<&'u str, u8>, &'u str> {
+    ) -> Result<BTreeMap<&'u str, u8>, &'u DeclaredName> {
         let kinds = &self.data.slots;
         let mut ranks = BTreeMap::new();
         for unit_type in types {

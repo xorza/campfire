@@ -24,7 +24,7 @@ pub enum Effecting {
     /// `modifier = { id, duration_ms }`, a modifier of the action's package, from the acting
     /// unit.
     Modifier {
-        id: String,
+        id: DeclaredName,
         duration_ms: Option<Number>,
     },
     /// `xp = { track, amount }`.
@@ -83,7 +83,7 @@ struct RestoreFields {
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ModifierFields {
-    id: String,
+    id: DeclaredName,
     duration_ms: Option<Number>,
 }
 
@@ -109,7 +109,7 @@ impl Effecting {
     }
 
     /// The modifier of its package it applies, if it applies one.
-    pub fn modifier(&self) -> Option<&str> {
+    pub fn modifier(&self) -> Option<&DeclaredName> {
         match self {
             Effecting::Modifier { id, .. } => Some(id),
             _ => None,

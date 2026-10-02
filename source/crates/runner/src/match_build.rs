@@ -33,7 +33,7 @@ pub(crate) struct MatchBuild<'a> {
     script_starts: Vec<usize>,
     /// Each train and delivery loaded, and the name of the unit type it spawns in its package's
     /// scope, bound once all unit types load.
-    spawns: Vec<(ActionId, String)>,
+    spawns: Vec<(ActionId, &'a DeclaredName)>,
 }
 
 impl<'a> MatchBuild<'a> {
@@ -91,15 +91,15 @@ impl<'a> MatchBuild<'a> {
                     let actions = build.load_actions(view, |id| ranks.get(id).copied())?;
                     for (name, file) in units {
                         if file.delivers() {
-                            build.load_delivery(view, name, file);
+                            build.load_delivery(view, name.as_str(), file);
                         } else {
-                            build.load_unit_type(view, name, file, &actions, false)?;
+                            build.load_unit_type(view, name.as_str(), file, &actions, false)?;
                         }
                     }
                 }
                 ViewKind::Avatar(avatar) => {
                     for (id, file) in units {
-                        build.load_delivery(view, id, file);
+                        build.load_delivery(view, id.as_str(), file);
                     }
                     let name = &view.package.name;
                     let ranks = packages.slotted_ranks([&avatar.unit]).expect(CHECKED);
@@ -109,7 +109,7 @@ impl<'a> MatchBuild<'a> {
                 }
                 ViewKind::Loadout => {
                     for (id, file) in units {
-                        build.load_delivery(view, id, file);
+                        build.load_delivery(view, id.as_str(), file);
                     }
                     let actions = build.load_actions(view, |_| Some(loadout_ranks))?;
                     let entries = actions.into_iter().map(|(id, ability)| LoadoutSetup {
@@ -122,7 +122,7 @@ impl<'a> MatchBuild<'a> {
         }
         let mode = packages.packages().next().expect("the mode is a package");
         for (action, unit_type) in &build.spawns {
-            Actions::bind_spawn(build.world, *action, unit_type);
+            Actions::bind_spawn(build.world, *action, unit_type.as_str());
         }
         let setup = ModeSetup {
             script: build.script(mode, &packages.data().script),
@@ -145,7 +145,7 @@ impl<'a> MatchBuild<'a> {
         for view in self.packages.packages() {
             for (name, data) in &view.content.modifiers {
                 let script = data.script.as_ref().map(|path| self.script(view, path));
-                Stats::load_modifier(self.world, view.index.get(), name, data, script);
+                Stats::load_modifier(self.world, view.index.get(), name.as_str(), data, script);
             }
         }
     }
@@ -161,8 +161,11 @@ impl<'a> MatchBuild<'a> {
             .actions
             .iter()
             .map(|(id, data)| {
-                let ranks = ranks(id).unwrap_or(1);
-                Ok((id.as_str(), self.load_ability(view, id, data, ranks)?))
+                let ranks = ranks(id.as_str()).unwrap_or(1);
+                Ok((
+                    id.as_str(),
+                    self.load_ability(view, id.as_str(), data, ranks)?,
+                ))
             })
             .collect()
     }
@@ -222,7 +225,7 @@ impl<'a> MatchBuild<'a> {
         let passive = file
             .passive
             .as_ref()
-            .map(|passive| Stats::modifier(self.world, id, passive).expect(CHECKED));
+            .map(|passive| Stats::modifier(self.world, id, passive.as_str()).expect(CHECKED));
         self.unit_types.push(UnitTypeSetup {
             unit_type,
             kit,
@@ -281,10 +284,10 @@ impl<'a> MatchBuild<'a> {
             Abilities::load_effects(self.world, action, package, data);
         }
         if let Some(unit_type) = &data.unit_type {
-            self.spawns.push((action, unit_type.clone()));
+            self.spawns.push((action, unit_type));
         }
         if let Some(delivery) = &data.delivery {
-            self.spawns.push((action, delivery.unit_type().to_owned()));
+            self.spawns.push((action, delivery.unit_type()));
         }
         Ok(action)
     }

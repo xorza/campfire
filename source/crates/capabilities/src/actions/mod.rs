@@ -110,7 +110,7 @@ impl Actions {
         let passive = data.passive_modifier.as_ref().map(|name| Passive {
             modifier: world
                 .resource::<ModifierBook>()
-                .find(package, name)
+                .find(package, name.as_str())
                 .expect("the load checked the passive's modifier"),
             while_ready: data.passive_while_ready,
         });
