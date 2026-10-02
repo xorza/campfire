@@ -128,9 +128,43 @@ impl ParamTable {
                 wide = wide.checked_add(i128::from(ratio.ratio.to_bits()).checked_mul(stat)?)?;
             }
         }
-        let magnitude = (wide.unsigned_abs() + (1 << (Num::FRAC_BITS - 1))) >> Num::FRAC_BITS;
-        let bits = i64::try_from(magnitude).ok()?;
-        let bits = if wide < 0 { -bits } else { bits };
-        Some(Scalar::Decimal(Num::from_bits(bits)))
+        Num::from_raw_products(wide).map(Scalar::Decimal)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::stats::stat_book::StatBook;
+    use crate::units::unit_type::UnitType;
+    use crate::values::param::Scaling;
+
+    #[test]
+    fn a_scaling_param_rounds_its_sum_once_ties_to_even() {
+        // A ratio of ε on a stat of ±0.5, ±1.5 and 2.5 is ±ε/2, ±3ε/2 and 5ε/2: each a tie, to
+        // the even neighbour, 0, ±2ε and 2ε, as every rounding of a number. Away from zero they
+        // were ±ε, ±2ε and 3ε.
+        let power = Stat::named("power").unwrap();
+        let scaling = Scaling {
+            base: Ranked::One(Scalar::Int(0)),
+            per_level: Num::ZERO,
+            bonus: BTreeMap::new(),
+            ratios: BTreeMap::from([(power, Num::EPSILON)]),
+        };
+        let name = DeclaredName::new("p").unwrap();
+        let params = BTreeMap::from([(name, Param::Scaling(scaling))]);
+        let mut table = ParamTable::default();
+        let run = table.push(&params, |_| StatId::new(0));
+        let book = StatBook::new(&BTreeMap::new(), [], Num::ONE);
+        let read = |stat: &str| {
+            let values = [stat.parse().unwrap()];
+            let source = ParamSource::new(&book, UnitType::new(0), 1, &values);
+            match table.value(run, 0, 1, Some(&source)) {
+                Some(Scalar::Decimal(value)) => value.to_bits(),
+                other => panic!("{other:?}"),
+            }
+        };
+        let stats = ["0.5", "1.5", "2.5", "-0.5", "-1.5"];
+        assert_eq!(stats.map(read), [0, 2, 2, 0, -2]);
     }
 }

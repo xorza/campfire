@@ -24,6 +24,26 @@ impl Metric {
         }
     }
 
+    /// The unit vector along `vector` in the map's metric, which on a planar map drops the
+    /// height; `None` for a vector of no length there.
+    pub(crate) fn direction(self, vector: Vec3) -> Option<Vec3> {
+        match self {
+            Metric::Planar => Vec3::new(vector.x, Num::ZERO, vector.z).normalized(),
+            Metric::Spatial => vector.normalized(),
+        }
+    }
+
+    /// The point `step` from `from` toward `to` in the map's metric, or the point there when it
+    /// is at most `step` away: a planar map steps on the ground plane, at `from`'s height.
+    pub(crate) fn step_toward(self, from: Position, to: Position, step: Num) -> Position {
+        let to = match self {
+            Metric::Planar => Vec3::new(to.get().x, from.get().y, to.get().z),
+            Metric::Spatial => to.get(),
+        };
+        let stepped = from.get().step_toward(to, step);
+        Position::new(stepped).expect("a step ends between two points within the bound")
+    }
+
     /// Whether `b` is within `range` of `a`, exactly, with no square root.
     fn within(self, a: Position, b: Position, range: Num) -> bool {
         Vec3::ZERO.within(self.offset(a, b), range)
@@ -157,6 +177,31 @@ mod tests {
         assert!(Metric::Planar.reaches(from, Num::ZERO, num(3), above, Num::ZERO));
         assert!(!Metric::Spatial.reaches(from, Num::ZERO, num(4), above, Num::ZERO));
         assert!(Metric::Spatial.reaches(from, num(1), num(3), above, num(1)));
+    }
+
+    #[test]
+    fn a_direction_and_a_step_keep_to_the_ground_on_a_planar_map() {
+        let num = |value| Num::from_int(value).unwrap();
+        let vector = |x, y, z| Vec3::new(num(x), num(y), num(z));
+        // 3 along and 4 up: on the ground, straight along x; straight up has no ground direction.
+        assert_eq!(
+            Metric::Planar.direction(vector(3, 4, 0)),
+            Some(vector(1, 0, 0))
+        );
+        assert_eq!(Metric::Planar.direction(vector(0, 5, 0)), None);
+        assert_eq!(
+            Metric::Spatial.direction(vector(0, 5, 0)),
+            Some(vector(0, 1, 0))
+        );
+        // A step of 1 toward (3, 4, 0): along the ground at the height it starts at on a planar
+        // map, along the line in space on a spatial one. A step past the end ends there, which on
+        // a planar map is the point below or above at the start's height.
+        let (from, to) = (at(0, 0, 0), at(3, 4, 0));
+        assert_eq!(Metric::Planar.step_toward(from, to, num(1)), at(1, 0, 0));
+        let spatial = Position::new(from.get().step_toward(to.get(), num(1))).unwrap();
+        assert_eq!(Metric::Spatial.step_toward(from, to, num(1)), spatial);
+        assert_eq!(Metric::Planar.step_toward(from, to, num(5)), at(3, 0, 0));
+        assert_eq!(Metric::Spatial.step_toward(from, to, num(5)), to);
     }
 
     #[test]

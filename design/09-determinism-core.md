@@ -14,7 +14,7 @@ Numbers, vectors, randomness, stable ids and the state hash: the base every resu
 ## Design
 
 - **`Num`:** 40.24 fixed-point in an `i64`. Checked arithmetic; `*` and `/` round once, to nearest, ties to even; an overflow in engine code panics, and in a script it is a script error. Exact decimal parsing of data strings, which returns an error on bad input. No conversion from or to floats.
-- **Roots and trig:** `sqrt` and vector lengths are exact to the nearest value; a float gives only the first estimate, which integer steps correct, so the result never depends on it. `sin_cos` and `atan2` are correctly rounded, by tabled series computed at compile time.
+- **Roots and trig:** `sqrt` and vector lengths are exact to the nearest value; a float gives only the first estimate, which integer steps correct, so the result never depends on it. `sin_cos` and `atan2` come from tabled series computed at compile time, in integer steps, so they give the same bits on every machine. Their error bound is what the tests prove: within 0.501 ulp of `f64` over sweeps of angles and points. No search of the hard cases, the values near a rounding midpoint, proves them correctly rounded, so the design claims only that bound.
 - **`Vec3`:** checked operations; `dot` and rotations round once; `within(other, radius)` compares exact squared distances, with no root.
 - **`Rng`:** one BLAKE3-keyed sequence per (stream, entity, tick), keyed by the segment seed, so no draw depends on another's order and systems can draw in parallel. `below`, `chance` and `chance_ratio` are exact; `chance` always takes one word. Debug builds panic when a tick opens one sequence twice.
 - **Stable ids:** handed out in order and never reused; the index of ids to entities is the order every hash walks.

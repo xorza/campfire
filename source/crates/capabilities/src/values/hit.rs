@@ -10,5 +10,5 @@ pub(crate) struct Hit {
     pub(crate) target: Option<StableId>,
     pub(crate) pos: Position,
     pub(crate) distance: Num,
-    pub(crate) direction: Vec3,
+    pub(crate) direction: Option<Vec3>,
 }

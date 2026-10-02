@@ -1,4 +1,4 @@
-use campfire_math::{Num, Vec3};
+use campfire_math::{Num, U256, Vec3};
 use campfire_sim::{Position, StableId};
 
 use crate::actions::targets::Targets;
@@ -74,16 +74,15 @@ impl Flights<'_> {
                 target: Some(target),
                 pos: from,
                 distance: flown,
-                direction: Vec3::ZERO,
+                direction: None,
             };
             self.end(projectile, hit);
             return true;
         };
-        let stepped = from.get().step_toward(unit.pos.get(), spec.speed);
-        let flown = flown + from.get().distance(stepped);
-        let moved =
-            Position::new(stepped).expect("a step ends between two points within the bound");
         let metric = targets.metric();
+        let moved = metric.step_toward(from, unit.pos, spec.speed);
+        let offset = metric.offset(from, moved);
+        let flown = flown + offset.length();
         if !metric.reaches(moved, spec.width / 2, Num::ZERO, unit.pos, unit.radius) {
             *position = moved;
             projectile.fly_to(flown);
@@ -94,7 +93,7 @@ impl Flights<'_> {
             target: Some(target),
             pos: moved,
             distance: flown,
-            direction: from.get().direction_to(stepped).unwrap_or(Vec3::ZERO),
+            direction: offset.normalized(),
         };
         self.strike(projectile, target, hit);
         self.end(projectile, hit);
@@ -126,7 +125,7 @@ impl Flights<'_> {
             target: aimed,
             pos,
             distance,
-            direction,
+            direction: Some(direction),
         };
         let offset = direction.checked_scale(step).expect("a step fits");
         let Some(to) = from.get().checked_add(offset).and_then(Position::new) else {
@@ -154,17 +153,24 @@ impl Flights<'_> {
                 continue;
             }
             if let Some(share) = metric.meets(from, to, unit.pos, spec.width / 2 + unit.radius) {
-                let along = (share.along << Num::FRAC_BITS)
-                    .checked_div(share.length)
-                    .unwrap_or(0);
-                self.met.push((along, unit.id));
+                self.met.push((share.along, unit.id));
             }
         }
+        // Every share of a step has the step's squared length below it, so the raw `along`
+        // orders the nearest points exactly.
         self.met.sort_unstable();
+        let length = metric.offset(from, to).length_squared_bits();
         for at in 0..self.met.len() {
             let (along, unit) = self.met[at];
-            let share = Num::from_bits(i64::try_from(along).expect("a share of one fits"));
-            let travelled = step * share;
+            let travelled = if length == 0 {
+                Num::ZERO
+            } else {
+                let step_bits = u128::try_from(step.to_bits()).expect("a step is never negative");
+                let bits = U256::product(step_bits, along)
+                    .round_div(length)
+                    .expect("a share of a step fits");
+                Num::from_bits(i64::try_from(bits).expect("a share of a step fits"))
+            };
             let pos = from
                 .get()
                 .checked_add(direction.checked_scale(travelled).expect("within a step"))

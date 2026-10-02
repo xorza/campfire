@@ -153,10 +153,6 @@ capability_set, books
 
 - `start_trains` and `strike` pay shared player resources in Bevy query order, which a restore can change.
 - Three systems walk the whole `EntityIndex` to get an order, and they visit projectiles and areas too.
-- Line hits are ordered by a share cut to 24 bits.
-- `ParamTable` rounds ties away from zero, against design D1.
-- Script directions and homing steps ignore the map's metric.
-- A fan's turn multiplies a rounded degree.
 - RNG streams are named by strings.
 - `ctx.projectile` and `ctx.area` take their unit's id only later, so they return `()`, and `chain_fire.rhai` cannot use the result.
 
@@ -171,10 +167,7 @@ capability_set, books
   - This test needs a match that runs production and two producers of one player. The 3v3 has no production, so the test uses the proving match, not the 3v3.
   - It lands with `Ordered` (B2). Before that step, it fails on `start_trains`.
 - **Ids at call time.** A unit that a call creates takes its id when it is queued, as `spawn_unit` does today. Calls already run in a stable order, so the ids stay in a stable order. `ctx.projectile` and `ctx.area` then return a `Unit` handle that the same call can use.
-- **One rounding helper.** `Num` gains `mul_div(a, b, c)` with one rounding, and one `round_ties_even` for wide sums. `ParamTable`, `StatTotals` and the fan turn use them.
-- **The metric everywhere.** Script directions are normalized through `Metric::offset`. Homing steps and `flown` are measured in the metric. Line hits sort by the raw `along`, and they divide only to place the hit point.
 - **RNG streams** are a closed enum, `RngStream`, with fixed bytes for each. The debug build's set of `String` names goes away.
-- **The trig claim.** Design 09 states the error bound that the tests prove, not "correctly rounded".
 
 ## R6. A limit on work per tick, and fresh shared indexes
 
@@ -317,7 +310,7 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 
 | Step | Change | Needs | Size |
 |---|---|---|---|
-| F2 | `mul_div` and `round_ties_even`; the metric in scripts and homing; hit order by `along`; `RngStream`; ids at call time, so `ctx.projectile` and `ctx.area` return handles; the trig bound in design 09 | B | M, changes behaviour |
+| F2 | `RngStream`; ids at call time, so `ctx.projectile` and `ctx.area` return handles | B | M, changes behaviour |
 | G1 | `register_*_checked` and a check for every type; absent resources removed; the state table test; the snapshot fuzz | A | M |
 | H1 | `BodyGrid`, read by deliveries and auras; one `(group, unit)` hit store; stuck walkers through the grid | B | M |
 | H2 | `NavBudget`; short routes within their window; "arrived short"; re-asks after removals; the blocker query and clipping; `Progress` reset; blocked map cells in the exact tests; `Steering` methods; `Route::clear` keeps its buffer | B3 | M, changes behaviour |
@@ -386,11 +379,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
 - **R§4:**
   - train order: B2;
   - homing and line types: B2;
-  - truncated share: F2;
-  - ties away from zero: F2;
-  - metric: F2;
-  - fan degree: F2;
-  - trig claim: F2.
 - **R§5:**
   - stall and lost order: B3;
   - vision bitmaps: H4;
@@ -453,7 +441,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
 - **R§11:**
   - `Delivered` hooks: J (`enum Reach`);
   - placeholder group: D3;
-  - `Hit::direction`: F2;
   - `passive` and `held`: G2;
   - `UnitKit`: C5a;
   - `Package` data: C2;

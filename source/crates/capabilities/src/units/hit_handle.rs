@@ -48,8 +48,11 @@ impl HitHandle {
                 |hit: &mut HitHandle| hit.hit.distance,
             )
             .bind(
-                field("direction", "the direction its delivery flew in"),
-                |hit: &mut HitHandle| hit.hit.direction,
+                field(
+                    "direction",
+                    "the direction its delivery flew in, `()` for an area or a delivery that did not move",
+                ),
+                |hit: &mut HitHandle| hit.hit.direction.map_or(Dynamic::UNIT, Dynamic::from),
             )
             .plan(
                 MemberSpec::field(

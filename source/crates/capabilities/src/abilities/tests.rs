@@ -1764,11 +1764,12 @@ fn a_delivery_hook_reads_its_projectile_and_the_unit_its_cast_aimed_at() {
     let target = game.spawn(1, at(num(3), Num::ZERO, Num::ZERO), ());
     // The damage the hook deals carries the bolt's hit, which the target's `watch` reads, and
     // answers with 1 damage to its source: the hit's target, the unit the cast aimed at, after
-    // 3 m flown.
+    // 3 m flown, in the direction it flew.
     game.load_stats();
     let watch = r#"
         fn on_damage_taken(ctx, m, d) {
-            if d.hit == () || d.hit.target != m.carrier || d.hit.distance != 3 {
+            if d.hit == () || d.hit.target != m.carrier || d.hit.distance != 3
+                || d.hit.direction == () {
                 throw "the damage carries the hit of its bolt";
             }
             ctx.damage(d.source, 1, "true");
@@ -2044,10 +2045,11 @@ fn an_area_reaches_the_bodies_within_its_radius_once_at_its_delay_and_ends() {
             }),
             ..strike()
         };
-        // Each hook deals damage only when it reads the area still there, and no aimed unit.
+        // Each hook deals damage only when it reads the area still there, no aimed unit, and no
+        // direction, as an area flies none.
         let source = r#"
             fn on_hit(ctx, caster, target, hit) {
-                if hit.delivery.unit_type == "blast" && hit.target == () {
+                if hit.delivery.unit_type == "blast" && hit.target == () && hit.direction == () {
                     ctx.damage(target, 50, "true");
                 }
             }

@@ -80,7 +80,7 @@ impl Projectiles {
                 flown: Num::ZERO,
             },
             Toward::Direction(direction) => {
-                let Some(direction) = direction.normalized() else {
+                let Some(direction) = world.resource::<Metric>().direction(direction) else {
                     return;
                 };
                 let range = Projectiles::range(world, effect.by, effect.unit_type);
@@ -136,16 +136,9 @@ impl Projectiles {
         } else {
             range
         };
-        let count = i64::from(fan.count.get());
-        let degree = Num::PI / 180;
-        let flights: Vec<Flight> = (0..count)
+        let flights: Vec<Flight> = (0..fan.count.get())
             .map(|at| {
-                let turn = if count == 1 {
-                    Num::ZERO
-                } else {
-                    fan.spread_deg * at / (count - 1) - fan.spread_deg / 2
-                };
-                let direction = aim.rotated_y((turn * degree).sin_cos());
+                let direction = aim.rotated_y(fan.turn(at).sin_cos());
                 Flight::Line {
                     direction,
                     flown: Num::ZERO,

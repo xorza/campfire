@@ -134,6 +134,14 @@ fn int_operands() {
     assert_eq!(-Num::ONE / 3, n(-5_592_405));
     assert_eq!(Num::ONE.checked_div_int(0), None);
     assert_eq!(Num::MIN.checked_div_int(-1), None);
+    // ε · 1 ÷ 2 ties to 0, 3ε · 1 ÷ 2 to 2ε; ε · 1.5 ÷ 3 is ε/2, which ties to 0, where ε · 1.5
+    // rounded first, to 2ε, then ÷ 3 would give ε: one rounding, not two.
+    assert_eq!(n(1).checked_mul_div_int(Num::ONE, 2), Some(n(0)));
+    assert_eq!(n(3).checked_mul_div_int(Num::ONE, 2), Some(n(2)));
+    assert_eq!(n(1).checked_mul_div_int(n(ONE + HALF), 3), Some(n(0)));
+    assert_eq!((n(1) * n(ONE + HALF)) / 3, n(1));
+    assert_eq!(Num::ONE.checked_mul_div_int(Num::ONE, 0), None);
+    assert_eq!(Num::MAX.checked_mul_div_int(n(2 * ONE), 1), None);
 }
 
 #[test]
@@ -209,9 +217,17 @@ proptest! {
     }
 
     #[test]
-    fn int_operands_match_exact(a in bits(), k in -1000_i64..1000) {
+    fn int_operands_match_exact(a in bits(), b in bits(), k in -1000_i64..1000) {
         prop_assert_eq!(n(a).checked_mul_int(k), narrow(i128::from(a) * i128::from(k)));
         prop_assume!(k != 0);
+        let product = i128::from(a) * i128::from(b);
+        let divisor = i128::from(k) << Num::FRAC_BITS;
+        let expected = if k > 0 {
+            nearest_even(product, divisor)
+        } else {
+            nearest_even(-product, -divisor)
+        };
+        prop_assert_eq!(n(a).checked_mul_div_int(n(b), k), narrow(expected));
         let expected = if k > 0 {
             nearest_even(i128::from(a), i128::from(k))
         } else {

@@ -104,7 +104,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | Name | Form | Capability | Status | What it is |
 | --- | --- | --- | --- | --- |
 | `delivery` | read | abilities | since 1.0 | the projectile or area unit that delivered it, `()` when at once or gone |
-| `direction` | read | abilities | since 1.0 | the direction its delivery flew in |
+| `direction` | read | abilities | since 1.0 | the direction its delivery flew in, `()` for an area or a delivery that did not move |
 | `distance` | read | abilities | since 1.0 | how far its delivery flew |
 | `part` | read | hitscan | planned | the body part a ray or a sweep struck, `()` with none |
 | `pos` | read | abilities | since 1.0 | where it hit, or where its delivery ended |

@@ -2,7 +2,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
-use campfire_math::{Num, Tick, Ticks, Vec3};
+use campfire_math::{Num, Tick, Ticks};
 use campfire_sim::{Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry};
 
 use crate::actions::action_slots::ActionTarget;
@@ -133,7 +133,7 @@ fn trigger(
             target: area.aimed(),
             pos,
             distance: Num::ZERO,
-            direction: Vec3::ZERO,
+            direction: None,
         };
         let by = area.by();
         let delivered = |hook, reached| Delivered {

@@ -18,16 +18,6 @@ Package data, snapshots and client packets are untrusted. Each of these items le
   Better: check each against its book after a restore, or store no copy of package-derived shape in state.
 - [ ] **A restore keeps a resource the snapshot does not have** — `sim/src/state_registry/mod.rs:360-369`. When the snapshot records a resource as absent, `decode_resource` leaves the copy that is already in the world, so the hash can differ from the snapshot's. Better: remove an absent resource.
 
-## 4. Order and exactness depend on the code path
-
-The design asks for stable ids for every order that matters, and one rounding rule. Some paths use query order, truncation or another rounding.
-
-- [ ] **Line hits are ordered by a truncated share** — `capabilities/src/projectiles/flights.rs:154-158`. The share `along / length` is cut to 24 bits, so two different nearest points can tie and fall back to id order, and `stop_on_hit` can then pick the wrong unit. `length` is the same for every unit of a step. Better: sort by the raw `along`, and divide only to place the hit point.
-- [ ] **A scaling param rounds ties away from zero** — `capabilities/src/stats/param_table.rs:132-135`. `StatTotals::value` rounds ties to even, as design D1 requires everywhere. Better: use the same ties-to-even helper.
-- [ ] **Script directions and homing steps ignore the map's metric** — `capabilities/src/projectiles/mod.rs:110`, `projectiles/flights.rs:82-83`. A script direction is normalized in 3D, and a homing step and `flown` are 3D, while hits are tested in the map's metric. `Hit::distance` is then not in the map's metric, as design 08 requires. Better: use `Metric` for both.
-- [ ] **A fan's turn multiplies a rounded degree** — `capabilities/src/projectiles/mod.rs:169,177`. `Num::PI / 180` is rounded once and then scaled by the spread. Better: `turn * Num::PI / 180`, rounded once at the end.
-- [ ] **The trig functions are documented as correctly rounded with no proof** — `math/src/num/mod.rs:39-40`, design 09. They are faithful and deterministic, but a value near a rounding midpoint can round the wrong way, and the tests check only 0.501 ulp. Better: state the bound, or prove the claim with a search of the hard cases.
-
 ## 5. Navigation and vision have no limit on work per tick
 
 The worst case per tick is the metric. These systems let one tick pay for a scan, a rebuild or a search that the other ticks do not.
@@ -85,7 +75,6 @@ These types hold their rules in `expect`s, sentinels or loose fields, not in the
 
 - [ ] **`Delivered` can name any hook** — `capabilities/src/deliveries/delivered.rs:14-15`, `deliveries/mod.rs:133-141`. Only `OnHit` and `OnEnd` are valid, `reached` is set only for a hit, and `run_hooks` reads `_` as `OnEnd`. `Projectile` and `Delivered` also split or copy what `Delivering` holds. Better: `enum Reach { Hit(StableId), End }` and `by: Delivering`.
 - [ ] **A queued launch carries a placeholder group** — `capabilities/src/projectiles/mod.rs:230-235,319-334`, `combat/launches.rs:27-28`. `group: by.source` is overwritten in `launch`, and attack launches take cast numbers they never use. Better: a launch payload with no group, built into `Payload` once the first id is known.
-- [ ] **`Hit::direction` uses a zero vector for "none"** — `capabilities/src/deliveries/hit.rs:13`, `areas/mod.rs:167`, `projectiles/flights.rs:77`. actions.md says "none for an area", but scripts get a zero vector. Better: `Option<Vec3>`.
 - [ ] **`passive` and `held` are two bools that never are both true** — `capabilities/src/stats/modifier_book.rs:195-196`, `stats/modifiers.rs:34-35`. Better: an enum `Applied | Passive | Held`.
 - [ ] **`UnitKit` is built in two phases** — `capabilities/src/mode/unit_kit/mod.rs:49-133`. `new` gives a kit with four blank sections that four `with_*` calls fill, and the runner always calls all four. Better: one constructor.
 - [ ] **Load errors have many shapes** — `package/src/error.rs:140,493-498`. `KindField` stands for about eight rules, five `Repeated*` variants say one thing, and `LoadError` is built by eight closures. Better: one case per rule, `Repeated { of, at, name }`, and `LoadError::new`.
