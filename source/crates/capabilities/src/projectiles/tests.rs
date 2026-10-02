@@ -127,7 +127,6 @@ impl Volley {
             .range
             .unwrap();
         let mut launches = self.world.resource_mut::<Launches>();
-        let cast = launches.cast();
         launches.launches.push(Launch {
             source,
             from: at(0, 0),
@@ -144,7 +143,6 @@ impl Volley {
                 kind: DamageKind::new(0),
                 roll: Num::ZERO,
             },
-            cast,
         });
     }
 

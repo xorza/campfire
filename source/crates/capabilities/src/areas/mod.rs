@@ -13,12 +13,11 @@ use crate::areas::area_effect::AreaEffect;
 use crate::areas::area_launches::{AreaLaunch, AreaLaunches};
 use crate::areas::area_spec::{AreaSpec, Inside};
 use crate::combat::CombatSet;
-use crate::deliveries::delivered::Delivered;
+use crate::deliveries::delivered::{Delivered, Reach};
 use crate::deliveries::delivering::Delivering;
 use crate::deliveries::delivery_spawner::DeliverySpawner;
 use crate::deliveries::{Deliveries, DeliverySet};
 use crate::scripts::frame::Frame;
-use crate::scripts::hook::Hook;
 use crate::stats::StatsSet;
 use crate::stats::held_modifiers::{Held, HeldModifiers};
 use crate::units::body_grid::BodyGrid;
@@ -146,14 +145,7 @@ fn trigger(
             direction: None,
         };
         let by = area.by();
-        let delivered = |hook, reached| Delivered {
-            source: by.source,
-            action: by.action,
-            rank: by.rank,
-            hook,
-            reached,
-            hit,
-        };
+        let delivered = |reach| Delivered { by, reach, hit };
         if area.triggers_at().is_some_and(|at| at <= now) {
             let spec = specs.get(unit_type).expect("an area's type has a spec");
             reached.clear();
@@ -169,14 +161,12 @@ fn trigger(
                 }
             });
             reached.sort_unstable();
-            let hits = reached
-                .iter()
-                .map(|&unit| delivered(Hook::OnHit, Some(unit)));
+            let hits = reached.iter().map(|&unit| delivered(Reach::Hit(unit)));
             deliveries.delivered.extend(hits);
             area.trigger();
         }
         if area.triggers_at().is_none() && area.ends_at() <= now {
-            deliveries.delivered.push(delivered(Hook::OnEnd, None));
+            deliveries.delivered.push(delivered(Reach::End));
             deliveries.ended.push(entity);
         }
     }

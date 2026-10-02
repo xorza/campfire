@@ -19,7 +19,7 @@ pub(crate) struct Launches {
 }
 
 /// A projectile of `unit_type` that `source` launches from `from`, flying as `flight` and
-/// carrying `payload`, of the cast numbered `cast` this tick.
+/// carrying `payload`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Launch {
     pub(crate) source: StableId,
@@ -27,12 +27,11 @@ pub(crate) struct Launch {
     pub(crate) unit_type: UnitType,
     pub(crate) flight: Flight,
     pub(crate) payload: LaunchPayload,
-    pub(crate) cast: u32,
 }
 
 /// What a launch carries: an attack's damage of `kind` and the roll it drew, or the action at
-/// `rank` whose hooks it runs, whose group is the first projectile of its cast, known once that
-/// one spawns.
+/// `rank` whose hooks it runs, of the cast numbered `cast` this tick, whose group is the first
+/// projectile of the cast, known once that one spawns.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LaunchPayload {
     Attack {
@@ -44,6 +43,7 @@ pub(crate) enum LaunchPayload {
     Action {
         action: ActionId,
         rank: u8,
+        cast: u32,
     },
 }
 

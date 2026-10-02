@@ -194,8 +194,8 @@ impl Projectiles {
                 payload: LaunchPayload::Action {
                     action: by.action,
                     rank: by.rank,
+                    cast,
                 },
-                cast,
             }));
     }
 }
@@ -274,11 +274,9 @@ fn fly(
     flights.struck.keep(&flying);
 }
 
-/// Makes each of the tick's shots a launch, a cast of its own, homing on its target from where
-/// its attacker stood.
+/// Makes each of the tick's shots a launch, homing on its target from where its attacker stood.
 fn take_shots(mut shots: ResMut<'_, Shots>, mut launches: ResMut<'_, Launches>) {
     for shot in shots.0.drain(..) {
-        let cast = launches.cast();
         launches.launches.push(Launch {
             source: shot.source,
             from: shot.from,
@@ -293,7 +291,6 @@ fn take_shots(mut shots: ResMut<'_, Shots>, mut launches: ResMut<'_, Launches>) 
                 kind: shot.kind,
                 roll: shot.roll,
             },
-            cast,
         });
     }
 }
@@ -312,12 +309,11 @@ fn launch(mut spawner: DeliverySpawner<'_, '_>, mut launches: ResMut<'_, Launche
         unit_type,
         flight,
         payload,
-        cast,
     } in &launches.launches
     {
         spawner.spawn(source, from, unit_type, |id| {
             let payload = match payload {
-                LaunchPayload::Action { action, rank } => {
+                LaunchPayload::Action { action, rank, cast } => {
                     let first = match group {
                         Some((at, first)) if at == cast => first,
                         _ => {

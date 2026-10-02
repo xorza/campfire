@@ -5,11 +5,11 @@ use crate::actions::targets::Targets;
 use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::pass_queue::PassQueue;
 use crate::deliveries::Deliveries;
-use crate::deliveries::delivered::Delivered;
+use crate::deliveries::delivered::{Delivered, Reach};
+use crate::deliveries::delivering::Delivering;
 use crate::projectiles::projectile::{Flight, Payload, Projectile};
 use crate::projectiles::projectile_spec::ProjectileSpec;
 use crate::projectiles::struck_units::{Struck, StruckUnits};
-use crate::scripts::hook::Hook;
 use crate::units::body_grid::BodyGrid;
 use crate::units::team::Team;
 use crate::values::hit::Hit;
@@ -228,11 +228,12 @@ impl Flights<'_> {
                 hit: Some(hit),
             }),
             Payload::Action { action, rank, .. } => self.deliveries.delivered.push(Delivered {
-                source: projectile.source(),
-                action,
-                rank,
-                hook: Hook::OnHit,
-                reached: Some(target),
+                by: Delivering {
+                    source: projectile.source(),
+                    action,
+                    rank,
+                },
+                reach: Reach::Hit(target),
                 hit,
             }),
         }
@@ -243,11 +244,12 @@ impl Flights<'_> {
     fn end(&mut self, projectile: &Projectile, hit: Hit) {
         if let Payload::Action { action, rank, .. } = projectile.payload() {
             self.deliveries.delivered.push(Delivered {
-                source: projectile.source(),
-                action,
-                rank,
-                hook: Hook::OnEnd,
-                reached: None,
+                by: Delivering {
+                    source: projectile.source(),
+                    action,
+                    rank,
+                },
+                reach: Reach::End,
                 hit,
             });
         }

@@ -307,8 +307,6 @@ Track I:  H4      F3 after unit script state
   - hook arity: C4;
   - damage-kind limit: C3;
 - **R§11:**
-  - `Delivered` hooks: J (`enum Reach`);
-  - placeholder group: D3;
   - `UnitKit`: C5a;
   - `Package` data: C2;
   - load error shapes: C5a;
