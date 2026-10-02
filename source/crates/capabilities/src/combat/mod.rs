@@ -11,7 +11,7 @@ use campfire_sim::{
 };
 
 use crate::actions::action_book::{ActionBook, RankValues};
-use crate::actions::action_slots::ActionSlots;
+use crate::actions::action_slots::{ActionSlots, InProgress};
 use crate::actions::purse::{Payer, Purse};
 use crate::actions::targets::Targets;
 use crate::actions::weapon::Weapon;
@@ -174,19 +174,19 @@ impl Combat {
     /// The target of the attack of a unit with `slots` whose windup ends by `now`, if one does.
     fn going_off(slots: &ActionSlots, now: Tick) -> Option<StableId> {
         let target = slots.attacking()?;
-        let resolves_at = slots.in_progress()?.resolves_at?;
+        let resolves_at = slots.in_progress()?.resolves_at()?;
         (resolves_at <= now).then_some(target)
     }
 
     /// The weapon of the attack under way of a unit with `slots`.
     fn wielded<'a>(book: &'a ActionBook, slots: &ActionSlots) -> Wielded<'a> {
         let underway = slots.in_progress().expect("an attack is under way");
-        let slot = slots.slot(underway.slot).expect("an attack's slot");
+        let slot = slots.slot(underway.slot()).expect("an attack's slot");
         let action = book
             .get(slot.action)
             .expect("a slot's action is in the book");
         Wielded {
-            slot: underway.slot,
+            slot: underway.slot(),
             action: slot.action,
             weapon: action
                 .kind
@@ -434,7 +434,7 @@ fn strike(
         let stats = stats.map_or(&[][..], UnitStats::values);
         let resolves_at = slots
             .in_progress()
-            .and_then(|underway| underway.resolves_at)
+            .and_then(InProgress::resolves_at)
             .expect("an attack going off started");
         let started = Tick::new(resolves_at.get() - values.windup.get());
         let period = weapon.period(stats, rate.hz().get(), values.windup);

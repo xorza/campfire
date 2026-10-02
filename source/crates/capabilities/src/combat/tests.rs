@@ -146,7 +146,7 @@ impl Fight {
         let book = self.world.resource::<ActionBook>();
         let windup = book.get(slot.action).unwrap().ranks[0].windup;
         let started = slots.attacking().and(slots.in_progress());
-        let started = started.and_then(|underway| underway.resolves_at);
+        let started = started.and_then(InProgress::resolves_at);
         Attack {
             target: slots.attack_target(),
             started: started.map(|at| Tick::new(at.get() - windup.get())),
@@ -311,7 +311,7 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
     let healths = |fight: &Fight| targets.map(|target| fight.health(target).unwrap());
     let underway = |fight: &Fight| {
         let slots = fight.get_ref::<ActionSlots>(unit).unwrap();
-        slots.in_progress().map(|underway| underway.slot)
+        slots.in_progress().map(InProgress::slot)
     };
 
     // The air unit, 4 m off, only the air weapon selects: it starts in tick 0 and strikes in

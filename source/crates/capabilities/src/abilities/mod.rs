@@ -15,7 +15,6 @@ use crate::abilities::effect_lists::EffectLists;
 use crate::actions::action_book::{ActionBook, Delivery, DeliveryShape};
 use crate::units::action_id::ActionId;
 
-use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::{ActionSlots, ActionTarget};
 use crate::actions::purse::{Payer, Purse};
 use crate::areas::Areas;
@@ -93,9 +92,8 @@ fn resolve_casts(
         .filter(|(.., slots)| {
             slots
                 .in_progress()
-                .filter(|underway| underway.kind == ActionKind::Cast)
-                .and_then(|casting| casting.resolves_at)
-                .is_some_and(|at| at <= now)
+                .and_then(|underway| underway.cast_due(now))
+                .is_some()
         })
         .map(|(entity, &id, _)| Keyed { id, entity });
     due.clear();
@@ -145,9 +143,10 @@ fn predict_casts(
 ) {
     let now = tick.start();
     for (&team, mut slots, pools, owner, tags) in &mut casters {
-        let Some(casting) = slots.in_progress().filter(|underway| {
-            underway.kind == ActionKind::Cast && underway.resolves_at.is_some_and(|at| at <= now)
-        }) else {
+        let Some(casting) = slots
+            .in_progress()
+            .and_then(|underway| underway.cast_due(now))
+        else {
             continue;
         };
         if UnitTags::effects_of(tags).blocks(Block::Cast) {
@@ -262,7 +261,10 @@ fn prepare(
     };
     let unit = world.entity(entity);
     let slots = unit.get::<ActionSlots>().expect("a due caster has slots");
-    let casting = slots.in_progress().expect("a due caster casts");
+    let casting = slots
+        .in_progress()
+        .and_then(|underway| underway.cast_due(now))
+        .expect("a due caster casts");
     let team = *unit.get::<Team>().expect("a caster has a team");
     let book = world.resource::<ActionBook>();
     let owner = unit.get::<Owner>().map(|owner| owner.slot());

@@ -13,7 +13,8 @@ use crate::actions::Actions;
 use crate::actions::action_data::ActionData;
 use crate::actions::action_data::{CostTarget, Range, RangeField, Targeting};
 use crate::actions::action_data_field::ActionDataField;
-use crate::actions::action_slots::{ActionSlot, InProgress};
+use crate::actions::action_kind::ActionKind;
+use crate::actions::action_slots::{ActionSlot, InProgress, SlotAim};
 use crate::actions::delivery_data::DeliveryData;
 use crate::actions::effect_data::EffectTo;
 use crate::actions::effect_data::{EffectData, Effecting};
@@ -380,7 +381,7 @@ impl Match {
         for &(unit, target) in casts {
             let entity = self.world.resource::<EntityIndex>().get(unit).unwrap();
             let mut slots = self.world.get_mut::<ActionSlots>(entity).unwrap();
-            slots.order(0, ActionKind::Cast, target);
+            slots.order(0, target);
         }
         self.world.run_schedule(SimUpdate);
     }
@@ -436,7 +437,7 @@ impl Match {
         let slots = self.world.get::<ActionSlots>(entity).unwrap();
         slots
             .in_progress()
-            .filter(|underway| underway.kind == ActionKind::Cast)
+            .filter(|underway| matches!(underway, InProgress::Order { .. }))
     }
 
     fn failures(&self) -> &[ScriptFailure] {
@@ -702,17 +703,15 @@ fn a_cast_its_casters_tags_stop_is_kept_and_an_interrupted_one_spends_nothing() 
     let caster = game.caster(strike, 1);
     let enemy = game.spawn(1, at(num(5), Num::ZERO, Num::ZERO), ());
     let target = ActionTarget::Unit(enemy);
-    let order = InProgress {
-        slot: 0,
-        kind: ActionKind::Cast,
-        target,
+    let aim = SlotAim { slot: 0, target };
+    let ordered = Some(InProgress::Order {
+        aim,
         resolves_at: None,
-    };
-    let ordered = Some(order);
+    });
     let started = |tick| {
-        Some(InProgress {
+        Some(InProgress::Order {
+            aim,
             resolves_at: Some(Tick::new(tick)),
-            ..order
         })
     };
     // A stun in tick 7's Move stage, after the casts start in Act and before they resolve in Hit.

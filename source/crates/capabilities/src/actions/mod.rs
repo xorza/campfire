@@ -10,7 +10,7 @@ use crate::actions::action_kind::ActionKind;
 use crate::stats::lifetime::Hold;
 use crate::stats::param_book::ParamBook;
 
-use crate::actions::action_slots::{ActionSlots, ActionTarget, InProgress};
+use crate::actions::action_slots::{ActionSlots, ActionTarget, InProgress, SlotAim};
 use crate::actions::actions_column::ActionsColumn;
 
 use crate::actions::purse::Purse;
@@ -137,19 +137,28 @@ fn start_actions(
         let radius = Body::radius_of(body);
         let living = |id| targets.living(id);
         let attitude = |other| targets.attitude(team, other);
+        let casts = |aim: SlotAim| {
+            let slot = slots
+                .slot(aim.slot)
+                .expect("an order of a slot the unit has");
+            let action = book
+                .get(slot.action)
+                .expect("a slot's action is in the book");
+            action.kind.kind() == ActionKind::Cast
+        };
         match slots.in_progress() {
-            Some(underway) if underway.kind == ActionKind::Cast => {
+            Some(InProgress::Order { aim, resolves_at }) if casts(aim) => {
                 if effects.blocks(Block::Cast) {
-                    if underway.resolves_at.is_some() {
+                    if resolves_at.is_some() {
                         slots.interrupt();
                     }
                     continue;
                 }
-                if underway.resolves_at.is_some() {
+                if resolves_at.is_some() {
                     continue;
                 }
                 let started = book
-                    .check(now, &slots, purse, underway, attitude, living)
+                    .check(now, &slots, purse, aim, attitude, living)
                     .filter(|checked| checked.in_range(position, radius, &targets))
                     .map(|checked| (now.after(checked.values.windup), checked.target));
                 match started {
@@ -157,8 +166,8 @@ fn start_actions(
                     None => slots.stop(),
                 }
             }
-            Some(underway) if underway.kind == ActionKind::Train => {}
-            Some(_) => {
+            Some(InProgress::Order { .. }) => {}
+            Some(InProgress::Attack { .. }) => {
                 if effects.blocks(Block::Attack) {
                     slots.interrupt();
                 } else if slots
@@ -183,14 +192,12 @@ fn start_actions(
                 let Some(slot) = book.weapon_for(&slots, Some(selects)) else {
                     continue;
                 };
-                let underway = InProgress {
+                let aim = SlotAim {
                     slot,
-                    kind: ActionKind::Attack,
                     target: ActionTarget::Unit(target),
-                    resolves_at: None,
                 };
                 let started = book
-                    .check(now, &slots, purse, underway, attitude, living)
+                    .check(now, &slots, purse, aim, attitude, living)
                     .filter(|checked| checked.in_range(position, radius, &targets))
                     .map(|checked| now.after(checked.values.windup));
                 if let Some(resolves_at) = started {

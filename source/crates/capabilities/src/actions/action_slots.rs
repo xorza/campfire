@@ -30,14 +30,30 @@ pub struct ActionSlot {
     pub ready_at: Tick,
 }
 
-/// The action of `kind` in `slot` at `target`: ordered and not checked yet while `resolves_at`
-/// is `None`, then started, to resolve in that tick. An attack is under way only once started.
+/// What a unit has under way: an attack in its windup, or an action it was ordered.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct InProgress {
+pub(crate) enum InProgress {
+    /// The weapon in `slot`, started at `target` from the attack target, to resolve in
+    /// `resolves_at`: an attack is under way only once started.
+    Attack {
+        slot: u8,
+        target: StableId,
+        resolves_at: Tick,
+    },
+    /// The action `aim` names, as ordered: not checked yet while `resolves_at` is `None`, then
+    /// started, to resolve in that tick. Whether it casts or trains is its action's kind, and only
+    /// a cast starts.
+    Order {
+        aim: SlotAim,
+        resolves_at: Option<Tick>,
+    },
+}
+
+/// The action in `slot`, and what it is aimed at.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct SlotAim {
     pub(crate) slot: u8,
-    pub(crate) kind: ActionKind,
     pub(crate) target: ActionTarget,
-    pub(crate) resolves_at: Option<Tick>,
 }
 
 /// What an action is aimed at: nothing, a unit, or a point, which an action that aims at a
@@ -67,6 +83,49 @@ impl ActionTarget {
         match self {
             ActionTarget::Unit(unit) => Some(unit),
             ActionTarget::None | ActionTarget::Point(_) => None,
+        }
+    }
+}
+
+impl InProgress {
+    /// The slot whose action is under way.
+    pub(crate) const fn slot(self) -> u8 {
+        match self {
+            InProgress::Attack { slot, .. }
+            | InProgress::Order {
+                aim: SlotAim { slot, .. },
+                ..
+            } => slot,
+        }
+    }
+
+    /// The slot, to move when slots are added before it.
+    const fn slot_mut(&mut self) -> &mut u8 {
+        match self {
+            InProgress::Attack { slot, .. }
+            | InProgress::Order {
+                aim: SlotAim { slot, .. },
+                ..
+            } => slot,
+        }
+    }
+
+    /// The aim of a started order that resolves by `now`: of a cast, as only a cast starts.
+    pub(crate) fn cast_due(self, now: Tick) -> Option<SlotAim> {
+        match self {
+            InProgress::Order {
+                aim,
+                resolves_at: Some(at),
+            } if at <= now => Some(aim),
+            _ => None,
+        }
+    }
+
+    /// The tick it resolves in, once started.
+    pub(crate) const fn resolves_at(self) -> Option<Tick> {
+        match self {
+            InProgress::Attack { resolves_at, .. } => Some(resolves_at),
+            InProgress::Order { resolves_at, .. } => resolves_at,
         }
     }
 }
@@ -106,10 +165,10 @@ impl ActionSlots {
         });
         self.slots.splice(at..at, added);
         if let Some(underway) = &mut self.underway
-            && usize::from(underway.slot) >= at
+            && usize::from(underway.slot()) >= at
         {
-            let moved = usize::from(underway.slot) + actions.len();
-            underway.slot = u8::try_from(moved).expect("a unit's slots fit u8");
+            let moved = usize::from(underway.slot()) + actions.len();
+            *underway.slot_mut() = u8::try_from(moved).expect("a unit's slots fit u8");
         }
     }
 
@@ -130,12 +189,10 @@ impl ActionSlots {
             .expect("a rank below the action's ranks");
     }
 
-    /// Orders the action in `slot`, of `kind`, in place of any other action not resolved yet.
-    pub(crate) const fn order(&mut self, slot: u8, kind: ActionKind, target: ActionTarget) {
-        self.underway = Some(InProgress {
-            slot,
-            kind,
-            target,
+    /// Orders the action in `slot` at `target`, in place of any other action not resolved yet.
+    pub(crate) const fn order(&mut self, slot: u8, target: ActionTarget) {
+        self.underway = Some(InProgress::Order {
+            aim: SlotAim { slot, target },
             resolves_at: None,
         });
     }
@@ -146,9 +203,13 @@ impl ActionSlots {
 
     /// Starts the ordered cast, to resolve in `resolves_at` at the `target` its check kept.
     pub(crate) const fn start(&mut self, resolves_at: Tick, target: ActionTarget) {
-        if let Some(underway) = &mut self.underway {
-            underway.resolves_at = Some(resolves_at);
-            underway.target = target;
+        if let Some(InProgress::Order {
+            aim,
+            resolves_at: started,
+        }) = &mut self.underway
+        {
+            *started = Some(resolves_at);
+            aim.target = target;
         }
     }
 
@@ -156,11 +217,10 @@ impl ActionSlots {
     /// `resolves_at`.
     pub(crate) const fn start_attack(&mut self, slot: u8, resolves_at: Tick) {
         let target = self.attack_target.expect("an attack starts at its target");
-        self.underway = Some(InProgress {
+        self.underway = Some(InProgress::Attack {
             slot,
-            kind: ActionKind::Attack,
-            target: ActionTarget::Unit(target),
-            resolves_at: Some(resolves_at),
+            target,
+            resolves_at,
         });
     }
 
@@ -168,11 +228,8 @@ impl ActionSlots {
     /// again from its check; an attack starts again from the attack target when it may.
     pub(crate) const fn interrupt(&mut self) {
         match &mut self.underway {
-            Some(InProgress {
-                kind: ActionKind::Attack,
-                ..
-            }) => self.underway = None,
-            Some(underway) => underway.resolves_at = None,
+            Some(InProgress::Attack { .. }) => self.underway = None,
+            Some(InProgress::Order { resolves_at, .. }) => *resolves_at = None,
             None => {}
         }
     }
@@ -190,11 +247,7 @@ impl ActionSlots {
     /// The target of the attack in its windup, if one is.
     pub const fn attacking(&self) -> Option<StableId> {
         match self.underway {
-            Some(InProgress {
-                kind: ActionKind::Attack,
-                target: ActionTarget::Unit(target),
-                ..
-            }) => Some(target),
+            Some(InProgress::Attack { target, .. }) => Some(target),
             _ => None,
         }
     }
@@ -217,8 +270,8 @@ impl ActionSlots {
 impl SimComponent for ActionSlots {
     const NAME: &'static str = "actions.slots";
 
-    // An action the book lacks, a rank past its ranks, or an order of a slot it does not have,
-    // or of another kind than the slot's action, has no rules for a cast to follow.
+    // An action the book lacks, a rank past its ranks, or what is under way of a slot it does
+    // not have, an attack of no weapon or an order of one, has no rules for a cast to follow.
     fn check(&self, world: &World, _: Entity) -> bool {
         let Some(book) = world.get_resource::<ActionBook>() else {
             return self.slots.is_empty() && self.underway.is_none();
@@ -228,9 +281,10 @@ impl SimComponent for ActionSlots {
                 .is_some_and(|action| action.slots_at(slot.rank))
         };
         let underway = self.underway.is_none_or(|underway| {
-            let slot = self.slots.get(usize::from(underway.slot));
-            slot.and_then(|slot| book.get(slot.action))
-                .is_some_and(|action| action.kind.kind() == underway.kind)
+            let slot = self.slots.get(usize::from(underway.slot()));
+            let kind = slot.and_then(|slot| book.get(slot.action));
+            let attacks = matches!(underway, InProgress::Attack { .. });
+            kind.is_some_and(|action| (action.kind.kind() == ActionKind::Attack) == attacks)
         });
         self.slots.len() <= ActionSlots::LIMIT && self.slots.iter().all(held) && underway
     }

@@ -1186,7 +1186,7 @@ fn on_mode_input(ctx, player, name, value) {
         .unwrap();
     let order = |game: &mut Game| {
         let mut slots = game.world.get_mut::<ActionSlots>(producer).unwrap();
-        slots.order(0, ActionKind::Train, ActionTarget::None);
+        slots.order(0, ActionTarget::None);
     };
     let paid = |game: &Game| {
         let mana = game
@@ -2377,7 +2377,7 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     assert!(!slots(strike, u8::MAX).check(world, grunt));
     assert!(!slots(ActionId::nth(u32::MAX), 1).check(world, grunt));
     let mut ordered = slots(strike, 1);
-    ordered.order(1, ActionKind::Cast, ActionTarget::None);
+    ordered.order(1, ActionTarget::None);
     assert!(!ordered.check(world, grunt));
     let mut queue = TrainQueue::new(NonZeroU8::MIN);
     let queued = Queued {

@@ -2,7 +2,6 @@ use bevy_ecs::change_detection::Mut;
 use campfire_math::Num;
 use campfire_sim::{Capability, Position, StableId};
 
-use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::{ActionSlots, ActionTarget};
 use crate::navigation::destination::Destination;
 use crate::navigation::path_walker::PathWalker;
@@ -17,13 +16,9 @@ pub(crate) enum UnitOrder {
     Move { x: Num, z: Num },
     /// Attack `target`, a living enemy a weapon of the unit selects.
     Attack { target: StableId },
-    /// Start the action of `kind`, a cast or a train, in `slot` at `target`, in place of an
-    /// action not resolved yet.
-    Slot {
-        slot: u8,
-        kind: ActionKind,
-        target: ActionTarget,
-    },
+    /// Start the action in `slot`, a cast or a train, at `target`, in place of an action not
+    /// resolved yet.
+    Slot { slot: u8, target: ActionTarget },
     /// Drop the target, and walk the path again.
     FollowPath,
     /// Drop the target, walk to the spawn place off any path, and take no order until there.
@@ -68,7 +63,7 @@ impl UnitOrder {
                 }
                 return false;
             }
-            UnitOrder::Slot { slot, kind, target } => {
+            UnitOrder::Slot { slot, target } => {
                 let target = match target {
                     ActionTarget::Point(point) => {
                         let point = point.get();
@@ -77,7 +72,7 @@ impl UnitOrder {
                     target => target,
                 };
                 if let Some(slots) = &mut slots {
-                    slots.order(slot, kind, target);
+                    slots.order(slot, target);
                 }
                 return false;
             }

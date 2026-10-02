@@ -203,12 +203,8 @@ fn check_player_orders(
                         .and_then(|slots| slots.slot(slot))
                         .and_then(|held| book.get(held.action))
                         .map(|action| action.kind.kind());
-                    match kind {
-                        Some(kind @ (ActionKind::Cast | ActionKind::Train)) => {
-                            Some(UnitOrder::Slot { slot, kind, target })
-                        }
-                        _ => None,
-                    }
+                    matches!(kind, Some(ActionKind::Cast | ActionKind::Train))
+                        .then_some(UnitOrder::Slot { slot, target })
                 }
             };
             let entity = index.get(order.unit).expect("a unit the index named");

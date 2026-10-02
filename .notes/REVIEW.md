@@ -30,7 +30,6 @@ Each item is a second copy of data that one book owns. The copies are kept in li
 - [ ] **Package data is copied into match state** — `capabilities/src/mode/player_resources.rs:14`, `production/train_queue.rs:14`. `PlayerResources.resources` and `TrainQueue.capacity` are package data, hashed and snapshotted. Better: read each from its book.
 - [ ] **The level track's level is stored twice** — `capabilities/src/progression/mod.rs:84-88`, `progression/experience.rs:21-25`. It is in `Experience` and in `Level`, and nothing checks that they agree. Better: `Experience` keeps only the experience for the level track.
 - [ ] **A unit type's tags are stored twice** — `capabilities/src/units/unit_types.rs:33-37,91-95,139-145`, `units/tag_book.rs:22`. After the copy into `TagBook`, production reads only that copy, and a later `give_tag` would diverge. `TagBook.type_tags` is a `ByType` though every type has tags. Better: one store, a `Vec<TagSet>` by type.
-- [ ] **A cast's kind is copied into state** — `capabilities/src/actions/action_slots.rs:35`, `actions/mod.rs:214-215`. `InProgress.kind` copies the book, and `start_actions` matches `Some(_)` as an attack, so a new kind would run as an attack. Better: read the kind from the book.
 
 ## 8. Capabilities import across layers
 

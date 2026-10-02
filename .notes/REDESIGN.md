@@ -218,14 +218,13 @@ capability_set, books
 
 ### Problem
 
-- Components hold copies of what the books hold: a queue's capacity, the players' resource count, an order's kind, and a level beside the level track's experience.
+- Components hold copies of what the books hold: a queue's capacity, the players' resource count, and a level beside the level track's experience.
 
 ### Shape
 
 - **Book data leaves the state** (R1):
   - `TrainQueue` reads its capacity from the kit, and stores each entry's time at push;
   - `PlayerResources` reads its count from the books;
-  - `InProgress` reads its kind from the book;
   - `Experience` keeps only experience for the level track, and `Level` alone holds the level.
 - **Flat storage.** The nested `Vec`s of `Modifiers` become one flat buffer per carrier with ranges. This is possible once the book data leaves the instance.
 

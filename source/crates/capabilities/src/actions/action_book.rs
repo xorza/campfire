@@ -9,7 +9,7 @@ use campfire_sim::{Position, StableId, TickRate};
 use crate::actions::action_data::{ActionData, CostTarget, Range, Targeting};
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_names::ActionNames;
-use crate::actions::action_slots::{ActionSlots, ActionTarget, InProgress};
+use crate::actions::action_slots::{ActionSlots, ActionTarget, SlotAim};
 use crate::actions::delivery_data::DeliveryData;
 use crate::actions::error::ActionError;
 use crate::actions::kind_spec::KindSpec;
@@ -244,7 +244,7 @@ impl ActionBook {
         self.actions.get(id.index())
     }
 
-    /// The action `underway` of a unit with `slots`, when it may go on: its slot holds a learned
+    /// The action `aim` names of a unit with `slots`, when it may go on: its slot holds a learned
     /// action that is ready, `purse` affords its cost in each pool and player resource, and its
     /// target is a living unit the action's filter selects, or the action takes none, which drops
     /// any target the order named. `attitude` tells how the unit regards a team, and `living`
@@ -254,18 +254,18 @@ impl ActionBook {
         now: Tick,
         slots: &ActionSlots,
         purse: Purse<'_>,
-        underway: InProgress,
+        aim: SlotAim,
         attitude: impl Fn(Team) -> Attitude,
         living: impl Fn(StableId) -> Option<LivingUnit>,
     ) -> Option<Checked<'_>> {
-        let slot = slots.slot(underway.slot).filter(|slot| slot.rank > 0)?;
+        let slot = slots.slot(aim.slot).filter(|slot| slot.rank > 0)?;
         let action = self.get(slot.action)?;
         let values = action.values(slot.rank);
         let affords = purse.affords(&values.cost, action.resource_cost(slot.rank));
         if now < slot.ready_at || !affords {
             return None;
         }
-        let target = match (action.aim, underway.target) {
+        let target = match (action.aim, aim.target) {
             (Aim::None, _) => ActionTarget::None,
             (Aim::Point | Aim::Direction, ActionTarget::Point(at)) => ActionTarget::Point(at),
             (Aim::Unit(filter), ActionTarget::Unit(target))

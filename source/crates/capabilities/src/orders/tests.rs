@@ -8,7 +8,7 @@ use campfire_sim::{Capability, IdAllocator, SimUpdate, TickInput, TypeHash};
 
 use super::*;
 use crate::actions::action_book::internals::{self, TestWeapon};
-use crate::actions::action_slots::ActionTarget;
+use crate::actions::action_slots::{ActionTarget, InProgress, SlotAim};
 use crate::actions::slot_kind::SlotKind;
 use crate::capability_set::internals::TestMatch;
 use crate::combat::armed::Armed;
@@ -340,7 +340,7 @@ impl Match {
     fn strikes_at(&self, id: StableId) -> Option<Tick> {
         self.slots(id)
             .in_progress()
-            .and_then(|underway| underway.resolves_at)
+            .and_then(InProgress::resolves_at)
     }
 
     /// When its weapon may attack again.
@@ -463,7 +463,7 @@ fn a_slot_order_starts_a_cast_or_a_train_and_no_other_kind() {
     let entity = game.world.resource::<EntityIndex>().get(hero).unwrap();
     let mut slots = game.world.get_mut::<ActionSlots>(entity).unwrap();
     slots.grant(SlotKind::new(0), &[train], 1);
-    let ordered = |game: &Match| game.slots(hero).in_progress().map(|underway| underway.kind);
+    let ordered = |game: &Match| game.slots(hero).in_progress();
     let slot = |slot| {
         Order::payload(&[Order {
             unit: hero,
@@ -475,9 +475,16 @@ fn a_slot_order_starts_a_cast_or_a_train_and_no_other_kind() {
     };
     // The weapon's slot and a slot it does not have order nothing; the train's orders a train,
     // which no capability here starts.
-    for (at, kind) in [(0, None), (7, None), (1, Some(ActionKind::Train))] {
+    let train_order = InProgress::Order {
+        aim: SlotAim {
+            slot: 1,
+            target: ActionTarget::None,
+        },
+        resolves_at: None,
+    };
+    for (at, order) in [(0, None), (7, None), (1, Some(train_order))] {
         game.tick(&[(0, &slot(at))]);
-        assert_eq!(ordered(&game), kind, "slot {at}");
+        assert_eq!(ordered(&game), order, "slot {at}");
     }
 }
 

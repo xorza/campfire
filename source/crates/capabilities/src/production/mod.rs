@@ -10,7 +10,7 @@ use campfire_sim::{
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_kind::ActionKind;
-use crate::actions::action_slots::{ActionSlots, InProgress};
+use crate::actions::action_slots::{ActionSlots, InProgress, SlotAim};
 use crate::actions::kind_spec::KindSpec;
 use crate::actions::purse::{Payer, Purse};
 use crate::combat::CombatSet;
@@ -100,11 +100,18 @@ impl Production {
         }
     }
 
-    /// The train `slots` hold ordered, not yet checked.
-    fn ordered(slots: &ActionSlots) -> Option<InProgress> {
-        slots
-            .in_progress()
-            .filter(|underway| underway.kind == ActionKind::Train)
+    /// The train `slots` hold ordered, not yet checked, whose action `book` says trains.
+    fn ordered(slots: &ActionSlots, book: &ActionBook) -> Option<SlotAim> {
+        let Some(InProgress::Order {
+            aim,
+            resolves_at: None,
+        }) = slots.in_progress()
+        else {
+            return None;
+        };
+        let slot = slots.slot(aim.slot)?;
+        let trains = book.get(slot.action)?.kind.kind() == ActionKind::Train;
+        trains.then_some(aim)
     }
 
     /// The time `queued` takes, at its rank.
@@ -140,12 +147,12 @@ fn start_trains(
 ) {
     let now = tick.start();
     let trains = units.iter().filter_map(|(entity, &id, slots, ..)| {
-        Production::ordered(slots).map(|_| Keyed { id, entity })
+        Production::ordered(slots, &book).map(|_| Keyed { id, entity })
     });
     for &Keyed { entity, .. } in order.sort(trains) {
         let (_, _, mut slots, mut queue, mut pools, owner) =
             units.get_mut(entity).expect("a unit in the order");
-        let ordered = Production::ordered(&slots).expect("an ordered train");
+        let ordered = Production::ordered(&slots, &book).expect("an ordered train");
         slots.stop();
         let owner = owner.map(|owner| owner.slot());
         let purse = Purse {
