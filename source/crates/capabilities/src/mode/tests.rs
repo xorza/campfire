@@ -671,6 +671,8 @@ impl Game {
         };
         let (grunt_type, tower_type) = (load("grunt", "grunt"), load("tower", "tower"));
         let (x, y) = (load("hero-x", "avatar"), load("hero-y", "avatar"));
+        // A type outside the mode's kits, as a projectile's is: the view knows it, a spawn does not.
+        load("bolt", "projectile");
         let blink = blink_data();
         // A spell has one rank; hero X's ability, 2.
         let strike = Actions::load(&mut world, 0, "strike", &blink, None, 2).unwrap();
@@ -1418,12 +1420,16 @@ fn on_mode_input(ctx, player, name, value) {
 
 #[test]
 fn a_mode_whose_start_fails_starts_no_match() {
-    let failing = "fn on_match_start(ctx) { ctx.spawn_unit(\"ghost\", \"a\", ctx.map.markers(\"camp\")[0].pos); }";
-    let failed = Game::start(failing, LIMITS, mode_files()).err();
-    assert!(
-        matches!(failed, Some(CallError::Api(ApiError::UnknownUnitType))),
-        "{failed:?}"
-    );
+    for unit_type in ["ghost", "bolt"] {
+        let failing = format!(
+            "fn on_match_start(ctx) {{ ctx.spawn_unit(\"{unit_type}\", \"a\", ctx.map.markers(\"camp\")[0].pos); }}"
+        );
+        let failed = Game::start(&failing, LIMITS, mode_files()).err();
+        assert!(
+            matches!(failed, Some(CallError::Api(ApiError::UnknownUnitType))),
+            "{unit_type}: {failed:?}"
+        );
+    }
 }
 
 #[test]

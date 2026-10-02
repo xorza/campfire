@@ -1738,3 +1738,34 @@ fn an_area_reaches_the_bodies_within_its_radius_once_at_its_delay_and_ends() {
         assert!(game.failures().is_empty(), "{:?}", game.failures());
     }
 }
+
+#[test]
+fn a_cast_under_way_ends_when_its_caster_dies() {
+    // Strike with a windup of 200 ms, 6 ticks: cast in tick 0, it would resolve in tick 6. The
+    // caster dies in tick 2 and comes back in tick 4, before the cast's time, and the cast is
+    // gone: the enemy takes nothing, then or later.
+    let mut game = Match::new();
+    let windup = ActionData {
+        windup_ms: Some(Ranked::One(int(200))),
+        ..strike()
+    };
+    let strike = game.load("strike", &windup, STRIKE);
+    let caster = game.caster(strike, 1);
+    let enemy = game.spawn(1, at(num(3), Num::ZERO, Num::ZERO), ());
+    game.cast(caster, ActionTarget::Unit(enemy));
+    assert!(game.casting(caster).is_some());
+    game.run_until(2);
+    let entity = game.world.resource::<EntityIndex>().get(caster).unwrap();
+    game.world
+        .get_mut::<Pools>(entity)
+        .unwrap()
+        .take(PoolId::FIRST, num(500));
+    game.run_until(3);
+    assert!(game.world.entity(entity).contains::<Dead>());
+    assert_eq!(game.casting(caster), None);
+    game.world.entity_mut(entity).remove::<Dead>();
+    game.give_pools(caster, 100, 20);
+    game.run_until(12);
+    assert_eq!(game.health(enemy), 500);
+    assert_eq!(game.pool(caster), 100);
+}

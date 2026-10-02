@@ -518,13 +518,15 @@ impl ModeApi {
         Ok(!(choice.unique && taken))
     }
 
-    fn unit_type(ctx: &Ctx, name: &str) -> Checked<UnitType> {
+    /// The unit type `name` that `book` can spawn: one with a kit. A projectile or an area type
+    /// has none, as only actions deliver its units.
+    fn unit_type(ctx: &Ctx, book: &ModeBook, name: &str) -> Checked<UnitType> {
         ctx.view()
             .unit_type(name)
+            .filter(|&unit_type| book.kit(unit_type).is_some())
             .ok_or_else(|| ApiError::UnknownUnitType.fail().into())
     }
 
-    /// Queues a unit of `unit_type` on `team` at `pos`, which is within the map's bounds.
     /// Queues the spawn of a unit of `unit_type` on `team` at `pos`, owned by `player` if it
     /// names one: the new unit, with the id the call takes for it.
     fn spawn_unit(
@@ -539,7 +541,7 @@ impl ModeApi {
         if !book.bounds.contains(pos) {
             return Err(ApiError::OutOfBounds.fail().into());
         }
-        let unit_type = ModeApi::unit_type(ctx, unit_type)?;
+        let unit_type = ModeApi::unit_type(ctx, book, unit_type)?;
         let team = ModeApi::team(book, team)?;
         let owner = player
             .map(|player| ModeApi::player(book, player))
@@ -614,8 +616,8 @@ impl ModeApi {
             .iter()
             .map(|name| {
                 let name = name.clone().into_immutable_string().ok();
-                name.and_then(|name| ctx.view().unit_type(&name))
-                    .ok_or_else(|| ApiError::UnknownUnitType.fail().into())
+                let name = name.ok_or_else(|| ApiError::UnknownUnitType.fail())?;
+                ModeApi::unit_type(ctx, book, &name)
             })
             .collect::<Checked<Vec<UnitType>>>()?;
         let mut frame = ctx.write()?;

@@ -60,6 +60,14 @@ impl<'a> LoadCheck<'a> {
         let units = &packages.units.units;
         let mut unit_types = units.len();
         for dependent in &packages.dependencies {
+            let ids = dependent.units().keys();
+            if let Some(name) = [&dependent.package.name]
+                .into_iter()
+                .chain(ids)
+                .find(|name| name.contains('/'))
+            {
+                return Err(fail(LoadProblem::Slash(name.clone())));
+            }
             let avatar = matches!(dependent.content, Content::Avatar(_))
                 .then(|| dependent.package.name.clone());
             let deliveries = dependent.units().keys();
@@ -879,7 +887,8 @@ impl<'a> LoadCheck<'a> {
     }
 
     /// The pools a unit type at `at` lists: each declared, none twice, and the life pool among
-    /// them when it has `combat`.
+    /// them exactly when it has `combat`: with it, it dies at zero life; without it, it would
+    /// stay a target at zero life forever.
     fn unit_pools(
         &self,
         pools: &[DeclaredName],
@@ -905,9 +914,16 @@ impl<'a> LoadCheck<'a> {
                 });
             }
         }
-        let life = data.combat.life.as_ref();
-        if combat && !life.is_some_and(|life| pools.contains(life)) {
+        let lives = data
+            .combat
+            .life
+            .as_ref()
+            .is_some_and(|life| pools.contains(life));
+        if combat && !lives {
             return Err(LoadProblem::LifePoolMissing(at.clone()));
+        }
+        if lives && !combat {
+            return Err(LoadProblem::CombatMissing(at.clone()));
         }
         Ok(())
     }

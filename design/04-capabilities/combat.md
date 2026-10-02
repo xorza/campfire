@@ -17,7 +17,7 @@ leech = { attack = "life_steal", other = "spell_vamp" } # optional: stats that h
 heal_scale = "healing_received_pct"                    # optional: heals scale by one plus this stat
 ```
 
-A unit type: `pools` that hold the life pool, `combat = { on_death = "stay" }` (`stay` or `despawn`, the default), and its weapons in its action slots. A weapon is an action of kind `attack`:
+A unit type: `pools` that hold the life pool, `combat = { on_death = "stay" }` (`stay` or `despawn`, the default), and its weapons in its action slots. A unit type with the life pool needs its `combat` section, so that every unit that can reach zero life can die; the load refuses one without it. A weapon is an action of kind `attack`:
 
 ```toml
 [actions.tank_cannon]
@@ -54,7 +54,7 @@ delivery = { projectile = "cannon_shell" }   # a unit type with a homing `projec
 
 ### Death and respawn
 
-- **Death.** A unit at zero life dies at the end of Resolve. A unit type says whether it stays dead to respawn, as heroes do, or despawns, as creeps do; one that despawns goes at the end of the tick it died in, after the Mode stage saw it. A dead unit takes no orders, starts no action and is no target.
+- **Death.** A unit at zero life dies at the end of Resolve. A unit type says whether it stays dead to respawn, as heroes do, or despawns, as creeps do; one that despawns goes at the end of the tick it died in, after the Mode stage saw it. A dead unit takes no orders, starts no action and is no target; its death stops its actions under way, ordered or started, as a stop order does.
 - **Kill credit.** The source whose damage took the life to zero is the killer, when it still exists. The other units that damaged the victim within the mode's `[combat] assist_window_ms` assisted, by stable id; without a window no one assisted. The mode receives both in `on_unit_died`, in the Mode stage of the tick, in the order the units died.
 - **Respawn.** Each unit keeps the place it spawned at. `ctx.respawn(unit, ms)` brings a dead unit that stays back at the start of the tick that time later, rounded up and at least one tick after the end of the current one: at its spawn place, with full pools and no attacker on record.
 

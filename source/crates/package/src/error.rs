@@ -152,6 +152,9 @@ pub enum LoadProblem {
     LevelTracks,
     /// An avatar or a dependency's delivery type has the name of one of the mode's unit types.
     RepeatedUnitType(String),
+    /// A dependency's name, or the id of one of its delivery types, holds `/`, which joins the
+    /// two in a match unit type's name.
+    Slash(String),
     /// A per-rank array of an ability has another length than its ranks.
     RankCount { action: String, ranks: u8 },
     /// A script file no data names.
@@ -195,6 +198,9 @@ pub enum LoadProblem {
     NoLifePool,
     /// A unit type at `at` has a `combat` section but not the life pool.
     LifePoolMissing(Place),
+    /// A unit type at `at` has the life pool but no `combat` section, so it could reach zero
+    /// life and never die.
+    CombatMissing(Place),
     /// The mode declares a name twice in one of its lists.
     RepeatedName(DeclaredName),
     /// A projectile or an area type, or what delivers or makes one.
@@ -478,6 +484,7 @@ impl fmt::Display for LoadProblem {
             LoadProblem::RepeatedUnitType(name) => {
                 write!(f, "two unit types are named {name:?}")
             }
+            LoadProblem::Slash(name) => write!(f, "the name {name:?} holds `/`"),
             LoadProblem::NoDamageKinds => {
                 f.write_str("the mode declares combat, and no damage kinds")
             }
@@ -542,6 +549,7 @@ impl fmt::Display for LoadProblem {
             LoadProblem::Choice(problem) => write!(f, "{problem}"),
             LoadProblem::NoLifePool => f.write_str("combat with no [combat] life"),
             LoadProblem::LifePoolMissing(at) => write!(f, "{at}: combat without the life pool"),
+            LoadProblem::CombatMissing(at) => write!(f, "{at}: the life pool without combat"),
             LoadProblem::RepeatedName(name) => write!(f, "the mode declares {name:?} twice"),
             LoadProblem::Delivery(problem) => write!(f, "{problem}"),
             LoadProblem::StateSync(field) => write!(f, "state {field:?}: sync where it has none"),

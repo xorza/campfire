@@ -174,7 +174,7 @@ fn more_tracks_than_a_unit_holds_fail_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 138] = [
+const FLAWS: [Flaw; 141] = [
     flaw(
         MANIFEST,
         Edit::Replace(r#"engine = "0.1.0""#, r#"engine = "0.0.9""#),
@@ -469,6 +469,22 @@ const FLAWS: [Flaw; 138] = [
         MODE,
         |problem| matches!(problem, LoadProblem::RepeatedUnitType(name) if name == "hero-husk/grasping_wraps"),
     ),
+    flaw(
+        HUSK,
+        Edit::Replace("[units.grasping_wraps]", "[units.\"x/grasping_wraps\"]"),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Slash(name) if name == "x/grasping_wraps"),
+    ),
+    Flaw {
+        file: MANIFEST,
+        edit: Edit::Replace("hero-husk = {", "\"hero/husk\" = {"),
+        also: &[(
+            "heroes/husk/manifest.toml",
+            Edit::Replace("name = \"hero-husk\"", "name = \"hero/husk\""),
+        )],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::Slash(name) if name == "hero/husk"),
+    },
     flaw(
         MANIFEST,
         Edit::Replace(r#""projectiles", "#, ""),
@@ -861,6 +877,12 @@ const FLAWS: [Flaw; 138] = [
         Edit::Replace("pools = [\"health\"]\n", ""),
         MODE,
         |problem| matches!(problem, LoadProblem::LifePoolMissing(Place::UnitType(name)) if name == "melee_creep"),
+    ),
+    flaw(
+        UNITS,
+        Edit::Replace("combat = { on_death = \"stay\" }\n", ""),
+        MODE,
+        |problem| matches!(problem, LoadProblem::CombatMissing(Place::UnitType(name)) if name == "inhibitor"),
     ),
     flaw(
         HUSK,

@@ -731,8 +731,9 @@ fn scaled(amount: Num, ratio: Num) -> Num {
     })
 }
 
-/// A unit at zero life dies, and the Mode stage learns of it; one no strike took there died
-/// with no killer.
+/// A unit at zero life dies: its attack target, and the action it ordered or has under way, end,
+/// so nothing it began goes on after a respawn, and the Mode stage learns of it; one no strike
+/// took there died with no killer.
 fn die(
     mut commands: Commands<'_, '_>,
     bindings: Res<'_, CombatBindings>,
@@ -757,6 +758,7 @@ fn die(
         }
         if let Some(mut slots) = slots {
             slots.set_attack_target(None);
+            slots.stop();
         }
         commands.entity(entity).insert(Dead);
         if !deaths.contains(id) {
