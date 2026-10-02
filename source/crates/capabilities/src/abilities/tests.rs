@@ -5,7 +5,7 @@ use bevy_ecs::bundle::Bundle;
 use campfire_content::PackagePath;
 use campfire_math::{Num, PlayerSlot, Vec3};
 use campfire_script::{NumError, ScriptError};
-use campfire_sim::{Capability, EntityIndex, SimUpdate, StateHash};
+use campfire_sim::{Capability, EntityIndex, StateHash};
 
 use super::*;
 use crate::actions::Actions;
@@ -286,11 +286,7 @@ impl Match {
     /// A match of two players of `declared`, whose scripts run within `limits`, and who hold
     /// gold, as a mode would keep it.
     fn with(limits: ScriptLimits, declared: &[Capability]) -> Match {
-        let mut sim = TestMatch::new(
-            declared,
-            TestMatch::RATE,
-            Some(ScriptBudgets::new(limits, 2)),
-        );
+        let mut sim = TestMatch::server(declared, ScriptBudgets::new(limits, 2));
         // The damage kinds a mode would declare: the reference MOBA's.
         Units::name_kinds(
             &sim.world,
@@ -692,16 +688,8 @@ fn a_cast_its_casters_tags_stop_is_kept_and_an_interrupted_one_spends_nothing() 
         })
     };
     // A stun in tick 7's Move stage, after the casts start in Act and before they resolve in Hit.
-    let caster_entity = game.sim.entity(caster);
-    let stun = move |tick: Res<'_, SimTick>, mut tags: Query<'_, '_, &mut UnitTags>| {
-        if tick.start() == Tick::new(7) {
-            *tags.get_mut(caster_entity).unwrap() =
-                UnitTags::blocking(&[Block::Move, Block::Attack, Block::Cast, Block::Use]);
-        }
-    };
-    game.sim.world.schedule_scope(SimUpdate, |_, schedule| {
-        schedule.add_systems(stun.in_set(SimSet::Move));
-    });
+    let stunned = &[Block::Move, Block::Attack, Block::Cast, Block::Use];
+    game.sim.block_at(caster, 7, SimSet::Move, stunned);
 
     // Silenced in tick 0 and 1: the order is kept, and not started.
     game.sim.set_blocks(caster, &[Block::Cast]);

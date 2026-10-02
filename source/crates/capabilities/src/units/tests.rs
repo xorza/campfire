@@ -54,11 +54,7 @@ impl Scene {
     fn new() -> Scene {
         let limits = ScriptLimits::ROOMY;
         let scripts = ScriptBudgets::new(limits, 1);
-        let sim = TestMatch::new(
-            &[Capability::Stats, Capability::Combat],
-            TestMatch::RATE,
-            Some(scripts),
-        );
+        let sim = TestMatch::server(&[Capability::Stats, Capability::Combat], scripts);
         Units::name_kinds(&sim.world, &[], &["health", "mana"], &[]);
         Scene { sim }
     }

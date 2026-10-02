@@ -2,7 +2,7 @@ use bevy_ecs::system::RunSystemOnce;
 use std::collections::BTreeMap;
 
 use campfire_math::{Num, PlayerSlot, RngSource, SegmentSeed, Ticks, Vec3};
-use campfire_sim::{Capability, EntityIndex, SimUpdate, TypeHash};
+use campfire_sim::{Capability, EntityIndex};
 
 use super::*;
 use crate::actions::action_book::internals::{self, TestWeapon};
@@ -16,6 +16,8 @@ use crate::combat::internals::Armed;
 use crate::combat::pass_queue::PassEntry;
 use crate::combat::recent_attack::RecentAttack;
 use crate::players::resource_id::ResourceId;
+use crate::scripts::script_budgets::ScriptBudgets;
+use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::Stats;
 use crate::stats::application::{Application, NewInstance};
 use crate::stats::lifetime::{Ends, Lifetime};
@@ -91,11 +93,8 @@ struct Fight {
 
 impl Fight {
     fn new() -> Fight {
-        let sim = TestMatch::new(
-            &[Capability::Stats, Capability::Combat],
-            TestMatch::RATE,
-            None,
-        );
+        let budgets = ScriptBudgets::new(ScriptLimits::ROOMY, 1);
+        let sim = TestMatch::server(&[Capability::Stats, Capability::Combat], budgets);
         Fight { sim }
     }
 
@@ -338,16 +337,8 @@ fn a_windup_its_attackers_states_stop_starts_again_and_spends_nothing() {
     // Both start in tick 0, to strike in tick 2. The early one is disarmed before tick 1: Act
     // interrupts its windup and keeps its target. The late one is stunned in tick 2's Move
     // stage, after Act, so its strike in Hit is interrupted instead.
-    let late_entity = fight.sim.entity(late);
-    let stun = move |tick: Res<'_, SimTick>, mut tags: Query<'_, '_, &mut UnitTags>| {
-        if tick.start() == Tick::new(2) {
-            *tags.get_mut(late_entity).unwrap() =
-                UnitTags::blocking(&[Block::Move, Block::Attack, Block::Cast, Block::Use]);
-        }
-    };
-    fight.sim.world.schedule_scope(SimUpdate, |_, schedule| {
-        schedule.add_systems(stun.in_set(SimSet::Move));
-    });
+    let stunned = &[Block::Move, Block::Attack, Block::Cast, Block::Use];
+    fight.sim.block_at(late, 2, SimSet::Move, stunned);
     fight.sim.set_blocks(late, &[]);
     fight.sim.run_until(1);
     fight.sim.set_blocks(early, &[Block::Attack]);
@@ -567,10 +558,7 @@ fn every_combat_type_is_state_and_restores() {
     fight.sim.run_until(3);
     assert!(fight.sim.try_get::<Dead>(doomed).is_some());
 
-    let registry = &fight.sim.registry;
-    let mut per_type = Vec::new();
-    let hash = registry.hash_by_type(&fight.sim.world, &mut per_type);
-    let names: Vec<_> = per_type.iter().map(|TypeHash { name, .. }| *name).collect();
+    let names = fight.sim.state_names();
     assert_eq!(
         names,
         [
@@ -598,18 +586,13 @@ fn every_combat_type_is_state_and_restores() {
         ]
     );
 
-    let mut snapshot = Vec::new();
-    registry.snapshot(&fight.sim.world, &mut snapshot);
     // A restore loads the match's books first, as the packages give them: the same weapons, in
     // the same order.
     let mut restored = Fight::new();
     let _weapon = self::fighter().bundle(&mut restored.sim.world, Team::new(0));
     let doomed_kind = combatant(30, 0, 0, 1, 0).on_death(OnDeath::Stay);
     let _weapon = doomed_kind.bundle(&mut restored.sim.world, Team::new(1));
-    registry
-        .restore(&snapshot, &mut restored.sim.world)
-        .unwrap();
-    assert_eq!(registry.hash(&restored.sim.world), hash);
+    fight.sim.restore_into(&mut restored.sim);
     assert_eq!(
         restored.sim.try_get::<ActionSlots>(fighter),
         fight.sim.try_get::<ActionSlots>(fighter)

@@ -2,7 +2,7 @@ use bevy_ecs::bundle::Bundle;
 use bevy_ecs::change_detection::DetectChanges;
 use campfire_content::PackagePath;
 use campfire_math::{Num, PlayerSlot, Vec3};
-use campfire_sim::{Capability, Command, TickInput, TypeHash};
+use campfire_sim::{Capability, Command, TickInput};
 
 use super::*;
 use crate::actions::action_book::internals::{self, TestWeapon};
@@ -197,7 +197,7 @@ impl Match {
             Capability::Navigation,
             Capability::Orders,
         ];
-        let mut sim = TestMatch::new(&declared, TestMatch::RATE, Some(scripts));
+        let mut sim = TestMatch::server(&declared, scripts);
         sim.world.insert_resource(paths);
         Match { sim }
     }
@@ -1167,10 +1167,7 @@ fn every_orders_type_is_state_and_restores() {
     game.tick(&[(0, &move_to(fighter, 0, 3))]);
     game.sim.insert(still, Resetting);
 
-    let registry = &game.sim.registry;
-    let mut per_type = Vec::new();
-    let hash = registry.hash_by_type(&game.sim.world, &mut per_type);
-    let names: Vec<_> = per_type.iter().map(|TypeHash { name, .. }| *name).collect();
+    let names = game.sim.state_names();
     for name in [
         "units.owner",
         "units.team",
@@ -1180,16 +1177,11 @@ fn every_orders_type_is_state_and_restores() {
         assert!(names.contains(&name), "{name}");
     }
 
-    let mut snapshot = Vec::new();
-    registry.snapshot(&game.sim.world, &mut snapshot);
     // A restore loads the match's books first: the same weapons, in the same order.
     let mut restored = Match::new();
     let _weapon = restored.arm(fighter_stats(), Team::new(0));
     let _weapon = restored.arm(fighter_stats(), Team::new(1));
-    registry
-        .restore(&snapshot, &mut restored.sim.world)
-        .unwrap();
-    assert_eq!(registry.hash(&restored.sim.world), hash);
+    game.sim.restore_into(&mut restored.sim);
     assert_eq!(restored.destination(fighter), Some(at(0, 0, 3)));
     assert!(restored.sim.try_get::<Resetting>(still).is_some());
 }

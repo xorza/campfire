@@ -127,7 +127,7 @@ fn stats(values: &[(Stat, Num, Num)]) -> StatsData {
 
 /// A match with the stats capability and a book of `types`, with a move speed cap of 6.
 fn stat_match(types: &[StatsData]) -> TestMatch {
-    let mut game = TestMatch::new(&[Capability::Stats], TestMatch::RATE, None);
+    let mut game = TestMatch::client(&[Capability::Stats]);
     let types = types.iter().enumerate().map(|(at, data)| {
         let unit_type = UnitType::new(u16::try_from(at).unwrap());
         (unit_type, data)
@@ -492,7 +492,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     let data = modifier_data;
     let limits = ScriptLimits::ROOMY;
     let scripts = ScriptBudgets::new(limits, 1);
-    let mut game = TestMatch::new(&[Capability::Stats], TestMatch::RATE, Some(scripts));
+    let mut game = TestMatch::server(&[Capability::Stats], scripts);
     let book = StatBook::new(&rules(), [], num(6));
     Stats::load(&mut game.world, book, PoolBook::default());
     // A presence of 2 m on allies, holding `inspired`.
@@ -580,7 +580,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
 fn a_modifier_another_capability_holds_lasts_only_its_tick() {
     let limits = ScriptLimits::ROOMY;
     let scripts = ScriptBudgets::new(limits, 1);
-    let mut game = TestMatch::new(&[Capability::Stats], TestMatch::RATE, Some(scripts));
+    let mut game = TestMatch::server(&[Capability::Stats], scripts);
     let book = StatBook::new(&rules(), [], num(6));
     Stats::load(&mut game.world, book, PoolBook::default());
     Stats::load_modifier(&mut game.world, 0, "inspired", &modifier_data(None), None);

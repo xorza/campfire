@@ -31,9 +31,6 @@ Today `TestMatch` (`capability_set/mod.rs:128-173`) only builds a world. Each mo
 
 The schedule is a separate field only because `Mode::install` needs it (`mode/tests.rs:684`). `world.schedule_scope(SimUpdate, ..)` gives that access, and `abilities:646` and `combat:378` already use it.
 
-- [ ] **The rest of the shape** — `TestMatch` (`capability_set/test_match.rs`) now holds the world with its schedule and the registry, and gives `RATE`, `install`, `spawn`, `entity`, `get`, `try_get`, `get_mut`, `insert`, `set_blocks`, `now`, `step`, `run_until`, `probe` and `read`; every module harness holds one as `sim`. Still open:
-  - `client(declared)` and `server(declared, scripts)` in place of `new`'s `Option`, so the script host is visible. Combat, projectiles and stats run only as a client today: no `ModifierHooks`, and no combat or projectiles test runs the server configuration.
-  - `block_at`, `state_names` and `round_trip`, which asserts equal hashes; the state tests of each module write these again.
 - [ ] **In-crate tests do not use the exported helpers** — `Match::give_from` uses `give_modifier` now. Still open:
   - `StatBook::new(..) + Stats::load` at the abilities scaling tests, where `stats::loads::load_stats` fits the ones with no type growth;
   - `Modifiers::get` by hand in abilities, where `carried` fits a check of every modifier a unit carries.

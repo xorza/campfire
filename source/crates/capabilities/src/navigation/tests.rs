@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use bevy_ecs::change_detection::DetectChanges;
 use campfire_math::{Tick, Vec3};
-use campfire_sim::{Capability, TypeHash};
+use campfire_sim::Capability;
 
 use super::*;
 use crate::capability_set::test_match::TestMatch;
@@ -43,7 +43,7 @@ struct Walk {
 
 impl Walk {
     fn new() -> Walk {
-        let sim = TestMatch::new(&[Capability::Navigation], TestMatch::RATE, None);
+        let sim = TestMatch::client(&[Capability::Navigation]);
         Walk { sim }
     }
 
@@ -830,10 +830,7 @@ fn every_navigation_type_is_state() {
     route.ask(at(3, 0, 4), Tick::new(2));
     let lane = || Paths::new([("lane", &[at(0, 0, 0), at(0, 0, 5)][..])]);
     walk.sim.world.insert_resource(lane());
-    let registry = &walk.sim.registry;
-    let mut per_type = Vec::new();
-    let hash = registry.hash_by_type(&walk.sim.world, &mut per_type);
-    let names: Vec<_> = per_type.iter().map(|TypeHash { name, .. }| *name).collect();
+    let names = walk.sim.state_names();
     assert_eq!(
         names,
         [
@@ -856,13 +853,8 @@ fn every_navigation_type_is_state() {
             "units.unit_type",
         ]
     );
-    let mut snapshot = Vec::new();
-    registry.snapshot(&walk.sim.world, &mut snapshot);
     // A restore loads the map first, as the packages give it.
     let mut restored = Walk::new();
     restored.sim.world.insert_resource(lane());
-    registry
-        .restore(&snapshot, &mut restored.sim.world)
-        .unwrap();
-    assert_eq!(registry.hash(&restored.sim.world), hash);
+    walk.sim.restore_into(&mut restored.sim);
 }

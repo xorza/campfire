@@ -1,5 +1,5 @@
 use campfire_math::{RngSource, SegmentSeed};
-use campfire_sim::{Capability, EntityIndex, SimTick, TypeHash};
+use campfire_sim::{Capability, EntityIndex, SimTick};
 
 use super::*;
 use crate::actions::action_slots::ActionSlots;
@@ -12,6 +12,8 @@ use crate::combat::recent_attack::RecentAttack;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::projectiles::projectile_data::ProjectileData;
 use crate::projectiles::struck_units::Struck;
+use crate::scripts::script_budgets::ScriptBudgets;
+use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::pool_id::PoolId;
 use crate::units::Units;
 use crate::units::action_id::ActionId;
@@ -83,7 +85,8 @@ impl Volley {
             Capability::Combat,
             Capability::Projectiles,
         ];
-        let mut sim = TestMatch::new(&declared, TestMatch::RATE, None);
+        let budgets = ScriptBudgets::new(ScriptLimits::ROOMY, 1);
+        let mut sim = TestMatch::server(&declared, budgets);
         let world = &mut sim.world;
         let types = [
             ("bolt", projectile(true, Num::ZERO, None, false)),
@@ -238,21 +241,8 @@ fn a_projectile_whose_target_dies_or_goes_first_ends_without_a_hit() {
     volley.sim.world.despawn(entity);
 
     // A projectile is state while it flies.
-    let mut per_type = Vec::new();
-    let hash = volley
-        .sim
-        .registry
-        .hash_by_type(&volley.sim.world, &mut per_type);
-    assert!(
-        per_type
-            .iter()
-            .any(|TypeHash { name, .. }| *name == "projectiles.projectile")
-    );
-    let mut snapshot = Vec::new();
-    volley
-        .sim
-        .registry
-        .snapshot(&volley.sim.world, &mut snapshot);
+    let names = volley.sim.state_names();
+    assert!(names.contains(&"projectiles.projectile"), "{names:?}");
     // A restore loads the match's books first: the same weapons, in the same order.
     let mut restored = Volley::new();
     for armed in [
@@ -263,12 +253,7 @@ fn a_projectile_whose_target_dies_or_goes_first_ends_without_a_hit() {
     ] {
         let _weapon = armed.bundle(&mut restored.sim.world, Team::new(0));
     }
-    volley
-        .sim
-        .registry
-        .restore(&snapshot, &mut restored.sim.world)
-        .unwrap();
-    assert_eq!(volley.sim.registry.hash(&restored.sim.world), hash);
+    volley.sim.restore_into(&mut restored.sim);
     assert_eq!(restored.projectiles(), volley.projectiles());
     // The struck units decode only in order, each once: the ids were allocated in order.
     let decode = |hits: &[(StableId, StableId)]| {

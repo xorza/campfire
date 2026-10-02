@@ -1,5 +1,5 @@
 use campfire_math::{Num, Vec3};
-use campfire_sim::{Capability, IdAllocator, StableId, TypeHash};
+use campfire_sim::{Capability, IdAllocator, StableId};
 
 use super::*;
 use crate::capability_set::test_match::TestMatch;
@@ -36,7 +36,7 @@ impl Scene {
         let limits = ScriptLimits::ROOMY;
         let scripts = ScriptBudgets::new(limits, 1);
         let declared = [Capability::Stats, Capability::Combat, Capability::Vision];
-        let mut sim = TestMatch::new(&declared, TestMatch::RATE, Some(scripts));
+        let mut sim = TestMatch::server(&declared, scripts);
         let bounds = Bounds::new([num(-10), num(-10)], [num(10), num(10)]).unwrap();
         let grid = Grid::new(num(1), bounds).unwrap();
         Vision::load_grid(&mut sim.world, grid, teams);
@@ -149,12 +149,7 @@ fn each_team_sees_the_cells_its_living_units_reveal() {
     assert_eq!(scene.seen_by(new), team(2).with(Team::new(1)));
 
     // What a team sees is state, restored with the rest.
-    let mut per_type = Vec::new();
-    scene
-        .sim
-        .registry
-        .hash_by_type(&scene.sim.world, &mut per_type);
-    let names: Vec<_> = per_type.iter().map(|TypeHash { name, .. }| *name).collect();
+    let names = scene.sim.state_names();
     assert!(names.contains(&"vision.seen_by") && names.contains(&"vision.sight"));
 }
 

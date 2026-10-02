@@ -50,7 +50,7 @@ struct Shop {
 
 impl Shop {
     fn new() -> Shop {
-        let mut sim = TestMatch::new(&[Capability::Production], TestMatch::RATE, None);
+        let mut sim = TestMatch::client(&[Capability::Production]);
         let world = &mut sim.world;
         let spawned = Rc::new(RefCell::new(Vec::new()));
         let log = Rc::clone(&spawned);
