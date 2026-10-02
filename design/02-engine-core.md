@@ -53,6 +53,8 @@ These rules keep the code's structure from drifting. Each has a test that fails 
 | Restored state is checked like package data: a restore gives an error for every flaw, never a panic. | The state table test; the snapshot fuzz |
 | Each rule of a network session has one owner on each side, and a client that follows the rules is never refused. | The net scenarios under load |
 
+**Books.** A match's books are built by one pure function of its packages and a tick rate, with no world: the unit types and their tags, the tracks, the modifiers and the actions with their params and effect lists, the AIs, and the projectile and area specs. The package load calls it at the fastest rate the manifest allows, where a time counts the most ticks, so what the books cannot hold fails the load; a match calls it at its own rate and puts what it gives in place. The order of every id is the order the builder loads in: the tags, the tracks, every package's modifiers, then each package's actions and unit types, the mode's first. A script is named by its place in the order a match compiles them, and the hooks it defines come from what the load read of it, so no book needs a script host.
+
 The structural redesign that brings the code to these rules, and its steps, are in `PLAN.md`.
 
 ## Capabilities

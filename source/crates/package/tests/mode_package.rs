@@ -221,7 +221,7 @@ fn more_tracks_than_a_unit_holds_fail_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 180] = [
+const FLAWS: [Flaw; 181] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -1121,6 +1121,12 @@ const FLAWS: [Flaw; 180] = [
         ),
         "hero-husk",
         |problem| matches!(problem, LoadProblem::Action { action, error: ActionError::TimeTooLarge } if action.as_str() == "lash_out"),
+    ),
+    flaw(
+        CINDER,
+        Edit::Replace("delay_ms = 625,", "delay_ms = 400000000000000000,"),
+        "hero-cinder",
+        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::AreaTime(Place::UnitType(name))) if name == "eruption"),
     ),
     // A name a script gives the API, as the registry marks the argument: a tag, a track, a unit
     // type of the mode's scope, a team.

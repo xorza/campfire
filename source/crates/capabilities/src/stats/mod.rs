@@ -6,7 +6,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, Changed, Has, Or, With, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Commands, Local, NonSend, ParamSet, Query, Res};
-use bevy_ecs::world::{EntityRef, World};
+use bevy_ecs::world::{EntityRef, Mut, World};
 use campfire_math::Num;
 use campfire_script::ScriptId;
 use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, Tick, Ticks};
@@ -17,7 +17,6 @@ use crate::combat::dead::Dead;
 use crate::navigation::move_step::MoveStep;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::frame::Frame;
-use crate::scripts::hook::Hook;
 use crate::scripts::script_book::ScriptBook;
 use crate::stats::held_modifiers::{Held, HeldModifiers};
 use crate::stats::level::Level;
@@ -46,7 +45,6 @@ use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
 use crate::values::attitude::Attitude;
-use crate::values::declared_name::DeclaredName;
 use crate::values::metric::Metric;
 
 pub(crate) mod held_modifiers;
@@ -278,22 +276,12 @@ impl Stats {
         data: &ModifierData,
         script: Option<ScriptId>,
     ) {
-        let hooks = world
-            .resource::<ScriptBook>()
-            .defines(script, &MODIFIER_HOOKS);
-        let tags = {
+        let id = world.resource_scope(|world, mut book: Mut<'_, ModifierBook>| {
+            let scripts = world.resource::<ScriptBook>();
             let view = world.non_send::<View>();
             let mut types = view.types_mut();
-            let declare = |name: &DeclaredName| {
-                types
-                    .declare(name.as_str())
-                    .expect("the load counted the tags")
-            };
-            TagSet::of(data.tags.iter().map(declare))
-        };
-        let id = world
-            .resource_mut::<ModifierBook>()
-            .load(package, name, data, script, hooks, tags);
+            book.load(scripts, &mut types, package, name, data, script)
+        });
         if let Some(view) = world.get_non_send::<View>() {
             view.add_modifier(world.resource::<ModifierBook>().get(id).info());
         }
@@ -309,16 +297,6 @@ impl Stats {
         world.resource::<ModifierBook>().find(package, name)
     }
 }
-
-/// The hooks of a modifier's script that combat events call.
-const MODIFIER_HOOKS: [Hook; 6] = [
-    Hook::OnAttack,
-    Hook::OnInterval,
-    Hook::OnAttackHit,
-    Hook::OnDamageTaken,
-    Hook::OnKill,
-    Hook::OnTakedown,
-];
 
 /// Ends, as each tick starts, the modifiers and stacks that hold no longer.
 fn expire_modifiers(tick: Res<'_, SimTick>, mut units: Query<'_, '_, &mut Modifiers>) {

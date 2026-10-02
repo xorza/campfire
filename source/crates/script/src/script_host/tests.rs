@@ -125,6 +125,7 @@ fn only_what_scripts_need_is_there() {
     functions.sort_unstable();
     assert_eq!(functions, [("helper", 0), ("on_think", 2)]);
     assert_eq!(script.index(), host.compiled() - 1);
+    assert_eq!(ScriptId::nth(script.index()), script);
 }
 
 #[test]

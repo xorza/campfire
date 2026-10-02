@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::num::NonZeroU8;
 
 use serde::Deserialize;
@@ -22,6 +23,30 @@ pub struct SlotKindData {
 }
 
 impl SlotKinds {
+    /// The ranks of each action that the unit types of `slots` place, each type's actions by
+    /// slot kind: those of the kind it sits in. An error names an action they place in kinds of
+    /// other ranks. A kind it does not hold places nothing.
+    pub fn slotted_ranks<'u>(
+        &self,
+        slots: impl IntoIterator<Item = &'u BTreeMap<DeclaredName, Vec<DeclaredName>>>,
+    ) -> Result<BTreeMap<&'u str, u8>, &'u DeclaredName> {
+        let mut ranks = BTreeMap::new();
+        for slots in slots {
+            for (kind, ids) in slots {
+                let Some(kind) = self.named(kind.as_str()) else {
+                    continue;
+                };
+                for id in ids {
+                    let held = *ranks.entry(id.as_str()).or_insert(self.ranks(kind));
+                    if held != self.ranks(kind) {
+                        return Err(id);
+                    }
+                }
+            }
+        }
+        Ok(ranks)
+    }
+
     /// The kind `name`, if the mode declares it.
     pub fn named(&self, name: &str) -> Option<SlotKind> {
         let at = self.0.iter().position(|kind| kind.name.as_str() == name)?;

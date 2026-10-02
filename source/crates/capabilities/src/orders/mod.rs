@@ -99,14 +99,9 @@ impl Orders {
         data: &AiData,
         script: ScriptId,
     ) -> Result<(), AiError> {
-        let thinks = world
-            .resource::<ScriptBook>()
-            .defines(Some(script), &[Hook::OnThink])
-            .contains(Hook::OnThink);
-        let period = Orders::ai_period(data, *world.resource::<TickRate>(), thinks)?;
-        world
-            .resource_mut::<ByType<Ai>>()
-            .set(unit_type, Ai { script, period });
+        let rate = *world.resource::<TickRate>();
+        let ai = Ai::of(data, script, world.resource::<ScriptBook>(), rate)?;
+        world.resource_mut::<ByType<Ai>>().set(unit_type, ai);
         Ok(())
     }
 

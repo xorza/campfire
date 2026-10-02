@@ -13,7 +13,6 @@ use crate::scripts::script_book::ScriptBook;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::units::body::Body;
-use crate::units::engine_tag::EngineTag;
 use crate::units::error::UnitTypeError;
 use crate::units::owner::Owner;
 use crate::units::relations::Relations;
@@ -150,13 +149,6 @@ impl Units {
             types.declare(name)?;
         }
         Ok(())
-    }
-
-    /// Tags `unit_type` an avatar, which `unit.is_avatar` tests.
-    pub fn tag_avatar(world: &mut World, unit_type: UnitType) {
-        let view = world.non_send::<View>();
-        view.types_mut()
-            .give_tag(unit_type, EngineTag::Avatar.tag());
     }
 
     /// Gives the match its tags' effects and its unit types' own tags.

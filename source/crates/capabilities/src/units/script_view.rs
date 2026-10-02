@@ -398,6 +398,11 @@ impl View {
 
     /// Adds the modifier the match loaded next, which takes the next id: modifiers load by
     /// package, then name.
+    /// Sets the match's unit types and tags, as the load built them.
+    pub(crate) fn set_types(&self, types: UnitTypes) {
+        self.0.borrow_mut().types = types;
+    }
+
     pub(crate) fn add_modifier(&self, info: ModifierInfo) {
         self.0.borrow_mut().modifier_info.push(info);
     }

@@ -26,7 +26,6 @@ use crate::stats::held_modifiers::{Held, HeldModifiers};
 use crate::stats::{Stats, StatsSet};
 use crate::units::by_type::ByType;
 use crate::units::engine_tag::EngineTag;
-use crate::units::filter::Filter;
 use crate::units::script_view::View;
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
@@ -75,31 +74,14 @@ impl Areas {
     pub fn load_type(world: &mut World, unit_type: UnitType, package: u16, data: &AreaData) {
         let rate = *world.resource::<TickRate>();
         let view = world.non_send::<View>().clone();
-        let affects = {
+        let modifier = |name: &DeclaredName| {
+            Stats::modifier(world, package, name.as_str())
+                .expect("the load checked an area's modifiers")
+        };
+        let spec = {
             let mut types = view.types_mut();
             types.give_tag(unit_type, EngineTag::Area.tag());
-            match &data.affects {
-                Some(filter) => Filter::resolve(filter, &types),
-                None => Filter::parse("enemies", &types),
-            }
-        };
-        let modifier = |name: &Option<DeclaredName>| {
-            name.as_ref().map(|name| {
-                Stats::modifier(world, package, name.as_str())
-                    .expect("the load checked an area's modifiers")
-            })
-        };
-        let ticks = |ms| rate.ticks(ms).expect("an area's time in ticks fits");
-        let spec = AreaSpec {
-            radius: data.radius,
-            delay: ticks(data.delay_ms),
-            duration: ticks(data.duration_ms),
-            affects: affects.expect("the load checked the filter's tags"),
-            inside: Inside {
-                caster: modifier(&data.inside.caster),
-                allies: modifier(&data.inside.allies),
-                enemies: modifier(&data.inside.enemies),
-            },
+            AreaSpec::of(data, &types, rate, modifier).expect("an area's time in ticks fits")
         };
         world
             .resource_mut::<ByType<AreaSpec>>()

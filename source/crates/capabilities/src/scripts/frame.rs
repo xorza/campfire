@@ -77,6 +77,12 @@ pub(crate) struct Frame {
 }
 
 impl Frame {
+    /// Sets the params of every ability and every modifier, by id, as the load built them.
+    pub(crate) fn set_params(&mut self, abilities: ParamTable, modifiers: ParamTable) {
+        self.params = abilities;
+        self.modifier_params = modifiers;
+    }
+
     /// Adds the params of `ability`, the one the book loads next, each stat at its place `stat`
     /// gives.
     pub(crate) fn add_params(

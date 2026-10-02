@@ -2,11 +2,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::{iter, slice};
 
 use campfire_capabilities::{
-    ActionData, ActionKind, ActionSlots, Actions, ApiOwner, ApiVersion, CollisionData, CombatRules,
-    DeclaredName, DeliveryData, EffectTo, Effecting, EngineStat, EngineTag, FilterData, Hook,
-    KitRules, MemberKind, Mode, ModifierData, NameKind, Navigation, Number, Offers, Orders, Param,
-    PoolId, Pools, Range, RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Stat, Targeting,
-    TrackId, UnitKit, UnitTypeData, UnitTypeFile,
+    ActionData, ActionKind, ActionSlots, ApiOwner, ApiVersion, BookError, Books, CollisionData,
+    CombatRules, DeclaredName, DeliveryData, EffectTo, Effecting, EngineStat, EngineTag,
+    FilterData, Hook, MemberKind, Mode, ModifierData, NameKind, Navigation, Number, Offers, Param,
+    Pools, Range, RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Stat, Targeting, TrackId,
+    UnitTypeData, UnitTypeFile,
 };
 use campfire_content::PackagePath;
 use campfire_math::Num;
@@ -105,7 +105,67 @@ impl<'a> LoadCheck<'a> {
             .stat_graph()
             .order()
             .map_err(|stats| fail(LoadProblem::StatLoop(stats)))?;
+        let scripts = packages.script_book();
+        let input = packages.book_input(check.rate, &scripts);
+        Books::build(&input).map_err(|error| check.book_error(error))?;
         Ok(())
+    }
+
+    /// The load error of what building the books refused, at the fastest rate the mode allows.
+    fn book_error(&self, error: BookError) -> LoadError {
+        let packages = self.packages;
+        let at = |package: u16, unit_type: String| {
+            let view = packages.packages().nth(usize::from(package));
+            let package = &view.expect("the books name a package").package;
+            if package.name == unit_type {
+                return Place::Avatar(unit_type);
+            }
+            Place::UnitType(DeclaredName::new(&unit_type).expect("a unit type's id is a name"))
+        };
+        let (package, problem) = match error {
+            BookError::Kit {
+                package,
+                unit_type,
+                error,
+            } => (
+                package,
+                LoadProblem::UnitKit {
+                    at: at(package, unit_type),
+                    error,
+                },
+            ),
+            BookError::Ai {
+                package,
+                unit_type,
+                error,
+            } => (
+                package,
+                LoadProblem::Ai {
+                    at: at(package, unit_type),
+                    error,
+                },
+            ),
+            BookError::Action {
+                package,
+                action,
+                error,
+            } => (
+                package,
+                LoadProblem::Action {
+                    action: DeclaredName::new(&action).expect("an action's id is a name"),
+                    error,
+                },
+            ),
+            BookError::AreaTime { package, unit_type } => (
+                package,
+                LoadProblem::Delivery(DeliveryProblem::AreaTime(at(package, unit_type))),
+            ),
+        };
+        let view = packages.packages().nth(usize::from(package));
+        LoadError::of(
+            &view.expect("the books name a package").package.name,
+            problem,
+        )
     }
 
     /// The map can be walked by every unit that walks, among the mode's unit types and its
@@ -294,13 +354,6 @@ impl<'a> LoadCheck<'a> {
             let at = Place::Action(id.clone());
             self.kind(id, ability)?;
             self.ranked(id, ability, ranks(id.as_str()))?;
-            let target = |name: &DeclaredName| self.packages.data.cost_target(name);
-            Actions::check_times(ability, ranks(id.as_str()), self.rate, target).map_err(
-                |error| LoadProblem::Action {
-                    action: id.clone(),
-                    error,
-                },
-            )?;
             self.effects(id, ability)?;
             if let Some(delivery) = &ability.delivery {
                 let capability = match delivery {
@@ -901,53 +954,6 @@ impl<'a> LoadCheck<'a> {
                 name: track.to_string(),
             });
         }
-        if unit_type.delivers() {
-            return Ok(());
-        }
-        self.stands(unit_type, at)
-    }
-
-    /// A unit type at `at` that stands, whose pools the check found: it makes a unit, and its
-    /// AI loads, as a match builds them, at the fastest rate the mode allows.
-    fn stands(&self, unit_type: &UnitTypeFile, at: &Place) -> Result<(), LoadProblem> {
-        let data = &self.packages.data;
-        let pools = unit_type.pools.iter().map(|name| {
-            let id = PoolId::of(&data.pools, name).expect("the check found the pool");
-            (id, &data.pools[name].max)
-        });
-        let rules = KitRules {
-            rate: self.rate,
-            max_move_speed: self.packages.manifest.max_move_speed,
-            life: data.combat.life_pool(&data.pools).unwrap_or(PoolId::FIRST),
-        };
-        UnitKit::new(
-            unit_type.stats.as_ref(),
-            unit_type.combat.as_ref(),
-            pools,
-            rules,
-        )
-        .map_err(|error| LoadProblem::UnitKit {
-            at: at.clone(),
-            error,
-        })?;
-        let Some(orders) = &unit_type.orders else {
-            return Ok(());
-        };
-        // A script the mode does not hold fails the load where the scripts are checked.
-        let Some(script) = self.packages.mode.script(&orders.ai) else {
-            return Ok(());
-        };
-        // An `on_think` of other parameters fails the load where the scripts are checked, as a
-        // hook of the wrong form, the problem that names it best.
-        let thinks = script
-            .facts
-            .functions
-            .iter()
-            .any(|function| function.name == Hook::OnThink.name());
-        Orders::ai_period(orders, self.rate, thinks).map_err(|error| LoadProblem::Ai {
-            at: at.clone(),
-            error,
-        })?;
         Ok(())
     }
 

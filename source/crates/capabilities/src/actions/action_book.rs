@@ -6,8 +6,9 @@ use campfire_script::ScriptId;
 use campfire_sim::{Position, StableId, Tick, TickRate, Ticks};
 use serde::{Deserialize, Serialize};
 
-use crate::actions::action_data::{ActionData, CostTarget, Range};
+use crate::actions::action_data::{ActionData, CostTarget, Range, Targeting};
 use crate::actions::action_kind::ActionKind;
+use crate::actions::action_names::ActionNames;
 use crate::actions::action_slots::{ActionSlots, ActionTarget, InProgress};
 use crate::actions::delivery_data::DeliveryData;
 use crate::actions::error::ActionError;
@@ -108,6 +109,44 @@ pub(crate) struct ActionParts {
     pub(crate) aim: Aim,
     pub(crate) ranks: LoadedRanks,
     pub(crate) weapon: Option<Weapon>,
+}
+
+impl ActionParts {
+    /// The parts of `data`, of `package`, at each of its `ranks` ranks, times in ticks at `rate`,
+    /// its names resolved by `names`; an error when a time does not count in ticks.
+    pub(crate) fn of(
+        data: &ActionData,
+        package: u16,
+        ranks: u8,
+        rate: TickRate,
+        names: &impl ActionNames,
+    ) -> Result<ActionParts, ActionError> {
+        let passive = data.passive_modifier.as_ref().map(|name| Passive {
+            modifier: names.modifier(package, name),
+            while_ready: data.passive_while_ready,
+        });
+        let aim = match &data.targeting {
+            Targeting::None => Aim::None,
+            Targeting::Point => Aim::Point,
+            Targeting::Direction => Aim::Direction,
+            Targeting::Unit(filter) => Aim::Unit(names.filter(filter)),
+        };
+        let ranks = RankValues::all(data, ranks, rate, |name| names.cost_target(name))?;
+        let weapon = match (&data.rate, &data.damage, &data.damage_kind) {
+            (Some(rate), Some(damage), Some(kind)) => Some(Weapon {
+                rate: names.stat(rate),
+                damage: names.stat(damage),
+                kind: names.damage_kind(kind),
+            }),
+            _ => None,
+        };
+        Ok(ActionParts {
+            passive,
+            aim,
+            ranks,
+            weapon,
+        })
+    }
 }
 
 /// An action's fields at each rank: its values, and its cost in player resources, one run of

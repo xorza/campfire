@@ -8,7 +8,9 @@ use campfire_math::Num;
 use campfire_sim::{StableId, Tick, Ticks};
 
 use crate::actions::action_book::ActionId;
+use crate::scripts::hook::Hook;
 use crate::scripts::hook_set::HookSet;
+use crate::scripts::script_book::ScriptBook;
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifier_handle::StateField;
 use crate::stats::modifiers::{Application, Instance, Interval, StackEnd, StatShare};
@@ -16,6 +18,8 @@ use crate::stats::param_read::ParamRead;
 use crate::stats::stat_book::StatBook;
 use crate::units::script_view::ModifierInfo;
 use crate::units::tag_set::TagSet;
+use crate::units::unit_types::UnitTypes;
+use crate::values::declared_name::DeclaredName;
 use crate::values::number::Number;
 
 /// The modifiers a match loaded, of every package: the mode, package 0, and each package it
@@ -49,13 +53,20 @@ impl ModifierBook {
     /// package or name, with its `script`, the `hooks` it defines and the `tags` it grants.
     pub(crate) fn load(
         &mut self,
+        scripts: &ScriptBook,
+        types: &mut UnitTypes,
         package: u16,
         name: &str,
         data: &ModifierData,
         script: Option<ScriptId>,
-        hooks: HookSet,
-        tags: TagSet,
     ) -> ModifierId {
+        let hooks = scripts.defines(script, &MODIFIER_HOOKS);
+        let declare = |name: &DeclaredName| {
+            types
+                .declare(name.as_str())
+                .expect("the load counted the tags")
+        };
+        let tags = TagSet::of(data.tags.iter().map(declare));
         assert!(
             self.entries
                 .last()
@@ -72,6 +83,11 @@ impl ModifierBook {
             tags,
         });
         id
+    }
+
+    /// Each modifier as scripts name it, by id.
+    pub(crate) fn infos(&self) -> impl Iterator<Item = ModifierInfo> + '_ {
+        self.entries.iter().map(ModifierEntry::info)
     }
 
     /// The modifier `name` of `package`.
@@ -231,3 +247,13 @@ impl ModifierId {
         self.0 as usize
     }
 }
+
+/// The hooks of a modifier's script that combat events call.
+const MODIFIER_HOOKS: [Hook; 6] = [
+    Hook::OnAttack,
+    Hook::OnInterval,
+    Hook::OnAttackHit,
+    Hook::OnDamageTaken,
+    Hook::OnKill,
+    Hook::OnTakedown,
+];

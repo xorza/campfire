@@ -1,0 +1,20 @@
+use crate::actions::action_data::CostTarget;
+use crate::combat::damage_kind::DamageKind;
+use crate::stats::modifier_book::ModifierId;
+use crate::stats::stat::Stat;
+use crate::units::filter::Filter;
+use crate::values::declared_name::DeclaredName;
+use crate::values::filter_data::FilterData;
+
+/// The match's ids of the names an action's data gives, which the package load checked: what an
+/// action's load resolves them by, in a match's world or in the load's builder.
+pub(crate) trait ActionNames {
+    /// The place of `stat` among the match's stats.
+    fn stat(&self, stat: &Stat) -> u16;
+    fn damage_kind(&self, name: &DeclaredName) -> DamageKind;
+    /// What a cost named `name` takes from.
+    fn cost_target(&self, name: &DeclaredName) -> Option<CostTarget>;
+    fn filter(&self, filter: &FilterData) -> Filter;
+    /// The modifier `name` of `package`.
+    fn modifier(&self, package: u16, name: &DeclaredName) -> ModifierId;
+}

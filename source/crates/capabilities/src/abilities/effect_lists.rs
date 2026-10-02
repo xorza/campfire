@@ -4,8 +4,11 @@ use bevy_ecs::resource::Resource;
 use campfire_math::Num;
 use campfire_sim::{StableId, TickRate, Ticks};
 
+use crate::abilities::effect_names::EffectNames;
 use crate::actions::action_book::ActionId;
+use crate::actions::action_data::ActionData;
 use crate::actions::effect_data::EffectTo;
+use crate::actions::effect_data::{EffectData, Effecting};
 use crate::combat::combat_effect::CombatEffect;
 use crate::combat::damage_kind::DamageKind;
 use crate::progression::progression_effect::ProgressionEffect;
@@ -15,6 +18,7 @@ use crate::scripts::hook::Hook;
 use crate::stats::modifier_book::ModifierId;
 use crate::stats::modifier_effect::ModifierEffect;
 use crate::stats::pool_id::PoolId;
+use crate::values::number::Number;
 
 /// The effect lists of each action, their names resolved as the action loaded: one buffer, and
 /// by action id the run of each of its lists, `on_resolve`, `on_hit` and `on_end`. An action
@@ -153,6 +157,60 @@ impl EffectLists {
                 }
             }
         }
+    }
+}
+
+impl Listed {
+    /// The lists of `data`, `on_resolve`, `on_hit` and `on_end`, which the package load checked,
+    /// their names resolved by `names`.
+    pub(crate) fn lists_of(data: &ActionData, names: &impl EffectNames) -> [Vec<Listed>; 3] {
+        let amount = |number: &Number| match number {
+            Number::Value(value) => Amount::Value(
+                value
+                    .to_num()
+                    .expect("the load checked each number of an effect list"),
+            ),
+            Number::Param(reference) => Amount::Param(names.param(&reference.param)),
+        };
+        let resolve = |effect: &EffectData| {
+            let does = match &effect.does {
+                Effecting::Damage {
+                    amount: number,
+                    kind,
+                } => Does::Damage {
+                    amount: amount(number),
+                    kind: names.damage_kind(kind),
+                },
+                Effecting::Heal { amount: number } => Does::Heal {
+                    amount: amount(number),
+                },
+                Effecting::Restore {
+                    pool,
+                    amount: number,
+                } => Does::Restore {
+                    pool: names.pool(pool),
+                    amount: amount(number),
+                },
+                Effecting::Modifier { id, duration_ms } => Does::Modifier {
+                    id: names.modifier(id),
+                    duration_ms: duration_ms.as_ref().map(amount),
+                },
+                Effecting::Xp {
+                    track,
+                    amount: number,
+                } => Does::Xp {
+                    track: names.track(track),
+                    amount: amount(number),
+                },
+                Effecting::Planned(_) => unreachable!("the load refuses a planned effect"),
+            };
+            Listed {
+                does,
+                to: effect.to,
+            }
+        };
+        [&data.on_resolve, &data.on_hit, &data.on_end]
+            .map(|list| list.iter().map(resolve).collect::<Vec<_>>())
     }
 }
 

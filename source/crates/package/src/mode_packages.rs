@@ -3,11 +3,13 @@ use std::iter;
 use std::path::Path;
 
 use campfire_capabilities::{
-    CollisionData, DeclaredName, EngineStat, EngineTag, MapData, ModeData, PackageContent, Param,
-    ScriptApi, ScriptBook, Stat, StatGraph, StatsData, UnitTypeFile, Walker,
+    BookInput, BookKind, BookPackage, CollisionData, DeclaredName, EngineStat, EngineTag, MapData,
+    ModeData, PackageContent, Param, ScriptApi, ScriptBook, Stat, StatGraph, StatsData,
+    UnitTypeFile, Walker,
 };
 use campfire_content::{Fingerprint, MessageId, PackagePath};
 use campfire_script::ScriptHost;
+use campfire_sim::{Capability, TickRate};
 
 use crate::error::{ContentError, Limit, LoadError, LoadProblem, PackageRef, StoreError};
 use crate::files::avatar_data::AvatarData;
@@ -192,6 +194,35 @@ impl ModePackages {
     }
 
     /// Its avatars' unit types, each with its package's view.
+    /// What its books are built from at `rate`, its scripts' hooks as `scripts` gives them, in
+    /// the order a match compiles them.
+    pub fn book_input<'a>(&'a self, rate: TickRate, scripts: &'a ScriptBook) -> BookInput<'a> {
+        let packages = self.packages().map(|view| BookPackage {
+            name: &view.package.name,
+            content: view.content,
+            kind: match view.kind {
+                ViewKind::Mode => BookKind::Mode,
+                ViewKind::Avatar(avatar) => BookKind::Avatar(&avatar.unit),
+                ViewKind::Loadout => BookKind::Loadout,
+            },
+            scripts: view
+                .package
+                .scripts
+                .iter()
+                .map(|script| &script.path)
+                .collect(),
+        });
+        BookInput {
+            data: &self.data,
+            max_move_speed: self.manifest.max_move_speed,
+            progression: self.manifest.capabilities.contains(Capability::Progression),
+            tag_names: self.tag_names().into_iter().collect(),
+            packages: packages.collect(),
+            scripts,
+            rate,
+        }
+    }
+
     /// The hooks each script of its packages defines, in the order a match compiles them: the
     /// mode's scripts, then each dependency's, each package's in the order of their paths.
     pub fn script_book(&self) -> ScriptBook {
@@ -259,22 +290,8 @@ impl ModePackages {
         &self,
         types: impl IntoIterator<Item = &'u UnitTypeFile>,
     ) -> Result<BTreeMap<&'u str, u8>, &'u DeclaredName> {
-        let kinds = &self.data.slots;
-        let mut ranks = BTreeMap::new();
-        for unit_type in types {
-            for (kind, ids) in &unit_type.slots {
-                let Some(kind) = kinds.named(kind.as_str()) else {
-                    continue;
-                };
-                for id in ids {
-                    let held = *ranks.entry(id.as_str()).or_insert(kinds.ranks(kind));
-                    if held != kinds.ranks(kind) {
-                        return Err(id);
-                    }
-                }
-            }
-        }
-        Ok(ranks)
+        let slots = types.into_iter().map(|unit_type| &unit_type.slots);
+        self.data.slots.slotted_ranks(slots)
     }
 
     /// Each kind of unit that walks, of the mode's unit types and avatars that declare a move

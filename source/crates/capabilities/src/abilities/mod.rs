@@ -11,36 +11,43 @@ use campfire_sim::{
     Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry, Tick, TickRate, Ticks,
 };
 
-use crate::abilities::effect_lists::{Amount, Does, EffectLists, Listed};
+use crate::abilities::effect_lists::{EffectLists, Listed};
+use crate::abilities::effect_names::EffectNames;
 use crate::actions::action_book::{ActionBook, ActionId, Delivery};
 use crate::actions::action_data::ActionData;
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::{ActionSlots, ActionTarget};
-use crate::actions::effect_data::{EffectData, Effecting};
 use crate::actions::purse::Purse;
 use crate::areas::Areas;
 use crate::combat::CombatSet;
+use crate::combat::damage_kind::DamageKind;
 use crate::combat::dead::Dead;
 use crate::deliveries::delivering::Delivering;
 use crate::mode::player_resources::PlayerResources;
+use crate::progression::track_id::TrackId;
 use crate::projectiles::Projectiles;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
+use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
 use crate::stats::Stats;
+use crate::stats::modifier_book::ModifierId;
 use crate::stats::pool_cost::PoolCost;
+use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::units::block::Block;
 use crate::units::owner::Owner;
+use crate::units::script_view::View;
 use crate::units::team::Team;
 use crate::units::unit::Unit;
 use crate::units::unit_tags::UnitTags;
-use crate::values::number::Number;
+use crate::values::declared_name::DeclaredName;
 
 pub(crate) mod abilities_api;
 pub(crate) mod effect_lists;
+pub(crate) mod effect_names;
 
 /// The `abilities` capability: abilities in slots, cast through their checks, with the effect a
 /// script describes.
@@ -70,58 +77,18 @@ impl Abilities {
     /// package load checked: each name resolved to its id, each param to its place among the
     /// action's params.
     pub fn load_effects(world: &mut World, action: ActionId, package: u16, data: &ActionData) {
-        const CHECKED: &str = "the load checked each name of an effect list";
         let ctx = world.non_send::<Ctx>().clone();
-        let view = ctx.view();
-        let frame = ctx.frame();
-        let amount = |number: &Number| match number {
-            Number::Value(value) => Amount::Value(value.to_num().expect(CHECKED)),
-            Number::Param(reference) => Amount::Param(
-                frame
-                    .find_param(action, reference.param.as_str())
-                    .expect(CHECKED),
-            ),
-        };
-        let resolve = |effect: &EffectData| {
-            let does = match &effect.does {
-                Effecting::Damage {
-                    amount: number,
-                    kind,
-                } => Does::Damage {
-                    amount: amount(number),
-                    kind: view.damage_kind(kind.as_str()).expect(CHECKED),
-                },
-                Effecting::Heal { amount: number } => Does::Heal {
-                    amount: amount(number),
-                },
-                Effecting::Restore {
-                    pool,
-                    amount: number,
-                } => Does::Restore {
-                    pool: view.pool_id(pool.as_str()).expect(CHECKED),
-                    amount: amount(number),
-                },
-                Effecting::Modifier { id, duration_ms } => Does::Modifier {
-                    id: Stats::modifier(world, package, id.as_str()).expect(CHECKED),
-                    duration_ms: duration_ms.as_ref().map(amount),
-                },
-                Effecting::Xp {
-                    track,
-                    amount: number,
-                } => Does::Xp {
-                    track: view.track(track.as_str()).expect(CHECKED),
-                    amount: amount(number),
-                },
-                Effecting::Planned(_) => unreachable!("{CHECKED}"),
+        let lists = {
+            let frame = ctx.frame();
+            let names = MatchEffectNames {
+                world,
+                view: ctx.view(),
+                frame: &frame,
+                action,
+                package,
             };
-            Listed {
-                does,
-                to: effect.to,
-            }
+            Listed::lists_of(data, &names)
         };
-        let lists = [&data.on_resolve, &data.on_hit, &data.on_end]
-            .map(|list| list.iter().map(resolve).collect::<Vec<_>>());
-        drop(frame);
         world.resource_mut::<EffectLists>().push(action, lists);
     }
 }
@@ -319,3 +286,45 @@ fn run(batch: &mut ScriptBatch<'_>, ctx: &Ctx, prepared: &mut Prepared) -> Resul
 
 #[cfg(test)]
 mod tests;
+
+/// The names of an action's effect lists as a match's world resolves them: its view, the frame
+/// that holds the action's params, and the modifiers of the action's package.
+#[derive(Debug)]
+struct MatchEffectNames<'w> {
+    world: &'w World,
+    view: &'w View,
+    frame: &'w Frame,
+    action: ActionId,
+    package: u16,
+}
+
+impl EffectNames for MatchEffectNames<'_> {
+    fn param(&self, name: &DeclaredName) -> usize {
+        self.frame
+            .find_param(self.action, name.as_str())
+            .expect("the load checked an effect's param")
+    }
+
+    fn damage_kind(&self, name: &DeclaredName) -> DamageKind {
+        self.view
+            .damage_kind(name.as_str())
+            .expect("the load checked an effect's damage kind")
+    }
+
+    fn pool(&self, name: &DeclaredName) -> PoolId {
+        self.view
+            .pool_id(name.as_str())
+            .expect("the load checked an effect's pool")
+    }
+
+    fn modifier(&self, name: &DeclaredName) -> ModifierId {
+        Stats::modifier(self.world, self.package, name.as_str())
+            .expect("the load checked an effect's modifier")
+    }
+
+    fn track(&self, name: &DeclaredName) -> TrackId {
+        self.view
+            .track(name.as_str())
+            .expect("the load checked an effect's track")
+    }
+}

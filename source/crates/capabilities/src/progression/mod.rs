@@ -45,17 +45,6 @@ impl Progression {
         world.insert_resource(book);
     }
 
-    /// The tracks of `names`, each one the loaded tracks hold; none for no name, in a match
-    /// without progression too.
-    pub fn tracks(world: &World, names: &[DeclaredName]) -> TrackSet {
-        TrackSet::of(names.iter().map(|name| {
-            world
-                .resource::<TrackBook>()
-                .id(name)
-                .expect("the load checked a unit type's tracks")
-        }))
-    }
-
     /// Applies the next progression effect the call in `frame` queued.
     pub(crate) fn apply_next(world: &mut World, frame: &mut Frame, _: Tick) {
         Progression::apply(world, frame.effects.take::<ProgressionEffect>());

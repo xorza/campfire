@@ -27,7 +27,6 @@ use crate::scripts::frame::Frame;
 use crate::stats::pools::Pools;
 use crate::units::by_type::ByType;
 use crate::units::engine_tag::EngineTag;
-use crate::units::filter::Filter;
 use crate::units::script_view::View;
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
@@ -68,31 +67,16 @@ impl Projectiles {
     /// the match's rate, which the package load checked: its `hits` filter names tags of the
     /// match's.
     pub fn load_type(world: &mut World, unit_type: UnitType, data: &ProjectileData) {
-        let hz = world.resource::<TickRate>().hz().get();
+        let rate = *world.resource::<TickRate>();
         let view = world.non_send::<View>().clone();
-        let hits = {
+        let spec = {
             let mut types = view.types_mut();
             types.give_tag(unit_type, EngineTag::Projectile.tag());
-            match &data.hits {
-                Some(filter) => Filter::resolve(filter, &types),
-                None => Filter::parse("enemies", &types),
-            }
+            ProjectileSpec::of(data, &types, rate)
         };
         if data.homing {
             view.set_homing(unit_type);
         }
-        let spec = ProjectileSpec {
-            speed: data
-                .speed
-                .checked_div_int(i64::from(hz))
-                .expect("a speed over a tick rate fits"),
-            width: data.width,
-            range: data.range,
-            homing: data.homing,
-            stop_on_hit: data.stop_on_hit,
-            once_per_cast: data.once_per_cast,
-            hits: hits.expect("the load checked the filter's tags"),
-        };
         world
             .resource_mut::<ByType<ProjectileSpec>>()
             .set(unit_type, spec);
