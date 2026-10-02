@@ -580,7 +580,7 @@ fn a_delegation_for_another_server_or_session_is_refused() {
         |terms| terms.dependencies[1] = Fingerprint::new([54; 32]),
         |terms| terms.dependencies.swap(0, 1),
     ];
-    for change in changes {
+    for (at, change) in changes.into_iter().enumerate() {
         let mut other = header();
         change(&mut other.terms);
         let error = if other.terms.server_key == x_only(41) {
@@ -592,7 +592,7 @@ fn a_delegation_for_another_server_or_session_is_refused() {
             slot: PlayerSlot::new(0),
             error,
         };
-        assert_eq!(SessionLog::new(other).err(), Some(refused));
+        assert_eq!(SessionLog::new(other).err(), Some(refused), "change {at}");
     }
 
     // The id, as design 05 spells it.
@@ -1032,7 +1032,7 @@ fn flawed_log_files_are_refused() {
             }),
         ),
     ];
-    for (bytes, error) in cases {
-        assert_eq!(SessionLog::decode(&bytes).err(), Some(error));
+    for (at, (bytes, error)) in cases.into_iter().enumerate() {
+        assert_eq!(SessionLog::decode(&bytes).err(), Some(error), "case {at}");
     }
 }

@@ -74,7 +74,7 @@ pub use mode::error::{ModeError, UnitKitError};
 pub use mode::map_data::MapData;
 pub use mode::match_end::{MatchEnd, MatchResult};
 
-pub use mode::mode_data::ModeData;
+pub use mode::mode_data::{ModeData, ModeParam};
 pub use mode::mode_input::{InputValue, ModeInput};
 pub use mode::mode_setup::ModeSetup;
 pub use mode::mode_state::ModeState;

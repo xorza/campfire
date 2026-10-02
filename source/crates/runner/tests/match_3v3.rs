@@ -2,14 +2,14 @@
 //! same state hashes.
 
 use campfire_capabilities::{
-    ActionSlot, ActionSlots, ModeState, Owner, PathWalker, PlayerResources, ResourceId,
-    ScriptFailures, SlotKind, StateValue, Team, UnitType,
+    ActionSlot, ActionSlots, ModeParam, ModeState, Owner, PathWalker, PlayerResources, ResourceId,
+    Scalar, ScriptFailures, SlotKind, StateValue, Team, UnitType,
 };
 use campfire_math::{Num, PlayerSlot, Vec3};
 use campfire_protocol::SessionLog;
 use campfire_runner::{Golden, Reference3v3, Runner};
 use campfire_script::ScriptHost;
-use campfire_sim::{EntityIndex, Position, StateHash};
+use campfire_sim::{EntityIndex, Position, StateHash, TickRate};
 
 #[derive(Debug)]
 struct Run {
@@ -33,10 +33,13 @@ struct Unit {
     slots: Vec<ActionSlot>,
 }
 
-/// The pick lasts 60 s, 1200 ticks, set at the start: it ends in tick 1199. The first wave comes
-/// 60 s later, in tick 2399.
-const PICK_END: u64 = 1199;
-const FIRST_WAVE: u64 = 2399;
+/// The mode param `name` of the reference, a number of milliseconds.
+fn param_ms(reference: &Reference3v3, name: &str) -> u64 {
+    let ModeParam::Value(Scalar::Int(ms)) = reference.packages().data().params[name] else {
+        panic!("{name} is a whole number");
+    };
+    u64::try_from(ms).unwrap()
+}
 
 fn units(runner: &Runner) -> Vec<Unit> {
     let world = runner.world();
@@ -62,6 +65,12 @@ fn units(runner: &Runner) -> Vec<Unit> {
 /// A match of `ticks` ticks in which each player picks a hero and two spells before tick 0.
 fn run(reference: &Reference3v3, ticks: u64) -> Run {
     let runner = reference.start();
+    // A timer fires in the tick its time ends in. The pick's, set in tick 0, ends in the tick
+    // before its count of ticks; the first wave's, set then, its own count later.
+    let rate = *runner.world().resource::<TickRate>();
+    let timer = |name| rate.ticks(param_ms(reference, name)).unwrap().get();
+    let pick_end = timer("pick_ms") - 1;
+    let first_wave = pick_end + timer("first_wave_ms");
     let mut run = Run {
         runner,
         hashes: Vec::new(),
@@ -79,10 +88,10 @@ fn run(reference: &Reference3v3, ticks: u64) -> Run {
             "tick {tick}: {:?}",
             failures.get()
         );
-        match tick {
-            PICK_END => run.at_pick_end = units(&run.runner),
-            FIRST_WAVE => run.at_first_wave = units(&run.runner),
-            _ => {}
+        if tick == pick_end {
+            run.at_pick_end = units(&run.runner);
+        } else if tick == first_wave {
+            run.at_first_wave = units(&run.runner);
         }
     }
     run.runner.reveal_seed();
@@ -101,12 +110,21 @@ fn a_3v3_match_replays_to_the_same_hashes() {
     run.golden.check("3v3");
     let runner = &run.runner;
     let world = runner.world();
-    // State in the order of its fields' names: first_blood, then phase.
-    let phase = &world.resource::<ModeState>().get()[1];
+    // State in the order of its fields' names.
+    let packages = reference.packages();
+    let at = packages
+        .data()
+        .state
+        .keys()
+        .position(|name| name.as_str() == "phase");
+    let phase = &world.resource::<ModeState>().get()[at.unwrap()];
     assert_eq!(phase, &StateValue::Text("play".to_owned()));
-    // Each script file compiles once, however many abilities or unit types run it: the mode's 4,
-    // the six heroes' 5, 4, 5, 5, 4 and 4, and the spells' 6 make 37.
-    assert_eq!(world.non_send::<ScriptHost>().compiled(), 37);
+    // Each script file compiles once, however many abilities or unit types run it.
+    let scripts = packages.packages().map(|view| view.package.scripts.len());
+    assert_eq!(
+        world.non_send::<ScriptHost>().compiled(),
+        scripts.sum::<usize>()
+    );
 
     // The map's 14 structures from the start; at the pick's end, the 6 heroes at their teams'
     // spawns, slots 0 to 2 north and 3 to 5 south, and the 5 neutral camps.
@@ -147,21 +165,20 @@ fn a_3v3_match_replays_to_the_same_hashes() {
         assert_eq!(&unit.slots[4..6], spells);
     }
     assert_ne!(spells[0].action, spells[1].action);
+    // Each camp on its marker, in the map's order.
     let camps: Vec<_> = run.at_pick_end[20..]
         .iter()
         .map(|unit| (unit.team, unit.pos))
         .collect();
+    let markers = packages.map().markers.iter();
+    let camp_markers =
+        markers.filter(|marker| marker.tags.iter().any(|tag| tag.as_str() == "camp"));
     let neutral = Team::new(2);
-    assert_eq!(
-        camps,
-        [
-            (neutral, ground(-18, -12)),
-            (neutral, ground(18, -12)),
-            (neutral, ground(-18, 12)),
-            (neutral, ground(18, 12)),
-            (neutral, ground(0, 0)),
-        ]
-    );
+    let expected: Vec<_> = camp_markers
+        .map(|marker| (neutral, marker.pos.unwrap().position().unwrap()))
+        .collect();
+    assert_eq!(expected.len(), 5);
+    assert_eq!(camps, expected);
     // The first wave: on each lane, west then east, each team's six creeps at its end: 24.
     let wave = &run.at_first_wave[25..];
     let seen: Vec<_> = wave.iter().map(|unit| (unit.team, unit.pos)).collect();

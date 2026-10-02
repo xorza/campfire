@@ -6,7 +6,7 @@ use std::num::NonZeroU32;
 use bevy_app::App;
 use campfire_capabilities::{ActionSlots, Body, Dead, MoveStep, PoolId, Pools, SeenBy, Team};
 use campfire_math::{Num, Tick, Vec3};
-use campfire_net::{LinkModel, LocalMatch, MatchSetup, TickHashes};
+use campfire_net::{LinkModel, LocalMatch, MatchSetup, OrderScript, TickHashes};
 use campfire_protocol::{SeedChain, SessionLog};
 use campfire_runner::{Runner, Session};
 use campfire_sim::{EntityIndex, Position, SimTick, StableId};
@@ -95,12 +95,8 @@ fn play(link: LinkModel) -> [u32; 2] {
             }
         }
     }
-    // Let the clients receive the last ticks.
-    for _ in 0..20 {
-        local.step();
-    }
 
-    check_log(&mut local, 4);
+    check_log(&mut local, LocalMatch::SCENARIO_SCRIPTS);
 
     let worst = u64::from(link.delay + link.jitter);
     for index in 0..2 {
@@ -148,9 +144,13 @@ fn play(link: LinkModel) -> [u32; 2] {
     })
 }
 
-/// Checks the server's log: all `inputs` orders were logged in time, and took effect in the tick
-/// of their stamps; the replayed log gives the server's hash after every tick.
-fn check_log(local: &mut LocalMatch, inputs: usize) {
+/// Checks the server's log: every order of the two `scripts` was logged in time, and took effect
+/// in the tick of its stamp; the replayed log gives the server's hash after every tick.
+fn check_log(local: &mut LocalMatch, scripts: [&str; 2]) {
+    let inputs: usize = scripts
+        .map(|script| OrderScript::parse(script).unwrap().orders().len())
+        .iter()
+        .sum();
     let server = local.server_mut().world_mut();
     server.resource_mut::<Session>().reveal_seed();
     let live = server.resource::<TickHashes>().get().to_vec();
@@ -164,7 +164,7 @@ fn check_log(local: &mut LocalMatch, inputs: usize) {
     for tick in 0..ticks.get() {
         applied.extend(rewound.seal_tick().map(|input| (input.stamp, tick)));
     }
-    assert_eq!(applied.len(), inputs);
+    assert_eq!(applied.len(), inputs, "{applied:?}");
     assert!(
         applied
             .iter()
@@ -262,10 +262,7 @@ fn cast(link: LinkModel) -> [u32; 2] {
             }
         }
     }
-    for _ in 0..20 {
-        local.step();
-    }
-    check_log(&mut local, 9);
+    check_log(&mut local, [&west, &east]);
 
     // Each order took effect in its stamp tick: each hero stands on the edge, z = 8; the walker
     // lost 80 health to the runner's cast;
@@ -329,10 +326,11 @@ const ROUTE_TICKS: u64 = 240;
 fn route(link: LinkModel) -> [u32; 2] {
     let mut local = LocalMatch::new(MatchSetup::duo(link, SEED_CHAIN));
     local.start_match();
-    let teams = local.play_by_team([
+    let scripts = [
         "[[order]]\ntick = 60\nmove = [-12, -4]\n",
         "[[order]]\ntick = 60\nmove = [12, 7]\n",
-    ]);
+    ];
+    let teams = local.play_by_team(scripts);
     let client = (0..2).find(|&client| teams[client] == 0).unwrap();
     let walker = local.avatar(client);
     let world = local.server().world();
@@ -356,10 +354,7 @@ fn route(link: LinkModel) -> [u32; 2] {
         let offset = hero(local.server(), walker).position.get() - tower_at;
         closest = closest.min(offset.length_squared_bits());
     }
-    for _ in 0..20 {
-        local.step();
-    }
-    check_log(&mut local, 2);
+    check_log(&mut local, scripts);
 
     // It went round the tower, never touching it, and stands on its goal, on the server and on
     // its client.
@@ -390,7 +385,8 @@ const ROUND_TICKS: u64 = 70;
 fn round(link: LinkModel) -> [u32; 2] {
     let mut local = LocalMatch::new(MatchSetup::duo(link, SEED_CHAIN));
     local.start_match();
-    let teams = local.play_by_team(["[[order]]\ntick = 1\nmove = [0, 5]\n", ""]);
+    let scripts = ["[[order]]\ntick = 1\nmove = [0, 5]\n", ""];
+    let teams = local.play_by_team(scripts);
     let clients = [0, 1].map(|team| (0..2).find(|&client| teams[client] == team).unwrap());
     let [walker, stander] = clients.map(|client| local.avatar(client));
     let world = local.server().world();
@@ -406,10 +402,7 @@ fn round(link: LinkModel) -> [u32; 2] {
         let [walking, standing] = [walker, stander].map(|id| hero(local.server(), id).position);
         closest = closest.min(walking.ground_offset(standing).length_squared_bits());
     }
-    for _ in 0..20 {
-        local.step();
-    }
-    check_log(&mut local, 1);
+    check_log(&mut local, scripts);
 
     // It went round the hero that stands, never touching it, and stands on its goal; the other
     // never moved: on the server and on both clients.

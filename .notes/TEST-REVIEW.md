@@ -204,26 +204,6 @@ The schedule is a separate field only because `Mode::install` needs it (`mode/te
 - [ ] **One hero runs at two rates** — the reference heroes run at 30 Hz in `reference_abilities` and at 20 Hz in the 3v3, and no test checks timing across rates. For example, Eruption's 625 ms is 19 ticks at 30 Hz and 13 ticks at 20 Hz. Low priority.
 - [ ] **No golden for a whole match** — the sim golden pins 6 digests. Runner, verifier and net compare live against replay in one process and one binary, so they cannot see a difference between builds. Better: pin BLAKE3 over the 72 tick hashes of headless `scripted_creeps_and_towers…`, which plays `packages/test`. It changes when a state type is added, and that update is deliberate. This is also the first input `checks/det-ci` (an empty `main`) needs.
 
-## 5. Stronger assertions
-
-### 5.3 Failure messages
-
-- [ ] **Loops whose assertion does not name the case**:
-  - `mode_package.rs:1342` `.expect_err(flaw.file)`: 33 flaws edit `MODE_DATA` and 25 edit `HUSK`. Panic with `{flaw:?}`.
-  - `prototype.rs:98,103,109-116,120,130` lack `{case}`.
-  - `scenario.rs:167` has no message. A failure under stress printed only `right: 9`.
-  - `session_log/tests.rs:523-536` (11 changes) has no index.
-  - `session_log/tests.rs:974-976` has no message, and its two `WrongSeed` cases look the same.
-  - abilities:1162,1356 have no message, and abilities:406 does not name the unit or the hook.
-  - `state_decl/tests.rs` names a failure `"case {at}"`. Print the declaration.
-- [ ] **Counts with no derivation**:
-  - the settle steps (20, 10, 40, 30) in net;
-  - `check_log(…, 4 | 9 | 2 | 1)`, which needs the count by hand: 2 + 2, 7 + 2, 1 + 1, 1 + 0;
-  - `match_3v3.rs:105` `compiled() == 38`, which can be derived as the mode's scripts plus each dependency's scripts;
-  - `PICK_END` and `FIRST_WAVE` (`:37-38`), which can be derived from `TickRate::ticks(pick_ms) − 1`;
-  - the camp positions (`:154-158`), which can be derived from the map markers.
-- [ ] **`match_3v3.rs:101` reads `ModeState.get()[1]` by index** — a new state field moves the index with no error. Find the index from the state names in `packages.data()`.
-
 ## 6. Hermetic and stable fixtures
 
 - [ ] **The package flaws depend on MOBA content** — all 138 flaws in `mode_package.rs` edit MOBA text. 26 of the edits match balance digits, and 3 match a comment (`"# Its damage kinds"` at `:151,1052,1073`). A balance change breaks the table. Do these in order:

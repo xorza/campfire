@@ -21,6 +21,8 @@ use lightyear::prelude::{
     Client, Connected, MessageSender, Predicted, PredictionMetrics, RollbackMode,
 };
 
+use crate::scenario::next_tick;
+
 const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
 /// Frames of match: one tick each.
 const MATCH_FRAMES: usize = 120;
@@ -58,6 +60,13 @@ fn hero(app: &App) -> Hero {
         position: *hero.get::<Position>().unwrap(),
         destination: *hero.get::<Destination>().unwrap(),
     }
+}
+
+/// The ticks the client runs ahead of the server. An order shows on the server `lead + 1` steps
+/// after the client sends it: it is stamped `lead` ticks ahead, and moves the hero in that tick's
+/// step. The server's state of a tick the client predicted reaches it as many steps on.
+fn lead(local: &LocalMatch) -> u64 {
+    next_tick(local.client(0)) - next_tick(local.server())
 }
 
 #[test]
@@ -99,7 +108,10 @@ fn server_and_replay_agree_on_every_tick() {
         assert_eq!(hero(local.client(0)), arrived, "{case}");
         let client_world = local.client(0).world();
         let client_hero = client_world.entity(hero_entity(local.client(0)));
-        assert!(client_hero.contains::<Predicted>() && !client_hero.contains::<Unpredicted>());
+        assert!(
+            client_hero.contains::<Predicted>() && !client_hero.contains::<Unpredicted>(),
+            "{case}"
+        );
         let rollbacks = client_world.resource::<PredictionMetrics>().rollbacks;
         // The client stamps each order with the tick it predicts it in, and runs ahead of the
         // server, so the server applies it in that tick: nothing is mispredicted, and a client
@@ -118,12 +130,13 @@ fn server_and_replay_agree_on_every_tick() {
                 .entity(link)
                 .get::<PlayerLink>()
                 .unwrap()
-                .refused()
+                .refused(),
+            "{case}"
         );
         server_world.resource_mut::<Session>().reveal_seed();
         let live = server_world.resource::<TickHashes>().get().to_vec();
         let ticks = started + u64::try_from(MATCH_FRAMES).unwrap();
-        assert_eq!(u64::try_from(live.len()).unwrap(), ticks);
+        assert_eq!(u64::try_from(live.len()).unwrap(), ticks, "{case}");
         let mut file = Vec::new();
         server_world.resource::<Session>().log().encode(&mut file);
         let decoded = SessionLog::decode(&file).unwrap();
@@ -133,7 +146,7 @@ fn server_and_replay_agree_on_every_tick() {
             replay.run_tick();
             assert_eq!(replay.state_hash(), *live, "{case}, tick {tick}");
         }
-        assert_eq!(replay.log().next_tick(), Tick::new(ticks));
+        assert_eq!(replay.log().next_tick(), Tick::new(ticks), "{case}");
     }
 }
 
@@ -147,8 +160,15 @@ fn a_burst_of_orders_waits_for_later_stamps_and_a_forged_message_ends_its_link()
         local.order(0, move_to(x, 1));
     }
     local.order(0, move_to(-2, 5));
-    for _ in 0..80 {
+    for _ in 0..=lead(&local) {
         local.step();
+    }
+    assert_ne!(hero(local.server()).destination, Destination::default());
+    let mut frames = 0;
+    while hero(local.server()).destination != Destination::default() {
+        assert!(frames < 80, "the hero arrives");
+        local.step();
+        frames += 1;
     }
     let arrived = Hero {
         position: Position::new(Vec3::new(num(-2), Num::ZERO, num(5))).unwrap(),
@@ -181,9 +201,8 @@ fn a_burst_of_orders_waits_for_later_stamps_and_a_forged_message_ends_its_link()
         .single_mut(world)
         .unwrap()
         .send::<InputChannel>(forged);
-    for _ in 0..5 {
-        local.step();
-    }
+    // A perfect link carries it in the step it is sent.
+    local.step();
     assert_eq!(refused(&local), (true, false));
 }
 
@@ -235,14 +254,13 @@ fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_
     }
     assert_eq!(seen, [true, true]);
     let died_in = local.server().world().resource::<SimTick>().start().get() - 1;
-    // The client learns of the death after the ticks it predicted ahead, and corrects them once.
-    for _ in 0..10 {
-        local.step();
-    }
+    // The server sent the death in the step it ran it, and the client takes it in the next one:
+    // it corrects the ticks it predicted ahead, once.
+    local.step();
     assert_eq!(rollbacks(&local), 1);
     // An order after its death moves it on neither end, and needs no correction.
     local.order(0, move_to(-4, 0));
-    for _ in 0..40 {
+    for _ in 0..=lead(&local) {
         local.step();
     }
     let at = |x, z| Hero {
@@ -276,9 +294,6 @@ fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_
     }
     let respawned_in = local.server().world().resource::<SimTick>().start().get() - 1;
     assert_eq!(respawned_in, back.at.get());
-    for _ in 0..10 {
-        local.step();
-    }
     assert_eq!(hero(local.server()), at(0, -2));
     assert_eq!(hero(local.client(0)), at(0, -2));
     assert!(!dead(local.client(0)));
@@ -330,9 +345,7 @@ fn a_fallen_tower_ends_the_match_on_the_server_and_its_client() {
     assert_eq!(client, server);
     let end = *local.server().world().resource::<MatchEnd>();
     assert_eq!(end.result(), MatchResult::Won(Team::new(0)));
-    for _ in 0..10 {
-        local.step();
-    }
+    local.step();
     assert_eq!(
         local.client(0).world().get_resource::<MatchEnd>(),
         Some(&end)
@@ -342,14 +355,15 @@ fn a_fallen_tower_ends_the_match_on_the_server_and_its_client() {
     let still = hero(local.server());
     let tick = local.server().world().resource::<SimTick>().start();
     local.order(0, move_to(-6, 0));
-    for _ in 0..30 {
+    let steps = lead(&local) + 1;
+    for _ in 0..steps {
         local.step();
     }
     assert_eq!(hero(local.server()), still);
     assert_eq!(hero(local.client(0)).position, still.position);
     // A step runs one tick of the server's.
     let after = local.server().world().resource::<SimTick>().start();
-    assert_eq!(after, tick.after(Ticks::new(30)));
+    assert_eq!(after, tick.after(Ticks::new(steps)));
 }
 
 #[test]
@@ -359,9 +373,10 @@ fn a_slow_and_a_stun_end_on_the_client_in_the_tick_they_end_on_the_server() {
     // The hero walks off the lane, where nothing meets it: 16.5 m at 0.25 m a tick, so it still
     // walks when both modifiers end, 30 and 15 ticks after the client learns each.
     local.order(0, move_to(-16, -6));
-    for _ in 0..5 {
+    for _ in 0..=lead(&local) {
         local.step();
     }
+    assert_ne!(hero(local.server()).destination, Destination::default());
     let rollbacks = |local: &LocalMatch| {
         let world = local.client(0).world();
         world.resource::<PredictionMetrics>().rollbacks
@@ -389,7 +404,7 @@ fn a_slow_and_a_stun_end_on_the_client_in_the_tick_they_end_on_the_server() {
             frames += 1;
             assert!(frames < 60, "the {name} ends");
         }
-        for _ in 0..10 {
+        for _ in 0..=lead(&local) {
             local.step();
         }
         assert_eq!(rollbacks(&local), learned, "{name}");
@@ -410,9 +425,10 @@ fn the_client_takes_the_relations_a_script_sets() {
         east,
         Attitude::Neutral,
     );
-    for _ in 0..10 {
-        local.step();
-    }
+    // The server sends them in its frame of the next step, and the client takes them in the step
+    // after.
+    local.step();
+    local.step();
     let set = relations(local.server());
     assert_ne!(set, Relations::default());
     assert_eq!(relations(local.client(0)), set);

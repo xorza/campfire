@@ -1860,7 +1860,9 @@ fn every_flaw_of_a_package_fails_its_load_with_its_own_problem() {
         let edits = [(flaw.file, flaw.edit)]
             .into_iter()
             .chain(flaw.also.iter().copied());
-        let error = ModePackages::from_package_dir(&edited(edits)).expect_err(flaw.file);
+        let Err(error) = ModePackages::from_package_dir(&edited(edits)) else {
+            panic!("{flaw:?} loads");
+        };
         let LoadError { package, problem } = &error;
         let named = match package {
             PackageRef::Name(name) => name == flaw.package,

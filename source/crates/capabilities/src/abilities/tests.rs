@@ -465,14 +465,18 @@ fn damage_of_a_kind_the_mode_does_not_declare_fails_the_cast() {
     game.cast(husk, ActionTarget::None);
     // The call fails, so the cast applies nothing: no damage, no cost.
     assert_eq!((game.health(near), game.pool(husk)), (500, 100));
-    let errors: Vec<_> = game
+    let failures: Vec<_> = game
         .failures()
         .iter()
-        .map(|failure| &failure.error)
+        .map(|failure| (failure.unit, failure.hook, &failure.error))
         .collect();
     assert!(
-        matches!(errors[..], [CallError::Api(ApiError::UnknownDamageKind)]),
-        "{errors:?}"
+        matches!(
+            failures[..],
+            [(Some(unit), Hook::OnResolve, CallError::Api(ApiError::UnknownDamageKind))]
+                if unit == husk
+        ),
+        "{failures:?}"
     );
 }
 
@@ -1305,12 +1309,18 @@ fn on_resolve(ctx, caster, target) {
     let ability = game.load("lash_out", &lash_out(), negative);
     let caster = game.caster(ability, 1);
     game.cast(caster, ActionTarget::None);
-    let refused = game.failures().iter().map(|failure| &failure.error);
+    let failures: Vec<_> = game
+        .failures()
+        .iter()
+        .map(|failure| (failure.unit, failure.hook, &failure.error))
+        .collect();
     assert!(
-        refused
-            .clone()
-            .all(|error| matches!(error, CallError::Api(ApiError::NegativeHeal)))
-            && refused.count() == 1
+        matches!(
+            failures[..],
+            [(Some(unit), Hook::OnResolve, CallError::Api(ApiError::NegativeHeal))]
+                if unit == caster
+        ),
+        "{failures:?}"
     );
     assert_eq!(game.pool(caster), 100);
 }
@@ -1509,10 +1519,14 @@ fn on_damage_taken(ctx, m, d) {
         .iter()
         .map(|failure| (failure.unit, failure.hook, failure.error.clone()))
         .collect();
-    assert!(matches!(
-        failures.as_slice(),
-        [(Some(unit), Hook::OnDamageTaken, CallError::Api(ApiError::ChainTooDeep))] if *unit == echoer
-    ));
+    assert!(
+        matches!(
+            failures.as_slice(),
+            [(Some(unit), Hook::OnDamageTaken, CallError::Api(ApiError::ChainTooDeep))]
+                if *unit == echoer
+        ),
+        "{failures:?}"
+    );
 }
 
 /// The stats of the scaling tests' mode, in its order: attack damage, an engine stat, first.
