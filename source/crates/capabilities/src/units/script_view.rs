@@ -13,8 +13,6 @@ use crate::actions::action_book::{Action, ActionBook, Delivery};
 use crate::units::action_id::ActionId;
 
 use crate::players::resource_id::ResourceId;
-use crate::progression::track_book::TrackBook;
-use crate::progression::track_set::TrackSet;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
@@ -47,6 +45,7 @@ use crate::units::unit::Unit;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_types::UnitTypes;
+use crate::units::view_column::{ViewColumn, ViewColumns};
 use crate::values::attitude::Attitude;
 use crate::values::bounds::Bounds;
 use crate::values::damage_kind::DamageKind;
@@ -89,8 +88,8 @@ pub(crate) struct ScriptView {
     pool_names: Arc<[DeclaredName]>,
     /// The players' resources the mode declares, by resource id.
     resource_names: Arc<[DeclaredName]>,
-    /// The tracks the mode declares, by track id.
-    tracks: TrackBook,
+    /// What each capability above the core reads of the units, and its getters read besides.
+    columns: ViewColumns,
     /// Every modifier, by id, the modifiers each unit carries, one run per unit, and their
     /// script state, one run per modifier.
     modifier_book: ModifierBook,
@@ -125,8 +124,6 @@ pub(crate) struct UnitRow {
     pub(crate) pools: Option<Pools>,
     /// The teams that see it; `vision` fills it, and without vision every team does.
     pub(crate) seen_by: TeamSet,
-    /// The tracks it has; `progression` fills it.
-    pub(crate) tracks: TrackSet,
     /// Its tags and their effects, as the core derives them.
     pub(crate) tags: UnitTags,
     /// Its run of recent attacks, from `attacks_start` to `attacks_end`.
@@ -176,6 +173,7 @@ pub(crate) struct RowFill<'a> {
     stats: &'a mut Vec<Num>,
     modifiers: &'a mut Vec<ModifierRow>,
     modifier_state: &'a mut Vec<StateValue>,
+    columns: &'a mut ViewColumns,
 }
 
 impl UnitRow {
@@ -185,6 +183,14 @@ impl UnitRow {
 }
 
 impl RowFill<'_> {
+    /// The column of `capability`, which installed one of type `C`, for its source to add the
+    /// row's part to.
+    pub(crate) fn column<C: ViewColumn>(&mut self, capability: Capability) -> &mut C {
+        self.columns
+            .get_mut(capability)
+            .expect("a capability fills the column it installed")
+    }
+
     /// Adds `instance` to the row's run of modifiers, which the caller adds in order.
     pub(crate) fn modified(
         &mut self,
@@ -236,6 +242,7 @@ impl ScriptView {
         self.metric = *world.resource::<Metric>();
         self.bounds = Bounds::of(world);
         self.units.clear();
+        self.columns.clear();
         self.attacks.clear();
         self.slots.clear();
         self.stats.clear();
@@ -264,7 +271,6 @@ impl ScriptView {
                 level: None,
                 pools: None,
                 seen_by: TeamSet::ALL,
-                tracks: TrackSet::default(),
                 tags: unit.get::<UnitTags>().copied().unwrap_or_default(),
                 target: None,
                 attack_range: None,
@@ -285,6 +291,7 @@ impl ScriptView {
                 stats: &mut self.stats,
                 modifiers: &mut self.modifiers,
                 modifier_state: &mut self.modifier_state,
+                columns: &mut self.columns,
             };
             for source in &self.sources {
                 source(&unit, &mut fill);
@@ -295,6 +302,10 @@ impl ScriptView {
             row.modifiers_end = u32::try_from(self.modifiers.len()).expect("modifiers fit u32");
             self.units.push(row);
         }
+        debug_assert!(
+            self.columns.hold(self.units.len()),
+            "every column holds a row for each unit"
+        );
     }
 
     fn row(&self, id: StableId) -> Option<UnitRow> {
@@ -338,7 +349,7 @@ impl View {
             stat_names: Arc::from([]),
             pool_names: Arc::from([]),
             resource_names: Arc::from([]),
-            tracks: TrackBook::default(),
+            columns: ViewColumns::default(),
             stats: Vec::new(),
             modifier_book: ModifierBook::default(),
             modifiers: Vec::new(),
@@ -543,17 +554,9 @@ impl View {
         Ok(found.ok_or_else(|| ApiError::UnknownDamageKind.fail())?)
     }
 
-    /// Shares the tracks the mode declares.
-    pub(crate) fn set_tracks(&self, tracks: TrackBook) {
-        let mut view = self.0.borrow_mut();
-        view.consts.set_tracks(tracks.names());
-        view.tracks = tracks;
-    }
-
-    /// The track `name`; an error for one the mode does not declare.
-    pub(crate) fn track_named(&self, name: &str) -> Checked<TrackId> {
-        let found = self.0.borrow().tracks.named(name);
-        Ok(found.ok_or_else(|| ApiError::UnknownTrack.fail())?)
+    /// Names the tracks the mode declares, by track id.
+    pub(crate) fn set_track_names<'a>(&self, names: impl Iterator<Item = &'a str>) {
+        self.0.borrow_mut().consts.set_tracks(names);
     }
 
     /// The name of track `track`.
@@ -586,6 +589,37 @@ impl View {
     /// Adds how a capability fills its fields of each row, after those added before it.
     pub(crate) fn add_source(&self, source: RowSource) {
         self.0.borrow_mut().sources.push(source);
+    }
+
+    /// Gives `capability` its column, which its source fills.
+    pub(crate) fn add_column<C: ViewColumn>(&self, capability: Capability, column: C) {
+        self.0.borrow_mut().columns.add(capability, column);
+    }
+
+    /// What `read` gives of the column of `capability`; `None` when it installed none.
+    pub(crate) fn column<C: ViewColumn, R>(
+        &self,
+        capability: Capability,
+        read: impl FnOnce(&C) -> R,
+    ) -> Option<R> {
+        self.0.borrow().columns.get(capability).map(read)
+    }
+
+    /// Changes the column of `capability` by `write`, when it installed one.
+    pub(crate) fn column_mut<C: ViewColumn>(
+        &self,
+        capability: Capability,
+        write: impl FnOnce(&mut C),
+    ) {
+        if let Some(column) = self.0.borrow_mut().columns.get_mut(capability) {
+            write(column);
+        }
+    }
+
+    /// The place among the rows of unit `id`, when the view read it.
+    pub(crate) fn row_index(&self, id: StableId) -> Option<usize> {
+        let view = self.0.borrow();
+        view.units.binary_search_by_key(&id, |row| row.id).ok()
     }
 
     /// The name of `team`.

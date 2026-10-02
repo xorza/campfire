@@ -340,6 +340,7 @@ pub(crate) mod internals {
     use crate::abilities::effect_lists::Listed;
     use crate::abilities::effect_names::EffectNames;
     use crate::actions::action_data::ActionData;
+    use crate::progression::tracks_column::TracksColumn;
     use crate::stats::Stats;
     use crate::stats::param_book::ParamBook;
     use crate::stats::pool_id::PoolId;
@@ -410,8 +411,7 @@ pub(crate) mod internals {
         }
 
         fn track(&self, name: &DeclaredName) -> TrackId {
-            self.view
-                .track_named(name.as_str())
+            TracksColumn::track_named(self.view, name.as_str())
                 .expect("the load checked an effect's track")
         }
     }

@@ -16,6 +16,7 @@ use crate::mode::mode_setup::{LoadoutSetup, UnitTypeSetup};
 use crate::navigation::walker::Walker;
 use crate::orders::ai::Ai;
 use crate::progression::track_book::TrackBook;
+use crate::progression::tracks_column::TracksColumn;
 use crate::projectiles::projectile_spec::ProjectileSpec;
 use crate::scripts::ctx::Ctx;
 use crate::stats::modifier_book::ModifierBook;
@@ -96,7 +97,7 @@ impl Books {
         }
         world.insert_resource(params);
         if let Some(tracks) = parts.tracks {
-            view.set_tracks(tracks.clone());
+            TracksColumn::share(&view, tracks.clone());
             world.insert_resource(tracks);
         }
         view.set_actions(parts.actions.clone());

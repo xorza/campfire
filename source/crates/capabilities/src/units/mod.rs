@@ -58,6 +58,7 @@ pub(crate) mod unit_tags;
 pub(crate) mod unit_type;
 pub(crate) mod unit_type_data;
 pub(crate) mod unit_types;
+pub(crate) mod view_column;
 
 /// The core's systems, for the capabilities above it to order theirs against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]

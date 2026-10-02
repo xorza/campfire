@@ -3,6 +3,7 @@ use campfire_script::rhai::INT;
 use campfire_sim::Capability;
 
 use crate::progression::progression_effect::ProgressionEffect;
+use crate::progression::tracks_column::TracksColumn;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
 use crate::scripts::ctx::Ctx;
@@ -64,14 +65,12 @@ impl ProgressionApi {
     /// Queues `amount`, not negative, of experience on `track` of `unit`, which has it.
     fn add_xp(ctx: &Ctx, unit: &Unit, track: &str, amount: Num) -> Checked<()> {
         let view = ctx.view();
-        let track = view.track_named(track)?;
+        let track = TracksColumn::track_named(view, track)?;
         if amount < Num::ZERO {
             return Err(ApiError::NegativeXp.fail().into());
         }
-        if !view
-            .row(unit.id)
-            .is_some_and(|row| row.tracks.contains(track))
-        {
+        let row = view.row_index(unit.id);
+        if !row.is_some_and(|row| TracksColumn::has(view, row, track)) {
             return Err(ApiError::NoTrack.fail().into());
         }
         ctx.queue(ProgressionEffect::AddXp {
