@@ -1,7 +1,7 @@
 //! Capabilities: the mechanisms a mode combines, a module each, on the core, and the mode above
 //! them. A module imports only from its own layer and the layers below, lowest first: `values`
-//! (data value types); the core, `units` and `scripts` (unit types, teams, owners, paths, the
-//! script view and runtime); `actions`; `stats` and `combat`; `deliveries`, `projectiles`,
+//! (data value types); the core, `units`, `scripts` and `players` (unit types, teams, owners,
+//! paths, the script view and runtime, and the players' resources); `actions`; `stats` and `combat`; `deliveries`, `projectiles`,
 //! `areas`, `abilities`, `navigation`, `vision`, `progression` and `production`; `orders`; the
 //! `mode`; and `capability_set`, which installs them. The layer test in `capability_set` holds
 //! this list, and the imports that still break it. A capability gives the script view its fields
@@ -27,6 +27,7 @@ mod deliveries;
 mod mode;
 mod navigation;
 mod orders;
+mod players;
 mod production;
 mod progression;
 mod projectiles;
@@ -84,9 +85,7 @@ pub use mode::mode_setup::{LoadoutSetup, ModeSetup, SlotAction, UnitTypeSetup};
 pub use mode::mode_state::ModeState;
 pub use mode::mode_state_decl::{ModeStateDecl, SyncTo};
 pub use mode::offer::Offer;
-pub use mode::player_resources::PlayerResources;
 pub use mode::relation_data::RelationData;
-pub use mode::resource_id::ResourceId;
 pub use mode::team_manifest::TeamManifest;
 pub use mode::timers::{Timer, Timers};
 pub use mode::unit_kit::UnitKit;
@@ -106,6 +105,8 @@ pub use orders::ai_data::AiData;
 pub use orders::error::AiError;
 pub use orders::next_think::NextThink;
 pub use orders::order::{Action, Order};
+pub use players::player_resources::PlayerResources;
+pub use players::resource_id::ResourceId;
 pub use production::Production;
 pub use production::production_data::ProductionData;
 pub use production::train_queue::{Queued, TrainQueue};

@@ -16,7 +16,7 @@ use crate::combat::armed::Armed;
 use crate::combat::combat_rules::{CombatRules, Leech};
 use crate::combat::damage_kind::DamageKind;
 use crate::combat::targets::Targets;
-use crate::mode::resource_id::ResourceId;
+use crate::players::resource_id::ResourceId;
 use crate::stats::Stats;
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifiers::{Application, Instance};

@@ -17,7 +17,7 @@ use crate::actions::kind_spec::KindSpec;
 use crate::actions::purse::Purse;
 use crate::actions::weapon::Weapon;
 use crate::combat::targets::Targets;
-use crate::mode::resource_id::ResourceAmount;
+use crate::players::resource_id::ResourceAmount;
 use crate::scripts::hook::Hook;
 use crate::scripts::hook_set::HookSet;
 use crate::scripts::script_book::ScriptBook;
@@ -451,7 +451,7 @@ pub(crate) mod internals {
     use crate::actions::kind_spec::KindSpec;
     use crate::actions::weapon::Weapon;
     use crate::combat::damage_kind::DamageKind;
-    use crate::mode::resource_id::ResourceAmount;
+    use crate::players::resource_id::ResourceAmount;
     use crate::scripts::hook_set::HookSet;
     use crate::stats::pool_cost::PoolCost;
     use crate::units::filter::Filter;

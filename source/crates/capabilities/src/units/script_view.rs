@@ -12,7 +12,7 @@ use campfire_sim::{Capability, EntityIndex, Position, SimTick, StableId, TickRat
 use crate::actions::action_book::{Action, ActionBook, ActionId, Delivery};
 
 use crate::combat::damage_kind::DamageKind;
-use crate::mode::resource_id::ResourceId;
+use crate::players::resource_id::ResourceId;
 use crate::progression::track_book::TrackBook;
 use crate::progression::track_id::TrackId;
 use crate::progression::track_set::TrackSet;

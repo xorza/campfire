@@ -16,7 +16,7 @@ use crate::actions::purse::Purse;
 use crate::combat::CombatSet;
 use crate::combat::dead::Dead;
 use crate::mode::mode_book::SpawnAt;
-use crate::mode::player_resources::PlayerResources;
+use crate::players::player_resources::PlayerResources;
 use crate::production::train_queue::{Queued, TrainQueue};
 use crate::scripts::ctx::Ctx;
 use crate::stats::pools::Pools;

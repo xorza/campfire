@@ -10,7 +10,7 @@ use crate::actions::action_kind::ActionKind;
 use crate::actions::delivery_data::DeliveryData;
 use crate::actions::effect_data::EffectData;
 use crate::actions::error::ActionField;
-use crate::mode::resource_id::{ResourceAmount, ResourceId};
+use crate::players::resource_id::{ResourceAmount, ResourceId};
 use crate::scripts::hook::Hook;
 use crate::scripts::state_decl::StateDecl;
 use crate::stats::pool_cost::PoolCost;

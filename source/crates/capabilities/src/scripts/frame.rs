@@ -6,7 +6,7 @@ use crate::actions::action_book::ActionId;
 use crate::mode::choices::Choices;
 use crate::mode::match_end::MatchEnd;
 use crate::mode::mode_state::ModeState;
-use crate::mode::player_resources::PlayerResources;
+use crate::players::player_resources::PlayerResources;
 use crate::scripts::call_start::CallStart;
 use crate::scripts::effects::{ApplyEffect, Effects};
 use crate::scripts::error::CallError;

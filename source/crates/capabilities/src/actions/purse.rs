@@ -1,7 +1,7 @@
 use campfire_math::PlayerSlot;
 
-use crate::mode::player_resources::PlayerResources;
-use crate::mode::resource_id::ResourceAmount;
+use crate::players::player_resources::PlayerResources;
+use crate::players::resource_id::ResourceAmount;
 use crate::stats::pool_cost::PoolCost;
 use crate::stats::pools::Pools;
 

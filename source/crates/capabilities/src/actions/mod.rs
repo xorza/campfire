@@ -17,8 +17,8 @@ use crate::combat::CombatSet;
 
 use crate::combat::dead::Dead;
 use crate::combat::targets::Targets;
-use crate::mode::player_resources::PlayerResources;
 use crate::orders::OrdersSet;
+use crate::players::player_resources::PlayerResources;
 
 use crate::stats::StatsSet;
 use crate::stats::modifier_book::{Applier, ModifierBook};

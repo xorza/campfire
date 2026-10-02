@@ -23,7 +23,7 @@ use crate::combat::CombatSet;
 use crate::combat::dead::Dead;
 use crate::combat::targets::Targets;
 use crate::deliveries::delivering::Delivering;
-use crate::mode::player_resources::PlayerResources;
+use crate::players::player_resources::PlayerResources;
 
 use crate::projectiles::Projectiles;
 use crate::scripts::ctx::Ctx;

@@ -408,10 +408,11 @@ mod tests {
 
     /// The layer of each module of the crate, lowest first: a module imports from its own layer
     /// and the layers below, as design 02's structural rules ask. `lib.rs` sits above them all.
-    const LAYERS: [(&str, u8); 18] = [
+    const LAYERS: [(&str, u8); 19] = [
         ("values", 0),
         ("units", 1),
         ("scripts", 1),
+        ("players", 1),
         ("actions", 2),
         ("stats", 3),
         ("combat", 3),
@@ -432,13 +433,10 @@ mod tests {
     /// The imports from a higher layer that the code holds today, each a module and the one it
     /// imports. Each step of the structural redesign's layers removes its own; the test fails
     /// when a new one appears, and when one listed here is gone, so the list only shrinks.
-    const KNOWN_BREAKS: [(&str, &str); 28] = [
-        ("abilities", "mode"),
+    const KNOWN_BREAKS: [(&str, &str); 24] = [
         ("actions", "combat"),
-        ("actions", "mode"),
         ("actions", "orders"),
         ("actions", "stats"),
-        ("combat", "mode"),
         ("combat", "projectiles"),
         ("navigation", "mode"),
         ("production", "mode"),
@@ -457,7 +455,6 @@ mod tests {
         ("stats", "navigation"),
         ("units", "actions"),
         ("units", "combat"),
-        ("units", "mode"),
         ("units", "progression"),
         ("units", "stats"),
         ("values", "stats"),
