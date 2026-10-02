@@ -130,7 +130,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 
 | Name | Form | Capability | Status | What it is |
 | --- | --- | --- | --- | --- |
-| `ability` | read | combat | since 1.0 | the ability that dealt it, `""` when none |
+| `ability` | read | combat | since 1.0 | the action that dealt it: an ability, or an attack's weapon; `()` for none |
 | `amount` | read | combat | since 1.0 | raw in `calc_damage`, final in a hook |
 | `attack` | read | combat | since 1.0 | whether an attack dealt it |
 | `extra` | read | combat | since 1.0 | whether `ctx.attack_hit` dealt it |
@@ -144,7 +144,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 
 | Name | Form | Capability | Status | What it is |
 | --- | --- | --- | --- | --- |
-| `ability` | read | combat | since 1.0 | the ability that gave it, `""` when none |
+| `ability` | read | combat | since 1.0 | the ability that gave it, `()` for none |
 | `amount` | read | combat | since 1.0 | before `calc_heal` and the heal scale |
 | `leech` | read | combat | since 1.0 | whether its source's leech gave it |
 | `source` | read | combat | since 1.0 | the unit that gave it, `()` when gone or none |

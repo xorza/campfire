@@ -11,7 +11,7 @@ use campfire_sim::{
 };
 
 use crate::actions::Actions;
-use crate::actions::action_book::{ActionBook, RankValues};
+use crate::actions::action_book::{ActionBook, ActionId, RankValues};
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::purse::Purse;
 use crate::actions::weapon::Weapon;
@@ -168,6 +168,7 @@ impl Combat {
             .expect("a slot's action is in the book");
         Wielded {
             slot: underway.slot,
+            action: slot.action,
             weapon: action
                 .kind
                 .weapon()
@@ -210,6 +211,8 @@ type Attacker<'a> = (
 #[derive(Debug, Clone, Copy)]
 struct Wielded<'a> {
     slot: u8,
+    /// The weapon's action, which its damage names.
+    action: ActionId,
     weapon: Weapon,
     values: RankValues,
     resource_cost: &'a [ResourceAmount],
@@ -392,6 +395,7 @@ fn strike(
             continue;
         }
         let Wielded {
+            action,
             weapon,
             values,
             resource_cost,
@@ -412,6 +416,7 @@ fn strike(
                         flown: Num::ZERO,
                     },
                     payload: Payload::Attack {
+                        action,
                         amount,
                         kind: weapon.kind,
                         roll,
@@ -425,7 +430,7 @@ fn strike(
                 amount,
                 kind: weapon.kind,
                 cause: DamageCause::Attack { roll },
-                ability: None,
+                ability: Some(action),
                 depth: 0,
                 hit: None,
             }),
@@ -732,18 +737,22 @@ impl Combat {
                 let book = world.resource::<ActionBook>();
                 let first = unit.get::<ActionSlots>().and_then(|slots| {
                     let slot = slots.slot(book.weapon_for(slots, None)?)?;
-                    book.get(slot.action)?.kind.weapon()
+                    let weapon = book.get(slot.action)?.kind.weapon()?;
+                    Some((slot.action, weapon))
                 });
-                let Some(weapon) = first else {
+                let Some((action, weapon)) = first else {
                     return;
                 };
                 let stats = unit.get::<UnitStats>().map_or(&[][..], UnitStats::values);
-                let hit = damage(
-                    target,
-                    weapon.damage(stats),
-                    weapon.kind,
-                    DamageCause::ExtraAttack,
-                );
+                let hit = Damage {
+                    ability: Some(action),
+                    ..damage(
+                        target,
+                        weapon.damage(stats),
+                        weapon.kind,
+                        DamageCause::ExtraAttack,
+                    )
+                };
                 world.resource_mut::<PassQueue>().push_damage(hit);
             }
         }
@@ -890,7 +899,6 @@ pub(crate) mod internals {
     use campfire_math::Num;
     use campfire_sim::Ticks;
 
-    use crate::actions::action_book::ActionBook;
     use crate::actions::action_book::internals::{self, TestWeapon};
     use crate::actions::action_data::Range;
     use crate::actions::action_slots::ActionSlots;
@@ -964,7 +972,7 @@ pub(crate) mod internals {
                 cost: PoolCost::default(),
                 resource_cost: None,
             };
-            let id = internals::weapon(&mut world.resource_mut::<ActionBook>(), weapon);
+            let id = internals::weapon(world, weapon);
             // The rate whose attacks are `period` ticks apart at `hz`, rounded up so the period
             // rounds back to `period`.
             let bits = (u128::from(hz) << (2 * Num::FRAC_BITS))

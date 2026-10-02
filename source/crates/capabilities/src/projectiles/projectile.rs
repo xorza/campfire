@@ -40,6 +40,8 @@ pub(crate) enum Flight {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum Payload {
     Attack {
+        /// The weapon's action, which its damage names.
+        action: ActionId,
         amount: Num,
         kind: DamageKind,
         roll: Num,

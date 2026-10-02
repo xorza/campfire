@@ -192,13 +192,18 @@ impl Flights<'_> {
     /// `on_hit`.
     fn strike(&mut self, projectile: &Projectile, target: StableId, hit: Hit) {
         match projectile.payload() {
-            Payload::Attack { amount, kind, roll } => self.queue.push_damage(Damage {
+            Payload::Attack {
+                action,
+                amount,
+                kind,
+                roll,
+            } => self.queue.push_damage(Damage {
                 source: Some(projectile.source()),
                 target,
                 amount,
                 kind,
                 cause: DamageCause::Attack { roll },
-                ability: None,
+                ability: Some(action),
                 depth: 0,
                 hit: Some(hit),
             }),

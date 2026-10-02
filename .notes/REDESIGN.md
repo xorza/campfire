@@ -420,12 +420,11 @@ This stage is the backbone. Its steps run in order.
 
 | Step | Change | Size |
 |---|---|---|
-| C8 | `ActionKind` with data, one table of fields by kind; `Delivery` with its unit type; `TypeRole` and one store of type tags; one formula for each stat value; an attack's damage names its weapon (decision 7) | M, changes behaviour (`d.ability` of an attack) |
 | C9 | `Arena` loads the real packages through `Match::install`; `FixedSession` | S |
 
 Done when `MatchBuild` has no `.expect(CHECKED)`, `StartError` has no data case, and the allowlist of name lookups holds only script calls and the load.
 
-### Stage D: layers (track S, after C8)
+### Stage D: layers (track S, after C9)
 
 | Step | Change | Size |
 |---|---|---|
@@ -472,7 +471,7 @@ PLAN.md's stage 4 steps join this plan as follows:
 ### Order
 
 ```
-Track S:  C8 → C9 → D2 → D3 → D5 → D6
+Track S:  C9 → D2 → D3 → D5 → D6
                        └ I4 → PLAN 2
 
 Track I:  E1 → E2      F2      G1      H1, H4      H2 → H3
@@ -524,7 +523,7 @@ Track S is long and sequential. Track I fills the sessions between its steps.
 ### REVIEW.md
 
 - **R§1:**
-  - spawn of a delivery type: B1, final in C8;
+  - spawn of a delivery type: B1;
   - two names for one type: B1, final in C2;
   - modifier data on restore: G1;
   - mode state decode: G1;
@@ -642,7 +641,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - small shapes: J;
   - train queue times: G2;
   - kill by last death: J;
-  - attack damage action: C8;
   - `ctx.projectile` returns `()`: F2;
   - `HeldModifiers` clear: G2;
   - capability set table: A4.

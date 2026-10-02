@@ -1,4 +1,4 @@
-use campfire_script::rhai::{Dynamic, ImmutableString};
+use campfire_script::rhai::Dynamic;
 use campfire_sim::Capability;
 
 use crate::combat::heal::{Heal, HealCause};
@@ -50,11 +50,11 @@ impl HealHandle {
                 |h: &mut HealHandle| h.heal.cause == HealCause::Leech,
             )
             .bind(
-                field("ability", "the ability that gave it, `\"\"` when none"),
+                field("ability", "the ability that gave it, `()` for none"),
                 |h: &mut HealHandle| {
                     h.heal
                         .ability
-                        .map_or_else(ImmutableString::new, |id| h.view.ability_name(id))
+                        .map_or(Dynamic::UNIT, |id| Dynamic::from(h.view.ability_name(id)))
                 },
             );
     }

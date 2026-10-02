@@ -1426,14 +1426,21 @@ fn on_interval(ctx, m) { throw "interval"; }
 #[test]
 fn a_hook_deals_damage_into_the_pass_and_a_chain_16_deep_fails() {
     // An extra attack on each attack that is not one, and a unit that hurts itself again, by its
-    // modifier's `echo`, each time it takes damage.
+    // modifier's `echo`, each time it takes damage. An attack and an extra attack name the
+    // weapon, the tests' `weapon`; the damage of no action, and an echo's, name none.
     let hooks = r#"
 fn on_attack_hit(ctx, m, d) {
+    if d.ability != "weapon" {
+        throw "an attack names its weapon";
+    }
     if !d.extra {
         ctx.attack_hit(d.target);
     }
 }
 fn on_damage_taken(ctx, m, d) {
+    if d.ability != () {
+        throw "a damage of no action names none";
+    }
     ctx.damage(m.carrier, ctx.p.echo, "true");
 }
 "#;

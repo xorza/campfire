@@ -283,7 +283,7 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
             cost: PoolCost::default(),
             resource_cost: None,
         };
-        internals::weapon(&mut fight.world.resource_mut::<ActionBook>(), weapon)
+        internals::weapon(&mut fight.world, weapon)
     };
     let ground = weapon(&mut fight, "enemies:ground", 1, 0, StatId::new(1));
     let air = weapon(&mut fight, "enemies:air", 5, 1, StatId::new(2));
@@ -431,7 +431,7 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
             amount: 2,
         }),
     };
-    let weapon = internals::weapon(&mut fight.world.resource_mut::<ActionBook>(), weapon);
+    let weapon = internals::weapon(&mut fight.world, weapon);
     let mut stats = UnitStats::default();
     stats.refill().extend([num(6), num(10)]);
     let unit = fight.unit(Team::new(0), at(0, 0, 0), dummy());

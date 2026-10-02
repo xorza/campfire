@@ -1,4 +1,4 @@
-use campfire_script::rhai::{Dynamic, ImmutableString};
+use campfire_script::rhai::Dynamic;
 use campfire_sim::Capability;
 
 use crate::combat::damage::{Damage, DamageCause};
@@ -77,11 +77,14 @@ impl DamageHandle {
                 },
             )
             .bind(
-                field("ability", "the ability that dealt it, `\"\"` when none"),
+                field(
+                    "ability",
+                    "the action that dealt it: an ability, or an attack's weapon; `()` for none",
+                ),
                 |d: &mut DamageHandle| {
                     d.damage
                         .ability
-                        .map_or_else(ImmutableString::new, |id| d.view.ability_name(id))
+                        .map_or(Dynamic::UNIT, |id| Dynamic::from(d.view.ability_name(id)))
                 },
             );
     }

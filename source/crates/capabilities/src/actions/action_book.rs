@@ -456,7 +456,9 @@ pub(crate) mod internals {
     use crate::scripts::hook_set::HookSet;
     use crate::stats::pool_cost::PoolCost;
     use crate::units::filter::Filter;
+    use crate::units::script_view::View;
     use crate::units::unit_type::UnitType;
+    use bevy_ecs::world::World;
 
     /// A weapon tests arm units with: what it aims at, its range, its windup, the type of the
     /// homing projectile it fires, if it fires one, the places among its unit's stats of its
@@ -473,8 +475,9 @@ pub(crate) mod internals {
         pub(crate) resource_cost: Option<ResourceAmount>,
     }
 
-    /// Adds `weapon` to `book`, which deals damage of the first kind.
-    pub(crate) fn weapon(book: &mut ActionBook, weapon: TestWeapon) -> ActionId {
+    /// Adds `weapon` to the action book of `world`, which deals damage of the first kind.
+    pub(crate) fn weapon(world: &mut World, weapon: TestWeapon) -> ActionId {
+        let mut book = world.resource_mut::<ActionBook>();
         let delivery = weapon.projectile.map(|unit_type| Delivery {
             unit_type,
             shape: DeliveryShape::Projectile {
@@ -507,12 +510,23 @@ pub(crate) mod internals {
             hooks: HookSet::default(),
             delivery,
         });
+        let book = book.clone();
+        world.non_send::<View>().set_actions(book);
         id
     }
 
-    /// Adds a train of `unit` of no cost and no time to `book`.
+    impl ActionId {
+        /// The action at `index` of a book.
+        #[cfg(test)]
+        pub(crate) const fn new(index: u32) -> ActionId {
+            ActionId(index)
+        }
+    }
+
+    /// Adds a train of `unit` of no cost and no time to the action book of `world`.
     #[cfg(test)]
-    pub(crate) fn train(book: &mut ActionBook, unit: UnitType) -> ActionId {
+    pub(crate) fn train(world: &mut World, unit: UnitType) -> ActionId {
+        let mut book = world.resource_mut::<ActionBook>();
         let id = ActionId(u32::try_from(book.actions.len()).unwrap());
         Arc::make_mut(&mut book.actions).push(Action {
             package: 0,
@@ -531,6 +545,8 @@ pub(crate) mod internals {
             hooks: HookSet::default(),
             delivery: None,
         });
+        let book = book.clone();
+        world.non_send::<View>().set_actions(book);
         id
     }
 }

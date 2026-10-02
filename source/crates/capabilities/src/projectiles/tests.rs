@@ -4,6 +4,7 @@ use campfire_math::{RngSource, SegmentSeed};
 use campfire_sim::{Capability, EntityIndex, IdAllocator, SimTick, SimUpdate, TypeHash};
 
 use super::*;
+use crate::actions::action_book::ActionId;
 use crate::actions::action_slots::ActionSlots;
 use crate::capability_set::internals::TestMatch;
 use crate::combat::ROLL_STREAM;
@@ -143,6 +144,7 @@ impl Volley {
                 aimed: None,
             },
             payload: Payload::Attack {
+                action: ActionId::new(0),
                 amount: num(10),
                 kind: DamageKind::new(0),
                 roll: Num::ZERO,
