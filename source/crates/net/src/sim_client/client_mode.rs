@@ -1,21 +1,15 @@
-use std::num::NonZeroU32;
-
 use campfire_capabilities::{Bounds, CapabilitySet, Grid, Metric, PoolId, Walker};
-use campfire_package::{ModePackages, RELEASE};
-use campfire_protocol::{Fingerprint, SessionTerms};
-use campfire_runner::Session;
+use campfire_package::ModePackages;
+use campfire_runner::SessionRules;
 
-use crate::error::TermsMismatch;
-
-/// The session a client can play: the engine release it runs, and the mode it holds, at the mode's
-/// default tick rate, with the capabilities the mode declares, its map's metric, in which its
-/// predicted units measure their reach, its map's bounds, which its predicted units stay within, its map's pathing grid and kinds of walker, on which it plans
-/// their routes as the server does, and its life pool, which its predicted targets need.
+/// The session a client can play: the rules of the mode it holds, with the capabilities the
+/// mode declares, its map's metric, in which its predicted units measure their reach, its map's
+/// bounds, which its predicted units stay within, its map's pathing grid and kinds of walker, on
+/// which it plans their routes as the server does, and its life pool, which its predicted
+/// targets need.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ClientMode {
-    pub tick_hz: NonZeroU32,
-    pub mode: Fingerprint,
-    pub dependencies: Vec<Fingerprint>,
+    pub rules: SessionRules,
     pub capabilities: CapabilitySet,
     pub metric: Metric,
     pub bounds: Bounds,
@@ -27,9 +21,7 @@ pub struct ClientMode {
 impl ClientMode {
     pub fn of(packages: &ModePackages) -> ClientMode {
         ClientMode {
-            tick_hz: packages.manifest().tick_hz.default(),
-            mode: Session::mode_in_terms(packages),
-            dependencies: Session::dependencies_in_terms(packages),
+            rules: SessionRules::of(packages),
             capabilities: packages.manifest().capabilities,
             metric: packages.map().metric,
             bounds: packages.map().bounds,
@@ -40,22 +32,5 @@ impl ClientMode {
             walkers: packages.walkers(),
             life: packages.data().combat.life_pool(&packages.data().pools),
         }
-    }
-
-    /// Whether `terms` name a session of this mode, release and rate.
-    pub(crate) fn fits(&self, terms: &SessionTerms) -> Result<(), TermsMismatch> {
-        if terms.release != RELEASE {
-            return Err(TermsMismatch::OtherRelease);
-        }
-        if terms.mode != self.mode {
-            return Err(TermsMismatch::OtherMode);
-        }
-        if terms.dependencies != self.dependencies {
-            return Err(TermsMismatch::OtherDependencies);
-        }
-        if terms.tick_hz != self.tick_hz {
-            return Err(TermsMismatch::OtherTickRate);
-        }
-        Ok(())
     }
 }

@@ -341,7 +341,6 @@ Edge-to-edge queries make Lash Out, Wildfire, Tempest and the auras reach up to 
 
 ### Problem
 
-- The terms of a session are derived in three places, and they disagree on the tick rate.
 - The session log counts inputs per arrival tick. Two client ticks can arrive before one server tick, so a client that sends within the limits can still be refused.
 - The client advances its input chain before the server accepts a packet. After one refusal, every later packet fails `BadSignature`, and the player is cut off for the rest of the match.
 - The server hashes a packet before it checks the packet's size.
@@ -352,10 +351,6 @@ Edge-to-edge queries make Lash Out, Wildfire, Tempest and the auras reach up to 
 
 ### Shape
 
-- **`SessionRules`.**
-  - One function builds it from the packages and the host's config: the release, the fingerprints, the chosen tick rate and the `InputRules` (delay, lead, payload length, inputs per tick).
-  - It lives in `runner`. The lobby offers it, the server's log uses it, and the client adopts it.
-  - The client sets its `TickRate` from the offer at match start, not when the plugin is built.
 - **Inputs are counted per stamp, and applied with a limit per tick.** This changes design 05.
   - The log refuses a packet only for what the client controls: too many inputs for one stamp, a payload that is too long, or a bad signature.
   - The log applies at most `max_inputs_per_tick` of a player's inputs in each tick. Inputs beyond that limit apply in later ticks, in their order, and the log records each applied tick, as `Applied` does today.
@@ -372,10 +367,7 @@ Edge-to-edge queries make Lash Out, Wildfire, Tempest and the auras reach up to 
   - A refusal ends the client's link.
   - `SentInputs` keeps only the inputs after the last confirmed tick, and no clone of the plugin.
   - An order writes its payload into a buffer that the client reuses, and the chain is extended once for each input.
-- **A prediction install.** `capabilities` gains `Prediction::install(world, schedule, &Books, &SessionRules)`. It shares its code with `Mode::install` for everything that runs without scripts: `Metric`, `Bounds`, pathing and the life binding. After R1, the client builds the same `Books` from the packages, and this is PLAN step 2.
-- **Typed ticks.** `Tick` and `Ticks` move to `math`, beside `PlayerSlot`. Design 02 already says `math` holds the values both sides share. The session log then uses typed ticks, and hex encoding becomes one `Bytes32` type.
-- **The delegation check, once.** `Delegation::check(server, session) -> Result<(), DelegationError>` serves the lobby and the log. `ConnectError` wraps it.
-- **One key type.** The server key is an `XOnlyPublicKey` everywhere.
+- **A prediction install.** `capabilities` gains `Prediction::install(world, schedule, &Books, rate)`. It shares its code with `Mode::install` for everything that runs without scripts: `Metric`, `Bounds`, pathing and the life binding. After R1, the client builds the same `Books` from the packages, and this is PLAN step 2.
 
 ## T. Proof and test redesign
 
@@ -441,8 +433,7 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 | H2 | `NavBudget`; short routes within their window; "arrived short"; re-asks after removals; the blocker query and clipping; `Progress` reset; blocked map cells in the exact tests; `Steering` methods; `Route::clear` keeps its buffer | B3 | M, changes behaviour |
 | H3 | Incremental regions; routes tested only against added bodies; the body index's first-cell flag and early stop | H2 | M |
 | H4 | Vision dirty words, detectors only, and the group limit; incremental view rows; filters parsed once | B | M |
-| I2 | `SessionRules` with one `fits`; the client takes its rate from the offer; the delegation check once; one key type | B4 | M |
-| I3 | `JoinState` as one enum; a refusal ends the link; `SentInputs` pruned; one order buffer | I2 | S |
+| I3 | `JoinState` as one enum; a refusal ends the link; `SentInputs` pruned; one order buffer | | S |
 
 ### Joins of the two tracks
 
@@ -450,7 +441,7 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 |---|---|---|---|
 | G2 | Book data out of the state; `Lifetime`; one `ParamSource::of`; flat `Modifiers`; the `ModifierStats` and `ModifierClock` split; the queue's times at push | G1 | M, changes the layout |
 | H1b | `ctx.find` and `nearest_visible` read `BodyGrid` | D5, H1 | S |
-| I4 | `Prediction::install` shared with `Mode::install` | I2 | M |
+| I4 | `Prediction::install` shared with `Mode::install` | | M |
 | J | The local fixes in the appendix, and T§5 to T§8 | any time | S each |
 
 ### The roadmap's steps
@@ -466,9 +457,9 @@ Track S:  D2 → D3 → D5 → D6
                        └ I4 → PLAN 2
 
 Track I:  E1 → E2      F2      G1      H1, H4      H2 → H3
-          I2 → I3
+          I3
 
-Joins:    G1 → G2      D5 + H1 → H1b      I2 → I4
+Joins:    G1 → G2      D5 + H1 → H1b
 ```
 
 Track S is long and sequential. Track I fills the sessions between its steps.
@@ -522,14 +513,11 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - package count: C2;
   - unlimited work before a refusal: B4;
   - lobby crash: B4;
-  - several seats: B4;
-  - server key: I2.
+  - several seats: B4.
 - **R§2:**
   - refused packet: B4;
-  - terms in three places: I2;
   - prediction by hand: I4;
   - join state: I3;
-  - delegation check: I2;
   - kept inputs: I3.
 - **R§3:**
   - cast survives death: B1;

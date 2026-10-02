@@ -65,7 +65,7 @@ pub struct SimClient {
 }
 
 /// Where the client is in joining the session.
-#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Resource, Debug, Clone, PartialEq, Eq)]
 pub enum JoinState {
     /// No offer came yet.
     Waiting,
@@ -132,7 +132,14 @@ impl SentInputs {
         if offer.terms.server_key != client.server.key {
             return Err(TermsMismatch::OtherServer);
         }
-        client.mode.fits(&offer.terms)?;
+        client
+            .mode
+            .rules
+            .check(&offer.terms)
+            .map_err(TermsMismatch::Terms)?;
+        if offer.terms.tick_hz != client.server.tick_hz {
+            return Err(TermsMismatch::OtherTickRate);
+        }
         let mut seed_contribution = [0; 32];
         (client.entropy)(&mut seed_contribution);
         let now = (client.clock)();
@@ -170,7 +177,7 @@ impl SentInputs {
 impl Plugin for SimClient {
     fn build(&self, app: &mut App) {
         let world = app.world_mut();
-        let rate = TickRate::new(self.mode.tick_hz);
+        let rate = TickRate::new(self.server.tick_hz);
         SimUpdate::prepare(world, PREDICTION_SEED, rate);
         let mut schedule = SimUpdate::schedule();
         // A client hashes no state, so the registry the capabilities fill is not kept.

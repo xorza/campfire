@@ -1,9 +1,10 @@
 use std::num::NonZeroU32;
 
-use secp256k1::{Keypair, schnorr};
+use secp256k1::{Keypair, XOnlyPublicKey, schnorr};
 
 use super::*;
 use crate::delegation::DelegationTerms;
+use crate::delegation::error::{DelegationError, ScopeError};
 use crate::fingerprint::Fingerprint;
 use crate::input_hash::InputHash;
 use crate::seed_chain::SeedChain;
@@ -12,7 +13,6 @@ const MAX_DELAY: u64 = 2;
 const MAX_LEAD: u64 = 2;
 const MAX_PAYLOAD_LEN: u32 = 4;
 const MAX_INPUTS_PER_TICK: u32 = 2;
-const SERVER_KEY: [u8; 32] = [41; 32];
 /// Above 127, so its varint takes two bytes.
 const TICK_HZ: NonZeroU32 = NonZeroU32::new(300).unwrap();
 /// Two segments: the root `[5; 32]` is segment 1's seed, and its hash segment 0's.
@@ -23,6 +23,11 @@ const MODE: Fingerprint = Fingerprint::new([51; 32]);
 const DEPENDENCIES: [Fingerprint; 2] = [Fingerprint::new([52; 32]), Fingerprint::new([53; 32])];
 /// BIP-340 signing without auxiliary randomness is deterministic, so every run signs alike.
 const AUX: [u8; 32] = [0; 32];
+
+/// An x-only key of the bytes `[byte; 32]`, which must be the x of a point on the curve.
+fn x_only(byte: u8) -> XOnlyPublicKey {
+    XOnlyPublicKey::from_byte_array(&[byte; 32]).unwrap()
+}
 
 fn secret(byte: u32) -> secp256k1::SecretKey {
     secp256k1::SecretKey::from_byte_array(&[u8::try_from(byte).unwrap(); 32]).unwrap()
@@ -38,7 +43,7 @@ fn session_key(slot: u32) -> Keypair {
 fn delegation_with(slot: u32, change: impl FnOnce(&mut DelegationTerms)) -> Delegation {
     let mut terms = DelegationTerms {
         session_key: session_key(slot).x_only_public_key().0,
-        server_key: SERVER_KEY,
+        server_key: x_only(41),
         session_id: session_id(),
         seed_contribution: CONTRIBUTIONS[slot as usize],
         expiration: 1_700_086_400,
@@ -50,7 +55,7 @@ fn delegation_with(slot: u32, change: impl FnOnce(&mut DelegationTerms)) -> Dele
 
 fn terms() -> SessionTerms {
     SessionTerms {
-        server_key: SERVER_KEY,
+        server_key: x_only(41),
         tick_hz: TICK_HZ,
         max_input_delay: Ticks::new(MAX_DELAY),
         max_input_lead: Ticks::new(MAX_LEAD),
@@ -546,12 +551,12 @@ fn a_refused_packet_leaves_the_log_unchanged() {
 fn a_delegation_for_another_server_or_session_is_refused() {
     let cases = [
         (
-            delegation_with(1, |terms| terms.server_key = [42; 32]),
-            DelegationError::OtherServer,
+            delegation_with(1, |terms| terms.server_key = x_only(42)),
+            ScopeError::OtherServer,
         ),
         (
             delegation_with(1, |terms| terms.session_id = SessionId::new([32; 32])),
-            DelegationError::OtherSession,
+            ScopeError::OtherSession,
         ),
     ];
     for (delegation, error) in cases {
@@ -563,7 +568,7 @@ fn a_delegation_for_another_server_or_session_is_refused() {
     // The session id hashes the terms, so a change to any of them leaves every delegation
     // naming another session.
     let changes: [fn(&mut SessionTerms); 11] = [
-        |terms| terms.server_key[0] ^= 1,
+        |terms| terms.server_key = x_only(42),
         |terms| terms.tick_hz = NonZeroU32::new(301).unwrap(),
         |terms| terms.max_input_delay = Ticks::new(terms.max_input_delay.get() + 1),
         |terms| terms.max_input_lead = Ticks::new(terms.max_input_lead.get() + 1),
@@ -578,12 +583,12 @@ fn a_delegation_for_another_server_or_session_is_refused() {
     for change in changes {
         let mut other = header();
         change(&mut other.terms);
-        let error = if other.terms.server_key == SERVER_KEY {
-            DelegationError::OtherSession
+        let error = if other.terms.server_key == x_only(41) {
+            ScopeError::OtherSession
         } else {
-            DelegationError::OtherServer
+            ScopeError::OtherServer
         };
-        let refused = HeaderError::Delegation {
+        let refused = HeaderError::Scope {
             slot: PlayerSlot::new(0),
             error,
         };
@@ -594,7 +599,7 @@ fn a_delegation_for_another_server_or_session_is_refused() {
     let mut spelled = Hasher::new();
     spelled
         .update(b"campfire/session-id/v1")
-        .update(&SERVER_KEY)
+        .update(&[41; 32])
         .update(&300_u32.to_le_bytes())
         .update(&2_u64.to_le_bytes())
         .update(&2_u64.to_le_bytes())
@@ -611,8 +616,8 @@ fn a_delegation_for_another_server_or_session_is_refused() {
 }
 
 /// `other` fails to start a log, and to decode, as player 1's delegation fails with `error`.
-fn refuses(other: &SessionHeader, error: DelegationError) {
-    let refused = HeaderError::Delegation {
+fn refuses(other: &SessionHeader, error: ScopeError) {
+    let refused = HeaderError::Scope {
         slot: PlayerSlot::new(1),
         error,
     };
@@ -790,7 +795,7 @@ fn frame(
 ) -> Vec<u8> {
     let mut bytes = b"campfire/session-log/v1".to_vec();
     let terms = &header.terms;
-    put(&mut bytes, &terms.server_key);
+    put(&mut bytes, &terms.server_key.serialize());
     put(&mut bytes, &terms.tick_hz);
     put(&mut bytes, &terms.max_input_delay);
     put(&mut bytes, &terms.max_input_lead);

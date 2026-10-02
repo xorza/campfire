@@ -12,6 +12,7 @@ mod fixed_match;
 mod fixed_session;
 #[cfg(feature = "internals")]
 mod golden;
+mod input_rules;
 mod match_build;
 #[cfg(feature = "internals")]
 mod proving_match;
@@ -19,22 +20,25 @@ mod proving_match;
 mod reference_3v3;
 mod runner;
 mod session;
+mod session_rules;
 
 #[cfg(feature = "internals")]
 pub use arena::Arena;
-pub use error::StartError;
+pub use error::{StartError, TermsError};
 #[cfg(feature = "internals")]
 pub use fixed_match::FixedMatch;
 #[cfg(feature = "internals")]
-pub use fixed_session::{FixedSession, InputRules};
+pub use fixed_session::FixedSession;
 #[cfg(feature = "internals")]
 pub use golden::Golden;
+pub use input_rules::InputRules;
 #[cfg(feature = "internals")]
 pub use proving_match::ProvingMatch;
 #[cfg(feature = "internals")]
 pub use reference_3v3::Reference3v3;
 pub use runner::Runner;
 pub use session::Session;
+pub use session_rules::SessionRules;
 
 #[cfg(feature = "bench")]
 pub mod bench {

@@ -3,7 +3,7 @@ use bevy_ecs::world::{Mut, World};
 use campfire_capabilities::{Mode, ScriptFailures};
 use campfire_content::Fingerprint as PackageFingerprint;
 use campfire_math::Tick;
-use campfire_package::{ModePackages, PackageStore, RELEASE};
+use campfire_package::{ModePackages, PackageStore};
 use campfire_protocol::{
     Applied, Fingerprint, InputError, PlayerInput, ServerSeed, SessionLog, SessionTerms, Signature,
 };
@@ -14,6 +14,7 @@ use tracing::warn;
 
 use crate::error::StartError;
 use crate::match_build::MatchBuild;
+use crate::session_rules::SessionRules;
 
 /// A match's session log and state types, kept as a resource in the `World` that runs the match:
 /// a bare one on a verifier, Lightyear's on a server. The server records inputs as they arrive; a
@@ -47,26 +48,13 @@ impl Session {
             "a session starts before its first tick"
         );
         let header = log.header();
-        let terms = &header.terms;
-        Session::check_release(terms)?;
-        if terms.mode != in_terms(packages.fingerprint()) {
-            return Err(StartError::OtherMode);
-        }
-        if !packages
-            .dependency_fingerprints()
-            .map(in_terms)
-            .eq(terms.dependencies.iter().copied())
-        {
-            return Err(StartError::OtherDependencies);
-        }
-        let hz = terms.tick_hz;
-        if !packages.manifest().tick_hz.contains(hz) {
-            return Err(StartError::TickRate(hz));
-        }
+        SessionRules::of(packages)
+            .check(&header.terms)
+            .map_err(StartError::Terms)?;
         let seed = header
             .segment_seed(0, &server_seed)
             .map_err(StartError::Seed)?;
-        SimUpdate::prepare(world, seed, TickRate::new(hz));
+        SimUpdate::prepare(world, seed, TickRate::new(header.terms.tick_hz));
         let mut schedule = SimUpdate::schedule();
         let mut state = StateRegistry::new();
         let players = u32::try_from(header.players.len()).expect("the log counts players in u32");
@@ -91,7 +79,7 @@ impl Session {
         store: &PackageStore,
         terms: &SessionTerms,
     ) -> Result<ModePackages, StartError> {
-        Session::check_release(terms)?;
+        SessionRules::check_release(terms).map_err(StartError::Terms)?;
         let dependencies: Vec<_> = terms
             .dependencies
             .iter()
@@ -99,24 +87,6 @@ impl Session {
             .collect();
         ModePackages::from_store(store, of_package(terms.mode), &dependencies)
             .map_err(StartError::Packages)
-    }
-
-    /// An error for `terms` of another engine release than this one.
-    fn check_release(terms: &SessionTerms) -> Result<(), StartError> {
-        if terms.release != RELEASE {
-            return Err(StartError::OtherRelease(terms.release.clone()));
-        }
-        Ok(())
-    }
-
-    /// The mode of `packages` as session terms name it.
-    pub const fn mode_in_terms(packages: &ModePackages) -> Fingerprint {
-        in_terms(packages.fingerprint())
-    }
-
-    /// The dependencies of `packages` as session terms name them, in the order of their names.
-    pub fn dependencies_in_terms(packages: &ModePackages) -> Vec<Fingerprint> {
-        packages.dependency_fingerprints().map(in_terms).collect()
     }
 
     /// Logs a player's packet before the next tick; see `SessionLog::record`.
@@ -177,12 +147,6 @@ impl Session {
     pub const fn log(&self) -> &SessionLog {
         &self.log
     }
-}
-
-/// A package's fingerprint as the session terms name it: the terms and the packages each own a
-/// fingerprint type, and they meet here.
-const fn in_terms(fingerprint: PackageFingerprint) -> Fingerprint {
-    Fingerprint::new(*fingerprint.as_bytes())
 }
 
 /// The fingerprint the session terms name, as the package store holds packages by it.

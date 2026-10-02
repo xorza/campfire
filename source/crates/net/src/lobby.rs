@@ -1,17 +1,18 @@
+use std::num::NonZeroU32;
+
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{With, Without};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Query, Res, ResMut};
 use bevy_ecs::world::World;
-use campfire_math::Ticks;
-use campfire_package::{ModePackages, RELEASE};
-use campfire_protocol::secp256k1::{Secp256k1, VerifyOnly};
+use campfire_package::ModePackages;
+use campfire_protocol::secp256k1::{Secp256k1, VerifyOnly, XOnlyPublicKey};
 use campfire_protocol::{
     CertificateHash, ConnectChallenge, Delegation, SeedChain, SessionHeader, SessionLog,
     SessionTerms,
 };
-use campfire_runner::Session;
+use campfire_runner::{InputRules, SessionRules, TermsError};
 use lightyear::prelude::server::ClientOf;
 use lightyear::prelude::{
     Connected, LocalTimeline, MessageReceiver, MessageSender, Tick as NetTick,
@@ -24,12 +25,6 @@ use crate::net_protocol::MatchChannel;
 use crate::offer::Offer;
 use crate::sim_server::SimServer;
 
-/// The most ticks an input may land after its stamp.
-const MAX_INPUT_DELAY: Ticks = Ticks::new(10);
-/// The most ticks an input's stamp may be ahead of the next tick.
-const MAX_INPUT_LEAD: Ticks = Ticks::new(30);
-const MAX_PAYLOAD_LEN: u32 = 64;
-const MAX_INPUTS_PER_TICK: u32 = 4;
 /// Ticks between two sends of an offer that got no answer.
 const RESEND_TICKS: u32 = 30;
 
@@ -54,9 +49,11 @@ pub struct Lobby {
 #[derive(Debug)]
 pub struct LobbySetup {
     pub packages: ModePackages,
-    /// The server's x-only public key.
-    pub server_key: [u8; 32],
+    pub server_key: XOnlyPublicKey,
     pub seed_chain: SeedChain,
+    /// Ticks a second, which the mode's range must hold.
+    pub tick_hz: NonZeroU32,
+    pub inputs: InputRules,
     /// The hash of the TLS certificate the server's transport presents.
     pub certificate: CertificateHash,
     pub players: usize,
@@ -107,32 +104,28 @@ type JoinLinks<'w, 's> = Query<
 pub struct JoinRefused(pub JoinError);
 
 impl Lobby {
-    /// A session of the mode `packages` holds at its default tick rate, with the LAN's input
-    /// limits.
-    pub fn new(setup: LobbySetup) -> Lobby {
+    /// A session of the mode `packages` holds, by the setup's rules; an error when the mode does
+    /// not run at the setup's tick rate.
+    pub fn new(setup: LobbySetup) -> Result<Lobby, TermsError> {
         let LobbySetup {
             packages,
             server_key,
             seed_chain,
+            tick_hz,
+            inputs,
             certificate,
             players,
             clock,
             entropy,
         } = setup;
         assert!(players > 0, "a session has a player");
-        let terms = SessionTerms {
+        let terms = SessionRules::of(&packages).terms(
             server_key,
-            tick_hz: packages.manifest().tick_hz.default(),
-            max_input_delay: MAX_INPUT_DELAY,
-            max_input_lead: MAX_INPUT_LEAD,
-            max_payload_len: MAX_PAYLOAD_LEN,
-            max_inputs_per_tick: MAX_INPUTS_PER_TICK,
-            seed_commitment: seed_chain.commitment(),
-            release: RELEASE.to_owned(),
-            mode: Session::mode_in_terms(&packages),
-            dependencies: Session::dependencies_in_terms(&packages),
-        };
-        Lobby {
+            seed_chain.commitment(),
+            tick_hz,
+            inputs,
+        )?;
+        Ok(Lobby {
             terms,
             seed_chain,
             certificate,
@@ -142,7 +135,7 @@ impl Lobby {
             entropy,
             secp: Secp256k1::verification_only(),
             joined: Vec::with_capacity(players),
-        }
+        })
     }
 
     pub const fn terms(&self) -> &SessionTerms {
@@ -300,7 +293,6 @@ impl Lobby {
 
 #[cfg(test)]
 mod tests {
-    use std::num::NonZeroU32;
     use std::path::Path;
 
     use bevy_ecs::system::RunSystemOnce;
@@ -323,20 +315,24 @@ mod tests {
             env!("CARGO_MANIFEST_DIR"),
             "/../../packages/test/modes/lane"
         );
+        let server_key = XOnlyPublicKey::from_byte_array(&[8; 32]).unwrap();
         let mut lobby = Lobby::new(LobbySetup {
             packages: ModePackages::from_dir(Path::new(dir)).unwrap(),
-            server_key: [8; 32],
+            server_key,
             seed_chain: SeedChain::new([7; 32], NonZeroU32::MIN),
+            tick_hz: NonZeroU32::new(30).unwrap(),
+            inputs: InputRules::LAN,
             certificate: CertificateHash::new([3; 32]),
             players: 2,
             clock: || NOW,
             entropy: |bytes| bytes.fill(5),
-        });
+        })
+        .unwrap();
         assert_eq!((lobby.players, lobby.joined()), (2, 0));
         let secp = Secp256k1::new();
         let granted = DelegationTerms {
             session_key: keypair(2).x_only_public_key().0,
-            server_key: [8; 32],
+            server_key,
             session_id: lobby.terms().session_id(),
             seed_contribution: [6; 32],
             expiration: NOW + 60,

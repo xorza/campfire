@@ -9,7 +9,6 @@ use secp256k1::{Secp256k1, VerifyOnly};
 use serde::{Deserialize, Serialize};
 
 use crate::delegation::Delegation;
-use crate::delegation::error::DelegationError;
 use crate::input_chain::InputChain;
 use crate::player_input::PlayerInput;
 use crate::server_seed::ServerSeed;
@@ -217,17 +216,9 @@ impl SessionLog {
         let mut chains = Vec::with_capacity(header.players.len());
         for (slot, delegation) in (0..).zip(&header.players) {
             let slot = PlayerSlot::new(slot);
-            let terms = delegation.terms();
-            let flaw = if terms.server_key != header.terms.server_key {
-                Some(DelegationError::OtherServer)
-            } else if terms.session_id != session_id {
-                Some(DelegationError::OtherSession)
-            } else {
-                None
-            };
-            if let Some(error) = flaw {
-                return Err(HeaderError::Delegation { slot, error });
-            }
+            delegation
+                .check(&header.terms.server_key, &session_id)
+                .map_err(|error| HeaderError::Scope { slot, error })?;
             chains.push(InputChain::new(slot, delegation.chain_root()));
         }
         Ok(SessionLog {

@@ -75,6 +75,7 @@ impl LanMatch<'_> {
         let Some(Listening {
             certificate,
             server_key,
+            tick_hz,
             ..
         }) = listening
         else {
@@ -101,7 +102,8 @@ impl LanMatch<'_> {
                     .arg(self.mode)
                     .arg(address.to_string())
                     .arg(certificate)
-                    .arg(server_key.to_string()),
+                    .arg(server_key.to_string())
+                    .arg(tick_hz.to_string()),
             )?;
             children.push((process, bot));
         }

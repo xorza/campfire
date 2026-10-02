@@ -145,6 +145,7 @@ impl Verdict {
 
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroU32;
     use std::path::PathBuf;
 
     use campfire_protocol::{CertificateHash, SessionId};
@@ -211,6 +212,7 @@ mod tests {
             server_key: "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"
                 .parse()
                 .unwrap(),
+            tick_hz: NonZeroU32::new(30).unwrap(),
             join: String::new(),
         };
         let mut verdict = Verdict::default();

@@ -52,13 +52,10 @@ impl ConnectChallenge {
         answer: &Signature,
         now: u64,
     ) -> Result<(), ConnectError> {
+        delegation
+            .check(&terms.server_key, &terms.session_id())
+            .map_err(ConnectError::Scope)?;
         let granted = delegation.terms();
-        if granted.server_key != terms.server_key {
-            return Err(ConnectError::OtherServer);
-        }
-        if granted.session_id != terms.session_id() {
-            return Err(ConnectError::OtherSession);
-        }
         if now >= granted.expiration {
             return Err(ConnectError::Expired);
         }

@@ -2,6 +2,7 @@ use std::num::NonZeroU32;
 
 use blake3::Hasher;
 use campfire_math::Ticks;
+use secp256k1::XOnlyPublicKey;
 use serde::{Deserialize, Serialize};
 
 use crate::fingerprint::Fingerprint;
@@ -17,8 +18,7 @@ const SESSION_ID_DOMAIN: &[u8] = b"campfire/session-id/v1";
 /// header and in the message that offers them to a joining player.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionTerms {
-    /// The server's x-only public key.
-    pub server_key: [u8; 32],
+    pub server_key: XOnlyPublicKey,
     /// Ticks a second, fixed for the whole session.
     pub tick_hz: NonZeroU32,
     /// The most ticks an input may land after its stamp; a later one is logged as late.
@@ -53,7 +53,7 @@ impl SessionTerms {
         let mut hasher = Hasher::new();
         hasher
             .update(SESSION_ID_DOMAIN)
-            .update(&self.server_key)
+            .update(&self.server_key.serialize())
             .update(&self.tick_hz.get().to_le_bytes())
             .update(&self.max_input_delay.get().to_le_bytes())
             .update(&self.max_input_lead.get().to_le_bytes())

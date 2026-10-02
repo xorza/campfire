@@ -14,7 +14,7 @@ use campfire_log::LogEvent;
 use campfire_math::{Num, Tick, Ticks, Vec3};
 use campfire_package::{ModePackages, PackageStore, StoreError};
 use campfire_protocol::{Applied, Fingerprint, SeedError, ServerSeed, SessionLog, SessionTerms};
-use campfire_runner::{FixedSession, InputRules, Runner, StartError};
+use campfire_runner::{FixedSession, InputRules, Runner, StartError, TermsError};
 use campfire_sim::{EntityIndex, Position, StableId, StateHash};
 use campfire_verifier::{Replay, Verified};
 
@@ -385,12 +385,12 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
         matches!(
             &refused,
             [
-                Some(StartError::OtherRelease(release)),
-                Some(StartError::OtherRelease(_)),
+                Some(StartError::Terms(TermsError::OtherRelease(release))),
+                Some(StartError::Terms(TermsError::OtherRelease(_))),
                 Some(StartError::Packages(StoreError::UnknownMode)),
                 Some(StartError::Packages(StoreError::MissingDependency(dependency))),
                 Some(StartError::Packages(StoreError::DependencyCount)),
-                Some(StartError::TickRate(hz)),
+                Some(StartError::Terms(TermsError::TickRate(hz))),
             ] if release == "0.0.9" && dependency == "hero-runner" && hz.get() == 60
         ),
         "{refused:?}"

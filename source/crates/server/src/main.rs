@@ -33,7 +33,7 @@ use campfire_net::{
 use campfire_package::ModePackages;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
 use campfire_protocol::{CertificateHash, SeedChain};
-use campfire_runner::Session;
+use campfire_runner::{InputRules, Session};
 use campfire_sim::TickRate;
 use lightyear::prelude::server::{RawServer, ServerPlugins, Start, WebTransportServerIo};
 use lightyear::prelude::{Connected, Identity, LinkOf, Linked, LocalAddr, ReplicationSender};
@@ -80,18 +80,22 @@ fn main() -> ExitCode {
         CertificateHash::new(*identity.certificate_chain().as_slice()[0].hash().as_ref());
     let server_key = keypair();
     let players = usize::try_from(packages.manifest().slots()).expect("the slots fit usize");
+    let key = server_key.x_only_public_key().0;
+    let tick_hz = packages.manifest().tick_hz.default();
     let lobby = Lobby::new(LobbySetup {
         packages,
-        server_key: server_key.x_only_public_key().0.serialize(),
+        server_key: key,
         seed_chain: SeedChain::new(random(), NonZeroU32::MIN),
+        tick_hz,
+        inputs: InputRules::LAN,
         certificate,
         players,
         clock: unix_now,
         entropy: fill,
-    });
-    let tick = TickRate::new(lobby.terms().tick_hz).length();
+    })
+    .expect("a mode runs at its default rate");
+    let tick = TickRate::new(tick_hz).length();
 
-    let key = server_key.x_only_public_key().0;
     info!(
         session = %lobby.terms().session_id(),
         %address,
@@ -120,8 +124,9 @@ fn main() -> ExitCode {
     let listening = Listening {
         certificate,
         server_key: key,
+        tick_hz,
         join: format!(
-            "campfire-client {} <this machine's LAN address>:{} {certificate} {key}",
+            "campfire-client {} <this machine's LAN address>:{} {certificate} {key} {tick_hz}",
             mode.display(),
             address.port()
         ),

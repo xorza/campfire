@@ -17,17 +17,14 @@ Package data, snapshots and client packets are untrusted. Each of these items le
 
   Better: check each against its book after a restore, or store no copy of package-derived shape in state.
 - [ ] **A restore keeps a resource the snapshot does not have** — `sim/src/state_registry/mod.rs:360-369`. When the snapshot records a resource as absent, `decode_resource` leaves the copy that is already in the world, so the hash can differ from the snapshot's. Better: remove an absent resource.
-- [ ] **The server key is never checked to be a key** — `protocol/src/session_terms.rs:20`, `protocol/src/delegation/mod.rs:24`, `net/src/lobby.rs:57`, `net/src/sim_client/server_pin.rs:27`. The server key is a raw `[u8; 32]`, while the session key is an `XOnlyPublicKey`. Better: one key type for both.
 
 ## 2. The network session has no single owner of its rules
 
 The terms of a session, the input limits and the join state are each derived or kept in several places that disagree.
 
 - [ ] **A refused packet does not reach the client** — `net/src/sim_client/mod.rs:347-378`. The server ends the link of a refused packet, but the client's join state does not learn why, and nothing reports it. Better: the client's `JoinState` holds the refusal and its reason.
-- [ ] **The terms of the packages are derived in three places** — `net/src/lobby.rs:122-133`, `net/src/sim_client/client_mode.rs:485-517`, `runner/src/session.rs:46-62`. They disagree on the tick rate: the server accepts any rate in the manifest's range, and the client accepts only the default, because it fixes its `TickRate` before any offer comes. Better: one owner builds the terms and checks them on both sides, and the client takes its rate from the offer.
 - [ ] **The client builds its prediction world by hand** — `net/src/sim_client/mod.rs:167-186`, `net/src/sim_client/client_mode.rs:471-500`, against `capabilities/src/mode/mod.rs:102-160`. It repeats part of `Mode::install` (`Metric`, `Bounds`, `load_pathing`, `bind_life`) with a different life-pool fallback, and the HUD reads the life pool again. Anything new in `Mode::install` must be copied here, or prediction diverges. Better: capabilities own one install path for prediction that shares code with `Mode::install`.
 - [ ] **The client's join state is in four places, and a refusal does nothing** — `net/src/sim_client/mod.rs:67-107,225-272`. The state is in `JoinState`, `SentInputs::session`, `SentInputs::chain` and whether `MatchClock` exists. `SentInputs` also holds a clone of the whole plugin, keys included. A refused client waits forever with a `warn!`, and its link stays connected. Better: one enum with the data of each step, and a refusal that ends the client or the link.
-- [ ] **The delegation check is written twice** — `protocol/src/connect/mod.rs:55-61`, `protocol/src/session_log/mod.rs:160-172`. Two error enums have the same cases (`OtherServer`, `OtherSession`), and `Lobby::start_when_full` expects them to agree. Better: one `Delegation` method that both use.
 - [ ] **The client keeps every input it sent** — `net/src/sim_client/mod.rs:97-98,355-363`. Rollback needs only the inputs after the last confirmed tick. Better: drop the older runs.
 
 ## 3. The rules of a living unit and a target have several definitions

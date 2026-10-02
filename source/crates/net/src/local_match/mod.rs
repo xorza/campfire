@@ -1,5 +1,5 @@
+use std::num::NonZeroU32;
 use std::path::Path;
-use std::time::Duration;
 
 use bevy_app::{App, First, PostUpdate, TaskPoolPlugin, Update};
 use bevy_ecs::entity::Entity;
@@ -11,8 +11,9 @@ use bevy_state::app::StatesPlugin;
 use bevy_time::{TimePlugin, TimeUpdateStrategy};
 use campfire_capabilities::{Action, Order, Owner, Team};
 use campfire_package::ModePackages;
-use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
+use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey, XOnlyPublicKey};
 use campfire_protocol::{CertificateHash, SeedChain};
+use campfire_runner::InputRules;
 use campfire_sim::{EntityIndex, StableId, TickRate};
 use lightyear::crossbeam::CrossbeamIo;
 use lightyear::prelude::client::{ClientPlugins, InputDelayConfig, InputTimelineConfig, RawClient};
@@ -47,7 +48,6 @@ const LANE_MODE: &str = concat!(
 );
 /// Frames a connection gets to link and sync its timeline, and a join to start the match.
 const CONNECT_FRAMES: usize = 300;
-const SERVER_KEY: [u8; 32] = [8; 32];
 /// In-process channels have no TLS; both ends take this as the certificate's hash.
 const CERTIFICATE: CertificateHash = CertificateHash::new([3; 32]);
 /// Unix seconds, on every end.
@@ -133,7 +133,8 @@ impl LocalMatch {
         );
         let packages = lane_mode();
         let mode = ClientMode::of(&packages);
-        let tick = TickRate::new(mode.tick_hz).length();
+        let tick_hz = packages.manifest().tick_hz.default();
+        let tick = TickRate::new(tick_hz).length();
 
         let mut server = App::new();
         server.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
@@ -184,7 +185,7 @@ impl LocalMatch {
             links.push(link);
 
             let ClientApp { app, entity } =
-                ClientApp::new(&setup, player, &mode, tick, client_io, stream + 1);
+                ClientApp::new(&setup, player, &mode, tick_hz, client_io, stream + 1);
             client_entities.push(entity);
             clients.push(app);
         }
@@ -231,15 +232,19 @@ impl LocalMatch {
     /// its avatar comes in the replication after the server's first tick, in another packet: which
     /// arrives first varies with how Lightyear packs and resends them, by the wall clock.
     pub fn start_match(&mut self) {
+        let packages = lane_mode();
         let lobby = Lobby::new(LobbySetup {
-            packages: lane_mode(),
-            server_key: SERVER_KEY,
+            tick_hz: packages.manifest().tick_hz.default(),
+            packages,
+            server_key: server_key(),
             seed_chain: self.setup.seed_chain,
+            inputs: InputRules::LAN,
             certificate: CERTIFICATE,
             players: self.setup.players,
             clock: || NOW,
             entropy: |bytes| bytes.fill(5),
-        });
+        })
+        .expect("the lane mode runs at its default rate");
         self.server.world_mut().insert_resource(lobby);
         for _ in 0..CONNECT_FRAMES {
             let started = |app: &App| app.world().contains_resource::<MatchClock>();
@@ -386,7 +391,7 @@ impl ClientApp {
         setup: &MatchSetup,
         player: usize,
         mode: &ClientMode,
-        tick: Duration,
+        tick_hz: NonZeroU32,
         io: CrossbeamIo,
         stream: u64,
     ) -> ClientApp {
@@ -396,13 +401,15 @@ impl ClientApp {
             main_key: keypair(secret),
             session_key: keypair(secret + 1),
             server: ServerPin {
-                key: SERVER_KEY,
+                key: server_key(),
                 certificate: CERTIFICATE,
+                tick_hz,
             },
             mode: mode.clone(),
             clock: || NOW,
             entropy: |bytes| bytes.fill(4),
         };
+        let tick = TickRate::new(tick_hz).length();
         let mut client = App::new();
         client.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
         client.add_plugins(ClientPlugins {
@@ -478,6 +485,11 @@ fn pass_through_delay_lines(app: &mut App) {
 fn keypair(secret: u8) -> Keypair {
     let secret = SecretKey::from_byte_array(&[secret; 32]).expect("a valid secret key");
     Keypair::from_secret_key(&Secp256k1::new(), &secret)
+}
+
+/// The server's key, the x of a point on the curve.
+fn server_key() -> XOnlyPublicKey {
+    XOnlyPublicKey::from_byte_array(&[8; 32]).expect("[8; 32] is the x of a point")
 }
 
 fn lane_mode() -> ModePackages {

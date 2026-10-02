@@ -1,7 +1,7 @@
 use std::error::Error;
 use std::fmt;
 
-use crate::delegation::error::DelegationError;
+use crate::delegation::error::{DelegationError, ScopeError};
 use campfire_math::{PlayerSlot, Tick};
 
 /// Why the log refused a packet of inputs. Packets come from the network, so each is an expected
@@ -78,11 +78,13 @@ impl Error for SeedError {}
 pub enum HeaderError {
     /// More players than a `u32` slot counts.
     TooManyPlayers,
-    /// The delegation of the player in `slot` does not hold for this session.
+    /// The delegation of the player in `slot` is not a delegation.
     Delegation {
         slot: PlayerSlot,
         error: DelegationError,
     },
+    /// The delegation of the player in `slot` grants another session.
+    Scope { slot: PlayerSlot, error: ScopeError },
 }
 
 impl fmt::Display for HeaderError {
@@ -92,6 +94,7 @@ impl fmt::Display for HeaderError {
             HeaderError::Delegation { slot, error } => {
                 write!(f, "player {}: {error}", slot.get())
             }
+            HeaderError::Scope { slot, error } => write!(f, "player {}: {error}", slot.get()),
         }
     }
 }
@@ -101,6 +104,7 @@ impl Error for HeaderError {
         match self {
             HeaderError::TooManyPlayers => None,
             HeaderError::Delegation { error, .. } => Some(error),
+            HeaderError::Scope { error, .. } => Some(error),
         }
     }
 }

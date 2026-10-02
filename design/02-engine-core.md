@@ -16,7 +16,7 @@ Each layer uses the layers below it.
 | `script` | Rhai host and core script API |
 | `capabilities` | Mechanisms a mode combines, a module each: `combat`, `navigation`, `orders` and the rest ([Capabilities](04-capabilities/00-overview.md)) |
 | `package` | Reads a mode's packages and every package it depends on, and runs the load checks of [Script API](08-script-api.md) |
-| `runner` | Builds a match from checked packages: wires `sim`, the declared capabilities and `script`, feeds inputs |
+| `runner` | Builds a match from checked packages: wires `sim`, the declared capabilities and `script`, feeds inputs; owns `SessionRules`, which builds a session's terms from the packages and checks terms on the server, the client and the verifier |
 | `verifier` | CLI: replays a session log segment, checks the result |
 | `det-ci` | Headless matches of the reference MOBA with its bots on every OS, comparing state hashes |
 | `lan-check` | On request: the real server and two `client --bot` processes over WebTransport on `127.0.0.1`, and a bot with the wrong certificate that must fail and say why, checked from their JSON logs and by the verifier |

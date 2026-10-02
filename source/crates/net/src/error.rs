@@ -2,6 +2,7 @@ use std::error::Error;
 use std::fmt;
 
 use campfire_protocol::{ConnectError, DelegationError};
+use campfire_runner::TermsError;
 use toml::de::Error as TomlError;
 
 /// Why the server refused a player's join.
@@ -38,14 +39,12 @@ pub enum OrderScriptError {
 }
 
 /// Why a client refused the server's offer: its terms name a session the client cannot play, or
-/// another server than the one the player meant to reach.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// another server or tick rate than the listing the player reached it by.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TermsMismatch {
     OtherServer,
-    OtherRelease,
-    OtherMode,
-    OtherDependencies,
     OtherTickRate,
+    Terms(TermsError),
 }
 
 impl fmt::Display for JoinError {
@@ -63,17 +62,24 @@ impl Error for JoinError {}
 
 impl fmt::Display for TermsMismatch {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            TermsMismatch::OtherServer => "the server's key is not the one given",
-            TermsMismatch::OtherRelease => "the server runs another engine release",
-            TermsMismatch::OtherMode => "the server runs another mode package",
-            TermsMismatch::OtherDependencies => "the server runs other dependency packages",
-            TermsMismatch::OtherTickRate => "the server runs another tick rate",
-        })
+        match self {
+            TermsMismatch::OtherServer => f.write_str("the server's key is not the one given"),
+            TermsMismatch::OtherTickRate => {
+                f.write_str("the server runs another tick rate than the one given")
+            }
+            TermsMismatch::Terms(error) => write!(f, "{error}"),
+        }
     }
 }
 
-impl Error for TermsMismatch {}
+impl Error for TermsMismatch {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            TermsMismatch::Terms(error) => Some(error),
+            TermsMismatch::OtherServer | TermsMismatch::OtherTickRate => None,
+        }
+    }
+}
 
 impl fmt::Display for OrderScriptError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

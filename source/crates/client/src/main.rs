@@ -15,6 +15,7 @@ use std::env;
 use std::ffi::OsString;
 use std::fs;
 use std::net::SocketAddr;
+use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::str::FromStr;
@@ -60,6 +61,7 @@ struct Args {
     address: SocketAddr,
     certificate: CertificateHash,
     server_key: XOnlyPublicKey,
+    tick_hz: NonZeroU32,
 }
 
 /// How often a bot's app loop runs: often enough that no fixed tick waits long for its frame.
@@ -85,7 +87,7 @@ fn main() -> ExitCode {
             error!(
                 %problem,
                 "usage: campfire-client [--bot <orders file>] <mode package directory> \
-                 <server address> <certificate hash> <server key>"
+                 <server address> <certificate hash> <server key> <tick rate>"
             );
             return ExitCode::from(2);
         }
@@ -105,7 +107,7 @@ fn main() -> ExitCode {
         }
     };
     let mode = ClientMode::of(&packages);
-    let tick = TickRate::new(mode.tick_hz).length();
+    let tick = TickRate::new(args.tick_hz).length();
 
     let mut app = App::new();
     if let Some(script) = script {
@@ -144,8 +146,9 @@ fn main() -> ExitCode {
             main_key: keypair(),
             session_key: keypair(),
             server: ServerPin {
-                key: args.server_key.serialize(),
+                key: args.server_key,
                 certificate: args.certificate,
+                tick_hz: args.tick_hz,
             },
             mode,
             clock: unix_now,
@@ -186,14 +189,15 @@ impl Args {
         } else {
             None
         };
-        let (Some(mode), Some(address), Some(certificate), Some(server_key), None) = (
+        let (Some(mode), Some(address), Some(certificate), Some(server_key), Some(tick_hz), None) = (
+            args.next(),
             args.next(),
             args.next(),
             args.next(),
             args.next(),
             args.next(),
         ) else {
-            return Err("four arguments are needed after the options".to_owned());
+            return Err("five arguments are needed after the options".to_owned());
         };
         let text = |arg: &OsString| {
             arg.to_str()
@@ -203,6 +207,7 @@ impl Args {
         let address = text(&address)?;
         let certificate = text(&certificate)?;
         let server_key = text(&server_key)?;
+        let tick_hz = text(&tick_hz)?;
         Ok(Args {
             bot,
             mode: PathBuf::from(mode),
@@ -214,6 +219,9 @@ impl Args {
                 .map_err(|error| format!("{certificate}: {error}"))?,
             server_key: XOnlyPublicKey::from_str(&server_key)
                 .map_err(|error| format!("{server_key}: {error}"))?,
+            tick_hz: tick_hz
+                .parse()
+                .map_err(|error| format!("{tick_hz}: {error}"))?,
         })
     }
 }

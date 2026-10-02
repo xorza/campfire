@@ -1,10 +1,10 @@
 use std::num::NonZeroU32;
+use std::path::Path;
 
-use campfire_capabilities::{Bounds, CapabilitySet, Metric};
-use campfire_math::Ticks;
-use campfire_package::RELEASE;
-use campfire_protocol::secp256k1::SecretKey;
+use campfire_package::ModePackages;
+use campfire_protocol::secp256k1::{SecretKey, XOnlyPublicKey};
 use campfire_protocol::{CertificateHash, ConnectChallenge, Fingerprint, SeedChain, SessionTerms};
+use campfire_runner::{InputRules, SessionRules, TermsError};
 
 use super::*;
 
@@ -15,25 +15,35 @@ fn keypair(byte: u8) -> Keypair {
     Keypair::from_secret_key(&Secp256k1::new(), &secret)
 }
 
-fn client() -> SimClient {
+/// The lane mode, which runs at 30 Hz only.
+fn lane_mode() -> ModePackages {
+    let dir = concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/../../packages/test/modes/lane"
+    );
+    ModePackages::from_dir(Path::new(dir)).unwrap()
+}
+
+/// An x-only key of the bytes `[byte; 32]`, which must be the x of a point on the curve.
+fn x_only(byte: u8) -> XOnlyPublicKey {
+    XOnlyPublicKey::from_byte_array(&[byte; 32]).unwrap()
+}
+
+type Change = fn(&mut SessionTerms);
+
+const TICK_HZ: NonZeroU32 = NonZeroU32::new(30).unwrap();
+
+/// A client of the lane mode that means to reach the server of key 8 at `tick_hz`.
+fn client(tick_hz: NonZeroU32) -> SimClient {
     SimClient {
         main_key: keypair(1),
         session_key: keypair(2),
         server: ServerPin {
-            key: [8; 32],
+            key: x_only(8),
             certificate: CertificateHash::new([3; 32]),
+            tick_hz,
         },
-        mode: ClientMode {
-            tick_hz: NonZeroU32::new(30).unwrap(),
-            mode: Fingerprint::new([5; 32]),
-            dependencies: vec![Fingerprint::new([4; 32])],
-            capabilities: CapabilitySet::new(&[]).unwrap(),
-            metric: Metric::Planar,
-            bounds: Bounds::WORLD,
-            pathing: None,
-            walkers: Vec::new(),
-            life: None,
-        },
+        mode: ClientMode::of(&lane_mode()),
         clock: || NOW,
         entropy: |bytes| bytes.fill(6),
     }
@@ -41,18 +51,14 @@ fn client() -> SimClient {
 
 /// Terms the client can play, with `change` applied.
 fn offer(change: impl FnOnce(&mut SessionTerms)) -> Offer {
-    let mut terms = SessionTerms {
-        server_key: [8; 32],
-        tick_hz: NonZeroU32::new(30).unwrap(),
-        max_input_delay: Ticks::new(10),
-        max_input_lead: Ticks::new(30),
-        max_payload_len: 64,
-        max_inputs_per_tick: 4,
-        seed_commitment: SeedChain::new([7; 32], NonZeroU32::MIN).commitment(),
-        release: RELEASE.to_owned(),
-        mode: Fingerprint::new([5; 32]),
-        dependencies: vec![Fingerprint::new([4; 32])],
-    };
+    let mut terms = SessionRules::of(&lane_mode())
+        .terms(
+            x_only(8),
+            SeedChain::new([7; 32], NonZeroU32::MIN).commitment(),
+            TICK_HZ,
+            InputRules::LAN,
+        )
+        .unwrap();
     change(&mut terms);
     Offer {
         terms,
@@ -60,9 +66,9 @@ fn offer(change: impl FnOnce(&mut SessionTerms)) -> Offer {
     }
 }
 
-fn sent() -> SentInputs {
+fn sent(tick_hz: NonZeroU32) -> SentInputs {
     SentInputs {
-        client: client(),
+        client: client(tick_hz),
         secp: Secp256k1::signing_only(),
         session: None,
         chain: None,
@@ -73,37 +79,47 @@ fn sent() -> SentInputs {
 
 #[test]
 fn a_client_joins_only_the_session_its_server_offers_and_it_can_play() {
-    for (change, mismatch) in [
+    let other_rate = NonZeroU32::new(60).unwrap();
+    let cases: [(NonZeroU32, Change, TermsMismatch); 6] = [
         (
-            (|terms: &mut SessionTerms| terms.server_key = [9; 32]) as fn(&mut SessionTerms),
+            TICK_HZ,
+            |terms| terms.server_key = x_only(9),
             TermsMismatch::OtherServer,
         ),
         (
+            TICK_HZ,
             |terms| terms.release = "0.0.9".to_owned(),
-            TermsMismatch::OtherRelease,
+            TermsMismatch::Terms(TermsError::OtherRelease("0.0.9".to_owned())),
         ),
         (
+            TICK_HZ,
             |terms| terms.mode = Fingerprint::new([0; 32]),
-            TermsMismatch::OtherMode,
+            TermsMismatch::Terms(TermsError::OtherMode),
         ),
         (
+            TICK_HZ,
             |terms| terms.dependencies.clear(),
-            TermsMismatch::OtherDependencies,
+            TermsMismatch::Terms(TermsError::OtherDependencies),
         ),
+        // The listing names 60 Hz, and the lane mode does not run at it.
         (
+            other_rate,
             |terms| terms.tick_hz = NonZeroU32::new(60).unwrap(),
-            TermsMismatch::OtherTickRate,
+            TermsMismatch::Terms(TermsError::TickRate(other_rate)),
         ),
-    ] {
-        let mut sent = sent();
-        assert_eq!(sent.join(&offer(change)), Err(mismatch));
+        // The mode runs at 30 Hz, and the listing names 60.
+        (other_rate, |_| {}, TermsMismatch::OtherTickRate),
+    ];
+    for (pinned, change, mismatch) in cases {
+        let mut sent = sent(pinned);
+        assert_eq!(sent.join(&offer(change)), Err(mismatch.clone()));
         assert!(sent.session.is_none(), "{mismatch:?}");
     }
 
     // A fitting offer: the delegation names the offered session, lets session key 2 sign until a
     // day after now, and carries the contribution the entropy gave; the answer passes the
     // server's check, and the player's chain will start from the delegation's id.
-    let mut sent = sent();
+    let mut sent = sent(TICK_HZ);
     let offer = offer(|_| {});
     let join = sent.join(&offer).unwrap();
     let delegation = Delegation::parse(&join.delegation).unwrap();

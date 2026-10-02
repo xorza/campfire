@@ -4,7 +4,7 @@ use nostr::types::Timestamp;
 use secp256k1::{Keypair, Secp256k1, Signing, XOnlyPublicKey};
 
 use crate::delegation::delegation_tag::DelegationTag;
-use crate::delegation::error::DelegationError;
+use crate::delegation::error::{DelegationError, ScopeError};
 use crate::input_hash::InputHash;
 use crate::session_id::SessionId;
 use campfire_math::Bytes32;
@@ -20,8 +20,7 @@ const KIND: u16 = 22_710;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct DelegationTerms {
     pub session_key: XOnlyPublicKey,
-    /// The server's x-only public key.
-    pub server_key: [u8; 32],
+    pub server_key: XOnlyPublicKey,
     pub session_id: SessionId,
     /// The player's random share of every segment's seed, chosen after the session id fixes
     /// the server's seed commitment, so no one can choose it with the seed in view.
@@ -59,7 +58,7 @@ impl Delegation {
             ),
             custom(
                 DelegationTag::ServerKey,
-                Bytes32::new(terms.server_key).to_string(),
+                Bytes32::new(terms.server_key.serialize()).to_string(),
             ),
             custom(
                 DelegationTag::SessionId,
@@ -107,10 +106,13 @@ impl Delegation {
                 .map(Bytes32::get)
                 .ok_or(DelegationError::MalformedTag(name))
         };
-        let session_key = XOnlyPublicKey::from_byte_array(&bytes(DelegationTag::SessionKey)?)
-            .ok()
-            .ok_or(DelegationError::MalformedTag(DelegationTag::SessionKey))?;
-        let server_key = bytes(DelegationTag::ServerKey)?;
+        let key = |name: DelegationTag| {
+            XOnlyPublicKey::from_byte_array(&bytes(name)?)
+                .ok()
+                .ok_or(DelegationError::MalformedTag(name))
+        };
+        let session_key = key(DelegationTag::SessionKey)?;
+        let server_key = key(DelegationTag::ServerKey)?;
         let session_id = bytes(DelegationTag::SessionId)?;
         let seed_contribution = bytes(DelegationTag::SeedContribution)?;
         let expiration = tag(&event, DelegationTag::Expiration)?
@@ -148,6 +150,22 @@ impl Delegation {
 
     pub const fn terms(&self) -> &DelegationTerms {
         &self.terms
+    }
+
+    /// Whether the delegation grants its session key the session `session_id` on the server
+    /// `server_key`.
+    pub fn check(
+        &self,
+        server_key: &XOnlyPublicKey,
+        session_id: &SessionId,
+    ) -> Result<(), ScopeError> {
+        if self.terms.server_key != *server_key {
+            return Err(ScopeError::OtherServer);
+        }
+        if self.terms.session_id != *session_id {
+            return Err(ScopeError::OtherSession);
+        }
+        Ok(())
     }
 }
 
