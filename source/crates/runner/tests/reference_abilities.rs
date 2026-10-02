@@ -15,7 +15,7 @@ use campfire_capabilities::{
     Abilities, Action, ActionSlots, ActionTarget, Actions, Area, Areas, CapabilitySet,
     DeclaredName, Hook, MatchScripts, Number, OnDeath, Order, Owner, Param, PoolId, Pools,
     Projectile, Projectiles, Range, RangeField, Ranked, RecentAttackers, Scalar, Scaling,
-    ScriptLimits, SlotKind, Stat, StatRule, Stats, Targeting, Team, Units,
+    ScriptLimits, SlotKind, Stat, StatRule, Stats, Targeting, Team, TypeScope, Units,
 };
 use campfire_capabilities::{Modifiers, ScriptFailure, ScriptFailures};
 use campfire_content::PackagePath;
@@ -379,14 +379,15 @@ fn rimes_fan_of_frost_from_its_package_hits_exactly_the_units_in_reach_once_each
     let rime = abilities("rime");
     Stats::load_modifier(&mut world, 0, "slow", &rime.content.modifiers["slow"], None);
     let arrow = &rime.content.units["frost_arrow"];
-    let frost_arrow = Units::load_type(&mut world, "rime/frost_arrow", &arrow.core).unwrap();
+    let frost_arrow =
+        Units::load_type(&mut world, TypeScope::Mode, "frost_arrow", &arrow.core).unwrap();
     Projectiles::load_type(&mut world, frost_arrow, arrow.projectile.as_ref().unwrap());
     // Fan of Frost runs no script: its data's `on_hit` deals its damage and applies its slow.
     let data = &rime.content.actions["fan_of_frost"];
     assert_eq!(data.script, None);
     let fan = Actions::load(&mut world, 0, "fan_of_frost", data, None, 5).unwrap();
     Abilities::load_effects(&mut world, fan, 0, data);
-    Actions::bind_spawn(&mut world, fan, "rime/frost_arrow");
+    Actions::bind_spawn(&mut world, fan, "frost_arrow");
 
     let player = Owner::new(PlayerSlot::new(0));
     let slots = ActionSlots::new([(fan, SlotKind::new(0), 1)]);
@@ -459,10 +460,10 @@ fn rimes_snow_owl_flies_to_its_point_and_ends_there() {
     let bounty = &rime.content.modifiers["snow_owl_bounty"];
     Stats::load_modifier(&mut world, 0, "snow_owl_bounty", bounty, Some(script));
     let owl = &rime.content.units["snow_owl"];
-    let owl_type = Units::load_type(&mut world, "rime/snow_owl", &owl.core).unwrap();
+    let owl_type = Units::load_type(&mut world, TypeScope::Mode, "snow_owl", &owl.core).unwrap();
     Projectiles::load_type(&mut world, owl_type, owl.projectile.as_ref().unwrap());
     let snow_owl = Actions::load(&mut world, 0, "snow_owl", data, Some(script), 5).unwrap();
-    Actions::bind_spawn(&mut world, snow_owl, "rime/snow_owl");
+    Actions::bind_spawn(&mut world, snow_owl, "snow_owl");
     let player = Owner::new(PlayerSlot::new(0));
     let slots = ActionSlots::new([(snow_owl, SlotKind::new(0), 1)]);
     let caster = spawn(&mut world, 0, 0, (player, slots));
@@ -528,12 +529,12 @@ fn cinders_eruption_from_its_package_erupts_on_the_units_in_reach_after_its_dela
     let cinder = abilities("cinder");
     load_modifiers(&mut world, "cinder", &cinder);
     let file = &cinder.content.units["eruption"];
-    let unit_type = Units::load_type(&mut world, "cinder/eruption", &file.core).unwrap();
+    let unit_type = Units::load_type(&mut world, TypeScope::Mode, "eruption", &file.core).unwrap();
     Areas::load_type(&mut world, unit_type, 0, file.area.as_ref().unwrap());
     let data = &cinder.content.actions["eruption"];
     let script = compile(&mut world, "cinder", data.script.as_ref().unwrap());
     let eruption = Actions::load(&mut world, 0, "eruption", data, Some(script), 5).unwrap();
-    Actions::bind_spawn(&mut world, eruption, "cinder/eruption");
+    Actions::bind_spawn(&mut world, eruption, "eruption");
 
     let player = Owner::new(PlayerSlot::new(0));
     let slots = ActionSlots::new([(eruption, SlotKind::new(0), 1)]);
@@ -598,12 +599,13 @@ fn veils_smoke_ring_from_its_package_holds_its_modifiers_on_the_units_inside_whi
     let veil = abilities("veil");
     load_modifiers(&mut world, "veil", &veil);
     let file = &veil.content.units["smoke_ring"];
-    let unit_type = Units::load_type(&mut world, "veil/smoke_ring", &file.core).unwrap();
+    let unit_type =
+        Units::load_type(&mut world, TypeScope::Mode, "smoke_ring", &file.core).unwrap();
     Areas::load_type(&mut world, unit_type, 0, file.area.as_ref().unwrap());
     let data = &veil.content.actions["smoke_ring"];
     assert_eq!(data.script, None);
     let ring = Actions::load(&mut world, 0, "smoke_ring", data, None, 5).unwrap();
-    Actions::bind_spawn(&mut world, ring, "veil/smoke_ring");
+    Actions::bind_spawn(&mut world, ring, "smoke_ring");
 
     let player = Owner::new(PlayerSlot::new(0));
     let slots = ActionSlots::new([(ring, SlotKind::new(0), 1)]);

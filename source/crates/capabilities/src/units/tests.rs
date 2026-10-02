@@ -92,7 +92,7 @@ impl Scene {
                 .collect::<BTreeMap<_, _>>(),
         };
         let name = format!("type {}", self.world.non_send::<View>().types_count());
-        Units::load_type(&mut self.world, &name, &data).unwrap()
+        Units::load_type(&mut self.world, TypeScope::Mode, &name, &data).unwrap()
     }
 
     /// A `unit()` of `team` with `parts`.
@@ -434,19 +434,30 @@ fn a_handle_reads_its_units_level_pools_and_stats() {
 }
 
 #[test]
-fn a_unit_type_name_is_one_types_only() {
+fn a_unit_type_name_is_one_types_only_in_its_scope() {
     let mut scene = Scene::new();
     let data = UnitTypeData::default();
-    let first = Units::load_type(&mut scene.world, "grunt", &data).unwrap();
+    let mut load = |scope, name| Units::load_type(&mut scene.world, scope, name, &data);
+    let first = load(TypeScope::Mode, "grunt").unwrap();
     assert_eq!(
-        Units::load_type(&mut scene.world, "grunt", &data),
+        load(TypeScope::Mode, "grunt"),
         Err(UnitTypeError::RepeatedName)
     );
-    let second = Units::load_type(&mut scene.world, "tower", &data).unwrap();
+    let second = load(TypeScope::Mode, "tower").unwrap();
+    // A package's own scope holds a `grunt` of its own, which a mode name does not reach.
+    let theirs = load(TypeScope::Package(1), "grunt").unwrap();
+    assert_eq!(
+        load(TypeScope::Package(1), "grunt"),
+        Err(UnitTypeError::RepeatedName)
+    );
     let view = scene.world.non_send::<View>();
     assert_eq!(
         (view.unit_type("grunt"), view.unit_type("tower")),
         (Some(first), Some(second))
     );
     assert_eq!(view.unit_type("wolf"), None);
+    let types = view.types_mut();
+    assert_eq!(types.named(TypeScope::Package(1), "grunt"), Some(theirs));
+    assert_eq!(types.named(TypeScope::Package(2), "grunt"), None);
+    assert_ne!(theirs, first);
 }

@@ -25,6 +25,7 @@ use crate::units::Units;
 use crate::units::filter::Filter;
 use crate::units::path_id::PathId;
 use crate::units::script_view::View;
+use crate::units::type_scope::TypeScope;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::units::unit_types::UnitTypes;
@@ -260,7 +261,7 @@ impl Match {
                 .collect(),
         };
         let name = format!("type {}", self.world.non_send::<View>().types_count());
-        let unit_type = Units::load_type(&mut self.world, &name, &data).unwrap();
+        let unit_type = Units::load_type(&mut self.world, TypeScope::Mode, &name, &data).unwrap();
         if let Some(source) = ai {
             let ai = AiData {
                 ai: PackagePath::parse("scripts/ai.rhai").unwrap(),

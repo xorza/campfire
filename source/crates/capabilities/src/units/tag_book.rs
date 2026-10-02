@@ -106,6 +106,7 @@ mod tests {
     use super::*;
     use crate::units::block::Block;
     use crate::units::tag_data::TagData;
+    use crate::units::type_scope::TypeScope;
     use crate::units::unit_type_data::UnitTypeData;
     use crate::units::unit_types::UnitTypes;
 
@@ -118,7 +119,7 @@ mod tests {
             tags: vec!["true_sight".to_owned()],
             params: BTreeMap::new(),
         };
-        let tower = types.load("tower", &tower).unwrap();
+        let tower = types.load(TypeScope::Mode, "tower", &tower).unwrap();
         let data = |blocks: &[Block], detects, immune: &[&str]| TagData {
             blocks: blocks.to_vec(),
             hidden: false,

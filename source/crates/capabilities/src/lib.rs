@@ -148,6 +148,7 @@ pub use units::tag_data::TagData;
 pub use units::tag_effect::TagEffect;
 pub use units::team::Team;
 pub use units::team_set::TeamSet;
+pub use units::type_scope::TypeScope;
 pub use units::unit_type::UnitType;
 pub use units::unit_type_data::UnitTypeData;
 pub use values::attitude::Attitude;

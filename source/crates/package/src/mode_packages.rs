@@ -375,24 +375,7 @@ impl ModePackages {
     }
 }
 
-impl PackageView<'_> {
-    /// The name in a match of its unit type `id`: the mode's own, `<package>/<id>` for another
-    /// package's, apart from every other package's.
-    pub fn unit_type_name(&self, id: &str) -> String {
-        match self.kind {
-            ViewKind::Mode => id.to_owned(),
-            ViewKind::Avatar(_) | ViewKind::Loadout => joined(&self.package.name, id),
-        }
-    }
-}
-
 impl Dependent {
-    /// The name of its unit type `id` in a match: `<package>/<id>`, apart from every other
-    /// package's.
-    pub fn unit_type_name(&self, id: &str) -> String {
-        joined(&self.package.name, id)
-    }
-
     /// The package of `files`, which the mode names `name`: an avatar or loadout package of that
     /// name.
     fn read(name: &str, files: &PackageFiles, parser: &ScriptHost) -> Result<Dependent, LoadError> {
@@ -451,11 +434,6 @@ fn read_mode_manifest(
         Manifest::Mode(manifest) => Ok(manifest),
         _ => Err(fail(LoadProblem::WrongKind)),
     }
-}
-
-/// The name in a match of the unit type `id` of the package `package`, another than the mode.
-fn joined(package: &str, id: &str) -> String {
-    format!("{package}/{id}")
 }
 
 /// One of the engine's paths in a package.

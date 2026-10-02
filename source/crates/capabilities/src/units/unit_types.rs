@@ -6,6 +6,7 @@ use crate::units::tag_book::TagBook;
 use crate::units::tag_data::TagData;
 use crate::units::tag_effects::TagEffects;
 use crate::units::tag_set::TagSet;
+use crate::units::type_scope::TypeScope;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::name_table::NameTable;
@@ -23,31 +24,33 @@ pub(crate) struct UnitTypes {
     /// not name one excludes it.
     deliveries: TagSet,
     types: Vec<TypeEntry>,
-    /// Every type, sorted by name.
+    /// Every type, sorted by scope, then name.
     by_name: Vec<UnitType>,
     /// Each type's params, one run per type, in the order of the types.
     params: NameTable<Scalar>,
 }
 
-/// A loaded unit type: its name and its tags.
+/// A loaded unit type: the scope its name is seen in, its name, and its tags.
 #[derive(Debug)]
 struct TypeEntry {
+    scope: TypeScope,
     name: Box<str>,
     tags: TagSet,
 }
 
 impl UnitTypes {
-    /// Loads `data` as the type `name`: its tags join the match's, and its params are kept for
-    /// `unit.params`.
+    /// Loads `data` as the type `name` of `scope`: its tags join the match's, and its params are
+    /// kept for `unit.params`.
     pub(crate) fn load(
         &mut self,
+        scope: TypeScope,
         name: &str,
         data: &UnitTypeData,
     ) -> Result<UnitType, UnitTypeError> {
         let index = u16::try_from(self.types.len())
             .ok()
             .ok_or(UnitTypeError::TooManyTypes)?;
-        let Err(at) = self.find(name) else {
+        let Err(at) = self.find(scope, name) else {
             return Err(UnitTypeError::RepeatedName);
         };
         let mut tags = TagSet::default();
@@ -62,6 +65,7 @@ impl UnitTypes {
         debug_assert_eq!(run, usize::from(index), "one run of params per type");
         self.by_name.insert(at, UnitType::new(index));
         self.types.push(TypeEntry {
+            scope,
             name: name.into(),
             tags,
         });
@@ -94,15 +98,20 @@ impl UnitTypes {
         entry.tags = entry.tags.with(tag);
     }
 
-    /// The type named `name`.
-    pub(crate) fn named(&self, name: &str) -> Option<UnitType> {
-        Some(self.by_name[self.find(name).ok()?])
+    /// The type named `name` in `scope`.
+    pub(crate) fn named(&self, scope: TypeScope, name: &str) -> Option<UnitType> {
+        Some(self.by_name[self.find(scope, name).ok()?])
     }
 
-    /// Where `name` is in `by_name`, or where it would go.
-    fn find(&self, name: &str) -> Result<usize, usize> {
-        self.by_name
-            .binary_search_by(|&unit_type| self.name(unit_type).cmp(name))
+    /// Where `name` of `scope` is in `by_name`, or where it would go.
+    fn find(&self, scope: TypeScope, name: &str) -> Result<usize, usize> {
+        self.by_name.binary_search_by(|&unit_type| {
+            let entry = &self.types[unit_type.index()];
+            entry
+                .scope
+                .cmp(&scope)
+                .then_with(|| (*entry.name).cmp(name))
+        })
     }
 
     pub(crate) fn name(&self, unit_type: UnitType) -> &str {

@@ -17,6 +17,7 @@ use crate::projectiles::cast_hits::CastHit;
 use crate::stats::pool_id::PoolId;
 use crate::units::Units;
 use crate::units::recent_attack::RecentAttack;
+use crate::units::type_scope::TypeScope;
 
 /// The MOBA's 30 ticks a second.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
@@ -100,7 +101,9 @@ impl Volley {
             ("dart", projectile(false, Num::ZERO, Some(num(6)), true)),
         ];
         let [bolt, lance, dart] = types.map(|(name, data)| {
-            let unit_type = Units::load_type(&mut world, name, &UnitTypeData::default()).unwrap();
+            let unit_type =
+                Units::load_type(&mut world, TypeScope::Mode, name, &UnitTypeData::default())
+                    .unwrap();
             if projectiles {
                 Projectiles::load_type(&mut world, unit_type, &data);
             }

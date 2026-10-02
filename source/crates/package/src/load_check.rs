@@ -58,24 +58,16 @@ impl<'a> LoadCheck<'a> {
         if tags.len() > UnitTypeData::TAG_LIMIT {
             return Err(fail(LoadProblem::TooMany(Limit::Tags)));
         }
+        // A dependency's delivery types are in its own scope, so they share no name with
+        // another package's; an avatar is in the mode's, by its package's name.
         let units = &packages.content.units;
         let mut unit_types = units.len();
         for dependent in &packages.dependencies {
-            let ids = dependent.content.units.keys();
-            if let Some(name) = [&dependent.package.name]
-                .into_iter()
-                .chain(ids)
-                .find(|name| name.contains('/'))
-            {
-                return Err(fail(LoadProblem::Slash(name.clone())));
-            }
-            let avatar = matches!(dependent.kind, DependentKind::Avatar(_))
-                .then(|| dependent.package.name.clone());
-            let deliveries = dependent.content.units.keys();
-            let deliveries = deliveries.map(|id| dependent.unit_type_name(id));
-            for name in avatar.into_iter().chain(deliveries) {
-                if units.contains_key(&name) {
-                    return Err(fail(LoadProblem::RepeatedUnitType(name)));
+            unit_types += dependent.content.units.len();
+            if matches!(dependent.kind, DependentKind::Avatar(_)) {
+                let name = &dependent.package.name;
+                if units.contains_key(name) {
+                    return Err(fail(LoadProblem::RepeatedUnitType(name.clone())));
                 }
                 unit_types += 1;
             }
@@ -264,7 +256,7 @@ impl<'a> LoadCheck<'a> {
             DependentKind::Loadout => None,
         };
         for (id, unit_type) in &content.units {
-            let at = Place::UnitType(dependent.unit_type_name(id));
+            let at = Place::UnitType(id.clone());
             if !unit_type.delivery_only() {
                 return Err(LoadProblem::Delivery(DeliveryProblem::NotDelivery(at)));
             }

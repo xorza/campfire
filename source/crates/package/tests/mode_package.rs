@@ -180,6 +180,34 @@ fn an_effect_to_the_source_reads_and_any_other_to_does_not() {
 }
 
 #[test]
+fn a_mode_type_may_share_its_name_with_a_dependencys_delivery_type() {
+    // Husk's `grasping_wraps` is in Husk's own scope, the mode's `grasping_wraps` in the
+    // mode's, so both load; and a package name or an id holds `/` with no harm.
+    let edits = [
+        (
+            UNITS,
+            Edit::Replace(
+                "[units.tower_bolt]\n",
+                "[units.grasping_wraps]\nprojectile = { speed = \"20\" }\n\n[units.tower_bolt]\n",
+            ),
+        ),
+        (
+            HUSK,
+            Edit::Replace("[units.grasping_wraps]", "[units.\"x/grasping_wraps\"]"),
+        ),
+        (
+            HUSK,
+            Edit::Replace(
+                r#"projectile = "grasping_wraps""#,
+                r#"projectile = "x/grasping_wraps""#,
+            ),
+        ),
+    ];
+    let packages = ModePackages::from_package_dir(&edited(edits)).unwrap();
+    assert!(packages.content().units.contains_key("grasping_wraps"));
+}
+
+#[test]
 fn more_layers_than_tags_a_match_holds_fail_the_load() {
     // 257 layers, each a tag, past the 256 tags a match holds.
     let names: Vec<String> = (0..=256).map(|at| format!("\"layer{at}\"")).collect();
@@ -213,7 +241,7 @@ fn more_tracks_than_a_unit_holds_fail_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 151] = [
+const FLAWS: [Flaw; 148] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -392,7 +420,7 @@ const FLAWS: [Flaw; 151] = [
             "[units.husk_dummy]\ntags = [\"dummy\"]\n\n[units.grasping_wraps]\n",
         ),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NotDelivery(Place::UnitType(name))) if name == "hero-husk/husk_dummy"),
+        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NotDelivery(Place::UnitType(name))) if name == "husk_dummy"),
     ),
     flaw(
         HUSK,
@@ -471,7 +499,7 @@ const FLAWS: [Flaw; 151] = [
             r#"delay_ms = 625, affects = "enemies:molten" }"#,
         ),
         "hero-cinder",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Filter, at: Place::UnitType(name), .. } if name == "hero-cinder/eruption"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Filter, at: Place::UnitType(name), .. } if name == "eruption"),
     ),
     flaw(
         CINDER,
@@ -480,34 +508,25 @@ const FLAWS: [Flaw; 151] = [
             "[units.eruption]\nprojectile = { speed = \"20\" }\n",
         ),
         "hero-cinder",
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NotDelivery(Place::UnitType(name))) if name == "hero-cinder/eruption"),
+        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NotDelivery(Place::UnitType(name))) if name == "eruption"),
     ),
     flaw(
         VEIL,
         Edit::Replace(r#"self = "smoke_ring_cover""#, r#"self = "smoke_cover""#),
         "hero-veil",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Modifier, at: Place::UnitType(unit_type), name } if unit_type == "hero-veil/smoke_ring" && name == "smoke_cover"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Modifier, at: Place::UnitType(unit_type), name } if unit_type == "smoke_ring" && name == "smoke_cover"),
     ),
     flaw(
         MANIFEST,
         Edit::Replace(r#""areas", "#, ""),
         "hero-cinder",
-        |problem| matches!(problem, LoadProblem::Undeclared { capability: Capability::Areas, at: Place::UnitType(name) } if name == "hero-cinder/eruption"),
+        |problem| matches!(problem, LoadProblem::Undeclared { capability: Capability::Areas, at: Place::UnitType(name) } if name == "eruption"),
     ),
     flaw(
         MAP,
         Edit::Replace("unit_type = \"tower\"", "unit_type = \"tower_bolt\""),
         MODE,
         |problem| matches!(problem, LoadProblem::Mode(ModeError::UnknownUnitType(name)) if name == "tower_bolt"),
-    ),
-    flaw(
-        UNITS,
-        Edit::Replace(
-            "[units.tower_bolt]\n",
-            "[units.\"hero-husk/grasping_wraps\"]\nprojectile = { speed = \"20\" }\n\n[units.tower_bolt]\n",
-        ),
-        MODE,
-        |problem| matches!(problem, LoadProblem::RepeatedUnitType(name) if name == "hero-husk/grasping_wraps"),
     ),
     flaw(
         RIME,
@@ -621,22 +640,6 @@ const FLAWS: [Flaw; 151] = [
         "hero-rime",
         |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Modifier, name, .. } if name == "frozen"),
     ),
-    flaw(
-        HUSK,
-        Edit::Replace("[units.grasping_wraps]", "[units.\"x/grasping_wraps\"]"),
-        MODE,
-        |problem| matches!(problem, LoadProblem::Slash(name) if name == "x/grasping_wraps"),
-    ),
-    Flaw {
-        file: MANIFEST,
-        edit: Edit::Replace("hero-husk = {", "\"hero/husk\" = {"),
-        also: &[(
-            "heroes/husk/manifest.toml",
-            Edit::Replace("name = \"hero-husk\"", "name = \"hero/husk\""),
-        )],
-        package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Slash(name) if name == "hero/husk"),
-    },
     flaw(
         MANIFEST,
         Edit::Replace(r#""projectiles", "#, ""),

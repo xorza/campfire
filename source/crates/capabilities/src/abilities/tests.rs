@@ -58,6 +58,7 @@ use crate::units::Units;
 use crate::units::body::Body;
 use crate::units::script_view::View;
 use crate::units::tag_data::TagData;
+use crate::units::type_scope::TypeScope;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
@@ -484,7 +485,13 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
     let enemy = game.spawn(1, at(num(5), Num::ZERO, Num::ZERO), ());
     // Eleven units whose AI spins, all due in every tick: ten calls fail at the 10 000 limit and
     // spend the 100 000 of the think pool, and the eleventh finds it spent.
-    let spinner = Units::load_type(&mut game.world, "spinner", &UnitTypeData::default()).unwrap();
+    let spinner = Units::load_type(
+        &mut game.world,
+        TypeScope::Mode,
+        "spinner",
+        &UnitTypeData::default(),
+    )
+    .unwrap();
     let ai = AiData {
         ai: PackagePath::parse("scripts/ai.rhai").unwrap(),
         think_ms: 1,
@@ -936,7 +943,7 @@ fn a_unit_target_is_one_its_filter_selects_tag_and_all() {
             tags: vec![name.to_owned()],
             params: BTreeMap::new(),
         };
-        Units::load_type(&mut game.world, name, &data).unwrap()
+        Units::load_type(&mut game.world, TypeScope::Mode, name, &data).unwrap()
     };
     let (hero, creep) = (load_type("avatar"), load_type("creep"));
     let mut heroes_only = strike();
@@ -1154,7 +1161,12 @@ fn stun_run() -> Vec<(StateHash, bool)> {
     let script = r#"fn on_resolve(ctx, caster, target) { ctx.add_modifier(target, "stun", 100); }"#;
     let strike = game.load("strike", &strike(), script);
     let caster = game.caster(strike, 1);
-    let target_type = Units::load_type(&mut game.world, "target", &UnitTypeData::default());
+    let target_type = Units::load_type(
+        &mut game.world,
+        TypeScope::Mode,
+        "target",
+        &UnitTypeData::default(),
+    );
     let parts = (
         target_type.unwrap(),
         Level::default(),
@@ -1484,8 +1496,13 @@ fn a_scaling_param_reads_its_sources_level_stats_and_bonus() {
     let mut game = Match::with(LIMITS, &declared);
     // The caster's type gives attack damage 50 + 5 a level, so 60 at level 3; a modifier adds 20
     // more and 40 ability power.
-    let caster_type =
-        Units::load_type(&mut game.world, "caster", &UnitTypeData::default()).unwrap();
+    let caster_type = Units::load_type(
+        &mut game.world,
+        TypeScope::Mode,
+        "caster",
+        &UnitTypeData::default(),
+    )
+    .unwrap();
     let attack_damage = Stat::named("attack_damage").unwrap();
     let growth = StatValue {
         base: Scalar::Int(50),
@@ -1561,7 +1578,13 @@ fn a_live_change_follows_its_source_in_the_order_of_the_stats_it_reads() {
     // point of bonus attack damage; Fortify gives armor of 10 times her spell vamp, so armor
     // reads spell vamp, which reads attack damage. Armor's place, before spell vamp's, makes the
     // graph's order differ from the places'.
-    let veil_type = Units::load_type(&mut game.world, "veil", &UnitTypeData::default()).unwrap();
+    let veil_type = Units::load_type(
+        &mut game.world,
+        TypeScope::Mode,
+        "veil",
+        &UnitTypeData::default(),
+    )
+    .unwrap();
     let attack_damage = Stat::named("attack_damage").unwrap();
     let growth = StatValue {
         base: Scalar::Int(53),
@@ -1645,7 +1668,13 @@ fn a_delivery_hook_reads_its_projectile_and_the_unit_its_cast_aimed_at() {
             Capability::Projectiles,
         ],
     );
-    let bolt = Units::load_type(&mut game.world, "bolt", &UnitTypeData::default()).unwrap();
+    let bolt = Units::load_type(
+        &mut game.world,
+        TypeScope::Mode,
+        "bolt",
+        &UnitTypeData::default(),
+    )
+    .unwrap();
     let data = ProjectileData {
         speed: num(15),
         width: Num::ZERO,
@@ -1739,7 +1768,13 @@ fn a_script_launches_a_projectile_only_in_the_form_its_type_flies() {
                     Capability::Projectiles,
                 ],
             );
-            let bolt = Units::load_type(&mut game.world, "bolt", &UnitTypeData::default()).unwrap();
+            let bolt = Units::load_type(
+                &mut game.world,
+                TypeScope::Mode,
+                "bolt",
+                &UnitTypeData::default(),
+            )
+            .unwrap();
             let data = ProjectileData {
                 speed: num(15),
                 width: Num::ZERO,
@@ -1858,7 +1893,13 @@ fn fan_of_frost_from_data_alone_hits_exactly_the_units_in_reach() {
         ..chilled
     };
     Stats::load_modifier(&mut game.world, 0, "chilled", &chilled, None);
-    let arrow = Units::load_type(&mut game.world, "frost_arrow", &UnitTypeData::default()).unwrap();
+    let arrow = Units::load_type(
+        &mut game.world,
+        TypeScope::Mode,
+        "frost_arrow",
+        &UnitTypeData::default(),
+    )
+    .unwrap();
     let data = ProjectileData {
         speed: num(15),
         width: halves(1),
@@ -1940,7 +1981,13 @@ fn an_area_reaches_the_bodies_within_its_radius_once_at_its_delay_and_ends() {
             Capability::Areas,
         ];
         let mut game = Match::with(LIMITS, &declared);
-        let blast = Units::load_type(&mut game.world, "blast", &UnitTypeData::default()).unwrap();
+        let blast = Units::load_type(
+            &mut game.world,
+            TypeScope::Mode,
+            "blast",
+            &UnitTypeData::default(),
+        )
+        .unwrap();
         let data = AreaData {
             radius: num(2),
             delay_ms,

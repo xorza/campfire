@@ -68,6 +68,7 @@ use crate::units::layer::Layer;
 use crate::units::owner::Owner;
 use crate::units::path_id::PathId;
 use crate::units::tag_set::TagSet;
+use crate::units::type_scope::TypeScope;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
@@ -671,7 +672,7 @@ impl Game {
                 tags: vec![tag.to_owned()],
                 params: BTreeMap::new(),
             };
-            Units::load_type(&mut world, name, &data).unwrap()
+            Units::load_type(&mut world, TypeScope::Mode, name, &data).unwrap()
         };
         let (grunt_type, tower_type) = (load("grunt", "grunt"), load("tower", "tower"));
         let (x, y) = (load("hero-x", "avatar"), load("hero-y", "avatar"));
@@ -1063,7 +1064,7 @@ fn on_mode_input(ctx, player, name, value) {
         tags: vec!["core".to_owned()],
         params: BTreeMap::new(),
     };
-    Units::load_type(&mut game.world, "core", &core).unwrap();
+    Units::load_type(&mut game.world, TypeScope::Mode, "core", &core).unwrap();
     game.tick(&[(0, input("hero", "hero-x")), (2, input("hero", "hero-y"))]);
     let hero = |game: &mut Game, slot| {
         let mut owned = game.world.query::<(Entity, &Owner)>();

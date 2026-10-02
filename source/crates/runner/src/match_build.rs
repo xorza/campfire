@@ -5,7 +5,7 @@ use bevy_ecs::world::World;
 use campfire_capabilities::{
     Abilities, ActionData, ActionId, Actions, Areas, DeclaredName, KitRules, LoadoutSetup,
     MatchScripts, Mode, ModeSetup, OnDeath, Orders, PoolId, Progression, Projectiles, SlotAction,
-    Stat, Stats, UnitKit, UnitTypeData, UnitTypeSetup, Units,
+    Stat, Stats, TypeScope, UnitKit, UnitTypeData, UnitTypeSetup, Units,
 };
 use campfire_content::PackagePath;
 use campfire_package::{ModePackages, PackageView, UnitTypeFile, ViewKind};
@@ -31,8 +31,8 @@ pub(crate) struct MatchBuild<'a> {
     scripts: Vec<ScriptId>,
     /// Where each package's scripts start in `scripts`: the mode's, then each dependency's.
     script_starts: Vec<usize>,
-    /// Each train and delivery loaded, and the match's name of the unit type it spawns, bound
-    /// once all unit types load.
+    /// Each train and delivery loaded, and the name of the unit type it spawns in its package's
+    /// scope, bound once all unit types load.
     spawns: Vec<(ActionId, String)>,
 }
 
@@ -99,7 +99,7 @@ impl<'a> MatchBuild<'a> {
                 }
                 ViewKind::Avatar(avatar) => {
                     for (id, file) in units {
-                        build.load_delivery(view, &view.unit_type_name(id), file);
+                        build.load_delivery(view, id, file);
                     }
                     let name = &view.package.name;
                     let ranks = packages.slotted_ranks([&avatar.unit]).expect(CHECKED);
@@ -109,7 +109,7 @@ impl<'a> MatchBuild<'a> {
                 }
                 ViewKind::Loadout => {
                     for (id, file) in units {
-                        build.load_delivery(view, &view.unit_type_name(id), file);
+                        build.load_delivery(view, id, file);
                     }
                     let actions = build.load_actions(view, |_| Some(loadout_ranks))?;
                     let entries = actions.into_iter().map(|(id, ability)| LoadoutSetup {
@@ -187,7 +187,7 @@ impl<'a> MatchBuild<'a> {
                 combat.on_death = OnDeath::Stay;
             }
         }
-        let unit_type = Units::load_type(self.world, name, &core).expect(CHECKED);
+        let unit_type = Units::load_type(self.world, TypeScope::Mode, name, &core).expect(CHECKED);
         let unit_error = |error| StartError::UnitKit {
             unit_type: name.to_owned(),
             error,
@@ -233,10 +233,11 @@ impl<'a> MatchBuild<'a> {
         Ok(())
     }
 
-    /// Loads the projectile or area type `name` of `file`, of `package`, which only actions
-    /// deliver, so the mode spawns none.
+    /// Loads the projectile or area type `name` of `file`, of the package `view`, in the scope its
+    /// actions name types in, which only actions deliver, so the mode spawns none.
     fn load_delivery(&mut self, view: PackageView<'a>, name: &str, file: &UnitTypeFile) {
-        let unit_type = Units::load_type(self.world, name, &file.core).expect(CHECKED);
+        let scope = TypeScope::of_package(view.index.get());
+        let unit_type = Units::load_type(self.world, scope, name, &file.core).expect(CHECKED);
         if let Some(projectile) = &file.projectile {
             Projectiles::load_type(self.world, unit_type, projectile);
         }
@@ -283,8 +284,7 @@ impl<'a> MatchBuild<'a> {
             self.spawns.push((action, unit_type.clone()));
         }
         if let Some(delivery) = &data.delivery {
-            let name = view.unit_type_name(delivery.unit_type());
-            self.spawns.push((action, name));
+            self.spawns.push((action, delivery.unit_type().to_owned()));
         }
         Ok(action)
     }

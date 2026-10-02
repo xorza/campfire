@@ -174,11 +174,9 @@ pub enum LoadProblem {
     TooMany(Limit),
     /// More than one of the mode's tracks is the `level` track.
     LevelTracks,
-    /// An avatar or a dependency's delivery type has the name of one of the mode's unit types.
+    /// An avatar, which the mode names by its package's name, has the name of one of the mode's
+    /// unit types.
     RepeatedUnitType(String),
-    /// A dependency's name, or the id of one of its delivery types, holds `/`, which joins the
-    /// two in a match unit type's name.
-    Slash(String),
     /// A per-rank array of an ability has another length than its ranks.
     RankCount { action: String, ranks: u8 },
     /// A script file no data names.
@@ -562,7 +560,6 @@ impl fmt::Display for LoadProblem {
             LoadProblem::RepeatedUnitType(name) => {
                 write!(f, "two unit types are named {name:?}")
             }
-            LoadProblem::Slash(name) => write!(f, "the name {name:?} holds `/`"),
             LoadProblem::NoDamageKinds => {
                 f.write_str("the mode declares combat, and no damage kinds")
             }

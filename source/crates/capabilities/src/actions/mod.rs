@@ -30,6 +30,7 @@ use crate::units::body::Body;
 use crate::units::owner::Owner;
 use crate::units::script_view::{RowFill, SlotRow, View};
 use crate::units::team::Team;
+use crate::units::type_scope::TypeScope;
 use crate::units::unit_tags::UnitTags;
 
 pub(crate) mod action_book;
@@ -75,12 +76,18 @@ impl Actions {
     }
 
     /// Binds `action` to the unit type `name` it spawns, once the match's unit types load: a
-    /// train's unit, or its delivery's projectile, one the package load checked.
+    /// train's unit, or its delivery's projectile, one the package load checked, in the scope its
+    /// package names types in.
     pub fn bind_spawn(world: &mut World, action: ActionId, name: &str) {
+        let package = world
+            .resource::<ActionBook>()
+            .get(action)
+            .expect("a loaded action")
+            .package;
         let view = world.non_send::<View>();
         let unit_type = view
             .types_mut()
-            .named(name)
+            .named(TypeScope::of_package(package), name)
             .expect("the load checked an action's unit type");
         view.bind_spawn(action, unit_type);
         world

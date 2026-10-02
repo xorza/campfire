@@ -29,6 +29,7 @@ use crate::units::Units;
 use crate::units::body::Body;
 use crate::units::filter::Filter;
 use crate::units::relations::Relations;
+use crate::units::type_scope::TypeScope;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::units::unit_types::UnitTypes;
 use crate::values::attitude::Attitude;
@@ -258,13 +259,13 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
             tags: vec![tag.to_owned()],
             params: BTreeMap::new(),
         };
-        Units::load_type(&mut fight.world, tag, &data).unwrap()
+        Units::load_type(&mut fight.world, TypeScope::Mode, tag, &data).unwrap()
     });
     let hover = UnitTypeData {
         tags: vec!["ground".to_owned(), "air".to_owned()],
         params: BTreeMap::new(),
     };
-    let hover = Units::load_type(&mut fight.world, "hover", &hover).unwrap();
+    let hover = Units::load_type(&mut fight.world, TypeScope::Mode, "hover", &hover).unwrap();
     let weapon = |fight: &mut Fight, aim: &str, range, windup, damage| {
         let view = fight.world.non_send::<View>().clone();
         let aim = view

@@ -40,6 +40,7 @@ use crate::units::tag::Tag;
 use crate::units::team::Team;
 use crate::units::team_set::TeamSet;
 use crate::units::teams::Teams;
+use crate::units::type_scope::TypeScope;
 use crate::units::unit::Unit;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
@@ -658,9 +659,9 @@ impl View {
         Some(PathId::new(at))
     }
 
-    /// The unit type named `name`.
+    /// The unit type named `name` in the mode's scope: one of the mode's, or an avatar.
     pub(crate) fn unit_type(&self, name: &str) -> Option<UnitType> {
-        self.0.borrow().types.named(name)
+        self.0.borrow().types.named(TypeScope::Mode, name)
     }
 
     /// The name of the unit type of `row`, `()` for a unit of no type.

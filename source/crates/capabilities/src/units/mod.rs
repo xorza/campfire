@@ -19,6 +19,7 @@ use crate::units::script_view::View;
 use crate::units::spawn_point::SpawnPoint;
 use crate::units::tag_book::TagBook;
 use crate::units::team::Team;
+use crate::units::type_scope::TypeScope;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::metric::Metric;
@@ -47,6 +48,7 @@ pub(crate) mod tag_set;
 pub(crate) mod team;
 pub(crate) mod team_set;
 pub(crate) mod teams;
+pub(crate) mod type_scope;
 pub(crate) mod unit;
 pub(crate) mod unit_tags;
 pub(crate) mod unit_type;
@@ -144,14 +146,15 @@ impl Units {
         world.insert_resource(book);
     }
 
-    /// Loads the unit type `name`, with its core fields: its tags and its params. A name is one
-    /// type's only.
+    /// Loads the unit type `name` of `scope`, with its core fields: its tags and its params. A
+    /// name is one type's only in its scope.
     pub fn load_type(
         world: &mut World,
+        scope: TypeScope,
         name: &str,
         data: &UnitTypeData,
     ) -> Result<UnitType, UnitTypeError> {
-        world.non_send::<View>().types_mut().load(name, data)
+        world.non_send::<View>().types_mut().load(scope, name, data)
     }
 }
 
