@@ -4,9 +4,9 @@ use std::iter;
 use std::path::Path;
 
 use campfire_capabilities::{
-    BookInput, BookKind, BookPackage, Books, CollisionData, DeclaredName, EngineStat, EngineTag,
-    MapData, ModeData, PackageContent, Param, ScriptApi, ScriptBook, Stat, StatGraph, StatsData,
-    UnitTypeFile, Walker,
+    BookInput, BookKind, BookPackage, Books, CapabilitySet, CollisionData, DeclaredName,
+    EngineStat, EngineTag, MapData, ModeData, PackageContent, Param, ScriptApi, ScriptBook, Stat,
+    StatGraph, StatsData, UnitTypeFile, Walker,
 };
 use campfire_content::{Fingerprint, MessageId, PackagePath};
 use campfire_script::{ScriptHost, ScriptId};
@@ -402,7 +402,7 @@ impl ModePackages {
         dependencies: &[(String, &PackageFiles)],
     ) -> Result<ModePackages, LoadError> {
         let parser = ScriptHost::new(manifest.script_limits.per_call);
-        let api = ScriptApi::release();
+        let api = CapabilitySet::script_api();
         let name = manifest.header.name.clone();
         let fail = |problem| LoadError::of(&name, problem);
         if PackageIndex::dependency(dependencies.len()).is_none() {

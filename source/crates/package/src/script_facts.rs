@@ -278,6 +278,8 @@ fn string(expr: &Expr) -> Option<String> {
 mod tests {
     use campfire_script::ScriptHost;
 
+    use campfire_capabilities::CapabilitySet;
+
     use super::*;
 
     #[test]
@@ -304,7 +306,7 @@ fn on_resolve(ctx, caster, target) {
 fn helper(ctx, gold) {}
 "#;
         let ast = ScriptHost::new(1000).parse(source).unwrap();
-        let facts = ScriptFacts::read(&ast, &ScriptApi::release());
+        let facts = ScriptFacts::read(&ast, &CapabilitySet::script_api());
         let function = |name: &str, params| Function {
             name: name.to_owned(),
             params,
@@ -413,7 +415,7 @@ fn helper(ctx, gold) {}
             ),
         ];
         let host = ScriptHost::new(1000);
-        let api = ScriptApi::release();
+        let api = CapabilitySet::script_api();
         for (source, misuse) in cases {
             let facts = ScriptFacts::read(&host.parse(source).unwrap(), &api);
             assert_eq!(facts.ctx_misuse, misuse, "{source}");

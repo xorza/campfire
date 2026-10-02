@@ -7,7 +7,6 @@ use campfire_sim::{SimSet, StateRegistry, TickRate};
 
 use crate::actions::Actions;
 use crate::scripts::ctx::Ctx;
-use crate::scripts::script_api::ScriptApi;
 use crate::scripts::script_book::ScriptBook;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
@@ -100,7 +99,6 @@ impl Units {
         };
         let ctx = Ctx::new(view.clone());
         let mut host = ScriptHost::new(budgets.limits().per_call);
-        ScriptApi::bind(host.engine_mut());
         host.engine_mut()
             .set_default_tag(Dynamic::from(ctx.clone()));
         world.insert_non_send(ctx);

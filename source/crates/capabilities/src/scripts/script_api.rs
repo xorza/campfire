@@ -4,25 +4,15 @@ use campfire_script::ScriptHost;
 use campfire_script::rhai::Engine;
 use campfire_sim::Capability;
 
-use crate::abilities::abilities_api::AbilitiesApi;
-use crate::areas::areas_api::AreasApi;
-use crate::combat::combat_api::CombatApi;
-use crate::mode::mode_api::ModeApi;
-use crate::orders::orders_api::OrdersApi;
-use crate::production::production_api::ProductionApi;
-use crate::progression::progression_api::ProgressionApi;
-use crate::projectiles::projectiles_api::ProjectilesApi;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
 use crate::scripts::core_api::CoreApi;
 use crate::scripts::hook::{Hook, ScriptRole};
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::role_set::RoleSet;
-use crate::stats::stats_api::StatsApi;
 use crate::units::script_view::View;
 use crate::units::tag_effect::TagEffect;
 use crate::units::unit::Unit;
-use crate::vision::vision_api::VisionApi;
 
 /// The script API as the engine binds it: every name a script may use, each recorded by the
 /// call that binds it, or planned, by design 08, and bound by no code yet. The load check and
@@ -168,12 +158,12 @@ pub struct MemberSpec {
 }
 
 impl ScriptApi {
-    /// The script API of the release, recorded as a match's engine binds it, with the names
-    /// the engine has before.
-    pub fn release() -> ScriptApi {
+    /// The script API of the release, with each capability's API `apis` registers, recorded as
+    /// a match's engine binds it, with the names the engine has before.
+    pub(crate) fn release(apis: impl IntoIterator<Item = fn(&mut ApiBuilder<'_>)>) -> ScriptApi {
         let mut host = ScriptHost::new(1);
         let builtins = ScriptApi::functions(host.engine_mut());
-        let mut api = ScriptApi::bind(host.engine_mut());
+        let mut api = ScriptApi::bind(host.engine_mut(), apis);
         api.builtins = builtins;
         api
     }
@@ -187,8 +177,12 @@ impl ScriptApi {
         names
     }
 
-    /// Binds the whole script API into `engine`, and records it.
-    pub(crate) fn bind(engine: &mut Engine) -> ScriptApi {
+    /// Binds the core's script API into `engine`, then each capability's API `apis` registers,
+    /// and records it.
+    pub(crate) fn bind(
+        engine: &mut Engine,
+        apis: impl IntoIterator<Item = fn(&mut ApiBuilder<'_>)>,
+    ) -> ScriptApi {
         let mut api = ScriptApi {
             members: Vec::new(),
             hooks: Vec::new(),
@@ -200,16 +194,9 @@ impl ScriptApi {
         CoreApi::register(&mut builder);
         Unit::register(&mut builder);
         View::register_queries(&mut builder);
-        ModeApi::register(&mut builder);
-        CombatApi::register(&mut builder);
-        StatsApi::register(&mut builder);
-        AbilitiesApi::register(&mut builder);
-        OrdersApi::register(&mut builder);
-        VisionApi::register(&mut builder);
-        ProgressionApi::register(&mut builder);
-        ProductionApi::register(&mut builder);
-        ProjectilesApi::register(&mut builder);
-        AreasApi::register(&mut builder);
+        for register in apis {
+            register(&mut builder);
+        }
         api
     }
 
@@ -680,6 +667,7 @@ mod tests {
     use crate::actions::effect_data::EffectData;
     use crate::actions::slot_kinds::SlotKindData;
     use crate::areas::area_data::{AreaData, AreaInside};
+    use crate::capability_set::CapabilitySet;
     use crate::combat::combat_data::CombatData;
     use crate::combat::combat_rules::{CombatRules, Leech};
     use crate::mode::choice_data::ChoiceData;
@@ -715,7 +703,7 @@ mod tests {
     fn the_registry_holds_exactly_what_the_engine_binds() {
         let mut host = ScriptHost::new(1);
         let before = functions(host.engine_mut());
-        let api = ScriptApi::bind(host.engine_mut());
+        let api = ScriptApi::bind(host.engine_mut(), CapabilitySet::apis());
         let mut bound: Vec<String> = functions(host.engine_mut())
             .into_iter()
             .filter(|function| !before.contains(function))
@@ -747,7 +735,7 @@ mod tests {
 
     #[test]
     fn every_hook_and_state_has_a_status_and_names_hold_their_roles() {
-        let api = ScriptApi::release();
+        let api = CapabilitySet::script_api();
         let hooks: Vec<_> = api.hooks().iter().map(|status| status.hook).collect();
         assert!(Hook::ALL.iter().all(|hook| hooks.contains(hook)));
         assert_eq!(hooks.len(), Hook::ALL.len());
@@ -842,7 +830,7 @@ mod tests {
 
     #[test]
     fn the_reference_is_what_the_registry_writes() {
-        let mut api = ScriptApi::release();
+        let mut api = CapabilitySet::script_api();
         let written = api.reference();
         if env::var_os("CAMPFIRE_BLESS").is_some() {
             fs::write(REFERENCE, &written).unwrap();
@@ -876,7 +864,7 @@ mod tests {
 
     #[test]
     fn the_data_fields_are_the_schemas() {
-        let api = ScriptApi::release();
+        let api = CapabilitySet::script_api();
         // The mode's file holds its package's actions and modifiers beside `ModeData`, which
         // the package load reads apart.
         let mut mode = serde_fields::<ModeData>();

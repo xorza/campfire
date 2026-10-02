@@ -215,13 +215,13 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | --- | --- |
 | `blocks = ["move"]` | since 1.0 |
 | `blocks = ["use"]` | planned |
+| `immune = [tags]` | since 1.0 |
 | `blocks = ["attack"]` | since 1.0 |
 | `blocks = ["target"]` | since 1.0 |
 | `blocks = ["damage"]` | since 1.0 |
-| `immune = [tags]` | since 1.0 |
-| `blocks = ["cast"]` | since 1.0 |
 | `hidden = true` | since 1.0 |
 | `detects = true` | since 1.0 |
+| `blocks = ["cast"]` | since 1.0 |
 
 ## Data fields
 
@@ -229,6 +229,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 
 | Field | Status |
 | --- | --- |
+| `tracks` | since 1.0 |
 | `script` | since 1.0 |
 | `combat` | since 1.0 |
 | `navigation` | since 1.0 |
@@ -245,7 +246,6 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `relations` | since 1.0 |
 | `tags` | since 1.0 |
 | `state_version` | planned |
-| `tracks` | since 1.0 |
 
 ### The mode's `[combat]`
 
@@ -309,6 +309,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `rate` | since 1.0 |
 | `damage` | since 1.0 |
 | `damage_kind` | since 1.0 |
+| `delivery` | since 1.0 |
 | `script` | since 1.0 |
 | `cooldown_ms` | since 1.0 |
 | `clamp_to_range` | planned |
@@ -323,7 +324,6 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `on_hit` | since 1.0 |
 | `on_end` | since 1.0 |
 | `unit_type` | since 1.0 |
-| `delivery` | since 1.0 |
 
 ### An effect of an action's `on_resolve`, `on_hit` or `on_end`
 

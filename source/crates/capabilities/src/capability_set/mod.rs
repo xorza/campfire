@@ -1,26 +1,39 @@
 use bevy_ecs::schedule::Schedule;
 use bevy_ecs::world::World;
+use campfire_script::ScriptHost;
 use campfire_sim::{Capability, StateRegistry};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
 use crate::abilities::Abilities;
+use crate::abilities::abilities_api::AbilitiesApi;
 use crate::areas::Areas;
+use crate::areas::areas_api::AreasApi;
 use crate::capability_set::error::CapabilityError;
 use crate::combat::Combat;
+use crate::combat::combat_api::CombatApi;
 use crate::mode::Mode;
 use crate::mode::match_end::MatchEnd;
+use crate::mode::mode_api::ModeApi;
 use crate::navigation::Navigation;
 use crate::orders::Orders;
+use crate::orders::orders_api::OrdersApi;
 use crate::production::Production;
+use crate::production::production_api::ProductionApi;
 use crate::progression::Progression;
+use crate::progression::progression_api::ProgressionApi;
 use crate::projectiles::Projectiles;
+use crate::projectiles::projectiles_api::ProjectilesApi;
+use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::effects::ApplyEffect;
+use crate::scripts::script_api::ScriptApi;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::stats::Stats;
+use crate::stats::stats_api::StatsApi;
 use crate::units::Units;
 use crate::vision::Vision;
+use crate::vision::vision_api::VisionApi;
 
 pub(crate) mod error;
 
@@ -31,6 +44,7 @@ pub struct CapabilitySet(u16);
 
 /// A capability's install into a match.
 type Install = fn(&mut World, &mut Schedule, &mut StateRegistry);
+type RegisterApi = fn(&mut ApiBuilder<'_>);
 
 /// One row of `CAPABILITIES`: the capability, how it installs, `None` for one the release does
 /// not run yet and for the mode, which installs itself once the others did; the capabilities it
@@ -41,6 +55,7 @@ struct Row {
     install: Option<Install>,
     needs: &'static [Capability],
     effects: Option<ApplyEffect>,
+    api: Option<RegisterApi>,
 }
 
 const fn row(capability: Capability, install: Install, needs: &'static [Capability]) -> Row {
@@ -49,6 +64,7 @@ const fn row(capability: Capability, install: Install, needs: &'static [Capabili
         install: Some(install),
         needs,
         effects: None,
+        api: None,
     }
 }
 
@@ -58,6 +74,7 @@ const fn planned(capability: Capability) -> Row {
         install: None,
         needs: &[],
         effects: None,
+        api: None,
     }
 }
 
@@ -69,45 +86,66 @@ impl Row {
             ..self
         }
     }
+
+    /// The same row, whose capability registers its script API by `register`.
+    const fn registering(self, register: RegisterApi) -> Row {
+        Row {
+            api: Some(register),
+            ..self
+        }
+    }
 }
 
 /// Every capability once, in the order they install: each after the ones it builds on. A declared
 /// capability the release does not run yet installs nothing.
 const CAPABILITIES: [Row; Capability::ALL.len()] = [
-    row(Capability::Stats, Stats::install, &[]).applying(Stats::apply_next),
+    row(Capability::Stats, Stats::install, &[])
+        .applying(Stats::apply_next)
+        .registering(StatsApi::register),
     row(
         Capability::Progression,
         Progression::install,
         &[Capability::Stats],
     )
-    .applying(Progression::apply_next),
-    row(Capability::Combat, Combat::install, &[Capability::Stats]).applying(Combat::apply_next),
+    .applying(Progression::apply_next)
+    .registering(ProgressionApi::register),
+    row(Capability::Combat, Combat::install, &[Capability::Stats])
+        .applying(Combat::apply_next)
+        .registering(CombatApi::register),
     row(Capability::Navigation, Navigation::install, &[]),
-    row(Capability::Vision, Vision::install, &[Capability::Combat]),
+    row(Capability::Vision, Vision::install, &[Capability::Combat])
+        .registering(VisionApi::register),
     row(
         Capability::Projectiles,
         Projectiles::install,
         &[Capability::Combat],
     )
-    .applying(Projectiles::apply_next),
-    row(Capability::Areas, Areas::install, &[Capability::Combat]).applying(Areas::apply_next),
+    .applying(Projectiles::apply_next)
+    .registering(ProjectilesApi::register),
+    row(Capability::Areas, Areas::install, &[Capability::Combat])
+        .applying(Areas::apply_next)
+        .registering(AreasApi::register),
     row(
         Capability::Abilities,
         Abilities::install,
         &[Capability::Combat],
-    ),
+    )
+    .registering(AbilitiesApi::register),
     row(
         Capability::Orders,
         Orders::install,
         &[Capability::Combat, Capability::Navigation],
     )
-    .applying(Orders::apply_next),
-    row(Capability::Production, Production::install, &[]),
+    .applying(Orders::apply_next)
+    .registering(OrdersApi::register),
+    row(Capability::Production, Production::install, &[]).registering(ProductionApi::register),
     planned(Capability::Character),
     planned(Capability::Hitscan),
     planned(Capability::Physics),
     planned(Capability::Persistence),
-    planned(Capability::Mode).applying(Mode::apply_next),
+    planned(Capability::Mode)
+        .applying(Mode::apply_next)
+        .registering(ModeApi::register),
 ];
 
 /// How each capability applies the effects a call queues, by capability index: what the frame
@@ -129,6 +167,17 @@ const _: () = assert!(
 );
 
 impl CapabilitySet {
+    /// The script API of the release, recorded as a match's engine binds it, with the names the
+    /// engine has before: every capability's, whether a mode declares it or not.
+    pub fn script_api() -> ScriptApi {
+        ScriptApi::release(CapabilitySet::apis())
+    }
+
+    /// How each capability registers its script API, in the table's order.
+    pub(crate) fn apis() -> impl Iterator<Item = RegisterApi> {
+        CAPABILITIES.into_iter().filter_map(|row| row.api)
+    }
+
     /// The set of `declared`; an error when one is `mode`, one is declared twice, or one lacks a
     /// capability it builds on.
     pub fn new(declared: &[Capability]) -> Result<CapabilitySet, CapabilityError> {
@@ -176,6 +225,9 @@ impl CapabilitySet {
         budgets: Option<ScriptBudgets>,
     ) {
         Units::install(world, schedule, registry, budgets);
+        if let Some(mut host) = world.get_non_send_mut::<ScriptHost>() {
+            ScriptApi::bind(host.engine_mut(), CapabilitySet::apis());
+        }
         if let Some(ctx) = world.get_non_send::<Ctx>() {
             ctx.frame().set_dispatch(DISPATCH);
         }
@@ -273,7 +325,6 @@ mod tests {
     use std::num::NonZeroU32;
     use std::path::Path;
 
-    use campfire_script::ScriptHost;
     use campfire_sim::TickRate;
 
     use super::*;
@@ -433,18 +484,11 @@ mod tests {
     /// The imports from a higher layer that the code holds today, each a module and the one it
     /// imports. Each step of the structural redesign's layers removes its own; the test fails
     /// when a new one appears, and when one listed here is gone, so the list only shrinks.
-    const KNOWN_BREAKS: [(&str, &str); 14] = [
-        ("scripts", "abilities"),
+    const KNOWN_BREAKS: [(&str, &str); 7] = [
         ("scripts", "actions"),
-        ("scripts", "areas"),
-        ("scripts", "combat"),
         ("scripts", "mode"),
-        ("scripts", "orders"),
-        ("scripts", "production"),
         ("scripts", "progression"),
-        ("scripts", "projectiles"),
         ("scripts", "stats"),
-        ("scripts", "vision"),
         ("units", "actions"),
         ("units", "progression"),
         ("units", "stats"),
