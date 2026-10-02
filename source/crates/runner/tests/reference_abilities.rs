@@ -6,7 +6,6 @@
 
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
-use std::path::Path;
 
 use bevy_ecs::bundle::Bundle;
 
@@ -25,15 +24,10 @@ use campfire_sim::{EntityIndex, IdAllocator, Position, StableId, TickRate};
 /// The MOBA's 30 ticks a second.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
 
-const MODE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../packages/moba/modes/3v3");
-
 const HEROES: [&str; 6] = ["cinder", "gale", "husk", "kensho", "rime", "veil"];
 
 fn hero(name: &str) -> PackageFiles {
-    let dir = PackageDir::new(format!(
-        "{}/../../packages/moba/heroes/{name}",
-        env!("CARGO_MANIFEST_DIR")
-    ));
+    let dir = PackageDir::new(PackageDir::workspace(&format!("moba/heroes/{name}")));
     dir.read().unwrap()
 }
 
@@ -45,7 +39,7 @@ fn abilities(name: &str) -> AvatarData {
 /// The 3v3's books at 30 ticks a second for one player, with no mode: no `calc_damage` weighs a
 /// hit, so each one lands as its ability deals it.
 fn arena() -> Arena {
-    Arena::new(Path::new(MODE), RATE, 1)
+    Arena::new(&PackageDir::workspace("moba/modes/3v3"), RATE, 1)
 }
 
 /// A unit of 500 health on `team` at `x` meters along x that stays when it dies, with `parts`, and

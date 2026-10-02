@@ -293,7 +293,7 @@ impl Lobby {
 
 #[cfg(test)]
 mod tests {
-    use std::path::Path;
+    use campfire_package::PackageDir;
 
     use bevy_ecs::system::RunSystemOnce;
     use campfire_protocol::secp256k1::{Keypair, SecretKey};
@@ -311,13 +311,9 @@ mod tests {
 
     #[test]
     fn the_lobby_takes_a_join_only_with_a_delegation_and_an_answer_for_it() {
-        let dir = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../packages/test/modes/lane"
-        );
         let server_key = XOnlyPublicKey::from_byte_array(&[8; 32]).unwrap();
         let mut lobby = Lobby::new(LobbySetup {
-            packages: ModePackages::from_dir(Path::new(dir)).unwrap(),
+            packages: ModePackages::from_dir(&PackageDir::workspace("test/modes/lane")).unwrap(),
             server_key,
             seed_chain: SeedChain::new([7; 32], NonZeroU32::MIN),
             tick_hz: NonZeroU32::new(30).unwrap(),

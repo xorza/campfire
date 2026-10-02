@@ -1,10 +1,9 @@
 use std::num::NonZeroU32;
-use std::path::Path;
 
 use bevy_ecs::world::EntityRef;
 use campfire_capabilities::{Action, ActionTarget, Experience, Order, Owner, Team, TrainQueue};
 use campfire_math::{Num, Tick, Vec3};
-use campfire_package::ModePackages;
+use campfire_package::{ModePackages, PackageDir};
 use campfire_sim::{EntityIndex, Position, StableId};
 
 use crate::fixed_match::FixedMatch;
@@ -18,10 +17,6 @@ pub struct ProvingMatch {
     session: FixedSession,
 }
 
-const MODE: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../packages/test/modes/proving"
-);
 const TICK_HZ: NonZeroU32 = NonZeroU32::new(20).unwrap();
 /// The camps team, which holds the neutral boulder.
 const CAMPS: Team = Team::new(2);
@@ -157,8 +152,8 @@ impl ProvingMatch {
     pub const TICKS: u64 = 600;
 
     pub fn load() -> ProvingMatch {
-        let packages =
-            ModePackages::from_dir(Path::new(MODE)).unwrap_or_else(|error| panic!("{error}"));
+        let packages = ModePackages::from_dir(&PackageDir::workspace("test/modes/proving"))
+            .unwrap_or_else(|error| panic!("{error}"));
         ProvingMatch {
             session: FixedSession::new(packages, TICK_HZ, ProvingMatch::PLAYERS),
         }

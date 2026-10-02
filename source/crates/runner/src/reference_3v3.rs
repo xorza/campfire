@@ -1,9 +1,8 @@
 use std::num::NonZeroU32;
-use std::path::Path;
 
 use campfire_capabilities::{InputValue, ModeInput};
 use campfire_math::Tick;
-use campfire_package::ModePackages;
+use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::ServerSeed;
 
 use crate::fixed_session::FixedSession;
@@ -16,7 +15,6 @@ pub struct Reference3v3 {
     session: FixedSession,
 }
 
-const MODE: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../packages/moba/modes/3v3");
 const TICK_HZ: NonZeroU32 = NonZeroU32::new(20).unwrap();
 /// The hero each slot picks.
 const HEROES: [&str; 6] = [
@@ -32,8 +30,8 @@ impl Reference3v3 {
     pub const PLAYERS: u32 = 6;
 
     pub fn load() -> Reference3v3 {
-        let packages =
-            ModePackages::from_dir(Path::new(MODE)).unwrap_or_else(|error| panic!("{error}"));
+        let packages = ModePackages::from_dir(&PackageDir::workspace("moba/modes/3v3"))
+            .unwrap_or_else(|error| panic!("{error}"));
         Reference3v3 {
             session: FixedSession::new(packages, TICK_HZ, Reference3v3::PLAYERS),
         }

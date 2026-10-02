@@ -9,7 +9,7 @@ use campfire_package::{ModePackages, PackageDir};
 use toml::{Table, Value};
 
 pub(crate) fn moba() -> PathBuf {
-    PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packages/moba"))
+    PackageDir::workspace("moba")
 }
 
 /// Every file of the reference packages, by its path from their root, read from disk once.

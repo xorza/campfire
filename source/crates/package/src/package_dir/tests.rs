@@ -133,10 +133,7 @@ fn a_package_reads_once_and_its_fingerprint_hashes_the_sorted_file_list() {
 }
 
 fn walker() -> PackageDir {
-    PackageDir::new(concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../packages/test/heroes/walker"
-    ))
+    PackageDir::new(PackageDir::workspace("test/heroes/walker"))
 }
 
 #[test]

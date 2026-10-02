@@ -25,12 +25,6 @@ use tempfile::TempDir;
 /// The lane mode's life pool, `health`, the first of its pools by name.
 const LIFE: PoolId = PoolId::FIRST;
 
-/// Every package, the reference ones and the test ones: what the verifier holds.
-const PACKAGES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../packages");
-const LANE_MODE: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../packages/test/modes/lane"
-);
 /// Long enough for every order to apply, and for the hero to arrive.
 const TICKS: u64 = 40;
 
@@ -74,7 +68,7 @@ const ORDERS: [Sent; 3] = [
 ];
 
 fn packages() -> ModePackages {
-    ModePackages::from_dir(Path::new(LANE_MODE)).unwrap()
+    ModePackages::from_dir(&PackageDir::workspace("test/modes/lane")).unwrap()
 }
 
 /// Every file under `dir`, by its path from `dir`.
@@ -96,7 +90,7 @@ fn files_under(dir: &Path) -> BTreeMap<PathBuf, Vec<u8>> {
 }
 
 fn store() -> PackageStore {
-    PackageStore::scan(Path::new(PACKAGES)).unwrap()
+    PackageStore::scan(&PackageDir::workspace("")).unwrap()
 }
 
 /// A session of the test lane mode at its 30 ticks a second, for its one player, whose inputs
@@ -324,7 +318,10 @@ fn the_binary_logs_the_last_state_hash() {
             .output()
             .unwrap()
     };
-    let output = verifier(&[PACKAGES, &path]);
+    // Every package, the reference ones and the test ones: what the verifier holds.
+    let packages = PackageDir::workspace("");
+    let packages = packages.to_str().unwrap();
+    let output = verifier(&[packages, &path]);
     assert!(output.status.success(), "{output:?}");
     let hash = trail.totals().last().unwrap();
     let logged = String::from_utf8(output.stderr).unwrap();
@@ -335,7 +332,7 @@ fn the_binary_logs_the_last_state_hash() {
     let corrupt = format!("{dir}/headless-truncated.log");
     let bytes = encoded(runner.log());
     fs::write(&corrupt, &bytes[..bytes.len() - 1]).unwrap();
-    let output = verifier(&[PACKAGES, &corrupt]);
+    let output = verifier(&[packages, &corrupt]);
     assert_eq!(output.status.code(), Some(1));
     let logged = String::from_utf8(output.stderr).unwrap();
     let refused =
@@ -411,7 +408,7 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
     );
 
     // A lane mode whose `on_match_start` throws: the session does not start.
-    let mut files = files_under(&Path::new(PACKAGES).join("test"));
+    let mut files = files_under(&PackageDir::workspace("test"));
     let script = PathBuf::from("modes/lane/scripts/mode.rhai");
     let text = String::from_utf8(files[&script].clone()).unwrap();
     let start = "fn on_match_start(ctx) {\n";

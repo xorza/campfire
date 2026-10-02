@@ -1,5 +1,5 @@
+use campfire_package::PackageDir;
 use std::num::NonZeroU32;
-use std::path::Path;
 
 use campfire_math::{PlayerSlot, Tick};
 use campfire_package::ModePackages;
@@ -21,11 +21,8 @@ fn keypair(byte: u8) -> Keypair {
 
 /// The rules of the lane mode, which runs at 30 Hz only.
 fn lane_rules() -> SessionRules {
-    let dir = concat!(
-        env!("CARGO_MANIFEST_DIR"),
-        "/../../packages/test/modes/lane"
-    );
-    SessionRules::of(&ModePackages::from_dir(Path::new(dir)).unwrap())
+    let dir = PackageDir::workspace("test/modes/lane");
+    SessionRules::of(&ModePackages::from_dir(&dir).unwrap())
 }
 
 /// An x-only key of the bytes `[byte; 32]`, which must be the x of a point on the curve.

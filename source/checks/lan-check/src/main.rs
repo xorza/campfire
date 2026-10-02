@@ -21,6 +21,7 @@ use campfire_log::Logging;
 use campfire_net::{
     InputLogged, LinkLost, Listening, MatchStarted, OrderScript, OrdersSent, SessionWritten,
 };
+use campfire_package::PackageDir;
 use campfire_verifier::Verified;
 use tracing::{error, info};
 
@@ -46,13 +47,10 @@ mod run_dir;
 mod target_name;
 mod verdict;
 
-/// The test lane mode: a hero a side, 30 ticks a second.
-const MODE: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../packages/test/modes/lane"
-);
+/// The test lane mode, a hero a side, 30 ticks a second, within the workspace's packages.
+const MODE: &str = "test/modes/lane";
 /// The packages the verifier holds, the lane mode's among them.
-const PACKAGES: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../packages/test");
+const PACKAGES: &str = "test";
 /// Each bot's orders: two steps near its spawn and a cast of its first ability, then it leaves
 /// after tick 90, 3 s into the match. The walker's cast hits whoever stands within 2 m; the
 /// runner's names no target, which its ability needs, so the sim refuses it, but the order is an
@@ -138,7 +136,7 @@ fn play(dir: &Path) -> Result<Verdict, CheckError> {
     let lan = LanMatch {
         binaries: &binaries,
         dir,
-        mode: Path::new(MODE),
+        mode: &PackageDir::workspace(MODE),
         scripts: &scripts,
     };
     let played = lan.play()?;
@@ -194,7 +192,7 @@ fn verify(
         Some(written) => {
             let path = Process::Verifier.log_path(dir);
             let status = Command::new(&binaries.verifier)
-                .arg(PACKAGES)
+                .arg(PackageDir::workspace(PACKAGES))
                 .arg(&written.file)
                 .current_dir(dir)
                 .env("CAMPFIRE_LOG", &path)

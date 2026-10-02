@@ -12,15 +12,10 @@ use campfire_package::{ModePackages, PackageDir};
 use campfire_runner::internals::{FixedSession, Golden};
 use campfire_sim::StateHash;
 
-const LANE: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../packages/test/modes/lane"
-);
-
 #[test]
 fn the_lane_match_plays_to_its_golden_record() {
-    let packages =
-        ModePackages::from_dir(Path::new(LANE)).unwrap_or_else(|error| panic!("{error}"));
+    let packages = ModePackages::from_dir(&PackageDir::workspace("test/modes/lane"))
+        .unwrap_or_else(|error| panic!("{error}"));
     let session = FixedSession::new(packages, NonZeroU32::new(30).unwrap(), 2);
     let mut golden = Golden::new(session.packages(), session.players());
     let scripts = session.packages().script_book();
@@ -45,7 +40,7 @@ fn the_lane_match_plays_to_its_golden_record() {
 fn the_lane_matchs_hashes_do_not_change_with_its_heroes_text() {
     // Walker's name in other words, and in a second language: its package's fingerprint moves,
     // and no tick's hash does, as the sim reads no text.
-    let tree = Path::new(LANE).join("../..");
+    let tree = PackageDir::workspace("test");
     let mut files = BTreeMap::new();
     read_tree(&tree, Path::new(""), &mut files);
     let plain = PackageDir::in_memory(Arc::new(files.clone()), "modes/lane");

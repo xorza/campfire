@@ -1,5 +1,4 @@
 use std::num::NonZeroU32;
-use std::path::Path;
 use std::sync::Arc;
 
 use bevy_app::{App, First, PostUpdate, TaskPoolPlugin, Update};
@@ -11,7 +10,7 @@ use bevy_ecs::system::Commands;
 use bevy_state::app::StatesPlugin;
 use bevy_time::{TimePlugin, TimeUpdateStrategy};
 use campfire_capabilities::{Action, Body, MoveStep, Order, Owner, Team};
-use campfire_package::ModePackages;
+use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey, XOnlyPublicKey};
 use campfire_protocol::{CertificateHash, SeedChain};
 use campfire_runner::InputRules;
@@ -41,12 +40,6 @@ use crate::sim_server::{PlayerLink, SimServer, TickHashes};
 pub(crate) mod delay_line;
 pub(crate) mod link_model;
 
-/// The test mode: a lane with a tower a side and an avatar for each; player 0 plays the walker, and
-/// player 1 the runner.
-const LANE_MODE: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../packages/test/modes/lane"
-);
 /// Frames a connection gets to link and sync its timeline, and a join to start the match.
 const CONNECT_FRAMES: usize = 300;
 /// In-process channels have no TLS; both ends take this as the certificate's hash.
@@ -551,5 +544,5 @@ fn server_key() -> XOnlyPublicKey {
 }
 
 fn lane_mode() -> ModePackages {
-    ModePackages::from_dir(Path::new(LANE_MODE)).expect("the test mode loads")
+    ModePackages::from_dir(&PackageDir::workspace("test/modes/lane")).expect("the test mode loads")
 }

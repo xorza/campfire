@@ -16,11 +16,7 @@ Paths are relative to `source/crates/`. Line numbers are at `c38f0da`. Each item
 - [ ] **The round trip pinned to the link model** — `net/src/local_match/delay_line.rs` pins the measured round trip to zero, and `mod.rs` adds the modeled round trip to the sync margin. Better: pin the round trip to the link model's own value, and remove the `jitter_margin` workaround in `LocalMatch::client`. That step needs new derivations of the expected values. Also check that the join order (`play_by_team`) is then fixed.
 ## 3. Helpers copied across crates
 
-- [ ] **`SEED_CHAIN = SeedChain::new([9; 32], MIN)`** — net's copies use `LocalMatch::SEED_CHAIN` now; reference_3v3 and headless still hold their own. Better: one with `FixedSession`.
-- [ ] **`keypair(byte)`** — 9 copies in 5 crates (local_match:468, sim_client/tests.rs:12, lobby.rs:284, connect/tests.rs:15, session_log/tests.rs:27, delegation/tests.rs:5, input_chain/bench.rs:15, reference_3v3.rs:108, headless.rs:80). `NOW = 1_700_000_000` appears 6 times. A `TestKey(u8)` in protocol `internals` saves only about 25 lines. Do it with `FixedSession`, or not at all.
 - [ ] **SplitMix64** — 5 copies: math `num/bench.rs:18`, net `delay_line.rs:80-87`, capabilities `regions.rs:390` and `broadphase.rs:170`, and sim `golden.rs:30`. The golden copy is frozen on purpose, so keep it. The regions and broadphase copies can draw from `campfire_math::Rng` through a `Grid::scatter(&self, &mut Rng, num, den)`. That changes the generated scenes: check the `crowded > 100` and `wide > 100` floors in broadphase again. The collision bench's history also restarts.
-- [ ] **The path to `packages/`** — written 7 ways: reference_3v3.rs:23, headless.rs:29,31, local_match, lobby, reference_abilities.rs:36 (`format!`), mode_package.rs:17, package_dir/tests.rs:110. Better: one gated `PackageDir::workspace(..)`.
-
 ## 4. One style for one check
 
 - [ ] **Script failures are read in three ways still** — `CallError::kind` and `ScriptFailures::calls` with `assert_eq!` serve most sites now. Left: the abilities table of fn pointers (its overflow case reads what a script raised), mode's `failures()`, and orders' `think()`.

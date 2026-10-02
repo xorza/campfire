@@ -146,5 +146,20 @@ fn normal(path: &Path) -> PathBuf {
     normal
 }
 
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use std::path::{Path, PathBuf};
+
+    use crate::package_dir::PackageDir;
+
+    impl PackageDir {
+        /// `path` within the workspace's `packages` directory, where the tests and the checks
+        /// find the test and reference packages.
+        pub fn workspace(path: &str) -> PathBuf {
+            Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packages")).join(path)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests;
