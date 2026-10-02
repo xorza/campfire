@@ -11,8 +11,8 @@ use campfire_capabilities::{
     PlannedEffect, Scalar,
 };
 use campfire_package::{
-    ChoiceProblem, Content, ContentError, CtxMisuse, DeliveryProblem, EffectProblem, Limit,
-    LoadError, LoadProblem, ModePackages, NameKind, PackageDir, Place,
+    ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem, EffectProblem, Limit, LoadError,
+    LoadProblem, ModePackages, NameKind, PackageDir, PackageRef, Place,
 };
 use campfire_sim::Capability;
 
@@ -135,7 +135,7 @@ fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
         r#"projectile = { speed = "5.0", homing = true }"#,
     );
     let error = ModePackages::from_package_dir(&edited([(UNITS, edit)])).unwrap_err();
-    assert_eq!(error.package, MODE);
+    assert_eq!(error.package, PackageRef::Name(MODE.to_owned()));
     let at_caster = |problem: &LoadProblem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NotFaster(Place::UnitType(name))) if name == "caster_creep_bolt");
     assert!(at_caster(&error.problem), "{error}");
     // Along a line, the same speed loads: it chases no one.
@@ -160,16 +160,16 @@ fn an_effect_to_the_source_reads_and_any_other_to_does_not() {
         .iter()
         .find(|dependent| dependent.package.name == "hero-rime")
         .unwrap();
-    let Content::Avatar(avatar) = &rime.content else {
-        panic!("Rime is an avatar");
-    };
     let heal = EffectData {
         does: Effecting::Heal {
             amount: Number::Value(Scalar::Int(1)),
         },
         to: EffectTo::Source,
     };
-    assert_eq!(avatar.actions["fan_of_frost"].on_hit.last(), Some(&heal));
+    assert_eq!(
+        rime.content.actions["fan_of_frost"].on_hit.last(),
+        Some(&heal)
+    );
     // `to` names the source alone.
     let to_target = Edit::Replace(SLOWS, r#"{ heal = { amount = 1 }, to = "target" },"#);
     let error = ModePackages::from_package_dir(&edited([(RIME, to_target)])).unwrap_err();
@@ -189,7 +189,7 @@ fn more_layers_than_tags_a_match_holds_fail_the_load() {
     );
     let edit = Edit::Replace("# Its damage kinds", section.leak());
     let error = ModePackages::from_package_dir(&edited([(MODE_DATA, edit)])).unwrap_err();
-    assert_eq!(error.package, MODE);
+    assert_eq!(error.package, PackageRef::Name(MODE.to_owned()));
     assert!(
         matches!(*error.problem, LoadProblem::TooMany(Limit::Tags)),
         "{error}"
@@ -205,7 +205,7 @@ fn more_tracks_than_a_unit_holds_fail_the_load() {
     }
     let edit = Edit::Replace("[tracks.level]", format!("{tracks}[tracks.level]").leak());
     let error = ModePackages::from_package_dir(&edited([(MODE_DATA, edit)])).unwrap_err();
-    assert_eq!(error.package, MODE);
+    assert_eq!(error.package, PackageRef::Name(MODE.to_owned()));
     assert!(
         matches!(*error.problem, LoadProblem::TooMany(Limit::Tracks)),
         "{error}"
@@ -213,7 +213,7 @@ fn more_tracks_than_a_unit_holds_fail_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 150] = [
+const FLAWS: [Flaw; 151] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -981,6 +981,18 @@ const FLAWS: [Flaw; 150] = [
         "hero-husk",
         |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, at: Place::Action(_), name } if name == "spell_power"),
     ),
+    // The mode's `surge` adds attack damage by a param that only the mode's action `surge`,
+    // which applies it, declares, and that reads spell vamp; `vamp` adds spell vamp by its own
+    // param, which reads attack damage: a loop that only the mode's actions show.
+    flaw(
+        MODE_DATA,
+        Edit::Replace(
+            "[actions.melee_creep_attack]",
+            "[modifiers.surge]\nstats = { attack_damage = { param = \"surge\" } }\n\n[modifiers.vamp]\nstats = { spell_vamp = { param = \"vamp\" } }\n[modifiers.vamp.params]\nvamp = { base = 0, attack_damage = \"1\" }\n\n[actions.surge]\ntargeting = \"none\"\npassive_modifier = \"surge\"\n[actions.surge.params]\nsurge = { base = 0, spell_vamp = \"10\" }\n\n[actions.melee_creep_attack]",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::StatLoop(stats) if stats.iter().map(ToString::to_string).eq(["attack_damage", "spell_vamp"])),
+    ),
     // Dual Path's spell vamp reads attack damage; a modifier whose attack damage reads spell
     // vamp closes a loop.
     flaw(
@@ -1515,10 +1527,12 @@ fn every_flaw_of_a_package_fails_its_load_with_its_own_problem() {
             .chain(flaw.also.iter().copied());
         let error = ModePackages::from_package_dir(&edited(edits)).expect_err(flaw.file);
         let LoadError { package, problem } = &error;
-        assert!(
-            Path::new(package).ends_with(flaw.package) && (flaw.refused)(problem),
-            "{flaw:?}: {error}"
-        );
+        let named = match package {
+            PackageRef::Name(name) => name == flaw.package,
+            PackageRef::Dir(dir) => dir.ends_with(flaw.package),
+            PackageRef::Fingerprint(_) => false,
+        };
+        assert!(named && (flaw.refused)(problem), "{flaw:?}: {error}");
     }
 
     // The three kinds and 253 more are 256, all a byte tells apart; one more fails.

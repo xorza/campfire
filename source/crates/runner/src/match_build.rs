@@ -8,16 +8,11 @@ use campfire_capabilities::{
     Stat, Stats, UnitKit, UnitTypeData, UnitTypeSetup, Units,
 };
 use campfire_content::PackagePath;
-use campfire_package::{Content, ModePackages, Package, UnitTypeFile};
+use campfire_package::{ModePackages, PackageView, UnitTypeFile, ViewKind};
 use campfire_script::ScriptId;
 use campfire_sim::{Capability, StateRegistry, TickRate};
 
 use crate::error::StartError;
-
-/// The mode's place among the packages of a match build.
-const MODE: usize = 0;
-/// The place of the first dependency.
-const DEPENDENCIES: usize = 1;
 
 /// What the package load checked, which a match build trusts.
 const CHECKED: &str = "the load checked it";
@@ -74,7 +69,7 @@ impl<'a> MatchBuild<'a> {
             packages,
             world,
             rules,
-            unit_types: Vec::with_capacity(packages.units().units.len()),
+            unit_types: Vec::with_capacity(packages.content().units.len()),
             scripts: Vec::new(),
             script_starts: Vec::with_capacity(1 + packages.dependencies().len()),
             spawns: Vec::new(),
@@ -85,37 +80,38 @@ impl<'a> MatchBuild<'a> {
         }
         build.compile_scripts();
         build.load_modifiers();
-        let units = &packages.units().units;
-        let ranks = packages.slotted_ranks(units.values()).expect(CHECKED);
-        let mode_actions =
-            build.load_actions(MODE, &packages.data().actions, |id| ranks.get(id).copied())?;
-        for (name, file) in units {
-            if file.delivers() {
-                build.load_delivery(MODE, name, file);
-            } else {
-                build.load_unit_type(MODE, name, file, &mode_actions, false)?;
-            }
-        }
         let mut avatars = Vec::new();
         let mut loadout = Vec::new();
         let loadout_ranks = packages.data().loadout_ranks();
-        for (at, dependent) in packages.dependencies().iter().enumerate() {
-            let package = DEPENDENCIES + at;
-            for (id, file) in dependent.units() {
-                build.load_delivery(package, &dependent.unit_type_name(id), file);
-            }
-            match &dependent.content {
-                Content::Avatar(avatar) => {
-                    let name = &dependent.package.name;
+        for view in packages.packages() {
+            let units = &view.content.units;
+            match view.kind {
+                ViewKind::Mode => {
+                    let ranks = packages.slotted_ranks(units.values()).expect(CHECKED);
+                    let actions = build.load_actions(view, |id| ranks.get(id).copied())?;
+                    for (name, file) in units {
+                        if file.delivers() {
+                            build.load_delivery(view, name, file);
+                        } else {
+                            build.load_unit_type(view, name, file, &actions, false)?;
+                        }
+                    }
+                }
+                ViewKind::Avatar(avatar) => {
+                    for (id, file) in units {
+                        build.load_delivery(view, &view.unit_type_name(id), file);
+                    }
+                    let name = &view.package.name;
                     let ranks = packages.slotted_ranks([&avatar.unit]).expect(CHECKED);
-                    let actions = build
-                        .load_actions(package, &avatar.actions, |id| ranks.get(id).copied())?;
-                    build.load_unit_type(package, name, &avatar.unit, &actions, true)?;
+                    let actions = build.load_actions(view, |id| ranks.get(id).copied())?;
+                    build.load_unit_type(view, name, &avatar.unit, &actions, true)?;
                     avatars.push(name.clone());
                 }
-                Content::Loadout(data) => {
-                    let actions =
-                        build.load_actions(package, &data.actions, |_| Some(loadout_ranks))?;
+                ViewKind::Loadout => {
+                    for (id, file) in units {
+                        build.load_delivery(view, &view.unit_type_name(id), file);
+                    }
+                    let actions = build.load_actions(view, |_| Some(loadout_ranks))?;
                     let entries = actions.into_iter().map(|(id, ability)| LoadoutSetup {
                         id: id.to_owned(),
                         ability,
@@ -124,11 +120,12 @@ impl<'a> MatchBuild<'a> {
                 }
             }
         }
+        let mode = packages.packages().next().expect("the mode is a package");
         for (action, unit_type) in &build.spawns {
             Actions::bind_spawn(build.world, *action, unit_type);
         }
         let setup = ModeSetup {
-            script: build.script(MODE, &packages.data().script),
+            script: build.script(mode, &packages.data().script),
             data: packages.data(),
             map: packages.map(),
             teams: &manifest.teams,
@@ -145,23 +142,10 @@ impl<'a> MatchBuild<'a> {
 
     /// Loads the modifiers of every package, the mode's first, before any ability names one.
     fn load_modifiers(&mut self) {
-        let packages = self.packages;
-        let dependents = packages
-            .dependencies()
-            .iter()
-            .map(|dependent| match &dependent.content {
-                Content::Avatar(avatar) => &avatar.modifiers,
-                Content::Loadout(loadout) => &loadout.modifiers,
-            });
-        for (package, modifiers) in [&packages.data().modifiers]
-            .into_iter()
-            .chain(dependents)
-            .enumerate()
-        {
-            let id = u16::try_from(package).expect("packages fit u16");
-            for (name, data) in modifiers {
-                let script = data.script.as_ref().map(|path| self.script(package, path));
-                Stats::load_modifier(self.world, id, name, data, script);
+        for view in self.packages.packages() {
+            for (name, data) in &view.content.modifiers {
+                let script = data.script.as_ref().map(|path| self.script(view, path));
+                Stats::load_modifier(self.world, view.index.get(), name, data, script);
             }
         }
     }
@@ -170,15 +154,15 @@ impl<'a> MatchBuild<'a> {
     /// gives none, by id.
     fn load_actions(
         &mut self,
-        package: usize,
-        actions: &'a BTreeMap<String, ActionData>,
+        view: PackageView<'a>,
         ranks: impl Fn(&str) -> Option<u8>,
     ) -> Result<BTreeMap<&'a str, ActionId>, StartError> {
-        actions
+        view.content
+            .actions
             .iter()
             .map(|(id, data)| {
                 let ranks = ranks(id).unwrap_or(1);
-                Ok((id.as_str(), self.load_ability(package, id, data, ranks)?))
+                Ok((id.as_str(), self.load_ability(view, id, data, ranks)?))
             })
             .collect()
     }
@@ -188,7 +172,7 @@ impl<'a> MatchBuild<'a> {
     /// avatar's is tagged `avatar`, and stays when it dies.
     fn load_unit_type(
         &mut self,
-        package: usize,
+        view: PackageView<'a>,
         name: &str,
         file: &UnitTypeFile,
         actions: &BTreeMap<&str, ActionId>,
@@ -209,7 +193,7 @@ impl<'a> MatchBuild<'a> {
             error,
         };
         if let Some(orders) = &file.orders {
-            let script = self.script(package, &orders.ai);
+            let script = self.script(view, &orders.ai);
             Orders::load_ai(self.world, unit_type, orders, script).map_err(|error| {
                 StartError::Ai {
                     unit_type: name.to_owned(),
@@ -234,7 +218,7 @@ impl<'a> MatchBuild<'a> {
             slots.extend(slotted);
         }
         slots.sort_by_key(|action| action.kind);
-        let id = u16::try_from(package).expect("packages fit u16");
+        let id = view.index.get();
         let passive = file
             .passive
             .as_ref()
@@ -251,14 +235,13 @@ impl<'a> MatchBuild<'a> {
 
     /// Loads the projectile or area type `name` of `file`, of `package`, which only actions
     /// deliver, so the mode spawns none.
-    fn load_delivery(&mut self, package: usize, name: &str, file: &UnitTypeFile) {
+    fn load_delivery(&mut self, view: PackageView<'a>, name: &str, file: &UnitTypeFile) {
         let unit_type = Units::load_type(self.world, name, &file.core).expect(CHECKED);
         if let Some(projectile) = &file.projectile {
             Projectiles::load_type(self.world, unit_type, projectile);
         }
         if let Some(area) = &file.area {
-            let package = u16::try_from(package).expect("packages fit u16");
-            Areas::load_type(self.world, unit_type, package, area);
+            Areas::load_type(self.world, unit_type, view.index.get(), area);
         }
     }
 
@@ -279,13 +262,13 @@ impl<'a> MatchBuild<'a> {
     /// its unit type to bind, and a delivery for its projectile or area type, of the same package.
     fn load_ability(
         &mut self,
-        package: usize,
+        view: PackageView<'a>,
         id: &str,
         data: &'a ActionData,
         ranks: u8,
     ) -> Result<ActionId, StartError> {
-        let script = data.script.as_ref().map(|path| self.script(package, path));
-        let package = u16::try_from(package).expect("packages fit u16");
+        let script = data.script.as_ref().map(|path| self.script(view, path));
+        let package = view.index.get();
         let action =
             Actions::load(self.world, package, id, data, script, ranks).map_err(|error| {
                 StartError::Ability {
@@ -300,13 +283,7 @@ impl<'a> MatchBuild<'a> {
             self.spawns.push((action, unit_type.clone()));
         }
         if let Some(delivery) = &data.delivery {
-            let name = match usize::from(package).checked_sub(DEPENDENCIES) {
-                None => delivery.unit_type().to_owned(),
-                Some(at) => {
-                    let dependent = &self.packages.dependencies()[at];
-                    dependent.unit_type_name(delivery.unit_type())
-                }
-            };
+            let name = view.unit_type_name(delivery.unit_type());
             self.spawns.push((action, name));
         }
         Ok(action)
@@ -314,32 +291,18 @@ impl<'a> MatchBuild<'a> {
 
     /// Compiles every script of every package in the match's host, each once.
     fn compile_scripts(&mut self) {
-        let packages = self.packages;
-        let dependencies = packages
-            .dependencies()
-            .iter()
-            .map(|dependent| &dependent.package);
-        for package in [packages.mode()].into_iter().chain(dependencies) {
+        for view in self.packages.packages() {
             self.script_starts.push(self.scripts.len());
-            for script in &package.scripts {
+            for script in &view.package.scripts {
                 let id = Units::compile(self.world, &script.source).expect("the load parsed it");
                 self.scripts.push(id);
             }
         }
     }
 
-    /// The compiled script at `path` of `package`: `MODE`, or `DEPENDENCIES` plus the place of
-    /// a dependency.
-    fn script(&self, package: usize, path: &PackagePath) -> ScriptId {
-        let at = self.package(package).script_index(path).expect(CHECKED);
-        self.scripts[self.script_starts[package] + at]
-    }
-
-    fn package(&self, package: usize) -> &'a Package {
-        let packages = self.packages;
-        match package.checked_sub(DEPENDENCIES) {
-            None => packages.mode(),
-            Some(at) => &packages.dependencies()[at].package,
-        }
+    /// The compiled script at `path` of the package `view`.
+    fn script(&self, view: PackageView<'_>, path: &PackagePath) -> ScriptId {
+        let at = view.package.script_index(path).expect(CHECKED);
+        self.scripts[self.script_starts[usize::from(view.index.get())] + at]
     }
 }

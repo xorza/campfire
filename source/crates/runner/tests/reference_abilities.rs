@@ -100,7 +100,7 @@ fn every_reference_ability_reads_into_the_schema() {
     let mut read = 0;
     for name in HEROES {
         let data = abilities(name);
-        for (ability, data) in &data.actions {
+        for (ability, data) in &data.content.actions {
             if let Some(script) = &data.script {
                 assert!(hero(name).read_text(script).is_ok(), "{name}.{ability}");
             }
@@ -112,7 +112,7 @@ fn every_reference_ability_reads_into_the_schema() {
 
     // Husk's Lash Out reads exactly as its file writes it.
     let husk = abilities("husk");
-    let lash_out = &husk.actions["lash_out"];
+    let lash_out = &husk.content.actions["lash_out"];
     assert_eq!(lash_out.targeting, Targeting::None);
     assert_eq!(lash_out.range, None);
     let int = |value| Number::Value(Scalar::Int(value));
@@ -146,7 +146,7 @@ fn every_reference_ability_reads_into_the_schema() {
     // 28 018.
     let veil = abilities("veil");
     let Param::Scaling(Scaling { bonus, ratios, .. }) =
-        &veil.modifiers["dual_path"].params["spell_vamp"]
+        &veil.content.modifiers["dual_path"].params["spell_vamp"]
     else {
         panic!("spell vamp scales");
     };
@@ -156,11 +156,11 @@ fn every_reference_ability_reads_into_the_schema() {
     assert!(ratios.is_empty());
     // Rime's Snow Owl reaches farther at each rank.
     let rime = abilities("rime");
-    let Some(Ranked::PerRank(ranges)) = &rime.actions["snow_owl"].range else {
+    let Some(Ranked::PerRank(ranges)) = &rime.content.actions["snow_owl"].range else {
         panic!("a range per rank");
     };
     assert_eq!(ranges[1], RangeField::Range(Range::Meters(half * 65)));
-    let wraps = &husk.actions["grasping_wraps"];
+    let wraps = &husk.content.actions["grasping_wraps"];
     assert_eq!(wraps.targeting, Targeting::Direction);
     let eleven = RangeField::Range(Range::Meters(num(11)));
     assert_eq!(wraps.range, Some(Ranked::One(eleven)));
@@ -248,10 +248,10 @@ fn failures(world: &World) -> &[ScriptFailure] {
 fn lash_out_from_its_package_hits_exactly() {
     let mut world = reference_world();
     let husk = abilities("husk");
-    for (name, modifier) in &husk.modifiers {
+    for (name, modifier) in &husk.content.modifiers {
         Stats::load_modifier(&mut world, 0, name, modifier, None);
     }
-    let data = &husk.actions["lash_out"];
+    let data = &husk.content.actions["lash_out"];
     let script = compile(&mut world, "husk", data.script.as_ref().unwrap());
     let lash_out = Actions::load(&mut world, 0, "lash_out", data, Some(script), 5).unwrap();
 
@@ -312,7 +312,7 @@ fn attack(unit: StableId, target: StableId) -> Order {
 fn kenshos_twin_cut_hits_twice_on_each_seventh_attack_and_never_answers_itself() {
     let mut world = reference_world();
     let kensho = abilities("kensho");
-    let data = &kensho.modifiers["twin_cut"];
+    let data = &kensho.content.modifiers["twin_cut"];
     let script = compile(&mut world, "kensho", data.script.as_ref().unwrap());
     Stats::load_modifier(&mut world, 0, "twin_cut", data, Some(script));
     let player = Owner::new(PlayerSlot::new(0));
@@ -339,10 +339,10 @@ fn kenshos_twin_cut_hits_twice_on_each_seventh_attack_and_never_answers_itself()
 fn veils_dusk_mark_detonates_once_on_veils_next_damage() {
     let mut world = reference_world();
     let veil = abilities("veil");
-    let mark = &veil.modifiers["dusk_mark"];
+    let mark = &veil.content.modifiers["dusk_mark"];
     let script = compile(&mut world, "veil", mark.script.as_ref().unwrap());
     Stats::load_modifier(&mut world, 0, "dusk_mark", mark, Some(script));
-    let data = &veil.actions["dusk_mark"];
+    let data = &veil.content.actions["dusk_mark"];
     let ability = Actions::load(&mut world, 0, "dusk_mark", data, Some(script), 5).unwrap();
     let player = Owner::new(PlayerSlot::new(0));
     let veil_unit = spawn_with(&mut world, 0, 0, (0, 200), player);
@@ -377,12 +377,12 @@ fn veils_dusk_mark_detonates_once_on_veils_next_damage() {
 fn rimes_fan_of_frost_from_its_package_hits_exactly_the_units_in_reach_once_each() {
     let mut world = reference_world();
     let rime = abilities("rime");
-    Stats::load_modifier(&mut world, 0, "slow", &rime.modifiers["slow"], None);
-    let arrow = &rime.units["frost_arrow"];
+    Stats::load_modifier(&mut world, 0, "slow", &rime.content.modifiers["slow"], None);
+    let arrow = &rime.content.units["frost_arrow"];
     let frost_arrow = Units::load_type(&mut world, "rime/frost_arrow", &arrow.core).unwrap();
     Projectiles::load_type(&mut world, frost_arrow, arrow.projectile.as_ref().unwrap());
     // Fan of Frost runs no script: its data's `on_hit` deals its damage and applies its slow.
-    let data = &rime.actions["fan_of_frost"];
+    let data = &rime.content.actions["fan_of_frost"];
     assert_eq!(data.script, None);
     let fan = Actions::load(&mut world, 0, "fan_of_frost", data, None, 5).unwrap();
     Abilities::load_effects(&mut world, fan, 0, data);
@@ -454,11 +454,11 @@ fn rimes_fan_of_frost_from_its_package_hits_exactly_the_units_in_reach_once_each
 fn rimes_snow_owl_flies_to_its_point_and_ends_there() {
     let mut world = reference_world();
     let rime = abilities("rime");
-    let data = &rime.actions["snow_owl"];
+    let data = &rime.content.actions["snow_owl"];
     let script = compile(&mut world, "rime", data.script.as_ref().unwrap());
-    let bounty = &rime.modifiers["snow_owl_bounty"];
+    let bounty = &rime.content.modifiers["snow_owl_bounty"];
     Stats::load_modifier(&mut world, 0, "snow_owl_bounty", bounty, Some(script));
-    let owl = &rime.units["snow_owl"];
+    let owl = &rime.content.units["snow_owl"];
     let owl_type = Units::load_type(&mut world, "rime/snow_owl", &owl.core).unwrap();
     Projectiles::load_type(&mut world, owl_type, owl.projectile.as_ref().unwrap());
     let snow_owl = Actions::load(&mut world, 0, "snow_owl", data, Some(script), 5).unwrap();
@@ -508,7 +508,7 @@ fn rimes_snow_owl_flies_to_its_point_and_ends_there() {
 
 /// Loads every modifier of the hero `name`, with its script, as its package 0.
 fn load_modifiers(world: &mut World, name: &str, data: &AvatarData) {
-    for (id, modifier) in &data.modifiers {
+    for (id, modifier) in &data.content.modifiers {
         let script = modifier
             .script
             .as_ref()
@@ -527,10 +527,10 @@ fn cinders_eruption_from_its_package_erupts_on_the_units_in_reach_after_its_dela
     let mut world = reference_world();
     let cinder = abilities("cinder");
     load_modifiers(&mut world, "cinder", &cinder);
-    let file = &cinder.units["eruption"];
+    let file = &cinder.content.units["eruption"];
     let unit_type = Units::load_type(&mut world, "cinder/eruption", &file.core).unwrap();
     Areas::load_type(&mut world, unit_type, 0, file.area.as_ref().unwrap());
-    let data = &cinder.actions["eruption"];
+    let data = &cinder.content.actions["eruption"];
     let script = compile(&mut world, "cinder", data.script.as_ref().unwrap());
     let eruption = Actions::load(&mut world, 0, "eruption", data, Some(script), 5).unwrap();
     Actions::bind_spawn(&mut world, eruption, "cinder/eruption");
@@ -597,10 +597,10 @@ fn veils_smoke_ring_from_its_package_holds_its_modifiers_on_the_units_inside_whi
     let mut world = reference_world();
     let veil = abilities("veil");
     load_modifiers(&mut world, "veil", &veil);
-    let file = &veil.units["smoke_ring"];
+    let file = &veil.content.units["smoke_ring"];
     let unit_type = Units::load_type(&mut world, "veil/smoke_ring", &file.core).unwrap();
     Areas::load_type(&mut world, unit_type, 0, file.area.as_ref().unwrap());
-    let data = &veil.actions["smoke_ring"];
+    let data = &veil.content.actions["smoke_ring"];
     assert_eq!(data.script, None);
     let ring = Actions::load(&mut world, 0, "smoke_ring", data, None, 5).unwrap();
     Actions::bind_spawn(&mut world, ring, "veil/smoke_ring");

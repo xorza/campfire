@@ -7,7 +7,7 @@ use campfire_capabilities::{
     ActionField, ActionKind, ActionSlots, ApiVersion, DeclaredName, Hook, MapProblem, ModeError,
     PlannedEffect, Pools, ResourceId, Stat, TrackId,
 };
-use campfire_content::PackagePath;
+use campfire_content::{Fingerprint, PackagePath};
 use campfire_script::ScriptError;
 use campfire_sim::Capability;
 use toml::de::Error as TomlError;
@@ -99,8 +99,27 @@ impl Error for StoreError {
 /// Why a mode's packages do not load: `problem`, in the package `package`.
 #[derive(Debug)]
 pub struct LoadError {
-    pub package: String,
+    pub package: PackageRef,
     pub problem: Box<LoadProblem>,
+}
+
+/// Which package a load error is in: by its name, once its manifest named it; else where it was
+/// read from, a directory, or the fingerprint a session named it by.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PackageRef {
+    Name(String),
+    Dir(PathBuf),
+    Fingerprint(Fingerprint),
+}
+
+impl fmt::Display for PackageRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PackageRef::Name(name) => f.write_str(name),
+            PackageRef::Dir(dir) => write!(f, "at {}", dir.display()),
+            PackageRef::Fingerprint(fingerprint) => write!(f, "of fingerprint {fingerprint}"),
+        }
+    }
 }
 
 /// A problem that fails a package's load, as design 08's checks find them.
@@ -445,6 +464,8 @@ pub enum Limit {
     DamageKinds,
     Pools,
     Resources,
+    /// Packages, the mode's and those it depends on, more than a package index counts.
+    Packages,
 }
 
 impl fmt::Display for Limit {
@@ -456,6 +477,7 @@ impl fmt::Display for Limit {
             Limit::DamageKinds => f.write_str("more damage kinds than a match tells apart"),
             Limit::Pools => write!(f, "more than {} pools", Pools::LIMIT),
             Limit::Resources => write!(f, "more than {} player resources", ResourceId::LIMIT),
+            Limit::Packages => f.write_str("more packages than a package index counts"),
         }
     }
 }

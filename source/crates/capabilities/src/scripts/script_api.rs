@@ -795,8 +795,13 @@ mod tests {
     #[test]
     fn the_data_fields_are_the_schemas() {
         let api = ScriptApi::release();
+        // The mode's file holds its package's actions and modifiers beside `ModeData`, which
+        // the package load reads apart.
+        let mut mode = serde_fields::<ModeData>();
+        mode.extend(["actions", "modifiers"]);
+        mode.sort_unstable();
         let tables = [
-            (DataTable::Mode, serde_fields::<ModeData>()),
+            (DataTable::Mode, mode),
             (DataTable::ModeCombat, serde_fields::<CombatRules>()),
             (DataTable::ModeNavigation, serde_fields::<NavigationRules>()),
             (DataTable::SlotKind, serde_fields::<SlotKindData>()),

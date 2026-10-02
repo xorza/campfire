@@ -13,7 +13,7 @@ Touches: every capability, the registry, the package loader, the client, the ref
 
 The structural redesign comes first, in the order below, as [Structural rules](design/02-engine-core.md#structural-rules) asks; `.notes/REDESIGN.md` holds each step's shape until the step lands and its part moves into the design. Each step ends with the check chain, both goldens and the structure tests that exist then; a step that changes behaviour names the change. The game model's own steps sit where the redesign makes room for them.
 
-1. **C2 Package content**: `PackageContent` for every package kind; `PackageIndex`; `LoadError` places; unit type identity by package and name, with its scopes.
+1. **C2c Unit type identity**: unit type identity by package and name, with its scopes: a mode script sees the mode's types and the avatars by their package's names, and a package's delivery types are seen only by its own actions.
 2. **C3 Checked names**: names as checked types where they enter; tag names with reserved engine tags; mode and modifier state types; stat values as checked numbers.
 3. **Human text**: `locale/<language>.ftl`, message ids in data and scripts, the load check that every id has its text, the `locale` package kind; the reference packages' text moved to `en.ftl`. Test: a hero's name in a second language from a `locale` package; a missing id refused at load; a match whose hashes do not change with the language.
 4. **C4 Name arguments from the registry**: argument roles in the registry; generic script facts; hook arity from the registered signature.

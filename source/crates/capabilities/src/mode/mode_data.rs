@@ -4,7 +4,7 @@ use campfire_content::PackagePath;
 use campfire_script::rhai::{Dynamic, ImmutableString};
 use serde::Deserialize;
 
-use crate::actions::action_data::{ActionData, CostTarget};
+use crate::actions::action_data::CostTarget;
 use crate::actions::slot_kinds::SlotKinds;
 use crate::combat::combat_rules::CombatRules;
 use crate::mode::choice_data::ChoiceData;
@@ -13,7 +13,6 @@ use crate::mode::resource_id::ResourceId;
 use crate::navigation::navigation_rules::NavigationRules;
 use crate::progression::track_data::TrackData;
 use crate::scripts::state_decl::StateDecl;
-use crate::stats::modifier_data::ModifierData;
 use crate::stats::pool_data::PoolData;
 use crate::stats::pool_id::PoolId;
 use crate::stats::stat::Stat;
@@ -22,7 +21,8 @@ use crate::units::tag_data::TagData;
 use crate::values::declared_name::DeclaredName;
 use crate::values::scalar::Scalar;
 
-/// The mode's `data/mode.toml`: its script, its player inputs, its state and its params.
+/// The mode's `data/mode.toml`, but its actions and modifiers, which its package's content holds:
+/// its script, its player inputs, its state and its params.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModeData {
@@ -46,11 +46,6 @@ pub struct ModeData {
     pub state: BTreeMap<String, StateDecl>,
     #[serde(default)]
     pub params: BTreeMap<String, ModeParam>,
-    #[serde(default)]
-    pub modifiers: BTreeMap<String, ModifierData>,
-    /// The actions its unit types' slots name.
-    #[serde(default)]
-    pub actions: BTreeMap<String, ActionData>,
     /// Every stat its units carry, those the engine reads among them, each with its rule.
     #[serde(default)]
     pub stats: BTreeMap<Stat, StatRule>,

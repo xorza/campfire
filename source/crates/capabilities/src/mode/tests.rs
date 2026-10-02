@@ -397,6 +397,8 @@ fn raised(mut map: MapData, y: i64) -> MapData {
 #[derive(Debug)]
 struct ModeFiles {
     data: ModeData,
+    /// The mode's modifiers, which its package's content holds.
+    modifiers: BTreeMap<String, ModifierData>,
     map: MapData,
     teams: Vec<TeamManifest>,
 }
@@ -531,12 +533,6 @@ fn mode_files() -> ModeFiles {
             ]
             .map(|(name, param)| (name.to_owned(), param))
             .into(),
-            actions: BTreeMap::new(),
-            modifiers: [
-                ("blessing".to_owned(), blessing()),
-                ("drill".to_owned(), drill()),
-            ]
-            .into(),
             stats: STATS_3V3
                 .map(|name| (Stat::named(name).unwrap(), StatRule::default()))
                 .into(),
@@ -552,6 +548,11 @@ fn mode_files() -> ModeFiles {
             tags: BTreeMap::new(),
             tracks: tracks(),
         },
+        modifiers: [
+            ("blessing".to_owned(), blessing()),
+            ("drill".to_owned(), drill()),
+        ]
+        .into(),
         map: map(),
         teams: vec![
             TeamManifest {
@@ -686,7 +687,7 @@ impl Game {
         };
         let types = [grunt_type, tower_type, x, y];
         Progression::load(&mut world, &files.data.tracks);
-        for (name, data) in &files.data.modifiers {
+        for (name, data) in &files.modifiers {
             Stats::load_modifier(&mut world, 0, name, data, None);
         }
         let script = Units::compile(&mut world, &format!("{script}{PICK}")).unwrap();

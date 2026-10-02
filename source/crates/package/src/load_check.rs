@@ -13,10 +13,10 @@ use campfire_sim::Capability;
 
 use crate::error::{
     ChoiceProblem, CtxMisuse, DeliveryProblem, EffectProblem, Limit, LoadError, LoadProblem,
-    NameKind, Place,
+    NameKind, PackageRef, Place,
 };
 use crate::files::units_data::UnitTypeFile;
-use crate::mode_packages::{Content, Dependent, ModePackages};
+use crate::mode_packages::{Dependent, DependentKind, ModePackages};
 use crate::package::Package;
 use crate::script_facts::ScriptFacts;
 
@@ -51,17 +51,17 @@ impl<'a> LoadCheck<'a> {
     pub(crate) fn run(packages: &'a ModePackages) -> Result<(), LoadError> {
         let manifest = &packages.manifest;
         let fail = |problem| LoadError {
-            package: manifest.header.name.clone(),
+            package: PackageRef::Name(manifest.header.name.clone()),
             problem: Box::new(problem),
         };
         let tags = packages.tag_names();
         if tags.len() > UnitTypeData::TAG_LIMIT {
             return Err(fail(LoadProblem::TooMany(Limit::Tags)));
         }
-        let units = &packages.units.units;
+        let units = &packages.content.units;
         let mut unit_types = units.len();
         for dependent in &packages.dependencies {
-            let ids = dependent.units().keys();
+            let ids = dependent.content.units.keys();
             if let Some(name) = [&dependent.package.name]
                 .into_iter()
                 .chain(ids)
@@ -69,9 +69,9 @@ impl<'a> LoadCheck<'a> {
             {
                 return Err(fail(LoadProblem::Slash(name.clone())));
             }
-            let avatar = matches!(dependent.content, Content::Avatar(_))
+            let avatar = matches!(dependent.kind, DependentKind::Avatar(_))
                 .then(|| dependent.package.name.clone());
-            let deliveries = dependent.units().keys();
+            let deliveries = dependent.content.units.keys();
             let deliveries = deliveries.map(|id| dependent.unit_type_name(id));
             for name in avatar.into_iter().chain(deliveries) {
                 if units.contains_key(&name) {
@@ -92,7 +92,7 @@ impl<'a> LoadCheck<'a> {
         for package in every {
             if !ApiVersion::RELEASE.loads(package.api) {
                 return Err(LoadError {
-                    package: package.name.clone(),
+                    package: PackageRef::Name(package.name.clone()),
                     problem: Box::new(LoadProblem::OtherApi(package.api)),
                 });
             }
@@ -107,7 +107,7 @@ impl<'a> LoadCheck<'a> {
         check.loadout()?;
         for dependent in &packages.dependencies {
             check.dependent(dependent).map_err(|problem| LoadError {
-                package: dependent.package.name.clone(),
+                package: PackageRef::Name(dependent.package.name.clone()),
                 problem: Box::new(problem),
             })?;
         }
@@ -127,7 +127,7 @@ impl<'a> LoadCheck<'a> {
         let walkers = packages.walkers();
         let move_speed = Stat::Engine(EngineStat::MoveSpeed);
         let body_of = |unit_type: &str| {
-            let unit_type = packages.units.units.get(unit_type)?;
+            let unit_type = packages.content.units.get(unit_type)?;
             let walks = unit_type
                 .stats
                 .as_ref()
@@ -142,7 +142,8 @@ impl<'a> LoadCheck<'a> {
     fn mode(&self) -> Result<(), LoadProblem> {
         let packages = self.packages;
         let data = &packages.data;
-        let units = &packages.units.units;
+        let content = &packages.content;
+        let units = &content.units;
         let unit_type = |name: &str| {
             units
                 .get(name)
@@ -175,9 +176,9 @@ impl<'a> LoadCheck<'a> {
         }
         self.slot_kinds()?;
         self.choices()?;
-        for (name, unit_type) in &packages.units.units {
+        for (name, unit_type) in units {
             let at = Place::UnitType(name.clone());
-            self.unit_type(unit_type, &at, &data.actions, &data.modifiers)?;
+            self.unit_type(unit_type, &at, &content.actions, &content.modifiers)?;
         }
         if !packages.map.paths.is_empty() {
             self.require(Capability::Navigation, &Place::Paths)?;
@@ -201,18 +202,18 @@ impl<'a> LoadCheck<'a> {
                 return Err(LoadProblem::StateSync(name.clone()));
             }
         }
-        let mut names = PackageNames::new(&packages.mode, &data.modifiers);
+        let mut names = PackageNames::new(&packages.mode, &content.modifiers);
         let mode_params: BTreeSet<&str> = data.params.keys().map(String::as_str).collect();
         names.serve(&data.script, ScriptRole::Mode, mode_params.iter().copied());
-        for unit_type in packages.units.units.values() {
+        for unit_type in units.values() {
             if let Some(orders) = &unit_type.orders {
                 names.serve(&orders.ai, ScriptRole::Ai, mode_params.iter().copied());
             }
         }
-        let ranks = self.slotted_ranks(packages.units.units.values())?;
+        let ranks = self.slotted_ranks(units.values())?;
         let ranks = |id: &str| ranks.get(id).copied().unwrap_or(1);
-        self.actions(&data.actions, units, ranks, &mut names)?;
-        let appliers = packages.mode.appliers(&data.actions, units);
+        self.actions(&content.actions, units, ranks, &mut names)?;
+        let appliers = packages.mode.appliers(&content.actions, units);
         self.modifiers(&mut names, &appliers)?;
         self.scripts(&names)
     }
@@ -221,12 +222,13 @@ impl<'a> LoadCheck<'a> {
     fn loadout(&self) -> Result<(), LoadError> {
         let mut seen = BTreeSet::new();
         for dependent in &self.packages.dependencies {
-            let Content::Loadout(loadout) = &dependent.content else {
+            if !matches!(dependent.kind, DependentKind::Loadout) {
                 continue;
-            };
-            if let Some(id) = loadout.actions.keys().find(|&id| !seen.insert(id)) {
+            }
+            let actions = dependent.content.actions.keys();
+            if let Some(id) = actions.clone().find(|&id| !seen.insert(id)) {
                 return Err(LoadError {
-                    package: dependent.package.name.clone(),
+                    package: PackageRef::Name(dependent.package.name.clone()),
                     problem: Box::new(LoadProblem::RepeatedLoadout(id.clone())),
                 });
             }
@@ -240,8 +242,10 @@ impl<'a> LoadCheck<'a> {
     /// types.
     fn dependent(&self, dependent: &'a Dependent) -> Result<(), LoadProblem> {
         let package = &dependent.package;
-        let (actions, modifiers, slotted) = match &dependent.content {
-            Content::Avatar(avatar) => {
+        let content = &dependent.content;
+        let (actions, modifiers) = (&content.actions, &content.modifiers);
+        let slotted = match &dependent.kind {
+            DependentKind::Avatar(avatar) => {
                 let at = Place::Avatar(avatar.name.clone());
                 if avatar.unit.orders.is_some() {
                     return Err(LoadProblem::AvatarOrders);
@@ -249,20 +253,17 @@ impl<'a> LoadCheck<'a> {
                 if avatar.unit.delivers() {
                     return Err(LoadProblem::Delivery(DeliveryProblem::NotDelivery(at)));
                 }
-                self.unit_type(&avatar.unit, &at, &avatar.actions, &avatar.modifiers)?;
+                self.unit_type(&avatar.unit, &at, actions, modifiers)?;
                 let ranks = self.slotted_ranks([&avatar.unit])?;
-                let unslotted = avatar
-                    .actions
-                    .keys()
-                    .find(|id| !ranks.contains_key(id.as_str()));
+                let unslotted = actions.keys().find(|id| !ranks.contains_key(id.as_str()));
                 if let Some(id) = unslotted {
                     return Err(LoadProblem::Unslotted(id.clone()));
                 }
-                (&avatar.actions, &avatar.modifiers, Some(ranks))
+                Some(ranks)
             }
-            Content::Loadout(loadout) => (&loadout.actions, &loadout.modifiers, None),
+            DependentKind::Loadout => None,
         };
-        for (id, unit_type) in dependent.units() {
+        for (id, unit_type) in &content.units {
             let at = Place::UnitType(dependent.unit_type_name(id));
             if !unit_type.delivery_only() {
                 return Err(LoadProblem::Delivery(DeliveryProblem::NotDelivery(at)));
@@ -272,8 +273,8 @@ impl<'a> LoadCheck<'a> {
         let loadout_ranks = self.packages.data.loadout_ranks();
         let ranks = |id: &str| slotted.as_ref().map_or(loadout_ranks, |ranks| ranks[id]);
         let mut names = PackageNames::new(package, modifiers);
-        self.actions(actions, dependent.units(), ranks, &mut names)?;
-        let appliers = package.appliers(actions, dependent.units());
+        self.actions(actions, &content.units, ranks, &mut names)?;
+        let appliers = package.appliers(actions, &content.units);
         self.modifiers(&mut names, &appliers)?;
         self.scripts(&names)
     }
@@ -611,7 +612,7 @@ impl<'a> LoadCheck<'a> {
                 if fields.contains(&true) || action.beyond_train() {
                     return Err(LoadProblem::KindField(id.to_owned()));
                 }
-                let unit_types = &self.packages.units.units;
+                let unit_types = &self.packages.content.units;
                 let Some(name) = &action.unit_type else {
                     return Err(LoadProblem::KindField(id.to_owned()));
                 };

@@ -4,7 +4,7 @@ use campfire_capabilities::{ActionData, ApiVersion, DeliveryData};
 use campfire_content::{Fingerprint, PackagePath};
 use campfire_script::ScriptHost;
 
-use crate::error::{LoadError, LoadProblem};
+use crate::error::{LoadError, LoadProblem, PackageRef};
 use crate::files::units_data::UnitTypeFile;
 use crate::package_files::PackageFiles;
 use crate::script_facts::ScriptFacts;
@@ -39,7 +39,7 @@ impl Package {
         parser: &ScriptHost,
     ) -> Result<Package, LoadError> {
         let fail = |problem| LoadError {
-            package: name.clone(),
+            package: PackageRef::Name(name.clone()),
             problem: Box::new(problem),
         };
         let mut scripts = Vec::new();
