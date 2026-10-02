@@ -30,6 +30,7 @@ use crate::mode::map_data::{GridData, MarkerData, PathData, PlacedUnitData};
 use crate::mode::match_end::MatchResult;
 use crate::mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
 use crate::mode::mode_setup::{LoadoutSetup, SlotAction, UnitTypeSetup};
+use crate::mode::mode_state_decl::{ModeStateDecl, SyncTo};
 use crate::mode::offer::Offer;
 use crate::mode::resource_id::ResourceId;
 use crate::mode::unit_kit::UnitKit;
@@ -49,7 +50,7 @@ use crate::scripts::hook::ScriptRole;
 use crate::scripts::match_scripts::MatchScripts;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::script_limits::ScriptLimits;
-use crate::scripts::state_decl::{StateDecl, StateDefault, StateType, SyncTo};
+use crate::scripts::state_decl::{StateDecl, StateDefault, StateType};
 use crate::scripts::state_value::StateValue;
 use crate::stats::level::Level;
 use crate::stats::modifier_book::ModifierId;
@@ -278,7 +279,7 @@ fn at(x: i64, z: i64) -> Position {
 }
 
 fn field(kind: StateType, default: Option<StateDefault>) -> StateDecl {
-    StateDecl::new(kind, default, Some(SyncTo::All)).unwrap()
+    StateDecl::new(kind, default).unwrap()
 }
 
 /// The unit kit of a grunt: 10 health, combat that keeps it when it dies, and a step of 1 m.
@@ -418,7 +419,11 @@ fn blessing() -> ModifierData {
         aura: None,
         affects: None,
         params: BTreeMap::new(),
-        state: [("count".to_owned(), field(StateType::Int, None))].into(),
+        state: [(
+            DeclaredName::new("count").unwrap(),
+            field(StateType::Int, None),
+        )]
+        .into(),
     }
 }
 
@@ -470,6 +475,38 @@ fn resource(name: &str) -> Option<ResourceId> {
     ResourceId::of(&names, name)
 }
 
+/// The mode's state fields, each sent to all.
+fn mode_state() -> BTreeMap<DeclaredName, ModeStateDecl> {
+    [
+        (
+            "phase",
+            field(StateType::String, Some(StateDefault::Text("pick".into()))),
+        ),
+        ("seen", field(StateType::Int, None)),
+        ("count", field(StateType::Int, None)),
+        ("inputs", field(StateType::Int, None)),
+        ("enemy", field(StateType::String, None)),
+        ("grunts", field(StateType::Int, None)),
+        ("heroes", field(StateType::Int, None)),
+        ("teams", field(StateType::Int, None)),
+        ("players", field(StateType::Int, None)),
+        ("path", field(StateType::String, None)),
+        ("team", field(StateType::String, None)),
+        ("neutral", field(StateType::String, None)),
+        ("owner", field(StateType::Int, None)),
+        ("tower_path", field(StateType::String, None)),
+        ("kind", field(StateType::String, None)),
+    ]
+    .map(|(name, decl)| {
+        let sync = SyncTo::All;
+        (
+            DeclaredName::new(name).unwrap(),
+            ModeStateDecl { decl, sync },
+        )
+    })
+    .into()
+}
+
 fn mode_files() -> ModeFiles {
     let text = |text: &str| ListEntry::Text(text.to_owned());
     ModeFiles {
@@ -500,28 +537,7 @@ fn mode_files() -> ModeFiles {
             .map(|(name, kind)| (DeclaredName::new(name).unwrap(), kind))
             .into(),
             state_version: None,
-            state: [
-                (
-                    "phase",
-                    field(StateType::String, Some(StateDefault::Text("pick".into()))),
-                ),
-                ("seen", field(StateType::Int, None)),
-                ("count", field(StateType::Int, None)),
-                ("inputs", field(StateType::Int, None)),
-                ("enemy", field(StateType::String, None)),
-                ("grunts", field(StateType::Int, None)),
-                ("heroes", field(StateType::Int, None)),
-                ("teams", field(StateType::Int, None)),
-                ("players", field(StateType::Int, None)),
-                ("path", field(StateType::String, None)),
-                ("team", field(StateType::String, None)),
-                ("neutral", field(StateType::String, None)),
-                ("owner", field(StateType::Int, None)),
-                ("tower_path", field(StateType::String, None)),
-                ("kind", field(StateType::String, None)),
-            ]
-            .map(|(name, decl)| (name.to_owned(), decl))
-            .into(),
+            state: mode_state(),
             params: [
                 ("group", ModeParam::List(vec![text("grunt"), text("grunt")])),
                 ("gold", ModeParam::Value(Scalar::Int(8))),

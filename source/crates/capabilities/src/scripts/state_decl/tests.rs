@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn a_field_starts_at_its_default_or_its_types_zero() {
-    let decl = |kind, default| StateDecl::new(kind, default, None).map(|decl| decl.initial);
+    let decl = |kind, default| StateDecl::new(kind, default).map(|decl| decl.initial);
     let text = |text: &str| Some(StateDefault::Text(text.to_owned()));
     let cases = [
         (

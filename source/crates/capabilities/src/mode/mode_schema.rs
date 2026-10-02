@@ -58,7 +58,7 @@ impl ModeSchema {
             state_initial: data
                 .state
                 .values()
-                .map(|decl| decl.initial.clone())
+                .map(|field| field.decl.initial.clone())
                 .collect(),
         };
         let params = data.params.iter();
@@ -68,7 +68,7 @@ impl ModeSchema {
         let state = data.state.iter();
         schema
             .state
-            .push(state.map(|(name, decl)| (name.as_str(), decl.kind)));
+            .push(state.map(|(name, field)| (name.as_str(), field.decl.kind)));
         let inputs = data.inputs.iter();
         schema
             .inputs

@@ -8,7 +8,7 @@ use std::sync::{Arc, OnceLock};
 
 use campfire_capabilities::{
     ActionField, ActionKind, EffectData, EffectTo, Effecting, EngineTag, Hook, MapProblem,
-    ModeError, Number, PlannedEffect, Scalar,
+    ModeError, Number, PlannedEffect, Scalar, SyncTo,
 };
 use campfire_package::{
     ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem, EffectProblem, Limit, LoadError,
@@ -148,6 +148,21 @@ fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
 }
 
 #[test]
+fn a_mode_state_field_is_sent_to_no_client_unless_it_says() {
+    // The 3v3's `phase` is sent to all; without `sync`, or with `sync = "none"`, to none.
+    let phase = |edit: Edit| {
+        let packages = ModePackages::from_package_dir(&edited([(MODE_DATA, edit)])).unwrap();
+        packages.data().state["phase"].sync
+    };
+    let pick = r#"phase = { type = "string", default = "pick", sync = "all" }"#;
+    assert_eq!(phase(Edit::Replace(pick, pick)), SyncTo::All);
+    let unsent = r#"phase = { type = "string", default = "pick" }"#;
+    assert_eq!(phase(Edit::Replace(pick, unsent)), SyncTo::None);
+    let none = r#"phase = { type = "string", default = "pick", sync = "none" }"#;
+    assert_eq!(phase(Edit::Replace(pick, none)), SyncTo::None);
+}
+
+#[test]
 fn an_effect_to_the_source_reads_and_any_other_to_does_not() {
     // Rime's Fan of Frost's hits also heal its caster by 1: the list reads it after the slow.
     let to_source = Edit::Replace(
@@ -245,7 +260,7 @@ fn more_tracks_than_a_unit_holds_fail_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 159] = [
+const FLAWS: [Flaw; 160] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -1092,6 +1107,12 @@ const FLAWS: [Flaw; 159] = [
         |problem| read_fails(problem, "data/avatar.toml", r#""tank:front" is not a name"#),
     ),
     flaw(
+        "heroes/kensho/data/avatar.toml",
+        Edit::Replace(r#"left = { type = "int""#, r#"Left = { type = "int""#),
+        "hero-kensho",
+        |problem| read_fails(problem, "data/avatar.toml", r#""Left" is not a name"#),
+    ),
+    flaw(
         HUSK,
         Edit::Replace("[actions.lash_out]", "[actions.lash-out]"),
         "hero-husk",
@@ -1241,10 +1262,13 @@ const FLAWS: [Flaw; 159] = [
         |problem| matches!(problem, LoadProblem::Content(_)),
     ),
     flaw(
-        "modes/3v3/data/mode.toml",
-        Edit::Replace(r#"default = "pick", sync = "all""#, r#"default = "pick""#),
-        MODE,
-        |problem| matches!(problem, LoadProblem::StateSync(field) if field == "phase"),
+        "heroes/kensho/data/avatar.toml",
+        Edit::Replace(
+            r#"left = { type = "int", default = 0 }"#,
+            r#"left = { type = "int", default = 0, sync = "all" }"#,
+        ),
+        "hero-kensho",
+        |problem| read_fails(problem, "data/avatar.toml", "unknown field `sync`"),
     ),
     flaw(
         HUSK,

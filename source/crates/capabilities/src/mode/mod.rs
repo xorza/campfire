@@ -82,6 +82,7 @@ pub(crate) mod mode_input;
 pub(crate) mod mode_schema;
 pub(crate) mod mode_setup;
 pub(crate) mod mode_state;
+pub(crate) mod mode_state_decl;
 pub(crate) mod new_unit;
 pub(crate) mod offer;
 pub(crate) mod player_resources;

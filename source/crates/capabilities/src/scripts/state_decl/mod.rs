@@ -7,13 +7,12 @@ use serde::{Deserialize, Deserializer};
 
 use crate::scripts::state_value::StateValue;
 
-/// A declared field of script state: its type, its first value and, for mode state, who it is
-/// sent to. Script state is declared, never invented at run time.
+/// A declared field of script state: its type and its first value. Script state is declared,
+/// never invented at run time.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StateDecl {
     pub kind: StateType,
     pub initial: StateValue,
-    pub sync: Option<SyncTo>,
 }
 
 /// The type of a state field.
@@ -39,25 +38,11 @@ pub enum StateDefault {
     Text(String),
 }
 
-/// Which clients a field of mode state is sent to.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum SyncTo {
-    None,
-    Owner,
-    Team,
-    All,
-}
-
 impl StateDecl {
     /// A field of `kind` that starts at `default`, or at its type's zero without one; `None` when
     /// the default is not of the type. An entity, a list, a position or a vector takes no
     /// default.
-    pub fn new(
-        kind: StateType,
-        default: Option<StateDefault>,
-        sync: Option<SyncTo>,
-    ) -> Option<StateDecl> {
+    pub fn new(kind: StateType, default: Option<StateDefault>) -> Option<StateDecl> {
         let initial = match (kind, default) {
             (StateType::Int, None) => StateValue::Int(0),
             (StateType::Num, None) => StateValue::Num(Num::ZERO),
@@ -78,11 +63,16 @@ impl StateDecl {
             (StateType::String, Some(StateDefault::Text(text))) => StateValue::Text(text),
             _ => return None,
         };
-        Some(StateDecl {
-            kind,
-            initial,
-            sync,
-        })
+        Some(StateDecl { kind, initial })
+    }
+
+    /// `new`, as a read takes it: a default not of the type fails it.
+    pub(crate) fn of<E: Error>(
+        kind: StateType,
+        default: Option<StateDefault>,
+    ) -> Result<StateDecl, E> {
+        StateDecl::new(kind, default)
+            .ok_or_else(|| E::custom(format!("a default not of the type {kind:?}")))
     }
 }
 
@@ -95,15 +85,9 @@ impl<'de> Deserialize<'de> for StateDecl {
             #[serde(rename = "type")]
             kind: StateType,
             default: Option<StateDefault>,
-            sync: Option<SyncTo>,
         }
-        let Fields {
-            kind,
-            default,
-            sync,
-        } = Fields::deserialize(deserializer)?;
-        StateDecl::new(kind, default, sync)
-            .ok_or_else(|| D::Error::custom(format!("a default not of the type {kind:?}")))
+        let Fields { kind, default } = Fields::deserialize(deserializer)?;
+        StateDecl::of::<D::Error>(kind, default)
     }
 }
 

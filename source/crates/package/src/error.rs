@@ -238,8 +238,6 @@ pub enum LoadProblem {
         list: Hook,
         problem: EffectProblem,
     },
-    /// A field of mode state has no `sync`, or another state field has one.
-    StateSync(String),
     /// A unit type or a modifier at `at` carries a tag only the engine gives.
     EngineTag { at: Place, tag: EngineTag },
 }
@@ -644,7 +642,6 @@ impl fmt::Display for LoadProblem {
                 list,
                 problem,
             } => write!(f, "action {action:?}, `{}`: {problem}", list.name()),
-            LoadProblem::StateSync(field) => write!(f, "state {field:?}: sync where it has none"),
         }
     }
 }

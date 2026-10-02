@@ -8,11 +8,11 @@ use crate::actions::action_data::CostTarget;
 use crate::actions::slot_kinds::SlotKinds;
 use crate::combat::combat_rules::CombatRules;
 use crate::mode::choice_data::ChoiceData;
+use crate::mode::mode_state_decl::ModeStateDecl;
 use crate::mode::relation_data::RelationData;
 use crate::mode::resource_id::ResourceId;
 use crate::navigation::navigation_rules::NavigationRules;
 use crate::progression::track_data::TrackData;
-use crate::scripts::state_decl::StateDecl;
 use crate::stats::pool_data::PoolData;
 use crate::stats::pool_id::PoolId;
 use crate::stats::stat::Stat;
@@ -43,7 +43,7 @@ pub struct ModeData {
     pub inputs: BTreeMap<DeclaredName, InputType>,
     pub state_version: Option<u32>,
     #[serde(default)]
-    pub state: BTreeMap<String, StateDecl>,
+    pub state: BTreeMap<DeclaredName, ModeStateDecl>,
     #[serde(default)]
     pub params: BTreeMap<DeclaredName, ModeParam>,
     /// Every stat its units carry, those the engine reads among them, each with its rule.

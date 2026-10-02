@@ -70,7 +70,7 @@ pub struct ActionData {
     pub params: BTreeMap<DeclaredName, Param>,
     /// The state of each projectile the action fires.
     #[serde(default)]
-    pub projectile_state: BTreeMap<String, StateDecl>,
+    pub projectile_state: BTreeMap<DeclaredName, StateDecl>,
     /// The effects of its resolve, which queue before its script's `on_resolve`.
     #[serde(default)]
     pub on_resolve: Vec<EffectData>,

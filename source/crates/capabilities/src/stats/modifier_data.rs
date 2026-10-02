@@ -39,7 +39,7 @@ pub struct ModifierData {
     #[serde(default)]
     pub params: BTreeMap<DeclaredName, Param>,
     #[serde(default)]
-    pub state: BTreeMap<String, StateDecl>,
+    pub state: BTreeMap<DeclaredName, StateDecl>,
 }
 
 impl ModifierData {

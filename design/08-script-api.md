@@ -67,7 +67,7 @@ A scaling table's keys are `base`, `per_level`, and a ratio for any stat the mod
 
 **Map** (`map/map.toml`): `metric` (`planar` or `spatial`), `[bounds]` (`min` and `max`, each `[x, z]`, `min` below `max` on both axes: no unit is ever outside them), `[grid]` (`cell` in meters, positive: whole cells over the bounds, at most 2²² cells; a mode with grid vision needs it), `[navigation]` (`cell`, the same rules, and the cells each layer blocks; a mode with `navigation` needs it), `[[paths]]` (`name`, `points`), `[[units]]` (`unit_type`, `team`, `pos`, and `path` with `from` if it walks or guards one: they stand from the start), `[[markers]]` (`name`, `tags`, `pos` or a `region` with `min` and `max`, a box, `team`, `params` and `events`, each optional but `name` and `tags`). A map with an `on_generate` script may leave out what the script builds. A point is `[x, z]` in meters on the ground plane, or `[x, y, z]` with `spatial`.
 
-**State types:** `int`, `num`, `bool`, `string`, `entity`, `entity_list`, `pos`, `vec`; each with a `default` and, for mode state, `sync`.
+**State types:** `int`, `num`, `bool`, `string`, `entity`, `entity_list`, `pos`, `vec`; each with a `default` and, for mode state, `sync`, which is `none` when the field does not give it. Modifier and projectile state take no `sync`.
 
 **The reference MOBA's stats, pools and tags** (in `data/mode.toml`; the engine reads some by name or binding ([Stats](04-capabilities/stats.md#stats))):
 
@@ -119,7 +119,7 @@ A package loads only when all of these pass:
 
 - No data file holds human text: names, descriptions and lines are message ids, each of which the file of the manifest's `language` defines.
 - Every data file matches its schema, every per-rank array has one entry for each rank of its slot kind, and every field of an action (`range`, `cooldown_ms`, `cost`, `windup_ms`) holds at every rank. A field an action's kind does not use fails.
-- Every name data declares or names is a declared name: a lowercase letter, then lowercase letters, digits and underscores. These are the ids of actions, modifiers and unit types and every name in data that refers to one, params and the params a number reads, tags and the tags of a filter, teams, paths, markers and their tags, and the mode's inputs. A package's name is not one, as it names the package to people too.
+- Every name data declares or names is a declared name: a lowercase letter, then lowercase letters, digits and underscores. These are the ids of actions, modifiers and unit types and every name in data that refers to one, params and the params a number reads, tags and the tags of a filter, teams, paths, markers and their tags, the mode's inputs, and the fields of every state. A package's name is not one, as it names the package to people too.
 - The mode declares at most 256 tags together, the engine's three among them, and no avatar has the name of one of them. No unit type or modifier carries `avatar`, `projectile` or `area`, which only the engine gives.
 - No avatar names `orders`: a player controls it, and a bot plays it through player inputs ([Control](04-capabilities/control.md#ai)).
 - Every script is referenced by data. Every function named like a hook, a hook's name or any name that starts with `on_` or `calc_`, is a hook of a role the script serves, with the hook's parameters, so a misspelled hook is an error, not a hook that never runs.

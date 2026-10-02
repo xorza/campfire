@@ -190,11 +190,6 @@ impl<'a> LoadCheck<'a> {
         {
             return Err(LoadProblem::NoPathingGrid);
         }
-        for (name, field) in &data.state {
-            if field.sync.is_none() {
-                return Err(LoadProblem::StateSync(name.clone()));
-            }
-        }
         let mut names = PackageNames::new(&packages.mode, &content.modifiers);
         let mode_params: BTreeSet<&str> = data.params.keys().map(DeclaredName::as_str).collect();
         names.serve(&data.script, ScriptRole::Mode, mode_params.iter().copied());
