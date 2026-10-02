@@ -125,24 +125,6 @@ The schedule is a separate field only because `Mode::install` needs it (`mode/te
   ```
 
   It needs `Session::hash_by_type` and `Runner::state_hash_by_type` in gated `internals` at the end of their files. Memory is about 3 MB for 2500 ticks.
-- [ ] **`FixedSession`: one fixed-key session fixture** — `runner/src/reference_3v3.rs:23-134` and `verifier/tests/headless.rs:34-37,80-213` both define `SEED_CHAIN`, `SERVER_KEY`, `AUX`, `key`, `session_key`, `delegation`, `terms`, and an `InputChain` signing loop. `headless::run()` loads the lane mode 6 times (`:184,186`, `log()`, 3× `:200`) and signs the delegation twice. `Reference3v3::start` also signs each delegation twice (`:60-62,74`). Better:
-
-  ```rust
-  #[derive(Debug)] pub struct FixedSession { packages: ModePackages, terms: SessionTerms, players: Vec<Delegation> }
-  #[derive(Debug, Clone, Copy)] pub struct InputRules { pub max_input_delay: u64, pub max_input_lead: u64, pub max_payload_len: u32, pub max_inputs_per_tick: u32 }
-  #[derive(Debug)] pub struct FixedPlayer { /* chain, key, session id */ }
-  impl FixedSession {
-      pub fn workspace(mode: &str, players: u32, tick_hz: NonZeroU32, rules: InputRules) -> FixedSession;
-      pub fn header(&self, terms: SessionTerms) -> SessionHeader;
-      pub fn start(&self) -> Runner;
-      pub fn player(&self, slot: u32) -> FixedPlayer;
-  }
-  impl FixedPlayer {
-      pub fn send(&mut self, runner: &mut Runner, stamp: u64, payload: &[u8], applied: &mut Vec<Applied>) -> Result<(), InputError>;
-  }
-  ```
-
-  The headless fixture goes from about 94 lines to about 25, and `Reference3v3` to about 40. Keep the same key bytes, so that no hash changes.
 - [ ] **An `Arena` for `reference_abilities.rs`** — `reference_world()` (`:170-210`) copies `TestMatch::new`, because `TestMatch` is `#[cfg(test)]`. Its `ScriptLimits` (`:175-180`) are copied from the abilities tests, not from the 3v3 manifest. Each test then loads by hand what `MatchBuild` loads: 7× `compile`, 6× `Actions::load(…, 0, …, 5)`, 8× `load_type`, 4× `bind_spawn` and 5× `load_modifier`, about 52 lines. The `Order { … Action::Slot … }` literal (9 lines) appears 5 times, and `run_schedule` is called by hand 11 times. Better:
   1. Gate `TestMatch` `any(test, feature = "internals")` and export it through `campfire_capabilities::internals`.
   2. Add an `Arena` with `step`, `steps`, `cast(caster, slot, target)` and `failures()` (as `reference_abilities.rs` keeps them across ticks), and `hero(name) -> HeroLoad { actions, modifiers }`. `hero` loads in the order of `MatchBuild::run` (`match_build.rs:86-129`).

@@ -28,8 +28,9 @@ impl FixedMatch {
         }
     }
 
-    /// Sends player `slot`'s input of `payload` stamped for `stamp`, in a packet of its own.
-    pub fn send(&mut self, slot: u32, stamp: u64, payload: &[u8]) {
+    /// Sends player `slot`'s input of `payload` stamped for `stamp`, in a packet of its own; how
+    /// it applies.
+    pub fn send(&mut self, slot: u32, stamp: u64, payload: &[u8]) -> Applied {
         let chain = &mut self.chains[usize::try_from(slot).unwrap()];
         let input = chain.extend(stamp, payload);
         let signature = chain.sign(
@@ -41,6 +42,10 @@ impl FixedMatch {
         self.runner
             .record([input], &signature, &mut self.applied)
             .unwrap_or_else(|error| panic!("player {slot}'s input at {stamp}: {error}"));
+        let [applied] = self.applied[..] else {
+            panic!("a packet of one input applies once");
+        };
+        applied
     }
 
     pub const fn runner(&self) -> &Runner {

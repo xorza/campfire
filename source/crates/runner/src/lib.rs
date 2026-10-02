@@ -22,7 +22,7 @@ pub use error::StartError;
 #[cfg(feature = "internals")]
 pub use fixed_match::FixedMatch;
 #[cfg(feature = "internals")]
-pub use fixed_session::FixedSession;
+pub use fixed_session::{FixedSession, InputRules};
 #[cfg(feature = "internals")]
 pub use golden::Golden;
 #[cfg(feature = "internals")]

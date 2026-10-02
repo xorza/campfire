@@ -21,6 +21,26 @@ pub struct FixedSession {
     players: u32,
 }
 
+/// The limits on a session's inputs: how many ticks an input may come late or early, its
+/// largest payload, and the most a player sends a tick.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct InputRules {
+    pub max_input_delay: u64,
+    pub max_input_lead: u64,
+    pub max_payload_len: u32,
+    pub max_inputs_per_tick: u32,
+}
+
+impl InputRules {
+    /// Limits no test reaches.
+    pub const ROOMY: InputRules = InputRules {
+        max_input_delay: 10,
+        max_input_lead: 10,
+        max_payload_len: 256,
+        max_inputs_per_tick: 4,
+    };
+}
+
 /// The seed chain of every fixed session.
 const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
 const SERVER_KEY: [u8; 32] = [8; 32];
@@ -33,13 +53,23 @@ const LIFETIME: u64 = 86_400;
 impl FixedSession {
     /// A session of `packages` at `tick_hz` for `players` players, with roomy input limits.
     pub fn new(packages: ModePackages, tick_hz: NonZeroU32, players: u32) -> FixedSession {
+        FixedSession::with_rules(packages, tick_hz, players, InputRules::ROOMY)
+    }
+
+    /// A session of `packages` at `tick_hz` for `players` players, its inputs within `rules`.
+    pub fn with_rules(
+        packages: ModePackages,
+        tick_hz: NonZeroU32,
+        players: u32,
+        rules: InputRules,
+    ) -> FixedSession {
         let terms = SessionTerms {
             server_key: SERVER_KEY,
             tick_hz,
-            max_input_delay: 10,
-            max_input_lead: 10,
-            max_payload_len: 256,
-            max_inputs_per_tick: 4,
+            max_input_delay: rules.max_input_delay,
+            max_input_lead: rules.max_input_lead,
+            max_payload_len: rules.max_payload_len,
+            max_inputs_per_tick: rules.max_inputs_per_tick,
             seed_commitment: SEED_CHAIN.commitment(),
             release: RELEASE.to_owned(),
             mode: Session::mode_in_terms(&packages),
@@ -60,6 +90,25 @@ impl FixedSession {
         self.players
     }
 
+    /// The session's terms.
+    pub const fn terms(&self) -> &SessionTerms {
+        &self.terms
+    }
+
+    /// The header of a session of `terms` with this session's players, each delegation signed
+    /// for `terms`.
+    pub fn header(&self, terms: SessionTerms) -> SessionHeader {
+        let players = (0..self.players)
+            .map(|slot| FixedSession::delegation(&terms, slot))
+            .collect();
+        SessionHeader { terms, players }
+    }
+
+    /// The log of the session, as it starts, its seed not yet revealed.
+    pub fn log(&self) -> SessionLog {
+        SessionLog::new(self.header(self.terms.clone())).unwrap_or_else(|error| panic!("{error}"))
+    }
+
     /// The seed of the log's first segment.
     pub fn seed() -> ServerSeed {
         SEED_CHAIN.seed(0)
@@ -67,19 +116,18 @@ impl FixedSession {
 
     /// A match at tick 0, its players joined, none of their inputs sent yet.
     pub fn start(&self) -> FixedMatch {
-        let players = (0..self.players)
-            .map(|slot| self.delegation(slot))
+        let log = self.log();
+        let chains = log
+            .header()
+            .players
+            .iter()
+            .zip(0..)
+            .map(|(delegation, slot)| {
+                InputChain::new(PlayerSlot::new(slot), delegation.chain_root())
+            })
             .collect();
-        let log = SessionLog::new(SessionHeader {
-            terms: self.terms.clone(),
-            players,
-        })
-        .unwrap_or_else(|error| panic!("{error}"));
         let runner = Runner::new(log, FixedSession::seed(), &self.packages)
             .unwrap_or_else(|error| panic!("{error}"));
-        let chains = (0..self.players)
-            .map(|slot| InputChain::new(PlayerSlot::new(slot), self.delegation(slot).chain_root()))
-            .collect();
         FixedMatch::new(runner, chains, self.terms.session_id())
     }
 
@@ -96,12 +144,12 @@ impl FixedSession {
         Keypair::from_secret_key(&Secp256k1::new(), &secret)
     }
 
-    /// Player `slot`'s delegation in this session.
-    fn delegation(&self, slot: u32) -> Delegation {
+    /// Player `slot`'s delegation in a session of `terms`.
+    fn delegation(terms: &SessionTerms, slot: u32) -> Delegation {
         let delegated = DelegationTerms {
             session_key: FixedSession::session_key(slot).x_only_public_key().0,
             server_key: SERVER_KEY,
-            session_id: self.terms.session_id(),
+            session_id: terms.session_id(),
             seed_contribution: [u8::try_from(slot).unwrap(); 32],
             expiration: NOW + LIFETIME,
         };

@@ -11,14 +11,10 @@ use campfire_capabilities::{
     Action, ActionSlots, Destination, Order, Owner, PoolId, Pools, Projectile,
 };
 use campfire_log::LogEvent;
-use campfire_math::{Num, PlayerSlot, Vec3};
-use campfire_package::{ModePackages, PackageStore, RELEASE, StoreError};
-use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
-use campfire_protocol::{
-    Applied, Delegation, DelegationTerms, Fingerprint, InputChain, SeedChain, SeedError,
-    ServerSeed, SessionHeader, SessionLog, SessionTerms,
-};
-use campfire_runner::{Runner, Session, StartError};
+use campfire_math::{Num, Vec3};
+use campfire_package::{ModePackages, PackageStore, StoreError};
+use campfire_protocol::{Applied, Fingerprint, SeedError, ServerSeed, SessionLog, SessionTerms};
+use campfire_runner::{FixedSession, InputRules, Runner, StartError};
 use campfire_sim::{EntityIndex, Position, StableId, StateHash};
 use campfire_verifier::{Replay, Verified};
 
@@ -31,10 +27,6 @@ const LANE_MODE: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
     "/../../packages/test/modes/lane"
 );
-const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
-const SERVER_KEY: [u8; 32] = [8; 32];
-/// BIP-340 signing without auxiliary randomness is deterministic, so every run signs alike.
-const AUX: [u8; 32] = [0; 32];
 /// Long enough for every order to apply, and for the hero to arrive.
 const TICKS: u64 = 40;
 
@@ -77,17 +69,6 @@ const ORDERS: [Sent; 3] = [
     },
 ];
 
-fn key(byte: u8) -> Keypair {
-    Keypair::from_secret_key(
-        &Secp256k1::new(),
-        &SecretKey::from_byte_array(&[byte; 32]).unwrap(),
-    )
-}
-
-fn session_key() -> Keypair {
-    key(2)
-}
-
 fn packages() -> ModePackages {
     ModePackages::from_dir(Path::new(LANE_MODE)).unwrap()
 }
@@ -96,49 +77,16 @@ fn store() -> PackageStore {
     PackageStore::scan(Path::new(PACKAGES)).unwrap()
 }
 
-/// A session of the test lane mode at its 30 ticks a second.
-fn terms() -> SessionTerms {
-    let packages = packages();
-    SessionTerms {
-        server_key: SERVER_KEY,
-        tick_hz: NonZeroU32::new(30).unwrap(),
+/// A session of the test lane mode at its 30 ticks a second, for its one player, whose inputs
+/// may come 3 ticks late or early.
+fn session() -> FixedSession {
+    let rules = InputRules {
         max_input_delay: 3,
         max_input_lead: 3,
         max_payload_len: 64,
         max_inputs_per_tick: 4,
-        seed_commitment: SEED_CHAIN.commitment(),
-        release: RELEASE.to_owned(),
-        mode: Session::mode_in_terms(&packages),
-        dependencies: Session::dependencies_in_terms(&packages),
-    }
-}
-
-/// The player's main key, `key(1)`, lets `session_key` sign in the session of `session`.
-fn delegation(session: &SessionTerms) -> Delegation {
-    let terms = DelegationTerms {
-        session_key: session_key().x_only_public_key().0,
-        server_key: SERVER_KEY,
-        session_id: session.session_id(),
-        seed_contribution: [4; 32],
-        expiration: 1_700_086_400,
     };
-    Delegation::sign(&Secp256k1::new(), &key(1), &terms, 1_700_000_000, &AUX)
-}
-
-/// The header of a session of `terms`, with the one player.
-fn header_of(terms: SessionTerms) -> SessionHeader {
-    SessionHeader {
-        players: vec![delegation(&terms)],
-        terms,
-    }
-}
-
-fn header() -> SessionHeader {
-    header_of(terms())
-}
-
-fn log() -> SessionLog {
-    SessionLog::new(header()).unwrap()
+    FixedSession::with_rules(packages(), NonZeroU32::new(30).unwrap(), 1, rules)
 }
 
 fn num(value: i64) -> Num {
@@ -181,14 +129,11 @@ struct Run {
 
 /// Runs a match in which the player sends `orders`.
 fn run(orders: &[&Sent], ticks: u64) -> Run {
-    let mut runner = Runner::new(log(), SEED_CHAIN.seed(0), &packages()).unwrap();
-    let secp = Secp256k1::new();
-    let mut chain = InputChain::new(PlayerSlot::new(0), delegation(&terms()).chain_root());
-    let mut applied = Vec::new();
+    let mut fixed = session().start();
     let mut hashes = Vec::new();
     for tick in 0..ticks {
         for sent in orders.iter().filter(|sent| sent.arrives == tick) {
-            let hero = hero_id(&runner);
+            let hero = hero_id(fixed.runner());
             let payload = Order::payload(&[Order {
                 unit: hero,
                 action: Action::Move {
@@ -196,18 +141,16 @@ fn run(orders: &[&Sent], ticks: u64) -> Run {
                     z: num(sent.z),
                 },
             }]);
-            let input = chain.extend(sent.stamp, &payload);
-            let signature = chain.sign(&secp, &session_key(), terms().session_id(), &AUX);
             assert_eq!(
-                runner.record([input], &signature, &mut applied),
-                Ok(()),
+                fixed.send(0, sent.stamp, &payload),
+                sent.applied,
                 "{sent:?}"
             );
-            assert_eq!(applied, [sent.applied], "{sent:?}");
         }
-        runner.run_tick();
-        hashes.push(runner.state_hash());
+        fixed.runner_mut().run_tick();
+        hashes.push(fixed.runner().state_hash());
     }
+    let mut runner = fixed.into_runner();
     runner.reveal_seed();
     Run { runner, hashes }
 }
@@ -408,21 +351,22 @@ fn the_binary_logs_the_last_state_hash() {
 #[test]
 fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
     let store = store();
+    let session = session();
     assert!(matches!(
-        Replay::new(log(), &store),
+        Replay::new(session.log(), &store),
         Err(StartError::Seed(SeedError::NotRevealed))
     ));
     assert!(matches!(
-        Runner::new(log(), ServerSeed::new([8; 32]), &packages()),
+        Runner::new(session.log(), ServerSeed::new([8; 32]), &packages()),
         Err(StartError::Seed(SeedError::WrongSeed))
     ));
 
     // Each change to the terms, the log revealed, and the error the verifier refuses it with.
     let other = |change: fn(&mut SessionTerms)| {
-        let mut terms = terms();
+        let mut terms = session.terms().clone();
         change(&mut terms);
-        let mut log = SessionLog::new(header_of(terms)).unwrap();
-        log.reveal_seed(SEED_CHAIN.seed(0));
+        let mut log = SessionLog::new(session.header(terms)).unwrap();
+        log.reveal_seed(FixedSession::seed());
         Replay::new(log, &store).err()
     };
     let refused = [
@@ -453,10 +397,10 @@ fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
     );
 
     // Three players, and the lane's two teams seat one each.
-    let mut header = header();
+    let mut header = session.header(session.terms().clone());
     header.players = vec![header.players[0].clone(); 3];
     let mut log = SessionLog::new(header).unwrap();
-    log.reveal_seed(SEED_CHAIN.seed(0));
+    log.reveal_seed(FixedSession::seed());
     let refused = Replay::new(log, &store).err();
     assert!(
         matches!(
