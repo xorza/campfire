@@ -13,8 +13,10 @@ use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
+use crate::scripts::state_value::StateValue;
 use crate::stats::modifier_book::ModifierBook;
-use crate::stats::modifiers::Modifiers;
+use crate::stats::modifier_clocks::ModifierClocks;
+use crate::stats::modifiers::{Instance, Modifiers};
 use crate::stats::stats_call::StatsCall;
 use crate::stats::stats_column::StatsColumn;
 use crate::units::modifier_id::ModifierId;
@@ -38,6 +40,13 @@ pub(crate) struct ModifierHooks {
 struct Heard {
     id: ModifierId,
     source: Option<StableId>,
+}
+
+/// The instance a hook runs for, and its script state, as the call starts to see them.
+#[derive(Debug)]
+struct HeardInstance {
+    instance: Instance,
+    state: Vec<StateValue>,
 }
 
 impl ModifierHooks {
@@ -159,9 +168,17 @@ impl ModifierHooks {
     ) {
         let world = batch.world();
         let entity = world.resource::<EntityIndex>().get(carrier);
-        let modifiers = entity.and_then(|entity| world.get::<Modifiers>(entity));
-        let Some(instance) = modifiers.and_then(|modifiers| modifiers.get(heard.id, heard.source))
-        else {
+        let found = entity.and_then(|entity| {
+            let modifiers = world.get::<Modifiers>(entity)?;
+            let clocks = world.get::<ModifierClocks>(entity)?;
+            let at = modifiers.position(heard.id, heard.source)?;
+            let instance = *modifiers.get(heard.id, heard.source)?.instance;
+            Some(HeardInstance {
+                instance,
+                state: clocks.state(at).to_vec(),
+            })
+        });
+        let Some(HeardInstance { instance, state }) = found else {
             return;
         };
         let entry = world.resource::<ModifierBook>().get(heard.id);
@@ -177,7 +194,7 @@ impl ModifierHooks {
             heard.id,
             heard.source,
             instance.stacks,
-            instance.state.clone(),
+            state,
         );
         let (ability, rank, package) = (instance.ability, instance.rank, entry.package);
         let pool = ModifierHooks::pool(world, heard.source);

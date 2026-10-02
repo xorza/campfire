@@ -7,7 +7,9 @@ use campfire_sim::{Position, SimSet, SimTick, StableId, StateRegistry, TickRate}
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_kind::ActionKind;
+use crate::stats::carried_mut::CarriedMut;
 use crate::stats::lifetime::Hold;
+use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::param_book::ParamBook;
 
 use crate::actions::action_slots::{ActionSlots, ActionTarget, InProgress, SlotAim};
@@ -220,7 +222,7 @@ fn hold_passives(
     (tick, rate): (Res<'_, SimTick>, Res<'_, TickRate>),
     params: Res<'_, ParamBook>,
     sources: ParamSources<'_, '_>,
-    mut units: Query<'_, '_, (&StableId, &ActionSlots, &mut Modifiers)>,
+    mut units: Query<'_, '_, (&StableId, &ActionSlots, &mut Modifiers, &mut ModifierClocks)>,
 ) {
     if stats.is_none() {
         return;
@@ -229,19 +231,21 @@ fn hold_passives(
         return;
     };
     let now = tick.start();
-    for (&id, slots, mut modifiers) in &mut units {
+    for (&id, slots, modifiers, clocks) in &mut units {
+        let mut carried = CarriedMut::new(modifiers, clocks);
         for slot in slots.iter() {
             let Some(passive) = actions.get(slot.action).and_then(|action| action.passive) else {
                 continue;
             };
-            let held = modifiers
+            let held = carried
+                .modifiers()
                 .get(passive.modifier, Some(id))
                 .filter(|instance| instance.lifetime.held_by(Hold::Passive))
                 .map(|instance| instance.rank);
             let holds = slot.rank > 0 && (!passive.while_ready || slot.ready_at <= now);
             if !holds {
                 if held.is_some() {
-                    modifiers.release(passive.modifier, Some(id), Hold::Passive);
+                    carried.release(passive.modifier, Some(id), Hold::Passive);
                 }
                 continue;
             }
@@ -262,7 +266,7 @@ fn hold_passives(
             if let Some(application) =
                 book.application(passive.modifier, applier, None, now, *rate, param)
             {
-                modifiers.apply(application);
+                carried.apply(application);
             }
         }
     }

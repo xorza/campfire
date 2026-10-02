@@ -18,7 +18,7 @@ use crate::players::resource_id::ResourceId;
 use crate::stats::Stats;
 use crate::stats::lifetime::{Ends, Lifetime};
 use crate::stats::modifier_data::{ModifierData, Reapply};
-use crate::stats::modifiers::{Application, Instance};
+use crate::stats::modifiers::{Application, NewInstance};
 use crate::stats::pool_cost::PoolCost;
 use crate::stats::pool_data::PoolData;
 use crate::stats::stat_book::StatBook;
@@ -616,6 +616,7 @@ fn every_combat_type_is_state_and_restores() {
             "sim.position",
             "sim.tick",
             "stats.level",
+            "stats.modifier_clocks",
             "stats.modifiers",
             "stats.player_modifiers",
             "stats.pools",
@@ -924,7 +925,7 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     let entity = fight.entity(source);
     let mut pools = fight.world.get_mut::<Pools>(entity).unwrap();
     pools.take(PoolId::FIRST, num(60));
-    let shield = |id: u16, until: Option<u64>, amount: i64| Instance {
+    let shield = |id: u16, until: Option<u64>, amount: i64| NewInstance {
         id: ModifierId::new(id),
         source: None,
         ability: None,
@@ -945,24 +946,27 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     for name in ["first", "second", "third"] {
         Stats::load_modifier(&mut fight.world, 0, name, &shield_data(), None);
     }
-    let mut modifiers = Modifiers::default();
-    for instance in [
+    let shields = [
         shield(0, None, 100),
         shield(1, Some(50), 20),
         shield(2, Some(30), 10),
-    ] {
-        modifiers.apply(Application {
-            instance,
-            reapply: Reapply::Refresh,
-            max_stacks: None,
-        });
-    }
+    ]
+    .map(|instance| Application {
+        instance,
+        reapply: Reapply::Refresh,
+        max_stacks: None,
+    });
     let entity = fight.entity(target);
-    fight.world.entity_mut(entity).insert(modifiers);
+    fight
+        .world
+        .entity_mut(entity)
+        .insert(Modifiers::bundle(shields));
     let shields = |fight: &Fight| {
-        let modifiers = fight.get_ref::<Modifiers>(target).unwrap();
-        let shields = modifiers.iter().map(|instance| instance.shield.unwrap());
-        shields.collect::<Vec<_>>()
+        let clocks = fight.get_ref::<ModifierClocks>(target).unwrap();
+        let held = fight.get_ref::<Modifiers>(target).unwrap().len();
+        (0..held)
+            .map(|at| clocks.shield(at).unwrap())
+            .collect::<Vec<_>>()
     };
 
     // 35: the shield that ends in tick 30 spends its 10, the one of tick 50 its 20, and the one

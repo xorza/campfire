@@ -32,6 +32,7 @@ use crate::stats::Stats;
 use crate::stats::level::Level;
 use crate::stats::lifetime::Hold;
 use crate::stats::modifier_book::Applier;
+use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_effect::ModifierEffect;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::unit_stats::UnitStats;
@@ -189,6 +190,7 @@ impl ModeBook {
             UnitStats::default(),
             tags,
             Modifiers::default(),
+            ModifierClocks::default(),
             parts,
         ));
         if let Some(pools) = kit.pools {

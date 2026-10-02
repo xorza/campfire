@@ -82,7 +82,7 @@ impl RefreshScratch {
             if !takes_effect(entry.tags) {
                 continue;
             }
-            for (share, spec) in instance.stats.iter().zip(&entry.spec.stats) {
+            for (share, spec) in instance.shares.iter().zip(&entry.spec.stats) {
                 let Some(param) = share.live else {
                     let change = i128::from(share.value.to_bits()) * i128::from(instance.stacks);
                     self.totals[row + spec.stat.index()].change(spec.op, change);

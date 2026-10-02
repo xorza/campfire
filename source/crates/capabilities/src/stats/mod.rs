@@ -12,11 +12,13 @@ use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StableId, StateRegist
 
 use crate::scripts::ctx::Ctx;
 use crate::scripts::frame::Frame;
+use crate::stats::carried_mut::CarriedMut;
 use crate::stats::held_modifiers::{Held, HeldModifiers};
 use crate::stats::level::Level;
 use crate::stats::lifetime::Hold;
 use crate::stats::live_shares::LiveShares;
 use crate::stats::modifier_book::{Applier, ModifierBook};
+use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_effect::ModifierEffect;
 use crate::stats::modifier_handle::ModifierHandle;
 use crate::stats::modifier_spec::ParamPlace;
@@ -47,6 +49,7 @@ use crate::units::unit_type::UnitType;
 use crate::values::attitude::Attitude;
 use crate::values::metric::Metric;
 
+pub(crate) mod carried_mut;
 pub(crate) mod error;
 pub(crate) mod held_modifiers;
 pub(crate) mod level;
@@ -56,6 +59,7 @@ pub(crate) mod live_param;
 pub(crate) mod live_shares;
 pub(crate) mod meter;
 pub(crate) mod modifier_book;
+pub(crate) mod modifier_clocks;
 pub(crate) mod modifier_data;
 pub(crate) mod modifier_effect;
 pub(crate) mod modifier_handle;
@@ -124,6 +128,7 @@ impl Stats {
         registry.register_resource::<PlayerModifiers>();
         registry.register_component::<Level>();
         registry.register_component::<Modifiers>();
+        registry.register_component::<ModifierClocks>();
         registry.register_component::<Pools>();
         schedule.add_systems((
             (
@@ -233,8 +238,8 @@ impl Stats {
         let Some(application) = book.application(id, applier, duration, now, rate, param) else {
             return;
         };
-        if let Some(mut modifiers) = world.get_mut::<Modifiers>(entity) {
-            modifiers.apply(application);
+        if let Some(mut carried) = CarriedMut::of(world, entity) {
+            carried.apply(application);
         }
     }
 
@@ -245,10 +250,8 @@ impl Stats {
         source: Option<StableId>,
     ) {
         let entity = world.resource::<EntityIndex>().get(carrier);
-        if let Some(mut modifiers) = entity.and_then(|entity| world.get_mut::<Modifiers>(entity))
-            && modifiers.bypass_change_detection().remove(id, source)
-        {
-            modifiers.set_changed();
+        if let Some(mut carried) = entity.and_then(|entity| CarriedMut::of(world, entity)) {
+            carried.remove(id, source);
         }
     }
 
@@ -261,31 +264,29 @@ impl Stats {
         }
         let now = world.resource::<SimTick>().start();
         let entity = world.resource::<EntityIndex>().get(data.carrier);
-        let Some(mut modifiers) = entity.and_then(|entity| world.get_mut::<Modifiers>(entity))
-        else {
-            return;
-        };
-        if let Some(instance) = modifiers.get_mut(data.id, data.source) {
-            instance.set_stacks(data.stacks, now);
-            instance.state.clone_from(&data.state);
+        if let Some(mut carried) = entity.and_then(|entity| CarriedMut::of(world, entity)) {
+            carried.write(data.id, data.source, data.stacks, &data.state, now);
         }
     }
 }
 
 /// Ends, as each tick starts, the modifiers and stacks that hold no longer.
-fn expire_modifiers(tick: Res<'_, SimTick>, mut units: Query<'_, '_, &mut Modifiers>) {
+fn expire_modifiers(
+    tick: Res<'_, SimTick>,
+    mut units: Query<'_, '_, (&mut Modifiers, &mut ModifierClocks)>,
+) {
     let now = tick.start();
-    for mut modifiers in &mut units {
-        if modifiers.bypass_change_detection().expire(now) {
-            modifiers.set_changed();
-        }
+    for (modifiers, clocks) in &mut units {
+        CarriedMut::new(modifiers, clocks).expire(now);
     }
 }
 
 /// Ends the modifiers of each unit that died this tick, all but its passives.
-fn clear_dead_modifiers(mut dead: Query<'_, '_, &mut Modifiers, Added<Dead>>) {
-    for mut modifiers in &mut dead {
-        modifiers.clear_on_death();
+fn clear_dead_modifiers(
+    mut dead: Query<'_, '_, (&mut Modifiers, &mut ModifierClocks), Added<Dead>>,
+) {
+    for (modifiers, clocks) in &mut dead {
+        CarriedMut::new(modifiers, clocks).clear_on_death();
     }
 }
 
@@ -318,7 +319,7 @@ fn apply_held(
             &Team,
             Option<&UnitTags>,
             Option<&Owner>,
-            &mut Modifiers,
+            (&mut Modifiers, &mut ModifierClocks),
             Option<&Body>,
         ),
         Without<Dead>,
@@ -353,7 +354,7 @@ fn apply_held(
     let granting = tag_book
         .as_deref()
         .map_or(TagSet::default(), TagBook::granting);
-    for (&source, &at, &team, carrier, _, modifiers, _) in &units {
+    for (&source, &at, &team, carrier, _, (modifiers, _), _) in &units {
         let immune = carrier.map_or(TagSet::default(), |tags| tags.immune);
         let takes_effect = TagBook::effect_test(granting, immune);
         for instance in modifiers.iter() {
@@ -383,21 +384,20 @@ fn apply_held(
         }
     }
     held.sort_unstable();
-    for (&id, _, _, _, _, mut modifiers, _) in &mut units {
+    for (&id, _, _, _, _, (modifiers, clocks), _) in &mut units {
+        let mut carried = CarriedMut::new(modifiers, clocks);
         let first = held.partition_point(|entry| entry.target < id);
         let mine = held[first..].iter().take_while(|entry| entry.target == id);
         let kept = |modifier, source| {
             mine.clone()
                 .any(|entry| entry.modifier == modifier && entry.source == source)
         };
-        if modifiers.bypass_change_detection().release_held(kept) {
-            modifiers.set_changed();
-        }
+        carried.release_held(kept);
         for entry in mine {
-            match modifiers.get(entry.modifier, entry.source) {
+            match carried.modifiers().get(entry.modifier, entry.source) {
                 Some(instance) if instance.lifetime.held_by(Hold::Held) => continue,
                 Some(_) => {
-                    modifiers.hold(entry.modifier, entry.source, Hold::Held);
+                    carried.hold(entry.modifier, entry.source, Hold::Held);
                     continue;
                 }
                 None => {}
@@ -418,7 +418,7 @@ fn apply_held(
             else {
                 continue;
             };
-            modifiers.apply(application);
+            carried.apply(application);
         }
     }
 }
@@ -431,6 +431,7 @@ fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
         unit.get::<Pools>().copied(),
         stats,
         unit.get::<Modifiers>(),
+        unit.get::<ModifierClocks>(),
     );
 }
 

@@ -1,4 +1,3 @@
-use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{QueryState, With, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
@@ -40,8 +39,10 @@ use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
 use crate::scripts::script_batch::ScriptBatch;
 use crate::stats::StatsSet;
+use crate::stats::carried_mut::CarriedMut;
 use crate::stats::life_pool::LifePool;
 use crate::stats::modifier_book::ModifierBook;
+use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
@@ -309,7 +310,15 @@ struct IntervalDue {
 /// interval comes this tick, by carrier's stable id, then modifier, then source.
 fn run_intervals(
     world: &mut World,
-    carriers: &mut QueryState<(&StableId, &mut Modifiers, Option<&UnitTags>), Without<Dead>>,
+    carriers: &mut QueryState<
+        (
+            &StableId,
+            &mut Modifiers,
+            &mut ModifierClocks,
+            Option<&UnitTags>,
+        ),
+        Without<Dead>,
+    >,
     mut due: Local<'_, Vec<IntervalDue>>,
 ) {
     let now = world.resource::<SimTick>().start();
@@ -320,7 +329,7 @@ fn run_intervals(
         return;
     };
     due.clear();
-    for (&carrier, mut modifiers, tags) in carriers.iter_mut(world) {
+    for (&carrier, modifiers, clocks, tags) in carriers.iter_mut(world) {
         let immune = tags.map_or(TagSet::default(), |tags| tags.immune);
         let takes_effect = TagBook::effect_test(granting, immune);
         let push = |id, source| {
@@ -330,13 +339,11 @@ fn run_intervals(
                 source,
             });
         };
-        if modifiers.bypass_change_detection().advance_intervals(
+        CarriedMut::new(modifiers, clocks).advance_intervals(
             now,
             |id| takes_effect(book.tags(id)),
             push,
-        ) {
-            modifiers.set_changed();
-        }
+        );
     }
     if due.is_empty() {
         return;
@@ -640,14 +647,8 @@ impl Combat {
         let mut left = amount.max(Num::ZERO);
         let takes_effect = TagBook::effective(world, entity);
         let book = world.get_resource::<ModifierBook>().cloned();
-        if let (Some(mut modifiers), Some(book)) = (world.get_mut::<Modifiers>(entity), book) {
-            let after = modifiers
-                .bypass_change_detection()
-                .absorb(left, |id| takes_effect(book.tags(id)));
-            if after != left {
-                modifiers.set_changed();
-            }
-            left = after;
+        if let (Some(mut carried), Some(book)) = (CarriedMut::of(world, entity), book) {
+            left = carried.absorb(left, |id| takes_effect(book.tags(id)));
         }
         let LifePool(life) = *world.resource::<LifePool>();
         let mut pools = world

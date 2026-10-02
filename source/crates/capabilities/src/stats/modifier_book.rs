@@ -12,9 +12,10 @@ use crate::scripts::hook_set::HookSet;
 use crate::scripts::script_book::ScriptBook;
 use crate::stats::error::ModifierError;
 use crate::stats::lifetime::{Ends, Hold, Lifetime};
+use crate::stats::modifier_clocks::Interval;
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifier_spec::{ModifierSpec, ParamPlace, SpecNames, SpecNumber, SpecTime};
-use crate::stats::modifiers::{Application, Instance, Interval, StackEnd, StatShare};
+use crate::stats::modifiers::{Application, Instance, NewInstance, StackEnd, StatShare};
 use crate::stats::param_read::ParamRead;
 use crate::stats::stat_id::StatId;
 use crate::units::action_id::ActionId;
@@ -218,7 +219,7 @@ impl ModifierBook {
             until: Instance::end(now, ticks),
             count: 1,
         });
-        let instance = Instance {
+        let instance = NewInstance {
             id,
             source: from.source,
             ability: from.ability,

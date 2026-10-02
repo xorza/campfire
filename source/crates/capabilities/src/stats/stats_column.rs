@@ -7,6 +7,7 @@ use campfire_sim::StableId;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::state_value::StateValue;
 use crate::stats::modifier_book::ModifierBook;
+use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_handle::ModifierHandle;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::pool_id::PoolId;
@@ -68,20 +69,28 @@ impl ViewColumn for StatsColumn {
 
 impl StatsColumn {
     /// Adds the row of a unit at `level`, with `pools`, the values `stats` of the stats it
-    /// carries, and `modifiers`.
+    /// carries, and `modifiers` with their `clocks`.
     pub(crate) fn push(
         &mut self,
         level: Option<u32>,
         pools: Option<Pools>,
         stats: &[Num],
         modifiers: Option<&Modifiers>,
+        clocks: Option<&ModifierClocks>,
     ) {
         let stats_start = len(self.stats.len());
         self.stats.extend_from_slice(stats);
         let modifiers_start = len(self.modifiers.len());
-        for instance in modifiers.into_iter().flat_map(Modifiers::iter) {
+        let carried = modifiers.zip(clocks).into_iter();
+        let carried = carried.flat_map(|(modifiers, clocks)| {
+            modifiers
+                .iter()
+                .enumerate()
+                .map(move |(at, instance)| (instance, clocks.state(at)))
+        });
+        for (instance, state) in carried {
             let start = len(self.modifier_state.len());
-            self.modifier_state.extend_from_slice(&instance.state);
+            self.modifier_state.extend_from_slice(state);
             self.modifiers.push(ModifierRow {
                 id: instance.id,
                 source: instance.source,

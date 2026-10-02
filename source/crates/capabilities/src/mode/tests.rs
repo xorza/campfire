@@ -61,9 +61,10 @@ use crate::stats::Stats;
 use crate::stats::level::Level;
 use crate::stats::lifetime::{Ends, Hold, Lifetime};
 use crate::stats::modifier_book::ModifierBook;
+use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifiers::Modifiers;
-use crate::stats::modifiers::{Application, Instance, StatShare};
+use crate::stats::modifiers::{Application, NewInstance, StatShare};
 use crate::stats::move_step::MoveStep;
 use crate::stats::player_modifiers::{PlayerModifier, PlayerModifiers};
 use crate::stats::pool_id::PoolId;
@@ -1297,13 +1298,15 @@ fn on_mode_input(ctx, player, name, value) {
     let hero = owned.single(&game.world).unwrap();
     let held = |game: &Game| {
         let modifiers = game.world.get::<Modifiers>(hero).unwrap();
+        let clocks = game.world.get::<ModifierClocks>(hero).unwrap();
         modifiers
             .iter()
-            .map(|instance| {
+            .enumerate()
+            .map(|(at, instance)| {
                 (
                     instance.stacks,
                     instance.lifetime.until().map(Tick::get),
-                    instance.state.clone(),
+                    clocks.state(at).to_vec(),
                 )
             })
             .collect::<Vec<_>>()
@@ -1801,7 +1804,7 @@ impl Game {
         let shares = stats
             .iter()
             .map(|&(_, value)| StatShare { value, live: None });
-        let instance = Instance {
+        let instance = NewInstance {
             id,
             source: None,
             ability: None,
@@ -1816,12 +1819,11 @@ impl Game {
             stats: shares.collect(),
             state: Vec::new(),
         };
-        let mut modifiers = Modifiers::default();
-        modifiers.apply(Application {
+        let modifiers = Modifiers::bundle([Application {
             instance,
             reapply: Reapply::Refresh,
             max_stacks: None,
-        });
+        }]);
         let grunt = self
             .world
             .non_send::<View>()
@@ -2414,24 +2416,72 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     assert!(LevelUps(vec![level_up(1)]).check(world));
     assert!(!LevelUps(vec![level_up(2)]).check(world));
 
+    // A route of the grunt, of the mode's one kind of walker, until its body grows past it.
+    let route = game.world.get::<Route>(grunt).unwrap().clone();
+    assert!(route.check(&game.world, grunt));
+    let wide = Body::new(num(3)).unwrap();
+    game.world.entity_mut(grunt).insert(wide);
+    assert!(!route.check(&game.world, grunt));
+    assert!(!Destination::default().check(&game.world, grunt));
+}
+
+/// The restore checks of a unit's modifiers, their clocks and the players' modifiers let the
+/// match's own through, and refuse one the book lacks or of another shape.
+#[test]
+fn a_restore_check_refuses_modifiers_the_book_lacks() {
+    let mut game = Game::new(SCRIPT, LIMITS);
     // A modifier of the book, with a value for its one change and no state, as the fighter's is;
     // not one the book lacks, nor one of other state or another count of changes.
     let fighter = game.fighter(0, &[("armor", num(1))]);
     let fighter = game.entity(fighter.get());
     let world = &game.world;
-    let modifiers = world.get::<Modifiers>(fighter).unwrap().clone();
+    let modifiers = world.get::<Modifiers>(fighter).unwrap();
     assert!(modifiers.check(world, fighter));
+    assert!(
+        world
+            .get::<ModifierClocks>(fighter)
+            .unwrap()
+            .check(world, fighter)
+    );
     let modifier = modifiers.iter().next().unwrap().id;
-    let changed = |change: &dyn Fn(&mut Instance)| {
-        let mut changed = modifiers.clone();
-        change(changed.get_mut(modifier, None).unwrap());
-        changed.check(world, fighter)
+    let one = StatShare {
+        value: num(1),
+        live: None,
     };
-    assert!(!changed(&|instance| instance.id = ModifierId::new(u16::MAX)));
-    assert!(!changed(
-        &|instance| instance.state = vec![StateValue::Bool(true)]
-    ));
-    assert!(!changed(&|instance| instance.stats.clear()));
+    let applied = |id, stats: Vec<StatShare>, state: Vec<StateValue>| Application {
+        instance: NewInstance {
+            id,
+            source: None,
+            ability: None,
+            rank: 1,
+            aura_radius: None,
+            stacks: 1,
+            lifetime: Lifetime::new(None, Ends::Never),
+            stack_life: None,
+            stack_ends: Vec::new(),
+            interval: None,
+            shield: None,
+            stats,
+            state,
+        },
+        reapply: Reapply::Refresh,
+        max_stacks: None,
+    };
+    let modifiers_of = |application| {
+        let mut modifiers = Modifiers::default();
+        modifiers.apply(&mut ModifierClocks::default(), application);
+        modifiers
+    };
+    let clocks_of = |application| {
+        let mut clocks = ModifierClocks::default();
+        Modifiers::default().apply(&mut clocks, application);
+        clocks
+    };
+    let unknown = ModifierId::new(u16::MAX);
+    assert!(!modifiers_of(applied(unknown, vec![one], Vec::new())).check(world, fighter));
+    assert!(!modifiers_of(applied(modifier, Vec::new(), Vec::new())).check(world, fighter));
+    let state = vec![StateValue::Bool(true)];
+    assert!(!clocks_of(applied(modifier, vec![one], state)).check(world, fighter));
     let mut held = PlayerModifiers::default();
     held.add(PlayerModifier {
         player: PlayerSlot::new(0),
@@ -2443,12 +2493,4 @@ fn a_restore_check_refuses_what_the_match_lacks() {
         modifier: ModifierId::new(u16::MAX),
     });
     assert!(!held.check(world));
-
-    // A route of the grunt, of the mode's one kind of walker, until its body grows past it.
-    let route = game.world.get::<Route>(grunt).unwrap().clone();
-    assert!(route.check(&game.world, grunt));
-    let wide = Body::new(num(3)).unwrap();
-    game.world.entity_mut(grunt).insert(wide);
-    assert!(!route.check(&game.world, grunt));
-    assert!(!Destination::default().check(&game.world, grunt));
 }

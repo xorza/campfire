@@ -132,6 +132,7 @@ pub use scripts::state_value::StateValue;
 pub use stats::Stats;
 pub use stats::error::ModifierProblem;
 pub use stats::level::Level;
+pub use stats::modifier_clocks::ModifierClocks;
 pub use stats::modifier_data::{AuraData, ModifierData, Reapply};
 pub use stats::modifiers::Modifiers;
 pub use stats::move_step::MoveStep;

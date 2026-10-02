@@ -15,7 +15,6 @@ References: `R§n` is group n of `REVIEW.md`, `T§n` is group n of `TEST-REVIEW.
 | R3 Strict layers with registered hooks | Lower modules import higher ones, and the core names every capability | R§8, R§10 |
 | R5 Stable order and one exactness rule | Some systems spend or allocate in query order, and some arithmetic rounds its own way | R§4, R§12 |
 | R6 A limit on work per tick, and fresh shared indexes | Navigation, vision, deliveries and the view have no work limit and no shared index | R§5, R§12 |
-| R7 State holds only state | Components store book data | R§1, R§7, R§10 |
 | T Proof and test redesign | Refactors have no permanent proof of equal behaviour, and every module writes its own harness | T§1 to T§8 |
 
 ## Rules
@@ -175,7 +174,6 @@ capability_set, books
 - Vision clears bitmaps by map size times groups.
 - Deliveries, auras and script queries test every unit.
 - Every script batch rebuilds every row.
-- Change detection on `Modifiers` is too coarse.
 
 ### Shape
 
@@ -208,24 +206,6 @@ capability_set, books
   - A batch with no call builds nothing.
   - `deal_damage` reads the view only when the damage queue is not empty.
   - Filters are parsed once for each call site, and kept.
-- **Change detection.** `Modifiers` splits in two:
-  - `ModifierStats` holds the instances, stacks and changes. Only these trigger a stats refresh.
-  - `ModifierClock` holds intervals, shields and state.
-
-  A DoT tick or a shield absorb then does not re-derive the unit's stats.
-
-## R7. State holds only state
-
-### Problem
-
-- `Modifiers` holds its instances in nested buffers.
-
-### Shape
-
-- **Book data leaves the state** (R1):
-  - `PlayerResources` keeps its count: it is the width of the state's own rows, which every reader indexes by, and the restore check proves it equals the mode's count. Reading it from a book would make every reader of an amount take the book too.
-- **Flat storage.** The nested `Vec`s of `Modifiers` become one flat buffer per carrier with ranges. This is possible once the book data leaves the instance.
-
 ## T. Proof and test redesign
 
 A refactor of this size needs a permanent proof that behaviour stays the same. The one-time trace comparisons of the earlier steps go away with their scratch copies. The proof must live in the suite.
@@ -289,7 +269,7 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 
 | Step | Change | Needs | Size |
 |---|---|---|---|
-| G2 | Flat `Modifiers`; the `ModifierStats` and `ModifierClock` split | — | M, changes the layout |
+| G2 | A live change from a gone source; a 0-stack live change | — | S, may change behaviour |
 | H1b | `ctx.find` and `nearest_visible` read `BodyGrid` | D5, H1 | S |
 | J | The local fixes in the appendix, and T§5 to T§8 | any time | S each |
 
@@ -371,12 +351,8 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - `Scalar::Int`: C3;
   - life pool placeholder: C6a.
 - **R§7:**
-  - instance book data: G2;
-  - package data in state: G2;
-  - level twice: G2;
   - tags twice: with the harness (T§2.1);
   - call package: D4;
-  - cast kind in state: G2;
 - **R§8:**
   - script runtime: D4;
   - layer list: A4.
@@ -393,8 +369,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - `finish_trains`: B2;
   - `renew` interval: B2;
   - live change from a gone source: G2, with the rule in stats.md (J);
-  - param source three ways: G2;
-  - held and timed copies: G2;
   - ms to ticks: C6a;
   - "walks" twice: C2;
   - hook arity: C4;
@@ -415,7 +389,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
 - **R§12:**
   - no spatial delivery query: H1;
   - batch rebuilds: H4;
-  - `Modifiers` change detection: G2;
   - entity-index walks: B2;
   - `cast_hits.keep`: H1;
   - `struck`: H1;
@@ -428,7 +401,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - `Route::clear`: H2;
   - stable sort: J;
   - applied handle: D5;
-  - nested `Modifiers`: G2;
   - fan allocation: H1;
   - scripts parsed twice: C5b.
 - **R§14:**

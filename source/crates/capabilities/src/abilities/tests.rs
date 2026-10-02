@@ -43,6 +43,7 @@ use crate::stats::Stats;
 use crate::stats::level::Level;
 use crate::stats::lifetime::Hold;
 use crate::stats::modifier_book::{Applier, ModifierBook};
+use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifier_effect::ModifierEffect;
 use crate::stats::modifiers::Modifiers;
@@ -1046,7 +1047,8 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
         let modifiers = game.world.get::<Modifiers>(entity).unwrap();
         let held = modifiers.get(id, Some(caster))?;
         assert!(held.lifetime.held_by(Hold::Passive) && held.lifetime.until().is_none());
-        held.shield
+        let clocks = game.world.get::<ModifierClocks>(entity).unwrap();
+        clocks.shield_of(modifiers, id, Some(caster))
     };
     let learn = |game: &mut Match| {
         let mut slots = game.world.get_mut::<ActionSlots>(entity).unwrap();
@@ -1104,9 +1106,11 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
         .named(0, "ward")
         .unwrap();
     let modifiers = game.world.get::<Modifiers>(entity).unwrap();
+    let clocks = game.world.get::<ModifierClocks>(entity).unwrap();
+    assert!(modifiers.get(ward, Some(beast)).is_some());
     assert_eq!(
-        modifiers.get(ward, Some(beast)).map(|held| held.shield),
-        Some(Some(num(40)))
+        clocks.shield_of(modifiers, ward, Some(beast)),
+        Some(num(40))
     );
 }
 
@@ -1159,8 +1163,12 @@ fn on_resolve(ctx, caster, target) {
     let modifiers = game.world.get::<Modifiers>(entity).unwrap();
     let held = modifiers.get(id, Some(caster)).unwrap();
     assert_eq!((held.ability, held.rank), (Some(ability), 3));
+    let clocks = game.world.get::<ModifierClocks>(entity).unwrap();
     assert_eq!(
-        (held.shield, held.lifetime.until()),
+        (
+            clocks.shield_of(modifiers, id, Some(caster)),
+            held.lifetime.until()
+        ),
         (Some(num(125)), Some(Tick::new(t.get() + 31)))
     );
 
@@ -1181,8 +1189,10 @@ fn on_resolve(ctx, caster, target) {
     let book = game.world.resource::<ModifierBook>();
     let ids = [0, 1].map(|package| book.named(package, "mark").unwrap());
     let modifiers = game.world.get::<Modifiers>(entity).unwrap();
-    let shields = ids.map(|id| modifiers.get(id, Some(caster)).map(|held| held.shield));
-    assert_eq!(shields, [Some(Some(num(125))), Some(None)]);
+    let clocks = game.world.get::<ModifierClocks>(entity).unwrap();
+    let carried = ids.map(|id| modifiers.get(id, Some(caster)).is_some());
+    let shields = ids.map(|id| clocks.shield_of(modifiers, id, Some(caster)));
+    assert_eq!((carried, shields), ([true, true], [Some(num(125)), None]));
 }
 
 /// A match in which a strike stuns its target for 100 ms through the mode's `stunned` tag: each
