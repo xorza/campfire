@@ -1,14 +1,8 @@
-use std::num::NonZeroU32;
-
 use campfire_math::{Num, Vec3};
-use campfire_script::rhai::Dynamic;
-use campfire_script::{Budget, ScriptHost};
-use campfire_sim::{Capability, EntityIndex, IdAllocator, SimUpdate, StableId, TickRate, TypeHash};
+use campfire_sim::{Capability, IdAllocator, StableId, TypeHash};
 
 use super::*;
-use crate::capability_set::internals::TestMatch;
-use crate::scripts::ctx::Ctx;
-use crate::scripts::error::CallError;
+use crate::capability_set::test_match::TestMatch;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::pools::Pools;
@@ -16,8 +10,6 @@ use crate::units::tag_effects::TagEffects;
 use crate::units::unit::Unit;
 use crate::values::attitude::Attitude;
 use crate::values::bounds::Bounds;
-
-const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
 
 fn num(value: i64) -> Num {
     Num::from_int(value).unwrap()
@@ -30,8 +22,7 @@ fn at(x: i64, z: i64) -> Position {
 /// A match of teams with vision on a grid of 1 m cells from (−10, −10) to (10, 10).
 #[derive(Debug)]
 struct Scene {
-    world: World,
-    registry: StateRegistry,
+    sim: TestMatch,
 }
 
 impl Scene {
@@ -50,24 +41,19 @@ impl Scene {
         };
         let scripts = ScriptBudgets::new(limits, 1);
         let declared = [Capability::Stats, Capability::Combat, Capability::Vision];
-        let TestMatch {
-            mut world,
-            schedule,
-            registry,
-        } = TestMatch::new(&declared, RATE, Some(scripts));
-        world.add_schedule(schedule);
+        let mut sim = TestMatch::new(&declared, TestMatch::RATE, Some(scripts));
         let bounds = Bounds::new([num(-10), num(-10)], [num(10), num(10)]).unwrap();
         let grid = Grid::new(num(1), bounds).unwrap();
-        Vision::load_grid(&mut world, grid, teams);
-        Scene { world, registry }
+        Vision::load_grid(&mut sim.world, grid, teams);
+        Scene { sim }
     }
 
     /// A unit of `team` at `x`, `z` with the life pool, so it may be a target, and seeing
     /// `sight` when given.
     fn spawn(&mut self, team: u8, x: i64, z: i64, sight: Option<i64>) -> StableId {
-        let id = self.world.resource_mut::<IdAllocator>().allocate();
+        let id = self.sim.world.resource_mut::<IdAllocator>().allocate();
         let life = Pools::life(num(100));
-        let mut unit = self.world.spawn((id, at(x, z), Team::new(team), life));
+        let mut unit = self.sim.world.spawn((id, at(x, z), Team::new(team), life));
         if let Some(range) = sight {
             unit.insert(Sight::new(num(range)).unwrap());
         }
@@ -76,44 +62,12 @@ impl Scene {
 
     /// Gives unit `id` tags with `effects`, as its modifiers would.
     fn set_effects(&mut self, id: StableId, effects: TagEffects) {
-        let entity = self.entity(id);
-        self.world
-            .entity_mut(entity)
-            .insert(UnitTags::with_effects(effects));
-    }
-
-    fn entity(&self, id: StableId) -> Entity {
-        self.world.resource::<EntityIndex>().get(id).unwrap()
+        self.sim.insert(id, UnitTags::with_effects(effects));
     }
 
     fn seen_by(&self, id: StableId) -> TeamSet {
-        let relations = self.world.resource::<Relations>();
-        Vision::seen_by(&self.world.entity(self.entity(id)), relations)
-    }
-
-    /// `probe(ctx, of)` in `source`, run on the units as they are now.
-    fn probe(&mut self, source: &str, of: StableId) -> Result<Dynamic, CallError> {
-        let ctx = self.world.non_send::<Ctx>().clone();
-        ctx.view().read(&self.world);
-        let unit = ctx.view().unit(of).unwrap();
-        let mut host = self.world.non_send_mut::<ScriptHost>();
-        let script = host.compile(source).unwrap();
-        let mut budget = Budget::new(u64::MAX);
-        host.call(&mut budget, script, "probe", (ctx, unit))
-            .map_err(CallError::from_script)
-    }
-
-    /// The stable ids of `value`, a unit or a list of units.
-    fn ids(value: Dynamic) -> Vec<StableId> {
-        let units = match value.clone().try_cast::<Vec<Dynamic>>() {
-            Some(units) => units,
-            None if value.is_unit() => Vec::new(),
-            None => vec![value],
-        };
-        units
-            .into_iter()
-            .map(|unit| unit.try_cast::<Unit>().unwrap().id)
-            .collect()
+        let relations = self.sim.world.resource::<Relations>();
+        Vision::seen_by(&self.sim.world.entity(self.sim.entity(id)), relations)
     }
 }
 
@@ -127,17 +81,16 @@ fn each_team_sees_the_cells_its_living_units_reveal() {
     let far = scene.spawn(1, 3, 0, None);
     // A dead unit reveals nothing, however far it sees.
     let dead = scene.spawn(2, 5, 5, Some(20));
-    let entity = scene.entity(dead);
-    scene.world.entity_mut(entity).insert(Dead);
+    scene.sim.insert(dead, Dead);
     // An enemy with no life pool, as a projectile is, is no target: no query finds it.
     let shell = scene.spawn(1, 1, 0, None);
-    let entity = scene.entity(shell);
-    scene.world.entity_mut(entity).remove::<Pools>();
+    let entity = scene.sim.entity(shell);
+    scene.sim.world.entity_mut(entity).remove::<Pools>();
     let team = |index| TeamSet::of(Team::new(index));
 
     // Before the first Vision stage each unit is seen by its vision group: here its team alone.
     assert_eq!(scene.seen_by(near), team(1));
-    scene.world.run_schedule(SimUpdate);
+    scene.sim.step();
     let teams = [seer, near, far, dead].map(|id| scene.seen_by(id));
     assert_eq!(
         teams,
@@ -148,8 +101,7 @@ fn each_team_sees_the_cells_its_living_units_reveal() {
     // Seen through the view: `find` returns both enemies within 10 m, `find_visible` and
     // `nearest_visible` only the one team 0 sees, and `can_see` asks the other's teams.
     let read = |scene: &mut Scene, expression: &str, of| {
-        let source = format!("fn probe(ctx, of) {{ {expression} }}");
-        Scene::ids(scene.probe(&source, of).unwrap())
+        Unit::ids(scene.sim.read(expression, of).unwrap())
     };
     let find = r#"ctx.find(of, of.pos, 10, "enemies")"#;
     assert_eq!(read(&mut scene, find, seer), [near, far]);
@@ -162,8 +114,7 @@ fn each_team_sees_the_cells_its_living_units_reveal() {
     let can_see = r#"let seen = [];
         for unit in ctx.find(of, of.pos, 10, "all") { seen.push(of.can_see(unit)); }
         seen"#;
-    let source = format!("fn probe(ctx, of) {{ {can_see} }}");
-    let flags = scene.probe(&source, seer).unwrap().into_array().unwrap();
+    let flags = scene.sim.read(can_see, seer).unwrap().into_array().unwrap();
     let flags: Vec<bool> = flags
         .into_iter()
         .map(|flag| flag.as_bool().unwrap())
@@ -171,10 +122,10 @@ fn each_team_sees_the_cells_its_living_units_reveal() {
     assert_eq!(flags, [true, true, false]);
 
     // The seer steps 1 m: far's cell, now √6.5 m away, comes into sight in the next Vision stage.
-    let entity = scene.entity(seer);
-    *scene.world.get_mut::<Position>(entity).unwrap() = at(1, 0);
+    let entity = scene.sim.entity(seer);
+    *scene.sim.world.get_mut::<Position>(entity).unwrap() = at(1, 0);
     assert_eq!(scene.seen_by(far), team(1));
-    scene.world.run_schedule(SimUpdate);
+    scene.sim.step();
     assert_eq!(scene.seen_by(far), team(1).with(Team::new(0)));
 
     // A stealthed unit of team 1 at (−1, 0), in the seer's sight, √2.5 ≈ 1.58 m from its cell's
@@ -186,25 +137,28 @@ fn each_team_sees_the_cells_its_living_units_reveal() {
     scene.set_effects(sneak, TagEffects::default().with_hidden());
     let ward = scene.spawn(0, -4, 0, Some(3));
     scene.set_effects(ward, TagEffects::default().with_detects());
-    scene.world.run_schedule(SimUpdate);
+    scene.sim.step();
     assert_eq!(scene.seen_by(sneak), team(1));
-    let entity = scene.entity(ward);
-    *scene.world.get_mut::<Position>(entity).unwrap() = at(-3, 0);
-    scene.world.run_schedule(SimUpdate);
+    let entity = scene.sim.entity(ward);
+    *scene.sim.world.get_mut::<Position>(entity).unwrap() = at(-3, 0);
+    scene.sim.step();
     assert_eq!(scene.seen_by(sneak), team(1).with(Team::new(0)));
 
     // A new unit is seen by its whole group before its first Vision stage, as that stage gives
     // it: teams 1 and 2 become friends that share vision.
-    let relations = &mut scene.world.resource_mut::<Relations>();
+    let relations = &mut scene.sim.world.resource_mut::<Relations>();
     relations.set(Team::new(1), Team::new(2), Attitude::Friendly, true);
     let new = scene.spawn(2, 9, 9, None);
     assert_eq!(scene.seen_by(new), team(2).with(Team::new(1)));
-    scene.world.run_schedule(SimUpdate);
+    scene.sim.step();
     assert_eq!(scene.seen_by(new), team(2).with(Team::new(1)));
 
     // What a team sees is state, restored with the rest.
     let mut per_type = Vec::new();
-    scene.registry.hash_by_type(&scene.world, &mut per_type);
+    scene
+        .sim
+        .registry
+        .hash_by_type(&scene.sim.world, &mut per_type);
     let names: Vec<_> = per_type.iter().map(|TypeHash { name, .. }| *name).collect();
     assert!(names.contains(&"vision.seen_by") && names.contains(&"vision.sight"));
 }
@@ -224,14 +178,14 @@ fn friendly_teams_share_vision_as_one_group_unless_their_vision_is_off() {
     .map(|(team, x, z, sight)| scene.spawn(team, x, z, sight));
     let [zero, forty, sixty_three, one] = units;
     // 0 and 40 friends that share vision, 0 and 63 friends with vision off.
-    let mut relations = scene.world.resource_mut::<Relations>();
+    let mut relations = scene.sim.world.resource_mut::<Relations>();
     relations.set(Team::new(0), Team::new(40), Attitude::Friendly, true);
     relations.set(Team::new(63), Team::new(0), Attitude::Friendly, false);
     let teams = |list: &[u8]| {
         list.iter()
             .fold(TeamSet::NONE, |set, &team| set.with(Team::new(team)))
     };
-    scene.world.run_schedule(SimUpdate);
+    scene.sim.step();
     // 0 and 40 see as one: each is seen by both, and 63, in 0's sight, by both and itself.
     assert_eq!(scene.seen_by(zero), teams(&[0, 40]));
     assert_eq!(scene.seen_by(forty), teams(&[0, 40]));
@@ -239,9 +193,9 @@ fn friendly_teams_share_vision_as_one_group_unless_their_vision_is_off() {
     assert_eq!(scene.seen_by(one), teams(&[1]));
 
     // With vision off between 0 and 40, as between 0 and 63, each team sees alone.
-    let mut relations = scene.world.resource_mut::<Relations>();
+    let mut relations = scene.sim.world.resource_mut::<Relations>();
     relations.set(Team::new(0), Team::new(40), Attitude::Friendly, false);
-    scene.world.run_schedule(SimUpdate);
+    scene.sim.step();
     assert_eq!(scene.seen_by(zero), teams(&[0]));
     assert_eq!(scene.seen_by(forty), teams(&[40]));
     assert_eq!(scene.seen_by(sixty_three), teams(&[0, 63]));

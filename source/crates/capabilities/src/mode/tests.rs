@@ -6,9 +6,7 @@ use bevy_ecs::query::With;
 use campfire_content::PackagePath;
 use campfire_math::{Num, Ticks, Vec3};
 use campfire_script::{Budget, ScriptHost, ScriptId};
-use campfire_sim::{
-    Capability, Position, SimComponent, SimResource, SimUpdate, StableId, TickInput,
-};
+use campfire_sim::{Capability, Position, SimComponent, SimResource, StableId, TickInput};
 
 use super::*;
 use crate::actions::Actions;
@@ -18,7 +16,7 @@ use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::ActionTarget;
 use crate::actions::slot_kind::SlotKind;
 use crate::actions::slot_kinds::{SlotKindData, SlotKinds};
-use crate::capability_set::internals::TestMatch;
+use crate::capability_set::test_match::TestMatch;
 use crate::combat::combat_rules::CombatRules;
 use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::heal::{Heal, HealCause};
@@ -664,7 +662,7 @@ fn setup(
 
 #[derive(Debug)]
 struct Game {
-    world: World,
+    sim: TestMatch,
     /// The one spell's ability.
     blink: ActionId,
     /// Hero X's ability, of 2 ranks.
@@ -688,26 +686,23 @@ impl Game {
             Capability::Progression,
             Capability::Production,
         ];
-        let TestMatch {
-            mut world,
-            mut schedule,
-            mut registry,
-        } = TestMatch::new(&declared, RATE, Some(scripts));
+        let mut sim = TestMatch::new(&declared, RATE, Some(scripts));
+        let world = &mut sim.world;
         let resources: Vec<&str> = files
             .data
             .resources
             .iter()
             .map(DeclaredName::as_str)
             .collect();
-        Units::name_kinds(&world, &DAMAGE_KINDS, &POOLS, &resources);
+        Units::name_kinds(world, &DAMAGE_KINDS, &POOLS, &resources);
         let layers = files.data.navigation.layers.iter();
-        Units::declare_tags(&mut world, layers.map(DeclaredName::as_str));
+        Units::declare_tags(world, layers.map(DeclaredName::as_str));
         let mut load = |name: &str, tag: &str| {
             let data = UnitTypeData {
                 tags: vec![DeclaredName::new(tag).unwrap()],
                 params: BTreeMap::new(),
             };
-            Units::load_type(&mut world, TypeScope::Mode, name, &data)
+            Units::load_type(world, TypeScope::Mode, name, &data)
         };
         let (grunt_type, tower_type) = (load("grunt", "grunt"), load("tower", "tower"));
         let (x, y) = (load("hero-x", "avatar"), load("hero-y", "avatar"));
@@ -716,22 +711,22 @@ impl Game {
         load("bolt", "projectile");
         // The stats first, as a match's books know them before any action or modifier; the mode's
         // books give the full book at install.
-        stats::loads::load_stats(&mut world, &files.data.stats);
+        stats::loads::load_stats(world, &files.data.stats);
         let blink = blink_data();
         // A spell has one rank; hero X's ability, 2.
-        let strike = Actions::load(&mut world, 0, "strike", &blink, None, 2).unwrap();
-        let blink = Actions::load(&mut world, 0, "blink", &blink, None, 1).unwrap();
+        let strike = Actions::load(world, 0, "strike", &blink, None, 2).unwrap();
+        let blink = Actions::load(world, 0, "blink", &blink, None, 1).unwrap();
         let spell = LoadoutSetup {
             id: "blink".to_owned(),
             ability: blink,
         };
         let types = [grunt_type, tower_type, x, y];
-        Progression::load(&mut world, &files.data.tracks);
+        Progression::load(world, &files.data.tracks);
         for (name, data) in &files.modifiers {
-            Stats::load_modifier(&mut world, 0, name, data, None);
+            Stats::load_modifier(world, 0, name, data, None);
         }
-        let script = Units::compile(&mut world, &format!("{script}{PICK}")).unwrap();
-        let blessing = Stats::modifier(&world, 0, "blessing").unwrap();
+        let script = Units::compile(world, &format!("{script}{PICK}")).unwrap();
+        let blessing = Stats::modifier(world, 0, "blessing").unwrap();
         let setup = setup(&files, script, types, spell, strike, blessing);
         let books = {
             let view = world.non_send::<View>();
@@ -742,33 +737,30 @@ impl Game {
             let unit_types = &setup.unit_types;
             ModeBooks::build(&files.data, unit_types, &mut view.types_mut(), stats, map)
         };
-        Mode::install(&mut world, &mut schedule, &mut registry, setup, books);
+        sim.install(|world, schedule, registry| {
+            Mode::install(world, schedule, registry, setup, books);
+        });
         // The scripts name pools the data does not declare, whose maxima no stat sets.
-        Units::name_kinds(&world, &DAMAGE_KINDS, &POOLS, &RESOURCES);
-        world.add_schedule(schedule);
-        Mode::start(&mut world)?;
-        Ok(Game {
-            world,
-            blink,
-            strike,
-        })
+        Units::name_kinds(&sim.world, &DAMAGE_KINDS, &POOLS, &RESOURCES);
+        Mode::start(&mut sim.world)?;
+        Ok(Game { sim, blink, strike })
     }
 
     /// Runs a tick with `inputs`, each a player's slot and a mode input.
     fn tick(&mut self, inputs: &[(u32, ModeInput<'_>)]) {
         for (slot, input) in inputs {
             let payload = ModeInput::payload(slice::from_ref(input));
-            self.world.resource_mut::<TickInputs>().push(TickInput {
+            self.sim.world.resource_mut::<TickInputs>().push(TickInput {
                 slot: PlayerSlot::new(*slot),
                 payload: &payload,
             });
         }
-        self.world.run_schedule(SimUpdate);
+        self.sim.step();
     }
 
     /// Unit `id`.
     fn entity(&self, id: u64) -> Entity {
-        let mut units = self.world.resource::<EntityIndex>().iter();
+        let mut units = self.sim.world.resource::<EntityIndex>().iter();
         units.find(|(unit, _)| unit.get() == id).unwrap().1
     }
 
@@ -779,19 +771,19 @@ impl Game {
 
     /// The state field `name`: the state holds the fields in the order of their names.
     fn field(&self, name: &str) -> StateValue {
-        let ctx = self.world.non_send::<Ctx>();
+        let ctx = self.sim.world.non_send::<Ctx>();
         let at = ModeBook::of(ctx)
             .unwrap()
             .schema
             .state_field_named(name)
             .unwrap()
             .index;
-        self.world.resource::<ModeState>().get()[at].clone()
+        self.sim.world.resource::<ModeState>().get()[at].clone()
     }
 
     /// Each unit: its id, where it stands, its team, and the end of a path it walks from.
     fn units(&self) -> Vec<(u64, Position, u8, Option<PathEnd>)> {
-        let world = &self.world;
+        let world = &self.sim.world;
         world
             .resource::<EntityIndex>()
             .iter()
@@ -809,7 +801,7 @@ impl Game {
 
     /// The tick's failed calls: each the API's refusal, or `None` for another failure.
     fn failures(&self) -> Vec<Option<ApiError>> {
-        let failures = self.world.non_send::<ScriptFailures>();
+        let failures = self.sim.world.non_send::<ScriptFailures>();
         failures
             .get()
             .iter()
@@ -852,19 +844,26 @@ fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early
     );
     let tower = game.entity(0);
     assert_eq!(
-        game.world.get::<OnPath>(tower).map(|path| path.get()),
+        game.sim.world.get::<OnPath>(tower).map(|path| path.get()),
         Some(PathId::new(0))
     );
     // The map's grid is the match's, for its 3 teams: a, b and the neutral one.
-    let vision = *game.world.resource::<VisionGrid>();
+    let vision = *game.sim.world.resource::<VisionGrid>();
     let grid = Grid::new(num(1), map().bounds).unwrap();
     assert_eq!((vision.grid, vision.teams), (grid, 3));
-    assert_eq!(*game.world.resource::<Bounds>(), map().bounds);
+    assert_eq!(*game.sim.world.resource::<Bounds>(), map().bounds);
     // Each unit type has the tag of the layer it moves on: the tower, of the second layer, `air`;
     // the grunt, with no body, the first's, `ground`.
-    let tags = |id| game.world.get::<UnitTags>(game.entity(id)).unwrap().tags;
+    let tags = |id| {
+        game.sim
+            .world
+            .get::<UnitTags>(game.entity(id))
+            .unwrap()
+            .tags
+    };
     let tag = |name| {
-        game.world
+        game.sim
+            .world
             .non_send::<View>()
             .types_mut()
             .tag_named(name)
@@ -938,7 +937,7 @@ fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
     // Each player's row: duo's two values, hero's, spells', the choices by name. Player 0 chose
     // hero X, offer 0, and blink, the one spell; player 2 hero Y, offer 1.
     let offer = |index| Some(Offer::new(index));
-    let chosen = &game.world.resource::<Choices>().0;
+    let chosen = &game.sim.world.resource::<Choices>().0;
     let rows: Vec<_> = chosen.chunks(4).collect();
     assert_eq!(
         rows,
@@ -948,7 +947,7 @@ fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
             [None, None, offer(1), None],
         ]
     );
-    let next = game.world.resource_mut::<IdAllocator>().allocate();
+    let next = game.sim.world.resource_mut::<IdAllocator>().allocate();
     assert_eq!(next.get(), 7);
     // The heroes, 5 and 6, at their teams' spawns under their players' control: player 0's
     // with its own ability unlearned, then its spell learned.
@@ -956,10 +955,10 @@ fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
     assert_eq!(heroes, [(5, at(0, -5), 0, None), (6, at(0, 5), 1, None)]);
     let hero = game.entity(5);
     assert_eq!(
-        game.world.get::<Owner>(hero).unwrap().slot(),
+        game.sim.world.get::<Owner>(hero).unwrap().slot(),
         PlayerSlot::new(0)
     );
-    let slots = game.world.get::<ActionSlots>(hero).unwrap();
+    let slots = game.sim.world.get::<ActionSlots>(hero).unwrap();
     let slots: Vec<_> = slots.iter().map(|slot| (slot.action, slot.rank)).collect();
     assert_eq!(slots, [(game.strike, 0), (game.blink, 1)]);
 }
@@ -991,10 +990,10 @@ fn on_mode_input(ctx, player, name, value) {
         value: InputValue::StringList(vec!["blink"]),
     };
     game.tick(&[(0, spells), (0, input("hero", "hero-x"))]);
-    let mut owned = game.world.query_filtered::<Entity, With<Owner>>();
-    let hero = owned.single(&game.world).unwrap();
+    let mut owned = game.sim.world.query_filtered::<Entity, With<Owner>>();
+    let hero = owned.single(&game.sim.world).unwrap();
     let ranks = |game: &Game| {
-        let slots = game.world.get::<ActionSlots>(hero).unwrap();
+        let slots = game.sim.world.get::<ActionSlots>(hero).unwrap();
         slots.iter().map(|slot| slot.rank).collect::<Vec<_>>()
     };
     // Three ranks of two fail at the third, and the call learns none; two in one call count the
@@ -1049,14 +1048,14 @@ fn on_level_up(ctx, unit, track, level) {
 "#;
     let mut game = Game::new(leveler, LIMITS);
     game.tick(&[(0, input("hero", "hero-x"))]);
-    let mut owned = game.world.query_filtered::<Entity, With<Owner>>();
-    let hero = owned.single(&game.world).unwrap();
+    let mut owned = game.sim.world.query_filtered::<Entity, With<Owner>>();
+    let hero = owned.single(&game.sim.world).unwrap();
     // The `level` track's level is the unit's own; valor keeps its own.
     let progress = |game: &Game| {
-        let experience = game.world.get::<Experience>(hero).unwrap();
+        let experience = game.sim.world.get::<Experience>(hero).unwrap();
         let [level, valor] = [0, 1].map(|at| experience.get(TrackId::new(at).unwrap()).unwrap());
         assert_eq!(level.level, None);
-        let unit_level = game.world.get::<Level>(hero).unwrap().get();
+        let unit_level = game.sim.world.get::<Level>(hero).unwrap().get();
         (level.xp, unit_level, valor.xp, valor.level.map(Level::get))
     };
 
@@ -1122,12 +1121,12 @@ fn on_mode_input(ctx, player, name, value) {
         tags: vec![DeclaredName::new("core").unwrap()],
         params: BTreeMap::new(),
     };
-    Units::load_type(&mut game.world, TypeScope::Mode, "core", &core);
+    Units::load_type(&mut game.sim.world, TypeScope::Mode, "core", &core);
     game.tick(&[(0, input("hero", "hero-x")), (2, input("hero", "hero-y"))]);
     let hero = |game: &mut Game, slot| {
-        let mut owned = game.world.query::<(Entity, &Owner)>();
+        let mut owned = game.sim.world.query::<(Entity, &Owner)>();
         let (entity, _) = owned
-            .iter(&game.world)
+            .iter(&game.sim.world)
             .find(|(_, owner)| owner.slot() == PlayerSlot::new(slot))
             .unwrap();
         entity
@@ -1135,25 +1134,25 @@ fn on_mode_input(ctx, player, name, value) {
     let (x, y) = (hero(&mut game, 0), hero(&mut game, 2));
     game.tick(&[(0, input("probe", "kill"))]);
     assert_eq!(game.failures(), []);
-    assert!(game.world.get::<Dead>(y).is_some());
+    assert!(game.sim.world.get::<Dead>(y).is_some());
     let xp = |game: &Game| {
-        let experience = game.world.get::<Experience>(x).unwrap();
+        let experience = game.sim.world.get::<Experience>(x).unwrap();
         experience.get(TrackId::new(0).unwrap()).unwrap().xp
     };
     assert_eq!(xp(&game), num(175));
-    assert_eq!(game.world.get::<Level>(x).unwrap().get(), 2);
+    assert_eq!(game.sim.world.get::<Level>(x).unwrap().get(), 2);
     // Y died in tick 1, and the mode set its respawn from the end of tick 1, the start of tick
     // 2: 1500 ms is 15 ticks at 10 a second, so Y is dead through tick 16 and back in tick 17.
     assert_eq!(
-        game.world.get::<Respawn>(y),
+        game.sim.world.get::<Respawn>(y),
         Some(&Respawn { at: Tick::new(17) })
     );
     for _ in 2..=16 {
         game.tick(&[]);
-        assert!(game.world.get::<Dead>(y).is_some());
+        assert!(game.sim.world.get::<Dead>(y).is_some());
     }
     game.tick(&[]);
-    assert!(game.world.get::<Dead>(y).is_none());
+    assert!(game.sim.world.get::<Dead>(y).is_none());
 }
 
 #[test]
@@ -1175,50 +1174,51 @@ fn on_mode_input(ctx, player, name, value) {
         unit_type: Some(DeclaredName::new("grunt").unwrap()),
         ..blink_data()
     };
-    let train = Actions::load(&mut game.world, 0, "train_grunt", &train, None, 1).unwrap();
+    let world = &mut game.sim.world;
+    let train = Actions::load(world, 0, "train_grunt", &train, None, 1).unwrap();
     // Hero X becomes a producer of a queue of 2, with 100 mana, and its player holds 15 gold.
-    let mut owned = game.world.query_filtered::<Entity, With<Owner>>();
-    let producer = owned.single(&game.world).unwrap();
+    let mut owned = world.query_filtered::<Entity, With<Owner>>();
+    let producer = owned.single(world).unwrap();
     let pools = Pools::new([(PoolId::FIRST, num(10)), (MANA, num(100))]).unwrap();
     let slots = ActionSlots::new([(train, SlotKind::new(0), 1)]);
-    let hero_type = *game.world.get::<UnitType>(producer).unwrap();
+    let hero_type = *world.get::<UnitType>(producer).unwrap();
     let production = ProductionData {
         queue: NonZeroU8::new(2).unwrap(),
     };
-    let mut producers = game.world.resource_mut::<ByType<ProductionData>>();
+    let mut producers = world.resource_mut::<ByType<ProductionData>>();
     producers.set(hero_type, production);
-    game.world
-        .entity_mut(producer)
-        .insert((pools, slots, TrainQueue::default()));
+    let parts = (pools, slots, TrainQueue::default());
+    world.entity_mut(producer).insert(parts);
     let gold = resource("gold").unwrap();
     let player = PlayerSlot::new(0);
-    game.world
-        .resource_mut::<PlayerResources>()
-        .add(player, gold, 15)
-        .unwrap();
+    let mut resources = world.resource_mut::<PlayerResources>();
+    resources.add(player, gold, 15).unwrap();
     let order = |game: &mut Game| {
-        let mut slots = game.world.get_mut::<ActionSlots>(producer).unwrap();
+        let mut slots = game.sim.world.get_mut::<ActionSlots>(producer).unwrap();
         slots.order(0, ActionTarget::None);
     };
     let paid = |game: &Game| {
         let mana = game
+            .sim
             .world
             .get::<Pools>(producer)
             .unwrap()
             .current(MANA)
             .unwrap();
         let held = game
+            .sim
             .world
             .resource::<PlayerResources>()
             .amount(player, gold);
         (mana.round(), held)
     };
     let mut grunts = game
+        .sim
         .world
         .query_filtered::<(&UnitType, &Owner, &Position), With<Owner>>();
-    let hero = *game.world.get::<UnitType>(producer).unwrap();
+    let hero = *game.sim.world.get::<UnitType>(producer).unwrap();
     let mut trained = |game: &mut Game| {
-        let units = grunts.iter(&game.world);
+        let units = grunts.iter(&game.sim.world);
         units.filter(|&(&unit_type, ..)| unit_type != hero).count()
     };
 
@@ -1241,7 +1241,7 @@ fn on_mode_input(ctx, player, name, value) {
         (false, (10, 0), 3),
     ];
     for (at, (ordered, expected, made)) in (1..).zip(steps) {
-        assert_eq!(game.world.resource::<SimTick>().start().get(), at);
+        assert_eq!(game.sim.world.resource::<SimTick>().start().get(), at);
         if ordered {
             order(&mut game);
         }
@@ -1250,15 +1250,16 @@ fn on_mode_input(ctx, player, name, value) {
         assert_eq!(trained(&mut game), made, "tick {at}");
     }
     // Each grunt stands where the producer stood, its player's, and the queue is empty.
-    let at = *game.world.get::<Position>(producer).unwrap();
+    let at = *game.sim.world.get::<Position>(producer).unwrap();
     let made: Vec<_> = grunts
-        .iter(&game.world)
+        .iter(&game.sim.world)
         .filter(|&(&unit_type, ..)| unit_type != hero)
         .map(|(_, owner, &pos)| (owner.slot(), pos))
         .collect();
     assert_eq!(made, [(player, at); 3]);
     assert!(
-        game.world
+        game.sim
+            .world
             .get::<TrainQueue>(producer)
             .unwrap()
             .entries()
@@ -1302,11 +1303,11 @@ fn on_mode_input(ctx, player, name, value) {
 "#;
     let mut game = Game::new(blesser, LIMITS);
     game.tick(&[(0, input("hero", "hero-x"))]);
-    let mut owned = game.world.query_filtered::<Entity, With<Owner>>();
-    let hero = owned.single(&game.world).unwrap();
+    let mut owned = game.sim.world.query_filtered::<Entity, With<Owner>>();
+    let hero = owned.single(&game.sim.world).unwrap();
     let held = |game: &Game| {
-        let modifiers = game.world.get::<Modifiers>(hero).unwrap();
-        let clocks = game.world.get::<ModifierClocks>(hero).unwrap();
+        let modifiers = game.sim.world.get::<Modifiers>(hero).unwrap();
+        let clocks = game.sim.world.get::<ModifierClocks>(hero).unwrap();
         modifiers
             .iter()
             .enumerate()
@@ -1322,7 +1323,7 @@ fn on_mode_input(ctx, player, name, value) {
     // In tick t a new one, 1 stack as the call sees it, written to 3 and its count from 0 to 5;
     // 100 ms at 10 ticks a second is 1 tick, so it holds through t + 1 and ends as t + 2
     // starts.
-    let t = game.world.resource::<SimTick>().start().get();
+    let t = game.sim.world.resource::<SimTick>().start().get();
     game.tick(&[(0, input("probe", "bless"))]);
     assert_eq!(game.field("seen"), StateValue::Int(1));
     assert_eq!(held(&game), [(3, Some(t + 2), vec![StateValue::Int(5)])]);
@@ -1334,7 +1335,7 @@ fn on_mode_input(ctx, player, name, value) {
     game.tick(&[(0, input("probe", "check"))]);
     assert_eq!(game.field("seen"), StateValue::Int(1));
     // Through t + 3, then gone as t + 4 starts: once that tick has run.
-    while game.world.resource::<SimTick>().start().get() <= t + 4 {
+    while game.sim.world.resource::<SimTick>().start().get() <= t + 4 {
         game.tick(&[]);
     }
     assert_eq!(held(&game), []);
@@ -1342,7 +1343,7 @@ fn on_mode_input(ctx, player, name, value) {
     assert_eq!(game.field("seen"), StateValue::Int(0));
     // Two applications in one call in tick u: one handle, which sees both, 2 stacks; 200 ms, so
     // it ends as u + 3 starts.
-    let u = game.world.resource::<SimTick>().start().get();
+    let u = game.sim.world.resource::<SimTick>().start().get();
     game.tick(&[(0, input("probe", "twice"))]);
     assert_eq!(game.field("seen"), StateValue::Int(22));
     assert_eq!(held(&game), [(2, Some(u + 3), vec![StateValue::Int(0)])]);
@@ -1360,9 +1361,9 @@ fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
     let mut game = Game::new(SCRIPT, LIMITS);
     game.tick(&[(0, input("hero", "hero-x")), (2, input("hero", "hero-y"))]);
     // Hero Y carries its passive, the blessing, from itself, with no end.
-    let mut owned = game.world.query::<(&StableId, &Owner, &Modifiers)>();
+    let mut owned = game.sim.world.query::<(&StableId, &Owner, &Modifiers)>();
     let (&hero_y, _, modifiers) = owned
-        .iter(&game.world)
+        .iter(&game.sim.world)
         .find(|(_, owner, _)| owner.slot() == PlayerSlot::new(2))
         .unwrap();
     let held: Vec<_> = modifiers
@@ -1379,7 +1380,7 @@ fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
     assert_eq!(held, [(Some(hero_y), true, None, 1)]);
     // A dead grunt is still one the mode sees.
     let grunt = game.entity(3);
-    game.world.entity_mut(grunt).insert(Dead);
+    game.sim.world.entity_mut(grunt).insert(Dead);
     game.tick(&[
         (1, input("gold", "gold")),
         (1, input("rich", "gems")),
@@ -1389,7 +1390,7 @@ fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
     ]);
     // Gold, the first of the mode's resources, and gems, the second; a resource the mode does
     // not declare fails, as a sum past what an integer holds does.
-    let resources = game.world.resource::<PlayerResources>();
+    let resources = game.sim.world.resource::<PlayerResources>();
     let amount = |slot, name| {
         let resource = resource(name).unwrap();
         resources.amount(PlayerSlot::new(slot), resource)
@@ -1467,7 +1468,7 @@ fn on_mode_input(ctx, player, name, value) {
         (0, input("phase", "")),
         (1, input("phase", "")),
     ]);
-    let failures = game.world.non_send::<ScriptFailures>();
+    let failures = game.sim.world.non_send::<ScriptFailures>();
     let errors: Vec<_> = failures
         .get()
         .iter()
@@ -1525,7 +1526,7 @@ fn on_timer(ctx, name, data) {
     };
     let mut game = Game::new(spin, limits);
     let due = |game: &Game| {
-        let timers = game.world.resource::<Timers>();
+        let timers = game.sim.world.resource::<Timers>();
         (
             timers
                 .due(Tick::new(u64::MAX))
@@ -1577,27 +1578,30 @@ fn on_level_up(ctx, unit, track, level) {
     // Units: the tower 0 of a, b's grunts 1 to 3, which despawn when they die, and the hero 4.
     // The tower's damage kills the three grunts in tick 1, as the hero reaches level 2.
     let grunts = [1, 2, 3].map(|at| game.entity(at));
-    let tower = game.world.get::<StableId>(game.entity(0)).copied();
+    let tower = game.sim.world.get::<StableId>(game.entity(0)).copied();
     for grunt in grunts {
-        game.world.entity_mut(grunt).insert(OnDeath::Despawn);
-        let target = *game.world.get::<StableId>(grunt).unwrap();
-        game.world.resource_mut::<PassQueue>().push_damage(Damage {
-            source: tower,
-            target,
-            amount: num(10),
-            kind: DamageKind::new(0),
-            cause: DamageCause::Effect,
-            ability: None,
-            depth: 0,
-            hit: None,
-        });
+        game.sim.world.entity_mut(grunt).insert(OnDeath::Despawn);
+        let target = *game.sim.world.get::<StableId>(grunt).unwrap();
+        game.sim
+            .world
+            .resource_mut::<PassQueue>()
+            .push_damage(Damage {
+                source: tower,
+                target,
+                amount: num(10),
+                kind: DamageKind::new(0),
+                cause: DamageCause::Effect,
+                ability: None,
+                depth: 0,
+                hit: None,
+            });
     }
     let waiting = |game: &Game| {
-        let deaths = game.world.resource::<UnansweredDeaths>().iter().count();
-        (deaths, game.world.resource::<LevelUps>().0.len())
+        let deaths = game.sim.world.resource::<UnansweredDeaths>().iter().count();
+        (deaths, game.sim.world.resource::<LevelUps>().0.len())
     };
     let stands = |game: &Game, grunt: Entity| {
-        let unit = game.world.get_entity(grunt).ok()?;
+        let unit = game.sim.world.get_entity(grunt).ok()?;
         Some((unit.contains::<Dead>(), unit.contains::<Kept>()))
     };
     game.tick(&[(0, input("probe", "xp"))]);
@@ -1610,7 +1614,7 @@ fn on_level_up(ctx, unit, track, level) {
     assert_eq!(waiting(&game), (1, 1));
     // The waiting death is state: it decodes to itself, and an assister its runs do not cover
     // fails to decode. Its assisters come last, none: their length is the last byte.
-    let unanswered = game.world.resource::<UnansweredDeaths>();
+    let unanswered = game.sim.world.resource::<UnansweredDeaths>();
     let mut bytes = postcard::to_allocvec(unanswered).unwrap();
     let decoded = postcard::from_bytes::<UnansweredDeaths>(&bytes).ok();
     assert_eq!(decoded.as_ref(), Some(unanswered));
@@ -1662,30 +1666,35 @@ fn on_mode_input(ctx, player, name, value) {
     // neutral grunt stands at (3, 0) when b's grunt strikes it for its 10 health, in tick 0; a's
     // grunt 2 struck it in the same tick, within the window of 10 ticks.
     let victim = game.entity(1);
-    *game.world.get_mut::<Position>(victim).unwrap() = at(3, 0);
-    game.world.insert_resource(AssistWindow(Ticks::new(10)));
+    *game.sim.world.get_mut::<Position>(victim).unwrap() = at(3, 0);
+    game.sim.world.insert_resource(AssistWindow(Ticks::new(10)));
     let ids: Vec<_> = game
+        .sim
         .world
         .resource::<EntityIndex>()
         .iter()
         .map(|(id, _)| id)
         .collect();
     let (one, two, four) = (ids[1], ids[2], ids[4]);
-    game.world
+    game.sim
+        .world
         .resource_scope(|world, index: Mut<'_, EntityIndex>| {
             let mut attackers = world.get_mut::<RecentAttackers>(victim).unwrap();
             attackers.record(two, Tick::new(0), &index);
         });
-    game.world.resource_mut::<PassQueue>().push_damage(Damage {
-        source: Some(four),
-        target: one,
-        amount: num(10),
-        kind: DamageKind::new(0),
-        cause: DamageCause::Effect,
-        ability: None,
-        depth: 0,
-        hit: None,
-    });
+    game.sim
+        .world
+        .resource_mut::<PassQueue>()
+        .push_damage(Damage {
+            source: Some(four),
+            target: one,
+            amount: num(10),
+            kind: DamageKind::new(0),
+            cause: DamageCause::Effect,
+            ability: None,
+            depth: 0,
+            hit: None,
+        });
     game.tick(&[]);
     // It died in tick 0 with killer 4 of b and one assister of a: the mode set its respawn for the
     // end of tick 0, 1, plus 3 ticks: the start of tick 4.
@@ -1702,29 +1711,30 @@ fn on_mode_input(ctx, player, name, value) {
         ]
     );
     assert_eq!(
-        game.world.get::<Respawn>(victim),
+        game.sim.world.get::<Respawn>(victim),
         Some(&Respawn { at: Tick::new(4) })
     );
     for _ in 1..4 {
         game.tick(&[]);
-        assert!(game.world.entity(victim).contains::<Dead>());
+        assert!(game.sim.world.entity(victim).contains::<Dead>());
     }
     game.tick(&[]);
-    assert!(!game.world.entity(victim).contains::<Dead>());
-    assert_eq!(game.world.get::<Position>(victim), Some(&at(0, 0)));
-    let pools = game.world.get::<Pools>(victim).unwrap();
+    assert!(!game.sim.world.entity(victim).contains::<Dead>());
+    assert_eq!(game.sim.world.get::<Position>(victim), Some(&at(0, 0)));
+    let pools = game.sim.world.get::<Pools>(victim).unwrap();
     assert_eq!(pools.current(PoolId::FIRST), Some(num(10)));
 
     // A living unit, and a dead one whose type despawns, cannot respawn.
     game.tick(&[(0, input("probe", "tower"))]);
     assert_eq!(game.failures(), [Some(ApiError::RespawnAlive)]);
     let tower = game.entity(0);
-    game.world
+    game.sim
+        .world
         .entity_mut(tower)
         .insert((Dead, OnDeath::Despawn));
     game.tick(&[(0, input("probe", "tower"))]);
     assert_eq!(game.failures(), [Some(ApiError::RespawnDespawns)]);
-    assert!(game.world.get_entity(tower).is_err());
+    assert!(game.sim.world.get_entity(tower).is_err());
 }
 
 #[test]
@@ -1758,31 +1768,31 @@ fn on_mode_input(ctx, player, name, value) {
     assert_eq!(game.failures(), [Some(ApiError::Ended)]);
     game.tick(&[(0, input("hero", "z"))]);
     assert_eq!(game.failures(), [Some(ApiError::UnknownTeam)]);
-    assert!(!game.world.contains_resource::<MatchEnd>());
+    assert!(!game.sim.world.contains_resource::<MatchEnd>());
     assert_eq!(game.field("count"), StateValue::Int(2));
 
     // Team b wins in the Inputs stage of tick 2, so no later stage of tick 2 runs: a's grunt,
     // 1, sent 5 m away, stands where it is, and the timer counts no more. In tick 3 nothing
     // runs, the input to end again included.
     let grunt = game.entity(1);
-    let mut destination = game.world.get_mut::<Destination>(grunt).unwrap();
+    let mut destination = game.sim.world.get_mut::<Destination>(grunt).unwrap();
     destination.set(Some(at(5, 0)));
     let before = game.units();
     game.tick(&[(0, input("hero", "b"))]);
     let end = MatchEnd::new(Tick::new(2), MatchResult::Won(Team::new(1)));
-    assert_eq!(game.world.get_resource::<MatchEnd>(), Some(&end));
+    assert_eq!(game.sim.world.get_resource::<MatchEnd>(), Some(&end));
     game.tick(&[(0, input("phase", "draw"))]);
     assert!(game.failures().is_empty());
-    assert_eq!(game.world.get_resource::<MatchEnd>(), Some(&end));
+    assert_eq!(game.sim.world.get_resource::<MatchEnd>(), Some(&end));
     assert_eq!(game.units(), before);
     assert_eq!(game.field("count"), StateValue::Int(2));
-    assert_eq!(game.world.resource::<SimTick>().start(), Tick::new(4));
+    assert_eq!(game.sim.world.resource::<SimTick>().start(), Tick::new(4));
 
     // `end(())` is a draw.
     let mut game = Game::new(script, LIMITS);
     game.tick(&[(0, input("phase", "draw"))]);
     let draw = MatchEnd::new(Tick::new(0), MatchResult::Draw);
-    assert_eq!(game.world.get_resource::<MatchEnd>(), Some(&draw));
+    assert_eq!(game.sim.world.get_resource::<MatchEnd>(), Some(&draw));
 }
 
 /// The reference 3v3's `calc_damage` and the function it calls, as its package holds them.
@@ -1797,7 +1807,7 @@ fn calc_damage_3v3() -> &'static str {
 impl Game {
     /// A grunt of 1000 health on `team`, whose modifier adds `stats` by name.
     fn fighter(&mut self, team: u8, stats: &[(&str, Num)]) -> StableId {
-        let book = self.world.resource::<StatBook>();
+        let book = self.sim.world.resource::<StatBook>();
         let changes: Vec<_> = stats
             .iter()
             .map(|&(name, _)| {
@@ -1807,7 +1817,7 @@ impl Game {
                 )
             })
             .collect();
-        let mut modifiers = self.world.resource_mut::<ModifierBook>();
+        let mut modifiers = self.sim.world.resource_mut::<ModifierBook>();
         let id = modifiers.push_changes(&changes, TagSet::default());
         let shares = stats
             .iter()
@@ -1833,12 +1843,13 @@ impl Game {
             max_stacks: None,
         }]);
         let grunt = self
+            .sim
             .world
             .non_send::<View>()
             .unit_type_named("grunt")
             .unwrap();
-        let id = self.world.resource_mut::<IdAllocator>().allocate();
-        self.world.spawn((
+        let id = self.sim.world.resource_mut::<IdAllocator>().allocate();
+        self.sim.world.spawn((
             id,
             at(0, 0),
             Team::new(team),
@@ -1861,21 +1872,24 @@ impl Game {
         cause: DamageCause,
     ) {
         let kind = DAMAGE_KINDS.iter().position(|&name| name == kind).unwrap();
-        self.world.resource_mut::<PassQueue>().push_damage(Damage {
-            source,
-            target,
-            amount: num(amount),
-            kind: DamageKind::new(u8::try_from(kind).unwrap()),
-            cause,
-            ability: None,
-            depth: 0,
-            hit: None,
-        });
+        self.sim
+            .world
+            .resource_mut::<PassQueue>()
+            .push_damage(Damage {
+                source,
+                target,
+                amount: num(amount),
+                kind: DamageKind::new(u8::try_from(kind).unwrap()),
+                cause,
+                ability: None,
+                depth: 0,
+                hit: None,
+            });
     }
 
     fn health(&self, id: StableId) -> Num {
-        let entity = self.world.resource::<EntityIndex>().get(id).unwrap();
-        let pools = self.world.get::<Pools>(entity).unwrap();
+        let entity = self.sim.entity(id);
+        let pools = self.sim.world.get::<Pools>(entity).unwrap();
         pools.current(PoolId::FIRST).unwrap()
     }
 }
@@ -1964,13 +1978,13 @@ fn calc_heal(ctx, h) {
         [Some(ApiError::PureCall), Some(ApiError::NotAnAmount)]
     );
     assert_eq!(game.health(target), num(950));
-    let timers = game.world.resource::<Timers>();
+    let timers = game.sim.world.resource::<Timers>();
     assert!(timers.due(Tick::new(u64::MAX)).is_none());
 
     // A heal of 10 that `calc_heal` halves, and a leech heal of 6 it keeps: 950 + 5 + 6, as
     // the target has no heal scale.
     for (amount, cause) in [(10, HealCause::Effect), (6, HealCause::Leech)] {
-        game.world.resource_mut::<PassQueue>().push_heal(Heal {
+        game.sim.world.resource_mut::<PassQueue>().push_heal(Heal {
             source: Some(source),
             target,
             amount: num(amount),
@@ -1994,34 +2008,34 @@ impl Game {
         actor: StableId,
         unit: StableId,
     ) -> Result<Dynamic, CallError> {
-        let ctx = self.world.non_send::<Ctx>().clone();
-        ctx.view().read(&self.world);
+        let ctx = self.sim.world.non_send::<Ctx>().clone();
+        ctx.view().read(&self.sim.world);
         match role {
-            ScriptRole::Mode => ctx.frame().begin_mode(&self.world, false),
-            ScriptRole::Ai => ctx.frame().begin_think(&self.world, actor),
+            ScriptRole::Mode => ctx.frame().begin_mode(&self.sim.world, false),
+            ScriptRole::Ai => ctx.frame().begin_think(&self.sim.world, actor),
             ScriptRole::Action => ctx
                 .frame()
-                .begin(&self.world, CallStart::cast(self.strike, 1, actor, 0))
+                .begin(&self.sim.world, CallStart::cast(self.strike, 1, actor, 0))
                 .unwrap(),
             ScriptRole::Modifier => {
-                let blessing = Stats::modifier(&self.world, 0, "blessing").unwrap();
+                let blessing = Stats::modifier(&self.sim.world, 0, "blessing").unwrap();
                 let start = CallStart {
                     acting: Some(actor),
                     ..CallStart::hook(blessing, 0, 1)
                 };
-                ctx.frame().begin(&self.world, start).unwrap();
+                ctx.frame().begin(&self.sim.world, start).unwrap();
             }
         }
         let handle = ctx.view().unit(unit).unwrap();
         let returned = {
-            let mut host = self.world.non_send_mut::<ScriptHost>();
+            let mut host = self.sim.world.non_send_mut::<ScriptHost>();
             let script = host.compile(source).unwrap();
             let mut budget = Budget::new(u64::MAX);
             host.call(&mut budget, script, "probe", (ctx.clone(), handle))
         };
         let returned = returned.map_err(CallError::from_script)?;
-        let now = self.world.resource::<SimTick>().start();
-        ctx.apply(&mut self.world, now);
+        let now = self.sim.world.resource::<SimTick>().start();
+        ctx.apply(&mut self.sim.world, now);
         Ok(returned)
     }
 }
@@ -2041,16 +2055,16 @@ fn probe(ctx, unit) {
     game.tick(&[(0, input("hero", "hero-x"))]);
     let actor = game.fighter(0, &[]);
     let target = game.fighter(1, &[]);
-    let entity = game.world.resource::<EntityIndex>().get(target).unwrap();
+    let entity = game.sim.entity(target);
     let mut pools = Pools::new([(PoolId::FIRST, num(1000)), (MANA, num(100))]).unwrap();
     pools.take(PoolId::FIRST, num(20));
     pools.take(MANA, num(50));
-    game.world.entity_mut(entity).insert(pools);
+    game.sim.insert(target, pools);
     // Each role in turn: 3 restored and 5 gold given as its effects apply, then 10 dealt and 4
     // healed in the tick's pass, in the order queued: from 980 to 974, and so on; the pool from
     // 50, 3 a call.
     let gold = |game: &Game| {
-        let resources = game.world.resource::<PlayerResources>();
+        let resources = game.sim.world.resource::<PlayerResources>();
         let gold = resource("gold").unwrap();
         resources.amount(PlayerSlot::new(0), gold)
     };
@@ -2074,7 +2088,7 @@ fn probe(ctx, unit) {
         assert_eq!(game.health(target), num(980 - 6 * at), "{role:?}");
         game.tick(&[]);
         assert_eq!(game.health(target), num(980 - 6 * (at + 1)), "{role:?}");
-        let pool = game.world.get::<Pools>(entity).unwrap().current(MANA);
+        let pool = game.sim.world.get::<Pools>(entity).unwrap().current(MANA);
         assert_eq!(pool, Some(num(50 + 3 * (at + 1))), "{role:?}");
     }
     // A call given to other roles fails in this one, when it runs.
@@ -2163,7 +2177,7 @@ fn on_mode_input(ctx, player, name, value) {
     let mut files = mode_files();
     files.map = raised(files.map, 3);
     let mut game = Game::start(script, LIMITS, files).unwrap();
-    assert_eq!(*game.world.resource::<Metric>(), Metric::Spatial);
+    assert_eq!(*game.sim.world.resource::<Metric>(), Metric::Spatial);
     let up = |x| Position::new(Vec3::new(num(x), num(3), Num::ZERO)).unwrap();
     let walkers = |game: &Game| <[_; 3]>::try_from(&game.units()[1..]).unwrap();
     assert_eq!(
@@ -2176,7 +2190,7 @@ fn on_mode_input(ctx, player, name, value) {
     );
     // Each walks to the last waypoint from its end: a and the neutral team to (10, 3, 0), b to
     // (−10, 3, 0).
-    let paths = game.world.resource::<Paths>();
+    let paths = game.sim.world.resource::<Paths>();
     let last = walkers(&game).map(|unit| paths.waypoint(PathId::new(0), 2, unit.3.unwrap()));
     assert_eq!(last, [Some(up(10)), Some(up(-10)), Some(up(10))]);
     // An end other than `start` and `end` fails.
@@ -2234,7 +2248,7 @@ fn on_mode_input(ctx, player, name, value) {
     // Unit 1, after the map's tower.
     let hero = game.entity(1);
     let slots = |game: &Game| {
-        let slots = game.world.get::<ActionSlots>(hero).unwrap();
+        let slots = game.sim.world.get::<ActionSlots>(hero).unwrap();
         let slots = slots.iter().map(|slot| (slot.action, slot.kind, slot.rank));
         slots.collect::<Vec<_>>()
     };
@@ -2305,14 +2319,14 @@ fn on_mode_input(ctx, player, name, value) {
 }
 "#;
     let mut game = Game::new(script, LIMITS);
-    let drill = Stats::modifier(&game.world, 0, "drill").unwrap();
+    let drill = Stats::modifier(&game.sim.world, 0, "drill").unwrap();
     // Units 1 to 3, after the map's tower: a grunt and a tower of player 1, and a grunt of
     // player 0.
     game.tick(&[(1, input("probe", "units"))]);
     let drilled = |game: &Game| {
         let mut held = Vec::new();
-        for (id, entity) in game.world.resource::<EntityIndex>().iter() {
-            let modifiers = game.world.get::<Modifiers>(entity).unwrap();
+        for (id, entity) in game.sim.world.resource::<EntityIndex>().iter() {
+            let modifiers = game.sim.world.get::<Modifiers>(entity).unwrap();
             if let Some(instance) = modifiers.get(drill, None) {
                 assert!(
                     instance.lifetime.held_by(Hold::Held) && instance.lifetime.until().is_none()
@@ -2330,7 +2344,7 @@ fn on_mode_input(ctx, player, name, value) {
     // A grunt of player 1 spawned later holds it from its first Resolve.
     game.tick(&[(1, input("probe", "another"))]);
     assert_eq!(drilled(&game), [1, 4]);
-    let held = game.world.resource::<PlayerModifiers>();
+    let held = game.sim.world.resource::<PlayerModifiers>();
     assert_eq!(held.of(PlayerSlot::new(1)).collect::<Vec<_>>(), [drill]);
     assert_eq!(held.of(PlayerSlot::new(0)).count(), 0);
     // A modifier the package does not declare, and a player the session does not have, fail.
@@ -2348,7 +2362,7 @@ fn on_mode_input(ctx, player, name, value) {
 fn a_restore_check_refuses_what_the_match_lacks() {
     let mut game = Game::new(SCRIPT, LIMITS);
     let grunt = game.entity(2);
-    let world = &game.world;
+    let world = &game.sim.world;
     // Teams a, b and neutral are 0 to 2, players 0 to 2.
     assert!(Team::new(2).check(world, grunt) && !Team::new(3).check(world, grunt));
     let owner = |slot| Owner::new(PlayerSlot::new(slot));
@@ -2427,12 +2441,12 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     assert!(!LevelUps(vec![level_up(2)]).check(world));
 
     // A route of the grunt, of the mode's one kind of walker, until its body grows past it.
-    let route = game.world.get::<Route>(grunt).unwrap().clone();
-    assert!(route.check(&game.world, grunt));
+    let route = game.sim.world.get::<Route>(grunt).unwrap().clone();
+    assert!(route.check(&game.sim.world, grunt));
     let wide = Body::new(num(3)).unwrap();
-    game.world.entity_mut(grunt).insert(wide);
-    assert!(!route.check(&game.world, grunt));
-    assert!(!Destination::default().check(&game.world, grunt));
+    game.sim.world.entity_mut(grunt).insert(wide);
+    assert!(!route.check(&game.sim.world, grunt));
+    assert!(!Destination::default().check(&game.sim.world, grunt));
 }
 
 /// The restore checks of a unit's modifiers, their clocks and the players' modifiers let the
@@ -2444,7 +2458,7 @@ fn a_restore_check_refuses_modifiers_the_book_lacks() {
     // not one the book lacks, nor one of other state or another count of changes.
     let fighter = game.fighter(0, &[("armor", num(1))]);
     let fighter = game.entity(fighter.get());
-    let world = &game.world;
+    let world = &game.sim.world;
     let modifiers = world.get::<Modifiers>(fighter).unwrap();
     assert!(modifiers.check(world, fighter));
     assert!(

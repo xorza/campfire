@@ -1,17 +1,15 @@
 use std::cell::RefCell;
-use std::num::{NonZeroU8, NonZeroU32};
+use std::num::NonZeroU8;
 use std::rc::Rc;
 
-use bevy_ecs::entity::Entity;
-use bevy_ecs::world::World;
 use campfire_math::{Num, PlayerSlot, Tick, Ticks, Vec3};
-use campfire_sim::{Capability, EntityIndex, IdAllocator, Position, SimUpdate, StableId, TickRate};
+use campfire_sim::{Capability, IdAllocator, Position, StableId};
 use serde::Serialize;
 
 use crate::actions::action_book::internals;
 use crate::actions::action_slots::{ActionSlots, ActionTarget};
 use crate::actions::slot_kind::SlotKind;
-use crate::capability_set::internals::TestMatch;
+use crate::capability_set::test_match::TestMatch;
 use crate::players::player_resources::PlayerResources;
 use crate::players::resource_amount::ResourceAmount;
 use crate::players::resource_id::ResourceId;
@@ -29,8 +27,6 @@ use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::declared_name::DeclaredName;
 
-const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
-
 fn at(x: i64) -> Position {
     Position::new(Vec3::new(Num::from_int(x).unwrap(), Num::ZERO, Num::ZERO)).unwrap()
 }
@@ -46,7 +42,7 @@ struct Spawned {
 /// and a producer type of a queue of 3.
 #[derive(Debug)]
 struct Shop {
-    world: World,
+    sim: TestMatch,
     spawned: Rc<RefCell<Vec<Spawned>>>,
     grunt: UnitType,
     barracks: UnitType,
@@ -54,12 +50,8 @@ struct Shop {
 
 impl Shop {
     fn new() -> Shop {
-        let TestMatch {
-            mut world,
-            schedule,
-            ..
-        } = TestMatch::new(&[Capability::Production], RATE, None);
-        world.add_schedule(schedule);
+        let mut sim = TestMatch::new(&[Capability::Production], TestMatch::RATE, None);
+        let world = &mut sim.world;
         let spawned = Rc::new(RefCell::new(Vec::new()));
         let log = Rc::clone(&spawned);
         world.insert_non_send(Spawner::new(move |world, at, owner| {
@@ -67,15 +59,15 @@ impl Shop {
             world.spawn((at.id, at.unit_type, at.team, at.pos)).id()
         }));
         let data = UnitTypeData::default();
-        let grunt = Units::load_type(&mut world, TypeScope::Mode, "grunt", &data);
-        let barracks = Units::load_type(&mut world, TypeScope::Mode, "barracks", &data);
+        let grunt = Units::load_type(world, TypeScope::Mode, "grunt", &data);
+        let barracks = Units::load_type(world, TypeScope::Mode, "barracks", &data);
         let production = ProductionData {
             queue: NonZeroU8::new(3).unwrap(),
         };
         let mut producers = world.resource_mut::<ByType<ProductionData>>();
         producers.set(barracks, production);
         Shop {
-            world,
+            sim,
             spawned,
             grunt,
             barracks,
@@ -95,28 +87,23 @@ impl Shop {
     ) {
         let slots = ActionSlots::new([(train, SlotKind::new(0), 1)]);
         let parts = (id, at(x), self.barracks, Team::new(team), slots, queue);
-        let mut producer = self.world.spawn(parts);
+        let mut producer = self.sim.world.spawn(parts);
         if let Some(owner) = owner {
             producer.insert(Owner::new(owner));
         }
     }
 
     fn id(&mut self) -> StableId {
-        self.world.resource_mut::<IdAllocator>().allocate()
-    }
-
-    fn entity(&self, id: StableId) -> Entity {
-        self.world.resource::<EntityIndex>().get(id).unwrap()
+        self.sim.world.resource_mut::<IdAllocator>().allocate()
     }
 
     fn order(&mut self, producer: StableId) {
-        let entity = self.entity(producer);
-        let mut slots = self.world.get_mut::<ActionSlots>(entity).unwrap();
+        let mut slots = self.sim.get_mut::<ActionSlots>(producer);
         slots.order(0, ActionTarget::None);
     }
 
     fn tick(&mut self) {
-        self.world.run_schedule(SimUpdate);
+        self.sim.step();
     }
 
     /// Each spawn so far, by producer: the team and position of the producer it came from, and
@@ -148,7 +135,7 @@ fn queue(train: ActionId, times: &[u64]) -> TrainQueue {
 #[test]
 fn trains_spawn_by_their_producers_stable_id_and_a_dead_producers_queue_waits() {
     let mut shop = Shop::new();
-    let train = internals::train(&mut shop.world, shop.grunt, Ticks::ZERO, None);
+    let train = internals::train(&mut shop.sim.world, shop.grunt, Ticks::ZERO, None);
     let player = PlayerSlot::new(0);
     // The first id goes to the producer spawned second, so the world holds them out of id order.
     let (first, second) = (shop.id(), shop.id());
@@ -175,14 +162,12 @@ fn trains_spawn_by_their_producers_stable_id_and_a_dead_producers_queue_waits() 
 
     // Dead through ticks 3 and 4, the first's queue holds a train done since time 0: it spawns in
     // tick 5, the tick the producer lives again.
-    let entity = shop.entity(first);
-    shop.world
-        .entity_mut(entity)
-        .insert((queue(train, &[0]), Dead));
+    let entity = shop.sim.entity(first);
+    shop.sim.insert(first, (queue(train, &[0]), Dead));
     shop.tick();
     shop.tick();
     assert_eq!(shop.spawns().len(), 5);
-    shop.world.entity_mut(entity).remove::<Dead>();
+    shop.sim.world.entity_mut(entity).remove::<Dead>();
     shop.tick();
     assert_eq!(shop.spawns().len(), 6);
     assert_eq!(shop.spawns()[5], from_first);
@@ -195,12 +180,12 @@ fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
     let player = PlayerSlot::new(0);
     let mut resources = PlayerResources::new(1, 1);
     resources.add(player, gold, 5).unwrap();
-    shop.world.insert_resource(resources);
+    shop.sim.world.insert_resource(resources);
     let cost = ResourceAmount {
         resource: gold,
         amount: 2,
     };
-    let train = internals::train(&mut shop.world, shop.grunt, Ticks::ZERO, Some(cost));
+    let train = internals::train(&mut shop.sim.world, shop.grunt, Ticks::ZERO, Some(cost));
     let (owned, unowned) = (shop.id(), shop.id());
     shop.producer(owned, 1, 10, Some(player), train, TrainQueue::default());
     shop.producer(unowned, 1, 20, None, train, TrainQueue::default());
@@ -211,18 +196,23 @@ fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
     shop.tick();
     assert_eq!(shop.spawns(), [(Team::new(1), at(10), Some(player))]);
     let held = shop
+        .sim
         .world
         .resource::<PlayerResources>()
         .amount(player, gold);
     assert_eq!(held, 3);
     for id in [owned, unowned] {
-        let entity = shop.entity(id);
+        let entity = shop.sim.entity(id);
         assert_eq!(
-            shop.world.get::<ActionSlots>(entity).unwrap().in_progress(),
+            shop.sim
+                .world
+                .get::<ActionSlots>(entity)
+                .unwrap()
+                .in_progress(),
             None
         );
         assert_eq!(
-            shop.world.get::<TrainQueue>(entity),
+            shop.sim.world.get::<TrainQueue>(entity),
             Some(&TrainQueue::default())
         );
     }

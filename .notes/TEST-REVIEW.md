@@ -31,49 +31,15 @@ Today `TestMatch` (`capability_set/mod.rs:128-173`) only builds a world. Each mo
 
 The schedule is a separate field only because `Mode::install` needs it (`mode/tests.rs:684`). `world.schedule_scope(SimUpdate, ..)` gives that access, and `abilities:646` and `combat:378` already use it.
 
-- [ ] **Shape** — at the end of `capability_set/mod.rs`, in its `internals`:
-
-  ```rust
-  #[derive(Debug)]
-  pub(crate) struct TestMatch {
-      pub(crate) world: World, // holds the SimUpdate schedule
-      pub(crate) registry: StateRegistry,
-  }
-
-  impl TestMatch {
-      pub(crate) const RATE: TickRate; // 30 Hz; the mode's tests keep 10 Hz
-      pub(crate) fn new(declared: &[Capability], rate: TickRate, scripts: Option<MatchScripts>) -> TestMatch;
-      pub(crate) fn client(declared: &[Capability]) -> TestMatch; // no script host
-      pub(crate) fn server(declared: &[Capability], scripts: MatchScripts) -> TestMatch;
-      pub(crate) fn install<R>(&mut self, f: impl FnOnce(&mut World, &mut Schedule, &mut StateRegistry) -> R) -> R;
-      pub(crate) fn spawn(&mut self, at: Position, parts: impl Bundle) -> StableId; // the world's allocator, type tags given
-      pub(crate) fn entity(&self, id: StableId) -> Entity;
-      pub(crate) fn get<C: Component>(&self, id: StableId) -> &C;
-      pub(crate) fn try_get<C: Component>(&self, id: StableId) -> Option<&C>;
-      pub(crate) fn get_mut<C: Component<Mutability = Mutable>>(&mut self, id: StableId) -> Mut<'_, C>;
-      pub(crate) fn insert(&mut self, id: StableId, parts: impl Bundle);
-      pub(crate) fn now(&self) -> Tick;
-      pub(crate) fn step(&mut self);
-      pub(crate) fn run_until(&mut self, tick: u64);
-      pub(crate) fn block_at(&mut self, id: StableId, tick: u64, set: SimSet, blocks: &'static [Block]);
-      pub(crate) fn probe(&mut self, source: &str, of: StableId) -> Result<Dynamic, CallError>;
-      pub(crate) fn read(&mut self, expression: &str, of: StableId) -> Result<Dynamic, CallError>;
-      pub(crate) fn state_names(&self) -> Vec<&'static str>;
-      pub(crate) fn round_trip(&self, fresh: TestMatch) -> TestMatch; // asserts equal hashes
-  }
-  ```
-
-  The module harnesses keep only their own verbs (`cast`, `caster`, `fire_line`, `pick`) and hold a `TestMatch`. The capabilities part saves about 450 lines. `client` and `server` make the script host visible. Today combat, projectiles and stats run only as a client, because they pass `None`. That means no `ModifierHooks`, and no combat or projectiles test runs the server configuration.
-
-  Example: the vision `Scene` (`vision/tests.rs:30-122`) goes from 92 lines to about 35. The stats aura test (`stats/tests.rs:426-526`) goes from 100 lines to about 30, and the second allocator goes away.
+- [ ] **The rest of the shape** — `TestMatch` (`capability_set/test_match.rs`) now holds the world with its schedule and the registry, and gives `RATE`, `install`, `spawn`, `entity`, `get`, `try_get`, `get_mut`, `insert`, `set_blocks`, `now`, `step`, `run_until`, `probe` and `read`; every module harness holds one as `sim`. Still open:
+  - `client(declared)` and `server(declared, scripts)` in place of `new`'s `Option`, so the script host is visible. Combat, projectiles and stats run only as a client today: no `ModifierHooks`, and no combat or projectiles test runs the server configuration.
+  - `block_at`, `state_names` and `round_trip`, which asserts equal hashes; the state tests of each module write these again.
 - [ ] **Helpers beside their types**, each at the end of its own file in `internals`:
   - `Pools::life_left() -> Num` replaces the six `health` helpers and reads exactly (see 5.1).
   - `ScriptFailures::calls() -> Vec<FailedCall>` and `CallError::kind() -> FailureKind` (an error satellite in `scripts/error.rs`). Together they replace the 10 `assert!(matches!(…CallError::Api…))` sites with `assert_eq!`.
   - `MatchScripts::bare(limits, players)` exists (`match_scripts.rs:20-38`), but only `stats/tests.rs:448` uses it. Make it an associated fn, add `with_pools(&[&str])`, and use it at `orders:200`, `vision:52`, `units:65` and `capability_set:225-237`.
   - `ScriptLimits::ROOMY`. The roomy limits have three values today: 10k/100k (abilities, vision, units, mode), 20k/200k (orders:186), and 10k flat (stats).
-  - `Unit::ids(Dynamic) -> Vec<StableId>`, `UnitTypeData::tagged(&[&str])`, and `Units::load_next_type`. These replace the copies at orders:235-262, units:86 and mode:650.
-  - `Armed::bundle` and `Arms::parts` read `TickRate` from the world, not from an `hz` argument. Every caller passes `RATE.hz().get()` (abilities:287, combat:106, projectiles:151, orders:241, units:100, runner:281), so a wrong rate gives a wrong weapon period with no error. `stats::internals::load_stats` drops its `rate` argument for the same reason.
-  - `combat::armed` is a `#[cfg(test)]` module, but its name is not `internals`.
+  - `Units::load_next_type`, and `UnitTypeData::tagged` (it exists) at orders:235-262, units:86 and mode:650.
 - [ ] **In-crate tests do not use the exported helpers** — `load_stats`, `give_modifier`, `carried` and `pools::internals::spent` exist for `runner`, and the capabilities tests write them again:
   - `StatBook::new(..) + Stats::load` at abilities:929,992,1032,1083,1206;
   - `Match::give` at abilities:1218-1238;

@@ -1,13 +1,10 @@
 use std::fs;
-use std::num::NonZeroU32;
 use std::path::Path;
-
-use campfire_sim::TickRate;
 
 use super::*;
 use crate::actions::action_book::ActionBook;
 use crate::areas::area_effect::AreaEffect;
-use crate::capability_set::internals::TestMatch;
+use crate::capability_set::test_match::TestMatch;
 use crate::combat::combat_effect::CombatEffect;
 use crate::mode::mode_effect::ModeEffect;
 use crate::orders::ai::Ai;
@@ -76,8 +73,7 @@ fn a_set_holds_each_capability_once_with_what_it_builds_on() {
 
 /// Installs `declared` into a fresh match that runs `scripts`.
 fn installed(declared: &[Capability], budgets: Option<ScriptBudgets>) -> World {
-    let rate = TickRate::new(NonZeroU32::new(30).unwrap());
-    TestMatch::new(declared, rate, budgets).world
+    TestMatch::new(declared, TestMatch::RATE, budgets).world
 }
 
 #[test]

@@ -142,3 +142,26 @@ impl UnitParams {
             .ok_or_else(|| ApiError::UnknownParam.fail().into())
     }
 }
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use campfire_script::rhai::Dynamic;
+    use campfire_sim::StableId;
+
+    use crate::units::unit::Unit;
+
+    impl Unit {
+        /// The stable ids of `value`, a unit, a list of units, or `()` for none.
+        pub(crate) fn ids(value: Dynamic) -> Vec<StableId> {
+            let units = match value.clone().try_cast::<Vec<Dynamic>>() {
+                Some(units) => units,
+                None if value.is_unit() => Vec::new(),
+                None => vec![value],
+            };
+            units
+                .into_iter()
+                .map(|unit| unit.try_cast::<Unit>().unwrap().id)
+                .collect()
+        }
+    }
+}

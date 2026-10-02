@@ -109,7 +109,7 @@ fn arm(arena: &mut Arena, unit: StableId, damage: i64, period: u64) {
     let world = arena.world_mut();
     let entity = world.resource::<EntityIndex>().get(unit).unwrap();
     let arms = Arms::melee(num(2), 0, period, num(damage));
-    let parts = arms.parts(world, RATE.hz().get());
+    let parts = arms.parts(world);
     world.entity_mut(entity).insert(parts);
 }
 

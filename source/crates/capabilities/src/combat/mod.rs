@@ -648,6 +648,16 @@ pub(crate) mod internals {
     use bevy_ecs::bundle::Bundle;
     use bevy_ecs::world::World;
     use campfire_math::{Num, Ticks};
+    use campfire_sim::TickRate;
+
+    #[cfg(test)]
+    use crate::combat::on_death::OnDeath;
+    #[cfg(test)]
+    use crate::combat::recent_attackers::RecentAttackers;
+    #[cfg(test)]
+    use crate::stats::pools::Pools;
+    #[cfg(test)]
+    use crate::units::team::Team;
 
     use crate::actions::action_book::internals::{self, TestWeapon};
     use crate::actions::action_data::Range;
@@ -717,9 +727,10 @@ pub(crate) mod internals {
         }
 
         /// The weapon added to the book of `world`, in a unit's one slot, and the stats it reads:
-        /// the rate that makes its period at `hz` ticks a second, then its damage, then 0 for
-        /// every other stat of the match's stat book.
-        pub fn parts(self, world: &mut World, hz: u32) -> ArmsParts {
+        /// the rate that makes its period at the match's rate, then its damage, then 0 for every
+        /// other stat of the match's stat book.
+        pub fn parts(self, world: &mut World) -> ArmsParts {
+            let hz = world.resource::<TickRate>().hz().get();
             let weapon = TestWeapon {
                 aim: Filter::of_relation(Relation::Enemies),
                 range: Range::Meters(self.range),
@@ -731,7 +742,7 @@ pub(crate) mod internals {
                 resource_cost: None,
             };
             let id = internals::weapon(world, weapon);
-            // The rate whose attacks are `period` ticks apart at `hz`, rounded up so the period
+            // The rate whose attacks are `period` ticks apart, rounded up so the period
             // rounds back to `period`.
             let bits = (u128::from(hz) << (2 * Num::FRAC_BITS))
                 .div_ceil(u128::from(self.period.get()) << Num::FRAC_BITS);
@@ -757,23 +768,10 @@ pub(crate) mod internals {
         world.insert_resource(LifePool(life));
         world.insert_resource(CombatBindings::UNBOUND);
     }
-}
-
-#[cfg(test)]
-pub(crate) mod armed {
-    use bevy_ecs::bundle::Bundle;
-    use bevy_ecs::world::World;
-    use campfire_math::Num;
-
-    use crate::combat::internals::{Arms, ArmsParts};
-    use crate::combat::on_death::OnDeath;
-    use crate::combat::recent_attackers::RecentAttackers;
-    use crate::stats::pools::Pools;
-    use crate::units::team::Team;
-    use crate::units::unit_type::UnitType;
 
     /// A test unit's combat values: the life pool it starts with, whether it stays when it dies,
     /// and its one weapon, if it has one.
+    #[cfg(test)]
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub(crate) struct Armed {
         pub(crate) life: Num,
@@ -781,6 +779,7 @@ pub(crate) mod armed {
         pub(crate) arms: Option<Arms>,
     }
 
+    #[cfg(test)]
     impl Armed {
         /// A unit of `life` that despawns when it dies, with a melee weapon of `range`, `windup`
         /// ticks, `period` ticks and `damage`.
@@ -820,11 +819,11 @@ pub(crate) mod armed {
 
         /// The components of a new unit of this type on `team` in `world`, whose book takes its
         /// weapon: its team and its life pool, which the spawn and its kit give; its death and
-        /// its attackers, which its `combat` gives; and its weapon's parts at `hz` ticks a second.
-        pub(crate) fn bundle(self, world: &mut World, team: Team, hz: u32) -> impl Bundle + use<> {
+        /// its attackers, which its `combat` gives; and its weapon's parts.
+        pub(crate) fn bundle(self, world: &mut World, team: Team) -> impl Bundle + use<> {
             let parts = self
                 .arms
-                .map_or_else(ArmsParts::unarmed, |arms| arms.parts(world, hz));
+                .map_or_else(ArmsParts::unarmed, |arms| arms.parts(world));
             (
                 team,
                 Pools::life(self.life),

@@ -1,14 +1,12 @@
-use std::num::NonZeroU32;
-
 use campfire_math::{RngSource, SegmentSeed};
-use campfire_sim::{Capability, EntityIndex, IdAllocator, SimTick, SimUpdate, TypeHash};
+use campfire_sim::{Capability, EntityIndex, SimTick, TypeHash};
 
 use super::*;
 use crate::actions::action_slots::ActionSlots;
-use crate::capability_set::internals::TestMatch;
+use crate::capability_set::test_match::TestMatch;
 use crate::combat::ROLL_STREAM;
-use crate::combat::armed::Armed;
 use crate::combat::deaths::Deaths;
+use crate::combat::internals::Armed;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attack::RecentAttack;
 use crate::combat::recent_attackers::RecentAttackers;
@@ -22,10 +20,6 @@ use crate::units::dead::Dead;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::damage_kind::DamageKind;
-use campfire_sim::TickRate;
-
-/// The MOBA's 30 ticks a second.
-const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
 
 fn num(value: i64) -> Num {
     Num::from_int(value).unwrap()
@@ -72,8 +66,7 @@ fn target() -> Armed {
 
 #[derive(Debug)]
 struct Volley {
-    world: World,
-    registry: StateRegistry,
+    sim: TestMatch,
     /// A homing projectile type.
     bolt: UnitType,
     /// A line of 1 m wide for 6 m, that passes through what it hits.
@@ -90,12 +83,8 @@ impl Volley {
             Capability::Combat,
             Capability::Projectiles,
         ];
-        let TestMatch {
-            mut world,
-            schedule,
-            registry,
-        } = TestMatch::new(&declared, RATE, None);
-        world.add_schedule(schedule);
+        let mut sim = TestMatch::new(&declared, TestMatch::RATE, None);
+        let world = &mut sim.world;
         let types = [
             ("bolt", projectile(true, Num::ZERO, None, false)),
             ("lance", projectile(false, Num::ONE, Some(num(6)), false)),
@@ -103,13 +92,12 @@ impl Volley {
         ];
         let [bolt, lance, dart] = types.map(|(name, data)| {
             let unit_type =
-                Units::load_type(&mut world, TypeScope::Mode, name, &UnitTypeData::default());
-            Projectiles::load_type(&mut world, unit_type, &data);
+                Units::load_type(world, TypeScope::Mode, name, &UnitTypeData::default());
+            Projectiles::load_type(world, unit_type, &data);
             unit_type
         });
         Volley {
-            world,
-            registry,
+            sim,
             bolt,
             lance,
             dart,
@@ -120,13 +108,14 @@ impl Volley {
     /// carrying 10 damage, from the next tick.
     fn fire_line(&mut self, source: StableId, unit_type: UnitType) {
         let range = self
+            .sim
             .world
             .resource::<ByType<ProjectileSpec>>()
             .get(unit_type)
             .unwrap()
             .range
             .unwrap();
-        let mut launches = self.world.resource_mut::<Launches>();
+        let mut launches = self.sim.world.resource_mut::<Launches>();
         launches.launches.push(Launch {
             source,
             from: at(0, 0),
@@ -147,29 +136,18 @@ impl Volley {
     }
 
     fn unit(&mut self, team: u8, at: Position, combatant: Armed) -> StableId {
-        let id = self.world.resource_mut::<IdAllocator>().allocate();
-        let bundle = combatant.bundle(&mut self.world, Team::new(team), RATE.hz().get());
-        self.world.spawn((id, at, bundle));
-        id
-    }
-
-    fn entity(&self, id: StableId) -> Entity {
-        self.world.resource::<EntityIndex>().get(id).unwrap()
+        let bundle = combatant.bundle(&mut self.sim.world, Team::new(team));
+        self.sim.spawn(at, bundle)
     }
 
     fn attack(&mut self, attacker: StableId, target: StableId) {
-        let entity = self.entity(attacker);
-        let mut slots = self.world.get_mut::<ActionSlots>(entity).unwrap();
+        let mut slots = self.sim.get_mut::<ActionSlots>(attacker);
         slots.set_attack_target(Some(target));
     }
 
-    fn tick(&mut self) {
-        self.world.run_schedule(SimUpdate);
-    }
-
     fn health(&self, id: StableId) -> i64 {
-        let entity = self.entity(id);
-        let pools = self.world.get::<Pools>(entity).unwrap();
+        let entity = self.sim.entity(id);
+        let pools = self.sim.world.get::<Pools>(entity).unwrap();
         pools
             .current(PoolId::FIRST)
             .unwrap()
@@ -179,7 +157,7 @@ impl Volley {
 
     /// The roll each projectile carries, by stable id.
     fn rolls(&self) -> Vec<Num> {
-        let world = &self.world;
+        let world = &self.sim.world;
         let projectiles = world.resource::<EntityIndex>().iter();
         projectiles
             .filter_map(|(_, entity)| world.get::<Projectile>(entity))
@@ -192,7 +170,7 @@ impl Volley {
 
     /// Where each projectile is, by stable id.
     fn projectiles(&self) -> Vec<Position> {
-        let world = &self.world;
+        let world = &self.sim.world;
         world
             .resource::<EntityIndex>()
             .iter()
@@ -208,8 +186,8 @@ fn a_projectile_flies_to_its_target_and_strikes_as_it_reaches_its_body() {
     let shooter_id = volley.unit(0, at(0, 0), shooter(volley.bolt));
     let target_id = volley.unit(1, at(5, 0), target());
     let body = Body::new(Num::ONE).unwrap();
-    let entity = volley.entity(target_id);
-    volley.world.entity_mut(entity).insert(body);
+    let entity = volley.sim.entity(target_id);
+    volley.sim.insert(target_id, body);
     volley.attack(shooter_id, target_id);
 
     // The attack starts in tick 0 and fires in tick 2, from the origin. The projectile, of no
@@ -219,7 +197,7 @@ fn a_projectile_flies_to_its_target_and_strikes_as_it_reaches_its_body() {
     let mut flights = Vec::new();
     let mut healths = Vec::new();
     for _ in 0..=12 {
-        volley.tick();
+        volley.sim.step();
         flights.push(volley.projectiles());
         healths.push(volley.health(target_id));
     }
@@ -234,7 +212,7 @@ fn a_projectile_flies_to_its_target_and_strikes_as_it_reaches_its_body() {
         .collect();
     assert_eq!(flights, expected);
     assert_eq!(healths, [[100; 10].as_slice(), &[70; 3]].concat());
-    let attackers = volley.world.get::<RecentAttackers>(entity).unwrap();
+    let attackers = volley.sim.world.get::<RecentAttackers>(entity).unwrap();
     let attack = RecentAttack {
         source: shooter_id,
         tick: Tick::new(10),
@@ -262,40 +240,45 @@ fn a_projectile_whose_target_dies_or_goes_first_ends_without_a_hit() {
     // Both fire in tick 2. Before tick 5 one target dies and the other despawns: in tick 5 both
     // projectiles end where they were, and neither strikes.
     for _ in 0..5 {
-        volley.tick();
+        volley.sim.step();
     }
     assert_eq!(volley.projectiles().len(), 2);
-    let entity = volley.entity(doomed);
-    volley.world.entity_mut(entity).insert(Dead);
-    let entity = volley.entity(gone);
-    volley.world.despawn(entity);
+    volley.sim.insert(doomed, Dead);
+    let entity = volley.sim.entity(gone);
+    volley.sim.world.despawn(entity);
 
     // A projectile is state while it flies.
     let mut per_type = Vec::new();
-    let hash = volley.registry.hash_by_type(&volley.world, &mut per_type);
+    let hash = volley
+        .sim
+        .registry
+        .hash_by_type(&volley.sim.world, &mut per_type);
     assert!(
         per_type
             .iter()
             .any(|TypeHash { name, .. }| *name == "projectiles.projectile")
     );
     let mut snapshot = Vec::new();
-    volley.registry.snapshot(&volley.world, &mut snapshot);
+    volley
+        .sim
+        .registry
+        .snapshot(&volley.sim.world, &mut snapshot);
     // A restore loads the match's books first: the same weapons, in the same order.
     let mut restored = Volley::new();
-    let hz = RATE.hz().get();
     for armed in [
         shooter(restored.bolt),
         shooter(restored.bolt),
         target(),
         target(),
     ] {
-        let _weapon = armed.bundle(&mut restored.world, Team::new(0), hz);
+        let _weapon = armed.bundle(&mut restored.sim.world, Team::new(0));
     }
     volley
+        .sim
         .registry
-        .restore(&snapshot, &mut restored.world)
+        .restore(&snapshot, &mut restored.sim.world)
         .unwrap();
-    assert_eq!(volley.registry.hash(&restored.world), hash);
+    assert_eq!(volley.sim.registry.hash(&restored.sim.world), hash);
     assert_eq!(restored.projectiles(), volley.projectiles());
     // The struck units decode only in order, each once: the ids were allocated in order.
     let decode = |hits: &[(StableId, StableId)]| {
@@ -307,8 +290,8 @@ fn a_projectile_whose_target_dies_or_goes_first_ends_without_a_hit() {
     assert!(decode(&[(first, gone), (first, doomed)]).is_err());
     assert!(decode(&[(first, doomed), (first, doomed)]).is_err());
 
-    volley.tick();
-    assert_eq!(volley.world.resource::<SimTick>().start().get(), 6);
+    volley.sim.step();
+    assert_eq!(volley.sim.world.resource::<SimTick>().start().get(), 6);
     assert_eq!(volley.projectiles(), []);
     assert_eq!(volley.health(doomed), 100);
 }
@@ -323,8 +306,8 @@ fn a_projectile_that_outlives_its_source_kills_with_no_killer() {
         let mut volley = Volley::new();
         let shooters = [0, 10].map(|x| volley.unit(0, at(x, 0), shooter(volley.bolt)));
         let victim = volley.unit(1, at(5, 0), target());
-        let victim_entity = volley.entity(victim);
-        let mut pools = volley.world.get_mut::<Pools>(victim_entity).unwrap();
+        let victim_entity = volley.sim.entity(victim);
+        let mut pools = volley.sim.world.get_mut::<Pools>(victim_entity).unwrap();
         pools.take(PoolId::FIRST, num(40));
         for shooter in shooters {
             volley.attack(shooter, victim);
@@ -337,14 +320,15 @@ fn a_projectile_that_outlives_its_source_kills_with_no_killer() {
                     &shooters[..1]
                 };
                 for &id in gone {
-                    let entity = volley.entity(id);
-                    volley.world.despawn(entity);
+                    let entity = volley.sim.entity(id);
+                    volley.sim.world.despawn(entity);
                 }
             }
-            volley.tick();
+            volley.sim.step();
         }
         assert_eq!(volley.health(victim), 0);
         let deaths: Vec<_> = volley
+            .sim
             .world
             .resource::<Deaths>()
             .iter()
@@ -358,6 +342,7 @@ fn a_projectile_that_outlives_its_source_kills_with_no_killer() {
         );
         // Only a source that exists is an attacker.
         let attackers: Vec<_> = volley
+            .sim
             .world
             .get::<RecentAttackers>(victim_entity)
             .unwrap()
@@ -387,10 +372,10 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
     // It launches in tick 0 and flies half a meter a tick from tick 1: 6 m is ticks 1 to 12, and
     // it ends in tick 12, as its range runs out. After tick 11 it is at 5.5 m.
     for _ in 0..12 {
-        volley.tick();
+        volley.sim.step();
     }
     assert_eq!(volley.projectiles(), [point(num(5) + half(), Num::ZERO)]);
-    volley.tick();
+    volley.sim.step();
     assert_eq!(volley.projectiles(), []);
     let healths = [beside, wide, ally, past, beyond].map(|unit| volley.health(unit));
     assert_eq!(healths, [90, 100, 100, 90, 100]);
@@ -403,10 +388,10 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
         [at(3, 0), at(3, 0), at(4, 0)].map(|at| volley.unit(1, at, target()));
     volley.fire_line(source, volley.dart);
     for _ in 0..6 {
-        volley.tick();
+        volley.sim.step();
     }
     assert_eq!(volley.projectiles(), [point(num(2) + half(), Num::ZERO)]);
-    volley.tick();
+    volley.sim.step();
     assert_eq!(volley.projectiles(), []);
     let healths = [first, second, behind].map(|unit| volley.health(unit));
     assert_eq!(healths, [90, 100, 100]);

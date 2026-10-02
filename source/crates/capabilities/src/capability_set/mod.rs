@@ -276,57 +276,7 @@ const fn needs(capability: Capability) -> &'static [Capability] {
 }
 
 #[cfg(test)]
-pub(crate) mod internals {
-    use std::fmt;
-
-    use campfire_math::SegmentSeed;
-    use campfire_sim::{SimUpdate, TickRate};
-
-    use super::*;
-    use crate::combat::internals;
-    use crate::stats::pool_id::PoolId;
-
-    /// A match for a capability's tests: a world that `SimUpdate::prepare` set up, with the core
-    /// and the declared capabilities installed; and its schedule and state registry, for what a
-    /// test installs or loads before the schedule goes into the world.
-    pub(crate) struct TestMatch {
-        pub(crate) world: World,
-        pub(crate) schedule: Schedule,
-        pub(crate) registry: StateRegistry,
-    }
-
-    /// A schedule prints nothing, so a match prints only what it is.
-    impl fmt::Debug for TestMatch {
-        fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-            f.write_str("TestMatch")
-        }
-    }
-
-    impl TestMatch {
-        /// A match at `rate` of the capabilities `declared`, running scripts within `budgets`;
-        /// with combat, its life pool the first.
-        pub(crate) fn new(
-            declared: &[Capability],
-            rate: TickRate,
-            budgets: Option<ScriptBudgets>,
-        ) -> TestMatch {
-            let mut world = World::new();
-            SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), rate);
-            let mut schedule = SimUpdate::schedule();
-            let mut registry = StateRegistry::new();
-            let set = CapabilitySet::new(declared).expect("a test declares a valid set");
-            set.install(&mut world, &mut schedule, &mut registry, budgets);
-            if set.contains(Capability::Combat) {
-                internals::bind_life(&mut world, PoolId::FIRST);
-            }
-            TestMatch {
-                world,
-                schedule,
-                registry,
-            }
-        }
-    }
-}
+pub(crate) mod test_match;
 
 #[cfg(test)]
 mod tests;

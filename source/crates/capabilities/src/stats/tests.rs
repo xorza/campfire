@@ -1,13 +1,11 @@
 use std::collections::BTreeMap;
-use std::mem;
-use std::num::NonZeroU32;
 use std::slice;
 
 use campfire_math::Vec3;
 use campfire_sim::{Capability, IdAllocator, SimUpdate};
 
 use super::*;
-use crate::capability_set::internals::TestMatch;
+use crate::capability_set::test_match::TestMatch;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::application::{Application, NewInstance};
@@ -47,9 +45,6 @@ use crate::values::stat::Stat;
 use bevy_ecs::entity::Entity;
 use campfire_math::Num;
 use campfire_sim::Position;
-
-/// 30 ticks a second, as the MOBA runs.
-const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
 
 fn num(value: i64) -> Num {
     Num::from_int(value).unwrap()
@@ -132,7 +127,7 @@ fn stats(values: &[(Stat, Num, Num)]) -> StatsData {
 
 /// A match with the stats capability and a book of `types`, with a move speed cap of 6.
 fn stat_match(types: &[StatsData]) -> TestMatch {
-    let mut game = TestMatch::new(&[Capability::Stats], RATE, None);
+    let mut game = TestMatch::new(&[Capability::Stats], TestMatch::RATE, None);
     let types = types.iter().enumerate().map(|(at, data)| {
         let unit_type = UnitType::new(u16::try_from(at).unwrap());
         (unit_type, data)
@@ -140,7 +135,6 @@ fn stat_match(types: &[StatsData]) -> TestMatch {
     let book = StatBook::new(&rules(), types, num(6));
     let pools = PoolBook::new(&pools(), &book);
     Stats::load(&mut game.world, book, pools);
-    game.world.add_schedule(mem::take(&mut game.schedule));
     game
 }
 
@@ -503,7 +497,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
         mode: 10_000,
     };
     let scripts = ScriptBudgets::new(limits, 1);
-    let mut game = TestMatch::new(&[Capability::Stats], RATE, Some(scripts));
+    let mut game = TestMatch::new(&[Capability::Stats], TestMatch::RATE, Some(scripts));
     let book = StatBook::new(&rules(), [], num(6));
     Stats::load(&mut game.world, book, PoolBook::default());
     // A presence of 2 m on allies, holding `inspired`.
@@ -514,13 +508,9 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     };
     Stats::load_modifier(&mut game.world, 0, "inspired", &data(None), None);
     Stats::load_modifier(&mut game.world, 0, "presence", &data(Some(presence)), None);
-    game.world.add_schedule(mem::take(&mut game.schedule));
     let at = |x: i64| Position::new(Vec3::new(num(x), Num::ZERO, Num::ZERO)).unwrap();
     let spawn = |game: &mut TestMatch, x: i64, team: u8| {
-        let id = game.world.resource_mut::<IdAllocator>().allocate();
-        let team = Team::new(team);
-        game.world.spawn((id, at(x), team, Modifiers::default()));
-        id
+        game.spawn(at(x), (Team::new(team), Modifiers::default()))
     };
     // The carrier at 0; an ally at 2, on the edge, and one at 3; an enemy at 1.
     let carrier = spawn(&mut game, 0, 0);
@@ -600,16 +590,12 @@ fn a_modifier_another_capability_holds_lasts_only_its_tick() {
         mode: 10_000,
     };
     let scripts = ScriptBudgets::new(limits, 1);
-    let mut game = TestMatch::new(&[Capability::Stats], RATE, Some(scripts));
+    let mut game = TestMatch::new(&[Capability::Stats], TestMatch::RATE, Some(scripts));
     let book = StatBook::new(&rules(), [], num(6));
     Stats::load(&mut game.world, book, PoolBook::default());
     Stats::load_modifier(&mut game.world, 0, "inspired", &modifier_data(None), None);
-    game.world.add_schedule(mem::take(&mut game.schedule));
-    let id = game.world.resource_mut::<IdAllocator>().allocate();
-    let unit = game
-        .world
-        .spawn((id, Position::ORIGIN, Team::new(0), Modifiers::default()))
-        .id();
+    let id = game.spawn(Position::ORIGIN, (Team::new(0), Modifiers::default()));
+    let unit = game.entity(id);
     let inspired = game
         .world
         .resource::<ModifierBook>()
