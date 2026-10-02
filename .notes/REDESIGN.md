@@ -308,7 +308,7 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 
 | Step | Change | Needs | Size |
 |---|---|---|---|
-| F2 | Ids at call time, so `ctx.projectile` and `ctx.area` return handles | B | M, changes behaviour |
+| F3 | Ids at call time, so `ctx.projectile` and `ctx.area` return handles whose `.state` the call writes | Unit script state: a unit's `[state]` and `unit.state`, which the API does not have yet, so a handle alone would give a script nothing to use | M, changes behaviour |
 | G1 | `register_*_checked` and a check for every type; absent resources removed; the state table test; the snapshot fuzz | A | M |
 | H1 | `BodyGrid`, read by deliveries and auras; one `(group, unit)` hit store; stuck walkers through the grid | B | M |
 | H2 | `NavBudget`; short routes within their window; "arrived short"; re-asks after removals; the blocker query and clipping; `Progress` reset; blocked map cells in the exact tests; `Steering` methods; `Route::clear` keeps its buffer | B3 | M, changes behaviour |
@@ -328,7 +328,7 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 ```
 Track S:  D5
 
-Track I:  F2      G1      H1, H4      H2 → H3
+Track I:  G1      H1, H4      H2 → H3      F3 after unit script state
 
 Joins:    G1 → G2      D5 + H1 → H1b
 ```
@@ -445,7 +445,7 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - small shapes: J;
   - train queue times: G2;
   - kill by last death: J;
-  - `ctx.projectile` returns `()`: F2;
+  - `ctx.projectile` returns `()`: F3;
   - `HeldModifiers` clear: G2;
   - capability set table: A4.
 - **R§12:**
