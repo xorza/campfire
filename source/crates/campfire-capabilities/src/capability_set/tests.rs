@@ -106,6 +106,41 @@ fn the_table_holds_every_capability_once_after_what_it_builds_on() {
     }
 }
 
+/// The capability table of design 04, beside this crate.
+const OVERVIEW: &str = concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../design/04-capabilities/00-overview.md"
+);
+
+#[test]
+fn the_design_marks_built_exactly_the_capabilities_the_release_installs() {
+    // Each row of the table names its capabilities in its first column and its status in the
+    // second; a planned one may be a name the code does not have yet.
+    let overview = fs::read_to_string(OVERVIEW).unwrap();
+    let table = overview
+        .lines()
+        .skip_while(|line| !line.starts_with("| Capability | Status |"))
+        .skip(2)
+        .take_while(|line| line.starts_with('|'));
+    let mut built = Vec::new();
+    for row in table {
+        let cells: Vec<&str> = row.split('|').map(str::trim).collect();
+        match cells[2] {
+            "built" => built.extend(cells[1].split(", ").map(|name| name.trim_matches('`'))),
+            "planned" => {}
+            status => panic!("{status:?} is no status, in {row}"),
+        }
+    }
+    built.sort_unstable();
+    let mut installed: Vec<&str> = CAPABILITIES
+        .iter()
+        .filter(|row| row.install.is_some())
+        .map(|row| row.capability.name())
+        .collect();
+    installed.sort_unstable();
+    assert_eq!(built, installed);
+}
+
 /// The layer of each module of the crate, lowest first: a module imports from its own layer
 /// and the layers below, as design 02's structural rules ask. `lib.rs` sits above them all.
 const LAYERS: [(&str, u8); 19] = [

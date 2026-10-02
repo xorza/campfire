@@ -50,4 +50,38 @@ mod tests {
         }
         assert_eq!(names, ["serde"]);
     }
+
+    #[test]
+    fn the_design_marks_built_exactly_the_crates_of_the_workspace() {
+        // Design 02's module table names each module in its first column and its status in the
+        // second; a built module's crate is `campfire-<module>` in `crates/` or `checks/`.
+        let source = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
+        let design = fs::read_to_string(format!("{source}/../design/02-engine-core.md")).unwrap();
+        let table = design
+            .lines()
+            .skip_while(|line| *line != "| Module | Status | Does |")
+            .skip(2)
+            .take_while(|line| line.starts_with('|'));
+        let mut built = Vec::new();
+        for row in table {
+            let cells: Vec<&str> = row.split('|').map(str::trim).collect();
+            match cells[2] {
+                "built" => built.push(format!("campfire-{}", cells[1].trim_matches('`'))),
+                "planned" => {}
+                status => panic!("{status:?} is no status, in {row}"),
+            }
+        }
+        built.sort_unstable();
+        let mut crates = Vec::new();
+        for folder in ["crates", "checks"] {
+            for entry in fs::read_dir(format!("{source}/{folder}")).unwrap() {
+                let entry = entry.unwrap();
+                if entry.path().join("Cargo.toml").is_file() {
+                    crates.push(entry.file_name().into_string().unwrap());
+                }
+            }
+        }
+        crates.sort_unstable();
+        assert_eq!(built, crates);
+    }
 }

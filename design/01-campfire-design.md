@@ -44,7 +44,22 @@ Three programs share one deterministic engine: the client, the game server, and 
 
 A small launcher starts the right client: a server names only an engine release tag, and the launcher fetches that release only if enough of the release keys it trusts signed it (for example 2 of 3), and refuses revoked releases. The launcher itself is signed for each operating system.
 
-*Diagram: system architecture (3 programs, 3 optional protocols) — see the live doc.*
+```mermaid
+flowchart LR
+    launcher["Launcher"] -->|starts the signed release| client["Client"]
+    client <-->|"inputs, state (WebTransport)"| server["Game server"]
+    server -->|session log| verifier["Replay verifier"]
+    subgraph optional["Optional protocols"]
+        nostr["Nostr: identity, listings, reputation, marketplace"]
+        blossom["Blossom: package files, logs"]
+        lightning["Lightning: payments"]
+    end
+    client -.-> nostr
+    server -.-> nostr
+    client -.-> blossom
+    server -.-> blossom
+    server -.-> lightning
+```
 
 ## Engine
 

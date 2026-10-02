@@ -2,43 +2,94 @@
 
 ## Module map
 
-*Diagram: module map (apps, services, deterministic core with capabilities) — see the live doc.*
+```mermaid
+flowchart TB
+    subgraph apps["Apps"]
+        client
+        server
+        verifier
+        launcher:::planned
+        editor:::planned
+    end
+    subgraph checks["Checks"]
+        lancheck["lan-check"]
+        detci["det-ci"]:::planned
+    end
+    subgraph services["Services"]
+        net
+        content:::planned
+        identity:::planned
+        ownership:::planned
+        payments:::planned
+    end
+    subgraph core["Deterministic core"]
+        runner
+        package
+        capabilities
+        script
+        sim
+        protocol
+        math
+        common
+    end
+    client --> net
+    server --> net
+    net --> runner
+    verifier --> runner
+    detci -.-> runner
+    lancheck --> verifier
+    lancheck --> net
+    runner --> package
+    runner --> protocol
+    package --> capabilities
+    capabilities --> script
+    capabilities --> sim
+    script --> math
+    sim --> math
+    math --> common
+    protocol --> common
+    classDef planned stroke-dasharray: 5 5
+```
+
+Dashed: planned, as the table below marks it. `log` is left out: the binaries, `net` and `verifier` use it.
 
 Each layer uses the layers below it.
 
 ## Modules
 
-| Module | Does |
-| --- | --- |
-| `common` | The vocabulary that crates which do not depend on each other share: the player slot, ticks, segment seed and 32-byte values written as hex, and a package's fingerprint |
-| `math` | Fixed-point numbers, 3D vectors, trig, exact 256-bit products, counter-based RNG |
-| `protocol` | Session log format (see Protocol Spec) |
-| `sim` | Deterministic state and systems on `bevy_ecs`; no genre code |
-| `script` | Rhai host and core script API |
-| `capabilities` | Mechanisms a mode combines, a module each: `combat`, `navigation`, `orders` and the rest ([Capabilities](04-capabilities/00-overview.md)) |
-| `package` | Reads a mode's packages and every package it depends on, and runs the load checks of [Script API](08-script-api.md) |
-| `runner` | Builds a match from checked packages: wires `sim`, the declared capabilities and `script`, feeds inputs; owns `SessionRules`, which builds a session's terms from the packages and checks terms on the server, the client and the verifier |
-| `verifier` | CLI: replays a session log segment, checks the result |
-| `det-ci` | Headless matches of the reference MOBA with its bots on every OS, comparing state hashes |
-| `lan-check` | On request: the real server and two `client --bot` processes over WebTransport on `127.0.0.1`, and a bot with the wrong certificate that must fail and say why, checked from their JSON logs and by the verifier |
-| `server` | Host config, lifecycle, saves, validation, admin; a headless app, and a library the client runs on a thread for singleplayer |
-| `net` | Lightyear over QUIC (WebTransport): handshake, replication; internal |
-| `log` | The binaries' log output: text on standard error, and JSON lines into a file; the events a tool reads back from those lines |
-| `launcher` | Small app: fetches, checks and starts the engine release a server or replay names; server browser |
-| `client` | Bevy app: rendering, input, UI, audio, prediction |
-| `content` | Package signatures, pinning, cache, Blossom fetch |
-| `editor` | Map and content editors |
-| `identity` | Nostr keys, session keys, listings, reputation |
-| `ownership` | License checks (optional) |
-| `payments` | Pools, hold invoices, wallet budgets (optional, separate repo) |
+| Module | Status | Does |
+| --- | --- | --- |
+| `common` | built | The vocabulary that crates which do not depend on each other share: the player slot, ticks, segment seed and 32-byte values written as hex, and a package's fingerprint |
+| `math` | built | Fixed-point numbers, 3D vectors, trig, exact 256-bit products, counter-based RNG |
+| `protocol` | built | Session log format (see Protocol Spec) |
+| `sim` | built | Deterministic state and systems on `bevy_ecs`; no genre code |
+| `script` | built | Rhai host and core script API |
+| `capabilities` | built | Mechanisms a mode combines, a module each: `combat`, `navigation`, `orders` and the rest ([Capabilities](04-capabilities/00-overview.md)) |
+| `package` | built | Reads a mode's packages and every package it depends on, and runs the load checks of [Script API](08-script-api.md) |
+| `runner` | built | Builds a match from checked packages: wires `sim`, the declared capabilities and `script`, feeds inputs; owns `SessionRules`, which builds a session's terms from the packages and checks terms on the server, the client and the verifier |
+| `verifier` | built | CLI: replays a session log segment, checks the result |
+| `det-ci` | planned | Headless matches of the reference MOBA with its bots on every OS, comparing state hashes |
+| `lan-check` | built | On request: the real server and two `client --bot` processes over WebTransport on `127.0.0.1`, and a bot with the wrong certificate that must fail and say why, checked from their JSON logs and by the verifier |
+| `server` | built | Host config, lifecycle, saves, validation, admin; a headless app, and a library the client runs on a thread for singleplayer |
+| `net` | built | Lightyear over QUIC (WebTransport): handshake, replication; internal |
+| `log` | built | The binaries' log output: text on standard error, and JSON lines into a file; the events a tool reads back from those lines |
+| `launcher` | planned | Small app: fetches, checks and starts the engine release a server or replay names; server browser |
+| `client` | built | Bevy app: rendering, input, UI, audio, prediction |
+| `content` | planned | Package signatures, pinning, cache, Blossom fetch |
+| `editor` | planned | Map and content editors |
+| `identity` | planned | Nostr keys, session keys, listings, reputation |
+| `ownership` | planned | License checks (optional) |
+| `payments` | planned | Pools, hold invoices, wallet budgets (optional, separate repo) |
+
+A module is built when the workspace has its crate, `campfire-<module>` in `source/crates/` or `source/checks/`, and planned when it does not yet. A test fails when this column and the workspace differ.
 
 `sim` is pure: state and inputs in, next state out; no files, packages or signatures.
 
-`det-ci` and `lan-check` are checks, not engine crates: they live in `source/checks/`, apart from `source/crates/`, and nothing depends on them. Each crate's folder has its package's name, `campfire-` and the module: `source/crates/campfire-math/`, `source/checks/campfire-lan-check/`.
+`lan-check`, and `det-ci` once it is built, are checks, not engine crates: they live in `source/checks/`, apart from `source/crates/`, and nothing depends on them. Each crate's folder has its package's name, `campfire-` and the module: `source/crates/campfire-math/`, `source/checks/campfire-lan-check/`.
 
-Dependencies: `server` and `client` → `net` → `runner`; `verifier` and `det-ci` → `runner` → `package` → `capabilities` → `script`, `sim`; `runner` → `protocol`; `script` and `sim` → `math` → `common`; `protocol` → `common`. `log` depends on no engine crate; the binaries, `net` and `verifier` use it. The runner joins `protocol` and the packages, which name a package by the one `Fingerprint` of `common`. A type enters `common` only when two crates that do not depend on each other both name it, and only as a plain value: construction, parsing, display and serde, and no other logic. `common` depends on `serde` alone. Within `capabilities`, a module imports only from the capabilities below it.
+Dependencies: `server` and `client` → `net` → `runner`; `verifier`, and the planned `det-ci`, → `runner` → `package` → `capabilities` → `script`, `sim`; `runner` → `protocol`; `script` and `sim` → `math` → `common`; `protocol` → `common`. `log` depends on no engine crate; the binaries, `net` and `verifier` use it. The runner joins `protocol` and the packages, which name a package by the one `Fingerprint` of `common`. A type enters `common` only when two crates that do not depend on each other both name it, and only as a plain value: construction, parsing, display and serde, and no other logic. `common` depends on `serde` alone. Within `capabilities`, a module imports only from the capabilities below it.
 
-Outside the engine crates: the reference MOBA and bots. `det-ci` uses both as test content; nothing else in the engine depends on them. Bots produce inputs like players, so replays never depend on bot code.
+Outside the engine crates: the reference MOBA and bots. The tests of `package` and `runner`, and `lan-check`, use them as test content, as `det-ci` will; nothing else in the engine depends on them. Bots produce inputs like players, so replays never depend on bot code.
 
 ## Structural rules
 

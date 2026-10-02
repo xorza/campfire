@@ -21,24 +21,26 @@ Every capability says its mechanism in the same few terms, so that capabilities 
 
 ## Capabilities
 
-| Capability | Adds | Doc |
-| --- | --- | --- |
-| `combat` | The life pool, weapons, the damage and heal pass, deaths, kill credit, respawns | [Combat](combat.md) |
-| `stats` | Stats and their formula, pools, modifiers, tags and their effects, levels | [Stats](stats.md) |
-| `abilities` | Cast actions: ranks, charges, toggles, channels, charged casts | [Actions](actions.md#kinds) |
-| `projectiles`, `areas` | Deliveries: projectiles that fly a line, home or fall; areas that hold modifiers on the units inside | [Actions](actions.md#deliveries) |
-| `orders` | Units that take orders: move, attack, an action, stop, hold, queues, groups and formations; AI `on_think` | [Control](control.md#orders) |
-| `character` | Units a player drives directly: per-tick input frames, capsule controller | [Control](control.md#character) |
-| `hitboxes` | The ray and sweep deliveries: shots and swings against hitboxes, lag compensation, spread | [Hitboxes](hitboxes.md) |
-| `navigation` | Layers, routes on a grid or a navmesh, local steering, waypoint paths | [Navigation](navigation.md) |
-| `vision` | What each vision group sees: grid fog of war, hidden units and detection, 3D occlusion, relevance | [Vision](vision.md) |
-| `items` | Item units, inventories, equipment, shops, crafting; an item grants modifiers, actions and pools | [Items](items.md) |
-| `progression` | Experience on tracks, levels, points to learn ranks, perks, veterancy | [Progression](progression.md) |
-| `quests` | Quests with stages and objectives, dialogue with topics and choices, campaign objectives | [Quests](quests.md) |
-| `interaction` | The use action on objects: doors, containers, plant and defuse, capture points, dialogue, entering vehicles and buildings | [Interaction](interaction.md) |
-| `production` | The train, build and gather actions, construction on the grid, tech, player modifiers | [Production](production.md) |
-| `physics` | Vehicles, rigid bodies, heightmap terrain | [Physics](physics.md) |
-| `world` | Large worlds: regions that sleep, parallel regions, streaming | [World](world.md) |
+| Capability | Status | Adds | Doc |
+| --- | --- | --- | --- |
+| `combat` | built | The life pool, weapons, the damage and heal pass, deaths, kill credit, respawns | [Combat](combat.md) |
+| `stats` | built | Stats and their formula, pools, modifiers, tags and their effects, levels | [Stats](stats.md) |
+| `abilities` | built | Cast actions: ranks, charges, toggles, channels, charged casts | [Actions](actions.md#kinds) |
+| `projectiles`, `areas` | built | Deliveries: projectiles that fly a line, home or fall; areas that hold modifiers on the units inside | [Actions](actions.md#deliveries) |
+| `orders` | built | Units that take orders: move, attack, an action, stop, hold, queues, groups and formations; AI `on_think` | [Control](control.md#orders) |
+| `character` | planned | Units a player drives directly: per-tick input frames, capsule controller | [Control](control.md#character) |
+| `hitboxes` | planned | The ray and sweep deliveries: shots and swings against hitboxes, lag compensation, spread | [Hitboxes](hitboxes.md) |
+| `navigation` | built | Layers, routes on a grid or a navmesh, local steering, waypoint paths | [Navigation](navigation.md) |
+| `vision` | built | What each vision group sees: grid fog of war, hidden units and detection, 3D occlusion, relevance | [Vision](vision.md) |
+| `items` | planned | Item units, inventories, equipment, shops, crafting; an item grants modifiers, actions and pools | [Items](items.md) |
+| `progression` | built | Experience on tracks, levels, points to learn ranks, perks, veterancy | [Progression](progression.md) |
+| `quests` | planned | Quests with stages and objectives, dialogue with topics and choices, campaign objectives | [Quests](quests.md) |
+| `interaction` | planned | The use action on objects: doors, containers, plant and defuse, capture points, dialogue, entering vehicles and buildings | [Interaction](interaction.md) |
+| `production` | built | The train, build and gather actions, construction on the grid, tech, player modifiers | [Production](production.md) |
+| `physics` | planned | Vehicles, rigid bodies, heightmap terrain | [Physics](physics.md) |
+| `world` | planned | Large worlds: regions that sleep, parallel regions, streaming | [World](world.md) |
+
+A capability is built when the release installs it, and planned when it does not yet; a built one's doc can still name parts that are planned, which the [script API reference](../08-script-api-reference.md) marks name by name. A test fails when this column and the release differ.
 
 Which capabilities make which genre: [Genres](genres.md).
 
