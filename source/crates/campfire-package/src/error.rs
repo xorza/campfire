@@ -293,6 +293,9 @@ pub enum ScriptProblem {
     /// It reads a field or calls a method no handle, no built-in and none of its own functions
     /// or object maps has.
     UnknownMember(String),
+    /// It reads or writes, after `.state`, a field that no state of the match declares: the
+    /// mode's, a modifier's or a unit type's.
+    UnknownState(String),
     /// It uses `ctx` other than design 08's convention allows, so the load checks cannot see
     /// every use of it.
     CtxMisuse(CtxMisuse),
@@ -552,6 +555,9 @@ impl fmt::Display for ScriptProblem {
             }
             ScriptProblem::UnknownMember(name) => {
                 write!(f, ".{name} is no member the script API has")
+            }
+            ScriptProblem::UnknownState(name) => {
+                write!(f, ".state.{name} is a field no state of the match declares")
             }
             ScriptProblem::CtxMisuse(misuse) => write!(f, "{misuse}"),
         }

@@ -90,6 +90,7 @@ impl ScriptHost {
             .set_max_variables(MAX_VARIABLES)
             .set_max_functions(MAX_FUNCTIONS)
             .set_max_modules(0)
+            .set_strict_variables(true)
             .set_max_operations(per_call)
             .disable_symbol("eval");
         if cfg!(debug_assertions) {

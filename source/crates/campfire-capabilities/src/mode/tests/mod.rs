@@ -29,7 +29,6 @@ use crate::mode::map_data::{GridData, MapData, MapPoint, MarkerData, PathData, P
 use crate::mode::match_end::MatchResult;
 use crate::mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
 use crate::mode::mode_setup::{LoadoutSetup, SlotAction, UnitTypeSetup};
-use crate::mode::mode_state_decl::{ModeStateDecl, SyncTo};
 use crate::mode::mode_units::ModeUnits;
 use crate::mode::offer::Offer;
 use crate::mode::relation_data::RelationData;
@@ -55,6 +54,7 @@ use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::scripts::script_role::ScriptRole;
+use crate::scripts::state_decl::synced_state_decl::{SyncTo, SyncedStateDecl};
 use crate::scripts::state_decl::{StateDecl, StateDefault, StateType};
 use crate::scripts::state_value::StateValue;
 use crate::stats;
@@ -296,6 +296,24 @@ fn field(kind: StateType, default: Option<StateDefault>) -> StateDecl {
     StateDecl::new(kind, default).unwrap()
 }
 
+/// The grunt's core fields: its tag, and its script state, `hits` of 2 and `mark`, a text of
+/// none, which only its owner receives.
+fn grunt_data() -> UnitTypeData {
+    let decl = |kind, default| SyncedStateDecl {
+        decl: field(kind, default),
+        sync: SyncTo::Owner,
+    };
+    UnitTypeData {
+        state: [
+            ("hits", decl(StateType::Int, Some(StateDefault::Int(2)))),
+            ("mark", decl(StateType::String, None)),
+        ]
+        .map(|(name, decl)| (DeclaredName::new(name).unwrap(), decl))
+        .into(),
+        ..UnitTypeData::tagged(&["grunt"])
+    }
+}
+
 /// The unit kit of a grunt: 10 health, combat that keeps it when it dies, and a step of 1 m.
 fn grunt() -> UnitKit {
     UnitKit {
@@ -463,7 +481,7 @@ fn resource(name: &str) -> Option<ResourceId> {
 }
 
 /// The mode's state fields, each sent to all.
-fn mode_state() -> BTreeMap<DeclaredName, ModeStateDecl> {
+fn mode_state() -> BTreeMap<DeclaredName, SyncedStateDecl> {
     [
         (
             "phase",
@@ -488,7 +506,7 @@ fn mode_state() -> BTreeMap<DeclaredName, ModeStateDecl> {
         let sync = SyncTo::All;
         (
             DeclaredName::new(name).unwrap(),
-            ModeStateDecl { decl, sync },
+            SyncedStateDecl { decl, sync },
         )
     })
     .into()
@@ -686,11 +704,12 @@ impl Game {
         Units::name_kinds(world, &DAMAGE_KINDS, &POOLS, &resources);
         let layers = files.data.navigation.layers.iter();
         Units::declare_tags(world, layers.map(DeclaredName::as_str));
+        let grunt_type = Units::load_type(world, TypeScope::Mode, "grunt", &grunt_data());
         let mut load = |name: &str, tag: &str| {
             let data = UnitTypeData::tagged(&[tag]);
             Units::load_type(world, TypeScope::Mode, name, &data)
         };
-        let (grunt_type, tower_type) = (load("grunt", "grunt"), load("tower", "tower"));
+        let tower_type = load("tower", "tower");
         let (x, y) = (load("hero-x", "avatar"), load("hero-y", "avatar"));
         // A type outside the mode's kits, as a projectile's is: the view knows it, a spawn does
         // not.
@@ -959,3 +978,4 @@ mod progression;
 mod restore;
 mod roles;
 mod start;
+mod unit_state;

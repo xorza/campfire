@@ -151,7 +151,7 @@ A save is a checkpoint a player keeps: the snapshot at a tick boundary, and the 
 
 - **Narrow game API.** Scripts never touch the ECS; they call the script API.
 - **No `bevy_mod_scripting`.** It exposes all Bevy types and [pins Bevy patch versions](https://lib.rs/crates/bevy_mod_scripting_script).
-- **Rhai engine:** `Engine::new_raw` with only the packages scripts need; no `eval`, imports, floats or time; `print` goes to debug logs only; a fixed hashing seed; never `unchecked`.
+- **Rhai engine:** `Engine::new_raw` with only the packages scripts need, in strict variables mode ([Engine enums](08-script-api.md#engine-enums)); no `eval`, imports, floats or time; `print` goes to debug logs only; a fixed hashing seed; never `unchecked`.
 - **Operation limits:** a limit per call, and per-tick pools, which the manifest sets; counts are the same everywhere, so an over-budget script fails the same everywhere. Each hook runs in one pool:
 
   | Pool | Hooks |

@@ -81,8 +81,8 @@ pub use mode::mode_data::{ModeData, ModeParam};
 pub use mode::mode_input::{InputValue, ModeInput};
 pub use mode::mode_setup::ModeSetup;
 pub use mode::mode_state::ModeState;
-pub use mode::mode_state_decl::SyncTo;
 pub use mode::offer::Offer;
+pub use scripts::state_decl::synced_state_decl::SyncTo;
 
 pub use mode::team_manifest::TeamManifest;
 

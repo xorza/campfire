@@ -21,7 +21,8 @@ fn on_resolve(ctx, caster, target) {
     ctx.spawn_group("north", "mid", "start", ctx.units_tagged("core"));
     if caster.has_tag("slowed") { ctx.add_xp(caster, "level", 1); }
     let first = ctx.teams[0];
-    ctx.state.phase = ctx.nearest_visible(caster, 5, name);
+    caster.state.mark = target.state.hits;
+    ctx.state.phase = ctx.nearest_visible(caster, 5, first);
     helper(ctx, caster.params.gold);
 }
 
@@ -67,7 +68,10 @@ fn helper(ctx, gold) {}
         ]
     );
     assert_eq!(facts.params, ["radius", "damage"]);
-    // A literal counts; a variable, as the filter `name`, cannot be read at load.
+    let mut state_fields = facts.state_fields.clone();
+    state_fields.sort_unstable();
+    assert_eq!(state_fields, ["hits", "mark", "phase"]);
+    // A literal counts; a variable, as the filter `first`, cannot be read at load.
     let given: Vec<_> = facts
         .names
         .iter()
@@ -107,7 +111,10 @@ fn every_use_of_ctx_but_a_name_on_it_or_a_call_argument_breaks_the_convention() 
     let cases = [
         ("fn on_x(ctx) { ctx.find(1); api(ctx, 2); }", None),
         ("fn on_x(ctx) { let c = ctx; }", Some(CtxMisuse::Stray)),
-        ("fn on_x(ctx) { c = ctx; }", Some(CtxMisuse::Stray)),
+        (
+            "fn on_x(ctx) { let c = 0; c = ctx; }",
+            Some(CtxMisuse::Stray),
+        ),
         ("fn on_x(ctx) { return ctx; }", Some(CtxMisuse::Stray)),
         ("fn on_x(ctx) { [ctx] }", Some(CtxMisuse::Stray)),
         ("fn on_x(ctx) { #{ c: ctx } }", Some(CtxMisuse::Stray)),

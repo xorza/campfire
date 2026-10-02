@@ -7,6 +7,8 @@ use serde::{Deserialize, Deserializer};
 
 use crate::scripts::state_value::StateValue;
 
+pub(crate) mod synced_state_decl;
+
 /// A declared field of script state: its type and its first value. Script state is declared,
 /// never invented at run time.
 #[derive(Debug, Clone, PartialEq, Eq)]

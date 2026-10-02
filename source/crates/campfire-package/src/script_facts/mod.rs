@@ -19,6 +19,8 @@ pub(crate) struct ScriptFacts {
     pub(crate) ctx_names: Vec<CtxUse>,
     /// Each `ctx.p.<name>` it reads.
     pub(crate) params: Vec<String>,
+    /// Each field it reads or writes after `.state`, of the mode, a modifier or a unit.
+    pub(crate) state_fields: Vec<String>,
     /// Each literal it gives an argument the registry marks as a name, in the script's order.
     pub(crate) names: Vec<ScriptName>,
     /// Each field or method it reads on a value other than `ctx`, but the names after `p`,
@@ -154,12 +156,11 @@ impl ScriptFacts {
                     return;
                 };
                 self.value(name);
-                if name == "p" {
-                    let param = match &inner.rhs {
-                        Expr::Dot(next, ..) | Expr::Index(next, ..) => property(&next.lhs),
-                        next => property(next),
-                    };
-                    self.params.extend(param.map(str::to_owned));
+                let data = first_property(&inner.rhs).map(str::to_owned);
+                match name {
+                    "p" => self.params.extend(data),
+                    "state" => self.state_fields.extend(data),
+                    _ => {}
                 }
             }
             _ => self.value(property(rhs).unwrap_or_default()),
@@ -186,6 +187,10 @@ impl ScriptFacts {
         match link {
             Expr::Dot(next, ..) => {
                 let next_data = read(self, &next.lhs);
+                if !on_ctx && !data && property(&next.lhs) == Some("state") {
+                    let field = first_property(&next.rhs).map(str::to_owned);
+                    self.state_fields.extend(field);
+                }
                 self.read_chain(&next.rhs, false, next_data);
             }
             Expr::Index(next, ..) => {
@@ -264,6 +269,14 @@ fn variable(expr: &Expr) -> Option<&str> {
     match expr {
         Expr::Variable(variable, ..) => Some(&variable.1),
         _ => None,
+    }
+}
+
+/// The name a chain of links starts with: `a` of `a`, `a.b` or `a[0]`.
+fn first_property(expr: &Expr) -> Option<&str> {
+    match expr {
+        Expr::Dot(next, ..) | Expr::Index(next, ..) => property(&next.lhs),
+        next => property(next),
     }
 }
 

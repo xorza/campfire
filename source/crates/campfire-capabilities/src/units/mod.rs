@@ -1,3 +1,4 @@
+use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{NonSendMut, ResMut};
 use bevy_ecs::world::World;
@@ -11,9 +12,14 @@ use crate::scripts::script_failures::ScriptFailures;
 use crate::units::body::Body;
 use crate::units::owner::Owner;
 use crate::units::relations::Relations;
+use crate::units::row_fill::RowFill;
 use crate::units::script_view::View;
 use crate::units::spawn_point::SpawnPoint;
 use crate::units::team::Team;
+use crate::units::unit_state::UnitState;
+use crate::units::unit_state_book::UnitStateBook;
+use crate::units::unit_state_call::UnitStateCall;
+use crate::units::unit_state_column::UnitStateColumn;
 use crate::units::unit_type::UnitType;
 use crate::values::bounds::Bounds;
 use crate::values::metric::Metric;
@@ -54,6 +60,10 @@ pub(crate) mod track_id;
 pub(crate) mod type_scope;
 pub(crate) mod unit;
 pub(crate) mod unit_row;
+pub(crate) mod unit_state;
+pub(crate) mod unit_state_book;
+pub(crate) mod unit_state_call;
+pub(crate) mod unit_state_column;
 pub(crate) mod unit_tags;
 pub(crate) mod unit_type;
 pub(crate) mod unit_type_data;
@@ -91,6 +101,10 @@ impl Units {
         registry.register_component::<SpawnPoint>();
         registry.register_component::<Team>();
         registry.register_component::<UnitType>();
+        registry.register_component::<UnitState>();
+        world.insert_resource(UnitStateBook::default());
+        view.add_column(UnitStateColumn::default());
+        view.add_source::<Option<&'static UnitState>>(world, fill_state);
         world.insert_resource(Relations::default());
         registry.register_resource::<Relations>();
         world.insert_resource(Metric::default());
@@ -99,6 +113,7 @@ impl Units {
             return;
         };
         let ctx = Ctx::new(view.clone());
+        ctx.frame().add_part(UnitStateCall::default());
         let mut host = ScriptHost::new(budgets.limits().per_call);
         host.engine_mut()
             .set_default_tag(Dynamic::from(ctx.clone()));
@@ -139,6 +154,11 @@ fn begin_tick(
     failures.clear();
 }
 
+/// Adds a unit's script state to the view's column of it.
+fn fill_state(state: ROQueryItem<'_, '_, Option<&'static UnitState>>, fill: &mut RowFill<'_>) {
+    fill.column::<UnitStateColumn>().push(state);
+}
+
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::stats::stats_column::StatsColumn;
@@ -151,6 +171,7 @@ pub(crate) mod internals {
     use crate::units::Units;
     use crate::units::script_view::View;
     use crate::units::type_scope::TypeScope;
+    use crate::units::unit_state_column::UnitStateColumn;
     use crate::units::unit_type::UnitType;
     use crate::units::unit_type_data::UnitTypeData;
     use crate::values::declared_name::DeclaredName;
@@ -204,22 +225,25 @@ pub(crate) mod internals {
             }
         }
 
-        /// Loads the unit type `name` of `scope`, with its core fields: its tags and its params. A
-        /// name is one type's only in its scope.
+        /// Loads the unit type `name` of `scope`, with its core fields: its tags, its params and
+        /// its state fields, which the match's book of them and the view then hold. A name is one
+        /// type's only in its scope.
         pub(crate) fn load_type(
             world: &mut World,
             scope: TypeScope,
             name: &str,
             data: &UnitTypeData,
         ) -> UnitType {
-            let view = world.non_send::<View>();
+            let view = world.non_send::<View>().clone();
             let unit_type = view.types_mut().load(scope, name, data);
             view.share_type_names();
+            let states = view.types_mut().state_book();
+            UnitStateColumn::share(&view, states.clone());
+            world.insert_resource(states);
             unit_type
         }
 
         /// Loads `data` as the next unit type of the mode, named for its place.
-        #[cfg(test)]
         pub(crate) fn load_next_type(world: &mut World, data: &UnitTypeData) -> UnitType {
             let name = format!("type {}", world.non_send::<View>().types_count());
             Units::load_type(world, TypeScope::Mode, &name, data)

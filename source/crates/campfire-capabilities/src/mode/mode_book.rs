@@ -48,6 +48,7 @@ use crate::units::spawner::SpawnAt;
 use crate::units::tag_book::TagBook;
 use crate::units::team::Team;
 use crate::units::teams::Teams;
+use crate::units::unit_state_book::UnitStateBook;
 use crate::units::unit_type::UnitType;
 
 /// The mode's package data as a match runs it, names resolved: package data, not state. A restore
@@ -159,8 +160,8 @@ impl ModeBook {
         }
     }
 
-    /// Spawns `at`, with its kit, its actions, each at the first rank of its kind, its passive,
-    /// and `parts`.
+    /// Spawns `at`, with its kit, its script state at its type's defaults, its actions, each at
+    /// the first rank of its kind, its passive, and `parts`.
     pub(crate) fn spawn(&self, world: &mut World, at: SpawnAt, parts: impl Bundle) -> Entity {
         let SpawnAt {
             id,
@@ -177,6 +178,7 @@ impl ModeBook {
         let level_track = world
             .get_resource::<TrackBook>()
             .and_then(TrackBook::level_track);
+        let state = world.resource::<UnitStateBook>().initial(unit_type);
         let mut unit = world.spawn((
             id,
             pos,
@@ -190,6 +192,9 @@ impl ModeBook {
             ModifierClocks::default(),
             parts,
         ));
+        if let Some(state) = state {
+            unit.insert(state);
+        }
         if let Some(pools) = kit.pools {
             unit.insert(pools);
         }

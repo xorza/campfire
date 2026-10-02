@@ -7,6 +7,7 @@ use crate::combat::combat_data::CombatData;
 use crate::orders::ai_data::AiData;
 use crate::production::production_data::ProductionData;
 use crate::projectiles::projectile_data::ProjectileData;
+use crate::scripts::state_decl::synced_state_decl::SyncedStateDecl;
 use crate::stats::stats_data::StatsData;
 use crate::units::collision_data::CollisionData;
 use crate::units::unit_type_data::UnitTypeData;
@@ -56,7 +57,7 @@ impl UnitTypeFile {
     }
 
     /// Whether it is a delivery type and nothing more: a `projectile` or an `area` section, one
-    /// of them, beside its tags and params, and no section of a unit that stands.
+    /// of them, beside its tags, params and state, and no section of a unit that stands.
     pub fn delivery_only(&self) -> bool {
         let UnitTypeFile {
             core: _,
@@ -98,6 +99,8 @@ impl<'de> Deserialize<'de> for UnitTypeFile {
             #[serde(default)]
             params: BTreeMap<DeclaredName, Scalar>,
             #[serde(default)]
+            state: BTreeMap<DeclaredName, SyncedStateDecl>,
+            #[serde(default)]
             pools: Vec<DeclaredName>,
             #[serde(default)]
             slots: BTreeMap<DeclaredName, Vec<DeclaredName>>,
@@ -118,6 +121,7 @@ impl<'de> Deserialize<'de> for UnitTypeFile {
             core: UnitTypeData {
                 tags: fields.tags,
                 params: fields.params,
+                state: fields.state,
             },
             pools: fields.pools,
             slots: fields.slots,

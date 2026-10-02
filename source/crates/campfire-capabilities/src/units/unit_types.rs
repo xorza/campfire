@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::mem;
 
+use crate::scripts::state_decl::synced_state_decl::SyncedStateDecl;
 use crate::units::engine_tag::EngineTag;
 use crate::units::tag::Tag;
 use crate::units::tag_book::TagBook;
@@ -8,6 +9,7 @@ use crate::units::tag_data::TagData;
 use crate::units::tag_effects::TagEffects;
 use crate::units::tag_set::TagSet;
 use crate::units::type_scope::TypeScope;
+use crate::units::unit_state_book::UnitStateBook;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::declared_name::DeclaredName;
@@ -15,8 +17,8 @@ use crate::values::name_list::NameList;
 use crate::values::name_table::NameTable;
 use crate::values::scalar::Scalar;
 
-/// The unit types a match loaded: their names, their tags and their params. Package data, not
-/// state: a restore loads it from the packages, as a new match does.
+/// The unit types a match loaded: their names, their tags, their params and their state fields.
+/// Package data, not state: a restore loads it from the packages, as a new match does.
 #[derive(Debug)]
 pub(crate) struct UnitTypes {
     /// The name of each tag, by tag: the engine's, then the match's.
@@ -28,6 +30,8 @@ pub(crate) struct UnitTypes {
     by_name: Vec<UnitType>,
     /// Each type's params, one run per type, in the order of the types.
     params: NameTable<Scalar>,
+    /// Each type's script state fields, one run per type, in the order of the types.
+    states: NameTable<SyncedStateDecl>,
 }
 
 /// A loaded unit type: the scope its name is seen in, and its tags.
@@ -46,6 +50,7 @@ impl Default for UnitTypes {
             type_names: NameList::default(),
             by_name: Vec::new(),
             params: NameTable::default(),
+            states: NameTable::default(),
         }
     }
 }
@@ -70,6 +75,12 @@ impl UnitTypes {
             .map(|(name, &value)| (name.as_str(), value));
         let run = self.params.push(params);
         debug_assert_eq!(run, usize::from(index), "one run of params per type");
+        let fields = data
+            .state
+            .iter()
+            .map(|(name, field)| (name.as_str(), field.clone()));
+        let run = self.states.push(fields);
+        debug_assert_eq!(run, usize::from(index), "one run of state fields per type");
         self.by_name.insert(at, UnitType::new(index));
         self.types.push(TypeEntry { scope, tags });
         self.type_names.push(name);
@@ -148,6 +159,11 @@ impl UnitTypes {
             )
         });
         TagBook::new(effects, types)
+    }
+
+    /// The state fields of every type, for the match's book of them.
+    pub(crate) fn state_book(&self) -> UnitStateBook {
+        UnitStateBook::new(self.states.clone())
     }
 
     /// The param `name` of `unit_type`, if it declares one.

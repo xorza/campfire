@@ -28,6 +28,7 @@ use crate::stats::stats_column::StatsColumn;
 use crate::units::by_type::ByType;
 use crate::units::predicting::Predicting;
 use crate::units::script_view::View;
+use crate::units::unit_state_column::UnitStateColumn;
 use crate::units::unit_types::UnitTypes;
 
 pub(crate) mod book_builder;
@@ -86,6 +87,9 @@ impl Books {
     pub fn install(self, world: &mut World) -> ModeInputs {
         let Books { parts, mode } = self;
         let view = world.non_send::<View>().clone();
+        let states = parts.types.state_book();
+        UnitStateColumn::share(&view, states.clone());
+        world.insert_resource(states);
         view.set_types(parts.types);
         StatsColumn::share_modifiers(&view, parts.modifiers.clone());
         let params = ParamBook::new(parts.params);

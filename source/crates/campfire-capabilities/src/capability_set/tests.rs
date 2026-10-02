@@ -276,7 +276,7 @@ fn a_module_imports_only_from_its_layer_and_below() {
 /// call, which resolves the names it is given once, or in the load, which resolves the
 /// packages' names once; but the one marked, which runs as a modifier applies. The test fails
 /// when a lookup appears and when one listed here is gone.
-const LOOKUPS: [(&str, &str); 58] = [
+const LOOKUPS: [(&str, &str); 60] = [
     // The load.
     ("actions/slot_kinds.rs", "named"),
     ("books/book_builder.rs", "cost_target_named"),
@@ -331,6 +331,8 @@ const LOOKUPS: [(&str, &str); 58] = [
     ("units/teams.rs", "named"),
     ("units/unit.rs", "param_named"),
     ("units/unit.rs", "tag_named"),
+    ("units/unit_state_book.rs", "named"),
+    ("units/unit_state_column.rs", "field_named"),
     ("units/unit_types.rs", "get_named"),
     ("units/unit_types.rs", "named"),
     ("units/unit_types.rs", "tag_named"),
@@ -390,6 +392,7 @@ const STATE: [(Option<Capability>, &[&str]); 11] = [
             "units.owner",
             "units.relations",
             "units.spawn_point",
+            "units.state",
             "units.team",
             "units.unit_type",
         ],

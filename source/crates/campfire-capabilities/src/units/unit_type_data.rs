@@ -2,19 +2,22 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
+use crate::scripts::state_decl::synced_state_decl::SyncedStateDecl;
 use crate::units::tag::Tag;
 use crate::values::declared_name::DeclaredName;
 use crate::values::scalar::Scalar;
 
-/// A unit type's core fields as its data file declares them: its tags, which filters select, and
-/// the params its scripts read as `unit.params`. Each capability the type uses reads its own
-/// section.
+/// A unit type's core fields as its data file declares them: its tags, which filters select, the
+/// params its scripts read as `unit.params`, and the script state its units hold, `unit.state`.
+/// Each capability the type uses reads its own section.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 pub struct UnitTypeData {
     #[serde(default)]
     pub tags: Vec<DeclaredName>,
     #[serde(default)]
     pub params: BTreeMap<DeclaredName, Scalar>,
+    #[serde(default)]
+    pub state: BTreeMap<DeclaredName, SyncedStateDecl>,
 }
 
 impl UnitTypeData {
@@ -26,6 +29,8 @@ impl UnitTypeData {
 
 #[cfg(test)]
 pub(crate) mod internals {
+    use std::collections::BTreeMap;
+
     use crate::units::unit_type_data::UnitTypeData;
     use crate::values::declared_name::DeclaredName;
     use crate::values::scalar::Scalar;
@@ -45,6 +50,7 @@ pub(crate) mod internals {
                     .iter()
                     .map(|&(key, value)| (name(key), value))
                     .collect(),
+                state: BTreeMap::new(),
             }
         }
     }

@@ -12,7 +12,6 @@ use crate::actions::error::ActionField;
 use crate::actions::range::Range;
 use crate::players::resource_amount::ResourceAmount;
 use crate::scripts::hook::Hook;
-use crate::scripts::state_decl::StateDecl;
 use crate::stats::pool_cost::PoolCost;
 use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
@@ -68,9 +67,6 @@ pub struct ActionData {
     /// Values for the script, as `ctx.p` reads them.
     #[serde(default)]
     pub params: BTreeMap<DeclaredName, Param>,
-    /// The state of each projectile the action fires.
-    #[serde(default)]
-    pub projectile_state: BTreeMap<DeclaredName, StateDecl>,
     /// The effects of its resolve, which queue before its script's `on_resolve`.
     #[serde(default)]
     pub on_resolve: Vec<EffectData>,
@@ -363,7 +359,6 @@ pub(crate) mod internals {
                 damage_kind: None,
                 unit_type: None,
                 params: BTreeMap::new(),
-                projectile_state: BTreeMap::new(),
                 on_resolve: Vec::new(),
                 on_hit: Vec::new(),
                 on_end: Vec::new(),

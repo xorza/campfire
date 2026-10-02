@@ -13,6 +13,8 @@ use campfire_package::{
     ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem, EffectProblem, Limit, LoadError,
     LoadProblem, LocaleProblem, ModePackages, PackageRef, Place, ScriptProblem, Way,
 };
+use campfire_script::ScriptError;
+use campfire_script::rhai::ParseErrorType;
 use campfire_sim::{Capability, TickRate};
 
 use crate::moba::{Edit, edited, moba, moba_files};
@@ -56,6 +58,7 @@ const RIME: &str = "heroes/rime/data/avatar.toml";
 /// Rime's Fan of Frost's `on_hit` effect that slows.
 const SLOWS: &str = r#"{ modifier = { id = "slow", duration_ms = { param = "slow_ms" } } },"#;
 const LASH_OUT: &str = "heroes/husk/scripts/lash_out.rhai";
+const CYCLONE: &str = "heroes/gale/scripts/cyclone.rhai";
 /// The script of Rime's passive.
 const STILLNESS: &str = "heroes/rime/scripts/stillness.rhai";
 const CREEP_AI: &str = "modes/3v3/scripts/creep_ai.rhai";
@@ -73,6 +76,12 @@ const PRODUCTION: Edit<'static> =
 /// Whether `problem` is Rime's Slow's `slow` param failing for `kind` by `way`.
 fn slow_fails(problem: &LoadProblem, way: Option<&Way>, kind: ParamProblem) -> bool {
     matches!(problem, LoadProblem::ModifierParam { modifier, param, way: found, problem } if modifier == "slow" && param == "slow" && found.as_ref() == way && *problem == kind)
+}
+
+/// Whether `problem` is a script that does not compile, as it reads the variable `name`, which
+/// nothing defines before it.
+fn undefined(problem: &LoadProblem, name: &str) -> bool {
+    matches!(problem, LoadProblem::Script { problem: ScriptProblem::Compile(ScriptError::Compile(error)), .. } if matches!(&*error.0, ParseErrorType::VariableUndefined(found) if found == name))
 }
 
 /// The way of the action `name`.
@@ -284,7 +293,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-static FLAWS: [Flaw; 198] = [
+static FLAWS: [Flaw; 202] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -743,9 +752,43 @@ static FLAWS: [Flaw; 198] = [
             )
         },
     ),
+    // A unit type's state field has a default of its type, and a script names after `.state`
+    // only a field some state of the match declares.
+    flaw(
+        GALE,
+        Edit::Set("units.cyclone.state.charge.default", r#""full""#),
+        "hero-gale",
+        |problem| read_fails(problem, "data/avatar.toml", "a default not of the type"),
+    ),
+    flaw(
+        CYCLONE,
+        Edit::Replace("hit.delivery.state.charge;", "hit.delivery.state.charges;"),
+        "hero-gale",
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownState(name), .. } if name == "charges"),
+    ),
+    // A variable that nothing defines before its use fails the load, in a hook and in a
+    // function of the script alike.
+    flaw(
+        LASH_OUT,
+        Edit::Replace(
+            r#"ctx.damage(unit, ctx.p.damage, "magic");"#,
+            r#"ctx.damage(unti, ctx.p.damage, "magic");"#,
+        ),
+        "hero-husk",
+        |problem| undefined(problem, "unti"),
+    ),
     flaw(
         CREEP_AI,
-        Edit::Replace("fn defend_hero(ctx, unit)", "fn defend_hero(c, unit)"),
+        Edit::Replace("let target = unit.target;", "let target = unti.target;"),
+        MODE,
+        |problem| undefined(problem, "unti"),
+    ),
+    flaw(
+        CREEP_AI,
+        Edit::Replace(
+            "fn defend_hero(ctx, unit) {\n    for ally in ctx.find(",
+            "fn defend_hero(c, unit) {\n    for ally in c.find(",
+        ),
         MODE,
         |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::CtxMisuse(CtxMisuse::Renamed { function }), .. } if function == "defend_hero"),
     ),
@@ -1976,6 +2019,17 @@ fn every_flaw_of_a_package_fails_its_load_with_its_own_problem() {
         r#"if m.carrier.has_modifier("slow") { m.stacks += 1; }"#,
     );
     assert!(ModePackages::from_package_dir(&edited([(STILLNESS, asks)])).is_ok());
+
+    // A closure reads the variables around it, which strict variables mode lets it.
+    let closure = Edit::Replace(
+        r#"    for unit in ctx.find(caster, caster.pos, ctx.p.radius, "enemies") {"#,
+        r#"    let radius = ctx.p.radius;
+    let near = |unit| unit.pos.within(caster.pos, radius);
+    for unit in ctx.find(caster, caster.pos, radius, "enemies") {"#,
+    );
+    if let Err(error) = ModePackages::from_package_dir(&edited([(LASH_OUT, closure)])) {
+        panic!("{error}");
+    }
 
     // The three kinds and 253 more are 256, all a byte tells apart; one more fails.
     let kinds = |count: usize| {

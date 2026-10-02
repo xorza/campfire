@@ -87,6 +87,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `recent_attackers` | `(ms)` | combat | since 1.0 | the living units that struck it within the last `ms`, rounded up to whole ticks |
 | `spawn_pos` | read | core | since 1.0 | where it spawned, where it respawns; `()` with none |
 | `stat` | `(name)`, `name` a stat | stats | since 1.0 | its value of a stat the mode declares |
+| `state` | read | core | since 1.0 | its script state, by name, which a call may write and read back |
 | `target` | read | core | since 1.0 | its attack's target, `()` with none |
 | `team` | read | core | since 1.0 | its team's name |
 | `track_level` | `(track)` | progression | planned | its level on `track` |
@@ -307,7 +308,6 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `charges` | planned |
 | `charge` | planned |
 | `params` | since 1.0 |
-| `projectile_state` | planned |
 | `on_resolve` | since 1.0 |
 | `on_hit` | since 1.0 |
 | `on_end` | since 1.0 |

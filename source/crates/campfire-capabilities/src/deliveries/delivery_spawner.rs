@@ -8,6 +8,7 @@ use campfire_sim::{EntityIndex, IdAllocator, Position, StableId};
 use crate::units::owner::Owner;
 use crate::units::tag_book::TagBook;
 use crate::units::team::Team;
+use crate::units::unit_state_book::UnitStateBook;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
 
@@ -18,6 +19,7 @@ pub(crate) struct DeliverySpawner<'w, 's> {
     ids: ResMut<'w, IdAllocator>,
     index: Res<'w, EntityIndex>,
     tag_book: Option<Res<'w, TagBook>>,
+    states: Option<Res<'w, UnitStateBook>>,
     sources: Query<'w, 's, (&'static Team, Option<&'static Owner>)>,
 }
 
@@ -30,8 +32,8 @@ impl fmt::Debug for DeliverySpawner<'_, '_> {
 
 impl DeliverySpawner<'_, '_> {
     /// Spawns a unit of `unit_type` at `at` with what `make` gives for its new stable id, of
-    /// `source`'s team and player, with its type's tags, and gives its id; none, and no id
-    /// taken, when `source` is gone.
+    /// `source`'s team and player, with its type's tags and its script state at their defaults,
+    /// and gives its id; none, and no id taken, when `source` is gone.
     pub(crate) fn spawn<B: Bundle>(
         &mut self,
         source: StableId,
@@ -55,6 +57,13 @@ impl DeliverySpawner<'_, '_> {
             .spawn((id, at, unit_type, team, tags, make(id)));
         if let Some(&owner) = owner {
             unit.insert(owner);
+        }
+        let state = self
+            .states
+            .as_deref()
+            .and_then(|book| book.initial(unit_type));
+        if let Some(state) = state {
+            unit.insert(state);
         }
         Some(id)
     }

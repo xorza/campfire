@@ -2,6 +2,7 @@ use super::*;
 use crate::orders::next_think::NextThink;
 use crate::stats::instance::StackEnd;
 use crate::stats::lifetime::{Ends, Lifetime};
+use crate::units::unit_state::UnitState;
 
 /// Each state type's restore check lets the match's own values through, and refuses one that
 /// names what the match lacks or has another shape than the mode's.
@@ -41,6 +42,13 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     let mut retyped = state.clone();
     retyped.0[0] = StateValue::Bool(true);
     assert!(!retyped.check(world));
+    // A grunt's state: `hits`, an integer, then `mark`, a text, in the order of their names; not
+    // one field short, nor a value of another type.
+    let unit_state = world.get::<UnitState>(grunt).unwrap().clone();
+    assert!(unit_state.check(world, grunt));
+    assert!(!UnitState::new(unit_state.values()[1..].to_vec()).check(world, grunt));
+    let retyped = vec![StateValue::Bool(true), StateValue::Text(String::new())];
+    assert!(!UnitState::new(retyped).check(world, grunt));
     // The players' resources: a row of each of the mode's resources for each player.
     assert!(world.resource::<PlayerResources>().check(world));
     let rows = |players, resources| PlayerResources::new(players, resources).check(world);

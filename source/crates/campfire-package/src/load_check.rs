@@ -19,7 +19,7 @@ use crate::error::{
 use crate::mode_packages::ModePackages;
 use crate::modifier_ways::{ModifierWays, Way};
 use crate::package::Package;
-use crate::package_view::PackageView;
+use crate::package_view::{PackageView, ViewKind};
 use crate::script_facts::{ScriptFacts, ScriptName};
 
 /// Design 08's checks at package load, over a mode and every package it depends on: data matches
@@ -38,6 +38,10 @@ pub(crate) struct LoadCheck<'a> {
     api: &'a ScriptApi,
     /// The fastest rate the mode allows, at which a time counts the most ticks.
     rate: TickRate,
+    /// Every field a script may name after `.state`: those of the mode's state, and of every
+    /// modifier's and unit type's of its packages, as a script's handle has no type the load
+    /// knows.
+    state_fields: BTreeSet<&'a str>,
 }
 
 /// The facts one package's checks share.
@@ -103,6 +107,7 @@ impl<'a> LoadCheck<'a> {
             cap: manifest.max_move_speed.get(),
             api,
             rate: TickRate::new(manifest.tick_hz.fastest()),
+            state_fields: LoadCheck::state_fields(packages),
         };
         check.mode().map_err(fail)?;
         check.loadout()?;
@@ -628,8 +633,41 @@ impl<'a> LoadCheck<'a> {
             for named in &facts.names {
                 self.script_name(named, names.modifiers, &at)?;
             }
+            if let Some(field) = facts
+                .state_fields
+                .iter()
+                .find(|field| !self.state_fields.contains(field.as_str()))
+            {
+                return Err(fail(ScriptProblem::UnknownState(field.clone())));
+            }
         }
         Ok(())
+    }
+
+    /// Every state field the match's packages declare: the mode's, and every modifier's and unit
+    /// type's, avatars among them.
+    fn state_fields(packages: &'a ModePackages) -> BTreeSet<&'a str> {
+        let mut fields: BTreeSet<&str> = packages
+            .data
+            .state
+            .keys()
+            .map(DeclaredName::as_str)
+            .collect();
+        for view in packages.packages() {
+            let content = view.content;
+            let modifiers = content
+                .modifiers
+                .values()
+                .flat_map(|modifier| modifier.state.keys());
+            let avatar = match view.kind {
+                ViewKind::Avatar(avatar) => Some(&avatar.unit),
+                ViewKind::Mode | ViewKind::Loadout => None,
+            };
+            let units = content.units.values().chain(avatar);
+            let units = units.flat_map(|unit| unit.core.state.keys());
+            fields.extend(modifiers.chain(units).map(DeclaredName::as_str));
+        }
+        fields
     }
 
     /// Whether a field or method `name` that a script with `facts` reads on a value is one some

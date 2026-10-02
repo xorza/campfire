@@ -81,9 +81,6 @@ delivery = { projectile = "chain_fire" }
 bounce_radius = "5.0"
 damage = { base = [150, 250, 350], ability_power = "0.5" }
 
-[actions.chain_fire.projectile_state]
-bounces_left = { type = "int", default = 4 }
-
 # A stun: its time comes from the call that applies it.
 [modifiers.stun]
 tags = ["stunned"]
@@ -103,6 +100,7 @@ projectile = { speed = "16", width = "1.2", stop_on_hit = true }
 
 [units.chain_fire]
 projectile = { speed = "10", homing = true }
+state = { bounces_left = { type = "int", default = 4 } }
 
 [units.fire_bolt]
 projectile = { speed = "20", homing = true }

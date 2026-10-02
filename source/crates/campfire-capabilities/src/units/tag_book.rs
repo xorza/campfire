@@ -142,6 +142,7 @@ mod tests {
         let tower = UnitTypeData {
             tags: vec![DeclaredName::new("true_sight").unwrap()],
             params: BTreeMap::new(),
+            state: BTreeMap::new(),
         };
         let tower = types.load(TypeScope::Mode, "tower", &tower);
         let data = |blocks: &[Block], detects, immune: &[&str]| TagData {
