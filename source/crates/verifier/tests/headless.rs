@@ -16,8 +16,8 @@ use campfire_log::LogEvent;
 use campfire_math::{Num, Tick, Ticks, Vec3};
 use campfire_package::{ModePackages, PackageDir, PackageStore, StoreError};
 use campfire_protocol::{Applied, Fingerprint, SeedError, ServerSeed, SessionLog, SessionTerms};
-use campfire_runner::{FixedSession, InputRules, Runner, StartError, TermsError};
-use campfire_sim::{EntityIndex, Position, StableId, StateHash};
+use campfire_runner::{FixedSession, HashTrail, InputRules, Runner, StartError, TermsError};
+use campfire_sim::{EntityIndex, Position, StableId};
 use campfire_verifier::{Replay, Verified};
 use tempfile::TempDir;
 
@@ -144,14 +144,14 @@ fn hero(runner: &Runner) -> Hero {
 #[derive(Debug)]
 struct Run {
     runner: Runner,
-    /// The state hash after each tick.
-    hashes: Vec<StateHash>,
+    /// The state after each tick.
+    trail: HashTrail,
 }
 
 /// Runs a match in which the player sends `orders`.
 fn run(orders: &[&Sent], ticks: u64) -> Run {
     let mut fixed = session().start();
-    let mut hashes = Vec::new();
+    let mut trail = HashTrail::default();
     for tick in 0..ticks {
         for sent in orders.iter().filter(|sent| sent.arrives == tick) {
             let hero = hero_id(fixed.runner());
@@ -169,18 +169,18 @@ fn run(orders: &[&Sent], ticks: u64) -> Run {
             );
         }
         fixed.runner_mut().run_tick();
-        hashes.push(fixed.runner().state_hash());
+        trail.record(fixed.runner().world());
     }
     let mut runner = fixed.into_runner();
     runner.reveal_seed();
-    Run { runner, hashes }
+    Run { runner, trail }
 }
 
 #[test]
 fn run_and_replay_agree_on_every_tick() {
     let Run {
         runner,
-        hashes: live,
+        trail: live,
     } = run(&ORDERS.each_ref(), TICKS);
     let arrived = Hero {
         position: Position::new(Vec3::new(num(-2), Num::ZERO, num(5))).unwrap(),
@@ -190,20 +190,18 @@ fn run_and_replay_agree_on_every_tick() {
 
     let decoded = SessionLog::decode(&encoded(runner.log())).unwrap();
     let mut replay = Replay::new(decoded, &store()).unwrap();
-    let mut replayed = Vec::new();
+    let mut replayed = HashTrail::default();
     while replay.run_tick() {
-        replayed.push(replay.runner().state_hash());
+        replayed.record(replay.runner().world());
     }
-    assert_eq!(replayed.len(), live.len());
-    for (tick, (replayed, live)) in replayed.iter().zip(&live).enumerate() {
-        assert_eq!(replayed, live, "tick {tick}");
-    }
+    live.assert_same(&replayed);
     assert_eq!(hero(replay.runner()), arrived);
 
     // Without the second order the hashes agree until it would apply, at tick 22, and differ
     // from then on: the hash sees the hero move.
-    let without = run(&[&ORDERS[0], &ORDERS[2]], TICKS).hashes;
-    let first_difference = live.iter().zip(&without).position(|(a, b)| a != b);
+    let without = run(&[&ORDERS[0], &ORDERS[2]], TICKS).trail;
+    let (live, without) = (live.totals(), without.totals());
+    let first_difference = live.iter().zip(without).position(|(a, b)| a != b);
     assert_eq!(first_difference, Some(22));
     assert!(live[22..].iter().zip(&without[22..]).all(|(a, b)| a != b));
 }
@@ -250,16 +248,16 @@ impl Seen {
 
 #[test]
 fn scripted_creeps_and_towers_replay_to_the_same_hashes() {
-    let Run { runner, hashes } = run(&[&INTO_REACH], 72);
+    let Run { runner, trail } = run(&[&INTO_REACH], 72);
     let decoded = SessionLog::decode(&encoded(runner.log())).unwrap();
     let mut replay = Replay::new(decoded, &store()).unwrap();
+    let mut replayed = HashTrail::default();
     let mut seen = Vec::new();
-    for (tick, live) in hashes.iter().enumerate() {
-        assert!(replay.run_tick());
-        assert_eq!(replay.runner().state_hash(), *live, "tick {tick}");
+    while replay.run_tick() {
+        replayed.record(replay.runner().world());
         seen.push(Seen::of(replay.runner()));
     }
-    assert!(!replay.run_tick());
+    trail.assert_same(&replayed);
 
     // Ids: the map's towers, 0 at (−8, −3) on the west team and 1 at (8, −3) on the east, then the
     // hero 2, which the mode spawns as the match starts, then the first wave, at the end of tick
@@ -313,7 +311,7 @@ fn encoded(log: &SessionLog) -> Vec<u8> {
 
 #[test]
 fn the_binary_logs_the_last_state_hash() {
-    let Run { runner, hashes } = run(&ORDERS.each_ref(), TICKS);
+    let Run { runner, trail } = run(&ORDERS.each_ref(), TICKS);
     // A directory of this run's own, which goes when the test ends, passed or failed.
     let scratch = TempDir::new_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
     let dir = scratch.path().to_str().unwrap();
@@ -332,7 +330,7 @@ fn the_binary_logs_the_last_state_hash() {
     };
     let output = verifier(&[PACKAGES, &path]);
     assert!(output.status.success(), "{output:?}");
-    let hash = hashes.last().unwrap();
+    let hash = trail.totals().last().unwrap();
     let logged = String::from_utf8(output.stderr).unwrap();
     let success = format!("{} file={path} hash={hash}\n", Verified::MESSAGE);
     assert!(logged.ends_with(&success), "{logged}");

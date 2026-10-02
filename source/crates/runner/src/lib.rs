@@ -12,6 +12,8 @@ mod fixed_match;
 mod fixed_session;
 #[cfg(feature = "internals")]
 mod golden;
+#[cfg(feature = "internals")]
+mod hash_trail;
 mod input_rules;
 mod match_build;
 #[cfg(feature = "internals")]
@@ -33,6 +35,8 @@ pub use fixed_match::FixedMatch;
 pub use fixed_session::FixedSession;
 #[cfg(feature = "internals")]
 pub use golden::Golden;
+#[cfg(feature = "internals")]
+pub use hash_trail::{Difference, HashTrail};
 pub use input_rules::InputRules;
 #[cfg(feature = "internals")]
 pub use proving_match::ProvingMatch;

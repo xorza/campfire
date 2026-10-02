@@ -8,14 +8,14 @@ use campfire_capabilities::{
 };
 use campfire_math::{Num, PlayerSlot, Vec3};
 use campfire_protocol::SessionLog;
-use campfire_runner::{Golden, Reference3v3, Runner};
+use campfire_runner::{Golden, HashTrail, Reference3v3, Runner};
 use campfire_script::ScriptHost;
-use campfire_sim::{EntityIndex, Position, StateHash, TickRate};
+use campfire_sim::{EntityIndex, Position, TickRate};
 
 #[derive(Debug)]
 struct Run {
     runner: Runner,
-    hashes: Vec<StateHash>,
+    trail: HashTrail,
     golden: Golden,
     /// Each unit after the tick the heroes spawn in, and after the one the first wave spawns in.
     at_pick_end: Vec<Unit>,
@@ -74,14 +74,14 @@ fn run(reference: &Reference3v3, ticks: u64) -> Run {
     let first_wave = pick_end + timer("first_wave_ms");
     let mut run = Run {
         runner,
-        hashes: Vec::new(),
+        trail: HashTrail::default(),
         golden: Golden::new(reference.packages(), Reference3v3::PLAYERS),
         at_pick_end: Vec::new(),
         at_first_wave: Vec::new(),
     };
     for tick in 0..ticks {
         run.runner.run_tick();
-        run.hashes.push(run.runner.state_hash());
+        run.trail.record(run.runner.world());
         run.golden.record(&run.runner);
         let failures = run.runner.world().non_send::<ScriptFailures>();
         assert!(
@@ -204,8 +204,14 @@ fn a_3v3_match_replays_to_the_same_hashes() {
             "player {slot}"
         );
     }
-    let hashes = &run.hashes;
 
+    assert_replays(&reference, &run);
+}
+
+/// The match of `run`, its log replayed from its file, gives its hash after every tick and ends
+/// where it ended.
+fn assert_replays(reference: &Reference3v3, run: &Run) {
+    let runner = &run.runner;
     let mut file = Vec::new();
     runner.log().encode(&mut file);
     let decoded = SessionLog::decode(&file).unwrap();
@@ -215,8 +221,11 @@ fn a_3v3_match_replays_to_the_same_hashes() {
         reference.packages(),
     )
     .unwrap();
-    for (tick, live) in hashes.iter().enumerate() {
+    let mut replayed = HashTrail::default();
+    for _ in run.trail.totals() {
         replay.run_tick();
-        assert_eq!(replay.state_hash(), *live, "tick {tick}");
+        replayed.record(replay.world());
     }
+    run.trail.assert_same(&replayed);
+    assert_eq!(replay.log().next_tick(), runner.log().next_tick());
 }

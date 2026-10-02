@@ -8,7 +8,7 @@ use campfire_capabilities::{ActionSlots, Body, Dead, MoveStep, PoolId, Pools, Se
 use campfire_math::{Num, Tick, Vec3};
 use campfire_net::{LinkModel, LocalMatch, MatchSetup, OrderScript, TickHashes};
 use campfire_protocol::{SeedChain, SessionLog};
-use campfire_runner::{Runner, Session};
+use campfire_runner::{HashTrail, Runner, Session};
 use campfire_sim::{EntityIndex, Position, SimTick, StableId};
 use lightyear::prelude::PredictionMetrics;
 
@@ -153,7 +153,7 @@ fn check_log(local: &mut LocalMatch, scripts: [&str; 2]) {
         .sum();
     let server = local.server_mut().world_mut();
     server.resource_mut::<Session>().reveal_seed();
-    let live = server.resource::<TickHashes>().get().to_vec();
+    let live = HashTrail::of_totals(server.resource::<TickHashes>().get().to_vec());
     let mut file = Vec::new();
     server.resource::<Session>().log().encode(&mut file);
     let decoded = SessionLog::decode(&file).unwrap();
@@ -173,10 +173,13 @@ fn check_log(local: &mut LocalMatch, scripts: [&str; 2]) {
     );
     let decoded = SessionLog::decode(&file).unwrap();
     let mut replay = Runner::new(decoded.rewound(), seed, local.packages()).unwrap();
-    for (tick, live) in live.iter().enumerate() {
+    let mut replayed = HashTrail::default();
+    for _ in live.totals() {
         replay.run_tick();
-        assert_eq!(replay.state_hash(), *live, "tick {tick}");
+        replayed.record(replay.world());
     }
+    live.assert_same(&replayed);
+    assert_eq!(replay.log().next_tick(), ticks);
 }
 
 /// The orders by team, the west, whose hero is the walker, then the east, whose is the runner:

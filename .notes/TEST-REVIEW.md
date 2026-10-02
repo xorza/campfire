@@ -14,28 +14,6 @@ Paths are relative to `source/crates/`. Line numbers are at `c38f0da`. Each item
 
 ## 2. Harnesses
 
-### 2.4 Runner and verifier
-
-- [ ] **`HashTrail`: one live-against-replay check** — the comparison is written 5 times with 3 different end checks, and two of them have no end check:
-  - `match_3v3.rs:185-199`: no end check;
-  - `headless.rs:227-236`: `len`;
-  - `headless.rs:290-298`: `!run_tick()`;
-  - net `prototype.rs:119-131`: `next_tick`;
-  - net `scenario.rs:158-177`: no end check.
-
-  Each one names only the tick. `StateRegistry::hash_by_type` exists (`sim/src/state_registry/mod.rs:114`), but `Session.state` is private (`runner/src/session.rs:22`). Better: an `internals` type in `runner`:
-
-  ```rust
-  #[derive(Debug, Default)]
-  pub struct HashTrail { names: Vec<&'static str>, types: Vec<[u8; 32]>, totals: Vec<StateHash> }
-  impl HashTrail {
-      pub fn record(&mut self, runner: &Runner);
-      pub fn totals(&self) -> &[StateHash];
-      pub fn assert_same(&self, replayed: &HashTrail); // tick count, first differing tick, differing types
-  }
-  ```
-
-  It needs `Session::hash_by_type` and `Runner::state_hash_by_type` in gated `internals` at the end of their files. Memory is about 3 MB for 2500 ticks.
 ### 2.5 Net
 
 - [ ] **Methods on `LocalMatch`** — bootstrap is already 2 lines (`LocalMatch::new` + `start_match`). The repetition comes after the start:

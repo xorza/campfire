@@ -153,3 +153,18 @@ impl Session {
 const fn of_package(fingerprint: Fingerprint) -> PackageFingerprint {
     PackageFingerprint::new(*fingerprint.as_bytes())
 }
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use bevy_ecs::world::World;
+    use campfire_sim::{StateHash, TypeHash};
+
+    use crate::session::Session;
+
+    impl Session {
+        /// The hash of the state of `world`, and in `per_type` each state type's own.
+        pub fn state_hash_by_type(&self, world: &World, per_type: &mut Vec<TypeHash>) -> StateHash {
+            self.state.hash_by_type(world, per_type)
+        }
+    }
+}

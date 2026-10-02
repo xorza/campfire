@@ -15,7 +15,7 @@ use campfire_capabilities::{
 use campfire_math::{Num, PlayerSlot, Tick, Ticks, Vec3};
 use campfire_net::{InputChannel, InputMessage, LocalMatch, MatchSetup, PlayerLink, TickHashes};
 use campfire_protocol::{PlayerInput, SeedChain, SessionLog, Signature};
-use campfire_runner::{Runner, Session};
+use campfire_runner::{HashTrail, Runner, Session};
 use campfire_sim::{EntityIndex, Position, SimTick, Unpredicted};
 use lightyear::prelude::{
     Client, Connected, MessageSender, Predicted, PredictionMetrics, RollbackMode,
@@ -137,15 +137,18 @@ fn server_and_replay_agree_on_every_tick() {
         let live = server_world.resource::<TickHashes>().get().to_vec();
         let ticks = started + u64::try_from(MATCH_FRAMES).unwrap();
         assert_eq!(u64::try_from(live.len()).unwrap(), ticks, "{case}");
+        let live = HashTrail::of_totals(live);
         let mut file = Vec::new();
         server_world.resource::<Session>().log().encode(&mut file);
         let decoded = SessionLog::decode(&file).unwrap();
         let seed = decoded.revealed_seed().unwrap();
         let mut replay = Runner::new(decoded.rewound(), seed, local.packages()).unwrap();
-        for (tick, live) in live.iter().enumerate() {
+        let mut replayed = HashTrail::default();
+        for _ in live.totals() {
             replay.run_tick();
-            assert_eq!(replay.state_hash(), *live, "{case}, tick {tick}");
+            replayed.record(replay.world());
         }
+        assert_eq!(live.difference(&replayed), None, "{case}");
         assert_eq!(replay.log().next_tick(), Tick::new(ticks), "{case}");
     }
 }
