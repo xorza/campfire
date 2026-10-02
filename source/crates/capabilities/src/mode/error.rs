@@ -24,6 +24,8 @@ pub enum UnitKitError {
 pub enum ModeError {
     /// More teams than a team index counts.
     TooManyTeams,
+    /// More teams than a map with a vision grid holds.
+    TooManyVisionTeams,
     /// A relation of a team to itself, or of a pair the relations name before.
     RepeatedRelation(DeclaredName, DeclaredName),
     /// Two teams, or two paths, share a name.
@@ -64,6 +66,9 @@ impl fmt::Display for ModeError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             ModeError::TooManyTeams => f.write_str("more teams than a team index counts"),
+            ModeError::TooManyVisionTeams => {
+                f.write_str("more teams than a map with a vision grid holds")
+            }
             ModeError::RepeatedRelation(a, b) => {
                 write!(
                     f,

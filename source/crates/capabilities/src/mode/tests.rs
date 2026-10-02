@@ -26,6 +26,7 @@ use crate::combat::on_death::OnDeath;
 use crate::combat::pass_queue::PassQueue;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::mode::choice_data::{ChoiceData, Offers};
+use crate::mode::error::ModeError;
 use crate::mode::map_data::{GridData, MarkerData, PathData, PlacedUnitData};
 use crate::mode::map_data::{MapData, MapPoint};
 use crate::mode::match_end::MatchResult;
@@ -2493,4 +2494,22 @@ fn a_restore_check_refuses_modifiers_the_book_lacks() {
         modifier: ModifierId::new(u16::MAX),
     });
     assert!(!held.check(world));
+}
+
+#[test]
+fn a_map_with_vision_holds_at_most_64_teams() {
+    // The test mode's map has a vision grid. Its teams are checked before its units, so a map
+    // of 64 teams fails later, on the units of the teams it lacks, and one of 65 at once.
+    let files = mode_files();
+    let teams = |count: usize| -> Vec<TeamManifest> {
+        (0..count)
+            .map(|at| TeamManifest {
+                name: DeclaredName::new(&format!("team{at}")).unwrap(),
+                slots: 0,
+            })
+            .collect()
+    };
+    let resolve = |count| ModeMap::resolve(&files.map, &teams(count), &[], |_| None).err();
+    assert_ne!(resolve(64), Some(ModeError::TooManyVisionTeams));
+    assert_eq!(resolve(65), Some(ModeError::TooManyVisionTeams));
 }

@@ -1,5 +1,3 @@
-use std::ops::Range;
-
 use bevy_ecs::change_detection::DetectChanges;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::Without;
@@ -17,11 +15,13 @@ use crate::units::unit_tags::UnitTags;
 use crate::values::grid::Grid;
 use crate::vision::seen_by::SeenBy;
 use crate::vision::sight::Sight;
+use crate::vision::sight_maps::SightMaps;
 use crate::vision::vision_grid::VisionGrid;
 use crate::vision::vision_groups::VisionGroups;
 
 pub(crate) mod seen_by;
 pub(crate) mod sight;
+pub(crate) mod sight_maps;
 pub(crate) mod vision_api;
 pub(crate) mod vision_data;
 pub(crate) mod vision_grid;
@@ -48,7 +48,10 @@ impl Vision {
 
     /// Gives the match the map's `grid`, and the number of its teams.
     pub fn load_grid(world: &mut World, grid: Grid, teams: usize) {
-        assert!(teams <= Team::LIMIT, "the mode's check limits the teams");
+        assert!(
+            teams <= VisionGrid::MAX_TEAMS,
+            "the mode's check limits the teams of a map with vision"
+        );
         world.insert_resource(VisionGrid { grid, teams });
     }
 
@@ -88,31 +91,21 @@ fn see(
         ),
     >,
     mut commands: Commands<'_, '_>,
-    (mut groups, mut revealed, mut detected): (
-        Local<'_, VisionGroups>,
-        Local<'_, Vec<u64>>,
-        Local<'_, Vec<u64>>,
-    ),
+    (mut groups, mut maps): (Local<'_, VisionGroups>, Local<'_, SightMaps>),
 ) {
     let Some(grid) = grid else {
         return;
     };
     if relations.is_changed() || grid.is_changed() {
         groups.rebuild(grid.teams, &relations);
+        maps.reset(grid.grid.cells(), groups.count());
     }
-    let words = grid.grid.cells().div_ceil(64);
-    revealed.clear();
-    revealed.resize(words * groups.count(), 0);
-    detected.clear();
-    detected.resize(words * groups.count(), 0);
+    maps.begin_tick();
     for (&pos, &team, sight, tags) in &seers {
-        let run = groups.of(team) * words;
+        let group = groups.of(team);
         let detects = UnitTags::effects_of(tags).detects();
         grid.grid.spans_within(pos, sight.range(), |cells| {
-            set_bits(&mut revealed[run..run + words], cells.clone());
-            if detects {
-                set_bits(&mut detected[run..run + words], cells);
-            }
+            maps.reveal(group, cells, detects);
         });
     }
     for (entity, &pos, &team, tags, seen) in &mut units {
@@ -122,9 +115,8 @@ fn see(
             .cell_of(pos)
             .expect("every unit stands within the bounds, which the grid covers");
         let hidden = UnitTags::effects_of(tags).hidden();
-        let sight = if hidden { &detected } else { &revealed };
         for group in 0..groups.count() {
-            if sight[group * words + cell / 64] & 1 << (cell % 64) != 0 {
+            if maps.sees(group, cell, hidden) {
                 teams = teams.union(groups.members(group));
             }
         }
@@ -135,21 +127,6 @@ fn see(
                 commands.entity(entity).insert(SeenBy::new(teams));
             }
         }
-    }
-}
-
-/// Sets the bits of `cells`, a run that is not empty, in `words`.
-fn set_bits(words: &mut [u64], cells: Range<usize>) {
-    debug_assert!(!cells.is_empty());
-    let (first, last) = (cells.start / 64, (cells.end - 1) / 64);
-    let from = u64::MAX << (cells.start % 64);
-    let to = u64::MAX >> (63 - (cells.end - 1) % 64);
-    if first == last {
-        words[first] |= from & to;
-    } else {
-        words[first] |= from;
-        words[first + 1..last].fill(u64::MAX);
-        words[last] |= to;
     }
 }
 

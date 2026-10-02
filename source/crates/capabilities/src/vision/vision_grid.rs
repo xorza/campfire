@@ -9,3 +9,9 @@ pub(crate) struct VisionGrid {
     pub(crate) grid: Grid,
     pub(crate) teams: usize,
 }
+
+impl VisionGrid {
+    /// The most teams a match with vision holds, so its groups' bitmaps stay within what a map's
+    /// cells times this many costs.
+    pub(crate) const MAX_TEAMS: usize = 64;
+}

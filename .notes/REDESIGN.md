@@ -171,7 +171,6 @@ capability_set, books
 ### Problem
 
 - Navigation has no work limit for steering, the region rebuild, smoothing or `Regions::nearest`, and one walker can scan about 3·10⁹ cells.
-- Vision clears bitmaps by map size times groups.
 - Deliveries, auras and script queries test every unit.
 - Every script batch rebuilds every row.
 
@@ -196,10 +195,6 @@ capability_set, books
   - Line projectiles read it by the box of their segment. Areas and auras read it by their circle, and so do `ctx.find` and `nearest_visible`. Stuck walkers use it to find each other.
   - The P × U loops and the O(W²) search go away.
   - `struck` and `CastHits` merge into one sorted flat store of `(group, unit)`, where a type without `once_per_cast` uses the projectile's own id as its group.
-- **Vision.**
-  - Each group keeps a list of the words it set, and the next tick clears only those words.
-  - A detection bitmap exists only for a group with a detector.
-  - The load limits vision groups to 64, as vision.md says.
 - **The view: incremental rows, the same snapshot.**
   - A batch must keep today's meaning: its calls see the world as it was when the batch began. So rows are not filled lazily on read, because a late read would see the effects of earlier calls.
   - The view keeps its rows from one build to the next. Each build refreshes only the rows whose source components changed since the last build, through Bevy's change ticks, and the rows of new or gone units.
@@ -263,7 +258,7 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 | H1 | `BodyGrid`, read by deliveries and auras; one `(group, unit)` hit store; stuck walkers through the grid | B | M |
 | H2 | `NavBudget`; short routes within their window; "arrived short"; re-asks after removals; the blocker query and clipping; `Progress` reset; blocked map cells in the exact tests; `Steering` methods; `Route::clear` keeps its buffer | B3 | M, changes behaviour |
 | H3 | Incremental regions; routes tested only against added bodies; the body index's first-cell flag and early stop | H2 | M |
-| H4 | Vision dirty words, detectors only, and the group limit; incremental view rows; filters parsed once | B | M |
+| H4 | Incremental view rows; filters parsed once | B | M |
 
 ### Joins of the two tracks
 
@@ -325,7 +320,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - homing and line types: B2;
 - **R§5:**
   - stall and lost order: B3;
-  - vision bitmaps: H4;
   - steering budget: H2;
   - route budget: H2;
   - region rebuild: H3;

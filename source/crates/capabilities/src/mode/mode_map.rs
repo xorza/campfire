@@ -19,6 +19,7 @@ use crate::values::bounds::Bounds;
 use crate::values::declared_name::DeclaredName;
 use crate::values::grid::Grid;
 use crate::values::metric::Metric;
+use crate::vision::vision_grid::VisionGrid;
 
 /// The mode's map and the relations of its teams, every name resolved once, as the book builder
 /// checks them: its ground, its paths, the units it places, its markers, and the cells vision
@@ -54,10 +55,24 @@ pub(crate) struct MarkerSpec {
 }
 
 impl ModeMap {
+    /// Whether `teams` name each team once, and are no more than a team index counts.
+    fn check_teams(teams: &[TeamManifest]) -> Result<(), ModeError> {
+        for (at, team) in teams.iter().enumerate() {
+            if teams[..at].iter().any(|other| other.name == team.name) {
+                return Err(ModeError::RepeatedName(team.name.clone()));
+            }
+        }
+        if teams.len() > Team::LIMIT {
+            return Err(ModeError::TooManyTeams);
+        }
+        Ok(())
+    }
+
     /// The map `map` of a mode with `teams` and `relations`, its placed units' types resolved by
     /// `unit_type`, which knows the mode's types that stand. An error for what it names that the
-    /// mode does not have: teams that share a name or more than `Team::LIMIT`; a relation of a
-    /// team to itself, of a team the mode lacks, or of a pair named before; and in the map,
+    /// mode does not have: teams that share a name or more than `Team::LIMIT`, or more than
+    /// `VisionGrid::MAX_TEAMS` with a vision grid; a relation of a team to itself, of a team the
+    /// mode lacks, or of a pair named before; and in the map,
     /// grids that make no grid of its bounds, a path with no waypoint or another's name, a
     /// placed unit of a type, team or path it lacks, or that walks from an end of no path, a
     /// marker of another's name, a team it lacks, or with a point and a region or a region
@@ -68,14 +83,7 @@ impl ModeMap {
         relations: &[RelationData],
         unit_type: impl Fn(&str) -> Option<UnitType>,
     ) -> Result<ModeMap, ModeError> {
-        for (at, team) in teams.iter().enumerate() {
-            if teams[..at].iter().any(|other| other.name == team.name) {
-                return Err(ModeError::RepeatedName(team.name.clone()));
-            }
-        }
-        if teams.len() > Team::LIMIT {
-            return Err(ModeError::TooManyTeams);
-        }
+        ModeMap::check_teams(teams)?;
         let team = |name: &DeclaredName| {
             let at = teams.iter().position(|team| team.name == *name);
             let at = at.ok_or_else(|| ModeError::UnknownTeam(name.clone()))?;
@@ -95,6 +103,9 @@ impl ModeMap {
             resolved.set(pair[0], pair[1], relation.relation, relation.vision);
         }
         let grid = map.grid()?;
+        if grid.is_some() && teams.len() > VisionGrid::MAX_TEAMS {
+            return Err(ModeError::TooManyVisionTeams);
+        }
         let pathing = map.pathing()?;
         let point = |point: &MapPoint| match point.position() {
             _ if !point.fits(map.metric) => Err(ModeError::PointShape),
