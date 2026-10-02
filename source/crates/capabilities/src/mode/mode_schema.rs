@@ -23,8 +23,6 @@ pub(crate) struct ModeSchema {
     params: NameTable<Dynamic>,
     state: NameTable<StateType>,
     inputs: NameTable<InputType>,
-    /// Each state field's first value, in the order of their names.
-    pub(crate) state_initial: Vec<StateValue>,
 }
 
 /// A field of the mode's state: its place in `ModeState`, and its type.
@@ -54,11 +52,6 @@ impl ModeSchema {
             params: NameTable::default(),
             state: NameTable::default(),
             inputs: NameTable::default(),
-            state_initial: data
-                .state
-                .values()
-                .map(|field| field.decl.initial.clone())
-                .collect(),
         };
         let params = data.params.iter();
         schema

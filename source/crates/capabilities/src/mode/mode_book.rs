@@ -59,16 +59,23 @@ pub(crate) struct ModeBook {
     pub(crate) slot_kinds: SlotKinds,
     /// The ranks of every loadout entry.
     pub(crate) loadout_ranks: u8,
-    /// By unit type.
-    kits: ByType<UnitKit>,
-    passives: ByType<ModifierId>,
-    /// Each unit type's actions, a run of `actions` each, kind after kind.
-    action_runs: ByType<Range<usize>>,
+    /// What each of the mode's unit types spawns with.
+    types: ByType<ModeType>,
+    /// The unit types' actions, a run of each, kind after kind.
     actions: Vec<SlotAction>,
     /// The units the map places from the start.
     pub(crate) placed: Vec<PlacedUnit>,
     /// `ctx.map`, as scripts read it, and where avatars spawn.
     map: GameMap,
+}
+
+/// What a unit type of the mode spawns with: its kit, its passive, if it holds one, and its run of
+/// the book's actions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ModeType {
+    kit: UnitKit,
+    passive: Option<ModifierId>,
+    actions: Range<usize>,
 }
 
 /// A unit of the map, names resolved: on its path, if it names one.
@@ -112,17 +119,17 @@ impl ModeBook {
             .map(|team| (team.name.as_str(), team.slots));
         let teams = Teams::new(teams, setup.players)
             .expect("the session checked its players against the teams' slots");
-        let (mut kits, mut passives, mut action_runs) =
-            (ByType::default(), ByType::default(), ByType::default());
+        let mut types = ByType::default();
         let mut actions = Vec::new();
         for unit_type in &setup.unit_types {
-            kits.set(unit_type.unit_type, unit_type.kit);
-            if let Some(passive) = unit_type.passive {
-                passives.set(unit_type.unit_type, passive);
-            }
             let start = actions.len();
             actions.extend_from_slice(&unit_type.actions);
-            action_runs.set(unit_type.unit_type, start..actions.len());
+            let held = ModeType {
+                kit: unit_type.kit,
+                passive: unit_type.passive,
+                actions: start..actions.len(),
+            };
+            types.set(unit_type.unit_type, held);
         }
         ModeBook {
             schema: ModeSchema::new(setup.script, scripts, setup.data),
@@ -131,9 +138,7 @@ impl ModeBook {
             choices: ChoiceBook::new(&setup.data.choices),
             slot_kinds: setup.data.slots.clone(),
             loadout_ranks: setup.data.loadout_ranks(),
-            kits,
-            passives,
-            action_runs,
+            types,
             actions,
             placed,
             map,
@@ -142,13 +147,13 @@ impl ModeBook {
 
     /// The actions of `unit_type`, kind after kind.
     pub(crate) fn actions(&self, unit_type: UnitType) -> &[SlotAction] {
-        self.action_runs
+        self.types
             .get(unit_type)
-            .map_or(&[], |run| &self.actions[run.clone()])
+            .map_or(&[], |held| &self.actions[held.actions.clone()])
     }
 
     pub(super) fn kit(&self, unit_type: UnitType) -> Option<UnitKit> {
-        self.kits.get(unit_type).copied()
+        self.types.get(unit_type).map(|held| held.kit)
     }
 
     pub(crate) fn map(&self) -> GameMap {
@@ -229,7 +234,7 @@ impl ModeBook {
             unit.insert(ActionSlots::new(slots));
         }
         let entity = unit.id();
-        if let Some(&passive) = self.passives.get(unit_type) {
+        if let Some(passive) = self.types.get(unit_type).and_then(|held| held.passive) {
             let applier = Applier {
                 source: Some(id),
                 ability: None,

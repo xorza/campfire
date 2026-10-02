@@ -306,7 +306,6 @@ Track I:  H4      F3 after unit script state
   - damage-kind limit: C3;
 - **R§11:**
   - `Package` data: C2;
-  - small shapes: J;
   - `ctx.projectile` returns `()`: F3;
   - capability set table: A4.
 - **R§12:**

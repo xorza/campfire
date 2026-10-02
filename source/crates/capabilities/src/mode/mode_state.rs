@@ -4,6 +4,7 @@ use campfire_sim::SimResource;
 use serde::{Deserialize, Serialize};
 
 use crate::mode::mode_book::ModeBook;
+use crate::mode::mode_data::ModeData;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::state_value::StateValue;
 
@@ -14,6 +15,12 @@ use crate::scripts::state_value::StateValue;
 pub struct ModeState(pub(crate) Vec<StateValue>);
 
 impl ModeState {
+    /// The state `data` declares, each field at its first value, in the order of their names.
+    pub(crate) fn initial(data: &ModeData) -> ModeState {
+        let fields = data.state.values();
+        ModeState(fields.map(|field| field.decl.initial.clone()).collect())
+    }
+
     pub const fn get(&self) -> &[StateValue] {
         self.0.as_slice()
     }

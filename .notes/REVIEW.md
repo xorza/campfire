@@ -8,7 +8,6 @@ Paths are relative to `source/crates/`. Each item gives the place, the problem a
 
 These types hold their rules in `expect`s, sentinels or loose fields, not in their shape.
 
-- [ ] **Small shapes** — `Rc<OnceCell<Rc<ModeBook>>>` has an unused inner `Rc` (`capabilities/src/scripts/ctx.rs:25`); `ModeBook` keeps three `ByType` maps filled together (`mode/mode_book.rs:63-67,99-110`); `ModeSchema` keeps single-run `NameTable`s and a match-long `state_initial` (`mode/mode_schema.rs:11-27,42-53`); `UnitRow` keeps four start and end pairs where `ModifierRow` uses `Range<u32>` (`units/script_view.rs:130-141`); `ModePackages.units` adds a hop through `UnitsData`, and `PackageStore` hand-rolls a sorted map (`package/src/package_store.rs:13,26-35`); `PackageNames` keeps two maps on one key (`package/src/load_check.rs:43-45`). Better: one canonical shape each.
 - [ ] **`ctx.projectile` and `ctx.area` return `()`** — `capabilities/src/projectiles/projectiles_api.rs:60-63`, `areas/areas_api.rs:37-40`. Design 08 says a unit made in a call is usable in that call, and `chain_fire.rhai:12-13` uses the return value. Better: the frame takes the id at call time, as `spawn_unit` does.
 
 ## 12. Systems scan everything where a query or an index fits

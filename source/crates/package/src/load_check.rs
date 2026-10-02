@@ -42,11 +42,16 @@ pub(crate) struct LoadCheck<'a> {
 #[derive(Debug)]
 struct PackageNames<'a> {
     package: &'a Package,
-    /// The roles each script serves, as data names it.
-    roles: BTreeMap<&'a PackagePath, BTreeSet<ScriptRole>>,
-    /// The params each script's `ctx.p` may read.
-    params: BTreeMap<&'a PackagePath, BTreeSet<&'a str>>,
+    /// What data says of each script it names.
+    scripts: BTreeMap<&'a PackagePath, ScriptUse<'a>>,
     modifiers: &'a BTreeMap<DeclaredName, ModifierData>,
+}
+
+/// What data says of a script: the roles it serves, and the params its `ctx.p` may read.
+#[derive(Debug, Default)]
+struct ScriptUse<'a> {
+    roles: BTreeSet<ScriptRole>,
+    params: BTreeSet<&'a str>,
 }
 
 impl<'a> LoadCheck<'a> {
@@ -445,7 +450,7 @@ impl<'a> LoadCheck<'a> {
     /// it uses one the mode has.
     fn scripts(&self, names: &PackageNames<'_>) -> Result<(), LoadProblem> {
         let package = names.package;
-        for &path in names.roles.keys() {
+        for &path in names.scripts.keys() {
             if package.script(path).is_none() {
                 return Err(LoadProblem::Script {
                     path: path.clone(),
@@ -455,7 +460,7 @@ impl<'a> LoadCheck<'a> {
         }
         for script in &package.scripts {
             let path = &script.path;
-            let Some(roles) = names.roles.get(path) else {
+            let Some(ScriptUse { roles, params }) = names.scripts.get(path) else {
                 return Err(LoadProblem::Script {
                     path: path.clone(),
                     problem: ScriptProblem::Unreferenced,
@@ -512,7 +517,6 @@ impl<'a> LoadCheck<'a> {
                     return Err(fail(ScriptProblem::UnknownMember(used.name.clone())));
                 }
             }
-            let params = &names.params[path];
             if let Some(name) = facts
                 .params
                 .iter()
@@ -1164,8 +1168,7 @@ impl<'a> PackageNames<'a> {
     ) -> PackageNames<'a> {
         PackageNames {
             package,
-            roles: BTreeMap::new(),
-            params: BTreeMap::new(),
+            scripts: BTreeMap::new(),
             modifiers,
         }
     }
@@ -1177,8 +1180,9 @@ impl<'a> PackageNames<'a> {
         role: ScriptRole,
         params: impl IntoIterator<Item = &'a str>,
     ) {
-        self.roles.entry(script).or_default().insert(role);
-        self.params.entry(script).or_default().extend(params);
+        let used = self.scripts.entry(script).or_default();
+        used.roles.insert(role);
+        used.params.extend(params);
     }
 }
 

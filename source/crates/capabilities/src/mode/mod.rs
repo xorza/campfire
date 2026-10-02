@@ -120,6 +120,7 @@ impl Mode {
             grid,
         } = books.install(world);
         ground.install(world, walkers);
+        let state = ModeState::initial(setup.data);
         let book = ModeBook::new(
             setup,
             world.resource::<ScriptBook>(),
@@ -134,7 +135,7 @@ impl Mode {
         }
         view.set_names(Rc::clone(&book.teams), paths.shared_names());
         world.insert_resource(paths);
-        world.insert_resource(ModeState(book.schema.state_initial.clone()));
+        world.insert_resource(state);
         let players = book.teams.players() as usize;
         world.insert_resource(book.choices.empty(players));
         world.insert_resource(PlayerResources::new(players, resource_count));
