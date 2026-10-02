@@ -306,7 +306,6 @@ Track I:  H4      F3 after unit script state
   - damage-kind limit: C3;
 - **R§11:**
   - `Package` data: C2;
-  - load error shapes: C5a;
   - small shapes: J;
   - `ctx.projectile` returns `()`: F3;
   - capability set table: A4.
@@ -314,7 +313,6 @@ Track I:  H4      F3 after unit script state
   - batch rebuilds: H4;
   - entity-index walks: B2;
 - **R§13:**
-  - scripts parsed twice: C5b.
 - **R§14:**
   - one struct per file: D2, D5, J;
   - server exit code: B4;

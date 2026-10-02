@@ -4,9 +4,9 @@ use std::io;
 use std::path::PathBuf;
 
 use campfire_capabilities::{
-    ActionError, ActionField, ActionKind, ActionSlots, AiError, ApiVersion, DeclaredName,
-    EngineTag, Hook, MapProblem, ModeError, ModifierProblem, NameKind, PlannedEffect, Pools,
-    ResourceId, Stat, TrackId, UnitKitError,
+    ActionDataField, ActionError, ActionField, ActionKind, ActionSlots, AiError, ApiVersion,
+    DeclaredName, EngineTag, Hook, MapProblem, ModeError, ModifierProblem, NameKind, PlannedEffect,
+    Pools, ResourceId, Stat, TrackId, UnitKitError,
 };
 use campfire_content::{Fingerprint, MessageId, PackagePath};
 use campfire_script::ScriptError;
@@ -155,21 +155,25 @@ pub enum LoadProblem {
     AvatarOrders,
     /// A unit type holds this train, and has no `production` section to queue it.
     NoQueue(DeclaredName),
-    /// A unit type's action is in two slots.
-    RepeatedSlot(DeclaredName),
     /// Unit types place the action in slot kinds of other ranks.
     ActionRanks(DeclaredName),
-    /// A weapon without `rate`, `damage` or `damage_kind`, a unit target or a range in meters,
-    /// or with a field only a cast runs; a train without its `unit_type`, or with a field it does
-    /// not run; or another kind of action with one of a weapon's or a train's fields.
-    KindField(DeclaredName),
+    /// An action without a field its kind needs, or with one its kind refuses, as the table of
+    /// action fields says.
+    KindField {
+        action: DeclaredName,
+        field: ActionDataField,
+    },
+    /// An attack aims at no unit.
+    AttackAims(DeclaredName),
+    /// An attack's range is global, not in meters.
+    GlobalAttack(DeclaredName),
+    /// A train aims at something: it takes no target.
+    TrainAims(DeclaredName),
     /// An action of a kind the release does not run yet.
     KindNotRun {
         action: DeclaredName,
         kind: ActionKind,
     },
-    /// Two loadout packages hold a loadout entry of this id.
-    RepeatedLoadout(DeclaredName),
     /// The mode's teams or map name what it does not have.
     Mode(ModeError),
     /// A capability field of an ability does not hold at a rank.
@@ -181,9 +185,6 @@ pub enum LoadProblem {
     TooMany(Limit),
     /// More than one of the mode's tracks is the `level` track.
     LevelTracks,
-    /// An avatar, which the mode names by its package's name, has the name of one of the mode's
-    /// unit types.
-    RepeatedUnitType(String),
     /// A per-rank array of an ability has another length than its ranks.
     RankCount { action: DeclaredName, ranks: u8 },
     /// The script at `path`, or the one data names there.
@@ -191,8 +192,10 @@ pub enum LoadProblem {
         path: PackagePath,
         problem: ScriptProblem,
     },
-    /// A unit type at `at` lists a pool twice.
-    RepeatedPool { at: Place, name: DeclaredName },
+    /// `name` twice where `at` names each once: an avatar named as one of the mode's unit
+    /// types, an entry of two loadout packages, a pool or an action twice in a unit type's pools
+    /// or slots, a name twice in one of the mode's lists.
+    Repeated { at: Place, name: String },
     /// Live stat changes across the mode's modifiers read each other in a loop, through these
     /// stats.
     StatLoop(Vec<Stat>),
@@ -209,8 +212,6 @@ pub enum LoadProblem {
     /// A unit type at `at` has the life pool but no `combat` section, so it could reach zero
     /// life and never die.
     CombatMissing(Place),
-    /// The mode declares a name twice in one of its lists.
-    RepeatedName(DeclaredName),
     /// A projectile or an area type, or what delivers or makes one.
     Delivery(DeliveryProblem),
     /// An effect of the action's list, the one before `list`.
@@ -419,6 +420,14 @@ pub enum Place {
     Choice(DeclaredName),
     /// The mode's `[tracks]`.
     Tracks,
+    /// The mode's unit types and its avatars, each by its name.
+    UnitTypes,
+    /// The actions of the mode's loadout packages.
+    Loadouts,
+    /// The mode's players' resources, beside its pools.
+    Resources,
+    /// The mode's slot kinds.
+    SlotKinds,
 }
 
 /// A use of `ctx` that hides it from the load checks: every value of `ctx` in a script is a
@@ -499,6 +508,10 @@ impl fmt::Display for Place {
             Place::Pool(name) => write!(f, "pool {name}"),
             Place::Choice(name) => write!(f, "choice {name}"),
             Place::Tracks => f.write_str("the mode's [tracks]"),
+            Place::UnitTypes => f.write_str("the mode's unit types and avatars"),
+            Place::Loadouts => f.write_str("the mode's loadouts"),
+            Place::Resources => f.write_str("the mode's resources and pools"),
+            Place::SlotKinds => f.write_str("the mode's slot kinds"),
         }
     }
 }
@@ -629,7 +642,6 @@ impl fmt::Display for LoadProblem {
             }
             LoadProblem::TooMany(limit) => write!(f, "{limit}"),
             LoadProblem::LevelTracks => f.write_str("more than one `level` track"),
-            LoadProblem::RepeatedUnitType(name) => write!(f, "two unit types are named {name:?}"),
             LoadProblem::NoDamageKinds => {
                 f.write_str("the mode declares combat, and no damage kinds")
             }
@@ -641,13 +653,20 @@ impl fmt::Display for LoadProblem {
             LoadProblem::Unslotted(id) => write!(f, "action {id:?} is in no slot"),
             LoadProblem::AvatarOrders => f.write_str("an avatar takes no `orders`: bots play it"),
             LoadProblem::NoQueue(id) => write!(f, "train {id:?} sits on a unit type with no queue"),
-            LoadProblem::RepeatedSlot(id) => write!(f, "action {id:?} is in two slots"),
-            LoadProblem::KindField(action) => write!(
+            LoadProblem::KindField { action, field } => write!(
                 f,
-                "action {action:?}: an attack aims at a unit within meters, with rate, damage and \
-                 damage_kind and none of a cast's fields; a train names its unit_type and takes no \
-                 target; and no other kind has their fields"
+                "action {action:?}: its kind needs or refuses `{}`",
+                field.name()
             ),
+            LoadProblem::AttackAims(action) => {
+                write!(f, "action {action:?}: an attack aims at a unit")
+            }
+            LoadProblem::GlobalAttack(action) => {
+                write!(f, "action {action:?}: an attack's range is in meters")
+            }
+            LoadProblem::TrainAims(action) => {
+                write!(f, "action {action:?}: a train takes no target")
+            }
             LoadProblem::KindNotRun { action, kind } => {
                 write!(
                     f,
@@ -657,7 +676,6 @@ impl fmt::Display for LoadProblem {
             LoadProblem::ActionRanks(id) => {
                 write!(f, "action {id:?} sits in slot kinds of other ranks")
             }
-            LoadProblem::RepeatedLoadout(id) => write!(f, "two loadout packages hold {id:?}"),
             LoadProblem::Mode(error) => write!(f, "{error}"),
             LoadProblem::RankCount { action, ranks } => {
                 write!(
@@ -667,7 +685,7 @@ impl fmt::Display for LoadProblem {
             }
             LoadProblem::Script { path, problem } => write!(f, "{path}: {problem}"),
             LoadProblem::Unknown { at, name, of } => write!(f, "{at}: no {of} {name:?}"),
-            LoadProblem::RepeatedPool { at, name } => write!(f, "{at}: pool {name:?} twice"),
+            LoadProblem::Repeated { at, name } => write!(f, "{at}: {name:?} twice"),
             LoadProblem::StatLoop(stats) => {
                 let names: Vec<String> = stats.iter().map(Stat::to_string).collect();
                 write!(
@@ -689,7 +707,6 @@ impl fmt::Display for LoadProblem {
             LoadProblem::EngineTag { at, tag } => {
                 write!(f, "{at}: {:?}, a tag only the engine gives", tag.name())
             }
-            LoadProblem::RepeatedName(name) => write!(f, "the mode declares {name:?} twice"),
             LoadProblem::Delivery(problem) => write!(f, "{problem}"),
             LoadProblem::Effect {
                 action,

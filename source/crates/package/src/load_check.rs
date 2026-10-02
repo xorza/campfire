@@ -67,7 +67,10 @@ impl<'a> LoadCheck<'a> {
             if matches!(dependent.kind, DependentKind::Avatar(_)) {
                 let name = &dependent.package.header.name;
                 if units.contains_key(name.as_str()) {
-                    return Err(fail(LoadProblem::RepeatedUnitType(name.clone())));
+                    return Err(fail(LoadProblem::Repeated {
+                        at: Place::UnitTypes,
+                        name: name.clone(),
+                    }));
                 }
                 unit_types += 1;
             }
@@ -206,14 +209,15 @@ impl<'a> LoadCheck<'a> {
         let data = &packages.data;
         let content = &packages.content;
         let units = &content.units;
-        for list in [
-            &data.combat.damage_kinds,
-            &data.resources,
-            &data.navigation.layers,
+        for (list, at) in [
+            (&data.combat.damage_kinds, Place::Combat),
+            (&data.resources, Place::Resources),
+            (&data.navigation.layers, Place::Navigation),
         ] {
             let mut seen = BTreeSet::new();
             if let Some(name) = list.iter().find(|&name| !seen.insert(name)) {
-                return Err(LoadProblem::RepeatedName(name.clone()));
+                let name = name.to_string();
+                return Err(LoadProblem::Repeated { at, name });
             }
         }
         self.damage_kinds()?;
@@ -271,7 +275,10 @@ impl<'a> LoadCheck<'a> {
             }
             let actions = dependent.content.actions.keys();
             if let Some(id) = actions.clone().find(|&id| !seen.insert(id)) {
-                let problem = LoadProblem::RepeatedLoadout(id.clone());
+                let problem = LoadProblem::Repeated {
+                    at: Place::Loadouts,
+                    name: id.to_string(),
+                };
                 return Err(LoadError::of(&dependent.package.header.name, problem));
             }
         }
@@ -643,8 +650,11 @@ impl<'a> LoadCheck<'a> {
             action.kind,
             ActionKind::Cast | ActionKind::Attack | ActionKind::Train
         );
-        if run && ActionDataField::misused(action, action.kind).is_some() {
-            return Err(LoadProblem::KindField(id.to_owned()));
+        if run && let Some(field) = ActionDataField::misused(action, action.kind) {
+            return Err(LoadProblem::KindField {
+                action: id.to_owned(),
+                field,
+            });
         }
         match action.kind {
             ActionKind::Cast => {
@@ -653,7 +663,7 @@ impl<'a> LoadCheck<'a> {
             ActionKind::Train => {
                 self.require(Capability::Production, &at)?;
                 if action.targeting != Targeting::None {
-                    return Err(LoadProblem::KindField(id.to_owned()));
+                    return Err(LoadProblem::TrainAims(id.to_owned()));
                 }
                 let unit_types = &self.packages.content.units;
                 let name = action
@@ -681,9 +691,11 @@ impl<'a> LoadCheck<'a> {
                 let global = action.range.as_ref().is_some_and(|range| {
                     range.values().contains(&RangeField::Range(Range::Global))
                 });
-                let aims = matches!(action.targeting, Targeting::Unit(_));
-                if global || !aims {
-                    return Err(LoadProblem::KindField(id.to_owned()));
+                if !matches!(action.targeting, Targeting::Unit(_)) {
+                    return Err(LoadProblem::AttackAims(id.to_owned()));
+                }
+                if global {
+                    return Err(LoadProblem::GlobalAttack(id.to_owned()));
                 }
                 self.stats_declared(action.rate.iter().chain(&action.damage), &at)?;
                 let kinds = &self.packages.data.combat.damage_kinds;
@@ -836,7 +848,10 @@ impl<'a> LoadCheck<'a> {
             .iter()
             .find(|name| data.pools.contains_key(*name))
         {
-            return Err(LoadProblem::RepeatedName(name.clone()));
+            return Err(LoadProblem::Repeated {
+                at: Place::Resources,
+                name: name.to_string(),
+            });
         }
         for (name, pool) in &data.pools {
             let at = Place::Pool(name.clone());
@@ -935,7 +950,10 @@ impl<'a> LoadCheck<'a> {
                     return Err(LoadProblem::UnknownSlot(id.clone()));
                 }
                 if !slotted.insert(id.as_str()) {
-                    return Err(LoadProblem::RepeatedSlot(id.clone()));
+                    return Err(LoadProblem::Repeated {
+                        at: at.clone(),
+                        name: id.to_string(),
+                    });
                 }
                 if actions[id].kind == ActionKind::Train && unit_type.production.is_none() {
                     return Err(LoadProblem::NoQueue(id.clone()));
@@ -968,7 +986,10 @@ impl<'a> LoadCheck<'a> {
         }
         let mut seen = BTreeSet::new();
         match kinds.iter().find(|kind| !seen.insert(&kind.name)) {
-            Some(kind) => Err(LoadProblem::RepeatedName(kind.name.clone())),
+            Some(kind) => Err(LoadProblem::Repeated {
+                at: Place::SlotKinds,
+                name: kind.name.to_string(),
+            }),
             None => Ok(()),
         }
     }
@@ -1024,9 +1045,9 @@ impl<'a> LoadCheck<'a> {
                 });
             }
             if pools[..place].contains(name) {
-                return Err(LoadProblem::RepeatedPool {
+                return Err(LoadProblem::Repeated {
                     at: at.clone(),
-                    name: name.clone(),
+                    name: name.to_string(),
                 });
             }
         }

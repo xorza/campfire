@@ -5,9 +5,9 @@ use std::num::NonZeroU32;
 use std::path::Path;
 
 use campfire_capabilities::{
-    ActionError, ActionField, ActionKind, AiError, EffectData, EffectTo, Effecting, EngineTag,
-    Hook, MapProblem, ModeError, ModifierProblem, NameKind, Number, PlannedEffect, Scalar, SyncTo,
-    UnitKitError,
+    ActionDataField, ActionError, ActionField, ActionKind, AiError, EffectData, EffectTo,
+    Effecting, EngineTag, Hook, MapProblem, ModeError, ModifierProblem, NameKind, Number,
+    PlannedEffect, Scalar, SyncTo, UnitKitError,
 };
 use campfire_package::{
     ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem, EffectProblem, Limit, LoadError,
@@ -247,7 +247,7 @@ fn more_tracks_than_a_unit_holds_fail_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 183] = [
+const FLAWS: [Flaw; 184] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -786,13 +786,22 @@ const FLAWS: [Flaw; 183] = [
         MODE_DATA,
         Edit::Replace("rate = \"attack_speed\"\n", ""),
         MODE,
-        |problem| matches!(problem, LoadProblem::KindField(action) if action == "melee_creep_attack"),
+        |problem| matches!(problem, LoadProblem::KindField { action, field: ActionDataField::Rate } if action == "melee_creep_attack"),
     ),
     flaw(
         MODE_DATA,
         Edit::Replace("range = \"7.75\"", "range = \"global\""),
         MODE,
-        |problem| matches!(problem, LoadProblem::KindField(action) if action == "tower_attack"),
+        |problem| matches!(problem, LoadProblem::GlobalAttack(action) if action == "tower_attack"),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace(
+            "[actions.tower_attack]\nkind = \"attack\"\ntargeting = \"enemies\"",
+            "[actions.tower_attack]\nkind = \"attack\"\ntargeting = \"point\"",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::AttackAims(action) if action == "tower_attack"),
     ),
     flaw(
         MODE_DATA,
@@ -801,7 +810,7 @@ const FLAWS: [Flaw; 183] = [
             "[actions.wolf_attack]\ncooldown_ms = 1000\n",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::KindField(action) if action == "wolf_attack"),
+        |problem| matches!(problem, LoadProblem::KindField { action, field: ActionDataField::CooldownMs } if action == "wolf_attack"),
     ),
     flaw(
         HUSK,
@@ -810,7 +819,7 @@ const FLAWS: [Flaw; 183] = [
             "[actions.dread]\nrate = \"attack_speed\"\n",
         ),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::KindField(action) if action == "dread"),
+        |problem| matches!(problem, LoadProblem::KindField { action, field: ActionDataField::Rate } if action == "dread"),
     ),
     flaw(
         MODE_DATA,
@@ -918,7 +927,7 @@ const FLAWS: [Flaw; 183] = [
             ),
         ],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::RepeatedUnitType(name) if name == "husk"),
+        refused: |problem| matches!(problem, LoadProblem::Repeated { at: Place::UnitTypes, name } if name == "husk"),
     },
     flaw(
         LASH_OUT,
@@ -1041,7 +1050,7 @@ const FLAWS: [Flaw; 183] = [
             r#"pools = ["health", "mana", "mana"]"#,
         ),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::RepeatedPool { name, .. } if name.as_str() == "mana"),
+        |problem| matches!(problem, LoadProblem::Repeated { at: Place::Avatar(_), name } if name == "mana"),
     ),
     flaw(
         HUSK,
@@ -1414,13 +1423,13 @@ const FLAWS: [Flaw; 183] = [
         MODE_DATA,
         Edit::Replace(r#"resources = ["gold"]"#, r#"resources = ["gold", "gold"]"#),
         MODE,
-        |problem| matches!(problem, LoadProblem::RepeatedName(name) if name.as_str() == "gold"),
+        |problem| matches!(problem, LoadProblem::Repeated { at: Place::Resources, name } if name == "gold"),
     ),
     flaw(
         MODE_DATA,
         Edit::Replace(r#"resources = ["gold"]"#, r#"resources = ["gold", "mana"]"#),
         MODE,
-        |problem| matches!(problem, LoadProblem::RepeatedName(name) if name.as_str() == "mana"),
+        |problem| matches!(problem, LoadProblem::Repeated { at: Place::Resources, name } if name == "mana"),
     ),
     // An engine stat is declared like any other: one the units carry and the mode does not
     // declare fails.
@@ -1485,7 +1494,7 @@ const FLAWS: [Flaw; 183] = [
         HUSK,
         Edit::Replace(r#""dread", "lash_out""#, r#""grasping_wraps", "lash_out""#),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::RepeatedSlot(id) if id == "grasping_wraps"),
+        |problem| matches!(problem, LoadProblem::Repeated { at: Place::Avatar(_), name } if name == "grasping_wraps"),
     ),
     flaw(
         MAP,
@@ -1565,7 +1574,7 @@ const FLAWS: [Flaw; 183] = [
             "[navigation]\nlayers = [\"ground\", \"ground\"]\n\n# Its damage kinds",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::RepeatedName(name) if name.as_str() == "ground"),
+        |problem| matches!(problem, LoadProblem::Repeated { at: Place::Navigation, name } if name == "ground"),
     ),
     flaw(
         UNITS,
@@ -1622,7 +1631,7 @@ const FLAWS: [Flaw; 183] = [
         MODE_DATA,
         Edit::Replace("name = \"ultimate\"", "name = \"basic\""),
         MODE,
-        |problem| matches!(problem, LoadProblem::RepeatedName(name) if name.as_str() == "basic"),
+        |problem| matches!(problem, LoadProblem::Repeated { at: Place::SlotKinds, name } if name == "basic"),
     ),
     flaw(
         MODE_DATA,
@@ -1707,7 +1716,7 @@ const FLAWS: [Flaw; 183] = [
             ),
         ],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::KindField(action) if action == "recruit"),
+        refused: |problem| matches!(problem, LoadProblem::TrainAims(action) if action == "recruit"),
     },
     Flaw {
         file: MODE_DATA,
@@ -1741,7 +1750,7 @@ const FLAWS: [Flaw; 183] = [
             "[actions.dread]\nunit_type = \"melee_creep\"\n",
         ),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::KindField(action) if action == "dread"),
+        |problem| matches!(problem, LoadProblem::KindField { action, field: ActionDataField::UnitType } if action == "dread"),
     ),
     // The release runs actions of kind `cast`, `attack` and `train` alone yet; an action sits in
     // slot kinds of one count of ranks.
@@ -1841,7 +1850,7 @@ const FLAWS: [Flaw; 183] = [
             ),
         ],
         package: "player-spells",
-        refused: |problem| matches!(problem, LoadProblem::RepeatedLoadout(id) if id == "haste"),
+        refused: |problem| matches!(problem, LoadProblem::Repeated { at: Place::Loadouts, name } if name == "haste"),
     },
 ];
 
