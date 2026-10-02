@@ -1899,12 +1899,12 @@ impl Game {
             ScriptRole::Ai => ctx.frame().begin_think(&self.world, actor),
             ScriptRole::Action => ctx
                 .frame()
-                .begin_cast(&self.world, self.strike, 1, actor)
+                .begin_cast(&self.world, self.strike, 1, actor, 0)
                 .unwrap(),
             ScriptRole::Modifier => {
                 let blessing = Stats::modifier(&self.world, 0, "blessing").unwrap();
                 ctx.frame()
-                    .begin_hook(&self.world, blessing, None, 1, Some(actor), 1)
+                    .begin_hook(&self.world, blessing, None, 1, Some(actor), 0, 1)
                     .unwrap();
             }
         }

@@ -4,7 +4,7 @@ use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{
-    Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry, TickRate, Ticks,
+    Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry, Tick, TickRate, Ticks,
 };
 
 use crate::actions::action_book::ActionBook;
@@ -21,6 +21,7 @@ use crate::deliveries::delivering::Delivering;
 use crate::deliveries::delivery_spawner::DeliverySpawner;
 use crate::deliveries::hit::Hit;
 use crate::deliveries::{Deliveries, DeliverySet};
+use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
 use crate::stats::held_modifiers::{Held, HeldModifiers};
 use crate::stats::{Stats, StatsSet};
@@ -105,6 +106,11 @@ impl Areas {
         world
             .resource_mut::<ByType<AreaSpec>>()
             .set(unit_type, spec);
+    }
+
+    /// Applies the next area the call in `frame` queued.
+    pub(crate) fn apply_next(world: &mut World, frame: &mut Frame, _: Tick) {
+        Areas::apply(world, frame.effects.take::<AreaEffect>());
     }
 
     /// Applies `effect`: an area that lands this tick, at the point of the map's bounds nearest

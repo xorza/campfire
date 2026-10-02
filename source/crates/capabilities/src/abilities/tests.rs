@@ -1071,6 +1071,12 @@ fn a_cast_applies_a_modifier_from_its_caster_with_its_abilitys_params() {
         state: BTreeMap::new(),
     };
     Stats::load_modifier(&mut game.world, 0, "mark", &mark, None);
+    // Package 1 names its own `mark`, of no shield.
+    let other = ModifierData {
+        shield: None,
+        ..mark.clone()
+    };
+    Stats::load_modifier(&mut game.world, 1, "mark", &other, None);
     let marker = r#"
 fn on_resolve(ctx, caster, target) {
     let m = ctx.add_modifier(caster, "mark");
@@ -1097,6 +1103,26 @@ fn on_resolve(ctx, caster, target) {
         (held.shield, held.until),
         (Some(num(125)), Some(Tick::new(t.get() + 31)))
     );
+
+    // A cast of package 1's ability means package 1's names: the caster carries package 0's
+    // `mark`, not its own, and the cast adds its own beside it.
+    let own = r#"
+fn on_resolve(ctx, caster, target) {
+    if caster.has_modifier("mark") { throw "the caster carries no mark of package 1"; }
+    ctx.add_modifier(caster, "mark");
+}
+"#;
+    let script = Units::compile(&mut game.world, own).unwrap();
+    let theirs = Actions::load(&mut game.world, 1, "lash_out", &lash_out(), Some(script), 5);
+    let slots = ActionSlots::new([(theirs.unwrap(), SlotKind::new(0), 1)]);
+    game.world.entity_mut(entity).insert(slots);
+    game.cast(caster, ActionTarget::None);
+    assert!(game.failures().is_empty(), "{:?}", game.failures());
+    let book = game.world.resource::<ModifierBook>();
+    let ids = [0, 1].map(|package| book.find(package, "mark").unwrap());
+    let modifiers = game.world.get::<Modifiers>(entity).unwrap();
+    let shields = ids.map(|id| modifiers.get(id, Some(caster)).map(|held| held.shield));
+    assert_eq!(shields, [Some(Some(num(125))), Some(None)]);
 }
 
 /// A match in which a strike stuns its target for 100 ms through the mode's `stunned` tag: each

@@ -1,7 +1,8 @@
 use campfire_math::Vec3;
-use campfire_sim::{Position, StableId};
+use campfire_sim::{Capability, Position, StableId};
 
 use crate::deliveries::delivering::Delivering;
+use crate::scripts::effects::Effect;
 
 /// A projectile a call queued: of `by`, from `from`, toward a direction or homing on a unit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,4 +17,8 @@ pub(crate) struct ProjectileEffect {
 pub(crate) enum Toward {
     Direction(Vec3),
     Unit(StableId),
+}
+
+impl Effect for ProjectileEffect {
+    const CAPABILITY: Capability = Capability::Projectiles;
 }

@@ -30,6 +30,7 @@ use crate::orders::order::{Action, Order};
 use crate::orders::resetting::Resetting;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
+use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
@@ -110,6 +111,15 @@ impl Orders {
             .resource_mut::<ByType<Ai>>()
             .set(unit_type, Ai { script, period });
         Ok(())
+    }
+
+    /// Applies the next order the AI call in `frame` queued, for its unit that thinks.
+    pub(crate) fn apply_next(world: &mut World, frame: &mut Frame, _: Tick) {
+        let order = frame.effects.take::<AiOrder>();
+        let unit = frame
+            .acting()
+            .expect("an order comes from the unit that thinks");
+        Orders::apply_order(world, unit, order);
     }
 
     /// Applies an order the AI call of `unit` queued, which the call checked against the units
@@ -334,7 +344,6 @@ fn think(
                 continue;
             };
             ctx.frame().begin_think(batch.world(), id);
-            ctx.view().set_caller(0);
             let next = match batch.call(Pool::Think, script, Hook::OnThink, (ctx.clone(), unit)) {
                 Ok(_) => {
                     ctx.apply(batch.world(), now);

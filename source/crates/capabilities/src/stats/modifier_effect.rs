@@ -1,6 +1,7 @@
 use campfire_math::PlayerSlot;
-use campfire_sim::{StableId, Ticks};
+use campfire_sim::{Capability, StableId, Ticks};
 
+use crate::scripts::effects::Effect;
 use crate::stats::modifier_book::ModifierId;
 
 /// A change to a unit's modifiers that a call queued.
@@ -20,4 +21,8 @@ pub(crate) enum ModifierEffect {
         id: ModifierId,
         source: Option<StableId>,
     },
+}
+
+impl Effect for ModifierEffect {
+    const CAPABILITY: Capability = Capability::Stats;
 }

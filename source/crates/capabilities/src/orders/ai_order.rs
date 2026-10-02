@@ -1,4 +1,6 @@
-use campfire_sim::{Position, StableId};
+use campfire_sim::{Capability, Position, StableId};
+
+use crate::scripts::effects::Effect;
 
 /// An order an AI call queued for the unit that thinks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -11,4 +13,8 @@ pub(crate) enum AiOrder {
     Move { to: Position },
     /// Drop the target, walk to the spawn place off any path, and take no order until there.
     Reset,
+}
+
+impl Effect for AiOrder {
+    const CAPABILITY: Capability = Capability::Orders;
 }

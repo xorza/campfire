@@ -205,7 +205,8 @@ fn prepare(
         ActionTarget::Point(at) => Dynamic::from(at),
     };
     let mut frame = ctx.frame();
-    frame.begin_cast(world, checked.id, checked.rank, caster.id)?;
+    let package = checked.action.package;
+    frame.begin_cast(world, checked.id, checked.rank, caster.id, package)?;
     let resource_cost = checked.action.resource_cost(checked.rank);
     if let (Some(owner), false) = (owner, resource_cost.is_empty()) {
         frame
@@ -214,7 +215,6 @@ fn prepare(
             .pay(owner, resource_cost);
     }
     drop(frame);
-    view.set_caller(checked.action.package);
     let pool = owner.map_or(Pool::Think, Pool::Player);
     Ok(Some(Prepared {
         caster,

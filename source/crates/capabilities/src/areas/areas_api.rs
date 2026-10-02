@@ -5,7 +5,6 @@ use crate::areas::area_effect::AreaEffect;
 use crate::deliveries::delivering::Delivering;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
-use crate::scripts::effect::Effect;
 use crate::scripts::error::Checked;
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::{DataTable, MemberSpec};
@@ -36,6 +35,6 @@ impl AreasApi {
     /// Queues an area of the running action, which delivers areas, from its acting unit.
     fn land(ctx: &Ctx, at: Position) -> Checked<()> {
         let by = Delivering::of(ctx, |delivery| delivery == Delivery::Area)?;
-        ctx.queue(Effect::Area(AreaEffect { by, at }))
+        ctx.queue(AreaEffect { by, at })
     }
 }

@@ -5,7 +5,7 @@ use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_math::{Num, Vec3};
 
-use campfire_sim::{Keyed, Ordered, Position, StableId, StateRegistry, TickRate};
+use campfire_sim::{Keyed, Ordered, Position, StableId, StateRegistry, Tick, TickRate};
 
 use crate::actions::action_book::{ActionBook, Aim, Fan};
 use crate::actions::action_data::Range;
@@ -23,6 +23,7 @@ use crate::projectiles::projectile::{Flight, Payload, Projectile};
 use crate::projectiles::projectile_data::ProjectileData;
 use crate::projectiles::projectile_effect::{ProjectileEffect, Toward};
 use crate::projectiles::projectile_spec::ProjectileSpec;
+use crate::scripts::frame::Frame;
 use crate::stats::pools::Pools;
 use crate::units::by_type::ByType;
 use crate::units::filter::Filter;
@@ -98,6 +99,11 @@ impl Projectiles {
         world
             .resource_mut::<ByType<ProjectileSpec>>()
             .set(unit_type, spec);
+    }
+
+    /// Applies the next projectile the call in `frame` queued.
+    pub(crate) fn apply_next(world: &mut World, frame: &mut Frame, _: Tick) {
+        Projectiles::apply(world, frame.effects.take::<ProjectileEffect>());
     }
 
     /// Applies `effect`: a launch this tick, its own cast, from the point of the map's bounds

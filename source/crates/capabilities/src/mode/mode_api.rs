@@ -13,7 +13,6 @@ use crate::mode::new_unit::NewUnit;
 use crate::navigation::path_walker::PathEnd;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
-use crate::scripts::effect::Effect;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::hook::Hook;
 use crate::scripts::role_set::RoleSet;
@@ -382,7 +381,7 @@ impl ModeApi {
             .bind(
                 field("team", "its team's name, `()` with none"),
                 |call: NativeCallContext<'_>, marker: &mut Marker| match marker.info().team {
-                    Some(team) => View::of_call(&call).team_name(team),
+                    Some(team) => Ctx::of_call(&call).view().team_name(team),
                     None => Ok(Dynamic::UNIT),
                 },
             )
@@ -438,7 +437,7 @@ impl ModeApi {
             return Err(ApiError::Ended.fail().into());
         }
         frame.ended = true;
-        frame.effects.push(Effect::Mode(ModeEffect::End(result)));
+        frame.effects.push(ModeEffect::End(result));
         Ok(())
     }
 
@@ -553,7 +552,7 @@ impl ModeApi {
             team,
             pos,
         };
-        ctx.queue(Effect::Mode(ModeEffect::SpawnUnit { at, owner }))?;
+        ctx.queue(ModeEffect::SpawnUnit { at, owner })?;
         Ok(NewUnit { id, unit_type })
     }
 
@@ -580,24 +579,24 @@ impl ModeApi {
         let mut frame = ctx.write()?;
         let queued: usize = frame
             .effects
-            .iter()
+            .queued::<ModeEffect>()
             .filter_map(|effect| match effect {
-                Effect::Mode(ModeEffect::Grant {
+                ModeEffect::Grant {
                     unit: granted,
                     abilities,
                     ..
-                }) if *granted == unit => Some(abilities.len()),
+                } if *granted == unit => Some(abilities.len()),
                 _ => None,
             })
             .sum();
         if slots + queued + abilities.len() > ActionSlots::LIMIT {
             return Err(ApiError::TooManySlots.fail().into());
         }
-        frame.effects.push(Effect::Mode(ModeEffect::Grant {
+        frame.effects.push(ModeEffect::Grant {
             unit,
             kind,
             abilities,
-        }));
+        });
         Ok(())
     }
 
@@ -628,12 +627,12 @@ impl ModeApi {
                 id: frame.ids.allocate(),
             })
             .collect();
-        frame.effects.push(Effect::Mode(ModeEffect::SpawnGroup {
+        frame.effects.push(ModeEffect::SpawnGroup {
             team,
             path,
             from,
             units,
-        }));
+        });
         Ok(())
     }
 
@@ -642,12 +641,12 @@ impl ModeApi {
         ctx.require(RoleSet::MODE)?;
         let ticks = ctx.view().ticks(ms)?;
         let data = ModeApi::timer_data(data).map_err(ApiError::fail)?;
-        ctx.queue(Effect::Mode(ModeEffect::Timer {
+        ctx.queue(ModeEffect::Timer {
             name: name.to_owned(),
             ticks,
             repeat,
             data,
-        }))
+        })
     }
 
     /// Brings back `unit`, which is dead and stays when dead, `ms` after this call, in ticks
@@ -662,10 +661,10 @@ impl ModeApi {
             return Err(ApiError::RespawnDespawns.fail().into());
         }
         let ticks = ctx.view().ticks(ms)?;
-        ctx.queue(Effect::Mode(ModeEffect::Respawn {
+        ctx.queue(ModeEffect::Respawn {
             unit: row.id,
             ticks,
-        }))
+        })
     }
 
     /// Queues a rank more of the ability in `slot` of `unit`: one that has a rank above its
@@ -680,11 +679,11 @@ impl ModeApi {
             .view()
             .slot(&row, slot)
             .ok_or_else(|| ApiError::NoAbilitySlot.fail())?;
-        let effect = Effect::Mode(ModeEffect::Learn { unit: row.id, slot });
+        let effect = ModeEffect::Learn { unit: row.id, slot };
         let mut frame = ctx.write()?;
         let queued = frame
             .effects
-            .iter()
+            .queued::<ModeEffect>()
             .filter(|&queued| *queued == effect)
             .count();
         if usize::from(slot_row.rank) + queued >= usize::from(slot_row.ranks) {
@@ -702,7 +701,7 @@ impl ModeApi {
         if a == b {
             return Err(ApiError::SelfRelation.fail().into());
         }
-        ctx.queue(Effect::Mode(ModeEffect::SetRelation { a, b, attitude }))
+        ctx.queue(ModeEffect::SetRelation { a, b, attitude })
     }
 
     fn add_resource(ctx: &Ctx, player: INT, name: &str, amount: INT) -> Checked<()> {

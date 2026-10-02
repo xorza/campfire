@@ -3,7 +3,6 @@ use campfire_sim::{Capability, Position};
 use crate::orders::ai_order::AiOrder;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
-use crate::scripts::effect::Effect;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::hook::Hook;
 use crate::scripts::role_set::RoleSet;
@@ -84,6 +83,6 @@ impl OrdersApi {
         if ctx.acting() != Some(unit.id) {
             return Err(ApiError::OtherUnit.fail().into());
         }
-        ctx.queue(Effect::Order(order))
+        ctx.queue(order)
     }
 }

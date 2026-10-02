@@ -8,12 +8,15 @@ use crate::abilities::Abilities;
 use crate::areas::Areas;
 use crate::capability_set::error::CapabilityError;
 use crate::combat::Combat;
+use crate::mode::Mode;
 use crate::mode::match_end::MatchEnd;
 use crate::navigation::Navigation;
 use crate::orders::Orders;
 use crate::production::Production;
 use crate::progression::Progression;
 use crate::projectiles::Projectiles;
+use crate::scripts::ctx::Ctx;
+use crate::scripts::effects::ApplyEffect;
 use crate::scripts::match_scripts::MatchScripts;
 use crate::stats::Stats;
 use crate::units::Units;
@@ -30,12 +33,14 @@ pub struct CapabilitySet(u16);
 type Install = fn(&mut World, &mut Schedule, &mut StateRegistry);
 
 /// One row of `CAPABILITIES`: the capability, how it installs, `None` for one the release does
-/// not run yet, and the capabilities it builds on.
+/// not run yet and for the mode, which installs itself once the others did; the capabilities it
+/// builds on; and how it applies the effects a call queues, when its calls queue any.
 #[derive(Debug, Clone, Copy)]
 struct Row {
     capability: Capability,
     install: Option<Install>,
     needs: &'static [Capability],
+    effects: Option<ApplyEffect>,
 }
 
 const fn row(capability: Capability, install: Install, needs: &'static [Capability]) -> Row {
@@ -43,6 +48,7 @@ const fn row(capability: Capability, install: Install, needs: &'static [Capabili
         capability,
         install: Some(install),
         needs,
+        effects: None,
     }
 }
 
@@ -51,27 +57,40 @@ const fn planned(capability: Capability) -> Row {
         capability,
         install: None,
         needs: &[],
+        effects: None,
+    }
+}
+
+impl Row {
+    /// The same row, whose capability applies its effects by `apply`.
+    const fn applying(self, apply: ApplyEffect) -> Row {
+        Row {
+            effects: Some(apply),
+            ..self
+        }
     }
 }
 
 /// Every capability once, in the order they install: each after the ones it builds on. A declared
 /// capability the release does not run yet installs nothing.
 const CAPABILITIES: [Row; Capability::ALL.len()] = [
-    row(Capability::Stats, Stats::install, &[]),
+    row(Capability::Stats, Stats::install, &[]).applying(Stats::apply_next),
     row(
         Capability::Progression,
         Progression::install,
         &[Capability::Stats],
-    ),
-    row(Capability::Combat, Combat::install, &[Capability::Stats]),
+    )
+    .applying(Progression::apply_next),
+    row(Capability::Combat, Combat::install, &[Capability::Stats]).applying(Combat::apply_next),
     row(Capability::Navigation, Navigation::install, &[]),
     row(Capability::Vision, Vision::install, &[Capability::Combat]),
     row(
         Capability::Projectiles,
         Projectiles::install,
         &[Capability::Combat],
-    ),
-    row(Capability::Areas, Areas::install, &[Capability::Combat]),
+    )
+    .applying(Projectiles::apply_next),
+    row(Capability::Areas, Areas::install, &[Capability::Combat]).applying(Areas::apply_next),
     row(
         Capability::Abilities,
         Abilities::install,
@@ -81,14 +100,28 @@ const CAPABILITIES: [Row; Capability::ALL.len()] = [
         Capability::Orders,
         Orders::install,
         &[Capability::Combat, Capability::Navigation],
-    ),
+    )
+    .applying(Orders::apply_next),
     row(Capability::Production, Production::install, &[]),
     planned(Capability::Character),
     planned(Capability::Hitscan),
     planned(Capability::Physics),
     planned(Capability::Persistence),
-    planned(Capability::Mode),
+    planned(Capability::Mode).applying(Mode::apply_next),
 ];
+
+/// How each capability applies the effects a call queues, by capability index: what the frame
+/// dispatches each effect by, so the script runtime names no capability.
+const DISPATCH: [Option<ApplyEffect>; Capability::ALL.len()] = {
+    let mut dispatch: [Option<ApplyEffect>; Capability::ALL.len()] = [None; _];
+    let mut at = 0;
+    while at < CAPABILITIES.len() {
+        let row = CAPABILITIES[at];
+        dispatch[row.capability as usize] = row.effects;
+        at += 1;
+    }
+    dispatch
+};
 
 const _: () = assert!(
     Capability::ALL.len() <= u16::BITS as usize,
@@ -142,6 +175,9 @@ impl CapabilitySet {
         scripts: Option<MatchScripts>,
     ) {
         Units::install(world, schedule, registry, scripts);
+        if let Some(ctx) = world.get_non_send::<Ctx>() {
+            ctx.frame().set_dispatch(DISPATCH);
+        }
         MatchEnd::stop_stages(schedule);
         for row in CAPABILITIES {
             if let Some(install) = row.install
@@ -237,9 +273,17 @@ mod tests {
 
     use super::*;
     use crate::actions::action_book::ActionBook;
+    use crate::areas::area_effect::AreaEffect;
     use crate::capability_set::internals::TestMatch;
+    use crate::combat::combat_effect::CombatEffect;
+    use crate::mode::mode_effect::ModeEffect;
     use crate::orders::ai::Ai;
+    use crate::orders::ai_order::AiOrder;
+    use crate::progression::progression_effect::ProgressionEffect;
+    use crate::projectiles::projectile_effect::ProjectileEffect;
+    use crate::scripts::effects::Effect;
     use crate::scripts::script_limits::ScriptLimits;
+    use crate::stats::modifier_effect::ModifierEffect;
     use crate::units::by_type::ByType;
     use crate::units::script_view::View;
 
@@ -345,6 +389,22 @@ mod tests {
                 assert!(before, "{capability:?} installs before {needed:?}");
             }
         }
+        // The capabilities whose calls queue effects apply them, each effect type by the one it
+        // names, and no other capability does.
+        let applying: Vec<Capability> = Capability::ALL
+            .into_iter()
+            .filter(|&capability| DISPATCH[capability as usize].is_some())
+            .collect();
+        let effects = [
+            CombatEffect::CAPABILITY,
+            ModifierEffect::CAPABILITY,
+            ProjectileEffect::CAPABILITY,
+            AreaEffect::CAPABILITY,
+            AiOrder::CAPABILITY,
+            ModeEffect::CAPABILITY,
+            ProgressionEffect::CAPABILITY,
+        ];
+        assert_eq!(applying, effects);
     }
 
     /// The layer of each module of the crate, lowest first: a module imports from its own layer

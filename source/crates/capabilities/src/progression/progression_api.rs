@@ -5,7 +5,6 @@ use campfire_sim::Capability;
 use crate::progression::progression_effect::ProgressionEffect;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
-use crate::scripts::effect::Effect;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::hook::Hook;
 use crate::scripts::script_api::{ApiOwner, DataTable, MemberSpec, Status};
@@ -72,10 +71,10 @@ impl ProgressionApi {
         {
             return Err(ApiError::NoTrack.fail().into());
         }
-        ctx.queue(Effect::Progression(ProgressionEffect::AddXp {
+        ctx.queue(ProgressionEffect::AddXp {
             unit: unit.id,
             track,
             amount,
-        }))
+        })
     }
 }

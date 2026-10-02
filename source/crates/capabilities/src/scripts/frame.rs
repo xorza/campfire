@@ -1,29 +1,22 @@
 use std::collections::BTreeMap;
-use std::mem;
 
 use bevy_ecs::world::World;
 use campfire_math::Num;
-use campfire_sim::{IdAllocator, StableId, Tick};
+use campfire_sim::{Capability, IdAllocator, StableId, Tick};
 
 use crate::actions::action_book::ActionId;
-use crate::areas::Areas;
-use crate::combat::Combat;
-use crate::mode::Mode;
 use crate::mode::choices::Choices;
 use crate::mode::match_end::MatchEnd;
-use crate::mode::mode_book::ModeBook;
 use crate::mode::mode_state::ModeState;
 use crate::mode::player_resources::PlayerResources;
-use crate::orders::Orders;
-use crate::progression::Progression;
-use crate::projectiles::Projectiles;
-use crate::scripts::effect::Effect;
+use crate::scripts::call_start::CallStart;
+use crate::scripts::effects::{ApplyEffect, Effects};
 use crate::scripts::error::CallError;
 use crate::scripts::hook::ScriptRole;
 use crate::scripts::state_value::StateValue;
 use crate::stats::Stats;
 use crate::stats::live_param::{LiveParam, ParamOwner};
-use crate::stats::modifier_book::{Applier, ModifierId};
+use crate::stats::modifier_book::ModifierId;
 use crate::stats::modifier_handle::ModifierHandle;
 use crate::stats::param_read::ParamRead;
 use crate::stats::param_source::ParamSource;
@@ -53,6 +46,8 @@ pub(crate) struct Frame {
     modifier: Option<ModifierId>,
     /// The depth of the chain of combat events it runs in: 0 for a cast.
     depth: u8,
+    /// The package whose names it means: 0 the mode's.
+    package: u16,
     /// Its params at its rank, in the order of their names: its ability's, and its modifier's.
     values: Vec<Scalar>,
     modifier_values: Vec<Scalar>,
@@ -69,7 +64,10 @@ pub(crate) struct Frame {
     /// call changed them.
     resources: Option<PlayerResources>,
     resources_written: bool,
-    pub(crate) effects: Vec<Effect>,
+    pub(crate) effects: Effects,
+    /// How each capability applies its effects, by capability index; the capability table
+    /// gives it at install.
+    dispatch: [Option<ApplyEffect>; Capability::ALL.len()],
     /// The modifier handles the call took, which write back when it applies.
     pub(crate) handles: Vec<ModifierHandle>,
 }
@@ -116,31 +114,53 @@ impl Frame {
         self.rank
     }
 
-    /// Starts a cast of `ability` at `rank` by `caster` in `world`, with its params at that
-    /// rank; a param that overflows there fails the cast.
+    pub(crate) const fn depth(&self) -> u8 {
+        self.depth
+    }
+
+    pub(crate) const fn package(&self) -> u16 {
+        self.package
+    }
+
+    /// Takes how each capability applies its effects, by capability index.
+    pub(crate) const fn set_dispatch(
+        &mut self,
+        dispatch: [Option<ApplyEffect>; Capability::ALL.len()],
+    ) {
+        self.dispatch = dispatch;
+    }
+
+    /// Starts a cast of `ability` of `package` at `rank` by `caster` in `world`, with its params
+    /// at that rank; a param that overflows there fails the cast.
     pub(crate) fn begin_cast(
         &mut self,
         world: &World,
         ability: ActionId,
         rank: u8,
         caster: StableId,
+        package: u16,
     ) -> Result<(), CallError> {
         self.read_resources(world);
         let source = ParamSource::of(world, caster);
-        self.begin(
-            ScriptRole::Action,
-            Some(caster),
-            Some(ability),
+        let start = CallStart {
+            role: ScriptRole::Action,
+            acting: Some(caster),
+            action: Some(ability),
             rank,
-            None,
-            0,
-            source.as_ref(),
-        )
+            modifier: None,
+            package,
+            depth: 0,
+        };
+        self.begin(start, source.as_ref())
     }
 
-    /// Starts a hook of `modifier` at chain depth `depth`, whose instance came from `source` by
-    /// `ability` at `rank`: the modifier's params, then the ability's, at that rank; a param
-    /// that overflows there fails the call.
+    /// Starts a hook of `modifier` of `package` at chain depth `depth`, whose instance came from
+    /// `source` by `ability` at `rank`: the modifier's params, then the ability's, at that rank;
+    /// a param that overflows there fails the call.
+    #[expect(
+        clippy::too_many_arguments,
+        reason = "a hook's parts, each from the instance or the event that runs it"
+    )]
     pub(crate) fn begin_hook(
         &mut self,
         world: &World,
@@ -148,26 +168,31 @@ impl Frame {
         ability: Option<ActionId>,
         rank: u8,
         source: Option<StableId>,
+        package: u16,
         depth: u8,
     ) -> Result<(), CallError> {
         self.read_resources(world);
-        let role = ScriptRole::Modifier;
         let from = source.and_then(|source| ParamSource::of(world, source));
-        self.begin(
-            role,
-            source,
-            ability,
+        let start = CallStart {
+            role: ScriptRole::Modifier,
+            acting: source,
+            action: ability,
             rank,
-            Some(modifier),
+            modifier: Some(modifier),
+            package,
             depth,
-            from.as_ref(),
-        )
+        };
+        self.begin(start, from.as_ref())
     }
 
     /// Starts `on_think` for `unit` in `world`.
     pub(crate) fn begin_think(&mut self, world: &World, unit: StableId) {
         self.read_resources(world);
-        self.begin(ScriptRole::Ai, Some(unit), None, 1, None, 0, None)
+        let start = CallStart {
+            acting: Some(unit),
+            ..CallStart::mode(ScriptRole::Ai)
+        };
+        self.begin(start, None)
             .expect("a call with no params overflows none");
     }
 
@@ -175,7 +200,7 @@ impl Frame {
     /// holds them, for the call to read and write; `pure` for a hook whose `ctx` only reads.
     pub(crate) fn begin_mode(&mut self, world: &World, pure: bool) {
         self.read_resources(world);
-        self.begin(ScriptRole::Mode, None, None, 1, None, 0, None)
+        self.begin(CallStart::mode(ScriptRole::Mode), None)
             .expect("a call with no params overflows none");
         self.state.clear();
         self.state
@@ -202,26 +227,27 @@ impl Frame {
         self.resources.as_mut()
     }
 
-    /// Starts a call, its params at `rank` read from `source`.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "a call's parts, each from where the call comes from"
-    )]
+    /// Starts the call `start`, its params at its rank read from `source`.
     fn begin(
         &mut self,
-        role: ScriptRole,
-        acting: Option<StableId>,
-        ability: Option<ActionId>,
-        rank: u8,
-        modifier: Option<ModifierId>,
-        depth: u8,
+        start: CallStart,
         source: Option<&ParamSource<'_>>,
     ) -> Result<(), CallError> {
+        let CallStart {
+            role,
+            acting,
+            action: ability,
+            rank,
+            modifier,
+            package,
+            depth,
+        } = start;
         self.role = Some(role);
         self.acting = acting;
         self.ability = ability;
         self.rank = rank;
         self.modifier = modifier;
+        self.package = package;
         self.depth = depth;
         self.pure = false;
         self.effects.clear();
@@ -246,41 +272,16 @@ impl Frame {
     }
 
     /// Applies the effects the call that ran queued, in order, each by its capability, from
-    /// the call's acting unit and its ability at its rank, in tick `now`; `mode` is the match's
-    /// mode, which applies the mode's effects. Then what the call wrote to modifier handles
-    /// applies.
-    pub(crate) fn apply(&mut self, world: &mut World, mode: Option<&ModeBook>, now: Tick) {
-        let (source, ability, rank, depth) = (self.acting, self.ability, self.rank, self.depth);
-        let mut effects = mem::take(&mut self.effects);
-        for effect in effects.drain(..) {
-            match effect {
-                Effect::Combat(effect) => {
-                    Combat::apply_effect(world, effect, source, ability, depth);
-                }
-                Effect::Modifier(effect) => {
-                    let applier = Applier {
-                        source,
-                        ability,
-                        rank,
-                        passive: false,
-                        held: false,
-                    };
-                    Stats::apply_effect(world, effect, applier, Some(self));
-                }
-                Effect::Order(order) => {
-                    let unit = source.expect("an order comes from the unit that thinks");
-                    Orders::apply_order(world, unit, order);
-                }
-                Effect::Mode(effect) => {
-                    let mode = mode.expect("a mode effect comes from a match with a mode");
-                    Mode::apply_effect(world, mode, now, effect, self);
-                }
-                Effect::Progression(effect) => Progression::apply(world, effect),
-                Effect::Projectile(effect) => Projectiles::apply(world, effect),
-                Effect::Area(effect) => Areas::apply(world, effect),
-            }
+    /// the call's acting unit and its ability at its rank, in tick `now`. Then what the call
+    /// wrote to modifier handles applies.
+    pub(crate) fn apply(&mut self, world: &mut World, now: Tick) {
+        for at in 0..self.effects.order().len() {
+            let capability = self.effects.order()[at];
+            let apply = self.dispatch[capability as usize]
+                .expect("a capability that queues effects applies them");
+            apply(world, self, now);
         }
-        self.effects = effects;
+        self.effects.clear();
         for handle in self.handles.drain(..) {
             Stats::write_handle(world, &handle);
         }

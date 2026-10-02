@@ -9,7 +9,7 @@ use bevy_ecs::system::{Commands, Local, NonSend, ParamSet, Query, Res};
 use bevy_ecs::world::{EntityRef, World};
 use campfire_math::Num;
 use campfire_script::{ScriptHost, ScriptId};
-use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, Ticks};
+use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, Tick, Ticks};
 
 use crate::combat::CombatSet;
 use crate::combat::combat_events::CombatEvents;
@@ -152,6 +152,20 @@ impl Stats {
     pub(crate) fn load(world: &mut World, book: StatBook, pools: PoolBook) {
         world.insert_resource(book);
         world.insert_resource(pools);
+    }
+
+    /// Applies the next modifier effect the call in `frame` queued, from its acting unit and its
+    /// ability at its rank, its params read through `frame`.
+    pub(crate) fn apply_next(world: &mut World, frame: &mut Frame, _: Tick) {
+        let effect = frame.effects.take::<ModifierEffect>();
+        let applier = Applier {
+            source: frame.acting(),
+            ability: frame.action(),
+            rank: frame.rank(),
+            passive: false,
+            held: false,
+        };
+        Stats::apply_effect(world, effect, applier, Some(frame));
     }
 
     /// Applies `effect`, which a call by `applier` queued. An added modifier's numbers resolve

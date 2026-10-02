@@ -113,7 +113,7 @@ A save is a checkpoint a player keeps: the snapshot at a tick boundary, and the 
 
   A call that finds its pool spent waits and runs first in the next tick, as AI and scripted systems do; a hook that cannot wait, a pure one, has no pool.
 - **Other limits** (call depth, sizes) are engine constants, set explicitly, since Rhai's defaults differ between debug and release builds.
-- **All or nothing per call.** State writes go to an overlay the call can read back; engine effects (damage, spawn, orders, timers) are queued. On success the overlay commits, then the effects apply in call order. On failure (error, overflow, limit) both are discarded, the sim emits a `script_error` event, and the tick goes on.
+- **All or nothing per call.** State writes go to an overlay the call can read back; engine effects (damage, spawn, orders, timers) are queued. On success the overlay commits, then the effects apply in call order. Each capability keeps its own effect type in the call's frame, one queue a kind, and the capability table gives the function that applies each kind, so the script runtime names no capability. On failure (error, overflow, limit) both are discarded, the sim emits a `script_error` event, and the tick goes on.
 - **No hidden script state.** It is declared in a typed schema and stored in sim components; see [Script state](03-game-scripting.md#script-state).
 
 ## Backends

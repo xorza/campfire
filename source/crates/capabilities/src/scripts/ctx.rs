@@ -2,11 +2,11 @@ use std::cell::{OnceCell, RefCell, RefMut};
 use std::rc::Rc;
 
 use bevy_ecs::world::World;
-use campfire_script::rhai::Dynamic;
+use campfire_script::rhai::{Dynamic, NativeCallContext};
 use campfire_sim::{StableId, Tick};
 
 use crate::mode::mode_book::ModeBook;
-use crate::scripts::effect::Effect;
+use crate::scripts::effects::Effect;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::frame::Frame;
 use crate::scripts::hook::ScriptRole;
@@ -40,6 +40,14 @@ impl Ctx {
         }
     }
 
+    /// The `ctx` of the match whose script makes `call`: the host's tag.
+    pub(crate) fn of_call(call: &NativeCallContext<'_>) -> Ctx {
+        call.tag()
+            .and_then(Dynamic::read_lock::<Ctx>)
+            .expect("the units capability tags its host with the ctx")
+            .clone()
+    }
+
     /// The frame, borrowed until the guard drops. A call borrows it again, so no guard may live
     /// across a call.
     pub(crate) fn frame(&self) -> RefMut<'_, Frame> {
@@ -66,7 +74,7 @@ impl Ctx {
     }
 
     /// Queues `effect`; a pure hook's call fails.
-    pub(crate) fn queue(&self, effect: Effect) -> Checked<()> {
+    pub(crate) fn queue<E: Effect>(&self, effect: E) -> Checked<()> {
         self.write()?.effects.push(effect);
         Ok(())
     }
@@ -97,7 +105,7 @@ impl Ctx {
 
     /// Applies the effects of the call that ran, in tick `now`.
     pub(crate) fn apply(&self, world: &mut World, now: Tick) {
-        self.frame().apply(world, self.mode(), now);
+        self.frame().apply(world, now);
     }
 }
 

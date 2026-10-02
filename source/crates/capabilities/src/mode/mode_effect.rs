@@ -1,12 +1,12 @@
 use campfire_math::PlayerSlot;
-use campfire_sim::{StableId, Ticks};
+use campfire_sim::{Capability, StableId, Ticks};
 
 use crate::actions::action_book::ActionId;
 use crate::actions::slot_kind::SlotKind;
-
 use crate::mode::match_end::MatchResult;
 use crate::mode::mode_book::{GroupUnit, SpawnAt};
 use crate::navigation::path_walker::PathEnd;
+use crate::scripts::effects::Effect;
 use crate::scripts::state_value::StateValue;
 use crate::units::path_id::PathId;
 use crate::units::team::Team;
@@ -51,4 +51,8 @@ pub(crate) enum ModeEffect {
         b: Team,
         attitude: Attitude,
     },
+}
+
+impl Effect for ModeEffect {
+    const CAPABILITY: Capability = Capability::Mode;
 }

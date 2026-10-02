@@ -240,6 +240,17 @@ impl Mode {
         world.get_non_send::<Ctx>()?.mode()?.teams.of(slot)
     }
 
+    /// Applies the next mode effect the call in `frame` queued, in tick `now`, by the match's
+    /// mode.
+    pub(crate) fn apply_next(world: &mut World, frame: &mut Frame, now: Tick) {
+        let effect = frame.effects.take::<ModeEffect>();
+        let ctx = world.non_send::<Ctx>().clone();
+        let mode = ctx
+            .mode()
+            .expect("a mode effect comes from a match with a mode");
+        Mode::apply_effect(world, mode, now, effect, frame);
+    }
+
     /// Applies `effect`, which a call of `book`'s script queued in tick `now`; a passive it gives
     /// reads its params through `frame`, the call's.
     pub(crate) fn apply_effect(

@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use bevy_ecs::world::{EntityRef, World};
 use campfire_math::{Num, PlayerSlot, Vec3};
-use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString, NativeCallContext};
+use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString};
 use campfire_sim::{Capability, EntityIndex, Position, SimTick, StableId, Tick, TickRate, Ticks};
 
 use crate::actions::action_book::{Action, ActionId, Delivery};
@@ -99,8 +99,6 @@ pub(crate) struct ScriptView {
     modifier_info: Vec<ModifierInfo>,
     modifiers: Vec<ModifierRow>,
     modifier_state: Vec<StateValue>,
-    /// The package of the running call: the one whose modifiers its names mean.
-    caller: u16,
 }
 
 /// A unit as the view read it.
@@ -349,21 +347,12 @@ impl View {
             modifier_info: Vec::new(),
             modifiers: Vec::new(),
             modifier_state: Vec::new(),
-            caller: 0,
         })))
     }
 
     /// Reads the units of `world` for the phase that begins.
     pub(crate) fn read(&self, world: &World) {
         self.0.borrow_mut().read(world);
-    }
-
-    /// The view of the match whose script makes `call`.
-    pub(crate) fn of_call(call: &NativeCallContext<'_>) -> View {
-        call.tag()
-            .and_then(Dynamic::read_lock::<View>)
-            .expect("the units capability tags its host with the view")
-            .clone()
     }
 
     pub(crate) fn metric(&self) -> Metric {
@@ -404,18 +393,12 @@ impl View {
         self.0.borrow_mut().modifier_info.push(info);
     }
 
-    /// Sets the package of the call about to run.
-    pub(crate) fn set_caller(&self, package: u16) {
-        self.0.borrow_mut().caller = package;
-    }
-
-    /// The modifier `name` of the running call's package; an error when it declares none.
-    pub(crate) fn modifier(&self, name: &str) -> Checked<ModifierId> {
+    /// The modifier `name` of `package`; an error when it declares none.
+    pub(crate) fn modifier(&self, package: u16, name: &str) -> Checked<ModifierId> {
         let view = self.0.borrow();
-        let caller = view.caller;
         let at = view
             .modifier_info
-            .binary_search_by(|info| info.package.cmp(&caller).then((*info.name).cmp(name)))
+            .binary_search_by(|info| info.package.cmp(&package).then((*info.name).cmp(name)))
             .ok()
             .ok_or_else(|| ApiError::UnknownModifier.fail())?;
         Ok(ModifierId::new(
@@ -423,9 +406,9 @@ impl View {
         ))
     }
 
-    /// Whether the unit of `row` carries the modifier `name` of the running call's package.
-    pub(crate) fn has_modifier(&self, row: &UnitRow, name: &str) -> Checked<bool> {
-        let id = self.modifier(name)?;
+    /// Whether the unit of `row` carries the modifier `name` of `package`.
+    pub(crate) fn has_modifier(&self, row: &UnitRow, package: u16, name: &str) -> Checked<bool> {
+        let id = self.modifier(package, name)?;
         let view = self.0.borrow();
         let run = &view.modifiers[row.modifiers_start as usize..row.modifiers_end as usize];
         Ok(run.iter().any(|modifier| modifier.id == id))

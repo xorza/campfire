@@ -6,7 +6,6 @@ use crate::combat::combat_effect::CombatEffect;
 use crate::combat::damage_handle::DamageHandle;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
-use crate::scripts::effect::Effect;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::{DataTable, MemberSpec, Status};
@@ -112,11 +111,11 @@ impl CombatApi {
             return Err(ApiError::NegativeDamage.fail().into());
         }
         let target = target.id;
-        ctx.queue(Effect::Combat(CombatEffect::Damage {
+        ctx.queue(CombatEffect::Damage {
             target,
             amount,
             kind,
-        }))
+        })
     }
 
     /// Queues a restore of `amount` of `unit`'s pool `name`, a pool the mode declares.
@@ -134,7 +133,7 @@ impl CombatApi {
         if amount < Num::ZERO {
             return Err(ApiError::NegativeHeal.fail().into());
         }
-        ctx.queue(Effect::Combat(effect(amount)))
+        ctx.queue(effect(amount))
     }
 
     /// Queues an extra attack of the acting unit, which has an attack, on `target`.
@@ -146,8 +145,6 @@ impl CombatApi {
         if !attacks {
             return Err(ApiError::NoAttack.fail().into());
         }
-        ctx.queue(Effect::Combat(CombatEffect::AttackHit {
-            target: target.id,
-        }))
+        ctx.queue(CombatEffect::AttackHit { target: target.id })
     }
 }

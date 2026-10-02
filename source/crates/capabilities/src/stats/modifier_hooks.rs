@@ -180,15 +180,20 @@ impl ModifierHooks {
         let begun = if depth >= MAX_DEPTH {
             Err(CallError::Api(ApiError::ChainTooDeep))
         } else {
-            self.ctx
-                .frame()
-                .begin_hook(world, heard.id, ability, rank, heard.source, depth)
+            self.ctx.frame().begin_hook(
+                world,
+                heard.id,
+                ability,
+                rank,
+                heard.source,
+                package,
+                depth,
+            )
         };
         if let Err(error) = begun {
             batch.record(Some(carrier), hook, error);
             return;
         }
-        self.ctx.view().set_caller(package);
         self.ctx.frame().handles.push(handle.clone());
         let ctx = self.ctx.clone();
         let called = match arg {

@@ -6,7 +6,6 @@ use crate::deliveries::delivering::Delivering;
 use crate::projectiles::projectile_effect::{ProjectileEffect, Toward};
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
-use crate::scripts::effect::Effect;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::{DataTable, MemberSpec};
@@ -62,6 +61,6 @@ impl ProjectilesApi {
         if ctx.view().launches_homing(by.action) != matches!(toward, Toward::Unit(_)) {
             return Err(ApiError::OtherFlight.fail().into());
         }
-        ctx.queue(Effect::Projectile(ProjectileEffect { by, from, toward }))
+        ctx.queue(ProjectileEffect { by, from, toward })
     }
 }

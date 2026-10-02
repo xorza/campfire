@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use bevy_ecs::schedule::Schedule;
 use bevy_ecs::world::{EntityRef, Mut, World};
-use campfire_sim::{EntityIndex, StateRegistry};
+use campfire_sim::{EntityIndex, StateRegistry, Tick};
 
 use crate::progression::experience::Experience;
 use crate::progression::level_ups::{LevelUp, LevelUps};
@@ -10,6 +10,7 @@ use crate::progression::progression_effect::ProgressionEffect;
 use crate::progression::track_book::TrackBook;
 use crate::progression::track_data::TrackData;
 use crate::progression::track_set::TrackSet;
+use crate::scripts::frame::Frame;
 use crate::stats::level::Level;
 use crate::units::script_view::{RowFill, View};
 use crate::values::declared_name::DeclaredName;
@@ -53,6 +54,11 @@ impl Progression {
                 .id(name)
                 .expect("the load checked a unit type's tracks")
         }))
+    }
+
+    /// Applies the next progression effect the call in `frame` queued.
+    pub(crate) fn apply_next(world: &mut World, frame: &mut Frame, _: Tick) {
+        Progression::apply(world, frame.effects.take::<ProgressionEffect>());
     }
 
     /// Applies `effect`: experience raises its track's level, each level reached joins the

@@ -5,6 +5,7 @@ use campfire_script::rhai::{Dynamic, INT, ImmutableString, NativeCallContext};
 use campfire_sim::{Capability, Position, StableId};
 
 use crate::scripts::api_builder::ApiBuilder;
+use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_api::{ApiOwner, MemberSpec};
 use crate::stats::pool_id::PoolId;
@@ -160,7 +161,10 @@ impl Unit {
                 "whether it carries the modifier of the script's package",
             )
             .capability(Capability::Stats),
-            |unit: &mut Unit, id: &str| unit.view.has_modifier(&unit.row(), id),
+            |call: NativeCallContext<'_>, unit: &mut Unit, id: &str| {
+                let package = Ctx::of_call(&call).frame().package();
+                unit.view.has_modifier(&unit.row(), package, id)
+            },
         )
         .bind(
             method(
@@ -214,7 +218,8 @@ impl Unit {
                     "the distance to `pos` in the map's metric",
                 ),
                 |call: NativeCallContext<'_>, from: &mut Position, to: Position| {
-                    View::of_call(&call)
+                    Ctx::of_call(&call)
+                        .view()
                         .metric()
                         .offset(*from, to)
                         .checked_length()
@@ -240,7 +245,8 @@ impl Unit {
                     "the unit vector towards `pos` in the map's metric, `()` for the same point",
                 ),
                 |call: NativeCallContext<'_>, from: &mut Position, to: Position| {
-                    View::of_call(&call)
+                    Ctx::of_call(&call)
+                        .view()
                         .metric()
                         .offset(*from, to)
                         .normalized()
@@ -301,7 +307,7 @@ impl Unit {
         if radius < Num::ZERO {
             return Err(ApiError::NegativeRadius.fail().into());
         }
-        Ok(View::of_call(call).metric().within(from, to, radius))
+        Ok(Ctx::of_call(call).view().metric().within(from, to, radius))
     }
 
     /// The unit's attack target, `()` when it has none or the view did not read it.

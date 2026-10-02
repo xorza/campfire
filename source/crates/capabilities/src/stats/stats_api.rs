@@ -4,7 +4,6 @@ use campfire_sim::{Capability, Ticks};
 use crate::mode::mode_api::ModeApi;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
-use crate::scripts::effect::Effect;
 use crate::scripts::error::Checked;
 use crate::scripts::hook::Hook;
 use crate::scripts::script_api::{DataTable, MemberSpec, Status};
@@ -51,7 +50,7 @@ impl StatsApi {
                 "(handle)",
                 "ends the modifier, projectile or area at once",
             ),
-            |ctx: &mut Ctx, handle: ModifierHandle| ctx.queue(Effect::Modifier(handle.remove())),
+            |ctx: &mut Ctx, handle: ModifierHandle| ctx.queue(handle.remove()),
         )
         .plan(call(
             "knock_back",
@@ -90,8 +89,8 @@ impl StatsApi {
     /// Queues modifier `id` of the call's package for `player`, one of the session's.
     fn add_player_modifier(ctx: &Ctx, player: INT, id: &str) -> Checked<()> {
         let player = ModeApi::player(ctx.mode_or_fail()?, player)?;
-        let id = ctx.view().modifier(id)?;
-        ctx.queue(Effect::Modifier(ModifierEffect::AddPlayer { player, id }))
+        let id = ctx.view().modifier(ctx.frame().package(), id)?;
+        ctx.queue(ModifierEffect::AddPlayer { player, id })
     }
 
     /// Queues modifier `id` of the call's package on `target`, from the acting unit, for
@@ -102,17 +101,17 @@ impl StatsApi {
         id: &str,
         duration: Option<Ticks>,
     ) -> Checked<ModifierHandle> {
-        let id = ctx.view().modifier(id)?;
+        let id = ctx.view().modifier(ctx.frame().package(), id)?;
         let mut frame = ctx.write()?;
         let source = frame.acting();
         let handle = ctx
             .view()
             .applied_handle(&mut frame.handles, target.id, id, source);
-        frame.effects.push(Effect::Modifier(ModifierEffect::Add {
+        frame.effects.push(ModifierEffect::Add {
             target: target.id,
             id,
             duration,
-        }));
+        });
         Ok(handle)
     }
 }

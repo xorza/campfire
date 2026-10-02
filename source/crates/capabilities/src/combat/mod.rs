@@ -33,6 +33,7 @@ use crate::combat::respawn::Respawn;
 use crate::mode::player_resources::PlayerResources;
 use crate::mode::resource_id::ResourceAmount;
 use crate::projectiles::projectile::{Flight, Payload};
+use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
 use crate::scripts::script_batch::ScriptBatch;
 use crate::stats::modifier_book::ModifierId;
@@ -630,6 +631,13 @@ impl Combat {
         } else {
             Landed::Taken
         }
+    }
+
+    /// Applies the next combat effect the call in `frame` queued: from its acting unit and its
+    /// ability, at its depth of the chain of combat events.
+    pub(crate) fn apply_next(world: &mut World, frame: &mut Frame, _: Tick) {
+        let effect = frame.effects.take::<CombatEffect>();
+        Combat::apply_effect(world, effect, frame.acting(), frame.action(), frame.depth());
     }
 
     /// Applies `effect`, which a call queued from `source`, by `ability`, at chain depth

@@ -102,11 +102,12 @@ impl Units {
         view.set_stat_names(stats);
         view.set_pool_names(pools);
         view.set_resource_names(resources);
-        world.insert_non_send(Ctx::new(view.clone()));
+        let ctx = Ctx::new(view.clone());
         let mut host = ScriptHost::new(limits.per_call);
         ScriptApi::bind(host.engine_mut());
         host.engine_mut()
-            .set_default_tag(Dynamic::from(view.clone()));
+            .set_default_tag(Dynamic::from(ctx.clone()));
+        world.insert_non_send(ctx);
         world.insert_non_send(view);
         world.insert_non_send(host);
         world.insert_non_send(ScriptFailures::default());

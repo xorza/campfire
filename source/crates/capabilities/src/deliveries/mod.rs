@@ -122,12 +122,12 @@ fn run_hooks(world: &mut World, due: &[Delivered]) {
                 delivered.action,
                 delivered.rank,
                 delivered.source,
+                package,
             );
             if let Err(error) = begun {
                 batch.record(Some(delivered.source), delivered.hook, error);
                 continue;
             }
-            view.set_caller(package);
             let pool = owner.map_or(Pool::Think, Pool::Player);
             let hit = Dynamic::from(HitHandle::new(delivered.hit, view.clone()));
             let called = match delivered.hook {

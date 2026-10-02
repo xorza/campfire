@@ -86,7 +86,6 @@ impl Calls<'_, '_> {
     fn begin(&mut self, pure: bool) {
         let world = self.batch.world();
         self.ctx.frame().begin_mode(world, pure);
-        self.ctx.view().set_caller(0);
     }
 
     /// Commits the call's state, choices and the ids it took, then applies its effects in order:

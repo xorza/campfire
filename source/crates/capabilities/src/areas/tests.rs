@@ -1,4 +1,3 @@
-use campfire_sim::Tick;
 use serde::Serialize;
 
 use super::*;
