@@ -27,10 +27,11 @@ pub enum Hook {
     CalcHeal,
     OnThink,
     OnLevelUp,
+    OnGenerate,
 }
 
 impl Hook {
-    pub const ALL: [Hook; 21] = [
+    pub const ALL: [Hook; 22] = [
         Hook::OnResolve,
         Hook::OnHit,
         Hook::OnEnd,
@@ -52,6 +53,7 @@ impl Hook {
         Hook::CalcHeal,
         Hook::OnThink,
         Hook::OnLevelUp,
+        Hook::OnGenerate,
     ];
 
     /// The prefixes that mark a script function as a hook: one with either that is no hook of
@@ -87,6 +89,7 @@ impl Hook {
             Hook::CalcHeal => "calc_heal",
             Hook::OnThink => "on_think",
             Hook::OnLevelUp => "on_level_up",
+            Hook::OnGenerate => "on_generate",
         }
     }
 
@@ -97,6 +100,7 @@ impl Hook {
             Hook::OnChannelTick | Hook::OnThink => &["ctx", "unit"],
             Hook::OnInterval => &["ctx", "m"],
             Hook::OnPlayerJoin | Hook::OnPlayerLeave => &["ctx", "player"],
+            Hook::OnGenerate => &["ctx", "region"],
             Hook::CalcDamage => &["ctx", "d"],
             Hook::CalcHeal => &["ctx", "h"],
             Hook::OnResolve | Hook::OnInterrupt => &["ctx", "unit", "target"],
@@ -138,7 +142,8 @@ impl Hook {
             | Hook::OnUnitDied
             | Hook::CalcDamage
             | Hook::CalcHeal
-            | Hook::OnLevelUp => ScriptRole::Mode,
+            | Hook::OnLevelUp
+            | Hook::OnGenerate => ScriptRole::Mode,
             Hook::OnThink => ScriptRole::Ai,
         }
     }
@@ -164,7 +169,8 @@ impl Hook {
             | Hook::OnModeInput
             | Hook::OnTimer
             | Hook::OnPlayerJoin
-            | Hook::OnPlayerLeave => None,
+            | Hook::OnPlayerLeave
+            | Hook::OnGenerate => None,
             Hook::OnThink => Some(Capability::Orders),
             Hook::OnLevelUp => Some(Capability::Progression),
         }

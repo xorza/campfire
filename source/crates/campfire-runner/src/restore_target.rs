@@ -63,11 +63,18 @@ impl RestoreTarget {
 
 #[cfg(feature = "internals")]
 pub(crate) mod internals {
+    use campfire_sim::SimUpdate;
     use campfire_sim::internals::Draws;
 
     use crate::restore_target::RestoreTarget;
 
     impl RestoreTarget {
+        /// Builds the match's schedule again with no automatic sync points, as
+        /// `SimUpdate::build_without_sync_points` does.
+        pub fn build_without_sync_points(&mut self) -> Result<(), String> {
+            SimUpdate::build_without_sync_points(&mut self.world)
+        }
+
         /// The name of each state type the match registers.
         pub fn state_names(&self) -> Vec<&'static str> {
             self.registry.names().collect()

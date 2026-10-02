@@ -58,6 +58,26 @@ impl ModeApi {
             .hook(Hook::CalcHeal, Status::Runs(ApiVersion::FIRST))
             .hook(Hook::OnPlayerJoin, Status::Planned)
             .hook(Hook::OnPlayerLeave, Status::Planned)
+            .hook(Hook::OnGenerate, Status::Planned)
+            .plan(
+                MemberSpec::call("save", "()", "asks for a save at the end of the tick")
+                    .roles(RoleSet::MODE),
+            )
+            .plan(
+                MemberSpec::value(
+                    "carry",
+                    "the carry the session loaded, which the mode writes for the next session",
+                )
+                .roles(RoleSet::MODE),
+            )
+            .plan(
+                MemberSpec::call(
+                    "generate",
+                    "(region)",
+                    "builds the map's region `region` through `on_generate`",
+                )
+                .roles(RoleSet::MODE),
+            )
             .data(
                 DataTable::Mode,
                 &[

@@ -39,6 +39,7 @@ use crate::mode::mode_state::ModeState;
 use crate::mode::placed_unit::PlacedPath;
 use crate::mode::timers::Timers;
 use crate::mode::unanswered_deaths::UnansweredDeaths;
+use crate::navigation::NavigationSet;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::PathWalker;
 use crate::orders::OrdersSet;
@@ -50,6 +51,7 @@ use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_book::ScriptBook;
+use crate::stats::StatsSet;
 use crate::units::UnitsSet;
 use crate::units::relations::Relations;
 use crate::units::script_view::View;
@@ -169,6 +171,9 @@ impl Mode {
             mode_inputs
                 .in_set(SimSet::Inputs)
                 .after(UnitsSet::BeginTick)
+                .after(StatsSet::Expire)
+                .after(StatsSet::Regenerate)
+                .after(NavigationSet::TrackStatics)
                 .after(CombatSet::Respawn)
                 .before(OrdersSet::Orders),
             (run_timers, unit_deaths, level_ups)

@@ -2,7 +2,7 @@ use bevy_ecs::bundle::Bundle;
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, Allow, Has, ROQueryItem, With, Without};
-use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
+use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_math::Num;
@@ -60,6 +60,14 @@ pub(crate) mod static_changes;
 pub(crate) mod steering;
 pub(crate) mod walker;
 
+/// The systems of `navigation`, for the systems of other capabilities to order theirs against.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum NavigationSet {
+    /// In `SimSet::Inputs`: the static index and the pathing grid take the static bodies as the
+    /// tick starts.
+    TrackStatics,
+}
+
 /// The `navigation` capability: units that walk routes to a destination, and the map's waypoint
 /// paths.
 #[derive(Debug)]
@@ -90,7 +98,9 @@ impl Navigation {
         world.insert_resource(BodyIndex::new(Body::MAX_RADIUS));
         world.insert_resource(StaticChanges::default());
         schedule.add_systems((
-            track_static_bodies.in_set(SimSet::Inputs),
+            track_static_bodies
+                .in_set(SimSet::Inputs)
+                .in_set(NavigationSet::TrackStatics),
             (forget_dead, route_units, plan_routes, steer, move_units)
                 .chain()
                 .in_set(SimSet::Move),

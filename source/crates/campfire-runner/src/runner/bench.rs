@@ -1,6 +1,7 @@
 use std::hint::black_box;
 use std::time::{Duration, Instant};
 
+use campfire_common::Tick;
 use criterion::Criterion;
 
 use crate::reference_3v3::Reference3v3;
@@ -54,4 +55,3 @@ fn timed_tick(runner: &mut Runner) -> Duration {
     black_box(&runner);
     spent
 }
-use campfire_common::Tick;

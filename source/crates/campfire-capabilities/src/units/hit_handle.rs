@@ -61,7 +61,7 @@ impl HitHandle {
                     "part",
                     "the body part a ray or a sweep struck, `()` with none",
                 )
-                .capability(Capability::Hitscan),
+                .capability(Capability::Hitboxes),
             );
     }
 }

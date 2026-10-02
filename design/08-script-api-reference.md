@@ -15,6 +15,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `attack_hit` | `(target)` | action, modifier, AI | combat | since 1.0 | an extra attack of the acting unit on `target`: no crit, and no `on_attack` |
 | `available` | `(player, choice, value)`, `choice` a choice | mode | core | since 1.0 | whether `player` may choose `value` of `choice`: no other player chose it in a unique choice |
 | `avatars` | `() or (team)` | every role | core | since 1.0 | the avatars, living or dead, of every team or of `team`, by stable id |
+| `carry` | read | mode | core | planned | the carry the session loaded, which the mode writes for the next session |
 | `chance` | `(p)` | every role | core | planned | true with probability `p`, from the secret stream |
 | `charge` | read | action | abilities | planned | how long a charged cast was held, from 0 to 1 |
 | `choose` | `(player, choice, values)`, `choice` a choice | mode | core | since 1.0 | records `values`, as many as `choice` takes, each a value it offers, none twice and, in a unique choice, none another player chose, as what `player` chose of it; one value may be given alone |
@@ -25,6 +26,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `enemy_team` | `(team)`, `team` a team | every role | core | since 1.0 | the one team that is `team`'s enemy, in a mode of two playing teams |
 | `find` | `(of, pos, radius, filter)`, `filter` a filter | every role | core | since 1.0 | the living targets whose bodies come within `radius` of `pos`, as an area's, that `filter` selects for `of`, seen or not, by stable id |
 | `find_visible` | `(of, pos, radius, filter)`, `filter` a filter | every role | vision | since 1.0 | as `find`, of the units `of`'s team sees |
+| `generate` | `(region)` | mode | core | planned | builds the map's region `region` through `on_generate` |
 | `grant` | `(unit, kind, ids)`, `kind` a slot kind | mode | abilities | since 1.0 | puts the actions `ids`, loadout entries the mode depends on, in the slot kind `kind` of `unit`, after its slots of that kind, at the kind's first rank |
 | `grant_perk` | `(unit, id)` | every role | progression | planned | gives `unit` the perk `id`, with no point and no requirement |
 | `heal` | `(unit, amount)` | every role | combat | since 1.0 | heals `unit`'s life pool, times one plus its `heal_scale` stat |
@@ -48,6 +50,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `respawn` | `(unit, ms)` | mode | combat | since 1.0 | brings back `unit`, dead and of a type that stays, `ms` from the call |
 | `restore` | `(unit, pool, amount)`, `pool` a pool | every role | combat | since 1.0 | gives `unit` back `amount` of its `pool`, unscaled |
 | `reveal` | `(pos, radius, ms)` | every role | vision | planned | shows the source's team what is within `radius` of `pos` |
+| `save` | `()` | mode | core | planned | asks for a save at the end of the tick |
 | `set_relation` | `(a, b, relation)`, `a` a team, `b` a team | every role | core | since 1.0 | sets how teams `a` and `b` regard each other, `hostile`, `neutral` or `friendly`, their vision as it was |
 | `spawn_group` | `(team, path, from, types)`, `team` a team, `path` a path | mode | core | since 1.0 | spawns `types` of `team` in order at the end `from`, `start` or `end`, of `path`, walking it from there |
 | `spawn_unit` | `(type, team, pos) or (type, team, pos, player)`, `type` a unit type, `team` a team | mode | core | since 1.0 | spawns a unit of `type` on `team` at `pos`, within the map's bounds, owned by `player` if given, when the call ends; the new unit, for `grant` |
@@ -106,7 +109,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `delivery` | read | abilities | since 1.0 | the projectile or area unit that delivered it, `()` when at once or gone |
 | `direction` | read | abilities | since 1.0 | the direction its delivery flew in, `()` for an area or a delivery that did not move |
 | `distance` | read | abilities | since 1.0 | how far its delivery flew |
-| `part` | read | hitscan | planned | the body part a ray or a sweep struck, `()` with none |
+| `part` | read | hitboxes | planned | the body part a ray or a sweep struck, `()` with none |
 | `pos` | read | abilities | since 1.0 | where it hit, or where its delivery ended |
 | `target` | read | abilities | since 1.0 | the unit the action aimed at, `()` with none |
 
@@ -192,6 +195,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `calc_heal(ctx, h)` | mode | combat | since 1.0 |
 | `on_think(ctx, unit)` | AI | orders | since 1.0 |
 | `on_level_up(ctx, unit, track, level)` | mode | progression | since 1.0 |
+| `on_generate(ctx, region)` | mode | core | planned |
 
 ## Tag effects
 

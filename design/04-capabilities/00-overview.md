@@ -113,7 +113,7 @@ The engine fixes the stages of a tick, and each capability puts its systems into
 | 6 | Hit | Actions whose time ended deliver: strikes, rays, projectiles, areas; actions resolve with their effects; modifier intervals |
 | 7 | Resolve | The damage and heal pass, deaths, auras |
 | 8 | Mode | Due timers, then the capabilities' events in the order they happened, region events among them; spawns; generated regions; `ctx.end` and `ctx.save` |
-| 9 | Vision | `vision` marks what each vision group sees |
+| 9 | Vision | `vision` marks what each vision group sees. The tick's end: the dead whose type despawns go, and the units' action passives follow the ranks the Mode stage's calls learned |
 
 Before the first stage and after each, every unit whose level, modifiers or type changed has its stats and tags derived again ([Stats](stats.md#state-and-derived)).
 

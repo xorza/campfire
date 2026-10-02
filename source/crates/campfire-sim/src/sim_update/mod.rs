@@ -1,5 +1,6 @@
 use bevy_ecs::schedule::{
-    IntoScheduleConfigs, LogLevel, Schedule, ScheduleBuildSettings, ScheduleLabel, SystemSet,
+    IntoScheduleConfigs, LogLevel, Schedule, ScheduleBuildSettings, ScheduleLabel,
+    SingleThreadedExecutor, SystemSet,
 };
 use bevy_ecs::system::{Res, ResMut};
 use bevy_ecs::world::World;
@@ -60,11 +61,15 @@ impl SimUpdate {
     /// The schedule with no game systems yet. The tick's random sequences start before
     /// `SimSet::Inputs`; after `SimSet::Vision` the tick advances and its inputs are cleared. Two
     /// systems with conflicting access and no order fail the build, since either order could win.
+    /// It runs on one thread whatever features the build turns on: a tick's systems are too small
+    /// to share, and Bevy's parallel executor, which its `multi_threaded` feature turns on
+    /// wherever a workspace build enables it, made a 3v3 tick cost 2.5 times as much.
     pub fn schedule() -> Schedule {
         let mut schedule = Schedule::new(SimUpdate);
+        schedule.set_executor(SingleThreadedExecutor::new());
         #[expect(
             clippy::disallowed_methods,
-            reason = "the one place that sets the sim schedule's build settings"
+            reason = "the one place that sets the build settings a match runs with"
         )]
         schedule.set_build_settings(ScheduleBuildSettings {
             ambiguity_detection: LogLevel::Error,
@@ -100,6 +105,35 @@ fn start_tick(tick: Res<'_, SimTick>, mut rng: ResMut<'_, SimRng>) {
 fn end_tick(mut tick: ResMut<'_, SimTick>, mut inputs: ResMut<'_, TickInputs>) {
     tick.advance();
     inputs.clear();
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use bevy_ecs::schedule::{LogLevel, ScheduleBuildSettings};
+    use bevy_ecs::world::World;
+
+    use crate::sim_update::SimUpdate;
+
+    impl SimUpdate {
+        /// Builds `world`'s sim schedule again with no automatic sync points: one of them
+        /// orders the systems it lies between, so the ambiguity check then sees every pair of
+        /// systems that only a sync point keeps in order. The error names its systems.
+        pub fn build_without_sync_points(world: &mut World) -> Result<(), String> {
+            world.schedule_scope(SimUpdate, |world, schedule| {
+                #[expect(
+                    clippy::disallowed_methods,
+                    reason = "turns the sync points off and keeps ambiguity detection an error"
+                )]
+                schedule.set_build_settings(ScheduleBuildSettings {
+                    ambiguity_detection: LogLevel::Error,
+                    auto_insert_apply_deferred: false,
+                    ..ScheduleBuildSettings::new()
+                });
+                let built = schedule.initialize(world).map(drop);
+                built.map_err(|error| error.to_string(schedule.graph(), world))
+            })
+        }
+    }
 }
 
 #[cfg(test)]

@@ -41,7 +41,7 @@ pub(crate) mod error;
 /// A mode's declared capabilities: none twice, not `mode`, which every match has, and each with
 /// the ones it builds on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct CapabilitySet(u16);
+pub struct CapabilitySet(u32);
 
 /// A capability's install into a match.
 type Install = fn(&mut World, &mut Schedule, &mut StateRegistry);
@@ -121,15 +121,18 @@ const CAPABILITIES: [Row; Capability::ALL.len()] = [
     .registering(OrdersApi::register),
     row(Capability::Production, Production::install, &[]).registering(ProductionApi::register),
     planned(Capability::Character),
-    planned(Capability::Hitscan),
+    planned(Capability::Hitboxes),
     planned(Capability::Physics),
-    planned(Capability::Persistence),
+    planned(Capability::World),
+    planned(Capability::Items),
+    planned(Capability::Quests),
+    planned(Capability::Interaction),
     planned(Capability::Mode).registering(ModeApi::register),
 ];
 
 const _: () = assert!(
-    Capability::ALL.len() <= u16::BITS as usize,
-    "a set holds each capability in a bit of its u16"
+    Capability::ALL.len() <= u32::BITS as usize,
+    "a set holds each capability in a bit of its u32"
 );
 
 impl CapabilitySet {
@@ -217,8 +220,8 @@ impl<'de> Deserialize<'de> for CapabilitySet {
     }
 }
 
-const fn bit(capability: Capability) -> u16 {
-    1 << capability as u16
+const fn bit(capability: Capability) -> u32 {
+    1 << capability as u32
 }
 
 /// The capabilities `capability` builds on.

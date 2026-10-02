@@ -209,3 +209,14 @@ fn a_snapshot_of_drawn_values_restores_or_is_refused_and_never_panics() {
         "{restored} restored, {refused} refused"
     );
 }
+
+#[test]
+fn every_order_the_proving_match_relies_on_is_stated() {
+    // Bevy's sync points order the systems they lie between, so a pair that only one of them
+    // keeps apart passes the ambiguity check until the systems around it change.
+    let proving = ProvingMatch::load();
+    let mut target = RestoreTarget::new(proving.packages(), ProvingMatch::PLAYERS);
+    if let Err(error) = target.build_without_sync_points() {
+        panic!("{error}");
+    }
+}

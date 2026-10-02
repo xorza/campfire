@@ -14,19 +14,22 @@ pub enum Capability {
     Areas,
     Orders,
     Character,
-    Hitscan,
+    Hitboxes,
     Navigation,
     Vision,
     Physics,
-    Persistence,
+    World,
     Mode,
     Progression,
     Production,
+    Items,
+    Quests,
+    Interaction,
 }
 
 impl Capability {
     /// Every capability, in the order of their indices.
-    pub const ALL: [Capability; 15] = [
+    pub const ALL: [Capability; 18] = [
         Capability::Combat,
         Capability::Stats,
         Capability::Abilities,
@@ -34,14 +37,17 @@ impl Capability {
         Capability::Areas,
         Capability::Orders,
         Capability::Character,
-        Capability::Hitscan,
+        Capability::Hitboxes,
         Capability::Navigation,
         Capability::Vision,
         Capability::Physics,
-        Capability::Persistence,
+        Capability::World,
         Capability::Mode,
         Capability::Progression,
         Capability::Production,
+        Capability::Items,
+        Capability::Quests,
+        Capability::Interaction,
     ];
 
     /// The capability as a manifest names it.
@@ -54,14 +60,17 @@ impl Capability {
             Capability::Areas => "areas",
             Capability::Orders => "orders",
             Capability::Character => "character",
-            Capability::Hitscan => "hitscan",
+            Capability::Hitboxes => "hitboxes",
             Capability::Navigation => "navigation",
             Capability::Vision => "vision",
             Capability::Physics => "physics",
-            Capability::Persistence => "persistence",
+            Capability::World => "world",
             Capability::Mode => "mode",
             Capability::Progression => "progression",
             Capability::Production => "production",
+            Capability::Items => "items",
+            Capability::Quests => "quests",
+            Capability::Interaction => "interaction",
         }
     }
 }

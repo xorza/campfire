@@ -113,24 +113,34 @@ const OVERVIEW: &str = concat!(
 );
 
 #[test]
-fn the_design_marks_built_exactly_the_capabilities_the_release_installs() {
+fn the_design_names_each_capability_and_marks_built_exactly_those_the_release_installs() {
     // Each row of the table names its capabilities in its first column and its status in the
-    // second; a planned one may be a name the code does not have yet.
+    // second. Every capability but `mode`, which every match has, is in it once.
     let overview = fs::read_to_string(OVERVIEW).unwrap();
     let table = overview
         .lines()
         .skip_while(|line| !line.starts_with("| Capability | Status |"))
         .skip(2)
         .take_while(|line| line.starts_with('|'));
-    let mut built = Vec::new();
+    let (mut named, mut built) = (Vec::new(), Vec::new());
     for row in table {
         let cells: Vec<&str> = row.split('|').map(str::trim).collect();
+        let row_names = cells[1].split(", ").map(|name| name.trim_matches('`'));
+        named.extend(row_names.clone());
         match cells[2] {
-            "built" => built.extend(cells[1].split(", ").map(|name| name.trim_matches('`'))),
+            "built" => built.extend(row_names),
             "planned" => {}
             status => panic!("{status:?} is no status, in {row}"),
         }
     }
+    named.sort_unstable();
+    let mut every: Vec<&str> = Capability::ALL
+        .into_iter()
+        .filter(|&capability| capability != Mode)
+        .map(Capability::name)
+        .collect();
+    every.sort_unstable();
+    assert_eq!(named, every);
     built.sort_unstable();
     let mut installed: Vec<&str> = CAPABILITIES
         .iter()
