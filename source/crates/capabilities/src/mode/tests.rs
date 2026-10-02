@@ -74,7 +74,6 @@ use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::attitude::Attitude;
 use crate::values::bounds::Bounds;
-use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
 use crate::values::grid::Grid;
 use crate::values::metric::Metric;
@@ -261,14 +260,14 @@ fn marker(
     params: &[(&str, ModeParam)],
 ) -> MarkerData {
     MarkerData {
-        name: name.to_owned(),
-        tags: vec![tag.to_owned()],
+        name: DeclaredName::new(name).unwrap(),
+        tags: vec![DeclaredName::new(tag).unwrap()],
         pos: Some(point(x, z)),
         region: None,
-        team: team.map(str::to_owned),
+        team: team.map(|name| DeclaredName::new(name).unwrap()),
         params: params
             .iter()
-            .map(|(name, param)| ((*name).to_owned(), param.clone()))
+            .map(|(name, param)| (DeclaredName::new(name).unwrap(), param.clone()))
             .collect(),
         events: false,
     }
@@ -355,14 +354,14 @@ fn map() -> MapData {
             cell: Scalar::Int(1),
         }),
         paths: vec![PathData {
-            name: "mid".to_owned(),
+            name: DeclaredName::new("mid").unwrap(),
             points: vec![point(-10, 0), point(0, 0), point(10, 0)],
         }],
         units: vec![PlacedUnitData {
-            unit_type: "tower".to_owned(),
-            team: "a".to_owned(),
+            unit_type: DeclaredName::new("tower").unwrap(),
+            team: DeclaredName::new("a").unwrap(),
             pos: point(-8, 0),
-            path: Some("mid".to_owned()),
+            path: Some(DeclaredName::new("mid").unwrap()),
             from: None,
         }],
         markers: vec![
@@ -498,7 +497,7 @@ fn mode_files() -> ModeFiles {
                 ("phase", InputType::String),
                 ("probe", InputType::String),
             ]
-            .map(|(name, kind)| (name.to_owned(), kind))
+            .map(|(name, kind)| (DeclaredName::new(name).unwrap(), kind))
             .into(),
             state_version: None,
             state: [
@@ -532,7 +531,7 @@ fn mode_files() -> ModeFiles {
                 ("respawn_base_ms", ModeParam::Value(Scalar::Int(1000))),
                 ("respawn_per_level_ms", ModeParam::Value(Scalar::Int(500))),
             ]
-            .map(|(name, param)| (name.to_owned(), param))
+            .map(|(name, param)| (DeclaredName::new(name).unwrap(), param))
             .into(),
             stats: STATS_3V3
                 .map(|name| (Stat::named(name).unwrap(), StatRule::default()))
@@ -542,7 +541,7 @@ fn mode_files() -> ModeFiles {
                 .map(|name| DeclaredName::new(name).unwrap())
                 .into(),
             relations: vec![RelationData {
-                teams: ["a", "neutral"].map(str::to_owned),
+                teams: ["a", "neutral"].map(|name| DeclaredName::new(name).unwrap()),
                 relation: Attitude::Neutral,
                 vision: true,
             }],
@@ -557,15 +556,15 @@ fn mode_files() -> ModeFiles {
         map: map(),
         teams: vec![
             TeamManifest {
-                name: "a".to_owned(),
+                name: DeclaredName::new("a").unwrap(),
                 slots: 2,
             },
             TeamManifest {
-                name: "b".to_owned(),
+                name: DeclaredName::new("b").unwrap(),
                 slots: 1,
             },
             TeamManifest {
-                name: "neutral".to_owned(),
+                name: DeclaredName::new("neutral").unwrap(),
                 slots: 0,
             },
         ],

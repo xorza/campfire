@@ -114,7 +114,7 @@ impl Navigation {
             .units
             .iter()
             .filter_map(|unit| {
-                let body = body_of(&unit.unit_type)?;
+                let body = body_of(unit.unit_type.as_str())?;
                 Some(IndexedBody {
                     id: ids.allocate(),
                     at: point(&unit.pos),

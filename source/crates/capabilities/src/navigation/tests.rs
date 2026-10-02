@@ -10,6 +10,7 @@ use crate::mode::map_data::{GridData, MarkerData, PathData, PlacedUnitData};
 use crate::navigation::path_walker::PathEnd;
 use crate::units::layer::Layer;
 use crate::units::path_id::PathId;
+use crate::values::declared_name::DeclaredName;
 use crate::values::metric::Metric;
 use crate::values::scalar::Scalar;
 
@@ -520,15 +521,15 @@ fn a_map_loads_only_if_the_widest_walker_reaches_every_waypoint_and_stands_on_ev
     let half = Num::from_bits(1 << 23);
     let point = |x: i64, z: i64| MapPoint::Ground([Scalar::Int(x), Scalar::Int(z)]);
     let placed = |unit_type: &str, (x, z): (i64, i64)| PlacedUnitData {
-        unit_type: unit_type.to_owned(),
-        team: "west".to_owned(),
+        unit_type: DeclaredName::new(unit_type).unwrap(),
+        team: DeclaredName::new("west").unwrap(),
         pos: point(x, z),
         path: None,
         from: None,
     };
     let marker = |name: &str, (x, z): (i64, i64)| MarkerData {
-        name: name.to_owned(),
-        tags: vec![name.to_owned()],
+        name: DeclaredName::new(name).unwrap(),
+        tags: vec![DeclaredName::new(name).unwrap()],
         pos: Some(point(x, z)),
         region: None,
         team: None,
@@ -544,7 +545,7 @@ fn a_map_loads_only_if_the_widest_walker_reaches_every_waypoint_and_stands_on_ev
             cell: Scalar::Decimal(half),
         }),
         paths: vec![PathData {
-            name: "lane".to_owned(),
+            name: DeclaredName::new("lane").unwrap(),
             points: vec![point(1, 2), point(9, 2)],
         }],
         units: towers
@@ -568,19 +569,19 @@ fn a_map_loads_only_if_the_widest_walker_reaches_every_waypoint_and_stands_on_ev
     };
     assert_eq!(check(&[(5, 0), (5, 4)], (8, 3)), Ok(()));
     let unreachable = MapProblem::WaypointUnreachable {
-        path: "lane".to_owned(),
+        path: DeclaredName::new("lane").unwrap(),
         waypoint: 1,
     };
     assert_eq!(check(&[(5, 0), (5, 2), (5, 4)], (8, 3)), Err(unreachable));
     // A tower 1 m from the lane's end, (9, 2), or from the spawn marker, (1, 1), or from the camp
     // marker, (8, 3): closer than 1.4 m.
     let blocked = MapProblem::WaypointBlocked {
-        path: "lane".to_owned(),
+        path: DeclaredName::new("lane").unwrap(),
         waypoint: 1,
     };
     assert_eq!(check(&[(9, 3)], (8, 1)), Err(blocked));
     let blocked = |marker: &str| {
-        let marker = marker.to_owned();
+        let marker = DeclaredName::new(marker).unwrap();
         Err(MapProblem::MarkerBlocked { marker })
     };
     assert_eq!(check(&[(2, 1)], (8, 3)), blocked("spawn"));
@@ -599,7 +600,7 @@ fn a_map_loads_only_if_the_widest_walker_reaches_every_waypoint_and_stands_on_ev
     assert_eq!(
         Navigation::check_map(&closed, &both, body_of),
         Err(MapProblem::WaypointUnreachable {
-            path: "lane".to_owned(),
+            path: DeclaredName::new("lane").unwrap(),
             waypoint: 1,
         })
     );

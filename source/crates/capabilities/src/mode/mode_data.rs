@@ -40,12 +40,12 @@ pub struct ModeData {
     /// The type of each player input, by name. An input that does not match its type never
     /// reaches the script.
     #[serde(default)]
-    pub inputs: BTreeMap<String, InputType>,
+    pub inputs: BTreeMap<DeclaredName, InputType>,
     pub state_version: Option<u32>,
     #[serde(default)]
     pub state: BTreeMap<String, StateDecl>,
     #[serde(default)]
-    pub params: BTreeMap<String, ModeParam>,
+    pub params: BTreeMap<DeclaredName, ModeParam>,
     /// Every stat its units carry, those the engine reads among them, each with its rule.
     #[serde(default)]
     pub stats: BTreeMap<Stat, StatRule>,

@@ -23,6 +23,12 @@ impl DeclaredName {
     }
 }
 
+impl PartialEq<str> for DeclaredName {
+    fn eq(&self, other: &str) -> bool {
+        *self.0 == *other
+    }
+}
+
 /// By its text, so a map keyed by names finds a name a script or a filter gives.
 impl Borrow<str> for DeclaredName {
     fn borrow(&self) -> &str {

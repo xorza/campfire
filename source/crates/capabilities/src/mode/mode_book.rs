@@ -133,12 +133,12 @@ impl ModeBook {
         let checked = "the mode's check passed";
         for unit in &map.units {
             let unit = PlacedUnit {
-                unit_type: view.unit_type(&unit.unit_type).expect(checked),
-                team: self.teams.named(&unit.team).expect(checked),
+                unit_type: view.unit_type(unit.unit_type.as_str()).expect(checked),
+                team: self.teams.named(unit.team.as_str()).expect(checked),
                 path: unit
                     .path
                     .as_ref()
-                    .map(|path| paths.named(path).expect(checked)),
+                    .map(|path| paths.named(path.as_str()).expect(checked)),
                 from: unit.from,
                 pos: unit.pos.position().expect(checked),
             };
@@ -156,7 +156,7 @@ impl ModeBook {
                 team: marker
                     .team
                     .as_ref()
-                    .map(|team| self.teams.named(team).expect(checked)),
+                    .map(|team| self.teams.named(team.as_str()).expect(checked)),
                 params: params.collect(),
             })
         });

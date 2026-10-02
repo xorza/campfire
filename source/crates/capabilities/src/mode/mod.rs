@@ -62,6 +62,7 @@ use crate::units::script_view::View;
 use crate::units::tag_book::TagBook;
 use crate::units::team::Team;
 use crate::units::{Units, UnitsSet};
+use crate::values::declared_name::DeclaredName;
 use crate::vision::Vision;
 
 pub(crate) mod calls;
@@ -142,7 +143,7 @@ impl Mode {
             let [a, b] = relation
                 .teams
                 .each_ref()
-                .map(|name| book.teams.named(name).expect("the check passed"));
+                .map(|name| book.teams.named(name.as_str()).expect("the check passed"));
             relations.set(a, b, relation.relation, relation.vision);
         }
         world.insert_resource(relations);
@@ -331,7 +332,7 @@ impl Mode {
         if teams.len() > Team::LIMIT {
             return Err(ModeError::TooManyTeams);
         }
-        let team_known = |name: &str| teams.iter().any(|team| team.name == name);
+        let team_known = |name: &DeclaredName| teams.iter().any(|team| team.name == *name);
         for (at, relation) in relations.iter().enumerate() {
             let [a, b] = &relation.teams;
             if let Some(unknown) = [a, b].into_iter().find(|name| !team_known(name)) {
@@ -355,7 +356,7 @@ impl Mode {
     /// bounds, not both. Every point fits its metric and is within its bounds.
     fn check_map(
         map: &MapData,
-        team_known: impl Fn(&str) -> bool,
+        team_known: impl Fn(&DeclaredName) -> bool,
         unit_type: impl Fn(&str) -> bool,
     ) -> Result<(), ModeError> {
         map.grid()?;
@@ -365,7 +366,7 @@ impl Mode {
             Some(pos) if map.bounds.contains(pos) => Ok(()),
             _ => Err(ModeError::OutOfBounds),
         };
-        let path_known = |name: &String| map.paths.iter().any(|path| path.name == *name);
+        let path_known = |name: &DeclaredName| map.paths.iter().any(|path| path.name == *name);
         for (at, path) in map.paths.iter().enumerate() {
             if map.paths[..at].iter().any(|other| other.name == path.name) {
                 return Err(ModeError::RepeatedName(path.name.clone()));
@@ -376,7 +377,7 @@ impl Mode {
             path.points.iter().try_for_each(point)?;
         }
         for unit in &map.units {
-            if !unit_type(&unit.unit_type) {
+            if !unit_type(unit.unit_type.as_str()) {
                 return Err(ModeError::UnknownUnitType(unit.unit_type.clone()));
             }
             if !team_known(&unit.team) {

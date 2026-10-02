@@ -257,7 +257,7 @@ fn more_tracks_than_a_unit_holds_fail_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 153] = [
+const FLAWS: [Flaw; 156] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -1098,6 +1098,24 @@ const FLAWS: [Flaw; 153] = [
         Edit::Replace(r#"tags = ["tank"]"#, r#"tags = ["tank:front"]"#),
         "hero-husk",
         |problem| read_fails(problem, "data/avatar.toml", r#""tank:front" is not a name"#),
+    ),
+    flaw(
+        MANIFEST,
+        Edit::Replace(r#"{ name = "north""#, r#"{ name = "North""#),
+        MODE_DIR,
+        |problem| manifest_fails(problem, r#""North" is not a name"#),
+    ),
+    flaw(
+        MAP,
+        Edit::Replace(r#"path = "west""#, r#"path = "west lane""#),
+        MODE,
+        |problem| read_fails(problem, "map/map.toml", r#""west lane" is not a name"#),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace("income_ms = 5000", "income-ms = 5000"),
+        MODE,
+        |problem| read_fails(problem, "data/mode.toml", r#""income-ms" is not a name"#),
     ),
     flaw(
         MODE_DATA,

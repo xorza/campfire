@@ -8,6 +8,7 @@ use crate::mode::error::ModeError;
 use crate::mode::mode_data::ModeParam;
 use crate::navigation::path_walker::PathEnd;
 use crate::values::bounds::Bounds;
+use crate::values::declared_name::DeclaredName;
 use crate::values::grid::Grid;
 use crate::values::metric::Metric;
 use crate::values::scalar::Scalar;
@@ -45,7 +46,7 @@ pub struct GridData {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PathData {
-    pub name: String,
+    pub name: DeclaredName,
     pub points: Vec<MapPoint>,
 }
 
@@ -54,10 +55,10 @@ pub struct PathData {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PlacedUnitData {
-    pub unit_type: String,
-    pub team: String,
+    pub unit_type: DeclaredName,
+    pub team: DeclaredName,
     pub pos: MapPoint,
-    pub path: Option<String>,
+    pub path: Option<DeclaredName>,
     pub from: Option<PathEnd>,
 }
 
@@ -66,13 +67,13 @@ pub struct PlacedUnitData {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct MarkerData {
-    pub name: String,
-    pub tags: Vec<String>,
+    pub name: DeclaredName,
+    pub tags: Vec<DeclaredName>,
     pub pos: Option<MapPoint>,
     pub region: Option<RegionData>,
-    pub team: Option<String>,
+    pub team: Option<DeclaredName>,
     #[serde(default)]
-    pub params: BTreeMap<String, ModeParam>,
+    pub params: BTreeMap<DeclaredName, ModeParam>,
     /// Whether the mode hears units enter and leave its region.
     #[serde(default)]
     pub events: bool,

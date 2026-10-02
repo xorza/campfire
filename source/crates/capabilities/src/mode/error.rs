@@ -2,6 +2,7 @@ use std::error::Error;
 use std::fmt;
 
 use crate::stats::stat::Stat;
+use crate::values::declared_name::DeclaredName;
 
 /// Why a unit type's values do not make a unit. Packages are untrusted, so each is an expected
 /// failure.
@@ -24,23 +25,23 @@ pub enum ModeError {
     /// More teams than a team index counts.
     TooManyTeams,
     /// A relation of a team to itself, or of a pair the relations name before.
-    RepeatedRelation(String, String),
+    RepeatedRelation(DeclaredName, DeclaredName),
     /// Two teams, or two paths, share a name.
-    RepeatedName(String),
+    RepeatedName(DeclaredName),
     /// More players than the teams have slots.
     TooManyPlayers,
-    UnknownTeam(String),
-    UnknownUnitType(String),
-    UnknownPath(String),
+    UnknownTeam(DeclaredName),
+    UnknownUnitType(DeclaredName),
+    UnknownPath(DeclaredName),
     /// A placed unit of the type walks from an end of no path.
-    NoPathToWalk(String),
+    NoPathToWalk(DeclaredName),
     /// A point of the map has the shape of the other metric's points.
     PointShape,
     /// The marker's region is not a box within the map's bounds of its metric, or the marker has
     /// a point too.
-    Region(String),
+    Region(DeclaredName),
     /// A path has no waypoint.
-    EmptyPath(String),
+    EmptyPath(DeclaredName),
     /// A point of the map is outside its bounds.
     OutOfBounds,
     /// The grid's cell is not positive or beyond the world's bound, or it makes more than 2²²

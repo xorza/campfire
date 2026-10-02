@@ -196,7 +196,7 @@ impl<'a> LoadCheck<'a> {
             }
         }
         let mut names = PackageNames::new(&packages.mode, &content.modifiers);
-        let mode_params: BTreeSet<&str> = data.params.keys().map(String::as_str).collect();
+        let mode_params: BTreeSet<&str> = data.params.keys().map(DeclaredName::as_str).collect();
         names.serve(&data.script, ScriptRole::Mode, mode_params.iter().copied());
         for unit_type in units.values() {
             if let Some(orders) = &unit_type.orders {
@@ -508,7 +508,9 @@ impl<'a> LoadCheck<'a> {
         let data = &self.packages.data;
         let tag = |name: &String| {
             let markers = &self.packages.map.markers;
-            markers.iter().any(|marker| marker.tags.contains(name))
+            markers
+                .iter()
+                .any(|marker| marker.tags.iter().any(|tag| tag.as_str() == name))
         };
         if let Some(name) = facts.markers.iter().find(|name| !tag(name)) {
             return Err(LoadProblem::Unknown {

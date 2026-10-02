@@ -1,13 +1,14 @@
 use serde::Deserialize;
 
 use crate::values::attitude::Attitude;
+use crate::values::declared_name::DeclaredName;
 
 /// A pair of the mode's teams as its `[[relations]]` declare them: how they regard each other,
 /// and, friendly, whether they share vision.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct RelationData {
-    pub teams: [String; 2],
+    pub teams: [DeclaredName; 2],
     pub relation: Attitude,
     /// Absent: on.
     #[serde(default = "RelationData::vision_on")]

@@ -119,7 +119,8 @@ A package loads only when all of these pass:
 
 - No data file holds human text: names, descriptions and lines are message ids, each of which the file of the manifest's `language` defines.
 - Every data file matches its schema, every per-rank array has one entry for each rank of its slot kind, and every field of an action (`range`, `cooldown_ms`, `cost`, `windup_ms`) holds at every rank. A field an action's kind does not use fails.
-- The mode declares at most 256 tags together, the engine's three among them, and no avatar has the name of one of them. Every tag is a declared name, and no unit type or modifier carries `avatar`, `projectile` or `area`, which only the engine gives.
+- Every name data declares or names is a declared name: a lowercase letter, then lowercase letters, digits and underscores. These are tags, teams, paths, markers and their tags, and the mode's inputs and params. A package's name is not one, as it names the package to people too.
+- The mode declares at most 256 tags together, the engine's three among them, and no avatar has the name of one of them. No unit type or modifier carries `avatar`, `projectile` or `area`, which only the engine gives.
 - No avatar names `orders`: a player controls it, and a bot plays it through player inputs ([Control](04-capabilities/control.md#ai)).
 - Every script is referenced by data. Every function named like a hook, a hook's name or any name that starts with `on_` or `calc_`, is a hook of a role the script serves, with the hook's parameters, so a misspelled hook is an error, not a hook that never runs.
 - Every modifier id, action id, `ctx.p` name, `{ param }` reference, stat, pool, player resource, tag, slot kind, layer, filter, damage kind, choice and marker tag that a script or data file names exists. Scripts are read with `AST::walk`, from Rhai's `internals` feature.
