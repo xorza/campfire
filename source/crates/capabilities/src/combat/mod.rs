@@ -179,10 +179,9 @@ impl Combat {
         }
     }
 
-    /// Binds `life` as the life pool, as a client does from the packages it holds, where no mode
-    /// installs.
-    pub fn bind_life(world: &mut World, life: PoolId) {
-        world.insert_resource(CombatBindings::of_life(life));
+    /// The match's life pool; `None` when its mode names none.
+    pub fn life(world: &World) -> Option<PoolId> {
+        Some(world.get_resource::<CombatBindings>()?.life)
     }
 }
 
@@ -902,7 +901,11 @@ pub(crate) mod internals {
     use crate::actions::action_data::Range;
     use crate::actions::action_slots::ActionSlots;
     use crate::actions::slot_kind::SlotKind;
+    #[cfg(test)]
+    use crate::combat::combat_bindings::CombatBindings;
     use crate::stats::pool_cost::PoolCost;
+    #[cfg(test)]
+    use crate::stats::pool_id::PoolId;
     use crate::stats::stat_book::StatBook;
     use crate::stats::unit_stats::UnitStats;
     use crate::units::filter::Filter;
@@ -992,6 +995,12 @@ pub(crate) mod internals {
                 stats,
             }
         }
+    }
+
+    /// Binds `life` as the life pool, with no stat bound, as a test world with no mode needs.
+    #[cfg(test)]
+    pub(crate) fn bind_life(world: &mut World, life: PoolId) {
+        world.insert_resource(CombatBindings::of_life(life));
     }
 }
 

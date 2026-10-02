@@ -18,12 +18,6 @@ Package data, snapshots and client packets are untrusted. Each of these items le
   Better: check each against its book after a restore, or store no copy of package-derived shape in state.
 - [ ] **A restore keeps a resource the snapshot does not have** — `sim/src/state_registry/mod.rs:360-369`. When the snapshot records a resource as absent, `decode_resource` leaves the copy that is already in the world, so the hash can differ from the snapshot's. Better: remove an absent resource.
 
-## 2. The network session has no single owner of its rules
-
-The terms of a session, the input limits and the join state are each derived or kept in several places that disagree.
-
-- [ ] **The client builds its prediction world by hand** — `net/src/sim_client/mod.rs:167-186`, `net/src/sim_client/client_mode.rs:471-500`, against `capabilities/src/mode/mod.rs:102-160`. It repeats part of `Mode::install` (`Metric`, `Bounds`, `load_pathing`, `bind_life`) with a different life-pool fallback, and the HUD reads the life pool again. Anything new in `Mode::install` must be copied here, or prediction diverges. Better: capabilities own one install path for prediction that shares code with `Mode::install`.
-
 ## 3. The rules of a living unit and a target have several definitions
 
 "Living", "dead", "a target" and "within reach" are each decided in more than one place, and the places disagree.

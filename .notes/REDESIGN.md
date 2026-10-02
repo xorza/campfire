@@ -17,7 +17,6 @@ References: `R§n` is group n of `REVIEW.md`, `T§n` is group n of `TEST-REVIEW.
 | R5 Stable order and one exactness rule | Some systems spend or allocate in query order, and some arithmetic rounds its own way | R§4, R§12 |
 | R6 A limit on work per tick, and fresh shared indexes | Navigation, vision, deliveries and the view have no work limit and no shared index | R§5, R§12 |
 | R7 State holds only state, and a restore is checked | Components store book data, and decoded state is trusted | R§1, R§7, R§10 |
-| R8 One owner of each network session rule | Terms, input limits and join state live in several places | R§2, R§1 |
 | T Proof and test redesign | Refactors have no permanent proof of equal behaviour, and every module writes its own harness | T§1 to T§8 |
 
 ## Rules
@@ -46,7 +45,7 @@ Each match has books: `ActionBook`, `ModifierBook`, `StatBook`, `PoolBook`, `Tra
 - **The state** holds book data: `Instance.tags` and each change's stat and op, `TrainQueue.capacity`, `PlayerResources.resources` and `InProgress.kind`.
 - **Several places** resolve names again at run time: aura filters every tick, `unit.stat(name)` on every call, and the stat list, which is held three times.
 
-The copies stay in line only through load order and a `debug_assert`. PLAN step 2 needs the same tables on the client, which today has no way to build them.
+The copies stay in line only through load order and a `debug_assert`. PLAN step 1 needs the same tables on the client, which today has no way to build them.
 
 ### Shape
 
@@ -337,32 +336,6 @@ Edge-to-edge queries make Lash Out, Wildfire, Tempest and the auras reach up to 
   - The consumer of `HeldModifiers` clears it after `apply_held`.
 - **Flat storage.** The nested `Vec`s of `Modifiers` become one flat buffer per carrier with ranges. This is possible once the book data leaves the instance.
 
-## R8. One owner of each network session rule
-
-### Problem
-
-- The session log counts inputs per arrival tick. Two client ticks can arrive before one server tick, so a client that sends within the limits can still be refused.
-- The client advances its input chain before the server accepts a packet. After one refusal, every later packet fails `BadSignature`, and the player is cut off for the rest of the match.
-- The server hashes a packet before it checks the packet's size.
-- The lobby ignores disconnects, and it lets one key take several seats.
-- The client builds its prediction world by hand.
-- The session log uses raw `u64` ticks.
-
-### Shape
-
-- **Inputs are counted per stamp, and applied with a limit per tick.** This changes design 05.
-  - The log refuses a packet only for what the client controls: too many inputs for one stamp, a payload that is too long, or a bad signature.
-  - The log applies at most `max_inputs_per_tick` of a player's inputs in each tick. Inputs beyond that limit apply in later ticks, in their order, and the log records each applied tick, as `Applied` does today.
-  - The client keeps the limits, and holds orders beyond the limit for its next stamp.
-
-  A client that follows the rules is then never refused, whatever the network does to its packets. A refusal means a broken or hostile client, so it ends the link, and no protocol has to rewind the chain.
-- **The server checks before it hashes.** It checks the frame count and each length first.
-- **The lobby seat lifecycle.**
-  - The lobby hears Lightyear's disconnect and frees the seat.
-  - `start_match` uses only live links.
-  - A main key that already holds a seat is refused.
-- **A prediction install.** `capabilities` gains `Prediction::install(world, schedule, &Books, rate)`. It shares its code with `Mode::install` for everything that runs without scripts: `Metric`, `Bounds`, pathing and the life binding. After R1, the client builds the same `Books` from the packages, and this is PLAN step 2.
-
 ## T. Proof and test redesign
 
 A refactor of this size needs a permanent proof that behaviour stays the same. The one-time trace comparisons of the earlier steps go away with their scratch copies. The proof must live in the suite.
@@ -434,20 +407,18 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 |---|---|---|---|
 | G2 | Book data out of the state; `Lifetime`; one `ParamSource::of`; flat `Modifiers`; the `ModifierStats` and `ModifierClock` split; the queue's times at push | G1 | M, changes the layout |
 | H1b | `ctx.find` and `nearest_visible` read `BodyGrid` | D5, H1 | S |
-| I4 | `Prediction::install` shared with `Mode::install` | | M |
 | J | The local fixes in the appendix, and T§5 to T§8 | any time | S each |
 
 ### The roadmap's steps
 
 PLAN.md's stage 4 steps join this plan as follows:
 
-- **PLAN step 2 (client stats and tags)** comes after I4. The client then builds `Books` from the packages, and installs prediction from them.
+- **PLAN step 1 (client stats and tags)** can start: the client builds `Books` from the packages, and installs prediction from them (I4).
 
 ### Order
 
 ```
 Track S:  D2 → D3 → D5 → D6
-                       └ I4 → PLAN 2
 
 Track I:  E1 → E2      F2      G1      H1, H4      H2 → H3
 
@@ -465,7 +436,7 @@ Track S is long and sequential. Track I fills the sessions between its steps.
 | Performance falls as layers and indirections grow. | The work record at each stage's end, with a 10 % limit to justify. `Ordered` sorts only the units of its query. Columns and `Arc` books remove copies. |
 | `Arc` books cannot hold Rhai values. | Books are plain data, and `ScriptConsts` holds the Rhai values on the non-send side. |
 | Bevy's ambiguity check misses new orderings, as the logged `mode_inputs` issue shows. | Every new system names its order against the sets it touches. The archetype-shuffle test catches a hidden dependence on query order. |
-| Track S blocks the roadmap for a long time. | Track I and PLAN step 1 run between its steps. PLAN steps 3 and 4 ride on C2 and C3. |
+| Track S blocks the roadmap for a long time. | Track I runs between its steps. |
 | The proving match becomes a second content set to maintain. | It is small, it is owned by the tests, and it has no balance to keep. |
 | Design 05 changes for input spill, and logs of earlier builds stop replaying. | The release check already refuses logs of another release, and no backward compatibility is kept. |
 
@@ -478,13 +449,7 @@ Track S is long and sequential. Track I fills the sessions between its steps.
 
    I recommend adopting it. One reach rule is what players read.
 3. **The effect dispatch** (R3). Typed queues for each capability, as proposed, or keep one `Effect` enum and move it with its dispatch to `capability_set`. With the enum, `scripts` still needs the enum's type, so the cycle stays. I recommend the typed queues.
-4. **View columns** (R3). Columns for each capability, as proposed, or change design 04's overview so the core may name capability fields. Columns cost more code now. They are what PLAN step 2 and every later capability (items, interaction) need. I recommend columns.
-5. **Input limits** (R8). Count inputs per stamp, apply with a limit per tick, and spill the rest to later ticks, as proposed. This changes design 05. The other choices:
-   - refuse late bursts and add a protocol that rewinds the client's chain;
-   - drop the limit per tick.
-
-   I recommend the spill, because a client that follows the rules is then never refused.
-6. **`Tick` in `math`** (R8). This changes design 02's module map, which already gives `math` the values both sides share. I recommend the move.
+4. **View columns** (R3). Columns for each capability, as proposed, or change design 04's overview so the core may name capability fields. Columns cost more code now. They are what PLAN step 1 and every later capability (items, interaction) need. I recommend columns.
 7. **An attack's damage names its weapon** (R§11). Change the code (`d.ability` is the weapon), or the design (an attack names no action). I recommend the code: a weapon is an action in design 04.
 8. **The proving match** (T). A new mode in `packages/test` that uses every capability. I recommend it. The 3v3 cannot test production or two producers, and its balance changes break unrelated tests.
 9. **The test review's decisions** (T§9):
@@ -506,9 +471,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - unlimited work before a refusal: B4;
   - lobby crash: B4;
   - several seats: B4.
-- **R§2:**
-  - refused packet: B4;
-  - prediction by hand: I4.
 - **R§3:**
   - cast survives death: B1;
   - die and never dead: B1;

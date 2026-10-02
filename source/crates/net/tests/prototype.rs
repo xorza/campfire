@@ -8,8 +8,8 @@ use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use campfire_capabilities::{
-    Action, ActionSlots, Dead, Destination, MatchEnd, MatchResult, MoveStep, Owner, PoolId, Pools,
-    Projectile, Respawn, Team,
+    Action, ActionSlots, Bounds, Combat, Dead, Destination, MatchEnd, MatchResult, Metric,
+    MoveStep, Owner, PoolId, Pools, Projectile, Respawn, Team,
 };
 use campfire_math::{Num, PlayerSlot, Tick, Vec3};
 use campfire_net::{InputChannel, InputMessage, LocalMatch, MatchSetup, PlayerLink, TickHashes};
@@ -187,6 +187,12 @@ fn a_burst_of_orders_waits_for_later_stamps_and_a_forged_message_ends_its_link()
 fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_its_client() {
     let mut local = LocalMatch::new(MatchSetup::solo(RollbackMode::Check, 1, SEED_CHAIN));
     local.start_match();
+    // The client predicts on the ground and with the life pool the server's mode installs.
+    let (server, client) = (local.server().world(), local.client(0).world());
+    assert_eq!(client.resource::<Metric>(), server.resource::<Metric>());
+    assert_eq!(client.resource::<Bounds>(), server.resource::<Bounds>());
+    assert_eq!(Combat::life(client), Some(PoolId::FIRST));
+    assert_eq!(Combat::life(server), Some(PoolId::FIRST));
     // The hero walks to (4, 0), 4 m from the east tower at (8, 0), which reaches 7.75 m and hits
     // for 150 of its 600: the fourth hit kills it where it stands.
     local.order(0, move_to(4, 0));

@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use bevy_ecs::world::World;
 use campfire_sim::Position;
 
 use crate::mode::error::ModeError;
@@ -8,7 +9,9 @@ use crate::mode::mode_book::PlacedUnit;
 use crate::mode::mode_data::ModeParam;
 use crate::mode::relation_data::RelationData;
 use crate::mode::team_manifest::TeamManifest;
+use crate::navigation::Navigation;
 use crate::navigation::paths::Paths;
+use crate::navigation::walker::Walker;
 use crate::units::relations::Relations;
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
@@ -18,19 +21,25 @@ use crate::values::grid::Grid;
 use crate::values::metric::Metric;
 
 /// The mode's map and the relations of its teams, every name resolved once, as the book builder
-/// checks them: its paths, the units it places, its markers, its grids, and how its teams regard
-/// each other.
+/// checks them: its ground, its paths, the units it places, its markers, and the cells vision
+/// reveals, when it has them.
 #[derive(Debug)]
 pub struct ModeMap {
-    pub(crate) metric: Metric,
-    pub(crate) bounds: Bounds,
+    pub(crate) ground: MapGround,
     pub(crate) paths: Paths,
     pub(crate) placed: Vec<PlacedUnit>,
     pub(crate) markers: Vec<MarkerSpec>,
-    /// The cells vision reveals, and those units plan routes over, when it has them.
     pub(crate) grid: Option<Grid>,
-    pub(crate) pathing: Option<Grid>,
-    pub(crate) relations: Relations,
+}
+
+/// What a client's prediction takes of the map as a match does, and no script reads: its metric,
+/// its bounds, how its teams regard each other, and the cells units plan routes over.
+#[derive(Debug)]
+pub(crate) struct MapGround {
+    metric: Metric,
+    bounds: Bounds,
+    relations: Relations,
+    pathing: Option<Grid>,
 }
 
 /// A marker of the map, names resolved: its name, its tags, its point and its team if it names
@@ -148,14 +157,34 @@ impl ModeMap {
             });
         }
         Ok(ModeMap {
-            metric: map.metric,
-            bounds: map.bounds,
+            ground: MapGround {
+                metric: map.metric,
+                bounds: map.bounds,
+                relations: resolved,
+                pathing,
+            },
             paths,
             placed,
             markers,
             grid,
-            pathing,
-            relations: resolved,
         })
+    }
+}
+
+impl MapGround {
+    /// Puts the ground in `world`, its pathing grid for the kinds of `walkers`.
+    pub(crate) fn install(self, world: &mut World, walkers: Vec<Walker>) {
+        let MapGround {
+            metric,
+            bounds,
+            relations,
+            pathing,
+        } = self;
+        world.insert_resource(metric);
+        world.insert_resource(bounds);
+        world.insert_resource(relations);
+        if let Some(pathing) = pathing {
+            Navigation::load_pathing(world, pathing, walkers);
+        }
     }
 }

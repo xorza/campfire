@@ -38,15 +38,22 @@ impl CombatBindings {
             heal_scale: rules.heal_scale.as_ref().map(index),
         })
     }
+}
 
-    /// The bindings of `life` alone, with no stat bound, as a client binds them from the
-    /// packages it holds.
-    pub(crate) const fn of_life(life: PoolId) -> CombatBindings {
-        CombatBindings {
-            life,
-            leech_attack: None,
-            leech_other: None,
-            heal_scale: None,
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::combat::combat_bindings::CombatBindings;
+    use crate::stats::pool_id::PoolId;
+
+    impl CombatBindings {
+        /// The bindings of `life` alone, with no stat bound.
+        pub(crate) const fn of_life(life: PoolId) -> CombatBindings {
+            CombatBindings {
+                life,
+                leech_attack: None,
+                leech_other: None,
+                heal_scale: None,
+            }
         }
     }
 }

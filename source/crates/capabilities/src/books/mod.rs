@@ -11,7 +11,9 @@ use crate::books::book_builder::BookBuilder;
 use crate::books::book_input::BookInput;
 use crate::books::error::BookError;
 use crate::mode::mode_books::ModeBooks;
+use crate::mode::mode_map::ModeMap;
 use crate::mode::mode_setup::{LoadoutSetup, UnitTypeSetup};
+use crate::navigation::walker::Walker;
 use crate::orders::ai::Ai;
 use crate::progression::track_book::TrackBook;
 use crate::projectiles::projectile_spec::ProjectileSpec;
@@ -19,6 +21,7 @@ use crate::scripts::ctx::Ctx;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::param_book::{ParamBook, ParamTables};
 use crate::units::by_type::ByType;
+use crate::units::script_view::View;
 use crate::units::unit_types::UnitTypes;
 
 pub(crate) mod book_builder;
@@ -79,16 +82,17 @@ impl Books {
     }
 
     /// Puts the books in `world`, a match whose capabilities are installed and whose scripts are
-    /// compiled, each in the resource of the capability that reads it, and the view's and the
-    /// frame's copies; what the mode's book takes stays.
+    /// compiled, each in the resource of the capability that reads it, and the view's and, with
+    /// scripts, the frame's copies; what the mode's book takes stays.
     pub fn install(self, world: &mut World) -> ModeInputs {
         let Books { parts, mode } = self;
-        let ctx = world.non_send::<Ctx>().clone();
-        let view = ctx.view();
+        let view = world.non_send::<View>().clone();
         view.set_types(parts.types);
         view.set_modifiers(parts.modifiers.clone());
         let params = ParamBook::new(parts.params);
-        ctx.frame().set_params(params.clone());
+        if let Some(ctx) = world.get_non_send::<Ctx>() {
+            ctx.frame().set_params(params.clone());
+        }
         world.insert_resource(params);
         if let Some(tracks) = parts.tracks {
             view.set_tracks(tracks.clone());
@@ -105,6 +109,16 @@ impl Books {
             units: parts.units,
             books: mode,
         }
+    }
+
+    /// Puts the books in `world`, a client's, whose capabilities are installed with no scripts,
+    /// and the part of the mode no script runs, as a match's mode install puts them: the books
+    /// of its own rules, and its map's ground, its pathing grid for the kinds of `walkers`. The
+    /// client then predicts its units by the rules the server runs.
+    pub fn install_prediction(self, world: &mut World, walkers: Vec<Walker>) {
+        let ModeInputs { books, .. } = self.install(world);
+        let ModeMap { ground, .. } = books.install(world);
+        ground.install(world, walkers);
     }
 }
 

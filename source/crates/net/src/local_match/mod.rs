@@ -1,5 +1,6 @@
 use std::num::NonZeroU32;
 use std::path::Path;
+use std::sync::Arc;
 
 use bevy_app::{App, First, PostUpdate, TaskPoolPlugin, Update};
 use bevy_ecs::entity::Entity;
@@ -32,7 +33,6 @@ use crate::match_clock::MatchClock;
 use crate::net_protocol::NetProtocol;
 use crate::order_script::OrderScript;
 use crate::sim_client::bot_script::BotScript;
-use crate::sim_client::client_mode::ClientMode;
 use crate::sim_client::join_state::JoinState;
 use crate::sim_client::server_pin::ServerPin;
 use crate::sim_client::{PendingOrders, SimClient};
@@ -109,7 +109,7 @@ pub struct LocalMatch {
     /// The server's link to each client.
     links: Vec<Entity>,
     setup: MatchSetup,
-    packages: ModePackages,
+    packages: Arc<ModePackages>,
 }
 
 impl LocalMatch {
@@ -132,8 +132,7 @@ impl LocalMatch {
             setup.server_frames > 0,
             "the server runs a frame a tick at least"
         );
-        let packages = lane_mode();
-        let mode = ClientMode::of(&packages);
+        let packages = Arc::new(lane_mode());
         let tick_hz = packages.manifest().tick_hz.default();
         let tick = TickRate::new(tick_hz).length();
 
@@ -186,7 +185,7 @@ impl LocalMatch {
             links.push(link);
 
             let ClientApp { app, entity } =
-                ClientApp::new(&setup, player, &mode, tick_hz, client_io, stream + 1);
+                ClientApp::new(&setup, player, &packages, tick_hz, client_io, stream + 1);
             client_entities.push(entity);
             clients.push(app);
         }
@@ -374,7 +373,7 @@ impl LocalMatch {
     }
 
     /// The packages of the session's mode.
-    pub const fn packages(&self) -> &ModePackages {
+    pub fn packages(&self) -> &ModePackages {
         &self.packages
     }
 }
@@ -391,7 +390,7 @@ impl ClientApp {
     fn new(
         setup: &MatchSetup,
         player: usize,
-        mode: &ClientMode,
+        packages: &Arc<ModePackages>,
         tick_hz: NonZeroU32,
         io: CrossbeamIo,
         stream: u64,
@@ -406,7 +405,7 @@ impl ClientApp {
                 certificate: CERTIFICATE,
                 tick_hz,
             },
-            mode: mode.clone(),
+            packages: Arc::clone(packages),
             clock: || NOW,
             entropy: |bytes| bytes.fill(4),
         };

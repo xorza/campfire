@@ -222,6 +222,7 @@ pub(crate) mod internals {
     use campfire_sim::{SimUpdate, TickRate};
 
     use super::*;
+    use crate::combat::internals;
     use crate::stats::pool_id::PoolId;
 
     /// A match for a capability's tests: a world that `SimUpdate::prepare` set up, with the core
@@ -255,7 +256,7 @@ pub(crate) mod internals {
             let set = CapabilitySet::new(declared).expect("a test declares a valid set");
             set.install(&mut world, &mut schedule, &mut registry, budgets);
             if set.contains(Capability::Combat) {
-                Combat::bind_life(&mut world, PoolId::FIRST);
+                internals::bind_life(&mut world, PoolId::FIRST);
             }
             TestMatch {
                 world,

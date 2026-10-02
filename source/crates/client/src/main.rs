@@ -19,6 +19,7 @@ use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use bevy::DefaultPlugins;
@@ -28,10 +29,11 @@ use bevy::state::app::StatesPlugin;
 use bevy::time::TimePlugin;
 use bevy::window::{Window, WindowPlugin};
 use campfire_log::Logging;
-use campfire_net::{ClientMode, NetProtocol, OrderScript, ServerPin, SimClient};
+use campfire_net::{NetProtocol, OrderScript, ServerPin, SimClient};
 use campfire_package::ModePackages;
 use campfire_protocol::CertificateHash;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey, XOnlyPublicKey};
+use campfire_runner::SessionRules;
 use campfire_sim::TickRate;
 use lightyear::prelude::client::{ClientPlugins, RawClient, WebTransportClientIo};
 use lightyear::prelude::{
@@ -92,12 +94,9 @@ fn main() -> ExitCode {
             return ExitCode::from(2);
         }
     };
-    let packages = match ModePackages::from_dir(&args.mode) {
+    let packages = match load_mode(&args) {
         Ok(packages) => packages,
-        Err(error) => {
-            error!(mode = %args.mode.display(), %error, "the mode does not load");
-            return ExitCode::FAILURE;
-        }
+        Err(code) => return code,
     };
     let script = match args.bot.as_deref().map(read_script).transpose() {
         Ok(script) => script,
@@ -106,7 +105,6 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let mode = ClientMode::of(&packages);
     let tick = TickRate::new(args.tick_hz).length();
 
     let mut app = App::new();
@@ -130,7 +128,7 @@ fn main() -> ExitCode {
                 })
                 .disable::<LogPlugin>(),
             View { tick },
-            Hud { life: mode.life },
+            Hud,
             Orders,
         ));
     }
@@ -150,7 +148,7 @@ fn main() -> ExitCode {
                 certificate: args.certificate,
                 tick_hz: args.tick_hz,
             },
-            mode,
+            packages: Arc::new(packages),
             clock: unix_now,
             entropy: fill,
         },
@@ -224,6 +222,22 @@ impl Args {
                 .map_err(|error| format!("{tick_hz}: {error}"))?,
         })
     }
+}
+
+/// The packages of the mode the arguments name, which must run at the listing's rate; the exit
+/// code when they do not load, or run at another rate.
+fn load_mode(args: &Args) -> Result<ModePackages, ExitCode> {
+    let packages = ModePackages::from_dir(&args.mode).map_err(|error| {
+        error!(mode = %args.mode.display(), %error, "the mode does not load");
+        ExitCode::FAILURE
+    })?;
+    SessionRules::of(&packages)
+        .runs_at(args.tick_hz)
+        .map_err(|error| {
+            error!(%error, "the mode does not run at the listing's rate");
+            ExitCode::from(2)
+        })?;
+    Ok(packages)
 }
 
 /// The order script in the file at `path`.

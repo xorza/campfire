@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use bevy_app::{App, FixedUpdate, Plugin, Update};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::Add;
@@ -8,11 +10,13 @@ use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::schedule::common_conditions::not;
 use bevy_ecs::system::{Commands, Query, Res, ResMut, Single};
 use bevy_ecs::world::{Mut, World};
-use campfire_capabilities::{Combat, Dead, MatchEnd, Navigation, Order, Owner};
+use campfire_capabilities::{Dead, MatchEnd, Order, Owner};
 use campfire_log::LogEvent;
 use campfire_math::{SegmentSeed, Tick};
+use campfire_package::ModePackages;
 use campfire_protocol::PlayerInput;
 use campfire_protocol::secp256k1::Keypair;
+use campfire_runner::SessionRules;
 use campfire_sim::{
     SimTick, SimUpdate, StableId, StateRegistry, TickInput, TickInputs, TickRate, Unpredicted,
 };
@@ -31,14 +35,12 @@ use crate::match_start::MatchStart;
 use crate::net_protocol::{InputChannel, JoinChannel};
 use crate::offer::Offer;
 use crate::sim_client::bot_script::BotScript;
-use crate::sim_client::client_mode::ClientMode;
 use crate::sim_client::join_state::JoinState;
 use crate::sim_client::sent_inputs::SentInputs;
 use crate::sim_client::server_pin::ServerPin;
 use crate::sim_client::signer::Signer;
 
 pub(crate) mod bot_script;
-pub(crate) mod client_mode;
 pub(crate) mod join_state;
 pub(crate) mod sent_inputs;
 pub(crate) mod server_pin;
@@ -51,14 +53,15 @@ const PREDICTION_SEED: SegmentSeed = SegmentSeed::new([0; 32]);
 /// session key, sends the player's orders as chained inputs, signed once per message with the
 /// session key, and runs the sim in every fixed tick, rollbacks included, with the player's own
 /// inputs, on the units the client predicts.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct SimClient {
     /// The player's Nostr identity, which signs the delegation.
     pub main_key: Keypair,
     /// This session's key, which the delegation lets sign the player's inputs.
     pub session_key: Keypair,
     pub server: ServerPin,
-    pub mode: ClientMode,
+    /// The packages of the mode it plays, which must run at the listing's rate.
+    pub packages: Arc<ModePackages>,
     /// Unix seconds: when the delegation is made, and so when it expires.
     pub clock: fn() -> u64,
     /// Fills a seed contribution or BIP-340's auxiliary randomness with random bytes.
@@ -83,25 +86,22 @@ impl Plugin for SimClient {
         let mut schedule = SimUpdate::schedule();
         // A client hashes no state, so the registry the capabilities fill is not kept.
         let mut state = StateRegistry::new();
+        let packages = &self.packages;
         // A client runs no scripts: it predicts only its own player's units.
-        self.mode
+        packages
+            .manifest()
             .capabilities
             .install(world, &mut schedule, &mut state, None);
-        world.insert_resource(self.mode.metric);
-        world.insert_resource(self.mode.bounds);
-        if let Some(life) = self.mode.life {
-            Combat::bind_life(world, life);
-        }
-        if let Some(cells) = self.mode.pathing {
-            Navigation::load_pathing(world, cells, self.mode.walkers.clone());
-        }
+        packages
+            .books(rate, &packages.script_book())
+            .install_prediction(world, packages.walkers());
         world.add_schedule(schedule);
         mark_unpredicted(world);
         world.insert_resource(Signer::new(self.session_key, self.entropy));
         world.insert_resource(JoinState::new(
             self.main_key,
             self.server,
-            self.mode.rules.clone(),
+            SessionRules::of(packages),
             self.clock,
         ));
         world.init_resource::<SentInputs>();

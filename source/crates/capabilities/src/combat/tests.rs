@@ -981,7 +981,7 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     assert_eq!(fight.exact_health(source), num(100));
     // Without the bindings the same stats do nothing: at 50, an attack of 10 heals the source
     // nothing, and a heal of 10 is whole.
-    Combat::bind_life(&mut fight.world, PoolId::FIRST);
+    super::internals::bind_life(&mut fight.world, PoolId::FIRST);
     let entity = fight.entity(source);
     let mut pools = fight.world.get_mut::<Pools>(entity).unwrap();
     pools.take(PoolId::FIRST, num(50));

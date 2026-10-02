@@ -10,13 +10,14 @@ use bevy::ecs::query::{Allow, Has, With, Without};
 use bevy::ecs::resource::Resource;
 use bevy::ecs::schedule::IntoScheduleConfigs;
 use bevy::ecs::system::{Commands, Query, Res, ResMut, Single};
+use bevy::ecs::world::World;
 use bevy::math::primitives::{Annulus, Plane3d};
 use bevy::math::{Quat, Vec3};
 use bevy::mesh::{Mesh, Mesh3d, Meshable};
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::time::Time;
 use bevy::transform::components::Transform;
-use campfire_capabilities::{ActionSlots, Dead, Owner, PoolId, Pools, Team};
+use campfire_capabilities::{ActionSlots, Combat, Dead, Owner, PoolId, Pools, Team};
 use campfire_sim::{EntityIndex, SimTick, Unpredicted};
 use lightyear::prelude::Predicted;
 
@@ -27,14 +28,12 @@ use crate::view::{CAMERA, Drawn, Glide, Look};
 mod gauge;
 mod ring;
 
-/// Makes the match readable with plain shapes over the drawings: a bar of the `life` pool over
+/// Makes the match readable with plain shapes over the drawings: a bar of the life pool over
 /// every unit, the own avatar's other pools and cooldowns under its own, a ring where each hit
 /// lands, and a ring under the unit the own avatar attacks. It reads the sim's components and
 /// changes none.
 #[derive(Debug)]
-pub(crate) struct Hud {
-    pub(crate) life: Option<PoolId>,
-}
+pub(crate) struct Hud;
 
 /// The mode's life pool, when it has one.
 #[derive(Resource, Debug, Clone, Copy)]
@@ -98,10 +97,7 @@ const ABOVE: f32 = 0.35;
 
 impl Plugin for Hud {
     fn build(&self, app: &mut App) {
-        if let Some(life) = self.life {
-            app.insert_resource(Life(life));
-        }
-        app.add_systems(Startup, Hud::set_palette);
+        app.add_systems(Startup, (Hud::bind_life, Hud::set_palette));
         app.add_systems(
             Update,
             (
@@ -118,6 +114,13 @@ impl Plugin for Hud {
 }
 
 impl Hud {
+    /// Takes the life pool the sim's combat binds, when the mode names one.
+    fn bind_life(world: &mut World) {
+        if let Some(life) = Combat::life(world) {
+            world.insert_resource(Life(life));
+        }
+    }
+
     fn set_palette(
         mut commands: Commands<'_, '_>,
         mut meshes: ResMut<'_, Assets<Mesh>>,
@@ -392,7 +395,7 @@ mod tests {
         app.init_asset::<Mesh>();
         app.init_asset::<StandardMaterial>();
         app.init_resource::<EntityIndex>();
-        app.add_plugins(Hud { life: None });
+        app.add_plugins(Hud);
         app.update();
         assert!(app.world().contains_resource::<HudPalette>());
         // With no own avatar there is no target to mark.

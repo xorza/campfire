@@ -2025,6 +2025,7 @@ dependencies = [
  "campfire-net",
  "campfire-package",
  "campfire-protocol",
+ "campfire-runner",
  "campfire-sim",
  "getrandom 0.3.4",
  "lightyear",

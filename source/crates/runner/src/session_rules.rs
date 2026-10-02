@@ -64,8 +64,13 @@ impl SessionRules {
         if *terms.dependencies != *self.dependencies {
             return Err(TermsError::OtherDependencies);
         }
-        if !self.tick_hz.contains(terms.tick_hz) {
-            return Err(TermsError::TickRate(terms.tick_hz));
+        self.runs_at(terms.tick_hz)
+    }
+
+    /// An error when the mode does not run at `tick_hz`.
+    pub const fn runs_at(&self, tick_hz: NonZeroU32) -> Result<(), TermsError> {
+        if !self.tick_hz.contains(tick_hz) {
+            return Err(TermsError::TickRate(tick_hz));
         }
         Ok(())
     }

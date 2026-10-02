@@ -38,7 +38,6 @@ use crate::mode::mode_state::ModeState;
 use crate::mode::player_resources::PlayerResources;
 use crate::mode::timers::Timers;
 use crate::mode::unanswered_deaths::UnansweredDeaths;
-use crate::navigation::Navigation;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::PathWalker;
 use crate::orders::OrdersSet;
@@ -97,8 +96,8 @@ impl Mode {
     /// whose capabilities are installed and whose unit types, abilities and AI are loaded: in
     /// Inputs, the players' mode inputs run `on_mode_input`; in Mode, the trains whose time ended
     /// spawn, due timers run `on_timer`, the tick's deaths run `on_unit_died`, and the levels
-    /// reached run `on_level_up`. The map's metric, bounds, paths and grid become
-    /// the match's, and the mode's `[combat]` and `calc_damage` combat's.
+    /// reached run `on_level_up`. The map's ground, paths and grid become the match's, and the
+    /// mode's `[combat]` and `calc_damage` combat's.
     pub fn install(
         world: &mut World,
         schedule: &mut Schedule,
@@ -113,35 +112,27 @@ impl Mode {
         let assist_window = setup.data.combat.assist_window_ms.map(|ms| rate.window(ms));
         let resource_count = books.resources.len();
         let ModeMap {
-            metric,
-            bounds,
+            ground,
             paths,
             placed,
             markers,
             grid,
-            pathing,
-            relations,
         } = books.install(world);
+        ground.install(world, walkers);
         let book = ModeBook::new(
             setup,
             world.resource::<ScriptBook>(),
             placed,
             GameMap::new(paths.names().map(ImmutableString::from), &markers),
         );
-        world.insert_resource(relations);
         if let Some(grid) = grid {
             Vision::load_grid(world, grid, book.teams.count());
-        }
-        if let Some(pathing) = pathing {
-            Navigation::load_pathing(world, pathing, walkers);
         }
         if let Some(window) = assist_window {
             world.insert_resource(AssistWindow(window));
         }
         view.set_names(Rc::clone(&book.teams), paths.shared_names());
         world.insert_resource(paths);
-        world.insert_resource(bounds);
-        world.insert_resource(metric);
         world.insert_resource(ModeState(book.schema.state_initial.clone()));
         let players = book.teams.players() as usize;
         world.insert_resource(book.choices.empty(players));
