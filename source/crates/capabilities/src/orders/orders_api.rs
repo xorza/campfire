@@ -1,7 +1,7 @@
 use campfire_sim::{Capability, Position};
 
 use crate::actions::actions_column::ActionsColumn;
-use crate::orders::ai_order::AiOrder;
+use crate::orders::unit_order::UnitOrder;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
 use crate::scripts::ctx::Ctx;
@@ -36,7 +36,7 @@ impl OrdersApi {
                 "(unit)",
                 "`unit` drops its target and walks its path again",
             ),
-            |ctx: &mut Ctx, unit: Unit| OrdersApi::order(ctx, &unit, AiOrder::FollowPath),
+            |ctx: &mut Ctx, unit: Unit| OrdersApi::order(ctx, &unit, UnitOrder::FollowPath),
         )
         .bind(
             order(
@@ -45,7 +45,8 @@ impl OrdersApi {
                 "`unit` drops its target and walks to `pos`, within the map, off its path",
             ),
             |ctx: &mut Ctx, unit: Unit, to: Position| {
-                OrdersApi::order(ctx, &unit, AiOrder::Move { to })
+                let to = to.get();
+                OrdersApi::order(ctx, &unit, UnitOrder::Move { x: to.x, z: to.z })
             },
         )
         .bind(
@@ -58,7 +59,7 @@ impl OrdersApi {
                 if unit.row().spawn.is_none() {
                     return Err(ApiError::NoSpawnPlace.fail().into());
                 }
-                OrdersApi::order(ctx, &unit, AiOrder::Reset)
+                OrdersApi::order(ctx, &unit, UnitOrder::Reset)
             },
         )
         .hook(Hook::OnThink, Status::Runs(ApiVersion::FIRST))
@@ -76,11 +77,11 @@ impl OrdersApi {
         if !ActionsColumn::armed_against(ctx.view(), unit.row_index(), &ordered, &target) {
             return Err(ApiError::NoAttack.fail().into());
         }
-        OrdersApi::order(ctx, unit, AiOrder::Attack { target: target.id })
+        OrdersApi::order(ctx, unit, UnitOrder::Attack { target: target.id })
     }
 
     /// Queues `order` for `unit`, which must be the unit that thinks.
-    fn order(ctx: &Ctx, unit: &Unit, order: AiOrder) -> Checked<()> {
+    fn order(ctx: &Ctx, unit: &Unit, order: UnitOrder) -> Checked<()> {
         ctx.require(RoleSet::AI)?;
         if ctx.acting() != Some(unit.id) {
             return Err(ApiError::OtherUnit.fail().into());

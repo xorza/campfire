@@ -1,7 +1,8 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Has, QueryState, With, Without};
+use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
-use bevy_ecs::system::{Local, Query, Res};
+use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::{Mut, World};
 use campfire_math::{Tick, Ticks};
 use campfire_script::{ScriptError, ScriptId};
@@ -14,7 +15,6 @@ use crate::actions::action_book::ActionBook;
 use crate::actions::action_data::Range;
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::ActionSlots;
-use crate::actions::action_slots::ActionTarget;
 use crate::actions::targets::Targets;
 use crate::combat::CombatSet;
 use crate::navigation::destination::Destination;
@@ -23,11 +23,11 @@ use crate::navigation::path_walker::PathWalker;
 use crate::navigation::paths::Paths;
 use crate::orders::ai::Ai;
 use crate::orders::ai_data::AiData;
-use crate::orders::ai_order::AiOrder;
 use crate::orders::error::AiError;
 use crate::orders::next_think::NextThink;
 use crate::orders::order::{Action, Order};
 use crate::orders::resetting::Resetting;
+use crate::orders::unit_order::{OrderedUnit, UnitOrder};
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
 use crate::scripts::frame::Frame;
@@ -48,12 +48,12 @@ use crate::values::bounds::Bounds;
 
 pub(crate) mod ai;
 pub(crate) mod ai_data;
-pub(crate) mod ai_order;
 pub(crate) mod error;
 pub(crate) mod next_think;
 pub(crate) mod order;
 pub(crate) mod orders_api;
 pub(crate) mod resetting;
+pub(crate) mod unit_order;
 
 /// The systems of `orders`, for the mode to order its own against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -73,11 +73,14 @@ impl Orders {
     /// units walk their paths and chase their targets. It builds on the core `Units` installs, on
     /// combat and on navigation. Without the core's scripts, as on a client, no unit thinks.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
+        world.init_resource::<PlayerOrders>();
         schedule.add_systems((
-            apply_orders
+            (check_player_orders, apply_player_orders)
+                .chain()
                 .in_set(SimSet::Inputs)
                 .in_set(OrdersSet::Orders)
-                .after(StatsSet::Regenerate),
+                .after(StatsSet::Regenerate)
+                .after(CombatSet::Respawn),
             (follow_paths, chase)
                 .chain()
                 .in_set(SimSet::Act)
@@ -104,145 +107,144 @@ impl Orders {
         Ok(period)
     }
 
-    /// Applies the next order the AI call in `frame` queued, for its unit that thinks.
+    /// Applies the next order the AI call in `frame` queued, for its unit that thinks, which the
+    /// call checked against the units as the phase began; no unit dies within Think.
     pub(crate) fn apply_next(world: &mut World, frame: &mut Frame, _: Tick) {
-        let order = frame.effects.take::<AiOrder>();
+        let order = frame.effects.take::<UnitOrder>();
         let unit = frame
             .acting()
             .expect("an order comes from the unit that thinks");
-        Orders::apply_order(world, unit, order);
-    }
-
-    /// Applies an order the AI call of `unit` queued, which the call checked against the units
-    /// as the phase began; no unit dies within Think. A unit that resets takes none. A move or a
-    /// reset leaves the unit's path until it is told to follow it again.
-    pub(crate) fn apply_order(world: &mut World, unit: StableId, order: AiOrder) {
         let entity = world
             .resource::<EntityIndex>()
             .get(unit)
             .expect("a unit that thinks lives");
-        if world.entity(entity).contains::<Resetting>() {
+        Orders::apply_order(world, entity, order);
+    }
+
+    /// Applies `order`, which its source checked, to the unit of `entity`, as every order
+    /// applies; a unit that resets takes none.
+    pub(crate) fn apply_order(world: &mut World, entity: Entity, order: UnitOrder) {
+        let bounds = *world.resource::<Bounds>();
+        let mut unit = world.entity_mut(entity);
+        if unit.contains::<Resetting>() {
             return;
         }
-        let target = match order {
-            AiOrder::Attack { target } => Some(target),
-            AiOrder::FollowPath | AiOrder::Move { .. } | AiOrder::Reset => None,
+        let (&at, spawn, slots, walker, destination) = unit
+            .get_components_mut::<Ordered>()
+            .expect("an ordered unit stands");
+        let ordered = OrderedUnit {
+            at,
+            spawn: spawn.map(|spawn| spawn.get()),
+            slots,
+            walker,
+            destination,
         };
-        if let Some(mut slots) = world.get_mut::<ActionSlots>(entity) {
-            slots.set_attack_target(target);
-        }
-        let to = match order {
-            AiOrder::Attack { .. } => return,
-            AiOrder::FollowPath => {
-                if let Some(mut walker) = world.get_mut::<PathWalker>(entity) {
-                    walker.rejoin();
-                }
-                return;
-            }
-            AiOrder::Move { to } => {
-                let at = *world.get::<Position>(entity).expect("a unit stands");
-                let to = to.get();
-                world.resource::<Bounds>().ground_point([to.x, to.z], at)
-            }
-            AiOrder::Reset => {
-                world.entity_mut(entity).insert(Resetting);
-                world
-                    .get::<SpawnPoint>(entity)
-                    .expect("the call checked the spawn place")
-                    .get()
-            }
-        };
-        let mut unit = world.entity_mut(entity);
-        if let Some(mut walker) = unit.get_mut::<PathWalker>() {
-            walker.leave();
-        }
-        if let Some(mut destination) = unit.get_mut::<Destination>() {
-            destination.set(Some(to));
+        if order.apply(ordered, &bounds) {
+            unit.insert(Resetting);
         }
     }
 }
 
-/// Makes each order the current one of its unit, in input order, so a later order in the tick
-/// wins. An order to a unit its player does not control, that is dead or resets, is ignored, and so
-/// are a body that is not an order and an attack on a unit that is not a living enemy or that none
-/// of its weapons selects: a client can send anything. A move's point clamps to the bounds, and a
-/// slot's point to the ground within them, at the unit's height. A move
-/// cancels an attack in its windup, and so does an attack on another target. A slot's cast or train
-/// replaces an action not resolved yet, and its checks run in Act; a slot's other kind is ignored.
-fn apply_orders(
+/// The orders the tick's inputs give, in input order, each checked as a player's order needs, for
+/// `apply_player_orders` to apply. Not state: it empties within the tick.
+#[derive(Resource, Debug, Default)]
+struct PlayerOrders(Vec<(Entity, UnitOrder)>);
+
+/// Checks each order the tick's inputs give, in input order, so a later order in the tick wins.
+/// An order to a unit its player does not control, that is dead or resets, is dropped, and so are
+/// a body that is not an order, a move of a unit with nowhere to walk, an attack on a unit that is
+/// not a living enemy or that none of its weapons selects, and a slot's action of a kind other
+/// than a cast or a train: a client can send anything.
+fn check_player_orders(
     inputs: Res<'_, TickInputs>,
-    bounds: Res<'_, Bounds>,
     index: Res<'_, EntityIndex>,
     book: Res<'_, ActionBook>,
     targets: Targets<'_, '_>,
-    mut units: Query<
+    units: Query<
         '_,
         '_,
         (
             &Owner,
-            &Position,
             Option<&Team>,
-            Option<&mut Destination>,
-            Option<&mut ActionSlots>,
+            Has<Destination>,
+            Option<&ActionSlots>,
         ),
         (Without<Dead>, Without<Resetting>),
     >,
+    mut checked: ResMut<'_, PlayerOrders>,
 ) {
     for input in inputs.iter() {
         for body in Command::bodies(input.payload, Order::CAPABILITY) {
             let Some(order) = Order::decode(body) else {
                 continue;
             };
-            let Some(Ok((owner, position, team, destination, slots))) =
-                index.get(order.unit).map(|entity| units.get_mut(entity))
+            let Some(Ok((owner, team, walks, slots))) =
+                index.get(order.unit).map(|entity| units.get(entity))
             else {
                 continue;
             };
             if owner.slot() != input.slot {
                 continue;
             }
-            match order.action {
-                Action::Move { x, z } => {
-                    let Some(mut destination) = destination else {
-                        continue;
-                    };
-                    destination.set(Some(bounds.ground_point([x, z], *position)));
-                    if let Some(mut slots) = slots {
-                        slots.set_attack_target(None);
-                    }
-                }
+            let checked_order = match order.action {
+                Action::Move { x, z } => walks.then_some(UnitOrder::Move { x, z }),
                 Action::Attack { target } => {
                     let selected = team.and_then(|&team| {
                         let unit = targets.enemy(team, target)?;
                         Some((targets.attitude(team, unit.team), unit.tags))
                     });
-                    if let (Some(selected), Some(mut slots)) = (selected, slots)
-                        && book.weapon_for(&slots, Some(selected)).is_some()
-                    {
-                        slots.set_attack_target(Some(target));
-                    }
+                    let armed = slots.is_some_and(|slots| {
+                        selected.is_some() && book.weapon_for(slots, selected).is_some()
+                    });
+                    armed.then_some(UnitOrder::Attack { target })
                 }
                 Action::Slot { slot, target } => {
-                    let Some(mut slots) = slots else {
-                        continue;
-                    };
                     let kind = slots
-                        .slot(slot)
+                        .and_then(|slots| slots.slot(slot))
                         .and_then(|held| book.get(held.action))
                         .map(|action| action.kind.kind());
-                    let target = match target {
-                        ActionTarget::Point(at) => {
-                            let at = at.get();
-                            ActionTarget::Point(bounds.ground_point([at.x, at.z], *position))
+                    match kind {
+                        Some(kind @ (ActionKind::Cast | ActionKind::Train)) => {
+                            Some(UnitOrder::Slot { slot, kind, target })
                         }
-                        target => target,
-                    };
-                    if let Some(kind @ (ActionKind::Cast | ActionKind::Train)) = kind {
-                        slots.order(slot, kind, target);
+                        _ => None,
                     }
                 }
-            }
+            };
+            let entity = index.get(order.unit).expect("a unit the index named");
+            checked.0.extend(checked_order.map(|order| (entity, order)));
         }
+    }
+}
+
+/// The parts of a unit that an order reads and changes.
+type Ordered = (
+    &'static Position,
+    Option<&'static SpawnPoint>,
+    Option<&'static mut ActionSlots>,
+    Option<&'static mut PathWalker>,
+    Option<&'static mut Destination>,
+);
+
+/// Applies the tick's checked player orders, in input order, each as every order applies; a
+/// player orders no reset.
+fn apply_player_orders(
+    bounds: Res<'_, Bounds>,
+    mut checked: ResMut<'_, PlayerOrders>,
+    mut units: Query<'_, '_, Ordered>,
+) {
+    for (entity, order) in checked.0.drain(..) {
+        let (&at, spawn, slots, walker, destination) =
+            units.get_mut(entity).expect("a checked order's unit");
+        let ordered = OrderedUnit {
+            at,
+            spawn: spawn.map(|spawn| spawn.get()),
+            slots,
+            walker,
+            destination,
+        };
+        let resets = order.apply(ordered, &bounds);
+        debug_assert!(!resets, "a player orders no reset");
     }
 }
 

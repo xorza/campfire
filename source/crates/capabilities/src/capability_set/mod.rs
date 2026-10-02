@@ -341,7 +341,7 @@ mod tests {
     use crate::combat::combat_effect::CombatEffect;
     use crate::mode::mode_effect::ModeEffect;
     use crate::orders::ai::Ai;
-    use crate::orders::ai_order::AiOrder;
+    use crate::orders::unit_order::UnitOrder;
     use crate::progression::progression_effect::ProgressionEffect;
     use crate::projectiles::projectile_effect::ProjectileEffect;
     use crate::scripts::effects::Effect;
@@ -457,7 +457,7 @@ mod tests {
             ModifierEffect::CAPABILITY,
             ProjectileEffect::CAPABILITY,
             AreaEffect::CAPABILITY,
-            AiOrder::CAPABILITY,
+            UnitOrder::CAPABILITY,
             ModeEffect::CAPABILITY,
             ProgressionEffect::CAPABILITY,
         ];

@@ -145,7 +145,6 @@ capability_set, books
 ### What is left
 
 - **Action kinds.** Each kind registers its rules: its start check, its windup, and what it does when it resolves. Combat registers the attack kind, abilities the cast and production the train. `start_actions` still names the three kinds.
-- **Orders.** One applier checks and applies each order kind for every source: a player's command, a bot's input and an AI effect. An attack order needs a weapon whose filter selects the target, through `book.weapon_for`. This follows control.md: "players, bots and AI issue the same orders". The path orders (`FollowPath`, `Reset`) are navigation's, above `actions`, so the applier needs a hook for them.
 - **The core row.** `RecentAttack` and the vision and navigation fields leave the core row for their columns.
 - **One table of capabilities.** The install order, `needs`, the layer of each module and the list in `lib.rs` all come from one table in `capability_set`.
 
@@ -338,7 +337,6 @@ A refactor of this size needs a permanent proof that behaviour stays the same. T
 
 | Step | Change | Size |
 |---|---|---|
-| D2 | One order applier for players, bots and AI. The path orders (`FollowPath`, `Reset`) are navigation's, above `actions`, so the applier needs a hook for them. | M |
 | D5 | The core row keeps only the core's fields | S |
 
 Done when the layer test has no exception left.
@@ -369,7 +367,7 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 ### Order
 
 ```
-Track S:  D2 → D5
+Track S:  D5
 
 Track I:  E1 → E2      F2      G1      H1, H4      H2 → H3
 
@@ -484,7 +482,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - `LoadError` path: C2;
   - avatar display name: C2.
 - **R§10:**
-  - two order appliers: B3, final in D2;
   - Mode-stage events: B2;
   - `finish_trains`: B2;
   - `renew` interval: B2;

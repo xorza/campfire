@@ -81,7 +81,6 @@ The rule is "no data in strings": a name from data becomes a checked type where 
 
 One operation is written twice or three times, and the copies disagree.
 
-- [ ] **Player orders and AI orders are applied by two functions** — `capabilities/src/orders/orders_api.rs:70-77`, `orders/mod.rs:118-161,171-246`. The AI's `order_attack` checks its weapon in the script view, and `apply_orders` checks it with `book.weapon_for`: one rule in `Action::arms`, two paths that check and apply it. Better: one function checks and applies each order kind for both sources.
 - [ ] **A live change from a gone source drops to its base** — `capabilities/src/stats/refresh_scratch.rs:120-130`, `stats/mod.rs:495`. The doc says it keeps its last value. The fallback is the value at application, and a gone source resolves to the level-1 base. Better: decide the rule in stats.md, and keep the last value or document the base.
 - [ ] **"A unit as a param source" is built three ways** — `capabilities/src/stats/param_source.rs:38-50`, `stats/param_sources.rs:28-38`, `stats/mod.rs:569-578`. Two treat level and stats as optional, one requires them. Better: one constructor.
 - [ ] **A held and a timed copy of one modifier clash** — `capabilities/src/stats/modifiers.rs:116-146,247-255`, `stats/mod.rs:420-423`. An instance is keyed by (id, source) with one `held` flag, so one of the two is lost, and a self-applied copy of a passive's id makes the passive expire. Better: an instance that ends only when both its hold and its timer end.

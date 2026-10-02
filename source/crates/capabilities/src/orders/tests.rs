@@ -8,6 +8,7 @@ use campfire_sim::{Capability, IdAllocator, SimUpdate, TickInput, TypeHash};
 
 use super::*;
 use crate::actions::action_book::internals::{self, TestWeapon};
+use crate::actions::action_slots::ActionTarget;
 use crate::actions::slot_kind::SlotKind;
 use crate::capability_set::internals::TestMatch;
 use crate::combat::armed::Armed;
@@ -1115,6 +1116,20 @@ fn on_think(ctx, unit) {
     game.think(&[]);
     assert!(!game.get::<PathWalker>(walker).unwrap().left());
     assert_eq!(game.destination(walker), Some(at(4, 0, 0)));
+
+    // A player's move leaves the path too, as every order applies alike: a walker of player 0
+    // on the path, ordered off it, walks there and no longer follows the path.
+    let parts = (
+        game.arm(dummy(10), Team::new(0)),
+        Navigation::walker(meter()),
+        OnPath::new(PathId::new(0)),
+        PathWalker::start(PathEnd::Start),
+        Owner::new(PlayerSlot::new(0)),
+    );
+    let led = game.spawn(at(0, 0, 0), parts);
+    game.tick(&[(0, &move_to(led, -3, 0))]);
+    assert!(game.get::<PathWalker>(led).unwrap().left());
+    assert_eq!(game.destination(led), Some(at(-3, 0, 0)));
 }
 
 #[test]
