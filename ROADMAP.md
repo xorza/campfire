@@ -26,6 +26,7 @@ Done when the 3v3 match plays as before on the model, with no failed call of its
 - Progression: points, the `learn` order and perks ([Progression](design/04-capabilities/progression.md)).
 - Action values and bookkeeping; channels, toggles and `ctx.reveal` ([Actions](design/04-capabilities/actions.md)).
 - Forced movement: dash, knock back, teleport ([Navigation](design/04-capabilities/navigation.md#forced-movement)).
+- Terrain in the map: the cells each layer's map blocks, which routes go round and the pathing grid holds, for walls and the jungle ([Navigation](design/04-capabilities/navigation.md#data)); brush that blocks sight from outside it ([Vision](design/04-capabilities/vision.md#grid-fog-of-war)).
 - The package load refuses a planned name, once no reference package uses one: design 08 accepts a planned name at load, so a script that uses one loads and fails at each call, as Rime's Snow Owl does on `ctx.reveal`.
 - Items for the MOBA: inventory, equipment, the shop, item actions and passives ([Items](design/04-capabilities/items.md)).
 
@@ -43,6 +44,7 @@ Done when a LAN match whose server is killed restores and ends, its log verifyin
 
 - First cuts: `production` (build, gather; the train's cancel, refund, rally points, requirements and supply), region events, `quests` objectives, carry and campaigns, save converters.
 - The RTS skirmish and the RTS mission ([Genre proofs](design/04-capabilities/genres.md#genre-proofs)).
+- `det-ci`: headless matches of each test mode on every OS, comparing their state hashes tick by tick ([Modules](design/02-engine-core.md#modules)).
 
 Done when `det-ci` runs both on every OS with the same hashes.
 
@@ -63,7 +65,7 @@ Done when `det-ci` runs all three on every OS with the same hashes, and the pair
 ### 10. Reference game
 
 - The 3v3 two-lane map, six heroes, about 20 items, structures that fall in order, the neutral objective, whole camps and streak bounties, team-view bots ([Reference MOBA](design/07-reference-moba.md)).
-- The client: interpolation, presentation scripts and events, assets within their limits.
+- The client: interpolation, presentation scripts and events, assets within their limits; areas drawn where they lie and as far as they reach; the mode's and the units' script state sent to each client as each field's `sync` says ([Script state](design/03-game-scripting.md#script-state)).
 - Creator tools: data schemas and hot reload ([Creator tools](design/02-engine-core.md#creator-tools)).
 
 Done when two humans and four bots play a whole 3v3 on LAN to its end, and its log verifies on every OS.

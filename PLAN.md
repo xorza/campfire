@@ -13,22 +13,30 @@ Touches: every capability, the registry, the package loader, the client, the ref
 
 Each step's shape moves into the design when the step lands. Each step ends with the check chain, both goldens and the structure tests ([Structural rules](design/02-engine-core.md#structural-rules)); a step that changes behaviour names the change.
 
-1. **F3: the handles of new deliveries**. After unit script state. Changes behaviour. Size M.
+1. **U1: unit script state** ([Script state](design/03-game-scripting.md#script-state), Unit state). Adds to the script API. Size M.
+   - Today a unit type has no `[state]`, and a unit handle has no `.state`; the registry does not list it even as planned, though design 08 gives it. The action field `projectile_state`, planned, is left from before deliveries were units.
+   - Data: a unit type reads `[state]`, each field a `StateDecl` with its `sync`, in the shape the mode's fields already have, which both then share. The unit types' book holds each type's fields, their defaults and their sync classes. `projectile_state` goes.
+   - State: a unit spawns with its type's defaults; the values of each sync class are a component of their own, registered with a check that refuses values that are not the type's fields, in count or in type.
+   - Script API: `unit.state`, an object indexed by field name, as `m.state` is. A write goes to the call's overlay, a part of the call's frame, which the call reads back and which writes to the unit, and to the view's row, when the call ends, so a later call of the stage reads it.
+   - Load: the unit type checks of data, as the mode's; a script's literal name after `.state` must be a field of the mode, of a modifier of its package or of a unit type the package names, where today the load skips every name after `state`.
+   - Tests: a call reads its own write back, a later call of the stage reads it, and a failed call writes nothing; an undeclared field and a value of another type fail the call; a new unit starts at its defaults; a snapshot restores the values, and a restore refuses another count or type; a flaw for a script's undeclared field and for a default of another type; the reference lists `unit.state`.
+   - No reference unit type declares state yet, so no behaviour changes and the goldens stay. Sending each class to its clients is roadmap stage 10's.
+2. **F3: the handles of new deliveries**. After U1. Changes behaviour. Size M.
    - Today `ctx.projectile` and `ctx.area` take their unit's id only later, so they return `()`, and Cinder's `chain_fire.rhai` cannot use the result.
    - A unit that a call creates takes its id when it is queued, as `spawn_unit` does. Calls run in a stable order, so the ids stay in a stable order. `ctx.projectile` and `ctx.area` return a `Unit` handle that the same call can use, and whose `.state` it writes.
-   - It waits for unit script state, a unit's `[state]` and `unit.state`, which the API does not have yet: a handle alone gives a script nothing to use.
-2. **N1: scripts compile in strict variables mode** ([Engine enums](design/08-script-api.md#engine-enums), Strict variables). Changes behaviour. Size S.
+   - It waits for U1: a handle alone gives a script nothing to use.
+3. **N1: scripts compile in strict variables mode** ([Engine enums](design/08-script-api.md#engine-enums), Strict variables). Changes behaviour. Size S.
    - Today a script compiles with a variable that nothing defines, and fails only when that line runs: a typo is a script error in a match, not a load error.
    - `ScriptHost` sets Rhai's strict variables mode. A script that reads a variable before any `let`, `const`, parameter or loop defines it fails the load as a compile error.
    - Tests: a flaw for an undefined variable in a hook, and one in a function of the script; a closure that reads a variable around it still loads.
    - The change of behaviour: such a script fails the load, where its call failed. Reference content that breaks the rule is fixed in the step, and named.
-3. **N2: engine enums** ([Engine enums](design/08-script-api.md#engine-enums)). Changes the script API. Size M.
+4. **N2: engine enums** ([Engine enums](design/08-script-api.md#engine-enums)). Changes the script API. Size M.
    - Today `set_relation` and `spawn_group` take `"hostile"` or `"start"` as strings: a typo in a literal is found only when the call runs, as `UnknownRelation` or `UnknownPathEnd`.
    - The registry gets one builder call for an enum: it binds a static module of constants for the members, records the enum and its members, and the reference lists them. `Relation` and `PathEnd` are the two enums, over `Attitude` and `PathEnd`, each with `named(text)`, `==`, `!=` and `to_string`.
    - `set_relation` and `spawn_group` take the types. The registry marks those arguments as enum arguments; the load refuses a string literal given to one, and a `Module::member` path of no registered enum or member, each a `ScriptProblem` that names the script, the call or path, and the enum.
    - The reference modes pass their markers' `from` param through `PathEnd::named`. No release has shipped, so package API 1.0 changes in place.
    - Tests: a flaw for each refusal (a string literal for an enum argument, an unknown member, an unknown enum module); a call with a member, and with a member from `named`; `named` of a text that names no member fails the call; the reference lists both enums.
-4. **N3: editor definitions** ([Editor definitions](design/08-script-api.md#editor-definitions)). Size S.
+5. **N3: editor definitions** ([Editor definitions](design/08-script-api.md#editor-definitions)). Size S.
    - First, a measure: generate the file once by hand from the engine the registry builds, open the reference scripts with Rhai's VS Code extension, and record what it completes and what it flags: enum members, global functions, signatures, descriptions. The step goes on only if it completes enum members and signatures.
    - `campfire-script` gets a feature that turns on Rhai's `metadata`; only the test that writes the file uses it. Each registration gives its description as the function's doc comment.
    - A test writes `campfire.d.rhai` beside the reference packages, and fails when the checked-in file differs, blessed with `CAMPFIRE_BLESS=1` as the reference is.

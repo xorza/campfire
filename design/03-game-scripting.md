@@ -81,6 +81,14 @@ phase = { type = "string", default = "warmup", sync = "all" }
 round = { type = "int", default = 0, sync = "all" }
 ```
 
+**Unit state.** A unit type's `[state]` declares the fields every unit of it holds, in the same form as the mode's; a projectile or an area is a unit, so a delivery type declares its state the same way, in its unit type, not in its `projectile` or `area` section. Established engines give an object's script values a declared type in the same way: Unreal declares each replicated property of a class with a condition that says who receives it (`COND_OwnerOnly`, `COND_SkipOwner`), and Roblox gives every instance typed attributes; Dota 2's custom games keep such values in Lua tables that nothing checks, which is what declared fields replace.
+
+- **Where it lives.** Each unit holds its values in the order of its type's field names, a component of the core's units; a type with no fields gives its units none. The values are state: hashed, saved and restored, and a restore refuses a unit whose values are not its type's fields, in count or in type.
+- **Reading and writing.** `unit.state.<field>` reads and writes a field of any unit handle, in every role. A write goes to the call's overlay, which the call reads back, and applies to the unit when the call ends, in call order, so a later call of the same stage reads it; a failed call writes nothing. A field the unit's type does not declare fails the call with `UnknownState`, and a value not of the field's type with `WrongStateType`, as on `ctx.state`.
+- **New units.** A unit a call creates starts at its type's defaults; the call's writes to it apply as it spawns ([New units at once](08-script-api.md#rules)).
+- **Sync.** A field's `sync` says which clients receive it: `owner` the player who owns the unit, `team` its team's players, `all` every client that sees the unit, and `none`, the default, no client. The values of each class are a component of their own, so `net` sends each class to its clients as it sends the unit's other components.
+- **Checks.** The load checks a unit type's fields as the mode's: declared names, and a `default` of the field's type. A literal name a script reads or writes after `.state` must be a field the mode, a modifier of the script's package, or a unit type the package names declares, so a misspelled field fails the load; the handle a script holds has no type the load knows, so a field of the wrong unit type fails only its call.
+
 Effects a call queues apply after it returns: after `ctx.damage(...)`, the target's health changes only once the call ends. A failed call changes nothing; see [Scripting](02-engine-core.md#scripting).
 
 ## Numbers
