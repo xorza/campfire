@@ -3,6 +3,7 @@ use campfire_sim::{Capability, Position, StableId};
 
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::actions_column::ActionsColumn;
+use crate::combat::combat_column::CombatColumn;
 use crate::mode::choice_book::Choice;
 use crate::mode::game_map::GameMap;
 use crate::mode::group_unit::GroupUnit;
@@ -661,7 +662,7 @@ impl ModeApi {
         if row.alive {
             return Err(ApiError::RespawnAlive.fail().into());
         }
-        if !row.stays {
+        if !CombatColumn::stays(unit) {
             return Err(ApiError::RespawnDespawns.fail().into());
         }
         let ticks = ctx.view().ticks(ms)?;

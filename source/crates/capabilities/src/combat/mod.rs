@@ -15,7 +15,7 @@ use crate::actions::rank_values::RankValues;
 use crate::actions::targets::Targets;
 use crate::actions::weapon::Weapon;
 use crate::actions::{Actions, ActionsSet};
-use crate::combat::attacks_column::AttacksColumn;
+use crate::combat::combat_column::CombatColumn;
 use crate::combat::combat_event::CombatEvent;
 use crate::combat::combat_events::CombatEvents;
 use crate::combat::damage::{Damage, DamageCause};
@@ -58,9 +58,9 @@ use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
 
 pub(crate) mod assist_window;
-pub(crate) mod attacks_column;
 pub(crate) mod combat_api;
 pub(crate) mod combat_bindings;
+pub(crate) mod combat_column;
 pub(crate) mod combat_data;
 pub(crate) mod combat_effect;
 pub(crate) mod combat_event;
@@ -121,7 +121,7 @@ impl Combat {
     /// go, after the Mode stage saw them.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         let view = world.non_send::<View>();
-        view.add_column(AttacksColumn::default());
+        view.add_column(CombatColumn::default());
         view.add_source(fill_row);
         world.insert_resource(PassQueue::default());
         world.insert_resource(Shots::default());
@@ -205,19 +205,20 @@ impl Combat {
     }
 }
 
-/// Fills a row of the script view with what combat holds: whether the unit lives, whether it may
-/// be a target, whether it stays when dead, and who struck it recently.
+/// Fills a row of the script view with what combat holds: whether the unit lives and whether it
+/// may be a target, in the core's row; whether it stays when dead, and who struck it recently, in
+/// combat's column.
 fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
     let alive = !unit.contains::<Dead>();
     fill.row.alive = alive;
-    fill.row.stays = unit.get::<OnDeath>() == Some(&OnDeath::Stay);
     fill.row.targetable = alive
         && fill.world.get_resource::<LifePool>().is_some_and(|life| {
             Targets::targetable(unit.get::<Pools>(), unit.get::<UnitTags>(), life.0)
         });
+    let stays = unit.get::<OnDeath>() == Some(&OnDeath::Stay);
     let recent = unit.get::<RecentAttackers>();
-    fill.column::<AttacksColumn>()
-        .push(recent.into_iter().flat_map(RecentAttackers::iter));
+    fill.column::<CombatColumn>()
+        .push(stays, recent.into_iter().flat_map(RecentAttackers::iter));
 }
 
 /// Starts each unit's attack on its attack target, in Act, when it has nothing under way: with

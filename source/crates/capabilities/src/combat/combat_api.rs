@@ -4,7 +4,7 @@ use campfire_sim::Capability;
 
 use crate::actions::action_data_field::ActionDataField;
 use crate::actions::actions_column::ActionsColumn;
-use crate::combat::attacks_column::AttacksColumn;
+use crate::combat::combat_column::CombatColumn;
 use crate::combat::combat_effect::CombatEffect;
 use crate::combat::damage_handle::DamageHandle;
 use crate::combat::heal_handle::HealHandle;
@@ -134,7 +134,7 @@ impl CombatApi {
         )
         .capability(Capability::Combat);
         api.bind(recent_attackers, |unit: &mut Unit, ms: INT| {
-            AttacksColumn::recent_attackers(unit, ms)
+            CombatColumn::recent_attackers(unit, ms)
         });
     }
 

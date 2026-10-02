@@ -102,7 +102,6 @@ impl ScriptView {
                 radius: Body::radius_of(unit.get::<Body>()),
                 spawn: unit.get::<SpawnPoint>().map(|spawn| spawn.get()),
                 alive: true,
-                stays: false,
                 targetable: false,
                 unit_type: unit.get::<UnitType>().copied(),
                 owner: unit.get::<Owner>().map(|owner| owner.slot()),

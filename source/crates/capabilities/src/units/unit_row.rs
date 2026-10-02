@@ -19,10 +19,8 @@ pub(crate) struct UnitRow {
     pub(crate) unit_type: Option<UnitType>,
     /// The player who controls it.
     pub(crate) owner: Option<PlayerSlot>,
-    /// Whether it is not dead; `combat` fills it, and the next three.
+    /// Whether it is not dead; `combat` fills it, and the next.
     pub(crate) alive: bool,
-    /// Whether it stays when dead, for the mode to respawn.
-    pub(crate) stays: bool,
     /// Whether it may be a target: a living unit with the life pool whose tags let it be one, by
     /// the rule `Targets` holds; combat fills it.
     pub(crate) targetable: bool,
