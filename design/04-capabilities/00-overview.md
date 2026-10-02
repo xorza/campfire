@@ -105,7 +105,7 @@ The engine fixes the stages of a tick, and each capability puts its systems into
 | --- | --- | --- |
 | 1 | Inputs | Core: the tick's commands reach the capabilities that own them; modifiers end |
 | 2 | Think | AI `on_think` of the units due this tick issues orders |
-| 3 | Act | Orders and input frames start actions: checks, windups and cast times; path requests |
+| 3 | Act | Orders and input frames start actions: checks, windups and cast times; path requests. Each capability starts the actions of its kind: first combat the attacks, then abilities the casts that orders asked for, last production the trains, in the order of their units' stable ids, as they pay at once |
 | 4 | Move | Steering, the character controller, forced movement |
 | 5 | Collide | Core: the mode's collision backend resolves overlaps within each layer |
 | 6 | Hit | Actions whose time ended deliver: strikes, rays, projectiles, areas; actions resolve with their effects; modifier intervals |
