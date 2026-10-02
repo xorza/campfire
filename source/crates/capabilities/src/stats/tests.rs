@@ -8,7 +8,7 @@ use campfire_sim::{Capability, IdAllocator, SimUpdate, TickRate};
 
 use super::*;
 use crate::capability_set::internals::TestMatch;
-use crate::scripts::match_scripts::internals;
+use crate::scripts::match_scripts;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::modifier_data::ModifierData;
 use crate::stats::modifier_data::{AuraData, Reapply};
@@ -17,6 +17,7 @@ use crate::stats::pool_data::PoolData;
 use crate::stats::pool_id::PoolId;
 use crate::stats::stat::EngineStat;
 use crate::stats::stat::Stat;
+use crate::stats::stat_change::StatChange;
 use crate::stats::stat_id::StatId;
 use crate::stats::stat_op::StatOp;
 use crate::stats::stat_rule::StatRule;
@@ -27,7 +28,9 @@ use crate::units::tag::Tag;
 use crate::units::tag_effects::TagEffects;
 use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
-use crate::values::number::Number;
+use crate::values::number::{Number, ParamRef};
+use crate::values::param::Param;
+use crate::values::ranked::Ranked;
 use crate::values::scalar::Scalar;
 
 /// 30 ticks a second, as the MOBA runs.
@@ -141,6 +144,25 @@ fn unit(game: &mut TestMatch, unit_type: u16) -> Entity {
             Pools::new([(HEALTH, Num::ONE), (MANA, Num::ONE)]).unwrap(),
         ))
         .id()
+}
+
+/// A modifier of no stats, tags, params or times that gives `aura`.
+fn modifier_data(aura: Option<AuraData>) -> ModifierData {
+    ModifierData {
+        script: None,
+        duration_ms: None,
+        interval_ms: None,
+        stacks_expire_ms: None,
+        reapply: Reapply::Refresh,
+        max_stacks: None,
+        stats: BTreeMap::new(),
+        tags: Vec::new(),
+        shield: None,
+        aura,
+        affects: None,
+        params: BTreeMap::new(),
+        state: BTreeMap::new(),
+    }
 }
 
 #[test]
@@ -426,29 +448,45 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
 }
 
 #[test]
-fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
-    let data = |aura: Option<AuraData>| ModifierData {
-        script: None,
-        duration_ms: None,
-        interval_ms: None,
-        stacks_expire_ms: None,
-        reapply: Reapply::Refresh,
-        max_stacks: None,
-        stats: BTreeMap::new(),
-        tags: Vec::new(),
-        shield: None,
-        aura,
-        affects: None,
-        params: BTreeMap::new(),
-        state: BTreeMap::new(),
+fn a_modifier_that_reads_a_param_applies_in_a_match_with_no_scripts() {
+    // Move speed 4, and a modifier whose cut reads its own param of 0.5: it applies, as the
+    // stats read the params from the param book. 4 × 0.5 = 2 m/s, 2 × 2²⁴ ÷ 30 = 1 118 481.07
+    // bits, to 1 118 481.
+    let walker = stats(&[(Stat::Engine(EngineStat::MoveSpeed), num(4), Num::ZERO)]);
+    let mut game = stat_match(&[walker]);
+    let unit = unit(&mut game, 0);
+    game.world.entity_mut(unit).insert(Modifiers::default());
+    let half = Param::Ranked(Ranked::One(Scalar::Decimal(sixteenths(8))));
+    let cut = StatChange {
+        op: StatOp::Cut,
+        value: Number::Param(ParamRef {
+            param: DeclaredName::new("slow").unwrap(),
+        }),
     };
+    let data = ModifierData {
+        stats: BTreeMap::from([(Stat::Engine(EngineStat::MoveSpeed), cut)]),
+        params: BTreeMap::from([(DeclaredName::new("slow").unwrap(), half)]),
+        ..modifier_data(None)
+    };
+    Stats::load_modifier(&mut game.world, 0, "slow", &data, None);
+    let slow = Stats::modifier(&game.world, 0, "slow").unwrap();
+    let target = *game.world.get::<StableId>(unit).unwrap();
+    internals::give_modifier(&mut game.world, target, slow, None, false);
+    game.world.run_schedule(SimUpdate);
+    let step = game.world.get::<MoveStep>(unit).unwrap().get();
+    assert_eq!(step, Num::from_bits(1_118_481));
+}
+
+#[test]
+fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
+    let data = modifier_data;
     let limits = ScriptLimits {
         per_call: 10_000,
         player: 10_000,
         think: 10_000,
         mode: 10_000,
     };
-    let scripts = internals::bare(limits, 1);
+    let scripts = match_scripts::internals::bare(limits, 1);
     let mut game = TestMatch::new(&[Capability::Stats], RATE, Some(scripts));
     let book = StatBook::new(&rules(), [], RATE, num(6));
     Stats::load(&mut game.world, book, PoolBook::default());

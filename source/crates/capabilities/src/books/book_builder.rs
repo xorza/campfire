@@ -22,7 +22,7 @@ use crate::progression::track_book::TrackBook;
 use crate::progression::track_id::TrackId;
 use crate::progression::track_set::TrackSet;
 use crate::projectiles::projectile_spec::ProjectileSpec;
-use crate::stats::modifier_book::{ModifierBook, ModifierId};
+use crate::stats::modifier_book::{ModifierBook, ModifierId, ModifierLoad, PackageModifier};
 use crate::stats::param_table::ParamTable;
 use crate::stats::pool_id::PoolId;
 use crate::stats::stat::Stat;
@@ -82,7 +82,7 @@ impl<'a> BookBuilder<'a> {
             self.books.tracks = Some(TrackBook::new(&input.data.tracks));
         }
         for (index, package) in (0..).zip(&input.packages) {
-            self.modifiers(index, package);
+            self.modifiers(index, package)?;
         }
         let loadout_ranks = input.data.loadout_ranks();
         for (index, package) in (0..).zip(&input.packages) {
@@ -131,23 +131,39 @@ impl<'a> BookBuilder<'a> {
     }
 
     /// The modifiers of the package at `index`, by name.
-    fn modifiers(&mut self, index: u16, package: &BookPackage<'_>) {
-        for (name, data) in &package.content.modifiers {
-            let script = data.script.as_ref().map(|path| self.script(index, path));
-            let books = &mut self.books;
-            let id = books.modifiers.load(
-                self.input.scripts,
-                &mut books.types,
-                index,
-                name.as_str(),
+    fn modifiers(&mut self, index: u16, package: &BookPackage<'_>) -> Result<(), BookError> {
+        let modifiers: Vec<PackageModifier<'_>> = package
+            .content
+            .modifiers
+            .iter()
+            .map(|(name, data)| PackageModifier {
+                name,
                 data,
-                script,
-            );
-            let run = books
-                .modifier_params
-                .push(&data.params, |stat| self.input.stat(stat));
-            debug_assert_eq!(run, id.index(), "one run of params per modifier");
+                script: data.script.as_ref().map(|path| self.script(index, path)),
+            })
+            .collect();
+        let input = self.input;
+        let books = &mut self.books;
+        let load = ModifierLoad {
+            scripts: input.scripts,
+            types: &mut books.types,
+            stat: |stat: &Stat| input.stat(stat),
+            rate: input.rate,
+        };
+        books
+            .modifiers
+            .load(load, index, &modifiers)
+            .map_err(|error| BookError::Modifier {
+                package: index,
+                modifier: error.modifier.to_string(),
+                problem: error.problem,
+            })?;
+        for modifier in &modifiers {
+            books
+                .params
+                .push_modifier(&modifier.data.params, |stat| input.stat(stat));
         }
+        Ok(())
     }
 
     /// The actions of the package at `index`, each with the ranks `ranks` gives it, 1 when it
@@ -184,7 +200,7 @@ impl<'a> BookBuilder<'a> {
             types: &self.books.types,
             modifiers: &self.books.modifiers,
             tracks: self.books.tracks.as_ref(),
-            params: &self.books.action_params,
+            params: &self.books.params.actions,
             action: None,
             package: index,
         };
@@ -201,8 +217,8 @@ impl<'a> BookBuilder<'a> {
             .actions
             .load(self.input.scripts, index, data, script, parts);
         let run = books
-            .action_params
-            .push(&data.params, |stat| self.input.stat(stat));
+            .params
+            .push_action(&data.params, |stat| self.input.stat(stat));
         debug_assert_eq!(run, action.index(), "one run of params per ability");
         let delivery = books.actions.get(action).and_then(|held| held.delivery);
         books.abilities.push(AbilityName {
@@ -215,7 +231,7 @@ impl<'a> BookBuilder<'a> {
                 types: &books.types,
                 modifiers: &books.modifiers,
                 tracks: books.tracks.as_ref(),
-                params: &books.action_params,
+                params: &books.params.actions,
                 action: Some(action),
                 package: index,
             };

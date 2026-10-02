@@ -273,10 +273,9 @@ pub(crate) mod internals {
     use crate::actions::action_data::ActionData;
     use crate::combat::damage_kind::DamageKind;
     use crate::progression::track_id::TrackId;
-    use crate::scripts::ctx::Ctx;
-    use crate::scripts::frame::Frame;
     use crate::stats::Stats;
     use crate::stats::modifier_book::ModifierId;
+    use crate::stats::param_book::ParamBook;
     use crate::stats::pool_id::PoolId;
     use crate::units::script_view::View;
     use crate::values::declared_name::DeclaredName;
@@ -287,37 +286,34 @@ pub(crate) mod internals {
         /// package load checked: each name resolved to its id, each param to its place among the
         /// action's params.
         pub fn load_effects(world: &mut World, action: ActionId, package: u16, data: &ActionData) {
-            let ctx = world.non_send::<Ctx>().clone();
-            let lists = {
-                let frame = ctx.frame();
-                let names = MatchEffectNames {
-                    world,
-                    view: ctx.view(),
-                    frame: &frame,
-                    action,
-                    package,
-                };
-                Listed::lists_of(data, &names)
+            let view = world.non_send::<View>().clone();
+            let names = MatchEffectNames {
+                world,
+                view: &view,
+                action,
+                package,
             };
+            let lists = Listed::lists_of(data, &names);
             world.resource_mut::<EffectLists>().push(action, lists);
         }
     }
 
-    /// The names of an action's effect lists as a match's world resolves them: its view, the frame
-    /// that holds the action's params, and the modifiers of the action's package.
+    /// The names of an action's effect lists as a match's world resolves them: its view, its param
+    /// book, and the modifiers of the action's package.
     #[derive(Debug)]
     struct MatchEffectNames<'w> {
         world: &'w World,
         view: &'w View,
-        frame: &'w Frame,
         action: ActionId,
         package: u16,
     }
 
     impl EffectNames for MatchEffectNames<'_> {
         fn param(&self, name: &DeclaredName) -> usize {
-            self.frame
-                .find_param(self.action, name.as_str())
+            self.world
+                .resource::<ParamBook>()
+                .actions()
+                .find(self.action.index(), name.as_str())
                 .expect("the load checked an effect's param")
         }
 

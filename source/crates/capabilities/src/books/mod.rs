@@ -17,7 +17,7 @@ use crate::progression::track_book::TrackBook;
 use crate::projectiles::projectile_spec::ProjectileSpec;
 use crate::scripts::ctx::Ctx;
 use crate::stats::modifier_book::ModifierBook;
-use crate::stats::param_table::ParamTable;
+use crate::stats::param_book::{ParamBook, ParamTables};
 use crate::units::by_type::ByType;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_types::UnitTypes;
@@ -45,9 +45,9 @@ pub(crate) struct BookParts {
     types: UnitTypes,
     tracks: Option<TrackBook>,
     modifiers: ModifierBook,
-    modifier_params: ParamTable,
     actions: ActionBook,
-    action_params: ParamTable,
+    /// Every action's and modifier's params.
+    params: ParamTables,
     /// Each action's name and how it delivers, by action id.
     abilities: Vec<AbilityName>,
     effects: EffectLists,
@@ -119,10 +119,9 @@ impl Books {
         for info in parts.modifiers.infos() {
             view.add_modifier(info);
         }
-        {
-            let mut frame = ctx.frame();
-            frame.set_params(parts.action_params, parts.modifier_params);
-        }
+        let params = ParamBook::new(parts.params);
+        ctx.frame().set_params(params.clone());
+        world.insert_resource(params);
         if let Some(tracks) = parts.tracks {
             view.set_track_names(tracks.names());
             world.insert_resource(tracks);

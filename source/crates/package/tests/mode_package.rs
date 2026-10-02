@@ -5,7 +5,8 @@ use std::path::Path;
 
 use campfire_capabilities::{
     ActionError, ActionField, ActionKind, AiError, EffectData, EffectTo, Effecting, EngineTag,
-    Hook, MapProblem, ModeError, NameKind, Number, PlannedEffect, Scalar, SyncTo, UnitKitError,
+    Hook, MapProblem, ModeError, ModifierProblem, NameKind, Number, PlannedEffect, Scalar, SyncTo,
+    UnitKitError,
 };
 use campfire_package::{
     ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem, EffectProblem, Limit, LoadError,
@@ -221,7 +222,7 @@ fn more_tracks_than_a_unit_holds_fail_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 181] = [
+const FLAWS: [Flaw; 183] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -1121,6 +1122,23 @@ const FLAWS: [Flaw; 181] = [
         ),
         "hero-husk",
         |problem| matches!(problem, LoadProblem::Action { action, error: ActionError::TimeTooLarge } if action.as_str() == "lash_out"),
+    ),
+    flaw(
+        HUSK,
+        Edit::Replace(
+            "[modifiers.withered]\nduration_ms = 3000",
+            "[modifiers.withered]\nduration_ms = -1",
+        ),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::Modifier { modifier, problem: ModifierProblem::Time } if modifier == "withered"),
+    ),
+    // A stat change past what a number holds: 9 × 10¹² is past 2³⁹, as a number has 24 bits
+    // of fraction in 64.
+    flaw(
+        HUSK,
+        Edit::Replace("magic_resist = -15 }", "magic_resist = -9000000000000 }"),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::Modifier { modifier, problem: ModifierProblem::Overflow } if modifier == "withered"),
     ),
     flaw(
         CINDER,

@@ -4,6 +4,7 @@ use std::fmt;
 use crate::actions::error::ActionError;
 use crate::mode::error::UnitKitError;
 use crate::orders::error::AiError;
+use crate::stats::error::ModifierProblem;
 
 /// What the package load did not check and a match's books cannot hold: each in the package at
 /// its place among the match's packages, the mode's 0.
@@ -27,6 +28,12 @@ pub enum BookError {
         action: String,
         error: ActionError,
     },
+    /// The modifier, by its name in its package, does not load.
+    Modifier {
+        package: u16,
+        modifier: String,
+        problem: ModifierProblem,
+    },
     /// A time of the area type does not count in ticks.
     AreaTime { package: u16, unit_type: String },
 }
@@ -41,6 +48,9 @@ impl fmt::Display for BookError {
                 unit_type, error, ..
             } => write!(f, "unit type {unit_type}: {error}"),
             BookError::Action { action, error, .. } => write!(f, "action {action}: {error}"),
+            BookError::Modifier {
+                modifier, problem, ..
+            } => write!(f, "modifier {modifier}: {problem}"),
             BookError::AreaTime { unit_type, .. } => {
                 write!(
                     f,

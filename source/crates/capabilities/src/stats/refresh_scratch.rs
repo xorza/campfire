@@ -2,9 +2,9 @@ use bevy_ecs::entity::Entity;
 use campfire_math::Num;
 use campfire_sim::StableId;
 
-use crate::scripts::frame::Frame;
 use crate::stats::live_param::LiveParam;
 use crate::stats::modifiers::Modifiers;
+use crate::stats::param_book::ParamBook;
 use crate::stats::param_source::ParamSource;
 use crate::stats::stat_book::StatBook;
 use crate::stats::stat_id::StatId;
@@ -99,13 +99,13 @@ impl RefreshScratch {
     }
 
     /// Computes every unit's values, each stat for every unit in `book`'s order: first its live
-    /// changes, each `frame`'s live param of its source, a refreshing unit as computed so far or
+    /// changes, each live param of its source in `params`, a refreshing unit as computed so far or
     /// another as `other` gives it, its fallback when it does not resolve; then the stat's value
     /// from its totals.
     pub(crate) fn compute<'q>(
         &mut self,
         book: &StatBook,
-        frame: Option<&Frame>,
+        params: &ParamBook,
         other: impl Fn(StableId) -> Option<ParamSource<'q>>,
     ) {
         let count = usize::from(book.len());
@@ -126,8 +126,8 @@ impl RefreshScratch {
                     let values = &self.values[at * count..(at + 1) * count];
                     Some(ParamSource::new(book, unit.unit_type, unit.level, values))
                 });
-                let value = frame
-                    .and_then(|frame| frame.live_value(term.live, term.rank, source.as_ref()))
+                let value = params
+                    .live_value(term.live, term.rank, source.as_ref())
                     .unwrap_or(term.fallback);
                 let change = i128::from(value.to_bits()) * i128::from(term.stacks);
                 let at = term.unit as usize * count + stat.index();

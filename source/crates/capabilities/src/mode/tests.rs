@@ -52,6 +52,7 @@ use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::scripts::state_decl::{StateDecl, StateDefault, StateType};
 use crate::scripts::state_value::StateValue;
+use crate::stats;
 use crate::stats::level::Level;
 use crate::stats::modifier_book::ModifierId;
 use crate::stats::modifier_data::{ModifierData, Reapply};
@@ -696,6 +697,9 @@ impl Game {
         let (x, y) = (load("hero-x", "avatar"), load("hero-y", "avatar"));
         // A type outside the mode's kits, as a projectile's is: the view knows it, a spawn does not.
         load("bolt", "projectile");
+        // The stats first, as a match's books know them before any action or modifier; the mode's
+        // books give the full book at install.
+        stats::internals::load_stats(&mut world, &files.data.stats, RATE);
         let blink = blink_data();
         // A spell has one rank; hero X's ability, 2.
         let strike = Actions::load(&mut world, 0, "strike", &blink, None, 2).unwrap();

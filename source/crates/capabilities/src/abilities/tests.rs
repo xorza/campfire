@@ -41,6 +41,7 @@ use crate::scripts::match_scripts::MatchScripts;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::{ScriptFailure, ScriptFailures};
 use crate::scripts::script_limits::ScriptLimits;
+use crate::stats;
 use crate::stats::Stats;
 use crate::stats::level::Level;
 use crate::stats::modifier_book::{Applier, ModifierBook};
@@ -266,6 +267,12 @@ impl Match {
         Match { world, registry }
     }
 
+    /// Gives the match a stat book of the stats the scaling params name, with no unit type.
+    fn load_stats(&mut self) {
+        let rules = scaling_stats().map(|stat| (stat, StatRule::default()));
+        stats::internals::load_stats(&mut self.world, &BTreeMap::from(rules), RATE);
+    }
+
     /// Loads `data` as the action `name` of package 0, of 5 ranks, with its script `source`.
     fn load(&mut self, name: &str, data: &ActionData, source: &str) -> ActionId {
         let script = Units::compile(&mut self.world, source).unwrap();
@@ -401,6 +408,7 @@ impl Match {
 #[test]
 fn damage_of_a_kind_the_mode_does_not_declare_fails_the_cast() {
     let mut game = Match::new();
+    game.load_stats();
     let fire = game.load(
         "fire",
         &lash_out(),
@@ -425,6 +433,7 @@ fn damage_of_a_kind_the_mode_does_not_declare_fails_the_cast() {
 #[test]
 fn lash_out_hits_every_enemy_within_its_radius_exactly() {
     let mut game = Match::new();
+    game.load_stats();
     // Strike's one param name comes first in the frame, so Lash Out's three follow from the
     // second.
     game.load("strike", &strike(), STRIKE);
@@ -838,6 +847,7 @@ fn a_cast_draws_from_its_casters_player_pool() {
 #[test]
 fn an_ability_loads_only_when_its_data_holds() {
     let mut game = Match::new();
+    game.load_stats();
     let load = |game: &mut Match, data: &ActionData, source: &str| {
         let script = Units::compile(&mut game.world, source).unwrap();
         Actions::load(&mut game.world, 0, "lash_out", data, Some(script), 5)
@@ -964,8 +974,7 @@ fn a_unit_target_is_one_its_filter_selects_tag_and_all() {
 fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
     let mut game = Match::with(LIMITS, &declared);
-    let stats = StatBook::new(&BTreeMap::new(), [], RATE, num(6));
-    Stats::load(&mut game.world, stats, PoolBook::default());
+    game.load_stats();
     // A guard whose shield is Lash Out's damage at its rank: 75, then 100.
     let guard = ModifierData {
         script: None,
@@ -1027,8 +1036,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     // A weapon's passive holds as well, in a match with no abilities: a ward of 40 from its
     // first tick.
     let mut game = Match::with(LIMITS, &[Capability::Stats, Capability::Combat]);
-    let stats = StatBook::new(&BTreeMap::new(), [], RATE, num(6));
-    Stats::load(&mut game.world, stats, PoolBook::default());
+    game.load_stats();
     let ward = ModifierData {
         shield: Some(int(40)),
         ..guard
@@ -1067,8 +1075,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
 fn a_cast_applies_a_modifier_from_its_caster_with_its_abilitys_params() {
     let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
     let mut game = Match::with(LIMITS, &declared);
-    let stats = StatBook::new(&BTreeMap::new(), [], RATE, num(6));
-    Stats::load(&mut game.world, stats, PoolBook::default());
+    game.load_stats();
     let mark = ModifierData {
         script: None,
         duration_ms: Some(int(1000)),
@@ -1144,8 +1151,7 @@ fn on_resolve(ctx, caster, target) {
 fn stun_run() -> Vec<(StateHash, bool)> {
     let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
     let mut game = Match::with(LIMITS, &declared);
-    let stats = StatBook::new(&BTreeMap::new(), [], RATE, num(6));
-    Stats::load(&mut game.world, stats, PoolBook::default());
+    game.load_stats();
     let stun = ModifierData {
         script: None,
         tags: vec![DeclaredName::new("stunned").unwrap()],
@@ -1206,6 +1212,7 @@ fn a_stun_a_script_applies_blocks_its_target_alike_in_every_run() {
 #[test]
 fn a_cast_heals_and_restores_and_a_negative_amount_fails_it() {
     let mut game = Match::new();
+    game.load_stats();
     let mender = "
 fn on_resolve(ctx, caster, target) {
     ctx.heal(caster, 30);
@@ -1224,6 +1231,7 @@ fn on_resolve(ctx, caster, target) {
     assert_eq!((game.health(caster), game.pool(caster)), (70, 35));
 
     let mut game = Match::new();
+    game.load_stats();
     let negative = "fn on_resolve(ctx, caster, target) { ctx.restore(caster, \"mana\", 5); ctx.heal(caster, -1); }";
     let ability = game.load("lash_out", &lash_out(), negative);
     let caster = game.caster(ability, 1);
@@ -1272,8 +1280,7 @@ impl Match {
     fn with_modifiers(source: &str, modifiers: &[(&str, ModifierData)]) -> Match {
         let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
         let mut game = Match::with(LIMITS, &declared);
-        let stats = StatBook::new(&BTreeMap::new(), [], RATE, num(6));
-        Stats::load(&mut game.world, stats, PoolBook::default());
+        game.load_stats();
         let script = Units::compile(&mut game.world, source).unwrap();
         let mut sorted = modifiers.to_vec();
         sorted.sort_by(|a, b| a.0.cmp(b.0));
@@ -1302,8 +1309,7 @@ impl Match {
             id,
             duration: None,
         };
-        let ctx = self.world.non_send::<Ctx>().clone();
-        Stats::apply_effect(&mut self.world, add, applier, Some(&ctx.frame()));
+        Stats::apply_effect(&mut self.world, add, applier);
     }
 
     /// Each failed call of the tick: the unit it ran for and its hook.
@@ -1714,8 +1720,7 @@ fn a_delivery_hook_reads_its_projectile_and_the_unit_its_cast_aimed_at() {
     // The damage the hook deals carries the bolt's hit, which the target's `watch` reads, and
     // answers with 1 damage to its source: the hit's target, the unit the cast aimed at, after
     // 3 m flown.
-    let stats = StatBook::new(&BTreeMap::new(), [], RATE, num(6));
-    Stats::load(&mut game.world, stats, PoolBook::default());
+    game.load_stats();
     let watch = r#"
         fn on_damage_taken(ctx, m, d) {
             if d.hit == () || d.hit.target != m.carrier || d.hit.distance != 3 {
@@ -1878,8 +1883,7 @@ fn fan_of_frost_from_data_alone_hits_exactly_the_units_in_reach() {
             Capability::Projectiles,
         ],
     );
-    let stats = StatBook::new(&BTreeMap::new(), [], RATE, num(6));
-    Stats::load(&mut game.world, stats, PoolBook::default());
+    game.load_stats();
     let chilled = ModifierData {
         duration_ms: Some(int(2000)),
         ..scripted(None, &[])

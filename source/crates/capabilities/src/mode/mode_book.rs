@@ -27,7 +27,6 @@ use crate::navigation::path_walker::{PathEnd, PathWalker};
 use crate::navigation::paths::Paths;
 use crate::production::train_queue::TrainQueue;
 use crate::progression::experience::Experience;
-use crate::scripts::frame::Frame;
 use crate::scripts::script_book::ScriptBook;
 use crate::stats::Stats;
 use crate::stats::level::Level;
@@ -183,23 +182,16 @@ impl ModeBook {
         world: &mut World,
         at: SpawnAt,
         owner: Option<PlayerSlot>,
-        frame: Option<&Frame>,
     ) -> Entity {
         match owner {
-            Some(slot) => self.spawn(world, at, Owner::new(slot), frame),
-            None => self.spawn(world, at, (), frame),
+            Some(slot) => self.spawn(world, at, Owner::new(slot)),
+            None => self.spawn(world, at, ()),
         }
     }
 
     /// Spawns `at`, with its kit, its actions, each at the first rank of its kind, its passive,
-    /// whose params read through `frame` when a call spawned it, and `parts`.
-    pub(crate) fn spawn(
-        &self,
-        world: &mut World,
-        at: SpawnAt,
-        parts: impl Bundle,
-        frame: Option<&Frame>,
-    ) -> Entity {
+    /// and `parts`.
+    pub(crate) fn spawn(&self, world: &mut World, at: SpawnAt, parts: impl Bundle) -> Entity {
         let SpawnAt {
             id,
             unit_type,
@@ -267,7 +259,7 @@ impl ModeBook {
                 id: passive,
                 duration: None,
             };
-            Stats::apply_effect(world, add, applier, frame);
+            Stats::apply_effect(world, add, applier);
         }
         entity
     }
@@ -281,7 +273,6 @@ impl ModeBook {
         path: PathId,
         from: PathEnd,
         units: &[GroupUnit],
-        frame: &Frame,
     ) {
         let pos = world
             .resource::<Paths>()
@@ -295,7 +286,7 @@ impl ModeBook {
                 team,
                 pos,
             };
-            self.spawn(world, at, walker, Some(frame));
+            self.spawn(world, at, walker);
         }
     }
 

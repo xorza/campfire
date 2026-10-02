@@ -5,7 +5,7 @@ use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, Changed, Has, Or, With, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
-use bevy_ecs::system::{Commands, Local, NonSend, ParamSet, Query, Res};
+use bevy_ecs::system::{Commands, Local, ParamSet, Query, Res};
 use bevy_ecs::world::{EntityRef, World};
 use campfire_math::Num;
 use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, Tick, Ticks};
@@ -23,7 +23,9 @@ use crate::stats::modifier_book::{Applier, ModifierBook, ModifierId};
 use crate::stats::modifier_effect::ModifierEffect;
 use crate::stats::modifier_handle::ModifierHandle;
 use crate::stats::modifier_hooks::ModifierHooks;
+use crate::stats::modifier_spec::ParamPlace;
 use crate::stats::modifiers::Modifiers;
+use crate::stats::param_book::ParamBook;
 use crate::stats::param_source::ParamSource;
 use crate::stats::param_sources::ParamSources;
 use crate::stats::player_modifiers::{PlayerModifier, PlayerModifiers};
@@ -43,6 +45,7 @@ use crate::units::unit_type::UnitType;
 use crate::values::attitude::Attitude;
 use crate::values::metric::Metric;
 
+pub(crate) mod error;
 pub(crate) mod held_modifiers;
 pub(crate) mod level;
 pub(crate) mod live_param;
@@ -52,7 +55,9 @@ pub(crate) mod modifier_data;
 pub(crate) mod modifier_effect;
 pub(crate) mod modifier_handle;
 pub(crate) mod modifier_hooks;
+pub(crate) mod modifier_spec;
 pub(crate) mod modifiers;
+pub(crate) mod param_book;
 pub(crate) mod param_read;
 pub(crate) mod param_source;
 pub(crate) mod param_sources;
@@ -151,7 +156,7 @@ impl Stats {
     }
 
     /// Applies the next modifier effect the call in `frame` queued, from its acting unit and its
-    /// ability at its rank, its params read through `frame`.
+    /// ability at its rank.
     pub(crate) fn apply_next(world: &mut World, frame: &mut Frame, _: Tick) {
         let effect = frame.effects.take::<ModifierEffect>();
         let applier = Applier {
@@ -161,24 +166,19 @@ impl Stats {
             passive: false,
             held: false,
         };
-        Stats::apply_effect(world, effect, applier, Some(frame));
+        Stats::apply_effect(world, effect, applier);
     }
 
     /// Applies `effect`, which a call by `applier` queued. An added modifier's numbers resolve
-    /// now, its params read through `frame`, of its source as it is now; nothing is added to a
+    /// now, its params read from the param book, of its source as it is now; nothing is added to a
     /// dead or gone unit, one that carries no modifiers, or when a number does not resolve.
-    pub(crate) fn apply_effect(
-        world: &mut World,
-        effect: ModifierEffect,
-        applier: Applier,
-        frame: Option<&Frame>,
-    ) {
+    pub(crate) fn apply_effect(world: &mut World, effect: ModifierEffect, applier: Applier) {
         match effect {
             ModifierEffect::Add {
                 target,
                 id,
                 duration,
-            } => Stats::add_modifier(world, target, id, applier, duration, frame),
+            } => Stats::add_modifier(world, target, id, applier, duration),
             ModifierEffect::AddPlayer { player, id } => {
                 let held = PlayerModifier {
                     player,
@@ -200,7 +200,6 @@ impl Stats {
         id: ModifierId,
         applier: Applier,
         duration: Option<Ticks>,
-        frame: Option<&Frame>,
     ) {
         let Some(entity) = world.resource::<EntityIndex>().get(target) else {
             return;
@@ -218,11 +217,13 @@ impl Stats {
         let source = applier
             .source
             .and_then(|source| ParamSource::of(world, source));
-        let param = |name: &str| {
+        let params = world.resource::<ParamBook>();
+        let param = |place: &ParamPlace| {
             let (ability, rank) = (applier.ability, applier.rank);
-            frame?.modifier_param(id, ability, rank, name, source.as_ref())
+            params.modifier_param(id, ability, rank, place, source.as_ref())
         };
-        let Some(application) = book.application(id, applier, duration, now, stats, param) else {
+        let rate = stats.rate();
+        let Some(application) = book.application(id, applier, duration, now, rate, param) else {
             return;
         };
         if let Some(mut modifiers) = world.get_mut::<Modifiers>(entity) {
@@ -296,8 +297,7 @@ fn apply_held(
         Res<'_, PlayerModifiers>,
         Res<'_, HeldModifiers>,
     ),
-    view: Option<NonSend<'_, View>>,
-    abilities: Option<NonSend<'_, Ctx>>,
+    params: Res<'_, ParamBook>,
     sources: ParamSources<'_, '_>,
     relations: Res<'_, Relations>,
     mut units: Query<
@@ -315,9 +315,10 @@ fn apply_held(
     >,
     mut held: Local<'_, Vec<Held>>,
 ) {
-    let (Some(book), Some(stats), Some(view)) = (book, stats, view) else {
+    let (Some(book), Some(stats)) = (book, stats) else {
         return;
     };
+    let rate = stats.rate();
     held.clear();
     held.extend_from_slice(&others.0);
     for (&target, _, _, tags, owner, _) in &units {
@@ -326,10 +327,7 @@ fn apply_held(
         };
         let tags = tags.map_or(TagSet::default(), |tags| tags.tags);
         for modifier in players.of(owner.slot()) {
-            let affects = book.get(modifier).data.affects.as_ref().map(|affects| {
-                view.resolve_filter(affects)
-                    .expect("the load checked the modifier's filter")
-            });
+            let affects = book.get(modifier).spec.affects;
             if affects.is_none_or(|filter| filter.selects(Attitude::Friendly, tags)) {
                 held.push(Held {
                     target,
@@ -344,17 +342,11 @@ fn apply_held(
     for (&source, &at, &team, _, _, modifiers) in &units {
         for instance in modifiers.iter() {
             let (Some(aura), Some(radius)) =
-                (&book.get(instance.id).data.aura, instance.aura_radius)
+                (&book.get(instance.id).spec.aura, instance.aura_radius)
             else {
                 continue;
             };
-            let filter = view
-                .resolve_filter(&aura.affects)
-                .expect("the load checked the aura's filter");
-            let package = book.get(instance.id).package;
-            let modifier = book
-                .find(package, aura.modifier.as_str())
-                .expect("the load checked the aura's modifier");
+            let (filter, modifier) = (aura.affects, aura.modifier);
             for (&target, &pos, &other, tags, _, _) in &units {
                 let tags = tags.map_or(TagSet::default(), |tags| tags.tags);
                 let attitude = relations.between(team, other);
@@ -371,7 +363,6 @@ fn apply_held(
         }
     }
     held.sort_unstable();
-    let frame = abilities.as_ref().map(|ctx| ctx.frame());
     for (&id, _, _, _, _, mut modifiers) in &mut units {
         let first = held.partition_point(|entry| entry.target < id);
         let mine = held[first..].iter().take_while(|entry| entry.target == id);
@@ -394,13 +385,12 @@ fn apply_held(
                 held: true,
             };
             let source = entry.source.and_then(|source| sources.get(source));
-            let param = |name: &str| {
+            let param = |place: &ParamPlace| {
                 let (ability, rank) = (entry.ability, entry.rank);
-                let frame = frame.as_ref()?;
-                frame.modifier_param(entry.modifier, ability, rank, name, source.as_ref())
+                params.modifier_param(entry.modifier, ability, rank, place, source.as_ref())
             };
             let Some(application) =
-                book.application(entry.modifier, applier, None, tick.start(), &stats, param)
+                book.application(entry.modifier, applier, None, tick.start(), rate, param)
             else {
                 continue;
             };
@@ -462,7 +452,7 @@ fn refresh_stats(
         Option<Res<'_, TagBook>>,
         Res<'_, EntityIndex>,
     ),
-    ctx: Option<NonSend<'_, Ctx>>,
+    params: Res<'_, ParamBook>,
     mut commands: Commands<'_, '_>,
     mut units: ParamSet<
         '_,
@@ -533,7 +523,6 @@ fn refresh_stats(
     if scratch.units.is_empty() {
         return;
     }
-    let frame = ctx.as_ref().map(|ctx| ctx.frame());
     let sources = units.p1();
     let other = |id| {
         let (&unit_type, level, stats) = sources.get(index.get(id)?).ok()?;
@@ -544,7 +533,7 @@ fn refresh_stats(
             stats.values(),
         ))
     };
-    scratch.compute(&book, frame.as_deref(), other);
+    scratch.compute(&book, &params, other);
     let count = usize::from(book.len());
     let mut writes = units.p2();
     for (unit, refreshing) in scratch.units.iter().enumerate() {
@@ -599,11 +588,11 @@ pub(crate) mod internals {
     use campfire_sim::{EntityIndex, StableId, TickRate};
 
     use crate::actions::action_book::ActionId;
-    use crate::scripts::ctx::Ctx;
     use crate::stats::Stats;
     use crate::stats::modifier_book::{Applier, ModifierId};
     use crate::stats::modifier_effect::ModifierEffect;
     use crate::stats::modifiers::Modifiers;
+    use crate::stats::param_book::ParamBook;
     use crate::stats::pool_book::PoolBook;
     use crate::stats::stat::Stat;
     use crate::stats::stat_book::StatBook;
@@ -612,9 +601,11 @@ pub(crate) mod internals {
     use campfire_script::ScriptId;
 
     use crate::scripts::script_book::ScriptBook;
-    use crate::stats::modifier_book::ModifierBook;
+    use crate::stats::modifier_book::{ModifierBook, ModifierLoad, PackageModifier};
     use crate::stats::modifier_data::ModifierData;
     use crate::units::script_view::View;
+    use crate::values::declared_name::DeclaredName;
+    use crate::values::param::Param;
 
     impl Stats {
         /// Loads `data` as the modifier `name` of `package`: 0 the mode, then each package it
@@ -627,21 +618,33 @@ pub(crate) mod internals {
             data: &ModifierData,
             script: Option<ScriptId>,
         ) {
-            let id = world.resource_scope(|world, mut book: Mut<'_, ModifierBook>| {
+            let name = DeclaredName::new(name).expect("a modifier's name is a name");
+            world.resource_scope(|world, mut book: Mut<'_, ModifierBook>| {
                 let scripts = world.resource::<ScriptBook>();
                 let view = world.non_send::<View>();
+                let places = StatBook::places(world, data.stats.keys());
                 let mut types = view.types_mut();
-                book.load(scripts, &mut types, package, name, data, script)
+                let load = ModifierLoad {
+                    scripts,
+                    types: &mut types,
+                    stat: |stat: &Stat| places[stat],
+                    rate: *world.resource::<TickRate>(),
+                };
+                let modifier = PackageModifier {
+                    name: &name,
+                    data,
+                    script,
+                };
+                book.load(load, package, &[modifier])
+                    .expect("a test's modifier loads");
             });
-            if let Some(view) = world.get_non_send::<View>() {
-                view.add_modifier(world.resource::<ModifierBook>().get(id).info());
-            }
-            if let (Some(ctx), Some(view)) =
-                (world.get_non_send::<Ctx>(), world.get_non_send::<View>())
-            {
-                let stat = |stat: &Stat| view.stat_index(stat).expect("the load checked the stats");
-                ctx.frame().add_modifier_params(id, &data.params, stat);
-            }
+            let book = world.resource::<ModifierBook>();
+            let id = book
+                .find(package, name.as_str())
+                .expect("the modifier loaded");
+            world.non_send::<View>().add_modifier(book.get(id).info());
+            let places = StatBook::places(world, data.params.values().flat_map(Param::stats));
+            ParamBook::load_modifier(world, id, &data.params, |stat| places[stat]);
         }
 
         /// The modifier `name` of `package`, as `load_modifier` loaded it.
@@ -676,14 +679,12 @@ pub(crate) mod internals {
             passive,
             held: false,
         };
-        let ctx = world.get_non_send::<Ctx>().cloned();
-        let frame = ctx.as_ref().map(Ctx::frame);
         let add = ModifierEffect::Add {
             target,
             id,
             duration: None,
         };
-        Stats::apply_effect(world, add, applier, frame.as_deref());
+        Stats::apply_effect(world, add, applier);
     }
 
     /// The modifiers `unit` carries, each with its source, in their order.

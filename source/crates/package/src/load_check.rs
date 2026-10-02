@@ -156,6 +156,17 @@ impl<'a> LoadCheck<'a> {
                     error,
                 },
             ),
+            BookError::Modifier {
+                package,
+                modifier,
+                problem,
+            } => (
+                package,
+                LoadProblem::Modifier {
+                    modifier: DeclaredName::new(&modifier).expect("a modifier's id is a name"),
+                    problem,
+                },
+            ),
             BookError::AreaTime { package, unit_type } => (
                 package,
                 LoadProblem::Delivery(DeliveryProblem::AreaTime(at(package, unit_type))),

@@ -1,5 +1,4 @@
 use bevy_ecs::world::World;
-use campfire_math::Num;
 use campfire_sim::{Capability, IdAllocator, StableId, Tick};
 
 use crate::actions::action_book::ActionId;
@@ -13,10 +12,9 @@ use crate::scripts::error::CallError;
 use crate::scripts::hook::ScriptRole;
 use crate::scripts::state_value::StateValue;
 use crate::stats::Stats;
-use crate::stats::live_param::{LiveParam, ParamOwner};
 use crate::stats::modifier_book::ModifierId;
 use crate::stats::modifier_handle::ModifierHandle;
-use crate::stats::param_read::ParamRead;
+use crate::stats::param_book::ParamBook;
 use crate::stats::param_source::ParamSource;
 use crate::stats::param_table::ParamTable;
 
@@ -30,10 +28,8 @@ use crate::values::scalar::Scalar;
 /// allocates none of them.
 #[derive(Debug, Default)]
 pub(crate) struct Frame {
-    /// Every loaded ability's params, one run per ability, by ability id; and every loaded
-    /// modifier's, by modifier id.
-    params: ParamTable,
-    modifier_params: ParamTable,
+    /// Every loaded ability's and modifier's params, which the stat engine reads too.
+    params: ParamBook,
     /// The running call's role; none between calls.
     role: Option<ScriptRole>,
     /// Its acting unit: a cast's caster, a modifier's source, the unit that thinks; none for the
@@ -74,10 +70,9 @@ pub(crate) struct Frame {
 }
 
 impl Frame {
-    /// Sets the params of every ability and every modifier, by id, as the load built them.
-    pub(crate) fn set_params(&mut self, abilities: ParamTable, modifiers: ParamTable) {
-        self.params = abilities;
-        self.modifier_params = modifiers;
+    /// Sets the params of every ability and every modifier, as the load built them.
+    pub(crate) fn set_params(&mut self, params: ParamBook) {
+        self.params = params;
     }
 
     pub(crate) const fn role(&self) -> Option<ScriptRole> {
@@ -259,9 +254,9 @@ impl Frame {
             Ok(())
         };
         let run = ability.map(ActionId::index);
-        fill(&mut self.values, &self.params, run)?;
+        fill(&mut self.values, self.params.actions(), run)?;
         let run = modifier.map(ModifierId::index);
-        fill(&mut self.modifier_values, &self.modifier_params, run)
+        fill(&mut self.modifier_values, self.params.modifiers(), run)
     }
 
     /// Applies the effects the call that ran queued, in order, each by its capability, from
@@ -290,110 +285,16 @@ impl Frame {
         self.values[at]
     }
 
-    /// Param `name` a modifier's number reads: `modifier`'s own, then that of `ability`, which
-    /// applied it, at `rank`, of `source`; `None` when neither declares it or it does not resolve.
-    /// A scaling table's is live, read again as its source changes.
-    pub(crate) fn modifier_param(
-        &self,
-        modifier: ModifierId,
-        ability: Option<ActionId>,
-        rank: u8,
-        name: &str,
-        source: Option<&ParamSource<'_>>,
-    ) -> Option<ParamRead> {
-        let own = self
-            .modifier_params
-            .find(modifier.index(), name)
-            .map(|at| (ParamOwner::Modifier(modifier), at));
-        let (owner, at) = own.or_else(|| {
-            let ability = ability?;
-            let at = self.params.find(ability.index(), name)?;
-            Some((ParamOwner::Action(ability), at))
-        })?;
-        let (table, run) = self.table(owner);
-        let value = table.value(run, at, rank, source)?.to_num()?;
-        let live = table.scales(run, at).then(|| LiveParam {
-            owner,
-            at: u16::try_from(at).expect("params fit u16"),
-        });
-        Some(ParamRead { value, live })
-    }
-
-    /// The value of live param `live` at `rank` of `source`.
-    pub(crate) fn live_value(
-        &self,
-        live: LiveParam,
-        rank: u8,
-        source: Option<&ParamSource<'_>>,
-    ) -> Option<Num> {
-        let (table, run) = self.table(live.owner);
-        table
-            .value(run, usize::from(live.at), rank, source)?
-            .to_num()
-    }
-
-    /// The table of `owner`'s params, and its run there.
-    fn table(&self, owner: ParamOwner) -> (&ParamTable, usize) {
-        match owner {
-            ParamOwner::Modifier(modifier) => (&self.modifier_params, modifier.index()),
-            ParamOwner::Action(ability) => (&self.params, ability.index()),
-        }
-    }
-
     /// The running call's param `name`: its modifier's, then its ability's, if either declares
     /// one.
     pub(crate) fn param(&self, name: &str) -> Option<Scalar> {
         let own = self.modifier.and_then(|modifier| {
-            let at = self.modifier_params.find(modifier.index(), name)?;
+            let at = self.params.modifiers().find(modifier.index(), name)?;
             Some(self.modifier_values[at])
         });
         own.or_else(|| {
-            let at = self.params.find(self.ability?.index(), name)?;
+            let at = self.params.actions().find(self.ability?.index(), name)?;
             Some(self.values[at])
         })
-    }
-}
-
-#[cfg(any(test, feature = "internals"))]
-pub(crate) mod internals {
-    use crate::actions::action_book::ActionId;
-    use crate::scripts::frame::Frame;
-    use crate::stats::modifier_book::ModifierId;
-    use crate::stats::stat::Stat;
-    use crate::stats::stat_id::StatId;
-    use crate::values::declared_name::DeclaredName;
-    use crate::values::param::Param;
-    use std::collections::BTreeMap;
-
-    impl Frame {
-        /// Adds the params of `ability`, the one the book loads next, each stat at its place `stat`
-        /// gives.
-        pub(crate) fn add_params(
-            &mut self,
-            ability: ActionId,
-            params: &BTreeMap<DeclaredName, Param>,
-            stat: impl Fn(&Stat) -> StatId,
-        ) {
-            let run = self.params.push(params, stat);
-            debug_assert_eq!(run, ability.index(), "one run of params per ability");
-        }
-
-        /// Adds the params of `modifier`, the one the book loaded last, each stat at its place
-        /// `stat` gives.
-        pub(crate) fn add_modifier_params(
-            &mut self,
-            modifier: ModifierId,
-            params: &BTreeMap<DeclaredName, Param>,
-            stat: impl Fn(&Stat) -> StatId,
-        ) {
-            let run = self.modifier_params.push(params, stat);
-            debug_assert_eq!(run, modifier.index(), "one run of params per modifier");
-        }
-
-        /// The place of param `name` among the params of `ability`, which the frame holds at a call's
-        /// rank; `None` when the ability declares none of that name.
-        pub(crate) fn find_param(&self, ability: ActionId, name: &str) -> Option<usize> {
-            self.params.find(ability.index(), name)
-        }
     }
 }

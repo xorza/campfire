@@ -14,7 +14,7 @@ use crate::values::scalar::Scalar;
 /// The params of the abilities or the modifiers of a match, one run of names for each owner, as
 /// a match reads them: a scaling param's stats as places among the stats, its ratios in one
 /// buffer.
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct ParamTable {
     params: NameTable<ParamValue>,
     ratios: Vec<StatRatio>,

@@ -131,6 +131,7 @@ pub use scripts::script_limits::ScriptLimits;
 pub use scripts::state_decl::{StateDecl, StateDefault, StateType};
 pub use scripts::state_value::StateValue;
 pub use stats::Stats;
+pub use stats::error::ModifierProblem;
 pub use stats::level::Level;
 pub use stats::modifier_book::ModifierId;
 pub use stats::modifier_data::{AuraData, ModifierData, Reapply};

@@ -49,7 +49,6 @@ use crate::units::unit_type::UnitType;
 use crate::units::unit_types::UnitTypes;
 use crate::values::attitude::Attitude;
 use crate::values::declared_name::DeclaredName;
-use crate::values::filter_data::FilterData;
 use crate::values::metric::Metric;
 
 /// What scripts see: the match's unit types, and its units, those with a team, as the running
@@ -666,11 +665,6 @@ impl View {
         })
     }
 
-    /// The run-time form of `filter`, its tag among those of the match's unit types.
-    pub(crate) fn resolve_filter(&self, filter: &FilterData) -> Result<Filter, ApiError> {
-        Filter::resolve(filter, &self.0.borrow().types)
-    }
-
     /// The tag `name`; one the match does not have fails the call.
     pub(crate) fn tag(&self, name: &str) -> Result<Tag, ApiError> {
         self.0.borrow().types.tag(name).ok_or(ApiError::UnknownTag)
@@ -878,12 +872,20 @@ pub(crate) mod internals {
     use std::cell::RefMut;
 
     use crate::actions::action_data::CostTarget;
+    use crate::scripts::error::ApiError;
     use crate::stats::stat::Stat;
     use crate::stats::stat_id::StatId;
+    use crate::units::filter::Filter;
     use crate::units::script_view::View;
     use crate::units::unit_types::UnitTypes;
+    use crate::values::filter_data::FilterData;
 
     impl View {
+        /// The run-time form of `filter`, its tag among those of the match's unit types.
+        pub(crate) fn resolve_filter(&self, filter: &FilterData) -> Result<Filter, ApiError> {
+            Filter::resolve(filter, &self.0.borrow().types)
+        }
+
         /// How many unit types the match loaded, for a test to name the next one.
         #[cfg(test)]
         pub(crate) fn types_count(&self) -> usize {

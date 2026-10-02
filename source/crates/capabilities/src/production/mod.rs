@@ -78,7 +78,7 @@ impl Production {
                     team,
                     pos,
                 };
-                mode.spawn_owned(world, at, owner, None);
+                mode.spawn_owned(world, at, owner);
                 let queue = world.get::<TrainQueue>(entity).expect("a producer");
                 let next = queue.entries().get(1).copied();
                 let next = next.map(|next| Production::time(world.resource::<ActionBook>(), next));

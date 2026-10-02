@@ -1,6 +1,6 @@
 use bevy_ecs::query::Without;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
-use bevy_ecs::system::{NonSend, Query, Res};
+use bevy_ecs::system::{Query, Res};
 use bevy_ecs::world::{EntityRef, World};
 
 use campfire_sim::{Position, SimSet, SimTick, StableId, StateRegistry};
@@ -8,6 +8,7 @@ use campfire_sim::{Position, SimSet, SimTick, StableId, StateRegistry};
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_data::Range;
 use crate::actions::action_kind::ActionKind;
+use crate::stats::param_book::ParamBook;
 
 use crate::actions::action_slots::{ActionSlots, ActionTarget, InProgress};
 
@@ -18,10 +19,10 @@ use crate::combat::dead::Dead;
 use crate::combat::targets::Targets;
 use crate::mode::player_resources::PlayerResources;
 use crate::orders::OrdersSet;
-use crate::scripts::ctx::Ctx;
 
 use crate::stats::StatsSet;
 use crate::stats::modifier_book::{Applier, ModifierBook};
+use crate::stats::modifier_spec::ParamPlace;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::param_sources::ParamSources;
 use crate::stats::pools::Pools;
@@ -185,17 +186,17 @@ fn start_actions(
 /// with `passive_while_ready` off cooldown, from the unit itself at the action's rank, applied
 /// again when the rank changes; and none other. It runs as each tick starts, after the casts
 /// resolve and the attacks strike, and after the mode's calls, which learn ranks. A passive's
-/// params are the script's, so without the core's scripts, as on a client, it holds none.
+/// params are the match's param book's.
 fn hold_passives(
     actions: Res<'_, ActionBook>,
     book: Option<Res<'_, ModifierBook>>,
     stats: Option<Res<'_, StatBook>>,
     tick: Res<'_, SimTick>,
-    ctx: Option<NonSend<'_, Ctx>>,
+    params: Res<'_, ParamBook>,
     sources: ParamSources<'_, '_>,
     mut units: Query<'_, '_, (&StableId, &ActionSlots, &mut Modifiers)>,
 ) {
-    let (Some(book), Some(stats), Some(ctx)) = (book, stats, ctx) else {
+    let (Some(book), Some(stats)) = (book, stats) else {
         return;
     };
     let now = tick.start();
@@ -224,14 +225,13 @@ fn hold_passives(
                 passive: true,
                 held: false,
             };
-            let frame = ctx.frame();
             let source = sources.get(id);
-            let param = |name: &str| {
+            let param = |place: &ParamPlace| {
                 let (ability, rank) = (Some(slot.action), slot.rank);
-                frame.modifier_param(passive.modifier, ability, rank, name, source.as_ref())
+                params.modifier_param(passive.modifier, ability, rank, place, source.as_ref())
             };
             if let Some(application) =
-                book.application(passive.modifier, applier, None, now, &stats, param)
+                book.application(passive.modifier, applier, None, now, stats.rate(), param)
             {
                 modifiers.apply(application);
             }
@@ -277,17 +277,19 @@ pub(crate) mod internals {
     use crate::actions::action_names::ActionNames;
     use crate::actions::error::ActionError;
     use crate::combat::damage_kind::DamageKind;
-    use crate::scripts::ctx::Ctx;
     use crate::scripts::script_book::ScriptBook;
     use crate::stats::modifier_book::ModifierBook;
     use crate::stats::modifier_book::ModifierId;
+    use crate::stats::param_book::ParamBook;
     use crate::stats::stat::Stat;
+    use crate::stats::stat_book::StatBook;
     use crate::stats::stat_id::StatId;
     use crate::units::filter::Filter;
     use crate::units::script_view::View;
     use crate::units::type_scope::TypeScope;
     use crate::values::declared_name::DeclaredName;
     use crate::values::filter_data::FilterData;
+    use crate::values::param::Param;
     use bevy_ecs::world::Mut;
     use bevy_ecs::world::World;
     use campfire_script::ScriptId;
@@ -337,9 +339,8 @@ pub(crate) mod internals {
                 let scripts = world.resource::<ScriptBook>();
                 actions.load(scripts, package, data, script, parts)
             });
-            let ctx = world.non_send::<Ctx>().clone();
-            let stat = |stat: &Stat| view.stat_index(stat).expect("the load checked the stats");
-            ctx.frame().add_params(id, &data.params, stat);
+            let places = StatBook::places(world, data.params.values().flat_map(Param::stats));
+            ParamBook::load_action(world, id, &data.params, |stat| places[stat]);
             let delivery = world
                 .resource::<ActionBook>()
                 .get(id)

@@ -5,8 +5,8 @@ use std::path::PathBuf;
 
 use campfire_capabilities::{
     ActionError, ActionField, ActionKind, ActionSlots, AiError, ApiVersion, DeclaredName,
-    EngineTag, Hook, MapProblem, ModeError, NameKind, PlannedEffect, Pools, ResourceId, Stat,
-    TrackId, UnitKitError,
+    EngineTag, Hook, MapProblem, ModeError, ModifierProblem, NameKind, PlannedEffect, Pools,
+    ResourceId, Stat, TrackId, UnitKitError,
 };
 use campfire_content::{Fingerprint, MessageId, PackagePath};
 use campfire_script::ScriptError;
@@ -232,6 +232,11 @@ pub enum LoadProblem {
     Action {
         action: DeclaredName,
         error: ActionError,
+    },
+    /// A modifier does not load at the fastest rate the mode allows.
+    Modifier {
+        modifier: DeclaredName,
+        problem: ModifierProblem,
     },
     /// A file of human text at `path`.
     Locale {
@@ -681,6 +686,9 @@ impl fmt::Display for LoadProblem {
             LoadProblem::UnitKit { at, error } => write!(f, "{at}: {error}"),
             LoadProblem::Ai { at, error } => write!(f, "{at}: {error}"),
             LoadProblem::Action { action, error } => write!(f, "action {action:?}: {error}"),
+            LoadProblem::Modifier { modifier, problem } => {
+                write!(f, "modifier {modifier:?}: {problem}")
+            }
             LoadProblem::EngineTag { at, tag } => {
                 write!(f, "{at}: {:?}, a tag only the engine gives", tag.name())
             }

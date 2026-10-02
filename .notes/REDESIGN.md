@@ -418,7 +418,6 @@ This stage is the backbone. Its steps run in order.
 
 | Step | Change | Size |
 |---|---|---|
-| C6b | The modifier runtime spec; param tables in the books; aura and player-modifier filters resolved; stats no longer reads the frame | M |
 | C7 | The view and the frame read the books through `Arc`; `ScriptConsts`; `MatchScripts` goes; the allowlist test of name lookups | M |
 | C8 | `ActionKind` with data, one table of fields by kind; `Delivery` with its unit type; `TypeRole` and one store of type tags; one formula for each stat value; an attack's damage names its weapon (decision 7) | M, changes behaviour (`d.ability` of an attack) |
 | C9 | `Arena` loads the real packages through `Match::install`; `FixedSession` | S |
@@ -458,7 +457,7 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 
 | Step | Change | Needs | Size |
 |---|---|---|---|
-| G2 | Book data out of the state; `Lifetime`; one `ParamSource::of`; flat `Modifiers`; the `ModifierStats` and `ModifierClock` split; the queue's times at push | C6b, G1 | M, changes the layout |
+| G2 | Book data out of the state; `Lifetime`; one `ParamSource::of`; flat `Modifiers`; the `ModifierStats` and `ModifierClock` split; the queue's times at push | G1 | M, changes the layout |
 | H1b | `ctx.find` and `nearest_visible` read `BodyGrid` | D5, H1 | S |
 | I4 | `Prediction::install` shared with `Mode::install` | C7, I2 | M |
 | J | The local fixes in the appendix, and T§5 to T§8 | any time | S each |
@@ -472,13 +471,13 @@ PLAN.md's stage 4 steps join this plan as follows:
 ### Order
 
 ```
-Track S:  C6b → C7 → C8 → C9 → D2 → D3 → D5 → D6
-                                  └ (C7 + I4) PLAN 2
+Track S:  C7 → C8 → C9 → D2 → D3 → D5 → D6
+                            └ (C7 + I4) PLAN 2
 
 Track I:  E1 → E2      F2      G1      H1, H4      H2 → H3
           I1 → I2 → I3
 
-Joins:    C6b + G1 → G2      D5 + H1 → H1b      C7 + I2 → I4
+Joins:    G1 → G2      D5 + H1 → H1b      C7 + I2 → I4
 ```
 
 Track S is long and sequential. Track I fills the sessions between its steps.
@@ -588,8 +587,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - life pool placeholder: C6a.
 - **R§7:**
   - view copies: C7;
-  - modifier in three stores: C6b;
-  - params through the frame: C6b;
   - instance book data: G2;
   - package data in state: G2;
   - level twice: G2;
@@ -657,7 +654,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - `HeldModifiers` clear: G2;
   - capability set table: A4.
 - **R§12:**
-  - aura names each tick: C6b;
   - no spatial delivery query: H1;
   - batch rebuilds: H4;
   - `Modifiers` change detection: G2;

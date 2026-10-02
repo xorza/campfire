@@ -12,6 +12,7 @@ use crate::scripts::script_api::ScriptApi;
 use crate::scripts::script_book::ScriptBook;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
+use crate::stats::param_book::ParamBook;
 use crate::units::body::Body;
 use crate::units::owner::Owner;
 use crate::units::relations::Relations;
@@ -98,6 +99,7 @@ impl Units {
         else {
             world.insert_non_send(view);
             world.insert_resource(ScriptBook::default());
+            world.insert_resource(ParamBook::default());
             return;
         };
         view.set_damage_kinds(damage_kinds);
@@ -113,6 +115,7 @@ impl Units {
         world.insert_non_send(view);
         world.insert_non_send(host);
         world.insert_resource(ScriptBook::default());
+        world.insert_resource(ParamBook::default());
         world.insert_non_send(ScriptFailures::default());
         world.insert_resource(ScriptBudgets::new(limits, players));
         schedule.add_systems(

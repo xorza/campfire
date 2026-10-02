@@ -231,18 +231,11 @@ impl Mode {
         let mode = ctx
             .mode()
             .expect("a mode effect comes from a match with a mode");
-        Mode::apply_effect(world, mode, now, effect, frame);
+        Mode::apply_effect(world, mode, now, effect);
     }
 
-    /// Applies `effect`, which a call of `book`'s script queued in tick `now`; a passive it gives
-    /// reads its params through `frame`, the call's.
-    pub(crate) fn apply_effect(
-        world: &mut World,
-        book: &ModeBook,
-        now: Tick,
-        effect: ModeEffect,
-        frame: &Frame,
-    ) {
+    /// Applies `effect`, which a call of `book`'s script queued in tick `now`.
+    pub(crate) fn apply_effect(world: &mut World, book: &ModeBook, now: Tick, effect: ModeEffect) {
         match effect {
             ModeEffect::Timer {
                 name,
@@ -257,14 +250,14 @@ impl Mode {
                 world.insert_resource(MatchEnd::new(tick, result));
             }
             ModeEffect::SpawnUnit { at, owner } => {
-                book.spawn_owned(world, at, owner, Some(frame));
+                book.spawn_owned(world, at, owner);
             }
             ModeEffect::SpawnGroup {
                 team,
                 path,
                 from,
                 units,
-            } => book.spawn_group(world, team, path, from, &units, frame),
+            } => book.spawn_group(world, team, path, from, &units),
             ModeEffect::Grant {
                 unit,
                 kind,
@@ -401,7 +394,7 @@ impl Mode {
                 team: placed.team,
                 pos: placed.pos,
             };
-            let entity = book.spawn(world, at, (), None);
+            let entity = book.spawn(world, at, ());
             let mut entity = world.entity_mut(entity);
             if let Some(path) = placed.path {
                 entity.insert(OnPath::new(path));

@@ -53,6 +53,18 @@ fn num(value: i64) -> Num {
 /// The pools of the match, by name in order: the life pool first, as it is until a mode binds
 /// one.
 const POOLS: [&str; 3] = ["health", "mana", "energy"];
+/// The stats the heroes' params and modifiers name.
+const STATS: [&str; 9] = [
+    "ability_power",
+    "armor",
+    "attack_damage",
+    "attack_speed",
+    "crit_chance",
+    "magic_resist",
+    "move_speed",
+    "physical_block",
+    "spell_vamp",
+];
 const MANA: PoolId = PoolId::new(1).unwrap();
 const ENERGY: PoolId = PoolId::new(2).unwrap();
 
@@ -180,9 +192,8 @@ fn reference_world() -> World {
         mode: 100_000,
     };
     let kinds = ["physical", "magic", "true"].map(|kind| DeclaredName::new(kind).unwrap());
-    // The stats the heroes' params name, in the order the mode's stats hold them.
-    let mut stats =
-        ["ability_power", "attack_damage", "spell_vamp"].map(|name| Stat::named(name).unwrap());
+    // The stats the heroes' params and modifiers name, in the order the mode's stats hold them.
+    let mut stats = STATS.map(|name| Stat::named(name).unwrap());
     stats.sort();
     let scripts = MatchScripts {
         limits,
@@ -206,9 +217,8 @@ fn reference_world() -> World {
     Combat::bind_life(&mut world, PoolId::FIRST);
     world.add_schedule(schedule);
     world.insert_non_send(Failed::default());
-    let changed = ["move_speed", "armor", "magic_resist"]
-        .map(|name| (Stat::named(name).unwrap(), StatRule::default()));
-    internals::load_stats(&mut world, &BTreeMap::from(changed), RATE);
+    let rules = STATS.map(|name| (Stat::named(name).unwrap(), StatRule::default()));
+    internals::load_stats(&mut world, &BTreeMap::from(rules), RATE);
     world
 }
 
