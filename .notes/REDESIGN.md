@@ -125,6 +125,8 @@ Match::install(world, &Books, SessionTerms)    cannot fail on data
 - **Times are checked at the fastest tick rate in the manifest's range.** That rate gives the largest tick counts, so a time that fits at that rate fits at every allowed rate. The tick values themselves are derived at match start, from the session's rate. That derivation cannot fail.
 - **`ModePackages` holds the `Books`.** `MatchBuild` becomes `Match::install`, with no `.expect(CHECKED)`. `StartError` keeps only the session-term cases.
 
+  C10 kept the books in ticks: books in milliseconds would move a conversion into every use, a projectile's flight each tick among them. So the load builds the books at the fastest rate to prove them, as design 02 says, and `ModePackages::books` builds them at a session's rate, where the proof makes the build infallible; `ModePackages::compile_scripts` and `ModePackages::mode_script` hold the load's other proofs, so `MatchBuild` expects nothing.
+
 ## R3. Strict layers with registered hooks
 
 ### Problem
@@ -420,7 +422,6 @@ This stage is the backbone. Its steps run in order.
 
 | Step | Change | Size |
 |---|---|---|
-| C10 | Books hold milliseconds where a time needs the rate, and a match derives its ticks at its rate, which cannot fail; `ModePackages` holds the books the load built, so the load builds them once and `MatchBuild` has no `.expect(CHECKED)` | M |
 
 Done when `MatchBuild` has no `.expect(CHECKED)`, `StartError` has no data case, and the allowlist of name lookups holds only script calls and the load.
 
@@ -471,7 +472,7 @@ PLAN.md's stage 4 steps join this plan as follows:
 ### Order
 
 ```
-Track S:  C10 → D2 → D3 → D5 → D6
+Track S:  D2 → D3 → D5 → D6
                        └ I4 → PLAN 2
 
 Track I:  E1 → E2      F2      G1      H1, H4      H2 → H3

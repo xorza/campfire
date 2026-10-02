@@ -73,7 +73,6 @@ The worst case per tick is the metric. These systems let one tick pay for a scan
 The package load should be the one place that refuses bad data. Today some checks happen only at match start, some checks rely on a hand-kept table, and the build computes again what the check already computed.
 
 - [ ] **`UnitKitError::NoLifePool` repeats a load problem** — `capabilities/src/mode/error.rs`, `mode/unit_kit/mod.rs`. `LoadProblem::LifePoolMissing` refuses the same case first, so the kit's case is never reached from a load. Better: one rule, in the kit, that the load reports.
-- [ ] **The load builds the books twice** — `package/src/load_check.rs`, `runner/src/match_build.rs`. The load builds them at the fastest rate and throws them away; the match builds them again at its rate, as books hold ticks. The tag names, walkers and stat order are also derived by the check and again by the builder. Better: books in milliseconds, held by `ModePackages` (C6a).
 - [ ] **The map is checked, then resolved again by name** — `capabilities/src/mode/mod.rs:262-391`, `mode/mode_book.rs:132-164`, `mode/mod.rs:206-221`. Install resolves the same names with about a dozen `expect("the check passed")`. Better: one `MapData` method that turns the map into resolved data once.
 - [ ] **`CollisionData` throws its checked `Body` away** — `capabilities/src/units/collision_data.rs:13-37`, `navigation/navigation_rules.rs:31`. Better: store the `Body`.
 ## 7. Package books are copied into the script view, the frame and the state

@@ -1,14 +1,15 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
 use std::iter;
 use std::path::Path;
 
 use campfire_capabilities::{
-    BookInput, BookKind, BookPackage, CollisionData, DeclaredName, EngineStat, EngineTag, MapData,
-    ModeData, PackageContent, Param, ScriptApi, ScriptBook, Stat, StatGraph, StatsData,
+    BookInput, BookKind, BookPackage, Books, CollisionData, DeclaredName, EngineStat, EngineTag,
+    MapData, ModeData, PackageContent, Param, ScriptApi, ScriptBook, Stat, StatGraph, StatsData,
     UnitTypeFile, Walker,
 };
 use campfire_content::{Fingerprint, MessageId, PackagePath};
-use campfire_script::ScriptHost;
+use campfire_script::{ScriptHost, ScriptId};
 use campfire_sim::{Capability, TickRate};
 
 use crate::error::{ContentError, Limit, LoadError, LoadProblem, PackageRef, StoreError};
@@ -193,9 +194,44 @@ impl ModePackages {
         iter::once(mode).chain(dependents)
     }
 
-    /// Its avatars' unit types, each with its package's view.
     /// What its books are built from at `rate`, its scripts' hooks as `scripts` gives them, in
     /// the order a match compiles them.
+    /// The books of a match of its packages at `rate`, a rate within the manifest's range, its
+    /// scripts' hooks as `scripts` gives them. The load built them at the fastest rate the range
+    /// allows, where every time counts the most ticks, so they build at every rate a session may
+    /// choose.
+    pub fn books(&self, rate: TickRate, scripts: &ScriptBook) -> Books {
+        assert!(
+            self.manifest.tick_hz.contains(rate.hz()),
+            "a session's rate is within the manifest's range"
+        );
+        Books::build(&self.book_input(rate, scripts))
+            .unwrap_or_else(|error| panic!("the load built the books at the fastest rate: {error}"))
+    }
+
+    /// Compiles every script of its packages by `compile`, in the order a match compiles them;
+    /// the load parsed each one, so none fails.
+    pub fn compile_scripts<E: fmt::Display>(
+        &self,
+        mut compile: impl FnMut(&str) -> Result<ScriptId, E>,
+    ) {
+        for view in self.packages() {
+            for script in &view.package.scripts {
+                compile(&script.source)
+                    .unwrap_or_else(|error| panic!("the load parsed {}: {error}", script.path));
+            }
+        }
+    }
+
+    /// The mode's script, by its place among the scripts a match compiles.
+    pub fn mode_script(&self) -> ScriptId {
+        let at = self
+            .mode
+            .script_index(&self.data.script)
+            .expect("the load checked the mode's script");
+        ScriptId::nth(at)
+    }
+
     pub fn book_input<'a>(&'a self, rate: TickRate, scripts: &'a ScriptBook) -> BookInput<'a> {
         let packages = self.packages().map(|view| BookPackage {
             name: &view.package.name,

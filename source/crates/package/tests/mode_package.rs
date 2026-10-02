@@ -1,6 +1,7 @@
 //! Each flaw a package can have fails the load of the reference packages with its own problem.
 
 use std::fmt::Write;
+use std::num::NonZeroU32;
 use std::path::Path;
 
 use campfire_capabilities::{
@@ -12,7 +13,7 @@ use campfire_package::{
     ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem, EffectProblem, Limit, LoadError,
     LoadProblem, LocaleProblem, ModePackages, PackageRef, Place, ScriptProblem,
 };
-use campfire_sim::Capability;
+use campfire_sim::{Capability, TickRate};
 
 use crate::moba::{Edit, edited, moba, moba_files};
 
@@ -143,6 +144,30 @@ fn an_effect_to_the_source_reads_and_any_other_to_does_not() {
         read_fails(&error.problem, "data/avatar.toml", "unknown variant"),
         "{error}"
     );
+}
+
+/// The 3v3 as its packages hold it.
+fn three_v_three() -> ModePackages {
+    ModePackages::from_dir(&moba().join(MODE_DIR)).unwrap()
+}
+
+#[test]
+fn the_books_build_at_every_rate_the_manifest_allows() {
+    // The 3v3 allows 20 to 60 ticks a second; the load built its books at 60.
+    let packages = three_v_three();
+    let scripts = packages.script_book();
+    for hz in [20, 30, 60] {
+        let rate = TickRate::new(NonZeroU32::new(hz).unwrap());
+        packages.books(rate, &scripts);
+    }
+}
+
+#[test]
+#[should_panic(expected = "a session's rate is within the manifest's range")]
+fn the_books_refuse_a_rate_past_the_manifests_range() {
+    let packages = three_v_three();
+    let rate = TickRate::new(NonZeroU32::new(61).unwrap());
+    packages.books(rate, &packages.script_book());
 }
 
 #[test]
