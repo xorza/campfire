@@ -26,7 +26,6 @@ The worst case per tick is the metric. These systems let one tick pay for a scan
 
 Each item is a second copy of data that one book owns. The copies are kept in line by load order, by hand or not at all.
 
-- [ ] **Instances store book data in state** — `capabilities/src/stats/modifiers.rs:51-53,75-80`. `Instance.tags`, and each change's stat and op, copy the book. They are hashed, snapshotted and trusted on restore, so a forged snapshot can grant any tags. Better: read them from the book by `instance.id`.
 - [ ] **A unit type's tags are stored twice** — `capabilities/src/units/unit_types.rs:33-37,91-95,139-145`, `units/tag_book.rs:22`. After the copy into `TagBook`, production reads only that copy, and a later `give_tag` would diverge. `TagBook.type_tags` is a `ByType` though every type has tags. Better: one store, a `Vec<TagSet>` by type.
 
 ## 8. Capabilities import across layers
@@ -45,7 +44,6 @@ One operation is written twice or three times, and the copies disagree.
 
 - [ ] **A live change from a gone source drops to its base** — `capabilities/src/stats/refresh_scratch.rs:120-130`, `stats/mod.rs:495`. The doc says it keeps its last value. The fallback is the value at application, and a gone source resolves to the level-1 base. Better: decide the rule in stats.md, and keep the last value or document the base.
 - [ ] **"A unit as a param source" is built three ways** — `capabilities/src/stats/param_source.rs:38-50`, `stats/param_sources.rs:28-38`, `stats/mod.rs:569-578`. Two treat level and stats as optional, one requires them. Better: one constructor.
-- [ ] **A held and a timed copy of one modifier clash** — `capabilities/src/stats/modifiers.rs:116-146,247-255`, `stats/mod.rs:420-423`. An instance is keyed by (id, source) with one `held` flag, so one of the two is lost, and a self-applied copy of a passive's id makes the passive expire. Better: an instance that ends only when both its hold and its timer end.
 - [ ] **"A unit type walks" is defined twice** — `package/src/mode_packages.rs:207-214`, `package/src/load_check.rs:119-128`. The avatar rules that `AvatarData` promises are applied in `runner/src/match_build.rs:200-205`. Better: `UnitTypeFile::walks()`, and an `AvatarData` method that gives the effective unit type.
 - [ ] **A constant is copied into a message** — `capabilities/src/scripts/error.rs:429`. `ChainTooDeep` says "16 deep", which copies `MAX_DEPTH` in `stats/modifier_hooks.rs:23`.
 - [ ] **`walk_to` repeats a framework method** — `capabilities/src/orders/mod.rs:437-443`. `walk_to` writes `set_if_neq` again.
@@ -70,7 +68,6 @@ These costs grow with all units or all entities each tick, while the work concer
 - [ ] **Auras and player modifiers resolve names every tick** — `capabilities/src/stats/mod.rs:366-372,389-396`, `units/script_view.rs:658`. `apply_held` resolves each filter by a linear tag-name scan and each aura modifier by a string search, once per aura instance and once per owned unit for each player modifier. Areas already resolve these at load. Better: resolve them in `load_modifier`.
 - [ ] **No delivery query is spatial** — `capabilities/src/projectiles/flights.rs:140`, `areas/mod.rs:183,251`, `combat/targets.rs:86-88`. Each line projectile tests every unit each tick, each area with `inside` modifiers scans every body each tick, and `Targets::units` fetches each row a second time. Better: one sorted cell index of bodies per tick, as the broadphase builds, and `units()` builds from the row it has.
 - [ ] **Every script batch rebuilds every unit's row** — `capabilities/src/units/script_view.rs:231-295`, `scripts/script_batch.rs:29`. A tick can run about eight batches, each a full rebuild, and `deal_damage` reads the view every tick even with no damage. Queries are O(units) and parse their filter on every call. Better: rebuild only what a batch reads, and parse filters once.
-- [ ] **Change detection on `Modifiers` is too coarse** — `capabilities/src/stats/modifiers.rs:192-238`, `combat/mod.rs:290-296,569-575`, `stats/mod.rs:197-213`. An interval, a shield absorb or a state write marks `Modifiers` changed, which re-derives the unit's stats and tags in full. Better: a "stats dirty" signal, or move timers, shields and state into their own component.
 - [ ] **`cast_hits.keep` is O(hits × projectiles)** — `capabilities/src/projectiles/mod.rs:299`. `flying` is unsorted and repeats groups. Better: sort and dedup, or merge with `CastHits`.
 - [ ] **Each projectile owns a `struck` list** — `capabilities/src/projectiles/projectile.rs:17,89-96`. It allocates on the first hit, is searched linearly in the hit loop, and duplicates `CastHits`. Better: one sorted flat store of (group, unit).
 - [ ] **`RecentAttackers` scans its list on every damage** — `capabilities/src/combat/mod.rs:806-808`, `combat/recent_attackers.rs:21`. `record` looks up every entry in the index, and `respawn` drops its buffer. Better: prune on despawn or on read, and `clear()` on respawn.
@@ -85,7 +82,6 @@ These costs grow with all units or all entities each tick, while the work concer
 - [ ] **`Route::clear` frees its waypoint buffer** — `capabilities/src/navigation/route.rs:481-483,497-498`. Every arrival allocates again, and `splice` moves memory twice. Better: clear the fields and keep the capacity, and one `splice`.
 - [ ] **A stable sort allocates in each refresh pass** — `capabilities/src/stats/refresh_scratch.rs:114`. Order within a stat does not matter. Better: `sort_unstable_by_key`.
 - [ ] **An applied handle allocates its state** — `capabilities/src/units/script_view.rs:461,463`. Better: reuse the frame's buffers.
-- [ ] **`Modifiers` nests three `Vec`s per instance** — `capabilities/src/stats/modifiers.rs:20,45,51,55`. Every snapshot and rollback clone allocates per instance. Better: one flat buffer per carrier, after the book data leaves the instance (group 7).
 - [ ] **Each fan allocates its flights** — `capabilities/src/projectiles/mod.rs:170-185`. Better: extend `Launches` directly.
 - [ ] **Each script is parsed twice** — `package/src/package.rs:57`, `runner/src/match_build.rs:313-326`. Better: keep the AST and let the host take it.
 
