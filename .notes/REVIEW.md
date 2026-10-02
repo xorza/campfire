@@ -70,7 +70,6 @@ Each item is a second copy of data that one book owns. The copies are kept in li
 
 The design says a module imports only from the capabilities below it, and that the core names no capability. These imports break that.
 
-- [ ] **Abilities registers the delivery script API** — `capabilities/src/abilities/abilities_api.rs:50-51,69-88`. `on_hit`, `on_end`, the `Hit` handle and the planned projectile and area fields are registered there, though `deliveries` runs the hooks. `ApiOwner::Projectile` and `Area` model handles the engine never makes, since `hit.delivery` gives a `Unit`. Better: register them where they run, and drop the two owners.
 
 ## 9. Names from data stay strings
 

@@ -1,5 +1,3 @@
-use std::iter;
-
 use bevy_ecs::schedule::Schedule;
 use bevy_ecs::world::World;
 use campfire_script::ScriptHost;
@@ -16,6 +14,7 @@ use crate::areas::areas_api::AreasApi;
 use crate::capability_set::error::CapabilityError;
 use crate::combat::Combat;
 use crate::combat::combat_api::CombatApi;
+use crate::deliveries::deliveries_api::DeliveriesApi;
 use crate::mode::Mode;
 use crate::mode::match_end::MatchEnd;
 use crate::mode::mode_api::ModeApi;
@@ -177,11 +176,12 @@ impl CapabilitySet {
         ScriptApi::release(CapabilitySet::apis())
     }
 
-    /// How the action pipeline, then each capability, registers its script API, in the
-    /// table's order.
+    /// How the action pipeline and the deliveries, then each capability, register their script
+    /// API, the capabilities in the table's order.
     pub(crate) fn apis() -> impl Iterator<Item = RegisterApi> {
         let capabilities = CAPABILITIES.into_iter().filter_map(|row| row.api);
-        iter::once(ActionsApi::register as RegisterApi).chain(capabilities)
+        let pipeline: [RegisterApi; 2] = [ActionsApi::register, DeliveriesApi::register];
+        pipeline.into_iter().chain(capabilities)
     }
 
     /// The set of `declared`; an error when one is `mode`, one is declared twice, or one lacks a

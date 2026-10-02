@@ -113,8 +113,6 @@ pub enum ApiOwner {
     Ctx,
     Unit,
     Modifier,
-    Projectile,
-    Area,
     Hit,
     Damage,
     Heal,
@@ -436,12 +434,10 @@ impl ScriptApi {
 }
 
 impl ApiOwner {
-    pub const ALL: [ApiOwner; 12] = [
+    pub const ALL: [ApiOwner; 10] = [
         ApiOwner::Ctx,
         ApiOwner::Unit,
         ApiOwner::Modifier,
-        ApiOwner::Projectile,
-        ApiOwner::Area,
         ApiOwner::Hit,
         ApiOwner::Damage,
         ApiOwner::Heal,
@@ -457,8 +453,6 @@ impl ApiOwner {
             ApiOwner::Ctx => "`ctx`",
             ApiOwner::Unit => "Unit",
             ApiOwner::Modifier => "Modifier `m`",
-            ApiOwner::Projectile => "Projectile",
-            ApiOwner::Area => "Area",
             ApiOwner::Hit => "Hit `hit`",
             ApiOwner::Damage => "Damage `d`",
             ApiOwner::Heal => "Heal `h`",

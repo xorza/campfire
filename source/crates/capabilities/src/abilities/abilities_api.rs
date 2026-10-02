@@ -5,13 +5,12 @@ use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
 use crate::scripts::hook::Hook;
 use crate::scripts::role_set::RoleSet;
-use crate::scripts::script_api::{ApiOwner, DataTable, MemberSpec, Status};
+use crate::scripts::script_api::{DataTable, MemberSpec, Status};
 use crate::units::block::Block;
-use crate::units::hit_handle::HitHandle;
 use crate::units::tag_effect::TagEffect;
 
-/// The script API of `abilities`, `projectiles` and `areas` that design 08 plans: the values of
-/// a cast, the projectiles and areas it makes, and the bookkeeping of cooldowns and charges.
+/// The script API of `abilities`: the values of a cast that design 08 plans, and the
+/// bookkeeping of cooldowns and charges.
 #[derive(Debug)]
 pub(crate) struct AbilitiesApi;
 
@@ -46,14 +45,11 @@ impl AbilitiesApi {
                 "(unit, id)",
                 "gives `unit`'s ability `id` a charge",
             ));
-        AbilitiesApi::register_deliveries(api);
         api.tag_effect(
             TagEffect::Blocks(Block::Cast),
             Status::Runs(ApiVersion::FIRST),
         )
         .hook(Hook::OnResolve, Status::Runs(ApiVersion::FIRST))
-        .hook(Hook::OnHit, Status::Runs(ApiVersion::FIRST))
-        .hook(Hook::OnEnd, Status::Runs(ApiVersion::FIRST))
         .hook(Hook::OnChannelTick, Status::Planned)
         .hook(Hook::OnInterrupt, Status::Planned)
         .action_fields(ActionDataField::of(Some(Capability::Abilities)))
@@ -62,26 +58,5 @@ impl AbilitiesApi {
             &["damage", "heal", "restore", "modifier", "xp", "to"],
             &["purge", "spawn", "launch", "move", "loot", "noise"],
         );
-    }
-
-    /// The handles of deliveries: the hit either records, and the planned projectile and area.
-    fn register_deliveries(api: &mut ApiBuilder<'_>) {
-        HitHandle::register(api);
-        let projectile = |name, description| {
-            MemberSpec::field(ApiOwner::Projectile, name, description)
-                .capability(Capability::Projectiles)
-        };
-        api.plan(projectile("source", "the unit that launched it"))
-            .plan(projectile("pos", "where it flies"))
-            .plan(projectile("distance", "how far it flew"))
-            .plan(projectile(
-                "state",
-                "its script state, which a call may write",
-            ));
-        let area = |name, description| {
-            MemberSpec::field(ApiOwner::Area, name, description).capability(Capability::Areas)
-        };
-        api.plan(area("source", "the unit that made it"))
-            .plan(area("pos", "where it lies"));
     }
 }

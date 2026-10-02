@@ -99,22 +99,6 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `stacks` | written and read | stats | since 1.0 | its stacks, which a call may write and read back |
 | `state` | read | stats | since 1.0 | its script state, by name, which a call may write and read back |
 
-## Projectile
-
-| Name | Form | Capability | Status | What it is |
-| --- | --- | --- | --- | --- |
-| `distance` | read | projectiles | planned | how far it flew |
-| `pos` | read | projectiles | planned | where it flies |
-| `source` | read | projectiles | planned | the unit that launched it |
-| `state` | read | projectiles | planned | its script state, which a call may write |
-
-## Area
-
-| Name | Form | Capability | Status | What it is |
-| --- | --- | --- | --- | --- |
-| `pos` | read | areas | planned | where it lies |
-| `source` | read | areas | planned | the unit that made it |
-
 ## Hit `hit`
 
 | Name | Form | Capability | Status | What it is |
