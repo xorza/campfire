@@ -2,6 +2,7 @@ use campfire_math::Num;
 use campfire_script::rhai::INT;
 use campfire_sim::Capability;
 
+use crate::actions::action_data_field::ActionDataField;
 use crate::combat::combat_effect::CombatEffect;
 use crate::combat::damage_handle::DamageHandle;
 use crate::combat::heal_handle::HealHandle;
@@ -116,7 +117,7 @@ impl CombatApi {
         )
         .data(DataTable::Leech, &["attack", "other"], &[])
         .data(DataTable::Combat, &["on_death"], &[])
-        .action_fields(Some(Capability::Combat));
+        .action_fields(ActionDataField::of(Some(Capability::Combat)));
     }
 
     /// Queues `amount` of `kind` damage to `target`, a kind the mode declares.

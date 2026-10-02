@@ -1,5 +1,6 @@
 use campfire_sim::Capability;
 
+use crate::actions::action_data_field::ActionDataField;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
 use crate::scripts::hook::Hook;
@@ -55,7 +56,7 @@ impl AbilitiesApi {
         .hook(Hook::OnEnd, Status::Runs(ApiVersion::FIRST))
         .hook(Hook::OnChannelTick, Status::Planned)
         .hook(Hook::OnInterrupt, Status::Planned)
-        .action_fields(Some(Capability::Abilities))
+        .action_fields(ActionDataField::of(Some(Capability::Abilities)))
         .data(
             DataTable::Effect,
             &["damage", "heal", "restore", "modifier", "xp", "to"],

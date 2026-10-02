@@ -1,3 +1,5 @@
+use std::iter;
+
 use bevy_ecs::schedule::Schedule;
 use bevy_ecs::world::World;
 use campfire_script::ScriptHost;
@@ -7,6 +9,7 @@ use serde::{Deserialize, Deserializer};
 
 use crate::abilities::Abilities;
 use crate::abilities::abilities_api::AbilitiesApi;
+use crate::actions::actions_api::ActionsApi;
 use crate::areas::Areas;
 use crate::areas::areas_api::AreasApi;
 use crate::capability_set::error::CapabilityError;
@@ -173,9 +176,11 @@ impl CapabilitySet {
         ScriptApi::release(CapabilitySet::apis())
     }
 
-    /// How each capability registers its script API, in the table's order.
+    /// How the action pipeline, then each capability, registers its script API, in the
+    /// table's order.
     pub(crate) fn apis() -> impl Iterator<Item = RegisterApi> {
-        CAPABILITIES.into_iter().filter_map(|row| row.api)
+        let capabilities = CAPABILITIES.into_iter().filter_map(|row| row.api);
+        iter::once(ActionsApi::register as RegisterApi).chain(capabilities)
     }
 
     /// The set of `declared`; an error when one is `mode`, one is declared twice, or one lacks a
@@ -484,8 +489,7 @@ mod tests {
     /// The imports from a higher layer that the code holds today, each a module and the one it
     /// imports. Each step of the structural redesign's layers removes its own; the test fails
     /// when a new one appears, and when one listed here is gone, so the list only shrinks.
-    const KNOWN_BREAKS: [(&str, &str); 6] = [
-        ("scripts", "actions"),
+    const KNOWN_BREAKS: [(&str, &str); 5] = [
         ("scripts", "mode"),
         ("scripts", "stats"),
         ("units", "actions"),

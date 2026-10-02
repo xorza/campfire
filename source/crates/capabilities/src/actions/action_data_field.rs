@@ -2,6 +2,8 @@ use campfire_sim::Capability;
 
 use crate::actions::action_data::ActionData;
 use crate::actions::action_kind::ActionKind;
+use crate::scripts::api_version::ApiVersion;
+use crate::scripts::script_api::Status;
 
 /// A field of an action's data, `[actions.<id>]`: the one table of which kinds of action take
 /// each field, which need it, which capability runs it, and whether the release runs it yet.
@@ -57,6 +59,24 @@ struct FieldRule {
 }
 
 impl ActionDataField {
+    /// The fields `capability` runs, none for the action pipeline's, each by its name with its
+    /// status in the script API.
+    pub(crate) fn of(
+        capability: Option<Capability>,
+    ) -> impl Iterator<Item = (&'static str, Status)> {
+        ActionDataField::ALL
+            .into_iter()
+            .filter(move |field| field.capability() == capability)
+            .map(|field| {
+                let status = if field.runs() {
+                    Status::Runs(ApiVersion::FIRST)
+                } else {
+                    Status::Planned
+                };
+                (field.name(), status)
+            })
+    }
+
     pub const ALL: [ActionDataField; 25] = [
         ActionDataField::Kind,
         ActionDataField::Script,

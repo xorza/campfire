@@ -1,7 +1,4 @@
 use campfire_script::rhai::{Engine, RhaiNativeFunc, Variant};
-use campfire_sim::Capability;
-
-use crate::actions::action_data_field::ActionDataField;
 
 use crate::scripts::api_version::ApiVersion;
 use crate::scripts::hook::Hook;
@@ -100,20 +97,13 @@ impl<'a> ApiBuilder<'a> {
         self
     }
 
-    /// Records the fields of an action's data that `capability` runs, none for the core's, each
-    /// as the one table of action fields marks it.
-    pub(crate) fn action_fields(&mut self, capability: Option<Capability>) -> &mut Self {
-        for field in ActionDataField::ALL {
-            if field.capability() != capability {
-                continue;
-            }
-            let status = if field.runs() {
-                Status::Runs(ApiVersion::FIRST)
-            } else {
-                Status::Planned
-            };
-            self.api
-                .record_field(DataTable::Action, field.name(), status);
+    /// Records `fields` of an action's data, each by its name with its status.
+    pub(crate) fn action_fields(
+        &mut self,
+        fields: impl IntoIterator<Item = (&'static str, Status)>,
+    ) -> &mut Self {
+        for (name, status) in fields {
+            self.api.record_field(DataTable::Action, name, status);
         }
         self
     }

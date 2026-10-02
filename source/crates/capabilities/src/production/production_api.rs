@@ -1,5 +1,6 @@
 use campfire_sim::Capability;
 
+use crate::actions::action_data_field::ActionDataField;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::script_api::DataTable;
 
@@ -9,10 +10,7 @@ pub(crate) struct ProductionApi;
 
 impl ProductionApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
-        api.action_fields(Some(Capability::Production)).data(
-            DataTable::Production,
-            &["queue"],
-            &[],
-        );
+        api.action_fields(ActionDataField::of(Some(Capability::Production)))
+            .data(DataTable::Production, &["queue"], &[]);
     }
 }

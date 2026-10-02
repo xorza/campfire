@@ -2,6 +2,7 @@ use campfire_math::Vec3;
 use campfire_sim::{Capability, Position};
 
 use crate::actions::action_book::DeliveryShape;
+use crate::actions::action_data_field::ActionDataField;
 use crate::deliveries::delivering::Delivering;
 use crate::projectiles::projectile_effect::{ProjectileEffect, Toward};
 use crate::scripts::api_builder::ApiBuilder;
@@ -33,7 +34,7 @@ impl ProjectilesApi {
         .bind(projectile, |ctx: &mut Ctx, from: Position, unit: Unit| {
             ProjectilesApi::launch(ctx, from, Toward::Unit(unit.id))
         })
-        .action_fields(Some(Capability::Projectiles))
+        .action_fields(ActionDataField::of(Some(Capability::Projectiles)))
         .data(
             DataTable::Delivery,
             &["projectile", "count", "spread_deg"],

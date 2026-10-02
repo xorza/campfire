@@ -43,8 +43,7 @@ impl CoreApi {
             )
             .data(DataTable::ModeNavigation, &["layers"], &[])
             .data(DataTable::Collision, &["radius", "layer"], &[])
-            .data(DataTable::Tag, &["blocks", "hidden", "detects", "immune"], &[])
-            .action_fields(None);
+            .data(DataTable::Tag, &["blocks", "hidden", "detects", "immune"], &[]);
         api.tag_effect(
             TagEffect::Blocks(Block::Move),
             Status::Runs(ApiVersion::FIRST),
