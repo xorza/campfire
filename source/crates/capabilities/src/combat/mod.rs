@@ -9,9 +9,10 @@ use campfire_sim::{
     TickRate,
 };
 
-use crate::actions::action_book::{ActionBook, RankValues};
+use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::{ActionSlots, ActionTarget, InProgress, SlotAim};
 use crate::actions::purse::{Payer, Purse};
+use crate::actions::rank_values::RankValues;
 use crate::actions::targets::Targets;
 use crate::actions::weapon::Weapon;
 use crate::actions::{Actions, ActionsSet};

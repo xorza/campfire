@@ -1,8 +1,8 @@
 use campfire_math::Vec3;
 use campfire_sim::{Capability, Position};
 
-use crate::actions::action_book::DeliveryShape;
 use crate::actions::action_data_field::ActionDataField;
+use crate::actions::delivery::DeliveryShape;
 use crate::deliveries::delivering::Delivering;
 use crate::projectiles::projectile_effect::{ProjectileEffect, Toward};
 use crate::scripts::api_builder::ApiBuilder;

@@ -1,6 +1,6 @@
 use campfire_sim::{Capability, Position};
 
-use crate::actions::action_book::DeliveryShape;
+use crate::actions::delivery::DeliveryShape;
 use crate::areas::area_effect::AreaEffect;
 use crate::deliveries::delivering::Delivering;
 use crate::scripts::api_builder::ApiBuilder;

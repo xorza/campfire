@@ -7,9 +7,11 @@ use campfire_math::{Num, Tick, Vec3};
 
 use campfire_sim::{Keyed, Ordered, Position, StableId, StateRegistry};
 
-use crate::actions::action_book::{ActionBook, Aim, Fan};
+use crate::actions::action::Aim;
+use crate::actions::action_book::ActionBook;
 use crate::actions::action_data::Range;
 use crate::actions::action_slots::ActionTarget;
+use crate::actions::fan::Fan;
 use crate::actions::targets::Targets;
 use crate::combat::CombatSet;
 use crate::combat::pass_queue::PassQueue;

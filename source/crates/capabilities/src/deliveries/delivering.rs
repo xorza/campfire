@@ -1,8 +1,8 @@
 use campfire_sim::StableId;
 use serde::{Deserialize, Serialize};
 
-use crate::actions::action_book::{Delivery, DeliveryShape};
 use crate::actions::actions_column::ActionsColumn;
+use crate::actions::delivery::{Delivery, DeliveryShape};
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::role_set::RoleSet;
