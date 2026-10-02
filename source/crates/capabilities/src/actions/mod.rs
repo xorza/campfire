@@ -282,6 +282,7 @@ pub(crate) mod internals {
     use crate::stats::modifier_book::ModifierBook;
     use crate::stats::modifier_book::ModifierId;
     use crate::stats::stat::Stat;
+    use crate::stats::stat_id::StatId;
     use crate::units::filter::Filter;
     use crate::units::script_view::View;
     use crate::units::type_scope::TypeScope;
@@ -357,7 +358,7 @@ pub(crate) mod internals {
     }
 
     impl ActionNames for MatchNames<'_> {
-        fn stat(&self, stat: &Stat) -> u16 {
+        fn stat(&self, stat: &Stat) -> StatId {
             self.view
                 .stat_index(stat)
                 .expect("the load checked the stats")

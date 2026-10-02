@@ -1599,7 +1599,7 @@ fn a_live_change_follows_its_source_in_the_order_of_the_stats_it_reads() {
         .into();
     let book = StatBook::new(&rules, [(veil_type, &growth)], RATE, num(6))
         .with_order(graph.order().unwrap());
-    let place = |stat: &Stat| usize::from(book.index(stat).unwrap());
+    let place = |stat: &Stat| book.index(stat).unwrap().index();
     let places = [&attack_damage, &spell_vamp, &armor].map(place);
     Stats::load(&mut game.world, book, PoolBook::default());
     let vamp = scaling(

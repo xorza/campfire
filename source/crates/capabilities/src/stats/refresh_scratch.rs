@@ -7,6 +7,7 @@ use crate::stats::live_param::LiveParam;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::param_source::ParamSource;
 use crate::stats::stat_book::StatBook;
+use crate::stats::stat_id::StatId;
 use crate::stats::stat_op::StatOp;
 use crate::stats::stat_totals::StatTotals;
 use crate::units::tag_set::TagSet;
@@ -39,7 +40,7 @@ pub(crate) struct Refreshing {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct LiveTerm {
     unit: u32,
-    stat: u16,
+    stat: StatId,
     op: StatOp,
     stacks: u32,
     live: LiveParam,
@@ -78,7 +79,7 @@ impl RefreshScratch {
             for share in &instance.stats {
                 let Some(param) = share.live else {
                     let change = i128::from(share.value.to_bits()) * i128::from(instance.stacks);
-                    self.totals[row + usize::from(share.stat)].change(share.op, change);
+                    self.totals[row + share.stat.index()].change(share.op, change);
                     continue;
                 };
                 live = true;
@@ -129,11 +130,11 @@ impl RefreshScratch {
                     .and_then(|frame| frame.live_value(term.live, term.rank, source.as_ref()))
                     .unwrap_or(term.fallback);
                 let change = i128::from(value.to_bits()) * i128::from(term.stacks);
-                let at = term.unit as usize * count + usize::from(stat);
+                let at = term.unit as usize * count + stat.index();
                 self.totals[at].change(term.op, change);
             }
             for unit in 0..self.units.len() {
-                let at = unit * count + usize::from(stat);
+                let at = unit * count + stat.index();
                 self.values[at] = book.value(stat, self.totals[at]);
             }
         }

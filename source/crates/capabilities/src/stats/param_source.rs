@@ -4,6 +4,7 @@ use campfire_sim::{EntityIndex, StableId};
 
 use crate::stats::level::Level;
 use crate::stats::stat_book::StatBook;
+use crate::stats::stat_id::StatId;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::unit_type::UnitType;
 
@@ -54,14 +55,14 @@ impl<'a> ParamSource<'a> {
     }
 
     /// Its stat at `at`, in bits.
-    pub(crate) fn stat_bits(&self, at: u16) -> i128 {
+    pub(crate) fn stat_bits(&self, at: StatId) -> i128 {
         self.values
-            .get(usize::from(at))
+            .get(at.index())
             .map_or(0, |value| i128::from(value.to_bits()))
     }
 
     /// The part of its stat at `at` above its type's value at its level, in bits.
-    pub(crate) fn bonus_bits(&self, at: u16) -> i128 {
+    pub(crate) fn bonus_bits(&self, at: StatId) -> i128 {
         self.stat_bits(at) - self.book.base_bits(self.unit_type, at, self.level)
     }
 }

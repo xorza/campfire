@@ -6,6 +6,7 @@ use crate::combat::combat_rules::CombatRules;
 use crate::stats::pool_data::PoolData;
 use crate::stats::pool_id::PoolId;
 use crate::stats::stat_book::StatBook;
+use crate::stats::stat_id::StatId;
 use crate::values::declared_name::DeclaredName;
 
 /// What the mode's `[combat]` binds: the life pool, and the places among the stats of leech from
@@ -15,9 +16,9 @@ use crate::values::declared_name::DeclaredName;
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CombatBindings {
     pub(crate) life: PoolId,
-    pub(crate) leech_attack: Option<u16>,
-    pub(crate) leech_other: Option<u16>,
-    pub(crate) heal_scale: Option<u16>,
+    pub(crate) leech_attack: Option<StatId>,
+    pub(crate) leech_other: Option<StatId>,
+    pub(crate) heal_scale: Option<StatId>,
 }
 
 impl CombatBindings {

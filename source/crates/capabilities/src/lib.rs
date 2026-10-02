@@ -143,6 +143,7 @@ pub use stats::pools::Pools;
 pub use stats::stat::{EngineStat, Stat};
 pub use stats::stat_change::StatChange;
 pub use stats::stat_graph::StatGraph;
+pub use stats::stat_id::StatId;
 pub use stats::stat_op::StatOp;
 pub use stats::stat_rule::StatRule;
 pub use stats::stats_data::{StatValue, StatsData};

@@ -26,6 +26,7 @@ use crate::stats::modifier_book::{ModifierBook, ModifierId};
 use crate::stats::param_table::ParamTable;
 use crate::stats::pool_id::PoolId;
 use crate::stats::stat::Stat;
+use crate::stats::stat_id::StatId;
 use crate::units::engine_tag::EngineTag;
 use crate::units::filter::Filter;
 use crate::units::type_scope::TypeScope;
@@ -381,7 +382,7 @@ struct BuildNames<'b> {
 }
 
 impl ActionNames for BuildNames<'_> {
-    fn stat(&self, stat: &Stat) -> u16 {
+    fn stat(&self, stat: &Stat) -> StatId {
         self.input.stat(stat)
     }
 

@@ -414,6 +414,7 @@ impl RankValues {
 
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
+    use crate::stats::stat_id::StatId;
     use campfire_math::Num;
     use campfire_sim::Ticks;
 
@@ -441,8 +442,8 @@ pub(crate) mod internals {
         pub(crate) range: Range,
         pub(crate) windup: Ticks,
         pub(crate) projectile: Option<UnitType>,
-        pub(crate) rate: u16,
-        pub(crate) damage: u16,
+        pub(crate) rate: StatId,
+        pub(crate) damage: StatId,
         pub(crate) cost: PoolCost,
         pub(crate) resource_cost: Option<ResourceAmount>,
     }

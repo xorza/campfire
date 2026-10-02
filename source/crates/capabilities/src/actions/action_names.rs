@@ -2,6 +2,7 @@ use crate::actions::action_data::CostTarget;
 use crate::combat::damage_kind::DamageKind;
 use crate::stats::modifier_book::ModifierId;
 use crate::stats::stat::Stat;
+use crate::stats::stat_id::StatId;
 use crate::units::filter::Filter;
 use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
@@ -10,7 +11,7 @@ use crate::values::filter_data::FilterData;
 /// action's load resolves them by, in a match's world or in the load's builder.
 pub(crate) trait ActionNames {
     /// The place of `stat` among the match's stats.
-    fn stat(&self, stat: &Stat) -> u16;
+    fn stat(&self, stat: &Stat) -> StatId;
     fn damage_kind(&self, name: &DeclaredName) -> DamageKind;
     /// What a cost named `name` takes from.
     fn cost_target(&self, name: &DeclaredName) -> Option<CostTarget>;

@@ -879,6 +879,7 @@ pub(crate) mod internals {
 
     use crate::actions::action_data::CostTarget;
     use crate::stats::stat::Stat;
+    use crate::stats::stat_id::StatId;
     use crate::units::script_view::View;
     use crate::units::unit_types::UnitTypes;
 
@@ -895,9 +896,9 @@ pub(crate) mod internals {
 
         /// The place of `stat` among the stats the mode declares; `None` when it does not
         /// declare it.
-        pub(crate) fn stat_index(&self, stat: &Stat) -> Option<u16> {
+        pub(crate) fn stat_index(&self, stat: &Stat) -> Option<StatId> {
             let at = self.0.borrow().stat_names.binary_search(stat).ok()?;
-            Some(u16::try_from(at).expect("stats fit u16"))
+            Some(StatId::new(at))
         }
 
         /// What a cost named `name` takes from: a pool, or else a player resource; `None` for

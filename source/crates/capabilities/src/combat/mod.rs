@@ -42,6 +42,7 @@ use crate::stats::modifier_book::ModifierId;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
+use crate::stats::stat_id::StatId;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::block::Block;
 use crate::units::owner::Owner;
@@ -778,10 +779,10 @@ impl Combat {
 
     /// `entity`'s value of the stat at `stat` among the stats; 0 when `[combat]` binds none, or
     /// the unit has no stats.
-    fn stat(world: &World, entity: Entity, stat: Option<u16>) -> Num {
+    fn stat(world: &World, entity: Entity, stat: Option<StatId>) -> Num {
         let values = world.get::<UnitStats>(entity);
         stat.zip(values)
-            .map_or(Num::ZERO, |(at, values)| values.values()[usize::from(at)])
+            .map_or(Num::ZERO, |(at, values)| values.values()[at.index()])
     }
 }
 
@@ -880,6 +881,7 @@ fn respawn(
 
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
+    use crate::stats::stat_id::StatId;
     use bevy_ecs::bundle::Bundle;
     use bevy_ecs::world::World;
     use campfire_math::Num;
@@ -954,8 +956,8 @@ pub(crate) mod internals {
                 range: Range::Meters(self.range),
                 windup: self.windup,
                 projectile: self.projectile,
-                rate: 0,
-                damage: 1,
+                rate: StatId::new(0),
+                damage: StatId::new(1),
                 cost: PoolCost::default(),
                 resource_cost: None,
             };

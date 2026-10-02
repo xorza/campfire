@@ -1,4 +1,5 @@
 use crate::stats::stat::Stat;
+use crate::stats::stat_id::StatId;
 
 /// Which stats a live stat change reads and which it changes, across a mode's modifiers: an edge
 /// from each stat a scaling param reads to the stat the change that reads it changes.
@@ -42,7 +43,7 @@ impl StatGraph {
 
     /// The stats in an order where each comes after every stat a change of it reads, the lowest
     /// place first among those ready together; the stats of a loop when there is one.
-    pub fn order(&self) -> Result<Vec<u16>, Vec<Stat>> {
+    pub fn order(&self) -> Result<Vec<StatId>, Vec<Stat>> {
         let count = self.stats.len();
         let mut reads = vec![0_u32; count];
         for edge in &self.edges {
@@ -56,8 +57,8 @@ impl StatGraph {
                 return Err(looped.map(|at| self.stats[at].clone()).collect());
             };
             done[next] = true;
+            order.push(StatId::new(next));
             let next = u16::try_from(next).expect("stats fit u16");
-            order.push(next);
             for edge in self.edges.iter().filter(|edge| edge.read == next) {
                 reads[usize::from(edge.changed)] -= 1;
             }
@@ -77,11 +78,11 @@ mod tests {
         let [armor, power, vamp] =
             ["armor", "power", "vamp"].map(|name| Stat::named(name).unwrap());
         let mut graph = StatGraph::new([armor.clone(), power.clone(), vamp.clone()]);
-        assert_eq!(graph.order(), Ok(vec![0, 1, 2]));
+        assert_eq!(graph.order(), Ok([0, 1, 2].map(StatId::new).to_vec()));
         graph.add(&vamp, &armor);
         graph.add(&power, &vamp);
         graph.add(&power, &vamp);
-        assert_eq!(graph.order(), Ok(vec![1, 2, 0]));
+        assert_eq!(graph.order(), Ok([1, 2, 0].map(StatId::new).to_vec()));
         // Power reading armor closes a loop through all three; a stat reading itself is one.
         let mut looped = graph.clone();
         looped.add(&armor, &power);

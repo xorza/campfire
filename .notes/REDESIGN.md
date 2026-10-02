@@ -418,7 +418,6 @@ This stage is the backbone. Its steps run in order.
 
 | Step | Change | Size |
 |---|---|---|
-| C6a | Typed ids from one list each (`StatId` and the others); one ms-to-ticks conversion; `Option<PoolId>` for the life pool; `Filter::of(Relation)` | M |
 | C6b | The modifier runtime spec; param tables in the books; aura and player-modifier filters resolved; stats no longer reads the frame | M |
 | C7 | The view and the frame read the books through `Arc`; `ScriptConsts`; `MatchScripts` goes; the allowlist test of name lookups | M |
 | C8 | `ActionKind` with data, one table of fields by kind; `Delivery` with its unit type; `TypeRole` and one store of type tags; one formula for each stat value; an attack's damage names its weapon (decision 7) | M, changes behaviour (`d.ability` of an attack) |
@@ -473,7 +472,7 @@ PLAN.md's stage 4 steps join this plan as follows:
 ### Order
 
 ```
-Track S:  C6a → C6b → C7 → C8 → C9 → D2 → D3 → D5 → D6
+Track S:  C6b → C7 → C8 → C9 → D2 → D3 → D5 → D6
                                   └ (C7 + I4) PLAN 2
 
 Track I:  E1 → E2      F2      G1      H1, H4      H2 → H3

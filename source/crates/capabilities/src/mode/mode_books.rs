@@ -6,6 +6,7 @@ use crate::mode::mode_data::ModeData;
 use crate::mode::mode_setup::UnitTypeSetup;
 use crate::stats::pool_book::PoolBook;
 use crate::stats::stat_book::StatBook;
+use crate::stats::stat_id::StatId;
 use crate::units::body::Body;
 use crate::units::tag_book::TagBook;
 use crate::units::unit_types::UnitTypes;
@@ -32,7 +33,7 @@ impl ModeBooks {
         types: &mut UnitTypes,
         rate: TickRate,
         max_move_speed: Num,
-        stat_order: Vec<u16>,
+        stat_order: Vec<StatId>,
     ) -> ModeBooks {
         let setups = unit_types
             .iter()

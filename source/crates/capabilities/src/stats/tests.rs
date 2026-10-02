@@ -17,6 +17,7 @@ use crate::stats::pool_data::PoolData;
 use crate::stats::pool_id::PoolId;
 use crate::stats::stat::EngineStat;
 use crate::stats::stat::Stat;
+use crate::stats::stat_id::StatId;
 use crate::stats::stat_op::StatOp;
 use crate::stats::stat_rule::StatRule;
 use crate::stats::stats_data::{StatValue, StatsData};
@@ -162,7 +163,7 @@ fn a_units_stats_follow_its_type_and_level_within_their_limits() {
         let unit = world.entity(units[0]);
         let book = world.resource::<StatBook>();
         let values = unit.get::<UnitStats>().unwrap().values();
-        let value = |name| values[usize::from(book.index(&stat(name)).unwrap())];
+        let value = |name| values[book.index(&stat(name)).unwrap().index()];
         (
             unit.get::<MoveStep>().unwrap().get(),
             value("attack_speed"),
@@ -215,7 +216,7 @@ fn a_units_stats_follow_its_type_and_level_within_their_limits() {
 fn share(
     id: u16,
     source: Option<StableId>,
-    stat: u16,
+    stat: StatId,
     op: StatOp,
     value: Num,
     reapply: Reapply,
@@ -282,7 +283,7 @@ fn a_stat_is_its_base_plus_adds_times_pcts_times_the_largest_cut() {
         entity.insert((Level::new(3).unwrap(), modifiers));
         game.world.run_schedule(SimUpdate);
         let stats = game.world.get::<UnitStats>(armored_unit).unwrap();
-        stats.values()[usize::from(armor)]
+        stats.values()[armor.index()]
     };
     assert_eq!(value(&[]), num(14));
     // Adds of 6 and of −1 three times: 17. Pcts of 0.3, 5 033 164.8 bits to 5 033 165, and of
@@ -576,7 +577,7 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
     restored.world.run_schedule(SimUpdate);
     for (world, entity) in [(&game.world, walker), (&restored.world, copy)] {
         let stats = world.get::<UnitStats>(entity).unwrap();
-        assert_eq!(stats.values()[usize::from(speed)], num(2));
+        assert_eq!(stats.values()[speed.index()], num(2));
         let tags = world.get::<UnitTags>(entity);
         assert!(UnitTags::effects_of(tags).blocks(Block::Move));
     }

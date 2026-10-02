@@ -5,6 +5,7 @@ use bevy_ecs::resource::Resource;
 use crate::stats::pool_data::PoolData;
 use crate::stats::pool_id::PoolId;
 use crate::stats::stat_book::StatBook;
+use crate::stats::stat_id::StatId;
 use crate::values::declared_name::DeclaredName;
 
 /// The pools the mode declares, by pool id: the place among the stats of each one's maximum and
@@ -17,8 +18,8 @@ pub(crate) struct PoolBook {
 /// The places among the stats of a pool's maximum and of its regen a second.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct PoolStats {
-    pub(crate) max: u16,
-    pub(crate) regen: Option<u16>,
+    pub(crate) max: StatId,
+    pub(crate) regen: Option<StatId>,
 }
 
 impl PoolBook {

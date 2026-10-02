@@ -62,6 +62,7 @@ use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::stat::Stat;
 use crate::stats::stat_book::StatBook;
+use crate::stats::stat_id::StatId;
 use crate::stats::stat_op::StatOp;
 use crate::stats::stat_rule::StatRule;
 use crate::stats::stats_data::StatsData;
@@ -713,7 +714,7 @@ impl Game {
         let setup = setup(&files, script, types, spell, strike, blessing);
         let books = {
             let view = world.non_send::<View>();
-            let order = (0..u16::try_from(STATS_3V3.len()).unwrap()).collect();
+            let order = (0..STATS_3V3.len()).map(StatId::new).collect();
             let unit_types = &setup.unit_types;
             ModeBooks::build(
                 &files.data,

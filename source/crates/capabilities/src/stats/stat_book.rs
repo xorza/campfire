@@ -5,6 +5,7 @@ use campfire_math::Num;
 use campfire_sim::TickRate;
 
 use crate::stats::stat::{EngineStat, Stat};
+use crate::stats::stat_id::StatId;
 use crate::stats::stat_rule::StatRule;
 use crate::stats::stat_totals::StatTotals;
 use crate::stats::stats_data::StatsData;
@@ -25,8 +26,8 @@ pub(crate) struct StatBook {
     growth: Vec<Option<Growth>>,
     /// The stats' places in the order the refresh computes them: each after every stat a live
     /// change of it reads.
-    order: Vec<u16>,
-    /// Each stat's position in `order`, by its place.
+    order: Vec<StatId>,
+    /// Each stat's position in `order`, by its id.
     positions: Vec<u16>,
     rate: TickRate,
     max_move_speed: Num,
@@ -73,11 +74,11 @@ impl StatBook {
             }
         }
         StatBook {
+            order: (0..stats.len()).map(StatId::new).collect(),
             stats,
             rules: rules.values().copied().collect(),
             engine,
             growth,
-            order: (0..stats_len).collect(),
             positions: (0..stats_len).collect(),
             rate,
             max_move_speed,
@@ -91,16 +92,19 @@ impl StatBook {
     /// The book with the stats in `order`, a permutation of their places, as a stat graph of
     /// the mode gives it.
     #[must_use]
-    pub(crate) fn with_order(self, order: Vec<u16>) -> StatBook {
+    pub(crate) fn with_order(self, order: Vec<StatId>) -> StatBook {
         let mut sorted = order.clone();
         sorted.sort_unstable();
         assert!(
-            sorted.iter().copied().eq(0..self.len()),
+            sorted
+                .iter()
+                .copied()
+                .eq((0..self.stats.len()).map(StatId::new)),
             "an order holds every stat once"
         );
         let mut positions = vec![0; order.len()];
         for (position, &at) in (0..).zip(&order) {
-            positions[usize::from(at)] = position;
+            positions[at.index()] = position;
         }
         StatBook {
             order,
@@ -114,44 +118,45 @@ impl StatBook {
         u16::try_from(self.stats.len()).expect("stats fit u16")
     }
 
-    /// The stats' places in the order the refresh computes them.
-    pub(crate) fn order(&self) -> &[u16] {
+    /// The stats in the order the refresh computes them.
+    pub(crate) fn order(&self) -> &[StatId] {
         &self.order
     }
 
-    /// The position of the stat at `at` in the order.
-    pub(crate) fn position(&self, at: u16) -> u16 {
-        self.positions[usize::from(at)]
+    /// The position of `stat` in the order.
+    pub(crate) fn position(&self, stat: StatId) -> u16 {
+        self.positions[stat.index()]
     }
 
     /// Appends to `totals` a unit of `unit_type` at `level`'s totals of each stat before its
     /// modifiers.
     pub(crate) fn totals(&self, unit_type: UnitType, level: u32, totals: &mut Vec<StatTotals>) {
         totals.extend(
-            (0..self.len()).map(|at| StatTotals::base(self.base_bits(unit_type, at, level))),
+            (0..self.stats.len())
+                .map(|at| StatTotals::base(self.base_bits(unit_type, StatId::new(at), level))),
         );
     }
 
-    /// The value of the stat at `at` that `totals` sum, within its rule's limits.
-    pub(crate) fn value(&self, at: u16, totals: StatTotals) -> Num {
-        self.rules[usize::from(at)].clamp(totals.value())
+    /// The value of `stat` that `totals` sum, within its rule's limits.
+    pub(crate) fn value(&self, stat: StatId, totals: StatTotals) -> Num {
+        self.rules[stat.index()].clamp(totals.value())
     }
 
-    /// The value of a unit of `unit_type` at `level` of the stat at `at`, before its modifiers,
-    /// in bits: `base + per_level × (level − 1)`, 0 where the type gives none.
-    pub(crate) fn base_bits(&self, unit_type: UnitType, at: u16, level: u32) -> i128 {
+    /// The value of a unit of `unit_type` at `level` of `stat`, before its modifiers, in bits:
+    /// `base + per_level × (level − 1)`, 0 where the type gives none.
+    pub(crate) fn base_bits(&self, unit_type: UnitType, stat: StatId, level: u32) -> i128 {
         let first = unit_type.index() * self.stats.len();
-        let growth = self.growth.get(first + usize::from(at)).copied().flatten();
+        let growth = self.growth.get(first + stat.index()).copied().flatten();
         growth.map_or(0, |growth| {
             i128::from(growth.base.to_bits())
                 + i128::from(growth.per_level.to_bits()) * i128::from(level.saturating_sub(1))
         })
     }
 
-    /// The place of `stat` among the stats; `None` when the mode does not declare it.
-    pub(crate) fn index(&self, stat: &Stat) -> Option<u16> {
+    /// The id of `stat`; `None` when the mode does not declare it.
+    pub(crate) fn index(&self, stat: &Stat) -> Option<StatId> {
         let at = self.stats.binary_search(stat).ok()?;
-        Some(u16::try_from(at).expect("stats fit u16"))
+        Some(StatId::new(at))
     }
 
     /// Engine stat `stat` among `values`; `None` when the mode does not declare it.

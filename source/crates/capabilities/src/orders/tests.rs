@@ -21,6 +21,7 @@ use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::pool_cost::PoolCost;
 use crate::stats::pool_id::PoolId;
+use crate::stats::stat_id::StatId;
 use crate::units::Units;
 use crate::units::filter::Filter;
 use crate::units::path_id::PathId;
@@ -879,8 +880,8 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
             range,
             windup: Ticks::new(2),
             projectile: None,
-            rate: 0,
-            damage: 1,
+            rate: StatId::new(0),
+            damage: StatId::new(1),
             cost: PoolCost::default(),
             resource_cost: None,
         };

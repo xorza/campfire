@@ -360,6 +360,7 @@ pub(crate) mod internals {
     use crate::scripts::frame::Frame;
     use crate::stats::modifier_book::ModifierId;
     use crate::stats::stat::Stat;
+    use crate::stats::stat_id::StatId;
     use crate::values::declared_name::DeclaredName;
     use crate::values::param::Param;
     use std::collections::BTreeMap;
@@ -371,7 +372,7 @@ pub(crate) mod internals {
             &mut self,
             ability: ActionId,
             params: &BTreeMap<DeclaredName, Param>,
-            stat: impl Fn(&Stat) -> u16,
+            stat: impl Fn(&Stat) -> StatId,
         ) {
             let run = self.params.push(params, stat);
             debug_assert_eq!(run, ability.index(), "one run of params per ability");
@@ -383,7 +384,7 @@ pub(crate) mod internals {
             &mut self,
             modifier: ModifierId,
             params: &BTreeMap<DeclaredName, Param>,
-            stat: impl Fn(&Stat) -> u16,
+            stat: impl Fn(&Stat) -> StatId,
         ) {
             let run = self.modifier_params.push(params, stat);
             debug_assert_eq!(run, modifier.index(), "one run of params per modifier");

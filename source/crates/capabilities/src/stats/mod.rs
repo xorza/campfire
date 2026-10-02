@@ -68,6 +68,7 @@ pub(crate) mod stat;
 pub(crate) mod stat_book;
 pub(crate) mod stat_change;
 pub(crate) mod stat_graph;
+pub(crate) mod stat_id;
 pub(crate) mod stat_op;
 pub(crate) mod stat_rule;
 pub(crate) mod stat_totals;
@@ -559,7 +560,7 @@ fn refresh_stats(
         if let Some(mut pools) = pools {
             let mut changed = *pools;
             for (pool, stats) in pool_book.iter() {
-                let max = values[usize::from(stats.max)].max(Num::EPSILON);
+                let max = values[stats.max.index()].max(Num::EPSILON);
                 changed.set_max(pool, max);
             }
             pools.set_if_neq(changed);
@@ -582,7 +583,7 @@ fn regenerate(
         let mut changed = *pools;
         for (pool, stats) in pool_book.iter() {
             if let Some(regen) = stats.regen {
-                changed.regen(pool, values[usize::from(regen)], hz);
+                changed.regen(pool, values[regen.index()], hz);
             }
         }
         pools.set_if_neq(changed);

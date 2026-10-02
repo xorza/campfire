@@ -4,6 +4,7 @@ use campfire_math::Num;
 
 use crate::stats::param_source::ParamSource;
 use crate::stats::stat::Stat;
+use crate::stats::stat_id::StatId;
 use crate::values::declared_name::DeclaredName;
 use crate::values::name_table::NameTable;
 use crate::values::param::Param;
@@ -40,7 +41,7 @@ struct Scaled {
 /// `bonus` the part of it above its type's value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct StatRatio {
-    stat: u16,
+    stat: StatId,
     ratio: Num,
     bonus: bool,
 }
@@ -51,7 +52,7 @@ impl ParamTable {
     pub(crate) fn push(
         &mut self,
         params: &BTreeMap<DeclaredName, Param>,
-        stat: impl Fn(&Stat) -> u16,
+        stat: impl Fn(&Stat) -> StatId,
     ) -> usize {
         let mut values = Vec::with_capacity(params.len());
         for (name, param) in params {

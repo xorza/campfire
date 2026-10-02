@@ -279,15 +279,15 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
             range: Range::Meters(num(range)),
             windup: Ticks::new(windup),
             projectile: None,
-            rate: 0,
+            rate: StatId::new(0),
             damage,
             cost: PoolCost::default(),
             resource_cost: None,
         };
         internals::weapon(&mut fight.world.resource_mut::<ActionBook>(), weapon)
     };
-    let ground = weapon(&mut fight, "enemies:ground", 1, 0, 1);
-    let air = weapon(&mut fight, "enemies:air", 5, 1, 2);
+    let ground = weapon(&mut fight, "enemies:ground", 1, 0, StatId::new(1));
+    let air = weapon(&mut fight, "enemies:air", 5, 1, StatId::new(2));
     let mut stats = UnitStats::default();
     stats.refill().extend([num(6), num(10), num(25)]);
     let slots = ActionSlots::new([ground, air].map(|weapon| (weapon, SlotKind::new(0), 1)));
@@ -424,8 +424,8 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
         range: Range::Meters(num(2)),
         windup: Ticks::new(2),
         projectile: None,
-        rate: 0,
-        damage: 1,
+        rate: StatId::new(0),
+        damage: StatId::new(1),
         cost: PoolCost::new([(mana, num(4))]),
         resource_cost: Some(ResourceAmount {
             resource: gold,
