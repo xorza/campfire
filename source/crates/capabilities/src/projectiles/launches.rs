@@ -1,13 +1,16 @@
 use bevy_ecs::resource::Resource;
 use campfire_sim::{Position, StableId};
 
-use crate::projectiles::projectile::{Flight, Payload};
+use campfire_math::Num;
+
+use crate::projectiles::projectile::Flight;
+use crate::units::action_id::ActionId;
 use crate::units::unit_type::UnitType;
+use crate::values::damage_kind::DamageKind;
 
 /// The projectiles that launch this tick: those ranged attacks fire, those actions deliver, and
-/// those scripts launch. In a match with projectiles, `projectiles` inserts this list and takes
-/// its launches in `CombatSet::Launch`; without, a ranged attack strikes at once. Not state: it
-/// empties within the tick.
+/// those scripts launch, which spawn in `CombatSet::Launch`. Not state: it empties within the
+/// tick.
 #[derive(Resource, Debug, Default)]
 pub(crate) struct Launches {
     pub(crate) launches: Vec<Launch>,
@@ -16,16 +19,32 @@ pub(crate) struct Launches {
 }
 
 /// A projectile of `unit_type` that `source` launches from `from`, flying as `flight` and
-/// carrying `payload`, of the cast numbered `cast` this tick; an action's payload names its
-/// group once the first projectile of the cast takes its id.
+/// carrying `payload`, of the cast numbered `cast` this tick.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Launch {
     pub(crate) source: StableId,
     pub(crate) from: Position,
     pub(crate) unit_type: UnitType,
     pub(crate) flight: Flight,
-    pub(crate) payload: Payload,
+    pub(crate) payload: LaunchPayload,
     pub(crate) cast: u32,
+}
+
+/// What a launch carries: an attack's damage of `kind` and the roll it drew, or the action at
+/// `rank` whose hooks it runs, whose group is the first projectile of its cast, known once that
+/// one spawns.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum LaunchPayload {
+    Attack {
+        action: ActionId,
+        amount: Num,
+        kind: DamageKind,
+        roll: Num,
+    },
+    Action {
+        action: ActionId,
+        rank: u8,
+    },
 }
 
 impl Launches {

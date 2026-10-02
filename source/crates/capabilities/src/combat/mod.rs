@@ -26,15 +26,14 @@ use crate::combat::deaths::{Deaths, Fallen};
 use crate::combat::heal::{Heal, HealCause};
 use crate::combat::heal_weigher::HealWeigher;
 use crate::combat::kept::Kept;
-use crate::combat::launches::{Launch, Launches};
 use crate::combat::modifier_hooks::ModifierHooks;
 use crate::combat::on_death::OnDeath;
 use crate::combat::pass_queue::{PassEntry, PassQueue};
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::combat::respawn::Respawn;
+use crate::combat::shots::{Shot, Shots};
 use crate::players::player_resources::PlayerResources;
 use crate::players::resource_id::ResourceAmount;
-use crate::projectiles::projectile::{Flight, Payload};
 use crate::scripts::ctx::Ctx;
 use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
@@ -77,12 +76,12 @@ pub(crate) mod heal;
 pub(crate) mod heal_handle;
 pub(crate) mod heal_weigher;
 pub(crate) mod kept;
-pub(crate) mod launches;
 pub(crate) mod modifier_hooks;
 pub(crate) mod on_death;
 pub(crate) mod pass_queue;
 pub(crate) mod recent_attackers;
 pub(crate) mod respawn;
+pub(crate) mod shots;
 
 /// The random stream an attack's roll draws from, for its attacker in its tick.
 pub(crate) const ROLL_STREAM: &str = "combat.roll";
@@ -101,7 +100,10 @@ pub(crate) enum CombatSet {
     Attack,
     /// In `SimSet::Hit`: windups that end strike, or fire, each with its roll drawn.
     Strike,
-    /// In `SimSet::Hit`, after `Strike`: the tick's launches take off.
+    /// In `SimSet::Hit`, after `Strike`: the tick's shots become launches, before any cast
+    /// delivers.
+    Fire,
+    /// In `SimSet::Hit`, after `Fire`: the tick's launches take off.
     Launch,
     /// In `SimSet::Hit`, after `Launch`: modifiers' intervals come.
     Interval,
@@ -122,6 +124,7 @@ impl Combat {
             view.add_source(fill_row);
         }
         world.insert_resource(PassQueue::default());
+        world.insert_resource(Shots::default());
         world.insert_resource(Deaths::default());
         if let Some(ctx) = world.get_non_send::<Ctx>().cloned() {
             let hooks = ModifierHooks::new(ctx);
@@ -130,9 +133,8 @@ impl Combat {
             }));
         }
         schedule.configure_sets((
-            CombatSet::Launch
-                .in_set(SimSet::Hit)
-                .after(CombatSet::Strike),
+            CombatSet::Fire.in_set(SimSet::Hit).after(CombatSet::Strike),
+            CombatSet::Launch.in_set(SimSet::Hit).after(CombatSet::Fire),
             CombatSet::Die.before(StatsSet::Hold),
             ActionsSet::Start.in_set(CombatSet::Attack),
             ActionsSet::HoldAtResolve
@@ -354,8 +356,9 @@ fn run_intervals(
 }
 
 /// Delivers each attack whose windup ends this tick, in the order of its attacker's stable id: it
-/// queues the damage of its weapon's damage stat, of its kind, or its launch when the weapon fires
-/// a projectile and the match has projectiles. Each draws its roll now, at least 0 and less than 1,
+/// queues the damage of its weapon's damage stat, of its kind, or a shot when the weapon fires a
+/// projectile, which `projectiles` launches, as the load gives such a weapon only to a match with
+/// projectiles. Each draws its roll now, at least 0 and less than 1,
 /// which `calc_damage` reads. The weapon's cost is paid, in pools and its player's resources, and
 /// it is ready again a period from the attack's start, the tick rate over its rate stat. A windup
 /// whose attacker's tags keep it from attacking, or that no longer affords its cost, stops instead,
@@ -368,9 +371,9 @@ fn strike(
         Res<'_, SimRng>,
         Res<'_, ActionBook>,
     ),
-    (mut queue, mut launches, mut resources, predicting): (
+    (mut queue, mut fired, mut resources, predicting): (
         ResMut<'_, PassQueue>,
-        Option<ResMut<'_, Launches>>,
+        ResMut<'_, Shots>,
         Option<ResMut<'_, PlayerResources>>,
         Option<Res<'_, Predicting>>,
     ),
@@ -431,27 +434,18 @@ fn strike(
         }
         let amount = weapon.damage(stats);
         let roll = rng.open(ROLL_STREAM, source).fraction();
-        match (wielded.projectile, launches.as_deref_mut()) {
-            (Some(unit_type), Some(launches)) => {
-                let cast = launches.cast();
-                launches.launches.push(Launch {
-                    source,
-                    from,
-                    unit_type,
-                    flight: Flight::Homing {
-                        target,
-                        flown: Num::ZERO,
-                    },
-                    payload: Payload::Attack {
-                        action,
-                        amount,
-                        kind: weapon.kind,
-                        roll,
-                    },
-                    cast,
-                });
-            }
-            _ => queue.push_damage(Damage {
+        match wielded.projectile {
+            Some(unit_type) => fired.0.push(Shot {
+                source,
+                from,
+                target,
+                unit_type,
+                action,
+                amount,
+                kind: weapon.kind,
+                roll,
+            }),
+            None => queue.push_damage(Damage {
                 source: Some(source),
                 target,
                 amount,

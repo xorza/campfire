@@ -4,9 +4,9 @@ use std::{iter, slice};
 use campfire_capabilities::{
     ActionData, ActionDataField, ActionKind, ActionSlots, ApiOwner, ApiVersion, BookError, Books,
     CollisionData, CombatRules, DeclaredName, DeliveryData, EffectTo, Effecting, EngineStat,
-    EngineTag, FilterData, Hook, MemberKind, ModifierData, NameKind, Navigation, Number, Offers,
-    Param, Pools, Range, RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Stat, Targeting,
-    TrackId, UnitTypeData, UnitTypeFile,
+    EngineTag, FilterData, Hook, MemberKind, ModifierData, NameKind, Number, Offers, Param, Pools,
+    Range, RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Stat, Targeting, TrackId,
+    UnitTypeData, UnitTypeFile,
 };
 use campfire_content::PackagePath;
 use campfire_math::Num;
@@ -183,7 +183,7 @@ impl<'a> LoadCheck<'a> {
     }
 
     /// The map can be walked by every unit that walks, among the mode's unit types and its
-    /// avatars, as `Navigation::check_map` sets: the widest of each layer stands on every
+    /// avatars, as `MapData::check_walkable` sets: the widest of each layer stands on every
     /// marker's point and waypoint, and reaches every waypoint from the one before, among the
     /// map's placed units that cannot walk.
     fn map_walkable(&self) -> Result<(), LoadProblem> {
@@ -199,7 +199,10 @@ impl<'a> LoadCheck<'a> {
             let body = packages.data.navigation.body(unit_type.collision.as_ref());
             body.filter(|_| !walks)
         };
-        Navigation::check_map(&packages.map, &walkers, body_of).map_err(LoadProblem::Map)
+        packages
+            .map
+            .check_walkable(&walkers, body_of)
+            .map_err(LoadProblem::Map)
     }
 
     /// The mode package: its unit types' sections, its map, its modifiers and its scripts.

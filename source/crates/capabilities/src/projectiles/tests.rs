@@ -82,22 +82,18 @@ struct Volley {
 }
 
 impl Volley {
-    /// A match with combat, and with projectiles and their types when `projectiles`.
-    fn new(projectiles: bool) -> Volley {
-        let declared: &[Capability] = if projectiles {
-            &[
-                Capability::Stats,
-                Capability::Combat,
-                Capability::Projectiles,
-            ]
-        } else {
-            &[Capability::Stats, Capability::Combat]
-        };
+    /// A match with combat and projectiles, and the projectiles' types.
+    fn new() -> Volley {
+        let declared = [
+            Capability::Stats,
+            Capability::Combat,
+            Capability::Projectiles,
+        ];
         let TestMatch {
             mut world,
             schedule,
             registry,
-        } = TestMatch::new(declared, RATE, None);
+        } = TestMatch::new(&declared, RATE, None);
         world.add_schedule(schedule);
         let types = [
             ("bolt", projectile(true, Num::ZERO, None, false)),
@@ -107,9 +103,7 @@ impl Volley {
         let [bolt, lance, dart] = types.map(|(name, data)| {
             let unit_type =
                 Units::load_type(&mut world, TypeScope::Mode, name, &UnitTypeData::default());
-            if projectiles {
-                Projectiles::load_type(&mut world, unit_type, &data);
-            }
+            Projectiles::load_type(&mut world, unit_type, &data);
             unit_type
         });
         Volley {
@@ -143,7 +137,7 @@ impl Volley {
                 range,
                 aimed: None,
             },
-            payload: Payload::Attack {
+            payload: LaunchPayload::Attack {
                 action: ActionId::nth(0),
                 amount: num(10),
                 kind: DamageKind::new(0),
@@ -207,7 +201,7 @@ impl Volley {
 
 #[test]
 fn a_projectile_flies_to_its_target_and_strikes_on_arrival() {
-    let mut volley = Volley::new(true);
+    let mut volley = Volley::new();
     let shooter_id = volley.unit(0, at(0, 0), shooter(volley.bolt));
     let target_id = volley.unit(1, at(5, 0), target());
     volley.attack(shooter_id, target_id);
@@ -247,24 +241,11 @@ fn a_projectile_flies_to_its_target_and_strikes_on_arrival() {
     source.begin_tick(12);
     let roll = source.open(ROLL_STREAM, shooter_id.get()).fraction();
     assert_eq!(volley.rolls(), [roll]);
-
-    // Without projectiles, the same attack strikes at the end of its windup, in tick 2.
-    let mut instant = Volley::new(false);
-    let shooter_id = instant.unit(0, at(0, 0), shooter(instant.bolt));
-    let target_id = instant.unit(1, at(5, 0), target());
-    instant.attack(shooter_id, target_id);
-    let healths: Vec<_> = (0..3)
-        .map(|_| {
-            instant.tick();
-            instant.health(target_id)
-        })
-        .collect();
-    assert_eq!(healths, [100, 100, 70]);
 }
 
 #[test]
 fn a_projectile_whose_target_dies_or_goes_first_ends_without_a_hit() {
-    let mut volley = Volley::new(true);
+    let mut volley = Volley::new();
     let first = volley.unit(0, at(0, 0), shooter(volley.bolt));
     let second = volley.unit(0, at(0, 1), shooter(volley.bolt));
     let doomed = volley.unit(1, at(5, 0), target());
@@ -293,7 +274,7 @@ fn a_projectile_whose_target_dies_or_goes_first_ends_without_a_hit() {
     );
     let mut snapshot = Vec::new();
     volley.registry.snapshot(&volley.world, &mut snapshot);
-    let mut restored = Volley::new(true);
+    let mut restored = Volley::new();
     volley
         .registry
         .restore(&snapshot, &mut restored.world)
@@ -326,7 +307,7 @@ fn a_projectile_that_outlives_its_source_kills_with_no_killer() {
     // dead creep does, so its strike has no source that exists: the second one's strike kills,
     // and it alone is the killer's. Were the second shooter gone too, no one would be.
     for second_goes in [false, true] {
-        let mut volley = Volley::new(true);
+        let mut volley = Volley::new();
         let shooters = [0, 10].map(|x| volley.unit(0, at(x, 0), shooter(volley.bolt)));
         let victim = volley.unit(1, at(5, 0), target());
         let victim_entity = volley.entity(victim);
@@ -376,7 +357,7 @@ fn a_projectile_that_outlives_its_source_kills_with_no_killer() {
 
 #[test]
 fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_ends_at_its_range() {
-    let mut volley = Volley::new(true);
+    let mut volley = Volley::new();
     let source = volley.unit(0, at(0, -9), target());
     let point = |x: Num, z: Num| Position::new(Vec3::new(x, Num::ZERO, z)).unwrap();
     let e = Num::EPSILON;
@@ -403,7 +384,7 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
 
     // A dart of no width ends at its first hit: of two enemies on one point, the lower id, in
     // tick 6, where its path reaches 3 m from 2.5 m; the one past them is never hit.
-    let mut volley = Volley::new(true);
+    let mut volley = Volley::new();
     let source = volley.unit(0, at(0, -9), target());
     let [first, second, behind] =
         [at(3, 0), at(3, 0), at(4, 0)].map(|at| volley.unit(1, at, target()));

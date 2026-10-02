@@ -1,12 +1,18 @@
 use std::collections::BTreeMap;
 
-use campfire_math::Vec3;
-use campfire_sim::Position;
+use campfire_math::{Num, Vec3};
+use campfire_sim::{IdAllocator, Position};
 use serde::Deserialize;
 
 use crate::mode::error::ModeError;
 use crate::mode::mode_data::ModeParam;
+use crate::navigation::body_index::{BodyIndex, IndexedBody};
+use crate::navigation::error::MapProblem;
 use crate::navigation::path_walker::PathEnd;
+use crate::navigation::pathing_grid::PathingGrid;
+use crate::navigation::segment::Segment;
+use crate::navigation::walker::Walker;
+use crate::units::body::Body;
 use crate::values::bounds::Bounds;
 use crate::values::declared_name::DeclaredName;
 use crate::values::grid::Grid;
@@ -97,6 +103,74 @@ pub enum MapPoint {
 }
 
 impl MapData {
+    /// Checks that the map can be walked by every kind of unit that walks, of `walkers`, for the
+    /// widest of each layer, among the map's placed units that cannot walk, whose bodies
+    /// `body_of` gives by unit type, and none for a type that walks: every marker's point and
+    /// waypoint is a place that walker may stand, and every waypoint is in a reachable set of the
+    /// one before it, by the regions a match plans its routes with. A narrower walker of the
+    /// layer has every cell the widest has open. A map with no `[navigation]` cells, or a mode
+    /// with no walker, has nothing to check. The book build checked its points.
+    pub fn check_walkable(
+        &self,
+        walkers: &[Walker],
+        body_of: impl Fn(&str) -> Option<Body>,
+    ) -> Result<(), MapProblem> {
+        let Some(cells) = self.pathing().expect("the book build checked the map") else {
+            return Ok(());
+        };
+        debug_assert!(walkers.is_sorted(), "walkers by layer, then radius");
+        let widest = walkers
+            .chunk_by(|a, b| a.layer == b.layer)
+            .map(|layer| *layer.last().expect("a chunk is never empty"));
+        let point = |point: &MapPoint| point.position().expect("the book build checked the map");
+        let mut ids = IdAllocator::default();
+        let structures: Vec<IndexedBody> = self
+            .units
+            .iter()
+            .filter_map(|unit| {
+                let body = body_of(unit.unit_type.as_str())?;
+                Some(IndexedBody {
+                    id: ids.allocate(),
+                    at: point(&unit.pos),
+                    radius: body.radius(),
+                    layer: body.layer(),
+                })
+            })
+            .collect();
+        let widest_radius = walkers.iter().map(|walker| walker.radius).max();
+        let mut statics = BodyIndex::new(widest_radius.unwrap_or(Num::ZERO));
+        statics.update(&structures);
+        let mut grid = PathingGrid::new(cells, widest.clone().collect());
+        grid.update(&statics);
+        for walker in widest {
+            let clearance = grid.clearance(walker);
+            let stands = |at: Position| !statics.blocks(Segment::new(at, at), walker);
+            for marker in &self.markers {
+                if marker.pos.is_some_and(|pos| !stands(point(&pos))) {
+                    let marker = marker.name.clone();
+                    return Err(MapProblem::MarkerBlocked { marker });
+                }
+            }
+            let reach = |at: Position| clearance.regions().reach(cells.nearest_cell(at));
+            for path in &self.paths {
+                if let Some(waypoint) = path.points.iter().position(|ground| !stands(point(ground)))
+                {
+                    let path = path.name.clone();
+                    return Err(MapProblem::WaypointBlocked { path, waypoint });
+                }
+                let closed = path
+                    .points
+                    .windows(2)
+                    .position(|pair| !reach(point(&pair[0])).meets(reach(point(&pair[1]))));
+                if let Some(before) = closed {
+                    let (path, waypoint) = (path.name.clone(), before + 1);
+                    return Err(MapProblem::WaypointUnreachable { path, waypoint });
+                }
+            }
+        }
+        Ok(())
+    }
+
     /// The vision grid over the bounds, if the map has one; an error unless its cell is positive
     /// and at most the world's bound, and it has at most 2²² cells.
     pub fn grid(&self) -> Result<Option<Grid>, ModeError> {
@@ -157,7 +231,6 @@ impl RegionData {
 
 #[cfg(test)]
 mod tests {
-    use campfire_math::Num;
 
     use super::*;
 

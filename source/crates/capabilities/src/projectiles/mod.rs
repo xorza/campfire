@@ -12,13 +12,14 @@ use crate::actions::action_data::Range;
 use crate::actions::action_slots::ActionTarget;
 use crate::actions::targets::Targets;
 use crate::combat::CombatSet;
-use crate::combat::launches::{Launch, Launches};
 use crate::combat::pass_queue::PassQueue;
+use crate::combat::shots::Shots;
 use crate::deliveries::delivering::Delivering;
 use crate::deliveries::delivery_spawner::DeliverySpawner;
 use crate::deliveries::{Deliveries, DeliverySet};
 use crate::projectiles::cast_hits::CastHits;
 use crate::projectiles::flights::{Aloft, Flights};
+use crate::projectiles::launches::{Launch, LaunchPayload, Launches};
 use crate::projectiles::projectile::{Flight, Payload, Projectile};
 
 use crate::projectiles::projectile_effect::{ProjectileEffect, Toward};
@@ -34,6 +35,7 @@ use crate::values::metric::Metric;
 
 pub(crate) mod cast_hits;
 pub(crate) mod flights;
+pub(crate) mod launches;
 pub(crate) mod projectile;
 pub(crate) mod projectile_data;
 pub(crate) mod projectile_effect;
@@ -56,6 +58,7 @@ impl Projectiles {
         world.insert_resource(ByType::<ProjectileSpec>::default());
         schedule.add_systems((
             fly.in_set(DeliverySet::Fly),
+            take_shots.in_set(CombatSet::Fire),
             launch.in_set(CombatSet::Launch),
         ));
         registry.register_component::<Projectile>();
@@ -195,10 +198,9 @@ impl Projectiles {
                 from,
                 unit_type,
                 flight,
-                payload: Payload::Action {
+                payload: LaunchPayload::Action {
                     action: by.action,
                     rank: by.rank,
-                    group: by.source,
                 },
                 cast,
             }));
@@ -267,6 +269,30 @@ fn fly(
     flights.cast_hits.keep(|group| flying.contains(&group));
 }
 
+/// Makes each of the tick's shots a launch, a cast of its own, homing on its target from where
+/// its attacker stood.
+fn take_shots(mut shots: ResMut<'_, Shots>, mut launches: ResMut<'_, Launches>) {
+    for shot in shots.0.drain(..) {
+        let cast = launches.cast();
+        launches.launches.push(Launch {
+            source: shot.source,
+            from: shot.from,
+            unit_type: shot.unit_type,
+            flight: Flight::Homing {
+                target: shot.target,
+                flown: Num::ZERO,
+            },
+            payload: LaunchPayload::Attack {
+                action: shot.action,
+                amount: shot.amount,
+                kind: shot.kind,
+                roll: shot.roll,
+            },
+            cast,
+        });
+    }
+}
+
 /// Spawns the tick's launches, in the order of their source's stable id and then the order
 /// launched, so each takes the same id in every run: a unit of its type, of its source's team
 /// and player, with its type's tags. A cast's projectiles share the id of its first as their
@@ -286,7 +312,7 @@ fn launch(mut spawner: DeliverySpawner<'_, '_>, mut launches: ResMut<'_, Launche
     {
         spawner.spawn(source, from, unit_type, |id| {
             let payload = match payload {
-                Payload::Action { action, rank, .. } => {
+                LaunchPayload::Action { action, rank } => {
                     let first = match group {
                         Some((at, first)) if at == cast => first,
                         _ => {
@@ -300,7 +326,17 @@ fn launch(mut spawner: DeliverySpawner<'_, '_>, mut launches: ResMut<'_, Launche
                         group: first,
                     }
                 }
-                attack @ Payload::Attack { .. } => attack,
+                LaunchPayload::Attack {
+                    action,
+                    amount,
+                    kind,
+                    roll,
+                } => Payload::Attack {
+                    action,
+                    amount,
+                    kind,
+                    roll,
+                },
             };
             Projectile::new(source, flight, payload)
                 .expect("a launch flies within its range and carries what holds")

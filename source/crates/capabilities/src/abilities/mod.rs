@@ -64,7 +64,7 @@ impl Abilities {
             schedule.add_systems(
                 predict_casts
                     .in_set(SimSet::Hit)
-                    .after(CombatSet::Strike)
+                    .after(CombatSet::Fire)
                     .before(CombatSet::Launch),
             );
             return;
@@ -73,7 +73,7 @@ impl Abilities {
         schedule.add_systems(
             resolve_casts
                 .in_set(SimSet::Hit)
-                .after(CombatSet::Strike)
+                .after(CombatSet::Fire)
                 .before(CombatSet::Launch),
         );
     }

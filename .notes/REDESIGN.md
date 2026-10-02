@@ -178,11 +178,6 @@ The parts that call upward use hooks that the higher layer registers:
   - A `Unit` handle holds its row index, so a getter copies no row.
 
   This is what design 04's overview says: "the core names no capability".
-- **Weapon shots.**
-  - Combat pushes a `Shot { source, target, unit_type, amount, kind, roll }` into its own `Shots` resource.
-  - Projectiles drains it in `CombatSet::Launch`.
-  - `Launches`, `Flight` and `Payload` then stay inside `projectiles`. A launch payload has no group until the first projectile's id is known.
-  - The "strike at once" branch, which cannot run, becomes an `expect`.
 - **Spawning a typed unit.**
   - This moves into a core `Spawner`, which reads the kit from the books. Mode and production both use it.
   - Production installs its own `finish_trains`, and mode orders its hooks after `ProductionSet::Finish`.
@@ -381,7 +376,7 @@ A refactor of this size needs a permanent proof that behaviour stays the same. T
 | Step | Change | Size |
 |---|---|---|
 | D2 | One order applier for players, bots and AI. The path orders (`FollowPath`, `Reset`) are navigation's, above `actions`, so the applier needs a hook for them. | M |
-| D3 | Combat `Shots`, drained by projectiles, and a launch payload with no placeholder; the core `Spawner`; production installs its own systems | M |
+| D3 | The core `Spawner`; production installs its own systems | M |
 | D5 | View columns for each capability; `Unit` handles hold row indexes; the delivery API registered by `deliveries`, and the two `ApiOwner`s go | M |
 
 Done when the layer test has no exception left.
@@ -516,7 +511,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - cast kind in state: G2;
 - **R§8:**
   - core names every capability: D5;
-  - combat launches: D3;
   - production and mode: D3;
   - the view names progression: D2;
   - script runtime: D4;

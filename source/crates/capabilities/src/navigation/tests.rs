@@ -3,11 +3,12 @@ use std::num::NonZeroU32;
 
 use bevy_ecs::component::Component;
 use campfire_math::Tick;
-use campfire_sim::{Capability, EntityIndex, SimUpdate, TypeHash};
+use campfire_sim::{Capability, EntityIndex, IdAllocator, SimUpdate, TypeHash};
 
 use super::*;
 use crate::capability_set::internals::TestMatch;
-use crate::mode::map_data::{GridData, MarkerData, PathData, PlacedUnitData};
+use crate::mode::map_data::{GridData, MapData, MapPoint, MarkerData, PathData, PlacedUnitData};
+use crate::navigation::error::MapProblem;
 use crate::navigation::path_walker::PathEnd;
 use crate::units::layer::Layer;
 use crate::units::path_id::PathId;
@@ -566,7 +567,7 @@ fn a_map_loads_only_if_the_widest_walker_reaches_every_waypoint_and_stands_on_ev
         }
     };
     let check = |towers: &[(i64, i64)], neutral| {
-        Navigation::check_map(&map(towers, neutral), &[ground(half)], body_of)
+        map(towers, neutral).check_walkable(&[ground(half)], body_of)
     };
     assert_eq!(check(&[(5, 0), (5, 4)], (8, 3)), Ok(()));
     let unreachable = MapProblem::WaypointUnreachable {
@@ -597,9 +598,9 @@ fn a_map_loads_only_if_the_widest_walker_reaches_every_waypoint_and_stands_on_ev
     };
     let both = [ground(half), flyer];
     let closed = map(&[(5, 0), (5, 2), (5, 4)], (8, 3));
-    assert_eq!(Navigation::check_map(&closed, &[flyer], body_of), Ok(()));
+    assert_eq!(closed.check_walkable(&[flyer], body_of), Ok(()));
     assert_eq!(
-        Navigation::check_map(&closed, &both, body_of),
+        closed.check_walkable(&both, body_of),
         Err(MapProblem::WaypointUnreachable {
             path: DeclaredName::new("lane").unwrap(),
             waypoint: 1,
@@ -607,15 +608,9 @@ fn a_map_loads_only_if_the_widest_walker_reaches_every_waypoint_and_stands_on_ev
     );
     let mut clouded = map(&[(5, 0), (5, 4)], (8, 3));
     clouded.units.push(placed("cloud", (7, 3)));
-    assert_eq!(
-        Navigation::check_map(&clouded, &[ground(half)], body_of),
-        Ok(())
-    );
-    assert_eq!(
-        Navigation::check_map(&clouded, &both, body_of),
-        blocked("camp")
-    );
-    assert_eq!(Navigation::check_map(&clouded, &[], body_of), Ok(()));
+    assert_eq!(clouded.check_walkable(&[ground(half)], body_of), Ok(()));
+    assert_eq!(clouded.check_walkable(&both, body_of), blocked("camp"));
+    assert_eq!(clouded.check_walkable(&[], body_of), Ok(()));
 }
 
 #[test]
