@@ -1,4 +1,3 @@
-use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Allow, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_math::Num;
@@ -33,7 +32,6 @@ pub(crate) struct Targets<'w, 's> {
         'w,
         's,
         (
-            Entity,
             &'static StableId,
             &'static Position,
             &'static Team,
@@ -47,7 +45,6 @@ pub(crate) struct Targets<'w, 's> {
 
 /// A row of the units `Targets` holds.
 type TargetRow<'a> = (
-    Entity,
     &'a StableId,
     &'a Position,
     &'a Team,
@@ -100,7 +97,7 @@ impl Targets<'_, '_> {
     /// `target`, when it is a living unit that may be a target.
     pub(crate) fn living(&self, target: StableId) -> Option<LivingUnit> {
         let row = self.units.get(self.index.get(target)?).ok()?;
-        Targets::targetable(Some(row.4), row.6, self.life.0).then(|| self.body(row))?
+        Targets::targetable(Some(row.3), row.5, self.life.0).then(|| self.body(row))?
     }
 
     /// Whether a unit that has not died, with `pools` and `tags`, may be a target: it has the
@@ -113,17 +110,16 @@ impl Targets<'_, '_> {
 
     /// Every living unit with the life pool, those whose tags block it as a target among them,
     /// as a body to index: the units an area reaches, in no order.
-    pub(crate) fn placed(&self) -> impl Iterator<Item = Placed> + '_ {
+    pub(crate) fn placed(&self) -> impl Iterator<Item = Placed<()>> + '_ {
         self.units
             .iter()
-            .filter_map(|(entity, &id, &at, _, pools, body, _)| {
+            .filter_map(|(&id, &at, _, pools, body, _)| {
                 pools.max(self.life.0)?;
                 Some(Placed {
                     id,
-                    entity,
+                    key: (),
                     at,
                     radius: Body::radius_of(body),
-                    layer: Body::layer_of(body),
                 })
             })
     }
@@ -135,7 +131,7 @@ impl Targets<'_, '_> {
     }
 
     /// The unit of `row`, when it has the life pool.
-    fn body(&self, (_, &id, &pos, &team, pools, body, tags): TargetRow<'_>) -> Option<LivingUnit> {
+    fn body(&self, (&id, &pos, &team, pools, body, tags): TargetRow<'_>) -> Option<LivingUnit> {
         pools.max(self.life.0)?;
         Some(LivingUnit {
             id,

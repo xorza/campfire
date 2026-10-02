@@ -230,7 +230,7 @@ fn fly(
         Local<'_, Vec<(u128, StableId)>>,
         Local<'_, Vec<StableId>>,
     ),
-    mut grid: Local<'_, BodyGrid>,
+    mut grid: Local<'_, BodyGrid<()>>,
 ) {
     flying.clear();
     let lines = projectiles

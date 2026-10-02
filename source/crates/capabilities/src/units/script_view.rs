@@ -18,6 +18,7 @@ use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_api::MemberSpec;
 use crate::scripts::script_consts::ScriptConsts;
 use crate::units::body::Body;
+use crate::units::body_grid::{BodyGrid, Placed};
 use crate::units::engine_tag::EngineTag;
 use crate::units::filter::Filter;
 use crate::units::living_unit::LivingUnit;
@@ -66,6 +67,11 @@ pub(crate) struct ScriptView {
     bounds: Bounds,
     /// The players' resources the mode declares, by resource id.
     resource_names: Arc<[DeclaredName]>,
+    /// The bodies of the units that may be targets, by row, once a query that reaches by
+    /// distance asks for them after a read; and the rows such a query found.
+    bodies: BodyGrid<usize>,
+    indexed: bool,
+    found: RefCell<Vec<usize>>,
     /// What each capability above the core reads of the units, and its getters read besides.
     columns: ViewColumns,
 }
@@ -133,6 +139,7 @@ impl ScriptView {
         self.bounds = Bounds::of(world);
         self.units.clear();
         self.columns.clear();
+        self.indexed = false;
         for (id, entity) in world.resource::<EntityIndex>().iter() {
             let unit = world.entity(entity);
             let (Some(&pos), Some(&team)) = (unit.get::<Position>(), unit.get::<Team>()) else {
@@ -176,18 +183,20 @@ impl ScriptView {
         self.units.binary_search_by_key(&id, |row| row.id).ok()
     }
 
-    /// The living units that may be targets and that `filter` selects relative to `of`.
-    fn selected<'a>(
-        &'a self,
-        of: &UnitRow,
-        filter: &str,
-    ) -> Result<impl Iterator<Item = (usize, &'a UnitRow)>, ApiError> {
-        let filter = Filter::parse(filter, &self.types)?;
-        let of = of.team;
-        Ok(self.units.iter().enumerate().filter(move |(_, row)| {
-            let attitude = self.relations.between(of, row.team);
-            row.targetable && filter.selects(attitude, row.tags.tags)
-        }))
+    /// Indexes the bodies of the units that may be targets, once after each read.
+    fn index_bodies(&mut self) {
+        if self.indexed {
+            return;
+        }
+        let rows = self.units.iter().enumerate();
+        let targets = rows.filter(|(_, row)| row.targetable);
+        self.bodies.rebuild(targets.map(|(at, row)| Placed {
+            id: row.id,
+            key: at,
+            at: row.pos,
+            radius: row.radius,
+        }));
+        self.indexed = true;
     }
 }
 
@@ -206,6 +215,9 @@ impl View {
             metric: Metric::default(),
             bounds: Bounds::WORLD,
             resource_names: Arc::from([]),
+            bodies: BodyGrid::default(),
+            indexed: false,
+            found: RefCell::default(),
             columns: ViewColumns::default(),
         })))
     }
@@ -499,17 +511,25 @@ impl View {
         if radius < Num::ZERO {
             return Err(ApiError::NegativeRadius.fail().into());
         }
+        self.0.borrow_mut().index_bodies();
         let view = self.0.borrow();
-        let of = of.row();
-        let selected = view.selected(&of, filter).map_err(ApiError::fail)?;
-        Ok(selected
-            .filter(|&(at, _)| seen(at))
-            .filter(|(_, row)| {
-                view.metric
-                    .reaches(pos, Num::ZERO, radius, row.pos, row.radius)
-            })
-            .map(|(at, row)| Dynamic::from(Unit::new(row.id, at, self.clone())))
-            .collect())
+        let of = of.row().team;
+        let filter = Filter::parse(filter, &view.types).map_err(ApiError::fail)?;
+        let mut found = view.found.borrow_mut();
+        found.clear();
+        view.bodies.visit_near(pos, radius, |body| {
+            let row = &view.units[body.key];
+            let attitude = view.relations.between(of, row.team);
+            let reaches = view
+                .metric
+                .reaches(pos, Num::ZERO, radius, body.at, body.radius);
+            if reaches && filter.selects(attitude, row.tags.tags) && seen(body.key) {
+                found.push(body.key);
+            }
+        });
+        found.sort_unstable();
+        let unit = |&at: &usize| Dynamic::from(Unit::new(view.units[at].id, at, self.clone()));
+        Ok(found.iter().map(unit).collect())
     }
 
     /// The nearest living target that `radius` from the edge of `of`'s body reaches in the map's
@@ -526,18 +546,27 @@ impl View {
         if radius < Num::ZERO {
             return Err(ApiError::NegativeRadius.fail().into());
         }
+        self.0.borrow_mut().index_bodies();
         let view = self.0.borrow();
         let of = of.row();
-        let nearest = view
-            .selected(&of, filter)
-            .map_err(ApiError::fail)?
-            .filter(|&(at, _)| seen(at))
-            .filter(|(_, row)| {
-                view.metric
-                    .reaches(of.pos, of.radius, radius, row.pos, row.radius)
-            })
-            .map(|(at, row)| (view.metric.offset(of.pos, row.pos), row.id, at))
-            .min_by_key(|&(offset, id, _)| (offset.length_squared_bits(), id));
+        let filter = Filter::parse(filter, &view.types).map_err(ApiError::fail)?;
+        let reach = of.radius.checked_add(radius).unwrap_or(Num::MAX);
+        let mut nearest = None;
+        view.bodies.visit_near(of.pos, reach, |body| {
+            let row = &view.units[body.key];
+            let attitude = view.relations.between(of.team, row.team);
+            let reaches = view
+                .metric
+                .reaches(of.pos, of.radius, radius, body.at, body.radius);
+            if !(reaches && filter.selects(attitude, row.tags.tags) && seen(body.key)) {
+                return;
+            }
+            let distance = view.metric.offset(of.pos, body.at).length_squared_bits();
+            let candidate = (distance, body.id, body.key);
+            if nearest.is_none_or(|best| candidate < best) {
+                nearest = Some(candidate);
+            }
+        });
         Ok(nearest.map_or(Dynamic::UNIT, |(_, id, at)| {
             Dynamic::from(Unit::new(id, at, self.clone()))
         }))

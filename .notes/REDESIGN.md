@@ -169,12 +169,10 @@ capability_set, books
 
 ### Problem
 
-- Script queries test every unit.
 - Every script batch rebuilds every row.
 
 ### Shape
 
-- **Script queries read `BodyGrid`.** `ctx.find` and `nearest_visible` read the grid of living bodies by their circle, as areas and auras do.
 - **The view: incremental rows, the same snapshot.**
   - A batch must keep today's meaning: its calls see the world as it was when the batch began. So rows are not filled lazily on read, because a late read would see the effects of earlier calls.
   - The view keeps its rows from one build to the next. Each build refreshes only the rows whose source components changed since the last build, through Bevy's change ticks, and the rows of new or gone units.
@@ -226,13 +224,12 @@ These need only Stage A and Stage B, and run in any order. Each is small enough 
 |---|---|---|---|
 | F3 | Ids at call time, so `ctx.projectile` and `ctx.area` return handles whose `.state` the call writes | Unit script state: a unit's `[state]` and `unit.state`, which the API does not have yet, so a handle alone would give a script nothing to use | M, changes behaviour |
 | H4 | Incremental view rows | B | M |
-| H1b | `ctx.find` and `nearest_visible` read `BodyGrid` | B | S |
 | J | The local fixes in the appendix, and T§5 to T§8 | any time | S each |
 
 ### Order
 
 ```
-Track I:  H1b      H4      F3 after unit script state
+Track I:  H4      F3 after unit script state
 ```
 
 ## Risks

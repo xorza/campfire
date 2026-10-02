@@ -304,7 +304,6 @@ fn steer(
         '_,
         '_,
         (
-            Entity,
             &StableId,
             &Position,
             &Body,
@@ -340,7 +339,7 @@ fn steer(
     let still = bodies
         .iter()
         .filter(|(.., destination, tags)| !walks(*destination, *tags))
-        .map(|(_, &id, &at, body, ..)| IndexedBody {
+        .map(|(&id, &at, body, ..)| IndexedBody {
             id,
             at,
             radius: body.radius(),
@@ -349,12 +348,11 @@ fn steer(
     let walking = bodies
         .iter()
         .filter(|(.., destination, tags)| walks(*destination, *tags))
-        .map(|(entity, &id, &at, body, ..)| Placed {
+        .map(|(&id, &at, body, ..)| Placed {
             id,
-            entity,
+            key: body.layer(),
             at,
             radius: body.radius(),
-            layer: body.layer(),
         });
     steering.read(&statics, still, walking);
     let stuck_ticks = rate

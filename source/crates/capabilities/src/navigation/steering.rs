@@ -8,6 +8,7 @@ use crate::navigation::route_planner::{RoutePlanner, Short, Walkable, Window};
 use crate::navigation::segment::Segment;
 use crate::navigation::walker::Walker;
 use crate::units::body_grid::{BodyGrid, Placed};
+use crate::units::layer::Layer;
 
 /// Steers walkers round the units in their way, by short routes in a window of cells around each.
 /// It keeps between ticks the index of the units that stand, made on the first tick with the
@@ -18,8 +19,9 @@ pub(crate) struct Steering {
     standing: Option<BodyIndex>,
     /// The bodies of the units that stand, by stable id.
     still: Vec<IndexedBody>,
-    /// The bodies of the units that walk, which a stuck walker searches for those it touches.
-    walking: BodyGrid,
+    /// The bodies of the units that walk, by layer, which a stuck walker searches for those it
+    /// touches.
+    walking: BodyGrid<Layer>,
     /// The units that block the walker that steers now.
     blockers: Vec<IndexedBody>,
     /// The short route of the walker that steers now.
@@ -59,7 +61,7 @@ impl Steering {
         &mut self,
         statics: &BodyIndex,
         still: impl IntoIterator<Item = IndexedBody>,
-        walking: impl IntoIterator<Item = Placed>,
+        walking: impl IntoIterator<Item = Placed<Layer>>,
     ) {
         self.still.clear();
         self.still.extend(still);
@@ -130,7 +132,7 @@ impl Steering {
             self.walking.visit_near(at, walker.radius + step, |other| {
                 let reach = walker.radius + other.radius;
                 let touching = other.at.within_ground(at, reach + step);
-                if other.id == id || !touching || other.layer != walker.layer {
+                if other.id == id || !touching || other.key != walker.layer {
                     return;
                 }
                 let shift = left * Num::from_bits(reach.to_bits() / 2);
@@ -139,7 +141,7 @@ impl Steering {
                     id: other.id,
                     at: moved.expect("a shift of a body's reach stays within the bound"),
                     radius: other.radius,
-                    layer: other.layer,
+                    layer: other.key,
                 });
             });
         }
@@ -173,7 +175,6 @@ mod tests {
     use campfire_sim::IdAllocator;
 
     use super::*;
-    use crate::units::layer::Layer;
     use crate::values::bounds::Bounds;
     use crate::values::grid::Grid;
 

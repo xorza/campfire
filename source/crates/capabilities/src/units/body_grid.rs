@@ -1,8 +1,5 @@
-use bevy_ecs::entity::Entity;
 use campfire_math::Num;
 use campfire_sim::{Position, StableId};
-
-use crate::units::layer::Layer;
 
 /// The bodies of a stage, as a sorted index of cells of the ground plane: a query of a box visits
 /// the bodies of the cells it covers, grown by the widest body, so it meets every body that may
@@ -11,48 +8,57 @@ use crate::units::layer::Layer;
 /// body's radius, a meter at least. Its buffer stays between builds, so a build allocates nothing
 /// once it has grown, and costs `n log n`; a query costs a search for each row of cells it
 /// covers, and never more than a pass over every body.
-#[derive(Debug, Default)]
-pub(crate) struct BodyGrid {
+#[derive(Debug)]
+pub(crate) struct BodyGrid<K> {
     /// A cell's side, in raw units.
     cell: i64,
     widest: Num,
     /// Sorted by row, then column, then stable id.
-    entries: Vec<GridBody>,
+    entries: Vec<GridBody<K>>,
 }
 
-/// A body of the grid: its unit, where it stands, its radius, its layer and its cell.
+/// A body of the grid: its unit, the key its reader finds the unit by, where it stands, its
+/// radius and its cell.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct GridBody {
+pub(crate) struct GridBody<K> {
     pub(crate) id: StableId,
-    pub(crate) entity: Entity,
+    pub(crate) key: K,
     pub(crate) at: Position,
     pub(crate) radius: Num,
-    pub(crate) layer: Layer,
     row: i64,
     column: i64,
 }
 
-/// A body to index: its unit, where it stands, its radius, 0 for a point, and its layer.
+/// A body to index: its unit, the key its reader finds the unit by, where it stands, and its
+/// radius, 0 for a point.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Placed {
+pub(crate) struct Placed<K> {
     pub(crate) id: StableId,
-    pub(crate) entity: Entity,
+    pub(crate) key: K,
     pub(crate) at: Position,
     pub(crate) radius: Num,
-    pub(crate) layer: Layer,
 }
 
-impl BodyGrid {
+impl<K> Default for BodyGrid<K> {
+    fn default() -> BodyGrid<K> {
+        BodyGrid {
+            cell: 0,
+            widest: Num::ZERO,
+            entries: Vec::new(),
+        }
+    }
+}
+
+impl<K: Copy> BodyGrid<K> {
     /// Indexes `bodies` in place of what it held.
-    pub(crate) fn rebuild(&mut self, bodies: impl IntoIterator<Item = Placed>) {
+    pub(crate) fn rebuild(&mut self, bodies: impl IntoIterator<Item = Placed<K>>) {
         self.entries.clear();
         self.entries
             .extend(bodies.into_iter().map(|placed| GridBody {
                 id: placed.id,
-                entity: placed.entity,
+                key: placed.key,
                 at: placed.at,
                 radius: placed.radius,
-                layer: placed.layer,
                 row: 0,
                 column: 0,
             }));
@@ -79,7 +85,7 @@ impl BodyGrid {
 
     /// Calls `visit` with each body whose disc may reach into the box of the ground plane from
     /// `low` to `high`, `[x, z]` each, each body once, in no order a caller may rely on.
-    pub(crate) fn visit(&self, low: [Num; 2], high: [Num; 2], mut visit: impl FnMut(&GridBody)) {
+    pub(crate) fn visit(&self, low: [Num; 2], high: [Num; 2], mut visit: impl FnMut(&GridBody<K>)) {
         if self.entries.is_empty() {
             return;
         }
@@ -90,7 +96,8 @@ impl BodyGrid {
             from..=cell(high[axis].to_bits().saturating_add(grow))
         };
         let (columns, rows) = (span(0), span(1));
-        let inside = |body: &&GridBody| rows.contains(&body.row) && columns.contains(&body.column);
+        let inside =
+            |body: &&GridBody<K>| rows.contains(&body.row) && columns.contains(&body.column);
         // A box over more rows than there are bodies costs less as one pass over them all.
         let row_count = rows.end().abs_diff(*rows.start()).saturating_add(1);
         if row_count > self.entries.len() as u64 {
@@ -110,7 +117,7 @@ impl BodyGrid {
 
     /// Calls `visit` with each body whose disc may come within `reach` of `at` on the ground
     /// plane, as `visit` does.
-    pub(crate) fn visit_near(&self, at: Position, reach: Num, visit: impl FnMut(&GridBody)) {
+    pub(crate) fn visit_near(&self, at: Position, reach: Num, visit: impl FnMut(&GridBody<K>)) {
         let at = at.get();
         let low = [at.x, at.z].map(|axis| axis.checked_sub(reach).unwrap_or(Num::MIN));
         let high = [at.x, at.z].map(|axis| axis.checked_add(reach).unwrap_or(Num::MAX));
@@ -120,7 +127,6 @@ impl BodyGrid {
 
 #[cfg(test)]
 mod tests {
-    use bevy_ecs::world::World;
     use campfire_math::Vec3;
     use campfire_sim::IdAllocator;
 
@@ -132,18 +138,17 @@ mod tests {
     }
 
     /// A body of `radius` tenths at `[x, z]` tenths, with the next id.
-    fn placed(world: &mut World, ids: &mut IdAllocator, [x, z]: [i64; 2], radius: i64) -> Placed {
+    fn placed(ids: &mut IdAllocator, [x, z]: [i64; 2], radius: i64) -> Placed<()> {
         Placed {
             id: ids.allocate(),
-            entity: world.spawn_empty().id(),
+            key: (),
             at: Position::new(Vec3::new(m(x), Num::ZERO, m(z))).unwrap(),
             radius: m(radius),
-            layer: Layer::FIRST,
         }
     }
 
     /// The ids `grid` visits for the box from `low` to `high`, in tenths, sorted, each once.
-    fn visited(grid: &BodyGrid, low: [i64; 2], high: [i64; 2]) -> Vec<StableId> {
+    fn visited(grid: &BodyGrid<()>, low: [i64; 2], high: [i64; 2]) -> Vec<StableId> {
         let mut ids = Vec::new();
         grid.visit(low.map(m), high.map(m), |body| ids.push(body.id));
         let count = ids.len();
@@ -155,12 +160,12 @@ mod tests {
 
     #[test]
     fn a_box_visits_the_bodies_of_the_cells_it_covers_grown_by_the_widest() {
-        let (mut world, mut ids) = (World::new(), IdAllocator::default());
+        let mut ids = IdAllocator::default();
         let mut grid = BodyGrid::default();
         assert_eq!(visited(&grid, [0, 0], [10, 10]), []);
         // Bodies of radius 0.5 m: a cell is 2 × 0.5 = 1 m.
         let at = [[0, 0], [20, 0], [50, 0], [-30, 0], [0, 40]];
-        let bodies = at.map(|at| placed(&mut world, &mut ids, at, 5));
+        let bodies = at.map(|at| placed(&mut ids, at, 5));
         grid.rebuild(bodies);
         let [a, b, _, d, e] = bodies.map(|body| body.id);
         // x 1 to 3 m, grown to 0.5 to 3.5, columns 0 to 3; z -1 to 1 m, grown to -1.5 to 1.5,
@@ -172,19 +177,19 @@ mod tests {
         // Cells below 0 round down: -3.2 to -2.8 m, grown to -3.7 to -2.3, columns -4 to -3.
         assert_eq!(visited(&grid, [-32, -2], [-28, 2]), [d]);
         // Points alone take cells of a meter: -0.4 to 0.4 m is columns and rows -1 to 0.
-        grid.rebuild(at.map(|at| placed(&mut world, &mut ids, at, 0)));
+        grid.rebuild(at.map(|at| placed(&mut ids, at, 0)));
         assert_eq!(visited(&grid, [-4, -4], [4, 4]).len(), 1);
     }
 
     #[test]
     fn a_box_meets_every_body_whose_square_overlaps_it() {
-        let (mut world, mut ids) = (World::new(), IdAllocator::default());
+        let mut ids = IdAllocator::default();
         // A lattice 0.7 m apart from -5.6 to 5.6 m, radii 0 to 1.2 m.
         let mut bodies = Vec::new();
         for row in -8_i64..=8 {
             for column in -8..=8 {
                 let radius = (row * 3 + column * 5).rem_euclid(13);
-                bodies.push(placed(&mut world, &mut ids, [column * 7, row * 7], radius));
+                bodies.push(placed(&mut ids, [column * 7, row * 7], radius));
             }
         }
         let mut grid = BodyGrid::default();
@@ -197,7 +202,7 @@ mod tests {
             ([33, -47], [34, -46]),
         ] {
             let got = visited(&grid, low, high);
-            let overlaps = |body: &&Placed| {
+            let overlaps = |body: &&Placed<()>| {
                 let at = body.at.get();
                 let near = |axis: Num, low: i64, high: i64| {
                     m(low) <= axis + body.radius && axis - body.radius <= m(high)

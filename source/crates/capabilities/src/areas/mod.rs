@@ -124,7 +124,7 @@ fn trigger(
     (mut order, mut reached, mut grid): (
         Local<'_, Ordered>,
         Local<'_, Vec<StableId>>,
-        Local<'_, BodyGrid>,
+        Local<'_, BodyGrid<()>>,
     ),
 ) {
     let now = tick.start();
@@ -221,7 +221,7 @@ fn hold_inside(
     specs: Res<'_, ByType<AreaSpec>>,
     mut held: ResMut<'_, HeldModifiers>,
     areas: Query<'_, '_, (&Position, &Team, &UnitType, &Area)>,
-    mut grid: Local<'_, BodyGrid>,
+    mut grid: Local<'_, BodyGrid<()>>,
 ) {
     let holding = |unit_type| {
         let spec = specs.get(unit_type).expect("an area's type has a spec");

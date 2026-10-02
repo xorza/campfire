@@ -358,7 +358,7 @@ fn apply_held(
     relations: Res<'_, Relations>,
     mut units: HeldUnits<'_, '_>,
     tag_book: Option<Res<'_, TagBook>>,
-    (mut held, mut grid): (Local<'_, Vec<Held>>, Local<'_, BodyGrid>),
+    (mut held, mut grid): (Local<'_, Vec<Held>>, Local<'_, BodyGrid<Entity>>),
 ) {
     let (Some(book), Some(_)) = (book, stats) else {
         return;
@@ -386,18 +386,16 @@ fn apply_held(
             if !indexed {
                 let placed = units.iter().map(|(&id, &at, .., body, entity)| Placed {
                     id,
-                    entity,
+                    key: entity,
                     at,
                     radius: Body::radius_of(body),
-                    layer: Body::layer_of(body),
                 });
                 grid.rebuild(placed);
                 indexed = true;
             }
             let (filter, modifier) = (aura.affects, aura.modifier);
             grid.visit_near(at, radius, |body| {
-                let (&target, _, &other, tags, ..) =
-                    units.get(body.entity).expect("an indexed unit");
+                let (&target, _, &other, tags, ..) = units.get(body.key).expect("an indexed unit");
                 let tags = tags.map_or(TagSet::default(), |tags| tags.tags);
                 let attitude = relations.between(team, other);
                 let reaches = metric.reaches(at, Num::ZERO, radius, body.at, body.radius);

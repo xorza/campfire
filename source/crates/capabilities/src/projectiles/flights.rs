@@ -22,7 +22,7 @@ pub(crate) struct Flights<'a> {
     pub(crate) queue: &'a mut PassQueue,
     pub(crate) deliveries: &'a mut Deliveries,
     pub(crate) struck: &'a mut StruckUnits,
-    pub(crate) grid: &'a BodyGrid,
+    pub(crate) grid: &'a BodyGrid<()>,
     pub(crate) met: &'a mut Vec<(u128, StableId)>,
 }
 
