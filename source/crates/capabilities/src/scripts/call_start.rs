@@ -37,4 +37,38 @@ impl CallStart {
             hit: None,
         }
     }
+
+    /// A cast of `action` of `package` at `rank` by `caster`, for no hit.
+    pub(crate) const fn cast(
+        action: ActionId,
+        rank: u8,
+        caster: StableId,
+        package: u16,
+    ) -> CallStart {
+        CallStart {
+            role: ScriptRole::Action,
+            acting: Some(caster),
+            action: Some(action),
+            rank,
+            modifier: None,
+            package,
+            depth: 0,
+            hit: None,
+        }
+    }
+
+    /// A hook of `modifier` of `package` at chain depth `depth`, of an instance from no source,
+    /// by no action, at rank 1.
+    pub(crate) const fn hook(modifier: ModifierId, package: u16, depth: u8) -> CallStart {
+        CallStart {
+            role: ScriptRole::Modifier,
+            acting: None,
+            action: None,
+            rank: 1,
+            modifier: Some(modifier),
+            package,
+            depth,
+            hit: None,
+        }
+    }
 }

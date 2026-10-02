@@ -103,61 +103,6 @@ impl Frame {
         self.parts.get_mut()
     }
 
-    /// Starts a cast of `ability` of `package` at `rank` by `caster` in `world`, or a hook of its
-    /// delivery for `hit`; a part that fails to ready, as a param that overflows at that rank,
-    /// fails the cast.
-    pub(crate) fn begin_cast(
-        &mut self,
-        world: &World,
-        ability: ActionId,
-        rank: u8,
-        caster: StableId,
-        package: u16,
-        hit: Option<Hit>,
-    ) -> Result<(), CallError> {
-        let start = CallStart {
-            role: ScriptRole::Action,
-            acting: Some(caster),
-            action: Some(ability),
-            rank,
-            modifier: None,
-            package,
-            depth: 0,
-            hit,
-        };
-        self.begin(world, start)
-    }
-
-    /// Starts a hook of `modifier` of `package` at chain depth `depth`, whose instance came from
-    /// `source` by `ability` at `rank`; a part that fails to ready, as a param that overflows at
-    /// that rank, fails the call.
-    #[expect(
-        clippy::too_many_arguments,
-        reason = "a hook's parts, each from the instance or the event that runs it"
-    )]
-    pub(crate) fn begin_hook(
-        &mut self,
-        world: &World,
-        modifier: ModifierId,
-        ability: Option<ActionId>,
-        rank: u8,
-        source: Option<StableId>,
-        package: u16,
-        depth: u8,
-    ) -> Result<(), CallError> {
-        let start = CallStart {
-            role: ScriptRole::Modifier,
-            acting: source,
-            action: ability,
-            rank,
-            modifier: Some(modifier),
-            package,
-            depth,
-            hit: None,
-        };
-        self.begin(world, start)
-    }
-
     /// Starts `on_think` for `unit` in `world`.
     pub(crate) fn begin_think(&mut self, world: &World, unit: StableId) {
         let start = CallStart {
@@ -193,8 +138,9 @@ impl Frame {
         self.resources.as_mut()
     }
 
-    /// Starts the call `start` in `world`, every part readied for it.
-    fn begin(&mut self, world: &World, start: CallStart) -> Result<(), CallError> {
+    /// Starts the call `start` in `world`, every part readied for it; a part that fails to ready,
+    /// as a param that overflows at the call's rank, fails the call.
+    pub(crate) fn begin(&mut self, world: &World, start: CallStart) -> Result<(), CallError> {
         self.read_resources(world);
         let CallStart {
             role,

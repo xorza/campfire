@@ -28,6 +28,13 @@ pub(crate) struct ParamTables {
     pub(crate) modifiers: ParamTable,
 }
 
+/// A table of params, and the run of one owner's params there.
+#[derive(Debug, Clone, Copy)]
+struct TableRun<'a> {
+    table: &'a ParamTable,
+    run: usize,
+}
+
 impl ParamBook {
     /// The book of `tables`, which the load built.
     pub(crate) fn new(tables: ParamTables) -> ParamBook {
@@ -63,7 +70,7 @@ impl ParamBook {
                 (ParamOwner::Action(ability), at)
             }
         };
-        let (table, run) = self.table(owner);
+        let TableRun { table, run } = self.table(owner);
         let value = table.value(run, at, rank, source)?.to_num()?;
         let live = table.scales(run, at).then(|| LiveParam {
             owner,
@@ -79,7 +86,7 @@ impl ParamBook {
 
     /// Whether `live` names a param it holds.
     pub(crate) fn has_live(&self, live: LiveParam) -> bool {
-        let (table, run) = self.table(live.owner);
+        let TableRun { table, run } = self.table(live.owner);
         table.has_run(run) && usize::from(live.at) < table.len(run)
     }
 
@@ -90,17 +97,23 @@ impl ParamBook {
         rank: u8,
         source: Option<&ParamSource<'_>>,
     ) -> Option<Num> {
-        let (table, run) = self.table(live.owner);
+        let TableRun { table, run } = self.table(live.owner);
         table
             .value(run, usize::from(live.at), rank, source)?
             .to_num()
     }
 
     /// The table of `owner`'s params, and its run there.
-    fn table(&self, owner: ParamOwner) -> (&ParamTable, usize) {
+    fn table(&self, owner: ParamOwner) -> TableRun<'_> {
         match owner {
-            ParamOwner::Modifier(modifier) => (self.modifiers(), modifier.index()),
-            ParamOwner::Action(ability) => (self.actions(), ability.index()),
+            ParamOwner::Modifier(modifier) => TableRun {
+                table: self.modifiers(),
+                run: modifier.index(),
+            },
+            ParamOwner::Action(ability) => TableRun {
+                table: self.actions(),
+                run: ability.index(),
+            },
         }
     }
 }

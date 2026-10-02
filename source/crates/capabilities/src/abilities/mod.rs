@@ -15,6 +15,7 @@ use crate::abilities::effect_lists::EffectLists;
 use crate::actions::ActionsSet;
 use crate::actions::action_book::{ActionBook, Delivery, DeliveryShape};
 use crate::actions::action_kind::ActionKind;
+use crate::scripts::call_start::CallStart;
 use crate::units::action_id::ActionId;
 
 use crate::actions::action_slots::{ActionSlots, ActionTarget, InProgress};
@@ -357,7 +358,10 @@ fn prepare(
     };
     let mut frame = ctx.frame();
     let package = checked.action.package;
-    frame.begin_cast(world, checked.id, checked.rank, caster.id, package, None)?;
+    frame.begin(
+        world,
+        CallStart::cast(checked.id, checked.rank, caster.id, package),
+    )?;
     let resource_cost = checked.action.resource_cost(checked.rank);
     if !resource_cost.is_empty() {
         let payer = Payer {

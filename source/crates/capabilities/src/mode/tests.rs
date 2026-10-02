@@ -50,6 +50,7 @@ use crate::progression::Progression;
 use crate::progression::experience::Experience;
 use crate::progression::track_data::{Thresholds, TrackData};
 use crate::progression::track_set::TrackSet;
+use crate::scripts::call_start::CallStart;
 use crate::scripts::error::ApiError;
 use crate::scripts::hook::ScriptRole;
 use crate::scripts::script_budgets::ScriptBudgets;
@@ -1995,13 +1996,15 @@ impl Game {
             ScriptRole::Ai => ctx.frame().begin_think(&self.world, actor),
             ScriptRole::Action => ctx
                 .frame()
-                .begin_cast(&self.world, self.strike, 1, actor, 0, None)
+                .begin(&self.world, CallStart::cast(self.strike, 1, actor, 0))
                 .unwrap(),
             ScriptRole::Modifier => {
                 let blessing = Stats::modifier(&self.world, 0, "blessing").unwrap();
-                ctx.frame()
-                    .begin_hook(&self.world, blessing, None, 1, Some(actor), 0, 1)
-                    .unwrap();
+                let start = CallStart {
+                    acting: Some(actor),
+                    ..CallStart::hook(blessing, 0, 1)
+                };
+                ctx.frame().begin(&self.world, start).unwrap();
             }
         }
         let handle = ctx.view().unit(unit).unwrap();

@@ -8,6 +8,7 @@ use campfire_sim::{EntityIndex, SimTick, StableId};
 use crate::combat::combat_event::CombatEvent;
 use crate::combat::damage::Damage;
 use crate::combat::damage_handle::DamageHandle;
+use crate::scripts::call_start::CallStart;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::hook::Hook;
@@ -198,15 +199,13 @@ impl ModifierHooks {
         let begun = if depth >= ScriptLimits::CHAIN_DEPTH {
             Err(CallError::Api(ApiError::ChainTooDeep))
         } else {
-            self.ctx.frame().begin_hook(
-                world,
-                heard.id,
-                ability,
+            let start = CallStart {
+                acting: heard.source,
+                action: ability,
                 rank,
-                heard.source,
-                package,
-                depth,
-            )
+                ..CallStart::hook(heard.id, package, depth)
+            };
+            self.ctx.frame().begin(world, start)
         };
         if let Err(error) = begun {
             batch.record(Some(carrier), hook, error);

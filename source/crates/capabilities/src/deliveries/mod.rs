@@ -10,6 +10,7 @@ use crate::abilities::effect_lists::EffectLists;
 use crate::actions::action_book::ActionBook;
 use crate::combat::CombatSet;
 use crate::deliveries::delivered::Delivered;
+use crate::scripts::call_start::CallStart;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
@@ -121,14 +122,11 @@ fn run_hooks(world: &mut World, due: &[Delivered]) {
                 .get(delivered.source)
                 .and_then(|entity| batch.world().get::<Owner>(entity))
                 .map(|owner| owner.slot());
-            let begun = ctx.frame().begin_cast(
-                batch.world(),
-                delivered.action,
-                delivered.rank,
-                delivered.source,
-                package,
-                Some(delivered.hit),
-            );
+            let start = CallStart {
+                hit: Some(delivered.hit),
+                ..CallStart::cast(delivered.action, delivered.rank, delivered.source, package)
+            };
+            let begun = ctx.frame().begin(batch.world(), start);
             if let Err(error) = begun {
                 batch.record(Some(delivered.source), delivered.hook, error);
                 continue;
