@@ -41,7 +41,7 @@ impl Unit {
     /// What `read` gives of its pool `name`; an error for a pool the mode does not declare, or
     /// one the unit does not have.
     fn pool(&self, name: &str, read: fn(&Pools, PoolId) -> Option<Num>) -> Checked<Num> {
-        let pool = self.view.pool(name)?;
+        let pool = self.view.pool_named(name)?;
         self.row()
             .pools
             .and_then(|pools| read(&pools, pool))
@@ -133,7 +133,7 @@ impl Unit {
             method("stat", "(name)", "its value of a stat the mode declares")
                 .name(0, NameKind::Stat)
                 .capability(Capability::Stats),
-            |unit: &mut Unit, name: &str| unit.view.stat(&unit.row(), name),
+            |unit: &mut Unit, name: &str| unit.view.stat_named(&unit.row(), name),
         )
         .bind(
             method("pool", "(name)", "the current amount of its pool `name`")
@@ -155,7 +155,7 @@ impl Unit {
             )
             .name(0, NameKind::Tag),
             |unit: &mut Unit, name: &str| -> Checked<bool> {
-                let tag = unit.view.tag(name).map_err(ApiError::fail)?;
+                let tag = unit.view.tag_named(name).map_err(ApiError::fail)?;
                 Ok(unit.row().tags.tags.contains(tag))
             },
         )
@@ -330,7 +330,7 @@ impl UnitParams {
     fn get(&self, name: &str) -> Checked<Dynamic> {
         let unit = &self.0;
         unit.view
-            .param(&unit.row(), name)
+            .param_named(&unit.row(), name)
             .ok_or_else(|| ApiError::UnknownParam.fail().into())
     }
 }

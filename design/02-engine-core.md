@@ -45,7 +45,7 @@ These rules keep the code's structure from drifting. Each has a test that fails 
 | Rule | Enforced by |
 | --- | --- |
 | One owner for each fact. A fact from the packages lives in one immutable book; a fact of the match lives in state; a fact of the running call lives in the frame. Nothing else holds a copy. | The state table test; the behaviour golden |
-| A name becomes an id where it enters. After the load, no system looks up a name; a script call resolves its name once per call, with no allocation. | The book builder's tests; an allowlist test of name lookups |
+| A name becomes an id where it enters. After the load, no system looks up a name; a script call resolves its name once per call, with no allocation. Every lookup of an id by its name is a method whose name ends in `named`, so each call of one can be found. | The book builder's tests; the allowlist test of name lookups, which lists each file that calls one |
 | The load refuses everything a match can refuse. A match start fails only on session terms: players, tick rate and seed. | `StartError` has no data case |
 | A layer calls a higher layer only through a hook the higher layer registers. | The layer test |
 | Every order that matters is by stable id, and every rounding uses one helper. A system that spends something shared, takes ids or runs scripts walks its units through `Ordered`, a scratch that sorts the entities of its query by stable id: a query gives them in archetype order, which a component added to one unit, or a restore, changes. | The archetype-shuffle test |

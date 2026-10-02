@@ -92,7 +92,7 @@ impl StatsApi {
     /// Queues modifier `id` of the call's package for `player`, one of the session's.
     fn add_player_modifier(ctx: &Ctx, player: INT, id: &str) -> Checked<()> {
         let player = ModeApi::player(ctx.mode_or_fail()?, player)?;
-        let id = ctx.view().modifier(ctx.frame().package(), id)?;
+        let id = ctx.view().modifier_named(ctx.frame().package(), id)?;
         ctx.queue(ModifierEffect::AddPlayer { player, id })
     }
 
@@ -104,7 +104,7 @@ impl StatsApi {
         id: &str,
         duration: Option<Ticks>,
     ) -> Checked<ModifierHandle> {
-        let id = ctx.view().modifier(ctx.frame().package(), id)?;
+        let id = ctx.view().modifier_named(ctx.frame().package(), id)?;
         let mut frame = ctx.write()?;
         let source = frame.acting();
         let handle = ctx

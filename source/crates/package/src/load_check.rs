@@ -598,7 +598,7 @@ impl<'a> LoadCheck<'a> {
                 .markers
                 .iter()
                 .any(|marker| declares(marker.tags.iter(), name)),
-            NameKind::Resource => ResourceId::of(&data.resources, name).is_some(),
+            NameKind::Resource => ResourceId::named(&data.resources, name).is_some(),
             NameKind::Pool => declares(data.pools.keys(), name),
             NameKind::DamageKind => declares(data.combat.damage_kinds.iter(), name),
             NameKind::Track => declares(data.tracks.keys(), name),
@@ -819,7 +819,7 @@ impl<'a> LoadCheck<'a> {
     ) -> Result<(), LoadProblem> {
         let navigation = &self.packages.data.navigation;
         match collision.and_then(|collision| collision.layer.as_ref()) {
-            Some(layer) if navigation.layer(layer).is_none() => Err(LoadProblem::Unknown {
+            Some(layer) if navigation.layer_named(layer).is_none() => Err(LoadProblem::Unknown {
                 of: NameKind::Layer,
                 at: at.clone(),
                 name: layer.to_string(),
@@ -1063,7 +1063,7 @@ impl<'a> LoadCheck<'a> {
         let data = &self.packages.data;
         if let Some(name) = ability
             .cost_names()
-            .find(|name| data.cost_target(name).is_none())
+            .find(|name| data.cost_target_named(name).is_none())
         {
             return Err(LoadProblem::Unknown {
                 of: NameKind::Cost,
@@ -1079,7 +1079,7 @@ impl<'a> LoadCheck<'a> {
         }
         for rank in 1..=ranks {
             ability
-                .fields_at(rank, |name| data.cost_target(name))
+                .fields_at(rank, |name| data.cost_target_named(name))
                 .map_err(|field| LoadProblem::ActionField {
                     action: id.clone(),
                     field,

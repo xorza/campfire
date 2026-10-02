@@ -287,13 +287,13 @@ impl Frame {
 
     /// The running call's param `name`: its modifier's, then its ability's, if either declares
     /// one.
-    pub(crate) fn param(&self, name: &str) -> Option<Scalar> {
+    pub(crate) fn param_named(&self, name: &str) -> Option<Scalar> {
         let own = self.modifier.and_then(|modifier| {
-            let at = self.params.modifiers().find(modifier.index(), name)?;
+            let at = self.params.modifiers().named(modifier.index(), name)?;
             Some(self.modifier_values[at])
         });
         own.or_else(|| {
-            let at = self.params.actions().find(self.ability?.index(), name)?;
+            let at = self.params.actions().named(self.ability?.index(), name)?;
             Some(self.values[at])
         })
     }

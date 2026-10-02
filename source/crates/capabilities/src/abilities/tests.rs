@@ -599,7 +599,7 @@ fn a_cast_passes_its_checks_or_does_nothing() {
 #[test]
 fn a_cost_in_a_pool_and_a_player_resource_is_checked_and_paid_together() {
     let mut game = Match::new();
-    let gold = ResourceId::of(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
+    let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
     let mut cost = cost("mana", int(10));
     cost.insert(DeclaredName::new("gold").unwrap(), Ranked::One(int(30)));
     let data = ActionData { cost, ..strike() };
@@ -991,7 +991,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     let id = game
         .world
         .resource::<ModifierBook>()
-        .find(0, "guard")
+        .named(0, "guard")
         .unwrap();
     let shield = |game: &Match| {
         let modifiers = game.world.get::<Modifiers>(entity).unwrap();
@@ -1051,7 +1051,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     let ward = game
         .world
         .resource::<ModifierBook>()
-        .find(0, "ward")
+        .named(0, "ward")
         .unwrap();
     let modifiers = game.world.get::<Modifiers>(entity).unwrap();
     assert_eq!(
@@ -1104,7 +1104,7 @@ fn on_resolve(ctx, caster, target) {
     let id = game
         .world
         .resource::<ModifierBook>()
-        .find(0, "mark")
+        .named(0, "mark")
         .unwrap();
     let modifiers = game.world.get::<Modifiers>(entity).unwrap();
     let held = modifiers.get(id, Some(caster)).unwrap();
@@ -1129,7 +1129,7 @@ fn on_resolve(ctx, caster, target) {
     game.cast(caster, ActionTarget::None);
     assert!(game.failures().is_empty(), "{:?}", game.failures());
     let book = game.world.resource::<ModifierBook>();
-    let ids = [0, 1].map(|package| book.find(package, "mark").unwrap());
+    let ids = [0, 1].map(|package| book.named(package, "mark").unwrap());
     let modifiers = game.world.get::<Modifiers>(entity).unwrap();
     let shields = ids.map(|id| modifiers.get(id, Some(caster)).map(|held| held.shield));
     assert_eq!(shields, [Some(Some(num(125))), Some(None)]);
@@ -1594,7 +1594,7 @@ fn a_live_change_follows_its_source_in_the_order_of_the_stats_it_reads() {
         .into();
     let book = StatBook::new(&rules, [(veil_type, &growth)], RATE, num(6))
         .with_order(graph.order().unwrap());
-    let place = |stat: &Stat| book.index(stat).unwrap().index();
+    let place = |stat: &Stat| book.named(stat).unwrap().index();
     let places = [&attack_damage, &spell_vamp, &armor].map(place);
     Stats::load_book(&mut game.world, book);
     let vamp = scaling(

@@ -161,7 +161,7 @@ impl StatBook {
     }
 
     /// The id of `stat`; `None` when the mode does not declare it.
-    pub(crate) fn index(&self, stat: &Stat) -> Option<StatId> {
+    pub(crate) fn named(&self, stat: &Stat) -> Option<StatId> {
         let at = self.stats.binary_search(stat).ok()?;
         Some(StatId::new(at))
     }
@@ -204,7 +204,7 @@ pub(crate) mod internals {
                 .into_iter()
                 .map(|stat| {
                     let book = world.resource::<StatBook>();
-                    (stat, book.index(stat).expect("the load checked the stats"))
+                    (stat, book.named(stat).expect("the load checked the stats"))
                 })
                 .collect()
         }

@@ -413,7 +413,7 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
     // A weapon of 2 m, a windup of 2 ticks, 6 attacks a second, a period of 5 ticks, and 10
     // damage, that costs 4 mana and 2 gold; its unit has 100 mana, and its player 5 gold.
     let mut fight = Fight::new();
-    let gold = ResourceId::of(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
+    let gold = ResourceId::named(&[DeclaredName::new("gold").unwrap()], "gold").unwrap();
     let mut resources = PlayerResources::new(1, 1);
     resources.add(PlayerSlot::new(0), gold, 5).unwrap();
     fight.world.insert_resource(resources);

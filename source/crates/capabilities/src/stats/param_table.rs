@@ -85,8 +85,8 @@ impl ParamTable {
     }
 
     /// The place of param `name` in run `run`.
-    pub(crate) fn find(&self, run: usize, name: &str) -> Option<usize> {
-        self.params.find(run, name)
+    pub(crate) fn named(&self, run: usize, name: &str) -> Option<usize> {
+        self.params.named(run, name)
     }
 
     /// How many params run `run` holds.

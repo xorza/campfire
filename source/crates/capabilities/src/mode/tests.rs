@@ -476,7 +476,7 @@ fn choices() -> BTreeMap<DeclaredName, ChoiceData> {
 /// The resource `name` of the mode's `RESOURCES`.
 fn resource(name: &str) -> Option<ResourceId> {
     let names = RESOURCES.map(|name| DeclaredName::new(name).unwrap());
-    ResourceId::of(&names, name)
+    ResourceId::named(&names, name)
 }
 
 /// The mode's state fields, each sent to all.
@@ -765,7 +765,13 @@ impl Game {
     /// The state field `name`: the state holds the fields in the order of their names.
     fn field(&self, name: &str) -> StateValue {
         let ctx = self.world.non_send::<Ctx>();
-        let at = ctx.mode().unwrap().schema.state_field(name).unwrap().index;
+        let at = ctx
+            .mode()
+            .unwrap()
+            .schema
+            .state_field_named(name)
+            .unwrap()
+            .index;
         self.world.resource::<ModeState>().get()[at].clone()
     }
 
@@ -843,7 +849,13 @@ fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early
     // Each unit type has the tag of the layer it moves on: the tower, of the second layer, `air`;
     // the grunt, with no body, the first's, `ground`.
     let tags = |id| game.world.get::<UnitTags>(game.entity(id)).unwrap().tags;
-    let tag = |name| game.world.non_send::<View>().types_mut().tag(name).unwrap();
+    let tag = |name| {
+        game.world
+            .non_send::<View>()
+            .types_mut()
+            .tag_named(name)
+            .unwrap()
+    };
     let layer_tags = [0, 1].map(|id| [tag("ground"), tag("air")].map(|tag| tags(id).contains(tag)));
     assert_eq!(layer_tags, [[false, true], [true, false]]);
     assert_eq!(game.state(), state("start", 0, 0, 0));
@@ -1769,7 +1781,7 @@ impl Game {
     fn fighter(&mut self, team: u8, stats: &[(&str, Num)]) -> StableId {
         let book = self.world.resource::<StatBook>();
         let shares = stats.iter().map(|&(name, value)| StatShare {
-            stat: book.index(&Stat::named(name).unwrap()).unwrap(),
+            stat: book.named(&Stat::named(name).unwrap()).unwrap(),
             op: StatOp::Add,
             value,
             live: None,
@@ -1798,7 +1810,11 @@ impl Game {
             reapply: Reapply::Refresh,
             max_stacks: None,
         });
-        let grunt = self.world.non_send::<View>().unit_type("grunt").unwrap();
+        let grunt = self
+            .world
+            .non_send::<View>()
+            .unit_type_named("grunt")
+            .unwrap();
         let id = self.world.resource_mut::<IdAllocator>().allocate();
         self.world.spawn((
             id,

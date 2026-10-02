@@ -76,20 +76,20 @@ impl ModeSchema {
     }
 
     /// The param `name`, as `ctx.p` reads it.
-    pub(crate) fn param(&self, name: &str) -> Option<Dynamic> {
-        self.params.get(RUN, name).cloned()
+    pub(crate) fn param_named(&self, name: &str) -> Option<Dynamic> {
+        self.params.get_named(RUN, name).cloned()
     }
 
     /// The state field `name`.
-    pub(crate) fn state_field(&self, name: &str) -> Option<StateField> {
-        let index = self.state.find(RUN, name)?;
+    pub(crate) fn state_field_named(&self, name: &str) -> Option<StateField> {
+        let index = self.state.named(RUN, name)?;
         Some(StateField {
             index,
             kind: self.state.values(RUN)[index],
         })
     }
 
-    pub(crate) fn input_type(&self, name: &str) -> Option<InputType> {
-        self.inputs.get(RUN, name).copied()
+    pub(crate) fn input_type_named(&self, name: &str) -> Option<InputType> {
+        self.inputs.get_named(RUN, name).copied()
     }
 }

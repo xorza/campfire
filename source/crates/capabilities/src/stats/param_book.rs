@@ -59,7 +59,7 @@ impl ParamBook {
             ParamPlace::Own(at) => (ParamOwner::Modifier(modifier), usize::from(*at)),
             ParamPlace::Applier(name) => {
                 let ability = ability?;
-                let at = self.actions().find(ability.index(), name.as_str())?;
+                let at = self.actions().named(ability.index(), name.as_str())?;
                 (ParamOwner::Action(ability), at)
             }
         };

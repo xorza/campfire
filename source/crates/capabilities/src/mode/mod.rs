@@ -455,7 +455,7 @@ fn mode_inputs(
     Calls::batch(world, &ctx, now, |call| {
         for input in &*inputs {
             let Some(decoded) = ModeInput::decode(&bodies[input.body.clone()], |name| {
-                call.book().schema.input_type(name)
+                call.book().schema.input_type_named(name)
             }) else {
                 continue;
             };

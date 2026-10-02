@@ -78,7 +78,7 @@ impl UnitTypes {
     /// The tag `name`, which joins the match's tags if it is new, within the most tags a match
     /// has, which the package load counted.
     pub(crate) fn declare(&mut self, name: &str) -> Tag {
-        if let Some(tag) = self.tag(name) {
+        if let Some(tag) = self.tag_named(name) {
             return tag;
         }
         assert!(
@@ -117,7 +117,7 @@ impl UnitTypes {
     }
 
     /// The tag `name`, once declared.
-    pub(crate) fn tag(&self, name: &str) -> Option<Tag> {
+    pub(crate) fn tag_named(&self, name: &str) -> Option<Tag> {
         let index = self.tag_names.iter().position(|tag| **tag == *name)?;
         Some(Tag::new(index))
     }
@@ -130,7 +130,7 @@ impl UnitTypes {
                 return (TagEffects::default(), TagSet::default());
             };
             let immune = data.immune.iter().map(|name| {
-                self.tag(name.as_str())
+                self.tag_named(name.as_str())
                     .expect("the match declared every tag the mode names")
             });
             (TagEffects::of(data), TagSet::of(immune))
@@ -145,8 +145,8 @@ impl UnitTypes {
     }
 
     /// The param `name` of `unit_type`, if it declares one.
-    pub(crate) fn param(&self, unit_type: UnitType, name: &str) -> Option<Scalar> {
-        self.params.get(unit_type.index(), name).copied()
+    pub(crate) fn param_named(&self, unit_type: UnitType, name: &str) -> Option<Scalar> {
+        self.params.get_named(unit_type.index(), name).copied()
     }
 }
 

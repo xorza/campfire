@@ -313,19 +313,19 @@ pub(crate) mod internals {
             self.world
                 .resource::<ParamBook>()
                 .actions()
-                .find(self.action.index(), name.as_str())
+                .named(self.action.index(), name.as_str())
                 .expect("the load checked an effect's param")
         }
 
         fn damage_kind(&self, name: &DeclaredName) -> DamageKind {
             self.view
-                .damage_kind(name.as_str())
+                .damage_kind_named(name.as_str())
                 .expect("the load checked an effect's damage kind")
         }
 
         fn pool(&self, name: &DeclaredName) -> PoolId {
             self.view
-                .pool_id(name.as_str())
+                .pool_id_named(name.as_str())
                 .expect("the load checked an effect's pool")
         }
 
@@ -336,7 +336,7 @@ pub(crate) mod internals {
 
         fn track(&self, name: &DeclaredName) -> TrackId {
             self.view
-                .track(name.as_str())
+                .track_named(name.as_str())
                 .expect("the load checked an effect's track")
         }
     }

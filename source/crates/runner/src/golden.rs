@@ -40,7 +40,7 @@ impl Golden {
         let names = &packages.data().resources;
         let resources = names
             .iter()
-            .map(|name| ResourceId::of(names, name.as_str()).expect("a declared resource"))
+            .map(|name| ResourceId::named(names, name.as_str()).expect("a declared resource"))
             .collect();
         Golden {
             resources,

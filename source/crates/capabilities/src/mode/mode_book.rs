@@ -131,7 +131,9 @@ impl ModeBook {
         let checked = "the mode's check passed";
         for unit in &map.units {
             let unit = PlacedUnit {
-                unit_type: view.unit_type(unit.unit_type.as_str()).expect(checked),
+                unit_type: view
+                    .unit_type_named(unit.unit_type.as_str())
+                    .expect(checked),
                 team: self.teams.named(unit.team.as_str()).expect(checked),
                 path: unit
                     .path

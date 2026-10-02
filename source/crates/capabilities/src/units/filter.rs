@@ -49,7 +49,7 @@ impl Filter {
             none: TagSet::default(),
         };
         for (name, negated) in terms {
-            let tag = types.tag(name).ok_or(ApiError::UnknownTag)?;
+            let tag = types.tag_named(name).ok_or(ApiError::UnknownTag)?;
             if negated {
                 filter.none = filter.none.with(tag);
             } else {

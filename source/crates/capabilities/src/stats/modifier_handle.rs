@@ -141,14 +141,14 @@ impl ModifierHandle {
             .index(
                 |state: &mut ModifierState, name: ImmutableString| -> Checked<Dynamic> {
                     let data = state.0.data();
-                    let at = data.field(&name)?;
+                    let at = data.field_named(&name)?;
                     Ok(data.state[at].to_dynamic(&data.view))
                 },
             )
             .index_set(
                 |state: &mut ModifierState, name: ImmutableString, value: Dynamic| -> Checked<()> {
                     let mut data = state.0.data();
-                    let at = data.field(&name)?;
+                    let at = data.field_named(&name)?;
                     let value = StateValue::from_dynamic(data.fields[at].kind, &value)
                         .ok_or_else(|| ApiError::WrongStateType.fail())?;
                     data.state[at] = value;
@@ -161,7 +161,7 @@ impl ModifierHandle {
 
 impl HandleData {
     /// The place of the state field `name`; one the modifier does not declare fails the call.
-    fn field(&self, name: &str) -> Checked<usize> {
+    fn field_named(&self, name: &str) -> Checked<usize> {
         self.fields
             .binary_search_by(|field| (*field.name).cmp(name))
             .ok()

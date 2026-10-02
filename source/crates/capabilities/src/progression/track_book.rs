@@ -52,7 +52,7 @@ impl TrackBook {
     }
 
     /// The track `name`, if the mode declares it.
-    pub(crate) fn id(&self, name: &str) -> Option<TrackId> {
+    pub(crate) fn named(&self, name: &str) -> Option<TrackId> {
         let at = self.0.names.iter().position(|held| held.as_str() == name)?;
         TrackId::new(at)
     }

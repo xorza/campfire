@@ -400,14 +400,14 @@ impl View {
     }
 
     /// The modifier `name` of `package`; an error when it declares none.
-    pub(crate) fn modifier(&self, package: u16, name: &str) -> Checked<ModifierId> {
-        let found = self.0.borrow().modifier_book.find(package, name);
+    pub(crate) fn modifier_named(&self, package: u16, name: &str) -> Checked<ModifierId> {
+        let found = self.0.borrow().modifier_book.named(package, name);
         Ok(found.ok_or_else(|| ApiError::UnknownModifier.fail())?)
     }
 
     /// Whether the unit of `row` carries the modifier `name` of `package`.
     pub(crate) fn has_modifier(&self, row: &UnitRow, package: u16, name: &str) -> Checked<bool> {
-        let id = self.modifier(package, name)?;
+        let id = self.modifier_named(package, name)?;
         let view = self.0.borrow();
         let run = &view.modifiers[row.modifiers_start as usize..row.modifiers_end as usize];
         Ok(run.iter().any(|modifier| modifier.id == id))
@@ -485,7 +485,7 @@ impl View {
 
     /// The value of stat `name` of `row`; an error for a stat the mode does not declare, or a
     /// unit with no stats.
-    pub(crate) fn stat(&self, row: &UnitRow, name: &str) -> Checked<Num> {
+    pub(crate) fn stat_named(&self, row: &UnitRow, name: &str) -> Checked<Num> {
         let view = self.0.borrow();
         let at = view
             .stat_names
@@ -504,13 +504,13 @@ impl View {
     }
 
     /// The pool `name`; an error for one the mode does not declare.
-    pub(crate) fn pool(&self, name: &str) -> Checked<PoolId> {
-        self.pool_id(name)
+    pub(crate) fn pool_named(&self, name: &str) -> Checked<PoolId> {
+        self.pool_id_named(name)
             .ok_or_else(|| ApiError::UnknownPool.fail().into())
     }
 
     /// The pool `name`; `None` for one the mode does not declare.
-    pub(crate) fn pool_id(&self, name: &str) -> Option<PoolId> {
+    pub(crate) fn pool_id_named(&self, name: &str) -> Option<PoolId> {
         let view = self.0.borrow();
         let at = view
             .pool_names
@@ -521,13 +521,13 @@ impl View {
     }
 
     /// The player resource `name`; `None` for one the mode does not declare.
-    pub(crate) fn resource(&self, name: &str) -> Option<ResourceId> {
-        ResourceId::of(&self.0.borrow().resource_names, name)
+    pub(crate) fn resource_named(&self, name: &str) -> Option<ResourceId> {
+        ResourceId::named(&self.0.borrow().resource_names, name)
     }
 
     /// The damage kind `name`; an error for one the mode does not declare.
-    pub(crate) fn damage_kind(&self, name: &str) -> Checked<DamageKind> {
-        let found = self.0.borrow().consts.damage_kind_of(name);
+    pub(crate) fn damage_kind_named(&self, name: &str) -> Checked<DamageKind> {
+        let found = self.0.borrow().consts.damage_kind_named(name);
         Ok(found.ok_or_else(|| ApiError::UnknownDamageKind.fail())?)
     }
 
@@ -539,8 +539,8 @@ impl View {
     }
 
     /// The track `name`; an error for one the mode does not declare.
-    pub(crate) fn track(&self, name: &str) -> Checked<TrackId> {
-        let found = self.0.borrow().tracks.id(name);
+    pub(crate) fn track_named(&self, name: &str) -> Checked<TrackId> {
+        let found = self.0.borrow().tracks.named(name);
         Ok(found.ok_or_else(|| ApiError::UnknownTrack.fail())?)
     }
 
@@ -616,14 +616,14 @@ impl View {
     }
 
     /// The path named `name`.
-    pub(crate) fn path(&self, name: &str) -> Option<PathId> {
+    pub(crate) fn path_named(&self, name: &str) -> Option<PathId> {
         let view = self.0.borrow();
         let at = view.paths.iter().position(|held| **held == *name)?;
         Some(PathId::new(at))
     }
 
     /// The unit type named `name` in the mode's scope: one of the mode's, or an avatar.
-    pub(crate) fn unit_type(&self, name: &str) -> Option<UnitType> {
+    pub(crate) fn unit_type_named(&self, name: &str) -> Option<UnitType> {
         self.0.borrow().types.named(TypeScope::Mode, name)
     }
 
@@ -636,8 +636,12 @@ impl View {
     }
 
     /// The tag `name`; one the match does not have fails the call.
-    pub(crate) fn tag(&self, name: &str) -> Result<Tag, ApiError> {
-        self.0.borrow().types.tag(name).ok_or(ApiError::UnknownTag)
+    pub(crate) fn tag_named(&self, name: &str) -> Result<Tag, ApiError> {
+        self.0
+            .borrow()
+            .types
+            .tag_named(name)
+            .ok_or(ApiError::UnknownTag)
     }
 
     /// Every unit, living or dead, that `keep` keeps, by stable id.
@@ -652,7 +656,7 @@ impl View {
 
     /// Every unit, living or dead, with the tag `name`, by stable id.
     pub(crate) fn units_tagged(&self, name: &str) -> Checked<Array> {
-        let tag = self.tag(name).map_err(ApiError::fail)?;
+        let tag = self.tag_named(name).map_err(ApiError::fail)?;
         Ok(self.units_where(|row| row.tags.tags.contains(tag)))
     }
 
@@ -707,9 +711,9 @@ impl View {
     }
 
     /// The param `name` of the unit type of `row`.
-    pub(crate) fn param(&self, row: &UnitRow, name: &str) -> Option<Dynamic> {
+    pub(crate) fn param_named(&self, row: &UnitRow, name: &str) -> Option<Dynamic> {
         let view = self.0.borrow();
-        let value = view.types.param(row.unit_type?, name)?;
+        let value = view.types.param_named(row.unit_type?, name)?;
         Some(value.to_dynamic())
     }
 
@@ -876,8 +880,8 @@ pub(crate) mod internals {
         /// What a cost named `name` takes from: a pool, or else a player resource; `None` for
         /// a name the mode declares neither as.
         pub(crate) fn cost_target(&self, name: &str) -> Option<CostTarget> {
-            let pool = self.pool_id(name).map(CostTarget::Pool);
-            pool.or_else(|| self.resource(name).map(CostTarget::Resource))
+            let pool = self.pool_id_named(name).map(CostTarget::Pool);
+            pool.or_else(|| self.resource_named(name).map(CostTarget::Resource))
         }
     }
 }

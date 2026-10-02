@@ -50,7 +50,7 @@ impl ModeBooks {
             let layer = Body::layer_of(unit_type.kit.body.as_ref());
             if let Some(name) = layers.get(usize::from(layer.index())) {
                 let tag = types
-                    .tag(name.as_str())
+                    .tag_named(name.as_str())
                     .expect("the match declared every tag its packages name");
                 types.give_tag(unit_type.unit_type, tag);
             }

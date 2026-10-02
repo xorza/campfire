@@ -441,10 +441,10 @@ fn a_unit_type_name_is_one_types_only_in_its_scope() {
     let theirs = load(TypeScope::Package(1), "grunt");
     let view = scene.world.non_send::<View>();
     assert_eq!(
-        (view.unit_type("grunt"), view.unit_type("tower")),
+        (view.unit_type_named("grunt"), view.unit_type_named("tower")),
         (Some(first), Some(second))
     );
-    assert_eq!(view.unit_type("wolf"), None);
+    assert_eq!(view.unit_type_named("wolf"), None);
     let types = view.types_mut();
     assert_eq!(types.named(TypeScope::Package(1), "grunt"), Some(theirs));
     assert_eq!(types.named(TypeScope::Package(2), "grunt"), None);

@@ -25,13 +25,13 @@ impl<V> NameTable<V> {
     }
 
     /// The place of `name` in run `run`.
-    pub(crate) fn find(&self, run: usize, name: &str) -> Option<usize> {
+    pub(crate) fn named(&self, run: usize, name: &str) -> Option<usize> {
         let names = &self.names[self.run(run)];
         names.binary_search_by(|held| (**held).cmp(name)).ok()
     }
 
-    pub(crate) fn get(&self, run: usize, name: &str) -> Option<&V> {
-        let at = self.find(run, name)?;
+    pub(crate) fn get_named(&self, run: usize, name: &str) -> Option<&V> {
+        let at = self.named(run, name)?;
         Some(&self.values[self.run(run)][at])
     }
 
@@ -74,12 +74,12 @@ mod tests {
             (2, "b"),
             (2, "c"),
         ]
-        .map(|(run, name)| table.get(run, name).copied());
+        .map(|(run, name)| table.get_named(run, name).copied());
         assert_eq!(
             found,
             [Some(1), None, Some(3), None, Some(10), Some(20), None]
         );
-        assert_eq!(table.find(2, "b"), Some(1));
+        assert_eq!(table.named(2, "b"), Some(1));
         assert_eq!(table.values(0), [1, 3]);
         assert!(table.values(1).is_empty());
     }

@@ -364,7 +364,7 @@ pub(crate) mod internals {
 
         fn damage_kind(&self, name: &DeclaredName) -> DamageKind {
             self.view
-                .damage_kind(name.as_str())
+                .damage_kind_named(name.as_str())
                 .expect("the load checked the damage kind")
         }
 
@@ -380,7 +380,7 @@ pub(crate) mod internals {
 
         fn modifier(&self, package: u16, name: &DeclaredName) -> ModifierId {
             self.modifiers
-                .find(package, name.as_str())
+                .named(package, name.as_str())
                 .expect("the load checked the modifier")
         }
     }

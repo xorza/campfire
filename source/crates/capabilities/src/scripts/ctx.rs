@@ -116,10 +116,10 @@ impl Params {
         let role = ctx.frame().role();
         let value = match role {
             Some(ScriptRole::Action | ScriptRole::Modifier) => {
-                ctx.frame().param(name).map(Scalar::to_dynamic)
+                ctx.frame().param_named(name).map(Scalar::to_dynamic)
             }
             Some(ScriptRole::Mode | ScriptRole::Ai) | None => {
-                ctx.mode_or_fail()?.schema.param(name)
+                ctx.mode_or_fail()?.schema.param_named(name)
             }
         };
         value.ok_or_else(|| ApiError::UnknownParam.fail().into())

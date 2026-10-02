@@ -278,12 +278,12 @@ impl<'a> BookBuilder<'a> {
         }
         let books = &mut self.books;
         let pools = file.pools.iter().map(|pool| {
-            let id = PoolId::of(&data.pools, pool).expect(CHECKED);
+            let id = PoolId::named(&data.pools, pool).expect(CHECKED);
             (id, &data.pools[pool].max)
         });
         let tracks = TrackSet::of(file.tracks.iter().map(|track| {
             let tracks = books.tracks.as_ref().expect(CHECKED);
-            tracks.id(track.as_str()).expect(CHECKED)
+            tracks.named(track.as_str()).expect(CHECKED)
         }));
         let kit = UnitKit::new(file.stats.as_ref(), combat.as_ref(), pools, self.rules)
             .map_err(|error| BookError::Kit {
@@ -308,7 +308,7 @@ impl<'a> BookBuilder<'a> {
         let passive = file.passive.as_ref().map(|passive| {
             books
                 .modifiers
-                .find(index, passive.as_str())
+                .named(index, passive.as_str())
                 .expect(CHECKED)
         });
         books.units.unit_types.push(UnitTypeSetup {
@@ -344,7 +344,7 @@ impl<'a> BookBuilder<'a> {
         if let Some(area) = &file.area {
             books.types.give_tag(unit_type, EngineTag::Area.tag());
             let modifiers = &books.modifiers;
-            let modifier = |id: &DeclaredName| modifiers.find(index, id.as_str()).expect(CHECKED);
+            let modifier = |id: &DeclaredName| modifiers.named(index, id.as_str()).expect(CHECKED);
             let spec = AreaSpec::of(area, &books.types, rate, modifier).ok_or_else(|| {
                 BookError::AreaTime {
                     package: index,
@@ -402,7 +402,7 @@ impl ActionNames for BuildNames<'_> {
     }
 
     fn cost_target(&self, name: &DeclaredName) -> Option<CostTarget> {
-        self.input.data.cost_target(name)
+        self.input.data.cost_target_named(name)
     }
 
     fn filter(&self, filter: &FilterData) -> Filter {
@@ -410,7 +410,7 @@ impl ActionNames for BuildNames<'_> {
     }
 
     fn modifier(&self, package: u16, name: &DeclaredName) -> ModifierId {
-        self.modifiers.find(package, name.as_str()).expect(CHECKED)
+        self.modifiers.named(package, name.as_str()).expect(CHECKED)
     }
 }
 
@@ -418,7 +418,7 @@ impl EffectNames for BuildNames<'_> {
     fn param(&self, name: &DeclaredName) -> usize {
         let action = self.action.expect("an effect list is of an action");
         self.params
-            .find(action.index(), name.as_str())
+            .named(action.index(), name.as_str())
             .expect(CHECKED)
     }
 
@@ -427,18 +427,18 @@ impl EffectNames for BuildNames<'_> {
     }
 
     fn pool(&self, name: &DeclaredName) -> PoolId {
-        PoolId::of(&self.input.data.pools, name).expect(CHECKED)
+        PoolId::named(&self.input.data.pools, name).expect(CHECKED)
     }
 
     fn modifier(&self, name: &DeclaredName) -> ModifierId {
         self.modifiers
-            .find(self.package, name.as_str())
+            .named(self.package, name.as_str())
             .expect(CHECKED)
     }
 
     fn track(&self, name: &DeclaredName) -> TrackId {
         self.tracks
-            .and_then(|tracks| tracks.id(name.as_str()))
+            .and_then(|tracks| tracks.named(name.as_str()))
             .expect(CHECKED)
     }
 }

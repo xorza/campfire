@@ -121,7 +121,7 @@ impl CombatApi {
 
     /// Queues `amount` of `kind` damage to `target`, a kind the mode declares.
     fn damage(ctx: &Ctx, target: &Unit, amount: Num, kind: &str) -> Checked<()> {
-        let kind = ctx.view().damage_kind(kind)?;
+        let kind = ctx.view().damage_kind_named(kind)?;
         if amount < Num::ZERO {
             return Err(ApiError::NegativeDamage.fail().into());
         }
@@ -135,7 +135,7 @@ impl CombatApi {
 
     /// Queues a restore of `amount` of `unit`'s pool `name`, a pool the mode declares.
     fn restore(ctx: &Ctx, unit: &Unit, name: &str, amount: Num) -> Checked<()> {
-        let pool = ctx.view().pool(name)?;
+        let pool = ctx.view().pool_named(name)?;
         CombatApi::mend(ctx, amount, |amount| CombatEffect::Restore {
             unit: unit.id,
             pool,

@@ -111,7 +111,7 @@ impl ModifierBook {
                 match at {
                     Ok(at) => ModifierId::at(start + at),
                     Err(_) => self
-                        .find(package, name)
+                        .named(package, name)
                         .expect("the load checked the aura's modifier"),
                 }
             },
@@ -141,7 +141,7 @@ impl ModifierBook {
     }
 
     /// The modifier `name` of `package`.
-    pub(crate) fn find(&self, package: u16, name: &str) -> Option<ModifierId> {
+    pub(crate) fn named(&self, package: u16, name: &str) -> Option<ModifierId> {
         let at = self
             .entries
             .binary_search_by(|entry| entry.order(package, name))

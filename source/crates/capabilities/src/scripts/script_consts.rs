@@ -49,7 +49,7 @@ impl ScriptConsts {
     }
 
     /// The damage kind `name`, if the mode declares it.
-    pub(crate) fn damage_kind_of(&self, name: &str) -> Option<DamageKind> {
+    pub(crate) fn damage_kind_named(&self, name: &str) -> Option<DamageKind> {
         let at = self.damage_kinds.iter().position(|kind| kind == name)?;
         Some(DamageKind::new(
             u8::try_from(at).expect("the load keeps damage kinds within u8"),

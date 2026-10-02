@@ -27,7 +27,7 @@ These rules state what "fixed" means. When agreed, they go into `design/02-engin
 | # | Rule | Enforced by |
 |---|---|---|
 | 1 | One owner for each fact. A fact from the packages lives in one immutable book, a fact of the match lives in state, and a fact of the running call lives in the frame. Nothing else holds a copy. | The state table test (G1) and the behaviour golden (A3) |
-| 2 | A name becomes an id where it enters. After the load, no system looks up a name. A script call resolves its name once per call, with no allocation. | `Books::build` tests (C5), and an allowlist test of name lookups (C7) |
+| 2 | A name becomes an id where it enters. After the load, no system looks up a name. A script call resolves its name once per call, with no allocation. | `Books::build` tests (C5), and the allowlist test of name lookups (C7) |
 | 3 | The load refuses everything that a match can refuse. A match start fails only on session terms: players, tick rate and seed. | `StartError` has no data case (C5b) |
 | 4 | A layer calls a higher layer only through a hook that the higher layer registers. | The layer test (A4) |
 | 5 | Every order that matters is by stable id, and every rounding uses one helper. | The archetype-shuffle test (B2) |
@@ -418,11 +418,10 @@ This stage is the backbone. Its steps run in order.
 
 | Step | Change | Size |
 |---|---|---|
-| C7 | The view and the frame read the books through `Arc`; `ScriptConsts`; `MatchScripts` goes; the allowlist test of name lookups | M |
 | C8 | `ActionKind` with data, one table of fields by kind; `Delivery` with its unit type; `TypeRole` and one store of type tags; one formula for each stat value; an attack's damage names its weapon (decision 7) | M, changes behaviour (`d.ability` of an attack) |
 | C9 | `Arena` loads the real packages through `Match::install`; `FixedSession` | S |
 
-Done when `MatchBuild` has no `.expect(CHECKED)`, `StartError` has no data case, and the allowlist of name lookups holds only script calls.
+Done when `MatchBuild` has no `.expect(CHECKED)`, `StartError` has no data case, and the allowlist of name lookups holds only script calls and the load.
 
 ### Stage D: layers (track S, after C8)
 
@@ -459,25 +458,25 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 |---|---|---|---|
 | G2 | Book data out of the state; `Lifetime`; one `ParamSource::of`; flat `Modifiers`; the `ModifierStats` and `ModifierClock` split; the queue's times at push | G1 | M, changes the layout |
 | H1b | `ctx.find` and `nearest_visible` read `BodyGrid` | D5, H1 | S |
-| I4 | `Prediction::install` shared with `Mode::install` | C7, I2 | M |
+| I4 | `Prediction::install` shared with `Mode::install` | I2 | M |
 | J | The local fixes in the appendix, and T§5 to T§8 | any time | S each |
 
 ### The roadmap's steps
 
 PLAN.md's stage 4 steps join this plan as follows:
 
-- **PLAN step 2 (client stats and tags)** comes after C7 and I4. The client then builds `Books` from the packages, and installs prediction from them.
+- **PLAN step 2 (client stats and tags)** comes after I4. The client then builds `Books` from the packages, and installs prediction from them.
 
 ### Order
 
 ```
-Track S:  C7 → C8 → C9 → D2 → D3 → D5 → D6
-                            └ (C7 + I4) PLAN 2
+Track S:  C8 → C9 → D2 → D3 → D5 → D6
+                       └ I4 → PLAN 2
 
 Track I:  E1 → E2      F2      G1      H1, H4      H2 → H3
           I1 → I2 → I3
 
-Joins:    G1 → G2      D5 + H1 → H1b      C7 + I2 → I4
+Joins:    G1 → G2      D5 + H1 → H1b      I2 → I4
 ```
 
 Track S is long and sequential. Track I fills the sessions between its steps.
@@ -586,7 +585,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - `Scalar::Int`: C3;
   - life pool placeholder: C6a.
 - **R§7:**
-  - view copies: C7;
   - instance book data: G2;
   - package data in state: G2;
   - level twice: G2;
@@ -594,10 +592,8 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - tags twice: C8;
   - stat list three times: C6a;
   - call package: D4;
-  - track names: C7;
-  - map path names: C7;
   - cast kind in state: G2;
-  - small copies: C6a, C7.
+  - small copies: C6a.
 - **R§8:**
   - core names every capability: D5;
   - combat launches: D3;
@@ -666,8 +662,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - commands parsed twice: J;
   - small scans: J.
 - **R§13:**
-  - `unit.stat` allocation: C7;
-  - `ctx.p`: C7;
   - client order allocations: I3;
   - `Route::clear`: H2;
   - stable sort: J;

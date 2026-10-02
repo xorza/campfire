@@ -462,14 +462,13 @@ mod tests {
         ("values", "stats"),
     ];
 
-    /// Each `crate::<module>` the production code of `dir`'s files names, beside the module the
-    /// file is in: the code before a file's first test gate, in every file but `tests.rs` and
-    /// `bench.rs`.
-    fn imports(dir: &Path, module: &str, found: &mut Vec<(String, String)>) {
+    /// Visits each source file under `dir` with its production code: the code before the file's
+    /// first test gate, in every file but `tests.rs` and `bench.rs`.
+    fn production(dir: &Path, visit: &mut impl FnMut(&Path, &str)) {
         for entry in fs::read_dir(dir).unwrap() {
             let path = entry.unwrap().path();
             if path.is_dir() {
-                imports(&path, module, found);
+                production(&path, visit);
                 continue;
             }
             let source = path.extension().is_some_and(|extension| extension == "rs");
@@ -478,19 +477,27 @@ mod tests {
                 continue;
             }
             let text = fs::read_to_string(&path).unwrap();
-            let production = ["#[cfg(test)]", "#[cfg(any(test"]
+            let code = ["#[cfg(test)]", "#[cfg(any(test"]
                 .iter()
                 .filter_map(|gate| text.find(gate))
                 .min()
                 .map_or(text.as_str(), |gate| &text[..gate]);
-            for (at, _) in production.match_indices("crate::") {
-                let rest = &production[at + "crate::".len()..];
+            visit(&path, code);
+        }
+    }
+
+    /// Each `crate::<module>` the production code of `dir`'s files names, beside the module the
+    /// file is in.
+    fn imports(dir: &Path, module: &str, found: &mut Vec<(String, String)>) {
+        production(dir, &mut |_, code| {
+            for (at, _) in code.match_indices("crate::") {
+                let rest = &code[at + "crate::".len()..];
                 let end = rest
                     .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
                     .unwrap_or(rest.len());
                 found.push((module.to_owned(), rest[..end].to_owned()));
             }
-        }
+        });
     }
 
     #[test]
@@ -524,5 +531,95 @@ mod tests {
             .map(|&(from, to)| (from.to_owned(), to.to_owned()))
             .collect();
         assert_eq!(upward, known, "imports from a higher layer");
+    }
+
+    /// Every lookup by name that the production code calls, by file: a method or function whose
+    /// name ends in `named`, as each lookup of an id by its name is spelled. Each runs in a script
+    /// call, which resolves the names it is given once, or in the load, which resolves the
+    /// packages' names once; but the one marked, which runs as a modifier applies. The test fails
+    /// when a lookup appears and when one listed here is gone.
+    const LOOKUPS: [(&str, &str); 46] = [
+        // The load.
+        ("actions/slot_kinds.rs", "named"),
+        ("books/book_builder.rs", "cost_target_named"),
+        ("books/book_builder.rs", "named"),
+        ("combat/combat_bindings.rs", "named"),
+        ("combat/combat_rules.rs", "named"),
+        ("mode/mod.rs", "named"),
+        ("mode/mode_book.rs", "named"),
+        ("mode/mode_book.rs", "unit_type_named"),
+        ("mode/mode_books.rs", "tag_named"),
+        ("mode/mode_data.rs", "named"),
+        ("navigation/navigation_rules.rs", "layer_named"),
+        ("stats/modifier_book.rs", "named"),
+        ("stats/pool_book.rs", "named"),
+        // The load, and a filter a script names.
+        ("units/filter.rs", "tag_named"),
+        ("values/filter_data.rs", "named"),
+        // Script calls, and the mode inputs, whose names enter with the players' inputs.
+        ("combat/combat_api.rs", "damage_kind_named"),
+        ("combat/combat_api.rs", "pool_named"),
+        ("mode/mod.rs", "input_type_named"),
+        ("mode/mode_api.rs", "named"),
+        ("mode/mode_api.rs", "path_named"),
+        ("mode/mode_api.rs", "resource_named"),
+        ("mode/mode_api.rs", "state_field_named"),
+        ("mode/mode_api.rs", "unit_type_named"),
+        ("mode/mode_schema.rs", "get_named"),
+        ("mode/mode_schema.rs", "named"),
+        ("progression/progression_api.rs", "track_named"),
+        ("scripts/ctx.rs", "param_named"),
+        ("scripts/frame.rs", "named"),
+        ("stats/modifier_handle.rs", "field_named"),
+        ("stats/param_table.rs", "named"),
+        ("stats/stat.rs", "named"),
+        ("stats/stats_api.rs", "modifier_named"),
+        ("units/script_view.rs", "damage_kind_named"),
+        ("units/script_view.rs", "modifier_named"),
+        ("units/script_view.rs", "named"),
+        ("units/script_view.rs", "param_named"),
+        ("units/script_view.rs", "pool_id_named"),
+        ("units/script_view.rs", "tag_named"),
+        ("units/unit.rs", "param_named"),
+        ("units/unit.rs", "pool_named"),
+        ("units/unit.rs", "stat_named"),
+        ("units/unit.rs", "tag_named"),
+        ("units/unit_types.rs", "get_named"),
+        ("units/unit_types.rs", "tag_named"),
+        ("values/name_table.rs", "named"),
+        // As a modifier applies: a param of the ability that applies it, by name, as the place
+        // differs by ability.
+        ("stats/param_book.rs", "named"),
+    ];
+
+    #[test]
+    fn a_name_is_looked_up_only_by_a_script_call_or_the_load() {
+        let src = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src"));
+        let mut found = Vec::new();
+        production(src, &mut |path, code| {
+            let file = path.strip_prefix(src).unwrap().to_str().unwrap().to_owned();
+            for line in code.lines() {
+                if line.trim_start().starts_with("//") {
+                    continue;
+                }
+                for (at, _) in line.match_indices("named(") {
+                    let start = line[..at]
+                        .rfind(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                        .map_or(0, |before| before + 1);
+                    let lookup = &line[start..at + "named".len()];
+                    if !line[..start].trim_end().ends_with("fn") {
+                        found.push((file.clone(), lookup.to_owned()));
+                    }
+                }
+            }
+        });
+        found.sort();
+        found.dedup();
+        let mut known: Vec<(String, String)> = LOOKUPS
+            .iter()
+            .map(|&(file, lookup)| (file.to_owned(), lookup.to_owned()))
+            .collect();
+        known.sort();
+        assert_eq!(found, known, "lookups by name");
     }
 }

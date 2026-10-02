@@ -643,7 +643,7 @@ pub(crate) mod internals {
             });
             let book = world.resource::<ModifierBook>();
             let id = book
-                .find(package, name.as_str())
+                .named(package, name.as_str())
                 .expect("the modifier loaded");
             world.non_send::<View>().set_modifiers(book.clone());
             let places = StatBook::places(world, data.params.values().flat_map(Param::stats));
@@ -660,7 +660,7 @@ pub(crate) mod internals {
 
         /// The modifier `name` of `package`, as `load_modifier` loaded it.
         pub fn modifier(world: &World, package: u16, name: &str) -> Option<ModifierId> {
-            world.resource::<ModifierBook>().find(package, name)
+            world.resource::<ModifierBook>().named(package, name)
         }
     }
 

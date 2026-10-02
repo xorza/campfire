@@ -30,7 +30,7 @@ impl CombatBindings {
         book: &StatBook,
     ) -> Option<CombatBindings> {
         let leech = rules.leech.as_ref();
-        let index = |stat| book.index(stat).expect("the load checked the bound stats");
+        let index = |stat| book.named(stat).expect("the load checked the bound stats");
         Some(CombatBindings {
             life: rules.life_pool(pools)?,
             leech_attack: leech.and_then(|leech| leech.attack.as_ref()).map(index),

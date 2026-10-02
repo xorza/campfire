@@ -64,7 +64,7 @@ impl ProgressionApi {
     /// Queues `amount`, not negative, of experience on `track` of `unit`, which has it.
     fn add_xp(ctx: &Ctx, unit: &Unit, track: &str, amount: Num) -> Checked<()> {
         let view = ctx.view();
-        let track = view.track(track)?;
+        let track = view.track_named(track)?;
         if amount < Num::ZERO {
             return Err(ApiError::NegativeXp.fail().into());
         }

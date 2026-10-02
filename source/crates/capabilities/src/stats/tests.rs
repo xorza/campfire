@@ -185,7 +185,7 @@ fn a_units_stats_follow_its_type_and_level_within_their_limits() {
         let unit = world.entity(units[0]);
         let book = world.resource::<StatBook>();
         let values = unit.get::<UnitStats>().unwrap().values();
-        let value = |name| values[book.index(&stat(name)).unwrap().index()];
+        let value = |name| values[book.named(&stat(name)).unwrap().index()];
         (
             unit.get::<MoveStep>().unwrap().get(),
             value("attack_speed"),
@@ -291,7 +291,7 @@ fn a_stat_is_its_base_plus_adds_times_pcts_times_the_largest_cut() {
         let armor = game
             .world
             .resource::<StatBook>()
-            .index(&armor_stat())
+            .named(&armor_stat())
             .unwrap();
         let mut modifiers = Modifiers::default();
         for (at, &(op, value, stacks)) in changes.iter().enumerate() {
@@ -356,7 +356,7 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
     let unit = unit(&mut game, 0);
     game.world.entity_mut(unit).insert(Modifiers::default());
     let book = game.world.resource::<StatBook>();
-    let speed = book.index(&Stat::Engine(EngineStat::MoveSpeed)).unwrap();
+    let speed = book.named(&Stat::Engine(EngineStat::MoveSpeed)).unwrap();
     let mut ids = IdAllocator::default();
     let (first, second) = (Some(ids.allocate()), Some(ids.allocate()));
     let slowing = |source, value| {
@@ -513,8 +513,12 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     let enemy = spawn(&mut game, 1, 1);
     let entity =
         |game: &TestMatch, id: StableId| game.world.resource::<EntityIndex>().get(id).unwrap();
-    let [inspired, presence] = ["inspired", "presence"]
-        .map(|name| game.world.resource::<ModifierBook>().find(0, name).unwrap());
+    let [inspired, presence] = ["inspired", "presence"].map(|name| {
+        game.world
+            .resource::<ModifierBook>()
+            .named(0, name)
+            .unwrap()
+    });
     let mut presence_carrier = game
         .world
         .get_mut::<Modifiers>(entity(&game, carrier))
@@ -584,7 +588,7 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
     let mut game = start();
     let walker = unit(&mut game, 0);
     let speed = game.world.resource::<StatBook>();
-    let speed = speed.index(&Stat::Engine(EngineStat::MoveSpeed)).unwrap();
+    let speed = speed.named(&Stat::Engine(EngineStat::MoveSpeed)).unwrap();
     let mut stun = share(0, None, speed, StatOp::Add, Num::ZERO, Reapply::Refresh);
     stun.instance.tags = TagSet::of([stunned]);
     let mut modifiers = Modifiers::default();

@@ -30,7 +30,7 @@ impl PoolBook {
     pub(crate) fn new(pools: &BTreeMap<DeclaredName, PoolData>, stats: &StatBook) -> PoolBook {
         let index = |stat| {
             stats
-                .index(stat)
+                .named(stat)
                 .expect("the load checked the pools' stats")
         };
         PoolBook {

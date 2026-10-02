@@ -178,7 +178,7 @@ fn a_3v3_match_replays_to_the_same_hashes() {
 
     // Income: 8 gold every 5 s from the pick's end, 100 ticks, in ticks 1299 to 2499: 13 times.
     let amounts = world.resource::<PlayerResources>();
-    let gold = ResourceId::of(&reference.packages().data().resources, "gold").unwrap();
+    let gold = ResourceId::named(&reference.packages().data().resources, "gold").unwrap();
     for slot in 0..Reference3v3::PLAYERS {
         assert_eq!(
             amounts.amount(PlayerSlot::new(slot), gold),

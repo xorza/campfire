@@ -366,7 +366,7 @@ impl ModeApi {
             .bind(
                 MemberSpec::field(ApiOwner::GameMap, "paths", "the paths' names")
                     .capability(Capability::Navigation),
-                |map: &mut GameMap| map.paths.clone(),
+                |map: &mut GameMap| map.paths(),
             )
             .bind(
                 MemberSpec::method(
@@ -419,7 +419,7 @@ impl ModeApi {
         let field = ctx
             .mode_or_fail()?
             .schema
-            .state_field(name)
+            .state_field_named(name)
             .ok_or_else(|| ApiError::UnknownState.fail())?;
         Ok(ctx.frame().state[field.index].to_dynamic(ctx.view()))
     }
@@ -429,7 +429,7 @@ impl ModeApi {
         let field = ctx
             .mode_or_fail()?
             .schema
-            .state_field(name)
+            .state_field_named(name)
             .ok_or_else(|| ApiError::UnknownState.fail())?;
         let value = StateValue::from_dynamic(field.kind, value)
             .ok_or_else(|| ApiError::WrongStateType.fail())?;
@@ -529,7 +529,7 @@ impl ModeApi {
     /// has none, as only actions deliver its units.
     fn unit_type(ctx: &Ctx, book: &ModeBook, name: &str) -> Checked<UnitType> {
         ctx.view()
-            .unit_type(name)
+            .unit_type_named(name)
             .filter(|&unit_type| book.kit(unit_type).is_some())
             .ok_or_else(|| ApiError::UnknownUnitType.fail().into())
     }
@@ -617,7 +617,7 @@ impl ModeApi {
         let from = PathEnd::named(from).ok_or_else(|| ApiError::UnknownPathEnd.fail())?;
         let path = ctx
             .view()
-            .path(path)
+            .path_named(path)
             .ok_or_else(|| ApiError::UnknownPath.fail())?;
         let types = types
             .iter()
@@ -717,7 +717,7 @@ impl ModeApi {
         let slot = ModeApi::player(book, player)?;
         let resource = ctx
             .view()
-            .resource(name)
+            .resource_named(name)
             .ok_or_else(|| ApiError::UnknownResource.fail())?;
         let mut frame = ctx.write()?;
         let resources = frame

@@ -273,7 +273,7 @@ impl ScriptApi {
                             .iter()
                             .map(|signature| format!("`{signature}`"))
                             .collect();
-                        forms.join(" ") + member.named().as_str()
+                        forms.join(" ") + member.name_args_text().as_str()
                     }
                 };
                 let roles = if ctx {
@@ -544,7 +544,7 @@ impl DataTable {
 impl ApiMember {
     /// Its arguments that name something, as the reference lists them after its forms:
     /// `, `id` a modifier`, by their names in its first form.
-    fn named(&self) -> String {
+    fn name_args_text(&self) -> String {
         let Some(first) = self.signatures.first() else {
             return String::new();
         };
