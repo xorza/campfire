@@ -1,7 +1,7 @@
-use crate::actions::action_book::ActionId;
 use crate::mode::choice_data::Offers;
 use crate::mode::mode_setup::LoadoutSetup;
 use crate::mode::offer::Offer;
+use crate::units::action_id::ActionId;
 
 /// The avatars and loadout entries a mode's choices offer. Package data, not state.
 #[derive(Debug)]

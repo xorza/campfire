@@ -1,9 +1,9 @@
 use campfire_math::Num;
 use campfire_sim::{Capability, StableId};
 
-use crate::combat::damage_kind::DamageKind;
 use crate::scripts::effects::Effect;
 use crate::stats::pool_id::PoolId;
+use crate::values::damage_kind::DamageKind;
 
 /// A change to units' pools that a call queued, from its acting unit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -39,7 +39,6 @@ mod vision;
 
 pub use abilities::Abilities;
 pub use actions::Actions;
-pub use actions::action_book::ActionId;
 pub use actions::action_data::{
     ActionData, ChannelData, ChargeData, ChargesData, CostTarget, Range, RangeField, RankFields,
     Targeting, Toggle,
@@ -65,7 +64,6 @@ pub use capability_set::error::CapabilityError;
 pub use combat::Combat;
 pub use combat::combat_data::CombatData;
 pub use combat::combat_rules::{CombatRules, Leech};
-pub use combat::dead::Dead;
 pub use combat::deaths::{DeathView, Deaths, Fallen};
 pub use combat::on_death::OnDeath;
 pub use combat::recent_attackers::RecentAttackers;
@@ -150,9 +148,11 @@ pub use stats::stat_op::StatOp;
 pub use stats::stat_rule::StatRule;
 pub use stats::stats_data::{StatValue, StatsData};
 pub use units::Units;
+pub use units::action_id::ActionId;
 pub use units::block::Block;
 pub use units::body::Body;
 pub use units::collision_data::CollisionData;
+pub use units::dead::Dead;
 pub use units::engine_tag::EngineTag;
 pub use units::layer::Layer;
 pub use units::owner::Owner;

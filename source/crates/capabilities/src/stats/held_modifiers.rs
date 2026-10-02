@@ -1,8 +1,8 @@
 use bevy_ecs::resource::Resource;
 use campfire_sim::StableId;
 
-use crate::actions::action_book::ActionId;
 use crate::stats::modifier_book::ModifierId;
+use crate::units::action_id::ActionId;
 
 /// The modifiers capabilities other than stats hold on units this tick, which `StatsSet::Hold`
 /// holds as it holds auras': filled again each tick before it. Not state.

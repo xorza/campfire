@@ -1,9 +1,9 @@
 use campfire_script::rhai::ImmutableString;
 
-use crate::actions::action_book::ActionId;
-use crate::combat::damage_kind::DamageKind;
 use crate::progression::track_id::TrackId;
+use crate::units::action_id::ActionId;
 use crate::units::unit_type::UnitType;
+use crate::values::damage_kind::DamageKind;
 
 /// The names scripts read, in the form they read them, built once from the books so that a read
 /// allocates nothing: each action's, unit type's, track's and damage kind's, by id.

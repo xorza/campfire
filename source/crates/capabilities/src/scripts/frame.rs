@@ -2,7 +2,6 @@ use bevy_ecs::world::World;
 use campfire_math::Tick;
 use campfire_sim::{Capability, IdAllocator, StableId};
 
-use crate::actions::action_book::ActionId;
 use crate::mode::choices::Choices;
 use crate::mode::match_end::MatchEnd;
 use crate::mode::mode_state::ModeState;
@@ -18,6 +17,7 @@ use crate::stats::modifier_handle::ModifierHandle;
 use crate::stats::param_book::ParamBook;
 use crate::stats::param_source::ParamSource;
 use crate::stats::param_table::ParamTable;
+use crate::units::action_id::ActionId;
 
 use crate::values::hit::Hit;
 

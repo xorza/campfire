@@ -8,7 +8,6 @@ use bevy_ecs::world::World;
 use campfire_math::PlayerSlot;
 use campfire_sim::{EntityIndex, Position, StableId};
 
-use crate::actions::action_book::ActionId;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::slot_kind::SlotKind;
 use crate::actions::slot_kinds::SlotKinds;
@@ -31,6 +30,7 @@ use crate::stats::modifier_book::{Applier, ModifierId};
 use crate::stats::modifier_effect::ModifierEffect;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::unit_stats::UnitStats;
+use crate::units::action_id::ActionId;
 use crate::units::by_type::ByType;
 use crate::units::owner::Owner;
 use crate::units::path_id::PathId;

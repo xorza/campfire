@@ -9,7 +9,6 @@ use campfire_sim::{
     IdAllocator, Position, SimSet, SimTick, StableId, StateRegistry, TickRate, Unpredicted,
 };
 
-use crate::combat::dead::Dead;
 use crate::mode::map_data::{MapData, MapPoint};
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::broadphase::Broadphase;
@@ -29,6 +28,7 @@ use crate::navigation::steering::Steering;
 use crate::navigation::walker::Walker;
 use crate::units::block::Block;
 use crate::units::body::Body;
+use crate::units::dead::Dead;
 use crate::units::script_view::{RowFill, View};
 use crate::units::unit_tags::UnitTags;
 use crate::values::bounds::Bounds;

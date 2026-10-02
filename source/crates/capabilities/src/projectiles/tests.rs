@@ -4,13 +4,10 @@ use campfire_math::{RngSource, SegmentSeed};
 use campfire_sim::{Capability, EntityIndex, IdAllocator, SimTick, SimUpdate, TypeHash};
 
 use super::*;
-use crate::actions::action_book::ActionId;
 use crate::actions::action_slots::ActionSlots;
 use crate::capability_set::internals::TestMatch;
 use crate::combat::ROLL_STREAM;
 use crate::combat::armed::Armed;
-use crate::combat::damage_kind::DamageKind;
-use crate::combat::dead::Dead;
 use crate::combat::deaths::Deaths;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;
@@ -18,9 +15,12 @@ use crate::projectiles::cast_hits::CastHit;
 use crate::projectiles::projectile_data::ProjectileData;
 use crate::stats::pool_id::PoolId;
 use crate::units::Units;
+use crate::units::action_id::ActionId;
+use crate::units::dead::Dead;
 use crate::units::recent_attack::RecentAttack;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_type_data::UnitTypeData;
+use crate::values::damage_kind::DamageKind;
 use campfire_sim::TickRate;
 
 /// The MOBA's 30 ticks a second.
@@ -144,7 +144,7 @@ impl Volley {
                 aimed: None,
             },
             payload: Payload::Attack {
-                action: ActionId::new(0),
+                action: ActionId::nth(0),
                 amount: num(10),
                 kind: DamageKind::new(0),
                 roll: Num::ZERO,

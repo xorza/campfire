@@ -5,7 +5,6 @@ use bevy_ecs::resource::Resource;
 use campfire_math::{Num, Tick, Ticks};
 use campfire_script::ScriptId;
 use campfire_sim::{Position, StableId, TickRate};
-use serde::{Deserialize, Serialize};
 
 use crate::actions::action_data::{ActionData, CostTarget, Range, Targeting};
 use crate::actions::action_kind::ActionKind;
@@ -23,6 +22,7 @@ use crate::scripts::hook_set::HookSet;
 use crate::scripts::script_book::ScriptBook;
 use crate::stats::modifier_book::ModifierId;
 use crate::stats::pool_cost::PoolCost;
+use crate::units::action_id::ActionId;
 use crate::units::filter::Filter;
 use crate::units::living_unit::LivingUnit;
 use crate::units::tag_set::TagSet;
@@ -38,11 +38,6 @@ use crate::values::declared_name::DeclaredName;
 pub(crate) struct ActionBook {
     actions: Arc<Vec<Action>>,
 }
-
-/// An action, by its place in the book.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(transparent)]
-pub struct ActionId(u32);
 
 /// An action as a match runs it.
 #[derive(Debug, Clone)]
@@ -224,7 +219,7 @@ impl ActionBook {
             "an action has a script exactly when its data names one"
         );
         let hooks = scripts.defines(script, &[Hook::OnResolve, Hook::OnHit, Hook::OnEnd]);
-        let id = ActionId(u32::try_from(self.actions.len()).expect("actions fit u32"));
+        let id = ActionId::nth(u32::try_from(self.actions.len()).expect("actions fit u32"));
         Arc::make_mut(&mut self.actions).push(Action {
             package,
             name: name.into(),
@@ -395,12 +390,6 @@ impl Action {
     }
 }
 
-impl ActionId {
-    pub(crate) const fn index(self) -> usize {
-        self.0 as usize
-    }
-}
-
 impl RankValues {
     /// The fields of `data`, which the package load checked, at each of its `ranks` ranks,
     /// times in ticks at `rate`, what its cost's names take from by `target`; an error when a
@@ -445,18 +434,19 @@ pub(crate) mod internals {
     use std::sync::Arc;
 
     use crate::actions::action_book::{
-        Action, ActionBook, ActionId, Aim, Delivery, DeliveryShape, Fan, RankValues,
+        Action, ActionBook, Aim, Delivery, DeliveryShape, Fan, RankValues,
     };
     use crate::actions::action_data::Range;
     use crate::actions::kind_spec::KindSpec;
     use crate::actions::weapon::Weapon;
-    use crate::combat::damage_kind::DamageKind;
     use crate::players::resource_id::ResourceAmount;
     use crate::scripts::hook_set::HookSet;
     use crate::stats::pool_cost::PoolCost;
+    use crate::units::action_id::ActionId;
     use crate::units::filter::Filter;
     use crate::units::script_view::View;
     use crate::units::unit_type::UnitType;
+    use crate::values::damage_kind::DamageKind;
     use bevy_ecs::world::World;
 
     /// A weapon tests arm units with: what it aims at, its range, its windup, the type of the
@@ -487,7 +477,7 @@ pub(crate) mod internals {
                 homes: true,
             },
         });
-        let id = ActionId(u32::try_from(book.actions.len()).unwrap());
+        let id = ActionId::nth(u32::try_from(book.actions.len()).unwrap());
         Arc::make_mut(&mut book.actions).push(Action {
             package: 0,
             name: "weapon".into(),
@@ -521,15 +511,7 @@ pub(crate) mod internals {
                 .actions
                 .iter()
                 .position(|action| action.package == package && &*action.name == name)?;
-            Some(ActionId(u32::try_from(at).expect("actions fit u32")))
-        }
-    }
-
-    impl ActionId {
-        /// The action at `index` of a book.
-        #[cfg(test)]
-        pub(crate) const fn new(index: u32) -> ActionId {
-            ActionId(index)
+            Some(ActionId::nth(u32::try_from(at).expect("actions fit u32")))
         }
     }
 
@@ -537,7 +519,7 @@ pub(crate) mod internals {
     #[cfg(test)]
     pub(crate) fn train(world: &mut World, unit: UnitType) -> ActionId {
         let mut book = world.resource_mut::<ActionBook>();
-        let id = ActionId(u32::try_from(book.actions.len()).unwrap());
+        let id = ActionId::nth(u32::try_from(book.actions.len()).unwrap());
         Arc::make_mut(&mut book.actions).push(Action {
             package: 0,
             name: "train".into(),

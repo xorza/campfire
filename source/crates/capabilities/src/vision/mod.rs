@@ -8,7 +8,7 @@ use bevy_ecs::system::{Commands, Local, Query, Res};
 use bevy_ecs::world::{EntityRef, World};
 use campfire_sim::{Position, SimSet, StateRegistry};
 
-use crate::combat::dead::Dead;
+use crate::units::dead::Dead;
 use crate::units::relations::Relations;
 use crate::units::script_view::{RowFill, View};
 use crate::units::team::Team;

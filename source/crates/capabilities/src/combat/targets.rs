@@ -3,11 +3,11 @@ use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_math::Num;
 use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
 
-use crate::combat::combat_bindings::CombatBindings;
-use crate::combat::dead::Dead;
+use crate::stats::life_pool::LifePool;
 use crate::stats::pools::Pools;
 use crate::units::block::Block;
 use crate::units::body::Body;
+use crate::units::dead::Dead;
 use crate::units::living_unit::LivingUnit;
 use crate::units::relations::Relations;
 use crate::units::tag_set::TagSet;
@@ -24,7 +24,7 @@ use crate::values::metric::Metric;
 pub(crate) struct Targets<'w, 's> {
     index: Res<'w, EntityIndex>,
     relations: Res<'w, Relations>,
-    bindings: Res<'w, CombatBindings>,
+    life: Res<'w, LifePool>,
     metric: Res<'w, Metric>,
     units: Query<
         'w,
@@ -112,7 +112,7 @@ impl Targets<'_, '_> {
             Option<&UnitTags>,
         ),
     ) -> Option<LivingUnit> {
-        pools.max(self.bindings.life)?;
+        pools.max(self.life.0)?;
         Some(LivingUnit {
             id,
             pos,

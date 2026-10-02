@@ -15,10 +15,10 @@ use crate::actions::action_slots::{ActionSlots, ActionTarget, InProgress};
 use crate::actions::purse::Purse;
 use crate::combat::CombatSet;
 
-use crate::combat::dead::Dead;
 use crate::combat::targets::Targets;
 use crate::orders::OrdersSet;
 use crate::players::player_resources::PlayerResources;
+use crate::units::dead::Dead;
 
 use crate::stats::StatsSet;
 use crate::stats::modifier_book::{Applier, ModifierBook};
@@ -276,7 +276,8 @@ pub(crate) mod internals {
     use bevy_ecs::world::World;
 
     use crate::actions::Actions;
-    use crate::actions::action_book::{ActionBook, ActionId};
+    use crate::actions::action_book::ActionBook;
+    use crate::units::action_id::ActionId;
 
     impl Actions {
         /// The action `name` of `package`, as the match loaded it.
@@ -290,13 +291,11 @@ pub(crate) mod internals {
 pub(crate) mod loads {
     use crate::actions::Actions;
     use crate::actions::action_book::ActionBook;
-    use crate::actions::action_book::ActionId;
     use crate::actions::action_book::ActionParts;
     use crate::actions::action_data::ActionData;
     use crate::actions::action_data::CostTarget;
     use crate::actions::action_names::ActionNames;
     use crate::actions::error::ActionError;
-    use crate::combat::damage_kind::DamageKind;
     use crate::projectiles::projectile_spec::ProjectileSpec;
     use crate::scripts::script_book::ScriptBook;
     use crate::stats::modifier_book::ModifierBook;
@@ -304,11 +303,13 @@ pub(crate) mod loads {
     use crate::stats::param_book::ParamBook;
     use crate::stats::stat_book::StatBook;
     use crate::stats::stat_id::StatId;
+    use crate::units::action_id::ActionId;
     use crate::units::by_type::ByType;
     use crate::units::filter::Filter;
     use crate::units::script_view::View;
     use crate::units::type_scope::TypeScope;
     use crate::units::unit_type::UnitType;
+    use crate::values::damage_kind::DamageKind;
     use crate::values::declared_name::DeclaredName;
     use crate::values::filter_data::FilterData;
     use crate::values::param::Param;

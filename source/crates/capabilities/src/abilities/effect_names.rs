@@ -1,7 +1,7 @@
-use crate::combat::damage_kind::DamageKind;
 use crate::progression::track_id::TrackId;
 use crate::stats::modifier_book::ModifierId;
 use crate::stats::pool_id::PoolId;
+use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
 
 /// The match's ids of the names an action's effect lists give, which the package load checked:

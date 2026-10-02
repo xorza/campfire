@@ -5,12 +5,10 @@ use campfire_math::Num;
 use campfire_sim::{StableId, TickRate};
 
 use crate::abilities::effect_names::EffectNames;
-use crate::actions::action_book::ActionId;
 use crate::actions::action_data::ActionData;
 use crate::actions::effect_data::EffectTo;
 use crate::actions::effect_data::{EffectData, Effecting};
 use crate::combat::combat_effect::CombatEffect;
-use crate::combat::damage_kind::DamageKind;
 use crate::progression::progression_effect::ProgressionEffect;
 use crate::progression::track_id::TrackId;
 use crate::scripts::frame::Frame;
@@ -18,6 +16,8 @@ use crate::scripts::hook::Hook;
 use crate::stats::modifier_book::ModifierId;
 use crate::stats::modifier_effect::ModifierEffect;
 use crate::stats::pool_id::PoolId;
+use crate::units::action_id::ActionId;
+use crate::values::damage_kind::DamageKind;
 use crate::values::number::Number;
 
 /// The effect lists of each action, their names resolved as the action loaded: one buffer, and

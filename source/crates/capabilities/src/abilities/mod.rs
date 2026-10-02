@@ -12,7 +12,8 @@ use campfire_sim::{Keyed, Ordered, Position, SimSet, SimTick, StableId, StateReg
 
 use crate::abilities::effect_lists::EffectLists;
 
-use crate::actions::action_book::{ActionBook, ActionId, Delivery, DeliveryShape};
+use crate::actions::action_book::{ActionBook, Delivery, DeliveryShape};
+use crate::units::action_id::ActionId;
 
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::{ActionSlots, ActionTarget};
@@ -20,10 +21,10 @@ use crate::actions::purse::Purse;
 use crate::areas::Areas;
 use crate::combat::CombatSet;
 
-use crate::combat::dead::Dead;
 use crate::combat::targets::Targets;
 use crate::deliveries::delivering::Delivering;
 use crate::players::player_resources::PlayerResources;
+use crate::units::dead::Dead;
 
 use crate::projectiles::Projectiles;
 use crate::scripts::ctx::Ctx;
@@ -331,15 +332,15 @@ pub(crate) mod internals {
     use crate::abilities::effect_lists::EffectLists;
     use crate::abilities::effect_lists::Listed;
     use crate::abilities::effect_names::EffectNames;
-    use crate::actions::action_book::ActionId;
     use crate::actions::action_data::ActionData;
-    use crate::combat::damage_kind::DamageKind;
     use crate::progression::track_id::TrackId;
     use crate::stats::Stats;
     use crate::stats::modifier_book::ModifierId;
     use crate::stats::param_book::ParamBook;
     use crate::stats::pool_id::PoolId;
+    use crate::units::action_id::ActionId;
     use crate::units::script_view::View;
+    use crate::values::damage_kind::DamageKind;
     use crate::values::declared_name::DeclaredName;
     use bevy_ecs::world::World;
 

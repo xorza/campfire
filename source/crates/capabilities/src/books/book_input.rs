@@ -3,12 +3,12 @@ use campfire_sim::TickRate;
 
 use crate::books::package_content::PackageContent;
 use crate::books::unit_type_file::UnitTypeFile;
-use crate::combat::damage_kind::DamageKind;
 use crate::mode::map_data::MapData;
 use crate::mode::mode_data::ModeData;
 use crate::mode::team_manifest::TeamManifest;
 use crate::scripts::script_book::ScriptBook;
 use crate::stats::stat_id::StatId;
+use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
 use crate::values::speed::Speed;
 

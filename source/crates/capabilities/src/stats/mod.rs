@@ -12,7 +12,6 @@ use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StableId, StateRegist
 
 use crate::combat::CombatSet;
 use crate::combat::combat_events::CombatEvents;
-use crate::combat::dead::Dead;
 use crate::navigation::move_step::MoveStep;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::frame::Frame;
@@ -34,6 +33,7 @@ use crate::stats::pools::Pools;
 use crate::stats::refresh_scratch::{RefreshScratch, Refreshing};
 use crate::stats::stat_book::StatBook;
 use crate::stats::unit_stats::UnitStats;
+use crate::units::dead::Dead;
 use crate::units::owner::Owner;
 use crate::units::relations::Relations;
 use crate::units::script_view::{RowFill, View};
@@ -48,6 +48,7 @@ use crate::values::metric::Metric;
 pub(crate) mod error;
 pub(crate) mod held_modifiers;
 pub(crate) mod level;
+pub(crate) mod life_pool;
 pub(crate) mod live_param;
 pub(crate) mod live_shares;
 pub(crate) mod meter;
@@ -591,11 +592,11 @@ pub(crate) mod internals {
     use bevy_ecs::world::World;
     use campfire_sim::{EntityIndex, StableId};
 
-    use crate::actions::action_book::ActionId;
     use crate::stats::Stats;
     use crate::stats::modifier_book::{Applier, ModifierBook, ModifierId};
     use crate::stats::modifier_effect::ModifierEffect;
     use crate::stats::modifiers::Modifiers;
+    use crate::units::action_id::ActionId;
 
     impl Stats {
         /// The modifier `name` of `package`, as the match loaded it.

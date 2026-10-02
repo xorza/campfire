@@ -2,9 +2,9 @@ use std::collections::BTreeMap;
 
 use serde::Deserialize;
 
-use crate::combat::damage_kind::DamageKind;
 use crate::stats::pool_data::PoolData;
 use crate::stats::pool_id::PoolId;
+use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
 use crate::values::stat::Stat;
 

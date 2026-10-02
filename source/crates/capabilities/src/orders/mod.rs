@@ -15,7 +15,6 @@ use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::action_slots::ActionTarget;
 use crate::combat::CombatSet;
-use crate::combat::dead::Dead;
 use crate::combat::targets::Targets;
 use crate::navigation::destination::Destination;
 use crate::navigation::on_path::OnPath;
@@ -34,6 +33,7 @@ use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
+use crate::units::dead::Dead;
 
 use crate::stats::StatsSet;
 use crate::stats::pools::Pools;

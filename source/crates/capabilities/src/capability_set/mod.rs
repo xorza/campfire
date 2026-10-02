@@ -433,7 +433,7 @@ mod tests {
     /// The imports from a higher layer that the code holds today, each a module and the one it
     /// imports. Each step of the structural redesign's layers removes its own; the test fails
     /// when a new one appears, and when one listed here is gone, so the list only shrinks.
-    const KNOWN_BREAKS: [(&str, &str); 23] = [
+    const KNOWN_BREAKS: [(&str, &str); 22] = [
         ("actions", "combat"),
         ("actions", "orders"),
         ("actions", "stats"),
@@ -454,7 +454,6 @@ mod tests {
         ("stats", "mode"),
         ("stats", "navigation"),
         ("units", "actions"),
-        ("units", "combat"),
         ("units", "progression"),
         ("units", "stats"),
     ];

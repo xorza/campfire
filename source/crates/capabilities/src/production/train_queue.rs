@@ -6,7 +6,7 @@ use campfire_sim::SimComponent;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::actions::action_book::ActionId;
+use crate::units::action_id::ActionId;
 
 /// A unit's train queue: the trains it was ordered, in order, at most `capacity`. It makes one at
 /// a time, the head, whose time runs from the tick it reached the head.

@@ -1,7 +1,7 @@
 use campfire_math::Num;
 use campfire_sim::StableId;
 
-use crate::actions::action_book::ActionId;
+use crate::units::action_id::ActionId;
 
 /// A heal the pass applies to its target's life pool: from its source, none from a modifier the
 /// mode applied, its amount before `calc_heal` and the heal scale, what gave it, the ability

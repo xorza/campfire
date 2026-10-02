@@ -4,9 +4,9 @@ use campfire_math::Tick;
 use campfire_sim::{EntityIndex, Position, SimComponent, StableId};
 use serde::{Deserialize, Serialize};
 
-use crate::actions::action_book::ActionId;
 use crate::actions::action_kind::ActionKind;
 use crate::actions::slot_kind::SlotKind;
+use crate::units::action_id::ActionId;
 
 /// A unit's actions: its slots, kind after kind in the mode's order, each an action at a rank
 /// with its cooldown; the action it was ordered or has under way, one at a time; and the unit its

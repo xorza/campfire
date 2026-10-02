@@ -14,7 +14,6 @@ use crate::actions::slot_kind::SlotKind;
 use crate::capability_set::internals::TestMatch;
 use crate::combat::armed::Armed;
 use crate::combat::combat_rules::{CombatRules, Leech};
-use crate::combat::damage_kind::DamageKind;
 use crate::combat::targets::Targets;
 use crate::players::resource_id::ResourceId;
 use crate::stats::Stats;
@@ -31,6 +30,7 @@ use crate::units::relations::Relations;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::attitude::Attitude;
+use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
 use crate::values::metric::Metric;
@@ -790,8 +790,8 @@ fn load_damage_stats(world: &mut World) {
     };
     let max = Stat::named("health").unwrap();
     let pools = BTreeMap::from([(health, PoolData { max, regen: None })]);
-    let bindings = CombatBindings::new(&combat, &pools, &book).unwrap();
-    world.insert_resource(bindings);
+    world.insert_resource(LifePool(combat.life_pool(&pools).unwrap()));
+    world.insert_resource(CombatBindings::new(&combat, &book));
     Stats::load_book(world, book);
 }
 

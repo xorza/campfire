@@ -156,6 +156,8 @@ mode
 capability_set: install, the effect dispatch table, the view column table, the layer table
 ```
 
+**Decision (D2): `stats` sits below the action pipeline, and `combat` above both.** `stats` needs nothing of `actions` but the id of an action, which moves to the core; the pipeline needs pools, costs and the passives' modifiers. So the layers run `values`; the core; `stats`; `actions`; `combat`; the capabilities above. For this, `ActionId` and `Dead` move to the core, `DamageKind` to `values`, the life pool becomes a fact of the pool book, `MoveStep` moves to `stats` as the component that holds the move speed's effect, the modifiers' combat hooks move to `combat`, and each ordering of sets is stated by the higher layer.
+
 The parts that call upward use hooks that the higher layer registers:
 
 - **Effects.**

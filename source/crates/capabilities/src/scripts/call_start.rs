@@ -1,8 +1,8 @@
 use campfire_sim::StableId;
 
-use crate::actions::action_book::ActionId;
 use crate::scripts::hook::ScriptRole;
 use crate::stats::modifier_book::ModifierId;
+use crate::units::action_id::ActionId;
 use crate::values::hit::Hit;
 
 /// What a call starts with: its role; its acting unit, a cast's caster, a modifier's source or

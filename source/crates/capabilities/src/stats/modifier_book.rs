@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 
 use campfire_sim::{StableId, TickRate};
 
-use crate::actions::action_book::ActionId;
 use crate::scripts::hook::Hook;
 use crate::scripts::hook_set::HookSet;
 use crate::scripts::script_book::ScriptBook;
@@ -18,6 +17,7 @@ use crate::stats::modifier_spec::{ModifierSpec, ParamPlace, SpecNames, SpecNumbe
 use crate::stats::modifiers::{Application, Instance, Interval, StackEnd, StatShare};
 use crate::stats::param_read::ParamRead;
 use crate::stats::stat_id::StatId;
+use crate::units::action_id::ActionId;
 use crate::units::tag_set::TagSet;
 use crate::units::unit_types::UnitTypes;
 use crate::values::declared_name::DeclaredName;

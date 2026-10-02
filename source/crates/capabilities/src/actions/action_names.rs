@@ -1,9 +1,9 @@
 use crate::actions::action_data::CostTarget;
-use crate::combat::damage_kind::DamageKind;
 use crate::stats::modifier_book::ModifierId;
 use crate::stats::stat_id::StatId;
 use crate::units::filter::Filter;
 use crate::units::unit_type::UnitType;
+use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
 use crate::values::stat::Stat;

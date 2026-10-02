@@ -9,9 +9,9 @@ use campfire_math::{Num, PlayerSlot, Tick, Ticks, Vec3};
 use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString};
 use campfire_sim::{Capability, EntityIndex, Position, SimTick, StableId, TickRate};
 
-use crate::actions::action_book::{Action, ActionBook, ActionId, Delivery};
+use crate::actions::action_book::{Action, ActionBook, Delivery};
+use crate::units::action_id::ActionId;
 
-use crate::combat::damage_kind::DamageKind;
 use crate::players::resource_id::ResourceId;
 use crate::progression::track_book::TrackBook;
 use crate::progression::track_id::TrackId;
@@ -49,6 +49,7 @@ use crate::units::unit_type::UnitType;
 use crate::units::unit_types::UnitTypes;
 use crate::values::attitude::Attitude;
 use crate::values::bounds::Bounds;
+use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
 use crate::values::metric::Metric;
 use crate::values::stat::Stat;

@@ -1,7 +1,7 @@
 use campfire_math::{Num, Ticks};
 
-use crate::combat::damage_kind::DamageKind;
 use crate::stats::stat_id::StatId;
+use crate::values::damage_kind::DamageKind;
 
 /// What makes an action of kind `attack` a weapon: the places among its unit's stats of its rate,
 /// in attacks a second, and of its damage, and the kind of damage it deals.

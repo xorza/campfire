@@ -7,6 +7,7 @@ use crate::mode::mode_data::ModeData;
 use crate::mode::mode_map::ModeMap;
 use crate::mode::mode_setup::UnitTypeSetup;
 use crate::stats::Stats;
+use crate::stats::life_pool::LifePool;
 use crate::stats::pool_book::PoolBook;
 use crate::stats::stat_book::StatBook;
 use crate::units::Units;
@@ -25,6 +26,7 @@ pub struct ModeBooks {
     pub(crate) pools: PoolBook,
     pub(crate) tags: TagBook,
     /// None with no life pool, as in a mode with no combat.
+    pub(crate) life: Option<LifePool>,
     pub(crate) bindings: Option<CombatBindings>,
     pub(crate) damage_kinds: Arc<[DeclaredName]>,
     pub(crate) resources: Arc<[DeclaredName]>,
@@ -41,6 +43,7 @@ impl ModeBooks {
             stats,
             pools,
             tags,
+            life,
             bindings,
             damage_kinds,
             resources,
@@ -49,6 +52,9 @@ impl ModeBooks {
         world
             .non_send::<View>()
             .set_mode_names(&damage_kinds, resources);
+        if let Some(life) = life {
+            world.insert_resource(life);
+        }
         if let Some(bindings) = bindings {
             world.insert_resource(bindings);
         }
@@ -68,6 +74,7 @@ impl ModeBooks {
         stats: StatBook,
         map: ModeMap,
     ) -> ModeBooks {
+        let life = data.combat.life_pool(&data.pools).map(LifePool);
         let layers = &data.navigation.layers;
         for unit_type in unit_types {
             let layer = Body::layer_of(unit_type.kit.body.as_ref());
@@ -80,7 +87,8 @@ impl ModeBooks {
         }
         ModeBooks {
             pools: PoolBook::new(&data.pools, &stats),
-            bindings: CombatBindings::new(&data.combat, &data.pools, &stats),
+            bindings: life.map(|_| CombatBindings::new(&data.combat, &stats)),
+            life,
             tags: types.tag_book(&data.tags),
             stats,
             damage_kinds: data.combat.damage_kinds.as_slice().into(),

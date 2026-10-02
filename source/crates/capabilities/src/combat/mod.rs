@@ -11,7 +11,7 @@ use campfire_sim::{
 };
 
 use crate::actions::Actions;
-use crate::actions::action_book::{ActionBook, ActionId, RankValues};
+use crate::actions::action_book::{ActionBook, RankValues};
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::purse::Purse;
 use crate::actions::weapon::Weapon;
@@ -22,7 +22,6 @@ use crate::combat::combat_event::CombatEvent;
 use crate::combat::combat_events::CombatEvents;
 use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::damage_weigher::DamageWeigher;
-use crate::combat::dead::Dead;
 use crate::combat::deaths::{Deaths, Fallen};
 use crate::combat::heal::{Heal, HealCause};
 use crate::combat::heal_weigher::HealWeigher;
@@ -38,13 +37,16 @@ use crate::projectiles::projectile::{Flight, Payload};
 use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
 use crate::scripts::script_batch::ScriptBatch;
+use crate::stats::life_pool::LifePool;
 use crate::stats::modifier_book::ModifierId;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::stat_id::StatId;
 use crate::stats::unit_stats::UnitStats;
+use crate::units::action_id::ActionId;
 use crate::units::block::Block;
+use crate::units::dead::Dead;
 use crate::units::owner::Owner;
 use crate::units::predicting::Predicting;
 use crate::units::recent_attack::RecentAttack;
@@ -66,9 +68,7 @@ pub(crate) mod combat_events;
 pub(crate) mod combat_rules;
 pub(crate) mod damage;
 pub(crate) mod damage_handle;
-pub(crate) mod damage_kind;
 pub(crate) mod damage_weigher;
-pub(crate) mod dead;
 pub(crate) mod deaths;
 pub(crate) mod heal;
 pub(crate) mod heal_handle;
@@ -182,7 +182,7 @@ impl Combat {
 
     /// The match's life pool; `None` when its mode names none.
     pub fn life(world: &World) -> Option<PoolId> {
-        Some(world.get_resource::<CombatBindings>()?.life)
+        Some(world.get_resource::<LifePool>()?.0)
     }
 }
 
@@ -546,7 +546,7 @@ impl Combat {
     /// heals and restores reach.
     fn living(world: &World, unit: StableId) -> Option<Entity> {
         let entity = world.resource::<EntityIndex>().get(unit)?;
-        let life = world.resource::<CombatBindings>().life;
+        let LifePool(life) = *world.resource::<LifePool>();
         world
             .get::<Pools>(entity)?
             .above_zero(life)
@@ -629,7 +629,7 @@ impl Combat {
             }
             left = after;
         }
-        let life = world.resource::<CombatBindings>().life;
+        let LifePool(life) = *world.resource::<LifePool>();
         let mut pools = world
             .get_mut::<Pools>(entity)
             .expect("a unit that takes damage");
@@ -774,11 +774,12 @@ impl Combat {
     /// Heals `entity`, a living unit, as `heal` does.
     fn heal_living(world: &mut World, entity: Entity, amount: Num) {
         let bindings = *world.resource::<CombatBindings>();
+        let LifePool(life) = *world.resource::<LifePool>();
         let received = Num::ONE + Combat::stat(world, entity, bindings.heal_scale);
         let amount = scaled(amount, received);
         if amount > Num::ZERO {
             let mut pools = world.get_mut::<Pools>(entity).expect("a living unit");
-            pools.add(bindings.life, amount);
+            pools.add(life, amount);
         }
     }
 
@@ -819,7 +820,7 @@ fn scaled(amount: Num, ratio: Num) -> Num {
 /// took there died with no killer.
 fn die(
     mut commands: Commands<'_, '_>,
-    bindings: Res<'_, CombatBindings>,
+    life: Res<'_, LifePool>,
     mut deaths: ResMut<'_, Deaths>,
     mut units: Query<
         '_,
@@ -836,7 +837,7 @@ fn die(
     >,
 ) {
     for (entity, &id, pools, slots, team, owner) in &mut units {
-        if pools.above_zero(bindings.life) {
+        if pools.above_zero(life.0) {
             continue;
         }
         if let Some(mut slots) = slots {
@@ -909,6 +910,8 @@ pub(crate) mod internals {
     use crate::actions::slot_kind::SlotKind;
     #[cfg(test)]
     use crate::combat::combat_bindings::CombatBindings;
+    #[cfg(test)]
+    use crate::stats::life_pool::LifePool;
     use crate::stats::pool_cost::PoolCost;
     #[cfg(test)]
     use crate::stats::pool_id::PoolId;
@@ -1006,7 +1009,8 @@ pub(crate) mod internals {
     /// Binds `life` as the life pool, with no stat bound, as a test world with no mode needs.
     #[cfg(test)]
     pub(crate) fn bind_life(world: &mut World, life: PoolId) {
-        world.insert_resource(CombatBindings::of_life(life));
+        world.insert_resource(LifePool(life));
+        world.insert_resource(CombatBindings::UNBOUND);
     }
 }
 

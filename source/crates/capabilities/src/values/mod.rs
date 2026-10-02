@@ -2,6 +2,7 @@
 
 pub(crate) mod attitude;
 pub(crate) mod bounds;
+pub(crate) mod damage_kind;
 pub(crate) mod declared_name;
 pub(crate) mod filter_data;
 pub(crate) mod grid;

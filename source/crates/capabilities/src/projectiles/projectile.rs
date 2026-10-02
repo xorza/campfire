@@ -4,8 +4,8 @@ use campfire_sim::{SimComponent, StableId};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::actions::action_book::ActionId;
-use crate::combat::damage_kind::DamageKind;
+use crate::units::action_id::ActionId;
+use crate::values::damage_kind::DamageKind;
 
 /// A projectile unit in flight: whose it is, how it flies, at its type's speed, what it carries,
 /// and the units it struck, each once.

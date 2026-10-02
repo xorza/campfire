@@ -1,8 +1,8 @@
 use campfire_math::Num;
 use campfire_sim::StableId;
 
-use crate::actions::action_book::ActionId;
-use crate::combat::damage_kind::DamageKind;
+use crate::units::action_id::ActionId;
+use crate::values::damage_kind::DamageKind;
 use crate::values::hit::Hit;
 
 /// A damage the pass deals: from its source, none from a modifier the mode applied, to its
