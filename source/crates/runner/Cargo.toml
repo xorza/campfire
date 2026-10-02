@@ -22,13 +22,16 @@ bevy_ecs.workspace = true
 criterion = { workspace = true, optional = true }
 tracing.workspace = true
 
+# The integration tests read the test types `internals` gives, so a plain test run builds them.
+[dev-dependencies]
+campfire-runner = { workspace = true, features = ["internals"] }
+
 [lints]
 workspace = true
 
 [[test]]
 name = "tests"
 path = "tests/mod.rs"
-required-features = ["internals"]
 
 [[bench]]
 name = "tick_3v3"
