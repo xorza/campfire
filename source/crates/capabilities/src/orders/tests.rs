@@ -862,17 +862,17 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
     assert!(game.get::<Resetting>(homeless).is_none());
 
     // An attack order needs a learned weapon whose filter selects the target. Units 4 and 5 order
-    // an attack on the enemy, 9 m off, in ticks 4 and 5: the first's weapon has a global range,
-    // and no `attack_range`, and attacks; the second's aims only at allies, and its call fails.
+    // an attack on the enemy, 9 m off, in ticks 4 and 5: the first's weapon aims at enemies, and
+    // attacks; the second's aims only at allies, and its call fails.
     let striker = game.unit_type(
         &[],
         &[],
         Some(r#"fn on_think(ctx, unit) { ctx.order_attack(unit, ctx.find(unit, unit.pos, 20, "enemies")[0]); }"#),
     );
-    let mut armed = |aim: &str, range| {
+    let mut armed = |aim: &str| {
         let weapon = TestWeapon {
             aim: Filter::parse(aim, &UnitTypes::default()).unwrap(),
-            range,
+            range: Range::Meters(num(20)),
             windup: Ticks::new(2),
             projectile: None,
             rate: StatId::new(0),
@@ -888,12 +888,12 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
         game.world.entity_mut(entity).insert(slots);
         unit
     };
-    let global = armed("enemies", Range::Global);
-    let friendly = armed("allies", Range::Meters(num(20)));
-    assert_eq!([global.get(), friendly.get()], [4, 5]);
+    let hostile = armed("enemies");
+    let friendly = armed("allies");
+    assert_eq!([hostile.get(), friendly.get()], [4, 5]);
     game.run_until(4);
     game.tick(&[]);
-    assert_eq!(game.target(global), Some(enemy));
+    assert_eq!(game.target(hostile), Some(enemy));
     assert!(game.world.non_send::<ScriptFailures>().get().is_empty());
     game.tick(&[]);
     let failures = game.world.non_send::<ScriptFailures>().get();

@@ -1038,6 +1038,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     claws.cost = BTreeMap::new();
     claws.params = BTreeMap::new();
     claws.targeting = Targeting::Unit(FilterData::parse("enemies").unwrap());
+    claws.range = Some(Ranked::One(RangeField::Range(Range::Meters(num(2)))));
     claws.rate = Some(Stat::named("armor").unwrap());
     claws.damage = Some(Stat::named("attack_damage").unwrap());
     claws.damage_kind = Some(DeclaredName::new("physical").unwrap());
