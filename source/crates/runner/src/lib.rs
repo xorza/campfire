@@ -4,13 +4,25 @@
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 
 mod error;
+#[cfg(feature = "internals")]
+mod fixed_match;
+#[cfg(feature = "internals")]
+mod fixed_session;
 mod match_build;
+#[cfg(feature = "internals")]
+mod proving_match;
 #[cfg(feature = "internals")]
 mod reference_3v3;
 mod runner;
 mod session;
 
 pub use error::StartError;
+#[cfg(feature = "internals")]
+pub use fixed_match::FixedMatch;
+#[cfg(feature = "internals")]
+pub use fixed_session::FixedSession;
+#[cfg(feature = "internals")]
+pub use proving_match::ProvingMatch;
 #[cfg(feature = "internals")]
 pub use reference_3v3::Reference3v3;
 pub use runner::Runner;

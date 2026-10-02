@@ -1,0 +1,83 @@
+script = "scripts/mode.rhai"
+resources = ["gold"]
+
+[combat]
+damage_kinds = ["true"]
+life = "health"
+
+# Every stat its units carry: those the engine reads, and its pools' maxima.
+[stats]
+health = {}
+mana = {}
+attack_damage = {}
+attack_speed = { max = "2.5" }
+move_speed = {}
+
+[pools.health]
+max = "health"
+[pools.mana]
+max = "mana"
+
+[tracks.level]
+level = true
+levels = [100, 300, 600]
+
+[params]
+wave_ms = 8000
+income_ms = 5000
+income = 100
+respawn_ms = 3000
+wave = ["creep", "creep"]
+xp_radius = "12.0"
+kill_gold = 25
+
+# A hero's basic abilities, its weapon, and a barracks' trains.
+[[slots]]
+name = "basic"
+ranks = 1
+
+[[slots]]
+name = "weapon"
+
+[[slots]]
+name = "build"
+
+[choices.hero]
+offers = "avatars"
+unique = true
+
+[actions.creep_attack]
+kind = "attack"
+targeting = "enemies"
+range = "1.0"
+windup_ms = 300
+rate = "attack_speed"
+damage = "attack_damage"
+damage_kind = "true"
+
+[actions.guard_attack]
+kind = "attack"
+targeting = "enemies"
+range = "1.25"
+windup_ms = 250
+rate = "attack_speed"
+damage = "attack_damage"
+damage_kind = "true"
+
+[actions.tower_attack]
+kind = "attack"
+targeting = "enemies"
+range = "7.0"
+windup_ms = 150
+rate = "attack_speed"
+damage = "attack_damage"
+damage_kind = "true"
+delivery = { projectile = "tower_bolt" }
+
+# A barracks trains a guard for 100 gold in 1.5 s.
+[actions.train_guard]
+kind = "train"
+targeting = "none"
+unit_type = "guard"
+windup_ms = 1500
+cost = { gold = 100 }

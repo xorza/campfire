@@ -1,0 +1,7 @@
+# A test hero of the proving mode that uses every kind of delivery: a fan of line projectiles, an
+# area that erupts after a delay, an area that holds modifiers while it lasts, and a weapon that
+# fires homing bolts.
+name = "hero-lancer"
+version = "0.1.0"
+engine = "0.1.0"
+kind = "avatar"

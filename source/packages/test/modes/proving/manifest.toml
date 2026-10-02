@@ -1,0 +1,17 @@
+# The proving mode: a small match that uses every capability the release runs, owned by the
+# engine's tests. Two players, a hero each, barracks that train guards for gold, creep waves on one
+# lane, a tower a side, and a neutral boulder that stands in the way until it falls.
+name = "test-proving"
+version = "0.1.0"
+engine = "0.1.0"
+kind = "mode"
+capabilities = ["combat", "stats", "abilities", "projectiles", "areas", "orders", "navigation", "vision", "progression", "production"]
+tick_hz = { min = 20, max = 20, default = 20 }
+teams = [{ name = "north", slots = 1 }, { name = "south", slots = 1 }, { name = "camps", slots = 0 }]
+backends = { collision = "circles", pathfinding = "grid", visibility = "grid_fog" }
+max_move_speed = "7.5"
+script_limits = { per_call = 20000, player = 20000, think = 200000, mode = 20000 }
+
+[dependencies]
+hero-lancer = { path = "../../heroes/lancer" }
+hero-sage = { path = "../../heroes/sage" }

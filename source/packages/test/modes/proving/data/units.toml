@@ -1,0 +1,58 @@
+[units.creep]
+tags = ["creep"]
+params = { aggro_range = "6.0", help_range = "5.0", help_window_ms = 2000, xp = 30 }
+pools = ["health"]
+stats = { health = { base = 200 }, attack_damage = { base = 20 }, attack_speed = { base = "1.25" }, move_speed = { base = "3.5" } }
+combat = {}
+slots = { weapon = ["creep_attack"] }
+orders = { ai = "scripts/creep_ai.rhai", think_ms = 250 }
+vision = { sight_range = "7.0" }
+collision = { radius = "0.35" }
+
+# A guard stands where it was trained and fights what comes near.
+[units.guard]
+tags = ["guard"]
+params = { aggro_range = "6.0", xp = 40 }
+pools = ["health"]
+stats = { health = { base = 300 }, attack_damage = { base = 25 }, attack_speed = { base = "1.0" }, move_speed = { base = "3.0" } }
+combat = {}
+slots = { weapon = ["guard_attack"] }
+orders = { ai = "scripts/guard_ai.rhai", think_ms = 250 }
+vision = { sight_range = "6.0" }
+collision = { radius = "0.4" }
+
+[units.tower]
+tags = ["structure", "tower"]
+params = { help_window_ms = 2000, xp = 0 }
+pools = ["health"]
+stats = { health = { base = 1200 }, attack_damage = { base = 90 }, attack_speed = { base = "0.8" } }
+combat = {}
+slots = { weapon = ["tower_attack"] }
+orders = { ai = "scripts/tower_ai.rhai", think_ms = 250 }
+vision = { sight_range = "8.0" }
+collision = { radius = "0.9" }
+
+# A barracks holds two trains at a time; it has no weapon and no AI.
+[units.barracks]
+tags = ["structure", "barracks"]
+params = { xp = 0 }
+pools = ["health"]
+stats = { health = { base = 800 } }
+combat = {}
+slots = { build = ["train_guard"] }
+production = { queue = 2 }
+vision = { sight_range = "5.0" }
+collision = { radius = "0.8" }
+
+# A neutral boulder near the middle: a static body until it falls.
+[units.boulder]
+tags = ["structure", "boulder"]
+params = { xp = 50 }
+pools = ["health"]
+stats = { health = { base = 400 } }
+combat = {}
+vision = { sight_range = "3.0" }
+collision = { radius = "1.0" }
+
+[units.tower_bolt]
+projectile = { speed = "12", homing = true }
