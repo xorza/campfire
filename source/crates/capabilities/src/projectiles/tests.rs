@@ -231,7 +231,11 @@ fn a_projectile_whose_target_dies_or_goes_first_ends_without_a_hit() {
     let entity = volley.sim.entity(gone);
     volley.sim.world.despawn(entity);
 
-    // A projectile is state while it flies.
+    // A projectile is state while it flies, and so are the units a cast struck.
+    let hits = [first, second].map(|by| Struck { by, unit: doomed });
+    let bytes = postcard::to_allocvec(&hits).unwrap();
+    let struck = postcard::from_bytes::<StruckUnits>(&bytes).unwrap();
+    volley.sim.world.insert_resource(struck);
     // A restore loads the match's books first: the same weapons, in the same order.
     let mut restored = Volley::new();
     for armed in [
@@ -244,6 +248,8 @@ fn a_projectile_whose_target_dies_or_goes_first_ends_without_a_hit() {
     }
     volley.sim.restore_into(&mut restored.sim);
     assert_eq!(restored.projectiles(), volley.projectiles());
+    let struck = |volley: &Volley| volley.sim.world.resource::<StruckUnits>().clone();
+    assert_eq!(struck(&restored), struck(&volley));
     // The struck units decode only in order, each once: the ids were allocated in order.
     let decode = |hits: &[(StableId, StableId)]| {
         let hits: Vec<Struck> = hits.iter().map(|&(by, unit)| Struck { by, unit }).collect();

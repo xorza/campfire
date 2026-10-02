@@ -2,11 +2,14 @@ use campfire_math::Num;
 use serde::Serialize;
 
 use super::*;
+use crate::capability_set::test_match::TestMatch;
 use crate::progression::experience::TrackXp;
 use crate::progression::track_data::Thresholds;
 use crate::progression::track_data::TrackData;
+use crate::units::team::Team;
 use crate::units::track_id::TrackId;
 use crate::values::declared_name::DeclaredName;
+use campfire_sim::{Capability, Position};
 fn track(at: usize) -> TrackId {
     TrackId::new(at).unwrap()
 }
@@ -126,4 +129,32 @@ fn thresholds_are_positive_and_strictly_ascending_as_built_and_as_read() {
         refusal("levels = [9223372036854775807]")
             .starts_with("a level's experience is beyond a number")
     );
+}
+
+#[test]
+fn experience_is_state_and_restores() {
+    // A match of stats and progression with the tracks of `book`, the same in both.
+    let tracks = |sim: &mut TestMatch| {
+        let book = book();
+        TracksColumn::share(sim.world.non_send::<View>(), book.clone());
+        sim.world.insert_resource(book);
+    };
+    let declared = [Capability::Stats, Capability::Progression];
+    let mut sim = TestMatch::client(&declared);
+    tracks(&mut sim);
+    // A unit 150 into `level`, at level 2, and 10 into `valor`, still at level 1.
+    let book = book();
+    let mut experience = Experience::new(TrackSet::of([track(0), track(1)]), book.level_track());
+    let mut level = Level::default();
+    experience.add(track(0), Num::int(150), &book, Some(&mut level));
+    experience.add(track(1), Num::int(10), &book, None);
+    let unit = sim.spawn(Position::ORIGIN, (Team::new(0), level, experience));
+    let mut restored = TestMatch::client(&declared);
+    tracks(&mut restored);
+    sim.restore_into(&mut restored);
+    assert_eq!(
+        restored.get::<Experience>(unit),
+        sim.get::<Experience>(unit)
+    );
+    assert_eq!(restored.get::<Level>(unit).get(), 2);
 }

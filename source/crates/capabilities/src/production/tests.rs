@@ -243,3 +243,21 @@ fn a_queue_decodes_only_with_a_head_time_exactly_when_it_has_a_head() {
     assert!(decode(vec![], Some(35)).is_err());
     assert!(decode(vec![queued], None).is_err());
 }
+
+#[test]
+fn a_train_queue_is_state_and_restores() {
+    // A queue of two trains, the first ordered at tick 0 to be done at tick 3.
+    let mut shop = Shop::new();
+    let train = internals::train(&mut shop.sim.world, shop.grunt, Ticks::new(3), None);
+    let id = shop.id();
+    shop.producer(id, 1, 10, None, train, queue(train, &[3, 3]));
+    shop.tick();
+    // A restore loads the match's books first: the same train.
+    let mut restored = Shop::new();
+    internals::train(&mut restored.sim.world, restored.grunt, Ticks::new(3), None);
+    shop.sim.restore_into(&mut restored.sim);
+    assert_eq!(
+        restored.sim.get::<TrainQueue>(id),
+        shop.sim.get::<TrainQueue>(id)
+    );
+}
