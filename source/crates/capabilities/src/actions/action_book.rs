@@ -2,7 +2,7 @@ use std::num::NonZeroU8;
 
 use bevy_ecs::resource::Resource;
 use campfire_math::Num;
-use campfire_script::{ScriptHost, ScriptId};
+use campfire_script::ScriptId;
 use campfire_sim::{Position, StableId, Tick, TickRate, Ticks};
 use serde::{Deserialize, Serialize};
 
@@ -17,6 +17,7 @@ use crate::combat::targets::Targets;
 use crate::mode::resource_id::ResourceAmount;
 use crate::scripts::hook::Hook;
 use crate::scripts::hook_set::HookSet;
+use crate::scripts::script_book::ScriptBook;
 use crate::stats::modifier_book::ModifierId;
 use crate::stats::pool_cost::PoolCost;
 use crate::units::filter::Filter;
@@ -130,7 +131,7 @@ impl ActionBook {
     /// Loads `data` of `package`, with `parts` resolved against the match; see `Actions::load`.
     pub(crate) fn load(
         &mut self,
-        host: &ScriptHost,
+        scripts: &ScriptBook,
         package: u16,
         data: &ActionData,
         script: Option<ScriptId>,
@@ -147,14 +148,7 @@ impl ActionBook {
             script.is_some(),
             "an action has a script exactly when its data names one"
         );
-        let defines = |hook: Hook| {
-            script.is_some_and(|script| host.defines(script, hook.name(), hook.params()))
-        };
-        let hooks = HookSet::of(
-            [Hook::OnResolve, Hook::OnHit, Hook::OnEnd]
-                .into_iter()
-                .filter(|&hook| defines(hook)),
-        );
+        let hooks = scripts.defines(script, &[Hook::OnResolve, Hook::OnHit, Hook::OnEnd]);
         let delivery = data.delivery.as_ref().map(|delivery| match *delivery {
             DeliveryData::Projectile {
                 count, spread_deg, ..

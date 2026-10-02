@@ -118,6 +118,7 @@ pub use scripts::role_set::RoleSet;
 pub use scripts::script_api::{
     ApiMember, ApiOwner, MemberKind, MemberSpec, NameArgs, ScriptApi, Status,
 };
+pub use scripts::script_book::ScriptBook;
 pub use scripts::script_failures::{ScriptFailure, ScriptFailures};
 pub use scripts::script_limits::ScriptLimits;
 pub use scripts::state_decl::{StateDecl, StateDefault, StateType};

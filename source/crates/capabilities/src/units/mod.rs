@@ -1,6 +1,6 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{NonSendMut, ResMut};
-use bevy_ecs::world::World;
+use bevy_ecs::world::{Mut, World};
 use campfire_script::rhai::Dynamic;
 use campfire_script::{ScriptError, ScriptHost, ScriptId};
 use campfire_sim::{SimSet, StateRegistry, TickRate};
@@ -9,6 +9,7 @@ use crate::actions::Actions;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::match_scripts::MatchScripts;
 use crate::scripts::script_api::ScriptApi;
+use crate::scripts::script_book::ScriptBook;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::units::body::Body;
@@ -101,6 +102,7 @@ impl Units {
         }) = scripts
         else {
             world.insert_non_send(view);
+            world.insert_resource(ScriptBook::default());
             return;
         };
         view.set_damage_kinds(damage_kinds);
@@ -115,6 +117,7 @@ impl Units {
         world.insert_non_send(ctx);
         world.insert_non_send(view);
         world.insert_non_send(host);
+        world.insert_resource(ScriptBook::default());
         world.insert_non_send(ScriptFailures::default());
         world.insert_resource(ScriptBudgets::new(limits, players));
         schedule.add_systems(
@@ -126,7 +129,12 @@ impl Units {
 
     /// Compiles `source` in the match's script host, once for every capability that runs it.
     pub fn compile(world: &mut World, source: &str) -> Result<ScriptId, ScriptError> {
-        world.non_send_mut::<ScriptHost>().compile(source)
+        let script = world.non_send_mut::<ScriptHost>().compile(source)?;
+        world.resource_scope(|world, mut scripts: Mut<'_, ScriptBook>| {
+            debug_assert_eq!(script.index(), scripts.len(), "the book holds every script");
+            scripts.push(world.non_send::<ScriptHost>().functions(script));
+        });
+        Ok(script)
     }
 
     /// Declares every tag the match's packages name, in their order, after the engine's tags,

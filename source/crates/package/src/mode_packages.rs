@@ -3,8 +3,8 @@ use std::iter;
 use std::path::Path;
 
 use campfire_capabilities::{
-    CollisionData, DeclaredName, EngineStat, EngineTag, MapData, ModeData, Param, ScriptApi, Stat,
-    StatGraph, StatsData, Walker,
+    CollisionData, DeclaredName, EngineStat, EngineTag, MapData, ModeData, Param, ScriptApi,
+    ScriptBook, Stat, StatGraph, StatsData, Walker,
 };
 use campfire_content::{Fingerprint, MessageId, PackagePath};
 use campfire_script::ScriptHost;
@@ -193,6 +193,19 @@ impl ModePackages {
     }
 
     /// Its avatars' unit types, each with its package's view.
+    /// The hooks each script of its packages defines, in the order a match compiles them: the
+    /// mode's scripts, then each dependency's, each package's in the order of their paths.
+    pub fn script_book(&self) -> ScriptBook {
+        let mut book = ScriptBook::default();
+        for view in self.packages() {
+            for script in &view.package.scripts {
+                let functions = script.facts.functions.iter();
+                book.push(functions.map(|function| (function.name.as_str(), function.params)));
+            }
+        }
+        book
+    }
+
     /// The names of its avatars' unit types in the mode's scope: their packages' names.
     pub(crate) fn avatar_names(&self) -> impl Iterator<Item = &str> {
         self.dependencies

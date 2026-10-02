@@ -3,7 +3,7 @@ use bevy_ecs::query::{Has, QueryState, With, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Local, Query, Res};
 use bevy_ecs::world::{Mut, World};
-use campfire_script::{ScriptError, ScriptHost, ScriptId};
+use campfire_script::{ScriptError, ScriptId};
 use campfire_sim::{
     Command, EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, Tick, TickInputs,
     TickRate, Ticks,
@@ -34,6 +34,7 @@ use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
+use crate::scripts::script_book::ScriptBook;
 use crate::stats::StatsSet;
 use crate::stats::pools::Pools;
 use crate::units::body::Body;
@@ -98,8 +99,10 @@ impl Orders {
         data: &AiData,
         script: ScriptId,
     ) -> Result<(), AiError> {
-        let host = world.non_send::<ScriptHost>();
-        let thinks = host.defines(script, Hook::OnThink.name(), Hook::OnThink.params());
+        let thinks = world
+            .resource::<ScriptBook>()
+            .defines(Some(script), &[Hook::OnThink])
+            .contains(Hook::OnThink);
         let period = Orders::ai_period(data, *world.resource::<TickRate>(), thinks)?;
         world
             .resource_mut::<ByType<Ai>>()

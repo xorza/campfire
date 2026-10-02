@@ -6,7 +6,6 @@ use bevy_ecs::bundle::Bundle;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_math::PlayerSlot;
-use campfire_script::ScriptHost;
 use campfire_script::rhai::ImmutableString;
 use campfire_sim::{EntityIndex, Position, StableId};
 
@@ -30,6 +29,7 @@ use crate::navigation::paths::Paths;
 use crate::production::train_queue::TrainQueue;
 use crate::progression::experience::Experience;
 use crate::scripts::frame::Frame;
+use crate::scripts::script_book::ScriptBook;
 use crate::stats::Stats;
 use crate::stats::level::Level;
 use crate::stats::modifier_book::{Applier, ModifierId};
@@ -87,7 +87,7 @@ impl ModeBook {
     /// players.
     pub(crate) fn new(
         setup: ModeSetup<'_>,
-        host: &ScriptHost,
+        scripts: &ScriptBook,
         view: &View,
         paths: &Paths,
     ) -> Result<ModeBook, ModeError> {
@@ -109,7 +109,7 @@ impl ModeBook {
             action_runs.set(unit_type.unit_type, start..actions.len());
         }
         let mut book = ModeBook {
-            schema: ModeSchema::new(setup.script, host, setup.data),
+            schema: ModeSchema::new(setup.script, scripts, setup.data),
             roster: Roster::new(setup.avatars, setup.loadout),
             teams: Rc::new(teams),
             bounds: setup.map.bounds,

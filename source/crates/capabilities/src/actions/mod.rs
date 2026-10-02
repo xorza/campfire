@@ -1,8 +1,8 @@
 use bevy_ecs::query::Without;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::{NonSend, Query, Res};
-use bevy_ecs::world::{EntityRef, World};
-use campfire_script::{ScriptHost, ScriptId};
+use bevy_ecs::world::{EntityRef, Mut, World};
+use campfire_script::ScriptId;
 use campfire_sim::{Position, SimSet, SimTick, StableId, StateRegistry, TickRate};
 
 use crate::actions::action_book::{ActionBook, ActionId, ActionParts, Aim, Passive, RankValues};
@@ -18,6 +18,7 @@ use crate::combat::targets::Targets;
 use crate::mode::player_resources::PlayerResources;
 use crate::orders::OrdersSet;
 use crate::scripts::ctx::Ctx;
+use crate::scripts::script_book::ScriptBook;
 use crate::stats::StatsSet;
 use crate::stats::modifier_book::{Applier, ModifierBook};
 use crate::stats::modifiers::Modifiers;
@@ -158,13 +159,10 @@ impl Actions {
             ranks,
             weapon,
         };
-        let host = world
-            .remove_non_send::<ScriptHost>()
-            .expect("units are installed");
-        let id = world
-            .resource_mut::<ActionBook>()
-            .load(&host, package, data, script, parts);
-        world.insert_non_send(host);
+        let id = world.resource_scope(|world, mut actions: Mut<'_, ActionBook>| {
+            let scripts = world.resource::<ScriptBook>();
+            actions.load(scripts, package, data, script, parts)
+        });
         let ctx = world.non_send::<Ctx>().clone();
         ctx.frame().add_params(id, &data.params, stat);
         let delivery = world

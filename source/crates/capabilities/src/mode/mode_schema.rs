@@ -1,9 +1,10 @@
+use campfire_script::ScriptId;
 use campfire_script::rhai::Dynamic;
-use campfire_script::{ScriptHost, ScriptId};
 
 use crate::mode::mode_data::{InputType, ModeData, ModeParam};
 use crate::scripts::hook::Hook;
 use crate::scripts::hook_set::HookSet;
+use crate::scripts::script_book::ScriptBook;
 use crate::scripts::state_decl::StateType;
 use crate::scripts::state_value::StateValue;
 use crate::values::name_table::NameTable;
@@ -34,13 +35,13 @@ pub(crate) struct StateField {
 }
 
 impl ModeSchema {
-    /// The schema of `data`, whose script `host` compiled as `script`.
-    pub(crate) fn new(script: ScriptId, host: &ScriptHost, data: &ModeData) -> ModeSchema {
-        let defines = |hook: Hook| host.defines(script, hook.name(), hook.params());
+    /// The schema of `data`, whose script is `script`, which defines the hooks `scripts` gives.
+    pub(crate) fn new(script: ScriptId, scripts: &ScriptBook, data: &ModeData) -> ModeSchema {
         let mut schema = ModeSchema {
             script,
-            hooks: HookSet::of(
-                [
+            hooks: scripts.defines(
+                Some(script),
+                &[
                     Hook::OnMatchStart,
                     Hook::OnModeInput,
                     Hook::OnTimer,
@@ -48,9 +49,7 @@ impl ModeSchema {
                     Hook::CalcDamage,
                     Hook::CalcHeal,
                     Hook::OnLevelUp,
-                ]
-                .into_iter()
-                .filter(|&hook| defines(hook)),
+                ],
             ),
             params: NameTable::default(),
             state: NameTable::default(),

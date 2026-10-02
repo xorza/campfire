@@ -10,8 +10,8 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::Local;
 use bevy_ecs::world::{Mut, World};
 use campfire_math::PlayerSlot;
+use campfire_script::ScriptError;
 use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString};
-use campfire_script::{ScriptError, ScriptHost};
 use campfire_sim::{
     Command, EntityIndex, IdAllocator, Position, SimSet, SimTick, StateRegistry, Tick, TickInputs,
     TickRate, Ticks,
@@ -53,6 +53,7 @@ use crate::scripts::error::CallError;
 use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
+use crate::scripts::script_book::ScriptBook;
 use crate::stats::Stats;
 use crate::stats::pool_book::PoolBook;
 use crate::stats::stat_book::StatBook;
@@ -137,7 +138,7 @@ impl Mode {
         let pool_book = PoolBook::new(pools, &stats);
         let tags = Mode::tag_book(&view, &setup);
         let data = setup.data;
-        let book = ModeBook::new(setup, world.non_send::<ScriptHost>(), &view, &paths)?;
+        let book = ModeBook::new(setup, world.resource::<ScriptBook>(), &view, &paths)?;
         let mut relations = Relations::default();
         for relation in &data.relations {
             let [a, b] = relation

@@ -18,6 +18,7 @@ pub(crate) mod pool;
 pub(crate) mod role_set;
 pub(crate) mod script_api;
 pub(crate) mod script_batch;
+pub(crate) mod script_book;
 pub(crate) mod script_budgets;
 pub(crate) mod script_failures;
 pub(crate) mod script_limits;

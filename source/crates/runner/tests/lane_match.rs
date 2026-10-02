@@ -7,7 +7,7 @@ use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use campfire_capabilities::ScriptFailures;
+use campfire_capabilities::{ScriptBook, ScriptFailures};
 use campfire_package::{ModePackages, PackageDir};
 use campfire_runner::{FixedSession, Golden};
 use campfire_sim::StateHash;
@@ -23,7 +23,11 @@ fn the_lane_match_plays_to_its_golden_record() {
         ModePackages::from_dir(Path::new(LANE)).unwrap_or_else(|error| panic!("{error}"));
     let session = FixedSession::new(packages, NonZeroU32::new(30).unwrap(), 2);
     let mut golden = Golden::new(session.packages(), session.players());
+    let scripts = session.packages().script_book();
     let mut fixed = session.start();
+    // The load's book of each script's hooks is the one the match fills as it compiles.
+    let held = fixed.runner().world().resource::<ScriptBook>();
+    assert_eq!(*held, scripts);
     for tick in 0..900 {
         fixed.runner_mut().run_tick();
         golden.record(fixed.runner());

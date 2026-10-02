@@ -117,11 +117,14 @@ fn only_what_scripts_need_is_there() {
     assert_eq!(run(&mut host, body).unwrap().as_int().unwrap(), 17);
     assert_eq!(hashing::get_hashing_seed(), &Some(HASHING_SEED));
 
-    // A hook is found by its name and its number of parameters.
-    let script = host.compile("fn on_think(ctx, unit) { 1 }").unwrap();
-    assert!(host.defines(script, "on_think", 2));
-    assert!(!host.defines(script, "on_think", 1));
-    assert!(!host.defines(script, "on_resolve", 3));
+    // A script's functions, each by its name and its number of parameters, and its place.
+    let script = host
+        .compile("fn on_think(ctx, unit) { 1 } fn helper() {}")
+        .unwrap();
+    let mut functions: Vec<_> = host.functions(script).collect();
+    functions.sort_unstable();
+    assert_eq!(functions, [("helper", 0), ("on_think", 2)]);
+    assert_eq!(script.index(), host.compiled() - 1);
 }
 
 #[test]

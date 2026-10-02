@@ -8,7 +8,7 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Commands, Local, NonSend, ParamSet, Query, Res};
 use bevy_ecs::world::{EntityRef, World};
 use campfire_math::Num;
-use campfire_script::{ScriptHost, ScriptId};
+use campfire_script::ScriptId;
 use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, Tick, Ticks};
 
 use crate::combat::CombatSet;
@@ -18,7 +18,7 @@ use crate::navigation::move_step::MoveStep;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
-use crate::scripts::hook_set::HookSet;
+use crate::scripts::script_book::ScriptBook;
 use crate::stats::held_modifiers::{Held, HeldModifiers};
 use crate::stats::level::Level;
 use crate::stats::live_shares::LiveShares;
@@ -278,11 +278,9 @@ impl Stats {
         data: &ModifierData,
         script: Option<ScriptId>,
     ) {
-        let hooks = script.map_or_else(HookSet::default, |script| {
-            let host = world.non_send::<ScriptHost>();
-            let defines = |&hook: &Hook| host.defines(script, hook.name(), hook.params());
-            HookSet::of(MODIFIER_HOOKS.into_iter().filter(defines))
-        });
+        let hooks = world
+            .resource::<ScriptBook>()
+            .defines(script, &MODIFIER_HOOKS);
         let tags = {
             let view = world.non_send::<View>();
             let mut types = view.types_mut();

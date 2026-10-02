@@ -13,7 +13,9 @@ Touches: every capability, the registry, the package loader, the client, the ref
 
 The structural redesign comes first, in the order below, as [Structural rules](design/02-engine-core.md#structural-rules) asks; `.notes/REDESIGN.md` holds each step's shape until the step lands and its part moves into the design. Each step ends with the check chain, both goldens and the structure tests that exist then; a step that changes behaviour names the change. The game model's own steps sit where the redesign makes room for them.
 
-1. **C5b Load is the check**: `Books::build`, a pure function of the packages with no world, beside the load check, results compared; `ScriptPlace`, so books name scripts with no host; `ModePackages` holds the books, `Match::install` reads them, the `.expect(CHECKED)` go, `StartError` keeps only session terms and the mode's start, each script parsed once.
+1. **C5b Load is the check**, in three parts, each ending green:
+   - **C5b-2 Books::build**: one pure function of the packages and a tick rate, with no world, that builds the unit types and tags, the tracks, the modifiers, the actions and their effect lists, the AIs, the projectile and area specs, the stats and the pools. The load check calls it at the fastest rate, and `Match::install` at the session's rate, and inserts what it gives; the capabilities' loads into a world go. Books keep ticks until C6a makes them rate-free, so the load and the match each build them.
+   - **C5b-3 Mode book and start**: the mode's book from the same builder, its Rhai values apart; `StartError` keeps only the session terms and the mode's start; each script parsed once, the match compiling the load's ASTs.
 2. **C6a Typed ids**: one list for each id (`StatId` and the others); one ms-to-ticks conversion.
 3. **C6b Modifier specs**: the modifier runtime spec; param tables in the books; stats no longer reads the frame.
 4. **C7 Shared books**: the view and the frame read the books through `Arc`; `ScriptConsts`; `MatchScripts` goes; the name-lookup allowlist test.
