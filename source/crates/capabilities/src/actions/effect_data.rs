@@ -109,7 +109,7 @@ impl Effecting {
     }
 
     /// The modifier of its package it applies, if it applies one.
-    pub fn modifier(&self) -> Option<&DeclaredName> {
+    pub const fn modifier(&self) -> Option<&DeclaredName> {
         match self {
             Effecting::Modifier { id, .. } => Some(id),
             _ => None,

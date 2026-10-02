@@ -115,8 +115,9 @@ pub struct LocalMatch {
 impl LocalMatch {
     /// The match scenario's orders by team, the west then the east: each avatar walks 4 m toward
     /// the enemy tower, which kills it there; after it respawns, it walks to a point near the
-    /// middle. From their spawns 2 m apart, the two walk on lines that part, so they never touch. The first order waits for the clients' lead on the server to settle: Lightyear
-    /// brings it to its target by 5 % of a tick a frame.
+    /// middle. From their spawns 2 m apart, the two walk on lines that part, so they never touch.
+    /// The first order waits for the clients' lead on the server to settle: Lightyear brings it to
+    /// its target by 5 % of a tick a frame.
     pub const SCENARIO_SCRIPTS: [&str; 2] = [
         "[[order]]\ntick = 60\nmove = [4, -2]\n[[order]]\ntick = 450\nmove = [-3, -2]\n",
         "[[order]]\ntick = 60\nmove = [-4, 3]\n[[order]]\ntick = 450\nmove = [3, 4]\n",

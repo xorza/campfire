@@ -95,7 +95,7 @@ impl Steering {
         } = steered;
         let standing = self.standing.as_ref().expect("steering read the bodies");
         let window_cells = i64::try_from(Steering::WINDOW).expect("a small window");
-        let reach = Num::from_bits(grid.cell().to_bits() * window_cells);
+        let reach = grid.cell() * window_cells;
         let look = at.get().step_toward(route.ahead()[0].get(), reach);
         let look = Position::new(look).expect("a step ends between two points within the bound");
         if (!stuck && !standing.blocks(Segment::new(at, look), walker)) || planner.spent() {
@@ -118,7 +118,7 @@ impl Steering {
         self.blockers.clear();
         // The window's centers lie up to its half and half a cell from `at` along each axis, and
         // a body blocks one it comes closer to than the two radii.
-        let half_cell = Num::from_bits(grid.cell().to_bits() / 2);
+        let half_cell = grid.cell() / 2;
         let near = reach + half_cell + walker.radius;
         standing.near(walker.layer, at.get(), near, |body| {
             self.blockers.push(*body);
@@ -135,7 +135,7 @@ impl Steering {
                 if other.id == id || !touching || other.key != walker.layer {
                     return;
                 }
-                let shift = left * Num::from_bits(reach.to_bits() / 2);
+                let shift = left * (reach / 2);
                 let moved = Position::new(other.at.get() + shift);
                 self.blockers.push(IndexedBody {
                     id: other.id,

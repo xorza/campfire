@@ -129,8 +129,8 @@ impl fmt::Display for PackageRef {
 pub enum LoadProblem {
     /// A file does not read, or a data file does not match its schema.
     Content(ContentError),
-    /// The package is not of the kind its place needs: a mode, or an avatar or loadout a mode depends
-    /// on.
+    /// The package is not of the kind its place needs: a mode, or an avatar or loadout a mode
+    /// depends on.
     WrongKind,
     /// The dependency's package has another name than the mode gives it.
     OtherName(String),

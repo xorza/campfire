@@ -18,7 +18,7 @@ impl Progress {
     /// Notes that the walker stands at `at` as this tick steers, with a step of `step`; the ticks
     /// in a row it has moved less than half a step.
     pub(crate) fn track(&mut self, at: Position, step: Num) -> u32 {
-        let half = Num::from_bits(step.to_bits() / 2);
+        let half = step / 2;
         self.stuck = match self.last_at {
             Some(last) if last.within_ground(at, half) => self.stuck.saturating_add(1),
             _ => 0,

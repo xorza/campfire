@@ -79,7 +79,7 @@ impl StateDecl {
 /// A default not of its field's type fails to read, where the data enters.
 impl<'de> Deserialize<'de> for StateDecl {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<StateDecl, D::Error> {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
             #[serde(rename = "type")]

@@ -42,7 +42,7 @@ impl AreaInside {
 /// Data is untrusted, so a negative radius fails to read.
 impl<'de> Deserialize<'de> for AreaData {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<AreaData, D::Error> {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
             radius: Scalar,

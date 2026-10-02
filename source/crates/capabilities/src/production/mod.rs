@@ -41,9 +41,9 @@ pub(crate) enum ProductionSet {
 }
 
 impl Production {
-    /// Adds production to a match: in Act, after the other orders start, ordered trains pass
-    /// their checks, pay, and join their unit's queue; in Mode, before the mode's hooks, the trains whose time
-    /// ended spawn.
+    /// Adds production to a match: in Act, after the other orders start, ordered trains pass their
+    /// checks, pay, and join their unit's queue; in Mode, before the mode's hooks, the trains whose
+    /// time ended spawn.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         world.insert_resource(ByType::<ProductionData>::default());
         schedule.add_systems((

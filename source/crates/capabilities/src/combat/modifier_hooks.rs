@@ -13,6 +13,7 @@ use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
+use crate::scripts::script_limits::ScriptLimits;
 use crate::scripts::state_value::StateValue;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_clocks::ModifierClocks;
@@ -22,10 +23,6 @@ use crate::stats::stats_column::StatsColumn;
 use crate::units::modifier_id::ModifierId;
 use crate::units::owner::Owner;
 use crate::units::tag_book::TagBook;
-
-/// The chain depth at which a hook fails instead of running: no designed chain of combat
-/// events is that deep, and the damage pass must end within its tick.
-const MAX_DEPTH: u8 = 16;
 
 /// Runs modifier scripts' hooks for the combat events.
 #[derive(Debug)]
@@ -156,7 +153,7 @@ impl ModifierHooks {
 
     /// Calls `hook` of the instance `heard` on `carrier`, if it still holds: in the pool of its
     /// source, with its params, its `m` handle, and `arg`. Its effects apply when it returns; a
-    /// call at `MAX_DEPTH` fails without running.
+    /// call at `ScriptLimits::CHAIN_DEPTH` fails without running.
     fn call(
         &self,
         batch: &mut ScriptBatch<'_>,
@@ -198,7 +195,7 @@ impl ModifierHooks {
         );
         let (ability, rank, package) = (instance.ability, instance.rank, entry.package);
         let pool = ModifierHooks::pool(world, heard.source);
-        let begun = if depth >= MAX_DEPTH {
+        let begun = if depth >= ScriptLimits::CHAIN_DEPTH {
             Err(CallError::Api(ApiError::ChainTooDeep))
         } else {
             self.ctx.frame().begin_hook(
@@ -232,8 +229,8 @@ impl ModifierHooks {
         }
     }
 
-    /// The pool a hook of a modifier from `source` draws from: its player's; the `think` pool when no
-    /// player controls it, or it is gone; the mode's when the modifier has no source.
+    /// The pool a hook of a modifier from `source` draws from: its player's; the `think` pool when
+    /// no player controls it, or it is gone; the mode's when the modifier has no source.
     fn pool(world: &World, source: Option<StableId>) -> Pool {
         let Some(source) = source else {
             return Pool::Mode;

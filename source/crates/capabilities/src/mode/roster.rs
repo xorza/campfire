@@ -31,7 +31,7 @@ impl Roster {
     }
 
     /// Whether `offer` is one of `offers`.
-    pub(crate) fn holds(&self, offers: Offers, offer: Offer) -> bool {
+    pub(crate) const fn holds(&self, offers: Offers, offer: Offer) -> bool {
         let count = match offers {
             Offers::Avatars => self.avatars.len(),
             Offers::Loadout => self.loadout.len(),

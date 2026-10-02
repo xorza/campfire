@@ -706,7 +706,8 @@ impl Game {
         };
         let (grunt_type, tower_type) = (load("grunt", "grunt"), load("tower", "tower"));
         let (x, y) = (load("hero-x", "avatar"), load("hero-y", "avatar"));
-        // A type outside the mode's kits, as a projectile's is: the view knows it, a spawn does not.
+        // A type outside the mode's kits, as a projectile's is: the view knows it, a spawn does
+        // not.
         load("bolt", "projectile");
         // The stats first, as a match's books know them before any action or modifier; the mode's
         // books give the full book at install.
@@ -1400,8 +1401,8 @@ fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
         ]
     );
     // The enemy of a, the 4 grunts with the dead one, b's one hero, the 2 playing teams, the 3
-    // players, the path and team of grunt 2, the neutral grunt 1's team, hero 5's owner, the path of the tower,
-    // which stands on it as grunt 2 walks it, and grunt 2's unit type.
+    // players, the path and team of grunt 2, the neutral grunt 1's team, hero 5's owner, the path
+    // of the tower, which stands on it as grunt 2 walks it, and grunt 2's unit type.
     let text = |text: &str| StateValue::Text(text.to_owned());
     let seen = [
         "enemy",

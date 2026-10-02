@@ -23,7 +23,7 @@ pub enum DeliveryData {
 
 impl DeliveryData {
     /// The name of the unit type it launches, in its package.
-    pub fn unit_type(&self) -> &DeclaredName {
+    pub const fn unit_type(&self) -> &DeclaredName {
         match self {
             DeliveryData::Projectile { unit_type, .. } | DeliveryData::Area { unit_type } => {
                 unit_type
@@ -37,7 +37,7 @@ impl DeliveryData {
 /// read.
 impl<'de> Deserialize<'de> for DeliveryData {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<DeliveryData, D::Error> {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
             projectile: Option<DeclaredName>,

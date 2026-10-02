@@ -90,7 +90,7 @@ impl ParamTable {
     }
 
     /// Whether it holds run `run`.
-    pub(crate) fn has_run(&self, run: usize) -> bool {
+    pub(crate) const fn has_run(&self, run: usize) -> bool {
         self.params.has_run(run)
     }
 

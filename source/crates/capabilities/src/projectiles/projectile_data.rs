@@ -28,7 +28,7 @@ pub struct ProjectileData {
 /// fails to read.
 impl<'de> Deserialize<'de> for ProjectileData {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<ProjectileData, D::Error> {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
             speed: Scalar,

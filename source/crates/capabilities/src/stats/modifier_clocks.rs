@@ -46,7 +46,7 @@ pub(crate) struct Spent {
 }
 
 impl ModifierClocks {
-    pub(crate) fn len(&self) -> usize {
+    pub(crate) const fn len(&self) -> usize {
         self.clocks.len()
     }
 
@@ -194,7 +194,7 @@ impl SimComponent for ModifierClocks {
 /// ticks, and a negative shield fail to decode.
 impl<'de> Deserialize<'de> for ModifierClocks {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<ModifierClocks, D::Error> {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         struct Fields {
             clocks: Vec<Clock>,
             state: Vec<StateValue>,

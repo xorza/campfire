@@ -40,7 +40,7 @@ pub(crate) struct Aloft<'a> {
 impl Aloft<'_> {
     /// What its hits are kept by: its cast for a type that strikes a unit once a cast, or
     /// itself.
-    pub(crate) fn strikes_by(&self) -> StableId {
+    pub(crate) const fn strikes_by(&self) -> StableId {
         match self.projectile.payload() {
             Payload::Action { group, .. } if self.spec.once_per_cast => group,
             _ => self.id,
@@ -51,10 +51,11 @@ impl Aloft<'_> {
 impl Flights<'_> {
     /// Flies `aloft` a step; whether it ended. A homing one flies towards its target's position
     /// now, and hits it where its step ends when its body, of half its width, then reaches the
-    /// target's; one whose target is dead, gone or no target ends without a hit. One along a line hits each unit its type's `hits` selects whose body comes within
-    /// half its width of this tick's path, in the order of the point of the path nearest each,
-    /// then by stable id, each unit once, and once a cast for a type that says so; it ends at its
-    /// first hit when its type stops on one, and at the end of its range.
+    /// target's; one whose target is dead, gone or no target ends without a hit. One along a line
+    /// hits each unit its type's `hits` selects whose body comes within half its width of this
+    /// tick's path, in the order of the point of the path nearest each, then by stable id, each
+    /// unit once, and once a cast for a type that says so; it ends at its first hit when its type
+    /// stops on one, and at the end of its range.
     pub(crate) fn fly(&mut self, targets: &Targets<'_, '_>, aloft: Aloft<'_>) -> bool {
         match aloft.projectile.flight() {
             Flight::Homing { target, flown } => self.homing(targets, aloft, target, flown),

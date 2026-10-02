@@ -100,7 +100,7 @@ impl Meter {
 /// A snapshot is untrusted, so a meter outside 0 to a positive maximum fails to decode.
 impl<'de> Deserialize<'de> for Meter {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Meter, D::Error> {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         struct Fields {
             current: Num,
             max: Num,

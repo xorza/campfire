@@ -22,7 +22,7 @@ impl StatRule {
 /// A rule whose limits are not numbers, or whose minimum passes its maximum, fails to read.
 impl<'de> Deserialize<'de> for StatRule {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<StatRule, D::Error> {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
             min: Option<Scalar>,

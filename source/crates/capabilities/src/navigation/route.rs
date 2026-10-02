@@ -121,7 +121,7 @@ impl SimComponent for Route {
 /// A snapshot is untrusted, so a next waypoint past the last fails to decode.
 impl<'de> Deserialize<'de> for Route {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Route, D::Error> {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         struct Fields {
             goal: Option<Position>,
             asked: Option<Tick>,

@@ -12,7 +12,7 @@ pub enum Ranked<T> {
 
 impl<T> Ranked<T> {
     /// How many ranks it has values for; `None` for one value, which fits any rank.
-    pub fn ranks(&self) -> Option<usize> {
+    pub const fn ranks(&self) -> Option<usize> {
         match self {
             Ranked::One(_) => None,
             Ranked::PerRank(values) => Some(values.len()),

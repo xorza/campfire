@@ -62,6 +62,18 @@ struct Buckets {
     high: i64,
 }
 
+impl IndexedBody {
+    /// The body `body` of unit `id`, standing at `at`.
+    pub(crate) const fn of(id: StableId, at: Position, body: &Body) -> IndexedBody {
+        IndexedBody {
+            id,
+            at,
+            radius: body.radius(),
+            layer: body.layer(),
+        }
+    }
+}
+
 impl BodyIndex {
     /// An empty index for walkers at most `widest` in radius, 0 when none has a body.
     pub(crate) fn new(widest: Num) -> BodyIndex {
@@ -84,7 +96,7 @@ impl BodyIndex {
 
     /// An empty index with the same buckets.
     pub(crate) fn sibling(&self) -> BodyIndex {
-        BodyIndex::new(Num::from_bits(self.bucket.to_bits() / 2))
+        BodyIndex::new(self.bucket / 2)
     }
 
     /// Makes `bodies`, sorted by stable id, the index's bodies; whether they changed. The

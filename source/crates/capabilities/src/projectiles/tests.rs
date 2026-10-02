@@ -314,9 +314,9 @@ fn a_projectile_whose_target_dies_or_goes_first_ends_without_a_hit() {
 #[test]
 fn a_projectile_that_outlives_its_source_kills_with_no_killer() {
     // Two shooters fire at a target of 60 health in tick 2, from 5 m either side: both projectiles
-    // strike in tick 12, 30 damage each, the lower id's first. The first shooter despawns in tick 5, as a
-    // dead creep does, so its strike has no source that exists: the second one's strike kills,
-    // and it alone is the killer's. Were the second shooter gone too, no one would be.
+    // strike in tick 12, 30 damage each, the lower id's first. The first shooter despawns in tick
+    // 5, as a dead creep does, so its strike has no source that exists: the second one's strike
+    // kills, and it alone is the killer's. Were the second shooter gone too, no one would be.
     for second_goes in [false, true] {
         let mut volley = Volley::new();
         let shooters = [0, 10].map(|x| volley.unit(0, at(x, 0), shooter(volley.bolt)));

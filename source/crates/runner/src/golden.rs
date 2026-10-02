@@ -169,6 +169,7 @@ impl Golden {
 }
 
 /// Writes text into a byte buffer.
+#[derive(Debug)]
 struct Text<'a>(&'a mut Vec<u8>);
 
 impl fmt::Write for Text<'_> {

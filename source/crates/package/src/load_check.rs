@@ -617,7 +617,7 @@ impl<'a> LoadCheck<'a> {
     }
 
     /// The mode's damage kinds: with `combat`, at least one; never more than a match holds.
-    fn damage_kinds(&self) -> Result<(), LoadProblem> {
+    const fn damage_kinds(&self) -> Result<(), LoadProblem> {
         let data = &self.packages.data;
         let kinds = &data.combat.damage_kinds;
         if kinds.len() > CombatRules::DAMAGE_KIND_LIMIT {
@@ -1142,7 +1142,7 @@ impl<'a> LoadCheck<'a> {
 }
 
 impl<'a> PackageNames<'a> {
-    fn new(
+    const fn new(
         package: &'a Package,
         modifiers: &'a BTreeMap<DeclaredName, ModifierData>,
     ) -> PackageNames<'a> {

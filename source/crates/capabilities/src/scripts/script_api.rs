@@ -773,6 +773,7 @@ mod tests {
     }
 
     /// A deserializer that reads only the field names of the struct it is asked for.
+    #[derive(Debug)]
     struct FieldNames<'a>(&'a RefCell<Vec<&'static str>>);
 
     #[derive(Debug)]

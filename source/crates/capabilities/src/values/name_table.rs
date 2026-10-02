@@ -25,7 +25,7 @@ impl<V> NameTable<V> {
     }
 
     /// Whether it holds run `run`.
-    pub(crate) fn has_run(&self, run: usize) -> bool {
+    pub(crate) const fn has_run(&self, run: usize) -> bool {
         run + 1 < self.starts.len()
     }
 

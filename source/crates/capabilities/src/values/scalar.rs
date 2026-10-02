@@ -17,7 +17,7 @@ pub enum Scalar {
 }
 
 impl Scalar {
-    pub fn to_num(self) -> Option<Num> {
+    pub const fn to_num(self) -> Option<Num> {
         match self {
             Scalar::Int(value) => Num::from_int(value),
             Scalar::Decimal(value) => Some(value),

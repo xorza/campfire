@@ -105,7 +105,7 @@ impl SimComponent for Experience {
 /// decode.
 impl<'de> Deserialize<'de> for Experience {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Experience, D::Error> {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         struct Fields {
             tracks: Vec<TrackXp>,
         }

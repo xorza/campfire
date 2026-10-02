@@ -135,7 +135,7 @@ impl SimComponent for Projectile {
 /// A snapshot is untrusted, so a projectile that `new` refuses fails to decode.
 impl<'de> Deserialize<'de> for Projectile {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Projectile, D::Error> {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         struct Fields {
             source: StableId,
             flight: Flight,

@@ -82,7 +82,7 @@ impl SimComponent for Area {
 /// A snapshot is untrusted, so an area that would trigger after it ends fails to decode.
 impl<'de> Deserialize<'de> for Area {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Area, D::Error> {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         struct Fields {
             by: Delivering,
             aimed: Option<StableId>,

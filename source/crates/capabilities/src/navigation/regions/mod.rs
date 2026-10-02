@@ -377,7 +377,7 @@ impl Regions {
     }
 
     /// The root of `number`'s joined regions in `parents`, halving the way there.
-    fn root(parents: &mut [u32], mut number: u32) -> u32 {
+    const fn root(parents: &mut [u32], mut number: u32) -> u32 {
         while parents[number as usize] != number {
             let parent = parents[number as usize];
             parents[number as usize] = parents[parent as usize];

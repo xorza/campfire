@@ -106,7 +106,7 @@ impl Pools {
     }
 
     /// The meter of `pool`, which it has.
-    fn meter(&mut self, pool: PoolId) -> &mut Meter {
+    const fn meter(&mut self, pool: PoolId) -> &mut Meter {
         self.0[pool.index()]
             .as_mut()
             .expect("a unit has the pool it pays from or takes from")
@@ -116,7 +116,8 @@ impl Pools {
 impl SimComponent for Pools {
     const NAME: &'static str = "stats.pools";
 
-    // A fixed array of every pool place, whose meters' decode keeps each amount within its maximum; a\nplace the mode does not declare is never read.
+    // A fixed array of every pool place, whose meters' decode keeps each amount within its maximum;
+    // a\nplace the mode does not declare is never read.
     fn check(&self, _: &World, _: Entity) -> bool {
         true
     }

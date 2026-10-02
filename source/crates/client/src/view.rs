@@ -86,8 +86,9 @@ pub(crate) struct Glide {
     lift: f32,
 }
 
-/// The units not drawn yet, projectiles and areas apart: where each stands, its team, whether it walks, whether a player
-/// controls it, whether it is the client's own, whether it is dead, and its body.
+/// The units not drawn yet, projectiles and areas apart: where each stands, its team, whether it
+/// walks, whether a player controls it, whether it is the client's own, whether it is dead, and its
+/// body.
 type NewUnits<'w, 's> = Query<
     'w,
     's,

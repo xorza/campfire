@@ -18,7 +18,7 @@ pub struct CollisionData {
 /// A radius `Body::new` takes, or the section fails to read.
 impl<'de> Deserialize<'de> for CollisionData {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<CollisionData, D::Error> {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
             radius: Scalar,

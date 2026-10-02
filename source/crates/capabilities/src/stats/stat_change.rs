@@ -15,14 +15,14 @@ pub struct StatChange {
 /// A table with no operation, or with two, fails to read.
 impl<'de> Deserialize<'de> for StatChange {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<StatChange, D::Error> {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Table {
             add: Option<Number>,
             pct: Option<Number>,
             cut: Option<Number>,
         }
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         #[serde(untagged)]
         enum Form {
             Table(Table),

@@ -147,8 +147,9 @@ fn start_casts(
 }
 
 /// Resolves the casts due this tick, in the order of their caster's stable id. Their calls share
-/// one snapshot of the living units: effects apply only in Resolve, so none changes it. A due cast
-/// whose caster's tags keep it from casting goes back to its order instead.
+/// one snapshot of the living units, read as the batch begins, so no call sees what an earlier one
+/// changed, at once or in Resolve. A due cast whose caster's tags keep it from casting goes back
+/// to its order instead.
 fn resolve_casts(
     world: &mut World,
     casters: &mut QueryState<(Entity, &StableId, &ActionSlots), Without<Dead>>,
@@ -424,9 +425,9 @@ pub(crate) mod internals {
     use bevy_ecs::world::World;
 
     impl Abilities {
-        /// Loads the effect lists of `action` of `package`, which loaded last from `data`, which the
-        /// package load checked: each name resolved to its id, each param to its place among the
-        /// action's params.
+        /// Loads the effect lists of `action` of `package`, which loaded last from `data`, which
+        /// the package load checked: each name resolved to its id, each param to its place among
+        /// the action's params.
         pub(crate) fn load_effects(
             world: &mut World,
             action: ActionId,

@@ -5,6 +5,8 @@ use campfire_math::Num;
 use campfire_script::rhai::{EvalAltResult, INT};
 use campfire_script::{Raised, ScriptError};
 
+use crate::scripts::script_limits::ScriptLimits;
+
 /// What a registered script function returns: its value, or the error that fails the call.
 pub(crate) type Checked<T> = Result<T, Box<EvalAltResult>>;
 
@@ -202,7 +204,10 @@ impl fmt::Display for ApiError {
             ApiError::NoAttack => "unit has no attack for the target",
             ApiError::NoStats => "unit has no stats",
             ApiError::UnknownStat => "stat the mode does not declare",
-            ApiError::ChainTooDeep => "a chain of combat events 16 deep",
+            ApiError::ChainTooDeep => {
+                let depth = ScriptLimits::CHAIN_DEPTH;
+                return write!(f, "a chain of combat events {depth} deep");
+            }
             ApiError::NegativeHeal => "amount to heal or restore is negative",
             ApiError::NotForRole => "the call is not one of the script's role",
             ApiError::NoMode => "the match has no mode",

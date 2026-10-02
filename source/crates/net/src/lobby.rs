@@ -143,7 +143,7 @@ impl Lobby {
     }
 
     /// How many players joined so far.
-    fn joined(&self) -> usize {
+    const fn joined(&self) -> usize {
         self.joined.len()
     }
 

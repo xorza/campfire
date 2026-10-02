@@ -12,6 +12,11 @@ use crate::navigation::pathing_grid::PathingGrid;
 pub struct Destination(Option<Position>);
 
 impl Destination {
+    /// A destination of `target`, none for no target.
+    pub(crate) const fn to(target: Option<Position>) -> Destination {
+        Destination(target)
+    }
+
     pub const fn get(self) -> Option<Position> {
         self.0
     }

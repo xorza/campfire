@@ -132,7 +132,8 @@ impl RefreshScratch {
         self.by_id.extend((0..).take(self.units.len()));
         let units = &self.units;
         self.by_id.sort_unstable_by_key(|&at| units[at as usize].id);
-        self.lives.sort_by_key(|term| book.position(term.stat));
+        self.lives
+            .sort_unstable_by_key(|term| book.position(term.stat));
         self.values.resize(self.units.len() * count, Num::ZERO);
         let mut next = 0;
         for &stat in book.order() {

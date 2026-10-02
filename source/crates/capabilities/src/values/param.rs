@@ -44,7 +44,7 @@ impl Param {
     }
 
     /// How many ranks it has values for; `None` when it fits any rank.
-    pub fn ranks(&self) -> Option<usize> {
+    pub const fn ranks(&self) -> Option<usize> {
         match self {
             Param::Ranked(ranked) => ranked.ranks(),
             Param::Scaling(scaling) => scaling.base.ranks(),

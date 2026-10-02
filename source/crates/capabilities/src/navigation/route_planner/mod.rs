@@ -12,17 +12,17 @@ use crate::navigation::regions::Candidate;
 use crate::navigation::segment::Segment;
 use crate::values::grid::Grid;
 
-/// Plans routes by A* on a clearance of the pathing grid: eight neighbors, a straight step costing 10
-/// and a diagonal 14, and no diagonal past a blocked cell, so a route never cuts a blocked corner.
-/// The estimate is the octile distance, which never overestimates those costs, so the route is a
-/// cheapest one; among equal totals the cell with the lower estimate goes first, then the lower
-/// cell number, so every run plans the same route. A goal a walker cannot stand on gives way to
-/// the open cell nearest it, and a goal no route reaches to the nearest cell the walker reaches,
+/// Plans routes by A* on a clearance of the pathing grid: eight neighbors, a straight step costing
+/// 10 and a diagonal 14, and no diagonal past a blocked cell, so a route never cuts a blocked
+/// corner. The estimate is the octile distance, which never overestimates those costs, so the route
+/// is a cheapest one; among equal totals the cell with the lower estimate goes first, then the
+/// lower cell number, so every run plans the same route. A goal a walker cannot stand on gives way
+/// to the open cell nearest it, and a goal no route reaches to the nearest cell the walker reaches,
 /// which the clearance's regions find before the search; a short route, which they do not serve,
-/// ends on the reached cell nearest it. The route then keeps only the cells where the straight line from the
-/// waypoint before would overlap a body, tested exactly. The buffers stay between routes, and a
-/// route touches only the cells it reaches. Its work, long routes and short, counts against one
-/// limit a tick, as many units as the grid has cells: a cell expanded, a cell scanned for the
+/// ends on the reached cell nearest it. The route then keeps only the cells where the straight line
+/// from the waypoint before would overlap a body, tested exactly. The buffers stay between routes,
+/// and a route touches only the cells it reaches. Its work, long routes and short, counts against
+/// one limit a tick, as many units as the grid has cells: a cell expanded, a cell scanned for the
 /// nearest one, a line tested against the bodies.
 #[derive(Resource, Debug)]
 pub(crate) struct RoutePlanner {
@@ -181,13 +181,12 @@ impl RoutePlanner {
     }
 
     /// Plans the route from `start` to `goal`, both taken to the nearest point of the bounds, on
-    /// `walkable`, into `waypoints` at the goal's height. The route ends on the goal when the walker
-    /// may stand there, even in a cell whose center it may not, and a route reaches it. Otherwise
-    /// it ends on the center of the open cell nearest the goal, or of the cell nearest it the
-    /// walker reaches, ties to the lower number, or on a short route to the cheaper, then to the
-    /// lower number; with no open cell, it is empty. A start in a
-    /// blocked cell may leave it for an open one. A short route's goal is in its window. Its work
-    /// counts against the tick's.
+    /// `walkable`, into `waypoints` at the goal's height. The route ends on the goal when the
+    /// walker may stand there, even in a cell whose center it may not, and a route reaches it.
+    /// Otherwise it ends on the center of the open cell nearest the goal, or of the cell nearest it
+    /// the walker reaches, ties to the lower number, or on a short route to the cheaper, then to
+    /// the lower number; with no open cell, it is empty. A start in a blocked cell may leave it for
+    /// an open one. A short route's goal is in its window. Its work counts against the tick's.
     pub(crate) fn plan(
         &mut self,
         walkable: Walkable<'_>,
@@ -368,7 +367,7 @@ impl RoutePlanner {
 
     /// Whether a walker on `walkable` may stand in the cell at `column` and `row`: one of the grid,
     /// and of a short route's window, that neither a static body nor a blocker blocks.
-    fn passable(overlay: &[u64], walkable: Walkable<'_>, column: usize, row: usize) -> bool {
+    const fn passable(overlay: &[u64], walkable: Walkable<'_>, column: usize, row: usize) -> bool {
         let grid = walkable.clearance.grid();
         if column >= grid.columns() || row >= grid.rows() {
             return false;

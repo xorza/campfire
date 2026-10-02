@@ -67,7 +67,7 @@ impl PlayerResources {
 /// A snapshot is untrusted, so amounts that make no whole row of each player fail to decode.
 impl<'de> Deserialize<'de> for PlayerResources {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<PlayerResources, D::Error> {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         struct Fields {
             resources: usize,
             amounts: Vec<i64>,

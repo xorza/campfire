@@ -223,12 +223,13 @@ impl ProvingMatch {
 }
 
 /// The units of a running match that the script names.
+#[derive(Debug)]
 struct Units<'a> {
     fixed: &'a FixedMatch,
 }
 
 impl Units<'_> {
-    fn of(fixed: &FixedMatch) -> Units<'_> {
+    const fn of(fixed: &FixedMatch) -> Units<'_> {
         Units { fixed }
     }
 
@@ -281,10 +282,10 @@ fn owned_by(unit: &EntityRef<'_>, slot: u32) -> bool {
         .is_some_and(|owner| owner.slot().get() == slot)
 }
 
-fn num(value: i64) -> Num {
+const fn num(value: i64) -> Num {
     Num::from_int(value).expect("a small integer")
 }
 
-fn ground(x: Num, z: Num) -> Position {
+const fn ground(x: Num, z: Num) -> Position {
     Position::new(Vec3::new(x, Num::ZERO, z)).expect("a point of the map")
 }

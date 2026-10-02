@@ -28,7 +28,7 @@ pub enum ModeError {
     TooManyVisionTeams,
     /// A relation of a team to itself, or of a pair the relations name before.
     RepeatedRelation(DeclaredName, DeclaredName),
-    /// Two teams, or two paths, share a name.
+    /// Two teams, two paths or two markers share a name.
     RepeatedName(DeclaredName),
     UnknownTeam(DeclaredName),
     UnknownUnitType(DeclaredName),
@@ -75,7 +75,9 @@ impl fmt::Display for ModeError {
                     "a relation of {a:?} and {b:?} again, or of a team to itself"
                 )
             }
-            ModeError::RepeatedName(name) => write!(f, "{name:?} names two teams or paths"),
+            ModeError::RepeatedName(name) => {
+                write!(f, "{name:?} names two teams, paths or markers")
+            }
             ModeError::UnknownTeam(name) => write!(f, "no team {name:?}"),
             ModeError::UnknownUnitType(name) => write!(f, "no unit type {name:?}"),
             ModeError::UnknownPath(name) => write!(f, "no path {name:?}"),

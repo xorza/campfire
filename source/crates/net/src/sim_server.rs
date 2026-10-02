@@ -287,11 +287,11 @@ type NewUnits<'w, 's> = Query<
 >;
 
 /// After a sim tick, replicates each new unit, predicted by its owner's client unless it is a
-/// projectile or an area, which the server's sim alone runs, and shows each unit whose seers changed to
-/// exactly the clients whose team sees it. A unit is hidden in the tick it replicates in, so a
-/// client never receives a unit its team did not see: a projectile shows where it flies, not
-/// where its source stands. Without vision no unit has `SeenBy`, and every client receives every
-/// unit.
+/// projectile or an area, which the server's sim alone runs, and shows each unit whose seers
+/// changed to exactly the clients whose team sees it. A unit is hidden in the tick it replicates
+/// in, so a client never receives a unit its team did not see: a projectile shows where it flies,
+/// not where its source stands. Without vision no unit has `SeenBy`, and every client receives
+/// every unit.
 fn show_units(
     links: Query<'_, '_, (Entity, &PlayerLink)>,
     new: NewUnits<'_, '_>,

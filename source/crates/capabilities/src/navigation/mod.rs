@@ -77,8 +77,9 @@ impl Navigation {
 
     /// Adds navigation to a match, with no paths, the world for bounds, and a static index for
     /// walkers as wide as a body may be, until the mode sets its map's: in Move, units walk their
-    /// routes to their destinations, straight lines until the map gives a pathing grid; in Collide, overlapping living bodies part; after Collide, each
-    /// unit that walks stands within the bounds again.
+    /// routes to their destinations, straight lines until the map gives a pathing grid; in Collide,
+    /// overlapping living bodies part; after Collide, each unit that walks stands within the bounds
+    /// again.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         if let Some(view) = world.get_non_send::<View>() {
             view.add_column(PathsColumn::default());
@@ -135,12 +136,11 @@ fn track_static_bodies(
     mut statics: Local<'_, Vec<IndexedBody>>,
 ) {
     statics.clear();
-    statics.extend(bodies.iter().map(|(&id, &at, body)| IndexedBody {
-        id,
-        at,
-        radius: body.radius(),
-        layer: body.layer(),
-    }));
+    statics.extend(
+        bodies
+            .iter()
+            .map(|(&id, &at, body)| IndexedBody::of(id, at, body)),
+    );
     statics.sort_unstable_by_key(|body| body.id);
     if !index.update(&statics) {
         return;
@@ -339,12 +339,7 @@ fn steer(
     let still = bodies
         .iter()
         .filter(|(.., destination, tags)| !walks(*destination, *tags))
-        .map(|(&id, &at, body, ..)| IndexedBody {
-            id,
-            at,
-            radius: body.radius(),
-            layer: body.layer(),
-        });
+        .map(|(&id, &at, body, ..)| IndexedBody::of(id, at, body));
     let walking = bodies
         .iter()
         .filter(|(.., destination, tags)| walks(*destination, *tags))
@@ -451,15 +446,15 @@ fn move_units(
     }
 }
 
-/// Parts the living bodies of one layer that overlap as the stage starts, pair by pair in stable-id order; a
-/// pair that only overlaps after this tick's pushes parts in the next. Only a unit that can walk is
-/// pushed, and one walking to a destination yields to one that stands. The static bodies' contacts
-/// come from `statics`, which holds them as the stage starts. A predicting client also
-/// parts its own units from the units it holds as the server sent them that cannot walk, such as
-/// towers, which never move. Every other held unit is where the server last had it, behind the
+/// Parts the living bodies of one layer that overlap as the stage starts, pair by pair in stable-id
+/// order; a pair that only overlaps after this tick's pushes parts in the next. Only a unit that
+/// can walk is pushed, and one walking to a destination yields to one that stands. The static
+/// bodies' contacts come from `statics`, which holds them as the stage starts. A predicting client
+/// also parts its own units from the units it holds as the server sent them that cannot walk, such
+/// as towers, which never move. Every other held unit is where the server last had it, behind the
 /// client's ticks, and may have started or stopped walking since, so the server alone parts the
-/// client's units from it. Every tick reads the bodies into `colliders`, and finds their
-/// contacts with `broadphase`, buffers it keeps.
+/// client's units from it. Every tick reads the bodies into `colliders`, and finds their contacts
+/// with `broadphase`, buffers it keeps.
 fn collide(
     mut units: Query<
         '_,

@@ -109,7 +109,7 @@ impl Bounds {
 /// A map's `[bounds]`: `min` and `max` as `[x, z]`, refused unless they make bounds.
 impl<'de> Deserialize<'de> for Bounds {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Bounds, D::Error> {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
             min: [Scalar; 2],

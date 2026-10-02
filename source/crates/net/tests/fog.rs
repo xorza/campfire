@@ -15,12 +15,12 @@ const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
 /// Frames of match: one tick each.
 const MATCH_FRAMES: usize = 90;
 
-fn num(value: i64) -> Num {
+const fn num(value: i64) -> Num {
     Num::from_int(value).unwrap()
 }
 
 /// A move along the hero's line from its spawn, z = −2.
-fn move_to(x: i64) -> Action {
+const fn move_to(x: i64) -> Action {
     Action::Move {
         x: num(x),
         z: num(-2),

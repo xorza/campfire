@@ -49,7 +49,7 @@ impl ScriptConsts {
     }
 
     /// Whether `kind` is one of the mode's damage kinds; any is, before a mode names them.
-    pub(crate) fn has_damage_kind(&self, kind: DamageKind) -> bool {
+    pub(crate) const fn has_damage_kind(&self, kind: DamageKind) -> bool {
         self.damage_kinds.is_empty() || kind.index() < self.damage_kinds.len()
     }
 

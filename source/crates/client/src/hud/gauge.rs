@@ -83,7 +83,7 @@ pub(crate) struct Layout {
 
 impl Layout {
     /// The back's transform, relative to the gauge.
-    pub(crate) fn back(self) -> Transform {
+    pub(crate) const fn back(self) -> Transform {
         Transform::from_scale(Vec3::new(self.width, 1.0, THICKNESS))
     }
 

@@ -89,7 +89,7 @@ fn session() -> FixedSession {
     FixedSession::with_rules(packages(), NonZeroU32::new(30).unwrap(), 1, rules)
 }
 
-fn num(value: i64) -> Num {
+const fn num(value: i64) -> Num {
     Num::from_int(value).unwrap()
 }
 

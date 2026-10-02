@@ -1,3 +1,4 @@
+use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, Has, QueryState, With, Without};
 use bevy_ecs::resource::Resource;
@@ -356,10 +357,10 @@ fn think(
     });
 }
 
-/// Sends each path walker with no attack target, on its path, to the waypoint it walks to, and on to the next
-/// once the waypoint is within its body, or it stands on the waypoint with no body: walkers that
-/// push each other never stand on one point. A walker that chased a target walks back to where it
-/// left its path.
+/// Sends each path walker with no attack target, on its path, to the waypoint it walks to, and on
+/// to the next once the waypoint is within its body, or it stands on the waypoint with no body:
+/// walkers that push each other never stand on one point. A walker that chased a target walks back
+/// to where it left its path.
 fn follow_paths(
     paths: Res<'_, Paths>,
     mut walkers: Query<
@@ -448,8 +449,8 @@ fn walk_to(
 ) {
     let arrived =
         target.is_some_and(|target| route.is_some_and(|route| route.arrived_short_of(target)));
-    if destination.get() != target && !arrived {
-        destination.set(target);
+    if !arrived {
+        destination.set_if_neq(Destination::to(target));
     }
 }
 

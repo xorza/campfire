@@ -46,7 +46,7 @@ impl MatchEnd {
         }
     }
 
-    fn running(end: Option<Res<'_, MatchEnd>>) -> bool {
+    const fn running(end: Option<Res<'_, MatchEnd>>) -> bool {
         end.is_none()
     }
 }

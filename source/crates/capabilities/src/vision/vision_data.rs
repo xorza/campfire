@@ -13,7 +13,7 @@ pub struct VisionData {
 /// A sight range that is not negative, or the section fails to read.
 impl<'de> Deserialize<'de> for VisionData {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<VisionData, D::Error> {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
             sight_range: Scalar,

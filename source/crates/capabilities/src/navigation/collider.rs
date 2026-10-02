@@ -19,6 +19,16 @@ pub(crate) struct Collider {
     pub(crate) walking: bool,
 }
 
+/// How one body lies from another that it overlaps: the offset to it along x and z, its square,
+/// and the two radii together, in bits of a `Num`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Overlap {
+    dx: i128,
+    dz: i128,
+    square: i128,
+    reach: i128,
+}
+
 impl Collider {
     /// Pushes the two colliders of each of `contacts`, in order, apart along the line between
     /// them, on the ground plane: each contact sees the pushes of the contacts before it, and one
@@ -39,24 +49,37 @@ impl Collider {
     /// not overlap. Two that may not be pushed never part, so they have no contact, nor have two
     /// of other layers.
     pub(crate) fn overlaps(&self, other: &Collider) -> bool {
+        self.overlap(other).is_some()
+    }
+
+    /// How `other` lies from `self`, when the two overlap and may part, in bits of a `Num`: a
+    /// position and a radius are within 2⁴⁵ bits, so squares fit i128.
+    fn overlap(&self, other: &Collider) -> Option<Overlap> {
         if !self.movable && !other.movable || self.layer != other.layer {
-            return false;
+            return None;
         }
         let dx = i128::from(other.at.x.to_bits() - self.at.x.to_bits());
         let dz = i128::from(other.at.z.to_bits() - self.at.z.to_bits());
         let reach = i128::from(self.radius.to_bits() + other.radius.to_bits());
-        dx * dx + dz * dz < reach * reach
+        let square = dx * dx + dz * dz;
+        (square < reach * reach).then_some(Overlap {
+            dx,
+            dz,
+            square,
+            reach,
+        })
     }
 
     fn part(a: &mut Collider, b: &mut Collider) {
-        if !a.overlaps(b) {
+        let Some(Overlap {
+            dx,
+            dz,
+            square,
+            reach,
+        }) = a.overlap(b)
+        else {
             return;
-        }
-        // In bits of a `Num`: a position and a radius are within 2⁴⁵ bits, so squares fit i128.
-        let dx = i128::from(b.at.x.to_bits() - a.at.x.to_bits());
-        let dz = i128::from(b.at.z.to_bits() - a.at.z.to_bits());
-        let reach = i128::from(a.radius.to_bits() + b.radius.to_bits());
-        let square = dx * dx + dz * dz;
+        };
         let distance = square.cast_unsigned().isqrt().cast_signed();
         let overlap = reach - distance;
         let (dx, dz, distance) = if distance == 0 {

@@ -69,7 +69,7 @@ impl ConnectChallenge {
     }
 
     /// `domain ‖ challenge ‖ certificate hash`.
-    fn answer_message(&self, certificate: &CertificateHash) -> [u8; ANSWER_MESSAGE_LEN] {
+    const fn answer_message(&self, certificate: &CertificateHash) -> [u8; ANSWER_MESSAGE_LEN] {
         let mut message = [0; ANSWER_MESSAGE_LEN];
         let (domain, rest) = message.split_at_mut(ANSWER_DOMAIN.len());
         let (challenge, hash) = rest.split_at_mut(32);

@@ -121,7 +121,7 @@ impl ChoiceBook {
     }
 
     /// Where the values of `slot` for `choice` sit.
-    fn run(&self, slot: PlayerSlot, choice: &Choice) -> Range<usize> {
+    const fn run(&self, slot: PlayerSlot, choice: &Choice) -> Range<usize> {
         let start = slot.index() * self.width;
         start + choice.run.start..start + choice.run.end
     }

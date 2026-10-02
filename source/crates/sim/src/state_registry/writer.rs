@@ -1,3 +1,5 @@
+use std::fmt;
+
 use blake3::Hasher;
 use postcard::ser_flavors::Flavor;
 use serde::Serialize;
@@ -6,7 +8,7 @@ use serde::Serialize;
 const BUFFER: usize = 64;
 
 /// Where encoded state goes: a hasher for the state hash, bytes for a snapshot.
-pub(crate) trait Sink {
+pub(crate) trait Sink: fmt::Debug {
     fn put(&mut self, bytes: &[u8]);
 }
 
@@ -36,6 +38,7 @@ pub(crate) fn write<T: Serialize>(sink: &mut dyn Sink, value: &T) {
 }
 
 /// A postcard output that feeds a sink in batches.
+#[derive(Debug)]
 struct Writer<'a> {
     sink: &'a mut dyn Sink,
     buffer: [u8; BUFFER],

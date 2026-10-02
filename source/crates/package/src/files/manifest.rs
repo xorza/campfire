@@ -132,7 +132,7 @@ impl TickRange {
 
 impl<'de> Deserialize<'de> for TickRange {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<TickRange, D::Error> {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
             min: NonZeroU32,
@@ -158,7 +158,7 @@ impl Manifest {
 /// The flat table of a mode's manifest, its header's fields among the others.
 impl<'de> Deserialize<'de> for ModeManifest {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<ModeManifest, D::Error> {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
             name: String,
@@ -196,7 +196,7 @@ impl<'de> Deserialize<'de> for ModeManifest {
 /// The flat table of a locale package's manifest, its header's fields beside its dependencies.
 impl<'de> Deserialize<'de> for LocaleManifest {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<LocaleManifest, D::Error> {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
             name: String,

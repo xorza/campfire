@@ -1637,10 +1637,10 @@ fn on_resolve(ctx, caster, target) {
     assert_eq!(marked, Some(Tick::new(t.get() + 10)));
 }
 
-/// Veil's match: Veil has attack damage 53 at level 1. Dual Path gives her spell vamp of 0.06 and 0.00167 a
-/// point of bonus attack damage; Fortify gives armor of 10 times her spell vamp, so armor reads
-/// spell vamp, which reads attack damage. Armor's place, before spell vamp's, makes the graph's
-/// order differ from the places'. Veil holds both, and Boost of 30 attack damage is loaded.
+/// Veil's match: Veil has attack damage 53 at level 1. Dual Path gives her spell vamp of 0.06 and
+/// 0.00167 a point of bonus attack damage; Fortify gives armor of 10 times her spell vamp, so armor
+/// reads spell vamp, which reads attack damage. Armor's place, before spell vamp's, makes the
+/// graph's order differ from the places'. Veil holds both, and Boost of 30 attack damage is loaded.
 #[derive(Debug)]
 struct VeilMatch {
     game: Match,

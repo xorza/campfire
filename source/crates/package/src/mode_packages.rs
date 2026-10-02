@@ -504,6 +504,6 @@ fn path(path: &str) -> PackagePath {
     PackagePath::parse(path).expect("the engine's paths are in the package")
 }
 
-fn content_error(error: ContentError) -> LoadProblem {
+const fn content_error(error: ContentError) -> LoadProblem {
     LoadProblem::Content(error)
 }

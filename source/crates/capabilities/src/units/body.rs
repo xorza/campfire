@@ -76,7 +76,7 @@ impl SimComponent for Body {
 /// A snapshot is untrusted, so a radius `new` refuses fails to decode.
 impl<'de> Deserialize<'de> for Body {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Body, D::Error> {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         struct Fields {
             radius: Num,
             layer: Layer,

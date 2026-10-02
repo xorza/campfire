@@ -4,15 +4,15 @@ use crate::navigation::body_index::BodyIndex;
 use crate::navigation::collider::Collider;
 use crate::units::layer::Layer;
 
-/// Finds the pairs of bodies of one layer that overlap. Two walkers come from a sort of the
-/// walkers by layer and cell: a cell is twice the widest walker's radius, so two that overlap sit
-/// in the same cell of their layer or in cells side by side. Each occupied cell pairs its own walkers, and those of the cell to its right and
-/// of the three below it, so each pair of cells is visited once; cursors that only move forward
-/// find those cells. A sort, not a grid over the map, as a map may be wide and its bodies few. A
-/// walker and a static body come from the static index, so a wide structure does not make the
-/// cells wide, and two static bodies never part. The buffers stay between ticks, so a tick
-/// allocates nothing once they have grown, and costs `n log n` and the pairs of bodies in cells
-/// side by side.
+/// Finds the pairs of bodies of one layer that overlap. Two walkers come from a sort of the walkers
+/// by layer and cell: a cell is twice the widest walker's radius, so two that overlap sit in the
+/// same cell of their layer or in cells side by side. Each occupied cell pairs its own walkers, and
+/// those of the cell to its right and of the three below it, so each pair of cells is visited once;
+/// cursors that only move forward find those cells. A sort, not a grid over the map, as a map may
+/// be wide and its bodies few. A walker and a static body come from the static index, so a wide
+/// structure does not make the cells wide, and two static bodies never part. The buffers stay
+/// between ticks, so a tick allocates nothing once they have grown, and costs `n log n` and the
+/// pairs of bodies in cells side by side.
 #[derive(Debug, Default)]
 pub(crate) struct Broadphase {
     /// Each collider's layer, cell and index, sorted by layer, then cell, row by row, then by
@@ -167,7 +167,7 @@ pub(crate) mod internals {
     use crate::units::layer::Layer;
 
     /// A draw below `bound` from `state`, by `SplitMix64`.
-    fn draw(state: &mut u64, bound: u64) -> u64 {
+    const fn draw(state: &mut u64, bound: u64) -> u64 {
         *state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
         let mut z = *state;
         z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);

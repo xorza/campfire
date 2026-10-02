@@ -42,7 +42,7 @@ fn abilities(name: &str) -> AvatarData {
     hero(name).read_data(&path).unwrap()
 }
 
-fn num(value: i64) -> Num {
+const fn num(value: i64) -> Num {
     Num::from_int(value).unwrap()
 }
 
@@ -112,7 +112,7 @@ fn arm(arena: &mut Arena, unit: StableId, damage: i64, period: u64) {
     world.entity_mut(entity).insert(parts);
 }
 
-fn attack(unit: StableId, target: StableId) -> Order {
+const fn attack(unit: StableId, target: StableId) -> Order {
     Order {
         unit,
         action: Action::Attack { target },
@@ -120,7 +120,7 @@ fn attack(unit: StableId, target: StableId) -> Order {
 }
 
 /// Player 0's order that `unit` casts the action in its slot 0 at `target`.
-fn cast(unit: StableId, target: ActionTarget) -> Order {
+const fn cast(unit: StableId, target: ActionTarget) -> Order {
     Order {
         unit,
         action: Action::Slot { slot: 0, target },

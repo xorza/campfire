@@ -28,14 +28,14 @@ impl OrderScript {
     /// no action or two, or a target without a cast, when a coordinate is past what a sim number
     /// holds, when the ticks do not grow, or when the script ends before an order.
     pub fn parse(text: &str) -> Result<OrderScript, OrderScriptError> {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct File {
             end: Option<u64>,
             #[serde(default)]
             order: Vec<Entry>,
         }
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Entry {
             tick: u64,

@@ -23,7 +23,7 @@ pub enum SyncTo {
 /// A default not of its field's type fails to read, where the data enters.
 impl<'de> Deserialize<'de> for ModeStateDecl {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<ModeStateDecl, D::Error> {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
             #[serde(rename = "type")]

@@ -96,7 +96,7 @@ impl UnitTypes {
     }
 
     /// Whether the match loaded `unit_type`.
-    pub(crate) fn contains(&self, unit_type: UnitType) -> bool {
+    pub(crate) const fn contains(&self, unit_type: UnitType) -> bool {
         unit_type.index() < self.types.len()
     }
 

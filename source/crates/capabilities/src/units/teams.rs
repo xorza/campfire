@@ -53,7 +53,7 @@ impl Teams {
     }
 
     /// How many teams the match holds.
-    pub(crate) fn count(&self) -> usize {
+    pub(crate) const fn count(&self) -> usize {
         self.names.len()
     }
 

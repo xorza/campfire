@@ -134,7 +134,7 @@ impl Modifiers {
         })
     }
 
-    pub(crate) fn len(&self) -> usize {
+    pub(crate) const fn len(&self) -> usize {
         self.instances.len()
     }
 
@@ -588,7 +588,7 @@ impl SimComponent for Modifiers {
 /// negative aura radius fail to decode.
 impl<'de> Deserialize<'de> for Modifiers {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Modifiers, D::Error> {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         struct Fields {
             instances: Vec<Instance>,
             ends: Vec<StackEnd>,

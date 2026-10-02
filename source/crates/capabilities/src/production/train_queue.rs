@@ -92,7 +92,7 @@ impl SimComponent for TrainQueue {
 /// A snapshot is untrusted, so a head time without a head or without one fails to decode.
 impl<'de> Deserialize<'de> for TrainQueue {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<TrainQueue, D::Error> {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         struct Fields {
             entries: Vec<Queued>,
             head_done: Option<Tick>,

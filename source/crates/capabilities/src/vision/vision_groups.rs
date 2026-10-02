@@ -34,7 +34,7 @@ impl VisionGroups {
     }
 
     /// How many groups there are.
-    pub(crate) fn count(&self) -> usize {
+    pub(crate) const fn count(&self) -> usize {
         self.members.len()
     }
 

@@ -81,7 +81,7 @@ impl UnitTypeFile {
 /// The flat table of a unit type, the core's fields among the capabilities' sections.
 impl<'de> Deserialize<'de> for UnitTypeFile {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<UnitTypeFile, D::Error> {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
             #[serde(default)]

@@ -34,7 +34,7 @@ const CASES: usize = 4000;
 struct Inputs(u64);
 
 impl Inputs {
-    fn next(&mut self) -> u64 {
+    const fn next(&mut self) -> u64 {
         self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
         let mut z = self.0;
         z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
@@ -44,7 +44,7 @@ impl Inputs {
 
     /// Any raw value, a value within ±2⁴⁰ raw, or a small one, as the word chooses, so edges and
     /// common magnitudes both appear.
-    fn num(&mut self) -> Num {
+    const fn num(&mut self) -> Num {
         let word = self.next().cast_signed();
         Num::from_bits(match word.rem_euclid(3) {
             0 => word,
@@ -53,11 +53,11 @@ impl Inputs {
         })
     }
 
-    fn within(&mut self, span: i64) -> Num {
+    const fn within(&mut self, span: i64) -> Num {
         Num::from_bits(self.next().cast_signed() % span)
     }
 
-    fn vec3(&mut self, span: i64) -> Vec3 {
+    const fn vec3(&mut self, span: i64) -> Vec3 {
         Vec3::new(self.within(span), self.within(span), self.within(span))
     }
 }

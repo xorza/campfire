@@ -1058,7 +1058,7 @@ pub(crate) mod internals {
 
     impl Arms {
         /// A melee weapon of `range`, `windup` ticks, `period` ticks and `damage`.
-        pub fn melee(range: Num, windup: u64, period: u64, damage: Num) -> Arms {
+        pub const fn melee(range: Num, windup: u64, period: u64, damage: Num) -> Arms {
             Arms {
                 range,
                 windup: Ticks::new(windup),

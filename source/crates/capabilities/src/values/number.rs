@@ -21,7 +21,7 @@ pub struct ParamRef {
 
 impl Number {
     /// The param it reads, if it reads one.
-    pub fn param(&self) -> Option<&DeclaredName> {
+    pub const fn param(&self) -> Option<&DeclaredName> {
         match self {
             Number::Value(_) => None,
             Number::Param(reference) => Some(&reference.param),

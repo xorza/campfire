@@ -56,7 +56,7 @@ struct Life {
 
 impl Life {
     /// Notes the hero's state after `tick`; `true` when it just died.
-    fn note(&mut self, dead: bool, tick: u64) -> bool {
+    const fn note(&mut self, dead: bool, tick: u64) -> bool {
         if dead && self.died.is_none() {
             self.died = Some(tick);
             return true;

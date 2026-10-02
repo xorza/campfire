@@ -188,7 +188,7 @@ impl Frame {
     }
 
     /// The players' resources, for the call to change; `None` in a match with no mode.
-    pub(crate) fn resources_mut(&mut self) -> Option<&mut PlayerResources> {
+    pub(crate) const fn resources_mut(&mut self) -> Option<&mut PlayerResources> {
         self.resources_written = true;
         self.resources.as_mut()
     }
