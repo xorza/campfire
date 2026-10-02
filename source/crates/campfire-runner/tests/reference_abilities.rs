@@ -39,7 +39,12 @@ fn abilities(name: &str) -> AvatarData {
 /// The 3v3's books at 30 ticks a second for one player, with no mode: no `calc_damage` weighs a
 /// hit, so each one lands as its ability deals it.
 fn arena() -> Arena {
-    Arena::new(&PackageDir::workspace("moba/modes/3v3"), RATE, 1)
+    arena_at(RATE)
+}
+
+/// The same at `rate`.
+fn arena_at(rate: TickRate) -> Arena {
+    Arena::new(&PackageDir::workspace("moba/modes/3v3"), rate, 1)
 }
 
 /// A unit of 500 health on `team` at `x` meters along x that stays when it dies, with `parts`, and
@@ -381,7 +386,17 @@ fn rimes_snow_owl_flies_to_its_point_and_ends_there() {
 
 #[test]
 fn cinders_eruption_from_its_package_erupts_on_the_units_in_reach_after_its_delay() {
-    let mut arena = arena();
+    // The cast starts in tick 0 and resolves after its windup of 250 ms, where the area lands;
+    // it erupts 625 ms later, each rounded up to whole ticks. At 30 a second: 7.5 ticks to 8, and
+    // 18.75 to 19, in tick 27. At 20, the 3v3's rate: 5 ticks, and 12.5 to 13, in tick 18.
+    for (hz, erupts) in [(30, 27), (20, 18)] {
+        erupt_at(TickRate::new(NonZeroU32::new(hz).unwrap()), erupts);
+    }
+}
+
+/// Cinder's Eruption at `rate`, which erupts in tick `erupts`.
+fn erupt_at(rate: TickRate, erupts: u64) {
+    let mut arena = arena_at(rate);
     let eruption = arena.action("hero-cinder", "eruption");
     let kindle = arena.modifier("hero-cinder", "kindle");
     let caster = caster(&mut arena, eruption, 1, (100, 0), ());
@@ -396,22 +411,20 @@ fn cinders_eruption_from_its_package_erupts_on_the_units_in_reach_after_its_dela
     let from = Some((caster, Some(eruption), 1));
     internals::give_modifier(arena.world_mut(), burning, kindle, from, false);
 
-    // The cast starts in tick 0 and resolves after its windup of 250 ms, 8 ticks at 30 a
-    // second, in tick 8, where the area lands; it erupts 625 ms later, 19 ticks rounded up, in
-    // tick 27.
     arena.tick(0, &[cast(caster, ActionTarget::Point(milli(6000, 0)))]);
     let units = [center, edge, beyond, burning, ally];
-    for _ in 1..27 {
+    for _ in 1..erupts {
         arena.step();
     }
-    assert_eq!(units.map(|unit| health(&arena, unit)), [500; 5]);
+    assert_eq!(units.map(|unit| health(&arena, unit)), [500; 5], "{rate:?}");
     assert_eq!(areas(&mut arena), 1);
     arena.step();
     // Rank 1 deals 75, and 1.25 × 75 = 93.75 to a unit ablaze: 500 → 406.25. Each unit hit is
     // ablaze after, and the area ends with its eruption.
     assert_eq!(
         units.map(|unit| health(&arena, unit)),
-        [425, 425, 500, 406, 500]
+        [425, 425, 500, 406, 500],
+        "{rate:?}"
     );
     let ablaze = |unit| carried(&arena, unit) == [(kindle, Some(caster))];
     assert_eq!(units.map(ablaze), [true, true, false, true, false]);

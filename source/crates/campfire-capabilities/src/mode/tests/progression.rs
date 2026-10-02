@@ -37,17 +37,25 @@ fn on_mode_input(ctx, player, name, value) {
     // first queued, and reach the last rank; then neither slot has a rank more, and two slots do
     // not exist.
     let steps = [
-        ("thrice", [0, 1], Some(ApiError::MaxRank)),
+        ("thrice", [0, 1], Some(FailureKind::Api(ApiError::MaxRank))),
         ("twice", [2, 1], None),
-        ("once", [2, 1], Some(ApiError::MaxRank)),
-        ("spell", [2, 1], Some(ApiError::MaxRank)),
-        ("none", [2, 1], Some(ApiError::NoAbilitySlot)),
-        ("negative", [2, 1], Some(ApiError::NoAbilitySlot)),
+        ("once", [2, 1], Some(FailureKind::Api(ApiError::MaxRank))),
+        ("spell", [2, 1], Some(FailureKind::Api(ApiError::MaxRank))),
+        (
+            "none",
+            [2, 1],
+            Some(FailureKind::Api(ApiError::NoAbilitySlot)),
+        ),
+        (
+            "negative",
+            [2, 1],
+            Some(FailureKind::Api(ApiError::NoAbilitySlot)),
+        ),
     ];
     for (value, expected, failure) in steps {
         game.tick(&[(0, input("probe", value))]);
         assert_eq!(ranks(&game), expected, "{value}");
-        let failures: Vec<_> = failure.into_iter().map(Some).collect();
+        let failures: Vec<_> = failure.into_iter().collect();
         assert_eq!(game.failures(), failures, "{value}");
     }
 }
@@ -126,7 +134,7 @@ fn on_level_up(ctx, unit, track, level) {
     ];
     for (value, error) in refused {
         game.tick(&[(0, input("probe", value))]);
-        assert_eq!(game.failures(), [Some(error)], "{value}");
+        assert_eq!(game.failures(), [FailureKind::Api(error)], "{value}");
         assert_eq!(
             progress(&game),
             (Num::int(600) + half, 3, Num::int(50), Some(2)),

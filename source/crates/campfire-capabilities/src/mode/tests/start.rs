@@ -117,7 +117,10 @@ fn on_mode_input(ctx, player, name, value) {
     assert_eq!(last, [Some(up(10)), Some(up(-10)), Some(up(10))]);
     // An end other than `start` and `end` fails.
     game.tick(&[(0, input("phase", "x"))]);
-    assert_eq!(game.failures(), [Some(ApiError::UnknownPathEnd)]);
+    assert_eq!(
+        game.failures(),
+        [FailureKind::Api(ApiError::UnknownPathEnd)]
+    );
 }
 
 #[test]

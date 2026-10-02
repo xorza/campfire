@@ -113,8 +113,7 @@ impl<'a> LoadCheck<'a> {
             .stat_graph()
             .order()
             .map_err(|stats| fail(LoadProblem::StatLoop(stats)))?;
-        let scripts = packages.script_book();
-        let input = packages.book_input(check.rate, &scripts);
+        let input = packages.book_input(check.rate);
         Books::build(&input).map_err(|error| check.book_error(error))?;
         // After the build, which resolved the map's names.
         check.map_walkable().map_err(fail)?;

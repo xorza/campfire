@@ -150,10 +150,9 @@ fn three_v_three() -> ModePackages {
 fn the_books_build_at_every_rate_the_manifest_allows() {
     // The 3v3 allows 20 to 60 ticks a second; the load built its books at 60.
     let packages = three_v_three();
-    let scripts = packages.script_book();
     for hz in [20, 30, 60] {
         let rate = TickRate::new(NonZeroU32::new(hz).unwrap());
-        packages.books(rate, &scripts);
+        packages.books(rate);
     }
 }
 
@@ -162,7 +161,7 @@ fn the_books_build_at_every_rate_the_manifest_allows() {
 fn the_books_refuse_a_rate_past_the_manifests_range() {
     let packages = three_v_three();
     let rate = TickRate::new(NonZeroU32::new(61).unwrap());
-    packages.books(rate, &packages.script_book());
+    packages.books(rate);
 }
 
 #[test]

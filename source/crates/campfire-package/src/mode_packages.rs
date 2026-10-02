@@ -43,6 +43,8 @@ pub struct ModePackages {
     pub(crate) content: PackageContent,
     /// In the order of their names in the mode's manifest.
     pub(crate) dependencies: Vec<Dependent>,
+    /// The hooks each script defines, as the load read them, in the order a match compiles them.
+    scripts: ScriptBook,
 }
 
 impl ModePackages {
@@ -157,30 +159,35 @@ impl ModePackages {
         iter::once(mode).chain(dependents)
     }
 
-    /// The books of a match of its packages at `rate`, a rate within the manifest's range, its
-    /// scripts' hooks as `scripts` gives them. The load built them at the fastest rate the range
-    /// allows, where every time counts the most ticks, so they build at every rate a session may
-    /// choose.
-    pub fn books(&self, rate: TickRate, scripts: &ScriptBook) -> Books {
+    /// The books of a match of its packages at `rate`, a rate within the manifest's range. The
+    /// load built them at the fastest rate the range allows, where every time counts the most
+    /// ticks, so they build at every rate a session may choose.
+    pub fn books(&self, rate: TickRate) -> Books {
         assert!(
             self.manifest.tick_hz.contains(rate.hz()),
             "a session's rate is within the manifest's range"
         );
-        Books::build(&self.book_input(rate, scripts))
+        Books::build(&self.book_input(rate))
             .unwrap_or_else(|error| panic!("the load built the books at the fastest rate: {error}"))
     }
 
-    /// Compiles every script of its packages by `compile`, in the order a match compiles them;
-    /// the load parsed each one, so none fails.
+    /// Compiles every script of its packages by `compile`, in the order a match compiles them,
+    /// which must number each at its place, as its book of hooks holds it; the load parsed each
+    /// one, so none fails.
     pub fn compile_scripts<E: fmt::Display>(
         &self,
         mut compile: impl FnMut(&str) -> Result<ScriptId, E>,
     ) {
-        for view in self.packages() {
-            for script in &view.package.scripts {
-                compile(&script.source)
-                    .unwrap_or_else(|error| panic!("the load parsed {}: {error}", script.path));
-            }
+        let scripts = self.packages().flat_map(|view| &view.package.scripts);
+        for (at, script) in scripts.enumerate() {
+            let id = compile(&script.source)
+                .unwrap_or_else(|error| panic!("the load parsed {}: {error}", script.path));
+            assert_eq!(
+                id,
+                ScriptId::nth(at),
+                "the host numbers {} at its place",
+                script.path
+            );
         }
     }
 
@@ -193,13 +200,8 @@ impl ModePackages {
         ScriptId::nth(at)
     }
 
-    /// What its books are built from at `rate`, its scripts' hooks as `scripts` gives them, in
-    /// the order a match compiles them.
-    pub(crate) fn book_input<'a>(
-        &'a self,
-        rate: TickRate,
-        scripts: &'a ScriptBook,
-    ) -> BookInput<'a> {
+    /// What its books are built from at `rate`.
+    pub(crate) fn book_input(&self, rate: TickRate) -> BookInput<'_> {
         let packages = self.packages().map(|view| BookPackage {
             name: &view.package.header.name,
             content: view.content,
@@ -223,7 +225,7 @@ impl ModePackages {
             progression: self.manifest.capabilities.contains(Capability::Progression),
             tag_names: self.tag_names().into_iter().collect(),
             packages: packages.collect(),
-            scripts,
+            scripts: &self.scripts,
             rate,
             stat_order: self
                 .stat_graph()
@@ -232,15 +234,19 @@ impl ModePackages {
         }
     }
 
-    /// The hooks each script of its packages defines, in the order a match compiles them: the
+    /// The hooks each script of its packages defines, as the load read them, in the order a
+    /// match compiles them.
+    pub const fn script_book(&self) -> &ScriptBook {
+        &self.scripts
+    }
+
+    /// The hooks each script of `packages` defines, in the order a match compiles them: the
     /// mode's scripts, then each dependency's, each package's in the order of their paths.
-    pub fn script_book(&self) -> ScriptBook {
+    fn read_hooks<'p>(packages: impl IntoIterator<Item = &'p Package>) -> ScriptBook {
         let mut book = ScriptBook::default();
-        for view in self.packages() {
-            for script in &view.package.scripts {
-                let functions = script.facts.functions.iter();
-                book.push(functions.map(|function| (function.name.as_str(), function.params)));
-            }
+        for script in packages.into_iter().flat_map(|package| &package.scripts) {
+            let functions = script.facts.functions.iter();
+            book.push(functions.map(|function| (function.name.as_str(), function.params)));
         }
         book
     }
@@ -387,10 +393,12 @@ impl ModePackages {
             .map_err(LoadProblem::Content)
             .map_err(fail)?;
         let mode = Package::read(files, &manifest.header, &parser, &api)?;
-        let dependencies = dependencies
+        let dependencies: Vec<Dependent> = dependencies
             .iter()
             .map(|(name, files)| Dependent::read(name, files, &parser, &api))
             .collect::<Result<_, _>>()?;
+        let dependents = dependencies.iter().map(|dependent| &dependent.package);
+        let scripts = ModePackages::read_hooks(iter::once(&mode).chain(dependents));
         let packages = ModePackages {
             mode,
             manifest,
@@ -398,6 +406,7 @@ impl ModePackages {
             map,
             content,
             dependencies,
+            scripts,
         };
         LoadCheck::run(&packages, &api)?;
         Ok(packages)

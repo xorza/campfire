@@ -79,7 +79,10 @@ fn on_input(ctx, player, name, value) {
     assert_eq!(game.field("seen"), StateValue::Int(10));
     assert_eq!(held(&game), [(1, Some(u + 4), vec![StateValue::Int(0)])]);
     game.tick(&[(0, input("probe", "unknown"))]);
-    assert_eq!(game.failures(), [Some(ApiError::UnknownModifier)]);
+    assert_eq!(
+        game.failures(),
+        [FailureKind::Api(ApiError::UnknownModifier)]
+    );
 }
 
 #[test]
@@ -137,5 +140,5 @@ fn on_mode_input(ctx, player, name, value) {
         (1, input("probe", "nobody")),
     ]);
     let refused = [ApiError::UnknownModifier, ApiError::UnknownPlayer];
-    assert_eq!(game.failures(), refused.map(Some));
+    assert_eq!(game.failures(), refused.map(FailureKind::Api));
 }

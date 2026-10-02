@@ -258,12 +258,12 @@ impl Error for ApiError {}
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use campfire_script::ScriptError;
+    use campfire_script::{NumError, ScriptError};
 
     use crate::scripts::error::{ApiError, CallError};
 
-    /// What a failed call's error is, without what a script raised or Rhai reported, so a test
-    /// compares it.
+    /// What a failed call's error is, without what Rhai reported, so a test compares it: of what
+    /// a script raised, the `NumError`, none for another value.
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub(crate) enum FailureKind {
         ParamOverflow,
@@ -271,19 +271,21 @@ pub(crate) mod internals {
         Compile,
         CallLimit,
         TickBudget,
-        Raised,
+        Raised(Option<NumError>),
         Runtime,
     }
 
     impl CallError {
-        pub(crate) const fn kind(&self) -> FailureKind {
+        pub(crate) fn kind(&self) -> FailureKind {
             match self {
                 CallError::ParamOverflow => FailureKind::ParamOverflow,
                 CallError::Api(api) => FailureKind::Api(*api),
                 CallError::Script(ScriptError::Compile(_)) => FailureKind::Compile,
                 CallError::Script(ScriptError::CallLimit) => FailureKind::CallLimit,
                 CallError::Script(ScriptError::TickBudget) => FailureKind::TickBudget,
-                CallError::Script(ScriptError::Raised(_)) => FailureKind::Raised,
+                CallError::Script(ScriptError::Raised(raised)) => {
+                    FailureKind::Raised(raised.get::<NumError>())
+                }
                 CallError::Script(ScriptError::Runtime(_)) => FailureKind::Runtime,
             }
         }

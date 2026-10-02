@@ -1,6 +1,6 @@
 use bevy_ecs::schedule::Schedule;
 use bevy_ecs::world::World;
-use campfire_capabilities::{Mode, ModeInputs, ModeSetup, ScriptBook, ScriptBudgets, Units};
+use campfire_capabilities::{Mode, ModeInputs, ModeSetup, ScriptBudgets, Units};
 use campfire_package::ModePackages;
 use campfire_sim::{StateRegistry, TickRate};
 
@@ -48,8 +48,8 @@ impl MatchBuild {
             .capabilities
             .install(world, schedule, registry, Some(budgets));
         packages.compile_scripts(|source| Units::compile(world, source));
+        world.insert_resource(packages.script_book().clone());
         let rate = *world.resource::<TickRate>();
-        let compiled = world.resource::<ScriptBook>().clone();
-        packages.books(rate, &compiled).install(world)
+        packages.books(rate).install(world)
     }
 }

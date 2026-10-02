@@ -84,7 +84,10 @@ fn calc_heal(ctx, h) {
     game.tick(&[]);
     assert_eq!(
         game.failures(),
-        [Some(ApiError::PureCall), Some(ApiError::NotAnAmount)]
+        [
+            FailureKind::Api(ApiError::PureCall),
+            FailureKind::Api(ApiError::NotAnAmount)
+        ]
     );
     assert_eq!(game.sim.life(target), Num::int(950));
     let timers = game.sim.world.resource::<Timers>();

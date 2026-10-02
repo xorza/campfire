@@ -699,7 +699,7 @@ impl Game {
         for (name, data) in &files.modifiers {
             Stats::load_modifier(world, 0, name, data, None);
         }
-        let script = Units::compile(world, &format!("{script}{PICK}")).unwrap();
+        let script = Units::compile_hooked(world, &format!("{script}{PICK}")).unwrap();
         let blessing = Stats::modifier(world, 0, "blessing").unwrap();
         let setup = setup(&files, script, types, spell, strike, blessing);
         let books = {
@@ -773,17 +773,10 @@ impl Game {
             .collect()
     }
 
-    /// The tick's failed calls: each the API's refusal, or `None` for another failure.
-    fn failures(&self) -> Vec<Option<ApiError>> {
-        let failures = self.sim.world.non_send::<ScriptFailures>();
-        failures
-            .get()
-            .iter()
-            .map(|failure| match &failure.error {
-                CallError::Api(error) => Some(*error),
-                _ => None,
-            })
-            .collect()
+    /// The kind of each of the tick's failed calls.
+    fn failures(&self) -> Vec<FailureKind> {
+        let failures = self.sim.world.non_send::<ScriptFailures>().calls();
+        failures.into_iter().map(|failure| failure.kind).collect()
     }
 }
 

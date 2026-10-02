@@ -36,10 +36,10 @@ fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
     assert_eq!(
         game.failures(),
         [
-            Some(ApiError::ChoiceTaken),
-            Some(ApiError::ChoiceCount),
-            None,
-            Some(ApiError::WrongStateType)
+            FailureKind::Api(ApiError::ChoiceTaken),
+            FailureKind::Api(ApiError::ChoiceCount),
+            FailureKind::Raised(None),
+            FailureKind::Api(ApiError::WrongStateType)
         ]
     );
     // Each player's row: duo's two values, hero's, spells', the choices by name. Player 0 chose
@@ -118,8 +118,8 @@ fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
     assert_eq!(
         game.failures(),
         [
-            Some(ApiError::ResourceOverflow),
-            Some(ApiError::UnknownResource)
+            FailureKind::Api(ApiError::ResourceOverflow),
+            FailureKind::Api(ApiError::UnknownResource)
         ]
     );
     // The enemy of a, the 4 grunts with the dead one, b's one hero, the 2 playing teams, the 3
@@ -229,7 +229,7 @@ fn on_input(ctx, player, name, value) {
         ApiError::UnknownChoiceValue,
         ApiError::UnknownChoice,
     ];
-    assert_eq!(game.failures(), refused.map(Some));
+    assert_eq!(game.failures(), refused.map(FailureKind::Api));
     assert_eq!(game.field("kind"), text("hero-x,hero-y"));
     game.tick(&[(2, probe("read"))]);
     assert_eq!(game.field("kind"), text("hero-y,hero-x"));
@@ -247,7 +247,7 @@ fn on_input(ctx, player, name, value) {
         ApiError::UnknownSlotKind,
         ApiError::UnknownAction,
     ];
-    assert_eq!(game.failures(), refused.map(Some));
+    assert_eq!(game.failures(), refused.map(FailureKind::Api));
     assert_eq!(
         slots(&game),
         [(game.strike, basic, 0), (game.blink, spell, 1)]

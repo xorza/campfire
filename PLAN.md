@@ -13,9 +13,9 @@ Touches: every capability, the registry, the package loader, the client, the ref
 
 The structural redesign comes first, in the order below, as [Structural rules](design/02-engine-core.md#structural-rules) asks; each step's shape moves into the design when the step lands. Each step ends with the check chain, both goldens and the structure tests that exist then; a step that changes behaviour names the change. The game model's own steps sit where the redesign makes room for them.
 
-The review of the redesign's diff found two defects and two weak shapes; K1 and K2 close what is left of them before F3. A second review found four more defects, a fact with two owners and a small flaw; K7 and K9 close what is left of them, also before F3.
+The review of the redesign's diff found two defects and two weak shapes; K1 and K2 close what is left of them before F3. A second review found four more defects, a fact with two owners and a small flaw; K7 closes what is left of them, also before F3.
 
-The workspace and test reviews leave three changes, V2 to V4, after K9. The review's other two items need no code: the state hash costs nothing in a match, which hashes at checkpoints and at the result alone, and an empty tick is the 3v3's own work, its AIs' thinks and its towers' sight, not idle systems.
+The workspace and test reviews leave one change, V2, after K7. The review's other two items need no code: the state hash costs nothing in a match, which hashes at checkpoints and at the result alone, and an empty tick is the 3v3's own work, its AIs' thinks and its towers' sight, not idle systems.
 
 1. **K1: every way that applies a modifier gives its params** ([Stats](design/04-capabilities/stats.md#modifiers), Appliers). Changes behaviour. Size M.
    - Today the load accepts a param when one applier declares it, and an application that does not resolve returns with no error: `ctx.add_modifier(target, "slow", 1000)` in the lancer's `quake.rhai` loads and does nothing. `has_modifier` counts as an application.
@@ -36,25 +36,14 @@ The workspace and test reviews leave three changes, V2 to V4, after K9. The revi
    - `ModifierClocks::check` compares each clock with its modifier's spec: an interval and a shield exactly when the spec has one.
    - Tests: a restore test of each flaw above; and a structured fuzz beside the byte flips, which writes into a proving match's snapshot, for each state type, values that pass its decode, restores it, and plays five ticks on what restores.
    - Design 02's rule of restored state names the structured fuzz among what enforces it.
-4. **K9: each script's hooks have one owner** ([Structural rules](design/02-engine-core.md#structural-rules), Books). Size S.
-   - Design 02 says the hooks a script defines come from what the load read of it. Today `Units::compile` also fills the `ScriptBook` of the server's world, the client and the load build it from `ScriptFacts`, and `ModePackages::books(rate, scripts)` takes it from its caller, so a caller can give another book. Only the lane test checks that the two agree.
-   - `ModePackages` builds its `ScriptBook` once, as the load reads the scripts, and holds it. `books(rate)` takes no book, the load check reads the one it holds, and the match installs a copy as its resource. `Units::compile` only compiles, and `compile_scripts` asserts that the host numbers each script at its place.
-   - Test: the lane test's comparison goes, as there is one book.
-5. **V2: the local match pins the round trip to its link model** ([Testing](design/02-engine-core.md#testing-and-diagnostics)). Size S.
+4. **V2: the local match pins the round trip to its link model** ([Testing](design/02-engine-core.md#testing-and-diagnostics)). Size S.
    - Today `DelayLine::pin_round_trip` sets the measured round trip and jitter to zero, and `LocalMatch::client` puts the model's round trip into `SyncConfig::jitter_margin`. So a field named for jitter holds a round trip, and the client's estimate of the server's tick lags the server by the downlink.
    - Lightyear 0.30.1 keeps the client at the remote estimate + rtt / 2 + jitter × `jitter_multiple` + `jitter_margin` ticks + 1 + `error_margin` ticks (`lightyear_sync`, `timeline/input.rs`, `sync_objective`), and the remote estimate is the last tick it received + rtt / 2 (`timeline/remote.rs`). Pin rtt to the model's worst round trip, 2 × (`delay` + `jitter`) steps, and jitter to 0, under the default `SyncConfig` (`jitter_margin` 1, `error_margin` 1): the lead is then rtt + 3 ticks, which is the lead today, rtt pinned to 0 with `jitter_margin` = rtt + `error_margin`. `TickDelta` keeps fractions, so an odd round trip halves exactly.
    - The worst round trip, not the mean that Lightyear measures, because the model's jitter is bounded: a lead that covers it never lets an input arrive late, which the scenarios assume.
    - `pin_round_trip` writes the model's values, and `LocalMatch::client` takes `SyncConfig::default()`. The input lead stays, so the scenarios' expected ticks should not change. The remote estimate moves half a round trip later, to the server's tick; where an expected value changes, the step derives it again and names it.
    - Joins: when every scenario's join order is now fixed, the scenarios name each client's team, and `play_by_team` goes.
    - Tests: the lead after the sync, read from Lightyear's timelines, is rtt + 3 ticks under `PERFECT` and `DELAYED`, at 20 Hz and 30 Hz.
-6. **V3: one way to read script failures**. Size S.
-   - Today three tests read failures their own way: the abilities table of `fn` pointers, as `FailureKind::Raised` drops what the script raised; mode's `failures()`, which maps them to `Option<ApiError>`; and orders' `think()`, which asserts an empty list.
-   - `FailureKind::Raised` holds the `NumError` a script raised, `None` for another value. The three read `ScriptFailures::calls` and compare with `assert_eq!`.
-   - Tests: the abilities table's overflow case expects `Raised(Some(NumError::Overflow))`, and a raise of another value expects `Raised(None)`.
-7. **V4: one hero at two rates**. Size S.
-   - Today the reference heroes run at 30 Hz in `reference_abilities` and at 20 Hz in the 3v3, and no test compares an action's timing across rates.
-   - `reference_abilities` casts Cinder's Eruption at 20 Hz and at 30 Hz. Its area's `delay_ms = 625` is ⌈625 / 50⌉ = 13 ticks at 20 Hz and ⌈625 × 30 / 1000⌉ = ⌈18.75⌉ = 19 ticks at 30 Hz, from its landing to its effect.
-8. **F3: the handles of new deliveries**. After unit script state. Changes behaviour. Size M.
+5. **F3: the handles of new deliveries**. After unit script state. Changes behaviour. Size M.
    - Today `ctx.projectile` and `ctx.area` take their unit's id only later, so they return `()`, and Cinder's `chain_fire.rhai` cannot use the result.
    - A unit that a call creates takes its id when it is queued, as `spawn_unit` does. Calls run in a stable order, so the ids stay in a stable order. `ctx.projectile` and `ctx.area` return a `Unit` handle that the same call can use, and whose `.state` it writes.
    - It waits for unit script state, a unit's `[state]` and `unit.state`, which the API does not have yet: a handle alone gives a script nothing to use.

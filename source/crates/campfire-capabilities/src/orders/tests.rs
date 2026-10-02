@@ -234,7 +234,7 @@ impl Match {
                 ai: PackagePath::parse("scripts/ai.rhai").unwrap(),
                 think_ms: 250,
             };
-            let script = Units::compile(&mut self.sim.world, source).unwrap();
+            let script = Units::compile_hooked(&mut self.sim.world, source).unwrap();
             Orders::load_ai(&mut self.sim.world, unit_type, &ai, script).unwrap();
         }
         unit_type
@@ -243,8 +243,8 @@ impl Match {
     /// Runs a tick, and checks that no script call failed in it.
     fn think(&mut self, inputs: &[(u32, &[u8])]) {
         self.tick(inputs);
-        let failures = self.sim.world.non_send::<ScriptFailures>().get();
-        assert!(failures.is_empty(), "{failures:?}");
+        let failures = self.sim.world.non_send::<ScriptFailures>().calls();
+        assert_eq!(failures, []);
     }
 
     fn set_target(&mut self, unit: StableId, target: Option<StableId>) {
@@ -743,7 +743,7 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
         "fn think(ctx, unit) { }",
     ] {
         let unit_type = game.unit_type(&[], &[], None);
-        let script = Units::compile(&mut game.sim.world, source).unwrap();
+        let script = Units::compile_hooked(&mut game.sim.world, source).unwrap();
         let error = Orders::load_ai(&mut game.sim.world, unit_type, &ai, script).unwrap_err();
         assert!(matches!(error, AiError::NoThink), "{source}: {error:?}");
     }
@@ -852,7 +852,7 @@ fn a_unit_that_finds_the_think_pool_spent_goes_first_next_tick() {
         think_ms: 1,
     };
     let spin = "fn on_think(ctx, unit) { loop {} }";
-    let spin = Units::compile(&mut game.sim.world, spin).unwrap();
+    let spin = Units::compile_hooked(&mut game.sim.world, spin).unwrap();
     Orders::load_ai(&mut game.sim.world, spinner, &ai, spin).unwrap();
     let stats = game.arm(standing(), Team::new(0));
     let first = game.sim.spawn(at(0, 0, 0), (spinner, stats));

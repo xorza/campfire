@@ -1,12 +1,11 @@
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{NonSendMut, ResMut};
-use bevy_ecs::world::{Mut, World};
+use bevy_ecs::world::World;
 use campfire_script::rhai::Dynamic;
 use campfire_script::{ScriptError, ScriptHost, ScriptId};
 use campfire_sim::{SimSet, StateRegistry, TickRate};
 
 use crate::scripts::ctx::Ctx;
-use crate::scripts::script_book::ScriptBook;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::units::body::Body;
@@ -93,7 +92,6 @@ impl Units {
         world.insert_resource(Relations::default());
         registry.register_resource::<Relations>();
         world.insert_resource(Metric::default());
-        world.insert_resource(ScriptBook::default());
         let Some(budgets) = budgets else {
             world.insert_non_send(view);
             return;
@@ -116,12 +114,7 @@ impl Units {
 
     /// Compiles `source` in the match's script host, once for every capability that runs it.
     pub fn compile(world: &mut World, source: &str) -> Result<ScriptId, ScriptError> {
-        let script = world.non_send_mut::<ScriptHost>().compile(source)?;
-        world.resource_scope(|world, mut scripts: Mut<'_, ScriptBook>| {
-            debug_assert_eq!(script.index(), scripts.len(), "the book holds every script");
-            scripts.push(world.non_send::<ScriptHost>().functions(script));
-        });
-        Ok(script)
+        world.non_send_mut::<ScriptHost>().compile(source)
     }
 }
 
@@ -138,6 +131,10 @@ pub(crate) mod internals {
     use crate::stats::stats_column::StatsColumn;
     use std::sync::Arc;
 
+    use bevy_ecs::change_detection::Mut;
+    use campfire_script::{ScriptError, ScriptHost, ScriptId};
+
+    use crate::scripts::script_book::ScriptBook;
     use crate::units::Units;
     use crate::units::script_view::View;
     use crate::units::type_scope::TypeScope;
@@ -147,6 +144,20 @@ pub(crate) mod internals {
     use bevy_ecs::world::World;
 
     impl Units {
+        /// Compiles `source`, and adds the hooks the host reads of it to the match's book, as a
+        /// test match has no package load to read them.
+        pub(crate) fn compile_hooked(
+            world: &mut World,
+            source: &str,
+        ) -> Result<ScriptId, ScriptError> {
+            let script = Units::compile(world, source)?;
+            world.resource_scope(|world, mut scripts: Mut<'_, ScriptBook>| {
+                assert_eq!(script.index(), scripts.len(), "the book holds every script");
+                scripts.push(world.non_send::<ScriptHost>().functions(script));
+            });
+            Ok(script)
+        }
+
         /// Names, for the scripts of a match with no mode, its `damage_kinds`, its `pools` and its
         /// players' `resources`, each by id, as a mode's books name them.
         pub(crate) fn name_kinds(

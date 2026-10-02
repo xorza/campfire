@@ -4,7 +4,7 @@ use std::num::NonZeroU8;
 use bevy_ecs::bundle::Bundle;
 use campfire_common::PlayerSlot;
 use campfire_math::{Num, Vec3};
-use campfire_script::{NumError, ScriptError};
+use campfire_script::NumError;
 use campfire_sim::{Capability, EntityIndex, StateHash};
 
 use super::*;
@@ -39,8 +39,8 @@ use crate::projectiles::projectile_data::ProjectileData;
 use crate::scripts::error::ApiError;
 use crate::scripts::error::internals::FailureKind;
 use crate::scripts::script_budgets::ScriptBudgets;
+use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::script_failures::internals::FailedCall;
-use crate::scripts::script_failures::{ScriptFailure, ScriptFailures};
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats;
 use crate::stats::Stats;
@@ -271,7 +271,7 @@ impl Match {
 
     /// Loads `data` as the action `name` of package 0, of 5 ranks, with its script `source`.
     fn load(&mut self, name: &str, data: &ActionData, source: &str) -> ActionId {
-        let script = Units::compile(&mut self.sim.world, source).unwrap();
+        let script = Units::compile_hooked(&mut self.sim.world, source).unwrap();
         Actions::load(&mut self.sim.world, 0, name, data, Some(script), 5).unwrap()
     }
 
@@ -373,10 +373,6 @@ impl Match {
     fn failed_calls(&self) -> Vec<FailedCall> {
         self.sim.world.non_send::<ScriptFailures>().calls()
     }
-
-    fn failures(&self) -> &[ScriptFailure] {
-        self.sim.world.non_send::<ScriptFailures>().get()
-    }
 }
 
 #[test]
@@ -428,7 +424,7 @@ fn lash_out_hits_every_enemy_within_its_radius_exactly() {
     assert_eq!(healths(&game), [400, 400, 500, 400, 500, 500]);
     assert_eq!(game.pool(husk), 65);
     assert_eq!(game.slot(husk).ready_at, Tick::new(270));
-    assert!(game.failures().is_empty());
+    assert_eq!(game.failed_calls(), []);
 
     // On cooldown until tick 270: a cast in tick 1 does nothing.
     game.cast(husk, ActionTarget::None);
@@ -475,7 +471,7 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
         think_ms: 1,
     };
     let spin = "fn on_think(ctx, unit) { loop {} }";
-    let spin = Units::compile(&mut game.sim.world, spin).unwrap();
+    let spin = Units::compile_hooked(&mut game.sim.world, spin).unwrap();
     Orders::load_ai(&mut game.sim.world, spinner, &ai, spin).unwrap();
     let spinners: Vec<_> = (0..11)
         .map(|z| game.spawn(2, ground(Num::ZERO, Num::int(20 + z)), spinner))
@@ -487,16 +483,15 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
     assert_eq!(game.pool(caster), 90);
     // The think pool runs out after 10 of the spinning calls: the first 10 spinners, by stable
     // id, spend it, and the last stays due.
-    let failures = game.failures();
-    let failed: Vec<_> = failures
-        .iter()
-        .map(|failure| (failure.unit, failure.hook))
-        .collect();
     let expected: Vec<_> = spinners[..10]
         .iter()
-        .map(|&id| (Some(id), Hook::OnThink))
+        .map(|&id| FailedCall {
+            unit: Some(id),
+            hook: Hook::OnThink,
+            kind: FailureKind::CallLimit,
+        })
         .collect();
-    assert_eq!(failed, expected);
+    assert_eq!(game.failed_calls(), expected);
     let mut budgets = game.sim.world.resource_mut::<ScriptBudgets>();
     assert_eq!(budgets.get_mut(Pool::Think).left(), 0);
 }
@@ -696,22 +691,13 @@ fn a_failed_script_changes_nothing_and_fails_the_same_way_everywhere() {
         params: BTreeMap::new(),
         ..lash_out()
     };
-    let cases: [(&str, fn(&CallError) -> bool); 4] = [
-        (spin, |error| {
-            matches!(error, CallError::Script(ScriptError::CallLimit))
-        }),
-        (wrong_kind, |error| {
-            matches!(error, CallError::Api(ApiError::UnknownDamageKind))
-        }),
-        (undeclared, |error| {
-            matches!(error, CallError::Api(ApiError::UnknownParam))
-        }),
-        (overflow, |error| match error {
-            CallError::Script(ScriptError::Raised(raised)) => {
-                raised.get::<NumError>() == Some(NumError::Overflow)
-            }
-            _ => false,
-        }),
+    let thrown = r#"fn on_resolve(ctx, caster, target) { for unit in ctx.find(caster, caster.pos, 10, "enemies") { ctx.damage(unit, 50, "magic"); } throw "out" }"#;
+    let cases = [
+        (spin, FailureKind::CallLimit),
+        (wrong_kind, FailureKind::Api(ApiError::UnknownDamageKind)),
+        (undeclared, FailureKind::Api(ApiError::UnknownParam)),
+        (overflow, FailureKind::Raised(Some(NumError::Overflow))),
+        (thrown, FailureKind::Raised(None)),
     ];
     for (script, expected) in cases {
         // Two matches alike, but only one gets the cast order.
@@ -724,11 +710,12 @@ fn a_failed_script_changes_nothing_and_fails_the_same_way_everywhere() {
             let enemy = game.spawn(1, ground(Num::int(1), Num::ZERO), ());
             if ordered {
                 game.cast(caster, ActionTarget::None);
-                let failures = game.failures();
-                assert_eq!(failures.len(), 1, "{script}");
-                assert_eq!(failures[0].unit, Some(caster));
-                assert_eq!(failures[0].hook, Hook::OnResolve);
-                assert!(expected(&failures[0].error), "{:?}", failures[0].error);
+                let failed = FailedCall {
+                    unit: Some(caster),
+                    hook: Hook::OnResolve,
+                    kind: expected,
+                };
+                assert_eq!(game.failed_calls(), [failed], "{script}");
                 let mut budgets = game.sim.world.resource_mut::<ScriptBudgets>();
                 spent.push(
                     ScriptLimits::ROOMY.player
@@ -790,15 +777,13 @@ fn a_cast_draws_from_its_casters_player_pool() {
             (striker, ActionTarget::Unit(enemy)),
         ];
         game.casts(if spins { &casts } else { &casts[1..] });
-        let failures = game.failures();
-        assert_eq!(failures.len(), usize::from(spins));
-        if spins {
-            assert_eq!(failures[0].unit, Some(spinner));
-            assert!(matches!(
-                failures[0].error,
-                CallError::Script(ScriptError::CallLimit)
-            ));
-        }
+        let limited = FailedCall {
+            unit: Some(spinner),
+            hook: Hook::OnResolve,
+            kind: FailureKind::CallLimit,
+        };
+        let expected: Vec<_> = spins.then_some(limited).into_iter().collect();
+        assert_eq!(game.failed_calls(), expected);
         // The strike's 50 true damage: 500 → 450, and its cost of 10: 100 → 90.
         assert_eq!(game.sim.health(enemy), 450);
         assert_eq!(game.pool(striker), 90);
@@ -823,7 +808,7 @@ fn an_ability_loads_only_when_its_data_holds() {
     let mut game = Match::new();
     game.load_stats();
     let load = |game: &mut Match, data: &ActionData, source: &str| {
-        let script = Units::compile(&mut game.sim.world, source).unwrap();
+        let script = Units::compile_hooked(&mut game.sim.world, source).unwrap();
         Actions::load(&mut game.sim.world, 0, "lash_out", data, Some(script), 5)
     };
     let mut uneven = lash_out();
@@ -877,7 +862,7 @@ fn an_ability_loads_only_when_its_data_holds() {
     let passive = load(&mut game, &lash_out(), modifiers_only).unwrap();
     let caster = game.caster(passive, 1);
     game.cast(caster, ActionTarget::None);
-    assert!(game.failures().is_empty());
+    assert_eq!(game.failed_calls(), []);
     assert_eq!(game.pool(caster), 65);
     assert_eq!(game.slot(caster).ready_at, Tick::new(300));
 }
@@ -906,7 +891,7 @@ fn a_capability_field_reads_its_param_at_each_rank() {
         Param::Ranked(Ranked::One(Scalar::Int(7))),
     );
     let mut game = Match::new();
-    let strike = Units::compile(&mut game.sim.world, STRIKE).unwrap();
+    let strike = Units::compile_hooked(&mut game.sim.world, STRIKE).unwrap();
     let id = Actions::load(&mut game.sim.world, 0, "strike", &data, Some(strike), 3).unwrap();
     let book = game.sim.world.resource::<ActionBook>();
     let ranks: Vec<_> = book
@@ -1088,7 +1073,7 @@ fn on_resolve(ctx, caster, target) {
     ctx.add_modifier(caster, "mark");
 }
 "#;
-    let script = Units::compile(&mut game.sim.world, own).unwrap();
+    let script = Units::compile_hooked(&mut game.sim.world, own).unwrap();
     let theirs = Actions::load(
         &mut game.sim.world,
         1,
@@ -1100,7 +1085,7 @@ fn on_resolve(ctx, caster, target) {
     let slots = ActionSlots::new([(theirs.unwrap(), SlotKind::new(0), 1)]);
     game.sim.world.entity_mut(entity).insert(slots);
     game.cast(caster, ActionTarget::None);
-    assert!(game.failures().is_empty(), "{:?}", game.failures());
+    assert_eq!(game.failed_calls(), []);
     let book = game.sim.world.resource::<ModifierBook>();
     let ids = [0, 1].map(|package| book.named(package, "mark").unwrap());
     let modifiers = game.sim.world.get::<Modifiers>(entity).unwrap();
@@ -1384,7 +1369,7 @@ impl Match {
         let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
         let mut game = Match::with(ScriptLimits::ROOMY, &declared);
         game.load_stats();
-        let script = Units::compile(&mut game.sim.world, source).unwrap();
+        let script = Units::compile_hooked(&mut game.sim.world, source).unwrap();
         let mut sorted = modifiers.to_vec();
         sorted.sort_by(|a, b| a.0.cmp(b.0));
         for (name, data) in &sorted {
@@ -1411,7 +1396,7 @@ impl Match {
 
     /// Each failed call of the tick: the unit it ran for and its hook.
     fn calls(&self) -> Vec<(StableId, Hook)> {
-        let failures = self.failures().iter();
+        let failures = self.failed_calls().into_iter();
         failures
             .map(|failure| (failure.unit.unwrap(), failure.hook))
             .collect()
@@ -1661,7 +1646,7 @@ fn on_resolve(ctx, caster, target) {
     // At rank 2 and level 3: 200 + 10 × 2 + 0.5 × 40 + 1.5 × (80 − 60) = 270, which the script
     // deals, 500 → 230, and the mark lasts: 270 ms at 30 ticks a second, 8.1 ticks, up to 9,
     // so it ends as tick t + 10 starts.
-    assert!(game.failures().is_empty(), "{:?}", game.failures());
+    assert_eq!(game.failed_calls(), []);
     assert_eq!(game.sim.health(target), 230);
     let mark = Stats::modifier(&game.sim.world, 0, "mark").unwrap();
     let marked = game
@@ -1889,7 +1874,7 @@ fn a_delivery_hook_reads_its_projectile_and_the_unit_its_cast_aimed_at() {
             ctx.damage(d.source, 1, "true");
         }
     "#;
-    let script = Units::compile(&mut game.sim.world, watch).unwrap();
+    let script = Units::compile_hooked(&mut game.sim.world, watch).unwrap();
     Stats::load_modifier(
         &mut game.sim.world,
         0,
@@ -1907,7 +1892,7 @@ fn a_delivery_hook_reads_its_projectile_and_the_unit_its_cast_aimed_at() {
         (game.sim.health(target), game.sim.health(caster)),
         (450, 492)
     );
-    assert!(game.failures().is_empty(), "{:?}", game.failures());
+    assert_eq!(game.failed_calls(), []);
 }
 
 #[test]
@@ -1962,17 +1947,14 @@ fn a_script_launches_a_projectile_only_in_the_form_its_type_flies() {
             let mut projectiles = game.sim.world.query::<&Projectile>();
             let launched = projectiles.iter(&game.sim.world).count();
             let failed: Vec<_> = game
-                .failures()
-                .iter()
-                .map(|failure| match failure.error {
-                    CallError::Api(error) => Some(error),
-                    _ => None,
-                })
+                .failed_calls()
+                .into_iter()
+                .map(|failure| failure.kind)
                 .collect();
             if homing == at_unit {
                 assert_eq!((launched, failed), (2, vec![]), "{homing} {call}");
             } else {
-                let other = Some(ApiError::OtherFlight);
+                let other = FailureKind::Api(ApiError::OtherFlight);
                 assert_eq!((launched, failed), (0, vec![other]), "{homing} {call}");
             }
         }
@@ -2111,7 +2093,7 @@ fn fan_of_frost_from_data_alone_hits_exactly_the_units_in_reach() {
     assert_eq!(struck(ally), (500, false));
     // The caster paid its 10 mana of 100, and two hits gave back 2 each.
     assert_eq!(game.pool(caster), 94);
-    assert!(game.failures().is_empty(), "{:?}", game.failures());
+    assert_eq!(game.failed_calls(), []);
 }
 
 #[test]
@@ -2195,7 +2177,7 @@ fn an_area_reaches_the_bodies_within_its_radius_once_at_its_delay_and_ends() {
         let healths = units.map(|unit| game.sim.health(unit));
         assert_eq!(healths, [450, 500, 450, 450, 500, 493], "{delay_ms}");
         assert_eq!(areas(&mut game), 0);
-        assert!(game.failures().is_empty(), "{:?}", game.failures());
+        assert_eq!(game.failed_calls(), []);
     }
 }
 
@@ -2300,7 +2282,7 @@ fn an_area_holds_its_inside_modifiers_by_attitude_and_hits_what_its_filter_selec
     assert_eq!(held(&game), inside);
     game.sim.run_until(4);
     assert_eq!(held(&game), [const { Vec::new() }; 7]);
-    assert!(game.failures().is_empty(), "{:?}", game.failures());
+    assert_eq!(game.failed_calls(), []);
 }
 
 #[test]

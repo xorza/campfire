@@ -95,7 +95,7 @@ impl Plugin for SimClient {
             .capabilities
             .install(world, &mut schedule, &mut state, None);
         packages
-            .books(rate, &packages.script_book())
+            .books(rate)
             .install_prediction(world, packages.walkers());
         world.add_schedule(schedule);
         mark_unpredicted(world);

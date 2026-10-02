@@ -91,14 +91,17 @@ fn on_mode_input(ctx, player, name, value) {
 
     // A living unit, and a dead one whose type despawns, cannot respawn.
     game.tick(&[(0, input("probe", "tower"))]);
-    assert_eq!(game.failures(), [Some(ApiError::RespawnAlive)]);
+    assert_eq!(game.failures(), [FailureKind::Api(ApiError::RespawnAlive)]);
     let tower = game.entity(0);
     game.sim
         .world
         .entity_mut(tower)
         .insert((Dead, OnDeath::Despawn));
     game.tick(&[(0, input("probe", "tower"))]);
-    assert_eq!(game.failures(), [Some(ApiError::RespawnDespawns)]);
+    assert_eq!(
+        game.failures(),
+        [FailureKind::Api(ApiError::RespawnDespawns)]
+    );
     assert!(game.sim.world.get_entity(tower).is_err());
 }
 
@@ -130,9 +133,9 @@ fn on_mode_input(ctx, player, name, value) {
     // A second end in the same call fails the call, which ends nothing; so does a team the mode
     // does not have. The timer fires at the end of ticks 0 and 1.
     game.tick(&[(0, input("probe", "a"))]);
-    assert_eq!(game.failures(), [Some(ApiError::Ended)]);
+    assert_eq!(game.failures(), [FailureKind::Api(ApiError::Ended)]);
     game.tick(&[(0, input("hero", "z"))]);
-    assert_eq!(game.failures(), [Some(ApiError::UnknownTeam)]);
+    assert_eq!(game.failures(), [FailureKind::Api(ApiError::UnknownTeam)]);
     assert!(!game.sim.world.contains_resource::<MatchEnd>());
     assert_eq!(game.field("count"), StateValue::Int(2));
 

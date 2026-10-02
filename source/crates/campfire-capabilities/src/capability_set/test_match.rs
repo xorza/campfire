@@ -20,6 +20,7 @@ use crate::combat::Combat;
 use crate::combat::internals;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
+use crate::scripts::script_book::ScriptBook;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
@@ -52,6 +53,8 @@ impl TestMatch {
         let mut registry = StateRegistry::new();
         let set = CapabilitySet::new(declared).expect("a test declares a valid set");
         set.install(&mut world, &mut schedule, &mut registry, budgets);
+        // A match installs the book its package load read; a test fills one as it compiles.
+        world.insert_resource(ScriptBook::default());
         if set.contains(Capability::Combat) {
             internals::bind_life(&mut world, PoolId::FIRST);
         }
