@@ -132,7 +132,7 @@ impl ModifierHooks {
             heard.extend(
                 modifiers
                     .iter()
-                    .filter(|instance| defines(instance.id) && takes_effect(instance.tags))
+                    .filter(|instance| defines(instance.id) && takes_effect(book.tags(instance.id)))
                     .map(|instance| Heard {
                         id: instance.id,
                         source: instance.source,

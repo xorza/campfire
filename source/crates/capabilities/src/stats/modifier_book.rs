@@ -151,6 +151,11 @@ impl ModifierBook {
         self.entries.get(id.index())
     }
 
+    /// The tags modifier `id` grants its carrier.
+    pub(crate) fn tags(&self, id: ModifierId) -> TagSet {
+        self.get(id).tags
+    }
+
     pub(crate) fn get(&self, id: ModifierId) -> &ModifierEntry {
         &self.entries[id.index()]
     }
@@ -203,8 +208,6 @@ impl ModifierBook {
         let shares = spec.stats.iter().map(|change| {
             let read = read(&change.value)?;
             Some(StatShare {
-                stat: change.stat,
-                op: change.op,
                 value: read.value,
                 live: read.live,
             })
@@ -231,7 +234,6 @@ impl ModifierBook {
             interval,
             shield: value(spec.shield.as_ref())?,
             stats: shares.collect::<Option<_>>()?,
-            tags: entry.tags,
             state: spec.initial.to_vec(),
         };
         Some(Application {
@@ -275,3 +277,63 @@ const MODIFIER_HOOKS: [Hook; 6] = [
     Hook::OnKill,
     Hook::OnTakedown,
 ];
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use std::sync::Arc;
+
+    use crate::scripts::hook_set::HookSet;
+    use crate::stats::modifier_book::{ModifierBook, ModifierEntry};
+    use crate::stats::modifier_data::Reapply;
+    use crate::stats::modifier_spec::{ModifierSpec, SpecChange, SpecNumber};
+    use crate::stats::stat_id::StatId;
+    use crate::stats::stat_op::StatOp;
+    use crate::units::modifier_id::ModifierId;
+    use crate::units::tag_set::TagSet;
+    use campfire_math::Num;
+
+    impl ModifierBook {
+        /// Adds a modifier of no script, times or state that changes each stat of `changes` by
+        /// its op, by a value its instances hold, and grants `tags`: what a test's instances are
+        /// instances of. Its id, after every modifier before it.
+        pub(crate) fn push_changes(
+            &mut self,
+            changes: &[(StatId, StatOp)],
+            tags: TagSet,
+        ) -> ModifierId {
+            let book = Arc::make_mut(&mut self.entries);
+            let at = book.len();
+            let stats = changes.iter().map(|&(stat, op)| SpecChange {
+                stat,
+                op,
+                value: SpecNumber::Value(Num::ZERO),
+            });
+            book.push(ModifierEntry {
+                package: u16::MAX,
+                name: format!("{at:05}").into(),
+                spec: ModifierSpec {
+                    duration: None,
+                    interval: None,
+                    stacks_expire: None,
+                    reapply: Reapply::Refresh,
+                    max_stacks: None,
+                    stats: stats.collect(),
+                    shield: None,
+                    aura: None,
+                    affects: None,
+                    fields: Arc::from([]),
+                    initial: Box::new([]),
+                },
+                script: None,
+                hooks: HookSet::default(),
+                tags,
+            });
+            ModifierId::nth(at)
+        }
+
+        /// Makes modifier `id` grant `tags`, as a test's data would.
+        pub(crate) fn grant_tags(&mut self, id: ModifierId, tags: TagSet) {
+            Arc::make_mut(&mut self.entries)[id.index()].tags = tags;
+        }
+    }
+}

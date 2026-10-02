@@ -940,7 +940,6 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
         interval: None,
         shield: Some(num(amount)),
         stats: Vec::new(),
-        tags: TagSet::default(),
         state: Vec::new(),
     };
     for name in ["first", "second", "third"] {

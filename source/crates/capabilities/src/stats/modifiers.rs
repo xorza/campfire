@@ -14,12 +14,8 @@ use crate::stats::live_param::LiveParam;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_data::Reapply;
 use crate::stats::param_book::ParamBook;
-use crate::stats::stat_book::StatBook;
-use crate::stats::stat_id::StatId;
-use crate::stats::stat_op::StatOp;
 use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
-use crate::units::tag_set::TagSet;
 
 /// The modifiers a unit carries, by id, then source, one instance of an id from each source.
 #[derive(Component, Debug, Clone, Default, PartialEq, Eq, Serialize)]
@@ -51,10 +47,9 @@ pub(crate) struct Instance {
     pub(crate) interval: Option<Interval>,
     /// What is left of its shield.
     pub(crate) shield: Option<Num>,
-    /// What it adds to each stat a stack, by the stat's place in the stat book.
+    /// What it adds a stack to each stat its modifier changes, in the order of its modifier's
+    /// changes, which name the stats and how they change.
     pub(crate) stats: Vec<StatShare>,
-    /// The tags it grants its carrier.
-    pub(crate) tags: TagSet,
     /// Its script state, in the order of its fields' names.
     pub(crate) state: Vec<StateValue>,
 }
@@ -73,12 +68,10 @@ pub(crate) struct StackEnd {
     pub(crate) count: u32,
 }
 
-/// A modifier's change of one stat a stack: `value`, which the refresh reads again from `live`
-/// when the change reads a scaling table.
+/// The value a stack of a modifier's change of one stat adds: `value`, which the refresh reads
+/// again from `live` when the change reads a scaling table.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct StatShare {
-    pub(crate) stat: StatId,
-    pub(crate) op: StatOp,
     pub(crate) value: Num,
     pub(crate) live: Option<LiveParam>,
 }
@@ -206,19 +199,19 @@ impl Modifiers {
         true
     }
 
-    /// Counts the intervals of tick `now`: each instance whose interval comes, and whose tags
-    /// `takes_effect` lets act, goes to `due`, by id and source, and its next comes an interval
-    /// later; whether any came.
+    /// Counts the intervals of tick `now`: each instance whose interval comes, and whose
+    /// modifier `takes_effect` lets act, goes to `due`, by id and source, and its next comes an
+    /// interval later; whether any came.
     pub(crate) fn advance_intervals(
         &mut self,
         now: Tick,
-        takes_effect: impl Fn(TagSet) -> bool,
+        takes_effect: impl Fn(ModifierId) -> bool,
         mut due: impl FnMut(ModifierId, Option<StableId>),
     ) -> bool {
         let mut any = false;
         for instance in &mut self.0 {
             if instance.interval_due(now) {
-                if takes_effect(instance.tags) {
+                if takes_effect(instance.id) {
                     due(instance.id, instance.source);
                 }
                 any = true;
@@ -227,17 +220,21 @@ impl Modifiers {
         any
     }
 
-    /// Spends shields on `amount` of damage: of the instances whose tags `takes_effect` lets act,
+    /// Spends shields on `amount` of damage: of the instances whose modifier `takes_effect` lets act,
     /// the shield that ends soonest first, one with no end last, and shields with the same end in
     /// the order kept; a shield spent to 0 ends its instance. What is left of the amount.
-    pub(crate) fn absorb(&mut self, mut amount: Num, takes_effect: impl Fn(TagSet) -> bool) -> Num {
+    pub(crate) fn absorb(
+        &mut self,
+        mut amount: Num,
+        takes_effect: impl Fn(ModifierId) -> bool,
+    ) -> Num {
         while amount > Num::ZERO {
             let soonest = self
                 .0
                 .iter()
                 .enumerate()
                 .filter(|(_, instance)| instance.shield.is_some_and(|shield| shield > Num::ZERO))
-                .filter(|(_, instance)| takes_effect(instance.tags))
+                .filter(|(_, instance)| takes_effect(instance.id))
                 .min_by_key(|&(at, instance)| {
                     let until = instance.lifetime.until();
                     (until.is_none(), until, at)
@@ -290,25 +287,21 @@ impl Modifiers {
 }
 
 impl Instance {
-    /// Whether its modifier, its ability's params, each stat it changes and each live param it
-    /// reads are ones the books hold, and its state has a value of each of its modifier's state
-    /// fields' types, in their order.
-    pub(crate) fn fits(
-        &self,
-        modifiers: &ModifierBook,
-        stats: &StatBook,
-        params: &ParamBook,
-    ) -> bool {
+    /// Whether its modifier, its ability's params and each live param it reads are ones the books
+    /// hold, it has a value for each of its modifier's stat changes, and its state has a value of
+    /// each of its modifier's state fields' types, in their order.
+    pub(crate) fn fits(&self, modifiers: &ModifierBook, params: &ParamBook) -> bool {
         let Some(entry) = modifiers.entry(self.id) else {
             return false;
         };
         let ability = self
             .ability
             .is_none_or(|ability| params.has_action(ability));
-        let shares = self.stats.iter().all(|share| {
-            share.stat.index() < usize::from(stats.len())
-                && share.live.is_none_or(|live| params.has_live(live))
-        });
+        let shares = self.stats.len() == entry.spec.stats.len()
+            && self
+                .stats
+                .iter()
+                .all(|share| share.live.is_none_or(|live| params.has_live(live)));
         let fields = &entry.spec.fields;
         let typed = self.state.len() == fields.len()
             && self
@@ -418,15 +411,14 @@ impl SimComponent for Modifiers {
     fn check(&self, world: &World, _: Entity) -> bool {
         let books = (
             world.get_resource::<ModifierBook>(),
-            world.get_resource::<StatBook>(),
             world.get_resource::<ParamBook>(),
         );
-        let (Some(modifiers), Some(stats), Some(params)) = books else {
+        let (Some(modifiers), Some(params)) = books else {
             return self.0.is_empty();
         };
         self.0
             .iter()
-            .all(|instance| instance.fits(modifiers, stats, params))
+            .all(|instance| instance.fits(modifiers, params))
     }
 }
 
@@ -509,12 +501,9 @@ mod tests {
                 interval: None,
                 shield: None,
                 stats: vec![StatShare {
-                    stat: StatId::new(0),
-                    op: StatOp::Add,
                     value: num(armor),
                     live: None,
                 }],
-                tags: TagSet::default(),
                 state: vec![StateValue::Int(7)],
             },
             reapply,

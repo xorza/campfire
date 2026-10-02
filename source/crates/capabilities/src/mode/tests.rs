@@ -59,6 +59,7 @@ use crate::stats;
 use crate::stats::Stats;
 use crate::stats::level::Level;
 use crate::stats::lifetime::{Ends, Hold, Lifetime};
+use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifiers::Modifiers;
 use crate::stats::modifiers::{Application, Instance, StatShare};
@@ -67,7 +68,6 @@ use crate::stats::player_modifiers::{PlayerModifier, PlayerModifiers};
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::stat_book::StatBook;
-use crate::stats::stat_id::StatId;
 use crate::stats::stat_op::StatOp;
 use crate::stats::stat_rule::StatRule;
 use crate::stats::unit_stats::UnitStats;
@@ -1783,14 +1783,22 @@ impl Game {
     /// A grunt of 1000 health on `team`, whose modifier adds `stats` by name.
     fn fighter(&mut self, team: u8, stats: &[(&str, Num)]) -> StableId {
         let book = self.world.resource::<StatBook>();
-        let shares = stats.iter().map(|&(name, value)| StatShare {
-            stat: book.named(&Stat::named(name).unwrap()).unwrap(),
-            op: StatOp::Add,
-            value,
-            live: None,
-        });
+        let changes: Vec<_> = stats
+            .iter()
+            .map(|&(name, _)| {
+                (
+                    book.named(&Stat::named(name).unwrap()).unwrap(),
+                    StatOp::Add,
+                )
+            })
+            .collect();
+        let mut modifiers = self.world.resource_mut::<ModifierBook>();
+        let id = modifiers.push_changes(&changes, TagSet::default());
+        let shares = stats
+            .iter()
+            .map(|&(_, value)| StatShare { value, live: None });
         let instance = Instance {
-            id: ModifierId::new(0),
+            id,
             source: None,
             ability: None,
             rank: 1,
@@ -1802,8 +1810,7 @@ impl Game {
             interval: None,
             shield: None,
             stats: shares.collect(),
-            tags: TagSet::default(),
-            state: vec![StateValue::Int(0)],
+            state: Vec::new(),
         };
         let mut modifiers = Modifiers::default();
         modifiers.apply(Application {
@@ -2392,26 +2399,24 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     assert!(LevelUps(vec![level_up(1)]).check(world));
     assert!(!LevelUps(vec![level_up(2)]).check(world));
 
-    // A modifier of the book, with its one state field an integer and a stat of the book, as the
-    // fighter's is; not one the book lacks, nor one of other state or a stat past the book's.
+    // A modifier of the book, with a value for its one change and no state, as the fighter's is;
+    // not one the book lacks, nor one of other state or another count of changes.
     let fighter = game.fighter(0, &[("armor", num(1))]);
     let fighter = game.entity(fighter.get());
     let world = &game.world;
     let modifiers = world.get::<Modifiers>(fighter).unwrap().clone();
     assert!(modifiers.check(world, fighter));
+    let modifier = modifiers.iter().next().unwrap().id;
     let changed = |change: &dyn Fn(&mut Instance)| {
         let mut changed = modifiers.clone();
-        change(changed.get_mut(ModifierId::new(0), None).unwrap());
+        change(changed.get_mut(modifier, None).unwrap());
         changed.check(world, fighter)
     };
     assert!(!changed(&|instance| instance.id = ModifierId::new(u16::MAX)));
     assert!(!changed(
         &|instance| instance.state = vec![StateValue::Bool(true)]
     ));
-    assert!(!changed(&|instance| instance.state.clear()));
-    assert!(!changed(
-        &|instance| instance.stats[0].stat = StatId::new(usize::from(u16::MAX))
-    ));
+    assert!(!changed(&|instance| instance.stats.clear()));
     let mut held = PlayerModifiers::default();
     held.add(PlayerModifier {
         player: PlayerSlot::new(0),

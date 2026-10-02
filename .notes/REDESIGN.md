@@ -218,12 +218,11 @@ capability_set, books
 
 ### Problem
 
-- Components hold copies of what the books hold: an instance's tags and its stats' places and operations, a queue's capacity, the players' resource count, an order's kind, and a level beside the level track's experience.
+- Components hold copies of what the books hold: a queue's capacity, the players' resource count, an order's kind, and a level beside the level track's experience.
 
 ### Shape
 
 - **Book data leaves the state** (R1):
-  - `Instance` keeps only its values, and reads tags and `(stat, op)` from the book by id;
   - `TrainQueue` reads its capacity from the kit, and stores each entry's time at push;
   - `PlayerResources` reads its count from the books;
   - `InProgress` reads its kind from the book;

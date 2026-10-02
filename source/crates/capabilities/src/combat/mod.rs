@@ -41,6 +41,7 @@ use crate::scripts::hook::Hook;
 use crate::scripts::script_batch::ScriptBatch;
 use crate::stats::StatsSet;
 use crate::stats::life_pool::LifePool;
+use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
@@ -315,9 +316,13 @@ fn run_intervals(
     let granting = world
         .get_resource::<TagBook>()
         .map_or(TagSet::default(), TagBook::granting);
+    let Some(book) = world.get_resource::<ModifierBook>().cloned() else {
+        return;
+    };
     due.clear();
     for (&carrier, mut modifiers, tags) in carriers.iter_mut(world) {
         let immune = tags.map_or(TagSet::default(), |tags| tags.immune);
+        let takes_effect = TagBook::effect_test(granting, immune);
         let push = |id, source| {
             due.push(IntervalDue {
                 carrier,
@@ -327,7 +332,7 @@ fn run_intervals(
         };
         if modifiers.bypass_change_detection().advance_intervals(
             now,
-            TagBook::effect_test(granting, immune),
+            |id| takes_effect(book.tags(id)),
             push,
         ) {
             modifiers.set_changed();
@@ -634,10 +639,11 @@ impl Combat {
         let source = damage.source.filter(|&source| index.get(source).is_some());
         let mut left = amount.max(Num::ZERO);
         let takes_effect = TagBook::effective(world, entity);
-        if let Some(mut modifiers) = world.get_mut::<Modifiers>(entity) {
+        let book = world.get_resource::<ModifierBook>().cloned();
+        if let (Some(mut modifiers), Some(book)) = (world.get_mut::<Modifiers>(entity), book) {
             let after = modifiers
                 .bypass_change_detection()
-                .absorb(left, takes_effect);
+                .absorb(left, |id| takes_effect(book.tags(id)));
             if after != left {
                 modifiers.set_changed();
             }

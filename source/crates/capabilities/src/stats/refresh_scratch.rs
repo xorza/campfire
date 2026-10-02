@@ -3,6 +3,7 @@ use campfire_math::Num;
 use campfire_sim::StableId;
 
 use crate::stats::live_param::LiveParam;
+use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::param_book::ParamBook;
 use crate::stats::param_source::ParamSource;
@@ -59,12 +60,13 @@ impl RefreshScratch {
         self.lives.clear();
     }
 
-    /// Adds `unit`, carrying `modifiers`, of which those whose tags `takes_effect` lets act
-    /// change its stats: its totals before its live changes, and its live changes. Whether it
-    /// carries a live change.
+    /// Adds `unit`, carrying `modifiers`, of which those whose tags in `modifier_book`
+    /// `takes_effect` lets act change its stats, as their changes there say: its totals before
+    /// its live changes, and its live changes. Whether it carries a live change.
     pub(crate) fn add(
         &mut self,
         book: &StatBook,
+        modifier_book: &ModifierBook,
         unit: Refreshing,
         modifiers: Option<&Modifiers>,
         takes_effect: impl Fn(TagSet) -> bool,
@@ -75,18 +77,22 @@ impl RefreshScratch {
         book.totals(unit.unit_type, unit.level, &mut self.totals);
         let mut live = false;
         let held = modifiers.into_iter().flat_map(Modifiers::iter);
-        for instance in held.filter(|instance| takes_effect(instance.tags)) {
-            for share in &instance.stats {
+        for instance in held {
+            let entry = modifier_book.get(instance.id);
+            if !takes_effect(entry.tags) {
+                continue;
+            }
+            for (share, spec) in instance.stats.iter().zip(&entry.spec.stats) {
                 let Some(param) = share.live else {
                     let change = i128::from(share.value.to_bits()) * i128::from(instance.stacks);
-                    self.totals[row + share.stat.index()].change(share.op, change);
+                    self.totals[row + spec.stat.index()].change(spec.op, change);
                     continue;
                 };
                 live = true;
                 self.lives.push(LiveTerm {
                     unit: at,
-                    stat: share.stat,
-                    op: share.op,
+                    stat: spec.stat,
+                    op: spec.op,
                     stacks: instance.stacks,
                     live: param,
                     rank: instance.rank,

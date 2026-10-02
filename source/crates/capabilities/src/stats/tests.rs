@@ -17,7 +17,6 @@ use crate::stats::modifiers::{Application, Instance, StatShare};
 use crate::stats::pool_data::PoolData;
 use crate::stats::pool_id::PoolId;
 use crate::stats::stat_change::StatChange;
-use crate::stats::stat_id::StatId;
 use crate::stats::stat_op::StatOp;
 use crate::stats::stat_rule::StatRule;
 use crate::stats::stats_data::{StatValue, StatsData};
@@ -238,14 +237,7 @@ fn a_units_stats_follow_its_type_and_level_within_their_limits() {
 
 /// An application from `source` of modifier `id`, changing `stat` by `value` a stack with `op`,
 /// refreshed or stacked as `reapply` says.
-fn share(
-    id: u16,
-    source: Option<StableId>,
-    stat: StatId,
-    op: StatOp,
-    value: Num,
-    reapply: Reapply,
-) -> Application {
+fn share(id: u16, source: Option<StableId>, value: Num, reapply: Reapply) -> Application {
     Application {
         instance: Instance {
             id: ModifierId::new(id),
@@ -259,13 +251,7 @@ fn share(
             stack_ends: Vec::new(),
             interval: None,
             shield: None,
-            stats: vec![StatShare {
-                stat,
-                op,
-                value,
-                live: None,
-            }],
-            tags: TagSet::default(),
+            stats: vec![StatShare { value, live: None }],
             state: Vec::new(),
         },
         reapply,
@@ -296,9 +282,11 @@ fn a_stat_is_its_base_plus_adds_times_pcts_times_the_largest_cut() {
             .unwrap();
         let mut modifiers = Modifiers::default();
         for (at, &(op, value, stacks)) in changes.iter().enumerate() {
+            let mut book = game.world.resource_mut::<ModifierBook>();
+            book.push_changes(&[(armor, op)], TagSet::default());
             let id = u16::try_from(at).unwrap();
             for _ in 0..stacks {
-                modifiers.apply(share(id, None, armor, op, value, Reapply::Stack));
+                modifiers.apply(share(id, None, value, Reapply::Stack));
             }
         }
         let armored_unit = unit(&mut game, 0);
@@ -360,18 +348,28 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
     let speed = book.named(&Stat::Engine(EngineStat::MoveSpeed)).unwrap();
     let mut ids = IdAllocator::default();
     let (first, second) = (Some(ids.allocate()), Some(ids.allocate()));
-    let slowing = |source, value| {
-        let mut application = share(0, source, speed, StatOp::Cut, value, Reapply::Refresh);
-        application.instance.tags = TagSet::of([slowed]);
-        application
-    };
+    // The modifiers, by id: a slowing cut, an add, a pct, an untagged cut, an immunity, and a
+    // cut that grants both `slowed` and the immunity to it.
+    let mut book = game.world.resource_mut::<ModifierBook>();
+    let modifiers = [
+        (StatOp::Cut, TagSet::of([slowed])),
+        (StatOp::Add, TagSet::default()),
+        (StatOp::Pct, TagSet::default()),
+        (StatOp::Cut, TagSet::default()),
+        (StatOp::Add, TagSet::of([slow_immune])),
+        (StatOp::Cut, TagSet::of([slowed, slow_immune])),
+    ];
+    for (op, tags) in modifiers {
+        book.push_changes(&[(speed, op)], tags);
+    }
+    let slowing = |source, value| share(0, source, value, Reapply::Refresh);
     // Cuts of 0.25 and 0.5 from two sources, each `slowed`: only the larger counts. An add of
     // 0.5 that stacks, twice: +1.
     let mut modifiers = game.world.get_mut::<Modifiers>(unit).unwrap();
     modifiers.apply(slowing(first, sixteenths(4)));
     modifiers.apply(slowing(second, sixteenths(8)));
     for _ in 0..2 {
-        let add = share(1, first, speed, StatOp::Add, sixteenths(8), Reapply::Stack);
+        let add = share(1, first, sixteenths(8), Reapply::Stack);
         modifiers.apply(add);
     }
     game.world.run_schedule(SimUpdate);
@@ -385,25 +383,11 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
     // A pct of 0.25: 5 × 1.25 × 0.5 = 3.125 m/s, 3.125 × 2²⁴ ÷ 30 = 1 747 626.67 bits, to
     // 1 747 627. An untagged cut of 1.5 counts as 1: no step at all.
     let mut modifiers = game.world.get_mut::<Modifiers>(unit).unwrap();
-    modifiers.apply(share(
-        2,
-        first,
-        speed,
-        StatOp::Pct,
-        sixteenths(4),
-        Reapply::Refresh,
-    ));
+    modifiers.apply(share(2, first, sixteenths(4), Reapply::Refresh));
     game.world.run_schedule(SimUpdate);
     assert_eq!(step(&game), Num::from_bits(1_747_627));
     let mut modifiers = game.world.get_mut::<Modifiers>(unit).unwrap();
-    modifiers.apply(share(
-        3,
-        first,
-        speed,
-        StatOp::Cut,
-        sixteenths(24),
-        Reapply::Refresh,
-    ));
+    modifiers.apply(share(3, first, sixteenths(24), Reapply::Refresh));
     game.world.run_schedule(SimUpdate);
     assert_eq!(step(&game), Num::ZERO);
 
@@ -413,8 +397,7 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
     // the immunity joins them.
     let mut modifiers = game.world.get_mut::<Modifiers>(unit).unwrap();
     modifiers.remove(ModifierId::new(3), first);
-    let mut immune = share(4, first, speed, StatOp::Add, Num::ZERO, Reapply::Stack);
-    immune.instance.tags = TagSet::of([slow_immune]);
+    let immune = share(4, first, Num::ZERO, Reapply::Stack);
     modifiers.apply(immune.clone());
     modifiers.apply(immune);
     game.world.run_schedule(SimUpdate);
@@ -425,9 +408,7 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
     // A modifier that grants both an immunity and the tag it is immune to holds itself: its
     // cut of 0.25 counts, whatever order the modifiers are in. 6.25 × 0.75 = 4.6875 m/s, 4.6875
     // × 2²⁴ ÷ 30 = 2 621 440 bits exactly.
-    let mut both = slowing(second, sixteenths(4));
-    both.instance.id = ModifierId::new(5);
-    both.instance.tags = TagSet::of([slowed, slow_immune]);
+    let both = share(5, second, sixteenths(4), Reapply::Refresh);
     game.world.get_mut::<Modifiers>(unit).unwrap().apply(both);
     game.world.run_schedule(SimUpdate);
     assert_eq!(step(&game), Num::from_bits(2_621_440));
@@ -494,7 +475,6 @@ fn aura(id: ModifierId, carrier: StableId, radius: Num) -> Application {
             interval: None,
             shield: None,
             stats: Vec::new(),
-            tags: TagSet::default(),
             state: Vec::new(),
         },
         reapply: Reapply::Refresh,
@@ -583,9 +563,8 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     edit(&mut game, &|instance| instance.stacks = 1);
     game.world.run_schedule(SimUpdate);
     assert!(holds(&game, far));
-    edit(&mut game, &|instance| {
-        instance.tags = TagSet::of([Tag::new(0)]);
-    });
+    let mut book = game.world.resource_mut::<ModifierBook>();
+    book.grant_tags(presence, TagSet::of([Tag::new(0)]));
     let immune = UnitTags {
         immune: TagSet::of([Tag::new(0)]),
         ..UnitTags::default()
@@ -669,27 +648,20 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
             "walker",
             &UnitTypeData::default(),
         );
-        for name in ["first", "second"] {
-            Stats::load_modifier(&mut game.world, 0, name, &modifier_data(None), None);
-        }
+        let speed = game.world.resource::<StatBook>();
+        let speed = speed.named(&Stat::Engine(EngineStat::MoveSpeed)).unwrap();
+        let mut book = game.world.resource_mut::<ModifierBook>();
+        book.push_changes(&[(speed, StatOp::Add)], TagSet::of([stunned]));
+        book.push_changes(&[(speed, StatOp::Cut)], TagSet::default());
         game
     };
     let mut game = start();
     let walker = unit(&mut game, 0);
     let speed = game.world.resource::<StatBook>();
     let speed = speed.named(&Stat::Engine(EngineStat::MoveSpeed)).unwrap();
-    let mut stun = share(0, None, speed, StatOp::Add, Num::ZERO, Reapply::Refresh);
-    stun.instance.tags = TagSet::of([stunned]);
     let mut modifiers = Modifiers::default();
-    modifiers.apply(stun);
-    modifiers.apply(share(
-        1,
-        None,
-        speed,
-        StatOp::Cut,
-        sixteenths(8),
-        Reapply::Refresh,
-    ));
+    modifiers.apply(share(0, None, Num::ZERO, Reapply::Refresh));
+    modifiers.apply(share(1, None, sixteenths(8), Reapply::Refresh));
     game.world.entity_mut(walker).insert(modifiers);
     game.world.run_schedule(SimUpdate);
 

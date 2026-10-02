@@ -362,7 +362,7 @@ fn apply_held(
             else {
                 continue;
             };
-            if instance.stacks == 0 || !takes_effect(instance.tags) {
+            if instance.stacks == 0 || !takes_effect(book.tags(instance.id)) {
                 continue;
             }
             let (filter, modifier) = (aura.affects, aura.modifier);
@@ -460,10 +460,11 @@ fn give_derived_parts(
 /// once they are final; a live change that does not resolve keeps the value it last had. An
 /// effect whose stat the mode does not declare keeps what the unit's kit gave it.
 fn refresh_stats(
-    (book, pool_book, tag_book, index): (
+    (book, pool_book, tag_book, modifier_book, index): (
         Option<Res<'_, StatBook>>,
         Option<Res<'_, PoolBook>>,
         Option<Res<'_, TagBook>>,
+        Option<Res<'_, ModifierBook>>,
         Res<'_, EntityIndex>,
     ),
     (params, rate): (Res<'_, ParamBook>, Res<'_, TickRate>),
@@ -500,7 +501,8 @@ fn refresh_stats(
     >,
     mut scratch: Local<'_, RefreshScratch>,
 ) {
-    let (Some(book), Some(pool_book)) = (book, pool_book) else {
+    let (Some(book), Some(pool_book), Some(modifier_book)) = (book, pool_book, modifier_book)
+    else {
         return;
     };
     let scratch = &mut *scratch;
@@ -512,7 +514,7 @@ fn refresh_stats(
         let held = modifiers.into_iter().flat_map(Modifiers::iter);
         let granted = held
             .filter(|instance| instance.stacks > 0)
-            .map(|instance| instance.tags);
+            .map(|instance| modifier_book.tags(instance.id));
         let derived = tag_book
             .as_deref()
             .map(|book| book.unit_tags(unit_type, granted));
@@ -527,7 +529,7 @@ fn refresh_stats(
             unit_type,
             level: level.get(),
         };
-        let live = scratch.add(&book, unit, modifiers, takes_effect);
+        let live = scratch.add(&book, &modifier_book, unit, modifiers, takes_effect);
         if live && !marked {
             commands.entity(entity).insert(LiveShares);
         } else if !live && marked {
