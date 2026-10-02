@@ -39,9 +39,8 @@ fn an_area_that_triggers_after_it_ends_fails_to_decode() {
 
 #[test]
 fn a_filter_selects_a_delivery_unit_only_when_it_names_its_tag() {
-    let mut types = UnitTypes::default();
-    let projectile = types.declare(UnitTypeData::PROJECTILE_TAG).unwrap();
-    let area = types.declare(UnitTypeData::AREA_TAG).unwrap();
+    let types = UnitTypes::default();
+    let [projectile, area] = [EngineTag::Projectile, EngineTag::Area].map(EngineTag::tag);
     let parse = |text| Filter::parse(text, &types).unwrap();
     let units = [
         TagSet::default(),

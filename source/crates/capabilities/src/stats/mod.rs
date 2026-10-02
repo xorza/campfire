@@ -46,6 +46,7 @@ use crate::units::team::Team;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
 use crate::values::attitude::Attitude;
+use crate::values::declared_name::DeclaredName;
 use crate::values::metric::Metric;
 
 pub(crate) mod held_modifiers;
@@ -285,7 +286,11 @@ impl Stats {
         let tags = {
             let view = world.non_send::<View>();
             let mut types = view.types_mut();
-            let declare = |name: &String| types.declare(name).expect("the load counted the tags");
+            let declare = |name: &DeclaredName| {
+                types
+                    .declare(name.as_str())
+                    .expect("the load counted the tags")
+            };
             TagSet::of(data.tags.iter().map(declare))
         };
         let id = world

@@ -4,8 +4,8 @@ use std::io;
 use std::path::PathBuf;
 
 use campfire_capabilities::{
-    ActionField, ActionKind, ActionSlots, ApiVersion, DeclaredName, Hook, MapProblem, ModeError,
-    PlannedEffect, Pools, ResourceId, Stat, TrackId,
+    ActionField, ActionKind, ActionSlots, ApiVersion, DeclaredName, EngineTag, Hook, MapProblem,
+    ModeError, PlannedEffect, Pools, ResourceId, Stat, TrackId,
 };
 use campfire_content::{Fingerprint, PackagePath};
 use campfire_script::ScriptError;
@@ -132,7 +132,6 @@ pub enum LoadProblem {
     WrongKind,
     /// The dependency's package has another name than the mode gives it.
     OtherName(String),
-    /// The package targets another engine release than this one.
     /// The package targets a package API version this release does not load: another major, or
     /// a newer minor.
     OtherApi(ApiVersion),
@@ -235,6 +234,8 @@ pub enum LoadProblem {
     },
     /// A field of mode state has no `sync`, or another state field has one.
     StateSync(String),
+    /// A unit type or a modifier at `at` carries a tag only the engine gives.
+    EngineTag { at: Place, tag: EngineTag },
 }
 
 /// What is wrong with an effect of an action's list.
@@ -557,9 +558,7 @@ impl fmt::Display for LoadProblem {
             }
             LoadProblem::TooMany(limit) => write!(f, "{limit}"),
             LoadProblem::LevelTracks => f.write_str("more than one `level` track"),
-            LoadProblem::RepeatedUnitType(name) => {
-                write!(f, "two unit types are named {name:?}")
-            }
+            LoadProblem::RepeatedUnitType(name) => write!(f, "two unit types are named {name:?}"),
             LoadProblem::NoDamageKinds => {
                 f.write_str("the mode declares combat, and no damage kinds")
             }
@@ -625,6 +624,9 @@ impl fmt::Display for LoadProblem {
             LoadProblem::NoLifePool => f.write_str("combat with no [combat] life"),
             LoadProblem::LifePoolMissing(at) => write!(f, "{at}: combat without the life pool"),
             LoadProblem::CombatMissing(at) => write!(f, "{at}: the life pool without combat"),
+            LoadProblem::EngineTag { at, tag } => {
+                write!(f, "{at}: {:?}, a tag only the engine gives", tag.name())
+            }
             LoadProblem::RepeatedName(name) => write!(f, "the mode declares {name:?} twice"),
             LoadProblem::Delivery(problem) => write!(f, "{problem}"),
             LoadProblem::Effect {

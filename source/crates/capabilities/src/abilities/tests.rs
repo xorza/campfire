@@ -940,7 +940,7 @@ fn a_unit_target_is_one_its_filter_selects_tag_and_all() {
     let mut game = Match::new();
     let mut load_type = |name: &str| {
         let data = UnitTypeData {
-            tags: vec![name.to_owned()],
+            tags: vec![DeclaredName::new(name).unwrap()],
             params: BTreeMap::new(),
         };
         Units::load_type(&mut game.world, TypeScope::Mode, name, &data).unwrap()
@@ -1147,7 +1147,7 @@ fn stun_run() -> Vec<(StateHash, bool)> {
     Stats::load(&mut game.world, stats, PoolBook::default());
     let stun = ModifierData {
         script: None,
-        tags: vec!["stunned".to_owned()],
+        tags: vec![DeclaredName::new("stunned").unwrap()],
         ..scripted(None, &[])
     };
     Stats::load_modifier(&mut game.world, 0, "stun", &stun, None);
@@ -1155,7 +1155,7 @@ fn stun_run() -> Vec<(StateHash, bool)> {
         blocks: vec![Block::Move, Block::Attack, Block::Cast, Block::Use],
         ..TagData::default()
     };
-    let effects = BTreeMap::from([("stunned".to_owned(), stunned)]);
+    let effects = BTreeMap::from([(DeclaredName::new("stunned").unwrap(), stunned)]);
     let book = game.world.non_send::<View>().types_mut().tag_book(&effects);
     Units::load_tags(&mut game.world, book);
     let script = r#"fn on_resolve(ctx, caster, target) { ctx.add_modifier(target, "stun", 100); }"#;

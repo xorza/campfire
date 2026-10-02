@@ -12,6 +12,7 @@ use crate::scripts::script_api::ScriptApi;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::units::body::Body;
+use crate::units::engine_tag::EngineTag;
 use crate::units::error::UnitTypeError;
 use crate::units::owner::Owner;
 use crate::units::relations::Relations;
@@ -28,6 +29,7 @@ pub(crate) mod block;
 pub(crate) mod body;
 pub(crate) mod by_type;
 pub(crate) mod collision_data;
+pub(crate) mod engine_tag;
 pub(crate) mod error;
 pub(crate) mod filter;
 pub(crate) mod hit_handle;
@@ -127,8 +129,9 @@ impl Units {
         world.non_send_mut::<ScriptHost>().compile(source)
     }
 
-    /// Declares every tag the match's packages name, in their order, before any type, modifier
-    /// or filter names one, so the tags are numbered the same however the packages load.
+    /// Declares every tag the match's packages name, in their order, after the engine's tags,
+    /// before any type, modifier or filter names one, so the tags are numbered the same however
+    /// the packages load.
     pub fn declare_tags<'a>(
         world: &mut World,
         names: impl IntoIterator<Item = &'a str>,
@@ -139,6 +142,13 @@ impl Units {
             types.declare(name)?;
         }
         Ok(())
+    }
+
+    /// Tags `unit_type` an avatar, which `unit.is_avatar` tests.
+    pub fn tag_avatar(world: &mut World, unit_type: UnitType) {
+        let view = world.non_send::<View>();
+        view.types_mut()
+            .give_tag(unit_type, EngineTag::Avatar.tag());
     }
 
     /// Gives the match its tags' effects and its unit types' own tags.

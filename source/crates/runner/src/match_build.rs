@@ -5,7 +5,7 @@ use bevy_ecs::world::World;
 use campfire_capabilities::{
     Abilities, ActionData, ActionId, Actions, Areas, DeclaredName, KitRules, LoadoutSetup,
     MatchScripts, Mode, ModeSetup, OnDeath, Orders, PoolId, Progression, Projectiles, SlotAction,
-    Stat, Stats, TypeScope, UnitKit, UnitTypeData, UnitTypeSetup, Units,
+    Stat, Stats, TypeScope, UnitKit, UnitTypeSetup, Units,
 };
 use campfire_content::PackagePath;
 use campfire_package::{ModePackages, PackageView, UnitTypeFile, ViewKind};
@@ -179,15 +179,15 @@ impl<'a> MatchBuild<'a> {
         avatar: bool,
     ) -> Result<(), StartError> {
         let data = self.packages.data();
-        let mut core = file.core.clone();
         let mut combat = file.combat.clone();
+        let unit_type =
+            Units::load_type(self.world, TypeScope::Mode, name, &file.core).expect(CHECKED);
         if avatar {
-            core.tags.push(UnitTypeData::AVATAR_TAG.to_owned());
+            Units::tag_avatar(self.world, unit_type);
             if let Some(combat) = &mut combat {
                 combat.on_death = OnDeath::Stay;
             }
         }
-        let unit_type = Units::load_type(self.world, TypeScope::Mode, name, &core).expect(CHECKED);
         let unit_error = |error| StartError::UnitKit {
             unit_type: name.to_owned(),
             error,

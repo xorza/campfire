@@ -29,6 +29,7 @@ use crate::units::type_scope::TypeScope;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::units::unit_types::UnitTypes;
+use crate::values::declared_name::DeclaredName;
 use crate::values::scalar::Scalar;
 
 /// The MOBA's 30 ticks a second.
@@ -254,7 +255,10 @@ impl Match {
         ai: Option<&str>,
     ) -> UnitType {
         let data = UnitTypeData {
-            tags: tags.iter().map(|&tag| tag.to_owned()).collect(),
+            tags: tags
+                .iter()
+                .map(|&tag| DeclaredName::new(tag).unwrap())
+                .collect(),
             params: params
                 .iter()
                 .map(|&(name, value)| (name.to_owned(), value))

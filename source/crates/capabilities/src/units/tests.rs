@@ -85,7 +85,10 @@ impl Scene {
 
     fn unit_type(&mut self, tags: &[&str], params: &[(&str, Scalar)]) -> UnitType {
         let data = UnitTypeData {
-            tags: tags.iter().map(|&tag| tag.to_owned()).collect(),
+            tags: tags
+                .iter()
+                .map(|&tag| DeclaredName::new(tag).unwrap())
+                .collect(),
             params: params
                 .iter()
                 .map(|&(name, value)| (name.to_owned(), value))

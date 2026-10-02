@@ -3,6 +3,7 @@ use std::collections::BTreeMap;
 use serde::Deserialize;
 
 use crate::units::tag::Tag;
+use crate::values::declared_name::DeclaredName;
 use crate::values::scalar::Scalar;
 
 /// A unit type's core fields as its data file declares them: its tags, which filters select, and
@@ -11,7 +12,7 @@ use crate::values::scalar::Scalar;
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 pub struct UnitTypeData {
     #[serde(default)]
-    pub tags: Vec<String>,
+    pub tags: Vec<DeclaredName>,
     #[serde(default)]
     pub params: BTreeMap<String, Scalar>,
 }
@@ -21,11 +22,4 @@ impl UnitTypeData {
     pub const TAG_LIMIT: usize = Tag::LIMIT;
     /// The most unit types a match loads.
     pub const TYPE_LIMIT: usize = 1 << u16::BITS;
-
-    /// The tag of avatars, which `unit.is_avatar` tests: every avatar carries it.
-    pub const AVATAR_TAG: &str = "avatar";
-    /// The tag of projectile types: a filter selects their units only when it names it.
-    pub const PROJECTILE_TAG: &str = "projectile";
-    /// The tag of area types: a filter selects their units only when it names it.
-    pub const AREA_TAG: &str = "area";
 }

@@ -7,8 +7,8 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, OnceLock};
 
 use campfire_capabilities::{
-    ActionField, ActionKind, EffectData, EffectTo, Effecting, Hook, MapProblem, ModeError, Number,
-    PlannedEffect, Scalar,
+    ActionField, ActionKind, EffectData, EffectTo, Effecting, EngineTag, Hook, MapProblem,
+    ModeError, Number, PlannedEffect, Scalar,
 };
 use campfire_package::{
     ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem, EffectProblem, Limit, LoadError,
@@ -208,20 +208,36 @@ fn a_mode_type_may_share_its_name_with_a_dependencys_delivery_type() {
 }
 
 #[test]
-fn more_layers_than_tags_a_match_holds_fail_the_load() {
-    // 257 layers, each a tag, past the 256 tags a match holds.
-    let names: Vec<String> = (0..=256).map(|at| format!("\"layer{at}\"")).collect();
-    let section = format!(
-        "[navigation]\nlayers = [{}]\n\n# Its damage kinds",
-        names.join(", ")
-    );
-    let edit = Edit::Replace("# Its damage kinds", section.leak());
-    let error = ModePackages::from_package_dir(&edited([(MODE_DATA, edit)])).unwrap_err();
+fn the_engines_tags_and_the_modes_fill_the_tags_a_match_holds() {
+    // The 3v3 names 24 tags: the 10 of its `[tags]`, 6 of its heroes' classes, 7 more of its unit
+    // types', and `slowed`, which modifiers grant. The engine has 3, so 229 layers, each a
+    // tag, fill the 256 a match holds, and 230 are past it.
+    let tags = |packages: &ModePackages| packages.tag_names().len();
+    let packages = ModePackages::from_package_dir(&edited([])).unwrap();
+    assert_eq!(tags(&packages), 24);
+    let layers = |count: usize| {
+        let names: Vec<String> = (0..count).map(|at| format!("\"layer{at}\"")).collect();
+        let section = format!(
+            "[navigation]\nlayers = [{}]\n\n# Its damage kinds",
+            names.join(", ")
+        );
+        let edit = Edit::Replace("# Its damage kinds", section.leak());
+        ModePackages::from_package_dir(&edited([(MODE_DATA, edit)]))
+    };
+    assert_eq!(tags(&layers(229).unwrap()), 253);
+    let error = layers(230).unwrap_err();
     assert_eq!(error.package, PackageRef::Name(MODE.to_owned()));
     assert!(
         matches!(*error.problem, LoadProblem::TooMany(Limit::Tags)),
         "{error}"
     );
+    // The mode's `[tags]` may give an engine tag effects, and that names no tag of its own.
+    let edit = Edit::Replace(
+        "[tags.stunned]",
+        "[tags.projectile]\nhidden = true\n\n[tags.stunned]",
+    );
+    let packages = ModePackages::from_package_dir(&edited([(MODE_DATA, edit)])).unwrap();
+    assert_eq!(tags(&packages), 24);
 }
 
 #[test]
@@ -241,7 +257,7 @@ fn more_tracks_than_a_unit_holds_fail_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 148] = [
+const FLAWS: [Flaw; 153] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -1050,6 +1066,44 @@ const FLAWS: [Flaw; 148] = [
         Edit::Replace("combat = { on_death = \"stay\" }\n", ""),
         MODE,
         |problem| matches!(problem, LoadProblem::CombatMissing(Place::UnitType(name)) if name == "inhibitor"),
+    ),
+    flaw(
+        UNITS,
+        Edit::Replace(r#""tower", "true_sight"]"#, r#""tower", "avatar"]"#),
+        MODE,
+        |problem| matches!(problem, LoadProblem::EngineTag { at: Place::UnitType(name), tag: EngineTag::Avatar } if name == "tower"),
+    ),
+    flaw(
+        HUSK,
+        Edit::Replace(r#"tags = ["tank"]"#, r#"tags = ["area"]"#),
+        "hero-husk",
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::EngineTag {
+                    at: Place::Avatar(_),
+                    tag: EngineTag::Area
+                }
+            )
+        },
+    ),
+    flaw(
+        RIME,
+        Edit::Replace(r#"tags = ["slowed"]"#, r#"tags = ["projectile"]"#),
+        "hero-rime",
+        |problem| matches!(problem, LoadProblem::EngineTag { at: Place::Modifier(id), tag: EngineTag::Projectile } if id == "slow"),
+    ),
+    flaw(
+        HUSK,
+        Edit::Replace(r#"tags = ["tank"]"#, r#"tags = ["tank:front"]"#),
+        "hero-husk",
+        |problem| read_fails(problem, "data/avatar.toml", r#""tank:front" is not a name"#),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace("[tags.stunned]", "[tags.Stunned]"),
+        MODE,
+        |problem| read_fails(problem, "data/mode.toml", r#""Stunned" is not a name"#),
     ),
     flaw(
         HUSK,

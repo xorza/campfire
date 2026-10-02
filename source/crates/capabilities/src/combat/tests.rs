@@ -256,13 +256,15 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
     let mut fight = Fight::new();
     let types = ["ground", "air", "structure"].map(|tag| {
         let data = UnitTypeData {
-            tags: vec![tag.to_owned()],
+            tags: vec![DeclaredName::new(tag).unwrap()],
             params: BTreeMap::new(),
         };
         Units::load_type(&mut fight.world, TypeScope::Mode, tag, &data).unwrap()
     });
     let hover = UnitTypeData {
-        tags: vec!["ground".to_owned(), "air".to_owned()],
+        tags: ["ground", "air"]
+            .map(|tag| DeclaredName::new(tag).unwrap())
+            .into(),
         params: BTreeMap::new(),
     };
     let hover = Units::load_type(&mut fight.world, TypeScope::Mode, "hover", &hover).unwrap();

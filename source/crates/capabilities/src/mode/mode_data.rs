@@ -60,7 +60,7 @@ pub struct ModeData {
     pub relations: Vec<RelationData>,
     /// The effects of its tags, by name.
     #[serde(default)]
-    pub tags: BTreeMap<String, TagData>,
+    pub tags: BTreeMap<DeclaredName, TagData>,
     /// The tracks its units gain experience on, by name.
     #[serde(default)]
     pub tracks: BTreeMap<DeclaredName, TrackData>,

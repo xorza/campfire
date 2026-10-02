@@ -26,11 +26,11 @@ use crate::projectiles::projectile_spec::ProjectileSpec;
 use crate::scripts::frame::Frame;
 use crate::stats::pools::Pools;
 use crate::units::by_type::ByType;
+use crate::units::engine_tag::EngineTag;
 use crate::units::filter::Filter;
 use crate::units::script_view::View;
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
-use crate::units::unit_type_data::UnitTypeData;
 use crate::values::bounds::Bounds;
 use crate::values::metric::Metric;
 
@@ -65,17 +65,14 @@ impl Projectiles {
     }
 
     /// Makes `unit_type` a projectile type of `data`, tagged `projectile`, its speed a tick at
-    /// the match's rate, which the package load checked: the match declares the tag, and its
-    /// `hits` filter names tags of the match's.
+    /// the match's rate, which the package load checked: its `hits` filter names tags of the
+    /// match's.
     pub fn load_type(world: &mut World, unit_type: UnitType, data: &ProjectileData) {
         let hz = world.resource::<TickRate>().hz().get();
         let view = world.non_send::<View>().clone();
         let hits = {
             let mut types = view.types_mut();
-            let tag = types
-                .declare(UnitTypeData::PROJECTILE_TAG)
-                .expect("the match declared every tag its packages name");
-            types.give_tag(unit_type, tag);
+            types.give_tag(unit_type, EngineTag::Projectile.tag());
             match &data.hits {
                 Some(filter) => Filter::resolve(filter, &types),
                 None => Filter::parse("enemies", &types),

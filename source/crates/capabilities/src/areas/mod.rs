@@ -25,11 +25,11 @@ use crate::scripts::hook::Hook;
 use crate::stats::held_modifiers::{Held, HeldModifiers};
 use crate::stats::{Stats, StatsSet};
 use crate::units::by_type::ByType;
+use crate::units::engine_tag::EngineTag;
 use crate::units::filter::Filter;
 use crate::units::script_view::View;
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
-use crate::units::unit_type_data::UnitTypeData;
 use crate::values::attitude::Attitude;
 use crate::values::bounds::Bounds;
 use crate::values::hit::Hit;
@@ -69,18 +69,14 @@ impl Areas {
     }
 
     /// Makes `unit_type` of `package` an area type of `data`, tagged `area`, its times in ticks
-    /// at the match's rate, rounded up, which the package load checked: the match declares the
-    /// tag, its `affects` filter names tags of the match's, and its `inside` modifiers of the
-    /// package.
+    /// at the match's rate, rounded up, which the package load checked: its `affects` filter
+    /// names tags of the match's, and its `inside` modifiers of the package.
     pub fn load_type(world: &mut World, unit_type: UnitType, package: u16, data: &AreaData) {
         let rate = *world.resource::<TickRate>();
         let view = world.non_send::<View>().clone();
         let affects = {
             let mut types = view.types_mut();
-            let tag = types
-                .declare(UnitTypeData::AREA_TAG)
-                .expect("the match declared every tag its packages name");
-            types.give_tag(unit_type, tag);
+            types.give_tag(unit_type, EngineTag::Area.tag());
             match &data.affects {
                 Some(filter) => Filter::resolve(filter, &types),
                 None => Filter::parse("enemies", &types),

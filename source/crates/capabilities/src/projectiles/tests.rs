@@ -18,6 +18,7 @@ use crate::stats::pool_id::PoolId;
 use crate::units::Units;
 use crate::units::recent_attack::RecentAttack;
 use crate::units::type_scope::TypeScope;
+use crate::units::unit_type_data::UnitTypeData;
 
 /// The MOBA's 30 ticks a second.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());

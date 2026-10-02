@@ -3,7 +3,7 @@ use std::{iter, slice};
 
 use campfire_capabilities::{
     ActionData, ActionKind, ActionSlots, ApiOwner, ApiVersion, CollisionData, DeclaredName,
-    DeliveryData, EffectTo, Effecting, EngineStat, FilterData, Hook, MemberKind, Mode,
+    DeliveryData, EffectTo, Effecting, EngineStat, EngineTag, FilterData, Hook, MemberKind, Mode,
     ModifierData, Navigation, Number, Offers, Param, Pools, Range, RangeField, ResourceId, Scalar,
     ScriptApi, ScriptRole, Stat, Targeting, TrackId, UnitTypeData,
 };
@@ -54,10 +54,11 @@ impl<'a> LoadCheck<'a> {
             package: PackageRef::Name(manifest.header.name.clone()),
             problem: Box::new(problem),
         };
-        let tags = packages.tag_names();
-        if tags.len() > UnitTypeData::TAG_LIMIT {
+        let mut tags = packages.tag_names();
+        if EngineTag::ALL.len() + tags.len() > UnitTypeData::TAG_LIMIT {
             return Err(fail(LoadProblem::TooMany(Limit::Tags)));
         }
+        tags.extend(EngineTag::ALL.map(EngineTag::name));
         // A dependency's delivery types are in its own scope, so they share no name with
         // another package's; an avatar is in the mode's, by its package's name.
         let units = &packages.content.units;
@@ -343,6 +344,7 @@ impl<'a> LoadCheck<'a> {
         for (id, modifier) in names.modifiers {
             let at = Place::Modifier(id.clone());
             self.require(Capability::Stats, &at)?;
+            own_tags(&modifier.tags, &at)?;
             let scaled = modifier.params.values().flat_map(Param::stats);
             self.stats_declared(modifier.stats.keys().chain(scaled), &at)?;
             if let Some(affects) = &modifier.affects {
@@ -783,7 +785,7 @@ impl<'a> LoadCheck<'a> {
         if let Some(name) = data
             .resources
             .iter()
-            .find(|name| data.pools.contains_key(name))
+            .find(|name| data.pools.contains_key(*name))
         {
             return Err(LoadProblem::RepeatedName(name.clone()));
         }
@@ -841,6 +843,7 @@ impl<'a> LoadCheck<'a> {
                 self.require(capability, at)?;
             }
         }
+        own_tags(&unit_type.core.tags, at)?;
         if unit_type.delivers() && !unit_type.delivery_only() {
             return Err(LoadProblem::Delivery(DeliveryProblem::NotDelivery(
                 at.clone(),
@@ -1144,6 +1147,18 @@ fn whole_ms(action: &ActionData, duration: &Number) -> bool {
         && number_values(action, duration)
             .iter()
             .all(|value| matches!(value, Scalar::Int(ms) if u32::try_from(*ms).is_ok()))
+}
+
+/// The tags a unit type or a modifier at `at` carries: none the engine's, which only the engine
+/// gives.
+fn own_tags(tags: &[DeclaredName], at: &Place) -> Result<(), LoadProblem> {
+    match tags.iter().find_map(|tag| EngineTag::named(tag.as_str())) {
+        Some(tag) => Err(LoadProblem::EngineTag {
+            at: at.clone(),
+            tag,
+        }),
+        None => Ok(()),
+    }
 }
 
 fn modifier_exists(

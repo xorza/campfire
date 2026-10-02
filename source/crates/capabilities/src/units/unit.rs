@@ -69,7 +69,7 @@ impl Unit {
             })
             .bind(
                 field("is_avatar", "whether it is an avatar"),
-                |unit: &mut Unit| unit.view.is_avatar(&unit.row()),
+                |unit: &mut Unit| unit.row().is_avatar(),
             )
             .bind(
                 field("target", "its attack's target, `()` with none"),

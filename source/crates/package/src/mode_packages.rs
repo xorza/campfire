@@ -3,12 +3,11 @@ use std::iter;
 use std::path::Path;
 
 use campfire_capabilities::{
-    CollisionData, DeclaredName, EngineStat, MapData, ModeData, Param, Stat, StatGraph, StatsData,
-    UnitTypeData, Walker,
+    CollisionData, DeclaredName, EngineStat, EngineTag, MapData, ModeData, Param, Stat, StatGraph,
+    StatsData, Walker,
 };
 use campfire_content::{Fingerprint, PackagePath};
 use campfire_script::ScriptHost;
-use campfire_sim::Capability;
 
 use crate::error::{ContentError, Limit, LoadError, LoadProblem, PackageRef, StoreError};
 use crate::files::avatar_data::AvatarData;
@@ -284,12 +283,11 @@ impl ModePackages {
         walkers
     }
 
-    /// Every tag its packages name, each once, sorted: `avatar`, `projectile` with projectiles,
-    /// `area` with areas,
-    /// the tags of its unit types, its avatars' and its dependencies' delivery types, the names of
-    /// its layers, those its and its dependencies' modifiers grant, and those of its `[tags]` and
-    /// their immunities. A match declares them in this order, so it numbers them the same however
-    /// it loads.
+    /// Every tag its packages name but the engine's, each once, sorted: the tags of its unit
+    /// types, its avatars' and its dependencies' delivery types, the names of its layers, those
+    /// its and its dependencies' modifiers grant, and those of its `[tags]` and their
+    /// immunities. A match declares them in this order after the engine's, so it numbers them
+    /// the same however it loads.
     pub fn tag_names(&self) -> BTreeSet<&str> {
         let modifiers = self
             .packages()
@@ -301,26 +299,17 @@ impl ModePackages {
             .flat_map(|view| view.content.units.values())
             .chain(avatars)
             .flat_map(|unit_type| &unit_type.core.tags);
-        let capabilities = self.manifest.capabilities;
-        let deliveries = [
-            (Capability::Projectiles, UnitTypeData::PROJECTILE_TAG),
-            (Capability::Areas, UnitTypeData::AREA_TAG),
-        ]
-        .into_iter()
-        .filter_map(move |(capability, tag)| capabilities.contains(capability).then_some(tag));
         let declared = self
             .data
             .tags
             .iter()
             .flat_map(|(name, tag)| [name].into_iter().chain(&tag.immune));
-        let layers = self.data.navigation.layers.iter().map(DeclaredName::as_str);
         modifiers
             .chain(types)
             .chain(declared)
-            .map(String::as_str)
-            .chain(layers)
-            .chain([UnitTypeData::AVATAR_TAG])
-            .chain(deliveries)
+            .chain(&self.data.navigation.layers)
+            .map(DeclaredName::as_str)
+            .filter(|name| EngineTag::named(name).is_none())
             .collect()
     }
 

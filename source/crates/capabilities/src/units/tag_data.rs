@@ -1,6 +1,7 @@
 use serde::Deserialize;
 
 use crate::units::block::Block;
+use crate::values::declared_name::DeclaredName;
 
 /// A tag's effects as the mode's `[tags.<name>]` declares them; a tag it does not declare has
 /// none.
@@ -15,5 +16,5 @@ pub struct TagData {
     pub detects: bool,
     /// The tags whose modifiers it holds without effect.
     #[serde(default)]
-    pub immune: Vec<String>,
+    pub immune: Vec<DeclaredName>,
 }

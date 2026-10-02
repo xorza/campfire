@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use crate::units::engine_tag::EngineTag;
 use crate::units::error::UnitTypeError;
 use crate::units::tag::Tag;
 use crate::units::tag_book::TagBook;
@@ -9,20 +10,16 @@ use crate::units::tag_set::TagSet;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
+use crate::values::declared_name::DeclaredName;
 use crate::values::name_table::NameTable;
 use crate::values::scalar::Scalar;
 
 /// The unit types a match loaded: their names, their tags and their params. Package data, not
 /// state: a restore loads it from the packages, as a new match does.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct UnitTypes {
-    /// The name of each tag, by tag.
+    /// The name of each tag, by tag: the engine's, then the match's.
     tag_names: Vec<Box<str>>,
-    /// The `avatar` tag, which `unit.is_avatar` tests, once declared.
-    avatar: Option<Tag>,
-    /// The tags of delivery units, `projectile` and `area`, once declared: every filter that does
-    /// not name one excludes it.
-    deliveries: TagSet,
     types: Vec<TypeEntry>,
     /// Every type, sorted by scope, then name.
     by_name: Vec<UnitType>,
@@ -36,6 +33,18 @@ struct TypeEntry {
     scope: TypeScope,
     name: Box<str>,
     tags: TagSet,
+}
+
+/// The engine's tags at their places, and no type.
+impl Default for UnitTypes {
+    fn default() -> UnitTypes {
+        UnitTypes {
+            tag_names: EngineTag::ALL.map(|tag| tag.name().into()).into(),
+            types: Vec::new(),
+            by_name: Vec::new(),
+            params: NameTable::default(),
+        }
+    }
 }
 
 impl UnitTypes {
@@ -55,7 +64,7 @@ impl UnitTypes {
         };
         let mut tags = TagSet::default();
         for name in &data.tags {
-            tags = tags.with(self.declare(name)?);
+            tags = tags.with(self.declare(name.as_str())?);
         }
         let params = data
             .params
@@ -81,15 +90,7 @@ impl UnitTypes {
             return Err(UnitTypeError::TooManyTags);
         }
         self.tag_names.push(name.into());
-        let tag = Tag::new(self.tag_names.len() - 1);
-        match name {
-            UnitTypeData::AVATAR_TAG => self.avatar = Some(tag),
-            UnitTypeData::PROJECTILE_TAG | UnitTypeData::AREA_TAG => {
-                self.deliveries = self.deliveries.with(tag);
-            }
-            _ => {}
-        }
-        Ok(tag)
+        Ok(Tag::new(self.tag_names.len() - 1))
     }
 
     /// Gives `unit_type` the tag `tag` too, as the engine tags a type by its sections.
@@ -124,23 +125,15 @@ impl UnitTypes {
         Some(Tag::new(index))
     }
 
-    pub(crate) const fn avatar(&self) -> Option<Tag> {
-        self.avatar
-    }
-
-    pub(crate) const fn deliveries(&self) -> TagSet {
-        self.deliveries
-    }
-
     /// The book of the effects `data` gives the tags, by name, and of the types' own tags. A
     /// tag `data` does not name has none.
-    pub(crate) fn tag_book(&self, data: &BTreeMap<String, TagData>) -> TagBook {
+    pub(crate) fn tag_book(&self, data: &BTreeMap<DeclaredName, TagData>) -> TagBook {
         let tags = self.tag_names.iter().map(|name| {
             let Some(data) = data.get(&**name) else {
                 return (TagEffects::default(), TagSet::default());
             };
             let immune = data.immune.iter().map(|name| {
-                self.tag(name)
+                self.tag(name.as_str())
                     .expect("the match declared every tag the mode names")
             });
             (TagEffects::of(data), TagSet::of(immune))

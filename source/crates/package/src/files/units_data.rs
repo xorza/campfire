@@ -84,7 +84,7 @@ impl<'de> Deserialize<'de> for UnitTypeFile {
         #[serde(deny_unknown_fields)]
         struct Fields {
             #[serde(default)]
-            tags: Vec<String>,
+            tags: Vec<DeclaredName>,
             #[serde(default)]
             params: BTreeMap<String, Scalar>,
             #[serde(default)]

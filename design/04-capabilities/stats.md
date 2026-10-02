@@ -86,7 +86,9 @@ A unit's tags are its type's tags, the tags the engine gives it by its sections 
 - **Stopped, not dropped.** A block keeps the order behind what it stops: the destination and route, the attack target, the ordered action. The action runs again when the block ends, as League of Legends buffers input. A windup or a cast time it interrupts starts again from nothing, and an interrupted action spends no cost and no cooldown, as Dota 2's cast point does. An action its checks refuse for another reason is dropped.
 - **Immunity suppresses.** An immunity follows the Gameplay Ability System's application immunity, but holds the modifier instead of refusing it: tags are derived, so the modifier takes effect again when the immunity ends, with no state to restore. A modifier that grants a tag with an `immune` effect is never suppressed itself, so immunities come from the type's tags and those modifiers first, and then suppress the rest; no order of modifiers can change the result.
 - **Filters** read tags with a sign: `enemies:avatar:!stunned` selects hostile avatars that are not stunned.
-- A mode declares at most 256 tags together, its types', its modifiers' and the engine's.
+- **Names.** A tag's name is a declared name: a lowercase letter, then lowercase letters, digits and underscores, so every tag can stand in a filter. The load refuses another name where data gives it.
+- **The engine's tags.** `avatar`, `projectile` and `area` hold the first places among a match's tags, in that order, so the engine finds them without their names. Only the engine gives them: the load refuses a unit type or a modifier that carries one. A filter and the mode's `[tags]` may name them, and give them effects.
+- A mode declares at most 256 tags together, its types', its modifiers' and the engine's three.
 
 ### Levels
 

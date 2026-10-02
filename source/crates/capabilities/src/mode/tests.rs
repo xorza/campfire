@@ -667,9 +667,11 @@ impl Game {
             mut schedule,
             mut registry,
         } = TestMatch::new(&declared, RATE, Some(scripts));
+        let layers = files.data.navigation.layers.iter();
+        Units::declare_tags(&mut world, layers.map(DeclaredName::as_str)).unwrap();
         let mut load = |name: &str, tag: &str| {
             let data = UnitTypeData {
-                tags: vec![tag.to_owned()],
+                tags: vec![DeclaredName::new(tag).unwrap()],
                 params: BTreeMap::new(),
             };
             Units::load_type(&mut world, TypeScope::Mode, name, &data).unwrap()
@@ -1061,7 +1063,7 @@ fn on_mode_input(ctx, player, name, value) {
     let mut game = Game::new(&script, LIMITS);
     // The 3v3's tag of its cores, which `on_unit_died` reads first.
     let core = UnitTypeData {
-        tags: vec!["core".to_owned()],
+        tags: vec![DeclaredName::new("core").unwrap()],
         params: BTreeMap::new(),
     };
     Units::load_type(&mut game.world, TypeScope::Mode, "core", &core).unwrap();

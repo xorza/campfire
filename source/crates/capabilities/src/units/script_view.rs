@@ -29,6 +29,7 @@ use crate::stats::pools::Pools;
 use crate::stats::stat::Stat;
 use crate::units::block::Block;
 use crate::units::body::Body;
+use crate::units::engine_tag::EngineTag;
 use crate::units::filter::Filter;
 use crate::units::living_unit::LivingUnit;
 use crate::units::owner::Owner;
@@ -191,6 +192,12 @@ pub(crate) struct RowFill<'a> {
     stats: &'a mut Vec<Num>,
     modifiers: &'a mut Vec<ModifierRow>,
     modifier_state: &'a mut Vec<StateValue>,
+}
+
+impl UnitRow {
+    pub(crate) fn is_avatar(&self) -> bool {
+        self.tags.tags.contains(EngineTag::Avatar.tag())
+    }
 }
 
 impl RowFill<'_> {
@@ -683,11 +690,11 @@ impl View {
     }
 
     /// Every unit, living or dead, that `keep` keeps, by stable id.
-    pub(crate) fn units_where(&self, mut keep: impl FnMut(&ScriptView, &UnitRow) -> bool) -> Array {
+    fn units_where(&self, keep: impl FnMut(&&UnitRow) -> bool) -> Array {
         let view = self.0.borrow();
         view.units
             .iter()
-            .filter(|row| keep(&view, row))
+            .filter(keep)
             .map(|row| Dynamic::from(Unit::new(row.id, self.clone())))
             .collect()
     }
@@ -695,16 +702,12 @@ impl View {
     /// Every unit, living or dead, with the tag `name`, by stable id.
     pub(crate) fn units_tagged(&self, name: &str) -> Checked<Array> {
         let tag = self.tag(name).map_err(ApiError::fail)?;
-        Ok(self.units_where(|_, row| row.tags.tags.contains(tag)))
+        Ok(self.units_where(|row| row.tags.tags.contains(tag)))
     }
 
     /// Every avatar, living or dead, of `team` or of every team, by stable id.
     pub(crate) fn avatars(&self, team: Option<Team>) -> Array {
-        self.units_where(|view, row| {
-            let avatar = view.types.avatar();
-            avatar.is_some_and(|avatar| row.tags.tags.contains(avatar))
-                && team.is_none_or(|team| row.team == team)
-        })
+        self.units_where(|row| row.is_avatar() && team.is_none_or(|team| row.team == team))
     }
 
     pub(crate) fn row(&self, id: StableId) -> Option<UnitRow> {
@@ -750,13 +753,6 @@ impl View {
             radius: row.radius,
             tags: row.tags.tags,
         })
-    }
-
-    pub(crate) fn is_avatar(&self, row: &UnitRow) -> bool {
-        let view = self.0.borrow();
-        view.types
-            .avatar()
-            .is_some_and(|avatar| row.tags.tags.contains(avatar))
     }
 
     /// The param `name` of the unit type of `row`.

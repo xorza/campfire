@@ -1,4 +1,5 @@
 use crate::scripts::error::ApiError;
+use crate::units::engine_tag::EngineTag;
 use crate::units::tag_set::TagSet;
 use crate::units::unit_types::UnitTypes;
 use crate::values::attitude::Attitude;
@@ -46,7 +47,7 @@ impl Filter {
                 filter.all = filter.all.with(tag);
             }
         }
-        for tag in types.deliveries().iter() {
+        for tag in [EngineTag::Projectile, EngineTag::Area].map(EngineTag::tag) {
             if !filter.all.contains(tag) {
                 filter.none = filter.none.with(tag);
             }
