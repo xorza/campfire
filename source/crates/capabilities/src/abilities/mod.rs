@@ -12,10 +12,12 @@ use campfire_sim::{Keyed, Ordered, Position, SimSet, SimTick, StableId, StateReg
 
 use crate::abilities::effect_lists::EffectLists;
 
+use crate::actions::ActionsSet;
 use crate::actions::action_book::{ActionBook, Delivery, DeliveryShape};
+use crate::actions::action_kind::ActionKind;
 use crate::units::action_id::ActionId;
 
-use crate::actions::action_slots::{ActionSlots, ActionTarget};
+use crate::actions::action_slots::{ActionSlots, ActionTarget, InProgress};
 use crate::actions::purse::{Payer, Purse};
 use crate::areas::Areas;
 use crate::combat::CombatSet;
@@ -23,6 +25,7 @@ use crate::combat::CombatSet;
 use crate::actions::targets::Targets;
 use crate::deliveries::delivering::Delivering;
 use crate::players::player_resources::PlayerResources;
+use crate::units::body::Body;
 use crate::units::dead::Dead;
 
 use crate::projectiles::Projectiles;
@@ -59,6 +62,7 @@ impl Abilities {
     /// script host; without the core's scripts, as on a client, a due cast of a unit it predicts
     /// only cools down, as the server's does.
     pub fn install(world: &mut World, schedule: &mut Schedule, _: &mut StateRegistry) {
+        schedule.add_systems(start_casts.in_set(SimSet::Act).in_set(ActionsSet::Start));
         if !world.contains_non_send::<Ctx>() {
             schedule.add_systems(
                 predict_casts
@@ -75,6 +79,70 @@ impl Abilities {
                 .after(CombatSet::Fire)
                 .before(CombatSet::Launch),
         );
+    }
+}
+
+/// Starts each cast a unit was ordered, in Act: one that passes its checks, its target within
+/// range, starts, and any other is dropped. A unit its tags keep from casting keeps its order: a
+/// cast it started goes back to it.
+fn start_casts(
+    tick: Res<'_, SimTick>,
+    book: Res<'_, ActionBook>,
+    resources: Option<Res<'_, PlayerResources>>,
+    targets: Targets<'_, '_>,
+    mut units: Query<
+        '_,
+        '_,
+        (
+            &Position,
+            &Team,
+            &mut ActionSlots,
+            Option<&Pools>,
+            Option<&Owner>,
+            Option<&Body>,
+            Option<&UnitTags>,
+        ),
+        Without<Dead>,
+    >,
+) {
+    let now = tick.start();
+    for (&position, &team, mut slots, pools, owner, body, tags) in &mut units {
+        let Some(InProgress::Order { aim, resolves_at }) = slots.in_progress() else {
+            continue;
+        };
+        let slot = slots
+            .slot(aim.slot)
+            .expect("an order of a slot the unit has");
+        let action = book
+            .get(slot.action)
+            .expect("a slot's action is in the book");
+        if action.kind.kind() != ActionKind::Cast {
+            continue;
+        }
+        if UnitTags::effects_of(tags).blocks(Block::Cast) {
+            if resolves_at.is_some() {
+                slots.interrupt();
+            }
+            continue;
+        }
+        if resolves_at.is_some() {
+            continue;
+        }
+        let purse = Purse {
+            pools,
+            resources: resources.as_deref(),
+            owner: owner.map(|owner| owner.slot()),
+        };
+        let attitude = |other| targets.attitude(team, other);
+        let radius = Body::radius_of(body);
+        let started = book
+            .check(now, &slots, purse, aim, attitude, |id| targets.living(id))
+            .filter(|checked| checked.in_range(position, radius, &targets))
+            .map(|checked| (now.after(checked.values.windup), checked.target));
+        match started {
+            Some((resolves_at, target)) => slots.start(resolves_at, target),
+            None => slots.stop(),
+        }
     }
 }
 

@@ -10,7 +10,7 @@ use campfire_sim::{
 };
 
 use crate::actions::action_book::{ActionBook, RankValues};
-use crate::actions::action_slots::{ActionSlots, InProgress};
+use crate::actions::action_slots::{ActionSlots, ActionTarget, InProgress, SlotAim};
 use crate::actions::purse::{Payer, Purse};
 use crate::actions::targets::Targets;
 use crate::actions::weapon::Weapon;
@@ -52,6 +52,7 @@ use crate::stats::stat_id::StatId;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::action_id::ActionId;
 use crate::units::block::Block;
+use crate::units::body::Body;
 use crate::units::dead::Dead;
 use crate::units::modifier_id::ModifierId;
 use crate::units::owner::Owner;
@@ -143,13 +144,16 @@ impl Combat {
             CombatSet::Fire.in_set(SimSet::Hit).after(CombatSet::Strike),
             CombatSet::Launch.in_set(SimSet::Hit).after(CombatSet::Fire),
             CombatSet::Die.before(StatsSet::Hold),
-            ActionsSet::Start.in_set(CombatSet::Attack),
+            CombatSet::Attack
+                .in_set(SimSet::Act)
+                .before(ActionsSet::Start),
             ActionsSet::HoldAtResolve
                 .after(CombatSet::Damage)
                 .before(CombatSet::Die),
         ));
         Actions::schedule(schedule);
         schedule.add_systems((
+            start_attacks.in_set(CombatSet::Attack),
             (attack_events, strike)
                 .chain()
                 .in_set(SimSet::Hit)
@@ -222,6 +226,83 @@ fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
     let recent = unit.get::<RecentAttackers>();
     fill.column::<AttacksColumn>()
         .push(recent.into_iter().flat_map(RecentAttackers::iter));
+}
+
+/// Starts each unit's attack on its attack target, in Act, when it has nothing under way: with
+/// the first weapon whose filter selects the target, once that weapon passes its checks and the
+/// target is within its range. An attack in its windup stops when the unit's tags keep it from
+/// attacking. An attack target that is no living enemy any more is dropped, with the attack on it.
+fn start_attacks(
+    tick: Res<'_, SimTick>,
+    book: Res<'_, ActionBook>,
+    resources: Option<Res<'_, PlayerResources>>,
+    targets: Targets<'_, '_>,
+    mut units: Query<
+        '_,
+        '_,
+        (
+            &Position,
+            &Team,
+            &mut ActionSlots,
+            Option<&Pools>,
+            Option<&Owner>,
+            Option<&Body>,
+            Option<&UnitTags>,
+        ),
+        Without<Dead>,
+    >,
+) {
+    let now = tick.start();
+    for (&position, &team, mut slots, pools, owner, body, tags) in &mut units {
+        let blocked = UnitTags::effects_of(tags).blocks(Block::Attack);
+        match slots.in_progress() {
+            Some(InProgress::Order { .. }) => {}
+            Some(InProgress::Attack { .. }) => {
+                if blocked {
+                    slots.interrupt();
+                } else if slots
+                    .attack_target()
+                    .is_none_or(|target| targets.enemy(team, target).is_none())
+                {
+                    slots.set_attack_target(None);
+                }
+            }
+            None => {
+                let Some(target) = slots.attack_target() else {
+                    continue;
+                };
+                let Some(unit) = targets.enemy(team, target) else {
+                    slots.set_attack_target(None);
+                    continue;
+                };
+                if blocked {
+                    continue;
+                }
+                let selects = (targets.attitude(team, unit.team), unit.tags);
+                let Some(slot) = book.weapon_for(&slots, Some(selects)) else {
+                    continue;
+                };
+                let aim = SlotAim {
+                    slot,
+                    target: ActionTarget::Unit(target),
+                };
+                let purse = Purse {
+                    pools,
+                    resources: resources.as_deref(),
+                    owner: owner.map(|owner| owner.slot()),
+                };
+                let attitude = |other| targets.attitude(team, other);
+                let radius = Body::radius_of(body);
+                let started = book
+                    .check(now, &slots, purse, aim, attitude, |id| targets.living(id))
+                    .filter(|checked| checked.in_range(position, radius, &targets))
+                    .map(|checked| now.after(checked.values.windup));
+                if let Some(resolves_at) = started {
+                    slots.start_attack(slot, resolves_at);
+                }
+            }
+        }
+    }
 }
 
 /// What tells whether a unit's attack strikes: its id, its slots, its tags, and what it pays the

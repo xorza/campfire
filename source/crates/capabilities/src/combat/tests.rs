@@ -24,7 +24,6 @@ use crate::stats::pool_data::PoolData;
 use crate::stats::stat_book::StatBook;
 use crate::stats::stat_rule::StatRule;
 use crate::units::Units;
-use crate::units::body::Body;
 use crate::units::filter::Filter;
 use crate::units::relations::Relations;
 use crate::units::type_scope::TypeScope;

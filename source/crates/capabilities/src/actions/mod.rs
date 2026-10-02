@@ -1,42 +1,27 @@
-use bevy_ecs::query::Without;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Query, Res};
 use bevy_ecs::world::{EntityRef, World};
 
-use campfire_sim::{Position, SimSet, SimTick, StableId, StateRegistry, TickRate};
+use campfire_sim::{SimSet, SimTick, StableId, StateRegistry, TickRate};
 
 use crate::actions::action_book::ActionBook;
-use crate::actions::action_kind::ActionKind;
 use crate::stats::carried_mut::CarriedMut;
 use crate::stats::lifetime::Hold;
 use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::param_book::ParamBook;
 
-use crate::actions::action_slots::{ActionSlots, ActionTarget, InProgress, SlotAim};
+use crate::actions::action_slots::ActionSlots;
 use crate::actions::actions_column::ActionsColumn;
-
-use crate::actions::purse::Purse;
-
-use crate::actions::targets::Targets;
-use crate::players::player_resources::PlayerResources;
-use crate::units::dead::Dead;
 
 use crate::stats::StatsSet;
 use crate::stats::modifier_book::{Applier, ModifierBook};
 use crate::stats::modifier_spec::ParamPlace;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::param_sources::ParamSources;
-use crate::stats::pools::Pools;
 
 use crate::stats::stat_book::StatBook;
-use crate::units::block::Block;
-use crate::units::body::Body;
 
-use crate::units::owner::Owner;
 use crate::units::script_view::{RowFill, View};
-use crate::units::team::Team;
-
-use crate::units::unit_tags::UnitTags;
 
 pub(crate) mod action_book;
 pub(crate) mod action_data;
@@ -63,7 +48,8 @@ pub struct Actions;
 /// The systems of the action pipeline, for the capabilities built on it to order theirs against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum ActionsSet {
-    /// In `SimSet::Act`: what each unit was ordered starts, and attacks start.
+    /// In `SimSet::Act`, after attacks start: what each unit was ordered starts, each kind's
+    /// orders by the capability that runs the kind.
     Start,
     /// In `SimSet::Inputs`, once the tick's orders and expiries are in: passives hold as the
     /// slots stand.
@@ -89,7 +75,6 @@ impl Actions {
     /// target is one combat finds.
     pub(crate) fn schedule(schedule: &mut Schedule) {
         schedule.add_systems((
-            start_actions.in_set(SimSet::Act).in_set(ActionsSet::Start),
             hold_passives
                 .in_set(SimSet::Inputs)
                 .in_set(ActionsSet::HoldAtInputs)
@@ -99,114 +84,6 @@ impl Actions {
                 .in_set(ActionsSet::HoldAtResolve),
             hold_passives.in_set(SimSet::Vision),
         ));
-    }
-}
-
-/// Starts what each unit was ordered, in Act. An ordered cast that passes its checks, its target
-/// within range, starts, and any other is dropped. With nothing under way, a unit attacks its
-/// attack target with the first weapon whose filter selects it, once that weapon passes its
-/// checks and the target is within its range. A unit its tags keep from an action's group keeps
-/// its order: a cast it started goes back to it, and an attack in its windup stops. An attack
-/// target that is no living enemy any more is dropped, with the attack on it.
-fn start_actions(
-    tick: Res<'_, SimTick>,
-    book: Res<'_, ActionBook>,
-    resources: Option<Res<'_, PlayerResources>>,
-    targets: Targets<'_, '_>,
-    mut units: Query<
-        '_,
-        '_,
-        (
-            &Position,
-            &Team,
-            &mut ActionSlots,
-            Option<&Pools>,
-            Option<&Owner>,
-            Option<&Body>,
-            Option<&UnitTags>,
-        ),
-        Without<Dead>,
-    >,
-) {
-    let now = tick.start();
-    for (&position, &team, mut slots, pools, owner, body, tags) in &mut units {
-        let effects = UnitTags::effects_of(tags);
-        let purse = Purse {
-            pools,
-            resources: resources.as_deref(),
-            owner: owner.map(|owner| owner.slot()),
-        };
-        let radius = Body::radius_of(body);
-        let living = |id| targets.living(id);
-        let attitude = |other| targets.attitude(team, other);
-        let casts = |aim: SlotAim| {
-            let slot = slots
-                .slot(aim.slot)
-                .expect("an order of a slot the unit has");
-            let action = book
-                .get(slot.action)
-                .expect("a slot's action is in the book");
-            action.kind.kind() == ActionKind::Cast
-        };
-        match slots.in_progress() {
-            Some(InProgress::Order { aim, resolves_at }) if casts(aim) => {
-                if effects.blocks(Block::Cast) {
-                    if resolves_at.is_some() {
-                        slots.interrupt();
-                    }
-                    continue;
-                }
-                if resolves_at.is_some() {
-                    continue;
-                }
-                let started = book
-                    .check(now, &slots, purse, aim, attitude, living)
-                    .filter(|checked| checked.in_range(position, radius, &targets))
-                    .map(|checked| (now.after(checked.values.windup), checked.target));
-                match started {
-                    Some((resolves_at, target)) => slots.start(resolves_at, target),
-                    None => slots.stop(),
-                }
-            }
-            Some(InProgress::Order { .. }) => {}
-            Some(InProgress::Attack { .. }) => {
-                if effects.blocks(Block::Attack) {
-                    slots.interrupt();
-                } else if slots
-                    .attack_target()
-                    .is_none_or(|target| targets.enemy(team, target).is_none())
-                {
-                    slots.set_attack_target(None);
-                }
-            }
-            None => {
-                let Some(target) = slots.attack_target() else {
-                    continue;
-                };
-                let Some(unit) = targets.enemy(team, target) else {
-                    slots.set_attack_target(None);
-                    continue;
-                };
-                if effects.blocks(Block::Attack) {
-                    continue;
-                }
-                let selects = (targets.attitude(team, unit.team), unit.tags);
-                let Some(slot) = book.weapon_for(&slots, Some(selects)) else {
-                    continue;
-                };
-                let aim = SlotAim {
-                    slot,
-                    target: ActionTarget::Unit(target),
-                };
-                let started = book
-                    .check(now, &slots, purse, aim, attitude, living)
-                    .filter(|checked| checked.in_range(position, radius, &targets))
-                    .map(|checked| now.after(checked.values.windup));
-                if let Some(resolves_at) = started {
-                    slots.start_attack(slot, resolves_at);
-                }
-            }
-        }
     }
 }
 

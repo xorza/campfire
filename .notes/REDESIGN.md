@@ -140,10 +140,10 @@ mode
 capability_set, books
 ```
 
-### What is left
+### Decided
 
-- **Action kinds.** Each kind registers its rules: its start check, its windup, and what it does when it resolves. Combat registers the attack kind, abilities the cast and production the train. `start_actions` still names the three kinds.
-- **One table of capabilities.** The install order, `needs`, the layer of each module and the list in `lib.rs` all come from one table in `capability_set`.
+- **Action kinds.** Each capability starts the actions of its kind: combat the attacks, then abilities the ordered casts in `ActionsSet::Start`, then production the trains, which pay at once. Each resolves its own kind. The book's load still maps a kind to its data, as the kinds are the actions layer's own enum.
+- **One table of capabilities.** `CAPABILITIES` holds the install order, the needs, the effects and the API of each capability. The layers stay in the layer test, which checks that each capability builds only on lower layers installed before it. The modules in `lib.rs` are declarations, which no table can give without a macro.
 
 ## R5. Stable order and one exactness rule
 
@@ -218,41 +218,22 @@ A refactor of this size needs a permanent proof that behaviour stays the same. T
 - **Behaviour changes.** A step marked "changes behaviour" names the change in its review, and updates the behaviour golden in the same diff.
 - **Temporary code.** A Stage B fix that a later step replaces says so in its commit. The later step deletes it.
 
-### Stage D: layers (track S)
-
-| Step | Change | Size |
-|---|---|---|
-| D5 | Each action kind registers its rules; one table of capabilities | S |
-
-Done when the layer test has no exception left.
-
 ### Track I: independent steps
 
-These need only Stage A and Stage B. They can run between the steps of track S, in any order that their arrows allow. Each is small enough to fill a session.
+These need only Stage A and Stage B, and run in any order. Each is small enough to fill a session.
 
 | Step | Change | Needs | Size |
 |---|---|---|---|
 | F3 | Ids at call time, so `ctx.projectile` and `ctx.area` return handles whose `.state` the call writes | Unit script state: a unit's `[state]` and `unit.state`, which the API does not have yet, so a handle alone would give a script nothing to use | M, changes behaviour |
 | H4 | Incremental view rows | B | M |
-
-### Joins of the two tracks
-
-| Step | Change | Needs | Size |
-|---|---|---|---|
-| H1b | `ctx.find` and `nearest_visible` read `BodyGrid` | D5 | S |
+| H1b | `ctx.find` and `nearest_visible` read `BodyGrid` | B | S |
 | J | The local fixes in the appendix, and T§5 to T§8 | any time | S each |
 
 ### Order
 
 ```
-Track S:  D5
-
-Track I:  H4      F3 after unit script state
-
-Joins:    D5 → H1b
+Track I:  H1b      H4      F3 after unit script state
 ```
-
-Track S is long and sequential. Track I fills the sessions between its steps.
 
 ## Risks
 

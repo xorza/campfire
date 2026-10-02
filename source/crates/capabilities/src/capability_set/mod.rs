@@ -528,6 +528,33 @@ mod tests {
     }
 
     #[test]
+    fn each_capability_installs_after_the_lower_layers_it_builds_on() {
+        // The table's install order, its needs and the layers are three facts of one order: a
+        // capability builds only on capabilities of lower layers, installed before it.
+        let layer = |capability: Capability| {
+            let found = LAYERS.iter().find(|(name, _)| *name == capability.name());
+            found.map(|&(_, layer)| layer)
+        };
+        let mut installed = Vec::new();
+        for row in CAPABILITIES.iter().filter(|row| row.install.is_some()) {
+            let own = layer(row.capability).expect("an installed capability is a module");
+            for &need in row.needs {
+                assert!(
+                    installed.contains(&need),
+                    "{need:?} before {:?}",
+                    row.capability
+                );
+                assert!(
+                    layer(need) < Some(own),
+                    "{need:?} below {:?}",
+                    row.capability
+                );
+            }
+            installed.push(row.capability);
+        }
+    }
+
+    #[test]
     fn a_module_imports_only_from_its_layer_and_below() {
         let src = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src"));
         let layer = |module: &str| {

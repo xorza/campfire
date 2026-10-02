@@ -7,12 +7,12 @@ use campfire_sim::{
     IdAllocator, Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry,
 };
 
+use crate::actions::ActionsSet;
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::{ActionSlots, InProgress, SlotAim};
 use crate::actions::kind_spec::KindSpec;
 use crate::actions::purse::{Payer, Purse};
-use crate::combat::CombatSet;
 use crate::players::player_resources::PlayerResources;
 use crate::production::production_data::ProductionData;
 use crate::production::train_queue::{Queued, TrainQueue};
@@ -41,13 +41,13 @@ pub(crate) enum ProductionSet {
 }
 
 impl Production {
-    /// Adds production to a match: in Act, after attacks start, ordered trains pass their checks,
-    /// pay, and join their unit's queue; in Mode, before the mode's hooks, the trains whose time
+    /// Adds production to a match: in Act, after the other orders start, ordered trains pass
+    /// their checks, pay, and join their unit's queue; in Mode, before the mode's hooks, the trains whose time
     /// ended spawn.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         world.insert_resource(ByType::<ProductionData>::default());
         schedule.add_systems((
-            start_trains.in_set(SimSet::Act).after(CombatSet::Attack),
+            start_trains.in_set(SimSet::Act).after(ActionsSet::Start),
             Production::finish_trains
                 .in_set(SimSet::Mode)
                 .in_set(ProductionSet::Finish),
