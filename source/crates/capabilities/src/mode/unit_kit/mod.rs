@@ -33,20 +33,39 @@ pub struct UnitKit {
     pub queue: Option<NonZeroU8>,
 }
 
+/// What a unit type's file gives its kit: its `combat` section, its pools, each with the stat of
+/// its maximum, its `vision` section, its body, its tracks and its `production` section.
+#[derive(Debug, Clone)]
+pub(crate) struct KitSections<'a, P> {
+    pub(crate) combat: Option<&'a CombatData>,
+    pub(crate) pools: P,
+    pub(crate) vision: Option<&'a VisionData>,
+    pub(crate) body: Option<Body>,
+    pub(crate) tracks: TrackSet,
+    pub(crate) production: Option<&'a ProductionData>,
+}
+
 impl UnitKit {
-    /// The kit of `unit_type`, of the stats `book` gives it, with `combat` and `pools`, each
-    /// with the stat of its maximum. Each pool's maximum is that stat at level 1, and its move
-    /// step is the book's at level 1 at `rate`, as a refresh computes them. A type has `combat`
-    /// exactly when it has the life pool `life`, which a mode with no combat lacks: a unit that
-    /// can die is one that combat kills.
+    /// The kit of `unit_type`, of the stats `book` gives it and of its `sections`. Each pool's
+    /// maximum is the stat of its maximum at level 1, and the move step is the book's at level 1
+    /// at `rate`, as a refresh computes them. A type has `combat` exactly when it has the life
+    /// pool `life`, which a mode with no combat lacks: a unit that can die is one that combat
+    /// kills.
     pub(crate) fn new<'a>(
         book: &StatBook,
         unit_type: UnitType,
-        combat: Option<&CombatData>,
-        pools: impl IntoIterator<Item = (PoolId, &'a Stat)>,
+        sections: KitSections<'a, impl IntoIterator<Item = (PoolId, &'a Stat)>>,
         life: Option<PoolId>,
         rate: TickRate,
     ) -> Result<UnitKit, UnitKitError> {
+        let KitSections {
+            combat,
+            pools,
+            vision,
+            body,
+            tracks,
+            production,
+        } = sections;
         let values = book.base_values(unit_type, 1);
         let given = |stat: &Stat| {
             let id = book.named(stat).expect("the load checked the stats");
@@ -80,42 +99,11 @@ impl UnitKit {
             pools,
             on_death,
             step,
-            sight: None,
-            body: None,
-            tracks: TrackSet::default(),
-            queue: None,
-        })
-    }
-
-    /// The kit with `body`, the body of its type's `collision` section on its layer, if it has
-    /// one.
-    #[must_use]
-    pub const fn with_body(self, body: Option<Body>) -> UnitKit {
-        UnitKit { body, ..self }
-    }
-
-    /// The kit with `tracks`, its type's.
-    #[must_use]
-    pub const fn with_tracks(self, tracks: TrackSet) -> UnitKit {
-        UnitKit { tracks, ..self }
-    }
-
-    /// The kit with the train queue of its type's `production` section, if it has one.
-    #[must_use]
-    pub fn with_production(self, production: Option<&ProductionData>) -> UnitKit {
-        UnitKit {
-            queue: production.map(|production| production.queue),
-            ..self
-        }
-    }
-
-    /// The kit with the sight of its type's `vision` section, if it has one.
-    #[must_use]
-    pub fn with_vision(self, vision: Option<&VisionData>) -> UnitKit {
-        UnitKit {
             sight: vision.map(|vision| vision.sight),
-            ..self
-        }
+            body,
+            tracks,
+            queue: production.map(|production| production.queue),
+        })
     }
 }
 

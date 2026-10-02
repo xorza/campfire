@@ -3,10 +3,10 @@ use std::{iter, slice};
 
 use campfire_capabilities::{
     ActionData, ActionDataField, ActionKind, ActionSlots, ApiOwner, ApiVersion, BookError, Books,
-    CollisionData, CombatRules, DeclaredName, DeliveryData, EffectTo, Effecting, EngineStat,
-    EngineTag, FilterData, Hook, MemberKind, ModifierData, NameKind, Number, Offers, Param, Pools,
-    Range, RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Stat, Targeting, TrackId,
-    UnitTypeData, UnitTypeFile,
+    CollisionData, CombatRules, DeclaredName, DeliveryData, EffectTo, Effecting, EngineTag,
+    FilterData, Hook, MemberKind, ModifierData, NameKind, Number, Offers, Param, Pools, Range,
+    RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Stat, Targeting, TrackId, UnitTypeData,
+    UnitTypeFile,
 };
 use campfire_content::PackagePath;
 use campfire_math::Num;
@@ -189,15 +189,10 @@ impl<'a> LoadCheck<'a> {
     fn map_walkable(&self) -> Result<(), LoadProblem> {
         let packages = self.packages;
         let walkers = packages.walkers();
-        let move_speed = Stat::Engine(EngineStat::MoveSpeed);
         let body_of = |unit_type: &str| {
             let unit_type = packages.content.units.get(unit_type)?;
-            let walks = unit_type
-                .stats
-                .as_ref()
-                .is_some_and(|stats| stats.declares(&move_speed));
             let body = packages.data.navigation.body(unit_type.collision.as_ref());
-            body.filter(|_| !walks)
+            body.filter(|_| !unit_type.walks())
         };
         packages
             .map

@@ -43,7 +43,7 @@ fn caster(change: impl FnOnce(&mut BTreeMap<Stat, StatValue>)) -> StatsData {
 /// 6 m/s, health within `health_rule`.
 fn kit_of<'a>(
     stats: &StatsData,
-    combat: Option<&CombatData>,
+    combat: Option<&'a CombatData>,
     pools: impl IntoIterator<Item = (PoolId, &'a Stat)>,
     hz: u32,
     health_rule: StatRule,
@@ -55,12 +55,20 @@ fn kit_of<'a>(
     ]);
     let rate = TickRate::new(NonZeroU32::new(hz).unwrap());
     let book = StatBook::new(&rules, [(TYPE, stats)], decimal("6.0"));
-    UnitKit::new(&book, TYPE, combat, pools, Some(PoolId::FIRST), rate)
+    let sections = KitSections {
+        combat,
+        pools,
+        vision: None,
+        body: None,
+        tracks: TrackSet::default(),
+        production: None,
+    };
+    UnitKit::new(&book, TYPE, sections, Some(PoolId::FIRST), rate)
 }
 
 fn kit<'a>(
     stats: &StatsData,
-    combat: Option<&CombatData>,
+    combat: Option<&'a CombatData>,
     pools: impl IntoIterator<Item = (PoolId, &'a Stat)>,
     hz: u32,
 ) -> Result<UnitKit, UnitKitError> {

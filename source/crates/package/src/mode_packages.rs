@@ -4,9 +4,8 @@ use std::iter;
 use std::path::Path;
 
 use campfire_capabilities::{
-    BookInput, BookKind, BookPackage, Books, CapabilitySet, CollisionData, DeclaredName,
-    EngineStat, EngineTag, MapData, ModeData, PackageContent, Param, ScriptApi, ScriptBook, Stat,
-    StatGraph, StatsData, UnitTypeFile, Walker,
+    BookInput, BookKind, BookPackage, Books, CapabilitySet, DeclaredName, EngineTag, MapData,
+    ModeData, PackageContent, Param, ScriptApi, ScriptBook, StatGraph, UnitTypeFile, Walker,
 };
 use campfire_content::{Fingerprint, MessageId, PackagePath};
 use campfire_script::{ScriptHost, ScriptId};
@@ -340,12 +339,10 @@ impl ModePackages {
     /// speed, by its layer and its body's radius, 0 for one with no body; in order, each once.
     /// The pathing grid has a clearance for each.
     pub fn walkers(&self) -> Vec<Walker> {
-        let move_speed = Stat::Engine(EngineStat::MoveSpeed);
         let navigation = &self.data.navigation;
-        let walker = |stats: Option<&StatsData>, collision: Option<&CollisionData>| {
-            stats
-                .is_some_and(|stats| stats.declares(&move_speed))
-                .then(|| Walker::of(navigation.body(collision).as_ref()))
+        let walker = |unit_type: &UnitTypeFile| {
+            let body = navigation.body(unit_type.collision.as_ref());
+            unit_type.walks().then(|| Walker::of(body.as_ref()))
         };
         let avatars = self.avatars().map(|avatar| &avatar.unit);
         let mut walkers: Vec<Walker> = self
@@ -353,7 +350,7 @@ impl ModePackages {
             .units
             .values()
             .chain(avatars)
-            .filter_map(|unit_type| walker(unit_type.stats.as_ref(), unit_type.collision.as_ref()))
+            .filter_map(walker)
             .collect();
         walkers.sort_unstable();
         walkers.dedup();

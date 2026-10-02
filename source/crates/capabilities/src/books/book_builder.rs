@@ -17,7 +17,7 @@ use crate::combat::on_death::OnDeath;
 use crate::mode::mode_books::ModeBooks;
 use crate::mode::mode_map::ModeMap;
 use crate::mode::mode_setup::{LoadoutSetup, SlotAction, UnitTypeSetup};
-use crate::mode::unit_kit::UnitKit;
+use crate::mode::unit_kit::{KitSections, UnitKit};
 use crate::orders::ai::Ai;
 use crate::progression::track_book::TrackBook;
 use crate::progression::track_set::TrackSet;
@@ -361,23 +361,22 @@ impl<'a> BookBuilder<'a> {
             tracks.named(track.as_str()).expect(CHECKED)
         }));
         let rate = self.input.rate;
-        let kit = UnitKit::new(
-            &self.stats,
-            unit_type,
-            combat.as_ref(),
+        let sections = KitSections {
+            combat: combat.as_ref(),
             pools,
-            self.life,
-            rate,
-        )
-        .map_err(|error| BookError::Kit {
-            package: index,
-            unit_type: name.to_owned(),
-            error,
-        })?
-        .with_vision(file.vision.as_ref())
-        .with_body(data.navigation.body(file.collision.as_ref()))
-        .with_tracks(tracks)
-        .with_production(file.production.as_ref());
+            vision: file.vision.as_ref(),
+            body: data.navigation.body(file.collision.as_ref()),
+            tracks,
+            production: file.production.as_ref(),
+        };
+        let kit =
+            UnitKit::new(&self.stats, unit_type, sections, self.life, rate).map_err(|error| {
+                BookError::Kit {
+                    package: index,
+                    unit_type: name.to_owned(),
+                    error,
+                }
+            })?;
         if let Some(production) = file.production {
             books.producers.set(unit_type, production);
         }

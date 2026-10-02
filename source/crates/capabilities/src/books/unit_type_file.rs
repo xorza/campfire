@@ -12,6 +12,7 @@ use crate::units::collision_data::CollisionData;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::declared_name::DeclaredName;
 use crate::values::scalar::Scalar;
+use crate::values::stat::{EngineStat, Stat};
 use crate::vision::vision_data::VisionData;
 
 /// A unit type as its data file declares it: the core's tags and params, and a section for each
@@ -40,6 +41,14 @@ pub struct UnitTypeFile {
 }
 
 impl UnitTypeFile {
+    /// Whether its units walk: its stats declare a move speed.
+    pub fn walks(&self) -> bool {
+        let move_speed = Stat::Engine(EngineStat::MoveSpeed);
+        self.stats
+            .as_ref()
+            .is_some_and(|stats| stats.declares(&move_speed))
+    }
+
     /// Whether it is a delivery type: a `projectile` or an `area` section makes it one, which
     /// no map or train places.
     pub const fn delivers(&self) -> bool {

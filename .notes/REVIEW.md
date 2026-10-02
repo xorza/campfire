@@ -19,14 +19,11 @@ The rule is "no data in strings": a name from data becomes a checked type where 
 
 One operation is written twice or three times, and the copies disagree.
 
-- [ ] **"A unit as a param source" is built three ways** — `capabilities/src/stats/param_source.rs:38-50`, `stats/param_sources.rs:28-38`, `stats/mod.rs:569-578`. Two treat level and stats as optional, one requires them. Better: one constructor.
-- [ ] **"A unit type walks" is defined twice** — `package/src/mode_packages.rs:207-214`, `package/src/load_check.rs:119-128`. The avatar rules that `AvatarData` promises are applied in `runner/src/match_build.rs:200-205`. Better: `UnitTypeFile::walks()`, and an `AvatarData` method that gives the effective unit type.
 
 ## 11. Data shapes allow states that should not exist
 
 These types hold their rules in `expect`s, sentinels or loose fields, not in their shape.
 
-- [ ] **`UnitKit` is built in two phases** — `capabilities/src/mode/unit_kit/mod.rs:49-133`. `new` gives a kit with four blank sections that four `with_*` calls fill, and the runner always calls all four. Better: one constructor.
 - [ ] **Load errors have many shapes** — `package/src/error.rs:140,493-498`. `KindField` stands for about eight rules, five `Repeated*` variants say one thing, and `LoadError` is built by eight closures. Better: one case per rule, `Repeated { of, at, name }`, and `LoadError::new`.
 - [ ] **Small shapes** — `Rc<OnceCell<Rc<ModeBook>>>` has an unused inner `Rc` (`capabilities/src/scripts/ctx.rs:25`); `ModeBook` keeps three `ByType` maps filled together (`mode/mode_book.rs:63-67,99-110`); `ModeSchema` keeps single-run `NameTable`s and a match-long `state_initial` (`mode/mode_schema.rs:11-27,42-53`); `UnitRow` keeps four start and end pairs where `ModifierRow` uses `Range<u32>` (`units/script_view.rs:130-141`); `ModePackages.units` adds a hop through `UnitsData`, and `PackageStore` hand-rolls a sorted map (`package/src/package_store.rs:13,26-35`); `PackageNames` keeps two maps on one key (`package/src/load_check.rs:43-45`). Better: one canonical shape each.
 - [ ] **`ctx.projectile` and `ctx.area` return `()`** — `capabilities/src/projectiles/projectiles_api.rs:60-63`, `areas/areas_api.rs:37-40`. Design 08 says a unit made in a call is usable in that call, and `chain_fire.rhai:12-13` uses the return value. Better: the frame takes the id at call time, as `spawn_unit` does.

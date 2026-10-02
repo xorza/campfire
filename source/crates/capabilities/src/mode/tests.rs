@@ -618,7 +618,10 @@ fn setup(
     blessing: ModifierId,
 ) -> ModeSetup<'_> {
     let [grunt_type, tower_type, x, y] = types;
-    let hero = grunt().with_tracks(TrackSet::of([0, 1].map(|at| TrackId::new(at).unwrap())));
+    let hero = UnitKit {
+        tracks: TrackSet::of([0, 1].map(|at| TrackId::new(at).unwrap())),
+        ..grunt()
+    };
     let unit = |unit_type, kit| UnitTypeSetup {
         unit_type,
         kit,
