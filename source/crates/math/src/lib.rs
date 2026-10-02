@@ -18,6 +18,7 @@ pub use num::{Num, SinCos};
 pub use player_slot::PlayerSlot;
 pub use rng::Rng;
 pub use rng::rng_source::{RngSource, SegmentSeed};
+pub use rng::rng_stream::RngStream;
 pub use tick::{Tick, Ticks};
 pub use u256::U256;
 pub use vec3::Vec3;

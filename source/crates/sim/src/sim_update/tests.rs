@@ -4,7 +4,7 @@ use bevy_ecs::component::Component;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{ScheduleBuildError, ScheduleBuildWarning, ScheduleConfigs};
 use bevy_ecs::system::{Commands, Query, ScheduleSystem};
-use campfire_math::{Num, PlayerSlot, RngSource};
+use campfire_math::{Num, PlayerSlot, RngSource, RngStream};
 use serde::{Deserialize, Serialize};
 
 use super::*;
@@ -55,7 +55,11 @@ fn spawn_unit(mut commands: Commands<'_, '_>, mut ids: ResMut<'_, IdAllocator>) 
 
 fn wander(rng: Res<'_, SimRng>, mut units: Query<'_, '_, (&StableId, &mut Offset)>) {
     for (&id, mut position) in &mut units {
-        position.0 += Num::from_bits(rng.open("wander", id).below(STEP_BOUND).cast_signed());
+        position.0 += Num::from_bits(
+            rng.open(RngStream::new("wander"), id)
+                .below(STEP_BOUND)
+                .cast_signed(),
+        );
     }
 }
 
@@ -310,7 +314,7 @@ fn ticks_advance_and_key_the_draws() {
         (id..TICKS)
             .map(|tick| {
                 source.begin_tick(tick);
-                source.open("wander", id).below(STEP_BOUND)
+                source.open(RngStream::new("wander"), id).below(STEP_BOUND)
             })
             .sum::<u64>()
     };

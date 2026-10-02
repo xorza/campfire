@@ -15,7 +15,7 @@ use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::system::{Commands, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use blake3::Hasher;
-use campfire_math::{Num, RngSource, SegmentSeed, Vec3};
+use campfire_math::{Num, RngSource, RngStream, SegmentSeed, Vec3};
 use campfire_sim::{
     EntityIndex, IdAllocator, SimComponent, SimRng, SimSet, SimTick, SimUpdate, StableId,
     StateRegistry, TickRate,
@@ -147,7 +147,7 @@ fn rng_section(hasher: &mut Hasher) {
     for tick in 0..50 {
         source.begin_tick(tick);
         for entity in 0..8 {
-            let mut rng = source.open("golden", entity);
+            let mut rng = source.open(RngStream::new("golden"), entity);
             let draws = [
                 rng.next_u64(),
                 rng.below(1000),
@@ -229,7 +229,7 @@ fn arrive(
 
 fn drift(rng: Res<'_, SimRng>, mut units: Query<'_, '_, (&StableId, &mut Place)>) {
     for (&id, mut place) in &mut units {
-        let mut rng = rng.open("golden.drift", id);
+        let mut rng = rng.open(RngStream::new("golden.drift"), id);
         let mut axis = || Num::from_bits(rng.below(1 << 25).cast_signed()) - Num::ONE;
         place.0 += Vec3::new(axis(), axis(), axis());
     }
@@ -237,7 +237,10 @@ fn drift(rng: Res<'_, SimRng>, mut units: Query<'_, '_, (&StableId, &mut Place)>
 
 fn wear(rng: Res<'_, SimRng>, mut units: Query<'_, '_, (&StableId, &mut Life)>) {
     for (&id, mut life) in &mut units {
-        if rng.open("golden.wear", id).chance(Num::ONE / 3) {
+        if rng
+            .open(RngStream::new("golden.wear"), id)
+            .chance(Num::ONE / 3)
+        {
             life.0 -= Num::ONE / 10;
         }
     }

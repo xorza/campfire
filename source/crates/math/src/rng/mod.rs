@@ -2,10 +2,12 @@ use blake3::{Hasher, OutputReader};
 
 use crate::num::Num;
 use crate::rng::rng_source::SegmentSeed;
+use crate::rng::rng_stream::RngStream;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
 pub(crate) mod rng_source;
+pub(crate) mod rng_stream;
 
 /// Starts every message, so no other use of a segment seed can produce the same output.
 const DOMAIN: &[u8] = b"campfire/rng/v1";
@@ -26,13 +28,14 @@ pub struct Rng {
 impl Rng {
     /// The message is `DOMAIN ‖ u32 stream length ‖ stream ‖ u64 entity ‖ u64 tick`, little-endian;
     /// the length prefix keeps two fields from running together.
-    pub(crate) fn new(seed: &SegmentSeed, stream: &str, entity: u64, tick: u64) -> Rng {
-        let stream_len = u32::try_from(stream.len()).expect("RNG stream name above 4 GiB");
+    pub(crate) fn new(seed: &SegmentSeed, stream: RngStream, entity: u64, tick: u64) -> Rng {
+        let stream = stream.as_bytes();
+        let stream_len = u32::try_from(stream.len()).expect("a stream's name has at most 64 bytes");
         let mut hasher = Hasher::new_keyed(seed.as_bytes());
         hasher
             .update(DOMAIN)
             .update(&stream_len.to_le_bytes())
-            .update(stream.as_bytes())
+            .update(stream)
             .update(&entity.to_le_bytes())
             .update(&tick.to_le_bytes());
         Rng {

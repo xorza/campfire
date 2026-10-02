@@ -4,7 +4,7 @@ use bevy_ecs::query::{QueryState, With, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::{EntityRef, Mut, World};
-use campfire_math::{Num, Tick};
+use campfire_math::{Num, RngStream, Tick};
 use campfire_sim::{
     EntityIndex, Keyed, Ordered, Position, SimRng, SimSet, SimTick, StableId, StateRegistry,
     TickRate,
@@ -85,7 +85,7 @@ pub(crate) mod respawn;
 pub(crate) mod shots;
 
 /// The random stream an attack's roll draws from, for its attacker in its tick.
-pub(crate) const ROLL_STREAM: &str = "combat.roll";
+pub(crate) const ROLL_STREAM: RngStream = RngStream::new("combat.roll");
 
 /// The `combat` capability: teams, the life pool, attacks, damage and deaths.
 #[derive(Debug)]

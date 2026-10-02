@@ -64,7 +64,7 @@ fn words_follow_the_documented_message() {
         .finalize_xof()
         .fill(&mut expected);
 
-    let mut rng = Rng::new(&seed(), "abc", 7, 9);
+    let mut rng = Rng::new(&seed(), RngStream::new("abc"), 7, 9);
     for &chunk in expected.as_chunks::<8>().0 {
         assert_eq!(rng.next_u64(), u64::from_le_bytes(chunk));
     }
@@ -168,8 +168,8 @@ fn chance_compares_the_top_24_bits() {
 
 #[test]
 fn chance_always_takes_one_word() {
-    let mut a = Rng::new(&seed(), "s", 1, 1);
-    let mut b = Rng::new(&seed(), "s", 1, 1);
+    let mut a = Rng::new(&seed(), RngStream::new("s"), 1, 1);
+    let mut b = Rng::new(&seed(), RngStream::new("s"), 1, 1);
     assert!(!a.chance(Num::ZERO));
     b.next_u64();
     assert_eq!(a.next_u64(), b.next_u64());
@@ -177,7 +177,7 @@ fn chance_always_takes_one_word() {
 
 #[test]
 fn pick_and_below_stay_in_range() {
-    let mut rng = Rng::new(&seed(), "s", 1, 1);
+    let mut rng = Rng::new(&seed(), RngStream::new("s"), 1, 1);
     assert_eq!(rng.pick(1), 0);
     assert_eq!(rng.below(1), 0);
     for _ in 0..1000 {
@@ -188,8 +188,9 @@ fn pick_and_below_stay_in_range() {
 
 #[test]
 fn sequences_depend_on_every_field() {
-    let first =
-        |stream: &str, entity: u64, tick: u64| Rng::new(&seed(), stream, entity, tick).next_u64();
+    let first = |stream: &'static str, entity: u64, tick: u64| {
+        Rng::new(&seed(), RngStream::new(stream), entity, tick).next_u64()
+    };
     let base = first("s", 1, 1);
     assert_eq!(base, first("s", 1, 1));
     assert_ne!(base, first("t", 1, 1));
@@ -197,7 +198,7 @@ fn sequences_depend_on_every_field() {
     assert_ne!(base, first("s", 1, 2));
     assert_ne!(
         base,
-        Rng::new(&SegmentSeed::new([1; 32]), "s", 1, 1).next_u64()
+        Rng::new(&SegmentSeed::new([1; 32]), RngStream::new("s"), 1, 1).next_u64()
     );
 }
 
@@ -205,11 +206,11 @@ fn sequences_depend_on_every_field() {
 fn source_opens_each_pair_once_per_tick() {
     let mut source = RngSource::new(seed());
     source.begin_tick(5);
-    let a = source.open("s", 1).next_u64();
-    assert_ne!(source.open("s", 2).next_u64(), a);
-    assert_ne!(source.open("t", 1).next_u64(), a);
+    let a = source.open(RngStream::new("s"), 1).next_u64();
+    assert_ne!(source.open(RngStream::new("s"), 2).next_u64(), a);
+    assert_ne!(source.open(RngStream::new("t"), 1).next_u64(), a);
     source.begin_tick(5);
-    assert_eq!(source.open("s", 1).next_u64(), a);
+    assert_eq!(source.open(RngStream::new("s"), 1).next_u64(), a);
 }
 
 #[cfg(debug_assertions)]
@@ -218,6 +219,6 @@ fn source_opens_each_pair_once_per_tick() {
 fn source_panics_on_a_repeated_pair() {
     let mut source = RngSource::new(seed());
     source.begin_tick(5);
-    let _first = source.open("s", 1);
-    let _second = source.open("s", 1);
+    let _first = source.open(RngStream::new("s"), 1);
+    let _second = source.open(RngStream::new("s"), 1);
 }

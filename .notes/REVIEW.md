@@ -56,7 +56,6 @@ The design says a module imports only from the capabilities below it, and that t
 The rule is "no data in strings": a name from data becomes a checked type where it enters. These names do not.
 
 - [ ] **Action data mixes strings and checked names** — `capabilities/src/actions/action_data.rs:47,52,65,68,71`, `actions/delivery_data.rs:14,19`. `hold`, `passive_modifier`, `unit_type`, the param and state keys and the delivery's unit type are `String`, while cost keys and `damage_kind` are `DeclaredName`. Better: all `DeclaredName`.
-- [ ] **RNG streams are named by strings** — `math/src/rng/mod.rs:31`, `math/src/rng/rng_source.rs:67`, `sim/src/sim_rng.rs:20`. They are a fixed engine set. The debug build also copies each name into a `Mutex<BTreeSet<String>>` on every open. Better: an enum or a fixed-bytes newtype.
 ## 10. Parallel code paths apply one rule differently
 
 One operation is written twice or three times, and the copies disagree.

@@ -153,7 +153,6 @@ capability_set, books
 
 - `start_trains` and `strike` pay shared player resources in Bevy query order, which a restore can change.
 - Three systems walk the whole `EntityIndex` to get an order, and they visit projectiles and areas too.
-- RNG streams are named by strings.
 - `ctx.projectile` and `ctx.area` take their unit's id only later, so they return `()`, and `chain_fire.rhai` cannot use the result.
 
 ### Shape
@@ -167,7 +166,6 @@ capability_set, books
   - This test needs a match that runs production and two producers of one player. The 3v3 has no production, so the test uses the proving match, not the 3v3.
   - It lands with `Ordered` (B2). Before that step, it fails on `start_trains`.
 - **Ids at call time.** A unit that a call creates takes its id when it is queued, as `spawn_unit` does today. Calls already run in a stable order, so the ids stay in a stable order. `ctx.projectile` and `ctx.area` then return a `Unit` handle that the same call can use.
-- **RNG streams** are a closed enum, `RngStream`, with fixed bytes for each. The debug build's set of `String` names goes away.
 
 ## R6. A limit on work per tick, and fresh shared indexes
 
@@ -310,7 +308,7 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 
 | Step | Change | Needs | Size |
 |---|---|---|---|
-| F2 | `RngStream`; ids at call time, so `ctx.projectile` and `ctx.area` return handles | B | M, changes behaviour |
+| F2 | Ids at call time, so `ctx.projectile` and `ctx.area` return handles | B | M, changes behaviour |
 | G1 | `register_*_checked` and a check for every type; absent resources removed; the state table test; the snapshot fuzz | A | M |
 | H1 | `BodyGrid`, read by deliveries and auras; one `(group, unit)` hit store; stuck walkers through the grid | B | M |
 | H2 | `NavBudget`; short routes within their window; "arrived short"; re-asks after removals; the blocker query and clipping; `Progress` reset; blocked map cells in the exact tests; `Steering` methods; `Route::clear` keeps its buffer | B3 | M, changes behaviour |
@@ -419,7 +417,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - tag names: C3;
   - action strings: C3;
   - mode and map strings: C3;
-  - RNG streams: F2;
   - default filter: C6a;
   - `PackagePath`: C1;
   - `LoadError` path: C2;

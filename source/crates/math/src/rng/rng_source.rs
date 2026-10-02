@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::rng::Rng;
+use crate::rng::rng_stream::RngStream;
 
 /// The seed of one log segment. It stays secret until the segment is published.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -29,7 +30,7 @@ pub struct RngSource {
     seed: SegmentSeed,
     tick: u64,
     #[cfg(debug_assertions)]
-    opened: std::sync::Mutex<std::collections::BTreeSet<(String, u64)>>,
+    opened: std::sync::Mutex<std::collections::BTreeSet<(RngStream, u64)>>,
 }
 
 impl RngSource {
@@ -61,14 +62,14 @@ impl RngSource {
 
     /// The sequence of `stream` for `entity` in the current tick. Debug builds panic when the
     /// same pair opens twice in one tick, since the second would repeat the first one's draws.
-    pub fn open(&self, stream: &str, entity: u64) -> Rng {
+    pub fn open(&self, stream: RngStream, entity: u64) -> Rng {
         #[cfg(debug_assertions)]
         {
             let fresh = self
                 .opened
                 .lock()
                 .expect("RNG registry poisoned")
-                .insert((stream.to_owned(), entity));
+                .insert((stream, entity));
             assert!(
                 fresh,
                 "RNG stream {stream:?} opened twice for entity {entity} in tick {}",
