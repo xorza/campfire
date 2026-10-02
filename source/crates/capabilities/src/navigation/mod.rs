@@ -10,7 +10,7 @@ use campfire_sim::{
     Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry, TickRate, Unpredicted,
 };
 
-use crate::navigation::body_index::{BodyIndex, Changes, IndexedBody};
+use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::broadphase::Broadphase;
 use crate::navigation::collider::Collider;
 use crate::navigation::destination::Destination;
@@ -22,6 +22,7 @@ use crate::navigation::progress::Progress;
 use crate::navigation::route::Route;
 use crate::navigation::route_planner::{RoutePlanner, Waiting, Walkable};
 use crate::navigation::segment::Segment;
+use crate::navigation::static_changes::StaticChanges;
 use crate::navigation::steering::{Steered, Steering};
 use crate::navigation::walker::Walker;
 use crate::stats::move_step::MoveStep;
@@ -51,6 +52,7 @@ pub(crate) mod regions;
 pub(crate) mod route;
 pub(crate) mod route_planner;
 pub(crate) mod segment;
+pub(crate) mod static_changes;
 pub(crate) mod steering;
 pub(crate) mod walker;
 
@@ -81,6 +83,7 @@ impl Navigation {
         world.insert_resource(Paths::default());
         world.insert_resource(Bounds::WORLD);
         world.insert_resource(BodyIndex::new(Body::MAX_RADIUS));
+        world.insert_resource(StaticChanges::default());
         schedule.add_systems((
             track_static_bodies.in_set(SimSet::Inputs),
             (forget_dead, route_units, plan_routes, steer, move_units)
@@ -113,10 +116,11 @@ impl Navigation {
 /// Gives the static index and the pathing grid the static bodies: the living units that cannot
 /// walk, those the client only holds among them. It runs as each tick starts, so a structure that
 /// died or spawned in the tick before counts from this one, and again as Collide starts, so
-/// collision parts walkers from the static bodies as they stand then. Every run reads them into
-/// `statics`, a buffer it keeps.
+/// collision parts walkers from the static bodies as they stand then. Each change goes to
+/// `changes` for the walkers' routes. Every run reads them into `statics`, a buffer it keeps.
 fn track_static_bodies(
     mut index: ResMut<'_, BodyIndex>,
+    mut changes: ResMut<'_, StaticChanges>,
     grid: Option<ResMut<'_, PathingGrid>>,
     bodies: Query<
         '_,
@@ -134,9 +138,11 @@ fn track_static_bodies(
         layer: body.layer(),
     }));
     statics.sort_unstable_by_key(|body| body.id);
-    if index.update(&statics)
-        && let Some(mut grid) = grid
-    {
+    if !index.update(&statics) {
+        return;
+    }
+    changes.note(&index);
+    if let Some(mut grid) = grid {
         grid.update(&index);
     }
 }
@@ -154,12 +160,12 @@ fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
 /// route ends short of its goal, and one that arrived short of it walks there again. A walker
 /// with no destination forgets its route, unless it arrived short. With no pathing grid, as in a
 /// match with no map, no static body blocks a route. Each walker checks its route only when the
-/// static bodies changed since the tick before, which `checked` counts; as a route the static
-/// bodies do not block stays clear until they change, the outcome is that of checking every
-/// tick. A walker that asks or forgets its route forgets its progress.
+/// static bodies changed since the tick before, against the bodies put in, which `changes`
+/// holds; as a route the static bodies do not block stays clear until one is put in, the outcome
+/// is that of checking every tick. A walker that asks or forgets its route forgets its progress.
 fn route_units(
     tick: Res<'_, SimTick>,
-    statics: Res<'_, BodyIndex>,
+    (statics, mut changes): (Res<'_, BodyIndex>, ResMut<'_, StaticChanges>),
     grid: Option<Res<'_, PathingGrid>>,
     mut units: Query<
         '_,
@@ -173,14 +179,10 @@ fn route_units(
         ),
         Without<Dead>,
     >,
-    mut checked: Local<'_, Changes>,
 ) {
     let now = tick.start();
     let planned = grid.is_some();
-    let seen = statics.changes();
-    let changed = planned && seen.all != checked.all;
-    let opened = planned && seen.removals != checked.removals;
-    *checked = seen;
+    let opened = planned && changes.removed();
     for (&at, mut destination, mut route, mut progress, body) in &mut units {
         let walker = Walker::of(body);
         match destination.get() {
@@ -199,7 +201,7 @@ fn route_units(
                 }
             }
             Some(goal) if route.goal() == Some(goal) => {
-                let blocked = changed && statics.blocks_route(at, route.ahead(), walker);
+                let blocked = planned && changes.blocks_route(at, route.ahead(), walker);
                 let unreached = opened && !route.reached();
                 if route.asked().is_none() && (blocked || unreached) {
                     route.ask(goal, now);
@@ -224,6 +226,7 @@ fn route_units(
             }
         }
     }
+    changes.clear();
 }
 
 /// Plans the asked routes, by the tick they were asked in, then by stable id, as the tick's work
@@ -367,7 +370,8 @@ fn steer(
             walker: Walker::of(Some(body)),
             stuck: u64::from(progress.track(at, step.get())) >= stuck_ticks,
         };
-        if steering.steer(planner, &grid, &statics, steered, &mut route) {
+        if let Some(detour) = steering.steer(planner, &grid, &statics, steered, &route) {
+            route.splice(steering.short(), detour.skipped, detour.reached);
             progress.reset();
         }
     }

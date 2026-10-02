@@ -556,6 +556,44 @@ fn a_walker_steers_with_the_work_the_routes_left() {
 }
 
 #[test]
+fn a_walker_asks_again_only_for_a_static_body_put_in_its_way() {
+    // A walker of 0.25 m from (0.5, 1.5) to (7.5, 1.5) on 8 by 3 cells of 1 m, a meter a tick:
+    // its route is the straight line. A tower of 0.5 m at (5.5, 0.5) comes 1 m from the line,
+    // past the two radii, 0.75 m: the route stays as it was. One at (5.5, 1.5) stands on it: the
+    // walker asks again in the next tick, and goes round it.
+    let quarter = Num::from_bits(1 << 22);
+    let half = Num::from_bits(1 << 23);
+    let place = |x: i64, z: i64| Position::new(Vec3::new(num(x) + half, Num::ZERO, num(z) + half));
+    let mut walk = Walk::new();
+    let bounds = Bounds::new([num(0), num(0)], [num(8), num(3)]).unwrap();
+    Navigation::load_pathing(
+        &mut walk.world,
+        Grid::new(Num::ONE, bounds).unwrap(),
+        vec![ground(quarter)],
+    );
+    let goal = place(7, 1).unwrap();
+    let walker = walk.body(place(0, 1).unwrap(), Some(goal), Some(Num::ONE), quarter);
+    walk.tick();
+    let entity = walk.world.resource::<EntityIndex>().get(walker).unwrap();
+    let changed = |walk: &Walk| {
+        walk.world
+            .entity(entity)
+            .get_ref::<Route>()
+            .unwrap()
+            .last_changed()
+    };
+    let planned = changed(&walk);
+    walk.body(place(5, 0).unwrap(), None, None, half);
+    walk.tick();
+    assert_eq!(changed(&walk), planned);
+    assert_eq!(walk.get_route(walker).ahead(), [goal]);
+    walk.body(place(5, 1).unwrap(), None, None, half);
+    walk.tick();
+    assert_ne!(walk.get_route(walker).ahead(), [goal]);
+    assert!(walk.get_route(walker).reached());
+}
+
+#[test]
 fn a_walker_that_arrives_short_waits_there_until_a_static_body_goes() {
     // Towers of 0.5 m down column 4 of 8 by 3 cells of 1 m wall off a walker of 0.25 m at (0.5,
     // 1.5) from its goal, (6.5, 1.5): each blocks its own cell alone, whose center is on it, and

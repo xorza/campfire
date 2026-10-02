@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 use std::mem;
+use std::ops::ControlFlow;
 
 use bevy_ecs::resource::Resource;
 use campfire_math::{Num, Vec3};
@@ -31,15 +32,6 @@ pub(crate) struct BodyIndex {
     /// The new bodies' entries, and the entries they merge into, kept between updates.
     fresh: Vec<Entry>,
     merged: Vec<Entry>,
-    changes: Changes,
-}
-
-/// How many updates changed the static bodies, and how many of them took a body away: each
-/// changes whenever such an update comes.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub(crate) struct Changes {
-    pub(crate) all: u64,
-    pub(crate) removals: u64,
 }
 
 /// A unit's body as an index of bodies that stand sees it.
@@ -51,13 +43,16 @@ pub(crate) struct IndexedBody {
     pub(crate) layer: Layer,
 }
 
-/// A body in one bucket of its layer.
+/// A body in one bucket of its layer, and whether the bucket is in the first row and the first
+/// column of the body's buckets.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 struct Entry {
     layer: Layer,
     row: i64,
     column: i64,
     id: StableId,
+    first_row: bool,
+    first_column: bool,
 }
 
 /// The buckets a box covers along one axis, `low` to `high`, both in.
@@ -84,7 +79,6 @@ impl BodyIndex {
             added: Vec::new(),
             fresh: Vec::new(),
             merged: Vec::new(),
-            changes: Changes::default(),
         }
     }
 
@@ -151,6 +145,8 @@ impl BodyIndex {
                         row,
                         column,
                         id: body.id,
+                        first_row: row == rows.low,
+                        first_column: column == columns.low,
                     }));
             }
         }
@@ -173,8 +169,6 @@ impl BodyIndex {
         mem::swap(&mut self.entries, &mut self.merged);
         self.bodies.clear();
         self.bodies.extend_from_slice(bodies);
-        self.changes.all += 1;
-        self.changes.removals += u64::from(!self.removed.is_empty());
         true
     }
 
@@ -194,10 +188,23 @@ impl BodyIndex {
     /// Calls `visit` once with each body of `layer` whose bounding box meets the square `reach`
     /// from `at` on each side, on the ground plane: every body of the layer that comes within
     /// `reach` of `at`, and some that do not. In order of the buckets, row by row.
-    pub(crate) fn near(&self, layer: Layer, at: Vec3, reach: Num, visit: impl FnMut(&IndexedBody)) {
+    pub(crate) fn near(
+        &self,
+        layer: Layer,
+        at: Vec3,
+        reach: Num,
+        mut visit: impl FnMut(&IndexedBody),
+    ) {
         let rows = BodyIndex::buckets(self.bucket, at.z, reach);
         let columns = BodyIndex::buckets(self.bucket, at.x, reach);
-        self.meeting(layer, rows, columns, visit);
+        let all = self.meeting(layer, rows, columns, |body| {
+            visit(body);
+            ControlFlow::Continue(())
+        });
+        debug_assert!(
+            all.is_continue(),
+            "a visit that never breaks meets every body"
+        );
     }
 
     /// Whether a body of `walker`'s layer comes closer to `segment` than its radius and the
@@ -213,46 +220,31 @@ impl BodyIndex {
                 .to_bits()
                 .div_euclid(self.bucket.to_bits()),
         };
-        let mut blocked = false;
-        self.meeting(
+        let met = self.meeting(
             walker.layer,
             span(from.z, to.z),
             span(from.x, to.x),
             |body| {
-                blocked = blocked || segment.comes_within(body.at, radius + body.radius);
+                if segment.comes_within(body.at, radius + body.radius) {
+                    ControlFlow::Break(())
+                } else {
+                    ControlFlow::Continue(())
+                }
             },
         );
-        blocked
-    }
-
-    /// Whether a body blocks `walker` on its way from `from` along `waypoints`.
-    pub(crate) fn blocks_route(
-        &self,
-        from: Position,
-        waypoints: &[Position],
-        walker: Walker,
-    ) -> bool {
-        let mut at = from;
-        waypoints.iter().any(|&next| {
-            let leg = Segment::new(at, next);
-            at = next;
-            self.blocks(leg, walker)
-        })
-    }
-
-    pub(crate) const fn changes(&self) -> Changes {
-        self.changes
+        met.is_break()
     }
 
     /// Calls `visit` once with each body of `layer` in the buckets of `rows` and `columns`, in
-    /// the first of them its own buckets share.
+    /// the first of them its own buckets share, until it breaks: that bucket is in the first row
+    /// of the search's or of the body's buckets, and in the first column of either.
     fn meeting(
         &self,
         layer: Layer,
         rows: Buckets,
         columns: Buckets,
-        mut visit: impl FnMut(&IndexedBody),
-    ) {
+        mut visit: impl FnMut(&IndexedBody) -> ControlFlow<()>,
+    ) -> ControlFlow<()> {
         for row in rows.low..=rows.high {
             let start = self.entries.partition_point(|entry| {
                 (entry.layer, entry.row, entry.column) < (layer, row, columns.low)
@@ -261,19 +253,19 @@ impl BodyIndex {
                 entry.layer == layer && entry.row == row && entry.column <= columns.high
             });
             for entry in run {
+                let first = (row == rows.low || entry.first_row)
+                    && (entry.column == columns.low || entry.first_column);
+                if !first {
+                    continue;
+                }
                 let body = &self.bodies[self
                     .bodies
                     .binary_search_by_key(&entry.id, |body| body.id)
                     .expect("an entry's body is in the index")];
-                let own_rows = BodyIndex::buckets(self.bucket, body.at.get().z, body.radius);
-                let own_columns = BodyIndex::buckets(self.bucket, body.at.get().x, body.radius);
-                if row == rows.low.max(own_rows.low)
-                    && entry.column == columns.low.max(own_columns.low)
-                {
-                    visit(body);
-                }
+                visit(body)?;
             }
         }
+        ControlFlow::Continue(())
     }
 
     /// The buckets of width `bucket` that cover `center` less `reach` to `center` plus `reach`.
@@ -287,117 +279,4 @@ impl BodyIndex {
 }
 
 #[cfg(test)]
-mod tests {
-    use campfire_sim::IdAllocator;
-
-    use super::*;
-
-    fn num(value: i64) -> Num {
-        Num::from_int(value).unwrap()
-    }
-
-    fn body(id: StableId, x: i64, z: i64, radius: Num) -> IndexedBody {
-        IndexedBody {
-            id,
-            at: Position::new(Vec3::new(num(x), Num::ZERO, num(z))).unwrap(),
-            radius,
-            layer: Layer::FIRST,
-        }
-    }
-
-    fn near_on(index: &BodyIndex, layer: Layer, x: i64, z: i64, reach: Num) -> Vec<StableId> {
-        let mut found = Vec::new();
-        index.near(layer, Vec3::new(num(x), Num::ZERO, num(z)), reach, |body| {
-            found.push(body.id);
-        });
-        found
-    }
-
-    fn near(index: &BodyIndex, x: i64, z: i64, reach: Num) -> Vec<StableId> {
-        near_on(index, Layer::FIRST, x, z, reach)
-    }
-
-    #[test]
-    fn the_index_finds_each_body_near_once_and_follows_its_changes() {
-        // Buckets of 2 m, for walkers of 1 m.
-        let mut index = BodyIndex::new(Num::ONE);
-        let mut ids = IdAllocator::default();
-        let (wide, small, far) = (ids.allocate(), ids.allocate(), ids.allocate());
-        // A body of 5 m at the origin covers buckets −3 to 2 on both axes, 36 of them; one of
-        // 1 m at (3, 3) covers buckets 1 to 2, 4 of them; one at (40, 0), buckets 19 to 20 along x
-        // and −1 to 0 along z.
-        let bodies = [
-            body(wide, 0, 0, num(5)),
-            body(small, 3, 3, Num::ONE),
-            body(far, 40, 0, Num::ONE),
-        ];
-        assert!(index.update(&bodies));
-        assert_eq!(index.entries.len(), 36 + 4 + 4);
-        assert_eq!(index.added(), bodies);
-        assert!(!index.update(&bodies));
-        assert_eq!(index.added(), []);
-
-        // Around (3, 3) by 1 m, buckets 1 to 2: the wide body and the small one share all four,
-        // and each is found once. Around (0, 0) by 1 m, buckets −1 to 0: only the wide body. The
-        // box of (40, 0) reaches no bucket between. Around (20, 0) by 20 m, rows −10 to 10, each
-        // is found in its first row there: the wide body in row −3, the far one in −1, the small
-        // one in 1.
-        assert_eq!(near(&index, 3, 3, Num::ONE), [wide, small]);
-        assert_eq!(near(&index, 0, 0, Num::ONE), [wide]);
-        assert_eq!(near(&index, 20, 0, Num::ONE), []);
-        assert_eq!(near(&index, 20, 0, num(20)), [wide, far, small]);
-
-        // The wide body moves to (40, 20): it is taken away and put in again; the small body
-        // goes, and a new one comes.
-        let new = ids.allocate();
-        let moved = [
-            body(wide, 40, 20, num(5)),
-            body(far, 40, 0, Num::ONE),
-            body(new, -10, -10, Num::ONE),
-        ];
-        assert!(index.update(&moved));
-        assert_eq!(index.removed(), [bodies[0], bodies[1]]);
-        assert_eq!(index.added(), [moved[0], moved[2]]);
-        assert_eq!(near(&index, 3, 3, Num::ONE), []);
-        assert_eq!(near(&index, 40, 16, Num::ONE), [wide]);
-        assert_eq!(near(&index, -10, -10, Num::ONE), [new]);
-
-        // The same bodies put in at once give the same entries.
-        let mut again = BodyIndex::new(Num::ONE);
-        again.update(&moved);
-        assert_eq!(again.entries, index.entries);
-
-        // A body of another layer at (−10, −10), and one beside it at (−9, −10): each layer's
-        // query finds only its own, and a walker of 1 m along x through both meets only its own.
-        let (air, above) = (Layer::new(1), ids.allocate());
-        let layered = [
-            moved[0],
-            moved[1],
-            moved[2],
-            IndexedBody {
-                layer: air,
-                ..body(above, -9, -10, Num::ONE)
-            },
-        ];
-        assert!(index.update(&layered));
-        assert_eq!(near(&index, -10, -10, Num::ONE), [new]);
-        assert_eq!(near_on(&index, air, -10, -10, Num::ONE), [above]);
-        assert_eq!(near_on(&index, Layer::new(2), -10, -10, Num::ONE), []);
-        let at = |x| Position::new(Vec3::new(num(x), Num::ZERO, num(-13))).unwrap();
-        let (beside, past) = (Segment::new(at(-12), at(-7)), Segment::new(at(30), at(31)));
-        for (layer, blocked) in [(Layer::FIRST, true), (air, true), (Layer::new(2), false)] {
-            let walker = Walker {
-                layer,
-                radius: num(3),
-            };
-            // 3 m from each center to the segment along z = −13: within the radii's 1 + 3 = 4 m.
-            assert_eq!(index.blocks(beside, walker), blocked, "{layer:?}");
-            assert!(!index.blocks(past, walker));
-        }
-        assert!(index.update(&moved));
-
-        assert!(index.update(&[]));
-        assert_eq!(index.entries, []);
-        assert_eq!(index.removed(), moved);
-    }
-}
+mod tests;

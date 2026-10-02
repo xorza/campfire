@@ -37,6 +37,14 @@ pub(crate) struct Steered {
     pub(crate) stuck: bool,
 }
 
+/// A short route a walker takes: in place of the next `skipped` waypoints of its route, and
+/// whether it ends on the goal.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Detour {
+    pub(crate) skipped: usize,
+    pub(crate) reached: bool,
+}
+
 impl Steering {
     /// The cells a short route's window reaches from the walker's along each axis: room to go
     /// round a unit some cells wide on either side, in a search of at most 17 × 17 cells.
@@ -61,8 +69,8 @@ impl Steering {
         self.walking.rebuild(walking);
     }
 
-    /// Steers `steered` along `route`, which has a waypoint ahead, on `grid` round `statics`;
-    /// whether it took a short route. One whose next stretch, as far as its window reaches,
+    /// Steers `steered` along `route`, which has a waypoint ahead, on `grid` round `statics`: the
+    /// detour it takes, by `short`, if any. One whose next stretch, as far as its window reaches,
     /// would overlap a unit of its layer that stands plans a short route in the window, with the
     /// units that stand there as blockers; so does one that is stuck, which marks as blockers
     /// the walkers it touches too. The short route goes to the last waypoint within the window,
@@ -74,8 +82,8 @@ impl Steering {
         grid: &PathingGrid,
         statics: &BodyIndex,
         steered: Steered,
-        route: &mut Route,
-    ) -> bool {
+        route: &Route,
+    ) -> Option<Detour> {
         let Steered {
             id,
             at,
@@ -89,7 +97,7 @@ impl Steering {
         let look = at.get().step_toward(route.ahead()[0].get(), reach);
         let look = Position::new(look).expect("a step ends between two points within the bound");
         if (!stuck && !standing.blocks(Segment::new(at, look), walker)) || planner.spent() {
-            return false;
+            return None;
         }
         let clearance = grid.clearance(walker);
         let cells = clearance.grid();
@@ -146,11 +154,16 @@ impl Steering {
         let outcome = planner.plan(walkable, at, goal, &mut self.short);
         // A plan with no cell to stand in would splice nothing in, and the walker would drop its
         // destination; it keeps its route, and steers again.
-        if self.short.is_empty() || !(outcome.reached || last) {
-            return false;
-        }
-        route.splice(&self.short, skipped, outcome.reached);
-        true
+        let detour = Detour {
+            skipped,
+            reached: outcome.reached,
+        };
+        (!self.short.is_empty() && (outcome.reached || last)).then_some(detour)
+    }
+
+    /// The short route of the last detour.
+    pub(crate) fn short(&self) -> &[Position] {
+        &self.short
     }
 }
 
@@ -213,7 +226,7 @@ mod tests {
             walker,
             stuck: false,
         };
-        steering.steer(&mut planner, &grid, &statics, steered, &mut route);
+        steering.steer(&mut planner, &grid, &statics, steered, &route);
         assert_eq!(steering.blockers, [standing]);
     }
 }

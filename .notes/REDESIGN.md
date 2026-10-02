@@ -170,16 +170,11 @@ capability_set, books
 
 ### Problem
 
-- A change of static bodies rebuilds every region of every kind of walker.
 - Script queries test every unit.
 - Every script batch rebuilds every row.
 
 ### Shape
 
-- **Incremental regions.**
-  - Each region keeps its cross-chunk edges. A change rebuilds only the dirty chunks and their edges, then renumbers the reachable sets over the region graph, as 0 A.D. does.
-  - Routes are tested again only against the bodies that were added.
-  - The body index stores a first-cell flag in each entry, and its visitor can stop early.
 - **Script queries read `BodyGrid`.** `ctx.find` and `nearest_visible` read the grid of living bodies by their circle, as areas and auras do.
 - **The view: incremental rows, the same snapshot.**
   - A batch must keep today's meaning: its calls see the world as it was when the batch began. So rows are not filled lazily on read, because a late read would see the effects of earlier calls.
@@ -239,7 +234,6 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 | Step | Change | Needs | Size |
 |---|---|---|---|
 | F3 | Ids at call time, so `ctx.projectile` and `ctx.area` return handles whose `.state` the call writes | Unit script state: a unit's `[state]` and `unit.state`, which the API does not have yet, so a handle alone would give a script nothing to use | M, changes behaviour |
-| H3 | Incremental regions; routes tested only against added bodies; the body index's first-cell flag and early stop | B | M |
 | H4 | Incremental view rows | B | M |
 
 ### Joins of the two tracks
@@ -254,7 +248,7 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 ```
 Track S:  D5
 
-Track I:  H4      H3      F3 after unit script state
+Track I:  H4      F3 after unit script state
 
 Joins:    D5 → H1b
 ```
@@ -302,10 +296,7 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - homing and line types: B2;
 - **R§5:**
   - stall and lost order: B3;
-  - region rebuild: H3;
-  - routes tested again: H3;
   - chaser starved: B3;
-  - body index waste: H3;
 - **R§6:**
   - name table: C4;
   - `StateSync`: C3;

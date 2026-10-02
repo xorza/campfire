@@ -4,24 +4,11 @@ When you address an item, delete it. When a group is empty, delete its heading.
 
 Paths are relative to `source/crates/`. Each item gives the place, the problem and a better shape. The groups are sorted by severity and benefit, and the items in each group by severity.
 
-## 5. Navigation and vision have no limit on work per tick
-
-The worst case per tick is the metric. These systems let one tick pay for a scan, a rebuild or a search that the other ticks do not.
-
-- [ ] **A change of static bodies rebuilds all regions** — `capabilities/src/navigation/regions.rs:215-309`. Each rebuild copies every region and joins every chunk side, once per kind of walker. navigation.md says a change costs only the chunks it touches. Better: keep each region's cross-chunk edges and rebuild only dirty chunks, as 0 A.D. does.
-- [ ] **Every route is tested again when bodies change** — `capabilities/src/navigation/mod.rs:224-241`. The test runs even when bodies are only removed, which can never block a route. Better: test routes only against the bodies added.
-- [ ] **The body index does work it then throws away** — `capabilities/src/navigation/body_index.rs:196-269`. `meeting` computes each body's bucket range again for every entry, and `blocks` keeps searching after it finds a blocker. Better: store a first-cell flag in `Entry`, and let the visitor stop early.
-
 ## 7. Package books are copied into the script view, the frame and the state
 
 Each item is a second copy of data that one book owns. The copies are kept in line by load order, by hand or not at all.
 
 - [ ] **A unit type's tags are stored twice** — `capabilities/src/units/unit_types.rs:33-37,91-95,139-145`, `units/tag_book.rs:22`. After the copy into `TagBook`, production reads only that copy, and a later `give_tag` would diverge. `TagBook.type_tags` is a `ByType` though every type has tags. Better: one store, a `Vec<TagSet>` by type.
-
-## 8. Capabilities import across layers
-
-The design says a module imports only from the capabilities below it, and that the core names no capability. These imports break that.
-
 
 ## 9. Names from data stay strings
 
