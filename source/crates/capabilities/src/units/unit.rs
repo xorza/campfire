@@ -7,6 +7,7 @@ use campfire_sim::{Capability, Position, StableId};
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
+use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_api::{ApiOwner, MemberSpec};
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
@@ -130,16 +131,19 @@ impl Unit {
         };
         api.bind(
             method("stat", "(name)", "its value of a stat the mode declares")
+                .name(0, NameKind::Stat)
                 .capability(Capability::Stats),
             |unit: &mut Unit, name: &str| unit.view.stat(&unit.row(), name),
         )
         .bind(
             method("pool", "(name)", "the current amount of its pool `name`")
+                .name(0, NameKind::Pool)
                 .capability(Capability::Stats),
             |unit: &mut Unit, name: &str| unit.pool(name, Pools::current),
         )
         .bind(
             method("pool_max", "(name)", "the maximum of its pool `name`")
+                .name(0, NameKind::Pool)
                 .capability(Capability::Stats),
             |unit: &mut Unit, name: &str| unit.pool(name, Pools::max),
         )
@@ -148,7 +152,8 @@ impl Unit {
                 "has_tag",
                 "(tag)",
                 "whether it has the tag, of its type or a modifier",
-            ),
+            )
+            .name(0, NameKind::Tag),
             |unit: &mut Unit, name: &str| -> Checked<bool> {
                 let tag = unit.view.tag(name).map_err(ApiError::fail)?;
                 Ok(unit.row().tags.tags.contains(tag))
@@ -160,6 +165,7 @@ impl Unit {
                 "(id)",
                 "whether it carries the modifier of the script's package",
             )
+            .name(0, NameKind::Modifier)
             .capability(Capability::Stats),
             |call: NativeCallContext<'_>, unit: &mut Unit, id: &str| {
                 let package = Ctx::of_call(&call).frame().package();

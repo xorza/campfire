@@ -3,8 +3,8 @@ use std::iter;
 use std::path::Path;
 
 use campfire_capabilities::{
-    CollisionData, DeclaredName, EngineStat, EngineTag, MapData, ModeData, Param, Stat, StatGraph,
-    StatsData, Walker,
+    CollisionData, DeclaredName, EngineStat, EngineTag, MapData, ModeData, Param, ScriptApi, Stat,
+    StatGraph, StatsData, Walker,
 };
 use campfire_content::{Fingerprint, MessageId, PackagePath};
 use campfire_script::ScriptHost;
@@ -195,6 +195,14 @@ impl ModePackages {
     }
 
     /// Its avatars' unit types, each with its package's view.
+    /// The names of its avatars' unit types in the mode's scope: their packages' names.
+    pub(crate) fn avatar_names(&self) -> impl Iterator<Item = &str> {
+        self.dependencies
+            .iter()
+            .filter(|dependent| matches!(dependent.kind, DependentKind::Avatar(_)))
+            .map(|dependent| dependent.package.name.as_str())
+    }
+
     fn avatars(&self) -> impl Iterator<Item = &AvatarUnit> {
         self.dependencies
             .iter()
@@ -325,6 +333,7 @@ impl ModePackages {
         dependencies: &[(String, &PackageFiles)],
     ) -> Result<ModePackages, LoadError> {
         let parser = ScriptHost::new(manifest.script_limits.per_call);
+        let api = ScriptApi::release();
         let name = manifest.header.name.clone();
         let fail = |problem| LoadError {
             package: PackageRef::Name(name.clone()),
@@ -346,10 +355,10 @@ impl ModePackages {
             .read_data(&path(MAP_DATA))
             .map_err(content_error)
             .map_err(fail)?;
-        let mode = Package::read(files, &manifest.header, &parser)?;
+        let mode = Package::read(files, &manifest.header, &parser, &api)?;
         let dependencies = dependencies
             .iter()
-            .map(|(name, files)| Dependent::read(name, files, &parser))
+            .map(|(name, files)| Dependent::read(name, files, &parser, &api))
             .collect::<Result<_, _>>()?;
         let packages = ModePackages {
             mode,
@@ -359,7 +368,7 @@ impl ModePackages {
             content,
             dependencies,
         };
-        LoadCheck::run(&packages)?;
+        LoadCheck::run(&packages, &api)?;
         Ok(packages)
     }
 }
@@ -367,7 +376,12 @@ impl ModePackages {
 impl Dependent {
     /// The package of `files`, which the mode names `name`: an avatar or loadout package of that
     /// name.
-    fn read(name: &str, files: &PackageFiles, parser: &ScriptHost) -> Result<Dependent, LoadError> {
+    fn read(
+        name: &str,
+        files: &PackageFiles,
+        parser: &ScriptHost,
+        api: &ScriptApi,
+    ) -> Result<Dependent, LoadError> {
         let fail = |problem| LoadError {
             package: PackageRef::Name(name.to_owned()),
             problem: Box::new(problem),
@@ -400,7 +414,7 @@ impl Dependent {
             }
             Manifest::Mode(_) | Manifest::Locale(_) => return Err(fail(LoadProblem::WrongKind)),
         };
-        let package = Package::read(files, header, parser)?;
+        let package = Package::read(files, header, parser, api)?;
         Ok(Dependent {
             package,
             content,

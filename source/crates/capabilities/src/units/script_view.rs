@@ -19,6 +19,7 @@ use crate::progression::track_set::TrackSet;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
+use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_api::MemberSpec;
 use crate::scripts::state_value::StateValue;
 use crate::stats::modifier_book::ModifierId;
@@ -833,12 +834,14 @@ impl View {
             "find",
             "(of, pos, radius, filter)",
             "the living units within `radius` of `pos` that `filter` selects for `of`, seen or not, by stable id",
-        );
+        )
+        .name(3, NameKind::Filter);
         let visible = MemberSpec::call(
             "find_visible",
             "(of, pos, radius, filter)",
             "as `find`, of the units `of`'s team sees",
         )
+        .name(3, NameKind::Filter)
         .capability(Capability::Vision);
         for (spec, visible) in [(find, false), (visible, true)] {
             api.bind(
@@ -859,7 +862,7 @@ impl View {
             "nearest_visible",
             "(of, radius, filter)",
             "the nearest living unit within `radius` of `of` that `filter` selects and `of`'s team sees, `()` with none",
-        )
+        ).name(2, NameKind::Filter)
         .capability(Capability::Vision);
         api.bind(
             nearest,

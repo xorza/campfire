@@ -13,6 +13,7 @@ pub(crate) mod frame;
 pub(crate) mod hook;
 pub(crate) mod hook_set;
 pub(crate) mod match_scripts;
+pub(crate) mod name_kind;
 pub(crate) mod pool;
 pub(crate) mod role_set;
 pub(crate) mod script_api;

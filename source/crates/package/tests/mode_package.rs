@@ -5,11 +5,11 @@ use std::path::Path;
 
 use campfire_capabilities::{
     ActionField, ActionKind, EffectData, EffectTo, Effecting, EngineTag, Hook, MapProblem,
-    ModeError, Number, PlannedEffect, Scalar, SyncTo,
+    ModeError, NameKind, Number, PlannedEffect, Scalar, SyncTo,
 };
 use campfire_package::{
     ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem, EffectProblem, Limit, LoadError,
-    LoadProblem, LocaleProblem, ModePackages, NameKind, PackageRef, Place,
+    LoadProblem, LocaleProblem, ModePackages, PackageRef, Place,
 };
 use campfire_sim::Capability;
 
@@ -59,6 +59,7 @@ const MODE: &str = "moba-3v3";
 /// A package whose manifest does not read has no name, so its directory names it.
 const MODE_DIR: &str = "modes/3v3";
 const MODE_DATA: &str = "modes/3v3/data/mode.toml";
+const MODE_SCRIPT: &str = "modes/3v3/scripts/mode.rhai";
 /// A train of a melee creep, which the mode's data does not hold, put before its first action.
 const RECRUIT: &str = "[actions.recruit]\nkind = \"train\"\ntargeting = \"none\"\nunit_type = \"melee_creep\"\n\n[actions.melee_creep_attack]";
 /// The manifest's capabilities with `production`.
@@ -159,6 +160,18 @@ fn a_mode_type_may_share_its_name_with_a_dependencys_delivery_type() {
 }
 
 #[test]
+fn a_mode_script_spawns_its_own_unit_types_and_avatars_by_name() {
+    // The mode's tower, and Husk by its package's name, are in the mode's scope; the team is one
+    // of the manifest's.
+    let spawns = r#"    share_xp(ctx, unit);
+    ctx.spawn_unit("tower", "north", unit.pos);
+    ctx.spawn_unit("hero-husk", "camps", unit.pos);
+"#;
+    let edit = Edit::Replace("    share_xp(ctx, unit);\n", spawns);
+    assert!(ModePackages::from_package_dir(&edited([(MODE_SCRIPT, edit)])).is_ok());
+}
+
+#[test]
 fn the_engines_tags_and_the_modes_fill_the_tags_a_match_holds() {
     // The 3v3 names 24 tags: the 10 of its `[tags]`, 6 of its heroes' classes, 7 more of its unit
     // types', and `slowed`, which modifiers grant. The engine has 3, so 229 layers, each a
@@ -208,7 +221,7 @@ fn more_tracks_than_a_unit_holds_fail_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 171] = [
+const FLAWS: [Flaw; 176] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -1059,6 +1072,50 @@ const FLAWS: [Flaw; 171] = [
         Edit::Replace(r#"left = { type = "int""#, r#"Left = { type = "int""#),
         "hero-kensho",
         |problem| read_fails(problem, "data/avatar.toml", r#""Left" is not a name"#),
+    ),
+    // A name a script gives the API, as the registry marks the argument: a tag, a track, a unit
+    // type of the mode's scope, a team.
+    flaw(
+        MODE_SCRIPT,
+        Edit::Replace(r#"unit.has_tag("core")"#, r#"unit.has_tag("cor")"#),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Tag, name, .. } if name == "cor"),
+    ),
+    flaw(
+        MODE_SCRIPT,
+        Edit::Replace(
+            r#"ctx.units_tagged("inhibitor")"#,
+            r#"ctx.units_tagged("inhibitors")"#,
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Tag, name, .. } if name == "inhibitors"),
+    ),
+    flaw(
+        MODE_SCRIPT,
+        Edit::Replace(
+            r#"ctx.add_xp(hero, "level""#,
+            r#"ctx.add_xp(hero, "levels""#,
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Track, name, .. } if name == "levels"),
+    ),
+    flaw(
+        MODE_SCRIPT,
+        Edit::Replace(
+            "    share_xp(ctx, unit);\n",
+            "    share_xp(ctx, unit);\n    ctx.spawn_unit(\"grasping_wraps\", \"north\", unit.pos);\n",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::UnitType, name, .. } if name == "grasping_wraps"),
+    ),
+    flaw(
+        MODE_SCRIPT,
+        Edit::Replace(
+            "    share_xp(ctx, unit);\n",
+            "    share_xp(ctx, unit);\n    ctx.spawn_unit(\"hero-husk\", \"west\", unit.pos);\n",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Team, name, .. } if name == "west"),
     ),
     // Human text: each message an avatar names has a value in its own language's file, and each
     // file under `locale/` is `<language>.ftl`, parses, defines no message twice, and in another

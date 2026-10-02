@@ -16,6 +16,7 @@ use crate::scripts::api_version::ApiVersion;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::hook::Hook;
+use crate::scripts::name_kind::NameKind;
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::{ApiOwner, DataTable, MemberSpec, Status};
 use crate::scripts::state_decl::StateType;
@@ -43,30 +44,14 @@ impl ModeApi {
         ModeApi::register_choices(api);
         ModeApi::register_spawns(api);
         ModeApi::register_changes(api);
-        api.hook(Hook::OnMatchStart, "(ctx)", Status::Runs(ApiVersion::FIRST))
-            .hook(
-                Hook::OnModeInput,
-                "(ctx, player, name, value)",
-                Status::Runs(ApiVersion::FIRST),
-            )
-            .hook(
-                Hook::OnTimer,
-                "(ctx, name, data)",
-                Status::Runs(ApiVersion::FIRST),
-            )
-            .hook(
-                Hook::OnUnitDied,
-                "(ctx, unit, killer, assisters)",
-                Status::Runs(ApiVersion::FIRST),
-            )
-            .hook(
-                Hook::CalcDamage,
-                "(ctx, d)",
-                Status::Runs(ApiVersion::FIRST),
-            )
-            .hook(Hook::CalcHeal, "(ctx, h)", Status::Runs(ApiVersion::FIRST))
-            .hook(Hook::OnPlayerJoin, "(ctx, player)", Status::Planned)
-            .hook(Hook::OnPlayerLeave, "(ctx, player)", Status::Planned)
+        api.hook(Hook::OnMatchStart, Status::Runs(ApiVersion::FIRST))
+            .hook(Hook::OnModeInput, Status::Runs(ApiVersion::FIRST))
+            .hook(Hook::OnTimer, Status::Runs(ApiVersion::FIRST))
+            .hook(Hook::OnUnitDied, Status::Runs(ApiVersion::FIRST))
+            .hook(Hook::CalcDamage, Status::Runs(ApiVersion::FIRST))
+            .hook(Hook::CalcHeal, Status::Runs(ApiVersion::FIRST))
+            .hook(Hook::OnPlayerJoin, Status::Planned)
+            .hook(Hook::OnPlayerLeave, Status::Planned)
             .data(
                 DataTable::Mode,
                 &[
@@ -140,7 +125,8 @@ impl ModeApi {
                 "enemy_team",
                 "(team)",
                 "the one team that is `team`'s enemy, in a mode of two playing teams",
-            ),
+            )
+            .name(0, NameKind::Team),
             |ctx: &mut Ctx, team: &str| -> Checked<Dynamic> {
                 let book = ctx.mode_or_fail()?;
                 let team = ModeApi::team(book, team)?;
@@ -166,7 +152,8 @@ impl ModeApi {
                     "units_tagged",
                     "(tag)",
                     "the units of a tag, living or dead, by stable id",
-                ),
+                )
+                .name(0, NameKind::Tag),
                 |ctx: &mut Ctx, tag: &str| ctx.view().units_tagged(tag),
             );
         api.ty::<StateAccess>("ModeState")
@@ -199,7 +186,8 @@ impl ModeApi {
             "records `values`, as many as `choice` takes, each a value it offers, none twice and, \
              in a unique choice, none another player chose, as what `player` chose of it; one \
              value may be given alone",
-        );
+        )
+        .name(1, NameKind::Choice);
         api.bind(
             choose,
             |ctx: &mut Ctx, player: INT, choice: &str, values: Array| {
@@ -217,7 +205,8 @@ impl ModeApi {
                 "chosen",
                 "(player, choice)",
                 "the values `player` chose of `choice`, in order; empty before the player chose",
-            ),
+            )
+            .name(1, NameKind::Choice),
             |ctx: &mut Ctx, player: INT, choice: &str| ModeApi::chosen(ctx, player, choice),
         )
         .bind(
@@ -226,7 +215,8 @@ impl ModeApi {
                 "(player, choice, value)",
                 "whether `player` may choose `value` of `choice`: no other player chose it in a \
                  unique choice",
-            ),
+            )
+            .name(1, NameKind::Choice),
             |ctx: &mut Ctx, player: INT, choice: &str, value: &str| {
                 ModeApi::available(ctx, player, choice, value)
             },
@@ -243,13 +233,16 @@ impl ModeApi {
             "(type, team, pos) or (type, team, pos, player)",
             "spawns a unit of `type` on `team` at `pos`, within the map's bounds, owned by \
              `player` if given, when the call ends; the new unit, for `grant`",
-        );
+        )
+        .name(0, NameKind::UnitType)
+        .name(1, NameKind::Team);
         let grant = mode(
             "grant",
             "(unit, kind, ids)",
             "puts the actions `ids`, loadout entries the mode depends on, in the slot kind \
              `kind` of `unit`, after its slots of that kind, at the kind's first rank",
         )
+        .name(1, NameKind::SlotKind)
         .capability(Capability::Abilities);
         api.ty::<NewUnit>("NewUnit");
         api.bind(
@@ -285,7 +278,9 @@ impl ModeApi {
                 "(team, path, from, types)",
                 "spawns `types` of `team` in order at the end `from`, `start` or `end`, of `path`, \
                  walking it from there",
-            ),
+            )
+            .name(0, NameKind::Team)
+            .name(1, NameKind::Path),
             |ctx: &mut Ctx, team: &str, path: &str, from: &str, types: Array| {
                 ModeApi::spawn_group(ctx, team, path, from, &types)
             },
@@ -336,7 +331,8 @@ impl ModeApi {
                 "add_resource",
                 "(player, name, amount)",
                 "adds `amount` of the player resource `name`, one the mode declares, to `player`",
-            ),
+            )
+            .name(1, NameKind::Resource),
             |ctx: &mut Ctx, player: INT, name: &str, amount: INT| {
                 ModeApi::add_resource(ctx, player, name, amount)
             },
@@ -347,7 +343,9 @@ impl ModeApi {
                 "(a, b, relation)",
                 "sets how teams `a` and `b` regard each other, `hostile`, `neutral` or `friendly`, \
                  their vision as it was",
-            ),
+            )
+            .name(0, NameKind::Team)
+            .name(1, NameKind::Team),
             |ctx: &mut Ctx, a: &str, b: &str, relation: &str| {
                 ModeApi::set_relation(ctx, a, b, relation)
             },
@@ -376,7 +374,8 @@ impl ModeApi {
                     "markers",
                     "(tag)",
                     "the markers with `tag`, in the map's order",
-                ),
+                )
+                .name(0, NameKind::MarkerTag),
                 |map: &mut GameMap, tag: &str| map.markers(tag),
             );
         api.ty::<Marker>("Marker")

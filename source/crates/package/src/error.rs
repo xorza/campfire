@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use campfire_capabilities::{
     ActionField, ActionKind, ActionSlots, ApiVersion, DeclaredName, EngineTag, Hook, MapProblem,
-    ModeError, PlannedEffect, Pools, ResourceId, Stat, TrackId,
+    ModeError, NameKind, PlannedEffect, Pools, ResourceId, Stat, TrackId,
 };
 use campfire_content::{Fingerprint, MessageId, PackagePath};
 use campfire_script::ScriptError;
@@ -480,24 +480,6 @@ impl fmt::Display for LocaleProblem {
     }
 }
 
-/// What kind of name a load did not find.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NameKind {
-    Param,
-    Modifier,
-    Stat,
-    Pool,
-    Cost,
-    MarkerTag,
-    Resource,
-    Layer,
-    Filter,
-    DamageKind,
-    Track,
-    UnitType,
-    Message,
-}
-
 /// What a mode declares more of than a match holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Limit {
@@ -525,26 +507,6 @@ impl fmt::Display for Limit {
             Limit::Resources => write!(f, "more than {} player resources", ResourceId::LIMIT),
             Limit::Packages => f.write_str("more packages than a package index counts"),
         }
-    }
-}
-
-impl fmt::Display for NameKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            NameKind::Param => "param",
-            NameKind::Modifier => "modifier",
-            NameKind::Stat => "stat",
-            NameKind::Pool => "pool",
-            NameKind::Cost => "pool or player resource",
-            NameKind::MarkerTag => "marker with tag",
-            NameKind::Resource => "player resource",
-            NameKind::Layer => "layer",
-            NameKind::Filter => "filter",
-            NameKind::DamageKind => "damage kind",
-            NameKind::Track => "track",
-            NameKind::UnitType => "unit type",
-            NameKind::Message => "message",
-        })
     }
 }
 

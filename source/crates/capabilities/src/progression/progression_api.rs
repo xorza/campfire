@@ -8,6 +8,7 @@ use crate::scripts::api_version::ApiVersion;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::hook::Hook;
+use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_api::{ApiOwner, DataTable, MemberSpec, Status};
 use crate::units::unit::Unit;
 
@@ -32,7 +33,8 @@ impl ProgressionApi {
             "add_xp",
             "(unit, track, amount)",
             "gives `unit` `amount` of experience on `track`, one of its unit type's",
-        );
+        )
+        .name(1, NameKind::Track);
         api.bind(
             add_xp,
             |ctx: &mut Ctx, unit: Unit, track: &str, amount: Num| {
@@ -54,11 +56,7 @@ impl ProgressionApi {
         .plan(method("track_level", "(track)", "its level on `track`"))
         .plan(unit("points", "its unspent points"))
         .plan(method("has_perk", "(id)", "whether it has the perk `id`"))
-        .hook(
-            Hook::OnLevelUp,
-            "(ctx, unit, track, level)",
-            Status::Runs(ApiVersion::FIRST),
-        )
+        .hook(Hook::OnLevelUp, Status::Runs(ApiVersion::FIRST))
         .data(DataTable::Mode, &["tracks"], &[])
         .data(DataTable::Track, &["levels", "level"], &[]);
     }

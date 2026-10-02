@@ -115,28 +115,31 @@ impl Hook {
         }
     }
 
+    /// The names of the function's parameters, `ctx` first, as the reference shows them.
+    pub const fn param_names(self) -> &'static [&'static str] {
+        match self {
+            Hook::OnMatchStart => &["ctx"],
+            Hook::OnChannelTick | Hook::OnThink => &["ctx", "unit"],
+            Hook::OnInterval => &["ctx", "m"],
+            Hook::OnPlayerJoin | Hook::OnPlayerLeave => &["ctx", "player"],
+            Hook::CalcDamage => &["ctx", "d"],
+            Hook::CalcHeal => &["ctx", "h"],
+            Hook::OnResolve | Hook::OnInterrupt => &["ctx", "unit", "target"],
+            Hook::OnEnd => &["ctx", "unit", "hit"],
+            Hook::OnAttack => &["ctx", "m", "target"],
+            Hook::OnAttackHit | Hook::OnDamageTaken => &["ctx", "m", "d"],
+            Hook::OnKill | Hook::OnTakedown => &["ctx", "m", "victim"],
+            Hook::OnTimer => &["ctx", "name", "data"],
+            Hook::OnHit => &["ctx", "unit", "target", "hit"],
+            Hook::OnModeInput => &["ctx", "player", "name", "value"],
+            Hook::OnUnitDied => &["ctx", "unit", "killer", "assisters"],
+            Hook::OnLevelUp => &["ctx", "unit", "track", "level"],
+        }
+    }
+
     /// How many parameters the function takes, `ctx` first.
     pub const fn params(self) -> usize {
-        match self {
-            Hook::OnMatchStart => 1,
-            Hook::OnChannelTick
-            | Hook::OnInterval
-            | Hook::OnPlayerJoin
-            | Hook::OnPlayerLeave
-            | Hook::CalcDamage
-            | Hook::CalcHeal
-            | Hook::OnThink => 2,
-            Hook::OnResolve
-            | Hook::OnEnd
-            | Hook::OnInterrupt
-            | Hook::OnAttack
-            | Hook::OnAttackHit
-            | Hook::OnDamageTaken
-            | Hook::OnKill
-            | Hook::OnTakedown
-            | Hook::OnTimer => 3,
-            Hook::OnHit | Hook::OnModeInput | Hook::OnUnitDied | Hook::OnLevelUp => 4,
-        }
+        self.param_names().len()
     }
 
     pub const fn role(self) -> ScriptRole {

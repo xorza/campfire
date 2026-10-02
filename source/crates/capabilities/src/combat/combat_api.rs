@@ -9,6 +9,7 @@ use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
+use crate::scripts::name_kind::NameKind;
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::{DataTable, MemberSpec, Status};
 use crate::units::block::Block;
@@ -31,7 +32,8 @@ impl CombatApi {
             "damage",
             "(target, amount, kind)",
             "deals `amount` of `kind`, one of the mode's `[combat] damage_kinds`, to `target`",
-        );
+        )
+        .name(2, NameKind::DamageKind);
         let heal = call(
             "heal",
             "(unit, amount)",
@@ -41,7 +43,8 @@ impl CombatApi {
             "restore",
             "(unit, pool, amount)",
             "gives `unit` back `amount` of its `pool`, unscaled",
-        );
+        )
+        .name(1, NameKind::Pool);
         let attack_hit = call(
             "attack_hit",
             "(target)",

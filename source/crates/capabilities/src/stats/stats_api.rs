@@ -7,6 +7,7 @@ use crate::scripts::api_version::ApiVersion;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::Checked;
 use crate::scripts::hook::Hook;
+use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_api::{DataTable, MemberSpec, Status};
 use crate::stats::modifier_effect::ModifierEffect;
 use crate::stats::modifier_handle::ModifierHandle;
@@ -28,7 +29,7 @@ impl StatsApi {
             "add_modifier",
             "(unit, id) or (unit, id, duration_ms)",
             "applies the modifier `id` of the script's package to `unit` from the acting unit, and returns its handle",
-        );
+        ).name(1, NameKind::Modifier);
         api.bind(add, |ctx: &mut Ctx, target: Unit, id: &str| {
             StatsApi::add_modifier(ctx, &target, id, None)
         })
@@ -42,7 +43,8 @@ impl StatsApi {
                 "(player, id)",
                 "gives `player` the modifier `id` of the script's package, which every living unit \
                  it owns that the modifier's `affects` selects holds from no source",
-            ),
+            )
+            .name(1, NameKind::Modifier),
             |ctx: &mut Ctx, player: INT, id: &str| StatsApi::add_player_modifier(ctx, player, id),
         )
         .bind(
@@ -58,37 +60,13 @@ impl StatsApi {
             "(unit, from, distance, ms)",
             "pushes `unit` away from `from`",
         ));
-        api.hook(
-            Hook::OnInterval,
-            "(ctx, m)",
-            Status::Runs(ApiVersion::FIRST),
-        )
-        .hook(
-            Hook::OnAttack,
-            "(ctx, m, target)",
-            Status::Runs(ApiVersion::FIRST),
-        )
-        .hook(
-            Hook::OnAttackHit,
-            "(ctx, m, d)",
-            Status::Runs(ApiVersion::FIRST),
-        )
-        .hook(
-            Hook::OnDamageTaken,
-            "(ctx, m, d)",
-            Status::Runs(ApiVersion::FIRST),
-        )
-        .hook(
-            Hook::OnKill,
-            "(ctx, m, victim)",
-            Status::Runs(ApiVersion::FIRST),
-        )
-        .hook(
-            Hook::OnTakedown,
-            "(ctx, m, victim)",
-            Status::Runs(ApiVersion::FIRST),
-        )
-        .tag_effect(TagEffect::Immune, Status::Runs(ApiVersion::FIRST));
+        api.hook(Hook::OnInterval, Status::Runs(ApiVersion::FIRST))
+            .hook(Hook::OnAttack, Status::Runs(ApiVersion::FIRST))
+            .hook(Hook::OnAttackHit, Status::Runs(ApiVersion::FIRST))
+            .hook(Hook::OnDamageTaken, Status::Runs(ApiVersion::FIRST))
+            .hook(Hook::OnKill, Status::Runs(ApiVersion::FIRST))
+            .hook(Hook::OnTakedown, Status::Runs(ApiVersion::FIRST))
+            .tag_effect(TagEffect::Immune, Status::Runs(ApiVersion::FIRST));
         api.data(
             DataTable::Modifier,
             &[

@@ -4,8 +4,8 @@ use std::{iter, slice};
 use campfire_capabilities::{
     ActionData, ActionKind, ActionSlots, ApiOwner, ApiVersion, CollisionData, CombatRules,
     DeclaredName, DeliveryData, EffectTo, Effecting, EngineStat, EngineTag, FilterData, Hook,
-    MemberKind, Mode, ModifierData, Navigation, Number, Offers, Param, Pools, Range, RangeField,
-    ResourceId, Scalar, ScriptApi, ScriptRole, Stat, Targeting, TrackId, UnitTypeData,
+    MemberKind, Mode, ModifierData, NameKind, Navigation, Number, Offers, Param, Pools, Range,
+    RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Stat, Targeting, TrackId, UnitTypeData,
 };
 use campfire_content::PackagePath;
 use campfire_math::Num;
@@ -13,12 +13,12 @@ use campfire_sim::Capability;
 
 use crate::error::{
     ChoiceProblem, CtxMisuse, DeliveryProblem, EffectProblem, Limit, LoadError, LoadProblem,
-    NameKind, PackageRef, Place,
+    PackageRef, Place,
 };
 use crate::files::units_data::UnitTypeFile;
 use crate::mode_packages::{Dependent, DependentKind, ModePackages};
 use crate::package::Package;
-use crate::script_facts::ScriptFacts;
+use crate::script_facts::{ScriptFacts, ScriptName};
 
 /// Design 08's checks at package load, over a mode and every package it depends on: data matches
 /// its schema (the reads checked that), every per-rank array has an entry for each rank, every
@@ -33,7 +33,7 @@ pub(crate) struct LoadCheck<'a> {
     /// The move speed cap, in meters a second.
     cap: Num,
     /// The script API of the release, which every name a script uses must be of.
-    api: ScriptApi,
+    api: &'a ScriptApi,
 }
 
 /// The facts one package's checks share.
@@ -48,7 +48,7 @@ struct PackageNames<'a> {
 }
 
 impl<'a> LoadCheck<'a> {
-    pub(crate) fn run(packages: &'a ModePackages) -> Result<(), LoadError> {
+    pub(crate) fn run(packages: &'a ModePackages, api: &'a ScriptApi) -> Result<(), LoadError> {
         let manifest = &packages.manifest;
         let fail = |problem| LoadError {
             package: PackageRef::Name(manifest.header.name.clone()),
@@ -94,7 +94,7 @@ impl<'a> LoadCheck<'a> {
             packages,
             tags,
             cap: manifest.max_move_speed.get(),
-            api: ScriptApi::release(),
+            api,
         };
         check.mode().map_err(fail)?;
         check.loadout()?;
@@ -468,13 +468,9 @@ impl<'a> LoadCheck<'a> {
                     name: name.clone(),
                 });
             }
-            for id in &facts.modifiers {
-                modifier_exists(names.modifiers, id, &at)?;
+            for named in &facts.names {
+                self.script_name(named, names.modifiers, &at)?;
             }
-            for filter in &facts.filters {
-                self.filter_text(filter, &at)?;
-            }
-            self.script_vocabulary(facts, at)?;
         }
         Ok(())
     }
@@ -499,78 +495,71 @@ impl<'a> LoadCheck<'a> {
             }
     }
 
-    /// Every stat, pool and damage kind a script at `at` with `facts` names is one the engine
-    /// reads or the mode declares.
-    fn script_vocabulary(&self, facts: &ScriptFacts, at: Place) -> Result<(), LoadProblem> {
-        for name in &facts.stats {
-            let stat = Stat::named(name).ok_or_else(|| LoadProblem::Unknown {
-                of: NameKind::Stat,
-                at: at.clone(),
-                name: name.clone(),
-            })?;
-            self.stats_declared([&stat], &at)?;
-        }
-        let data = &self.packages.data;
-        let tag = |name: &String| {
-            let markers = &self.packages.map.markers;
-            markers
+    /// A name a script at `at` gives an argument of a name kind is one of its kind that the match
+    /// has: a modifier one of the script's package's, `modifiers`; a unit type one of the mode's
+    /// scope.
+    fn script_name(
+        &self,
+        named: &ScriptName,
+        modifiers: &BTreeMap<DeclaredName, ModifierData>,
+        at: &Place,
+    ) -> Result<(), LoadProblem> {
+        let packages = self.packages;
+        let data = &packages.data;
+        let name = named.name.as_str();
+        let known = match named.kind {
+            NameKind::Modifier => return modifier_exists(modifiers, name, at),
+            NameKind::Filter => return self.filter_text(name, at),
+            NameKind::Stat => {
+                let stat = Stat::named(name).ok_or_else(|| named.unknown(at))?;
+                return self.stats_declared([&stat], at);
+            }
+            NameKind::Choice => {
+                if declares(data.choices.keys(), name) {
+                    return Ok(());
+                }
+                return Err(LoadProblem::Choice(ChoiceProblem::UnknownChoice {
+                    at: at.clone(),
+                    name: named.name.clone(),
+                }));
+            }
+            NameKind::SlotKind => {
+                if data.slots.named(name).is_some() {
+                    return Ok(());
+                }
+                return Err(LoadProblem::Choice(ChoiceProblem::UnknownSlotKind {
+                    at: at.clone(),
+                    kind: named.name.clone(),
+                }));
+            }
+            NameKind::MarkerTag => packages
+                .map
+                .markers
                 .iter()
-                .any(|marker| marker.tags.iter().any(|tag| tag.as_str() == name))
+                .any(|marker| declares(marker.tags.iter(), name)),
+            NameKind::Resource => ResourceId::of(&data.resources, name).is_some(),
+            NameKind::Pool => declares(data.pools.keys(), name),
+            NameKind::DamageKind => declares(data.combat.damage_kinds.iter(), name),
+            NameKind::Track => declares(data.tracks.keys(), name),
+            NameKind::Tag => self.tags.contains(name),
+            NameKind::Team => {
+                let teams = &packages.manifest.teams;
+                declares(teams.iter().map(|team| &team.name), name)
+            }
+            NameKind::Path => declares(packages.map.paths.iter().map(|path| &path.name), name),
+            NameKind::UnitType => {
+                packages.content.units.contains_key(name)
+                    || packages.avatar_names().any(|avatar| avatar == name)
+            }
+            NameKind::Param | NameKind::Cost | NameKind::Layer | NameKind::Message => {
+                unreachable!("no argument of the script API is a {}", named.kind)
+            }
         };
-        if let Some(name) = facts.markers.iter().find(|name| !tag(name)) {
-            return Err(LoadProblem::Unknown {
-                of: NameKind::MarkerTag,
-                at,
-                name: name.clone(),
-            });
+        if known {
+            Ok(())
+        } else {
+            Err(named.unknown(at))
         }
-        let choice = |name: &String| data.choices.keys().any(|choice| choice.as_str() == name);
-        if let Some(name) = facts.choices.iter().find(|name| !choice(name)) {
-            return Err(LoadProblem::Choice(ChoiceProblem::UnknownChoice {
-                at,
-                name: name.clone(),
-            }));
-        }
-        if let Some(kind) = facts
-            .slot_kinds
-            .iter()
-            .find(|kind| data.slots.named(kind).is_none())
-        {
-            return Err(LoadProblem::Choice(ChoiceProblem::UnknownSlotKind {
-                at,
-                kind: kind.clone(),
-            }));
-        }
-        let resource = |name: &String| ResourceId::of(&data.resources, name).is_some();
-        if let Some(name) = facts.resources.iter().find(|name| !resource(name)) {
-            return Err(LoadProblem::Unknown {
-                of: NameKind::Resource,
-                at,
-                name: name.clone(),
-            });
-        }
-        let pool = |name: &String| data.pools.keys().any(|pool| pool.as_str() == name);
-        if let Some(name) = facts.pools.iter().find(|name| !pool(name)) {
-            return Err(LoadProblem::Unknown {
-                of: NameKind::Pool,
-                at,
-                name: name.clone(),
-            });
-        }
-        let declared = |kind: &String| {
-            data.combat
-                .damage_kinds
-                .iter()
-                .any(|name| name.as_str() == kind)
-        };
-        if let Some(kind) = facts.damage_kinds.iter().find(|kind| !declared(kind)) {
-            return Err(LoadProblem::Unknown {
-                of: NameKind::DamageKind,
-                at,
-                name: kind.clone(),
-            });
-        }
-        Ok(())
     }
 
     /// The mode's damage kinds: with `combat`, at least one; never more than a match holds.
@@ -1240,4 +1229,9 @@ fn delivery_holds(
         return fail(DeliveryProblem::Weapon);
     }
     Ok(())
+}
+
+/// Whether `names` holds `name`.
+fn declares<'n>(mut names: impl Iterator<Item = &'n DeclaredName>, name: &str) -> bool {
+    names.any(|declared| declared.as_str() == name)
 }

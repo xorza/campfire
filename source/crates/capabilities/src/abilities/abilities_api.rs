@@ -50,23 +50,11 @@ impl AbilitiesApi {
             TagEffect::Blocks(Block::Cast),
             Status::Runs(ApiVersion::FIRST),
         )
-        .hook(
-            Hook::OnResolve,
-            "(ctx, unit, target)",
-            Status::Runs(ApiVersion::FIRST),
-        )
-        .hook(
-            Hook::OnHit,
-            "(ctx, unit, target, hit)",
-            Status::Runs(ApiVersion::FIRST),
-        )
-        .hook(
-            Hook::OnEnd,
-            "(ctx, unit, hit)",
-            Status::Runs(ApiVersion::FIRST),
-        )
-        .hook(Hook::OnChannelTick, "(ctx, unit)", Status::Planned)
-        .hook(Hook::OnInterrupt, "(ctx, unit, target)", Status::Planned)
+        .hook(Hook::OnResolve, Status::Runs(ApiVersion::FIRST))
+        .hook(Hook::OnHit, Status::Runs(ApiVersion::FIRST))
+        .hook(Hook::OnEnd, Status::Runs(ApiVersion::FIRST))
+        .hook(Hook::OnChannelTick, Status::Planned)
+        .hook(Hook::OnInterrupt, Status::Planned)
         .data(
             DataTable::Action,
             &[

@@ -74,19 +74,9 @@ impl<'a> ApiBuilder<'a> {
         self
     }
 
-    /// Records whether the release calls `hook`, as the code that calls it says, with its
-    /// parameters' names in `signature`.
-    pub(crate) fn hook(
-        &mut self,
-        hook: Hook,
-        signature: &'static str,
-        status: Status,
-    ) -> &mut Self {
-        self.api.record_hook(HookStatus {
-            hook,
-            signature,
-            status,
-        });
+    /// Records whether the release calls `hook`, as the code that calls it says.
+    pub(crate) fn hook(&mut self, hook: Hook, status: Status) -> &mut Self {
+        self.api.record_hook(HookStatus { hook, status });
         self
     }
 

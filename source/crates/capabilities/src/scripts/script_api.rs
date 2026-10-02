@@ -16,6 +16,7 @@ use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
 use crate::scripts::core_api::CoreApi;
 use crate::scripts::hook::{Hook, ScriptRole};
+use crate::scripts::name_kind::NameKind;
 use crate::scripts::role_set::RoleSet;
 use crate::stats::stats_api::StatsApi;
 use crate::units::script_view::View;
@@ -39,11 +40,10 @@ pub struct ScriptApi {
     builtins: Vec<String>,
 }
 
-/// Whether the release calls a hook, and its parameters' names, as `(ctx, m, d)`.
+/// Whether the release calls a hook.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct HookStatus {
     pub hook: Hook,
-    pub signature: &'static str,
     pub status: Status,
 }
 
@@ -109,7 +109,13 @@ pub struct ApiMember {
     /// Whether a script may write it, as `m.stacks`.
     pub writable: bool,
     pub status: Status,
+    /// What each of its arguments names, by place, `None` for one that names nothing.
+    pub names: NameArgs,
 }
+
+/// What each argument of a call or a method names, by place, the receiver aside: the load
+/// checks a literal an argument of a name kind is given.
+pub type NameArgs = [Option<NameKind>; MemberSpec::ARGS];
 
 /// What a script holds a name on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -158,6 +164,7 @@ pub struct MemberSpec {
     pub capability: Option<Capability>,
     pub signature: &'static str,
     pub description: &'static str,
+    pub names: NameArgs,
 }
 
 impl ScriptApi {
@@ -260,12 +267,14 @@ impl ScriptApi {
                     (MemberKind::Field | MemberKind::Value, true) => "written and read".to_owned(),
                     (MemberKind::Field | MemberKind::Value, false) => "read".to_owned(),
                     (MemberKind::Operator, _) => "operator".to_owned(),
-                    (MemberKind::Call | MemberKind::Method, _) => member
-                        .signatures
-                        .iter()
-                        .map(|signature| format!("`{signature}`"))
-                        .collect::<Vec<_>>()
-                        .join(" "),
+                    (MemberKind::Call | MemberKind::Method, _) => {
+                        let forms: Vec<_> = member
+                            .signatures
+                            .iter()
+                            .map(|signature| format!("`{signature}`"))
+                            .collect();
+                        forms.join(" ") + member.named().as_str()
+                    }
                 };
                 let roles = if ctx {
                     format!(" {} |", roles(member.roles))
@@ -292,9 +301,9 @@ impl ScriptApi {
             let hook = status.hook;
             writeln!(
                 out,
-                "| `{}{}` | {} | {} | {} |",
+                "| `{}({})` | {} | {} | {} |",
                 hook.name(),
-                status.signature,
+                hook.param_names().join(", "),
                 hook.role().name(),
                 capability(hook.capability()),
                 status.status,
@@ -365,6 +374,20 @@ impl ScriptApi {
         Some(&self.members[at])
     }
 
+    /// What the arguments of the method `name` of any handle name: every handle with a method
+    /// of that name gives the same, so a script's literal is checked whatever value it calls it
+    /// on.
+    pub fn method_names(&self, name: &str) -> Option<NameArgs> {
+        self.members
+            .iter()
+            .find(|member| {
+                member.owner != ApiOwner::Ctx
+                    && member.kind == MemberKind::Method
+                    && member.name == name
+            })
+            .map(|member| member.names)
+    }
+
     pub fn members(&self) -> &[ApiMember] {
         &self.members
     }
@@ -381,8 +404,13 @@ impl ScriptApi {
             Ok(at) => {
                 let held = &mut self.members[at];
                 assert!(
-                    (held.kind, held.roles, held.capability, held.status)
-                        == (spec.kind, spec.roles, spec.capability, status),
+                    (
+                        held.kind,
+                        held.roles,
+                        held.capability,
+                        held.status,
+                        held.names
+                    ) == (spec.kind, spec.roles, spec.capability, status, spec.names),
                     "the forms of {:?}.{} agree",
                     spec.owner,
                     spec.name
@@ -406,6 +434,7 @@ impl ScriptApi {
                     description: spec.description,
                     writable,
                     status,
+                    names: spec.names,
                 },
             ),
         }
@@ -512,7 +541,36 @@ impl DataTable {
     }
 }
 
+impl ApiMember {
+    /// Its arguments that name something, as the reference lists them after its forms:
+    /// `, `id` a modifier`, by their names in its first form.
+    fn named(&self) -> String {
+        let Some(first) = self.signatures.first() else {
+            return String::new();
+        };
+        let params = first
+            .trim_start_matches('(')
+            .split(')')
+            .next()
+            .unwrap_or_default();
+        let params: Vec<&str> = params.split(", ").collect();
+        let mut named = String::new();
+        for (at, kind) in self.names.iter().enumerate() {
+            if let Some(kind) = kind {
+                let param = params
+                    .get(at)
+                    .expect("a name role is within the first form");
+                write!(named, ", `{param}` a {kind}").expect("text writes into a string");
+            }
+        }
+        named
+    }
+}
+
 impl MemberSpec {
+    /// The most arguments a member's name roles reach.
+    pub const ARGS: usize = 4;
+
     /// A value of `ctx`, for every role and of the core until said otherwise.
     pub const fn value(name: &'static str, description: &'static str) -> MemberSpec {
         MemberSpec::new(ApiOwner::Ctx, name, MemberKind::Value, "", description)
@@ -576,6 +634,7 @@ impl MemberSpec {
             capability: None,
             signature,
             description,
+            names: [None; MemberSpec::ARGS],
         }
     }
 
@@ -588,6 +647,12 @@ impl MemberSpec {
     /// The same, of `capability`.
     pub const fn capability(mut self, capability: Capability) -> MemberSpec {
         self.capability = Some(capability);
+        self
+    }
+
+    /// The same, its argument at `at`, the receiver aside, a name of `kind`.
+    pub const fn name(mut self, at: usize, kind: NameKind) -> MemberSpec {
+        self.names[at] = Some(kind);
         self
     }
 }
@@ -782,9 +847,19 @@ mod tests {
         );
         api.members[0].description = "another description";
         assert_ne!(api.reference(), held);
-        for status in api.hooks() {
-            let named = status.signature.split(',').count();
-            assert_eq!(named, status.hook.params(), "{:?}", status.hook);
+        // A script's literal is checked by a method's name alone, so every handle's method of a
+        // name marks the same names.
+        let methods = api
+            .members
+            .iter()
+            .filter(|member| member.owner != ApiOwner::Ctx && member.kind == MemberKind::Method);
+        for member in methods {
+            assert_eq!(
+                api.method_names(member.name),
+                Some(member.names),
+                "{}",
+                member.name
+            );
         }
         for block in Block::ALL {
             let name = StrDeserializer::<ValueError>::new(block.name());

@@ -7,31 +7,31 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | Name | Form | Roles | Capability | Status | What it is |
 | --- | --- | --- | --- | --- | --- |
 | `add_charge` | `(unit, id)` | every role | abilities | planned | gives `unit`'s ability `id` a charge |
-| `add_modifier` | `(unit, id) or (unit, id, duration_ms)` | every role | stats | since 1.0 | applies the modifier `id` of the script's package to `unit` from the acting unit, and returns its handle |
-| `add_player_modifier` | `(player, id)` | every role | stats | since 1.0 | gives `player` the modifier `id` of the script's package, which every living unit it owns that the modifier's `affects` selects holds from no source |
-| `add_resource` | `(player, name, amount)` | every role | core | since 1.0 | adds `amount` of the player resource `name`, one the mode declares, to `player` |
-| `add_xp` | `(unit, track, amount)` | every role | progression | since 1.0 | gives `unit` `amount` of experience on `track`, one of its unit type's |
+| `add_modifier` | `(unit, id) or (unit, id, duration_ms)`, `id` a modifier | every role | stats | since 1.0 | applies the modifier `id` of the script's package to `unit` from the acting unit, and returns its handle |
+| `add_player_modifier` | `(player, id)`, `id` a modifier | every role | stats | since 1.0 | gives `player` the modifier `id` of the script's package, which every living unit it owns that the modifier's `affects` selects holds from no source |
+| `add_resource` | `(player, name, amount)`, `name` a player resource | every role | core | since 1.0 | adds `amount` of the player resource `name`, one the mode declares, to `player` |
+| `add_xp` | `(unit, track, amount)`, `track` a track | every role | progression | since 1.0 | gives `unit` `amount` of experience on `track`, one of its unit type's |
 | `area` | `(pos)` | action | areas | since 1.0 | lands one more of the action's areas at `pos`, its own cast |
 | `attack_hit` | `(target)` | action, modifier, AI | combat | since 1.0 | an extra attack of the acting unit on `target`: no crit, and no `on_attack` |
-| `available` | `(player, choice, value)` | mode | core | since 1.0 | whether `player` may choose `value` of `choice`: no other player chose it in a unique choice |
+| `available` | `(player, choice, value)`, `choice` a choice | mode | core | since 1.0 | whether `player` may choose `value` of `choice`: no other player chose it in a unique choice |
 | `avatars` | `() or (team)` | every role | core | since 1.0 | the avatars, living or dead, of every team or of `team`, by stable id |
 | `chance` | `(p)` | every role | core | planned | true with probability `p`, from the secret stream |
 | `charge` | read | action | abilities | planned | how long a charged cast was held, from 0 to 1 |
-| `choose` | `(player, choice, values)` | mode | core | since 1.0 | records `values`, as many as `choice` takes, each a value it offers, none twice and, in a unique choice, none another player chose, as what `player` chose of it; one value may be given alone |
-| `chosen` | `(player, choice)` | mode | core | since 1.0 | the values `player` chose of `choice`, in order; empty before the player chose |
-| `damage` | `(target, amount, kind)` | every role | combat | since 1.0 | deals `amount` of `kind`, one of the mode's `[combat] damage_kinds`, to `target` |
+| `choose` | `(player, choice, values)`, `choice` a choice | mode | core | since 1.0 | records `values`, as many as `choice` takes, each a value it offers, none twice and, in a unique choice, none another player chose, as what `player` chose of it; one value may be given alone |
+| `chosen` | `(player, choice)`, `choice` a choice | mode | core | since 1.0 | the values `player` chose of `choice`, in order; empty before the player chose |
+| `damage` | `(target, amount, kind)`, `kind` a damage kind | every role | combat | since 1.0 | deals `amount` of `kind`, one of the mode's `[combat] damage_kinds`, to `target` |
 | `dash` | `(unit, to, speed)` | every role | navigation | planned | moves `unit` to `to` at `speed` |
 | `end` | `(team) or (())` | mode | core | since 1.0 | ends the match, once: `team` wins, `()` is a draw |
-| `enemy_team` | `(team)` | every role | core | since 1.0 | the one team that is `team`'s enemy, in a mode of two playing teams |
-| `find` | `(of, pos, radius, filter)` | every role | core | since 1.0 | the living units within `radius` of `pos` that `filter` selects for `of`, seen or not, by stable id |
-| `find_visible` | `(of, pos, radius, filter)` | every role | vision | since 1.0 | as `find`, of the units `of`'s team sees |
-| `grant` | `(unit, kind, ids)` | mode | abilities | since 1.0 | puts the actions `ids`, loadout entries the mode depends on, in the slot kind `kind` of `unit`, after its slots of that kind, at the kind's first rank |
+| `enemy_team` | `(team)`, `team` a team | every role | core | since 1.0 | the one team that is `team`'s enemy, in a mode of two playing teams |
+| `find` | `(of, pos, radius, filter)`, `filter` a filter | every role | core | since 1.0 | the living units within `radius` of `pos` that `filter` selects for `of`, seen or not, by stable id |
+| `find_visible` | `(of, pos, radius, filter)`, `filter` a filter | every role | vision | since 1.0 | as `find`, of the units `of`'s team sees |
+| `grant` | `(unit, kind, ids)`, `kind` a slot kind | mode | abilities | since 1.0 | puts the actions `ids`, loadout entries the mode depends on, in the slot kind `kind` of `unit`, after its slots of that kind, at the kind's first rank |
 | `grant_perk` | `(unit, id)` | every role | progression | planned | gives `unit` the perk `id`, with no point and no requirement |
 | `heal` | `(unit, amount)` | every role | combat | since 1.0 | heals `unit`'s life pool, times one plus its `heal_scale` stat |
 | `knock_back` | `(unit, from, distance, ms)` | every role | stats | planned | pushes `unit` away from `from` |
 | `learn` | `(avatar, slot)` | mode | abilities | since 1.0 | the ability in `slot` a rank more, up to its last |
 | `map` | read | every role | core | since 1.0 | the map: its paths and its markers |
-| `nearest_visible` | `(of, radius, filter)` | every role | vision | since 1.0 | the nearest living unit within `radius` of `of` that `filter` selects and `of`'s team sees, `()` with none |
+| `nearest_visible` | `(of, radius, filter)`, `filter` a filter | every role | vision | since 1.0 | the nearest living unit within `radius` of `of` that `filter` selects and `of`'s team sees, `()` with none |
 | `order_attack` | `(unit, target)` | AI | orders | since 1.0 | `unit` attacks `target`, a living enemy that one of its weapons selects |
 | `order_follow_path` | `(unit)` | AI | orders | since 1.0 | `unit` drops its target and walks its path again |
 | `order_move` | `(unit, pos)` | AI | orders | since 1.0 | `unit` drops its target and walks to `pos`, within the map, off its path |
@@ -46,17 +46,17 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `reduce_cooldowns` | `(unit, fraction)` | every role | abilities | planned | takes `fraction` off the cooldowns of `unit`'s basic abilities |
 | `remove` | `(handle)` | every role | stats | since 1.0 | ends the modifier, projectile or area at once |
 | `respawn` | `(unit, ms)` | mode | combat | since 1.0 | brings back `unit`, dead and of a type that stays, `ms` from the call |
-| `restore` | `(unit, pool, amount)` | every role | combat | since 1.0 | gives `unit` back `amount` of its `pool`, unscaled |
+| `restore` | `(unit, pool, amount)`, `pool` a pool | every role | combat | since 1.0 | gives `unit` back `amount` of its `pool`, unscaled |
 | `reveal` | `(pos, radius, ms)` | every role | vision | planned | shows the source's team what is within `radius` of `pos` |
-| `set_relation` | `(a, b, relation)` | every role | core | since 1.0 | sets how teams `a` and `b` regard each other, `hostile`, `neutral` or `friendly`, their vision as it was |
-| `spawn_group` | `(team, path, from, types)` | mode | core | since 1.0 | spawns `types` of `team` in order at the end `from`, `start` or `end`, of `path`, walking it from there |
-| `spawn_unit` | `(type, team, pos) or (type, team, pos, player)` | mode | core | since 1.0 | spawns a unit of `type` on `team` at `pos`, within the map's bounds, owned by `player` if given, when the call ends; the new unit, for `grant` |
+| `set_relation` | `(a, b, relation)`, `a` a team, `b` a team | every role | core | since 1.0 | sets how teams `a` and `b` regard each other, `hostile`, `neutral` or `friendly`, their vision as it was |
+| `spawn_group` | `(team, path, from, types)`, `team` a team, `path` a path | mode | core | since 1.0 | spawns `types` of `team` in order at the end `from`, `start` or `end`, of `path`, walking it from there |
+| `spawn_unit` | `(type, team, pos) or (type, team, pos, player)`, `type` a unit type, `team` a team | mode | core | since 1.0 | spawns a unit of `type` on `team` at `pos`, within the map's bounds, owned by `player` if given, when the call ends; the new unit, for `grant` |
 | `state` | read | mode | core | since 1.0 | the mode's state fields, by name, to read and write |
 | `team_of` | `(player)` | mode | core | since 1.0 | the name of `player`'s team |
 | `teams` | read | every role | core | since 1.0 | the playing teams' names, the teams with slots |
 | `teleport` | `(unit, pos)` | every role | navigation | planned | puts `unit` at `pos` |
 | `timer` | `(name, ms, repeat, data)` | mode | core | since 1.0 | calls `on_timer` `ms` from the call, rounded up to whole ticks, at least one |
-| `units_tagged` | `(tag)` | every role | core | since 1.0 | the units of a tag, living or dead, by stable id |
+| `units_tagged` | `(tag)`, `tag` a tag | every role | core | since 1.0 | the units of a tag, living or dead, by stable id |
 
 ## Unit
 
@@ -67,9 +67,9 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `alive` | read | core | since 1.0 | whether it lives |
 | `attack_range` | read | combat | since 1.0 | its attack's range |
 | `can_see` | `(unit)` | vision | since 1.0 | whether its team sees the other unit |
-| `has_modifier` | `(id)` | stats | since 1.0 | whether it carries the modifier of the script's package |
+| `has_modifier` | `(id)`, `id` a modifier | stats | since 1.0 | whether it carries the modifier of the script's package |
 | `has_perk` | `(id)` | progression | planned | whether it has the perk `id` |
-| `has_tag` | `(tag)` | core | since 1.0 | whether it has the tag, of its type or a modifier |
+| `has_tag` | `(tag)`, `tag` a tag | core | since 1.0 | whether it has the tag, of its type or a modifier |
 | `is_avatar` | read | core | since 1.0 | whether it is an avatar |
 | `is_enemy_of` | `(unit)` | core | since 1.0 | whether its team may attack the other's, hostile or neutral |
 | `level` | read | stats | since 1.0 | its level |
@@ -77,13 +77,13 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `params` | read | core | since 1.0 | its unit type's params, unresolved |
 | `path` | read | core | since 1.0 | the name of the path it walks, `()` with none |
 | `points` | read | progression | planned | its unspent points |
-| `pool` | `(name)` | stats | since 1.0 | the current amount of its pool `name` |
-| `pool_max` | `(name)` | stats | since 1.0 | the maximum of its pool `name` |
+| `pool` | `(name)`, `name` a pool | stats | since 1.0 | the current amount of its pool `name` |
+| `pool_max` | `(name)`, `name` a pool | stats | since 1.0 | the maximum of its pool `name` |
 | `pos` | read | core | since 1.0 | where it stands |
 | `radius` | read | core | since 1.0 | its body's radius, 0 with no body |
 | `recent_attackers` | `(ms)` | combat | since 1.0 | the living units that struck it within the last `ms`, rounded up to whole ticks |
 | `spawn_pos` | read | core | since 1.0 | where it spawned, where it respawns; `()` with none |
-| `stat` | `(name)` | stats | since 1.0 | its value of a stat the mode declares |
+| `stat` | `(name)`, `name` a stat | stats | since 1.0 | its value of a stat the mode declares |
 | `target` | read | core | since 1.0 | its attack's target, `()` with none |
 | `team` | read | core | since 1.0 | its team's name |
 | `track_level` | `(track)` | progression | planned | its level on `track` |
@@ -171,7 +171,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 
 | Name | Form | Capability | Status | What it is |
 | --- | --- | --- | --- | --- |
-| `markers` | `(tag)` | core | since 1.0 | the markers with `tag`, in the map's order |
+| `markers` | `(tag)`, `tag` a marker with tag | core | since 1.0 | the markers with `tag`, in the map's order |
 | `paths` | read | navigation | since 1.0 | the paths' names |
 
 ## Marker, of `ctx.map.markers(tag)`

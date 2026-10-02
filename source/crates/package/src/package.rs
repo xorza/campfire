@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 
-use campfire_capabilities::{ActionData, ApiVersion, DeclaredName, DeliveryData};
+use campfire_capabilities::{
+    ActionData, ApiVersion, DeclaredName, DeliveryData, NameKind, ScriptApi,
+};
 use campfire_content::{Fingerprint, PackagePath};
 use campfire_script::ScriptHost;
 
@@ -39,6 +41,7 @@ impl Package {
         files: &PackageFiles,
         header: &PackageHeader,
         parser: &ScriptHost,
+        api: &ScriptApi,
     ) -> Result<Package, LoadError> {
         let name = header.name.clone();
         let fail = |problem| LoadError {
@@ -57,7 +60,7 @@ impl Package {
                 })
             })?;
             scripts.push(Script {
-                facts: ScriptFacts::read(&ast),
+                facts: ScriptFacts::read(&ast, api),
                 path: path.clone(),
                 source: source.to_owned(),
             });
@@ -100,7 +103,7 @@ impl Package {
                 .as_ref()
                 .and_then(|path| self.script(path))
                 .into_iter()
-                .flat_map(|script| script.facts.modifiers.iter().map(String::as_str));
+                .flat_map(|script| script.facts.names_of(NameKind::Modifier));
             let named = ability.modifiers().chain(inside).map(DeclaredName::as_str);
             for id in named.chain(scripted) {
                 appliers.entry(id).or_default().push(ability);

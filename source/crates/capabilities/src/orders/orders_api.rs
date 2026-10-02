@@ -60,7 +60,7 @@ impl OrdersApi {
                 OrdersApi::order(ctx, &unit, AiOrder::Reset)
             },
         )
-        .hook(Hook::OnThink, "(ctx, unit)", Status::Runs(ApiVersion::FIRST))
+        .hook(Hook::OnThink, Status::Runs(ApiVersion::FIRST))
         .data(DataTable::Ai, &["ai", "think_ms"], &[]);
     }
 

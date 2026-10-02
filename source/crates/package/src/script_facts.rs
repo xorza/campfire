@@ -1,9 +1,9 @@
 use std::ptr;
 
-use campfire_capabilities::MemberKind;
+use campfire_capabilities::{ApiOwner, MemberKind, NameArgs, NameKind, ScriptApi};
 use campfire_script::rhai::{AST, ASTNode, Expr, FnCallExpr, Stmt};
 
-use crate::error::CtxMisuse;
+use crate::error::{CtxMisuse, LoadProblem, Place};
 
 /// The variable every script API call goes through, by design 08's convention.
 const CTX: &str = "ctx";
@@ -11,7 +11,7 @@ const CTX: &str = "ctx";
 const POINTER_CALLS: [&str; 2] = ["call", "curry"];
 
 /// What the package load checks read from a script: its functions, the names it uses on `ctx`,
-/// and the string literals it gives the calls that take a name.
+/// and the string literals it gives the arguments the registry marks as names.
 #[derive(Debug, Default, PartialEq, Eq)]
 pub(crate) struct ScriptFacts {
     /// Sorted by name, then by parameter count.
@@ -19,24 +19,8 @@ pub(crate) struct ScriptFacts {
     pub(crate) ctx_names: Vec<CtxUse>,
     /// Each `ctx.p.<name>` it reads.
     pub(crate) params: Vec<String>,
-    /// The ids `ctx.add_modifier` and `unit.has_modifier` take.
-    pub(crate) modifiers: Vec<String>,
-    /// The names `unit.stat` takes.
-    pub(crate) stats: Vec<String>,
-    /// The pools `unit.pool`, `unit.pool_max` and `ctx.restore` take.
-    pub(crate) pools: Vec<String>,
-    /// The marker tags `ctx.map.markers` takes.
-    pub(crate) markers: Vec<String>,
-    /// The choices `ctx.choose`, `ctx.chosen` and `ctx.available` take, and the slot kinds
-    /// `ctx.grant` takes.
-    pub(crate) choices: Vec<String>,
-    pub(crate) slot_kinds: Vec<String>,
-    /// The player resources `ctx.add_resource` takes.
-    pub(crate) resources: Vec<String>,
-    /// The filters the queries take.
-    pub(crate) filters: Vec<String>,
-    /// The kinds `ctx.damage` takes.
-    pub(crate) damage_kinds: Vec<String>,
+    /// Each literal it gives an argument the registry marks as a name, in the script's order.
+    pub(crate) names: Vec<ScriptName>,
     /// Each field or method it reads on a value other than `ctx`, but the names after `p`,
     /// `state` and `params`, which name data; and the keys of its object-map literals.
     pub(crate) members: Vec<MemberUse>,
@@ -60,6 +44,24 @@ pub(crate) struct CtxUse {
     pub(crate) kind: MemberKind,
 }
 
+/// A literal a script gives an argument that names something of `kind`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct ScriptName {
+    pub(crate) kind: NameKind,
+    pub(crate) name: String,
+}
+
+impl ScriptName {
+    /// The problem of it, which nothing of its kind has, in a script at `at`.
+    pub(crate) fn unknown(&self, at: &Place) -> LoadProblem {
+        LoadProblem::Unknown {
+            of: self.kind,
+            at: at.clone(),
+            name: self.name.clone(),
+        }
+    }
+}
+
 /// A name read on a value, as a field or as a method.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct MemberUse {
@@ -75,7 +77,7 @@ impl ScriptFacts {
     /// The facts of `ast`. `ctx` is the variable of that name, as every hook's first parameter
     /// is by convention and every helper passes it on; a use that breaks the convention is
     /// recorded, so the facts see every use of `ctx` in a script that keeps it.
-    pub(crate) fn read(ast: &AST) -> ScriptFacts {
+    pub(crate) fn read(ast: &AST, api: &ScriptApi) -> ScriptFacts {
         let mut facts = ScriptFacts {
             functions: ast
                 .iter_functions()
@@ -98,15 +100,17 @@ impl ScriptFacts {
                 }
                 Some(ASTNode::Expr(Expr::Dot(dot, ..))) => {
                     let link = matches!(dot.lhs, Expr::Property(..) | Expr::MethodCall(..));
+                    let on_ctx = !link && variable(&dot.lhs) == Some(CTX);
                     if !link {
-                        let on_ctx = variable(&dot.lhs) == Some(CTX);
                         if on_ctx {
-                            facts.read_ctx(&dot.rhs);
+                            facts.read_ctx(&dot.rhs, api);
                         }
                         facts.read_chain(&dot.rhs, on_ctx, false);
                     }
-                    if let Expr::MethodCall(call, _) = &dot.rhs {
-                        facts.read_method(call);
+                    if let Expr::MethodCall(call, _) = &dot.rhs
+                        && !on_ctx
+                    {
+                        facts.read_names(api.method_names(&call.name), call);
                     }
                 }
                 Some(ASTNode::Expr(expr)) if variable(expr) == Some(CTX) => {
@@ -131,26 +135,16 @@ impl ScriptFacts {
     }
 
     /// What `ctx.<rhs>` uses.
-    fn read_ctx(&mut self, rhs: &Expr) {
+    fn read_ctx(&mut self, rhs: &Expr, api: &ScriptApi) {
         match rhs {
             Expr::MethodCall(call, _) => {
                 self.ctx_names.push(CtxUse {
                     name: call.name.to_string(),
                     kind: MemberKind::Call,
                 });
-                let literal = |at: usize| call.args.get(at).and_then(string);
-                let (list, at) = match call.name.as_str() {
-                    "add_modifier" => (&mut self.modifiers, 1),
-                    "find" | "find_visible" => (&mut self.filters, 3),
-                    "nearest_visible" => (&mut self.filters, 2),
-                    "damage" => (&mut self.damage_kinds, 2),
-                    "restore" => (&mut self.pools, 1),
-                    "choose" | "chosen" | "available" => (&mut self.choices, 1),
-                    "grant" => (&mut self.slot_kinds, 1),
-                    "add_resource" => (&mut self.resources, 1),
-                    _ => return,
-                };
-                list.extend(literal(at));
+                let member = api.member(ApiOwner::Ctx, &call.name);
+                let member = member.filter(|member| member.kind == MemberKind::Call);
+                self.read_names(member.map(|member| member.names), call);
             }
             Expr::Dot(inner, ..) | Expr::Index(inner, ..) => {
                 let Some(name) = property(&inner.lhs) else {
@@ -201,17 +195,22 @@ impl ScriptFacts {
         }
     }
 
-    /// What a method called on any value uses: `has_modifier`, `stat`, `pool`, `pool_max` and
-    /// `markers` take names.
-    fn read_method(&mut self, call: &FnCallExpr) {
-        let list = match call.name.as_str() {
-            "has_modifier" => &mut self.modifiers,
-            "stat" => &mut self.stats,
-            "pool" | "pool_max" => &mut self.pools,
-            "markers" => &mut self.markers,
-            _ => return,
-        };
-        list.extend(call.args.first().and_then(string));
+    /// The names of `kind` it gives the API.
+    pub(crate) fn names_of(&self, kind: NameKind) -> impl Iterator<Item = &str> {
+        self.names
+            .iter()
+            .filter(move |named| named.kind == kind)
+            .map(|named| named.name.as_str())
+    }
+
+    /// The literals `call` gives the arguments that `names` marks as names.
+    fn read_names(&mut self, names: Option<NameArgs>, call: &FnCallExpr) {
+        for (at, kind) in names.into_iter().flatten().enumerate() {
+            let literal = call.args.get(at).and_then(string);
+            if let (Some(kind), Some(name)) = (kind, literal) {
+                self.names.push(ScriptName { kind, name });
+            }
+        }
     }
 
     fn value(&mut self, name: &str) {
@@ -295,6 +294,8 @@ fn on_resolve(ctx, caster, target) {
     for camp in ctx.map.markers("camp") {}
     ctx.grant(caster, "spell", ctx.chosen(0, "spells"));
     ctx.add_resource(caster.owner, "gold", 5);
+    ctx.spawn_group("north", "mid", "start", ctx.units_tagged("core"));
+    if caster.has_tag("slowed") { ctx.add_xp(caster, "level", 1); }
     let first = ctx.teams[0];
     ctx.state.phase = ctx.nearest_visible(caster, 5, name);
     helper(ctx, caster.params.gold);
@@ -303,7 +304,7 @@ fn on_resolve(ctx, caster, target) {
 fn helper(ctx, gold) {}
 "#;
         let ast = ScriptHost::new(1000).parse(source).unwrap();
-        let facts = ScriptFacts::read(&ast);
+        let facts = ScriptFacts::read(&ast, &ScriptApi::release());
         let function = |name: &str, params| Function {
             name: name.to_owned(),
             params,
@@ -333,6 +334,9 @@ fn helper(ctx, gold) {}
                 ("grant", call),
                 ("chosen", call),
                 ("add_resource", call),
+                ("spawn_group", call),
+                ("units_tagged", call),
+                ("add_xp", call),
                 ("teams", value),
                 ("state", value),
                 ("nearest_visible", call),
@@ -340,15 +344,33 @@ fn helper(ctx, gold) {}
         );
         assert_eq!(facts.params, ["radius", "damage"]);
         // A literal counts; a variable, as the filter `name`, cannot be read at load.
-        assert_eq!(facts.modifiers, ["kindle", "kindle"]);
-        assert_eq!(facts.stats, ["armor"]);
-        assert_eq!(facts.pools, ["mana", "energy", "health"]);
-        assert_eq!(facts.markers, ["camp"]);
-        assert_eq!(facts.choices, ["spells"]);
-        assert_eq!(facts.slot_kinds, ["spell"]);
-        assert_eq!(facts.resources, ["gold"]);
-        assert_eq!(facts.filters, ["enemies:avatar"]);
-        assert_eq!(facts.damage_kinds, ["magic"]);
+        let given: Vec<_> = facts
+            .names
+            .iter()
+            .map(|named| (named.kind, named.name.as_str()))
+            .collect();
+        assert_eq!(
+            given,
+            [
+                (NameKind::Filter, "enemies:avatar"),
+                (NameKind::DamageKind, "magic"),
+                (NameKind::Stat, "armor"),
+                (NameKind::Modifier, "kindle"),
+                (NameKind::Modifier, "kindle"),
+                (NameKind::Pool, "mana"),
+                (NameKind::Pool, "energy"),
+                (NameKind::Pool, "health"),
+                (NameKind::MarkerTag, "camp"),
+                (NameKind::SlotKind, "spell"),
+                (NameKind::Choice, "spells"),
+                (NameKind::Resource, "gold"),
+                (NameKind::Team, "north"),
+                (NameKind::Path, "mid"),
+                (NameKind::Tag, "core"),
+                (NameKind::Tag, "slowed"),
+                (NameKind::Track, "level"),
+            ]
+        );
     }
 
     #[test]
@@ -391,11 +413,12 @@ fn helper(ctx, gold) {}
             ),
         ];
         let host = ScriptHost::new(1000);
+        let api = ScriptApi::release();
         for (source, misuse) in cases {
-            let facts = ScriptFacts::read(&host.parse(source).unwrap());
+            let facts = ScriptFacts::read(&host.parse(source).unwrap(), &api);
             assert_eq!(facts.ctx_misuse, misuse, "{source}");
         }
-        let facts = ScriptFacts::read(&host.parse("fn on_x(c, ctx) {}").unwrap());
+        let facts = ScriptFacts::read(&host.parse("fn on_x(c, ctx) {}").unwrap(), &api);
         assert!(!facts.functions[0].ctx_first);
     }
 }
