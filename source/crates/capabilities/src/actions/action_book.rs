@@ -354,6 +354,16 @@ impl Action {
         self.script.filter(|_| self.hooks.contains(hook))
     }
 
+    /// Whether `rank` is one of its ranks, from 1 to its last.
+    pub(crate) fn has_rank(&self, rank: u8) -> bool {
+        rank > 0 && usize::from(rank) <= self.ranks.len()
+    }
+
+    /// Whether a slot may hold it at `rank`: one of its ranks, or 0 before it is learned.
+    pub(crate) fn slots_at(&self, rank: u8) -> bool {
+        usize::from(rank) <= self.ranks.len()
+    }
+
     /// Its capability fields at `rank`.
     pub(crate) fn values(&self, rank: u8) -> RankValues {
         self.ranks[usize::from(rank - 1)]

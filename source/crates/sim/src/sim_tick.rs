@@ -1,4 +1,5 @@
 use bevy_ecs::resource::Resource;
+use bevy_ecs::world::World;
 use serde::{Deserialize, Serialize};
 
 use crate::sim_state::SimResource;
@@ -35,6 +36,11 @@ impl SimTick {
 
 impl SimResource for SimTick {
     const NAME: &'static str = "sim.tick";
+
+    // Every tick is one the match may reach.
+    fn check(&self, _: &World) -> bool {
+        true
+    }
 }
 
 #[cfg(test)]

@@ -1,11 +1,14 @@
 use std::ops::Range;
 
+use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
+use bevy_ecs::world::World;
 use campfire_math::Num;
 
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::regions::Regions;
 use crate::navigation::walker::Walker;
+use crate::units::body::Body;
 use crate::values::grid::Grid;
 
 /// The map's pathing grid: its bounds in square cells, and for each kind of walker the mode has,
@@ -115,6 +118,15 @@ impl PathingGrid {
     /// The side of a cell.
     pub(crate) const fn cell(&self) -> Num {
         self.grid.cell()
+    }
+
+    /// Whether the unit of `entity` in `world` walks as one of the mode's kinds of walker, which
+    /// routes and steering read its cells by; every unit does in a match with no pathing grid.
+    pub(crate) fn serves(world: &World, entity: Entity) -> bool {
+        world.get_resource::<PathingGrid>().is_none_or(|grid| {
+            let walker = Walker::of(world.get::<Body>(entity));
+            grid.walkers.binary_search(&walker).is_ok()
+        })
     }
 
     /// The cells `walker`, one of the mode's kinds of walker, may stand in.

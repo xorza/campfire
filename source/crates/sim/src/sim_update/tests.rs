@@ -1,3 +1,4 @@
+use bevy_ecs::entity::Entity;
 use std::num::NonZeroU32;
 
 use bevy_ecs::component::Component;
@@ -27,6 +28,10 @@ struct Offset(Num);
 
 impl SimComponent for Offset {
     const NAME: &'static str = "test.offset";
+
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }
 
 /// Ticks lived, counting the tick of the spawn.
@@ -35,6 +40,10 @@ struct Age(u64);
 
 impl SimComponent for Age {
     const NAME: &'static str = "test.age";
+
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }
 
 /// The number of tick inputs seen so far. It is not state, so it stays out of the hashes.
@@ -47,6 +56,10 @@ struct TickSum(u64);
 
 impl SimResource for TickSum {
     const NAME: &'static str = "test.tick_sum";
+
+    fn check(&self, _: &World) -> bool {
+        true
+    }
 }
 
 fn spawn_unit(mut commands: Commands<'_, '_>, mut ids: ResMut<'_, IdAllocator>) {

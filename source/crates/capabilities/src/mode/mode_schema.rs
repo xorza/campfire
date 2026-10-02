@@ -89,6 +89,16 @@ impl ModeSchema {
         })
     }
 
+    /// Whether `values` hold a value of each state field's type, in the order of their names.
+    pub(crate) fn fits_state(&self, values: &[StateValue]) -> bool {
+        let kinds = self.state.values(RUN);
+        values.len() == kinds.len()
+            && values
+                .iter()
+                .zip(kinds)
+                .all(|(value, &kind)| value.kind() == kind)
+    }
+
     pub(crate) fn input_type_named(&self, name: &str) -> Option<InputType> {
         self.inputs.get_named(RUN, name).copied()
     }

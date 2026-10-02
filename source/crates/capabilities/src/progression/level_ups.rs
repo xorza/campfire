@@ -1,7 +1,9 @@
 use bevy_ecs::resource::Resource;
+use bevy_ecs::world::World;
 use campfire_sim::{SimResource, StableId};
 use serde::{Deserialize, Serialize};
 
+use crate::progression::track_book::TrackBook;
 use crate::stats::level::Level;
 use crate::units::track_id::TrackId;
 
@@ -21,4 +23,12 @@ pub(crate) struct LevelUp {
 
 impl SimResource for LevelUps {
     const NAME: &'static str = "progression.level_ups";
+
+    // A track the mode lacks has no name for `on_level_up` to read.
+    fn check(&self, world: &World) -> bool {
+        let book = world.get_resource::<TrackBook>();
+        self.0
+            .iter()
+            .all(|level_up| book.is_some_and(|book| book.has(level_up.track)))
+    }
 }

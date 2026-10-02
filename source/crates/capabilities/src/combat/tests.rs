@@ -629,7 +629,13 @@ fn every_combat_type_is_state_and_restores() {
 
     let mut snapshot = Vec::new();
     registry.snapshot(&fight.world, &mut snapshot);
+    // A restore loads the match's books first, as the packages give them: the same weapons, in
+    // the same order.
     let mut restored = Fight::new();
+    let hz = RATE.hz().get();
+    let _weapon = self::fighter().bundle(&mut restored.world, Team::new(0), hz);
+    let doomed_kind = combatant(30, 0, 0, 1, 0).on_death(OnDeath::Stay);
+    let _weapon = doomed_kind.bundle(&mut restored.world, Team::new(1), hz);
     registry.restore(&snapshot, &mut restored.world).unwrap();
     assert_eq!(registry.hash(&restored.world), hash);
     assert_eq!(

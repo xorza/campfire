@@ -1,4 +1,6 @@
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
@@ -9,4 +11,9 @@ pub struct Dead;
 
 impl SimComponent for Dead {
     const NAME: &'static str = "combat.dead";
+
+    // A mark, which holds nothing.
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }

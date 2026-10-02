@@ -1,4 +1,6 @@
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_sim::SimComponent;
 use serde::de::Error;
@@ -64,6 +66,11 @@ impl Body {
 
 impl SimComponent for Body {
     const NAME: &'static str = "units.body";
+
+    // Its decode bounds its radius; a layer only compares with another.
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }
 
 /// A snapshot is untrusted, so a radius `new` refuses fails to decode.

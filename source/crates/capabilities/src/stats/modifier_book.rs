@@ -145,6 +145,11 @@ impl ModifierBook {
         Some(ModifierId::nth(at))
     }
 
+    /// The modifier `id`, when the book holds it.
+    pub(crate) fn entry(&self, id: ModifierId) -> Option<&ModifierEntry> {
+        self.entries.get(id.index())
+    }
+
     pub(crate) fn get(&self, id: ModifierId) -> &ModifierEntry {
         &self.entries[id.index()]
     }

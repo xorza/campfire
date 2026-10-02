@@ -251,6 +251,40 @@ impl View {
         self.0.borrow().metric
     }
 
+    /// Whether the match loaded `unit_type`.
+    pub(crate) fn has_type(&self, unit_type: UnitType) -> bool {
+        self.0.borrow().types.contains(unit_type)
+    }
+
+    /// Whether `kind` is one of the mode's damage kinds; any is, before a mode names them.
+    pub(crate) fn has_damage_kind(&self, kind: DamageKind) -> bool {
+        self.0.borrow().consts.has_damage_kind(kind)
+    }
+
+    /// Whether `team` is one of the mode's teams; any team is, in a match no mode set the teams
+    /// of, as every mode has one at the least.
+    pub(crate) fn has_team(&self, team: Team) -> bool {
+        let teams = &self.0.borrow().teams;
+        teams.count() == 0 || usize::from(team.index()) < teams.count()
+    }
+
+    /// Whether `slot` is a player of the session; any slot is, in a match no mode set the teams
+    /// of.
+    pub(crate) fn has_player(&self, slot: PlayerSlot) -> bool {
+        let teams = &self.0.borrow().teams;
+        teams.count() == 0 || teams.of(slot).is_some()
+    }
+
+    /// Whether amounts of `resources` resources in `amounts` places make a row of each resource
+    /// the mode declares for each player; any do, in a match no mode set the teams of.
+    pub(crate) fn fits_resources(&self, resources: usize, amounts: usize) -> bool {
+        let view = self.0.borrow();
+        let players = view.teams.players() as usize;
+        view.teams.count() == 0
+            || (resources == view.resource_names.len()
+                && Some(amounts) == players.checked_mul(resources))
+    }
+
     /// Player `player`'s slot, as a script names it, when the session has it.
     pub(crate) fn player(&self, player: INT) -> Checked<PlayerSlot> {
         self.0.borrow().teams.player(player)

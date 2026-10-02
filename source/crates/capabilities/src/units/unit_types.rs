@@ -95,6 +95,11 @@ impl UnitTypes {
         entry.tags = entry.tags.with(tag);
     }
 
+    /// Whether the match loaded `unit_type`.
+    pub(crate) fn contains(&self, unit_type: UnitType) -> bool {
+        unit_type.index() < self.types.len()
+    }
+
     /// The type named `name` in `scope`.
     pub(crate) fn named(&self, scope: TypeScope, name: &str) -> Option<UnitType> {
         Some(self.by_name[self.find(scope, name).ok()?])

@@ -1,4 +1,6 @@
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
@@ -15,4 +17,9 @@ pub enum OnDeath {
 
 impl SimComponent for OnDeath {
     const NAME: &'static str = "combat.on_death";
+
+    // Each of its cases is a rule of the engine.
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }

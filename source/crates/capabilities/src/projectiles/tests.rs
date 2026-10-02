@@ -278,7 +278,17 @@ fn a_projectile_whose_target_dies_or_goes_first_ends_without_a_hit() {
     );
     let mut snapshot = Vec::new();
     volley.registry.snapshot(&volley.world, &mut snapshot);
+    // A restore loads the match's books first: the same weapons, in the same order.
     let mut restored = Volley::new();
+    let hz = RATE.hz().get();
+    for armed in [
+        shooter(restored.bolt),
+        shooter(restored.bolt),
+        target(),
+        target(),
+    ] {
+        let _weapon = armed.bundle(&mut restored.world, Team::new(0), hz);
+    }
     volley
         .registry
         .restore(&snapshot, &mut restored.world)

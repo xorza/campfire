@@ -72,6 +72,17 @@ impl ParamBook {
         Some(ParamRead { value, live })
     }
 
+    /// Whether it holds the params of `ability`.
+    pub(crate) fn has_action(&self, ability: ActionId) -> bool {
+        self.actions().has_run(ability.index())
+    }
+
+    /// Whether `live` names a param it holds.
+    pub(crate) fn has_live(&self, live: LiveParam) -> bool {
+        let (table, run) = self.table(live.owner);
+        table.has_run(run) && usize::from(live.at) < table.len(run)
+    }
+
     /// The value of live param `live` at `rank` of `source`.
     pub(crate) fn live_value(
         &self,

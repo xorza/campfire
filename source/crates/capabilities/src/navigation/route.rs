@@ -1,9 +1,12 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
 use campfire_math::Tick;
 use campfire_sim::{Position, SimComponent, StableId};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
+
+use crate::navigation::pathing_grid::PathingGrid;
 
 /// A walker's long route to its destination: the goal it serves, the tick it asked the planner
 /// for a route there while it waits for one, and the waypoints of the route planned last, the
@@ -101,6 +104,12 @@ impl Route {
 
 impl SimComponent for Route {
     const NAME: &'static str = "navigation.route";
+
+    // Its decode keeps the next waypoint within the route; a route is planned over the cells of
+    // its unit's kind of walker, which must be one the mode has.
+    fn check(&self, world: &World, entity: Entity) -> bool {
+        PathingGrid::serves(world, entity)
+    }
 }
 
 /// A snapshot is untrusted, so a next waypoint past the last fails to decode.

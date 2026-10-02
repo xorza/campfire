@@ -1,4 +1,5 @@
 use bevy_ecs::resource::Resource;
+use bevy_ecs::world::World;
 use campfire_sim::{SimResource, StableId};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -34,6 +35,11 @@ impl CastHits {
 
 impl SimResource for CastHits {
     const NAME: &'static str = "projectiles.cast_hits";
+
+    // Each id may be gone, which every reader allows.
+    fn check(&self, _: &World) -> bool {
+        true
+    }
 }
 
 /// A snapshot is untrusted, so hits out of order, or one twice, fail to decode: a search of them

@@ -45,6 +45,8 @@ struct Entry {
     name: &'static str,
     encode: fn(&World, &mut dyn Sink),
     decode: fn(&mut World, &[u8]) -> Result<(), SnapshotError>,
+    /// Whether every value of the type keeps its rules, once everything is decoded.
+    check: fn(&World) -> bool,
 }
 
 /// The hash of one registered type.
@@ -101,7 +103,13 @@ impl StateRegistry {
         let mut registry = StateRegistry {
             entries: Vec::new(),
         };
-        registry.register(ENTITIES, encode_entities, decode_entities);
+        let entities = Entry {
+            name: ENTITIES,
+            encode: encode_entities,
+            decode: decode_entities,
+            check: |_| true,
+        };
+        registry.register(entities);
         registry.register_resource::<IdAllocator>();
         registry.register_resource::<SimTick>();
         registry.register_component::<Position>();
@@ -109,11 +117,21 @@ impl StateRegistry {
     }
 
     pub fn register_component<C: SimComponent>(&mut self) {
-        self.register(C::NAME, encode_component::<C>, decode_component::<C>);
+        self.register(Entry {
+            name: C::NAME,
+            encode: encode_component::<C>,
+            decode: decode_component::<C>,
+            check: check_component::<C>,
+        });
     }
 
     pub fn register_resource<R: SimResource>(&mut self) {
-        self.register(R::NAME, encode_resource::<R>, decode_resource::<R>);
+        self.register(Entry {
+            name: R::NAME,
+            encode: encode_resource::<R>,
+            decode: decode_resource::<R>,
+            check: check_resource::<R>,
+        });
     }
 
     pub fn hash(&self, world: &World) -> StateHash {
@@ -145,8 +163,9 @@ impl StateRegistry {
     }
 
     /// Restores `snapshot` into `world`, which must hold no sim entities, and refuses bytes that
-    /// are not the canonical encoding of what they restore. On an error the world is left partly
-    /// restored and should be discarded.
+    /// are not the canonical encoding of what they restore, or a value that breaks its type's
+    /// rules, each type checked once all are decoded. A resource the snapshot records as absent
+    /// is removed. On an error the world is left partly restored and should be discarded.
     pub fn restore(&self, snapshot: &[u8], world: &mut World) -> Result<(), SnapshotError> {
         assert!(
             world
@@ -205,6 +224,9 @@ impl StateRegistry {
         {
             return Err(SnapshotError::AllocatorBehind);
         }
+        if let Some(entry) = self.entries.iter().find(|entry| !(entry.check)(world)) {
+            return Err(SnapshotError::Invalid(entry.name));
+        }
         // Postcard accepts some encodings that are not its own, such as an overlong varint, so
         // only a second encoding shows that no other bytes restore to this state.
         let mut canonical = Vec::with_capacity(snapshot.len());
@@ -215,23 +237,12 @@ impl StateRegistry {
         Ok(())
     }
 
-    fn register(
-        &mut self,
-        name: &'static str,
-        encode: fn(&World, &mut dyn Sink),
-        decode: fn(&mut World, &[u8]) -> Result<(), SnapshotError>,
-    ) {
-        let Err(at) = self.entries.binary_search_by(|entry| entry.name.cmp(name)) else {
+    fn register(&mut self, entry: Entry) {
+        let name = entry.name;
+        let Err(at) = self.entries.binary_search_by(|held| held.name.cmp(name)) else {
             panic!("state type {name:?} registered twice");
         };
-        self.entries.insert(
-            at,
-            Entry {
-                name,
-                encode,
-                decode,
-            },
-        );
+        self.entries.insert(at, entry);
     }
 
     fn combine(&self, world: &World, mut per_type: Option<&mut Vec<TypeHash>>) -> StateHash {
@@ -380,10 +391,25 @@ fn decode_resource<R: SimResource>(world: &mut World, body: &[u8]) -> Result<(),
     if !rest.is_empty() {
         return Err(SnapshotError::Trailing);
     }
-    if let Some(value) = value {
-        world.insert_resource(value);
+    match value {
+        Some(value) => world.insert_resource(value),
+        None => drop(world.remove_resource::<R>()),
     }
     Ok(())
+}
+
+fn check_component<C: SimComponent>(world: &World) -> bool {
+    world.resource::<EntityIndex>().iter().all(|(_, entity)| {
+        world
+            .get::<C>(entity)
+            .is_none_or(|component| component.check(world, entity))
+    })
+}
+
+fn check_resource<R: SimResource>(world: &World) -> bool {
+    world
+        .get_resource::<R>()
+        .is_none_or(|resource| resource.check(world))
 }
 
 #[cfg(test)]

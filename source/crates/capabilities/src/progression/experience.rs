@@ -1,4 +1,6 @@
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_sim::SimComponent;
 use serde::de::Error;
@@ -74,6 +76,14 @@ impl Experience {
 
 impl SimComponent for Experience {
     const NAME: &'static str = "progression.experience";
+
+    // A track the mode lacks has no thresholds to count levels by.
+    fn check(&self, world: &World, _: Entity) -> bool {
+        let book = world.get_resource::<TrackBook>();
+        self.tracks
+            .iter()
+            .all(|track| book.is_some_and(|book| book.has(track.track)))
+    }
 }
 
 /// A snapshot is untrusted, so tracks out of order or twice, or negative experience, fail to

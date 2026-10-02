@@ -4,20 +4,6 @@ When you address an item, delete it. When a group is empty, delete its heading.
 
 Paths are relative to `source/crates/`. Each item gives the place, the problem and a better shape. The groups are sorted by severity and benefit, and the items in each group by severity.
 
-## 1. Untrusted data reaches a panic or a corrupt state
-
-Package data, snapshots and client packets are untrusted. Each of these items lets such input crash the server or the verifier, or change state quietly.
-
-- [ ] **A snapshot restore does not check modifier data against the books** — `capabilities/src/stats/modifiers.rs:350-376`, `stats/refresh_scratch.rs:81`, `stats/player_modifiers.rs:10-12`. A bad `ModifierId` or `LiveParam` panics later. A bad `StatShare.stat` writes into the next unit's totals in `RefreshScratch::add` and changes them with no error. `PlayerModifiers` decodes with no check that it is sorted and unique, but `add` and `of` need that order. Design 09 says a restore gives an error for every flaw, never a panic. Better: check restored state against the books, and store fewer book-derived values in state (group 7).
-- [ ] **Mode, progression and production state decode with no check** — `capabilities/src/mode/choices.rs:9-11`, `mode/mode_state.rs:9-11`, `mode/timers.rs:10`, `mode/player_resources.rs:66-82`, `progression/experience.rs:81-95`.
-  - A `Choices` or `ModeState` of the wrong length panics in `ChoiceBook::run` and in `ModeApi::state` (`mode_api.rs:417`).
-  - `Timers` decodes without its order by (due, seq), or seq below `next_seq`.
-  - `PlayerResources` trusts the snapshot's resource count over the mode's, and a count of 0 accepts any amounts.
-  - `Experience` track ids are not checked against `TrackBook`, so `level_at` can index out of range.
-
-  Better: check each against its book after a restore, or store no copy of package-derived shape in state.
-- [ ] **A restore keeps a resource the snapshot does not have** — `sim/src/state_registry/mod.rs:360-369`. When the snapshot records a resource as absent, `decode_resource` leaves the copy that is already in the world, so the hash can differ from the snapshot's. Better: remove an absent resource.
-
 ## 5. Navigation and vision have no limit on work per tick
 
 The worst case per tick is the metric. These systems let one tick pay for a scan, a rebuild or a search that the other ticks do not.

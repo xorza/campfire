@@ -18,6 +18,8 @@ mod match_build;
 mod proving_match;
 #[cfg(feature = "internals")]
 mod reference_3v3;
+#[cfg(feature = "internals")]
+mod restore_target;
 mod runner;
 mod session;
 mod session_rules;
@@ -36,6 +38,8 @@ pub use input_rules::InputRules;
 pub use proving_match::ProvingMatch;
 #[cfg(feature = "internals")]
 pub use reference_3v3::Reference3v3;
+#[cfg(feature = "internals")]
+pub use restore_target::RestoreTarget;
 pub use runner::Runner;
 pub use session::Session;
 pub use session_rules::SessionRules;

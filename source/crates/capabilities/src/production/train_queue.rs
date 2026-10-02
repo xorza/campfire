@@ -1,3 +1,5 @@
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
 use std::num::NonZeroU8;
 
 use bevy_ecs::component::Component;
@@ -6,6 +8,8 @@ use campfire_sim::SimComponent;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::actions::action_book::ActionBook;
+use crate::actions::action_kind::ActionKind;
 use crate::units::action_id::ActionId;
 
 /// A unit's train queue: the trains it was ordered, in order, at most `capacity`. It makes one at
@@ -74,6 +78,17 @@ impl TrainQueue {
 
 impl SimComponent for TrainQueue {
     const NAME: &'static str = "production.train_queue";
+
+    // A train the book lacks, or of a rank past its ranks, has no time or unit to make.
+    fn check(&self, world: &World, _: Entity) -> bool {
+        let book = world.get_resource::<ActionBook>();
+        self.entries.iter().all(|queued| {
+            book.and_then(|book| book.get(queued.action))
+                .is_some_and(|action| {
+                    action.kind.kind() == ActionKind::Train && action.has_rank(queued.rank)
+                })
+        })
+    }
 }
 
 /// A snapshot is untrusted, so a queue past its capacity, or a head time without a head or

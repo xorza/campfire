@@ -1,4 +1,5 @@
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
 use campfire_math::{Num, Vec3};
 use serde::{Deserialize, Serialize};
@@ -10,6 +11,10 @@ struct Health(Num);
 
 impl SimComponent for Health {
     const NAME: &'static str = "test.health";
+
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }
 
 #[derive(Component, Debug, Clone, Copy, Serialize, Deserialize)]
@@ -17,6 +22,11 @@ struct Position(Vec3);
 
 impl SimComponent for Position {
     const NAME: &'static str = "test.position";
+
+    /// The tests' rule, which reads another type: a unit that stands somewhere has health.
+    fn check(&self, world: &World, entity: Entity) -> bool {
+        world.get::<Health>(entity).is_some()
+    }
 }
 
 /// Stands for a component the network layer adds, which is not state.
@@ -307,6 +317,15 @@ fn flawed_snapshots_are_refused() {
             SnapshotError::UnknownEntity,
         ),
         (
+            with([
+                encoded(&[0_u64]),
+                allocator(1),
+                Vec::new(),
+                encoded(&[(0_u64, position(1))]),
+            ]),
+            SnapshotError::Invalid("test.position"),
+        ),
+        (
             with([encoded(&[0_u64, 1]), allocator(1), Vec::new(), Vec::new()]),
             SnapshotError::AllocatorBehind,
         ),
@@ -351,11 +370,30 @@ fn flawed_snapshots_are_refused() {
     }
 }
 
+#[test]
+fn a_resource_the_snapshot_lacks_is_removed() {
+    // A world without `Extra` snapshots it as absent; a world that holds one loses it on restore,
+    // so its hash is the snapshot's.
+    let mut with_extra = registry();
+    Extra::register(&mut with_extra);
+    let mut bytes = Vec::new();
+    with_extra.snapshot(&plain_world(), &mut bytes);
+    let mut world = World::new();
+    world.insert_resource(Extra);
+    with_extra.restore(&bytes, &mut world).unwrap();
+    assert!(world.get_resource::<Extra>().is_none());
+    assert_eq!(with_extra.hash(&world), with_extra.hash(&plain_world()));
+}
+
 #[derive(Resource, Debug, Serialize, Deserialize)]
 struct Extra;
 
 impl SimResource for Extra {
     const NAME: &'static str = "test.extra";
+
+    fn check(&self, _: &World) -> bool {
+        true
+    }
 }
 
 #[derive(Resource, Debug, Serialize, Deserialize)]
@@ -363,6 +401,10 @@ struct Last;
 
 impl SimResource for Last {
     const NAME: &'static str = "zz.last";
+
+    fn check(&self, _: &World) -> bool {
+        true
+    }
 }
 
 trait Register {

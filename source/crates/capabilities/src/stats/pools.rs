@@ -1,4 +1,6 @@
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
@@ -113,6 +115,11 @@ impl Pools {
 
 impl SimComponent for Pools {
     const NAME: &'static str = "stats.pools";
+
+    // A fixed array of every pool place, whose meters' decode keeps each amount within its maximum; a\nplace the mode does not declare is never read.
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }
 
 #[cfg(any(test, feature = "internals"))]

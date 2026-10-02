@@ -21,11 +21,14 @@ pub enum SnapshotError {
     AllocatorBehind,
     /// Bytes remain after the last field.
     Trailing,
+    /// A value of the type of this name breaks a rule of its type, such as an id that names
+    /// nothing the match's books hold.
+    Invalid(&'static str),
 }
 
 impl fmt::Display for SnapshotError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
+        let text = match self {
             SnapshotError::NotSnapshot => "not a snapshot",
             SnapshotError::Truncated => "snapshot ends inside a field",
             SnapshotError::TypesDiffer => "snapshot types differ from the registry",
@@ -34,7 +37,11 @@ impl fmt::Display for SnapshotError {
             SnapshotError::UnknownEntity => "snapshot component for an unknown entity",
             SnapshotError::AllocatorBehind => "snapshot allocator behind the ids in use",
             SnapshotError::Trailing => "snapshot has trailing bytes",
-        })
+            SnapshotError::Invalid(name) => {
+                return write!(f, "snapshot value of {name} breaks its rules");
+            }
+        };
+        f.write_str(text)
     }
 }
 

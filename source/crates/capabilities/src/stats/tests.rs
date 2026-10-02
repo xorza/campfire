@@ -24,6 +24,8 @@ use crate::units::Units;
 use crate::units::block::Block;
 use crate::units::tag::Tag;
 use crate::units::tag_effects::TagEffects;
+use crate::units::type_scope::TypeScope;
+use crate::units::unit_type_data::UnitTypeData;
 use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
 use crate::values::number::{Number, ParamRef};
@@ -616,6 +618,16 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
         )];
         let book = TagBook::new(effects, [(UnitType::new(0), TagSet::default())]);
         Units::load_tags(&mut game.world, book);
+        // The type of the unit, 0, and the modifiers the shares below are instances of, 0 and 1.
+        Units::load_type(
+            &mut game.world,
+            TypeScope::Mode,
+            "walker",
+            &UnitTypeData::default(),
+        );
+        for name in ["first", "second"] {
+            Stats::load_modifier(&mut game.world, 0, name, &modifier_data(None), None);
+        }
         game
     };
     let mut game = start();

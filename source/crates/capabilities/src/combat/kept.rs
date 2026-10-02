@@ -1,4 +1,6 @@
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
@@ -10,4 +12,9 @@ pub(crate) struct Kept;
 
 impl SimComponent for Kept {
     const NAME: &'static str = "combat.kept";
+
+    // A mark, which holds nothing.
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }

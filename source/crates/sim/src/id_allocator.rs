@@ -1,4 +1,5 @@
 use bevy_ecs::resource::Resource;
+use bevy_ecs::world::World;
 use serde::{Deserialize, Serialize};
 
 use crate::sim_state::SimResource;
@@ -26,4 +27,9 @@ impl IdAllocator {
 
 impl SimResource for IdAllocator {
     const NAME: &'static str = "sim.id_allocator";
+
+    // The restore checks it against the ids in use.
+    fn check(&self, _: &World) -> bool {
+        true
+    }
 }

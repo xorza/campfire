@@ -24,6 +24,11 @@ impl<V> NameTable<V> {
         self.starts.len() - 2
     }
 
+    /// Whether it holds run `run`.
+    pub(crate) fn has_run(&self, run: usize) -> bool {
+        run + 1 < self.starts.len()
+    }
+
     /// The place of `name` in run `run`.
     pub(crate) fn named(&self, run: usize, name: &str) -> Option<usize> {
         let names = &self.names[self.run(run)];

@@ -6,10 +6,13 @@ use bevy_ecs::query::With;
 use campfire_content::PackagePath;
 use campfire_math::{Num, Ticks, Vec3};
 use campfire_script::{Budget, ScriptHost, ScriptId};
-use campfire_sim::{Capability, Position, SimUpdate, StableId, TickInput};
+use campfire_sim::{
+    Capability, Position, SimComponent, SimResource, SimUpdate, StableId, TickInput,
+};
 
 use super::*;
 use crate::actions::Actions;
+use crate::actions::action_book::ActionBook;
 use crate::actions::action_data::{ActionData, Targeting};
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::ActionTarget;
@@ -37,9 +40,10 @@ use crate::navigation::destination::Destination;
 use crate::navigation::navigation_rules::NavigationRules;
 use crate::navigation::path_walker::PathEnd;
 use crate::navigation::paths::Paths;
+use crate::navigation::route::Route;
 use crate::navigation::walker::Walker;
 use crate::players::resource_id::ResourceId;
-use crate::production::train_queue::TrainQueue;
+use crate::production::train_queue::{Queued, TrainQueue};
 use crate::progression::Progression;
 use crate::progression::experience::Experience;
 use crate::progression::track_data::{Thresholds, TrackData};
@@ -58,10 +62,11 @@ use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifiers::Modifiers;
 use crate::stats::modifiers::{Application, Instance, StatShare};
 use crate::stats::move_step::MoveStep;
-use crate::stats::player_modifiers::PlayerModifiers;
+use crate::stats::player_modifiers::{PlayerModifier, PlayerModifiers};
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::stat_book::StatBook;
+use crate::stats::stat_id::StatId;
 use crate::stats::stat_op::StatOp;
 use crate::stats::stat_rule::StatRule;
 use crate::stats::unit_stats::UnitStats;
@@ -2311,4 +2316,118 @@ fn on_mode_input(ctx, player, name, value) {
     ]);
     let refused = [ApiError::UnknownModifier, ApiError::UnknownPlayer];
     assert_eq!(game.failures(), refused.map(Some));
+}
+
+/// Each state type's restore check lets the match's own values through, and refuses one that
+/// names what the match lacks or has another shape than the mode's.
+#[test]
+fn a_restore_check_refuses_what_the_match_lacks() {
+    let mut game = Game::new(SCRIPT, LIMITS);
+    let grunt = game.entity(2);
+    let world = &game.world;
+    // Teams a, b and neutral are 0 to 2, players 0 to 2.
+    assert!(Team::new(2).check(world, grunt) && !Team::new(3).check(world, grunt));
+    let owner = |slot| Owner::new(PlayerSlot::new(slot));
+    assert!(owner(2).check(world, grunt) && !owner(3).check(world, grunt));
+    let own_type = *world.get::<UnitType>(grunt).unwrap();
+    assert!(own_type.check(world, grunt) && !UnitType::new(u16::MAX).check(world, grunt));
+    let mut relations = Relations::default();
+    relations.set(Team::new(0), Team::new(2), Attitude::Friendly, true);
+    assert!(relations.check(world));
+    relations.set(Team::new(0), Team::new(3), Attitude::Friendly, true);
+    assert!(!relations.check(world));
+    let ended = |team| MatchEnd::new(Tick::new(0), MatchResult::Won(Team::new(team)));
+    assert!(ended(1).check(world) && !ended(3).check(world));
+    // The map has one path, 0.
+    let on_path = |path| OnPath::new(PathId::new(path));
+    assert!(on_path(0).check(world, grunt) && !on_path(1).check(world, grunt));
+
+    // Choices: a row of 1 + 1 + 2 values for each of 3 players, each an offer of its choice.
+    let choices = world.resource::<Choices>().clone();
+    assert!(choices.check(world));
+    assert!(!Choices(vec![None; 3]).check(world));
+    let mut past = choices.clone();
+    past.0[0] = Some(Offer::new(99));
+    assert!(!past.check(world));
+    // The mode's state: its fields' types in the order of their names, `count` an integer first.
+    let state = world.resource::<ModeState>().clone();
+    assert!(state.check(world));
+    assert!(!ModeState(state.0[1..].to_vec()).check(world));
+    let mut retyped = state.clone();
+    retyped.0[0] = StateValue::Bool(true);
+    assert!(!retyped.check(world));
+    // The players' resources: a row of each of the mode's resources for each player.
+    assert!(world.resource::<PlayerResources>().check(world));
+    let rows = |players, resources| PlayerResources::new(players, resources).check(world);
+    assert!(!rows(2, RESOURCES.len()) && !rows(3, RESOURCES.len() + 1));
+
+    // Actions: one the book holds, at a rank it has or 0, and an order of a slot it has.
+    let book = world.resource::<ActionBook>();
+    let strike = book.action_named(0, "strike").unwrap();
+    let slots = |action, rank| ActionSlots::new([(action, SlotKind::new(0), rank)]);
+    assert!(slots(strike, 0).check(world, grunt) && slots(strike, 1).check(world, grunt));
+    assert!(!slots(strike, u8::MAX).check(world, grunt));
+    assert!(!slots(ActionId::nth(u32::MAX), 1).check(world, grunt));
+    let mut ordered = slots(strike, 1);
+    ordered.order(1, ActionKind::Cast, ActionTarget::None);
+    assert!(!ordered.check(world, grunt));
+    let mut queue = TrainQueue::new(NonZeroU8::MIN);
+    let queued = Queued {
+        action: strike,
+        rank: 1,
+    };
+    queue.push(queued, Tick::new(0), Ticks::new(1));
+    assert!(!queue.check(world, grunt), "a cast is no train");
+
+    // Tracks: the mode has two, 0 and 1.
+    let on_tracks = |track| Experience::new(TrackSet::of([TrackId::new(track).unwrap()]));
+    assert!(on_tracks(1).check(world, grunt) && !on_tracks(2).check(world, grunt));
+    let unit = *world.get::<StableId>(grunt).unwrap();
+    let level_up = |track| LevelUp {
+        unit,
+        track: TrackId::new(track).unwrap(),
+        level: Level::new(2).unwrap(),
+    };
+    assert!(LevelUps(vec![level_up(1)]).check(world));
+    assert!(!LevelUps(vec![level_up(2)]).check(world));
+
+    // A modifier of the book, with its one state field an integer and a stat of the book, as the
+    // fighter's is; not one the book lacks, nor one of other state or a stat past the book's.
+    let fighter = game.fighter(0, &[("armor", num(1))]);
+    let fighter = game.entity(fighter.get());
+    let world = &game.world;
+    let modifiers = world.get::<Modifiers>(fighter).unwrap().clone();
+    assert!(modifiers.check(world, fighter));
+    let changed = |change: &dyn Fn(&mut Instance)| {
+        let mut changed = modifiers.clone();
+        change(changed.get_mut(ModifierId::new(0), None).unwrap());
+        changed.check(world, fighter)
+    };
+    assert!(!changed(&|instance| instance.id = ModifierId::new(u16::MAX)));
+    assert!(!changed(
+        &|instance| instance.state = vec![StateValue::Bool(true)]
+    ));
+    assert!(!changed(&|instance| instance.state.clear()));
+    assert!(!changed(
+        &|instance| instance.stats[0].stat = StatId::new(usize::from(u16::MAX))
+    ));
+    let mut held = PlayerModifiers::default();
+    held.add(PlayerModifier {
+        player: PlayerSlot::new(0),
+        modifier: ModifierId::new(0),
+    });
+    assert!(held.check(world));
+    held.add(PlayerModifier {
+        player: PlayerSlot::new(0),
+        modifier: ModifierId::new(u16::MAX),
+    });
+    assert!(!held.check(world));
+
+    // A route of the grunt, of the mode's one kind of walker, until its body grows past it.
+    let route = game.world.get::<Route>(grunt).unwrap().clone();
+    assert!(route.check(&game.world, grunt));
+    let wide = Body::new(num(3)).unwrap();
+    game.world.entity_mut(grunt).insert(wide);
+    assert!(!route.check(&game.world, grunt));
+    assert!(!Destination::default().check(&game.world, grunt));
 }

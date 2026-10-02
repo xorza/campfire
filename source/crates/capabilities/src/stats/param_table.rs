@@ -89,6 +89,11 @@ impl ParamTable {
         self.params.named(run, name)
     }
 
+    /// Whether it holds run `run`.
+    pub(crate) fn has_run(&self, run: usize) -> bool {
+        self.params.has_run(run)
+    }
+
     /// How many params run `run` holds.
     pub(crate) fn len(&self, run: usize) -> usize {
         self.params.values(run).len()

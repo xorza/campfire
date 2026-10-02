@@ -1,4 +1,6 @@
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
 use campfire_math::Tick;
 use campfire_sim::{EntityIndex, SimComponent, StableId};
 use serde::{Deserialize, Serialize};
@@ -32,4 +34,9 @@ impl RecentAttackers {
 
 impl SimComponent for RecentAttackers {
     const NAME: &'static str = "combat.recent_attackers";
+
+    // Each attacker may be gone, which every reader allows.
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }

@@ -1,10 +1,17 @@
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{SimComponent, StableId};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::actions::action_book::ActionBook;
+use crate::projectiles::projectile_spec::ProjectileSpec;
 use crate::units::action_id::ActionId;
+use crate::units::by_type::ByType;
+use crate::units::script_view::View;
+use crate::units::unit_type::UnitType;
 use crate::values::damage_kind::DamageKind;
 
 /// A projectile unit in flight: whose it is, how it flies, at its type's speed, what it carries,
@@ -113,6 +120,28 @@ impl Projectile {
 
 impl SimComponent for Projectile {
     const NAME: &'static str = "projectiles.projectile";
+
+    // A projectile of a type with no flight, of an action the book lacks or at a rank past its
+    // ranks, or of a damage kind the mode lacks, has no rules for its flight or its hit.
+    fn check(&self, world: &World, entity: Entity) -> bool {
+        let flies = world
+            .get::<UnitType>(entity)
+            .zip(world.get_resource::<ByType<ProjectileSpec>>())
+            .is_some_and(|(&unit_type, specs)| specs.get(unit_type).is_some());
+        let book = world.get_resource::<ActionBook>();
+        let carries = match self.payload {
+            Payload::Attack { action, kind, .. } => {
+                book.and_then(|book| book.get(action)).is_some()
+                    && world
+                        .get_non_send::<View>()
+                        .is_none_or(|view| view.has_damage_kind(kind))
+            }
+            Payload::Action { action, rank, .. } => book
+                .and_then(|book| book.get(action))
+                .is_some_and(|action| action.has_rank(rank)),
+        };
+        flies && carries
+    }
 }
 
 /// A snapshot is untrusted, so a projectile `new` refuses, or one that struck a unit twice,

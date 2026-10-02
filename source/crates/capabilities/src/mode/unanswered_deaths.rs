@@ -1,4 +1,5 @@
 use bevy_ecs::resource::Resource;
+use bevy_ecs::world::World;
 use campfire_sim::{SimResource, StableId};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -94,4 +95,9 @@ impl<'de> Deserialize<'de> for UnansweredDeaths {
 
 impl SimResource for UnansweredDeaths {
     const NAME: &'static str = "mode.unanswered_deaths";
+
+    // Its decode keeps each death's assisters within the list, and each id may be gone.
+    fn check(&self, _: &World) -> bool {
+        true
+    }
 }

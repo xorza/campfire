@@ -1,10 +1,12 @@
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::Res;
+use bevy_ecs::world::World;
 use campfire_math::Tick;
 use campfire_sim::{SimResource, SimSet};
 use serde::{Deserialize, Serialize};
 
+use crate::units::script_view::View;
 use crate::units::team::Team;
 
 /// The end of a match: the tick whose Mode stage ended it, and its result. It is state, so the
@@ -51,4 +53,14 @@ impl MatchEnd {
 
 impl SimResource for MatchEnd {
     const NAME: &'static str = "mode.match_end";
+
+    // A winner that is not one of the mode's teams has no name to report.
+    fn check(&self, world: &World) -> bool {
+        match self.result {
+            MatchResult::Won(team) => world
+                .get_non_send::<View>()
+                .is_none_or(|view| view.has_team(team)),
+            MatchResult::Draw => true,
+        }
+    }
 }

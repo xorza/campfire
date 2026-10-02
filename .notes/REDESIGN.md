@@ -24,13 +24,13 @@ These rules state what "fixed" means. When agreed, they go into `design/02-engin
 
 | # | Rule | Enforced by |
 |---|---|---|
-| 1 | One owner for each fact. A fact from the packages lives in one immutable book, a fact of the match lives in state, and a fact of the running call lives in the frame. Nothing else holds a copy. | The state table test (G1) and the behaviour golden (A3) |
+| 1 | One owner for each fact. A fact from the packages lives in one immutable book, a fact of the match lives in state, and a fact of the running call lives in the frame. Nothing else holds a copy. | The state table test and the behaviour golden (A3) |
 | 2 | A name becomes an id where it enters. After the load, no system looks up a name. A script call resolves its name once per call, with no allocation. | `Books::build` tests (C5), and the allowlist test of name lookups (C7) |
 | 3 | The load refuses everything that a match can refuse. A match start fails only on session terms: players, tick rate and seed. | `StartError` has no data case (C5b) |
 | 4 | A layer calls a higher layer only through a hook that the higher layer registers. | The layer test (A4) |
 | 5 | Every order that matters is by stable id, and every rounding uses one helper. | The archetype-shuffle test (B2) |
 | 6 | Each tick's work has a fixed limit, or a cost in proportion to the units that take part. No tick pays for a scan or a rebuild that the other ticks do not pay for. | The worst-tick record (A3) and the navigation bench (H2) |
-| 7 | Restored state is checked like package data: a restore gives an error for every flaw, and it never panics. | The state table test (G1) and the snapshot fuzz (G1) |
+| 7 | Restored state is checked like package data: a restore gives an error for every flaw, and it never panics. | Every state type's check, a required method; the snapshot fuzz |
 | 8 | Each rule of a network session has one owner on each side. A client that follows the rules is never refused. | The net scenarios under load (A1, B4) |
 
 ## R1. Immutable books, built at load, shared
@@ -218,31 +218,16 @@ capability_set, books
 
 ### Problem
 
-- A restore decodes ids and places that it never checks against the books, and a bad stat place corrupts another unit's totals.
-- `Choices`, `ModeState`, `Timers`, `PlayerResources` and `Experience` decode with no check.
-- A resource that the snapshot lacks stays in the world.
 - An instance that is both held and timed loses one of its two lifetimes.
 
 ### Shape
 
-- **A check for each registered type.** `StateRegistry` lives in `sim`, which cannot name the books. So the check is generic:
-
-  ```rust
-  register_component_checked::<T>(check: fn(&T, &World) -> Result<(), RestoreError>)
-  ```
-
-  and the same for resources.
-  - A restore decodes everything, then runs every check, and returns the first error.
-  - Every type that holds an id, or a shape that the packages fix, registers a check that reads its book from the world.
-  - The state table test (G1) proves that every registered type has a check.
-  - A fuzz of snapshot bytes proves that no restore panics.
 - **Book data leaves the state** (R1):
   - `Instance` keeps only its values, and reads tags and `(stat, op)` from the book by id;
   - `TrainQueue` reads its capacity from the kit, and stores each entry's time at push;
   - `PlayerResources` reads its count from the books;
   - `InProgress` reads its kind from the book;
   - `Experience` keeps only experience for the level track, and `Level` alone holds the level.
-- **An absent resource is removed on restore.**
 - **The lifetime of a modifier.**
 
   ```rust
@@ -274,7 +259,7 @@ A refactor of this size needs a permanent proof that behaviour stays the same. T
 - **The structure tests.**
   - The layer test (A4) reads each module's `use crate::` lines and checks them against the capability table. It starts with today's breaks as a list of known exceptions, and each step of Stage D removes its own.
   - The archetype-shuffle test (B2).
-  - The state table test (G1).
+  - The state table test.
   - An allowlist test of name lookups (C7).
 - **The harness.** `TestMatch` becomes the running harness, and data constructors sit beside their types (T§2.1, T§2.2). `Arena` and `FixedSession` come after the books (T§2.4). The detailed items stay in `TEST-REVIEW.md`, and the appendix maps them.
 
@@ -309,7 +294,6 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 | Step | Change | Needs | Size |
 |---|---|---|---|
 | F3 | Ids at call time, so `ctx.projectile` and `ctx.area` return handles whose `.state` the call writes | Unit script state: a unit's `[state]` and `unit.state`, which the API does not have yet, so a handle alone would give a script nothing to use | M, changes behaviour |
-| G1 | `register_*_checked` and a check for every type; absent resources removed; the state table test; the snapshot fuzz | A | M |
 | H1 | `BodyGrid`, read by deliveries and auras; one `(group, unit)` hit store; stuck walkers through the grid | B | M |
 | H2 | `NavBudget`; short routes within their window; "arrived short"; re-asks after removals; the blocker query and clipping; `Progress` reset; blocked map cells in the exact tests; `Steering` methods; `Route::clear` keeps its buffer | B3 | M, changes behaviour |
 | H3 | Incremental regions; routes tested only against added bodies; the body index's first-cell flag and early stop | H2 | M |
@@ -319,7 +303,7 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 
 | Step | Change | Needs | Size |
 |---|---|---|---|
-| G2 | Book data out of the state; `Lifetime`; one `ParamSource::of`; flat `Modifiers`; the `ModifierStats` and `ModifierClock` split; the queue's times at push | G1 | M, changes the layout |
+| G2 | Book data out of the state; `Lifetime`; one `ParamSource::of`; flat `Modifiers`; the `ModifierStats` and `ModifierClock` split; the queue's times at push | — | M, changes the layout |
 | H1b | `ctx.find` and `nearest_visible` read `BodyGrid` | D5, H1 | S |
 | J | The local fixes in the appendix, and T§5 to T§8 | any time | S each |
 
@@ -328,9 +312,9 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 ```
 Track S:  D5
 
-Track I:  G1      H1, H4      H2 → H3      F3 after unit script state
+Track I:  H1, H4      H2 → H3      F3 after unit script state
 
-Joins:    G1 → G2      D5 + H1 → H1b
+Joins:    G2      D5 + H1 → H1b
 ```
 
 Track S is long and sequential. Track I fills the sessions between its steps.
@@ -367,9 +351,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
 - **R§1:**
   - spawn of a delivery type: B1;
   - two names for one type: B1, final in C2;
-  - modifier data on restore: G1;
-  - mode state decode: G1;
-  - absent resource: G1;
   - package count: C2;
   - unlimited work before a refusal: B4;
   - lobby crash: B4;
@@ -495,7 +476,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
 - **T§2.6:** protocol and package tests, in J.
 - **T§4:**
   - the golden for a whole match: A3;
-  - the state table test: G1;
   - one tick style, one failure reader, positions, spawns and the two rates: J.
 - **T§5:** stronger assertions, in J. Exact readers come with the harness.
 - **T§6:** hermetic fixtures. A2 gives the proving match. The rest is in J.

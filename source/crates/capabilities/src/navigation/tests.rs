@@ -702,6 +702,8 @@ fn every_navigation_type_is_state() {
     ));
     let mut route = walk.world.get_mut::<Route>(entity).unwrap();
     route.ask(at(3, 0, 4), Tick::new(2));
+    let lane = || Paths::new([("lane", &[at(0, 0, 0), at(0, 0, 5)][..])]);
+    walk.world.insert_resource(lane());
     let registry = &walk.registry;
     let mut per_type = Vec::new();
     let hash = registry.hash_by_type(&walk.world, &mut per_type);
@@ -730,7 +732,9 @@ fn every_navigation_type_is_state() {
     );
     let mut snapshot = Vec::new();
     registry.snapshot(&walk.world, &mut snapshot);
+    // A restore loads the map first, as the packages give it.
     let mut restored = Walk::new();
+    restored.world.insert_resource(lane());
     registry.restore(&snapshot, &mut restored.world).unwrap();
     assert_eq!(registry.hash(&restored.world), hash);
 }

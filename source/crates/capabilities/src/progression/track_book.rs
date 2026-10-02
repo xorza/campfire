@@ -57,6 +57,11 @@ impl TrackBook {
         TrackId::new(at)
     }
 
+    /// Whether the mode declares `track`.
+    pub(crate) fn has(&self, track: TrackId) -> bool {
+        track.index() < self.0.names.len()
+    }
+
     /// Every track's name, by id.
     pub(crate) fn names(&self) -> impl Iterator<Item = &str> {
         self.0.names.iter().map(DeclaredName::as_str)

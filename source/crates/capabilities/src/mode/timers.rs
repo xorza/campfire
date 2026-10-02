@@ -1,4 +1,5 @@
 use bevy_ecs::resource::Resource;
+use bevy_ecs::world::World;
 use campfire_math::{Tick, Ticks};
 use campfire_sim::SimResource;
 use serde::{Deserialize, Serialize};
@@ -76,4 +77,36 @@ impl Timers {
 
 impl SimResource for Timers {
     const NAME: &'static str = "mode.timers";
+
+    // The earliest timer fires first only while they keep their order, and a new one is set last
+    // among those due with it only while its number is the highest.
+    fn check(&self, _: &World) -> bool {
+        let ordered = self
+            .timers
+            .windows(2)
+            .all(|two| (two[0].due, two[0].seq) < (two[1].due, two[1].seq));
+        ordered && self.timers.iter().all(|timer| timer.seq < self.next_seq)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_restore_check_needs_the_timers_in_order_and_numbered_below_the_next() {
+        // Two timers set in tick 0, due in ticks 2 and 1: kept by due time, then by number.
+        let mut timers = Timers::default();
+        for ticks in [2, 1] {
+            timers.set(Tick::new(0), "t".to_owned(), Ticks::new(ticks), false, None);
+        }
+        let world = World::new();
+        assert!(timers.check(&world));
+        let mut swapped = timers.clone();
+        swapped.timers.swap(0, 1);
+        assert!(!swapped.check(&world));
+        let mut behind = timers;
+        behind.next_seq = 1;
+        assert!(!behind.check(&world));
+    }
 }

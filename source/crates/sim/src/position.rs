@@ -1,4 +1,6 @@
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
 use campfire_math::{Num, Vec3};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -47,6 +49,11 @@ impl Position {
 
 impl SimComponent for Position {
     const NAME: &'static str = "sim.position";
+
+    // Its decode keeps it within the bound.
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }
 
 /// A snapshot is untrusted, so a position out of bounds fails to decode.

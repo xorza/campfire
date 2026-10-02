@@ -6,6 +6,7 @@ use campfire_math::PlayerSlot;
 use crate::mode::choice_data::{ChoiceData, Offers};
 use crate::mode::choices::Choices;
 use crate::mode::offer::Offer;
+use crate::mode::roster::Roster;
 use crate::values::declared_name::DeclaredName;
 
 /// The mode's choices, by name, and where each player's values of each sit in `Choices`.
@@ -58,6 +59,23 @@ impl ChoiceBook {
     /// The choices of `players` players, none chosen.
     pub(crate) fn empty(&self, players: usize) -> Choices {
         Choices(vec![None; self.width * players])
+    }
+
+    /// Whether `choices` holds a row for each of `players` players, each value one of its
+    /// choice's offers in `roster`.
+    pub(crate) fn fits(&self, choices: &Choices, players: usize, roster: &Roster) -> bool {
+        if Some(choices.0.len()) != self.width.checked_mul(players) {
+            return false;
+        }
+        (0..players).all(|row| {
+            self.choices.iter().all(|choice| {
+                let start = row * self.width;
+                choices.0[start + choice.run.start..start + choice.run.end]
+                    .iter()
+                    .flatten()
+                    .all(|&offer| roster.holds(choice.offers, offer))
+            })
+        })
     }
 
     /// What `slot` chose of `choice`: all its values, or `None` before the player chose.

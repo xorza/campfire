@@ -1,9 +1,11 @@
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_math::Tick;
 use campfire_sim::{EntityIndex, Position, SimComponent, StableId};
 use serde::{Deserialize, Serialize};
 
+use crate::actions::action_book::ActionBook;
 use crate::actions::action_kind::ActionKind;
 use crate::actions::slot_kind::SlotKind;
 use crate::units::action_id::ActionId;
@@ -214,4 +216,22 @@ impl ActionSlots {
 
 impl SimComponent for ActionSlots {
     const NAME: &'static str = "actions.slots";
+
+    // An action the book lacks, a rank past its ranks, or an order of a slot it does not have,
+    // or of another kind than the slot's action, has no rules for a cast to follow.
+    fn check(&self, world: &World, _: Entity) -> bool {
+        let Some(book) = world.get_resource::<ActionBook>() else {
+            return self.slots.is_empty() && self.underway.is_none();
+        };
+        let held = |slot: &ActionSlot| {
+            book.get(slot.action)
+                .is_some_and(|action| action.slots_at(slot.rank))
+        };
+        let underway = self.underway.is_none_or(|underway| {
+            let slot = self.slots.get(usize::from(underway.slot));
+            slot.and_then(|slot| book.get(slot.action))
+                .is_some_and(|action| action.kind.kind() == underway.kind)
+        });
+        self.slots.len() <= ActionSlots::LIMIT && self.slots.iter().all(held) && underway
+    }
 }

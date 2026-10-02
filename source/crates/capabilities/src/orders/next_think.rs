@@ -1,4 +1,6 @@
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
 use campfire_math::Tick;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
@@ -21,4 +23,9 @@ impl NextThink {
 
 impl SimComponent for NextThink {
     const NAME: &'static str = "orders.next_think";
+
+    // A tick, which every match may reach.
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }

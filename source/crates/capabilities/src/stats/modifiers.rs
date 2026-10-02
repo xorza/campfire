@@ -1,4 +1,6 @@
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
 use campfire_math::{Num, Tick, Ticks};
 use std::num::NonZeroU32;
 
@@ -8,7 +10,10 @@ use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::scripts::state_value::StateValue;
 use crate::stats::live_param::LiveParam;
+use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_data::Reapply;
+use crate::stats::param_book::ParamBook;
+use crate::stats::stat_book::StatBook;
 use crate::stats::stat_id::StatId;
 use crate::stats::stat_op::StatOp;
 use crate::units::action_id::ActionId;
@@ -262,6 +267,35 @@ impl Modifiers {
 }
 
 impl Instance {
+    /// Whether its modifier, its ability's params, each stat it changes and each live param it
+    /// reads are ones the books hold, and its state has a value of each of its modifier's state
+    /// fields' types, in their order.
+    pub(crate) fn fits(
+        &self,
+        modifiers: &ModifierBook,
+        stats: &StatBook,
+        params: &ParamBook,
+    ) -> bool {
+        let Some(entry) = modifiers.entry(self.id) else {
+            return false;
+        };
+        let ability = self
+            .ability
+            .is_none_or(|ability| params.has_action(ability));
+        let shares = self.stats.iter().all(|share| {
+            share.stat.index() < usize::from(stats.len())
+                && share.live.is_none_or(|live| params.has_live(live))
+        });
+        let fields = &entry.spec.fields;
+        let typed = self.state.len() == fields.len()
+            && self
+                .state
+                .iter()
+                .zip(fields.iter())
+                .all(|(value, field)| value.kind() == field.kind);
+        ability && shares && typed
+    }
+
     /// The first tick a modifier or stack of `ticks` applied in tick `now` no longer holds: it
     /// holds through tick `now + ticks`.
     pub(crate) const fn end(now: Tick, ticks: Ticks) -> Tick {
@@ -354,10 +388,27 @@ impl Instance {
 
 impl SimComponent for Modifiers {
     const NAME: &'static str = "stats.modifiers";
+
+    // A modifier, a stat place or a param the books lack, or state of other fields than its
+    // modifier's, would be read past the books' places.
+    fn check(&self, world: &World, _: Entity) -> bool {
+        let books = (
+            world.get_resource::<ModifierBook>(),
+            world.get_resource::<StatBook>(),
+            world.get_resource::<ParamBook>(),
+        );
+        let (Some(modifiers), Some(stats), Some(params)) = books else {
+            return self.0.is_empty();
+        };
+        self.0
+            .iter()
+            .all(|instance| instance.fits(modifiers, stats, params))
+    }
 }
 
 /// A snapshot is untrusted, so instances out of order or twice, stack ends out of order, empty,
-/// or that do not count an instance's stacks, and an interval of no ticks fail to decode.
+/// or that do not count an instance's stacks, an interval of no ticks, and a negative aura radius
+/// or shield fail to decode.
 impl<'de> Deserialize<'de> for Modifiers {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Modifiers, D::Error> {
         let instances = Vec::<Instance>::deserialize(deserializer)?;
@@ -375,7 +426,11 @@ impl<'de> Deserialize<'de> for Modifiers {
             let interval = instance
                 .interval
                 .is_none_or(|interval| interval.every > Ticks::ZERO);
-            ordered && counts && interval && ends.iter().all(|end| end.count > 0)
+            let amounts = instance
+                .aura_radius
+                .is_none_or(|radius| radius >= Num::ZERO)
+                && instance.shield.is_none_or(|shield| shield >= Num::ZERO);
+            ordered && counts && interval && amounts && ends.iter().all(|end| end.count > 0)
         });
         if !ordered || !stacks {
             return Err(D::Error::custom(

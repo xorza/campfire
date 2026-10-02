@@ -1,4 +1,6 @@
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_sim::SimComponent;
 use serde::de::Error;
@@ -26,6 +28,11 @@ impl Sight {
 
 impl SimComponent for Sight {
     const NAME: &'static str = "vision.sight";
+
+    // Its decode keeps it at 0 or more.
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }
 
 /// A snapshot is untrusted, so a negative range fails to decode.

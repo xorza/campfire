@@ -1,4 +1,6 @@
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_sim::{Position, SimComponent};
 use serde::{Deserialize, Serialize};
@@ -33,4 +35,9 @@ impl Progress {
 
 impl SimComponent for Progress {
     const NAME: &'static str = "navigation.progress";
+
+    // Its decode keeps its position within the bound, and it names no book.
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }

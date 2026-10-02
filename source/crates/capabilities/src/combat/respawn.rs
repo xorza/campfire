@@ -1,4 +1,6 @@
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
 use campfire_math::Tick;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
@@ -11,4 +13,9 @@ pub struct Respawn {
 
 impl SimComponent for Respawn {
     const NAME: &'static str = "combat.respawn";
+
+    // A tick, which every match may reach.
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }

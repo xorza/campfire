@@ -7,6 +7,7 @@
     reason = "Bevy systems take `Res` and `Query` by value"
 )]
 
+use bevy_ecs::entity::Entity;
 use std::fmt::Write;
 use std::num::NonZeroU32;
 
@@ -168,6 +169,10 @@ struct Place(Vec3);
 
 impl SimComponent for Place {
     const NAME: &'static str = "golden.place";
+
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }
 
 #[derive(Component, Debug, Serialize, Deserialize)]
@@ -175,6 +180,10 @@ struct Life(Num);
 
 impl SimComponent for Life {
     const NAME: &'static str = "golden.life";
+
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }
 
 fn state_section(hasher: &mut Hasher) {

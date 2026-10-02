@@ -5,7 +5,7 @@ use bevy_ecs::component::Component;
 use campfire_capabilities::{
     Area, Dead, Experience, Level, Modifiers, Owner, Projectile, ScriptFailures, Team, TrainQueue,
 };
-use campfire_runner::{FixedMatch, Golden, ProvingMatch};
+use campfire_runner::{FixedMatch, Golden, ProvingMatch, RestoreTarget};
 use campfire_sim::EntityIndex;
 
 /// What the match showed over its ticks.
@@ -125,4 +125,40 @@ fn the_proving_match_plays_alike_in_reverse_query_order() {
         golden.record(fixed.runner());
     }
     golden.check("proving");
+}
+
+/// A snapshot of the proving match restores into a match built from its packages, to the same
+/// hash; and a snapshot with any byte flipped never panics as it restores or as it plays on, and
+/// what restores snapshots again to the same bytes: no two byte strings restore to one state.
+#[test]
+fn a_snapshot_restores_and_a_flawed_one_never_panics() {
+    let proving = ProvingMatch::load();
+    let mut fixed = proving.start();
+    // Past the first trains, with heroes, guards, creeps, projectiles and modifiers about.
+    for tick in 0..60 {
+        ProvingMatch::play_tick(&mut fixed, tick);
+    }
+    let mut target = RestoreTarget::new(proving.packages(), ProvingMatch::PLAYERS);
+    let mut bytes = Vec::new();
+    target.snapshot(fixed.runner().world(), &mut bytes);
+    target.restore(&bytes).unwrap();
+    assert_eq!(target.hash(), fixed.runner().state_hash());
+
+    // Every byte, each flipped three ways.
+    let mut again = Vec::new();
+    for at in 0..bytes.len() {
+        for flip in [0x01, 0x80, 0xFF] {
+            let mut flawed = bytes.clone();
+            flawed[at] ^= flip;
+            if target.restore(&flawed).is_ok() {
+                again.clear();
+                target.snapshot_own(&mut again);
+                assert_eq!(again, flawed, "byte {at} flipped by {flip:#04x}");
+                // A value its checks let through still plays: no system panics on it.
+                for _ in 0..5 {
+                    target.run_tick();
+                }
+            }
+        }
+    }
 }

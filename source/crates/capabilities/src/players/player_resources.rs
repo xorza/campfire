@@ -1,10 +1,12 @@
 use bevy_ecs::resource::Resource;
+use bevy_ecs::world::World;
 use campfire_math::PlayerSlot;
 use campfire_sim::SimResource;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::players::resource_id::{ResourceAmount, ResourceId};
+use crate::units::script_view::View;
 
 /// The players' resources, such as gold: one run of amounts by player slot, then by the
 /// resource's place in the mode's `resources`.
@@ -84,4 +86,12 @@ impl<'de> Deserialize<'de> for PlayerResources {
 
 impl SimResource for PlayerResources {
     const NAME: &'static str = "mode.player_resources";
+
+    // A row of another width, or a row of a player the session lacks, would place an amount
+    // under another player or resource.
+    fn check(&self, world: &World) -> bool {
+        world
+            .get_non_send::<View>()
+            .is_none_or(|view| view.fits_resources(self.resources, self.amounts.len()))
+    }
 }

@@ -30,6 +30,15 @@ impl Roster {
         Some(Offer::new(at))
     }
 
+    /// Whether `offer` is one of `offers`.
+    pub(crate) fn holds(&self, offers: Offers, offer: Offer) -> bool {
+        let count = match offers {
+            Offers::Avatars => self.avatars.len(),
+            Offers::Loadout => self.loadout.len(),
+        };
+        offer.index() < count
+    }
+
     /// The id of `offer` among `offers`.
     pub(crate) fn id(&self, offers: Offers, offer: Offer) -> &str {
         match offers {

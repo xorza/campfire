@@ -1196,7 +1196,10 @@ fn every_orders_type_is_state_and_restores() {
 
     let mut snapshot = Vec::new();
     registry.snapshot(&game.world, &mut snapshot);
+    // A restore loads the match's books first: the same weapons, in the same order.
     let mut restored = Match::new();
+    let _weapon = restored.arm(fighter_stats(), Team::new(0));
+    let _weapon = restored.arm(fighter_stats(), Team::new(1));
     registry.restore(&snapshot, &mut restored.world).unwrap();
     assert_eq!(registry.hash(&restored.world), hash);
     assert_eq!(restored.destination(fighter), Some(at(0, 0, 3)));

@@ -1,8 +1,11 @@
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
 use crate::units::bits256::Bits256;
+use crate::units::script_view::View;
 
 /// A unit's team: its index in the mode's list of teams. How two teams regard each other is
 /// their relation, which the match's relations hold.
@@ -27,4 +30,11 @@ impl Team {
 
 impl SimComponent for Team {
     const NAME: &'static str = "units.team";
+
+    // The vision groups and the mode's tables hold a place for each of the mode's teams only.
+    fn check(&self, world: &World, _: Entity) -> bool {
+        world
+            .get_non_send::<View>()
+            .is_none_or(|view| view.has_team(*self))
+    }
 }

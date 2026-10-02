@@ -1,4 +1,6 @@
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_sim::SimComponent;
 use serde::de::Error;
@@ -26,6 +28,11 @@ impl MoveStep {
 
 impl SimComponent for MoveStep {
     const NAME: &'static str = "navigation.move_step";
+
+    // Its decode keeps it at 0 or more.
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }
 
 /// A snapshot is untrusted, so a negative step fails to decode.

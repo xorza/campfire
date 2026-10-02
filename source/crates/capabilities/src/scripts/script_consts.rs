@@ -48,6 +48,11 @@ impl ScriptConsts {
         self.damage_kinds[kind.index()].clone()
     }
 
+    /// Whether `kind` is one of the mode's damage kinds; any is, before a mode names them.
+    pub(crate) fn has_damage_kind(&self, kind: DamageKind) -> bool {
+        self.damage_kinds.is_empty() || kind.index() < self.damage_kinds.len()
+    }
+
     /// The damage kind `name`, if the mode declares it.
     pub(crate) fn damage_kind_named(&self, name: &str) -> Option<DamageKind> {
         let at = self.damage_kinds.iter().position(|kind| kind == name)?;

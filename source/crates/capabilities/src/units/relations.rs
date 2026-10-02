@@ -1,3 +1,4 @@
+use bevy_ecs::world::World;
 use std::array;
 
 use bevy_ecs::resource::Resource;
@@ -5,6 +6,7 @@ use campfire_sim::SimResource;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::units::script_view::View;
 use crate::units::team::Team;
 use crate::units::team_set::TeamSet;
 use crate::values::attitude::Attitude;
@@ -113,6 +115,15 @@ impl Relations {
 
 impl SimResource for Relations {
     const NAME: &'static str = "units.relations";
+
+    // A relation of a team the mode lacks would join it to a vision group of the mode's teams.
+    fn check(&self, world: &World) -> bool {
+        world.get_non_send::<View>().is_none_or(|view| {
+            self.pairs
+                .iter()
+                .all(|pair| view.has_team(pair.a) && view.has_team(pair.b))
+        })
+    }
 }
 
 /// A snapshot is untrusted, so pairs out of order, of a team with itself, or that are the
