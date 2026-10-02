@@ -16,13 +16,7 @@ Paths are relative to `source/crates/`. Line numbers are at `c38f0da`. Each item
 
 ### 2.2 Data constructors (capabilities)
 
-- [ ] **Map data** is built twice, in mode and in navigation:
-  - `MarkerData` at mode:253-272 and navigation:524-532;
-  - `PlacedUnitData` at mode:353 and navigation:517;
-  - `MapData` at mode:340-369 and navigation:534-551.
-
-  Better: `MapPoint::ground`, `MarkerData::tagged`, `PlacedUnitData::new` and `MapData::planar` in `mode/map_data.rs` internals.
-- [ ] **Pathing grids** are built in four places: `regions.rs:380`, `route_planner.rs:455` (`walled`, which parses an ASCII map), `pathing_grid.rs:206` (`drawn`, which prints one), and 6× `load_pathing` in `navigation/tests.rs`. Better: `PathingGrid::from_ascii` and `draw` in `pathing_grid.rs` internals. `Walk::with_pathing(cell, half_side, walkers)` covers the 3 identical 16 m squares.
+- [ ] **Pathing grids** are built in four places: `regions.rs:380`, `route_planner.rs:455` (`walled`, which parses an ASCII map), `pathing_grid.rs:206` (`drawn`, which prints one), and `navigation/tests.rs`, whose loads go through `Walk::load_pathing` now. Better: `PathingGrid::from_ascii` and `draw` in `pathing_grid.rs` internals.
 
 ### 2.3 Mode harness
 

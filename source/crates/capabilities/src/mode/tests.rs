@@ -262,10 +262,6 @@ fn num(value: i64) -> Num {
     Num::from_int(value).unwrap()
 }
 
-fn point(x: i64, z: i64) -> MapPoint {
-    MapPoint::Ground([Scalar::Int(x), Scalar::Int(z)])
-}
-
 /// A marker `name` with `tag` at (`x`, `z`), of `team` if it names one, with `params`.
 fn marker(
     name: &str,
@@ -275,16 +271,12 @@ fn marker(
     params: &[(&str, ModeParam)],
 ) -> MarkerData {
     MarkerData {
-        name: DeclaredName::new(name).unwrap(),
-        tags: vec![DeclaredName::new(tag).unwrap()],
-        pos: Some(point(x, z)),
-        region: None,
         team: team.map(|name| DeclaredName::new(name).unwrap()),
         params: params
             .iter()
             .map(|(name, param)| (DeclaredName::new(name).unwrap(), param.clone()))
             .collect(),
-        events: false,
+        ..MarkerData::tagged(name, &[tag], MapPoint::ground(x, z))
     }
 }
 
@@ -326,9 +318,7 @@ fn tracks() -> BTreeMap<DeclaredName, TrackData> {
 
 /// A cast of no target, cost, time or script: the test mode's spell and hero X's ability.
 fn blink_data() -> ActionData {
-    ActionData {
-        ..ActionData::cast(Targeting::None)
-    }
+    ActionData::cast(Targeting::None)
 }
 
 /// Bounds from (−10, −5) to (10, 6) with a grid of 1 m cells; one path, `mid`, along x; team a's
@@ -336,8 +326,6 @@ fn blink_data() -> ActionData {
 fn map() -> MapData {
     let grunt = ("unit_type", ModeParam::Text("grunt".to_owned()));
     MapData {
-        metric: Metric::Planar,
-        bounds: Bounds::new([num(-10), num(-5)], [num(10), num(6)]).unwrap(),
         grid: Some(GridData {
             cell: Scalar::Int(1),
         }),
@@ -346,20 +334,18 @@ fn map() -> MapData {
         }),
         paths: vec![PathData {
             name: DeclaredName::new("mid").unwrap(),
-            points: vec![point(-10, 0), point(0, 0), point(10, 0)],
+            points: [-10, 0, 10].map(|x| MapPoint::ground(x, 0)).into(),
         }],
         units: vec![PlacedUnitData {
-            unit_type: DeclaredName::new("tower").unwrap(),
-            team: DeclaredName::new("a").unwrap(),
-            pos: point(-8, 0),
             path: Some(DeclaredName::new("mid").unwrap()),
-            from: None,
+            ..PlacedUnitData::new("tower", "a", MapPoint::ground(-8, 0))
         }],
         markers: vec![
             marker("a_spawn", "spawn", (0, -5), Some("a"), &[]),
             marker("b_spawn", "spawn", (0, 5), Some("b"), &[]),
             marker("camp", "camp", (0, 0), None, slice::from_ref(&grunt)),
         ],
+        ..MapData::planar(Bounds::new([num(-10), num(-5)], [num(10), num(6)]).unwrap())
     }
 }
 

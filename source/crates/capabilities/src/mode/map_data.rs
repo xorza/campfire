@@ -230,6 +230,70 @@ impl RegionData {
 }
 
 #[cfg(test)]
+pub(crate) mod internals {
+    use std::collections::BTreeMap;
+
+    use crate::mode::map_data::{MapData, MapPoint, MarkerData, PlacedUnitData};
+    use crate::values::bounds::Bounds;
+    use crate::values::declared_name::DeclaredName;
+    use crate::values::metric::Metric;
+    use crate::values::scalar::Scalar;
+
+    fn name(text: &str) -> DeclaredName {
+        DeclaredName::new(text).unwrap()
+    }
+
+    impl MapPoint {
+        pub(crate) const fn ground(x: i64, z: i64) -> MapPoint {
+            MapPoint::Ground([Scalar::Int(x), Scalar::Int(z)])
+        }
+    }
+
+    impl MarkerData {
+        /// A marker `marker` with `tags` at `pos`, of no team, region or param.
+        pub(crate) fn tagged(marker: &str, tags: &[&str], pos: MapPoint) -> MarkerData {
+            MarkerData {
+                name: name(marker),
+                tags: tags.iter().map(|&tag| name(tag)).collect(),
+                pos: Some(pos),
+                region: None,
+                team: None,
+                params: BTreeMap::new(),
+                events: false,
+            }
+        }
+    }
+
+    impl PlacedUnitData {
+        /// A unit of `unit_type` and `team` at `pos`, on no path.
+        pub(crate) fn new(unit_type: &str, team: &str, pos: MapPoint) -> PlacedUnitData {
+            PlacedUnitData {
+                unit_type: name(unit_type),
+                team: name(team),
+                pos,
+                path: None,
+                from: None,
+            }
+        }
+    }
+
+    impl MapData {
+        /// A planar map of `bounds` and nothing more: no grid, path, unit or marker.
+        pub(crate) const fn planar(bounds: Bounds) -> MapData {
+            MapData {
+                metric: Metric::Planar,
+                bounds,
+                grid: None,
+                navigation: None,
+                paths: Vec::new(),
+                units: Vec::new(),
+                markers: Vec::new(),
+            }
+        }
+    }
+}
+
+#[cfg(test)]
 mod tests {
 
     use super::*;

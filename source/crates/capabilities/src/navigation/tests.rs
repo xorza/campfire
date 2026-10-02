@@ -1,5 +1,3 @@
-use std::collections::BTreeMap;
-
 use bevy_ecs::change_detection::DetectChanges;
 use campfire_math::{Tick, Vec3};
 use campfire_sim::Capability;
@@ -12,7 +10,6 @@ use crate::navigation::path_walker::PathEnd;
 use crate::units::layer::Layer;
 use crate::units::path_id::PathId;
 use crate::values::declared_name::DeclaredName;
-use crate::values::metric::Metric;
 use crate::values::scalar::Scalar;
 
 const ONE: i64 = 1 << 24;
@@ -45,6 +42,13 @@ impl Walk {
     fn new() -> Walk {
         let sim = TestMatch::client(&[Capability::Navigation]);
         Walk { sim }
+    }
+
+    /// Loads a pathing grid of `cell` cells from `min` to `max` for `walkers`.
+    fn load_pathing(&mut self, cell: Num, min: [i64; 2], max: [i64; 2], walkers: Vec<Walker>) {
+        let bounds = Bounds::new(min.map(num), max.map(num)).unwrap();
+        let grid = Grid::new(cell, bounds).unwrap();
+        Navigation::load_pathing(&mut self.sim.world, grid, walkers);
     }
 
     /// A unit at `at` walking a meter a tick to `to`.
@@ -241,12 +245,7 @@ fn the_pathing_grid_follows_the_static_bodies_from_the_next_tick() {
     // blocks cell 15. A walker never marks the grid.
     let half = Num::from_bits(1 << 23);
     let mut walk = Walk::new();
-    let bounds = Bounds::new([num(-2), num(-2)], [num(2), num(2)]).unwrap();
-    Navigation::load_pathing(
-        &mut walk.sim.world,
-        Grid::new(Num::ONE, bounds).unwrap(),
-        vec![ground(half)],
-    );
+    walk.load_pathing(Num::ONE, [-2, -2], [2, 2], vec![ground(half)]);
     let quarter = |value: i64| Num::from_bits(value << 22);
     let place =
         |x: i64, z: i64| Position::new(Vec3::new(quarter(x), Num::ZERO, quarter(z))).unwrap();
@@ -283,12 +282,7 @@ fn a_walker_goes_round_a_tower_and_never_touches_it() {
     for planned in [true, false] {
         let mut walk = Walk::new();
         if planned {
-            let bounds = Bounds::new([num(-8), num(-8)], [num(8), num(8)]).unwrap();
-            Navigation::load_pathing(
-                &mut walk.sim.world,
-                Grid::new(half, bounds).unwrap(),
-                vec![ground(half)],
-            );
+            walk.load_pathing(half, [-8, -8], [8, 8], vec![ground(half)]);
         }
         walk.body(at(0, 0, 0), None, None, tower_radius);
         let walker = walk.body(at(-4, 0, 0), Some(at(4, 0, 0)), Some(quarter), half);
@@ -340,11 +334,10 @@ fn a_walker_goes_round_units_that_stand_in_its_way() {
     for planned in [true, false] {
         let mut walk = Walk::new();
         if planned {
-            let bounds = Bounds::new([num(-8), num(-8)], [num(8), num(8)]).unwrap();
-            let grid = Grid::new(half, bounds).unwrap();
-            Navigation::load_pathing(
-                &mut walk.sim.world,
-                grid,
+            walk.load_pathing(
+                half,
+                [-8, -8],
+                [8, 8],
                 vec![ground(creep_radius), ground(half)],
             );
         }
@@ -391,12 +384,7 @@ fn two_walkers_that_meet_head_on_pass_on_opposite_sides() {
     for planned in [true, false] {
         let mut walk = Walk::new();
         if planned {
-            let bounds = Bounds::new([num(-8), num(-8)], [num(8), num(8)]).unwrap();
-            Navigation::load_pathing(
-                &mut walk.sim.world,
-                Grid::new(half, bounds).unwrap(),
-                vec![ground(half)],
-            );
+            walk.load_pathing(half, [-8, -8], [8, 8], vec![ground(half)]);
         }
         let east = walk.body(at(-4, 0, 0), Some(at(4, 0, 0)), Some(quarter), half);
         let west = walk.body(at(4, 0, 0), Some(at(-4, 0, 0)), Some(quarter), half);
@@ -440,13 +428,11 @@ fn an_air_unit_passes_over_a_ground_unit_and_a_wall() {
     // (3, 3).
     let half = Num::from_bits(1 << 23);
     let mut walk = Walk::new();
-    let bounds = Bounds::new([num(0), num(0)], [num(12), num(6)]).unwrap();
     let flyer = Walker {
         layer: AIR,
         radius: half,
     };
-    let grid = Grid::new(Num::ONE, bounds).unwrap();
-    Navigation::load_pathing(&mut walk.sim.world, grid, vec![ground(half), flyer]);
+    walk.load_pathing(Num::ONE, [0, 0], [12, 6], vec![ground(half), flyer]);
     for z in [1, 3, 5] {
         walk.body(at(6, 0, z), None, None, Num::ONE);
     }
@@ -479,12 +465,7 @@ fn routes_wait_past_the_limit_of_work_in_the_order_asked() {
     // 1 + 16 + 14 = 31 to the far end, 1 + 4 + 2 = 7 to x = 3.5, 1 + 15 + 13 = 29 to x = 14.5.
     // A tick does up to the grid's 16.
     let mut walk = Walk::new();
-    let bounds = Bounds::new([num(0), num(0)], [num(16), num(1)]).unwrap();
-    Navigation::load_pathing(
-        &mut walk.sim.world,
-        Grid::new(Num::ONE, bounds).unwrap(),
-        vec![ground(Num::ZERO)],
-    );
+    walk.load_pathing(Num::ONE, [0, 0], [16, 1], vec![ground(Num::ZERO)]);
     let half = Num::from_bits(1 << 23);
     let place = |x: i64| Position::new(Vec3::new(num(x) + half, Num::ZERO, half)).unwrap();
     let (start, far, near) = (place(0), place(15), place(3));
@@ -534,10 +515,10 @@ fn a_walker_steers_with_the_work_the_routes_left() {
     let goal = place(11, 1).unwrap();
     for (askers, steered) in [(0, [true, true]), (1, [true, true]), (2, [false, true])] {
         let mut walk = Walk::new();
-        let bounds = Bounds::new([num(0), num(0)], [num(12), num(3)]).unwrap();
-        Navigation::load_pathing(
-            &mut walk.sim.world,
-            Grid::new(Num::ONE, bounds).unwrap(),
+        walk.load_pathing(
+            Num::ONE,
+            [0, 0],
+            [12, 3],
             vec![ground(Num::ZERO), ground(quarter)],
         );
         let walker = walk.body(place(0, 1).unwrap(), Some(goal), Some(quarter), quarter);
@@ -565,12 +546,7 @@ fn a_walker_asks_again_only_for_a_static_body_put_in_its_way() {
     let half = Num::from_bits(1 << 23);
     let place = |x: i64, z: i64| Position::new(Vec3::new(num(x) + half, Num::ZERO, num(z) + half));
     let mut walk = Walk::new();
-    let bounds = Bounds::new([num(0), num(0)], [num(8), num(3)]).unwrap();
-    Navigation::load_pathing(
-        &mut walk.sim.world,
-        Grid::new(Num::ONE, bounds).unwrap(),
-        vec![ground(quarter)],
-    );
+    walk.load_pathing(Num::ONE, [0, 0], [8, 3], vec![ground(quarter)]);
     let goal = place(7, 1).unwrap();
     let walker = walk.body(place(0, 1).unwrap(), Some(goal), Some(Num::ONE), quarter);
     walk.sim.step();
@@ -606,12 +582,7 @@ fn a_walker_that_arrives_short_waits_there_until_a_static_body_goes() {
     let goal = place(6, 1).unwrap();
     let walled = || {
         let mut walk = Walk::new();
-        let bounds = Bounds::new([num(0), num(0)], [num(8), num(3)]).unwrap();
-        Navigation::load_pathing(
-            &mut walk.sim.world,
-            Grid::new(Num::ONE, bounds).unwrap(),
-            vec![ground(quarter)],
-        );
+        walk.load_pathing(Num::ONE, [0, 0], [8, 3], vec![ground(quarter)]);
         let towers = [0, 1, 2].map(|z| walk.body(place(4, z).unwrap(), None, None, half));
         let walker = walk.body(place(0, 1).unwrap(), Some(goal), Some(Num::ONE), quarter);
         let middle = walk.sim.entity(towers[1]);
@@ -680,28 +651,11 @@ fn a_map_loads_only_if_the_widest_walker_reaches_every_waypoint_and_stands_on_ev
     // 2.25 open: a gap a walker passes. One more at (5, 2) closes it.
     let tower_radius = Num::from_bits((9 << Num::FRAC_BITS) / 10);
     let half = Num::from_bits(1 << 23);
-    let point = |x: i64, z: i64| MapPoint::Ground([Scalar::Int(x), Scalar::Int(z)]);
-    let placed = |unit_type: &str, (x, z): (i64, i64)| PlacedUnitData {
-        unit_type: DeclaredName::new(unit_type).unwrap(),
-        team: DeclaredName::new("west").unwrap(),
-        pos: point(x, z),
-        path: None,
-        from: None,
-    };
-    let marker = |name: &str, (x, z): (i64, i64)| MarkerData {
-        name: DeclaredName::new(name).unwrap(),
-        tags: vec![DeclaredName::new(name).unwrap()],
-        pos: Some(point(x, z)),
-        region: None,
-        team: None,
-        params: BTreeMap::new(),
-        events: false,
-    };
+    let point = MapPoint::ground;
+    let placed = |unit_type, (x, z)| PlacedUnitData::new(unit_type, "west", point(x, z));
+    let marker = |name, (x, z)| MarkerData::tagged(name, &[name], point(x, z));
     // A creep placed on the west spawn walks, so it blocks nothing.
     let map = |towers: &[(i64, i64)], camp: (i64, i64)| MapData {
-        metric: Metric::Planar,
-        bounds: Bounds::new([num(0), num(0)], [num(10), num(4)]).unwrap(),
-        grid: None,
         navigation: Some(GridData {
             cell: Scalar::Decimal(half),
         }),
@@ -715,6 +669,7 @@ fn a_map_loads_only_if_the_widest_walker_reaches_every_waypoint_and_stands_on_ev
             .chain([placed("creep", (1, 1))])
             .collect(),
         markers: vec![marker("spawn", (1, 1)), marker("camp", camp)],
+        ..MapData::planar(Bounds::new([num(0), num(0)], [num(10), num(4)]).unwrap())
     };
     // A tower stands on the ground, a cloud of the same width in the air.
     let body_of = |unit_type: &str| {
