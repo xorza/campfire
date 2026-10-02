@@ -1519,6 +1519,7 @@ fn on_level_up(ctx, unit, track, level) {
             cause: DamageCause::Effect,
             ability: None,
             depth: 0,
+            hit: None,
         });
     }
     let waiting = |game: &Game| {
@@ -1613,6 +1614,7 @@ fn on_mode_input(ctx, player, name, value) {
         cause: DamageCause::Effect,
         ability: None,
         depth: 0,
+        hit: None,
     });
     game.tick(&[]);
     // It died in tick 0 with killer 4 of b and one assister of a: the mode set its respawn for the
@@ -1789,6 +1791,7 @@ impl Game {
             cause,
             ability: None,
             depth: 0,
+            hit: None,
         });
     }
 
@@ -1920,7 +1923,7 @@ impl Game {
             ScriptRole::Ai => ctx.frame().begin_think(&self.world, actor),
             ScriptRole::Action => ctx
                 .frame()
-                .begin_cast(&self.world, self.strike, 1, actor, 0)
+                .begin_cast(&self.world, self.strike, 1, actor, 0, None)
                 .unwrap(),
             ScriptRole::Modifier => {
                 let blessing = Stats::modifier(&self.world, 0, "blessing").unwrap();

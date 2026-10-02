@@ -1,10 +1,10 @@
 use campfire_script::rhai::Dynamic;
 use campfire_sim::Capability;
 
-use crate::deliveries::hit::Hit;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::script_api::{ApiOwner, MemberSpec};
 use crate::units::script_view::View;
+use crate::values::hit::Hit;
 
 /// A hit as a script holds it, `Hit` in scripts: read only.
 #[derive(Debug, Clone)]

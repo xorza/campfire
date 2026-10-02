@@ -1392,6 +1392,7 @@ fn on_damage_taken(ctx, m, d) {
         cause: DamageCause::Effect,
         ability: None,
         depth: 0,
+        hit: None,
     });
     game.world.run_schedule(SimUpdate);
     // The attack's 30, then the extra attack's 30, which adds none: 500 − 60. The echoer's 10,
@@ -1678,13 +1679,35 @@ fn a_delivery_hook_reads_its_projectile_and_the_unit_its_cast_aimed_at() {
     Actions::bind_spawn(&mut game.world, ability, "bolt");
     let caster = game.caster(ability, 1);
     let target = game.spawn(1, at(num(3), Num::ZERO, Num::ZERO), ());
+    // The damage the hook deals carries the bolt's hit, which the target's `watch` reads, and
+    // answers with 1 damage to its source: the hit's target, the unit the cast aimed at, after
+    // 3 m flown.
+    let stats = StatBook::new(&BTreeMap::new(), [], RATE, num(6)).unwrap();
+    Stats::load(&mut game.world, stats, PoolBook::default());
+    let watch = r#"
+        fn on_damage_taken(ctx, m, d) {
+            if d.hit == () || d.hit.target != m.carrier || d.hit.distance != 3 {
+                throw "the damage carries the hit of its bolt";
+            }
+            ctx.damage(d.source, 1, "true");
+        }
+    "#;
+    let script = Units::compile(&mut game.world, watch).unwrap();
+    Stats::load_modifier(
+        &mut game.world,
+        0,
+        "watch",
+        &scripted(None, &[]),
+        Some(script),
+    );
+    game.give(target, "watch");
 
     // The bolt launches in tick 0 and flies half a meter a tick from tick 1: it reaches the
     // target 3 m out in tick 6, hits it, and ends there, as it stops on a hit.
     game.cast(caster, ActionTarget::Unit(target));
     game.run_until(7);
-    assert_eq!((game.health(target), game.health(caster)), (450, 493));
-    assert!(game.failures().is_empty());
+    assert_eq!((game.health(target), game.health(caster)), (450, 492));
+    assert!(game.failures().is_empty(), "{:?}", game.failures());
 }
 
 #[test]

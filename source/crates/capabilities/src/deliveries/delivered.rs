@@ -1,8 +1,8 @@
 use campfire_sim::StableId;
 
 use crate::actions::action_book::ActionId;
-use crate::deliveries::hit::Hit;
 use crate::scripts::hook::Hook;
+use crate::values::hit::Hit;
 
 /// A hit of the unit `reached`, `on_hit`, or an end, `on_end`, of a delivery of `source`'s
 /// `action` at `rank`.

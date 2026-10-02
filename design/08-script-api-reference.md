@@ -134,6 +134,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `amount` | read | combat | runs | raw in `calc_damage`, final in a hook |
 | `attack` | read | combat | runs | whether an attack dealt it |
 | `extra` | read | combat | runs | whether `ctx.attack_hit` dealt it |
+| `hit` | read | combat | runs | how its projectile or area reached the target, `()` for damage none delivered |
 | `kind` | read | combat | runs | one of the mode's `[combat] damage_kinds` |
 | `roll` | read | combat | runs | its attack's random number, at least 0 and less than 1, `()` for other damage |
 | `source` | read | combat | runs | the unit that dealt it, `()` when gone or none |

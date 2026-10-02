@@ -4,6 +4,7 @@ use campfire_sim::Capability;
 use crate::combat::damage::{Damage, DamageCause};
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::script_api::{ApiOwner, MemberSpec};
+use crate::units::hit_handle::HitHandle;
 use crate::units::script_view::View;
 
 /// A damage as a script holds it, `Damage` in scripts: read only.
@@ -63,6 +64,17 @@ impl DamageHandle {
                     "its attack's random number, at least 0 and less than 1, `()` for other damage",
                 ),
                 |d: &mut DamageHandle| d.damage.cause.roll().map_or(Dynamic::UNIT, Dynamic::from),
+            )
+            .bind(
+                field(
+                    "hit",
+                    "how its projectile or area reached the target, `()` for damage none delivered",
+                ),
+                |d: &mut DamageHandle| {
+                    d.damage.hit.map_or(Dynamic::UNIT, |hit| {
+                        Dynamic::from(HitHandle::new(hit, d.view.clone()))
+                    })
+                },
             )
             .bind(
                 field("ability", "the ability that dealt it, `\"\"` when none"),

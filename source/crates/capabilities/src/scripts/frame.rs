@@ -22,6 +22,7 @@ use crate::stats::param_read::ParamRead;
 use crate::stats::param_source::ParamSource;
 use crate::stats::param_table::ParamTable;
 use crate::stats::stat::Stat;
+use crate::values::hit::Hit;
 use crate::values::param::Param;
 use crate::values::scalar::Scalar;
 
@@ -48,6 +49,8 @@ pub(crate) struct Frame {
     depth: u8,
     /// The package whose names it means: 0 the mode's.
     package: u16,
+    /// The hit a delivery's hook runs for.
+    hit: Option<Hit>,
     /// Its params at its rank, in the order of their names: its ability's, and its modifier's.
     values: Vec<Scalar>,
     modifier_values: Vec<Scalar>,
@@ -122,6 +125,10 @@ impl Frame {
         self.package
     }
 
+    pub(crate) const fn hit(&self) -> Option<Hit> {
+        self.hit
+    }
+
     /// Takes how each capability applies its effects, by capability index.
     pub(crate) const fn set_dispatch(
         &mut self,
@@ -130,8 +137,9 @@ impl Frame {
         self.dispatch = dispatch;
     }
 
-    /// Starts a cast of `ability` of `package` at `rank` by `caster` in `world`, with its params
-    /// at that rank; a param that overflows there fails the cast.
+    /// Starts a cast of `ability` of `package` at `rank` by `caster` in `world`, or a hook of its
+    /// delivery for `hit`, with its params at that rank; a param that overflows there fails the
+    /// cast.
     pub(crate) fn begin_cast(
         &mut self,
         world: &World,
@@ -139,6 +147,7 @@ impl Frame {
         rank: u8,
         caster: StableId,
         package: u16,
+        hit: Option<Hit>,
     ) -> Result<(), CallError> {
         self.read_resources(world);
         let source = ParamSource::of(world, caster);
@@ -150,6 +159,7 @@ impl Frame {
             modifier: None,
             package,
             depth: 0,
+            hit,
         };
         self.begin(start, source.as_ref())
     }
@@ -181,6 +191,7 @@ impl Frame {
             modifier: Some(modifier),
             package,
             depth,
+            hit: None,
         };
         self.begin(start, from.as_ref())
     }
@@ -241,6 +252,7 @@ impl Frame {
             modifier,
             package,
             depth,
+            hit,
         } = start;
         self.role = Some(role);
         self.acting = acting;
@@ -249,6 +261,7 @@ impl Frame {
         self.modifier = modifier;
         self.package = package;
         self.depth = depth;
+        self.hit = hit;
         self.pure = false;
         self.effects.clear();
         self.handles.clear();

@@ -11,7 +11,7 @@ use campfire_sim::{
 };
 
 use crate::actions::Actions;
-use crate::actions::action_book::{ActionBook, ActionId, RankValues};
+use crate::actions::action_book::{ActionBook, RankValues};
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::purse::Purse;
 use crate::actions::weapon::Weapon;
@@ -424,6 +424,7 @@ fn strike(
                 cause: DamageCause::Attack { roll },
                 ability: None,
                 depth: 0,
+                hit: None,
             }),
         }
         let resolves_at = slots
@@ -678,19 +679,15 @@ impl Combat {
     /// ability, at its depth of the chain of combat events.
     pub(crate) fn apply_next(world: &mut World, frame: &mut Frame, _: Tick) {
         let effect = frame.effects.take::<CombatEffect>();
-        Combat::apply_effect(world, effect, frame.acting(), frame.action(), frame.depth());
+        Combat::apply_effect(world, effect, frame);
     }
 
-    /// Applies `effect`, which a call queued from `source`, by `ability`, at chain depth
-    /// `depth`: damage and a heal join the pass's queue, a restore applies at once, and an extra
-    /// attack queues the source's attack damage, when it still has an attack.
-    pub(crate) fn apply_effect(
-        world: &mut World,
-        effect: CombatEffect,
-        source: Option<StableId>,
-        ability: Option<ActionId>,
-        depth: u8,
-    ) {
+    /// Applies `effect`, which the call in `frame` queued: from its acting unit, by its ability,
+    /// at its chain depth, delivered by its hit. Damage and a heal join the pass's queue, a
+    /// restore applies at once, and an extra attack queues the source's attack damage, when it
+    /// still has an attack.
+    pub(crate) fn apply_effect(world: &mut World, effect: CombatEffect, frame: &Frame) {
+        let (source, ability, depth) = (frame.acting(), frame.action(), frame.depth());
         let damage = |target, amount, kind, cause| Damage {
             source,
             target,
@@ -699,6 +696,7 @@ impl Combat {
             cause,
             ability,
             depth,
+            hit: frame.hit(),
         };
         match effect {
             CombatEffect::Damage {

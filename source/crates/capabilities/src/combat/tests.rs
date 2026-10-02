@@ -835,6 +835,7 @@ impl Fight {
             cause,
             ability: None,
             depth: 0,
+            hit: None,
         });
     }
 

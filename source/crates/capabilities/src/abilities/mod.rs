@@ -206,7 +206,7 @@ fn prepare(
     };
     let mut frame = ctx.frame();
     let package = checked.action.package;
-    frame.begin_cast(world, checked.id, checked.rank, caster.id, package)?;
+    frame.begin_cast(world, checked.id, checked.rank, caster.id, package, None)?;
     let resource_cost = checked.action.resource_cost(checked.rank);
     if let (Some(owner), false) = (owner, resource_cost.is_empty()) {
         frame

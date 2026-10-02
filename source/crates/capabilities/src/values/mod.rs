@@ -6,6 +6,7 @@ pub(crate) mod bounds;
 pub(crate) mod declared_name;
 pub(crate) mod filter_data;
 pub(crate) mod grid;
+pub(crate) mod hit;
 pub(crate) mod meter;
 pub(crate) mod metric;
 pub(crate) mod name_table;

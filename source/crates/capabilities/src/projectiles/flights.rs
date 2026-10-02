@@ -6,12 +6,12 @@ use crate::combat::pass_queue::PassQueue;
 use crate::combat::targets::Targets;
 use crate::deliveries::Deliveries;
 use crate::deliveries::delivered::Delivered;
-use crate::deliveries::hit::Hit;
 use crate::projectiles::cast_hits::{CastHit, CastHits};
 use crate::projectiles::projectile::{Flight, Payload, Projectile};
 use crate::projectiles::projectile_spec::ProjectileSpec;
 use crate::scripts::hook::Hook;
 use crate::units::team::Team;
+use crate::values::hit::Hit;
 
 /// The flights of a tick: where their hits and ends go, the units each cast hit while its
 /// projectiles fly, and a scratch list of the units a line's step meets, by share of the step.
@@ -200,6 +200,7 @@ impl Flights<'_> {
                 cause: DamageCause::Attack { roll },
                 ability: None,
                 depth: 0,
+                hit: Some(hit),
             }),
             Payload::Action { action, rank, .. } => self.deliveries.delivered.push(Delivered {
                 source: projectile.source(),

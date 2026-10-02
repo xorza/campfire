@@ -29,6 +29,7 @@ pub(crate) mod by_type;
 pub(crate) mod collision_data;
 pub(crate) mod error;
 pub(crate) mod filter;
+pub(crate) mod hit_handle;
 pub(crate) mod layer;
 pub(crate) mod living_unit;
 pub(crate) mod owner;

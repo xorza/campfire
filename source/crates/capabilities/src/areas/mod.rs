@@ -19,7 +19,6 @@ use crate::combat::targets::Targets;
 use crate::deliveries::delivered::Delivered;
 use crate::deliveries::delivering::Delivering;
 use crate::deliveries::delivery_spawner::DeliverySpawner;
-use crate::deliveries::hit::Hit;
 use crate::deliveries::{Deliveries, DeliverySet};
 use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
@@ -33,6 +32,7 @@ use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::attitude::Attitude;
 use crate::values::bounds::Bounds;
+use crate::values::hit::Hit;
 
 pub(crate) mod area;
 pub(crate) mod area_data;

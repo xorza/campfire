@@ -1,11 +1,11 @@
 use campfire_sim::Capability;
 
-use crate::deliveries::hit_handle::HitHandle;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::hook::Hook;
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::{ApiOwner, DataTable, MemberSpec, Status};
 use crate::units::block::Block;
+use crate::units::hit_handle::HitHandle;
 use crate::units::tag_effect::TagEffect;
 
 /// The script API of `abilities`, `projectiles` and `areas` that design 08 plans: the values of

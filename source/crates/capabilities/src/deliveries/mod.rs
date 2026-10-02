@@ -9,19 +9,17 @@ use campfire_sim::{EntityIndex, SimSet, SimTick};
 use crate::actions::action_book::ActionBook;
 use crate::combat::CombatSet;
 use crate::deliveries::delivered::Delivered;
-use crate::deliveries::hit_handle::HitHandle;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
+use crate::units::hit_handle::HitHandle;
 use crate::units::owner::Owner;
 
 pub(crate) mod delivered;
 pub(crate) mod delivering;
 pub(crate) mod delivery_spawner;
-pub(crate) mod hit;
-pub(crate) mod hit_handle;
 
 /// The hits and ends of this tick's deliveries whose action's hooks run, in the order they
 /// happened; and the delivery units that ended, which despawn once the hooks ran, so a hook still
@@ -123,6 +121,7 @@ fn run_hooks(world: &mut World, due: &[Delivered]) {
                 delivered.rank,
                 delivered.source,
                 package,
+                Some(delivered.hit),
             );
             if let Err(error) = begun {
                 batch.record(Some(delivered.source), delivered.hook, error);
