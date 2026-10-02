@@ -3,6 +3,7 @@
 //! state.
 
 pub(crate) mod api_builder;
+pub(crate) mod api_version;
 pub(crate) mod call_start;
 pub(crate) mod core_api;
 pub(crate) mod ctx;

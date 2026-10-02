@@ -1,12 +1,11 @@
 use std::collections::BTreeMap;
 
-use campfire_capabilities::{ActionData, DeliveryData};
+use campfire_capabilities::{ActionData, ApiVersion, DeliveryData};
 use campfire_content::{Fingerprint, PackagePath};
 use campfire_script::ScriptHost;
 
 use crate::error::{LoadError, LoadProblem};
 use crate::files::units_data::UnitTypeFile;
-use crate::files::version::Version;
 use crate::package_files::PackageFiles;
 use crate::script_facts::ScriptFacts;
 
@@ -19,7 +18,7 @@ const SCRIPTS: &str = "scripts";
 pub struct Package {
     pub name: String,
     pub fingerprint: Fingerprint,
-    pub(crate) engine: Version,
+    pub(crate) api: ApiVersion,
     /// Every file under `scripts/`, by path.
     pub scripts: Vec<Script>,
 }
@@ -32,11 +31,11 @@ pub struct Script {
 }
 
 impl Package {
-    /// The package of `files`, named `name` and targeting `engine`, with every script it holds.
+    /// The package of `files`, named `name` and targeting `api`, with every script it holds.
     pub(crate) fn read(
         files: &PackageFiles,
         name: String,
-        engine: Version,
+        api: ApiVersion,
         parser: &ScriptHost,
     ) -> Result<Package, LoadError> {
         let fail = |problem| LoadError {
@@ -63,7 +62,7 @@ impl Package {
         Ok(Package {
             name,
             fingerprint: files.fingerprint(),
-            engine,
+            api,
             scripts,
         })
     }

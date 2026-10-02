@@ -1,6 +1,7 @@
 use campfire_sim::Capability;
 
 use crate::scripts::api_builder::ApiBuilder;
+use crate::scripts::api_version::ApiVersion;
 use crate::scripts::script_api::{DataTable, MemberSpec, Status};
 use crate::units::tag_effect::TagEffect;
 
@@ -19,8 +20,8 @@ impl VisionApi {
             )
             .capability(Capability::Vision),
         )
-        .tag_effect(TagEffect::Hidden, Status::Runs)
-        .tag_effect(TagEffect::Detects, Status::Runs)
+        .tag_effect(TagEffect::Hidden, Status::Runs(ApiVersion::FIRST))
+        .tag_effect(TagEffect::Detects, Status::Runs(ApiVersion::FIRST))
         .data(DataTable::Vision, &["sight_range"], &[]);
     }
 }

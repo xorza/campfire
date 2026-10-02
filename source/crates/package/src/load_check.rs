@@ -2,16 +2,15 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::{iter, slice};
 
 use campfire_capabilities::{
-    ActionData, ActionKind, ActionSlots, ApiOwner, CollisionData, DeclaredName, DeliveryData,
-    EffectTo, Effecting, EngineStat, FilterData, Hook, MemberKind, Mode, ModifierData, Navigation,
-    Number, Offers, Param, Pools, Range, RangeField, ResourceId, Scalar, ScriptApi, ScriptRole,
-    Stat, Targeting, TrackId, UnitTypeData,
+    ActionData, ActionKind, ActionSlots, ApiOwner, ApiVersion, CollisionData, DeclaredName,
+    DeliveryData, EffectTo, Effecting, EngineStat, FilterData, Hook, MemberKind, Mode,
+    ModifierData, Navigation, Number, Offers, Param, Pools, Range, RangeField, ResourceId, Scalar,
+    ScriptApi, ScriptRole, Stat, Targeting, TrackId, UnitTypeData,
 };
 use campfire_content::PackagePath;
 use campfire_math::Num;
 use campfire_sim::Capability;
 
-use crate::RELEASE_VERSION;
 use crate::error::{
     ChoiceProblem, CtxMisuse, DeliveryProblem, EffectProblem, Limit, LoadError, LoadProblem,
     NameKind, Place,
@@ -84,17 +83,17 @@ impl<'a> LoadCheck<'a> {
         if unit_types > UnitTypeData::TYPE_LIMIT {
             return Err(fail(LoadProblem::TooMany(Limit::UnitTypes)));
         }
-        let engines = [&packages.mode].into_iter().chain(
+        let every = [&packages.mode].into_iter().chain(
             packages
                 .dependencies
                 .iter()
                 .map(|dependent| &dependent.package),
         );
-        for package in engines {
-            if package.engine != RELEASE_VERSION {
+        for package in every {
+            if !ApiVersion::RELEASE.loads(package.api) {
                 return Err(LoadError {
                     package: package.name.clone(),
-                    problem: Box::new(LoadProblem::OtherEngine(package.engine)),
+                    problem: Box::new(LoadProblem::OtherApi(package.api)),
                 });
             }
         }

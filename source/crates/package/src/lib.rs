@@ -31,11 +31,6 @@ pub use package_dir::PackageDir;
 pub use package_files::PackageFiles;
 pub use package_store::{PackageStore, StoreFailure};
 
-/// The tag of this engine release: what a package targets and a session's terms name.
+/// The tag of this engine release: what a session's terms name, so a replay runs the code that
+/// recorded it.
 pub const RELEASE: &str = env!("CARGO_PKG_VERSION");
-
-/// `RELEASE` as the version a package's `engine` names.
-const RELEASE_VERSION: Version = match Version::parse(RELEASE) {
-    Some(version) => version,
-    None => panic!("the crate version is major.minor.patch"),
-};

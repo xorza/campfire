@@ -4,15 +4,13 @@ use std::io;
 use std::path::PathBuf;
 
 use campfire_capabilities::{
-    ActionField, ActionKind, ActionSlots, DeclaredName, Hook, MapProblem, ModeError, PlannedEffect,
-    Pools, ResourceId, Stat, TrackId,
+    ActionField, ActionKind, ActionSlots, ApiVersion, DeclaredName, Hook, MapProblem, ModeError,
+    PlannedEffect, Pools, ResourceId, Stat, TrackId,
 };
 use campfire_content::PackagePath;
 use campfire_script::ScriptError;
 use campfire_sim::Capability;
 use toml::de::Error as TomlError;
-
-use crate::files::version::Version;
 
 /// Why a package file does not load. Packages are untrusted, so each is an expected failure.
 #[derive(Debug)]
@@ -116,7 +114,9 @@ pub enum LoadProblem {
     /// The dependency's package has another name than the mode gives it.
     OtherName(String),
     /// The package targets another engine release than this one.
-    OtherEngine(Version),
+    /// The package targets a package API version this release does not load: another major, or
+    /// a newer minor.
+    OtherApi(ApiVersion),
     /// Data or a script at `at` uses a capability the mode does not declare.
     Undeclared { capability: Capability, at: Place },
     /// The mode declares `combat`, and no damage kinds for its damage.
@@ -519,9 +519,12 @@ impl fmt::Display for LoadProblem {
             LoadProblem::Content(error) => write!(f, "{error}"),
             LoadProblem::WrongKind => f.write_str("not a package of the kind its place needs"),
             LoadProblem::OtherName(name) => write!(f, "the package is named {name:?}"),
-            LoadProblem::OtherEngine(engine) => {
-                write!(f, "targets engine release {engine}, not this one")
-            }
+            LoadProblem::OtherApi(api) => write!(
+                f,
+                "targets package API {api}, and this release loads {}.0 to {}",
+                ApiVersion::RELEASE.major,
+                ApiVersion::RELEASE
+            ),
             LoadProblem::Undeclared { capability, at } => {
                 write!(
                     f,

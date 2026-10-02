@@ -3,7 +3,7 @@
 # lane, a tower a side, and a neutral boulder that stands in the way until it falls.
 name = "test-proving"
 version = "0.1.0"
-engine = "0.1.0"
+api = "1.0"
 kind = "mode"
 capabilities = ["combat", "stats", "abilities", "projectiles", "areas", "orders", "navigation", "vision", "progression", "production"]
 tick_hz = { min = 20, max = 20, default = 20 }

@@ -1,7 +1,7 @@
 # A test mode: one lane, a tower a side and waves of two creeps, with a hero for each side.
 name = "test-lane"
 version = "0.1.0"
-engine = "0.1.0"
+api = "1.0"
 kind = "mode"
 capabilities = ["combat", "stats", "abilities", "projectiles", "orders", "navigation", "vision"]
 tick_hz = { min = 30, max = 30, default = 30 }

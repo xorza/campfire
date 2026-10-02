@@ -6,6 +6,7 @@ use crate::combat::combat_effect::CombatEffect;
 use crate::combat::damage_handle::DamageHandle;
 use crate::combat::heal_handle::HealHandle;
 use crate::scripts::api_builder::ApiBuilder;
+use crate::scripts::api_version::ApiVersion;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::role_set::RoleSet;
@@ -87,9 +88,18 @@ impl CombatApi {
         .bind(attack_hit, |ctx: &mut Ctx, target: Unit| {
             CombatApi::attack_hit(ctx, &target)
         })
-        .tag_effect(TagEffect::Blocks(Block::Attack), Status::Runs)
-        .tag_effect(TagEffect::Blocks(Block::Target), Status::Runs)
-        .tag_effect(TagEffect::Blocks(Block::Damage), Status::Runs)
+        .tag_effect(
+            TagEffect::Blocks(Block::Attack),
+            Status::Runs(ApiVersion::FIRST),
+        )
+        .tag_effect(
+            TagEffect::Blocks(Block::Target),
+            Status::Runs(ApiVersion::FIRST),
+        )
+        .tag_effect(
+            TagEffect::Blocks(Block::Damage),
+            Status::Runs(ApiVersion::FIRST),
+        )
         .data(
             DataTable::ModeCombat,
             &[

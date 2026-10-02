@@ -12,6 +12,7 @@ use crate::mode::mode_effect::ModeEffect;
 use crate::mode::new_unit::NewUnit;
 use crate::navigation::path_walker::PathEnd;
 use crate::scripts::api_builder::ApiBuilder;
+use crate::scripts::api_version::ApiVersion;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::hook::Hook;
@@ -42,20 +43,28 @@ impl ModeApi {
         ModeApi::register_choices(api);
         ModeApi::register_spawns(api);
         ModeApi::register_changes(api);
-        api.hook(Hook::OnMatchStart, "(ctx)", Status::Runs)
+        api.hook(Hook::OnMatchStart, "(ctx)", Status::Runs(ApiVersion::FIRST))
             .hook(
                 Hook::OnModeInput,
                 "(ctx, player, name, value)",
-                Status::Runs,
+                Status::Runs(ApiVersion::FIRST),
             )
-            .hook(Hook::OnTimer, "(ctx, name, data)", Status::Runs)
+            .hook(
+                Hook::OnTimer,
+                "(ctx, name, data)",
+                Status::Runs(ApiVersion::FIRST),
+            )
             .hook(
                 Hook::OnUnitDied,
                 "(ctx, unit, killer, assisters)",
-                Status::Runs,
+                Status::Runs(ApiVersion::FIRST),
             )
-            .hook(Hook::CalcDamage, "(ctx, d)", Status::Runs)
-            .hook(Hook::CalcHeal, "(ctx, h)", Status::Runs)
+            .hook(
+                Hook::CalcDamage,
+                "(ctx, d)",
+                Status::Runs(ApiVersion::FIRST),
+            )
+            .hook(Hook::CalcHeal, "(ctx, h)", Status::Runs(ApiVersion::FIRST))
             .hook(Hook::OnPlayerJoin, "(ctx, player)", Status::Planned)
             .hook(Hook::OnPlayerLeave, "(ctx, player)", Status::Planned)
             .data(

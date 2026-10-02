@@ -1,13 +1,13 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 
-use campfire_capabilities::{CapabilitySet, ScriptLimits, Speed, TeamManifest};
+use campfire_capabilities::{ApiVersion, CapabilitySet, ScriptLimits, Speed, TeamManifest};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
 use crate::files::version::Version;
 
-/// A package's `manifest.toml`: what it is, which engine release it targets, and, for a mode,
+/// A package's `manifest.toml`: what it is, which package API version it targets, and, for a mode,
 /// the rules its matches run by.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -17,14 +17,14 @@ pub enum Manifest {
     Loadout(PackageHeader),
 }
 
-/// What every manifest starts with: the package's name and version, and the engine release it
-/// targets.
+/// What every manifest starts with: the package's name and version, and the package API version
+/// it targets.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct PackageHeader {
     pub name: String,
     pub version: Version,
-    pub engine: Version,
+    pub api: ApiVersion,
 }
 
 /// A mode's manifest: its header's fields, then the rules its matches run by, in one table.
@@ -137,7 +137,7 @@ impl<'de> Deserialize<'de> for ModeManifest {
         struct Fields {
             name: String,
             version: Version,
-            engine: Version,
+            api: ApiVersion,
             capabilities: CapabilitySet,
             tick_hz: TickRange,
             teams: Vec<TeamManifest>,
@@ -152,7 +152,7 @@ impl<'de> Deserialize<'de> for ModeManifest {
             header: PackageHeader {
                 name: fields.name,
                 version: fields.version,
-                engine: fields.engine,
+                api: fields.api,
             },
             capabilities: fields.capabilities,
             tick_hz: fields.tick_hz,

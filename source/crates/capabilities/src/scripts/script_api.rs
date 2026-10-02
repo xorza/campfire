@@ -13,6 +13,7 @@ use crate::production::production_api::ProductionApi;
 use crate::progression::progression_api::ProgressionApi;
 use crate::projectiles::projectiles_api::ProjectilesApi;
 use crate::scripts::api_builder::ApiBuilder;
+use crate::scripts::api_version::ApiVersion;
 use crate::scripts::core_api::CoreApi;
 use crate::scripts::hook::{Hook, ScriptRole};
 use crate::scripts::role_set::RoleSet;
@@ -138,10 +139,11 @@ pub enum MemberKind {
     Operator,
 }
 
-/// Whether the release runs a name, or design 08 plans it.
+/// Whether the release runs a name, since the package API version it came in, or design 08
+/// plans it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Status {
-    Runs,
+    Runs(ApiVersion),
     Planned,
 }
 
@@ -275,7 +277,7 @@ impl ScriptApi {
                     "| `{}` | {form} |{roles} {} | {} | {} |",
                     member.name,
                     capability(member.capability),
-                    member.status.name(),
+                    member.status,
                     member.description,
                 )?;
             }
@@ -295,17 +297,12 @@ impl ScriptApi {
                 status.signature,
                 hook.role().name(),
                 capability(hook.capability()),
-                status.status.name(),
+                status.status,
             )?;
         }
         out.push_str("\n## Tag effects\n\n| Effect | Status |\n| --- | --- |\n");
         for status in &self.tag_effects {
-            writeln!(
-                out,
-                "| `{}` | {} |",
-                status.effect.name(),
-                status.status.name()
-            )?;
+            writeln!(out, "| `{}` | {} |", status.effect.name(), status.status)?;
         }
         out.push_str("\n## Data fields\n");
         for table in DataTable::ALL {
@@ -315,7 +312,7 @@ impl ScriptApi {
                 table.title()
             )?;
             for field in self.data.iter().filter(|field| field.table == table) {
-                writeln!(out, "| `{}` | {} |", field.name, field.status.name())?;
+                writeln!(out, "| `{}` | {} |", field.name, field.status)?;
             }
         }
         Ok(())
@@ -347,7 +344,10 @@ impl ScriptApi {
         runs: &[&'static str],
         planned: &[&'static str],
     ) {
-        for (names, status) in [(runs, Status::Runs), (planned, Status::Planned)] {
+        for (names, status) in [
+            (runs, Status::Runs(ApiVersion::FIRST)),
+            (planned, Status::Planned),
+        ] {
             self.data.extend(names.iter().map(|&name| DataField {
                 table,
                 name,
@@ -447,11 +447,12 @@ impl ApiOwner {
     }
 }
 
-impl Status {
-    pub const fn name(self) -> &'static str {
+/// As the reference shows it: `since <version>`, or `planned`.
+impl fmt::Display for Status {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Status::Runs => "runs",
-            Status::Planned => "planned",
+            Status::Runs(since) => write!(f, "since {since}"),
+            Status::Planned => f.write_str("planned"),
         }
     }
 }
@@ -653,7 +654,7 @@ mod tests {
         for member in api
             .members()
             .iter()
-            .filter(|member| member.status == Status::Runs)
+            .filter(|member| member.status == Status::Runs(ApiVersion::FIRST))
         {
             match member.kind {
                 MemberKind::Value | MemberKind::Field => {
@@ -688,7 +689,11 @@ mod tests {
         let damage = api.member(ApiOwner::Ctx, "damage").unwrap();
         assert_eq!(
             (damage.roles, damage.capability, damage.status),
-            (RoleSet::ALL, Some(Capability::Combat), Status::Runs)
+            (
+                RoleSet::ALL,
+                Some(Capability::Combat),
+                Status::Runs(ApiVersion::FIRST)
+            )
         );
         assert_eq!(damage.signatures, ["(target, amount, kind)"]);
         let timer = api.member(ApiOwner::Ctx, "timer").unwrap();

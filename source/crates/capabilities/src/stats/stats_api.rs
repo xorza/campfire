@@ -3,6 +3,7 @@ use campfire_sim::{Capability, Ticks};
 
 use crate::mode::mode_api::ModeApi;
 use crate::scripts::api_builder::ApiBuilder;
+use crate::scripts::api_version::ApiVersion;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::Checked;
 use crate::scripts::hook::Hook;
@@ -57,13 +58,37 @@ impl StatsApi {
             "(unit, from, distance, ms)",
             "pushes `unit` away from `from`",
         ));
-        api.hook(Hook::OnInterval, "(ctx, m)", Status::Runs)
-            .hook(Hook::OnAttack, "(ctx, m, target)", Status::Runs)
-            .hook(Hook::OnAttackHit, "(ctx, m, d)", Status::Runs)
-            .hook(Hook::OnDamageTaken, "(ctx, m, d)", Status::Runs)
-            .hook(Hook::OnKill, "(ctx, m, victim)", Status::Runs)
-            .hook(Hook::OnTakedown, "(ctx, m, victim)", Status::Runs)
-            .tag_effect(TagEffect::Immune, Status::Runs);
+        api.hook(
+            Hook::OnInterval,
+            "(ctx, m)",
+            Status::Runs(ApiVersion::FIRST),
+        )
+        .hook(
+            Hook::OnAttack,
+            "(ctx, m, target)",
+            Status::Runs(ApiVersion::FIRST),
+        )
+        .hook(
+            Hook::OnAttackHit,
+            "(ctx, m, d)",
+            Status::Runs(ApiVersion::FIRST),
+        )
+        .hook(
+            Hook::OnDamageTaken,
+            "(ctx, m, d)",
+            Status::Runs(ApiVersion::FIRST),
+        )
+        .hook(
+            Hook::OnKill,
+            "(ctx, m, victim)",
+            Status::Runs(ApiVersion::FIRST),
+        )
+        .hook(
+            Hook::OnTakedown,
+            "(ctx, m, victim)",
+            Status::Runs(ApiVersion::FIRST),
+        )
+        .tag_effect(TagEffect::Immune, Status::Runs(ApiVersion::FIRST));
         api.data(
             DataTable::Modifier,
             &[

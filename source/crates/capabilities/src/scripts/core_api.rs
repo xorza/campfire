@@ -2,6 +2,7 @@ use campfire_script::rhai::ImmutableString;
 use campfire_sim::Capability;
 
 use crate::scripts::api_builder::ApiBuilder;
+use crate::scripts::api_version::ApiVersion;
 use crate::scripts::ctx::{Ctx, Params};
 use crate::scripts::script_api::{DataTable, MemberSpec, Status};
 use crate::units::block::Block;
@@ -56,8 +57,11 @@ impl CoreApi {
                 ],
                 &[],
             );
-        api.tag_effect(TagEffect::Blocks(Block::Move), Status::Runs)
-            .tag_effect(TagEffect::Blocks(Block::Use), Status::Planned);
+        api.tag_effect(
+            TagEffect::Blocks(Block::Move),
+            Status::Runs(ApiVersion::FIRST),
+        )
+        .tag_effect(TagEffect::Blocks(Block::Use), Status::Planned);
         api.ty::<Params>("Params")
             .index(|params: &mut Params, name: ImmutableString| params.get(&name));
     }

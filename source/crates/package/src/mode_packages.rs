@@ -337,7 +337,7 @@ impl ModePackages {
             .read_data(&path(MAP_DATA))
             .map_err(content)
             .map_err(fail)?;
-        let mode = Package::read(files, name.clone(), manifest.header.engine, &parser)?;
+        let mode = Package::read(files, name.clone(), manifest.header.api, &parser)?;
         let dependencies = dependencies
             .iter()
             .map(|(name, files)| Dependent::read(name, files, &parser))
@@ -398,7 +398,7 @@ impl Dependent {
             }
             Manifest::Mode(_) => return Err(fail(LoadProblem::WrongKind)),
         };
-        let package = Package::read(files, name.to_owned(), header.engine, parser)?;
+        let package = Package::read(files, name.to_owned(), header.api, parser)?;
         Ok(Dependent { package, content })
     }
 }

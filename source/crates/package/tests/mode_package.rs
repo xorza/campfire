@@ -214,23 +214,24 @@ fn more_tracks_than_a_unit_holds_fail_the_load() {
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
 const FLAWS: [Flaw; 150] = [
+    // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
-        Edit::Replace(r#"engine = "0.1.0""#, r#"engine = "0.0.9""#),
+        Edit::Replace(r#"api = "1.0""#, r#"api = "2.0""#),
         MODE,
-        |problem| matches!(problem, LoadProblem::OtherEngine(engine) if engine.to_string() == "0.0.9"),
+        |problem| matches!(problem, LoadProblem::OtherApi(api) if api.to_string() == "2.0"),
     ),
     flaw(
         MANIFEST,
-        Edit::Replace(r#"engine = "0.1.0""#, r#"engine = "0.1""#),
+        Edit::Replace(r#"api = "1.0""#, r#"api = "1.0.0""#),
         MODE_DIR,
-        |problem| manifest_fails(problem, r#""0.1" is not major.minor.patch"#),
+        |problem| manifest_fails(problem, r#""1.0.0" is not major.minor"#),
     ),
     flaw(
         "heroes/husk/manifest.toml",
-        Edit::Replace(r#"engine = "0.1.0""#, r#"engine = "0.0.9""#),
+        Edit::Replace(r#"api = "1.0""#, r#"api = "1.1""#),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::OtherEngine(_)),
+        |problem| matches!(problem, LoadProblem::OtherApi(api) if api.to_string() == "1.1"),
     ),
     flaw(
         MANIFEST,
@@ -1493,7 +1494,7 @@ const FLAWS: [Flaw; 150] = [
             (
                 "more/manifest.toml",
                 Edit::Create(
-                    "name = \"more-spells\"\nversion = \"0.1.0\"\nengine = \"0.1.0\"\nkind = \"loadout\"\n",
+                    "name = \"more-spells\"\nversion = \"0.1.0\"\napi = \"1.0\"\nkind = \"loadout\"\n",
                 ),
             ),
             (

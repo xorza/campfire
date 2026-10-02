@@ -1,5 +1,6 @@
 use campfire_script::rhai::{Engine, RhaiNativeFunc, Variant};
 
+use crate::scripts::api_version::ApiVersion;
 use crate::scripts::hook::Hook;
 use crate::scripts::script_api::{
     DataTable, HookStatus, MemberKind, MemberSpec, ScriptApi, Status,
@@ -50,7 +51,8 @@ impl<'a> ApiBuilder<'a> {
             MemberKind::Call | MemberKind::Method | MemberKind::Operator => spec.name.to_owned(),
         };
         self.engine.register_fn(name, f);
-        self.api.record(spec, false, Status::Runs);
+        self.api
+            .record(spec, false, Status::Runs(ApiVersion::FIRST));
         self
     }
 
@@ -62,7 +64,7 @@ impl<'a> ApiBuilder<'a> {
     ) -> &mut Self {
         debug_assert_eq!(spec.kind, MemberKind::Field, "only a field is written");
         self.engine.register_fn(format!("{SETTER}{}", spec.name), f);
-        self.api.record(spec, true, Status::Runs);
+        self.api.record(spec, true, Status::Runs(ApiVersion::FIRST));
         self
     }
 

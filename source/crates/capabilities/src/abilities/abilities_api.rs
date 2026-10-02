@@ -1,6 +1,7 @@
 use campfire_sim::Capability;
 
 use crate::scripts::api_builder::ApiBuilder;
+use crate::scripts::api_version::ApiVersion;
 use crate::scripts::hook::Hook;
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::{ApiOwner, DataTable, MemberSpec, Status};
@@ -45,37 +46,52 @@ impl AbilitiesApi {
                 "gives `unit`'s ability `id` a charge",
             ));
         AbilitiesApi::register_deliveries(api);
-        api.tag_effect(TagEffect::Blocks(Block::Cast), Status::Runs)
-            .hook(Hook::OnResolve, "(ctx, unit, target)", Status::Runs)
-            .hook(Hook::OnHit, "(ctx, unit, target, hit)", Status::Runs)
-            .hook(Hook::OnEnd, "(ctx, unit, hit)", Status::Runs)
-            .hook(Hook::OnChannelTick, "(ctx, unit)", Status::Planned)
-            .hook(Hook::OnInterrupt, "(ctx, unit, target)", Status::Planned)
-            .data(
-                DataTable::Action,
-                &[
-                    "script",
-                    "cooldown_ms",
-                    "params",
-                    "on_resolve",
-                    "on_hit",
-                    "on_end",
-                ],
-                &[
-                    "clamp_to_range",
-                    "toggle",
-                    "channel",
-                    "hold",
-                    "charges",
-                    "charge",
-                    "projectile_state",
-                ],
-            )
-            .data(
-                DataTable::Effect,
-                &["damage", "heal", "restore", "modifier", "xp", "to"],
-                &["purge", "spawn", "launch", "move", "loot", "noise"],
-            );
+        api.tag_effect(
+            TagEffect::Blocks(Block::Cast),
+            Status::Runs(ApiVersion::FIRST),
+        )
+        .hook(
+            Hook::OnResolve,
+            "(ctx, unit, target)",
+            Status::Runs(ApiVersion::FIRST),
+        )
+        .hook(
+            Hook::OnHit,
+            "(ctx, unit, target, hit)",
+            Status::Runs(ApiVersion::FIRST),
+        )
+        .hook(
+            Hook::OnEnd,
+            "(ctx, unit, hit)",
+            Status::Runs(ApiVersion::FIRST),
+        )
+        .hook(Hook::OnChannelTick, "(ctx, unit)", Status::Planned)
+        .hook(Hook::OnInterrupt, "(ctx, unit, target)", Status::Planned)
+        .data(
+            DataTable::Action,
+            &[
+                "script",
+                "cooldown_ms",
+                "params",
+                "on_resolve",
+                "on_hit",
+                "on_end",
+            ],
+            &[
+                "clamp_to_range",
+                "toggle",
+                "channel",
+                "hold",
+                "charges",
+                "charge",
+                "projectile_state",
+            ],
+        )
+        .data(
+            DataTable::Effect,
+            &["damage", "heal", "restore", "modifier", "xp", "to"],
+            &["purge", "spawn", "launch", "move", "loot", "noise"],
+        );
     }
 
     /// The handles of deliveries: the hit either records, and the planned projectile and area.

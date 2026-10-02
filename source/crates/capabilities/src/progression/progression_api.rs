@@ -4,6 +4,7 @@ use campfire_sim::Capability;
 
 use crate::progression::progression_effect::ProgressionEffect;
 use crate::scripts::api_builder::ApiBuilder;
+use crate::scripts::api_version::ApiVersion;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::hook::Hook;
@@ -53,7 +54,11 @@ impl ProgressionApi {
         .plan(method("track_level", "(track)", "its level on `track`"))
         .plan(unit("points", "its unspent points"))
         .plan(method("has_perk", "(id)", "whether it has the perk `id`"))
-        .hook(Hook::OnLevelUp, "(ctx, unit, track, level)", Status::Runs)
+        .hook(
+            Hook::OnLevelUp,
+            "(ctx, unit, track, level)",
+            Status::Runs(ApiVersion::FIRST),
+        )
         .data(DataTable::Mode, &["tracks"], &[])
         .data(DataTable::Track, &["levels", "level"], &[]);
     }

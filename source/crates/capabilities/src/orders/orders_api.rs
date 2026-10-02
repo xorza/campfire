@@ -2,6 +2,7 @@ use campfire_sim::{Capability, Position};
 
 use crate::orders::ai_order::AiOrder;
 use crate::scripts::api_builder::ApiBuilder;
+use crate::scripts::api_version::ApiVersion;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::hook::Hook;
@@ -59,7 +60,7 @@ impl OrdersApi {
                 OrdersApi::order(ctx, &unit, AiOrder::Reset)
             },
         )
-        .hook(Hook::OnThink, "(ctx, unit)", Status::Runs)
+        .hook(Hook::OnThink, "(ctx, unit)", Status::Runs(ApiVersion::FIRST))
         .data(DataTable::Ai, &["ai", "think_ms"], &[]);
     }
 

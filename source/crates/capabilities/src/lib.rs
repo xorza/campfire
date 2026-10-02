@@ -108,6 +108,7 @@ pub use progression::track_set::TrackSet;
 pub use projectiles::Projectiles;
 pub use projectiles::projectile::Projectile;
 pub use projectiles::projectile_data::ProjectileData;
+pub use scripts::api_version::ApiVersion;
 pub use scripts::error::{ApiError, CallError};
 pub use scripts::hook::{Hook, ScriptRole};
 pub use scripts::match_scripts::MatchScripts;
