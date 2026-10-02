@@ -4,6 +4,7 @@ use bevy::app::{App, Plugin, Startup, Update};
 use bevy::asset::{Assets, Handle};
 use bevy::camera::visibility::Visibility;
 use bevy::color::Color;
+use bevy::ecs::change_detection::DetectChangesMut;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
 use bevy::ecs::query::{Allow, Has, With, Without};
@@ -306,13 +307,13 @@ impl Hud {
                 }
             };
             let shown = fraction.filter(|_| !dead);
-            *visibility = if shown.is_some() {
+            visibility.set_if_neq(if shown.is_some() {
                 Visibility::Inherited
             } else {
                 Visibility::Hidden
-            };
+            });
             if let (Some(fraction), Ok(mut fill)) = (shown, fills.get_mut(gauge.fill)) {
-                *fill = gauge.kind.layout().fill(fraction);
+                fill.set_if_neq(gauge.kind.layout().fill(fraction));
             }
         }
     }
@@ -336,7 +337,7 @@ impl Hud {
                 continue;
             };
             let top = glide.ground(drawing) + Vec3::Y * (look.height() + ABOVE);
-            *transform = gauge.kind.layout().place(top, facing);
+            transform.set_if_neq(gauge.kind.layout().place(top, facing));
         }
     }
 

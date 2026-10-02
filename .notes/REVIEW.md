@@ -38,7 +38,6 @@ These types hold their rules in `expect`s, sentinels or loose fields, not in the
 These costs grow with all units or all entities each tick, while the work concerns a few.
 
 - [ ] **Every script batch rebuilds every unit's row** — `capabilities/src/units/script_view.rs:147-195`, `scripts/script_batch.rs:29`. A tick can run about eight batches, each a full rebuild of every row from every row source. Better: keep the rows, and refresh only those whose source components changed since the last build.
-- [ ] **The client marks every gauge and drawing changed every frame** — `client/src/hud/mod.rs:306-313,336`, `client/src/view.rs:317,368-371`. Better: `set_if_neq`, and skip finished glides.
 - [ ] **Commands are parsed twice, and every tick** — `sim/src/command.rs:35-60`, `capabilities/src/orders/mod.rs:191`, `mode/mod.rs:444`. Better: validate once when the input is stored, and keep flat command ranges.
 
 ## 13. Allocations on frequent paths

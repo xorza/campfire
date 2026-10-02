@@ -315,7 +315,10 @@ impl View {
                 continue;
             };
             let from = glide.ground(&transform);
-            transform.rotation = aim.map_or(Quat::IDENTITY, |to| lean_toward(from, to));
+            let rotation = aim.map_or(Quat::IDENTITY, |to| lean_toward(from, to));
+            if transform.rotation != rotation {
+                transform.rotation = rotation;
+            }
         }
     }
 
@@ -368,7 +371,11 @@ impl View {
     ) {
         for (glide, mut transform) in &mut drawings {
             let done = ((time.elapsed_secs() - glide.since) / tick.0).clamp(0.0, 1.0);
-            transform.translation = glide.from.lerp(glide.to, done) + Vec3::Y * glide.lift;
+            let translation = glide.from.lerp(glide.to, done) + Vec3::Y * glide.lift;
+            // A drawing at rest keeps its transform, unchanged, until it glides again.
+            if transform.translation != translation {
+                transform.translation = translation;
+            }
         }
     }
 

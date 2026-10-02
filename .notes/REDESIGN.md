@@ -318,7 +318,6 @@ Track I:  H4      F3 after unit script state
 - **R§12:**
   - batch rebuilds: H4;
   - entity-index walks: B2;
-  - client gauges: J;
   - commands parsed twice: J;
 - **R§13:**
   - applied handle: D5;
