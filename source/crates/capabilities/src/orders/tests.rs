@@ -5,7 +5,7 @@ use bevy_ecs::change_detection::DetectChanges;
 use bevy_ecs::component::Component;
 use campfire_content::PackagePath;
 use campfire_math::{Num, PlayerSlot, Vec3};
-use campfire_sim::{Capability, IdAllocator, SimUpdate, TickInput, TypeHash};
+use campfire_sim::{Capability, Command, IdAllocator, SimUpdate, TickInput, TypeHash};
 
 use super::*;
 use crate::actions::action_book::internals::{self, TestWeapon};
@@ -406,7 +406,8 @@ fn orders_decode_exactly() {
 
     // A payload is a list of `orders` commands, one per order.
     let payload = Order::payload(&[order, attack]);
-    let commands: Vec<_> = Command::decode(&payload).unwrap().collect();
+    let mut commands = Vec::new();
+    assert!(Command::read(&payload, |command| commands.push(command)));
     assert_eq!(commands.len(), 2);
     assert!(
         commands

@@ -8,7 +8,7 @@ use bevy_ecs::world::{Mut, World};
 use campfire_math::{Tick, Ticks};
 use campfire_script::{ScriptError, ScriptId};
 use campfire_sim::{
-    Command, EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, TickInputs, TickRate,
+    EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, TickInputs, TickRate,
 };
 
 use crate::actions::ActionsSet;
@@ -175,43 +175,41 @@ fn check_player_orders(
     >,
     mut checked: ResMut<'_, PlayerOrders>,
 ) {
-    for input in inputs.iter() {
-        for body in Command::bodies(input.payload, Order::CAPABILITY) {
-            let Some(order) = Order::decode(body) else {
-                continue;
-            };
-            let Some(Ok((owner, team, walks, slots))) =
-                index.get(order.unit).map(|entity| units.get(entity))
-            else {
-                continue;
-            };
-            if owner.slot() != input.slot {
-                continue;
-            }
-            let checked_order = match order.action {
-                Action::Move { x, z } => walks.then_some(UnitOrder::Move { x, z }),
-                Action::Attack { target } => {
-                    let selected = team.and_then(|&team| {
-                        let unit = targets.enemy(team, target)?;
-                        Some((targets.attitude(team, unit.team), unit.tags))
-                    });
-                    let armed = slots.is_some_and(|slots| {
-                        selected.is_some() && book.weapon_for(slots, selected).is_some()
-                    });
-                    armed.then_some(UnitOrder::Attack { target })
-                }
-                Action::Slot { slot, target } => {
-                    let kind = slots
-                        .and_then(|slots| slots.slot(slot))
-                        .and_then(|held| book.get(held.action))
-                        .map(|action| action.kind.kind());
-                    matches!(kind, Some(ActionKind::Cast | ActionKind::Train))
-                        .then_some(UnitOrder::Slot { slot, target })
-                }
-            };
-            let entity = index.get(order.unit).expect("a unit the index named");
-            checked.0.extend(checked_order.map(|order| (entity, order)));
+    for command in inputs.commands(Order::CAPABILITY) {
+        let Some(order) = Order::decode(command.body) else {
+            continue;
+        };
+        let Some(Ok((owner, team, walks, slots))) =
+            index.get(order.unit).map(|entity| units.get(entity))
+        else {
+            continue;
+        };
+        if owner.slot() != command.slot {
+            continue;
         }
+        let checked_order = match order.action {
+            Action::Move { x, z } => walks.then_some(UnitOrder::Move { x, z }),
+            Action::Attack { target } => {
+                let selected = team.and_then(|&team| {
+                    let unit = targets.enemy(team, target)?;
+                    Some((targets.attitude(team, unit.team), unit.tags))
+                });
+                let armed = slots.is_some_and(|slots| {
+                    selected.is_some() && book.weapon_for(slots, selected).is_some()
+                });
+                armed.then_some(UnitOrder::Attack { target })
+            }
+            Action::Slot { slot, target } => {
+                let kind = slots
+                    .and_then(|slots| slots.slot(slot))
+                    .and_then(|held| book.get(held.action))
+                    .map(|action| action.kind.kind());
+                matches!(kind, Some(ActionKind::Cast | ActionKind::Train))
+                    .then_some(UnitOrder::Slot { slot, target })
+            }
+        };
+        let entity = index.get(order.unit).expect("a unit the index named");
+        checked.0.extend(checked_order.map(|order| (entity, order)));
     }
 }
 

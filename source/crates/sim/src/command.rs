@@ -39,33 +39,21 @@ impl<'a> Command<'a> {
         Command::encode(&commands)
     }
 
-    /// The commands of `payload`, in order; `None` unless the payload is exactly a list of
-    /// commands. A client can send any bytes, so a payload with a flaw gives no command at all.
-    pub fn decode(payload: &'a [u8]) -> Option<impl Iterator<Item = Command<'a>> + Clone> {
-        let (count, list) = postcard::take_from_bytes::<u64>(payload).ok()?;
-        let mut rest = list;
+    /// Reads the commands of `payload` in one pass, giving each to `read` in order: whether the
+    /// payload is exactly a list of commands. A client can send any bytes, so a reader of a
+    /// payload with a flaw keeps none of the commands it was given.
+    pub fn read(payload: &'a [u8], mut read: impl FnMut(Command<'a>)) -> bool {
+        let Ok((count, mut rest)) = postcard::take_from_bytes::<u64>(payload) else {
+            return false;
+        };
         for _ in 0..count {
-            (_, rest) = postcard::take_from_bytes::<Command<'_>>(rest).ok()?;
-        }
-        if !rest.is_empty() {
-            return None;
-        }
-        let mut rest = list;
-        Some((0..count).map(move |_| {
-            let (command, after) =
-                postcard::take_from_bytes(rest).expect("every command decoded once already");
+            let Ok((command, after)) = postcard::take_from_bytes::<Command<'_>>(rest) else {
+                return false;
+            };
+            read(command);
             rest = after;
-            command
-        }))
-    }
-
-    /// The bodies of the commands in `payload` that go to `capability`, in order.
-    pub fn bodies(payload: &'a [u8], capability: Capability) -> impl Iterator<Item = &'a [u8]> {
-        Command::decode(payload)
-            .into_iter()
-            .flatten()
-            .filter(move |command| command.capability == capability)
-            .map(|command| command.body)
+        }
+        rest.is_empty()
     }
 }
 
@@ -103,11 +91,11 @@ mod tests {
         // 3 commands; each the capability's index, orders 5 and character 6, then the body's
         // length and bytes.
         assert_eq!(payload, [3, 5, 2, b'a', b'b', 6, 0, 5, 1, b'c']);
-        let decoded: Vec<_> = Command::decode(&payload).unwrap().collect();
-        assert_eq!(decoded, commands);
-        let orders: Vec<_> = Command::bodies(&payload, Capability::Orders).collect();
-        assert_eq!(orders, [&b"ab"[..], b"c"]);
-        assert_eq!(Command::bodies(&payload, Capability::Abilities).count(), 0);
+        let decode = |bytes| {
+            let mut read = Vec::new();
+            Command::read(bytes, |command| read.push(command)).then_some(read)
+        };
+        assert_eq!(decode(&payload), Some(commands.to_vec()));
 
         // A flaw anywhere gives no command, not the ones before it: here no capability 12.
         let mut unknown = payload.clone();
@@ -120,13 +108,8 @@ mod tests {
             &[],
         ];
         for bytes in flawed {
-            assert!(Command::decode(bytes).is_none(), "{bytes:?}");
-            assert_eq!(
-                Command::bodies(bytes, Capability::Orders).count(),
-                0,
-                "{bytes:?}"
-            );
+            assert_eq!(decode(bytes), None, "{bytes:?}");
         }
-        assert_eq!(Command::decode(&[0]).unwrap().count(), 0);
+        assert_eq!(decode(&[0]), Some(Vec::new()));
     }
 }

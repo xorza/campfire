@@ -47,6 +47,10 @@ fn an_input_is_its_name_then_its_value_in_its_declared_type() {
     // A payload holds each as a command of the mode, the capability of index 12.
     let payload = ModeInput::payload(&[spells]);
     assert_eq!(payload[..2], [1, 12]);
-    let bodies: Vec<_> = Command::bodies(&payload, Capability::Mode).collect();
+    let mut bodies = Vec::new();
+    assert!(Command::read(&payload, |command| {
+        assert_eq!(command.capability, Capability::Mode);
+        bodies.push(command.body);
+    }));
     assert_eq!(bodies, [expected.as_slice()]);
 }

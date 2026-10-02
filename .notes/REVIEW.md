@@ -38,11 +38,9 @@ These types hold their rules in `expect`s, sentinels or loose fields, not in the
 These costs grow with all units or all entities each tick, while the work concerns a few.
 
 - [ ] **Every script batch rebuilds every unit's row** — `capabilities/src/units/script_view.rs:147-195`, `scripts/script_batch.rs:29`. A tick can run about eight batches, each a full rebuild of every row from every row source. Better: keep the rows, and refresh only those whose source components changed since the last build.
-- [ ] **Commands are parsed twice, and every tick** — `sim/src/command.rs:35-60`, `capabilities/src/orders/mod.rs:191`, `mode/mod.rs:444`. Better: validate once when the input is stored, and keep flat command ranges.
 
 ## 13. Allocations on frequent paths
 
-- [ ] **Each client order costs several allocations, and each input is hashed twice** — `net/src/sim_client/mod.rs:357-376`, `capabilities/src/orders/order.rs:41-44`, `sim/src/command.rs:22-31`. Better: `Command::payload` writes into a caller's buffer, and the chain is extended once.
 - [ ] **An applied handle allocates its state** — `capabilities/src/units/script_view.rs:461,463`. Better: reuse the frame's buffers.
 - [ ] **Each script is parsed twice** — `package/src/package.rs:57`, `runner/src/match_build.rs:313-326`. Better: keep the AST and let the host take it.
 

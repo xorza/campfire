@@ -35,7 +35,7 @@ pub use sim_update::{SimSet, SimUpdate};
 pub use stable_id::StableId;
 pub use state_registry::error::SnapshotError;
 pub use state_registry::{StateHash, StateRegistry, TypeHash};
-pub use tick_inputs::{TickInput, TickInputs};
+pub use tick_inputs::{PlayerCommand, TickInput, TickInputs};
 pub use tick_rate::TickRate;
 pub use unpredicted::Unpredicted;
 

@@ -13,7 +13,7 @@ use campfire_math::{PlayerSlot, Tick};
 use campfire_script::ScriptError;
 use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString};
 use campfire_sim::{
-    Command, EntityIndex, IdAllocator, SimSet, SimTick, StateRegistry, TickInputs, TickRate,
+    EntityIndex, IdAllocator, SimSet, SimTick, StateRegistry, TickInputs, TickRate,
 };
 
 use crate::actions::action_slots::ActionSlots;
@@ -299,15 +299,16 @@ fn mode_inputs(
     }
     bodies.clear();
     inputs.clear();
-    for input in world.resource::<TickInputs>().iter() {
-        for body in Command::bodies(input.payload, ModeInput::CAPABILITY) {
-            let start = bodies.len();
-            bodies.extend_from_slice(body);
-            inputs.push(Input {
-                slot: input.slot,
-                body: start..bodies.len(),
-            });
-        }
+    for command in world
+        .resource::<TickInputs>()
+        .commands(ModeInput::CAPABILITY)
+    {
+        let start = bodies.len();
+        bodies.extend_from_slice(command.body);
+        inputs.push(Input {
+            slot: command.slot,
+            body: start..bodies.len(),
+        });
     }
     if inputs.is_empty() {
         return;
