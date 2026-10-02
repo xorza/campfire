@@ -9,7 +9,7 @@ use bevy_ecs::world::Mut;
 use campfire_content::PackagePath;
 use campfire_math::{Num, PlayerSlot, Vec3};
 use campfire_script::{NumError, ScriptError};
-use campfire_sim::{Capability, IdAllocator, SimUpdate, StateHash, TickRate};
+use campfire_sim::{Capability, EntityIndex, IdAllocator, SimUpdate, StateHash, TickRate};
 
 use super::*;
 use crate::actions::Actions;
@@ -31,6 +31,7 @@ use crate::combat::recent_attackers::RecentAttackers;
 use crate::mode::resource_id::ResourceId;
 use crate::orders::Orders;
 use crate::orders::ai_data::AiData;
+use crate::projectiles::projectile::Projectile;
 use crate::projectiles::projectile_data::ProjectileData;
 use crate::scripts::error::ApiError;
 use crate::scripts::match_scripts::MatchScripts;
@@ -1658,6 +1659,78 @@ fn a_delivery_hook_reads_its_projectile_and_the_unit_its_cast_aimed_at() {
     game.run_until(7);
     assert_eq!((game.health(target), game.health(caster)), (450, 493));
     assert!(game.failures().is_empty());
+}
+
+#[test]
+fn a_script_launches_a_projectile_only_in_the_form_its_type_flies() {
+    // Each cast launches its own projectile in tick 0, and its `on_resolve` one more: at the
+    // target, or along the direction to it. A homing type flies only at a unit, a line type only
+    // along a direction; the other form fails the call, and a failed cast launches nothing.
+    let forms = [
+        ("ctx.projectile(caster.pos, target)", true),
+        (
+            "ctx.projectile(caster.pos, caster.pos.direction_to(target.pos))",
+            false,
+        ),
+    ];
+    for homing in [false, true] {
+        for (call, at_unit) in forms {
+            let mut game = Match::with(
+                LIMITS,
+                &[
+                    Capability::Stats,
+                    Capability::Combat,
+                    Capability::Abilities,
+                    Capability::Projectiles,
+                ],
+            );
+            let bolt = Units::load_type(&mut game.world, "bolt", &UnitTypeData::default()).unwrap();
+            let data = ProjectileData {
+                speed: num(15),
+                width: Num::ZERO,
+                range: None,
+                homing,
+                stop_on_hit: true,
+                once_per_cast: false,
+                hits: None,
+                gravity: None,
+                sight_radius: None,
+                collide: None,
+            };
+            Projectiles::load_type(&mut game.world, bolt, &data);
+            let shot = ActionData {
+                delivery: Some(DeliveryData::Projectile {
+                    unit_type: "bolt".to_owned(),
+                    count: NonZeroU8::MIN,
+                    spread_deg: Num::ZERO,
+                }),
+                ..strike()
+            };
+            let source = format!("fn on_resolve(ctx, caster, target) {{ {call}; }}");
+            let ability = game.load("shot", &shot, &source);
+            Actions::bind_spawn(&mut game.world, ability, "bolt");
+            let caster = game.caster(ability, 1);
+            let target = game.spawn(1, at(num(3), Num::ZERO, Num::ZERO), ());
+            game.cast(caster, ActionTarget::Unit(target));
+            game.run_until(1);
+            let mut projectiles = game.world.query::<&Projectile>();
+            let launched = projectiles.iter(&game.world).count();
+            let failed: Vec<_> = game
+                .failures()
+                .iter()
+                .map(|failure| match failure.error {
+                    CallError::Api(error) => Some(error),
+                    _ => None,
+                })
+                .collect();
+            if homing == at_unit {
+                assert_eq!((launched, failed), (2, vec![]), "{homing} {call}");
+            } else {
+                let other = Some(ApiError::OtherFlight);
+                assert_eq!((launched, failed), (0, vec![other]), "{homing} {call}");
+            }
+        }
+    }
 }
 
 #[test]

@@ -40,7 +40,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `p` | read | every role | core | runs | the params: an ability's at its rank, a modifier's then its ability's, or the mode's |
 | `pick` | `(list)` | every role | core | planned | an entry of `list`, from the secret stream |
 | `players` | read | mode | core | runs | how many players the session has |
-| `projectile` | `(from, direction) or (from, unit)` | action | projectiles | runs | launches one more of the action's projectiles from `from`, along `direction` or homing on `unit`, its own cast |
+| `projectile` | `(from, direction) or (from, unit)` | action | projectiles | runs | launches one more of the action's projectiles from `from`, its own cast: along `direction` for a line type, or homing on `unit` for a homing type |
 | `range` | read | action | abilities | planned | the ability's range at its rank |
 | `reduce_cooldown` | `(unit, id, ms)` | every role | abilities | planned | takes `ms` off the cooldown of `unit`'s ability `id` |
 | `reduce_cooldowns` | `(unit, fraction)` | every role | abilities | planned | takes `fraction` off the cooldowns of `unit`'s basic abilities |

@@ -83,10 +83,6 @@ impl Deaths {
         self.entries.iter().any(|death| death.fallen.unit == unit)
     }
 
-    pub(crate) fn is_empty(&self) -> bool {
-        self.entries.is_empty()
-    }
-
     /// The tick whose deaths the record holds.
     pub const fn tick(&self) -> Tick {
         self.tick

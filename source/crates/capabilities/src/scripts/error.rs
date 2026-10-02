@@ -133,6 +133,9 @@ pub enum ApiError {
     NoAbilitySlot,
     /// An ability to learn that is at its last rank already.
     MaxRank,
+    /// A projectile launched in the other form than its type flies: a homing type at a unit, a
+    /// line type along a direction.
+    OtherFlight,
 }
 
 impl CallError {
@@ -238,6 +241,9 @@ impl fmt::Display for ApiError {
             ApiError::RespawnDespawns => "unit to respawn despawns when it dies",
             ApiError::NoAbilitySlot => "unit has no ability in that slot",
             ApiError::MaxRank => "ability is at its last rank",
+            ApiError::OtherFlight => {
+                "a homing projectile flies at a unit, and a line projectile along a direction"
+            }
         })
     }
 }

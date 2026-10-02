@@ -5,6 +5,7 @@ use std::mem;
 use std::ops::Range;
 use std::rc::Rc;
 
+use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::Local;
 use bevy_ecs::world::{Mut, World};
@@ -22,6 +23,7 @@ use crate::combat::assist_window::AssistWindow;
 use crate::combat::combat_bindings::CombatBindings;
 use crate::combat::damage_weigher::DamageWeigher;
 use crate::combat::deaths::Deaths;
+use crate::combat::kept::Kept;
 use crate::combat::respawn::Respawn;
 use crate::mode::calls::Calls;
 use crate::mode::choices::Choices;
@@ -37,6 +39,7 @@ use crate::mode::player_resources::PlayerResources;
 use crate::mode::relation_data::RelationData;
 use crate::mode::team_manifest::TeamManifest;
 use crate::mode::timers::Timers;
+use crate::mode::unanswered_deaths::UnansweredDeaths;
 use crate::navigation::Navigation;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::PathWalker;
@@ -85,6 +88,7 @@ pub(crate) mod resource_id;
 pub(crate) mod roster;
 pub(crate) mod team_manifest;
 pub(crate) mod timers;
+pub(crate) mod unanswered_deaths;
 pub(crate) mod unit_kit;
 
 /// The mode of a match: the core's rules above the capabilities. Every match installs it after
@@ -162,6 +166,7 @@ impl Mode {
         world.insert_resource(book.choices.empty(players));
         world.insert_resource(PlayerResources::new(players, view.resource_count()));
         world.insert_resource(Timers::default());
+        world.insert_resource(UnansweredDeaths::default());
         let weighs = book.schema.hooks.contains(Hook::CalcDamage);
         let ctx = world.non_send::<Ctx>().clone();
         ctx.set_mode(book);
@@ -190,6 +195,7 @@ impl Mode {
         registry.register_resource::<Choices>();
         registry.register_resource::<PlayerResources>();
         registry.register_resource::<Timers>();
+        registry.register_resource::<UnansweredDeaths>();
         Ok(())
     }
 
@@ -519,45 +525,69 @@ fn run_timers(world: &mut World) {
     });
 }
 
-/// Runs `on_unit_died` for each death of the tick, in the order they happened, from the mode
-/// pool: with the unit, its killer or `()`, and its assisters.
-fn unit_deaths(world: &mut World) {
+/// Runs `on_unit_died` for each death of the tick, after those that wait from earlier ticks, in
+/// the order they happened, from the mode pool: with the unit, its killer or `()`, and its
+/// assisters; a killer gone by then is `()`, and an assister gone by then is left out. A death
+/// whose call finds the pool spent waits, with those after it, for a later tick, and its unit
+/// stays, dead, until then.
+fn unit_deaths(world: &mut World, mut units: Local<'_, Vec<Option<Entity>>>) {
     let ctx = world.non_send::<Ctx>().clone();
-    if !ctx
-        .mode()
-        .expect("a match with a mode")
-        .schema
-        .hooks
-        .contains(Hook::OnUnitDied)
-        || world.resource::<Deaths>().is_empty()
-    {
+    let hooks = ctx.mode().expect("a match with a mode").schema.hooks;
+    if !hooks.contains(Hook::OnUnitDied) {
         return;
     }
     let now = world.resource::<SimTick>().end();
-    world.resource_scope(|world, deaths: Mut<'_, Deaths>| {
-        Calls::batch(world, &ctx, now, |call| {
+    world.resource_scope(|world, mut unanswered: Mut<'_, UnansweredDeaths>| {
+        unanswered.extend(world.resource::<Deaths>().iter());
+        if unanswered.is_empty() {
+            return;
+        }
+        let answered = Calls::batch(world, &ctx, now, |call| {
             let view = call.ctx.view().clone();
-            let handle = |id| {
-                let unit = view.unit(id);
-                Dynamic::from(unit.expect("`Deaths` names only units that exist in its tick"))
-            };
-            for death in deaths.iter() {
-                let killer = death.killer.map_or(Dynamic::UNIT, handle);
-                let assisters: Array = death.assisters.iter().map(|&id| handle(id)).collect();
-                let unit = death.fallen.unit;
-                let args = (call.ctx.clone(), handle(unit), killer, assisters);
-                if let Err(error) = call.run(Pool::Mode, Hook::OnUnitDied, args) {
-                    let error = CallError::from_script(error);
-                    call.batch.record(Some(unit), Hook::OnUnitDied, error);
+            let mut answered = 0;
+            for death in unanswered.iter() {
+                if let Some(unit) = view.unit(death.unit) {
+                    let killer = death.killer.and_then(|id| view.unit(id));
+                    let killer = killer.map_or(Dynamic::UNIT, Dynamic::from);
+                    let assisters = death.assisters.iter().filter_map(|&id| view.unit(id));
+                    let assisters: Array = assisters.map(Dynamic::from).collect();
+                    let args = (call.ctx.clone(), Dynamic::from(unit), killer, assisters);
+                    match call.run(Pool::Mode, Hook::OnUnitDied, args) {
+                        Ok(()) => {}
+                        Err(ScriptError::TickBudget) => break,
+                        Err(error) => {
+                            let error = CallError::from_script(error);
+                            call.batch.record(Some(death.unit), Hook::OnUnitDied, error);
+                        }
+                    }
                 }
+                answered += 1;
             }
+            answered
         });
+        let index = world.resource::<EntityIndex>();
+        units.clear();
+        units.extend(unanswered.iter().map(|death| index.get(death.unit)));
+        for (at, entity) in units.iter().enumerate() {
+            let Some(entity) = *entity else {
+                continue;
+            };
+            let mut unit = world.entity_mut(entity);
+            if at < answered {
+                unit.remove::<Kept>();
+            } else {
+                unit.insert(Kept);
+            }
+        }
+        unanswered.answered(answered);
     });
 }
 
-/// Runs `on_level_up` for each level a unit reached this tick, in the order reached, from the
-/// mode pool: with the unit, the track's name and the level. A level that a call reaches joins
-/// the end, so a chain of level-ups ends within the tick, as levels are finite.
+/// Runs `on_level_up` for each level a unit reached, in the order reached, from the mode pool:
+/// with the unit, the track's name and the level. A level that a call reaches joins the end, so a
+/// chain of level-ups ends within the tick, as levels are finite. A level-up whose call finds the
+/// pool spent waits, with those after it, for a later tick; one whose unit is gone by then runs
+/// no call.
 fn level_ups(world: &mut World, mut due: Local<'_, Vec<LevelUp>>) {
     if !world.contains_resource::<LevelUps>() {
         return;
@@ -575,20 +605,33 @@ fn level_ups(world: &mut World, mut due: Local<'_, Vec<LevelUp>>) {
         if due.is_empty() {
             return;
         }
-        Calls::batch(world, &ctx, now, |call| {
+        let answered = Calls::batch(world, &ctx, now, |call| {
             let view = call.ctx.view().clone();
+            let mut answered = 0;
             for &LevelUp { unit, track, level } in &*due {
-                let Some(handle) = view.unit(unit) else {
-                    continue;
-                };
-                let level = INT::from(level.get());
-                let args = (call.ctx.clone(), handle, view.track_name(track), level);
-                if let Err(error) = call.run(Pool::Mode, Hook::OnLevelUp, args) {
-                    let error = CallError::from_script(error);
-                    call.batch.record(Some(unit), Hook::OnLevelUp, error);
+                if let Some(handle) = view.unit(unit) {
+                    let level = INT::from(level.get());
+                    let args = (call.ctx.clone(), handle, view.track_name(track), level);
+                    match call.run(Pool::Mode, Hook::OnLevelUp, args) {
+                        Ok(()) => {}
+                        Err(ScriptError::TickBudget) => break,
+                        Err(error) => {
+                            let error = CallError::from_script(error);
+                            call.batch.record(Some(unit), Hook::OnLevelUp, error);
+                        }
+                    }
                 }
+                answered += 1;
             }
+            answered
         });
+        if answered < due.len() {
+            let mut level_ups = world.resource_mut::<LevelUps>();
+            due.drain(..answered);
+            due.append(&mut level_ups.0);
+            mem::swap(&mut *due, &mut level_ups.0);
+            return;
+        }
     }
 }
 

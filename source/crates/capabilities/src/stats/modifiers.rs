@@ -268,7 +268,8 @@ impl Instance {
     }
 
     /// Takes the numbers and ends of `new`, an application of the same modifier from the same
-    /// source, keeping the stacks, when they end, and the script state.
+    /// source, keeping the stacks, when they end, and the script state. Its interval takes the
+    /// new length from the next on, and the next keeps its tick, so no refresh puts it off.
     fn renew(&mut self, new: Instance) {
         let Instance {
             ability,
@@ -278,8 +279,17 @@ impl Instance {
             aura_radius,
             shield,
             stats,
+            interval,
             ..
         } = new;
+        debug_assert_eq!(
+            self.interval.is_some(),
+            interval.is_some(),
+            "a modifier has an interval or not"
+        );
+        if let (Some(held), Some(new)) = (&mut self.interval, interval) {
+            held.every = new.every;
+        }
         self.ability = ability;
         self.rank = rank;
         self.until = until;
@@ -459,6 +469,22 @@ mod tests {
             (held.stats[0].value, &held.state[0]),
             (num(10), &StateValue::Int(9))
         );
+        // An interval of 3 ticks, next in tick 5, refreshed to 2 ticks, from tick 9: the next
+        // stays in tick 5, and the one after comes 2 ticks later, in tick 7.
+        let interval = |every, next| {
+            let mut application = applied(3, a, Reapply::Refresh, None, 0, None, None);
+            application.instance.interval = Some(Interval {
+                every: Ticks::new(every),
+                next: Tick::new(next),
+            });
+            application
+        };
+        let mut timed = Modifiers::default();
+        timed.apply(interval(3, 5));
+        timed.apply(interval(2, 9));
+        let held = timed.get_mut(ModifierId::new(3), a).unwrap();
+        let due = [4, 5, 6, 7].map(|now| held.interval_due(Tick::new(now)));
+        assert_eq!(due, [false, true, false, true]);
         // From another source, another instance, kept after the first by source.
         modifiers.apply(applied(0, b, Reapply::Refresh, None, 1, None, None));
         // Stacking to a limit of 3, each stack for 3 ticks, applied in ticks 0 to 3: 1, 2, 3,

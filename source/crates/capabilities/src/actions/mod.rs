@@ -76,11 +76,12 @@ impl Actions {
     /// Binds `action` to the unit type `name` it spawns, once the match's unit types load: a
     /// train's unit, or its delivery's projectile, one the package load checked.
     pub fn bind_spawn(world: &mut World, action: ActionId, name: &str) {
-        let unit_type = world
-            .non_send::<View>()
+        let view = world.non_send::<View>();
+        let unit_type = view
             .types_mut()
             .named(name)
             .expect("the load checked an action's unit type");
+        view.bind_spawn(action, unit_type);
         world
             .resource_mut::<ActionBook>()
             .bind_spawn(action, unit_type);

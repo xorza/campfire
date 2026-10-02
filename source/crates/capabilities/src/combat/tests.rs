@@ -603,6 +603,7 @@ fn every_combat_type_is_state_and_restores() {
         [
             "actions.slots",
             "combat.dead",
+            "combat.kept",
             "combat.on_death",
             "combat.recent_attackers",
             "combat.respawn",
@@ -877,7 +878,7 @@ fn the_pass_deals_damage_in_its_order_and_credits_the_kill() {
     assert_eq!(fight.health(target), Some(0));
     let attackers = fight.get_ref::<RecentAttackers>(target).unwrap();
     assert!(attackers.iter().all(|attack| attack.source != c));
-    assert!(fight.world.resource::<Deaths>().is_empty());
+    assert_eq!(fight.world.resource::<Deaths>().iter().count(), 0);
 
     // An invulnerable unit takes nothing and records no attacker; untargetable, it takes all.
     let guarded = fight.unit(Team::new(1), at(4, 0, 0), dummy());

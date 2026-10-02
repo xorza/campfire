@@ -3,7 +3,9 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_math::{Num, Vec3};
-use campfire_sim::{Position, SimSet, SimTick, StableId, StateRegistry, TickRate, Ticks};
+use campfire_sim::{
+    Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry, TickRate, Ticks,
+};
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::ActionTarget;
@@ -150,13 +152,11 @@ fn trigger(
     (specs, tick): (Res<'_, ByType<AreaSpec>>, Res<'_, SimTick>),
     mut deliveries: ResMut<'_, Deliveries>,
     mut areas: Query<'_, '_, (Entity, &StableId, &Position, &Team, &UnitType, &mut Area)>,
-    (mut order, mut reached): (Local<'_, Vec<(StableId, Entity)>>, Local<'_, Vec<StableId>>),
+    (mut order, mut reached): (Local<'_, Ordered>, Local<'_, Vec<StableId>>),
 ) {
     let now = tick.start();
-    order.clear();
-    order.extend(areas.iter().map(|(entity, &id, ..)| (id, entity)));
-    order.sort_unstable();
-    for &(id, entity) in &*order {
+    let placed = areas.iter().map(|(entity, &id, ..)| Keyed { id, entity });
+    for &Keyed { id, entity } in order.sort(placed) {
         let (_, _, &pos, &team, &unit_type, mut area) =
             areas.get_mut(entity).expect("an area in the order");
         let hit = Hit {

@@ -2,7 +2,6 @@ use std::collections::BTreeMap;
 use std::num::{NonZeroU8, NonZeroU32};
 use std::slice;
 
-use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use campfire_content::PackagePath;
 use campfire_math::{Num, Vec3};
@@ -1156,20 +1155,21 @@ fn on_mode_input(ctx, player, name, value) {
     };
 
     // Ticks 0 and 1 of the queue each order a train: each pays 30 mana and 5 gold at once. The
-    // first's time runs from tick 0, so it spawns in tick 3, and the second's from then, to tick
-    // 6. A third, ordered in tick 2, finds the queue full: nothing is paid.
+    // first's 3 ticks run from time 0 to time 3, the end of tick 2, so its unit spawns in tick 2's
+    // Mode stage; the second's run from then to time 6, tick 5. A third, ordered in tick 2's Act
+    // stage, before the first spawns, finds the queue full: nothing is paid.
     let steps = [
         (true, (70, 10), 0),
         (true, (40, 5), 0),
-        (true, (40, 5), 0),
+        (true, (40, 5), 1),
         (false, (40, 5), 1),
-        // Room again: a third pays, and runs from tick 6 to tick 9.
+        // Room again: a third pays, and runs from time 6 to time 9, the end of tick 8.
         (true, (10, 0), 1),
-        (false, (10, 0), 1),
+        (false, (10, 0), 2),
         (false, (10, 0), 2),
         // Room again, and 10 mana of 30: the order fails, and nothing is paid.
         (true, (10, 0), 2),
-        (false, (10, 0), 2),
+        (false, (10, 0), 3),
         (false, (10, 0), 3),
     ];
     for (at, (ordered, expected, made)) in steps.into_iter().enumerate() {
@@ -1468,6 +1468,95 @@ fn on_timer(ctx, name, data) {
     assert_eq!(due(&game), (None, false));
     // Both calls failed, so none counted.
     assert_eq!(game.field("count"), StateValue::Int(0));
+}
+
+#[test]
+fn a_death_or_a_level_up_whose_call_finds_the_mode_pool_spent_waits_with_its_unit() {
+    // Each death call spins 50 additions: a mode pool of 500 operations holds two of them, not
+    // three, and then the third and a level-up.
+    let script = r#"
+fn on_match_start(ctx) {
+    ctx.spawn_group("b", "mid", "end", ["grunt", "grunt", "grunt"]);
+}
+
+fn on_mode_input(ctx, player, name, value) {
+    if name == "hero" {
+        pick(ctx, player, value);
+    } else {
+        ctx.add_xp(ctx.avatars()[0], "level", 100);
+    }
+}
+
+fn on_unit_died(ctx, unit, killer, assisters) {
+    ctx.state.kind += `${unit.team} by ${killer.team};`;
+    let spun = 0;
+    for i in 0..50 { spun += i; }
+}
+
+fn on_level_up(ctx, unit, track, level) {
+    ctx.state.kind += `${track} ${level};`;
+}
+"#;
+    let limits = ScriptLimits {
+        mode: 500,
+        ..LIMITS
+    };
+    let mut game = Game::new(script, limits);
+    game.tick(&[(0, input("hero", "hero-x"))]);
+    // Units: the tower 0 of a, b's grunts 1 to 3, which despawn when they die, and the hero 4.
+    // The tower's damage kills the three grunts in tick 1, as the hero reaches level 2.
+    let grunts = [1, 2, 3].map(|at| game.entity(at));
+    let tower = game.world.get::<StableId>(game.entity(0)).copied();
+    for grunt in grunts {
+        game.world.entity_mut(grunt).insert(OnDeath::Despawn);
+        let target = *game.world.get::<StableId>(grunt).unwrap();
+        game.world.resource_mut::<DamageQueue>().push(Damage {
+            source: tower,
+            target,
+            amount: num(10),
+            kind: DamageKind::new(0),
+            cause: DamageCause::Effect,
+            ability: None,
+            depth: 0,
+        });
+    }
+    let waiting = |game: &Game| {
+        let deaths = game.world.resource::<UnansweredDeaths>().iter().count();
+        (deaths, game.world.resource::<LevelUps>().0.len())
+    };
+    let stands = |game: &Game, grunt: Entity| {
+        let unit = game.world.get_entity(grunt).ok()?;
+        Some((unit.contains::<Dead>(), unit.contains::<Kept>()))
+    };
+    game.tick(&[(0, input("probe", "xp"))]);
+    // Two deaths ran; the third waits, and so does the level-up behind it. The first two grunts
+    // despawned; the third stays, dead and kept, for its call.
+    assert_eq!(
+        game.field("kind"),
+        StateValue::Text("b by a;b by a;".to_owned())
+    );
+    assert_eq!(waiting(&game), (1, 1));
+    // The waiting death is state: it decodes to itself, and an assister its runs do not cover
+    // fails to decode. Its assisters come last, none: their length is the last byte.
+    let unanswered = game.world.resource::<UnansweredDeaths>();
+    let mut bytes = postcard::to_allocvec(unanswered).unwrap();
+    let decoded = postcard::from_bytes::<UnansweredDeaths>(&bytes).ok();
+    assert_eq!(decoded.as_ref(), Some(unanswered));
+    assert_eq!(bytes.pop(), Some(0));
+    bytes.extend([1, 5]);
+    assert!(postcard::from_bytes::<UnansweredDeaths>(&bytes).is_err());
+    assert_eq!(
+        grunts.map(|grunt| stands(&game, grunt)),
+        [None, None, Some((true, true))]
+    );
+    game.tick(&[]);
+    // Both run first in the next tick, with the third grunt and its killer as handles; then it
+    // despawns.
+    let all = "b by a;b by a;b by a;level 2;";
+    assert_eq!(game.field("kind"), StateValue::Text(all.to_owned()));
+    assert_eq!(waiting(&game), (0, 0));
+    assert_eq!(stands(&game, grunts[2]), None);
+    assert_eq!(game.failures(), []);
 }
 
 #[test]

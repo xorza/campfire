@@ -1,6 +1,7 @@
 //! The proving match plays through every capability with no failed call, and proves what it is
 //! there to prove: each capability it names takes part.
 
+use bevy_ecs::component::Component;
 use campfire_capabilities::{
     Area, Dead, Experience, Level, Modifiers, Owner, Projectile, ScriptFailures, Team, TrainQueue,
 };
@@ -92,4 +93,36 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
         boulder.is_none_or(|(_, entity)| world.entity(entity).contains::<Dead>()),
         "the boulder stands"
     );
+}
+
+/// A component no system reads, which moves the unit that carries it to another archetype.
+#[derive(Component, Debug)]
+struct Inert;
+
+/// The match plays alike whatever order Bevy's queries give units in. A query walks each
+/// archetype's units in the order they joined it; so each tick, before it runs, every unit joins
+/// the archetype with `Inert` anew, from the highest stable id down, and queries meet the units of
+/// one archetype in reverse id order. Both goldens must still hold.
+#[test]
+fn the_proving_match_plays_alike_in_reverse_query_order() {
+    let proving = ProvingMatch::load();
+    let mut fixed = proving.start();
+    let mut golden = Golden::new(proving.packages(), ProvingMatch::PLAYERS);
+    let mut units = Vec::new();
+    for tick in 0..ProvingMatch::TICKS {
+        let world = fixed.runner_mut().world_mut();
+        units.clear();
+        units.extend(
+            world
+                .resource::<EntityIndex>()
+                .iter()
+                .map(|(_, entity)| entity),
+        );
+        for &entity in units.iter().rev() {
+            world.entity_mut(entity).remove::<Inert>().insert(Inert);
+        }
+        ProvingMatch::play_tick(&mut fixed, tick);
+        golden.record(fixed.runner());
+    }
+    golden.check("proving");
 }

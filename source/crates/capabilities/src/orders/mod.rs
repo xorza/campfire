@@ -1,5 +1,5 @@
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::Without;
+use bevy_ecs::query::{Has, QueryState, With, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Local, Query, Res};
 use bevy_ecs::world::{Mut, World};
@@ -270,30 +270,30 @@ struct Ended {
 /// and no unit misses its turn for good. First, each reset whose unit arrived, its destination
 /// dropped, ends with its pools full, and each whose unit died ends with nothing more: its AI
 /// thinks free of it.
-fn think(world: &mut World, mut due: Local<'_, Vec<Due>>, mut reset: Local<'_, Vec<Ended>>) {
+fn think(
+    world: &mut World,
+    resetting: &mut QueryState<(Entity, Has<Dead>, Option<&Destination>), With<Resetting>>,
+    thinkers: &mut QueryState<(Entity, &StableId, &UnitType, Option<&NextThink>), Without<Dead>>,
+    (mut due, mut reset): (Local<'_, Vec<Due>>, Local<'_, Vec<Ended>>),
+) {
     let now = world.resource::<SimTick>().start();
-    due.clear();
     reset.clear();
+    reset.extend(
+        resetting
+            .iter(world)
+            .filter(|(_, dead, destination)| {
+                *dead || destination.is_none_or(|destination| destination.get().is_none())
+            })
+            .map(|(entity, dead, _)| Ended { entity, dead }),
+    );
+    due.clear();
     let book = world.resource::<ByType<Ai>>();
-    for (id, entity) in world.resource::<EntityIndex>().iter() {
-        let unit = world.entity(entity);
-        if unit.contains::<Resetting>() {
-            let dead = unit.contains::<Dead>();
-            let arrived = unit
-                .get::<Destination>()
-                .is_none_or(|destination| destination.get().is_none());
-            if dead || arrived {
-                reset.push(Ended { entity, dead });
-            }
-        }
-        let ai = unit
-            .get::<UnitType>()
-            .and_then(|&unit_type| book.get(unit_type));
-        let Some(ai) = ai.filter(|_| !unit.contains::<Dead>()) else {
+    for (entity, &id, &unit_type, next) in thinkers.iter(world) {
+        let Some(ai) = book.get(unit_type) else {
             continue;
         };
         let period = ai.period;
-        let since = match unit.get::<NextThink>() {
+        let since = match next {
             Some(next) => next.get(),
             None if now.get() % period.get() == id.get() % period.get() => now,
             None => continue,

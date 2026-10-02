@@ -5,7 +5,7 @@ use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_math::{Num, Vec3};
 
-use campfire_sim::{Position, StableId, StateRegistry, TickRate};
+use campfire_sim::{Keyed, Ordered, Position, StableId, StateRegistry, TickRate};
 
 use crate::actions::action_book::{ActionBook, Aim, Fan};
 use crate::actions::action_data::Range;
@@ -80,6 +80,9 @@ impl Projectiles {
                 None => Filter::parse("enemies", &types),
             }
         };
+        if data.homing {
+            view.set_homing(unit_type);
+        }
         let spec = ProjectileSpec {
             speed: data
                 .speed
@@ -262,22 +265,22 @@ fn fly(
         Without<Pools>,
     >,
     (mut order, mut met, mut flying): (
-        Local<'_, Vec<(StableId, Entity)>>,
+        Local<'_, Ordered>,
         Local<'_, Vec<(u128, StableId)>>,
         Local<'_, Vec<StableId>>,
     ),
 ) {
-    order.clear();
     flying.clear();
-    order.extend(projectiles.iter().map(|(entity, &id, ..)| (id, entity)));
-    order.sort_unstable();
     let mut flights = Flights {
         queue: &mut queue,
         deliveries: &mut deliveries,
         cast_hits: &mut cast_hits,
         met: &mut met,
     };
-    for &(id, entity) in &*order {
+    let aloft = projectiles
+        .iter()
+        .map(|(entity, &id, ..)| Keyed { id, entity });
+    for &Keyed { id, entity } in order.sort(aloft) {
         let (_, _, mut position, mut projectile, &unit_type, &team) = projectiles
             .get_mut(entity)
             .expect("a projectile in the order");

@@ -1,13 +1,15 @@
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::Without;
+use bevy_ecs::query::{QueryState, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
-use campfire_sim::{EntityIndex, IdAllocator, Position, SimSet, SimTick, StateRegistry, Ticks};
+use campfire_sim::{
+    IdAllocator, Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry, Ticks,
+};
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_kind::ActionKind;
-use crate::actions::action_slots::ActionSlots;
+use crate::actions::action_slots::{ActionSlots, InProgress};
 use crate::actions::purse::Purse;
 use crate::combat::CombatSet;
 use crate::combat::dead::Dead;
@@ -39,24 +41,23 @@ impl Production {
     /// Spawns each train whose time ended this tick, at its unit's position, of its unit's team
     /// and player, by its unit's stable id, then its queue's order; the next in a queue starts in
     /// the same tick. A dead unit's queue waits.
-    pub(crate) fn finish_trains(world: &mut World, mut due: Local<'_, Vec<Entity>>) {
-        let now = world.resource::<SimTick>().start();
-        due.clear();
-        for (_, entity) in world.resource::<EntityIndex>().iter() {
-            let unit = world.entity(entity);
-            let done = unit
-                .get::<TrainQueue>()
-                .is_some_and(|queue| queue.done(now).is_some());
-            if done && !unit.contains::<Dead>() {
-                due.push(entity);
-            }
-        }
+    pub(crate) fn finish_trains(
+        world: &mut World,
+        producers: &mut QueryState<(Entity, &StableId, &TrainQueue), Without<Dead>>,
+        mut order: Local<'_, Ordered>,
+    ) {
+        let now = world.resource::<SimTick>().end();
+        let done = producers
+            .iter(world)
+            .filter(|(.., queue)| queue.done(now).is_some())
+            .map(|(entity, &id, _)| Keyed { id, entity });
+        let due = order.sort(done);
         if due.is_empty() {
             return;
         }
         let ctx = world.non_send::<Ctx>().clone();
         let mode = ctx.mode().expect("a match with production has a mode");
-        for &entity in &*due {
+        for &Keyed { entity, .. } in due {
             while let Some(head) = world
                 .get::<TrainQueue>(entity)
                 .and_then(|queue| queue.done(now))
@@ -87,6 +88,13 @@ impl Production {
         }
     }
 
+    /// The train `slots` hold ordered, not yet checked.
+    fn ordered(slots: &ActionSlots) -> Option<InProgress> {
+        slots
+            .in_progress()
+            .filter(|underway| underway.kind == ActionKind::Train)
+    }
+
     /// The time `queued` takes, at its rank.
     fn time(book: &ActionBook, queued: Queued) -> Ticks {
         book.get(queued.action)
@@ -107,6 +115,8 @@ fn start_trains(
         '_,
         '_,
         (
+            Entity,
+            &StableId,
             &mut ActionSlots,
             &mut TrainQueue,
             Option<&mut Pools>,
@@ -114,15 +124,16 @@ fn start_trains(
         ),
         Without<Dead>,
     >,
+    mut order: Local<'_, Ordered>,
 ) {
     let now = tick.start();
-    for (mut slots, mut queue, mut pools, owner) in &mut units {
-        let Some(ordered) = slots
-            .in_progress()
-            .filter(|underway| underway.kind == ActionKind::Train)
-        else {
-            continue;
-        };
+    let trains = units.iter().filter_map(|(entity, &id, slots, ..)| {
+        Production::ordered(slots).map(|_| Keyed { id, entity })
+    });
+    for &Keyed { entity, .. } in order.sort(trains) {
+        let (_, _, mut slots, mut queue, mut pools, owner) =
+            units.get_mut(entity).expect("a unit in the order");
+        let ordered = Production::ordered(&slots).expect("an ordered train");
         slots.stop();
         let owner = owner.map(|owner| owner.slot());
         let purse = Purse {

@@ -34,6 +34,7 @@ impl Progression {
         world.insert_resource(TrackBook::default());
         world.insert_resource(LevelUps::default());
         registry.register_component::<Experience>();
+        registry.register_resource::<LevelUps>();
     }
 
     /// Loads the mode's `tracks`, which the package load checked, into the match.

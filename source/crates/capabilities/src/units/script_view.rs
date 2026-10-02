@@ -65,6 +65,12 @@ pub(crate) struct ScriptView {
     ability_names: Vec<ImmutableString>,
     /// How each loaded ability delivers, if other than at once, by ability id.
     delivers: Vec<Option<Delivery>>,
+    /// The unit type each loaded ability spawns, once bound, by ability id: a train's unit, or
+    /// its delivery's.
+    spawns: Vec<Option<UnitType>>,
+    /// Whether each unit type is a projectile type that homes, by unit type; a type past its
+    /// end does not.
+    homing: Vec<bool>,
     /// How each installed capability above the core fills its fields of a row, in install order.
     sources: Vec<RowSource>,
     rate: TickRate,
@@ -324,6 +330,8 @@ impl View {
             damage_kinds: Rc::from([]),
             ability_names: Vec::new(),
             delivers: Vec::new(),
+            spawns: Vec::new(),
+            homing: Vec::new(),
             sources: Vec::new(),
             rate,
             now: Tick::ZERO,
@@ -600,6 +608,31 @@ impl View {
         let mut view = self.0.borrow_mut();
         view.ability_names.push(name.into());
         view.delivers.push(delivers);
+        view.spawns.push(None);
+    }
+
+    /// Binds ability `id` to the unit type it spawns.
+    pub(crate) fn bind_spawn(&self, id: ActionId, unit_type: UnitType) {
+        self.0.borrow_mut().spawns[id.index()] = Some(unit_type);
+    }
+
+    /// Marks `unit_type` as a projectile type that homes.
+    pub(crate) fn set_homing(&self, unit_type: UnitType) {
+        let homing = &mut self.0.borrow_mut().homing;
+        let index = unit_type.index();
+        if homing.len() <= index {
+            homing.resize(index + 1, false);
+        }
+        homing[index] = true;
+    }
+
+    /// Whether the projectiles ability `id` launches home on a unit.
+    pub(crate) fn launches_homing(&self, id: ActionId) -> bool {
+        let view = self.0.borrow();
+        let unit_type = view.spawns[id.index()].expect("a delivery binds its unit type");
+        view.homing
+            .get(unit_type.index())
+            .is_some_and(|&homes| homes)
     }
 
     /// How ability `id` delivers, if other than at once.

@@ -6,7 +6,8 @@ use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::{EntityRef, Mut, World};
 use campfire_math::Num;
 use campfire_sim::{
-    EntityIndex, Position, SimRng, SimSet, SimTick, StableId, StateRegistry, Tick, TickRate,
+    EntityIndex, Keyed, Ordered, Position, SimRng, SimSet, SimTick, StableId, StateRegistry, Tick,
+    TickRate,
 };
 
 use crate::actions::Actions;
@@ -24,6 +25,7 @@ use crate::combat::damage_queue::DamageQueue;
 use crate::combat::damage_weigher::DamageWeigher;
 use crate::combat::dead::Dead;
 use crate::combat::deaths::{Deaths, Fallen};
+use crate::combat::kept::Kept;
 use crate::combat::launches::{Launch, Launches};
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;
@@ -64,6 +66,7 @@ pub(crate) mod damage_queue;
 pub(crate) mod damage_weigher;
 pub(crate) mod dead;
 pub(crate) mod deaths;
+pub(crate) mod kept;
 pub(crate) mod launches;
 pub(crate) mod on_death;
 pub(crate) mod recent_attackers;
@@ -135,6 +138,7 @@ impl Combat {
             despawn_dead.in_set(SimSet::Vision),
         ));
         registry.register_component::<Dead>();
+        registry.register_component::<Kept>();
         registry.register_component::<OnDeath>();
         registry.register_component::<RecentAttackers>();
         registry.register_component::<Respawn>();
@@ -323,12 +327,13 @@ fn run_intervals(
     world.insert_non_send(events);
 }
 
-/// Delivers each attack whose windup ends this tick: it queues the damage of its weapon's damage
-/// stat, of its kind, or its launch when the weapon fires a projectile and the match has
-/// projectiles. Each draws its roll now, at least 0 and less than 1, which `calc_damage` reads.
-/// The weapon's cost is paid, in pools and its player's resources, and it is ready again a period
-/// from the attack's start, the tick rate over its rate stat. A windup whose attacker's tags keep
-/// it from attacking, or that no longer affords its cost, stops instead, and spends nothing.
+/// Delivers each attack whose windup ends this tick, in the order of its attacker's stable id: it
+/// queues the damage of its weapon's damage stat, of its kind, or its launch when the weapon fires
+/// a projectile and the match has projectiles. Each draws its roll now, at least 0 and less than 1,
+/// which `calc_damage` reads. The weapon's cost is paid, in pools and its player's resources, and
+/// it is ready again a period from the attack's start, the tick rate over its rate stat. A windup
+/// whose attacker's tags keep it from attacking, or that no longer affords its cost, stops instead,
+/// and spends nothing.
 fn strike(
     (tick, rate, rng, book): (
         Res<'_, SimTick>,
@@ -345,6 +350,7 @@ fn strike(
         '_,
         '_,
         (
+            Entity,
             &StableId,
             &Position,
             &mut ActionSlots,
@@ -355,12 +361,16 @@ fn strike(
         ),
         Without<Dead>,
     >,
+    mut order: Local<'_, Ordered>,
 ) {
     let now = tick.start();
-    for (&source, &from, mut slots, stats, pools, tags, owner) in &mut attackers {
-        let Some(target) = Combat::going_off(&slots, now) else {
-            continue;
-        };
+    let going = attackers.iter().filter_map(|(entity, &id, _, slots, ..)| {
+        Combat::going_off(slots, now).map(|_| Keyed { id, entity })
+    });
+    for &Keyed { entity, .. } in order.sort(going) {
+        let (_, &source, &from, mut slots, stats, pools, tags, owner) =
+            attackers.get_mut(entity).expect("an attacker in the order");
+        let target = Combat::going_off(&slots, now).expect("an attack going off");
         let owner = owner.map(|owner| owner.slot());
         let purse = Purse {
             pools: pools.as_deref(),
@@ -553,9 +563,9 @@ impl Combat {
     }
 
     /// Deals `damage` as `amount` in tick `now`, a negative amount as 0: shields absorb it, then
-    /// the life pool takes the rest. The source is recorded as the target's attacker; when the damage
-    /// took the target to zero, the source is its killer if it still exists, and the others that
-    /// damaged it within the assist window assisted. A living source heals by its `leech`
+    /// the life pool takes the rest. The source is recorded as the target's attacker; when the
+    /// damage took the target to zero, the source is its killer if it still exists, and the others
+    /// that damaged it within the assist window assisted. A living source heals by its `leech`
     /// stat, `attack` for an attack's damage and `other` for the rest, times the life taken.
     fn deal(world: &mut World, damage: Damage, amount: Num, now: Tick) -> Landed {
         let Some(entity) = Combat::damageable(world, damage.target) else {
@@ -767,10 +777,11 @@ fn die(
     }
 }
 
-/// Despawns the dead whose unit type despawns, at the end of the tick they died in.
+/// Despawns the dead whose unit type despawns, at the end of the tick they died in, or of the tick
+/// a later stage stopped keeping them.
 fn despawn_dead(
     mut commands: Commands<'_, '_>,
-    dead: Query<'_, '_, (Entity, &OnDeath), With<Dead>>,
+    dead: Query<'_, '_, (Entity, &OnDeath), (With<Dead>, Without<Kept>)>,
 ) {
     for (entity, &on_death) in &dead {
         if on_death == OnDeath::Despawn {

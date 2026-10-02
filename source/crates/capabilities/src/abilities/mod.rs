@@ -1,12 +1,15 @@
 use std::mem;
 
 use bevy_ecs::entity::Entity;
+use bevy_ecs::query::{QueryState, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::Local;
 use bevy_ecs::world::World;
 use campfire_script::ScriptId;
 use campfire_script::rhai::Dynamic;
-use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, Tick, Ticks};
+use campfire_sim::{
+    Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry, Tick, Ticks,
+};
 
 use crate::actions::action_book::{ActionBook, ActionId, Delivery};
 use crate::actions::action_kind::ActionKind;
@@ -60,22 +63,25 @@ impl Abilities {
 /// Resolves the casts due this tick, in the order of their caster's stable id. Their calls share
 /// one snapshot of the living units: effects apply only in Resolve, so none changes it. A due cast
 /// whose caster's tags keep it from casting goes back to its order instead.
-fn resolve_casts(world: &mut World, mut due: Local<'_, Vec<(StableId, Entity)>>) {
+fn resolve_casts(
+    world: &mut World,
+    casters: &mut QueryState<(Entity, &StableId, &ActionSlots), Without<Dead>>,
+    (mut order, mut due): (Local<'_, Ordered>, Local<'_, Vec<Keyed>>),
+) {
     let now = world.resource::<SimTick>().start();
+    let resolving = casters
+        .iter(world)
+        .filter(|(.., slots)| {
+            slots
+                .in_progress()
+                .filter(|underway| underway.kind == ActionKind::Cast)
+                .and_then(|casting| casting.resolves_at)
+                .is_some_and(|at| at <= now)
+        })
+        .map(|(entity, &id, _)| Keyed { id, entity });
     due.clear();
-    for (id, entity) in world.resource::<EntityIndex>().iter() {
-        let caster = world.entity(entity);
-        let resolves = caster
-            .get::<ActionSlots>()
-            .and_then(ActionSlots::in_progress)
-            .filter(|underway| underway.kind == ActionKind::Cast)
-            .and_then(|casting| casting.resolves_at)
-            .is_some_and(|at| at <= now);
-        if resolves && !caster.contains::<Dead>() {
-            due.push((id, entity));
-        }
-    }
-    due.retain(|&(_, entity)| {
+    due.extend_from_slice(order.sort(resolving));
+    due.retain(|&Keyed { entity, .. }| {
         let can_cast = !UnitTags::effects_of(world.get::<UnitTags>(entity)).blocks(Block::Cast);
         if !can_cast {
             world
@@ -90,7 +96,7 @@ fn resolve_casts(world: &mut World, mut due: Local<'_, Vec<(StableId, Entity)>>)
     }
     let ctx = world.non_send::<Ctx>().clone();
     ScriptBatch::run(world, ctx.view(), |batch| {
-        for &(caster, entity) in &*due {
+        for &Keyed { id: caster, entity } in &*due {
             resolve(batch, &ctx, now, caster, entity);
         }
     });

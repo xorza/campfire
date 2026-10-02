@@ -54,7 +54,7 @@ delivery = { projectile = "cannon_shell" }   # a unit type with a homing `projec
 
 ### Death and respawn
 
-- **Death.** A unit at zero life dies at the end of Resolve. A unit type says whether it stays dead to respawn, as heroes do, or despawns, as creeps do; one that despawns goes at the end of the tick it died in, after the Mode stage saw it. A dead unit takes no orders, starts no action and is no target; its death stops its actions under way, ordered or started, as a stop order does.
+- **Death.** A unit at zero life dies at the end of Resolve. A unit type says whether it stays dead to respawn, as heroes do, or despawns, as creeps do; one that despawns goes at the end of the tick the Mode stage answered its death in: that tick, unless the mode's pool was spent and its `on_unit_died` waits for a later tick. A dead unit takes no orders, starts no action and is no target; its death stops its actions under way, ordered or started, as a stop order does.
 - **Kill credit.** The source whose damage took the life to zero is the killer, when it still exists. The other units that damaged the victim within the mode's `[combat] assist_window_ms` assisted, by stable id; without a window no one assisted. The mode receives both in `on_unit_died`, in the Mode stage of the tick, in the order the units died.
 - **Respawn.** Each unit keeps the place it spawned at. `ctx.respawn(unit, ms)` brings a dead unit that stays back at the start of the tick that time later, rounded up and at least one tick after the end of the current one: at its spawn place, with full pools and no attacker on record.
 
