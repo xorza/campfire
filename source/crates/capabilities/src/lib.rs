@@ -158,6 +158,7 @@ pub use units::layer::Layer;
 pub use units::owner::Owner;
 pub use units::path_id::PathId;
 pub use units::recent_attack::RecentAttack;
+pub use units::relations::Relations;
 pub use units::spawn_point::SpawnPoint;
 pub use units::tag_data::TagData;
 pub use units::tag_effect::TagEffect;
@@ -188,6 +189,7 @@ pub mod internals {
     pub use crate::combat::internals::{Arms, ArmsParts};
     pub use crate::stats::internals::{carried, give_modifier};
     pub use crate::stats::pools::internals::spent;
+    pub use crate::units::relations::internals::set_relation;
 }
 
 #[cfg(feature = "bench")]

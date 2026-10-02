@@ -1,7 +1,7 @@
 use bevy_app::{App, Plugin};
 use campfire_capabilities::{
     ActionSlots, Area, Body, Dead, Destination, Level, MatchEnd, Modifiers, MoveStep, Owner, Pools,
-    Progress, Projectile, Respawn, Route, SpawnPoint, Team, UnitType,
+    Progress, Projectile, Relations, Respawn, Route, SpawnPoint, Team, UnitType,
 };
 use campfire_sim::{Position, StableId};
 use lightyear::prelude::{
@@ -19,7 +19,7 @@ use crate::offer::Offer;
 #[derive(Debug)]
 pub struct InputChannel;
 
-/// Carries the offer and the match start to the client.
+/// Carries the offer, the match start and end, and the relations as they change, to the client.
 #[derive(Debug)]
 pub struct MatchChannel;
 
@@ -33,8 +33,9 @@ pub struct JoinChannel;
 /// and respawn, which it learns from the server: its sim stops a dead unit and brings it back as
 /// the server's does, and a rollback restores both. It learns each unit's type once and its
 /// level as it changes, and derives its own units' stats, tags and step from them and their
-/// modifiers as the server does, so the server sends a unit's step only with the unit. It learns
-/// their pools and ability slots from the server: it predicts no casts.
+/// modifiers as the server does, so the server sends a unit's step only with the unit. It starts
+/// their actions as the server does, and learns their pools and the actions' effects from the
+/// server. It learns the teams' relations as a script changes them.
 #[derive(Debug)]
 pub struct NetProtocol;
 
@@ -56,6 +57,8 @@ impl Plugin for NetProtocol {
             .add_direction(NetworkDirection::ServerToClient);
         app.register_message::<MatchEnd>()
             .add_direction(NetworkDirection::ServerToClient);
+        app.register_message::<Relations>()
+            .add_direction(NetworkDirection::ServerToClient);
         app.register_message::<Offer>()
             .add_direction(NetworkDirection::ServerToClient);
         app.register_message::<Join>()
@@ -71,7 +74,7 @@ impl Plugin for NetProtocol {
         app.component::<Pools>().replicate();
         app.component::<Projectile>().replicate_once();
         app.component::<Area>().replicate_once();
-        app.component::<ActionSlots>().replicate();
+        app.component::<ActionSlots>().replicate().predict();
         app.component::<Dead>().replicate().predict();
         app.component::<Respawn>().replicate().predict();
         app.component::<MoveStep>().replicate_once();

@@ -11,7 +11,7 @@ use crate::values::attitude::Attitude;
 /// friendly; a team is friendly to itself.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
-pub(crate) struct Relations {
+pub struct Relations {
     /// The pairs that differ from the default, the lower team first, sorted by their teams.
     pairs: Vec<RelationPair>,
 }
@@ -106,6 +106,23 @@ impl<'de> Deserialize<'de> for Relations {
             ));
         }
         Ok(Relations { pairs })
+    }
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use bevy_ecs::world::World;
+
+    use crate::units::relations::Relations;
+    use crate::units::team::Team;
+    use crate::values::attitude::Attitude;
+
+    /// Sets how the two teams of the match in `world` regard each other, as `ctx.set_relation`
+    /// does, their vision as it was.
+    pub fn set_relation(world: &mut World, of: Team, other: Team, attitude: Attitude) {
+        world
+            .resource_mut::<Relations>()
+            .set_attitude(of, other, attitude);
     }
 }
 

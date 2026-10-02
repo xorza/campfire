@@ -33,6 +33,7 @@ pub(crate) mod layer;
 pub(crate) mod living_unit;
 pub(crate) mod owner;
 pub(crate) mod path_id;
+pub(crate) mod predicting;
 pub(crate) mod recent_attack;
 pub(crate) mod relations;
 pub(crate) mod script_view;

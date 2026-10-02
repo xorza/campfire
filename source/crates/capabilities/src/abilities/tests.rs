@@ -3,7 +3,6 @@ use std::num::{NonZeroU8, NonZeroU32};
 
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::Component;
-use bevy_ecs::system::{Query, Res};
 use bevy_ecs::world::Mut;
 use campfire_content::PackagePath;
 use campfire_math::{Num, PlayerSlot, Vec3};

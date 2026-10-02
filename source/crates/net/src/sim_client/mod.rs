@@ -10,7 +10,7 @@ use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::schedule::common_conditions::not;
 use bevy_ecs::system::{Commands, Query, Res, ResMut, Single};
 use bevy_ecs::world::{Mut, World};
-use campfire_capabilities::{Dead, MatchEnd, Order, Owner};
+use campfire_capabilities::{Dead, MatchEnd, Order, Owner, Relations};
 use campfire_log::LogEvent;
 use campfire_math::{SegmentSeed, Tick};
 use campfire_package::ModePackages;
@@ -119,6 +119,7 @@ impl Plugin for SimClient {
             (
                 answer_offer,
                 receive_match_start,
+                receive_relations,
                 receive_match_end,
                 report_deaths,
             )
@@ -181,6 +182,19 @@ fn receive_match_start(
 /// The player plays a match, so this fixed tick runs a sim tick.
 fn playing(state: Res<'_, JoinState>) -> bool {
     state.clock().is_some()
+}
+
+/// Takes the teams' relations the server sends into the client's world, where its units' targets
+/// and filters read them.
+fn receive_relations(
+    mut receivers: Query<'_, '_, &mut MessageReceiver<Relations>, With<Client>>,
+    mut commands: Commands<'_, '_>,
+) {
+    for mut receiver in &mut receivers {
+        for relations in receiver.receive() {
+            commands.insert_resource(relations);
+        }
+    }
 }
 
 /// Takes the end of the match into the client's world, which then predicts nothing more.

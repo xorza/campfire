@@ -3,7 +3,7 @@ use std::mem;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{QueryState, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
-use bevy_ecs::system::Local;
+use bevy_ecs::system::{Local, Query, Res};
 use bevy_ecs::world::World;
 use campfire_math::{Tick, Ticks};
 use campfire_script::ScriptId;
@@ -21,6 +21,7 @@ use crate::areas::Areas;
 use crate::combat::CombatSet;
 
 use crate::combat::dead::Dead;
+use crate::combat::targets::Targets;
 use crate::deliveries::delivering::Delivering;
 use crate::mode::player_resources::PlayerResources;
 
@@ -55,10 +56,16 @@ impl Abilities {
     /// Adds abilities to a match, on the core `Units` installs: in Hit, after attacks strike and
     /// before the tick's projectiles launch, due casts resolve: the delivery, the cost, the
     /// cooldown and the script's effects apply together, or none of them. A cast resolves in the
-    /// script host, so without the core's scripts, as on a client, which predicts no casts, it
-    /// installs nothing.
+    /// script host; without the core's scripts, as on a client, a due cast of a unit it predicts
+    /// only cools down, as the server's does.
     pub fn install(world: &mut World, schedule: &mut Schedule, _: &mut StateRegistry) {
         if !world.contains_non_send::<Ctx>() {
+            schedule.add_systems(
+                predict_casts
+                    .in_set(SimSet::Hit)
+                    .after(CombatSet::Strike)
+                    .before(CombatSet::Launch),
+            );
             return;
         }
         world.insert_resource(EffectLists::default());
@@ -111,6 +118,56 @@ fn resolve_casts(
             resolve(batch, &ctx, now, caster, entity);
         }
     });
+}
+
+/// Resolves each due cast of a unit a client predicts as the server does when the cast's script
+/// runs: one that passes its checks again cools down, and every due cast stops; one whose caster's
+/// tags keep it from casting goes back to its order. Its cost and its effects come from the
+/// server.
+fn predict_casts(
+    tick: Res<'_, SimTick>,
+    book: Res<'_, ActionBook>,
+    resources: Option<Res<'_, PlayerResources>>,
+    targets: Targets<'_, '_>,
+    mut casters: Query<
+        '_,
+        '_,
+        (
+            &Team,
+            &mut ActionSlots,
+            Option<&Pools>,
+            Option<&Owner>,
+            Option<&UnitTags>,
+        ),
+        Without<Dead>,
+    >,
+) {
+    let now = tick.start();
+    for (&team, mut slots, pools, owner, tags) in &mut casters {
+        let Some(casting) = slots.in_progress().filter(|underway| {
+            underway.kind == ActionKind::Cast && underway.resolves_at.is_some_and(|at| at <= now)
+        }) else {
+            continue;
+        };
+        if UnitTags::effects_of(tags).blocks(Block::Cast) {
+            slots.interrupt();
+            continue;
+        }
+        let purse = Purse {
+            pools,
+            resources: resources.as_deref(),
+            owner: owner.map(|owner| owner.slot()),
+        };
+        let living = |id| targets.living(id);
+        let attitude = |other| targets.attitude(team, other);
+        let cooldown = book
+            .check(now, &slots, purse, casting, attitude, living)
+            .map(|checked| checked.values.cooldown);
+        if let Some(cooldown) = cooldown {
+            slots.cool_down(casting.slot, now.after(cooldown));
+        }
+        slots.stop();
+    }
 }
 
 /// A cast ready to run: the caster as the script sees it, the pool its call draws from, its

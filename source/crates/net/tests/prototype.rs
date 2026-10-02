@@ -7,10 +7,10 @@ use std::num::NonZeroU32;
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
-use campfire_capabilities::internals::give_modifier;
+use campfire_capabilities::internals::{give_modifier, set_relation};
 use campfire_capabilities::{
-    Action, ActionSlots, Bounds, Combat, Dead, Destination, MatchEnd, MatchResult, Metric,
-    Modifiers, MoveStep, Owner, PoolId, Pools, Projectile, Respawn, Stats, Team,
+    Action, ActionSlots, Attitude, Bounds, Combat, Dead, Destination, MatchEnd, MatchResult,
+    Metric, Modifiers, MoveStep, Owner, PoolId, Pools, Projectile, Relations, Respawn, Stats, Team,
 };
 use campfire_math::{Num, PlayerSlot, Tick, Vec3};
 use campfire_net::{InputChannel, InputMessage, LocalMatch, MatchSetup, PlayerLink, TickHashes};
@@ -307,12 +307,24 @@ fn a_fallen_tower_ends_the_match_on_the_server_and_its_client() {
         .entity_mut(tower_entity)
         .insert(frail);
     local.order(0, Action::Attack { target: tower });
+    // The client starts the walker's attack as the server does: the first windup each shows has
+    // the same target, start and cooldowns.
+    let slots = |app: &App| app.world().get::<ActionSlots>(hero_entity(app)).cloned();
+    let mut windups = [None, None];
     let mut frames = 0;
     while !local.server().world().contains_resource::<MatchEnd>() {
         assert!(frames < 400, "the walker fells the tower");
         local.step();
         frames += 1;
+        for (windup, app) in windups.iter_mut().zip([local.server(), local.client(0)]) {
+            if windup.is_none() {
+                *windup = slots(app).filter(|slots| slots.attacking() == Some(tower));
+            }
+        }
     }
+    let [server, client] = windups;
+    assert!(server.is_some());
+    assert_eq!(client, server);
     let end = *local.server().world().resource::<MatchEnd>();
     assert_eq!(end.result(), MatchResult::Won(Team::new(0)));
     for _ in 0..10 {
@@ -378,4 +390,25 @@ fn a_slow_and_a_stun_end_on_the_client_in_the_tick_they_end_on_the_server() {
         assert_eq!(rollbacks(&local), learned, "{name}");
         assert_ne!(hero(local.server()).destination, Destination::default());
     }
+}
+
+#[test]
+fn the_client_takes_the_relations_a_script_sets() {
+    let mut local = LocalMatch::new(MatchSetup::solo(RollbackMode::Check, 1, SEED_CHAIN));
+    local.start_match();
+    let relations = |app: &App| app.world().resource::<Relations>().clone();
+    assert_eq!(relations(local.client(0)), Relations::default());
+    let (west, east) = (Team::new(0), Team::new(1));
+    set_relation(
+        local.server_mut().world_mut(),
+        west,
+        east,
+        Attitude::Neutral,
+    );
+    for _ in 0..10 {
+        local.step();
+    }
+    let set = relations(local.server());
+    assert_ne!(set, Relations::default());
+    assert_eq!(relations(local.client(0)), set);
 }

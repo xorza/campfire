@@ -409,12 +409,6 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 | H1b | `ctx.find` and `nearest_visible` read `BodyGrid` | D5, H1 | S |
 | J | The local fixes in the appendix, and T§5 to T§8 | any time | S each |
 
-### The roadmap's steps
-
-PLAN.md's stage 4 steps join this plan as follows:
-
-- **PLAN step 1 (client relations and actions)** can start: the client builds `Books` from the packages, installs prediction from them (I4), and derives its units' stats and tags.
-
 ### Order
 
 ```

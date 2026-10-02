@@ -1,7 +1,7 @@
-use bevy_ecs::query::Without;
+use bevy_ecs::query::{Allow, Without};
 use bevy_ecs::system::{Query, Res, SystemParam};
 use campfire_math::Num;
-use campfire_sim::{EntityIndex, Position, StableId};
+use campfire_sim::{EntityIndex, Position, StableId, Unpredicted};
 
 use crate::combat::combat_bindings::CombatBindings;
 use crate::combat::dead::Dead;
@@ -17,9 +17,9 @@ use crate::values::attitude::Attitude;
 use crate::values::metric::Metric;
 
 /// The units an attack may target: living units with the life pool whose tags let them be
-/// targets.
-/// Every capability that chooses or checks a target goes through it, so all agree on what a valid
-/// target is.
+/// targets, those a client holds and does not predict among them, where the server last had
+/// them. Every capability that chooses or checks a target goes through it, so all agree on what a
+/// valid target is.
 #[derive(SystemParam, Debug)]
 pub(crate) struct Targets<'w, 's> {
     index: Res<'w, EntityIndex>,
@@ -37,7 +37,7 @@ pub(crate) struct Targets<'w, 's> {
             Option<&'static Body>,
             Option<&'static UnitTags>,
         ),
-        Without<Dead>,
+        (Without<Dead>, Allow<Unpredicted>),
     >,
 }
 

@@ -46,6 +46,7 @@ use crate::stats::stat_id::StatId;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::block::Block;
 use crate::units::owner::Owner;
+use crate::units::predicting::Predicting;
 use crate::units::recent_attack::RecentAttack;
 use crate::units::script_view::{RowFill, View};
 use crate::units::spawn_point::SpawnPoint;
@@ -344,7 +345,8 @@ fn run_intervals(
 /// which `calc_damage` reads. The weapon's cost is paid, in pools and its player's resources, and
 /// it is ready again a period from the attack's start, the tick rate over its rate stat. A windup
 /// whose attacker's tags keep it from attacking, or that no longer affords its cost, stops instead,
-/// and spends nothing.
+/// and spends nothing. A client that predicts the attack only makes the weapon ready again, as
+/// the damage, the launch and the cost come from the server.
 fn strike(
     (tick, rate, rng, book): (
         Res<'_, SimTick>,
@@ -352,10 +354,11 @@ fn strike(
         Res<'_, SimRng>,
         Res<'_, ActionBook>,
     ),
-    (mut queue, mut launches, mut resources): (
+    (mut queue, mut launches, mut resources, predicting): (
         ResMut<'_, PassQueue>,
         Option<ResMut<'_, Launches>>,
         Option<ResMut<'_, PlayerResources>>,
+        Option<Res<'_, Predicting>>,
     ),
     mut attackers: Query<
         '_,
@@ -401,6 +404,17 @@ fn strike(
             ..
         } = wielded;
         let stats = stats.map_or(&[][..], UnitStats::values);
+        let resolves_at = slots
+            .in_progress()
+            .and_then(|underway| underway.resolves_at)
+            .expect("an attack going off started");
+        let started = Tick::new(resolves_at.get() - values.windup.get());
+        let period = weapon.period(stats, rate.hz().get(), values.windup);
+        slots.cool_down(wielded.slot, started.after(period));
+        slots.stop();
+        if predicting.is_some() {
+            continue;
+        }
         let amount = weapon.damage(stats);
         let roll = rng.open(ROLL_STREAM, source).fraction();
         match (wielded.projectile, launches.as_deref_mut()) {
@@ -434,14 +448,6 @@ fn strike(
                 hit: None,
             }),
         }
-        let resolves_at = slots
-            .in_progress()
-            .and_then(|underway| underway.resolves_at)
-            .expect("an attack going off started");
-        let started = Tick::new(resolves_at.get() - values.windup.get());
-        let period = weapon.period(stats, rate.hz().get(), values.windup);
-        slots.cool_down(wielded.slot, started.after(period));
-        slots.stop();
         if let Some(mut pools) = pools {
             pools.pay(&values.cost);
         }

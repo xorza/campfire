@@ -4,11 +4,13 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Changed, Has, With, Without};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::IntoScheduleConfigs;
-use bevy_ecs::schedule::common_conditions::{resource_added, resource_exists};
+use bevy_ecs::schedule::common_conditions::{
+    resource_added, resource_exists, resource_exists_and_changed,
+};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_capabilities::{
-    Area, Deaths, MatchEnd, MatchResult, Mode, Owner, Projectile, SeenBy, Team, TeamSet,
+    Area, Deaths, MatchEnd, MatchResult, Mode, Owner, Projectile, Relations, SeenBy, Team, TeamSet,
 };
 use campfire_log::LogEvent;
 use campfire_math::{PlayerSlot, Tick};
@@ -100,6 +102,7 @@ impl Plugin for SimServer {
                 show_units,
                 report_deaths,
                 announce_end.run_if(resource_added::<MatchEnd>),
+                send_relations.run_if(resource_exists_and_changed::<Relations>),
             )
                 .chain()
                 .run_if(sim_tick_due),
@@ -260,6 +263,17 @@ fn announce_end(
     }
     for mut sender in &mut links {
         sender.send::<MatchChannel>(*end);
+    }
+}
+
+/// Tells each player's client how the teams regard each other, once as the match starts, and
+/// again in each tick a script changes it.
+fn send_relations(
+    relations: Res<'_, Relations>,
+    mut links: Query<'_, '_, &mut MessageSender<Relations>, With<PlayerLink>>,
+) {
+    for mut sender in &mut links {
+        sender.send::<MatchChannel>(relations.clone());
     }
 }
 

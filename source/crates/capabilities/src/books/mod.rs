@@ -21,6 +21,7 @@ use crate::scripts::ctx::Ctx;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::param_book::{ParamBook, ParamTables};
 use crate::units::by_type::ByType;
+use crate::units::predicting::Predicting;
 use crate::units::script_view::View;
 use crate::units::unit_types::UnitTypes;
 
@@ -114,11 +115,13 @@ impl Books {
     /// Puts the books in `world`, a client's, whose capabilities are installed with no scripts,
     /// and the part of the mode no script runs, as a match's mode install puts them: the books
     /// of its own rules, and its map's ground, its pathing grid for the kinds of `walkers`. The
-    /// client then predicts its units by the rules the server runs.
+    /// client then predicts its units by the rules the server runs: it starts their actions, and
+    /// runs none of their effects.
     pub fn install_prediction(self, world: &mut World, walkers: Vec<Walker>) {
         let ModeInputs { books, .. } = self.install(world);
         let ModeMap { ground, .. } = books.install(world);
         ground.install(world, walkers);
+        world.insert_resource(Predicting);
     }
 }
 
