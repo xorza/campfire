@@ -21,6 +21,7 @@ use crate::navigation::destination::Destination;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::PathWalker;
 use crate::navigation::paths::Paths;
+use crate::navigation::route::Route;
 use crate::orders::ai::Ai;
 use crate::orders::ai_data::AiData;
 use crate::orders::error::AiError;
@@ -370,12 +371,13 @@ fn follow_paths(
             &mut PathWalker,
             Option<&ActionSlots>,
             &mut Destination,
+            Option<&Route>,
             Option<&Body>,
         ),
         Without<Dead>,
     >,
 ) {
-    for (&position, path, mut walker, slots, mut destination, body) in &mut walkers {
+    for (&position, path, mut walker, slots, mut destination, route, body) in &mut walkers {
         if walker.left() || slots.is_some_and(|slots| slots.attack_target().is_some()) {
             continue;
         }
@@ -385,7 +387,7 @@ fn follow_paths(
             walker.advance();
             waypoint = paths.waypoint(path, walker.next(), walker.walks_from());
         }
-        walk_to(&mut destination, waypoint);
+        walk_to(&mut destination, route, waypoint);
     }
 }
 
@@ -403,12 +405,13 @@ fn chase(
             &Team,
             &mut ActionSlots,
             &mut Destination,
+            Option<&Route>,
             Option<&Body>,
         ),
         Without<Dead>,
     >,
 ) {
-    for (&position, &team, mut slots, mut destination, body) in &mut chasers {
+    for (&position, &team, mut slots, mut destination, route, body) in &mut chasers {
         let Some(target) = slots.attack_target() else {
             continue;
         };
@@ -423,22 +426,29 @@ fn chase(
         match aimed {
             None => {
                 slots.set_attack_target(None);
-                walk_to(&mut destination, None);
+                walk_to(&mut destination, route, None);
             }
             Some((unit, Range::Meters(range)))
                 if !targets.reaches(position, Body::radius_of(body), range, &unit) =>
             {
-                walk_to(&mut destination, Some(unit.pos));
+                walk_to(&mut destination, route, Some(unit.pos));
             }
-            Some(_) => walk_to(&mut destination, None),
+            Some(_) => walk_to(&mut destination, route, None),
         }
     }
 }
 
 /// Sets where a unit walks, leaving a destination that does not change untouched: a write marks
-/// it changed, and an avatar's destination replicates.
-fn walk_to(destination: &mut Mut<'_, Destination>, target: Option<Position>) {
-    if destination.get() != target {
+/// it changed, and an avatar's destination replicates. A unit whose `route` arrived short of
+/// `target` stays where it stands, with no destination, until the static bodies change.
+fn walk_to(
+    destination: &mut Mut<'_, Destination>,
+    route: Option<&Route>,
+    target: Option<Position>,
+) {
+    let arrived =
+        target.is_some_and(|target| route.is_some_and(|route| route.arrived_short_of(target)));
+    if destination.get() != target && !arrived {
         destination.set(target);
     }
 }

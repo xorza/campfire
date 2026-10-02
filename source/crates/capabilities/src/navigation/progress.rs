@@ -31,6 +31,14 @@ impl Progress {
     pub(crate) const fn reset(&mut self) {
         self.stuck = 0;
     }
+
+    /// Forgets the walk, as the walker asked for a new route or stopped.
+    pub(crate) const fn restart(&mut self) {
+        *self = Progress {
+            last_at: None,
+            stuck: 0,
+        };
+    }
 }
 
 impl SimComponent for Progress {

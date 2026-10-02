@@ -34,6 +34,17 @@ impl Route {
         self.reached
     }
 
+    /// Whether the walker arrived where its route ends short of its goal: no ask waits, no
+    /// waypoint is left, and the last was not the goal. It stays so until it asks again.
+    pub(crate) fn arrived_short(&self) -> bool {
+        self.goal.is_some() && self.asked.is_none() && !self.reached && self.ahead().is_empty()
+    }
+
+    /// Whether it arrived short of `goal`.
+    pub(crate) fn arrived_short_of(&self, goal: Position) -> bool {
+        self.goal == Some(goal) && self.arrived_short()
+    }
+
     /// Asks the planner in `tick` for a route to `goal`; the walker keeps to the route it has
     /// until the planner answers. An ask while one waits changes the goal and keeps the first
     /// tick, so a walker whose goal moves each tick keeps its place among the routes that wait.
@@ -64,9 +75,13 @@ impl Route {
         self.goal = Some(goal);
     }
 
-    /// Forgets the goal and the route.
+    /// Forgets the goal and the route, and keeps the buffer of waypoints.
     pub(crate) fn clear(&mut self) {
-        *self = Route::default();
+        self.goal = None;
+        self.asked = None;
+        self.waypoints.clear();
+        self.next = 0;
+        self.reached = false;
     }
 
     /// The waypoints the walker has yet to reach, the next first.
@@ -81,8 +96,8 @@ impl Route {
         if ahead + skipped == self.waypoints.len() {
             self.reached = reached;
         }
-        self.waypoints.drain(..ahead + skipped);
-        self.waypoints.splice(0..0, short.iter().copied());
+        self.waypoints
+            .splice(..ahead + skipped, short.iter().copied());
         self.next = 0;
     }
 

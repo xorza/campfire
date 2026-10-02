@@ -28,7 +28,7 @@ These rules state what "fixed" means. When agreed, they go into `design/02-engin
 | 3 | The load refuses everything that a match can refuse. A match start fails only on session terms: players, tick rate and seed. | `StartError` has no data case (C5b) |
 | 4 | A layer calls a higher layer only through a hook that the higher layer registers. | The layer test (A4) |
 | 5 | Every order that matters is by stable id, and every rounding uses one helper. | The archetype-shuffle test (B2) |
-| 6 | Each tick's work has a fixed limit, or a cost in proportion to the units that take part. No tick pays for a scan or a rebuild that the other ticks do not pay for. | The worst-tick record (A3) and the navigation bench (H2) |
+| 6 | Each tick's work has a fixed limit, or a cost in proportion to the units that take part. No tick pays for a scan or a rebuild that the other ticks do not pay for. | The worst-tick record (A3) and the navigation bench |
 | 7 | Restored state is checked like package data: a restore gives an error for every flaw, and it never panics. | Every state type's check, a required method; the snapshot fuzz |
 | 8 | Each rule of a network session has one owner on each side. A client that follows the rules is never refused. | The net scenarios under load (A1, B4) |
 
@@ -170,31 +170,17 @@ capability_set, books
 
 ### Problem
 
-- Navigation has no work limit for steering, the region rebuild, smoothing or `Regions::nearest`, and one walker can scan about 3·10⁹ cells.
-- Deliveries, auras and script queries test every unit.
+- A change of static bodies rebuilds every region of every kind of walker.
+- Script queries test every unit.
 - Every script batch rebuilds every row.
 
 ### Shape
 
-- **`NavBudget`, one limit per tick.**
-  - Units of work are charged by the long planner, by smoothing segment tests, by region scans and by steering plans.
-  - Waiting work keeps its ask tick, so a new ask does not move a chaser to the back of the queue. Work waits in ask order, then by stable id.
-  - A short route searches only its window.
-  - A route that ends short stays "arrived short" until the static bodies change, so a walker does not ask again every tick. A removal of bodies asks again for unreached routes.
-  - The steering blocker query reaches the window plus the walker's radius, and it clips each blocker's span to the window.
-  - `Progress` resets when a route is asked for or cleared.
-  - The exact tests also read the map's blocked cells.
-  - The steering algorithm becomes methods on `Steering`, with private fields.
 - **Incremental regions.**
   - Each region keeps its cross-chunk edges. A change rebuilds only the dirty chunks and their edges, then renumbers the reachable sets over the region graph, as 0 A.D. does.
   - Routes are tested again only against the bodies that were added.
   - The body index stores a first-cell flag in each entry, and its visitor can stop early.
-- **`BodyGrid`, one fresh index of living bodies.**
-  - It is a sorted cell index with the shape the broadphase uses.
-  - It is rebuilt on its first read after any change of positions, bodies or the set of living units. So every reader sees the current positions, including units spawned in the Mode stage, and a tick rebuilds it at most once for each stage that reads it.
-  - Line projectiles read it by the box of their segment. Areas and auras read it by their circle, and so do `ctx.find` and `nearest_visible`. Stuck walkers use it to find each other.
-  - The P × U loops and the O(W²) search go away.
-  - `struck` and `CastHits` merge into one sorted flat store of `(group, unit)`, where a type without `once_per_cast` uses the projectile's own id as its group.
+- **Script queries read `BodyGrid`.** `ctx.find` and `nearest_visible` read the grid of living bodies by their circle, as areas and auras do.
 - **The view: incremental rows, the same snapshot.**
   - A batch must keep today's meaning: its calls see the world as it was when the batch began. So rows are not filled lazily on read, because a late read would see the effects of earlier calls.
   - The view keeps its rows from one build to the next. Each build refreshes only the rows whose source components changed since the last build, through Bevy's change ticks, and the rows of new or gone units.
@@ -253,8 +239,7 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 | Step | Change | Needs | Size |
 |---|---|---|---|
 | F3 | Ids at call time, so `ctx.projectile` and `ctx.area` return handles whose `.state` the call writes | Unit script state: a unit's `[state]` and `unit.state`, which the API does not have yet, so a handle alone would give a script nothing to use | M, changes behaviour |
-| H2 | "Arrived short"; re-asks after removals; `Progress` reset; blocked map cells in the exact tests; `Route::clear` keeps its buffer | B3 | M, changes behaviour |
-| H3 | Incremental regions; routes tested only against added bodies; the body index's first-cell flag and early stop | H2 | M |
+| H3 | Incremental regions; routes tested only against added bodies; the body index's first-cell flag and early stop | B | M |
 | H4 | Incremental view rows | B | M |
 
 ### Joins of the two tracks
@@ -269,7 +254,7 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 ```
 Track S:  D5
 
-Track I:  H4      H2 → H3      F3 after unit script state
+Track I:  H4      H3      F3 after unit script state
 
 Joins:    D5 → H1b
 ```
@@ -320,11 +305,7 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - region rebuild: H3;
   - routes tested again: H3;
   - chaser starved: B3;
-  - unreachable waypoint: H2;
-  - short route never planned again: H2;
   - body index waste: H3;
-  - `Progress`: H2;
-  - map-blocked cells: H2.
 - **R§6:**
   - name table: C4;
   - `StateSync`: C3;
@@ -378,7 +359,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - commands parsed twice: J;
   - small scans: J.
 - **R§13:**
-  - `Route::clear`: H2;
   - stable sort: J;
   - applied handle: D5;
   - scripts parsed twice: C5b.

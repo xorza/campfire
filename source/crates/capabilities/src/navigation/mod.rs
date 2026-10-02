@@ -10,7 +10,7 @@ use campfire_sim::{
     Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry, TickRate, Unpredicted,
 };
 
-use crate::navigation::body_index::{BodyIndex, IndexedBody};
+use crate::navigation::body_index::{BodyIndex, Changes, IndexedBody};
 use crate::navigation::broadphase::Broadphase;
 use crate::navigation::collider::Collider;
 use crate::navigation::destination::Destination;
@@ -149,36 +149,61 @@ fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
 /// Keeps each walker's route on its destination. A walker with a new destination asks for a route
 /// there, unless its route reaches its goal and the walker may go straight on from the waypoint
 /// before the last to the new one, as a chaser after a target that moved: then only the last
-/// waypoint moves. A walker whose way along its route a static body of its layer blocks, after the static
-/// bodies changed, asks for its route again. With no pathing grid, as in a match with no map, no
-/// static body blocks a route. Each walker checks its route only when the static bodies changed
-/// since the tick before, which `checked` counts; as a route the static bodies do not block stays
-/// clear until they change, the outcome is that of checking every tick.
+/// waypoint moves. After the static bodies changed, a walker whose way along its route a static
+/// body of its layer blocks asks for its route again; after they lost a body, so does one whose
+/// route ends short of its goal, and one that arrived short of it walks there again. A walker
+/// with no destination forgets its route, unless it arrived short. With no pathing grid, as in a
+/// match with no map, no static body blocks a route. Each walker checks its route only when the
+/// static bodies changed since the tick before, which `checked` counts; as a route the static
+/// bodies do not block stays clear until they change, the outcome is that of checking every
+/// tick. A walker that asks or forgets its route forgets its progress.
 fn route_units(
     tick: Res<'_, SimTick>,
     statics: Res<'_, BodyIndex>,
     grid: Option<Res<'_, PathingGrid>>,
-    mut units: Query<'_, '_, (&Position, &Destination, &mut Route, Option<&Body>), Without<Dead>>,
-    mut checked: Local<'_, u64>,
+    mut units: Query<
+        '_,
+        '_,
+        (
+            &Position,
+            &mut Destination,
+            &mut Route,
+            &mut Progress,
+            Option<&Body>,
+        ),
+        Without<Dead>,
+    >,
+    mut checked: Local<'_, Changes>,
 ) {
     let now = tick.start();
     let planned = grid.is_some();
-    let changed = planned && statics.changes() != *checked;
-    *checked = statics.changes();
-    for (&at, destination, mut route, body) in &mut units {
+    let seen = statics.changes();
+    let changed = planned && seen.all != checked.all;
+    let opened = planned && seen.removals != checked.removals;
+    *checked = seen;
+    for (&at, mut destination, mut route, mut progress, body) in &mut units {
         let walker = Walker::of(body);
         match destination.get() {
+            None if route.arrived_short() => {
+                if opened {
+                    let goal = route.goal().expect("a route that arrived short has a goal");
+                    destination.set(Some(goal));
+                    route.ask(goal, now);
+                    progress.restart();
+                }
+            }
             None => {
                 if route.goal().is_some() {
                     route.clear();
+                    progress.restart();
                 }
             }
             Some(goal) if route.goal() == Some(goal) => {
-                if changed
-                    && route.asked().is_none()
-                    && statics.blocks_route(at, route.ahead(), walker)
-                {
+                let blocked = changed && statics.blocks_route(at, route.ahead(), walker);
+                let unreached = opened && !route.reached();
+                if route.asked().is_none() && (blocked || unreached) {
                     route.ask(goal, now);
+                    progress.restart();
                 }
             }
             Some(goal) => {
@@ -194,6 +219,7 @@ fn route_units(
                     route.move_goal(goal);
                 } else {
                     route.ask(goal, now);
+                    progress.restart();
                 }
             }
         }
@@ -349,19 +375,25 @@ fn steer(
 
 /// Makes each unit that died since the last Move stage forget where it walked to. No order
 /// reaches a dead unit, so it walks nowhere until it lives again.
-fn forget_dead(mut units: Query<'_, '_, (&mut Destination, &mut Route), Added<Dead>>) {
-    for (mut destination, mut route) in &mut units {
+fn forget_dead(
+    mut units: Query<'_, '_, (&mut Destination, &mut Route, &mut Progress), Added<Dead>>,
+) {
+    for (mut destination, mut route, mut progress) in &mut units {
         if destination.get().is_some() {
             destination.set(None);
+        }
+        if route.goal().is_some() {
             route.clear();
+            progress.restart();
         }
     }
 }
 
 /// Walks each living unit along its route, a step a tick: past each waypoint it reaches, on to
-/// the next with the rest of its step. Past the last it has arrived, and drops its destination and
-/// its route. A unit whose route waits for the planner walks the one it has, if any. One its tags
-/// stop keeps both.
+/// the next with the rest of its step. Past the last it has arrived, and drops its destination,
+/// and its route when the route reached the goal: one that ends short stays, arrived short, so an
+/// order that sends the unit there again plans nothing. A unit whose route waits for the planner
+/// walks the one it has, if any. One its tags stop keeps both.
 fn move_units(
     mut units: Query<
         '_,
@@ -370,13 +402,14 @@ fn move_units(
             &mut Position,
             &mut Destination,
             &mut Route,
+            &mut Progress,
             &MoveStep,
             Option<&UnitTags>,
         ),
         Without<Dead>,
     >,
 ) {
-    for (mut position, mut destination, mut route, step, tags) in &mut units {
+    for (mut position, mut destination, mut route, mut progress, step, tags) in &mut units {
         if destination.get().is_none() {
             continue;
         }
@@ -389,7 +422,10 @@ fn move_units(
             let Some(&waypoint) = route.ahead().first() else {
                 if route.asked().is_none() {
                     destination.set(None);
-                    route.clear();
+                    if route.reached() {
+                        route.clear();
+                        progress.restart();
+                    }
                 }
                 break;
             };

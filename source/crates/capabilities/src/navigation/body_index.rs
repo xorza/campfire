@@ -31,7 +31,15 @@ pub(crate) struct BodyIndex {
     /// The new bodies' entries, and the entries they merge into, kept between updates.
     fresh: Vec<Entry>,
     merged: Vec<Entry>,
-    changes: u64,
+    changes: Changes,
+}
+
+/// How many updates changed the static bodies, and how many of them took a body away: each
+/// changes whenever such an update comes.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct Changes {
+    pub(crate) all: u64,
+    pub(crate) removals: u64,
 }
 
 /// A unit's body as an index of bodies that stand sees it.
@@ -76,7 +84,7 @@ impl BodyIndex {
             added: Vec::new(),
             fresh: Vec::new(),
             merged: Vec::new(),
-            changes: 0,
+            changes: Changes::default(),
         }
     }
 
@@ -165,7 +173,8 @@ impl BodyIndex {
         mem::swap(&mut self.entries, &mut self.merged);
         self.bodies.clear();
         self.bodies.extend_from_slice(bodies);
-        self.changes += 1;
+        self.changes.all += 1;
+        self.changes.removals += u64::from(!self.removed.is_empty());
         true
     }
 
@@ -231,8 +240,7 @@ impl BodyIndex {
         })
     }
 
-    /// How many updates changed the static bodies: it changes whenever they do.
-    pub(crate) const fn changes(&self) -> u64 {
+    pub(crate) const fn changes(&self) -> Changes {
         self.changes
     }
 

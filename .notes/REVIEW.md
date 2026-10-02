@@ -10,11 +10,7 @@ The worst case per tick is the metric. These systems let one tick pay for a scan
 
 - [ ] **A change of static bodies rebuilds all regions** — `capabilities/src/navigation/regions.rs:215-309`. Each rebuild copies every region and joins every chunk side, once per kind of walker. navigation.md says a change costs only the chunks it touches. Better: keep each region's cross-chunk edges and rebuild only dirty chunks, as 0 A.D. does.
 - [ ] **Every route is tested again when bodies change** — `capabilities/src/navigation/mod.rs:224-241`. The test runs even when bodies are only removed, which can never block a route. Better: test routes only against the bodies added.
-- [ ] **A path walker with an unreachable waypoint plans again every tick** — `capabilities/src/orders/mod.rs:377-388`, `navigation/mod.rs:492-497`. Its route ends short, `move_units` drops `Destination`, and `follow_paths` sets it again. The replicated `Destination` changes every tick. Better: keep a short route as "arrived short" until the static bodies change.
-- [ ] **A short route is never planned again when a way opens** — `capabilities/src/navigation/mod.rs:234-241`. Only routes that bodies now block are planned again. Better: also ask again for unreached routes when bodies are removed.
 - [ ] **The body index does work it then throws away** — `capabilities/src/navigation/body_index.rs:196-269`. `meeting` computes each body's bucket range again for every entry, and `blocks` keeps searching after it finds a blocker. Better: store a first-cell flag in `Entry`, and let the visitor stop early.
-- [ ] **`Progress` keeps the stuck count of the last walk** — `capabilities/src/navigation/progress.rs:143-156`, `navigation/mod.rs:394`. Better: reset it when a route is asked for or cleared.
-- [ ] **Map-blocked cells are not in the exact tests** — `capabilities/src/navigation/pathing_grid.rs:37-41`, `navigation/route_planner.rs:119-130`. The tests know only bodies. Once a map blocks cells, smoothing and the straight-goal shortcut will cross them. Better: the exact tests also read the clearance.
 
 ## 7. Package books are copied into the script view, the frame and the state
 
@@ -67,7 +63,6 @@ These costs grow with all units or all entities each tick, while the work concer
 ## 13. Allocations on frequent paths
 
 - [ ] **Each client order costs several allocations, and each input is hashed twice** — `net/src/sim_client/mod.rs:357-376`, `capabilities/src/orders/order.rs:41-44`, `sim/src/command.rs:22-31`. Better: `Command::payload` writes into a caller's buffer, and the chain is extended once.
-- [ ] **`Route::clear` frees its waypoint buffer** — `capabilities/src/navigation/route.rs:481-483,497-498`. Every arrival allocates again, and `splice` moves memory twice. Better: clear the fields and keep the capacity, and one `splice`.
 - [ ] **A stable sort allocates in each refresh pass** — `capabilities/src/stats/refresh_scratch.rs:114`. Order within a stat does not matter. Better: `sort_unstable_by_key`.
 - [ ] **An applied handle allocates its state** — `capabilities/src/units/script_view.rs:461,463`. Better: reuse the frame's buffers.
 - [ ] **Each script is parsed twice** — `package/src/package.rs:57`, `runner/src/match_build.rs:313-326`. Better: keep the AST and let the host take it.

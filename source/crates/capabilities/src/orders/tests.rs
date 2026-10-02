@@ -1,6 +1,7 @@
 use std::num::NonZeroU32;
 
 use bevy_ecs::bundle::Bundle;
+use bevy_ecs::change_detection::DetectChanges;
 use bevy_ecs::component::Component;
 use campfire_content::PackagePath;
 use campfire_math::{Num, PlayerSlot, Vec3};
@@ -15,6 +16,7 @@ use crate::combat::armed::Armed;
 use crate::combat::on_death::OnDeath;
 use crate::navigation::Navigation;
 use crate::navigation::path_walker::PathEnd;
+use crate::navigation::walker::Walker;
 use crate::scripts::error::ApiError;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
@@ -25,6 +27,7 @@ use crate::stats::pool_id::PoolId;
 use crate::stats::stat_id::StatId;
 use crate::units::Units;
 use crate::units::filter::Filter;
+use crate::units::layer::Layer;
 use crate::units::path_id::PathId;
 use crate::units::script_view::View;
 use crate::units::type_scope::TypeScope;
@@ -32,6 +35,7 @@ use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::units::unit_types::UnitTypes;
 use crate::values::declared_name::DeclaredName;
+use crate::values::grid::Grid;
 use crate::values::scalar::Scalar;
 
 /// The MOBA's 30 ticks a second.
@@ -1001,6 +1005,52 @@ fn a_walker_goes_back_to_its_path_after_a_chase() {
     game.run_until(6);
     assert_eq!(game.target(chaser), None);
     assert_eq!(game.destination(chaser), Some(at(4, 0, 0)));
+}
+
+#[test]
+fn a_path_walker_that_arrives_short_of_its_waypoint_waits_there() {
+    // A path from (0.5, 1.5) to (6.5, 1.5) on 8 by 3 cells of 1 m, walled off by towers of
+    // 0.5 m down column 4, each blocking its own cell: a walker with no body, on the first
+    // waypoint as it spawns, walks to the nearest cell it reaches, (3.5, 1.5), 3 m on, in
+    // ticks 0 to 2. There it waits, with no destination: it never asks for the route again.
+    let half = Num::from_bits(1 << 23);
+    let place = |x: i64, z: i64| Position::new(Vec3::new(num(x) + half, Num::ZERO, num(z) + half));
+    let waypoints = [place(0, 1).unwrap(), place(6, 1).unwrap()];
+    let mut game = Match::with_paths(Paths::new([("mid", &waypoints[..])]));
+    let bounds = Bounds::new([num(0), num(0)], [num(8), num(3)]).unwrap();
+    let ground = Walker {
+        layer: Layer::FIRST,
+        radius: Num::ZERO,
+    };
+    Navigation::load_pathing(
+        &mut game.world,
+        Grid::new(Num::ONE, bounds).unwrap(),
+        vec![ground],
+    );
+    for z in 0..3 {
+        let id = game.world.resource_mut::<IdAllocator>().allocate();
+        game.world
+            .spawn((id, place(4, z).unwrap(), Body::new(half).unwrap()));
+    }
+    let walker = (
+        game.arm(combatant(100, 1, 1, 5, 0), Team::new(0)),
+        Navigation::walker(meter()),
+        OnPath::new(PathId::new(0)),
+        PathWalker::start(PathEnd::Start),
+    );
+    let walker = game.spawn(waypoints[0], walker);
+    game.run_until(3);
+    assert_eq!(game.position(walker), place(3, 1).unwrap());
+    let entity = game.world.resource::<EntityIndex>().get(walker).unwrap();
+    let changed = |game: &Match| {
+        let unit = game.world.entity(entity);
+        let route = unit.get_ref::<Route>().unwrap().last_changed();
+        (route, unit.get_ref::<Destination>().unwrap().last_changed())
+    };
+    let arrived = changed(&game);
+    game.run_until(6);
+    assert_eq!(game.destination(walker), None);
+    assert_eq!(changed(&game), arrived);
 }
 
 #[test]

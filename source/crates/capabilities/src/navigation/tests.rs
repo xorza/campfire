@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
 
+use bevy_ecs::change_detection::DetectChanges;
 use bevy_ecs::component::Component;
 use campfire_math::{Tick, Vec3};
 use campfire_sim::{Capability, EntityIndex, IdAllocator, SimUpdate, TypeHash};
@@ -552,6 +553,82 @@ fn a_walker_steers_with_the_work_the_routes_left() {
         });
         assert_eq!(ticks, steered, "{askers}");
     }
+}
+
+#[test]
+fn a_walker_that_arrives_short_waits_there_until_a_static_body_goes() {
+    // Towers of 0.5 m down column 4 of 8 by 3 cells of 1 m wall off a walker of 0.25 m at (0.5,
+    // 1.5) from its goal, (6.5, 1.5): each blocks its own cell alone, whose center is on it, and
+    // not its neighbors', 1 m off, past the two radii, 0.75 m. Its route ends at the nearest
+    // cell it reaches, (3.5, 1.5), 3 m on, which it arrives at in tick 2, a meter a tick.
+    let quarter = Num::from_bits(1 << 22);
+    let half = Num::from_bits(1 << 23);
+    let place = |x: i64, z: i64| Position::new(Vec3::new(num(x) + half, Num::ZERO, num(z) + half));
+    let goal = place(6, 1).unwrap();
+    let walled = || {
+        let mut walk = Walk::new();
+        let bounds = Bounds::new([num(0), num(0)], [num(8), num(3)]).unwrap();
+        Navigation::load_pathing(
+            &mut walk.world,
+            Grid::new(Num::ONE, bounds).unwrap(),
+            vec![ground(quarter)],
+        );
+        let towers = [0, 1, 2].map(|z| walk.body(place(4, z).unwrap(), None, None, half));
+        let walker = walk.body(place(0, 1).unwrap(), Some(goal), Some(Num::ONE), quarter);
+        let middle = walk.world.resource::<EntityIndex>().get(towers[1]).unwrap();
+        (walk, middle, walker)
+    };
+    // The middle tower dies while the walker is on its way, at (1.5, 1.5) after tick 0: its route
+    // ends short, so it asks again in tick 1, and walks on straight to the goal, 6 m in 6 ticks.
+    let (mut walk, middle, walker) = walled();
+    walk.tick();
+    walk.world.entity_mut(middle).insert(Dead);
+    walk.tick();
+    assert!(walk.get_route(walker).reached());
+    for _ in 0..4 {
+        walk.tick();
+    }
+    assert_eq!(walk.get::<Position>(walker), goal);
+    // The middle tower stands, and the walker arrives short.
+    let (mut walk, middle, walker) = walled();
+    for _ in 0..3 {
+        walk.tick();
+    }
+    let short = place(3, 1).unwrap();
+    assert_eq!(walk.get::<Position>(walker), short);
+    assert_eq!(walk.get::<Destination>(walker).get(), None);
+    assert!(walk.get_route(walker).arrived_short_of(goal));
+    // Sent there again, as an order would, it plans nothing, and stays with no destination.
+    let entity = walk.world.resource::<EntityIndex>().get(walker).unwrap();
+    let changed = |walk: &Walk| {
+        walk.world
+            .entity(entity)
+            .get_ref::<Route>()
+            .unwrap()
+            .last_changed()
+    };
+    let before = changed(&walk);
+    walk.world
+        .get_mut::<Destination>(entity)
+        .unwrap()
+        .set(Some(goal));
+    walk.tick();
+    assert_eq!(changed(&walk), before);
+    assert_eq!(walk.get::<Destination>(walker).get(), None);
+    assert_eq!(walk.get::<Position>(walker), short);
+    // The middle tower dies, and the walker goes on through its cell from the next tick: 3 m to
+    // the gap, (4.5, 1.5), then 2 m on, in 3 ticks. Its route reached the goal, so it forgets the
+    // route, and its progress.
+    walk.world.entity_mut(middle).insert(Dead);
+    walk.tick();
+    assert_eq!(walk.get::<Destination>(walker).get(), Some(goal));
+    for _ in 0..2 {
+        walk.tick();
+    }
+    assert_eq!(walk.get::<Position>(walker), goal);
+    assert_eq!(walk.get::<Destination>(walker).get(), None);
+    assert_eq!(walk.get_route(walker).goal(), None);
+    assert_eq!(walk.get::<Progress>(walker), Progress::default());
 }
 
 #[test]
