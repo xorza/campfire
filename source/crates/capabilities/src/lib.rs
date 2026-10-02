@@ -89,7 +89,7 @@ pub use mode::relation_data::RelationData;
 pub use mode::resource_id::ResourceId;
 pub use mode::team_manifest::TeamManifest;
 pub use mode::timers::{Timer, Timers};
-pub use mode::unit_kit::{KitRules, UnitKit};
+pub use mode::unit_kit::UnitKit;
 pub use navigation::Navigation;
 pub use navigation::destination::Destination;
 pub use navigation::error::MapProblem;

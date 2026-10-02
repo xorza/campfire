@@ -8,12 +8,10 @@ use crate::values::declared_name::DeclaredName;
 /// failure.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum UnitKitError {
-    /// A stat its sections or its pools need is not declared.
+    /// A stat its pools need is not one it gives a value.
     MissingStat(Stat),
-    /// A stat overflows at level 1.
-    Overflow(Stat),
+    /// A pool's maximum is not positive at level 1.
     NotPositive(Stat),
-    Negative(Stat),
     /// It has a `combat` section but not the life pool.
     NoLifePool,
 }
@@ -51,9 +49,7 @@ impl fmt::Display for UnitKitError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             UnitKitError::MissingStat(stat) => write!(f, "stat {stat} is not declared"),
-            UnitKitError::Overflow(stat) => write!(f, "stat {stat} overflows"),
             UnitKitError::NotPositive(stat) => write!(f, "stat {stat} is not positive"),
-            UnitKitError::Negative(stat) => write!(f, "stat {stat} is negative"),
             UnitKitError::NoLifePool => f.write_str("a unit type with combat lacks the life pool"),
         }
     }

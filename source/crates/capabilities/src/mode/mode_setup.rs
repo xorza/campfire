@@ -8,7 +8,6 @@ use crate::mode::team_manifest::TeamManifest;
 use crate::mode::unit_kit::UnitKit;
 use crate::navigation::walker::Walker;
 use crate::stats::modifier_book::ModifierId;
-use crate::stats::stats_data::StatsData;
 use crate::units::unit_type::UnitType;
 
 /// What a match of a mode needs, from its packages, with its unit types, abilities and AI loaded
@@ -41,8 +40,6 @@ pub struct ModeSetup<'a> {
 pub struct UnitTypeSetup {
     pub unit_type: UnitType,
     pub kit: UnitKit,
-    /// Its `stats` section, empty when it has none.
-    pub stats: StatsData,
     /// Its actions, kind after kind in the mode's order.
     pub actions: Vec<SlotAction>,
     /// The modifier it holds from its spawn on, from itself.

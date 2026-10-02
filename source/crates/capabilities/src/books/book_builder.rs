@@ -9,14 +9,15 @@ use crate::actions::action_book::{ActionId, ActionParts};
 use crate::actions::action_data::{ActionData, CostTarget};
 use crate::actions::action_names::ActionNames;
 use crate::areas::area_spec::AreaSpec;
-use crate::books::BookParts;
 use crate::books::book_input::{BookInput, BookKind, BookPackage};
 use crate::books::error::BookError;
 use crate::books::unit_type_file::UnitTypeFile;
+use crate::books::{BookParts, Books};
 use crate::combat::damage_kind::DamageKind;
 use crate::combat::on_death::OnDeath;
+use crate::mode::mode_books::ModeBooks;
 use crate::mode::mode_setup::{LoadoutSetup, SlotAction, UnitTypeSetup};
-use crate::mode::unit_kit::{KitRules, UnitKit};
+use crate::mode::unit_kit::UnitKit;
 use crate::orders::ai::Ai;
 use crate::progression::track_book::TrackBook;
 use crate::progression::track_id::TrackId;
@@ -26,6 +27,7 @@ use crate::stats::modifier_book::{ModifierBook, ModifierId, ModifierLoad, Packag
 use crate::stats::param_table::ParamTable;
 use crate::stats::pool_id::PoolId;
 use crate::stats::stat::Stat;
+use crate::stats::stat_book::StatBook;
 use crate::stats::stat_id::StatId;
 use crate::units::engine_tag::EngineTag;
 use crate::units::filter::Filter;
@@ -45,9 +47,25 @@ const CHECKED: &str = "the load checked it";
 pub(crate) struct BookBuilder<'a> {
     input: &'a BookInput<'a>,
     books: BookParts,
-    rules: KitRules,
+    /// The life pool, none when the mode names none.
+    life: Option<PoolId>,
     /// Where each package's scripts start among the match's.
     script_starts: Vec<usize>,
+}
+
+/// A unit type that stands, as its package gives it: its name in the mode's scope, its file, and
+/// whether it is an avatar.
+#[derive(Debug, Clone, Copy)]
+struct Standing<'f> {
+    name: &'f str,
+    file: &'f UnitTypeFile,
+    avatar: bool,
+}
+
+impl<'f> Standing<'f> {
+    const fn new(name: &'f str, file: &'f UnitTypeFile, avatar: bool) -> Standing<'f> {
+        Standing { name, file, avatar }
+    }
 }
 
 impl<'a> BookBuilder<'a> {
@@ -62,16 +80,12 @@ impl<'a> BookBuilder<'a> {
         BookBuilder {
             input,
             books: BookParts::default(),
-            rules: KitRules {
-                rate: input.rate,
-                max_move_speed: input.max_move_speed,
-                life: data.combat.life_pool(&data.pools),
-            },
+            life: data.combat.life_pool(&data.pools),
             script_starts,
         }
     }
 
-    pub(crate) fn build(mut self) -> Result<BookParts, BookError> {
+    pub(crate) fn build(mut self) -> Result<Books, BookError> {
         let input = self.input;
         for name in &input.tag_names {
             self.books.types.declare(name);
@@ -85,6 +99,7 @@ impl<'a> BookBuilder<'a> {
         for (index, package) in (0..).zip(&input.packages) {
             self.declare_types(index, package);
         }
+        let stats = self.stat_book();
         let loadout_ranks = input.data.loadout_ranks();
         for (index, package) in (0..).zip(&input.packages) {
             let units = &package.content.units;
@@ -96,7 +111,8 @@ impl<'a> BookBuilder<'a> {
                         if file.delivers() {
                             self.delivery(index, name, file)?;
                         } else {
-                            self.unit_type(index, name.as_str(), file, &actions, false)?;
+                            let unit = Standing::new(name.as_str(), file, false);
+                            self.unit_type(index, unit, &actions, &stats)?;
                         }
                     }
                 }
@@ -106,7 +122,8 @@ impl<'a> BookBuilder<'a> {
                     }
                     let ranks = self.slotted_ranks([unit]);
                     let actions = self.actions(index, package, |id| ranks.get(id).copied())?;
-                    self.unit_type(index, package.name, unit, &actions, true)?;
+                    let unit = Standing::new(package.name, unit, true);
+                    self.unit_type(index, unit, &actions, &stats)?;
                     self.books.units.avatars.push(package.name.to_owned());
                 }
                 BookKind::Loadout => {
@@ -122,7 +139,34 @@ impl<'a> BookBuilder<'a> {
                 }
             }
         }
-        Ok(self.books)
+        let mut parts = self.books;
+        let mode = ModeBooks::build(input.data, &parts.units.unit_types, &mut parts.types, stats);
+        Ok(Books { parts, mode })
+    }
+
+    /// The stat book of the mode's stats, with each unit type that stands and its `stats`
+    /// section, refreshed in the input's order.
+    fn stat_book(&self) -> StatBook {
+        let input = self.input;
+        let types = &self.books.types;
+        let standing = input.packages.iter().flat_map(|package| {
+            let units = package.content.units.iter();
+            let mode = units
+                .filter(|(_, file)| matches!(package.kind, BookKind::Mode) && !file.delivers())
+                .map(|(name, file)| (name.as_str(), file));
+            let avatar = match package.kind {
+                BookKind::Avatar(unit) => Some((package.name, unit)),
+                BookKind::Mode | BookKind::Loadout => None,
+            };
+            mode.chain(avatar)
+        });
+        let setups = standing.filter_map(|(name, file)| {
+            let unit_type = types.named(TypeScope::Mode, name).expect(CHECKED);
+            Some((unit_type, file.stats.as_ref()?))
+        });
+        let max_move_speed = input.max_move_speed.get();
+        StatBook::new(&input.data.stats, setups, input.rate, max_move_speed)
+            .with_order(input.stat_order.clone())
     }
 
     /// Declares the unit types of the package at `index` in the order its own load reads them,
@@ -251,17 +295,17 @@ impl<'a> BookBuilder<'a> {
         Ok(action)
     }
 
-    /// The unit type `name` of `file`, of the package at `index`, in the mode's scope, whose slots
-    /// hold the package's `actions`: its AI, its kit, its slots, kind after kind, and its
-    /// passive. An avatar's is tagged `avatar`, and stays when it dies.
+    /// The unit type `unit` that stands, of the package at `index`, whose slots hold the package's
+    /// `actions`: its AI, its kit of the values `stats` gives it, its slots, kind after kind, and
+    /// its passive. An avatar's is tagged `avatar`, and stays when it dies.
     fn unit_type(
         &mut self,
         index: u16,
-        name: &str,
-        file: &UnitTypeFile,
+        unit: Standing<'_>,
         actions: &BTreeMap<&str, ActionId>,
-        avatar: bool,
+        stats: &StatBook,
     ) -> Result<(), BookError> {
+        let Standing { name, file, avatar } = unit;
         let data = self.input.data;
         let books = &mut self.books;
         let unit_type = books.types.named(TypeScope::Mode, name).expect(CHECKED);
@@ -294,7 +338,7 @@ impl<'a> BookBuilder<'a> {
             let tracks = books.tracks.as_ref().expect(CHECKED);
             tracks.named(track.as_str()).expect(CHECKED)
         }));
-        let kit = UnitKit::new(file.stats.as_ref(), combat.as_ref(), pools, self.rules)
+        let kit = UnitKit::new(stats, unit_type, combat.as_ref(), pools, self.life)
             .map_err(|error| BookError::Kit {
                 package: index,
                 unit_type: name.to_owned(),
@@ -323,7 +367,6 @@ impl<'a> BookBuilder<'a> {
         books.units.unit_types.push(UnitTypeSetup {
             unit_type,
             kit,
-            stats: file.stats.clone().unwrap_or_default(),
             actions: slots,
             passive,
         });

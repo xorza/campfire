@@ -1,7 +1,6 @@
 use std::num::NonZeroU8;
 
 use campfire_math::Num;
-use campfire_sim::TickRate;
 
 use crate::combat::combat_data::CombatData;
 use crate::combat::on_death::OnDeath;
@@ -12,9 +11,9 @@ use crate::progression::track_set::TrackSet;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::stat::{EngineStat, Stat};
-use crate::stats::stats_data::StatsData;
+use crate::stats::stat_book::StatBook;
 use crate::units::body::Body;
-use crate::values::speed::Speed;
+use crate::units::unit_type::UnitType;
 use crate::vision::sight::Sight;
 use crate::vision::vision_data::VisionData;
 
@@ -33,39 +32,27 @@ pub struct UnitKit {
     pub queue: Option<NonZeroU8>,
 }
 
-/// The match's rules a unit type's values meet: its tick rate, the mode's move speed cap, and
-/// its life pool.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct KitRules {
-    pub rate: TickRate,
-    pub max_move_speed: Speed,
-    /// None when the mode names no life pool, as a mode with no combat.
-    pub life: Option<PoolId>,
-}
-
 impl UnitKit {
-    /// The kit of a type with `stats`, `combat`, and `pools`, each with the stat of its maximum.
-    /// Each pool's maximum is that stat at level 1, and a type with `combat` has the rules' life
-    /// pool. Its move speed is capped at the rules' cap.
-    pub fn new<'a>(
-        stats: Option<&StatsData>,
+    /// The kit of `unit_type`, of the stats `book` gives it, with `combat` and `pools`, each
+    /// with the stat of its maximum. Each pool's maximum is that stat at level 1, and its move
+    /// step is the book's at level 1, as a refresh computes them. A type with `combat` has the
+    /// life pool `life`, which a mode with no combat lacks.
+    pub(crate) fn new<'a>(
+        book: &StatBook,
+        unit_type: UnitType,
         combat: Option<&CombatData>,
         pools: impl IntoIterator<Item = (PoolId, &'a Stat)>,
-        rules: KitRules,
+        life: Option<PoolId>,
     ) -> Result<UnitKit, UnitKitError> {
-        let stat = |stat: &Stat| {
-            let missing = || UnitKitError::MissingStat(stat.clone());
-            let stats = stats.ok_or_else(missing)?;
-            if !stats.declares(stat) {
-                return Err(missing());
-            }
-            stats
-                .at(stat, 1)
-                .ok_or_else(|| UnitKitError::Overflow(stat.clone()))
+        let values = book.base_values(unit_type, 1);
+        let given = |stat: &Stat| {
+            let id = book.named(stat).expect("the load checked the stats");
+            book.gives(unit_type, id).then_some(id)
         };
         let mut maxes = Vec::new();
         for (pool, max) in pools {
-            let value = stat(max)?;
+            let id = given(max).ok_or_else(|| UnitKitError::MissingStat(max.clone()))?;
+            let value = values[id.index()];
             if value <= Num::ZERO {
                 return Err(UnitKitError::NotPositive(max.clone()));
             }
@@ -75,22 +62,19 @@ impl UnitKit {
             (!maxes.is_empty()).then(|| Pools::new(maxes).expect("each maximum is positive"));
         let on_death = combat
             .map(|combat| {
-                let life = rules.life.and_then(|life| pools?.max(life));
+                let life = life.and_then(|life| pools?.max(life));
                 if life.is_none() {
                     return Err(UnitKitError::NoLifePool);
                 }
                 Ok(combat.on_death)
             })
             .transpose()?;
-        let move_speed = Stat::Engine(EngineStat::MoveSpeed);
-        let step = if stats.is_some_and(|stats| stats.declares(&move_speed)) {
-            let speed = stat(&move_speed)?.min(rules.max_move_speed.get());
-            let overflow = || UnitKitError::Overflow(move_speed.clone());
-            let step = per_tick(speed, rules.rate).ok_or_else(overflow)?;
-            Some(MoveStep::new(step).ok_or(UnitKitError::Negative(move_speed))?)
-        } else {
-            None
-        };
+        let step = given(&Stat::Engine(EngineStat::MoveSpeed)).map(|_| {
+            let step = book
+                .step(&values)
+                .expect("a type gives only a stat the mode declares");
+            MoveStep::new(step).expect("the book's step is never negative")
+        });
         Ok(UnitKit {
             pools,
             on_death,
@@ -132,11 +116,6 @@ impl UnitKit {
             ..self
         }
     }
-}
-
-/// `speed` in meters a second as meters a tick at `rate`, to the nearest.
-const fn per_tick(speed: Num, rate: TickRate) -> Option<Num> {
-    speed.checked_div_int(rate.hz().get() as i64)
 }
 
 #[cfg(test)]

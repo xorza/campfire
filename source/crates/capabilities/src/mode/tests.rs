@@ -63,10 +63,8 @@ use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::stat::Stat;
 use crate::stats::stat_book::StatBook;
-use crate::stats::stat_id::StatId;
 use crate::stats::stat_op::StatOp;
 use crate::stats::stat_rule::StatRule;
-use crate::stats::stats_data::StatsData;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::body::Body;
 use crate::units::layer::Layer;
@@ -606,7 +604,6 @@ fn setup(
     let unit = |unit_type, kit| UnitTypeSetup {
         unit_type,
         kit,
-        stats: StatsData::default(),
         actions: Vec::new(),
         passive: None,
     };
@@ -716,16 +713,9 @@ impl Game {
         let setup = setup(&files, script, types, spell, strike, blessing);
         let books = {
             let view = world.non_send::<View>();
-            let order = (0..STATS_3V3.len()).map(StatId::new).collect();
+            let stats = StatBook::new(&files.data.stats, [], RATE, num(10));
             let unit_types = &setup.unit_types;
-            ModeBooks::build(
-                &files.data,
-                unit_types,
-                &mut view.types_mut(),
-                RATE,
-                num(10),
-                order,
-            )
+            ModeBooks::build(&files.data, unit_types, &mut view.types_mut(), stats)
         };
         Mode::install(&mut world, &mut schedule, &mut registry, setup, books);
         // The scripts name pools the data does not declare, whose maxima no stat sets.

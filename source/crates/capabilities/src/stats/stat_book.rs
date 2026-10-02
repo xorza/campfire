@@ -144,6 +144,25 @@ impl StatBook {
         self.rules[stat.index()].clamp(totals.value())
     }
 
+    /// The value of each stat, by id, of a unit of `unit_type` at `level` with no modifiers, as a
+    /// refresh computes it.
+    pub(crate) fn base_values(&self, unit_type: UnitType, level: u32) -> Vec<Num> {
+        let ids = (0..self.stats.len()).map(StatId::new);
+        ids.map(|stat| {
+            let totals = StatTotals::base(self.base_bits(unit_type, stat, level));
+            self.value(stat, totals)
+        })
+        .collect()
+    }
+
+    /// Whether `unit_type` gives `stat` a value of its own.
+    pub(crate) fn gives(&self, unit_type: UnitType, stat: StatId) -> bool {
+        let first = unit_type.index() * self.stats.len();
+        self.growth
+            .get(first + stat.index())
+            .is_some_and(Option::is_some)
+    }
+
     /// The value of a unit of `unit_type` at `level` of `stat`, before its modifiers, in bits:
     /// `base + per_level × (level − 1)`, 0 where the type gives none.
     pub(crate) fn base_bits(&self, unit_type: UnitType, stat: StatId, level: u32) -> i128 {

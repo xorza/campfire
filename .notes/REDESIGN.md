@@ -625,7 +625,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - param source three ways: G2;
   - held and timed copies: G2;
   - ms to ticks: C6a;
-  - formulas twice: C8;
   - "walks" twice: C2;
   - hook arity: C4;
   - constant in a message: J;

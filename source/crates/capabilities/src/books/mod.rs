@@ -75,16 +75,7 @@ impl Books {
     /// The books of `input`, which the package load checked; an error for what the check does
     /// not see and the books cannot hold.
     pub fn build(input: &BookInput<'_>) -> Result<Books, BookError> {
-        let mut parts = BookBuilder::new(input).build()?;
-        let mode = ModeBooks::build(
-            input.data,
-            &parts.units.unit_types,
-            &mut parts.types,
-            input.rate,
-            input.max_move_speed.get(),
-            input.stat_order.clone(),
-        );
-        Ok(Books { parts, mode })
+        BookBuilder::new(input).build()
     }
 
     /// Puts the books in `world`, a match whose capabilities are installed and whose scripts are

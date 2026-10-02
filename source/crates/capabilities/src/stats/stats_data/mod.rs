@@ -27,15 +27,6 @@ impl StatsData {
     pub fn declares(&self, stat: &Stat) -> bool {
         self.0.contains_key(stat)
     }
-
-    /// `stat` at `level`, from 1; `None` when the type does not declare it, or it overflows.
-    pub fn at(&self, stat: &Stat, level: u32) -> Option<Num> {
-        let value = self.0.get(stat)?;
-        let levels = i64::from(level.checked_sub(1)?);
-        value
-            .base
-            .checked_add(value.per_level.checked_mul_int(levels)?)
-    }
 }
 
 #[cfg(test)]
