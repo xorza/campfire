@@ -2,6 +2,8 @@ use std::collections::BTreeMap;
 
 use campfire_math::{Num, Vec3};
 
+use campfire_math::{RngSource, RngStream, SegmentSeed};
+
 use super::*;
 use crate::values::bounds::Bounds;
 
@@ -15,16 +17,13 @@ fn blocked_at(blocked: &[u64], cell: usize) -> bool {
     blocked[cell / 64] & 1 << (cell % 64) != 0
 }
 
-/// Cells blocked at random, about one in `odds`, from `seed`, by `SplitMix64`.
+/// Cells blocked at random, one in `odds` on average, from `seed`.
 fn scatter(cells: usize, seed: u64, odds: u64) -> Vec<u64> {
-    let mut state = seed;
+    let source = RngSource::new(SegmentSeed::new([0; 32]));
+    let mut rng = source.open(RngStream::new("scatter"), seed);
     let mut blocked = vec![0; cells.div_ceil(64)];
     for cell in 0..cells {
-        state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        let mut z = state;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        if (z ^ (z >> 31)).is_multiple_of(odds) {
+        if rng.below(odds) == 0 {
             blocked[cell / 64] |= 1 << (cell % 64);
         }
     }

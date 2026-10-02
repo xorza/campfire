@@ -159,42 +159,34 @@ impl Broadphase {
 #[cfg(any(test, feature = "bench"))]
 pub(crate) mod internals {
     use bevy_ecs::world::World;
-    use campfire_math::{Num, Vec3};
+    use campfire_math::{Num, RngSource, RngStream, SegmentSeed, Vec3};
     use campfire_sim::{IdAllocator, Position};
 
     use crate::navigation::body_index::{BodyIndex, IndexedBody};
     use crate::navigation::collider::Collider;
     use crate::units::layer::Layer;
 
-    /// A draw below `bound` from `state`, by `SplitMix64`.
-    const fn draw(state: &mut u64, bound: u64) -> u64 {
-        *state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
-        let mut z = *state;
-        z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-        z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-        (z ^ (z >> 31)) % bound
-    }
-
     /// `count` bodies from `seed`: each at a whole centimeter within `span` meters of the origin
     /// on both axes, of a radius from 0.2 to 1.19 m, on one of `layers` layers, and that may be
     /// pushed, and walks, at random. A scene of one layer draws no layer.
     pub(crate) fn scene(seed: u64, count: usize, span: u64, layers: u8) -> Vec<Collider> {
-        let mut state = seed;
+        let source = RngSource::new(SegmentSeed::new([0; 32]));
+        let mut rng = source.open(RngStream::new("scene"), seed);
         let mut ids = IdAllocator::default();
         let mut world = World::new();
         let centimeters = |cm: i64| Num::from_bits((cm << Num::FRAC_BITS) / 100);
         (0..count)
             .map(|_| {
                 let mut coordinate = || {
-                    let cm = draw(&mut state, span * 200).cast_signed();
+                    let cm = rng.below(span * 200).cast_signed();
                     centimeters(cm - span.cast_signed() * 100)
                 };
                 let at = Vec3::new(coordinate(), Num::ZERO, coordinate());
-                let radius = centimeters(20 + draw(&mut state, 100).cast_signed());
-                let movable = draw(&mut state, 4) != 0;
+                let radius = centimeters(20 + rng.below(100).cast_signed());
+                let movable = rng.below(4) != 0;
                 let layer = match layers {
                     1 => Layer::FIRST,
-                    _ => Layer::new(u8::try_from(draw(&mut state, layers.into())).unwrap()),
+                    _ => Layer::new(u8::try_from(rng.below(layers.into())).unwrap()),
                 };
                 Collider {
                     id: ids.allocate(),
@@ -203,7 +195,7 @@ pub(crate) mod internals {
                     radius,
                     layer,
                     movable,
-                    walking: movable && draw(&mut state, 2) == 0,
+                    walking: movable && rng.below(2) == 0,
                 }
             })
             .collect()

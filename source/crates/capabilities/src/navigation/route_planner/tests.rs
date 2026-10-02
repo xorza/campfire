@@ -1,6 +1,8 @@
 use campfire_math::{Num, Vec3};
 use campfire_sim::IdAllocator;
 
+use campfire_math::{RngSource, RngStream, SegmentSeed};
+
 use super::*;
 use crate::navigation::pathing_grid::PathingGrid;
 use crate::navigation::walker::Walker;
@@ -373,13 +375,9 @@ fn a_route_costs_what_a_search_of_every_cell_finds() {
     // the cell nearest it among those it reaches, ties to the lower number, at that cell's cost,
     // and so the regions say. Every leg of a route is clear of every post, and a search expands
     // no more cells than are open.
-    let mut state = 7_u64;
-    let mut draw = |bound: u64| {
-        state = state
-            .wrapping_mul(6_364_136_223_846_793_005)
-            .wrapping_add(1_442_695_040_888_963_407);
-        (state >> 33) % bound
-    };
+    let source = RngSource::new(SegmentSeed::new([0; 32]));
+    let mut rng = source.open(RngStream::new("posts"), 7);
+    let mut draw = |bound: u64| rng.below(bound);
     for odds in [6, 4, 3] {
         let rows: Vec<String> = (0..12)
             .map(|_| {
