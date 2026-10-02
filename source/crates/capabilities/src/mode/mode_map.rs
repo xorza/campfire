@@ -5,8 +5,8 @@ use campfire_sim::Position;
 
 use crate::mode::error::ModeError;
 use crate::mode::map_data::{MapData, MapPoint};
-use crate::mode::mode_book::{PlacedPath, PlacedUnit};
 use crate::mode::mode_data::ModeParam;
+use crate::mode::placed_unit::{PlacedPath, PlacedUnit};
 use crate::mode::relation_data::RelationData;
 use crate::mode::team_manifest::TeamManifest;
 use crate::navigation::Navigation;

@@ -200,7 +200,7 @@ pub(crate) mod internals {
     use crate::actions::kind_spec::KindSpec;
     use crate::actions::rank_values::RankValues;
     use crate::actions::weapon::Weapon;
-    use crate::players::resource_id::ResourceAmount;
+    use crate::players::resource_amount::ResourceAmount;
     use crate::scripts::hook_set::HookSet;
     use crate::stats::pool_cost::PoolCost;
     use crate::units::action_id::ActionId;

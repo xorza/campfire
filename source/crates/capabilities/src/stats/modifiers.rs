@@ -1,22 +1,23 @@
-use std::num::NonZeroU32;
 use std::ops::{Deref, Range};
 
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_math::{Num, Tick, Ticks};
+use campfire_math::{Num, Tick};
 use campfire_sim::{SimComponent, StableId};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::scripts::state_value::StateValue;
-use crate::stats::lifetime::{Ends, Hold, Lifetime};
-use crate::stats::live_param::LiveParam;
+use crate::stats::application::Application;
+use crate::stats::application::NewInstance;
+use crate::stats::instance::Instance;
+use crate::stats::instance::StackEnd;
+use crate::stats::instance::StatShare;
+use crate::stats::lifetime::{Ends, Hold};
 use crate::stats::modifier_book::ModifierBook;
-use crate::stats::modifier_clocks::{Interval, ModifierClocks};
+use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_data::Reapply;
 use crate::stats::param_book::ParamBook;
-use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
 
 /// The modifiers a unit carries, by id, then source, one instance of an id from each source,
@@ -32,29 +33,6 @@ pub struct Modifiers {
     shares: Vec<StatShare>,
 }
 
-/// A modifier a unit carries, its numbers resolved when it was applied.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct Instance {
-    pub(crate) id: ModifierId,
-    /// The unit that applied it; none from the mode.
-    pub(crate) source: Option<StableId>,
-    /// The ability whose cast, projectile, area or modifier applied it, or whose passive it is,
-    /// at its rank on the source.
-    pub(crate) ability: Option<ActionId>,
-    pub(crate) rank: u8,
-    /// What keeps it: an ability's passive, which a death keeps, an aura, an area or its
-    /// carrier's player, and an application of its own.
-    pub(crate) lifetime: Lifetime,
-    /// The radius of the aura it gives, when its modifier has one.
-    pub(crate) aura_radius: Option<Num>,
-    pub(crate) stacks: u32,
-    /// How long each stack holds, when its stacks end one by one.
-    pub(crate) stack_life: Option<Ticks>,
-    /// How many stack ends, and stat shares, it has in its carrier's buffers.
-    ends: u16,
-    shares: u16,
-}
-
 /// An instance a unit carries, with its runs of the carrier's buffers: with a stack life, when
 /// its stacks end, by tick, ascending, their counts adding to its stacks, and none without one;
 /// and what it adds a stack to each stat its modifier changes, in the order of its modifier's
@@ -64,48 +42,6 @@ pub(crate) struct Carried<'a> {
     pub(crate) instance: &'a Instance,
     pub(crate) stack_ends: &'a [StackEnd],
     pub(crate) shares: &'a [StatShare],
-}
-
-/// The stacks of an instance that end as tick `until` starts.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct StackEnd {
-    pub(crate) until: Tick,
-    pub(crate) count: u32,
-}
-
-/// The value a stack of a modifier's change of one stat adds: `value`, which the refresh reads
-/// again from `live` when the change reads a scaling table.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct StatShare {
-    pub(crate) value: Num,
-    pub(crate) live: Option<LiveParam>,
-}
-
-/// A modifier applied to a unit, its numbers resolved: its instance as it would be new, with
-/// how a second application from its source acts and its stack limit.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Application {
-    pub(crate) instance: NewInstance,
-    pub(crate) reapply: Reapply,
-    pub(crate) max_stacks: Option<NonZeroU32>,
-}
-
-/// An instance as an application makes it, with its stack ends, its stat shares and its clock.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct NewInstance {
-    pub(crate) id: ModifierId,
-    pub(crate) source: Option<StableId>,
-    pub(crate) ability: Option<ActionId>,
-    pub(crate) rank: u8,
-    pub(crate) lifetime: Lifetime,
-    pub(crate) aura_radius: Option<Num>,
-    pub(crate) stacks: u32,
-    pub(crate) stack_life: Option<Ticks>,
-    pub(crate) stack_ends: Vec<StackEnd>,
-    pub(crate) interval: Option<Interval>,
-    pub(crate) shield: Option<Num>,
-    pub(crate) stats: Vec<StatShare>,
-    pub(crate) state: Vec<StateValue>,
 }
 
 /// Which of a unit's modifier components an operation changed: a change of `stats` derives the
@@ -526,14 +462,6 @@ pub(crate) struct Absorbed {
     pub(crate) touched: Touched,
 }
 
-impl Instance {
-    /// The first tick a modifier or stack of `ticks` applied in tick `now` no longer holds: it
-    /// holds through tick `now + ticks`.
-    pub(crate) const fn end(now: Tick, ticks: Ticks) -> Tick {
-        now.after(ticks).after(Ticks::ONE)
-    }
-}
-
 /// A carried instance reads as its instance, beside its runs.
 impl Deref for Carried<'_> {
     type Target = Instance;
@@ -645,8 +573,9 @@ impl<'de> Deserialize<'de> for Modifiers {
 pub(crate) mod internals {
     use bevy_ecs::bundle::Bundle;
 
+    use crate::stats::application::Application;
     use crate::stats::modifier_clocks::ModifierClocks;
-    use crate::stats::modifiers::{Application, Modifiers};
+    use crate::stats::modifiers::Modifiers;
 
     impl Modifiers {
         /// A unit's modifiers and their clocks, of `applications` applied in order.
@@ -662,9 +591,15 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
+    use std::num::NonZeroU32;
+
+    use campfire_math::Ticks;
     use campfire_sim::IdAllocator;
 
     use super::*;
+    use crate::scripts::state_value::StateValue;
+    use crate::stats::lifetime::Lifetime;
+    use crate::stats::modifier_clocks::Interval;
 
     fn num(value: i64) -> Num {
         Num::from_int(value).unwrap()

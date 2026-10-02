@@ -2,8 +2,8 @@ use campfire_math::{PlayerSlot, Ticks};
 use campfire_sim::{Capability, StableId};
 
 use crate::actions::slot_kind::SlotKind;
+use crate::mode::group_unit::GroupUnit;
 use crate::mode::match_end::MatchResult;
-use crate::mode::mode_book::GroupUnit;
 use crate::navigation::path_walker::PathEnd;
 use crate::scripts::effects::Effect;
 use crate::scripts::state_value::StateValue;

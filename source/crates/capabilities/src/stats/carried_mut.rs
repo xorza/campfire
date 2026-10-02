@@ -5,9 +5,10 @@ use campfire_math::{Num, Tick};
 use campfire_sim::StableId;
 
 use crate::scripts::state_value::StateValue;
+use crate::stats::application::Application;
 use crate::stats::lifetime::Hold;
 use crate::stats::modifier_clocks::ModifierClocks;
-use crate::stats::modifiers::{Application, Modifiers, Touched};
+use crate::stats::modifiers::{Modifiers, Touched};
 use crate::units::modifier_id::ModifierId;
 
 /// A unit's modifiers and their clocks, to change together: each component counts as changed
@@ -178,10 +179,10 @@ mod tests {
     use campfire_math::Ticks;
 
     use super::*;
+    use crate::stats::application::NewInstance;
     use crate::stats::lifetime::{Ends, Lifetime};
     use crate::stats::modifier_clocks::Interval;
     use crate::stats::modifier_data::Reapply;
-    use crate::stats::modifiers::NewInstance;
 
     #[test]
     fn a_change_of_clocks_alone_leaves_the_modifiers_unchanged() {

@@ -10,7 +10,8 @@ use crate::actions::action_slots::ActionSlots;
 use crate::actions::delivery::Delivery;
 use crate::units::action_id::ActionId;
 use crate::units::filter::Filter;
-use crate::units::script_view::{UnitRow, View};
+use crate::units::script_view::View;
+use crate::units::unit_row::UnitRow;
 use crate::units::view_column::ViewColumn;
 
 /// What the action pipeline adds to the script view: the match's actions, and each unit's

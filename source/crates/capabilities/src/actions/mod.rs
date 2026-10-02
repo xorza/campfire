@@ -14,14 +14,16 @@ use crate::actions::action_slots::ActionSlots;
 use crate::actions::actions_column::ActionsColumn;
 
 use crate::stats::StatsSet;
-use crate::stats::modifier_book::{Applier, ModifierBook};
+use crate::stats::applier::Applier;
+use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_spec::ParamPlace;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::param_sources::ParamSources;
 
 use crate::stats::stat_book::StatBook;
 
-use crate::units::script_view::{RowFill, View};
+use crate::units::row_fill::RowFill;
+use crate::units::script_view::View;
 
 pub(crate) mod action;
 pub(crate) mod action_book;

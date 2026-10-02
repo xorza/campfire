@@ -10,6 +10,7 @@ use crate::scripts::core_api::CoreApi;
 use crate::scripts::hook::{Hook, ScriptRole};
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::role_set::RoleSet;
+use crate::units::position_api::PositionApi;
 use crate::units::script_view::View;
 use crate::units::tag_effect::TagEffect;
 use crate::units::unit::Unit;
@@ -191,6 +192,7 @@ impl ScriptApi {
         let mut builder = ApiBuilder::new(engine, &mut api);
         CoreApi::register(&mut builder);
         Unit::register(&mut builder);
+        PositionApi::register(&mut builder);
         View::register_queries(&mut builder);
         for register in apis {
             register(&mut builder);

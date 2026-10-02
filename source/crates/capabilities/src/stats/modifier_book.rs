@@ -4,21 +4,21 @@ use std::sync::Arc;
 use bevy_ecs::resource::Resource;
 use campfire_math::{Tick, Ticks};
 use campfire_script::ScriptId;
-
-use campfire_sim::{StableId, TickRate};
+use campfire_sim::TickRate;
 
 use crate::scripts::hook::Hook;
 use crate::scripts::hook_set::HookSet;
 use crate::scripts::script_book::ScriptBook;
+use crate::stats::application::{Application, NewInstance};
+use crate::stats::applier::Applier;
 use crate::stats::error::ModifierError;
+use crate::stats::instance::{Instance, StackEnd, StatShare};
 use crate::stats::lifetime::{Ends, Hold, Lifetime};
 use crate::stats::modifier_clocks::Interval;
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifier_spec::{ModifierSpec, ParamPlace, SpecNames, SpecNumber, SpecTime};
-use crate::stats::modifiers::{Application, Instance, NewInstance, StackEnd, StatShare};
 use crate::stats::param_read::ParamRead;
 use crate::stats::stat_id::StatId;
-use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
 use crate::units::tag_set::TagSet;
 use crate::units::unit_types::UnitTypes;
@@ -247,17 +247,6 @@ impl ModifierBook {
             max_stacks: spec.max_stacks,
         })
     }
-}
-
-/// Who applies a modifier: its source, none from the mode; the ability that applies it, at
-/// `rank`, rank 1 with none; and what holds it, a passive or an aura, an area or a player, or
-/// none for an application of its own.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct Applier {
-    pub(crate) source: Option<StableId>,
-    pub(crate) ability: Option<ActionId>,
-    pub(crate) rank: u8,
-    pub(crate) hold: Option<Hold>,
 }
 
 impl ModifierEntry {

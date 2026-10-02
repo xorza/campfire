@@ -8,7 +8,8 @@ use campfire_sim::{Position, SimSet, StateRegistry};
 
 use crate::units::dead::Dead;
 use crate::units::relations::Relations;
-use crate::units::script_view::{RowFill, View};
+use crate::units::row_fill::RowFill;
+use crate::units::script_view::View;
 use crate::units::team::Team;
 use crate::units::team_set::TeamSet;
 use crate::units::unit_tags::UnitTags;

@@ -3,7 +3,7 @@ use campfire_script::ScriptId;
 use crate::actions::delivery::Delivery;
 use crate::actions::kind_spec::KindSpec;
 use crate::actions::rank_values::RankValues;
-use crate::players::resource_id::ResourceAmount;
+use crate::players::resource_amount::ResourceAmount;
 use crate::scripts::hook::Hook;
 use crate::scripts::hook_set::HookSet;
 use crate::units::filter::Filter;

@@ -4,13 +4,6 @@ use crate::values::declared_name::DeclaredName;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ResourceId(u8);
 
-/// An amount of one player resource, as an action's cost names it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ResourceAmount {
-    pub resource: ResourceId,
-    pub amount: i64,
-}
-
 impl ResourceId {
     /// The most player resources a mode declares: every index a `u8` holds.
     pub const LIMIT: usize = 256;

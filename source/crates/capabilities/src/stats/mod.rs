@@ -12,12 +12,13 @@ use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StableId, StateRegist
 
 use crate::scripts::ctx::Ctx;
 use crate::scripts::frame::Frame;
+use crate::stats::applier::Applier;
 use crate::stats::carried_mut::CarriedMut;
 use crate::stats::held_modifiers::{Held, HeldModifiers};
 use crate::stats::level::Level;
 use crate::stats::lifetime::Hold;
 use crate::stats::live_shares::LiveShares;
-use crate::stats::modifier_book::{Applier, ModifierBook};
+use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_effect::ModifierEffect;
 use crate::stats::modifier_handle::ModifierHandle;
@@ -41,7 +42,8 @@ use crate::units::dead::Dead;
 use crate::units::modifier_id::ModifierId;
 use crate::units::owner::Owner;
 use crate::units::relations::Relations;
-use crate::units::script_view::{RowFill, View};
+use crate::units::row_fill::RowFill;
+use crate::units::script_view::View;
 use crate::units::tag_book::TagBook;
 use crate::units::tag_set::TagSet;
 use crate::units::team::Team;
@@ -50,9 +52,12 @@ use crate::units::unit_type::UnitType;
 use crate::values::attitude::Attitude;
 use crate::values::metric::Metric;
 
+pub(crate) mod application;
+pub(crate) mod applier;
 pub(crate) mod carried_mut;
 pub(crate) mod error;
 pub(crate) mod held_modifiers;
+pub(crate) mod instance;
 pub(crate) mod level;
 pub(crate) mod life_pool;
 pub(crate) mod lifetime;
@@ -646,8 +651,9 @@ pub(crate) mod internals {
     use campfire_sim::{EntityIndex, StableId};
 
     use crate::stats::Stats;
+    use crate::stats::applier::Applier;
     use crate::stats::lifetime::Hold;
-    use crate::stats::modifier_book::{Applier, ModifierBook};
+    use crate::stats::modifier_book::ModifierBook;
     use crate::stats::modifier_effect::ModifierEffect;
     use crate::stats::modifiers::Modifiers;
     use crate::units::action_id::ActionId;

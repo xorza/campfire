@@ -6,7 +6,7 @@ use bevy_ecs::bundle::Bundle;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_math::PlayerSlot;
-use campfire_sim::{EntityIndex, Position, StableId};
+use campfire_sim::{EntityIndex, StableId};
 
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::slot_kind::SlotKind;
@@ -14,8 +14,10 @@ use crate::actions::slot_kinds::SlotKinds;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::mode::choice_book::ChoiceBook;
 use crate::mode::game_map::GameMap;
+use crate::mode::group_unit::GroupUnit;
 use crate::mode::mode_schema::ModeSchema;
 use crate::mode::mode_setup::{ModeSetup, SlotAction};
+use crate::mode::placed_unit::PlacedUnit;
 use crate::mode::roster::Roster;
 use crate::mode::unit_kit::UnitKit;
 use crate::navigation::Navigation;
@@ -29,9 +31,9 @@ use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_book::ScriptBook;
 use crate::stats::Stats;
+use crate::stats::applier::Applier;
 use crate::stats::level::Level;
 use crate::stats::lifetime::Hold;
-use crate::stats::modifier_book::Applier;
 use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_effect::ModifierEffect;
 use crate::stats::modifiers::Modifiers;
@@ -76,22 +78,6 @@ struct ModeType {
     kit: UnitKit,
     passive: Option<ModifierId>,
     actions: Range<usize>,
-}
-
-/// A unit of the map, names resolved: on its path, if it names one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PlacedUnit {
-    pub(crate) unit_type: UnitType,
-    pub(crate) team: Team,
-    pub(crate) path: Option<PlacedPath>,
-    pub(crate) pos: Position,
-}
-
-/// The path a placed unit is on, and the end it walks it from, if it walks it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PlacedPath {
-    pub(crate) path: PathId,
-    pub(crate) from: Option<PathEnd>,
 }
 
 impl ModeBook {
@@ -298,11 +284,4 @@ impl ModeBook {
             unit.insert(ActionSlots::new(slots));
         }
     }
-}
-
-/// A unit of a spawn group: its unit type, and the id a call took for it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct GroupUnit {
-    pub(crate) unit_type: UnitType,
-    pub(crate) id: StableId,
 }

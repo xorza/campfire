@@ -3,7 +3,7 @@ use campfire_sim::TickRate;
 
 use crate::actions::action_data::{ActionData, CostTarget, Range};
 use crate::actions::error::ActionError;
-use crate::players::resource_id::ResourceAmount;
+use crate::players::resource_amount::ResourceAmount;
 use crate::stats::pool_cost::PoolCost;
 use crate::values::declared_name::DeclaredName;
 

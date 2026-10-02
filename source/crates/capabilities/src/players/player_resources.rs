@@ -5,7 +5,8 @@ use campfire_sim::SimResource;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::players::resource_id::{ResourceAmount, ResourceId};
+use crate::players::resource_amount::ResourceAmount;
+use crate::players::resource_id::ResourceId;
 use crate::units::script_view::View;
 
 /// The players' resources, such as gold: one run of amounts by player slot, then by the

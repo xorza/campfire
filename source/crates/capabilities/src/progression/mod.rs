@@ -13,7 +13,8 @@ use crate::progression::track_set::TrackSet;
 use crate::progression::tracks_column::TracksColumn;
 use crate::scripts::frame::Frame;
 use crate::stats::level::Level;
-use crate::units::script_view::{RowFill, View};
+use crate::units::row_fill::RowFill;
+use crate::units::script_view::View;
 
 pub(crate) mod experience;
 pub(crate) mod level_ups;

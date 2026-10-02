@@ -3,12 +3,10 @@ use std::fmt;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use bevy_ecs::world::{EntityRef, World};
+use bevy_ecs::world::World;
 use campfire_math::{Num, PlayerSlot, Tick, Ticks};
 use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString};
 use campfire_sim::{EntityIndex, Position, SimTick, StableId, TickRate};
-
-use crate::units::action_id::ActionId;
 
 use crate::players::resource_id::ResourceId;
 use crate::scripts::api_builder::ApiBuilder;
@@ -17,14 +15,16 @@ use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_api::MemberSpec;
 use crate::scripts::script_consts::ScriptConsts;
+use crate::units::action_id::ActionId;
 use crate::units::body::Body;
 use crate::units::body_grid::{BodyGrid, Placed};
-use crate::units::engine_tag::EngineTag;
 use crate::units::filter::Filter;
 use crate::units::living_unit::LivingUnit;
 use crate::units::owner::Owner;
 use crate::units::path_id::PathId;
 use crate::units::relations::Relations;
+use crate::units::row_fill::RowFill;
+use crate::units::row_fill::RowSource;
 use crate::units::spawn_point::SpawnPoint;
 use crate::units::tag::Tag;
 use crate::units::team::Team;
@@ -32,6 +32,7 @@ use crate::units::teams::Teams;
 use crate::units::track_id::TrackId;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit::Unit;
+use crate::units::unit_row::UnitRow;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_types::UnitTypes;
@@ -74,57 +75,6 @@ pub(crate) struct ScriptView {
     found: RefCell<Vec<usize>>,
     /// What each capability above the core reads of the units, and its getters read besides.
     columns: ViewColumns,
-}
-
-/// A unit as the view read it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct UnitRow {
-    pub(crate) id: StableId,
-    pub(crate) pos: Position,
-    pub(crate) team: Team,
-    /// Its body's radius, 0 for a unit with no body.
-    pub(crate) radius: Num,
-    /// Where it spawned, if it did as a unit of the mode.
-    pub(crate) spawn: Option<Position>,
-    pub(crate) unit_type: Option<UnitType>,
-    /// The player who controls it.
-    pub(crate) owner: Option<PlayerSlot>,
-    /// Whether it is not dead; `combat` fills it, and the next three.
-    pub(crate) alive: bool,
-    /// Whether it stays when dead, for the mode to respawn.
-    pub(crate) stays: bool,
-    /// Whether it may be a target: a living unit with the life pool whose tags let it be one, by
-    /// the rule `Targets` holds; combat fills it.
-    pub(crate) targetable: bool,
-    /// Its tags and their effects, as the core derives them.
-    pub(crate) tags: UnitTags,
-}
-
-/// Fills the fields of a unit's row that a capability above the core holds.
-pub(crate) type RowSource = fn(&EntityRef<'_>, &mut RowFill<'_>);
-
-/// A row the view reads, as a capability fills it: its fields, and the columns.
-#[derive(Debug)]
-pub(crate) struct RowFill<'a> {
-    pub(crate) row: &'a mut UnitRow,
-    pub(crate) world: &'a World,
-    columns: &'a mut ViewColumns,
-}
-
-impl UnitRow {
-    pub(crate) fn is_avatar(&self) -> bool {
-        self.tags.tags.contains(EngineTag::Avatar.tag())
-    }
-}
-
-impl RowFill<'_> {
-    /// The column of type `C`, which the source's capability added, for it to add the row's
-    /// part to.
-    pub(crate) fn column<C: ViewColumn>(&mut self) -> &mut C {
-        self.columns
-            .get_mut()
-            .expect("a source fills the column its capability added")
-    }
 }
 
 /// The view as the host and every handle share it.
