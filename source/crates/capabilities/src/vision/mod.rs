@@ -40,10 +40,9 @@ impl Vision {
     /// with a sight reveals the grid cells around it to its vision group, and each unit learns the
     /// teams that see it. A match sees nothing until its mode gives the grid.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
-        if let Some(view) = world.get_non_send::<View>() {
-            view.add_column(SightColumn::default());
-            view.add_source(fill_row);
-        }
+        let view = world.non_send::<View>();
+        view.add_column(SightColumn::default());
+        view.add_source(fill_row);
         schedule.add_systems(see.in_set(SimSet::Vision));
         registry.register_component::<SeenBy>();
         registry.register_component::<Sight>();

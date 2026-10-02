@@ -28,7 +28,7 @@ use crate::mode::calls::Calls;
 use crate::mode::choices::Choices;
 use crate::mode::game_map::GameMap;
 use crate::mode::match_end::MatchEnd;
-use crate::mode::mode_book::ModeBook;
+use crate::mode::mode_book::{ModeBook, PlacedPath};
 use crate::mode::mode_books::ModeBooks;
 use crate::mode::mode_call::ModeCall;
 use crate::mode::mode_effect::ModeEffect;
@@ -258,14 +258,17 @@ impl Mode {
                 team: placed.team,
                 pos: placed.pos,
             };
-            let entity = book.spawn(world, at, ());
-            let mut entity = world.entity_mut(entity);
-            if let Some(path) = placed.path {
-                entity.insert(OnPath::new(path));
-            }
-            if let Some(from) = placed.from {
-                entity.insert(PathWalker::start(from));
-            }
+            match placed.path {
+                None => book.spawn(world, at, ()),
+                Some(PlacedPath { path, from: None }) => book.spawn(world, at, OnPath::new(path)),
+                Some(PlacedPath {
+                    path,
+                    from: Some(from),
+                }) => {
+                    let walker = (OnPath::new(path), PathWalker::start(from));
+                    book.spawn(world, at, walker)
+                }
+            };
         }
         if !book.schema.hooks.contains(Hook::OnMatchStart) {
             return Ok(());
@@ -353,13 +356,14 @@ fn run_timers(world: &mut World) {
     }
     let ctx = world.non_send::<Ctx>().clone();
     Calls::batch(world, &ctx, now, |call| {
+        let hooked = call.book().schema.hooks.contains(Hook::OnTimer);
         while let Some(timer) = call.batch.world().resource::<Timers>().due(now) {
             let name = ImmutableString::from(timer.name.as_str());
-            let data = timer
-                .data
-                .as_ref()
-                .map_or(Dynamic::UNIT, |data| data.to_dynamic(call.ctx.view()));
-            if call.book().schema.hooks.contains(Hook::OnTimer) {
+            if hooked {
+                let data = timer
+                    .data
+                    .as_ref()
+                    .map_or(Dynamic::UNIT, |data| data.to_dynamic(call.ctx.view()));
                 let args = (call.ctx.clone(), name, data);
                 match call.run(Pool::Mode, Hook::OnTimer, args) {
                     Ok(()) => {}

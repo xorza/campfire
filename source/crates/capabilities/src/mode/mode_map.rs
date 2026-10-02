@@ -5,7 +5,7 @@ use campfire_sim::Position;
 
 use crate::mode::error::ModeError;
 use crate::mode::map_data::{MapData, MapPoint};
-use crate::mode::mode_book::PlacedUnit;
+use crate::mode::mode_book::{PlacedPath, PlacedUnit};
 use crate::mode::mode_data::ModeParam;
 use crate::mode::relation_data::RelationData;
 use crate::mode::team_manifest::TeamManifest;
@@ -130,9 +130,10 @@ impl ModeMap {
             let of_type = unit_type(unit.unit_type.as_str())
                 .ok_or_else(|| ModeError::UnknownUnitType(unit.unit_type.clone()))?;
             let path = match (&unit.path, unit.from) {
-                (Some(path), _) => {
+                (Some(path), from) => {
                     let id = paths.named(path.as_str());
-                    Some(id.ok_or_else(|| ModeError::UnknownPath(path.clone()))?)
+                    let path = id.ok_or_else(|| ModeError::UnknownPath(path.clone()))?;
+                    Some(PlacedPath { path, from })
                 }
                 (None, Some(_)) => return Err(ModeError::NoPathToWalk(unit.unit_type.clone())),
                 (None, None) => None,
@@ -141,7 +142,6 @@ impl ModeMap {
                 unit_type: of_type,
                 team: team(&unit.team)?,
                 path,
-                from: unit.from,
                 pos: point(&unit.pos)?,
             });
         }

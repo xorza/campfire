@@ -338,10 +338,8 @@ fn modifiers_change_a_units_stats_and_tags_hold_them_without_effect() {
         (TagEffects::default(), TagSet::of([slowed])),
     ];
     let own = TagSet::of([sight]);
-    Units::load_tags(
-        &mut game.world,
-        TagBook::new(effects, [(UnitType::new(0), own)]),
-    );
+    game.world
+        .insert_resource(TagBook::new(effects, [(UnitType::new(0), own)]));
     let unit = unit(&mut game, 0);
     game.world.entity_mut(unit).insert(Modifiers::default());
     let book = game.world.resource::<StatBook>();
@@ -638,7 +636,7 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
             TagSet::default(),
         )];
         let book = TagBook::new(effects, [(UnitType::new(0), TagSet::default())]);
-        Units::load_tags(&mut game.world, book);
+        game.world.insert_resource(book);
         // The type of the unit, 0, and the modifiers the shares below are instances of, 0 and 1.
         Units::load_type(
             &mut game.world,

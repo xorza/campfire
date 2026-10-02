@@ -115,10 +115,9 @@ impl Stats {
     /// pools regenerate. With no stat book, as before a mode loads one or on a client, which
     /// loads none, nothing changes.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
-        if let Some(view) = world.get_non_send::<View>() {
-            view.add_column(StatsColumn::default());
-            view.add_source(fill_row);
-        }
+        let view = world.non_send::<View>();
+        view.add_column(StatsColumn::default());
+        view.add_source(fill_row);
         world.insert_resource(ModifierBook::default());
         world.insert_resource(ParamBook::default());
         if let Some(ctx) = world.get_non_send::<Ctx>() {

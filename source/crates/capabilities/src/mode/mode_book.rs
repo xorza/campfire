@@ -71,14 +71,20 @@ pub(crate) struct ModeBook {
     pub(crate) map: GameMap,
 }
 
-/// A unit of the map, names resolved: on its path, if it names one, and walking it from `from`.
+/// A unit of the map, names resolved: on its path, if it names one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct PlacedUnit {
     pub(crate) unit_type: UnitType,
     pub(crate) team: Team,
-    pub(crate) path: Option<PathId>,
-    pub(crate) from: Option<PathEnd>,
+    pub(crate) path: Option<PlacedPath>,
     pub(crate) pos: Position,
+}
+
+/// The path a placed unit is on, and the end it walks it from, if it walks it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct PlacedPath {
+    pub(crate) path: PathId,
+    pub(crate) from: Option<PathEnd>,
 }
 
 impl ModeBook {

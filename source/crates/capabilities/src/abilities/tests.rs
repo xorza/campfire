@@ -1213,7 +1213,7 @@ fn stun_run() -> Vec<(StateHash, bool)> {
     };
     let effects = BTreeMap::from([(DeclaredName::new("stunned").unwrap(), stunned)]);
     let book = game.world.non_send::<View>().types_mut().tag_book(&effects);
-    Units::load_tags(&mut game.world, book);
+    game.world.insert_resource(book);
     let script = r#"fn on_resolve(ctx, caster, target) { ctx.add_modifier(target, "stun", 100); }"#;
     let strike = game.load("strike", &strike(), script);
     let caster = game.caster(strike, 1);

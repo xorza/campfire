@@ -81,10 +81,9 @@ impl Navigation {
     /// overlapping living bodies part; after Collide, each unit that walks stands within the bounds
     /// again.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
-        if let Some(view) = world.get_non_send::<View>() {
-            view.add_column(PathsColumn::default());
-            view.add_source(fill_row);
-        }
+        let view = world.non_send::<View>();
+        view.add_column(PathsColumn::default());
+        view.add_source(fill_row);
         world.insert_resource(Paths::default());
         world.insert_resource(Bounds::WORLD);
         world.insert_resource(BodyIndex::new(Body::MAX_RADIUS));

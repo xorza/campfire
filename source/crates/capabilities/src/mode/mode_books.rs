@@ -10,7 +10,6 @@ use crate::stats::Stats;
 use crate::stats::life_pool::LifePool;
 use crate::stats::pool_book::PoolBook;
 use crate::stats::stat_book::StatBook;
-use crate::units::Units;
 use crate::units::body::Body;
 use crate::units::script_view::View;
 use crate::units::tag_book::TagBook;
@@ -59,7 +58,7 @@ impl ModeBooks {
             world.insert_resource(bindings);
         }
         Stats::load(world, stats, pools);
-        Units::load_tags(world, tags);
+        world.insert_resource(tags);
         map
     }
 

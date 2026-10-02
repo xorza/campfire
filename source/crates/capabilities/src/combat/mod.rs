@@ -127,10 +127,9 @@ impl Combat {
     /// life die, each with its killer and assisters; in Vision, the dead whose type despawns
     /// go, after the Mode stage saw them.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
-        if let Some(view) = world.get_non_send::<View>() {
-            view.add_column(AttacksColumn::default());
-            view.add_source(fill_row);
-        }
+        let view = world.non_send::<View>();
+        view.add_column(AttacksColumn::default());
+        view.add_source(fill_row);
         world.insert_resource(PassQueue::default());
         world.insert_resource(Shots::default());
         world.insert_resource(Deaths::default());

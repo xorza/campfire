@@ -14,7 +14,6 @@ use crate::units::owner::Owner;
 use crate::units::relations::Relations;
 use crate::units::script_view::View;
 use crate::units::spawn_point::SpawnPoint;
-use crate::units::tag_book::TagBook;
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
 use crate::values::metric::Metric;
@@ -122,11 +121,6 @@ impl Units {
         });
         Ok(script)
     }
-
-    /// Gives the match its tags' effects and its unit types' own tags.
-    pub(crate) fn load_tags(world: &mut World, book: TagBook) {
-        world.insert_resource(book);
-    }
 }
 
 fn begin_tick(
@@ -134,7 +128,7 @@ fn begin_tick(
     mut failures: NonSendMut<'_, ScriptFailures>,
 ) {
     budgets.begin_tick();
-    failures.0.clear();
+    failures.clear();
 }
 
 #[cfg(test)]

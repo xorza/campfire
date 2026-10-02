@@ -1,9 +1,9 @@
-use serde::Deserialize;
+use serde::de::Error;
+use serde::{Deserialize, Deserializer};
 
 /// What a tag can stop its unit doing, or being: moving, the actions of a group, being chosen
 /// as a target, taking damage.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Block {
     Move,
     Attack,
@@ -23,6 +23,17 @@ impl Block {
         Block::Damage,
     ];
 
+    /// Each block's name, in the order of `ALL`.
+    const NAMES: [&'static str; Block::ALL.len()] = {
+        let mut names = [""; Block::ALL.len()];
+        let mut at = 0;
+        while at < names.len() {
+            names[at] = Block::ALL[at].name();
+            at += 1;
+        }
+        names
+    };
+
     /// As a mode's `blocks` writes it.
     pub const fn name(self) -> &'static str {
         match self {
@@ -33,5 +44,14 @@ impl Block {
             Block::Target => "target",
             Block::Damage => "damage",
         }
+    }
+}
+
+/// A block reads as the name `name` gives it, so the two never differ.
+impl<'de> Deserialize<'de> for Block {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Block, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        let found = Block::ALL.into_iter().find(|block| block.name() == text);
+        found.ok_or_else(|| D::Error::unknown_variant(&text, &Block::NAMES))
     }
 }

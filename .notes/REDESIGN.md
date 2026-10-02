@@ -329,7 +329,6 @@ Track I:  H4      F3 after unit script state
   - one struct per file: D2, D5, J;
   - visibility: J;
   - tuple return and arguments: D4 (`CallStart`), J;
-  - small simplifications: J;
   - server exit code: B4;
   - script fact lists: C4.
 
