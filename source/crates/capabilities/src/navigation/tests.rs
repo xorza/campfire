@@ -61,7 +61,7 @@ impl Walk {
         let id = self.world.resource_mut::<IdAllocator>().allocate();
         let entity = self
             .world
-            .spawn((id, at, MoveStep::new(Num::ONE).unwrap().bundle()))
+            .spawn((id, at, Navigation::walker(MoveStep::new(Num::ONE).unwrap())))
             .id();
         self.world.get_mut::<Destination>(entity).unwrap().set(to);
         id
@@ -91,7 +91,7 @@ impl Walk {
         let id = self.world.resource_mut::<IdAllocator>().allocate();
         let mut unit = self.world.spawn((id, at, body));
         if let Some(step) = step {
-            unit.insert(MoveStep::new(step).unwrap().bundle());
+            unit.insert(Navigation::walker(MoveStep::new(step).unwrap()));
             unit.get_mut::<Destination>().unwrap().set(to);
         }
         id

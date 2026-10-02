@@ -27,6 +27,7 @@ use crate::combat::heal::{Heal, HealCause};
 use crate::combat::heal_weigher::HealWeigher;
 use crate::combat::kept::Kept;
 use crate::combat::launches::{Launch, Launches};
+use crate::combat::modifier_hooks::ModifierHooks;
 use crate::combat::on_death::OnDeath;
 use crate::combat::pass_queue::{PassEntry, PassQueue};
 use crate::combat::recent_attackers::RecentAttackers;
@@ -34,9 +35,11 @@ use crate::combat::respawn::Respawn;
 use crate::players::player_resources::PlayerResources;
 use crate::players::resource_id::ResourceAmount;
 use crate::projectiles::projectile::{Flight, Payload};
+use crate::scripts::ctx::Ctx;
 use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
 use crate::scripts::script_batch::ScriptBatch;
+use crate::stats::StatsSet;
 use crate::stats::life_pool::LifePool;
 use crate::stats::modifier_book::ModifierId;
 use crate::stats::modifiers::Modifiers;
@@ -75,6 +78,7 @@ pub(crate) mod heal_handle;
 pub(crate) mod heal_weigher;
 pub(crate) mod kept;
 pub(crate) mod launches;
+pub(crate) mod modifier_hooks;
 pub(crate) mod on_death;
 pub(crate) mod pass_queue;
 pub(crate) mod recent_attackers;
@@ -120,11 +124,18 @@ impl Combat {
         }
         world.insert_resource(PassQueue::default());
         world.insert_resource(Deaths::default());
-        schedule.configure_sets(
+        if let Some(ctx) = world.get_non_send::<Ctx>().cloned() {
+            let hooks = ModifierHooks::new(ctx);
+            world.insert_non_send(CombatEvents::new(move |batch, event| {
+                hooks.hear(batch, event);
+            }));
+        }
+        schedule.configure_sets((
             CombatSet::Launch
                 .in_set(SimSet::Hit)
                 .after(CombatSet::Strike),
-        );
+            CombatSet::Die.before(StatsSet::Hold),
+        ));
         Actions::schedule(schedule);
         schedule.add_systems((
             (attack_events, strike)

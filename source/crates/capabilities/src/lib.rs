@@ -1,11 +1,11 @@
 //! Capabilities: the mechanisms a mode combines, a module each, on the core, and the mode above
 //! them. A module imports only from its own layer and the layers below, lowest first: `values`
 //! (data value types); the core, `units`, `scripts` and `players` (unit types, teams, owners,
-//! paths, the script view and runtime, and the players' resources); `actions`; `stats` and `combat`; `deliveries`, `projectiles`,
-//! `areas`, `abilities`, `navigation`, `vision`, `progression` and `production`; `orders`; the
-//! `mode`; and `capability_set`, which installs them. The layer test in `capability_set` holds
-//! this list, and the imports that still break it. A capability gives the script view its fields
-//! of a unit through a row source.
+//! paths, the script view and runtime, and the players' resources); `stats`; `actions`; `combat`;
+//! `deliveries`, `projectiles`, `areas`, `abilities`, `navigation`, `vision`, `progression` and
+//! `production`; `orders`; the `mode`; and `capability_set`, which installs them. The layer test
+//! in `capability_set` holds this list, and the imports that still break it. A capability gives
+//! the script view its fields of a unit through a row source.
 
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 #![allow(
@@ -90,7 +90,6 @@ pub use mode::unit_kit::UnitKit;
 pub use navigation::Navigation;
 pub use navigation::destination::Destination;
 pub use navigation::error::MapProblem;
-pub use navigation::move_step::MoveStep;
 pub use navigation::navigation_rules::NavigationRules;
 pub use navigation::on_path::OnPath;
 pub use navigation::path_walker::{PathEnd, PathWalker};
@@ -136,6 +135,7 @@ pub use stats::level::Level;
 pub use stats::modifier_book::ModifierId;
 pub use stats::modifier_data::{AuraData, ModifierData, Reapply};
 pub use stats::modifiers::Modifiers;
+pub use stats::move_step::MoveStep;
 pub use stats::player_modifiers::{PlayerModifier, PlayerModifiers};
 pub use stats::pool_cost::PoolCost;
 pub use stats::pool_data::PoolData;

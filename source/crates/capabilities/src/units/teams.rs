@@ -1,5 +1,7 @@
 use campfire_math::PlayerSlot;
+use campfire_script::rhai::INT;
 
+use crate::scripts::error::{ApiError, Checked};
 use crate::units::team::Team;
 
 /// The match's teams, in the manifest's order, the playing teams among them, those with slots,
@@ -76,6 +78,15 @@ impl Teams {
 
     pub(crate) fn players(&self) -> u32 {
         u32::try_from(self.slots.len()).expect("players fit u32")
+    }
+
+    /// Player `player`'s slot, as a script names it, when the session has it.
+    pub(crate) fn player(&self, player: INT) -> Checked<PlayerSlot> {
+        u32::try_from(player)
+            .ok()
+            .filter(|&slot| slot < self.players())
+            .map(PlayerSlot::new)
+            .ok_or_else(|| ApiError::UnknownPlayer.fail().into())
     }
 }
 

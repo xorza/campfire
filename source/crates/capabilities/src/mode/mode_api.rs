@@ -1,4 +1,3 @@
-use campfire_math::PlayerSlot;
 use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString, NativeCallContext};
 use campfire_sim::{Capability, Position, StableId};
 
@@ -100,7 +99,7 @@ impl ModeApi {
                 .roles(RoleSet::MODE),
             |ctx: &mut Ctx, player: INT| -> Checked<Dynamic> {
                 let book = ctx.mode_or_fail()?;
-                let slot = ModeApi::player(book, player)?;
+                let slot = book.teams.player(player)?;
                 let team = book
                     .teams
                     .of(slot)
@@ -405,15 +404,6 @@ impl ModeApi {
             .ok_or_else(|| ApiError::UnknownTeam.fail().into())
     }
 
-    /// Player `player`'s slot, when the session has it.
-    pub(crate) fn player(book: &ModeBook, player: INT) -> Checked<PlayerSlot> {
-        u32::try_from(player)
-            .ok()
-            .filter(|&slot| slot < book.teams.players())
-            .map(PlayerSlot::new)
-            .ok_or_else(|| ApiError::UnknownPlayer.fail().into())
-    }
-
     fn state(ctx: &Ctx, name: &str) -> Checked<Dynamic> {
         ctx.require(RoleSet::MODE)?;
         let field = ctx
@@ -461,7 +451,7 @@ impl ModeApi {
     fn choose(ctx: &Ctx, player: INT, choice: &str, values: &Array) -> Checked<()> {
         ctx.require(RoleSet::MODE)?;
         let book = ctx.mode_or_fail()?;
-        let slot = ModeApi::player(book, player)?;
+        let slot = book.teams.player(player)?;
         let choice = ModeApi::choice(ctx, choice)?;
         if values.len() != choice.count() {
             return Err(ApiError::ChoiceCount.fail().into());
@@ -493,7 +483,7 @@ impl ModeApi {
     fn chosen(ctx: &Ctx, player: INT, choice: &str) -> Checked<Array> {
         ctx.require(RoleSet::MODE)?;
         let book = ctx.mode_or_fail()?;
-        let slot = ModeApi::player(book, player)?;
+        let slot = book.teams.player(player)?;
         let choice = ModeApi::choice(ctx, choice)?;
         let frame = ctx.frame();
         let Some(values) = book.choices.chosen(&frame.choices, slot, choice) else {
@@ -513,7 +503,7 @@ impl ModeApi {
     fn available(ctx: &Ctx, player: INT, choice: &str, value: &str) -> Checked<bool> {
         ctx.require(RoleSet::MODE)?;
         let book = ctx.mode_or_fail()?;
-        let slot = ModeApi::player(book, player)?;
+        let slot = book.teams.player(player)?;
         let choice = ModeApi::choice(ctx, choice)?;
         let offer = book
             .roster
@@ -550,9 +540,7 @@ impl ModeApi {
         }
         let unit_type = ModeApi::unit_type(ctx, book, unit_type)?;
         let team = ModeApi::team(book, team)?;
-        let owner = player
-            .map(|player| ModeApi::player(book, player))
-            .transpose()?;
+        let owner = player.map(|player| book.teams.player(player)).transpose()?;
         let id = ctx.write()?.ids.allocate();
         let at = SpawnAt {
             id,
@@ -714,7 +702,7 @@ impl ModeApi {
 
     fn add_resource(ctx: &Ctx, player: INT, name: &str, amount: INT) -> Checked<()> {
         let book = ctx.mode_or_fail()?;
-        let slot = ModeApi::player(book, player)?;
+        let slot = book.teams.player(player)?;
         let resource = ctx
             .view()
             .resource_named(name)

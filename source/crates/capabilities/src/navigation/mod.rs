@@ -1,3 +1,4 @@
+use bevy_ecs::bundle::Bundle;
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Allow, Has, With, Without};
@@ -15,7 +16,6 @@ use crate::navigation::broadphase::Broadphase;
 use crate::navigation::collider::Collider;
 use crate::navigation::destination::Destination;
 use crate::navigation::error::MapProblem;
-use crate::navigation::move_step::MoveStep;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::PathWalker;
 use crate::navigation::pathing_grid::PathingGrid;
@@ -26,6 +26,7 @@ use crate::navigation::route_planner::{RoutePlanner, Short, Walkable, Window};
 use crate::navigation::segment::Segment;
 use crate::navigation::steering::Steering;
 use crate::navigation::walker::Walker;
+use crate::stats::move_step::MoveStep;
 use crate::units::block::Block;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
@@ -41,7 +42,6 @@ pub(crate) mod broadphase;
 pub(crate) mod collider;
 pub(crate) mod destination;
 pub(crate) mod error;
-pub(crate) mod move_step;
 pub(crate) mod navigation_rules;
 pub(crate) mod on_path;
 pub(crate) mod path_walker;
@@ -61,6 +61,16 @@ pub(crate) mod walker;
 pub struct Navigation;
 
 impl Navigation {
+    /// The components of a new unit that walks `step` a tick, with nowhere to go yet.
+    pub fn walker(step: MoveStep) -> impl Bundle {
+        (
+            step,
+            Destination::default(),
+            Route::default(),
+            Progress::default(),
+        )
+    }
+
     /// Adds navigation to a match, with no paths, the world for bounds, and a static index for
     /// walkers as wide as a body may be, until the mode sets its map's: in Move, units walk their
     /// routes to their destinations, straight lines until the map gives a pathing grid; in Collide, overlapping living bodies part; after Collide, each

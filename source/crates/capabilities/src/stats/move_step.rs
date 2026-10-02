@@ -1,15 +1,11 @@
-use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::Component;
 use campfire_math::Num;
 use campfire_sim::SimComponent;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::navigation::destination::Destination;
-use crate::navigation::progress::Progress;
-use crate::navigation::route::Route;
-
-/// How far a unit walks in one tick, never negative.
+/// How far a unit walks in one tick, never negative: the effect of its move speed, which its
+/// stats give.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 pub struct MoveStep(Num);
@@ -25,16 +21,6 @@ impl MoveStep {
 
     pub const fn get(self) -> Num {
         self.0
-    }
-
-    /// The components of a new unit that moves by this step, with nowhere to go yet.
-    pub fn bundle(self) -> impl Bundle {
-        (
-            self,
-            Destination::default(),
-            Route::default(),
-            Progress::default(),
-        )
     }
 }
 

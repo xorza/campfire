@@ -12,12 +12,13 @@ use crate::actions::slot_kind::SlotKind;
 use crate::capability_set::internals::TestMatch;
 use crate::combat::armed::Armed;
 use crate::combat::on_death::OnDeath;
-use crate::navigation::move_step::MoveStep;
+use crate::navigation::Navigation;
 use crate::navigation::path_walker::PathEnd;
 use crate::scripts::error::ApiError;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::script_limits::ScriptLimits;
+use crate::stats::move_step::MoveStep;
 use crate::stats::pool_cost::PoolCost;
 use crate::stats::pool_id::PoolId;
 use crate::stats::stat_id::StatId;
@@ -229,7 +230,7 @@ impl Match {
         let combatant = self.arm(combatant, team);
         let parts = (
             combatant,
-            meter().bundle(),
+            Navigation::walker(meter()),
             Owner::new(PlayerSlot::new(slot)),
         );
         self.spawn(at, parts)
@@ -970,7 +971,7 @@ fn a_walker_goes_back_to_its_path_after_a_chase() {
     let mut game = Match::with_paths(Paths::new([("mid", &waypoints[..])]));
     let walker = (
         game.arm(combatant(100, 1, 1, 5, 0), Team::new(0)),
-        meter().bundle(),
+        Navigation::walker(meter()),
         OnPath::new(PathId::new(0)),
         PathWalker::start(PathEnd::Start),
     );
@@ -1009,7 +1010,7 @@ fn a_monster_pulled_past_its_leash_walks_home_ignoring_its_attacker_and_heals() 
     let parts = (
         camp,
         arms,
-        MoveStep::new(half).unwrap().bundle(),
+        Navigation::walker(MoveStep::new(half).unwrap()),
         SpawnPoint::new(home),
     );
     let monster = game.spawn(home, parts);
@@ -1080,7 +1081,7 @@ fn on_think(ctx, unit) {
     let parts = (
         walker_type,
         game.arm(dummy(10), Team::new(0)),
-        meter().bundle(),
+        Navigation::walker(meter()),
         OnPath::new(PathId::new(0)),
         PathWalker::start(PathEnd::Start),
     );
@@ -1123,7 +1124,7 @@ fn a_walker_follows_its_path_in_its_direction() {
     let path_walker = |game: &mut Match, team, direction| {
         (
             game.arm(dummy(10), team),
-            meter().bundle(),
+            Navigation::walker(meter()),
             OnPath::new(PathId::new(0)),
             PathWalker::start(direction),
         )

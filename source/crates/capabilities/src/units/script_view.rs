@@ -360,6 +360,11 @@ impl View {
         self.0.borrow().metric
     }
 
+    /// Player `player`'s slot, as a script names it, when the session has it.
+    pub(crate) fn player(&self, player: INT) -> Checked<PlayerSlot> {
+        self.0.borrow().teams.player(player)
+    }
+
     /// Names the teams and the paths.
     pub(crate) fn set_names(&self, teams: Rc<Teams>, paths: Arc<[Box<str>]>) {
         let mut view = self.0.borrow_mut();

@@ -10,10 +10,6 @@ use bevy_ecs::world::{EntityRef, World};
 use campfire_math::{Num, Tick, Ticks};
 use campfire_sim::{EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, TickRate};
 
-use crate::combat::CombatSet;
-use crate::combat::combat_events::CombatEvents;
-use crate::navigation::move_step::MoveStep;
-use crate::scripts::ctx::Ctx;
 use crate::scripts::frame::Frame;
 use crate::stats::held_modifiers::{Held, HeldModifiers};
 use crate::stats::level::Level;
@@ -21,9 +17,9 @@ use crate::stats::live_shares::LiveShares;
 use crate::stats::modifier_book::{Applier, ModifierBook, ModifierId};
 use crate::stats::modifier_effect::ModifierEffect;
 use crate::stats::modifier_handle::ModifierHandle;
-use crate::stats::modifier_hooks::ModifierHooks;
 use crate::stats::modifier_spec::ParamPlace;
 use crate::stats::modifiers::Modifiers;
+use crate::stats::move_step::MoveStep;
 use crate::stats::param_book::ParamBook;
 use crate::stats::param_source::ParamSource;
 use crate::stats::param_sources::ParamSources;
@@ -56,9 +52,9 @@ pub(crate) mod modifier_book;
 pub(crate) mod modifier_data;
 pub(crate) mod modifier_effect;
 pub(crate) mod modifier_handle;
-pub(crate) mod modifier_hooks;
 pub(crate) mod modifier_spec;
 pub(crate) mod modifiers;
+pub(crate) mod move_step;
 pub(crate) mod param_book;
 pub(crate) mod param_read;
 pub(crate) mod param_source;
@@ -93,8 +89,8 @@ pub(crate) enum StatsSet {
     Expire,
     /// In `SimSet::Inputs`: the living units' pools regenerate.
     Regenerate,
-    /// In `SimSet::Resolve`, after `CombatSet::Die`: auras, players and `HeldModifiers` hold
-    /// their modifiers.
+    /// In `SimSet::Resolve`, after the tick's deaths: the dead units' modifiers end, then
+    /// auras, players and `HeldModifiers` hold their modifiers.
     Hold,
 }
 
@@ -112,12 +108,6 @@ impl Stats {
         world.insert_resource(PlayerModifiers::default());
         world.insert_resource(HeldModifiers::default());
         registry.register_resource::<PlayerModifiers>();
-        if let Some(ctx) = world.get_non_send::<Ctx>().cloned() {
-            let hooks = ModifierHooks::new(ctx);
-            world.insert_non_send(CombatEvents::new(move |batch, event| {
-                hooks.hear(batch, event);
-            }));
-        }
         registry.register_component::<Level>();
         registry.register_component::<Modifiers>();
         registry.register_component::<Pools>();
@@ -127,10 +117,10 @@ impl Stats {
                 regenerate.in_set(StatsSet::Regenerate),
             )
                 .in_set(SimSet::Inputs),
-            (clear_dead_modifiers, apply_held.in_set(StatsSet::Hold))
+            (clear_dead_modifiers, apply_held)
                 .chain()
                 .in_set(SimSet::Resolve)
-                .after(CombatSet::Die),
+                .in_set(StatsSet::Hold),
             (give_derived_parts, refresh_stats)
                 .chain()
                 .before(SimSet::Inputs),

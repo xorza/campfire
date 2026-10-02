@@ -18,6 +18,7 @@ use crate::mode::mode_schema::ModeSchema;
 use crate::mode::mode_setup::{ModeSetup, SlotAction};
 use crate::mode::roster::Roster;
 use crate::mode::unit_kit::UnitKit;
+use crate::navigation::Navigation;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::{PathEnd, PathWalker};
 use crate::navigation::paths::Paths;
@@ -184,7 +185,7 @@ impl ModeBook {
             unit.insert(body);
         }
         if let Some(step) = kit.step {
-            unit.insert(step.bundle());
+            unit.insert(Navigation::walker(step));
         }
         if !kit.tracks.is_empty() {
             unit.insert(Experience::new(kit.tracks));

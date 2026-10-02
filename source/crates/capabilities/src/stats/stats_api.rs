@@ -2,7 +2,6 @@ use campfire_math::Ticks;
 use campfire_script::rhai::INT;
 use campfire_sim::Capability;
 
-use crate::mode::mode_api::ModeApi;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
 use crate::scripts::ctx::Ctx;
@@ -92,7 +91,7 @@ impl StatsApi {
 
     /// Queues modifier `id` of the call's package for `player`, one of the session's.
     fn add_player_modifier(ctx: &Ctx, player: INT, id: &str) -> Checked<()> {
-        let player = ModeApi::player(ctx.mode_or_fail()?, player)?;
+        let player = ctx.view().player(player)?;
         let id = ctx.view().modifier_named(ctx.frame().package(), id)?;
         ctx.queue(ModifierEffect::AddPlayer { player, id })
     }
