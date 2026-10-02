@@ -4,7 +4,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use bevy_ecs::world::{EntityRef, World};
-use campfire_math::{Num, PlayerSlot, Tick, Ticks, Vec3};
+use campfire_math::{Num, PlayerSlot, Tick, Ticks};
 use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString};
 use campfire_sim::{Capability, EntityIndex, Position, SimTick, StableId, TickRate};
 
@@ -467,8 +467,9 @@ impl View {
         Some(value.to_dynamic())
     }
 
-    /// The living units within `radius` of `pos` in the map's metric that `filter` selects
-    /// relative to `of`, by stable id; with `visible`, only those `of`'s team sees.
+    /// The living targets whose bodies come within `radius` of `pos` in the map's metric, as an
+    /// area of that radius reaches, that `filter` selects relative to `of`, by stable id; with
+    /// `visible`, only those `of`'s team sees.
     pub(crate) fn find(
         &self,
         of: &Unit,
@@ -485,14 +486,17 @@ impl View {
         let selected = view.selected(&of, filter).map_err(ApiError::fail)?;
         Ok(selected
             .filter(|(_, row)| !visible || row.seen_by.contains(of.team))
-            .filter(|(_, row)| view.metric.within(pos, row.pos, radius))
+            .filter(|(_, row)| {
+                view.metric
+                    .reaches(pos, Num::ZERO, radius, row.pos, row.radius)
+            })
             .map(|(at, row)| Dynamic::from(Unit::new(row.id, at, self.clone())))
             .collect())
     }
 
-    /// The nearest living unit within `radius` of `of` in the map's metric that `filter` selects
-    /// relative to it and its team sees, by exact distance, the lower stable id on a tie; `()`
-    /// when there is none.
+    /// The nearest living target that `radius` from the edge of `of`'s body reaches in the map's
+    /// metric, as a weapon's range does, that `filter` selects relative to it and its team sees,
+    /// by exact distance between centres, the lower stable id on a tie; `()` when there is none.
     pub(crate) fn nearest_visible(&self, of: &Unit, radius: Num, filter: &str) -> Checked<Dynamic> {
         if radius < Num::ZERO {
             return Err(ApiError::NegativeRadius.fail().into());
@@ -503,8 +507,11 @@ impl View {
             .selected(&of, filter)
             .map_err(ApiError::fail)?
             .filter(|(_, row)| row.seen_by.contains(of.team))
+            .filter(|(_, row)| {
+                view.metric
+                    .reaches(of.pos, of.radius, radius, row.pos, row.radius)
+            })
             .map(|(at, row)| (view.metric.offset(of.pos, row.pos), row.id, at))
-            .filter(|&(offset, ..)| Vec3::ZERO.within(offset, radius))
             .min_by_key(|&(offset, id, _)| (offset.length_squared_bits(), id));
         Ok(nearest.map_or(Dynamic::UNIT, |(_, id, at)| {
             Dynamic::from(Unit::new(id, at, self.clone()))
@@ -541,7 +548,7 @@ impl View {
         let find = MemberSpec::call(
             "find",
             "(of, pos, radius, filter)",
-            "the living units within `radius` of `pos` that `filter` selects for `of`, seen or not, by stable id",
+            "the living targets whose bodies come within `radius` of `pos`, as an area's, that `filter` selects for `of`, seen or not, by stable id",
         )
         .name(3, NameKind::Filter);
         let visible = MemberSpec::call(
@@ -569,7 +576,7 @@ impl View {
         let nearest = MemberSpec::call(
             "nearest_visible",
             "(of, radius, filter)",
-            "the nearest living unit within `radius` of `of` that `filter` selects and `of`'s team sees, `()` with none",
+            "the nearest living target, centre to centre, whose body `radius` from the edge of `of`'s reaches, as a weapon's range, that `filter` selects and `of`'s team sees, `()` with none",
         ).name(2, NameKind::Filter)
         .capability(Capability::Vision);
         api.bind(

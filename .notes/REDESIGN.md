@@ -13,7 +13,6 @@ References: `R§n` is group n of `REVIEW.md`, `T§n` is group n of `TEST-REVIEW.
 | R1 Immutable books, built at load, shared | Package data is copied into the view, the frame and the state, and looked up by name after the load | R§7, R§9, R§11, R§12 |
 | R2 One load pipeline | The load check and the match build each validate and compute | R§6, R§1, R§9 |
 | R3 Strict layers with registered hooks | Lower modules import higher ones, and the core names every capability | R§8, R§10 |
-| R4 One rule of reach | "Within reach" and "seen" have several definitions | R§3 |
 | R5 Stable order and one exactness rule | Some systems spend or allocate in query order, and some arithmetic rounds its own way | R§4, R§12 |
 | R6 A limit on work per tick, and fresh shared indexes | Navigation, vision, deliveries and the view have no work limit and no shared index | R§5, R§12 |
 | R7 State holds only state, and a restore is checked | Components store book data, and decoded state is trusted | R§1, R§7, R§10 |
@@ -147,27 +146,6 @@ capability_set, books
 - **Action kinds.** Each kind registers its rules: its start check, its windup, and what it does when it resolves. Combat registers the attack kind, abilities the cast and production the train. `start_actions` still names the three kinds.
 - **The core row.** `RecentAttack` and the vision and navigation fields leave the core row for their columns.
 - **One table of capabilities.** The install order, `needs`, the layer of each module and the list in `lib.rs` all come from one table in `capability_set`.
-
-## R4. One rule of reach
-
-### Problem
-
-- Script queries and auras measure from centres. Combat, areas and line projectiles measure from body edges. Homing projectiles hit at the centre.
-- A new unit is not seen by its own vision group in its first tick.
-
-### Shape
-
-- **The reach rule.** One `Reach` helper decides every reach, edge to edge, in the map's metric:
-
-  ```rust
-  Reach::within(metric, from, from_radius, range, to, to_radius) -> bool
-  ```
-
-  Combat, areas, line projectiles, auras, script queries and homing hits all call it. A homing projectile then hits when its body touches the target's body, not at its centre.
-- **The aura rule.** An instance of 0 stacks, or one that an immunity suppresses, projects no aura. stats.md states the rule.
-- **The vision rule.** A new unit is seen by its whole group from its spawn: `Vision::seen_by` uses the group, not the team.
-
-Edge-to-edge queries make Lash Out, Wildfire, Tempest and the auras reach up to one body radius farther. The reference content may need new radii. This is decision 2.
 
 ## R5. Stable order and one exactness rule
 
@@ -339,7 +317,6 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 
 | Step | Change | Needs | Size |
 |---|---|---|---|
-| E2 | `Reach` everywhere: queries, auras, homing hits; the aura rule; vision from spawn; new reference radii if decision 2 asks for them | B | M, changes behaviour |
 | F2 | `mul_div` and `round_ties_even`; the metric in scripts and homing; hit order by `along`; `RngStream`; ids at call time, so `ctx.projectile` and `ctx.area` return handles; the trig bound in design 09 | B | M, changes behaviour |
 | G1 | `register_*_checked` and a check for every type; absent resources removed; the state table test; the snapshot fuzz | A | M |
 | H1 | `BodyGrid`, read by deliveries and auras; one `(group, unit)` hit store; stuck walkers through the grid | B | M |
@@ -360,7 +337,7 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 ```
 Track S:  D5
 
-Track I:  E2      F2      G1      H1, H4      H2 → H3
+Track I:  F2      G1      H1, H4      H2 → H3
 
 Joins:    G1 → G2      D5 + H1 → H1b
 ```
@@ -383,11 +360,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
 ## Decisions for you
 
 1. **Unit type names across packages.** A mode script names the mode's types and the avatars. A package's delivery types are seen only by that package's actions. So a mode script cannot spawn a hero's delivery type. I recommend this: the reference scripts spawn only mode types and avatars.
-2. **Edge-to-edge reach for script queries and auras** (R4). The choices:
-   - adopt it, and retune the reference radii;
-   - keep centres for scripts, and change the design text.
-
-   I recommend adopting it. One reach rule is what players read.
 3. **The effect dispatch** (R3). Typed queues for each capability, as proposed, or keep one `Effect` enum and move it with its dispatch to `capability_set`. With the enum, `scripts` still needs the enum's type, so the cycle stays. I recommend the typed queues.
 4. **View columns** (R3). Columns for each capability, as proposed, or change design 04's overview so the core may name capability fields. Columns cost more code now. They are what the client's actions and every later capability (items, interaction) need. I recommend columns.
 7. **An attack's damage names its weapon** (R§11). Change the code (`d.ability` is the weapon), or the design (an attack names no action). I recommend the code: a weapon is an action in design 04.
@@ -411,11 +383,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - unlimited work before a refusal: B4;
   - lobby crash: B4;
   - several seats: B4.
-- **R§3:**
-  - queries from centres: E2;
-  - aura from centre: E2;
-  - homing at centre: E2;
-  - vision in the first tick: E2.
 - **R§4:**
   - train order: B2;
   - homing and line types: B2;

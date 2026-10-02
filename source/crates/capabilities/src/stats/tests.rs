@@ -477,6 +477,32 @@ fn a_modifier_that_reads_a_param_applies_in_a_match_with_no_scripts() {
     assert_eq!(step, Num::from_bits(1_118_481));
 }
 
+/// An application of the aura `id` of `radius`, one stack with no end, carried by `carrier`.
+fn aura(id: ModifierId, carrier: StableId, radius: Num) -> Application {
+    Application {
+        instance: Instance {
+            id,
+            source: Some(carrier),
+            ability: None,
+            rank: 1,
+            passive: false,
+            held: false,
+            aura_radius: Some(radius),
+            stacks: 1,
+            until: None,
+            stack_life: None,
+            stack_ends: Vec::new(),
+            interval: None,
+            shield: None,
+            stats: Vec::new(),
+            tags: TagSet::default(),
+            state: Vec::new(),
+        },
+        reapply: Reapply::Refresh,
+        max_stacks: None,
+    }
+}
+
 #[test]
 fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     let data = modifier_data;
@@ -523,28 +549,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
         .world
         .get_mut::<Modifiers>(entity(&game, carrier))
         .unwrap();
-    presence_carrier.apply(Application {
-        instance: Instance {
-            id: presence,
-            source: Some(carrier),
-            ability: None,
-            rank: 1,
-            passive: false,
-            held: false,
-            aura_radius: Some(num(2)),
-            stacks: 1,
-            until: None,
-            stack_life: None,
-            stack_ends: Vec::new(),
-            interval: None,
-            shield: None,
-            stats: Vec::new(),
-            tags: TagSet::default(),
-            state: Vec::new(),
-        },
-        reapply: Reapply::Refresh,
-        max_stacks: None,
-    });
+    presence_carrier.apply(aura(presence, carrier, num(2)));
     let holds = |game: &TestMatch, id: StableId| {
         let modifiers = game.world.get::<Modifiers>(entity(game, id)).unwrap();
         modifiers
@@ -557,11 +562,39 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
         [carrier, near, far, enemy].map(|id| holds(&game, id)),
         [true, true, false, false]
     );
-    // The near ally leaves, and the far one comes within 2 m.
+    // The near ally leaves, and the far one comes to 3 m with a body of 1 m: its edge is within
+    // 2 m, as an area's radius reaches it.
     *game.world.get_mut::<Position>(entity(&game, near)).unwrap() = at(5);
-    *game.world.get_mut::<Position>(entity(&game, far)).unwrap() = at(-2);
+    let moved = (at(-3), Body::new(num(1)).unwrap());
+    game.world.entity_mut(entity(&game, far)).insert(moved);
     game.world.run_schedule(SimUpdate);
     assert_eq!([near, far].map(|id| holds(&game, id)), [false, true]);
+    // An aura's instance of no stack projects nothing, nor does one its carrier's immunity
+    // suppresses: the aura grants tag 0, to which the carrier is immune.
+    let edit = |game: &mut TestMatch, change: &dyn Fn(&mut Instance)| {
+        let holder = entity(game, carrier);
+        let mut modifiers = game.world.get_mut::<Modifiers>(holder).unwrap();
+        change(modifiers.get_mut(presence, Some(carrier)).unwrap());
+    };
+    edit(&mut game, &|instance| instance.stacks = 0);
+    game.world.run_schedule(SimUpdate);
+    assert!(!holds(&game, far));
+    edit(&mut game, &|instance| instance.stacks = 1);
+    game.world.run_schedule(SimUpdate);
+    assert!(holds(&game, far));
+    edit(&mut game, &|instance| {
+        instance.tags = TagSet::of([Tag::new(0)]);
+    });
+    let immune = UnitTags {
+        immune: TagSet::of([Tag::new(0)]),
+        ..UnitTags::default()
+    };
+    game.world.entity_mut(entity(&game, carrier)).insert(immune);
+    game.world.run_schedule(SimUpdate);
+    assert!(!holds(&game, far));
+    game.world
+        .entity_mut(entity(&game, carrier))
+        .remove::<UnitTags>();
     // The carrier dies: its aura goes, with its own modifiers.
     let dead = entity(&game, carrier);
     game.world.entity_mut(dead).insert(Dead);

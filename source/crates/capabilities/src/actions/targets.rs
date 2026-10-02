@@ -68,7 +68,7 @@ impl Targets<'_, '_> {
         target: &LivingUnit,
     ) -> bool {
         self.metric
-            .within(from, target.pos, range + radius + target.radius)
+            .reaches(from, radius, range, target.pos, target.radius)
     }
 
     /// Whether `range` from a unit at `from` of body radius `radius` reaches the point `at`, from
@@ -80,7 +80,7 @@ impl Targets<'_, '_> {
         range: Num,
         at: Position,
     ) -> bool {
-        self.metric.within(from, at, range + radius)
+        self.metric.reaches(from, radius, range, at, Num::ZERO)
     }
 
     /// Every living unit that may be a target, in no order.

@@ -53,7 +53,7 @@ damage_kind = "true"
 [actions.tower_attack]
 kind = "attack"
 targeting = "enemies"
-range = "7.75"
+range = "6.25"
 windup_ms = 150
 rate = "attack_speed"
 damage = "attack_damage"

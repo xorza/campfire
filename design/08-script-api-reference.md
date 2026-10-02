@@ -23,7 +23,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `dash` | `(unit, to, speed)` | every role | navigation | planned | moves `unit` to `to` at `speed` |
 | `end` | `(team) or (())` | mode | core | since 1.0 | ends the match, once: `team` wins, `()` is a draw |
 | `enemy_team` | `(team)`, `team` a team | every role | core | since 1.0 | the one team that is `team`'s enemy, in a mode of two playing teams |
-| `find` | `(of, pos, radius, filter)`, `filter` a filter | every role | core | since 1.0 | the living units within `radius` of `pos` that `filter` selects for `of`, seen or not, by stable id |
+| `find` | `(of, pos, radius, filter)`, `filter` a filter | every role | core | since 1.0 | the living targets whose bodies come within `radius` of `pos`, as an area's, that `filter` selects for `of`, seen or not, by stable id |
 | `find_visible` | `(of, pos, radius, filter)`, `filter` a filter | every role | vision | since 1.0 | as `find`, of the units `of`'s team sees |
 | `grant` | `(unit, kind, ids)`, `kind` a slot kind | mode | abilities | since 1.0 | puts the actions `ids`, loadout entries the mode depends on, in the slot kind `kind` of `unit`, after its slots of that kind, at the kind's first rank |
 | `grant_perk` | `(unit, id)` | every role | progression | planned | gives `unit` the perk `id`, with no point and no requirement |
@@ -31,7 +31,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `knock_back` | `(unit, from, distance, ms)` | every role | stats | planned | pushes `unit` away from `from` |
 | `learn` | `(avatar, slot)` | mode | abilities | since 1.0 | the ability in `slot` a rank more, up to its last |
 | `map` | read | every role | core | since 1.0 | the map: its paths and its markers |
-| `nearest_visible` | `(of, radius, filter)`, `filter` a filter | every role | vision | since 1.0 | the nearest living unit within `radius` of `of` that `filter` selects and `of`'s team sees, `()` with none |
+| `nearest_visible` | `(of, radius, filter)`, `filter` a filter | every role | vision | since 1.0 | the nearest living target, centre to centre, whose body `radius` from the edge of `of`'s reaches, as a weapon's range, that `filter` selects and `of`'s team sees, `()` with none |
 | `order_attack` | `(unit, target)` | AI | orders | since 1.0 | `unit` attacks `target`, a living enemy that one of its weapons selects |
 | `order_follow_path` | `(unit)` | AI | orders | since 1.0 | `unit` drops its target and walks its path again |
 | `order_move` | `(unit, pos)` | AI | orders | since 1.0 | `unit` drops its target and walks to `pos`, within the map, off its path |
@@ -140,7 +140,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | --- | --- | --- | --- | --- |
 | `direction_to` | `(pos)` | core | since 1.0 | the unit vector towards `pos` in the map's metric, `()` for the same point |
 | `distance_to` | `(pos)` | core | since 1.0 | the distance to `pos` in the map's metric |
-| `within` | `(pos, radius)` | core | since 1.0 | whether `pos` is within `radius` in the map's metric, exactly: the test for reach |
+| `within` | `(pos, radius)` | core | since 1.0 | whether `pos` is within `radius` in the map's metric, exactly: the reach rule between two points, which have no bodies |
 
 ## Vector
 

@@ -62,7 +62,6 @@ impl Scene {
         Scene { world, registry }
     }
 
-    /// A unit of `team` at (`x`, `z`) that sees `sight` meters, if it sees.
     /// A unit of `team` at `x`, `z` with the life pool, so it may be a target, and seeing
     /// `sight` when given.
     fn spawn(&mut self, team: u8, x: i64, z: i64, sight: Option<i64>) -> StableId {
@@ -88,7 +87,8 @@ impl Scene {
     }
 
     fn seen_by(&self, id: StableId) -> TeamSet {
-        Vision::seen_by(&self.world.entity(self.entity(id)))
+        let relations = self.world.resource::<Relations>();
+        Vision::seen_by(&self.world.entity(self.entity(id)), relations)
     }
 
     /// `probe(ctx, of)` in `source`, run on the units as they are now.
@@ -135,7 +135,7 @@ fn each_team_sees_the_cells_its_living_units_reveal() {
     scene.world.entity_mut(entity).remove::<Pools>();
     let team = |index| TeamSet::of(Team::new(index));
 
-    // Before the first Vision stage each unit is seen by its team alone.
+    // Before the first Vision stage each unit is seen by its vision group: here its team alone.
     assert_eq!(scene.seen_by(near), team(1));
     scene.world.run_schedule(SimUpdate);
     let teams = [seer, near, far, dead].map(|id| scene.seen_by(id));
@@ -192,6 +192,15 @@ fn each_team_sees_the_cells_its_living_units_reveal() {
     *scene.world.get_mut::<Position>(entity).unwrap() = at(-3, 0);
     scene.world.run_schedule(SimUpdate);
     assert_eq!(scene.seen_by(sneak), team(1).with(Team::new(0)));
+
+    // A new unit is seen by its whole group before its first Vision stage, as that stage gives
+    // it: teams 1 and 2 become friends that share vision.
+    let relations = &mut scene.world.resource_mut::<Relations>();
+    relations.set(Team::new(1), Team::new(2), Attitude::Friendly, true);
+    let new = scene.spawn(2, 9, 9, None);
+    assert_eq!(scene.seen_by(new), team(2).with(Team::new(1)));
+    scene.world.run_schedule(SimUpdate);
+    assert_eq!(scene.seen_by(new), team(2).with(Team::new(1)));
 
     // What a team sees is state, restored with the rest.
     let mut per_type = Vec::new();

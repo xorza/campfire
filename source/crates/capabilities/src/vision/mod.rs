@@ -53,11 +53,12 @@ impl Vision {
     }
 
     /// The teams that see `unit`: those the last Vision stage found, or, before it ran, the
-    /// unit's own; every team for an entity with no team, as a match without vision sees.
-    fn seen_by(unit: &EntityRef<'_>) -> TeamSet {
+    /// unit's vision group under `relations`, as that stage would give it at the least; every
+    /// team for an entity with no team, as a match without vision sees.
+    fn seen_by(unit: &EntityRef<'_>, relations: &Relations) -> TeamSet {
         match (unit.get::<SeenBy>(), unit.get::<Team>()) {
             (Some(seen), _) => seen.get(),
-            (None, Some(&team)) => TeamSet::of(team),
+            (None, Some(&team)) => relations.vision_group(team),
             (None, None) => TeamSet::ALL,
         }
     }
@@ -65,7 +66,7 @@ impl Vision {
 
 /// Fills a row of the script view with the teams that see the unit.
 fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
-    fill.row.seen_by = Vision::seen_by(unit);
+    fill.row.seen_by = Vision::seen_by(unit, fill.world.resource::<Relations>());
 }
 
 /// Reveals the cells each living unit with a sight sees to its vision group, and those each such

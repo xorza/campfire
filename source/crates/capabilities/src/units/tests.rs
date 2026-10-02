@@ -185,7 +185,22 @@ fn queries_select_living_units_by_filter_and_exact_distance() {
     assert_eq!(Scene::ids(scene.probe(nearest, of).unwrap()), [east]);
     scene.world.insert_resource(Metric::Planar);
 
-    // The nearest in turn as each despawns: east and west tie at 4 m, and east has the lower id.
+    // A query reaches a body to its edge, as an area does: far, at 6 m, with a body of 1 m comes
+    // within 5 m. `nearest_visible` reaches from the edge of `of`'s body too, as a weapon's
+    // range: 2 m reaches high, 3 m away, only once `of` has a body of 1 m.
+    let body = Body::new(num(1)).unwrap();
+    let far_entity = scene.entity(far);
+    scene.world.entity_mut(far_entity).insert(body);
+    assert_eq!(find(&mut scene, "enemies"), [high, east, west, edge, far]);
+    let near_two = r#"fn probe(ctx, of) { ctx.nearest_visible(of, num(2), "enemies") }"#;
+    assert_eq!(Scene::ids(scene.probe(near_two, of).unwrap()), []);
+    let of_entity = scene.entity(of);
+    scene.world.entity_mut(of_entity).insert(body);
+    assert_eq!(Scene::ids(scene.probe(near_two, of).unwrap()), [high]);
+
+    // The nearest in turn as each despawns, by distance between centres: east and west tie at
+    // 4 m, and east has the lower id; far, its body's edge at 5 m as edge's centre is, is 6 m
+    // away.
     let nearest = r#"fn probe(ctx, of) { ctx.nearest_visible(of, num(5), "enemies") }"#;
     let mut order = Vec::new();
     while let [next] = Scene::ids(scene.probe(nearest, of).unwrap())[..] {
@@ -193,7 +208,7 @@ fn queries_select_living_units_by_filter_and_exact_distance() {
         let entity = scene.entity(next);
         scene.world.despawn(entity);
     }
-    assert_eq!(order, [high, east, west, edge]);
+    assert_eq!(order, [high, east, west, edge, far]);
 
     let refusals = [
         (

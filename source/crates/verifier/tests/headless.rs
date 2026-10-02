@@ -247,31 +247,33 @@ fn scripted_creeps_and_towers_replay_to_the_same_hashes() {
     // creep 0.35 m; a range counts from the edge of each body.
     //
     // The hero walks ¼ m a tick from (0, −2) in tick 0 and stands at (1, −2) from tick 3. Tower 1
-    // takes a hero within 7.75 m of its center: in tick 1 the hero at 0.25 is √(7.75² + 1) ≈ 7.81
-    // m away, beyond; in tick 9, at 1, √(7² + 1) ≈ 7.07 m, within: no creep is in reach, so it
-    // takes the hero. Its reach from edge to edge is 7.75 + 0.9 + 0.5 m from its center, so its
-    // attacks start in ticks 9 and 46 and fire 5 ticks later, from (8, −3), at the hero 7.07 m
-    // away. A projectile flies 12 m/s ÷ 30, 0.4 m rounded down to 6710886 / 2²⁴ m, from the tick
-    // after it fires: 17 steps leave less than a step, so the 18th lands, in ticks 32 and 69, for
-    // 150 each.
+    // takes the nearest hero that 6.25 m from the edge of its body reaches, 6.25 + 0.9 + 0.5 =
+    // 7.65 m between centres: in tick 1 the hero at 0.25 is √(7.75² + 1) ≈ 7.81 m away, beyond; in
+    // tick 9, at 1, √(7² + 1) ≈ 7.07 m, within: no creep is in reach, so it takes the hero. Its
+    // weapon's reach is the same 7.65 m, so its attacks start in ticks 9 and 46, and fire 5 ticks
+    // later, from (8, −3), at the hero 7.07 m away. A projectile of no width flies 12 m/s ÷ 30,
+    // 0.4 m rounded down to 6710886 / 2²⁴ m, from the tick after it fires, and hits when it comes
+    // within the hero's 0.5 m: 16 steps leave 7.07 − 6.4 ≈ 0.67 m, 17 leave 0.27 m, so the 17th
+    // hits, in ticks 31 and 68, for 150 each.
     //
     // The east creeps walk ⅛ m a tick from tick 1, where their bodies, both at 15.875, part to
-    // 15.525 and 16.225; each thinks in tick t where the tick before left it. Creep 5 thinks in
-    // tick 69 at 15.525 − 67/8 ≈ 7.15, √(6.15² + 2²) ≈ 6.47 m from the hero, within its 7 m aggro
-    // range, and in tick 61 at 8.15, √(7.15² + 4) ≈ 7.42 m, beyond: it takes the hero in tick
-    // 69. Creep 6 thinks in tick 70 at 16.225 − 68/8 = 7.725, √(6.725² + 4) ≈ 7.02 m, just beyond:
-    // it takes no one. The west creeps are 15 m from the east's, and tower 0 is 15.5 m from
-    // them: none of them takes a target.
+    // 15.525 and 16.225; each thinks in tick t where the tick before left it, and takes the hero
+    // that its 6 m aggro range reaches from its edge, 6 + 0.35 + 0.5 = 6.85 m between centres.
+    // Creep 5 thinks in tick 69 at 15.525 − 67/8 ≈ 7.15, √(6.15² + 2²) ≈ 6.47 m from the hero,
+    // within, and in tick 61 at 8.15, √(7.15² + 4) ≈ 7.42 m, beyond: it takes the hero in tick 69.
+    // Creep 6 thinks in tick 70 at 16.225 − 68/8 = 7.725, √(6.725² + 4) ≈ 7.02 m, beyond: it takes
+    // no one. The west creeps are 15 m from the east's, and tower 0 is 15.5 m from them: none of
+    // them takes a target.
     let expected: Vec<_> = (0..72)
         .map(|tick| {
             let hero = Some(2);
             let from = |first: u64| (tick >= first).then_some(()).and(hero);
             let hero_health = match tick {
-                ..32 => 600,
-                32..69 => 450,
+                ..31 => 600,
+                31..68 => 450,
                 _ => 300,
             };
-            let projectiles = usize::from((14..32).contains(&tick) || (51..69).contains(&tick));
+            let projectiles = usize::from((14..31).contains(&tick) || (51..68).contains(&tick));
             Seen {
                 targets: [None, from(9), None, None, from(69), None],
                 hero_health,

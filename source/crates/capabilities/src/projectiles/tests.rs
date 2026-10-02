@@ -16,6 +16,7 @@ use crate::projectiles::projectile_data::ProjectileData;
 use crate::stats::pool_id::PoolId;
 use crate::units::Units;
 use crate::units::action_id::ActionId;
+use crate::units::body::Body;
 use crate::units::dead::Dead;
 use crate::units::recent_attack::RecentAttack;
 use crate::units::type_scope::TypeScope;
@@ -200,15 +201,19 @@ impl Volley {
 }
 
 #[test]
-fn a_projectile_flies_to_its_target_and_strikes_on_arrival() {
+fn a_projectile_flies_to_its_target_and_strikes_as_it_reaches_its_body() {
     let mut volley = Volley::new();
     let shooter_id = volley.unit(0, at(0, 0), shooter(volley.bolt));
     let target_id = volley.unit(1, at(5, 0), target());
+    let body = Body::new(Num::ONE).unwrap();
+    let entity = volley.entity(target_id);
+    volley.world.entity_mut(entity).insert(body);
     volley.attack(shooter_id, target_id);
 
-    // The attack starts in tick 0 and fires in tick 2, from the origin. The projectile flies
-    // from tick 3, half a meter a tick: 5 m is 10 steps, ticks 3 to 12, and it strikes in the
-    // last, which it ends on. The next attack starts in tick 10 and fires in tick 12.
+    // The attack starts in tick 0 and fires in tick 2, from the origin. The projectile, of no
+    // width, flies from tick 3, half a meter a tick: the target's body of 1 m at 5 m starts at
+    // 4 m, 8 steps, ticks 3 to 10, and it strikes in the last, which it ends on. The next attack
+    // starts in tick 10 and fires in tick 12.
     let mut flights = Vec::new();
     let mut healths = Vec::new();
     for _ in 0..=12 {
@@ -222,16 +227,15 @@ fn a_projectile_flies_to_its_target_and_strikes_on_arrival() {
     };
     let expected: Vec<_> = [vec![], vec![]]
         .into_iter()
-        .chain((0..=9).map(flying))
-        .chain([flying(0)])
+        .chain((0..=7).map(flying))
+        .chain([vec![], vec![], flying(0)])
         .collect();
     assert_eq!(flights, expected);
-    assert_eq!(healths, [[100; 12].as_slice(), &[70]].concat());
-    let entity = volley.entity(target_id);
+    assert_eq!(healths, [[100; 10].as_slice(), &[70; 3]].concat());
     let attackers = volley.world.get::<RecentAttackers>(entity).unwrap();
     let attack = RecentAttack {
         source: shooter_id,
-        tick: Tick::new(12),
+        tick: Tick::new(10),
     };
     assert_eq!(attackers.iter().collect::<Vec<_>>(), [attack]);
 

@@ -4,7 +4,7 @@
 # strikes, a hero in five.
 [units.creep]
 tags = ["creep"]
-params = { aggro_range = "7.0", help_range = "5.0", help_window_ms = 2000 }
+params = { aggro_range = "6.0", help_range = "5.0", help_window_ms = 2000 }
 pools = ["health"]
 stats = { health = { base = 300 }, attack_damage = { base = 25 }, attack_speed = { base = "1.25" }, move_speed = { base = "3.75" } }
 combat = {}
@@ -13,7 +13,9 @@ orders = { ai = "scripts/creep_ai.rhai", think_ms = 250 }
 vision = { sight_range = "8.0" }
 collision = { radius = "0.35" }
 
-# A tower strikes 7.75 m away 5 ticks into an attack every 37, with a projectile of 12 m/s.
+# A tower strikes 6.25 m from its edge, 7.65 m from its center to a hero's, 5 ticks into an attack
+# every 37, with a projectile of 12 m/s: a hero at its spawn, 8.06 m from the nearer enemy tower,
+# is out of its reach.
 [units.tower]
 tags = ["structure", "tower"]
 params = { help_window_ms = 2000 }

@@ -381,7 +381,7 @@ fn route(link: LinkModel) -> [u32; 2] {
 }
 
 /// The ticks of the steering scenario: the creeps, 7.25 m off the middle, have yet to come within
-/// their 7 m aggro range of a hero.
+/// their 6 m aggro range of a hero, 6.85 m between centres.
 const ROUND_TICKS: u64 = 70;
 
 /// Plays the steering scenario through `link` and checks it; gives the rollbacks of the walker's

@@ -18,15 +18,6 @@ Package data, snapshots and client packets are untrusted. Each of these items le
   Better: check each against its book after a restore, or store no copy of package-derived shape in state.
 - [ ] **A restore keeps a resource the snapshot does not have** — `sim/src/state_registry/mod.rs:360-369`. When the snapshot records a resource as absent, `decode_resource` leaves the copy that is already in the world, so the hash can differ from the snapshot's. Better: remove an absent resource.
 
-## 3. Reach and sight have several definitions
-
-"Within reach" and "seen" are each decided in more than one place, and the places disagree.
-
-- [ ] **Script queries measure from centres, engine reach from edges** — `capabilities/src/units/script_view.rs:759,777-778`, `units/unit.rs:293-294`. `find` and `nearest_visible` measure centre to centre. Combat range and area triggers measure edge to edge. So a script area of radius r hits other units than an area of radius r, and the `Unit::within` doc claims they agree. Better: queries add the body's radius, which the row already holds.
-- [ ] **An aura reaches by centre, an area's `inside` by edge** — `capabilities/src/stats/mod.rs:384-409`, `areas/mod.rs:250`. stats.md says the two hold "the same way". An aura also projects from an instance of 0 stacks or one that an immunity suppresses. Better: one reach rule for both, written into stats.md.
-- [ ] **A homing projectile hits at the centre, a line projectile at the edge** — `capabilities/src/projectiles/flights.rs:82-97`. A homing projectile can hit up to a tick late on a large body. Better: both hit when the body comes within reach.
-- [ ] **A unit is not seen by its own vision group in its first tick** — `capabilities/src/vision/mod.rs:56-63`. Before its first Vision stage, `Vision::seen_by` gives only its own team, while `see` adds its whole group. Better: give the group from the start.
-
 ## 4. Order and exactness depend on the code path
 
 The design asks for stable ids for every order that matters, and one rounding rule. Some paths use query order, truncation or another rounding.

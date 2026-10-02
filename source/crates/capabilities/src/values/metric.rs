@@ -25,8 +25,27 @@ impl Metric {
     }
 
     /// Whether `b` is within `range` of `a`, exactly, with no square root.
-    pub(crate) fn within(self, a: Position, b: Position, range: Num) -> bool {
+    fn within(self, a: Position, b: Position, range: Num) -> bool {
         Vec3::ZERO.within(self.offset(a, b), range)
+    }
+
+    /// Whether `range` from the edge of a body of `from_radius` at `from` reaches the edge of a
+    /// body of `to_radius` at `to`, exactly: the one rule of reach, which ranges, areas, auras,
+    /// script queries and homing hits all decide by. A point is a body of radius 0. A reach past
+    /// what a number holds is past every distance within the bound.
+    pub(crate) fn reaches(
+        self,
+        from: Position,
+        from_radius: Num,
+        range: Num,
+        to: Position,
+        to_radius: Num,
+    ) -> bool {
+        debug_assert!(range >= Num::ZERO && from_radius >= Num::ZERO && to_radius >= Num::ZERO);
+        let reach = range
+            .checked_add(from_radius)
+            .and_then(|reach| reach.checked_add(to_radius));
+        reach.is_none_or(|reach| self.within(from, to, reach))
     }
 
     /// Whether the straight path from `from` to `to` comes within `reach` of `at`, decided
@@ -112,6 +131,32 @@ mod tests {
     fn at(x: i64, y: i64, z: i64) -> Position {
         let num = |value| Num::from_int(value).unwrap();
         Position::new(Vec3::new(num(x), num(y), num(z))).unwrap()
+    }
+
+    #[test]
+    fn a_reach_runs_from_edge_to_edge() {
+        let num = |value| Num::from_int(value).unwrap();
+        let (from, to) = (at(0, 0, 0), at(10, 0, 0));
+        // 10 m between centres: a range of 7 from a body of 1 to one of 2 reaches, 7 - ε not; a
+        // point reaches as a body of 0.
+        let cases = [
+            (num(1), num(7), num(2), true),
+            (num(1), num(7) - Num::EPSILON, num(2), false),
+            (Num::ZERO, num(10), Num::ZERO, true),
+            (Num::ZERO, num(8), num(2), true),
+            (Num::ZERO, num(8) - Num::EPSILON, num(2), false),
+            // A reach past what a number holds reaches all.
+            (Num::MAX, Num::MAX, Num::ZERO, true),
+        ];
+        for (from_radius, range, to_radius, reaches) in cases {
+            let met = Metric::Planar.reaches(from, from_radius, range, to, to_radius);
+            assert_eq!(met, reaches, "{from_radius:?} + {range:?} + {to_radius:?}");
+        }
+        // 4 m up and 3 m along: 3 apart on a planar map, 5 on a spatial one.
+        let above = at(3, 4, 0);
+        assert!(Metric::Planar.reaches(from, Num::ZERO, num(3), above, Num::ZERO));
+        assert!(!Metric::Spatial.reaches(from, Num::ZERO, num(4), above, Num::ZERO));
+        assert!(Metric::Spatial.reaches(from, num(1), num(3), above, num(1)));
     }
 
     #[test]

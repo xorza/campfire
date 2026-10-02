@@ -36,8 +36,8 @@ pub(crate) struct Aloft<'a> {
 
 impl Flights<'_> {
     /// Flies `aloft` a step; whether it ended. A homing one flies towards its target's position
-    /// now, and hits it on arrival; one whose target is dead, gone or no target ends without a
-    /// hit. One along a line hits each unit its type's `hits` selects whose body comes within
+    /// now, and hits it where its step ends when its body, of half its width, then reaches the
+    /// target's; one whose target is dead, gone or no target ends without a hit. One along a line hits each unit its type's `hits` selects whose body comes within
     /// half its width of this tick's path, in the order of the point of the path nearest each,
     /// then by stable id, each unit once, and once a cast for a type that says so; it ends at its
     /// first hit when its type stops on one, and at the end of its range.
@@ -79,20 +79,22 @@ impl Flights<'_> {
             self.end(projectile, hit);
             return true;
         };
-        let moved = from.get().step_toward(unit.pos.get(), spec.speed);
-        let flown = flown + from.get().distance(moved);
-        if moved != unit.pos.get() {
-            *position =
-                Position::new(moved).expect("a step ends between two points within the bound");
+        let stepped = from.get().step_toward(unit.pos.get(), spec.speed);
+        let flown = flown + from.get().distance(stepped);
+        let moved =
+            Position::new(stepped).expect("a step ends between two points within the bound");
+        let metric = targets.metric();
+        if !metric.reaches(moved, spec.width / 2, Num::ZERO, unit.pos, unit.radius) {
+            *position = moved;
             projectile.fly_to(flown);
             return false;
         }
         let hit = Hit {
             delivery: Some(id),
             target: Some(target),
-            pos: unit.pos,
+            pos: moved,
             distance: flown,
-            direction: from.get().direction_to(moved).unwrap_or(Vec3::ZERO),
+            direction: from.get().direction_to(stepped).unwrap_or(Vec3::ZERO),
         };
         self.strike(projectile, target, hit);
         self.end(projectile, hit);

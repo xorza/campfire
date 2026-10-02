@@ -1,9 +1,12 @@
+use std::array;
+
 use bevy_ecs::resource::Resource;
 use campfire_sim::SimResource;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::units::team::Team;
+use crate::units::team_set::TeamSet;
 use crate::values::attitude::Attitude;
 
 /// How the match's teams regard each other, and which friendly pairs share vision: state, which
@@ -76,6 +79,29 @@ impl Relations {
             .iter()
             .filter(|pair| pair.attitude == Attitude::Friendly && pair.vision)
             .map(|pair| (pair.a, pair.b))
+    }
+
+    /// The teams that see as one with `team`: those it shares vision with, those they share it
+    /// with, and so on, `team` among them.
+    pub(crate) fn vision_group(&self, team: Team) -> TeamSet {
+        let mut root: [u8; Team::LIMIT] =
+            array::from_fn(|at| u8::try_from(at).expect("a team index fits u8"));
+        let find = |root: &mut [u8; Team::LIMIT], mut at: u8| {
+            while root[usize::from(at)] != at {
+                let up = root[usize::from(at)];
+                root[usize::from(at)] = root[usize::from(up)];
+                at = up;
+            }
+            at
+        };
+        for (a, b) in self.vision_pairs() {
+            let (a, b) = (find(&mut root, a.index()), find(&mut root, b.index()));
+            root[usize::from(a.max(b))] = a.min(b);
+        }
+        let own = find(&mut root, team.index());
+        (0..=u8::MAX)
+            .filter(|&at| find(&mut root, at) == own)
+            .fold(TeamSet::NONE, |group, at| group.with(Team::new(at)))
     }
 
     fn find(&self, of: Team, other: Team) -> Result<usize, usize> {

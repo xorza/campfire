@@ -16,35 +16,20 @@ impl VisionGroups {
     /// Builds the groups of `teams` teams again from `relations`: two teams that share vision are
     /// of one group, and so are the teams either shares it with.
     pub(crate) fn rebuild(&mut self, teams: usize, relations: &Relations) {
-        let mut root: Vec<usize> = (0..teams).collect();
-        let find = |root: &mut Vec<usize>, mut at: usize| {
-            while root[at] != at {
-                root[at] = root[root[at]];
-                at = root[at];
-            }
-            at
-        };
-        for (a, b) in relations.vision_pairs() {
-            let (a, b) = (usize::from(a.index()), usize::from(b.index()));
-            if a < teams && b < teams {
-                let (a, b) = (find(&mut root, a), find(&mut root, b));
-                root[a.max(b)] = a.min(b);
-            }
-        }
         self.group_of.clear();
         self.members.clear();
         for at in 0..teams {
-            let lowest = find(&mut root, at);
             let team = Team::new(u8::try_from(at).expect("teams fit u8"));
-            let group = if lowest == at {
-                self.members.push(TeamSet::of(team));
+            let found = self
+                .members
+                .iter()
+                .position(|members| members.contains(team));
+            let group = found.unwrap_or_else(|| {
+                self.members.push(relations.vision_group(team));
                 self.members.len() - 1
-            } else {
-                usize::from(self.group_of[lowest])
-            };
+            });
             self.group_of
                 .push(u8::try_from(group).expect("groups fit u8"));
-            self.members[group] = self.members[group].with(team);
         }
     }
 

@@ -32,6 +32,7 @@ use crate::stats::stat_book::StatBook;
 use crate::stats::stats_call::StatsCall;
 use crate::stats::stats_column::StatsColumn;
 use crate::stats::unit_stats::UnitStats;
+use crate::units::body::Body;
 use crate::units::dead::Dead;
 use crate::units::modifier_id::ModifierId;
 use crate::units::owner::Owner;
@@ -287,8 +288,10 @@ fn clear_dead_modifiers(mut dead: Query<'_, '_, &mut Modifiers, Added<Dead>>) {
     }
 }
 
-/// Holds, in Resolve each tick, each aura's modifier on every living unit within its radius in
-/// the map's metric that its `affects` selects, from the unit that carries the aura; each one
+/// Holds, in Resolve each tick, each aura's modifier on every living unit whose body comes within
+/// its radius of its carrier's position in the map's metric, as an area's reaches, that its
+/// `affects` selects, from the unit that carries the aura. An aura's instance projects only while
+/// it has a stack and takes effect on its carrier, which its immunities may suppress. Each one
 /// another capability holds this tick, as `HeldModifiers` lists it; and each
 /// player modifier on every living unit of its player that the modifier's `affects` selects,
 /// from no source. Each ends on a unit that left it. An aura's modifier resolves its numbers from
@@ -315,9 +318,11 @@ fn apply_held(
             Option<&UnitTags>,
             Option<&Owner>,
             &mut Modifiers,
+            Option<&Body>,
         ),
         Without<Dead>,
     >,
+    tag_book: Option<Res<'_, TagBook>>,
     mut held: Local<'_, Vec<Held>>,
 ) {
     let (Some(book), Some(_)) = (book, stats) else {
@@ -326,7 +331,7 @@ fn apply_held(
     let rate = *rate;
     held.clear();
     held.extend_from_slice(&others.0);
-    for (&target, _, _, tags, owner, _) in &units {
+    for (&target, _, _, tags, owner, _, _) in &units {
         let Some(owner) = owner else {
             continue;
         };
@@ -344,18 +349,27 @@ fn apply_held(
             }
         }
     }
-    for (&source, &at, &team, _, _, modifiers) in &units {
+    let granting = tag_book
+        .as_deref()
+        .map_or(TagSet::default(), TagBook::granting);
+    for (&source, &at, &team, carrier, _, modifiers, _) in &units {
+        let immune = carrier.map_or(TagSet::default(), |tags| tags.immune);
+        let takes_effect = TagBook::effect_test(granting, immune);
         for instance in modifiers.iter() {
             let (Some(aura), Some(radius)) =
                 (&book.get(instance.id).spec.aura, instance.aura_radius)
             else {
                 continue;
             };
+            if instance.stacks == 0 || !takes_effect(instance.tags) {
+                continue;
+            }
             let (filter, modifier) = (aura.affects, aura.modifier);
-            for (&target, &pos, &other, tags, _, _) in &units {
+            for (&target, &pos, &other, tags, _, _, body) in &units {
                 let tags = tags.map_or(TagSet::default(), |tags| tags.tags);
                 let attitude = relations.between(team, other);
-                if metric.within(at, pos, radius) && filter.selects(attitude, tags) {
+                let reaches = metric.reaches(at, Num::ZERO, radius, pos, Body::radius_of(body));
+                if reaches && filter.selects(attitude, tags) {
                     held.push(Held {
                         target,
                         modifier,
@@ -368,7 +382,7 @@ fn apply_held(
         }
     }
     held.sort_unstable();
-    for (&id, _, _, _, _, mut modifiers) in &mut units {
+    for (&id, _, _, _, _, mut modifiers, _) in &mut units {
         let first = held.partition_point(|entry| entry.target < id);
         let mine = held[first..].iter().take_while(|entry| entry.target == id);
         let kept = |modifier, source| {

@@ -161,7 +161,7 @@ impl Unit {
         let within = position(
             "within",
             "(pos, radius)",
-            "whether `pos` is within `radius` in the map's metric, exactly: the test for reach",
+            "whether `pos` is within `radius` in the map's metric, exactly: the reach rule between two points, which have no bodies",
         );
         api.ty::<Position>("Pos")
             .bind(
@@ -249,8 +249,8 @@ impl Unit {
             .ok_or_else(|| Box::new(Raised::error(NumError::Overflow)))
     }
 
-    /// Whether `to` is within `radius` of `from` in the map's metric, exactly: as every range and
-    /// query radius, so a script's reach agrees with combat's.
+    /// Whether `to` is within `radius` of `from` in the map's metric, exactly: the reach rule
+    /// between two points, which have no bodies.
     fn within(
         call: &NativeCallContext<'_>,
         from: Position,
@@ -260,7 +260,8 @@ impl Unit {
         if radius < Num::ZERO {
             return Err(ApiError::NegativeRadius.fail().into());
         }
-        Ok(Ctx::of_call(call).view().metric().within(from, to, radius))
+        let metric = Ctx::of_call(call).view().metric();
+        Ok(metric.reaches(from, Num::ZERO, radius, to, Num::ZERO))
     }
 }
 

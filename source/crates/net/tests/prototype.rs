@@ -194,8 +194,8 @@ fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_
     assert_eq!(client.resource::<Bounds>(), server.resource::<Bounds>());
     assert_eq!(Combat::life(client), Some(PoolId::FIRST));
     assert_eq!(Combat::life(server), Some(PoolId::FIRST));
-    // The hero walks to (4, 0), 4 m from the east tower at (8, 0), which reaches 7.75 m and hits
-    // for 150 of its 600: the fourth hit kills it where it stands.
+    // The hero walks to (4, 0), 4 m from the east tower at (8, 0), which reaches 6.25 m from its
+    // edge and hits for 150 of its 600: the fourth hit kills it where it stands.
     local.order(0, move_to(4, 0));
     let dead = |app: &App| app.world().entity(hero_entity(app)).contains::<Dead>();
     let rollbacks = |local: &LocalMatch| {
