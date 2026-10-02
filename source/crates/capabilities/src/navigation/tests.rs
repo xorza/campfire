@@ -153,8 +153,8 @@ fn bodies_part_and_block_the_way() {
     // other: 3 − 0.5 t apart after tick t, and in tick 5, at 1.25 and 1.75, they overlap by half
     // a meter, which parts them a quarter meter each, to 1 and 2: 1 m apart, the sum of their
     // radii. Every tick after, they walk in and part again, to the same places.
-    let quarter = Num::from_bits(1 << 22);
-    let half = Num::from_bits(1 << 23);
+    let quarter = Num::QUARTER;
+    let half = Num::HALF;
     let mut walk = Walk::new();
     let a = walk.body(at(0, 0, 0), Some(at(10, 0, 0)), Some(quarter), half);
     let b = walk.body(at(3, 0, 0), Some(at(-10, 0, 0)), Some(quarter), half);
@@ -214,8 +214,8 @@ fn a_client_parts_its_units_only_from_held_units_that_cannot_walk() {
     // tick 4, at 1, the first walker touches the first; in tick 5, at 1.25, it takes the whole
     // overlap and is back at 1. The second walker passes through the second, which may have
     // started walking since, to x = 4. Neither held unit moves.
-    let quarter = Num::from_bits(1 << 22);
-    let half = Num::from_bits(1 << 23);
+    let quarter = Num::QUARTER;
+    let half = Num::HALF;
     let mut walk = Walk::new();
     let blocked = walk.body(at(0, 0, 0), Some(at(4, 0, 0)), Some(quarter), half);
     let passing = walk.body(at(0, 0, 4), Some(at(4, 0, 4)), Some(quarter), half);
@@ -238,7 +238,7 @@ fn the_pathing_grid_follows_the_static_bodies_from_the_next_tick() {
     // 1 m cells over (−2, −2) to (2, 2), for walkers of 0.5 m: a tower of 0.5 m at (−1.5, −1.5)
     // blocks its own cell, 0, whose center is on it; one the client only holds, at (1.5, 1.5),
     // blocks cell 15. A walker never marks the grid.
-    let half = Num::from_bits(1 << 23);
+    let half = Num::HALF;
     let mut walk = Walk::new();
     walk.load_pathing(Num::ONE, [-2, -2], [2, 2], vec![ground(half)]);
     let quarter = |value: i64| Num::from_bits(value << 22);
@@ -270,8 +270,8 @@ fn a_walker_goes_round_a_tower_and_never_touches_it() {
     // quarter meter a tick, over half-meter cells. Its route keeps 1.4 m off the tower's center at
     // every step, so collision never pushes it; with no pathing grid it walks into the tower, and
     // stops against it, pressed there.
-    let half = Num::from_bits(1 << 23);
-    let quarter = Num::from_bits(1 << 22);
+    let half = Num::HALF;
+    let quarter = Num::QUARTER;
     let tower_radius = Num::from_bits((9 << Num::FRAC_BITS) / 10);
     let reach = u128::from((tower_radius + half).to_bits().unsigned_abs());
     for planned in [true, false] {
@@ -322,8 +322,8 @@ fn a_walker_goes_round_units_that_stand_in_its_way() {
     // walker of 0.5 m from (−4, 0) to (4, 0), a quarter meter a tick, over half-meter cells. It
     // goes round both, touching neither, and neither moves; with no pathing grid it walks into
     // the hero, yields to it, and stays pressed there.
-    let half = Num::from_bits(1 << 23);
-    let quarter = Num::from_bits(1 << 22);
+    let half = Num::HALF;
+    let quarter = Num::QUARTER;
     let creep_radius = Num::from_bits((35 << Num::FRAC_BITS) / 100);
     let creep_at = Position::new(Vec3::new(Num::int(2), Num::ZERO, half)).unwrap();
     for planned in [true, false] {
@@ -374,8 +374,8 @@ fn two_walkers_that_meet_head_on_pass_on_opposite_sides() {
     // each, kept back by the other, goes round it on its own right, so they pass on opposite
     // sides of the line, the one bound for +x on −z, and both arrive. With no pathing grid they
     // push each other to a stop.
-    let half = Num::from_bits(1 << 23);
-    let quarter = Num::from_bits(1 << 22);
+    let half = Num::HALF;
+    let quarter = Num::QUARTER;
     for planned in [true, false] {
         let mut walk = Walk::new();
         if planned {
@@ -421,7 +421,7 @@ fn an_air_unit_passes_over_a_ground_unit_and_a_wall() {
     // x = 6, z = 1, 3 and 5, touching, closes the map to walkers of 0.5 m: every cell center of
     // columns 5 and 6 is 0.71 m from a tower, closer than 1.5. A ground unit of 0.5 m stands at
     // (3, 3).
-    let half = Num::from_bits(1 << 23);
+    let half = Num::HALF;
     let mut walk = Walk::new();
     let flyer = Walker {
         layer: AIR,
@@ -461,7 +461,7 @@ fn routes_wait_past_the_limit_of_work_in_the_order_asked() {
     // A tick does up to the grid's 16.
     let mut walk = Walk::new();
     walk.load_pathing(Num::ONE, [0, 0], [16, 1], vec![ground(Num::ZERO)]);
-    let half = Num::from_bits(1 << 23);
+    let half = Num::HALF;
     let place = |x: i64| Position::new(Vec3::new(Num::int(x) + half, Num::ZERO, half)).unwrap();
     let (start, far, near) = (place(0), place(15), place(3));
     let units = [None, Some(far), Some(near), Some(far)].map(|goal| walk.unit(start, goal));
@@ -504,8 +504,8 @@ fn a_walker_steers_with_the_work_the_routes_left() {
     // stands on the line at (3.5, 1.5), and walkers with no body ask for routes along z = 0.5,
     // 23 each. With none or one, work is left in tick 1, and the walker steers round the unit;
     // with two, they do 46, and the walker keeps its route, and steers in tick 2.
-    let quarter = Num::from_bits(1 << 22);
-    let half = Num::from_bits(1 << 23);
+    let quarter = Num::QUARTER;
+    let half = Num::HALF;
     let place = |x: i64, z: i64| {
         Position::new(Vec3::new(Num::int(x) + half, Num::ZERO, Num::int(z) + half))
     };
@@ -539,8 +539,8 @@ fn a_walker_asks_again_only_for_a_static_body_put_in_its_way() {
     // its route is the straight line. A tower of 0.5 m at (5.5, 0.5) comes 1 m from the line,
     // past the two radii, 0.75 m: the route stays as it was. One at (5.5, 1.5) stands on it: the
     // walker asks again in the next tick, and goes round it.
-    let quarter = Num::from_bits(1 << 22);
-    let half = Num::from_bits(1 << 23);
+    let quarter = Num::QUARTER;
+    let half = Num::HALF;
     let place = |x: i64, z: i64| {
         Position::new(Vec3::new(Num::int(x) + half, Num::ZERO, Num::int(z) + half))
     };
@@ -575,8 +575,8 @@ fn a_walker_that_arrives_short_waits_there_until_a_static_body_goes() {
     // 1.5) from its goal, (6.5, 1.5): each blocks its own cell alone, whose center is on it, and
     // not its neighbors', 1 m off, past the two radii, 0.75 m. Its route ends at the nearest
     // cell it reaches, (3.5, 1.5), 3 m on, which it arrives at in tick 2, a meter a tick.
-    let quarter = Num::from_bits(1 << 22);
-    let half = Num::from_bits(1 << 23);
+    let quarter = Num::QUARTER;
+    let half = Num::HALF;
     let place = |x: i64, z: i64| {
         Position::new(Vec3::new(Num::int(x) + half, Num::ZERO, Num::int(z) + half))
     };
@@ -651,7 +651,7 @@ fn a_map_loads_only_if_the_widest_walker_reaches_every_waypoint_and_stands_on_ev
     // than 1.4 m, z up to 1.25 and from 2.75 at x = 4.75 and 5.25, which leaves z = 1.75 and
     // 2.25 open: a gap a walker passes. One more at (5, 2) closes it.
     let tower_radius = Num::from_bits((9 << Num::FRAC_BITS) / 10);
-    let half = Num::from_bits(1 << 23);
+    let half = Num::HALF;
     let point = MapPoint::ground;
     let placed = |unit_type, (x, z)| PlacedUnitData::new(unit_type, "west", point(x, z));
     let marker = |name, (x, z)| MarkerData::tagged(name, &[name], point(x, z));

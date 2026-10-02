@@ -15,7 +15,7 @@ fn a_field_starts_at_its_default_or_its_types_zero() {
         ),
         (
             (StateType::Num, text("0.5")),
-            Some(StateValue::Num(Num::from_bits(1 << 23))),
+            Some(StateValue::Num(Num::HALF)),
         ),
         (
             (StateType::Bool, Some(StateDefault::Bool(true))),

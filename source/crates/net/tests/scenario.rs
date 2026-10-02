@@ -276,7 +276,7 @@ fn cast(link: LinkModel) -> [u32; 2] {
         (
             runner,
             Caster {
-                pos: edge(Num::int(1) + Num::from_bits(1 << 23)),
+                pos: edge(Num::int(1) + Num::HALF),
                 health: Num::int(600 - 100 - 100 - 3 * 60),
                 mana: Some(Num::int(100 - 30)),
                 ready_at: Some(Tick::new(140 + 60)),

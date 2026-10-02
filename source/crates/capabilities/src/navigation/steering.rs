@@ -192,7 +192,7 @@ mod tests {
         // radii, 2.75 m, so the walker steers, and the unit blocks the window's last centers. It
         // is a blocker, which a search of twice the window, to x = 4.875, would miss: the index's
         // buckets are 5 m, twice the walker, and the unit's box, from x = 5.125, is in the second.
-        let quarter = Num::from_bits(1 << (Num::FRAC_BITS - 2));
+        let quarter = Num::QUARTER;
         let wide = Num::from_int(10).unwrap() * quarter;
         let walker = Walker {
             layer: Layer::FIRST,

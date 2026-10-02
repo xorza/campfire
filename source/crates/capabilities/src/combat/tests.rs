@@ -193,7 +193,7 @@ fn a_range_counts_from_the_edge_of_each_body_in_the_maps_metric() {
     // A fighter of range 2 at x = 0, and a dummy 3 m off: out of range from center to center, in
     // range once each has a body of 0.5 m, as 3 ≤ 2 + 0.5 + 0.5; a bit farther, out again. Up at
     // y = 4, the dummy is still 3 m off on a planar map, and 5 m off on a spatial one.
-    let half = Num::from_bits(1 << 23);
+    let half = Num::HALF;
     for (dummy_x, dummy_y, bodies, metric, starts) in [
         (Num::int(3), 0, false, Metric::Planar, false),
         (Num::int(3), 0, true, Metric::Planar, true),
@@ -825,7 +825,7 @@ fn the_pass_deals_damage_in_its_order_and_credits_the_kill() {
 fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     let mut fight = Fight::new();
     load_damage_stats(&mut fight.sim.world);
-    let half = Num::ONE / 2;
+    let half = Num::HALF;
     let source = fight.unit(Team::new(0), at(0, 0, 0), dummy());
     let target = fight.unit(Team::new(1), at(1, 0, 0), dummy());
     // Heals halved, life steal 0.5 and spell vamp 0.25; at 40 of 100.
@@ -950,7 +950,7 @@ fn an_attack_draws_its_roll_once_as_its_windup_ends_from_the_seed() {
     );
     // A crit below a chance of one half is the crit the engine rolled from the same stream and
     // seed before scripts decided it: `chance` on the same draw.
-    let half = Num::ONE / 2;
+    let half = Num::HALF;
     let crits: Vec<_> = first.iter().map(|&roll| roll < half).collect();
     let old = source(0);
     let rolled = |&id: &StableId| old.open(ROLL_STREAM, id.get()).chance(half);

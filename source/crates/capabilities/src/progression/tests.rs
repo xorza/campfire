@@ -111,7 +111,7 @@ fn thresholds_are_positive_and_strictly_ascending_as_built_and_as_read() {
     assert_eq!(
         read("levels = [\"0.5\", 300]\nlevel = true").unwrap(),
         TrackData {
-            levels: Thresholds::new([Num::ONE.checked_div_int(2).unwrap(), Num::int(300)]).unwrap(),
+            levels: Thresholds::new([Num::HALF, Num::int(300)]).unwrap(),
             level: true,
         }
     );

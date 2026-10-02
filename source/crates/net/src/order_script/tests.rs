@@ -8,7 +8,7 @@ fn a_script_reads_its_orders_in_tick_order_or_its_flaw() {
         "[[order]]\ntick = 30\nmove = [4, 0]\n\n[[order]]\ntick = 30\nmove = [\"-2.5\", 1]\n",
     )
     .unwrap();
-    let half = Num::from_bits(1 << (Num::FRAC_BITS - 1));
+    let half = Num::HALF;
     let num = |value| Num::from_int(value).unwrap();
     assert_eq!(
         script.orders(),

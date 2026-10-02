@@ -38,6 +38,8 @@ impl Num {
     pub const FRAC_BITS: u32 = 24;
     pub const ZERO: Num = Num(0);
     pub const ONE: Num = Num(1 << Self::FRAC_BITS);
+    pub const HALF: Num = Num(1 << (Self::FRAC_BITS - 1));
+    pub const QUARTER: Num = Num(1 << (Self::FRAC_BITS - 2));
     /// The smallest positive value, 2⁻²⁴.
     pub const EPSILON: Num = Num(1);
     pub const MIN: Num = Num(i64::MIN);

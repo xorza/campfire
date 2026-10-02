@@ -4,10 +4,6 @@ use campfire_sim::{IdAllocator, Position};
 use super::*;
 use crate::units::layer::Layer;
 use crate::values::bounds::Bounds;
-fn half() -> Num {
-    Num::from_bits(1 << 23)
-}
-
 /// A walker of `radius` on the first layer.
 fn ground(radius: Num) -> Walker {
     Walker {
@@ -48,7 +44,12 @@ fn grid() -> PathingGrid {
     let bounds = Bounds::new([Num::int(-3), Num::int(-3)], [Num::int(3), Num::int(3)]).unwrap();
     PathingGrid::new(
         Grid::new(Num::int(1), bounds).unwrap(),
-        vec![air(), ground(Num::ONE), ground(half()), ground(half())],
+        vec![
+            air(),
+            ground(Num::ONE),
+            ground(Num::HALF),
+            ground(Num::HALF),
+        ],
     )
 }
 
@@ -82,7 +83,7 @@ fn a_static_body_blocks_the_cells_closer_than_the_two_radii() {
     follow(&mut grid, &mut index, &[tower]);
     let small = ["......", "......", "..##..", "..##..", "......", "......"];
     let large = ["......", "..##..", ".####.", ".####.", "..##..", "......"];
-    assert_eq!(drawn(&grid, ground(half())), small);
+    assert_eq!(drawn(&grid, ground(Num::HALF)), small);
     assert_eq!(drawn(&grid, ground(Num::ONE)), large);
 
     // A post of 0.5 m at (2, −1.5), and one at (−2.5, 2.5), for a walker of 0.5 m, closer
@@ -91,19 +92,19 @@ fn a_static_body_blocks_the_cells_closer_than_the_two_radii() {
     // exactly 1 m off, on the edge, and open.
     let post = IndexedBody {
         id: ids.allocate(),
-        at: at(Num::int(2), -(Num::int(1) + half())),
-        radius: half(),
+        at: at(Num::int(2), -(Num::int(1) + Num::HALF)),
+        radius: Num::HALF,
         layer: Layer::FIRST,
     };
     let corner = IndexedBody {
         id: ids.allocate(),
-        at: at(-(Num::int(2) + half()), Num::int(2) + half()),
-        radius: half(),
+        at: at(-(Num::int(2) + Num::HALF), Num::int(2) + Num::HALF),
+        radius: Num::HALF,
         layer: Layer::FIRST,
     };
     follow(&mut grid, &mut index, &[tower, post, corner]);
     let small = ["......", "....##", "..##..", "..##..", "......", "#....."];
-    assert_eq!(drawn(&grid, ground(half())), small);
+    assert_eq!(drawn(&grid, ground(Num::HALF)), small);
     // For a walker of 1 m, closer than 1.5 m to the post: its own two cells, the two above
     // and the two below at √1.25 ≈ 1.12 m, such as (1.5, −0.5), which the tower blocks too;
     // (0.5, −1.5), 1.5 m off, is open. The corner post blocks (−2.5, 1.5) and (−1.5, 1.5) at
@@ -120,7 +121,7 @@ fn a_static_body_blocks_the_cells_closer_than_the_two_radii() {
         ..tower
     };
     follow(&mut grid, &mut index, &[tower, post, corner, cloud]);
-    assert_eq!(drawn(&grid, ground(half())), small);
+    assert_eq!(drawn(&grid, ground(Num::HALF)), small);
     assert_eq!(drawn(&grid, ground(Num::ONE)), large);
     let under = ["......", "..##..", ".####.", ".####.", "..##..", "......"];
     assert_eq!(drawn(&grid, air()), under);
@@ -129,13 +130,13 @@ fn a_static_body_blocks_the_cells_closer_than_the_two_radii() {
     // with the tower.
     follow(&mut grid, &mut index, &[post, corner]);
     let small = ["......", "....##", "......", "......", "......", "#....."];
-    assert_eq!(drawn(&grid, ground(half())), small);
+    assert_eq!(drawn(&grid, ground(Num::HALF)), small);
     let large = ["....##", "....##", "....##", "......", "##....", "##...."];
     assert_eq!(drawn(&grid, ground(Num::ONE)), large);
 
     // The post moves a meter along z, to (2, −0.5).
     let moved = IndexedBody {
-        at: at(Num::int(2), -half()),
+        at: at(Num::int(2), -Num::HALF),
         ..post
     };
     follow(&mut grid, &mut index, &[tower, moved, corner]);

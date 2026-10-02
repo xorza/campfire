@@ -36,8 +36,8 @@ fn places(colliders: &[Collider]) -> Vec<(Num, Num)> {
 #[test]
 fn overlapping_bodies_part_to_the_sum_of_their_radii() {
     // 1.5 m apart, radii 1 and 1: an overlap of 0.5, a quarter meter each way.
-    let half = Num::from_bits(1 << 23);
-    let quarter = Num::from_bits(1 << 22);
+    let half = Num::HALF;
+    let quarter = Num::QUARTER;
     let mut two = row(&[
         (Num::int(0), Num::int(0), true),
         (Num::int(1) + half, Num::int(0), true),

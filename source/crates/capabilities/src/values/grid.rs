@@ -192,7 +192,7 @@ mod tests {
     #[test]
     fn a_grid_covers_its_rectangle_in_whole_cells_and_reveals_exactly() {
         // 1 m cells over (−2, −1) to (2, 1.5): 4 along x, 3 along z, the last row half outside.
-        let half = Num::from_bits(1 << 23);
+        let half = Num::HALF;
         let bounds = Bounds::new(
             [Num::int(-2), Num::int(-1)],
             [Num::int(2), Num::int(1) + half],
@@ -242,7 +242,7 @@ mod tests {
 
         // Against each cell's center tested alone, in halves of a bit, from points on and off
         // the grid, on cell lines and between them, with radii that end on centers and between.
-        let quarter = Num::from_bits(1 << 22);
+        let quarter = Num::QUARTER;
         let twice = |value: Num| 2 * i128::from(value.to_bits());
         for x in -12..12 {
             for z in -8..10 {

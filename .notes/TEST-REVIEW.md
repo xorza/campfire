@@ -28,15 +28,9 @@ Paths are relative to `source/crates/`. Line numbers are at `c38f0da`. Each item
 
 - [ ] **Script failures are read in three ways still** — `CallError::kind` and `ScriptFailures::calls` with `assert_eq!` serve most sites now. Left: the abilities table of fn pointers (its overflow case reads what a script raised), mode's `failures()`, and orders' `think()`.
 - [ ] **Four state types have no round trip** — the state table test in `capability_set` pins each capability's own types, and the module tests round-trip their matches through `TestMatch::restore_into`. `areas.area`, `production.train_queue`, `progression.experience` and `projectiles.struck_units` are in no round trip: a match with one unit that holds every component, restored, covers them.
-- [ ] **Positions and fractions are written in several ways**:
-  - `at(Num, Num, Num)` (abilities, 36 lines of `Num::ZERO, Num::ZERO`), `at(i64, i64, i64)` (combat, orders), and `at(x, z)` (projectiles, vision, mode);
-  - fractions as `from_bits(1 << 23)` (9×), as a floored `(9 << FRAC_BITS) / 10`, as `Num::from_str("3.25")`, and as quarter closures.
-
-  `HALF` and `QUARTER` constants are safe. Do not change a floored fraction to `"0.35".parse()` without new derivations of the expected values, because the parser rounds to nearest and the shift floors.
+- [ ] **Positions are written in three ways** — `at(Num, Num, Num)` (abilities, with many lines of `Num::ZERO, Num::ZERO`), `at(i64, i64, i64)` (combat, orders), and `at(x, z)` (projectiles, vision, mode). Halves and quarters are `Num::HALF` and `Num::QUARTER` now. Do not change a floored fraction such as `(9 << FRAC_BITS) / 10` to `"0.9".parse()` without new derivations, because the parser rounds to nearest and the shift floors.
 - [ ] **The stats `unit()` returns an `Entity`** (`stats/tests.rs`), where every other harness spawns through `TestMatch::spawn` and gives a `StableId`. Its units have no position, which `spawn` takes.
 - [ ] **One hero runs at two rates** — the reference heroes run at 30 Hz in `reference_abilities` and at 20 Hz in the 3v3, and no test checks timing across rates. For example, Eruption's 625 ms is 19 ticks at 30 Hz and 13 ticks at 20 Hz. Low priority.
-- [ ] **No golden for a whole match** — the sim golden pins 6 digests. Runner, verifier and net compare live against replay in one process and one binary, so they cannot see a difference between builds. Better: pin BLAKE3 over the 72 tick hashes of headless `scripted_creeps_and_towers…`, which plays `packages/test`. It changes when a state type is added, and that update is deliberate. This is also the first input `checks/det-ci` (an empty `main`) needs.
-
 ## 6. Hermetic and stable fixtures
 
 - [ ] **The package flaws depend on MOBA content** — the flaws in `mode_package.rs` edit the reference packages. Their value edits go by TOML key path, so a balance change no longer breaks them, but a change to a name or to the map's shape still does. Give the flaw table a complete `packages/test` fixture of its own.

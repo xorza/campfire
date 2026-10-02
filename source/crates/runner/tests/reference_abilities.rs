@@ -188,7 +188,7 @@ fn every_reference_ability_reads_into_the_schema() {
         BTreeMap::from([(mana, Ranked::One(int(35)))])
     );
     // "3.5" is 7 halves; "0.5" one half.
-    let half = Num::from_bits(1 << 23);
+    let half = Num::HALF;
     assert_eq!(
         lash_out.params["radius"],
         Param::Ranked(Ranked::One(Scalar::Decimal(half * 7)))

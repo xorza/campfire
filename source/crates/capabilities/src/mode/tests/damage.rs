@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn the_3v3s_calc_damage_weighs_each_hit_exactly() {
     let mut game = Game::new(CALC_DAMAGE_3V3, ScriptLimits::ROOMY);
-    let half = Num::ONE / 2;
+    let half = Num::HALF;
     // The source deals 50% more, crits on a roll below 0.25, ignores half of armor, then 10
     // more.
     let source = game.fighter(

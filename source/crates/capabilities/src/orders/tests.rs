@@ -926,7 +926,7 @@ fn a_path_walker_that_arrives_short_of_its_waypoint_waits_there() {
     // 0.5 m down column 4, each blocking its own cell: a walker with no body, on the first
     // waypoint as it spawns, walks to the nearest cell it reaches, (3.5, 1.5), 3 m on, in
     // ticks 0 to 2. There it waits, with no destination: it never asks for the route again.
-    let half = Num::from_bits(1 << 23);
+    let half = Num::HALF;
     let place = |x: i64, z: i64| {
         Position::new(Vec3::new(Num::int(x) + half, Num::ZERO, Num::int(z) + half))
     };
@@ -970,7 +970,7 @@ fn a_path_walker_that_arrives_short_of_its_waypoint_waits_there() {
 #[test]
 fn a_monster_pulled_past_its_leash_walks_home_ignoring_its_attacker_and_heals() {
     let mut game = Match::new();
-    let half = Num::from_bits(1 << 23);
+    let half = Num::HALF;
     let params = [
         ("leash_range", meters(8)),
         ("home_slack", Scalar::Decimal(half)),

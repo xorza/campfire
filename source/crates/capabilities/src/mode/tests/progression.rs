@@ -90,7 +90,7 @@ fn on_level_up(ctx, unit, track, level) {
         (level.xp, unit_level, valor.xp, valor.level.map(Level::get))
     };
 
-    let half = Num::from_bits(1 << 23);
+    let half = Num::HALF;
     // 99 stays below level 2's 100. 1.5 more makes 100.5: level 2, and the unit's level with it.
     // 500 more makes 600.5, past level 3's 300, the last; level 3 adds 50 valor, valor's level 2,
     // and its `on_level_up` runs in the same tick.

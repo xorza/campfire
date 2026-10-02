@@ -26,11 +26,6 @@ fn at(x: i64, z: i64) -> Position {
     Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap()
 }
 
-/// Half a meter.
-fn half() -> Num {
-    Num::ONE.checked_div_int(2).unwrap()
-}
-
 /// A projectile type of 15 m/s, half a meter a tick, that hits enemies; homing, or along a line
 /// of `width` for `range` that ends at its first hit when `stop_on_hit`.
 fn projectile(homing: bool, width: Num, range: Option<Num>, stop_on_hit: bool) -> ProjectileData {
@@ -331,11 +326,11 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
     // The lance's reach is half its width, 0.5 m, and these bodies have no radius. Its path runs
     // along x from 0 to 6: 0.5 m beside it and 0.5 m past its end are in reach, one bit more is
     // not, and an ally is never hit.
-    let beside = volley.unit(1, point(Num::int(2), half()), target());
-    let wide = volley.unit(1, point(Num::int(3), half() + e), target());
+    let beside = volley.unit(1, point(Num::int(2), Num::HALF), target());
+    let wide = volley.unit(1, point(Num::int(3), Num::HALF + e), target());
     let ally = volley.unit(0, at(1, 0), target());
-    let past = volley.unit(1, point(Num::int(6) + half(), Num::ZERO), target());
-    let beyond = volley.unit(1, point(Num::int(6) + half() + e, Num::ZERO), target());
+    let past = volley.unit(1, point(Num::int(6) + Num::HALF, Num::ZERO), target());
+    let beyond = volley.unit(1, point(Num::int(6) + Num::HALF + e, Num::ZERO), target());
     volley.fire_line(source, volley.lance);
 
     // It launches in tick 0 and flies half a meter a tick from tick 1: 6 m is ticks 1 to 12, and
@@ -345,7 +340,7 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
     }
     assert_eq!(
         volley.projectiles(),
-        [point(Num::int(5) + half(), Num::ZERO)]
+        [point(Num::int(5) + Num::HALF, Num::ZERO)]
     );
     volley.sim.step();
     assert_eq!(volley.projectiles(), []);
@@ -364,7 +359,7 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
     }
     assert_eq!(
         volley.projectiles(),
-        [point(Num::int(2) + half(), Num::ZERO)]
+        [point(Num::int(2) + Num::HALF, Num::ZERO)]
     );
     volley.sim.step();
     assert_eq!(volley.projectiles(), []);
@@ -376,7 +371,7 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
 fn a_projectile_reads_only_with_a_positive_speed_and_no_negative_width_or_range() {
     let read = |text: &str| toml::from_str::<ProjectileData>(text);
     let refusal = |text: &str| read(text).unwrap_err().message().to_owned();
-    let plain = ProjectileData::flying(Num::ONE.checked_div_int(2).unwrap());
+    let plain = ProjectileData::flying(Num::HALF);
     assert_eq!(read("speed = \"0.5\"").unwrap(), plain);
     assert_eq!(
         read("speed = 20\nwidth = 0\nrange = 0").unwrap(),

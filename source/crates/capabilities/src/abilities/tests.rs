@@ -1480,7 +1480,7 @@ fn a_scaling_param_reads_its_sources_level_stats_and_bonus() {
     Stats::load_modifier(&mut game.sim.world, 0, "mark", &mark, None);
     // Power: 100 a rank, 10 a level, half the ability power and 1.5 times the bonus attack
     // damage.
-    let half = Num::ONE / 2;
+    let half = Num::HALF;
     let power = scaling(
         Ranked::PerRank([100, 200, 300, 400, 500].map(Scalar::Int).to_vec()),
         10,

@@ -17,7 +17,7 @@ fn at(x: i64, z: i64) -> Position {
 fn walker() -> Walker {
     Walker {
         layer: Layer::FIRST,
-        radius: Num::from_bits(1 << (Num::FRAC_BITS - 2)),
+        radius: Num::QUARTER,
     }
 }
 
@@ -32,7 +32,7 @@ struct Walled {
 /// `#`, for walkers of 0.25 m: a post blocks its own cell, whose center is on it, and not its
 /// neighbors', 1 m off; the walker's center keeps 0.5 m from it.
 fn walled(rows: &[&str]) -> Walled {
-    let quarter = Num::from_bits(1 << (Num::FRAC_BITS - 2));
+    let quarter = Num::QUARTER;
     let size = |count: usize| Num::from_int(i64::try_from(count).unwrap()).unwrap();
     let bounds = Bounds::new([Num::ZERO; 2], [size(rows[0].len()), size(rows.len())]);
     let mut grid = PathingGrid::new(
