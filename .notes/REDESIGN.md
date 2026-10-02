@@ -517,10 +517,9 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - combat launches: D3;
   - actions and combat: D2;
   - production and mode: D3;
-  - player resources: D2;
+  - the view names progression: D2;
   - script runtime: D4;
   - delivery API registration: D5;
-  - `values` runtime types: D6;
   - layer list: A4.
 - **R§9:**
   - tag names: C3;
