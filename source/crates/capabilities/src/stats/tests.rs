@@ -12,7 +12,6 @@ use crate::stats::application::{Application, NewInstance};
 use crate::stats::held_modifiers::Held;
 use crate::stats::instance::StatShare;
 use crate::stats::lifetime::Hold;
-use crate::stats::lifetime::{Ends, Lifetime};
 use crate::stats::modifier_data::ModifierData;
 use crate::stats::modifier_data::{AuraData, Reapply};
 use crate::stats::move_step::MoveStep;
@@ -158,19 +157,8 @@ fn unit(game: &mut TestMatch, unit_type: u16) -> Entity {
 /// A modifier of no stats, tags, params or times that gives `aura`.
 fn modifier_data(aura: Option<AuraData>) -> ModifierData {
     ModifierData {
-        script: None,
-        duration_ms: None,
-        interval_ms: None,
-        stacks_expire_ms: None,
-        reapply: Reapply::Refresh,
-        max_stacks: None,
-        stats: BTreeMap::new(),
-        tags: Vec::new(),
-        shield: None,
         aura,
-        affects: None,
-        params: BTreeMap::new(),
-        state: BTreeMap::new(),
+        ..ModifierData::default()
     }
 }
 
@@ -247,19 +235,8 @@ fn a_units_stats_follow_its_type_and_level_within_their_limits() {
 fn share(id: u16, source: Option<StableId>, value: Num, reapply: Reapply) -> Application {
     Application {
         instance: NewInstance {
-            id: ModifierId::new(id),
-            source,
-            ability: None,
-            rank: 1,
-            aura_radius: None,
-            stacks: 1,
-            lifetime: Lifetime::new(None, Ends::Never),
-            stack_life: None,
-            stack_ends: Vec::new(),
-            interval: None,
-            shield: None,
             stats: vec![StatShare { value, live: None }],
-            state: Vec::new(),
+            ..NewInstance::bare(ModifierId::new(id), source)
         },
         reapply,
         max_stacks: None,
@@ -468,19 +445,8 @@ fn a_modifier_that_reads_a_param_applies_in_a_match_with_no_scripts() {
 fn aura(id: ModifierId, carrier: StableId, radius: Num) -> Application {
     Application {
         instance: NewInstance {
-            id,
-            source: Some(carrier),
-            ability: None,
-            rank: 1,
             aura_radius: Some(radius),
-            stacks: 1,
-            lifetime: Lifetime::new(None, Ends::Never),
-            stack_life: None,
-            stack_ends: Vec::new(),
-            interval: None,
-            shield: None,
-            stats: Vec::new(),
-            state: Vec::new(),
+            ..NewInstance::bare(id, Some(carrier))
         },
         reapply: Reapply::Refresh,
         max_stacks: None,
@@ -673,5 +639,13 @@ fn a_restored_unit_derives_its_stats_and_tags_again() {
     assert_eq!(
         game.registry.hash(&game.world),
         game.registry.hash(&restored.world)
+    );
+}
+
+#[test]
+fn a_modifiers_default_is_what_an_empty_table_reads() {
+    assert_eq!(
+        toml::from_str::<ModifierData>(""),
+        Ok(ModifierData::default())
     );
 }

@@ -14,37 +14,8 @@ Paths are relative to `source/crates/`. Line numbers are at `c38f0da`. Each item
 
 ## 2. Harnesses
 
-### 2.1 `TestMatch` becomes the running harness (capabilities)
-
-Today `TestMatch` (`capability_set/mod.rs:128-173`) only builds a world. Each module wraps it again: abilities `Match`, combat `Fight`, projectiles `Volley`, navigation `Walk`, orders `Match`, units `Scene`, vision `Scene`, mode `Game`, and `stats_match`. Each of these writes its own copies of the same helpers:
-
-| Helper | Copies | Sites |
-|---|---|---|
-| unpack `TestMatch`, then `add_schedule` | 10 | abilities:251, combat:95, projectiles:91, orders:212, mode:652, navigation:48, vision:60, units:74, stats:122,460 |
-| `run_until` | 3 | abilities:333, combat:128, orders:303 |
-| `get` / `get_ref` | 4 (3 return shapes) | abilities:339, combat:111, orders:308, navigation:106 |
-| `set_blocks` | 3, byte for byte | abilities:372, combat:156, navigation:99 |
-| `entity` | 5 | combat:808, projectiles:156, vision:90, units:111, mode:705 |
-| `health` | 6 (`i64`, `Option<i64>`, `Num`; some rounded) | abilities:349, combat:135,839, projectiles:170, orders:318, mode:1686 |
-| `probe` + `ids` | 2, byte for byte | units:116-139, vision:99-122 |
-| `resource::<EntityIndex>().get(..)` inline | 51 | abilities 19, combat 14, navigation 11, orders 7 |
-
-The schedule is a separate field only because `Mode::install` needs it (`mode/tests.rs:684`). `world.schedule_scope(SimUpdate, ..)` gives that access, and `abilities:646` and `combat:378` already use it.
-
-- [ ] **In-crate tests do not use the exported helpers** — `Match::give_from` uses `give_modifier` now. Still open:
-  - `StatBook::new(..) + Stats::load` at the abilities scaling tests, where `stats::loads::load_stats` fits the ones with no type growth;
-  - `Modifiers::get` by hand in abilities, where `carried` fits a check of every modifier a unit carries.
-
-  `pools::internals::spent` returns new pools, so it does not fit the tests that take from a unit's pools in place.
 ### 2.2 Data constructors (capabilities)
 
-- [ ] **`ModifierData` (13 fields)** is written in full 8 times: abilities:932,1034,1175,1381, combat:790, stats:427, mode:401,420. Every field is an `Option`, a collection, a `bool` or the default `Reapply`, so `#[derive(Default)]` gives what an empty `{}` table reads. This saves about 110 lines. `Default` adds to the public API (group 9).
-- [ ] **`ActionData` (22 fields)** — abilities:136,189 and mode:312 (`blink_data`). `targeting` has no default. Better: `ActionData::cast(targeting)` in `action_data.rs` internals. This saves about 55 lines.
-- [ ] **`Instance` (16 fields) in `Application`** — combat:910, stats/tests:222,483, stats/modifiers.rs:406, mode:1626, and 10 `Application {` literals in total. Better: `Instance::bare(id, source)` and `Application::refresh(instance)`. This saves about 80 lines.
-- [ ] **Smaller ones**:
-  - `ProjectileData::flying(speed)`: abilities:1592 writes what `projectile(false, ZERO, None, true)` builds.
-  - `TestWeapon::new(aim, range, windup)`: combat:272,417.
-  - `scaling()` takes a `Ranked<Scalar>`. Today `abilities:1454-1463` takes its result apart again with `let … else { unreachable!() }`.
 - [ ] **Map data** is built twice, in mode and in navigation:
   - `MarkerData` at mode:253-272 and navigation:524-532;
   - `PlacedUnitData` at mode:353 and navigation:517;
@@ -184,7 +155,6 @@ These items depend on rules that the style guide does not settle. The harness wo
 2. **A home for a harness type.** "Test code sits at the end of the production file it reaches into" gives no home to a type that reaches into nothing, such as `TestMatch`, `HashTrail`, `FixedSession` or `Arena`. The `reference_3v3.rs` file is already a gated file of its own. Confirm that a gated file of its own (`test_match.rs`, `hash_trail.rs`, `fixed_session.rs`) is the rule. If it is not, `capability_set/mod.rs` must move its `mod tests` to `tests.rs` to make room.
 3. **Sharing across crates.** `runner` needs `TestMatch`, so the gate becomes `any(test, feature = "internals")`, with an export from `campfire_capabilities::internals`. It is a feature edit in runner's dev-dependencies, not a new dependency.
 4. **A `tests/` directory for `mode/tests.rs`.** The rule names only `foo/{mod.rs, tests.rs}`. The layer rule stops the production, progression and damage tests from moving down, so the split needs `mode/tests/*.rs`.
-5. **`#[derive(Default)]` on `ModifierData`** adds to its public API. The other choice is a test constructor in `internals`.
 6. **`Num` from an integer in tests.** Choose one: a production `const fn Num::int(i64) -> Num` that panics on overflow, or a gated one in `math` `internals`. The gated one needs `campfire-math` with `internals` in the dev-dependencies of 8 crates.
 7. **The silent skip of integration tests.** `runner` and `net` set `required-features = ["internals"]`. Plain `cargo test -p campfire-runner` builds 0 tests and skips all 9 integration tests with no message. The verification chain uses `--all-features`, so it is not affected. A self dev-dependency with `internals` fixes it, but that is a manifest change. You can also accept the skip.
 9. **proptest in capabilities.** It is a workspace dependency, but only `math` uses it. The tables in 5.2 give most of the value without it. Adding it to `campfire-capabilities` dev-dependencies needs your approval.

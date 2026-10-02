@@ -360,3 +360,60 @@ impl<'de> Deserialize<'de> for Range {
             .ok_or_else(|| Error::custom(format!("range {text:?} is not meters or global")))
     }
 }
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::actions::action_data::{ActionData, Targeting};
+    use crate::actions::action_kind::ActionKind;
+
+    impl ActionData {
+        /// A cast of `targeting` and nothing more, as a table that names its targeting alone reads.
+        pub(crate) fn cast(targeting: Targeting) -> ActionData {
+            ActionData {
+                kind: ActionKind::default(),
+                script: None,
+                targeting,
+                range: None,
+                cooldown_ms: None,
+                cost: Default::default(),
+                windup_ms: None,
+                clamp_to_range: false,
+                toggle: None,
+                channel: None,
+                hold: None,
+                charges: None,
+                charge: None,
+                passive_modifier: None,
+                passive_while_ready: false,
+                delivery: None,
+                rate: None,
+                damage: None,
+                damage_kind: None,
+                unit_type: None,
+                params: Default::default(),
+                projectile_state: Default::default(),
+                on_resolve: Vec::new(),
+                on_hit: Vec::new(),
+                on_end: Vec::new(),
+            }
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_cast_is_what_a_table_of_its_targeting_alone_reads() {
+        let read = |text: &str| toml::from_str::<ActionData>(text);
+        assert_eq!(
+            read(r#"targeting = "none""#),
+            Ok(ActionData::cast(Targeting::None))
+        );
+        assert_eq!(
+            read(r#"targeting = "point""#),
+            Ok(ActionData::cast(Targeting::Point))
+        );
+    }
+}

@@ -13,7 +13,7 @@ use crate::values::param::Param;
 use crate::values::stat::Stat;
 
 /// A modifier as its data file declares it, in milliseconds.
-#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModifierData {
     pub script: Option<PackagePath>,

@@ -45,7 +45,7 @@ use crate::stats::lifetime::Hold;
 use crate::stats::live_shares::LiveShares;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_clocks::ModifierClocks;
-use crate::stats::modifier_data::{ModifierData, Reapply};
+use crate::stats::modifier_data::ModifierData;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::pool_id::PoolId;
 use crate::stats::stat_book::StatBook;
@@ -131,32 +131,11 @@ fn cost(name: &str, amount: Number) -> BTreeMap<DeclaredName, Ranked<Number>> {
 fn lash_out() -> ActionData {
     let scalars = |values: &[i64]| values.iter().map(|&value| Scalar::Int(value)).collect();
     ActionData {
-        kind: ActionKind::Cast,
         script: Some(PackagePath::parse("scripts/lash_out.rhai").unwrap()),
-        targeting: Targeting::None,
-        range: None,
         cooldown_ms: Some(Ranked::PerRank(
             [10_000, 9000, 8000, 7000, 6000].map(int).to_vec(),
         )),
         cost: cost("mana", int(35)),
-        windup_ms: None,
-        clamp_to_range: false,
-        toggle: None,
-        channel: None,
-        hold: None,
-        charges: None,
-        charge: None,
-        passive_modifier: None,
-        passive_while_ready: false,
-        delivery: None,
-        rate: None,
-        damage: None,
-        damage_kind: None,
-        unit_type: None,
-        projectile_state: BTreeMap::new(),
-        on_resolve: Vec::new(),
-        on_hit: Vec::new(),
-        on_end: Vec::new(),
         params: BTreeMap::from([
             (
                 DeclaredName::new("radius").unwrap(),
@@ -176,6 +155,7 @@ fn lash_out() -> ActionData {
                 Param::Ranked(Ranked::One(Scalar::Int(500))),
             ),
         ]),
+        ..ActionData::cast(Targeting::None)
     }
 }
 
@@ -183,37 +163,18 @@ fn lash_out() -> ActionData {
 /// mana and 4 rage.
 fn strike() -> ActionData {
     ActionData {
-        kind: ActionKind::Cast,
         script: Some(PackagePath::parse("strike.rhai").unwrap()),
-        targeting: Targeting::Unit(FilterData::parse("enemies").unwrap()),
         range: Some(Ranked::One(RangeField::Range(Range::Meters(num(5))))),
         cooldown_ms: Some(Ranked::One(int(1001))),
         cost: BTreeMap::from([
             (DeclaredName::new("mana").unwrap(), Ranked::One(int(10))),
             (DeclaredName::new("rage").unwrap(), Ranked::One(int(4))),
         ]),
-        windup_ms: None,
-        clamp_to_range: false,
-        toggle: None,
-        channel: None,
-        hold: None,
-        charges: None,
-        charge: None,
-        passive_modifier: None,
-        passive_while_ready: false,
-        delivery: None,
-        rate: None,
-        damage: None,
-        damage_kind: None,
-        unit_type: None,
-        projectile_state: BTreeMap::new(),
-        on_resolve: Vec::new(),
-        on_hit: Vec::new(),
-        on_end: Vec::new(),
         params: BTreeMap::from([(
             DeclaredName::new("damage").unwrap(),
             Param::Ranked(Ranked::One(Scalar::Int(50))),
         )]),
+        ..ActionData::cast(Targeting::Unit(FilterData::parse("enemies").unwrap()))
     }
 }
 
@@ -989,19 +950,8 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     game.load_stats();
     // A guard whose shield is Lash Out's damage at its rank: 75, then 100.
     let guard = ModifierData {
-        script: None,
-        duration_ms: None,
-        interval_ms: None,
-        stacks_expire_ms: None,
-        reapply: Reapply::Refresh,
-        max_stacks: None,
-        stats: BTreeMap::new(),
-        tags: Vec::new(),
         shield: Some(param("damage")),
-        aura: None,
-        affects: None,
-        params: BTreeMap::new(),
-        state: BTreeMap::new(),
+        ..ModifierData::default()
     };
     Stats::load_modifier(&mut game.sim.world, 0, "guard", &guard, None);
     let mut data = lash_out();
@@ -1088,19 +1038,9 @@ fn a_cast_applies_a_modifier_from_its_caster_with_its_abilitys_params() {
     let mut game = Match::with(ScriptLimits::ROOMY, &declared);
     game.load_stats();
     let mark = ModifierData {
-        script: None,
         duration_ms: Some(int(1000)),
-        interval_ms: None,
-        stacks_expire_ms: None,
-        reapply: Reapply::Refresh,
-        max_stacks: None,
-        stats: BTreeMap::new(),
-        tags: Vec::new(),
         shield: Some(param("damage")),
-        aura: None,
-        affects: None,
-        params: BTreeMap::new(),
-        state: BTreeMap::new(),
+        ..ModifierData::default()
     };
     Stats::load_modifier(&mut game.sim.world, 0, "mark", &mark, None);
     // Package 1 names its own `mark`, of no shield.
@@ -1274,16 +1214,7 @@ fn on_resolve(ctx, caster, target) {
 fn scripted(interval_ms: Option<i64>, params: &[(&str, i64)]) -> ModifierData {
     ModifierData {
         script: Some(PackagePath::parse("scripts/hooks.rhai").unwrap()),
-        duration_ms: None,
         interval_ms: interval_ms.map(int),
-        stacks_expire_ms: None,
-        reapply: Reapply::Refresh,
-        max_stacks: None,
-        stats: BTreeMap::new(),
-        tags: Vec::new(),
-        shield: None,
-        aura: None,
-        affects: None,
         params: params
             .iter()
             .map(|&(name, value)| {
@@ -1293,7 +1224,7 @@ fn scripted(interval_ms: Option<i64>, params: &[(&str, i64)]) -> ModifierData {
                 )
             })
             .collect(),
-        state: BTreeMap::new(),
+        ..ModifierData::default()
     }
 }
 
@@ -1480,30 +1411,26 @@ fn changing(
         value: value.clone(),
     };
     ModifierData {
-        script: None,
         duration_ms,
-        interval_ms: None,
-        stacks_expire_ms: None,
-        reapply: Reapply::Refresh,
-        max_stacks: None,
         stats: stats
             .iter()
             .map(|(name, value)| (Stat::named(name).unwrap(), change(value)))
             .collect(),
-        tags: Vec::new(),
-        shield: None,
-        aura: None,
-        affects: None,
         params: params
             .iter()
             .map(|(name, param)| (DeclaredName::new(name).unwrap(), param.clone()))
             .collect(),
-        state: BTreeMap::new(),
+        ..ModifierData::default()
     }
 }
 
 /// A scaling table of `base` at every rank, `per_level`, and `ratios` and `bonus` by stat name.
-fn scaling(base: Scalar, per_level: i64, ratios: &[(&str, Num)], bonus: &[(&str, Num)]) -> Param {
+fn scaling(
+    base: Ranked<Scalar>,
+    per_level: i64,
+    ratios: &[(&str, Num)],
+    bonus: &[(&str, Num)],
+) -> Param {
     let by_name = |pairs: &[(&str, Num)]| {
         pairs
             .iter()
@@ -1511,7 +1438,7 @@ fn scaling(base: Scalar, per_level: i64, ratios: &[(&str, Num)], bonus: &[(&str,
             .collect()
     };
     Param::Scaling(Scaling {
-        base: Ranked::One(base),
+        base,
         per_level: Num::from_int(per_level).unwrap(),
         ratios: by_name(ratios),
         bonus: by_name(bonus),
@@ -1557,18 +1484,14 @@ fn a_scaling_param_reads_its_sources_level_stats_and_bonus() {
     // damage.
     let half = Num::ONE / 2;
     let power = scaling(
-        Scalar::Int(0),
+        Ranked::PerRank([100, 200, 300, 400, 500].map(Scalar::Int).to_vec()),
         10,
         &[("ability_power", half)],
         &[("attack_damage", half * 3)],
     );
-    let Param::Scaling(mut power) = power else {
-        unreachable!("a scaling table");
-    };
-    power.base = Ranked::PerRank([100, 200, 300, 400, 500].map(Scalar::Int).to_vec());
     let data = ActionData {
         kind: ActionKind::Cast,
-        params: [(DeclaredName::new("power").unwrap(), Param::Scaling(power))].into(),
+        params: [(DeclaredName::new("power").unwrap(), power)].into(),
         ..strike()
     };
     let script = r#"
@@ -1644,13 +1567,18 @@ impl VeilMatch {
         let places = [&attack_damage, &spell_vamp, &armor].map(place);
         Stats::load_book(&mut game.sim.world, book);
         let vamp = scaling(
-            Scalar::Decimal(decimal("0.06")),
+            Ranked::One(Scalar::Decimal(decimal("0.06"))),
             0,
             &[],
             &[("attack_damage", decimal("0.00167"))],
         );
         let dual_path = changing(&[("spell_vamp", param("vamp"))], &[("vamp", vamp)], None);
-        let guard = scaling(Scalar::Int(0), 0, &[("spell_vamp", num(10))], &[]);
+        let guard = scaling(
+            Ranked::One(Scalar::Int(0)),
+            0,
+            &[("spell_vamp", num(10))],
+            &[],
+        );
         let fortify = changing(&[("armor", param("guard"))], &[("guard", guard)], None);
         let boost = changing(&[("attack_damage", int(30))], &[], None);
         for (name, data) in [
@@ -1772,16 +1700,8 @@ fn a_delivery_hook_reads_its_projectile_and_the_unit_its_cast_aimed_at() {
         &UnitTypeData::default(),
     );
     let data = ProjectileData {
-        speed: num(15),
-        width: Num::ZERO,
-        range: None,
-        homing: false,
         stop_on_hit: true,
-        once_per_cast: false,
-        hits: None,
-        gravity: None,
-        sight_radius: None,
-        collide: None,
+        ..ProjectileData::flying(num(15))
     };
     Projectiles::load_type(&mut game.sim.world, bolt, &data);
     let shot = ActionData {
@@ -1873,16 +1793,9 @@ fn a_script_launches_a_projectile_only_in_the_form_its_type_flies() {
                 &UnitTypeData::default(),
             );
             let data = ProjectileData {
-                speed: num(15),
-                width: Num::ZERO,
-                range: None,
                 homing,
                 stop_on_hit: true,
-                once_per_cast: false,
-                hits: None,
-                gravity: None,
-                sight_radius: None,
-                collide: None,
+                ..ProjectileData::flying(num(15))
             };
             Projectiles::load_type(&mut game.sim.world, bolt, &data);
             let shot = ActionData {
@@ -1995,16 +1908,9 @@ fn fan_of_frost_from_data_alone_hits_exactly_the_units_in_reach() {
         &UnitTypeData::default(),
     );
     let data = ProjectileData {
-        speed: num(15),
         width: halves(1),
         range: Some(num(6)),
-        homing: false,
-        stop_on_hit: false,
-        once_per_cast: false,
-        hits: None,
-        gravity: None,
-        sight_radius: None,
-        collide: None,
+        ..ProjectileData::flying(num(15))
     };
     Projectiles::load_type(&mut game.sim.world, arrow, &data);
     let fan = fan_of_frost();

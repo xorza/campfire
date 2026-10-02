@@ -19,9 +19,7 @@ use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::move_step::MoveStep;
-use crate::stats::pool_cost::PoolCost;
 use crate::stats::pool_id::PoolId;
-use crate::stats::stat_id::StatId;
 use crate::units::Units;
 use crate::units::filter::Filter;
 use crate::units::layer::Layer;
@@ -803,16 +801,11 @@ fn an_ai_needs_think_and_orders_only_its_own_unit() {
         Some(r#"fn on_think(ctx, unit) { ctx.order_attack(unit, ctx.find(unit, unit.pos, 20, "enemies")[0]); }"#),
     );
     let mut armed = |aim: &str| {
-        let weapon = TestWeapon {
-            aim: Filter::parse(aim, &UnitTypes::default()).unwrap(),
-            range: Range::Meters(num(20)),
-            windup: Ticks::new(2),
-            projectile: None,
-            rate: StatId::new(0),
-            damage: StatId::new(1),
-            cost: PoolCost::default(),
-            resource_cost: None,
-        };
+        let weapon = TestWeapon::new(
+            Filter::parse(aim, &UnitTypes::default()).unwrap(),
+            Range::Meters(num(20)),
+            Ticks::new(2),
+        );
         let weapon = internals::weapon(&mut game.sim.world, weapon);
         let slots = ActionSlots::new([(weapon, SlotKind::new(0), 1)]);
         let stats = game.arm(standing(), Team::new(0));

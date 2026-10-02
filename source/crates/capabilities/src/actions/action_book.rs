@@ -225,6 +225,23 @@ pub(crate) mod internals {
         pub(crate) resource_cost: Option<ResourceAmount>,
     }
 
+    impl TestWeapon {
+        /// A melee weapon at `aim` within `range` that winds up `windup`, of the first two stats'
+        /// rate and damage, costing nothing.
+        pub(crate) fn new(aim: Filter, range: Range, windup: Ticks) -> TestWeapon {
+            TestWeapon {
+                aim,
+                range,
+                windup,
+                projectile: None,
+                rate: StatId::new(0),
+                damage: StatId::new(1),
+                cost: PoolCost::default(),
+                resource_cost: None,
+            }
+        }
+    }
+
     /// Adds `weapon` to the action book of `world`, which deals damage of the first kind.
     pub(crate) fn weapon(world: &mut World, weapon: TestWeapon) -> ActionId {
         let mut book = world.resource_mut::<ActionBook>();

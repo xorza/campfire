@@ -21,7 +21,7 @@ use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::Stats;
 use crate::stats::application::{Application, NewInstance};
 use crate::stats::lifetime::{Ends, Lifetime};
-use crate::stats::modifier_data::{ModifierData, Reapply};
+use crate::stats::modifier_data::ModifierData;
 use crate::stats::pool_cost::PoolCost;
 use crate::stats::pool_data::PoolData;
 use crate::stats::stat_book::StatBook;
@@ -241,14 +241,8 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
             .resolve_filter(&FilterData::parse(aim).unwrap())
             .unwrap();
         let weapon = TestWeapon {
-            aim,
-            range: Range::Meters(num(range)),
-            windup: Ticks::new(windup),
-            projectile: None,
-            rate: StatId::new(0),
             damage,
-            cost: PoolCost::default(),
-            resource_cost: None,
+            ..TestWeapon::new(aim, Range::Meters(num(range)), Ticks::new(windup))
         };
         internals::weapon(&mut fight.sim.world, weapon)
     };
@@ -376,17 +370,16 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
     fight.sim.world.insert_resource(resources);
     let mana = PoolId::new(1).unwrap();
     let weapon = TestWeapon {
-        aim: Filter::of_relation(Relation::Enemies),
-        range: Range::Meters(num(2)),
-        windup: Ticks::new(2),
-        projectile: None,
-        rate: StatId::new(0),
-        damage: StatId::new(1),
         cost: PoolCost::new([(mana, num(4))]),
         resource_cost: Some(ResourceAmount {
             resource: gold,
             amount: 2,
         }),
+        ..TestWeapon::new(
+            Filter::of_relation(Relation::Enemies),
+            Range::Meters(num(2)),
+            Ticks::new(2),
+        )
     };
     let weapon = internals::weapon(&mut fight.sim.world, weapon);
     let mut stats = UnitStats::default();
@@ -759,19 +752,7 @@ fn load_damage_stats(world: &mut World) {
 /// A modifier of no stats, tags or script, as each shield the shield test gives is.
 fn shield_data() -> ModifierData {
     ModifierData {
-        script: None,
-        duration_ms: None,
-        interval_ms: None,
-        stacks_expire_ms: None,
-        reapply: Reapply::Refresh,
-        max_stacks: None,
-        stats: BTreeMap::new(),
-        tags: Vec::new(),
-        shield: None,
-        aura: None,
-        affects: None,
-        params: BTreeMap::new(),
-        state: BTreeMap::new(),
+        ..ModifierData::default()
     }
 }
 
@@ -876,22 +857,12 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     let mut pools = fight.sim.world.get_mut::<Pools>(entity).unwrap();
     pools.take(PoolId::FIRST, num(60));
     let shield = |id: u16, until: Option<u64>, amount: i64| NewInstance {
-        id: ModifierId::new(id),
-        source: None,
-        ability: None,
-        rank: 1,
-        aura_radius: None,
-        stacks: 1,
         lifetime: Lifetime::new(
             None,
             until.map_or(Ends::Never, |until| Ends::At(Tick::new(until))),
         ),
-        stack_life: None,
-        stack_ends: Vec::new(),
-        interval: None,
         shield: Some(num(amount)),
-        stats: Vec::new(),
-        state: Vec::new(),
+        ..NewInstance::bare(ModifierId::new(id), None)
     };
     for name in ["first", "second", "third"] {
         Stats::load_modifier(&mut fight.sim.world, 0, name, &shield_data(), None);
@@ -901,11 +872,7 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
         shield(1, Some(50), 20),
         shield(2, Some(30), 10),
     ]
-    .map(|instance| Application {
-        instance,
-        reapply: Reapply::Refresh,
-        max_stacks: None,
-    });
+    .map(|instance| Application::refresh(instance));
     fight.sim.insert(target, Modifiers::bundle(shields));
     let shields = |fight: &Fight| {
         let clocks = fight.sim.try_get::<ModifierClocks>(target).unwrap();

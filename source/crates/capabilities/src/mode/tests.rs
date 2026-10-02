@@ -62,7 +62,7 @@ use crate::stats::Stats;
 use crate::stats::application::{Application, NewInstance};
 use crate::stats::instance::StatShare;
 use crate::stats::level::Level;
-use crate::stats::lifetime::{Ends, Hold, Lifetime};
+use crate::stats::lifetime::Hold;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_data::{ModifierData, Reapply};
@@ -327,31 +327,7 @@ fn tracks() -> BTreeMap<DeclaredName, TrackData> {
 /// A cast of no target, cost, time or script: the test mode's spell and hero X's ability.
 fn blink_data() -> ActionData {
     ActionData {
-        kind: ActionKind::Cast,
-        script: None,
-        targeting: Targeting::None,
-        range: None,
-        cooldown_ms: None,
-        cost: BTreeMap::new(),
-        windup_ms: None,
-        clamp_to_range: false,
-        toggle: None,
-        channel: None,
-        hold: None,
-        charges: None,
-        charge: None,
-        passive_modifier: None,
-        passive_while_ready: false,
-        delivery: None,
-        rate: None,
-        damage: None,
-        damage_kind: None,
-        params: BTreeMap::new(),
-        projectile_state: BTreeMap::new(),
-        on_resolve: Vec::new(),
-        on_hit: Vec::new(),
-        on_end: Vec::new(),
-        unit_type: None,
+        ..ActionData::cast(Targeting::None)
     }
 }
 
@@ -421,23 +397,15 @@ struct ModeFiles {
 /// The mode's one modifier: 200 ms, stacking up to 4, with a count in its state.
 fn blessing() -> ModifierData {
     ModifierData {
-        script: None,
         duration_ms: Some(Number::Value(Scalar::Int(200))),
-        interval_ms: None,
-        stacks_expire_ms: None,
         reapply: Reapply::Stack,
         max_stacks: NonZeroU32::new(4),
-        stats: BTreeMap::new(),
-        tags: Vec::new(),
-        shield: None,
-        aura: None,
-        affects: None,
-        params: BTreeMap::new(),
         state: [(
             DeclaredName::new("count").unwrap(),
             field(StateType::Int, None),
         )]
         .into(),
+        ..ModifierData::default()
     }
 }
 
@@ -1813,25 +1781,10 @@ impl Game {
             .iter()
             .map(|&(_, value)| StatShare { value, live: None });
         let instance = NewInstance {
-            id,
-            source: None,
-            ability: None,
-            rank: 1,
-            aura_radius: None,
-            stacks: 1,
-            lifetime: Lifetime::new(None, Ends::Never),
-            stack_life: None,
-            stack_ends: Vec::new(),
-            interval: None,
-            shield: None,
             stats: shares.collect(),
-            state: Vec::new(),
+            ..NewInstance::bare(id, None)
         };
-        let modifiers = Modifiers::bundle([Application {
-            instance,
-            reapply: Reapply::Refresh,
-            max_stacks: None,
-        }]);
+        let modifiers = Modifiers::bundle([Application::refresh(instance)]);
         let grunt = self
             .sim
             .world
@@ -2459,19 +2412,9 @@ fn a_restore_check_refuses_modifiers_the_book_lacks() {
     };
     let applied = |id, stats: Vec<StatShare>, state: Vec<StateValue>| Application {
         instance: NewInstance {
-            id,
-            source: None,
-            ability: None,
-            rank: 1,
-            aura_radius: None,
-            stacks: 1,
-            lifetime: Lifetime::new(None, Ends::Never),
-            stack_life: None,
-            stack_ends: Vec::new(),
-            interval: None,
-            shield: None,
             stats,
             state,
+            ..NewInstance::bare(id, None)
         },
         reapply: Reapply::Refresh,
         max_stacks: None,

@@ -38,3 +38,46 @@ pub(crate) struct NewInstance {
     pub(crate) stats: Vec<StatShare>,
     pub(crate) state: Vec<StateValue>,
 }
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use campfire_sim::StableId;
+
+    use crate::stats::application::{Application, NewInstance};
+    use crate::stats::lifetime::{Ends, Lifetime};
+    use crate::stats::modifier_data::Reapply;
+    use crate::units::modifier_id::ModifierId;
+
+    impl NewInstance {
+        /// A new instance of `id` from `source`: one stack at rank 1 of no ability, that lasts
+        /// until it is removed, with no clock, shield, stat share or state.
+        pub(crate) fn bare(id: ModifierId, source: Option<StableId>) -> NewInstance {
+            NewInstance {
+                id,
+                source,
+                ability: None,
+                rank: 1,
+                lifetime: Lifetime::new(None, Ends::Never),
+                aura_radius: None,
+                stacks: 1,
+                stack_life: None,
+                stack_ends: Vec::new(),
+                interval: None,
+                shield: None,
+                stats: Vec::new(),
+                state: Vec::new(),
+            }
+        }
+    }
+
+    impl Application {
+        /// `instance`, which a second application refreshes, with no stack limit.
+        pub(crate) const fn refresh(instance: NewInstance) -> Application {
+            Application {
+                instance,
+                reapply: Reapply::Refresh,
+                max_stacks: None,
+            }
+        }
+    }
+}

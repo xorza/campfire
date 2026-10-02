@@ -644,7 +644,7 @@ fn respawn(
 
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
-    use crate::stats::stat_id::StatId;
+
     use bevy_ecs::bundle::Bundle;
     use bevy_ecs::world::World;
     use campfire_math::{Num, Ticks};
@@ -667,7 +667,7 @@ pub(crate) mod internals {
     use crate::combat::combat_bindings::CombatBindings;
     #[cfg(test)]
     use crate::stats::life_pool::LifePool;
-    use crate::stats::pool_cost::PoolCost;
+
     #[cfg(test)]
     use crate::stats::pool_id::PoolId;
     use crate::stats::stat_book::StatBook;
@@ -732,14 +732,12 @@ pub(crate) mod internals {
         pub fn parts(self, world: &mut World) -> ArmsParts {
             let hz = world.resource::<TickRate>().hz().get();
             let weapon = TestWeapon {
-                aim: Filter::of_relation(Relation::Enemies),
-                range: Range::Meters(self.range),
-                windup: self.windup,
                 projectile: self.projectile,
-                rate: StatId::new(0),
-                damage: StatId::new(1),
-                cost: PoolCost::default(),
-                resource_cost: None,
+                ..TestWeapon::new(
+                    Filter::of_relation(Relation::Enemies),
+                    Range::Meters(self.range),
+                    self.windup,
+                )
             };
             let id = internals::weapon(world, weapon);
             // The rate whose attacks are `period` ticks apart, rounded up so the period

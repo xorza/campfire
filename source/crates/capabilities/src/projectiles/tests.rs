@@ -40,16 +40,11 @@ fn half() -> Num {
 /// of `width` for `range` that ends at its first hit when `stop_on_hit`.
 fn projectile(homing: bool, width: Num, range: Option<Num>, stop_on_hit: bool) -> ProjectileData {
     ProjectileData {
-        speed: num(15),
         width,
         range,
         homing,
         stop_on_hit,
-        once_per_cast: false,
-        hits: None,
-        gravity: None,
-        sight_radius: None,
-        collide: None,
+        ..ProjectileData::flying(num(15))
     }
 }
 
@@ -376,18 +371,7 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
 fn a_projectile_reads_only_with_a_positive_speed_and_no_negative_width_or_range() {
     let read = |text: &str| toml::from_str::<ProjectileData>(text);
     let refusal = |text: &str| read(text).unwrap_err().message().to_owned();
-    let plain = ProjectileData {
-        speed: Num::ONE.checked_div_int(2).unwrap(),
-        width: Num::ZERO,
-        range: None,
-        homing: false,
-        stop_on_hit: false,
-        once_per_cast: false,
-        hits: None,
-        gravity: None,
-        sight_radius: None,
-        collide: None,
-    };
+    let plain = ProjectileData::flying(Num::ONE.checked_div_int(2).unwrap());
     assert_eq!(read("speed = \"0.5\"").unwrap(), plain);
     assert_eq!(
         read("speed = 20\nwidth = 0\nrange = 0").unwrap(),

@@ -78,3 +78,29 @@ impl<'de> Deserialize<'de> for ProjectileData {
         })
     }
 }
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use campfire_math::Num;
+
+    use crate::projectiles::projectile_data::ProjectileData;
+
+    impl ProjectileData {
+        /// A projectile of `speed` m/s and nothing more, as a section that names its speed alone
+        /// reads: no width, its action's range, along a line, through what it hits.
+        pub(crate) const fn flying(speed: Num) -> ProjectileData {
+            ProjectileData {
+                speed,
+                width: Num::ZERO,
+                range: None,
+                homing: false,
+                stop_on_hit: false,
+                once_per_cast: false,
+                hits: None,
+                gravity: None,
+                sight_radius: None,
+                collide: None,
+            }
+        }
+    }
+}
