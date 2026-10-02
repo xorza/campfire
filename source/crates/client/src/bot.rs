@@ -5,7 +5,7 @@ use bevy::ecs::query::With;
 use bevy::ecs::resource::Resource;
 use bevy::ecs::system::{Commands, Res, ResMut, Single};
 use campfire_math::Tick;
-use campfire_net::{BotScript, MatchClock, OrderScript};
+use campfire_net::{BotScript, JoinState, OrderScript};
 use lightyear::prelude::{Client, Disconnect, Disconnected, LocalTimeline};
 use tracing::info;
 
@@ -40,7 +40,7 @@ impl Bot {
     /// Once the client ran the end tick, disconnects; once disconnected, ends the app.
     fn leave(
         timeline: Res<'_, LocalTimeline>,
-        clock: Option<Res<'_, MatchClock>>,
+        state: Res<'_, JoinState>,
         client: Single<'_, '_, (Entity, Option<&Disconnected>), With<Client>>,
         mut leave: ResMut<'_, Leave>,
         mut commands: Commands<'_, '_>,
@@ -53,7 +53,10 @@ impl Bot {
             }
             return;
         }
-        let Some(tick) = clock.and_then(|clock| clock.sim_tick(timeline.tick())) else {
+        let Some(tick) = state
+            .clock()
+            .and_then(|clock| clock.sim_tick(timeline.tick()))
+        else {
             return;
         };
         if tick > leave.after {

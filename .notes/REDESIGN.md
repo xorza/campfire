@@ -345,7 +345,6 @@ Edge-to-edge queries make Lash Out, Wildfire, Tempest and the auras reach up to 
 - The client advances its input chain before the server accepts a packet. After one refusal, every later packet fails `BadSignature`, and the player is cut off for the rest of the match.
 - The server hashes a packet before it checks the packet's size.
 - The lobby ignores disconnects, and it lets one key take several seats.
-- The client's join state lives in four places.
 - The client builds its prediction world by hand.
 - The session log uses raw `u64` ticks.
 
@@ -362,11 +361,6 @@ Edge-to-edge queries make Lash Out, Wildfire, Tempest and the auras reach up to 
   - The lobby hears Lightyear's disconnect and frees the seat.
   - `start_match` uses only live links.
   - A main key that already holds a seat is refused.
-- **`JoinState`, one enum.**
-  - Its states are `Waiting`, `Answered { session, chain }`, `Playing { clock }` and `Refused(reason)`, each with its own data.
-  - A refusal ends the client's link.
-  - `SentInputs` keeps only the inputs after the last confirmed tick, and no clone of the plugin.
-  - An order writes its payload into a buffer that the client reuses, and the chain is extended once for each input.
 - **A prediction install.** `capabilities` gains `Prediction::install(world, schedule, &Books, rate)`. It shares its code with `Mode::install` for everything that runs without scripts: `Metric`, `Bounds`, pathing and the life binding. After R1, the client builds the same `Books` from the packages, and this is PLAN step 2.
 
 ## T. Proof and test redesign
@@ -433,7 +427,6 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 | H2 | `NavBudget`; short routes within their window; "arrived short"; re-asks after removals; the blocker query and clipping; `Progress` reset; blocked map cells in the exact tests; `Steering` methods; `Route::clear` keeps its buffer | B3 | M, changes behaviour |
 | H3 | Incremental regions; routes tested only against added bodies; the body index's first-cell flag and early stop | H2 | M |
 | H4 | Vision dirty words, detectors only, and the group limit; incremental view rows; filters parsed once | B | M |
-| I3 | `JoinState` as one enum; a refusal ends the link; `SentInputs` pruned; one order buffer | | S |
 
 ### Joins of the two tracks
 
@@ -457,7 +450,6 @@ Track S:  D2 → D3 → D5 → D6
                        └ I4 → PLAN 2
 
 Track I:  E1 → E2      F2      G1      H1, H4      H2 → H3
-          I3
 
 Joins:    G1 → G2      D5 + H1 → H1b
 ```
@@ -516,9 +508,7 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - several seats: B4.
 - **R§2:**
   - refused packet: B4;
-  - prediction by hand: I4;
-  - join state: I3;
-  - kept inputs: I3.
+  - prediction by hand: I4.
 - **R§3:**
   - cast survives death: B1;
   - die and never dead: B1;
@@ -630,7 +620,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - commands parsed twice: J;
   - small scans: J.
 - **R§13:**
-  - client order allocations: I3;
   - `Route::clear`: H2;
   - stable sort: J;
   - applied handle: D5;

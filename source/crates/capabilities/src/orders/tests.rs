@@ -408,6 +408,15 @@ fn orders_decode_exactly() {
             .all(|command| command.capability == Capability::Orders)
     );
     assert_eq!(commands[1].body, attack.encode());
+
+    // A written payload follows what the buffer holds: 1 command, of capability 5 (`orders`),
+    // its 5 body bytes; then the move's payload, the body buffer reused.
+    let mut out = vec![9];
+    let mut body = Vec::new();
+    attack.write_payload(&mut body, &mut out);
+    assert_eq!(out, [9, 1, 5, 5, 0xAC, 0x02, 1, 0xAC, 0x02]);
+    order.write_payload(&mut body, &mut out);
+    assert_eq!(out[9..], Order::payload(&[order]));
 }
 
 /// Heroes of slots 0 and 1, a meter a tick: slot 0 at the origin, slot 1 at x = 4 and y = 2.

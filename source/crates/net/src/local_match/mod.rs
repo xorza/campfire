@@ -33,6 +33,7 @@ use crate::net_protocol::NetProtocol;
 use crate::order_script::OrderScript;
 use crate::sim_client::bot_script::BotScript;
 use crate::sim_client::client_mode::ClientMode;
+use crate::sim_client::join_state::JoinState;
 use crate::sim_client::server_pin::ServerPin;
 use crate::sim_client::{PendingOrders, SimClient};
 use crate::sim_server::{PlayerLink, SimServer, TickHashes};
@@ -247,9 +248,9 @@ impl LocalMatch {
         .expect("the lane mode runs at its default rate");
         self.server.world_mut().insert_resource(lobby);
         for _ in 0..CONNECT_FRAMES {
-            let started = |app: &App| app.world().contains_resource::<MatchClock>();
-            if started(&self.server)
-                && self.clients.iter().all(started)
+            let playing = |client: &App| client.world().resource::<JoinState>().clock().is_some();
+            if self.server.world().contains_resource::<MatchClock>()
+                && self.clients.iter().all(playing)
                 && (0..self.clients.len()).all(|client| self.holds_hero(client))
             {
                 return;

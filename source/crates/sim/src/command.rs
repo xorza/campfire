@@ -1,3 +1,5 @@
+use std::mem;
+
 use serde::{Deserialize, Serialize, Serializer};
 
 use crate::capability::Capability;
@@ -15,7 +17,14 @@ pub struct Command<'a> {
 impl<'a> Command<'a> {
     /// The payload of `commands`, in order.
     pub fn encode(commands: &[Command<'_>]) -> Vec<u8> {
-        postcard::to_allocvec(commands).expect("commands always encode")
+        let mut payload = Vec::new();
+        Command::write(commands, &mut payload);
+        payload
+    }
+
+    /// Appends the payload of `commands`, in order, to `out`.
+    pub fn write(commands: &[Command<'_>], out: &mut Vec<u8>) {
+        *out = postcard::to_extend(commands, mem::take(out)).expect("commands always encode");
     }
 
     /// A payload of `bodies`, each a command to `capability`, in order.

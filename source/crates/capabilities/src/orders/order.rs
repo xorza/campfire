@@ -1,3 +1,5 @@
+use std::mem;
+
 use campfire_math::Num;
 use campfire_sim::{Capability, Command, StableId};
 
@@ -41,5 +43,17 @@ impl Order {
     pub fn payload(orders: &[Order]) -> Vec<u8> {
         let bodies: Vec<Vec<u8>> = orders.iter().map(Order::encode).collect();
         Command::payload(Order::CAPABILITY, &bodies)
+    }
+
+    /// Appends the payload of this order alone to `out`, its body encoded in `body`, a buffer the
+    /// caller reuses, so a client that sends orders every tick allocates for none of them.
+    pub fn write_payload(&self, body: &mut Vec<u8>, out: &mut Vec<u8>) {
+        body.clear();
+        *body = postcard::to_extend(self, mem::take(body)).expect("an order always encodes");
+        let command = Command {
+            capability: Order::CAPABILITY,
+            body,
+        };
+        Command::write(&[command], out);
     }
 }

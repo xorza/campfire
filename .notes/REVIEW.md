@@ -22,10 +22,7 @@ Package data, snapshots and client packets are untrusted. Each of these items le
 
 The terms of a session, the input limits and the join state are each derived or kept in several places that disagree.
 
-- [ ] **A refused packet does not reach the client** — `net/src/sim_client/mod.rs:347-378`. The server ends the link of a refused packet, but the client's join state does not learn why, and nothing reports it. Better: the client's `JoinState` holds the refusal and its reason.
 - [ ] **The client builds its prediction world by hand** — `net/src/sim_client/mod.rs:167-186`, `net/src/sim_client/client_mode.rs:471-500`, against `capabilities/src/mode/mod.rs:102-160`. It repeats part of `Mode::install` (`Metric`, `Bounds`, `load_pathing`, `bind_life`) with a different life-pool fallback, and the HUD reads the life pool again. Anything new in `Mode::install` must be copied here, or prediction diverges. Better: capabilities own one install path for prediction that shares code with `Mode::install`.
-- [ ] **The client's join state is in four places, and a refusal does nothing** — `net/src/sim_client/mod.rs:67-107,225-272`. The state is in `JoinState`, `SentInputs::session`, `SentInputs::chain` and whether `MatchClock` exists. `SentInputs` also holds a clone of the whole plugin, keys included. A refused client waits forever with a `warn!`, and its link stays connected. Better: one enum with the data of each step, and a refusal that ends the client or the link.
-- [ ] **The client keeps every input it sent** — `net/src/sim_client/mod.rs:97-98,355-363`. Rollback needs only the inputs after the last confirmed tick. Better: drop the older runs.
 
 ## 3. The rules of a living unit and a target have several definitions
 
