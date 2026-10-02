@@ -2,7 +2,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
-use campfire_common::{Tick, Ticks};
+use campfire_common::Ticks;
 use campfire_math::Num;
 use campfire_sim::{Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry};
 
@@ -18,7 +18,6 @@ use crate::deliveries::delivered::{Delivered, Reach};
 use crate::deliveries::delivering::Delivering;
 use crate::deliveries::delivery_spawner::DeliverySpawner;
 use crate::deliveries::{Deliveries, DeliverySet};
-use crate::scripts::frame::Frame;
 use crate::stats::StatsSet;
 use crate::stats::held_modifiers::{Held, HeldModifiers};
 use crate::units::body_grid::BodyGrid;
@@ -64,14 +63,9 @@ impl Areas {
         registry.register_component::<Area>();
     }
 
-    /// Applies the next area the call in `frame` queued.
-    pub(crate) fn apply_next(world: &mut World, frame: &mut Frame, _: Tick) {
-        Areas::apply(world, frame.effects.take::<AreaEffect>());
-    }
-
     /// Applies `effect`: an area that lands this tick, at the point of the map's bounds nearest
     /// where it says.
-    pub(crate) fn apply(world: &mut World, effect: AreaEffect) {
+    fn apply(world: &mut World, effect: AreaEffect) {
         let at = Bounds::of(world).clamp(effect.at);
         Areas::push(world, effect.by, effect.unit_type, at, None);
     }

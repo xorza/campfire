@@ -4,31 +4,29 @@ use std::fmt::Debug;
 
 use bevy_ecs::world::World;
 use campfire_common::Tick;
-use campfire_sim::Capability;
 
 use crate::scripts::frame::Frame;
 
-/// An effect a call queues: it applies when the call returns, by the capability it names, in the
-/// order queued among every capability's.
+/// An effect a call queues: it applies itself when the call returns, in the order queued among
+/// every type's.
 pub(crate) trait Effect: Debug + 'static {
-    const CAPABILITY: Capability;
+    /// Applies the effect, which the call in `frame` queued, in tick `now`.
+    fn apply(self, world: &mut World, frame: &mut Frame, now: Tick);
 }
 
-/// How a capability applies the next of its effects that the call in `frame` queued, in tick
-/// `now`: it takes the effect with `Effects::take`.
-pub(crate) type ApplyEffect = fn(&mut World, &mut Frame, Tick);
+/// How the next effect in order applies: it takes the first of its type's queue, and applies it.
+type ApplyNext = fn(&mut World, &mut Frame, Tick);
 
-/// The effects a call queued: one queue for each capability's effect type, made at its first
-/// effect and kept for the match, and the capability of each effect in the order queued. A
-/// capability's effects apply in their own queue's order, so the order list needs no index.
+/// The effects a call queued: one queue for each effect type, made at its first effect and kept
+/// for the match, and the apply of each effect in the order queued. A type's effects apply in
+/// their own queue's order, so the order list needs no index.
 #[derive(Debug, Default)]
 pub(crate) struct Effects {
-    /// By capability index.
-    queues: Vec<Option<Box<dyn Queue>>>,
-    order: Vec<Capability>,
+    queues: Vec<Box<dyn Queue>>,
+    order: Vec<ApplyNext>,
 }
 
-/// One capability's queue, as `Effects` holds every kind.
+/// One effect type's queue, as `Effects` holds every type.
 trait Queue: Debug {
     fn clear(&mut self);
     fn as_any(&self) -> &dyn Any;
@@ -52,100 +50,119 @@ impl<E: Effect> Queue for VecDeque<E> {
 impl Effects {
     /// Queues `effect` after every effect queued before it.
     pub(crate) fn push<E: Effect>(&mut self, effect: E) {
-        let index = E::CAPABILITY as usize;
-        if self.queues.len() <= index {
-            self.queues.resize_with(index + 1, || None);
-        }
-        let queue = self.queues[index].get_or_insert_with(|| Box::new(VecDeque::<E>::new()));
-        queue
+        let at = self
+            .queues
+            .iter()
+            .position(|queue| queue.as_any().is::<VecDeque<E>>())
+            .unwrap_or_else(|| {
+                self.queues.push(Box::new(VecDeque::<E>::new()));
+                self.queues.len() - 1
+            });
+        self.queues[at]
             .as_any_mut()
             .downcast_mut::<VecDeque<E>>()
-            .expect("a capability's queue holds its one effect type")
+            .expect("the queue of its type")
             .push_back(effect);
-        self.order.push(E::CAPABILITY);
+        self.order.push(Effects::apply_first::<E>);
     }
 
     /// The effects of type `E` queued and not applied yet, first first.
     pub(crate) fn queued<E: Effect>(&self) -> impl Iterator<Item = &E> {
         let queue = self
             .queues
-            .get(E::CAPABILITY as usize)
-            .and_then(Option::as_ref);
-        queue
-            .map(|queue| {
-                queue
-                    .as_any()
-                    .downcast_ref::<VecDeque<E>>()
-                    .expect("a capability's queue holds its one effect type")
-            })
-            .into_iter()
-            .flatten()
+            .iter()
+            .find_map(|queue| queue.as_any().downcast_ref::<VecDeque<E>>());
+        queue.into_iter().flatten()
     }
 
-    /// Takes the first effect of type `E`, which the apply of the next effect in order takes.
-    pub(crate) fn take<E: Effect>(&mut self) -> E {
-        self.queues[E::CAPABILITY as usize]
-            .as_mut()
-            .and_then(|queue| queue.as_any_mut().downcast_mut::<VecDeque<E>>())
-            .and_then(VecDeque::pop_front)
-            .expect("the effect the order names is queued")
-    }
-
-    /// The capability of each effect, in the order queued.
-    pub(crate) fn order(&self) -> &[Capability] {
+    /// The apply of each effect, in the order queued.
+    pub(crate) fn order(&self) -> &[ApplyNext] {
         &self.order
     }
 
     pub(crate) fn clear(&mut self) {
         self.order.clear();
-        for queue in self.queues.iter_mut().flatten() {
+        for queue in &mut self.queues {
             queue.clear();
         }
+    }
+
+    /// Takes the first effect of type `E` the call in `frame` queued, which the order names
+    /// next, and applies it.
+    fn apply_first<E: Effect>(world: &mut World, frame: &mut Frame, now: Tick) {
+        let effect = frame
+            .effects
+            .queues
+            .iter_mut()
+            .find_map(|queue| queue.as_any_mut().downcast_mut::<VecDeque<E>>())
+            .and_then(VecDeque::pop_front)
+            .expect("the effect the order names is queued");
+        effect.apply(world, frame, now);
     }
 }
 
 #[cfg(test)]
 mod tests {
+    use bevy_ecs::resource::Resource;
+
     use super::*;
+
+    /// What the test's effects applied, in order.
+    #[derive(Resource, Debug, Default)]
+    struct Applied(Vec<String>);
 
     #[derive(Debug, PartialEq, Eq)]
     struct Hit(u8);
 
     impl Effect for Hit {
-        const CAPABILITY: Capability = Capability::Combat;
+        fn apply(self, world: &mut World, _: &mut Frame, now: Tick) {
+            world
+                .resource_mut::<Applied>()
+                .0
+                .push(format!("hit {} at {now}", self.0));
+        }
     }
 
+    /// A second type, as one capability may queue several.
     #[derive(Debug, PartialEq, Eq)]
-    struct Spawn(&'static str);
+    struct Heal(u8);
 
-    impl Effect for Spawn {
-        const CAPABILITY: Capability = Capability::Mode;
+    impl Effect for Heal {
+        fn apply(self, world: &mut World, _: &mut Frame, now: Tick) {
+            world
+                .resource_mut::<Applied>()
+                .0
+                .push(format!("heal {} at {now}", self.0));
+        }
     }
 
     #[test]
-    fn effects_keep_their_order_across_kinds_and_their_own_within_one() {
-        let mut effects = Effects::default();
-        effects.push(Hit(1));
-        effects.push(Spawn("a"));
-        effects.push(Hit(2));
+    fn effects_apply_themselves_in_their_order_across_types_and_their_own_within_one() {
+        let mut world = World::new();
+        world.init_resource::<Applied>();
+        let mut frame = Frame::default();
+        frame.effects.push(Hit(1));
+        frame.effects.push(Heal(2));
+        frame.effects.push(Hit(3));
+        let hits: Vec<_> = frame.effects.queued::<Hit>().collect();
+        assert_eq!(hits, [&Hit(1), &Hit(3)]);
+        assert_eq!(frame.effects.queued::<Heal>().count(), 1);
+        frame.apply(&mut world, Tick::new(7));
         assert_eq!(
-            effects.order(),
-            [Capability::Combat, Capability::Mode, Capability::Combat]
+            world.resource::<Applied>().0,
+            ["hit 1 at 7", "heal 2 at 7", "hit 3 at 7"]
         );
-        let hits: Vec<_> = effects.queued::<Hit>().collect();
-        assert_eq!(hits, [&Hit(1), &Hit(2)]);
-        assert_eq!(effects.queued::<Spawn>().count(), 1);
-        assert_eq!(effects.take::<Hit>(), Hit(1));
-        assert_eq!(effects.take::<Spawn>(), Spawn("a"));
-        assert_eq!(effects.take::<Hit>(), Hit(2));
-        // Cleared, the queues hold nothing, and a kind never queued has none.
-        effects.push(Hit(3));
-        effects.clear();
-        assert_eq!(effects.order(), []);
-        assert_eq!(effects.queued::<Hit>().count(), 0);
+        // Applied, the frame holds no effect; a type never queued has none, and a queue made
+        // by an earlier call serves the next.
+        assert_eq!(frame.effects.order().len(), 0);
+        assert_eq!(frame.effects.queued::<Hit>().count(), 0);
         let mut fresh = Effects::default();
-        assert_eq!(fresh.queued::<Spawn>().count(), 0);
-        fresh.push(Spawn("b"));
-        assert_eq!(fresh.take::<Spawn>(), Spawn("b"));
+        assert_eq!(fresh.queued::<Heal>().count(), 0);
+        frame.effects.push(Heal(4));
+        frame.apply(&mut world, Tick::new(8));
+        assert_eq!(world.resource::<Applied>().0.last().unwrap(), "heal 4 at 8");
+        fresh.push(Hit(5));
+        fresh.clear();
+        assert_eq!(fresh.queued::<Hit>().count(), 0);
     }
 }

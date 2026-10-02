@@ -11,6 +11,7 @@ use crate::actions::cost_target::CostTarget;
 use crate::areas::area_spec::AreaSpec;
 use crate::books::book_input::{BookInput, BookKind, BookPackage};
 use crate::books::error::BookError;
+use crate::books::type_place::TypePlace;
 use crate::books::unit_type_file::UnitTypeFile;
 use crate::books::{BookParts, Books};
 use crate::combat::on_death::OnDeath;
@@ -60,17 +61,35 @@ pub(crate) struct BookBuilder<'a> {
 }
 
 /// A unit type that stands, as its package gives it: its name in the mode's scope, its file, and
-/// whether it is an avatar.
+/// the name its package declares it by, none for the avatar its package stands as.
 #[derive(Debug, Clone, Copy)]
 struct Standing<'f> {
     name: &'f str,
     file: &'f UnitTypeFile,
-    avatar: bool,
+    declared: Option<&'f DeclaredName>,
 }
 
 impl<'f> Standing<'f> {
-    const fn new(name: &'f str, file: &'f UnitTypeFile, avatar: bool) -> Standing<'f> {
-        Standing { name, file, avatar }
+    fn declared(name: &'f DeclaredName, file: &'f UnitTypeFile) -> Standing<'f> {
+        Standing {
+            name: name.as_str(),
+            file,
+            declared: Some(name),
+        }
+    }
+
+    /// The avatar of the package `package` names.
+    const fn avatar(package: &'f str, file: &'f UnitTypeFile) -> Standing<'f> {
+        Standing {
+            name: package,
+            file,
+            declared: None,
+        }
+    }
+
+    fn place(&self) -> TypePlace {
+        self.declared
+            .map_or(TypePlace::Avatar, |name| TypePlace::Declared(name.clone()))
     }
 }
 
@@ -120,7 +139,7 @@ impl<'a> BookBuilder<'a> {
                         if file.delivers() {
                             self.delivery(index, name, file)?;
                         } else {
-                            let unit = Standing::new(name.as_str(), file, false);
+                            let unit = Standing::declared(name, file);
                             self.unit_type(index, unit, &actions)?;
                         }
                     }
@@ -131,7 +150,7 @@ impl<'a> BookBuilder<'a> {
                     }
                     let ranks = self.slotted_ranks([unit]);
                     let actions = self.actions(index, package, |id| ranks.get(id).copied())?;
-                    let unit = Standing::new(package.name, unit, true);
+                    let unit = Standing::avatar(package.name, unit);
                     self.unit_type(index, unit, &actions)?;
                     self.books.units.avatars.push(package.name);
                 }
@@ -233,7 +252,7 @@ impl<'a> BookBuilder<'a> {
             .load(load, index, &modifiers)
             .map_err(|error| BookError::Modifier {
                 package: index,
-                modifier: error.modifier.to_string(),
+                modifier: error.modifier,
                 problem: error.problem,
             })?;
         for modifier in &modifiers {
@@ -287,7 +306,7 @@ impl<'a> BookBuilder<'a> {
             ActionParts::of(data, index, ranks, self.input.rate, &names).map_err(|error| {
                 BookError::Action {
                     package: index,
-                    action: id.to_string(),
+                    action: id.clone(),
                     error,
                 }
             })?;
@@ -326,7 +345,8 @@ impl<'a> BookBuilder<'a> {
         unit: Standing<'_>,
         actions: &BTreeMap<&str, ActionId>,
     ) -> Result<(), BookError> {
-        let Standing { name, file, avatar } = unit;
+        let Standing { name, file, .. } = unit;
+        let avatar = unit.declared.is_none();
         let data = self.input.data;
         let books = &mut self.books;
         let unit_type = books.types.named(TypeScope::Mode, name).expect(CHECKED);
@@ -344,7 +364,7 @@ impl<'a> BookBuilder<'a> {
                 Ai::of(orders, script, self.input.scripts, self.input.rate).map_err(|error| {
                     BookError::Ai {
                         package: index,
-                        unit_type: name.to_owned(),
+                        unit_type: unit.place(),
                         error,
                     }
                 })?;
@@ -372,7 +392,7 @@ impl<'a> BookBuilder<'a> {
             UnitKit::new(&self.stats, unit_type, sections, self.life, rate).map_err(|error| {
                 BookError::Kit {
                     package: index,
-                    unit_type: name.to_owned(),
+                    unit_type: unit.place(),
                     error,
                 }
             })?;
@@ -428,7 +448,7 @@ impl<'a> BookBuilder<'a> {
             let spec = AreaSpec::of(area, &books.types, rate, modifier).ok_or_else(|| {
                 BookError::AreaTime {
                     package: index,
-                    unit_type: name.to_string(),
+                    unit_type: name.clone(),
                 }
             })?;
             books.areas.set(unit_type, spec);

@@ -32,7 +32,6 @@ use crate::orders::resetting::Resetting;
 use crate::orders::unit_order::{OrderedUnit, UnitOrder};
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
-use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
@@ -106,20 +105,6 @@ impl Orders {
             return Err(AiError::NoThink);
         }
         Ok(period)
-    }
-
-    /// Applies the next order the AI call in `frame` queued, for its unit that thinks, which the
-    /// call checked against the units as the phase began; no unit dies within Think.
-    pub(crate) fn apply_next(world: &mut World, frame: &mut Frame, _: Tick) {
-        let order = frame.effects.take::<UnitOrder>();
-        let unit = frame
-            .acting()
-            .expect("an order comes from the unit that thinks");
-        let entity = world
-            .resource::<EntityIndex>()
-            .get(unit)
-            .expect("a unit that thinks lives");
-        Orders::apply_order(world, entity, order);
     }
 
     /// Applies `order`, which its source checked, to the unit of `entity`, as every order

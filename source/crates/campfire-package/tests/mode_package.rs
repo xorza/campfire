@@ -273,7 +273,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-static FLAWS: [Flaw; 184] = [
+static FLAWS: [Flaw; 185] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -1171,8 +1171,22 @@ static FLAWS: [Flaw; 184] = [
         CINDER,
         Edit::Set("units.eruption.area.delay_ms", "400000000000000000"),
         "hero-cinder",
-        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::AreaTime(Place::UnitType(name))) if name == "eruption"),
+        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::AreaTime(name)) if name == "eruption"),
     ),
+    // An avatar package named as its own delivery type: the area's time names the delivery type.
+    Flaw {
+        file: CINDER,
+        edit: Edit::Set("units.eruption.area.delay_ms", "400000000000000000"),
+        also: &[
+            (MANIFEST, Edit::Replace("hero-cinder = {", "eruption = {")),
+            (
+                "heroes/cinder/manifest.toml",
+                Edit::Replace(r#"name = "hero-cinder""#, r#"name = "eruption""#),
+            ),
+        ],
+        package: "eruption",
+        refused: |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::AreaTime(name)) if name == "eruption"),
+    },
     // A name a script gives the API, as the registry marks the argument: a tag, a track, a unit
     // type of the mode's scope, a team.
     flaw(

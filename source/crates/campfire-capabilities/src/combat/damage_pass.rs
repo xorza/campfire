@@ -265,18 +265,11 @@ impl DamagePass {
         death.map_or(Landed::Taken, |death| Landed::Killed { death })
     }
 
-    /// Applies the next combat effect the call in `frame` queued: from its acting unit and its
-    /// ability, at its depth of the chain of combat events.
-    pub(crate) fn apply_next(world: &mut World, frame: &mut Frame, _: Tick) {
-        let effect = frame.effects.take::<CombatEffect>();
-        DamagePass::apply_effect(world, effect, frame);
-    }
-
     /// Applies `effect`, which the call in `frame` queued: from its acting unit, by its ability,
     /// at its chain depth, delivered by its hit. Damage and a heal join the pass's queue, a
     /// restore applies at once, and an extra attack queues the source's attack damage, when it
     /// still has an attack.
-    pub(crate) fn apply_effect(world: &mut World, effect: CombatEffect, frame: &Frame) {
+    pub(super) fn apply_effect(world: &mut World, effect: CombatEffect, frame: &Frame) {
         let (source, ability, depth) = (frame.acting(), frame.action(), frame.depth());
         let damage = |target, amount, kind, cause| Damage {
             source,

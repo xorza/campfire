@@ -1,4 +1,5 @@
 use std::mem;
+use std::ops::Range;
 
 use serde::{Deserialize, Serialize, Serializer};
 
@@ -39,10 +40,11 @@ impl<'a> Command<'a> {
         Command::encode(&commands)
     }
 
-    /// Reads the commands of `payload` in one pass, giving each to `read` in order: whether the
-    /// payload is exactly a list of commands. A client can send any bytes, so a reader of a
-    /// payload with a flaw keeps none of the commands it was given.
-    pub fn read(payload: &'a [u8], mut read: impl FnMut(Command<'a>)) -> bool {
+    /// Reads the commands of `payload` in one pass, giving each to `read` in order, with the
+    /// place of its body in `payload`: whether the payload is exactly a list of commands. A
+    /// client can send any bytes, so a reader of a payload with a flaw keeps none of the commands
+    /// it was given.
+    pub fn read(payload: &'a [u8], mut read: impl FnMut(Command<'a>, Range<usize>)) -> bool {
         let Ok((count, mut rest)) = postcard::take_from_bytes::<u64>(payload) else {
             return false;
         };
@@ -50,7 +52,10 @@ impl<'a> Command<'a> {
             let Ok((command, after)) = postcard::take_from_bytes::<Command<'_>>(rest) else {
                 return false;
             };
-            read(command);
+            // A command's encoding ends with its body, so the body ends where what is left to
+            // read begins.
+            let end = payload.len() - after.len();
+            read(command, end - command.body.len()..end);
             rest = after;
         }
         rest.is_empty()

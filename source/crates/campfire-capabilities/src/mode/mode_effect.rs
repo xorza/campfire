@@ -1,11 +1,16 @@
-use campfire_common::{PlayerSlot, Ticks};
-use campfire_sim::{Capability, StableId};
+use bevy_ecs::world::World;
+use campfire_common::{PlayerSlot, Tick, Ticks};
+use campfire_sim::StableId;
 
 use crate::actions::slot_kind::SlotKind;
+use crate::mode::Mode;
 use crate::mode::group_unit::GroupUnit;
 use crate::mode::match_end::MatchResult;
+use crate::mode::mode_book::ModeBook;
 use crate::navigation::path_walker::PathEnd;
+use crate::scripts::ctx::Ctx;
 use crate::scripts::effects::Effect;
+use crate::scripts::frame::Frame;
 use crate::scripts::state_value::StateValue;
 use crate::units::action_id::ActionId;
 use crate::units::path_id::PathId;
@@ -54,6 +59,11 @@ pub(crate) enum ModeEffect {
     },
 }
 
+/// By the match's mode.
 impl Effect for ModeEffect {
-    const CAPABILITY: Capability = Capability::Mode;
+    fn apply(self, world: &mut World, _: &mut Frame, now: Tick) {
+        let ctx = world.non_send::<Ctx>().clone();
+        let mode = ModeBook::of(&ctx).expect("a mode effect comes from a match with a mode");
+        Mode::apply_effect(world, mode, now, self);
+    }
 }

@@ -34,6 +34,7 @@ pub(crate) mod book_builder;
 pub(crate) mod book_input;
 pub(crate) mod error;
 pub(crate) mod package_content;
+pub(crate) mod type_place;
 pub(crate) mod unit_type_file;
 
 /// The books of a match, built once from its packages at its tick rate: what the builder loads

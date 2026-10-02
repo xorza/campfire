@@ -1,7 +1,11 @@
-use campfire_sim::{Capability, Position};
+use bevy_ecs::world::World;
+use campfire_common::Tick;
+use campfire_sim::Position;
 
+use crate::areas::Areas;
 use crate::deliveries::delivering::Delivering;
 use crate::scripts::effects::Effect;
+use crate::scripts::frame::Frame;
 use crate::units::unit_type::UnitType;
 
 /// An area a call queued: of `by`, of `unit_type`, at `at`.
@@ -13,5 +17,7 @@ pub(crate) struct AreaEffect {
 }
 
 impl Effect for AreaEffect {
-    const CAPABILITY: Capability = Capability::Areas;
+    fn apply(self, world: &mut World, _: &mut Frame, _: Tick) {
+        Areas::apply(world, self);
+    }
 }

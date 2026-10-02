@@ -48,7 +48,7 @@ fn an_input_is_its_name_then_its_value_in_its_declared_type() {
     let payload = ModeInput::payload(&[spells]);
     assert_eq!(payload[..2], [1, 12]);
     let mut bodies = Vec::new();
-    assert!(Command::read(&payload, |command| {
+    assert!(Command::read(&payload, |command, _| {
         assert_eq!(command.capability, Capability::Mode);
         bodies.push(command.body);
     }));

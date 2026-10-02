@@ -1,8 +1,12 @@
+use bevy_ecs::world::World;
+use campfire_common::Tick;
 use campfire_math::Vec3;
-use campfire_sim::{Capability, Position, StableId};
+use campfire_sim::{Position, StableId};
 
 use crate::deliveries::delivering::Delivering;
+use crate::projectiles::Projectiles;
 use crate::scripts::effects::Effect;
+use crate::scripts::frame::Frame;
 use crate::units::unit_type::UnitType;
 
 /// A projectile a call queued: of `by`, of `unit_type`, from `from`, toward a direction or homing
@@ -23,5 +27,7 @@ pub(crate) enum Toward {
 }
 
 impl Effect for ProjectileEffect {
-    const CAPABILITY: Capability = Capability::Projectiles;
+    fn apply(self, world: &mut World, _: &mut Frame, _: Tick) {
+        Projectiles::apply(world, self);
+    }
 }

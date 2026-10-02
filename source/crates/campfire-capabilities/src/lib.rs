@@ -57,6 +57,7 @@ pub use areas::area::Area;
 pub use books::book_input::{BookInput, BookKind, BookPackage};
 pub use books::error::BookError;
 pub use books::package_content::PackageContent;
+pub use books::type_place::TypePlace;
 pub use books::unit_type_file::UnitTypeFile;
 pub use books::{Books, ModeInputs};
 pub use capability_set::CapabilitySet;

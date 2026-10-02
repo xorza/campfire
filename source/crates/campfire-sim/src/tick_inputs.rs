@@ -57,12 +57,11 @@ impl TickInputs {
         let held = self.commands.len();
         let payload = &self.payloads[start..];
         let commands = &mut self.commands;
-        let whole = Command::read(payload, |command| {
-            let at = start + (command.body.as_ptr().addr() - payload.as_ptr().addr());
+        let whole = Command::read(payload, |command, body| {
             commands.push(Stored {
                 slot: input.slot,
                 capability: command.capability,
-                body: at..at + command.body.len(),
+                body: start + body.start..start + body.end,
             });
         });
         if !whole {
@@ -120,7 +119,8 @@ mod tests {
             capability: Capability::Mode,
             body: b"m",
         };
-        let first = Command::encode(&[order(b"ab"), mode, order(b"c")]);
+        // An empty body among the first's commands takes its place as the others do.
+        let first = Command::encode(&[order(b"ab"), mode, order(b""), order(b"c")]);
         // The second's last command is cut short: none of its commands count.
         let whole = Command::encode(&[order(b"x"), order(b"yz")]);
         let cut = &whole[..whole.len() - 1];
@@ -132,7 +132,7 @@ mod tests {
         }
         assert_eq!(
             read(&inputs, Capability::Orders),
-            [(1, &b"ab"[..]), (1, b"c"), (3, b"d")]
+            [(1, &b"ab"[..]), (1, b""), (1, b"c"), (3, b"d")]
         );
         assert_eq!(read(&inputs, Capability::Mode), [(1, &b"m"[..])]);
         assert_eq!(inputs.iter().len(), 3);

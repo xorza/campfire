@@ -6,7 +6,7 @@ use campfire_capabilities::{
     CollisionData, CombatRules, DeclaredName, DeliveryData, EffectTo, Effecting, EngineTag,
     FilterData, Hook, MemberKind, ModifierData, NameKind, Number, Offers, PackagePath, Param,
     Pools, Range, RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Stat, Targeting, TrackId,
-    UnitTypeData, UnitTypeFile,
+    TypePlace, UnitTypeData, UnitTypeFile,
 };
 use campfire_math::Num;
 use campfire_sim::{Capability, TickRate};
@@ -124,13 +124,13 @@ impl<'a> LoadCheck<'a> {
     /// The load error of what building the books refused, at the fastest rate the mode allows.
     fn book_error(&self, error: BookError) -> LoadError {
         let packages = self.packages;
-        let at = |package: u16, unit_type: String| {
-            let view = packages.packages().nth(usize::from(package));
-            let package = &view.expect("the books name a package").package;
-            if package.header.name == unit_type {
-                return Place::Avatar(unit_type);
+        let at = |package: u16, unit_type: TypePlace| match unit_type {
+            TypePlace::Avatar => {
+                let view = packages.packages().nth(usize::from(package));
+                let package = &view.expect("the books name a package").package;
+                Place::Avatar(package.header.name.clone())
             }
-            Place::UnitType(DeclaredName::new(&unit_type).expect("a unit type's id is a name"))
+            TypePlace::Declared(name) => Place::UnitType(name),
         };
         let (package, problem) = match error {
             BookError::Kit {
@@ -159,28 +159,16 @@ impl<'a> LoadCheck<'a> {
                 package,
                 action,
                 error,
-            } => (
-                package,
-                LoadProblem::Action {
-                    action: DeclaredName::new(&action).expect("an action's id is a name"),
-                    error,
-                },
-            ),
+            } => (package, LoadProblem::Action { action, error }),
             BookError::Modifier {
                 package,
                 modifier,
                 problem,
-            } => (
-                package,
-                LoadProblem::Modifier {
-                    modifier: DeclaredName::new(&modifier).expect("a modifier's id is a name"),
-                    problem,
-                },
-            ),
+            } => (package, LoadProblem::Modifier { modifier, problem }),
             BookError::Mode(error) => (0, LoadProblem::Mode(error)),
             BookError::AreaTime { package, unit_type } => (
                 package,
-                LoadProblem::Delivery(DeliveryProblem::AreaTime(at(package, unit_type))),
+                LoadProblem::Delivery(DeliveryProblem::AreaTime(unit_type)),
             ),
         };
         let view = packages.packages().nth(usize::from(package));

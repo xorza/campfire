@@ -1,7 +1,11 @@
+use bevy_ecs::world::World;
+use campfire_common::Tick;
 use campfire_math::Num;
-use campfire_sim::{Capability, StableId};
+use campfire_sim::StableId;
 
+use crate::combat::damage_pass::DamagePass;
 use crate::scripts::effects::Effect;
+use crate::scripts::frame::Frame;
 use crate::stats::pool_id::PoolId;
 use crate::values::damage_kind::DamageKind;
 
@@ -26,6 +30,9 @@ pub(crate) enum CombatEffect {
     AttackHit { target: StableId },
 }
 
+/// From the call's acting unit and its ability, at its depth of the chain of combat events.
 impl Effect for CombatEffect {
-    const CAPABILITY: Capability = Capability::Combat;
+    fn apply(self, world: &mut World, frame: &mut Frame, _: Tick) {
+        DamagePass::apply_effect(world, self, frame);
+    }
 }

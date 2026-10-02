@@ -1,4 +1,4 @@
-use campfire_common::SegmentSeed;
+use campfire_common::{SegmentSeed, Tick};
 use campfire_math::RngSource;
 use campfire_sim::{Capability, EntityIndex};
 

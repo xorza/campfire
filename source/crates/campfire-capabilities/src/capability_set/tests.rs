@@ -3,17 +3,9 @@ use std::path::Path;
 
 use super::*;
 use crate::actions::action_book::ActionBook;
-use crate::areas::area_effect::AreaEffect;
 use crate::capability_set::test_match::TestMatch;
-use crate::combat::combat_effect::CombatEffect;
-use crate::mode::mode_effect::ModeEffect;
 use crate::orders::ai::Ai;
-use crate::orders::unit_order::UnitOrder;
-use crate::progression::progression_effect::ProgressionEffect;
-use crate::projectiles::projectile_effect::ProjectileEffect;
-use crate::scripts::effects::Effect;
 use crate::scripts::script_limits::ScriptLimits;
-use crate::stats::modifier_effect::ModifierEffect;
 use crate::units::by_type::ByType;
 use crate::units::script_view::View;
 
@@ -112,22 +104,6 @@ fn the_table_holds_every_capability_once_after_what_it_builds_on() {
             assert!(before, "{capability:?} installs before {needed:?}");
         }
     }
-    // The capabilities whose calls queue effects apply them, each effect type by the one it
-    // names, and no other capability does.
-    let applying: Vec<Capability> = Capability::ALL
-        .into_iter()
-        .filter(|&capability| DISPATCH[capability as usize].is_some())
-        .collect();
-    let effects = [
-        CombatEffect::CAPABILITY,
-        ModifierEffect::CAPABILITY,
-        ProjectileEffect::CAPABILITY,
-        AreaEffect::CAPABILITY,
-        UnitOrder::CAPABILITY,
-        ModeEffect::CAPABILITY,
-        ProgressionEffect::CAPABILITY,
-    ];
-    assert_eq!(applying, effects);
 }
 
 /// The layer of each module of the crate, lowest first: a module imports from its own layer

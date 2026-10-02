@@ -94,7 +94,7 @@ mod tests {
         // A payload is a list of `orders` commands, one per order.
         let payload = Order::payload(&[order, attack]);
         let mut commands = Vec::new();
-        assert!(Command::read(&payload, |command| commands.push(command)));
+        assert!(Command::read(&payload, |command, _| commands.push(command)));
         assert_eq!(commands.len(), 2);
         assert!(
             commands

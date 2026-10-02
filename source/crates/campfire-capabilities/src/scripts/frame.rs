@@ -1,12 +1,12 @@
 use bevy_ecs::world::World;
 use campfire_common::Tick;
 use campfire_script::rhai::Dynamic;
-use campfire_sim::{Capability, IdAllocator, StableId};
+use campfire_sim::{IdAllocator, StableId};
 
 use crate::players::player_resources::PlayerResources;
 use crate::scripts::call_part::{CallPart, CallParts};
 use crate::scripts::call_start::CallStart;
-use crate::scripts::effects::{ApplyEffect, Effects};
+use crate::scripts::effects::Effects;
 use crate::scripts::error::CallError;
 use crate::scripts::script_role::ScriptRole;
 use crate::units::action_id::ActionId;
@@ -43,9 +43,6 @@ pub(crate) struct Frame {
     resources: Option<PlayerResources>,
     resources_written: bool,
     pub(crate) effects: Effects,
-    /// How each capability applies its effects, by capability index; the capability table
-    /// gives it at install.
-    dispatch: [Option<ApplyEffect>; Capability::ALL.len()],
     /// What each capability reads and writes of a call besides the core's.
     parts: CallParts,
 }
@@ -77,14 +74,6 @@ impl Frame {
 
     pub(crate) const fn hit(&self) -> Option<Hit> {
         self.hit
-    }
-
-    /// Takes how each capability applies its effects, by capability index.
-    pub(crate) const fn set_dispatch(
-        &mut self,
-        dispatch: [Option<ApplyEffect>; Capability::ALL.len()],
-    ) {
-        self.dispatch = dispatch;
     }
 
     /// Adds `part`, which every call readies, and which applies what a call wrote to it.
@@ -164,14 +153,12 @@ impl Frame {
         self.parts.begin(world, &start)
     }
 
-    /// Applies the effects the call that ran queued, in order, each by its capability, from
-    /// the call's acting unit and its action at its rank, in tick `now`. Then what the call
-    /// wrote to each part applies, then to the players' resources.
+    /// Applies the effects the call that ran queued, in order, each itself, from the call's
+    /// acting unit and its action at its rank, in tick `now`. Then what the call wrote to each
+    /// part applies, then to the players' resources.
     pub(crate) fn apply(&mut self, world: &mut World, now: Tick) {
         for at in 0..self.effects.order().len() {
-            let capability = self.effects.order()[at];
-            let apply = self.dispatch[capability as usize]
-                .expect("a capability that queues effects applies them");
+            let apply = self.effects.order()[at];
             apply(world, self, now);
         }
         self.effects.clear();

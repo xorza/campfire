@@ -346,9 +346,8 @@ pub enum DeliveryProblem {
     AreaDirection(DeclaredName),
     /// A weapon's delivery is no homing projectile.
     Weapon(DeclaredName),
-    /// An area type at `at` has a time that does not count in ticks at the fastest rate the mode
-    /// allows.
-    AreaTime(Place),
+    /// An area type has a time that does not count in ticks at the fastest rate the mode allows.
+    AreaTime(DeclaredName),
     /// A train makes a projectile or an area type, whose units only actions deliver.
     Trained(DeclaredName),
 }
@@ -396,8 +395,11 @@ impl fmt::Display for DeliveryProblem {
             DeliveryProblem::Trained(action) => {
                 write!(f, "train \"{action}\" makes a projectile or an area type")
             }
-            DeliveryProblem::AreaTime(at) => {
-                write!(f, "{at}: a time too large to count in ticks")
+            DeliveryProblem::AreaTime(unit_type) => {
+                write!(
+                    f,
+                    "unit type {unit_type}: a time too large to count in ticks"
+                )
             }
         }
     }

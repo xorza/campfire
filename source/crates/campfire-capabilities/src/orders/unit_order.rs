@@ -1,13 +1,17 @@
 use bevy_ecs::change_detection::Mut;
+use bevy_ecs::world::World;
+use campfire_common::Tick;
 use campfire_math::Num;
-use campfire_sim::{Capability, Position, StableId};
+use campfire_sim::{EntityIndex, Position, StableId};
 
 use crate::actions::action_slots::ActionSlots;
 
 use crate::actions::action_target::ActionTarget;
 use crate::navigation::destination::Destination;
 use crate::navigation::path_walker::PathWalker;
+use crate::orders::Orders;
 use crate::scripts::effects::Effect;
+use crate::scripts::frame::Frame;
 use crate::values::bounds::Bounds;
 
 /// An order to one unit, as every source gives it once it checked it: a player's command, a
@@ -38,8 +42,19 @@ pub(crate) struct OrderedUnit<'a> {
     pub(crate) destination: Option<Mut<'a, Destination>>,
 }
 
+/// For the unit that thinks in the call, which checked the order against the units as the phase
+/// began; no unit dies within Think.
 impl Effect for UnitOrder {
-    const CAPABILITY: Capability = Capability::Orders;
+    fn apply(self, world: &mut World, frame: &mut Frame, _: Tick) {
+        let unit = frame
+            .acting()
+            .expect("an order comes from the unit that thinks");
+        let entity = world
+            .resource::<EntityIndex>()
+            .get(unit)
+            .expect("a unit that thinks lives");
+        Orders::apply_order(world, entity, self);
+    }
 }
 
 impl UnitOrder {

@@ -47,7 +47,6 @@ use crate::production::ProductionSet;
 use crate::progression::level_ups::{LevelUp, LevelUps};
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
-use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_book::ScriptBook;
@@ -191,17 +190,8 @@ impl Mode {
         ModeBook::of(world.get_non_send::<Ctx>()?)?.teams.of(slot)
     }
 
-    /// Applies the next mode effect the call in `frame` queued, in tick `now`, by the match's
-    /// mode.
-    pub(crate) fn apply_next(world: &mut World, frame: &mut Frame, now: Tick) {
-        let effect = frame.effects.take::<ModeEffect>();
-        let ctx = world.non_send::<Ctx>().clone();
-        let mode = ModeBook::of(&ctx).expect("a mode effect comes from a match with a mode");
-        Mode::apply_effect(world, mode, now, effect);
-    }
-
     /// Applies `effect`, which a call of `book`'s script queued in tick `now`.
-    pub(crate) fn apply_effect(world: &mut World, book: &ModeBook, now: Tick, effect: ModeEffect) {
+    fn apply_effect(world: &mut World, book: &ModeBook, now: Tick, effect: ModeEffect) {
         match effect {
             ModeEffect::Timer {
                 name,

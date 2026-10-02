@@ -3,7 +3,6 @@ use bevy_ecs::query::Without;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
-use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
 
 use campfire_sim::{Keyed, Ordered, Position, StableId, StateRegistry};
@@ -27,7 +26,6 @@ use crate::projectiles::projectile::{Flight, Payload, Projectile};
 use crate::projectiles::projectile_effect::{ProjectileEffect, Toward};
 use crate::projectiles::projectile_spec::ProjectileSpec;
 use crate::projectiles::struck_units::StruckUnits;
-use crate::scripts::frame::Frame;
 use crate::stats::pools::Pools;
 use crate::units::body_grid::BodyGrid;
 use crate::units::by_type::ByType;
@@ -69,14 +67,9 @@ impl Projectiles {
         registry.register_resource::<StruckUnits>();
     }
 
-    /// Applies the next projectile the call in `frame` queued.
-    pub(crate) fn apply_next(world: &mut World, frame: &mut Frame, _: Tick) {
-        Projectiles::apply(world, frame.effects.take::<ProjectileEffect>());
-    }
-
     /// Applies `effect`: a launch this tick, its own cast, from the point of the map's bounds
     /// nearest where it says. A direction of no length launches nothing.
-    pub(crate) fn apply(world: &mut World, effect: ProjectileEffect) {
+    fn apply(world: &mut World, effect: ProjectileEffect) {
         let from = Bounds::of(world).clamp(effect.from);
         let flight = match effect.toward {
             Toward::Unit(target) => Flight::Homing {

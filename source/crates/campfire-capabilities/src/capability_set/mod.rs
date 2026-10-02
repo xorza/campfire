@@ -14,9 +14,7 @@ use crate::areas::areas_api::AreasApi;
 use crate::capability_set::error::CapabilityError;
 use crate::combat::Combat;
 use crate::combat::combat_api::CombatApi;
-use crate::combat::damage_pass::DamagePass;
 use crate::deliveries::deliveries_api::DeliveriesApi;
-use crate::mode::Mode;
 use crate::mode::match_end::MatchEnd;
 use crate::mode::mode_api::ModeApi;
 use crate::navigation::Navigation;
@@ -30,8 +28,6 @@ use crate::progression::progression_api::ProgressionApi;
 use crate::projectiles::Projectiles;
 use crate::projectiles::projectiles_api::ProjectilesApi;
 use crate::scripts::api_builder::ApiBuilder;
-use crate::scripts::ctx::Ctx;
-use crate::scripts::effects::ApplyEffect;
 use crate::scripts::script_api::ScriptApi;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::stats::Stats;
@@ -53,13 +49,12 @@ type RegisterApi = fn(&mut ApiBuilder<'_>);
 
 /// One row of `CAPABILITIES`: the capability, how it installs, `None` for one the release does
 /// not run yet and for the mode, which installs itself once the others did; the capabilities it
-/// builds on; and how it applies the effects a call queues, when its calls queue any.
+/// builds on; and how it registers its script API, when it has one.
 #[derive(Debug, Clone, Copy)]
 struct Row {
     capability: Capability,
     install: Option<Install>,
     needs: &'static [Capability],
-    effects: Option<ApplyEffect>,
     api: Option<RegisterApi>,
 }
 
@@ -68,7 +63,6 @@ const fn row(capability: Capability, install: Install, needs: &'static [Capabili
         capability,
         install: Some(install),
         needs,
-        effects: None,
         api: None,
     }
 }
@@ -78,20 +72,11 @@ const fn planned(capability: Capability) -> Row {
         capability,
         install: None,
         needs: &[],
-        effects: None,
         api: None,
     }
 }
 
 impl Row {
-    /// The same row, whose capability applies its effects by `apply`.
-    const fn applying(self, apply: ApplyEffect) -> Row {
-        Row {
-            effects: Some(apply),
-            ..self
-        }
-    }
-
     /// The same row, whose capability registers its script API by `register`.
     const fn registering(self, register: RegisterApi) -> Row {
         Row {
@@ -104,19 +89,14 @@ impl Row {
 /// Every capability once, in the order they install: each after the ones it builds on. A declared
 /// capability the release does not run yet installs nothing.
 const CAPABILITIES: [Row; Capability::ALL.len()] = [
-    row(Capability::Stats, Stats::install, &[])
-        .applying(Stats::apply_next)
-        .registering(StatsApi::register),
+    row(Capability::Stats, Stats::install, &[]).registering(StatsApi::register),
     row(
         Capability::Progression,
         Progression::install,
         &[Capability::Stats],
     )
-    .applying(Progression::apply_next)
     .registering(ProgressionApi::register),
-    row(Capability::Combat, Combat::install, &[Capability::Stats])
-        .applying(DamagePass::apply_next)
-        .registering(CombatApi::register),
+    row(Capability::Combat, Combat::install, &[Capability::Stats]).registering(CombatApi::register),
     row(Capability::Navigation, Navigation::install, &[]).registering(NavigationApi::register),
     row(Capability::Vision, Vision::install, &[Capability::Combat])
         .registering(VisionApi::register),
@@ -125,11 +105,8 @@ const CAPABILITIES: [Row; Capability::ALL.len()] = [
         Projectiles::install,
         &[Capability::Combat],
     )
-    .applying(Projectiles::apply_next)
     .registering(ProjectilesApi::register),
-    row(Capability::Areas, Areas::install, &[Capability::Combat])
-        .applying(Areas::apply_next)
-        .registering(AreasApi::register),
+    row(Capability::Areas, Areas::install, &[Capability::Combat]).registering(AreasApi::register),
     row(
         Capability::Abilities,
         Abilities::install,
@@ -141,30 +118,14 @@ const CAPABILITIES: [Row; Capability::ALL.len()] = [
         Orders::install,
         &[Capability::Combat, Capability::Navigation],
     )
-    .applying(Orders::apply_next)
     .registering(OrdersApi::register),
     row(Capability::Production, Production::install, &[]).registering(ProductionApi::register),
     planned(Capability::Character),
     planned(Capability::Hitscan),
     planned(Capability::Physics),
     planned(Capability::Persistence),
-    planned(Capability::Mode)
-        .applying(Mode::apply_next)
-        .registering(ModeApi::register),
+    planned(Capability::Mode).registering(ModeApi::register),
 ];
-
-/// How each capability applies the effects a call queues, by capability index: what the frame
-/// dispatches each effect by, so the script runtime names no capability.
-const DISPATCH: [Option<ApplyEffect>; Capability::ALL.len()] = {
-    let mut dispatch: [Option<ApplyEffect>; Capability::ALL.len()] = [None; _];
-    let mut at = 0;
-    while at < CAPABILITIES.len() {
-        let row = CAPABILITIES[at];
-        dispatch[row.capability as usize] = row.effects;
-        at += 1;
-    }
-    dispatch
-};
 
 const _: () = assert!(
     Capability::ALL.len() <= u16::BITS as usize,
@@ -236,9 +197,6 @@ impl CapabilitySet {
         Actions::install(world, registry);
         if let Some(mut host) = world.get_non_send_mut::<ScriptHost>() {
             ScriptApi::bind(host.engine_mut(), CapabilitySet::apis());
-        }
-        if let Some(ctx) = world.get_non_send::<Ctx>() {
-            ctx.frame().set_dispatch(DISPATCH);
         }
         MatchEnd::stop_stages(schedule);
         for row in CAPABILITIES {

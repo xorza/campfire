@@ -1,3 +1,4 @@
+use campfire_common::Tick;
 use campfire_sim::Capability;
 use serde::Serialize;
 

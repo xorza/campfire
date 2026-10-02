@@ -6,11 +6,10 @@ use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Query, Res};
 use bevy_ecs::world::World;
-use campfire_common::{Tick, Ticks};
+use campfire_common::Ticks;
 use campfire_sim::{EntityIndex, SimSet, SimTick, StableId, StateRegistry, TickRate};
 
 use crate::scripts::ctx::Ctx;
-use crate::scripts::frame::Frame;
 use crate::stats::applier::Applier;
 use crate::stats::carried_mut::CarriedMut;
 use crate::stats::held_modifiers::HeldModifiers;
@@ -158,19 +157,6 @@ impl Stats {
         StatsColumn::share_pool_names(view, pools.names());
         world.insert_resource(book);
         world.insert_resource(pools);
-    }
-
-    /// Applies the next modifier effect the call in `frame` queued, from its acting unit and its
-    /// ability at its rank.
-    pub(crate) fn apply_next(world: &mut World, frame: &mut Frame, _: Tick) {
-        let effect = frame.effects.take::<ModifierEffect>();
-        let applier = Applier {
-            source: frame.acting(),
-            ability: frame.action(),
-            rank: frame.rank(),
-            hold: None,
-        };
-        Stats::apply_effect(world, effect, applier);
     }
 
     /// Applies `effect`, which a call by `applier` queued. An added modifier's numbers resolve

@@ -1,7 +1,11 @@
-use campfire_common::{PlayerSlot, Ticks};
-use campfire_sim::{Capability, StableId};
+use bevy_ecs::world::World;
+use campfire_common::{PlayerSlot, Tick, Ticks};
+use campfire_sim::StableId;
 
 use crate::scripts::effects::Effect;
+use crate::scripts::frame::Frame;
+use crate::stats::Stats;
+use crate::stats::applier::Applier;
 use crate::units::modifier_id::ModifierId;
 
 /// A change to a unit's modifiers that a call queued.
@@ -23,6 +27,15 @@ pub(crate) enum ModifierEffect {
     },
 }
 
+/// From the call's acting unit, by its action at its rank.
 impl Effect for ModifierEffect {
-    const CAPABILITY: Capability = Capability::Stats;
+    fn apply(self, world: &mut World, frame: &mut Frame, _: Tick) {
+        let applier = Applier {
+            source: frame.acting(),
+            ability: frame.action(),
+            rank: frame.rank(),
+            hold: None,
+        };
+        Stats::apply_effect(world, self, applier);
+    }
 }

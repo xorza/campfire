@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 use std::slice;
 
 use bevy_ecs::entity::Entity;
+use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Capability, IdAllocator, Position, SimUpdate};
 

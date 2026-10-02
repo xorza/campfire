@@ -2,40 +2,45 @@ use std::error::Error;
 use std::fmt;
 
 use crate::actions::error::ActionError;
+use crate::books::type_place::TypePlace;
 use crate::mode::error::{ModeError, UnitKitError};
 use crate::orders::error::AiError;
 use crate::stats::error::ModifierProblem;
+use crate::values::declared_name::DeclaredName;
 
 /// What the package load did not check and a match's books cannot hold: each in the package at
 /// its place among the match's packages, the mode's 0.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BookError {
-    /// The unit type, by its name in its scope, makes no unit.
+    /// The unit type makes no unit.
     Kit {
         package: u16,
-        unit_type: String,
+        unit_type: TypePlace,
         error: UnitKitError,
     },
     /// The unit type's AI does not load.
     Ai {
         package: u16,
-        unit_type: String,
+        unit_type: TypePlace,
         error: AiError,
     },
     /// A time of the action does not count in ticks.
     Action {
         package: u16,
-        action: String,
+        action: DeclaredName,
         error: ActionError,
     },
-    /// The modifier, by its name in its package, does not load.
+    /// The modifier does not load.
     Modifier {
         package: u16,
-        modifier: String,
+        modifier: DeclaredName,
         problem: ModifierProblem,
     },
     /// A time of the area type does not count in ticks.
-    AreaTime { package: u16, unit_type: String },
+    AreaTime {
+        package: u16,
+        unit_type: DeclaredName,
+    },
     /// The mode's teams, relations or map name what the mode does not have.
     Mode(ModeError),
 }
@@ -45,10 +50,10 @@ impl fmt::Display for BookError {
         match self {
             BookError::Kit {
                 unit_type, error, ..
-            } => write!(f, "unit type {unit_type}: {error}"),
+            } => write!(f, "{unit_type}: {error}"),
             BookError::Ai {
                 unit_type, error, ..
-            } => write!(f, "unit type {unit_type}: {error}"),
+            } => write!(f, "{unit_type}: {error}"),
             BookError::Action { action, error, .. } => write!(f, "action {action}: {error}"),
             BookError::Modifier {
                 modifier, problem, ..

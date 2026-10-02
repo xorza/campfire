@@ -2,7 +2,6 @@ use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::schedule::Schedule;
 use bevy_ecs::world::{Mut, World};
-use campfire_common::Tick;
 use campfire_sim::{EntityIndex, StateRegistry};
 
 use crate::progression::experience::Experience;
@@ -12,7 +11,6 @@ use crate::progression::track_book::TrackBook;
 
 use crate::progression::track_set::TrackSet;
 use crate::progression::tracks_column::TracksColumn;
-use crate::scripts::frame::Frame;
 use crate::stats::level::Level;
 use crate::units::row_fill::RowFill;
 use crate::units::script_view::View;
@@ -42,14 +40,9 @@ impl Progression {
         registry.register_resource::<LevelUps>();
     }
 
-    /// Applies the next progression effect the call in `frame` queued.
-    pub(crate) fn apply_next(world: &mut World, frame: &mut Frame, _: Tick) {
-        Progression::apply(world, frame.effects.take::<ProgressionEffect>());
-    }
-
     /// Applies `effect`: experience raises its track's level, each level reached joins the
     /// tick's level-ups, and a level reached on the `level` track becomes the unit's level.
-    pub(crate) fn apply(world: &mut World, effect: ProgressionEffect) {
+    fn apply(world: &mut World, effect: ProgressionEffect) {
         match effect {
             ProgressionEffect::AddXp {
                 unit,
