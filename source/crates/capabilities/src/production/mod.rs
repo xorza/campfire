@@ -1,6 +1,6 @@
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{QueryState, Without};
-use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
+use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_math::Ticks;
@@ -14,13 +14,12 @@ use crate::actions::action_slots::{ActionSlots, InProgress};
 use crate::actions::kind_spec::KindSpec;
 use crate::actions::purse::{Payer, Purse};
 use crate::combat::CombatSet;
-use crate::mode::mode_book::SpawnAt;
 use crate::players::player_resources::PlayerResources;
 use crate::production::train_queue::{Queued, TrainQueue};
-use crate::scripts::ctx::Ctx;
 use crate::stats::pools::Pools;
 use crate::units::dead::Dead;
 use crate::units::owner::Owner;
+use crate::units::spawner::{SpawnAt, Spawner};
 use crate::units::team::Team;
 use crate::values::attitude::Attitude;
 
@@ -32,18 +31,31 @@ pub(crate) mod train_queue;
 #[derive(Debug)]
 pub struct Production;
 
+/// The systems of `production`, for the mode to order its own against.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum ProductionSet {
+    /// In `SimSet::Mode`: the trains whose time ended spawn.
+    Finish,
+}
+
 impl Production {
     /// Adds production to a match: in Act, after attacks start, ordered trains pass their checks,
-    /// pay, and join their unit's queue. The mode's Mode stage spawns the trains whose time ended.
+    /// pay, and join their unit's queue; in Mode, before the mode's hooks, the trains whose time
+    /// ended spawn.
     pub fn install(_: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
-        schedule.add_systems(start_trains.in_set(SimSet::Act).after(CombatSet::Attack));
+        schedule.add_systems((
+            start_trains.in_set(SimSet::Act).after(CombatSet::Attack),
+            Production::finish_trains
+                .in_set(SimSet::Mode)
+                .in_set(ProductionSet::Finish),
+        ));
         registry.register_component::<TrainQueue>();
     }
 
     /// Spawns each train whose time ended this tick, at its unit's position, of its unit's team
-    /// and player, by its unit's stable id, then its queue's order; the next in a queue starts in
-    /// the same tick. A dead unit's queue waits.
-    pub(crate) fn finish_trains(
+    /// and player, by its unit's stable id, then its queue's order, through the mode's spawner;
+    /// the next in a queue starts in the same tick. A dead unit's queue waits.
+    fn finish_trains(
         world: &mut World,
         producers: &mut QueryState<(Entity, &StableId, &TrainQueue), Without<Dead>>,
         mut order: Local<'_, Ordered>,
@@ -57,8 +69,7 @@ impl Production {
         if due.is_empty() {
             return;
         }
-        let ctx = world.non_send::<Ctx>().clone();
-        let mode = ctx.mode().expect("a match with production has a mode");
+        let spawner = world.non_send::<Spawner>().clone();
         for &Keyed { entity, .. } in due {
             while let Some(head) = world
                 .get::<TrainQueue>(entity)
@@ -79,7 +90,7 @@ impl Production {
                     team,
                     pos,
                 };
-                mode.spawn_owned(world, at, owner);
+                spawner.spawn(world, at, owner);
                 let queue = world.get::<TrainQueue>(entity).expect("a producer");
                 let next = queue.entries().get(1).copied();
                 let next = next.map(|next| Production::time(world.resource::<ActionBook>(), next));

@@ -41,6 +41,7 @@ pub(crate) mod recent_attack;
 pub(crate) mod relations;
 pub(crate) mod script_view;
 pub(crate) mod spawn_point;
+pub(crate) mod spawner;
 pub(crate) mod tag;
 pub(crate) mod tag_book;
 pub(crate) mod tag_data;

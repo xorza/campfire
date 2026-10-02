@@ -36,6 +36,7 @@ use crate::units::by_type::ByType;
 use crate::units::owner::Owner;
 use crate::units::path_id::PathId;
 use crate::units::spawn_point::SpawnPoint;
+use crate::units::spawner::SpawnAt;
 use crate::units::tag_book::TagBook;
 use crate::units::team::Team;
 use crate::units::teams::Teams;
@@ -267,15 +268,6 @@ impl ModeBook {
             unit.insert(ActionSlots::new(slots));
         }
     }
-}
-
-/// A unit to spawn: the id it takes, its unit type, its team and where.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SpawnAt {
-    pub(crate) id: StableId,
-    pub(crate) unit_type: UnitType,
-    pub(crate) team: Team,
-    pub(crate) pos: Position,
 }
 
 /// A unit of a spawn group: its unit type, and the id a call took for it.

@@ -178,10 +178,6 @@ The parts that call upward use hooks that the higher layer registers:
   - A `Unit` handle holds its row index, so a getter copies no row.
 
   This is what design 04's overview says: "the core names no capability".
-- **Spawning a typed unit.**
-  - This moves into a core `Spawner`, which reads the kit from the books. Mode and production both use it.
-  - Production installs its own `finish_trains`, and mode orders its hooks after `ProductionSet::Finish`.
-- **Player resources** move to the core `players` module, with `ResourceId` and `ResourceAmount`. `ModeApi::player` becomes a `Teams` query.
 - **The delivery script API** is registered where it runs: `deliveries` registers `on_hit`, `on_end` and `Hit`. `ApiOwner::Projectile` and `ApiOwner::Area` go away, because `hit.delivery` is a `Unit`.
 - **The call's package moves into the frame.** `CallStart { role, acting, action, rank, package, depth }` is the one argument of `Frame::begin`. `view.set_caller`, and the four call sites that must remember it, go away.
 - **One table of capabilities.** The install order, `needs`, the layer of each module and the list in `lib.rs` all come from one table in `capability_set`.
@@ -376,7 +372,6 @@ A refactor of this size needs a permanent proof that behaviour stays the same. T
 | Step | Change | Size |
 |---|---|---|
 | D2 | One order applier for players, bots and AI. The path orders (`FollowPath`, `Reset`) are navigation's, above `actions`, so the applier needs a hook for them. | M |
-| D3 | The core `Spawner`; production installs its own systems | M |
 | D5 | View columns for each capability; `Unit` handles hold row indexes; the delivery API registered by `deliveries`, and the two `ApiOwner`s go | M |
 
 Done when the layer test has no exception left.
@@ -407,7 +402,7 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 ### Order
 
 ```
-Track S:  D2 → D3 → D5
+Track S:  D2 → D5
 
 Track I:  E1 → E2      F2      G1      H1, H4      H2 → H3
 
@@ -511,7 +506,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - cast kind in state: G2;
 - **R§8:**
   - core names every capability: D5;
-  - production and mode: D3;
   - the view names progression: D2;
   - script runtime: D4;
   - delivery API registration: D5;

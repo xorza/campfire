@@ -28,7 +28,7 @@ use crate::mode::calls::Calls;
 use crate::mode::choices::Choices;
 use crate::mode::game_map::GameMap;
 use crate::mode::match_end::MatchEnd;
-use crate::mode::mode_book::{ModeBook, SpawnAt};
+use crate::mode::mode_book::ModeBook;
 use crate::mode::mode_books::ModeBooks;
 use crate::mode::mode_effect::ModeEffect;
 use crate::mode::mode_input::{InputValue, ModeInput};
@@ -41,7 +41,7 @@ use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::PathWalker;
 use crate::orders::OrdersSet;
 use crate::players::player_resources::PlayerResources;
-use crate::production::Production;
+use crate::production::ProductionSet;
 use crate::progression::level_ups::{LevelUp, LevelUps};
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
@@ -52,6 +52,7 @@ use crate::scripts::script_book::ScriptBook;
 use crate::units::UnitsSet;
 use crate::units::relations::Relations;
 use crate::units::script_view::View;
+use crate::units::spawner::{SpawnAt, Spawner};
 use crate::units::team::Team;
 use crate::vision::Vision;
 
@@ -140,6 +141,11 @@ impl Mode {
         let hooks = book.schema.hooks;
         let ctx = world.non_send::<Ctx>().clone();
         ctx.set_mode(book);
+        let spawning = ctx.clone();
+        world.insert_non_send(Spawner::new(move |world, at, owner| {
+            let mode = spawning.mode().expect("the mode installed");
+            mode.spawn_owned(world, at, owner)
+        }));
         if hooks.contains(Hook::CalcDamage) {
             let ctx = ctx.clone();
             world.insert_non_send(DamageWeigher::new(move |batch, damage| {
@@ -157,14 +163,10 @@ impl Mode {
                 .after(UnitsSet::BeginTick)
                 .after(CombatSet::Respawn)
                 .before(OrdersSet::Orders),
-            (
-                Production::finish_trains,
-                run_timers,
-                unit_deaths,
-                level_ups,
-            )
+            (run_timers, unit_deaths, level_ups)
                 .chain()
-                .in_set(SimSet::Mode),
+                .in_set(SimSet::Mode)
+                .after(ProductionSet::Finish),
         ));
         registry.register_resource::<MatchEnd>();
         registry.register_resource::<ModeState>();

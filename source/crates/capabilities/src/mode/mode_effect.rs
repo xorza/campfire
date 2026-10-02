@@ -3,12 +3,13 @@ use campfire_sim::{Capability, StableId};
 
 use crate::actions::slot_kind::SlotKind;
 use crate::mode::match_end::MatchResult;
-use crate::mode::mode_book::{GroupUnit, SpawnAt};
+use crate::mode::mode_book::GroupUnit;
 use crate::navigation::path_walker::PathEnd;
 use crate::scripts::effects::Effect;
 use crate::scripts::state_value::StateValue;
 use crate::units::action_id::ActionId;
 use crate::units::path_id::PathId;
+use crate::units::spawner::SpawnAt;
 use crate::units::team::Team;
 use crate::values::attitude::Attitude;
 
