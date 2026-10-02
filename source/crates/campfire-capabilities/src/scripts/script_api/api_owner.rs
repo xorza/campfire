@@ -3,6 +3,7 @@
 pub enum ApiOwner {
     Ctx,
     Unit,
+    NewUnit,
     Modifier,
     Hit,
     Damage,
@@ -13,9 +14,10 @@ pub enum ApiOwner {
     Marker,
 }
 impl ApiOwner {
-    pub const ALL: [ApiOwner; 10] = [
+    pub const ALL: [ApiOwner; 11] = [
         ApiOwner::Ctx,
         ApiOwner::Unit,
+        ApiOwner::NewUnit,
         ApiOwner::Modifier,
         ApiOwner::Hit,
         ApiOwner::Damage,
@@ -31,6 +33,7 @@ impl ApiOwner {
         match self {
             ApiOwner::Ctx => "`ctx`",
             ApiOwner::Unit => "Unit",
+            ApiOwner::NewUnit => "New unit, of `spawn_unit`, `ctx.projectile` and `ctx.area`",
             ApiOwner::Modifier => "Modifier `m`",
             ApiOwner::Hit => "Hit `hit`",
             ApiOwner::Damage => "Damage `d`",

@@ -12,17 +12,21 @@ use crate::scripts::hook::Hook;
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::api_owner::ApiOwner;
 use crate::scripts::script_api::data_table::DataTable;
-use crate::scripts::script_api::member_spec::{MemberSpec, NameArgs};
+use crate::scripts::script_api::enum_record::EnumRecord;
+use crate::scripts::script_api::member_spec::{EnumArgs, MemberSpec, NameArgs};
 use crate::scripts::script_api::status::Status;
 use crate::scripts::script_role::ScriptRole;
+use crate::units::new_unit::NewUnit;
 use crate::units::position_api::PositionApi;
 use crate::units::script_view::View;
 use crate::units::tag_effect::TagEffect;
 use crate::units::unit::Unit;
+use crate::values::engine_enum::EngineEnum;
 use crate::values::name_list::NameList;
 
 pub(crate) mod api_owner;
 pub(crate) mod data_table;
+pub(crate) mod enum_record;
 pub(crate) mod member_spec;
 pub(crate) mod status;
 
@@ -37,6 +41,8 @@ pub struct ScriptApi {
     hooks: Vec<HookStatus>,
     tag_effects: Vec<TagEffectStatus>,
     data: Vec<DataField>,
+    /// The engine enums, in the order they bind.
+    enums: Vec<EnumRecord>,
     /// The names of the functions the engine has before the API binds: Rhai's packages and
     /// `Num`'s, getters as `get$<field>`; sorted.
     builtins: NameList,
@@ -86,6 +92,8 @@ pub struct ApiMember {
     pub status: Status,
     /// What each of its arguments names, by place, `None` for one that names nothing.
     pub names: NameArgs,
+    /// Which engine enum each of its arguments takes, by place.
+    pub enums: EnumArgs,
     /// How its argument that names a modifier applies it; none for one that only names it.
     pub applies: Option<Applies>,
 }
@@ -102,10 +110,12 @@ pub enum MemberKind {
 }
 
 impl ScriptApi {
-    /// The script API of the release, with each capability's API `apis` registers, recorded as
-    /// a match's engine binds it, with the names the engine has before.
-    pub(crate) fn release(apis: impl IntoIterator<Item = fn(&mut ApiBuilder<'_>)>) -> ScriptApi {
-        let mut host = ScriptHost::new(1);
+    /// The script API of the release, with each capability's API `apis` registers, bound into
+    /// `host` as a match's engine binds it, and recorded with the names the engine has before.
+    pub(crate) fn release(
+        host: &mut ScriptHost,
+        apis: impl IntoIterator<Item = fn(&mut ApiBuilder<'_>)>,
+    ) -> ScriptApi {
         let builtins = ScriptApi::functions(host.engine_mut());
         let mut api = ScriptApi::bind(host.engine_mut(), apis);
         api.builtins = builtins;
@@ -132,11 +142,13 @@ impl ScriptApi {
             hooks: Vec::new(),
             tag_effects: Vec::new(),
             data: Vec::new(),
+            enums: Vec::new(),
             builtins: NameList::default(),
         };
         let mut builder = ApiBuilder::new(engine, &mut api);
         CoreApi::register(&mut builder);
         Unit::register(&mut builder);
+        NewUnit::register(&mut builder);
         PositionApi::register(&mut builder);
         View::register_queries(&mut builder);
         for register in apis {
@@ -155,6 +167,13 @@ impl ScriptApi {
 
     pub fn data(&self) -> &[DataField] {
         &self.data
+    }
+
+    /// The engine enum scripts name `name`, the module of its members.
+    pub fn enum_named(&self, name: &str) -> Option<&EnumRecord> {
+        self.enums
+            .iter()
+            .find(|record| record.engine_enum.name() == name)
     }
 
     /// Whether the engine has a function `name` of its own, before the API: `get$<field>` for a
@@ -224,6 +243,17 @@ impl ScriptApi {
             }
         }
         out.push_str(
+            "\n## Engine enums\n\nEach enum's module holds its members, and the function `named`, which gives the member a text names as data does; a member has `==`, `!=` and `to_string`, its name in data.\n\n| Enum | Members |\n| --- | --- |\n",
+        );
+        for record in &self.enums {
+            let members: Vec<_> = record
+                .members
+                .iter()
+                .map(|member| format!("`{member}`"))
+                .collect();
+            writeln!(out, "| `{}` | {} |", record.engine_enum, members.join(", "))?;
+        }
+        out.push_str(
             "\n## Hooks\n\n| Hook | Role | Capability | Status |\n| --- | --- | --- | --- |\n",
         );
         for status in Hook::ALL
@@ -257,6 +287,20 @@ impl ScriptApi {
             }
         }
         Ok(())
+    }
+
+    /// Records the engine enum `engine_enum`, with its `members` by their names in scripts.
+    pub(crate) fn record_enum(&mut self, engine_enum: EngineEnum, members: Vec<&'static str>) {
+        assert!(
+            self.enums
+                .iter()
+                .all(|held| held.engine_enum != engine_enum),
+            "{engine_enum:?} is recorded once"
+        );
+        self.enums.push(EnumRecord {
+            engine_enum,
+            members,
+        });
     }
 
     /// Records whether the release calls a hook.
@@ -348,8 +392,16 @@ impl ScriptApi {
                         held.roles,
                         held.capability,
                         held.status,
-                        held.names
-                    ) == (spec.kind, spec.roles, spec.capability, status, spec.names),
+                        held.names,
+                        held.enums
+                    ) == (
+                        spec.kind,
+                        spec.roles,
+                        spec.capability,
+                        status,
+                        spec.names,
+                        spec.enums
+                    ),
                     "the forms of {:?}.{} agree",
                     spec.owner,
                     spec.name
@@ -374,6 +426,7 @@ impl ScriptApi {
                     writable,
                     status,
                     names: spec.names,
+                    enums: spec.enums,
                     applies: spec.applies,
                 },
             ),
@@ -382,8 +435,8 @@ impl ScriptApi {
 }
 
 impl ApiMember {
-    /// Its arguments that name something, as the reference lists them after its forms:
-    /// `, `id` a modifier`, by their names in its first form.
+    /// Its arguments that name something or take an engine enum, as the reference lists them
+    /// after its forms: `, `id` a modifier`, by their names in its first form.
     fn name_args_text(&self) -> String {
         let Some(first) = self.signatures.first() else {
             return String::new();
@@ -395,12 +448,20 @@ impl ApiMember {
             .unwrap_or_default();
         let params: Vec<&str> = params.split(", ").collect();
         let mut named = String::new();
+        let param = |at: usize| {
+            *params
+                .get(at)
+                .expect("a name role is within the first form")
+        };
         for (at, kind) in self.names.iter().enumerate() {
             if let Some(kind) = kind {
-                let param = params
-                    .get(at)
-                    .expect("a name role is within the first form");
-                write!(named, ", `{param}` a {kind}").expect("text writes into a string");
+                write!(named, ", `{}` a {kind}", param(at)).expect("text writes into a string");
+            }
+        }
+        for (at, engine_enum) in self.enums.iter().enumerate() {
+            if let Some(engine_enum) = engine_enum {
+                write!(named, ", `{}` a `{engine_enum}`", param(at))
+                    .expect("text writes into a string");
             }
         }
         named

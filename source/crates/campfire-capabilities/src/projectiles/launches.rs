@@ -19,9 +19,10 @@ pub(crate) struct Launches {
 }
 
 /// A projectile of `unit_type` that `source` launches from `from`, flying as `flight` and
-/// carrying `payload`.
+/// carrying `payload`; with `id`, the id the script that launched it took for it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Launch {
+    pub(crate) id: Option<StableId>,
     pub(crate) source: StableId,
     pub(crate) from: Position,
     pub(crate) unit_type: UnitType,

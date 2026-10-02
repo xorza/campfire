@@ -1,6 +1,6 @@
 use bevy_ecs::world::World;
 use campfire_common::Tick;
-use campfire_sim::Position;
+use campfire_sim::{Position, StableId};
 
 use crate::areas::Areas;
 use crate::deliveries::delivering::Delivering;
@@ -8,9 +8,10 @@ use crate::scripts::effects::Effect;
 use crate::scripts::frame::Frame;
 use crate::units::unit_type::UnitType;
 
-/// An area a call queued: of `by`, of `unit_type`, at `at`.
+/// An area a call queued: `id`, the id the call took for it, of `by`, of `unit_type`, at `at`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct AreaEffect {
+    pub(crate) id: StableId,
     pub(crate) by: Delivering,
     pub(crate) unit_type: UnitType,
     pub(crate) at: Position,

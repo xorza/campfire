@@ -7,8 +7,8 @@ use crate::modifier_ways::Way;
 
 use campfire_capabilities::{
     ActionDataField, ActionError, ActionField, ActionKind, ActionSlots, AiError, ApiVersion,
-    DeclaredName, EngineTag, Hook, MapProblem, ModeError, ModifierProblem, NameKind, PackagePath,
-    ParamProblem, PlannedEffect, Pools, ResourceId, Stat, TrackId, UnitKitError,
+    DeclaredName, EngineEnum, EngineTag, Hook, MapProblem, ModeError, ModifierProblem, NameKind,
+    PackagePath, ParamProblem, PlannedEffect, Pools, ResourceId, Stat, TrackId, UnitKitError,
 };
 use campfire_common::Fingerprint;
 use campfire_script::ScriptError;
@@ -296,6 +296,12 @@ pub enum ScriptProblem {
     /// It reads or writes, after `.state`, a field that no state of the match declares: the
     /// mode's, a modifier's or a unit type's.
     UnknownState(String),
+    /// It gives a string literal to an argument of `call` that takes a member of `takes`.
+    EnumString { call: String, takes: EngineEnum },
+    /// It reads or calls `path`, which is neither a member of `of` nor its function.
+    UnknownEnumMember { path: String, of: EngineEnum },
+    /// It makes a function pointer: a closure, an anonymous function or a call of `Fn`.
+    FunctionPointer,
     /// It uses `ctx` other than design 08's convention allows, so the load checks cannot see
     /// every use of it.
     CtxMisuse(CtxMisuse),
@@ -460,7 +466,7 @@ pub enum Place {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CtxMisuse {
     /// `ctx` is used other than as `ctx.<name>` or as a whole argument of a call, or is given to
-    /// an operator or a function pointer's `call` or `curry`.
+    /// an operator.
     Stray,
     /// The script's own function receives `ctx` under another parameter name.
     Renamed { function: String },
@@ -558,6 +564,15 @@ impl fmt::Display for ScriptProblem {
             }
             ScriptProblem::UnknownState(name) => {
                 write!(f, ".state.{name} is a field no state of the match declares")
+            }
+            ScriptProblem::EnumString { call, takes } => {
+                write!(f, "{call} takes a member of {takes}, not a string")
+            }
+            ScriptProblem::UnknownEnumMember { path, of } => {
+                write!(f, "{path} is no member of {of}, nor its function")
+            }
+            ScriptProblem::FunctionPointer => {
+                f.write_str("makes a function pointer: a closure, an anonymous function or Fn")
             }
             ScriptProblem::CtxMisuse(misuse) => write!(f, "{misuse}"),
         }

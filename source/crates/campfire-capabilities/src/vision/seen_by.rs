@@ -30,3 +30,15 @@ impl SimComponent for SeenBy {
         true
     }
 }
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use crate::units::team_set::TeamSet;
+    use crate::vision::seen_by::SeenBy;
+
+    /// Seen by every team, for a test's unit in a match whose Vision stage never runs, as one
+    /// with no map.
+    pub const fn seen_by_all() -> SeenBy {
+        SeenBy::new(TeamSet::ALL)
+    }
+}

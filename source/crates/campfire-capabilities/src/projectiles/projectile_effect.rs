@@ -9,10 +9,11 @@ use crate::scripts::effects::Effect;
 use crate::scripts::frame::Frame;
 use crate::units::unit_type::UnitType;
 
-/// A projectile a call queued: of `by`, of `unit_type`, from `from`, toward a direction or homing
-/// on a unit.
+/// A projectile a call queued: `id`, the id the call took for it, of `by`, of `unit_type`, from
+/// `from`, toward a direction or homing on a unit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ProjectileEffect {
+    pub(crate) id: StableId,
     pub(crate) by: Delivering,
     pub(crate) unit_type: UnitType,
     pub(crate) from: Position,

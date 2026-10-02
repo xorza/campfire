@@ -5,6 +5,7 @@ use crate::scripts::name_kind::NameKind;
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::MemberKind;
 use crate::scripts::script_api::api_owner::ApiOwner;
+use crate::values::engine_enum::EngineEnum;
 
 /// A name as the code that binds it describes it: an `ApiMember` with one form.
 #[must_use]
@@ -18,6 +19,7 @@ pub(crate) struct MemberSpec {
     pub signature: &'static str,
     pub description: &'static str,
     pub names: NameArgs,
+    pub enums: EnumArgs,
     /// How its argument that names a modifier applies it; none for one that only names it.
     pub applies: Option<Applies>,
 }
@@ -25,6 +27,10 @@ pub(crate) struct MemberSpec {
 /// What each argument of a call or a method names, by place, the receiver aside: the load
 /// checks a literal an argument of a name kind is given.
 pub type NameArgs = [Option<NameKind>; MemberSpec::ARGS];
+
+/// Which engine enum each argument of a call takes, by place, the receiver aside: the load
+/// refuses a string literal an argument of an enum is given.
+pub type EnumArgs = [Option<EngineEnum>; MemberSpec::ARGS];
 impl MemberSpec {
     /// The most arguments a member's name roles reach.
     pub(crate) const ARGS: usize = 4;
@@ -93,6 +99,7 @@ impl MemberSpec {
             signature,
             description,
             names: [None; MemberSpec::ARGS],
+            enums: [None; MemberSpec::ARGS],
             applies: None,
         }
     }
@@ -118,6 +125,12 @@ impl MemberSpec {
     /// The same, its argument at `at`, the receiver aside, a name of `kind`.
     pub(crate) const fn name(mut self, at: usize, kind: NameKind) -> MemberSpec {
         self.names[at] = Some(kind);
+        self
+    }
+
+    /// The same, its argument at `at`, the receiver aside, a member of `engine_enum`.
+    pub(crate) const fn takes(mut self, at: usize, engine_enum: EngineEnum) -> MemberSpec {
+        self.enums[at] = Some(engine_enum);
         self
     }
 }

@@ -18,7 +18,7 @@ fn on_resolve(ctx, caster, target) {
     for camp in ctx.map.markers("camp") {}
     ctx.grant(caster, "spell", ctx.chosen(0, "spells"));
     ctx.add_resource(caster.owner, "gold", 5);
-    ctx.spawn_group("north", "mid", "start", ctx.units_tagged("core"));
+    ctx.spawn_group("north", "mid", PathEnd::Start, ctx.units_tagged("core"));
     if caster.has_tag("slowed") { ctx.add_xp(caster, "level", 1); }
     let first = ctx.teams[0];
     caster.state.mark = target.state.hits;
@@ -28,8 +28,10 @@ fn on_resolve(ctx, caster, target) {
 
 fn helper(ctx, gold) {}
 "#;
-    let ast = ScriptHost::new(1000).parse(source).unwrap();
-    let facts = ScriptFacts::read(&ast, &CapabilitySet::script_api());
+    let mut host = ScriptHost::new(1000);
+    let api = CapabilitySet::bind_script_api(&mut host);
+    let ast = host.parse(source).unwrap();
+    let facts = ScriptFacts::read(&ast, &api);
     let function = |name: &str, params| Function {
         name: name.to_owned(),
         params,
@@ -99,6 +101,59 @@ fn helper(ctx, gold) {}
             (NameKind::Track, "level"),
         ]
     );
+    assert!(!facts.function_pointer);
+}
+
+#[test]
+fn a_string_literal_for_an_enum_and_each_module_path_are_facts() {
+    // The string literal `spawn_group`'s end is given counts, the member from `named` does not;
+    // a member and a function of an enum's module count as paths.
+    let source = r#"
+fn on_x(ctx, unit) {
+    ctx.set_relation("a", "b", Relation::Hostile);
+    ctx.spawn_group("a", "mid", "start", []);
+    ctx.spawn_group("a", "mid", PathEnd::named(unit.team), []);
+}
+"#;
+    let mut host = ScriptHost::new(1000);
+    let api = CapabilitySet::bind_script_api(&mut host);
+    let facts = ScriptFacts::read(&host.parse(source).unwrap(), &api);
+    let string = EnumString {
+        call: "spawn_group".to_owned(),
+        engine_enum: EngineEnum::PathEnd,
+    };
+    assert_eq!(facts.enum_strings, [string]);
+    let path = |module: &str, name: &str, kind| EnumPath {
+        module: module.to_owned(),
+        name: name.to_owned(),
+        kind,
+    };
+    assert_eq!(
+        facts.enum_paths,
+        [
+            path("Relation", "Hostile", MemberKind::Value),
+            path("PathEnd", "named", MemberKind::Call)
+        ]
+    );
+}
+
+#[test]
+fn a_closure_an_anonymous_function_and_fn_make_a_function_pointer() {
+    let host = ScriptHost::new(1000);
+    let api = CapabilitySet::script_api();
+    for (source, pointer) in [
+        ("fn on_x(ctx) { let x = 1; let f = || x; }", true),
+        ("fn on_x(ctx) { let f = |c| c + 1; }", true),
+        (
+            r#"fn on_x(ctx) { let f = Fn("h"); f.call(1) } fn h(c) {}"#,
+            true,
+        ),
+        ("fn on_x(ctx, name) { g(Fn(name)) } fn g(c) {}", true),
+        ("fn on_x(ctx) { h(1); } fn h(c) {}", false),
+    ] {
+        let facts = ScriptFacts::read(&host.parse(source).unwrap(), &api);
+        assert_eq!(facts.function_pointer, pointer, "{source}");
+    }
 }
 
 #[test]
@@ -120,14 +175,6 @@ fn every_use_of_ctx_but_a_name_on_it_or_a_call_argument_breaks_the_convention() 
         ("fn on_x(ctx) { #{ c: ctx } }", Some(CtxMisuse::Stray)),
         ("fn on_x(ctx) { ctx[0] }", Some(CtxMisuse::Stray)),
         ("fn on_x(ctx) { ctx == 1 }", Some(CtxMisuse::Stray)),
-        (
-            r#"fn on_x(ctx) { Fn("h").call(ctx) } fn h(c) {}"#,
-            Some(CtxMisuse::Stray),
-        ),
-        (
-            "fn on_x(ctx) { let f = |c| c; f.call(ctx) }",
-            Some(CtxMisuse::Stray),
-        ),
         ("fn on_x(ctx) { h(1, ctx); } fn h(a, c) {}", renamed("h")),
         ("fn on_x(ctx) { 1.h(ctx); } fn h(c) {}", renamed("h")),
         ("fn on_x(ctx) { h(ctx); } fn h(ctx) { ctx.find(1); }", None),

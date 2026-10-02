@@ -11,7 +11,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `add_player_modifier` | `(player, id)`, `id` a modifier | every role | stats | since 1.0 | gives `player` the modifier `id` of the script's package, which every living unit it owns that the modifier's `affects` selects holds from no source and with no action, so the modifier declares each param it reads |
 | `add_resource` | `(player, name, amount)`, `name` a player resource | every role | core | since 1.0 | adds `amount` of the player resource `name`, one the mode declares, to `player` |
 | `add_xp` | `(unit, track, amount)`, `track` a track | every role | progression | since 1.0 | gives `unit` `amount` of experience on `track`, one of its unit type's |
-| `area` | `(pos)` | action | areas | since 1.0 | lands one more of the action's areas at `pos`, its own cast |
+| `area` | `(pos)` | action | areas | since 1.0 | lands one more of the action's areas at `pos`, its own cast; the new area, which spawns later in the tick |
 | `attack_hit` | `(target)` | action, modifier, AI | combat | since 1.0 | an extra attack of the acting unit on `target`: no crit, and no `on_attack` |
 | `available` | `(player, choice, value)`, `choice` a choice | mode | core | since 1.0 | whether `player` may choose `value` of `choice`: no other player chose it in a unique choice |
 | `avatars` | `() or (team)` | every role | core | since 1.0 | the avatars, living or dead, of every team or of `team`, by stable id |
@@ -42,7 +42,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `p` | read | every role | core | since 1.0 | the params: an ability's at its rank, a modifier's then its ability's, or the mode's |
 | `pick` | `(list)` | every role | core | planned | an entry of `list`, from the secret stream |
 | `players` | read | mode | core | since 1.0 | how many players the session has |
-| `projectile` | `(from, direction) or (from, unit)` | action | projectiles | since 1.0 | launches one more of the action's projectiles from `from`, its own cast: along `direction` for a line type, or homing on `unit` for a homing type |
+| `projectile` | `(from, direction) or (from, unit)` | action | projectiles | since 1.0 | launches one more of the action's projectiles from `from`, its own cast: along `direction` for a line type, or homing on `unit` for a homing type; the new projectile, which spawns later in the tick |
 | `range` | read | action | abilities | planned | the ability's range at its rank |
 | `reduce_cooldown` | `(unit, id, ms)` | every role | abilities | planned | takes `ms` off the cooldown of `unit`'s ability `id` |
 | `reduce_cooldowns` | `(unit, fraction)` | every role | abilities | planned | takes `fraction` off the cooldowns of `unit`'s basic abilities |
@@ -51,9 +51,9 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `restore` | `(unit, pool, amount)`, `pool` a pool | every role | combat | since 1.0 | gives `unit` back `amount` of its `pool`, unscaled |
 | `reveal` | `(pos, radius, ms)` | every role | vision | planned | shows the source's team what is within `radius` of `pos` |
 | `save` | `()` | mode | core | planned | asks for a save at the end of the tick |
-| `set_relation` | `(a, b, relation)`, `a` a team, `b` a team | every role | core | since 1.0 | sets how teams `a` and `b` regard each other, `hostile`, `neutral` or `friendly`, their vision as it was |
-| `spawn_group` | `(team, path, from, types)`, `team` a team, `path` a path | mode | core | since 1.0 | spawns `types` of `team` in order at the end `from`, `start` or `end`, of `path`, walking it from there |
-| `spawn_unit` | `(type, team, pos) or (type, team, pos, player)`, `type` a unit type, `team` a team | mode | core | since 1.0 | spawns a unit of `type` on `team` at `pos`, within the map's bounds, owned by `player` if given, when the call ends; the new unit, for `grant` |
+| `set_relation` | `(a, b, relation)`, `a` a team, `b` a team, `relation` a `Relation` | every role | core | since 1.0 | sets how teams `a` and `b` regard each other, their vision as it was |
+| `spawn_group` | `(team, path, from, types)`, `team` a team, `path` a path, `from` a `PathEnd` | mode | core | since 1.0 | spawns `types` of `team` in order at the end `from` of `path`, walking it from there |
+| `spawn_unit` | `(type, team, pos) or (type, team, pos, player)`, `type` a unit type, `team` a team | mode | core | since 1.0 | spawns a unit of `type` on `team` at `pos`, within the map's bounds, owned by `player` if given, when the call ends; the new unit, for `grant` and its `.state` |
 | `state` | read | mode | core | since 1.0 | the mode's state fields, by name, to read and write |
 | `team_of` | `(player)` | mode | core | since 1.0 | the name of `player`'s team |
 | `teams` | read | every role | core | since 1.0 | the playing teams' names, the teams with slots |
@@ -93,6 +93,12 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `track_level` | `(track)` | progression | planned | its level on `track` |
 | `unit_type` | read | core | since 1.0 | its unit type's name |
 | `xp` | `(track)` | progression | planned | its experience on `track` |
+
+## New unit, of `spawn_unit`, `ctx.projectile` and `ctx.area`
+
+| Name | Form | Capability | Status | What it is |
+| --- | --- | --- | --- | --- |
+| `state` | read | core | since 1.0 | its script state, by name, at its type's defaults but what the call wrote, which applies as it spawns |
 
 ## Modifier `m`
 
@@ -170,6 +176,15 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `params` | read | core | since 1.0 | its params, by name |
 | `pos` | read | core | since 1.0 | its point, `()` for a region |
 | `team` | read | core | since 1.0 | its team's name, `()` with none |
+
+## Engine enums
+
+Each enum's module holds its members, and the function `named`, which gives the member a text names as data does; a member has `==`, `!=` and `to_string`, its name in data.
+
+| Enum | Members |
+| --- | --- |
+| `Relation` | `Hostile`, `Neutral`, `Friendly` |
+| `PathEnd` | `Start`, `End` |
 
 ## Hooks
 

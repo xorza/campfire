@@ -91,7 +91,7 @@ fn a_death_or_a_level_up_whose_call_finds_the_mode_pool_spent_waits_with_its_uni
     // three, and then the third and a level-up.
     let script = r#"
 fn on_match_start(ctx) {
-    ctx.spawn_group("b", "mid", "end", ["grunt", "grunt", "grunt"]);
+    ctx.spawn_group("b", "mid", PathEnd::End, ["grunt", "grunt", "grunt"]);
 }
 
 fn on_mode_input(ctx, player, name, value) {

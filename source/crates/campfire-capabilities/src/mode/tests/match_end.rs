@@ -9,8 +9,8 @@ fn on_match_start(ctx) {
     for camp in ctx.map.markers("camp") {
         ctx.spawn_unit(camp.params.unit_type, "neutral", camp.pos);
     }
-    ctx.spawn_group("a", "mid", "start", ctx.p.group);
-    ctx.spawn_group("b", "mid", "end", ["grunt"]);
+    ctx.spawn_group("a", "mid", PathEnd::Start, ctx.p.group);
+    ctx.spawn_group("b", "mid", PathEnd::End, ["grunt"]);
 }
 
 fn on_unit_died(ctx, unit, killer, assisters) {
@@ -111,7 +111,7 @@ fn a_match_ends_once_and_then_no_stage_runs() {
     let script = r#"
 fn on_match_start(ctx) {
     ctx.timer("every", 100, true, ());
-    ctx.spawn_group("a", "mid", "start", ["grunt"]);
+    ctx.spawn_group("a", "mid", PathEnd::Start, ["grunt"]);
 }
 
 fn on_timer(ctx, name, data) {

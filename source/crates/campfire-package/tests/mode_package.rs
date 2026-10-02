@@ -6,8 +6,8 @@ use std::path::Path;
 
 use campfire_capabilities::{
     ActionDataField, ActionError, ActionField, ActionKind, AiError, DeclaredName, EffectData,
-    EffectTo, Effecting, EngineTag, Hook, MapProblem, ModeError, ModifierProblem, NameKind, Number,
-    ParamProblem, PlannedEffect, Scalar, SyncTo, UnitKitError,
+    EffectTo, Effecting, EngineEnum, EngineTag, Hook, MapProblem, ModeError, ModifierProblem,
+    NameKind, Number, ParamProblem, PlannedEffect, Scalar, SyncTo, UnitKitError,
 };
 use campfire_package::{
     ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem, EffectProblem, Limit, LoadError,
@@ -293,7 +293,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-static FLAWS: [Flaw; 202] = [
+static FLAWS: [Flaw; 209] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -791,6 +791,92 @@ static FLAWS: [Flaw; 202] = [
         ),
         MODE,
         |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::CtxMisuse(CtxMisuse::Renamed { function }), .. } if function == "defend_hero"),
+    ),
+    // An engine enum's argument takes a member, never a string literal; a member and a function
+    // are the enum's own; a module that is no engine enum's fails the compile.
+    flaw(
+        MODE_SCRIPT,
+        Edit::Replace("lane_end(ctx, team), wave", r#""start", wave"#),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::EnumString { call, takes: EngineEnum::PathEnd }, .. } if call == "spawn_group"),
+    ),
+    flaw(
+        MODE_SCRIPT,
+        Edit::Replace(
+            "PathEnd::named(spawn_marker(ctx, team).params.from)",
+            "PathEnd::Middle",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownEnumMember { path, of: EngineEnum::PathEnd }, .. } if path == "PathEnd::Middle"),
+    ),
+    flaw(
+        MODE_SCRIPT,
+        Edit::Replace("PathEnd::named(spawn_marker", "PathEnd::name(spawn_marker"),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownEnumMember { path, of: EngineEnum::PathEnd }, .. } if path == "PathEnd::name"),
+    ),
+    flaw(
+        MODE_SCRIPT,
+        Edit::Replace("PathEnd::named(spawn_marker", "Path::named(spawn_marker"),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::Compile(ScriptError::Compile(error)), .. } if matches!(&*error.0, ParseErrorType::ModuleUndefined(module) if module == "Path")),
+    ),
+    // No script makes a function pointer: a closure, an anonymous function that captures
+    // nothing, or `Fn`.
+    flaw(
+        LASH_OUT,
+        Edit::Replace(
+            r#"    for unit in ctx.find(caster, caster.pos, ctx.p.radius, "enemies") {"#,
+            r#"    let radius = ctx.p.radius;
+    let near = |unit| unit.pos.within(caster.pos, radius);
+    for unit in ctx.find(caster, caster.pos, radius, "enemies") {"#,
+        ),
+        "hero-husk",
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Script {
+                    problem: ScriptProblem::FunctionPointer,
+                    ..
+                }
+            )
+        },
+    ),
+    flaw(
+        LASH_OUT,
+        Edit::Replace(
+            r#"    for unit in ctx.find(caster, caster.pos, ctx.p.radius, "enemies") {"#,
+            r#"    let near = |unit| unit.pos;
+    for unit in ctx.find(caster, caster.pos, ctx.p.radius, "enemies") {"#,
+        ),
+        "hero-husk",
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Script {
+                    problem: ScriptProblem::FunctionPointer,
+                    ..
+                }
+            )
+        },
+    ),
+    flaw(
+        LASH_OUT,
+        Edit::Replace(
+            r#"    for unit in ctx.find(caster, caster.pos, ctx.p.radius, "enemies") {"#,
+            r#"    let hook = Fn("on_resolve");
+    for unit in ctx.find(caster, caster.pos, ctx.p.radius, "enemies") {"#,
+        ),
+        "hero-husk",
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Script {
+                    problem: ScriptProblem::FunctionPointer,
+                    ..
+                }
+            )
+        },
     ),
     flaw(
         LASH_OUT,
@@ -2019,17 +2105,6 @@ fn every_flaw_of_a_package_fails_its_load_with_its_own_problem() {
         r#"if m.carrier.has_modifier("slow") { m.stacks += 1; }"#,
     );
     assert!(ModePackages::from_package_dir(&edited([(STILLNESS, asks)])).is_ok());
-
-    // A closure reads the variables around it, which strict variables mode lets it.
-    let closure = Edit::Replace(
-        r#"    for unit in ctx.find(caster, caster.pos, ctx.p.radius, "enemies") {"#,
-        r#"    let radius = ctx.p.radius;
-    let near = |unit| unit.pos.within(caster.pos, radius);
-    for unit in ctx.find(caster, caster.pos, radius, "enemies") {"#,
-    );
-    if let Err(error) = ModePackages::from_package_dir(&edited([(LASH_OUT, closure)])) {
-        panic!("{error}");
-    }
 
     // The three kinds and 253 more are 256, all a byte tells apart; one more fails.
     let kinds = |count: usize| {

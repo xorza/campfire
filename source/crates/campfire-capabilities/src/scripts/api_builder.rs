@@ -1,12 +1,15 @@
-use campfire_script::rhai::{Engine, RhaiNativeFunc, Variant};
+use campfire_script::rhai::{Engine, ImmutableString, Module, RhaiNativeFunc, Variant};
 
 use crate::scripts::api_version::ApiVersion;
+use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::hook::Hook;
 use crate::scripts::script_api::data_table::DataTable;
+use crate::scripts::script_api::enum_record::EnumRecord;
 use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::scripts::script_api::status::Status;
 use crate::scripts::script_api::{HookStatus, MemberKind, ScriptApi};
 use crate::units::tag_effect::TagEffect;
+use crate::values::script_enum::ScriptEnum;
 
 /// Rhai's names for a property's getter and setter, and a type's indexer, which its
 /// `register_get` and kin use and do not export.
@@ -31,6 +34,33 @@ impl<'a> ApiBuilder<'a> {
     /// Registers `T` as scripts name its type.
     pub(crate) fn ty<T: Variant + Clone>(&mut self, name: &str) -> &mut Self {
         self.engine.register_type_with_name::<T>(name);
+        self
+    }
+
+    /// Binds the engine enum of `T`: its type, under the enum's name; a module of that name
+    /// with a constant for each member, and `named`; and `==`, `!=` and `to_string` on its
+    /// members.
+    pub(crate) fn engine_enum<T: ScriptEnum>(&mut self) -> &mut Self {
+        let name = T::ENUM.name();
+        let [eq, ne, to_string] = EnumRecord::MEMBER_FUNCTIONS;
+        self.engine
+            .register_type_with_name::<T>(name)
+            .register_fn(eq, |a: T, b: T| a == b)
+            .register_fn(ne, |a: T, b: T| a != b)
+            .register_fn(to_string, |member: &mut T| {
+                ImmutableString::from(member.data_name())
+            });
+        let mut module = Module::new();
+        for &(member, value) in T::MEMBERS {
+            module.set_var(member, value);
+        }
+        let [named] = EnumRecord::FUNCTIONS;
+        module.set_native_fn(named, |text: ImmutableString| -> Checked<T> {
+            T::named(&text).ok_or_else(|| ApiError::UnknownMember(T::ENUM).fail().into())
+        });
+        self.engine.register_static_module(name, module.into());
+        let members = T::MEMBERS.iter().map(|&(member, _)| member).collect();
+        self.api.record_enum(T::ENUM, members);
         self
     }
 

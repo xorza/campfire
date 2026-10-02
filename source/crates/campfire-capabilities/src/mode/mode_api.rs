@@ -12,7 +12,6 @@ use crate::mode::match_end::MatchResult;
 use crate::mode::mode_book::ModeBook;
 use crate::mode::mode_call::ModeCall;
 use crate::mode::mode_effect::ModeEffect;
-use crate::mode::new_unit::NewUnit;
 use crate::navigation::path_walker::PathEnd;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
@@ -27,11 +26,13 @@ use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::scripts::script_api::status::Status;
 use crate::scripts::state_decl::StateType;
 use crate::scripts::state_value::StateValue;
+use crate::units::new_unit::NewUnit;
 use crate::units::spawner::SpawnAt;
 use crate::units::team::Team;
 use crate::units::unit::Unit;
 use crate::units::unit_type::UnitType;
 use crate::values::attitude::Attitude;
+use crate::values::engine_enum::EngineEnum;
 
 /// The script API of the mode, which every match has: the teams, the map, the avatars and the
 /// mode's state, which every role reads, and what only the mode's calls do: the players'
@@ -45,6 +46,7 @@ pub(crate) struct StateAccess(Ctx);
 
 impl ModeApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
+        api.engine_enum::<Attitude>().engine_enum::<PathEnd>();
         ModeApi::register_map(api);
         ModeApi::register_reads(api);
         ModeApi::register_choices(api);
@@ -260,7 +262,7 @@ impl ModeApi {
             "spawn_unit",
             "(type, team, pos) or (type, team, pos, player)",
             "spawns a unit of `type` on `team` at `pos`, within the map's bounds, owned by \
-             `player` if given, when the call ends; the new unit, for `grant`",
+             `player` if given, when the call ends; the new unit, for `grant` and its `.state`",
         )
         .name(0, NameKind::UnitType)
         .name(1, NameKind::Team);
@@ -272,7 +274,6 @@ impl ModeApi {
         )
         .name(1, NameKind::SlotKind)
         .capability(Capability::Abilities);
-        api.ty::<NewUnit>("NewUnit");
         api.bind(
             spawn_unit,
             |ctx: &mut Ctx, unit_type: &str, team: &str, pos: Position| {
@@ -304,12 +305,13 @@ impl ModeApi {
             mode(
                 "spawn_group",
                 "(team, path, from, types)",
-                "spawns `types` of `team` in order at the end `from`, `start` or `end`, of `path`, \
-                 walking it from there",
+                "spawns `types` of `team` in order at the end `from` of `path`, walking it from \
+                 there",
             )
             .name(0, NameKind::Team)
-            .name(1, NameKind::Path),
-            |ctx: &mut Ctx, team: &str, path: &str, from: &str, types: Array| {
+            .name(1, NameKind::Path)
+            .takes(2, EngineEnum::PathEnd),
+            |ctx: &mut Ctx, team: &str, path: &str, from: PathEnd, types: Array| {
                 ModeApi::spawn_group(ctx, team, path, from, &types)
             },
         );
@@ -369,12 +371,12 @@ impl ModeApi {
             MemberSpec::call(
                 "set_relation",
                 "(a, b, relation)",
-                "sets how teams `a` and `b` regard each other, `hostile`, `neutral` or `friendly`, \
-                 their vision as it was",
+                "sets how teams `a` and `b` regard each other, their vision as it was",
             )
             .name(0, NameKind::Team)
-            .name(1, NameKind::Team),
-            |ctx: &mut Ctx, a: &str, b: &str, relation: &str| {
+            .name(1, NameKind::Team)
+            .takes(2, EngineEnum::Relation),
+            |ctx: &mut Ctx, a: &str, b: &str, relation: Attitude| {
                 ModeApi::set_relation(ctx, a, b, relation)
             },
         )
@@ -573,7 +575,7 @@ impl ModeApi {
         let unit_type = ModeApi::unit_type(ctx, book, unit_type)?;
         let team = ModeApi::team(book, team)?;
         let owner = player.map(|player| book.teams.player(player)).transpose()?;
-        let id = ctx.write()?.ids.allocate();
+        let id = ctx.write()?.take_id();
         let at = SpawnAt {
             id,
             unit_type,
@@ -630,11 +632,10 @@ impl ModeApi {
 
     /// Queues a spawn group of `team`, of `types`, on `path` from its end `from`, each unit with
     /// the id the call takes for it.
-    fn spawn_group(ctx: &Ctx, team: &str, path: &str, from: &str, types: &Array) -> Checked<()> {
+    fn spawn_group(ctx: &Ctx, team: &str, path: &str, from: PathEnd, types: &Array) -> Checked<()> {
         ctx.require(RoleSet::MODE)?;
         let book = ModeBook::of_or_fail(ctx)?;
         let team = ModeApi::team(book, team)?;
-        let from = PathEnd::named(from).ok_or_else(|| ApiError::UnknownPathEnd.fail())?;
         let path = ctx
             .view()
             .path_named(path)
@@ -652,7 +653,7 @@ impl ModeApi {
             .into_iter()
             .map(|unit_type| GroupUnit {
                 unit_type,
-                id: frame.ids.allocate(),
+                id: frame.take_id(),
             })
             .collect();
         frame.effects.push(ModeEffect::SpawnGroup {
@@ -720,10 +721,9 @@ impl ModeApi {
     }
 
     /// Queues a change of how teams `a` and `b`, two of the mode's, regard each other.
-    fn set_relation(ctx: &Ctx, a: &str, b: &str, relation: &str) -> Checked<()> {
+    fn set_relation(ctx: &Ctx, a: &str, b: &str, attitude: Attitude) -> Checked<()> {
         let book = ModeBook::of_or_fail(ctx)?;
         let (a, b) = (ModeApi::team(book, a)?, ModeApi::team(book, b)?);
-        let attitude = Attitude::named(relation).ok_or_else(|| ApiError::UnknownRelation.fail())?;
         if a == b {
             return Err(ApiError::SelfRelation.fail().into());
         }

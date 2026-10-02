@@ -133,7 +133,7 @@ An order names an action and a target ([Orders](control.md#orders)); a button of
 
 ## Script API
 
-`ctx.p`, `ctx.range`, `ctx.charge`, `ctx.origin`; `ctx.projectile(from, direction)` for a line type and `(from, unit)` for a homing type, the other form failing the call, `ctx.area(pos)`; `ctx.reduce_cooldown(unit, id, ms)`, `ctx.reduce_cooldowns(unit, slot_kind, fraction)`, `ctx.add_charge(unit, id)`, `ctx.learn(unit, slot)`; the hooks `on_resolve(ctx, unit, target)`, `on_hit(ctx, unit, target, hit)`, `on_end(ctx, unit, hit)`, `on_channel_tick(ctx, unit)` and `on_interrupt(ctx, unit, target)`. Projectiles and areas are unit handles, with the fields of their sections.
+`ctx.p`, `ctx.range`, `ctx.charge`, `ctx.origin`; `ctx.projectile(from, direction)` for a line type and `(from, unit)` for a homing type, the other form failing the call, `ctx.area(pos)`, each returning the new unit ([New units at once](../08-script-api.md#rules)); `ctx.reduce_cooldown(unit, id, ms)`, `ctx.reduce_cooldowns(unit, slot_kind, fraction)`, `ctx.add_charge(unit, id)`, `ctx.learn(unit, slot)`; the hooks `on_resolve(ctx, unit, target)`, `on_hit(ctx, unit, target, hit)`, `on_end(ctx, unit, hit)`, `on_channel_tick(ctx, unit)` and `on_interrupt(ctx, unit, target)`. Projectiles and areas are unit handles, with the fields of their sections.
 
 ## Network
 

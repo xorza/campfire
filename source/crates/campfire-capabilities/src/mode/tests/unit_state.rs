@@ -9,6 +9,14 @@ fn on_mode_input(ctx, player, name, value) {
         ctx.spawn_unit("grunt", "a", ctx.map.markers("camp")[0].pos);
         return;
     }
+    if value == "spawn_marked" {
+        let unit = ctx.spawn_unit("grunt", "a", ctx.map.markers("camp")[0].pos);
+        unit.state.mark = "new";
+        if unit.state.mark != "new" || unit.state.hits != 2 {
+            throw "a new unit reads its defaults but what the call wrote";
+        }
+        return;
+    }
     let grunt = ctx.units_tagged("grunt")[0];
     if value == "write" {
         ctx.state.seen = grunt.state.hits;
@@ -74,4 +82,10 @@ fn on_mode_input(ctx, player, name, value) {
     }
     game.sim.restore_into(&mut fresh.sim);
     assert_eq!(grunt(&fresh), at(6));
+    // A unit a call spawns is a handle whose state the call writes and reads back, at its type's
+    // defaults but what it wrote; the unit spawns with what it wrote.
+    game.tick(&[(1, input("probe", "spawn_marked"))]);
+    assert_eq!(game.failures(), []);
+    let marked = vec![StateValue::Int(2), StateValue::Text("new".to_owned())];
+    assert_eq!(grunt(&game), marked);
 }

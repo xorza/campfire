@@ -1,17 +1,14 @@
-use campfire_script::rhai::{Dynamic, INT, ImmutableString, NativeCallContext};
+use campfire_script::rhai::{Dynamic, INT, ImmutableString};
 use campfire_sim::StableId;
 
 use crate::scripts::api_builder::ApiBuilder;
-use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_api::api_owner::ApiOwner;
 use crate::scripts::script_api::member_spec::MemberSpec;
-use crate::scripts::state_value::StateValue;
 use crate::units::script_view::View;
 use crate::units::unit_row::UnitRow;
-use crate::units::unit_state_call::UnitStateCall;
-use crate::units::unit_state_column::UnitStateColumn;
+use crate::units::unit_state_access::UnitStateAccess;
 
 /// A unit as a script holds it, `Unit` in scripts: its values as the view read them.
 #[derive(Debug, Clone)]
@@ -26,10 +23,6 @@ pub(crate) struct Unit {
 /// through the indexer, as Rhai tries one for a property with no getter.
 #[derive(Debug, Clone)]
 pub(crate) struct UnitParams(Unit);
-
-/// `unit.state`: the unit's script state fields, by name, to read and write.
-#[derive(Debug, Clone)]
-pub(crate) struct UnitStateAccess(Unit);
 
 impl Unit {
     /// Only the view makes a handle, of a unit it read: `View::unit` for any other code.
@@ -83,7 +76,7 @@ impl Unit {
                     "state",
                     "its script state, by name, which a call may write and read back",
                 ),
-                |unit: &mut Unit| UnitStateAccess(unit.clone()),
+                |unit: &mut Unit| UnitStateAccess::of_row(unit.id, unit.row().unit_type, unit.row),
             )
             .bind(field("team", "its team's name"), |unit: &mut Unit| {
                 unit.view.team_name(unit.row().team)
@@ -109,18 +102,7 @@ impl Unit {
             );
         api.ty::<UnitParams>("UnitParams")
             .index(|params: &mut UnitParams, name: ImmutableString| params.get(&name));
-        api.ty::<UnitStateAccess>("UnitState")
-            .index(
-                |call: NativeCallContext<'_>,
-                 state: &mut UnitStateAccess,
-                 name: ImmutableString| { state.get(&Ctx::of_call(&call), &name) },
-            )
-            .index_set(
-                |call: NativeCallContext<'_>,
-                 state: &mut UnitStateAccess,
-                 name: ImmutableString,
-                 value: Dynamic| { state.set(&Ctx::of_call(&call), &name, &value) },
-            );
+        UnitStateAccess::register(api);
     }
 
     fn register_methods(api: &mut ApiBuilder<'_>) {
@@ -168,33 +150,6 @@ impl UnitParams {
         unit.view
             .param_named(&unit.row(), name)
             .ok_or_else(|| ApiError::UnknownParam.fail().into())
-    }
-}
-
-impl UnitStateAccess {
-    /// The field `name`, as the call last wrote it or else as the view holds it; one the unit's
-    /// type does not declare fails the call.
-    fn get(&self, ctx: &Ctx, name: &str) -> Checked<Dynamic> {
-        let unit = &self.0;
-        let field = UnitStateColumn::field(&unit.view, unit.row().unit_type, name)?;
-        let frame = ctx.frame();
-        Ok(match UnitStateCall::of(&frame).written(unit.id, field.at) {
-            Some(value) => value.to_dynamic(&unit.view),
-            None => UnitStateColumn::read(&unit.view, unit.row, field.at),
-        })
-    }
-
-    /// Writes `value` to the field `name`, for the call to read back and to apply when it ends;
-    /// a field the unit's type does not declare, a value of another type, and a pure hook's call
-    /// fail the call.
-    fn set(&self, ctx: &Ctx, name: &str, value: &Dynamic) -> Checked<()> {
-        let unit = &self.0;
-        let field = UnitStateColumn::field(&unit.view, unit.row().unit_type, name)?;
-        let value = StateValue::from_dynamic(field.kind, value)
-            .ok_or_else(|| ApiError::WrongStateType.fail())?;
-        let mut frame = ctx.write()?;
-        UnitStateCall::of_mut(&mut frame).write(unit.id, field.at, value);
-        Ok(())
     }
 }
 

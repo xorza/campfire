@@ -6,6 +6,7 @@ use campfire_script::rhai::{EvalAltResult, INT};
 use campfire_script::{Raised, ScriptError};
 
 use crate::scripts::script_limits::ScriptLimits;
+use crate::values::engine_enum::EngineEnum;
 
 /// What a registered script function returns: its value, or the error that fails the call.
 pub(crate) type Checked<T> = Result<T, Box<EvalAltResult>>;
@@ -82,10 +83,8 @@ pub enum ApiError {
     NotAnEnemy,
     /// A team the mode does not have.
     UnknownTeam,
-    /// An end of a path other than `start` or `end`.
-    UnknownPathEnd,
-    /// A relation other than `hostile`, `neutral` or `friendly`.
-    UnknownRelation,
+    /// A text that names no member of the engine enum, as its `named` reads it.
+    UnknownMember(EngineEnum),
     /// A relation of a team to itself, which is friendly.
     SelfRelation,
     /// A unit type the mode does not have.
@@ -241,8 +240,9 @@ impl fmt::Display for ApiError {
             ApiError::OtherUnit => "an AI orders only the unit that thinks",
             ApiError::NotAnEnemy => "target is not a living enemy",
             ApiError::UnknownTeam => "team is not one of the mode's",
-            ApiError::UnknownPathEnd => "a path's end is start or end",
-            ApiError::UnknownRelation => "relation is not hostile, neutral or friendly",
+            ApiError::UnknownMember(engine_enum) => {
+                return write!(f, "text names no member of {engine_enum}");
+            }
             ApiError::SelfRelation => "a team's relation to itself is friendly",
             ApiError::UnknownUnitType => "unit type is not one of the mode's",
             ApiError::UnknownPath => "path is not one of the map's",

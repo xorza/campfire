@@ -29,7 +29,7 @@ fn on_timer(ctx, name, data) {
     }
     for lane in ctx.map.paths {
         for team in ["north", "south"] {
-            ctx.spawn_group(team, lane, spawn_marker(ctx, team).params.from, ctx.p.wave);
+            ctx.spawn_group(team, lane, PathEnd::named(spawn_marker(ctx, team).params.from), ctx.p.wave);
         }
     }
     if name == "first_wave" {

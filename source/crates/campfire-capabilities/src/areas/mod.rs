@@ -67,7 +67,14 @@ impl Areas {
     /// where it says.
     fn apply(world: &mut World, effect: AreaEffect) {
         let at = Bounds::of(world).clamp(effect.at);
-        Areas::push(world, effect.by, effect.unit_type, at, None);
+        Areas::push(
+            world,
+            effect.by,
+            effect.unit_type,
+            at,
+            None,
+            Some(effect.id),
+        );
     }
 
     /// Lands the area of `unit_type` of `by`, which aimed at `target` from `from`: on the point it
@@ -85,18 +92,21 @@ impl Areas {
             None if target == ActionTarget::None => from,
             None => return,
         };
-        Areas::push(world, by, unit_type, at, target.unit());
+        Areas::push(world, by, unit_type, at, target.unit(), None);
     }
 
-    /// Queues an area of `unit_type` of `by` to land at `at`, aimed at `aimed`.
+    /// Queues an area of `unit_type` of `by` to land at `at`, aimed at `aimed`; with `id`, the id
+    /// the script that placed it took for it.
     fn push(
         world: &mut World,
         by: Delivering,
         unit_type: UnitType,
         at: Position,
         aimed: Option<StableId>,
+        id: Option<StableId>,
     ) {
         world.resource_mut::<AreaLaunches>().0.push(AreaLaunch {
+            id,
             by,
             at,
             unit_type,
@@ -180,6 +190,7 @@ fn land(
     let now = tick.start();
     launches.0.sort_by_key(|launch| launch.by.source);
     for &AreaLaunch {
+        id,
         by,
         at,
         unit_type,
@@ -189,7 +200,7 @@ fn land(
         let spec = specs.get(unit_type).expect("an area's type has a spec");
         let triggers_at = now.after(spec.delay.max(Ticks::ONE));
         let ends_at = triggers_at.max(now.after(spec.duration));
-        spawner.spawn(by.source, at, unit_type, |_| {
+        spawner.spawn(by.source, at, unit_type, id, |_| {
             Area::new(by, aimed, Some(triggers_at), ends_at)
                 .expect("an area triggers before it ends")
         });

@@ -10,6 +10,7 @@ use crate::scripts::ctx::Ctx;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::units::body::Body;
+use crate::units::new_unit_states::NewUnitStates;
 use crate::units::owner::Owner;
 use crate::units::relations::Relations;
 use crate::units::row_fill::RowFill;
@@ -38,6 +39,8 @@ pub(crate) mod hit_handle;
 pub(crate) mod layer;
 pub(crate) mod living_unit;
 pub(crate) mod modifier_id;
+pub(crate) mod new_unit;
+pub(crate) mod new_unit_states;
 pub(crate) mod owner;
 pub(crate) mod path_id;
 pub(crate) mod position_api;
@@ -61,6 +64,7 @@ pub(crate) mod type_scope;
 pub(crate) mod unit;
 pub(crate) mod unit_row;
 pub(crate) mod unit_state;
+pub(crate) mod unit_state_access;
 pub(crate) mod unit_state_book;
 pub(crate) mod unit_state_call;
 pub(crate) mod unit_state_column;
@@ -73,7 +77,8 @@ pub(crate) mod view_column;
 /// The core's systems, for the capabilities above it to order theirs against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub(crate) enum UnitsSet {
-    /// In `SimSet::Inputs`: every pool starts full.
+    /// In `SimSet::Inputs`: every pool starts full, and the last tick's writes to units that
+    /// never spawned clear.
     BeginTick,
 }
 
@@ -103,6 +108,7 @@ impl Units {
         registry.register_component::<UnitType>();
         registry.register_component::<UnitState>();
         world.insert_resource(UnitStateBook::default());
+        world.insert_resource(NewUnitStates::default());
         view.add_column(UnitStateColumn::default());
         view.add_source::<Option<&'static UnitState>>(world, fill_state);
         world.insert_resource(Relations::default());
@@ -149,9 +155,11 @@ impl Units {
 fn begin_tick(
     mut budgets: ResMut<'_, ScriptBudgets>,
     mut failures: NonSendMut<'_, ScriptFailures>,
+    mut new_states: ResMut<'_, NewUnitStates>,
 ) {
     budgets.begin_tick();
     failures.clear();
+    new_states.clear();
 }
 
 /// Adds a unit's script state to the view's column of it.

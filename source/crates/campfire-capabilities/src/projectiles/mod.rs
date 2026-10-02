@@ -89,7 +89,8 @@ impl Projectiles {
                 }
             }
         };
-        Projectiles::push(world, effect.by, effect.unit_type, from, [flight]);
+        let id = Some(effect.id);
+        Projectiles::push(world, effect.by, effect.unit_type, from, id, [flight]);
     }
 
     /// Launches `fan`, the delivery of `by`, which aimed at `target` from `from`: a homing
@@ -116,7 +117,7 @@ impl Projectiles {
                 target: unit,
                 flown: Num::ZERO,
             };
-            Projectiles::push(world, by, unit_type, from, [homing]);
+            Projectiles::push(world, by, unit_type, from, None, [homing]);
             return;
         }
         let Some(at) = target.point(world) else {
@@ -143,7 +144,7 @@ impl Projectiles {
                 aimed: target.unit(),
             }
         });
-        Projectiles::push(world, by, unit_type, from, flights);
+        Projectiles::push(world, by, unit_type, from, None, flights);
     }
 
     /// The range of a line projectile of `unit_type` of `by`: its type's, or else its action's
@@ -170,19 +171,23 @@ impl Projectiles {
         range.map_or(exit, |range| range.min(exit))
     }
 
-    /// Queues `flights` of `unit_type` from `from` as one cast of `by`.
+    /// Queues `flights` of `unit_type` from `from` as one cast of `by`; with `id`, one flight,
+    /// which a script launched with the id it took.
     fn push(
         world: &mut World,
         by: Delivering,
         unit_type: UnitType,
         from: Position,
+        id: Option<StableId>,
         flights: impl IntoIterator<Item = Flight>,
     ) {
         let mut launches = world.resource_mut::<Launches>();
         let cast = launches.cast();
+        let before = launches.launches.len();
         launches
             .launches
             .extend(flights.into_iter().map(|flight| Launch {
+                id,
                 source: by.source,
                 from,
                 unit_type,
@@ -193,6 +198,10 @@ impl Projectiles {
                     cast,
                 },
             }));
+        debug_assert!(
+            id.is_none() || launches.launches.len() == before + 1,
+            "a script's id is one flight's"
+        );
     }
 }
 
@@ -274,6 +283,7 @@ fn fly(
 fn take_shots(mut shots: ResMut<'_, Shots>, mut launches: ResMut<'_, Launches>) {
     for shot in shots.0.drain(..) {
         launches.launches.push(Launch {
+            id: None,
             source: shot.source,
             from: shot.from,
             unit_type: shot.unit_type,
@@ -300,6 +310,7 @@ fn launch(mut spawner: DeliverySpawner<'_, '_>, mut launches: ResMut<'_, Launche
     launches.launches.sort_by_key(|launch| launch.source);
     let mut group: Option<(u32, StableId)> = None;
     for &Launch {
+        id,
         source,
         from,
         unit_type,
@@ -307,7 +318,7 @@ fn launch(mut spawner: DeliverySpawner<'_, '_>, mut launches: ResMut<'_, Launche
         payload,
     } in &launches.launches
     {
-        spawner.spawn(source, from, unit_type, |id| {
+        spawner.spawn(source, from, unit_type, id, |id| {
             let payload = match payload {
                 LaunchPayload::Action { action, rank, cast } => {
                     let first = match group {

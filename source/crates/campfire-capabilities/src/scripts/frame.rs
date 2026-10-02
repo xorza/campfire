@@ -36,8 +36,9 @@ pub(crate) struct Frame {
     hit: Option<Hit>,
     /// Whether it is a pure hook's, whose `ctx` only reads.
     pub(crate) pure: bool,
-    /// The stable ids as a mode call takes them for the units it spawns.
-    pub(crate) ids: IdAllocator,
+    /// The stable ids as the call takes them for the units it creates, and whether it took one.
+    ids: IdAllocator,
+    ids_taken: bool,
     /// The players' resources as the call sees them, when the match has them, and whether the
     /// call changed them.
     resources: Option<PlayerResources>,
@@ -106,7 +107,6 @@ impl Frame {
     pub(crate) fn begin_mode(&mut self, world: &World, pure: bool) {
         self.begin(world, CallStart::mode(ScriptRole::Mode))
             .expect("a call with no params overflows none");
-        self.ids.clone_from(world.resource::<IdAllocator>());
         self.pure = pure;
     }
 
@@ -126,10 +126,19 @@ impl Frame {
         self.resources.as_mut()
     }
 
+    /// Takes the stable id of a unit the call creates, which the unit spawns with once the call
+    /// applies, so the call can hold it before then.
+    pub(crate) const fn take_id(&mut self) -> StableId {
+        self.ids_taken = true;
+        self.ids.allocate()
+    }
+
     /// Starts the call `start` in `world`, every part readied for it; a part that fails to ready,
     /// as a param that overflows at the call's rank, fails the call.
     pub(crate) fn begin(&mut self, world: &World, start: CallStart) -> Result<(), CallError> {
         self.read_resources(world);
+        self.ids.clone_from(world.resource::<IdAllocator>());
+        self.ids_taken = false;
         let CallStart {
             role,
             acting,
@@ -154,9 +163,13 @@ impl Frame {
     }
 
     /// Applies the effects the call that ran queued, in order, each itself, from the call's
-    /// acting unit and its action at its rank, in tick `now`. Then what the call wrote to each
-    /// part applies, then to the players' resources.
+    /// acting unit and its action at its rank, in tick `now`, after the ids it took, so a unit it
+    /// creates spawns with the id it took. Then what the call wrote to each part applies, then
+    /// to the players' resources.
     pub(crate) fn apply(&mut self, world: &mut World, now: Tick) {
+        if self.ids_taken {
+            world.resource_mut::<IdAllocator>().clone_from(&self.ids);
+        }
         for at in 0..self.effects.order().len() {
             let apply = self.effects.order()[at];
             apply(world, self, now);

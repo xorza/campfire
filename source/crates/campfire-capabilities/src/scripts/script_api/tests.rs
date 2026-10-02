@@ -71,6 +71,12 @@ fn the_registry_holds_exactly_what_the_engine_binds() {
             }
         }
     }
+    for _ in &api.enums {
+        let functions = EnumRecord::FUNCTIONS
+            .iter()
+            .chain(&EnumRecord::MEMBER_FUNCTIONS);
+        recorded.extend(functions.map(|&name| name.to_owned()));
+    }
     recorded.sort_unstable();
     recorded.dedup();
     assert_eq!(bound, recorded);

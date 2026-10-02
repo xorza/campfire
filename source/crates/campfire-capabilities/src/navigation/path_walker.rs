@@ -4,6 +4,9 @@ use bevy_ecs::world::World;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
+use crate::values::engine_enum::EngineEnum;
+use crate::values::script_enum::ScriptEnum;
+
 /// A unit walking the path its `OnPath` names, such as a creep: it walks to the path's waypoints
 /// from the end it starts at while it has no other order, and stays at the last.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -24,13 +27,16 @@ pub enum PathEnd {
     End,
 }
 
-impl PathEnd {
-    /// The end `name` names: `start` or `end`.
-    pub fn named(name: &str) -> Option<PathEnd> {
-        match name {
-            "start" => Some(PathEnd::Start),
-            "end" => Some(PathEnd::End),
-            _ => None,
+/// `PathEnd::Start` and `PathEnd::End` in scripts, `start` and `end` in data.
+impl ScriptEnum for PathEnd {
+    const ENUM: EngineEnum = EngineEnum::PathEnd;
+    const MEMBERS: &'static [(&'static str, PathEnd)] =
+        &[("Start", PathEnd::Start), ("End", PathEnd::End)];
+
+    fn data_name(self) -> &'static str {
+        match self {
+            PathEnd::Start => "start",
+            PathEnd::End => "end",
         }
     }
 }
@@ -77,5 +83,16 @@ impl SimComponent for PathWalker {
     // Its path's waypoints are read with a check, and one past the last ends the walk.
     fn check(&self, _: &World, _: Entity) -> bool {
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::values::script_enum::internals::named_as_data;
+
+    #[test]
+    fn each_path_end_is_named_in_scripts_as_data_names_it() {
+        named_as_data::<PathEnd>();
     }
 }

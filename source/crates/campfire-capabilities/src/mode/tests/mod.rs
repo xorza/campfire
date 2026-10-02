@@ -94,6 +94,7 @@ use crate::values::attitude::Attitude;
 use crate::values::bounds::Bounds;
 use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
+use crate::values::engine_enum::EngineEnum;
 use crate::values::filter_data::FilterData;
 use crate::values::grid::Grid;
 use crate::values::metric::Metric;
@@ -137,8 +138,8 @@ fn on_match_start(ctx) {
     for camp in ctx.map.markers("camp") {
         ctx.spawn_unit(camp.params.unit_type, "neutral", camp.pos);
     }
-    ctx.spawn_group("a", "mid", "start", ctx.p.group);
-    ctx.spawn_group("b", "mid", "end", ["grunt"]);
+    ctx.spawn_group("a", "mid", PathEnd::Start, ctx.p.group);
+    ctx.spawn_group("b", "mid", PathEnd::End, ["grunt"]);
 }
 
 fn on_timer(ctx, name, data) {

@@ -380,8 +380,8 @@ impl ModePackages {
         manifest: ModeManifest,
         dependencies: &[(String, &PackageFiles)],
     ) -> Result<ModePackages, LoadError> {
-        let parser = ScriptHost::new(manifest.script_limits.per_call);
-        let api = CapabilitySet::script_api();
+        let mut parser = ScriptHost::new(manifest.script_limits.per_call);
+        let api = CapabilitySet::bind_script_api(&mut parser);
         let name = manifest.header.name.clone();
         let fail = |problem| LoadError::of(&name, problem);
         if PackageIndex::dependency(dependencies.len()).is_none() {

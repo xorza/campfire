@@ -113,7 +113,7 @@ fn spawn_heroes(ctx) {
 
 // The end of the lanes `team`'s creeps walk from, as its spawn marker names it.
 fn lane_end(ctx, team) {
-    spawn_marker(ctx, team).params.from
+    PathEnd::named(spawn_marker(ctx, team).params.from)
 }
 
 fn spawn_marker(ctx, team) {

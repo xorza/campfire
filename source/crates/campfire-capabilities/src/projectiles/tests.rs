@@ -112,6 +112,7 @@ impl Volley {
             .unwrap();
         let mut launches = self.sim.world.resource_mut::<Launches>();
         launches.launches.push(Launch {
+            id: None,
             source,
             from: at(0, 0),
             unit_type,

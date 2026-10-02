@@ -139,7 +139,13 @@ impl CapabilitySet {
     /// The script API of the release, recorded as a match's engine binds it, with the names the
     /// engine has before: every capability's, whether a mode declares it or not.
     pub fn script_api() -> ScriptApi {
-        ScriptApi::release(CapabilitySet::apis())
+        CapabilitySet::bind_script_api(&mut ScriptHost::new(1))
+    }
+
+    /// Binds the script API of the release into `host`, as `script_api` records it, so `host`
+    /// compiles a script as a match's engine does: with the engine enums' modules.
+    pub fn bind_script_api(host: &mut ScriptHost) -> ScriptApi {
+        ScriptApi::release(host, CapabilitySet::apis())
     }
 
     /// How the action pipeline and the deliveries, then each capability, register their script

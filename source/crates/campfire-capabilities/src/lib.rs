@@ -118,12 +118,14 @@ pub use scripts::error::{CallError, ParamProblem};
 pub use scripts::hook::Hook;
 pub use scripts::name_kind::NameKind;
 pub use scripts::script_role::ScriptRole;
+pub use values::engine_enum::EngineEnum;
 
 pub use scripts::script_api::{MemberKind, ScriptApi};
 
 pub use scripts::script_api::api_owner::ApiOwner;
+pub use scripts::script_api::enum_record::EnumRecord;
 
-pub use scripts::script_api::member_spec::NameArgs;
+pub use scripts::script_api::member_spec::{EnumArgs, NameArgs};
 pub use scripts::script_book::ScriptBook;
 pub use scripts::script_budgets::ScriptBudgets;
 pub use scripts::script_failures::{ScriptFailure, ScriptFailures};
@@ -187,6 +189,7 @@ pub mod internals {
     pub use crate::stats::internals::{carried, give_modifier};
     pub use crate::stats::pools::internals::spent;
     pub use crate::units::relations::internals::set_relation;
+    pub use crate::vision::seen_by::internals::seen_by_all;
 }
 
 #[cfg(feature = "bench")]

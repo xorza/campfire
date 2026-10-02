@@ -5,6 +5,7 @@ use bevy_ecs::bundle::Bundle;
 use bevy_ecs::system::{Commands, Query, Res, ResMut, SystemParam};
 use campfire_sim::{EntityIndex, IdAllocator, Position, StableId};
 
+use crate::units::new_unit_states::NewUnitStates;
 use crate::units::owner::Owner;
 use crate::units::tag_book::TagBook;
 use crate::units::team::Team;
@@ -20,6 +21,7 @@ pub(crate) struct DeliverySpawner<'w, 's> {
     index: Res<'w, EntityIndex>,
     tag_book: Option<Res<'w, TagBook>>,
     states: Option<Res<'w, UnitStateBook>>,
+    new_states: Option<ResMut<'w, NewUnitStates>>,
     sources: Query<'w, 's, (&'static Team, Option<&'static Owner>)>,
 }
 
@@ -31,21 +33,23 @@ impl fmt::Debug for DeliverySpawner<'_, '_> {
 }
 
 impl DeliverySpawner<'_, '_> {
-    /// Spawns a unit of `unit_type` at `at` with what `make` gives for its new stable id, of
-    /// `source`'s team and player, with its type's tags and its script state at their defaults,
-    /// and gives its id; none, and no id taken, when `source` is gone.
+    /// Spawns a unit of `unit_type` at `at` with what `make` gives for its stable id, `id`, which
+    /// a script took for it, or else a new one, of `source`'s team and player, with its type's
+    /// tags and its script state at their defaults but what the script wrote, and gives its id;
+    /// none, and no id taken, when `source` is gone.
     pub(crate) fn spawn<B: Bundle>(
         &mut self,
         source: StableId,
         at: Position,
         unit_type: UnitType,
+        id: Option<StableId>,
         make: impl FnOnce(StableId) -> B,
     ) -> Option<StableId> {
         let (&team, owner) = self
             .index
             .get(source)
             .and_then(|entity| self.sources.get(entity).ok())?;
-        let id = self.ids.allocate();
+        let id = id.unwrap_or_else(|| self.ids.allocate());
         let tags = self
             .tag_book
             .as_deref()
@@ -62,7 +66,10 @@ impl DeliverySpawner<'_, '_> {
             .states
             .as_deref()
             .and_then(|book| book.initial(unit_type));
-        if let Some(state) = state {
+        if let Some(mut state) = state {
+            if let Some(new_states) = self.new_states.as_deref_mut() {
+                new_states.take(id, &mut state);
+            }
             unit.insert(state);
         }
         Some(id)

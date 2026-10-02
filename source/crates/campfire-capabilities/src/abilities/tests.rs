@@ -42,6 +42,9 @@ use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::script_failures::internals::FailedCall;
 use crate::scripts::script_limits::ScriptLimits;
+use crate::scripts::state_decl::synced_state_decl::{SyncTo, SyncedStateDecl};
+use crate::scripts::state_decl::{StateDecl, StateDefault, StateType};
+use crate::scripts::state_value::StateValue;
 use crate::stats;
 use crate::stats::Stats;
 use crate::stats::level::Level;
@@ -64,6 +67,7 @@ use crate::units::script_view::View;
 use crate::units::tag_data::TagData;
 use crate::units::track_id::TrackId;
 use crate::units::type_scope::TypeScope;
+use crate::units::unit_state::UnitState;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::damage_kind::DamageKind;
@@ -1953,6 +1957,108 @@ fn a_script_launches_a_projectile_only_in_the_form_its_type_flies() {
             } else {
                 let other = FailureKind::Api(ApiError::OtherFlight);
                 assert_eq!((launched, failed), (0, vec![other]), "{homing} {call}");
+            }
+        }
+    }
+}
+
+#[test]
+fn a_delivery_a_script_creates_spawns_with_the_id_its_call_took_and_the_state_it_wrote() {
+    // Each cast delivers its own projectile or area, and its `on_resolve` one more, whose
+    // `charge` it writes and reads back. The caster and the target take ids 0 and 1; the call
+    // takes 2 for its delivery, and the cast's own takes 3 as it spawns later in the tick. A
+    // cast whose call fails after its write delivers nothing and takes no id: the next unit to
+    // spawn takes 2.
+    let state = |charge: i64| vec![StateValue::Int(charge), StateValue::Int(7)];
+    for area in [false, true] {
+        for fails in [false, true] {
+            let delivery = if area {
+                Capability::Areas
+            } else {
+                Capability::Projectiles
+            };
+            let declared = [
+                Capability::Stats,
+                Capability::Combat,
+                Capability::Abilities,
+                delivery,
+            ];
+            let mut game = Match::with(ScriptLimits::ROOMY, &declared);
+            let field = |default| SyncedStateDecl {
+                decl: StateDecl::new(StateType::Int, Some(StateDefault::Int(default))).unwrap(),
+                sync: SyncTo::None,
+            };
+            let data = UnitTypeData {
+                state: [("charge", field(0)), ("mark", field(7))]
+                    .map(|(name, field)| (DeclaredName::new(name).unwrap(), field))
+                    .into(),
+                ..UnitTypeData::default()
+            };
+            let world = &mut game.sim.world;
+            let bolt = Units::load_type(world, TypeScope::Mode, "bolt", &data);
+            let (delivery, call) = if area {
+                let data = AreaData {
+                    radius: Num::int(2),
+                    delay_ms: 100,
+                    duration_ms: 0,
+                    affects: None,
+                    inside: AreaInside::default(),
+                };
+                Areas::load_type(world, bolt, 0, &data);
+                let unit_type = DeclaredName::new("bolt").unwrap();
+                (DeliveryData::Area { unit_type }, "ctx.area(target.pos)")
+            } else {
+                let data = ProjectileData {
+                    homing: true,
+                    ..ProjectileData::flying(Num::int(15))
+                };
+                Projectiles::load_type(world, bolt, &data);
+                let projectile = DeliveryData::Projectile {
+                    unit_type: DeclaredName::new("bolt").unwrap(),
+                    count: NonZeroU8::MIN,
+                    spread_deg: Num::ZERO,
+                };
+                (projectile, "ctx.projectile(caster.pos, target)")
+            };
+            let shot = ActionData {
+                delivery: Some(delivery),
+                ..strike()
+            };
+            let source = format!(
+                r#"
+                fn on_resolve(ctx, caster, target) {{
+                    let next = {call};
+                    if next.state.charge != 0 {{ throw "at its type's default"; }}
+                    next.state.charge = 3;
+                    if next.state.charge != 3 || next.state.mark != 7 {{
+                        throw "reads its write back";
+                    }}
+                    if {fails} {{ throw "fails"; }}
+                }}
+                "#
+            );
+            let ability = game.load("shot", &shot, &source);
+            let caster = game.caster(ability, 1);
+            let target = game.spawn(1, ground(Num::int(3), Num::ZERO), ());
+            assert_eq!([caster, target].map(StableId::get), [0, 1]);
+            game.cast(caster, ActionTarget::Unit(target));
+            game.sim.run_until(1);
+            let world = &mut game.sim.world;
+            let mut query = world.query::<(&StableId, &UnitType, &UnitState)>();
+            let mut spawned: Vec<_> = query
+                .iter(world)
+                .filter(|&(_, &unit_type, _)| unit_type == bolt)
+                .map(|(id, _, state)| (id.get(), state.values().to_vec()))
+                .collect();
+            spawned.sort_unstable_by_key(|&(id, _)| id);
+            let failed = game.failed_calls().len();
+            if fails {
+                assert_eq!((spawned, failed), (vec![], 1), "{area}");
+                let next = game.spawn(1, ground(Num::int(5), Num::ZERO), ());
+                assert_eq!(next.get(), 2, "{area}");
+            } else {
+                let both = vec![(2, state(3)), (3, state(0))];
+                assert_eq!((spawned, failed), (both, 0), "{area}");
             }
         }
     }

@@ -11,6 +11,7 @@ use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::data_table::DataTable;
 use crate::scripts::script_api::member_spec::MemberSpec;
+use crate::units::new_unit::NewUnit;
 use crate::units::unit::Unit;
 
 /// The script API of `projectiles`: `ctx.projectile`, and the data of a projectile type.
@@ -22,7 +23,7 @@ impl ProjectilesApi {
         let projectile = MemberSpec::call(
             "projectile",
             "(from, direction) or (from, unit)",
-            "launches one more of the action's projectiles from `from`, its own cast: along `direction` for a line type, or homing on `unit` for a homing type",
+            "launches one more of the action's projectiles from `from`, its own cast: along `direction` for a line type, or homing on `unit` for a homing type; the new projectile, which spawns later in the tick",
         )
         .roles(RoleSet::ACTION)
         .capability(Capability::Projectiles);
@@ -57,8 +58,9 @@ impl ProjectilesApi {
     }
 
     /// Queues a projectile of the running action, which delivers projectiles, from its acting
-    /// unit; an error for a form its type does not fly in.
-    fn launch(ctx: &Ctx, from: Position, toward: Toward) -> Checked<()> {
+    /// unit: the new projectile, with the id the call takes for it; an error for a form its type
+    /// does not fly in.
+    fn launch(ctx: &Ctx, from: Position, toward: Toward) -> Checked<NewUnit> {
         let launcher = Delivering::of(ctx, |shape| {
             matches!(shape, DeliveryShape::Projectile { .. })
         })?;
@@ -69,11 +71,16 @@ impl ProjectilesApi {
         if homes != matches!(toward, Toward::Unit(_)) {
             return Err(ApiError::OtherFlight.fail().into());
         }
-        ctx.queue(ProjectileEffect {
+        let unit_type = launcher.delivery.unit_type;
+        let mut frame = ctx.write()?;
+        let id = frame.take_id();
+        frame.effects.push(ProjectileEffect {
+            id,
             by: launcher.by,
-            unit_type: launcher.delivery.unit_type,
+            unit_type,
             from,
             toward,
-        })
+        });
+        Ok(NewUnit { id, unit_type })
     }
 }

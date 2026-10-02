@@ -1,6 +1,6 @@
 //! The reference heroes' abilities as their packages hold them: every ability's data reads into
 //! the typed schema, and Husk's Lash Out, Kensho's Twin Cut, Veil's Dusk Mark and Smoke Ring,
-//! Rime's Fan of Frost and Snow Owl, and Cinder's Eruption, loaded as a match of the 3v3 loads
+//! Rime's Fan of Frost and Snow Owl, and Cinder's Eruption and Chain Fire, loaded as a match of the 3v3 loads
 //! them, act exactly. The tests pin the content's values, so a change to the content changes them,
 //! by design.
 
@@ -431,6 +431,46 @@ fn erupt_at(rate: TickRate, erupts: u64) {
     assert_eq!(areas(&mut arena), 0);
     assert_eq!(pool(&arena, caster, "mana"), Num::int(30));
     assert!(arena.failures().is_empty(), "{:?}", arena.failures());
+}
+
+#[test]
+fn cinders_chain_fire_reads_its_projectile_state_and_fails_only_on_pick_as_it_bounces() {
+    let mut arena = arena();
+    let chain_fire = arena.action("hero-cinder", "chain_fire");
+    let caster = caster(&mut arena, chain_fire, 1, (100, 0), ());
+    // Two enemies 4 m apart, within the 5 m of a bounce. The arena has no map, so its Vision
+    // stage never runs: each is seen by every team, as a bounce picks among what its caster's
+    // team sees.
+    let near = spawn(&mut arena, 1, 4, internals::seen_by_all());
+    let far = spawn(&mut arena, 1, 8, internals::seen_by_all());
+    let projectiles = |arena: &mut Arena| -> Vec<u64> {
+        let world = arena.world_mut();
+        let mut query = world.query::<(&Projectile, &StableId)>();
+        query.iter(world).map(|(_, id)| id.get()).collect()
+    };
+
+    // The cast's projectile, id 3 after the caster's 0 and the enemies' 1 and 2, flies 4 m at
+    // 10 m a second and hits `near`. Its `on_hit` reads the projectile's `bounces_left`, its
+    // type's default of 4, so it goes on to bounce, and fails on `ctx.pick`, which the release
+    // plans: the failed call deals none of its damage, and no projectile follows.
+    arena.tick(0, &[cast(caster, ActionTarget::Unit(near))]);
+    let mut flown = Vec::new();
+    for _ in 0..30 {
+        flown.extend(projectiles(&mut arena));
+        arena.step();
+    }
+    flown.dedup();
+    assert_eq!(flown, [3]);
+    assert_eq!(projectiles(&mut arena), Vec::<u64>::new());
+    assert_eq!([near, far].map(|unit| health(&arena, unit)), [500, 500]);
+    let failures = arena.failures();
+    assert_eq!(failures.len(), 1, "{failures:?}");
+    assert_eq!(
+        (failures[0].unit, failures[0].hook),
+        (Some(caster), Hook::OnHit)
+    );
+    let pick = r#"Script(Runtime("Function not found: pick (Ctx, array) (line 12, position 47)"))"#;
+    assert_eq!(format!("{:?}", failures[0].error), pick);
 }
 
 #[test]

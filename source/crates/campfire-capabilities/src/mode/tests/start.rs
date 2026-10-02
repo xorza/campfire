@@ -84,16 +84,21 @@ fn a_mode_whose_start_fails_starts_no_match() {
 #[test]
 fn three_teams_walk_a_path_each_from_the_end_it_names() {
     // On the test map made spatial, 3 m up: team a and the neutral team walk `mid` from its start,
-    // (−10, 3, 0); b from its end, (10, 3, 0).
+    // (−10, 3, 0); b from its end, (10, 3, 0). The neutral team's end is the member data names
+    // `start`.
     let script = r#"
 fn on_match_start(ctx) {
-    ctx.spawn_group("a", "mid", "start", ["grunt"]);
-    ctx.spawn_group("b", "mid", "end", ["grunt"]);
-    ctx.spawn_group("neutral", "mid", "start", ["grunt"]);
+    ctx.spawn_group("a", "mid", PathEnd::Start, ["grunt"]);
+    ctx.spawn_group("b", "mid", PathEnd::End, ["grunt"]);
+    ctx.spawn_group("neutral", "mid", PathEnd::named("start"), ["grunt"]);
 }
 
 fn on_mode_input(ctx, player, name, value) {
-    ctx.spawn_group("a", "mid", "middle", ["grunt"]);
+    if value == "named" {
+        ctx.spawn_group("a", "mid", PathEnd::named("middle"), ["grunt"]);
+    } else {
+        ctx.spawn_group("a", "mid", "start", ["grunt"]);
+    }
 }
 "#;
     let mut files = mode_files();
@@ -115,11 +120,15 @@ fn on_mode_input(ctx, player, name, value) {
     let paths = game.sim.world.resource::<Paths>();
     let last = walkers(&game).map(|unit| paths.waypoint(PathId::new(0), 2, unit.3.unwrap()));
     assert_eq!(last, [Some(up(10)), Some(up(-10)), Some(up(10))]);
-    // An end other than `start` and `end` fails.
-    game.tick(&[(0, input("phase", "x"))]);
+    // A text that names no end fails the call of `named`, and a string in place of a member
+    // fails the call of `spawn_group`, as no form of it takes one.
+    game.tick(&[(0, input("phase", "named")), (0, input("phase", "text"))]);
     assert_eq!(
         game.failures(),
-        [FailureKind::Api(ApiError::UnknownPathEnd)]
+        [
+            FailureKind::Api(ApiError::UnknownMember(EngineEnum::PathEnd)),
+            FailureKind::Runtime
+        ]
     );
 }
 

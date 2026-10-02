@@ -35,7 +35,7 @@ fn on_unit_died(ctx, unit, killer, assisters) {
 
 // The end of the lane `team`'s creeps walk from, as its spawn marker names it.
 fn lane_end(ctx, team) {
-    spawn_marker(ctx, team).params.from
+    PathEnd::named(spawn_marker(ctx, team).params.from)
 }
 
 fn spawn_marker(ctx, team) {

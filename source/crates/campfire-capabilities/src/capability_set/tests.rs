@@ -276,7 +276,7 @@ fn a_module_imports_only_from_its_layer_and_below() {
 /// call, which resolves the names it is given once, or in the load, which resolves the
 /// packages' names once; but the one marked, which runs as a modifier applies. The test fails
 /// when a lookup appears and when one listed here is gone.
-const LOOKUPS: [(&str, &str); 60] = [
+const LOOKUPS: [(&str, &str); 61] = [
     // The load.
     ("actions/slot_kinds.rs", "named"),
     ("books/book_builder.rs", "cost_target_named"),
@@ -312,6 +312,7 @@ const LOOKUPS: [(&str, &str); 60] = [
     ("navigation/paths.rs", "named"),
     ("progression/progression_api.rs", "track_named"),
     ("progression/tracks_column.rs", "named"),
+    ("scripts/api_builder.rs", "named"),
     ("scripts/ctx.rs", "param_named"),
     ("scripts/call_part.rs", "param_named"),
     ("scripts/frame.rs", "param_named"),

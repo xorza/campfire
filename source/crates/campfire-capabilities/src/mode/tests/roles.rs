@@ -96,22 +96,32 @@ fn probe(ctx, unit) {
     // From a: b's fighter is hostile, the grunt neutral, and both are enemies a may attack.
     assert_eq!(count(&mut game), [1, 1, 2]);
     // A unit's script, as a modifier's, turns the pair hostile; the grunt is a hostile then.
-    let turn = r#"fn probe(ctx, unit) { ctx.set_relation("neutral", "a", "hostile") }"#;
+    let turn = r#"fn probe(ctx, unit) { ctx.set_relation("neutral", "a", Relation::Hostile) }"#;
     let turned = game.probe(turn, ScriptRole::Modifier, a, a).unwrap();
     assert!(turned.is_unit());
     assert_eq!(count(&mut game), [2, 0, 2]);
-    // An attitude other than the three, or a team's to itself, fails the call.
+    // A member is its data name as text, the member `named` reads, and equal only to itself.
+    let members = r#"fn probe(ctx, unit) {
+        [Relation::Hostile.to_string(), Relation::named("neutral") == Relation::Neutral,
+         Relation::Hostile != Relation::Friendly, Relation::Hostile == Relation::Neutral]
+    }"#;
+    let members: Array = game.probe(members, ScriptRole::Mode, a, a).unwrap().cast();
+    assert_eq!(members[0].clone().into_string().unwrap(), "hostile");
+    let compared = members[1..].iter().map(|member| member.as_bool().unwrap());
+    assert_eq!(compared.collect::<Vec<_>>(), [true, true, false]);
+    // A text that names no attitude fails `named`, and a team's attitude to itself, or to a
+    // team the mode lacks, fails the call.
     for (call, refused) in [
         (
-            r#"ctx.set_relation("a", "b", "angry")"#,
-            ApiError::UnknownRelation,
+            r#"ctx.set_relation("a", "b", Relation::named("angry"))"#,
+            ApiError::UnknownMember(EngineEnum::Relation),
         ),
         (
-            r#"ctx.set_relation("b", "b", "neutral")"#,
+            r#"ctx.set_relation("b", "b", Relation::Neutral)"#,
             ApiError::SelfRelation,
         ),
         (
-            r#"ctx.set_relation("a", "c", "neutral")"#,
+            r#"ctx.set_relation("a", "c", Relation::Neutral)"#,
             ApiError::UnknownTeam,
         ),
     ] {

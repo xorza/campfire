@@ -3,7 +3,7 @@ use campfire_common::Tick;
 use campfire_math::Num;
 use campfire_script::ScriptError;
 use campfire_script::rhai::{Dynamic, FuncArgs};
-use campfire_sim::{IdAllocator, SimTick};
+use campfire_sim::SimTick;
 
 use crate::combat::damage::Damage;
 use crate::combat::damage_handle::DamageHandle;
@@ -109,8 +109,7 @@ impl Calls<'_, '_> {
         self.ctx.frame().begin_mode(world, pure);
     }
 
-    /// Commits the call's state, choices and the ids it took, then applies its effects in order:
-    /// a unit it spawns takes the id the call took for it.
+    /// Commits the call's state and choices, then applies its effects in order.
     fn commit(&mut self) {
         let world = self.batch.world();
         {
@@ -118,7 +117,6 @@ impl Calls<'_, '_> {
             let call = ModeCall::of(&frame);
             world.resource_mut::<ModeState>().0.clone_from(&call.state);
             world.resource_mut::<Choices>().clone_from(&call.choices);
-            world.resource_mut::<IdAllocator>().clone_from(&frame.ids);
         }
         self.ctx.apply(world, self.now);
     }

@@ -4,9 +4,9 @@ use std::{iter, slice};
 use campfire_capabilities::{
     ActionData, ActionDataField, ActionKind, ActionSlots, ApiOwner, ApiVersion, BookError, Books,
     CollisionData, CombatRules, DeclaredName, DeliveryData, EffectTo, Effecting, EngineTag,
-    FilterData, Hook, MemberKind, ModifierData, ModifierProblem, NameKind, Number, Offers,
-    PackagePath, Param, ParamProblem, Pools, Range, RangeField, ResourceId, Scalar, ScriptApi,
-    ScriptRole, Stat, Targeting, TrackId, TypePlace, UnitTypeData, UnitTypeFile,
+    EnumRecord, FilterData, Hook, MemberKind, ModifierData, ModifierProblem, NameKind, Number,
+    Offers, PackagePath, Param, ParamProblem, Pools, Range, RangeField, ResourceId, Scalar,
+    ScriptApi, ScriptRole, Stat, Targeting, TrackId, TypePlace, UnitTypeData, UnitTypeFile,
 };
 use campfire_math::Num;
 use campfire_sim::{Capability, TickRate};
@@ -20,7 +20,7 @@ use crate::mode_packages::ModePackages;
 use crate::modifier_ways::{ModifierWays, Way};
 use crate::package::Package;
 use crate::package_view::{PackageView, ViewKind};
-use crate::script_facts::{ScriptFacts, ScriptName};
+use crate::script_facts::{EnumString, ScriptFacts, ScriptName};
 
 /// Design 08's checks at package load, over a mode and every package it depends on: data matches
 /// its schema (the reads checked that), every per-rank array has an entry for each rank, every
@@ -575,6 +575,9 @@ impl<'a> LoadCheck<'a> {
                 problem,
             };
             let misuse = |misuse| fail(ScriptProblem::CtxMisuse(misuse));
+            if facts.function_pointer {
+                return Err(fail(ScriptProblem::FunctionPointer));
+            }
             if let Some(found) = &facts.ctx_misuse {
                 return Err(misuse(found.clone()));
             }
@@ -619,6 +622,7 @@ impl<'a> LoadCheck<'a> {
                     return Err(fail(ScriptProblem::UnknownMember(used.name.clone())));
                 }
             }
+            self.enums(facts).map_err(fail)?;
             if let Some(name) = facts
                 .params
                 .iter()
@@ -639,6 +643,35 @@ impl<'a> LoadCheck<'a> {
                 .find(|field| !self.state_fields.contains(field.as_str()))
             {
                 return Err(fail(ScriptProblem::UnknownState(field.clone())));
+            }
+        }
+        Ok(())
+    }
+
+    /// What a script with `facts` gives the engine enums: a member, never a string literal, to an
+    /// argument that takes one, and of each `Module::name` path, a member or a function of the
+    /// enum, whose module the compile checked.
+    fn enums(&self, facts: &ScriptFacts) -> Result<(), ScriptProblem> {
+        if let Some(EnumString { call, engine_enum }) = facts.enum_strings.first() {
+            return Err(ScriptProblem::EnumString {
+                call: call.clone(),
+                takes: *engine_enum,
+            });
+        }
+        for path in &facts.enum_paths {
+            let record = self
+                .api
+                .enum_named(&path.module)
+                .expect("the compile refuses a module that is no engine enum's");
+            let known = match path.kind {
+                MemberKind::Value => record.has(&path.name),
+                _ => EnumRecord::FUNCTIONS.contains(&path.name.as_str()),
+            };
+            if !known {
+                return Err(ScriptProblem::UnknownEnumMember {
+                    path: path.to_string(),
+                    of: record.engine_enum,
+                });
             }
         }
         Ok(())
