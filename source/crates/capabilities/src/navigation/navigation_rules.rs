@@ -28,7 +28,6 @@ impl NavigationRules {
         let layer = collision.layer.as_ref().map_or(Layer::FIRST, |name| {
             self.layer_named(name).expect("the load checked the layer")
         });
-        let body = Body::new(collision.radius).expect("a collision radius is a body's");
-        Some(body.on(layer))
+        Some(collision.body.on(layer))
     }
 }

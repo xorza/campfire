@@ -416,15 +416,6 @@ A refactor of this size needs a permanent proof that behaviour stays the same. T
 - **Behaviour changes.** A step marked "changes behaviour" names the change in its review, and updates the behaviour golden in the same diff.
 - **Temporary code.** A Stage B fix that a later step replaces says so in its commit. The later step deletes it.
 
-### Stage C: one load pipeline and immutable books (track S)
-
-This stage is the backbone. Its steps run in order.
-
-| Step | Change | Size |
-|---|---|---|
-
-Done when `MatchBuild` has no `.expect(CHECKED)`, `StartError` has no data case, and the allowlist of name lookups holds only script calls and the load.
-
 ### Stage D: layers (track S)
 
 | Step | Change | Size |
@@ -575,15 +566,12 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - map-blocked cells: H2.
 - **R§6:**
   - name table: C4;
-  - build computes again: C5b;
-  - map resolved again: C5b;
   - `StateSync`: C3;
   - verifier release: C1;
   - one bad package: C1;
   - three read passes: C1;
   - `UnitTypeError`: C5b;
   - `declare`: C3;
-  - `CollisionData`: C5a;
   - `Scalar::Int`: C3;
   - life pool placeholder: C6a.
 - **R§7:**

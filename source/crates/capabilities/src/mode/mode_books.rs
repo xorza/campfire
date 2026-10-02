@@ -4,6 +4,7 @@ use bevy_ecs::world::World;
 
 use crate::combat::combat_bindings::CombatBindings;
 use crate::mode::mode_data::ModeData;
+use crate::mode::mode_map::ModeMap;
 use crate::mode::mode_setup::UnitTypeSetup;
 use crate::stats::Stats;
 use crate::stats::pool_book::PoolBook;
@@ -27,13 +28,15 @@ pub struct ModeBooks {
     pub(crate) bindings: Option<CombatBindings>,
     pub(crate) damage_kinds: Arc<[DeclaredName]>,
     pub(crate) resources: Arc<[DeclaredName]>,
+    pub(crate) map: ModeMap,
 }
 
 impl ModeBooks {
     /// Puts the books in `world`, a match whose capabilities are installed: the stat and pool
     /// books, the tags' effects, what combat reads, and the names its scripts read. `Mode::install`
-    /// calls it; a test arena calls it alone, for a match whose mode runs no script.
-    pub fn install(self, world: &mut World) {
+    /// calls it, and installs the map it gives back; a test arena calls it alone, for a match
+    /// whose mode runs no script and has no map.
+    pub fn install(self, world: &mut World) -> ModeMap {
         let ModeBooks {
             stats,
             pools,
@@ -41,6 +44,7 @@ impl ModeBooks {
             bindings,
             damage_kinds,
             resources,
+            map,
         } = self;
         world
             .non_send::<View>()
@@ -50,16 +54,19 @@ impl ModeBooks {
         }
         Stats::load(world, stats, pools);
         Units::load_tags(world, tags);
+        map
     }
 
     /// The books of `data`, which the package load checked, for `unit_types`, the mode's unit
-    /// types that stand, with the stat book `stats`. Each unit type is tagged with the name of
-    /// the layer it moves on, among `types`, when the mode names its layers.
+    /// types that stand, with the stat book `stats` and the resolved `map`. Each unit type is
+    /// tagged with the name of the layer it moves on, among `types`, when the mode names its
+    /// layers.
     pub(crate) fn build(
         data: &ModeData,
         unit_types: &[UnitTypeSetup],
         types: &mut UnitTypes,
         stats: StatBook,
+        map: ModeMap,
     ) -> ModeBooks {
         let layers = &data.navigation.layers;
         for unit_type in unit_types {
@@ -78,6 +85,7 @@ impl ModeBooks {
             stats,
             damage_kinds: data.combat.damage_kinds.as_slice().into(),
             resources: data.resources.as_slice().into(),
+            map,
         }
     }
 }

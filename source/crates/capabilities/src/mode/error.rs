@@ -16,9 +16,9 @@ pub enum UnitKitError {
     NoLifePool,
 }
 
-/// Why the mode's setup does not start a match: its map or its teams name what the mode does
-/// not have. Packages are untrusted, so each is an expected failure.
-#[derive(Debug, Clone)]
+/// Why the mode's teams, relations or map do not load: they name what the mode does not have.
+/// Packages are untrusted, so each is an expected failure.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ModeError {
     /// More teams than a team index counts.
     TooManyTeams,

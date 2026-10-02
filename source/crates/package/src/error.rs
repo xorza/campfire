@@ -206,8 +206,6 @@ pub enum LoadProblem {
     },
     /// The mode declares `combat` but no `[combat] life`.
     NoLifePool,
-    /// A unit type at `at` has a `combat` section but not the life pool.
-    LifePoolMissing(Place),
     /// A unit type at `at` has the life pool but no `combat` section, so it could reach zero
     /// life and never die.
     CombatMissing(Place),
@@ -680,7 +678,6 @@ impl fmt::Display for LoadProblem {
             }
             LoadProblem::Choice(problem) => write!(f, "{problem}"),
             LoadProblem::NoLifePool => f.write_str("combat with no [combat] life"),
-            LoadProblem::LifePoolMissing(at) => write!(f, "{at}: combat without the life pool"),
             LoadProblem::CombatMissing(at) => write!(f, "{at}: the life pool without combat"),
             LoadProblem::Locale { path, problem } => write!(f, "{path}: {problem}"),
             LoadProblem::UnitKit { at, error } => write!(f, "{at}: {error}"),

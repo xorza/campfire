@@ -250,6 +250,8 @@ impl ModePackages {
         });
         BookInput {
             data: &self.data,
+            map: &self.map,
+            teams: &self.manifest.teams,
             max_move_speed: self.manifest.max_move_speed,
             progression: self.manifest.capabilities.contains(Capability::Progression),
             tag_names: self.tag_names().into_iter().collect(),

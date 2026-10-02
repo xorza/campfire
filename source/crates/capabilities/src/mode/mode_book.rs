@@ -6,7 +6,6 @@ use bevy_ecs::bundle::Bundle;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_math::PlayerSlot;
-use campfire_script::rhai::ImmutableString;
 use campfire_sim::{EntityIndex, Position, StableId};
 
 use crate::actions::action_book::ActionId;
@@ -16,8 +15,6 @@ use crate::actions::slot_kinds::SlotKinds;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::mode::choice_book::ChoiceBook;
 use crate::mode::game_map::GameMap;
-use crate::mode::map_data::MapData;
-use crate::mode::marker::{Marker, MarkerInfo};
 use crate::mode::mode_schema::ModeSchema;
 use crate::mode::mode_setup::{ModeSetup, SlotAction};
 use crate::mode::roster::Roster;
@@ -37,7 +34,6 @@ use crate::stats::unit_stats::UnitStats;
 use crate::units::by_type::ByType;
 use crate::units::owner::Owner;
 use crate::units::path_id::PathId;
-use crate::units::script_view::View;
 use crate::units::spawn_point::SpawnPoint;
 use crate::units::tag_book::TagBook;
 use crate::units::team::Team;
@@ -80,13 +76,14 @@ pub(crate) struct PlacedUnit {
 }
 
 impl ModeBook {
-    /// The book of `setup`, which passed `Mode::check`, whose script defines the hooks `scripts`
-    /// gives, its names resolved through `view` and `paths`, for players the teams seat.
+    /// The book of `setup`, whose script defines the hooks `scripts` gives, for players the teams
+    /// seat, within `bounds`, with the units its map places and `map` as scripts read it.
     pub(crate) fn new(
         setup: ModeSetup<'_>,
         scripts: &ScriptBook,
-        view: &View,
-        paths: &Paths,
+        bounds: Bounds,
+        placed: Vec<PlacedUnit>,
+        map: GameMap,
     ) -> ModeBook {
         let teams = setup
             .teams
@@ -106,11 +103,11 @@ impl ModeBook {
             actions.extend_from_slice(&unit_type.actions);
             action_runs.set(unit_type.unit_type, start..actions.len());
         }
-        let mut book = ModeBook {
+        ModeBook {
             schema: ModeSchema::new(setup.script, scripts, setup.data),
             roster: Roster::new(setup.avatars, setup.loadout),
             teams: Rc::new(teams),
-            bounds: setup.map.bounds,
+            bounds,
             choices: ChoiceBook::new(&setup.data.choices),
             slot_kinds: setup.data.slots.clone(),
             loadout_ranks: setup.data.loadout_ranks(),
@@ -118,49 +115,9 @@ impl ModeBook {
             passives,
             action_runs,
             actions,
-            placed: Vec::new(),
-            map: GameMap::default(),
-        };
-        book.set_map(setup.map, view, paths);
-        book
-    }
-
-    /// Resolves the names of `map`, which the check found, unit types through `view`: its paths,
-    /// its placed units, and its markers, which `ctx.map` lists.
-    fn set_map(&mut self, map: &MapData, view: &View, paths: &Paths) {
-        let checked = "the mode's check passed";
-        for unit in &map.units {
-            let unit = PlacedUnit {
-                unit_type: view
-                    .unit_type_named(unit.unit_type.as_str())
-                    .expect(checked),
-                team: self.teams.named(unit.team.as_str()).expect(checked),
-                path: unit
-                    .path
-                    .as_ref()
-                    .map(|path| paths.named(path.as_str()).expect(checked)),
-                from: unit.from,
-                pos: unit.pos.position().expect(checked),
-            };
-            self.placed.push(unit);
+            placed,
+            map,
         }
-        let markers = map.markers.iter().map(|marker| {
-            let params = marker
-                .params
-                .iter()
-                .map(|(name, param)| (name.as_str().into(), param.to_dynamic()));
-            Marker::new(MarkerInfo {
-                name: marker.name.as_str().into(),
-                tags: marker.tags.iter().map(|tag| tag.as_str().into()).collect(),
-                pos: marker.pos.map(|pos| pos.position().expect(checked)),
-                team: marker
-                    .team
-                    .as_ref()
-                    .map(|team| self.teams.named(team.as_str()).expect(checked)),
-                params: params.collect(),
-            })
-        });
-        self.map = GameMap::new(paths.names().map(ImmutableString::from), markers);
     }
 
     /// The actions of `unit_type`, kind after kind.

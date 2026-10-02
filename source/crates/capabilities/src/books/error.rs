@@ -2,7 +2,7 @@ use std::error::Error;
 use std::fmt;
 
 use crate::actions::error::ActionError;
-use crate::mode::error::UnitKitError;
+use crate::mode::error::{ModeError, UnitKitError};
 use crate::orders::error::AiError;
 use crate::stats::error::ModifierProblem;
 
@@ -36,6 +36,8 @@ pub enum BookError {
     },
     /// A time of the area type does not count in ticks.
     AreaTime { package: u16, unit_type: String },
+    /// The mode's teams, relations or map name what the mode does not have.
+    Mode(ModeError),
 }
 
 impl fmt::Display for BookError {
@@ -51,6 +53,7 @@ impl fmt::Display for BookError {
             BookError::Modifier {
                 modifier, problem, ..
             } => write!(f, "modifier {modifier}: {problem}"),
+            BookError::Mode(error) => write!(f, "{error}"),
             BookError::AreaTime { unit_type, .. } => {
                 write!(
                     f,

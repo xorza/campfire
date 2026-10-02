@@ -4,19 +4,24 @@ use campfire_sim::TickRate;
 use crate::books::package_content::PackageContent;
 use crate::books::unit_type_file::UnitTypeFile;
 use crate::combat::damage_kind::DamageKind;
+use crate::mode::map_data::MapData;
 use crate::mode::mode_data::ModeData;
+use crate::mode::team_manifest::TeamManifest;
 use crate::scripts::script_book::ScriptBook;
 use crate::stats::stat::Stat;
 use crate::stats::stat_id::StatId;
 use crate::values::declared_name::DeclaredName;
 use crate::values::speed::Speed;
 
-/// What a match's books are built from, which the package load checked: the mode's data, the
-/// rules of its manifest, its packages in the order a match loads them, and the hooks of every
-/// script, in the order a match compiles them.
+/// What a match's books are built from, which the package load checked: the mode's data, its
+/// map and teams, the rules of its manifest, its packages in the order a match loads them, and
+/// the hooks of every script, in the order a match compiles them.
 #[derive(Debug)]
 pub struct BookInput<'a> {
     pub data: &'a ModeData,
+    pub map: &'a MapData,
+    /// The playing teams, in the manifest's order.
+    pub teams: &'a [TeamManifest],
     pub max_move_speed: Speed,
     /// Whether the mode declares `progression`, whose tracks then load.
     pub progression: bool,

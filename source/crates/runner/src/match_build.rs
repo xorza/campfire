@@ -25,7 +25,6 @@ impl MatchBuild {
         let setup = ModeSetup {
             script: packages.mode_script(),
             data: packages.data(),
-            map: packages.map(),
             teams: &packages.manifest().teams,
             players,
             unit_types: units.unit_types,

@@ -16,6 +16,7 @@ use crate::books::{BookParts, Books};
 use crate::combat::damage_kind::DamageKind;
 use crate::combat::on_death::OnDeath;
 use crate::mode::mode_books::ModeBooks;
+use crate::mode::mode_map::ModeMap;
 use crate::mode::mode_setup::{LoadoutSetup, SlotAction, UnitTypeSetup};
 use crate::mode::unit_kit::UnitKit;
 use crate::orders::ai::Ai;
@@ -140,7 +141,21 @@ impl<'a> BookBuilder<'a> {
             }
         }
         let mut parts = self.books;
-        let mode = ModeBooks::build(input.data, &parts.units.unit_types, &mut parts.types, stats);
+        let mode_units = &input.packages[0].content.units;
+        let types = &parts.types;
+        let standing = |name: &str| {
+            let stands = mode_units.get(name).is_some_and(|file| !file.delivers());
+            stands.then(|| types.named(TypeScope::Mode, name).expect(CHECKED))
+        };
+        let map = ModeMap::resolve(input.map, input.teams, &input.data.relations, standing)
+            .map_err(BookError::Mode)?;
+        let mode = ModeBooks::build(
+            input.data,
+            &parts.units.unit_types,
+            &mut parts.types,
+            stats,
+            map,
+        );
         Ok(Books { parts, mode })
     }
 

@@ -1,0 +1,161 @@
+use std::collections::BTreeMap;
+
+use campfire_sim::Position;
+
+use crate::mode::error::ModeError;
+use crate::mode::map_data::{MapData, MapPoint};
+use crate::mode::mode_book::PlacedUnit;
+use crate::mode::mode_data::ModeParam;
+use crate::mode::relation_data::RelationData;
+use crate::mode::team_manifest::TeamManifest;
+use crate::navigation::paths::Paths;
+use crate::units::relations::Relations;
+use crate::units::team::Team;
+use crate::units::unit_type::UnitType;
+use crate::values::bounds::Bounds;
+use crate::values::declared_name::DeclaredName;
+use crate::values::grid::Grid;
+use crate::values::metric::Metric;
+
+/// The mode's map and the relations of its teams, every name resolved once, as the book builder
+/// checks them: its paths, the units it places, its markers, its grids, and how its teams regard
+/// each other.
+#[derive(Debug)]
+pub struct ModeMap {
+    pub(crate) metric: Metric,
+    pub(crate) bounds: Bounds,
+    pub(crate) paths: Paths,
+    pub(crate) placed: Vec<PlacedUnit>,
+    pub(crate) markers: Vec<MarkerSpec>,
+    /// The cells vision reveals, and those units plan routes over, when it has them.
+    pub(crate) grid: Option<Grid>,
+    pub(crate) pathing: Option<Grid>,
+    pub(crate) relations: Relations,
+}
+
+/// A marker of the map, names resolved: its name, its tags, its point and its team if it names
+/// them, and its params.
+#[derive(Debug, Clone)]
+pub(crate) struct MarkerSpec {
+    pub(crate) name: Box<str>,
+    pub(crate) tags: Box<[Box<str>]>,
+    pub(crate) pos: Option<Position>,
+    pub(crate) team: Option<Team>,
+    pub(crate) params: BTreeMap<DeclaredName, ModeParam>,
+}
+
+impl ModeMap {
+    /// The map `map` of a mode with `teams` and `relations`, its placed units' types resolved by
+    /// `unit_type`, which knows the mode's types that stand. An error for what it names that the
+    /// mode does not have: teams that share a name or more than `Team::LIMIT`; a relation of a
+    /// team to itself, of a team the mode lacks, or of a pair named before; and in the map,
+    /// grids that make no grid of its bounds, a path with no waypoint or another's name, a
+    /// placed unit of a type, team or path it lacks, or that walks from an end of no path, a
+    /// marker of another's name, a team it lacks, or with a point and a region or a region
+    /// outside the bounds, and any point that does not fit its metric or its bounds.
+    pub(crate) fn resolve(
+        map: &MapData,
+        teams: &[TeamManifest],
+        relations: &[RelationData],
+        unit_type: impl Fn(&str) -> Option<UnitType>,
+    ) -> Result<ModeMap, ModeError> {
+        for (at, team) in teams.iter().enumerate() {
+            if teams[..at].iter().any(|other| other.name == team.name) {
+                return Err(ModeError::RepeatedName(team.name.clone()));
+            }
+        }
+        if teams.len() > Team::LIMIT {
+            return Err(ModeError::TooManyTeams);
+        }
+        let team = |name: &DeclaredName| {
+            let at = teams.iter().position(|team| team.name == *name);
+            let at = at.ok_or_else(|| ModeError::UnknownTeam(name.clone()))?;
+            Ok(Team::new(u8::try_from(at).expect("teams fit their limit")))
+        };
+        let mut resolved = Relations::default();
+        for (at, relation) in relations.iter().enumerate() {
+            let [a, b] = &relation.teams;
+            let pair = [team(a)?, team(b)?];
+            let named = |data: &RelationData| {
+                let [x, y] = &data.teams;
+                (x == a && y == b) || (x == b && y == a)
+            };
+            if a == b || relations[..at].iter().any(named) {
+                return Err(ModeError::RepeatedRelation(a.clone(), b.clone()));
+            }
+            resolved.set(pair[0], pair[1], relation.relation, relation.vision);
+        }
+        let grid = map.grid()?;
+        let pathing = map.pathing()?;
+        let point = |point: &MapPoint| match point.position() {
+            _ if !point.fits(map.metric) => Err(ModeError::PointShape),
+            Some(pos) if map.bounds.contains(pos) => Ok(pos),
+            _ => Err(ModeError::OutOfBounds),
+        };
+        let mut points = Vec::with_capacity(map.paths.len());
+        for (at, path) in map.paths.iter().enumerate() {
+            if map.paths[..at].iter().any(|other| other.name == path.name) {
+                return Err(ModeError::RepeatedName(path.name.clone()));
+            }
+            if path.points.is_empty() {
+                return Err(ModeError::EmptyPath(path.name.clone()));
+            }
+            let path_points = path.points.iter().map(point);
+            points.push(path_points.collect::<Result<Vec<_>, _>>()?);
+        }
+        let names = map.paths.iter().map(|path| path.name.as_str());
+        let paths = Paths::new(names.zip(points.iter().map(Vec::as_slice)));
+        let mut placed = Vec::with_capacity(map.units.len());
+        for unit in &map.units {
+            let of_type = unit_type(unit.unit_type.as_str())
+                .ok_or_else(|| ModeError::UnknownUnitType(unit.unit_type.clone()))?;
+            let path = match (&unit.path, unit.from) {
+                (Some(path), _) => {
+                    let id = paths.named(path.as_str());
+                    Some(id.ok_or_else(|| ModeError::UnknownPath(path.clone()))?)
+                }
+                (None, Some(_)) => return Err(ModeError::NoPathToWalk(unit.unit_type.clone())),
+                (None, None) => None,
+            };
+            placed.push(PlacedUnit {
+                unit_type: of_type,
+                team: team(&unit.team)?,
+                path,
+                from: unit.from,
+                pos: point(&unit.pos)?,
+            });
+        }
+        let mut markers = Vec::with_capacity(map.markers.len());
+        for (at, marker) in map.markers.iter().enumerate() {
+            if map.markers[..at]
+                .iter()
+                .any(|other| other.name == marker.name)
+            {
+                return Err(ModeError::RepeatedName(marker.name.clone()));
+            }
+            let marker_team = marker.team.as_ref().map(team).transpose()?;
+            if let Some(region) = marker.region
+                && (marker.pos.is_some() || !region.holds(map.metric, map.bounds))
+            {
+                return Err(ModeError::Region(marker.name.clone()));
+            }
+            markers.push(MarkerSpec {
+                name: marker.name.as_str().into(),
+                tags: marker.tags.iter().map(|tag| tag.as_str().into()).collect(),
+                pos: marker.pos.as_ref().map(point).transpose()?,
+                team: marker_team,
+                params: marker.params.clone(),
+            });
+        }
+        Ok(ModeMap {
+            metric: map.metric,
+            bounds: map.bounds,
+            paths,
+            placed,
+            markers,
+            grid,
+            pathing,
+            relations: resolved,
+        })
+    }
+}

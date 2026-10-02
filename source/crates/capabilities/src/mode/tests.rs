@@ -6,7 +6,7 @@ use bevy_ecs::query::With;
 use campfire_content::PackagePath;
 use campfire_math::{Num, Vec3};
 use campfire_script::{Budget, ScriptHost, ScriptId};
-use campfire_sim::{Capability, SimUpdate, StableId, TickInput, Ticks};
+use campfire_sim::{Capability, Position, SimUpdate, StableId, TickInput, Ticks};
 
 use super::*;
 use crate::actions::Actions;
@@ -27,17 +27,21 @@ use crate::combat::pass_queue::PassQueue;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::mode::choice_data::{ChoiceData, Offers};
 use crate::mode::map_data::{GridData, MarkerData, PathData, PlacedUnitData};
+use crate::mode::map_data::{MapData, MapPoint};
 use crate::mode::match_end::MatchResult;
 use crate::mode::mode_data::{InputType, ListEntry, ModeData, ModeParam};
 use crate::mode::mode_setup::{LoadoutSetup, SlotAction, UnitTypeSetup};
 use crate::mode::mode_state_decl::{ModeStateDecl, SyncTo};
 use crate::mode::offer::Offer;
+use crate::mode::relation_data::RelationData;
 use crate::mode::resource_id::ResourceId;
+use crate::mode::team_manifest::TeamManifest;
 use crate::mode::unit_kit::UnitKit;
 use crate::navigation::destination::Destination;
 use crate::navigation::move_step::MoveStep;
 use crate::navigation::navigation_rules::NavigationRules;
 use crate::navigation::path_walker::PathEnd;
+use crate::navigation::paths::Paths;
 use crate::navigation::walker::Walker;
 use crate::production::train_queue::TrainQueue;
 use crate::progression::Progression;
@@ -79,6 +83,7 @@ use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::attitude::Attitude;
 use crate::values::bounds::Bounds;
+use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
 use crate::values::grid::Grid;
 use crate::values::metric::Metric;
@@ -612,7 +617,6 @@ fn setup(
     ModeSetup {
         script,
         data: &files.data,
-        map: &files.map,
         teams: &files.teams,
         players: 3,
         unit_types: vec![
@@ -716,8 +720,11 @@ impl Game {
         let books = {
             let view = world.non_send::<View>();
             let stats = StatBook::new(&files.data.stats, [], RATE, num(10));
+            let relations = &files.data.relations;
+            let unit_type = |name: &str| view.unit_type_named(name);
+            let map = ModeMap::resolve(&files.map, &files.teams, relations, unit_type).unwrap();
             let unit_types = &setup.unit_types;
-            ModeBooks::build(&files.data, unit_types, &mut view.types_mut(), stats)
+            ModeBooks::build(&files.data, unit_types, &mut view.types_mut(), stats, map)
         };
         Mode::install(&mut world, &mut schedule, &mut registry, setup, books);
         // The scripts name pools the data does not declare, whose maxima no stat sets.

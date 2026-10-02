@@ -2,7 +2,6 @@ use campfire_script::ScriptId;
 
 use crate::actions::action_book::ActionId;
 use crate::actions::slot_kind::SlotKind;
-use crate::mode::map_data::MapData;
 use crate::mode::mode_data::ModeData;
 use crate::mode::team_manifest::TeamManifest;
 use crate::mode::unit_kit::UnitKit;
@@ -17,7 +16,6 @@ pub struct ModeSetup<'a> {
     /// The mode script, compiled.
     pub script: ScriptId,
     pub data: &'a ModeData,
-    pub map: &'a MapData,
     /// The playing teams, in the manifest's order; their slots in that order make the player
     /// slots.
     pub teams: &'a [TeamManifest],

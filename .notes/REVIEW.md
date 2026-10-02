@@ -68,13 +68,6 @@ The worst case per tick is the metric. These systems let one tick pay for a scan
 - [ ] **`Progress` keeps the stuck count of the last walk** — `capabilities/src/navigation/progress.rs:143-156`, `navigation/mod.rs:394`. Better: reset it when a route is asked for or cleared.
 - [ ] **Map-blocked cells are not in the exact tests** — `capabilities/src/navigation/pathing_grid.rs:37-41`, `navigation/route_planner.rs:119-130`. The tests know only bodies. Once a map blocks cells, smoothing and the straight-goal shortcut will cross them. Better: the exact tests also read the clearance.
 
-## 6. The load check and the match build validate separately
-
-The package load should be the one place that refuses bad data. Today some checks happen only at match start, some checks rely on a hand-kept table, and the build computes again what the check already computed.
-
-- [ ] **`UnitKitError::NoLifePool` repeats a load problem** — `capabilities/src/mode/error.rs`, `mode/unit_kit/mod.rs`. `LoadProblem::LifePoolMissing` refuses the same case first, so the kit's case is never reached from a load. Better: one rule, in the kit, that the load reports.
-- [ ] **The map is checked, then resolved again by name** — `capabilities/src/mode/mod.rs:262-391`, `mode/mode_book.rs:132-164`, `mode/mod.rs:206-221`. Install resolves the same names with about a dozen `expect("the check passed")`. Better: one `MapData` method that turns the map into resolved data once.
-- [ ] **`CollisionData` throws its checked `Body` away** — `capabilities/src/units/collision_data.rs:13-37`, `navigation/navigation_rules.rs:31`. Better: store the `Body`.
 ## 7. Package books are copied into the script view, the frame and the state
 
 Each item is a second copy of data that one book owns. The copies are kept in line by load order, by hand or not at all.

@@ -538,18 +538,16 @@ mod tests {
     /// call, which resolves the names it is given once, or in the load, which resolves the
     /// packages' names once; but the one marked, which runs as a modifier applies. The test fails
     /// when a lookup appears and when one listed here is gone.
-    const LOOKUPS: [(&str, &str); 47] = [
+    const LOOKUPS: [(&str, &str); 45] = [
         // The load.
         ("actions/slot_kinds.rs", "named"),
         ("books/book_builder.rs", "cost_target_named"),
         ("books/book_builder.rs", "named"),
         ("combat/combat_bindings.rs", "named"),
         ("combat/combat_rules.rs", "named"),
-        ("mode/mod.rs", "named"),
-        ("mode/mode_book.rs", "named"),
-        ("mode/mode_book.rs", "unit_type_named"),
         ("mode/mode_books.rs", "tag_named"),
         ("mode/mode_data.rs", "named"),
+        ("mode/mode_map.rs", "named"),
         ("mode/unit_kit/mod.rs", "named"),
         ("navigation/navigation_rules.rs", "layer_named"),
         ("stats/modifier_book.rs", "named"),

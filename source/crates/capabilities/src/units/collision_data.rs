@@ -1,4 +1,3 @@
-use campfire_math::Num;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
@@ -11,8 +10,8 @@ use crate::values::scalar::Scalar;
 /// nothing, ranges count from its center, and it moves on the first layer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CollisionData {
-    /// A radius `Body::new` takes.
-    pub radius: Num,
+    /// Its body, on the first layer until `NavigationRules::body` puts it on its own.
+    pub body: Body,
     pub layer: Option<DeclaredName>,
 }
 
@@ -32,7 +31,7 @@ impl<'de> Deserialize<'de> for CollisionData {
             .and_then(Body::new)
             .ok_or_else(|| D::Error::custom("a collision radius is positive, up to 64 m"))?;
         Ok(CollisionData {
-            radius: body.radius(),
+            body,
             layer: fields.layer,
         })
     }

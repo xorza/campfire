@@ -95,20 +95,20 @@ impl Navigation {
     /// waypoint is a place that walker may stand, and every waypoint is in a reachable set of the
     /// one before it, by the regions a match plans its routes with. A narrower walker of the
     /// layer has every cell the widest has open. A map with no `[navigation]` cells, or a mode
-    /// with no walker, has nothing to check. Its points passed the mode's check.
+    /// with no walker, has nothing to check. The book build checked its points.
     pub fn check_map(
         map: &MapData,
         walkers: &[Walker],
         body_of: impl Fn(&str) -> Option<Body>,
     ) -> Result<(), MapProblem> {
-        let Some(cells) = map.pathing().expect("the mode's check passed") else {
+        let Some(cells) = map.pathing().expect("the book build checked the map") else {
             return Ok(());
         };
         debug_assert!(walkers.is_sorted(), "walkers by layer, then radius");
         let widest = walkers
             .chunk_by(|a, b| a.layer == b.layer)
             .map(|layer| *layer.last().expect("a chunk is never empty"));
-        let point = |point: &MapPoint| point.position().expect("the mode's check passed");
+        let point = |point: &MapPoint| point.position().expect("the book build checked the map");
         let mut ids = IdAllocator::default();
         let structures: Vec<IndexedBody> = map
             .units

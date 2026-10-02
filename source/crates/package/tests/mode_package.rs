@@ -1047,13 +1047,21 @@ const FLAWS: [Flaw; 183] = [
         HUSK,
         Edit::Replace(r#"pools = ["health", "mana"]"#, r#"pools = ["mana"]"#),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::LifePoolMissing(Place::Avatar(_))),
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::UnitKit {
+                    at: Place::Avatar(_),
+                    error: UnitKitError::NoLifePool
+                }
+            )
+        },
     ),
     flaw(
         UNITS,
         Edit::Replace("pools = [\"health\"]\n", ""),
         MODE,
-        |problem| matches!(problem, LoadProblem::LifePoolMissing(Place::UnitType(name)) if name == "melee_creep"),
+        |problem| matches!(problem, LoadProblem::UnitKit { at: Place::UnitType(name), error: UnitKitError::NoLifePool } if name == "melee_creep"),
     ),
     flaw(
         UNITS,

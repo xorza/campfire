@@ -4,9 +4,9 @@ use std::{iter, slice};
 use campfire_capabilities::{
     ActionData, ActionDataField, ActionKind, ActionSlots, ApiOwner, ApiVersion, BookError, Books,
     CollisionData, CombatRules, DeclaredName, DeliveryData, EffectTo, Effecting, EngineStat,
-    EngineTag, FilterData, Hook, MemberKind, Mode, ModifierData, NameKind, Navigation, Number,
-    Offers, Param, Pools, Range, RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Stat,
-    Targeting, TrackId, UnitTypeData, UnitTypeFile,
+    EngineTag, FilterData, Hook, MemberKind, ModifierData, NameKind, Navigation, Number, Offers,
+    Param, Pools, Range, RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Stat, Targeting,
+    TrackId, UnitTypeData, UnitTypeFile,
 };
 use campfire_content::PackagePath;
 use campfire_math::Num;
@@ -108,6 +108,8 @@ impl<'a> LoadCheck<'a> {
         let scripts = packages.script_book();
         let input = packages.book_input(check.rate, &scripts);
         Books::build(&input).map_err(|error| check.book_error(error))?;
+        // After the build, which resolved the map's names.
+        check.map_walkable().map_err(fail)?;
         Ok(())
     }
 
@@ -167,6 +169,7 @@ impl<'a> LoadCheck<'a> {
                     problem,
                 },
             ),
+            BookError::Mode(error) => (0, LoadProblem::Mode(error)),
             BookError::AreaTime { package, unit_type } => (
                 package,
                 LoadProblem::Delivery(DeliveryProblem::AreaTime(at(package, unit_type))),
@@ -205,18 +208,6 @@ impl<'a> LoadCheck<'a> {
         let data = &packages.data;
         let content = &packages.content;
         let units = &content.units;
-        let unit_type = |name: &str| {
-            units
-                .get(name)
-                .is_some_and(|unit_type| !unit_type.delivers())
-        };
-        Mode::check(
-            &packages.manifest.teams,
-            &data.relations,
-            &packages.map,
-            unit_type,
-        )
-        .map_err(LoadProblem::Mode)?;
         for list in [
             &data.combat.damage_kinds,
             &data.resources,
@@ -244,7 +235,6 @@ impl<'a> LoadCheck<'a> {
         if !packages.map.paths.is_empty() {
             self.require(Capability::Navigation, &Place::Paths)?;
         }
-        self.map_walkable()?;
         if packages.manifest.capabilities.contains(Capability::Vision)
             && packages.map.grid.is_none()
         {
@@ -1047,9 +1037,6 @@ impl<'a> LoadCheck<'a> {
             .life
             .as_ref()
             .is_some_and(|life| pools.contains(life));
-        if combat && !lives {
-            return Err(LoadProblem::LifePoolMissing(at.clone()));
-        }
         if lives && !combat {
             return Err(LoadProblem::CombatMissing(at.clone()));
         }
