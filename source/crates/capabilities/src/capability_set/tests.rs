@@ -345,3 +345,98 @@ fn a_name_is_looked_up_only_by_a_script_call_or_the_load() {
     known.sort();
     assert_eq!(found, known, "lookups by name");
 }
+
+/// The state types of the core, then those each capability adds to the ones it builds on, in
+/// name order: each its own.
+const STATE: [(Option<Capability>, &[&str]); 11] = [
+    (
+        None,
+        &[
+            "actions.slots",
+            "sim.entities",
+            "sim.id_allocator",
+            "sim.position",
+            "sim.tick",
+            "units.body",
+            "units.owner",
+            "units.relations",
+            "units.spawn_point",
+            "units.team",
+            "units.unit_type",
+        ],
+    ),
+    (
+        Some(Stats),
+        &[
+            "stats.level",
+            "stats.modifier_clocks",
+            "stats.modifiers",
+            "stats.player_modifiers",
+            "stats.pools",
+        ],
+    ),
+    (
+        Some(Capability::Progression),
+        &["progression.experience", "progression.level_ups"],
+    ),
+    (
+        Some(Combat),
+        &[
+            "combat.dead",
+            "combat.kept",
+            "combat.on_death",
+            "combat.recent_attackers",
+            "combat.respawn",
+        ],
+    ),
+    (
+        Some(Navigation),
+        &[
+            "navigation.destination",
+            "navigation.move_step",
+            "navigation.on_path",
+            "navigation.path_walker",
+            "navigation.progress",
+            "navigation.route",
+        ],
+    ),
+    (Some(Vision), &["vision.seen_by", "vision.sight"]),
+    (
+        Some(Projectiles),
+        &["projectiles.projectile", "projectiles.struck_units"],
+    ),
+    (Some(Capability::Areas), &["areas.area"]),
+    (Some(Abilities), &[]),
+    (Some(Orders), &["orders.next_think", "orders.resetting"]),
+    (Some(Capability::Production), &["production.train_queue"]),
+];
+
+#[test]
+fn each_capability_adds_exactly_its_own_state_types() {
+    fn with_needs(capability: Capability, into: &mut Vec<Capability>) {
+        for &need in needs(capability) {
+            with_needs(need, into);
+        }
+        if !into.contains(&capability) {
+            into.push(capability);
+        }
+    }
+    for (capability, own) in STATE {
+        let mut declared = Vec::new();
+        for &need in capability.map_or(&[][..], needs) {
+            with_needs(need, &mut declared);
+        }
+        let below = TestMatch::client(&declared).state_names();
+        declared.extend(capability);
+        let names = TestMatch::client(&declared).state_names();
+        let added: Vec<_> = names
+            .iter()
+            .copied()
+            .filter(|name| !below.contains(name) || capability.is_none())
+            .collect();
+        assert_eq!(added, own, "{capability:?}");
+    }
+    // The table holds every capability the release runs.
+    let runs = CAPABILITIES.iter().filter(|row| row.install.is_some());
+    assert_eq!(runs.count(), STATE.len() - 1);
+}

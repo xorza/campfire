@@ -86,7 +86,7 @@ fn on_mode_input(ctx, player, name, value) {
         (false, (10, 0), 3),
     ];
     for (at, (ordered, expected, made)) in (1..).zip(steps) {
-        assert_eq!(game.sim.world.resource::<SimTick>().start().get(), at);
+        assert_eq!(game.sim.now().get(), at);
         if ordered {
             order(&mut game);
         }

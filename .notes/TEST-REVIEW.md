@@ -26,21 +26,14 @@ Paths are relative to `source/crates/`. Line numbers are at `c38f0da`. Each item
 
 ## 4. One style for one check
 
-- [ ] **Tick steps have five styles** — `game.tick(&[])`, `walk.tick()`, `world.run_schedule(SimUpdate)` (vision 6×, abilities 14×, stats 18×), `run_until(n)`, and `while …SimTick…start().get() <= t + 4` loops. `TestMatch::step` / `run_until` / `now` cover all of them.
-- [ ] **Script failures are read in more than five ways** — `matches!` on a vector (abilities:401), a table of fn pointers (abilities:690), `all(..) && count() == 1` (abilities:1162), `matches!` with a guard (abilities:1356), `calls()` (abilities:1241), mode's `failures()` (mode:741), orders' `think()` (orders:273). The mode tests also mix `assert!(failures().is_empty())` (817, 1592, 1770) with `assert_eq!(…, [])`. Better: `ScriptFailures::calls()` and `assert_eq!` only.
-- [ ] **"Its types are state" is tested in three ways, and four types have no test**:
-  - `combat:585` asserts the full registry of 19 names, including `stats.*`, so a new stats type breaks a combat test. `navigation:693` does the same with 17 names.
-  - `projectiles:282` asserts only `any(..)`, and `vision/tests.rs:193-197` checks 2 names with no restore.
-  - `areas.area`, `production.train_queue`, `progression.experience` and `projectiles.cast_hits` have no test.
-  - The snapshot, restore and hash steps are written 5 times (combat:597, projectiles:280, stats:565, navigation:703, orders:1117).
-
-  Better: one table test in `capability_set`. For each capability, compare `state_names()` with and without it, on top of what it needs. The difference must equal its own list exactly. Then round-trip a match with one unit that holds every component.
+- [ ] **Script failures are read in three ways still** — `CallError::kind` and `ScriptFailures::calls` with `assert_eq!` serve most sites now. Left: the abilities table of fn pointers (its overflow case reads what a script raised), mode's `failures()`, and orders' `think()`.
+- [ ] **Four state types have no round trip** — the state table test in `capability_set` pins each capability's own types, and the module tests round-trip their matches through `TestMatch::restore_into`. `areas.area`, `production.train_queue`, `progression.experience` and `projectiles.struck_units` are in no round trip: a match with one unit that holds every component, restored, covers them.
 - [ ] **Positions and fractions are written in several ways**:
   - `at(Num, Num, Num)` (abilities, 36 lines of `Num::ZERO, Num::ZERO`), `at(i64, i64, i64)` (combat, orders), and `at(x, z)` (projectiles, vision, mode);
   - fractions as `from_bits(1 << 23)` (9×), as a floored `(9 << FRAC_BITS) / 10`, as `Num::from_str("3.25")`, and as quarter closures.
 
   `HALF` and `QUARTER` constants are safe. Do not change a floored fraction to `"0.35".parse()` without new derivations of the expected values, because the parser rounds to nearest and the shift floors.
-- [ ] **Spawns** — `give_type_tags` is called in the abilities, orders and units spawns, but not in combat or projectiles (combat:303 adds it by hand). The stats `unit()` returns an `Entity` (stats:128), where every other harness returns a `StableId`. `TestMatch::spawn` settles both.
+- [ ] **The stats `unit()` returns an `Entity`** (`stats/tests.rs`), where every other harness spawns through `TestMatch::spawn` and gives a `StableId`. Its units have no position, which `spawn` takes.
 - [ ] **One hero runs at two rates** — the reference heroes run at 30 Hz in `reference_abilities` and at 20 Hz in the 3v3, and no test checks timing across rates. For example, Eruption's 625 ms is 19 ticks at 30 Hz and 13 ticks at 20 Hz. Low priority.
 - [ ] **No golden for a whole match** — the sim golden pins 6 digests. Runner, verifier and net compare live against replay in one process and one binary, so they cannot see a difference between builds. Better: pin BLAKE3 over the 72 tick hashes of headless `scripted_creeps_and_towers…`, which plays `packages/test`. It changes when a state type is added, and that update is deliberate. This is also the first input `checks/det-ci` (an empty `main`) needs.
 

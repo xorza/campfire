@@ -49,7 +49,7 @@ fn on_input(ctx, player, name, value) {
     // In tick t a new one, 1 stack as the call sees it, written to 3 and its count from 0 to 5;
     // 100 ms at 10 ticks a second is 1 tick, so it holds through t + 1 and ends as t + 2
     // starts.
-    let t = game.sim.world.resource::<SimTick>().start().get();
+    let t = game.sim.now().get();
     game.tick(&[(0, input("probe", "bless"))]);
     assert_eq!(game.field("seen"), StateValue::Int(1));
     assert_eq!(held(&game), [(3, Some(t + 2), vec![StateValue::Int(5)])]);
@@ -61,7 +61,7 @@ fn on_input(ctx, player, name, value) {
     game.tick(&[(0, input("probe", "check"))]);
     assert_eq!(game.field("seen"), StateValue::Int(1));
     // Through t + 3, then gone as t + 4 starts: once that tick has run.
-    while game.sim.world.resource::<SimTick>().start().get() <= t + 4 {
+    while game.sim.now().get() <= t + 4 {
         game.tick(&[]);
     }
     assert_eq!(held(&game), []);
@@ -69,7 +69,7 @@ fn on_input(ctx, player, name, value) {
     assert_eq!(game.field("seen"), StateValue::Int(0));
     // Two applications in one call in tick u: one handle, which sees both, 2 stacks; 200 ms, so
     // it ends as u + 3 starts.
-    let u = game.sim.world.resource::<SimTick>().start().get();
+    let u = game.sim.now().get();
     game.tick(&[(0, input("probe", "twice"))]);
     assert_eq!(game.field("seen"), StateValue::Int(22));
     assert_eq!(held(&game), [(2, Some(u + 3), vec![StateValue::Int(0)])]);

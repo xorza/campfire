@@ -268,7 +268,7 @@ impl Match {
 
     /// Runs ticks with no inputs until `tick` is the next.
     fn run_until(&mut self, tick: u64) {
-        while self.sim.world.resource::<SimTick>().start().get() < tick {
+        while self.sim.now().get() < tick {
             self.tick(&[]);
         }
     }
@@ -996,7 +996,7 @@ fn a_monster_pulled_past_its_leash_walks_home_ignoring_its_attacker_and_heals() 
     game.think(&[(0, &attack(hero, monster))]);
     game.run_until(8);
     game.think(&[(0, &move_to(hero, 30, 0))]);
-    while game.sim.world.resource::<SimTick>().start().get() < 32 {
+    while game.sim.now().get() < 32 {
         game.think(&[]);
     }
     assert_eq!(game.target(monster), Some(hero));
@@ -1163,16 +1163,6 @@ fn every_orders_type_is_state_and_restores() {
     let still = game.still(Team::new(1), at(9, 0, 0), fighter_stats());
     game.tick(&[(0, &move_to(fighter, 0, 3))]);
     game.sim.insert(still, Resetting);
-
-    let names = game.sim.state_names();
-    for name in [
-        "units.owner",
-        "units.team",
-        "orders.next_think",
-        "orders.resetting",
-    ] {
-        assert!(names.contains(&name), "{name}");
-    }
 
     // A restore loads the match's books first: the same weapons, in the same order.
     let mut restored = Match::new();

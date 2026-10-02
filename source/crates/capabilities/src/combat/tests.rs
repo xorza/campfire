@@ -556,34 +556,6 @@ fn every_combat_type_is_state_and_restores() {
     fight.sim.run_until(3);
     assert!(fight.sim.try_get::<Dead>(doomed).is_some());
 
-    let names = fight.sim.state_names();
-    assert_eq!(
-        names,
-        [
-            "actions.slots",
-            "combat.dead",
-            "combat.kept",
-            "combat.on_death",
-            "combat.recent_attackers",
-            "combat.respawn",
-            "sim.entities",
-            "sim.id_allocator",
-            "sim.position",
-            "sim.tick",
-            "stats.level",
-            "stats.modifier_clocks",
-            "stats.modifiers",
-            "stats.player_modifiers",
-            "stats.pools",
-            "units.body",
-            "units.owner",
-            "units.relations",
-            "units.spawn_point",
-            "units.team",
-            "units.unit_type",
-        ]
-    );
-
     // A restore loads the match's books first, as the packages give them: the same weapons, in
     // the same order.
     let mut restored = Fight::new();

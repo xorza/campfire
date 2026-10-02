@@ -146,8 +146,9 @@ fn each_team_sees_the_cells_its_living_units_reveal() {
     assert_eq!(scene.seen_by(new), team(2).with(Team::new(1)));
 
     // What a team sees is state, restored with the rest.
-    let names = scene.sim.state_names();
-    assert!(names.contains(&"vision.seen_by") && names.contains(&"vision.sight"));
+    let mut restored = Scene::new();
+    scene.sim.restore_into(&mut restored.sim);
+    assert_eq!(restored.seen_by(new), team(2).with(Team::new(1)));
 }
 
 #[test]

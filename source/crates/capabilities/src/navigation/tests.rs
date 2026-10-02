@@ -788,29 +788,6 @@ fn every_navigation_type_is_state() {
     route.ask(at(3, 0, 4), Tick::new(2));
     let lane = || Paths::new([("lane", &[at(0, 0, 0), at(0, 0, 5)][..])]);
     walk.sim.world.insert_resource(lane());
-    let names = walk.sim.state_names();
-    assert_eq!(
-        names,
-        [
-            "actions.slots",
-            "navigation.destination",
-            "navigation.move_step",
-            "navigation.on_path",
-            "navigation.path_walker",
-            "navigation.progress",
-            "navigation.route",
-            "sim.entities",
-            "sim.id_allocator",
-            "sim.position",
-            "sim.tick",
-            "units.body",
-            "units.owner",
-            "units.relations",
-            "units.spawn_point",
-            "units.team",
-            "units.unit_type",
-        ]
-    );
     // A restore loads the map first, as the packages give it.
     let mut restored = Walk::new();
     restored.sim.world.insert_resource(lane());

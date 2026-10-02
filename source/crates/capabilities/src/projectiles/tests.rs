@@ -1,5 +1,5 @@
 use campfire_math::{RngSource, SegmentSeed};
-use campfire_sim::{Capability, EntityIndex, SimTick};
+use campfire_sim::{Capability, EntityIndex};
 
 use super::*;
 use crate::actions::action_slots::ActionSlots;
@@ -237,8 +237,6 @@ fn a_projectile_whose_target_dies_or_goes_first_ends_without_a_hit() {
     volley.sim.world.despawn(entity);
 
     // A projectile is state while it flies.
-    let names = volley.sim.state_names();
-    assert!(names.contains(&"projectiles.projectile"), "{names:?}");
     // A restore loads the match's books first: the same weapons, in the same order.
     let mut restored = Volley::new();
     for armed in [
@@ -262,7 +260,7 @@ fn a_projectile_whose_target_dies_or_goes_first_ends_without_a_hit() {
     assert!(decode(&[(first, doomed), (first, doomed)]).is_err());
 
     volley.sim.step();
-    assert_eq!(volley.sim.world.resource::<SimTick>().start().get(), 6);
+    assert_eq!(volley.sim.now().get(), 6);
     assert_eq!(volley.projectiles(), []);
     assert_eq!(volley.sim.health(doomed), 100);
 }
