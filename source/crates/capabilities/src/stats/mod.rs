@@ -584,28 +584,82 @@ fn regenerate(
 
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
-    use std::collections::BTreeMap;
-
     use bevy_ecs::world::World;
-    use campfire_math::Num;
-    use campfire_sim::{EntityIndex, StableId, TickRate};
+    use campfire_sim::{EntityIndex, StableId};
 
     use crate::actions::action_book::ActionId;
     use crate::stats::Stats;
-    use crate::stats::modifier_book::{Applier, ModifierId};
+    use crate::stats::modifier_book::{Applier, ModifierBook, ModifierId};
     use crate::stats::modifier_effect::ModifierEffect;
     use crate::stats::modifiers::Modifiers;
+
+    impl Stats {
+        /// The modifier `name` of `package`, as the match loaded it.
+        pub fn modifier(world: &World, package: u16, name: &str) -> Option<ModifierId> {
+            world.resource::<ModifierBook>().named(package, name)
+        }
+    }
+
+    /// Gives `target` the modifier `id` from `source`, by `ability` at `rank`, and a passive when
+    /// `passive`, as an application in the running tick would.
+    pub fn give_modifier(
+        world: &mut World,
+        target: StableId,
+        id: ModifierId,
+        from: Option<(StableId, Option<ActionId>, u8)>,
+        passive: bool,
+    ) {
+        let (source, ability, rank) = from.map_or((None, None, 1), |(source, ability, rank)| {
+            (Some(source), ability, rank)
+        });
+        let applier = Applier {
+            source,
+            ability,
+            rank,
+            passive,
+            held: false,
+        };
+        let add = ModifierEffect::Add {
+            target,
+            id,
+            duration: None,
+        };
+        Stats::apply_effect(world, add, applier);
+    }
+
+    /// The modifiers `unit` carries, each with its source, in their order.
+    pub fn carried(world: &World, unit: StableId) -> Vec<(ModifierId, Option<StableId>)> {
+        let entity = world
+            .resource::<EntityIndex>()
+            .get(unit)
+            .expect("a unit of the match");
+        world
+            .get::<Modifiers>(entity)
+            .into_iter()
+            .flat_map(Modifiers::iter)
+            .map(|instance| (instance.id, instance.source))
+            .collect()
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod loads {
+    use std::collections::BTreeMap;
+
+    use bevy_ecs::world::{Mut, World};
+    use campfire_math::Num;
+    use campfire_script::ScriptId;
+    use campfire_sim::TickRate;
+
+    use crate::scripts::script_book::ScriptBook;
+    use crate::stats::Stats;
+    use crate::stats::modifier_book::{ModifierBook, ModifierLoad, PackageModifier};
+    use crate::stats::modifier_data::ModifierData;
     use crate::stats::param_book::ParamBook;
     use crate::stats::pool_book::PoolBook;
     use crate::stats::stat::Stat;
     use crate::stats::stat_book::StatBook;
     use crate::stats::stat_rule::StatRule;
-    use bevy_ecs::world::Mut;
-    use campfire_script::ScriptId;
-
-    use crate::scripts::script_book::ScriptBook;
-    use crate::stats::modifier_book::{ModifierBook, ModifierLoad, PackageModifier};
-    use crate::stats::modifier_data::ModifierData;
     use crate::units::script_view::View;
     use crate::values::declared_name::DeclaredName;
     use crate::values::param::Param;
@@ -614,7 +668,7 @@ pub(crate) mod internals {
         /// Loads `data` as the modifier `name` of `package`: 0 the mode, then each package it
         /// depends on, in its manifest's order, with its compiled `script` exactly when its data
         /// names one. Modifiers load by package, then name.
-        pub fn load_modifier(
+        pub(crate) fn load_modifier(
             world: &mut World,
             package: u16,
             name: &str,
@@ -657,58 +711,12 @@ pub(crate) mod internals {
             world.insert_resource(book);
             world.insert_resource(PoolBook::default());
         }
-
-        /// The modifier `name` of `package`, as `load_modifier` loaded it.
-        pub fn modifier(world: &World, package: u16, name: &str) -> Option<ModifierId> {
-            world.resource::<ModifierBook>().named(package, name)
-        }
     }
 
     /// Gives a match with no mode the stat book of `rules`, at `rate`, with no unit type and no
     /// pool stats; the pools its scripts name stay named.
-    pub fn load_stats(world: &mut World, rules: &BTreeMap<Stat, StatRule>, rate: TickRate) {
+    pub(crate) fn load_stats(world: &mut World, rules: &BTreeMap<Stat, StatRule>, rate: TickRate) {
         Stats::load_book(world, StatBook::new(rules, [], rate, Num::MAX));
-    }
-
-    /// Gives `target` the modifier `id` from `source`, by `ability` at `rank`, and a passive when
-    /// `passive`, as an application in the running tick would.
-    pub fn give_modifier(
-        world: &mut World,
-        target: StableId,
-        id: ModifierId,
-        from: Option<(StableId, Option<ActionId>, u8)>,
-        passive: bool,
-    ) {
-        let (source, ability, rank) = from.map_or((None, None, 1), |(source, ability, rank)| {
-            (Some(source), ability, rank)
-        });
-        let applier = Applier {
-            source,
-            ability,
-            rank,
-            passive,
-            held: false,
-        };
-        let add = ModifierEffect::Add {
-            target,
-            id,
-            duration: None,
-        };
-        Stats::apply_effect(world, add, applier);
-    }
-
-    /// The modifiers `unit` carries, each with its source, in their order.
-    pub fn carried(world: &World, unit: StableId) -> Vec<(ModifierId, Option<StableId>)> {
-        let entity = world
-            .resource::<EntityIndex>()
-            .get(unit)
-            .expect("a unit of the match");
-        world
-            .get::<Modifiers>(entity)
-            .into_iter()
-            .flat_map(Modifiers::iter)
-            .map(|instance| (instance.id, instance.source))
-            .collect()
     }
 }
 

@@ -310,7 +310,7 @@ impl Match {
     /// Gives the match a stat book of the stats the scaling params name, with no unit type.
     fn load_stats(&mut self) {
         let rules = scaling_stats().map(|stat| (stat, StatRule::default()));
-        stats::internals::load_stats(&mut self.world, &BTreeMap::from(rules), RATE);
+        stats::loads::load_stats(&mut self.world, &BTreeMap::from(rules), RATE);
     }
 
     /// Loads `data` as the action `name` of package 0, of 5 ranks, with its script `source`.

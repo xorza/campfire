@@ -904,6 +904,7 @@ pub(crate) mod internals {
     use crate::actions::action_slots::ActionSlots;
     use crate::actions::slot_kind::SlotKind;
     use crate::stats::pool_cost::PoolCost;
+    use crate::stats::stat_book::StatBook;
     use crate::stats::unit_stats::UnitStats;
     use crate::units::filter::Filter;
     use crate::units::unit_type::UnitType;
@@ -960,7 +961,8 @@ pub(crate) mod internals {
         }
 
         /// The weapon added to the book of `world`, in a unit's one slot, and the stats it reads:
-        /// the rate that makes its period at `hz` ticks a second, then its damage.
+        /// the rate that makes its period at `hz` ticks a second, then its damage, then 0 for
+        /// every other stat of the match's stat book.
         pub fn parts(self, world: &mut World, hz: u32) -> ArmsParts {
             let weapon = TestWeapon {
                 aim: Filter::of_relation(Relation::Enemies),
@@ -978,8 +980,14 @@ pub(crate) mod internals {
             let bits = (u128::from(hz) << (2 * Num::FRAC_BITS))
                 .div_ceil(u128::from(self.period.get()) << Num::FRAC_BITS);
             let rate = Num::from_bits(i64::try_from(bits).unwrap());
+            // One value for each stat of the match's book, as a refresh gives a unit, the rest 0.
+            let count = world
+                .get_resource::<StatBook>()
+                .map_or(2, |book| usize::from(book.len()));
             let mut stats = UnitStats::default();
-            stats.refill().extend([rate, self.damage]);
+            let values = stats.refill();
+            values.extend([rate, self.damage]);
+            values.resize(count.max(2), Num::ZERO);
             ArmsParts {
                 slots: ActionSlots::new([(id, SlotKind::new(0), 1)]),
                 stats,

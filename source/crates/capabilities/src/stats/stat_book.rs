@@ -202,7 +202,7 @@ impl StatBook {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(test)]
 pub(crate) mod internals {
     use std::collections::BTreeMap;
 

@@ -125,13 +125,6 @@ The schedule is a separate field only because `Mode::install` needs it (`mode/te
   ```
 
   It needs `Session::hash_by_type` and `Runner::state_hash_by_type` in gated `internals` at the end of their files. Memory is about 3 MB for 2500 ticks.
-- [ ] **An `Arena` for `reference_abilities.rs`** — `reference_world()` (`:170-210`) copies `TestMatch::new`, because `TestMatch` is `#[cfg(test)]`. Its `ScriptLimits` (`:175-180`) are copied from the abilities tests, not from the 3v3 manifest. Each test then loads by hand what `MatchBuild` loads: 7× `compile`, 6× `Actions::load(…, 0, …, 5)`, 8× `load_type`, 4× `bind_spawn` and 5× `load_modifier`, about 52 lines. The `Order { … Action::Slot … }` literal (9 lines) appears 5 times, and `run_schedule` is called by hand 11 times. Better:
-  1. Gate `TestMatch` `any(test, feature = "internals")` and export it through `campfire_capabilities::internals`.
-  2. Add an `Arena` with `step`, `steps`, `cast(caster, slot, target)` and `failures()` (as `reference_abilities.rs` keeps them across ticks), and `hero(name) -> HeroLoad { actions, modifiers }`. `hero` loads in the order of `MatchBuild::run` (`match_build.rs:86-129`).
-  3. Later, load through `MatchBuild` itself without `Mode::start`.
-
-  `every_reference_ability_reads…` (`:98-110`) repeats what `Reference3v3::load()` checks, and its Veil check repeats abilities:1503-1566. Remove it or make it shorter.
-
 ### 2.5 Net
 
 - [ ] **Methods on `LocalMatch`** — bootstrap is already 2 lines (`LocalMatch::new` + `start_match`). The repetition comes after the start:

@@ -54,11 +54,10 @@ use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_book::ScriptBook;
-use crate::stats::Stats;
+use crate::units::UnitsSet;
 use crate::units::relations::Relations;
 use crate::units::script_view::View;
 use crate::units::team::Team;
-use crate::units::{Units, UnitsSet};
 use crate::values::declared_name::DeclaredName;
 use crate::vision::Vision;
 
@@ -121,16 +120,8 @@ impl Mode {
         let walkers = setup.walkers.clone();
         // A window past what ticks can count covers the whole match.
         let assist_window = setup.data.combat.assist_window_ms.map(|ms| rate.window(ms));
-        let ModeBooks {
-            stats,
-            pools: pool_book,
-            tags,
-            bindings,
-            damage_kinds,
-            resources,
-        } = books;
-        let resource_count = resources.len();
-        view.set_mode_names(&damage_kinds, resources);
+        let resource_count = books.resources.len();
+        books.install(world);
         let data = setup.data;
         let book = ModeBook::new(setup, world.resource::<ScriptBook>(), &view, &paths);
         let mut relations = Relations::default();
@@ -142,11 +133,6 @@ impl Mode {
             relations.set(a, b, relation.relation, relation.vision);
         }
         world.insert_resource(relations);
-        if let Some(bindings) = bindings {
-            world.insert_resource(bindings);
-        }
-        Stats::load(world, stats, pool_book);
-        Units::load_tags(world, tags);
         if let Some(grid) = grid {
             Vision::load_grid(world, grid, book.teams.count());
         }

@@ -85,7 +85,7 @@ fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
         .map_or(TrackSet::default(), Experience::tracks);
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(test)]
 pub(crate) mod internals {
     use crate::progression::Progression;
     use crate::progression::track_book::TrackBook;
@@ -97,7 +97,7 @@ pub(crate) mod internals {
 
     impl Progression {
         /// Loads the mode's `tracks`, which the package load checked, into the match.
-        pub fn load(world: &mut World, tracks: &BTreeMap<DeclaredName, TrackData>) {
+        pub(crate) fn load(world: &mut World, tracks: &BTreeMap<DeclaredName, TrackData>) {
             let book = TrackBook::new(tracks);
             world.non_send::<View>().set_tracks(book.clone());
             world.insert_resource(book);

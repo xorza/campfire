@@ -816,7 +816,7 @@ impl fmt::Debug for View {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(test)]
 pub(crate) mod internals {
     use std::cell::RefMut;
 
@@ -836,7 +836,6 @@ pub(crate) mod internals {
         }
 
         /// How many unit types the match loaded, for a test to name the next one.
-        #[cfg(test)]
         pub(crate) fn types_count(&self) -> usize {
             self.0.borrow().types.count()
         }

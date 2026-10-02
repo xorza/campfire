@@ -309,7 +309,7 @@ fn launch(mut spawner: DeliverySpawner<'_, '_>, mut launches: ResMut<'_, Launche
     launches.clear();
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(test)]
 pub(crate) mod internals {
     use crate::projectiles::Projectiles;
     use crate::projectiles::projectile_data::ProjectileData;
@@ -325,7 +325,7 @@ pub(crate) mod internals {
         /// Makes `unit_type` a projectile type of `data`, tagged `projectile`, its speed a tick at
         /// the match's rate, which the package load checked: its `hits` filter names tags of the
         /// match's.
-        pub fn load_type(world: &mut World, unit_type: UnitType, data: &ProjectileData) {
+        pub(crate) fn load_type(world: &mut World, unit_type: UnitType, data: &ProjectileData) {
             let rate = *world.resource::<TickRate>();
             let view = world.non_send::<View>().clone();
             let spec = {

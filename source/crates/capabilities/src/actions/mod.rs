@@ -270,6 +270,21 @@ fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
 
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
+    use bevy_ecs::world::World;
+
+    use crate::actions::Actions;
+    use crate::actions::action_book::{ActionBook, ActionId};
+
+    impl Actions {
+        /// The action `name` of `package`, as the match loaded it.
+        pub fn action(world: &World, package: u16, name: &str) -> Option<ActionId> {
+            world.resource::<ActionBook>().action_named(package, name)
+        }
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod loads {
     use crate::actions::Actions;
     use crate::actions::action_book::ActionBook;
     use crate::actions::action_book::ActionId;
@@ -305,7 +320,7 @@ pub(crate) mod internals {
         /// package load checked, with its compiled script exactly when its data names one: its
         /// capability fields at each rank, times in milliseconds as ticks at the match's rate,
         /// rounded up.
-        pub fn load(
+        pub(crate) fn load(
             world: &mut World,
             package: u16,
             name: &str,

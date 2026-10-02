@@ -3,6 +3,8 @@
 
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 
+#[cfg(feature = "internals")]
+mod arena;
 mod error;
 #[cfg(feature = "internals")]
 mod fixed_match;
@@ -18,6 +20,8 @@ mod reference_3v3;
 mod runner;
 mod session;
 
+#[cfg(feature = "internals")]
+pub use arena::Arena;
 pub use error::StartError;
 #[cfg(feature = "internals")]
 pub use fixed_match::FixedMatch;

@@ -136,7 +136,7 @@ fn begin_tick(
     failures.0.clear();
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(test)]
 pub(crate) mod internals {
     use std::sync::Arc;
 
@@ -151,7 +151,7 @@ pub(crate) mod internals {
     impl Units {
         /// Names, for the scripts of a match with no mode, its `damage_kinds`, its `pools` and its
         /// players' `resources`, each by id, as a mode's books name them.
-        pub fn name_kinds(
+        pub(crate) fn name_kinds(
             world: &World,
             damage_kinds: &[&str],
             pools: &[&str],
@@ -171,7 +171,10 @@ pub(crate) mod internals {
         /// Declares every tag the match's packages name, in their order, after the engine's tags,
         /// before any type, modifier or filter names one, so the tags are numbered the same however
         /// the packages load.
-        pub fn declare_tags<'a>(world: &mut World, names: impl IntoIterator<Item = &'a str>) {
+        pub(crate) fn declare_tags<'a>(
+            world: &mut World,
+            names: impl IntoIterator<Item = &'a str>,
+        ) {
             let view = world.non_send::<View>();
             let mut types = view.types_mut();
             for name in names {
@@ -181,7 +184,7 @@ pub(crate) mod internals {
 
         /// Loads the unit type `name` of `scope`, with its core fields: its tags and its params. A
         /// name is one type's only in its scope.
-        pub fn load_type(
+        pub(crate) fn load_type(
             world: &mut World,
             scope: TypeScope,
             name: &str,

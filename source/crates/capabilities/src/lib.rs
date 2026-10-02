@@ -186,7 +186,7 @@ pub use vision::vision_data::VisionData;
 #[cfg(feature = "internals")]
 pub mod internals {
     pub use crate::combat::internals::{Arms, ArmsParts};
-    pub use crate::stats::internals::{carried, give_modifier, load_stats};
+    pub use crate::stats::internals::{carried, give_modifier};
     pub use crate::stats::pools::internals::spent;
 }
 

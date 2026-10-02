@@ -269,7 +269,7 @@ fn run(batch: &mut ScriptBatch<'_>, ctx: &Ctx, prepared: &mut Prepared) -> Resul
         .map_err(CallError::from_script)
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(test)]
 pub(crate) mod internals {
     use crate::abilities::Abilities;
     use crate::abilities::effect_lists::EffectLists;
@@ -291,7 +291,12 @@ pub(crate) mod internals {
         /// Loads the effect lists of `action` of `package`, which loaded last from `data`, which the
         /// package load checked: each name resolved to its id, each param to its place among the
         /// action's params.
-        pub fn load_effects(world: &mut World, action: ActionId, package: u16, data: &ActionData) {
+        pub(crate) fn load_effects(
+            world: &mut World,
+            action: ActionId,
+            package: u16,
+            data: &ActionData,
+        ) {
             let view = world.non_send::<View>().clone();
             let names = MatchEffectNames {
                 world,

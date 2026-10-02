@@ -24,8 +24,39 @@ impl MatchBuild {
         registry: &mut StateRegistry,
         players: u32,
     ) {
-        let manifest = packages.manifest();
         let data = packages.data();
+        let ModeInputs { units, books } =
+            MatchBuild::books(packages, world, schedule, registry, players);
+        let mode = &packages
+            .packages()
+            .next()
+            .expect("the mode is a package")
+            .package;
+        let script = mode.script_index(&data.script).expect(CHECKED);
+        let setup = ModeSetup {
+            script: ScriptId::nth(script),
+            data,
+            map: packages.map(),
+            teams: &packages.manifest().teams,
+            players,
+            unit_types: units.unit_types,
+            avatars: units.avatars,
+            loadout: units.loadout,
+            walkers: packages.walkers(),
+        };
+        Mode::install(world, schedule, registry, setup, books);
+    }
+
+    /// The first part of `run`: the core and the declared capabilities, every package's scripts,
+    /// and the books at the match's rate in place, but the mode's own, which it gives back.
+    pub(crate) fn books(
+        packages: &ModePackages,
+        world: &mut World,
+        schedule: &mut Schedule,
+        registry: &mut StateRegistry,
+        players: u32,
+    ) -> ModeInputs {
+        let manifest = packages.manifest();
         let budgets = ScriptBudgets::new(manifest.script_limits, players);
         manifest
             .capabilities
@@ -38,24 +69,6 @@ impl MatchBuild {
         let rate = *world.resource::<TickRate>();
         let compiled = world.resource::<ScriptBook>().clone();
         let books = Books::build(&packages.book_input(rate, &compiled)).expect(CHECKED);
-        let ModeInputs { units, books } = books.install(world);
-        let mode = &packages
-            .packages()
-            .next()
-            .expect("the mode is a package")
-            .package;
-        let script = mode.script_index(&data.script).expect(CHECKED);
-        let setup = ModeSetup {
-            script: ScriptId::nth(script),
-            data,
-            map: packages.map(),
-            teams: &manifest.teams,
-            players,
-            unit_types: units.unit_types,
-            avatars: units.avatars,
-            loadout: units.loadout,
-            walkers: packages.walkers(),
-        };
-        Mode::install(world, schedule, registry, setup, books);
+        books.install(world)
     }
 }

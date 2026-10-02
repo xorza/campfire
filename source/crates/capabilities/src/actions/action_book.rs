@@ -515,6 +515,17 @@ pub(crate) mod internals {
         id
     }
 
+    impl ActionBook {
+        /// The action `name` of `package`.
+        pub(crate) fn action_named(&self, package: u16, name: &str) -> Option<ActionId> {
+            let at = self
+                .actions
+                .iter()
+                .position(|action| action.package == package && &*action.name == name)?;
+            Some(ActionId(u32::try_from(at).expect("actions fit u32")))
+        }
+    }
+
     impl ActionId {
         /// The action at `index` of a book.
         #[cfg(test)]

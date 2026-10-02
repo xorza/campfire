@@ -242,7 +242,7 @@ fn hold_inside(
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(test)]
 pub(crate) mod internals {
     use crate::areas::Areas;
     use crate::areas::area_data::AreaData;
@@ -260,7 +260,12 @@ pub(crate) mod internals {
         /// Makes `unit_type` of `package` an area type of `data`, tagged `area`, its times in ticks
         /// at the match's rate, rounded up, which the package load checked: its `affects` filter
         /// names tags of the match's, and its `inside` modifiers of the package.
-        pub fn load_type(world: &mut World, unit_type: UnitType, package: u16, data: &AreaData) {
+        pub(crate) fn load_type(
+            world: &mut World,
+            unit_type: UnitType,
+            package: u16,
+            data: &AreaData,
+        ) {
             let rate = *world.resource::<TickRate>();
             let view = world.non_send::<View>().clone();
             let modifier = |name: &DeclaredName| {

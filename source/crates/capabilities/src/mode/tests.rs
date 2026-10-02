@@ -53,6 +53,7 @@ use crate::scripts::script_limits::ScriptLimits;
 use crate::scripts::state_decl::{StateDecl, StateDefault, StateType};
 use crate::scripts::state_value::StateValue;
 use crate::stats;
+use crate::stats::Stats;
 use crate::stats::level::Level;
 use crate::stats::modifier_book::ModifierId;
 use crate::stats::modifier_data::{ModifierData, Reapply};
@@ -66,6 +67,7 @@ use crate::stats::stat_book::StatBook;
 use crate::stats::stat_op::StatOp;
 use crate::stats::stat_rule::StatRule;
 use crate::stats::unit_stats::UnitStats;
+use crate::units::Units;
 use crate::units::body::Body;
 use crate::units::layer::Layer;
 use crate::units::owner::Owner;
@@ -694,7 +696,7 @@ impl Game {
         load("bolt", "projectile");
         // The stats first, as a match's books know them before any action or modifier; the mode's
         // books give the full book at install.
-        stats::internals::load_stats(&mut world, &files.data.stats, RATE);
+        stats::loads::load_stats(&mut world, &files.data.stats, RATE);
         let blink = blink_data();
         // A spell has one rank; hero X's ability, 2.
         let strike = Actions::load(&mut world, 0, "strike", &blink, None, 2).unwrap();

@@ -114,7 +114,7 @@ impl ParamTables {
     }
 }
 
-#[cfg(any(test, feature = "internals"))]
+#[cfg(test)]
 pub(crate) mod internals {
     use std::collections::BTreeMap;
     use std::sync::Arc;

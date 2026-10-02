@@ -420,11 +420,11 @@ This stage is the backbone. Its steps run in order.
 
 | Step | Change | Size |
 |---|---|---|
-| C9 | `Arena` loads the real packages through `Match::install`; `FixedSession` | S |
+| C10 | Books hold milliseconds where a time needs the rate, and a match derives its ticks at its rate, which cannot fail; `ModePackages` holds the books the load built, so the load builds them once and `MatchBuild` has no `.expect(CHECKED)` | M |
 
 Done when `MatchBuild` has no `.expect(CHECKED)`, `StartError` has no data case, and the allowlist of name lookups holds only script calls and the load.
 
-### Stage D: layers (track S, after C9)
+### Stage D: layers (track S)
 
 | Step | Change | Size |
 |---|---|---|
@@ -471,7 +471,7 @@ PLAN.md's stage 4 steps join this plan as follows:
 ### Order
 
 ```
-Track S:  C9 → D2 → D3 → D5 → D6
+Track S:  C10 → D2 → D3 → D5 → D6
                        └ I4 → PLAN 2
 
 Track I:  E1 → E2      F2      G1      H1, H4      H2 → H3
@@ -688,7 +688,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
 - **T§2.3:** the mode harness, in J.
 - **T§2.4:**
   - `HashTrail`: A3;
-  - `FixedSession` and `Arena`: C9.
 - **T§2.5:** the `LocalMatch` methods, in J, after A1.
 - **T§2.6:** protocol and package tests, in J.
 - **T§4:**
