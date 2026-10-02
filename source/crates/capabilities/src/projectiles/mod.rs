@@ -11,8 +11,8 @@ use crate::actions::action_book::{ActionBook, Aim, Fan};
 use crate::actions::action_data::Range;
 use crate::actions::action_slots::ActionTarget;
 use crate::combat::CombatSet;
-use crate::combat::damage_queue::DamageQueue;
 use crate::combat::launches::{Launch, Launches};
+use crate::combat::pass_queue::PassQueue;
 use crate::combat::targets::Targets;
 use crate::deliveries::delivering::Delivering;
 use crate::deliveries::delivery_spawner::DeliverySpawner;
@@ -253,7 +253,7 @@ fn fly(
     targets: Targets<'_, '_>,
     specs: Res<'_, ByType<ProjectileSpec>>,
     (mut queue, mut deliveries, mut cast_hits): (
-        ResMut<'_, DamageQueue>,
+        ResMut<'_, PassQueue>,
         ResMut<'_, Deliveries>,
         ResMut<'_, CastHits>,
     ),

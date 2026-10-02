@@ -4,6 +4,7 @@ use campfire_sim::Capability;
 
 use crate::combat::combat_effect::CombatEffect;
 use crate::combat::damage_handle::DamageHandle;
+use crate::combat::heal_handle::HealHandle;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
@@ -21,6 +22,7 @@ pub(crate) struct CombatApi;
 impl CombatApi {
     pub(crate) fn register(api: &mut ApiBuilder<'_>) {
         DamageHandle::register(api);
+        HealHandle::register(api);
         let call = |name, signature, description| {
             MemberSpec::call(name, signature, description).capability(Capability::Combat)
         };

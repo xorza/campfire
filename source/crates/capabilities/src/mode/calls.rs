@@ -1,11 +1,13 @@
 use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_script::ScriptError;
-use campfire_script::rhai::FuncArgs;
+use campfire_script::rhai::{Dynamic, FuncArgs};
 use campfire_sim::{IdAllocator, SimTick, Tick};
 
 use crate::combat::damage::Damage;
 use crate::combat::damage_handle::DamageHandle;
+use crate::combat::heal::Heal;
+use crate::combat::heal_handle::HealHandle;
 use crate::mode::choices::Choices;
 use crate::mode::mode_book::ModeBook;
 use crate::mode::mode_state::ModeState;
@@ -65,14 +67,33 @@ impl Calls<'_, '_> {
         ctx: &Ctx,
         damage: Damage,
     ) -> Result<Num, CallError> {
+        let handle = DamageHandle::new(damage, ctx.view().clone());
+        Calls::amount(batch, ctx, Hook::CalcDamage, Dynamic::from(handle))
+    }
+
+    /// The amount of `heal` before the heal scale: what the mode's `calc_heal` returns for it,
+    /// a pure call in `batch`; an error when the call fails or returns no number.
+    pub(crate) fn weigh_heal(
+        batch: &mut ScriptBatch<'_>,
+        ctx: &Ctx,
+        heal: Heal,
+    ) -> Result<Num, CallError> {
+        let handle = HealHandle::new(heal, ctx.view().clone());
+        Calls::amount(batch, ctx, Hook::CalcHeal, Dynamic::from(handle))
+    }
+
+    /// The number the mode's pure `hook` returns for `handle`, in `batch`.
+    fn amount(
+        batch: &mut ScriptBatch<'_>,
+        ctx: &Ctx,
+        hook: Hook,
+        handle: Dynamic,
+    ) -> Result<Num, CallError> {
         let now = batch.world().resource::<SimTick>().start();
         let mut calls = Calls { batch, ctx, now };
         calls.begin(true);
         let script = calls.book().schema.script;
-        let handle = DamageHandle::new(damage, ctx.view().clone());
-        let returned = calls
-            .batch
-            .call_pure(script, Hook::CalcDamage, (ctx.clone(), handle));
+        let returned = calls.batch.call_pure(script, hook, (ctx.clone(), handle));
         let value = returned.map_err(CallError::from_script)?;
         let amount = match value.as_int() {
             Ok(int) => Num::from_int(int),

@@ -119,6 +119,7 @@ pub enum ApiOwner {
     Area,
     Hit,
     Damage,
+    Heal,
     Position,
     Vector,
     GameMap,
@@ -411,7 +412,7 @@ impl ScriptApi {
 }
 
 impl ApiOwner {
-    pub const ALL: [ApiOwner; 11] = [
+    pub const ALL: [ApiOwner; 12] = [
         ApiOwner::Ctx,
         ApiOwner::Unit,
         ApiOwner::Modifier,
@@ -419,6 +420,7 @@ impl ApiOwner {
         ApiOwner::Area,
         ApiOwner::Hit,
         ApiOwner::Damage,
+        ApiOwner::Heal,
         ApiOwner::Position,
         ApiOwner::Vector,
         ApiOwner::GameMap,
@@ -435,6 +437,7 @@ impl ApiOwner {
             ApiOwner::Area => "Area",
             ApiOwner::Hit => "Hit `hit`",
             ApiOwner::Damage => "Damage `d`",
+            ApiOwner::Heal => "Heal `h`",
             ApiOwner::Position => "Position",
             ApiOwner::Vector => "Vector",
             ApiOwner::GameMap => "Map, `ctx.map`",

@@ -2,7 +2,7 @@ use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, StableId};
 
 use crate::combat::damage::{Damage, DamageCause};
-use crate::combat::damage_queue::DamageQueue;
+use crate::combat::pass_queue::PassQueue;
 use crate::combat::targets::Targets;
 use crate::deliveries::Deliveries;
 use crate::deliveries::delivered::Delivered;
@@ -17,7 +17,7 @@ use crate::units::team::Team;
 /// projectiles fly, and a scratch list of the units a line's step meets, by share of the step.
 #[derive(Debug)]
 pub(crate) struct Flights<'a> {
-    pub(crate) queue: &'a mut DamageQueue,
+    pub(crate) queue: &'a mut PassQueue,
     pub(crate) deliveries: &'a mut Deliveries,
     pub(crate) cast_hits: &'a mut CastHits,
     pub(crate) met: &'a mut Vec<(u128, StableId)>,
@@ -192,7 +192,7 @@ impl Flights<'_> {
     /// `on_hit`.
     fn strike(&mut self, projectile: &Projectile, target: StableId, hit: Hit) {
         match projectile.payload() {
-            Payload::Attack { amount, kind, roll } => self.queue.push(Damage {
+            Payload::Attack { amount, kind, roll } => self.queue.push_damage(Damage {
                 source: Some(projectile.source()),
                 target,
                 amount,

@@ -55,7 +55,7 @@ impl ModeApi {
                 Status::Runs,
             )
             .hook(Hook::CalcDamage, "(ctx, d)", Status::Runs)
-            .hook(Hook::CalcHeal, "(ctx, h)", Status::Planned)
+            .hook(Hook::CalcHeal, "(ctx, h)", Status::Runs)
             .hook(Hook::OnPlayerJoin, "(ctx, player)", Status::Planned)
             .hook(Hook::OnPlayerLeave, "(ctx, player)", Status::Planned)
             .data(

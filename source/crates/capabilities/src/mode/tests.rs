@@ -20,9 +20,10 @@ use crate::capability_set::internals::TestMatch;
 use crate::combat::combat_rules::CombatRules;
 use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::damage_kind::DamageKind;
-use crate::combat::damage_queue::DamageQueue;
 use crate::combat::dead::Dead;
+use crate::combat::heal::{Heal, HealCause};
 use crate::combat::on_death::OnDeath;
+use crate::combat::pass_queue::PassQueue;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::mode::choice_data::{ChoiceData, Offers};
 use crate::mode::map_data::{GridData, MarkerData, PathData, PlacedUnitData};
@@ -1510,7 +1511,7 @@ fn on_level_up(ctx, unit, track, level) {
     for grunt in grunts {
         game.world.entity_mut(grunt).insert(OnDeath::Despawn);
         let target = *game.world.get::<StableId>(grunt).unwrap();
-        game.world.resource_mut::<DamageQueue>().push(Damage {
+        game.world.resource_mut::<PassQueue>().push_damage(Damage {
             source: tower,
             target,
             amount: num(10),
@@ -1604,7 +1605,7 @@ fn on_mode_input(ctx, player, name, value) {
             let mut attackers = world.get_mut::<RecentAttackers>(victim).unwrap();
             attackers.record(two, Tick::new(0), &index);
         });
-    game.world.resource_mut::<DamageQueue>().push(Damage {
+    game.world.resource_mut::<PassQueue>().push_damage(Damage {
         source: Some(four),
         target: one,
         amount: num(10),
@@ -1780,7 +1781,7 @@ impl Game {
         cause: DamageCause,
     ) {
         let kind = DAMAGE_KINDS.iter().position(|&name| name == kind).unwrap();
-        self.world.resource_mut::<DamageQueue>().push(Damage {
+        self.world.resource_mut::<PassQueue>().push_damage(Damage {
             source,
             target,
             amount: num(amount),
@@ -1849,7 +1850,7 @@ fn the_3v3s_calc_damage_weighs_each_hit_exactly() {
 }
 
 #[test]
-fn calc_damage_is_pure_outside_the_pools_and_a_failure_keeps_the_amount() {
+fn calc_damage_and_calc_heal_are_pure_outside_the_pools_and_a_failure_keeps_the_amount() {
     let script = r#"
 fn calc_damage(ctx, d) {
     if d.kind == "magic" {
@@ -1859,6 +1860,10 @@ fn calc_damage(ctx, d) {
         return "none";
     }
     d.amount * 3
+}
+
+fn calc_heal(ctx, h) {
+    if h.leech { h.amount } else { h.amount / 2 }
 }
 "#;
     // A mode pool of one operation, which no call of `calc_damage` draws from.
@@ -1880,6 +1885,22 @@ fn calc_damage(ctx, d) {
     assert_eq!(game.health(target), num(950));
     let timers = game.world.resource::<Timers>();
     assert!(timers.due(Tick::new(u64::MAX)).is_none());
+
+    // A heal of 10 that `calc_heal` halves, and a leech heal of 6 it keeps: 950 + 5 + 6, as
+    // the target has no heal scale.
+    for (amount, cause) in [(10, HealCause::Effect), (6, HealCause::Leech)] {
+        game.world.resource_mut::<PassQueue>().push_heal(Heal {
+            source: Some(source),
+            target,
+            amount: num(amount),
+            cause,
+            ability: None,
+            depth: 0,
+        });
+    }
+    game.tick(&[]);
+    assert_eq!(game.failures(), []);
+    assert_eq!(game.health(target), num(961));
 }
 
 impl Game {
@@ -1942,9 +1963,9 @@ fn probe(ctx, unit) {
     pools.take(PoolId::FIRST, num(20));
     pools.take(MANA, num(50));
     game.world.entity_mut(entity).insert(pools);
-    // Each role in turn: 4 healed, 3 restored and 5 gold given as its effects apply, then 10
-    // dealt in the tick's damage pass: from 980, 984 then 974, and so on; the pool from 50, 3 a
-    // call.
+    // Each role in turn: 3 restored and 5 gold given as its effects apply, then 10 dealt and 4
+    // healed in the tick's pass, in the order queued: from 980 to 974, and so on; the pool from
+    // 50, 3 a call.
     let gold = |game: &Game| {
         let resources = game.world.resource::<PlayerResources>();
         let gold = resource("gold").unwrap();
@@ -1967,7 +1988,7 @@ fn probe(ctx, unit) {
             (Ok(1), Ok(1)),
             "{role:?}"
         );
-        assert_eq!(game.health(target), num(980 - 6 * at + 4), "{role:?}");
+        assert_eq!(game.health(target), num(980 - 6 * at), "{role:?}");
         game.tick(&[]);
         assert_eq!(game.health(target), num(980 - 6 * (at + 1)), "{role:?}");
         let pool = game.world.get::<Pools>(entity).unwrap().current(MANA);

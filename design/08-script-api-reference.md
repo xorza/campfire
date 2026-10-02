@@ -139,6 +139,16 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `source` | read | combat | runs | the unit that dealt it, `()` when gone or none |
 | `target` | read | combat | runs | the unit it is dealt to |
 
+## Heal `h`
+
+| Name | Form | Capability | Status | What it is |
+| --- | --- | --- | --- | --- |
+| `ability` | read | combat | runs | the ability that gave it, `""` when none |
+| `amount` | read | combat | runs | before `calc_heal` and the heal scale |
+| `leech` | read | combat | runs | whether its source's leech gave it |
+| `source` | read | combat | runs | the unit that gave it, `()` when gone or none |
+| `target` | read | combat | runs | the unit it heals |
+
 ## Position
 
 | Name | Form | Capability | Status | What it is |
@@ -194,7 +204,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `on_player_leave(ctx, player)` | mode | core | planned |
 | `on_unit_died(ctx, unit, killer, assisters)` | mode | combat | runs |
 | `calc_damage(ctx, d)` | mode | combat | runs |
-| `calc_heal(ctx, h)` | mode | combat | planned |
+| `calc_heal(ctx, h)` | mode | combat | runs |
 | `on_think(ctx, unit)` | AI | orders | runs |
 | `on_level_up(ctx, unit, track, level)` | mode | progression | runs |
 

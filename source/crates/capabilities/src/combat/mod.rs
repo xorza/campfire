@@ -21,13 +21,15 @@ use crate::combat::combat_effect::CombatEffect;
 use crate::combat::combat_event::CombatEvent;
 use crate::combat::combat_events::CombatEvents;
 use crate::combat::damage::{Damage, DamageCause};
-use crate::combat::damage_queue::DamageQueue;
 use crate::combat::damage_weigher::DamageWeigher;
 use crate::combat::dead::Dead;
 use crate::combat::deaths::{Deaths, Fallen};
+use crate::combat::heal::{Heal, HealCause};
+use crate::combat::heal_weigher::HealWeigher;
 use crate::combat::kept::Kept;
 use crate::combat::launches::{Launch, Launches};
 use crate::combat::on_death::OnDeath;
+use crate::combat::pass_queue::{PassEntry, PassQueue};
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::combat::respawn::Respawn;
 use crate::mode::player_resources::PlayerResources;
@@ -63,13 +65,16 @@ pub(crate) mod combat_rules;
 pub(crate) mod damage;
 pub(crate) mod damage_handle;
 pub(crate) mod damage_kind;
-pub(crate) mod damage_queue;
 pub(crate) mod damage_weigher;
 pub(crate) mod dead;
 pub(crate) mod deaths;
+pub(crate) mod heal;
+pub(crate) mod heal_handle;
+pub(crate) mod heal_weigher;
 pub(crate) mod kept;
 pub(crate) mod launches;
 pub(crate) mod on_death;
+pub(crate) mod pass_queue;
 pub(crate) mod recent_attackers;
 pub(crate) mod respawn;
 pub(crate) mod targets;
@@ -111,7 +116,7 @@ impl Combat {
         if let Some(view) = world.get_non_send::<View>() {
             view.add_source(fill_row);
         }
-        world.insert_resource(DamageQueue::default());
+        world.insert_resource(PassQueue::default());
         world.insert_resource(CombatBindings::default());
         world.insert_resource(Deaths::default());
         schedule.configure_sets(
@@ -343,7 +348,7 @@ fn strike(
         Res<'_, ActionBook>,
     ),
     (mut queue, mut launches, mut resources): (
-        ResMut<'_, DamageQueue>,
+        ResMut<'_, PassQueue>,
         Option<ResMut<'_, Launches>>,
         Option<ResMut<'_, PlayerResources>>,
     ),
@@ -411,7 +416,7 @@ fn strike(
                     cast,
                 });
             }
-            _ => queue.push(Damage {
+            _ => queue.push_damage(Damage {
                 source: Some(source),
                 target,
                 amount,
@@ -438,27 +443,49 @@ fn strike(
     }
 }
 
-/// Deals the tick's damage in the queue's order: each through the mode's `calc_damage` when it
-/// has one, with the units as the pass began, then its combat events, whose damage joins the end
-/// of the queue. Damage to a unit at zero life, or to an invulnerable one, does nothing.
+/// Applies the tick's damage and heals in the queue's order, with the units as the pass began:
+/// each damage through the mode's `calc_damage` when it has one, then its combat events, whose
+/// damage joins the end of the queue; each heal through the mode's `calc_heal` when it has one.
+/// Damage to a unit at zero life, or to an invulnerable one, does nothing, and so does a heal of a
+/// unit at zero life.
 fn deal_damage(world: &mut World, mut assisters: Local<'_, Vec<StableId>>) {
     let now = world.resource::<SimTick>().start();
     world.resource_mut::<Deaths>().clear(now);
-    world.resource_mut::<DamageQueue>().sort();
+    world.resource_mut::<PassQueue>().sort();
     let weigher = world.remove_non_send::<DamageWeigher>();
+    let healer = world.remove_non_send::<HealWeigher>();
     let events = world.remove_non_send::<CombatEvents>();
-    if weigher.is_none() && events.is_none() {
+    if weigher.is_none() && healer.is_none() && events.is_none() {
         let mut at = 0;
-        while let Some(damage) = world.resource::<DamageQueue>().get(at) {
+        while let Some(entry) = world.resource::<PassQueue>().get(at) {
             at += 1;
-            Combat::deal(world, damage, damage.amount, now);
+            match entry {
+                PassEntry::Damage(damage) => drop(Combat::deal(world, damage, damage.amount, now)),
+                PassEntry::Heal(heal) => Combat::heal(world, heal.target, heal.amount),
+            }
         }
     } else {
         let view = world.non_send::<View>().clone();
         ScriptBatch::run(world, &view, |batch| {
             let mut at = 0;
-            while let Some(damage) = batch.world().resource::<DamageQueue>().get(at) {
+            while let Some(entry) = batch.world().resource::<PassQueue>().get(at) {
                 at += 1;
+                let damage = match entry {
+                    PassEntry::Damage(damage) => damage,
+                    PassEntry::Heal(heal) => {
+                        if Combat::living(batch.world(), heal.target).is_none() {
+                            continue;
+                        }
+                        let amount = healer.as_ref().map_or(heal.amount, |healer| {
+                            healer.weigh(batch, heal).unwrap_or_else(|error| {
+                                batch.record(Some(heal.target), Hook::CalcHeal, error);
+                                heal.amount
+                            })
+                        });
+                        Combat::heal(batch.world(), heal.target, amount);
+                        continue;
+                    }
+                };
                 if Combat::damageable(batch.world(), damage.target).is_none() {
                     continue;
                 }
@@ -482,10 +509,13 @@ fn deal_damage(world: &mut World, mut assisters: Local<'_, Vec<StableId>>) {
     if let Some(weigher) = weigher {
         world.insert_non_send(weigher);
     }
+    if let Some(healer) = healer {
+        world.insert_non_send(healer);
+    }
     if let Some(events) = events {
         world.insert_non_send(events);
     }
-    world.resource_mut::<DamageQueue>().clear();
+    world.resource_mut::<PassQueue>().clear();
 }
 
 /// What a damage of the pass did: nothing, as to a unit at zero life or an invulnerable one;
@@ -616,15 +646,26 @@ impl Combat {
                 deaths.push(fallen, source, assisters);
             });
         }
-        if let Some(source) = source.and_then(|source| Combat::living(world, source)) {
+        if let Some((id, entity)) =
+            source.and_then(|id| Combat::living(world, id).map(|entity| (id, entity)))
+        {
             let bindings = world.resource::<CombatBindings>();
             let stat = if damage.cause.attack() {
                 bindings.leech_attack
             } else {
                 bindings.leech_other
             };
-            let ratio = Combat::stat(world, source, stat);
-            Combat::heal_living(world, source, scaled(taken, ratio));
+            let amount = scaled(taken, Combat::stat(world, entity, stat));
+            if amount > Num::ZERO {
+                world.resource_mut::<PassQueue>().push_heal(Heal {
+                    source: Some(id),
+                    target: id,
+                    amount,
+                    cause: HealCause::Leech,
+                    ability: damage.ability,
+                    depth: damage.depth,
+                });
+            }
         }
         if killed {
             Landed::Killed
@@ -641,8 +682,8 @@ impl Combat {
     }
 
     /// Applies `effect`, which a call queued from `source`, by `ability`, at chain depth
-    /// `depth`: damage joins the queue, a heal or a restore applies at once, and an extra attack
-    /// queues the source's attack damage, when it still has an attack.
+    /// `depth`: damage and a heal join the pass's queue, a restore applies at once, and an extra
+    /// attack queues the source's attack damage, when it still has an attack.
     pub(crate) fn apply_effect(
         world: &mut World,
         effect: CombatEffect,
@@ -666,9 +707,18 @@ impl Combat {
                 kind,
             } => {
                 let damage = damage(target, amount, kind, DamageCause::Effect);
-                world.resource_mut::<DamageQueue>().push(damage);
+                world.resource_mut::<PassQueue>().push_damage(damage);
             }
-            CombatEffect::Heal { unit, amount } => Combat::heal(world, unit, amount),
+            CombatEffect::Heal { unit, amount } => {
+                world.resource_mut::<PassQueue>().push_heal(Heal {
+                    source,
+                    target: unit,
+                    amount,
+                    cause: HealCause::Effect,
+                    ability,
+                    depth,
+                });
+            }
             CombatEffect::Restore { unit, pool, amount } => {
                 Combat::restore(world, unit, pool, amount);
             }
@@ -693,7 +743,7 @@ impl Combat {
                     weapon.kind,
                     DamageCause::ExtraAttack,
                 );
-                world.resource_mut::<DamageQueue>().push(hit);
+                world.resource_mut::<PassQueue>().push_damage(hit);
             }
         }
     }

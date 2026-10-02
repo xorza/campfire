@@ -23,6 +23,7 @@ use crate::combat::assist_window::AssistWindow;
 use crate::combat::combat_bindings::CombatBindings;
 use crate::combat::damage_weigher::DamageWeigher;
 use crate::combat::deaths::Deaths;
+use crate::combat::heal_weigher::HealWeigher;
 use crate::combat::kept::Kept;
 use crate::combat::respawn::Respawn;
 use crate::mode::calls::Calls;
@@ -167,12 +168,18 @@ impl Mode {
         world.insert_resource(PlayerResources::new(players, view.resource_count()));
         world.insert_resource(Timers::default());
         world.insert_resource(UnansweredDeaths::default());
-        let weighs = book.schema.hooks.contains(Hook::CalcDamage);
+        let hooks = book.schema.hooks;
         let ctx = world.non_send::<Ctx>().clone();
         ctx.set_mode(book);
-        if weighs {
+        if hooks.contains(Hook::CalcDamage) {
+            let ctx = ctx.clone();
             world.insert_non_send(DamageWeigher::new(move |batch, damage| {
                 Calls::weigh(batch, &ctx, damage)
+            }));
+        }
+        if hooks.contains(Hook::CalcHeal) {
+            world.insert_non_send(HealWeigher::new(move |batch, heal| {
+                Calls::weigh_heal(batch, &ctx, heal)
             }));
         }
         schedule.add_systems((

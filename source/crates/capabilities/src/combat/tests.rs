@@ -827,7 +827,7 @@ impl Fight {
         amount: i64,
         cause: DamageCause,
     ) {
-        self.world.resource_mut::<DamageQueue>().push(Damage {
+        self.world.resource_mut::<PassQueue>().push_damage(Damage {
             source,
             target,
             amount: num(amount),
@@ -1013,12 +1013,14 @@ fn an_attack_draws_its_roll_once_as_its_windup_ends_from_the_seed() {
             slots.set_attack_target(Some(dummy));
             slots.start_attack(0, Tick::new(0));
         }
-        fight.world.resource_mut::<DamageQueue>().clear();
+        fight.world.resource_mut::<PassQueue>().clear();
         fight.world.run_system_once(strike).unwrap();
-        let queue = fight.world.resource::<DamageQueue>();
+        let queue = fight.world.resource::<PassQueue>();
         let mut rolls: Vec<_> = (0..attackers.len())
             .map(|at| {
-                let damage = queue.get(at).unwrap();
+                let Some(PassEntry::Damage(damage)) = queue.get(at) else {
+                    panic!("an attack queues damage");
+                };
                 (damage.source.unwrap(), damage.cause.roll().unwrap())
             })
             .collect();

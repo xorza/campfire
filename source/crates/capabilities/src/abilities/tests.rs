@@ -25,8 +25,8 @@ use crate::combat::armed::Armed;
 use crate::combat::assist_window::AssistWindow;
 use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::damage_kind::DamageKind;
-use crate::combat::damage_queue::DamageQueue;
 use crate::combat::on_death::OnDeath;
+use crate::combat::pass_queue::PassQueue;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::mode::resource_id::ResourceId;
 use crate::orders::Orders;
@@ -1384,7 +1384,7 @@ fn on_damage_taken(ctx, m, d) {
     let echoer = game.spawn(1, at(num(9), Num::ZERO, Num::ZERO), ());
     game.give(attacker, "double");
     game.give(echoer, "echo");
-    game.world.resource_mut::<DamageQueue>().push(Damage {
+    game.world.resource_mut::<PassQueue>().push_damage(Damage {
         source: None,
         target: echoer,
         amount: num(10),
