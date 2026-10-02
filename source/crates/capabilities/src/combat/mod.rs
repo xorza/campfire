@@ -504,7 +504,7 @@ fn deal_damage(world: &mut World, mut assisters: Local<'_, Vec<StableId>>) {
                 PassEntry::Heal(heal) => Combat::heal(world, heal.target, heal.amount),
             }
         }
-    } else {
+    } else if world.resource::<PassQueue>().get(0).is_some() {
         let view = world.non_send::<View>().clone();
         ScriptBatch::run(world, &view, |batch| {
             let mut at = 0;

@@ -198,9 +198,7 @@ capability_set, books
 - **The view: incremental rows, the same snapshot.**
   - A batch must keep today's meaning: its calls see the world as it was when the batch began. So rows are not filled lazily on read, because a late read would see the effects of earlier calls.
   - The view keeps its rows from one build to the next. Each build refreshes only the rows whose source components changed since the last build, through Bevy's change ticks, and the rows of new or gone units.
-  - A batch with no call builds nothing.
-  - `deal_damage` reads the view only when the damage queue is not empty.
-  - Filters are parsed once for each call site, and kept.
+  - Filters stay parsed at each call: the parse allocates nothing and costs a split and a scan of the tag names, far below the scan of the units the query makes, and a cache by text would grow with every text a script builds.
 ## T. Proof and test redesign
 
 A refactor of this size needs a permanent proof that behaviour stays the same. The one-time trace comparisons of the earlier steps go away with their scratch copies. The proof must live in the suite.
@@ -258,7 +256,7 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 | H1 | `BodyGrid`, read by deliveries and auras; one `(group, unit)` hit store; stuck walkers through the grid | B | M |
 | H2 | `NavBudget`; short routes within their window; "arrived short"; re-asks after removals; the blocker query and clipping; `Progress` reset; blocked map cells in the exact tests; `Steering` methods; `Route::clear` keeps its buffer | B3 | M, changes behaviour |
 | H3 | Incremental regions; routes tested only against added bodies; the body index's first-cell flag and early stop | H2 | M |
-| H4 | Incremental view rows; filters parsed once | B | M |
+| H4 | Incremental view rows | B | M |
 
 ### Joins of the two tracks
 
