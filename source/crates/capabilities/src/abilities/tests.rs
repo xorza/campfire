@@ -106,6 +106,11 @@ fn at(x: Num, y: Num, z: Num) -> Position {
     Position::new(Vec3::new(x, y, z)).unwrap()
 }
 
+/// The point at `x`, `z` on the ground.
+fn ground(x: Num, z: Num) -> Position {
+    at(x, Num::ZERO, z)
+}
+
 /// A unit that strikes for `damage` within 2 m, as its windup of no ticks ends, every 5 ticks.
 fn striker(damage: i64) -> Armed {
     Armed::melee(Num::int(500), Num::int(2), 0, 5, Num::int(damage)).on_death(OnDeath::Stay)
@@ -298,7 +303,7 @@ impl Match {
     fn caster(&mut self, ability: ActionId, rank: u8) -> StableId {
         let caster = self.spawn(
             0,
-            at(Num::ZERO, Num::ZERO, Num::ZERO),
+            ground(Num::ZERO, Num::ZERO),
             (
                 Owner::new(PlayerSlot::new(0)),
                 ActionSlots::new([(ability, SlotKind::new(0), rank)]),
@@ -380,7 +385,7 @@ fn damage_of_a_kind_the_mode_does_not_declare_fails_the_cast() {
         &LASH_OUT.replace(r#""magic""#, r#""fire""#),
     );
     let husk = game.caster(fire, 2);
-    let near = game.spawn(1, at(Num::int(3), Num::ZERO, Num::ZERO), ());
+    let near = game.spawn(1, ground(Num::int(3), Num::ZERO), ());
     game.cast(husk, ActionTarget::None);
     // The call fails, so the cast applies nothing: no damage, no cost.
     assert_eq!((game.sim.health(near), game.pool(husk)), (500, 100));
@@ -401,14 +406,14 @@ fn lash_out_hits_every_enemy_within_its_radius_exactly() {
     game.load("strike", &strike(), STRIKE);
     let lash_out = game.load("lash_out", &lash_out(), LASH_OUT);
     let husk = game.caster(lash_out, 2);
-    let near = game.spawn(1, at(Num::int(3), Num::ZERO, Num::ZERO), ());
+    let near = game.spawn(1, ground(Num::int(3), Num::ZERO), ());
     // At exactly 3.5 m: within the radius.
-    let edge = game.spawn(1, at(Num::ZERO, Num::ZERO, halves(7)), ());
-    let beyond = game.spawn(1, at(Num::int(4), Num::ZERO, Num::ZERO), ());
+    let edge = game.spawn(1, ground(Num::ZERO, halves(7)), ());
+    let beyond = game.spawn(1, ground(Num::int(4), Num::ZERO), ());
     // Up at y = 9, 2 m away on the ground plane.
     let high = game.spawn(1, at(Num::ZERO, Num::int(9), Num::int(2)), ());
-    let ally = game.spawn(0, at(Num::int(1), Num::ZERO, Num::ZERO), ());
-    let dead = game.spawn(1, at(Num::int(1), Num::ZERO, Num::int(1)), ());
+    let ally = game.spawn(0, ground(Num::int(1), Num::ZERO), ());
+    let dead = game.spawn(1, ground(Num::int(1), Num::int(1)), ());
     game.sim.insert(dead, Dead);
 
     // Rank 2 deals 100, and 0.5 × 0 ability power: 500 → 400 for the three enemies in reach.
@@ -452,7 +457,7 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
     let mut game = Match::with(ScriptLimits::ROOMY, &declared);
     let strike = game.load("strike", &strike(), STRIKE);
     let caster = game.caster(strike, 1);
-    let enemy = game.spawn(1, at(Num::int(5), Num::ZERO, Num::ZERO), ());
+    let enemy = game.spawn(1, ground(Num::int(5), Num::ZERO), ());
     // Eleven units whose AI spins, all due in every tick: ten calls fail at the 10 000 limit and
     // spend the 100 000 of the think pool, and the eleventh finds it spent.
     let spinner = Units::load_type(
@@ -469,7 +474,7 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
     let spin = Units::compile(&mut game.sim.world, spin).unwrap();
     Orders::load_ai(&mut game.sim.world, spinner, &ai, spin).unwrap();
     let spinners: Vec<_> = (0..11)
-        .map(|z| game.spawn(2, at(Num::ZERO, Num::ZERO, Num::int(20 + z)), spinner))
+        .map(|z| game.spawn(2, ground(Num::ZERO, Num::int(20 + z)), spinner))
         .collect();
 
     // The cast in the same tick draws from its player's pool, whole: 500 → 450, 100 → 90.
@@ -500,7 +505,7 @@ fn a_cast_passes_its_checks_or_does_nothing() {
     let mut caster_at = |x: i64, rank: u8, mana: i64, rage: i64| {
         let unit = game.spawn(
             0,
-            at(Num::int(x), Num::ZERO, Num::ZERO),
+            ground(Num::int(x), Num::ZERO),
             (
                 Owner::new(PlayerSlot::new(0)),
                 ActionSlots::new([(strike, SlotKind::new(0), rank)]),
@@ -520,10 +525,10 @@ fn a_cast_passes_its_checks_or_does_nothing() {
         .get_mut::<Pools>(entity)
         .unwrap()
         .take(MANA, Num::int(91));
-    let enemy = game.spawn(1, at(Num::int(5), Num::ZERO, Num::ZERO), ());
-    let far = game.spawn(1, at(Num::int(6), Num::ZERO, Num::ZERO), ());
-    let ally = game.spawn(0, at(Num::int(1), Num::ZERO, Num::int(1)), ());
-    let hidden = game.spawn(1, at(Num::int(1), Num::ZERO, Num::ZERO), ());
+    let enemy = game.spawn(1, ground(Num::int(5), Num::ZERO), ());
+    let far = game.spawn(1, ground(Num::int(6), Num::ZERO), ());
+    let ally = game.spawn(0, ground(Num::int(1), Num::int(1)), ());
+    let hidden = game.spawn(1, ground(Num::int(1), Num::ZERO), ());
     game.sim.set_blocks(hidden, &[Block::Target]);
 
     // An ally, an untargetable enemy, a unit beyond 5 m, and no target at all are refused; so
@@ -586,11 +591,11 @@ fn a_cost_in_a_pool_and_a_player_resource_is_checked_and_paid_together() {
     let caster = game.caster(strike, 1);
     let ownerless = game.spawn(
         0,
-        at(Num::ZERO, Num::ZERO, Num::int(1)),
+        ground(Num::ZERO, Num::int(1)),
         ActionSlots::new([(strike, SlotKind::new(0), 1)]),
     );
     game.give_pools(ownerless, 100, 20);
-    let enemy = game.spawn(1, at(Num::int(5), Num::ZERO, Num::ZERO), ());
+    let enemy = game.spawn(1, ground(Num::int(5), Num::ZERO), ());
     let player = PlayerSlot::new(0);
     game.sim
         .world
@@ -630,7 +635,7 @@ fn a_cast_its_casters_tags_stop_is_kept_and_an_interrupted_one_spends_nothing() 
     };
     let strike = game.load("strike", &data, STRIKE);
     let caster = game.caster(strike, 1);
-    let enemy = game.spawn(1, at(Num::int(5), Num::ZERO, Num::ZERO), ());
+    let enemy = game.spawn(1, ground(Num::int(5), Num::ZERO), ());
     let target = ActionTarget::Unit(enemy);
     let aim = SlotAim { slot: 0, target };
     let ordered = Some(InProgress::Order {
@@ -712,7 +717,7 @@ fn a_failed_script_changes_nothing_and_fails_the_same_way_everywhere() {
             let mut game = Match::new();
             let ability = game.load("ability", &data, script);
             let caster = game.caster(ability, 1);
-            let enemy = game.spawn(1, at(Num::int(1), Num::ZERO, Num::ZERO), ());
+            let enemy = game.spawn(1, ground(Num::int(1), Num::ZERO), ());
             if ordered {
                 game.cast(caster, ActionTarget::None);
                 let failures = game.failures();
@@ -768,14 +773,14 @@ fn a_cast_draws_from_its_casters_player_pool() {
         let spinner = game.caster(spin, 1);
         let striker = game.spawn(
             0,
-            at(Num::ZERO, Num::ZERO, Num::int(1)),
+            ground(Num::ZERO, Num::int(1)),
             (
                 Owner::new(PlayerSlot::new(1)),
                 ActionSlots::new([(strike, SlotKind::new(0), 1)]),
             ),
         );
         game.give_pools(striker, 100, 20);
-        let enemy = game.spawn(1, at(Num::int(1), Num::ZERO, Num::ZERO), ());
+        let enemy = game.spawn(1, ground(Num::int(1), Num::ZERO), ());
         let casts = [
             (spinner, ActionTarget::None),
             (striker, ActionTarget::Unit(enemy)),
@@ -929,8 +934,8 @@ fn a_unit_target_is_one_its_filter_selects_tag_and_all() {
     heroes_only.targeting = Targeting::Unit(FilterData::parse("enemies:avatar").unwrap());
     let strike = game.load("strike", &heroes_only, STRIKE);
     let caster = game.caster(strike, 1);
-    let enemy_creep = game.spawn(1, at(Num::int(3), Num::ZERO, Num::ZERO), creep);
-    let enemy_hero = game.spawn(1, at(Num::int(4), Num::ZERO, Num::ZERO), hero);
+    let enemy_creep = game.spawn(1, ground(Num::int(3), Num::ZERO), creep);
+    let enemy_hero = game.spawn(1, ground(Num::int(4), Num::ZERO), hero);
     // The creep is an enemy, but no hero: the cast goes nowhere. The hero takes 50.
     game.cast(caster, ActionTarget::Unit(enemy_creep));
     assert_eq!(game.sim.health(enemy_creep), 500);
@@ -1013,7 +1018,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     claws.passive_modifier = Some(DeclaredName::new("ward").unwrap());
     let claws = Actions::load(&mut game.sim.world, 0, "claws", &claws, None, 1).unwrap();
     let slots = ActionSlots::new([(claws, SlotKind::new(0), 1)]);
-    let beast = game.spawn(0, at(Num::ZERO, Num::ZERO, Num::ZERO), slots);
+    let beast = game.spawn(0, ground(Num::ZERO, Num::ZERO), slots);
     let entity = game.sim.entity(beast);
     game.sim.insert(beast, Modifiers::default());
     game.sim.step();
@@ -1144,7 +1149,7 @@ fn stun_run() -> Vec<(StateHash, bool)> {
         UnitTags::default(),
         Modifiers::default(),
     );
-    let enemy = game.spawn(1, at(Num::int(5), Num::ZERO, Num::ZERO), parts);
+    let enemy = game.spawn(1, ground(Num::int(5), Num::ZERO), parts);
     let entity = game.sim.entity(enemy);
     let mut seen = Vec::new();
     for tick in 0..8 {
@@ -1286,11 +1291,11 @@ fn on_interval(ctx, m) { throw "interval"; }
         ],
     );
     game.sim.world.insert_resource(AssistWindow(Ticks::new(10)));
-    let victim = game.spawn(1, at(Num::ONE, Num::ZERO, Num::ZERO), ());
-    let origin = at(Num::ZERO, Num::ZERO, Num::ZERO);
+    let victim = game.spawn(1, ground(Num::ONE, Num::ZERO), ());
+    let origin = ground(Num::ZERO, Num::ZERO);
     let attacker = game.attacker(0, origin, striker(500), victim);
-    let assister = game.spawn(0, at(Num::int(3), Num::ZERO, Num::ZERO), ());
-    let bystander = game.spawn(1, at(Num::int(9), Num::ZERO, Num::ZERO), ());
+    let assister = game.spawn(0, ground(Num::int(3), Num::ZERO), ());
+    let bystander = game.spawn(1, ground(Num::int(9), Num::ZERO), ());
     for unit in [attacker, assister, victim] {
         game.give(unit, "log");
     }
@@ -1357,10 +1362,10 @@ fn on_damage_taken(ctx, m, d) {
             ("echo", scripted(None, &[("echo", 1)])),
         ],
     );
-    let victim = game.spawn(1, at(Num::ONE, Num::ZERO, Num::ZERO), ());
-    let origin = at(Num::ZERO, Num::ZERO, Num::ZERO);
+    let victim = game.spawn(1, ground(Num::ONE, Num::ZERO), ());
+    let origin = ground(Num::ZERO, Num::ZERO);
     let attacker = game.attacker(0, origin, striker(30), victim);
-    let echoer = game.spawn(1, at(Num::int(9), Num::ZERO, Num::ZERO), ());
+    let echoer = game.spawn(1, ground(Num::int(9), Num::ZERO), ());
     game.give(attacker, "double");
     game.give(echoer, "echo");
     game.sim
@@ -1503,11 +1508,7 @@ fn on_resolve(ctx, caster, target) {
     let parts = (caster_type, Level::new(3).unwrap(), UnitStats::default());
     game.sim.insert(caster, parts);
     game.give(caster, "boost");
-    let target = game.spawn(
-        1,
-        at(Num::int(5), Num::ZERO, Num::ZERO),
-        Modifiers::default(),
-    );
+    let target = game.spawn(1, ground(Num::int(5), Num::ZERO), Modifiers::default());
     let t = game.sim.world.resource::<SimTick>().start();
     game.cast(caster, ActionTarget::Unit(target));
 
@@ -1592,7 +1593,7 @@ impl VeilMatch {
         }
         let veil = game.spawn(
             0,
-            at(Num::ZERO, Num::ZERO, Num::ZERO),
+            ground(Num::ZERO, Num::ZERO),
             (veil_type, Level::default(), UnitStats::default()),
         );
         game.give(veil, "dual_path");
@@ -1648,9 +1649,7 @@ fn a_live_change_keeps_its_last_value_when_its_source_is_gone_and_none_at_no_sta
     // Ward, of Veil's type, holds Dual Path from Veil, with Boost: 0.06 and 0.00167 of Veil's
     // bonus of 30, as above, spell vamp 1 847 173 bits.
     let ward_parts = (veil.veil_type, Level::default(), UnitStats::default());
-    let ward = veil
-        .game
-        .spawn(0, at(Num::ONE, Num::ZERO, Num::ZERO), ward_parts);
+    let ward = veil.game.spawn(0, ground(Num::ONE, Num::ZERO), ward_parts);
     veil.game.give(source, "boost");
     veil.game.give_from(ward, source, "dual_path");
     veil.game.sim.step();
@@ -1730,7 +1729,7 @@ fn a_delivery_hook_reads_its_projectile_and_the_unit_its_cast_aimed_at() {
     "#;
     let ability = game.load("shot", &shot, source);
     let caster = game.caster(ability, 1);
-    let target = game.spawn(1, at(Num::int(3), Num::ZERO, Num::ZERO), ());
+    let target = game.spawn(1, ground(Num::int(3), Num::ZERO), ());
     // The damage the hook deals carries the bolt's hit, which the target's `watch` reads, and
     // answers with 1 damage to its source: the hit's target, the unit the cast aimed at, after
     // 3 m flown, in the direction it flew.
@@ -1811,7 +1810,7 @@ fn a_script_launches_a_projectile_only_in_the_form_its_type_flies() {
             let source = format!("fn on_resolve(ctx, caster, target) {{ {call}; }}");
             let ability = game.load("shot", &shot, &source);
             let caster = game.caster(ability, 1);
-            let target = game.spawn(1, at(Num::int(3), Num::ZERO, Num::ZERO), ());
+            let target = game.spawn(1, ground(Num::int(3), Num::ZERO), ());
             game.cast(caster, ActionTarget::Unit(target));
             game.sim.run_until(1);
             let mut projectiles = game.sim.world.query::<&Projectile>();
@@ -1923,7 +1922,7 @@ fn fan_of_frost_from_data_alone_hits_exactly_the_units_in_reach() {
     // (3.8637, 1.0353); between two arrows at 4 m, 3.75 degrees off each, 0.26 m from each line,
     // past its 0.25; at 26.6 degrees, past the fan; 8 m out on the middle line, past the range;
     // behind the caster; and an ally of the caster's on the middle line.
-    let point = |x: Num, z: Num| at(x, Num::ZERO, z);
+    let point = |x: Num, z: Num| ground(x, z);
     let decimal = |text: &str| text.parse::<Num>().unwrap();
     let enemies = [
         point(Num::int(4), Num::ZERO),
@@ -2023,23 +2022,20 @@ fn an_area_reaches_the_bodies_within_its_radius_once_at_its_delay_and_ends() {
         // one a bit farther is not; a body of radius 0.5 2.5 m away touches it; an enemy whose
         // tags block it as a target is reached all the same; an ally is not.
         let center = Num::int(4);
-        let edge = game.spawn(1, at(center + Num::int(2), Num::ZERO, Num::ZERO), ());
-        let beyond = game.spawn(1, at(center, Num::ZERO, Num::int(2) + Num::EPSILON), ());
+        let edge = game.spawn(1, ground(center + Num::int(2), Num::ZERO), ());
+        let beyond = game.spawn(1, ground(center, Num::int(2) + Num::EPSILON), ());
         let body = Body::new(halves(1)).unwrap();
-        let wide = game.spawn(1, at(center - halves(5), Num::ZERO, Num::ZERO), body);
-        let hidden = game.spawn(1, at(center, Num::ZERO, Num::ONE), ());
+        let wide = game.spawn(1, ground(center - halves(5), Num::ZERO), body);
+        let hidden = game.spawn(1, ground(center, Num::ONE), ());
         game.sim.set_blocks(hidden, &[Block::Target]);
-        let ally = game.spawn(0, at(center, Num::ZERO, Num::ZERO), ());
+        let ally = game.spawn(0, ground(center, Num::ZERO), ());
         let units = [edge, beyond, wide, hidden, ally, caster];
         let areas = |game: &mut Match| {
             let mut query = game.sim.world.query::<&Area>();
             query.iter(&game.sim.world).count()
         };
 
-        game.cast(
-            caster,
-            ActionTarget::Point(at(center, Num::ZERO, Num::ZERO)),
-        );
+        game.cast(caster, ActionTarget::Point(ground(center, Num::ZERO)));
         game.sim.run_until(trigger);
         assert_eq!(
             units.map(|unit| game.sim.health(unit)),
@@ -2114,7 +2110,7 @@ fn an_area_holds_its_inside_modifiers_by_attitude_and_hits_what_its_filter_selec
     // The area lands on (1, 0, 0), with its caster 1 m away. Inside it: an ally, an enemy grunt,
     // an enemy of no type, and one whose tags block it as a target. Outside it, 3 m away: an ally
     // and an enemy grunt.
-    let point = |x: i64, z: i64| at(Num::int(x), Num::ZERO, Num::int(z));
+    let point = |x: i64, z: i64| ground(Num::int(x), Num::int(z));
     let none = Modifiers::default;
     let ally = game.spawn(0, point(1, 1), none());
     let enemy_grunt = game.spawn(1, point(2, 0), (grunt, Level::default(), none()));
@@ -2173,7 +2169,7 @@ fn a_cast_under_way_ends_when_its_caster_dies() {
     };
     let strike = game.load("strike", &windup, STRIKE);
     let caster = game.caster(strike, 1);
-    let enemy = game.spawn(1, at(Num::int(3), Num::ZERO, Num::ZERO), ());
+    let enemy = game.spawn(1, ground(Num::int(3), Num::ZERO), ());
     game.cast(caster, ActionTarget::Unit(enemy));
     assert!(game.casting(caster).is_some());
     game.sim.run_until(2);

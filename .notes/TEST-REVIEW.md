@@ -13,12 +13,10 @@ Paths are relative to `source/crates/`. Line numbers are at `c38f0da`. Each item
 
 ### 2.5 Net
 
-- [ ] **The round trip pinned to the link model** — `net/src/local_match/delay_line.rs` pins the measured round trip to zero, and `mod.rs` adds the modeled round trip to the sync margin. Better: pin the round trip to the link model's own value, and remove the `jitter_margin` workaround in `LocalMatch::client`. That step needs new derivations of the expected values. Also check that the join order (`play_by_team`) is then fixed.
+- [ ] **The round trip pinned to the link model** — `net/src/local_match/delay_line.rs` pins the measured round trip to zero, and `mod.rs` adds the modeled round trip to the sync margin. Better: pin the round trip to the link model's own value, and remove the `jitter_margin` workaround in `LocalMatch::client`. That step needs Lightyear's lead formula and new derivations of the expected values; the workaround is exact and deterministic until then. Also check that the join order (`play_by_team`) is then fixed.
 ## 4. One style for one check
 
 - [ ] **Script failures are read in three ways still** — `CallError::kind` and `ScriptFailures::calls` with `assert_eq!` serve most sites now. Left: the abilities table of fn pointers (its overflow case reads what a script raised), mode's `failures()`, and orders' `think()`.
-- [ ] **Positions are written in three ways** — `at(Num, Num, Num)` (abilities, with many lines of `Num::ZERO, Num::ZERO`), `at(i64, i64, i64)` (combat, orders), and `at(x, z)` (projectiles, vision, mode). Halves and quarters are `Num::HALF` and `Num::QUARTER` now. Do not change a floored fraction such as `(9 << FRAC_BITS) / 10` to `"0.9".parse()` without new derivations, because the parser rounds to nearest and the shift floors.
-- [ ] **The stats `unit()` returns an `Entity`** (`stats/tests.rs`), where every other harness spawns through `TestMatch::spawn` and gives a `StableId`. Its units have no position, which `spawn` takes.
 - [ ] **One hero runs at two rates** — the reference heroes run at 30 Hz in `reference_abilities` and at 20 Hz in the 3v3, and no test checks timing across rates. For example, Eruption's 625 ms is 19 ticks at 30 Hz and 13 ticks at 20 Hz. Low priority.
 ## 6. Hermetic and stable fixtures
 
