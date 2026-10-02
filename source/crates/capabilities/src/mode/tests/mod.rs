@@ -915,7 +915,7 @@ impl Game {
         unit: StableId,
     ) -> Result<Dynamic, CallError> {
         let ctx = self.sim.world.non_send::<Ctx>().clone();
-        ctx.view().read(&self.sim.world);
+        ctx.view().read(&mut self.sim.world);
         match role {
             ScriptRole::Mode => ctx.frame().begin_mode(&self.sim.world, false),
             ScriptRole::Ai => ctx.frame().begin_think(&self.sim.world, actor),

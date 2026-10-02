@@ -173,10 +173,9 @@ capability_set, books
 
 ### Shape
 
-- **The view: incremental rows, the same snapshot.**
-  - A batch must keep today's meaning: its calls see the world as it was when the batch began. So rows are not filled lazily on read, because a late read would see the effects of earlier calls.
-  - The view keeps its rows from one build to the next. Each build refreshes only the rows whose source components changed since the last build, through Bevy's change ticks, and the rows of new or gone units.
+- **The view: a full read, through kept queries.** Measured on the 3v3 at H4: one read a tick, not eight; 5.5 µs a read at 49 rows, about 13 % of a 42 µs tick, 70 % of it in the capabilities' sources' lookups of each part by its type. Most rows change every tick, as walkers move, so rows kept from one read to the next would save little, and change tracking across every source's parts would cost more code than it saves. The view reads every row each batch, as before, so a batch keeps its meaning, and reads them through a query for the core's parts and one for each source's, which the view keeps from one read to the next: no part is looked up by its type. That cut the reads by 17 %, and each source is now under 0.4 % of the match.
   - Filters stay parsed at each call: the parse allocates nothing and costs a split and a scan of the tag names, far below the scan of the units the query makes, and a cache by text would grow with every text a script builds.
+
 ## T. Proof and test redesign
 
 A refactor of this size needs a permanent proof that behaviour stays the same. The one-time trace comparisons of the earlier steps go away with their scratch copies. The proof must live in the suite.
@@ -223,13 +222,12 @@ These need only Stage A and Stage B, and run in any order. Each is small enough 
 | Step | Change | Needs | Size |
 |---|---|---|---|
 | F3 | Ids at call time, so `ctx.projectile` and `ctx.area` return handles whose `.state` the call writes | Unit script state: a unit's `[state]` and `unit.state`, which the API does not have yet, so a handle alone would give a script nothing to use | M, changes behaviour |
-| H4 | Incremental view rows | B | M |
 | J | The local fixes in the appendix, and T§5 to T§8 | any time | S each |
 
 ### Order
 
 ```
-Track I:  H4      F3 after unit script state
+Track I:  F3 after unit script state
 ```
 
 ## Risks

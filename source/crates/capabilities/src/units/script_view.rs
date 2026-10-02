@@ -3,6 +3,7 @@ use std::fmt;
 use std::rc::Rc;
 use std::sync::Arc;
 
+use bevy_ecs::query::{QueryState, ROQueryItem, ReadOnlyQueryData};
 use bevy_ecs::world::World;
 use campfire_math::{Num, PlayerSlot, Tick, Ticks};
 use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString};
@@ -23,8 +24,7 @@ use crate::units::living_unit::LivingUnit;
 use crate::units::owner::Owner;
 use crate::units::path_id::PathId;
 use crate::units::relations::Relations;
-use crate::units::row_fill::RowFill;
-use crate::units::row_fill::RowSource;
+use crate::units::row_fill::{FillRow, RowFill, RowSource};
 use crate::units::spawn_point::SpawnPoint;
 use crate::units::tag::Tag;
 use crate::units::team::Team;
@@ -55,8 +55,10 @@ pub(crate) struct ScriptView {
     paths: Arc<[Box<str>]>,
     /// The names scripts read, as they read them.
     consts: ScriptConsts,
+    /// The core's parts of each unit, once a read built the query.
+    core: Option<QueryState<CoreParts>>,
     /// How each installed capability above the core fills its fields of a row, in install order.
-    sources: Vec<RowSource>,
+    sources: Vec<Box<dyn FillRow>>,
     rate: TickRate,
     /// The tick the units were read in.
     now: Tick,
@@ -81,8 +83,25 @@ pub(crate) struct ScriptView {
 #[derive(Clone)]
 pub(crate) struct View(Rc<RefCell<ScriptView>>);
 
+/// The parts of a unit the core reads into its row.
+type CoreParts = (
+    Option<&'static Position>,
+    Option<&'static Team>,
+    Option<&'static Body>,
+    Option<&'static SpawnPoint>,
+    Option<&'static UnitType>,
+    Option<&'static Owner>,
+    Option<&'static UnitTags>,
+);
+
 impl ScriptView {
-    fn read(&mut self, world: &World) {
+    fn read(&mut self, world: &mut World) {
+        let core = self.core.get_or_insert_with(|| QueryState::new(world));
+        core.update_archetypes(world);
+        for source in &mut self.sources {
+            source.update(world);
+        }
+        let world: &World = world;
         self.now = world.resource::<SimTick>().start();
         self.relations.clone_from(world.resource::<Relations>());
         self.metric = *world.resource::<Metric>();
@@ -90,22 +109,25 @@ impl ScriptView {
         self.units.clear();
         self.columns.clear();
         self.indexed = false;
+        let core = self.core.as_ref().expect("the read built the query");
         for (id, entity) in world.resource::<EntityIndex>().iter() {
-            let unit = world.entity(entity);
-            let (Some(&pos), Some(&team)) = (unit.get::<Position>(), unit.get::<Team>()) else {
+            let parts = core
+                .get_manual(world, entity)
+                .expect("the core reads optional parts");
+            let (Some(&pos), Some(&team), body, spawn, unit_type, owner, tags) = parts else {
                 continue;
             };
             let mut row = UnitRow {
                 id,
                 pos,
                 team,
-                radius: Body::radius_of(unit.get::<Body>()),
-                spawn: unit.get::<SpawnPoint>().map(|spawn| spawn.get()),
+                radius: Body::radius_of(body),
+                spawn: spawn.map(|spawn| spawn.get()),
                 alive: true,
                 targetable: false,
-                unit_type: unit.get::<UnitType>().copied(),
-                owner: unit.get::<Owner>().map(|owner| owner.slot()),
-                tags: unit.get::<UnitTags>().copied().unwrap_or_default(),
+                unit_type: unit_type.copied(),
+                owner: owner.map(|owner| owner.slot()),
+                tags: tags.copied().unwrap_or_default(),
             };
             let mut fill = RowFill {
                 row: &mut row,
@@ -113,7 +135,7 @@ impl ScriptView {
                 columns: &mut self.columns,
             };
             for source in &self.sources {
-                source(&unit, &mut fill);
+                source.fill(world, entity, &mut fill);
             }
             self.units.push(row);
         }
@@ -156,6 +178,7 @@ impl View {
             teams: Rc::default(),
             paths: Arc::default(),
             consts: ScriptConsts::default(),
+            core: None,
             sources: Vec::new(),
             rate,
             now: Tick::ZERO,
@@ -172,7 +195,7 @@ impl View {
     }
 
     /// Reads the units of `world` for the phase that begins.
-    pub(crate) fn read(&self, world: &World) {
+    pub(crate) fn read(&self, world: &mut World) {
         self.0.borrow_mut().read(world);
     }
 
@@ -317,9 +340,15 @@ impl View {
         self.0.borrow().consts.action(id)
     }
 
-    /// Adds how a capability fills its fields of each row, after those added before it.
-    pub(crate) fn add_source(&self, source: RowSource) {
-        self.0.borrow_mut().sources.push(source);
+    /// Adds how a capability fills its fields of each row, from the parts `D` of `world`'s units,
+    /// after those added before it.
+    pub(crate) fn add_source<D: ReadOnlyQueryData + 'static>(
+        &self,
+        world: &mut World,
+        fill: for<'w, 's> fn(ROQueryItem<'w, 's, D>, &mut RowFill<'_>),
+    ) {
+        let source = RowSource::<D>::new(world, fill);
+        self.0.borrow_mut().sources.push(Box::new(source));
     }
 
     /// Adds `column`, which a source fills.

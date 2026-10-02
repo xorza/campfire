@@ -13,4 +13,4 @@ Touches: every capability, the registry, the package loader, the client, the ref
 
 The structural redesign comes first, in the order below, as [Structural rules](design/02-engine-core.md#structural-rules) asks; `.notes/REDESIGN.md` holds each step's shape until the step lands and its part moves into the design. Each step ends with the check chain, both goldens and the structure tests that exist then; a step that changes behaviour names the change. The game model's own steps sit where the redesign makes room for them.
 
-1. **H Remaining parts**: work limits and shared indexes, in the order `.notes/REDESIGN.md` gives. F3, the handles of new deliveries, waits for unit script state.
+1. **F3**: the handles of new deliveries, which waits for unit script state.

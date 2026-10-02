@@ -1,9 +1,10 @@
 use bevy_ecs::change_detection::DetectChanges;
 use bevy_ecs::entity::Entity;
+use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::query::Without;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::{Commands, Local, Query, Res};
-use bevy_ecs::world::{EntityRef, World};
+use bevy_ecs::world::World;
 use campfire_sim::{Position, SimSet, StateRegistry};
 
 use crate::units::dead::Dead;
@@ -41,9 +42,9 @@ impl Vision {
     /// with a sight reveals the grid cells around it to its vision group, and each unit learns the
     /// teams that see it. A match sees nothing until its mode gives the grid.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
-        let view = world.non_send::<View>();
+        let view = world.non_send::<View>().clone();
         view.add_column(SightColumn::default());
-        view.add_source(fill_row);
+        view.add_source::<RowParts>(world, fill_row);
         schedule.add_systems(see.in_set(SimSet::Vision));
         registry.register_component::<SeenBy>();
         registry.register_component::<Sight>();
@@ -61,8 +62,8 @@ impl Vision {
     /// The teams that see `unit`: those the last Vision stage found, or, before it ran, the
     /// unit's vision group under `relations`, as that stage would give it at the least; every
     /// team for an entity with no team, as a match without vision sees.
-    fn seen_by(unit: &EntityRef<'_>, relations: &Relations) -> TeamSet {
-        match (unit.get::<SeenBy>(), unit.get::<Team>()) {
+    fn seen_by(parts: ROQueryItem<'_, '_, RowParts>, relations: &Relations) -> TeamSet {
+        match parts {
             (Some(seen), _) => seen.get(),
             (None, Some(&team)) => relations.vision_group(team),
             (None, None) => TeamSet::ALL,
@@ -70,9 +71,12 @@ impl Vision {
     }
 }
 
+/// The parts of a unit vision reads into its row: the teams that saw it, and its team.
+type RowParts = (Option<&'static SeenBy>, Option<&'static Team>);
+
 /// Fills a row of the script view with the teams that see the unit.
-fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
-    let seen_by = Vision::seen_by(unit, fill.world.resource::<Relations>());
+fn fill_row(parts: ROQueryItem<'_, '_, RowParts>, fill: &mut RowFill<'_>) {
+    let seen_by = Vision::seen_by(parts, fill.world.resource::<Relations>());
     fill.column::<SightColumn>().push(seen_by);
 }
 

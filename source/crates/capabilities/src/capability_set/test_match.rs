@@ -191,7 +191,7 @@ impl TestMatch {
     /// `probe(ctx, of)` in `source`, run on the units as they are now.
     pub(crate) fn probe(&mut self, source: &str, of: StableId) -> Result<Dynamic, CallError> {
         let ctx = self.world.non_send::<Ctx>().clone();
-        ctx.view().read(&self.world);
+        ctx.view().read(&mut self.world);
         let unit = ctx.view().unit(of).expect("a unit of the match");
         let mut host = self.world.non_send_mut::<ScriptHost>();
         let script = host.compile(source).expect("a probe compiles");

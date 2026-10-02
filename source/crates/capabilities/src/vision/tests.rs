@@ -58,7 +58,8 @@ impl Scene {
 
     fn seen_by(&self, id: StableId) -> TeamSet {
         let relations = self.sim.world.resource::<Relations>();
-        Vision::seen_by(&self.sim.world.entity(self.sim.entity(id)), relations)
+        let parts = (self.sim.try_get::<SeenBy>(id), self.sim.try_get::<Team>(id));
+        Vision::seen_by(parts, relations)
     }
 }
 

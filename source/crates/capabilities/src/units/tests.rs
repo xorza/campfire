@@ -212,11 +212,11 @@ fn the_view_reads_the_maps_bounds_or_the_worlds() {
     let mut scene = Scene::new();
     let view = scene.sim.world.non_send::<View>().clone();
     // A match with no mode has the whole world's bounds; a mode's map gives its own.
-    view.read(&scene.sim.world);
+    view.read(&mut scene.sim.world);
     assert_eq!(view.bounds(), Bounds::WORLD);
     let bounds = Bounds::new([Num::int(-10), Num::int(-5)], [Num::int(10), Num::int(6)]).unwrap();
     scene.sim.world.insert_resource(bounds);
-    view.read(&scene.sim.world);
+    view.read(&mut scene.sim.world);
     assert_eq!(view.bounds(), bounds);
 }
 

@@ -1,6 +1,7 @@
+use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Query, Res};
-use bevy_ecs::world::{EntityRef, World};
+use bevy_ecs::world::World;
 
 use campfire_sim::{SimSet, SimTick, StableId, StateRegistry, TickRate};
 
@@ -70,9 +71,9 @@ impl Actions {
     /// Adds the actions to a match whose core is installed, with none loaded yet, and its column
     /// to the script view.
     pub(crate) fn install(world: &mut World, registry: &mut StateRegistry) {
-        let view = world.non_send::<View>();
+        let view = world.non_send::<View>().clone();
         view.add_column(ActionsColumn::default());
-        view.add_source(fill_row);
+        view.add_source::<RowParts>(world, fill_row);
         world.insert_resource(ActionBook::default());
         registry.register_component::<ActionSlots>();
     }
@@ -156,9 +157,11 @@ fn hold_passives(
     }
 }
 
+/// The part of a unit the actions read into its row: its slots.
+type RowParts = Option<&'static ActionSlots>;
+
 /// Adds a unit's actions to the actions' column of the script view.
-fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
-    let slots = unit.get::<ActionSlots>();
+fn fill_row(slots: ROQueryItem<'_, '_, RowParts>, fill: &mut RowFill<'_>) {
     fill.column::<ActionsColumn>().push(slots);
 }
 

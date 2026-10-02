@@ -1,10 +1,11 @@
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
+use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::query::{Added, Allow, Has, With, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
-use bevy_ecs::world::{EntityRef, World};
+use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_sim::{
     Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry, TickRate, Unpredicted,
@@ -82,9 +83,9 @@ impl Navigation {
     /// overlapping living bodies part; after Collide, each unit that walks stands within the bounds
     /// again.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
-        let view = world.non_send::<View>();
+        let view = world.non_send::<View>().clone();
         view.add_column(PathsColumn::default());
-        view.add_source(fill_row);
+        view.add_source::<RowParts>(world, fill_row);
         world.insert_resource(Paths::default());
         world.insert_resource(Bounds::WORLD);
         world.insert_resource(BodyIndex::new(Body::MAX_RADIUS));
@@ -151,9 +152,12 @@ fn track_static_bodies(
     }
 }
 
+/// The part of a unit navigation reads into its row: the path it is on.
+type RowParts = Option<&'static OnPath>;
+
 /// Fills a row of the script view with the path the unit walks or stands on.
-fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
-    let path = unit.get::<OnPath>().map(|path| path.get());
+fn fill_row(path: ROQueryItem<'_, '_, RowParts>, fill: &mut RowFill<'_>) {
+    let path = path.map(|path| path.get());
     fill.column::<PathsColumn>().push(path);
 }
 

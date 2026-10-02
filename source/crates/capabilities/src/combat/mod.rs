@@ -1,8 +1,9 @@
 use bevy_ecs::entity::Entity;
+use bevy_ecs::query::{Has, ROQueryItem};
 use bevy_ecs::query::{QueryState, With, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
-use bevy_ecs::world::{EntityRef, Mut, World};
+use bevy_ecs::world::{Mut, World};
 use campfire_math::{RngStream, Tick};
 use campfire_sim::{
     Keyed, Ordered, Position, SimRng, SimSet, SimTick, StableId, StateRegistry, TickRate,
@@ -120,9 +121,9 @@ impl Combat {
     /// life die, each with its killer and assisters; in Vision, the dead whose type despawns
     /// go, after the Mode stage saw them.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
-        let view = world.non_send::<View>();
+        let view = world.non_send::<View>().clone();
         view.add_column(CombatColumn::default());
-        view.add_source(fill_row);
+        view.add_source::<RowParts>(world, fill_row);
         world.insert_resource(PassQueue::default());
         world.insert_resource(Shots::default());
         world.insert_resource(Deaths::default());
@@ -205,18 +206,29 @@ impl Combat {
     }
 }
 
+/// The parts of a unit combat reads into its row: whether it is dead, its pools and tags, what
+/// it does when it dies, and who struck it recently.
+type RowParts = (
+    Has<Dead>,
+    Option<&'static Pools>,
+    Option<&'static UnitTags>,
+    Option<&'static OnDeath>,
+    Option<&'static RecentAttackers>,
+);
+
 /// Fills a row of the script view with what combat holds: whether the unit lives and whether it
 /// may be a target, in the core's row; whether it stays when dead, and who struck it recently, in
 /// combat's column.
-fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
-    let alive = !unit.contains::<Dead>();
+fn fill_row(parts: ROQueryItem<'_, '_, RowParts>, fill: &mut RowFill<'_>) {
+    let (dead, pools, tags, on_death, recent) = parts;
+    let alive = !dead;
     fill.row.alive = alive;
     fill.row.targetable = alive
-        && fill.world.get_resource::<LifePool>().is_some_and(|life| {
-            Targets::targetable(unit.get::<Pools>(), unit.get::<UnitTags>(), life.0)
-        });
-    let stays = unit.get::<OnDeath>() == Some(&OnDeath::Stay);
-    let recent = unit.get::<RecentAttackers>();
+        && fill
+            .world
+            .get_resource::<LifePool>()
+            .is_some_and(|life| Targets::targetable(pools, tags, life.0));
+    let stays = on_death == Some(&OnDeath::Stay);
     fill.column::<CombatColumn>()
         .push(stays, recent.into_iter().flat_map(RecentAttackers::iter));
 }

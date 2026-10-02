@@ -2,9 +2,10 @@
 //! declares for them, and each unit's stats derived from its type and level.
 
 use bevy_ecs::query::Added;
+use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Query, Res};
-use bevy_ecs::world::{EntityRef, World};
+use bevy_ecs::world::World;
 use campfire_math::{Tick, Ticks};
 use campfire_sim::{EntityIndex, SimSet, SimTick, StableId, StateRegistry, TickRate};
 
@@ -106,9 +107,9 @@ impl Stats {
     /// pools regenerate. With no stat book, as before a mode loads one or on a client, which
     /// loads none, nothing changes.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
-        let view = world.non_send::<View>();
+        let view = world.non_send::<View>().clone();
         view.add_column(StatsColumn::default());
-        view.add_source(fill_row);
+        view.add_source::<RowParts>(world, fill_row);
         world.insert_resource(ModifierBook::default());
         world.insert_resource(ParamBook::default());
         if let Some(ctx) = world.get_non_send::<Ctx>() {
@@ -281,15 +282,25 @@ fn clear_dead_modifiers(
     }
 }
 
+/// The parts of a unit the stats read into its row.
+type RowParts = (
+    Option<&'static Level>,
+    Option<&'static Pools>,
+    Option<&'static UnitStats>,
+    Option<&'static Modifiers>,
+    Option<&'static ModifierClocks>,
+);
+
 /// Adds the unit's level, pools, stats and modifiers to the stats' column of the script view.
-fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
-    let stats = unit.get::<UnitStats>().map_or(&[][..], UnitStats::values);
+fn fill_row(parts: ROQueryItem<'_, '_, RowParts>, fill: &mut RowFill<'_>) {
+    let (level, pools, stats, modifiers, clocks) = parts;
+    let stats = stats.map_or(&[][..], UnitStats::values);
     fill.column::<StatsColumn>().push(
-        unit.get::<Level>().map(|level| level.get()),
-        unit.get::<Pools>().copied(),
+        level.map(|level| level.get()),
+        pools.copied(),
         stats,
-        unit.get::<Modifiers>(),
-        unit.get::<ModifierClocks>(),
+        modifiers,
+        clocks,
     );
 }
 
