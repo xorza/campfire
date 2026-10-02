@@ -5,7 +5,7 @@ use std::process::{Child, Command, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
-use campfire_math::hex;
+use campfire_math::Bytes32;
 use campfire_net::Listening;
 
 use crate::binaries::Binaries;
@@ -75,6 +75,7 @@ impl LanMatch<'_> {
         let Some(Listening {
             certificate,
             server_key,
+            tick_hz,
             ..
         }) = listening
         else {
@@ -85,7 +86,7 @@ impl LanMatch<'_> {
             });
         };
         let mut children = vec![(Process::Server, server)];
-        let wrong = hex::encode(&certificate.as_bytes().map(|byte| !byte));
+        let wrong = Bytes32::new(certificate.as_bytes().map(|byte| !byte)).to_string();
         let bots = self
             .scripts
             .iter()
@@ -101,7 +102,8 @@ impl LanMatch<'_> {
                     .arg(self.mode)
                     .arg(address.to_string())
                     .arg(certificate)
-                    .arg(server_key.to_string()),
+                    .arg(server_key.to_string())
+                    .arg(tick_hz.to_string()),
             )?;
             children.push((process, bot));
         }

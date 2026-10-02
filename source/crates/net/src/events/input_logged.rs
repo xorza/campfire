@@ -1,6 +1,5 @@
 use campfire_log::LogEvent;
-use campfire_math::PlayerSlot;
-use campfire_sim::Tick;
+use campfire_math::{PlayerSlot, Tick};
 use serde::Deserialize;
 use tracing::debug;
 

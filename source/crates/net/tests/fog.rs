@@ -1,29 +1,21 @@
 //! Fog of war over the network: a client receives only the units its team sees.
 
-use std::num::NonZeroU32;
-
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use campfire_capabilities::{Action, Owner, SeenBy, Team};
-use campfire_math::{Num, Vec3};
-use campfire_net::{LocalMatch, MatchClock, MatchSetup, TickHashes};
-use campfire_protocol::SeedChain;
-use campfire_sim::{EntityIndex, Position, SimTick, StableId, Tick, Unpredicted};
-use lightyear::prelude::{ConfirmHistory, ReplicationCheckpointMap, RollbackMode};
+use campfire_math::{Num, Tick, Vec3};
+use campfire_net::internals::{LocalMatch, MatchSetup};
+use campfire_net::{MatchClock, TickHashes};
+use campfire_sim::{EntityIndex, Position, SimTick, StableId, Unpredicted};
+use lightyear::prelude::{ConfirmHistory, ReplicationCheckpointMap};
 
-const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
 /// Frames of match: one tick each.
 const MATCH_FRAMES: usize = 90;
-
-fn num(value: i64) -> Num {
-    Num::from_int(value).unwrap()
-}
-
 /// A move along the hero's line from its spawn, z = −2.
-fn move_to(x: i64) -> Action {
+const fn move_to(x: i64) -> Action {
     Action::Move {
-        x: num(x),
-        z: num(-2),
+        x: Num::int(x),
+        z: Num::int(-2),
     }
 }
 
@@ -42,7 +34,7 @@ struct Server {
 
 #[test]
 fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
-    let mut local = LocalMatch::new(MatchSetup::solo(RollbackMode::Check, 1, SEED_CHAIN));
+    let mut local = LocalMatch::new(MatchSetup::SOLO);
     local.start_match();
     // Without the per-tick hash from here on, as in production: the ticks and the replication run
     // all the same.
@@ -51,7 +43,7 @@ fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
         .world_mut()
         .remove_resource::<TickHashes>();
     assert!(hashes.is_some());
-    let east_tower = Position::new(Vec3::new(num(8), Num::ZERO, num(-3))).unwrap();
+    let east_tower = Position::new(Vec3::new(Num::int(8), Num::ZERO, Num::int(-3))).unwrap();
     let (tower, tower_entity) = unit(local.server(), |app, entity| {
         app.world().get::<Position>(entity) == Some(&east_tower)
     });
@@ -111,7 +103,14 @@ fn an_enemy_reaches_the_client_in_the_tick_it_comes_into_sight() {
     let held_from = on_client.iter().position(|&held| held).unwrap();
     let held_until = on_client.iter().rposition(|&held| held).unwrap();
     assert!(on_client[held_from..=held_until].iter().all(|&held| held));
-    assert!(held_until < MATCH_FRAMES - 1);
+    // Frame `f` runs tick `f` past the lobby's ticks, and a tick's message reaches the client a
+    // frame later: it holds the tower from the frame after the first tick that sees it to the
+    // frame after the last.
+    let lobby = server.iter().position(Option::is_some).unwrap();
+    assert_eq!(
+        (held_from, held_until),
+        (first + 1 - lobby, last + 1 - lobby)
+    );
 }
 
 /// The sim tick of the server message that last updated `unit` on the client.

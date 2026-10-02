@@ -1,5 +1,5 @@
 use bevy_ecs::resource::Resource;
-use campfire_sim::Tick;
+use campfire_math::Tick;
 
 use crate::order_script::{OrderScript, ScriptedOrder};
 

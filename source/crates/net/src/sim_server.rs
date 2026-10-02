@@ -4,22 +4,24 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Changed, Has, With, Without};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::IntoScheduleConfigs;
-use bevy_ecs::schedule::common_conditions::{resource_added, resource_exists};
+use bevy_ecs::schedule::common_conditions::{
+    resource_added, resource_exists, resource_exists_and_changed,
+};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_capabilities::{
-    Area, Deaths, MatchEnd, MatchResult, Mode, Owner, Projectile, SeenBy, Team, TeamSet,
+    Area, Deaths, MatchEnd, MatchResult, Mode, Owner, Projectile, Relations, SeenBy, Team, TeamSet,
 };
 use campfire_log::LogEvent;
-use campfire_math::PlayerSlot;
+use campfire_math::{PlayerSlot, Tick};
 use campfire_package::ModePackages;
 use campfire_protocol::{Applied, ServerSeed, SessionLog};
 use campfire_runner::{Session, StartError};
-use campfire_sim::{SimTick, StableId, StateHash, Tick, TickRate};
+use campfire_sim::{SimTick, StableId, StateHash, TickRate};
 use lightyear::core::tick::TickDuration;
 use lightyear::prelude::{
     LocalTimeline, MessageReceiver, MessageSender, NetworkTarget, PredictionTarget, Replicate,
-    VisibilityExt,
+    Unlink, UnlinkReason, VisibilityExt,
 };
 use tracing::{debug, info, trace, trace_span, warn};
 
@@ -33,18 +35,17 @@ use crate::net_protocol::MatchChannel;
 
 /// Runs a session on a Lightyear server: while a `Lobby` is open, lets players join; then records
 /// the packets players send, runs one sim tick in each fixed tick, and sends each client the units
-/// its team sees. It hashes the state after a tick only
-/// while the world holds `TickHashes`.
+/// its team sees. It hashes the state after a tick only while the world holds `TickHashes`.
 #[derive(Debug)]
 pub struct SimServer;
 
-/// Which player a client link carries the inputs of, their team, and how many of its messages the
-/// log refused.
+/// Which player a client link carries the inputs of, their team, and whether the log refused one
+/// of its messages, which ended the link.
 #[derive(Component, Debug, Clone, Copy)]
 pub struct PlayerLink {
     slot: PlayerSlot,
     team: Team,
-    refused: u64,
+    refused: bool,
 }
 
 impl PlayerLink {
@@ -52,9 +53,9 @@ impl PlayerLink {
         self.slot
     }
 
-    /// Messages the log refused: a broken chain or signature, or a limit passed. An honest
-    /// client sends none; with the connect handshake, the first one will end the connection.
-    pub const fn refused(self) -> u64 {
+    /// Whether the log refused one of its messages: a broken chain or signature, or a limit
+    /// passed. A client that follows the rules sends none, so the first one ends the link.
+    pub const fn refused(self) -> bool {
         self.refused
     }
 }
@@ -75,7 +76,12 @@ impl Plugin for SimServer {
     fn build(&self, app: &mut App) {
         app.add_systems(
             Update,
-            (Lobby::offer, Lobby::take_joins, Lobby::start_when_full)
+            (
+                Lobby::free_seats,
+                Lobby::offer,
+                Lobby::take_joins,
+                Lobby::start_when_full,
+            )
                 .chain()
                 .run_if(resource_exists::<Lobby>),
         );
@@ -95,6 +101,7 @@ impl Plugin for SimServer {
                 show_units,
                 report_deaths,
                 announce_end.run_if(resource_added::<MatchEnd>),
+                send_relations.run_if(resource_exists_and_changed::<Relations>),
             )
                 .chain()
                 .run_if(sim_tick_due),
@@ -132,7 +139,7 @@ impl SimServer {
             world.entity_mut(client).insert(PlayerLink {
                 slot,
                 team,
-                refused: 0,
+                refused: false,
             });
             world
                 .get_mut::<MessageSender<MatchStart>>(client)
@@ -146,41 +153,54 @@ impl SimServer {
     }
 }
 
-/// Logs each packet received in this frame, before the next tick runs.
+/// Logs each packet received in this frame, before the next tick runs. A refused packet ends its
+/// link: a client that follows the rules sends none, and its chain no longer matches the log's.
 fn record_inputs(
-    mut links: Query<'_, '_, (&mut PlayerLink, &mut MessageReceiver<InputMessage>)>,
+    mut commands: Commands<'_, '_>,
+    mut links: Query<'_, '_, (Entity, &mut PlayerLink, &mut MessageReceiver<InputMessage>)>,
     mut session: ResMut<'_, Session>,
     mut applied: Local<'_, Vec<Applied>>,
 ) {
-    for (mut link, mut receiver) in &mut links {
+    for (entity, mut link, mut receiver) in &mut links {
         let slot = link.slot.get();
         for message in receiver.receive() {
+            if link.refused {
+                continue;
+            }
+            let next_tick = session.log().next_tick();
             let Some(inputs) = message.inputs(link.slot) else {
                 warn!(
                     slot,
                     "refused an input message whose frames do not fit its payloads"
                 );
-                link.refused += 1;
+                link.refused = true;
+                commands.trigger(Unlink {
+                    entity,
+                    reason: UnlinkReason::UserRequested(Some("broken input message".to_owned())),
+                });
                 continue;
             };
-            let next_tick = session.log().next_tick();
             if let Err(error) = session.record(inputs.clone(), message.signature(), &mut applied) {
-                warn!(slot, next_tick, %error, "refused an input message");
-                link.refused += 1;
+                warn!(slot, %next_tick, %error, "refused an input message, which ends the link");
+                link.refused = true;
+                commands.trigger(Unlink {
+                    entity,
+                    reason: UnlinkReason::UserRequested(Some(error.to_string())),
+                });
                 continue;
             }
             for (input, &outcome) in inputs.zip(applied.iter()) {
                 match outcome {
                     Applied::At(tick) => InputLogged {
                         slot: link.slot,
-                        stamp: Tick::new(input.stamp),
-                        tick: Tick::new(tick),
+                        stamp: input.stamp,
+                        tick,
                     }
                     .log(),
                     Applied::Late | Applied::Early => warn!(
                         slot,
-                        stamp = input.stamp,
-                        next_tick,
+                        %input.stamp,
+                        %next_tick,
                         ?outcome,
                         "logged an input that never takes effect"
                     ),
@@ -245,6 +265,17 @@ fn announce_end(
     }
 }
 
+/// Tells each player's client how the teams regard each other, once as the match starts, and
+/// again in each tick a script changes it.
+fn send_relations(
+    relations: Res<'_, Relations>,
+    mut links: Query<'_, '_, &mut MessageSender<Relations>, With<PlayerLink>>,
+) {
+    for mut sender in &mut links {
+        sender.send::<MatchChannel>(relations.clone());
+    }
+}
+
 /// The units not replicated yet, with their owner if they have one, and whether they are
 /// projectiles or areas.
 type NewUnits<'w, 's> = Query<
@@ -255,11 +286,11 @@ type NewUnits<'w, 's> = Query<
 >;
 
 /// After a sim tick, replicates each new unit, predicted by its owner's client unless it is a
-/// projectile or an area, which the server's sim alone runs, and shows each unit whose seers changed to
-/// exactly the clients whose team sees it. A unit is hidden in the tick it replicates in, so a
-/// client never receives a unit its team did not see: a projectile shows where it flies, not
-/// where its source stands. Without vision no unit has `SeenBy`, and every client receives every
-/// unit.
+/// projectile or an area, which the server's sim alone runs, and shows each unit whose seers
+/// changed to exactly the clients whose team sees it. A unit is hidden in the tick it replicates
+/// in, so a client never receives a unit its team did not see: a projectile shows where it flies,
+/// not where its source stands. Without vision no unit has `SeenBy`, and every client receives
+/// every unit.
 fn show_units(
     links: Query<'_, '_, (Entity, &PlayerLink)>,
     new: NewUnits<'_, '_>,

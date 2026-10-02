@@ -1,47 +1,56 @@
-use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{QueryState, With, Without};
+use bevy_ecs::query::{Has, QueryState, ROQueryItem, With, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
-use bevy_ecs::world::{EntityRef, Mut, World};
-use campfire_math::Num;
+use bevy_ecs::world::{Mut, World};
+use campfire_math::{RngStream, Tick};
 use campfire_sim::{
-    EntityIndex, Position, SimRng, SimSet, SimTick, StableId, StateRegistry, Tick, TickRate,
+    Keyed, Ordered, Position, SimRng, SimSet, SimTick, StableId, StateRegistry, TickRate,
 };
 
-use crate::actions::Actions;
-use crate::actions::action_book::{ActionBook, ActionId, RankValues};
-use crate::actions::action_slots::ActionSlots;
-use crate::actions::purse::Purse;
+use crate::actions::action_book::ActionBook;
+use crate::actions::action_slots::{ActionSlots, InProgress, SlotAim};
+use crate::actions::action_target::ActionTarget;
+use crate::actions::purse::{Payer, Purse};
+use crate::actions::rank_values::RankValues;
+use crate::actions::targets::Targets;
 use crate::actions::weapon::Weapon;
-use crate::combat::assist_window::AssistWindow;
-use crate::combat::combat_bindings::CombatBindings;
-use crate::combat::combat_effect::CombatEffect;
+use crate::actions::{Actions, ActionsSet};
+use crate::combat::combat_column::CombatColumn;
 use crate::combat::combat_event::CombatEvent;
 use crate::combat::combat_events::CombatEvents;
 use crate::combat::damage::{Damage, DamageCause};
-use crate::combat::damage_queue::DamageQueue;
-use crate::combat::damage_weigher::DamageWeigher;
-use crate::combat::dead::Dead;
+use crate::combat::damage_pass::DamagePass;
 use crate::combat::deaths::{Deaths, Fallen};
-use crate::combat::launches::{Launch, Launches};
+use crate::combat::kept::Kept;
+use crate::combat::modifier_hooks::ModifierHooks;
 use crate::combat::on_death::OnDeath;
+use crate::combat::pass_queue::PassQueue;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::combat::respawn::Respawn;
-use crate::mode::player_resources::PlayerResources;
-use crate::mode::resource_id::ResourceAmount;
-use crate::projectiles::projectile::{Flight, Payload};
-use crate::scripts::hook::Hook;
+use crate::combat::shots::{Shot, Shots};
+use crate::players::player_resources::PlayerResources;
+use crate::players::resource_amount::ResourceAmount;
+use crate::scripts::ctx::Ctx;
 use crate::scripts::script_batch::ScriptBatch;
-use crate::stats::modifier_book::ModifierId;
+use crate::stats::StatsSet;
+use crate::stats::carried_mut::CarriedMut;
+use crate::stats::life_pool::LifePool;
+use crate::stats::modifier_book::ModifierBook;
+use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
 use crate::stats::unit_stats::UnitStats;
+use crate::units::action_id::ActionId;
 use crate::units::block::Block;
+use crate::units::body::Body;
+use crate::units::dead::Dead;
+use crate::units::modifier_id::ModifierId;
 use crate::units::owner::Owner;
-use crate::units::recent_attack::RecentAttack;
-use crate::units::script_view::{RowFill, View};
+use crate::units::predicting::Predicting;
+use crate::units::row_fill::RowFill;
+use crate::units::script_view::View;
 use crate::units::spawn_point::SpawnPoint;
 use crate::units::tag_book::TagBook;
 use crate::units::tag_set::TagSet;
@@ -52,6 +61,7 @@ use crate::units::unit_type::UnitType;
 pub(crate) mod assist_window;
 pub(crate) mod combat_api;
 pub(crate) mod combat_bindings;
+pub(crate) mod combat_column;
 pub(crate) mod combat_data;
 pub(crate) mod combat_effect;
 pub(crate) mod combat_event;
@@ -59,19 +69,23 @@ pub(crate) mod combat_events;
 pub(crate) mod combat_rules;
 pub(crate) mod damage;
 pub(crate) mod damage_handle;
-pub(crate) mod damage_kind;
-pub(crate) mod damage_queue;
+pub(crate) mod damage_pass;
 pub(crate) mod damage_weigher;
-pub(crate) mod dead;
 pub(crate) mod deaths;
-pub(crate) mod launches;
+pub(crate) mod heal;
+pub(crate) mod heal_handle;
+pub(crate) mod heal_weigher;
+pub(crate) mod kept;
+pub(crate) mod modifier_hooks;
 pub(crate) mod on_death;
+pub(crate) mod pass_queue;
+pub(crate) mod recent_attack;
 pub(crate) mod recent_attackers;
 pub(crate) mod respawn;
-pub(crate) mod targets;
+pub(crate) mod shots;
 
 /// The random stream an attack's roll draws from, for its attacker in its tick.
-pub(crate) const ROLL_STREAM: &str = "combat.roll";
+pub(crate) const ROLL_STREAM: RngStream = RngStream::new("combat.roll");
 
 /// The `combat` capability: teams, the life pool, attacks, damage and deaths.
 #[derive(Debug)]
@@ -87,7 +101,10 @@ pub(crate) enum CombatSet {
     Attack,
     /// In `SimSet::Hit`: windups that end strike, or fire, each with its roll drawn.
     Strike,
-    /// In `SimSet::Hit`, after `Strike`: the tick's launches take off.
+    /// In `SimSet::Hit`, after `Strike`: the tick's shots become launches, before any cast
+    /// delivers.
+    Fire,
+    /// In `SimSet::Hit`, after `Fire`: the tick's launches take off.
     Launch,
     /// In `SimSet::Hit`, after `Launch`: modifiers' intervals come.
     Interval,
@@ -104,19 +121,32 @@ impl Combat {
     /// life die, each with its killer and assisters; in Vision, the dead whose type despawns
     /// go, after the Mode stage saw them.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
-        if let Some(view) = world.get_non_send::<View>() {
-            view.add_source(fill_row);
-        }
-        world.insert_resource(DamageQueue::default());
-        world.insert_resource(CombatBindings::default());
+        let view = world.non_send::<View>().clone();
+        view.add_column(CombatColumn::default());
+        view.add_source::<RowParts>(world, fill_row);
+        world.insert_resource(PassQueue::default());
+        world.insert_resource(Shots::default());
         world.insert_resource(Deaths::default());
-        schedule.configure_sets(
-            CombatSet::Launch
-                .in_set(SimSet::Hit)
-                .after(CombatSet::Strike),
-        );
+        if let Some(ctx) = world.get_non_send::<Ctx>().cloned() {
+            let hooks = ModifierHooks::new(ctx);
+            world.insert_non_send(CombatEvents::new(move |batch, event| {
+                hooks.hear(batch, event);
+            }));
+        }
+        schedule.configure_sets((
+            CombatSet::Fire.in_set(SimSet::Hit).after(CombatSet::Strike),
+            CombatSet::Launch.in_set(SimSet::Hit).after(CombatSet::Fire),
+            CombatSet::Die.before(StatsSet::Hold),
+            CombatSet::Attack
+                .in_set(SimSet::Act)
+                .before(ActionsSet::Start),
+            ActionsSet::HoldAtResolve
+                .after(CombatSet::Damage)
+                .before(CombatSet::Die),
+        ));
         Actions::schedule(schedule);
         schedule.add_systems((
+            start_attacks.in_set(CombatSet::Attack),
             (attack_events, strike)
                 .chain()
                 .in_set(SimSet::Hit)
@@ -126,7 +156,7 @@ impl Combat {
                 .in_set(CombatSet::Interval)
                 .after(CombatSet::Launch),
             (
-                deal_damage.in_set(CombatSet::Damage),
+                DamagePass::run.in_set(CombatSet::Damage),
                 die.in_set(CombatSet::Die),
             )
                 .chain()
@@ -135,50 +165,146 @@ impl Combat {
             despawn_dead.in_set(SimSet::Vision),
         ));
         registry.register_component::<Dead>();
+        registry.register_component::<Kept>();
         registry.register_component::<OnDeath>();
         registry.register_component::<RecentAttackers>();
         registry.register_component::<Respawn>();
     }
-}
 
-impl Combat {
     /// The target of the attack of a unit with `slots` whose windup ends by `now`, if one does.
     fn going_off(slots: &ActionSlots, now: Tick) -> Option<StableId> {
         let target = slots.attacking()?;
-        let resolves_at = slots.in_progress()?.resolves_at?;
+        let resolves_at = slots.in_progress()?.resolves_at()?;
         (resolves_at <= now).then_some(target)
     }
 
     /// The weapon of the attack under way of a unit with `slots`.
     fn wielded<'a>(book: &'a ActionBook, slots: &ActionSlots) -> Wielded<'a> {
         let underway = slots.in_progress().expect("an attack is under way");
-        let slot = slots.slot(underway.slot).expect("an attack's slot");
+        let slot = slots.slot(underway.slot()).expect("an attack's slot");
         let action = book
             .get(slot.action)
             .expect("a slot's action is in the book");
         Wielded {
-            slot: underway.slot,
-            weapon: action.weapon.expect("an attack's action is a weapon"),
+            slot: underway.slot(),
+            action: slot.action,
+            weapon: action
+                .kind
+                .weapon()
+                .expect("an attack's action is a weapon"),
             values: action.values(slot.rank),
             resource_cost: action.resource_cost(slot.rank),
-            projectile: action.spawns,
+            projectile: action.delivery.map(|delivery| delivery.unit_type),
         }
     }
 
-    /// Binds `life` as the life pool, as a client does from the packages it holds, where no mode
-    /// installs.
-    pub fn bind_life(world: &mut World, life: PoolId) {
-        world.resource_mut::<CombatBindings>().life = life;
+    /// The match's life pool; `None` when its mode names none.
+    pub fn life(world: &World) -> Option<PoolId> {
+        Some(world.get_resource::<LifePool>()?.0)
     }
 }
 
+/// The parts of a unit combat reads into its row: whether it is dead, its pools and tags, what
+/// it does when it dies, and who struck it recently.
+type RowParts = (
+    Has<Dead>,
+    Option<&'static Pools>,
+    Option<&'static UnitTags>,
+    Option<&'static OnDeath>,
+    Option<&'static RecentAttackers>,
+);
+
 /// Fills a row of the script view with what combat holds: whether the unit lives and whether it
-/// stays when dead, and who struck it recently.
-fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
-    fill.row.alive = !unit.contains::<Dead>();
-    fill.row.stays = unit.get::<OnDeath>() == Some(&OnDeath::Stay);
-    if let Some(recent) = unit.get::<RecentAttackers>() {
-        fill.attacked(recent.iter());
+/// may be a target, in the core's row; whether it stays when dead, and who struck it recently, in
+/// combat's column.
+fn fill_row(parts: ROQueryItem<'_, '_, RowParts>, fill: &mut RowFill<'_>) {
+    let (dead, pools, tags, on_death, recent) = parts;
+    let alive = !dead;
+    fill.row.alive = alive;
+    fill.row.targetable = alive
+        && fill
+            .world
+            .get_resource::<LifePool>()
+            .is_some_and(|life| Targets::targetable(pools, tags, life.0));
+    let stays = on_death == Some(&OnDeath::Stay);
+    fill.column::<CombatColumn>()
+        .push(stays, recent.into_iter().flat_map(RecentAttackers::iter));
+}
+
+/// Starts each unit's attack on its attack target, in Act, when it has nothing under way: with
+/// the first weapon whose filter selects the target, once that weapon passes its checks and the
+/// target is within its range. An attack in its windup stops when the unit's tags keep it from
+/// attacking. An attack target that is no living enemy any more is dropped, with the attack on it.
+fn start_attacks(
+    tick: Res<'_, SimTick>,
+    book: Res<'_, ActionBook>,
+    resources: Option<Res<'_, PlayerResources>>,
+    targets: Targets<'_, '_>,
+    mut units: Query<
+        '_,
+        '_,
+        (
+            &Position,
+            &Team,
+            &mut ActionSlots,
+            Option<&Pools>,
+            Option<&Owner>,
+            Option<&Body>,
+            Option<&UnitTags>,
+        ),
+        Without<Dead>,
+    >,
+) {
+    let now = tick.start();
+    for (&position, &team, mut slots, pools, owner, body, tags) in &mut units {
+        let blocked = UnitTags::effects_of(tags).blocks(Block::Attack);
+        match slots.in_progress() {
+            Some(InProgress::Order { .. }) => {}
+            Some(InProgress::Attack { .. }) => {
+                if blocked {
+                    slots.interrupt();
+                } else if slots
+                    .attack_target()
+                    .is_none_or(|target| targets.enemy(team, target).is_none())
+                {
+                    slots.set_attack_target(None);
+                }
+            }
+            None => {
+                let Some(target) = slots.attack_target() else {
+                    continue;
+                };
+                let Some(unit) = targets.enemy(team, target) else {
+                    slots.set_attack_target(None);
+                    continue;
+                };
+                if blocked {
+                    continue;
+                }
+                let selects = (targets.attitude(team, unit.team), unit.tags);
+                let Some(slot) = book.weapon_for(&slots, Some(selects)) else {
+                    continue;
+                };
+                let aim = SlotAim {
+                    slot,
+                    target: ActionTarget::Unit(target),
+                };
+                let purse = Purse {
+                    pools,
+                    resources: resources.as_deref(),
+                    owner: owner.map(|owner| owner.slot()),
+                };
+                let attitude = |other| targets.attitude(team, other);
+                let radius = Body::radius_of(body);
+                let started = book
+                    .check(now, &slots, purse, aim, attitude, |id| targets.living(id))
+                    .filter(|checked| checked.in_range(position, radius, &targets))
+                    .map(|checked| now.after(checked.values.windup));
+                if let Some(resolves_at) = started {
+                    slots.start_attack(slot, resolves_at);
+                }
+            }
+        }
     }
 }
 
@@ -197,6 +323,8 @@ type Attacker<'a> = (
 #[derive(Debug, Clone, Copy)]
 struct Wielded<'a> {
     slot: u8,
+    /// The weapon's action, which its damage names.
+    action: ActionId,
     weapon: Weapon,
     values: RankValues,
     resource_cost: &'a [ResourceAmount],
@@ -270,16 +398,28 @@ struct IntervalDue {
 /// interval comes this tick, by carrier's stable id, then modifier, then source.
 fn run_intervals(
     world: &mut World,
-    carriers: &mut QueryState<(&StableId, &mut Modifiers, Option<&UnitTags>), Without<Dead>>,
+    carriers: &mut QueryState<
+        (
+            &StableId,
+            &mut Modifiers,
+            &mut ModifierClocks,
+            Option<&UnitTags>,
+        ),
+        Without<Dead>,
+    >,
     mut due: Local<'_, Vec<IntervalDue>>,
 ) {
     let now = world.resource::<SimTick>().start();
     let granting = world
         .get_resource::<TagBook>()
         .map_or(TagSet::default(), TagBook::granting);
+    let Some(book) = world.get_resource::<ModifierBook>().cloned() else {
+        return;
+    };
     due.clear();
-    for (&carrier, mut modifiers, tags) in carriers.iter_mut(world) {
+    for (&carrier, modifiers, clocks, tags) in carriers.iter_mut(world) {
         let immune = tags.map_or(TagSet::default(), |tags| tags.immune);
+        let takes_effect = TagBook::effect_test(granting, immune);
         let push = |id, source| {
             due.push(IntervalDue {
                 carrier,
@@ -287,13 +427,11 @@ fn run_intervals(
                 source,
             });
         };
-        if modifiers.bypass_change_detection().advance_intervals(
+        CarriedMut::new(modifiers, clocks).advance_intervals(
             now,
-            TagBook::effect_test(granting, immune),
+            |id| takes_effect(book.tags(id)),
             push,
-        ) {
-            modifiers.set_changed();
-        }
+        );
     }
     if due.is_empty() {
         return;
@@ -323,12 +461,15 @@ fn run_intervals(
     world.insert_non_send(events);
 }
 
-/// Delivers each attack whose windup ends this tick: it queues the damage of its weapon's damage
-/// stat, of its kind, or its launch when the weapon fires a projectile and the match has
+/// Delivers each attack whose windup ends this tick, in the order of its attacker's stable id: it
+/// queues the damage of its weapon's damage stat, of its kind, or a shot when the weapon fires a
+/// projectile, which `projectiles` launches, as the load gives such a weapon only to a match with
 /// projectiles. Each draws its roll now, at least 0 and less than 1, which `calc_damage` reads.
 /// The weapon's cost is paid, in pools and its player's resources, and it is ready again a period
 /// from the attack's start, the tick rate over its rate stat. A windup whose attacker's tags keep
-/// it from attacking, or that no longer affords its cost, stops instead, and spends nothing.
+/// it from attacking, or that no longer affords its cost, stops instead, and spends nothing. A
+/// client that predicts the attack only makes the weapon ready again, as the damage, the launch
+/// and the cost come from the server.
 fn strike(
     (tick, rate, rng, book): (
         Res<'_, SimTick>,
@@ -336,15 +477,17 @@ fn strike(
         Res<'_, SimRng>,
         Res<'_, ActionBook>,
     ),
-    (mut queue, mut launches, mut resources): (
-        ResMut<'_, DamageQueue>,
-        Option<ResMut<'_, Launches>>,
+    (mut queue, mut fired, mut resources, predicting): (
+        ResMut<'_, PassQueue>,
+        ResMut<'_, Shots>,
         Option<ResMut<'_, PlayerResources>>,
+        Option<Res<'_, Predicting>>,
     ),
     mut attackers: Query<
         '_,
         '_,
         (
+            Entity,
             &StableId,
             &Position,
             &mut ActionSlots,
@@ -355,12 +498,16 @@ fn strike(
         ),
         Without<Dead>,
     >,
+    mut order: Local<'_, Ordered>,
 ) {
     let now = tick.start();
-    for (&source, &from, mut slots, stats, pools, tags, owner) in &mut attackers {
-        let Some(target) = Combat::going_off(&slots, now) else {
-            continue;
-        };
+    let going = attackers.iter().filter_map(|(entity, &id, _, slots, ..)| {
+        Combat::going_off(slots, now).map(|_| Keyed { id, entity })
+    });
+    for &Keyed { entity, .. } in order.sort(going) {
+        let (_, &source, &from, mut slots, stats, pools, tags, owner) =
+            attackers.get_mut(entity).expect("an attacker in the order");
+        let target = Combat::going_off(&slots, now).expect("an attack going off");
         let owner = owner.map(|owner| owner.slot());
         let purse = Purse {
             pools: pools.as_deref(),
@@ -373,369 +520,63 @@ fn strike(
             continue;
         }
         let Wielded {
+            action,
             weapon,
             values,
             resource_cost,
             ..
         } = wielded;
         let stats = stats.map_or(&[][..], UnitStats::values);
-        let amount = weapon.damage(stats);
-        let roll = rng.open(ROLL_STREAM, source).fraction();
-        match (wielded.projectile, launches.as_deref_mut()) {
-            (Some(unit_type), Some(launches)) => {
-                let cast = launches.cast();
-                launches.launches.push(Launch {
-                    source,
-                    from,
-                    unit_type,
-                    flight: Flight::Homing {
-                        target,
-                        flown: Num::ZERO,
-                    },
-                    payload: Payload::Attack {
-                        amount,
-                        kind: weapon.kind,
-                        roll,
-                    },
-                    cast,
-                });
-            }
-            _ => queue.push(Damage {
-                source: Some(source),
-                target,
-                amount,
-                kind: weapon.kind,
-                cause: DamageCause::Attack { roll },
-                ability: None,
-                depth: 0,
-            }),
-        }
         let resolves_at = slots
             .in_progress()
-            .and_then(|underway| underway.resolves_at)
+            .and_then(InProgress::resolves_at)
             .expect("an attack going off started");
         let started = Tick::new(resolves_at.get() - values.windup.get());
         let period = weapon.period(stats, rate.hz().get(), values.windup);
         slots.cool_down(wielded.slot, started.after(period));
         slots.stop();
-        if let Some(mut pools) = pools {
-            pools.pay(&values.cost);
+        if predicting.is_some() {
+            continue;
         }
-        if let (Some(owner), Some(resources)) = (owner, resources.as_deref_mut()) {
-            resources.pay(owner, resource_cost);
-        }
-    }
-}
-
-/// Deals the tick's damage in the queue's order: each through the mode's `calc_damage` when it
-/// has one, with the units as the pass began, then its combat events, whose damage joins the end
-/// of the queue. Damage to a unit at zero life, or to an invulnerable one, does nothing.
-fn deal_damage(world: &mut World, mut assisters: Local<'_, Vec<StableId>>) {
-    let now = world.resource::<SimTick>().start();
-    world.resource_mut::<Deaths>().clear(now);
-    world.resource_mut::<DamageQueue>().sort();
-    let weigher = world.remove_non_send::<DamageWeigher>();
-    let events = world.remove_non_send::<CombatEvents>();
-    if weigher.is_none() && events.is_none() {
-        let mut at = 0;
-        while let Some(damage) = world.resource::<DamageQueue>().get(at) {
-            at += 1;
-            Combat::deal(world, damage, damage.amount, now);
-        }
-    } else {
-        let view = world.non_send::<View>().clone();
-        ScriptBatch::run(world, &view, |batch| {
-            let mut at = 0;
-            while let Some(damage) = batch.world().resource::<DamageQueue>().get(at) {
-                at += 1;
-                if Combat::damageable(batch.world(), damage.target).is_none() {
-                    continue;
-                }
-                let amount = weigher.as_ref().map_or(damage.amount, |weigher| {
-                    weigher.weigh(batch, damage).unwrap_or_else(|error| {
-                        batch.record(Some(damage.target), Hook::CalcDamage, error);
-                        damage.amount
-                    })
-                });
-                let landed = Combat::deal(batch.world(), damage, amount, now);
-                if let Some(events) = &events {
-                    let dealt = Damage {
-                        amount: amount.max(Num::ZERO),
-                        ..damage
-                    };
-                    Combat::answer(batch, events, dealt, landed, &mut assisters);
-                }
-            }
-        });
-    }
-    if let Some(weigher) = weigher {
-        world.insert_non_send(weigher);
-    }
-    if let Some(events) = events {
-        world.insert_non_send(events);
-    }
-    world.resource_mut::<DamageQueue>().clear();
-}
-
-/// What a damage of the pass did: nothing, as to a unit at zero life or an invulnerable one;
-/// damage; or a kill.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Landed {
-    Nothing,
-    Taken,
-    Killed,
-}
-
-impl Combat {
-    /// The entity of `unit`, when it exists and its life pool is above zero: one that damage,
-    /// heals and restores reach.
-    fn living(world: &World, unit: StableId) -> Option<Entity> {
-        let entity = world.resource::<EntityIndex>().get(unit)?;
-        let life = world.resource::<CombatBindings>().life;
-        world
-            .get::<Pools>(entity)?
-            .above_zero(life)
-            .then_some(entity)
-    }
-
-    /// The entity of `unit`, when it is living and its tags let damage reach it.
-    fn damageable(world: &World, unit: StableId) -> Option<Entity> {
-        Combat::living(world, unit)
-            .filter(|&entity| !UnitTags::effects_of(world.get(entity)).blocks(Block::Damage))
-    }
-
-    /// Runs the events of `damage`, which `landed`, its amount after `calc_damage`: an attack's
-    /// hit, the damage taken, then a kill's: the killer's, then the takedowns of the killer and
-    /// each assister, by stable id, whom `assisters` holds while their hooks run.
-    fn answer(
-        batch: &mut ScriptBatch<'_>,
-        events: &CombatEvents,
-        damage: Damage,
-        landed: Landed,
-        assisters: &mut Vec<StableId>,
-    ) {
-        if landed == Landed::Nothing {
-            return;
-        }
-        if damage.cause.attack() {
-            events.hear(batch, CombatEvent::AttackHit(damage));
-        }
-        events.hear(batch, CombatEvent::DamageTaken(damage));
-        if landed != Landed::Killed {
-            return;
-        }
-        let deaths = batch.world().resource::<Deaths>();
-        let kill = deaths.iter().last().expect("a kill records its death");
-        let killer = kill.killer;
-        assisters.clear();
-        assisters.extend_from_slice(kill.assisters);
-        let (victim, depth) = (damage.target, damage.depth);
-        if let Some(killer) = killer {
-            events.hear(
-                batch,
-                CombatEvent::Kill {
-                    killer,
-                    victim,
-                    depth,
-                },
-            );
-        }
-        for unit in killer.into_iter().chain(assisters.iter().copied()) {
-            events.hear(
-                batch,
-                CombatEvent::Takedown {
-                    unit,
-                    victim,
-                    depth,
-                },
-            );
-        }
-    }
-
-    /// Deals `damage` as `amount` in tick `now`, a negative amount as 0: shields absorb it, then
-    /// the life pool takes the rest. The source is recorded as the target's attacker; when the damage
-    /// took the target to zero, the source is its killer if it still exists, and the others that
-    /// damaged it within the assist window assisted. A living source heals by its `leech`
-    /// stat, `attack` for an attack's damage and `other` for the rest, times the life taken.
-    fn deal(world: &mut World, damage: Damage, amount: Num, now: Tick) -> Landed {
-        let Some(entity) = Combat::damageable(world, damage.target) else {
-            return Landed::Nothing;
-        };
-        let index = world.resource::<EntityIndex>();
-        let source = damage.source.filter(|&source| index.get(source).is_some());
-        let mut left = amount.max(Num::ZERO);
-        let takes_effect = TagBook::effective(world, entity);
-        if let Some(mut modifiers) = world.get_mut::<Modifiers>(entity) {
-            let after = modifiers
-                .bypass_change_detection()
-                .absorb(left, takes_effect);
-            if after != left {
-                modifiers.set_changed();
-            }
-            left = after;
-        }
-        let life = world.resource::<CombatBindings>().life;
-        let mut pools = world
-            .get_mut::<Pools>(entity)
-            .expect("a unit that takes damage");
-        let taken = pools.take(life, left);
-        let killed = !pools.above_zero(life);
-        world.resource_scope(|world, index: Mut<'_, EntityIndex>| {
-            let mut attackers = world.get_mut::<RecentAttackers>(entity);
-            if let (Some(source), Some(attackers)) = (damage.source, attackers.as_deref_mut()) {
-                attackers.record(source, now, &index);
-            }
-        });
-        if killed {
-            world.resource_scope(|world, mut deaths: Mut<'_, Deaths>| {
-                let window = world.get_resource::<AssistWindow>().map(|window| window.0);
-                let assisted = |attack: &RecentAttack| {
-                    let within = window
-                        .zip(now.since(attack.tick))
-                        .is_some_and(|(window, since)| since <= window);
-                    Some(attack.source) != damage.source && within
-                };
-                let assisters = world
-                    .get::<RecentAttackers>(entity)
-                    .into_iter()
-                    .flat_map(RecentAttackers::iter)
-                    .filter(assisted)
-                    .map(|attack| attack.source);
-                let fallen = Fallen::of(damage.target, world.get(entity), world.get(entity));
-                deaths.push(fallen, source, assisters);
-            });
-        }
-        if let Some(source) = source.and_then(|source| Combat::living(world, source)) {
-            let bindings = world.resource::<CombatBindings>();
-            let stat = if damage.cause.attack() {
-                bindings.leech_attack
-            } else {
-                bindings.leech_other
-            };
-            let ratio = Combat::stat(world, source, stat);
-            Combat::heal_living(world, source, scaled(taken, ratio));
-        }
-        if killed {
-            Landed::Killed
-        } else {
-            Landed::Taken
-        }
-    }
-
-    /// Applies `effect`, which a call queued from `source`, by `ability`, at chain depth
-    /// `depth`: damage joins the queue, a heal or a restore applies at once, and an extra attack
-    /// queues the source's attack damage, when it still has an attack.
-    pub(crate) fn apply_effect(
-        world: &mut World,
-        effect: CombatEffect,
-        source: Option<StableId>,
-        ability: Option<ActionId>,
-        depth: u8,
-    ) {
-        let damage = |target, amount, kind, cause| Damage {
-            source,
-            target,
-            amount,
-            kind,
-            cause,
-            ability,
-            depth,
-        };
-        match effect {
-            CombatEffect::Damage {
+        let amount = weapon.damage(stats);
+        let roll = rng.open(ROLL_STREAM, source).fraction();
+        match wielded.projectile {
+            Some(unit_type) => fired.0.push(Shot {
+                source,
+                from,
+                target,
+                unit_type,
+                action,
+                amount,
+                kind: weapon.kind,
+                roll,
+            }),
+            None => queue.push_damage(Damage {
+                source: Some(source),
                 target,
                 amount,
-                kind,
-            } => {
-                let damage = damage(target, amount, kind, DamageCause::Effect);
-                world.resource_mut::<DamageQueue>().push(damage);
-            }
-            CombatEffect::Heal { unit, amount } => Combat::heal(world, unit, amount),
-            CombatEffect::Restore { unit, pool, amount } => {
-                Combat::restore(world, unit, pool, amount);
-            }
-            CombatEffect::AttackHit { target } => {
-                let index = world.resource::<EntityIndex>();
-                let Some(unit) = source.and_then(|source| index.get(source)) else {
-                    return;
-                };
-                let unit = world.entity(unit);
-                let book = world.resource::<ActionBook>();
-                let first = unit.get::<ActionSlots>().and_then(|slots| {
-                    let slot = slots.slot(book.weapon_for(slots, None)?)?;
-                    book.get(slot.action)?.weapon
-                });
-                let Some(weapon) = first else {
-                    return;
-                };
-                let stats = unit.get::<UnitStats>().map_or(&[][..], UnitStats::values);
-                let hit = damage(
-                    target,
-                    weapon.damage(stats),
-                    weapon.kind,
-                    DamageCause::ExtraAttack,
-                );
-                world.resource_mut::<DamageQueue>().push(hit);
-            }
+                kind: weapon.kind,
+                cause: DamageCause::Attack { roll },
+                ability: Some(action),
+                depth: 0,
+                hit: None,
+            }),
         }
-    }
-
-    /// Heals `unit`'s life pool by `amount` times one plus its `heal_scale` stat, when it exists
-    /// and its life is above zero.
-    pub(crate) fn heal(world: &mut World, unit: StableId, amount: Num) {
-        if let Some(entity) = Combat::living(world, unit) {
-            Combat::heal_living(world, entity, amount);
-        }
-    }
-
-    /// Heals `entity`, a living unit, as `heal` does.
-    fn heal_living(world: &mut World, entity: Entity, amount: Num) {
-        let bindings = *world.resource::<CombatBindings>();
-        let received = Num::ONE + Combat::stat(world, entity, bindings.heal_scale);
-        let amount = scaled(amount, received);
-        if amount > Num::ZERO {
-            let mut pools = world.get_mut::<Pools>(entity).expect("a living unit");
-            pools.add(bindings.life, amount);
-        }
-    }
-
-    /// Restores `amount` of `unit`'s `pool`, unscaled, when the unit exists, its life is above
-    /// zero, and it has the pool.
-    pub(crate) fn restore(world: &mut World, unit: StableId, pool: PoolId, amount: Num) {
-        let Some(entity) = Combat::living(world, unit) else {
-            return;
+        let payer = Payer {
+            pools: pools.map(Mut::into_inner),
+            resources: resources.as_deref_mut(),
+            owner,
         };
-        if amount > Num::ZERO {
-            let mut pools = world.get_mut::<Pools>(entity).expect("a living unit");
-            pools.add(pool, amount);
-        }
-    }
-
-    /// `entity`'s value of the stat at `stat` among the stats; 0 when `[combat]` binds none, or
-    /// the unit has no stats.
-    fn stat(world: &World, entity: Entity, stat: Option<u16>) -> Num {
-        let values = world.get::<UnitStats>(entity);
-        stat.zip(values)
-            .map_or(Num::ZERO, |(at, values)| values.values()[usize::from(at)])
+        payer.pay(&values.cost, resource_cost);
     }
 }
 
-/// `amount` times `ratio`, rounded once, at the end of the range of numbers when past it.
-fn scaled(amount: Num, ratio: Num) -> Num {
-    amount.checked_mul(ratio).unwrap_or_else(|| {
-        if (amount < Num::ZERO) == (ratio < Num::ZERO) {
-            Num::MAX
-        } else {
-            Num::MIN
-        }
-    })
-}
-
-/// A unit at zero life dies, and the Mode stage learns of it; one no strike took there died
-/// with no killer.
+/// A unit at zero life dies: its attack target, and the action it ordered or has under way, end,
+/// so nothing it began goes on after a respawn, and the Mode stage learns of it; one no strike
+/// took there died with no killer.
 fn die(
     mut commands: Commands<'_, '_>,
-    bindings: Res<'_, CombatBindings>,
+    life: Res<'_, LifePool>,
     mut deaths: ResMut<'_, Deaths>,
     mut units: Query<
         '_,
@@ -752,11 +593,12 @@ fn die(
     >,
 ) {
     for (entity, &id, pools, slots, team, owner) in &mut units {
-        if pools.above_zero(bindings.life) {
+        if pools.above_zero(life.0) {
             continue;
         }
         if let Some(mut slots) = slots {
             slots.set_attack_target(None);
+            slots.stop();
         }
         commands.entity(entity).insert(Dead);
         if !deaths.contains(id) {
@@ -765,10 +607,11 @@ fn die(
     }
 }
 
-/// Despawns the dead whose unit type despawns, at the end of the tick they died in.
+/// Despawns the dead whose unit type despawns, at the end of the tick they died in, or of the tick
+/// a later stage stopped keeping them.
 fn despawn_dead(
     mut commands: Commands<'_, '_>,
-    dead: Query<'_, '_, (Entity, &OnDeath), With<Dead>>,
+    dead: Query<'_, '_, (Entity, &OnDeath), (With<Dead>, Without<Kept>)>,
 ) {
     for (entity, &on_death) in &dead {
         if on_death == OnDeath::Despawn {
@@ -804,7 +647,7 @@ fn respawn(
         pools.fill();
         *position = spawn.get();
         if let Some(mut attackers) = attackers {
-            *attackers = RecentAttackers::default();
+            attackers.clear();
         }
         commands.entity(entity).remove::<(Dead, Respawn)>();
     }
@@ -812,20 +655,37 @@ fn respawn(
 
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
+
     use bevy_ecs::bundle::Bundle;
     use bevy_ecs::world::World;
-    use campfire_math::Num;
-    use campfire_sim::Ticks;
+    use campfire_math::{Num, Ticks};
+    use campfire_sim::TickRate;
 
-    use crate::actions::action_book::ActionBook;
+    #[cfg(test)]
+    use crate::combat::on_death::OnDeath;
+    #[cfg(test)]
+    use crate::combat::recent_attackers::RecentAttackers;
+    #[cfg(test)]
+    use crate::stats::pools::Pools;
+    #[cfg(test)]
+    use crate::units::team::Team;
+
     use crate::actions::action_book::internals::{self, TestWeapon};
     use crate::actions::action_slots::ActionSlots;
+    use crate::actions::range::Range;
     use crate::actions::slot_kind::SlotKind;
-    use crate::stats::pool_cost::PoolCost;
+    #[cfg(test)]
+    use crate::combat::combat_bindings::CombatBindings;
+    #[cfg(test)]
+    use crate::stats::life_pool::LifePool;
+
+    #[cfg(test)]
+    use crate::stats::pool_id::PoolId;
+    use crate::stats::stat_book::StatBook;
     use crate::stats::unit_stats::UnitStats;
     use crate::units::filter::Filter;
     use crate::units::unit_type::UnitType;
-    use crate::units::unit_types::UnitTypes;
+    use crate::values::relation::Relation;
 
     /// A test unit's weapon: it aims at enemies within `range`, winds up `windup`, may attack
     /// again `period` after an attack's start, deals `damage`, and fires a projectile of the
@@ -858,7 +718,7 @@ pub(crate) mod internals {
 
     impl Arms {
         /// A melee weapon of `range`, `windup` ticks, `period` ticks and `damage`.
-        pub fn melee(range: Num, windup: u64, period: u64, damage: Num) -> Arms {
+        pub const fn melee(range: Num, windup: u64, period: u64, damage: Num) -> Arms {
             Arms {
                 range,
                 windup: Ticks::new(windup),
@@ -878,49 +738,49 @@ pub(crate) mod internals {
         }
 
         /// The weapon added to the book of `world`, in a unit's one slot, and the stats it reads:
-        /// the rate that makes its period at `hz` ticks a second, then its damage.
-        pub fn parts(self, world: &mut World, hz: u32) -> ArmsParts {
+        /// the rate that makes its period at the match's rate, then its damage, then 0 for every
+        /// other stat of the match's stat book.
+        pub fn parts(self, world: &mut World) -> ArmsParts {
+            let hz = world.resource::<TickRate>().hz().get();
             let weapon = TestWeapon {
-                aim: Filter::parse("enemies", &UnitTypes::default()).unwrap(),
-                range: self.range,
-                windup: self.windup,
                 projectile: self.projectile,
-                rate: 0,
-                damage: 1,
-                cost: PoolCost::default(),
-                resource_cost: None,
+                ..TestWeapon::new(
+                    Filter::of_relation(Relation::Enemies),
+                    Range::Meters(self.range),
+                    self.windup,
+                )
             };
-            let id = internals::weapon(&mut world.resource_mut::<ActionBook>(), weapon);
-            // The rate whose attacks are `period` ticks apart at `hz`, rounded up so the period
+            let id = internals::weapon(world, weapon);
+            // The rate whose attacks are `period` ticks apart, rounded up so the period
             // rounds back to `period`.
             let bits = (u128::from(hz) << (2 * Num::FRAC_BITS))
                 .div_ceil(u128::from(self.period.get()) << Num::FRAC_BITS);
             let rate = Num::from_bits(i64::try_from(bits).unwrap());
+            // One value for each stat of the match's book, as a refresh gives a unit, the rest 0.
+            let count = world
+                .get_resource::<StatBook>()
+                .map_or(2, |book| usize::from(book.len()));
             let mut stats = UnitStats::default();
-            stats.refill().extend([rate, self.damage]);
+            let values = stats.refill();
+            values.extend([rate, self.damage]);
+            values.resize(count.max(2), Num::ZERO);
             ArmsParts {
                 slots: ActionSlots::new([(id, SlotKind::new(0), 1)]),
                 stats,
             }
         }
     }
-}
 
-#[cfg(test)]
-pub(crate) mod armed {
-    use bevy_ecs::bundle::Bundle;
-    use bevy_ecs::world::World;
-    use campfire_math::Num;
-
-    use crate::combat::internals::{Arms, ArmsParts};
-    use crate::combat::on_death::OnDeath;
-    use crate::combat::recent_attackers::RecentAttackers;
-    use crate::stats::pools::Pools;
-    use crate::units::team::Team;
-    use crate::units::unit_type::UnitType;
+    /// Binds `life` as the life pool, with no stat bound, as a test world with no mode needs.
+    #[cfg(test)]
+    pub(crate) fn bind_life(world: &mut World, life: PoolId) {
+        world.insert_resource(LifePool(life));
+        world.insert_resource(CombatBindings::UNBOUND);
+    }
 
     /// A test unit's combat values: the life pool it starts with, whether it stays when it dies,
     /// and its one weapon, if it has one.
+    #[cfg(test)]
     #[derive(Debug, Clone, Copy, PartialEq, Eq)]
     pub(crate) struct Armed {
         pub(crate) life: Num,
@@ -928,6 +788,7 @@ pub(crate) mod armed {
         pub(crate) arms: Option<Arms>,
     }
 
+    #[cfg(test)]
     impl Armed {
         /// A unit of `life` that despawns when it dies, with a melee weapon of `range`, `windup`
         /// ticks, `period` ticks and `damage`.
@@ -967,11 +828,11 @@ pub(crate) mod armed {
 
         /// The components of a new unit of this type on `team` in `world`, whose book takes its
         /// weapon: its team and its life pool, which the spawn and its kit give; its death and
-        /// its attackers, which its `combat` gives; and its weapon's parts at `hz` ticks a second.
-        pub(crate) fn bundle(self, world: &mut World, team: Team, hz: u32) -> impl Bundle + use<> {
+        /// its attackers, which its `combat` gives; and its weapon's parts.
+        pub(crate) fn bundle(self, world: &mut World, team: Team) -> impl Bundle + use<> {
             let parts = self
                 .arms
-                .map_or_else(ArmsParts::unarmed, |arms| arms.parts(world, hz));
+                .map_or_else(ArmsParts::unarmed, |arms| arms.parts(world));
             (
                 team,
                 Pools::life(self.life),

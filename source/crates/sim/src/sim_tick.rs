@@ -1,8 +1,9 @@
 use bevy_ecs::resource::Resource;
+use bevy_ecs::world::World;
+use campfire_math::{Tick, Ticks};
 use serde::{Deserialize, Serialize};
 
 use crate::sim_state::SimResource;
-use crate::tick::{Tick, Ticks};
 
 /// The number of the tick that runs now, and between ticks the number of the next one. A match
 /// starts at tick 0. It is state: the tick keys every random draw.
@@ -35,6 +36,11 @@ impl SimTick {
 
 impl SimResource for SimTick {
     const NAME: &'static str = "sim.tick";
+
+    // Every tick is one the match may reach.
+    fn check(&self, _: &World) -> bool {
+        true
+    }
 }
 
 #[cfg(test)]

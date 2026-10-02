@@ -1,9 +1,10 @@
+use campfire_script::ScriptId;
 use campfire_script::rhai::Dynamic;
-use campfire_script::{ScriptHost, ScriptId};
 
-use crate::mode::mode_data::{InputType, ModeData, ModeParam};
+use crate::mode::mode_data::{InputType, ModeData};
 use crate::scripts::hook::Hook;
 use crate::scripts::hook_set::HookSet;
+use crate::scripts::script_book::ScriptBook;
 use crate::scripts::state_decl::StateType;
 use crate::scripts::state_value::StateValue;
 use crate::values::name_table::NameTable;
@@ -18,12 +19,10 @@ pub(crate) struct ModeSchema {
     pub(crate) script: ScriptId,
     /// Which of the mode's hooks the engine calls its script defines.
     pub(crate) hooks: HookSet,
-    /// One run each.
-    params: NameTable<ModeParam>,
+    /// One run each; each param as `ctx.p` reads it, converted once.
+    params: NameTable<Dynamic>,
     state: NameTable<StateType>,
     inputs: NameTable<InputType>,
-    /// Each state field's first value, in the order of their names.
-    pub(crate) state_initial: Vec<StateValue>,
 }
 
 /// A field of the mode's state: its place in `ModeState`, and its type.
@@ -34,40 +33,34 @@ pub(crate) struct StateField {
 }
 
 impl ModeSchema {
-    /// The schema of `data`, whose script `host` compiled as `script`.
-    pub(crate) fn new(script: ScriptId, host: &ScriptHost, data: &ModeData) -> ModeSchema {
-        let defines = |hook: Hook| host.defines(script, hook.name(), hook.params());
+    /// The schema of `data`, whose script is `script`, which defines the hooks `scripts` gives.
+    pub(crate) fn new(script: ScriptId, scripts: &ScriptBook, data: &ModeData) -> ModeSchema {
         let mut schema = ModeSchema {
             script,
-            hooks: HookSet::of(
-                [
+            hooks: scripts.defines(
+                Some(script),
+                &[
                     Hook::OnMatchStart,
                     Hook::OnModeInput,
                     Hook::OnTimer,
                     Hook::OnUnitDied,
                     Hook::CalcDamage,
+                    Hook::CalcHeal,
                     Hook::OnLevelUp,
-                ]
-                .into_iter()
-                .filter(|&hook| defines(hook)),
+                ],
             ),
             params: NameTable::default(),
             state: NameTable::default(),
             inputs: NameTable::default(),
-            state_initial: data
-                .state
-                .values()
-                .map(|decl| decl.initial.clone())
-                .collect(),
         };
         let params = data.params.iter();
         schema
             .params
-            .push(params.map(|(name, param)| (name.as_str(), param.clone())));
+            .push(params.map(|(name, param)| (name.as_str(), param.to_dynamic())));
         let state = data.state.iter();
         schema
             .state
-            .push(state.map(|(name, decl)| (name.as_str(), decl.kind)));
+            .push(state.map(|(name, field)| (name.as_str(), field.decl.kind)));
         let inputs = data.inputs.iter();
         schema
             .inputs
@@ -76,20 +69,30 @@ impl ModeSchema {
     }
 
     /// The param `name`, as `ctx.p` reads it.
-    pub(crate) fn param(&self, name: &str) -> Option<Dynamic> {
-        Some(self.params.get(RUN, name)?.to_dynamic())
+    pub(crate) fn param_named(&self, name: &str) -> Option<Dynamic> {
+        self.params.get_named(RUN, name).cloned()
     }
 
     /// The state field `name`.
-    pub(crate) fn state_field(&self, name: &str) -> Option<StateField> {
-        let index = self.state.find(RUN, name)?;
+    pub(crate) fn state_field_named(&self, name: &str) -> Option<StateField> {
+        let index = self.state.named(RUN, name)?;
         Some(StateField {
             index,
             kind: self.state.values(RUN)[index],
         })
     }
 
-    pub(crate) fn input_type(&self, name: &str) -> Option<InputType> {
-        self.inputs.get(RUN, name).copied()
+    /// Whether `values` hold a value of each state field's type, in the order of their names.
+    pub(crate) fn fits_state(&self, values: &[StateValue]) -> bool {
+        let kinds = self.state.values(RUN);
+        values.len() == kinds.len()
+            && values
+                .iter()
+                .zip(kinds)
+                .all(|(value, &kind)| value.kind() == kind)
+    }
+
+    pub(crate) fn input_type_named(&self, name: &str) -> Option<InputType> {
+        self.inputs.get_named(RUN, name).copied()
     }
 }

@@ -1,4 +1,5 @@
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
 use campfire_math::{Num, Vec3};
 use serde::{Deserialize, Serialize};
@@ -10,6 +11,10 @@ struct Health(Num);
 
 impl SimComponent for Health {
     const NAME: &'static str = "test.health";
+
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }
 
 #[derive(Component, Debug, Clone, Copy, Serialize, Deserialize)]
@@ -17,6 +22,11 @@ struct Position(Vec3);
 
 impl SimComponent for Position {
     const NAME: &'static str = "test.position";
+
+    /// The tests' rule, which reads another type: a unit that stands somewhere has health.
+    fn check(&self, world: &World, entity: Entity) -> bool {
+        world.get::<Health>(entity).is_some()
+    }
 }
 
 /// Stands for a component the network layer adds, which is not state.
@@ -163,9 +173,9 @@ fn build_order_does_not_matter() {
     let mut bytes = [0; 32];
     bytes[0] = 0x0a;
     bytes[31] = 0xff;
-    let written = StateHash(bytes).to_string();
+    let written = StateHash(Bytes32::new(bytes)).to_string();
     assert_eq!(written, format!("0a{}ff", "00".repeat(30)));
-    assert_eq!(written.parse(), Ok(StateHash(bytes)));
+    assert_eq!(written.parse(), Ok(StateHash(Bytes32::new(bytes))));
     assert_eq!(written.to_uppercase().parse::<StateHash>(), Err(NotHex));
 }
 
@@ -214,6 +224,17 @@ fn allocator_and_entity_list_are_hashed() {
 }
 
 #[test]
+fn a_digest_is_blake3_over_its_domain_and_its_bytes() {
+    let mut hasher = Hasher::new();
+    hasher.update(b"campfire/digest/v1").update(b"abc");
+    assert_eq!(
+        StateHash::of(b"abc").as_bytes(),
+        hasher.finalize().as_bytes()
+    );
+    assert_ne!(StateHash::of(b""), registry().hash(&varied_world()));
+}
+
+#[test]
 fn snapshot_restores_the_same_state() {
     let mut original = varied_world();
     let bytes = snapshot(&original);
@@ -233,13 +254,21 @@ fn every_truncation_is_refused() {
 }
 
 #[test]
-fn corruption_never_panics() {
+fn corruption_never_panics_and_what_restores_snapshots_to_the_same_bytes() {
     let bytes = snapshot(&varied_world());
     for at in 0..bytes.len() {
         for flip in [0x01, 0x80, 0xFF] {
             let mut corrupt = bytes.clone();
             corrupt[at] ^= flip;
-            let _outcome = restore(&corrupt);
+            // A flip that restores must be a state of its own: no two byte strings restore to one
+            // state.
+            if let Ok(world) = restore(&corrupt) {
+                assert_eq!(
+                    snapshot(&world),
+                    corrupt,
+                    "byte {at} flipped by {flip:#04x}"
+                );
+            }
         }
     }
 }
@@ -288,6 +317,15 @@ fn flawed_snapshots_are_refused() {
             SnapshotError::UnknownEntity,
         ),
         (
+            with([
+                encoded(&[0_u64]),
+                allocator(1),
+                Vec::new(),
+                encoded(&[(0_u64, position(1))]),
+            ]),
+            SnapshotError::Invalid("test.position"),
+        ),
+        (
             with([encoded(&[0_u64, 1]), allocator(1), Vec::new(), Vec::new()]),
             SnapshotError::AllocatorBehind,
         ),
@@ -332,11 +370,30 @@ fn flawed_snapshots_are_refused() {
     }
 }
 
+#[test]
+fn a_resource_the_snapshot_lacks_is_removed() {
+    // A world without `Extra` snapshots it as absent; a world that holds one loses it on restore,
+    // so its hash is the snapshot's.
+    let mut with_extra = registry();
+    Extra::register(&mut with_extra);
+    let mut bytes = Vec::new();
+    with_extra.snapshot(&plain_world(), &mut bytes);
+    let mut world = World::new();
+    world.insert_resource(Extra);
+    with_extra.restore(&bytes, &mut world).unwrap();
+    assert!(world.get_resource::<Extra>().is_none());
+    assert_eq!(with_extra.hash(&world), with_extra.hash(&plain_world()));
+}
+
 #[derive(Resource, Debug, Serialize, Deserialize)]
 struct Extra;
 
 impl SimResource for Extra {
     const NAME: &'static str = "test.extra";
+
+    fn check(&self, _: &World) -> bool {
+        true
+    }
 }
 
 #[derive(Resource, Debug, Serialize, Deserialize)]
@@ -344,6 +401,10 @@ struct Last;
 
 impl SimResource for Last {
     const NAME: &'static str = "zz.last";
+
+    fn check(&self, _: &World) -> bool {
+        true
+    }
 }
 
 trait Register {

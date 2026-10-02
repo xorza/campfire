@@ -1,4 +1,6 @@
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
@@ -22,4 +24,9 @@ impl SeenBy {
 
 impl SimComponent for SeenBy {
     const NAME: &'static str = "vision.seen_by";
+
+    // A set of teams, which a reader only asks about the teams it has.
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }

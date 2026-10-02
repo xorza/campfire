@@ -12,7 +12,7 @@ fn terms() -> DelegationTerms {
     let session = secp256k1::SecretKey::from_byte_array(&[21; 32]).unwrap();
     DelegationTerms {
         session_key: session.x_only_public_key(&secp).0,
-        server_key: [41; 32],
+        server_key: XOnlyPublicKey::from_byte_array(&[41; 32]).unwrap(),
         session_id: SessionId::new([31; 32]),
         seed_contribution: [51; 32],
         expiration: 1_700_086_400,
@@ -49,7 +49,7 @@ fn tags(change: impl FnOnce(&mut Vec<Vec<String>>)) -> Vec<Tag> {
     let mut tags = vec![
         vec![
             DelegationTag::SessionKey.name().to_owned(),
-            hex::encode(&terms().session_key.serialize()),
+            Bytes32::new(terms().session_key.serialize()).to_string(),
         ],
         vec![DelegationTag::ServerKey.name().to_owned(), "29".repeat(32)],
         vec![DelegationTag::SessionId.name().to_owned(), "1f".repeat(32)],
@@ -145,10 +145,14 @@ fn a_flawed_delegation_is_refused() {
             event(KIND, tags(|tags| tags[4][1] = "soon".to_owned())),
             DelegationError::MalformedTag(DelegationTag::Expiration),
         ),
-        // 0x00…00 is not the x coordinate of a curve point.
+        // 0x00…00 and 0x03…03 are not the x coordinate of a curve point.
         (
             event(KIND, tags(|tags| tags[0][1] = "00".repeat(32))),
             DelegationError::MalformedTag(DelegationTag::SessionKey),
+        ),
+        (
+            event(KIND, tags(|tags| tags[1][1] = "03".repeat(32))),
+            DelegationError::MalformedTag(DelegationTag::ServerKey),
         ),
         (
             event(KIND, tags(|tags| tags[1][1] = "29".repeat(31))),

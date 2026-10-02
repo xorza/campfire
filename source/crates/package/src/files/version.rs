@@ -13,7 +13,9 @@ pub struct Version {
 }
 
 impl Version {
-    /// `text` as a version; `None` unless it is three decimal numbers joined by dots.
+    /// `text` as a version; `None` unless it is three decimal numbers joined by dots, with no
+    /// leading zero but a lone one, as Semantic Versioning has it, so each version has one
+    /// spelling.
     pub const fn parse(text: &str) -> Option<Version> {
         let bytes = text.as_bytes();
         let mut parts = [0_u32; 3];
@@ -27,6 +29,9 @@ impl Version {
                     digits = 0;
                 }
                 byte @ b'0'..=b'9' => {
+                    if digits == 1 && parts[part] == 0 {
+                        return None;
+                    }
                     let Some(shifted) = parts[part].checked_mul(10) else {
                         return None;
                     };
@@ -80,6 +85,7 @@ mod tests {
         };
         assert_eq!(Version::parse("0.1.0"), version(0, 1, 0));
         assert_eq!(Version::parse("12.340.5"), version(12, 340, 5));
+        assert_eq!(Version::parse("10.0.100"), version(10, 0, 100));
         assert_eq!(Version::parse("4294967295.0.0"), version(u32::MAX, 0, 0));
         for text in [
             "",
@@ -92,6 +98,9 @@ mod tests {
             "1.2.x",
             "4294967296.0.0",
             "-1.0.0",
+            "01.0.0",
+            "1.00.0",
+            "1.0.007",
         ] {
             assert_eq!(Version::parse(text), None, "{text:?}");
         }

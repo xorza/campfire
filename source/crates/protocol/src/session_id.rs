@@ -1,27 +1,27 @@
 use std::fmt;
 use std::str::FromStr;
 
-use campfire_math::{NotHex, hex};
+use campfire_math::{Bytes32, NotHex};
 
 /// A session's id: the hash of its terms, see `SessionTerms::session_id`. Delegations and
 /// chain-head signatures name it, so neither counts in another session, and both sign the terms.
 /// It writes, and reads back, as 64 lowercase hex digits.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct SessionId([u8; 32]);
+pub struct SessionId(Bytes32);
 
 impl SessionId {
     pub const fn new(bytes: [u8; 32]) -> SessionId {
-        SessionId(bytes)
+        SessionId(Bytes32::new(bytes))
     }
 
     pub const fn as_bytes(&self) -> &[u8; 32] {
-        &self.0
+        self.0.as_bytes()
     }
 }
 
 impl fmt::Display for SessionId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&hex::encode(&self.0))
+        self.0.fmt(f)
     }
 }
 
@@ -29,7 +29,7 @@ impl FromStr for SessionId {
     type Err = NotHex;
 
     fn from_str(text: &str) -> Result<SessionId, NotHex> {
-        hex::decode(text).map(SessionId)
+        text.parse().map(SessionId)
     }
 }
 

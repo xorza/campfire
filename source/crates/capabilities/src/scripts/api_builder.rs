@@ -1,9 +1,11 @@
 use campfire_script::rhai::{Engine, RhaiNativeFunc, Variant};
 
+use crate::scripts::api_version::ApiVersion;
 use crate::scripts::hook::Hook;
-use crate::scripts::script_api::{
-    DataTable, HookStatus, MemberKind, MemberSpec, ScriptApi, Status,
-};
+use crate::scripts::script_api::data_table::DataTable;
+use crate::scripts::script_api::member_spec::MemberSpec;
+use crate::scripts::script_api::status::Status;
+use crate::scripts::script_api::{HookStatus, MemberKind, ScriptApi};
 use crate::units::tag_effect::TagEffect;
 
 /// Rhai's names for a property's getter and setter, and a type's indexer, which its
@@ -50,7 +52,8 @@ impl<'a> ApiBuilder<'a> {
             MemberKind::Call | MemberKind::Method | MemberKind::Operator => spec.name.to_owned(),
         };
         self.engine.register_fn(name, f);
-        self.api.record(spec, false, Status::Runs);
+        self.api
+            .record(spec, false, Status::Runs(ApiVersion::FIRST));
         self
     }
 
@@ -62,7 +65,7 @@ impl<'a> ApiBuilder<'a> {
     ) -> &mut Self {
         debug_assert_eq!(spec.kind, MemberKind::Field, "only a field is written");
         self.engine.register_fn(format!("{SETTER}{}", spec.name), f);
-        self.api.record(spec, true, Status::Runs);
+        self.api.record(spec, true, Status::Runs(ApiVersion::FIRST));
         self
     }
 
@@ -72,19 +75,9 @@ impl<'a> ApiBuilder<'a> {
         self
     }
 
-    /// Records whether the release calls `hook`, as the code that calls it says, with its
-    /// parameters' names in `signature`.
-    pub(crate) fn hook(
-        &mut self,
-        hook: Hook,
-        signature: &'static str,
-        status: Status,
-    ) -> &mut Self {
-        self.api.record_hook(HookStatus {
-            hook,
-            signature,
-            status,
-        });
+    /// Records whether the release calls `hook`, as the code that calls it says.
+    pub(crate) fn hook(&mut self, hook: Hook, status: Status) -> &mut Self {
+        self.api.record_hook(HookStatus { hook, status });
         self
     }
 
@@ -102,6 +95,17 @@ impl<'a> ApiBuilder<'a> {
         planned: &[&'static str],
     ) -> &mut Self {
         self.api.record_data(table, runs, planned);
+        self
+    }
+
+    /// Records `fields` of an action's data, each by its name with its status.
+    pub(crate) fn action_fields(
+        &mut self,
+        fields: impl IntoIterator<Item = (&'static str, Status)>,
+    ) -> &mut Self {
+        for (name, status) in fields {
+            self.api.record_field(DataTable::Action, name, status);
+        }
         self
     }
 

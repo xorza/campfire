@@ -1,4 +1,6 @@
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
@@ -71,4 +73,9 @@ impl PathWalker {
 
 impl SimComponent for PathWalker {
     const NAME: &'static str = "navigation.path_walker";
+
+    // Its path's waypoints are read with a check, and one past the last ends the walk.
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }

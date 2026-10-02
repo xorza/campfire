@@ -2,34 +2,32 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
-use campfire_math::{Num, Vec3};
-use campfire_sim::{Position, SimSet, SimTick, StableId, StateRegistry, TickRate, Ticks};
+use campfire_math::{Num, Tick, Ticks};
+use campfire_sim::{Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry};
 
-use crate::actions::action_book::ActionBook;
-use crate::actions::action_slots::ActionTarget;
+use crate::actions::action_target::ActionTarget;
 use crate::areas::area::Area;
-use crate::areas::area_data::AreaData;
+
+use crate::actions::targets::Targets;
 use crate::areas::area_effect::AreaEffect;
 use crate::areas::area_launches::{AreaLaunch, AreaLaunches};
 use crate::areas::area_spec::{AreaSpec, Inside};
 use crate::combat::CombatSet;
-use crate::combat::targets::Targets;
-use crate::deliveries::delivered::Delivered;
+use crate::deliveries::delivered::{Delivered, Reach};
 use crate::deliveries::delivering::Delivering;
 use crate::deliveries::delivery_spawner::DeliverySpawner;
-use crate::deliveries::hit::Hit;
 use crate::deliveries::{Deliveries, DeliverySet};
-use crate::scripts::hook::Hook;
+use crate::scripts::frame::Frame;
+use crate::stats::StatsSet;
 use crate::stats::held_modifiers::{Held, HeldModifiers};
-use crate::stats::{Stats, StatsSet};
+use crate::units::body_grid::BodyGrid;
 use crate::units::by_type::ByType;
-use crate::units::filter::Filter;
-use crate::units::script_view::View;
 use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
-use crate::units::unit_type_data::UnitTypeData;
 use crate::values::attitude::Attitude;
 use crate::values::bounds::Bounds;
+
+use crate::values::hit::Hit;
 
 pub(crate) mod area;
 pub(crate) mod area_data;
@@ -65,72 +63,44 @@ impl Areas {
         registry.register_component::<Area>();
     }
 
-    /// Makes `unit_type` of `package` an area type of `data`, tagged `area`, its times in ticks
-    /// at the match's rate, rounded up, which the package load checked: the match declares the
-    /// tag, its `affects` filter names tags of the match's, and its `inside` modifiers of the
-    /// package.
-    pub fn load_type(world: &mut World, unit_type: UnitType, package: u16, data: &AreaData) {
-        let rate = *world.resource::<TickRate>();
-        let view = world.non_send::<View>().clone();
-        let affects = {
-            let mut types = view.types_mut();
-            let tag = types
-                .declare(UnitTypeData::AREA_TAG)
-                .expect("the match declared every tag its packages name");
-            types.give_tag(unit_type, tag);
-            match &data.affects {
-                Some(filter) => Filter::resolve(filter, &types),
-                None => Filter::parse("enemies", &types),
-            }
-        };
-        let modifier = |name: &Option<String>| {
-            name.as_ref().map(|name| {
-                Stats::modifier(world, package, name).expect("the load checked an area's modifiers")
-            })
-        };
-        let ticks = |ms| rate.ticks(ms).expect("an area's time in ticks fits");
-        let spec = AreaSpec {
-            radius: data.radius,
-            delay: ticks(data.delay_ms),
-            duration: ticks(data.duration_ms),
-            affects: affects.expect("the load checked the filter's tags"),
-            inside: Inside {
-                caster: modifier(&data.inside.caster),
-                allies: modifier(&data.inside.allies),
-                enemies: modifier(&data.inside.enemies),
-            },
-        };
-        world
-            .resource_mut::<ByType<AreaSpec>>()
-            .set(unit_type, spec);
+    /// Applies the next area the call in `frame` queued.
+    pub(crate) fn apply_next(world: &mut World, frame: &mut Frame, _: Tick) {
+        Areas::apply(world, frame.effects.take::<AreaEffect>());
     }
 
     /// Applies `effect`: an area that lands this tick, at the point of the map's bounds nearest
     /// where it says.
     pub(crate) fn apply(world: &mut World, effect: AreaEffect) {
         let at = Bounds::of(world).clamp(effect.at);
-        Areas::push(world, effect.by, at, None);
+        Areas::push(world, effect.by, effect.unit_type, at, None);
     }
 
-    /// Lands the area of `by`, which aimed at `target` from `from`: on the point it aimed at,
-    /// where the unit it aimed at stands, or at `from` for an action that aims at nothing;
-    /// nothing for a unit that is gone.
-    pub(crate) fn deliver(world: &mut World, by: Delivering, from: Position, target: ActionTarget) {
+    /// Lands the area of `unit_type` of `by`, which aimed at `target` from `from`: on the point it
+    /// aimed at, where the unit it aimed at stands, or at `from` for an action that aims at
+    /// nothing; nothing for a unit that is gone.
+    pub(crate) fn deliver(
+        world: &mut World,
+        by: Delivering,
+        from: Position,
+        unit_type: UnitType,
+        target: ActionTarget,
+    ) {
         let at = match target.point(world) {
             Some(at) => at,
             None if target == ActionTarget::None => from,
             None => return,
         };
-        Areas::push(world, by, at, target.unit());
+        Areas::push(world, by, unit_type, at, target.unit());
     }
 
-    /// Queues an area of `by` to land at `at`, aimed at `aimed`.
-    fn push(world: &mut World, by: Delivering, at: Position, aimed: Option<StableId>) {
-        let unit_type = world
-            .resource::<ActionBook>()
-            .get(by.action)
-            .and_then(|action| action.spawns)
-            .expect("a delivery binds its area type");
+    /// Queues an area of `unit_type` of `by` to land at `at`, aimed at `aimed`.
+    fn push(
+        world: &mut World,
+        by: Delivering,
+        unit_type: UnitType,
+        at: Position,
+        aimed: Option<StableId>,
+    ) {
         world.resource_mut::<AreaLaunches>().0.push(AreaLaunch {
             by,
             at,
@@ -150,13 +120,21 @@ fn trigger(
     (specs, tick): (Res<'_, ByType<AreaSpec>>, Res<'_, SimTick>),
     mut deliveries: ResMut<'_, Deliveries>,
     mut areas: Query<'_, '_, (Entity, &StableId, &Position, &Team, &UnitType, &mut Area)>,
-    (mut order, mut reached): (Local<'_, Vec<(StableId, Entity)>>, Local<'_, Vec<StableId>>),
+    (mut order, mut reached, mut grid): (
+        Local<'_, Ordered>,
+        Local<'_, Vec<StableId>>,
+        Local<'_, BodyGrid<()>>,
+    ),
 ) {
     let now = tick.start();
-    order.clear();
-    order.extend(areas.iter().map(|(entity, &id, ..)| (id, entity)));
-    order.sort_unstable();
-    for &(id, entity) in &*order {
+    let triggers = areas
+        .iter()
+        .any(|(.., area)| area.triggers_at().is_some_and(|at| at <= now));
+    if triggers {
+        grid.rebuild(targets.placed());
+    }
+    let placed = areas.iter().map(|(entity, &id, ..)| Keyed { id, entity });
+    for &Keyed { id, entity } in order.sort(placed) {
         let (_, _, &pos, &team, &unit_type, mut area) =
             areas.get_mut(entity).expect("an area in the order");
         let hit = Hit {
@@ -164,39 +142,31 @@ fn trigger(
             target: area.aimed(),
             pos,
             distance: Num::ZERO,
-            direction: Vec3::ZERO,
+            direction: None,
         };
         let by = area.by();
-        let delivered = |hook, reached| Delivered {
-            source: by.source,
-            action: by.action,
-            rank: by.rank,
-            hook,
-            reached,
-            hit,
-        };
+        let delivered = |reach| Delivered { by, reach, hit };
         if area.triggers_at().is_some_and(|at| at <= now) {
             let spec = specs.get(unit_type).expect("an area's type has a spec");
             reached.clear();
-            reached.extend(
-                targets
-                    .bodies()
-                    .filter(|unit| {
-                        let attitude = targets.attitude(team, unit.team);
-                        spec.affects.selects(attitude, unit.tags)
-                            && targets.reaches(pos, Num::ZERO, spec.radius, unit)
-                    })
-                    .map(|unit| unit.id),
-            );
+            grid.visit_near(pos, spec.radius, |body| {
+                let Some(unit) = targets.body_of(body.id) else {
+                    return;
+                };
+                let attitude = targets.attitude(team, unit.team);
+                if spec.affects.selects(attitude, unit.tags)
+                    && targets.reaches(pos, Num::ZERO, spec.radius, &unit)
+                {
+                    reached.push(unit.id);
+                }
+            });
             reached.sort_unstable();
-            let hits = reached
-                .iter()
-                .map(|&unit| delivered(Hook::OnHit, Some(unit)));
+            let hits = reached.iter().map(|&unit| delivered(Reach::Hit(unit)));
             deliveries.delivered.extend(hits);
             area.trigger();
         }
         if area.triggers_at().is_none() && area.ends_at() <= now {
-            deliveries.delivered.push(delivered(Hook::OnEnd, None));
+            deliveries.delivered.push(delivered(Reach::End));
             deliveries.ended.push(entity);
         }
     }
@@ -241,17 +211,28 @@ fn hold_inside(
     specs: Res<'_, ByType<AreaSpec>>,
     mut held: ResMut<'_, HeldModifiers>,
     areas: Query<'_, '_, (&Position, &Team, &UnitType, &Area)>,
+    mut grid: Local<'_, BodyGrid<()>>,
 ) {
-    held.0.clear();
-    for (&pos, &team, &unit_type, area) in &areas {
+    let holding = |unit_type| {
         let spec = specs.get(unit_type).expect("an area's type has a spec");
-        if spec.inside == Inside::default() {
+        (spec.inside != Inside::default()).then_some(spec)
+    };
+    if !areas
+        .iter()
+        .any(|(_, _, &unit_type, _)| holding(unit_type).is_some())
+    {
+        return;
+    }
+    grid.rebuild(targets.placed());
+    for (&pos, &team, &unit_type, area) in &areas {
+        let Some(spec) = holding(unit_type) else {
             continue;
-        }
-        for unit in targets.bodies() {
-            if !targets.reaches(pos, Num::ZERO, spec.radius, &unit) {
-                continue;
-            }
+        };
+        grid.visit_near(pos, spec.radius, |body| {
+            let reaches = |unit: &_| targets.reaches(pos, Num::ZERO, spec.radius, unit);
+            let Some(unit) = targets.body_of(body.id).filter(reaches) else {
+                return;
+            };
             let by = area.by();
             let modifier = match targets.attitude(team, unit.team) {
                 _ if unit.id == by.source => spec.inside.caster,
@@ -267,6 +248,48 @@ fn hold_inside(
                     rank: by.rank,
                 });
             }
+        });
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::areas::Areas;
+    use crate::areas::area_data::AreaData;
+    use crate::areas::area_spec::AreaSpec;
+    use crate::stats::Stats;
+    use crate::units::by_type::ByType;
+    use crate::units::engine_tag::EngineTag;
+    use crate::units::script_view::View;
+    use crate::units::unit_type::UnitType;
+    use crate::values::declared_name::DeclaredName;
+    use bevy_ecs::world::World;
+    use campfire_sim::TickRate;
+
+    impl Areas {
+        /// Makes `unit_type` of `package` an area type of `data`, tagged `area`, its times in ticks
+        /// at the match's rate, rounded up, which the package load checked: its `affects` filter
+        /// names tags of the match's, and its `inside` modifiers of the package.
+        pub(crate) fn load_type(
+            world: &mut World,
+            unit_type: UnitType,
+            package: u16,
+            data: &AreaData,
+        ) {
+            let rate = *world.resource::<TickRate>();
+            let view = world.non_send::<View>().clone();
+            let modifier = |name: &DeclaredName| {
+                Stats::modifier(world, package, name.as_str())
+                    .expect("the load checked an area's modifiers")
+            };
+            let spec = {
+                let mut types = view.types_mut();
+                types.give_tag(unit_type, EngineTag::Area.tag());
+                AreaSpec::of(data, &types, rate, modifier).expect("an area's time in ticks fits")
+            };
+            world
+                .resource_mut::<ByType<AreaSpec>>()
+                .set(unit_type, spec);
         }
     }
 }

@@ -1,3 +1,5 @@
+use std::fmt;
+
 use bevy::camera::Camera;
 use bevy::ecs::query::{Allow, With, Without};
 use bevy::ecs::system::{Query, Single, SystemParam};
@@ -43,7 +45,7 @@ pub(crate) struct Pointed {
 
 impl Pointer<'_, '_> {
     /// The player's own avatar, once the client holds it.
-    pub(crate) fn own_hero(&self) -> Option<Pointed> {
+    pub(crate) fn own_avatar(&self) -> Option<Pointed> {
         let (&id, &team) = self.own.single().ok()?;
         Some(Pointed { id, team })
     }
@@ -58,7 +60,7 @@ impl Pointer<'_, '_> {
 
     /// The living unit, other than the player's own avatar, drawn over `point` of the ground.
     pub(crate) fn unit_at(&self, point: Vec3) -> Option<Pointed> {
-        let own = self.own_hero().map(|own| own.id);
+        let own = self.own_avatar().map(|own| own.id);
         let drawn = self
             .units
             .iter()
@@ -85,6 +87,13 @@ fn nearest_over(
         .map(|(unit, _, _)| unit)
 }
 
+/// A system param holds borrows of the world, whose queries print nothing of use.
+impl fmt::Debug for Pointer<'_, '_> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str("Pointer")
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use campfire_sim::IdAllocator;
@@ -98,8 +107,8 @@ mod tests {
             id: ids.allocate(),
             team: Team::new(0),
         };
-        // An avatar of 0.5 m at the origin, a unit of 1 m at x = 1, a creep of 0.35 m at x = 0.25, a
-        // avatar at x = 4, and a unit of a higher id drawn where the first stands.
+        // An avatar of 0.5 m at the origin, a unit of 1 m at x = 1, a creep of 0.35 m at x = 0.25,
+        // an avatar at x = 4, and a unit of a higher id drawn where the first stands.
         let [avatar, wide, creep, far, twin] = [unit(), unit(), unit(), unit(), unit()];
         let circles = [
             (avatar, Vec2::new(0.0, 0.0), 0.5),

@@ -1,14 +1,13 @@
 use std::error::Error;
 use std::fmt;
 
+use crate::delegation::error::ScopeError;
+
 /// Why a server refuses a joining player's connect answer. The answer comes from the player, so
 /// each is an expected failure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConnectError {
-    /// The delegation names another server.
-    OtherServer,
-    /// The delegation names another session.
-    OtherSession,
+    Scope(ScopeError),
     /// The delegation expired by the server's clock.
     Expired,
     /// The delegation's session key did not sign this challenge with this server's certificate
@@ -18,15 +17,21 @@ pub enum ConnectError {
 
 impl fmt::Display for ConnectError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            ConnectError::OtherServer => "the delegation names another server",
-            ConnectError::OtherSession => "the delegation names another session",
-            ConnectError::Expired => "the delegation expired",
+        match self {
+            ConnectError::Scope(error) => error.fmt(f),
+            ConnectError::Expired => f.write_str("the delegation expired"),
             ConnectError::BadAnswer => {
-                "the session key did not sign this challenge and certificate hash"
+                f.write_str("the session key did not sign this challenge and certificate hash")
             }
-        })
+        }
     }
 }
 
-impl Error for ConnectError {}
+impl Error for ConnectError {
+    fn source(&self) -> Option<&(dyn Error + 'static)> {
+        match self {
+            ConnectError::Scope(error) => Some(error),
+            ConnectError::Expired | ConnectError::BadAnswer => None,
+        }
+    }
+}

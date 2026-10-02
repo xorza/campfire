@@ -7,6 +7,7 @@
     reason = "Bevy systems take `Res` and `Query` by value"
 )]
 
+use bevy_ecs::entity::Entity;
 use std::fmt::Write;
 use std::num::NonZeroU32;
 
@@ -15,14 +16,14 @@ use bevy_ecs::schedule::IntoScheduleConfigs;
 use bevy_ecs::system::{Commands, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use blake3::Hasher;
-use campfire_math::{Num, RngSource, SegmentSeed, Vec3};
+use campfire_math::{Num, RngSource, RngStream, SegmentSeed, Vec3};
 use campfire_sim::{
     EntityIndex, IdAllocator, SimComponent, SimRng, SimSet, SimTick, SimUpdate, StableId,
     StateRegistry, TickRate,
 };
 use serde::{Deserialize, Serialize};
 
-/// The MOBA's 30 ticks a second.
+/// 30 ticks a second: the rate these tests run at, which no game sets.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
 
 const CASES: usize = 4000;
@@ -33,7 +34,7 @@ const CASES: usize = 4000;
 struct Inputs(u64);
 
 impl Inputs {
-    fn next(&mut self) -> u64 {
+    const fn next(&mut self) -> u64 {
         self.0 = self.0.wrapping_add(0x9E37_79B9_7F4A_7C15);
         let mut z = self.0;
         z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
@@ -43,7 +44,7 @@ impl Inputs {
 
     /// Any raw value, a value within ±2⁴⁰ raw, or a small one, as the word chooses, so edges and
     /// common magnitudes both appear.
-    fn num(&mut self) -> Num {
+    const fn num(&mut self) -> Num {
         let word = self.next().cast_signed();
         Num::from_bits(match word.rem_euclid(3) {
             0 => word,
@@ -52,11 +53,11 @@ impl Inputs {
         })
     }
 
-    fn within(&mut self, span: i64) -> Num {
+    const fn within(&mut self, span: i64) -> Num {
         Num::from_bits(self.next().cast_signed() % span)
     }
 
-    fn vec3(&mut self, span: i64) -> Vec3 {
+    const fn vec3(&mut self, span: i64) -> Vec3 {
         Vec3::new(self.within(span), self.within(span), self.within(span))
     }
 }
@@ -147,7 +148,7 @@ fn rng_section(hasher: &mut Hasher) {
     for tick in 0..50 {
         source.begin_tick(tick);
         for entity in 0..8 {
-            let mut rng = source.open("golden", entity);
+            let mut rng = source.open(RngStream::new("golden"), entity);
             let draws = [
                 rng.next_u64(),
                 rng.below(1000),
@@ -168,6 +169,10 @@ struct Place(Vec3);
 
 impl SimComponent for Place {
     const NAME: &'static str = "golden.place";
+
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }
 
 #[derive(Component, Debug, Serialize, Deserialize)]
@@ -175,6 +180,10 @@ struct Life(Num);
 
 impl SimComponent for Life {
     const NAME: &'static str = "golden.life";
+
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }
 
 fn state_section(hasher: &mut Hasher) {
@@ -229,7 +238,7 @@ fn arrive(
 
 fn drift(rng: Res<'_, SimRng>, mut units: Query<'_, '_, (&StableId, &mut Place)>) {
     for (&id, mut place) in &mut units {
-        let mut rng = rng.open("golden.drift", id);
+        let mut rng = rng.open(RngStream::new("golden.drift"), id);
         let mut axis = || Num::from_bits(rng.below(1 << 25).cast_signed()) - Num::ONE;
         place.0 += Vec3::new(axis(), axis(), axis());
     }
@@ -237,7 +246,10 @@ fn drift(rng: Res<'_, SimRng>, mut units: Query<'_, '_, (&StableId, &mut Place)>
 
 fn wear(rng: Res<'_, SimRng>, mut units: Query<'_, '_, (&StableId, &mut Life)>) {
     for (&id, mut life) in &mut units {
-        if rng.open("golden.wear", id).chance(Num::ONE / 3) {
+        if rng
+            .open(RngStream::new("golden.wear"), id)
+            .chance(Num::ONE / 3)
+        {
             life.0 -= Num::ONE / 10;
         }
     }

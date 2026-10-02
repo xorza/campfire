@@ -1,53 +1,48 @@
-use std::cell::{RefCell, RefMut};
+use std::cell::RefCell;
 use std::fmt;
-use std::num::NonZeroU32;
-use std::ops::Range;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use bevy_ecs::world::{EntityRef, World};
-use campfire_math::{Num, PlayerSlot, Vec3};
-use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString, NativeCallContext};
-use campfire_sim::{Capability, EntityIndex, Position, SimTick, StableId, Tick, TickRate, Ticks};
+use bevy_ecs::query::{QueryState, ROQueryItem, ReadOnlyQueryData};
+use bevy_ecs::world::World;
+use campfire_math::{Num, PlayerSlot, Tick, Ticks};
+use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString};
+use campfire_sim::{EntityIndex, Position, SimTick, StableId, TickRate};
 
-use crate::actions::action_book::{ActionId, Delivery};
-use crate::actions::action_data::CostTarget;
-use crate::combat::damage_kind::DamageKind;
-use crate::mode::resource_id::ResourceId;
-use crate::progression::track_id::TrackId;
-use crate::progression::track_set::TrackSet;
+use crate::players::resource_id::ResourceId;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
-use crate::scripts::script_api::MemberSpec;
-use crate::scripts::state_value::StateValue;
-use crate::stats::modifier_book::ModifierId;
-use crate::stats::modifier_data::Reapply;
-use crate::stats::modifier_handle::{ModifierHandle, StateField};
-use crate::stats::pool_id::PoolId;
-use crate::stats::pools::Pools;
-use crate::stats::stat::Stat;
-use crate::units::block::Block;
+use crate::scripts::name_kind::NameKind;
+use crate::scripts::script_api::member_spec::MemberSpec;
+use crate::scripts::script_consts::ScriptConsts;
+use crate::units::action_id::ActionId;
 use crate::units::body::Body;
+use crate::units::body_grid::{BodyGrid, Placed};
 use crate::units::filter::Filter;
 use crate::units::living_unit::LivingUnit;
 use crate::units::owner::Owner;
 use crate::units::path_id::PathId;
-use crate::units::recent_attack::RecentAttack;
 use crate::units::relations::Relations;
+use crate::units::row_fill::{FillRow, RowFill, RowSource};
 use crate::units::spawn_point::SpawnPoint;
 use crate::units::tag::Tag;
 use crate::units::team::Team;
-use crate::units::team_set::TeamSet;
 use crate::units::teams::Teams;
+use crate::units::track_id::TrackId;
+use crate::units::type_scope::TypeScope;
 use crate::units::unit::Unit;
+use crate::units::unit_row::UnitRow;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_types::UnitTypes;
+use crate::units::view_column::{ViewColumn, ViewColumns};
 use crate::values::attitude::Attitude;
+use crate::values::bounds::Bounds;
+use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
-use crate::values::filter_data::FilterData;
 use crate::values::metric::Metric;
+use crate::values::name_list::NameList;
 
 /// What scripts see: the match's unit types, and its units, those with a team, as the running
 /// phase of the tick began. The units are read again before each phase that runs
@@ -58,15 +53,13 @@ pub(crate) struct ScriptView {
     /// The match's teams, once a mode sets them.
     teams: Rc<Teams>,
     /// The name of each path, by index, once a mode sets them.
-    paths: Arc<[Box<str>]>,
-    /// The damage kinds the mode declares.
-    damage_kinds: Rc<[DeclaredName]>,
-    /// Each loaded ability's name in its package, by ability id.
-    ability_names: Vec<ImmutableString>,
-    /// How each loaded ability delivers, if other than at once, by ability id.
-    delivers: Vec<Option<Delivery>>,
+    paths: Arc<NameList>,
+    /// The names scripts read, as they read them.
+    consts: ScriptConsts,
+    /// The core's parts of each unit, once a read built the query.
+    core: Option<QueryState<CoreParts>>,
     /// How each installed capability above the core fills its fields of a row, in install order.
-    sources: Vec<RowSource>,
+    sources: Vec<Box<dyn FillRow>>,
     rate: TickRate,
     /// The tick the units were read in.
     now: Tick,
@@ -75,243 +68,107 @@ pub(crate) struct ScriptView {
     /// How the teams regard each other, as the units were read.
     relations: Relations,
     metric: Metric,
-    /// The recent attacks on each unit, one run per unit.
-    attacks: Vec<RecentAttack>,
-    /// The ability slots of each unit, one run per unit.
-    slots: Vec<SlotRow>,
-    /// The stats the mode declares, in order, and each unit's values of them, one run per unit.
-    stat_names: Rc<[Stat]>,
-    stats: Vec<Num>,
-    /// The pools the mode declares, by pool id.
-    pool_names: Rc<[DeclaredName]>,
+    bounds: Bounds,
     /// The players' resources the mode declares, by resource id.
-    resource_names: Rc<[DeclaredName]>,
-    /// The tracks the mode declares, by track id.
-    track_names: Rc<[DeclaredName]>,
-    /// Every modifier, by id, the modifiers each unit carries, one run per unit, and their
-    /// script state, one run per modifier.
-    modifier_info: Vec<ModifierInfo>,
-    modifiers: Vec<ModifierRow>,
-    modifier_state: Vec<StateValue>,
-    /// The package of the running call: the one whose modifiers its names mean.
-    caller: u16,
-}
-
-/// A unit as the view read it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct UnitRow {
-    pub(crate) id: StableId,
-    pub(crate) pos: Position,
-    pub(crate) team: Team,
-    /// Its body's radius, 0 for a unit with no body.
-    pub(crate) radius: Num,
-    /// Where it spawned, if it did as a unit of the mode.
-    pub(crate) spawn: Option<Position>,
-    pub(crate) unit_type: Option<UnitType>,
-    /// The player who controls it.
-    pub(crate) owner: Option<PlayerSlot>,
-    /// Whether it is not dead; `combat` fills it, and the next three.
-    pub(crate) alive: bool,
-    /// Whether it stays when dead, for the mode to respawn.
-    pub(crate) stays: bool,
-    pub(crate) target: Option<StableId>,
-    pub(crate) attack_range: Option<Num>,
-    /// The path it walks or stands on; `navigation` fills it.
-    pub(crate) path: Option<PathId>,
-    /// Its level and pools; `stats` fills them, and its run of stats.
-    pub(crate) level: Option<u32>,
-    pub(crate) pools: Option<Pools>,
-    /// The teams that see it; `vision` fills it, and without vision every team does.
-    pub(crate) seen_by: TeamSet,
-    /// The tracks it has; `progression` fills it.
-    pub(crate) tracks: TrackSet,
-    /// Its tags and their effects, as the core derives them.
-    pub(crate) tags: UnitTags,
-    /// Its run of recent attacks, from `attacks_start` to `attacks_end`.
-    attacks_start: u32,
-    attacks_end: u32,
-    /// Its run of ability slots, from `slots_start` to `slots_end`; `abilities` fills it.
-    slots_start: u32,
-    slots_end: u32,
-    /// Its run of stats, in the order of the view's stat names, empty for a unit with none.
-    stats_start: u32,
-    stats_end: u32,
-    /// Its run of modifiers, by id, then source.
-    modifiers_start: u32,
-    modifiers_end: u32,
-}
-
-/// A modifier a unit carries, as the view read it: which, from whom, its stacks, and its run of
-/// script state.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ModifierRow {
-    pub(crate) id: ModifierId,
-    pub(crate) source: Option<StableId>,
-    pub(crate) stacks: u32,
-    pub(crate) state: Range<u32>,
-}
-
-/// A modifier as scripts name it: its package and name, its state's fields and their first
-/// values, and how a second application from one source acts, up to how many stacks.
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct ModifierInfo {
-    pub(crate) package: u16,
-    pub(crate) name: Box<str>,
-    pub(crate) fields: Rc<[StateField]>,
-    pub(crate) initial: Rc<[StateValue]>,
-    pub(crate) reapply: Reapply,
-    pub(crate) max_stacks: Option<NonZeroU32>,
-}
-
-/// An ability slot as the view read it: the rank of its ability, 0 while not learned, and how
-/// many ranks the ability has.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SlotRow {
-    pub(crate) rank: u8,
-    pub(crate) ranks: u8,
-}
-
-/// Fills the fields of a unit's row that a capability above the core holds.
-pub(crate) type RowSource = fn(&EntityRef<'_>, &mut RowFill<'_>);
-
-/// A row the view reads, as a capability fills it: its fields, the view's buffers of recent
-/// attacks and ability slots, to which the row's runs are added, and the world the unit is in.
-#[derive(Debug)]
-pub(crate) struct RowFill<'a> {
-    pub(crate) row: &'a mut UnitRow,
-    pub(crate) world: &'a World,
-    attacks: &'a mut Vec<RecentAttack>,
-    slots: &'a mut Vec<SlotRow>,
-    stats: &'a mut Vec<Num>,
-    modifiers: &'a mut Vec<ModifierRow>,
-    modifier_state: &'a mut Vec<StateValue>,
-}
-
-impl RowFill<'_> {
-    /// Adds `instance` to the row's run of modifiers, which the caller adds in order.
-    pub(crate) fn modified(
-        &mut self,
-        id: ModifierId,
-        source: Option<StableId>,
-        stacks: u32,
-        state: &[StateValue],
-    ) {
-        let start = u32::try_from(self.modifier_state.len()).expect("state fits u32");
-        self.modifier_state.extend_from_slice(state);
-        let end = u32::try_from(self.modifier_state.len()).expect("state fits u32");
-        self.modifiers.push(ModifierRow {
-            id,
-            source,
-            stacks,
-            state: start..end,
-        });
-    }
-
-    /// Adds `stats`, in the order of the view's stat names, as the row's run of stats.
-    pub(crate) fn stated(&mut self, stats: &[Num]) {
-        self.stats.extend_from_slice(stats);
-    }
-
-    /// Adds `attacks` to the row's run of recent attacks.
-    pub(crate) fn attacked(&mut self, attacks: impl IntoIterator<Item = RecentAttack>) {
-        self.attacks.extend(attacks);
-    }
-
-    /// Adds `slots` to the row's run of ability slots.
-    pub(crate) fn slotted(&mut self, slots: impl IntoIterator<Item = SlotRow>) {
-        self.slots.extend(slots);
-    }
+    resource_names: Arc<[DeclaredName]>,
+    /// The bodies of the units that may be targets, by row, once a query that reaches by
+    /// distance asks for them after a read; and the rows such a query found.
+    bodies: BodyGrid<usize>,
+    indexed: bool,
+    found: RefCell<Vec<usize>>,
+    /// What each capability above the core reads of the units, and its getters read besides.
+    columns: ViewColumns,
 }
 
 /// The view as the host and every handle share it.
 #[derive(Clone)]
 pub(crate) struct View(Rc<RefCell<ScriptView>>);
 
+/// The parts of a unit the core reads into its row.
+type CoreParts = (
+    Option<&'static Position>,
+    Option<&'static Team>,
+    Option<&'static Body>,
+    Option<&'static SpawnPoint>,
+    Option<&'static UnitType>,
+    Option<&'static Owner>,
+    Option<&'static UnitTags>,
+);
+
 impl ScriptView {
-    fn read(&mut self, world: &World) {
+    fn read(&mut self, world: &mut World) {
+        let core = self.core.get_or_insert_with(|| QueryState::new(world));
+        core.update_archetypes(world);
+        for source in &mut self.sources {
+            source.update(world);
+        }
+        let world: &World = world;
         self.now = world.resource::<SimTick>().start();
         self.relations.clone_from(world.resource::<Relations>());
         self.metric = *world.resource::<Metric>();
+        self.bounds = Bounds::of(world);
         self.units.clear();
-        self.attacks.clear();
-        self.slots.clear();
-        self.stats.clear();
-        self.modifiers.clear();
-        self.modifier_state.clear();
+        self.columns.clear();
+        self.indexed = false;
+        let core = self.core.as_ref().expect("the read built the query");
         for (id, entity) in world.resource::<EntityIndex>().iter() {
-            let unit = world.entity(entity);
-            let (Some(&pos), Some(&team)) = (unit.get::<Position>(), unit.get::<Team>()) else {
+            let parts = core
+                .get_manual(world, entity)
+                .expect("the core reads optional parts");
+            let (Some(&pos), Some(&team), body, spawn, unit_type, owner, tags) = parts else {
                 continue;
             };
-            let start = u32::try_from(self.attacks.len()).expect("attacks fit u32");
-            let slots_start = u32::try_from(self.slots.len()).expect("slots fit u32");
-            let stats_start = u32::try_from(self.stats.len()).expect("stats fit u32");
-            let modifiers_start = u32::try_from(self.modifiers.len()).expect("modifiers fit u32");
             let mut row = UnitRow {
                 id,
                 pos,
                 team,
-                radius: Body::radius_of(unit.get::<Body>()),
-                spawn: unit.get::<SpawnPoint>().map(|spawn| spawn.get()),
+                radius: Body::radius_of(body),
+                spawn: spawn.map(|spawn| spawn.get()),
                 alive: true,
-                stays: false,
-                unit_type: unit.get::<UnitType>().copied(),
-                owner: unit.get::<Owner>().map(|owner| owner.slot()),
-                path: None,
-                level: None,
-                pools: None,
-                seen_by: TeamSet::ALL,
-                tracks: TrackSet::default(),
-                tags: unit.get::<UnitTags>().copied().unwrap_or_default(),
-                target: None,
-                attack_range: None,
-                attacks_start: start,
-                attacks_end: start,
-                slots_start,
-                slots_end: slots_start,
-                stats_start,
-                stats_end: stats_start,
-                modifiers_start,
-                modifiers_end: modifiers_start,
+                targetable: false,
+                unit_type: unit_type.copied(),
+                owner: owner.map(|owner| owner.slot()),
+                tags: tags.copied().unwrap_or_default(),
             };
             let mut fill = RowFill {
                 row: &mut row,
                 world,
-                attacks: &mut self.attacks,
-                slots: &mut self.slots,
-                stats: &mut self.stats,
-                modifiers: &mut self.modifiers,
-                modifier_state: &mut self.modifier_state,
+                columns: &mut self.columns,
             };
             for source in &self.sources {
-                source(&unit, &mut fill);
+                source.fill(world, entity, &mut fill);
             }
-            row.attacks_end = u32::try_from(self.attacks.len()).expect("attacks fit u32");
-            row.slots_end = u32::try_from(self.slots.len()).expect("slots fit u32");
-            row.stats_end = u32::try_from(self.stats.len()).expect("stats fit u32");
-            row.modifiers_end = u32::try_from(self.modifiers.len()).expect("modifiers fit u32");
             self.units.push(row);
         }
+        debug_assert!(
+            self.columns.hold(self.units.len()),
+            "every column holds a row for each unit"
+        );
     }
 
     fn row(&self, id: StableId) -> Option<UnitRow> {
-        let index = self.units.binary_search_by_key(&id, |row| row.id).ok()?;
-        Some(self.units[index])
+        Some(self.units[self.index(id)?])
     }
 
-    /// The living units that may be targets and that `filter` selects relative to `of`.
-    fn selected<'a>(
-        &'a self,
-        of: &UnitRow,
-        filter: &str,
-    ) -> Result<impl Iterator<Item = &'a UnitRow>, ApiError> {
-        let filter = Filter::parse(filter, &self.types)?;
-        let of = of.team;
-        Ok(self.units.iter().filter(move |row| {
-            let targetable = !row.tags.effects.blocks(Block::Target);
-            let attitude = self.relations.between(of, row.team);
-            row.alive && targetable && filter.selects(attitude, row.tags.tags)
-        }))
+    /// The place of unit `id` among the rows, when the view read it.
+    fn index(&self, id: StableId) -> Option<usize> {
+        self.units.binary_search_by_key(&id, |row| row.id).ok()
+    }
+
+    /// Indexes the bodies of the units that may be targets, once after each read.
+    fn index_bodies(&mut self) {
+        if self.indexed {
+            return;
+        }
+        let rows = self.units.iter().enumerate();
+        let targets = rows.filter(|(_, row)| row.targetable);
+        self.bodies.rebuild(targets.map(|(at, row)| Placed {
+            id: row.id,
+            key: at,
+            at: row.pos,
+            radius: row.radius,
+        }));
+        self.indexed = true;
     }
 }
 
@@ -321,60 +178,104 @@ impl View {
             types: UnitTypes::default(),
             teams: Rc::default(),
             paths: Arc::default(),
-            damage_kinds: Rc::from([]),
-            ability_names: Vec::new(),
-            delivers: Vec::new(),
+            consts: ScriptConsts::default(),
+            core: None,
             sources: Vec::new(),
             rate,
             now: Tick::ZERO,
             units: Vec::new(),
             relations: Relations::default(),
             metric: Metric::default(),
-            attacks: Vec::new(),
-            slots: Vec::new(),
-            stat_names: Rc::from([]),
-            pool_names: Rc::from([]),
-            resource_names: Rc::from([]),
-            track_names: Rc::from([]),
-            stats: Vec::new(),
-            modifier_info: Vec::new(),
-            modifiers: Vec::new(),
-            modifier_state: Vec::new(),
-            caller: 0,
+            bounds: Bounds::WORLD,
+            resource_names: Arc::from([]),
+            bodies: BodyGrid::default(),
+            indexed: false,
+            found: RefCell::default(),
+            columns: ViewColumns::default(),
         })))
     }
 
     /// Reads the units of `world` for the phase that begins.
-    pub(crate) fn read(&self, world: &World) {
+    pub(crate) fn read(&self, world: &mut World) {
         self.0.borrow_mut().read(world);
     }
 
-    /// The view of the match whose script makes `call`.
-    pub(crate) fn of_call(call: &NativeCallContext<'_>) -> View {
-        call.tag()
-            .and_then(Dynamic::read_lock::<View>)
-            .expect("the units capability tags its host with the view")
-            .clone()
+    /// The map's bounds, as the units were read.
+    pub(crate) fn bounds(&self) -> Bounds {
+        self.0.borrow().bounds
     }
 
     pub(crate) fn metric(&self) -> Metric {
         self.0.borrow().metric
     }
 
-    pub(crate) fn types_mut(&self) -> RefMut<'_, UnitTypes> {
-        RefMut::map(self.0.borrow_mut(), |view| &mut view.types)
+    /// Whether the match loaded `unit_type`.
+    pub(crate) fn has_type(&self, unit_type: UnitType) -> bool {
+        self.0.borrow().types.contains(unit_type)
+    }
+
+    /// Whether `kind` is one of the mode's damage kinds; any is, before a mode names them.
+    pub(crate) fn has_damage_kind(&self, kind: DamageKind) -> bool {
+        self.0.borrow().consts.has_damage_kind(kind)
+    }
+
+    /// Whether `team` is one of the mode's teams; any team is, in a match no mode set the teams
+    /// of, as every mode has one at the least.
+    pub(crate) fn has_team(&self, team: Team) -> bool {
+        let teams = &self.0.borrow().teams;
+        teams.count() == 0 || usize::from(team.index()) < teams.count()
+    }
+
+    /// Whether `slot` is a player of the session; any slot is, in a match no mode set the teams
+    /// of.
+    pub(crate) fn has_player(&self, slot: PlayerSlot) -> bool {
+        let teams = &self.0.borrow().teams;
+        teams.count() == 0 || teams.of(slot).is_some()
+    }
+
+    /// Whether amounts of `resources` resources in `amounts` places make a row of each resource
+    /// the mode declares for each player; any do, in a match no mode set the teams of.
+    pub(crate) fn fits_resources(&self, resources: usize, amounts: usize) -> bool {
+        let view = self.0.borrow();
+        let players = view.teams.players() as usize;
+        view.teams.count() == 0
+            || (resources == view.resource_names.len()
+                && Some(amounts) == players.checked_mul(resources))
+    }
+
+    /// Player `player`'s slot, as a script names it, when the session has it.
+    pub(crate) fn player(&self, player: INT) -> Checked<PlayerSlot> {
+        self.0.borrow().teams.player(player)
     }
 
     /// Names the teams and the paths.
-    pub(crate) fn set_names(&self, teams: Rc<Teams>, paths: Arc<[Box<str>]>) {
+    pub(crate) fn set_names(&self, teams: Rc<Teams>, paths: Arc<NameList>) {
         let mut view = self.0.borrow_mut();
         view.teams = teams;
         view.paths = paths;
     }
 
-    /// Sets the damage kinds the mode declares.
-    pub(crate) fn set_damage_kinds(&self, damage_kinds: Rc<[DeclaredName]>) {
-        self.0.borrow_mut().damage_kinds = damage_kinds;
+    /// Sets the damage kinds and the players' resources the mode declares, by id.
+    pub(crate) fn set_mode_names(
+        &self,
+        damage_kinds: &[DeclaredName],
+        resources: Arc<[DeclaredName]>,
+    ) {
+        let mut view = self.0.borrow_mut();
+        let kinds = damage_kinds.iter().map(DeclaredName::as_str);
+        view.consts.set_damage_kinds(kinds);
+        view.resource_names = resources;
+    }
+
+    /// The tick the units were read in.
+    pub(crate) fn now(&self) -> Tick {
+        self.0.borrow().now
+    }
+
+    /// `ms` in ticks at the match's rate, rounded up, at least one, or all ticks for a time too
+    /// long to count: a window back from now.
+    pub(crate) fn window(&self, ms: u64) -> Ticks {
+        self.0.borrow().rate.window(ms)
     }
 
     /// `ms` in ticks at the match's rate, rounded up, at least one; an error for a negative time
@@ -383,108 +284,20 @@ impl View {
         let ms = u64::try_from(ms)
             .ok()
             .ok_or_else(|| ApiError::NegativeTime.fail())?;
-        let ticks = self.0.borrow().rate.ticks(ms);
-        Ok(ticks
-            .ok_or_else(|| ApiError::TimeTooLarge.fail())?
-            .max(Ticks::ONE))
+        let ticks = self.0.borrow().rate.duration(ms);
+        Ok(ticks.ok_or_else(|| ApiError::TimeTooLarge.fail())?)
     }
 
-    /// Adds the modifier the match loaded next, which takes the next id: modifiers load by
-    /// package, then name.
-    pub(crate) fn add_modifier(&self, info: ModifierInfo) {
-        self.0.borrow_mut().modifier_info.push(info);
+    /// Sets the match's unit types and tags, as the load built them.
+    pub(crate) fn set_types(&self, types: UnitTypes) {
+        self.0.borrow_mut().types = types;
+        self.share_type_names();
     }
 
-    /// Sets the package of the call about to run.
-    pub(crate) fn set_caller(&self, package: u16) {
-        self.0.borrow_mut().caller = package;
-    }
-
-    /// The modifier `name` of the running call's package; an error when it declares none.
-    pub(crate) fn modifier(&self, name: &str) -> Checked<ModifierId> {
-        let view = self.0.borrow();
-        let caller = view.caller;
-        let at = view
-            .modifier_info
-            .binary_search_by(|info| info.package.cmp(&caller).then((*info.name).cmp(name)))
-            .ok()
-            .ok_or_else(|| ApiError::UnknownModifier.fail())?;
-        Ok(ModifierId::new(
-            u16::try_from(at).expect("modifiers fit u16"),
-        ))
-    }
-
-    /// Whether the unit of `row` carries the modifier `name` of the running call's package.
-    pub(crate) fn has_modifier(&self, row: &UnitRow, name: &str) -> Checked<bool> {
-        let id = self.modifier(name)?;
-        let view = self.0.borrow();
-        let run = &view.modifiers[row.modifiers_start as usize..row.modifiers_end as usize];
-        Ok(run.iter().any(|modifier| modifier.id == id))
-    }
-
-    /// The handle of the instance of `id` from `source` on `carrier` that an application in the
-    /// running call adds or applies again, as the call sees it: a new one's one stack and first
-    /// state, or a held one's, a stack more when it stacks, up to its limit. An instance the call
-    /// took a handle to before, in `handles`, keeps that handle, so the call sees one instance
-    /// once; one it removed is new again.
-    pub(crate) fn applied_handle(
-        &self,
-        handles: &mut Vec<ModifierHandle>,
-        carrier: StableId,
-        id: ModifierId,
-        source: Option<StableId>,
-    ) -> ModifierHandle {
-        let view = self.0.borrow();
-        let info = &view.modifier_info[id.index()];
-        if let Some(handle) = handles.iter().find(|handle| handle.is(carrier, id, source)) {
-            let mut data = handle.data();
-            if data.removed {
-                data.removed = false;
-                data.written = false;
-                data.stacks = 1;
-                data.state.clone_from_slice(&info.initial);
-            } else {
-                data.stacks = info.reapply.stacks(data.stacks, info.max_stacks);
-            }
-            return handle.clone();
-        }
-        let held = view.row(carrier).and_then(|row| {
-            let run = &view.modifiers[row.modifiers_start as usize..row.modifiers_end as usize];
-            run.iter()
-                .find(|modifier| modifier.id == id && modifier.source == source)
-        });
-        let (stacks, state) = match held {
-            Some(held) => {
-                let state =
-                    &view.modifier_state[held.state.start as usize..held.state.end as usize];
-                let stacks = info.reapply.stacks(held.stacks, info.max_stacks);
-                (stacks, state.to_vec())
-            }
-            None => (1, info.initial.to_vec()),
-        };
-        drop(view);
-        let handle = self.held_handle(carrier, id, source, stacks, state);
-        handles.push(handle.clone());
-        handle
-    }
-
-    /// The handle of `carrier`'s instance of `id` from `source`, as a call sees it: `stacks`
-    /// and `state`.
-    pub(crate) fn held_handle(
-        &self,
-        carrier: StableId,
-        id: ModifierId,
-        source: Option<StableId>,
-        stacks: u32,
-        state: Vec<StateValue>,
-    ) -> ModifierHandle {
-        let fields = Rc::clone(&self.0.borrow().modifier_info[id.index()].fields);
-        ModifierHandle::new(carrier, id, source, stacks, state, fields, self.clone())
-    }
-
-    /// Sets the stats the mode declares, in the order units' runs of stats hold them.
-    pub(crate) fn set_stat_names(&self, names: Rc<[Stat]>) {
-        self.0.borrow_mut().stat_names = names;
+    /// Gives scripts the names of the unit types as the view holds them.
+    pub(crate) fn share_type_names(&self) {
+        let view = &mut *self.0.borrow_mut();
+        view.consts.set_unit_types(view.types.names());
     }
 
     /// How `of` regards `other`, as the units were read.
@@ -492,129 +305,73 @@ impl View {
         self.0.borrow().relations.between(of, other)
     }
 
-    /// The place of `stat` among the stats the mode declares; `None` when it does not declare it.
-    pub(crate) fn stat_index(&self, stat: &Stat) -> Option<u16> {
-        let at = self.0.borrow().stat_names.binary_search(stat).ok()?;
-        Some(u16::try_from(at).expect("stats fit u16"))
-    }
-
-    /// The value of stat `name` of `row`; an error for a stat the mode does not declare, or a
-    /// unit with no stats.
-    pub(crate) fn stat(&self, row: &UnitRow, name: &str) -> Checked<Num> {
-        let view = self.0.borrow();
-        let at = Stat::named(name)
-            .and_then(|stat| view.stat_names.binary_search(&stat).ok())
-            .ok_or_else(|| ApiError::UnknownStat.fail())?;
-        let run = &view.stats[row.stats_start as usize..row.stats_end as usize];
-        run.get(at)
-            .copied()
-            .ok_or_else(|| ApiError::NoStats.fail().into())
-    }
-
-    /// Sets the pools the mode declares, by pool id.
-    pub(crate) fn set_pool_names(&self, names: Rc<[DeclaredName]>) {
-        self.0.borrow_mut().pool_names = names;
-    }
-
-    /// The pool `name`; an error for one the mode does not declare.
-    pub(crate) fn pool(&self, name: &str) -> Checked<PoolId> {
-        self.pool_id(name)
-            .ok_or_else(|| ApiError::UnknownPool.fail().into())
-    }
-
-    /// The pool `name`; `None` for one the mode does not declare.
-    pub(crate) fn pool_id(&self, name: &str) -> Option<PoolId> {
-        let view = self.0.borrow();
-        let at = view
-            .pool_names
-            .iter()
-            .position(|pool| pool.as_str() == name)?;
-        let pool = u8::try_from(at).ok().and_then(PoolId::new);
-        Some(pool.expect("the load keeps the pools within the limit"))
-    }
-
-    /// Sets the players' resources the mode declares, by resource id.
-    pub(crate) fn set_resource_names(&self, names: Rc<[DeclaredName]>) {
-        self.0.borrow_mut().resource_names = names;
-    }
-
     /// The player resource `name`; `None` for one the mode does not declare.
-    pub(crate) fn resource(&self, name: &str) -> Option<ResourceId> {
-        ResourceId::of(&self.0.borrow().resource_names, name)
-    }
-
-    /// How many player resources the mode declares.
-    pub(crate) fn resource_count(&self) -> usize {
-        self.0.borrow().resource_names.len()
-    }
-
-    /// What a cost named `name` takes from: a pool, or else a player resource; `None` for a
-    /// name the mode declares neither as.
-    pub(crate) fn cost_target(&self, name: &str) -> Option<CostTarget> {
-        let pool = self.pool_id(name).map(CostTarget::Pool);
-        pool.or_else(|| self.resource(name).map(CostTarget::Resource))
+    pub(crate) fn resource_named(&self, name: &str) -> Option<ResourceId> {
+        ResourceId::named(&self.0.borrow().resource_names, name)
     }
 
     /// The damage kind `name`; an error for one the mode does not declare.
-    pub(crate) fn damage_kind(&self, name: &str) -> Checked<DamageKind> {
-        let view = self.0.borrow();
-        let at = view
-            .damage_kinds
-            .iter()
-            .position(|kind| kind.as_str() == name)
-            .ok_or_else(|| ApiError::UnknownDamageKind.fail())?;
-        Ok(DamageKind::new(
-            u8::try_from(at).expect("the load keeps damage kinds within u8"),
-        ))
+    pub(crate) fn damage_kind_named(&self, name: &str) -> Checked<DamageKind> {
+        let found = self.0.borrow().consts.damage_kind_named(name);
+        Ok(found.ok_or_else(|| ApiError::UnknownDamageKind.fail())?)
     }
 
-    /// Sets the tracks the mode declares.
-    pub(crate) fn set_track_names(&self, track_names: Rc<[DeclaredName]>) {
-        self.0.borrow_mut().track_names = track_names;
-    }
-
-    /// The track `name`; an error for one the mode does not declare.
-    pub(crate) fn track(&self, name: &str) -> Checked<TrackId> {
-        let view = self.0.borrow();
-        let at = view
-            .track_names
-            .iter()
-            .position(|track| track.as_str() == name)
-            .ok_or_else(|| ApiError::UnknownTrack.fail())?;
-        Ok(TrackId::new(at).expect("the load keeps tracks within their limit"))
+    /// Names the tracks the mode declares, by track id.
+    pub(crate) fn set_track_names<'a>(&self, names: impl Iterator<Item = &'a str>) {
+        self.0.borrow_mut().consts.set_tracks(names);
     }
 
     /// The name of track `track`.
     pub(crate) fn track_name(&self, track: TrackId) -> ImmutableString {
-        self.0.borrow().track_names[track.index()].as_str().into()
+        self.0.borrow().consts.track(track)
     }
 
     /// The name of damage kind `kind`.
     pub(crate) fn damage_kind_name(&self, kind: DamageKind) -> ImmutableString {
-        self.0.borrow().damage_kinds[kind.index()].as_str().into()
+        self.0.borrow().consts.damage_kind(kind)
     }
 
-    /// Adds the name of the ability loaded next, which takes the next ability id, and how it
-    /// delivers.
-    pub(crate) fn add_ability(&self, name: &str, delivers: Option<Delivery>) {
-        let mut view = self.0.borrow_mut();
-        view.ability_names.push(name.into());
-        view.delivers.push(delivers);
-    }
-
-    /// How ability `id` delivers, if other than at once.
-    pub(crate) fn delivers(&self, id: ActionId) -> Option<Delivery> {
-        self.0.borrow().delivers[id.index()]
+    /// Names the match's actions, by action id.
+    pub(crate) fn set_action_names<'a>(&self, names: impl Iterator<Item = &'a str>) {
+        self.0.borrow_mut().consts.set_actions(names);
     }
 
     /// The name of ability `id` in its package.
     pub(crate) fn ability_name(&self, id: ActionId) -> ImmutableString {
-        self.0.borrow().ability_names[id.index()].clone()
+        self.0.borrow().consts.action(id)
     }
 
-    /// Adds how a capability fills its fields of each row, after those added before it.
-    pub(crate) fn add_source(&self, source: RowSource) {
-        self.0.borrow_mut().sources.push(source);
+    /// Adds how a capability fills its fields of each row, from the parts `D` of `world`'s units,
+    /// after those added before it.
+    pub(crate) fn add_source<D: ReadOnlyQueryData + 'static>(
+        &self,
+        world: &mut World,
+        fill: for<'w, 's> fn(ROQueryItem<'w, 's, D>, &mut RowFill<'_>),
+    ) {
+        let source = RowSource::<D>::new(world, fill);
+        self.0.borrow_mut().sources.push(Box::new(source));
+    }
+
+    /// Adds `column`, which a source fills.
+    pub(crate) fn add_column<C: ViewColumn>(&self, column: C) {
+        self.0.borrow_mut().columns.add(column);
+    }
+
+    /// What `read` gives of the column of type `C`; `None` when none was added.
+    pub(crate) fn column<C: ViewColumn, R>(&self, read: impl FnOnce(&C) -> R) -> Option<R> {
+        self.0.borrow().columns.get().map(read)
+    }
+
+    /// Changes the column of type `C` by `write`, when one was added.
+    pub(crate) fn column_mut<C: ViewColumn>(&self, write: impl FnOnce(&mut C)) {
+        if let Some(column) = self.0.borrow_mut().columns.get_mut() {
+            write(column);
+        }
+    }
+
+    /// The place among the rows of unit `id`, when the view read it.
+    pub(crate) fn row_index(&self, id: StableId) -> Option<usize> {
+        self.0.borrow().index(id)
     }
 
     /// The name of `team`.
@@ -630,91 +387,78 @@ impl View {
         let view = self.0.borrow();
         path.and_then(|path| view.paths.get(path.index()))
             .map_or(Dynamic::UNIT, |name| {
-                Dynamic::from(ImmutableString::from(&**name))
+                Dynamic::from(ImmutableString::from(name))
             })
     }
 
     /// The path named `name`.
-    pub(crate) fn path(&self, name: &str) -> Option<PathId> {
+    pub(crate) fn path_named(&self, name: &str) -> Option<PathId> {
         let view = self.0.borrow();
-        let at = view.paths.iter().position(|held| **held == *name)?;
-        Some(PathId::new(at))
+        view.paths.named(name).map(PathId::new)
     }
 
-    /// The unit type named `name`.
-    pub(crate) fn unit_type(&self, name: &str) -> Option<UnitType> {
-        self.0.borrow().types.named(name)
+    /// The unit type named `name` in the mode's scope: one of the mode's, or an avatar.
+    pub(crate) fn unit_type_named(&self, name: &str) -> Option<UnitType> {
+        self.0.borrow().types.named(TypeScope::Mode, name)
     }
 
     /// The name of the unit type of `row`, `()` for a unit of no type.
     pub(crate) fn unit_type_name(&self, row: &UnitRow) -> Dynamic {
         let view = self.0.borrow();
         row.unit_type.map_or(Dynamic::UNIT, |unit_type| {
-            Dynamic::from(ImmutableString::from(view.types.name(unit_type)))
+            Dynamic::from(view.consts.unit_type(unit_type))
         })
     }
 
-    /// The run-time form of `filter`, its tag among those of the match's unit types.
-    pub(crate) fn resolve_filter(&self, filter: &FilterData) -> Result<Filter, ApiError> {
-        Filter::resolve(filter, &self.0.borrow().types)
-    }
-
     /// The tag `name`; one the match does not have fails the call.
-    pub(crate) fn tag(&self, name: &str) -> Result<Tag, ApiError> {
-        self.0.borrow().types.tag(name).ok_or(ApiError::UnknownTag)
+    pub(crate) fn tag_named(&self, name: &str) -> Result<Tag, ApiError> {
+        self.0
+            .borrow()
+            .types
+            .tag_named(name)
+            .ok_or(ApiError::UnknownTag)
     }
 
     /// Every unit, living or dead, that `keep` keeps, by stable id.
-    pub(crate) fn units_where(&self, mut keep: impl FnMut(&ScriptView, &UnitRow) -> bool) -> Array {
+    fn units_where(&self, mut keep: impl FnMut(&UnitRow) -> bool) -> Array {
         let view = self.0.borrow();
         view.units
             .iter()
-            .filter(|row| keep(&view, row))
-            .map(|row| Dynamic::from(Unit::new(row.id, self.clone())))
+            .enumerate()
+            .filter(|(_, row)| keep(row))
+            .map(|(at, row)| Dynamic::from(Unit::new(row.id, at, self.clone())))
             .collect()
     }
 
     /// Every unit, living or dead, with the tag `name`, by stable id.
     pub(crate) fn units_tagged(&self, name: &str) -> Checked<Array> {
-        let tag = self.tag(name).map_err(ApiError::fail)?;
-        Ok(self.units_where(|_, row| row.tags.tags.contains(tag)))
+        let tag = self.tag_named(name).map_err(ApiError::fail)?;
+        Ok(self.units_where(|row| row.tags.tags.contains(tag)))
     }
 
     /// Every avatar, living or dead, of `team` or of every team, by stable id.
     pub(crate) fn avatars(&self, team: Option<Team>) -> Array {
-        self.units_where(|view, row| {
-            let avatar = view.types.avatar();
-            avatar.is_some_and(|avatar| row.tags.tags.contains(avatar))
-                && team.is_none_or(|team| row.team == team)
-        })
+        self.units_where(|row| row.is_avatar() && team.is_none_or(|team| row.team == team))
     }
 
     pub(crate) fn row(&self, id: StableId) -> Option<UnitRow> {
         self.0.borrow().row(id)
     }
 
-    /// Ability slot `slot` of the unit of `row`, when it has one.
-    /// How many ability slots the unit of `row` has.
-    pub(crate) const fn slot_count(row: &UnitRow) -> usize {
-        (row.slots_end - row.slots_start) as usize
-    }
-
-    pub(crate) fn slot(&self, row: &UnitRow, slot: u8) -> Option<SlotRow> {
-        let view = self.0.borrow();
-        let run = &view.slots[row.slots_start as usize..row.slots_end as usize];
-        run.get(usize::from(slot)).copied()
+    /// The row at `at` among the rows, as a handle names it.
+    pub(crate) fn row_at(&self, at: usize) -> UnitRow {
+        self.0.borrow().units[at]
     }
 
     /// The handle of unit `id`, when the view read it.
     pub(crate) fn unit(&self, id: StableId) -> Option<Unit> {
-        self.row(id).map(|_| Unit::new(id, self.clone()))
+        let at = self.row_index(id)?;
+        Some(Unit::new(id, at, self.clone()))
     }
 
     /// Unit `id`, when it is a living unit that may be a target.
     pub(crate) fn living(&self, id: StableId) -> Option<LivingUnit> {
-        let row = self
-            .row(id)
-            .filter(|row| row.alive && !row.tags.effects.blocks(Block::Target))?;
+        let row = self.row(id).filter(|row| row.targetable)?;
         Some(LivingUnit {
             id,
             pos: row.pos,
@@ -724,130 +468,107 @@ impl View {
         })
     }
 
-    pub(crate) fn is_avatar(&self, row: &UnitRow) -> bool {
-        let view = self.0.borrow();
-        view.types
-            .avatar()
-            .is_some_and(|avatar| row.tags.tags.contains(avatar))
-    }
-
     /// The param `name` of the unit type of `row`.
-    pub(crate) fn param(&self, row: &UnitRow, name: &str) -> Option<Dynamic> {
+    pub(crate) fn param_named(&self, row: &UnitRow, name: &str) -> Option<Dynamic> {
         let view = self.0.borrow();
-        let value = view.types.param(row.unit_type?, name)?;
+        let value = view.types.param_named(row.unit_type?, name)?;
         Some(value.to_dynamic())
     }
 
-    /// The living units within `radius` of `pos` in the map's metric that `filter` selects
-    /// relative to `of`, by stable id; with `visible`, only those `of`'s team sees.
+    /// The living targets whose bodies come within `radius` of `pos` in the map's metric, as an
+    /// area of that radius reaches, that `filter` selects relative to `of`, and `seen` lets by
+    /// their rows, by stable id.
     pub(crate) fn find(
         &self,
         of: &Unit,
         pos: Position,
         radius: Num,
         filter: &str,
-        visible: bool,
+        seen: impl Fn(usize) -> bool,
     ) -> Checked<Array> {
         if radius < Num::ZERO {
             return Err(ApiError::NegativeRadius.fail().into());
         }
+        self.0.borrow_mut().index_bodies();
         let view = self.0.borrow();
-        let of = of.row();
-        let selected = view.selected(&of, filter).map_err(ApiError::fail)?;
-        Ok(selected
-            .filter(|row| !visible || row.seen_by.contains(of.team))
-            .filter(|row| view.metric.within(pos, row.pos, radius))
-            .map(|row| Dynamic::from(Unit::new(row.id, self.clone())))
-            .collect())
+        let of = of.row().team;
+        let filter = Filter::parse(filter, &view.types).map_err(ApiError::fail)?;
+        let mut found = view.found.borrow_mut();
+        found.clear();
+        view.bodies.visit_near(pos, radius, |body| {
+            let row = &view.units[body.key];
+            let attitude = view.relations.between(of, row.team);
+            let reaches = view
+                .metric
+                .reaches(pos, Num::ZERO, radius, body.at, body.radius);
+            if reaches && filter.selects(attitude, row.tags.tags) && seen(body.key) {
+                found.push(body.key);
+            }
+        });
+        found.sort_unstable();
+        let unit = |&at: &usize| Dynamic::from(Unit::new(view.units[at].id, at, self.clone()));
+        Ok(found.iter().map(unit).collect())
     }
 
-    /// The nearest living unit within `radius` of `of` in the map's metric that `filter` selects
-    /// relative to it and its team sees, by exact distance, the lower stable id on a tie; `()`
-    /// when there is none.
-    pub(crate) fn nearest_visible(&self, of: &Unit, radius: Num, filter: &str) -> Checked<Dynamic> {
+    /// The nearest living target that `radius` from the edge of `of`'s body reaches in the map's
+    /// metric, as a weapon's range does, that `filter` selects relative to it and `seen` lets by
+    /// its row, by exact distance between centres, the lower stable id on a tie; `()` when there
+    /// is none.
+    pub(crate) fn nearest(
+        &self,
+        of: &Unit,
+        radius: Num,
+        filter: &str,
+        seen: impl Fn(usize) -> bool,
+    ) -> Checked<Dynamic> {
         if radius < Num::ZERO {
             return Err(ApiError::NegativeRadius.fail().into());
         }
+        self.0.borrow_mut().index_bodies();
         let view = self.0.borrow();
         let of = of.row();
-        let nearest = view
-            .selected(&of, filter)
-            .map_err(ApiError::fail)?
-            .filter(|row| row.seen_by.contains(of.team))
-            .map(|row| (view.metric.offset(of.pos, row.pos), row.id))
-            .filter(|&(offset, _)| Vec3::ZERO.within(offset, radius))
-            .min_by_key(|&(offset, id)| (offset.length_squared_bits(), id));
-        Ok(nearest.map_or(Dynamic::UNIT, |(_, id)| {
-            Dynamic::from(Unit::new(id, self.clone()))
+        let filter = Filter::parse(filter, &view.types).map_err(ApiError::fail)?;
+        let reach = of.radius.checked_add(radius).unwrap_or(Num::MAX);
+        let mut nearest = None;
+        view.bodies.visit_near(of.pos, reach, |body| {
+            let row = &view.units[body.key];
+            let attitude = view.relations.between(of.team, row.team);
+            let reaches = view
+                .metric
+                .reaches(of.pos, of.radius, radius, body.at, body.radius);
+            if !(reaches && filter.selects(attitude, row.tags.tags) && seen(body.key)) {
+                return;
+            }
+            let distance = view.metric.offset(of.pos, body.at).length_squared_bits();
+            let candidate = (distance, body.id, body.key);
+            if nearest.is_none_or(|best| candidate < best) {
+                nearest = Some(candidate);
+            }
+        });
+        Ok(nearest.map_or(Dynamic::UNIT, |(_, id, at)| {
+            Dynamic::from(Unit::new(id, at, self.clone()))
         }))
     }
 
-    /// The living units that struck `unit` within the last `ms` milliseconds, rounded up to
-    /// whole ticks, by stable id.
-    pub(crate) fn recent_attackers(&self, unit: &Unit, ms: INT) -> Checked<Array> {
-        let ms = u64::try_from(ms)
-            .ok()
-            .ok_or_else(|| ApiError::NegativeTime.fail())?;
-        let view = self.0.borrow();
-        let window = view.rate.ticks(ms).unwrap_or(Ticks::new(u64::MAX));
-        let row = unit.row();
-        let run = &view.attacks[row.attacks_start as usize..row.attacks_end as usize];
-        Ok(run
-            .iter()
-            .filter(|attack| {
-                // A strike later than the view's tick, as a rollback can leave, is not recent.
-                view.now.since(attack.tick).is_some_and(|age| age <= window)
-            })
-            .filter(|attack| view.row(attack.source).is_some_and(|source| source.alive))
-            .map(|attack| Dynamic::from(Unit::new(attack.source, self.clone())))
-            .collect())
-    }
-
-    /// `ctx.find`, `ctx.find_visible` and `ctx.nearest_visible`.
+    /// `ctx.find`.
     pub(crate) fn register_queries(api: &mut ApiBuilder<'_>) {
         let find = MemberSpec::call(
             "find",
             "(of, pos, radius, filter)",
-            "the living units within `radius` of `pos` that `filter` selects for `of`, seen or not, by stable id",
-        );
-        let visible = MemberSpec::call(
-            "find_visible",
-            "(of, pos, radius, filter)",
-            "as `find`, of the units `of`'s team sees",
+            "the living targets whose bodies come within `radius` of `pos`, as an area's, that `filter` selects for `of`, seen or not, by stable id",
         )
-        .capability(Capability::Vision);
-        for (spec, visible) in [(find, false), (visible, true)] {
-            api.bind(
-                spec,
-                move |ctx: &mut Ctx, of: Unit, pos: Position, radius: Num, filter: &str| {
-                    ctx.view().find(&of, pos, radius, filter, visible)
-                },
-            )
-            .bind(
-                spec,
-                move |ctx: &mut Ctx, of: Unit, pos: Position, radius: INT, filter: &str| {
-                    ctx.view()
-                        .find(&of, pos, ApiError::num(radius)?, filter, visible)
-                },
-            );
-        }
-        let nearest = MemberSpec::call(
-            "nearest_visible",
-            "(of, radius, filter)",
-            "the nearest living unit within `radius` of `of` that `filter` selects and `of`'s team sees, `()` with none",
-        )
-        .capability(Capability::Vision);
+        .name(3, NameKind::Filter);
         api.bind(
-            nearest,
-            |ctx: &mut Ctx, of: Unit, radius: Num, filter: &str| {
-                ctx.view().nearest_visible(&of, radius, filter)
+            find,
+            |ctx: &mut Ctx, of: Unit, pos: Position, radius: Num, filter: &str| {
+                ctx.view().find(&of, pos, radius, filter, |_| true)
             },
         )
         .bind(
-            nearest,
-            |ctx: &mut Ctx, of: Unit, radius: INT, filter: &str| {
-                ctx.view()
-                    .nearest_visible(&of, ApiError::num(radius)?, filter)
+            find,
+            |ctx: &mut Ctx, of: Unit, pos: Position, radius: INT, filter: &str| {
+                let radius = ApiError::num(radius)?;
+                ctx.view().find(&of, pos, radius, filter, |_| true)
             },
         );
     }
@@ -862,12 +583,45 @@ impl fmt::Debug for View {
 
 #[cfg(test)]
 pub(crate) mod internals {
-    use super::*;
+    use crate::stats::stats_column::StatsColumn;
+    use std::cell::RefMut;
+
+    use crate::actions::cost_target::CostTarget;
+    use crate::scripts::error::ApiError;
+    use crate::stats::stat_id::StatId;
+    use crate::units::filter::Filter;
+    use crate::units::script_view::View;
+    use crate::units::unit_types::UnitTypes;
+    use crate::values::filter_data::FilterData;
+    use crate::values::stat::Stat;
 
     impl View {
+        /// The run-time form of `filter`, its tag among those of the match's unit types.
+        pub(crate) fn resolve_filter(&self, filter: &FilterData) -> Result<Filter, ApiError> {
+            Filter::resolve(filter, &self.0.borrow().types)
+        }
+
         /// How many unit types the match loaded, for a test to name the next one.
         pub(crate) fn types_count(&self) -> usize {
             self.0.borrow().types.count()
+        }
+
+        pub(crate) fn types_mut(&self) -> RefMut<'_, UnitTypes> {
+            RefMut::map(self.0.borrow_mut(), |view| &mut view.types)
+        }
+
+        /// The place of `stat` among the stats the mode declares; `None` when it does not
+        /// declare it.
+        pub(crate) fn stat_index(&self, stat: &Stat) -> Option<StatId> {
+            self.column(|column: &StatsColumn| column.stat_index(stat))
+                .flatten()
+        }
+
+        /// What a cost named `name` takes from: a pool, or else a player resource; `None` for
+        /// a name the mode declares neither as.
+        pub(crate) fn cost_target(&self, name: &str) -> Option<CostTarget> {
+            let pool = StatsColumn::pool_id_named(self, name).map(CostTarget::Pool);
+            pool.or_else(|| self.resource_named(name).map(CostTarget::Resource))
         }
     }
 }

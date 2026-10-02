@@ -6,15 +6,15 @@ use campfire_sim::TickRate;
 use crate::combat::combat_data::CombatData;
 use crate::combat::on_death::OnDeath;
 use crate::mode::error::UnitKitError;
-use crate::navigation::move_step::MoveStep;
 use crate::production::production_data::ProductionData;
 use crate::progression::track_set::TrackSet;
+use crate::stats::move_step::MoveStep;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
-use crate::stats::stat::{EngineStat, Stat};
-use crate::stats::stats_data::StatsData;
+use crate::stats::stat_book::StatBook;
 use crate::units::body::Body;
-use crate::values::speed::Speed;
+use crate::units::unit_type::UnitType;
+use crate::values::stat::{EngineStat, Stat};
 use crate::vision::sight::Sight;
 use crate::vision::vision_data::VisionData;
 
@@ -33,38 +33,48 @@ pub struct UnitKit {
     pub queue: Option<NonZeroU8>,
 }
 
-/// The match's rules a unit type's values meet: its tick rate, the mode's move speed cap, and
-/// its life pool.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct KitRules {
-    pub rate: TickRate,
-    pub max_move_speed: Speed,
-    pub life: PoolId,
+/// What a unit type's file gives its kit: its `combat` section, its pools, each with the stat of
+/// its maximum, its `vision` section, its body, its tracks and its `production` section.
+#[derive(Debug, Clone)]
+pub(crate) struct KitSections<'a, P> {
+    pub(crate) combat: Option<&'a CombatData>,
+    pub(crate) pools: P,
+    pub(crate) vision: Option<&'a VisionData>,
+    pub(crate) body: Option<Body>,
+    pub(crate) tracks: TrackSet,
+    pub(crate) production: Option<&'a ProductionData>,
 }
 
 impl UnitKit {
-    /// The kit of a type with `stats`, `combat`, and `pools`, each with the stat of its maximum.
-    /// Each pool's maximum is that stat at level 1, and a type with `combat` has the rules' life
-    /// pool. Its move speed is capped at the rules' cap.
-    pub fn new<'a>(
-        stats: Option<&StatsData>,
-        combat: Option<&CombatData>,
-        pools: impl IntoIterator<Item = (PoolId, &'a Stat)>,
-        rules: KitRules,
+    /// The kit of `unit_type`, of the stats `book` gives it and of its `sections`. Each pool's
+    /// maximum is the stat of its maximum at level 1, and the move step is the book's at level 1
+    /// at `rate`, as a refresh computes them. A type has `combat` exactly when it has the life
+    /// pool `life`, which a mode with no combat lacks: a unit that can die is one that combat
+    /// kills.
+    pub(crate) fn new<'a>(
+        book: &StatBook,
+        unit_type: UnitType,
+        sections: KitSections<'a, impl IntoIterator<Item = (PoolId, &'a Stat)>>,
+        life: Option<PoolId>,
+        rate: TickRate,
     ) -> Result<UnitKit, UnitKitError> {
-        let stat = |stat: &Stat| {
-            let missing = || UnitKitError::MissingStat(stat.clone());
-            let stats = stats.ok_or_else(missing)?;
-            if !stats.declares(stat) {
-                return Err(missing());
-            }
-            stats
-                .at(stat, 1)
-                .ok_or_else(|| UnitKitError::Overflow(stat.clone()))
+        let KitSections {
+            combat,
+            pools,
+            vision,
+            body,
+            tracks,
+            production,
+        } = sections;
+        let values = book.base_values(unit_type, 1);
+        let given = |stat: &Stat| {
+            let id = book.named(stat).expect("the load checked the stats");
+            book.gives(unit_type, id).then_some(id)
         };
         let mut maxes = Vec::new();
         for (pool, max) in pools {
-            let value = stat(max)?;
+            let id = given(max).ok_or_else(|| UnitKitError::MissingStat(max.clone()))?;
+            let value = values[id.index()];
             if value <= Num::ZERO {
                 return Err(UnitKitError::NotPositive(max.clone()));
             }
@@ -72,69 +82,29 @@ impl UnitKit {
         }
         let pools =
             (!maxes.is_empty()).then(|| Pools::new(maxes).expect("each maximum is positive"));
-        let on_death = combat
-            .map(|combat| {
-                if pools.is_none_or(|pools| pools.max(rules.life).is_none()) {
-                    return Err(UnitKitError::NoLifePool);
-                }
-                Ok(combat.on_death)
-            })
-            .transpose()?;
-        let move_speed = Stat::Engine(EngineStat::MoveSpeed);
-        let step = if stats.is_some_and(|stats| stats.declares(&move_speed)) {
-            let speed = stat(&move_speed)?.min(rules.max_move_speed.get());
-            let overflow = || UnitKitError::Overflow(move_speed.clone());
-            let step = per_tick(speed, rules.rate).ok_or_else(overflow)?;
-            Some(MoveStep::new(step).ok_or(UnitKitError::Negative(move_speed))?)
-        } else {
-            None
+        let has_life = life.and_then(|life| pools?.max(life)).is_some();
+        let on_death = match (combat, has_life) {
+            (Some(combat), true) => Some(combat.on_death),
+            (Some(_), false) => return Err(UnitKitError::NoLifePool),
+            (None, true) => return Err(UnitKitError::NoCombat),
+            (None, false) => None,
         };
+        let step = given(&Stat::Engine(EngineStat::MoveSpeed)).map(|_| {
+            let step = book
+                .step(&values, rate)
+                .expect("a type gives only a stat the mode declares");
+            MoveStep::new(step).expect("the book's step is never negative")
+        });
         Ok(UnitKit {
             pools,
             on_death,
             step,
-            sight: None,
-            body: None,
-            tracks: TrackSet::default(),
-            queue: None,
+            sight: vision.map(|vision| vision.sight),
+            body,
+            tracks,
+            queue: production.map(|production| production.queue),
         })
     }
-
-    /// The kit with `body`, the body of its type's `collision` section on its layer, if it has
-    /// one.
-    #[must_use]
-    pub const fn with_body(self, body: Option<Body>) -> UnitKit {
-        UnitKit { body, ..self }
-    }
-
-    /// The kit with `tracks`, its type's.
-    #[must_use]
-    pub const fn with_tracks(self, tracks: TrackSet) -> UnitKit {
-        UnitKit { tracks, ..self }
-    }
-
-    /// The kit with the train queue of its type's `production` section, if it has one.
-    #[must_use]
-    pub fn with_production(self, production: Option<&ProductionData>) -> UnitKit {
-        UnitKit {
-            queue: production.map(|production| production.queue),
-            ..self
-        }
-    }
-
-    /// The kit with the sight of its type's `vision` section, if it has one.
-    #[must_use]
-    pub fn with_vision(self, vision: Option<&VisionData>) -> UnitKit {
-        UnitKit {
-            sight: vision.map(|vision| vision.sight),
-            ..self
-        }
-    }
-}
-
-/// `speed` in meters a second as meters a tick at `rate`, to the nearest.
-const fn per_tick(speed: Num, rate: TickRate) -> Option<Num> {
-    speed.checked_div_int(rate.hz().get() as i64)
 }
 
 #[cfg(test)]

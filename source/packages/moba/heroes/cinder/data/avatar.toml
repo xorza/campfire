@@ -1,4 +1,4 @@
-name = "Cinder"
+name = "hero-name"
 tags = ["mage"]
 pools = ["health", "mana"]
 tracks = ["level"]

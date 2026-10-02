@@ -1,56 +1,82 @@
-use bevy_ecs::query::Without;
-use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
-use bevy_ecs::system::{NonSend, Query, Res};
-use bevy_ecs::world::{EntityRef, World};
-use campfire_script::{ScriptHost, ScriptId};
-use campfire_sim::{Position, SimSet, SimTick, StableId, StateRegistry, TickRate};
+use bevy_ecs::query::ROQueryItem;
+use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
+use bevy_ecs::system::{Query, Res};
+use bevy_ecs::world::World;
 
-use crate::actions::action_book::{ActionBook, ActionId, ActionParts, Aim, Passive, RankValues};
-use crate::actions::action_data::{ActionData, Range, Targeting};
-use crate::actions::action_kind::ActionKind;
-use crate::actions::action_slots::{ActionSlots, ActionTarget, InProgress};
-use crate::actions::error::ActionError;
-use crate::actions::purse::Purse;
-use crate::actions::weapon::Weapon;
-use crate::combat::CombatSet;
-use crate::combat::dead::Dead;
-use crate::combat::targets::Targets;
-use crate::mode::player_resources::PlayerResources;
-use crate::orders::OrdersSet;
-use crate::scripts::ctx::Ctx;
+use campfire_sim::{SimSet, SimTick, StableId, StateRegistry, TickRate};
+
+use crate::actions::action_book::ActionBook;
+use crate::stats::carried_mut::CarriedMut;
+use crate::stats::lifetime::Hold;
+use crate::stats::modifier_clocks::ModifierClocks;
+use crate::stats::param_book::ParamBook;
+
+use crate::actions::action_slots::ActionSlots;
+use crate::actions::actions_column::ActionsColumn;
+
 use crate::stats::StatsSet;
-use crate::stats::modifier_book::{Applier, ModifierBook};
+use crate::stats::applier::Applier;
+use crate::stats::modifier_book::ModifierBook;
+use crate::stats::modifier_spec::ParamPlace;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::param_sources::ParamSources;
-use crate::stats::pools::Pools;
-use crate::stats::stat::Stat;
-use crate::stats::stat_book::StatBook;
-use crate::units::block::Block;
-use crate::units::body::Body;
-use crate::units::owner::Owner;
-use crate::units::script_view::{RowFill, SlotRow, View};
-use crate::units::team::Team;
-use crate::units::unit_tags::UnitTags;
 
+use crate::stats::stat_book::StatBook;
+
+use crate::units::row_fill::RowFill;
+use crate::units::script_view::View;
+
+pub(crate) mod action;
 pub(crate) mod action_book;
 pub(crate) mod action_data;
+pub(crate) mod action_data_field;
 pub(crate) mod action_kind;
+pub(crate) mod action_names;
+pub(crate) mod action_parts;
 pub(crate) mod action_slots;
+pub(crate) mod action_target;
+pub(crate) mod actions_api;
+pub(crate) mod actions_column;
+pub(crate) mod cost_target;
+pub(crate) mod delivery;
 pub(crate) mod delivery_data;
+pub(crate) mod effect_data;
 pub(crate) mod error;
+pub(crate) mod fan;
+pub(crate) mod kind_spec;
 pub(crate) mod purse;
+pub(crate) mod range;
+pub(crate) mod rank_values;
 pub(crate) mod slot_kind;
 pub(crate) mod slot_kinds;
+pub(crate) mod targets;
 pub(crate) mod weapon;
 
 /// The core's actions: every action a match loads, and the slots units hold them in.
 #[derive(Debug)]
 pub struct Actions;
 
+/// The systems of the action pipeline, for the capabilities built on it to order theirs against.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum ActionsSet {
+    /// In `SimSet::Act`, after attacks start: what each unit was ordered starts, each kind's
+    /// orders by the capability that runs the kind.
+    Start,
+    /// In `SimSet::Inputs`, once the tick's orders and expiries are in: passives hold as the
+    /// slots stand.
+    HoldAtInputs,
+    /// In `SimSet::Resolve`, once the tick's damage is dealt and before units die: passives hold
+    /// as the slots stand.
+    HoldAtResolve,
+}
+
 impl Actions {
-    /// Adds the actions to a match, with none loaded yet, and to the rows of its `view`.
-    pub(crate) fn install(world: &mut World, registry: &mut StateRegistry, view: &View) {
-        view.add_source(fill_row);
+    /// Adds the actions to a match whose core is installed, with none loaded yet, and its column
+    /// to the script view.
+    pub(crate) fn install(world: &mut World, registry: &mut StateRegistry) {
+        let view = world.non_send::<View>().clone();
+        view.add_column(ActionsColumn::default());
+        view.add_source::<RowParts>(world, fill_row);
         world.insert_resource(ActionBook::default());
         registry.register_component::<ActionSlots>();
     }
@@ -60,198 +86,15 @@ impl Actions {
     /// target is one combat finds.
     pub(crate) fn schedule(schedule: &mut Schedule) {
         schedule.add_systems((
-            start_actions.in_set(SimSet::Act).in_set(CombatSet::Attack),
             hold_passives
                 .in_set(SimSet::Inputs)
-                .after(OrdersSet::Orders)
+                .in_set(ActionsSet::HoldAtInputs)
                 .after(StatsSet::Expire),
             hold_passives
                 .in_set(SimSet::Resolve)
-                .after(CombatSet::Damage)
-                .before(CombatSet::Die),
+                .in_set(ActionsSet::HoldAtResolve),
             hold_passives.in_set(SimSet::Vision),
         ));
-    }
-
-    /// Binds `action` to the unit type `name` it spawns, once the match's unit types load: a
-    /// train's unit, or its delivery's projectile, one the package load checked.
-    pub fn bind_spawn(world: &mut World, action: ActionId, name: &str) {
-        let unit_type = world
-            .non_send::<View>()
-            .types_mut()
-            .named(name)
-            .expect("the load checked an action's unit type");
-        world
-            .resource_mut::<ActionBook>()
-            .bind_spawn(action, unit_type);
-    }
-
-    /// Loads the action `name` of `package`, of `ranks` ranks, into the match, which the
-    /// package load checked, with its compiled script exactly when its data names one: its
-    /// capability fields at each rank, times in milliseconds as ticks at the match's rate,
-    /// rounded up.
-    pub fn load(
-        world: &mut World,
-        package: u16,
-        name: &str,
-        data: &ActionData,
-        script: Option<ScriptId>,
-        ranks: u8,
-    ) -> Result<ActionId, ActionError> {
-        let passive = data.passive_modifier.as_ref().map(|name| Passive {
-            modifier: world
-                .resource::<ModifierBook>()
-                .find(package, name)
-                .expect("the load checked the passive's modifier"),
-            while_ready: data.passive_while_ready,
-        });
-        let rate = *world.resource::<TickRate>();
-        let aim = match &data.targeting {
-            Targeting::None => Aim::None,
-            Targeting::Point => Aim::Point,
-            Targeting::Direction => Aim::Direction,
-            Targeting::Unit(filter) => Aim::Unit(
-                world
-                    .non_send::<View>()
-                    .resolve_filter(filter)
-                    .expect("the load checked the filter's tag"),
-            ),
-        };
-        let view = world.non_send::<View>().clone();
-        let ranks = RankValues::all(data, ranks, rate, |name| view.cost_target(name.as_str()))?;
-        let stat = |stat: &Stat| view.stat_index(stat).expect("the load checked the stats");
-        let weapon = match (&data.rate, &data.damage, &data.damage_kind) {
-            (Some(rate), Some(damage), Some(kind)) => Some(Weapon {
-                rate: stat(rate),
-                damage: stat(damage),
-                kind: view
-                    .damage_kind(kind.as_str())
-                    .expect("the load checked the damage kind"),
-            }),
-            _ => None,
-        };
-        let parts = ActionParts {
-            passive,
-            aim,
-            ranks,
-            weapon,
-        };
-        let host = world
-            .remove_non_send::<ScriptHost>()
-            .expect("units are installed");
-        let id = world
-            .resource_mut::<ActionBook>()
-            .load(&host, package, data, script, parts);
-        world.insert_non_send(host);
-        let ctx = world.non_send::<Ctx>().clone();
-        ctx.frame().add_params(id, &data.params, stat);
-        let delivery = world
-            .resource::<ActionBook>()
-            .get(id)
-            .and_then(|action| action.delivery);
-        world.non_send::<View>().add_ability(name, delivery);
-        Ok(id)
-    }
-}
-
-/// Starts what each unit was ordered, in Act. An ordered cast that passes its checks, its target
-/// within range, starts, and any other is dropped. With nothing under way, a unit attacks its
-/// attack target with the first weapon whose filter selects it, once that weapon passes its
-/// checks and the target is within its range. A unit its tags keep from an action's group keeps
-/// its order: a cast it started goes back to it, and an attack in its windup stops. An attack
-/// target that is no living enemy any more is dropped, with the attack on it.
-fn start_actions(
-    tick: Res<'_, SimTick>,
-    book: Res<'_, ActionBook>,
-    resources: Option<Res<'_, PlayerResources>>,
-    targets: Targets<'_, '_>,
-    mut units: Query<
-        '_,
-        '_,
-        (
-            &Position,
-            &Team,
-            &mut ActionSlots,
-            Option<&Pools>,
-            Option<&Owner>,
-            Option<&Body>,
-            Option<&UnitTags>,
-        ),
-        Without<Dead>,
-    >,
-) {
-    let now = tick.start();
-    for (&position, &team, mut slots, pools, owner, body, tags) in &mut units {
-        let effects = UnitTags::effects_of(tags);
-        let purse = Purse {
-            pools,
-            resources: resources.as_deref(),
-            owner: owner.map(|owner| owner.slot()),
-        };
-        let radius = Body::radius_of(body);
-        let living = |id| targets.living(id);
-        let attitude = |other| targets.attitude(team, other);
-        match slots.in_progress() {
-            Some(underway) if underway.kind == ActionKind::Cast => {
-                if effects.blocks(Block::Cast) {
-                    if underway.resolves_at.is_some() {
-                        slots.interrupt();
-                    }
-                    continue;
-                }
-                if underway.resolves_at.is_some() {
-                    continue;
-                }
-                let started = book
-                    .check(now, &slots, purse, underway, attitude, living)
-                    .filter(|checked| checked.in_range(position, radius, &targets))
-                    .map(|checked| (now.after(checked.values.windup), checked.target));
-                match started {
-                    Some((resolves_at, target)) => slots.start(resolves_at, target),
-                    None => slots.stop(),
-                }
-            }
-            Some(underway) if underway.kind == ActionKind::Train => {}
-            Some(_) => {
-                if effects.blocks(Block::Attack) {
-                    slots.interrupt();
-                } else if slots
-                    .attack_target()
-                    .is_none_or(|target| targets.enemy(team, target).is_none())
-                {
-                    slots.set_attack_target(None);
-                }
-            }
-            None => {
-                let Some(target) = slots.attack_target() else {
-                    continue;
-                };
-                let Some(unit) = targets.enemy(team, target) else {
-                    slots.set_attack_target(None);
-                    continue;
-                };
-                if effects.blocks(Block::Attack) {
-                    continue;
-                }
-                let selects = (targets.attitude(team, unit.team), unit.tags);
-                let Some(slot) = book.weapon_for(&slots, Some(selects)) else {
-                    continue;
-                };
-                let underway = InProgress {
-                    slot,
-                    kind: ActionKind::Attack,
-                    target: ActionTarget::Unit(target),
-                    resolves_at: None,
-                };
-                let started = book
-                    .check(now, &slots, purse, underway, attitude, living)
-                    .filter(|checked| checked.in_range(position, radius, &targets))
-                    .map(|checked| now.after(checked.values.windup));
-                if let Some(resolves_at) = started {
-                    slots.start_attack(slot, resolves_at);
-                }
-            }
-        }
     }
 }
 
@@ -259,32 +102,38 @@ fn start_actions(
 /// with `passive_while_ready` off cooldown, from the unit itself at the action's rank, applied
 /// again when the rank changes; and none other. It runs as each tick starts, after the casts
 /// resolve and the attacks strike, and after the mode's calls, which learn ranks. A passive's
-/// params are the script's, so without the core's scripts, as on a client, it holds none.
+/// params are the match's param book's.
 fn hold_passives(
     actions: Res<'_, ActionBook>,
     book: Option<Res<'_, ModifierBook>>,
     stats: Option<Res<'_, StatBook>>,
-    tick: Res<'_, SimTick>,
-    ctx: Option<NonSend<'_, Ctx>>,
+    (tick, rate): (Res<'_, SimTick>, Res<'_, TickRate>),
+    params: Res<'_, ParamBook>,
     sources: ParamSources<'_, '_>,
-    mut units: Query<'_, '_, (&StableId, &ActionSlots, &mut Modifiers)>,
+    mut units: Query<'_, '_, (&StableId, &ActionSlots, &mut Modifiers, &mut ModifierClocks)>,
 ) {
-    let (Some(book), Some(stats), Some(ctx)) = (book, stats, ctx) else {
+    if stats.is_none() {
+        return;
+    }
+    let Some(book) = book else {
         return;
     };
     let now = tick.start();
-    for (&id, slots, mut modifiers) in &mut units {
+    for (&id, slots, modifiers, clocks) in &mut units {
+        let mut carried = CarriedMut::new(modifiers, clocks);
         for slot in slots.iter() {
             let Some(passive) = actions.get(slot.action).and_then(|action| action.passive) else {
                 continue;
             };
-            let held = modifiers
+            let held = carried
+                .modifiers()
                 .get(passive.modifier, Some(id))
+                .filter(|instance| instance.lifetime.held_by(Hold::Passive))
                 .map(|instance| instance.rank);
             let holds = slot.rank > 0 && (!passive.while_ready || slot.ready_at <= now);
             if !holds {
                 if held.is_some() {
-                    modifiers.remove(passive.modifier, Some(id));
+                    carried.release(passive.modifier, Some(id), Hold::Passive);
                 }
                 continue;
             }
@@ -295,46 +144,164 @@ fn hold_passives(
                 source: Some(id),
                 ability: Some(slot.action),
                 rank: slot.rank,
-                passive: true,
-                held: false,
+                hold: Some(Hold::Passive),
             };
-            let frame = ctx.frame();
             let source = sources.get(id);
-            let param = |name: &str| {
+            let param = |place: &ParamPlace| {
                 let (ability, rank) = (Some(slot.action), slot.rank);
-                frame.modifier_param(passive.modifier, ability, rank, name, source.as_ref())
+                params.modifier_param(passive.modifier, ability, rank, place, source.as_ref())
             };
             if let Some(application) =
-                book.application(passive.modifier, applier, None, now, &stats, param)
+                book.application(passive.modifier, applier, None, now, *rate, param)
             {
-                modifiers.apply(application);
+                carried.apply(application);
             }
         }
     }
 }
 
-/// Fills a row of the script view with a unit's actions: each slot's rank and its action's
-/// ranks, the attack target, and the range of its first weapon, which it has to attack at all.
-fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
-    let Some(slots) = unit.get::<ActionSlots>() else {
-        return;
-    };
-    let book = fill.world.resource::<ActionBook>();
-    fill.row.target = slots.attack_target();
-    fill.row.attack_range =
-        book.weapon_for(slots, None)
-            .and_then(|slot| match book.range(slots, slot) {
-                Range::Meters(range) => Some(range),
-                Range::Global => None,
-            });
-    let rows = slots.iter().map(|slot| {
-        let action = book
-            .get(slot.action)
-            .expect("a slot's action is in the book");
-        SlotRow {
-            rank: slot.rank,
-            ranks: u8::try_from(action.ranks.len()).expect("an action has few ranks"),
+/// The part of a unit the actions read into its row: its slots.
+type RowParts = Option<&'static ActionSlots>;
+
+/// Adds a unit's actions to the actions' column of the script view.
+fn fill_row(slots: ROQueryItem<'_, '_, RowParts>, fill: &mut RowFill<'_>) {
+    fill.column::<ActionsColumn>().push(slots);
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use bevy_ecs::world::World;
+
+    use crate::actions::Actions;
+    use crate::actions::action_book::ActionBook;
+    use crate::units::action_id::ActionId;
+
+    impl Actions {
+        /// The action `name` of `package`, as the match loaded it.
+        pub fn action(world: &World, package: u16, name: &str) -> Option<ActionId> {
+            world.resource::<ActionBook>().action_named(package, name)
         }
-    });
-    fill.slotted(rows);
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod loads {
+    use crate::actions::Actions;
+    use crate::actions::action_book::ActionBook;
+    use crate::actions::action_data::ActionData;
+    use crate::actions::action_names::ActionNames;
+    use crate::actions::action_parts::ActionParts;
+    use crate::actions::actions_column::ActionsColumn;
+    use crate::actions::cost_target::CostTarget;
+    use crate::actions::error::ActionError;
+    use crate::projectiles::projectile_spec::ProjectileSpec;
+    use crate::scripts::script_book::ScriptBook;
+    use crate::stats::modifier_book::ModifierBook;
+    use crate::stats::param_book::ParamBook;
+    use crate::stats::stat_book::StatBook;
+    use crate::stats::stat_id::StatId;
+    use crate::units::action_id::ActionId;
+    use crate::units::by_type::ByType;
+    use crate::units::filter::Filter;
+    use crate::units::modifier_id::ModifierId;
+    use crate::units::script_view::View;
+    use crate::units::type_scope::TypeScope;
+    use crate::units::unit_type::UnitType;
+    use crate::values::damage_kind::DamageKind;
+    use crate::values::declared_name::DeclaredName;
+    use crate::values::filter_data::FilterData;
+    use crate::values::param::Param;
+    use crate::values::stat::Stat;
+    use bevy_ecs::world::{Mut, World};
+    use campfire_script::ScriptId;
+    use campfire_sim::TickRate;
+
+    impl Actions {
+        /// Loads the action `name` of `package`, of `ranks` ranks, into the match, which the
+        /// package load checked, with its compiled script exactly when its data names one: its
+        /// capability fields at each rank, times in milliseconds as ticks at the match's rate,
+        /// rounded up.
+        pub(crate) fn load(
+            world: &mut World,
+            package: u16,
+            name: &str,
+            data: &ActionData,
+            script: Option<ScriptId>,
+            ranks: u8,
+        ) -> Result<ActionId, ActionError> {
+            let rate = *world.resource::<TickRate>();
+            let view = world.non_send::<View>().clone();
+            let names = MatchNames {
+                world,
+                view: &view,
+                modifiers: world.resource::<ModifierBook>(),
+            };
+            let parts = ActionParts::of(data, package, ranks, rate, &names)?;
+            let id = world.resource_scope(|world, mut actions: Mut<'_, ActionBook>| {
+                let scripts = world.resource::<ScriptBook>();
+                actions.load(scripts, package, name, data, script, parts)
+            });
+            let places = StatBook::places(world, data.params.values().flat_map(Param::stats));
+            ParamBook::load_action(world, id, &data.params, |stat| places[stat]);
+            let book = world.resource::<ActionBook>().clone();
+            ActionsColumn::share(world.non_send::<View>(), book);
+            Ok(id)
+        }
+    }
+
+    /// The names of an action's data as a match's world resolves them: its view, its book of
+    /// modifiers, and the world's projectile specs.
+    #[derive(Debug)]
+    struct MatchNames<'w> {
+        world: &'w World,
+        view: &'w View,
+        modifiers: &'w ModifierBook,
+    }
+
+    impl ActionNames for MatchNames<'_> {
+        fn stat(&self, stat: &Stat) -> StatId {
+            self.view
+                .stat_index(stat)
+                .expect("the load checked the stats")
+        }
+
+        fn damage_kind(&self, name: &DeclaredName) -> DamageKind {
+            self.view
+                .damage_kind_named(name.as_str())
+                .expect("the load checked the damage kind")
+        }
+
+        fn cost_target(&self, name: &DeclaredName) -> Option<CostTarget> {
+            self.view.cost_target(name.as_str())
+        }
+
+        fn filter(&self, filter: &FilterData) -> Filter {
+            self.view
+                .resolve_filter(filter)
+                .expect("the load checked the filter's tags")
+        }
+
+        fn modifier(&self, package: u16, name: &DeclaredName) -> ModifierId {
+            self.modifiers
+                .named(package, name.as_str())
+                .expect("the load checked the modifier")
+        }
+
+        fn homes(&self, package: u16, name: &DeclaredName) -> bool {
+            let unit_type = self.unit_type(package, name);
+            let specs = self.world.resource::<ByType<ProjectileSpec>>();
+            specs
+                .get(unit_type)
+                .expect("a test loads a projectile type's spec before its action")
+                .homing
+        }
+
+        fn unit_type(&self, package: u16, name: &DeclaredName) -> UnitType {
+            let scope = TypeScope::of_package(package);
+            self.view
+                .types_mut()
+                .named(scope, name.as_str())
+                .expect("a test loads an action's unit type before the action")
+        }
+    }
 }

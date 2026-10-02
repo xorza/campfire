@@ -1,13 +1,16 @@
 use bevy_ecs::world::World;
-use campfire_math::Num;
+use campfire_math::{Num, Tick};
 use campfire_script::ScriptError;
-use campfire_script::rhai::FuncArgs;
-use campfire_sim::{IdAllocator, SimTick, Tick};
+use campfire_script::rhai::{Dynamic, FuncArgs};
+use campfire_sim::{IdAllocator, SimTick};
 
 use crate::combat::damage::Damage;
 use crate::combat::damage_handle::DamageHandle;
+use crate::combat::heal::Heal;
+use crate::combat::heal_handle::HealHandle;
 use crate::mode::choices::Choices;
 use crate::mode::mode_book::ModeBook;
+use crate::mode::mode_call::ModeCall;
 use crate::mode::mode_state::ModeState;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, CallError};
@@ -38,9 +41,7 @@ impl Calls<'_, '_> {
 
     /// The match's mode.
     pub(crate) fn book(&self) -> &ModeBook {
-        self.ctx
-            .mode()
-            .expect("mode calls run in a match with a mode")
+        ModeBook::of(self.ctx).expect("mode calls run in a match with a mode")
     }
 
     /// Runs `hook` with `args` from `pool`: on success its state, choices and ids commit and its
@@ -65,14 +66,33 @@ impl Calls<'_, '_> {
         ctx: &Ctx,
         damage: Damage,
     ) -> Result<Num, CallError> {
+        let handle = DamageHandle::new(damage, ctx.view().clone());
+        Calls::amount(batch, ctx, Hook::CalcDamage, Dynamic::from(handle))
+    }
+
+    /// The amount of `heal` before the heal scale: what the mode's `calc_heal` returns for it,
+    /// a pure call in `batch`; an error when the call fails or returns no number.
+    pub(crate) fn weigh_heal(
+        batch: &mut ScriptBatch<'_>,
+        ctx: &Ctx,
+        heal: Heal,
+    ) -> Result<Num, CallError> {
+        let handle = HealHandle::new(heal, ctx.view().clone());
+        Calls::amount(batch, ctx, Hook::CalcHeal, Dynamic::from(handle))
+    }
+
+    /// The number the mode's pure `hook` returns for `handle`, in `batch`.
+    fn amount(
+        batch: &mut ScriptBatch<'_>,
+        ctx: &Ctx,
+        hook: Hook,
+        handle: Dynamic,
+    ) -> Result<Num, CallError> {
         let now = batch.world().resource::<SimTick>().start();
         let mut calls = Calls { batch, ctx, now };
         calls.begin(true);
         let script = calls.book().schema.script;
-        let handle = DamageHandle::new(damage, ctx.view().clone());
-        let returned = calls
-            .batch
-            .call_pure(script, Hook::CalcDamage, (ctx.clone(), handle));
+        let returned = calls.batch.call_pure(script, hook, (ctx.clone(), handle));
         let value = returned.map_err(CallError::from_script)?;
         let amount = match value.as_int() {
             Ok(int) => Num::from_int(int),
@@ -86,7 +106,6 @@ impl Calls<'_, '_> {
     fn begin(&mut self, pure: bool) {
         let world = self.batch.world();
         self.ctx.frame().begin_mode(world, pure);
-        self.ctx.view().set_caller(0);
     }
 
     /// Commits the call's state, choices and the ids it took, then applies its effects in order:
@@ -95,8 +114,9 @@ impl Calls<'_, '_> {
         let world = self.batch.world();
         {
             let frame = self.ctx.frame();
-            world.resource_mut::<ModeState>().0.clone_from(&frame.state);
-            world.resource_mut::<Choices>().clone_from(&frame.choices);
+            let call = ModeCall::of(&frame);
+            world.resource_mut::<ModeState>().0.clone_from(&call.state);
+            world.resource_mut::<Choices>().clone_from(&call.choices);
             world.resource_mut::<IdAllocator>().clone_from(&frame.ids);
         }
         self.ctx.apply(world, self.now);

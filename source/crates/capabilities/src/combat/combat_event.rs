@@ -1,7 +1,7 @@
 use campfire_sim::StableId;
 
 use crate::combat::damage::Damage;
-use crate::stats::modifier_book::ModifierId;
+use crate::units::modifier_id::ModifierId;
 
 /// A combat event, which the modifiers that hear it answer by their scripts' hooks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

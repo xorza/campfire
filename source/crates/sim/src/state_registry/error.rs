@@ -12,7 +12,8 @@ pub enum SnapshotError {
     TypesDiffer,
     /// A value does not decode.
     Malformed(postcard::Error),
-    /// Stable ids within a type do not strictly increase, so the encoding is not the canonical one.
+    /// The bytes are not the canonical encoding of the state they restore: stable ids within a
+    /// type do not strictly increase, or a value is encoded in a form the snapshot never writes.
     NotCanonical,
     /// A component belongs to a stable id the entity list lacks.
     UnknownEntity,
@@ -20,20 +21,27 @@ pub enum SnapshotError {
     AllocatorBehind,
     /// Bytes remain after the last field.
     Trailing,
+    /// A value of the type of this name breaks a rule of its type, such as an id that names
+    /// nothing the match's books hold.
+    Invalid(&'static str),
 }
 
 impl fmt::Display for SnapshotError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
+        let text = match self {
             SnapshotError::NotSnapshot => "not a snapshot",
             SnapshotError::Truncated => "snapshot ends inside a field",
             SnapshotError::TypesDiffer => "snapshot types differ from the registry",
             SnapshotError::Malformed(_) => "snapshot value does not decode",
-            SnapshotError::NotCanonical => "snapshot stable ids do not strictly increase",
+            SnapshotError::NotCanonical => "snapshot is not the canonical encoding of its state",
             SnapshotError::UnknownEntity => "snapshot component for an unknown entity",
             SnapshotError::AllocatorBehind => "snapshot allocator behind the ids in use",
             SnapshotError::Trailing => "snapshot has trailing bytes",
-        })
+            SnapshotError::Invalid(name) => {
+                return write!(f, "snapshot value of {name} breaks its rules");
+            }
+        };
+        f.write_str(text)
     }
 }
 

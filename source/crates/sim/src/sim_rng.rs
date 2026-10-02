@@ -1,5 +1,5 @@
 use bevy_ecs::resource::Resource;
-use campfire_math::{Rng, RngSource, SegmentSeed};
+use campfire_math::{Rng, RngSource, RngStream, SegmentSeed};
 
 use crate::sim_tick::SimTick;
 use crate::stable_id::StableId;
@@ -17,7 +17,7 @@ impl SimRng {
 
     /// The sequence of `stream` for `entity` in the running tick. Debug builds panic when the same
     /// pair opens twice in one tick, since the second would repeat the first one's draws.
-    pub fn open(&self, stream: &str, entity: StableId) -> Rng {
+    pub fn open(&self, stream: RngStream, entity: StableId) -> Rng {
         self.0.open(stream, entity.get())
     }
 

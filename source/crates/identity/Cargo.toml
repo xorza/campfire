@@ -4,10 +4,5 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
-[dependencies]
-campfire-protocol.workspace = true
-
-nostr.workspace = true
-
 [lints]
 workspace = true

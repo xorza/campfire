@@ -21,7 +21,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use bevy_app::{App, AppExit, ScheduleRunnerPlugin, TaskPoolPlugin, Update};
 use bevy_ecs::lifecycle::Add;
 use bevy_ecs::observer::On;
-use bevy_ecs::query::With;
+use bevy_ecs::query::{QueryState, With};
 use bevy_ecs::system::{Commands, Query};
 use bevy_ecs::world::World;
 use bevy_state::app::StatesPlugin;
@@ -33,7 +33,7 @@ use campfire_net::{
 use campfire_package::ModePackages;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
 use campfire_protocol::{CertificateHash, SeedChain};
-use campfire_runner::Session;
+use campfire_runner::{InputRules, Session};
 use campfire_sim::TickRate;
 use lightyear::prelude::server::{RawServer, ServerPlugins, Start, WebTransportServerIo};
 use lightyear::prelude::{Connected, Identity, LinkOf, Linked, LocalAddr, ReplicationSender};
@@ -79,24 +79,23 @@ fn main() -> ExitCode {
     let certificate =
         CertificateHash::new(*identity.certificate_chain().as_slice()[0].hash().as_ref());
     let server_key = keypair();
-    let players = packages
-        .manifest()
-        .teams
-        .iter()
-        .map(|team| team.slots as usize)
-        .sum();
+    let players = usize::try_from(packages.manifest().slots()).expect("the slots fit usize");
+    let key = server_key.x_only_public_key().0;
+    let tick_hz = packages.manifest().tick_hz.default();
     let lobby = Lobby::new(LobbySetup {
         packages,
-        server_key: server_key.x_only_public_key().0.serialize(),
+        server_key: key,
         seed_chain: SeedChain::new(random(), NonZeroU32::MIN),
+        tick_hz,
+        inputs: InputRules::LAN,
         certificate,
         players,
         clock: unix_now,
         entropy: fill,
-    });
-    let tick = TickRate::new(lobby.terms().tick_hz).length();
+    })
+    .expect("a mode runs at its default rate");
+    let tick = TickRate::new(tick_hz).length();
 
-    let key = server_key.x_only_public_key().0;
     info!(
         session = %lobby.terms().session_id(),
         %address,
@@ -125,8 +124,9 @@ fn main() -> ExitCode {
     let listening = Listening {
         certificate,
         server_key: key,
+        tick_hz,
         join: format!(
-            "campfire-client {} <this machine's LAN address>:{} {certificate} {key}",
+            "campfire-client {} <this machine's LAN address>:{} {certificate} {key} {tick_hz}",
             mode.display(),
             address.port()
         ),
@@ -150,17 +150,27 @@ fn main() -> ExitCode {
         ))
         .id();
     app.world_mut().trigger(Start { entity: server });
-    app.run();
-    ExitCode::SUCCESS
+    exit_code(app.run())
+}
+
+/// The process's exit code for how the app exited.
+fn exit_code(exit: AppExit) -> ExitCode {
+    match exit {
+        AppExit::Success => ExitCode::SUCCESS,
+        AppExit::Error(code) => ExitCode::from(code.get()),
+    }
 }
 
 /// Once the match started and no player is connected any more, reveals the seed, writes the
-/// session log into the working directory and exits.
-fn end_when_everyone_left(world: &mut World) {
+/// session log into the working directory and exits: with an error when the log is not written,
+/// as the session it holds is lost.
+fn end_when_everyone_left(
+    world: &mut World,
+    connected: &mut QueryState<(), (With<PlayerLink>, With<Connected>)>,
+) {
     if !world.contains_resource::<MatchClock>() {
         return;
     }
-    let mut connected = world.query_filtered::<(), (With<PlayerLink>, With<Connected>)>();
     if connected.iter(world).next().is_some() {
         return;
     }
@@ -172,17 +182,22 @@ fn end_when_everyone_left(world: &mut World) {
     session.log().encode(&mut bytes);
     let id = session.log().header().terms.session_id();
     let file = PathBuf::from(format!("{id}.campfire-log"));
-    let written = fs::write(&file, &bytes);
-    world.write_message(AppExit::Success);
-    match written {
-        Ok(()) => SessionWritten {
-            session: id,
-            file,
-            hash,
+    let exit = match fs::write(&file, &bytes) {
+        Ok(()) => {
+            SessionWritten {
+                session: id,
+                file,
+                hash,
+            }
+            .log();
+            AppExit::Success
         }
-        .log(),
-        Err(error) => error!(file = %file.display(), %error, "could not write the session log"),
-    }
+        Err(error) => {
+            error!(file = %file.display(), %error, "could not write the session log");
+            AppExit::error()
+        }
+    };
+    world.write_message(exit);
 }
 
 /// A fresh server key.

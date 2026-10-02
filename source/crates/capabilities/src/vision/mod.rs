@@ -1,27 +1,31 @@
-use std::ops::Range;
-
 use bevy_ecs::change_detection::DetectChanges;
 use bevy_ecs::entity::Entity;
+use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::query::Without;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::{Commands, Local, Query, Res};
-use bevy_ecs::world::{EntityRef, World};
+use bevy_ecs::world::World;
 use campfire_sim::{Position, SimSet, StateRegistry};
 
-use crate::combat::dead::Dead;
+use crate::units::dead::Dead;
 use crate::units::relations::Relations;
-use crate::units::script_view::{RowFill, View};
+use crate::units::row_fill::RowFill;
+use crate::units::script_view::View;
 use crate::units::team::Team;
 use crate::units::team_set::TeamSet;
 use crate::units::unit_tags::UnitTags;
 use crate::values::grid::Grid;
 use crate::vision::seen_by::SeenBy;
 use crate::vision::sight::Sight;
+use crate::vision::sight_column::SightColumn;
+use crate::vision::sight_maps::SightMaps;
 use crate::vision::vision_grid::VisionGrid;
 use crate::vision::vision_groups::VisionGroups;
 
 pub(crate) mod seen_by;
 pub(crate) mod sight;
+pub(crate) mod sight_column;
+pub(crate) mod sight_maps;
 pub(crate) mod vision_api;
 pub(crate) mod vision_data;
 pub(crate) mod vision_grid;
@@ -38,9 +42,9 @@ impl Vision {
     /// with a sight reveals the grid cells around it to its vision group, and each unit learns the
     /// teams that see it. A match sees nothing until its mode gives the grid.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
-        if let Some(view) = world.get_non_send::<View>() {
-            view.add_source(fill_row);
-        }
+        let view = world.non_send::<View>().clone();
+        view.add_column(SightColumn::default());
+        view.add_source::<RowParts>(world, fill_row);
         schedule.add_systems(see.in_set(SimSet::Vision));
         registry.register_component::<SeenBy>();
         registry.register_component::<Sight>();
@@ -48,24 +52,32 @@ impl Vision {
 
     /// Gives the match the map's `grid`, and the number of its teams.
     pub fn load_grid(world: &mut World, grid: Grid, teams: usize) {
-        assert!(teams <= Team::LIMIT, "the mode's check limits the teams");
+        assert!(
+            teams <= VisionGrid::MAX_TEAMS,
+            "the mode's check limits the teams of a map with vision"
+        );
         world.insert_resource(VisionGrid { grid, teams });
     }
 
     /// The teams that see `unit`: those the last Vision stage found, or, before it ran, the
-    /// unit's own; every team for an entity with no team, as a match without vision sees.
-    fn seen_by(unit: &EntityRef<'_>) -> TeamSet {
-        match (unit.get::<SeenBy>(), unit.get::<Team>()) {
+    /// unit's vision group under `relations`, as that stage would give it at the least; every
+    /// team for an entity with no team, as a match without vision sees.
+    fn seen_by(parts: ROQueryItem<'_, '_, RowParts>, relations: &Relations) -> TeamSet {
+        match parts {
             (Some(seen), _) => seen.get(),
-            (None, Some(&team)) => TeamSet::of(team),
+            (None, Some(&team)) => relations.vision_group(team),
             (None, None) => TeamSet::ALL,
         }
     }
 }
 
+/// The parts of a unit vision reads into its row: the teams that saw it, and its team.
+type RowParts = (Option<&'static SeenBy>, Option<&'static Team>);
+
 /// Fills a row of the script view with the teams that see the unit.
-fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
-    fill.row.seen_by = Vision::seen_by(unit);
+fn fill_row(parts: ROQueryItem<'_, '_, RowParts>, fill: &mut RowFill<'_>) {
+    let seen_by = Vision::seen_by(parts, fill.world.resource::<Relations>());
+    fill.column::<SightColumn>().push(seen_by);
 }
 
 /// Reveals the cells each living unit with a sight sees to its vision group, and those each such
@@ -87,31 +99,21 @@ fn see(
         ),
     >,
     mut commands: Commands<'_, '_>,
-    (mut groups, mut revealed, mut detected): (
-        Local<'_, VisionGroups>,
-        Local<'_, Vec<u64>>,
-        Local<'_, Vec<u64>>,
-    ),
+    (mut groups, mut maps): (Local<'_, VisionGroups>, Local<'_, SightMaps>),
 ) {
     let Some(grid) = grid else {
         return;
     };
     if relations.is_changed() || grid.is_changed() {
         groups.rebuild(grid.teams, &relations);
+        maps.reset(grid.grid.cells(), groups.count());
     }
-    let words = grid.grid.cells().div_ceil(64);
-    revealed.clear();
-    revealed.resize(words * groups.count(), 0);
-    detected.clear();
-    detected.resize(words * groups.count(), 0);
+    maps.begin_tick();
     for (&pos, &team, sight, tags) in &seers {
-        let run = groups.of(team) * words;
+        let group = groups.of(team);
         let detects = UnitTags::effects_of(tags).detects();
         grid.grid.spans_within(pos, sight.range(), |cells| {
-            set_bits(&mut revealed[run..run + words], cells.clone());
-            if detects {
-                set_bits(&mut detected[run..run + words], cells);
-            }
+            maps.reveal(group, cells, detects);
         });
     }
     for (entity, &pos, &team, tags, seen) in &mut units {
@@ -121,9 +123,8 @@ fn see(
             .cell_of(pos)
             .expect("every unit stands within the bounds, which the grid covers");
         let hidden = UnitTags::effects_of(tags).hidden();
-        let sight = if hidden { &detected } else { &revealed };
         for group in 0..groups.count() {
-            if sight[group * words + cell / 64] & 1 << (cell % 64) != 0 {
+            if maps.sees(group, cell, hidden) {
                 teams = teams.union(groups.members(group));
             }
         }
@@ -134,21 +135,6 @@ fn see(
                 commands.entity(entity).insert(SeenBy::new(teams));
             }
         }
-    }
-}
-
-/// Sets the bits of `cells`, a run that is not empty, in `words`.
-fn set_bits(words: &mut [u64], cells: Range<usize>) {
-    debug_assert!(!cells.is_empty());
-    let (first, last) = (cells.start / 64, (cells.end - 1) / 64);
-    let from = u64::MAX << (cells.start % 64);
-    let to = u64::MAX >> (63 - (cells.end - 1) % 64);
-    if first == last {
-        words[first] |= from & to;
-    } else {
-        words[first] |= from;
-        words[first + 1..last].fill(u64::MAX);
-        words[last] |= to;
     }
 }
 

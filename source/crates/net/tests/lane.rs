@@ -2,25 +2,17 @@
 //! whole wave with no wave to meet walks into the enemy tower's reach, strikes the tower, and falls
 //! to it.
 
-use std::num::NonZeroU32;
-
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use campfire_capabilities::{Action, MoveStep, Owner, PoolId, Pools, Team};
 use campfire_math::Num;
-use campfire_net::{LocalMatch, MatchSetup};
-use campfire_protocol::SeedChain;
+use campfire_net::internals::{End, LocalMatch, MatchSetup};
 use campfire_sim::EntityIndex;
-use lightyear::prelude::RollbackMode;
-
-use crate::scenario::next_tick;
-
-const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
 
 /// A match of the lane mode whose one player's walker stands at the map's edge, 8 m off the lane,
 /// out of every creep's and tower's reach, from before the first wave.
 fn quiet_lane() -> LocalMatch {
-    let mut local = LocalMatch::new(MatchSetup::solo(RollbackMode::Check, 1, SEED_CHAIN));
+    let mut local = LocalMatch::new(MatchSetup::SOLO);
     local.start_match();
     local.order(
         0,
@@ -77,17 +69,17 @@ fn two_equal_waves_trade_to_an_end_before_the_next_wave() {
     while creeps(local.server(), 0).is_empty() {
         local.step();
     }
-    let spawned = next_tick(local.server());
+    let spawned = local.next_tick(End::Server);
     let mut gone = [None; 2];
     while gone.iter().any(Option::is_none) {
         assert!(
-            next_tick(local.server()) - spawned < WAVE_TICKS,
+            local.next_tick(End::Server) - spawned < WAVE_TICKS,
             "the fight ends"
         );
         local.step();
         for (team, gone) in (0..).zip(&mut gone) {
             if gone.is_none() && creeps(local.server(), team).is_empty() {
-                *gone = Some(next_tick(local.server()));
+                *gone = Some(local.next_tick(End::Server));
             }
         }
     }
@@ -103,14 +95,14 @@ fn a_wave_with_no_wave_to_meet_strikes_the_tower_and_falls_to_it() {
     while creeps(local.server(), 0).is_empty() {
         local.step();
     }
-    let spawned = next_tick(local.server());
+    let spawned = local.next_tick(End::Server);
     for creep in creeps(local.server(), 0) {
         local.server_mut().world_mut().despawn(creep);
     }
     let west = tower(local.server(), 0);
     while !creeps(local.server(), 1).is_empty() {
         assert!(
-            next_tick(local.server()) - spawned < WAVE_TICKS,
+            local.next_tick(End::Server) - spawned < WAVE_TICKS,
             "the tower kills the wave"
         );
         local.step();
@@ -118,6 +110,6 @@ fn a_wave_with_no_wave_to_meet_strikes_the_tower_and_falls_to_it() {
     let full = Num::from_int(1500).unwrap();
     let lost = full - health(local.server(), west);
     let strike = Num::from_int(25).unwrap();
-    assert!(lost > Num::ZERO && lost < full, "{lost:?}");
-    assert_eq!(lost.to_bits() % strike.to_bits(), 0, "{lost:?}");
+    // The wave lands two strikes before the tower fells it.
+    assert_eq!(lost, strike * 2, "{lost:?} of {full:?}");
 }

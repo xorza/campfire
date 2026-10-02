@@ -1,27 +1,29 @@
 use std::collections::BTreeMap;
 
-use campfire_capabilities::{ActionData, DeliveryData};
+use campfire_capabilities::{
+    ActionData, DeclaredName, DeliveryData, NameKind, ScriptApi, UnitTypeFile,
+};
 use campfire_content::{Fingerprint, PackagePath};
 use campfire_script::ScriptHost;
 
-use crate::error::{LoadError, LoadProblem};
-use crate::files::units_data::UnitTypeFile;
-use crate::files::version::Version;
-use crate::package_dir::PackageDir;
+use crate::error::{LoadError, LoadProblem, ScriptProblem};
+use crate::files::package_header::PackageHeader;
+use crate::package_files::PackageFiles;
+use crate::package_text::PackageText;
 use crate::script_facts::ScriptFacts;
 
 /// Where a package holds its game scripts.
 const SCRIPTS: &str = "scripts";
 
-/// A package as the load read it: its name, fingerprint and target release, and each of its
-/// scripts.
+/// A package as the load read it: its header, its fingerprint, each of its scripts, and its
+/// human text.
 #[derive(Debug)]
 pub struct Package {
-    pub name: String,
+    pub header: PackageHeader,
     pub fingerprint: Fingerprint,
-    pub(crate) engine: Version,
     /// Every file under `scripts/`, by path.
     pub scripts: Vec<Script>,
+    pub text: PackageText,
 }
 
 #[derive(Debug)]
@@ -32,45 +34,38 @@ pub struct Script {
 }
 
 impl Package {
-    /// The package in `dir`, named `name` and targeting `engine`, with every script it holds.
+    /// The package of `files`, of `header`, with every script it holds and its text.
     pub(crate) fn read(
-        dir: &PackageDir,
-        name: String,
-        engine: Version,
+        files: &PackageFiles,
+        header: &PackageHeader,
         parser: &ScriptHost,
+        api: &ScriptApi,
     ) -> Result<Package, LoadError> {
-        let fail = |problem| LoadError {
-            package: name.clone(),
-            problem: Box::new(problem),
-        };
-        let fingerprint = dir
-            .fingerprint()
-            .map_err(|error| fail(LoadProblem::Content(error)))?;
+        let name = header.name.clone();
+        let fail = |problem| LoadError::of(&name, problem);
         let mut scripts = Vec::new();
-        let paths = dir
-            .files_under(SCRIPTS)
-            .map_err(|error| fail(LoadProblem::Content(error)))?;
-        for path in paths {
-            let source = dir
-                .read_text(&path)
+        for path in files.files_under(SCRIPTS) {
+            let source = files
+                .read_text(path)
                 .map_err(|error| fail(LoadProblem::Content(error)))?;
-            let ast = parser.parse(&source).map_err(|error| {
+            let ast = parser.parse(source).map_err(|error| {
                 fail(LoadProblem::Script {
                     path: path.clone(),
-                    error,
+                    problem: ScriptProblem::Compile(error),
                 })
             })?;
             scripts.push(Script {
-                facts: ScriptFacts::read(&ast),
-                path,
-                source,
+                facts: ScriptFacts::read(&ast, api),
+                path: path.clone(),
+                source: source.to_owned(),
             });
         }
+        let text = PackageText::read(files, &header.language).map_err(fail)?;
         Ok(Package {
-            name,
-            fingerprint,
-            engine,
+            header: header.clone(),
+            fingerprint: files.fingerprint(),
             scripts,
+            text,
         })
     }
 
@@ -84,8 +79,8 @@ impl Package {
     /// it.
     pub(crate) fn appliers<'a>(
         &'a self,
-        abilities: &'a BTreeMap<String, ActionData>,
-        units: &'a BTreeMap<String, UnitTypeFile>,
+        abilities: &'a BTreeMap<DeclaredName, ActionData>,
+        units: &'a BTreeMap<DeclaredName, UnitTypeFile>,
     ) -> BTreeMap<&'a str, Vec<&'a ActionData>> {
         let mut appliers: BTreeMap<&str, Vec<&ActionData>> = BTreeMap::new();
         for ability in abilities.values() {
@@ -102,8 +97,9 @@ impl Package {
                 .as_ref()
                 .and_then(|path| self.script(path))
                 .into_iter()
-                .flat_map(|script| script.facts.modifiers.iter().map(String::as_str));
-            for id in ability.modifiers().chain(inside).chain(scripted) {
+                .flat_map(|script| script.facts.names_of(NameKind::Modifier));
+            let named = ability.modifiers().chain(inside).map(DeclaredName::as_str);
+            for id in named.chain(scripted) {
                 appliers.entry(id).or_default().push(ability);
             }
         }

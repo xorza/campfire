@@ -1,17 +1,39 @@
 use campfire_sim::StableId;
 
-use crate::actions::action_book::ActionId;
-use crate::deliveries::hit::Hit;
+use crate::deliveries::delivering::Delivering;
 use crate::scripts::hook::Hook;
+use crate::values::hit::Hit;
 
-/// A hit of the unit `reached`, `on_hit`, or an end, `on_end`, of a delivery of `source`'s
-/// `action` at `rank`.
+/// What a delivery `by` reached, as `hit` says: a unit it hit, whose hook is `on_hit`, or its end,
+/// whose hook is `on_end`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Delivered {
-    pub(crate) source: StableId,
-    pub(crate) action: ActionId,
-    pub(crate) rank: u8,
-    pub(crate) hook: Hook,
-    pub(crate) reached: Option<StableId>,
+    pub(crate) by: Delivering,
+    pub(crate) reach: Reach,
     pub(crate) hit: Hit,
+}
+
+/// What a delivery reached: a unit, or its end.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Reach {
+    Hit(StableId),
+    End,
+}
+
+impl Reach {
+    /// The hook that runs for it.
+    pub(crate) const fn hook(self) -> Hook {
+        match self {
+            Reach::Hit(_) => Hook::OnHit,
+            Reach::End => Hook::OnEnd,
+        }
+    }
+
+    /// The unit it hit, if any.
+    pub(crate) const fn unit(self) -> Option<StableId> {
+        match self {
+            Reach::Hit(unit) => Some(unit),
+            Reach::End => None,
+        }
+    }
 }

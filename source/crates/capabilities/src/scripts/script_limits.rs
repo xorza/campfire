@@ -18,6 +18,10 @@ pub struct ScriptLimits {
 }
 
 impl ScriptLimits {
+    /// The chain depth at which a hook fails instead of running: no designed chain of combat
+    /// events is that deep, and the damage pass must end within its tick.
+    pub(crate) const CHAIN_DEPTH: u8 = 16;
+
     /// Whether a call may run at least one operation, and each pool holds a whole call.
     const fn holds_calls(self) -> bool {
         self.per_call >= 1
@@ -30,7 +34,7 @@ impl ScriptLimits {
 /// A manifest's limits, refused unless each pool holds a whole call.
 impl<'de> Deserialize<'de> for ScriptLimits {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<ScriptLimits, D::Error> {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
             per_call: u64,
@@ -56,5 +60,20 @@ impl<'de> Deserialize<'de> for ScriptLimits {
             ));
         }
         Ok(limits)
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::scripts::script_limits::ScriptLimits;
+
+    impl ScriptLimits {
+        /// Limits no test's script comes near, but one that spins without end.
+        pub(crate) const ROOMY: ScriptLimits = ScriptLimits {
+            per_call: 10_000,
+            player: 100_000,
+            think: 100_000,
+            mode: 100_000,
+        };
     }
 }

@@ -15,9 +15,11 @@ use std::env;
 use std::ffi::OsString;
 use std::fs;
 use std::net::SocketAddr;
+use std::num::NonZeroU32;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::str::FromStr;
+use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use bevy::DefaultPlugins;
@@ -27,10 +29,11 @@ use bevy::state::app::StatesPlugin;
 use bevy::time::TimePlugin;
 use bevy::window::{Window, WindowPlugin};
 use campfire_log::Logging;
-use campfire_net::{ClientMode, NetProtocol, OrderScript, ServerPin, SimClient};
+use campfire_net::{NetProtocol, OrderScript, ServerPin, SimClient};
 use campfire_package::ModePackages;
 use campfire_protocol::CertificateHash;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey, XOnlyPublicKey};
+use campfire_runner::SessionRules;
 use campfire_sim::TickRate;
 use lightyear::prelude::client::{ClientPlugins, RawClient, WebTransportClientIo};
 use lightyear::prelude::{
@@ -60,6 +63,7 @@ struct Args {
     address: SocketAddr,
     certificate: CertificateHash,
     server_key: XOnlyPublicKey,
+    tick_hz: NonZeroU32,
 }
 
 /// How often a bot's app loop runs: often enough that no fixed tick waits long for its frame.
@@ -85,17 +89,14 @@ fn main() -> ExitCode {
             error!(
                 %problem,
                 "usage: campfire-client [--bot <orders file>] <mode package directory> \
-                 <server address> <certificate hash> <server key>"
+                 <server address> <certificate hash> <server key> <tick rate>"
             );
             return ExitCode::from(2);
         }
     };
-    let packages = match ModePackages::from_dir(&args.mode) {
+    let packages = match load_mode(&args) {
         Ok(packages) => packages,
-        Err(error) => {
-            error!(mode = %args.mode.display(), %error, "the mode does not load");
-            return ExitCode::FAILURE;
-        }
+        Err(code) => return code,
     };
     let script = match args.bot.as_deref().map(read_script).transpose() {
         Ok(script) => script,
@@ -104,8 +105,7 @@ fn main() -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let mode = ClientMode::of(&packages);
-    let tick = TickRate::new(mode.tick_hz).length();
+    let tick = TickRate::new(args.tick_hz).length();
 
     let mut app = App::new();
     if let Some(script) = script {
@@ -128,7 +128,7 @@ fn main() -> ExitCode {
                 })
                 .disable::<LogPlugin>(),
             View { tick },
-            Hud { life: mode.life },
+            Hud,
             Orders,
         ));
     }
@@ -144,10 +144,11 @@ fn main() -> ExitCode {
             main_key: keypair(),
             session_key: keypair(),
             server: ServerPin {
-                key: args.server_key.serialize(),
+                key: args.server_key,
                 certificate: args.certificate,
+                tick_hz: args.tick_hz,
             },
-            mode,
+            packages: Arc::new(packages),
             clock: unix_now,
             entropy: fill,
         },
@@ -186,14 +187,15 @@ impl Args {
         } else {
             None
         };
-        let (Some(mode), Some(address), Some(certificate), Some(server_key), None) = (
+        let (Some(mode), Some(address), Some(certificate), Some(server_key), Some(tick_hz), None) = (
+            args.next(),
             args.next(),
             args.next(),
             args.next(),
             args.next(),
             args.next(),
         ) else {
-            return Err("four arguments are needed after the options".to_owned());
+            return Err("five arguments are needed after the options".to_owned());
         };
         let text = |arg: &OsString| {
             arg.to_str()
@@ -203,6 +205,7 @@ impl Args {
         let address = text(&address)?;
         let certificate = text(&certificate)?;
         let server_key = text(&server_key)?;
+        let tick_hz = text(&tick_hz)?;
         Ok(Args {
             bot,
             mode: PathBuf::from(mode),
@@ -214,8 +217,27 @@ impl Args {
                 .map_err(|error| format!("{certificate}: {error}"))?,
             server_key: XOnlyPublicKey::from_str(&server_key)
                 .map_err(|error| format!("{server_key}: {error}"))?,
+            tick_hz: tick_hz
+                .parse()
+                .map_err(|error| format!("{tick_hz}: {error}"))?,
         })
     }
+}
+
+/// The packages of the mode the arguments name, which must run at the listing's rate; the exit
+/// code when they do not load, or run at another rate.
+fn load_mode(args: &Args) -> Result<ModePackages, ExitCode> {
+    let packages = ModePackages::from_dir(&args.mode).map_err(|error| {
+        error!(mode = %args.mode.display(), %error, "the mode does not load");
+        ExitCode::FAILURE
+    })?;
+    SessionRules::of(&packages)
+        .runs_at(args.tick_hz)
+        .map_err(|error| {
+            error!(%error, "the mode does not run at the listing's rate");
+            ExitCode::from(2)
+        })?;
+    Ok(packages)
 }
 
 /// The order script in the file at `path`.

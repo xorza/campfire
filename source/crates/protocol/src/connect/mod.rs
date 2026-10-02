@@ -52,13 +52,10 @@ impl ConnectChallenge {
         answer: &Signature,
         now: u64,
     ) -> Result<(), ConnectError> {
+        delegation
+            .check(&terms.server_key, &terms.session_id())
+            .map_err(ConnectError::Scope)?;
         let granted = delegation.terms();
-        if granted.server_key != terms.server_key {
-            return Err(ConnectError::OtherServer);
-        }
-        if granted.session_id != terms.session_id() {
-            return Err(ConnectError::OtherSession);
-        }
         if now >= granted.expiration {
             return Err(ConnectError::Expired);
         }
@@ -72,7 +69,7 @@ impl ConnectChallenge {
     }
 
     /// `domain ‖ challenge ‖ certificate hash`.
-    fn answer_message(&self, certificate: &CertificateHash) -> [u8; ANSWER_MESSAGE_LEN] {
+    const fn answer_message(&self, certificate: &CertificateHash) -> [u8; ANSWER_MESSAGE_LEN] {
         let mut message = [0; ANSWER_MESSAGE_LEN];
         let (domain, rest) = message.split_at_mut(ANSWER_DOMAIN.len());
         let (challenge, hash) = rest.split_at_mut(32);

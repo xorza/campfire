@@ -1,4 +1,4 @@
-name = "Walker"
+name = "hero-name"
 tags = ["test"]
 pools = ["health", "mana"]
 slots = { basic = ["first", "second", "third"], ultimate = ["fourth"], weapon = ["attack"] }

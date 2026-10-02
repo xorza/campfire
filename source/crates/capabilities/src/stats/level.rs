@@ -1,4 +1,6 @@
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
 use campfire_sim::SimComponent;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
@@ -30,6 +32,11 @@ impl Default for Level {
 
 impl SimComponent for Level {
     const NAME: &'static str = "stats.level";
+
+    // Its decode keeps it at 1 or more, and a stat grows with any level.
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }
 
 /// A snapshot is untrusted, so level 0 fails to decode.

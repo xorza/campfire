@@ -1,4 +1,6 @@
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
 use campfire_sim::{Position, SimComponent};
 use serde::{Deserialize, Serialize};
 
@@ -19,4 +21,9 @@ impl SpawnPoint {
 
 impl SimComponent for SpawnPoint {
     const NAME: &'static str = "units.spawn_point";
+
+    // Its decode keeps it within the bound.
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }

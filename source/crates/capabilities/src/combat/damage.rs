@@ -1,12 +1,14 @@
 use campfire_math::Num;
 use campfire_sim::StableId;
 
-use crate::actions::action_book::ActionId;
-use crate::combat::damage_kind::DamageKind;
+use crate::units::action_id::ActionId;
+use crate::values::damage_kind::DamageKind;
+use crate::values::hit::Hit;
 
 /// A damage the pass deals: from its source, none from a modifier the mode applied, to its
 /// target, its amount before `calc_damage`, its kind, what dealt it, the ability whose cast,
-/// projectile, area or modifier dealt it, and the depth of the chain of events that dealt it.
+/// projectile, area or modifier dealt it, the depth of the chain of events that dealt it, and how
+/// its delivery reached the target, none for damage no projectile or area delivered.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Damage {
     pub(crate) source: Option<StableId>,
@@ -16,6 +18,7 @@ pub(crate) struct Damage {
     pub(crate) cause: DamageCause,
     pub(crate) ability: Option<ActionId>,
     pub(crate) depth: u8,
+    pub(crate) hit: Option<Hit>,
 }
 
 /// What dealt a damage: an attack, with the roll it drew as its windup ended; an extra attack,

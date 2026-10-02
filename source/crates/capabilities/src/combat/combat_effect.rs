@@ -1,8 +1,9 @@
 use campfire_math::Num;
-use campfire_sim::StableId;
+use campfire_sim::{Capability, StableId};
 
-use crate::combat::damage_kind::DamageKind;
+use crate::scripts::effects::Effect;
 use crate::stats::pool_id::PoolId;
+use crate::values::damage_kind::DamageKind;
 
 /// A change to units' pools that a call queued, from its acting unit.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -23,4 +24,8 @@ pub(crate) enum CombatEffect {
     },
     /// An extra attack of the acting unit on `target`.
     AttackHit { target: StableId },
+}
+
+impl Effect for CombatEffect {
+    const CAPABILITY: Capability = Capability::Combat;
 }

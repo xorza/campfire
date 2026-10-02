@@ -9,8 +9,7 @@ use bevy::color::Color;
 use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::ecs::component::Component;
 use bevy::ecs::entity::Entity;
-use bevy::ecs::lifecycle::Despawn;
-use bevy::ecs::lifecycle::RemovedComponents;
+use bevy::ecs::lifecycle::{Despawn, RemovedComponents};
 use bevy::ecs::observer::On;
 use bevy::ecs::query::{Added, Allow, Changed, Has, With, Without};
 use bevy::ecs::resource::Resource;
@@ -86,8 +85,9 @@ pub(crate) struct Glide {
     lift: f32,
 }
 
-/// The units not drawn yet, projectiles and areas apart: where each stands, its team, whether it walks, whether a player
-/// controls it, whether it is the client's own, whether it is dead, and its body.
+/// The units not drawn yet, projectiles and areas apart: where each stands, its team, whether it
+/// walks, whether a player controls it, whether it is the client's own, whether it is dead, and its
+/// body.
 type NewUnits<'w, 's> = Query<
     'w,
     's,
@@ -314,7 +314,10 @@ impl View {
                 continue;
             };
             let from = glide.ground(&transform);
-            transform.rotation = aim.map_or(Quat::IDENTITY, |to| lean_toward(from, to));
+            let rotation = aim.map_or(Quat::IDENTITY, |to| lean_toward(from, to));
+            if transform.rotation != rotation {
+                transform.rotation = rotation;
+            }
         }
     }
 
@@ -367,7 +370,11 @@ impl View {
     ) {
         for (glide, mut transform) in &mut drawings {
             let done = ((time.elapsed_secs() - glide.since) / tick.0).clamp(0.0, 1.0);
-            transform.translation = glide.from.lerp(glide.to, done) + Vec3::Y * glide.lift;
+            let translation = glide.from.lerp(glide.to, done) + Vec3::Y * glide.lift;
+            // A drawing at rest keeps its transform, unchanged, until it glides again.
+            if transform.translation != translation {
+                transform.translation = translation;
+            }
         }
     }
 
@@ -511,6 +518,7 @@ mod tests {
         let from = Vec3::new(1.0, 0.0, 2.0);
         let top = lean_toward(from, Vec3::new(5.0, 0.0, 2.0)) * Vec3::Y;
         let expected = Vec3::new(LEAN.sin(), LEAN.cos(), 0.0);
+        // A rotation in f32 rounds each component to some ulps of 1, below 1e-6.
         assert!(top.abs_diff_eq(expected, 1e-6), "{top}");
         // Towards −z, whatever the target's height: the top to (0, cos 0.35, −sin 0.35).
         let top = lean_toward(from, Vec3::new(1.0, 3.0, -4.0)) * Vec3::Y;

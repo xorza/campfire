@@ -3,5 +3,6 @@
 # mana, every 2 s; the others do nothing.
 name = "hero-runner"
 version = "0.1.0"
-engine = "0.1.0"
+api = "1.0"
+language = "en"
 kind = "avatar"

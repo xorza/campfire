@@ -1,48 +1,35 @@
-use std::collections::BTreeMap;
-
-use campfire_capabilities::{ActionData, ModifierData};
+use campfire_capabilities::{PackageContent, UnitTypeFile};
+use campfire_content::MessageId;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
-use crate::files::units_data::UnitTypeFile;
+use crate::files::package_content;
 
-/// An avatar package's `data/avatar.toml`: its one unit type, in the units schema, with its
-/// name, and the actions, modifiers and delivery types of the package. An avatar carries the tag
-/// `avatar`, and stays when it dies.
+/// An avatar package's `data/avatar.toml`: the name players see, its one unit type, whose
+/// fields sit at the top of the table, and its content.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct AvatarData {
-    pub name: String,
+    /// The message of the name players see.
+    pub name: MessageId,
     pub unit: UnitTypeFile,
-    pub actions: BTreeMap<String, ActionData>,
-    pub modifiers: BTreeMap<String, ModifierData>,
-    /// The unit types its actions deliver, by id.
-    pub units: BTreeMap<String, UnitTypeFile>,
+    pub content: PackageContent,
 }
 
-/// The unit type's fields beside the package's own, in one table.
 impl<'de> Deserialize<'de> for AvatarData {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<AvatarData, D::Error> {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         struct Fields {
-            name: String,
-            #[serde(default)]
-            actions: BTreeMap<String, ActionData>,
-            #[serde(default)]
-            modifiers: BTreeMap<String, ModifierData>,
-            #[serde(default)]
-            units: BTreeMap<String, UnitTypeFile>,
+            name: MessageId,
             #[serde(flatten)]
-            unit: toml::Table,
+            rest: toml::Table,
         }
-        let fields = Fields::deserialize(deserializer)?;
-        let unit =
-            UnitTypeFile::deserialize(toml::Value::Table(fields.unit)).map_err(D::Error::custom)?;
+        let Fields { name, mut rest } = Fields::deserialize(deserializer)?;
+        let content = package_content::take(&mut rest)?;
+        let unit = UnitTypeFile::deserialize(toml::Value::Table(rest)).map_err(D::Error::custom)?;
         Ok(AvatarData {
-            name: fields.name,
+            name,
             unit,
-            actions: fields.actions,
-            modifiers: fields.modifiers,
-            units: fields.units,
+            content,
         })
     }
 }

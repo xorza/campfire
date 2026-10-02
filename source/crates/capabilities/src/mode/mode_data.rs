@@ -4,25 +4,25 @@ use campfire_content::PackagePath;
 use campfire_script::rhai::{Dynamic, ImmutableString};
 use serde::Deserialize;
 
-use crate::actions::action_data::{ActionData, CostTarget};
+use crate::actions::cost_target::CostTarget;
 use crate::actions::slot_kinds::SlotKinds;
 use crate::combat::combat_rules::CombatRules;
 use crate::mode::choice_data::ChoiceData;
+use crate::mode::mode_state_decl::ModeStateDecl;
 use crate::mode::relation_data::RelationData;
-use crate::mode::resource_id::ResourceId;
 use crate::navigation::navigation_rules::NavigationRules;
+use crate::players::resource_id::ResourceId;
 use crate::progression::track_data::TrackData;
-use crate::scripts::state_decl::StateDecl;
-use crate::stats::modifier_data::ModifierData;
 use crate::stats::pool_data::PoolData;
 use crate::stats::pool_id::PoolId;
-use crate::stats::stat::Stat;
 use crate::stats::stat_rule::StatRule;
 use crate::units::tag_data::TagData;
 use crate::values::declared_name::DeclaredName;
 use crate::values::scalar::Scalar;
+use crate::values::stat::Stat;
 
-/// The mode's `data/mode.toml`: its script, its player inputs, its state and its params.
+/// The mode's `data/mode.toml`, but its actions and modifiers, which its package's content holds:
+/// its script, its player inputs, its state and its params.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModeData {
@@ -40,17 +40,12 @@ pub struct ModeData {
     /// The type of each player input, by name. An input that does not match its type never
     /// reaches the script.
     #[serde(default)]
-    pub inputs: BTreeMap<String, InputType>,
+    pub inputs: BTreeMap<DeclaredName, InputType>,
     pub state_version: Option<u32>,
     #[serde(default)]
-    pub state: BTreeMap<String, StateDecl>,
+    pub state: BTreeMap<DeclaredName, ModeStateDecl>,
     #[serde(default)]
-    pub params: BTreeMap<String, ModeParam>,
-    #[serde(default)]
-    pub modifiers: BTreeMap<String, ModifierData>,
-    /// The actions its unit types' slots name.
-    #[serde(default)]
-    pub actions: BTreeMap<String, ActionData>,
+    pub params: BTreeMap<DeclaredName, ModeParam>,
     /// Every stat its units carry, those the engine reads among them, each with its rule.
     #[serde(default)]
     pub stats: BTreeMap<Stat, StatRule>,
@@ -65,7 +60,7 @@ pub struct ModeData {
     pub relations: Vec<RelationData>,
     /// The effects of its tags, by name.
     #[serde(default)]
-    pub tags: BTreeMap<String, TagData>,
+    pub tags: BTreeMap<DeclaredName, TagData>,
     /// The tracks its units gain experience on, by name.
     #[serde(default)]
     pub tracks: BTreeMap<DeclaredName, TrackData>,
@@ -74,9 +69,9 @@ pub struct ModeData {
 impl ModeData {
     /// What a cost named `name` takes from: one of its pools, or else one of its players'
     /// resources; `None` for a name it declares neither as.
-    pub fn cost_target(&self, name: &DeclaredName) -> Option<CostTarget> {
-        let pool = PoolId::of(&self.pools, name).map(CostTarget::Pool);
-        pool.or_else(|| ResourceId::of(&self.resources, name.as_str()).map(CostTarget::Resource))
+    pub fn cost_target_named(&self, name: &DeclaredName) -> Option<CostTarget> {
+        let pool = PoolId::named(&self.pools, name).map(CostTarget::Pool);
+        pool.or_else(|| ResourceId::named(&self.resources, name.as_str()).map(CostTarget::Resource))
     }
 
     /// The ranks of every loadout entry: those of the slot kind a choice of loadout entries

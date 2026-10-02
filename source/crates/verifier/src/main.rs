@@ -12,7 +12,7 @@ use campfire_package::PackageStore;
 use campfire_protocol::SessionLog;
 use campfire_sim::StateHash;
 use campfire_verifier::{Replay, Verified};
-use tracing::error;
+use tracing::{error, warn};
 
 fn main() -> ExitCode {
     Logging {
@@ -46,6 +46,9 @@ fn main() -> ExitCode {
 /// `packages`.
 fn verify(packages: &Path, path: &Path) -> Result<StateHash, Box<dyn Error>> {
     let store = PackageStore::scan(packages)?;
+    for failure in store.failures() {
+        warn!(dir = %failure.dir.display(), error = %failure.error, "a package does not read");
+    }
     let mut replay = Replay::new(SessionLog::decode(&fs::read(path)?)?, &store)?;
     while replay.run_tick() {}
     Ok(replay.runner().state_hash())

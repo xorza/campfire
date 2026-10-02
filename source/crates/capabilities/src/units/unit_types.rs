@@ -1,58 +1,68 @@
 use std::collections::BTreeMap;
+use std::mem;
 
-use crate::units::error::UnitTypeError;
+use crate::units::engine_tag::EngineTag;
 use crate::units::tag::Tag;
 use crate::units::tag_book::TagBook;
 use crate::units::tag_data::TagData;
 use crate::units::tag_effects::TagEffects;
 use crate::units::tag_set::TagSet;
+use crate::units::type_scope::TypeScope;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
+use crate::values::declared_name::DeclaredName;
+use crate::values::name_list::NameList;
 use crate::values::name_table::NameTable;
 use crate::values::scalar::Scalar;
 
 /// The unit types a match loaded: their names, their tags and their params. Package data, not
 /// state: a restore loads it from the packages, as a new match does.
-#[derive(Debug, Default)]
+#[derive(Debug)]
 pub(crate) struct UnitTypes {
-    /// The name of each tag, by tag.
-    tag_names: Vec<Box<str>>,
-    /// The `avatar` tag, which `unit.is_avatar` tests, once declared.
-    avatar: Option<Tag>,
-    /// The tags of delivery units, `projectile` and `area`, once declared: every filter that does
-    /// not name one excludes it.
-    deliveries: TagSet,
+    /// The name of each tag, by tag: the engine's, then the match's.
+    tag_names: NameList,
     types: Vec<TypeEntry>,
-    /// Every type, sorted by name.
+    /// The name of each type in its scope, by type.
+    type_names: NameList,
+    /// Every type, sorted by scope, then name.
     by_name: Vec<UnitType>,
     /// Each type's params, one run per type, in the order of the types.
     params: NameTable<Scalar>,
 }
 
-/// A loaded unit type: its name and its tags.
+/// A loaded unit type: the scope its name is seen in, and its tags.
 #[derive(Debug)]
 struct TypeEntry {
-    name: Box<str>,
+    scope: TypeScope,
     tags: TagSet,
 }
 
+/// The engine's tags at their places, and no type.
+impl Default for UnitTypes {
+    fn default() -> UnitTypes {
+        UnitTypes {
+            tag_names: EngineTag::ALL.into_iter().map(EngineTag::name).collect(),
+            types: Vec::new(),
+            type_names: NameList::default(),
+            by_name: Vec::new(),
+            params: NameTable::default(),
+        }
+    }
+}
+
 impl UnitTypes {
-    /// Loads `data` as the type `name`: its tags join the match's, and its params are kept for
-    /// `unit.params`.
-    pub(crate) fn load(
-        &mut self,
-        name: &str,
-        data: &UnitTypeData,
-    ) -> Result<UnitType, UnitTypeError> {
-        let index = u16::try_from(self.types.len())
-            .ok()
-            .ok_or(UnitTypeError::TooManyTypes)?;
-        let Err(at) = self.find(name) else {
-            return Err(UnitTypeError::RepeatedName);
+    /// Loads `data` as the type `name` of `scope`, which the package load checked names no other
+    /// type there, within the most types a match loads: its tags join the match's, and its params
+    /// are kept for `unit.params`.
+    pub(crate) fn load(&mut self, scope: TypeScope, name: &str, data: &UnitTypeData) -> UnitType {
+        let index =
+            u16::try_from(self.types.len()).expect("the load keeps the unit types within u16");
+        let Err(at) = self.find(scope, name) else {
+            panic!("a scope names a type once, which the load checked: {name}");
         };
         let mut tags = TagSet::default();
         for name in &data.tags {
-            tags = tags.with(self.declare(name)?);
+            tags = tags.with(self.declare(name.as_str()));
         }
         let params = data
             .params
@@ -61,31 +71,22 @@ impl UnitTypes {
         let run = self.params.push(params);
         debug_assert_eq!(run, usize::from(index), "one run of params per type");
         self.by_name.insert(at, UnitType::new(index));
-        self.types.push(TypeEntry {
-            name: name.into(),
-            tags,
-        });
-        Ok(UnitType::new(index))
+        self.types.push(TypeEntry { scope, tags });
+        self.type_names.push(name);
+        UnitType::new(index)
     }
 
-    /// The tag `name`, which joins the match's tags if it is new.
-    pub(crate) fn declare(&mut self, name: &str) -> Result<Tag, UnitTypeError> {
-        if let Some(tag) = self.tag(name) {
-            return Ok(tag);
+    /// The tag `name`, which joins the match's tags if it is new, within the most tags a match
+    /// has, which the package load counted.
+    pub(crate) fn declare(&mut self, name: &str) -> Tag {
+        if let Some(tag) = self.tag_named(name) {
+            return tag;
         }
-        if self.tag_names.len() == Tag::LIMIT {
-            return Err(UnitTypeError::TooManyTags);
-        }
-        self.tag_names.push(name.into());
-        let tag = Tag::new(self.tag_names.len() - 1);
-        match name {
-            UnitTypeData::AVATAR_TAG => self.avatar = Some(tag),
-            UnitTypeData::PROJECTILE_TAG | UnitTypeData::AREA_TAG => {
-                self.deliveries = self.deliveries.with(tag);
-            }
-            _ => {}
-        }
-        Ok(tag)
+        assert!(
+            self.tag_names.len() < Tag::LIMIT,
+            "the load counted the tags"
+        );
+        Tag::new(self.tag_names.push(name))
     }
 
     /// Gives `unit_type` the tag `tag` too, as the engine tags a type by its sections.
@@ -94,60 +95,64 @@ impl UnitTypes {
         entry.tags = entry.tags.with(tag);
     }
 
-    /// The type named `name`.
-    pub(crate) fn named(&self, name: &str) -> Option<UnitType> {
-        Some(self.by_name[self.find(name).ok()?])
+    /// Whether the match loaded `unit_type`.
+    pub(crate) const fn contains(&self, unit_type: UnitType) -> bool {
+        unit_type.index() < self.types.len()
     }
 
-    /// Where `name` is in `by_name`, or where it would go.
-    fn find(&self, name: &str) -> Result<usize, usize> {
-        self.by_name
-            .binary_search_by(|&unit_type| self.name(unit_type).cmp(name))
+    /// The type named `name` in `scope`.
+    pub(crate) fn named(&self, scope: TypeScope, name: &str) -> Option<UnitType> {
+        Some(self.by_name[self.find(scope, name).ok()?])
     }
 
-    pub(crate) fn name(&self, unit_type: UnitType) -> &str {
-        &self.types[unit_type.index()].name
+    /// Where `name` of `scope` is in `by_name`, or where it would go.
+    fn find(&self, scope: TypeScope, name: &str) -> Result<usize, usize> {
+        self.by_name.binary_search_by(|&unit_type| {
+            let index = unit_type.index();
+            let held = self.type_names.get(index).expect("a loaded type");
+            self.types[index]
+                .scope
+                .cmp(&scope)
+                .then_with(|| held.cmp(name))
+        })
+    }
+
+    /// Every type's name, by type.
+    pub(crate) fn names(&self) -> impl Iterator<Item = &str> {
+        self.type_names.iter()
     }
 
     /// The tag `name`, once declared.
-    pub(crate) fn tag(&self, name: &str) -> Option<Tag> {
-        let index = self.tag_names.iter().position(|tag| **tag == *name)?;
-        Some(Tag::new(index))
+    pub(crate) fn tag_named(&self, name: &str) -> Option<Tag> {
+        self.tag_names.named(name).map(Tag::new)
     }
 
-    pub(crate) const fn avatar(&self) -> Option<Tag> {
-        self.avatar
-    }
-
-    pub(crate) const fn deliveries(&self) -> TagSet {
-        self.deliveries
-    }
-
-    /// The book of the effects `data` gives the tags, by name, and of the types' own tags. A
-    /// tag `data` does not name has none.
-    pub(crate) fn tag_book(&self, data: &BTreeMap<String, TagData>) -> TagBook {
+    /// The book of the effects `data` gives the tags, by name, and of the types' own tags, which
+    /// it takes: from then on the book alone holds them. A tag `data` does not name has none.
+    pub(crate) fn tag_book(&mut self, data: &BTreeMap<DeclaredName, TagData>) -> TagBook {
         let tags = self.tag_names.iter().map(|name| {
-            let Some(data) = data.get(&**name) else {
+            let Some(data) = data.get(name) else {
                 return (TagEffects::default(), TagSet::default());
             };
             let immune = data.immune.iter().map(|name| {
-                self.tag(name)
+                self.tag_named(name.as_str())
                     .expect("the match declared every tag the mode names")
             });
             (TagEffects::of(data), TagSet::of(immune))
         });
-        let types = self.types.iter().enumerate().map(|(at, entry)| {
+        let effects: Vec<_> = tags.collect();
+        let types = self.types.iter_mut().enumerate().map(|(at, entry)| {
             (
                 UnitType::new(u16::try_from(at).expect("types fit u16")),
-                entry.tags,
+                mem::take(&mut entry.tags),
             )
         });
-        TagBook::new(tags, types)
+        TagBook::new(effects, types)
     }
 
     /// The param `name` of `unit_type`, if it declares one.
-    pub(crate) fn param(&self, unit_type: UnitType, name: &str) -> Option<Scalar> {
-        self.params.get(unit_type.index(), name).copied()
+    pub(crate) fn param_named(&self, unit_type: UnitType, name: &str) -> Option<Scalar> {
+        self.params.get_named(unit_type.index(), name).copied()
     }
 }
 

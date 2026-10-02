@@ -1,30 +1,36 @@
 use std::collections::{BTreeMap, BTreeSet};
+use std::fmt;
 use std::iter;
 use std::path::Path;
 
 use campfire_capabilities::{
-    CollisionData, DeclaredName, EngineStat, MapData, ModeData, Param, Stat, StatGraph, StatsData,
-    UnitTypeData, Walker,
+    BookInput, BookKind, BookPackage, Books, CapabilitySet, DeclaredName, EngineTag, MapData,
+    ModeData, PackageContent, Param, ScriptBook, StatGraph, UnitTypeFile, Walker,
 };
-use campfire_content::{Fingerprint, PackagePath};
-use campfire_script::ScriptHost;
-use campfire_sim::Capability;
+use campfire_content::Fingerprint;
+use campfire_script::{ScriptHost, ScriptId};
+use campfire_sim::{Capability, TickRate};
 
-use crate::error::{ContentError, LoadError, LoadProblem, StoreError};
-use crate::files::avatar_data::AvatarData;
-use crate::files::loadout_data::LoadoutData;
-use crate::files::manifest::{Manifest, ModeManifest};
-use crate::files::units_data::{UnitTypeFile, UnitsData};
+use crate::avatar_unit::AvatarUnit;
+use crate::dependent::Dependent;
+use crate::dependent::DependentKind;
+use crate::error::{Limit, LoadError, LoadProblem, PackageRef, StoreError};
+use crate::files::manifest::Manifest;
+use crate::files::mode_file::ModeFile;
+use crate::files::mode_manifest::ModeManifest;
+use crate::files::units_data::UnitsData;
 use crate::load_check::LoadCheck;
 use crate::package::Package;
 use crate::package_dir::PackageDir;
+use crate::package_files::PackageFiles;
+use crate::package_index::PackageIndex;
 use crate::package_store::PackageStore;
+use crate::package_view::PackageView;
+use crate::package_view::ViewKind;
 
 const MODE_DATA: &str = "data/mode.toml";
 const UNITS_DATA: &str = "data/units.toml";
 const MAP_DATA: &str = "map/map.toml";
-const AVATAR_DATA: &str = "data/avatar.toml";
-const LOADOUT_DATA: &str = "data/loadout.toml";
 
 /// A mode and the packages it depends on, read and checked: what a match of the mode loads.
 #[derive(Debug)]
@@ -32,24 +38,11 @@ pub struct ModePackages {
     pub(crate) mode: Package,
     pub(crate) manifest: ModeManifest,
     pub(crate) data: ModeData,
-    pub(crate) units: UnitsData,
     pub(crate) map: MapData,
+    /// The mode's actions, modifiers and unit types.
+    pub(crate) content: PackageContent,
     /// In the order of their names in the mode's manifest.
     pub(crate) dependencies: Vec<Dependent>,
-}
-
-/// A package the mode depends on, and its data.
-#[derive(Debug)]
-pub struct Dependent {
-    pub package: Package,
-    pub content: Content,
-}
-
-/// The data of a package the mode depends on, by the package's kind.
-#[derive(Debug)]
-pub enum Content {
-    Avatar(Box<AvatarData>),
-    Loadout(LoadoutData),
 }
 
 impl ModePackages {
@@ -59,15 +52,29 @@ impl ModePackages {
         ModePackages::from_package_dir(&PackageDir::new(dir))
     }
 
-    /// The mode in `mode`, and its dependencies at the paths its manifest gives from it.
+    /// The mode in `mode`, and its dependencies at the paths its manifest gives from it, each
+    /// read once.
     pub fn from_package_dir(mode: &PackageDir) -> Result<ModePackages, LoadError> {
-        let manifest = read_mode_manifest(mode)?;
+        let read = |dir: &PackageDir, package: PackageRef| {
+            dir.read()
+                .map_err(|error| LoadError::new(package, LoadProblem::Content(error)))
+        };
+        let at = PackageRef::Dir(mode.root().to_owned());
+        let files = read(mode, at.clone())?;
+        let manifest = read_mode_manifest(&files, &at)?;
         let dependencies = manifest
             .dependencies
             .iter()
-            .map(|(name, dependency)| (name.clone(), mode.join(Path::new(&dependency.path))))
-            .collect::<Vec<_>>();
-        ModePackages::assemble(mode, manifest, &dependencies)
+            .map(|(name, dependency)| {
+                let dir = mode.join(Path::new(&dependency.path));
+                Ok((name.clone(), read(&dir, PackageRef::Name(name.clone()))?))
+            })
+            .collect::<Result<Vec<_>, LoadError>>()?;
+        let dependencies: Vec<_> = dependencies
+            .iter()
+            .map(|(name, files)| (name.clone(), files))
+            .collect();
+        ModePackages::assemble(&files, manifest, &dependencies)
     }
 
     /// The mode of the fingerprint `mode`, and each dependency its manifest names by the
@@ -77,8 +84,9 @@ impl ModePackages {
         mode: Fingerprint,
         dependencies: &[Fingerprint],
     ) -> Result<ModePackages, StoreError> {
-        let dir = store.get(mode).ok_or(StoreError::UnknownMode)?.clone();
-        let manifest = read_mode_manifest(&dir).map_err(StoreError::Load)?;
+        let files = store.get(mode).ok_or(StoreError::UnknownMode)?;
+        let manifest =
+            read_mode_manifest(files, &PackageRef::Fingerprint(mode)).map_err(StoreError::Load)?;
         if manifest.dependencies.len() != dependencies.len() {
             return Err(StoreError::DependencyCount);
         }
@@ -87,13 +95,13 @@ impl ModePackages {
             .keys()
             .zip(dependencies)
             .map(|(name, &fingerprint)| {
-                let dir = store
+                let files = store
                     .get(fingerprint)
                     .ok_or_else(|| StoreError::MissingDependency(name.clone()))?;
-                Ok((name.clone(), dir.clone()))
+                Ok((name.clone(), files))
             })
             .collect::<Result<Vec<_>, StoreError>>()?;
-        ModePackages::assemble(&dir, manifest, &dependencies).map_err(StoreError::Load)
+        ModePackages::assemble(files, manifest, &dependencies).map_err(StoreError::Load)
     }
 
     pub const fn fingerprint(&self) -> Fingerprint {
@@ -119,8 +127,139 @@ impl ModePackages {
         &self.data
     }
 
-    pub const fn units(&self) -> &UnitsData {
-        &self.units
+    /// The mode's actions, modifiers and unit types.
+    pub const fn content(&self) -> &PackageContent {
+        &self.content
+    }
+
+    /// Every one of its packages, the mode's first, then each it depends on, in the order of
+    /// their names in its manifest.
+    pub fn packages(&self) -> impl Iterator<Item = PackageView<'_>> {
+        let mode = PackageView {
+            index: PackageIndex::MODE,
+            package: &self.mode,
+            content: &self.content,
+            kind: ViewKind::Mode,
+        };
+        let dependents = self
+            .dependencies
+            .iter()
+            .enumerate()
+            .map(|(at, dependent)| PackageView {
+                index: PackageIndex::dependency(at).expect("the load checked the package count"),
+                package: &dependent.package,
+                content: &dependent.content,
+                kind: match &dependent.kind {
+                    DependentKind::Avatar(avatar) => ViewKind::Avatar(avatar),
+                    DependentKind::Loadout => ViewKind::Loadout,
+                },
+            });
+        iter::once(mode).chain(dependents)
+    }
+
+    /// The books of a match of its packages at `rate`, a rate within the manifest's range, its
+    /// scripts' hooks as `scripts` gives them. The load built them at the fastest rate the range
+    /// allows, where every time counts the most ticks, so they build at every rate a session may
+    /// choose.
+    pub fn books(&self, rate: TickRate, scripts: &ScriptBook) -> Books {
+        assert!(
+            self.manifest.tick_hz.contains(rate.hz()),
+            "a session's rate is within the manifest's range"
+        );
+        Books::build(&self.book_input(rate, scripts))
+            .unwrap_or_else(|error| panic!("the load built the books at the fastest rate: {error}"))
+    }
+
+    /// Compiles every script of its packages by `compile`, in the order a match compiles them;
+    /// the load parsed each one, so none fails.
+    pub fn compile_scripts<E: fmt::Display>(
+        &self,
+        mut compile: impl FnMut(&str) -> Result<ScriptId, E>,
+    ) {
+        for view in self.packages() {
+            for script in &view.package.scripts {
+                compile(&script.source)
+                    .unwrap_or_else(|error| panic!("the load parsed {}: {error}", script.path));
+            }
+        }
+    }
+
+    /// The mode's script, by its place among the scripts a match compiles.
+    pub fn mode_script(&self) -> ScriptId {
+        let at = self
+            .mode
+            .script_index(&self.data.script)
+            .expect("the load checked the mode's script");
+        ScriptId::nth(at)
+    }
+
+    /// What its books are built from at `rate`, its scripts' hooks as `scripts` gives them, in
+    /// the order a match compiles them.
+    pub(crate) fn book_input<'a>(
+        &'a self,
+        rate: TickRate,
+        scripts: &'a ScriptBook,
+    ) -> BookInput<'a> {
+        let packages = self.packages().map(|view| BookPackage {
+            name: &view.package.header.name,
+            content: view.content,
+            kind: match view.kind {
+                ViewKind::Mode => BookKind::Mode,
+                ViewKind::Avatar(avatar) => BookKind::Avatar(&avatar.unit),
+                ViewKind::Loadout => BookKind::Loadout,
+            },
+            scripts: view
+                .package
+                .scripts
+                .iter()
+                .map(|script| &script.path)
+                .collect(),
+        });
+        BookInput {
+            data: &self.data,
+            map: &self.map,
+            teams: &self.manifest.teams,
+            max_move_speed: self.manifest.max_move_speed,
+            progression: self.manifest.capabilities.contains(Capability::Progression),
+            tag_names: self.tag_names().into_iter().collect(),
+            packages: packages.collect(),
+            scripts,
+            rate,
+            stat_order: self
+                .stat_graph()
+                .order()
+                .expect("the load checked the stat graph"),
+        }
+    }
+
+    /// The hooks each script of its packages defines, in the order a match compiles them: the
+    /// mode's scripts, then each dependency's, each package's in the order of their paths.
+    pub fn script_book(&self) -> ScriptBook {
+        let mut book = ScriptBook::default();
+        for view in self.packages() {
+            for script in &view.package.scripts {
+                let functions = script.facts.functions.iter();
+                book.push(functions.map(|function| (function.name.as_str(), function.params)));
+            }
+        }
+        book
+    }
+
+    /// The names of its avatars' unit types in the mode's scope: their packages' names.
+    pub(crate) fn avatar_names(&self) -> impl Iterator<Item = &str> {
+        self.dependencies
+            .iter()
+            .filter(|dependent| matches!(dependent.kind, DependentKind::Avatar(_)))
+            .map(|dependent| dependent.package.header.name.as_str())
+    }
+
+    fn avatars(&self) -> impl Iterator<Item = &AvatarUnit> {
+        self.dependencies
+            .iter()
+            .filter_map(|dependent| match &dependent.kind {
+                DependentKind::Avatar(avatar) => Some(&**avatar),
+                DependentKind::Loadout => None,
+            })
     }
 
     pub const fn map(&self) -> &MapData {
@@ -132,33 +271,10 @@ impl ModePackages {
     /// an ability that applies it, declares as a scaling table reads each stat the table names.
     pub fn stat_graph(&self) -> StatGraph {
         let mut graph = StatGraph::new(self.data.stats.keys().cloned());
-        let no_abilities = BTreeMap::new();
-        let mode = (
-            &self.mode,
-            &no_abilities,
-            &self.units.units,
-            &self.data.modifiers,
-        );
-        let packages = iter::once(mode).chain(self.dependencies.iter().map(|dependent| {
-            let units = dependent.units();
-            match &dependent.content {
-                Content::Avatar(avatar) => (
-                    &dependent.package,
-                    &avatar.actions,
-                    units,
-                    &avatar.modifiers,
-                ),
-                Content::Loadout(loadout) => (
-                    &dependent.package,
-                    &loadout.actions,
-                    units,
-                    &loadout.modifiers,
-                ),
-            }
-        }));
-        for (package, abilities, units, modifiers) in packages {
-            let appliers = package.appliers(abilities, units);
-            for (id, modifier) in modifiers {
+        for view in self.packages() {
+            let content = view.content;
+            let appliers = view.package.appliers(&content.actions, &content.units);
+            for (id, modifier) in &content.modifiers {
                 let by = appliers.get(id.as_str()).map_or(&[][..], Vec::as_slice);
                 for (changed, change) in &modifier.stats {
                     let Some(name) = change.value.param() else {
@@ -182,112 +298,60 @@ impl ModePackages {
     pub fn slotted_ranks<'u>(
         &self,
         types: impl IntoIterator<Item = &'u UnitTypeFile>,
-    ) -> Result<BTreeMap<&'u str, u8>, &'u str> {
-        let kinds = &self.data.slots;
-        let mut ranks = BTreeMap::new();
-        for unit_type in types {
-            for (kind, ids) in &unit_type.slots {
-                let Some(kind) = kinds.named(kind.as_str()) else {
-                    continue;
-                };
-                for id in ids {
-                    let held = *ranks.entry(id.as_str()).or_insert(kinds.ranks(kind));
-                    if held != kinds.ranks(kind) {
-                        return Err(id);
-                    }
-                }
-            }
-        }
-        Ok(ranks)
+    ) -> Result<BTreeMap<&'u str, u8>, &'u DeclaredName> {
+        let slots = types.into_iter().map(|unit_type| &unit_type.slots);
+        self.data.slots.slotted_ranks(slots)
     }
 
     /// Each kind of unit that walks, of the mode's unit types and avatars that declare a move
     /// speed, by its layer and its body's radius, 0 for one with no body; in order, each once.
     /// The pathing grid has a clearance for each.
     pub fn walkers(&self) -> Vec<Walker> {
-        let move_speed = Stat::Engine(EngineStat::MoveSpeed);
         let navigation = &self.data.navigation;
-        let walker = |stats: Option<&StatsData>, collision: Option<&CollisionData>| {
-            stats
-                .is_some_and(|stats| stats.declares(&move_speed))
-                .then(|| Walker::of(navigation.body(collision).as_ref()))
+        let walker = |unit_type: &UnitTypeFile| {
+            let body = navigation.body(unit_type.collision.as_ref());
+            unit_type.walks().then(|| Walker::of(body.as_ref()))
         };
-        let unit_types =
-            self.units.units.values().filter_map(|unit_type| {
-                walker(unit_type.stats.as_ref(), unit_type.collision.as_ref())
-            });
-        let avatars = self
-            .dependencies
-            .iter()
-            .filter_map(|dependent| match &dependent.content {
-                Content::Avatar(avatar) => {
-                    walker(avatar.unit.stats.as_ref(), avatar.unit.collision.as_ref())
-                }
-                Content::Loadout(_) => None,
-            });
-        let mut walkers: Vec<Walker> = unit_types.chain(avatars).collect();
+        let avatars = self.avatars().map(|avatar| &avatar.unit);
+        let mut walkers: Vec<Walker> = self
+            .content
+            .units
+            .values()
+            .chain(avatars)
+            .filter_map(walker)
+            .collect();
         walkers.sort_unstable();
         walkers.dedup();
         walkers
     }
 
-    /// Every tag its packages name, each once, sorted: `avatar`, `projectile` with projectiles,
-    /// `area` with areas,
-    /// the tags of its unit types, its avatars' and its dependencies' delivery types, the names of
-    /// its layers, those its and its dependencies' modifiers grant, and those of its `[tags]` and
-    /// their immunities. A match declares them in this order, so it numbers them the same however
-    /// it loads.
+    /// Every tag its packages name but the engine's, each once, sorted: the tags of its unit
+    /// types, its avatars' and its dependencies' delivery types, the names of its layers, those
+    /// its and its dependencies' modifiers grant, and those of its `[tags]` and their
+    /// immunities. A match declares them in this order after the engine's, so it numbers them
+    /// the same however it loads.
     pub fn tag_names(&self) -> BTreeSet<&str> {
-        let dependents = self
-            .dependencies
-            .iter()
-            .map(|dependent| match &dependent.content {
-                Content::Avatar(avatar) => &avatar.modifiers,
-                Content::Loadout(loadout) => &loadout.modifiers,
-            });
-        let modifiers = [&self.data.modifiers]
-            .into_iter()
-            .chain(dependents)
-            .flat_map(|modifiers| modifiers.values())
+        let modifiers = self
+            .packages()
+            .flat_map(|view| view.content.modifiers.values())
             .flat_map(|modifier| &modifier.tags);
-        let avatars = self
-            .dependencies
-            .iter()
-            .filter_map(|dependent| match &dependent.content {
-                Content::Avatar(avatar) => Some(&avatar.unit),
-                Content::Loadout(_) => None,
-            });
-        let deliveries = self
-            .dependencies
-            .iter()
-            .flat_map(|dependent| dependent.units().values());
+        let avatars = self.avatars().map(|avatar| &avatar.unit);
         let types = self
-            .units
-            .units
-            .values()
+            .packages()
+            .flat_map(|view| view.content.units.values())
             .chain(avatars)
-            .chain(deliveries)
             .flat_map(|unit_type| &unit_type.core.tags);
-        let capabilities = self.manifest.capabilities;
-        let deliveries = [
-            (Capability::Projectiles, UnitTypeData::PROJECTILE_TAG),
-            (Capability::Areas, UnitTypeData::AREA_TAG),
-        ]
-        .into_iter()
-        .filter_map(move |(capability, tag)| capabilities.contains(capability).then_some(tag));
         let declared = self
             .data
             .tags
             .iter()
             .flat_map(|(name, tag)| [name].into_iter().chain(&tag.immune));
-        let layers = self.data.navigation.layers.iter().map(DeclaredName::as_str);
         modifiers
             .chain(types)
             .chain(declared)
-            .map(String::as_str)
-            .chain(layers)
-            .chain([UnitTypeData::AVATAR_TAG])
-            .chain(deliveries)
+            .chain(&self.data.navigation.layers)
+            .map(DeclaredName::as_str)
+            .filter(|name| EngineTag::named(name).is_none())
             .collect()
     }
 
@@ -298,109 +362,57 @@ impl ModePackages {
 
     /// Reads the mode's data and each dependency, and runs the load checks.
     fn assemble(
-        dir: &PackageDir,
+        files: &PackageFiles,
         manifest: ModeManifest,
-        dependencies: &[(String, PackageDir)],
+        dependencies: &[(String, &PackageFiles)],
     ) -> Result<ModePackages, LoadError> {
         let parser = ScriptHost::new(manifest.script_limits.per_call);
+        let api = CapabilitySet::script_api();
         let name = manifest.header.name.clone();
-        let fail = |problem| LoadError {
-            package: name.clone(),
-            problem: Box::new(problem),
-        };
-        let data = dir
-            .read_data(&path(MODE_DATA))
-            .map_err(content)
+        let fail = |problem| LoadError::of(&name, problem);
+        if PackageIndex::dependency(dependencies.len()).is_none() {
+            return Err(fail(LoadProblem::TooMany(Limit::Packages)));
+        }
+        let ModeFile { data, mut content } = files
+            .read_data(&PackageDir::engine_path(MODE_DATA))
+            .map_err(LoadProblem::Content)
             .map_err(fail)?;
-        let units = dir
-            .read_data(&path(UNITS_DATA))
-            .map_err(content)
+        let units: UnitsData = files
+            .read_data(&PackageDir::engine_path(UNITS_DATA))
+            .map_err(LoadProblem::Content)
             .map_err(fail)?;
-        let map = dir
-            .read_data(&path(MAP_DATA))
-            .map_err(content)
+        content.units = units.units;
+        let map = files
+            .read_data(&PackageDir::engine_path(MAP_DATA))
+            .map_err(LoadProblem::Content)
             .map_err(fail)?;
-        let mode = Package::read(dir, name.clone(), manifest.header.engine, &parser)?;
+        let mode = Package::read(files, &manifest.header, &parser, &api)?;
         let dependencies = dependencies
             .iter()
-            .map(|(name, dir)| Dependent::read(name, dir, &parser))
+            .map(|(name, files)| Dependent::read(name, files, &parser, &api))
             .collect::<Result<_, _>>()?;
         let packages = ModePackages {
             mode,
             manifest,
             data,
-            units,
             map,
+            content,
             dependencies,
         };
-        LoadCheck::run(&packages)?;
+        LoadCheck::run(&packages, &api)?;
         Ok(packages)
     }
 }
 
-impl Dependent {
-    /// The unit types it holds, by id: those its actions deliver.
-    pub const fn units(&self) -> &BTreeMap<String, UnitTypeFile> {
-        match &self.content {
-            Content::Avatar(avatar) => &avatar.units,
-            Content::Loadout(loadout) => &loadout.units,
-        }
-    }
-
-    /// The name of its unit type `id` in a match: `<package>/<id>`, apart from every other
-    /// package's.
-    pub fn unit_type_name(&self, id: &str) -> String {
-        format!("{}/{id}", self.package.name)
-    }
-
-    /// The package in `dir`, which the mode names `name`: an avatar or loadout package of that name.
-    fn read(name: &str, dir: &PackageDir, parser: &ScriptHost) -> Result<Dependent, LoadError> {
-        let fail = |problem| LoadError {
-            package: name.to_owned(),
-            problem: Box::new(problem),
-        };
-        let manifest: Manifest = dir
-            .read_data(&path(PackageDir::MANIFEST))
-            .map_err(content)
-            .map_err(fail)?;
-        let header = manifest.header();
-        if header.name != name {
-            return Err(fail(LoadProblem::OtherName(header.name.clone())));
-        }
-        let content = match &manifest {
-            Manifest::Avatar(_) => Content::Avatar(Box::new(
-                dir.read_data(&path(AVATAR_DATA))
-                    .map_err(content)
-                    .map_err(fail)?,
-            )),
-            Manifest::Loadout(_) => {
-                let data = dir.read_data(&path(LOADOUT_DATA));
-                Content::Loadout(data.map_err(content).map_err(fail)?)
-            }
-            Manifest::Mode(_) => return Err(fail(LoadProblem::WrongKind)),
-        };
-        let package = Package::read(dir, name.to_owned(), header.engine, parser)?;
-        Ok(Dependent { package, content })
-    }
-}
-
-fn read_mode_manifest(dir: &PackageDir) -> Result<ModeManifest, LoadError> {
-    let fail = |problem| LoadError {
-        package: dir.root().display().to_string(),
-        problem: Box::new(problem),
-    };
-    let manifest = dir.read_data(&path(PackageDir::MANIFEST));
-    match manifest.map_err(content).map_err(fail)? {
+/// The mode manifest of `files`, the package `package`.
+fn read_mode_manifest(
+    files: &PackageFiles,
+    package: &PackageRef,
+) -> Result<ModeManifest, LoadError> {
+    let fail = |problem| LoadError::new(package.clone(), problem);
+    let manifest = files.read_data(&PackageDir::engine_path(PackageDir::MANIFEST));
+    match manifest.map_err(LoadProblem::Content).map_err(fail)? {
         Manifest::Mode(manifest) => Ok(manifest),
         _ => Err(fail(LoadProblem::WrongKind)),
     }
-}
-
-/// One of the engine's paths in a package.
-fn path(path: &str) -> PackagePath {
-    PackagePath::parse(path).expect("the engine's paths are in the package")
-}
-
-fn content(error: ContentError) -> LoadProblem {
-    LoadProblem::Content(error)
 }

@@ -1,0 +1,65 @@
+# The map runs from x = −20 to 20 and z = −10 to 10, and sight reveals 1 m cells over it.
+[bounds]
+min = [-20, -10]
+max = [20, 10]
+
+[grid]
+cell = "1.0"
+
+[navigation]
+cell = "0.5"
+
+# The lane runs along x through the origin. Each side's tower stands beside it, its barracks
+# behind, and the boulder sits just off the middle of the lane.
+[[paths]]
+name = "lane"
+points = [[-16, 0], [0, 0], [16, 0]]
+
+[[markers]]
+name = "north_spawn"
+tags = ["spawn"]
+team = "north"
+pos = [-4, -4]
+params = { from = "start" }
+
+[[markers]]
+name = "south_spawn"
+tags = ["spawn"]
+team = "south"
+pos = [4, 4]
+params = { from = "end" }
+
+[[markers]]
+name = "north_barracks_west"
+tags = ["barracks"]
+team = "north"
+pos = [-15, -7]
+
+[[markers]]
+name = "north_barracks_east"
+tags = ["barracks"]
+team = "north"
+pos = [-12, -7]
+
+[[markers]]
+name = "south_barracks"
+tags = ["barracks"]
+team = "south"
+pos = [14, 7]
+
+[[units]]
+unit_type = "tower"
+team = "north"
+path = "lane"
+pos = [-9, -3]
+
+[[units]]
+unit_type = "tower"
+team = "south"
+path = "lane"
+pos = [9, 3]
+
+[[units]]
+unit_type = "boulder"
+team = "camps"
+pos = [1, -2]

@@ -63,3 +63,17 @@ impl Runner {
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
+
+#[cfg(feature = "internals")]
+pub(crate) mod internals {
+    use bevy_ecs::world::World;
+
+    use crate::runner::Runner;
+
+    impl Runner {
+        /// The match's world, for a test that changes what no input can.
+        pub const fn world_mut(&mut self) -> &mut World {
+            &mut self.world
+        }
+    }
+}

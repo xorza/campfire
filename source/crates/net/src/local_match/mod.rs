@@ -1,7 +1,7 @@
-use std::path::Path;
-use std::time::Duration;
+use std::num::NonZeroU32;
+use std::sync::Arc;
 
-use bevy_app::{App, PostUpdate, TaskPoolPlugin};
+use bevy_app::{App, First, PostUpdate, TaskPoolPlugin, Update};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::lifecycle::Add;
 use bevy_ecs::observer::On;
@@ -9,17 +9,19 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedules, SingleThreadedExecutor}
 use bevy_ecs::system::Commands;
 use bevy_state::app::StatesPlugin;
 use bevy_time::{TimePlugin, TimeUpdateStrategy};
-use campfire_capabilities::{Action, Order, Owner, Team};
-use campfire_package::ModePackages;
-use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey};
+use campfire_capabilities::{Action, Body, MoveStep, Order, Owner, Team};
+use campfire_package::{ModePackages, PackageDir};
+use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey, XOnlyPublicKey};
 use campfire_protocol::{CertificateHash, SeedChain};
-use campfire_sim::{EntityIndex, StableId, TickRate};
+use campfire_runner::InputRules;
+use campfire_sim::{EntityIndex, SimTick, StableId, TickRate};
 use lightyear::crossbeam::CrossbeamIo;
 use lightyear::prelude::client::{ClientPlugins, InputDelayConfig, InputTimelineConfig, RawClient};
 use lightyear::prelude::server::{RawServer, ServerPlugins};
 use lightyear::prelude::{
     Client, Connect, Connected, Link, LinkOf, LinkSystems, Linked, LocalTimelineSync, PeerAddr,
-    PredictionManager, ReplicationReceiver, ReplicationSender, RollbackMode, SyncConfig,
+    PredictionManager, PredictionMetrics, ReplicationReceiver, ReplicationSender, RollbackMode,
+    SyncConfig, SyncSystems,
 };
 use lightyear::transport::plugin::TransportSystems;
 
@@ -30,7 +32,7 @@ use crate::match_clock::MatchClock;
 use crate::net_protocol::NetProtocol;
 use crate::order_script::OrderScript;
 use crate::sim_client::bot_script::BotScript;
-use crate::sim_client::client_mode::ClientMode;
+use crate::sim_client::join_state::JoinState;
 use crate::sim_client::server_pin::ServerPin;
 use crate::sim_client::{PendingOrders, SimClient};
 use crate::sim_server::{PlayerLink, SimServer, TickHashes};
@@ -38,15 +40,8 @@ use crate::sim_server::{PlayerLink, SimServer, TickHashes};
 pub(crate) mod delay_line;
 pub(crate) mod link_model;
 
-/// The test mode: a lane with a tower a side and an avatar for each; player 0 plays the walker, and
-/// player 1 the runner.
-const LANE_MODE: &str = concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../packages/test/modes/lane"
-);
 /// Frames a connection gets to link and sync its timeline, and a join to start the match.
 const CONNECT_FRAMES: usize = 300;
-const SERVER_KEY: [u8; 32] = [8; 32];
 /// In-process channels have no TLS; both ends take this as the certificate's hash.
 const CERTIFICATE: CertificateHash = CertificateHash::new([3; 32]);
 /// Unix seconds, on every end.
@@ -67,7 +62,18 @@ pub struct MatchSetup {
     pub seed_chain: SeedChain,
 }
 
+/// An app of a match: the server's, or a client's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum End {
+    Server,
+    Client(usize),
+}
+
 impl MatchSetup {
+    /// One player through a perfect link, whose client rolls back only on a misprediction, with
+    /// a server that runs a frame a tick.
+    pub const SOLO: MatchSetup = MatchSetup::solo(RollbackMode::Check, 1, LocalMatch::SEED_CHAIN);
+
     /// One player, through perfect links.
     pub const fn solo(
         rollback: RollbackMode,
@@ -107,14 +113,18 @@ pub struct LocalMatch {
     /// The server's link to each client.
     links: Vec<Entity>,
     setup: MatchSetup,
-    packages: ModePackages,
+    packages: Arc<ModePackages>,
 }
 
 impl LocalMatch {
+    /// The seed chain the tests' servers commit to.
+    pub const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
+
     /// The match scenario's orders by team, the west then the east: each avatar walks 4 m toward
     /// the enemy tower, which kills it there; after it respawns, it walks to a point near the
-    /// middle. From their spawns 2 m apart, the two walk on lines that part, so they never touch. The first order waits for the clients' lead on the server to settle: Lightyear
-    /// brings it to its target by 5 % of a tick a frame.
+    /// middle. From their spawns 2 m apart, the two walk on lines that part, so they never touch.
+    /// The first order waits for the clients' lead on the server to settle: Lightyear brings it to
+    /// its target by 5 % of a tick a frame.
     pub const SCENARIO_SCRIPTS: [&str; 2] = [
         "[[order]]\ntick = 60\nmove = [4, -2]\n[[order]]\ntick = 450\nmove = [-3, -2]\n",
         "[[order]]\ntick = 60\nmove = [-4, 3]\n[[order]]\ntick = 450\nmove = [3, 4]\n",
@@ -130,9 +140,9 @@ impl LocalMatch {
             setup.server_frames > 0,
             "the server runs a frame a tick at least"
         );
-        let packages = lane_mode();
-        let mode = ClientMode::of(&packages);
-        let tick = TickRate::new(mode.tick_hz).length();
+        let packages = Arc::new(lane_mode());
+        let tick_hz = packages.manifest().tick_hz.default();
+        let tick = TickRate::new(tick_hz).length();
 
         let mut server = App::new();
         server.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
@@ -183,7 +193,7 @@ impl LocalMatch {
             links.push(link);
 
             let ClientApp { app, entity } =
-                ClientApp::new(&setup, player, &mode, tick, client_io, stream + 1);
+                ClientApp::new(&setup, player, &packages, tick_hz, client_io, stream + 1);
             client_entities.push(entity);
             clients.push(app);
         }
@@ -230,20 +240,24 @@ impl LocalMatch {
     /// its avatar comes in the replication after the server's first tick, in another packet: which
     /// arrives first varies with how Lightyear packs and resends them, by the wall clock.
     pub fn start_match(&mut self) {
+        let packages = lane_mode();
         let lobby = Lobby::new(LobbySetup {
-            packages: lane_mode(),
-            server_key: SERVER_KEY,
+            tick_hz: packages.manifest().tick_hz.default(),
+            packages,
+            server_key: server_key(),
             seed_chain: self.setup.seed_chain,
+            inputs: InputRules::LAN,
             certificate: CERTIFICATE,
             players: self.setup.players,
             clock: || NOW,
             entropy: |bytes| bytes.fill(5),
-        });
+        })
+        .expect("the lane mode runs at its default rate");
         self.server.world_mut().insert_resource(lobby);
         for _ in 0..CONNECT_FRAMES {
-            let started = |app: &App| app.world().contains_resource::<MatchClock>();
-            if started(&self.server)
-                && self.clients.iter().all(started)
+            let playing = |client: &App| client.world().resource::<JoinState>().clock().is_some();
+            if self.server.world().contains_resource::<MatchClock>()
+                && self.clients.iter().all(playing)
                 && (0..self.clients.len()).all(|client| self.holds_hero(client))
             {
                 return;
@@ -349,6 +363,49 @@ impl LocalMatch {
         &self.server
     }
 
+    pub fn app(&self, end: End) -> &App {
+        match end {
+            End::Server => &self.server,
+            End::Client(client) => &self.clients[client],
+        }
+    }
+
+    /// The sim tick `end` runs next.
+    pub fn next_tick(&self, end: End) -> u64 {
+        self.app(end).world().resource::<SimTick>().start().get()
+    }
+
+    /// The times `client` rolled its state back.
+    pub fn rollbacks(&self, client: usize) -> u32 {
+        let world = self.clients[client].world();
+        world.resource::<PredictionMetrics>().rollbacks
+    }
+
+    /// The client whose player's avatar is on `team`.
+    pub fn client_of(&self, team: Team) -> usize {
+        (0..self.clients.len())
+            .find(|&client| self.team(client) == team)
+            .expect("a client plays each team")
+    }
+
+    /// The tower of `team` on the server: its one unit that stands, has a body and no owner.
+    pub fn tower(&self, team: Team) -> StableId {
+        let world = self.server.world();
+        let mut towers = world
+            .resource::<EntityIndex>()
+            .iter()
+            .filter(|&(_, entity)| {
+                let unit = world.entity(entity);
+                unit.get::<Team>() == Some(&team)
+                    && unit.contains::<Body>()
+                    && !unit.contains::<MoveStep>()
+                    && !unit.contains::<Owner>()
+            });
+        let (tower, _) = towers.next().expect("a team has a tower");
+        assert!(towers.next().is_none(), "a team has one tower");
+        tower
+    }
+
     pub const fn server_mut(&mut self) -> &mut App {
         &mut self.server
     }
@@ -357,13 +414,17 @@ impl LocalMatch {
         &self.clients[client]
     }
 
+    pub fn client_mut(&mut self, client: usize) -> &mut App {
+        &mut self.clients[client]
+    }
+
     /// The server's link to `client`.
     pub fn link(&self, client: usize) -> Entity {
         self.links[client]
     }
 
     /// The packages of the session's mode.
-    pub const fn packages(&self) -> &ModePackages {
+    pub fn packages(&self) -> &ModePackages {
         &self.packages
     }
 }
@@ -380,24 +441,25 @@ impl ClientApp {
     fn new(
         setup: &MatchSetup,
         player: usize,
-        mode: &ClientMode,
-        tick: Duration,
+        packages: &Arc<ModePackages>,
+        tick_hz: NonZeroU32,
         io: CrossbeamIo,
         stream: u64,
     ) -> ClientApp {
-        // Keys of 1 and 2 for the first player, 3 and 4 for the second.
         let secret = u8::try_from(2 * player + 1).expect("a small player");
         let sim_client = SimClient {
             main_key: keypair(secret),
             session_key: keypair(secret + 1),
             server: ServerPin {
-                key: SERVER_KEY,
+                key: server_key(),
                 certificate: CERTIFICATE,
+                tick_hz,
             },
-            mode: mode.clone(),
+            packages: Arc::clone(packages),
             clock: || NOW,
             entropy: |bytes| bytes.fill(4),
         };
+        let tick = TickRate::new(tick_hz).length();
         let mut client = App::new();
         client.add_plugins((TaskPoolPlugin::default(), TimePlugin, StatesPlugin));
         client.add_plugins(ClientPlugins {
@@ -459,17 +521,27 @@ fn run_in_order(app: &mut App) {
 fn pass_through_delay_lines(app: &mut App) {
     app.add_systems(
         PostUpdate,
-        DelayLine::pass
-            .after(TransportSystems::Send)
-            .before(LinkSystems::Send),
+        (
+            DelayLine::pass
+                .after(TransportSystems::Send)
+                .before(LinkSystems::Send),
+            DelayLine::pin_round_trip.before(SyncSystems::Sync),
+        ),
     );
+    app.add_systems(First, DelayLine::pin_round_trip);
+    app.add_systems(Update, DelayLine::pin_round_trip);
 }
 
-fn keypair(secret: u8) -> Keypair {
+pub(crate) fn keypair(secret: u8) -> Keypair {
     let secret = SecretKey::from_byte_array(&[secret; 32]).expect("a valid secret key");
     Keypair::from_secret_key(&Secp256k1::new(), &secret)
 }
 
+/// The server's key, the x of a point on the curve.
+pub(crate) fn server_key() -> XOnlyPublicKey {
+    XOnlyPublicKey::from_byte_array(&[8; 32]).expect("[8; 32] is the x of a point")
+}
+
 fn lane_mode() -> ModePackages {
-    ModePackages::from_dir(Path::new(LANE_MODE)).expect("the test mode loads")
+    ModePackages::from_dir(&PackageDir::workspace("test/modes/lane")).expect("the test mode loads")
 }

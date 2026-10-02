@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::fmt;
 
 use serde::de::Error;
@@ -18,6 +19,19 @@ impl DeclaredName {
     }
 
     pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl PartialEq<str> for DeclaredName {
+    fn eq(&self, other: &str) -> bool {
+        *self.0 == *other
+    }
+}
+
+/// By its text, so a map keyed by names finds a name a script or a filter gives.
+impl Borrow<str> for DeclaredName {
+    fn borrow(&self) -> &str {
         &self.0
     }
 }

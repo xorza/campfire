@@ -1,17 +1,14 @@
 use std::hint::black_box;
-use std::num::NonZeroU32;
 use std::time::{Duration, Instant};
 
 use campfire_capabilities::Action;
 use campfire_math::Num;
-use campfire_protocol::SeedChain;
 use criterion::Criterion;
 use lightyear::prelude::RollbackMode;
 
 use crate::local_match::link_model::LinkModel;
 use crate::local_match::{LocalMatch, MatchSetup};
 
-const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
 /// A quarter meter a tick crosses the 10 m between the two targets in 40 ticks, so a new order
 /// every 40 frames keeps the avatar walking and the server sending updates.
 const LEG_FRAMES: u64 = 40;
@@ -29,7 +26,7 @@ pub fn rollback(c: &mut Criterion) {
         ("frame_without_rollback", RollbackMode::Check),
         ("frame_with_rollback", RollbackMode::Always),
     ] {
-        let mut local = LocalMatch::new(MatchSetup::solo(mode, 1, SEED_CHAIN));
+        let mut local = LocalMatch::new(MatchSetup::solo(mode, 1, LocalMatch::SEED_CHAIN));
         local.start_match();
         let mut frame: u64 = 0;
         group.bench_function(name, |b| {
@@ -75,7 +72,7 @@ pub fn worst_client_frame(c: &mut Criterion) {
 }
 
 fn worst_frame_of_a_match() -> Duration {
-    let mut local = LocalMatch::new(MatchSetup::duo(LinkModel::PERFECT, SEED_CHAIN));
+    let mut local = LocalMatch::new(MatchSetup::duo(LinkModel::PERFECT, LocalMatch::SEED_CHAIN));
     local.start_match();
     local.play_by_team(LocalMatch::SCENARIO_SCRIPTS);
     let mut worst = Duration::ZERO;

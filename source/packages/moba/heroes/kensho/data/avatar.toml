@@ -1,4 +1,4 @@
-name = "Kensho"
+name = "hero-name"
 tags = ["fighter"]
 pools = ["health", "mana"]
 tracks = ["level"]

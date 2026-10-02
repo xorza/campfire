@@ -1,14 +1,14 @@
 use campfire_sim::{Capability, Position};
 
-use crate::actions::action_book::Delivery;
+use crate::actions::delivery::DeliveryShape;
 use crate::areas::area_effect::AreaEffect;
 use crate::deliveries::delivering::Delivering;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
-use crate::scripts::effect::Effect;
 use crate::scripts::error::Checked;
 use crate::scripts::role_set::RoleSet;
-use crate::scripts::script_api::{DataTable, MemberSpec};
+use crate::scripts::script_api::data_table::DataTable;
+use crate::scripts::script_api::member_spec::MemberSpec;
 
 /// The script API of `areas`: `ctx.area`, and the data of an area type.
 #[derive(Debug)]
@@ -35,7 +35,11 @@ impl AreasApi {
 
     /// Queues an area of the running action, which delivers areas, from its acting unit.
     fn land(ctx: &Ctx, at: Position) -> Checked<()> {
-        let by = Delivering::of(ctx, |delivery| delivery == Delivery::Area)?;
-        ctx.queue(Effect::Area(AreaEffect { by, at }))
+        let launcher = Delivering::of(ctx, |shape| shape == DeliveryShape::Area)?;
+        ctx.queue(AreaEffect {
+            by: launcher.by,
+            unit_type: launcher.delivery.unit_type,
+            at,
+        })
     }
 }

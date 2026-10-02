@@ -15,7 +15,9 @@ mod trig;
 
 /// A 40.24 fixed-point number: the value times 2²⁴, in an `i64`.
 ///
-/// `*`, `/`, `sqrt`, `sin_cos` and `atan2` round to nearest, ties to even. Operators panic on
+/// `*`, `/` and `sqrt` round to nearest, ties to even. `sin_cos` and `atan2` are within 0.501
+/// ulp of the exact value over the tests' sweeps, and give the same bits on every machine, but
+/// no search of the hard cases proves them correctly rounded. Operators panic on
 /// overflow and on division by zero, which in engine code are bugs; the `checked_*` methods
 /// return `None` instead.
 #[derive(
@@ -36,6 +38,8 @@ impl Num {
     pub const FRAC_BITS: u32 = 24;
     pub const ZERO: Num = Num(0);
     pub const ONE: Num = Num(1 << Self::FRAC_BITS);
+    pub const HALF: Num = Num(1 << (Self::FRAC_BITS - 1));
+    pub const QUARTER: Num = Num(1 << (Self::FRAC_BITS - 2));
     /// The smallest positive value, 2⁻²⁴.
     pub const EPSILON: Num = Num(1);
     pub const MIN: Num = Num(i64::MIN);
@@ -60,6 +64,24 @@ impl Num {
         match value.checked_mul(Self::ONE.0) {
             Some(bits) => Some(Num(bits)),
             None => None,
+        }
+    }
+
+    /// `value`, which must lie in `−2³⁹ ≤ value < 2³⁹`, as a constant or a literal does; for a
+    /// value from data, `from_int`.
+    pub const fn int(value: i64) -> Num {
+        match Num::from_int(value) {
+            Some(num) => num,
+            None => panic!("an integer within a number's range"),
+        }
+    }
+
+    /// Exact conversion; `None` for a value with a fraction.
+    pub const fn to_int(self) -> Option<i64> {
+        if self.0 & Self::FRAC_MASK == 0 {
+            Some(self.floor())
+        } else {
+            None
         }
     }
 
@@ -116,9 +138,9 @@ impl Num {
         Num(to_i64(bits))
     }
 
-    /// The value nearest to `sum / 2²⁴`, for a sum of products of raw values, rounded once;
-    /// `None` when it does not fit.
-    pub(crate) const fn from_raw_products(sum: i128) -> Option<Num> {
+    /// The value nearest to `sum / 2²⁴`, for a sum of products of raw values, rounded once to
+    /// nearest, ties to even: a wide sum's one rounding. `None` when it does not fit.
+    pub const fn from_raw_products(sum: i128) -> Option<Num> {
         narrow(round_shr(sum, Self::FRAC_BITS))
     }
 
@@ -144,6 +166,18 @@ impl Num {
             Some(bits) => Some(Num(bits)),
             None => None,
         }
+    }
+
+    /// `self × rhs ÷ divisor`, rounded once to nearest, ties to even; `None` for a divisor of 0
+    /// or a result that does not fit.
+    pub const fn checked_mul_div_int(self, rhs: Num, divisor: i64) -> Option<Num> {
+        if divisor == 0 {
+            return None;
+        }
+        narrow(round_div(
+            self.0 as i128 * rhs.0 as i128,
+            (divisor as i128) << Self::FRAC_BITS,
+        ))
     }
 
     pub const fn checked_div_int(self, rhs: i64) -> Option<Num> {
@@ -252,19 +286,19 @@ const fn round_shr(value: i128, shift: u32) -> i128 {
 }
 
 /// `numerator / denominator`, rounded to nearest, ties to even. Callers keep the denominator
-/// non-zero and below 2¹²⁶, and the quotient at most 2⁸⁷.
+/// non-zero and below 2¹²⁶, and the quotient below 2¹²⁶, so its sign fits.
 const fn round_div(numerator: i128, denominator: i128) -> i128 {
     let n = numerator.unsigned_abs();
     let d = denominator.unsigned_abs();
     debug_assert!(d != 0 && d < 1 << 126);
     let mut magnitude = n / d;
     let rest = n % d;
-    // No step can overflow: `rest < d < 2¹²⁶` and the quotient is at most 2⁸⁷.
+    // No step can overflow: `rest < d < 2¹²⁶` and the quotient is below 2¹²⁶.
     let twice_rest = rest << 1;
     if twice_rest > d || (twice_rest == d && magnitude & 1 == 1) {
         magnitude = magnitude.wrapping_add(1);
     }
-    debug_assert!(magnitude <= 1 << 87, "round_div quotient above 2⁸⁷");
+    debug_assert!(magnitude < 1 << 126, "round_div quotient of 2¹²⁶ or more");
     let magnitude = magnitude.cast_signed();
     if (numerator < 0) == (denominator < 0) {
         magnitude

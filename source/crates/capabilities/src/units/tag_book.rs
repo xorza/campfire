@@ -2,7 +2,6 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 
-use crate::units::by_type::ByType;
 use crate::units::tag::Tag;
 use crate::units::tag_effects::TagEffects;
 use crate::units::tag_set::TagSet;
@@ -19,7 +18,8 @@ pub(crate) struct TagBook {
     /// The tags that make their unit immune to some: a modifier that grants one is never
     /// suppressed, so no order of modifiers changes what is.
     granting: TagSet,
-    type_tags: ByType<TagSet>,
+    /// Each unit type's own tags, by type.
+    type_tags: Vec<TagSet>,
 }
 
 impl TagBook {
@@ -39,9 +39,22 @@ impl TagBook {
             book.immune.push(immune);
         }
         for (unit_type, tags) in types {
-            book.type_tags.set(unit_type, tags);
+            let at = unit_type.index();
+            if book.type_tags.len() <= at {
+                book.type_tags.resize(at + 1, TagSet::default());
+            }
+            book.type_tags[at] = tags;
         }
         book
+    }
+
+    /// The own tags of `unit_type`, those of its data and of its sections; none for a type the
+    /// book was not given.
+    pub(crate) fn own(&self, unit_type: UnitType) -> TagSet {
+        self.type_tags
+            .get(unit_type.index())
+            .copied()
+            .unwrap_or_default()
     }
 
     /// The tags of a unit of `unit_type` whose modifiers grant `granted`, each set one held
@@ -52,7 +65,7 @@ impl TagBook {
         unit_type: UnitType,
         granted: impl Iterator<Item = TagSet> + Clone,
     ) -> UnitTags {
-        let own = self.type_tags.get(unit_type).copied().unwrap_or_default();
+        let own = self.own(unit_type);
         let granting = granted.clone().filter(|tags| tags.meets(self.granting));
         let immune = granting
             .fold(own, TagSet::union)
@@ -105,32 +118,50 @@ mod tests {
 
     use super::*;
     use crate::units::block::Block;
+    use crate::units::engine_tag::EngineTag;
     use crate::units::tag_data::TagData;
+    use crate::units::type_scope::TypeScope;
     use crate::units::unit_type_data::UnitTypeData;
     use crate::units::unit_types::UnitTypes;
+    use crate::values::declared_name::DeclaredName;
 
     #[test]
     fn a_units_tags_take_their_effects_from_the_modes_data() {
         let mut types = UnitTypes::default();
         let names = ["stunned", "slowed", "slow_immune", "true_sight"];
-        let [stunned, slowed, slow_immune, sight] = names.map(|name| types.declare(name).unwrap());
+        let [stunned, slowed, slow_immune, sight] = names.map(|name| types.declare(name));
+        // The engine's tags hold the first places, and to declare one finds it.
+        assert_eq!(
+            [stunned, slowed, slow_immune, sight].map(Tag::index),
+            [3, 4, 5, 6]
+        );
+        let engine = EngineTag::ALL.map(|tag| types.declare(tag.name()));
+        assert_eq!(engine, EngineTag::ALL.map(EngineTag::tag));
+        assert_eq!(engine.map(Tag::index), [0, 1, 2]);
+        assert_eq!(types.declare("tower").index(), 7);
         let tower = UnitTypeData {
-            tags: vec!["true_sight".to_owned()],
+            tags: vec![DeclaredName::new("true_sight").unwrap()],
             params: BTreeMap::new(),
         };
-        let tower = types.load("tower", &tower).unwrap();
+        let tower = types.load(TypeScope::Mode, "tower", &tower);
         let data = |blocks: &[Block], detects, immune: &[&str]| TagData {
             blocks: blocks.to_vec(),
             hidden: false,
             detects,
-            immune: immune.iter().map(|&name| name.to_owned()).collect(),
+            immune: immune
+                .iter()
+                .map(|&name| DeclaredName::new(name).unwrap())
+                .collect(),
         };
         let stun = [Block::Move, Block::Attack, Block::Cast, Block::Use];
-        let data = BTreeMap::from([
-            ("stunned".to_owned(), data(&stun, false, &[])),
-            ("slow_immune".to_owned(), data(&[], false, &["slowed"])),
-            ("true_sight".to_owned(), data(&[], true, &[])),
-        ]);
+        let data = BTreeMap::from(
+            [
+                ("stunned", data(&stun, false, &[])),
+                ("slow_immune", data(&[], false, &["slowed"])),
+                ("true_sight", data(&[], true, &[])),
+            ]
+            .map(|(name, data)| (DeclaredName::new(name).unwrap(), data)),
+        );
         let book = types.tag_book(&data);
         let set = |tags: &[Tag]| TagSet::of(tags.iter().copied());
 

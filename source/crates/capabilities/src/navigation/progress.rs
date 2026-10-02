@@ -1,4 +1,6 @@
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_sim::{Position, SimComponent};
 use serde::{Deserialize, Serialize};
@@ -16,7 +18,7 @@ impl Progress {
     /// Notes that the walker stands at `at` as this tick steers, with a step of `step`; the ticks
     /// in a row it has moved less than half a step.
     pub(crate) fn track(&mut self, at: Position, step: Num) -> u32 {
-        let half = Num::from_bits(step.to_bits() / 2);
+        let half = step / 2;
         self.stuck = match self.last_at {
             Some(last) if last.within_ground(at, half) => self.stuck.saturating_add(1),
             _ => 0,
@@ -29,8 +31,21 @@ impl Progress {
     pub(crate) const fn reset(&mut self) {
         self.stuck = 0;
     }
+
+    /// Forgets the walk, as the walker asked for a new route or stopped.
+    pub(crate) const fn restart(&mut self) {
+        *self = Progress {
+            last_at: None,
+            stuck: 0,
+        };
+    }
 }
 
 impl SimComponent for Progress {
     const NAME: &'static str = "navigation.progress";
+
+    // Its decode keeps its position within the bound, and it names no book.
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }

@@ -106,8 +106,20 @@ fn only_what_scripts_need_is_there() {
         host.compile(r#"fn f() { eval("1") }"#),
         Err(ScriptError::Compile(_))
     ));
-    for body in [r#"import "x" as x; 1"#, "sleep(1)", "timestamp()"] {
-        assert!(run(&mut host, body).is_err(), "{body}");
+    for (body, error) in [
+        (r#"import "x" as x; 1"#, "Too many modules imported"),
+        (
+            "sleep(1)",
+            "Function not found: sleep (i64) (line 1, position 10)",
+        ),
+        (
+            "timestamp()",
+            "Function not found: timestamp () (line 1, position 10)",
+        ),
+    ] {
+        let failed = run(&mut host, body).err();
+        let pinned = matches!(&failed, Some(ScriptError::Runtime(text)) if text == error);
+        assert!(pinned, "{body}: {failed:?}");
     }
     // What scripts do need: loops over arrays and ranges, maps, strings, and `print`, which
     // writes only in debug builds.
@@ -117,11 +129,15 @@ fn only_what_scripts_need_is_there() {
     assert_eq!(run(&mut host, body).unwrap().as_int().unwrap(), 17);
     assert_eq!(hashing::get_hashing_seed(), &Some(HASHING_SEED));
 
-    // A hook is found by its name and its number of parameters.
-    let script = host.compile("fn on_think(ctx, unit) { 1 }").unwrap();
-    assert!(host.defines(script, "on_think", 2));
-    assert!(!host.defines(script, "on_think", 1));
-    assert!(!host.defines(script, "on_resolve", 3));
+    // A script's functions, each by its name and its number of parameters, and its place.
+    let script = host
+        .compile("fn on_think(ctx, unit) { 1 } fn helper() {}")
+        .unwrap();
+    let mut functions: Vec<_> = host.functions(script).collect();
+    functions.sort_unstable();
+    assert_eq!(functions, [("helper", 0), ("on_think", 2)]);
+    assert_eq!(script.index(), host.compiled() - 1);
+    assert_eq!(ScriptId::nth(script.index()), script);
 }
 
 #[test]
@@ -154,21 +170,22 @@ fn calls_fail_at_their_limits_the_same_way_in_every_build() {
         host.call(&mut other, one, "one", ()).unwrap().as_int(),
         Ok(1)
     );
-    assert!(other.left() < 1500);
+    // `one` costs Rhai 3 operations, which the budget counts whole.
+    assert_eq!(other.left(), 1497);
 
     // The call depth is the engine's 32 in every build: Rhai's default is 8 in a debug build
-    // and 64 in a release one, so 20 levels passing and 40 failing show the engine's limit.
+    // and 64 in a release one. `down(32)` calls down 32 times below the first call and passes;
+    // `down(33)` goes one deeper and fails.
     let down = host
         .compile("fn down(n) { if n > 0 { down(n - 1) } else { 0 } }")
         .unwrap();
     assert_eq!(
-        host.call(&mut ample(), down, "down", (20_i64,))
+        host.call(&mut ample(), down, "down", (32_i64,))
             .unwrap()
             .as_int(),
         Ok(0)
     );
-    assert!(matches!(
-        host.call(&mut ample(), down, "down", (40_i64,)),
-        Err(ScriptError::Runtime(_))
-    ));
+    let deeper = host.call(&mut ample(), down, "down", (33_i64,)).err();
+    let overflow = matches!(&deeper, Some(ScriptError::Runtime(text)) if text == "Stack overflow");
+    assert!(overflow, "{deeper:?}");
 }

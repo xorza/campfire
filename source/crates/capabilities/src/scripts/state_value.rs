@@ -50,6 +50,20 @@ impl StateValue {
         })
     }
 
+    /// The type of field the value is of.
+    pub(crate) const fn kind(&self) -> StateType {
+        match self {
+            StateValue::Int(_) => StateType::Int,
+            StateValue::Num(_) => StateType::Num,
+            StateValue::Bool(_) => StateType::Bool,
+            StateValue::Text(_) => StateType::String,
+            StateValue::Entity(_) => StateType::Entity,
+            StateValue::EntityList(_) => StateType::EntityList,
+            StateValue::Pos(_) => StateType::Pos,
+            StateValue::Vec(_) => StateType::Vec,
+        }
+    }
+
     /// The value as a script sees it: a unit the view did not read is `()`, and is left out of a
     /// list.
     pub(crate) fn to_dynamic(&self, view: &View) -> Dynamic {

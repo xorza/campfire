@@ -6,46 +6,49 @@ use bevy_ecs::bundle::Bundle;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_math::PlayerSlot;
-use campfire_script::ScriptHost;
-use campfire_script::rhai::ImmutableString;
-use campfire_sim::{EntityIndex, Position, StableId};
+use campfire_sim::{EntityIndex, StableId};
 
-use crate::actions::action_book::ActionId;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::slot_kind::SlotKind;
 use crate::actions::slot_kinds::SlotKinds;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::mode::choice_book::ChoiceBook;
-use crate::mode::error::ModeError;
 use crate::mode::game_map::GameMap;
-use crate::mode::map_data::MapData;
-use crate::mode::marker::{Marker, MarkerInfo};
+use crate::mode::group_unit::GroupUnit;
 use crate::mode::mode_schema::ModeSchema;
 use crate::mode::mode_setup::{ModeSetup, SlotAction};
+use crate::mode::placed_unit::PlacedUnit;
 use crate::mode::roster::Roster;
 use crate::mode::unit_kit::UnitKit;
+use crate::navigation::Navigation;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::{PathEnd, PathWalker};
 use crate::navigation::paths::Paths;
 use crate::production::train_queue::TrainQueue;
 use crate::progression::experience::Experience;
-use crate::scripts::frame::Frame;
+use crate::progression::track_book::TrackBook;
+use crate::scripts::ctx::Ctx;
+use crate::scripts::error::{ApiError, Checked};
+use crate::scripts::script_book::ScriptBook;
 use crate::stats::Stats;
+use crate::stats::applier::Applier;
 use crate::stats::level::Level;
-use crate::stats::modifier_book::{Applier, ModifierId};
+use crate::stats::lifetime::Hold;
+use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_effect::ModifierEffect;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::unit_stats::UnitStats;
+use crate::units::action_id::ActionId;
 use crate::units::by_type::ByType;
+use crate::units::modifier_id::ModifierId;
 use crate::units::owner::Owner;
 use crate::units::path_id::PathId;
-use crate::units::script_view::View;
 use crate::units::spawn_point::SpawnPoint;
+use crate::units::spawner::SpawnAt;
 use crate::units::tag_book::TagBook;
 use crate::units::team::Team;
 use crate::units::teams::Teams;
 use crate::units::unit_type::UnitType;
-use crate::values::bounds::Bounds;
 
 /// The mode's package data as a match runs it, names resolved: package data, not state. A restore
 /// loads it from the packages, as a new match does.
@@ -54,124 +57,89 @@ pub(crate) struct ModeBook {
     pub(crate) schema: ModeSchema,
     pub(crate) roster: Roster,
     pub(crate) teams: Rc<Teams>,
-    pub(crate) bounds: Bounds,
     pub(crate) choices: ChoiceBook,
     pub(crate) slot_kinds: SlotKinds,
     /// The ranks of every loadout entry.
     pub(crate) loadout_ranks: u8,
-    /// By unit type.
-    kits: ByType<UnitKit>,
-    passives: ByType<ModifierId>,
-    /// Each unit type's actions, a run of `actions` each, kind after kind.
-    action_runs: ByType<Range<usize>>,
+    /// What each of the mode's unit types spawns with.
+    types: ByType<ModeType>,
+    /// The unit types' actions, a run of each, kind after kind.
     actions: Vec<SlotAction>,
     /// The units the map places from the start.
     pub(crate) placed: Vec<PlacedUnit>,
     /// `ctx.map`, as scripts read it, and where avatars spawn.
-    pub(crate) map: GameMap,
+    map: GameMap,
 }
 
-/// A unit of the map, names resolved: on its path, if it names one, and walking it from `from`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct PlacedUnit {
-    pub(crate) unit_type: UnitType,
-    pub(crate) team: Team,
-    pub(crate) path: Option<PathId>,
-    pub(crate) from: Option<PathEnd>,
-    pub(crate) pos: Position,
+/// What a unit type of the mode spawns with: its kit, its passive, if it holds one, and its run of
+/// the book's actions.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ModeType {
+    kit: UnitKit,
+    passive: Option<ModifierId>,
+    actions: Range<usize>,
 }
 
 impl ModeBook {
-    /// The book of `setup`, which passed `Mode::check`, whose script `host` compiled, its names
-    /// resolved through `view` and `paths`; an error when the teams have fewer slots than the
-    /// players.
+    /// The mode of the match `ctx` runs in, once it installed.
+    pub(crate) fn of(ctx: &Ctx) -> Option<&ModeBook> {
+        ctx.mode()?.downcast_ref()
+    }
+
+    /// The mode of the match `ctx` runs in; an error in a match with none.
+    pub(crate) fn of_or_fail(ctx: &Ctx) -> Checked<&ModeBook> {
+        ModeBook::of(ctx).ok_or_else(|| ApiError::NoMode.fail().into())
+    }
+
+    /// The book of `setup`, whose script defines the hooks `scripts` gives, for players the teams
+    /// seat, with the units its map places and `map` as scripts read it.
     pub(crate) fn new(
         setup: ModeSetup<'_>,
-        host: &ScriptHost,
-        view: &View,
-        paths: &Paths,
-    ) -> Result<ModeBook, ModeError> {
+        scripts: &ScriptBook,
+        placed: Vec<PlacedUnit>,
+        map: GameMap,
+    ) -> ModeBook {
         let teams = setup
             .teams
             .iter()
             .map(|team| (team.name.as_str(), team.slots));
-        let teams = Teams::new(teams, setup.players).ok_or(ModeError::TooManyPlayers)?;
-        let (mut kits, mut passives, mut action_runs) =
-            (ByType::default(), ByType::default(), ByType::default());
+        let teams = Teams::new(teams, setup.players)
+            .expect("the session checked its players against the teams' slots");
+        let mut types = ByType::default();
         let mut actions = Vec::new();
-        for unit_type in &setup.unit_types {
-            kits.set(unit_type.unit_type, unit_type.kit);
-            if let Some(passive) = unit_type.passive {
-                passives.set(unit_type.unit_type, passive);
-            }
+        for unit_type in &setup.units.unit_types {
             let start = actions.len();
             actions.extend_from_slice(&unit_type.actions);
-            action_runs.set(unit_type.unit_type, start..actions.len());
+            let held = ModeType {
+                kit: unit_type.kit,
+                passive: unit_type.passive,
+                actions: start..actions.len(),
+            };
+            types.set(unit_type.unit_type, held);
         }
-        let mut book = ModeBook {
-            schema: ModeSchema::new(setup.script, host, setup.data),
-            roster: Roster::new(setup.avatars, setup.loadout),
+        ModeBook {
+            schema: ModeSchema::new(setup.script, scripts, setup.data),
+            roster: Roster::new(setup.units.avatars, &setup.units.loadout),
             teams: Rc::new(teams),
-            bounds: setup.map.bounds,
             choices: ChoiceBook::new(&setup.data.choices),
             slot_kinds: setup.data.slots.clone(),
             loadout_ranks: setup.data.loadout_ranks(),
-            kits,
-            passives,
-            action_runs,
+            types,
             actions,
-            placed: Vec::new(),
-            map: GameMap::default(),
-        };
-        book.set_map(setup.map, view, paths);
-        Ok(book)
-    }
-
-    /// Resolves the names of `map`, which the check found, unit types through `view`: its paths,
-    /// its placed units, and its markers, which `ctx.map` lists.
-    fn set_map(&mut self, map: &MapData, view: &View, paths: &Paths) {
-        let checked = "the mode's check passed";
-        for unit in &map.units {
-            let unit = PlacedUnit {
-                unit_type: view.unit_type(&unit.unit_type).expect(checked),
-                team: self.teams.named(&unit.team).expect(checked),
-                path: unit
-                    .path
-                    .as_ref()
-                    .map(|path| paths.named(path).expect(checked)),
-                from: unit.from,
-                pos: unit.pos.position().expect(checked),
-            };
-            self.placed.push(unit);
+            placed,
+            map,
         }
-        let markers = map.markers.iter().map(|marker| {
-            let params = marker
-                .params
-                .iter()
-                .map(|(name, param)| (name.as_str().into(), param.to_dynamic()));
-            Marker::new(MarkerInfo {
-                name: marker.name.as_str().into(),
-                tags: marker.tags.iter().map(|tag| tag.as_str().into()).collect(),
-                pos: marker.pos.map(|pos| pos.position().expect(checked)),
-                team: marker
-                    .team
-                    .as_ref()
-                    .map(|team| self.teams.named(team).expect(checked)),
-                params: params.collect(),
-            })
-        });
-        self.map = GameMap::new(paths.names().map(ImmutableString::from), markers);
     }
 
     /// The actions of `unit_type`, kind after kind.
     pub(crate) fn actions(&self, unit_type: UnitType) -> &[SlotAction] {
-        self.action_runs
+        self.types
             .get(unit_type)
-            .map_or(&[], |run| &self.actions[run.clone()])
+            .map_or(&[], |held| &self.actions[held.actions.clone()])
     }
 
-    pub(crate) fn kit(&self, unit_type: UnitType) -> Option<UnitKit> {
-        self.kits.get(unit_type).copied()
+    pub(super) fn kit(&self, unit_type: UnitType) -> Option<UnitKit> {
+        self.types.get(unit_type).map(|held| held.kit)
     }
 
     pub(crate) fn map(&self) -> GameMap {
@@ -184,23 +152,16 @@ impl ModeBook {
         world: &mut World,
         at: SpawnAt,
         owner: Option<PlayerSlot>,
-        frame: Option<&Frame>,
     ) -> Entity {
         match owner {
-            Some(slot) => self.spawn(world, at, Owner::new(slot), frame),
-            None => self.spawn(world, at, (), frame),
+            Some(slot) => self.spawn(world, at, Owner::new(slot)),
+            None => self.spawn(world, at, ()),
         }
     }
 
     /// Spawns `at`, with its kit, its actions, each at the first rank of its kind, its passive,
-    /// whose params read through `frame` when a call spawned it, and `parts`.
-    pub(crate) fn spawn(
-        &self,
-        world: &mut World,
-        at: SpawnAt,
-        parts: impl Bundle,
-        frame: Option<&Frame>,
-    ) -> Entity {
+    /// and `parts`.
+    pub(crate) fn spawn(&self, world: &mut World, at: SpawnAt, parts: impl Bundle) -> Entity {
         let SpawnAt {
             id,
             unit_type,
@@ -213,6 +174,9 @@ impl ModeBook {
         let tags = world
             .resource::<TagBook>()
             .unit_tags(unit_type, iter::empty());
+        let level_track = world
+            .get_resource::<TrackBook>()
+            .and_then(TrackBook::level_track);
         let mut unit = world.spawn((
             id,
             pos,
@@ -223,6 +187,7 @@ impl ModeBook {
             UnitStats::default(),
             tags,
             Modifiers::default(),
+            ModifierClocks::default(),
             parts,
         ));
         if let Some(pools) = kit.pools {
@@ -238,13 +203,13 @@ impl ModeBook {
             unit.insert(body);
         }
         if let Some(step) = kit.step {
-            unit.insert(step.bundle());
+            unit.insert(Navigation::walker(step));
         }
         if !kit.tracks.is_empty() {
-            unit.insert(Experience::new(kit.tracks));
+            unit.insert(Experience::new(kit.tracks, level_track));
         }
-        if let Some(queue) = kit.queue {
-            unit.insert(TrainQueue::new(queue));
+        if kit.queue.is_some() {
+            unit.insert(TrainQueue::default());
         }
         let actions = self.actions(unit_type);
         if !actions.is_empty() {
@@ -255,20 +220,19 @@ impl ModeBook {
             unit.insert(ActionSlots::new(slots));
         }
         let entity = unit.id();
-        if let Some(&passive) = self.passives.get(unit_type) {
+        if let Some(passive) = self.types.get(unit_type).and_then(|held| held.passive) {
             let applier = Applier {
                 source: Some(id),
                 ability: None,
                 rank: 1,
-                passive: true,
-                held: false,
+                hold: Some(Hold::Passive),
             };
             let add = ModifierEffect::Add {
                 target: id,
                 id: passive,
                 duration: None,
             };
-            Stats::apply_effect(world, add, applier, frame);
+            Stats::apply_effect(world, add, applier);
         }
         entity
     }
@@ -282,7 +246,6 @@ impl ModeBook {
         path: PathId,
         from: PathEnd,
         units: &[GroupUnit],
-        frame: &Frame,
     ) {
         let pos = world
             .resource::<Paths>()
@@ -296,7 +259,7 @@ impl ModeBook {
                 team,
                 pos,
             };
-            self.spawn(world, at, walker, Some(frame));
+            self.spawn(world, at, walker);
         }
     }
 
@@ -321,20 +284,4 @@ impl ModeBook {
             unit.insert(ActionSlots::new(slots));
         }
     }
-}
-
-/// A unit to spawn: the id it takes, its unit type, its team and where.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SpawnAt {
-    pub(crate) id: StableId,
-    pub(crate) unit_type: UnitType,
-    pub(crate) team: Team,
-    pub(crate) pos: Position,
-}
-
-/// A unit of a spawn group: its unit type, and the id a call took for it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct GroupUnit {
-    pub(crate) unit_type: UnitType,
-    pub(crate) id: StableId,
 }

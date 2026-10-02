@@ -1,0 +1,7 @@
+# A test hero of the proving mode: a homing orb, a scripted burst around itself, and an aura that
+# makes its allies near it hit harder.
+name = "hero-sage"
+version = "0.1.0"
+api = "1.0"
+language = "en"
+kind = "avatar"

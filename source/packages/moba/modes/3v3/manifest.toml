@@ -1,6 +1,7 @@
 name = "moba-3v3"
 version = "0.1.0"
-engine = "0.1.0"
+api = "1.0"
+language = "en"
 kind = "mode"
 capabilities = ["combat", "stats", "abilities", "projectiles", "areas", "orders", "navigation", "vision", "progression"]
 tick_hz = { min = 20, max = 60, default = 30 }

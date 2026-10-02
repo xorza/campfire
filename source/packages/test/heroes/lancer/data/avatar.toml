@@ -1,0 +1,91 @@
+name = "hero-name"
+tags = ["test"]
+params = { xp = 80, basics = 3 }
+pools = ["health", "mana"]
+tracks = ["level"]
+slots = { basic = ["fan", "quake", "snare"], weapon = ["attack"] }
+
+[combat]
+
+[collision]
+radius = "0.5"
+
+[vision]
+sight_range = "7.0"
+
+[stats]
+health = { base = 600, per_level = 60 }
+mana = { base = 200 }
+attack_damage = { base = 40, per_level = 5 }
+attack_speed = { base = "1.0" }
+move_speed = { base = "5.0" }
+
+# Three shards 15° apart around the aim; each ends at its first hit, and hits a unit once a cast.
+[actions.fan]
+script = "scripts/fan.rhai"
+targeting = "direction"
+range = "9.0"
+cooldown_ms = 3000
+cost = { mana = 20 }
+windup_ms = 200
+delivery = { projectile = "shard", count = 3, spread_deg = 30 }
+
+[actions.fan.params]
+damage = 60
+slow = "0.3"
+slow_ms = 1500
+
+[actions.quake]
+script = "scripts/quake.rhai"
+targeting = "point"
+range = "8.0"
+cooldown_ms = 4000
+cost = { mana = 30 }
+delivery = { area = "quake" }
+
+[actions.quake.params]
+damage = 80
+
+# A field at the lancer's feet for 3 s: the lancer inside is guarded, enemies inside are slowed.
+[actions.snare]
+targeting = "none"
+cooldown_ms = 8000
+cost = { mana = 30 }
+delivery = { area = "snare_field" }
+
+[actions.snare.params]
+slow = "0.5"
+guard = 10
+
+[actions.attack]
+kind = "attack"
+targeting = "enemies"
+range = "4.0"
+windup_ms = 250
+rate = "attack_speed"
+damage = "attack_damage"
+damage_kind = "true"
+delivery = { projectile = "lance_bolt" }
+
+[modifiers.slow]
+stats = { move_speed = { cut = { param = "slow" } } }
+tags = ["slowed"]
+
+[modifiers.slow_field]
+stats = { move_speed = { cut = { param = "slow" } } }
+tags = ["slowed"]
+
+[modifiers.guarded]
+stats = { attack_damage = { param = "guard" } }
+
+[units.shard]
+projectile = { speed = "16", width = "0.6", stop_on_hit = true, once_per_cast = true }
+
+[units.quake]
+area = { radius = "2.0", delay_ms = 400, affects = "enemies" }
+
+[units.snare_field]
+area = { radius = "3.0", duration_ms = 3000, inside = { self = "guarded", enemies = "slow_field" } }
+
+[units.lance_bolt]
+projectile = { speed = "14", homing = true }

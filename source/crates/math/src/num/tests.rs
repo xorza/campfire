@@ -4,6 +4,11 @@ use proptest::prelude::*;
 
 use super::*;
 
+/// The cases of each property a run, of new random inputs each run, as proptest draws by
+/// default: a failure saves its seed under `proptest-regressions/`, which goes into version
+/// control, so every later run tries it first.
+const CASES: u32 = 10_000;
+
 const ONE: i64 = 1 << 24;
 const HALF: i64 = 1 << 23;
 const QUARTER: i64 = 1 << 22;
@@ -39,6 +44,7 @@ fn floor_ceil_round() {
         (-(2 * ONE + HALF) + 1, -3, -2, -2),
         (i64::MAX, (1 << 39) - 1, 1 << 39, 1 << 39),
         (i64::MIN, -(1 << 39), -(1 << 39), -(1 << 39)),
+        (-2 * ONE, -2, -2, -2),
     ];
     for (bits, floor, ceil, round) in cases {
         let x = n(bits);
@@ -47,6 +53,8 @@ fn floor_ceil_round() {
             (floor, ceil, round),
             "bits {bits}"
         );
+        // Exactly the whole numbers, whose floor is their ceiling, convert.
+        assert_eq!(x.to_int(), (floor == ceil).then_some(floor), "bits {bits}");
     }
 }
 
@@ -134,6 +142,22 @@ fn int_operands() {
     assert_eq!(-Num::ONE / 3, n(-5_592_405));
     assert_eq!(Num::ONE.checked_div_int(0), None);
     assert_eq!(Num::MIN.checked_div_int(-1), None);
+    // The ends of the integer operands, past the ±1000 the proptest draws: −MIN is past MAX;
+    // ε times i64::MAX is MAX's bits exactly; MIN over i64::MIN is one bit, ε; MAX over
+    // i64::MIN is just short of −ε, which rounds to −ε; ONE over i64::MIN, 2⁻³⁹ bits, to 0.
+    assert_eq!(Num::MIN.checked_mul_int(-1), None);
+    assert_eq!(Num::EPSILON.checked_mul_int(i64::MAX), Some(Num::MAX));
+    assert_eq!(Num::MIN.checked_div_int(i64::MIN), Some(n(1)));
+    assert_eq!(Num::MAX.checked_div_int(i64::MIN), Some(n(-1)));
+    assert_eq!(Num::ONE.checked_div_int(i64::MIN), Some(Num::ZERO));
+    // ε · 1 ÷ 2 ties to 0, 3ε · 1 ÷ 2 to 2ε; ε · 1.5 ÷ 3 is ε/2, which ties to 0, where ε · 1.5
+    // rounded first, to 2ε, then ÷ 3 would give ε: one rounding, not two.
+    assert_eq!(n(1).checked_mul_div_int(Num::ONE, 2), Some(n(0)));
+    assert_eq!(n(3).checked_mul_div_int(Num::ONE, 2), Some(n(2)));
+    assert_eq!(n(1).checked_mul_div_int(n(ONE + HALF), 3), Some(n(0)));
+    assert_eq!((n(1) * n(ONE + HALF)) / 3, n(1));
+    assert_eq!(Num::ONE.checked_mul_div_int(Num::ONE, 0), None);
+    assert_eq!(Num::MAX.checked_mul_div_int(n(2 * ONE), 1), None);
 }
 
 #[test]
@@ -170,6 +194,11 @@ const fn nearest_even(numerator: i128, denominator: i128) -> i128 {
     }
 }
 
+/// The number of `bits` when they fit, the oracle the exact sums and products are read by.
+fn exact(bits: i128) -> Option<Num> {
+    i64::try_from(bits).ok().map(Num::from_bits)
+}
+
 fn bits() -> impl Strategy<Value = i64> {
     prop_oneof![
         any::<i64>(),
@@ -182,17 +211,17 @@ fn bits() -> impl Strategy<Value = i64> {
 }
 
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(10_000))]
+    #![proptest_config(ProptestConfig::with_cases(CASES))]
 
     #[test]
     fn add_sub_match_exact_sums(a in bits(), b in bits()) {
-        prop_assert_eq!(n(a).checked_add(n(b)), narrow(i128::from(a) + i128::from(b)));
-        prop_assert_eq!(n(a).checked_sub(n(b)), narrow(i128::from(a) - i128::from(b)));
+        prop_assert_eq!(n(a).checked_add(n(b)), exact(i128::from(a) + i128::from(b)));
+        prop_assert_eq!(n(a).checked_sub(n(b)), exact(i128::from(a) - i128::from(b)));
     }
 
     #[test]
     fn mul_matches_exact_rounding(a in bits(), b in bits()) {
-        let expected = narrow(nearest_even(i128::from(a) * i128::from(b), i128::from(ONE)));
+        let expected = exact(nearest_even(i128::from(a) * i128::from(b), i128::from(ONE)));
         prop_assert_eq!(n(a).checked_mul(n(b)), expected);
     }
 
@@ -205,19 +234,27 @@ proptest! {
         } else {
             nearest_even(-numerator, -i128::from(b))
         };
-        prop_assert_eq!(n(a).checked_div(n(b)), narrow(expected));
+        prop_assert_eq!(n(a).checked_div(n(b)), exact(expected));
     }
 
     #[test]
-    fn int_operands_match_exact(a in bits(), k in -1000_i64..1000) {
-        prop_assert_eq!(n(a).checked_mul_int(k), narrow(i128::from(a) * i128::from(k)));
+    fn int_operands_match_exact(a in bits(), b in bits(), k in -1000_i64..1000) {
+        prop_assert_eq!(n(a).checked_mul_int(k), exact(i128::from(a) * i128::from(k)));
         prop_assume!(k != 0);
+        let product = i128::from(a) * i128::from(b);
+        let divisor = i128::from(k) << Num::FRAC_BITS;
+        let expected = if k > 0 {
+            nearest_even(product, divisor)
+        } else {
+            nearest_even(-product, -divisor)
+        };
+        prop_assert_eq!(n(a).checked_mul_div_int(n(b), k), exact(expected));
         let expected = if k > 0 {
             nearest_even(i128::from(a), i128::from(k))
         } else {
             nearest_even(-i128::from(a), -i128::from(k))
         };
-        prop_assert_eq!(n(a).checked_div_int(k), narrow(expected));
+        prop_assert_eq!(n(a).checked_div_int(k), exact(expected));
     }
 
     #[test]
@@ -336,6 +373,8 @@ fn sqrt_exact_cases() {
     assert_eq!(n(QUARTER).sqrt(), n(HALF));
     assert_eq!(Num::ZERO.sqrt(), Num::ZERO);
     assert_eq!(n(-1).checked_sqrt(), None);
+    // √(2³⁹ − ε) is 741455.2, 12 439 554 047 902 bits rounded to nearest.
+    assert_eq!(Num::MAX.sqrt(), n(12_439_554_047_902));
 }
 
 #[test]
@@ -376,6 +415,24 @@ fn trig_exact_points() {
     assert_eq!(Num::ONE.atan2(Num::ZERO), Num::FRAC_PI_2);
     assert_eq!((-Num::ONE).atan2(Num::ZERO), -Num::FRAC_PI_2);
     assert_eq!(Num::ONE.atan2(Num::ONE), quarter_pi);
+    // The ends of the range, where a ratio of the two parts would overflow.
+    let cases = [
+        (Num::MIN, Num::ZERO, -Num::FRAC_PI_2),
+        (Num::ZERO, Num::MIN, Num::PI),
+        (Num::MIN, Num::MIN, n(-39_530_384)),
+        (Num::MAX, Num::MIN, n(39_530_384)),
+        (Num::MIN, Num::MAX, n(-13_176_795)),
+        (n(-1), Num::MIN, n(-52_707_179)),
+    ];
+    for (y, x, angle) in cases {
+        assert_eq!(y.atan2(x), angle, "{y:?} {x:?}");
+    }
+    // The ends of the angles: sin and cos of MIN and MAX, exact to the nearest bit.
+    let ends = [Num::MIN, Num::MAX].map(|angle| {
+        let SinCos { sin, cos } = angle.sin_cos();
+        (sin.to_bits(), cos.to_bits())
+    });
+    assert_eq!(ends, [(16_412_560, 3_478_915), (-16_412_560, 3_478_914)]);
 }
 
 #[expect(
@@ -402,11 +459,14 @@ fn ulp_error(result: Num, reference: f64) -> f64 {
     (result.to_bits() as f64 - reference * 16_777_216.0).abs()
 }
 
-/// Largest error in ulp of `sin_cos` over evenly spaced angles in `[from, to)`.
+/// Largest error in ulp of `sin_cos` over evenly spaced angles in `[from, to)`, each a whole
+/// number of 2¹¹ bits, so that f64 holds it exactly up to 2⁶⁴.
 fn sin_cos_max_ulp(from: i64, to: i64, count: i64) -> f64 {
     let mut worst = 0.0_f64;
+    let span = (i128::from(to) - i128::from(from)) / i128::from(count);
+    let step = i64::try_from(span).unwrap() & !((1 << 11) - 1);
     for i in 0..count {
-        let angle = n(from + (to - from) / count * i);
+        let angle = n(from + step * i);
         let exact = to_f64(angle);
         let result = angle.sin_cos();
         worst = worst.max(ulp_error(result.sin, exact.sin()));
@@ -430,11 +490,9 @@ fn atan2_max_ulp(range: i64, steps: i64) -> f64 {
 
 #[test]
 fn sin_cos_within_bound() {
-    let worst = sin_cos_max_ulp(-8 * ONE, 8 * ONE, 200_000).max(sin_cos_max_ulp(
-        -(1 << 52),
-        1 << 52,
-        20_000,
-    ));
+    let worst = sin_cos_max_ulp(-8 * ONE, 8 * ONE, 200_000)
+        .max(sin_cos_max_ulp(-(1 << 52), 1 << 52, 20_000))
+        .max(sin_cos_max_ulp(-(1 << 62), 1 << 62, 20_000));
     assert!(worst <= SIN_COS_ULP, "sin_cos off by {worst} ulp");
 }
 
@@ -454,7 +512,7 @@ fn sqrt_rounds_to_nearest(a: i64) -> bool {
 }
 
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(10_000))]
+    #![proptest_config(ProptestConfig::with_cases(CASES))]
 
     #[test]
     fn display_parses_back(a in bits()) {
@@ -471,7 +529,7 @@ proptest! {
         let scale = 10_i128.pow(u32::try_from(frac.len()).unwrap());
         let digits = i128::from(int) * scale + frac.parse::<i128>().unwrap_or(0);
         let magnitude = nearest_even(digits << 24, scale);
-        let expected = narrow(if negative { -magnitude } else { magnitude });
+        let expected = exact(if negative { -magnitude } else { magnitude });
         prop_assert_eq!(text.parse::<Num>().ok(), expected);
     }
 
@@ -485,7 +543,6 @@ proptest! {
         let plus = n(a).sin_cos();
         let minus = (-n(a)).sin_cos();
         prop_assert_eq!(minus, SinCos { sin: -plus.sin, cos: plus.cos });
-        prop_assume!(a != i64::MIN);
         prop_assert_eq!((-n(a)).atan2(n(b)), -n(a).atan2(n(b)));
     }
 }

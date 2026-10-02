@@ -1,16 +1,18 @@
+use std::num::NonZeroU32;
+
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{With, Without};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Query, Res, ResMut};
 use bevy_ecs::world::World;
-use campfire_package::{ModePackages, RELEASE};
-use campfire_protocol::secp256k1::{Secp256k1, VerifyOnly};
+use campfire_package::ModePackages;
+use campfire_protocol::secp256k1::{Secp256k1, VerifyOnly, XOnlyPublicKey};
 use campfire_protocol::{
     CertificateHash, ConnectChallenge, Delegation, SeedChain, SessionHeader, SessionLog,
     SessionTerms,
 };
-use campfire_runner::Session;
+use campfire_runner::{InputRules, SessionRules, TermsError};
 use lightyear::prelude::server::ClientOf;
 use lightyear::prelude::{
     Connected, LocalTimeline, MessageReceiver, MessageSender, Tick as NetTick,
@@ -23,12 +25,6 @@ use crate::net_protocol::MatchChannel;
 use crate::offer::Offer;
 use crate::sim_server::SimServer;
 
-/// The most ticks an input may land after its stamp.
-const MAX_INPUT_DELAY: u64 = 10;
-/// The most ticks an input's stamp may be ahead of the next tick.
-const MAX_INPUT_LEAD: u64 = 30;
-const MAX_PAYLOAD_LEN: u32 = 64;
-const MAX_INPUTS_PER_TICK: u32 = 4;
 /// Ticks between two sends of an offer that got no answer.
 const RESEND_TICKS: u32 = 30;
 
@@ -53,9 +49,11 @@ pub struct Lobby {
 #[derive(Debug)]
 pub struct LobbySetup {
     pub packages: ModePackages,
-    /// The server's x-only public key.
-    pub server_key: [u8; 32],
+    pub server_key: XOnlyPublicKey,
     pub seed_chain: SeedChain,
+    /// Ticks a second, which the mode's range must hold.
+    pub tick_hz: NonZeroU32,
+    pub inputs: InputRules,
     /// The hash of the TLS certificate the server's transport presents.
     pub certificate: CertificateHash,
     pub players: usize,
@@ -74,7 +72,7 @@ pub(crate) struct Offered {
 
 /// A link whose player joined the session.
 #[derive(Component, Debug, Clone, Copy)]
-pub struct Joined;
+pub(crate) struct Joined;
 
 /// The connected links still to answer, with their offer if one went out.
 type OfferLinks<'w, 's> = Query<
@@ -103,35 +101,31 @@ type JoinLinks<'w, 's> = Query<
 
 /// Why the server refused a link's join. The link stays connected and receives nothing more.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
-pub struct JoinRefused(pub JoinError);
+pub(crate) struct JoinRefused(pub JoinError);
 
 impl Lobby {
-    /// A session of the mode `packages` holds at its default tick rate, with the LAN's input
-    /// limits.
-    pub fn new(setup: LobbySetup) -> Lobby {
+    /// A session of the mode `packages` holds, by the setup's rules; an error when the mode does
+    /// not run at the setup's tick rate.
+    pub fn new(setup: LobbySetup) -> Result<Lobby, TermsError> {
         let LobbySetup {
             packages,
             server_key,
             seed_chain,
+            tick_hz,
+            inputs,
             certificate,
             players,
             clock,
             entropy,
         } = setup;
         assert!(players > 0, "a session has a player");
-        let terms = SessionTerms {
+        let terms = SessionRules::of(&packages).terms(
             server_key,
-            tick_hz: packages.manifest().tick_hz.default(),
-            max_input_delay: MAX_INPUT_DELAY,
-            max_input_lead: MAX_INPUT_LEAD,
-            max_payload_len: MAX_PAYLOAD_LEN,
-            max_inputs_per_tick: MAX_INPUTS_PER_TICK,
-            seed_commitment: seed_chain.commitment(),
-            release: RELEASE.to_owned(),
-            mode: Session::mode_in_terms(&packages),
-            dependencies: Session::dependencies_in_terms(&packages),
-        };
-        Lobby {
+            seed_chain.commitment(),
+            tick_hz,
+            inputs,
+        )?;
+        Ok(Lobby {
             terms,
             seed_chain,
             certificate,
@@ -141,7 +135,7 @@ impl Lobby {
             entropy,
             secp: Secp256k1::verification_only(),
             joined: Vec::with_capacity(players),
-        }
+        })
     }
 
     pub const fn terms(&self) -> &SessionTerms {
@@ -149,7 +143,7 @@ impl Lobby {
     }
 
     /// How many players joined so far.
-    fn joined(&self) -> usize {
+    const fn joined(&self) -> usize {
         self.joined.len()
     }
 
@@ -238,7 +232,27 @@ impl Lobby {
             .expect("the lobby's terms come from its own packages");
     }
 
-    /// Seats the player of `link` in the next free slot if their `join` answers `challenge`.
+    /// Frees the seat of each joined link that is no longer connected, so a match starts only
+    /// with live links, and the seat goes to the next player who joins.
+    pub(crate) fn free_seats(
+        mut lobby: ResMut<'_, Lobby>,
+        live: Query<'_, '_, (), (With<Connected>, With<Joined>)>,
+        mut commands: Commands<'_, '_>,
+    ) {
+        lobby.joined.retain(|&(link, _)| {
+            let connected = live.contains(link);
+            if !connected {
+                info!(?link, "a player left the lobby; their seat is free");
+                if let Ok(mut gone) = commands.get_entity(link) {
+                    gone.remove::<Joined>();
+                }
+            }
+            connected
+        });
+    }
+
+    /// Seats the player of `link` in the next free slot if their `join` answers `challenge`,
+    /// and their main key holds no seat yet.
     fn take(
         &mut self,
         link: Entity,
@@ -246,6 +260,14 @@ impl Lobby {
         join: &Join,
     ) -> Result<(), JoinError> {
         let delegation = self.check(challenge, join)?;
+        let main_key = delegation.main_key();
+        if self
+            .joined
+            .iter()
+            .any(|(_, seated)| seated.main_key() == main_key)
+        {
+            return Err(JoinError::Seated);
+        }
         if self.joined.len() == self.players {
             return Err(JoinError::Full);
         }
@@ -271,52 +293,49 @@ impl Lobby {
 
 #[cfg(test)]
 mod tests {
-    use std::num::NonZeroU32;
-    use std::path::Path;
+    use campfire_package::PackageDir;
 
-    use campfire_protocol::secp256k1::{Keypair, SecretKey};
+    use crate::local_match;
+
+    use bevy_ecs::system::RunSystemOnce;
     use campfire_protocol::{ConnectError, DelegationError, DelegationTerms};
+    use lightyear::prelude::{PeerId, RemoteId};
 
     use super::*;
 
     const NOW: u64 = 1_700_000_000;
 
-    fn keypair(byte: u8) -> Keypair {
-        let secret = SecretKey::from_byte_array(&[byte; 32]).unwrap();
-        Keypair::from_secret_key(&Secp256k1::new(), &secret)
-    }
-
     #[test]
     fn the_lobby_takes_a_join_only_with_a_delegation_and_an_answer_for_it() {
-        let dir = concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/../../packages/test/modes/lane"
-        );
+        let server_key = local_match::server_key();
         let mut lobby = Lobby::new(LobbySetup {
-            packages: ModePackages::from_dir(Path::new(dir)).unwrap(),
-            server_key: [8; 32],
+            packages: ModePackages::from_dir(&PackageDir::workspace("test/modes/lane")).unwrap(),
+            server_key,
             seed_chain: SeedChain::new([7; 32], NonZeroU32::MIN),
+            tick_hz: NonZeroU32::new(30).unwrap(),
+            inputs: InputRules::LAN,
             certificate: CertificateHash::new([3; 32]),
             players: 2,
             clock: || NOW,
             entropy: |bytes| bytes.fill(5),
-        });
+        })
+        .unwrap();
         assert_eq!((lobby.players, lobby.joined()), (2, 0));
         let secp = Secp256k1::new();
         let granted = DelegationTerms {
-            session_key: keypair(2).x_only_public_key().0,
-            server_key: [8; 32],
+            session_key: local_match::keypair(2).x_only_public_key().0,
+            server_key,
             session_id: lobby.terms().session_id(),
             seed_contribution: [6; 32],
             expiration: NOW + 60,
         };
-        let delegation = Delegation::sign(&secp, &keypair(1), &granted, NOW, &[0; 32]);
+        let delegation = Delegation::sign(&secp, &local_match::keypair(1), &granted, NOW, &[0; 32]);
         let challenge = ConnectChallenge::new([9; 32]);
         let join = |certificate: [u8; 32], json: &str| Join {
             delegation: json.to_owned(),
             answer: challenge.answer(
                 &secp,
-                &keypair(2),
+                &local_match::keypair(2),
                 &CertificateHash::new(certificate),
                 &[0; 32],
             ),
@@ -336,14 +355,19 @@ mod tests {
             Err(JoinError::Delegation(DelegationError::NotEvent))
         );
 
-        // Two seats: a refused join takes none, and a third good join finds both taken.
+        // Two seats: a refused join takes none, a second join of one main key takes none, and a
+        // third player finds both taken.
         let good = join([3; 32], delegation.json());
-        let links = [
-            Entity::from_raw_u32(1),
-            Entity::from_raw_u32(2),
-            Entity::from_raw_u32(3),
-        ]
-        .map(Option::unwrap);
+        let player = |main: u8| {
+            let delegation =
+                Delegation::sign(&secp, &local_match::keypair(main), &granted, NOW, &[0; 32]);
+            join([3; 32], delegation.json())
+        };
+        let mut world = World::new();
+        let links = [1, 2, 3, 4].map(|peer| {
+            let remote = RemoteId(PeerId::Local(peer));
+            world.spawn((remote, Connected, Joined)).id()
+        });
         assert!(
             lobby
                 .take(links[0], challenge, &join([4; 32], delegation.json()))
@@ -351,9 +375,28 @@ mod tests {
         );
         assert_eq!(lobby.joined(), 0);
         assert_eq!(lobby.take(links[0], challenge, &good), Ok(()));
-        assert_eq!(lobby.take(links[1], challenge, &good), Ok(()));
-        assert_eq!(lobby.take(links[2], challenge, &good), Err(JoinError::Full));
-        let seated: Vec<Entity> = lobby.joined.iter().map(|&(link, _)| link).collect();
-        assert_eq!(seated, links[..2]);
+        assert_eq!(
+            lobby.take(links[1], challenge, &good),
+            Err(JoinError::Seated)
+        );
+        assert_eq!(lobby.take(links[1], challenge, &player(3)), Ok(()));
+        assert_eq!(
+            lobby.take(links[2], challenge, &player(4)),
+            Err(JoinError::Full)
+        );
+        let seated =
+            |lobby: &Lobby| -> Vec<Entity> { lobby.joined.iter().map(|&(link, _)| link).collect() };
+        assert_eq!(seated(&lobby), links[..2]);
+
+        // The first player's link disconnects: their seat is free, their link no longer joined,
+        // and a fourth player takes the seat.
+        world.entity_mut(links[0]).remove::<Connected>();
+        world.insert_resource(lobby);
+        world.run_system_once(Lobby::free_seats).unwrap();
+        assert!(!world.entity(links[0]).contains::<Joined>());
+        let mut lobby = world.remove_resource::<Lobby>().unwrap();
+        assert_eq!(seated(&lobby), [links[1]]);
+        assert_eq!(lobby.take(links[3], challenge, &player(5)), Ok(()));
+        assert_eq!(seated(&lobby), [links[1], links[3]]);
     }
 }

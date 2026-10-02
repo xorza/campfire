@@ -1,23 +1,25 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::iter;
+use std::{iter, slice};
 
 use campfire_capabilities::{
-    ActionData, ActionKind, ActionSlots, ApiOwner, CollisionData, DeclaredName, DeliveryData,
-    EngineStat, FilterData, Hook, MemberKind, Mode, ModifierData, Navigation, Offers, Param, Pools,
-    Range, RangeField, ResourceId, ScriptApi, ScriptRole, Stat, Targeting, TrackId, UnitTypeData,
+    ActionData, ActionDataField, ActionKind, ActionSlots, ApiOwner, ApiVersion, BookError, Books,
+    CollisionData, CombatRules, DeclaredName, DeliveryData, EffectTo, Effecting, EngineTag,
+    FilterData, Hook, MemberKind, ModifierData, NameKind, Number, Offers, Param, Pools, Range,
+    RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Stat, Targeting, TrackId, UnitTypeData,
+    UnitTypeFile,
 };
 use campfire_content::PackagePath;
 use campfire_math::Num;
-use campfire_sim::Capability;
+use campfire_sim::{Capability, TickRate};
 
-use crate::RELEASE_VERSION;
+use crate::dependent::{Dependent, DependentKind};
 use crate::error::{
-    ChoiceProblem, CtxMisuse, DeliveryProblem, Limit, LoadError, LoadProblem, NameKind, Place,
+    ChoiceProblem, CtxMisuse, DeliveryProblem, EffectProblem, Limit, LoadError, LoadProblem, Place,
+    ScriptProblem,
 };
-use crate::files::units_data::UnitTypeFile;
-use crate::mode_packages::{Content, Dependent, ModePackages};
+use crate::mode_packages::ModePackages;
 use crate::package::Package;
-use crate::script_facts::ScriptFacts;
+use crate::script_facts::{ScriptFacts, ScriptName};
 
 /// Design 08's checks at package load, over a mode and every package it depends on: data matches
 /// its schema (the reads checked that), every per-rank array has an entry for each rank, every
@@ -32,41 +34,49 @@ pub(crate) struct LoadCheck<'a> {
     /// The move speed cap, in meters a second.
     cap: Num,
     /// The script API of the release, which every name a script uses must be of.
-    api: ScriptApi,
+    api: &'a ScriptApi,
+    /// The fastest rate the mode allows, at which a time counts the most ticks.
+    rate: TickRate,
 }
 
 /// The facts one package's checks share.
 #[derive(Debug)]
 struct PackageNames<'a> {
     package: &'a Package,
-    /// The roles each script serves, as data names it.
-    roles: BTreeMap<&'a PackagePath, BTreeSet<ScriptRole>>,
-    /// The params each script's `ctx.p` may read.
-    params: BTreeMap<&'a PackagePath, BTreeSet<&'a str>>,
-    modifiers: &'a BTreeMap<String, ModifierData>,
+    /// What data says of each script it names.
+    scripts: BTreeMap<&'a PackagePath, ScriptUse<'a>>,
+    modifiers: &'a BTreeMap<DeclaredName, ModifierData>,
+}
+
+/// What data says of a script: the roles it serves, and the params its `ctx.p` may read.
+#[derive(Debug, Default)]
+struct ScriptUse<'a> {
+    roles: BTreeSet<ScriptRole>,
+    params: BTreeSet<&'a str>,
 }
 
 impl<'a> LoadCheck<'a> {
-    pub(crate) fn run(packages: &'a ModePackages) -> Result<(), LoadError> {
+    pub(crate) fn run(packages: &'a ModePackages, api: &'a ScriptApi) -> Result<(), LoadError> {
         let manifest = &packages.manifest;
-        let fail = |problem| LoadError {
-            package: manifest.header.name.clone(),
-            problem: Box::new(problem),
-        };
-        let tags = packages.tag_names();
-        if tags.len() > UnitTypeData::TAG_LIMIT {
+        let fail = |problem| LoadError::of(&manifest.header.name, problem);
+        let mut tags = packages.tag_names();
+        if EngineTag::ALL.len() + tags.len() > UnitTypeData::TAG_LIMIT {
             return Err(fail(LoadProblem::TooMany(Limit::Tags)));
         }
-        let units = &packages.units.units;
+        tags.extend(EngineTag::ALL.map(EngineTag::name));
+        // A dependency's delivery types are in its own scope, so they share no name with
+        // another package's; an avatar is in the mode's, by its package's name.
+        let units = &packages.content.units;
         let mut unit_types = units.len();
         for dependent in &packages.dependencies {
-            let avatar = matches!(dependent.content, Content::Avatar(_))
-                .then(|| dependent.package.name.clone());
-            let deliveries = dependent.units().keys();
-            let deliveries = deliveries.map(|id| dependent.unit_type_name(id));
-            for name in avatar.into_iter().chain(deliveries) {
-                if units.contains_key(&name) {
-                    return Err(fail(LoadProblem::RepeatedUnitType(name)));
+            unit_types += dependent.content.units.len();
+            if matches!(dependent.kind, DependentKind::Avatar(_)) {
+                let name = &dependent.package.header.name;
+                if units.contains_key(name.as_str()) {
+                    return Err(fail(LoadProblem::Repeated {
+                        at: Place::UnitTypes,
+                        name: name.clone(),
+                    }));
                 }
                 unit_types += 1;
             }
@@ -74,86 +84,146 @@ impl<'a> LoadCheck<'a> {
         if unit_types > UnitTypeData::TYPE_LIMIT {
             return Err(fail(LoadProblem::TooMany(Limit::UnitTypes)));
         }
-        let engines = [&packages.mode].into_iter().chain(
+        let every = [&packages.mode].into_iter().chain(
             packages
                 .dependencies
                 .iter()
                 .map(|dependent| &dependent.package),
         );
-        for package in engines {
-            if package.engine != RELEASE_VERSION {
-                return Err(LoadError {
-                    package: package.name.clone(),
-                    problem: Box::new(LoadProblem::OtherEngine(package.engine)),
-                });
+        for package in every {
+            if !ApiVersion::RELEASE.loads(package.header.api) {
+                let problem = LoadProblem::OtherApi(package.header.api);
+                return Err(LoadError::of(&package.header.name, problem));
             }
         }
         let check = LoadCheck {
             packages,
             tags,
             cap: manifest.max_move_speed.get(),
-            api: ScriptApi::release(),
+            api,
+            rate: TickRate::new(manifest.tick_hz.fastest()),
         };
         check.mode().map_err(fail)?;
         check.loadout()?;
         for dependent in &packages.dependencies {
-            check.dependent(dependent).map_err(|problem| LoadError {
-                package: dependent.package.name.clone(),
-                problem: Box::new(problem),
-            })?;
+            check
+                .dependent(dependent)
+                .map_err(|problem| LoadError::of(&dependent.package.header.name, problem))?;
         }
         packages
             .stat_graph()
             .order()
             .map_err(|stats| fail(LoadProblem::StatLoop(stats)))?;
+        let scripts = packages.script_book();
+        let input = packages.book_input(check.rate, &scripts);
+        Books::build(&input).map_err(|error| check.book_error(error))?;
+        // After the build, which resolved the map's names.
+        check.map_walkable().map_err(fail)?;
         Ok(())
     }
 
+    /// The load error of what building the books refused, at the fastest rate the mode allows.
+    fn book_error(&self, error: BookError) -> LoadError {
+        let packages = self.packages;
+        let at = |package: u16, unit_type: String| {
+            let view = packages.packages().nth(usize::from(package));
+            let package = &view.expect("the books name a package").package;
+            if package.header.name == unit_type {
+                return Place::Avatar(unit_type);
+            }
+            Place::UnitType(DeclaredName::new(&unit_type).expect("a unit type's id is a name"))
+        };
+        let (package, problem) = match error {
+            BookError::Kit {
+                package,
+                unit_type,
+                error,
+            } => (
+                package,
+                LoadProblem::UnitKit {
+                    at: at(package, unit_type),
+                    error,
+                },
+            ),
+            BookError::Ai {
+                package,
+                unit_type,
+                error,
+            } => (
+                package,
+                LoadProblem::Ai {
+                    at: at(package, unit_type),
+                    error,
+                },
+            ),
+            BookError::Action {
+                package,
+                action,
+                error,
+            } => (
+                package,
+                LoadProblem::Action {
+                    action: DeclaredName::new(&action).expect("an action's id is a name"),
+                    error,
+                },
+            ),
+            BookError::Modifier {
+                package,
+                modifier,
+                problem,
+            } => (
+                package,
+                LoadProblem::Modifier {
+                    modifier: DeclaredName::new(&modifier).expect("a modifier's id is a name"),
+                    problem,
+                },
+            ),
+            BookError::Mode(error) => (0, LoadProblem::Mode(error)),
+            BookError::AreaTime { package, unit_type } => (
+                package,
+                LoadProblem::Delivery(DeliveryProblem::AreaTime(at(package, unit_type))),
+            ),
+        };
+        let view = packages.packages().nth(usize::from(package));
+        LoadError::of(
+            &view.expect("the books name a package").package.header.name,
+            problem,
+        )
+    }
+
     /// The map can be walked by every unit that walks, among the mode's unit types and its
-    /// avatars, as `Navigation::check_map` sets: the widest of each layer stands on every
+    /// avatars, as `MapData::check_walkable` sets: the widest of each layer stands on every
     /// marker's point and waypoint, and reaches every waypoint from the one before, among the
     /// map's placed units that cannot walk.
     fn map_walkable(&self) -> Result<(), LoadProblem> {
         let packages = self.packages;
         let walkers = packages.walkers();
-        let move_speed = Stat::Engine(EngineStat::MoveSpeed);
         let body_of = |unit_type: &str| {
-            let unit_type = packages.units.units.get(unit_type)?;
-            let walks = unit_type
-                .stats
-                .as_ref()
-                .is_some_and(|stats| stats.declares(&move_speed));
+            let unit_type = packages.content.units.get(unit_type)?;
             let body = packages.data.navigation.body(unit_type.collision.as_ref());
-            body.filter(|_| !walks)
+            body.filter(|_| !unit_type.walks())
         };
-        Navigation::check_map(&packages.map, &walkers, body_of).map_err(LoadProblem::Map)
+        packages
+            .map
+            .check_walkable(&walkers, body_of)
+            .map_err(LoadProblem::Map)
     }
 
     /// The mode package: its unit types' sections, its map, its modifiers and its scripts.
     fn mode(&self) -> Result<(), LoadProblem> {
         let packages = self.packages;
         let data = &packages.data;
-        let units = &packages.units.units;
-        let unit_type = |name: &str| {
-            units
-                .get(name)
-                .is_some_and(|unit_type| !unit_type.delivers())
-        };
-        Mode::check(
-            &packages.manifest.teams,
-            &data.relations,
-            &packages.map,
-            unit_type,
-        )
-        .map_err(LoadProblem::Mode)?;
-        for list in [
-            &data.combat.damage_kinds,
-            &data.resources,
-            &data.navigation.layers,
+        let content = &packages.content;
+        let units = &content.units;
+        for (list, at) in [
+            (&data.combat.damage_kinds, Place::Combat),
+            (&data.resources, Place::Resources),
+            (&data.navigation.layers, Place::Navigation),
         ] {
             let mut seen = BTreeSet::new();
             if let Some(name) = list.iter().find(|&name| !seen.insert(name)) {
-                return Err(LoadProblem::RepeatedName(name.clone()));
+                let name = name.to_string();
+                return Err(LoadProblem::Repeated { at, name });
             }
         }
         self.damage_kinds()?;
@@ -166,14 +236,13 @@ impl<'a> LoadCheck<'a> {
         }
         self.slot_kinds()?;
         self.choices()?;
-        for (name, unit_type) in &packages.units.units {
+        for (name, unit_type) in units {
             let at = Place::UnitType(name.clone());
-            self.unit_type(unit_type, &at, &data.actions, &data.modifiers)?;
+            self.unit_type(unit_type, &at, &content.actions, &content.modifiers)?;
         }
         if !packages.map.paths.is_empty() {
             self.require(Capability::Navigation, &Place::Paths)?;
         }
-        self.map_walkable()?;
         if packages.manifest.capabilities.contains(Capability::Vision)
             && packages.map.grid.is_none()
         {
@@ -187,23 +256,18 @@ impl<'a> LoadCheck<'a> {
         {
             return Err(LoadProblem::NoPathingGrid);
         }
-        for (name, field) in &data.state {
-            if field.sync.is_none() {
-                return Err(LoadProblem::StateSync(name.clone()));
-            }
-        }
-        let mut names = PackageNames::new(&packages.mode, &data.modifiers);
-        let mode_params: BTreeSet<&str> = data.params.keys().map(String::as_str).collect();
+        let mut names = PackageNames::new(&packages.mode, &content.modifiers);
+        let mode_params: BTreeSet<&str> = data.params.keys().map(DeclaredName::as_str).collect();
         names.serve(&data.script, ScriptRole::Mode, mode_params.iter().copied());
-        for unit_type in packages.units.units.values() {
+        for unit_type in units.values() {
             if let Some(orders) = &unit_type.orders {
                 names.serve(&orders.ai, ScriptRole::Ai, mode_params.iter().copied());
             }
         }
-        let ranks = self.slotted_ranks(packages.units.units.values())?;
+        let ranks = self.slotted_ranks(units.values())?;
         let ranks = |id: &str| ranks.get(id).copied().unwrap_or(1);
-        self.actions(&data.actions, units, ranks, &mut names)?;
-        let appliers = packages.mode.appliers(&data.actions, units);
+        self.actions(&content.actions, units, ranks, &mut names)?;
+        let appliers = packages.mode.appliers(&content.actions, units);
         self.modifiers(&mut names, &appliers)?;
         self.scripts(&names)
     }
@@ -212,14 +276,16 @@ impl<'a> LoadCheck<'a> {
     fn loadout(&self) -> Result<(), LoadError> {
         let mut seen = BTreeSet::new();
         for dependent in &self.packages.dependencies {
-            let Content::Loadout(loadout) = &dependent.content else {
+            if !matches!(dependent.kind, DependentKind::Loadout) {
                 continue;
-            };
-            if let Some(id) = loadout.actions.keys().find(|&id| !seen.insert(id)) {
-                return Err(LoadError {
-                    package: dependent.package.name.clone(),
-                    problem: Box::new(LoadProblem::RepeatedLoadout(id.clone())),
-                });
+            }
+            let actions = dependent.content.actions.keys();
+            if let Some(id) = actions.clone().find(|&id| !seen.insert(id)) {
+                let problem = LoadProblem::Repeated {
+                    at: Place::Loadouts,
+                    name: id.to_string(),
+                };
+                return Err(LoadError::of(&dependent.package.header.name, problem));
             }
         }
         Ok(())
@@ -231,30 +297,36 @@ impl<'a> LoadCheck<'a> {
     /// types.
     fn dependent(&self, dependent: &'a Dependent) -> Result<(), LoadProblem> {
         let package = &dependent.package;
-        let (actions, modifiers, slotted) = match &dependent.content {
-            Content::Avatar(avatar) => {
-                let at = Place::Avatar(avatar.name.clone());
+        let content = &dependent.content;
+        let (actions, modifiers) = (&content.actions, &content.modifiers);
+        let slotted = match &dependent.kind {
+            DependentKind::Avatar(avatar) => {
+                let at = Place::Avatar(package.header.name.clone());
+                if !package.text.gives(avatar.name.as_str()) {
+                    return Err(LoadProblem::Unknown {
+                        of: NameKind::Message,
+                        at,
+                        name: avatar.name.to_string(),
+                    });
+                }
                 if avatar.unit.orders.is_some() {
                     return Err(LoadProblem::AvatarOrders);
                 }
                 if avatar.unit.delivers() {
                     return Err(LoadProblem::Delivery(DeliveryProblem::NotDelivery(at)));
                 }
-                self.unit_type(&avatar.unit, &at, &avatar.actions, &avatar.modifiers)?;
+                self.unit_type(&avatar.unit, &at, actions, modifiers)?;
                 let ranks = self.slotted_ranks([&avatar.unit])?;
-                let unslotted = avatar
-                    .actions
-                    .keys()
-                    .find(|id| !ranks.contains_key(id.as_str()));
+                let unslotted = actions.keys().find(|id| !ranks.contains_key(id.as_str()));
                 if let Some(id) = unslotted {
                     return Err(LoadProblem::Unslotted(id.clone()));
                 }
-                (&avatar.actions, &avatar.modifiers, Some(ranks))
+                Some(ranks)
             }
-            Content::Loadout(loadout) => (&loadout.actions, &loadout.modifiers, None),
+            DependentKind::Loadout => None,
         };
-        for (id, unit_type) in dependent.units() {
-            let at = Place::UnitType(dependent.unit_type_name(id));
+        for (id, unit_type) in &content.units {
+            let at = Place::UnitType(id.clone());
             if !unit_type.delivery_only() {
                 return Err(LoadProblem::Delivery(DeliveryProblem::NotDelivery(at)));
             }
@@ -263,8 +335,8 @@ impl<'a> LoadCheck<'a> {
         let loadout_ranks = self.packages.data.loadout_ranks();
         let ranks = |id: &str| slotted.as_ref().map_or(loadout_ranks, |ranks| ranks[id]);
         let mut names = PackageNames::new(package, modifiers);
-        self.actions(actions, dependent.units(), ranks, &mut names)?;
-        let appliers = package.appliers(actions, dependent.units());
+        self.actions(actions, &content.units, ranks, &mut names)?;
+        let appliers = package.appliers(actions, &content.units);
         self.modifiers(&mut names, &appliers)?;
         self.scripts(&names)
     }
@@ -277,7 +349,7 @@ impl<'a> LoadCheck<'a> {
     ) -> Result<BTreeMap<&'u str, u8>, LoadProblem> {
         self.packages
             .slotted_ranks(types)
-            .map_err(|id| LoadProblem::ActionRanks(id.to_owned()))
+            .map_err(|id| LoadProblem::ActionRanks(id.clone()))
     }
 
     /// A package's `actions`, each with the ranks `ranks` gives it and its delivery one of the
@@ -285,15 +357,16 @@ impl<'a> LoadCheck<'a> {
     /// and the modifiers, filters, stats and params it names.
     fn actions(
         &self,
-        actions: &'a BTreeMap<String, ActionData>,
-        units: &BTreeMap<String, UnitTypeFile>,
+        actions: &'a BTreeMap<DeclaredName, ActionData>,
+        units: &BTreeMap<DeclaredName, UnitTypeFile>,
         ranks: impl Fn(&str) -> u8,
         names: &mut PackageNames<'a>,
     ) -> Result<(), LoadProblem> {
         for (id, ability) in actions {
             let at = Place::Action(id.clone());
             self.kind(id, ability)?;
-            self.ranked(id, ability, ranks(id))?;
+            self.ranked(id, ability, ranks(id.as_str()))?;
+            self.effects(id, ability)?;
             if let Some(delivery) = &ability.delivery {
                 let capability = match delivery {
                     DeliveryData::Projectile { .. } => Capability::Projectiles,
@@ -303,7 +376,7 @@ impl<'a> LoadCheck<'a> {
                 delivery_holds(id, ability, delivery, units)?;
             }
             for modifier in ability.modifiers() {
-                modifier_exists(names.modifiers, modifier, &at)?;
+                modifier_exists(names.modifiers, modifier.as_str(), &at)?;
             }
             for filter in ability.filters() {
                 self.filter_data(filter, &at)?;
@@ -314,7 +387,7 @@ impl<'a> LoadCheck<'a> {
                     return Err(LoadProblem::Unknown {
                         of: NameKind::Param,
                         at,
-                        name: name.to_owned(),
+                        name: name.to_string(),
                     });
                 }
             }
@@ -322,7 +395,7 @@ impl<'a> LoadCheck<'a> {
                 names.serve(
                     script,
                     ScriptRole::Action,
-                    ability.params.keys().map(String::as_str),
+                    ability.params.keys().map(DeclaredName::as_str),
                 );
             }
         }
@@ -340,13 +413,14 @@ impl<'a> LoadCheck<'a> {
         for (id, modifier) in names.modifiers {
             let at = Place::Modifier(id.clone());
             self.require(Capability::Stats, &at)?;
+            own_tags(&modifier.tags, &at)?;
             let scaled = modifier.params.values().flat_map(Param::stats);
             self.stats_declared(modifier.stats.keys().chain(scaled), &at)?;
             if let Some(affects) = &modifier.affects {
                 self.filter_data(affects, &at)?;
             }
             if let Some(aura) = &modifier.aura {
-                modifier_exists(names.modifiers, &aura.modifier, &at)?;
+                modifier_exists(names.modifiers, aura.modifier.as_str(), &at)?;
                 self.filter_data(&aura.affects, &at)?;
             }
             let by = appliers.get(id.as_str()).map_or(&[][..], Vec::as_slice);
@@ -354,13 +428,16 @@ impl<'a> LoadCheck<'a> {
                 .params
                 .keys()
                 .chain(by.iter().flat_map(|ability| ability.params.keys()))
-                .map(String::as_str)
+                .map(DeclaredName::as_str)
                 .collect();
-            if let Some(name) = modifier.param_refs().find(|name| !readable.contains(name)) {
+            let unread = modifier
+                .param_refs()
+                .find(|name| !readable.contains(name.as_str()));
+            if let Some(name) = unread {
                 return Err(LoadProblem::Unknown {
                     of: NameKind::Param,
                     at,
-                    name: name.to_owned(),
+                    name: name.to_string(),
                 });
             }
             if let Some(script) = &modifier.script {
@@ -374,22 +451,29 @@ impl<'a> LoadCheck<'a> {
     /// it uses one the mode has.
     fn scripts(&self, names: &PackageNames<'_>) -> Result<(), LoadProblem> {
         let package = names.package;
-        for &path in names.roles.keys() {
+        for &path in names.scripts.keys() {
             if package.script(path).is_none() {
-                return Err(LoadProblem::MissingScript(path.clone()));
+                return Err(LoadProblem::Script {
+                    path: path.clone(),
+                    problem: ScriptProblem::Missing,
+                });
             }
         }
         for script in &package.scripts {
             let path = &script.path;
-            let Some(roles) = names.roles.get(path) else {
-                return Err(LoadProblem::UnreferencedScript(path.clone()));
+            let Some(ScriptUse { roles, params }) = names.scripts.get(path) else {
+                return Err(LoadProblem::Script {
+                    path: path.clone(),
+                    problem: ScriptProblem::Unreferenced,
+                });
             };
             let at = Place::Script(path.clone());
             let facts = &script.facts;
-            let misuse = |misuse| LoadProblem::CtxMisuse {
+            let fail = |problem| LoadProblem::Script {
                 path: path.clone(),
-                misuse,
+                problem,
             };
+            let misuse = |misuse| fail(ScriptProblem::CtxMisuse(misuse));
             if let Some(found) = &facts.ctx_misuse {
                 return Err(misuse(found.clone()));
             }
@@ -400,19 +484,13 @@ impl<'a> LoadCheck<'a> {
                         .iter()
                         .any(|prefix| function.name.starts_with(prefix))
                 {
-                    return Err(LoadProblem::UnknownHook {
-                        path: path.clone(),
-                        function: function.name.clone(),
-                    });
+                    return Err(fail(ScriptProblem::UnknownHook(function.name.clone())));
                 }
                 let Some(hook) = hook else {
                     continue;
                 };
                 if !roles.contains(&hook.role()) || hook.params() != function.params {
-                    return Err(LoadProblem::UnknownHook {
-                        path: path.clone(),
-                        function: function.name.clone(),
-                    });
+                    return Err(fail(ScriptProblem::UnknownHook(function.name.clone())));
                 }
                 if !function.ctx_first {
                     return Err(misuse(CtxMisuse::HookParam {
@@ -429,10 +507,7 @@ impl<'a> LoadCheck<'a> {
                         && roles.iter().any(|&role| member.roles.contains(role))
                 });
                 let Some(member) = member else {
-                    return Err(LoadProblem::UnknownCtx {
-                        path: path.clone(),
-                        name: used.name.clone(),
-                    });
+                    return Err(fail(ScriptProblem::UnknownCtx(used.name.clone())));
                 };
                 if let Some(capability) = member.capability {
                     self.require(capability, &at)?;
@@ -440,13 +515,9 @@ impl<'a> LoadCheck<'a> {
             }
             for used in &facts.members {
                 if !self.member_known(facts, &used.name, used.kind) {
-                    return Err(LoadProblem::UnknownMember {
-                        path: path.clone(),
-                        name: used.name.clone(),
-                    });
+                    return Err(fail(ScriptProblem::UnknownMember(used.name.clone())));
                 }
             }
-            let params = &names.params[path];
             if let Some(name) = facts
                 .params
                 .iter()
@@ -458,13 +529,9 @@ impl<'a> LoadCheck<'a> {
                     name: name.clone(),
                 });
             }
-            for id in &facts.modifiers {
-                modifier_exists(names.modifiers, id, &at)?;
+            for named in &facts.names {
+                self.script_name(named, names.modifiers, &at)?;
             }
-            for filter in &facts.filters {
-                self.filter_text(filter, &at)?;
-            }
-            self.script_vocabulary(facts, at)?;
         }
         Ok(())
     }
@@ -489,83 +556,78 @@ impl<'a> LoadCheck<'a> {
             }
     }
 
-    /// Every stat, pool and damage kind a script at `at` with `facts` names is one the engine
-    /// reads or the mode declares.
-    fn script_vocabulary(&self, facts: &ScriptFacts, at: Place) -> Result<(), LoadProblem> {
-        for name in &facts.stats {
-            let stat = Stat::named(name).ok_or_else(|| LoadProblem::Unknown {
-                of: NameKind::Stat,
-                at: at.clone(),
-                name: name.clone(),
-            })?;
-            self.stats_declared([&stat], &at)?;
-        }
-        let data = &self.packages.data;
-        let tag = |name: &String| {
-            let markers = &self.packages.map.markers;
-            markers.iter().any(|marker| marker.tags.contains(name))
-        };
-        if let Some(name) = facts.markers.iter().find(|name| !tag(name)) {
-            return Err(LoadProblem::Unknown {
-                of: NameKind::MarkerTag,
-                at,
-                name: name.clone(),
-            });
-        }
-        let choice = |name: &String| data.choices.keys().any(|choice| choice.as_str() == name);
-        if let Some(name) = facts.choices.iter().find(|name| !choice(name)) {
-            return Err(LoadProblem::Choice(ChoiceProblem::UnknownChoice {
-                at,
-                name: name.clone(),
-            }));
-        }
-        if let Some(kind) = facts
-            .slot_kinds
-            .iter()
-            .find(|kind| data.slots.named(kind).is_none())
-        {
-            return Err(LoadProblem::Choice(ChoiceProblem::UnknownSlotKind {
-                at,
-                kind: kind.clone(),
-            }));
-        }
-        let resource = |name: &String| ResourceId::of(&data.resources, name).is_some();
-        if let Some(name) = facts.resources.iter().find(|name| !resource(name)) {
-            return Err(LoadProblem::Unknown {
-                of: NameKind::Resource,
-                at,
-                name: name.clone(),
-            });
-        }
-        let pool = |name: &String| data.pools.keys().any(|pool| pool.as_str() == name);
-        if let Some(name) = facts.pools.iter().find(|name| !pool(name)) {
-            return Err(LoadProblem::Unknown {
-                of: NameKind::Pool,
-                at,
-                name: name.clone(),
-            });
-        }
-        let declared = |kind: &String| {
-            data.combat
-                .damage_kinds
+    /// A name a script at `at` gives an argument of a name kind is one of its kind that the match
+    /// has: a modifier one of the script's package's, `modifiers`; a unit type one of the mode's
+    /// scope.
+    fn script_name(
+        &self,
+        named: &ScriptName,
+        modifiers: &BTreeMap<DeclaredName, ModifierData>,
+        at: &Place,
+    ) -> Result<(), LoadProblem> {
+        let packages = self.packages;
+        let data = &packages.data;
+        let name = named.name.as_str();
+        let known = match named.kind {
+            NameKind::Modifier => return modifier_exists(modifiers, name, at),
+            NameKind::Filter => return self.filter_text(name, at),
+            NameKind::Stat => {
+                let stat = Stat::named(name).ok_or_else(|| named.unknown(at))?;
+                return self.stats_declared([&stat], at);
+            }
+            NameKind::Choice => {
+                if declares(data.choices.keys(), name) {
+                    return Ok(());
+                }
+                return Err(LoadProblem::Choice(ChoiceProblem::UnknownChoice {
+                    at: at.clone(),
+                    name: named.name.clone(),
+                }));
+            }
+            NameKind::SlotKind => {
+                if data.slots.named(name).is_some() {
+                    return Ok(());
+                }
+                return Err(LoadProblem::Choice(ChoiceProblem::UnknownSlotKind {
+                    at: at.clone(),
+                    kind: named.name.clone(),
+                }));
+            }
+            NameKind::MarkerTag => packages
+                .map
+                .markers
                 .iter()
-                .any(|name| name.as_str() == kind)
+                .any(|marker| declares(marker.tags.iter(), name)),
+            NameKind::Resource => ResourceId::named(&data.resources, name).is_some(),
+            NameKind::Pool => declares(data.pools.keys(), name),
+            NameKind::DamageKind => declares(data.combat.damage_kinds.iter(), name),
+            NameKind::Track => declares(data.tracks.keys(), name),
+            NameKind::Tag => self.tags.contains(name),
+            NameKind::Team => {
+                let teams = &packages.manifest.teams;
+                declares(teams.iter().map(|team| &team.name), name)
+            }
+            NameKind::Path => declares(packages.map.paths.iter().map(|path| &path.name), name),
+            NameKind::UnitType => {
+                packages.content.units.contains_key(name)
+                    || packages.avatar_names().any(|avatar| avatar == name)
+            }
+            NameKind::Param | NameKind::Cost | NameKind::Layer | NameKind::Message => {
+                unreachable!("no argument of the script API is a {}", named.kind)
+            }
         };
-        if let Some(kind) = facts.damage_kinds.iter().find(|kind| !declared(kind)) {
-            return Err(LoadProblem::Unknown {
-                of: NameKind::DamageKind,
-                at,
-                name: kind.clone(),
-            });
+        if known {
+            Ok(())
+        } else {
+            Err(named.unknown(at))
         }
-        Ok(())
     }
 
-    /// The mode's damage kinds: with `combat`, at least one; never more than a byte tells apart.
-    fn damage_kinds(&self) -> Result<(), LoadProblem> {
+    /// The mode's damage kinds: with `combat`, at least one; never more than a match holds.
+    const fn damage_kinds(&self) -> Result<(), LoadProblem> {
         let data = &self.packages.data;
         let kinds = &data.combat.damage_kinds;
-        if kinds.len() > usize::from(u8::MAX) + 1 {
+        if kinds.len() > CombatRules::DAMAGE_KIND_LIMIT {
             return Err(LoadProblem::TooMany(Limit::DamageKinds));
         }
         if !self
@@ -582,35 +644,43 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// An action of a kind the release runs, with the capability of its kind: a `cast` of
-    /// `abilities`, with no weapon field; an `attack` of `combat`, with all three, a unit target,
-    /// a range in meters, its stats declared and its damage kind the mode's.
-    fn kind(&self, id: &str, action: &ActionData) -> Result<(), LoadProblem> {
-        let at = Place::Action(id.to_owned());
-        let fields = action.weapon_fields();
-        let trains = action.unit_type.is_some();
+    /// An action of a kind the release runs, with the capability of its kind and the fields the
+    /// table of action fields lets its kind take: a `cast` of `abilities`; an `attack` of
+    /// `combat`, aimed at a unit, of a range in meters, its stats declared and its damage kind
+    /// the mode's; a `train` of `production`, aimed at nothing, of a unit type of the mode's
+    /// that stands.
+    fn kind(&self, id: &DeclaredName, action: &ActionData) -> Result<(), LoadProblem> {
+        let at = Place::Action(id.clone());
+        let run = matches!(
+            action.kind,
+            ActionKind::Cast | ActionKind::Attack | ActionKind::Train
+        );
+        if run && let Some(field) = ActionDataField::misused(action, action.kind) {
+            return Err(LoadProblem::KindField {
+                action: id.to_owned(),
+                field,
+            });
+        }
         match action.kind {
             ActionKind::Cast => {
                 self.require(Capability::Abilities, &at)?;
-                if fields.contains(&true) || trains {
-                    return Err(LoadProblem::KindField(id.to_owned()));
-                }
             }
             ActionKind::Train => {
                 self.require(Capability::Production, &at)?;
-                if fields.contains(&true) || action.beyond_train() {
-                    return Err(LoadProblem::KindField(id.to_owned()));
+                if action.targeting != Targeting::None {
+                    return Err(LoadProblem::TrainAims(id.to_owned()));
                 }
-                let unit_types = &self.packages.units.units;
-                let Some(name) = &action.unit_type else {
-                    return Err(LoadProblem::KindField(id.to_owned()));
-                };
+                let unit_types = &self.packages.content.units;
+                let name = action
+                    .unit_type
+                    .as_ref()
+                    .expect("a train needs its unit type");
                 match unit_types.get(name) {
                     None => {
                         return Err(LoadProblem::Unknown {
                             of: NameKind::UnitType,
                             at,
-                            name: name.clone(),
+                            name: name.to_string(),
                         });
                     }
                     Some(unit_type) if unit_type.delivers() => {
@@ -623,13 +693,14 @@ impl<'a> LoadCheck<'a> {
             }
             ActionKind::Attack => {
                 self.require(Capability::Combat, &at)?;
-                let global = action
-                    .range
-                    .as_ref()
-                    .is_none_or(|range| range.values().contains(&RangeField::Range(Range::Global)));
-                let aims = matches!(action.targeting, Targeting::Unit(_));
-                if fields.contains(&false) || global || !aims || action.cast_fields() || trains {
-                    return Err(LoadProblem::KindField(id.to_owned()));
+                let global = action.range.as_ref().is_some_and(|range| {
+                    range.values().contains(&RangeField::Range(Range::Global))
+                });
+                if !matches!(action.targeting, Targeting::Unit(_)) {
+                    return Err(LoadProblem::AttackAims(id.to_owned()));
+                }
+                if global {
+                    return Err(LoadProblem::GlobalAttack(id.to_owned()));
                 }
                 self.stats_declared(action.rate.iter().chain(&action.damage), &at)?;
                 let kinds = &self.packages.data.combat.damage_kinds;
@@ -647,9 +718,78 @@ impl<'a> LoadCheck<'a> {
             }
             kind => {
                 return Err(LoadProblem::KindNotRun {
-                    action: id.to_owned(),
+                    action: id.clone(),
                     kind,
                 });
+            }
+        }
+        Ok(())
+    }
+
+    /// The effect lists of `action`, whose id is `id`: each effect one the release runs, of a
+    /// capability the mode declares and a name it declares, in a list that runs, to a unit the
+    /// list reaches; and each number at least 0 and a sim number at every rank, a duration whole
+    /// milliseconds within a `u32`. The modifiers and params they name, the action's checks find.
+    fn effects(&self, id: &DeclaredName, action: &ActionData) -> Result<(), LoadProblem> {
+        let data = &self.packages.data;
+        let at = Place::Action(id.clone());
+        for (list, effects) in action.effect_lists() {
+            let fail = |problem| LoadProblem::Effect {
+                action: id.clone(),
+                list,
+                problem,
+            };
+            if !effects.is_empty() && list != Hook::OnResolve && action.delivery.is_none() {
+                return Err(fail(EffectProblem::NoDelivery));
+            }
+            let reaches = match list {
+                Hook::OnResolve => matches!(action.targeting, Targeting::Unit(_)),
+                _ => list == Hook::OnHit,
+            };
+            for effect in effects {
+                if effect.to == EffectTo::Reached && !reaches {
+                    return Err(fail(EffectProblem::NoUnit));
+                }
+                let unknown = |of, name: &DeclaredName| LoadProblem::Unknown {
+                    of,
+                    at: at.clone(),
+                    name: name.to_string(),
+                };
+                match &effect.does {
+                    Effecting::Planned(planned) => {
+                        return Err(fail(EffectProblem::Planned(*planned)));
+                    }
+                    Effecting::Damage { kind, .. } => {
+                        self.require(Capability::Combat, &at)?;
+                        if !data.combat.damage_kinds.contains(kind) {
+                            return Err(unknown(NameKind::DamageKind, kind));
+                        }
+                    }
+                    Effecting::Heal { .. } => self.require(Capability::Combat, &at)?,
+                    Effecting::Restore { pool, .. } => {
+                        self.require(Capability::Combat, &at)?;
+                        if !data.pools.contains_key(pool) {
+                            return Err(unknown(NameKind::Pool, pool));
+                        }
+                    }
+                    Effecting::Modifier { duration_ms, .. } => {
+                        self.require(Capability::Stats, &at)?;
+                        if let Some(duration) = duration_ms
+                            && !whole_ms(action, duration)
+                        {
+                            return Err(fail(EffectProblem::Duration));
+                        }
+                    }
+                    Effecting::Xp { track, .. } => {
+                        self.require(Capability::Progression, &at)?;
+                        if !data.tracks.contains_key(track) {
+                            return Err(unknown(NameKind::Track, track));
+                        }
+                    }
+                }
+                for number in effect.does.numbers() {
+                    number_holds(action, number).map_err(fail)?;
+                }
             }
         }
         Ok(())
@@ -688,7 +828,7 @@ impl<'a> LoadCheck<'a> {
     ) -> Result<(), LoadProblem> {
         let navigation = &self.packages.data.navigation;
         match collision.and_then(|collision| collision.layer.as_ref()) {
-            Some(layer) if navigation.layer(layer).is_none() => Err(LoadProblem::Unknown {
+            Some(layer) if navigation.layer_named(layer).is_none() => Err(LoadProblem::Unknown {
                 of: NameKind::Layer,
                 at: at.clone(),
                 name: layer.to_string(),
@@ -711,9 +851,12 @@ impl<'a> LoadCheck<'a> {
         if let Some(name) = data
             .resources
             .iter()
-            .find(|name| data.pools.contains_key(name))
+            .find(|name| data.pools.contains_key(*name))
         {
-            return Err(LoadProblem::RepeatedName(name.clone()));
+            return Err(LoadProblem::Repeated {
+                at: Place::Resources,
+                name: name.to_string(),
+            });
         }
         for (name, pool) in &data.pools {
             let at = Place::Pool(name.clone());
@@ -750,8 +893,8 @@ impl<'a> LoadCheck<'a> {
         &self,
         unit_type: &UnitTypeFile,
         at: &Place,
-        actions: &BTreeMap<String, ActionData>,
-        modifiers: &BTreeMap<String, ModifierData>,
+        actions: &BTreeMap<DeclaredName, ActionData>,
+        modifiers: &BTreeMap<DeclaredName, ModifierData>,
     ) -> Result<(), LoadProblem> {
         let sections = [
             (unit_type.stats.is_some(), Capability::Stats),
@@ -769,6 +912,7 @@ impl<'a> LoadCheck<'a> {
                 self.require(capability, at)?;
             }
         }
+        own_tags(&unit_type.core.tags, at)?;
         if unit_type.delivers() && !unit_type.delivery_only() {
             return Err(LoadProblem::Delivery(DeliveryProblem::NotDelivery(
                 at.clone(),
@@ -779,7 +923,7 @@ impl<'a> LoadCheck<'a> {
                 self.filter_data(affects, at)?;
             }
             for modifier in area.inside.modifiers() {
-                modifier_exists(modifiers, modifier, at)?;
+                modifier_exists(modifiers, modifier.as_str(), at)?;
             }
         }
         if let Some(projectile) = &unit_type.projectile {
@@ -811,7 +955,10 @@ impl<'a> LoadCheck<'a> {
                     return Err(LoadProblem::UnknownSlot(id.clone()));
                 }
                 if !slotted.insert(id.as_str()) {
-                    return Err(LoadProblem::RepeatedSlot(id.clone()));
+                    return Err(LoadProblem::Repeated {
+                        at: at.clone(),
+                        name: id.to_string(),
+                    });
                 }
                 if actions[id].kind == ActionKind::Train && unit_type.production.is_none() {
                     return Err(LoadProblem::NoQueue(id.clone()));
@@ -819,7 +966,7 @@ impl<'a> LoadCheck<'a> {
             }
         }
         if let Some(passive) = &unit_type.passive {
-            modifier_exists(modifiers, passive, at)?;
+            modifier_exists(modifiers, passive.as_str(), at)?;
         }
         let tracks = &self.packages.data.tracks;
         if let Some(track) = unit_type
@@ -844,7 +991,10 @@ impl<'a> LoadCheck<'a> {
         }
         let mut seen = BTreeSet::new();
         match kinds.iter().find(|kind| !seen.insert(&kind.name)) {
-            Some(kind) => Err(LoadProblem::RepeatedName(kind.name.clone())),
+            Some(kind) => Err(LoadProblem::Repeated {
+                at: Place::SlotKinds,
+                name: kind.name.to_string(),
+            }),
             None => Ok(()),
         }
     }
@@ -879,7 +1029,8 @@ impl<'a> LoadCheck<'a> {
     }
 
     /// The pools a unit type at `at` lists: each declared, none twice, and the life pool among
-    /// them when it has `combat`.
+    /// them exactly when it has `combat`: with it, it dies at zero life; without it, it would
+    /// stay a target at zero life forever.
     fn unit_pools(
         &self,
         pools: &[DeclaredName],
@@ -899,51 +1050,60 @@ impl<'a> LoadCheck<'a> {
                 });
             }
             if pools[..place].contains(name) {
-                return Err(LoadProblem::RepeatedPool {
+                return Err(LoadProblem::Repeated {
                     at: at.clone(),
-                    name: name.clone(),
+                    name: name.to_string(),
                 });
             }
         }
-        let life = data.combat.life.as_ref();
-        if combat && !life.is_some_and(|life| pools.contains(life)) {
-            return Err(LoadProblem::LifePoolMissing(at.clone()));
+        let lives = data
+            .combat
+            .life
+            .as_ref()
+            .is_some_and(|life| pools.contains(life));
+        if lives && !combat {
+            return Err(LoadProblem::CombatMissing(at.clone()));
         }
         Ok(())
     }
 
     /// Every per-rank array of `ability` has `ranks` entries, each pool its cost names is one
     /// the mode declares, and each capability field holds at every rank.
-    fn ranked(&self, id: &str, ability: &ActionData, ranks: u8) -> Result<(), LoadProblem> {
+    fn ranked(
+        &self,
+        id: &DeclaredName,
+        ability: &ActionData,
+        ranks: u8,
+    ) -> Result<(), LoadProblem> {
         let data = &self.packages.data;
         if let Some(name) = ability
             .cost_names()
-            .find(|name| data.cost_target(name).is_none())
+            .find(|name| data.cost_target_named(name).is_none())
         {
             return Err(LoadProblem::Unknown {
                 of: NameKind::Cost,
-                at: Place::Action(id.to_owned()),
+                at: Place::Action(id.clone()),
                 name: name.to_string(),
             });
         }
         if !ability.check_ranks(usize::from(ranks)) {
             return Err(LoadProblem::RankCount {
-                action: id.to_owned(),
+                action: id.clone(),
                 ranks,
             });
         }
         for rank in 1..=ranks {
             ability
-                .fields_at(rank, |name| data.cost_target(name))
+                .fields_at(rank, |name| data.cost_target_named(name))
                 .map_err(|field| LoadProblem::ActionField {
-                    action: id.to_owned(),
+                    action: id.clone(),
                     field,
                 })?;
         }
         Ok(())
     }
 
-    /// Every stat in `stats` is one the engine reads or the mode declares.
+    /// Every stat in `stats` is one the mode declares.
     fn stats_declared<'s>(
         &self,
         stats: impl IntoIterator<Item = &'s Stat>,
@@ -971,8 +1131,8 @@ impl<'a> LoadCheck<'a> {
         })
     }
 
-    /// A script's filter: its relation is `enemies`, `allies` or `all`, and its tag, if any, one
-    /// a unit type of the mode declares.
+    /// A script's filter: a relation, such as `enemies`, with its tags, if any, after a `:`, each
+    /// one the mode's packages name.
     fn filter_text(&self, filter: &str, at: &Place) -> Result<(), LoadProblem> {
         match FilterData::parse(filter) {
             Some(data) => self.filter_data(&data, at),
@@ -1003,14 +1163,13 @@ impl<'a> LoadCheck<'a> {
 }
 
 impl<'a> PackageNames<'a> {
-    fn new(
+    const fn new(
         package: &'a Package,
-        modifiers: &'a BTreeMap<String, ModifierData>,
+        modifiers: &'a BTreeMap<DeclaredName, ModifierData>,
     ) -> PackageNames<'a> {
         PackageNames {
             package,
-            roles: BTreeMap::new(),
-            params: BTreeMap::new(),
+            scripts: BTreeMap::new(),
             modifiers,
         }
     }
@@ -1022,14 +1181,65 @@ impl<'a> PackageNames<'a> {
         role: ScriptRole,
         params: impl IntoIterator<Item = &'a str>,
     ) {
-        self.roles.entry(script).or_default().insert(role);
-        self.params.entry(script).or_default().extend(params);
+        let used = self.scripts.entry(script).or_default();
+        used.roles.insert(role);
+        used.params.extend(params);
+    }
+}
+
+/// The values `number` of `action` can have, each rank's: its own, or its param's; a scaling
+/// param gives its base's, as its source's stats add to it only as it runs. None for a param the
+/// action does not declare, which the action's checks refuse.
+fn number_values<'n>(action: &'n ActionData, number: &'n Number) -> &'n [Scalar] {
+    match number {
+        Number::Value(value) => slice::from_ref(value),
+        Number::Param(reference) => match action.params.get(&reference.param) {
+            Some(Param::Ranked(ranked)) => ranked.values(),
+            Some(Param::Scaling(scaling)) => scaling.base.values(),
+            None => &[],
+        },
+    }
+}
+
+/// An effect's number: at least 0 and a sim number at every rank.
+fn number_holds(action: &ActionData, number: &Number) -> Result<(), EffectProblem> {
+    for value in number_values(action, number) {
+        let value = value.to_num().ok_or(EffectProblem::Overflow)?;
+        if value < Num::ZERO {
+            return Err(EffectProblem::Negative);
+        }
+    }
+    Ok(())
+}
+
+/// A modifier's duration: whole milliseconds within a `u32` at every rank, and no scaling param,
+/// whose value only a call knows.
+fn whole_ms(action: &ActionData, duration: &Number) -> bool {
+    let scaling = duration
+        .param()
+        .and_then(|name| action.params.get(name))
+        .is_some_and(|param| matches!(param, Param::Scaling(_)));
+    !scaling
+        && number_values(action, duration)
+            .iter()
+            .all(|value| matches!(value, Scalar::Int(ms) if u32::try_from(*ms).is_ok()))
+}
+
+/// The tags a unit type or a modifier at `at` carries: none the engine's, which only the engine
+/// gives.
+fn own_tags(tags: &[DeclaredName], at: &Place) -> Result<(), LoadProblem> {
+    match tags.iter().find_map(|tag| EngineTag::named(tag.as_str())) {
+        Some(tag) => Err(LoadProblem::EngineTag {
+            at: at.clone(),
+            tag,
+        }),
+        None => Ok(()),
     }
 }
 
 /// `id` is one of `modifiers`.
 fn modifier_exists(
-    modifiers: &BTreeMap<String, ModifierData>,
+    modifiers: &BTreeMap<DeclaredName, ModifierData>,
     id: &str,
     at: &Place,
 ) -> Result<(), LoadProblem> {
@@ -1047,23 +1257,24 @@ fn modifier_exists(
 /// section of its kind. A projectile needs an aim, and homes alone and at a unit; an area lands
 /// on a point, a unit or the caster, not along a direction; a weapon's is a homing projectile.
 fn delivery_holds(
-    id: &str,
+    id: &DeclaredName,
     action: &ActionData,
     delivery: &DeliveryData,
-    units: &BTreeMap<String, UnitTypeFile>,
+    units: &BTreeMap<DeclaredName, UnitTypeFile>,
 ) -> Result<(), LoadProblem> {
-    let fail =
-        |problem: fn(String) -> DeliveryProblem| Err(LoadProblem::Delivery(problem(id.to_owned())));
+    let fail = |problem: fn(DeclaredName) -> DeliveryProblem| {
+        Err(LoadProblem::Delivery(problem(id.clone())))
+    };
     let name = delivery.unit_type();
     let unit_type = units.get(name).ok_or_else(|| LoadProblem::Unknown {
         of: NameKind::UnitType,
-        at: Place::Action(id.to_owned()),
-        name: name.to_owned(),
+        at: Place::Action(id.clone()),
+        name: name.to_string(),
     })?;
     let wrong_section = || {
         Err(LoadProblem::Delivery(DeliveryProblem::WrongSection {
-            action: id.to_owned(),
-            unit_type: name.to_owned(),
+            action: id.clone(),
+            unit_type: name.clone(),
         }))
     };
     let homing = match delivery {
@@ -1094,4 +1305,9 @@ fn delivery_holds(
         return fail(DeliveryProblem::Weapon);
     }
     Ok(())
+}
+
+/// Whether `names` holds `name`.
+fn declares<'n>(mut names: impl Iterator<Item = &'n DeclaredName>, name: &str) -> bool {
+    names.any(|declared| declared.as_str() == name)
 }

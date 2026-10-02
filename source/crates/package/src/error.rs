@@ -1,18 +1,17 @@
 use std::error::Error;
-use std::fmt;
-use std::io;
 use std::path::PathBuf;
+use std::{fmt, io};
 
 use campfire_capabilities::{
-    ActionField, ActionKind, ActionSlots, DeclaredName, MapProblem, ModeError, Pools, ResourceId,
-    Stat, TrackId,
+    ActionDataField, ActionError, ActionField, ActionKind, ActionSlots, AiError, ApiVersion,
+    DeclaredName, EngineTag, Hook, MapProblem, ModeError, ModifierProblem, NameKind, PlannedEffect,
+    Pools, ResourceId, Stat, TrackId, UnitKitError,
 };
-use campfire_content::PackagePath;
+use campfire_content::{Fingerprint, MessageId, PackagePath};
 use campfire_script::ScriptError;
 use campfire_sim::Capability;
+use fluent_syntax::parser::ParserError;
 use toml::de::Error as TomlError;
-
-use crate::files::version::Version;
 
 /// Why a package file does not load. Packages are untrusted, so each is an expected failure.
 #[derive(Debug)]
@@ -27,6 +26,8 @@ pub enum ContentError {
     NotAFile(PathBuf),
     /// A path in a package is not UTF-8, so no file list can name it.
     NotUtf8(PathBuf),
+    /// A file's name in a package is no package path, as one holding `\` is not.
+    NotPath(PathBuf),
 }
 
 impl fmt::Display for ContentError {
@@ -39,6 +40,9 @@ impl fmt::Display for ContentError {
                 write!(f, "{}: neither a file nor a directory", path.display())
             }
             ContentError::NotUtf8(path) => write!(f, "{}: path is not UTF-8", path.display()),
+            ContentError::NotPath(path) => {
+                write!(f, "{}: no path a package can name", path.display())
+            }
         }
     }
 }
@@ -46,7 +50,7 @@ impl fmt::Display for ContentError {
 impl Error for ContentError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match self {
-            ContentError::NotAFile(_) | ContentError::NotUtf8(_) => None,
+            ContentError::NotAFile(_) | ContentError::NotUtf8(_) | ContentError::NotPath(_) => None,
             ContentError::Io { error, .. } | ContentError::Scan { error, .. } => Some(error),
             ContentError::Data { error, .. } => Some(error),
         }
@@ -96,8 +100,27 @@ impl Error for StoreError {
 /// Why a mode's packages do not load: `problem`, in the package `package`.
 #[derive(Debug)]
 pub struct LoadError {
-    pub package: String,
+    pub package: PackageRef,
     pub problem: Box<LoadProblem>,
+}
+
+/// Which package a load error is in: by its name, once its manifest named it; else where it was
+/// read from, a directory, or the fingerprint a session named it by.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PackageRef {
+    Name(String),
+    Dir(PathBuf),
+    Fingerprint(Fingerprint),
+}
+
+impl fmt::Display for PackageRef {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            PackageRef::Name(name) => f.write_str(name),
+            PackageRef::Dir(dir) => write!(f, "at {}", dir.display()),
+            PackageRef::Fingerprint(fingerprint) => write!(f, "of fingerprint {fingerprint}"),
+        }
+    }
 }
 
 /// A problem that fails a package's load, as design 08's checks find them.
@@ -105,13 +128,14 @@ pub struct LoadError {
 pub enum LoadProblem {
     /// A file does not read, or a data file does not match its schema.
     Content(ContentError),
-    /// The package is not of the kind its place needs: a mode, or an avatar or loadout a mode depends
-    /// on.
+    /// The package is not of the kind its place needs: a mode, or an avatar or loadout a mode
+    /// depends on.
     WrongKind,
     /// The dependency's package has another name than the mode gives it.
     OtherName(String),
-    /// The package targets another engine release than this one.
-    OtherEngine(Version),
+    /// The package targets a package API version this release does not load: another major, or
+    /// a newer minor.
+    OtherApi(ApiVersion),
     /// Data or a script at `at` uses a capability the mode does not declare.
     Undeclared { capability: Capability, at: Place },
     /// The mode declares `combat`, and no damage kinds for its damage.
@@ -123,63 +147,54 @@ pub enum LoadProblem {
     /// The map cannot be walked as the mode needs.
     Map(MapProblem),
     /// A unit type's slot names an action its package does not have.
-    UnknownSlot(String),
+    UnknownSlot(DeclaredName),
     /// An avatar's action is in none of its slots, so it has no rank count.
-    Unslotted(String),
+    Unslotted(DeclaredName),
     /// An avatar names an AI: a player controls it, and a bot plays it through player inputs.
     AvatarOrders,
     /// A unit type holds this train, and has no `production` section to queue it.
-    NoQueue(String),
-    /// A unit type's action is in two slots.
-    RepeatedSlot(String),
+    NoQueue(DeclaredName),
     /// Unit types place the action in slot kinds of other ranks.
-    ActionRanks(String),
-    /// A weapon without `rate`, `damage` or `damage_kind`, a unit target or a range in meters,
-    /// or with a field only a cast runs; a train without its `unit_type`, or with a field it does
-    /// not run; or another kind of action with one of a weapon's or a train's fields.
-    KindField(String),
+    ActionRanks(DeclaredName),
+    /// An action without a field its kind needs, or with one its kind refuses, as the table of
+    /// action fields says.
+    KindField {
+        action: DeclaredName,
+        field: ActionDataField,
+    },
+    /// An attack aims at no unit.
+    AttackAims(DeclaredName),
+    /// An attack's range is global, not in meters.
+    GlobalAttack(DeclaredName),
+    /// A train aims at something: it takes no target.
+    TrainAims(DeclaredName),
     /// An action of a kind the release does not run yet.
-    KindNotRun { action: String, kind: ActionKind },
-    /// Two loadout packages hold a loadout entry of this id.
-    RepeatedLoadout(String),
+    KindNotRun {
+        action: DeclaredName,
+        kind: ActionKind,
+    },
     /// The mode's teams or map name what it does not have.
     Mode(ModeError),
     /// A capability field of an ability does not hold at a rank.
-    ActionField { action: String, field: ActionField },
+    ActionField {
+        action: DeclaredName,
+        field: ActionField,
+    },
     /// The mode declares more of something than a match holds.
     TooMany(Limit),
     /// More than one of the mode's tracks is the `level` track.
     LevelTracks,
-    /// An avatar or a dependency's delivery type has the name of one of the mode's unit types.
-    RepeatedUnitType(String),
     /// A per-rank array of an ability has another length than its ranks.
-    RankCount { action: String, ranks: u8 },
-    /// A script file no data names.
-    UnreferencedScript(PackagePath),
-    /// Data names a script the package does not hold.
-    MissingScript(PackagePath),
-    /// A script does not compile.
+    RankCount { action: DeclaredName, ranks: u8 },
+    /// The script at `path`, or the one data names there.
     Script {
         path: PackagePath,
-        error: ScriptError,
+        problem: ScriptProblem,
     },
-    /// A function named like a hook is no hook of a role the script serves, or takes another count
-    /// of parameters.
-    UnknownHook { path: PackagePath, function: String },
-    /// A script uses a name on `ctx` that the script API does not define, or not for its role, or
-    /// not in the way it uses it.
-    UnknownCtx { path: PackagePath, name: String },
-    /// A script reads a field or calls a method no handle, no built-in and none of its own
-    /// functions or object maps has.
-    UnknownMember { path: PackagePath, name: String },
-    /// A script uses `ctx` other than design 08's convention allows, so the load checks cannot
-    /// see every use of it.
-    CtxMisuse {
-        path: PackagePath,
-        misuse: CtxMisuse,
-    },
-    /// A unit type at `at` lists a pool twice.
-    RepeatedPool { at: Place, name: DeclaredName },
+    /// `name` twice where `at` names each once: an avatar named as one of the mode's unit
+    /// types, an entry of two loadout packages, a pool or an action twice in a unit type's pools
+    /// or slots, a name twice in one of the mode's lists.
+    Repeated { at: Place, name: String },
     /// Live stat changes across the mode's modifiers read each other in a loop, through these
     /// stats.
     StatLoop(Vec<Stat>),
@@ -193,14 +208,118 @@ pub enum LoadProblem {
     },
     /// The mode declares `combat` but no `[combat] life`.
     NoLifePool,
-    /// A unit type at `at` has a `combat` section but not the life pool.
-    LifePoolMissing(Place),
-    /// The mode declares a name twice in one of its lists.
-    RepeatedName(DeclaredName),
+    /// A unit type at `at` has the life pool but no `combat` section, so it could reach zero
+    /// life and never die.
+    CombatMissing(Place),
     /// A projectile or an area type, or what delivers or makes one.
     Delivery(DeliveryProblem),
-    /// A field of mode state has no `sync`, or another state field has one.
-    StateSync(String),
+    /// An effect of the action's list, the one before `list`.
+    Effect {
+        action: DeclaredName,
+        list: Hook,
+        problem: EffectProblem,
+    },
+    /// A unit type or a modifier at `at` carries a tag only the engine gives.
+    EngineTag { at: Place, tag: EngineTag },
+    /// A unit type at `at` makes no unit: its stats, pools and combat do not hold together at
+    /// level 1.
+    UnitKit { at: Place, error: UnitKitError },
+    /// A unit type's AI at `at` does not load.
+    Ai { at: Place, error: AiError },
+    /// A time of an action does not count in ticks at the fastest rate the mode allows.
+    Action {
+        action: DeclaredName,
+        error: ActionError,
+    },
+    /// A modifier does not load at the fastest rate the mode allows.
+    Modifier {
+        modifier: DeclaredName,
+        problem: ModifierProblem,
+    },
+    /// A file of human text at `path`.
+    Locale {
+        path: PackagePath,
+        problem: LocaleProblem,
+    },
+}
+
+/// What is wrong with a file of human text.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum LocaleProblem {
+    /// Its name is not `<language>.ftl`, or in a locale package `<package>/<language>.ftl` of a
+    /// package it depends on, the language an identifier in its canonical spelling.
+    FileName,
+    /// It does not parse as Fluent, first at this error.
+    Parse(ParserError),
+    /// It defines the message twice.
+    Repeated(MessageId),
+    /// A translation defines the message, which the file of its package's own language does not.
+    Stray(MessageId),
+}
+
+/// What is wrong with a script.
+#[derive(Debug)]
+pub enum ScriptProblem {
+    /// No data names it.
+    Unreferenced,
+    /// Data names it, and the package does not hold it.
+    Missing,
+    /// It does not compile.
+    Compile(ScriptError),
+    /// A function named like a hook is no hook of a role the script serves, or takes another
+    /// count of parameters.
+    UnknownHook(String),
+    /// It uses a name on `ctx` that the script API does not define, or not for its role, or not
+    /// in the way it uses it.
+    UnknownCtx(String),
+    /// It reads a field or calls a method no handle, no built-in and none of its own functions
+    /// or object maps has.
+    UnknownMember(String),
+    /// It uses `ctx` other than design 08's convention allows, so the load checks cannot see
+    /// every use of it.
+    CtxMisuse(CtxMisuse),
+}
+
+/// What is wrong with an effect of an action's list.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EffectProblem {
+    /// An effect the release does not run yet.
+    Planned(PlannedEffect),
+    /// A list of a delivery's hit or end on an action that delivers nothing, which never runs.
+    NoDelivery,
+    /// An effect to the unit reached in a list that reaches none: `on_end`, or `on_resolve` of
+    /// an action that aims at no unit.
+    NoUnit,
+    /// A number below zero, at some rank.
+    Negative,
+    /// A number past what a sim number holds, at some rank.
+    Overflow,
+    /// A modifier's duration that is not a whole number of milliseconds within a `u32` at each
+    /// rank, as a scaling param is not.
+    Duration,
+}
+
+impl fmt::Display for EffectProblem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            EffectProblem::Planned(effect) => {
+                write!(
+                    f,
+                    "`{}` is an effect the release does not run yet",
+                    effect.name()
+                )
+            }
+            EffectProblem::NoDelivery => f.write_str("the action delivers nothing to hit or end"),
+            EffectProblem::NoUnit => {
+                f.write_str("an effect to the unit reached, where the list reaches none")
+            }
+            EffectProblem::Negative => f.write_str("a number below zero"),
+            EffectProblem::Overflow => f.write_str("a number past a sim number"),
+            EffectProblem::Duration => f.write_str(
+                "a duration that is no whole number of milliseconds within a u32 at each rank",
+            ),
+        }
+    }
 }
 
 /// What is wrong with a projectile or an area type, or with what delivers or makes one.
@@ -213,17 +332,23 @@ pub enum DeliveryProblem {
     /// unit that stands; a dependency's unit type is no delivery type; or an avatar is one.
     NotDelivery(Place),
     /// An action's `delivery` names a unit type of its package with no section of its kind.
-    WrongSection { action: String, unit_type: String },
+    WrongSection {
+        action: DeclaredName,
+        unit_type: DeclaredName,
+    },
     /// An action that aims at nothing delivers a projectile, which has no way to fly.
-    NoAim(String),
+    NoAim(DeclaredName),
     /// An action's projectile homes, and the action aims at no unit, or launches more than one.
-    Homing(String),
+    Homing(DeclaredName),
     /// An action that aims along a direction delivers an area, which lands on a point.
-    AreaDirection(String),
+    AreaDirection(DeclaredName),
     /// A weapon's delivery is no homing projectile.
-    Weapon(String),
+    Weapon(DeclaredName),
+    /// An area type at `at` has a time that does not count in ticks at the fastest rate the mode
+    /// allows.
+    AreaTime(Place),
     /// A train makes a projectile or an area type, whose units only actions deliver.
-    Trained(String),
+    Trained(DeclaredName),
 }
 
 impl fmt::Display for DeliveryProblem {
@@ -242,29 +367,35 @@ impl fmt::Display for DeliveryProblem {
             ),
             DeliveryProblem::WrongSection { action, unit_type } => write!(
                 f,
-                "action {action:?} delivers unit type {unit_type:?}, which has no section of \
+                "action \"{action}\" delivers unit type \"{unit_type}\", which has no section of \
                  its delivery's kind"
             ),
             DeliveryProblem::NoAim(action) => {
                 write!(
                     f,
-                    "action {action:?} aims at nothing, and a projectile needs an aim"
+                    "action \"{action}\" aims at nothing, and a projectile needs an aim"
                 )
             }
             DeliveryProblem::Homing(action) => write!(
                 f,
-                "action {action:?}: a homing projectile flies one at a time, at a unit target"
+                "action \"{action}\": a homing projectile flies one at a time, at a unit target"
             ),
             DeliveryProblem::AreaDirection(action) => write!(
                 f,
-                "action {action:?}: an area lands on a point, a unit or the caster, not along a \
+                "action \"{action}\": an area lands on a point, a unit or the caster, not along a \
                  direction"
             ),
             DeliveryProblem::Weapon(action) => {
-                write!(f, "weapon {action:?}: its delivery is a homing projectile")
+                write!(
+                    f,
+                    "weapon \"{action}\": its delivery is a homing projectile"
+                )
             }
             DeliveryProblem::Trained(action) => {
-                write!(f, "train {action:?} makes a projectile or an area type")
+                write!(f, "train \"{action}\" makes a projectile or an area type")
+            }
+            DeliveryProblem::AreaTime(at) => {
+                write!(f, "{at}: a time too large to count in ticks")
             }
         }
     }
@@ -273,10 +404,11 @@ impl fmt::Display for DeliveryProblem {
 /// Where in a package a load problem is.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Place {
-    UnitType(String),
+    UnitType(DeclaredName),
+    /// By its package's name.
     Avatar(String),
-    Action(String),
-    Modifier(String),
+    Action(DeclaredName),
+    Modifier(DeclaredName),
     Script(PackagePath),
     /// The map's paths.
     Paths,
@@ -290,6 +422,14 @@ pub enum Place {
     Choice(DeclaredName),
     /// The mode's `[tracks]`.
     Tracks,
+    /// The mode's unit types and its avatars, each by its name.
+    UnitTypes,
+    /// The actions of the mode's loadout packages.
+    Loadouts,
+    /// The mode's players' resources, beside its pools.
+    Resources,
+    /// The mode's slot kinds.
+    SlotKinds,
 }
 
 /// A use of `ctx` that hides it from the load checks: every value of `ctx` in a script is a
@@ -322,6 +462,20 @@ impl fmt::Display for CtxMisuse {
     }
 }
 
+impl LoadError {
+    pub fn new(package: PackageRef, problem: LoadProblem) -> LoadError {
+        LoadError {
+            package,
+            problem: Box::new(problem),
+        }
+    }
+
+    /// `problem`, of the package its manifest names `name`.
+    pub(crate) fn of(name: &str, problem: LoadProblem) -> LoadError {
+        LoadError::new(PackageRef::Name(name.to_owned()), problem)
+    }
+}
+
 impl fmt::Display for LoadError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "package {}: {}", self.package, self.problem)
@@ -332,7 +486,10 @@ impl Error for LoadError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match &*self.problem {
             LoadProblem::Content(error) => Some(error),
-            LoadProblem::Script { error, .. } => Some(error),
+            LoadProblem::Script {
+                problem: ScriptProblem::Compile(error),
+                ..
+            } => Some(error),
             LoadProblem::Mode(error) => Some(error),
             _ => None,
         }
@@ -353,25 +510,50 @@ impl fmt::Display for Place {
             Place::Pool(name) => write!(f, "pool {name}"),
             Place::Choice(name) => write!(f, "choice {name}"),
             Place::Tracks => f.write_str("the mode's [tracks]"),
+            Place::UnitTypes => f.write_str("the mode's unit types and avatars"),
+            Place::Loadouts => f.write_str("the mode's loadouts"),
+            Place::Resources => f.write_str("the mode's resources and pools"),
+            Place::SlotKinds => f.write_str("the mode's slot kinds"),
         }
     }
 }
 
-/// What kind of name a load did not find.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum NameKind {
-    Param,
-    Modifier,
-    Stat,
-    Pool,
-    Cost,
-    MarkerTag,
-    Resource,
-    Layer,
-    Filter,
-    DamageKind,
-    Track,
-    UnitType,
+impl fmt::Display for ScriptProblem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ScriptProblem::Unreferenced => f.write_str("no data names it"),
+            ScriptProblem::Missing => f.write_str("named, but not held"),
+            ScriptProblem::Compile(error) => write!(f, "{error}"),
+            ScriptProblem::UnknownHook(function) => {
+                write!(f, "{function} is no hook of the script's roles")
+            }
+            ScriptProblem::UnknownCtx(name) => {
+                write!(f, "ctx.{name} is not the script API's for this script")
+            }
+            ScriptProblem::UnknownMember(name) => {
+                write!(f, ".{name} is no member the script API has")
+            }
+            ScriptProblem::CtxMisuse(misuse) => write!(f, "{misuse}"),
+        }
+    }
+}
+
+impl fmt::Display for LocaleProblem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LocaleProblem::FileName => {
+                f.write_str("not <language>.ftl, its language in its canonical spelling")
+            }
+            LocaleProblem::Parse(error) => write!(f, "{error}"),
+            LocaleProblem::Repeated(id) => write!(f, "message {id} twice"),
+            LocaleProblem::Stray(id) => {
+                write!(
+                    f,
+                    "message {id}, which the package's own language does not define"
+                )
+            }
+        }
+    }
 }
 
 /// What a mode declares more of than a match holds.
@@ -386,6 +568,8 @@ pub enum Limit {
     DamageKinds,
     Pools,
     Resources,
+    /// Packages, the mode's and those it depends on, more than a package index counts.
+    Packages,
 }
 
 impl fmt::Display for Limit {
@@ -397,26 +581,8 @@ impl fmt::Display for Limit {
             Limit::DamageKinds => f.write_str("more damage kinds than a match tells apart"),
             Limit::Pools => write!(f, "more than {} pools", Pools::LIMIT),
             Limit::Resources => write!(f, "more than {} player resources", ResourceId::LIMIT),
+            Limit::Packages => f.write_str("more packages than a package index counts"),
         }
-    }
-}
-
-impl fmt::Display for NameKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(match self {
-            NameKind::Param => "param",
-            NameKind::Modifier => "modifier",
-            NameKind::Stat => "stat",
-            NameKind::Pool => "pool",
-            NameKind::Cost => "pool or player resource",
-            NameKind::MarkerTag => "marker with tag",
-            NameKind::Resource => "player resource",
-            NameKind::Layer => "layer",
-            NameKind::Filter => "filter",
-            NameKind::DamageKind => "damage kind",
-            NameKind::Track => "track",
-            NameKind::UnitType => "unit type",
-        })
     }
 }
 
@@ -460,24 +626,27 @@ impl fmt::Display for LoadProblem {
             LoadProblem::Content(error) => write!(f, "{error}"),
             LoadProblem::WrongKind => f.write_str("not a package of the kind its place needs"),
             LoadProblem::OtherName(name) => write!(f, "the package is named {name:?}"),
-            LoadProblem::OtherEngine(engine) => {
-                write!(f, "targets engine release {engine}, not this one")
-            }
+            LoadProblem::OtherApi(api) => write!(
+                f,
+                "targets package API {api}, and this release loads {}.0 to {}",
+                ApiVersion::RELEASE.major,
+                ApiVersion::RELEASE
+            ),
             LoadProblem::Undeclared { capability, at } => {
                 write!(
                     f,
                     "{at} uses {capability:?}, which the mode does not declare"
                 )
             }
-            LoadProblem::UnknownSlot(id) => write!(f, "a slot names no action {id:?}"),
+            LoadProblem::UnknownSlot(id) => write!(f, "a slot names no action \"{id}\""),
             LoadProblem::ActionField { action, field } => {
-                write!(f, "action {action:?}: {field:?} gives no value of its kind")
+                write!(
+                    f,
+                    "action \"{action}\": {field:?} gives no value of its kind"
+                )
             }
             LoadProblem::TooMany(limit) => write!(f, "{limit}"),
             LoadProblem::LevelTracks => f.write_str("more than one `level` track"),
-            LoadProblem::RepeatedUnitType(name) => {
-                write!(f, "two unit types are named {name:?}")
-            }
             LoadProblem::NoDamageKinds => {
                 f.write_str("the mode declares combat, and no damage kinds")
             }
@@ -486,51 +655,44 @@ impl fmt::Display for LoadProblem {
                 f.write_str("the mode declares navigation, and its map has no [navigation] cells")
             }
             LoadProblem::Map(problem) => write!(f, "{problem}"),
-            LoadProblem::Unslotted(id) => write!(f, "action {id:?} is in no slot"),
+            LoadProblem::Unslotted(id) => write!(f, "action \"{id}\" is in no slot"),
             LoadProblem::AvatarOrders => f.write_str("an avatar takes no `orders`: bots play it"),
-            LoadProblem::NoQueue(id) => write!(f, "train {id:?} sits on a unit type with no queue"),
-            LoadProblem::RepeatedSlot(id) => write!(f, "action {id:?} is in two slots"),
-            LoadProblem::KindField(action) => write!(
+            LoadProblem::NoQueue(id) => {
+                write!(f, "train \"{id}\" sits on a unit type with no queue")
+            }
+            LoadProblem::KindField { action, field } => write!(
                 f,
-                "action {action:?}: an attack aims at a unit within meters, with rate, damage and \
-                 damage_kind and none of a cast's fields; a train names its unit_type and takes no \
-                 target; and no other kind has their fields"
+                "action \"{action}\": its kind needs or refuses `{}`",
+                field.name()
             ),
+            LoadProblem::AttackAims(action) => {
+                write!(f, "action \"{action}\": an attack aims at a unit")
+            }
+            LoadProblem::GlobalAttack(action) => {
+                write!(f, "action \"{action}\": an attack's range is in meters")
+            }
+            LoadProblem::TrainAims(action) => {
+                write!(f, "action \"{action}\": a train takes no target")
+            }
             LoadProblem::KindNotRun { action, kind } => {
                 write!(
                     f,
-                    "action {action:?}: the release does not run {kind:?} yet"
+                    "action \"{action}\": the release does not run {kind:?} yet"
                 )
             }
             LoadProblem::ActionRanks(id) => {
-                write!(f, "action {id:?} sits in slot kinds of other ranks")
+                write!(f, "action \"{id}\" sits in slot kinds of other ranks")
             }
-            LoadProblem::RepeatedLoadout(id) => write!(f, "two loadout packages hold {id:?}"),
             LoadProblem::Mode(error) => write!(f, "{error}"),
             LoadProblem::RankCount { action, ranks } => {
                 write!(
                     f,
-                    "action {action:?}: a per-rank array without {ranks} entries"
+                    "action \"{action}\": a per-rank array without {ranks} entries"
                 )
             }
-            LoadProblem::UnreferencedScript(path) => write!(f, "{path}: no data names it"),
-            LoadProblem::MissingScript(path) => write!(f, "{path}: named, but not held"),
-            LoadProblem::Script { path, error } => write!(f, "{path}: {error}"),
-            LoadProblem::UnknownHook { path, function } => {
-                write!(f, "{path}: {function} is no hook of the script's roles")
-            }
-            LoadProblem::UnknownMember { path, name } => {
-                write!(f, "{path}: .{name} is no member the script API has")
-            }
-            LoadProblem::UnknownCtx { path, name } => {
-                write!(
-                    f,
-                    "{path}: ctx.{name} is not the script API's for this script"
-                )
-            }
-            LoadProblem::CtxMisuse { path, misuse } => write!(f, "{path}: {misuse}"),
+            LoadProblem::Script { path, problem } => write!(f, "{path}: {problem}"),
             LoadProblem::Unknown { at, name, of } => write!(f, "{at}: no {of} {name:?}"),
-            LoadProblem::RepeatedPool { at, name } => write!(f, "{at}: pool {name:?} twice"),
+            LoadProblem::Repeated { at, name } => write!(f, "{at}: {name:?} twice"),
             LoadProblem::StatLoop(stats) => {
                 let names: Vec<String> = stats.iter().map(Stat::to_string).collect();
                 write!(
@@ -541,10 +703,23 @@ impl fmt::Display for LoadProblem {
             }
             LoadProblem::Choice(problem) => write!(f, "{problem}"),
             LoadProblem::NoLifePool => f.write_str("combat with no [combat] life"),
-            LoadProblem::LifePoolMissing(at) => write!(f, "{at}: combat without the life pool"),
-            LoadProblem::RepeatedName(name) => write!(f, "the mode declares {name:?} twice"),
+            LoadProblem::CombatMissing(at) => write!(f, "{at}: the life pool without combat"),
+            LoadProblem::Locale { path, problem } => write!(f, "{path}: {problem}"),
+            LoadProblem::UnitKit { at, error } => write!(f, "{at}: {error}"),
+            LoadProblem::Ai { at, error } => write!(f, "{at}: {error}"),
+            LoadProblem::Action { action, error } => write!(f, "action \"{action}\": {error}"),
+            LoadProblem::Modifier { modifier, problem } => {
+                write!(f, "modifier \"{modifier}\": {problem}")
+            }
+            LoadProblem::EngineTag { at, tag } => {
+                write!(f, "{at}: {:?}, a tag only the engine gives", tag.name())
+            }
             LoadProblem::Delivery(problem) => write!(f, "{problem}"),
-            LoadProblem::StateSync(field) => write!(f, "state {field:?}: sync where it has none"),
+            LoadProblem::Effect {
+                action,
+                list,
+                problem,
+            } => write!(f, "action \"{action}\", `{}`: {problem}", list.name()),
         }
     }
 }

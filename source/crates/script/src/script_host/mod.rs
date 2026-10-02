@@ -33,6 +33,19 @@ const MAX_FUNCTIONS: usize = 256;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ScriptId(u32);
 
+impl ScriptId {
+    /// The id of the script a host compiles at place `index`, counting from 0: a load names a
+    /// match's scripts by the order the match compiles them.
+    pub fn nth(index: usize) -> ScriptId {
+        ScriptId(u32::try_from(index).expect("scripts fit u32"))
+    }
+
+    /// Its place among the host's scripts, in the order it compiled them.
+    pub const fn index(self) -> usize {
+        self.0 as usize
+    }
+}
+
 /// The Rhai engine that runs game scripts, and the scripts it compiled. Operations count the
 /// same in every build, so a script over a limit fails the same way everywhere: a call runs at
 /// most `per_call` operations, and at most what its `Budget` has left.
@@ -110,7 +123,7 @@ impl ScriptHost {
 
     pub fn compile(&mut self, source: &str) -> Result<ScriptId, ScriptError> {
         let ast = self.parse(source)?;
-        let id = ScriptId(u32::try_from(self.scripts.len()).expect("scripts fit u32"));
+        let id = ScriptId::nth(self.scripts.len());
         self.scripts.push(ast);
         Ok(id)
     }
@@ -126,12 +139,11 @@ impl ScriptHost {
         self.engine.compile(source).map_err(ScriptError::Compile)
     }
 
-    /// Whether `script` defines a function `name` of `params` parameters, as a hook the engine
-    /// calls must be.
-    pub fn defines(&self, script: ScriptId, name: &str, params: usize) -> bool {
-        self.scripts[script.0 as usize]
+    /// The functions `script` defines, each by its name and its count of parameters.
+    pub fn functions(&self, script: ScriptId) -> impl Iterator<Item = (&str, usize)> {
+        self.scripts[script.index()]
             .iter_functions()
-            .any(|function| function.name == name && function.params.len() == params)
+            .map(|function| (function.name, function.params.len()))
     }
 
     /// Calls the function `hook` of `script` with `args`, drawing from `budget`. A call over its
@@ -152,7 +164,7 @@ impl ScriptHost {
         let result = self.engine.call_fn_with_options::<Dynamic>(
             CallFnOptions::new().eval_ast(false),
             &mut Scope::new(),
-            &self.scripts[script.0 as usize],
+            &self.scripts[script.index()],
             hook,
             args,
         );

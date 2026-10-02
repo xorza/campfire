@@ -1,4 +1,5 @@
 use bevy_ecs::resource::Resource;
+use bevy_ecs::world::World;
 use serde::{Deserialize, Serialize};
 
 use crate::sim_state::SimResource;
@@ -17,7 +18,7 @@ impl IdAllocator {
         id.get() < self.next
     }
 
-    pub fn allocate(&mut self) -> StableId {
+    pub const fn allocate(&mut self) -> StableId {
         let id = StableId::new(self.next);
         self.next = self.next.checked_add(1).expect("stable ids exhausted");
         id
@@ -26,4 +27,9 @@ impl IdAllocator {
 
 impl SimResource for IdAllocator {
     const NAME: &'static str = "sim.id_allocator";
+
+    // The restore checks it against the ids in use.
+    fn check(&self, _: &World) -> bool {
+        true
+    }
 }

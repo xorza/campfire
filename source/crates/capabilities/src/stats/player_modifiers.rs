@@ -1,19 +1,22 @@
 use bevy_ecs::resource::Resource;
+use bevy_ecs::world::World;
 use campfire_math::PlayerSlot;
 use campfire_sim::SimResource;
 use serde::{Deserialize, Serialize};
 
-use crate::stats::modifier_book::ModifierId;
+use crate::stats::modifier_book::ModifierBook;
+use crate::units::modifier_id::ModifierId;
+use crate::units::script_view::View;
 
 /// The modifiers each player holds for the units it owns, as an RTS's upgrades: by player, then
 /// by modifier, each once.
 #[derive(Resource, Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(transparent)]
-pub struct PlayerModifiers(Vec<PlayerModifier>);
+pub(crate) struct PlayerModifiers(Vec<PlayerModifier>);
 
 /// A modifier a player holds.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct PlayerModifier {
+pub(crate) struct PlayerModifier {
     pub player: PlayerSlot,
     pub modifier: ModifierId,
 }
@@ -38,4 +41,16 @@ impl PlayerModifiers {
 
 impl SimResource for PlayerModifiers {
     const NAME: &'static str = "stats.player_modifiers";
+
+    // A modifier the book lacks, or a player the session lacks, would be read past their places;
+    // `add` and `of` find a player's modifiers only in order, each once.
+    fn check(&self, world: &World) -> bool {
+        let book = world.get_resource::<ModifierBook>();
+        let view = world.get_non_send::<View>();
+        self.0.is_sorted_by(|a, b| a < b)
+            && self.0.iter().all(|held| {
+                book.is_some_and(|book| book.entry(held.modifier).is_some())
+                    && view.is_none_or(|view| view.has_player(held.player))
+            })
+    }
 }

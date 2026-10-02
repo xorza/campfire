@@ -1,24 +1,28 @@
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 
 use crate::stats::pool_data::PoolData;
 use crate::stats::pool_id::PoolId;
 use crate::stats::stat_book::StatBook;
+use crate::stats::stat_id::StatId;
 use crate::values::declared_name::DeclaredName;
 
 /// The pools the mode declares, by pool id: the place among the stats of each one's maximum and
 /// of its regen. Package data, not state.
 #[derive(Resource, Debug, Default)]
 pub(crate) struct PoolBook {
+    /// Shared with the script view, which names them to scripts.
+    names: Arc<[DeclaredName]>,
     pools: Vec<PoolStats>,
 }
 
 /// The places among the stats of a pool's maximum and of its regen a second.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct PoolStats {
-    pub(crate) max: u16,
-    pub(crate) regen: Option<u16>,
+    pub(crate) max: StatId,
+    pub(crate) regen: Option<StatId>,
 }
 
 impl PoolBook {
@@ -26,10 +30,11 @@ impl PoolBook {
     pub(crate) fn new(pools: &BTreeMap<DeclaredName, PoolData>, stats: &StatBook) -> PoolBook {
         let index = |stat| {
             stats
-                .index(stat)
+                .named(stat)
                 .expect("the load checked the pools' stats")
         };
         PoolBook {
+            names: pools.keys().cloned().collect(),
             pools: pools
                 .values()
                 .map(|pool| PoolStats {
@@ -38,6 +43,11 @@ impl PoolBook {
                 })
                 .collect(),
         }
+    }
+
+    /// The pools, by id.
+    pub(crate) fn names(&self) -> Arc<[DeclaredName]> {
+        Arc::clone(&self.names)
     }
 
     /// Each pool, with its stats.

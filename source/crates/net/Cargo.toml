@@ -6,7 +6,7 @@ license.workspace = true
 autotests = false
 
 [features]
-internals = ["dep:bevy_state", "dep:bevy_time"]
+internals = ["dep:bevy_state", "dep:bevy_time", "campfire-package/internals"]
 bench = ["internals", "dep:criterion"]
 
 [dependencies]
@@ -28,13 +28,16 @@ serde.workspace = true
 toml.workspace = true
 tracing.workspace = true
 
+# The integration tests read the test types `internals` gives, so a plain test run builds them.
 [dev-dependencies]
+campfire-net = { workspace = true, features = ["internals"] }
+campfire-capabilities = { workspace = true, features = ["internals"] }
 campfire-log = { workspace = true, features = ["internals"] }
+campfire-runner = { workspace = true, features = ["internals"] }
 
 [[test]]
 name = "tests"
 path = "tests/mod.rs"
-required-features = ["internals"]
 
 [[bench]]
 name = "rollback"

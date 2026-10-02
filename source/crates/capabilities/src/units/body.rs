@@ -1,4 +1,6 @@
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_sim::SimComponent;
 use serde::de::Error;
@@ -64,12 +66,17 @@ impl Body {
 
 impl SimComponent for Body {
     const NAME: &'static str = "units.body";
+
+    // Its decode bounds its radius; a layer only compares with another.
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }
 
 /// A snapshot is untrusted, so a radius `new` refuses fails to decode.
 impl<'de> Deserialize<'de> for Body {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Body, D::Error> {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         struct Fields {
             radius: Num,
             layer: Layer,
@@ -87,20 +94,28 @@ mod tests {
 
     #[test]
     fn a_body_is_a_positive_radius_up_to_64_m_on_a_layer() {
-        let num = |value| Num::from_int(value).unwrap();
-        assert_eq!(Body::new(num(64)).map(Body::radius), Some(num(64)));
+        assert_eq!(
+            Body::new(Num::int(64)).map(Body::radius),
+            Some(Num::int(64))
+        );
         assert_eq!(
             Body::new(Num::EPSILON).map(Body::radius),
             Some(Num::EPSILON)
         );
-        for radius in [Num::ZERO, num(-1), num(64) + Num::EPSILON] {
+        for radius in [Num::ZERO, Num::int(-1), Num::int(64) + Num::EPSILON] {
             assert_eq!(Body::new(radius), None, "{radius:?}");
         }
         assert_eq!(Body::radius_of(None), Num::ZERO);
-        assert_eq!(Body::radius_of(Body::new(num(2)).as_ref()), num(2));
+        assert_eq!(
+            Body::radius_of(Body::new(Num::int(2)).as_ref()),
+            Num::int(2)
+        );
         // On the first layer, unless placed on another; a unit with no body is on the first.
-        let air = Body::new(num(2)).unwrap().on(Layer::new(1));
-        assert_eq!(Body::layer_of(Body::new(num(2)).as_ref()), Layer::FIRST);
+        let air = Body::new(Num::int(2)).unwrap().on(Layer::new(1));
+        assert_eq!(
+            Body::layer_of(Body::new(Num::int(2)).as_ref()),
+            Layer::FIRST
+        );
         assert_eq!(Body::layer_of(Some(&air)), Layer::new(1));
         assert_eq!(Body::layer_of(None), Layer::FIRST);
         let decoded = postcard::from_bytes::<Body>(&postcard::to_allocvec(&air).unwrap());

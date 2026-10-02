@@ -11,6 +11,7 @@ campfire-math.workspace = true
 campfire-net.workspace = true
 campfire-package.workspace = true
 campfire-protocol.workspace = true
+campfire-runner.workspace = true
 campfire-sim.workspace = true
 
 bevy.workspace = true

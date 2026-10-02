@@ -15,7 +15,7 @@ blake3.workspace = true
 criterion = { workspace = true, optional = true }
 nostr.workspace = true
 postcard.workspace = true
-secp256k1.workspace = true
+secp256k1 = { workspace = true, features = ["serde"] }
 serde.workspace = true
 
 [[bench]]

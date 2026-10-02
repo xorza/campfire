@@ -1,15 +1,16 @@
 use campfire_math::Vec3;
 use campfire_sim::{Capability, Position};
 
-use crate::actions::action_book::Delivery;
+use crate::actions::action_data_field::ActionDataField;
+use crate::actions::delivery::DeliveryShape;
 use crate::deliveries::delivering::Delivering;
 use crate::projectiles::projectile_effect::{ProjectileEffect, Toward};
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::ctx::Ctx;
-use crate::scripts::effect::Effect;
-use crate::scripts::error::Checked;
+use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::role_set::RoleSet;
-use crate::scripts::script_api::{DataTable, MemberSpec};
+use crate::scripts::script_api::data_table::DataTable;
+use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::units::unit::Unit;
 
 /// The script API of `projectiles`: `ctx.projectile`, and the data of a projectile type.
@@ -21,7 +22,7 @@ impl ProjectilesApi {
         let projectile = MemberSpec::call(
             "projectile",
             "(from, direction) or (from, unit)",
-            "launches one more of the action's projectiles from `from`, along `direction` or homing on `unit`, its own cast",
+            "launches one more of the action's projectiles from `from`, its own cast: along `direction` for a line type, or homing on `unit` for a homing type",
         )
         .roles(RoleSet::ACTION)
         .capability(Capability::Projectiles);
@@ -34,7 +35,7 @@ impl ProjectilesApi {
         .bind(projectile, |ctx: &mut Ctx, from: Position, unit: Unit| {
             ProjectilesApi::launch(ctx, from, Toward::Unit(unit.id))
         })
-        .data(DataTable::Action, &["delivery"], &[])
+        .action_fields(ActionDataField::of(Some(Capability::Projectiles)))
         .data(
             DataTable::Delivery,
             &["projectile", "count", "spread_deg"],
@@ -56,9 +57,23 @@ impl ProjectilesApi {
     }
 
     /// Queues a projectile of the running action, which delivers projectiles, from its acting
-    /// unit.
+    /// unit; an error for a form its type does not fly in.
     fn launch(ctx: &Ctx, from: Position, toward: Toward) -> Checked<()> {
-        let by = Delivering::of(ctx, |delivery| matches!(delivery, Delivery::Projectile(_)))?;
-        ctx.queue(Effect::Projectile(ProjectileEffect { by, from, toward }))
+        let launcher = Delivering::of(ctx, |shape| {
+            matches!(shape, DeliveryShape::Projectile { .. })
+        })?;
+        let homes = matches!(
+            launcher.delivery.shape,
+            DeliveryShape::Projectile { homes: true, .. }
+        );
+        if homes != matches!(toward, Toward::Unit(_)) {
+            return Err(ApiError::OtherFlight.fail().into());
+        }
+        ctx.queue(ProjectileEffect {
+            by: launcher.by,
+            unit_type: launcher.delivery.unit_type,
+            from,
+            toward,
+        })
     }
 }

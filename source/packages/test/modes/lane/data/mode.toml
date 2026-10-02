@@ -53,9 +53,22 @@ damage_kind = "true"
 [actions.tower_attack]
 kind = "attack"
 targeting = "enemies"
-range = "7.75"
+range = "6.25"
 windup_ms = 150
 rate = "attack_speed"
 damage = "attack_damage"
 damage_kind = "true"
 delivery = { projectile = "tower_bolt" }
+
+# Modifiers no script gives, for the tests to give a hero: a slow that halves its move speed for a
+# second, and a stun that stops it for half a second.
+[modifiers.slow]
+duration_ms = 1000
+stats = { move_speed = { cut = "0.5" } }
+
+[modifiers.stun]
+duration_ms = 500
+tags = ["stunned"]
+
+[tags.stunned]
+blocks = ["move"]

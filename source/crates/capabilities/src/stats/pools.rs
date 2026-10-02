@@ -1,11 +1,13 @@
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
+use crate::stats::meter::Meter;
 use crate::stats::pool_cost::PoolCost;
 use crate::stats::pool_id::PoolId;
-use crate::values::meter::Meter;
 
 /// A unit's pools, by pool id: each an amount from 0 to its maximum, none where its type lists
 /// no such pool. A fixed array, so copying a unit's pools, as a rollback does every frame,
@@ -104,7 +106,7 @@ impl Pools {
     }
 
     /// The meter of `pool`, which it has.
-    fn meter(&mut self, pool: PoolId) -> &mut Meter {
+    const fn meter(&mut self, pool: PoolId) -> &mut Meter {
         self.0[pool.index()]
             .as_mut()
             .expect("a unit has the pool it pays from or takes from")
@@ -113,6 +115,12 @@ impl Pools {
 
 impl SimComponent for Pools {
     const NAME: &'static str = "stats.pools";
+
+    // A fixed array of every pool place, whose meters' decode keeps each amount within its maximum;
+    // a place the mode does not declare is never read.
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }
 
 #[cfg(any(test, feature = "internals"))]

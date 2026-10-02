@@ -4,8 +4,9 @@ use serde::Deserialize;
 
 use crate::stats::pool_data::PoolData;
 use crate::stats::pool_id::PoolId;
-use crate::stats::stat::Stat;
+use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
+use crate::values::stat::Stat;
 
 /// The mode's `[combat]` section: its damage kinds, its assist window, the pool that is life,
 /// and the stats its damage rules read.
@@ -34,11 +35,14 @@ pub struct Leech {
 }
 
 impl CombatRules {
+    /// The most damage kinds it declares.
+    pub const DAMAGE_KIND_LIMIT: usize = DamageKind::LIMIT;
+
     /// The id among `pools` of the life pool it names, which the load checked `pools` declares;
     /// `None` when it names none.
     pub fn life_pool(&self, pools: &BTreeMap<DeclaredName, PoolData>) -> Option<PoolId> {
         let life = self.life.as_ref()?;
-        Some(PoolId::of(pools, life).expect("the load checked the life pool"))
+        Some(PoolId::named(pools, life).expect("the load checked the life pool"))
     }
 
     /// Every stat its rules read.

@@ -1,10 +1,11 @@
 use std::collections::BTreeMap;
 
+use campfire_math::Num;
 use serde::Deserialize;
 
-use crate::stats::stat::Stat;
 use crate::values::ranked::Ranked;
 use crate::values::scalar::Scalar;
+use crate::values::stat::Stat;
 
 /// A param, as `ctx.p` reads it: one value or one per rank, or a scaling table, `base +
 /// per_level × (level − 1) + Σ ratio × stat + Σ bonus ratio × (stat − type's value)` of the
@@ -22,11 +23,12 @@ pub enum Param {
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 pub struct Scaling {
     pub base: Ranked<Scalar>,
-    pub per_level: Option<Scalar>,
-    #[serde(default)]
-    pub bonus: BTreeMap<Stat, Scalar>,
-    #[serde(flatten)]
-    pub ratios: BTreeMap<Stat, Scalar>,
+    #[serde(default, deserialize_with = "Scalar::num")]
+    pub per_level: Num,
+    #[serde(default, deserialize_with = "Scalar::nums")]
+    pub bonus: BTreeMap<Stat, Num>,
+    #[serde(flatten, deserialize_with = "Scalar::nums")]
+    pub ratios: BTreeMap<Stat, Num>,
 }
 
 impl Param {
@@ -42,7 +44,7 @@ impl Param {
     }
 
     /// How many ranks it has values for; `None` when it fits any rank.
-    pub fn ranks(&self) -> Option<usize> {
+    pub const fn ranks(&self) -> Option<usize> {
         match self {
             Param::Ranked(ranked) => ranked.ranks(),
             Param::Scaling(scaling) => scaling.base.ranks(),

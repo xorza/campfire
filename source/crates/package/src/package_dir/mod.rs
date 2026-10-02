@@ -1,19 +1,15 @@
 use std::collections::BTreeMap;
 use std::fs;
-use std::io;
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
-use campfire_content::Fingerprint;
 use campfire_content::PackagePath;
-use serde::Serialize;
-use serde::de::DeserializeOwned;
-use sha2::{Digest, Sha256};
 
 use crate::error::ContentError;
+use crate::package_files::PackageFiles;
 
-/// A package's files: on disk, as a workspace holds them before a package is built, or in
-/// memory, as a test builds them. Both read, list and fingerprint the same bytes the same way.
+/// Where a package's files are: on disk, as a workspace holds them before a package is built, or
+/// in memory, as a test builds them. Both read into the same `PackageFiles`.
 #[derive(Debug, Clone)]
 pub struct PackageDir {
     root: PathBuf,
@@ -31,6 +27,11 @@ enum Source {
 impl PackageDir {
     /// The file every package has at its root.
     pub const MANIFEST: &str = "manifest.toml";
+
+    /// One of the engine's paths in a package, as `PackageFiles` reads it.
+    pub(crate) fn engine_path(path: &str) -> PackagePath {
+        PackagePath::parse(path).expect("the engine's paths are in the package")
+    }
 
     /// The package on disk at `root`.
     pub fn new(root: impl Into<PathBuf>) -> PackageDir {
@@ -69,94 +70,28 @@ impl PackageDir {
         &self.root
     }
 
-    /// The package's fingerprint, from every file under its root. A link or any other entry that
-    /// is neither a file nor a directory fails, as does a path that is not UTF-8.
-    pub fn fingerprint(&self) -> Result<Fingerprint, ContentError> {
-        let mut files = Vec::new();
-        self.walk(&self.root, &mut files)?;
-        let mut rows = Vec::with_capacity(files.len());
-        for file in files {
-            let bytes = self.read(&file.path).map_err(|error| ContentError::Scan {
-                dir: file.path.clone(),
-                error,
-            })?;
-            rows.push(FileRow {
-                path: file.relative,
-                size: u64::try_from(bytes.len()).expect("a file length fits u64"),
-                sha256: Sha256::digest(&bytes).into(),
-            });
-        }
-        debug_assert!(rows.is_sorted_by(|a, b| a.path.as_bytes() < b.path.as_bytes()));
-        let list = postcard::to_allocvec(&rows).expect("a file list always encodes");
-        Ok(Fingerprint::new(Sha256::digest(list).into()))
-    }
-
-    /// The files under the directory `dir` of the package, sorted by path; none when it has no
-    /// such directory.
-    pub(crate) fn files_under(&self, dir: &str) -> Result<Vec<PackagePath>, ContentError> {
-        let root = self.root.join(dir);
-        let exists = match &self.source {
-            Source::Disk => root.is_dir(),
-            Source::Memory(files) => files.keys().any(|path| path.starts_with(&root)),
-        };
-        if !exists {
-            return Ok(Vec::new());
-        }
-        let mut files = Vec::new();
-        self.walk(&root, &mut files)?;
-        Ok(files
-            .iter()
-            .map(|file| {
-                PackagePath::parse(&file.relative).expect("a walked path stays in the package")
-            })
-            .collect())
-    }
-
-    /// The TOML data file at `path`, read as a `T`.
-    pub fn read_data<T: DeserializeOwned>(&self, path: &PackagePath) -> Result<T, ContentError> {
-        toml::from_str(&self.read_text(path)?).map_err(|error| ContentError::Data {
-            path: path.clone(),
-            error,
-        })
-    }
-
-    /// The text of the file at `path`, such as a script's source.
-    pub fn read_text(&self, path: &PackagePath) -> Result<String, ContentError> {
-        let io = |error| ContentError::Io {
-            path: path.clone(),
-            error,
-        };
-        let bytes = self.read(&self.root.join(path.as_path())).map_err(io)?;
-        String::from_utf8(bytes)
-            .map_err(|error| io(io::Error::new(io::ErrorKind::InvalidData, error)))
-    }
-
-    /// The bytes of the file at `path`, from the root of the files.
-    fn read(&self, path: &Path) -> io::Result<Vec<u8>> {
+    /// Every file under the package's root, read once into memory. A link or any other entry
+    /// that is neither a file nor a directory fails, as does a path that is not UTF-8 or that a
+    /// package path does not spell.
+    pub fn read(&self) -> Result<PackageFiles, ContentError> {
+        let mut files = BTreeMap::new();
         match &self.source {
-            Source::Disk => fs::read(path),
-            Source::Memory(files) => files
-                .get(path)
-                .cloned()
-                .ok_or_else(|| io::Error::from(io::ErrorKind::NotFound)),
-        }
-    }
-
-    /// Every file under `dir`, sorted by its path from the root in bytes.
-    fn walk(&self, dir: &Path, files: &mut Vec<Listed>) -> Result<(), ContentError> {
-        let start = files.len();
-        self.walk_unsorted(dir, files)?;
-        files[start..].sort_unstable_by(|a, b| a.relative.as_bytes().cmp(b.relative.as_bytes()));
-        Ok(())
-    }
-
-    fn walk_unsorted(&self, dir: &Path, files: &mut Vec<Listed>) -> Result<(), ContentError> {
-        if let Source::Memory(tree) = &self.source {
-            for path in tree.keys().filter(|path| path.starts_with(dir)) {
-                files.push(self.listed(path.clone())?);
+            Source::Disk => self.read_disk(&self.root, &mut files)?,
+            Source::Memory(tree) => {
+                for (path, bytes) in tree.iter().filter(|(path, _)| path.starts_with(&self.root)) {
+                    files.insert(self.package_path(path)?, bytes.clone());
+                }
             }
-            return Ok(());
         }
+        Ok(PackageFiles::new(files))
+    }
+
+    /// Reads every file under `dir` on disk into `files`.
+    fn read_disk(
+        &self,
+        dir: &Path,
+        files: &mut BTreeMap<PackagePath, Vec<u8>>,
+    ) -> Result<(), ContentError> {
         let io = |error| ContentError::Scan {
             dir: dir.to_owned(),
             error,
@@ -166,31 +101,32 @@ impl PackageDir {
             let path = entry.path();
             let kind = entry.file_type().map_err(io)?;
             if kind.is_dir() {
-                self.walk_unsorted(&path, files)?;
+                self.read_disk(&path, files)?;
                 continue;
             }
             if !kind.is_file() {
                 return Err(ContentError::NotAFile(path));
             }
-            files.push(self.listed(path)?);
+            let bytes = fs::read(&path).map_err(|error| ContentError::Scan {
+                dir: path.clone(),
+                error,
+            })?;
+            files.insert(self.package_path(&path)?, bytes);
         }
         Ok(())
     }
 
-    /// The file at `path`, under the root, as a listing names it.
-    fn listed(&self, path: PathBuf) -> Result<Listed, ContentError> {
+    /// The package path of the file at `path`, under the root.
+    fn package_path(&self, path: &Path) -> Result<PackagePath, ContentError> {
         let relative = path
             .strip_prefix(&self.root)
-            .expect("a listed path is under the root");
+            .expect("a read path is under the root");
         let mut names = Vec::new();
         for component in relative.components() {
             let name = component.as_os_str().to_str();
-            names.push(name.ok_or_else(|| ContentError::NotUtf8(path.clone()))?);
+            names.push(name.ok_or_else(|| ContentError::NotUtf8(path.to_owned()))?);
         }
-        Ok(Listed {
-            relative: names.join("/"),
-            path,
-        })
+        PackagePath::parse(&names.join("/")).ok_or_else(|| ContentError::NotPath(path.to_owned()))
     }
 }
 
@@ -210,21 +146,41 @@ fn normal(path: &Path) -> PathBuf {
     normal
 }
 
-/// One row of a package's file list, as its fingerprint hashes it.
-#[derive(Debug, Serialize)]
-struct FileRow {
-    /// Relative to the package root, with `/` separators.
-    path: String,
-    size: u64,
-    sha256: [u8; 32],
-}
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use std::collections::BTreeMap;
+    use std::fs;
+    use std::path::{Path, PathBuf};
 
-/// A file found under a package's root: its path from the root, with `/` separators, and its path
-/// in its source.
-#[derive(Debug)]
-struct Listed {
-    relative: String,
-    path: PathBuf,
+    use crate::package_dir::PackageDir;
+
+    impl PackageDir {
+        /// `path` within the workspace's `packages` directory, where the tests and the checks
+        /// find the test and reference packages.
+        pub fn workspace(path: &str) -> PathBuf {
+            Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packages")).join(path)
+        }
+
+        /// Every file under `path` within the workspace's `packages` directory, by its path from
+        /// there, read from disk: a tree for `PackageDir::in_memory`.
+        pub fn workspace_tree(path: &str) -> BTreeMap<PathBuf, Vec<u8>> {
+            let mut files = BTreeMap::new();
+            PackageDir::read_tree(&PackageDir::workspace(path), Path::new(""), &mut files);
+            files
+        }
+
+        fn read_tree(dir: &Path, at: &Path, files: &mut BTreeMap<PathBuf, Vec<u8>>) {
+            for entry in fs::read_dir(dir).unwrap() {
+                let entry = entry.unwrap();
+                let path = at.join(entry.file_name());
+                if entry.file_type().unwrap().is_dir() {
+                    PackageDir::read_tree(&entry.path(), &path, files);
+                } else {
+                    files.insert(path, fs::read(entry.path()).unwrap());
+                }
+            }
+        }
+    }
 }
 
 #[cfg(test)]

@@ -4,24 +4,24 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::Local;
 use bevy_ecs::world::World;
 use campfire_script::rhai::Dynamic;
-use campfire_sim::{EntityIndex, SimSet, SimTick};
+use campfire_sim::{EntityIndex, SimSet, SimTick, TickRate};
 
+use crate::abilities::effect_lists::EffectLists;
 use crate::actions::action_book::ActionBook;
 use crate::combat::CombatSet;
-use crate::deliveries::delivered::Delivered;
-use crate::deliveries::hit_handle::HitHandle;
+use crate::deliveries::delivered::{Delivered, Reach};
+use crate::scripts::call_start::CallStart;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
-use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
+use crate::units::hit_handle::HitHandle;
 use crate::units::owner::Owner;
 
 pub(crate) mod delivered;
+pub(crate) mod deliveries_api;
 pub(crate) mod delivering;
 pub(crate) mod delivery_spawner;
-pub(crate) mod hit;
-pub(crate) mod hit_handle;
 
 /// The hits and ends of this tick's deliveries whose action's hooks run, in the order they
 /// happened; and the delivery units that ended, which despawn once the hooks ran, so a hook still
@@ -83,8 +83,9 @@ fn deliver(
 
 /// Runs the hooks of `due`, in order: each with its action's params at its rank, its caster,
 /// `()` once gone, its target, `()` for an end, and its hit, from its caster's player's pool, or
-/// the think pool. A hook its action's script does not define does not run; a failed call
-/// changes nothing and is recorded.
+/// the think pool. The action's list for the hook queues first, to the unit reached; a hook its
+/// action's script does not define does not run, and its list applies alone. A failed call
+/// changes nothing, its list included, and is recorded.
 fn run_hooks(world: &mut World, due: &[Delivered]) {
     if due.is_empty() {
         return;
@@ -95,55 +96,61 @@ fn run_hooks(world: &mut World, due: &[Delivered]) {
     let now = world.resource::<SimTick>().start();
     ScriptBatch::run(world, ctx.view(), |batch| {
         for delivered in due {
+            let Delivered { by, reach, hit } = *delivered;
+            let hook = reach.hook();
             let book = batch.world().resource::<ActionBook>();
             let action = book
-                .get(delivered.action)
+                .get(by.action)
                 .expect("a delivery's action is in the book");
-            let Some(script) = action.hook(delivered.hook) else {
-                continue;
-            };
+            let script = action.hook(hook);
             let package = action.package;
+            let lists = batch.world().get_resource::<EffectLists>();
+            let list = lists.map_or(&[][..], |lists| lists.of(by.action, hook));
+            if script.is_none() && list.is_empty() {
+                continue;
+            }
             let view = ctx.view();
-            let caster = view
-                .unit(delivered.source)
-                .map_or(Dynamic::UNIT, Dynamic::from);
-            let target = delivered
-                .reached
+            let caster = view.unit(by.source).map_or(Dynamic::UNIT, Dynamic::from);
+            let target = reach
+                .unit()
                 .and_then(|id| view.unit(id))
                 .map_or(Dynamic::UNIT, Dynamic::from);
             let owner = batch
                 .world()
                 .resource::<EntityIndex>()
-                .get(delivered.source)
+                .get(by.source)
                 .and_then(|entity| batch.world().get::<Owner>(entity))
                 .map(|owner| owner.slot());
-            let begun = ctx.frame().begin_cast(
-                batch.world(),
-                delivered.action,
-                delivered.rank,
-                delivered.source,
-            );
+            let start = CallStart {
+                hit: Some(hit),
+                ..CallStart::cast(by.action, by.rank, by.source, package)
+            };
+            let begun = ctx.frame().begin(batch.world(), start);
             if let Err(error) = begun {
-                batch.record(Some(delivered.source), delivered.hook, error);
+                batch.record(Some(by.source), hook, error);
                 continue;
             }
-            view.set_caller(package);
+            let world = batch.world();
+            let list = world
+                .get_resource::<EffectLists>()
+                .map_or(&[][..], |lists| lists.of(by.action, hook));
+            let rate = *world.resource::<TickRate>();
+            EffectLists::queue(list, &mut ctx.frame(), reach.unit(), rate);
+            let Some(script) = script else {
+                ctx.apply(batch.world(), now);
+                continue;
+            };
             let pool = owner.map_or(Pool::Think, Pool::Player);
-            let hit = Dynamic::from(HitHandle::new(delivered.hit, view.clone()));
-            let called = match delivered.hook {
-                Hook::OnHit => batch.call(
-                    pool,
-                    script,
-                    Hook::OnHit,
-                    (ctx.clone(), caster, target, hit),
-                ),
-                _ => batch.call(pool, script, Hook::OnEnd, (ctx.clone(), caster, hit)),
+            let hit = Dynamic::from(HitHandle::new(hit, view.clone()));
+            let called = match reach {
+                Reach::Hit(_) => batch.call(pool, script, hook, (ctx.clone(), caster, target, hit)),
+                Reach::End => batch.call(pool, script, hook, (ctx.clone(), caster, hit)),
             };
             match called {
                 Ok(_) => ctx.apply(batch.world(), now),
                 Err(error) => {
                     let error = CallError::from_script(error);
-                    batch.record(Some(delivered.source), delivered.hook, error);
+                    batch.record(Some(by.source), hook, error);
                 }
             }
         }

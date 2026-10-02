@@ -2,11 +2,13 @@ use bevy_ecs::entity::Entity;
 use campfire_math::Num;
 use campfire_sim::StableId;
 
-use crate::scripts::frame::Frame;
 use crate::stats::live_param::LiveParam;
+use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifiers::Modifiers;
+use crate::stats::param_book::ParamBook;
 use crate::stats::param_source::ParamSource;
 use crate::stats::stat_book::StatBook;
+use crate::stats::stat_id::StatId;
 use crate::stats::stat_op::StatOp;
 use crate::stats::stat_totals::StatTotals;
 use crate::units::tag_set::TagSet;
@@ -35,17 +37,20 @@ pub(crate) struct Refreshing {
 }
 
 /// A live change of the stat at `stat` of the refreshing unit at `unit`, by `op`, times
-/// `stacks`: `live` of `source` at `rank`, or `fallback` when it does not resolve.
+/// `stacks`: `live` of `source` at `rank`, or `value`, the value it last had, when it does not
+/// resolve or its source is gone; then the value this refresh computes, which goes back to the
+/// share at `share` of the unit's modifiers.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct LiveTerm {
-    unit: u32,
-    stat: u16,
+pub(crate) struct LiveTerm {
+    pub(crate) unit: u32,
+    stat: StatId,
     op: StatOp,
     stacks: u32,
     live: LiveParam,
     rank: u8,
     source: Option<StableId>,
-    fallback: Num,
+    pub(crate) share: u32,
+    pub(crate) value: Num,
 }
 
 impl RefreshScratch {
@@ -58,12 +63,13 @@ impl RefreshScratch {
         self.lives.clear();
     }
 
-    /// Adds `unit`, carrying `modifiers`, of which those whose tags `takes_effect` lets act
-    /// change its stats: its totals before its live changes, and its live changes. Whether it
-    /// carries a live change.
+    /// Adds `unit`, carrying `modifiers`, of which those with a stack whose tags in
+    /// `modifier_book` `takes_effect` lets act change its stats, as their changes there say: its
+    /// totals before its live changes, and its live changes. Whether it carries a live change.
     pub(crate) fn add(
         &mut self,
         book: &StatBook,
+        modifier_book: &ModifierBook,
         unit: Refreshing,
         modifiers: Option<&Modifiers>,
         takes_effect: impl Fn(TagSet) -> bool,
@@ -74,66 +80,86 @@ impl RefreshScratch {
         book.totals(unit.unit_type, unit.level, &mut self.totals);
         let mut live = false;
         let held = modifiers.into_iter().flat_map(Modifiers::iter);
-        for instance in held.filter(|instance| takes_effect(instance.tags)) {
-            for share in &instance.stats {
+        let mut first_share = 0;
+        for instance in held {
+            let shares = first_share..first_share + instance.shares.len();
+            first_share = shares.end;
+            let entry = modifier_book.get(instance.id);
+            if instance.stacks == 0 || !takes_effect(entry.tags) {
+                continue;
+            }
+            for ((share, spec), share_at) in
+                instance.shares.iter().zip(&entry.spec.stats).zip(shares)
+            {
                 let Some(param) = share.live else {
                     let change = i128::from(share.value.to_bits()) * i128::from(instance.stacks);
-                    self.totals[row + usize::from(share.stat)].change(share.op, change);
+                    self.totals[row + spec.stat.index()].change(spec.op, change);
                     continue;
                 };
                 live = true;
                 self.lives.push(LiveTerm {
                     unit: at,
-                    stat: share.stat,
-                    op: share.op,
+                    stat: spec.stat,
+                    op: spec.op,
                     stacks: instance.stacks,
                     live: param,
                     rank: instance.rank,
                     source: instance.source,
-                    fallback: share.value,
+                    share: u32::try_from(share_at).expect("a unit's shares fit u32"),
+                    value: share.value,
                 });
             }
         }
         live
     }
 
+    /// The live changes, each with the value the last compute gave it.
+    pub(crate) fn lives(&self) -> &[LiveTerm] {
+        &self.lives
+    }
+
     /// Computes every unit's values, each stat for every unit in `book`'s order: first its live
-    /// changes, each `frame`'s live param of its source, a refreshing unit as computed so far or
-    /// another as `other` gives it, its fallback when it does not resolve; then the stat's value
-    /// from its totals.
+    /// changes, each live param of its source in `params`, a refreshing unit as computed so far or
+    /// another as `other` gives it, the value it last had when it does not resolve or its source
+    /// is gone; then the stat's value from its totals.
     pub(crate) fn compute<'q>(
         &mut self,
         book: &StatBook,
-        frame: Option<&Frame>,
+        params: &ParamBook,
         other: impl Fn(StableId) -> Option<ParamSource<'q>>,
     ) {
         let count = usize::from(book.len());
         self.by_id.extend((0..).take(self.units.len()));
         let units = &self.units;
         self.by_id.sort_unstable_by_key(|&at| units[at as usize].id);
-        self.lives.sort_by_key(|term| book.position(term.stat));
+        self.lives
+            .sort_unstable_by_key(|term| book.position(term.stat));
         self.values.resize(self.units.len() * count, Num::ZERO);
         let mut next = 0;
         for &stat in book.order() {
             while let Some(&term) = self.lives.get(next).filter(|term| term.stat == stat) {
-                next += 1;
-                let source = term.source.and_then(|id| {
-                    let Some(at) = self.find(id) else {
-                        return other(id);
-                    };
-                    let unit = self.units[at];
-                    let values = &self.values[at * count..(at + 1) * count];
-                    Some(ParamSource::new(book, unit.unit_type, unit.level, values))
+                let source = term.source.map(|id| match self.find(id) {
+                    Some(at) => {
+                        let unit = self.units[at];
+                        let values = &self.values[at * count..(at + 1) * count];
+                        Some(ParamSource::new(book, unit.unit_type, unit.level, values))
+                    }
+                    None => other(id),
                 });
-                let value = frame
-                    .and_then(|frame| frame.live_value(term.live, term.rank, source.as_ref()))
-                    .unwrap_or(term.fallback);
+                let value = match source {
+                    Some(None) => None,
+                    Some(Some(source)) => params.live_value(term.live, term.rank, Some(&source)),
+                    None => params.live_value(term.live, term.rank, None),
+                }
+                .unwrap_or(term.value);
+                self.lives[next].value = value;
+                next += 1;
                 let change = i128::from(value.to_bits()) * i128::from(term.stacks);
-                let at = term.unit as usize * count + usize::from(stat);
+                let at = term.unit as usize * count + stat.index();
                 self.totals[at].change(term.op, change);
             }
             for unit in 0..self.units.len() {
-                let at = unit * count + usize::from(stat);
+                let at = unit * count + stat.index();
                 self.values[at] = book.value(stat, self.totals[at]);
             }
         }

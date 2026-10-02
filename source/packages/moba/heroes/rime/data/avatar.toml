@@ -1,4 +1,4 @@
-name = "Rime"
+name = "hero-name"
 tags = ["marksman"]
 pools = ["health", "mana"]
 tracks = ["level"]
@@ -42,13 +42,16 @@ slow_ms = 2000
 script = "scripts/chill_arrows.rhai"
 
 [actions.fan_of_frost]
-script = "scripts/fan_of_frost.rhai"
 targeting = "direction"
 range = "12.0"
 cooldown_ms = [16000, 13000, 10000, 7000, 4000]
 cost = { mana = 60 }
 windup_ms = 250
 delivery = { projectile = "frost_arrow", count = 7, spread_deg = "57.5" }
+on_hit = [
+    { damage = { amount = { param = "damage" }, kind = "physical" } },
+    { modifier = { id = "slow", duration_ms = { param = "slow_ms" } } },
+]
 
 [actions.fan_of_frost.params]
 damage = { base = [40, 50, 60, 70, 80], attack_damage = "1.0" }

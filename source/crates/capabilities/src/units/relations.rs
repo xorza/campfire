@@ -1,9 +1,14 @@
+use std::array;
+
 use bevy_ecs::resource::Resource;
+use bevy_ecs::world::World;
 use campfire_sim::SimResource;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::units::script_view::View;
 use crate::units::team::Team;
+use crate::units::team_set::TeamSet;
 use crate::values::attitude::Attitude;
 
 /// How the match's teams regard each other, and which friendly pairs share vision: state, which
@@ -11,7 +16,7 @@ use crate::values::attitude::Attitude;
 /// friendly; a team is friendly to itself.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
-pub(crate) struct Relations {
+pub struct Relations {
     /// The pairs that differ from the default, the lower team first, sorted by their teams.
     pairs: Vec<RelationPair>,
 }
@@ -78,6 +83,29 @@ impl Relations {
             .map(|pair| (pair.a, pair.b))
     }
 
+    /// The teams that see as one with `team`: those it shares vision with, those they share it
+    /// with, and so on, `team` among them.
+    pub(crate) fn vision_group(&self, team: Team) -> TeamSet {
+        let mut root: [u8; Team::LIMIT] =
+            array::from_fn(|at| u8::try_from(at).expect("a team index fits u8"));
+        let find = |root: &mut [u8; Team::LIMIT], mut at: u8| {
+            while root[usize::from(at)] != at {
+                let up = root[usize::from(at)];
+                root[usize::from(at)] = root[usize::from(up)];
+                at = up;
+            }
+            at
+        };
+        for (a, b) in self.vision_pairs() {
+            let (a, b) = (find(&mut root, a.index()), find(&mut root, b.index()));
+            root[usize::from(a.max(b))] = a.min(b);
+        }
+        let own = find(&mut root, team.index());
+        (0..=u8::MAX)
+            .filter(|&at| find(&mut root, at) == own)
+            .fold(TeamSet::NONE, |group, at| group.with(Team::new(at)))
+    }
+
     fn find(&self, of: Team, other: Team) -> Result<usize, usize> {
         let key = (of.min(other), of.max(other));
         self.pairs
@@ -87,6 +115,15 @@ impl Relations {
 
 impl SimResource for Relations {
     const NAME: &'static str = "units.relations";
+
+    // A relation of a team the mode lacks would join it to a vision group of the mode's teams.
+    fn check(&self, world: &World) -> bool {
+        world.get_non_send::<View>().is_none_or(|view| {
+            self.pairs
+                .iter()
+                .all(|pair| view.has_team(pair.a) && view.has_team(pair.b))
+        })
+    }
 }
 
 /// A snapshot is untrusted, so pairs out of order, of a team with itself, or that are the
@@ -106,6 +143,23 @@ impl<'de> Deserialize<'de> for Relations {
             ));
         }
         Ok(Relations { pairs })
+    }
+}
+
+#[cfg(any(test, feature = "internals"))]
+pub(crate) mod internals {
+    use bevy_ecs::world::World;
+
+    use crate::units::relations::Relations;
+    use crate::units::team::Team;
+    use crate::values::attitude::Attitude;
+
+    /// Sets how the two teams of the match in `world` regard each other, as `ctx.set_relation`
+    /// does, their vision as it was.
+    pub fn set_relation(world: &mut World, of: Team, other: Team, attitude: Attitude) {
+        world
+            .resource_mut::<Relations>()
+            .set_attitude(of, other, attitude);
     }
 }
 

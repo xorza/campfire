@@ -28,7 +28,7 @@ pub struct ProjectileData {
 /// fails to read.
 impl<'de> Deserialize<'de> for ProjectileData {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<ProjectileData, D::Error> {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         #[serde(deny_unknown_fields)]
         struct Fields {
             speed: Scalar,
@@ -57,13 +57,13 @@ impl<'de> Deserialize<'de> for ProjectileData {
             Some(width) => at_least(width, Num::ZERO)
                 .ok_or_else(|| D::Error::custom("a projectile's width is not negative"))?,
         };
-        let range = match fields.range {
-            None => None,
-            Some(range) => Some(
+        let range = fields
+            .range
+            .map(|range| {
                 at_least(range, Num::ZERO)
-                    .ok_or_else(|| D::Error::custom("a projectile's range is not negative"))?,
-            ),
-        };
+                    .ok_or_else(|| D::Error::custom("a projectile's range is not negative"))
+            })
+            .transpose()?;
         Ok(ProjectileData {
             speed,
             width,
@@ -76,5 +76,31 @@ impl<'de> Deserialize<'de> for ProjectileData {
             sight_radius: fields.sight_radius,
             collide: fields.collide,
         })
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use campfire_math::Num;
+
+    use crate::projectiles::projectile_data::ProjectileData;
+
+    impl ProjectileData {
+        /// A projectile of `speed` m/s and nothing more, as a section that names its speed alone
+        /// reads: no width, its action's range, along a line, through what it hits.
+        pub(crate) const fn flying(speed: Num) -> ProjectileData {
+            ProjectileData {
+                speed,
+                width: Num::ZERO,
+                range: None,
+                homing: false,
+                stop_on_hit: false,
+                once_per_cast: false,
+                hits: None,
+                gravity: None,
+                sight_radius: None,
+                collide: None,
+            }
+        }
     }
 }

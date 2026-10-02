@@ -3,9 +3,8 @@ use std::fmt;
 use crate::combat::combat_event::CombatEvent;
 use crate::scripts::script_batch::ScriptBatch;
 
-/// What answers each combat event: the hooks of the modifiers that hear it, which the
-/// `abilities` capability runs, as their `ctx` is the one ability scripts get. Package data,
-/// not state.
+/// What answers each combat event: the hooks of the modifiers that hear it, which
+/// `ModifierHooks` runs with the `ctx` ability scripts get. Package data, not state.
 pub(crate) struct CombatEvents(Box<HearFn>);
 
 type HearFn = dyn Fn(&mut ScriptBatch<'_>, CombatEvent);

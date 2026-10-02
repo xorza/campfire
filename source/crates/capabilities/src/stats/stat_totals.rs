@@ -23,11 +23,12 @@ impl StatTotals {
 
     /// Adds a change of `change` bits by `op`: an add or a percent sums, and only the largest cut
     /// counts.
-    pub(crate) fn change(&mut self, op: StatOp, change: i128) {
+    pub(crate) const fn change(&mut self, op: StatOp, change: i128) {
         match op {
             StatOp::Add => self.add += change,
             StatOp::Pct => self.pct += change,
-            StatOp::Cut => self.cut = self.cut.max(change),
+            StatOp::Cut if change > self.cut => self.cut = change,
+            StatOp::Cut => {}
         }
     }
 

@@ -9,6 +9,7 @@ autotests = false
 campfire-log.workspace = true
 campfire-package.workspace = true
 campfire-protocol.workspace = true
+campfire-math.workspace = true
 campfire-runner.workspace = true
 campfire-sim.workspace = true
 
@@ -17,8 +18,11 @@ tracing.workspace = true
 
 [dev-dependencies]
 campfire-log = { workspace = true, features = ["internals"] }
+campfire-runner = { workspace = true, features = ["internals"] }
 campfire-capabilities.workspace = true
-campfire-math.workspace = true
+campfire-package = { workspace = true, features = ["internals"] }
+
+tempfile.workspace = true
 
 [lints]
 workspace = true

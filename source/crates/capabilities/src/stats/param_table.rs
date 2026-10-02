@@ -3,16 +3,18 @@ use std::collections::BTreeMap;
 use campfire_math::Num;
 
 use crate::stats::param_source::ParamSource;
-use crate::stats::stat::Stat;
+use crate::stats::stat_id::StatId;
+use crate::values::declared_name::DeclaredName;
 use crate::values::name_table::NameTable;
 use crate::values::param::Param;
 use crate::values::ranked::Ranked;
 use crate::values::scalar::Scalar;
+use crate::values::stat::Stat;
 
 /// The params of the abilities or the modifiers of a match, one run of names for each owner, as
 /// a match reads them: a scaling param's stats as places among the stats, its ratios in one
 /// buffer.
-#[derive(Debug, Default)]
+#[derive(Debug, Clone, Default)]
 pub(crate) struct ParamTable {
     params: NameTable<ParamValue>,
     ratios: Vec<StatRatio>,
@@ -39,7 +41,7 @@ struct Scaled {
 /// `bonus` the part of it above its type's value.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct StatRatio {
-    stat: u16,
+    stat: StatId,
     ratio: Num,
     bonus: bool,
 }
@@ -49,8 +51,8 @@ impl ParamTable {
     /// gives its index. Every value is a number, which the load checked.
     pub(crate) fn push(
         &mut self,
-        params: &BTreeMap<String, Param>,
-        stat: impl Fn(&Stat) -> u16,
+        params: &BTreeMap<DeclaredName, Param>,
+        stat: impl Fn(&Stat) -> StatId,
     ) -> usize {
         let mut values = Vec::with_capacity(params.len());
         for (name, param) in params {
@@ -58,23 +60,20 @@ impl ParamTable {
                 Param::Ranked(ranked) => ParamValue::Ranked(ranked.clone()),
                 Param::Scaling(scaling) => {
                     let first = self.ratios.len();
-                    let ratio =
-                        |value: Scalar| value.to_num().expect("the load checked the ratios");
-                    let whole = scaling.ratios.iter().map(|(name, &value)| StatRatio {
+                    let whole = scaling.ratios.iter().map(|(name, &ratio)| StatRatio {
                         stat: stat(name),
-                        ratio: ratio(value),
+                        ratio,
                         bonus: false,
                     });
-                    let bonus = scaling.bonus.iter().map(|(name, &value)| StatRatio {
+                    let bonus = scaling.bonus.iter().map(|(name, &ratio)| StatRatio {
                         stat: stat(name),
-                        ratio: ratio(value),
+                        ratio,
                         bonus: true,
                     });
                     self.ratios.extend(whole.chain(bonus));
-                    let per_level = scaling.per_level.map_or(Some(Num::ZERO), Scalar::to_num);
                     ParamValue::Scaled(Scaled {
                         base: scaling.base.clone(),
-                        per_level: per_level.expect("the load checked the gain a level"),
+                        per_level: scaling.per_level,
                         ratios_start: u32::try_from(first).expect("ratios fit u32"),
                         ratios_end: u32::try_from(self.ratios.len()).expect("ratios fit u32"),
                     })
@@ -86,8 +85,13 @@ impl ParamTable {
     }
 
     /// The place of param `name` in run `run`.
-    pub(crate) fn find(&self, run: usize, name: &str) -> Option<usize> {
-        self.params.find(run, name)
+    pub(crate) fn named(&self, run: usize, name: &str) -> Option<usize> {
+        self.params.named(run, name)
+    }
+
+    /// Whether it holds run `run`.
+    pub(crate) const fn has_run(&self, run: usize) -> bool {
+        self.params.has_run(run)
     }
 
     /// How many params run `run` holds.
@@ -129,9 +133,43 @@ impl ParamTable {
                 wide = wide.checked_add(i128::from(ratio.ratio.to_bits()).checked_mul(stat)?)?;
             }
         }
-        let magnitude = (wide.unsigned_abs() + (1 << (Num::FRAC_BITS - 1))) >> Num::FRAC_BITS;
-        let bits = i64::try_from(magnitude).ok()?;
-        let bits = if wide < 0 { -bits } else { bits };
-        Some(Scalar::Decimal(Num::from_bits(bits)))
+        Num::from_raw_products(wide).map(Scalar::Decimal)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::stats::stat_book::StatBook;
+    use crate::units::unit_type::UnitType;
+    use crate::values::param::Scaling;
+
+    #[test]
+    fn a_scaling_param_rounds_its_sum_once_ties_to_even() {
+        // A ratio of ε on a stat of ±0.5, ±1.5 and 2.5 is ±ε/2, ±3ε/2 and 5ε/2: each a tie, to
+        // the even neighbour, 0, ±2ε and 2ε, as every rounding of a number. Away from zero they
+        // were ±ε, ±2ε and 3ε.
+        let power = Stat::named("power").unwrap();
+        let scaling = Scaling {
+            base: Ranked::One(Scalar::Int(0)),
+            per_level: Num::ZERO,
+            bonus: BTreeMap::new(),
+            ratios: BTreeMap::from([(power, Num::EPSILON)]),
+        };
+        let name = DeclaredName::new("p").unwrap();
+        let params = BTreeMap::from([(name, Param::Scaling(scaling))]);
+        let mut table = ParamTable::default();
+        let run = table.push(&params, |_| StatId::new(0));
+        let book = StatBook::new(&BTreeMap::new(), [], Num::ONE);
+        let read = |stat: &str| {
+            let values = [stat.parse().unwrap()];
+            let source = ParamSource::new(&book, UnitType::new(0), 1, &values);
+            match table.value(run, 0, 1, Some(&source)) {
+                Some(Scalar::Decimal(value)) => value.to_bits(),
+                other => panic!("{other:?}"),
+            }
+        };
+        let stats = ["0.5", "1.5", "2.5", "-0.5", "-1.5"];
+        assert_eq!(stats.map(read), [0, 2, 2, 0, -2]);
     }
 }

@@ -1,20 +1,26 @@
 use bevy_ecs::component::Component;
+use bevy_ecs::entity::Entity;
+use bevy_ecs::world::World;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{SimComponent, StableId};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
-use crate::actions::action_book::ActionId;
-use crate::combat::damage_kind::DamageKind;
+use crate::actions::action_book::ActionBook;
+use crate::projectiles::projectile_spec::ProjectileSpec;
+use crate::units::action_id::ActionId;
+use crate::units::by_type::ByType;
+use crate::units::script_view::View;
+use crate::units::unit_type::UnitType;
+use crate::values::damage_kind::DamageKind;
 
-/// A projectile unit in flight: whose it is, how it flies, at its type's speed, what it carries,
-/// and the units it struck, each once.
+/// A projectile unit in flight: whose it is, how it flies, at its type's speed, and what it
+/// carries.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Projectile {
     source: StableId,
     flight: Flight,
     payload: Payload,
-    struck: Vec<StableId>,
 }
 
 /// How a projectile flies: homing on a unit, or along a line, a unit vector on the ground or in
@@ -40,6 +46,8 @@ pub(crate) enum Flight {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum Payload {
     Attack {
+        /// The weapon's action, which its damage names.
+        action: ActionId,
         amount: Num,
         kind: DamageKind,
         roll: Num,
@@ -69,7 +77,6 @@ impl Projectile {
             source,
             flight,
             payload,
-            struck: Vec::new(),
         })
     }
 
@@ -83,16 +90,6 @@ impl Projectile {
 
     pub(crate) const fn payload(&self) -> Payload {
         self.payload
-    }
-
-    /// Whether it struck `unit`.
-    pub(crate) fn struck(&self, unit: StableId) -> bool {
-        self.struck.contains(&unit)
-    }
-
-    pub(crate) fn strike(&mut self, unit: StableId) {
-        debug_assert!(!self.struck(unit), "a projectile strikes a unit once");
-        self.struck.push(unit);
     }
 
     /// Counts `flown` meters flown in all.
@@ -111,33 +108,45 @@ impl Projectile {
 
 impl SimComponent for Projectile {
     const NAME: &'static str = "projectiles.projectile";
+
+    // A projectile of a type with no flight, of an action the book lacks or at a rank past its
+    // ranks, or of a damage kind the mode lacks, has no rules for its flight or its hit.
+    fn check(&self, world: &World, entity: Entity) -> bool {
+        let flies = world
+            .get::<UnitType>(entity)
+            .zip(world.get_resource::<ByType<ProjectileSpec>>())
+            .is_some_and(|(&unit_type, specs)| specs.get(unit_type).is_some());
+        let book = world.get_resource::<ActionBook>();
+        let carries = match self.payload {
+            Payload::Attack { action, kind, .. } => {
+                book.and_then(|book| book.get(action)).is_some()
+                    && world
+                        .get_non_send::<View>()
+                        .is_none_or(|view| view.has_damage_kind(kind))
+            }
+            Payload::Action { action, rank, .. } => book
+                .and_then(|book| book.get(action))
+                .is_some_and(|action| action.has_rank(rank)),
+        };
+        flies && carries
+    }
 }
 
-/// A snapshot is untrusted, so a projectile `new` refuses, or one that struck a unit twice,
-/// fails to decode.
+/// A snapshot is untrusted, so a projectile that `new` refuses fails to decode.
 impl<'de> Deserialize<'de> for Projectile {
     fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Projectile, D::Error> {
-        #[derive(Deserialize)]
+        #[derive(Debug, Deserialize)]
         struct Fields {
             source: StableId,
             flight: Flight,
             payload: Payload,
-            struck: Vec<StableId>,
         }
         let Fields {
             source,
             flight,
             payload,
-            struck,
         } = Fields::deserialize(deserializer)?;
-        let mut projectile = Projectile::new(source, flight, payload)
-            .ok_or_else(|| D::Error::custom("projectile out of its limits"))?;
-        for unit in struck {
-            if projectile.struck(unit) {
-                return Err(D::Error::custom("a unit struck twice"));
-            }
-            projectile.strike(unit);
-        }
-        Ok(projectile)
+        Projectile::new(source, flight, payload)
+            .ok_or_else(|| D::Error::custom("projectile out of its limits"))
     }
 }

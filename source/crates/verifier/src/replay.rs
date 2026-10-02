@@ -1,3 +1,4 @@
+use campfire_math::Tick;
 use campfire_package::PackageStore;
 use campfire_protocol::{SeedError, SessionLog};
 use campfire_runner::{Runner, Session, StartError};
@@ -9,8 +10,8 @@ use campfire_runner::{Runner, Session, StartError};
 #[derive(Debug)]
 pub struct Replay {
     runner: Runner,
-    /// The ticks the log holds.
-    ticks: u64,
+    /// The tick after the last the log holds.
+    ticks: Tick,
 }
 
 impl Replay {

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::units::bits256::Bits256;
 use crate::units::team::Team;
-use crate::values::bits256::Bits256;
 
 /// A set of teams, one bit each: a match holds at most `Team::LIMIT` teams.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -10,11 +10,7 @@ pub struct TeamSet(Bits256);
 
 impl TeamSet {
     pub(crate) const NONE: TeamSet = TeamSet(Bits256::NONE);
-    pub const ALL: TeamSet = TeamSet(Bits256::ALL);
-
-    pub const fn of(team: Team) -> TeamSet {
-        TeamSet::NONE.with(team)
-    }
+    pub(crate) const ALL: TeamSet = TeamSet(Bits256::ALL);
 
     #[must_use]
     pub(crate) const fn with(self, team: Team) -> TeamSet {
@@ -23,12 +19,25 @@ impl TeamSet {
 
     /// The teams in either set.
     #[must_use]
-    pub const fn union(self, other: TeamSet) -> TeamSet {
+    pub(crate) const fn union(self, other: TeamSet) -> TeamSet {
         TeamSet(self.0.union(other.0))
     }
 
     pub const fn contains(self, team: Team) -> bool {
         self.0.contains(team.index() as usize)
+    }
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::units::team::Team;
+    use crate::units::team_set::TeamSet;
+
+    impl TeamSet {
+        /// The set of `team` alone.
+        pub(crate) const fn of(team: Team) -> TeamSet {
+            TeamSet::NONE.with(team)
+        }
     }
 }
 

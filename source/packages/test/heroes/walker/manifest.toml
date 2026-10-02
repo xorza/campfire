@@ -3,5 +3,6 @@
 # 40 of its 100 mana, every 3 s; the others do nothing.
 name = "hero-walker"
 version = "0.1.0"
-engine = "0.1.0"
+api = "1.0"
+language = "en"
 kind = "avatar"

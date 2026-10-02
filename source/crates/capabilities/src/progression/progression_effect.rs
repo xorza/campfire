@@ -1,7 +1,8 @@
 use campfire_math::Num;
-use campfire_sim::StableId;
+use campfire_sim::{Capability, StableId};
 
-use crate::progression::track_id::TrackId;
+use crate::scripts::effects::Effect;
+use crate::units::track_id::TrackId;
 
 /// A change to units' progress that a call queued.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -12,4 +13,8 @@ pub(crate) enum ProgressionEffect {
         track: TrackId,
         amount: Num,
     },
+}
+
+impl Effect for ProgressionEffect {
+    const CAPABILITY: Capability = Capability::Progression;
 }

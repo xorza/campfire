@@ -3,12 +3,17 @@ use campfire_script::rhai::INT;
 use campfire_sim::Capability;
 
 use crate::progression::progression_effect::ProgressionEffect;
+use crate::progression::tracks_column::TracksColumn;
 use crate::scripts::api_builder::ApiBuilder;
+use crate::scripts::api_version::ApiVersion;
 use crate::scripts::ctx::Ctx;
-use crate::scripts::effect::Effect;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::hook::Hook;
-use crate::scripts::script_api::{ApiOwner, DataTable, MemberSpec, Status};
+use crate::scripts::name_kind::NameKind;
+use crate::scripts::script_api::api_owner::ApiOwner;
+use crate::scripts::script_api::data_table::DataTable;
+use crate::scripts::script_api::member_spec::MemberSpec;
+use crate::scripts::script_api::status::Status;
 use crate::units::unit::Unit;
 
 /// The script API of `progression`: `ctx.add_xp` and `on_level_up`; reads of a unit's progress,
@@ -32,7 +37,8 @@ impl ProgressionApi {
             "add_xp",
             "(unit, track, amount)",
             "gives `unit` `amount` of experience on `track`, one of its unit type's",
-        );
+        )
+        .name(1, NameKind::Track);
         api.bind(
             add_xp,
             |ctx: &mut Ctx, unit: Unit, track: &str, amount: Num| {
@@ -54,7 +60,7 @@ impl ProgressionApi {
         .plan(method("track_level", "(track)", "its level on `track`"))
         .plan(unit("points", "its unspent points"))
         .plan(method("has_perk", "(id)", "whether it has the perk `id`"))
-        .hook(Hook::OnLevelUp, "(ctx, unit, track, level)", Status::Runs)
+        .hook(Hook::OnLevelUp, Status::Runs(ApiVersion::FIRST))
         .data(DataTable::Mode, &["tracks"], &[])
         .data(DataTable::Track, &["levels", "level"], &[]);
     }
@@ -62,20 +68,18 @@ impl ProgressionApi {
     /// Queues `amount`, not negative, of experience on `track` of `unit`, which has it.
     fn add_xp(ctx: &Ctx, unit: &Unit, track: &str, amount: Num) -> Checked<()> {
         let view = ctx.view();
-        let track = view.track(track)?;
+        let track = TracksColumn::track_named(view, track)?;
         if amount < Num::ZERO {
             return Err(ApiError::NegativeXp.fail().into());
         }
-        if !view
-            .row(unit.id)
-            .is_some_and(|row| row.tracks.contains(track))
-        {
+        let row = view.row_index(unit.id);
+        if !row.is_some_and(|row| TracksColumn::has(view, row, track)) {
             return Err(ApiError::NoTrack.fail().into());
         }
-        ctx.queue(Effect::Progression(ProgressionEffect::AddXp {
+        ctx.queue(ProgressionEffect::AddXp {
             unit: unit.id,
             track,
             amount,
-        }))
+        })
     }
 }

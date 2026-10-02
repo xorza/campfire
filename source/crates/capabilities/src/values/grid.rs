@@ -185,11 +185,6 @@ impl Grid {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn num(value: i64) -> Num {
-        Num::from_int(value).unwrap()
-    }
-
     fn at(x: Num, z: Num) -> Position {
         Position::new(Vec3::new(x, Num::ZERO, z)).unwrap()
     }
@@ -197,23 +192,27 @@ mod tests {
     #[test]
     fn a_grid_covers_its_rectangle_in_whole_cells_and_reveals_exactly() {
         // 1 m cells over (−2, −1) to (2, 1.5): 4 along x, 3 along z, the last row half outside.
-        let half = Num::from_bits(1 << 23);
-        let bounds = Bounds::new([num(-2), num(-1)], [num(2), num(1) + half]).unwrap();
-        let grid = Grid::new(num(1), bounds).unwrap();
+        let half = Num::HALF;
+        let bounds = Bounds::new(
+            [Num::int(-2), Num::int(-1)],
+            [Num::int(2), Num::int(1) + half],
+        )
+        .unwrap();
+        let grid = Grid::new(Num::int(1), bounds).unwrap();
         assert_eq!(grid.cells(), 12);
         // Cell (2, 1) is x from 0 to 1, z from 0 to 1: number 1 × 4 + 2 = 6.
         assert_eq!(grid.cell_of(at(Num::ZERO, Num::ZERO)), Some(6));
         assert_eq!(
-            grid.cell_of(at(num(1) - Num::EPSILON, num(1) - Num::EPSILON)),
+            grid.cell_of(at(Num::int(1) - Num::EPSILON, Num::int(1) - Num::EPSILON)),
             Some(6)
         );
-        assert_eq!(grid.cell_of(at(num(-2), num(-1))), Some(0));
+        assert_eq!(grid.cell_of(at(Num::int(-2), Num::int(-1))), Some(0));
         // On the max edges: x = 2 ends cell column 3, the last, so (2, 0) is in 1 × 4 + 3 = 7;
         // z = 1.5 is inside row 2, so (0, 1.5) is in 2 × 4 + 2 = 10, and the corner in 11.
         let edges = [
-            at(num(2), Num::ZERO),
-            at(Num::ZERO, num(1) + half),
-            at(num(2), num(1) + half),
+            at(Num::int(2), Num::ZERO),
+            at(Num::ZERO, Num::int(1) + half),
+            at(Num::int(2), Num::int(1) + half),
         ];
         assert_eq!(
             edges.map(|pos| grid.cell_of(pos)),
@@ -221,9 +220,9 @@ mod tests {
         );
         // Outside the bounds, even within the last row's cells, which reach z = 2.
         let off = [
-            at(num(2) + Num::EPSILON, Num::ZERO),
-            at(num(-2) - Num::EPSILON, Num::ZERO),
-            at(Num::ZERO, num(1) + half + Num::EPSILON),
+            at(Num::int(2) + Num::EPSILON, Num::ZERO),
+            at(Num::int(-2) - Num::EPSILON, Num::ZERO),
+            at(Num::ZERO, Num::int(1) + half + Num::EPSILON),
         ];
         assert_eq!(off.map(|pos| grid.cell_of(pos)), [None, None, None]);
 
@@ -234,7 +233,7 @@ mod tests {
             grid.spans_within(at(Num::ZERO, Num::ZERO), radius, |span| cells.extend(span));
             cells
         };
-        assert_eq!(reveal(num(1) + half), [1, 2, 5, 6]);
+        assert_eq!(reveal(Num::int(1) + half), [1, 2, 5, 6]);
         // A radius of 1.59 reaches the centers √2.5 ≈ 1.581 away too: the ring around the four,
         // less the cells off the grid and the corners, √4.5 away.
         let reach = Num::from_bits((159 << 24) / 100);
@@ -243,7 +242,7 @@ mod tests {
 
         // Against each cell's center tested alone, in halves of a bit, from points on and off
         // the grid, on cell lines and between them, with radii that end on centers and between.
-        let quarter = Num::from_bits(1 << 22);
+        let quarter = Num::QUARTER;
         let twice = |value: Num| 2 * i128::from(value.to_bits());
         for x in -12..12 {
             for z in -8..10 {
@@ -281,16 +280,18 @@ mod tests {
         }
 
         // 2048 × 2049 cells are more than 2²² = 2048 × 2048.
-        let wide = Bounds::new([num(0), num(0)], [num(2048), num(2049)]).unwrap();
-        let square = Bounds::new([num(0), num(0)], [num(2048), num(2048)]).unwrap();
+        let wide =
+            Bounds::new([Num::int(0), Num::int(0)], [Num::int(2048), Num::int(2049)]).unwrap();
+        let square =
+            Bounds::new([Num::int(0), Num::int(0)], [Num::int(2048), Num::int(2048)]).unwrap();
         assert_eq!(
-            Grid::new(num(1), square).map(|grid| grid.cells()),
+            Grid::new(Num::int(1), square).map(|grid| grid.cells()),
             Some(1 << 22)
         );
         for (cell, bounds) in [
             (Num::ZERO, bounds),
             (Position::BOUND + Num::EPSILON, bounds),
-            (num(1), wide),
+            (Num::int(1), wide),
         ] {
             assert_eq!(Grid::new(cell, bounds), None, "{cell:?} {bounds:?}");
         }

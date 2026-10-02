@@ -12,7 +12,7 @@ pub enum Ranked<T> {
 
 impl<T> Ranked<T> {
     /// How many ranks it has values for; `None` for one value, which fits any rank.
-    pub fn ranks(&self) -> Option<usize> {
+    pub const fn ranks(&self) -> Option<usize> {
         match self {
             Ranked::One(_) => None,
             Ranked::PerRank(values) => Some(values.len()),
@@ -26,9 +26,7 @@ impl<T> Ranked<T> {
             Ranked::PerRank(values) => values,
         }
     }
-}
 
-impl<T> Ranked<T> {
     /// The value at `rank`, from 1; `None` past the last rank.
     pub fn get(&self, rank: u8) -> Option<&T> {
         match self {

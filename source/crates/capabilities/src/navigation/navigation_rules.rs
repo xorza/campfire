@@ -16,7 +16,7 @@ pub struct NavigationRules {
 
 impl NavigationRules {
     /// The layer `name`, if the mode declares it.
-    pub fn layer(&self, name: &DeclaredName) -> Option<Layer> {
+    pub fn layer_named(&self, name: &DeclaredName) -> Option<Layer> {
         let at = self.layers.iter().position(|layer| layer == name)?;
         Some(Layer::new(u8::try_from(at).ok()?))
     }
@@ -26,9 +26,8 @@ impl NavigationRules {
     pub fn body(&self, collision: Option<&CollisionData>) -> Option<Body> {
         let collision = collision?;
         let layer = collision.layer.as_ref().map_or(Layer::FIRST, |name| {
-            self.layer(name).expect("the load checked the layer")
+            self.layer_named(name).expect("the load checked the layer")
         });
-        let body = Body::new(collision.radius).expect("a collision radius is a body's");
-        Some(body.on(layer))
+        Some(collision.body.on(layer))
     }
 }

@@ -1,8 +1,11 @@
-use campfire_math::Num;
-use campfire_sim::Ticks;
+use campfire_math::{Num, Ticks};
+use campfire_sim::TickRate;
 
-use crate::stats::modifier_book::ModifierId;
+use crate::areas::area_data::AreaData;
 use crate::units::filter::Filter;
+use crate::units::modifier_id::ModifierId;
+use crate::units::unit_types::UnitTypes;
+use crate::values::declared_name::DeclaredName;
 
 /// An area type as a match runs it: its radius, its delay and its duration in ticks, what it
 /// reaches, and the modifiers it holds inside.
@@ -22,4 +25,30 @@ pub(crate) struct Inside {
     pub(crate) caster: Option<ModifierId>,
     pub(crate) allies: Option<ModifierId>,
     pub(crate) enemies: Option<ModifierId>,
+}
+
+impl AreaSpec {
+    /// The spec of `data`, which the package load checked: its times in ticks at `rate`, rounded
+    /// up, what it reaches among the tags of `types`, and its `inside` modifiers as `modifier`
+    /// finds them; `None` when a time does not count in ticks.
+    pub(crate) fn of(
+        data: &AreaData,
+        types: &UnitTypes,
+        rate: TickRate,
+        modifier: impl Fn(&DeclaredName) -> ModifierId,
+    ) -> Option<AreaSpec> {
+        let affects = Filter::resolve_or_enemies(data.affects.as_ref(), types);
+        let inside = |name: &Option<DeclaredName>| name.as_ref().map(&modifier);
+        Some(AreaSpec {
+            radius: data.radius,
+            delay: rate.ticks(data.delay_ms)?,
+            duration: rate.ticks(data.duration_ms)?,
+            affects: affects.expect("the load checked the filter's tags"),
+            inside: Inside {
+                caster: inside(&data.inside.caster),
+                allies: inside(&data.inside.allies),
+                enemies: inside(&data.inside.enemies),
+            },
+        })
+    }
 }

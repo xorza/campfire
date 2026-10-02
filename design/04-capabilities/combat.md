@@ -17,7 +17,7 @@ leech = { attack = "life_steal", other = "spell_vamp" } # optional: stats that h
 heal_scale = "healing_received_pct"                    # optional: heals scale by one plus this stat
 ```
 
-A unit type: `pools` that hold the life pool, `combat = { on_death = "stay" }` (`stay` or `despawn`, the default), and its weapons in its action slots. A weapon is an action of kind `attack`:
+A unit type: `pools` that hold the life pool, `combat = { on_death = "stay" }` (`stay` or `despawn`, the default), and its weapons in its action slots. A unit type with the life pool needs its `combat` section, so that every unit that can reach zero life can die; the load refuses one without it. A weapon is an action of kind `attack`:
 
 ```toml
 [actions.tank_cannon]
@@ -39,22 +39,23 @@ delivery = { projectile = "cannon_shell" }   # a unit type with a homing `projec
 - **Range** is measured in the map's metric, exactly, with no square root, from the edge of the attacker's body to the edge of the target's, as in League of Legends and Dota 2: a range `r` reaches a center `r` plus both radii away. A unit with no body is a point. A unit that can move walks to its target while out of range and stops in range.
 - **Windup and period.** An attack starts once the weapon is ready and delivers when its windup ends. The next attack may start one period after this one started. A move, or an attack on another target, cancels a windup and spends nothing, so the unit may attack again at once; after the delivery, in the back-swing, moving is free. Range counts only at the start: a delivery happens unless its target died, despawned or became blocked as a target.
 - **Delivery.** At once to the target, a projectile, a ray, a sweep or an area, as the weapon's `delivery` says ([Deliveries](actions.md#deliveries)); a delivery of a capability the mode does not declare fails the load, as any section of one does.
-- **Its damage** is the weapon's `damage` stat of the attacker, of the weapon's `damage_kind`, followed by the weapon's `on_hit` effects.
+- **Its damage** is the weapon's `damage` stat of the attacker, of the weapon's `damage_kind`, followed by the weapon's `on_hit` effects, which the release does not run yet.
 - **The roll.** An attack draws one random number, at least 0 and less than 1, `d.roll`, when its windup ends, on the secret stream for the attacker in that tick: a projectile carries it. The seed alone decides it, and no client learns it before the server applies it. `calc_damage` decides what it means: the reference MOBA crits when it is below the attacker's `crit_chance`.
 
 ### Damage and heals
 
-- **Damage** has a source, or none for an effect the mode applied, a target, an amount, a kind from the mode's list, its hit (`d.hit`: how its delivery reached the target, [Deliveries](actions.md#deliveries)), whether an attack dealt it, its roll (`()` when no windup drew one, as for an effect or `ctx.attack_hit`), and the action whose resolve, delivery or modifier dealt it.
+- **Damage** has a source, or none for an effect the mode applied, a target, an amount, a kind from the mode's list, its hit (`d.hit`: how its projectile or area reached the target, [Deliveries](actions.md#deliveries), `()` for damage that none delivered), whether an attack dealt it, its roll (`()` when no windup drew one, as for an effect or `ctx.attack_hit`), and the action whose resolve, delivery or modifier dealt it: an attack's is its weapon, and a damage of no action names none, `()`.
 - **One pass a tick.** Every damage and heal of a tick applies in Resolve, in one queue: first the tick's effects, those with no source first, then by their source's stable id, and then in the order they were queued, then those the events of the pass queue, first in, first out. Every effect of the pass reads the units as the pass began, so two units can kill each other in one tick, and a modifier an event adds takes effect from the next stage.
 - **Each damage, in order:** nothing happens to a target at zero life or whose tags block `damage` ([Tags](stats.md#tags)); the mode's `calc_damage(ctx, d)` turns the amount into the final one, `d.amount` the raw amount, and a negative result counts as 0; with no `calc_damage`, or a call that fails, the amount stays as it was, and the failure is recorded. `calc_damage` counts against no script pool, only the limit per call: its calls grow with the damage of a tick, and a crowded fight must not spend the mode's pool and so change how damage is weighed. Shields absorb it next, the one that ends soonest first, as League of Legends spends them, a shield with no end last, and shields with the same end in the order the carrier keeps its modifiers; what is left comes off the life pool. The source, when it exists, is recorded as the target's attacker.
 - **Each heal** passes the mode's `calc_heal(ctx, h)` the same way, then it is multiplied by one plus the `heal_scale` stat of the healed unit, and it adds to the life pool. A restore adds to another pool, unscaled. Neither reaches a unit at zero life.
-- **Leech.** With `leech`, the source heals by its `attack` stat times the life an attack took, or its `other` stat times the life any other damage took: after mitigation, and not what shields absorbed, as League of Legends' life steal counts it. The heal passes `calc_heal` and the scale.
+- **Leech.** With `leech`, the source heals by its `attack` stat times the life an attack took, or its `other` stat times the life any other damage took: after mitigation, and not what shields absorbed, as League of Legends' life steal counts it. The heal joins the end of the pass's queue, and passes `calc_heal` and the scale.
 - **A source that is gone.** A damage whose source no longer exists, as from a projectile whose source despawned, has `d.source` of `()`, and no killer.
 - **Recent attackers.** Each damage records its source with its target, and the tick it landed in. A unit keeps each attacker once, with its last damage, and forgets one that no longer exists; `unit.recent_attackers(ms)` reads them.
 
 ### Death and respawn
 
-- **Death.** A unit at zero life dies at the end of Resolve. A unit type says whether it stays dead to respawn, as heroes do, or despawns, as creeps do; one that despawns goes at the end of the tick it died in, after the Mode stage saw it. A dead unit takes no orders, starts no action and is no target.
+- **Death.** A unit at zero life dies at the end of Resolve. A unit type says whether it stays dead to respawn, as heroes do, or despawns, as creeps do; one that despawns goes at the end of the tick the Mode stage answered its death in: that tick, unless the mode's pool was spent and its `on_unit_died` waits for a later tick. A dead unit takes no orders, starts no action and is no target; its death stops its actions under way, ordered or started, as a stop order does. Navigation and orders react to the death with queries of their own, so combat calls neither: in the next Move stage the unit forgets where it walked to, and in the next Think stage a reset it was on ends, its pools not refilled.
+- **A target.** A living target is a unit that is not dead, has the life pool, and whose tags do not block `target`; a unit that reached zero life in a tick is one until it dies at the end of Resolve. One predicate decides it, in `actions`, and every check reads it: an action's start, its check at delivery, and the script queries `find`, `find_visible` and `nearest_visible`. A projectile or an area has no pools, so it is never a target.
 - **Kill credit.** The source whose damage took the life to zero is the killer, when it still exists. The other units that damaged the victim within the mode's `[combat] assist_window_ms` assisted, by stable id; without a window no one assisted. The mode receives both in `on_unit_died`, in the Mode stage of the tick, in the order the units died.
 - **Respawn.** Each unit keeps the place it spawned at. `ctx.respawn(unit, ms)` brings a dead unit that stays back at the start of the tick that time later, rounded up and at least one tick after the end of the current one: at its spawn place, with full pools and no attacker on record.
 
@@ -83,7 +84,7 @@ After one damage of the pass, its events run in this order: `on_attack_hit`, the
 
 ## Script API
 
-`ctx.damage(target, amount, kind)`, `ctx.heal(unit, amount)`, `ctx.restore(unit, pool, amount)`, `ctx.attack_hit(target)`, `ctx.respawn(unit, ms)`; `unit.target`, `unit.attack_range` (its first weapon's), `unit.recent_attackers(ms)`; the damage handle `d`; the hooks above, `calc_damage(ctx, d)`, `calc_heal(ctx, h)` and `on_unit_died(ctx, unit, killer, assisters)`.
+`ctx.damage(target, amount, kind)`, `ctx.heal(unit, amount)`, `ctx.restore(unit, pool, amount)`, `ctx.attack_hit(target)`, `ctx.respawn(unit, ms)`; `unit.target`, `unit.attack_range` (its first weapon's), `unit.recent_attackers(ms)`; the damage handle `d`; the heal handle `h`, with its source, target, amount before `calc_heal`, whether leech gave it, and its ability; the hooks above, `calc_damage(ctx, d)`, `calc_heal(ctx, h)` and `on_unit_died(ctx, unit, killer, assisters)`.
 
 ## Network
 

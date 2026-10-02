@@ -5,7 +5,7 @@ edition.workspace = true
 license.workspace = true
 
 [features]
-bench = ["dep:criterion"]
+bench = ["dep:criterion", "internals"]
 internals = []
 
 [dependencies]
@@ -18,6 +18,9 @@ bevy_ecs.workspace = true
 criterion = { workspace = true, optional = true }
 postcard.workspace = true
 serde.workspace = true
+
+[dev-dependencies]
+toml.workspace = true
 
 [[bench]]
 name = "collision"

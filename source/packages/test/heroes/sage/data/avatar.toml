@@ -1,0 +1,62 @@
+name = "hero-name"
+tags = ["test"]
+params = { xp = 80, basics = 2 }
+pools = ["health", "mana"]
+tracks = ["level"]
+passive = "rally"
+slots = { basic = ["orb", "nova"], weapon = ["attack"] }
+
+[combat]
+
+[collision]
+radius = "0.5"
+
+[vision]
+sight_range = "7.0"
+
+[stats]
+health = { base = 650, per_level = 65 }
+mana = { base = 200 }
+attack_damage = { base = 45, per_level = 5 }
+attack_speed = { base = "1.0" }
+move_speed = { base = "5.0" }
+
+[actions.orb]
+script = "scripts/orb.rhai"
+targeting = "enemies"
+range = "6.0"
+cooldown_ms = 2500
+cost = { mana = 20 }
+delivery = { projectile = "orb" }
+
+[actions.orb.params]
+damage = 70
+
+[actions.nova]
+script = "scripts/nova.rhai"
+targeting = "none"
+cooldown_ms = 5000
+cost = { mana = 30 }
+windup_ms = 300
+
+[actions.nova.params]
+radius = "3.0"
+damage = 50
+
+[actions.attack]
+kind = "attack"
+targeting = "enemies"
+range = "1.25"
+windup_ms = 300
+rate = "attack_speed"
+damage = "attack_damage"
+damage_kind = "true"
+
+[modifiers.rally]
+aura = { radius = "4.0", affects = "allies", modifier = "rallied" }
+
+[modifiers.rallied]
+stats = { attack_damage = { pct = "0.1" } }
+
+[units.orb]
+projectile = { speed = "12", homing = true }

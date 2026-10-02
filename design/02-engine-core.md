@@ -10,13 +10,13 @@ Each layer uses the layers below it.
 
 | Module | Does |
 | --- | --- |
-| `math` | Fixed-point numbers, 3D vectors, trig, counter-based RNG, and the values both sides share: segment seed, player slot, hex |
+| `math` | Fixed-point numbers, 3D vectors, trig, counter-based RNG, and the values both sides share: segment seed, player slot, ticks, and 32-byte values written as hex |
 | `protocol` | Session log format (see Protocol Spec) |
 | `sim` | Deterministic state and systems on `bevy_ecs`; no genre code |
 | `script` | Rhai host and core script API |
 | `capabilities` | Mechanisms a mode combines, a module each: `combat`, `navigation`, `orders` and the rest ([Capabilities](04-capabilities/00-overview.md)) |
 | `package` | Reads a mode's packages and every package it depends on, and runs the load checks of [Script API](08-script-api.md) |
-| `runner` | Builds a match from checked packages: wires `sim`, the declared capabilities and `script`, feeds inputs |
+| `runner` | Builds a match from checked packages: wires `sim`, the declared capabilities and `script`, feeds inputs; owns `SessionRules`, which builds a session's terms from the packages and checks terms on the server, the client and the verifier |
 | `verifier` | CLI: replays a session log segment, checks the result |
 | `det-ci` | Headless matches of the reference MOBA with its bots on every OS, comparing state hashes |
 | `lan-check` | On request: the real server and two `client --bot` processes over WebTransport on `127.0.0.1`, and a bot with the wrong certificate that must fail and say why, checked from their JSON logs and by the verifier |
@@ -34,9 +34,28 @@ Each layer uses the layers below it.
 
 `det-ci` and `lan-check` are checks, not engine crates: they live in `source/checks/`, apart from `source/crates/`, and nothing depends on them.
 
-Dependencies: `server`, `client`, `verifier`, `det-ci` → `runner` → `package` → `capabilities` → `script`, `sim`, `content`; `script` and `sim` → `math`; `protocol` → `math`. The runner joins `protocol` and the packages: the session log and the packages each own their fingerprint type, and the runner converts between them. `math` holds what both sides share: the segment seed and the player slot. Within `capabilities`, a module imports only from the capabilities below it.
+Dependencies: `server`, `client`, `verifier`, `det-ci` → `runner` → `package` → `capabilities` → `script`, `sim`, `content`; `script` and `sim` → `math`; `protocol` → `math`. The runner joins `protocol` and the packages: the session log and the packages each own their fingerprint type, and the runner converts between them. `math` holds what both sides share: the segment seed, the player slot, the ticks, and `Bytes32`. Within `capabilities`, a module imports only from the capabilities below it.
 
 Outside the engine crates: the reference MOBA and bots. `det-ci` uses both as test content; nothing else in the engine depends on them. Bots produce inputs like players, so replays never depend on bot code.
+
+## Structural rules
+
+These rules keep the code's structure from drifting. Each has a test that fails when it is broken, because a rule that only a review checks drifts again.
+
+| Rule | Enforced by |
+| --- | --- |
+| One owner for each fact. A fact from the packages lives in one immutable book; a fact of the match lives in state; a fact of the running call lives in the frame. Nothing else holds a copy. | The state table test; the behaviour golden |
+| A name becomes an id where it enters. After the load, no system looks up a name; a script call resolves its name once per call, with no allocation. Every lookup of an id by its name is a method whose name ends in `named`, so each call of one can be found. | The book builder's tests; the allowlist test of name lookups, which lists each file that calls one |
+| The load refuses everything a match can refuse. A match start fails only on session terms: players, tick rate and seed. | `StartError` has no data case |
+| A layer calls a higher layer only through a hook the higher layer registers: a capability adds to the script view through its column, to a call's frame through its part, to a call's effects through its effect types, each of which applies itself, and to the script API through its row of the capability table. | The layer test |
+| Every order that matters is by stable id, and every rounding uses one helper. A system that spends something shared, takes ids or runs scripts walks its units through `Ordered`, a scratch that sorts the entities of its query by stable id: a query gives them in archetype order, which a component added to one unit, or a restore, changes. | The archetype-shuffle test |
+| Each tick's work has a fixed limit, or a cost in proportion to the units that take part: no tick pays for a scan or a rebuild the other ticks do not. | The work record; the navigation bench |
+| Restored state is checked like package data: a restore gives an error for every flaw, never a panic, and what it accepts plays on without one. Its times and counts stay within what a match makes: the tick, every time and every count are at most 2⁶², which no match reaches, so no sum of two overflows; every period is at least a tick; and every relation a system takes between two restored values, or between one and the books, holds, as the start of an attack under way, its resolve less its windup, is no sooner than tick 0. | Every state type's check, a required method of the state traits, which the compiler proves; the snapshot fuzz, which flips each byte of a proving match's snapshot, restores it, and plays five ticks on what restores; a restore test at the limits of each state type's times and counts |
+| Each rule of a network session has one owner on each side, and a client that follows the rules is never refused. | The net scenarios under load |
+
+**Books.** A match's books are built by one pure function of its packages and a tick rate, with no world: the unit types and their tags, the tracks, the modifiers and the actions with their params and effect lists, the AIs, and the projectile and area specs. The package load calls it at the fastest rate the manifest allows, where a time counts the most ticks, so what the books cannot hold fails the load; a match calls it at its own rate and puts what it gives in place. The order of every id is the order the builder loads in: the tags, the tracks, every package's modifiers, then each package's actions and unit types, the mode's first. A script is named by its place in the order a match compiles them, and the hooks it defines come from what the load read of it, so no book needs a script host.
+
+The structural redesign that brings the code to these rules, and its steps, are in `PLAN.md`.
 
 ## Capabilities
 
@@ -96,7 +115,7 @@ A save is a checkpoint a player keeps: the snapshot at a tick boundary, and the 
 
   A call that finds its pool spent waits and runs first in the next tick, as AI and scripted systems do; a hook that cannot wait, a pure one, has no pool.
 - **Other limits** (call depth, sizes) are engine constants, set explicitly, since Rhai's defaults differ between debug and release builds.
-- **All or nothing per call.** State writes go to an overlay the call can read back; engine effects (damage, spawn, orders, timers) are queued. On success the overlay commits, then the effects apply in call order. On failure (error, overflow, limit) both are discarded, the sim emits a `script_error` event, and the tick goes on.
+- **All or nothing per call.** State writes go to an overlay the call can read back; engine effects (damage, spawn, orders, timers) are queued. On success the overlay commits, then the effects apply in call order. Each capability keeps its own effect types in the call's frame, one queue a type, and each type applies itself: the queue records with each effect the apply of its type, so the script runtime names no capability, and no table can pair a type with another type's apply. On failure (error, overflow, limit) both are discarded, the sim emits a `script_error` event, and the tick goes on.
 - **No hidden script state.** It is declared in a typed schema and stored in sim components; see [Script state](03-game-scripting.md#script-state).
 
 ## Backends
@@ -108,7 +127,7 @@ Collision, pathfinding and visibility each have one interface and pluggable back
 - `sim` depends on `bevy_ecs` only and is one schedule. The server and client run it inside Lightyear's fixed tick; the verifier and `det-ci` run it in a bare `World`. The server never links the renderer. Pinned to [Bevy 0.19](https://bevy.org/news/bevy-0-19/); the script API and protocol expose no Bevy types.
 - Sim systems touch only sim components, so Lightyear's components cannot change a result.
 - The server records the inputs received since the last tick, then runs the tick. It hashes the state at checkpoints and at the result; a hash after every tick is opt-in.
-- Each unit replicates to the clients whose vision group sees it. A client predicts only what its player controls (position, destination, death and respawn), with no input delay: Lightyear keeps its tick ahead by the round trip, so its inputs land in time. A rollback reruns the sim from the server's state. It predicts movement, never a random outcome.
+- Each unit replicates to the clients whose vision group sees it. A client predicts only what its player controls (position, destination, death and respawn), with no input delay: Lightyear keeps its tick ahead by the round trip, so its inputs land in time. A rollback reruns the sim from the server's state. It predicts movement, never a random outcome. The client builds the same books as the server from the packages it holds, at the rate the server's listing names, and installs them with the part of the mode no script runs: the map's metric, bounds, relations and pathing grid, and combat's bindings. So it predicts by the rules the server runs, and keeps no copy of its own. It derives its units' stats, tags and step from their type, level and modifiers, which the server sends, and starts their actions through the core's checks: an attack's or a cast's windup, and the cooldown when it goes off. It runs none of their effects, and no script: damage, launches, costs and a cast's effects come from the server. The server sends the teams' relations as a script changes them, as the client's targets and filters read them. It drops each sent input older than the deepest rollback Lightyear takes.
 - `client` draws each unit with its own entity, interpolated between ticks; floats (`Transform`) exist only there.
 - **Measured** (i9-13980HX): a packet's signature costs 17 µs to sign and 26 µs to check; a 3v3 tick at 20 Hz costs 55 µs on average and 363 µs at worst; a re-simulated tick of the lane 1v1 costs 3.2 µs. A 3v3 server tick with 6 packets costs at most about 0.5 ms of its 50 ms, and an 8-tick rollback at a 200 ms round trip at most about 3 ms. Decision 1 holds.
 
@@ -126,7 +145,10 @@ Collision, pathfinding and visibility each have one interface and pluggable back
 
 ## Testing and diagnostics
 
-- **Match scenarios** run whole matches between scripted players (`OrderScript`) in the test suite, through a modeled link of delay, jitter and loss on a manual clock, so each run repeats. Lightyear measures round trips by the wall clock, so the harness adds the modeled round trip to the sync margin, and its frame costs under delay are not real ones.
+- **Match scenarios** run whole matches between scripted players (`OrderScript`) in the test suite, through a modeled link of delay, jitter and loss on a manual clock, so each run repeats. Lightyear measures round trips by the wall clock, which varies with the machine's load, so the harness pins the measured round trip to zero and adds the modeled round trip to the sync margin; its frame costs under delay are not real ones.
+- **Goldens.** Two pinned records of whole matches prove that a change keeps behaviour: the state golden, a BLAKE3 digest of each tick's state hash, which changes with the state's layout; and the behaviour golden, a digest of each tick's units (id, type, team, position, pools, death), deaths, damage and script failures, which does not. A change of layout alone updates only the state golden; a change of behaviour updates the behaviour golden and names itself. They run on the lane match, the 3v3, and the proving match: a mode in `packages/test` that uses every capability the release runs, owned by the tests, with no balance to keep.
+- **Structure tests**: the layer test, which checks each module's imports against the capability table; the archetype-shuffle test, which plays the proving match with every unit moved to a new archetype before each tick, from the highest stable id down, so that queries meet the units of one archetype in reverse order, and checks both goldens; and the state table test, which checks each capability's state names.
+- **Work record**: at the end of each stage of a redesign, the instruction count of the proving match and the 3v3, and the worst tick against the mean; a stage that makes either worse by more than 10 % says why.
 - **LAN check** (`campfire-lan-check`, on request): the real server and two `client --bot` processes on `127.0.0.1`, and a bot with the wrong certificate that must fail and say why, checked from their JSON logs and by the verifier. Each run keeps its logs in a directory of its own.
 - **CI** runs the check chain and the LAN check on Linux, Windows and macOS; each platform's verifier then replays every platform's session log.
 - **Logging** goes through `tracing`, never a print. `sim` and `capabilities` log nothing; they report through resources the runner logs. Binaries log to standard error, and to JSON lines with `CAMPFIRE_LOG`. An event a tool reads back is a typed `LogEvent`, with a round-trip test.

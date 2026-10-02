@@ -19,10 +19,6 @@ pub enum DelegationError {
     RepeatedTag(DelegationTag),
     /// The tag does not hold exactly one value of its format.
     MalformedTag(DelegationTag),
-    /// The delegation names another server than the header's.
-    OtherServer,
-    /// The delegation names another session than the header's.
-    OtherSession,
 }
 
 impl fmt::Display for DelegationError {
@@ -43,10 +39,26 @@ impl fmt::Display for DelegationError {
             DelegationError::MalformedTag(tag) => {
                 write!(f, "delegation {} tag is malformed", tag.name())
             }
-            DelegationError::OtherServer => f.write_str("delegation names another server"),
-            DelegationError::OtherSession => f.write_str("delegation names another session"),
         }
     }
 }
 
 impl Error for DelegationError {}
+
+/// Why a delegation does not grant its session key this session on this server.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ScopeError {
+    OtherServer,
+    OtherSession,
+}
+
+impl fmt::Display for ScopeError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(match self {
+            ScopeError::OtherServer => "the delegation names another server",
+            ScopeError::OtherSession => "the delegation names another session",
+        })
+    }
+}
+
+impl Error for ScopeError {}

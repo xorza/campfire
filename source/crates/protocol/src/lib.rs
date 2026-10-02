@@ -19,8 +19,8 @@ mod signature;
 pub use connect::ConnectChallenge;
 pub use connect::certificate_hash::CertificateHash;
 pub use connect::error::ConnectError;
-pub use delegation::delegation_tag::DelegationTag;
-pub use delegation::error::DelegationError;
+
+pub use delegation::error::{DelegationError, ScopeError};
 pub use delegation::{Delegation, DelegationTerms};
 pub use fingerprint::Fingerprint;
 pub use input_chain::InputChain;

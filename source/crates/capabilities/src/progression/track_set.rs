@@ -1,4 +1,4 @@
-use crate::progression::track_id::TrackId;
+use crate::units::track_id::TrackId;
 
 /// The tracks a unit has, of the mode's at most `TrackId::LIMIT`.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]

@@ -1,10 +1,12 @@
 use campfire_sim::StableId;
 use serde::{Deserialize, Serialize};
 
-use crate::actions::action_book::{ActionId, Delivery};
+use crate::actions::actions_column::ActionsColumn;
+use crate::actions::delivery::{Delivery, DeliveryShape};
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::role_set::RoleSet;
+use crate::units::action_id::ActionId;
 
 /// What a delivery belongs to: the unit that delivers it, and its action at `rank`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -14,10 +16,18 @@ pub(crate) struct Delivering {
     pub(crate) rank: u8,
 }
 
+/// One more delivery a call launches: what it belongs to, and its action's delivery.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Launcher {
+    pub(crate) by: Delivering,
+    pub(crate) delivery: Delivery,
+}
+
 impl Delivering {
     /// The running action, from its acting unit, for a call that launches one more of its
-    /// deliveries; an error outside an action, or for an action that `delivers` refuses.
-    pub(crate) fn of(ctx: &Ctx, delivers: fn(Delivery) -> bool) -> Checked<Delivering> {
+    /// deliveries, and the type it delivers; an error outside an action, or for an action whose
+    /// delivery's shape `shape` refuses.
+    pub(crate) fn of(ctx: &Ctx, shape: fn(DeliveryShape) -> bool) -> Checked<Launcher> {
         ctx.require(RoleSet::ACTION)?;
         let frame = ctx.frame();
         let (Some(source), Some(action)) = (frame.acting(), frame.action()) else {
@@ -25,13 +35,15 @@ impl Delivering {
         };
         let rank = frame.rank();
         drop(frame);
-        if !ctx.view().delivers(action).is_some_and(delivers) {
+        let delivery = ActionsColumn::delivers(ctx.view(), action);
+        let Some(delivery) = delivery.filter(|delivery| shape(delivery.shape)) else {
             return Err(ApiError::NoDelivery.fail().into());
-        }
-        Ok(Delivering {
+        };
+        let by = Delivering {
             source,
             action,
             rank,
-        })
+        };
+        Ok(Launcher { by, delivery })
     }
 }

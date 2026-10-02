@@ -5,6 +5,8 @@ use campfire_math::Num;
 use campfire_script::rhai::{EvalAltResult, INT};
 use campfire_script::{Raised, ScriptError};
 
+use crate::scripts::script_limits::ScriptLimits;
+
 /// What a registered script function returns: its value, or the error that fails the call.
 pub(crate) type Checked<T> = Result<T, Box<EvalAltResult>>;
 
@@ -24,7 +26,7 @@ pub enum CallError {
 pub enum ApiError {
     /// A param the ability or the unit type does not declare.
     UnknownParam,
-    /// A filter whose relation is not `enemies`, `allies` or `all`.
+    /// A filter that is not a relation, such as `enemies`, with its tags, if any, after a `:`.
     UnknownFilter,
     /// A filter's tag that no unit type of the match declares.
     UnknownTag,
@@ -46,7 +48,8 @@ pub enum ApiError {
     NegativeXp,
     /// An integer beyond a `Num`, which reaches 2³⁹.
     IntegerBeyondNum,
-    /// An attack field or order for a unit that has no attack.
+    /// An attack field or order for a unit that has no attack, or an attack order on a target
+    /// none of its weapons selects.
     NoAttack,
     /// A stat or level field of a unit that has no stats.
     NoStats,
@@ -133,6 +136,9 @@ pub enum ApiError {
     NoAbilitySlot,
     /// An ability to learn that is at its last rank already.
     MaxRank,
+    /// A projectile launched in the other form than its type flies: a homing type at a unit, a
+    /// line type along a direction.
+    OtherFlight,
 }
 
 impl CallError {
@@ -182,7 +188,7 @@ impl fmt::Display for ApiError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(match self {
             ApiError::UnknownParam => "param is not declared",
-            ApiError::UnknownFilter => "filter is not enemies, allies or all",
+            ApiError::UnknownFilter => "filter is not a relation with its tags",
             ApiError::UnknownTag => "tag is not declared by any unit type",
             ApiError::NegativeRadius => "radius is negative",
             ApiError::NegativeTime => "time is negative",
@@ -195,10 +201,13 @@ impl fmt::Display for ApiError {
             ApiError::NoDelivery => "the action delivers no unit of that kind",
             ApiError::NegativeXp => "experience is negative",
             ApiError::IntegerBeyondNum => "integer is beyond a Num",
-            ApiError::NoAttack => "unit has no attack",
+            ApiError::NoAttack => "unit has no attack for the target",
             ApiError::NoStats => "unit has no stats",
             ApiError::UnknownStat => "stat the mode does not declare",
-            ApiError::ChainTooDeep => "a chain of combat events 16 deep",
+            ApiError::ChainTooDeep => {
+                let depth = ScriptLimits::CHAIN_DEPTH;
+                return write!(f, "a chain of combat events {depth} deep");
+            }
             ApiError::NegativeHeal => "amount to heal or restore is negative",
             ApiError::NotForRole => "the call is not one of the script's role",
             ApiError::NoMode => "the match has no mode",
@@ -238,8 +247,45 @@ impl fmt::Display for ApiError {
             ApiError::RespawnDespawns => "unit to respawn despawns when it dies",
             ApiError::NoAbilitySlot => "unit has no ability in that slot",
             ApiError::MaxRank => "ability is at its last rank",
+            ApiError::OtherFlight => {
+                "a homing projectile flies at a unit, and a line projectile along a direction"
+            }
         })
     }
 }
 
 impl Error for ApiError {}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use campfire_script::ScriptError;
+
+    use crate::scripts::error::{ApiError, CallError};
+
+    /// What a failed call's error is, without what a script raised or Rhai reported, so a test
+    /// compares it.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub(crate) enum FailureKind {
+        ParamOverflow,
+        Api(ApiError),
+        Compile,
+        CallLimit,
+        TickBudget,
+        Raised,
+        Runtime,
+    }
+
+    impl CallError {
+        pub(crate) const fn kind(&self) -> FailureKind {
+            match self {
+                CallError::ParamOverflow => FailureKind::ParamOverflow,
+                CallError::Api(api) => FailureKind::Api(*api),
+                CallError::Script(ScriptError::Compile(_)) => FailureKind::Compile,
+                CallError::Script(ScriptError::CallLimit) => FailureKind::CallLimit,
+                CallError::Script(ScriptError::TickBudget) => FailureKind::TickBudget,
+                CallError::Script(ScriptError::Raised(_)) => FailureKind::Raised,
+                CallError::Script(ScriptError::Runtime(_)) => FailureKind::Runtime,
+            }
+        }
+    }
+}

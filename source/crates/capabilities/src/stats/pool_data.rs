@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-use crate::stats::stat::Stat;
+use crate::values::stat::Stat;
 
 /// A pool as the mode declares it, in `[pools.<name>]`: the stat of its maximum, and the stat
 /// of what it regains a second.

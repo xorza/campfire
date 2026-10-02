@@ -1,3 +1,4 @@
+use bevy_ecs::entity::Entity;
 use std::hint::black_box;
 
 use bevy_ecs::component::Component;
@@ -41,34 +42,66 @@ struct Stats([Num; 12]);
 
 impl SimComponent for Position {
     const NAME: &'static str = "bench.position";
+
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }
 
 impl SimComponent for Velocity {
     const NAME: &'static str = "bench.velocity";
+
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }
 
 impl SimComponent for Health {
     const NAME: &'static str = "bench.health";
+
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }
 
 impl SimComponent for Mana {
     const NAME: &'static str = "bench.mana";
+
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }
 
 impl SimComponent for Team {
     const NAME: &'static str = "bench.team";
+
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }
 
 impl SimComponent for Target {
     const NAME: &'static str = "bench.target";
+
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }
 
 impl SimComponent for Cooldowns {
     const NAME: &'static str = "bench.cooldowns";
+
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }
 
 impl SimComponent for Stats {
     const NAME: &'static str = "bench.stats";
+
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }
 
 fn moba_world() -> World {

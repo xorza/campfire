@@ -6,13 +6,13 @@ license.workspace = true
 autotests = false
 
 [features]
-internals = ["dep:campfire-math", "campfire-capabilities/internals"]
+internals = ["campfire-capabilities/internals", "campfire-package/internals"]
 bench = ["internals", "dep:criterion"]
 
 [dependencies]
 campfire-capabilities.workspace = true
 campfire-content.workspace = true
-campfire-math = { workspace = true, optional = true }
+campfire-math.workspace = true
 campfire-package.workspace = true
 campfire-protocol.workspace = true
 campfire-script.workspace = true
@@ -22,8 +22,9 @@ bevy_ecs.workspace = true
 criterion = { workspace = true, optional = true }
 tracing.workspace = true
 
+# The integration tests read the test types `internals` gives, so a plain test run builds them.
 [dev-dependencies]
-campfire-math.workspace = true
+campfire-runner = { workspace = true, features = ["internals"] }
 
 [lints]
 workspace = true
@@ -31,7 +32,6 @@ workspace = true
 [[test]]
 name = "tests"
 path = "tests/mod.rs"
-required-features = ["internals"]
 
 [[bench]]
 name = "tick_3v3"

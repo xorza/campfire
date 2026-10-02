@@ -1,9 +1,11 @@
-use campfire_script::rhai::{Dynamic, ImmutableString};
+use campfire_script::rhai::Dynamic;
 use campfire_sim::Capability;
 
 use crate::combat::damage::{Damage, DamageCause};
 use crate::scripts::api_builder::ApiBuilder;
-use crate::scripts::script_api::{ApiOwner, MemberSpec};
+use crate::scripts::script_api::api_owner::ApiOwner;
+use crate::scripts::script_api::member_spec::MemberSpec;
+use crate::units::hit_handle::HitHandle;
 use crate::units::script_view::View;
 
 /// A damage as a script holds it, `Damage` in scripts: read only.
@@ -65,11 +67,25 @@ impl DamageHandle {
                 |d: &mut DamageHandle| d.damage.cause.roll().map_or(Dynamic::UNIT, Dynamic::from),
             )
             .bind(
-                field("ability", "the ability that dealt it, `\"\"` when none"),
+                field(
+                    "hit",
+                    "how its projectile or area reached the target, `()` for damage none delivered",
+                ),
+                |d: &mut DamageHandle| {
+                    d.damage.hit.map_or(Dynamic::UNIT, |hit| {
+                        Dynamic::from(HitHandle::new(hit, d.view.clone()))
+                    })
+                },
+            )
+            .bind(
+                field(
+                    "ability",
+                    "the action that dealt it: an ability, or an attack's weapon; `()` for none",
+                ),
                 |d: &mut DamageHandle| {
                     d.damage
                         .ability
-                        .map_or_else(ImmutableString::new, |id| d.view.ability_name(id))
+                        .map_or(Dynamic::UNIT, |id| Dynamic::from(d.view.ability_name(id)))
                 },
             );
     }

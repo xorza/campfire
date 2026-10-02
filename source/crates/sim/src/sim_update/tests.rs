@@ -1,10 +1,11 @@
+use bevy_ecs::entity::Entity;
 use std::num::NonZeroU32;
 
 use bevy_ecs::component::Component;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{ScheduleBuildError, ScheduleBuildWarning, ScheduleConfigs};
 use bevy_ecs::system::{Commands, Query, ScheduleSystem};
-use campfire_math::{Num, PlayerSlot, RngSource};
+use campfire_math::{Num, PlayerSlot, RngSource, RngStream};
 use serde::{Deserialize, Serialize};
 
 use super::*;
@@ -13,7 +14,7 @@ use crate::stable_id::StableId;
 use crate::state_registry::{StateHash, StateRegistry};
 use crate::tick_inputs::TickInput;
 
-/// The MOBA's 30 ticks a second.
+/// 30 ticks a second: the rate these tests run at, which no game sets.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
 
 const SEED: SegmentSeed = SegmentSeed::new([7; 32]);
@@ -27,6 +28,10 @@ struct Offset(Num);
 
 impl SimComponent for Offset {
     const NAME: &'static str = "test.offset";
+
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }
 
 /// Ticks lived, counting the tick of the spawn.
@@ -35,6 +40,10 @@ struct Age(u64);
 
 impl SimComponent for Age {
     const NAME: &'static str = "test.age";
+
+    fn check(&self, _: &World, _: Entity) -> bool {
+        true
+    }
 }
 
 /// The number of tick inputs seen so far. It is not state, so it stays out of the hashes.
@@ -47,6 +56,10 @@ struct TickSum(u64);
 
 impl SimResource for TickSum {
     const NAME: &'static str = "test.tick_sum";
+
+    fn check(&self, _: &World) -> bool {
+        true
+    }
 }
 
 fn spawn_unit(mut commands: Commands<'_, '_>, mut ids: ResMut<'_, IdAllocator>) {
@@ -55,7 +68,11 @@ fn spawn_unit(mut commands: Commands<'_, '_>, mut ids: ResMut<'_, IdAllocator>) 
 
 fn wander(rng: Res<'_, SimRng>, mut units: Query<'_, '_, (&StableId, &mut Offset)>) {
     for (&id, mut position) in &mut units {
-        position.0 += Num::from_bits(rng.open("wander", id).below(STEP_BOUND).cast_signed());
+        position.0 += Num::from_bits(
+            rng.open(RngStream::new("wander"), id)
+                .below(STEP_BOUND)
+                .cast_signed(),
+        );
     }
 }
 
@@ -96,8 +113,7 @@ fn registry() -> StateRegistry {
 }
 
 /// A spawn, a reader of the tick inputs, two independent systems in one step, and a reader of the
-/// tick; `reversed` adds the
-/// same systems in the opposite order.
+/// tick; `reversed` adds the same systems in the opposite order.
 fn workload(reversed: bool) -> Schedule {
     let mut systems: [ScheduleConfigs<ScheduleSystem>; 5] = [
         spawn_unit.in_set(SimSet::Inputs),
@@ -310,7 +326,7 @@ fn ticks_advance_and_key_the_draws() {
         (id..TICKS)
             .map(|tick| {
                 source.begin_tick(tick);
-                source.open("wander", id).below(STEP_BOUND)
+                source.open(RngStream::new("wander"), id).below(STEP_BOUND)
             })
             .sum::<u64>()
     };

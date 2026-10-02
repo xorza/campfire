@@ -3,8 +3,7 @@ use bevy::ecs::entity::Entity;
 use bevy::math::{Quat, Vec3};
 use bevy::transform::components::Transform;
 use campfire_capabilities::PoolId;
-use campfire_math::Num;
-use campfire_sim::{Tick, Ticks};
+use campfire_math::{Num, Tick, Ticks};
 
 use crate::view;
 
@@ -84,7 +83,7 @@ pub(crate) struct Layout {
 
 impl Layout {
     /// The back's transform, relative to the gauge.
-    pub(crate) fn back(self) -> Transform {
+    pub(crate) const fn back(self) -> Transform {
         Transform::from_scale(Vec3::new(self.width, 1.0, THICKNESS))
     }
 
@@ -142,6 +141,7 @@ mod tests {
         let health = GaugeKind::Life { shown: None }.layout();
         let quarter = health.fill(0.25);
         assert_eq!(quarter.scale, Vec3::new(0.3, 1.0, THICKNESS));
+        // The fill's centre is an f32 sum of halves of the width, exact to an ulp of 0.45.
         assert!((quarter.translation.x + 0.45).abs() < 1e-6, "{quarter:?}");
         // Out of range, a share holds at the ends.
         assert_eq!(health.fill(1.5).scale.x, WIDE);
@@ -178,10 +178,9 @@ mod tests {
 
     #[test]
     fn a_share_is_current_over_max_within_zero_and_one() {
-        let num = |value| Num::from_int(value).unwrap();
-        assert_eq!(share(num(150), num(600)), 0.25);
-        assert_eq!(share(num(700), num(600)), 1.0);
-        assert_eq!(share(num(5), Num::ZERO), 0.0);
-        assert_eq!(share(Num::ZERO, num(600)), 0.0);
+        assert_eq!(share(Num::int(150), Num::int(600)), 0.25);
+        assert_eq!(share(Num::int(700), Num::int(600)), 1.0);
+        assert_eq!(share(Num::int(5), Num::ZERO), 0.0);
+        assert_eq!(share(Num::ZERO, Num::int(600)), 0.0);
     }
 }

@@ -1,4 +1,4 @@
-name = "Veil"
+name = "hero-name"
 tags = ["assassin"]
 pools = ["health", "energy"]
 tracks = ["level"]

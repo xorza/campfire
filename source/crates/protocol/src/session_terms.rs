@@ -1,6 +1,8 @@
 use std::num::NonZeroU32;
 
 use blake3::Hasher;
+use campfire_math::Ticks;
+use secp256k1::XOnlyPublicKey;
 use serde::{Deserialize, Serialize};
 
 use crate::fingerprint::Fingerprint;
@@ -16,20 +18,20 @@ const SESSION_ID_DOMAIN: &[u8] = b"campfire/session-id/v1";
 /// header and in the message that offers them to a joining player.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SessionTerms {
-    /// The server's x-only public key.
-    pub server_key: [u8; 32],
+    pub server_key: XOnlyPublicKey,
     /// Ticks a second, fixed for the whole session.
     pub tick_hz: NonZeroU32,
     /// The most ticks an input may land after its stamp; a later one is logged as late.
-    pub max_input_delay: u64,
+    pub max_input_delay: Ticks,
     /// The most ticks an input's stamp may be ahead of the next tick; a further one is logged as
     /// early. The server holds each input until its tick, so this bounds what a client can make
     /// it hold.
-    pub max_input_lead: u64,
+    pub max_input_lead: Ticks,
     /// The most bytes an input's payload may hold.
     pub max_payload_len: u32,
-    /// The most inputs a player may send before one tick. With the max payload length, it bounds
-    /// how fast a player can grow the log.
+    /// The most inputs of one stamp, and of one packet, a player may send, and the most of its
+    /// inputs that apply in one tick, the rest waiting for the next. With the max payload length
+    /// and the max input lead, it bounds how fast a player can grow the log.
     pub max_inputs_per_tick: u32,
     /// The server's commitment to its seed chain. It is fresh for every session, so no two
     /// sessions share an id.
@@ -51,10 +53,10 @@ impl SessionTerms {
         let mut hasher = Hasher::new();
         hasher
             .update(SESSION_ID_DOMAIN)
-            .update(&self.server_key)
+            .update(&self.server_key.serialize())
             .update(&self.tick_hz.get().to_le_bytes())
-            .update(&self.max_input_delay.to_le_bytes())
-            .update(&self.max_input_lead.to_le_bytes())
+            .update(&self.max_input_delay.get().to_le_bytes())
+            .update(&self.max_input_lead.get().to_le_bytes())
             .update(&self.max_payload_len.to_le_bytes())
             .update(&self.max_inputs_per_tick.to_le_bytes())
             .update(self.seed_commitment.as_bytes())
