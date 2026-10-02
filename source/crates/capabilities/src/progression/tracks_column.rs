@@ -1,5 +1,3 @@
-use campfire_sim::Capability;
-
 use crate::progression::track_book::TrackBook;
 use crate::progression::track_set::TrackSet;
 use crate::scripts::error::{ApiError, Checked};
@@ -34,16 +32,14 @@ impl TracksColumn {
     /// Shares the tracks the mode declares with the view, which names them to scripts.
     pub(crate) fn share(view: &View, book: TrackBook) {
         view.set_track_names(book.names());
-        view.column_mut(Capability::Progression, |column: &mut TracksColumn| {
+        view.column_mut(|column: &mut TracksColumn| {
             column.book = book;
         });
     }
 
     /// The track `name`; an error for one the mode does not declare.
     pub(crate) fn track_named(view: &View, name: &str) -> Checked<TrackId> {
-        let found = view.column(Capability::Progression, |column: &TracksColumn| {
-            column.book.named(name)
-        });
+        let found = view.column(|column: &TracksColumn| column.book.named(name));
         Ok(found
             .flatten()
             .ok_or_else(|| ApiError::UnknownTrack.fail())?)
@@ -51,9 +47,7 @@ impl TracksColumn {
 
     /// Whether the unit in row `row` of the view has `track`.
     pub(crate) fn has(view: &View, row: usize, track: TrackId) -> bool {
-        view.column(Capability::Progression, |column: &TracksColumn| {
-            column.rows[row].contains(track)
-        })
-        .unwrap_or(false)
+        view.column(|column: &TracksColumn| column.rows[row].contains(track))
+            .unwrap_or(false)
     }
 }

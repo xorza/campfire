@@ -9,6 +9,7 @@ use serde::{Deserialize, Deserializer};
 
 use crate::abilities::Abilities;
 use crate::abilities::abilities_api::AbilitiesApi;
+use crate::actions::Actions;
 use crate::actions::actions_api::ActionsApi;
 use crate::areas::Areas;
 use crate::areas::areas_api::AreasApi;
@@ -230,6 +231,7 @@ impl CapabilitySet {
         budgets: Option<ScriptBudgets>,
     ) {
         Units::install(world, schedule, registry, budgets);
+        Actions::install(world, registry);
         if let Some(mut host) = world.get_non_send_mut::<ScriptHost>() {
             ScriptApi::bind(host.engine_mut(), CapabilitySet::apis());
         }
@@ -489,10 +491,9 @@ mod tests {
     /// The imports from a higher layer that the code holds today, each a module and the one it
     /// imports. Each step of the structural redesign's layers removes its own; the test fails
     /// when a new one appears, and when one listed here is gone, so the list only shrinks.
-    const KNOWN_BREAKS: [(&str, &str); 4] = [
+    const KNOWN_BREAKS: [(&str, &str); 3] = [
         ("scripts", "mode"),
         ("scripts", "stats"),
-        ("units", "actions"),
         ("units", "stats"),
     ];
 

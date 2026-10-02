@@ -1,5 +1,6 @@
 use campfire_sim::{Capability, Position};
 
+use crate::actions::actions_column::ActionsColumn;
 use crate::orders::ai_order::AiOrder;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
@@ -72,7 +73,7 @@ impl OrdersApi {
         if !target.alive || !attitude.may_attack() {
             return Err(ApiError::NotAnEnemy.fail().into());
         }
-        if !ctx.view().armed_against(&ordered, &target) {
+        if !ActionsColumn::armed_against(ctx.view(), unit.row_index(), &ordered, &target) {
             return Err(ApiError::NoAttack.fail().into());
         }
         OrdersApi::order(ctx, unit, AiOrder::Attack { target: target.id })

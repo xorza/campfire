@@ -31,6 +31,17 @@ impl Unit {
         Unit { id, view }
     }
 
+    pub(crate) const fn view(&self) -> &View {
+        &self.view
+    }
+
+    /// The unit's place among its view's rows.
+    pub(crate) fn row_index(&self) -> usize {
+        self.view
+            .row_index(self.id)
+            .expect("a handle's unit is in its view")
+    }
+
     /// The unit's row. A handle comes only from its view's rows, and lives only within a call.
     pub(crate) fn row(&self) -> UnitRow {
         self.view
@@ -71,18 +82,6 @@ impl Unit {
             .bind(
                 field("is_avatar", "whether it is an avatar"),
                 |unit: &mut Unit| unit.row().is_avatar(),
-            )
-            .bind(
-                field("target", "its attack's target, `()` with none"),
-                |unit: &mut Unit| unit.target(),
-            )
-            .bind(
-                field("attack_range", "its attack's range").capability(Capability::Combat),
-                |unit: &mut Unit| -> Checked<Num> {
-                    unit.row()
-                        .attack_range
-                        .ok_or_else(|| ApiError::NoAttack.fail().into())
-                },
             )
             .bind(
                 field("params", "its unit type's params, unresolved"),
@@ -314,14 +313,6 @@ impl Unit {
             return Err(ApiError::NegativeRadius.fail().into());
         }
         Ok(Ctx::of_call(call).view().metric().within(from, to, radius))
-    }
-
-    /// The unit's attack target, `()` when it has none or the view did not read it.
-    fn target(&self) -> Dynamic {
-        self.row()
-            .target
-            .and_then(|target| self.view.unit(target))
-            .map_or(Dynamic::UNIT, Dynamic::from)
     }
 }
 

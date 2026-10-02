@@ -5,7 +5,6 @@ use campfire_script::rhai::Dynamic;
 use campfire_script::{ScriptError, ScriptHost, ScriptId};
 use campfire_sim::{SimSet, StateRegistry, TickRate};
 
-use crate::actions::Actions;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::script_book::ScriptBook;
 use crate::scripts::script_budgets::ScriptBudgets;
@@ -92,7 +91,6 @@ impl Units {
         registry.register_component::<UnitType>();
         world.insert_resource(Relations::default());
         registry.register_resource::<Relations>();
-        Actions::install(world, registry, &view);
         world.insert_resource(Metric::default());
         let Some(budgets) = budgets else {
             world.insert_non_send(view);

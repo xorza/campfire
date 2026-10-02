@@ -437,6 +437,7 @@ pub(crate) mod internals {
         Action, ActionBook, Aim, Delivery, DeliveryShape, Fan, RankValues,
     };
     use crate::actions::action_data::Range;
+    use crate::actions::actions_column::ActionsColumn;
     use crate::actions::kind_spec::KindSpec;
     use crate::actions::weapon::Weapon;
     use crate::players::resource_id::ResourceAmount;
@@ -500,7 +501,7 @@ pub(crate) mod internals {
             delivery,
         });
         let book = book.clone();
-        world.non_send::<View>().set_actions(book);
+        ActionsColumn::share(world.non_send::<View>(), book);
         id
     }
 
@@ -538,7 +539,7 @@ pub(crate) mod internals {
             delivery: None,
         });
         let book = book.clone();
-        world.non_send::<View>().set_actions(book);
+        ActionsColumn::share(world.non_send::<View>(), book);
         id
     }
 }

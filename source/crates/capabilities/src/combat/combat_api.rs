@@ -3,6 +3,7 @@ use campfire_script::rhai::INT;
 use campfire_sim::Capability;
 
 use crate::actions::action_data_field::ActionDataField;
+use crate::actions::actions_column::ActionsColumn;
 use crate::combat::combat_effect::CombatEffect;
 use crate::combat::damage_handle::DamageHandle;
 use crate::combat::heal_handle::HealHandle;
@@ -154,10 +155,11 @@ impl CombatApi {
 
     /// Queues an extra attack of the acting unit, which has an attack, on `target`.
     fn attack_hit(ctx: &Ctx, target: &Unit) -> Checked<()> {
+        let view = ctx.view();
         let attacks = ctx
             .acting()
-            .and_then(|id| ctx.view().row(id))
-            .is_some_and(|row| row.attack_range.is_some());
+            .and_then(|id| view.row_index(id))
+            .is_some_and(|row| ActionsColumn::attack_range(view, row).is_some());
         if !attacks {
             return Err(ApiError::NoAttack.fail().into());
         }

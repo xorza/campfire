@@ -2,6 +2,7 @@ use campfire_sim::StableId;
 use serde::{Deserialize, Serialize};
 
 use crate::actions::action_book::{Delivery, DeliveryShape};
+use crate::actions::actions_column::ActionsColumn;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::role_set::RoleSet;
@@ -34,7 +35,7 @@ impl Delivering {
         };
         let rank = frame.rank();
         drop(frame);
-        let delivery = ctx.view().delivers(action);
+        let delivery = ActionsColumn::delivers(ctx.view(), action);
         let Some(delivery) = delivery.filter(|delivery| shape(delivery.shape)) else {
             return Err(ApiError::NoDelivery.fail().into());
         };

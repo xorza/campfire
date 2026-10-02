@@ -9,7 +9,6 @@ use campfire_math::{Num, PlayerSlot, Tick, Ticks, Vec3};
 use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString};
 use campfire_sim::{Capability, EntityIndex, Position, SimTick, StableId, TickRate};
 
-use crate::actions::action_book::{Action, ActionBook, Delivery};
 use crate::units::action_id::ActionId;
 
 use crate::players::resource_id::ResourceId;
@@ -63,7 +62,6 @@ pub(crate) struct ScriptView {
     teams: Rc<Teams>,
     /// The name of each path, by index, once a mode sets them.
     paths: Arc<[Box<str>]>,
-    actions: ActionBook,
     /// The names scripts read, as they read them.
     consts: ScriptConsts,
     /// How each installed capability above the core fills its fields of a row, in install order.
@@ -79,8 +77,6 @@ pub(crate) struct ScriptView {
     bounds: Bounds,
     /// The recent attacks on each unit, one run per unit.
     attacks: Vec<RecentAttack>,
-    /// The ability slots of each unit, one run per unit.
-    slots: Vec<SlotRow>,
     /// The stats the mode declares, in order, and each unit's values of them, one run per unit.
     stat_names: Arc<[Stat]>,
     stats: Vec<Num>,
@@ -114,9 +110,6 @@ pub(crate) struct UnitRow {
     pub(crate) alive: bool,
     /// Whether it stays when dead, for the mode to respawn.
     pub(crate) stays: bool,
-    pub(crate) target: Option<StableId>,
-    /// The range of its first weapon, in meters; none for a unit with no weapon.
-    pub(crate) attack_range: Option<Num>,
     /// The path it walks or stands on; `navigation` fills it.
     pub(crate) path: Option<PathId>,
     /// Its level and pools; `stats` fills them, and its run of stats.
@@ -129,9 +122,6 @@ pub(crate) struct UnitRow {
     /// Its run of recent attacks, from `attacks_start` to `attacks_end`.
     attacks_start: u32,
     attacks_end: u32,
-    /// Its run of ability slots, from `slots_start` to `slots_end`; `abilities` fills it.
-    slots_start: u32,
-    slots_end: u32,
     /// Its run of stats, in the order of the view's stat names, empty for a unit with none.
     stats_start: u32,
     stats_end: u32,
@@ -150,26 +140,15 @@ pub(crate) struct ModifierRow {
     pub(crate) state: Range<u32>,
 }
 
-/// An ability slot as the view read it: the rank of its ability, 0 while not learned, how many
-/// ranks the ability has, and the filter of the units it may attack when it is a weapon.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct SlotRow {
-    pub(crate) rank: u8,
-    pub(crate) ranks: u8,
-    pub(crate) weapon: Option<Filter>,
-}
-
 /// Fills the fields of a unit's row that a capability above the core holds.
 pub(crate) type RowSource = fn(&EntityRef<'_>, &mut RowFill<'_>);
 
 /// A row the view reads, as a capability fills it: its fields, the view's buffers of recent
-/// attacks and ability slots, to which the row's runs are added, and the world the unit is in.
+/// attacks, to which the row's runs are added, and the columns.
 #[derive(Debug)]
 pub(crate) struct RowFill<'a> {
     pub(crate) row: &'a mut UnitRow,
-    pub(crate) world: &'a World,
     attacks: &'a mut Vec<RecentAttack>,
-    slots: &'a mut Vec<SlotRow>,
     stats: &'a mut Vec<Num>,
     modifiers: &'a mut Vec<ModifierRow>,
     modifier_state: &'a mut Vec<StateValue>,
@@ -183,12 +162,12 @@ impl UnitRow {
 }
 
 impl RowFill<'_> {
-    /// The column of `capability`, which installed one of type `C`, for its source to add the
-    /// row's part to.
-    pub(crate) fn column<C: ViewColumn>(&mut self, capability: Capability) -> &mut C {
+    /// The column of type `C`, which the source's capability added, for it to add the row's
+    /// part to.
+    pub(crate) fn column<C: ViewColumn>(&mut self) -> &mut C {
         self.columns
-            .get_mut(capability)
-            .expect("a capability fills the column it installed")
+            .get_mut()
+            .expect("a source fills the column its capability added")
     }
 
     /// Adds `instance` to the row's run of modifiers, which the caller adds in order.
@@ -219,11 +198,6 @@ impl RowFill<'_> {
     pub(crate) fn attacked(&mut self, attacks: impl IntoIterator<Item = RecentAttack>) {
         self.attacks.extend(attacks);
     }
-
-    /// Adds `slots` to the row's run of ability slots.
-    pub(crate) fn slotted(&mut self, slots: impl IntoIterator<Item = SlotRow>) {
-        self.slots.extend(slots);
-    }
 }
 
 /// The view as the host and every handle share it.
@@ -231,11 +205,6 @@ impl RowFill<'_> {
 pub(crate) struct View(Rc<RefCell<ScriptView>>);
 
 impl ScriptView {
-    /// The loaded action `id`.
-    fn action(&self, id: ActionId) -> &Action {
-        self.actions.get(id).expect("an action of the match")
-    }
-
     fn read(&mut self, world: &World) {
         self.now = world.resource::<SimTick>().start();
         self.relations.clone_from(world.resource::<Relations>());
@@ -244,7 +213,6 @@ impl ScriptView {
         self.units.clear();
         self.columns.clear();
         self.attacks.clear();
-        self.slots.clear();
         self.stats.clear();
         self.modifiers.clear();
         self.modifier_state.clear();
@@ -254,7 +222,6 @@ impl ScriptView {
                 continue;
             };
             let start = u32::try_from(self.attacks.len()).expect("attacks fit u32");
-            let slots_start = u32::try_from(self.slots.len()).expect("slots fit u32");
             let stats_start = u32::try_from(self.stats.len()).expect("stats fit u32");
             let modifiers_start = u32::try_from(self.modifiers.len()).expect("modifiers fit u32");
             let mut row = UnitRow {
@@ -272,12 +239,8 @@ impl ScriptView {
                 pools: None,
                 seen_by: TeamSet::ALL,
                 tags: unit.get::<UnitTags>().copied().unwrap_or_default(),
-                target: None,
-                attack_range: None,
                 attacks_start: start,
                 attacks_end: start,
-                slots_start,
-                slots_end: slots_start,
                 stats_start,
                 stats_end: stats_start,
                 modifiers_start,
@@ -285,9 +248,7 @@ impl ScriptView {
             };
             let mut fill = RowFill {
                 row: &mut row,
-                world,
                 attacks: &mut self.attacks,
-                slots: &mut self.slots,
                 stats: &mut self.stats,
                 modifiers: &mut self.modifiers,
                 modifier_state: &mut self.modifier_state,
@@ -297,7 +258,6 @@ impl ScriptView {
                 source(&unit, &mut fill);
             }
             row.attacks_end = u32::try_from(self.attacks.len()).expect("attacks fit u32");
-            row.slots_end = u32::try_from(self.slots.len()).expect("slots fit u32");
             row.stats_end = u32::try_from(self.stats.len()).expect("stats fit u32");
             row.modifiers_end = u32::try_from(self.modifiers.len()).expect("modifiers fit u32");
             self.units.push(row);
@@ -336,7 +296,6 @@ impl View {
             teams: Rc::default(),
             paths: Arc::default(),
             consts: ScriptConsts::default(),
-            actions: ActionBook::default(),
             sources: Vec::new(),
             rate,
             now: Tick::ZERO,
@@ -345,7 +304,6 @@ impl View {
             metric: Metric::default(),
             bounds: Bounds::WORLD,
             attacks: Vec::new(),
-            slots: Vec::new(),
             stat_names: Arc::from([]),
             pool_names: Arc::from([]),
             resource_names: Arc::from([]),
@@ -569,16 +527,9 @@ impl View {
         self.0.borrow().consts.damage_kind(kind)
     }
 
-    /// Shares the match's actions, as the load built them.
-    pub(crate) fn set_actions(&self, book: ActionBook) {
-        let mut view = self.0.borrow_mut();
-        view.consts.set_actions(book.names());
-        view.actions = book;
-    }
-
-    /// How ability `id` delivers, if other than at once.
-    pub(crate) fn delivers(&self, id: ActionId) -> Option<Delivery> {
-        self.0.borrow().action(id).delivery
+    /// Names the match's actions, by action id.
+    pub(crate) fn set_action_names<'a>(&self, names: impl Iterator<Item = &'a str>) {
+        self.0.borrow_mut().consts.set_actions(names);
     }
 
     /// The name of ability `id` in its package.
@@ -591,27 +542,19 @@ impl View {
         self.0.borrow_mut().sources.push(source);
     }
 
-    /// Gives `capability` its column, which its source fills.
-    pub(crate) fn add_column<C: ViewColumn>(&self, capability: Capability, column: C) {
-        self.0.borrow_mut().columns.add(capability, column);
+    /// Adds `column`, which a source fills.
+    pub(crate) fn add_column<C: ViewColumn>(&self, column: C) {
+        self.0.borrow_mut().columns.add(column);
     }
 
-    /// What `read` gives of the column of `capability`; `None` when it installed none.
-    pub(crate) fn column<C: ViewColumn, R>(
-        &self,
-        capability: Capability,
-        read: impl FnOnce(&C) -> R,
-    ) -> Option<R> {
-        self.0.borrow().columns.get(capability).map(read)
+    /// What `read` gives of the column of type `C`; `None` when none was added.
+    pub(crate) fn column<C: ViewColumn, R>(&self, read: impl FnOnce(&C) -> R) -> Option<R> {
+        self.0.borrow().columns.get().map(read)
     }
 
-    /// Changes the column of `capability` by `write`, when it installed one.
-    pub(crate) fn column_mut<C: ViewColumn>(
-        &self,
-        capability: Capability,
-        write: impl FnOnce(&mut C),
-    ) {
-        if let Some(column) = self.0.borrow_mut().columns.get_mut(capability) {
+    /// Changes the column of type `C` by `write`, when one was added.
+    pub(crate) fn column_mut<C: ViewColumn>(&self, write: impl FnOnce(&mut C)) {
+        if let Some(column) = self.0.borrow_mut().columns.get_mut() {
             write(column);
         }
     }
@@ -691,28 +634,6 @@ impl View {
 
     pub(crate) fn row(&self, id: StableId) -> Option<UnitRow> {
         self.0.borrow().row(id)
-    }
-
-    /// Ability slot `slot` of the unit of `row`, when it has one.
-    /// How many ability slots the unit of `row` has.
-    pub(crate) const fn slot_count(row: &UnitRow) -> usize {
-        (row.slots_end - row.slots_start) as usize
-    }
-
-    pub(crate) fn slot(&self, row: &UnitRow, slot: u8) -> Option<SlotRow> {
-        let view = self.0.borrow();
-        let run = &view.slots[row.slots_start as usize..row.slots_end as usize];
-        run.get(usize::from(slot)).copied()
-    }
-
-    /// Whether a learned weapon of `row` selects `target`, as `row` regards it.
-    pub(crate) fn armed_against(&self, row: &UnitRow, target: &UnitRow) -> bool {
-        let view = self.0.borrow();
-        let attitude = view.relations.between(row.team, target.team);
-        let run = &view.slots[row.slots_start as usize..row.slots_end as usize];
-        let target = Some((attitude, target.tags.tags));
-        run.iter()
-            .any(|slot| Action::arms(slot.rank, slot.weapon, target))
     }
 
     /// The handle of unit `id`, when the view read it.

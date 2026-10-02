@@ -2,6 +2,7 @@ use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString, NativeCallCont
 use campfire_sim::{Capability, Position, StableId};
 
 use crate::actions::action_slots::ActionSlots;
+use crate::actions::actions_column::ActionsColumn;
 use crate::mode::choice_book::Choice;
 use crate::mode::game_map::GameMap;
 use crate::mode::marker::Marker;
@@ -20,7 +21,6 @@ use crate::scripts::role_set::RoleSet;
 use crate::scripts::script_api::{ApiOwner, DataTable, MemberSpec, Status};
 use crate::scripts::state_decl::StateType;
 use crate::scripts::state_value::StateValue;
-use crate::units::script_view::View;
 use crate::units::spawner::SpawnAt;
 use crate::units::team::Team;
 use crate::units::unit::Unit;
@@ -260,7 +260,7 @@ impl ModeApi {
         .bind(
             grant,
             |ctx: &mut Ctx, unit: Unit, kind: &str, ids: Array| {
-                let slots = View::slot_count(&unit.row());
+                let slots = ActionsColumn::slot_count(ctx.view(), unit.row_index());
                 ModeApi::grant(ctx, unit.id, slots, kind, &ids)
             },
         )
@@ -672,9 +672,7 @@ impl ModeApi {
         let slot = u8::try_from(slot)
             .ok()
             .ok_or_else(|| ApiError::NoAbilitySlot.fail())?;
-        let slot_row = ctx
-            .view()
-            .slot(&row, slot)
+        let slot_row = ActionsColumn::slot(ctx.view(), unit.row_index(), slot)
             .ok_or_else(|| ApiError::NoAbilitySlot.fail())?;
         let effect = ModeEffect::Learn { unit: row.id, slot };
         let mut frame = ctx.write()?;

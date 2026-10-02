@@ -1,7 +1,7 @@
 use bevy_ecs::schedule::Schedule;
 use bevy_ecs::world::{EntityRef, Mut, World};
 use campfire_math::Tick;
-use campfire_sim::{Capability, EntityIndex, StateRegistry};
+use campfire_sim::{EntityIndex, StateRegistry};
 
 use crate::progression::experience::Experience;
 use crate::progression::level_ups::{LevelUp, LevelUps};
@@ -31,7 +31,7 @@ impl Progression {
     /// Adds progression to a match, with no track until the mode loads its own.
     pub fn install(world: &mut World, _: &mut Schedule, registry: &mut StateRegistry) {
         let view = world.non_send::<View>();
-        view.add_column(Capability::Progression, TracksColumn::default());
+        view.add_column(TracksColumn::default());
         view.add_source(fill_row);
         world.insert_resource(TrackBook::default());
         world.insert_resource(LevelUps::default());
@@ -87,8 +87,7 @@ fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
     let tracks = unit
         .get::<Experience>()
         .map_or(TrackSet::default(), Experience::tracks);
-    fill.column::<TracksColumn>(Capability::Progression)
-        .push(tracks);
+    fill.column::<TracksColumn>().push(tracks);
 }
 
 #[cfg(test)]

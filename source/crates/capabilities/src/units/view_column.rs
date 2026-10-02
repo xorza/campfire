@@ -1,12 +1,9 @@
-use std::any::Any;
-use std::array;
+use std::any::{Any, TypeId};
 use std::fmt;
 
-use campfire_sim::Capability;
-
-/// A capability's own part of the script view: what it reads of each unit, a row each in the
-/// order the view reads the units, and what its getters read besides, such as its book. The
-/// core names none of them.
+/// A part of the script view that a capability, or the action pipeline, owns: what it reads of
+/// each unit, a row each in the order the view reads the units, and what its getters read
+/// besides, such as its book. The core names none of them.
 pub(crate) trait ViewColumn: Any + fmt::Debug {
     /// Empties its rows for the next read, keeping its buffers.
     fn clear(&mut self);
@@ -15,45 +12,45 @@ pub(crate) trait ViewColumn: Any + fmt::Debug {
     fn rows(&self) -> usize;
 }
 
-/// The columns of the view, one for each capability that installs one.
-#[derive(Debug)]
-pub(crate) struct ViewColumns([Option<Box<dyn ViewColumn>>; Capability::ALL.len()]);
-
-impl Default for ViewColumns {
-    fn default() -> ViewColumns {
-        ViewColumns(array::from_fn(|_| None))
-    }
-}
+/// The columns of the view, each of its own type, in the order they were added.
+#[derive(Debug, Default)]
+pub(crate) struct ViewColumns(Vec<Box<dyn ViewColumn>>);
 
 impl ViewColumns {
-    /// Gives `capability` its column.
-    pub(crate) fn add<C: ViewColumn>(&mut self, capability: Capability, column: C) {
-        let slot = &mut self.0[capability as usize];
-        debug_assert!(slot.is_none(), "a capability installs one column");
-        *slot = Some(Box::new(column));
+    pub(crate) fn add<C: ViewColumn>(&mut self, column: C) {
+        debug_assert!(self.get::<C>().is_none(), "one column of each type");
+        self.0.push(Box::new(column));
     }
 
-    /// The column of `capability`, when it installed one of type `C`.
-    pub(crate) fn get<C: ViewColumn>(&self, capability: Capability) -> Option<&C> {
-        let column: &dyn Any = self.0[capability as usize].as_deref()?;
+    /// The column of type `C`, when one was added.
+    pub(crate) fn get<C: ViewColumn>(&self) -> Option<&C> {
+        let column: &dyn Any = self
+            .0
+            .iter()
+            .find(|column| (***column).type_id() == TypeId::of::<C>())?
+            .as_ref();
         column.downcast_ref()
     }
 
-    /// The column of `capability`, to change, when it installed one of type `C`.
-    pub(crate) fn get_mut<C: ViewColumn>(&mut self, capability: Capability) -> Option<&mut C> {
-        let column: &mut dyn Any = self.0[capability as usize].as_deref_mut()?;
+    /// The column of type `C`, to change, when one was added.
+    pub(crate) fn get_mut<C: ViewColumn>(&mut self) -> Option<&mut C> {
+        let column: &mut dyn Any = self
+            .0
+            .iter_mut()
+            .find(|column| (***column).type_id() == TypeId::of::<C>())?
+            .as_mut();
         column.downcast_mut()
     }
 
     /// Empties every column's rows for the next read.
     pub(crate) fn clear(&mut self) {
-        for column in self.0.iter_mut().flatten() {
+        for column in &mut self.0 {
             column.clear();
         }
     }
 
     /// Whether every column holds `rows` rows.
     pub(crate) fn hold(&self, rows: usize) -> bool {
-        self.0.iter().flatten().all(|column| column.rows() == rows)
+        self.0.iter().all(|column| column.rows() == rows)
     }
 }

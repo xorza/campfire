@@ -6,6 +6,7 @@ use bevy_ecs::world::World;
 
 use crate::abilities::effect_lists::EffectLists;
 use crate::actions::action_book::ActionBook;
+use crate::actions::actions_column::ActionsColumn;
 use crate::areas::area_spec::AreaSpec;
 use crate::books::book_builder::BookBuilder;
 use crate::books::book_input::BookInput;
@@ -100,7 +101,7 @@ impl Books {
             TracksColumn::share(&view, tracks.clone());
             world.insert_resource(tracks);
         }
-        view.set_actions(parts.actions.clone());
+        ActionsColumn::share(&view, parts.actions.clone());
         replace(world, parts.modifiers);
         replace(world, parts.actions);
         replace(world, parts.effects);

@@ -6,11 +6,11 @@ use bevy_ecs::world::{EntityRef, World};
 use campfire_sim::{Position, SimSet, SimTick, StableId, StateRegistry, TickRate};
 
 use crate::actions::action_book::ActionBook;
-use crate::actions::action_data::Range;
 use crate::actions::action_kind::ActionKind;
 use crate::stats::param_book::ParamBook;
 
 use crate::actions::action_slots::{ActionSlots, ActionTarget, InProgress};
+use crate::actions::actions_column::ActionsColumn;
 
 use crate::actions::purse::Purse;
 
@@ -30,7 +30,7 @@ use crate::units::block::Block;
 use crate::units::body::Body;
 
 use crate::units::owner::Owner;
-use crate::units::script_view::{RowFill, SlotRow, View};
+use crate::units::script_view::{RowFill, View};
 use crate::units::team::Team;
 
 use crate::units::unit_tags::UnitTags;
@@ -42,6 +42,7 @@ pub(crate) mod action_kind;
 pub(crate) mod action_names;
 pub(crate) mod action_slots;
 pub(crate) mod actions_api;
+pub(crate) mod actions_column;
 pub(crate) mod delivery_data;
 pub(crate) mod effect_data;
 pub(crate) mod error;
@@ -70,8 +71,11 @@ pub(crate) enum ActionsSet {
 }
 
 impl Actions {
-    /// Adds the actions to a match, with none loaded yet, and to the rows of its `view`.
-    pub(crate) fn install(world: &mut World, registry: &mut StateRegistry, view: &View) {
+    /// Adds the actions to a match whose core is installed, with none loaded yet, and its column
+    /// to the script view.
+    pub(crate) fn install(world: &mut World, registry: &mut StateRegistry) {
+        let view = world.non_send::<View>();
+        view.add_column(ActionsColumn::default());
         view.add_source(fill_row);
         world.insert_resource(ActionBook::default());
         registry.register_component::<ActionSlots>();
@@ -256,31 +260,10 @@ fn hold_passives(
     }
 }
 
-/// Fills a row of the script view with a unit's actions: each slot's rank, its action's ranks and
-/// its weapon filter, the attack target, and the range of its first weapon.
+/// Adds a unit's actions to the actions' column of the script view.
 fn fill_row(unit: &EntityRef<'_>, fill: &mut RowFill<'_>) {
-    let Some(slots) = unit.get::<ActionSlots>() else {
-        return;
-    };
-    let book = fill.world.resource::<ActionBook>();
-    fill.row.target = slots.attack_target();
-    fill.row.attack_range = book.weapon_for(slots, None).map(|slot| {
-        let Range::Meters(range) = book.range(slots, slot) else {
-            panic!("the load gives every attack a range in meters");
-        };
-        range
-    });
-    let rows = slots.iter().map(|slot| {
-        let action = book
-            .get(slot.action)
-            .expect("a slot's action is in the book");
-        SlotRow {
-            rank: slot.rank,
-            ranks: u8::try_from(action.ranks.len()).expect("an action has few ranks"),
-            weapon: action.weapon_filter(),
-        }
-    });
-    fill.slotted(rows);
+    let slots = unit.get::<ActionSlots>();
+    fill.column::<ActionsColumn>().push(slots);
 }
 
 #[cfg(any(test, feature = "internals"))]
@@ -307,6 +290,7 @@ pub(crate) mod loads {
     use crate::actions::action_data::ActionData;
     use crate::actions::action_data::CostTarget;
     use crate::actions::action_names::ActionNames;
+    use crate::actions::actions_column::ActionsColumn;
     use crate::actions::error::ActionError;
     use crate::projectiles::projectile_spec::ProjectileSpec;
     use crate::scripts::script_book::ScriptBook;
@@ -359,7 +343,7 @@ pub(crate) mod loads {
             let places = StatBook::places(world, data.params.values().flat_map(Param::stats));
             ParamBook::load_action(world, id, &data.params, |stat| places[stat]);
             let book = world.resource::<ActionBook>().clone();
-            world.non_send::<View>().set_actions(book);
+            ActionsColumn::share(world.non_send::<View>(), book);
             Ok(id)
         }
     }
