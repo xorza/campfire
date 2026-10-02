@@ -106,9 +106,6 @@ The copies stay in line only through load order and a `debug_assert`. PLAN step 
 
 - `LoadCheck` validates the packages, then throws away what it computed. `MatchBuild` computes the same values again, with about 20 `.expect(CHECKED)`.
 - Some errors show only at match start: `UnitKitError`, `ActionError::TimeTooLarge` and `AiError::NoThink`.
-- The load check finds names in scripts through a hand-kept table that drifted from the registry.
-- A package is read three times, so the bytes that are parsed are not certain to be the bytes that were fingerprinted.
-- Package names and unit ids are joined into `<package>/<id>` strings that can collide.
 
 ### Shape
 
@@ -125,23 +122,7 @@ Match::install(world, &Books, SessionTerms)    cannot fail on data
   - It is a pure function of the packages, so it can be tested with no world.
 - **Times are checked at the fastest tick rate in the manifest's range.** That rate gives the largest tick counts, so a time that fits at that rate fits at every allowed rate. The tick values themselves are derived at match start, from the session's rate. That derivation cannot fail.
 - **`ModePackages` holds the `Books`.** `MatchBuild` becomes `Match::install`, with no `.expect(CHECKED)`. `StartError` keeps only the session-term cases.
-- **One shape of content for every package kind.**
-  - `PackageContent { actions, modifiers, units, scripts }` is the same for the mode, avatar and loadout packages. `AvatarData` embeds it beside its one unit type.
-  - `ModePackages` gives one view per package with a `PackageIndex(u16)`, whose limit is checked at load.
-  - The six `match Content::…` blocks, the 4-tuples in `stat_graph`, and the index arithmetic in `MatchBuild` go away.
-- **A unit type's identity is `(PackageIndex, TypeName)`, not a joined string.**
-  - A script resolves a type name within a scope.
-  - A mode script sees the mode's types, and the avatar types, which take their package's name. The 3v3 and lane modes spawn heroes as `spawn_unit(hero, ..)`.
-  - A package's delivery types are seen only by that package's actions.
-
-  Collisions are then impossible, so the collision check goes away.
-- **The registry declares name arguments.**
-  - `MemberSpec` gains `args: &[ArgRole]`, where `ArgRole::Name(NameKind)` marks a name.
-  - `ScriptFacts` collects `(NameKind, literal)` from any call, generically. The eleven `Vec<String>` lists become one list, and the hand-kept table goes away.
-  - A name that a script computes at run time cannot be checked at load. It still fails at its call, as today.
-  - This is also the base of the roadmap item that refuses a planned name at load.
 - **Each script is parsed once.** The AST stays in `Script`, and the match host compiles from it.
-- **Mode state and modifier state have different types.** `sync` is required on mode state and absent from modifier state. Serde then enforces the rule that `StateSync` checks only half of today.
 
 ## R3. Strict layers with registered hooks
 
@@ -432,38 +413,12 @@ A refactor of this size needs a permanent proof that behaviour stays the same. T
 - **Behaviour changes.** A step marked "changes behaviour" names the change in its review, and updates the behaviour golden in the same diff.
 - **Temporary code.** A Stage B fix that a later step replaces says so in its commit. The later step deletes it.
 
-### Stage A: the proof (base)
-
-| Step | Change | Size |
-|---|---|---|
-| A1 | Pin the net round trip; fix the 5 weak tests and 3 fixture defects (T§1) | S |
-| A2 | The proving match in `packages/test` | M |
-| A3 | `HashTrail`, the behaviour trace, and both goldens over the lane match, the proving match and the 3v3; the first work record | M |
-| A4 | The capability table, and the layer test with today's breaks as exceptions | S |
-
-Done when the net scenarios pass 400 of 400 runs under load, and both goldens and the layer test are in the suite.
-
-### Stage B: crashes and wrong gameplay (base)
-
-| Step | Change | Size |
-|---|---|---|
-| B1 | Unit life: `die` stops actions; the life pool needs `[combat]`; delivery types refused for spawns (temporary until C8); `/` refused in package names and ids (temporary until C2) | S |
-| B2 | Order and timing: `Ordered` and its users; the archetype-shuffle test; `finish_trains` reads `end()`; Mode-stage events defer as timers do; the projectile type decides homing; `renew` takes the new interval | M, changes behaviour |
-| B3 | Navigation: `nearest_open` within the window; the route kept on an empty short plan; ask ticks kept; the AI's attack order uses `weapon_for` (temporary until D2) | S, changes behaviour |
-| B4 | Network: inputs counted per stamp and applied with a limit per tick (design 05); the client keeps the limits; the check before the hash; lobby disconnects and one seat per key; the server's exit code | M |
-
-Each step adds the test that would have caught its bug. B2 makes `Ordered` permanent, so there is no temporary sort.
-
 ### Stage C: one load pipeline and immutable books (track S)
 
 This stage is the backbone. Its steps run in order.
 
 | Step | Change | Size |
 |---|---|---|
-| C1 | Read a package once into memory, and fingerprint those bytes; one `/` grammar for `PackagePath`; per-package failures in `PackageStore`; the verifier checks the release first | M |
-| C2 | `PackageContent` for every package kind; `PackageIndex`; type identity `(PackageIndex, TypeName)` and its scopes; `LoadError` places; the manifest's `api` (PLAN step 3) | M |
-| C3 | Checked names where they enter: `DeclaredName` for ids, `TagName` with reserved engine tags; separate mode and modifier state types; checked `Num` for stat values; `DamageKind::LIMIT` | M |
-| C4 | Registry argument roles; generic `ScriptFacts` with one list; hook arity read from the registered signature | M |
 | C5a | `Books::build` in capabilities, called by the load check, which keeps its own checks and compares the results; kits, actions and AIs built at the fastest rate; `ScriptPlace`; one `LoadError::new` and one case for each rule | M |
 | C5b | `ModePackages` holds the books; `Match::install` reads them; `StartError` shrinks; each script parsed once; the old checks and the `.expect(CHECKED)` go | M |
 | C6a | Typed ids from one list each (`StatId` and the others); one ms-to-ticks conversion; `Option<PoolId>` for the life pool; `Filter::of(Relation)` | M |
@@ -491,7 +446,6 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 
 | Step | Change | Needs | Size |
 |---|---|---|---|
-| D4 | Effect queues for each capability, and the dispatch table; `CallStart`, with the call's package in the frame | A, B | M |
 | E1 | The view reads the target rule; navigation and orders react to `Added<Dead>` | B | S |
 | E2 | `Reach` everywhere: queries, auras, homing hits; the aura rule; vision from spawn; new reference radii if decision 2 asks for them | E1 | M, changes behaviour |
 | F2 | `mul_div` and `round_ties_even`; the metric in scripts and homing; hit order by `along`; `RngStream`; ids at call time, so `ctx.projectile` and `ctx.area` return handles; the trig bound in design 09 | B | M, changes behaviour |
@@ -517,26 +471,21 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 
 PLAN.md's stage 4 steps join this plan as follows:
 
-- **PLAN step 1 (effect lists in data)** comes after D4. Effect lists are new effects, so they belong in the new dispatch, not in the old enum that D4 removes. D4 needs only A and B, so step 1 waits only for those.
 - **PLAN step 2 (client stats and tags)** comes after C7 and I4. The client then builds `Books` from the packages, and installs prediction from them.
-- **PLAN step 3 (package API version)** is part of C2.
-- **PLAN step 4 (human text)** comes after C3. Checked names, and `Place::Avatar` naming the package, are its base.
 
 ### Order
 
 ```
-Base:     A1 → A2 → A3 → A4 → B1 → B2 → B3 → B4
+Track S:  C5a → C5b → C6a → C6b → C7 → C8 → C9 → D2 → D3 → D5 → D6
+                                  └ (C7 + I4) PLAN 2
 
-Track S:  C1 → C2 → C3 → C4 → C5a → C5b → C6a → C6b → C7 → C8 → C9 → D2 → D3 → D5 → D6
-                 └ PLAN 3     └ PLAN 4                    └ (C7 + I4) PLAN 2
-
-Track I:  D4 → PLAN 1      E1 → E2      F2      G1      H1, H4      H2 → H3
+Track I:  E1 → E2      F2      G1      H1, H4      H2 → H3
           I1 → I2 → I3
 
 Joins:    C6b + G1 → G2      D5 + H1 → H1b      C7 + I2 → I4
 ```
 
-Stage B comes before any other code change, because it fixes crashes now. Track S is long and sequential. Track I fills the sessions between its steps, and it lets PLAN step 1 start early.
+Track S is long and sequential. Track I fills the sessions between its steps.
 
 ## Risks
 
