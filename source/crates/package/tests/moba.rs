@@ -36,7 +36,7 @@ fn read_tree(dir: &Path, at: &Path, files: &mut BTreeMap<PathBuf, Vec<u8>>) {
 
 /// The reference packages in memory with `edits` made, each to a file by its path from their
 /// root: their 3v3.
-pub(crate) fn edited<'a>(edits: impl IntoIterator<Item = (&'a str, Edit)>) -> PackageDir {
+pub(crate) fn edited<'a>(edits: impl IntoIterator<Item = (&'a str, Edit<'a>)>) -> PackageDir {
     edited_at("modes/3v3", edits)
 }
 
@@ -44,7 +44,7 @@ pub(crate) fn edited<'a>(edits: impl IntoIterator<Item = (&'a str, Edit)>) -> Pa
 /// root: the package at `root`.
 pub(crate) fn edited_at<'a>(
     root: &str,
-    edits: impl IntoIterator<Item = (&'a str, Edit)>,
+    edits: impl IntoIterator<Item = (&'a str, Edit<'a>)>,
 ) -> PackageDir {
     let mut files = moba_files().clone();
     for (file, edit) in edits {
@@ -132,14 +132,14 @@ fn at_path(
 /// keys and array indices joined by dots, so an edit by path holds whatever value the file has
 /// there.
 #[derive(Debug, Clone, Copy)]
-pub(crate) enum Edit {
-    Replace(&'static str, &'static str),
-    Create(&'static str),
+pub(crate) enum Edit<'a> {
+    Replace(&'a str, &'a str),
+    Create(&'a str),
     /// The value at the path, as TOML writes it.
-    Set(&'static str, &'static str),
-    Remove(&'static str),
+    Set(&'a str, &'a str),
+    Remove(&'a str),
     /// The key at the path, given the name.
-    Rename(&'static str, &'static str),
+    Rename(&'a str, &'a str),
 }
 
 #[test]

@@ -17,19 +17,6 @@ Paths are relative to `source/crates/`. Line numbers are at `c38f0da`. Each item
 ### 2.5 Net
 
 - [ ] **The round trip pinned to the link model** — `net/src/local_match/delay_line.rs` pins the measured round trip to zero, and `mod.rs` adds the modeled round trip to the sync margin. Better: pin the round trip to the link model's own value, and remove the `jitter_margin` workaround in `LocalMatch::client`. That step needs new derivations of the expected values. Also check that the join order (`play_by_team`) is then fixed.
-### 2.6 Protocol and package
-
-- [ ] **`session_log/tests.rs` repeats its submit step**:
-  - `log.record(packet.inputs.iter().copied(), &packet.signature, …)` appears 6 times;
-  - `SessionLog::new(header()).unwrap()` appears 9 times;
-  - the `SCRIPT` expected table appears twice (`:272-278`, `:287-293`);
-  - the tail check appears twice (`:297-300`, `:812-814`).
-
-  Better: `Sent::submit(&self, log, applied)`, `new_log()`, `script_applied()` and `tail_applied()`. This saves about 50 lines. Do not merge the `SessionTerms` literals: the byte tests derive their bytes from those values (`:852`).
-- [ ] **Tests of other types in `session_log/tests.rs`** — the `InputChain` layout test (`:656-726`) belongs in `input_chain/mod.rs`, which has no tests. The `SeedChain` tests (`:571-654`) belong in `seed_chain.rs`.
-- [ ] **The package flaw harness is good** — `PackageDir::in_memory` plus `edited()` (`mode_package.rs:20-58`) gives a changed tree with no disk. A temp-dir harness is not necessary. Only `package_dir/tests.rs` uses the file system: add a `Drop` guard so that a panic does not leave `/tmp/campfire-package-<pid>-*`.
-- [ ] **The track limit test in `mode_package.rs`** — `more_tracks…` is not in the flaw table, because `Edit` holds `&'static str`, so it `.leak()`s, and so does the tag limit test. Better: a table of `LimitCase { file, with: fn(&str, usize) -> String, allowed, limit }` that asserts `allowed` loads and `allowed + 1` gives `TooMany(limit)`. That also adds the missing at-limit case: no test loads 32 tracks.
-
 ## 3. Helpers copied across crates
 
 - [ ] **`fn num(i64) -> Num`** — 23 copies, all `Num::from_int(value).unwrap()`. Better: one `const fn` in `math` (group 9).

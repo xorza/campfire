@@ -14,7 +14,7 @@ fn language(text: &str) -> Language {
 
 /// The German locale package of the reference packages, with `edits` made.
 fn german<'a>(
-    edits: impl IntoIterator<Item = (&'a str, Edit)>,
+    edits: impl IntoIterator<Item = (&'a str, Edit<'a>)>,
 ) -> Result<LocalePackage, LoadError> {
     LocalePackage::read(&edited_at("locales/de", edits).read().unwrap())
 }

@@ -21,16 +21,16 @@ use crate::moba::{Edit, edited, moba, moba_files};
 #[derive(Debug)]
 struct Flaw {
     file: &'static str,
-    edit: Edit,
+    edit: Edit<'static>,
     /// More edits the flaw needs, each to a file.
-    also: &'static [(&'static str, Edit)],
+    also: &'static [(&'static str, Edit<'static>)],
     package: &'static str,
     refused: fn(&LoadProblem) -> bool,
 }
 
 const fn flaw(
     file: &'static str,
-    edit: Edit,
+    edit: Edit<'static>,
     package: &'static str,
     refused: fn(&LoadProblem) -> bool,
 ) -> Flaw {
@@ -65,7 +65,8 @@ const MODE_SCRIPT: &str = "modes/3v3/scripts/mode.rhai";
 /// A train of a melee creep, which the mode's data does not hold, put before its first action.
 const RECRUIT: &str = "[actions.recruit]\nkind = \"train\"\ntargeting = \"none\"\nunit_type = \"melee_creep\"\n\n[actions.melee_creep_attack]";
 /// The manifest's capabilities with `production`.
-const PRODUCTION: Edit = Edit::Replace(r#""progression"]"#, r#""progression", "production"]"#);
+const PRODUCTION: Edit<'static> =
+    Edit::Replace(r#""progression"]"#, r#""progression", "production"]"#);
 
 /// Whether `problem` is the manifest failing to read with a message that starts with `message`.
 fn manifest_fails(problem: &LoadProblem, message: &str) -> bool {
@@ -95,7 +96,7 @@ fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
 #[test]
 fn a_mode_state_field_is_sent_to_no_client_unless_it_says() {
     // The 3v3's `phase` is sent to all; without `sync`, or with `sync = "none"`, to none.
-    let phase = |edit: Edit| {
+    let phase = |edit: Edit<'_>| {
         let packages = ModePackages::from_package_dir(&edited([(MODE_DATA, edit)])).unwrap();
         packages.data().state["phase"].sync
     };
@@ -199,19 +200,10 @@ fn the_engines_tags_and_the_modes_fill_the_tags_a_match_holds() {
     let tags = |packages: &ModePackages| packages.tag_names().len();
     let packages = ModePackages::from_package_dir(&edited([])).unwrap();
     assert_eq!(tags(&packages), 24);
-    let layers = |count: usize| {
-        let names: Vec<String> = (0..count).map(|at| format!("\"layer{at}\"")).collect();
-        let layers = format!("[{}]", names.join(", "));
-        let edit = Edit::Set("navigation.layers", layers.leak());
-        ModePackages::from_package_dir(&edited([(MODE_DATA, edit)]))
-    };
-    assert_eq!(tags(&layers(229).unwrap()), 253);
-    let error = layers(230).unwrap_err();
-    assert_eq!(error.package, PackageRef::Name(MODE.to_owned()));
-    assert!(
-        matches!(*error.problem, LoadProblem::TooMany(Limit::Tags)),
-        "{error}"
-    );
+    let [(path, layers)] = <[_; 1]>::try_from(layers(229)).unwrap();
+    let edit = Edit::Set(&path, &layers);
+    let packages = ModePackages::from_package_dir(&edited([(MODE_DATA, edit)])).unwrap();
+    assert_eq!(tags(&packages), 253);
     // The mode's `[tags]` may give an engine tag effects, and that names no tag of its own.
     let edit = Edit::Replace(
         "[tags.stunned]",
@@ -221,20 +213,63 @@ fn the_engines_tags_and_the_modes_fill_the_tags_a_match_holds() {
     assert_eq!(tags(&packages), 24);
 }
 
+/// `count` navigation layers, each a tag: the edit by path that declares them.
+fn layers(count: usize) -> Vec<(String, String)> {
+    let names: Vec<String> = (0..count).map(|at| format!("\"layer{at}\"")).collect();
+    vec![(
+        "navigation.layers".to_owned(),
+        format!("[{}]", names.join(", ")),
+    )]
+}
+
+/// `count` tracks beside `level`: the edits by path that declare them.
+fn tracks(count: usize) -> Vec<(String, String)> {
+    (0..count)
+        .map(|at| (format!("tracks.skill{at}"), "{ levels = [10] }".to_owned()))
+        .collect()
+}
+
+/// A limit of the load: `more(count)` gives the edits that declare `count` more of what it
+/// counts, of which `allowed` load.
+#[derive(Debug)]
+struct LimitCase {
+    more: fn(usize) -> Vec<(String, String)>,
+    allowed: usize,
+    limit: Limit,
+}
+
 #[test]
-fn more_tracks_than_a_unit_holds_fail_the_load() {
-    // 32 tracks beside `level`, past the 32 a unit holds.
-    let mut tracks = String::new();
-    for at in 0..32 {
-        write!(tracks, "[tracks.skill{at}]\nlevels = [10]\n\n").unwrap();
+fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
+    let cases = [
+        // The 3v3's 24 tags and the engine's 3 leave 229 of the 256 a match holds for layers.
+        LimitCase {
+            more: layers,
+            allowed: 229,
+            limit: Limit::Tags,
+        },
+        // `level` and 31 more fill the 32 tracks a unit holds.
+        LimitCase {
+            more: tracks,
+            allowed: 31,
+            limit: Limit::Tracks,
+        },
+    ];
+    for case in cases {
+        let load = |count| {
+            let sets = (case.more)(count);
+            let edits = sets
+                .iter()
+                .map(|(path, value)| (MODE_DATA, Edit::Set(path, value)));
+            ModePackages::from_package_dir(&edited(edits))
+        };
+        assert!(load(case.allowed).is_ok(), "{case:?}");
+        let error = load(case.allowed + 1).unwrap_err();
+        assert_eq!(error.package, PackageRef::Name(MODE.to_owned()));
+        assert!(
+            matches!(*error.problem, LoadProblem::TooMany(limit) if limit == case.limit),
+            "{case:?}: {error}"
+        );
     }
-    let edit = Edit::Replace("[tracks.level]", format!("{tracks}[tracks.level]").leak());
-    let error = ModePackages::from_package_dir(&edited([(MODE_DATA, edit)])).unwrap_err();
-    assert_eq!(error.package, PackageRef::Name(MODE.to_owned()));
-    assert!(
-        matches!(*error.problem, LoadProblem::TooMany(Limit::Tracks)),
-        "{error}"
-    );
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
