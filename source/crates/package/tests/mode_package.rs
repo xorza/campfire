@@ -82,19 +82,13 @@ fn read_fails(problem: &LoadProblem, file: &str, message: &str) -> bool {
 #[test]
 fn a_caster_creep_projectile_slower_than_the_cap_fails_the_load() {
     // 5 m/s, slower than the 3v3's cap of 6: a homing projectile might never catch a hero.
-    let edit = Edit::Replace(
-        r#"projectile = { speed = "6.5", homing = true }"#,
-        r#"projectile = { speed = "5.0", homing = true }"#,
-    );
+    let edit = Edit::Set("units.caster_creep_bolt.projectile.speed", r#""5.0""#);
     let error = ModePackages::from_package_dir(&edited([(UNITS, edit)])).unwrap_err();
     assert_eq!(error.package, PackageRef::Name(MODE.to_owned()));
     let at_caster = |problem: &LoadProblem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NotFaster(Place::UnitType(name))) if name == "caster_creep_bolt");
     assert!(at_caster(&error.problem), "{error}");
     // Along a line, the same speed loads: it chases no one.
-    let edit = Edit::Replace(
-        r#"projectile = { speed = "20", width"#,
-        r#"projectile = { speed = "5", width"#,
-    );
+    let edit = Edit::Set("units.grasping_wraps.projectile.speed", r#""5""#);
     assert!(ModePackages::from_package_dir(&edited([(HUSK, edit)])).is_ok());
 }
 
@@ -207,11 +201,8 @@ fn the_engines_tags_and_the_modes_fill_the_tags_a_match_holds() {
     assert_eq!(tags(&packages), 24);
     let layers = |count: usize| {
         let names: Vec<String> = (0..count).map(|at| format!("\"layer{at}\"")).collect();
-        let section = format!(
-            "[navigation]\nlayers = [{}]\n\n# Its damage kinds",
-            names.join(", ")
-        );
-        let edit = Edit::Replace("# Its damage kinds", section.leak());
+        let layers = format!("[{}]", names.join(", "));
+        let edit = Edit::Set("navigation.layers", layers.leak());
         ModePackages::from_package_dir(&edited([(MODE_DATA, edit)]))
     };
     assert_eq!(tags(&layers(229).unwrap()), 253);
@@ -247,23 +238,23 @@ fn more_tracks_than_a_unit_holds_fail_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 184] = [
+static FLAWS: [Flaw; 184] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
-        Edit::Replace(r#"api = "1.0""#, r#"api = "2.0""#),
+        Edit::Set("api", r#""2.0""#),
         MODE,
         |problem| matches!(problem, LoadProblem::OtherApi(api) if api.to_string() == "2.0"),
     ),
     flaw(
         MANIFEST,
-        Edit::Replace(r#"api = "1.0""#, r#"api = "1.0.0""#),
+        Edit::Set("api", r#""1.0.0""#),
         MODE_DIR,
         |problem| manifest_fails(problem, r#""1.0.0" is not major.minor"#),
     ),
     flaw(
         "heroes/husk/manifest.toml",
-        Edit::Replace(r#"api = "1.0""#, r#"api = "1.1""#),
+        Edit::Set("api", r#""1.1""#),
         "hero-husk",
         |problem| matches!(problem, LoadProblem::OtherApi(api) if api.to_string() == "1.1"),
     ),
@@ -309,7 +300,7 @@ const FLAWS: [Flaw; 184] = [
     ),
     flaw(
         MODE_DATA,
-        Edit::Replace("levels = [280, 660,", "levels = [660, 280,"),
+        Edit::Set("tracks.level.levels", "[660, 280]"),
         MODE,
         |problem| read_fails(problem, "data/mode.toml", "a track has a level 2"),
     ),
@@ -330,26 +321,32 @@ const FLAWS: [Flaw; 184] = [
     ),
     flaw(
         MANIFEST,
-        Edit::Replace("min = 20", "min = 40"),
+        Edit::Set("tick_hz", "{ min = 40, max = 60, default = 30 }"),
         MODE_DIR,
         |problem| manifest_fails(problem, "the tick rate range does not hold its default"),
     ),
     // A player's pool below the whole call of 20 000.
     flaw(
         MANIFEST,
-        Edit::Replace("player = 40000", "player = 19999"),
+        Edit::Set(
+            "script_limits",
+            "{ per_call = 20000, player = 19999, think = 200000, mode = 100000 }",
+        ),
         MODE_DIR,
         |problem| manifest_fails(problem, "a script pool holds less than a whole call"),
     ),
     flaw(
         MANIFEST,
-        Edit::Replace("mode = 100000", "mode = 19999"),
+        Edit::Set(
+            "script_limits",
+            "{ per_call = 20000, player = 40000, think = 200000, mode = 19999 }",
+        ),
         MODE_DIR,
         |problem| manifest_fails(problem, "a script pool holds less than a whole call"),
     ),
     flaw(
         MANIFEST,
-        Edit::Replace(r#"max_move_speed = "6.0""#, r#"max_move_speed = "0""#),
+        Edit::Set("max_move_speed", r#""0""#),
         MODE_DIR,
         |problem| manifest_fails(problem, "a speed is a positive number"),
     ),
@@ -367,8 +364,8 @@ const FLAWS: [Flaw; 184] = [
     ),
     flaw(
         HUSK,
-        Edit::Replace(
-            "[16000, 14000, 12000, 10000, 8000]",
+        Edit::Set(
+            "actions.grasping_wraps.cooldown_ms",
             "[16000, 14000, 12000, 10000]",
         ),
         "hero-husk",
@@ -394,10 +391,7 @@ const FLAWS: [Flaw; 184] = [
     // dependency's unit types are all delivery types, and only actions make projectiles.
     flaw(
         HUSK,
-        Edit::Replace(
-            r#"projectile = { speed = "20", width"#,
-            r#"projectile = { speed = "20", homing = true, width"#,
-        ),
+        Edit::Set("units.grasping_wraps.projectile.homing", "true"),
         "hero-husk",
         |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::Homing(action)) if action == "grasping_wraps"),
     ),
@@ -412,10 +406,7 @@ const FLAWS: [Flaw; 184] = [
     ),
     flaw(
         HUSK,
-        Edit::Replace(
-            "targeting = \"direction\"\nrange = \"11.0\"",
-            "targeting = \"none\"\nrange = \"11.0\"",
-        ),
+        Edit::Set("actions.grasping_wraps.targeting", r#""none""#),
         "hero-husk",
         |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NoAim(action)) if action == "grasping_wraps"),
     ),
@@ -453,10 +444,7 @@ const FLAWS: [Flaw; 184] = [
     ),
     flaw(
         UNITS,
-        Edit::Replace(
-            r#"projectile = { speed = "12", homing = true }"#,
-            r#"projectile = { speed = "12" }"#,
-        ),
+        Edit::Remove("units.tower_bolt.projectile.homing"),
         MODE,
         |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::Weapon(action)) if action == "tower_attack"),
     ),
@@ -482,10 +470,7 @@ const FLAWS: [Flaw; 184] = [
     ),
     flaw(
         CINDER,
-        Edit::Replace(
-            "targeting = \"point\"\nrange = \"9.0\"",
-            "targeting = \"direction\"\nrange = \"9.0\"",
-        ),
+        Edit::Set("actions.eruption.targeting", r#""direction""#),
         "hero-cinder",
         |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::AreaDirection(action)) if action == "eruption"),
     ),
@@ -500,10 +485,7 @@ const FLAWS: [Flaw; 184] = [
     ),
     flaw(
         CINDER,
-        Edit::Replace(
-            r#"delay_ms = 625, affects = "enemies" }"#,
-            r#"delay_ms = 625, affects = "enemies:molten" }"#,
-        ),
+        Edit::Set("units.eruption.area.affects", r#""enemies:molten""#),
         "hero-cinder",
         |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Filter, at: Place::UnitType(name), .. } if name == "eruption"),
     ),
@@ -581,10 +563,7 @@ const FLAWS: [Flaw; 184] = [
     ),
     flaw(
         RIME,
-        Edit::Replace(
-            "delivery = { projectile = \"frost_arrow\", count = 7, spread_deg = \"57.5\" }\n",
-            "",
-        ),
+        Edit::Remove("actions.fan_of_frost.delivery"),
         "hero-rime",
         |problem| {
             matches!(
@@ -599,9 +578,9 @@ const FLAWS: [Flaw; 184] = [
     ),
     flaw(
         RIME,
-        Edit::Replace(
-            "base = [40, 50, 60, 70, 80]",
-            "base = [40, 50, -60, 70, 80]",
+        Edit::Set(
+            "actions.fan_of_frost.params.damage.base",
+            "[40, 50, -60, 70, 80]",
         ),
         "hero-rime",
         |problem| {
@@ -616,10 +595,7 @@ const FLAWS: [Flaw; 184] = [
     ),
     flaw(
         RIME,
-        Edit::Replace(
-            "slow_ms = 2000\n\n[actions.snow_owl]",
-            "slow_ms = \"2000.5\"\n\n[actions.snow_owl]",
-        ),
+        Edit::Set("actions.fan_of_frost.params.slow_ms", r#""2000.5""#),
         "hero-rime",
         |problem| {
             matches!(
@@ -790,7 +766,7 @@ const FLAWS: [Flaw; 184] = [
     ),
     flaw(
         MODE_DATA,
-        Edit::Replace("range = \"7.75\"", "range = \"global\""),
+        Edit::Set("actions.tower_attack.range", r#""global""#),
         MODE,
         |problem| matches!(problem, LoadProblem::GlobalAttack(action) if action == "tower_attack"),
     ),
@@ -839,41 +815,29 @@ const FLAWS: [Flaw; 184] = [
         MODE,
         |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, at: Place::Combat, name } if name == "heal_taken"),
     ),
+    flaw(MAP, Edit::Remove("grid"), MODE, |problem| {
+        matches!(problem, LoadProblem::NoGrid)
+    }),
+    flaw(MAP, Edit::Remove("navigation"), MODE, |problem| {
+        matches!(problem, LoadProblem::NoPathingGrid)
+    }),
+    flaw(MAP, Edit::Set("grid.cell", r#""0""#), MODE, |problem| {
+        matches!(problem, LoadProblem::Mode(ModeError::Grid))
+    }),
     flaw(
         MAP,
-        Edit::Replace("[grid]\ncell = \"1.0\"\n", ""),
-        MODE,
-        |problem| matches!(problem, LoadProblem::NoGrid),
-    ),
-    flaw(
-        MAP,
-        Edit::Replace("[navigation]\ncell = \"0.5\"\n", ""),
-        MODE,
-        |problem| matches!(problem, LoadProblem::NoPathingGrid),
-    ),
-    flaw(
-        MAP,
-        Edit::Replace("cell = \"1.0\"", "cell = \"0\""),
-        MODE,
-        |problem| matches!(problem, LoadProblem::Mode(ModeError::Grid)),
-    ),
-    flaw(
-        MAP,
-        Edit::Replace("min = [-48, -68]", "min = [48, -68]"),
+        Edit::Set("bounds", "{ min = [1, 0], max = [0, 1] }"),
         MODE,
         |problem| read_fails(problem, "map/map.toml", "bounds need min below max"),
     ),
-    flaw(
-        MAP,
-        Edit::Replace("pos = [0, -54]", "pos = [0, -69]"),
-        MODE,
-        |problem| matches!(problem, LoadProblem::Mode(ModeError::OutOfBounds)),
-    ),
+    flaw(MAP, Edit::Set("units.0.pos", "[0, -69]"), MODE, |problem| {
+        matches!(problem, LoadProblem::Mode(ModeError::OutOfBounds))
+    }),
     // A meter from the west lane's waypoint 1, at (−36, −36), less than the tower's body and the
     // widest walker's together.
     flaw(
         MAP,
-        Edit::Replace("pos = [-22, -46]", "pos = [-36, -37]"),
+        Edit::Set("units.2.pos", "[-36, -37]"),
         MODE,
         |problem| {
             matches!(problem, LoadProblem::Map(MapProblem::WaypointBlocked { path, waypoint })
@@ -881,18 +845,13 @@ const FLAWS: [Flaw; 184] = [
         },
     ),
     // A meter from the north spawn, at (0, −60).
-    flaw(
-        MAP,
-        Edit::Replace("pos = [-22, -46]", "pos = [0, -59]"),
-        MODE,
-        |problem| {
-            matches!(problem, LoadProblem::Map(MapProblem::MarkerBlocked { marker })
+    flaw(MAP, Edit::Set("units.2.pos", "[0, -59]"), MODE, |problem| {
+        matches!(problem, LoadProblem::Map(MapProblem::MarkerBlocked { marker })
                 if marker == "north_spawn")
-        },
-    ),
+    }),
     flaw(
         UNITS,
-        Edit::Replace(r#"sight_range = "10.0""#, r#"sight_range = "-1.0""#),
+        Edit::Set("units.melee_creep.vision.sight_range", r#""-1.0""#),
         MODE,
         |problem| {
             read_fails(
@@ -904,7 +863,7 @@ const FLAWS: [Flaw; 184] = [
     ),
     flaw(
         HUSK,
-        Edit::Replace("cost = { mana = 35 }", "cost = { mana = -35 }"),
+        Edit::Set("actions.lash_out.cost.mana", "-35"),
         "hero-husk",
         |problem| {
             matches!(
@@ -971,23 +930,20 @@ const FLAWS: [Flaw; 184] = [
     ),
     flaw(
         HUSK,
-        Edit::Replace("magic_resist = { base = 30 }", "spirit = { base = 30 }"),
+        Edit::Rename("stats.magic_resist", "spirit"),
         "hero-husk",
         |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, name, .. } if name == "spirit"),
     ),
     flaw(
         HUSK,
-        Edit::Replace("stats = { magic_resist = -15 }", "stats = { spirit = -15 }"),
+        Edit::Rename("modifiers.withered.stats.magic_resist", "spirit"),
         "hero-husk",
         |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, name, .. } if name == "spirit"),
     ),
     // A stat change names one operation; a scaling param scales with declared stats alone.
     flaw(
         "spells/data/loadout.toml",
-        Edit::Replace(
-            r#"move_speed = { pct = "0.27" }"#,
-            r#"move_speed = { pct = "0.27", cut = "0.1" }"#,
-        ),
+        Edit::Set("modifiers.haste.stats.move_speed.cut", r#""0.1""#),
         "player-spells",
         |problem| {
             read_fails(
@@ -999,7 +955,10 @@ const FLAWS: [Flaw; 184] = [
     ),
     flaw(
         HUSK,
-        Edit::Replace(r#"ability_power = "0.7""#, r#"spell_power = "0.7""#),
+        Edit::Rename(
+            "actions.grasping_wraps.params.damage.ability_power",
+            "spell_power",
+        ),
         "hero-husk",
         |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, at: Place::Action(_), name } if name == "spell_power"),
     ),
@@ -1121,16 +1080,13 @@ const FLAWS: [Flaw; 184] = [
     // 4 × 10¹⁷ ms counts at the default 30 Hz, 1.2 × 10¹⁹ ticks, and not at 60 Hz, past 2⁶⁴.
     flaw(
         UNITS,
-        Edit::Replace(
-            "stats = { health = { base = 445 }",
-            "stats = { health = { base = 0 }",
-        ),
+        Edit::Set("units.melee_creep.stats.health.base", "0"),
         MODE,
         |problem| matches!(problem, LoadProblem::UnitKit { at: Place::UnitType(name), error: UnitKitError::NotPositive(_) } if name == "melee_creep"),
     ),
     flaw(
         UNITS,
-        Edit::Replace("think_ms = 250 }", "think_ms = 400000000000000000 }"),
+        Edit::Set("units.melee_creep.orders.think_ms", "400000000000000000"),
         MODE,
         |problem| {
             matches!(
@@ -1158,19 +1114,13 @@ const FLAWS: [Flaw; 184] = [
     ),
     flaw(
         HUSK,
-        Edit::Replace(
-            "cooldown_ms = [10000, 9000, 8000, 7000, 6000]",
-            "cooldown_ms = [10000, 9000, 8000, 7000, 400000000000000000]",
-        ),
+        Edit::Set("actions.lash_out.cooldown_ms.4", "400000000000000000"),
         "hero-husk",
         |problem| matches!(problem, LoadProblem::Action { action, error: ActionError::TimeTooLarge } if action.as_str() == "lash_out"),
     ),
     flaw(
         HUSK,
-        Edit::Replace(
-            "[modifiers.withered]\nduration_ms = 3000",
-            "[modifiers.withered]\nduration_ms = -1",
-        ),
+        Edit::Set("modifiers.withered.duration_ms", "-1"),
         "hero-husk",
         |problem| matches!(problem, LoadProblem::Modifier { modifier, problem: ModifierProblem::Time } if modifier == "withered"),
     ),
@@ -1178,13 +1128,13 @@ const FLAWS: [Flaw; 184] = [
     // of fraction in 64.
     flaw(
         HUSK,
-        Edit::Replace("magic_resist = -15 }", "magic_resist = -9000000000000 }"),
+        Edit::Set("modifiers.withered.stats.magic_resist", "-9000000000000"),
         "hero-husk",
         |problem| matches!(problem, LoadProblem::Modifier { modifier, problem: ModifierProblem::Overflow } if modifier == "withered"),
     ),
     flaw(
         CINDER,
-        Edit::Replace("delay_ms = 625,", "delay_ms = 400000000000000000,"),
+        Edit::Set("units.eruption.area.delay_ms", "400000000000000000"),
         "hero-cinder",
         |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::AreaTime(Place::UnitType(name))) if name == "eruption"),
     ),
@@ -1292,7 +1242,7 @@ const FLAWS: [Flaw; 184] = [
     // 2⁴⁰ is past the 2³⁹ a number holds.
     flaw(
         HUSK,
-        Edit::Replace("health = { base = 472,", "health = { base = 1099511627776,"),
+        Edit::Set("stats.health.base", "1099511627776"),
         "hero-husk",
         |problem| {
             read_fails(
@@ -1304,10 +1254,7 @@ const FLAWS: [Flaw; 184] = [
     ),
     flaw(
         HUSK,
-        Edit::Replace(
-            "health = { base = 472, per_level = 84 }",
-            "health = { base = 472, per_level = 1099511627776 }",
-        ),
+        Edit::Set("stats.health.per_level", "1099511627776"),
         "hero-husk",
         |problem| {
             read_fails(
@@ -1319,9 +1266,9 @@ const FLAWS: [Flaw; 184] = [
     ),
     flaw(
         "heroes/veil/data/avatar.toml",
-        Edit::Replace(
-            r#"bonus = { attack_damage = "0.00167" }"#,
-            "bonus = { attack_damage = 1099511627776 }",
+        Edit::Set(
+            "modifiers.dual_path.params.spell_vamp.bonus.attack_damage",
+            "1099511627776",
         ),
         "hero-veil",
         |problem| {
@@ -1370,7 +1317,7 @@ const FLAWS: [Flaw; 184] = [
     ),
     flaw(
         MODE_DATA,
-        Edit::Replace("income_ms = 5000", "income-ms = 5000"),
+        Edit::Rename("params.income_ms", "income-ms"),
         MODE,
         |problem| read_fails(problem, "data/mode.toml", r#""income-ms" is not a name"#),
     ),
@@ -1382,7 +1329,7 @@ const FLAWS: [Flaw; 184] = [
     ),
     flaw(
         HUSK,
-        Edit::Replace("cost = { mana = 35 }", "cost = { rage = 35 }"),
+        Edit::Rename("actions.lash_out.cost.mana", "rage"),
         "hero-husk",
         |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Cost, at: Place::Action(id), name } if id == "lash_out" && name == "rage"),
     ),
@@ -1441,10 +1388,7 @@ const FLAWS: [Flaw; 184] = [
     ),
     flaw(
         MODE_DATA,
-        Edit::Replace(
-            r#"cooldown_reduction = { min = 0, max = "0.4" }"#,
-            r#"cooldown_reduction = { min = 1, max = "0.4" }"#,
-        ),
+        Edit::Set("stats.cooldown_reduction", r#"{ min = 1, max = "0.4" }"#),
         MODE,
         |problem| read_fails(problem, "data/mode.toml", "a stat's min passes its max"),
     ),
@@ -1483,10 +1427,7 @@ const FLAWS: [Flaw; 184] = [
     ),
     flaw(
         "heroes/kensho/data/avatar.toml",
-        Edit::Replace(
-            r#"left = { type = "int", default = 0 }"#,
-            r#"left = { type = "int", default = 0, sync = "all" }"#,
-        ),
+        Edit::Set("modifiers.flicker_strike.state.left.sync", r#""all""#),
         "hero-kensho",
         |problem| read_fails(problem, "data/avatar.toml", "unknown field `sync`"),
     ),
@@ -1519,49 +1460,41 @@ const FLAWS: [Flaw; 184] = [
     ),
     flaw(
         MAP,
-        Edit::Replace("pos = [0, -60]", "pos = [0, 0, -60]"),
+        Edit::Set("markers.0.pos", "[0, 0, -60]"),
         MODE,
         |problem| matches!(problem, LoadProblem::Mode(ModeError::PointShape)),
     ),
+    Flaw {
+        file: MAP,
+        edit: Edit::Remove("markers.2.pos"),
+        also: &[(
+            MAP,
+            Edit::Set("markers.2.region", "{ min = [-20, -14], max = [-16, -70] }"),
+        )],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::Mode(ModeError::Region(marker)) if marker == "camp1"),
+    },
     flaw(
         MAP,
-        Edit::Replace(
-            "pos = [-18, -12]",
-            "region = { min = [-20, -14], max = [-16, -70] }",
-        ),
+        Edit::Set("markers.2.region", "{ min = [-20, -14], max = [-16, -10] }"),
         MODE,
         |problem| matches!(problem, LoadProblem::Mode(ModeError::Region(marker)) if marker == "camp1"),
     ),
     flaw(
         MAP,
-        Edit::Replace(
-            "pos = [-18, -12]",
-            "pos = [-18, -12]\nregion = { min = [-20, -14], max = [-16, -10] }",
-        ),
-        MODE,
-        |problem| matches!(problem, LoadProblem::Mode(ModeError::Region(marker)) if marker == "camp1"),
-    ),
-    flaw(
-        MAP,
-        Edit::Replace(
-            "path = \"west\"\npos = [-22, -46]",
-            "path = \"middle\"\npos = [-22, -46]",
-        ),
+        Edit::Set("units.2.path", r#""middle""#),
         MODE,
         |problem| matches!(problem, LoadProblem::Mode(ModeError::UnknownPath(path)) if path == "middle"),
     ),
     flaw(
         MAP,
-        Edit::Replace(
-            "unit_type = \"core\"\nteam = \"north\"\npos = [0, -54]",
-            "unit_type = \"core\"\nteam = \"north\"\npos = [0, -54]\nfrom = \"start\"",
-        ),
+        Edit::Set("units.0.from", r#""start""#),
         MODE,
         |problem| matches!(problem, LoadProblem::Mode(ModeError::NoPathToWalk(unit_type)) if unit_type == "core"),
     ),
     flaw(
         MAP,
-        Edit::Replace(r#"name = "camp2""#, r#"name = "camp1""#),
+        Edit::Set("markers.3.name", r#""camp1""#),
         MODE,
         |problem| matches!(problem, LoadProblem::Mode(ModeError::RepeatedName(name)) if name == "camp1"),
     ),
@@ -1569,32 +1502,20 @@ const FLAWS: [Flaw; 184] = [
     // navigation's.
     flaw(
         MODE_DATA,
-        Edit::Replace(
-            "# Its damage kinds",
-            "[navigation]\nlayers = [\"ground\", \"ground\"]\n\n# Its damage kinds",
-        ),
+        Edit::Set("navigation.layers", r#"["ground", "ground"]"#),
         MODE,
         |problem| matches!(problem, LoadProblem::Repeated { at: Place::Navigation, name } if name == "ground"),
     ),
     flaw(
         UNITS,
-        Edit::Replace(
-            r#"collision = { radius = "0.35" }"#,
-            r#"collision = { radius = "0.35", layer = "air" }"#,
-        ),
+        Edit::Set("units.melee_creep.collision.layer", r#""air""#),
         MODE,
         |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Layer, at: Place::UnitType(unit_type), name: layer } if unit_type == "melee_creep" && layer.as_str() == "air"),
     ),
     Flaw {
         file: MANIFEST,
         edit: Edit::Replace(r#""orders", "navigation", "vision""#, r#""vision""#),
-        also: &[(
-            MODE_DATA,
-            Edit::Replace(
-                "# Its damage kinds",
-                "[navigation]\nlayers = [\"ground\"]\n\n# Its damage kinds",
-            ),
-        )],
+        also: &[(MODE_DATA, Edit::Set("navigation.layers", r#"["ground"]"#))],
         package: MODE,
         refused: |problem| {
             matches!(
@@ -1635,7 +1556,7 @@ const FLAWS: [Flaw; 184] = [
     ),
     flaw(
         MODE_DATA,
-        Edit::Replace("count = 2\nslot = \"spell\"", "count = 2"),
+        Edit::Remove("choices.spells.slot"),
         MODE,
         |problem| matches!(problem, LoadProblem::Choice(ChoiceProblem::ChoiceSlot(name)) if name.as_str() == "spells"),
     ),

@@ -206,11 +206,7 @@ The schedule is a separate field only because `Mode::install` needs it (`mode/te
 
 ## 6. Hermetic and stable fixtures
 
-- [ ] **The package flaws depend on MOBA content** — all 138 flaws in `mode_package.rs` edit MOBA text. 26 of the edits match balance digits, and 3 match a comment (`"# Its damage kinds"` at `:151,1052,1073`). A balance change breaks the table. Do these in order:
-  1. Match section headers, not comments.
-  2. Edit TOML by path for value flaws (`toml` is already a dependency of package).
-  3. Later, a complete `packages/test` fixture that the flaw table owns.
-- [ ] **`package_dir/tests.rs:116-150` asserts Husk** — its name, `slots["basic"][2]` and the start of its script. Move it to `packages/test/heroes/walker`.
+- [ ] **The package flaws depend on MOBA content** — the flaws in `mode_package.rs` edit the reference packages. Their value edits go by TOML key path, so a balance change no longer breaks them, but a change to a name or to the map's shape still does. Give the flaw table a complete `packages/test` fixture of its own.
 ## 7. Time
 
 The suite takes about 4 s. These times were measured with no other load:

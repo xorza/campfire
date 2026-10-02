@@ -2,23 +2,13 @@
 use std::os::unix::fs::symlink as link_file;
 #[cfg(windows)]
 use std::os::windows::fs::symlink_file as link_file;
-use std::{env, process};
 
 use campfire_content::Fingerprint;
 use sha2::{Digest, Sha256};
+use tempfile::TempDir;
 
 use super::*;
 use crate::package_store::PackageStore;
-
-/// A new directory under the system's temporary one, named for the test.
-fn scratch(name: &str) -> PathBuf {
-    let dir = env::temp_dir().join(format!("campfire-package-{}-{name}", process::id()));
-    if dir.exists() {
-        fs::remove_dir_all(&dir).unwrap();
-    }
-    fs::create_dir_all(&dir).unwrap();
-    dir
-}
 
 fn write(dir: &Path, path: &str, text: &str) {
     let path = dir.join(path);
@@ -28,7 +18,9 @@ fn write(dir: &Path, path: &str, text: &str) {
 
 #[test]
 fn a_package_reads_once_and_its_fingerprint_hashes_the_sorted_file_list() {
-    let root = scratch("fingerprint");
+    // Under a directory that goes when the test ends, passed or failed.
+    let scratch = TempDir::new().unwrap();
+    let root = scratch.path().to_owned();
     let package = root.join("one");
     write(&package, "manifest.toml", "m");
     write(&package, "data/a.toml", "ab");
@@ -138,13 +130,12 @@ fn a_package_reads_once_and_its_fingerprint_hashes_the_sorted_file_list() {
             matches!(dir.read(), Err(ContentError::NotPath(path)) if path == package.join("a\\b.toml"))
         );
     }
-    fs::remove_dir_all(root).unwrap();
 }
 
-fn husk() -> PackageDir {
+fn walker() -> PackageDir {
     PackageDir::new(concat!(
         env!("CARGO_MANIFEST_DIR"),
-        "/../../packages/moba/heroes/husk"
+        "/../../packages/test/heroes/walker"
     ))
 }
 
@@ -162,25 +153,30 @@ fn a_package_reads_its_own_files_only() {
         script: PackagePath,
     }
     let path = |text| PackagePath::parse(text).unwrap();
-    let husk = husk().read().unwrap();
-    let hero: Hero = husk.read_data(&path("data/avatar.toml")).unwrap();
+    let walker = walker().read().unwrap();
+    let hero: Hero = walker.read_data(&path("data/avatar.toml")).unwrap();
     assert_eq!(hero.name, "hero-name");
-    assert_eq!(hero.slots["basic"][2], "lash_out");
-    assert!(hero.actions.contains_key("lash_out"));
-    let script = husk.read_text(&path("scripts/lash_out.rhai")).unwrap();
+    assert_eq!(hero.slots["basic"][2], "third");
+    assert!(hero.actions.contains_key("first"));
+    let script = walker.read_text(&path("scripts/strike.rhai")).unwrap();
     assert!(script.starts_with("fn on_resolve(ctx, caster, target)"));
 
-    for text in ["../husk/data/avatar.toml", "/etc/hosts", "data/../../x", ""] {
+    for text in [
+        "../walker/data/avatar.toml",
+        "/etc/hosts",
+        "data/../../x",
+        "",
+    ] {
         assert_eq!(PackagePath::parse(text), None, "{text}");
     }
     // Data that names a path outside the package does not read.
     assert!(toml::from_str::<Named>(r#"script = "../x.rhai""#).is_err());
     assert!(matches!(
-        husk.read_text(&path("scripts/missing.rhai")),
+        walker.read_text(&path("scripts/missing.rhai")),
         Err(ContentError::Io { .. })
     ));
     assert!(matches!(
-        husk.read_data::<Hero>(&path("scripts/lash_out.rhai")),
+        walker.read_data::<Hero>(&path("scripts/strike.rhai")),
         Err(ContentError::Data { .. })
     ));
 }
