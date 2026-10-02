@@ -29,20 +29,71 @@ pub struct CapabilitySet(u16);
 /// A capability's install into a match.
 type Install = fn(&mut World, &mut Schedule, &mut StateRegistry);
 
-/// The capabilities the release runs, in the order they install: each after the ones it builds
-/// on. A declared capability not here installs nothing yet.
-const INSTALLS: [(Capability, Install); 10] = [
-    (Capability::Stats, Stats::install),
-    (Capability::Progression, Progression::install),
-    (Capability::Combat, Combat::install),
-    (Capability::Navigation, Navigation::install),
-    (Capability::Vision, Vision::install),
-    (Capability::Projectiles, Projectiles::install),
-    (Capability::Areas, Areas::install),
-    (Capability::Abilities, Abilities::install),
-    (Capability::Orders, Orders::install),
-    (Capability::Production, Production::install),
+/// One row of `CAPABILITIES`: the capability, how it installs, `None` for one the release does
+/// not run yet, and the capabilities it builds on.
+#[derive(Debug, Clone, Copy)]
+struct Row {
+    capability: Capability,
+    install: Option<Install>,
+    needs: &'static [Capability],
+}
+
+const fn row(capability: Capability, install: Install, needs: &'static [Capability]) -> Row {
+    Row {
+        capability,
+        install: Some(install),
+        needs,
+    }
+}
+
+const fn planned(capability: Capability) -> Row {
+    Row {
+        capability,
+        install: None,
+        needs: &[],
+    }
+}
+
+/// Every capability once, in the order they install: each after the ones it builds on. A declared
+/// capability the release does not run yet installs nothing.
+const CAPABILITIES: [Row; Capability::ALL.len()] = [
+    row(Capability::Stats, Stats::install, &[]),
+    row(
+        Capability::Progression,
+        Progression::install,
+        &[Capability::Stats],
+    ),
+    row(Capability::Combat, Combat::install, &[Capability::Stats]),
+    row(Capability::Navigation, Navigation::install, &[]),
+    row(Capability::Vision, Vision::install, &[Capability::Combat]),
+    row(
+        Capability::Projectiles,
+        Projectiles::install,
+        &[Capability::Combat],
+    ),
+    row(Capability::Areas, Areas::install, &[Capability::Combat]),
+    row(
+        Capability::Abilities,
+        Abilities::install,
+        &[Capability::Combat],
+    ),
+    row(
+        Capability::Orders,
+        Orders::install,
+        &[Capability::Combat, Capability::Navigation],
+    ),
+    row(Capability::Production, Production::install, &[]),
+    planned(Capability::Character),
+    planned(Capability::Hitscan),
+    planned(Capability::Physics),
+    planned(Capability::Persistence),
+    planned(Capability::Mode),
 ];
+
+const _: () = assert!(
+    Capability::ALL.len() <= u16::BITS as usize,
+    "a set holds each capability in a bit of its u16"
+);
 
 impl CapabilitySet {
     /// The set of `declared`; an error when one is `mode`, one is declared twice, or one lacks a
@@ -92,8 +143,10 @@ impl CapabilitySet {
     ) {
         Units::install(world, schedule, registry, scripts);
         MatchEnd::stop_stages(schedule);
-        for (capability, install) in INSTALLS {
-            if self.contains(capability) {
+        for row in CAPABILITIES {
+            if let Some(install) = row.install
+                && self.contains(row.capability)
+            {
                 install(world, schedule, registry);
             }
         }
@@ -114,15 +167,14 @@ const fn bit(capability: Capability) -> u16 {
 
 /// The capabilities `capability` builds on.
 const fn needs(capability: Capability) -> &'static [Capability] {
-    match capability {
-        Capability::Combat | Capability::Progression => &[Capability::Stats],
-        Capability::Projectiles
-        | Capability::Areas
-        | Capability::Abilities
-        | Capability::Vision => &[Capability::Combat],
-        Capability::Orders => &[Capability::Combat, Capability::Navigation],
-        _ => &[],
+    let mut at = 0;
+    while at < CAPABILITIES.len() {
+        if CAPABILITIES[at].capability as u16 == capability as u16 {
+            return CAPABILITIES[at].needs;
+        }
+        at += 1;
     }
+    panic!("the table holds every capability")
 }
 
 #[cfg(test)]
@@ -174,7 +226,9 @@ pub(crate) mod internals {
 
 #[cfg(test)]
 mod tests {
+    use std::fs;
     use std::num::NonZeroU32;
+    use std::path::Path;
 
     use campfire_script::ScriptHost;
     use campfire_sim::TickRate;
@@ -275,5 +329,141 @@ mod tests {
         }
         let combat_only = installed(&[Stats, Combat], Some(scripts));
         assert!(combat_only.contains_resource::<ActionBook>());
+    }
+
+    #[test]
+    fn the_table_holds_every_capability_once_after_what_it_builds_on() {
+        for capability in Capability::ALL {
+            let rows: Vec<usize> = (0..CAPABILITIES.len())
+                .filter(|&at| CAPABILITIES[at].capability == capability)
+                .collect();
+            assert_eq!(rows.len(), 1, "{capability:?}");
+            for &needed in CAPABILITIES[rows[0]].needs {
+                let before = CAPABILITIES[..rows[0]]
+                    .iter()
+                    .any(|row| row.capability == needed);
+                assert!(before, "{capability:?} installs before {needed:?}");
+            }
+        }
+    }
+
+    /// The layer of each module of the crate, lowest first: a module imports from its own layer
+    /// and the layers below, as design 02's structural rules ask. `lib.rs` sits above them all.
+    const LAYERS: [(&str, u8); 17] = [
+        ("values", 0),
+        ("units", 1),
+        ("scripts", 1),
+        ("actions", 2),
+        ("stats", 3),
+        ("combat", 3),
+        ("deliveries", 4),
+        ("projectiles", 4),
+        ("areas", 4),
+        ("abilities", 4),
+        ("navigation", 4),
+        ("vision", 4),
+        ("progression", 4),
+        ("production", 4),
+        ("orders", 5),
+        ("mode", 6),
+        ("capability_set", 7),
+    ];
+
+    /// The imports from a higher layer that the code holds today, each a module and the one it
+    /// imports. Each step of the structural redesign's layers removes its own; the test fails
+    /// when a new one appears, and when one listed here is gone, so the list only shrinks.
+    const KNOWN_BREAKS: [(&str, &str); 28] = [
+        ("abilities", "mode"),
+        ("actions", "combat"),
+        ("actions", "mode"),
+        ("actions", "orders"),
+        ("actions", "stats"),
+        ("combat", "mode"),
+        ("combat", "projectiles"),
+        ("navigation", "mode"),
+        ("production", "mode"),
+        ("scripts", "abilities"),
+        ("scripts", "actions"),
+        ("scripts", "areas"),
+        ("scripts", "combat"),
+        ("scripts", "mode"),
+        ("scripts", "orders"),
+        ("scripts", "production"),
+        ("scripts", "progression"),
+        ("scripts", "projectiles"),
+        ("scripts", "stats"),
+        ("scripts", "vision"),
+        ("stats", "mode"),
+        ("stats", "navigation"),
+        ("units", "actions"),
+        ("units", "combat"),
+        ("units", "mode"),
+        ("units", "progression"),
+        ("units", "stats"),
+        ("values", "stats"),
+    ];
+
+    /// Each `crate::<module>` the production code of `dir`'s files names, beside the module the
+    /// file is in: the code before a file's first test gate, in every file but `tests.rs` and
+    /// `bench.rs`.
+    fn imports(dir: &Path, module: &str, found: &mut Vec<(String, String)>) {
+        for entry in fs::read_dir(dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.is_dir() {
+                imports(&path, module, found);
+                continue;
+            }
+            let source = path.extension().is_some_and(|extension| extension == "rs");
+            let name = path.file_name().unwrap().to_str().unwrap();
+            if !source || name == "tests.rs" || name == "bench.rs" {
+                continue;
+            }
+            let text = fs::read_to_string(&path).unwrap();
+            let production = ["#[cfg(test)]", "#[cfg(any(test"]
+                .iter()
+                .filter_map(|gate| text.find(gate))
+                .min()
+                .map_or(text.as_str(), |gate| &text[..gate]);
+            for (at, _) in production.match_indices("crate::") {
+                let rest = &production[at + "crate::".len()..];
+                let end = rest
+                    .find(|c: char| !(c.is_ascii_alphanumeric() || c == '_'))
+                    .unwrap_or(rest.len());
+                found.push((module.to_owned(), rest[..end].to_owned()));
+            }
+        }
+    }
+
+    #[test]
+    fn a_module_imports_only_from_its_layer_and_below() {
+        let src = Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/src"));
+        let layer = |module: &str| {
+            LAYERS
+                .iter()
+                .find(|(name, _)| *name == module)
+                .map(|&(_, layer)| layer)
+        };
+        let mut found = Vec::new();
+        for (module, _) in LAYERS {
+            imports(&src.join(module), module, &mut found);
+        }
+        let mut upward: Vec<(String, String)> = found
+            .into_iter()
+            .filter(|(from, to)| {
+                let to_layer = layer(to);
+                assert!(
+                    to_layer.is_some() || to.is_empty(),
+                    "{from} imports crate::{to}, a module with no layer"
+                );
+                to_layer > layer(from)
+            })
+            .collect();
+        upward.sort();
+        upward.dedup();
+        let known: Vec<(String, String)> = KNOWN_BREAKS
+            .iter()
+            .map(|&(from, to)| (from.to_owned(), to.to_owned()))
+            .collect();
+        assert_eq!(upward, known, "imports from a higher layer");
     }
 }

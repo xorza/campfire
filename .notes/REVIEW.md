@@ -130,7 +130,6 @@ The design says a module imports only from the capabilities below it, and that t
 - [ ] **Abilities registers the delivery script API** — `capabilities/src/abilities/abilities_api.rs:50-51,69-88`. `on_hit`, `on_end`, the `Hit` handle and the planned projectile and area fields are registered there, though `deliveries` runs the hooks. `ApiOwner::Projectile` and `Area` model handles the engine never makes, since `hit.delivery` gives a `Unit`. Better: register them where they run, and drop the two owners.
 - [ ] **`values` holds runtime types** — `capabilities/src/values/meter.rs`, `values/segment.rs`, `values/bits256.rs`. Each belongs to one capability. `Segment::comes_within` repeats the projection math of `Metric::meets`. Better: move them to their owners, and share one projection routine.
 - [ ] **`math` holds hex encoding and `PlayerSlot`, but not `Tick`** — `math/src/hex/mod.rs:10-34`, `math/src/player_slot.rs`, `protocol/src/player_input.rs:11`, `protocol/src/session_log/mod.rs:66-67,217,489-504`, `protocol/src/session_terms.rs:24-28`. `Tick` and `Ticks` stay in `sim`, so the session log uses raw `u64` ticks that callers wrap by hand. The hex `Display` and `FromStr` pair is repeated for three types. Better: a small base crate, or one `Bytes32` type, and typed ticks in the log.
-- [ ] **The layer list in `lib.rs` is out of date** — `capabilities/src/lib.rs:1-6`. It leaves out actions, areas, deliveries, production, progression and capability_set.
 
 ## 9. Names from data stay strings
 
@@ -186,7 +185,6 @@ These types hold their rules in `expect`s, sentinels or loose fields, not in the
 - [ ] **An attack's damage names no action** — `capabilities/src/combat/mod.rs:409`, `combat/damage_handle.rs:67-73`. combat.md says a damage names its action, and a weapon is an action. `d.ability` gives `""` when absent, where `d.source` and `d.roll` give `()`. Better: the code or the design changes.
 - [ ] **`ctx.projectile` and `ctx.area` return `()`** — `capabilities/src/projectiles/projectiles_api.rs:60-63`, `areas/areas_api.rs:37-40`. Design 08 says a unit made in a call is usable in that call, and `chain_fire.rhai:12-13` uses the return value. Better: the frame takes the id at call time, as `spawn_unit` does.
 - [ ] **`HeldModifiers` is cleared by its producer** — `capabilities/src/areas/mod.rs:245`, `stats/held_modifiers.rs:7-8`. A second producer ordered before areas would be wiped. Better: the consumer clears it after `apply_held`.
-- [ ] **The capability set has two encodings of one graph** — `capabilities/src/capability_set/mod.rs:34,111,116-125`. `INSTALLS` order and `needs` must agree and nothing checks it, `needs` ends in a wildcard, the `u16` bitset is 15 of 16 bits full, and a declared capability with no install loads and does nothing with no error. Better: one table, an exhaustive `needs`, and a const check of the bit count.
 
 ## 12. Systems scan everything where a query or an index fits
 

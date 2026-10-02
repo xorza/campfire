@@ -1,9 +1,11 @@
 //! Capabilities: the mechanisms a mode combines, a module each, on the core, and the mode above
-//! them. A module imports only from the layers below its own, lowest first: `values` (data value
-//! types); the core, `units` and `scripts` (unit types, teams, owners, paths, the script view and
-//! runtime); `combat` and `stats`; `abilities`, `projectiles`, `navigation` and `vision`;
-//! `orders`; the `mode`. A capability gives the script view its fields of a unit through a row
-//! source.
+//! them. A module imports only from its own layer and the layers below, lowest first: `values`
+//! (data value types); the core, `units` and `scripts` (unit types, teams, owners, paths, the
+//! script view and runtime); `actions`; `stats` and `combat`; `deliveries`, `projectiles`,
+//! `areas`, `abilities`, `navigation`, `vision`, `progression` and `production`; `orders`; the
+//! `mode`; and `capability_set`, which installs them. The layer test in `capability_set` holds
+//! this list, and the imports that still break it. A capability gives the script view its fields
+//! of a unit through a row source.
 
 #![deny(clippy::float_arithmetic, clippy::iter_over_hash_type)]
 #![allow(
