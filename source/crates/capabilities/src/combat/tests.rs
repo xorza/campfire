@@ -20,7 +20,6 @@ use crate::mode::resource_id::ResourceId;
 use crate::stats::Stats;
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifiers::{Application, Instance};
-use crate::stats::pool_book::PoolBook;
 use crate::stats::pool_cost::PoolCost;
 use crate::stats::pool_data::PoolData;
 use crate::stats::stat::Stat;
@@ -793,7 +792,7 @@ fn load_damage_stats(world: &mut World) {
     let pools = BTreeMap::from([(health, PoolData { max, regen: None })]);
     let bindings = CombatBindings::new(&combat, &pools, &book).unwrap();
     world.insert_resource(bindings);
-    Stats::load(world, book, PoolBook::default());
+    Stats::load_book(world, book);
 }
 
 /// A modifier of no stats, tags or script, as each shield the shield test gives is.

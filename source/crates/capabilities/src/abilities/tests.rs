@@ -1,6 +1,5 @@
 use std::collections::BTreeMap;
 use std::num::{NonZeroU8, NonZeroU32};
-use std::rc::Rc;
 
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::Component;
@@ -37,7 +36,6 @@ use crate::orders::ai_data::AiData;
 use crate::projectiles::projectile::Projectile;
 use crate::projectiles::projectile_data::ProjectileData;
 use crate::scripts::error::ApiError;
-use crate::scripts::match_scripts::MatchScripts;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::{ScriptFailure, ScriptFailures};
 use crate::scripts::script_limits::ScriptLimits;
@@ -48,7 +46,6 @@ use crate::stats::modifier_book::{Applier, ModifierBook};
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifier_effect::ModifierEffect;
 use crate::stats::modifiers::Modifiers;
-use crate::stats::pool_book::PoolBook;
 use crate::stats::pool_id::PoolId;
 use crate::stats::stat::Stat;
 use crate::stats::stat_book::StatBook;
@@ -247,21 +244,13 @@ impl Match {
     /// A match of two players of `declared`, whose scripts run within `limits`, and who hold
     /// gold, as a mode would keep it.
     fn with(limits: ScriptLimits, declared: &[Capability]) -> Match {
-        // The damage kinds a mode would declare: the reference MOBA's.
-        let kinds = ["physical", "magic", "true"].map(|kind| DeclaredName::new(kind).unwrap());
-        let scripts = MatchScripts {
-            limits,
-            players: 2,
-            damage_kinds: Rc::from(kinds),
-            stats: scaling_stats().into(),
-            pools: POOLS.map(|pool| DeclaredName::new(pool).unwrap()).into(),
-            resources: Rc::from([DeclaredName::new("gold").unwrap()]),
-        };
         let TestMatch {
             mut world,
             schedule,
             registry,
-        } = TestMatch::new(declared, RATE, Some(scripts));
+        } = TestMatch::new(declared, RATE, Some(ScriptBudgets::new(limits, 2)));
+        // The damage kinds a mode would declare: the reference MOBA's.
+        Units::name_kinds(&world, &["physical", "magic", "true"], &POOLS, &["gold"]);
         world.add_schedule(schedule);
         world.insert_resource(PlayerResources::new(2, 1));
         Match { world, registry }
@@ -1519,7 +1508,7 @@ fn a_scaling_param_reads_its_sources_level_stats_and_bonus() {
         .map(|stat| (stat, StatRule::default()))
         .into();
     let book = StatBook::new(&rules, [(caster_type, &growth)], RATE, num(6));
-    Stats::load(&mut game.world, book, PoolBook::default());
+    Stats::load_book(&mut game.world, book);
     let boost = changing(
         &[("attack_damage", int(20)), ("ability_power", int(40))],
         &[],
@@ -1607,7 +1596,7 @@ fn a_live_change_follows_its_source_in_the_order_of_the_stats_it_reads() {
         .with_order(graph.order().unwrap());
     let place = |stat: &Stat| book.index(stat).unwrap().index();
     let places = [&attack_damage, &spell_vamp, &armor].map(place);
-    Stats::load(&mut game.world, book, PoolBook::default());
+    Stats::load_book(&mut game.world, book);
     let vamp = scaling(
         Scalar::Decimal(decimal("0.06")),
         0,

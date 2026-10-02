@@ -48,8 +48,6 @@ pub(crate) struct BookParts {
     actions: ActionBook,
     /// Every action's and modifier's params.
     params: ParamTables,
-    /// Each action's name, by action id.
-    ability_names: Vec<Box<str>>,
     effects: EffectLists,
     ais: ByType<Ai>,
     projectiles: ByType<ProjectileSpec>,
@@ -107,9 +105,6 @@ impl Books {
         if let Some(tracks) = parts.tracks {
             view.set_tracks(tracks.clone());
             world.insert_resource(tracks);
-        }
-        for name in &parts.ability_names {
-            view.add_ability(name);
         }
         view.set_actions(parts.actions.clone());
         for &unit_type in &parts.homing {

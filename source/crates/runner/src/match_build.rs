@@ -1,6 +1,6 @@
 use bevy_ecs::schedule::Schedule;
 use bevy_ecs::world::World;
-use campfire_capabilities::{Books, MatchScripts, Mode, ModeInputs, ModeSetup, ScriptBook, Units};
+use campfire_capabilities::{Books, Mode, ModeInputs, ModeSetup, ScriptBook, ScriptBudgets, Units};
 use campfire_package::ModePackages;
 use campfire_script::ScriptId;
 use campfire_sim::{StateRegistry, TickRate};
@@ -26,17 +26,10 @@ impl MatchBuild {
     ) {
         let manifest = packages.manifest();
         let data = packages.data();
-        let scripts = MatchScripts {
-            limits: manifest.script_limits,
-            players,
-            damage_kinds: data.combat.damage_kinds.as_slice().into(),
-            stats: data.stats.keys().cloned().collect(),
-            pools: data.pools.keys().cloned().collect(),
-            resources: data.resources.as_slice().into(),
-        };
+        let budgets = ScriptBudgets::new(manifest.script_limits, players);
         manifest
             .capabilities
-            .install(world, schedule, registry, Some(scripts));
+            .install(world, schedule, registry, Some(budgets));
         for view in packages.packages() {
             for script in &view.package.scripts {
                 Units::compile(world, &script.source).expect("the load parsed it");

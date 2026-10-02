@@ -35,7 +35,7 @@ fn a_level_is_reached_exactly_at_its_threshold_and_never_falls() {
     let book = book();
     assert_eq!(book.level_track(), Some(track(0)));
     assert_eq!(book.id("valor"), Some(track(1)));
-    assert_eq!(book.name(track(1)).as_str(), "valor");
+    assert_eq!(book.names().nth(1), Some("valor"));
     // A threshold met is a level: 99.99… is 1, 100 is 2, 299 is 2, 300 and anything past are 3.
     let level = |xp| book.level_at(track(0), xp).get();
     let below = num(100) - Num::EPSILON;

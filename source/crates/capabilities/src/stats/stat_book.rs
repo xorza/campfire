@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 use campfire_math::Num;
@@ -16,7 +17,8 @@ use crate::units::unit_type::UnitType;
 /// formulas take. Package data, not state.
 #[derive(Resource, Debug)]
 pub(crate) struct StatBook {
-    stats: Vec<Stat>,
+    /// Shared with the script view, which names them to scripts.
+    stats: Arc<[Stat]>,
     rules: Vec<StatRule>,
     /// Each engine stat's place among the stats, by the engine stat's order, when the mode
     /// declares it.
@@ -49,7 +51,7 @@ impl StatBook {
         rate: TickRate,
         max_move_speed: Num,
     ) -> StatBook {
-        let stats: Vec<Stat> = rules.keys().cloned().collect();
+        let stats: Arc<[Stat]> = rules.keys().cloned().collect();
         let stats_len = u16::try_from(stats.len()).expect("stats fit u16");
         let mut engine = [None; EngineStat::ALL.len()];
         for (at, stat) in stats.iter().enumerate() {
@@ -151,6 +153,11 @@ impl StatBook {
             i128::from(growth.base.to_bits())
                 + i128::from(growth.per_level.to_bits()) * i128::from(level.saturating_sub(1))
         })
+    }
+
+    /// The stats, by id.
+    pub(crate) fn names(&self) -> Arc<[Stat]> {
+        Arc::clone(&self.stats)
     }
 
     /// The id of `stat`; `None` when the mode does not declare it.

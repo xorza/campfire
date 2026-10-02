@@ -111,8 +111,9 @@ impl UnitTypes {
         })
     }
 
-    pub(crate) fn name(&self, unit_type: UnitType) -> &str {
-        &self.types[unit_type.index()].name
+    /// Every type's name, by type.
+    pub(crate) fn names(&self) -> impl Iterator<Item = &str> {
+        self.types.iter().map(|entry| &*entry.name)
     }
 
     /// The tag `name`, once declared.

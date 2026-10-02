@@ -126,7 +126,11 @@ impl Mode {
             pools: pool_book,
             tags,
             bindings,
+            damage_kinds,
+            resources,
         } = books;
+        let resource_count = resources.len();
+        view.set_mode_names(&damage_kinds, resources);
         let data = setup.data;
         let book = ModeBook::new(setup, world.resource::<ScriptBook>(), &view, &paths);
         let mut relations = Relations::default();
@@ -159,7 +163,7 @@ impl Mode {
         world.insert_resource(ModeState(book.schema.state_initial.clone()));
         let players = book.teams.players() as usize;
         world.insert_resource(book.choices.empty(players));
-        world.insert_resource(PlayerResources::new(players, view.resource_count()));
+        world.insert_resource(PlayerResources::new(players, resource_count));
         world.insert_resource(Timers::default());
         world.insert_resource(UnansweredDeaths::default());
         let hooks = book.schema.hooks;

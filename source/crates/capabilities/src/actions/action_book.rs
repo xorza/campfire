@@ -46,8 +46,9 @@ pub struct ActionId(u32);
 /// An action as a match runs it.
 #[derive(Debug, Clone)]
 pub(crate) struct Action {
-    /// Its package: 0 the mode, then each package the mode depends on.
+    /// Its package: 0 the mode, then each package the mode depends on, and its name there.
     pub(crate) package: u16,
+    pub(crate) name: Box<str>,
     pub(crate) kind: ActionKind,
     /// What it deals as an `attack`; none for another kind.
     pub(crate) weapon: Option<Weapon>,
@@ -169,11 +170,13 @@ pub(crate) struct RankValues {
 }
 
 impl ActionBook {
-    /// Loads `data` of `package`, with `parts` resolved against the match; see `Actions::load`.
+    /// Loads `data` as the action `name` of `package`, with `parts` resolved against the match;
+    /// see `Actions::load`.
     pub(crate) fn load(
         &mut self,
         scripts: &ScriptBook,
         package: u16,
+        name: &str,
         data: &ActionData,
         script: Option<ScriptId>,
         parts: ActionParts,
@@ -199,6 +202,7 @@ impl ActionBook {
         let id = ActionId(u32::try_from(self.actions.len()).expect("actions fit u32"));
         Arc::make_mut(&mut self.actions).push(Action {
             package,
+            name: name.into(),
             kind: data.kind,
             weapon,
             passive,
@@ -221,6 +225,11 @@ impl ActionBook {
             "only a train or a delivery spawns a unit type"
         );
         action.spawns = Some(unit_type);
+    }
+
+    /// Every action's name, by id.
+    pub(crate) fn names(&self) -> impl Iterator<Item = &str> {
+        self.actions.iter().map(|action| &*action.name)
     }
 
     pub(crate) fn get(&self, id: ActionId) -> Option<&Action> {
@@ -462,6 +471,7 @@ pub(crate) mod internals {
         let id = ActionId(u32::try_from(book.actions.len()).unwrap());
         Arc::make_mut(&mut book.actions).push(Action {
             package: 0,
+            name: "weapon".into(),
             kind: ActionKind::Attack,
             weapon: Some(Weapon {
                 rate: weapon.rate,
@@ -491,6 +501,7 @@ pub(crate) mod internals {
         let id = ActionId(u32::try_from(book.actions.len()).unwrap());
         Arc::make_mut(&mut book.actions).push(Action {
             package: 0,
+            name: "train".into(),
             kind: ActionKind::Train,
             weapon: None,
             passive: None,

@@ -1,5 +1,4 @@
 use std::num::NonZeroU32;
-use std::rc::Rc;
 
 use campfire_math::{Num, Vec3};
 use campfire_script::rhai::Dynamic;
@@ -10,7 +9,7 @@ use super::*;
 use crate::capability_set::internals::TestMatch;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
-use crate::scripts::match_scripts::MatchScripts;
+use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::units::tag_effects::TagEffects;
 use crate::units::unit::Unit;
@@ -48,14 +47,7 @@ impl Scene {
             think: 100_000,
             mode: 100_000,
         };
-        let scripts = MatchScripts {
-            limits,
-            players: 1,
-            damage_kinds: Rc::from([]),
-            stats: Rc::from([]),
-            pools: Rc::from([]),
-            resources: Rc::from([]),
-        };
+        let scripts = ScriptBudgets::new(limits, 1);
         let declared = [Capability::Stats, Capability::Combat, Capability::Vision];
         let TestMatch {
             mut world,

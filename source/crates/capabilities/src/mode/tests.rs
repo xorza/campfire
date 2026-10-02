@@ -47,7 +47,7 @@ use crate::progression::track_id::TrackId;
 use crate::progression::track_set::TrackSet;
 use crate::scripts::error::ApiError;
 use crate::scripts::hook::ScriptRole;
-use crate::scripts::match_scripts::MatchScripts;
+use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::scripts::state_decl::{StateDecl, StateDefault, StateType};
@@ -661,16 +661,7 @@ impl Game {
 
     /// The match `new` gives, of the mode `files`; an error when the mode's start fails.
     fn start(script: &str, limits: ScriptLimits, files: ModeFiles) -> Result<Game, CallError> {
-        let scripts = MatchScripts {
-            limits,
-            players: 3,
-            damage_kinds: DAMAGE_KINDS
-                .map(|kind| DeclaredName::new(kind).unwrap())
-                .into(),
-            stats: STATS_3V3.map(|name| Stat::named(name).unwrap()).into(),
-            pools: POOLS.map(|pool| DeclaredName::new(pool).unwrap()).into(),
-            resources: files.data.resources.as_slice().into(),
-        };
+        let scripts = ScriptBudgets::new(limits, 3);
         let declared = [
             Capability::Stats,
             Capability::Combat,
@@ -684,6 +675,13 @@ impl Game {
             mut schedule,
             mut registry,
         } = TestMatch::new(&declared, RATE, Some(scripts));
+        let resources: Vec<&str> = files
+            .data
+            .resources
+            .iter()
+            .map(DeclaredName::as_str)
+            .collect();
+        Units::name_kinds(&world, &DAMAGE_KINDS, &POOLS, &resources);
         let layers = files.data.navigation.layers.iter();
         Units::declare_tags(&mut world, layers.map(DeclaredName::as_str));
         let mut load = |name: &str, tag: &str| {
@@ -730,6 +728,8 @@ impl Game {
             )
         };
         Mode::install(&mut world, &mut schedule, &mut registry, setup, books);
+        // The scripts name pools the data does not declare, whose maxima no stat sets.
+        Units::name_kinds(&world, &DAMAGE_KINDS, &POOLS, &RESOURCES);
         world.add_schedule(schedule);
         Mode::start(&mut world)?;
         Ok(Game {

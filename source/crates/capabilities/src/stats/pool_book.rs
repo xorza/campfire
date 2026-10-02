@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::sync::Arc;
 
 use bevy_ecs::resource::Resource;
 
@@ -12,6 +13,8 @@ use crate::values::declared_name::DeclaredName;
 /// of its regen. Package data, not state.
 #[derive(Resource, Debug, Default)]
 pub(crate) struct PoolBook {
+    /// Shared with the script view, which names them to scripts.
+    names: Arc<[DeclaredName]>,
     pools: Vec<PoolStats>,
 }
 
@@ -31,6 +34,7 @@ impl PoolBook {
                 .expect("the load checked the pools' stats")
         };
         PoolBook {
+            names: pools.keys().cloned().collect(),
             pools: pools
                 .values()
                 .map(|pool| PoolStats {
@@ -39,6 +43,11 @@ impl PoolBook {
                 })
                 .collect(),
         }
+    }
+
+    /// The pools, by id.
+    pub(crate) fn names(&self) -> Arc<[DeclaredName]> {
+        Arc::clone(&self.names)
     }
 
     /// Each pool, with its stats.

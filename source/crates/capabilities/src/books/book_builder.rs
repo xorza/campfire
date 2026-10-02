@@ -212,14 +212,14 @@ impl<'a> BookBuilder<'a> {
                 }
             })?;
         let books = &mut self.books;
-        let action = books
-            .actions
-            .load(self.input.scripts, index, data, script, parts);
+        let action =
+            books
+                .actions
+                .load(self.input.scripts, index, id.as_str(), data, script, parts);
         let run = books
             .params
             .push_action(&data.params, |stat| self.input.stat(stat));
         debug_assert_eq!(run, action.index(), "one run of params per ability");
-        books.ability_names.push(id.as_str().into());
         if !(data.on_resolve.is_empty() && data.on_hit.is_empty() && data.on_end.is_empty()) {
             let names = BuildNames {
                 input: self.input,

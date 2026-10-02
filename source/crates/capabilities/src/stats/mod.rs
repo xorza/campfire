@@ -149,8 +149,11 @@ impl Stats {
         );
     }
 
-    /// Gives the match the mode's stat book and pool book.
+    /// Gives the match the mode's stat book and pool book, whose names its scripts read.
     pub(crate) fn load(world: &mut World, book: StatBook, pools: PoolBook) {
+        let view = world.non_send::<View>();
+        view.set_stat_names(book.names());
+        view.set_pool_names(pools.names());
         world.insert_resource(book);
         world.insert_resource(pools);
     }
@@ -647,6 +650,14 @@ pub(crate) mod internals {
             ParamBook::load_modifier(world, id, &data.params, |stat| places[stat]);
         }
 
+        /// Gives a match with no mode the stat book `book`, with no pool stats; the pools its
+        /// scripts name stay named.
+        pub(crate) fn load_book(world: &mut World, book: StatBook) {
+            world.non_send::<View>().set_stat_names(book.names());
+            world.insert_resource(book);
+            world.insert_resource(PoolBook::default());
+        }
+
         /// The modifier `name` of `package`, as `load_modifier` loaded it.
         pub fn modifier(world: &World, package: u16, name: &str) -> Option<ModifierId> {
             world.resource::<ModifierBook>().find(package, name)
@@ -654,10 +665,9 @@ pub(crate) mod internals {
     }
 
     /// Gives a match with no mode the stat book of `rules`, at `rate`, with no unit type and no
-    /// pool.
+    /// pool stats; the pools its scripts name stay named.
     pub fn load_stats(world: &mut World, rules: &BTreeMap<Stat, StatRule>, rate: TickRate) {
-        let book = StatBook::new(rules, [], rate, Num::MAX);
-        Stats::load(world, book, PoolBook::default());
+        Stats::load_book(world, StatBook::new(rules, [], rate, Num::MAX));
     }
 
     /// Gives `target` the modifier `id` from `source`, by `ability` at `rank`, and a passive when

@@ -7,7 +7,6 @@ use campfire_sim::{SimSet, StateRegistry, TickRate};
 
 use crate::actions::Actions;
 use crate::scripts::ctx::Ctx;
-use crate::scripts::match_scripts::MatchScripts;
 use crate::scripts::script_api::ScriptApi;
 use crate::scripts::script_book::ScriptBook;
 use crate::scripts::script_budgets::ScriptBudgets;
@@ -68,14 +67,14 @@ pub(crate) enum UnitsSet {
 pub struct Units;
 
 impl Units {
-    /// Adds the core to a match, on a planar map until the mode sets its own. With `scripts`,
-    /// scripts run within their limits: in Inputs,
+    /// Adds the core to a match, on a planar map until the mode sets its own. With `budgets`,
+    /// scripts run within them: in Inputs,
     /// every pool starts full and the last tick's failures clear. A client runs no scripts.
     pub fn install(
         world: &mut World,
         schedule: &mut Schedule,
         registry: &mut StateRegistry,
-        scripts: Option<MatchScripts>,
+        budgets: Option<ScriptBudgets>,
     ) {
         let rate = *world.resource::<TickRate>();
         let view = View::new(rate);
@@ -88,26 +87,14 @@ impl Units {
         registry.register_resource::<Relations>();
         Actions::install(world, registry, &view);
         world.insert_resource(Metric::default());
-        let Some(MatchScripts {
-            limits,
-            players,
-            damage_kinds,
-            stats,
-            pools,
-            resources,
-        }) = scripts
-        else {
+        let Some(budgets) = budgets else {
             world.insert_non_send(view);
             world.insert_resource(ScriptBook::default());
             world.insert_resource(ParamBook::default());
             return;
         };
-        view.set_damage_kinds(damage_kinds);
-        view.set_stat_names(stats);
-        view.set_pool_names(pools);
-        view.set_resource_names(resources);
         let ctx = Ctx::new(view.clone());
-        let mut host = ScriptHost::new(limits.per_call);
+        let mut host = ScriptHost::new(budgets.limits().per_call);
         ScriptApi::bind(host.engine_mut());
         host.engine_mut()
             .set_default_tag(Dynamic::from(ctx.clone()));
@@ -117,7 +104,7 @@ impl Units {
         world.insert_resource(ScriptBook::default());
         world.insert_resource(ParamBook::default());
         world.insert_non_send(ScriptFailures::default());
-        world.insert_resource(ScriptBudgets::new(limits, players));
+        world.insert_resource(budgets);
         schedule.add_systems(
             begin_tick
                 .in_set(SimSet::Inputs)
@@ -151,14 +138,36 @@ fn begin_tick(
 
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
+    use std::sync::Arc;
+
     use crate::units::Units;
     use crate::units::script_view::View;
     use crate::units::type_scope::TypeScope;
     use crate::units::unit_type::UnitType;
     use crate::units::unit_type_data::UnitTypeData;
+    use crate::values::declared_name::DeclaredName;
     use bevy_ecs::world::World;
 
     impl Units {
+        /// Names, for the scripts of a match with no mode, its `damage_kinds`, its `pools` and its
+        /// players' `resources`, each by id, as a mode's books name them.
+        pub fn name_kinds(
+            world: &World,
+            damage_kinds: &[&str],
+            pools: &[&str],
+            resources: &[&str],
+        ) {
+            let names = |names: &[&str]| -> Arc<[DeclaredName]> {
+                names
+                    .iter()
+                    .map(|name| DeclaredName::new(name).expect("a test names a name"))
+                    .collect()
+            };
+            let view = world.non_send::<View>();
+            view.set_mode_names(&names(damage_kinds), names(resources));
+            view.set_pool_names(names(pools));
+        }
+
         /// Declares every tag the match's packages name, in their order, after the engine's tags,
         /// before any type, modifier or filter names one, so the tags are numbered the same however
         /// the packages load.
@@ -178,7 +187,10 @@ pub(crate) mod internals {
             name: &str,
             data: &UnitTypeData,
         ) -> UnitType {
-            world.non_send::<View>().types_mut().load(scope, name, data)
+            let view = world.non_send::<View>();
+            let unit_type = view.types_mut().load(scope, name, data);
+            view.share_type_names();
+            unit_type
         }
     }
 }

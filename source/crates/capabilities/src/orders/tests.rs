@@ -1,5 +1,4 @@
 use std::num::NonZeroU32;
-use std::rc::Rc;
 
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::component::Component;
@@ -16,7 +15,7 @@ use crate::combat::on_death::OnDeath;
 use crate::navigation::move_step::MoveStep;
 use crate::navigation::path_walker::PathEnd;
 use crate::scripts::error::ApiError;
-use crate::scripts::match_scripts::MatchScripts;
+use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::pool_cost::PoolCost;
@@ -201,14 +200,7 @@ impl Match {
     }
 
     fn with(paths: Paths, limits: ScriptLimits) -> Match {
-        let scripts = MatchScripts {
-            limits,
-            players: 2,
-            damage_kinds: Rc::from([]),
-            stats: Rc::from([]),
-            pools: Rc::from([]),
-            resources: Rc::from([]),
-        };
+        let scripts = ScriptBudgets::new(limits, 2);
         let declared = [
             Capability::Stats,
             Capability::Combat,

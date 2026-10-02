@@ -8,7 +8,7 @@ use campfire_sim::{Capability, IdAllocator, SimUpdate, TickRate};
 
 use super::*;
 use crate::capability_set::internals::TestMatch;
-use crate::scripts::match_scripts;
+use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::modifier_data::ModifierData;
 use crate::stats::modifier_data::{AuraData, Reapply};
@@ -486,7 +486,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
         think: 10_000,
         mode: 10_000,
     };
-    let scripts = match_scripts::internals::bare(limits, 1);
+    let scripts = ScriptBudgets::new(limits, 1);
     let mut game = TestMatch::new(&[Capability::Stats], RATE, Some(scripts));
     let book = StatBook::new(&rules(), [], RATE, num(6));
     Stats::load(&mut game.world, book, PoolBook::default());

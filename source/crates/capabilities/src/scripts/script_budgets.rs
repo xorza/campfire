@@ -6,8 +6,8 @@ use crate::scripts::script_limits::ScriptLimits;
 
 /// What each pool has left in the running tick. Not state: every tick starts with the full
 /// limits, and a call that ran out changed nothing.
-#[derive(Resource, Debug)]
-pub(crate) struct ScriptBudgets {
+#[derive(Resource, Debug, Clone)]
+pub struct ScriptBudgets {
     limits: ScriptLimits,
     /// By player slot.
     players: Vec<Budget>,
@@ -16,7 +16,8 @@ pub(crate) struct ScriptBudgets {
 }
 
 impl ScriptBudgets {
-    pub(crate) fn new(limits: ScriptLimits, players: u32) -> ScriptBudgets {
+    /// Full budgets within `limits`, one for each of `players` player slots.
+    pub fn new(limits: ScriptLimits, players: u32) -> ScriptBudgets {
         let players = usize::try_from(players).expect("a slot count fits usize");
         ScriptBudgets {
             limits,
@@ -24,6 +25,11 @@ impl ScriptBudgets {
             think: Budget::new(limits.think),
             mode: Budget::new(limits.mode),
         }
+    }
+
+    /// The limits it starts each tick with.
+    pub(crate) const fn limits(&self) -> ScriptLimits {
+        self.limits
     }
 
     pub(crate) fn begin_tick(&mut self) {

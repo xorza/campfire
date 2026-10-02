@@ -5,7 +5,6 @@
 
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
-use std::rc::Rc;
 
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::world::World;
@@ -13,8 +12,8 @@ use bevy_ecs::world::World;
 use campfire_capabilities::internals::{self, Arms};
 use campfire_capabilities::{
     Abilities, Action, ActionSlots, ActionTarget, Actions, Area, Areas, CapabilitySet, Combat,
-    DeclaredName, Hook, MatchScripts, Number, OnDeath, Order, Owner, Param, PoolId, Pools,
-    Projectile, Projectiles, Range, RangeField, Ranked, RecentAttackers, Scalar, Scaling,
+    DeclaredName, Hook, Number, OnDeath, Order, Owner, Param, PoolId, Pools, Projectile,
+    Projectiles, Range, RangeField, Ranked, RecentAttackers, Scalar, Scaling, ScriptBudgets,
     ScriptLimits, SlotKind, Stat, StatRule, Stats, Targeting, Team, TypeScope, Units,
 };
 use campfire_capabilities::{Modifiers, ScriptFailure, ScriptFailures};
@@ -191,18 +190,6 @@ fn reference_world() -> World {
         think: 100_000,
         mode: 100_000,
     };
-    let kinds = ["physical", "magic", "true"].map(|kind| DeclaredName::new(kind).unwrap());
-    // The stats the heroes' params and modifiers name, in the order the mode's stats hold them.
-    let mut stats = STATS.map(|name| Stat::named(name).unwrap());
-    stats.sort();
-    let scripts = MatchScripts {
-        limits,
-        players: 1,
-        damage_kinds: Rc::from(kinds),
-        stats: stats.into(),
-        pools: POOLS.map(|pool| DeclaredName::new(pool).unwrap()).into(),
-        resources: Rc::from([]),
-    };
     let declared = [
         Capability::Stats,
         Capability::Combat,
@@ -213,10 +200,13 @@ fn reference_world() -> World {
         Capability::Areas,
     ];
     let set = CapabilitySet::new(&declared).unwrap();
-    set.install(&mut world, &mut schedule, &mut registry, Some(scripts));
+    let budgets = ScriptBudgets::new(limits, 1);
+    set.install(&mut world, &mut schedule, &mut registry, Some(budgets));
+    Units::name_kinds(&world, &["physical", "magic", "true"], &POOLS, &[]);
     Combat::bind_life(&mut world, PoolId::FIRST);
     world.add_schedule(schedule);
     world.insert_non_send(Failed::default());
+    // The stats the heroes' params and modifiers name.
     let rules = STATS.map(|name| (Stat::named(name).unwrap(), StatRule::default()));
     internals::load_stats(&mut world, &BTreeMap::from(rules), RATE);
     world

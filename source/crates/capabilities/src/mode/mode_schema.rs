@@ -1,7 +1,7 @@
 use campfire_script::ScriptId;
 use campfire_script::rhai::Dynamic;
 
-use crate::mode::mode_data::{InputType, ModeData, ModeParam};
+use crate::mode::mode_data::{InputType, ModeData};
 use crate::scripts::hook::Hook;
 use crate::scripts::hook_set::HookSet;
 use crate::scripts::script_book::ScriptBook;
@@ -19,8 +19,8 @@ pub(crate) struct ModeSchema {
     pub(crate) script: ScriptId,
     /// Which of the mode's hooks the engine calls its script defines.
     pub(crate) hooks: HookSet,
-    /// One run each.
-    params: NameTable<ModeParam>,
+    /// One run each; each param as `ctx.p` reads it, converted once.
+    params: NameTable<Dynamic>,
     state: NameTable<StateType>,
     inputs: NameTable<InputType>,
     /// Each state field's first value, in the order of their names.
@@ -63,7 +63,7 @@ impl ModeSchema {
         let params = data.params.iter();
         schema
             .params
-            .push(params.map(|(name, param)| (name.as_str(), param.clone())));
+            .push(params.map(|(name, param)| (name.as_str(), param.to_dynamic())));
         let state = data.state.iter();
         schema
             .state
@@ -77,7 +77,7 @@ impl ModeSchema {
 
     /// The param `name`, as `ctx.p` reads it.
     pub(crate) fn param(&self, name: &str) -> Option<Dynamic> {
-        Some(self.params.get(RUN, name)?.to_dynamic())
+        self.params.get(RUN, name).cloned()
     }
 
     /// The state field `name`.

@@ -21,6 +21,7 @@ use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::name_kind::NameKind;
 use crate::scripts::script_api::MemberSpec;
+use crate::scripts::script_consts::ScriptConsts;
 use crate::scripts::state_value::StateValue;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_book::ModifierId;
@@ -61,11 +62,9 @@ pub(crate) struct ScriptView {
     teams: Rc<Teams>,
     /// The name of each path, by index, once a mode sets them.
     paths: Arc<[Box<str>]>,
-    /// The damage kinds the mode declares.
-    damage_kinds: Rc<[DeclaredName]>,
-    /// Each loaded ability's name in its package, by ability id.
-    ability_names: Vec<ImmutableString>,
     actions: ActionBook,
+    /// The names scripts read, as they read them.
+    consts: ScriptConsts,
     /// Whether each unit type is a projectile type that homes, by unit type; a type past its
     /// end does not.
     homing: Vec<bool>,
@@ -84,12 +83,12 @@ pub(crate) struct ScriptView {
     /// The ability slots of each unit, one run per unit.
     slots: Vec<SlotRow>,
     /// The stats the mode declares, in order, and each unit's values of them, one run per unit.
-    stat_names: Rc<[Stat]>,
+    stat_names: Arc<[Stat]>,
     stats: Vec<Num>,
     /// The pools the mode declares, by pool id.
-    pool_names: Rc<[DeclaredName]>,
+    pool_names: Arc<[DeclaredName]>,
     /// The players' resources the mode declares, by resource id.
-    resource_names: Rc<[DeclaredName]>,
+    resource_names: Arc<[DeclaredName]>,
     /// The tracks the mode declares, by track id.
     tracks: TrackBook,
     /// Every modifier, by id, the modifiers each unit carries, one run per unit, and their
@@ -323,8 +322,7 @@ impl View {
             types: UnitTypes::default(),
             teams: Rc::default(),
             paths: Arc::default(),
-            damage_kinds: Rc::from([]),
-            ability_names: Vec::new(),
+            consts: ScriptConsts::default(),
             actions: ActionBook::default(),
             homing: Vec::new(),
             sources: Vec::new(),
@@ -335,9 +333,9 @@ impl View {
             metric: Metric::default(),
             attacks: Vec::new(),
             slots: Vec::new(),
-            stat_names: Rc::from([]),
-            pool_names: Rc::from([]),
-            resource_names: Rc::from([]),
+            stat_names: Arc::from([]),
+            pool_names: Arc::from([]),
+            resource_names: Arc::from([]),
             tracks: TrackBook::default(),
             stats: Vec::new(),
             modifier_book: ModifierBook::default(),
@@ -362,9 +360,16 @@ impl View {
         view.paths = paths;
     }
 
-    /// Sets the damage kinds the mode declares.
-    pub(crate) fn set_damage_kinds(&self, damage_kinds: Rc<[DeclaredName]>) {
-        self.0.borrow_mut().damage_kinds = damage_kinds;
+    /// Sets the damage kinds and the players' resources the mode declares, by id.
+    pub(crate) fn set_mode_names(
+        &self,
+        damage_kinds: &[DeclaredName],
+        resources: Arc<[DeclaredName]>,
+    ) {
+        let mut view = self.0.borrow_mut();
+        let kinds = damage_kinds.iter().map(DeclaredName::as_str);
+        view.consts.set_damage_kinds(kinds);
+        view.resource_names = resources;
     }
 
     /// `ms` in ticks at the match's rate, rounded up, at least one; an error for a negative time
@@ -380,6 +385,13 @@ impl View {
     /// Sets the match's unit types and tags, as the load built them.
     pub(crate) fn set_types(&self, types: UnitTypes) {
         self.0.borrow_mut().types = types;
+        self.share_type_names();
+    }
+
+    /// Gives scripts the names of the unit types as the view holds them.
+    pub(crate) fn share_type_names(&self) {
+        let view = &mut *self.0.borrow_mut();
+        view.consts.set_unit_types(view.types.names());
     }
 
     /// Shares the match's modifiers, as the load built them.
@@ -462,7 +474,7 @@ impl View {
     }
 
     /// Sets the stats the mode declares, in the order units' runs of stats hold them.
-    pub(crate) fn set_stat_names(&self, names: Rc<[Stat]>) {
+    pub(crate) fn set_stat_names(&self, names: Arc<[Stat]>) {
         self.0.borrow_mut().stat_names = names;
     }
 
@@ -475,8 +487,10 @@ impl View {
     /// unit with no stats.
     pub(crate) fn stat(&self, row: &UnitRow, name: &str) -> Checked<Num> {
         let view = self.0.borrow();
-        let at = Stat::named(name)
-            .and_then(|stat| view.stat_names.binary_search(&stat).ok())
+        let at = view
+            .stat_names
+            .binary_search_by(|stat| stat.order_to(name))
+            .ok()
             .ok_or_else(|| ApiError::UnknownStat.fail())?;
         let run = &view.stats[row.stats_start as usize..row.stats_end as usize];
         run.get(at)
@@ -485,7 +499,7 @@ impl View {
     }
 
     /// Sets the pools the mode declares, by pool id.
-    pub(crate) fn set_pool_names(&self, names: Rc<[DeclaredName]>) {
+    pub(crate) fn set_pool_names(&self, names: Arc<[DeclaredName]>) {
         self.0.borrow_mut().pool_names = names;
     }
 
@@ -506,37 +520,22 @@ impl View {
         Some(pool.expect("the load keeps the pools within the limit"))
     }
 
-    /// Sets the players' resources the mode declares, by resource id.
-    pub(crate) fn set_resource_names(&self, names: Rc<[DeclaredName]>) {
-        self.0.borrow_mut().resource_names = names;
-    }
-
     /// The player resource `name`; `None` for one the mode does not declare.
     pub(crate) fn resource(&self, name: &str) -> Option<ResourceId> {
         ResourceId::of(&self.0.borrow().resource_names, name)
     }
 
-    /// How many player resources the mode declares.
-    pub(crate) fn resource_count(&self) -> usize {
-        self.0.borrow().resource_names.len()
-    }
-
     /// The damage kind `name`; an error for one the mode does not declare.
     pub(crate) fn damage_kind(&self, name: &str) -> Checked<DamageKind> {
-        let view = self.0.borrow();
-        let at = view
-            .damage_kinds
-            .iter()
-            .position(|kind| kind.as_str() == name)
-            .ok_or_else(|| ApiError::UnknownDamageKind.fail())?;
-        Ok(DamageKind::new(
-            u8::try_from(at).expect("the load keeps damage kinds within u8"),
-        ))
+        let found = self.0.borrow().consts.damage_kind_of(name);
+        Ok(found.ok_or_else(|| ApiError::UnknownDamageKind.fail())?)
     }
 
     /// Shares the tracks the mode declares.
     pub(crate) fn set_tracks(&self, tracks: TrackBook) {
-        self.0.borrow_mut().tracks = tracks;
+        let mut view = self.0.borrow_mut();
+        view.consts.set_tracks(tracks.names());
+        view.tracks = tracks;
     }
 
     /// The track `name`; an error for one the mode does not declare.
@@ -547,22 +546,19 @@ impl View {
 
     /// The name of track `track`.
     pub(crate) fn track_name(&self, track: TrackId) -> ImmutableString {
-        self.0.borrow().tracks.name(track).as_str().into()
+        self.0.borrow().consts.track(track)
     }
 
     /// The name of damage kind `kind`.
     pub(crate) fn damage_kind_name(&self, kind: DamageKind) -> ImmutableString {
-        self.0.borrow().damage_kinds[kind.index()].as_str().into()
-    }
-
-    /// Adds the name of the ability loaded next, which takes the next ability id.
-    pub(crate) fn add_ability(&self, name: &str) {
-        self.0.borrow_mut().ability_names.push(name.into());
+        self.0.borrow().consts.damage_kind(kind)
     }
 
     /// Shares the match's actions, as the load built them.
     pub(crate) fn set_actions(&self, book: ActionBook) {
-        self.0.borrow_mut().actions = book;
+        let mut view = self.0.borrow_mut();
+        view.consts.set_actions(book.names());
+        view.actions = book;
     }
 
     /// Marks `unit_type` as a projectile type that homes.
@@ -594,7 +590,7 @@ impl View {
 
     /// The name of ability `id` in its package.
     pub(crate) fn ability_name(&self, id: ActionId) -> ImmutableString {
-        self.0.borrow().ability_names[id.index()].clone()
+        self.0.borrow().consts.action(id)
     }
 
     /// Adds how a capability fills its fields of each row, after those added before it.
@@ -635,7 +631,7 @@ impl View {
     pub(crate) fn unit_type_name(&self, row: &UnitRow) -> Dynamic {
         let view = self.0.borrow();
         row.unit_type.map_or(Dynamic::UNIT, |unit_type| {
-            Dynamic::from(ImmutableString::from(view.types.name(unit_type)))
+            Dynamic::from(view.consts.unit_type(unit_type))
         })
     }
 

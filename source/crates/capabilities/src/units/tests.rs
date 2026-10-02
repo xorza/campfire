@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
-use std::rc::Rc;
+use std::sync::Arc;
 
 use bevy_ecs::bundle::Bundle;
 use bevy_ecs::entity::Entity;
@@ -63,16 +63,7 @@ impl Scene {
             think: 100_000,
             mode: 100_000,
         };
-        let scripts = MatchScripts {
-            limits,
-            players: 1,
-            damage_kinds: Rc::from([]),
-            stats: Rc::from([]),
-            pools: ["health", "mana"]
-                .map(|pool| DeclaredName::new(pool).unwrap())
-                .into(),
-            resources: Rc::from([]),
-        };
+        let scripts = ScriptBudgets::new(limits, 1);
         let TestMatch {
             world,
             schedule: _,
@@ -82,6 +73,7 @@ impl Scene {
             RATE,
             Some(scripts),
         );
+        Units::name_kinds(&world, &[], &["health", "mana"], &[]);
         Scene { world }
     }
 
@@ -386,7 +378,7 @@ fn a_handle_reads_its_units_level_pools_and_stats() {
     scene
         .world
         .non_send::<View>()
-        .set_stat_names(Rc::from(names));
+        .set_stat_names(Arc::from(names));
     let mut stats = UnitStats::default();
     stats.refill().extend([num(25), num(10)]);
     let of = scene.unit(at(0, 0, 0), 0, Level::new(3).unwrap());

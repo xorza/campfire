@@ -17,7 +17,7 @@ use crate::progression::Progression;
 use crate::projectiles::Projectiles;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::effects::ApplyEffect;
-use crate::scripts::match_scripts::MatchScripts;
+use crate::scripts::script_budgets::ScriptBudgets;
 use crate::stats::Stats;
 use crate::units::Units;
 use crate::vision::Vision;
@@ -165,16 +165,17 @@ impl CapabilitySet {
     }
 
     /// Installs the core, then each declared capability the release runs, each after the ones it
-    /// builds on. A match that ended runs no stage. With no `scripts`, as on a client, which runs none, the core has no script host,
-    /// and each capability leaves out what runs scripts.
+    /// builds on. A match that ended runs no stage. With no script `budgets`, as on a client,
+    /// which runs no scripts, the core has no script host, and each capability leaves out what
+    /// runs scripts.
     pub fn install(
         self,
         world: &mut World,
         schedule: &mut Schedule,
         registry: &mut StateRegistry,
-        scripts: Option<MatchScripts>,
+        budgets: Option<ScriptBudgets>,
     ) {
-        Units::install(world, schedule, registry, scripts);
+        Units::install(world, schedule, registry, budgets);
         if let Some(ctx) = world.get_non_send::<Ctx>() {
             ctx.frame().set_dispatch(DISPATCH);
         }
@@ -240,19 +241,19 @@ pub(crate) mod internals {
     }
 
     impl TestMatch {
-        /// A match at `rate` of the capabilities `declared`, running `scripts`; with combat, its
-        /// life pool the first.
+        /// A match at `rate` of the capabilities `declared`, running scripts within `budgets`;
+        /// with combat, its life pool the first.
         pub(crate) fn new(
             declared: &[Capability],
             rate: TickRate,
-            scripts: Option<MatchScripts>,
+            budgets: Option<ScriptBudgets>,
         ) -> TestMatch {
             let mut world = World::new();
             SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), rate);
             let mut schedule = SimUpdate::schedule();
             let mut registry = StateRegistry::new();
             let set = CapabilitySet::new(declared).expect("a test declares a valid set");
-            set.install(&mut world, &mut schedule, &mut registry, scripts);
+            set.install(&mut world, &mut schedule, &mut registry, budgets);
             if set.contains(Capability::Combat) {
                 Combat::bind_life(&mut world, PoolId::FIRST);
             }
@@ -273,8 +274,6 @@ mod tests {
 
     use campfire_script::ScriptHost;
     use campfire_sim::TickRate;
-
-    use std::rc::Rc;
 
     use super::*;
     use crate::actions::action_book::ActionBook;
@@ -347,27 +346,21 @@ mod tests {
     }
 
     /// Installs `declared` into a fresh match that runs `scripts`.
-    fn installed(declared: &[Capability], scripts: Option<MatchScripts>) -> World {
+    fn installed(declared: &[Capability], budgets: Option<ScriptBudgets>) -> World {
         let rate = TickRate::new(NonZeroU32::new(30).unwrap());
-        TestMatch::new(declared, rate, scripts).world
+        TestMatch::new(declared, rate, budgets).world
     }
 
     #[test]
     fn a_match_without_scripts_installs_no_host_or_ai_and_the_core_its_actions() {
         let all = [Stats, Combat, Navigation, Projectiles, Abilities, Orders];
-        let scripts = MatchScripts {
-            limits: ScriptLimits {
-                per_call: 1,
-                player: 1,
-                think: 1,
-                mode: 1,
-            },
-            players: 1,
-            damage_kinds: Rc::from([]),
-            stats: Rc::from([]),
-            pools: Rc::from([]),
-            resources: Rc::from([]),
+        let limits = ScriptLimits {
+            per_call: 1,
+            player: 1,
+            think: 1,
+            mode: 1,
         };
+        let scripts = ScriptBudgets::new(limits, 1);
         let scripted = installed(&all, Some(scripts.clone()));
         let client = installed(&all, None);
         for (world, scripts) in [(&scripted, true), (&client, false)] {

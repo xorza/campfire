@@ -57,9 +57,9 @@ impl TrackBook {
         TrackId::new(at)
     }
 
-    /// The name of `track`.
-    pub(crate) fn name(&self, track: TrackId) -> &DeclaredName {
-        &self.0.names[track.index()]
+    /// Every track's name, by id.
+    pub(crate) fn names(&self) -> impl Iterator<Item = &str> {
+        self.0.names.iter().map(DeclaredName::as_str)
     }
 
     /// The track that is its units' `level`, if one is.

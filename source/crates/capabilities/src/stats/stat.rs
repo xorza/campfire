@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::fmt;
 
 use serde::{Deserialize, Deserializer};
@@ -43,6 +44,17 @@ impl Stat {
             .or_else(|| DeclaredName::new(name).map(Stat::Declared))
     }
 
+    /// How it sorts against the stat `name` names, as `Ord` sorts stats, with no stat built: a
+    /// name that is no stat sorts as a declared one.
+    pub(crate) fn order_to(&self, name: &str) -> Ordering {
+        match (self, EngineStat::named(name)) {
+            (Stat::Engine(stat), Some(other)) => stat.cmp(&other),
+            (Stat::Engine(_), None) => Ordering::Less,
+            (Stat::Declared(_), Some(_)) => Ordering::Greater,
+            (Stat::Declared(declared), None) => declared.as_str().cmp(name),
+        }
+    }
+
     /// The name of a stat the mode must declare; `None` for an engine stat.
     pub const fn declared(&self) -> Option<&DeclaredName> {
         match self {
@@ -82,5 +94,16 @@ mod tests {
         assert_eq!(Stat::Engine(EngineStat::MoveSpeed).declared(), None);
         assert_eq!(Stat::named("Armor"), None);
         assert_eq!(armor.to_string(), "armor");
+        // `order_to` sorts as `Ord` does, for every pair of an engine stat and declared ones.
+        let mut stats: Vec<Stat> = ["armor", "move_speed", "zeal", "attack_damage"]
+            .map(|name| Stat::named(name).unwrap())
+            .into();
+        stats.sort();
+        for stat in &stats {
+            for other in &stats {
+                assert_eq!(stat.order_to(&other.to_string()), stat.cmp(other));
+            }
+        }
+        assert_eq!(stats[0], Stat::Engine(EngineStat::MoveSpeed));
     }
 }

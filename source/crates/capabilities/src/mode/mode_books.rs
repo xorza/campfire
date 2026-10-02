@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use campfire_math::Num;
 use campfire_sim::TickRate;
 
@@ -10,9 +12,11 @@ use crate::stats::stat_id::StatId;
 use crate::units::body::Body;
 use crate::units::tag_book::TagBook;
 use crate::units::unit_types::UnitTypes;
+use crate::values::declared_name::DeclaredName;
 
 /// The books of the mode's own rules: its stats, at the match's rate, under its move speed cap;
-/// its pools; its tags' effects and each unit type's own tags; and what its combat reads.
+/// its pools; its tags' effects and each unit type's own tags; what its combat reads; and the
+/// names of its damage kinds and of its players' resources, by id.
 #[derive(Debug)]
 pub struct ModeBooks {
     pub(crate) stats: StatBook,
@@ -20,6 +24,8 @@ pub struct ModeBooks {
     pub(crate) tags: TagBook,
     /// None with no life pool, as in a mode with no combat.
     pub(crate) bindings: Option<CombatBindings>,
+    pub(crate) damage_kinds: Arc<[DeclaredName]>,
+    pub(crate) resources: Arc<[DeclaredName]>,
 }
 
 impl ModeBooks {
@@ -54,6 +60,8 @@ impl ModeBooks {
             bindings: CombatBindings::new(&data.combat, &data.pools, &stats),
             tags: types.tag_book(&data.tags),
             stats,
+            damage_kinds: data.combat.damage_kinds.as_slice().into(),
+            resources: data.resources.as_slice().into(),
         }
     }
 }

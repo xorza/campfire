@@ -337,13 +337,12 @@ pub(crate) mod internals {
             let parts = ActionParts::of(data, package, ranks, rate, &names)?;
             let id = world.resource_scope(|world, mut actions: Mut<'_, ActionBook>| {
                 let scripts = world.resource::<ScriptBook>();
-                actions.load(scripts, package, data, script, parts)
+                actions.load(scripts, package, name, data, script, parts)
             });
             let places = StatBook::places(world, data.params.values().flat_map(Param::stats));
             ParamBook::load_action(world, id, &data.params, |stat| places[stat]);
-            let view = world.non_send::<View>();
-            view.add_ability(name);
-            view.set_actions(world.resource::<ActionBook>().clone());
+            let book = world.resource::<ActionBook>().clone();
+            world.non_send::<View>().set_actions(book);
             Ok(id)
         }
     }
