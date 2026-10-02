@@ -313,7 +313,6 @@ Track I:  H4      F3 after unit script state
   - `Package` data: C2;
   - load error shapes: C5a;
   - small shapes: J;
-  - kill by last death: J;
   - `ctx.projectile` returns `()`: F3;
   - capability set table: A4.
 - **R§12:**
@@ -321,7 +320,6 @@ Track I:  H4      F3 after unit script state
   - entity-index walks: B2;
   - client gauges: J;
   - commands parsed twice: J;
-  - small scans: J.
 - **R§13:**
   - applied handle: D5;
   - scripts parsed twice: C5b.

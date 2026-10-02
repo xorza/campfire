@@ -21,7 +21,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use bevy_app::{App, AppExit, ScheduleRunnerPlugin, TaskPoolPlugin, Update};
 use bevy_ecs::lifecycle::Add;
 use bevy_ecs::observer::On;
-use bevy_ecs::query::With;
+use bevy_ecs::query::{QueryState, With};
 use bevy_ecs::system::{Commands, Query};
 use bevy_ecs::world::World;
 use bevy_state::app::StatesPlugin;
@@ -164,11 +164,13 @@ fn exit_code(exit: AppExit) -> ExitCode {
 /// Once the match started and no player is connected any more, reveals the seed, writes the
 /// session log into the working directory and exits: with an error when the log is not written,
 /// as the session it holds is lost.
-fn end_when_everyone_left(world: &mut World) {
+fn end_when_everyone_left(
+    world: &mut World,
+    connected: &mut QueryState<(), (With<PlayerLink>, With<Connected>)>,
+) {
     if !world.contains_resource::<MatchClock>() {
         return;
     }
-    let mut connected = world.query_filtered::<(), (With<PlayerLink>, With<Connected>)>();
     if connected.iter(world).next().is_some() {
         return;
     }

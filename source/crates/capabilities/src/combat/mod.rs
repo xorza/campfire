@@ -643,12 +643,12 @@ fn deal_damage(world: &mut World, mut assisters: Local<'_, Vec<StableId>>) {
 }
 
 /// What a damage of the pass did: nothing, as to a unit at zero life or an invulnerable one;
-/// damage; or a kill.
+/// damage; or a kill, which the tick's deaths record at `death`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Landed {
     Nothing,
     Taken,
-    Killed,
+    Killed { death: usize },
 }
 
 impl Combat {
@@ -686,11 +686,10 @@ impl Combat {
             events.hear(batch, CombatEvent::AttackHit(damage));
         }
         events.hear(batch, CombatEvent::DamageTaken(damage));
-        if landed != Landed::Killed {
+        let Landed::Killed { death } = landed else {
             return;
-        }
-        let deaths = batch.world().resource::<Deaths>();
-        let kill = deaths.iter().last().expect("a kill records its death");
+        };
+        let kill = batch.world().resource::<Deaths>().get(death);
         let killer = kill.killer;
         assisters.clear();
         assisters.extend_from_slice(kill.assisters);
@@ -746,7 +745,7 @@ impl Combat {
                 attackers.record(source, now, &index);
             }
         });
-        if killed {
+        let death = killed.then(|| {
             world.resource_scope(|world, mut deaths: Mut<'_, Deaths>| {
                 let window = world.get_resource::<AssistWindow>().map(|window| window.0);
                 let index = world.resource::<EntityIndex>();
@@ -764,9 +763,9 @@ impl Combat {
                     .filter(assisted)
                     .map(|attack| attack.source);
                 let fallen = Fallen::of(damage.target, world.get(entity), world.get(entity));
-                deaths.push(fallen, source, assisters);
-            });
-        }
+                deaths.push(fallen, source, assisters)
+            })
+        });
         if let Some((id, entity)) =
             source.and_then(|id| Combat::living(world, id).map(|entity| (id, entity)))
         {
@@ -788,11 +787,7 @@ impl Combat {
                 });
             }
         }
-        if killed {
-            Landed::Killed
-        } else {
-            Landed::Taken
-        }
+        death.map_or(Landed::Taken, |death| Landed::Killed { death })
     }
 
     /// Applies the next combat effect the call in `frame` queued: from its acting unit and its

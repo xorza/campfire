@@ -63,13 +63,14 @@ impl Deaths {
         self.assisters.clear();
     }
 
-    /// Records that `fallen` died, dealt its last damage by `killer` if any, with `assisters`.
+    /// Records that `fallen` died, dealt its last damage by `killer` if any, with `assisters`:
+    /// the death's place in the record.
     pub(crate) fn push(
         &mut self,
         fallen: Fallen,
         killer: Option<StableId>,
         assisters: impl IntoIterator<Item = StableId>,
-    ) {
+    ) -> usize {
         let start = self.assisters.len();
         self.assisters.extend(assisters);
         self.entries.push(Death {
@@ -77,6 +78,17 @@ impl Deaths {
             killer,
             assisters: start..self.assisters.len(),
         });
+        self.entries.len() - 1
+    }
+
+    /// The death at `at` in the record.
+    pub(crate) fn get(&self, at: usize) -> DeathView<'_> {
+        let death = &self.entries[at];
+        DeathView {
+            fallen: death.fallen,
+            killer: death.killer,
+            assisters: &self.assisters[death.assisters.clone()],
+        }
     }
 
     pub(crate) fn contains(&self, unit: StableId) -> bool {
@@ -90,10 +102,6 @@ impl Deaths {
 
     /// The deaths, in the order the units died.
     pub fn iter(&self) -> impl Iterator<Item = DeathView<'_>> {
-        self.entries.iter().map(|death| DeathView {
-            fallen: death.fallen,
-            killer: death.killer,
-            assisters: &self.assisters[death.assisters.clone()],
-        })
+        (0..self.entries.len()).map(|at| self.get(at))
     }
 }
