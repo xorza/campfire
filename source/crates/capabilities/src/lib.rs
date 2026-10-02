@@ -43,6 +43,7 @@ pub use actions::action_data::{
     ActionData, ChannelData, ChargeData, ChargesData, CostTarget, Range, RangeField, RankFields,
     Targeting, Toggle,
 };
+pub use actions::action_data_field::{ActionDataField, FieldUse};
 pub use actions::action_kind::ActionKind;
 pub use actions::action_slots::{ActionSlot, ActionSlots, ActionTarget};
 pub use actions::delivery_data::DeliveryData;

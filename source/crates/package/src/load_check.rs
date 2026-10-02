@@ -2,11 +2,11 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::{iter, slice};
 
 use campfire_capabilities::{
-    ActionData, ActionKind, ActionSlots, ApiOwner, ApiVersion, BookError, Books, CollisionData,
-    CombatRules, DeclaredName, DeliveryData, EffectTo, Effecting, EngineStat, EngineTag,
-    FilterData, Hook, MemberKind, Mode, ModifierData, NameKind, Navigation, Number, Offers, Param,
-    Pools, Range, RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Stat, Targeting, TrackId,
-    UnitTypeData, UnitTypeFile,
+    ActionData, ActionDataField, ActionKind, ActionSlots, ApiOwner, ApiVersion, BookError, Books,
+    CollisionData, CombatRules, DeclaredName, DeliveryData, EffectTo, Effecting, EngineStat,
+    EngineTag, FilterData, Hook, MemberKind, Mode, ModifierData, NameKind, Navigation, Number,
+    Offers, Param, Pools, Range, RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Stat,
+    Targeting, TrackId, UnitTypeData, UnitTypeFile,
 };
 use campfire_content::PackagePath;
 use campfire_math::Num;
@@ -644,29 +644,34 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// An action of a kind the release runs, with the capability of its kind: a `cast` of
-    /// `abilities`, with no weapon field; an `attack` of `combat`, with all three, a unit target,
-    /// a range in meters, its stats declared and its damage kind the mode's.
+    /// An action of a kind the release runs, with the capability of its kind and the fields the
+    /// table of action fields lets its kind take: a `cast` of `abilities`; an `attack` of
+    /// `combat`, aimed at a unit, of a range in meters, its stats declared and its damage kind
+    /// the mode's; a `train` of `production`, aimed at nothing, of a unit type of the mode's
+    /// that stands.
     fn kind(&self, id: &DeclaredName, action: &ActionData) -> Result<(), LoadProblem> {
         let at = Place::Action(id.clone());
-        let fields = action.weapon_fields();
-        let trains = action.unit_type.is_some();
+        let run = matches!(
+            action.kind,
+            ActionKind::Cast | ActionKind::Attack | ActionKind::Train
+        );
+        if run && ActionDataField::misused(action, action.kind).is_some() {
+            return Err(LoadProblem::KindField(id.to_owned()));
+        }
         match action.kind {
             ActionKind::Cast => {
                 self.require(Capability::Abilities, &at)?;
-                if fields.contains(&true) || trains {
-                    return Err(LoadProblem::KindField(id.to_owned()));
-                }
             }
             ActionKind::Train => {
                 self.require(Capability::Production, &at)?;
-                if fields.contains(&true) || action.beyond_train() {
+                if action.targeting != Targeting::None {
                     return Err(LoadProblem::KindField(id.to_owned()));
                 }
                 let unit_types = &self.packages.content.units;
-                let Some(name) = &action.unit_type else {
-                    return Err(LoadProblem::KindField(id.to_owned()));
-                };
+                let name = action
+                    .unit_type
+                    .as_ref()
+                    .expect("a train needs its unit type");
                 match unit_types.get(name) {
                     None => {
                         return Err(LoadProblem::Unknown {
@@ -685,12 +690,11 @@ impl<'a> LoadCheck<'a> {
             }
             ActionKind::Attack => {
                 self.require(Capability::Combat, &at)?;
-                let global = action
-                    .range
-                    .as_ref()
-                    .is_none_or(|range| range.values().contains(&RangeField::Range(Range::Global)));
+                let global = action.range.as_ref().is_some_and(|range| {
+                    range.values().contains(&RangeField::Range(Range::Global))
+                });
                 let aims = matches!(action.targeting, Targeting::Unit(_));
-                if fields.contains(&false) || global || !aims || action.cast_fields() || trains {
+                if global || !aims {
                     return Err(LoadProblem::KindField(id.to_owned()));
                 }
                 self.stats_declared(action.rate.iter().chain(&action.damage), &at)?;

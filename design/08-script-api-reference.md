@@ -311,17 +311,17 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `damage_kind` | since 1.0 |
 | `script` | since 1.0 |
 | `cooldown_ms` | since 1.0 |
-| `params` | since 1.0 |
-| `on_resolve` | since 1.0 |
-| `on_hit` | since 1.0 |
-| `on_end` | since 1.0 |
 | `clamp_to_range` | planned |
 | `toggle` | planned |
 | `channel` | planned |
 | `hold` | planned |
 | `charges` | planned |
 | `charge` | planned |
+| `params` | since 1.0 |
 | `projectile_state` | planned |
+| `on_resolve` | since 1.0 |
+| `on_hit` | since 1.0 |
+| `on_end` | since 1.0 |
 | `unit_type` | since 1.0 |
 | `delivery` | since 1.0 |
 

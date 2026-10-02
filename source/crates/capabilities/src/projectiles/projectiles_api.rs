@@ -33,7 +33,7 @@ impl ProjectilesApi {
         .bind(projectile, |ctx: &mut Ctx, from: Position, unit: Unit| {
             ProjectilesApi::launch(ctx, from, Toward::Unit(unit.id))
         })
-        .data(DataTable::Action, &["delivery"], &[])
+        .action_fields(Some(Capability::Projectiles))
         .data(
             DataTable::Delivery,
             &["projectile", "count", "spread_deg"],

@@ -55,26 +55,7 @@ impl AbilitiesApi {
         .hook(Hook::OnEnd, Status::Runs(ApiVersion::FIRST))
         .hook(Hook::OnChannelTick, Status::Planned)
         .hook(Hook::OnInterrupt, Status::Planned)
-        .data(
-            DataTable::Action,
-            &[
-                "script",
-                "cooldown_ms",
-                "params",
-                "on_resolve",
-                "on_hit",
-                "on_end",
-            ],
-            &[
-                "clamp_to_range",
-                "toggle",
-                "channel",
-                "hold",
-                "charges",
-                "charge",
-                "projectile_state",
-            ],
-        )
+        .action_fields(Some(Capability::Abilities))
         .data(
             DataTable::Effect,
             &["damage", "heal", "restore", "modifier", "xp", "to"],

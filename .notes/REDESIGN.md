@@ -637,7 +637,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - placeholder group: D3;
   - `Hit::direction`: F2;
   - `passive` and `held`: G2;
-  - `weapon_fields`: C8;
   - `UnitKit`: C5a;
   - `Package` data: C2;
   - load error shapes: C5a;

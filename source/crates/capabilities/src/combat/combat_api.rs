@@ -116,7 +116,7 @@ impl CombatApi {
         )
         .data(DataTable::Leech, &["attack", "other"], &[])
         .data(DataTable::Combat, &["on_death"], &[])
-        .data(DataTable::Action, &["rate", "damage", "damage_kind"], &[]);
+        .action_fields(Some(Capability::Combat));
     }
 
     /// Queues `amount` of `kind` damage to `target`, a kind the mode declares.

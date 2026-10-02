@@ -39,6 +39,7 @@ use crate::units::unit_tags::UnitTags;
 
 pub(crate) mod action_book;
 pub(crate) mod action_data;
+pub(crate) mod action_data_field;
 pub(crate) mod action_kind;
 pub(crate) mod action_names;
 pub(crate) mod action_slots;

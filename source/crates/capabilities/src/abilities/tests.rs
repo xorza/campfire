@@ -14,6 +14,7 @@ use super::*;
 use crate::actions::Actions;
 use crate::actions::action_data::ActionData;
 use crate::actions::action_data::{CostTarget, Range, RangeField, Targeting};
+use crate::actions::action_data_field::ActionDataField;
 use crate::actions::action_slots::{ActionSlot, InProgress};
 use crate::actions::delivery_data::DeliveryData;
 use crate::actions::effect_data::EffectTo;
@@ -222,6 +223,56 @@ fn strike() -> ActionData {
             Param::Ranked(Ranked::One(Scalar::Int(50))),
         )]),
     }
+}
+
+#[test]
+fn the_field_table_names_the_first_field_a_kind_misuses() {
+    // Strike is a cast: its script, cooldown, cost and params are a cast's to take.
+    let mut action = strike();
+    assert_eq!(ActionDataField::misused(&action, ActionKind::Cast), None);
+    // As an attack, its script comes first of what an attack refuses; as a train, also its
+    // script, before the range and the unit type it lacks.
+    assert_eq!(
+        ActionDataField::misused(&action, ActionKind::Attack),
+        Some(ActionDataField::Script)
+    );
+    assert_eq!(
+        ActionDataField::misused(&action, ActionKind::Train),
+        Some(ActionDataField::Script)
+    );
+    // With no cast fields, an attack lacks its weapon's rate, then a cast refuses the rate.
+    action.script = None;
+    action.cooldown_ms = None;
+    action.params = BTreeMap::new();
+    assert_eq!(
+        ActionDataField::misused(&action, ActionKind::Attack),
+        Some(ActionDataField::Rate)
+    );
+    action.rate = Some(Stat::named("armor").unwrap());
+    action.damage = Some(Stat::named("attack_damage").unwrap());
+    action.damage_kind = Some(DeclaredName::new("physical").unwrap());
+    assert_eq!(ActionDataField::misused(&action, ActionKind::Attack), None);
+    assert_eq!(
+        ActionDataField::misused(&action, ActionKind::Cast),
+        Some(ActionDataField::Rate)
+    );
+    // A train refuses its range first, then needs its unit type.
+    assert_eq!(
+        ActionDataField::misused(&action, ActionKind::Train),
+        Some(ActionDataField::Range)
+    );
+    let train = ActionData {
+        targeting: Targeting::None,
+        range: None,
+        rate: None,
+        damage: None,
+        damage_kind: None,
+        ..action
+    };
+    assert_eq!(
+        ActionDataField::misused(&train, ActionKind::Train),
+        Some(ActionDataField::UnitType)
+    );
 }
 
 const STRIKE: &str =

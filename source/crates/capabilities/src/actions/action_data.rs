@@ -131,48 +131,6 @@ impl ActionData {
         .flatten()
     }
 
-    /// The fields a weapon has and no other kind of action, in the order data writes them:
-    /// `rate`, `damage` and `damage_kind`, as present.
-    pub fn weapon_fields(&self) -> [bool; 3] {
-        [
-            self.rate.is_some(),
-            self.damage.is_some(),
-            self.damage_kind.is_some(),
-        ]
-    }
-
-    /// Whether it has a field only a cast runs: a script or params, a cooldown, a clamp to range,
-    /// a toggle, a channel, a hold, charges, a charge, projectile state, or an effect list.
-    pub fn cast_fields(&self) -> bool {
-        self.cooldown_ms.is_some() || self.cast_only_fields()
-    }
-
-    /// Whether it has a field a `train` does not run: a target, a range, a delivery, or a field
-    /// only a cast runs, its cooldown aside.
-    pub fn beyond_train(&self) -> bool {
-        self.targeting != Targeting::None
-            || self.range.is_some()
-            || self.delivery.is_some()
-            || self.cast_only_fields()
-    }
-
-    /// Whether it has a field that no kind but a cast runs: a script or params, a clamp to range,
-    /// a toggle, a channel, a hold, charges, a charge, projectile state, or an effect list.
-    fn cast_only_fields(&self) -> bool {
-        self.script.is_some()
-            || !self.on_resolve.is_empty()
-            || !self.on_hit.is_empty()
-            || !self.on_end.is_empty()
-            || !self.params.is_empty()
-            || self.clamp_to_range
-            || self.toggle.is_some()
-            || self.channel.is_some()
-            || self.hold.is_some()
-            || self.charges.is_some()
-            || self.charge.is_some()
-            || !self.projectile_state.is_empty()
-    }
-
     /// Every pool or player resource it costs something in, its toggle's among them.
     pub fn cost_names(&self) -> impl Iterator<Item = &DeclaredName> + '_ {
         self.cost

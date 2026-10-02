@@ -357,12 +357,19 @@ impl ScriptApi {
             (runs, Status::Runs(ApiVersion::FIRST)),
             (planned, Status::Planned),
         ] {
-            self.data.extend(names.iter().map(|&name| DataField {
-                table,
-                name,
-                status,
-            }));
+            for &name in names {
+                self.record_field(table, name, status);
+            }
         }
+    }
+
+    /// Records the field `name` of `table`, of `status`.
+    pub(crate) fn record_field(&mut self, table: DataTable, name: &'static str, status: Status) {
+        self.data.push(DataField {
+            table,
+            name,
+            status,
+        });
     }
 
     /// The member `name` of `owner`.
