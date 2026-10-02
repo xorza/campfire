@@ -5,8 +5,8 @@ use serde::Deserialize;
 use crate::combat::damage_kind::DamageKind;
 use crate::stats::pool_data::PoolData;
 use crate::stats::pool_id::PoolId;
-use crate::stats::stat::Stat;
 use crate::values::declared_name::DeclaredName;
+use crate::values::stat::Stat;
 
 /// The mode's `[combat]` section: its damage kinds, its assist window, the pool that is life,
 /// and the stats its damage rules read.

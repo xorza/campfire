@@ -10,13 +10,13 @@ use crate::stats::error::ModifierProblem;
 use crate::stats::modifier_book::ModifierId;
 use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifier_handle::StateField;
-use crate::stats::stat::Stat;
 use crate::stats::stat_id::StatId;
 use crate::stats::stat_op::StatOp;
 use crate::units::filter::Filter;
 use crate::units::unit_types::UnitTypes;
 use crate::values::declared_name::DeclaredName;
 use crate::values::number::Number;
+use crate::values::stat::Stat;
 
 /// A modifier as a match runs it: its data with every name resolved at load, its stats to their
 /// places, its params to theirs, its filters to tags and its aura's modifier to its id, and each
@@ -231,7 +231,6 @@ mod tests {
     use crate::stats::modifier_spec::{
         AuraSpec, ModifierSpec, ParamPlace, SpecChange, SpecNames, SpecNumber, SpecTime,
     };
-    use crate::stats::stat::Stat;
     use crate::stats::stat_change::StatChange;
     use crate::stats::stat_id::StatId;
     use crate::stats::stat_op::StatOp;
@@ -243,6 +242,7 @@ mod tests {
     use crate::values::param::Param;
     use crate::values::ranked::Ranked;
     use crate::values::scalar::Scalar;
+    use crate::values::stat::Stat;
 
     fn name(text: &str) -> DeclaredName {
         DeclaredName::new(text).unwrap()

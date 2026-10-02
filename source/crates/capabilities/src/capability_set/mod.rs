@@ -433,7 +433,7 @@ mod tests {
     /// The imports from a higher layer that the code holds today, each a module and the one it
     /// imports. Each step of the structural redesign's layers removes its own; the test fails
     /// when a new one appears, and when one listed here is gone, so the list only shrinks.
-    const KNOWN_BREAKS: [(&str, &str); 24] = [
+    const KNOWN_BREAKS: [(&str, &str); 23] = [
         ("actions", "combat"),
         ("actions", "orders"),
         ("actions", "stats"),
@@ -457,7 +457,6 @@ mod tests {
         ("units", "combat"),
         ("units", "progression"),
         ("units", "stats"),
-        ("values", "stats"),
     ];
 
     /// Visits each source file under `dir` with its production code: the code before the file's
@@ -569,7 +568,6 @@ mod tests {
         ("scripts/frame.rs", "named"),
         ("stats/modifier_handle.rs", "field_named"),
         ("stats/param_table.rs", "named"),
-        ("stats/stat.rs", "named"),
         ("stats/stats_api.rs", "modifier_named"),
         ("units/script_view.rs", "damage_kind_named"),
         ("units/script_view.rs", "modifier_named"),
@@ -584,6 +582,7 @@ mod tests {
         ("units/unit_types.rs", "get_named"),
         ("units/unit_types.rs", "tag_named"),
         ("values/name_table.rs", "named"),
+        ("values/stat.rs", "named"),
         // As a modifier applies: a param of the ability that applies it, by name, as the place
         // differs by ability.
         ("stats/param_book.rs", "named"),

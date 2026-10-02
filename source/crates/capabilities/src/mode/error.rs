@@ -1,8 +1,8 @@
 use std::error::Error;
 use std::fmt;
 
-use crate::stats::stat::Stat;
 use crate::values::declared_name::DeclaredName;
+use crate::values::stat::Stat;
 
 /// Why a unit type's values do not make a unit. Packages are untrusted, so each is an expected
 /// failure.

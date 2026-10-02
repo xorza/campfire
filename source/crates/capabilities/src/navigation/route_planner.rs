@@ -7,8 +7,8 @@ use campfire_sim::Position;
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::pathing_grid::Clearance;
 use crate::navigation::regions::Candidate;
+use crate::navigation::segment::Segment;
 use crate::values::grid::Grid;
-use crate::values::segment::Segment;
 
 /// Plans routes by A* on a clearance of the pathing grid: eight neighbors, a straight step costing 10
 /// and a diagonal 14, and no diagonal past a blocked cell, so a route never cuts a blocked corner.

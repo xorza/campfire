@@ -3,13 +3,13 @@ use std::collections::BTreeMap;
 use campfire_math::Num;
 
 use crate::stats::param_source::ParamSource;
-use crate::stats::stat::Stat;
 use crate::stats::stat_id::StatId;
 use crate::values::declared_name::DeclaredName;
 use crate::values::name_table::NameTable;
 use crate::values::param::Param;
 use crate::values::ranked::Ranked;
 use crate::values::scalar::Scalar;
+use crate::values::stat::Stat;
 
 /// The params of the abilities or the modifiers of a match, one run of names for each owner, as
 /// a match reads them: a scaling param's stats as places among the stats, its ratios in one

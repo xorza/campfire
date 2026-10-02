@@ -22,6 +22,7 @@ use crate::units::team::Team;
 use crate::units::unit_type::UnitType;
 use crate::values::metric::Metric;
 
+pub(crate) mod bits256;
 pub(crate) mod block;
 pub(crate) mod body;
 pub(crate) mod by_type;

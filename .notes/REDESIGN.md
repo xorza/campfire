@@ -187,7 +187,6 @@ The parts that call upward use hooks that the higher layer registers:
 - **Player resources** move to the core `players` module, with `ResourceId` and `ResourceAmount`. `ModeApi::player` becomes a `Teams` query.
 - **The delivery script API** is registered where it runs: `deliveries` registers `on_hit`, `on_end` and `Hit`. `ApiOwner::Projectile` and `ApiOwner::Area` go away, because `hit.delivery` is a `Unit`.
 - **The call's package moves into the frame.** `CallStart { role, acting, action, rank, package, depth }` is the one argument of `Frame::begin`. `view.set_caller`, and the four call sites that must remember it, go away.
-- **Owners of runtime types.** `values` keeps only data value types. `Meter` moves to stats, `Segment` to navigation and `Bits256` to units. `Segment::comes_within` and `Metric::meets` share one projection routine.
 - **One table of capabilities.** The install order, `needs`, the layer of each module and the list in `lib.rs` all come from one table in `capability_set`.
 
 ## R4. One rule of unit life and reach
@@ -382,7 +381,6 @@ A refactor of this size needs a permanent proof that behaviour stays the same. T
 | D2 | `players` in the core; the action pipeline, kind rules, `Targets`, one `pay` and one order applier below combat | M |
 | D3 | Combat `Shots`, drained by projectiles, and a launch payload with no placeholder; the core `Spawner`; production installs its own systems | M |
 | D5 | View columns for each capability; `Unit` handles hold row indexes; the delivery API registered by `deliveries`, and the two `ApiOwner`s go | M |
-| D6 | The owners of the `values` runtime types; the shared projection routine | S |
 
 Done when the layer test has no exception left.
 
@@ -412,7 +410,7 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 ### Order
 
 ```
-Track S:  D2 → D3 → D5 → D6
+Track S:  D2 → D3 → D5
 
 Track I:  E1 → E2      F2      G1      H1, H4      H2 → H3
 

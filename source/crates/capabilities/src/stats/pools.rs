@@ -3,9 +3,9 @@ use campfire_math::Num;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
+use crate::stats::meter::Meter;
 use crate::stats::pool_cost::PoolCost;
 use crate::stats::pool_id::PoolId;
-use crate::values::meter::Meter;
 
 /// A unit's pools, by pool id: each an amount from 0 to its maximum, none where its type lists
 /// no such pool. A fixed array, so copying a unit's pools, as a rollback does every frame,

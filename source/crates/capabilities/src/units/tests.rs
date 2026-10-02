@@ -22,7 +22,6 @@ use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::level::Level;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
-use crate::stats::stat::Stat;
 use crate::stats::unit_stats::UnitStats;
 use crate::units::block::Block;
 use crate::units::path_id::PathId;
@@ -33,6 +32,7 @@ use crate::units::unit_type_data::UnitTypeData;
 use crate::values::bounds::Bounds;
 use crate::values::declared_name::DeclaredName;
 use crate::values::scalar::Scalar;
+use crate::values::stat::Stat;
 
 /// The MOBA's 30 ticks a second.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());

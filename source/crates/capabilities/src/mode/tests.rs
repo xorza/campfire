@@ -66,7 +66,6 @@ use crate::stats::modifiers::{Application, Instance, StatShare};
 use crate::stats::player_modifiers::PlayerModifiers;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
-use crate::stats::stat::Stat;
 use crate::stats::stat_book::StatBook;
 use crate::stats::stat_op::StatOp;
 use crate::stats::stat_rule::StatRule;
@@ -90,6 +89,7 @@ use crate::values::metric::Metric;
 use crate::values::number::Number;
 use crate::values::ranked::Ranked;
 use crate::values::scalar::Scalar;
+use crate::values::stat::Stat;
 use crate::vision::vision_grid::VisionGrid;
 
 /// 10 ticks a second: 100 ms is a tick.

@@ -15,13 +15,13 @@ use crate::scripts::hook::Hook;
 use crate::scripts::state_decl::StateDecl;
 use crate::stats::pool_cost::PoolCost;
 use crate::stats::pool_id::PoolId;
-use crate::stats::stat::Stat;
 use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
 use crate::values::number::{Number, ParamRef};
 use crate::values::param::Param;
 use crate::values::ranked::Ranked;
 use crate::values::scalar::Scalar;
+use crate::values::stat::Stat;
 
 /// An action as its package's `[actions.<id>]` declares it, in milliseconds. Each capability
 /// field may hold one value or one per rank. The release loads every field, and runs those the

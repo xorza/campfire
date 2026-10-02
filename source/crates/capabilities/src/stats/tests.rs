@@ -15,8 +15,6 @@ use crate::stats::modifier_data::{AuraData, Reapply};
 use crate::stats::modifiers::{Application, Instance, StatShare};
 use crate::stats::pool_data::PoolData;
 use crate::stats::pool_id::PoolId;
-use crate::stats::stat::EngineStat;
-use crate::stats::stat::Stat;
 use crate::stats::stat_change::StatChange;
 use crate::stats::stat_id::StatId;
 use crate::stats::stat_op::StatOp;
@@ -32,6 +30,8 @@ use crate::values::number::{Number, ParamRef};
 use crate::values::param::Param;
 use crate::values::ranked::Ranked;
 use crate::values::scalar::Scalar;
+use crate::values::stat::EngineStat;
+use crate::values::stat::Stat;
 
 /// 30 ticks a second, as the MOBA runs.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());

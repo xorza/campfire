@@ -17,11 +17,11 @@ use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifier_spec::{ModifierSpec, ParamPlace, SpecNames, SpecNumber, SpecTime};
 use crate::stats::modifiers::{Application, Instance, Interval, StackEnd, StatShare};
 use crate::stats::param_read::ParamRead;
-use crate::stats::stat::Stat;
 use crate::stats::stat_id::StatId;
 use crate::units::tag_set::TagSet;
 use crate::units::unit_types::UnitTypes;
 use crate::values::declared_name::DeclaredName;
+use crate::values::stat::Stat;
 
 /// The modifiers a match loaded, of every package: the mode, package 0, and each package it
 /// depends on, in the order of its manifest. Package data, not state: a restore loads it from the

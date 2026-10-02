@@ -2,7 +2,7 @@ use bevy_ecs::component::Component;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
-use crate::values::bits256::Bits256;
+use crate::units::bits256::Bits256;
 
 /// A unit's team: its index in the mode's list of teams. How two teams regard each other is
 /// their relation, which the match's relations hold.

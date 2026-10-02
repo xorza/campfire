@@ -1,5 +1,5 @@
-use crate::stats::stat::Stat;
 use crate::stats::stat_id::StatId;
+use crate::values::stat::Stat;
 
 /// Which stats a live stat change reads and which it changes, across a mode's modifiers: an edge
 /// from each stat a scaling param reads to the stat the change that reads it changes.

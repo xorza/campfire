@@ -1,3 +1,5 @@
+use std::cmp::Ordering;
+
 use bevy_ecs::resource::Resource;
 use campfire_math::{Num, U256, Vec3};
 use campfire_sim::Position;
@@ -37,34 +39,61 @@ impl Metric {
         at: Position,
         reach: Num,
     ) -> Option<PathShare> {
-        if reach < Num::ZERO {
-            return None;
-        }
-        let path = self.offset(from, to);
-        let off = self.offset(from, at);
+        let approach = Approach::of(self.offset(from, to), self.offset(from, at), reach);
+        (approach.nearest != Ordering::Greater).then_some(approach.share)
+    }
+}
+
+/// How near a straight path comes to a point: its nearest distance against a reach, and the share
+/// of the path at its nearest point.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct Approach {
+    pub(crate) nearest: Ordering,
+    pub(crate) share: PathShare,
+}
+
+impl Approach {
+    /// The approach of the path `path`, the offset from its start to its end, to the point `off`
+    /// from its start, against `reach`, exactly and without a square root; a negative reach is
+    /// nearer than any distance.
+    pub(crate) fn of(path: Vec3, off: Vec3, reach: Num) -> Approach {
         let length = path.length_squared_bits();
-        let reach = {
-            let bits = u128::from(reach.to_bits().cast_unsigned());
-            bits * bits
-        };
         let raw = |v: Vec3| [v.x, v.y, v.z].map(|n| i128::from(n.to_bits()));
         let along: i128 = raw(off).iter().zip(raw(path)).map(|(a, b)| a * b).sum();
+        let Some(reach) = (reach >= Num::ZERO).then(|| {
+            let bits = u128::from(reach.to_bits().cast_unsigned());
+            bits * bits
+        }) else {
+            let share = PathShare { along: 0, length };
+            return Approach {
+                nearest: Ordering::Greater,
+                share,
+            };
+        };
         if length == 0 || along <= 0 {
-            return (off.length_squared_bits() <= reach).then_some(PathShare { along: 0, length });
+            return Approach {
+                nearest: off.length_squared_bits().cmp(&reach),
+                share: PathShare { along: 0, length },
+            };
         }
         let along = along.cast_unsigned();
         if along >= length {
-            let beyond = self.offset(to, at).length_squared_bits();
-            return (beyond <= reach).then_some(PathShare {
-                along: length,
-                length,
-            });
+            return Approach {
+                nearest: (off - path).length_squared_bits().cmp(&reach),
+                share: PathShare {
+                    along: length,
+                    length,
+                },
+            };
         }
         // The squared distance from the line, times the squared length: exact in 256 bits.
         let apart = U256::product(off.length_squared_bits(), length);
         let allowed = U256::product(reach, length).checked_add(U256::product(along, along));
         let allowed = allowed.expect("squares of offsets within the world's bound fit 256 bits");
-        (apart <= allowed).then_some(PathShare { along, length })
+        Approach {
+            nearest: apart.cmp(&allowed),
+            share: PathShare { along, length },
+        }
     }
 }
 

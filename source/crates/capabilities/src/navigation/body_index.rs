@@ -5,10 +5,10 @@ use bevy_ecs::resource::Resource;
 use campfire_math::{Num, Vec3};
 use campfire_sim::{Position, StableId};
 
+use crate::navigation::segment::Segment;
 use crate::navigation::walker::Walker;
 use crate::units::body::Body;
 use crate::units::layer::Layer;
-use crate::values::segment::Segment;
 
 /// Bodies that stand, by layer and by the square buckets their bounding boxes cover, so a query
 /// sees only the bodies of its layer. As a resource it holds the

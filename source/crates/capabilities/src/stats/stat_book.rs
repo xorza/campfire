@@ -5,12 +5,12 @@ use bevy_ecs::resource::Resource;
 use campfire_math::Num;
 use campfire_sim::TickRate;
 
-use crate::stats::stat::{EngineStat, Stat};
 use crate::stats::stat_id::StatId;
 use crate::stats::stat_rule::StatRule;
 use crate::stats::stat_totals::StatTotals;
 use crate::stats::stats_data::StatsData;
 use crate::units::unit_type::UnitType;
+use crate::values::stat::{EngineStat, Stat};
 
 /// The stats of a match: each the mode declares, in order, with its rule, and each unit type's
 /// value at level 1 and gain a level; with the move speed cap the engine's formulas take.
@@ -201,9 +201,9 @@ pub(crate) mod internals {
 
     use bevy_ecs::world::World;
 
-    use crate::stats::stat::Stat;
     use crate::stats::stat_book::StatBook;
     use crate::stats::stat_id::StatId;
+    use crate::values::stat::Stat;
 
     impl StatBook {
         /// The place of each of `stats` in `world`'s book, which a world that names no stat

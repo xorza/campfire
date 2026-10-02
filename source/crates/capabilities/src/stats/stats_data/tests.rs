@@ -1,10 +1,10 @@
 use std::str::FromStr;
 
 use super::*;
-use crate::stats::stat::EngineStat;
 use crate::stats::stat_book::StatBook;
 use crate::stats::stat_rule::StatRule;
 use crate::units::unit_type::UnitType;
+use crate::values::stat::EngineStat;
 
 #[test]
 fn a_stat_grows_by_its_per_level_from_level_1() {

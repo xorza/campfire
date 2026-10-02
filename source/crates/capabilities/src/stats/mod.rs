@@ -50,6 +50,7 @@ pub(crate) mod held_modifiers;
 pub(crate) mod level;
 pub(crate) mod live_param;
 pub(crate) mod live_shares;
+pub(crate) mod meter;
 pub(crate) mod modifier_book;
 pub(crate) mod modifier_data;
 pub(crate) mod modifier_effect;
@@ -69,7 +70,6 @@ pub(crate) mod pool_data;
 pub(crate) mod pool_id;
 pub(crate) mod pools;
 pub(crate) mod refresh_scratch;
-pub(crate) mod stat;
 pub(crate) mod stat_book;
 pub(crate) mod stat_change;
 pub(crate) mod stat_graph;
@@ -661,12 +661,12 @@ pub(crate) mod loads {
     use crate::stats::modifier_data::ModifierData;
     use crate::stats::param_book::ParamBook;
     use crate::stats::pool_book::PoolBook;
-    use crate::stats::stat::Stat;
     use crate::stats::stat_book::StatBook;
     use crate::stats::stat_rule::StatRule;
     use crate::units::script_view::View;
     use crate::values::declared_name::DeclaredName;
     use crate::values::param::Param;
+    use crate::values::stat::Stat;
 
     impl Stats {
         /// Loads `data` as the modifier `name` of `package`: 0 the mode, then each package it

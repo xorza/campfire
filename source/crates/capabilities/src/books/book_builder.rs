@@ -27,7 +27,6 @@ use crate::projectiles::projectile_spec::ProjectileSpec;
 use crate::stats::modifier_book::{ModifierBook, ModifierId, ModifierLoad, PackageModifier};
 use crate::stats::param_table::ParamTable;
 use crate::stats::pool_id::PoolId;
-use crate::stats::stat::Stat;
 use crate::stats::stat_book::StatBook;
 use crate::stats::stat_id::StatId;
 use crate::units::engine_tag::EngineTag;
@@ -37,6 +36,7 @@ use crate::units::unit_type::UnitType;
 use crate::units::unit_types::UnitTypes;
 use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
+use crate::values::stat::Stat;
 
 /// What the package load checked, which the builder trusts.
 const CHECKED: &str = "the load checked it";

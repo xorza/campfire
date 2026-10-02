@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::units::bits256::Bits256;
 use crate::units::tag::Tag;
-use crate::values::bits256::Bits256;
 
 /// A set of tags, one bit each: a unit type's, a modifier's, or a unit's whole set.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

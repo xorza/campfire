@@ -3,9 +3,9 @@ use std::collections::BTreeMap;
 use campfire_math::Num;
 use serde::Deserialize;
 
-use crate::stats::stat::Stat;
 use crate::values::ranked::Ranked;
 use crate::values::scalar::Scalar;
+use crate::values::stat::Stat;
 
 /// A param, as `ctx.p` reads it: one value or one per rank, or a scaling table, `base +
 /// per_level × (level − 1) + Σ ratio × stat + Σ bonus ratio × (stat − type's value)` of the

@@ -6,7 +6,7 @@ use campfire_script::rhai::Dynamic;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
-use crate::stats::stat::Stat;
+use crate::values::stat::Stat;
 
 /// A script value in data: a TOML integer, or a decimal string, which is a `Num`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]

@@ -11,10 +11,10 @@ use crate::production::production_data::ProductionData;
 use crate::progression::track_set::TrackSet;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
-use crate::stats::stat::{EngineStat, Stat};
 use crate::stats::stat_book::StatBook;
 use crate::units::body::Body;
 use crate::units::unit_type::UnitType;
+use crate::values::stat::{EngineStat, Stat};
 use crate::vision::sight::Sight;
 use crate::vision::vision_data::VisionData;
 

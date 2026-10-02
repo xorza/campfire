@@ -24,6 +24,7 @@ use crate::navigation::paths::Paths;
 use crate::navigation::progress::Progress;
 use crate::navigation::route::{Route, Waiting};
 use crate::navigation::route_planner::{RoutePlanner, Short, Walkable, Window};
+use crate::navigation::segment::Segment;
 use crate::navigation::steering::Steering;
 use crate::navigation::walker::Walker;
 use crate::units::block::Block;
@@ -32,7 +33,6 @@ use crate::units::script_view::{RowFill, View};
 use crate::units::unit_tags::UnitTags;
 use crate::values::bounds::Bounds;
 use crate::values::grid::Grid;
-use crate::values::segment::Segment;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
@@ -51,6 +51,7 @@ pub(crate) mod progress;
 pub(crate) mod regions;
 pub(crate) mod route;
 pub(crate) mod route_planner;
+pub(crate) mod segment;
 pub(crate) mod steering;
 pub(crate) mod walker;
 

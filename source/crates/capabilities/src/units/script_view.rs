@@ -28,7 +28,6 @@ use crate::stats::modifier_book::ModifierId;
 use crate::stats::modifier_handle::ModifierHandle;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
-use crate::stats::stat::Stat;
 use crate::units::block::Block;
 use crate::units::body::Body;
 use crate::units::engine_tag::EngineTag;
@@ -52,6 +51,7 @@ use crate::values::attitude::Attitude;
 use crate::values::bounds::Bounds;
 use crate::values::declared_name::DeclaredName;
 use crate::values::metric::Metric;
+use crate::values::stat::Stat;
 
 /// What scripts see: the match's unit types, and its units, those with a team, as the running
 /// phase of the tick began. The units are read again before each phase that runs
@@ -831,12 +831,12 @@ pub(crate) mod internals {
 
     use crate::actions::action_data::CostTarget;
     use crate::scripts::error::ApiError;
-    use crate::stats::stat::Stat;
     use crate::stats::stat_id::StatId;
     use crate::units::filter::Filter;
     use crate::units::script_view::View;
     use crate::units::unit_types::UnitTypes;
     use crate::values::filter_data::FilterData;
+    use crate::values::stat::Stat;
 
     impl View {
         /// The run-time form of `filter`, its tag among those of the match's unit types.

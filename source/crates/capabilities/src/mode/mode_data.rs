@@ -15,11 +15,11 @@ use crate::players::resource_id::ResourceId;
 use crate::progression::track_data::TrackData;
 use crate::stats::pool_data::PoolData;
 use crate::stats::pool_id::PoolId;
-use crate::stats::stat::Stat;
 use crate::stats::stat_rule::StatRule;
 use crate::units::tag_data::TagData;
 use crate::values::declared_name::DeclaredName;
 use crate::values::scalar::Scalar;
+use crate::values::stat::Stat;
 
 /// The mode's `data/mode.toml`, but its actions and modifiers, which its package's content holds:
 /// its script, its player inputs, its state and its params.

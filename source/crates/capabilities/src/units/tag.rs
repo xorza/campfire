@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::values::bits256::Bits256;
+use crate::units::bits256::Bits256;
 
 /// A tag, by its place in the match's list of tag names, in the order they were declared.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]

@@ -22,7 +22,6 @@ use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifiers::{Application, Instance};
 use crate::stats::pool_cost::PoolCost;
 use crate::stats::pool_data::PoolData;
-use crate::stats::stat::Stat;
 use crate::stats::stat_book::StatBook;
 use crate::stats::stat_rule::StatRule;
 use crate::units::Units;
@@ -36,6 +35,7 @@ use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
 use crate::values::metric::Metric;
 use crate::values::relation::Relation;
+use crate::values::stat::Stat;
 
 /// The MOBA's 30 ticks a second.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());

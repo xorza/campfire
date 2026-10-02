@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
+use crate::units::bits256::Bits256;
 use crate::units::team::Team;
-use crate::values::bits256::Bits256;
 
 /// A set of teams, one bit each: a match holds at most `Team::LIMIT` teams.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]

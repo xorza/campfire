@@ -3,8 +3,8 @@ use std::collections::BTreeMap;
 use campfire_math::Num;
 use serde::Deserialize;
 
-use crate::stats::stat::Stat;
 use crate::values::scalar::Scalar;
+use crate::values::stat::Stat;
 
 /// A unit type's `stats` section: each stat's value at level 1, and what it gains a level.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]

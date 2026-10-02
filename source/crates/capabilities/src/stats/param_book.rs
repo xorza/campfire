@@ -11,10 +11,10 @@ use crate::stats::modifier_spec::ParamPlace;
 use crate::stats::param_read::ParamRead;
 use crate::stats::param_source::ParamSource;
 use crate::stats::param_table::ParamTable;
-use crate::stats::stat::Stat;
 use crate::stats::stat_id::StatId;
 use crate::values::declared_name::DeclaredName;
 use crate::values::param::Param;
+use crate::values::stat::Stat;
 
 /// The params of every action and every modifier of a match, one run each, by id: package data
 /// that the stat engine and the script frame both read, shared, never copied.
@@ -125,10 +125,10 @@ pub(crate) mod internals {
     use crate::scripts::ctx::Ctx;
     use crate::stats::modifier_book::ModifierId;
     use crate::stats::param_book::ParamBook;
-    use crate::stats::stat::Stat;
     use crate::stats::stat_id::StatId;
     use crate::values::declared_name::DeclaredName;
     use crate::values::param::Param;
+    use crate::values::stat::Stat;
 
     impl ParamBook {
         /// Adds the params of `action`, the one `world`'s action book loaded last, each stat at
