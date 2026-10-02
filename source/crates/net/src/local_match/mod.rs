@@ -10,19 +10,19 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedules, SingleThreadedExecutor}
 use bevy_ecs::system::Commands;
 use bevy_state::app::StatesPlugin;
 use bevy_time::{TimePlugin, TimeUpdateStrategy};
-use campfire_capabilities::{Action, Order, Owner, Team};
+use campfire_capabilities::{Action, Body, MoveStep, Order, Owner, Team};
 use campfire_package::ModePackages;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey, XOnlyPublicKey};
 use campfire_protocol::{CertificateHash, SeedChain};
 use campfire_runner::InputRules;
-use campfire_sim::{EntityIndex, StableId, TickRate};
+use campfire_sim::{EntityIndex, SimTick, StableId, TickRate};
 use lightyear::crossbeam::CrossbeamIo;
 use lightyear::prelude::client::{ClientPlugins, InputDelayConfig, InputTimelineConfig, RawClient};
 use lightyear::prelude::server::{RawServer, ServerPlugins};
 use lightyear::prelude::{
     Client, Connect, Connected, Link, LinkOf, LinkSystems, Linked, LocalTimelineSync, PeerAddr,
-    PredictionManager, ReplicationReceiver, ReplicationSender, RollbackMode, SyncConfig,
-    SyncSystems,
+    PredictionManager, PredictionMetrics, ReplicationReceiver, ReplicationSender, RollbackMode,
+    SyncConfig, SyncSystems,
 };
 use lightyear::transport::plugin::TransportSystems;
 
@@ -69,7 +69,18 @@ pub struct MatchSetup {
     pub seed_chain: SeedChain,
 }
 
+/// An app of a match: the server's, or a client's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum End {
+    Server,
+    Client(usize),
+}
+
 impl MatchSetup {
+    /// One player through a perfect link, whose client rolls back only on a misprediction, with
+    /// a server that runs a frame a tick.
+    pub const SOLO: MatchSetup = MatchSetup::solo(RollbackMode::Check, 1, LocalMatch::SEED_CHAIN);
+
     /// One player, through perfect links.
     pub const fn solo(
         rollback: RollbackMode,
@@ -113,6 +124,9 @@ pub struct LocalMatch {
 }
 
 impl LocalMatch {
+    /// The seed chain the tests' servers commit to.
+    pub const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
+
     /// The match scenario's orders by team, the west then the east: each avatar walks 4 m toward
     /// the enemy tower, which kills it there; after it respawns, it walks to a point near the
     /// middle. From their spawns 2 m apart, the two walk on lines that part, so they never touch.
@@ -354,6 +368,49 @@ impl LocalMatch {
 
     pub const fn server(&self) -> &App {
         &self.server
+    }
+
+    pub fn app(&self, end: End) -> &App {
+        match end {
+            End::Server => &self.server,
+            End::Client(client) => &self.clients[client],
+        }
+    }
+
+    /// The sim tick `end` runs next.
+    pub fn next_tick(&self, end: End) -> u64 {
+        self.app(end).world().resource::<SimTick>().start().get()
+    }
+
+    /// The times `client` rolled its state back.
+    pub fn rollbacks(&self, client: usize) -> u32 {
+        let world = self.clients[client].world();
+        world.resource::<PredictionMetrics>().rollbacks
+    }
+
+    /// The client whose player's avatar is on `team`.
+    pub fn client_of(&self, team: Team) -> usize {
+        (0..self.clients.len())
+            .find(|&client| self.team(client) == team)
+            .expect("a client plays each team")
+    }
+
+    /// The tower of `team` on the server: its one unit that stands, has a body and no owner.
+    pub fn tower(&self, team: Team) -> StableId {
+        let world = self.server.world();
+        let mut towers = world
+            .resource::<EntityIndex>()
+            .iter()
+            .filter(|&(_, entity)| {
+                let unit = world.entity(entity);
+                unit.get::<Team>() == Some(&team)
+                    && unit.contains::<Body>()
+                    && !unit.contains::<MoveStep>()
+                    && !unit.contains::<Owner>()
+            });
+        let (tower, _) = towers.next().expect("a team has a tower");
+        assert!(towers.next().is_none(), "a team has one tower");
+        tower
     }
 
     pub const fn server_mut(&mut self) -> &mut App {

@@ -9,7 +9,7 @@ use std::sync::Arc;
 
 use campfire_capabilities::{ScriptBook, ScriptFailures};
 use campfire_package::{ModePackages, PackageDir};
-use campfire_runner::{FixedSession, Golden};
+use campfire_runner::internals::{FixedSession, Golden};
 use campfire_sim::StateHash;
 
 const LANE: &str = concat!(

@@ -31,10 +31,6 @@ pub use events::session_written::SessionWritten;
 pub use input_message::InputMessage;
 
 pub use lobby::{Lobby, LobbySetup};
-#[cfg(feature = "internals")]
-pub use local_match::link_model::LinkModel;
-#[cfg(feature = "internals")]
-pub use local_match::{LocalMatch, MatchSetup};
 pub use match_clock::MatchClock;
 
 pub use net_protocol::{InputChannel, NetProtocol};
@@ -49,4 +45,10 @@ pub use sim_server::{PlayerLink, SimServer, TickHashes};
 #[cfg(feature = "bench")]
 pub mod bench {
     pub use crate::sim_client::bench::{rollback, worst_client_frame};
+}
+
+#[cfg(feature = "internals")]
+pub mod internals {
+    pub use crate::local_match::link_model::LinkModel;
+    pub use crate::local_match::{End, LocalMatch, MatchSetup};
 }

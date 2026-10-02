@@ -8,7 +8,8 @@ use campfire_capabilities::{
 };
 use campfire_math::{Num, PlayerSlot, Vec3};
 use campfire_protocol::SessionLog;
-use campfire_runner::{Golden, HashTrail, Reference3v3, Runner};
+use campfire_runner::Runner;
+use campfire_runner::internals::{Golden, HashTrail, Reference3v3};
 use campfire_script::ScriptHost;
 use campfire_sim::{EntityIndex, Position, TickRate};
 

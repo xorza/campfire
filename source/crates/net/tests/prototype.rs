@@ -2,8 +2,6 @@
 //! client over in-process channels, and the server's session log replayed in a bare `World`
 //! with the same state hash after every tick.
 
-use std::num::NonZeroU32;
-
 use bevy_app::App;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
@@ -13,17 +11,14 @@ use campfire_capabilities::{
     Metric, Modifiers, MoveStep, Owner, PoolId, Pools, Projectile, Relations, Respawn, Stats, Team,
 };
 use campfire_math::{Num, PlayerSlot, Tick, Ticks, Vec3};
-use campfire_net::{InputChannel, InputMessage, LocalMatch, MatchSetup, PlayerLink, TickHashes};
-use campfire_protocol::{PlayerInput, SeedChain, SessionLog, Signature};
-use campfire_runner::{HashTrail, Runner, Session};
+use campfire_net::internals::{End, LocalMatch, MatchSetup};
+use campfire_net::{InputChannel, InputMessage, PlayerLink, TickHashes};
+use campfire_protocol::{PlayerInput, SessionLog, Signature};
+use campfire_runner::internals::HashTrail;
+use campfire_runner::{Runner, Session};
 use campfire_sim::{EntityIndex, Position, SimTick, Unpredicted};
-use lightyear::prelude::{
-    Client, Connected, MessageSender, Predicted, PredictionMetrics, RollbackMode,
-};
+use lightyear::prelude::{Client, Connected, MessageSender, Predicted, RollbackMode};
 
-use crate::scenario::next_tick;
-
-const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
 /// Frames of match: one tick each.
 const MATCH_FRAMES: usize = 120;
 
@@ -66,7 +61,7 @@ fn hero(app: &App) -> Hero {
 /// after the client sends it: it is stamped `lead` ticks ahead, and moves the hero in that tick's
 /// step. The server's state of a tick the client predicted reaches it as many steps on.
 fn lead(local: &LocalMatch) -> u64 {
-    next_tick(local.client(0)) - next_tick(local.server())
+    local.next_tick(End::Client(0)) - local.next_tick(End::Server)
 }
 
 #[test]
@@ -84,7 +79,11 @@ fn server_and_replay_agree_on_every_tick() {
         (RollbackMode::Check, 3, 2),
     ] {
         let case = format!("{rollback:?}, {server_frames} frames, shift {shift}");
-        let mut local = LocalMatch::new(MatchSetup::solo(rollback, server_frames, SEED_CHAIN));
+        let mut local = LocalMatch::new(MatchSetup::solo(
+            rollback,
+            server_frames,
+            LocalMatch::SEED_CHAIN,
+        ));
         for _ in 0..shift {
             local.server_frame();
         }
@@ -112,7 +111,7 @@ fn server_and_replay_agree_on_every_tick() {
             client_hero.contains::<Predicted>() && !client_hero.contains::<Unpredicted>(),
             "{case}"
         );
-        let rollbacks = client_world.resource::<PredictionMetrics>().rollbacks;
+        let rollbacks = local.rollbacks(0);
         // The client stamps each order with the tick it predicts it in, and runs ahead of the
         // server, so the server applies it in that tick: nothing is mispredicted, and a client
         // that checks rolls back never. One that always rolls back does so for each server
@@ -155,7 +154,7 @@ fn server_and_replay_agree_on_every_tick() {
 
 #[test]
 fn a_burst_of_orders_waits_for_later_stamps_and_a_forged_message_ends_its_link() {
-    let mut local = LocalMatch::new(MatchSetup::solo(RollbackMode::Check, 1, SEED_CHAIN));
+    let mut local = LocalMatch::new(MatchSetup::SOLO);
     local.start_match();
     // Six moves in one frame, past the session's 4 inputs a tick: the client stamps 4 now and 2
     // in the next tick, so the server refuses none, and the last move is where the hero ends.
@@ -211,7 +210,7 @@ fn a_burst_of_orders_waits_for_later_stamps_and_a_forged_message_ends_its_link()
 
 #[test]
 fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_its_client() {
-    let mut local = LocalMatch::new(MatchSetup::solo(RollbackMode::Check, 1, SEED_CHAIN));
+    let mut local = LocalMatch::new(MatchSetup::SOLO);
     local.start_match();
     // The client predicts on the ground and with the life pool the server's mode installs.
     let (server, client) = (local.server().world(), local.client(0).world());
@@ -223,13 +222,7 @@ fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_
     // edge and hits for 150 of its 600: the fourth hit kills it where it stands.
     local.order(0, move_to(4, 0));
     let dead = |app: &App| app.world().entity(hero_entity(app)).contains::<Dead>();
-    let rollbacks = |local: &LocalMatch| {
-        local
-            .client(0)
-            .world()
-            .resource::<PredictionMetrics>()
-            .rollbacks
-    };
+    let rollbacks = |local: &LocalMatch| local.rollbacks(0);
     // While it attacks, the client holds the tower's target, the hero, and its projectiles in
     // flight, to draw them.
     let hero_id = local.avatar(0);
@@ -306,21 +299,13 @@ fn a_dead_hero_stays_where_it_died_then_respawns_at_its_spawn_on_the_server_and_
 
 #[test]
 fn a_fallen_tower_ends_the_match_on_the_server_and_its_client() {
-    let mut local = LocalMatch::new(MatchSetup::solo(RollbackMode::Check, 1, SEED_CHAIN));
+    let mut local = LocalMatch::new(MatchSetup::SOLO);
     local.start_match();
     // The east tower, of team 1, the one unit of that team that neither walks nor has an owner,
     // falls to one strike: the walker's attack on it ends the match, and the west, team 0, wins.
     let world = local.server().world();
-    let (tower, tower_entity) = world
-        .resource::<EntityIndex>()
-        .iter()
-        .find(|&(_, entity)| {
-            let unit = world.entity(entity);
-            unit.get::<Team>() == Some(&Team::new(1))
-                && !unit.contains::<MoveStep>()
-                && !unit.contains::<Owner>()
-        })
-        .unwrap();
+    let tower = local.tower(Team::new(1));
+    let tower_entity = world.resource::<EntityIndex>().get(tower).unwrap();
     let frail = Pools::new([(PoolId::FIRST, Num::EPSILON)]).unwrap();
     local
         .server_mut()
@@ -371,7 +356,7 @@ fn a_fallen_tower_ends_the_match_on_the_server_and_its_client() {
 
 #[test]
 fn a_slow_and_a_stun_end_on_the_client_in_the_tick_they_end_on_the_server() {
-    let mut local = LocalMatch::new(MatchSetup::solo(RollbackMode::Check, 1, SEED_CHAIN));
+    let mut local = LocalMatch::new(MatchSetup::SOLO);
     local.start_match();
     // The hero walks off the lane, where nothing meets it: 16.5 m at 0.25 m a tick, so it still
     // walks when both modifiers end, 30 and 15 ticks after the client learns each.
@@ -380,10 +365,7 @@ fn a_slow_and_a_stun_end_on_the_client_in_the_tick_they_end_on_the_server() {
         local.step();
     }
     assert_ne!(hero(local.server()).destination, Destination::default());
-    let rollbacks = |local: &LocalMatch| {
-        let world = local.client(0).world();
-        world.resource::<PredictionMetrics>().rollbacks
-    };
+    let rollbacks = |local: &LocalMatch| local.rollbacks(0);
     let carries = |app: &App| {
         let modifiers = app.world().get::<Modifiers>(hero_entity(app));
         modifiers.is_some_and(|modifiers| *modifiers != Modifiers::default())
@@ -417,7 +399,7 @@ fn a_slow_and_a_stun_end_on_the_client_in_the_tick_they_end_on_the_server() {
 
 #[test]
 fn the_client_takes_the_relations_a_script_sets() {
-    let mut local = LocalMatch::new(MatchSetup::solo(RollbackMode::Check, 1, SEED_CHAIN));
+    let mut local = LocalMatch::new(MatchSetup::SOLO);
     local.start_match();
     let relations = |app: &App| app.world().resource::<Relations>().clone();
     assert_eq!(relations(local.client(0)), Relations::default());

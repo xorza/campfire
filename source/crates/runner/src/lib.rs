@@ -26,24 +26,8 @@ mod runner;
 mod session;
 mod session_rules;
 
-#[cfg(feature = "internals")]
-pub use arena::Arena;
 pub use error::{StartError, TermsError};
-#[cfg(feature = "internals")]
-pub use fixed_match::FixedMatch;
-#[cfg(feature = "internals")]
-pub use fixed_session::FixedSession;
-#[cfg(feature = "internals")]
-pub use golden::Golden;
-#[cfg(feature = "internals")]
-pub use hash_trail::{Difference, HashTrail};
 pub use input_rules::InputRules;
-#[cfg(feature = "internals")]
-pub use proving_match::ProvingMatch;
-#[cfg(feature = "internals")]
-pub use reference_3v3::Reference3v3;
-#[cfg(feature = "internals")]
-pub use restore_target::RestoreTarget;
 pub use runner::Runner;
 pub use session::Session;
 pub use session_rules::SessionRules;
@@ -51,4 +35,16 @@ pub use session_rules::SessionRules;
 #[cfg(feature = "bench")]
 pub mod bench {
     pub use crate::runner::bench::tick_3v3;
+}
+
+#[cfg(feature = "internals")]
+pub mod internals {
+    pub use crate::arena::Arena;
+    pub use crate::fixed_match::FixedMatch;
+    pub use crate::fixed_session::FixedSession;
+    pub use crate::golden::Golden;
+    pub use crate::hash_trail::{Difference, HashTrail};
+    pub use crate::proving_match::ProvingMatch;
+    pub use crate::reference_3v3::Reference3v3;
+    pub use crate::restore_target::RestoreTarget;
 }

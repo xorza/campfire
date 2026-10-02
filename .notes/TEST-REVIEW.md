@@ -16,41 +16,7 @@ Paths are relative to `source/crates/`. Line numbers are at `c38f0da`. Each item
 
 ### 2.5 Net
 
-- [ ] **Methods on `LocalMatch`** — bootstrap is already 2 lines (`LocalMatch::new` + `start_match`). The repetition comes after the start:
-  - the settle loop `for _ in 0..20 { local.step(); }` at scenario.rs:99,263,357,407, and other counts (10, 40, 30) at prototype.rs:177,183,217,259,271, with no derivation;
-  - the rollback readout 6 times;
-  - `SimTick.start().get()` inline 5 times. `next_tick` is `pub(crate)` in `scenario.rs:46` and `lane.rs:16` imports it, which couples two test files;
-  - four rules for "the tower of team t" (scenario.rs:337-346, prototype.rs:234-243, lane.rs:318-335, and fog.rs:454-457 by position);
-  - the client of a team, worked out 3 times;
-  - `MatchSetup::solo(Check, 1, SEED_CHAIN)` 4 times, and the same 6-line `LinkModel` literal 4 times.
-
-  Better, in `local_match/mod.rs`:
-
-  ```rust
-  #[derive(Debug, Clone, Copy, PartialEq, Eq)] pub enum End { Server, Client(usize) }
-  impl MatchSetup { pub const SOLO: MatchSetup; pub const DUO: MatchSetup; }
-  impl LocalMatch {
-      pub const SEED_CHAIN: SeedChain;
-      pub fn started(setup: MatchSetup) -> LocalMatch;
-      pub fn app(&self, end: End) -> &App;
-      pub fn server_tick(&self) -> u64;
-      pub fn steps(&mut self, count: usize);
-      pub fn step_to(&mut self, tick: u64, after_step: impl FnMut(&LocalMatch));
-      pub fn settle(&mut self); // from link delay, jitter and lead
-      pub fn rollbacks(&self, client: usize) -> u32;
-      pub fn unit(&self, end: End, id: StableId) -> EntityRef<'_>;
-      pub fn tower(&self, team: Team) -> StableId;
-      pub fn client_of(&self, team: Team) -> usize;
-      pub fn check_replay(&mut self) -> Replayed; // per-tick hashes, one per log tick
-  }
-  #[derive(Debug)] pub struct Replayed { pub ticks: u64, pub applied: Vec<AppliedAt> }
-  #[derive(Debug, Clone, Copy, PartialEq, Eq)] pub struct AppliedAt { pub stamp: u64, pub tick: u64 }
-  ```
-
-  This saves about 200 lines. The route scenario (scenario.rs:323-379 + 452-462) goes from 68 lines to about 30, and prototype.rs:107-130 goes from 24 lines to 3.
 - [ ] **The round trip pinned to the link model** — `net/src/local_match/delay_line.rs` pins the measured round trip to zero, and `mod.rs` adds the modeled round trip to the sync margin. Better: pin the round trip to the link model's own value, and remove the `jitter_margin` workaround in `LocalMatch::client`. That step needs new derivations of the expected values. Also check that the join order (`play_by_team`) is then fixed.
-- [ ] **net's `internals` is not like the other crates** — `lib.rs:13` gates `mod local_match` on `feature = "internals"` only, and `lib.rs:34-37` re-exports `LocalMatch`, `MatchSetup` and `LinkModel` at the root. `campfire_log` uses `pub mod internals { pub use … }`. Better: the same facade.
-
 ### 2.6 Protocol and package
 
 - [ ] **`session_log/tests.rs` repeats its submit step**:
@@ -68,7 +34,7 @@ Paths are relative to `source/crates/`. Line numbers are at `c38f0da`. Each item
 
 - [ ] **`fn num(i64) -> Num`** — 23 copies, all `Num::from_int(value).unwrap()`. Better: one `const fn` in `math` (group 9).
 - [ ] **The 30 Hz `RATE`** — 11 copies documented as "the MOBA's". These include `sim/tests/golden.rs:25` and `sim/src/sim_update/tests.rs:16`, but the sim knows nothing of the MOBA. Better: `TestMatch::RATE` in capabilities, and a rate with its own name in sim.
-- [ ] **`SEED_CHAIN = SeedChain::new([9; 32], MIN)`** — 7 copies (scenario.rs:15, prototype.rs:20, lane.rs:18, fog.rs:14, sim_client/bench.rs:14, reference_3v3, headless). Better: `LocalMatch::SEED_CHAIN` and `FixedSession`.
+- [ ] **`SEED_CHAIN = SeedChain::new([9; 32], MIN)`** — net's copies use `LocalMatch::SEED_CHAIN` now; reference_3v3 and headless still hold their own. Better: one with `FixedSession`.
 - [ ] **`keypair(byte)`** — 9 copies in 5 crates (local_match:468, sim_client/tests.rs:12, lobby.rs:284, connect/tests.rs:15, session_log/tests.rs:27, delegation/tests.rs:5, input_chain/bench.rs:15, reference_3v3.rs:108, headless.rs:80). `NOW = 1_700_000_000` appears 6 times. A `TestKey(u8)` in protocol `internals` saves only about 25 lines. Do it with `FixedSession`, or not at all.
 - [ ] **SplitMix64** — 5 copies: math `num/bench.rs:18`, net `delay_line.rs:80-87`, capabilities `regions.rs:390` and `broadphase.rs:170`, and sim `golden.rs:30`. The golden copy is frozen on purpose, so keep it. The regions and broadphase copies can draw from `campfire_math::Rng` through a `Grid::scatter(&self, &mut Rng, num, den)`. That changes the generated scenes: check the `crowded > 100` and `wide > 100` floors in broadphase again. The collision bench's history also restarts.
 - [ ] **The path to `packages/`** — written 7 ways: reference_3v3.rs:23, headless.rs:29,31, local_match, lobby, reference_abilities.rs:36 (`format!`), mode_package.rs:17, package_dir/tests.rs:110. Better: one gated `PackageDir::workspace(..)`.

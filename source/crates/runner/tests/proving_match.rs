@@ -5,7 +5,7 @@ use bevy_ecs::component::Component;
 use campfire_capabilities::{
     Area, Dead, Experience, Level, Modifiers, Owner, Projectile, ScriptFailures, Team, TrainQueue,
 };
-use campfire_runner::{FixedMatch, Golden, ProvingMatch, RestoreTarget};
+use campfire_runner::internals::{FixedMatch, Golden, ProvingMatch, RestoreTarget};
 use campfire_sim::EntityIndex;
 
 /// What the match showed over its ticks.

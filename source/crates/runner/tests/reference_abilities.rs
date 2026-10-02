@@ -19,7 +19,7 @@ use campfire_capabilities::{
 use campfire_content::PackagePath;
 use campfire_math::{Num, PlayerSlot, Vec3};
 use campfire_package::{AvatarData, PackageDir, PackageFiles};
-use campfire_runner::Arena;
+use campfire_runner::internals::Arena;
 use campfire_sim::{EntityIndex, IdAllocator, Position, StableId, TickRate};
 
 /// The MOBA's 30 ticks a second.

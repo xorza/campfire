@@ -1,18 +1,16 @@
 //! Whole matches of the lane mode between two scripted players, through perfect links and through
 //! delayed ones, checked on the server, on both clients and in the replayed log.
 
-use std::num::NonZeroU32;
-
 use bevy_app::App;
-use campfire_capabilities::{ActionSlots, Body, Dead, MoveStep, PoolId, Pools, SeenBy, Team};
+use campfire_capabilities::{ActionSlots, Body, Dead, PoolId, Pools, SeenBy, Team};
 use campfire_math::{Num, Tick, Vec3};
-use campfire_net::{LinkModel, LocalMatch, MatchSetup, OrderScript, TickHashes};
-use campfire_protocol::{SeedChain, SessionLog};
-use campfire_runner::{HashTrail, Runner, Session};
-use campfire_sim::{EntityIndex, Position, SimTick, StableId};
-use lightyear::prelude::PredictionMetrics;
+use campfire_net::internals::{End, LinkModel, LocalMatch, MatchSetup};
+use campfire_net::{OrderScript, TickHashes};
+use campfire_protocol::SessionLog;
+use campfire_runner::internals::HashTrail;
+use campfire_runner::{Runner, Session};
+use campfire_sim::{EntityIndex, Position, StableId};
 
-const SEED_CHAIN: SeedChain = SeedChain::new([9; 32], NonZeroU32::MIN);
 const MATCH_TICKS: u64 = 600;
 /// The lane mode's respawn, 5000 ms at 30 ticks a second, from the end of the tick of death.
 const RESPAWN_TICKS: u64 = 150;
@@ -42,11 +40,6 @@ fn signed(tick: u64) -> i64 {
     i64::try_from(tick).unwrap()
 }
 
-/// The sim tick an app runs next.
-pub(crate) fn next_tick(app: &App) -> u64 {
-    app.world().resource::<SimTick>().start().get()
-}
-
 /// When a hero died and came back in one app, by that app's ticks.
 #[derive(Debug, Default, Clone, Copy)]
 struct Life {
@@ -70,7 +63,7 @@ impl Life {
 
 /// Plays the match through `link` and checks it; gives each client's rollbacks.
 fn play(link: LinkModel) -> [u32; 2] {
-    let mut local = LocalMatch::new(MatchSetup::duo(link, SEED_CHAIN));
+    let mut local = LocalMatch::new(MatchSetup::duo(link, LocalMatch::SEED_CHAIN));
     local.start_match();
     let heroes = [local.avatar(0), local.avatar(1)];
     let teams = local.play_by_team(LocalMatch::SCENARIO_SCRIPTS);
@@ -79,13 +72,13 @@ fn play(link: LinkModel) -> [u32; 2] {
     // Each client's lead on the server, in ticks, when it learned its hero died; below 0 when it
     // runs behind.
     let mut lead = [0_i64; 2];
-    while next_tick(local.server()) < MATCH_TICKS {
+    while local.next_tick(End::Server) < MATCH_TICKS {
         local.step();
-        let server_tick = next_tick(local.server());
+        let server_tick = local.next_tick(End::Server);
         for (index, &id) in heroes.iter().enumerate() {
             on_server[index].note(hero(local.server(), id).dead, server_tick - 1);
             let client = local.client(index);
-            let client_tick = next_tick(client);
+            let client_tick = local.next_tick(End::Client(index));
             // A client that has not run a tick of the match yet has nothing to note.
             let Some(ran) = client_tick.checked_sub(1) else {
                 continue;
@@ -138,10 +131,7 @@ fn play(link: LinkModel) -> [u32; 2] {
         );
     }
 
-    [0, 1].map(|client| {
-        let world = local.client(client).world();
-        world.resource::<PredictionMetrics>().rollbacks
-    })
+    [0, 1].map(|client| local.rollbacks(client))
 }
 
 /// Checks the server's log: every order of the two `scripts` was logged in time, and took effect
@@ -240,7 +230,7 @@ fn caster(app: &App, id: StableId) -> Caster {
 /// Plays the cast and attack scenario through `link` and checks it; gives the rollbacks of the
 /// walker's client, then of the runner's.
 fn cast(link: LinkModel) -> [u32; 2] {
-    let mut local = LocalMatch::new(MatchSetup::duo(link, SEED_CHAIN));
+    let mut local = LocalMatch::new(MatchSetup::duo(link, LocalMatch::SEED_CHAIN));
     local.start_match();
     // Player 0 plays the walker, of the west.
     let clients = [0, 1].map(|team| {
@@ -255,12 +245,12 @@ fn cast(link: LinkModel) -> [u32; 2] {
     // runner's.
     let mut hits = [Vec::new(), Vec::new()];
     let mut health = [walker, runner].map(|id| caster(local.server(), id).health);
-    while next_tick(local.server()) < CAST_TICKS {
+    while local.next_tick(End::Server) < CAST_TICKS {
         local.step();
         for (index, id) in [walker, runner].into_iter().enumerate() {
             let now = caster(local.server(), id).health;
             if now != health[index] {
-                hits[index].push(next_tick(local.server()) - 1);
+                hits[index].push(local.next_tick(End::Server) - 1);
                 health[index] = now;
             }
         }
@@ -313,10 +303,7 @@ fn cast(link: LinkModel) -> [u32; 2] {
         let teams = [0, 1].map(|team| seen.contains(Team::new(team)));
         assert_eq!(teams, [true, true], "{id:?}");
     }
-    clients.map(|client| {
-        let world = local.client(client).world();
-        world.resource::<PredictionMetrics>().rollbacks
-    })
+    clients.map(|client| local.rollbacks(client))
 }
 
 /// The ticks of the route scenario: the west hero walks some 12 m at 0.117 m a tick from tick 60.
@@ -327,32 +314,28 @@ const ROUTE_TICKS: u64 = 240;
 /// whose body the straight line passes a third of a meter from its center; the east hero walks
 /// off to (12, 7), out of every unit's reach.
 fn route(link: LinkModel) -> [u32; 2] {
-    let mut local = LocalMatch::new(MatchSetup::duo(link, SEED_CHAIN));
+    let mut local = LocalMatch::new(MatchSetup::duo(link, LocalMatch::SEED_CHAIN));
     local.start_match();
     let scripts = [
         "[[order]]\ntick = 60\nmove = [-12, -4]\n",
         "[[order]]\ntick = 60\nmove = [12, 7]\n",
     ];
-    let teams = local.play_by_team(scripts);
-    let client = (0..2).find(|&client| teams[client] == 0).unwrap();
+    local.play_by_team(scripts);
+    let client = local.client_of(Team::new(0));
     let walker = local.avatar(client);
     let world = local.server().world();
-    let tower = world
-        .resource::<EntityIndex>()
-        .iter()
-        .map(|(_, unit)| world.entity(unit))
-        .find(|unit| {
-            unit.contains::<Body>()
-                && !unit.contains::<MoveStep>()
-                && unit.get::<Team>() == Some(&Team::new(0))
-        })
-        .unwrap();
+    let tower = world.entity(
+        world
+            .resource::<EntityIndex>()
+            .get(local.tower(Team::new(0)))
+            .unwrap(),
+    );
     let tower_at = tower.get::<Position>().unwrap().get();
     let walker_body = world.entity(world.resource::<EntityIndex>().get(walker).unwrap());
     let reach = tower.get::<Body>().unwrap().radius() + walker_body.get::<Body>().unwrap().radius();
     let reach = u128::from(reach.to_bits().unsigned_abs());
     let mut closest = u128::MAX;
-    while next_tick(local.server()) < ROUTE_TICKS {
+    while local.next_tick(End::Server) < ROUTE_TICKS {
         local.step();
         let offset = hero(local.server(), walker).position.get() - tower_at;
         closest = closest.min(offset.length_squared_bits());
@@ -372,10 +355,7 @@ fn route(link: LinkModel) -> [u32; 2] {
     };
     assert_eq!(hero(local.server(), walker), end);
     assert_eq!(hero(local.client(client), walker), end);
-    [0, 1].map(|client| {
-        let world = local.client(client).world();
-        world.resource::<PredictionMetrics>().rollbacks
-    })
+    [0, 1].map(|client| local.rollbacks(client))
 }
 
 /// The ticks of the steering scenario: the creeps, 7.25 m off the middle, have yet to come within
@@ -386,11 +366,11 @@ const ROUND_TICKS: u64 = 70;
 /// client, then of the runner's. In tick 1 the west hero, from (0, −2), is ordered to (0, 5),
 /// through the east hero, which stands on its spawn at (0, 2).
 fn round(link: LinkModel) -> [u32; 2] {
-    let mut local = LocalMatch::new(MatchSetup::duo(link, SEED_CHAIN));
+    let mut local = LocalMatch::new(MatchSetup::duo(link, LocalMatch::SEED_CHAIN));
     local.start_match();
     let scripts = ["[[order]]\ntick = 1\nmove = [0, 5]\n", ""];
-    let teams = local.play_by_team(scripts);
-    let clients = [0, 1].map(|team| (0..2).find(|&client| teams[client] == team).unwrap());
+    local.play_by_team(scripts);
+    let clients = [0, 1].map(|team| local.client_of(Team::new(team)));
     let [walker, stander] = clients.map(|client| local.avatar(client));
     let world = local.server().world();
     let radius = |id| {
@@ -400,7 +380,7 @@ fn round(link: LinkModel) -> [u32; 2] {
     let reach = radius(walker) + radius(stander);
     let reach = u128::from(reach.to_bits().unsigned_abs());
     let mut closest = u128::MAX;
-    while next_tick(local.server()) < ROUND_TICKS {
+    while local.next_tick(End::Server) < ROUND_TICKS {
         local.step();
         let [walking, standing] = [walker, stander].map(|id| hero(local.server(), id).position);
         closest = closest.min(walking.ground_offset(standing).length_squared_bits());
@@ -428,34 +408,21 @@ fn round(link: LinkModel) -> [u32; 2] {
             );
         }
     }
-    clients.map(|client| {
-        let world = local.client(client).world();
-        world.resource::<PredictionMetrics>().rollbacks
-    })
+    clients.map(|client| local.rollbacks(client))
 }
 
 #[test]
 fn a_hero_round_a_hero_that_stands_through_delayed_links() {
     // The walker's client sees the other hero stand where the server has it, so it plans the same
     // way round, and neither client corrects.
-    let rollbacks = round(LinkModel {
-        delay: 3,
-        jitter: 2,
-        loss_per_mille: 0,
-        seed: 7,
-    });
+    let rollbacks = round(LinkModel::DELAYED);
     assert_eq!(rollbacks, [0, 0]);
 }
 
 #[test]
 fn a_route_round_a_tower_through_delayed_links() {
     // The client plans its hero's route as the server does, so it corrects nothing.
-    let rollbacks = route(LinkModel {
-        delay: 3,
-        jitter: 2,
-        loss_per_mille: 0,
-        seed: 7,
-    });
+    let rollbacks = route(LinkModel::DELAYED);
     assert_eq!(rollbacks, [0, 0]);
 }
 
@@ -469,23 +436,13 @@ fn a_1v1_through_perfect_links() {
 fn a_1v1_through_delayed_links() {
     // 3 steps each way and up to 2 more: the orders still land in time, and each client still
     // corrects only for its hero's death.
-    let rollbacks = play(LinkModel {
-        delay: 3,
-        jitter: 2,
-        loss_per_mille: 0,
-        seed: 7,
-    });
+    let rollbacks = play(LinkModel::DELAYED);
     assert_eq!(rollbacks, [1, 1]);
 }
 
 #[test]
 fn a_cast_through_delayed_links() {
-    let rollbacks = cast(LinkModel {
-        delay: 3,
-        jitter: 2,
-        loss_per_mille: 0,
-        seed: 7,
-    });
+    let rollbacks = cast(LinkModel::DELAYED);
     // The casts need no correction. In tick 60 the walker sets off north through the runner's
     // spawn as the runner leaves it; its client, which has yet to learn the runner's order, sees
     // the runner stand in its way and goes round it, and corrects once to the server's straight
