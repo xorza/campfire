@@ -29,6 +29,15 @@ impl Filter {
         Filter::of(data.relation, terms, types)
     }
 
+    /// The filter of `relation` alone: every unit it selects, but delivery units.
+    pub(crate) fn of_relation(relation: Relation) -> Filter {
+        Filter {
+            relation,
+            all: TagSet::default(),
+            none: TagSet::of([EngineTag::Projectile, EngineTag::Area].map(EngineTag::tag)),
+        }
+    }
+
     fn of<'a>(
         relation: Relation,
         terms: impl Iterator<Item = (&'a str, bool)>,

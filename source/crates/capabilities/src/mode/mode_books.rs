@@ -17,7 +17,8 @@ pub struct ModeBooks {
     pub(crate) stats: StatBook,
     pub(crate) pools: PoolBook,
     pub(crate) tags: TagBook,
-    pub(crate) bindings: CombatBindings,
+    /// None with no life pool, as in a mode with no combat.
+    pub(crate) bindings: Option<CombatBindings>,
 }
 
 impl ModeBooks {

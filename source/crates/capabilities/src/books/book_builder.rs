@@ -65,7 +65,7 @@ impl<'a> BookBuilder<'a> {
             rules: KitRules {
                 rate: input.rate,
                 max_move_speed: input.max_move_speed,
-                life: data.combat.life_pool(&data.pools).unwrap_or(PoolId::FIRST),
+                life: data.combat.life_pool(&data.pools),
             },
             script_starts,
             spawns: Vec::new(),

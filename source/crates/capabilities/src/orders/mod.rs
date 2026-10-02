@@ -95,10 +95,7 @@ impl Orders {
     /// `on_think` when `thinks`: what an AI loads with, and what the package load checks at the
     /// fastest rate the mode allows, where its ticks are the most.
     pub fn ai_period(data: &AiData, rate: TickRate, thinks: bool) -> Result<Ticks, AiError> {
-        let period = rate
-            .ticks(data.think_ms)
-            .ok_or(AiError::TimeTooLarge)?
-            .max(Ticks::ONE);
+        let period = rate.duration(data.think_ms).ok_or(AiError::TimeTooLarge)?;
         if !thinks {
             return Err(AiError::NoThink);
         }

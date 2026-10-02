@@ -39,7 +39,8 @@ pub struct UnitKit {
 pub struct KitRules {
     pub rate: TickRate,
     pub max_move_speed: Speed,
-    pub life: PoolId,
+    /// None when the mode names no life pool, as a mode with no combat.
+    pub life: Option<PoolId>,
 }
 
 impl UnitKit {
@@ -74,7 +75,8 @@ impl UnitKit {
             (!maxes.is_empty()).then(|| Pools::new(maxes).expect("each maximum is positive"));
         let on_death = combat
             .map(|combat| {
-                if pools.is_none_or(|pools| pools.max(rules.life).is_none()) {
+                let life = rules.life.and_then(|life| pools?.max(life));
+                if life.is_none() {
                     return Err(UnitKitError::NoLifePool);
                 }
                 Ok(combat.on_death)

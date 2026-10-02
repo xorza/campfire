@@ -14,7 +14,7 @@ use campfire_script::ScriptError;
 use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString};
 use campfire_sim::{
     Command, EntityIndex, IdAllocator, Position, SimSet, SimTick, StateRegistry, Tick, TickInputs,
-    TickRate, Ticks,
+    TickRate,
 };
 
 use crate::actions::action_slots::ActionSlots;
@@ -120,11 +120,7 @@ impl Mode {
         let pathing = setup.map.pathing().expect("the check passed");
         let walkers = setup.walkers.clone();
         // A window past what ticks can count covers the whole match.
-        let assist_window = setup
-            .data
-            .combat
-            .assist_window_ms
-            .map(|ms| rate.ticks(ms).unwrap_or(Ticks::new(u64::MAX)));
+        let assist_window = setup.data.combat.assist_window_ms.map(|ms| rate.window(ms));
         let ModeBooks {
             stats,
             pools: pool_book,
@@ -142,7 +138,9 @@ impl Mode {
             relations.set(a, b, relation.relation, relation.vision);
         }
         world.insert_resource(relations);
-        world.insert_resource(bindings);
+        if let Some(bindings) = bindings {
+            world.insert_resource(bindings);
+        }
         Stats::load(world, stats, pool_book);
         Units::load_tags(world, tags);
         if let Some(grid) = grid {

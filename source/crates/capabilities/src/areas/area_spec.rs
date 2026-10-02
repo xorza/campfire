@@ -6,6 +6,7 @@ use crate::stats::modifier_book::ModifierId;
 use crate::units::filter::Filter;
 use crate::units::unit_types::UnitTypes;
 use crate::values::declared_name::DeclaredName;
+use crate::values::relation::Relation;
 
 /// An area type as a match runs it: its radius, its delay and its duration in ticks, what it
 /// reaches, and the modifiers it holds inside.
@@ -39,7 +40,7 @@ impl AreaSpec {
     ) -> Option<AreaSpec> {
         let affects = match &data.affects {
             Some(filter) => Filter::resolve(filter, types),
-            None => Filter::parse("enemies", types),
+            None => Ok(Filter::of_relation(Relation::Enemies)),
         };
         let inside = |name: &Option<DeclaredName>| name.as_ref().map(&modifier);
         Some(AreaSpec {

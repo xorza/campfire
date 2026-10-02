@@ -12,7 +12,7 @@ use bevy_ecs::world::World;
 
 use campfire_capabilities::internals::{self, Arms};
 use campfire_capabilities::{
-    Abilities, Action, ActionSlots, ActionTarget, Actions, Area, Areas, CapabilitySet,
+    Abilities, Action, ActionSlots, ActionTarget, Actions, Area, Areas, CapabilitySet, Combat,
     DeclaredName, Hook, MatchScripts, Number, OnDeath, Order, Owner, Param, PoolId, Pools,
     Projectile, Projectiles, Range, RangeField, Ranked, RecentAttackers, Scalar, Scaling,
     ScriptLimits, SlotKind, Stat, StatRule, Stats, Targeting, Team, TypeScope, Units,
@@ -203,6 +203,7 @@ fn reference_world() -> World {
     ];
     let set = CapabilitySet::new(&declared).unwrap();
     set.install(&mut world, &mut schedule, &mut registry, Some(scripts));
+    Combat::bind_life(&mut world, PoolId::FIRST);
     world.add_schedule(schedule);
     world.insert_non_send(Failed::default());
     let changed = ["move_speed", "armor", "magic_resist"]

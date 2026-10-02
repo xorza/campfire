@@ -221,6 +221,7 @@ pub(crate) mod internals {
     use campfire_sim::{SimUpdate, TickRate};
 
     use super::*;
+    use crate::stats::pool_id::PoolId;
 
     /// A match for a capability's tests: a world that `SimUpdate::prepare` set up, with the core
     /// and the declared capabilities installed; and its schedule and state registry, for what a
@@ -239,7 +240,8 @@ pub(crate) mod internals {
     }
 
     impl TestMatch {
-        /// A match at `rate` of the capabilities `declared`, running `scripts`.
+        /// A match at `rate` of the capabilities `declared`, running `scripts`; with combat, its
+        /// life pool the first.
         pub(crate) fn new(
             declared: &[Capability],
             rate: TickRate,
@@ -251,6 +253,9 @@ pub(crate) mod internals {
             let mut registry = StateRegistry::new();
             let set = CapabilitySet::new(declared).expect("a test declares a valid set");
             set.install(&mut world, &mut schedule, &mut registry, scripts);
+            if set.contains(Capability::Combat) {
+                Combat::bind_life(&mut world, PoolId::FIRST);
+            }
             TestMatch {
                 world,
                 schedule,

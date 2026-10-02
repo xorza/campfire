@@ -10,7 +10,8 @@ use crate::values::declared_name::DeclaredName;
 
 /// What the mode's `[combat]` binds: the life pool, and the places among the stats of leech from
 /// attacks and from other damage, and of the heal scale. Package data, not state; without a
-/// stat binding, its rule does nothing, and until a mode binds one, the life pool is the first.
+/// stat binding, its rule does nothing. A match with combat has it, as the load checked the
+/// mode names its life pool.
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CombatBindings {
     pub(crate) life: PoolId,
@@ -21,27 +22,27 @@ pub(crate) struct CombatBindings {
 
 impl CombatBindings {
     /// The bindings of `rules` among `pools` and the stats of `book`, which the load checked
-    /// declare each.
+    /// declare each; none when `rules` name no life pool, as a mode with no combat.
     pub(crate) fn new(
         rules: &CombatRules,
         pools: &BTreeMap<DeclaredName, PoolData>,
         book: &StatBook,
-    ) -> CombatBindings {
+    ) -> Option<CombatBindings> {
         let leech = rules.leech.as_ref();
         let index = |stat| book.index(stat).expect("the load checked the bound stats");
-        CombatBindings {
-            life: rules.life_pool(pools).unwrap_or(PoolId::FIRST),
+        Some(CombatBindings {
+            life: rules.life_pool(pools)?,
             leech_attack: leech.and_then(|leech| leech.attack.as_ref()).map(index),
             leech_other: leech.and_then(|leech| leech.other.as_ref()).map(index),
             heal_scale: rules.heal_scale.as_ref().map(index),
-        }
+        })
     }
-}
 
-impl Default for CombatBindings {
-    fn default() -> CombatBindings {
+    /// The bindings of `life` alone, with no stat bound, as a client binds them from the
+    /// packages it holds.
+    pub(crate) const fn of_life(life: PoolId) -> CombatBindings {
         CombatBindings {
-            life: PoolId::FIRST,
+            life,
             leech_attack: None,
             leech_other: None,
             heal_scale: None,

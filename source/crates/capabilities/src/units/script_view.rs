@@ -386,10 +386,8 @@ impl View {
         let ms = u64::try_from(ms)
             .ok()
             .ok_or_else(|| ApiError::NegativeTime.fail())?;
-        let ticks = self.0.borrow().rate.ticks(ms);
-        Ok(ticks
-            .ok_or_else(|| ApiError::TimeTooLarge.fail())?
-            .max(Ticks::ONE))
+        let ticks = self.0.borrow().rate.duration(ms);
+        Ok(ticks.ok_or_else(|| ApiError::TimeTooLarge.fail())?)
     }
 
     /// Adds the modifier the match loaded next, which takes the next id: modifiers load by
@@ -802,7 +800,7 @@ impl View {
             .ok()
             .ok_or_else(|| ApiError::NegativeTime.fail())?;
         let view = self.0.borrow();
-        let window = view.rate.ticks(ms).unwrap_or(Ticks::new(u64::MAX));
+        let window = view.rate.window(ms);
         let row = unit.row();
         let run = &view.attacks[row.attacks_start as usize..row.attacks_end as usize];
         Ok(run

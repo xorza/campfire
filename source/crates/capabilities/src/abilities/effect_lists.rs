@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
 use campfire_math::Num;
-use campfire_sim::{StableId, TickRate, Ticks};
+use campfire_sim::{StableId, TickRate};
 
 use crate::abilities::effect_names::EffectNames;
 use crate::actions::action_book::ActionId;
@@ -137,9 +137,8 @@ impl EffectLists {
                         let ms = number(frame, ms).floor();
                         let ms =
                             u64::try_from(ms).expect("the load checked a duration not negative");
-                        rate.ticks(ms)
+                        rate.duration(ms)
                             .expect("the load checked a duration within reach")
-                            .max(Ticks::ONE)
                     });
                     frame.effects.push(ModifierEffect::Add {
                         target: unit,

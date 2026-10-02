@@ -32,6 +32,24 @@ impl TickRate {
             None => None,
         }
     }
+
+    /// `ms` as how long something lasts: in ticks, rounded up, a tick at the least, so what
+    /// starts also takes effect; `None` when it does not fit a `u64`.
+    pub const fn duration(self, ms: u64) -> Option<Ticks> {
+        match self.ticks(ms) {
+            Some(ticks) if ticks.get() == 0 => Some(Ticks::ONE),
+            ticks => ticks,
+        }
+    }
+
+    /// `ms` as a window back from now: in ticks, rounded up; past what a `u64` holds, every tick
+    /// there is.
+    pub const fn window(self, ms: u64) -> Ticks {
+        match self.ticks(ms) {
+            Some(ticks) => ticks,
+            None => Ticks::new(u64::MAX),
+        }
+    }
 }
 
 #[cfg(test)]
@@ -57,6 +75,13 @@ mod tests {
                 );
             }
             assert_eq!(rate.ticks(u64::MAX), None);
+            // A duration lasts a tick at the least; a window too long to count is every tick.
+            assert_eq!(rate.duration(0), Some(Ticks::ONE));
+            assert_eq!(rate.duration(250), rate.ticks(250));
+            assert_eq!(rate.duration(u64::MAX), None);
+            assert_eq!(rate.window(0), Ticks::new(0));
+            assert_eq!(rate.window(2000), rate.ticks(2000).unwrap());
+            assert_eq!(rate.window(u64::MAX), Ticks::new(u64::MAX));
         }
         // 10⁹ ns ÷ 30 = 33 333 333.3, down to 33 333 333; ÷ 20 = 50 000 000 exactly.
         let length = |hz| TickRate::new(NonZeroU32::new(hz).unwrap()).length();

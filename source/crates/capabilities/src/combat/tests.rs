@@ -22,6 +22,7 @@ use crate::stats::modifier_data::{ModifierData, Reapply};
 use crate::stats::modifiers::{Application, Instance};
 use crate::stats::pool_book::PoolBook;
 use crate::stats::pool_cost::PoolCost;
+use crate::stats::pool_data::PoolData;
 use crate::stats::stat::Stat;
 use crate::stats::stat_book::StatBook;
 use crate::stats::stat_rule::StatRule;
@@ -31,11 +32,11 @@ use crate::units::filter::Filter;
 use crate::units::relations::Relations;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_type_data::UnitTypeData;
-use crate::units::unit_types::UnitTypes;
 use crate::values::attitude::Attitude;
 use crate::values::declared_name::DeclaredName;
 use crate::values::filter_data::FilterData;
 use crate::values::metric::Metric;
+use crate::values::relation::Relation;
 
 /// The MOBA's 30 ticks a second.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(30).unwrap());
@@ -419,7 +420,7 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
     fight.world.insert_resource(resources);
     let mana = PoolId::new(1).unwrap();
     let weapon = TestWeapon {
-        aim: Filter::parse("enemies", &UnitTypes::default()).unwrap(),
+        aim: Filter::of_relation(Relation::Enemies),
         range: Range::Meters(num(2)),
         windup: Ticks::new(2),
         projectile: None,
@@ -770,7 +771,7 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
 
 /// Loads a book of the stats `[combat]` binds, with no limits, and binds them: the heal scale
 /// `healing_received_pct`, and leech `life_steal` from attacks and `spell_vamp` from the rest,
-/// in that order among a unit's values.
+/// in that order among a unit's values; and `health`, the first pool, as the life pool.
 fn load_damage_stats(world: &mut World) {
     let [heal, attack, other] =
         ["healing_received_pct", "life_steal", "spell_vamp"].map(|name| Stat::named(name).unwrap());
@@ -778,7 +779,9 @@ fn load_damage_stats(world: &mut World) {
         .map(|stat| (stat.clone(), StatRule::default()))
         .into();
     let book = StatBook::new(&rules, [], RATE, num(10));
+    let health = DeclaredName::new("health").unwrap();
     let combat = CombatRules {
+        life: Some(health.clone()),
         leech: Some(Leech {
             attack: Some(attack),
             other: Some(other),
@@ -786,7 +789,10 @@ fn load_damage_stats(world: &mut World) {
         heal_scale: Some(heal),
         ..CombatRules::default()
     };
-    world.insert_resource(CombatBindings::new(&combat, &BTreeMap::new(), &book));
+    let max = Stat::named("health").unwrap();
+    let pools = BTreeMap::from([(health, PoolData { max, regen: None })]);
+    let bindings = CombatBindings::new(&combat, &pools, &book).unwrap();
+    world.insert_resource(bindings);
     Stats::load(world, book, PoolBook::default());
 }
 
@@ -976,7 +982,7 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     assert_eq!(fight.exact_health(source), num(100));
     // Without the bindings the same stats do nothing: at 50, an attack of 10 heals the source
     // nothing, and a heal of 10 is whole.
-    fight.world.insert_resource(CombatBindings::default());
+    Combat::bind_life(&mut fight.world, PoolId::FIRST);
     let entity = fight.entity(source);
     let mut pools = fight.world.get_mut::<Pools>(entity).unwrap();
     pools.take(PoolId::FIRST, num(50));

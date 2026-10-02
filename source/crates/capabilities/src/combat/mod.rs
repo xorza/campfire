@@ -117,7 +117,6 @@ impl Combat {
             view.add_source(fill_row);
         }
         world.insert_resource(PassQueue::default());
-        world.insert_resource(CombatBindings::default());
         world.insert_resource(Deaths::default());
         schedule.configure_sets(
             CombatSet::Launch
@@ -178,7 +177,7 @@ impl Combat {
     /// Binds `life` as the life pool, as a client does from the packages it holds, where no mode
     /// installs.
     pub fn bind_life(world: &mut World, life: PoolId) {
-        world.resource_mut::<CombatBindings>().life = life;
+        world.insert_resource(CombatBindings::of_life(life));
     }
 }
 
@@ -895,7 +894,7 @@ pub(crate) mod internals {
     use crate::stats::unit_stats::UnitStats;
     use crate::units::filter::Filter;
     use crate::units::unit_type::UnitType;
-    use crate::units::unit_types::UnitTypes;
+    use crate::values::relation::Relation;
 
     /// A test unit's weapon: it aims at enemies within `range`, winds up `windup`, may attack
     /// again `period` after an attack's start, deals `damage`, and fires a projectile of the
@@ -951,7 +950,7 @@ pub(crate) mod internals {
         /// the rate that makes its period at `hz` ticks a second, then its damage.
         pub fn parts(self, world: &mut World, hz: u32) -> ArmsParts {
             let weapon = TestWeapon {
-                aim: Filter::parse("enemies", &UnitTypes::default()).unwrap(),
+                aim: Filter::of_relation(Relation::Enemies),
                 range: Range::Meters(self.range),
                 windup: self.windup,
                 projectile: self.projectile,

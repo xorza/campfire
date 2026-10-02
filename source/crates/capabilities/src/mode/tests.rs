@@ -6,7 +6,7 @@ use bevy_ecs::query::With;
 use campfire_content::PackagePath;
 use campfire_math::{Num, Vec3};
 use campfire_script::{Budget, ScriptHost, ScriptId};
-use campfire_sim::{Capability, SimUpdate, StableId, TickInput};
+use campfire_sim::{Capability, SimUpdate, StableId, TickInput, Ticks};
 
 use super::*;
 use crate::actions::Actions;

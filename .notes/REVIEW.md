@@ -76,8 +76,6 @@ The package load should be the one place that refuses bad data. Today some check
 - [ ] **The load builds the books twice** — `package/src/load_check.rs`, `runner/src/match_build.rs`. The load builds them at the fastest rate and throws them away; the match builds them again at its rate, as books hold ticks. The tag names, walkers and stat order are also derived by the check and again by the builder. Better: books in milliseconds, held by `ModePackages` (C6a).
 - [ ] **The map is checked, then resolved again by name** — `capabilities/src/mode/mod.rs:262-391`, `mode/mode_book.rs:132-164`, `mode/mod.rs:206-221`. Install resolves the same names with about a dozen `expect("the check passed")`. Better: one `MapData` method that turns the map into resolved data once.
 - [ ] **`CollisionData` throws its checked `Body` away** — `capabilities/src/units/collision_data.rs:13-37`, `navigation/navigation_rules.rs:31`. Better: store the `Body`.
-- [ ] **The life pool uses a placeholder** — `runner/src/match_build.rs:71`, `capabilities/src/combat/combat_bindings.rs:33`. With no combat, `PoolId::FIRST` stands for "no life pool". Better: `Option<PoolId>`.
-
 ## 7. Package books are copied into the script view, the frame and the state
 
 Each item is a second copy of data that one book owns. The copies are kept in line by load order, by hand or not at all.
@@ -116,7 +114,6 @@ The rule is "no data in strings": a name from data becomes a checked type where 
 
 - [ ] **Action data mixes strings and checked names** — `capabilities/src/actions/action_data.rs:47,52,65,68,71`, `actions/delivery_data.rs:14,19`. `hold`, `passive_modifier`, `unit_type`, the param and state keys and the delivery's unit type are `String`, while cost keys and `damage_kind` are `DeclaredName`. Better: all `DeclaredName`.
 - [ ] **RNG streams are named by strings** — `math/src/rng/mod.rs:31`, `math/src/rng/rng_source.rs:67`, `sim/src/sim_rng.rs:20`. They are a fixed engine set. The debug build also copies each name into a `Mutex<BTreeSet<String>>` on every open. Better: an enum or a fixed-bytes newtype.
-- [ ] **The default filter is parsed from a string** — `capabilities/src/units/filter.rs:17-23`, used by `projectiles/mod.rs:80` and `areas/mod.rs:83`. Better: a `Filter` constructor from a `Relation`.
 ## 10. Parallel code paths apply one rule differently
 
 One operation is written twice or three times, and the copies disagree.
@@ -126,7 +123,6 @@ One operation is written twice or three times, and the copies disagree.
 - [ ] **A live change from a gone source drops to its base** — `capabilities/src/stats/refresh_scratch.rs:120-130`, `stats/mod.rs:495`. The doc says it keeps its last value. The fallback is the value at application, and a gone source resolves to the level-1 base. Better: decide the rule in stats.md, and keep the last value or document the base.
 - [ ] **"A unit as a param source" is built three ways** — `capabilities/src/stats/param_source.rs:38-50`, `stats/param_sources.rs:28-38`, `stats/mod.rs:569-578`. Two treat level and stats as optional, one requires them. Better: one constructor.
 - [ ] **A held and a timed copy of one modifier clash** — `capabilities/src/stats/modifiers.rs:116-146,247-255`, `stats/mod.rs:420-423`. An instance is keyed by (id, source) with one `held` flag, so one of the two is lost, and a self-applied copy of a passive's id makes the passive expire. Better: an instance that ends only when both its hold and its timer end.
-- [ ] **Milliseconds become ticks by two policies** — `capabilities/src/units/script_view.rs:382-390,787-792`, `stats/modifier_book.rs:117-123`. `recent_attackers` saturates and has no one-tick minimum, while `View::ticks` fails and rounds up to at least one. Better: one conversion.
 - [ ] **Two formulas are written twice** — `capabilities/src/stats/stats_data/mod.rs:29-34` and `stats/stat_book.rs:145-152`, `mode/unit_kit/mod.rs:84-90` and `stats/stat_book.rs:168-174`. The kit's copy of "base plus per level" and "capped move step" skips the `StatRule` limits, and the refresh overwrites it before anyone reads it. Better: one formula, in the book.
 - [ ] **"A unit type walks" is defined twice** — `package/src/mode_packages.rs:207-214`, `package/src/load_check.rs:119-128`. The avatar rules that `AvatarData` promises are applied in `runner/src/match_build.rs:200-205`. Better: `UnitTypeFile::walks()`, and an `AvatarData` method that gives the effective unit type.
 - [ ] **A constant is copied into a message** — `capabilities/src/scripts/error.rs:429`. `ChainTooDeep` says "16 deep", which copies `MAX_DEPTH` in `stats/modifier_hooks.rs:23`.

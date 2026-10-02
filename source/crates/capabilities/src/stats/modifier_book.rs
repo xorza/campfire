@@ -131,7 +131,7 @@ impl ModifierBook {
                 return Some(None);
             };
             let ms = u64::try_from(number(field)?.ceil()).ok()?;
-            Some(Some(stats.rate().ticks(ms)?.max(Ticks::ONE)))
+            Some(Some(stats.rate().duration(ms)?))
         };
         let value = |field: Option<&Number>| -> Option<Option<Num>> {
             match field {

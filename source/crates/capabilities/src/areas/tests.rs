@@ -5,6 +5,7 @@ use crate::units::engine_tag::EngineTag;
 use crate::units::filter::Filter;
 use crate::units::tag_set::TagSet;
 use crate::units::unit_types::UnitTypes;
+use crate::values::relation::Relation;
 
 #[test]
 fn an_area_that_triggers_after_it_ends_fails_to_decode() {
@@ -44,6 +45,9 @@ fn a_filter_selects_a_delivery_unit_only_when_it_names_its_tag() {
     let types = UnitTypes::default();
     let [projectile, area] = [EngineTag::Projectile, EngineTag::Area].map(EngineTag::tag);
     let parse = |text| Filter::parse(text, &types).unwrap();
+    // A relation alone is the filter of its name.
+    assert_eq!(Filter::of_relation(Relation::Enemies), parse("enemies"));
+    assert_eq!(Filter::of_relation(Relation::All), parse("all"));
     let units = [
         TagSet::default(),
         TagSet::of([projectile]),
