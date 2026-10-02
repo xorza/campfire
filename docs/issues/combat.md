@@ -1,6 +1,6 @@
 # Combat
 
-Design: [Combat](../../design/04-capabilities/combat.md). Rules: [Issue log](../../AGENTS.md#issue-log).
+Design: [Combat](../design/04-capabilities/combat.md). Rules: [Issue log](../../AGENTS.md#issue-log).
 
 ## Decide
 

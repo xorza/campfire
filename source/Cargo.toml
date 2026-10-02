@@ -7,7 +7,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 
-# Exact versions: a release must rebuild bit for bit (design/02-engine-core.md).
+# Exact versions: a release must rebuild bit for bit (docs/design/02-engine-core.md).
 [workspace.dependencies]
 bevy = { version = "=0.19.1", default-features = false, features = [
     "std",

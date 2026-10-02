@@ -1,6 +1,6 @@
 # Actions
 
-Design: [Actions](../../design/04-capabilities/actions.md). Rules: [Issue log](../../AGENTS.md#issue-log).
+Design: [Actions](../design/04-capabilities/actions.md). Rules: [Issue log](../../AGENTS.md#issue-log).
 
 ## Decide
 

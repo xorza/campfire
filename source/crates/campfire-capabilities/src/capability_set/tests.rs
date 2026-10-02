@@ -109,7 +109,7 @@ fn the_table_holds_every_capability_once_after_what_it_builds_on() {
 /// The capability table of design 04, beside this crate.
 const OVERVIEW: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../../design/04-capabilities/00-overview.md"
+    "/../../../docs/design/04-capabilities/00-overview.md"
 );
 
 #[test]

@@ -169,7 +169,7 @@ impl<'de> Deserializer<'de> for FieldNames<'_> {
 /// The reference beside design 08.
 const REFERENCE: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
-    "/../../../design/08-script-api-reference.md"
+    "/../../../docs/design/08-script-api-reference.md"
 );
 
 #[test]

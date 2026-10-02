@@ -56,7 +56,7 @@ mod tests {
         // Design 02's module table names each module in its first column and its status in the
         // second; a built module's crate is `campfire-<module>` in `crates/` or `checks/`.
         let source = concat!(env!("CARGO_MANIFEST_DIR"), "/../..");
-        let design = fs::read_to_string(format!("{source}/../design/02-engine-core.md")).unwrap();
+        let design = fs::read_to_string(format!("{source}/../docs/design/02-engine-core.md")).unwrap();
         let table = design
             .lines()
             .skip_while(|line| *line != "| Module | Status | Does |")

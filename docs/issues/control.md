@@ -1,6 +1,6 @@
 # Control
 
-Design: [Control](../../design/04-capabilities/control.md). Rules: [Issue log](../../AGENTS.md#issue-log).
+Design: [Control](../design/04-capabilities/control.md). Rules: [Issue log](../../AGENTS.md#issue-log).
 
 ## Decide
 
