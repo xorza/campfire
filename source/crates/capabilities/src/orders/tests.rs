@@ -26,11 +26,8 @@ use crate::units::Units;
 use crate::units::filter::Filter;
 use crate::units::layer::Layer;
 use crate::units::path_id::PathId;
-use crate::units::script_view::View;
-use crate::units::type_scope::TypeScope;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::units::unit_types::UnitTypes;
-use crate::values::declared_name::DeclaredName;
 use crate::values::grid::Grid;
 use crate::values::scalar::Scalar;
 
@@ -188,12 +185,7 @@ impl Match {
     }
 
     fn with_paths(paths: Paths) -> Match {
-        let limits = ScriptLimits {
-            per_call: 20_000,
-            player: 200_000,
-            think: 200_000,
-            mode: 100_000,
-        };
+        let limits = ScriptLimits::ROOMY;
         Match::with(paths, limits)
     }
 
@@ -233,18 +225,8 @@ impl Match {
         params: &[(&str, Scalar)],
         ai: Option<&str>,
     ) -> UnitType {
-        let data = UnitTypeData {
-            tags: tags
-                .iter()
-                .map(|&tag| DeclaredName::new(tag).unwrap())
-                .collect(),
-            params: params
-                .iter()
-                .map(|&(name, value)| (DeclaredName::new(name).unwrap(), value))
-                .collect(),
-        };
-        let name = format!("type {}", self.sim.world.non_send::<View>().types_count());
-        let unit_type = Units::load_type(&mut self.sim.world, TypeScope::Mode, &name, &data);
+        let data = UnitTypeData::of(tags, params);
+        let unit_type = Units::load_next_type(&mut self.sim.world, &data);
         if let Some(source) = ai {
             let ai = AiData {
                 ai: PackagePath::parse("scripts/ai.rhai").unwrap(),
@@ -297,17 +279,6 @@ impl Match {
 
     fn destination(&self, id: StableId) -> Option<Position> {
         self.sim.try_get::<Destination>(id).copied().unwrap().get()
-    }
-
-    /// `None` once the unit despawned.
-    fn health(&self, id: StableId) -> Option<i64> {
-        self.sim.try_get::<Pools>(id).copied().map(|pools| {
-            pools
-                .current(PoolId::FIRST)
-                .unwrap()
-                .to_int()
-                .expect("a whole amount")
-        })
     }
 
     fn slots(&self, id: StableId) -> &ActionSlots {
@@ -511,17 +482,17 @@ fn an_attack_chases_winds_up_and_strikes_each_period() {
     assert_eq!(game.strikes_at(fighter), None);
     game.run_until(6);
     assert_eq!(game.strikes_at(fighter), Some(Tick::new(6)));
-    assert_eq!(game.health(dummy), Some(100));
+    assert_eq!(game.sim.health(dummy), 100);
     game.run_until(7);
-    assert_eq!(game.health(dummy), Some(70));
+    assert_eq!(game.sim.health(dummy), 70);
     assert_eq!(game.ready_at(fighter), Tick::new(9));
     assert_eq!(game.destination(fighter), None);
 
     // Strikes in ticks 11, 16 and 21 take 70 to 40, 10 and 0: the dummy despawns in tick 21.
     game.run_until(21);
-    assert_eq!(game.health(dummy), Some(10));
+    assert_eq!(game.sim.health(dummy), 10);
     game.run_until(22);
-    assert_eq!(game.health(dummy), None);
+    assert!(game.sim.try_get::<Pools>(dummy).is_none());
     // The next tick finds the target gone, drops it, and stays.
     game.run_until(23);
     assert_eq!(game.target(fighter), None);
@@ -543,10 +514,10 @@ fn a_move_cancels_a_windup_but_not_a_back_swing() {
     assert_eq!(game.strikes_at(fighter), None);
     assert_eq!(game.ready_at(fighter), Tick::new(0));
     game.tick(&[(0, &attack(fighter, dummy))]);
-    assert_eq!(game.health(dummy), Some(100));
+    assert_eq!(game.sim.health(dummy), 100);
     assert_eq!(game.strikes_at(fighter), Some(Tick::new(4)));
     game.run_until(5);
-    assert_eq!(game.health(dummy), Some(70));
+    assert_eq!(game.sim.health(dummy), 70);
     assert_eq!(game.ready_at(fighter), Tick::new(7));
 
     // A move in tick 5, after the strike, costs nothing: back to the dummy in tick 6, 2 m
@@ -557,9 +528,9 @@ fn a_move_cancels_a_windup_but_not_a_back_swing() {
     assert_eq!(game.position(fighter), at(0, 0, 0));
     game.run_until(9);
     assert_eq!(game.strikes_at(fighter), Some(Tick::new(9)));
-    assert_eq!(game.health(dummy), Some(70));
+    assert_eq!(game.sim.health(dummy), 70);
     game.run_until(10);
-    assert_eq!(game.health(dummy), Some(40));
+    assert_eq!(game.sim.health(dummy), 40);
 }
 
 #[test]
@@ -574,9 +545,9 @@ fn attack_orders_need_a_living_enemy() {
     // attack in tick 7 and strikes 2 ticks later.
     game.tick(&[(0, &attack(fighter, gone))]);
     game.run_until(9);
-    assert_eq!(game.health(gone), Some(30));
+    assert_eq!(game.sim.health(gone), 30);
     game.run_until(10);
-    assert_eq!(game.health(gone), None);
+    assert!(game.sim.try_get::<Pools>(gone).is_none());
 
     for order in [
         attack(fighter, ally),
@@ -650,10 +621,10 @@ fn a_tower_prefers_creeps_and_defends_its_heroes() {
     assert_eq!(targets, expected);
     // Its attacks on the creep start in ticks 0, 3 and 6 and strike a tick later; the next is
     // ready in tick 9, on the hero, and strikes in tick 10.
-    assert_eq!(game.health(enemy_creep), Some(970));
-    assert_eq!(game.health(foe), Some(1000));
+    assert_eq!(game.sim.health(enemy_creep), 970);
+    assert_eq!(game.sim.health(foe), 1000);
     game.think(&[]);
-    assert_eq!(game.health(foe), Some(990));
+    assert_eq!(game.sim.health(foe), 990);
 }
 
 #[test]
@@ -1036,7 +1007,7 @@ fn a_monster_pulled_past_its_leash_walks_home_ignoring_its_attacker_and_heals() 
     game.think(&[]);
     assert!(resets(&game));
     assert_eq!(game.destination(monster), Some(home));
-    assert_eq!(game.health(monster), Some(40));
+    assert_eq!(game.sim.health(monster), 40);
 
     // It walks the 12 m home in 24 ticks, to tick 55. At its thinks in ticks 40 and 48, 8 and
     // 4 m out, it attacks the hero that struck it, and the reset ignores the order.
@@ -1046,11 +1017,11 @@ fn a_monster_pulled_past_its_leash_walks_home_ignoring_its_attacker_and_heals() 
         assert_eq!(game.target(monster), None);
     }
     assert_eq!(game.position(monster), home);
-    assert_eq!(game.health(monster), Some(40));
+    assert_eq!(game.sim.health(monster), 40);
     // Home, its pools fill as tick 56 begins, and its think then takes the hero again.
     game.think(&[]);
     assert!(!resets(&game));
-    assert_eq!(game.health(monster), Some(100));
+    assert_eq!(game.sim.health(monster), 100);
     assert_eq!(game.target(monster), Some(hero));
 
     // One that dies while it resets stops resetting, and nothing fills its pools.
@@ -1062,7 +1033,7 @@ fn a_monster_pulled_past_its_leash_walks_home_ignoring_its_attacker_and_heals() 
     unit.insert((Resetting, Dead));
     game.tick(&[]);
     assert!(!resets(&game));
-    assert_eq!(game.health(monster), Some(40));
+    assert_eq!(game.sim.health(monster), 40);
 }
 
 #[test]

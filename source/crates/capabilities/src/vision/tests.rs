@@ -33,12 +33,7 @@ impl Scene {
 
     /// A match of `teams` teams.
     fn of_teams(teams: usize) -> Scene {
-        let limits = ScriptLimits {
-            per_call: 10_000,
-            player: 100_000,
-            think: 100_000,
-            mode: 100_000,
-        };
+        let limits = ScriptLimits::ROOMY;
         let scripts = ScriptBudgets::new(limits, 1);
         let declared = [Capability::Stats, Capability::Combat, Capability::Vision];
         let mut sim = TestMatch::new(&declared, TestMatch::RATE, Some(scripts));

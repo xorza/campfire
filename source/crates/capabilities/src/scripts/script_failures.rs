@@ -31,3 +31,33 @@ impl ScriptFailures {
         self.0.clear();
     }
 }
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use campfire_sim::StableId;
+
+    use crate::scripts::error::internals::FailureKind;
+    use crate::scripts::hook::Hook;
+    use crate::scripts::script_failures::ScriptFailures;
+
+    /// A failed call as a test compares it: its unit, its hook and what its error is.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub(crate) struct FailedCall {
+        pub(crate) unit: Option<StableId>,
+        pub(crate) hook: Hook,
+        pub(crate) kind: FailureKind,
+    }
+
+    impl ScriptFailures {
+        pub(crate) fn calls(&self) -> Vec<FailedCall> {
+            self.0
+                .iter()
+                .map(|failure| FailedCall {
+                    unit: failure.unit,
+                    hook: failure.hook,
+                    kind: failure.error.kind(),
+                })
+                .collect()
+        }
+    }
+}

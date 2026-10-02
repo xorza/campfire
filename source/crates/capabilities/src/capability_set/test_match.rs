@@ -5,7 +5,7 @@ use bevy_ecs::component::{Component, Mutable};
 use bevy_ecs::entity::Entity;
 use bevy_ecs::schedule::Schedule;
 use bevy_ecs::world::{Mut, World};
-use campfire_math::{SegmentSeed, Tick};
+use campfire_math::{Num, SegmentSeed, Tick};
 use campfire_script::rhai::Dynamic;
 use campfire_script::{Budget, ScriptHost};
 use campfire_sim::{
@@ -14,11 +14,13 @@ use campfire_sim::{
 };
 
 use crate::capability_set::CapabilitySet;
+use crate::combat::Combat;
 use crate::combat::internals;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::stats::pool_id::PoolId;
+use crate::stats::pools::Pools;
 use crate::units::block::Block;
 use crate::units::unit_tags::UnitTags;
 
@@ -110,6 +112,18 @@ impl TestMatch {
     /// Gives unit `id` tags of no name that block `blocks`, in place of its own.
     pub(crate) fn set_blocks(&mut self, id: StableId, blocks: &[Block]) {
         self.insert(id, UnitTags::blocking(blocks));
+    }
+
+    /// The life unit `id` has left, exactly.
+    pub(crate) fn life(&self, id: StableId) -> Num {
+        let life = Combat::life(&self.world).expect("a match with a life pool");
+        let pools = self.get::<Pools>(id);
+        pools.current(life).expect("a unit with the life pool")
+    }
+
+    /// The life unit `id` has left, a whole amount.
+    pub(crate) fn health(&self, id: StableId) -> i64 {
+        self.life(id).to_int().expect("a whole amount of life")
     }
 
     /// The tick the match runs next.

@@ -113,17 +113,6 @@ impl Fight {
             .set_attack_target(Some(target));
     }
 
-    /// `None` once the unit despawned.
-    fn health(&self, id: StableId) -> Option<i64> {
-        self.sim.try_get::<Pools>(id).copied().map(|pools| {
-            pools
-                .current(PoolId::FIRST)
-                .unwrap()
-                .to_int()
-                .expect("a whole amount")
-        })
-    }
-
     /// The attack of unit `id`, whose one weapon sits in its first slot.
     fn state(&self, id: StableId) -> Attack {
         let slots = self.sim.try_get::<ActionSlots>(id).unwrap();
@@ -151,9 +140,9 @@ fn an_attack_winds_up_and_strikes_each_period() {
     // taking 100 to 70, 40, 10 and 0: the dummy despawns in tick 17.
     fight.sim.run_until(2);
     assert_eq!(fight.state(fighter).started(), Some(Tick::new(0)));
-    assert_eq!(fight.health(dummy), Some(100));
+    assert_eq!(fight.sim.health(dummy), 100);
     fight.sim.run_until(3);
-    assert_eq!(fight.health(dummy), Some(70));
+    assert_eq!(fight.sim.health(dummy), 70);
     assert_eq!(fight.state(fighter).ready_at(), Tick::new(5));
     assert_eq!(fight.state(fighter).started(), None);
     let attackers = |fight: &Fight| {
@@ -168,9 +157,9 @@ fn an_attack_winds_up_and_strikes_each_period() {
     fight.sim.run_until(8);
     assert_eq!(attackers(&fight), [attack(fighter, 7)]);
     fight.sim.run_until(17);
-    assert_eq!(fight.health(dummy), Some(10));
+    assert_eq!(fight.sim.health(dummy), 10);
     fight.sim.run_until(18);
-    assert_eq!(fight.health(dummy), None);
+    assert!(fight.sim.try_get::<Pools>(dummy).is_none());
     assert_eq!(fight.state(fighter).target(), Some(dummy));
     // The next tick finds the target gone and drops it.
     fight.sim.run_until(19);
@@ -242,18 +231,10 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
     // its rate of 6 attacks a second, a period of 30 ÷ 6 = 5 ticks.
     let mut fight = Fight::new();
     let types = ["ground", "air", "structure"].map(|tag| {
-        let data = UnitTypeData {
-            tags: vec![DeclaredName::new(tag).unwrap()],
-            params: BTreeMap::new(),
-        };
+        let data = UnitTypeData::tagged(&[tag]);
         Units::load_type(&mut fight.sim.world, TypeScope::Mode, tag, &data)
     });
-    let hover = UnitTypeData {
-        tags: ["ground", "air"]
-            .map(|tag| DeclaredName::new(tag).unwrap())
-            .into(),
-        params: BTreeMap::new(),
-    };
+    let hover = UnitTypeData::tagged(&["ground", "air"]);
     let hover = Units::load_type(&mut fight.sim.world, TypeScope::Mode, "hover", &hover);
     let weapon = |fight: &mut Fight, aim: &str, range, windup, damage| {
         let view = fight.sim.world.non_send::<View>().clone();
@@ -294,7 +275,7 @@ fn a_unit_attacks_with_its_first_weapon_whose_filter_selects_the_target() {
         target
     });
     let [ground_unit, air_unit, structure, hovering] = targets;
-    let healths = |fight: &Fight| targets.map(|target| fight.health(target).unwrap());
+    let healths = |fight: &Fight| targets.map(|target| fight.sim.health(target));
     let underway = |fight: &Fight| {
         let slots = fight.sim.try_get::<ActionSlots>(unit).unwrap();
         slots.in_progress().map(InProgress::slot)
@@ -374,7 +355,7 @@ fn a_windup_its_attackers_states_stop_starts_again_and_spends_nothing() {
     assert_eq!(fight.state(early).started(), None);
     assert_eq!(fight.state(late).started(), Some(Tick::new(0)));
     fight.sim.run_until(3);
-    assert_eq!(fight.health(dummy), Some(100));
+    assert_eq!(fight.sim.health(dummy), 100);
     for unit in [early, late] {
         let state = fight.state(unit);
         assert_eq!(
@@ -389,7 +370,7 @@ fn a_windup_its_attackers_states_stop_starts_again_and_spends_nothing() {
     fight.sim.run_until(4);
     assert_eq!(fight.state(early).started(), Some(Tick::new(3)));
     fight.sim.run_until(6);
-    assert_eq!(fight.health(dummy), Some(40));
+    assert_eq!(fight.sim.health(dummy), 40);
     assert_eq!(fight.state(late).ready_at(), Tick::new(8));
 }
 
@@ -438,7 +419,7 @@ fn a_weapons_cost_is_checked_as_it_starts_and_strikes_and_paid_in_pools_and_reso
             .world
             .resource::<PlayerResources>()
             .amount(PlayerSlot::new(0), gold);
-        (mana, gold, fight.health(dummy).unwrap())
+        (mana, gold, fight.sim.health(dummy))
     };
     let add_gold = |fight: &mut Fight, amount| {
         let mut resources = fight.sim.world.resource_mut::<PlayerResources>();
@@ -480,7 +461,7 @@ fn a_windup_on_a_target_that_dies_spends_nothing() {
     // Both start in tick 0; the quick one strikes in tick 1 and kills the prey, before the slow
     // one's strike in tick 2. The slow one drops its target in tick 2 and is ready at once.
     fight.sim.run_until(2);
-    assert_eq!(fight.health(prey), None);
+    assert!(fight.sim.try_get::<Pools>(prey).is_none());
     assert_eq!(fight.state(slow).started(), Some(Tick::new(0)));
     fight.sim.run_until(3);
     assert_eq!(fight.state(slow), Attack::default());
@@ -500,7 +481,7 @@ fn strikes_in_one_tick_see_the_state_before_any_of_them() {
     // each with the other as its attacker.
     fight.sim.run_until(2);
     for (unit, other) in [(first, second), (second, first)] {
-        assert_eq!(fight.health(unit), Some(0));
+        assert_eq!(fight.sim.health(unit), 0);
         assert!(fight.sim.try_get::<Dead>(unit).is_some());
         assert_eq!(fight.state(unit).target(), None);
         let attackers = fight.sim.try_get::<RecentAttackers>(unit).unwrap();
@@ -696,7 +677,7 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
             fight.attack(attacker, target);
         }
         fight.sim.run_until(7);
-        assert_eq!(fight.health(hero), Some(40), "{window:?}");
+        assert_eq!(fight.sim.health(hero), 40, "{window:?}");
         fight.sim.run_until(8);
         // Each death holds its tick, 7, and the unit as it was: its team, and its owner, a
         // record that outlives the creep.
@@ -729,7 +710,7 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
         );
         // The hero stays, dead; the creep is gone by the tick's end.
         assert!(fight.sim.try_get::<Dead>(hero).is_some());
-        assert_eq!(fight.health(creep), None);
+        assert!(fight.sim.try_get::<Pools>(creep).is_none());
     }
 
     // The hero comes back at the start of its respawn tick, 10, at its spawn point with full
@@ -754,7 +735,7 @@ fn a_death_names_its_killer_and_assisters_and_the_dead_come_back_at_their_spawn(
         fight.sim.try_get::<Position>(hero).copied(),
         Some(at(-3, 0, 2))
     );
-    assert_eq!(fight.health(hero), Some(30));
+    assert_eq!(fight.sim.health(hero), 30);
     assert_eq!(
         fight
             .sim
@@ -841,15 +822,6 @@ impl Fight {
                 hit: None,
             });
     }
-
-    fn exact_health(&self, id: StableId) -> Num {
-        self.sim
-            .try_get::<Pools>(id)
-            .copied()
-            .unwrap()
-            .current(PoolId::FIRST)
-            .unwrap()
-    }
 }
 
 const ATTACK: DamageCause = DamageCause::Attack { roll: Num::ZERO };
@@ -872,7 +844,7 @@ fn the_pass_deals_damage_in_its_order_and_credits_the_kill() {
     fight.damage(Some(a), target, 60, DamageCause::Effect);
     fight.damage(None, target, 30, DamageCause::Effect);
     fight.sim.run_until(1);
-    assert_eq!(fight.health(target), Some(0));
+    assert_eq!(fight.sim.health(target), 0);
     let deaths = fight.sim.world.resource::<Deaths>();
     let died: Vec<_> = deaths
         .iter()
@@ -885,7 +857,7 @@ fn the_pass_deals_damage_in_its_order_and_credits_the_kill() {
     fight.damage(Some(c), target, 10, ATTACK);
     fight.sim.run_until(2);
     DamagePass::heal(&mut fight.sim.world, target, num(50));
-    assert_eq!(fight.health(target), Some(0));
+    assert_eq!(fight.sim.health(target), 0);
     let attackers = fight.sim.try_get::<RecentAttackers>(target).unwrap();
     assert!(attackers.iter().all(|attack| attack.source != c));
     assert_eq!(fight.sim.world.resource::<Deaths>().iter().count(), 0);
@@ -901,8 +873,8 @@ fn the_pass_deals_damage_in_its_order_and_credits_the_kill() {
     fight.damage(Some(c), hidden, 10, DamageCause::Effect);
     fight.sim.run_until(3);
     assert_eq!(
-        (fight.health(guarded), fight.health(hidden)),
-        (Some(100), Some(90))
+        (fight.sim.health(guarded), fight.sim.health(hidden)),
+        (100, 90)
     );
     let attackers = fight.sim.try_get::<RecentAttackers>(guarded).unwrap();
     assert_eq!(attackers.iter().count(), 0);
@@ -965,21 +937,21 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     fight.damage(Some(source), target, 35, ATTACK);
     fight.sim.run_until(1);
     assert_eq!(shields(&fight), [num(95)]);
-    assert_eq!(fight.exact_health(target), num(100));
-    assert_eq!(fight.exact_health(source), num(40));
+    assert_eq!(fight.sim.life(target), num(100));
+    assert_eq!(fight.sim.life(source), num(40));
     // An attack of 100: the last shield's 95, then 5 off health, which life steals 5 × 0.5,
     // halved: 1.25. Then a spell of 40, all off health: 40 × 0.25, halved, 5. 40 + 1.25 + 5.
     fight.damage(Some(source), target, 100, ATTACK);
     fight.damage(Some(source), target, 40, DamageCause::Effect);
     fight.sim.run_until(2);
     assert_eq!(shields(&fight), []);
-    assert_eq!(fight.exact_health(target), num(55));
-    assert_eq!(fight.exact_health(source), num(185) / 4);
+    assert_eq!(fight.sim.life(target), num(55));
+    assert_eq!(fight.sim.life(source), num(185) / 4);
     // A heal of 10 is halved too; one past the maximum stops at it.
     DamagePass::heal(&mut fight.sim.world, source, num(10));
-    assert_eq!(fight.exact_health(source), num(205) / 4);
+    assert_eq!(fight.sim.life(source), num(205) / 4);
     DamagePass::heal(&mut fight.sim.world, source, num(1000));
-    assert_eq!(fight.exact_health(source), num(100));
+    assert_eq!(fight.sim.life(source), num(100));
     // Without the bindings the same stats do nothing: at 50, an attack of 10 heals the source
     // nothing, and a heal of 10 is whole.
     super::internals::bind_life(&mut fight.sim.world, PoolId::FIRST);
@@ -988,10 +960,10 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     pools.take(PoolId::FIRST, num(50));
     fight.damage(Some(source), target, 10, ATTACK);
     fight.sim.run_until(3);
-    assert_eq!(fight.exact_health(target), num(45));
-    assert_eq!(fight.exact_health(source), num(50));
+    assert_eq!(fight.sim.life(target), num(45));
+    assert_eq!(fight.sim.life(source), num(50));
     DamagePass::heal(&mut fight.sim.world, source, num(10));
-    assert_eq!(fight.exact_health(source), num(60));
+    assert_eq!(fight.sim.life(source), num(60));
     // A restore reaches the pool it names, unscaled: a second pool at 50 of 100 takes 20 more,
     // and the life pool keeps its 60.
     let mana = PoolId::new(1).unwrap();

@@ -194,6 +194,13 @@ pub(crate) mod internals {
             view.share_type_names();
             unit_type
         }
+
+        /// Loads `data` as the next unit type of the mode, named for its place.
+        #[cfg(test)]
+        pub(crate) fn load_next_type(world: &mut World, data: &UnitTypeData) -> UnitType {
+            let name = format!("type {}", world.non_send::<View>().types_count());
+            Units::load_type(world, TypeScope::Mode, &name, data)
+        }
     }
 }
 

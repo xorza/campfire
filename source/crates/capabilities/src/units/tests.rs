@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::sync::Arc;
 
 use bevy_ecs::bundle::Bundle;
@@ -13,7 +12,8 @@ use crate::combat::internals::Armed;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::navigation::on_path::OnPath;
-use crate::scripts::error::{ApiError, CallError};
+use crate::scripts::error::ApiError;
+use crate::scripts::error::internals::FailureKind;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::level::Level;
 use crate::stats::pool_id::PoolId;
@@ -28,7 +28,6 @@ use crate::units::unit::Unit;
 use crate::units::unit_tags::UnitTags;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::bounds::Bounds;
-use crate::values::declared_name::DeclaredName;
 use crate::values::scalar::Scalar;
 use crate::values::stat::Stat;
 
@@ -53,12 +52,7 @@ struct Scene {
 
 impl Scene {
     fn new() -> Scene {
-        let limits = ScriptLimits {
-            per_call: 10_000,
-            player: 100_000,
-            think: 100_000,
-            mode: 100_000,
-        };
+        let limits = ScriptLimits::ROOMY;
         let scripts = ScriptBudgets::new(limits, 1);
         let sim = TestMatch::new(
             &[Capability::Stats, Capability::Combat],
@@ -70,18 +64,8 @@ impl Scene {
     }
 
     fn unit_type(&mut self, tags: &[&str], params: &[(&str, Scalar)]) -> UnitType {
-        let data = UnitTypeData {
-            tags: tags
-                .iter()
-                .map(|&tag| DeclaredName::new(tag).unwrap())
-                .collect(),
-            params: params
-                .iter()
-                .map(|&(name, value)| (DeclaredName::new(name).unwrap(), value))
-                .collect::<BTreeMap<_, _>>(),
-        };
-        let name = format!("type {}", self.sim.world.non_send::<View>().types_count());
-        Units::load_type(&mut self.sim.world, TypeScope::Mode, &name, &data)
+        let data = UnitTypeData::of(tags, params);
+        Units::load_next_type(&mut self.sim.world, &data)
     }
 
     /// A `unit()` of `team` with `parts`.
@@ -182,10 +166,7 @@ fn queries_select_living_units_by_filter_and_exact_distance() {
     ];
     for (call, refusal) in refusals {
         let error = scene.sim.read(call, of).unwrap_err();
-        assert!(
-            matches!(error, CallError::Api(api) if api == refusal),
-            "{call}: {error:?}"
-        );
+        assert_eq!(error.kind(), FailureKind::Api(refusal), "{call}: {error:?}");
     }
 }
 
@@ -232,7 +213,7 @@ fn a_position_measures_reach_and_distance_in_the_maps_metric() {
         .sim
         .probe("fn probe(ctx, of) { of.pos.within(of.pos, -1) }", of)
         .unwrap_err();
-    assert!(matches!(error, CallError::Api(ApiError::NegativeRadius)));
+    assert_eq!(error.kind(), FailureKind::Api(ApiError::NegativeRadius));
 }
 
 #[test]
@@ -341,17 +322,15 @@ fn a_handle_reads_its_units_fields_as_the_view_read_them() {
     ];
     for (expression, refusal) in refusals {
         let error = read(&mut scene, expression).unwrap_err();
-        assert!(
-            matches!(error, CallError::Api(api) if api == refusal),
-            "{expression}"
-        );
+        assert_eq!(error.kind(), FailureKind::Api(refusal), "{expression}");
     }
     let error = scene
         .sim
         .probe("fn probe(ctx, of) { of.attack_range }", bare)
         .unwrap_err();
-    assert!(
-        matches!(error, CallError::Api(ApiError::NoAttack)),
+    assert_eq!(
+        error.kind(),
+        FailureKind::Api(ApiError::NoAttack),
         "{error:?}"
     );
 
@@ -411,8 +390,9 @@ fn a_handle_reads_its_units_level_pools_and_stats() {
     ];
     for (unit, expression, refusal) in refusals {
         let error = read(&mut scene, unit, expression).unwrap_err();
-        assert!(
-            matches!(error, CallError::Api(api) if api == refusal),
+        assert_eq!(
+            error.kind(),
+            FailureKind::Api(refusal),
             "{expression}: {error:?}"
         );
     }

@@ -33,19 +33,19 @@ use crate::players::resource_id::ResourceId;
 use crate::projectiles::projectile::Projectile;
 use crate::projectiles::projectile_data::ProjectileData;
 use crate::scripts::error::ApiError;
+use crate::scripts::error::internals::FailureKind;
 use crate::scripts::script_budgets::ScriptBudgets;
+use crate::scripts::script_failures::internals::FailedCall;
 use crate::scripts::script_failures::{ScriptFailure, ScriptFailures};
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats;
 use crate::stats::Stats;
-use crate::stats::applier::Applier;
 use crate::stats::level::Level;
 use crate::stats::lifetime::Hold;
 use crate::stats::live_shares::LiveShares;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_data::{ModifierData, Reapply};
-use crate::stats::modifier_effect::ModifierEffect;
 use crate::stats::modifiers::Modifiers;
 use crate::stats::pool_id::PoolId;
 use crate::stats::stat_book::StatBook;
@@ -72,12 +72,6 @@ use crate::values::ranked::Ranked;
 use crate::values::scalar::Scalar;
 use crate::values::stat::Stat;
 
-const LIMITS: ScriptLimits = ScriptLimits {
-    per_call: 10_000,
-    player: 100_000,
-    think: 100_000,
-    mode: 100_000,
-};
 /// Lash Out as the reference Husk had it when these tests were written: the engine's tests keep
 /// their own copy, so a balance change to the reference hero changes none of them.
 const LASH_OUT: &str = r#"
@@ -284,7 +278,7 @@ struct Match {
 impl Match {
     fn new() -> Match {
         Match::with(
-            LIMITS,
+            ScriptLimits::ROOMY,
             &[Capability::Stats, Capability::Combat, Capability::Abilities],
         )
     }
@@ -383,10 +377,6 @@ impl Match {
         self.sim.step();
     }
 
-    fn health(&self, id: StableId) -> i64 {
-        self.pool_of(id, PoolId::FIRST)
-    }
-
     fn pool(&self, id: StableId) -> i64 {
         self.pool_of(id, MANA)
     }
@@ -419,6 +409,10 @@ impl Match {
             .filter(|underway| matches!(underway, InProgress::Order { .. }))
     }
 
+    fn failed_calls(&self) -> Vec<FailedCall> {
+        self.sim.world.non_send::<ScriptFailures>().calls()
+    }
+
     fn failures(&self) -> &[ScriptFailure] {
         self.sim.world.non_send::<ScriptFailures>().get()
     }
@@ -437,20 +431,13 @@ fn damage_of_a_kind_the_mode_does_not_declare_fails_the_cast() {
     let near = game.spawn(1, at(num(3), Num::ZERO, Num::ZERO), ());
     game.cast(husk, ActionTarget::None);
     // The call fails, so the cast applies nothing: no damage, no cost.
-    assert_eq!((game.health(near), game.pool(husk)), (500, 100));
-    let failures: Vec<_> = game
-        .failures()
-        .iter()
-        .map(|failure| (failure.unit, failure.hook, &failure.error))
-        .collect();
-    assert!(
-        matches!(
-            failures[..],
-            [(Some(unit), Hook::OnResolve, CallError::Api(ApiError::UnknownDamageKind))]
-                if unit == husk
-        ),
-        "{failures:?}"
-    );
+    assert_eq!((game.sim.health(near), game.pool(husk)), (500, 100));
+    let failed = FailedCall {
+        unit: Some(husk),
+        hook: Hook::OnResolve,
+        kind: FailureKind::Api(ApiError::UnknownDamageKind),
+    };
+    assert_eq!(game.failed_calls(), [failed]);
 }
 
 #[test]
@@ -476,7 +463,7 @@ fn lash_out_hits_every_enemy_within_its_radius_exactly() {
     // It costs 35 of 100, and its 9000 ms cooldown is 9 × 30 = 270 ticks.
     game.cast(husk, ActionTarget::None);
     let healths =
-        |game: &Match| [near, edge, beyond, high, ally, dead].map(|unit| game.health(unit));
+        |game: &Match| [near, edge, beyond, high, ally, dead].map(|unit| game.sim.health(unit));
     assert_eq!(healths(&game), [400, 400, 500, 400, 500, 500]);
     assert_eq!(game.pool(husk), 65);
     assert_eq!(game.slot(husk).ready_at, Tick::new(270));
@@ -510,7 +497,7 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
         Capability::Abilities,
         Capability::Orders,
     ];
-    let mut game = Match::with(LIMITS, &declared);
+    let mut game = Match::with(ScriptLimits::ROOMY, &declared);
     let strike = game.load("strike", &strike(), STRIKE);
     let caster = game.caster(strike, 1);
     let enemy = game.spawn(1, at(num(5), Num::ZERO, Num::ZERO), ());
@@ -535,7 +522,7 @@ fn ai_load_does_not_spend_what_a_cast_needs() {
 
     // The cast in the same tick draws from its player's pool, whole: 500 → 450, 100 → 90.
     game.cast(caster, ActionTarget::Unit(enemy));
-    assert_eq!(game.health(enemy), 450);
+    assert_eq!(game.sim.health(enemy), 450);
     assert_eq!(game.pool(caster), 90);
     // The think pool runs out after 10 of the spinning calls: the first 10 spinners, by stable
     // id, spend it, and the last stays due.
@@ -609,10 +596,10 @@ fn a_cast_passes_its_checks_or_does_nothing() {
     ] {
         let before = spending(&game, unit);
         game.cast(unit, target);
-        assert_eq!(game.health(enemy), 500, "{unit:?} at {target:?}");
+        assert_eq!(game.sim.health(enemy), 500, "{unit:?} at {target:?}");
         assert_eq!(spending(&game, unit), before, "{unit:?} at {target:?}");
     }
-    let healths = [far, ally, hidden].map(|unit| game.health(unit));
+    let healths = [far, ally, hidden].map(|unit| game.sim.health(unit));
     assert_eq!(healths, [500, 500, 500]);
     assert_eq!(game.pool(caster), 100);
 
@@ -620,12 +607,12 @@ fn a_cast_passes_its_checks_or_does_nothing() {
     // 20 − 4 rage. The cooldown, 1001 ms, is 30.03 ticks, rounded up to 31: the cast in tick 8 is
     // ready again in tick 39.
     game.cast(caster, ActionTarget::Unit(enemy));
-    assert_eq!(game.health(enemy), 450);
+    assert_eq!(game.sim.health(enemy), 450);
     assert_eq!((game.pool(caster), game.pool_of(caster, RAGE)), (90, 16));
     assert_eq!(game.slot(caster).ready_at, Tick::new(39));
     // A cost of exactly what is left is paid: 10 mana and 4 rage of 10 and 4, in tick 9.
     game.cast(exact, ActionTarget::Unit(enemy));
-    assert_eq!(game.health(enemy), 400);
+    assert_eq!(game.sim.health(enemy), 400);
     assert_eq!(spending(&game, exact), (0, 0, Tick::new(40)));
 
     // The range counts from the edge of each body: once the unit 6 m off has a body of 1 m, it
@@ -633,7 +620,7 @@ fn a_cast_passes_its_checks_or_does_nothing() {
     game.sim.insert(far, Body::new(Num::ONE).unwrap());
     game.sim.run_until(39);
     game.cast(caster, ActionTarget::Unit(far));
-    assert_eq!(game.health(far), 450);
+    assert_eq!(game.sim.health(far), 450);
 }
 
 #[test]
@@ -664,18 +651,18 @@ fn a_cost_in_a_pool_and_a_player_resource_is_checked_and_paid_together() {
     };
     // A unit no player owns pays no player resource, so it may not cast.
     game.cast(ownerless, ActionTarget::Unit(enemy));
-    assert_eq!(game.health(enemy), 500);
+    assert_eq!(game.sim.health(enemy), 500);
     assert_eq!(game.pool(ownerless), 100);
     // Player 0's caster pays both in tick 1, 100 − 10 mana and 40 − 30 gold, as the strike
     // lands.
     game.cast(caster, ActionTarget::Unit(enemy));
-    assert_eq!(game.health(enemy), 450);
+    assert_eq!(game.sim.health(enemy), 450);
     assert_eq!(held(&game, caster), (90, 10));
     // Ready again in tick 1 + 31 = 32, the cooldown's 1001 ms in ticks rounded up, it may not
     // cast with 10 gold of 30: nothing is spent, and the cooldown does not start again.
     game.sim.run_until(32);
     game.cast(caster, ActionTarget::Unit(enemy));
-    assert_eq!(game.health(enemy), 450);
+    assert_eq!(game.sim.health(enemy), 450);
     assert_eq!(held(&game, caster), (90, 10));
     assert_eq!(game.slot(caster).ready_at, Tick::new(32));
 }
@@ -734,14 +721,14 @@ fn a_cast_its_casters_tags_stop_is_kept_and_an_interrupted_one_spends_nothing() 
     game.sim.set_blocks(caster, &[]);
     game.sim.run_until(8);
     assert_eq!(game.casting(caster), ordered);
-    assert_eq!((game.health(enemy), game.pool(caster)), (500, 100));
+    assert_eq!((game.sim.health(enemy), game.pool(caster)), (500, 100));
     assert_eq!(game.slot(caster).ready_at, Tick::new(0));
     // Free in tick 8: it starts and resolves in tick 11, for 50 and 10 of the pool; ready again
     // 31 ticks later, in tick 42.
     game.sim.set_blocks(caster, &[]);
     game.sim.run_until(12);
     assert_eq!(game.casting(caster), None);
-    assert_eq!((game.health(enemy), game.pool(caster)), (450, 90));
+    assert_eq!((game.sim.health(enemy), game.pool(caster)), (450, 90));
     assert_eq!(game.slot(caster).ready_at, Tick::new(42));
 }
 
@@ -790,12 +777,14 @@ fn a_failed_script_changes_nothing_and_fails_the_same_way_everywhere() {
                 assert_eq!(failures[0].hook, Hook::OnResolve);
                 assert!(expected(&failures[0].error), "{:?}", failures[0].error);
                 let mut budgets = game.sim.world.resource_mut::<ScriptBudgets>();
-                spent
-                    .push(LIMITS.player - budgets.get_mut(Pool::Player(PlayerSlot::new(0))).left());
+                spent.push(
+                    ScriptLimits::ROOMY.player
+                        - budgets.get_mut(Pool::Player(PlayerSlot::new(0))).left(),
+                );
             } else {
                 game.sim.step();
             }
-            assert_eq!(game.health(enemy), 500);
+            assert_eq!(game.sim.health(enemy), 500);
             assert_eq!(game.pool(caster), 100);
             assert_eq!(game.slot(caster).ready_at, Tick::new(0));
             hashes.push(game.sim.registry.hash(&game.sim.world));
@@ -803,7 +792,7 @@ fn a_failed_script_changes_nothing_and_fails_the_same_way_everywhere() {
         assert_eq!(hashes[0], hashes[1], "{script}");
         if script == spin {
             // The call ran exactly its limit of operations.
-            assert_eq!(spent, [LIMITS.per_call]);
+            assert_eq!(spent, [ScriptLimits::ROOMY.per_call]);
         }
     }
 }
@@ -816,8 +805,8 @@ fn a_cast_draws_from_its_casters_player_pool() {
     let mut left = Vec::new();
     for spins in [true, false] {
         let limits = ScriptLimits {
-            player: LIMITS.per_call,
-            ..LIMITS
+            player: ScriptLimits::ROOMY.per_call,
+            ..ScriptLimits::ROOMY
         };
         let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
         let mut game = Match::with(limits, &declared);
@@ -858,10 +847,14 @@ fn a_cast_draws_from_its_casters_player_pool() {
             ));
         }
         // The strike's 50 true damage: 500 → 450, and its cost of 10: 100 → 90.
-        assert_eq!(game.health(enemy), 450);
+        assert_eq!(game.sim.health(enemy), 450);
         assert_eq!(game.pool(striker), 90);
         let mut budgets = game.sim.world.resource_mut::<ScriptBudgets>();
-        let spent = if spins { 0 } else { LIMITS.per_call };
+        let spent = if spins {
+            0
+        } else {
+            ScriptLimits::ROOMY.per_call
+        };
         assert_eq!(
             budgets.get_mut(Pool::Player(PlayerSlot::new(0))).left(),
             spent
@@ -869,7 +862,7 @@ fn a_cast_draws_from_its_casters_player_pool() {
         left.push(budgets.get_mut(Pool::Player(PlayerSlot::new(1))).left());
     }
     assert_eq!(left[0], left[1]);
-    assert!(left[0] < LIMITS.per_call);
+    assert!(left[0] < ScriptLimits::ROOMY.per_call);
 }
 
 #[test]
@@ -984,10 +977,7 @@ fn a_capability_field_reads_its_param_at_each_rank() {
 fn a_unit_target_is_one_its_filter_selects_tag_and_all() {
     let mut game = Match::new();
     let mut load_type = |name: &str| {
-        let data = UnitTypeData {
-            tags: vec![DeclaredName::new(name).unwrap()],
-            params: BTreeMap::new(),
-        };
+        let data = UnitTypeData::tagged(&[name]);
         Units::load_type(&mut game.sim.world, TypeScope::Mode, name, &data)
     };
     let (hero, creep) = (load_type("avatar"), load_type("creep"));
@@ -999,15 +989,15 @@ fn a_unit_target_is_one_its_filter_selects_tag_and_all() {
     let enemy_hero = game.spawn(1, at(num(4), Num::ZERO, Num::ZERO), hero);
     // The creep is an enemy, but no hero: the cast goes nowhere. The hero takes 50.
     game.cast(caster, ActionTarget::Unit(enemy_creep));
-    assert_eq!(game.health(enemy_creep), 500);
+    assert_eq!(game.sim.health(enemy_creep), 500);
     game.cast(caster, ActionTarget::Unit(enemy_hero));
-    assert_eq!(game.health(enemy_hero), 450);
+    assert_eq!(game.sim.health(enemy_hero), 450);
 }
 
 #[test]
 fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
     let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
-    let mut game = Match::with(LIMITS, &declared);
+    let mut game = Match::with(ScriptLimits::ROOMY, &declared);
     game.load_stats();
     // A guard whose shield is Lash Out's damage at its rank: 75, then 100.
     let guard = ModifierData {
@@ -1066,7 +1056,10 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
 
     // A weapon's passive holds as well, in a match with no abilities: a ward of 40 from its
     // first tick.
-    let mut game = Match::with(LIMITS, &[Capability::Stats, Capability::Combat]);
+    let mut game = Match::with(
+        ScriptLimits::ROOMY,
+        &[Capability::Stats, Capability::Combat],
+    );
     game.load_stats();
     let ward = ModifierData {
         shield: Some(int(40)),
@@ -1104,7 +1097,7 @@ fn a_passive_is_held_while_its_ability_has_a_rank_and_is_ready() {
 #[test]
 fn a_cast_applies_a_modifier_from_its_caster_with_its_abilitys_params() {
     let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
-    let mut game = Match::with(LIMITS, &declared);
+    let mut game = Match::with(ScriptLimits::ROOMY, &declared);
     game.load_stats();
     let mark = ModifierData {
         script: None,
@@ -1189,7 +1182,7 @@ fn on_resolve(ctx, caster, target) {
 /// tick's state hash, and whether the target's tags block its moving.
 fn stun_run() -> Vec<(StateHash, bool)> {
     let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
-    let mut game = Match::with(LIMITS, &declared);
+    let mut game = Match::with(ScriptLimits::ROOMY, &declared);
     game.load_stats();
     let stun = ModifierData {
         script: None,
@@ -1271,7 +1264,7 @@ fn on_resolve(ctx, caster, target) {
     // From 40 health and 50 mana: 30 healed and 20 restored as the effects apply, then the
     // cost of 35: 70 and 35.
     game.cast(caster, ActionTarget::None);
-    assert_eq!((game.health(caster), game.pool(caster)), (70, 35));
+    assert_eq!((game.sim.health(caster), game.pool(caster)), (70, 35));
 
     let mut game = Match::new();
     game.load_stats();
@@ -1279,19 +1272,12 @@ fn on_resolve(ctx, caster, target) {
     let ability = game.load("lash_out", &lash_out(), negative);
     let caster = game.caster(ability, 1);
     game.cast(caster, ActionTarget::None);
-    let failures: Vec<_> = game
-        .failures()
-        .iter()
-        .map(|failure| (failure.unit, failure.hook, &failure.error))
-        .collect();
-    assert!(
-        matches!(
-            failures[..],
-            [(Some(unit), Hook::OnResolve, CallError::Api(ApiError::NegativeHeal))]
-                if unit == caster
-        ),
-        "{failures:?}"
-    );
+    let failed = FailedCall {
+        unit: Some(caster),
+        hook: Hook::OnResolve,
+        kind: FailureKind::Api(ApiError::NegativeHeal),
+    };
+    assert_eq!(game.failed_calls(), [failed]);
     assert_eq!(game.pool(caster), 100);
 }
 
@@ -1328,7 +1314,7 @@ impl Match {
     /// `source`, as `scripted` declares them.
     fn with_modifiers(source: &str, modifiers: &[(&str, ModifierData)]) -> Match {
         let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
-        let mut game = Match::with(LIMITS, &declared);
+        let mut game = Match::with(ScriptLimits::ROOMY, &declared);
         game.load_stats();
         let script = Units::compile(&mut game.sim.world, source).unwrap();
         let mut sorted = modifiers.to_vec();
@@ -1351,18 +1337,8 @@ impl Match {
         if !self.sim.world.entity(entity).contains::<Modifiers>() {
             self.sim.insert(unit, Modifiers::default());
         }
-        let applier = Applier {
-            source: Some(source),
-            ability: None,
-            rank: 1,
-            hold: None,
-        };
-        let add = ModifierEffect::Add {
-            target: unit,
-            id,
-            duration: None,
-        };
-        Stats::apply_effect(&mut self.sim.world, add, applier);
+        let from = Some((source, None, 1));
+        stats::internals::give_modifier(&mut self.sim.world, unit, id, from, false);
     }
 
     /// Each failed call of the tick: the unit it ran for and its hook.
@@ -1412,7 +1388,7 @@ fn on_interval(ctx, m) { throw "interval"; }
             attackers.record(assister, Tick::new(0), &index);
         });
     game.sim.step();
-    assert_eq!(game.health(victim), 0);
+    assert_eq!(game.sim.health(victim), 0);
     assert_eq!(
         game.calls(),
         [
@@ -1486,21 +1462,14 @@ fn on_damage_taken(ctx, m, d) {
     game.sim.step();
     // The attack's 30, then the extra attack's 30, which adds none: 500 − 60. The echoer's 10,
     // then an echo of 1 from each hook at depths 1 to 15; the one at 16 fails: 500 − 10 − 15.
-    assert_eq!(game.health(victim), 440);
-    assert_eq!(game.health(echoer), 475);
-    let failures: Vec<_> = game
-        .failures()
-        .iter()
-        .map(|failure| (failure.unit, failure.hook, failure.error.clone()))
-        .collect();
-    assert!(
-        matches!(
-            failures.as_slice(),
-            [(Some(unit), Hook::OnDamageTaken, CallError::Api(ApiError::ChainTooDeep))]
-                if *unit == echoer
-        ),
-        "{failures:?}"
-    );
+    assert_eq!(game.sim.health(victim), 440);
+    assert_eq!(game.sim.health(echoer), 475);
+    let failed = FailedCall {
+        unit: Some(echoer),
+        hook: Hook::OnDamageTaken,
+        kind: FailureKind::Api(ApiError::ChainTooDeep),
+    };
+    assert_eq!(game.failed_calls(), [failed]);
 }
 
 /// The stats of the scaling tests' mode, in its order: attack damage, an engine stat, first.
@@ -1568,7 +1537,7 @@ fn decimal(text: &str) -> Num {
 #[test]
 fn a_scaling_param_reads_its_sources_level_stats_and_bonus() {
     let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
-    let mut game = Match::with(LIMITS, &declared);
+    let mut game = Match::with(ScriptLimits::ROOMY, &declared);
     // The caster's type gives attack damage 50 + 5 a level, so 60 at level 3; a modifier adds 20
     // more and 40 ability power.
     let caster_type = Units::load_type(
@@ -1633,7 +1602,7 @@ fn on_resolve(ctx, caster, target) {
     // deals, 500 → 230, and the mark lasts: 270 ms at 30 ticks a second, 8.1 ticks, up to 9,
     // so it ends as tick t + 10 starts.
     assert!(game.failures().is_empty(), "{:?}", game.failures());
-    assert_eq!(game.health(target), 230);
+    assert_eq!(game.sim.health(target), 230);
     let mark = Stats::modifier(&game.sim.world, 0, "mark").unwrap();
     let marked = game
         .sim
@@ -1661,7 +1630,7 @@ struct VeilMatch {
 impl VeilMatch {
     fn new() -> VeilMatch {
         let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
-        let mut game = Match::with(LIMITS, &declared);
+        let mut game = Match::with(ScriptLimits::ROOMY, &declared);
         let veil_type = Units::load_type(
             &mut game.sim.world,
             TypeScope::Mode,
@@ -1800,7 +1769,7 @@ fn a_live_change_keeps_its_last_value_when_its_source_is_gone_and_none_at_no_sta
 #[test]
 fn a_delivery_hook_reads_its_projectile_and_the_unit_its_cast_aimed_at() {
     let mut game = Match::with(
-        LIMITS,
+        ScriptLimits::ROOMY,
         &[
             Capability::Stats,
             Capability::Combat,
@@ -1879,7 +1848,10 @@ fn a_delivery_hook_reads_its_projectile_and_the_unit_its_cast_aimed_at() {
     // target 3 m out in tick 6, hits it, and ends there, as it stops on a hit.
     game.cast(caster, ActionTarget::Unit(target));
     game.sim.run_until(7);
-    assert_eq!((game.health(target), game.health(caster)), (450, 492));
+    assert_eq!(
+        (game.sim.health(target), game.sim.health(caster)),
+        (450, 492)
+    );
     assert!(game.failures().is_empty(), "{:?}", game.failures());
 }
 
@@ -1898,7 +1870,7 @@ fn a_script_launches_a_projectile_only_in_the_form_its_type_flies() {
     for homing in [false, true] {
         for (call, at_unit) in forms {
             let mut game = Match::with(
-                LIMITS,
+                ScriptLimits::ROOMY,
                 &[
                     Capability::Stats,
                     Capability::Combat,
@@ -2010,7 +1982,7 @@ fn fan_of_frost_from_data_alone_hits_exactly_the_units_in_reach() {
     // hits deal the `damage` param, 30, and apply `chilled`; and each hit restores 2 mana to the
     // caster.
     let mut game = Match::with(
-        LIMITS,
+        ScriptLimits::ROOMY,
         &[
             Capability::Stats,
             Capability::Combat,
@@ -2081,7 +2053,7 @@ fn fan_of_frost_from_data_alone_hits_exactly_the_units_in_reach() {
             .get::<Modifiers>(entity)
             .unwrap()
             .get(chill, Some(caster));
-        (game.health(unit), chilled.is_some())
+        (game.sim.health(unit), chilled.is_some())
     };
     let reached = enemies.map(struck);
     assert_eq!(
@@ -2113,7 +2085,7 @@ fn an_area_reaches_the_bodies_within_its_radius_once_at_its_delay_and_ends() {
             Capability::Abilities,
             Capability::Areas,
         ];
-        let mut game = Match::with(LIMITS, &declared);
+        let mut game = Match::with(ScriptLimits::ROOMY, &declared);
         let blast = Units::load_type(
             &mut game.sim.world,
             TypeScope::Mode,
@@ -2173,12 +2145,16 @@ fn an_area_reaches_the_bodies_within_its_radius_once_at_its_delay_and_ends() {
             ActionTarget::Point(at(center, Num::ZERO, Num::ZERO)),
         );
         game.sim.run_until(trigger);
-        assert_eq!(units.map(|unit| game.health(unit)), [500; 6], "{delay_ms}");
+        assert_eq!(
+            units.map(|unit| game.sim.health(unit)),
+            [500; 6],
+            "{delay_ms}"
+        );
         assert_eq!(areas(&mut game), 1);
         // It triggers, deals 50 to each enemy it reaches, ends at once with no duration, and
         // its `on_end` deals 7 to its caster.
         game.sim.run_until(trigger + 1);
-        let healths = units.map(|unit| game.health(unit));
+        let healths = units.map(|unit| game.sim.health(unit));
         assert_eq!(healths, [450, 500, 450, 450, 500, 493], "{delay_ms}");
         assert_eq!(areas(&mut game), 0);
         assert!(game.failures().is_empty(), "{:?}", game.failures());
@@ -2193,7 +2169,7 @@ fn an_area_holds_its_inside_modifiers_by_attitude_and_hits_what_its_filter_selec
         Capability::Abilities,
         Capability::Areas,
     ];
-    let mut game = Match::with(LIMITS, &declared);
+    let mut game = Match::with(ScriptLimits::ROOMY, &declared);
     let world = &mut game.sim.world;
     let grunt = UnitTypeData::tagged(&["grunt"]);
     let grunt = Units::load_type(world, TypeScope::Mode, "grunt", &grunt);
@@ -2279,7 +2255,7 @@ fn an_area_holds_its_inside_modifiers_by_attitude_and_hits_what_its_filter_selec
     game.sim.run_until(1);
     assert_eq!(held(&game), inside);
     game.sim.run_until(2);
-    let healths = units.map(|unit| game.health(unit));
+    let healths = units.map(|unit| game.sim.health(unit));
     assert_eq!(healths, [500, 500, 450, 500, 500, 500, 500]);
     // It ends in tick 3, and its modifiers with it.
     game.sim.run_until(3);
@@ -2317,6 +2293,6 @@ fn a_cast_under_way_ends_when_its_caster_dies() {
     game.sim.world.entity_mut(entity).remove::<Dead>();
     game.give_pools(caster, 100, 20);
     game.sim.run_until(12);
-    assert_eq!(game.health(enemy), 500);
+    assert_eq!(game.sim.health(enemy), 500);
     assert_eq!(game.pool(caster), 100);
 }

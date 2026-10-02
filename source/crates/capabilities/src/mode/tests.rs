@@ -50,6 +50,7 @@ use crate::progression::track_data::{Thresholds, TrackData};
 use crate::progression::track_set::TrackSet;
 use crate::scripts::call_start::CallStart;
 use crate::scripts::error::ApiError;
+use crate::scripts::error::internals::FailureKind;
 use crate::scripts::hook::ScriptRole;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
@@ -104,12 +105,6 @@ use crate::vision::vision_grid::VisionGrid;
 
 /// 10 ticks a second: 100 ms is a tick.
 const RATE: TickRate = TickRate::new(NonZeroU32::new(10).unwrap());
-const LIMITS: ScriptLimits = ScriptLimits {
-    per_call: 10_000,
-    player: 100_000,
-    think: 100_000,
-    mode: 100_000,
-};
 
 /// A mode that records what its hooks see in its state, and acts on its players' inputs.
 /// The reference MOBA's damage kinds, and the stats its `calc_damage` reads.
@@ -698,10 +693,7 @@ impl Game {
         let layers = files.data.navigation.layers.iter();
         Units::declare_tags(world, layers.map(DeclaredName::as_str));
         let mut load = |name: &str, tag: &str| {
-            let data = UnitTypeData {
-                tags: vec![DeclaredName::new(tag).unwrap()],
-                params: BTreeMap::new(),
-            };
+            let data = UnitTypeData::tagged(&[tag]);
             Units::load_type(world, TypeScope::Mode, name, &data)
         };
         let (grunt_type, tower_type) = (load("grunt", "grunt"), load("tower", "tower"));
@@ -828,7 +820,7 @@ fn state(phase: &str, seen: i64, count: i64, inputs: i64) -> [StateValue; 4] {
 
 #[test]
 fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early() {
-    let mut game = Game::new(SCRIPT, LIMITS);
+    let mut game = Game::new(SCRIPT, ScriptLimits::ROOMY);
     // Before tick 0: the map's tower, 0, then the match start's spawns in order: the camp's
     // grunt, 1, at its marker; team a's spawn group of two, 2 and 3, at the path's start; team
     // b's spawn group of one, 4, at its end. Teams a and b are 0 and 1, neutral 2.
@@ -894,7 +886,7 @@ fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early
 
 #[test]
 fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
-    let mut game = Game::new(SCRIPT, LIMITS);
+    let mut game = Game::new(SCRIPT, ScriptLimits::ROOMY);
     let spells = ModeInput {
         name: "spells",
         value: InputValue::StringList(vec!["blink"]),
@@ -984,7 +976,7 @@ fn on_mode_input(ctx, player, name, value) {
     }
 }
 "#;
-    let mut game = Game::new(learner, LIMITS);
+    let mut game = Game::new(learner, ScriptLimits::ROOMY);
     let spells = ModeInput {
         name: "spells",
         value: InputValue::StringList(vec!["blink"]),
@@ -1046,7 +1038,7 @@ fn on_level_up(ctx, unit, track, level) {
     }
 }
 "#;
-    let mut game = Game::new(leveler, LIMITS);
+    let mut game = Game::new(leveler, ScriptLimits::ROOMY);
     game.tick(&[(0, input("hero", "hero-x"))]);
     let mut owned = game.sim.world.query_filtered::<Entity, With<Owner>>();
     let hero = owned.single(&game.sim.world).unwrap();
@@ -1115,12 +1107,9 @@ fn on_mode_input(ctx, player, name, value) {
 }
 "#;
     let script = format!("{killer}{DEATHS_3V3}");
-    let mut game = Game::new(&script, LIMITS);
+    let mut game = Game::new(&script, ScriptLimits::ROOMY);
     // The 3v3's tag of its cores, which `on_unit_died` reads first.
-    let core = UnitTypeData {
-        tags: vec![DeclaredName::new("core").unwrap()],
-        params: BTreeMap::new(),
-    };
+    let core = UnitTypeData::tagged(&["core"]);
     Units::load_type(&mut game.sim.world, TypeScope::Mode, "core", &core);
     game.tick(&[(0, input("hero", "hero-x")), (2, input("hero", "hero-y"))]);
     let hero = |game: &mut Game, slot| {
@@ -1162,7 +1151,7 @@ fn on_mode_input(ctx, player, name, value) {
     pick(ctx, player, value);
 }
 ";
-    let mut game = Game::new(picker, LIMITS);
+    let mut game = Game::new(picker, ScriptLimits::ROOMY);
     game.tick(&[(0, input("hero", "hero-x"))]);
     // A grunt for 30 mana and 5 gold, in 300 ms, 3 ticks at 10 a second.
     let int = |value| Ranked::One(Number::Value(Scalar::Int(value)));
@@ -1301,7 +1290,7 @@ fn on_mode_input(ctx, player, name, value) {
     }
 }
 "#;
-    let mut game = Game::new(blesser, LIMITS);
+    let mut game = Game::new(blesser, ScriptLimits::ROOMY);
     game.tick(&[(0, input("hero", "hero-x"))]);
     let mut owned = game.sim.world.query_filtered::<Entity, With<Owner>>();
     let hero = owned.single(&game.sim.world).unwrap();
@@ -1358,7 +1347,7 @@ fn on_mode_input(ctx, player, name, value) {
 
 #[test]
 fn resources_add_up_and_queries_see_teams_paths_and_the_dead() {
-    let mut game = Game::new(SCRIPT, LIMITS);
+    let mut game = Game::new(SCRIPT, ScriptLimits::ROOMY);
     game.tick(&[(0, input("hero", "hero-x")), (2, input("hero", "hero-y"))]);
     // Hero Y carries its passive, the blessing, from itself, with no end.
     let mut owned = game.sim.world.query::<(&StableId, &Owner, &Modifiers)>();
@@ -1459,7 +1448,7 @@ fn on_mode_input(ctx, player, name, value) {
     let limits = ScriptLimits {
         per_call: 1000,
         player: 1000,
-        ..LIMITS
+        ..ScriptLimits::ROOMY
     };
     let mut game = Game::new(spin, limits);
     let inputs = |game: &Game| game.field("inputs");
@@ -1496,9 +1485,10 @@ fn a_mode_whose_start_fails_starts_no_match() {
         let failing = format!(
             "fn on_match_start(ctx) {{ ctx.spawn_unit(\"{unit_type}\", \"a\", ctx.map.markers(\"camp\")[0].pos); }}"
         );
-        let failed = Game::start(&failing, LIMITS, mode_files()).err();
-        assert!(
-            matches!(failed, Some(CallError::Api(ApiError::UnknownUnitType))),
+        let failed = Game::start(&failing, ScriptLimits::ROOMY, mode_files()).err();
+        assert_eq!(
+            failed.as_ref().map(CallError::kind),
+            Some(FailureKind::Api(ApiError::UnknownUnitType)),
             "{unit_type}: {failed:?}"
         );
     }
@@ -1522,7 +1512,7 @@ fn on_timer(ctx, name, data) {
     let limits = ScriptLimits {
         per_call: 1000,
         mode: 1500,
-        ..LIMITS
+        ..ScriptLimits::ROOMY
     };
     let mut game = Game::new(spin, limits);
     let due = |game: &Game| {
@@ -1571,7 +1561,7 @@ fn on_level_up(ctx, unit, track, level) {
 "#;
     let limits = ScriptLimits {
         mode: 500,
-        ..LIMITS
+        ..ScriptLimits::ROOMY
     };
     let mut game = Game::new(script, limits);
     game.tick(&[(0, input("hero", "hero-x"))]);
@@ -1661,7 +1651,7 @@ fn on_mode_input(ctx, player, name, value) {
     ctx.respawn(ctx.units_tagged(value)[0], 100);
 }
 "#;
-    let mut game = Game::new(script, LIMITS);
+    let mut game = Game::new(script, ScriptLimits::ROOMY);
     // Units: the tower 0 of a, the neutral grunt 1 at (0, 0), a's grunts 2 and 3, b's grunt 4. The
     // neutral grunt stands at (3, 0) when b's grunt strikes it for its 10 health, in tick 0; a's
     // grunt 2 struck it in the same tick, within the window of 10 ticks.
@@ -1761,7 +1751,7 @@ fn on_mode_input(ctx, player, name, value) {
     }
 }
 "#;
-    let mut game = Game::new(script, LIMITS);
+    let mut game = Game::new(script, ScriptLimits::ROOMY);
     // A second end in the same call fails the call, which ends nothing; so does a team the mode
     // does not have. The timer fires at the end of ticks 0 and 1.
     game.tick(&[(0, input("probe", "a"))]);
@@ -1789,7 +1779,7 @@ fn on_mode_input(ctx, player, name, value) {
     assert_eq!(game.sim.world.resource::<SimTick>().start(), Tick::new(4));
 
     // `end(())` is a draw.
-    let mut game = Game::new(script, LIMITS);
+    let mut game = Game::new(script, ScriptLimits::ROOMY);
     game.tick(&[(0, input("phase", "draw"))]);
     let draw = MatchEnd::new(Tick::new(0), MatchResult::Draw);
     assert_eq!(game.sim.world.get_resource::<MatchEnd>(), Some(&draw));
@@ -1886,17 +1876,11 @@ impl Game {
                 hit: None,
             });
     }
-
-    fn health(&self, id: StableId) -> Num {
-        let entity = self.sim.entity(id);
-        let pools = self.sim.world.get::<Pools>(entity).unwrap();
-        pools.current(PoolId::FIRST).unwrap()
-    }
 }
 
 #[test]
 fn the_3v3s_calc_damage_weighs_each_hit_exactly() {
-    let mut game = Game::new(calc_damage_3v3(), LIMITS);
+    let mut game = Game::new(calc_damage_3v3(), ScriptLimits::ROOMY);
     let half = Num::ONE / 2;
     // The source deals 50% more, crits on a roll below 0.25, ignores half of armor, then 10
     // more.
@@ -1940,8 +1924,8 @@ fn the_3v3s_calc_damage_weighs_each_hit_exactly() {
     game.damage(None, exposed, 100, "physical", lowest);
     game.tick(&[]);
     assert!(game.failures().is_empty());
-    assert_eq!(game.health(armored), num(1000 - 95 - 75));
-    assert_eq!(game.health(exposed), num(1000 - 225 - 150 - 150));
+    assert_eq!(game.sim.life(armored), num(1000 - 95 - 75));
+    assert_eq!(game.sim.life(exposed), num(1000 - 225 - 150 - 150));
 }
 
 #[test]
@@ -1962,7 +1946,10 @@ fn calc_heal(ctx, h) {
 }
 "#;
     // A mode pool of one operation, which no call of `calc_damage` draws from.
-    let limits = ScriptLimits { mode: 1, ..LIMITS };
+    let limits = ScriptLimits {
+        mode: 1,
+        ..ScriptLimits::ROOMY
+    };
     let mut game = Game::new(script, limits);
     let source = game.fighter(0, &[]);
     let target = game.fighter(1, &[]);
@@ -1977,7 +1964,7 @@ fn calc_heal(ctx, h) {
         game.failures(),
         [Some(ApiError::PureCall), Some(ApiError::NotAnAmount)]
     );
-    assert_eq!(game.health(target), num(950));
+    assert_eq!(game.sim.life(target), num(950));
     let timers = game.sim.world.resource::<Timers>();
     assert!(timers.due(Tick::new(u64::MAX)).is_none());
 
@@ -1995,7 +1982,7 @@ fn calc_heal(ctx, h) {
     }
     game.tick(&[]);
     assert_eq!(game.failures(), []);
-    assert_eq!(game.health(target), num(961));
+    assert_eq!(game.sim.life(target), num(961));
 }
 
 impl Game {
@@ -2051,7 +2038,7 @@ fn probe(ctx, unit) {
     [ctx.teams, ctx.map.paths, ctx.avatars().len(), ctx.units_tagged("avatar").len()]
 }
 "#;
-    let mut game = Game::new(SCRIPT, LIMITS);
+    let mut game = Game::new(SCRIPT, ScriptLimits::ROOMY);
     game.tick(&[(0, input("hero", "hero-x"))]);
     let actor = game.fighter(0, &[]);
     let target = game.fighter(1, &[]);
@@ -2085,9 +2072,9 @@ fn probe(ctx, unit) {
             (Ok(1), Ok(1)),
             "{role:?}"
         );
-        assert_eq!(game.health(target), num(980 - 6 * at), "{role:?}");
+        assert_eq!(game.sim.life(target), num(980 - 6 * at), "{role:?}");
         game.tick(&[]);
-        assert_eq!(game.health(target), num(980 - 6 * (at + 1)), "{role:?}");
+        assert_eq!(game.sim.life(target), num(980 - 6 * (at + 1)), "{role:?}");
         let pool = game.sim.world.get::<Pools>(entity).unwrap().current(MANA);
         assert_eq!(pool, Some(num(50 + 3 * (at + 1))), "{role:?}");
     }
@@ -2101,8 +2088,9 @@ fn probe(ctx, unit) {
     for (call, role) in refused {
         let source = format!("fn probe(ctx, unit) {{ {call} }}");
         let failed = game.probe(&source, role, actor, actor).unwrap_err();
-        assert!(
-            matches!(failed, CallError::Api(ApiError::NotForRole)),
+        assert_eq!(
+            failed.kind(),
+            FailureKind::Api(ApiError::NotForRole),
             "{call} in {role:?}: {failed}"
         );
     }
@@ -2112,7 +2100,7 @@ fn probe(ctx, unit) {
 fn a_script_turns_a_neutral_pair_hostile_and_filters_follow_it() {
     // Team a and the neutral team regard each other neutral, as the mode declares; b is hostile to
     // both. At the origin: a's and b's fighters, and the map's neutral grunt.
-    let mut game = Game::new(SCRIPT, LIMITS);
+    let mut game = Game::new(SCRIPT, ScriptLimits::ROOMY);
     game.tick(&[]);
     let a = game.fighter(0, &[]);
     game.fighter(1, &[]);
@@ -2152,10 +2140,7 @@ fn probe(ctx, unit) {
     ] {
         let source = format!("fn probe(ctx, unit) {{ {call} }}");
         let failed = game.probe(&source, ScriptRole::Mode, a, a).unwrap_err();
-        assert!(
-            matches!(failed, CallError::Api(api) if api == refused),
-            "{call}: {failed}"
-        );
+        assert_eq!(failed.kind(), FailureKind::Api(refused), "{call}: {failed}");
     }
 }
 
@@ -2176,7 +2161,7 @@ fn on_mode_input(ctx, player, name, value) {
 "#;
     let mut files = mode_files();
     files.map = raised(files.map, 3);
-    let mut game = Game::start(script, LIMITS, files).unwrap();
+    let mut game = Game::start(script, ScriptLimits::ROOMY, files).unwrap();
     assert_eq!(*game.sim.world.resource::<Metric>(), Metric::Spatial);
     let up = |x| Position::new(Vec3::new(num(x), num(3), Num::ZERO)).unwrap();
     let walkers = |game: &Game| <[_; 3]>::try_from(&game.units()[1..]).unwrap();
@@ -2234,7 +2219,7 @@ fn on_mode_input(ctx, player, name, value) {
     }
 }
 "#;
-    let mut game = Game::new(script, LIMITS);
+    let mut game = Game::new(script, ScriptLimits::ROOMY);
     let probe = |value| input("probe", value);
     let read = |game: &Game| ["kind", "seen", "team"].map(|name| game.field(name));
     let text = |text: &str| StateValue::Text(text.to_owned());
@@ -2318,7 +2303,7 @@ fn on_mode_input(ctx, player, name, value) {
     }
 }
 "#;
-    let mut game = Game::new(script, LIMITS);
+    let mut game = Game::new(script, ScriptLimits::ROOMY);
     let drill = Stats::modifier(&game.sim.world, 0, "drill").unwrap();
     // Units 1 to 3, after the map's tower: a grunt and a tower of player 1, and a grunt of
     // player 0.
@@ -2360,7 +2345,7 @@ fn on_mode_input(ctx, player, name, value) {
 /// names what the match lacks or has another shape than the mode's.
 #[test]
 fn a_restore_check_refuses_what_the_match_lacks() {
-    let mut game = Game::new(SCRIPT, LIMITS);
+    let mut game = Game::new(SCRIPT, ScriptLimits::ROOMY);
     let grunt = game.entity(2);
     let world = &game.sim.world;
     // Teams a, b and neutral are 0 to 2, players 0 to 2.
@@ -2453,7 +2438,7 @@ fn a_restore_check_refuses_what_the_match_lacks() {
 /// match's own through, and refuse one the book lacks or of another shape.
 #[test]
 fn a_restore_check_refuses_modifiers_the_book_lacks() {
-    let mut game = Game::new(SCRIPT, LIMITS);
+    let mut game = Game::new(SCRIPT, ScriptLimits::ROOMY);
     // A modifier of the book, with a value for its one change and no state, as the fighter's is;
     // not one the book lacks, nor one of other state or another count of changes.
     let fighter = game.fighter(0, &[("armor", num(1))]);

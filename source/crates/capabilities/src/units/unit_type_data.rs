@@ -28,16 +28,23 @@ impl UnitTypeData {
 pub(crate) mod internals {
     use crate::units::unit_type_data::UnitTypeData;
     use crate::values::declared_name::DeclaredName;
+    use crate::values::scalar::Scalar;
 
     impl UnitTypeData {
         /// A type of `tags` and no params.
         pub(crate) fn tagged(tags: &[&str]) -> UnitTypeData {
+            UnitTypeData::of(tags, &[])
+        }
+
+        /// A type of `tags` and `params`.
+        pub(crate) fn of(tags: &[&str], params: &[(&str, Scalar)]) -> UnitTypeData {
+            let name = |name| DeclaredName::new(name).unwrap();
             UnitTypeData {
-                tags: tags
+                tags: tags.iter().map(|&tag| name(tag)).collect(),
+                params: params
                     .iter()
-                    .map(|&tag| DeclaredName::new(tag).unwrap())
+                    .map(|&(key, value)| (name(key), value))
                     .collect(),
-                ..UnitTypeData::default()
             }
         }
     }

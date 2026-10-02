@@ -62,3 +62,18 @@ impl<'de> Deserialize<'de> for ScriptLimits {
         Ok(limits)
     }
 }
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::scripts::script_limits::ScriptLimits;
+
+    impl ScriptLimits {
+        /// Limits no test's script comes near, but one that spins without end.
+        pub(crate) const ROOMY: ScriptLimits = ScriptLimits {
+            per_call: 10_000,
+            player: 100_000,
+            think: 100_000,
+            mode: 100_000,
+        };
+    }
+}

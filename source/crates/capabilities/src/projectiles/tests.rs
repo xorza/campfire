@@ -145,16 +145,6 @@ impl Volley {
         slots.set_attack_target(Some(target));
     }
 
-    fn health(&self, id: StableId) -> i64 {
-        let entity = self.sim.entity(id);
-        let pools = self.sim.world.get::<Pools>(entity).unwrap();
-        pools
-            .current(PoolId::FIRST)
-            .unwrap()
-            .to_int()
-            .expect("a whole amount")
-    }
-
     /// The roll each projectile carries, by stable id.
     fn rolls(&self) -> Vec<Num> {
         let world = &self.sim.world;
@@ -199,7 +189,7 @@ fn a_projectile_flies_to_its_target_and_strikes_as_it_reaches_its_body() {
     for _ in 0..=12 {
         volley.sim.step();
         flights.push(volley.projectiles());
-        healths.push(volley.health(target_id));
+        healths.push(volley.sim.health(target_id));
     }
     let flying = |halves: i64| {
         let x = Num::from_bits(halves << (Num::FRAC_BITS - 1));
@@ -293,7 +283,7 @@ fn a_projectile_whose_target_dies_or_goes_first_ends_without_a_hit() {
     volley.sim.step();
     assert_eq!(volley.sim.world.resource::<SimTick>().start().get(), 6);
     assert_eq!(volley.projectiles(), []);
-    assert_eq!(volley.health(doomed), 100);
+    assert_eq!(volley.sim.health(doomed), 100);
 }
 
 #[test]
@@ -326,7 +316,7 @@ fn a_projectile_that_outlives_its_source_kills_with_no_killer() {
             }
             volley.sim.step();
         }
-        assert_eq!(volley.health(victim), 0);
+        assert_eq!(volley.sim.health(victim), 0);
         let deaths: Vec<_> = volley
             .sim
             .world
@@ -377,7 +367,7 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
     assert_eq!(volley.projectiles(), [point(num(5) + half(), Num::ZERO)]);
     volley.sim.step();
     assert_eq!(volley.projectiles(), []);
-    let healths = [beside, wide, ally, past, beyond].map(|unit| volley.health(unit));
+    let healths = [beside, wide, ally, past, beyond].map(|unit| volley.sim.health(unit));
     assert_eq!(healths, [90, 100, 100, 90, 100]);
 
     // A dart of no width ends at its first hit: of two enemies on one point, the lower id, in
@@ -393,7 +383,7 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
     assert_eq!(volley.projectiles(), [point(num(2) + half(), Num::ZERO)]);
     volley.sim.step();
     assert_eq!(volley.projectiles(), []);
-    let healths = [first, second, behind].map(|unit| volley.health(unit));
+    let healths = [first, second, behind].map(|unit| volley.sim.health(unit));
     assert_eq!(healths, [90, 100, 100]);
 }
 

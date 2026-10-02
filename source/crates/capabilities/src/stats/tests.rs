@@ -490,12 +490,7 @@ fn aura(id: ModifierId, carrier: StableId, radius: Num) -> Application {
 #[test]
 fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
     let data = modifier_data;
-    let limits = ScriptLimits {
-        per_call: 10_000,
-        player: 10_000,
-        think: 10_000,
-        mode: 10_000,
-    };
+    let limits = ScriptLimits::ROOMY;
     let scripts = ScriptBudgets::new(limits, 1);
     let mut game = TestMatch::new(&[Capability::Stats], TestMatch::RATE, Some(scripts));
     let book = StatBook::new(&rules(), [], num(6));
@@ -583,12 +578,7 @@ fn an_aura_holds_its_modifier_on_the_units_it_selects_within_its_radius() {
 
 #[test]
 fn a_modifier_another_capability_holds_lasts_only_its_tick() {
-    let limits = ScriptLimits {
-        per_call: 10_000,
-        player: 10_000,
-        think: 10_000,
-        mode: 10_000,
-    };
+    let limits = ScriptLimits::ROOMY;
     let scripts = ScriptBudgets::new(limits, 1);
     let mut game = TestMatch::new(&[Capability::Stats], TestMatch::RATE, Some(scripts));
     let book = StatBook::new(&rules(), [], num(6));

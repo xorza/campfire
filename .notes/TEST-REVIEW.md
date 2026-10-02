@@ -34,18 +34,11 @@ The schedule is a separate field only because `Mode::install` needs it (`mode/te
 - [ ] **The rest of the shape** — `TestMatch` (`capability_set/test_match.rs`) now holds the world with its schedule and the registry, and gives `RATE`, `install`, `spawn`, `entity`, `get`, `try_get`, `get_mut`, `insert`, `set_blocks`, `now`, `step`, `run_until`, `probe` and `read`; every module harness holds one as `sim`. Still open:
   - `client(declared)` and `server(declared, scripts)` in place of `new`'s `Option`, so the script host is visible. Combat, projectiles and stats run only as a client today: no `ModifierHooks`, and no combat or projectiles test runs the server configuration.
   - `block_at`, `state_names` and `round_trip`, which asserts equal hashes; the state tests of each module write these again.
-- [ ] **Helpers beside their types**, each at the end of its own file in `internals`:
-  - `Pools::life_left() -> Num` replaces the six `health` helpers and reads exactly (see 5.1).
-  - `ScriptFailures::calls() -> Vec<FailedCall>` and `CallError::kind() -> FailureKind` (an error satellite in `scripts/error.rs`). Together they replace the 10 `assert!(matches!(…CallError::Api…))` sites with `assert_eq!`.
-  - `MatchScripts::bare(limits, players)` exists (`match_scripts.rs:20-38`), but only `stats/tests.rs:448` uses it. Make it an associated fn, add `with_pools(&[&str])`, and use it at `orders:200`, `vision:52`, `units:65` and `capability_set:225-237`.
-  - `ScriptLimits::ROOMY`. The roomy limits have three values today: 10k/100k (abilities, vision, units, mode), 20k/200k (orders:186), and 10k flat (stats).
-  - `Units::load_next_type`, and `UnitTypeData::tagged` (it exists) at orders:235-262, units:86 and mode:650.
-- [ ] **In-crate tests do not use the exported helpers** — `load_stats`, `give_modifier`, `carried` and `pools::internals::spent` exist for `runner`, and the capabilities tests write them again:
-  - `StatBook::new(..) + Stats::load` at abilities:929,992,1032,1083,1206;
-  - `Match::give` at abilities:1218-1238;
-  - `Modifiers::get` by hand at abilities:960,1021,1069,1491;
-  - `Pools::take` at combat:908,975,989 and abilities:519,1149.
+- [ ] **In-crate tests do not use the exported helpers** — `Match::give_from` uses `give_modifier` now. Still open:
+  - `StatBook::new(..) + Stats::load` at the abilities scaling tests, where `stats::loads::load_stats` fits the ones with no type growth;
+  - `Modifiers::get` by hand in abilities, where `carried` fits a check of every modifier a unit carries.
 
+  `pools::internals::spent` returns new pools, so it does not fit the tests that take from a unit's pools in place.
 ### 2.2 Data constructors (capabilities)
 
 - [ ] **`ModifierData` (13 fields)** is written in full 8 times: abilities:932,1034,1175,1381, combat:790, stats:427, mode:401,420. Every field is an `Option`, a collection, a `bool` or the default `Reapply`, so `#[derive(Default)]` gives what an empty `{}` table reads. This saves about 110 lines. `Default` adds to the public API (group 9).
