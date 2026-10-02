@@ -45,29 +45,64 @@ pub(crate) struct StateField {
 #[derive(Debug, Clone)]
 pub(crate) struct ModifierState(ModifierHandle);
 
+/// The instance a handle is to, of `id` from `source` on `carrier`, and its stacks as the call
+/// starts to see them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct HandleOf {
+    pub(crate) carrier: StableId,
+    pub(crate) id: ModifierId,
+    pub(crate) source: Option<StableId>,
+    pub(crate) stacks: u32,
+}
+
 impl ModifierHandle {
-    /// A handle to the instance of `id` from `source` on `carrier`, with `stacks` and `state` as
-    /// the call starts to see them, and its state's `fields`.
+    /// A handle to the instance `of`, with `state` as the call starts to see it, and its state's
+    /// `fields`: `spare`, a handle no script holds any more, filled again when given, so its
+    /// buffers serve once more.
     pub(crate) fn new(
-        carrier: StableId,
-        id: ModifierId,
-        source: Option<StableId>,
-        stacks: u32,
-        state: Vec<StateValue>,
+        spare: Option<ModifierHandle>,
+        of: HandleOf,
+        state: &[StateValue],
         fields: Arc<[StateField]>,
         view: View,
     ) -> ModifierHandle {
+        let HandleOf {
+            carrier,
+            id,
+            source,
+            stacks,
+        } = of;
+        if let Some(mut handle) = spare {
+            let held = Rc::get_mut(&mut handle.0).expect("no script holds a spare handle");
+            let data = held.get_mut();
+            data.carrier = carrier;
+            data.id = id;
+            data.source = source;
+            data.stacks = stacks;
+            data.state.clear();
+            data.state.extend_from_slice(state);
+            data.written = false;
+            data.removed = false;
+            data.fields = fields;
+            data.view = view;
+            return handle;
+        }
         ModifierHandle(Rc::new(RefCell::new(HandleData {
             carrier,
             id,
             source,
             stacks,
-            state,
+            state: state.to_vec(),
             written: false,
             removed: false,
             fields,
             view,
         })))
+    }
+
+    /// Whether only the call that made it holds it: no script keeps a copy.
+    pub(crate) fn unshared(&self) -> bool {
+        Rc::strong_count(&self.0) == 1
     }
 
     /// What it holds, borrowed until the guard drops.

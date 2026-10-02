@@ -1,6 +1,7 @@
 use std::cell::RefCell;
 use std::mem;
 
+use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_script::rhai::Dynamic;
 use campfire_sim::{EntityIndex, SimTick, StableId};
@@ -15,9 +16,9 @@ use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
 use crate::scripts::script_limits::ScriptLimits;
-use crate::scripts::state_value::StateValue;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_clocks::ModifierClocks;
+use crate::stats::modifier_handle::HandleOf;
 use crate::stats::modifiers::{Instance, Modifiers};
 use crate::stats::stats_call::StatsCall;
 use crate::stats::stats_column::StatsColumn;
@@ -43,8 +44,9 @@ struct Heard {
 /// The instance a hook runs for, and its script state, as the call starts to see them.
 #[derive(Debug)]
 struct HeardInstance {
+    entity: Entity,
+    at: usize,
     instance: Instance,
-    state: Vec<StateValue>,
 }
 
 impl ModifierHooks {
@@ -168,15 +170,21 @@ impl ModifierHooks {
         let entity = world.resource::<EntityIndex>().get(carrier);
         let found = entity.and_then(|entity| {
             let modifiers = world.get::<Modifiers>(entity)?;
-            let clocks = world.get::<ModifierClocks>(entity)?;
+            world.get::<ModifierClocks>(entity)?;
             let at = modifiers.position(heard.id, heard.source)?;
             let instance = *modifiers.get(heard.id, heard.source)?.instance;
             Some(HeardInstance {
+                entity,
+                at,
                 instance,
-                state: clocks.state(at).to_vec(),
             })
         });
-        let Some(HeardInstance { instance, state }) = found else {
+        let Some(HeardInstance {
+            entity,
+            at,
+            instance,
+        }) = found
+        else {
             return;
         };
         let entry = world.resource::<ModifierBook>().get(heard.id);
@@ -186,14 +194,6 @@ impl ModifierHooks {
         let script = entry
             .script
             .expect("a modifier whose script defines a hook has one");
-        let handle = StatsColumn::held_handle(
-            self.ctx.view(),
-            carrier,
-            heard.id,
-            heard.source,
-            instance.stacks,
-            state,
-        );
         let (ability, rank, package) = (instance.ability, instance.rank, entry.package);
         let pool = ModifierHooks::pool(world, heard.source);
         let begun = if depth >= ScriptLimits::CHAIN_DEPTH {
@@ -211,9 +211,23 @@ impl ModifierHooks {
             batch.record(Some(carrier), hook, error);
             return;
         }
-        StatsCall::of_mut(&mut self.ctx.frame())
-            .handles
-            .push(handle.clone());
+        let handle = {
+            let clocks = world
+                .get::<ModifierClocks>(entity)
+                .expect("a heard carrier");
+            let mut frame = self.ctx.frame();
+            let call = StatsCall::of_mut(&mut frame);
+            let of = HandleOf {
+                carrier,
+                id: heard.id,
+                source: heard.source,
+                stacks: instance.stacks,
+            };
+            let handle =
+                StatsColumn::held_handle(self.ctx.view(), call.spare(), of, clocks.state(at));
+            call.handles.push(handle.clone());
+            handle
+        };
         let ctx = self.ctx.clone();
         let called = match arg {
             Some(arg) => batch.call(pool, script, hook, (ctx, handle, arg)),

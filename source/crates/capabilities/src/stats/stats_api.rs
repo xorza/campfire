@@ -162,8 +162,8 @@ impl StatsApi {
         let id = StatsColumn::modifier_named(ctx.view(), ctx.frame().package(), id)?;
         let mut frame = ctx.write()?;
         let source = frame.acting();
-        let handles = &mut StatsCall::of_mut(&mut frame).handles;
-        let handle = StatsColumn::applied_handle(ctx.view(), handles, target.id, id, source);
+        let call = StatsCall::of_mut(&mut frame);
+        let handle = StatsColumn::applied_handle(ctx.view(), call, target.id, id, source);
         frame.effects.push(ModifierEffect::Add {
             target: target.id,
             id,

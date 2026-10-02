@@ -8,10 +8,11 @@ use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::state_value::StateValue;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_clocks::ModifierClocks;
-use crate::stats::modifier_handle::ModifierHandle;
+use crate::stats::modifier_handle::{HandleOf, ModifierHandle};
 use crate::stats::modifiers::Modifiers;
 use crate::stats::pool_id::PoolId;
 use crate::stats::pools::Pools;
+use crate::stats::stats_call::StatsCall;
 use crate::units::modifier_id::ModifierId;
 use crate::units::script_view::View;
 use crate::units::view_column::ViewColumn;
@@ -211,17 +212,22 @@ impl StatsColumn {
     /// once; one it removed is new again.
     pub(crate) fn applied_handle(
         view: &View,
-        handles: &mut Vec<ModifierHandle>,
+        call: &mut StatsCall,
         carrier: StableId,
         id: ModifierId,
         source: Option<StableId>,
     ) -> ModifierHandle {
-        if let Some(handle) = handles.iter().find(|handle| handle.is(carrier, id, source)) {
+        if let Some(handle) = call
+            .handles
+            .iter()
+            .find(|handle| handle.is(carrier, id, source))
+        {
             view.column(|column: &StatsColumn| column.apply_again(handle, id))
                 .expect("a match that applies a modifier has stats");
             return handle.clone();
         }
         let row = view.row_index(carrier);
+        let spare = call.spare();
         let handle = view
             .column(|column: &StatsColumn| {
                 let spec = &column.modifier_book.get(id).spec;
@@ -234,33 +240,36 @@ impl StatsColumn {
                 let (stacks, state) = match held {
                     Some(held) => (
                         spec.reapply.stacks(held.stacks, spec.max_stacks),
-                        column.modifier_state[held.state.start as usize..held.state.end as usize]
-                            .to_vec(),
+                        &column.modifier_state[held.state.start as usize..held.state.end as usize],
                     ),
-                    None => (1, spec.initial.to_vec()),
+                    None => (1, &spec.initial[..]),
+                };
+                let of = HandleOf {
+                    carrier,
+                    id,
+                    source,
+                    stacks,
                 };
                 let fields = Arc::clone(&spec.fields);
-                ModifierHandle::new(carrier, id, source, stacks, state, fields, view.clone())
+                ModifierHandle::new(spare, of, state, fields, view.clone())
             })
             .expect("a match that applies a modifier has stats");
-        handles.push(handle.clone());
+        call.handles.push(handle.clone());
         handle
     }
 
-    /// The handle of `carrier`'s instance of `id` from `source`, as a call sees it: `stacks`
-    /// and `state`.
+    /// The handle of the instance `of`, as a call sees it: its stacks, and `state`, filling
+    /// `spare` again when given.
     pub(crate) fn held_handle(
         view: &View,
-        carrier: StableId,
-        id: ModifierId,
-        source: Option<StableId>,
-        stacks: u32,
-        state: Vec<StateValue>,
+        spare: Option<ModifierHandle>,
+        of: HandleOf,
+        state: &[StateValue],
     ) -> ModifierHandle {
         let fields = view
-            .column(|column: &StatsColumn| Arc::clone(&column.modifier_book.get(id).spec.fields))
+            .column(|column: &StatsColumn| Arc::clone(&column.modifier_book.get(of.id).spec.fields))
             .expect("a match with modifiers has stats");
-        ModifierHandle::new(carrier, id, source, stacks, state, fields, view.clone())
+        ModifierHandle::new(spare, of, state, fields, view.clone())
     }
 
     /// Applies `id` again through `handle`, which the running call took: a removed instance is

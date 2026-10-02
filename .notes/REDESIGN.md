@@ -314,7 +314,6 @@ Track I:  H4      F3 after unit script state
   - batch rebuilds: H4;
   - entity-index walks: B2;
 - **R§13:**
-  - applied handle: D5;
   - scripts parsed twice: C5b.
 - **R§14:**
   - one struct per file: D2, D5, J;

@@ -20,7 +20,6 @@ These costs grow with all units or all entities each tick, while the work concer
 
 ## 13. Allocations on frequent paths
 
-- [ ] **An applied handle allocates its state** — `capabilities/src/units/script_view.rs:461,463`. Better: reuse the frame's buffers.
 - [ ] **Each script is parsed twice** — `package/src/package.rs:57`, `runner/src/match_build.rs:313-326`. Better: keep the AST and let the host take it.
 
 ## 14. Coding guide breaks and small defects

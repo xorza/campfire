@@ -27,13 +27,23 @@ pub(crate) struct StatsCall {
     values: Vec<Scalar>,
     modifier_values: Vec<Scalar>,
     pub(crate) handles: Vec<ModifierHandle>,
+    /// The handles of earlier calls that no script holds, for new handles to fill again.
+    spare: Vec<ModifierHandle>,
+}
+
+impl StatsCall {
+    /// A handle of an earlier call that no script holds, to fill again.
+    pub(crate) fn spare(&mut self) -> Option<ModifierHandle> {
+        self.spare.pop()
+    }
 }
 
 impl CallPart for StatsCall {
     fn begin(&mut self, world: &World, start: &CallStart) -> Result<(), CallError> {
         self.ability = start.action;
         self.modifier = start.modifier;
-        self.handles.clear();
+        let unshared = self.handles.drain(..).filter(ModifierHandle::unshared);
+        self.spare.extend(unshared);
         let reads = self.ability.is_some() || self.modifier.is_some();
         let source = start
             .acting
@@ -110,5 +120,54 @@ impl StatsCall {
             .part::<StatsCall>()
             .expect("a call that reads an ability's params runs in a match with stats");
         part.values[at]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::num::NonZeroU32;
+    use std::ptr;
+    use std::sync::Arc;
+
+    use campfire_sim::{IdAllocator, TickRate};
+
+    use super::*;
+    use crate::scripts::state_value::StateValue;
+    use crate::stats::modifier_handle::HandleOf;
+    use crate::units::script_view::View;
+
+    #[test]
+    fn a_handle_no_script_holds_serves_the_next_call_again() {
+        let view = View::new(TickRate::new(NonZeroU32::new(30).unwrap()));
+        let carrier = IdAllocator::default().allocate();
+        let of = |stacks| HandleOf {
+            carrier,
+            id: ModifierId::new(0),
+            source: None,
+            stacks,
+        };
+        let handle = |stacks, state: &[StateValue]| {
+            ModifierHandle::new(None, of(stacks), state, Arc::from([]), view.clone())
+        };
+        // The call holds two handles; a script still holds a copy of the second as the next
+        // call begins, so only the first is spare.
+        let mut call = StatsCall::default();
+        call.handles.push(handle(1, &[StateValue::Int(1)]));
+        call.handles.push(handle(2, &[]));
+        let held = call.handles[1].clone();
+        let first = ptr::from_ref(&*call.handles[0].data()).addr();
+        call.begin(&World::new(), &CallStart::mode(ScriptRole::Mode))
+            .unwrap();
+        assert!(call.handles.is_empty());
+        let spare = call.spare().unwrap();
+        assert!(call.spare().is_none());
+        // Filled again, it is the first's storage with the new instance, and nothing written.
+        let state = [StateValue::Int(7), StateValue::Int(8)];
+        let again = ModifierHandle::new(Some(spare), of(3), &state, Arc::from([]), view.clone());
+        let data = again.data();
+        assert_eq!(ptr::from_ref(&*data).addr(), first);
+        assert_eq!((data.stacks, data.state.as_slice()), (3, &state[..]));
+        assert!(!data.written && !data.removed);
+        assert_eq!(held.data().stacks, 2);
     }
 }
