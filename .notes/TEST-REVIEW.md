@@ -13,7 +13,7 @@ Paths are relative to `source/crates/`. Line numbers are at `c38f0da`. Each item
 
 ### 2.5 Net
 
-- [ ] **The round trip pinned to the link model** — `net/src/local_match/delay_line.rs` pins the measured round trip to zero, and `mod.rs` adds the modeled round trip to the sync margin. Better: pin the round trip to the link model's own value, and remove the `jitter_margin` workaround in `LocalMatch::client`. That step needs Lightyear's lead formula and new derivations of the expected values; the workaround is exact and deterministic until then. Also check that the join order (`play_by_team`) is then fixed.
+- [ ] **The round trip pinned to the link model** — `campfire-net/src/local_match/delay_line.rs` pins the measured round trip to zero, and `mod.rs` adds the modeled round trip to the sync margin. Better: pin the round trip to the link model's own value, and remove the `jitter_margin` workaround in `LocalMatch::client`. That step needs Lightyear's lead formula and new derivations of the expected values; the workaround is exact and deterministic until then. Also check that the join order (`play_by_team`) is then fixed.
 ## 4. One style for one check
 
 - [ ] **Script failures are read in three ways still** — `CallError::kind` and `ScriptFailures::calls` with `assert_eq!` serve most sites now. Left: the abilities table of fn pointers (its overflow case reads what a script raised), mode's `failures()`, and orders' `think()`.

@@ -1,0 +1,32 @@
+[package]
+name = "campfire-sim"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+autotests = false
+
+[features]
+internals = []
+bench = ["internals", "dep:criterion"]
+
+[dependencies]
+campfire-common.workspace = true
+campfire-math.workspace = true
+
+bevy_ecs.workspace = true
+blake3.workspace = true
+criterion = { workspace = true, optional = true }
+postcard.workspace = true
+serde.workspace = true
+
+[[test]]
+name = "tests"
+path = "tests/mod.rs"
+
+[[bench]]
+name = "state_hash"
+harness = false
+required-features = ["bench"]
+
+[lints]
+workspace = true

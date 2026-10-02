@@ -10,7 +10,8 @@ Each layer uses the layers below it.
 
 | Module | Does |
 | --- | --- |
-| `math` | Fixed-point numbers, 3D vectors, trig, counter-based RNG, and the values both sides share: segment seed, player slot, ticks, and 32-byte values written as hex |
+| `common` | The vocabulary that crates which do not depend on each other share: the player slot, ticks, segment seed and 32-byte values written as hex, and a package's fingerprint |
+| `math` | Fixed-point numbers, 3D vectors, trig, exact 256-bit products, counter-based RNG |
 | `protocol` | Session log format (see Protocol Spec) |
 | `sim` | Deterministic state and systems on `bevy_ecs`; no genre code |
 | `script` | Rhai host and core script API |
@@ -22,9 +23,10 @@ Each layer uses the layers below it.
 | `lan-check` | On request: the real server and two `client --bot` processes over WebTransport on `127.0.0.1`, and a bot with the wrong certificate that must fail and say why, checked from their JSON logs and by the verifier |
 | `server` | Host config, lifecycle, saves, validation, admin; a headless app, and a library the client runs on a thread for singleplayer |
 | `net` | Lightyear over QUIC (WebTransport): handshake, replication; internal |
+| `log` | The binaries' log output: text on standard error, and JSON lines into a file; the events a tool reads back from those lines |
 | `launcher` | Small app: fetches, checks and starts the engine release a server or replay names; server browser |
 | `client` | Bevy app: rendering, input, UI, audio, prediction |
-| `content` | What names package data from outside a package: paths in a package, fingerprints; later signatures, pinning, cache, Blossom fetch |
+| `content` | Package signatures, pinning, cache, Blossom fetch |
 | `editor` | Map and content editors |
 | `identity` | Nostr keys, session keys, listings, reputation |
 | `ownership` | License checks (optional) |
@@ -32,9 +34,9 @@ Each layer uses the layers below it.
 
 `sim` is pure: state and inputs in, next state out; no files, packages or signatures.
 
-`det-ci` and `lan-check` are checks, not engine crates: they live in `source/checks/`, apart from `source/crates/`, and nothing depends on them.
+`det-ci` and `lan-check` are checks, not engine crates: they live in `source/checks/`, apart from `source/crates/`, and nothing depends on them. Each crate's folder has its package's name, `campfire-` and the module: `source/crates/campfire-math/`, `source/checks/campfire-lan-check/`.
 
-Dependencies: `server`, `client`, `verifier`, `det-ci` → `runner` → `package` → `capabilities` → `script`, `sim`, `content`; `script` and `sim` → `math`; `protocol` → `math`. The runner joins `protocol` and the packages: the session log and the packages each own their fingerprint type, and the runner converts between them. `math` holds what both sides share: the segment seed, the player slot, the ticks, and `Bytes32`. Within `capabilities`, a module imports only from the capabilities below it.
+Dependencies: `server` and `client` → `net` → `runner`; `verifier` and `det-ci` → `runner` → `package` → `capabilities` → `script`, `sim`; `runner` → `protocol`; `script` and `sim` → `math` → `common`; `protocol` → `common`. `log` depends on no engine crate; the binaries, `net` and `verifier` use it. The runner joins `protocol` and the packages, which name a package by the one `Fingerprint` of `common`. A type enters `common` only when two crates that do not depend on each other both name it, and only as a plain value: construction, parsing, display and serde, and no other logic. `common` depends on `serde` alone. Within `capabilities`, a module imports only from the capabilities below it.
 
 Outside the engine crates: the reference MOBA and bots. `det-ci` uses both as test content; nothing else in the engine depends on them. Bots produce inputs like players, so replays never depend on bot code.
 
@@ -52,6 +54,7 @@ These rules keep the code's structure from drifting. Each has a test that fails 
 | Each tick's work has a fixed limit, or a cost in proportion to the units that take part: no tick pays for a scan or a rebuild the other ticks do not. | The work record; the navigation bench |
 | Restored state is checked like package data: a restore gives an error for every flaw, never a panic, and what it accepts plays on without one. Its times and counts stay within what a match makes: the tick, every time and every count are at most 2⁶², which no match reaches, so no sum of two overflows; every period is at least a tick; and every relation a system takes between two restored values, or between one and the books, holds, as the start of an attack under way, its resolve less its windup, is no sooner than tick 0. | Every state type's check, a required method of the state traits, which the compiler proves; the snapshot fuzz, which flips each byte of a proving match's snapshot, restores it, and plays five ticks on what restores; a restore test at the limits of each state type's times and counts |
 | Each rule of a network session has one owner on each side, and a client that follows the rules is never refused. | The net scenarios under load |
+| `common` depends on no crate but `serde`. | The manifest test of `common` |
 
 **Books.** A match's books are built by one pure function of its packages and a tick rate, with no world: the unit types and their tags, the tracks, the modifiers and the actions with their params and effect lists, the AIs, and the projectile and area specs. The package load calls it at the fastest rate the manifest allows, where a time counts the most ticks, so what the books cannot hold fails the load; a match calls it at its own rate and puts what it gives in place. The order of every id is the order the builder loads in: the tags, the tracks, every package's modifiers, then each package's actions and unit types, the mode's first. A script is named by its place in the order a match compiles them, and the hooks it defines come from what the load read of it, so no book needs a script host.
 

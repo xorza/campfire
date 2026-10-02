@@ -1,0 +1,45 @@
+use std::fmt;
+
+use serde::{Deserialize, Serialize};
+
+use crate::bytes32::Bytes32;
+
+/// A package's identity: the SHA-256 of its postcard-encoded file list, one `(path, size,
+/// SHA-256)` row per file, sorted by path bytes. Any change to any file, or to the list, gives
+/// another fingerprint.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct Fingerprint(Bytes32);
+
+impl Fingerprint {
+    pub const fn new(bytes: [u8; 32]) -> Fingerprint {
+        Fingerprint(Bytes32::new(bytes))
+    }
+
+    pub const fn as_bytes(&self) -> &[u8; 32] {
+        self.0.as_bytes()
+    }
+}
+
+/// In lowercase hex.
+impl fmt::Display for Fingerprint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_fingerprint_shows_as_lowercase_hex_and_encodes_as_its_bytes() {
+        let mut bytes = [0; 32];
+        bytes[0] = 0xAB;
+        bytes[31] = 0x05;
+        let fingerprint = Fingerprint::new(bytes);
+        assert_eq!(fingerprint.to_string(), format!("ab{}05", "00".repeat(30)));
+        let encoded = postcard::to_allocvec(&fingerprint).unwrap();
+        assert_eq!(encoded, postcard::to_allocvec(&bytes).unwrap());
+    }
+}

@@ -1,0 +1,38 @@
+[package]
+name = "campfire-math"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[features]
+internals = []
+bench = ["internals", "dep:criterion"]
+
+[dependencies]
+campfire-common.workspace = true
+
+blake3.workspace = true
+criterion = { workspace = true, optional = true }
+serde.workspace = true
+
+[dev-dependencies]
+postcard.workspace = true
+proptest.workspace = true
+
+[[bench]]
+name = "num"
+harness = false
+required-features = ["bench"]
+
+[[bench]]
+name = "rng"
+harness = false
+required-features = ["bench"]
+
+[[bench]]
+name = "vec3"
+harness = false
+required-features = ["bench"]
+
+[lints]
+workspace = true

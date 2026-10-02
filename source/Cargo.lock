@@ -2005,7 +2005,7 @@ name = "campfire-capabilities"
 version = "0.1.0"
 dependencies = [
  "bevy_ecs",
- "campfire-content",
+ "campfire-common",
  "campfire-math",
  "campfire-script",
  "campfire-sim",
@@ -2021,6 +2021,7 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "campfire-capabilities",
+ "campfire-common",
  "campfire-log",
  "campfire-math",
  "campfire-net",
@@ -2034,27 +2035,19 @@ dependencies = [
 ]
 
 [[package]]
-name = "campfire-content"
+name = "campfire-common"
 version = "0.1.0"
 dependencies = [
+ "postcard",
  "serde",
- "unic-langid",
 ]
-
-[[package]]
-name = "campfire-det-ci"
-version = "0.1.0"
-
-[[package]]
-name = "campfire-identity"
-version = "0.1.0"
 
 [[package]]
 name = "campfire-lan-check"
 version = "0.1.0"
 dependencies = [
+ "campfire-common",
  "campfire-log",
- "campfire-math",
  "campfire-net",
  "campfire-package",
  "campfire-protocol",
@@ -2081,6 +2074,7 @@ name = "campfire-math"
 version = "0.1.0"
 dependencies = [
  "blake3",
+ "campfire-common",
  "criterion 0.8.2",
  "postcard",
  "proptest",
@@ -2096,6 +2090,7 @@ dependencies = [
  "bevy_state",
  "bevy_time",
  "campfire-capabilities",
+ "campfire-common",
  "campfire-log",
  "campfire-math",
  "campfire-net",
@@ -2115,7 +2110,7 @@ name = "campfire-package"
 version = "0.1.0"
 dependencies = [
  "campfire-capabilities",
- "campfire-content",
+ "campfire-common",
  "campfire-math",
  "campfire-package",
  "campfire-script",
@@ -2135,7 +2130,7 @@ name = "campfire-protocol"
 version = "0.1.0"
 dependencies = [
  "blake3",
- "campfire-math",
+ "campfire-common",
  "criterion 0.8.2",
  "nostr",
  "postcard",
@@ -2149,7 +2144,7 @@ version = "0.1.0"
 dependencies = [
  "bevy_ecs",
  "campfire-capabilities",
- "campfire-content",
+ "campfire-common",
  "campfire-math",
  "campfire-package",
  "campfire-protocol",
@@ -2194,6 +2189,7 @@ version = "0.1.0"
 dependencies = [
  "bevy_ecs",
  "blake3",
+ "campfire-common",
  "campfire-math",
  "criterion 0.8.2",
  "postcard",
@@ -2205,6 +2201,7 @@ name = "campfire-verifier"
 version = "0.1.0"
 dependencies = [
  "campfire-capabilities",
+ "campfire-common",
  "campfire-log",
  "campfire-math",
  "campfire-package",
