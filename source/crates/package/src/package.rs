@@ -6,7 +6,7 @@ use campfire_capabilities::{
 use campfire_content::{Fingerprint, PackagePath};
 use campfire_script::ScriptHost;
 
-use crate::error::{LoadError, LoadProblem, PackageRef};
+use crate::error::{LoadError, LoadProblem, ScriptProblem};
 use crate::files::manifest::PackageHeader;
 use crate::files::units_data::UnitTypeFile;
 use crate::package_files::PackageFiles;
@@ -44,10 +44,7 @@ impl Package {
         api: &ScriptApi,
     ) -> Result<Package, LoadError> {
         let name = header.name.clone();
-        let fail = |problem| LoadError {
-            package: PackageRef::Name(name.clone()),
-            problem: Box::new(problem),
-        };
+        let fail = |problem| LoadError::of(&name, problem);
         let mut scripts = Vec::new();
         for path in files.files_under(SCRIPTS) {
             let source = files
@@ -56,7 +53,7 @@ impl Package {
             let ast = parser.parse(source).map_err(|error| {
                 fail(LoadProblem::Script {
                     path: path.clone(),
-                    error,
+                    problem: ScriptProblem::Compile(error),
                 })
             })?;
             scripts.push(Script {

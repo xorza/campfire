@@ -88,12 +88,12 @@ impl<'a> MatchBuild<'a> {
             match view.kind {
                 ViewKind::Mode => {
                     let ranks = packages.slotted_ranks(units.values()).expect(CHECKED);
-                    let actions = build.load_actions(view, |id| ranks.get(id).copied())?;
+                    let actions = build.load_actions(view, |id| ranks.get(id).copied());
                     for (name, file) in units {
                         if file.delivers() {
                             build.load_delivery(view, name.as_str(), file);
                         } else {
-                            build.load_unit_type(view, name.as_str(), file, &actions, false)?;
+                            build.load_unit_type(view, name.as_str(), file, &actions, false);
                         }
                     }
                 }
@@ -103,15 +103,15 @@ impl<'a> MatchBuild<'a> {
                     }
                     let name = &view.package.name;
                     let ranks = packages.slotted_ranks([&avatar.unit]).expect(CHECKED);
-                    let actions = build.load_actions(view, |id| ranks.get(id).copied())?;
-                    build.load_unit_type(view, name, &avatar.unit, &actions, true)?;
+                    let actions = build.load_actions(view, |id| ranks.get(id).copied());
+                    build.load_unit_type(view, name, &avatar.unit, &actions, true);
                     avatars.push(name.clone());
                 }
                 ViewKind::Loadout => {
                     for (id, file) in units {
                         build.load_delivery(view, id.as_str(), file);
                     }
-                    let actions = build.load_actions(view, |_| Some(loadout_ranks))?;
+                    let actions = build.load_actions(view, |_| Some(loadout_ranks));
                     let entries = actions.into_iter().map(|(id, ability)| LoadoutSetup {
                         id: id.to_owned(),
                         ability,
@@ -156,16 +156,16 @@ impl<'a> MatchBuild<'a> {
         &mut self,
         view: PackageView<'a>,
         ranks: impl Fn(&str) -> Option<u8>,
-    ) -> Result<BTreeMap<&'a str, ActionId>, StartError> {
+    ) -> BTreeMap<&'a str, ActionId> {
         view.content
             .actions
             .iter()
             .map(|(id, data)| {
                 let ranks = ranks(id.as_str()).unwrap_or(1);
-                Ok((
+                (
                     id.as_str(),
-                    self.load_ability(view, id.as_str(), data, ranks)?,
-                ))
+                    self.load_ability(view, id.as_str(), data, ranks),
+                )
             })
             .collect()
     }
@@ -180,7 +180,7 @@ impl<'a> MatchBuild<'a> {
         file: &UnitTypeFile,
         actions: &BTreeMap<&str, ActionId>,
         avatar: bool,
-    ) -> Result<(), StartError> {
+    ) {
         let data = self.packages.data();
         let mut combat = file.combat.clone();
         let unit_type =
@@ -191,22 +191,13 @@ impl<'a> MatchBuild<'a> {
                 combat.on_death = OnDeath::Stay;
             }
         }
-        let unit_error = |error| StartError::UnitKit {
-            unit_type: name.to_owned(),
-            error,
-        };
         if let Some(orders) = &file.orders {
             let script = self.script(view, &orders.ai);
-            Orders::load_ai(self.world, unit_type, orders, script).map_err(|error| {
-                StartError::Ai {
-                    unit_type: name.to_owned(),
-                    error,
-                }
-            })?;
+            Orders::load_ai(self.world, unit_type, orders, script).expect(CHECKED);
         }
         let pools = self.pools(&file.pools);
         let kit = UnitKit::new(file.stats.as_ref(), combat.as_ref(), pools, self.rules)
-            .map_err(unit_error)?
+            .expect(CHECKED)
             .with_vision(file.vision.as_ref())
             .with_body(data.navigation.body(file.collision.as_ref()))
             .with_tracks(Progression::tracks(self.world, &file.tracks))
@@ -233,7 +224,6 @@ impl<'a> MatchBuild<'a> {
             actions: slots,
             passive,
         });
-        Ok(())
     }
 
     /// Loads the projectile or area type `name` of `file`, of the package `view`, in the scope its
@@ -270,16 +260,10 @@ impl<'a> MatchBuild<'a> {
         id: &str,
         data: &'a ActionData,
         ranks: u8,
-    ) -> Result<ActionId, StartError> {
+    ) -> ActionId {
         let script = data.script.as_ref().map(|path| self.script(view, path));
         let package = view.index.get();
-        let action =
-            Actions::load(self.world, package, id, data, script, ranks).map_err(|error| {
-                StartError::Ability {
-                    ability: id.to_owned(),
-                    error,
-                }
-            })?;
+        let action = Actions::load(self.world, package, id, data, script, ranks).expect(CHECKED);
         if !(data.on_resolve.is_empty() && data.on_hit.is_empty() && data.on_end.is_empty()) {
             Abilities::load_effects(self.world, action, package, data);
         }
@@ -289,7 +273,7 @@ impl<'a> MatchBuild<'a> {
         if let Some(delivery) = &data.delivery {
             self.spawns.push((action, delivery.unit_type()));
         }
-        Ok(action)
+        action
     }
 
     /// Compiles every script of every package in the match's host, each once.

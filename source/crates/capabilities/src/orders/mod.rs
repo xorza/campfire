@@ -98,19 +98,27 @@ impl Orders {
         data: &AiData,
         script: ScriptId,
     ) -> Result<(), AiError> {
-        let period = world
-            .resource::<TickRate>()
-            .ticks(data.think_ms)
-            .ok_or(AiError::TimeTooLarge)?
-            .max(Ticks::ONE);
         let host = world.non_send::<ScriptHost>();
-        if !host.defines(script, Hook::OnThink.name(), Hook::OnThink.params()) {
-            return Err(AiError::NoThink);
-        }
+        let thinks = host.defines(script, Hook::OnThink.name(), Hook::OnThink.params());
+        let period = Orders::ai_period(data, *world.resource::<TickRate>(), thinks)?;
         world
             .resource_mut::<ByType<Ai>>()
             .set(unit_type, Ai { script, period });
         Ok(())
+    }
+
+    /// The think period of `data` at `rate`, a tick at the least, for a script that defines
+    /// `on_think` when `thinks`: what an AI loads with, and what the package load checks at the
+    /// fastest rate the mode allows, where its ticks are the most.
+    pub fn ai_period(data: &AiData, rate: TickRate, thinks: bool) -> Result<Ticks, AiError> {
+        let period = rate
+            .ticks(data.think_ms)
+            .ok_or(AiError::TimeTooLarge)?
+            .max(Ticks::ONE);
+        if !thinks {
+            return Err(AiError::NoThink);
+        }
+        Ok(period)
     }
 
     /// Applies the next order the AI call in `frame` queued, for its unit that thinks.

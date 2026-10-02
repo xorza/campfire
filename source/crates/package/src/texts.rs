@@ -6,7 +6,7 @@ use campfire_content::{Language, MessageId};
 use fluent_bundle::concurrent::FluentBundle;
 use fluent_bundle::{FluentError, FluentResource};
 
-use crate::error::{LoadError, LoadProblem, LocaleProblem, PackageRef};
+use crate::error::{LoadError, LoadProblem, LocaleProblem};
 use crate::locale_package::LocalePackage;
 use crate::mode_packages::ModePackages;
 
@@ -48,13 +48,11 @@ impl Texts {
             for locale in &locales {
                 for (language, file) in locale.of(&package.name) {
                     if let Some(id) = file.stray(text.own()) {
-                        return Err(LoadError {
-                            package: PackageRef::Name(locale.name.clone()),
-                            problem: Box::new(LoadProblem::Locale {
-                                path: file.path.clone(),
-                                problem: LocaleProblem::Stray(id.clone()),
-                            }),
-                        });
+                        let problem = LoadProblem::Locale {
+                            path: file.path.clone(),
+                            problem: LocaleProblem::Stray(id.clone()),
+                        };
+                        return Err(LoadError::of(&locale.name, problem));
                     }
                     files
                         .entry(language)

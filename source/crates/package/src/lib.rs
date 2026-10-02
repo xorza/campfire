@@ -20,7 +20,7 @@ mod texts;
 
 pub use error::{
     ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem, EffectProblem, Limit, LoadError,
-    LoadProblem, LocaleProblem, PackageRef, Place, StoreError,
+    LoadProblem, LocaleProblem, PackageRef, Place, ScriptProblem, StoreError,
 };
 pub use files::avatar_data::AvatarData;
 pub use files::manifest::{

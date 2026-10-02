@@ -4,12 +4,12 @@ use std::fmt::Write;
 use std::path::Path;
 
 use campfire_capabilities::{
-    ActionField, ActionKind, EffectData, EffectTo, Effecting, EngineTag, Hook, MapProblem,
-    ModeError, NameKind, Number, PlannedEffect, Scalar, SyncTo,
+    ActionError, ActionField, ActionKind, AiError, EffectData, EffectTo, Effecting, EngineTag,
+    Hook, MapProblem, ModeError, NameKind, Number, PlannedEffect, Scalar, SyncTo, UnitKitError,
 };
 use campfire_package::{
     ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem, EffectProblem, Limit, LoadError,
-    LoadProblem, LocaleProblem, ModePackages, PackageRef, Place,
+    LoadProblem, LocaleProblem, ModePackages, PackageRef, Place, ScriptProblem,
 };
 use campfire_sim::Capability;
 
@@ -221,7 +221,7 @@ fn more_tracks_than_a_unit_holds_fail_the_load() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-const FLAWS: [Flaw; 176] = [
+const FLAWS: [Flaw; 180] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -640,25 +640,25 @@ const FLAWS: [Flaw; 176] = [
         "heroes/husk/scripts/extra.rhai",
         Edit::Create("fn on_resolve(ctx, caster, target) {}"),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::UnreferencedScript(path) if path.to_string() == "scripts/extra.rhai"),
+        |problem| matches!(problem, LoadProblem::Script { path, problem: ScriptProblem::Unreferenced } if path.to_string() == "scripts/extra.rhai"),
     ),
     flaw(
         HUSK,
         Edit::Replace("scripts/dread.rhai", "scripts/dreadful.rhai"),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::MissingScript(path) if path.to_string() == "scripts/dreadful.rhai"),
+        |problem| matches!(problem, LoadProblem::Script { path, problem: ScriptProblem::Missing } if path.to_string() == "scripts/dreadful.rhai"),
     ),
     flaw(
         LASH_OUT,
         Edit::Replace("fn on_damage_taken(", "fn on_damage_takn("),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::UnknownHook { function, .. } if function == "on_damage_takn"),
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownHook(function), .. } if function == "on_damage_takn"),
     ),
     flaw(
         LASH_OUT,
         Edit::Replace("fn on_damage_taken(", "fn calc_damage_taken("),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::UnknownHook { function, .. } if function == "calc_damage_taken"),
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownHook(function), .. } if function == "calc_damage_taken"),
     ),
     flaw(
         CREEP_AI,
@@ -667,19 +667,19 @@ const FLAWS: [Flaw; 176] = [
             "fn on_resolve(ctx, caster, target) {}\n\nfn on_think(ctx, unit) {",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::UnknownHook { function, .. } if function == "on_resolve"),
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownHook(function), .. } if function == "on_resolve"),
     ),
     flaw(
         LASH_OUT,
         Edit::Replace("fn on_resolve(", "fn on_cast("),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::UnknownHook { function, .. } if function == "on_cast"),
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownHook(function), .. } if function == "on_cast"),
     ),
     flaw(
         CREEP_AI,
         Edit::Replace("fn on_think(ctx, unit)", "fn on_think(ctx, unit, more)"),
         MODE,
-        |problem| matches!(problem, LoadProblem::UnknownHook { function, .. } if function == "on_think"),
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownHook(function), .. } if function == "on_think"),
     ),
     flaw(
         LASH_OUT,
@@ -688,8 +688,8 @@ const FLAWS: [Flaw; 176] = [
         |problem| {
             matches!(
                 problem,
-                LoadProblem::CtxMisuse {
-                    misuse: CtxMisuse::Stray,
+                LoadProblem::Script {
+                    problem: ScriptProblem::CtxMisuse(CtxMisuse::Stray),
                     ..
                 }
             )
@@ -699,7 +699,7 @@ const FLAWS: [Flaw; 176] = [
         CREEP_AI,
         Edit::Replace("fn defend_hero(ctx, unit)", "fn defend_hero(c, unit)"),
         MODE,
-        |problem| matches!(problem, LoadProblem::CtxMisuse { misuse: CtxMisuse::Renamed { function }, .. } if function == "defend_hero"),
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::CtxMisuse(CtxMisuse::Renamed { function }), .. } if function == "defend_hero"),
     ),
     flaw(
         LASH_OUT,
@@ -708,7 +708,7 @@ const FLAWS: [Flaw; 176] = [
             "fn on_damage_taken(m, ctx, d)",
         ),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::CtxMisuse { misuse: CtxMisuse::HookParam { function }, .. } if function == "on_damage_taken"),
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::CtxMisuse(CtxMisuse::HookParam { function }), .. } if function == "on_damage_taken"),
     ),
     flaw(
         LASH_OUT,
@@ -717,8 +717,8 @@ const FLAWS: [Flaw; 176] = [
         |problem| {
             matches!(
                 problem,
-                LoadProblem::CtxMisuse {
-                    misuse: CtxMisuse::Bound,
+                LoadProblem::Script {
+                    problem: ScriptProblem::CtxMisuse(CtxMisuse::Bound),
                     ..
                 }
             )
@@ -728,7 +728,7 @@ const FLAWS: [Flaw; 176] = [
         LASH_OUT,
         Edit::Replace("caster.pos", "caster.position"),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::UnknownMember { name, .. } if name == "position"),
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownMember(name), .. } if name == "position"),
     ),
     flaw(
         LASH_OUT,
@@ -737,7 +737,7 @@ const FLAWS: [Flaw; 176] = [
             "    ctx.spawn_avatars();\n    for unit in",
         ),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::UnknownCtx { name, .. } if name == "spawn_avatars"),
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownCtx(name), .. } if name == "spawn_avatars"),
     ),
     // A weapon has a rate, a damage and a damage kind the mode declares, aims at a unit within
     // meters, and has no field only a cast runs; no other kind has a weapon's fields.
@@ -898,7 +898,7 @@ const FLAWS: [Flaw; 176] = [
         LASH_OUT,
         Edit::Replace("ctx.find(", "ctx.finds("),
         "hero-husk",
-        |problem| matches!(problem, LoadProblem::UnknownCtx { name, .. } if name == "finds"),
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownCtx(name), .. } if name == "finds"),
     ),
     // An AI's order in the mode's script.
     flaw(
@@ -908,7 +908,7 @@ const FLAWS: [Flaw; 176] = [
             "fn on_match_start(ctx) {\n    ctx.order_reset(());",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::UnknownCtx { name, .. } if name == "order_reset"),
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownCtx(name), .. } if name == "order_reset"),
     ),
     flaw(
         LASH_OUT,
@@ -1072,6 +1072,55 @@ const FLAWS: [Flaw; 176] = [
         Edit::Replace(r#"left = { type = "int""#, r#"Left = { type = "int""#),
         "hero-kensho",
         |problem| read_fails(problem, "data/avatar.toml", r#""Left" is not a name"#),
+    ),
+    // What a match start refused before, now at load: a unit type that makes no unit, an AI
+    // that does not load, and a time that does not count in ticks at the fastest rate, 60 Hz.
+    // 4 × 10¹⁷ ms counts at the default 30 Hz, 1.2 × 10¹⁹ ticks, and not at 60 Hz, past 2⁶⁴.
+    flaw(
+        UNITS,
+        Edit::Replace(
+            "stats = { health = { base = 445 }",
+            "stats = { health = { base = 0 }",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::UnitKit { at: Place::UnitType(name), error: UnitKitError::NotPositive(_) } if name == "melee_creep"),
+    ),
+    flaw(
+        UNITS,
+        Edit::Replace("think_ms = 250 }", "think_ms = 400000000000000000 }"),
+        MODE,
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Ai {
+                    error: AiError::TimeTooLarge,
+                    ..
+                }
+            )
+        },
+    ),
+    flaw(
+        CREEP_AI,
+        Edit::Replace("fn on_think(ctx, unit) {", "fn think(ctx, unit) {"),
+        MODE,
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Ai {
+                    at: Place::UnitType(_),
+                    error: AiError::NoThink
+                }
+            )
+        },
+    ),
+    flaw(
+        HUSK,
+        Edit::Replace(
+            "cooldown_ms = [10000, 9000, 8000, 7000, 6000]",
+            "cooldown_ms = [10000, 9000, 8000, 7000, 400000000000000000]",
+        ),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::Action { action, error: ActionError::TimeTooLarge } if action.as_str() == "lash_out"),
     ),
     // A name a script gives the API, as the registry marks the argument: a tag, a track, a unit
     // type of the mode's scope, a team.

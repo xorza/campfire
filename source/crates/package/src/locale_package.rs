@@ -22,10 +22,7 @@ impl LocalePackage {
     /// The locale package of `files`: each file under `locale/` is `<package>/<language>.ftl`
     /// of a package it depends on, and reads.
     pub fn read(files: &PackageFiles) -> Result<LocalePackage, LoadError> {
-        let fail = |package: PackageRef, problem| LoadError {
-            package,
-            problem: Box::new(problem),
-        };
+        let fail = LoadError::new;
         let manifest_path = PackagePath::parse(PackageDir::MANIFEST).expect("a package path");
         let unnamed = || PackageRef::Fingerprint(files.fingerprint());
         let manifest = files

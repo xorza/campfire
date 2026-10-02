@@ -4,8 +4,9 @@ use std::io;
 use std::path::PathBuf;
 
 use campfire_capabilities::{
-    ActionField, ActionKind, ActionSlots, ApiVersion, DeclaredName, EngineTag, Hook, MapProblem,
-    ModeError, NameKind, PlannedEffect, Pools, ResourceId, Stat, TrackId,
+    ActionError, ActionField, ActionKind, ActionSlots, AiError, ApiVersion, DeclaredName,
+    EngineTag, Hook, MapProblem, ModeError, NameKind, PlannedEffect, Pools, ResourceId, Stat,
+    TrackId, UnitKitError,
 };
 use campfire_content::{Fingerprint, MessageId, PackagePath};
 use campfire_script::ScriptError;
@@ -185,29 +186,10 @@ pub enum LoadProblem {
     RepeatedUnitType(String),
     /// A per-rank array of an ability has another length than its ranks.
     RankCount { action: DeclaredName, ranks: u8 },
-    /// A script file no data names.
-    UnreferencedScript(PackagePath),
-    /// Data names a script the package does not hold.
-    MissingScript(PackagePath),
-    /// A script does not compile.
+    /// The script at `path`, or the one data names there.
     Script {
         path: PackagePath,
-        error: ScriptError,
-    },
-    /// A function named like a hook is no hook of a role the script serves, or takes another count
-    /// of parameters.
-    UnknownHook { path: PackagePath, function: String },
-    /// A script uses a name on `ctx` that the script API does not define, or not for its role, or
-    /// not in the way it uses it.
-    UnknownCtx { path: PackagePath, name: String },
-    /// A script reads a field or calls a method no handle, no built-in and none of its own
-    /// functions or object maps has.
-    UnknownMember { path: PackagePath, name: String },
-    /// A script uses `ctx` other than design 08's convention allows, so the load checks cannot
-    /// see every use of it.
-    CtxMisuse {
-        path: PackagePath,
-        misuse: CtxMisuse,
+        problem: ScriptProblem,
     },
     /// A unit type at `at` lists a pool twice.
     RepeatedPool { at: Place, name: DeclaredName },
@@ -241,6 +223,16 @@ pub enum LoadProblem {
     },
     /// A unit type or a modifier at `at` carries a tag only the engine gives.
     EngineTag { at: Place, tag: EngineTag },
+    /// A unit type at `at` makes no unit: its stats, pools and combat do not hold together at
+    /// level 1.
+    UnitKit { at: Place, error: UnitKitError },
+    /// A unit type's AI at `at` does not load.
+    Ai { at: Place, error: AiError },
+    /// A time of an action does not count in ticks at the fastest rate the mode allows.
+    Action {
+        action: DeclaredName,
+        error: ActionError,
+    },
     /// A file of human text at `path`.
     Locale {
         path: PackagePath,
@@ -260,6 +252,29 @@ pub enum LocaleProblem {
     Repeated(MessageId),
     /// A translation defines the message, which the file of its package's own language does not.
     Stray(MessageId),
+}
+
+/// What is wrong with a script.
+#[derive(Debug)]
+pub enum ScriptProblem {
+    /// No data names it.
+    Unreferenced,
+    /// Data names it, and the package does not hold it.
+    Missing,
+    /// It does not compile.
+    Compile(ScriptError),
+    /// A function named like a hook is no hook of a role the script serves, or takes another
+    /// count of parameters.
+    UnknownHook(String),
+    /// It uses a name on `ctx` that the script API does not define, or not for its role, or not
+    /// in the way it uses it.
+    UnknownCtx(String),
+    /// It reads a field or calls a method no handle, no built-in and none of its own functions
+    /// or object maps has.
+    UnknownMember(String),
+    /// It uses `ctx` other than design 08's convention allows, so the load checks cannot see
+    /// every use of it.
+    CtxMisuse(CtxMisuse),
 }
 
 /// What is wrong with an effect of an action's list.
@@ -427,6 +442,20 @@ impl fmt::Display for CtxMisuse {
     }
 }
 
+impl LoadError {
+    pub fn new(package: PackageRef, problem: LoadProblem) -> LoadError {
+        LoadError {
+            package,
+            problem: Box::new(problem),
+        }
+    }
+
+    /// `problem`, of the package its manifest names `name`.
+    pub(crate) fn of(name: &str, problem: LoadProblem) -> LoadError {
+        LoadError::new(PackageRef::Name(name.to_owned()), problem)
+    }
+}
+
 impl fmt::Display for LoadError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "package {}: {}", self.package, self.problem)
@@ -437,7 +466,10 @@ impl Error for LoadError {
     fn source(&self) -> Option<&(dyn Error + 'static)> {
         match &*self.problem {
             LoadProblem::Content(error) => Some(error),
-            LoadProblem::Script { error, .. } => Some(error),
+            LoadProblem::Script {
+                problem: ScriptProblem::Compile(error),
+                ..
+            } => Some(error),
             LoadProblem::Mode(error) => Some(error),
             _ => None,
         }
@@ -458,6 +490,26 @@ impl fmt::Display for Place {
             Place::Pool(name) => write!(f, "pool {name}"),
             Place::Choice(name) => write!(f, "choice {name}"),
             Place::Tracks => f.write_str("the mode's [tracks]"),
+        }
+    }
+}
+
+impl fmt::Display for ScriptProblem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ScriptProblem::Unreferenced => f.write_str("no data names it"),
+            ScriptProblem::Missing => f.write_str("named, but not held"),
+            ScriptProblem::Compile(error) => write!(f, "{error}"),
+            ScriptProblem::UnknownHook(function) => {
+                write!(f, "{function} is no hook of the script's roles")
+            }
+            ScriptProblem::UnknownCtx(name) => {
+                write!(f, "ctx.{name} is not the script API's for this script")
+            }
+            ScriptProblem::UnknownMember(name) => {
+                write!(f, ".{name} is no member the script API has")
+            }
+            ScriptProblem::CtxMisuse(misuse) => write!(f, "{misuse}"),
         }
     }
 }
@@ -604,22 +656,7 @@ impl fmt::Display for LoadProblem {
                     "action {action:?}: a per-rank array without {ranks} entries"
                 )
             }
-            LoadProblem::UnreferencedScript(path) => write!(f, "{path}: no data names it"),
-            LoadProblem::MissingScript(path) => write!(f, "{path}: named, but not held"),
-            LoadProblem::Script { path, error } => write!(f, "{path}: {error}"),
-            LoadProblem::UnknownHook { path, function } => {
-                write!(f, "{path}: {function} is no hook of the script's roles")
-            }
-            LoadProblem::UnknownMember { path, name } => {
-                write!(f, "{path}: .{name} is no member the script API has")
-            }
-            LoadProblem::UnknownCtx { path, name } => {
-                write!(
-                    f,
-                    "{path}: ctx.{name} is not the script API's for this script"
-                )
-            }
-            LoadProblem::CtxMisuse { path, misuse } => write!(f, "{path}: {misuse}"),
+            LoadProblem::Script { path, problem } => write!(f, "{path}: {problem}"),
             LoadProblem::Unknown { at, name, of } => write!(f, "{at}: no {of} {name:?}"),
             LoadProblem::RepeatedPool { at, name } => write!(f, "{at}: pool {name:?} twice"),
             LoadProblem::StatLoop(stats) => {
@@ -635,6 +672,9 @@ impl fmt::Display for LoadProblem {
             LoadProblem::LifePoolMissing(at) => write!(f, "{at}: combat without the life pool"),
             LoadProblem::CombatMissing(at) => write!(f, "{at}: the life pool without combat"),
             LoadProblem::Locale { path, problem } => write!(f, "{path}: {problem}"),
+            LoadProblem::UnitKit { at, error } => write!(f, "{at}: {error}"),
+            LoadProblem::Ai { at, error } => write!(f, "{at}: {error}"),
+            LoadProblem::Action { action, error } => write!(f, "action {action:?}: {error}"),
             LoadProblem::EngineTag { at, tag } => {
                 write!(f, "{at}: {:?}, a tag only the engine gives", tag.name())
             }

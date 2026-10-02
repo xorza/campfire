@@ -2,18 +2,19 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::{iter, slice};
 
 use campfire_capabilities::{
-    ActionData, ActionKind, ActionSlots, ApiOwner, ApiVersion, CollisionData, CombatRules,
+    ActionData, ActionKind, ActionSlots, Actions, ApiOwner, ApiVersion, CollisionData, CombatRules,
     DeclaredName, DeliveryData, EffectTo, Effecting, EngineStat, EngineTag, FilterData, Hook,
-    MemberKind, Mode, ModifierData, NameKind, Navigation, Number, Offers, Param, Pools, Range,
-    RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Stat, Targeting, TrackId, UnitTypeData,
+    KitRules, MemberKind, Mode, ModifierData, NameKind, Navigation, Number, Offers, Orders, Param,
+    PoolId, Pools, Range, RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Stat, Targeting,
+    TrackId, UnitKit, UnitTypeData,
 };
 use campfire_content::PackagePath;
 use campfire_math::Num;
-use campfire_sim::Capability;
+use campfire_sim::{Capability, TickRate};
 
 use crate::error::{
-    ChoiceProblem, CtxMisuse, DeliveryProblem, EffectProblem, Limit, LoadError, LoadProblem,
-    PackageRef, Place,
+    ChoiceProblem, CtxMisuse, DeliveryProblem, EffectProblem, Limit, LoadError, LoadProblem, Place,
+    ScriptProblem,
 };
 use crate::files::units_data::UnitTypeFile;
 use crate::mode_packages::{Dependent, DependentKind, ModePackages};
@@ -34,6 +35,8 @@ pub(crate) struct LoadCheck<'a> {
     cap: Num,
     /// The script API of the release, which every name a script uses must be of.
     api: &'a ScriptApi,
+    /// The fastest rate the mode allows, at which a time counts the most ticks.
+    rate: TickRate,
 }
 
 /// The facts one package's checks share.
@@ -50,10 +53,7 @@ struct PackageNames<'a> {
 impl<'a> LoadCheck<'a> {
     pub(crate) fn run(packages: &'a ModePackages, api: &'a ScriptApi) -> Result<(), LoadError> {
         let manifest = &packages.manifest;
-        let fail = |problem| LoadError {
-            package: PackageRef::Name(manifest.header.name.clone()),
-            problem: Box::new(problem),
-        };
+        let fail = |problem| LoadError::of(&manifest.header.name, problem);
         let mut tags = packages.tag_names();
         if EngineTag::ALL.len() + tags.len() > UnitTypeData::TAG_LIMIT {
             return Err(fail(LoadProblem::TooMany(Limit::Tags)));
@@ -84,10 +84,8 @@ impl<'a> LoadCheck<'a> {
         );
         for package in every {
             if !ApiVersion::RELEASE.loads(package.api) {
-                return Err(LoadError {
-                    package: PackageRef::Name(package.name.clone()),
-                    problem: Box::new(LoadProblem::OtherApi(package.api)),
-                });
+                let problem = LoadProblem::OtherApi(package.api);
+                return Err(LoadError::of(&package.name, problem));
             }
         }
         let check = LoadCheck {
@@ -95,14 +93,14 @@ impl<'a> LoadCheck<'a> {
             tags,
             cap: manifest.max_move_speed.get(),
             api,
+            rate: TickRate::new(manifest.tick_hz.fastest()),
         };
         check.mode().map_err(fail)?;
         check.loadout()?;
         for dependent in &packages.dependencies {
-            check.dependent(dependent).map_err(|problem| LoadError {
-                package: PackageRef::Name(dependent.package.name.clone()),
-                problem: Box::new(problem),
-            })?;
+            check
+                .dependent(dependent)
+                .map_err(|problem| LoadError::of(&dependent.package.name, problem))?;
         }
         packages
             .stat_graph()
@@ -215,10 +213,8 @@ impl<'a> LoadCheck<'a> {
             }
             let actions = dependent.content.actions.keys();
             if let Some(id) = actions.clone().find(|&id| !seen.insert(id)) {
-                return Err(LoadError {
-                    package: PackageRef::Name(dependent.package.name.clone()),
-                    problem: Box::new(LoadProblem::RepeatedLoadout(id.clone())),
-                });
+                let problem = LoadProblem::RepeatedLoadout(id.clone());
+                return Err(LoadError::of(&dependent.package.name, problem));
             }
         }
         Ok(())
@@ -299,6 +295,13 @@ impl<'a> LoadCheck<'a> {
             let at = Place::Action(id.clone());
             self.kind(id, ability)?;
             self.ranked(id, ability, ranks(id.as_str()))?;
+            let target = |name: &DeclaredName| self.packages.data.cost_target(name);
+            Actions::check_times(ability, ranks(id.as_str()), self.rate, target).map_err(
+                |error| LoadProblem::Action {
+                    action: id.clone(),
+                    error,
+                },
+            )?;
             self.effects(id, ability)?;
             if let Some(delivery) = &ability.delivery {
                 let capability = match delivery {
@@ -386,20 +389,27 @@ impl<'a> LoadCheck<'a> {
         let package = names.package;
         for &path in names.roles.keys() {
             if package.script(path).is_none() {
-                return Err(LoadProblem::MissingScript(path.clone()));
+                return Err(LoadProblem::Script {
+                    path: path.clone(),
+                    problem: ScriptProblem::Missing,
+                });
             }
         }
         for script in &package.scripts {
             let path = &script.path;
             let Some(roles) = names.roles.get(path) else {
-                return Err(LoadProblem::UnreferencedScript(path.clone()));
+                return Err(LoadProblem::Script {
+                    path: path.clone(),
+                    problem: ScriptProblem::Unreferenced,
+                });
             };
             let at = Place::Script(path.clone());
             let facts = &script.facts;
-            let misuse = |misuse| LoadProblem::CtxMisuse {
+            let fail = |problem| LoadProblem::Script {
                 path: path.clone(),
-                misuse,
+                problem,
             };
+            let misuse = |misuse| fail(ScriptProblem::CtxMisuse(misuse));
             if let Some(found) = &facts.ctx_misuse {
                 return Err(misuse(found.clone()));
             }
@@ -410,19 +420,13 @@ impl<'a> LoadCheck<'a> {
                         .iter()
                         .any(|prefix| function.name.starts_with(prefix))
                 {
-                    return Err(LoadProblem::UnknownHook {
-                        path: path.clone(),
-                        function: function.name.clone(),
-                    });
+                    return Err(fail(ScriptProblem::UnknownHook(function.name.clone())));
                 }
                 let Some(hook) = hook else {
                     continue;
                 };
                 if !roles.contains(&hook.role()) || hook.params() != function.params {
-                    return Err(LoadProblem::UnknownHook {
-                        path: path.clone(),
-                        function: function.name.clone(),
-                    });
+                    return Err(fail(ScriptProblem::UnknownHook(function.name.clone())));
                 }
                 if !function.ctx_first {
                     return Err(misuse(CtxMisuse::HookParam {
@@ -439,10 +443,7 @@ impl<'a> LoadCheck<'a> {
                         && roles.iter().any(|&role| member.roles.contains(role))
                 });
                 let Some(member) = member else {
-                    return Err(LoadProblem::UnknownCtx {
-                        path: path.clone(),
-                        name: used.name.clone(),
-                    });
+                    return Err(fail(ScriptProblem::UnknownCtx(used.name.clone())));
                 };
                 if let Some(capability) = member.capability {
                     self.require(capability, &at)?;
@@ -450,10 +451,7 @@ impl<'a> LoadCheck<'a> {
             }
             for used in &facts.members {
                 if !self.member_known(facts, &used.name, used.kind) {
-                    return Err(LoadProblem::UnknownMember {
-                        path: path.clone(),
-                        name: used.name.clone(),
-                    });
+                    return Err(fail(ScriptProblem::UnknownMember(used.name.clone())));
                 }
             }
             let params = &names.params[path];
@@ -904,6 +902,53 @@ impl<'a> LoadCheck<'a> {
                 name: track.to_string(),
             });
         }
+        if unit_type.delivers() {
+            return Ok(());
+        }
+        self.stands(unit_type, at)
+    }
+
+    /// A unit type at `at` that stands, whose pools the check found: it makes a unit, and its
+    /// AI loads, as a match builds them, at the fastest rate the mode allows.
+    fn stands(&self, unit_type: &UnitTypeFile, at: &Place) -> Result<(), LoadProblem> {
+        let data = &self.packages.data;
+        let pools = unit_type.pools.iter().map(|name| {
+            let id = PoolId::of(&data.pools, name).expect("the check found the pool");
+            (id, &data.pools[name].max)
+        });
+        let rules = KitRules {
+            rate: self.rate,
+            max_move_speed: self.packages.manifest.max_move_speed,
+            life: data.combat.life_pool(&data.pools).unwrap_or(PoolId::FIRST),
+        };
+        UnitKit::new(
+            unit_type.stats.as_ref(),
+            unit_type.combat.as_ref(),
+            pools,
+            rules,
+        )
+        .map_err(|error| LoadProblem::UnitKit {
+            at: at.clone(),
+            error,
+        })?;
+        let Some(orders) = &unit_type.orders else {
+            return Ok(());
+        };
+        // A script the mode does not hold fails the load where the scripts are checked.
+        let Some(script) = self.packages.mode.script(&orders.ai) else {
+            return Ok(());
+        };
+        // An `on_think` of other parameters fails the load where the scripts are checked, as a
+        // hook of the wrong form, the problem that names it best.
+        let thinks = script
+            .facts
+            .functions
+            .iter()
+            .any(|function| function.name == Hook::OnThink.name());
+        Orders::ai_period(orders, self.rate, thinks).map_err(|error| LoadProblem::Ai {
+            at: at.clone(),
+            error,
+        })?;
         Ok(())
     }
 

@@ -419,8 +419,7 @@ This stage is the backbone. Its steps run in order.
 
 | Step | Change | Size |
 |---|---|---|
-| C5a | `Books::build` in capabilities, called by the load check, which keeps its own checks and compares the results; kits, actions and AIs built at the fastest rate; `ScriptPlace`; one `LoadError::new` and one case for each rule | M |
-| C5b | `ModePackages` holds the books; `Match::install` reads them; `StartError` shrinks; each script parsed once; the old checks and the `.expect(CHECKED)` go | M |
+| C5b | `Books::build` in capabilities, called by the load check, which keeps its own checks and compares the results; `ScriptPlace`; `ModePackages` holds the books; `Match::install` reads them; `StartError` shrinks to the session terms and the mode's start; each script parsed once; the old checks and the `.expect(CHECKED)` go | M |
 | C6a | Typed ids from one list each (`StatId` and the others); one ms-to-ticks conversion; `Option<PoolId>` for the life pool; `Filter::of(Relation)` | M |
 | C6b | The modifier runtime spec; param tables in the books; aura and player-modifier filters resolved; stats no longer reads the frame | M |
 | C7 | The view and the frame read the books through `Arc`; `ScriptConsts`; `MatchScripts` goes; the allowlist test of name lookups | M |
@@ -476,7 +475,7 @@ PLAN.md's stage 4 steps join this plan as follows:
 ### Order
 
 ```
-Track S:  C5a → C5b → C6a → C6b → C7 → C8 → C9 → D2 → D3 → D5 → D6
+Track S:  C5b → C6a → C6b → C7 → C8 → C9 → D2 → D3 → D5 → D6
                                   └ (C7 + I4) PLAN 2
 
 Track I:  E1 → E2      F2      G1      H1, H4      H2 → H3
@@ -579,7 +578,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - map-blocked cells: H2.
 - **R§6:**
   - name table: C4;
-  - errors at match start: C5a, C5b;
   - build computes again: C5b;
   - map resolved again: C5b;
   - `StateSync`: C3;

@@ -91,10 +91,8 @@ impl ModePackages {
     /// read once.
     pub fn from_package_dir(mode: &PackageDir) -> Result<ModePackages, LoadError> {
         let read = |dir: &PackageDir, package: PackageRef| {
-            dir.read().map_err(|error| LoadError {
-                package,
-                problem: Box::new(LoadProblem::Content(error)),
-            })
+            dir.read()
+                .map_err(|error| LoadError::new(package, LoadProblem::Content(error)))
         };
         let at = PackageRef::Dir(mode.root().to_owned());
         let files = read(mode, at.clone())?;
@@ -335,10 +333,7 @@ impl ModePackages {
         let parser = ScriptHost::new(manifest.script_limits.per_call);
         let api = ScriptApi::release();
         let name = manifest.header.name.clone();
-        let fail = |problem| LoadError {
-            package: PackageRef::Name(name.clone()),
-            problem: Box::new(problem),
-        };
+        let fail = |problem| LoadError::of(&name, problem);
         if PackageIndex::dependency(dependencies.len()).is_none() {
             return Err(fail(LoadProblem::TooMany(Limit::Packages)));
         }
@@ -382,10 +377,7 @@ impl Dependent {
         parser: &ScriptHost,
         api: &ScriptApi,
     ) -> Result<Dependent, LoadError> {
-        let fail = |problem| LoadError {
-            package: PackageRef::Name(name.to_owned()),
-            problem: Box::new(problem),
-        };
+        let fail = |problem| LoadError::of(name, problem);
         let manifest: Manifest = files
             .read_data(&path(PackageDir::MANIFEST))
             .map_err(content_error)
@@ -428,10 +420,7 @@ fn read_mode_manifest(
     files: &PackageFiles,
     package: &PackageRef,
 ) -> Result<ModeManifest, LoadError> {
-    let fail = |problem| LoadError {
-        package: package.clone(),
-        problem: Box::new(problem),
-    };
+    let fail = |problem| LoadError::new(package.clone(), problem);
     let manifest = files.read_data(&path(PackageDir::MANIFEST));
     match manifest.map_err(content_error).map_err(fail)? {
         Manifest::Mode(manifest) => Ok(manifest),

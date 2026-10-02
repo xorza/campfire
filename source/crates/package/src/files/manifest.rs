@@ -115,6 +115,12 @@ impl TickRange {
     pub const fn default(self) -> NonZeroU32 {
         self.default
     }
+
+    /// The fastest rate, at which a time counts the most ticks: a time that counts in ticks at
+    /// it counts at every rate of the range.
+    pub const fn fastest(self) -> NonZeroU32 {
+        self.max
+    }
 }
 
 impl<'de> Deserialize<'de> for TickRange {

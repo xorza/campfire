@@ -6,7 +6,7 @@ use campfire_script::{ScriptHost, ScriptId};
 use campfire_sim::{Position, SimSet, SimTick, StableId, StateRegistry, TickRate};
 
 use crate::actions::action_book::{ActionBook, ActionId, ActionParts, Aim, Passive, RankValues};
-use crate::actions::action_data::{ActionData, Range, Targeting};
+use crate::actions::action_data::{ActionData, CostTarget, Range, Targeting};
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::{ActionSlots, ActionTarget, InProgress};
 use crate::actions::error::ActionError;
@@ -32,6 +32,7 @@ use crate::units::script_view::{RowFill, SlotRow, View};
 use crate::units::team::Team;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_tags::UnitTags;
+use crate::values::declared_name::DeclaredName;
 
 pub(crate) mod action_book;
 pub(crate) mod action_data;
@@ -93,6 +94,18 @@ impl Actions {
         world
             .resource_mut::<ActionBook>()
             .bind_spawn(action, unit_type);
+    }
+
+    /// Whether each time of `data`, at each of its `ranks` ranks, counts in ticks at `rate`, its
+    /// costs' names taking from what `target` gives, as `load` reads it: what the package load
+    /// checks at the fastest rate the mode allows, where its ticks are the most.
+    pub fn check_times(
+        data: &ActionData,
+        ranks: u8,
+        rate: TickRate,
+        target: impl Fn(&DeclaredName) -> Option<CostTarget>,
+    ) -> Result<(), ActionError> {
+        RankValues::all(data, ranks, rate, target).map(drop)
     }
 
     /// Loads the action `name` of `package`, of `ranks` ranks, into the match, which the
