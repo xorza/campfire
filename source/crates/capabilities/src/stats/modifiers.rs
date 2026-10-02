@@ -149,6 +149,12 @@ impl Modifiers {
         self.find(id, source).ok()
     }
 
+    /// Writes `value` as the value of the share at `at` of its buffer, as a live change last
+    /// computed it.
+    pub(crate) fn set_share_value(&mut self, at: usize, value: Num) {
+        self.shares[at].value = value;
+    }
+
     /// Applies `application`: a new instance, its clock among `clocks`, or one more application
     /// of the instance its source holds, as its `reapply` says. `refresh` takes the new numbers,
     /// shield and end and keeps the stacks; `stack` does too, and adds a stack up to the limit, a

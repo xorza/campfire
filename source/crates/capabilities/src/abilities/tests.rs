@@ -42,6 +42,7 @@ use crate::stats;
 use crate::stats::Stats;
 use crate::stats::level::Level;
 use crate::stats::lifetime::Hold;
+use crate::stats::live_shares::LiveShares;
 use crate::stats::modifier_book::{Applier, ModifierBook};
 use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_data::{ModifierData, Reapply};
@@ -60,6 +61,7 @@ use crate::units::body::Body;
 use crate::units::script_view::View;
 use crate::units::tag_data::TagData;
 use crate::units::type_scope::TypeScope;
+use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
@@ -1341,13 +1343,18 @@ impl Match {
 
     /// Gives `unit` the modifier `name` from itself.
     fn give(&mut self, unit: StableId, name: &str) {
+        self.give_from(unit, unit, name);
+    }
+
+    /// Gives `unit` the modifier `name` of package 0, from `source`.
+    fn give_from(&mut self, unit: StableId, source: StableId, name: &str) {
         let id = Stats::modifier(&self.world, 0, name).unwrap();
         let entity = self.world.resource::<EntityIndex>().get(unit).unwrap();
         if !self.world.entity(entity).contains::<Modifiers>() {
             self.world.entity_mut(entity).insert(Modifiers::default());
         }
         let applier = Applier {
-            source: Some(unit),
+            source: Some(source),
             ability: None,
             rank: 1,
             hold: None,
@@ -1632,70 +1639,94 @@ fn on_resolve(ctx, caster, target) {
     assert_eq!(marked, Some(Tick::new(t.get() + 10)));
 }
 
+/// Veil's match: Veil has attack damage 53 at level 1. Dual Path gives her spell vamp of 0.06 and 0.00167 a
+/// point of bonus attack damage; Fortify gives armor of 10 times her spell vamp, so armor reads
+/// spell vamp, which reads attack damage. Armor's place, before spell vamp's, makes the graph's
+/// order differ from the places'. Veil holds both, and Boost of 30 attack damage is loaded.
+#[derive(Debug)]
+struct VeilMatch {
+    game: Match,
+    veil: StableId,
+    veil_type: UnitType,
+    /// The places of attack damage, spell vamp and armor.
+    places: [usize; 3],
+}
+
+impl VeilMatch {
+    fn new() -> VeilMatch {
+        let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
+        let mut game = Match::with(LIMITS, &declared);
+        let veil_type = Units::load_type(
+            &mut game.world,
+            TypeScope::Mode,
+            "veil",
+            &UnitTypeData::default(),
+        );
+        let attack_damage = Stat::named("attack_damage").unwrap();
+        let growth = StatValue {
+            base: Num::from_int(53).unwrap(),
+            per_level: Num::ZERO,
+        };
+        let growth = StatsData([(attack_damage.clone(), growth)].into());
+        let [spell_vamp, armor] = ["spell_vamp", "armor"].map(|name| Stat::named(name).unwrap());
+        let mut graph = StatGraph::new(scaling_stats());
+        graph.add(&attack_damage, &spell_vamp);
+        graph.add(&spell_vamp, &armor);
+        let rules: BTreeMap<_, _> = scaling_stats()
+            .map(|stat| (stat, StatRule::default()))
+            .into();
+        let book = StatBook::new(&rules, [(veil_type, &growth)], num(6))
+            .with_order(graph.order().unwrap());
+        let place = |stat: &Stat| book.named(stat).unwrap().index();
+        let places = [&attack_damage, &spell_vamp, &armor].map(place);
+        Stats::load_book(&mut game.world, book);
+        let vamp = scaling(
+            Scalar::Decimal(decimal("0.06")),
+            0,
+            &[],
+            &[("attack_damage", decimal("0.00167"))],
+        );
+        let dual_path = changing(&[("spell_vamp", param("vamp"))], &[("vamp", vamp)], None);
+        let guard = scaling(Scalar::Int(0), 0, &[("spell_vamp", num(10))], &[]);
+        let fortify = changing(&[("armor", param("guard"))], &[("guard", guard)], None);
+        let boost = changing(&[("attack_damage", int(30))], &[], None);
+        for (name, data) in [
+            ("boost", boost),
+            ("dual_path", dual_path),
+            ("fortify", fortify),
+        ] {
+            Stats::load_modifier(&mut game.world, 0, name, &data, None);
+        }
+        let veil = game.spawn(
+            0,
+            at(Num::ZERO, Num::ZERO, Num::ZERO),
+            (veil_type, Level::default(), UnitStats::default()),
+        );
+        game.give(veil, "dual_path");
+        game.give(veil, "fortify");
+        VeilMatch {
+            game,
+            veil,
+            veil_type,
+            places,
+        }
+    }
+
+    /// The attack damage, spell vamp and armor of `unit`.
+    fn values(&self, unit: StableId) -> [Num; 3] {
+        let stats = self.game.get_ref::<UnitStats>(unit).values();
+        self.places.map(|at| stats[at])
+    }
+}
+
 #[test]
 fn a_live_change_follows_its_source_in_the_order_of_the_stats_it_reads() {
-    let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
-    let mut game = Match::with(LIMITS, &declared);
-    // Veil: attack damage 53 at level 1. Dual Path gives her spell vamp of 0.06 and 0.00167 a
-    // point of bonus attack damage; Fortify gives armor of 10 times her spell vamp, so armor
-    // reads spell vamp, which reads attack damage. Armor's place, before spell vamp's, makes the
-    // graph's order differ from the places'.
-    let veil_type = Units::load_type(
-        &mut game.world,
-        TypeScope::Mode,
-        "veil",
-        &UnitTypeData::default(),
-    );
-    let attack_damage = Stat::named("attack_damage").unwrap();
-    let growth = StatValue {
-        base: Num::from_int(53).unwrap(),
-        per_level: Num::ZERO,
-    };
-    let growth = StatsData([(attack_damage.clone(), growth)].into());
-    let [spell_vamp, armor] = ["spell_vamp", "armor"].map(|name| Stat::named(name).unwrap());
-    let mut graph = StatGraph::new(scaling_stats());
-    graph.add(&attack_damage, &spell_vamp);
-    graph.add(&spell_vamp, &armor);
-    let rules: BTreeMap<_, _> = scaling_stats()
-        .map(|stat| (stat, StatRule::default()))
-        .into();
-    let book =
-        StatBook::new(&rules, [(veil_type, &growth)], num(6)).with_order(graph.order().unwrap());
-    let place = |stat: &Stat| book.named(stat).unwrap().index();
-    let places = [&attack_damage, &spell_vamp, &armor].map(place);
-    Stats::load_book(&mut game.world, book);
-    let vamp = scaling(
-        Scalar::Decimal(decimal("0.06")),
-        0,
-        &[],
-        &[("attack_damage", decimal("0.00167"))],
-    );
-    let dual_path = changing(&[("spell_vamp", param("vamp"))], &[("vamp", vamp)], None);
-    let guard = scaling(Scalar::Int(0), 0, &[("spell_vamp", num(10))], &[]);
-    let fortify = changing(&[("armor", param("guard"))], &[("guard", guard)], None);
-    let boost = changing(&[("attack_damage", int(30))], &[], None);
-    for (name, data) in [
-        ("boost", boost),
-        ("dual_path", dual_path),
-        ("fortify", fortify),
-    ] {
-        Stats::load_modifier(&mut game.world, 0, name, &data, None);
-    }
-    let veil = game.spawn(
-        0,
-        at(Num::ZERO, Num::ZERO, Num::ZERO),
-        (veil_type, Level::default(), UnitStats::default()),
-    );
-    game.give(veil, "dual_path");
-    game.give(veil, "fortify");
-    let values = |game: &Match| {
-        let stats = game.get_ref::<UnitStats>(veil).values();
-        places.map(|at| stats[at])
-    };
-    game.world.run_schedule(SimUpdate);
+    let mut veil = VeilMatch::new();
+    let unit = veil.veil;
+    veil.game.world.run_schedule(SimUpdate);
     // 0.06 is 1 006 632.96 bits, to 1 006 633; no bonus; armor 10 times that.
     assert_eq!(
-        values(&game),
+        veil.values(unit),
         [
             num(53),
             Num::from_bits(1_006_633),
@@ -1705,16 +1736,52 @@ fn a_live_change_follows_its_source_in_the_order_of_the_stats_it_reads() {
 
     // 30 more attack damage: in the same refresh, bonus 30, and 0.00167, 28 017.95 bits to
     // 28 018, times 30 is 840 540: spell vamp 1 847 173 bits, armor ten times it.
-    game.give(veil, "boost");
-    game.world.run_schedule(SimUpdate);
+    veil.game.give(unit, "boost");
+    veil.game.world.run_schedule(SimUpdate);
     assert_eq!(
-        values(&game),
+        veil.values(unit),
         [
             num(83),
             Num::from_bits(1_847_173),
             Num::from_bits(18_471_730)
         ]
     );
+}
+
+#[test]
+fn a_live_change_keeps_its_last_value_when_its_source_is_gone_and_none_at_no_stack() {
+    let mut veil = VeilMatch::new();
+    let source = veil.veil;
+    // Ward, of Veil's type, holds Dual Path from Veil, with Boost: 0.06 and 0.00167 of Veil's
+    // bonus of 30, as above, spell vamp 1 847 173 bits.
+    let ward_parts = (veil.veil_type, Level::default(), UnitStats::default());
+    let ward = veil
+        .game
+        .spawn(0, at(Num::ONE, Num::ZERO, Num::ZERO), ward_parts);
+    veil.game.give(source, "boost");
+    veil.game.give_from(ward, source, "dual_path");
+    veil.game.world.run_schedule(SimUpdate);
+    let vamp = Num::from_bits(1_847_173);
+    assert_eq!(veil.values(ward)[1], vamp);
+    // Veil goes: the change keeps the value it last had. Read with no source it would fall to
+    // 0.06 alone, 1 006 633 bits.
+    let entity = veil
+        .game
+        .world
+        .resource::<EntityIndex>()
+        .get(source)
+        .unwrap();
+    veil.game.world.despawn(entity);
+    veil.game.world.run_schedule(SimUpdate);
+    assert_eq!(veil.values(ward)[1], vamp);
+    // At no stack it adds nothing, and is no live change that refreshes its unit every pass.
+    let dual_path = Stats::modifier(&veil.game.world, 0, "dual_path").unwrap();
+    let ward_entity = veil.game.world.resource::<EntityIndex>().get(ward).unwrap();
+    let mut modifiers = veil.game.world.get_mut::<Modifiers>(ward_entity).unwrap();
+    modifiers.set_stacks(dual_path, Some(source), 0, Tick::new(0));
+    veil.game.world.run_schedule(SimUpdate);
+    assert_eq!(veil.values(ward)[1], Num::ZERO);
+    assert!(!veil.game.world.entity(ward_entity).contains::<LiveShares>());
 }
 
 #[test]

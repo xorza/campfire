@@ -498,6 +498,7 @@ fn refresh_stats(
             >,
             Query<'_, '_, (&UnitType, &Level, &UnitStats)>,
             Query<'_, '_, (&mut UnitStats, Option<&mut MoveStep>, Option<&mut Pools>)>,
+            Query<'_, '_, &mut Modifiers>,
         ),
     >,
     mut scratch: Local<'_, RefreshScratch>,
@@ -570,6 +571,18 @@ fn refresh_stats(
                 changed.set_max(pool, max);
             }
             pools.set_if_neq(changed);
+        }
+    }
+    let mut carriers = units.p3();
+    for term in scratch.lives() {
+        let entity = scratch.units[term.unit as usize].entity;
+        if let Ok(mut modifiers) = carriers.get_mut(entity) {
+            // The value is state, so a replay keeps it, and no change of the modifiers: writing it
+            // marks nothing, or the refresh would run again for it.
+            let at = term.share as usize;
+            modifiers
+                .bypass_change_detection()
+                .set_share_value(at, term.value);
         }
     }
 }

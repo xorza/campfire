@@ -269,7 +269,6 @@ These need only Stage A and Stage B. They can run between the steps of track S, 
 
 | Step | Change | Needs | Size |
 |---|---|---|---|
-| G2 | A live change from a gone source; a 0-stack live change | — | S, may change behaviour |
 | H1b | `ctx.find` and `nearest_visible` read `BodyGrid` | D5, H1 | S |
 | J | The local fixes in the appendix, and T§5 to T§8 | any time | S each |
 
@@ -280,7 +279,7 @@ Track S:  D5
 
 Track I:  H1, H4      H2 → H3      F3 after unit script state
 
-Joins:    G2      D5 + H1 → H1b
+Joins:    D5 + H1 → H1b
 ```
 
 Track S is long and sequential. Track I fills the sessions between its steps.
@@ -368,7 +367,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - Mode-stage events: B2;
   - `finish_trains`: B2;
   - `renew` interval: B2;
-  - live change from a gone source: G2, with the rule in stats.md (J);
   - ms to ticks: C6a;
   - "walks" twice: C2;
   - hook arity: C4;
@@ -394,7 +392,6 @@ Track S is long and sequential. Track I fills the sessions between its steps.
   - `struck`: H1;
   - `RecentAttackers`: J;
   - client gauges: J;
-  - zero-stack live change: G2;
   - commands parsed twice: J;
   - small scans: J.
 - **R§13:**

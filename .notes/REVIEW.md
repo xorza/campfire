@@ -42,7 +42,6 @@ The rule is "no data in strings": a name from data becomes a checked type where 
 
 One operation is written twice or three times, and the copies disagree.
 
-- [ ] **A live change from a gone source drops to its base** — `capabilities/src/stats/refresh_scratch.rs:120-130`, `stats/mod.rs:495`. The doc says it keeps its last value. The fallback is the value at application, and a gone source resolves to the level-1 base. Better: decide the rule in stats.md, and keep the last value or document the base.
 - [ ] **"A unit as a param source" is built three ways** — `capabilities/src/stats/param_source.rs:38-50`, `stats/param_sources.rs:28-38`, `stats/mod.rs:569-578`. Two treat level and stats as optional, one requires them. Better: one constructor.
 - [ ] **"A unit type walks" is defined twice** — `package/src/mode_packages.rs:207-214`, `package/src/load_check.rs:119-128`. The avatar rules that `AvatarData` promises are applied in `runner/src/match_build.rs:200-205`. Better: `UnitTypeFile::walks()`, and an `AvatarData` method that gives the effective unit type.
 - [ ] **A constant is copied into a message** — `capabilities/src/scripts/error.rs:429`. `ChainTooDeep` says "16 deep", which copies `MAX_DEPTH` in `stats/modifier_hooks.rs:23`.
@@ -72,7 +71,6 @@ These costs grow with all units or all entities each tick, while the work concer
 - [ ] **Each projectile owns a `struck` list** — `capabilities/src/projectiles/projectile.rs:17,89-96`. It allocates on the first hit, is searched linearly in the hit loop, and duplicates `CastHits`. Better: one sorted flat store of (group, unit).
 - [ ] **`RecentAttackers` scans its list on every damage** — `capabilities/src/combat/mod.rs:806-808`, `combat/recent_attackers.rs:21`. `record` looks up every entry in the index, and `respawn` drops its buffer. Better: prune on despawn or on read, and `clear()` on respawn.
 - [ ] **The client marks every gauge and drawing changed every frame** — `client/src/hud/mod.rs:306-313,336`, `client/src/view.rs:317,368-371`. Better: `set_if_neq`, and skip finished glides.
-- [ ] **A 0-stack live change refreshes its unit every pass** — `capabilities/src/stats/refresh_scratch.rs:76-95`. `add` does not skip `stacks == 0`. Better: skip it, as the tag derivation does.
 - [ ] **Commands are parsed twice, and every tick** — `sim/src/command.rs:35-60`, `capabilities/src/orders/mod.rs:191`, `mode/mod.rs:444`. Better: validate once when the input is stored, and keep flat command ranges.
 - [ ] **Small scans** — `Timers::fire` clones a repeating timer and removes from the front of a `Vec` (`capabilities/src/mode/timers.rs:59-73`, `mode/mod.rs:517`); the server builds a new `QueryState` every 2 ms frame (`server/src/main.rs:163`); a script `Unit` copies its whole row on each getter (`capabilities/src/units/unit.rs:33-37`, `units/script_view.rs:297-300`). Better: move the timer and use a heap, cache the state, and hold the row index.
 
