@@ -15,7 +15,7 @@ References: `R§n` is group n of `REVIEW.md`, `T§n` is group n of `TEST-REVIEW.
 | R3 Strict layers with registered hooks | Lower modules import higher ones, and the core names every capability | R§8, R§10 |
 | R5 Stable order and one exactness rule | Some systems spend or allocate in query order, and some arithmetic rounds its own way | R§4, R§12 |
 | R6 A limit on work per tick, and fresh shared indexes | Navigation, vision, deliveries and the view have no work limit and no shared index | R§5, R§12 |
-| R7 State holds only state | Components store book data, and decoded state is trusted | R§1, R§7, R§10 |
+| R7 State holds only state | Components store book data | R§1, R§7, R§10 |
 | T Proof and test redesign | Refactors have no permanent proof of equal behaviour, and every module writes its own harness | T§1 to T§8 |
 
 ## Rules
