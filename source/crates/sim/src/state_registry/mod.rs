@@ -22,6 +22,8 @@ mod writer;
 
 /// Starts the combined hash, so no other BLAKE3 use can produce the same state hash.
 const HASH_DOMAIN: &[u8] = b"campfire/state/v1";
+/// The domain of `StateHash::of`.
+const DIGEST_DOMAIN: &[u8] = b"campfire/digest/v1";
 /// Starts every snapshot, so other bytes are refused at once.
 const SNAPSHOT_TAG: &[u8] = b"campfire/snapshot/v1";
 /// The built-in type listing every live stable id, so an entity with no registered component
@@ -59,6 +61,14 @@ pub struct StateHash([u8; 32]);
 impl StateHash {
     pub const fn as_bytes(&self) -> &[u8; 32] {
         &self.0
+    }
+
+    /// The hash of `bytes` under a domain of its own: a digest of values that a test or a check
+    /// derives from the state, which no state hash can equal.
+    pub fn of(bytes: &[u8]) -> StateHash {
+        let mut hasher = Hasher::new();
+        hasher.update(DIGEST_DOMAIN).update(bytes);
+        StateHash(*hasher.finalize().as_bytes())
     }
 }
 

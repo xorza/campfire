@@ -4,7 +4,7 @@
 use campfire_capabilities::{
     Area, Dead, Experience, Level, Modifiers, Owner, Projectile, ScriptFailures, Team, TrainQueue,
 };
-use campfire_runner::{FixedMatch, ProvingMatch};
+use campfire_runner::{FixedMatch, Golden, ProvingMatch};
 use campfire_sim::EntityIndex;
 
 /// What the match showed over its ticks.
@@ -50,8 +50,10 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
     let proving = ProvingMatch::load();
     let mut fixed = proving.start();
     let mut seen = Seen::default();
+    let mut golden = Golden::new(proving.packages(), ProvingMatch::PLAYERS);
     for tick in 0..ProvingMatch::TICKS {
         ProvingMatch::play_tick(&mut fixed, tick);
+        golden.record(fixed.runner());
         let failures = fixed.runner().world().non_send::<ScriptFailures>();
         assert!(
             failures.get().is_empty(),
@@ -60,6 +62,7 @@ fn the_proving_match_plays_every_capability_with_no_failed_call() {
         );
         look(&fixed, tick, &mut seen);
     }
+    golden.check("proving");
     let world = fixed.runner().world();
     // Production: the orders of tick 2 train in 1.5 s, 30 ticks. North's two barracks competed
     // for gold for one guard, so north has one guard, and south one.

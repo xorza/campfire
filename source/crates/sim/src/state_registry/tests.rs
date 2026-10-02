@@ -214,6 +214,17 @@ fn allocator_and_entity_list_are_hashed() {
 }
 
 #[test]
+fn a_digest_is_blake3_over_its_domain_and_its_bytes() {
+    let mut hasher = Hasher::new();
+    hasher.update(b"campfire/digest/v1").update(b"abc");
+    assert_eq!(
+        StateHash::of(b"abc").as_bytes(),
+        hasher.finalize().as_bytes()
+    );
+    assert_ne!(StateHash::of(b""), registry().hash(&varied_world()));
+}
+
+#[test]
 fn snapshot_restores_the_same_state() {
     let mut original = varied_world();
     let bytes = snapshot(&original);

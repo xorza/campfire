@@ -8,6 +8,8 @@ mod error;
 mod fixed_match;
 #[cfg(feature = "internals")]
 mod fixed_session;
+#[cfg(feature = "internals")]
+mod golden;
 mod match_build;
 #[cfg(feature = "internals")]
 mod proving_match;
@@ -21,6 +23,8 @@ pub use error::StartError;
 pub use fixed_match::FixedMatch;
 #[cfg(feature = "internals")]
 pub use fixed_session::FixedSession;
+#[cfg(feature = "internals")]
+pub use golden::Golden;
 #[cfg(feature = "internals")]
 pub use proving_match::ProvingMatch;
 #[cfg(feature = "internals")]

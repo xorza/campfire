@@ -7,7 +7,7 @@ use campfire_capabilities::{
 };
 use campfire_math::{Num, PlayerSlot, Vec3};
 use campfire_protocol::SessionLog;
-use campfire_runner::{Reference3v3, Runner};
+use campfire_runner::{Golden, Reference3v3, Runner};
 use campfire_script::ScriptHost;
 use campfire_sim::{EntityIndex, Position, StateHash};
 
@@ -15,6 +15,7 @@ use campfire_sim::{EntityIndex, Position, StateHash};
 struct Run {
     runner: Runner,
     hashes: Vec<StateHash>,
+    golden: Golden,
     /// Each unit after the tick the heroes spawn in, and after the one the first wave spawns in.
     at_pick_end: Vec<Unit>,
     at_first_wave: Vec<Unit>,
@@ -64,12 +65,14 @@ fn run(reference: &Reference3v3, ticks: u64) -> Run {
     let mut run = Run {
         runner,
         hashes: Vec::new(),
+        golden: Golden::new(reference.packages(), Reference3v3::PLAYERS),
         at_pick_end: Vec::new(),
         at_first_wave: Vec::new(),
     };
     for tick in 0..ticks {
         run.runner.run_tick();
         run.hashes.push(run.runner.state_hash());
+        run.golden.record(&run.runner);
         let failures = run.runner.world().non_send::<ScriptFailures>();
         assert!(
             failures.get().is_empty(),
@@ -95,6 +98,7 @@ fn ground(x: i64, z: i64) -> Position {
 fn a_3v3_match_replays_to_the_same_hashes() {
     let reference = Reference3v3::load();
     let run = run(&reference, 2500);
+    run.golden.check("3v3");
     let runner = &run.runner;
     let world = runner.world();
     // State in the order of its fields' names: first_blood, then phase.
