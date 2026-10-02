@@ -39,7 +39,7 @@ pub enum ActionDataField {
 
 /// What a kind of action does with a field: takes it or not, needs it, or refuses it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FieldUse {
+pub(crate) enum FieldUse {
     Takes,
     Needs,
     Refuses,
@@ -200,7 +200,7 @@ impl ActionDataField {
     }
 
     /// What an action of `kind`, one the release runs, does with it.
-    pub fn use_by(self, kind: ActionKind) -> FieldUse {
+    pub(crate) fn use_by(self, kind: ActionKind) -> FieldUse {
         let at = KINDS
             .iter()
             .position(|&run| run == kind)

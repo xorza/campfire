@@ -148,6 +148,8 @@ fn normal(path: &Path) -> PathBuf {
 
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
+    use std::collections::BTreeMap;
+    use std::fs;
     use std::path::{Path, PathBuf};
 
     use crate::package_dir::PackageDir;
@@ -157,6 +159,26 @@ pub(crate) mod internals {
         /// find the test and reference packages.
         pub fn workspace(path: &str) -> PathBuf {
             Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../../packages")).join(path)
+        }
+
+        /// Every file under `path` within the workspace's `packages` directory, by its path from
+        /// there, read from disk: a tree for `PackageDir::in_memory`.
+        pub fn workspace_tree(path: &str) -> BTreeMap<PathBuf, Vec<u8>> {
+            let mut files = BTreeMap::new();
+            PackageDir::read_tree(&PackageDir::workspace(path), Path::new(""), &mut files);
+            files
+        }
+
+        fn read_tree(dir: &Path, at: &Path, files: &mut BTreeMap<PathBuf, Vec<u8>>) {
+            for entry in fs::read_dir(dir).unwrap() {
+                let entry = entry.unwrap();
+                let path = at.join(entry.file_name());
+                if entry.file_type().unwrap().is_dir() {
+                    PackageDir::read_tree(&entry.path(), &path, files);
+                } else {
+                    files.insert(path, fs::read(entry.path()).unwrap());
+                }
+            }
         }
     }
 }

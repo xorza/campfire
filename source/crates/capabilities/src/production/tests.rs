@@ -220,7 +220,7 @@ fn a_producer_no_player_owns_affords_no_train_that_costs_a_resource() {
 
 #[test]
 fn a_queue_decodes_only_with_a_head_time_exactly_when_it_has_a_head() {
-    #[derive(Serialize)]
+    #[derive(Debug, Serialize)]
     struct Fields {
         entries: Vec<Queued>,
         head_done: Option<Tick>,

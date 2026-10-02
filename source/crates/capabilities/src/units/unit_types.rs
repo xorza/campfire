@@ -11,6 +11,7 @@ use crate::units::type_scope::TypeScope;
 use crate::units::unit_type::UnitType;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::declared_name::DeclaredName;
+use crate::values::name_list::NameList;
 use crate::values::name_table::NameTable;
 use crate::values::scalar::Scalar;
 
@@ -19,19 +20,20 @@ use crate::values::scalar::Scalar;
 #[derive(Debug)]
 pub(crate) struct UnitTypes {
     /// The name of each tag, by tag: the engine's, then the match's.
-    tag_names: Vec<Box<str>>,
+    tag_names: NameList,
     types: Vec<TypeEntry>,
+    /// The name of each type in its scope, by type.
+    type_names: NameList,
     /// Every type, sorted by scope, then name.
     by_name: Vec<UnitType>,
     /// Each type's params, one run per type, in the order of the types.
     params: NameTable<Scalar>,
 }
 
-/// A loaded unit type: the scope its name is seen in, its name, and its tags.
+/// A loaded unit type: the scope its name is seen in, and its tags.
 #[derive(Debug)]
 struct TypeEntry {
     scope: TypeScope,
-    name: Box<str>,
     tags: TagSet,
 }
 
@@ -39,8 +41,9 @@ struct TypeEntry {
 impl Default for UnitTypes {
     fn default() -> UnitTypes {
         UnitTypes {
-            tag_names: EngineTag::ALL.map(|tag| tag.name().into()).into(),
+            tag_names: EngineTag::ALL.into_iter().map(EngineTag::name).collect(),
             types: Vec::new(),
+            type_names: NameList::default(),
             by_name: Vec::new(),
             params: NameTable::default(),
         }
@@ -68,11 +71,8 @@ impl UnitTypes {
         let run = self.params.push(params);
         debug_assert_eq!(run, usize::from(index), "one run of params per type");
         self.by_name.insert(at, UnitType::new(index));
-        self.types.push(TypeEntry {
-            scope,
-            name: name.into(),
-            tags,
-        });
+        self.types.push(TypeEntry { scope, tags });
+        self.type_names.push(name);
         UnitType::new(index)
     }
 
@@ -86,8 +86,7 @@ impl UnitTypes {
             self.tag_names.len() < Tag::LIMIT,
             "the load counted the tags"
         );
-        self.tag_names.push(name.into());
-        Tag::new(self.tag_names.len() - 1)
+        Tag::new(self.tag_names.push(name))
     }
 
     /// Gives `unit_type` the tag `tag` too, as the engine tags a type by its sections.
@@ -109,30 +108,30 @@ impl UnitTypes {
     /// Where `name` of `scope` is in `by_name`, or where it would go.
     fn find(&self, scope: TypeScope, name: &str) -> Result<usize, usize> {
         self.by_name.binary_search_by(|&unit_type| {
-            let entry = &self.types[unit_type.index()];
-            entry
+            let index = unit_type.index();
+            let held = self.type_names.get(index).expect("a loaded type");
+            self.types[index]
                 .scope
                 .cmp(&scope)
-                .then_with(|| (*entry.name).cmp(name))
+                .then_with(|| held.cmp(name))
         })
     }
 
     /// Every type's name, by type.
     pub(crate) fn names(&self) -> impl Iterator<Item = &str> {
-        self.types.iter().map(|entry| &*entry.name)
+        self.type_names.iter()
     }
 
     /// The tag `name`, once declared.
     pub(crate) fn tag_named(&self, name: &str) -> Option<Tag> {
-        let index = self.tag_names.iter().position(|tag| **tag == *name)?;
-        Some(Tag::new(index))
+        self.tag_names.named(name).map(Tag::new)
     }
 
     /// The book of the effects `data` gives the tags, by name, and of the types' own tags, which
     /// it takes: from then on the book alone holds them. A tag `data` does not name has none.
     pub(crate) fn tag_book(&mut self, data: &BTreeMap<DeclaredName, TagData>) -> TagBook {
         let tags = self.tag_names.iter().map(|name| {
-            let Some(data) = data.get(&**name) else {
+            let Some(data) = data.get(name) else {
                 return (TagEffects::default(), TagSet::default());
             };
             let immune = data.immune.iter().map(|name| {

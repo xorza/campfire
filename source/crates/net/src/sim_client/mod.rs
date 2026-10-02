@@ -40,6 +40,8 @@ use crate::sim_client::sent_inputs::SentInputs;
 use crate::sim_client::server_pin::ServerPin;
 use crate::sim_client::signer::Signer;
 
+#[cfg(feature = "bench")]
+pub(crate) mod bench;
 pub(crate) mod bot_script;
 pub(crate) mod join_state;
 pub(crate) mod sent_inputs;
@@ -327,9 +329,6 @@ fn run_predicted_tick(world: &mut World) {
     });
     world.run_schedule(SimUpdate);
 }
-
-#[cfg(feature = "bench")]
-pub(crate) mod bench;
 
 /// Marks each replicated entity `Unpredicted` until it is predicted, in whatever order the two
 /// markers arrive.

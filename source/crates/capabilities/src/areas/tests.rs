@@ -16,7 +16,7 @@ use campfire_sim::Capability;
 
 #[test]
 fn an_area_that_triggers_after_it_ends_fails_to_decode() {
-    #[derive(Serialize)]
+    #[derive(Debug, Serialize)]
     struct Fields {
         source: u64,
         action: u32,

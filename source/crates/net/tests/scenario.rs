@@ -15,7 +15,7 @@ const MATCH_TICKS: u64 = 600;
 /// The lane mode's respawn, 5000 ms at 30 ticks a second, from the end of the tick of death.
 const RESPAWN_TICKS: u64 = 150;
 
-fn at(x: i64, z: i64) -> Position {
+const fn at(x: i64, z: i64) -> Position {
     Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap()
 }
 

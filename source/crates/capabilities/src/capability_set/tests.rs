@@ -255,7 +255,7 @@ fn a_module_imports_only_from_its_layer_and_below() {
 /// call, which resolves the names it is given once, or in the load, which resolves the
 /// packages' names once; but the one marked, which runs as a modifier applies. The test fails
 /// when a lookup appears and when one listed here is gone.
-const LOOKUPS: [(&str, &str); 50] = [
+const LOOKUPS: [(&str, &str); 54] = [
     // The load.
     ("actions/slot_kinds.rs", "named"),
     ("books/book_builder.rs", "cost_target_named"),
@@ -284,6 +284,7 @@ const LOOKUPS: [(&str, &str); 50] = [
     ("mode/mode_call.rs", "param_named"),
     ("mode/mode_schema.rs", "get_named"),
     ("mode/mode_schema.rs", "named"),
+    ("navigation/paths.rs", "named"),
     ("progression/progression_api.rs", "track_named"),
     ("progression/tracks_column.rs", "named"),
     ("scripts/ctx.rs", "param_named"),
@@ -302,11 +303,14 @@ const LOOKUPS: [(&str, &str); 50] = [
     ("units/script_view.rs", "named"),
     ("units/script_view.rs", "param_named"),
     ("units/script_view.rs", "tag_named"),
+    ("units/teams.rs", "named"),
     ("units/unit.rs", "param_named"),
     ("units/unit.rs", "tag_named"),
     ("units/unit_types.rs", "get_named"),
+    ("units/unit_types.rs", "named"),
     ("units/unit_types.rs", "tag_named"),
     ("values/name_table.rs", "named"),
+    ("values/name_table.rs", "sorted_named"),
     ("values/stat.rs", "named"),
     // As a modifier applies: a param of the ability that applies it, by name, as the place
     // differs by ability.

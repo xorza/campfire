@@ -117,7 +117,7 @@ impl SimComponent for Pools {
     const NAME: &'static str = "stats.pools";
 
     // A fixed array of every pool place, whose meters' decode keeps each amount within its maximum;
-    // a\nplace the mode does not declare is never read.
+    // a place the mode does not declare is never read.
     fn check(&self, _: &World, _: Entity) -> bool {
         true
     }

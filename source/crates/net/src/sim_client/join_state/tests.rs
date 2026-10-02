@@ -3,21 +3,17 @@ use std::num::NonZeroU32;
 
 use campfire_math::{PlayerSlot, Tick};
 use campfire_package::ModePackages;
-use campfire_protocol::secp256k1::{Secp256k1, SecretKey, XOnlyPublicKey};
+use campfire_protocol::secp256k1::{Secp256k1, XOnlyPublicKey};
 use campfire_protocol::{CertificateHash, ConnectChallenge, Delegation, Fingerprint, SeedChain};
 use campfire_runner::{InputRules, TermsError};
 
 use super::*;
+use crate::local_match;
 
 const NOW: u64 = 1_700_000_000;
 const TICK_HZ: NonZeroU32 = NonZeroU32::new(30).unwrap();
 
 type Change = fn(&mut SessionTerms);
-
-fn keypair(byte: u8) -> Keypair {
-    let secret = SecretKey::from_byte_array(&[byte; 32]).unwrap();
-    Keypair::from_secret_key(&Secp256k1::new(), &secret)
-}
 
 /// The rules of the lane mode, which runs at 30 Hz only.
 fn lane_rules() -> SessionRules {
@@ -37,12 +33,12 @@ fn waiting(tick_hz: NonZeroU32) -> JoinState {
         certificate: CertificateHash::new([3; 32]),
         tick_hz,
     };
-    JoinState::new(keypair(1), server, lane_rules(), || NOW)
+    JoinState::new(local_match::keypair(1), server, lane_rules(), || NOW)
 }
 
 /// Session key 2, whose randomness is all 6s.
 fn signer() -> Signer {
-    Signer::new(keypair(2), |bytes| bytes.fill(6))
+    Signer::new(local_match::keypair(2), |bytes| bytes.fill(6))
 }
 
 /// Terms the client can play, with `change` applied.
@@ -130,10 +126,13 @@ fn a_client_joins_only_the_session_its_server_offers_and_it_can_play() {
     let delegation = Delegation::parse(&join.delegation).unwrap();
     let granted = delegation.terms();
     assert_eq!(granted.session_id, offer.terms.session_id());
-    assert_eq!(granted.session_key, keypair(2).x_only_public_key().0);
+    assert_eq!(
+        granted.session_key,
+        local_match::keypair(2).x_only_public_key().0
+    );
     assert_eq!(
         delegation.main_key(),
-        &keypair(1).x_only_public_key().0.serialize()
+        &local_match::keypair(1).x_only_public_key().0.serialize()
     );
     assert_eq!(
         (granted.seed_contribution, granted.expiration),

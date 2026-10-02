@@ -163,7 +163,11 @@ pub(crate) mod internals {
 
     impl Session {
         /// The hash of the state of `world`, and in `per_type` each state type's own.
-        pub fn state_hash_by_type(&self, world: &World, per_type: &mut Vec<TypeHash>) -> StateHash {
+        pub(crate) fn state_hash_by_type(
+            &self,
+            world: &World,
+            per_type: &mut Vec<TypeHash>,
+        ) -> StateHash {
             self.state.hash_by_type(world, per_type)
         }
     }

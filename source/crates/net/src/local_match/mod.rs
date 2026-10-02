@@ -446,7 +446,6 @@ impl ClientApp {
         io: CrossbeamIo,
         stream: u64,
     ) -> ClientApp {
-        // Keys of 1 and 2 for the first player, 3 and 4 for the second.
         let secret = u8::try_from(2 * player + 1).expect("a small player");
         let sim_client = SimClient {
             main_key: keypair(secret),
@@ -533,13 +532,13 @@ fn pass_through_delay_lines(app: &mut App) {
     app.add_systems(Update, DelayLine::pin_round_trip);
 }
 
-fn keypair(secret: u8) -> Keypair {
+pub(crate) fn keypair(secret: u8) -> Keypair {
     let secret = SecretKey::from_byte_array(&[secret; 32]).expect("a valid secret key");
     Keypair::from_secret_key(&Secp256k1::new(), &secret)
 }
 
 /// The server's key, the x of a point on the curve.
-fn server_key() -> XOnlyPublicKey {
+pub(crate) fn server_key() -> XOnlyPublicKey {
     XOnlyPublicKey::from_byte_array(&[8; 32]).expect("[8; 32] is the x of a point")
 }
 

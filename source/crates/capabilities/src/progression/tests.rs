@@ -72,7 +72,7 @@ fn a_level_is_reached_exactly_at_its_threshold_and_never_falls() {
 
 #[test]
 fn a_snapshot_with_tracks_out_of_order_or_negative_experience_fails_to_decode() {
-    #[derive(Serialize)]
+    #[derive(Debug, Serialize)]
     struct Fields {
         tracks: Vec<TrackXp>,
     }

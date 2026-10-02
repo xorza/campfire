@@ -42,6 +42,7 @@ use crate::values::bounds::Bounds;
 use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
 use crate::values::metric::Metric;
+use crate::values::name_list::NameList;
 
 /// What scripts see: the match's unit types, and its units, those with a team, as the running
 /// phase of the tick began. The units are read again before each phase that runs
@@ -52,7 +53,7 @@ pub(crate) struct ScriptView {
     /// The match's teams, once a mode sets them.
     teams: Rc<Teams>,
     /// The name of each path, by index, once a mode sets them.
-    paths: Arc<[Box<str>]>,
+    paths: Arc<NameList>,
     /// The names scripts read, as they read them.
     consts: ScriptConsts,
     /// The core's parts of each unit, once a read built the query.
@@ -248,7 +249,7 @@ impl View {
     }
 
     /// Names the teams and the paths.
-    pub(crate) fn set_names(&self, teams: Rc<Teams>, paths: Arc<[Box<str>]>) {
+    pub(crate) fn set_names(&self, teams: Rc<Teams>, paths: Arc<NameList>) {
         let mut view = self.0.borrow_mut();
         view.teams = teams;
         view.paths = paths;
@@ -386,15 +387,14 @@ impl View {
         let view = self.0.borrow();
         path.and_then(|path| view.paths.get(path.index()))
             .map_or(Dynamic::UNIT, |name| {
-                Dynamic::from(ImmutableString::from(&**name))
+                Dynamic::from(ImmutableString::from(name))
             })
     }
 
     /// The path named `name`.
     pub(crate) fn path_named(&self, name: &str) -> Option<PathId> {
         let view = self.0.borrow();
-        let at = view.paths.iter().position(|held| **held == *name)?;
-        Some(PathId::new(at))
+        view.paths.named(name).map(PathId::new)
     }
 
     /// The unit type named `name` in the mode's scope: one of the mode's, or an avatar.

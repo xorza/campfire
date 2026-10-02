@@ -157,8 +157,6 @@ impl ModePackages {
         iter::once(mode).chain(dependents)
     }
 
-    /// What its books are built from at `rate`, its scripts' hooks as `scripts` gives them, in
-    /// the order a match compiles them.
     /// The books of a match of its packages at `rate`, a rate within the manifest's range, its
     /// scripts' hooks as `scripts` gives them. The load built them at the fastest rate the range
     /// allows, where every time counts the most ticks, so they build at every rate a session may
@@ -195,7 +193,13 @@ impl ModePackages {
         ScriptId::nth(at)
     }
 
-    pub fn book_input<'a>(&'a self, rate: TickRate, scripts: &'a ScriptBook) -> BookInput<'a> {
+    /// What its books are built from at `rate`, its scripts' hooks as `scripts` gives them, in
+    /// the order a match compiles them.
+    pub(crate) fn book_input<'a>(
+        &'a self,
+        rate: TickRate,
+        scripts: &'a ScriptBook,
+    ) -> BookInput<'a> {
         let packages = self.packages().map(|view| BookPackage {
             name: &view.package.header.name,
             content: view.content,

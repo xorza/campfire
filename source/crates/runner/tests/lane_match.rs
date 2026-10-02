@@ -1,10 +1,7 @@
 //! The test lane mode, with no player input, plays 30 s to its golden record, whatever its
 //! heroes' text says.
 
-use std::collections::BTreeMap;
-use std::fs;
 use std::num::NonZeroU32;
-use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use campfire_capabilities::{ScriptBook, ScriptFailures};
@@ -40,9 +37,7 @@ fn the_lane_match_plays_to_its_golden_record() {
 fn the_lane_matchs_hashes_do_not_change_with_its_heroes_text() {
     // Walker's name in other words, and in a second language: its package's fingerprint moves,
     // and no tick's hash does, as the sim reads no text.
-    let tree = PackageDir::workspace("test");
-    let mut files = BTreeMap::new();
-    read_tree(&tree, Path::new(""), &mut files);
+    let mut files = PackageDir::workspace_tree("test");
     let plain = PackageDir::in_memory(Arc::new(files.clone()), "modes/lane");
     files.insert(
         "heroes/walker/locale/en.ftl".into(),
@@ -75,16 +70,4 @@ fn hashes(packages: ModePackages) -> Vec<StateHash> {
             fixed.runner().state_hash()
         })
         .collect()
-}
-
-fn read_tree(dir: &Path, at: &Path, files: &mut BTreeMap<PathBuf, Vec<u8>>) {
-    for entry in fs::read_dir(dir).unwrap() {
-        let entry = entry.unwrap();
-        let path = at.join(entry.file_name());
-        if entry.file_type().unwrap().is_dir() {
-            read_tree(&entry.path(), &path, files);
-        } else {
-            files.insert(path, fs::read(entry.path()).unwrap());
-        }
-    }
 }

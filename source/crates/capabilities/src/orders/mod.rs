@@ -99,9 +99,8 @@ impl Orders {
     }
 
     /// The think period of `data` at `rate`, a tick at the least, for a script that defines
-    /// `on_think` when `thinks`: what an AI loads with, and what the package load checks at the
-    /// fastest rate the mode allows, where its ticks are the most.
-    pub fn ai_period(data: &AiData, rate: TickRate, thinks: bool) -> Result<Ticks, AiError> {
+    /// `on_think` when `thinks`: what an AI loads with.
+    pub(crate) fn ai_period(data: &AiData, rate: TickRate, thinks: bool) -> Result<Ticks, AiError> {
         let period = rate.duration(data.think_ms).ok_or(AiError::TimeTooLarge)?;
         if !thinks {
             return Err(AiError::NoThink);
@@ -125,7 +124,7 @@ impl Orders {
 
     /// Applies `order`, which its source checked, to the unit of `entity`, as every order
     /// applies; a unit that resets takes none.
-    pub(crate) fn apply_order(world: &mut World, entity: Entity, order: UnitOrder) {
+    fn apply_order(world: &mut World, entity: Entity, order: UnitOrder) {
         let bounds = *world.resource::<Bounds>();
         let mut unit = world.entity_mut(entity);
         if unit.contains::<Resetting>() {

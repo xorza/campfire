@@ -116,7 +116,7 @@ impl Hook {
     }
 
     /// The names of the function's parameters, `ctx` first, as the reference shows them.
-    pub const fn param_names(self) -> &'static [&'static str] {
+    pub(crate) const fn param_names(self) -> &'static [&'static str] {
         match self {
             Hook::OnMatchStart => &["ctx"],
             Hook::OnChannelTick | Hook::OnThink => &["ctx", "unit"],

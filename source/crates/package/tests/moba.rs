@@ -1,8 +1,7 @@
 //! The reference packages, read from disk once, and in memory with edits made.
 
 use std::collections::BTreeMap;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::sync::{Arc, OnceLock};
 
 use campfire_package::{ModePackages, PackageDir};
@@ -15,23 +14,7 @@ pub(crate) fn moba() -> PathBuf {
 /// Every file of the reference packages, by its path from their root, read from disk once.
 pub(crate) fn moba_files() -> &'static BTreeMap<PathBuf, Vec<u8>> {
     static FILES: OnceLock<BTreeMap<PathBuf, Vec<u8>>> = OnceLock::new();
-    FILES.get_or_init(|| {
-        let mut files = BTreeMap::new();
-        read_tree(&moba(), Path::new(""), &mut files);
-        files
-    })
-}
-
-fn read_tree(dir: &Path, at: &Path, files: &mut BTreeMap<PathBuf, Vec<u8>>) {
-    for entry in fs::read_dir(dir).unwrap() {
-        let entry = entry.unwrap();
-        let path = at.join(entry.file_name());
-        if entry.file_type().unwrap().is_dir() {
-            read_tree(&entry.path(), &path, files);
-        } else {
-            files.insert(path, fs::read(entry.path()).unwrap());
-        }
-    }
+    FILES.get_or_init(|| PackageDir::workspace_tree("moba"))
 }
 
 /// The reference packages in memory with `edits` made, each to a file by its path from their

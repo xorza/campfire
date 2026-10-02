@@ -1,10 +1,12 @@
 use std::ops::Range;
 
+use crate::values::name_list::NameList;
+
 /// Values by name in runs, one run for each owner, such as the params of a unit type or an
 /// ability: every name and every value in one buffer each, and each run sorted by name.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct NameTable<V> {
-    names: Vec<Box<str>>,
+    names: NameList,
     values: Vec<V>,
     /// Where each run starts in `names` and `values`, then where the last one ends.
     starts: Vec<u32>,
@@ -15,10 +17,13 @@ impl<V> NameTable<V> {
     pub(crate) fn push<'a>(&mut self, entries: impl IntoIterator<Item = (&'a str, V)>) -> usize {
         let start = self.names.len();
         for (name, value) in entries {
-            self.names.push(name.into());
+            self.names.push(name);
             self.values.push(value);
         }
-        debug_assert!(self.names[start..].is_sorted(), "a run is sorted by name");
+        debug_assert!(
+            self.names.iter().skip(start).is_sorted(),
+            "a run is sorted by name"
+        );
         self.starts
             .push(u32::try_from(self.names.len()).expect("names fit u32"));
         self.starts.len() - 2
@@ -31,8 +36,7 @@ impl<V> NameTable<V> {
 
     /// The place of `name` in run `run`.
     pub(crate) fn named(&self, run: usize, name: &str) -> Option<usize> {
-        let names = &self.names[self.run(run)];
-        names.binary_search_by(|held| (**held).cmp(name)).ok()
+        self.names.sorted_named(self.run(run), name)
     }
 
     pub(crate) fn get_named(&self, run: usize, name: &str) -> Option<&V> {
@@ -53,7 +57,7 @@ impl<V> NameTable<V> {
 impl<V> Default for NameTable<V> {
     fn default() -> NameTable<V> {
         NameTable {
-            names: Vec::new(),
+            names: NameList::default(),
             values: Vec::new(),
             starts: vec![0],
         }

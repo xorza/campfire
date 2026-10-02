@@ -3,6 +3,7 @@ use campfire_script::rhai::INT;
 
 use crate::scripts::error::{ApiError, Checked};
 use crate::units::team::Team;
+use crate::values::name_list::NameList;
 
 /// The match's teams, in the manifest's order, the playing teams among them, those with slots,
 /// and each player's team by slot. A team with no slots, such as a MOBA's camps, has only units.
@@ -10,7 +11,7 @@ use crate::units::team::Team;
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct Teams {
     /// Every team's name, by index.
-    names: Vec<Box<str>>,
+    names: NameList,
     /// The teams with slots, in order.
     playing: Vec<Team>,
     /// Each player's team, by slot.
@@ -27,7 +28,7 @@ impl Teams {
         let mut built = Teams::default();
         let mut unseated = players;
         for (index, (name, slots)) in teams.into_iter().enumerate() {
-            built.names.push(name.into());
+            built.names.push(name);
             let team = Team::new(u8::try_from(index).expect("teams fit u8"));
             if slots > 0 {
                 built.playing.push(team);
@@ -42,14 +43,12 @@ impl Teams {
 
     /// The team named `name`.
     pub(crate) fn named(&self, name: &str) -> Option<Team> {
-        let index = self.names.iter().position(|held| **held == *name)?;
+        let index = self.names.named(name)?;
         Some(Team::new(u8::try_from(index).expect("teams fit u8")))
     }
 
     pub(crate) fn name(&self, team: Team) -> Option<&str> {
-        self.names
-            .get(usize::from(team.index()))
-            .map(|name| &**name)
+        self.names.get(usize::from(team.index()))
     }
 
     /// How many teams the match holds.

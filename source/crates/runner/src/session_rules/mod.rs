@@ -77,7 +77,7 @@ impl SessionRules {
 
     /// An error for `terms` of another engine release than this one, which a verifier checks
     /// before it reads the packages, as another release's packages need not read in this one.
-    pub fn check_release(terms: &SessionTerms) -> Result<(), TermsError> {
+    pub(crate) fn check_release(terms: &SessionTerms) -> Result<(), TermsError> {
         if terms.release != RELEASE {
             return Err(TermsError::OtherRelease(terms.release.clone()));
         }

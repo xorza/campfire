@@ -295,8 +295,9 @@ impl Lobby {
 mod tests {
     use campfire_package::PackageDir;
 
+    use crate::local_match;
+
     use bevy_ecs::system::RunSystemOnce;
-    use campfire_protocol::secp256k1::{Keypair, SecretKey};
     use campfire_protocol::{ConnectError, DelegationError, DelegationTerms};
     use lightyear::prelude::{PeerId, RemoteId};
 
@@ -304,14 +305,9 @@ mod tests {
 
     const NOW: u64 = 1_700_000_000;
 
-    fn keypair(byte: u8) -> Keypair {
-        let secret = SecretKey::from_byte_array(&[byte; 32]).unwrap();
-        Keypair::from_secret_key(&Secp256k1::new(), &secret)
-    }
-
     #[test]
     fn the_lobby_takes_a_join_only_with_a_delegation_and_an_answer_for_it() {
-        let server_key = XOnlyPublicKey::from_byte_array(&[8; 32]).unwrap();
+        let server_key = local_match::server_key();
         let mut lobby = Lobby::new(LobbySetup {
             packages: ModePackages::from_dir(&PackageDir::workspace("test/modes/lane")).unwrap(),
             server_key,
@@ -327,19 +323,19 @@ mod tests {
         assert_eq!((lobby.players, lobby.joined()), (2, 0));
         let secp = Secp256k1::new();
         let granted = DelegationTerms {
-            session_key: keypair(2).x_only_public_key().0,
+            session_key: local_match::keypair(2).x_only_public_key().0,
             server_key,
             session_id: lobby.terms().session_id(),
             seed_contribution: [6; 32],
             expiration: NOW + 60,
         };
-        let delegation = Delegation::sign(&secp, &keypair(1), &granted, NOW, &[0; 32]);
+        let delegation = Delegation::sign(&secp, &local_match::keypair(1), &granted, NOW, &[0; 32]);
         let challenge = ConnectChallenge::new([9; 32]);
         let join = |certificate: [u8; 32], json: &str| Join {
             delegation: json.to_owned(),
             answer: challenge.answer(
                 &secp,
-                &keypair(2),
+                &local_match::keypair(2),
                 &CertificateHash::new(certificate),
                 &[0; 32],
             ),
@@ -363,7 +359,8 @@ mod tests {
         // third player finds both taken.
         let good = join([3; 32], delegation.json());
         let player = |main: u8| {
-            let delegation = Delegation::sign(&secp, &keypair(main), &granted, NOW, &[0; 32]);
+            let delegation =
+                Delegation::sign(&secp, &local_match::keypair(main), &granted, NOW, &[0; 32]);
             join([3; 32], delegation.json())
         };
         let mut world = World::new();

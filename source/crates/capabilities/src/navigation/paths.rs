@@ -6,13 +6,14 @@ use campfire_sim::Position;
 
 use crate::navigation::path_walker::PathEnd;
 use crate::units::path_id::PathId;
+use crate::values::name_list::NameList;
 
 /// The map's paths, each a named list of waypoints that walkers go along forward or backward. Map
 /// data, not state: a restore takes it from the map, as a new match does.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
 pub struct Paths {
     /// Shared with the script view, which names paths to scripts.
-    names: Arc<[Box<str>]>,
+    names: Arc<NameList>,
     points: Vec<Position>,
     /// Each path's waypoints in `points`.
     ranges: Vec<Range<u32>>,
@@ -21,23 +22,20 @@ pub struct Paths {
 impl Paths {
     /// Paths of `(name, path)`, each path of at least one waypoint, each name its own.
     pub fn new<'a>(paths: impl IntoIterator<Item = (&'a str, &'a [Position])>) -> Paths {
-        let mut names: Vec<Box<str>> = Vec::new();
+        let mut names = NameList::default();
         let mut points = Vec::new();
         let mut ranges = Vec::new();
         for (name, path) in paths {
             assert!(!path.is_empty(), "a path has a waypoint");
-            assert!(
-                names.iter().all(|held| **held != *name),
-                "a path's name is its own"
-            );
-            names.push(name.into());
+            assert!(names.named(name).is_none(), "a path's name is its own");
+            names.push(name);
             let start = u32::try_from(points.len()).expect("waypoints fit u32");
             points.extend_from_slice(path);
             let end = u32::try_from(points.len()).expect("waypoints fit u32");
             ranges.push(start..end);
         }
         Paths {
-            names: names.into(),
+            names: Arc::new(names),
             points,
             ranges,
         }
@@ -45,11 +43,11 @@ impl Paths {
 
     /// Each path's name, by path.
     pub fn names(&self) -> impl ExactSizeIterator<Item = &str> {
-        self.names.iter().map(|name| &**name)
+        self.names.iter()
     }
 
     /// The names, shared with a reader of them outside the world.
-    pub(crate) fn shared_names(&self) -> Arc<[Box<str>]> {
+    pub(crate) fn shared_names(&self) -> Arc<NameList> {
         Arc::clone(&self.names)
     }
 
@@ -59,12 +57,11 @@ impl Paths {
 
     /// The path named `name`.
     pub fn named(&self, name: &str) -> Option<PathId> {
-        let at = self.names.iter().position(|held| **held == *name)?;
-        Some(PathId::new(at))
+        self.names.named(name).map(PathId::new)
     }
 
     pub fn name(&self, path: PathId) -> &str {
-        &self.names[path.index()]
+        self.names.get(path.index()).expect("a path of the map")
     }
 
     /// Waypoint `index` of `path` counted from its end `from`; `None` past the last.
