@@ -128,52 +128,26 @@ Match::install(world, &Books, SessionTerms)    cannot fail on data
 
 ## R3. Strict layers with registered hooks
 
-### Problem
-
-The layer rule in `lib.rs` is broken in several places:
-
-- The core view names every capability.
-- `combat` holds `projectiles`' launch list.
-- `actions` and `combat` import each other, and so do `production` and `mode`.
-- Player resources live in `mode`, the top layer, and lower layers import them.
-- The script runtime's `Effect` enum dispatches to seven capabilities.
-- `abilities` registers the delivery API, but `deliveries` runs the hooks.
-- The running call's package lives in the view, beside the frame.
-- Player orders and AI orders are applied by two functions, which check different things.
-
-### Shape
-
-The new order of layers, lowest first. A module imports only from the layers below its own:
+The layer test holds the order below and fails on any import from a higher layer. A capability adds to the script view through its column, to a call's frame through its part, to the effect dispatch, and to the script API through its row of the capability table.
 
 ```
 values
 core:      units (types, teams, owners, spawner, script view core), scripts (runtime, frame, effect order), players (resources)
-actions:   the action pipeline, kind rules, the target rule (`Targets`), costs, `Purse`, the order applier
-           stats, combat
+           stats
+           actions (the action pipeline, `Targets`, costs, `Purse`, `Payer`)
+           combat
            deliveries, projectiles, areas, abilities, navigation, vision, progression, production
            orders (AI)
 mode
-capability_set: install, the effect dispatch table, the view column table, the layer table
+capability_set, books
 ```
 
-**Decision (D2): `stats` sits below the action pipeline, and `combat` above both.** `stats` needs nothing of `actions` but the id of an action, which moves to the core; the pipeline needs pools, costs and the passives' modifiers. So the layers run `values`; the core; `stats`; `actions`; `combat`; the capabilities above. For this, `ActionId` and `Dead` move to the core, `DamageKind` to `values`, the life pool becomes its own resource in `stats`, `MoveStep` moves to `stats` as the component that holds the move speed's effect, the modifiers' combat hooks move to `combat`, and each ordering of sets is stated by the higher layer.
+### What is left
 
-The parts that call upward use hooks that the higher layer registers:
-
-- **Effects.**
-  - Each capability defines its effect type, and registers an `EffectKind` at install.
-  - The frame keeps one typed queue for each kind, reached by `Frame::queue::<E>()`, and one order list of `(EffectKind, index)`.
-  - `capability_set` registers one `fn(&mut World, &mut Frame, index)` for each kind. `ctx.apply` walks the order list, so effects still apply in the order queued.
-
-  This needs no boxing and no allocation per effect, and `scripts` names no capability.
-- **Action kinds.**
-  - The action pipeline moves below combat. It owns `start_actions`, `hold_passives`, `Targets`, `Purse` and one `pay`.
-  - Each kind registers its rules: its start check, its windup, and what it does when it resolves. Combat registers the attack kind, abilities the cast and production the train.
-  - Every kind pays its whole cost at one point of the pipeline.
-- **Orders.** One applier in `actions` checks and applies each order kind for every source: a player's command, a bot's input and an AI effect. An attack order needs a weapon whose filter selects the target, through `book.weapon_for`. This follows control.md: "players, bots and AI issue the same orders".
-- **View columns** are in place: each capability owns its column of the script view, and its part of the call frame. What is left: a `Unit` handle holds its row index, so a getter copies no row; `RecentAttack` and the vision and navigation fields leave the core row.
+- **Action kinds.** Each kind registers its rules: its start check, its windup, and what it does when it resolves. Combat registers the attack kind, abilities the cast and production the train. `start_actions` still names the three kinds.
+- **Orders.** One applier checks and applies each order kind for every source: a player's command, a bot's input and an AI effect. An attack order needs a weapon whose filter selects the target, through `book.weapon_for`. This follows control.md: "players, bots and AI issue the same orders". The path orders (`FollowPath`, `Reset`) are navigation's, above `actions`, so the applier needs a hook for them.
+- **The core row.** A `Unit` handle holds its row index, so a getter copies no row; `RecentAttack` and the vision and navigation fields leave the core row for their columns.
 - **The delivery script API** is registered where it runs: `deliveries` registers `on_hit`, `on_end` and `Hit`. `ApiOwner::Projectile` and `ApiOwner::Area` go away, because `hit.delivery` is a `Unit`.
-- **The call's package moves into the frame.** `CallStart { role, acting, action, rank, package, depth }` is the one argument of `Frame::begin`. `view.set_caller`, and the four call sites that must remember it, go away.
 - **One table of capabilities.** The install order, `needs`, the layer of each module and the list in `lib.rs` all come from one table in `capability_set`.
 
 ## R4. One rule of unit life and reach
