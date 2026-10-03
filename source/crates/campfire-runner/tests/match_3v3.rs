@@ -1,15 +1,16 @@
 //! The reference 3v3 as its packages hold it, played by scripted players, plays a match with no
 //! failed call that replays to the same state hashes: a skirmish of first blood, mend, haste and
 //! a tower that turns on a diver; a camp whose wolf answers, resets past its leash and falls; and
-//! the lanes, where heroes farm the first waves. Each rule's result is computed from the mode's
+//! the lanes, where heroes farm the first waves; and heroes that learn ranks with their points. Each rule's result is computed from the mode's
 //! numbers. The test pins the content's units and values, so a change to the content changes
 //! it, by design.
 
 use bevy_ecs::world::World;
 use campfire_capabilities::internals;
 use campfire_capabilities::{
-    ActionSlot, ActionSlots, Deaths, ModeParam, ModeState, Owner, PathWalker, PlayerResources,
-    ResourceId, Scalar, ScriptFailures, SlotKind, StateValue, Stats, Team, UnitType,
+    ActionSlot, ActionSlots, Dead, Deaths, Level, ModeParam, ModeState, Owner, PathWalker,
+    PlayerResources, Points, ResourceId, Scalar, ScriptFailures, SlotKind, StateValue, Stats, Team,
+    UnitType,
 };
 use campfire_common::{PlayerSlot, Tick};
 use campfire_math::{Num, Vec3};
@@ -67,6 +68,30 @@ struct Seen {
     wolf_home: Option<(Option<StableId>, Position)>,
     /// Each hero's experience after ticks 2993 and 2994, the wolf's fall.
     xp_at_wolf_fall: Vec<Vec<Num>>,
+    /// Cinder's, Veil's and Rime's learning after ticks 1200, 1201 and 1900, in that order.
+    learning: Vec<[Learning; 3]>,
+}
+
+/// A hero's learning as a tick left it: the ranks of its basic abilities and its ultimate, its
+/// unspent points, and whether it is dead.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Learning {
+    ranks: [u8; 4],
+    points: u32,
+    dead: bool,
+}
+
+impl Learning {
+    fn of(world: &World, hero: StableId) -> Learning {
+        let entity = world.resource::<EntityIndex>().get(hero).unwrap();
+        let unit = world.entity(entity);
+        let slots = unit.get::<ActionSlots>().unwrap();
+        Learning {
+            ranks: [0, 1, 2, 3].map(|slot| slots.slot(slot).unwrap().rank),
+            points: unit.get::<Points>().unwrap().get(),
+            dead: unit.contains::<Dead>(),
+        }
+    }
 }
 
 /// A unit as a test sees it: its stable id, its team, its unit type, where it stands, who
@@ -223,6 +248,11 @@ impl Seen {
             2993 | 2994 => self.xp_at_wolf_fall.push(xp()),
             _ => {}
         }
+        if [1200, 1201, 1900].contains(&tick) {
+            let [cinder, .., rime, veil] = heroes;
+            let learning = [cinder, veil, rime].map(|hero| Learning::of(world, hero));
+            self.learning.push(learning);
+        }
     }
 }
 
@@ -247,6 +277,7 @@ fn a_3v3_match_replays_to_the_same_hashes() {
     assert_skirmish(&run);
     assert_camp(&run);
     assert_gold(&reference, &run, melee);
+    assert_learning(&run);
     assert_replays(&reference, &run.runner, &run.trail);
 }
 
@@ -456,6 +487,44 @@ fn assert_gold(reference: &Reference3v3, run: &Run, melee: UnitType) {
         .map(|slot| amounts.amount(PlayerSlot::new(slot), gold))
         .collect();
     assert_eq!(paid, [160 + 435, 160 + 150, 160, 160 + 30, 160, 160 + 15]);
+}
+
+/// Learning: each hero spawns with a point, which a learn spends on a rank its level allows.
+fn assert_learning(run: &Run) {
+    let learning = |ranks, points, dead| Learning {
+        ranks,
+        points,
+        dead,
+    };
+    // Tick 1200: Cinder learns Fire Lance with her point, and her second learn finds none; Veil's
+    // ultimate needs level 6, so her point stays. Tick 1201: Veil learns Dusk Mark. Tick 1900,
+    // between Rime's fall in tick 1840 and her return in tick 1991: she learns Fan of Frost.
+    let [cinder_learned, veil_unlearned, rime_unlearned] = [
+        learning([1, 0, 0, 0], 0, false),
+        learning([0, 0, 0, 0], 1, false),
+        learning([0, 0, 0, 0], 1, false),
+    ];
+    let veil_learned = learning([1, 0, 0, 0], 0, false);
+    let expected = [
+        [cinder_learned, veil_unlearned, rime_unlearned],
+        [cinder_learned, veil_learned, rime_unlearned],
+        [
+            cinder_learned,
+            veil_learned,
+            learning([0, 1, 0, 0], 0, true),
+        ],
+    ];
+    assert_eq!(run.seen.learning, expected);
+    // At the end, a hero's points are its levels less the ranks it learned.
+    let world = run.runner.world();
+    for slot in 0..Reference3v3::PLAYERS {
+        let hero = hero_of(run, slot);
+        let learned = Learning::of(world, hero);
+        let entity = world.resource::<EntityIndex>().get(hero).unwrap();
+        let level = world.get::<Level>(entity).unwrap().get();
+        let ranks: u32 = learned.ranks.iter().map(|&rank| u32::from(rank)).sum();
+        assert_eq!(learned.points, level - ranks, "slot {slot}");
+    }
 }
 
 /// The match of `runner`, which recorded `trail`, its log replayed from its file, gives its hash

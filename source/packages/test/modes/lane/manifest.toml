@@ -4,7 +4,7 @@ version = "0.1.0"
 api = "1.0"
 language = "en"
 kind = "mode"
-capabilities = ["combat", "stats", "abilities", "projectiles", "orders", "navigation", "vision"]
+capabilities = ["combat", "stats", "abilities", "projectiles", "orders", "navigation", "vision", "progression"]
 tick_hz = { min = 30, max = 30, default = 30 }
 teams = [{ name = "west", slots = 1 }, { name = "east", slots = 1 }]
 backends = { collision = "circles", pathfinding = "grid", visibility = "grid_fog" }

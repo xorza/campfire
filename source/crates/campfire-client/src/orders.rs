@@ -11,13 +11,15 @@ use crate::pointer::Pointer;
 
 /// Turns the player's clicks and keys into orders for their avatar: a right click on an enemy
 /// attacks it, and anywhere else walks there; Q, W, E and R cast the abilities of slots 0 to 3,
-/// at the unit under the cursor when there is one. The sim ignores a target an ability does not
-/// take, so a key needs no knowledge of the ability.
+/// at the unit under the cursor when there is one, and with Ctrl held learn their next rank. The
+/// sim ignores a target an ability does not take, so a key needs no knowledge of the ability.
 #[derive(Debug)]
 pub(crate) struct Orders;
 
 /// The keys that cast, by ability slot.
 const CAST_KEYS: [KeyCode; 4] = [KeyCode::KeyQ, KeyCode::KeyW, KeyCode::KeyE, KeyCode::KeyR];
+/// The keys that, held, make a cast key learn.
+const LEARN_KEYS: [KeyCode; 2] = [KeyCode::ControlLeft, KeyCode::ControlRight];
 
 impl Plugin for Orders {
     fn build(&self, app: &mut App) {
@@ -60,6 +62,7 @@ impl Orders {
         let Some(avatar) = pointer.own_avatar() else {
             return;
         };
+        let learn = keys.any_pressed(LEARN_KEYS);
         for (slot, &key) in (0..).zip(&CAST_KEYS) {
             if !keys.just_pressed(key) {
                 continue;
@@ -68,8 +71,17 @@ impl Orders {
             let target = under.map_or(ActionTarget::None, |unit| ActionTarget::Unit(unit.id));
             orders.push(Order {
                 unit: avatar.id,
-                action: Action::Slot { slot, target },
+                action: Orders::slot_action(slot, learn, target),
             });
+        }
+    }
+
+    /// What a cast key orders of `slot`: with Ctrl held, a learn, and else a cast at `target`.
+    const fn slot_action(slot: u8, learn: bool, target: ActionTarget) -> Action {
+        if learn {
+            Action::Learn { slot }
+        } else {
+            Action::Slot { slot, target }
         }
     }
 }
@@ -85,4 +97,22 @@ fn meters(value: f32) -> Option<Num> {
         return None;
     }
     Num::from_int(millimeters as i64)?.checked_div_int(1000)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_cast_key_casts_at_its_target_and_with_ctrl_learns() {
+        let target = ActionTarget::None;
+        assert_eq!(
+            Orders::slot_action(2, false, target),
+            Action::Slot { slot: 2, target }
+        );
+        assert_eq!(
+            Orders::slot_action(2, true, target),
+            Action::Learn { slot: 2 }
+        );
+    }
 }

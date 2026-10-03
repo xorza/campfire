@@ -43,6 +43,8 @@ enum ReferencePlan {
     AttackHero { slot: u32 },
     /// The hero casts its spell in `slot`, which aims at nothing.
     Cast { slot: u8 },
+    /// The hero learns the next rank of the ability in `slot`.
+    Learn { slot: u8 },
     /// The hero attacks the enemy creep of least life within `FARM_REACH` of it, by stable id on
     /// a tie; with none, it stands where it is.
     Farm,
@@ -51,8 +53,11 @@ enum ReferencePlan {
 /// How far from a hero a creep it farms stands at most, in meters.
 const FARM_REACH: i64 = 10;
 
-/// A hero's slot of the spell `haste` and of `mend`, as each player picks them: after its three
-/// basic abilities and its ultimate.
+/// A hero's slots of its first two basic abilities and of its ultimate; and of the spells `haste`
+/// and `mend`, as each player picks them, after its three basic abilities and its ultimate.
+const FIRST: u8 = 0;
+const SECOND: u8 = 1;
+const ULTIMATE: u8 = 3;
 const HASTE: u8 = 4;
 const MEND: u8 = 5;
 
@@ -69,8 +74,12 @@ const SOUTH_CAMP: (i64, i64) = (-18, 12);
 ///   it home; then he and Rime fell it.
 /// - The lanes: Cinder on the west lane and Veil on the east one strike the enemy creep of least
 ///   life near them every 40 ticks while the first waves fight.
-const SCRIPT: [Scripted<ReferencePlan>; 40] = {
-    let mut script = [order(1200, 0, ReferencePlan::Move { x: -2, z: -26 }); 40];
+/// - Learning, with the point each hero spawns with: Cinder learns Fire Lance, and a second
+///   learn in the tick finds no point; Veil's ultimate needs level 6, and she learns Dusk Mark
+///   instead; Rime learns Fan of Frost while she is dead. None of these abilities holds a
+///   passive, and no hero casts one.
+const SCRIPT: [Scripted<ReferencePlan>; 45] = {
+    let mut script = [order(1200, 0, ReferencePlan::Move { x: -2, z: -26 }); 45];
     let moves = [
         order(1200, 1, ReferencePlan::Move { x: 2, z: -26 }),
         order(1200, 4, ReferencePlan::Move { x: 0, z: -20 }),
@@ -91,6 +100,11 @@ const SCRIPT: [Scripted<ReferencePlan>; 40] = {
         order(2500, 3, ReferencePlan::Move { x: -18, z: 30 }),
         order(2650, 3, attack_at(SOUTH_CAMP)),
         order(2650, 4, attack_at(SOUTH_CAMP)),
+        order(1200, 0, ReferencePlan::Learn { slot: FIRST }),
+        order(1200, 0, ReferencePlan::Learn { slot: SECOND }),
+        order(1200, 5, ReferencePlan::Learn { slot: ULTIMATE }),
+        order(1201, 5, ReferencePlan::Learn { slot: FIRST }),
+        order(1900, 4, ReferencePlan::Learn { slot: SECOND }),
     ];
     let mut at = 0;
     while at < moves.len() {
@@ -180,6 +194,7 @@ impl Plan for ReferencePlan {
                 slot,
                 target: ActionTarget::None,
             },
+            ReferencePlan::Learn { slot } => Action::Learn { slot },
             ReferencePlan::Farm => weakest_creep(units, hero).map_or_else(
                 || {
                     let at = units.position(hero).get();

@@ -99,6 +99,7 @@ pub use navigation::walker::Walker;
 pub use orders::Orders;
 
 pub use orders::error::AiError;
+pub use orders::learning::Learning;
 
 pub use orders::order::{Action, Order};
 pub use players::player_resources::PlayerResources;

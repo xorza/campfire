@@ -16,7 +16,6 @@ use crate::actions::action_book::ActionBook;
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::range::Range;
-use crate::actions::slot_kinds::SlotKinds;
 use crate::actions::targets::Targets;
 use crate::combat::CombatSet;
 use crate::navigation::destination::Destination;
@@ -27,6 +26,7 @@ use crate::navigation::route::Route;
 use crate::orders::ai::Ai;
 use crate::orders::ai_data::AiData;
 use crate::orders::error::AiError;
+use crate::orders::learning::Learning;
 use crate::orders::next_think::NextThink;
 use crate::orders::order::{Action, Order};
 use crate::orders::resetting::Resetting;
@@ -53,6 +53,7 @@ use crate::values::bounds::Bounds;
 pub(crate) mod ai;
 pub(crate) mod ai_data;
 pub(crate) mod error;
+pub(crate) mod learning;
 pub(crate) mod next_think;
 pub(crate) mod order;
 pub(crate) mod orders_api;
@@ -240,7 +241,7 @@ fn apply_player_orders(
 fn learn_ranks(
     inputs: Res<'_, TickInputs>,
     index: Res<'_, EntityIndex>,
-    (book, kinds): (Res<'_, ActionBook>, Res<'_, SlotKinds>),
+    learning: Learning<'_>,
     mut units: Query<'_, '_, (&Owner, &mut ActionSlots, &mut Points, &Level)>,
 ) {
     for command in inputs.commands(Order::CAPABILITY) {
@@ -256,22 +257,10 @@ fn learn_ranks(
         else {
             continue;
         };
-        let Some(held) = slots.slot(slot) else {
-            continue;
-        };
-        let action = book
-            .get(held.action)
-            .expect("a slot's action is in the book");
-        let next = held
-            .rank
-            .checked_add(1)
-            .filter(|&next| action.has_rank(next));
-        let learnable = next.is_some_and(|next| {
-            kinds
-                .level_of(held.kind, next)
-                .is_none_or(|needed| needed <= level)
-        });
-        if owner.slot() != command.slot || !learnable || points.get() == 0 {
+        let learnable = slots
+            .slot(slot)
+            .is_some_and(|held| learning.learnable(held, *points, level));
+        if owner.slot() != command.slot || !learnable {
             continue;
         }
         points.spend();

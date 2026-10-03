@@ -22,15 +22,26 @@ wave_ms = 30000
 # A hero comes back at its spawn this long after it dies.
 respawn_ms = 5000
 wave = ["creep", "creep"]
+# The experience a hero takes for a creep it fells, and for the enemy hero.
+creep_xp = 60
+hero_xp = 150
 
-# The kinds of slot actions sit in: a hero's three basic abilities and its ultimate.
+# A hero's levels, 1 to 5, for a match of a few minutes: each gives a point to learn a rank with.
+[tracks.level]
+level = true
+levels = [100, 250, 450, 700]
+
+# The kinds of slot actions sit in: a hero's three basic abilities, a rank a level, and its
+# ultimate, from level 3.
 [[slots]]
 name = "basic"
 ranks = 5
+levels = [1, 2, 3, 4, 5]
 
 [[slots]]
 name = "ultimate"
 ranks = 3
+levels = [3, 4, 5]
 
 # Each player plays a hero no other player has.
 [choices.hero]

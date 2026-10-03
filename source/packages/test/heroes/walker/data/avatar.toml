@@ -1,6 +1,7 @@
 name = "hero-name"
 tags = ["test"]
 pools = ["health", "mana"]
+tracks = ["level"]
 slots = { basic = ["first", "second", "third"], ultimate = ["fourth"], weapon = ["attack"] }
 
 [combat]

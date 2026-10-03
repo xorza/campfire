@@ -1,13 +1,56 @@
-//! The test lane mode, with no player input, plays 30 s to its golden record, whatever its
-//! heroes' text says.
+//! The test lane mode plays 30 s to its golden record, whatever its heroes' text says: its walker
+//! learns with its points, and fells creeps for their experience.
 
 use std::num::NonZeroU32;
 use std::sync::Arc;
 
-use campfire_capabilities::ScriptFailures;
+use campfire_capabilities::{
+    Action, ActionSlots, Deaths, Experience, Level, Order, PathWalker, Points, ScriptFailures,
+    Team, TrackId,
+};
+use campfire_common::Tick;
+use campfire_math::Num;
 use campfire_package::{ModePackages, PackageDir};
-use campfire_runner::internals::{FixedSession, Golden};
-use campfire_sim::StateHash;
+use campfire_runner::internals::{FixedMatch, FixedSession, Golden, MatchUnits};
+use campfire_sim::{EntityIndex, StableId, StateHash};
+
+/// The walker's learning and progress as a tick left them: the ranks of its basic abilities and
+/// its ultimate, its points, its experience and its level.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Progress {
+    ranks: [u8; 4],
+    points: u32,
+    xp: Num,
+    level: u32,
+}
+
+impl Progress {
+    fn of(fixed: &FixedMatch, hero: StableId) -> Progress {
+        let world = fixed.runner().world();
+        let unit = world.entity(world.resource::<EntityIndex>().get(hero).unwrap());
+        let slots = unit.get::<ActionSlots>().unwrap();
+        let track = TrackId::new(0).unwrap();
+        Progress {
+            ranks: [0, 1, 2, 3].map(|slot| slots.slot(slot).unwrap().rank),
+            points: unit.get::<Points>().unwrap().get(),
+            xp: unit.get::<Experience>().unwrap().get(track).unwrap().xp,
+            level: unit.get::<Level>().unwrap().get(),
+        }
+    }
+}
+
+/// Player 0 sends `action` for the walker, stamped for `tick`.
+fn order(fixed: &mut FixedMatch, walker: StableId, tick: u64, action: Action) {
+    let payload = Order::payload(&[Order {
+        unit: walker,
+        action,
+    }]);
+    fixed.send(0, Tick::new(tick), &payload);
+}
+
+/// The ticks the lane match plays, and the one its east creeps reach the walker in.
+const TICKS: u64 = 900;
+const MEET: u64 = 140;
 
 #[test]
 fn the_lane_match_plays_to_its_golden_record() {
@@ -16,17 +59,79 @@ fn the_lane_match_plays_to_its_golden_record() {
     let session = FixedSession::new(packages, NonZeroU32::new(30).unwrap(), 2);
     let mut golden = Golden::new(session.packages(), session.players());
     let mut fixed = session.start();
-    for tick in 0..900 {
+    let walker = MatchUnits::of(&fixed).hero(0);
+    // The first wave's creeps of the east, which spawn in tick 0, walk to the walker and strike
+    // it as they meet; the west's strike the runner, so the walker alone fells these.
+    let mut east = Vec::new();
+    let mut felled = Vec::new();
+    let mut seen = Vec::new();
+    for tick in 0..TICKS {
+        // Tick 1: the walker learns its first ability with its spawn point. As they meet, it
+        // attacks the first east creep, and the second once the first falls. Once both fell, it
+        // tries its ultimate, then a second rank of its first ability.
+        let next = felled.len();
+        match tick {
+            1 => order(&mut fixed, walker, tick, Action::Learn { slot: 0 }),
+            MEET => order(&mut fixed, walker, tick, Action::Attack { target: east[0] }),
+            _ if next == 1 && felled[0] + 1 == tick => {
+                order(&mut fixed, walker, tick, Action::Attack { target: east[1] });
+            }
+            _ if next == 2 && felled[1] + 1 == tick => {
+                order(&mut fixed, walker, tick, Action::Learn { slot: 3 });
+                order(&mut fixed, walker, tick, Action::Learn { slot: 0 });
+            }
+            _ => {}
+        }
         fixed.runner_mut().run_tick();
         golden.record(fixed.runner());
-        let failures = fixed.runner().world().non_send::<ScriptFailures>();
+        if tick == 0 {
+            east = MatchUnits::of(&fixed)
+                .all()
+                .filter(|(_, unit)| {
+                    unit.contains::<PathWalker>() && unit.get::<Team>() == Some(&Team::new(1))
+                })
+                .map(|(id, _)| id)
+                .collect();
+        }
+        let world = fixed.runner().world();
+        let failures = world.non_send::<ScriptFailures>();
         assert!(
             failures.get().is_empty(),
             "tick {tick}: {:?}",
             failures.get()
         );
+        for death in world.resource::<Deaths>().iter() {
+            if east.contains(&death.fallen.unit) {
+                assert_eq!(death.killer, Some(walker), "tick {tick}");
+                felled.push(tick);
+            }
+        }
+        if tick == 1
+            || felled.last() == Some(&tick)
+            || felled.get(1).map(|&at| at + 1) == Some(tick)
+        {
+            seen.push(Progress::of(&fixed, walker));
+        }
     }
     golden.check("lane");
+    // After tick 1: its first ability at rank 1, for its one point. Each creep it fells gives it
+    // 60 experience: 120 after the second, past level 2's 100, which gives a point. Its ultimate
+    // needs level 3, and its first ability's rank 2 level 2: the point goes to that.
+    let progress = |ranks, points, xp, level| Progress {
+        ranks,
+        points,
+        xp: Num::int(xp),
+        level,
+    };
+    assert_eq!(
+        seen,
+        [
+            progress([1, 0, 0, 0], 0, 0, 1),
+            progress([1, 0, 0, 0], 0, 60, 1),
+            progress([1, 0, 0, 0], 1, 120, 2),
+            progress([2, 0, 0, 0], 0, 120, 2),
+        ]
+    );
 }
 
 #[test]

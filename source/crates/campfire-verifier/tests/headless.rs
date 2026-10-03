@@ -1,6 +1,7 @@
 //! The first half of the Stage 2 gate, without the network: a match of the test lane mode run from
 //! its session log and the replay of that log in a bare `World` agree on the state hash after
-//! every tick, and so does the replay of the log's file with the packages a verifier holds.
+//! every tick, and so does the replay of the log's file with the packages a verifier holds. So
+//! does the reference 3v3's, whose players learn ranks.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -17,7 +18,7 @@ use campfire_log::LogEvent;
 use campfire_math::{Num, Vec3};
 use campfire_package::{ModePackages, PackageDir, PackageStore, StoreError};
 use campfire_protocol::{Applied, SeedError, ServerSeed, SessionLog, SessionTerms};
-use campfire_runner::internals::{FixedSession, HashTrail};
+use campfire_runner::internals::{FixedSession, HashTrail, MatchUnits, Reference3v3};
 use campfire_runner::{InputRules, Runner, StartError, TermsError};
 use campfire_sim::{EntityIndex, Position, StableId};
 use campfire_verifier::{Replay, Verified};
@@ -195,6 +196,41 @@ fn run_and_replay_agree_on_every_tick() {
     let first_difference = live.iter().zip(without).position(|(a, b)| a != b);
     assert_eq!(first_difference, Some(22));
     assert!(live[22..].iter().zip(&without[22..]).all(|(a, b)| a != b));
+}
+
+#[test]
+fn a_3v3_log_with_learn_orders_verifies_from_the_store() {
+    // The scripted 3v3 to tick 1900, Rime's learn, the last of its learn orders.
+    let reference = Reference3v3::load();
+    let mut fixed = reference.start();
+    let mut live = HashTrail::default();
+    for tick in 0..=1900 {
+        Reference3v3::play_tick(&mut fixed, tick);
+        live.record(fixed.runner().world());
+    }
+    let mut runner = fixed.into_runner();
+    runner.reveal_seed();
+
+    let decoded = SessionLog::decode(&encoded(runner.log())).unwrap();
+    let mut replay = Replay::new(decoded, &store()).unwrap();
+    let mut replayed = HashTrail::default();
+    while replay.run_tick() {
+        replayed.record(replay.runner().world());
+    }
+    live.assert_same(&replayed);
+    // The replay learned what the match did: Cinder's and Veil's first basic ability, and Rime's
+    // second.
+    let world = replay.runner().world();
+    let units = MatchUnits::of_world(world);
+    let ranks = [(0, 0), (5, 0), (4, 1)].map(|(slot, ability)| {
+        let entity = world
+            .resource::<EntityIndex>()
+            .get(units.hero(slot))
+            .unwrap();
+        let slots = world.get::<ActionSlots>(entity).unwrap();
+        slots.slot(ability).unwrap().rank
+    });
+    assert_eq!(ranks, [1, 1, 1]);
 }
 
 /// The hero walks 1 m along x from its spawn, (0, −2), into the reach of the east tower.

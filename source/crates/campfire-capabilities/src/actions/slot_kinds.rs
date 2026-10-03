@@ -10,7 +10,7 @@ use crate::stats::level::Level;
 use crate::values::declared_name::DeclaredName;
 
 /// The mode's `[[slots]]`: the kinds of slot actions sit in on a unit, in order. As a resource,
-/// the match's, which the `learn` order reads; none until the mode's books install.
+/// the match's, which the `learn` order reads; empty until the mode's books install.
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(transparent)]
 pub struct SlotKinds(pub Vec<SlotKindData>);

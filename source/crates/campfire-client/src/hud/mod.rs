@@ -18,7 +18,9 @@ use bevy::mesh::{Mesh, Mesh3d, Meshable};
 use bevy::pbr::{MeshMaterial3d, StandardMaterial};
 use bevy::time::Time;
 use bevy::transform::components::Transform;
-use campfire_capabilities::{ActionSlots, Combat, Dead, Owner, PoolId, Pools, Team};
+use campfire_capabilities::{
+    ActionSlots, Combat, Dead, Learning, Level, Owner, Points, PoolId, Pools, Team,
+};
 use campfire_sim::{EntityIndex, SimTick, Unpredicted};
 use lightyear::prelude::Predicted;
 
@@ -30,9 +32,10 @@ mod gauge;
 mod ring;
 
 /// Makes the match readable with plain shapes over the drawings: a bar of the life pool over
-/// every unit, the own avatar's other pools and cooldowns under its own, a ring where each hit
-/// lands, and a ring under the unit the own avatar attacks. It reads the sim's components and
-/// changes none.
+/// every unit; under the own avatar's, its other pools, a gold mark over each ability it may
+/// learn a rank of, its cooldowns, and a tick for each rank of an ability that ranks up, bright
+/// once learned; a ring where each hit lands, and a ring under the unit the own avatar attacks.
+/// It reads the sim's components and changes none.
 #[derive(Debug)]
 pub(crate) struct Hud;
 
@@ -50,6 +53,7 @@ struct HudPalette {
     foe: Handle<StandardMaterial>,
     resource: Handle<StandardMaterial>,
     cooldown: Handle<StandardMaterial>,
+    learnable: Handle<StandardMaterial>,
     hit: Handle<StandardMaterial>,
 }
 
@@ -85,6 +89,8 @@ type Shown<'w, 's> = Query<
         Has<Dead>,
         Option<&'static Pools>,
         Option<&'static ActionSlots>,
+        Option<&'static Points>,
+        Option<&'static Level>,
     ),
     Allow<Unpredicted>,
 >;
@@ -150,16 +156,19 @@ impl Hud {
             foe: flat(Color::srgb(0.9, 0.3, 0.25)),
             resource: flat(Color::srgb(0.3, 0.55, 1.0)),
             cooldown: flat(Color::srgb(0.9, 0.9, 0.9)),
+            learnable: flat(Color::srgb(1.0, 0.72, 0.1)),
             hit: flat(Color::srgb(1.0, 0.8, 0.3)),
         });
     }
 
     /// Gives each drawn unit its gauges, once the client holds its own avatar, whose team tells
-    /// friend from foe: life for every unit with the life pool; each other pool and one per
-    /// ability slot for the own avatar.
+    /// friend from foe: life for every unit with the life pool; for the own avatar, each other
+    /// pool, then, when an ability ranks up, a row of learn marks, then a cooldown per ability
+    /// slot, then the rank ticks of each ability that ranks up.
     fn add_gauges(
         palette: Res<'_, HudPalette>,
         life: Option<Res<'_, Life>>,
+        learning: Option<Learning<'_>>,
         own: Query<'_, '_, &Team, (With<Owner>, With<Predicted>)>,
         drawn: Ungauged<'_, '_>,
         mut commands: Commands<'_, '_>,
@@ -192,6 +201,16 @@ impl Hud {
                 }
             }
             if mine && let Some(slots) = slots {
+                let ranks: Vec<(u8, u8)> = (0..)
+                    .zip(slots.iter())
+                    .filter_map(|(slot, held)| Some((slot, learning.as_ref()?.ranks(held)?)))
+                    .collect();
+                if !ranks.is_empty() {
+                    for &(slot, _) in &ranks {
+                        kinds.push((GaugeKind::Learnable { slot, row }, &palette.learnable));
+                    }
+                    row += 1;
+                }
                 for (slot, _) in (0..).zip(slots.iter()) {
                     kinds.push((
                         GaugeKind::Cooldown {
@@ -201,6 +220,18 @@ impl Hud {
                         },
                         &palette.cooldown,
                     ));
+                }
+                row += 1;
+                for (slot, ranks) in ranks {
+                    for rank in 1..=ranks {
+                        let tick = GaugeKind::Rank {
+                            slot,
+                            rank,
+                            ranks,
+                            row,
+                        };
+                        kinds.push((tick, &palette.cooldown));
+                    }
                 }
             }
             for (kind, fill) in kinds {
@@ -270,18 +301,20 @@ impl Hud {
         }
     }
 
-    /// Sets each gauge's fill from its unit, and hides the gauges of the dead and of unlearned
-    /// abilities.
+    /// Sets each gauge's fill from its unit, and hides the gauges of the dead, of unlearned
+    /// abilities' cooldowns, and the learn marks of the abilities the unit may not learn now. A
+    /// dead unit may learn, so its learn marks show.
     fn fill_gauges(
         tick: Option<Res<'_, SimTick>>,
         life: Option<Res<'_, Life>>,
+        learning: Option<Learning<'_>>,
         units: Shown<'_, '_>,
         mut gauges: Query<'_, '_, (&mut Gauge, &mut Visibility)>,
         mut fills: Fills<'_, '_>,
     ) {
         let now = tick.map(|tick| tick.start());
         for (mut gauge, mut visibility) in &mut gauges {
-            let Ok((dead, pools, slots)) = units.get(gauge.unit) else {
+            let Ok((dead, pools, slots, points, level)) = units.get(gauge.unit) else {
                 continue;
             };
             let fill = |pool| {
@@ -305,8 +338,23 @@ impl Hud {
                         cooling.map_or(1.0, |cooling| cooling.filled(now))
                     })
                 }
+                GaugeKind::Rank { slot, rank, .. } => slots
+                    .and_then(|slots| slots.slot(*slot))
+                    .map(|held| if held.rank >= *rank { 1.0 } else { 0.0 }),
+                GaugeKind::Learnable { slot, .. } => {
+                    let held = slots.and_then(|slots| slots.slot(*slot));
+                    let learnable = learning
+                        .as_ref()
+                        .zip(held)
+                        .zip(points.zip(level))
+                        .is_some_and(|((learning, held), (&points, &level))| {
+                            learning.learnable(held, points, level)
+                        });
+                    learnable.then_some(1.0)
+                }
             };
-            let shown = fraction.filter(|_| !dead);
+            let learns = matches!(gauge.kind, GaugeKind::Learnable { .. });
+            let shown = fraction.filter(|_| !dead || learns);
             visibility.set_if_neq(if shown.is_some() {
                 Visibility::Inherited
             } else {

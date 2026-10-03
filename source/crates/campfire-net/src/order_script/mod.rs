@@ -8,7 +8,8 @@ use crate::error::OrderScriptError;
 /// A player's orders for their avatar, each at a sim tick, in tick order, and optionally the tick
 /// the player leaves after: what a bot plays. It reads from TOML: an optional `end`, and one
 /// `[[order]]` table each, with its `tick` and one action: `move = [x, z]` in meters,
-/// `attack = <unit>`, or `cast = <slot>`, with `target = <unit>` when the ability takes one. A
+/// `attack = <unit>`, `cast = <slot>`, with `target = <unit>` when the ability takes one, or
+/// `learn = <slot>`. A
 /// unit is its stable id, which a mode that spawns in a fixed order gives each match alike.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct OrderScript {
@@ -44,6 +45,7 @@ impl OrderScript {
             attack: Option<StableId>,
             cast: Option<u8>,
             target: Option<StableId>,
+            learn: Option<u8>,
         }
         let file: File = toml::from_str(text).map_err(OrderScriptError::Toml)?;
         let mut orders = Vec::with_capacity(file.order.len());
@@ -53,21 +55,23 @@ impl OrderScript {
             attack,
             cast,
             target,
+            learn,
         } in file.order
         {
-            let action = match (to, attack, cast, target) {
-                (Some(to), None, None, None) => {
+            let action = match (to, attack, cast, target, learn) {
+                (Some(to), None, None, None, None) => {
                     let [x, z] = to.map(Scalar::to_num);
                     let (Some(x), Some(z)) = (x, z) else {
                         return Err(OrderScriptError::Coordinate { tick });
                     };
                     Action::Move { x, z }
                 }
-                (None, Some(target), None, None) => Action::Attack { target },
-                (None, None, Some(slot), target) => Action::Slot {
+                (None, Some(target), None, None, None) => Action::Attack { target },
+                (None, None, Some(slot), target, None) => Action::Slot {
                     slot,
                     target: target.map_or(ActionTarget::None, ActionTarget::Unit),
                 },
+                (None, None, None, None, Some(slot)) => Action::Learn { slot },
                 _ => return Err(OrderScriptError::Action { tick }),
             };
             let tick = Tick::new(tick);

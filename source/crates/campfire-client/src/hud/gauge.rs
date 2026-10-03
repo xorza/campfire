@@ -8,8 +8,9 @@ use campfire_math::Num;
 
 use crate::view;
 
-/// A bar over a unit: its life, or, for the player's own avatar, another pool or the cooldown of
-/// one ability slot. It draws with two children: a back of its full width, and `fill`.
+/// A bar over a unit: its life, or, for the player's own avatar, another pool, the cooldown of one
+/// ability slot, a rank of one, or a mark that one may learn its next rank. It draws with two
+/// children: a back of its full width, and `fill`.
 #[derive(Component, Debug)]
 pub(crate) struct Gauge {
     pub(crate) unit: Entity,
@@ -31,6 +32,17 @@ pub(crate) enum GaugeKind {
         row: u8,
         cooling: Option<Cooling>,
     },
+    /// Rank `rank`, from 1, of the `ranks` of ability slot `slot`, a tick in row `row` under its
+    /// cooldown: full once learned.
+    Rank {
+        slot: u8,
+        rank: u8,
+        ranks: u8,
+        row: u8,
+    },
+    /// The mark over ability slot `slot`, in row `row`, shown while the unit may learn its next
+    /// rank.
+    Learnable { slot: u8, row: u8 },
 }
 
 /// A cooldown as the client saw it start: the tick the ability is ready again, and the tick the
@@ -49,27 +61,57 @@ const WIDE: f32 = 1.2;
 /// A cooldown pip's width, and the step from one pip to the next.
 const PIP: f32 = 0.27;
 const PIP_STEP: f32 = 0.31;
+/// A rank tick's thickness, and the gap between the ticks of one pip.
+const TICK_THICKNESS: f32 = 0.06;
+const TICK_GAP: f32 = 0.02;
+/// The learn mark's thickness.
+const MARK_THICKNESS: f32 = 0.05;
 
 impl GaugeKind {
     /// The bar's width, and its center from the top of the stack, in the plane that faces the
     /// camera: x across, z down the stack.
     pub(crate) fn layout(self) -> Layout {
+        let down = |row: u8| f32::from(row) * ROW;
+        let pip = |slot: u8| (f32::from(slot) - 1.5) * PIP_STEP;
         match self {
             GaugeKind::Life { .. } => Layout {
                 width: WIDE,
+                thickness: THICKNESS,
                 center: Vec3::ZERO,
             },
             GaugeKind::Pool { row, .. } => Layout {
                 width: WIDE,
-                center: Vec3::new(0.0, 0.0, f32::from(row) * ROW),
+                thickness: THICKNESS,
+                center: Vec3::new(0.0, 0.0, down(row)),
             },
             GaugeKind::Cooldown { slot, row, .. } => Layout {
                 width: PIP,
-                center: Vec3::new(
-                    (f32::from(slot) - 1.5) * PIP_STEP,
-                    0.0,
-                    f32::from(row) * ROW,
-                ),
+                thickness: THICKNESS,
+                center: Vec3::new(pip(slot), 0.0, down(row)),
+            },
+            GaugeKind::Rank {
+                slot,
+                rank,
+                ranks,
+                row,
+            } => {
+                let count = f32::from(ranks);
+                let width = (PIP - (count - 1.0) * TICK_GAP) / count;
+                let left = pip(slot) - PIP / 2.0 + width / 2.0;
+                Layout {
+                    width,
+                    thickness: TICK_THICKNESS,
+                    center: Vec3::new(
+                        left + f32::from(rank - 1) * (width + TICK_GAP),
+                        0.0,
+                        down(row),
+                    ),
+                }
+            }
+            GaugeKind::Learnable { slot, row } => Layout {
+                width: PIP,
+                thickness: MARK_THICKNESS,
+                center: Vec3::new(pip(slot), 0.0, down(row)),
             },
         }
     }
@@ -79,13 +121,14 @@ impl GaugeKind {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(crate) struct Layout {
     pub(crate) width: f32,
+    pub(crate) thickness: f32,
     pub(crate) center: Vec3,
 }
 
 impl Layout {
     /// The back's transform, relative to the gauge.
     pub(crate) const fn back(self) -> Transform {
-        Transform::from_scale(Vec3::new(self.width, 1.0, THICKNESS))
+        Transform::from_scale(Vec3::new(self.width, 1.0, self.thickness))
     }
 
     /// The fill's transform, relative to the gauge, for `fraction` of the bar: from the left edge,
@@ -96,7 +139,7 @@ impl Layout {
         Transform::from_translation(Vec3::new(left, 0.01, 0.0)).with_scale(Vec3::new(
             fraction * self.width,
             1.0,
-            THICKNESS,
+            self.thickness,
         ))
     }
 
@@ -159,6 +202,35 @@ mod tests {
         };
         assert_eq!(pip(0), Vec3::new(-1.5 * PIP_STEP, 0.0, 2.0 * ROW));
         assert_eq!(pip(3), Vec3::new(1.5 * PIP_STEP, 0.0, 2.0 * ROW));
+        // Slot 3's five rank ticks, a row under its pip, span its width: each (0.27 − 4 × 0.02) / 5
+        // = 0.038 wide, the first's left edge on the pip's, the last's right edge on its right,
+        // to an ulp of the f32 sums. Its learn mark is as wide as the pip, and thinner.
+        let tick = |rank| {
+            GaugeKind::Rank {
+                slot: 3,
+                rank,
+                ranks: 5,
+                row: 3,
+            }
+            .layout()
+        };
+        let (first, last) = (tick(1), tick(5));
+        assert!((first.width - 0.038).abs() < 1e-6, "{first:?}");
+        let pip_left = 1.5 * PIP_STEP - PIP / 2.0;
+        let edges = [
+            first.center.x - first.width / 2.0 - pip_left,
+            last.center.x + last.width / 2.0 - (pip_left + PIP),
+        ];
+        assert!(edges.iter().all(|edge| edge.abs() < 1e-6), "{edges:?}");
+        assert_eq!(
+            (first.center.z, first.thickness),
+            (3.0 * ROW, TICK_THICKNESS)
+        );
+        let mark = GaugeKind::Learnable { slot: 3, row: 1 }.layout();
+        assert_eq!(
+            (mark.width, mark.thickness, mark.center),
+            (PIP, MARK_THICKNESS, Vec3::new(1.5 * PIP_STEP, 0.0, ROW))
+        );
         // Seen in tick 100, ready in 190: empty then, half in 145, full from 190.
         let cooling = Cooling {
             ready_at: Tick::new(190),

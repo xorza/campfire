@@ -177,6 +177,8 @@ fn check_log(local: &mut LocalMatch, scripts: [&str; 2]) {
 /// of reach of creeps and towers, 1.5 m apart, so their bodies of 0.5 m never touch; there each
 /// sees the other.
 ///
+/// Each first learns its first ability, with the point it spawns with, in tick 60.
+///
 /// The walker casts its first ability, 100 true damage within 2 m for 40 of its 100 mana, every
 /// 90 ticks: in tick 100 it hits; in 120 it is on cooldown; in 190 its cooldown has ended, and it
 /// hits; in 280 the 20 mana left do not pay. In tick 300 it attacks the runner: 60 damage 8 ticks
@@ -187,14 +189,14 @@ fn check_log(local: &mut LocalMatch, scripts: [&str; 2]) {
 /// mana, every 60 ticks.
 fn cast_scripts(walker: StableId, runner: StableId) -> [String; 2] {
     let walker_orders = format!(
-        "[[order]]\ntick = 60\nmove = [0, 12]\n\
+        "[[order]]\ntick = 60\nlearn = 0\n[[order]]\ntick = 60\nmove = [0, 12]\n\
          [[order]]\ntick = 100\ncast = 0\n[[order]]\ntick = 120\ncast = 0\n\
          [[order]]\ntick = 190\ncast = 0\n[[order]]\ntick = 280\ncast = 0\n\
          [[order]]\ntick = 300\nattack = {}\n[[order]]\ntick = 350\nmove = [0, 12]\n",
         runner.get()
     );
     let runner_orders = format!(
-        "[[order]]\ntick = 60\nmove = [\"1.5\", 12]\n\
+        "[[order]]\ntick = 60\nlearn = 0\n[[order]]\ntick = 60\nmove = [\"1.5\", 12]\n\
          [[order]]\ntick = 140\ncast = 0\ntarget = {}\n",
         walker.get()
     );

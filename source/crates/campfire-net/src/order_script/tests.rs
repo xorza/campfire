@@ -53,14 +53,18 @@ fn a_script_reads_its_orders_in_tick_order_or_its_flaw() {
         flaw("[[order]]\ntick = 9\nwalk = [1, 1]\n"),
         OrderScriptError::Toml(_)
     ));
-    // A cast of slot 2 with no target, one of slot 0 at unit 7, and an attack on unit 3; an
-    // order of no action, of two, or of a target with no cast is refused.
+    // A cast of slot 2 with no target, one of slot 0 at unit 7, an attack on unit 3, and a learn
+    // of slot 1; an order of no action, of two, or of a target with no cast is refused.
     let actions = "[[order]]\ntick = 9\ncast = 2\n[[order]]\ntick = 9\ncast = 0\ntarget = 7\n\
-                       [[order]]\ntick = 10\nattack = 3\n";
+                       [[order]]\ntick = 10\nattack = 3\n[[order]]\ntick = 10\nlearn = 1\n";
     let orders = OrderScript::parse(actions).unwrap();
-    let [first, second, third] = orders.orders() else {
-        panic!("three orders");
+    let [first, second, third, fourth] = orders.orders() else {
+        panic!("four orders");
     };
+    assert_eq!(
+        (fourth.tick, fourth.action),
+        (Tick::new(10), Action::Learn { slot: 1 })
+    );
     assert_eq!(
         (first.tick, first.action),
         (
@@ -85,6 +89,8 @@ fn a_script_reads_its_orders_in_tick_order_or_its_flaw() {
         "[[order]]\ntick = 9\nattack = 3\ncast = 0\n",
         "[[order]]\ntick = 9\ntarget = 3\n",
         "[[order]]\ntick = 9\nattack = 3\ntarget = 4\n",
+        "[[order]]\ntick = 9\nlearn = 0\ncast = 0\n",
+        "[[order]]\ntick = 9\nlearn = 0\ntarget = 4\n",
     ] {
         assert_eq!(
             flaw(flawed),
