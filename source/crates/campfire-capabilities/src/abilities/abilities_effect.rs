@@ -1,8 +1,9 @@
-use bevy_ecs::world::World;
+use bevy_ecs::world::{Mut, World};
 use campfire_common::{Tick, Ticks};
 use campfire_math::Num;
 use campfire_sim::{EntityIndex, StableId};
 
+use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::slot_kind::SlotKind;
 use crate::scripts::effects::Effect;
@@ -25,27 +26,33 @@ pub(crate) enum AbilitiesEffect {
         kind: SlotKind,
         fraction: Num,
     },
+    /// A charge more of the unit's action `action`, which it holds and which has charges.
+    AddCharge { unit: StableId, action: ActionId },
 }
 
 impl Effect for AbilitiesEffect {
     fn apply(self, world: &mut World, _: &mut Frame, now: Tick) {
         let unit = match self {
             AbilitiesEffect::ReduceCooldown { unit, .. }
-            | AbilitiesEffect::ReduceCooldowns { unit, .. } => unit,
+            | AbilitiesEffect::ReduceCooldowns { unit, .. }
+            | AbilitiesEffect::AddCharge { unit, .. } => unit,
         };
         let Some(entity) = world.resource::<EntityIndex>().get(unit) else {
             return;
         };
-        let mut slots = world
-            .get_mut::<ActionSlots>(entity)
-            .expect("a unit the view held with the ability has slots");
-        match self {
-            AbilitiesEffect::ReduceCooldown { action, cut, .. } => {
-                slots.cut_cooldown(action, cut, now);
+        world.resource_scope(|world, book: Mut<'_, ActionBook>| {
+            let mut slots = world
+                .get_mut::<ActionSlots>(entity)
+                .expect("a unit the view held with the ability has slots");
+            match self {
+                AbilitiesEffect::ReduceCooldown { action, cut, .. } => {
+                    slots.cut_cooldown(action, cut, now);
+                }
+                AbilitiesEffect::ReduceCooldowns { kind, fraction, .. } => {
+                    slots.cut_cooldowns(kind, fraction, now);
+                }
+                AbilitiesEffect::AddCharge { action, .. } => slots.add_charge(action, &book),
             }
-            AbilitiesEffect::ReduceCooldowns { kind, fraction, .. } => {
-                slots.cut_cooldowns(kind, fraction, now);
-            }
-        }
+        });
     }
 }

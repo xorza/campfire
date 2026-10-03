@@ -9,7 +9,7 @@ use campfire_sim::{Capability, EntityIndex, SimRng, StateHash, TickInput, TickIn
 
 use super::*;
 use crate::actions::Actions;
-use crate::actions::action_data::{ActionData, RangeField, Targeting};
+use crate::actions::action_data::{ActionData, ChargesData, RangeField, Targeting};
 use crate::actions::action_data_field::ActionDataField;
 use crate::actions::action_slots::{ActionSlot, SlotAim};
 use crate::actions::cost_target::CostTarget;
@@ -795,6 +795,110 @@ fn on_resolve(ctx, caster, target) {
     let missed = enemy(&mut game, 4, 0);
     game.cast(caster, point(10, 0));
     assert_eq!(game.sim.health(missed), 500);
+    assert_eq!(game.failed_calls(), []);
+}
+
+#[test]
+fn charges_are_spent_one_a_cast_and_come_back_one_at_a_time() {
+    // Step: 3 charges, one back each 1000 ms, 30 ticks at 30 a second, and a lockout of 100 ms,
+    // 3 ticks, between two casts; 10 mana a cast. Refill gives Step a charge and takes 500 ms,
+    // 15 ticks, off the time to its next; Dud has no charges to give.
+    let mut game = Match::new();
+    game.load_stats();
+    let plain = ActionData {
+        script: Some(PackagePath::parse("cast.rhai").unwrap()),
+        ..ActionData::cast(Targeting::None)
+    };
+    let step = ActionData {
+        charges: Some(ChargesData {
+            max: Ranked::One(int(3)),
+            recharge_ms: Ranked::One(int(1000)),
+        }),
+        cooldown_ms: Some(Ranked::One(int(100))),
+        cost: cost("mana", int(10)),
+        ..plain.clone()
+    };
+    let step = game.load("step", &step, "fn on_resolve(ctx, caster, target) {}");
+    let refill = r#"fn on_resolve(ctx, caster, target) {
+        ctx.add_charge(caster, "step");
+        ctx.reduce_cooldown(caster, "step", 500);
+    }"#;
+    let refill = game.load("refill", &plain, refill);
+    let dud = r#"fn on_resolve(ctx, caster, target) { ctx.add_charge(caster, "dud"); }"#;
+    let dud = game.load("dud", &plain, dud);
+    let caster = game.spawn(
+        0,
+        ground(Num::ZERO, Num::ZERO),
+        (
+            Owner::new(PlayerSlot::new(0)),
+            ActionSlots::new([
+                (step, SlotKind::new(0), 1),
+                (refill, SlotKind::new(0), 1),
+                (dud, SlotKind::new(0), 1),
+            ]),
+        ),
+    );
+    game.give_pools(caster, 100, 20);
+    let charges = |game: &Match| {
+        let charges = game.slot(caster).charges.unwrap();
+        (charges.count, charges.next.get())
+    };
+    let order = |game: &mut Match, slot| {
+        game.sim
+            .get_mut::<ActionSlots>(caster)
+            .order(slot, ActionTarget::None);
+        game.sim.step();
+    };
+    // Tick 0: full, then one spent: the next comes back 30 ticks later. Tick 1 is in the lockout.
+    game.cast(caster, ActionTarget::None);
+    assert_eq!((charges(&game), game.pool(caster)), ((2, 30), 90));
+    game.cast(caster, ActionTarget::None);
+    assert_eq!((charges(&game), game.pool(caster)), ((2, 30), 90));
+    // Ticks 3 and 6 spend the other two; tick 9 finds none, and spends nothing.
+    game.sim.run_until(3);
+    game.cast(caster, ActionTarget::None);
+    game.sim.run_until(6);
+    game.cast(caster, ActionTarget::None);
+    assert_eq!(charges(&game), (0, 30));
+    game.sim.run_until(9);
+    game.cast(caster, ActionTarget::None);
+    assert_eq!((charges(&game), game.pool(caster)), ((0, 30), 70));
+    // Tick 10: Refill gives one back and brings the next to tick 15.
+    order(&mut game, 1);
+    assert_eq!(charges(&game), (1, 15));
+    // One a recharge: in tick 15, then 45, and none past the most from tick 75.
+    game.sim.run_until(15);
+    game.sim.step();
+    assert_eq!(charges(&game), (2, 45));
+    game.sim.run_until(45);
+    game.sim.step();
+    assert_eq!(charges(&game), (3, 75));
+    game.sim.run_until(200);
+    assert_eq!(charges(&game), (3, 75));
+    assert_eq!(game.failed_calls(), []);
+    // Refill at full adds none; Dud names an ability with no charges, and fails.
+    order(&mut game, 1);
+    assert_eq!(charges(&game).0, 3);
+    order(&mut game, 2);
+    let failed = game.failed_calls();
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed[0].kind, FailureKind::Api(ApiError::NoCharges));
+    // A unit that holds Step unlearned has no charges for Refill to add to.
+    let learner = game.spawn(
+        0,
+        ground(Num::int(5), Num::ZERO),
+        (
+            Owner::new(PlayerSlot::new(0)),
+            ActionSlots::new([(step, SlotKind::new(0), 0), (refill, SlotKind::new(0), 1)]),
+        ),
+    );
+    game.give_pools(learner, 100, 20);
+    game.sim
+        .get_mut::<ActionSlots>(learner)
+        .order(1, ActionTarget::None);
+    game.sim.step();
+    let unlearned = game.sim.get::<ActionSlots>(learner).slot(0).unwrap();
+    assert_eq!((unlearned.rank, unlearned.charges), (0, None));
     assert_eq!(game.failed_calls(), []);
 }
 

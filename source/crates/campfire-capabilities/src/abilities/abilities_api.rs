@@ -8,6 +8,7 @@ use crate::actions::range::Range;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::name_kind::NameKind;
+use crate::units::action_id::ActionId;
 use crate::units::unit::Unit;
 
 use crate::actions::action_data_field::ActionDataField;
@@ -76,11 +77,15 @@ impl AbilitiesApi {
                 AbilitiesApi::reduce_cooldowns(ctx, &unit, kind, ApiError::num(fraction)?)
             },
         )
-        .plan(call(
-            "add_charge",
-            "(unit, id)",
-            "gives `unit`'s ability `id` a charge",
-        ));
+        .bind(
+            call(
+                "add_charge",
+                "(unit, id)",
+                "gives `unit`'s ability `id`, of the script's package, a charge, up to its most",
+            )
+            .name(1, NameKind::Ability),
+            |ctx: &mut Ctx, unit: Unit, id: &str| AbilitiesApi::add_charge(ctx, &unit, id),
+        );
         api.tag_effect(
             TagEffect::Blocks(Block::Cast),
             Status::Runs(ApiVersion::FIRST),
@@ -107,18 +112,36 @@ impl AbilitiesApi {
     /// Queues `ms`, rounded up to ticks, off the cooldown of `unit`'s action `id` of the script's
     /// package, which it holds.
     fn reduce_cooldown(ctx: &Ctx, unit: &Unit, id: &str, ms: INT) -> Checked<()> {
-        let view = ctx.view();
-        let package = ctx.frame().package();
-        let action = ActionsColumn::action_named(view, package, id)?;
-        if !ActionsColumn::holds(view, unit.row_index(), action) {
-            return Err(ApiError::NotHeld.fail().into());
-        }
-        let cut = view.ticks(ms)?;
+        let action = AbilitiesApi::held(ctx, unit, id)?;
+        let cut = ctx.view().ticks(ms)?;
         ctx.queue(AbilitiesEffect::ReduceCooldown {
             unit: unit.id,
             action,
             cut,
         })
+    }
+
+    /// Queues a charge more of `unit`'s action `id` of the script's package, which it holds and
+    /// which has charges.
+    fn add_charge(ctx: &Ctx, unit: &Unit, id: &str) -> Checked<()> {
+        let action = AbilitiesApi::held(ctx, unit, id)?;
+        if !ActionsColumn::has_charges(ctx.view(), action) {
+            return Err(ApiError::NoCharges.fail().into());
+        }
+        ctx.queue(AbilitiesEffect::AddCharge {
+            unit: unit.id,
+            action,
+        })
+    }
+
+    /// The action `id` of the script's package, which `unit` holds.
+    fn held(ctx: &Ctx, unit: &Unit, id: &str) -> Checked<ActionId> {
+        let view = ctx.view();
+        let action = ActionsColumn::action_named(view, ctx.frame().package(), id)?;
+        if !ActionsColumn::holds(view, unit.row_index(), action) {
+            return Err(ApiError::NotHeld.fail().into());
+        }
+        Ok(action)
     }
 
     /// Queues `fraction` of what is left off the cooldowns of `unit`'s actions in `kind`.

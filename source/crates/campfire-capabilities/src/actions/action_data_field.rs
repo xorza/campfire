@@ -133,7 +133,7 @@ impl ActionDataField {
             }
             ActionDataField::Hold => ("hold", Some(Abilities), false, [Takes, Refuses, Refuses]),
             ActionDataField::Charges => {
-                ("charges", Some(Abilities), false, [Takes, Refuses, Refuses])
+                ("charges", Some(Abilities), true, [Takes, Refuses, Refuses])
             }
             ActionDataField::Charge => {
                 ("charge", Some(Abilities), false, [Takes, Refuses, Refuses])

@@ -10,6 +10,8 @@ pub enum ActionField {
     Cooldown,
     Cost,
     Windup,
+    /// Its charges: a count of 1 to 255, and a recharge of whole milliseconds.
+    Charges,
 }
 
 /// Why an action that passed the package load does not load into a match: what only the

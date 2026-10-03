@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::num::NonZeroU8;
 
 use campfire_math::Num;
 use serde::de::Error;
@@ -212,6 +213,18 @@ impl ActionData {
             cost: PoolCost::new(cost),
             resource_cost,
             windup_ms: whole(ActionField::Windup, self.windup_ms.as_ref())?,
+            charges: self
+                .charges
+                .as_ref()
+                .map(|charges| {
+                    let max = whole(ActionField::Charges, Some(&charges.max))?;
+                    let max = u8::try_from(max).ok().and_then(NonZeroU8::new);
+                    Ok(RankCharges {
+                        max: max.ok_or(ActionField::Charges)?,
+                        recharge_ms: whole(ActionField::Charges, Some(&charges.recharge_ms))?,
+                    })
+                })
+                .transpose()?,
         })
     }
 
@@ -301,6 +314,15 @@ pub struct RankFields {
     pub cost: PoolCost,
     pub resource_cost: Vec<ResourceAmount>,
     pub windup_ms: u64,
+    pub charges: Option<RankCharges>,
+}
+
+/// An action's charges at one rank: how many it holds at most, and how long one takes to come
+/// back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RankCharges {
+    pub max: NonZeroU8,
+    pub recharge_ms: u64,
 }
 
 /// What an action targets. In data: `none`, `point`, `direction`, or a filter of the units it

@@ -91,7 +91,8 @@ impl ActionBook {
     }
 
     /// The action `aim` names of a unit with `slots`, when it may go on: its slot holds a learned
-    /// action that is ready, `purse` affords its cost in each pool and player resource, and its
+    /// action that is ready and, with charges, holds one, `purse` affords its cost in each pool
+    /// and player resource, and its
     /// target is a living unit the action's filter selects, or the action takes none, which drops
     /// any target the order named. `attitude` tells how the unit regards a team, and `living`
     /// finds a living unit.
@@ -108,7 +109,9 @@ impl ActionBook {
         let action = self.get(slot.action)?;
         let values = action.values(slot.rank);
         let affords = purse.affords(&values.cost, action.resource_cost(slot.rank));
-        if now < slot.ready_at || !affords {
+        let charged =
+            values.charges.is_none() || slot.charges.is_some_and(|charges| charges.count > 0);
+        if now < slot.ready_at || !affords || !charged {
             return None;
         }
         let target = match (action.aim, aim.target) {
@@ -309,6 +312,7 @@ pub(crate) mod internals {
                     cooldown: Ticks::ZERO,
                     cost: weapon.cost,
                     windup: weapon.windup,
+                    charges: None,
                 }],
                 resource_costs: weapon.resource_cost.into_iter().collect(),
                 script: None,
@@ -340,6 +344,7 @@ pub(crate) mod internals {
                     cooldown: Ticks::ZERO,
                     cost: PoolCost::default(),
                     windup: time,
+                    charges: None,
                 }],
                 resource_costs: resource_cost.into_iter().collect(),
                 script: None,

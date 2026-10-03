@@ -1,3 +1,5 @@
+use std::num::NonZeroU8;
+
 use campfire_common::Ticks;
 use campfire_sim::TickRate;
 
@@ -26,6 +28,14 @@ pub(crate) struct RankValues {
     pub(crate) cooldown: Ticks,
     pub(crate) cost: PoolCost,
     pub(crate) windup: Ticks,
+    pub(crate) charges: Option<ChargeRule>,
+}
+
+/// How many charges an action holds at most, and the ticks one takes to come back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ChargeRule {
+    pub(crate) max: NonZeroU8,
+    pub(crate) recharge: Ticks,
 }
 
 impl RankValues {
@@ -56,6 +66,15 @@ impl RankValues {
                 cooldown: ticks(fields.cooldown_ms)?,
                 cost: fields.cost,
                 windup: ticks(fields.windup_ms)?,
+                charges: fields
+                    .charges
+                    .map(|charges| {
+                        Ok(ChargeRule {
+                            max: charges.max,
+                            recharge: ticks(charges.recharge_ms)?,
+                        })
+                    })
+                    .transpose()?,
             });
             loaded.resource_costs.extend(fields.resource_cost);
         }

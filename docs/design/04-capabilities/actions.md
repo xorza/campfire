@@ -69,7 +69,7 @@ Values of the fields may be one or one per rank, like params; times become whole
 ### Values and bookkeeping
 
 - **Values.** In an action's hooks, `ctx.range` is its range at its rank in meters, `()` for a global one; `ctx.origin` is where its unit stood as the action started; `ctx.charge` is above, and fails the call for an action with no `charge`.
-- **Cooldowns.** `ctx.reduce_cooldown(unit, id, ms)` takes `ms` off the cooldown of the unit's action `id`, of the script's package, and `ctx.reduce_cooldowns(unit, kind, fraction)` takes `fraction` of what is left off the cooldown of each of the unit's actions in the slot kind `kind`, as League of Legends' Master Yi's takedowns do, what stays rounded up to a whole tick, as every time is. Neither makes a ready tick earlier than the current one; an action the unit does not hold, a kind the mode does not declare, a negative `ms`, and a fraction outside 0 to 1 fail the call.
+- **Cooldowns.** `ctx.reduce_cooldown(unit, id, ms)` takes `ms` off the cooldown of the unit's action `id`, of the script's package, and `ctx.reduce_cooldowns(unit, kind, fraction)` takes `fraction` of what is left off the cooldown of each of the unit's actions in the slot kind `kind`, as League of Legends' Master Yi's takedowns do, what stays rounded up to a whole tick, as every time is. Each takes from the time to the action's next charge too, as both games' cooldown reduction speeds a recharge. Neither makes a ready tick earlier than the current one; an action the unit does not hold, a kind the mode does not declare, a negative `ms`, and a fraction outside 0 to 1 fail the call.
 
 ### Kinds
 

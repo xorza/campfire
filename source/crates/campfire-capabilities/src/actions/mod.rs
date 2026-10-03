@@ -1,6 +1,6 @@
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
-use bevy_ecs::system::{Query, Res};
+use bevy_ecs::system::{Local, Query, Res};
 use bevy_ecs::world::World;
 
 use campfire_sim::{SimSet, SimTick, StableId, StateRegistry, TickRate};
@@ -15,7 +15,7 @@ use crate::stats::lifetime::Hold;
 use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::param_book::ParamBook;
 
-use crate::actions::action_slots::ActionSlots;
+use crate::actions::action_slots::{ActionSlots, SlotCharges};
 use crate::actions::actions_column::ActionsColumn;
 
 use crate::stats::StatsSet;
@@ -98,15 +98,38 @@ impl Actions {
     /// target is one combat finds.
     pub(crate) fn schedule(schedule: &mut Schedule) {
         schedule.add_systems((
+            hold_charges
+                .in_set(SimSet::Inputs)
+                .in_set(ActionsSet::HoldAtInputs),
             hold_passives
                 .in_set(SimSet::Inputs)
                 .in_set(ActionsSet::HoldAtInputs)
-                .after(StatsSet::Expire),
+                .after(StatsSet::Expire)
+                .after(hold_charges),
             hold_passives
                 .in_set(SimSet::Resolve)
                 .in_set(ActionsSet::HoldAtResolve),
             hold_passives.in_set(SimSet::Vision),
         ));
+    }
+}
+
+/// Keeps each unit's charges as its slots stand, as each tick starts, after the orders that learn
+/// ranks: a slot that came to a rank of an action with charges fills, and each charge whose time
+/// came comes back. A slot changes only when its charges do, as the slots replicate.
+fn hold_charges(
+    actions: Res<'_, ActionBook>,
+    tick: Res<'_, SimTick>,
+    mut units: Query<'_, '_, &mut ActionSlots>,
+    mut due: Local<'_, Vec<(u8, Option<SlotCharges>)>>,
+) {
+    let now = tick.start();
+    for mut slots in &mut units {
+        due.clear();
+        due.extend(slots.charges_due(&actions, now));
+        for &(slot, charges) in &*due {
+            slots.set_charges(slot, charges);
+        }
     }
 }
 

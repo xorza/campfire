@@ -125,6 +125,14 @@ impl ActionsColumn {
         Ok(found.ok_or_else(|| ApiError::UnknownSlotKind.fail())?)
     }
 
+    /// Whether action `id` has charges.
+    pub(crate) fn has_charges(view: &View, id: ActionId) -> bool {
+        ActionsColumn::read(view, |column| {
+            let action = column.book.get(id).expect("an action of the match");
+            action.ranks.iter().any(|values| values.charges.is_some())
+        })
+    }
+
     /// Whether the unit in row `row` holds action `id` in a slot.
     pub(crate) fn holds(view: &View, row: usize, id: ActionId) -> bool {
         ActionsColumn::read(view, |column| {

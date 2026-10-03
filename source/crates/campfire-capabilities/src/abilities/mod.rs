@@ -16,6 +16,7 @@ use crate::actions::ActionsSet;
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_kind::ActionKind;
 use crate::actions::delivery::{Delivery, DeliveryShape};
+use crate::actions::rank_values::ChargeRule;
 use crate::scripts::call_start::CallStart;
 use crate::units::action_id::ActionId;
 
@@ -235,11 +236,11 @@ fn predict_casts(
         };
         let living = |id| targets.living(id);
         let attitude = |other| targets.attitude(team, other);
-        let cooldown = book
+        let values = book
             .check(now, &slots, purse, casting, attitude, living)
-            .map(|checked| checked.values.cooldown);
-        if let Some(cooldown) = cooldown {
-            slots.cool_down(casting.slot, now.after(cooldown));
+            .map(|checked| checked.values);
+        if let Some(values) = values {
+            slots.spend(casting.slot, now, values.cooldown, values.charges);
         }
         slots.stop();
     }
@@ -247,7 +248,7 @@ fn predict_casts(
 
 /// A cast ready to run: the caster as the script sees it, the pool its call draws from, its
 /// slot, action and rank, its target as it aimed and as the script sees it, its `on_resolve`,
-/// and its cost and cooldown. Its params wait in the frame.
+/// and its cost, cooldown and charges. Its params wait in the frame.
 #[derive(Debug)]
 struct Prepared {
     caster: Unit,
@@ -260,6 +261,7 @@ struct Prepared {
     on_resolve: Option<ScriptId>,
     cost: PoolCost,
     cooldown: Ticks,
+    charges: Option<ChargeRule>,
 }
 
 /// Resolves one cast: its script runs, then its effects, cost and cooldown apply together, or,
@@ -319,7 +321,7 @@ fn apply(world: &mut World, ctx: &Ctx, now: Tick, entity: Entity, prepared: &Pre
     world
         .get_mut::<ActionSlots>(entity)
         .expect("a caster has slots")
-        .cool_down(prepared.slot, now.after(prepared.cooldown));
+        .spend(prepared.slot, now, prepared.cooldown, prepared.charges);
 }
 
 /// The cast of `entity` checked again, and its params at its rank put in the frame; `None` when
@@ -390,6 +392,7 @@ fn prepare(
         on_resolve: checked.action.hook(Hook::OnResolve),
         cost: checked.values.cost,
         cooldown: checked.values.cooldown,
+        charges: checked.values.charges,
     }))
 }
 

@@ -149,6 +149,8 @@ pub enum ApiError {
     NotHeld,
     /// A fraction below 0 or above 1.
     NotAFraction,
+    /// An ability with no charges.
+    NoCharges,
 }
 
 /// Why a param a modifier reads does not hold.
@@ -286,6 +288,7 @@ impl fmt::Display for ApiError {
             ApiError::UnknownAbility => "ability the package does not declare",
             ApiError::NotHeld => "the unit does not hold the ability",
             ApiError::NotAFraction => "fraction is below 0 or above 1",
+            ApiError::NoCharges => "the ability has no charges",
         })
     }
 }

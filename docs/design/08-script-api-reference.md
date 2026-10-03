@@ -6,7 +6,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 
 | Name | Form | Roles | Capability | Status | What it is |
 | --- | --- | --- | --- | --- | --- |
-| `add_charge` | `(unit, id)` | every role | abilities | planned | gives `unit`'s ability `id` a charge |
+| `add_charge` | `(unit, id)`, `id` a ability | every role | abilities | since 1.0 | gives `unit`'s ability `id`, of the script's package, a charge, up to its most |
 | `add_modifier` | `(unit, id) or (unit, id, duration_ms)`, `id` a modifier | every role | stats | since 1.0 | applies the modifier `id` of the script's package to `unit` from the acting unit, with the call's action at its rank, which gives each param the modifier reads and does not declare, and returns its handle |
 | `add_player_modifier` | `(player, id)`, `id` a modifier | every role | stats | since 1.0 | gives `player` the modifier `id` of the script's package, which every living unit it owns that the modifier's `affects` selects holds from no source and with no action, so the modifier declares each param it reads |
 | `add_resource` | `(player, name, amount)`, `name` a player resource | every role | core | since 1.0 | adds `amount` of the player resource `name`, one the mode declares, to `player` |
@@ -324,7 +324,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `toggle` | planned |
 | `channel` | planned |
 | `hold` | planned |
-| `charges` | planned |
+| `charges` | since 1.0 |
 | `charge` | planned |
 | `unit_type` | since 1.0 |
 

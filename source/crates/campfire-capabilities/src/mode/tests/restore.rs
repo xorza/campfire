@@ -1,4 +1,5 @@
 use super::*;
+use crate::actions::action_slots::SlotCharges;
 use crate::orders::next_think::NextThink;
 use crate::stats::instance::StackEnd;
 use crate::stats::lifetime::{Ends, Lifetime};
@@ -64,6 +65,14 @@ fn a_restore_check_refuses_what_the_match_lacks() {
     let mut ordered = slots(strike, 1);
     ordered.order(1, ActionTarget::None);
     assert!(!ordered.check(world, grunt));
+    // Charges only on an action with them, which strike is not.
+    let mut charged = slots(strike, 1);
+    let one = SlotCharges {
+        count: 1,
+        next: Tick::ZERO,
+    };
+    charged.set_charges(0, Some(one));
+    assert!(!charged.check(world, grunt));
     let mut queue = TrainQueue::default();
     let queued = Queued {
         action: strike,
