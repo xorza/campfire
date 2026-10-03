@@ -190,7 +190,6 @@ Collision, pathfinding and visibility each have one interface and pluggable back
 ## Creator tools
 
 - **Data schemas.** A JSON Schema for every data file is generated from the same types the engine reads, as the script API reference is generated from the registry, and a test fails when the checked-in schemas differ; an editor such as VS Code then completes and checks a package's TOML as a creator types. Generating them needs a schema crate, to be chosen and approved when the work starts.
-- **Script definitions.** A Rhai definition file of the whole script API is generated from the registry, for completion and signatures in an editor ([Editor definitions](08-script-api.md#editor-definitions)).
 - **Hot reload.** A local session in dev mode reloads changed scripts, data and text without a restart, as Roblox Studio and Dota 2's workshop tools do. A reload is no input the log can replay, so a dev session's terms say it is one, the verifier refuses its log, and a dev session takes no payments.
 
 ## Testing and diagnostics
