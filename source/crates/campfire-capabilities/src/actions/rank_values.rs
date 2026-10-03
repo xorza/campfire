@@ -30,6 +30,14 @@ pub(crate) struct RankValues {
     pub(crate) windup: Ticks,
     pub(crate) charges: Option<ChargeRule>,
     pub(crate) toggle: Option<RankToggle>,
+    pub(crate) channel: Option<ChannelRule>,
+}
+
+/// How long a channel runs, and the time between its ticks, in ticks, both at least one.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct ChannelRule {
+    pub(crate) duration: Ticks,
+    pub(crate) tick: Ticks,
 }
 
 /// How many charges an action holds at most, and the ticks one takes to come back.
@@ -77,6 +85,15 @@ impl RankValues {
                     })
                     .transpose()?,
                 toggle: fields.toggle,
+                channel: fields
+                    .channel
+                    .map(|channel| {
+                        Ok(ChannelRule {
+                            duration: ticks(channel.duration_ms)?,
+                            tick: ticks(channel.tick_ms)?,
+                        })
+                    })
+                    .transpose()?,
             });
             loaded.resource_costs.extend(fields.resource_cost);
         }

@@ -193,8 +193,8 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `on_resolve(ctx, unit, target)` | action | abilities | since 1.0 |
 | `on_hit(ctx, unit, target, hit)` | action | abilities | since 1.0 |
 | `on_end(ctx, unit, hit)` | action | abilities | since 1.0 |
-| `on_channel_tick(ctx, unit)` | action | abilities | planned |
-| `on_interrupt(ctx, unit, target)` | action | abilities | planned |
+| `on_channel_tick(ctx, unit)` | action | abilities | since 1.0 |
+| `on_interrupt(ctx, unit, target)` | action | abilities | since 1.0 |
 | `on_interval(ctx, m)` | modifier | stats | since 1.0 |
 | `on_attack(ctx, m, target)` | modifier | combat | since 1.0 |
 | `on_attack_hit(ctx, m, d)` | modifier | combat | since 1.0 |
@@ -322,7 +322,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `cooldown_ms` | since 1.0 |
 | `clamp_to_range` | since 1.0 |
 | `toggle` | since 1.0 |
-| `channel` | planned |
+| `channel` | since 1.0 |
 | `hold` | since 1.0 |
 | `charges` | since 1.0 |
 | `charge` | planned |

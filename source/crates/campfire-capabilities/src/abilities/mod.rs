@@ -16,12 +16,12 @@ use crate::actions::ActionsSet;
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_kind::ActionKind;
 use crate::actions::delivery::{Delivery, DeliveryShape};
-use crate::actions::rank_values::ChargeRule;
+use crate::actions::rank_values::{ChannelRule, ChargeRule};
 use crate::scripts::call_start::CallStart;
 use crate::units::action_id::ActionId;
 
 use crate::actions::action_data::TogglePer;
-use crate::actions::action_slots::{ActionSlot, ActionSlots, InProgress};
+use crate::actions::action_slots::{ActionSlot, ActionSlots, ChannelStep, InProgress, SlotAim};
 
 use crate::actions::action_target::ActionTarget;
 use crate::actions::purse::{Payer, Purse};
@@ -49,6 +49,7 @@ use crate::stats::pools::Pools;
 use crate::units::block::Block;
 use crate::units::owner::Owner;
 
+use crate::units::script_view::View;
 use crate::units::team::Team;
 use crate::units::unit::Unit;
 use crate::units::unit_tags::UnitTags;
@@ -69,6 +70,28 @@ pub(crate) enum AbilitiesSet {
 }
 
 impl Abilities {
+    /// `target` as a script reads it: a living unit's handle, a point, or `()` for none or a
+    /// unit no longer living.
+    fn target(view: &View, target: ActionTarget) -> Dynamic {
+        match target {
+            ActionTarget::None => Dynamic::UNIT,
+            ActionTarget::Unit(id) => view
+                .living(id)
+                .and_then(|_| view.unit(id))
+                .map_or(Dynamic::UNIT, Dynamic::from),
+            ActionTarget::Point(at) => Dynamic::from(at),
+        }
+    }
+
+    /// The time between the ticks of the channel `slots` runs, if one runs.
+    fn channel_tick(book: &ActionBook, slots: &ActionSlots) -> Ticks {
+        slots
+            .channeling()
+            .and_then(|slot| slots.slot(slot))
+            .and_then(|slot| book.get(slot.action)?.channel_rule(slot.rank))
+            .map_or(Ticks::ZERO, |rule| rule.tick)
+    }
+
     /// A second at `rate`, the time a toggle pays its cost each.
     fn second(rate: TickRate) -> Ticks {
         rate.ticks(1000)
@@ -84,7 +107,8 @@ impl Abilities {
         schedule.add_systems(start_casts.in_set(SimSet::Act).in_set(ActionsSet::Start));
         if !world.contains_non_send::<Ctx>() {
             schedule.add_systems(
-                predict_casts
+                (predict_casts, predict_channels)
+                    .chain()
                     .in_set(SimSet::Hit)
                     .after(CombatSet::Fire)
                     .before(CombatSet::Launch),
@@ -92,17 +116,132 @@ impl Abilities {
             return;
         }
         schedule.add_systems((
+            (resolve_casts, run_channels)
+                .chain()
+                .in_set(SimSet::Hit)
+                .after(CombatSet::Fire)
+                .before(CombatSet::Launch),
             run_toggles
                 .in_set(SimSet::Inputs)
                 .in_set(AbilitiesSet::Toggles)
                 .after(StatsSet::Regenerate)
                 .after(CombatSet::Respawn)
                 .before(ActionsSet::HoldAtInputs),
-            resolve_casts
-                .in_set(SimSet::Hit)
-                .after(CombatSet::Fire)
-                .before(CombatSet::Launch),
         ));
+    }
+}
+
+/// Runs each unit's channel in Hit, in the order of its stable id, after the casts resolve: a cut
+/// one's `on_interrupt`, then a due tick's `on_channel_tick`, each a call of the channel's action
+/// at its rank from the unit, in its player's pool; and one at its end ends. A unit whose tags
+/// keep it from casting has its channel cut. A channel's calls share one snapshot of the units,
+/// read as the batch begins.
+fn run_channels(
+    world: &mut World,
+    units: &mut QueryState<(Entity, &StableId, &ActionSlots)>,
+    (mut order, mut due): (Local<'_, Ordered>, Local<'_, Vec<Keyed>>),
+) {
+    let now = world.resource::<SimTick>().start();
+    let running = units
+        .iter(world)
+        .filter(|(.., slots)| slots.channel_due())
+        .map(|(entity, &id, _)| Keyed { id, entity });
+    due.clear();
+    due.extend_from_slice(order.sort(running));
+    if due.is_empty() {
+        return;
+    }
+    let ctx = world.non_send::<Ctx>().clone();
+    ScriptBatch::run(world, ctx.view(), |batch| {
+        for &Keyed { id, entity } in &*due {
+            let step = step_channel(batch.world(), now, entity);
+            for (aim, hook) in [
+                (step.interrupted, Hook::OnInterrupt),
+                (step.ticked, Hook::OnChannelTick),
+            ] {
+                if let Some(aim) = aim {
+                    channel_call(batch, &ctx, now, id, entity, aim, hook);
+                }
+            }
+        }
+    });
+}
+
+/// Runs the channel of `entity` at `now`, as `run_channels` does, and gives back the hooks due.
+fn step_channel(world: &mut World, now: Tick, entity: Entity) -> ChannelStep {
+    let blocked = UnitTags::effects_of(world.get::<UnitTags>(entity)).blocks(Block::Cast);
+    world.resource_scope(|world, book: Mut<'_, ActionBook>| {
+        let mut slots = world
+            .get_mut::<ActionSlots>(entity)
+            .expect("a unit whose channel runs has slots");
+        let tick = Abilities::channel_tick(&book, &slots);
+        slots.step_channel(now, blocked, tick)
+    })
+}
+
+/// Runs `hook` of the action in `aim`'s slot of `caster`, the unit of `entity`, at its rank, with
+/// the unit and, for `on_interrupt`, the target, when the action's script defines it; a failed
+/// call applies nothing, and is recorded.
+fn channel_call(
+    batch: &mut ScriptBatch<'_>,
+    ctx: &Ctx,
+    now: Tick,
+    caster: StableId,
+    entity: Entity,
+    aim: SlotAim,
+    hook: Hook,
+) {
+    let world = batch.world();
+    let unit = world.entity(entity);
+    let slot = unit
+        .get::<ActionSlots>()
+        .and_then(|slots| slots.slot(aim.slot))
+        .expect("a channel's slot");
+    let owner = unit.get::<Owner>().map(|owner| owner.slot());
+    let book = world.resource::<ActionBook>();
+    let action = book
+        .get(slot.action)
+        .expect("a slot's action is in the book");
+    let (Some(script), Some(handle)) = (action.hook(hook), ctx.view().unit(caster)) else {
+        return;
+    };
+    let package = action.package;
+    let start = CallStart::cast(slot.action, slot.rank, caster, package);
+    let begun = ctx.frame().begin(world, start);
+    let outcome = begun.and_then(|()| {
+        let pool = owner.map_or(Pool::Think, Pool::Player);
+        let called = match hook {
+            Hook::OnInterrupt => {
+                let target = Abilities::target(ctx.view(), aim.target);
+                batch.call(pool, script, hook, (ctx.clone(), handle, target))
+            }
+            _ => batch.call(pool, script, hook, (ctx.clone(), handle)),
+        };
+        called.map(drop).map_err(CallError::from_script)
+    });
+    match outcome {
+        Ok(()) => ctx.apply(batch.world(), now),
+        Err(error) => batch.record(Some(caster), hook, error),
+    }
+}
+
+/// Runs each channel of a unit a client predicts as the server does, with no call: a cut one's
+/// record clears, and one at its end ends, as the hooks' effects come from the server.
+fn predict_channels(
+    world: &mut World,
+    units: &mut QueryState<(Entity, &ActionSlots)>,
+    mut due: Local<'_, Vec<Entity>>,
+) {
+    let now = world.resource::<SimTick>().start();
+    due.clear();
+    due.extend(
+        units
+            .iter(world)
+            .filter(|(_, slots)| slots.channel_due())
+            .map(|(entity, _)| entity),
+    );
+    for &entity in &*due {
+        step_channel(world, now, entity);
     }
 }
 
@@ -318,16 +457,23 @@ fn predict_casts(
         };
         let living = |id| targets.living(id);
         let attitude = |other| targets.attitude(team, other);
-        let values = book
+        let checked = book
             .check(now, &slots, purse, casting, attitude, living)
-            .map(|checked| checked.values);
-        if let Some(values) = values {
+            .map(|checked| (checked.values, checked.target));
+        slots.stop();
+        if let Some((values, target)) = checked {
             slots.spend(casting.slot, now, values.cooldown, values.charges);
             if values.toggle.is_some() {
                 slots.toggle_on(casting.slot, now.after(second));
             }
+            if let Some(rule) = values.channel {
+                let aim = SlotAim {
+                    slot: casting.slot,
+                    target,
+                };
+                slots.channel(aim, now.after(Ticks::new(1)), rule);
+            }
         }
-        slots.stop();
     }
 }
 
@@ -349,27 +495,38 @@ struct Prepared {
     charges: Option<ChargeRule>,
     /// Whether it turns its toggle on.
     toggles: bool,
+    /// Its channel, which starts the tick after it resolves.
+    channel: Option<ChannelRule>,
 }
 
 /// Resolves one cast: its script runs, then its effects, cost and cooldown apply together, or,
 /// when the cast no longer passes its checks or it fails, none of them.
 fn resolve(batch: &mut ScriptBatch<'_>, ctx: &Ctx, now: Tick, caster: StableId, entity: Entity) {
     let prepared = prepare(batch.world(), ctx, now, caster, entity);
+    let mut channel = None;
     let outcome = match prepared {
         Ok(None) => Ok(()),
         Ok(Some(mut prepared)) => run(batch, ctx, &mut prepared).map(|()| {
             apply(batch.world(), ctx, now, entity, &prepared);
+            let aim = SlotAim {
+                slot: prepared.slot,
+                target: prepared.aim,
+            };
+            channel = prepared.channel.map(|rule| (aim, rule));
         }),
         Err(error) => Err(error),
     };
     if let Err(error) = outcome {
         batch.record(Some(caster), Hook::OnResolve, error);
     }
-    batch
+    let mut slots = batch
         .world()
         .get_mut::<ActionSlots>(entity)
-        .expect("a caster has slots")
-        .stop();
+        .expect("a caster has slots");
+    slots.stop();
+    if let Some((aim, rule)) = channel {
+        slots.channel(aim, now.after(Ticks::new(1)), rule);
+    }
 }
 
 /// Applies a cast that ran: its delivery's launches, then the effects it queued in `frame` and
@@ -450,14 +607,7 @@ fn prepare(
     let Some(checked) = book.check(now, slots, purse, casting, attitude, living) else {
         return Ok(None);
     };
-    let target = match casting.target {
-        ActionTarget::None => Dynamic::UNIT,
-        ActionTarget::Unit(id) => view
-            .living(id)
-            .and_then(|_| view.unit(id))
-            .map_or(Dynamic::UNIT, Dynamic::from),
-        ActionTarget::Point(at) => Dynamic::from(at),
-    };
+    let target = Abilities::target(view, casting.target);
     let mut frame = ctx.frame();
     let package = checked.action.package;
     frame.begin(
@@ -488,6 +638,7 @@ fn prepare(
         cooldown: checked.values.cooldown,
         charges: checked.values.charges,
         toggles: checked.values.toggle.is_some(),
+        channel: checked.values.channel,
     }))
 }
 

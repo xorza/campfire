@@ -3,7 +3,7 @@ use campfire_script::ScriptId;
 use crate::actions::action_data::RankToggle;
 use crate::actions::delivery::Delivery;
 use crate::actions::kind_spec::KindSpec;
-use crate::actions::rank_values::{ChargeRule, RankValues};
+use crate::actions::rank_values::{ChannelRule, ChargeRule, RankValues};
 use crate::players::resource_amount::ResourceAmount;
 use crate::scripts::hook::Hook;
 use crate::scripts::hook_set::HookSet;
@@ -78,6 +78,13 @@ impl Action {
     pub(crate) fn charge_rule(&self, rank: u8) -> Option<ChargeRule> {
         self.has_rank(rank)
             .then(|| self.values(rank).charges)
+            .flatten()
+    }
+
+    /// Its channel at `rank`; none at a rank it does not have, as 0 before it is learned.
+    pub(crate) fn channel_rule(&self, rank: u8) -> Option<ChannelRule> {
+        self.has_rank(rank)
+            .then(|| self.values(rank).channel)
             .flatten()
     }
 

@@ -276,7 +276,7 @@ fn start_attacks(
     for (&position, &team, mut slots, pools, owner, body, tags) in &mut units {
         let blocked = UnitTags::effects_of(tags).blocks(Block::Attack);
         match slots.in_progress() {
-            Some(InProgress::Order { .. }) => {}
+            Some(InProgress::Order { .. } | InProgress::Channel { .. }) => {}
             Some(InProgress::Attack { .. }) => {
                 if blocked {
                     slots.interrupt();

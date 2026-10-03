@@ -380,6 +380,49 @@ fn husks_dread_pays_mana_each_second_burns_enemies_near_and_ends_at_death() {
 }
 
 #[test]
+fn kenshos_still_mind_heals_each_half_second_of_its_channel_and_guards_him_while_it_runs() {
+    let mut arena = arena();
+    let still_mind = arena.action("hero-kensho", "still_mind");
+    let guard = arena.modifier("hero-kensho", "still_mind");
+    // Kensho with 100 mana, and 300 of his 500 health lost.
+    let kensho = caster(&mut arena, still_mind, 1, (100, 0), Modifiers::default());
+    let health = arena.pool("health");
+    let world = arena.world_mut();
+    let entity = world.resource::<EntityIndex>().get(kensho).unwrap();
+    let pools = *world.get::<Pools>(entity).unwrap();
+    world
+        .entity_mut(entity)
+        .insert(internals::spent(pools, health, Num::int(300)));
+    let guarded = |arena: &Arena| carried(arena, kensho).contains(&(guard, Some(kensho)));
+    // Cast in tick 0, for 50 mana. The channel runs from tick 1 for 5000 ms, 150 ticks, and
+    // ticks each 500 ms, 15 ticks: in ticks 16 to 151, ten times, each 20 at rank 1 with no
+    // ability power. It guards him from tick 0's Resolve until it ends in tick 151.
+    arena.tick(0, &[cast(kensho, ActionTarget::None)]);
+    assert_eq!(
+        (pool(&arena, kensho, "mana"), guarded(&arena)),
+        (Num::int(50), true)
+    );
+    let mut healed = Vec::new();
+    for tick in 1..=152 {
+        arena.step();
+        if [15, 16, 150, 151].contains(&tick) {
+            healed.push((tick, pool(&arena, kensho, "health"), guarded(&arena)));
+        }
+    }
+    let at = |left: i64| Num::int(left);
+    assert_eq!(
+        healed,
+        [
+            (15, at(200), true),
+            (16, at(220), true),
+            (150, at(380), true),
+            (151, at(400), false),
+        ]
+    );
+    assert!(arena.failures().is_empty(), "{:?}", arena.failures());
+}
+
+#[test]
 fn veils_dusk_mark_detonates_once_on_veils_next_damage() {
     let mut arena = arena();
     let ability = arena.action("hero-veil", "dusk_mark");

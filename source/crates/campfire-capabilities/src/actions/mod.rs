@@ -141,7 +141,7 @@ fn hold_charges(
 
 /// Keeps each unit's passives and holds as its slots stand: the passive of each action with a
 /// rank, and with `passive_while_ready` off cooldown, and the `hold` of each action whose toggle
-/// is on, each from the unit itself at the action's rank, applied again when the rank changes;
+/// is on or whose channel runs, each from the unit itself at the action's rank, applied again when the rank changes;
 /// and none other. It runs as each tick starts, after the casts resolve and the attacks strike,
 /// and after the mode's calls, which learn ranks. A passive's or a hold's params are the match's
 /// param book's.
@@ -163,7 +163,7 @@ fn hold_passives(
     let now = tick.start();
     for (&id, slots, modifiers, clocks) in &mut units {
         let mut carried = CarriedMut::new(modifiers, clocks);
-        for slot in slots.iter() {
+        for (index, slot) in (0..).zip(slots.iter()) {
             let action = actions
                 .get(slot.action)
                 .expect("a slot's action is in the book");
@@ -200,7 +200,8 @@ fn hold_passives(
                 keep(passive.modifier, Hold::Passive, holds);
             }
             if let Some(hold) = action.hold {
-                keep(hold, Hold::Running, slot.toggle.is_some());
+                let runs = slot.toggle.is_some() || slots.channeling() == Some(index);
+                keep(hold, Hold::Running, runs);
             }
         }
     }

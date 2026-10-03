@@ -91,8 +91,8 @@ impl AbilitiesApi {
             Status::Runs(ApiVersion::FIRST),
         )
         .hook(Hook::OnResolve, Status::Runs(ApiVersion::FIRST))
-        .hook(Hook::OnChannelTick, Status::Planned)
-        .hook(Hook::OnInterrupt, Status::Planned)
+        .hook(Hook::OnChannelTick, Status::Runs(ApiVersion::FIRST))
+        .hook(Hook::OnInterrupt, Status::Runs(ApiVersion::FIRST))
         .action_fields(ActionDataField::of(Some(Capability::Abilities)));
     }
     /// The range of the running call's action at its rank: meters, or `()` for a global one.

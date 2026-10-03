@@ -62,8 +62,8 @@ impl UnitOrder {
     /// every source applies here. A move or a reset drops the unit's target and leaves its path
     /// until it is told to follow it again; a move's point clamps to the bounds, and a slot's
     /// point to the ground within them, at the unit's height. An attack on another target cancels
-    /// one in its windup; a slot's cast or train replaces an action not resolved yet. Whether the
-    /// unit now resets, and takes no order until it is home.
+    /// one in its windup; a slot's cast or train replaces an action not resolved yet. Every order
+    /// cuts a channel. Whether the unit now resets, and takes no order until it is home.
     pub(crate) fn apply(self, unit: OrderedUnit<'_>, bounds: &Bounds) -> bool {
         let OrderedUnit {
             at,
@@ -72,6 +72,9 @@ impl UnitOrder {
             walker,
             destination,
         } = unit;
+        if let Some(slots) = &mut slots {
+            slots.cut_channel();
+        }
         let ground = |x, z| bounds.ground_point([x, z], at);
         let to = match self {
             UnitOrder::Attack { target } => {

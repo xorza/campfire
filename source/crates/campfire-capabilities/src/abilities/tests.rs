@@ -9,9 +9,8 @@ use campfire_sim::{Capability, EntityIndex, SimRng, StateHash, TickInput, TickIn
 
 use super::*;
 use crate::actions::Actions;
-use crate::actions::action_data::{ActionData, ChargesData, RangeField, Targeting};
+use crate::actions::action_data::{ActionData, ChannelData, ChargesData, RangeField, Targeting};
 use crate::actions::action_data_field::ActionDataField;
-use crate::actions::action_slots::SlotAim;
 use crate::actions::cost_target::CostTarget;
 use crate::actions::delivery_data::DeliveryData;
 use crate::actions::effect_data::{EffectData, EffectTo, Effecting};
@@ -22,6 +21,7 @@ use crate::actions::slot_kinds::{SlotKindData, SlotKinds, SlotRanks};
 use crate::areas::area::Area;
 use crate::areas::area_data::{AreaData, AreaInside};
 use crate::capability_set::test_match::TestMatch;
+use crate::combat;
 use crate::combat::assist_window::AssistWindow;
 use crate::combat::damage::{Damage, DamageCause};
 use crate::combat::internals::Armed;
@@ -69,7 +69,6 @@ use crate::stats::stat_rule::StatRule;
 use crate::stats::stats_data::{StatValue, StatsData};
 use crate::stats::unit_stats::UnitStats;
 use crate::units::Units;
-use crate::units::script_view::View;
 use crate::units::tag_data::TagData;
 use crate::units::track_id::TrackId;
 use crate::units::type_scope::TypeScope;
@@ -900,6 +899,97 @@ fn charges_are_spent_one_a_cast_and_come_back_one_at_a_time() {
     let unlearned = game.sim.get::<ActionSlots>(learner).slot(0).unwrap();
     assert_eq!((unlearned.rank, unlearned.charges), (0, None));
     assert_eq!(game.failed_calls(), []);
+}
+
+#[test]
+fn a_channel_ticks_from_the_tick_after_its_cast_and_an_order_a_stun_or_death_cuts_it() {
+    // Drain: a channel of 300 ms, 9 ticks at 30 a second, that ticks each 100 ms, 3 ticks, and
+    // holds Ward, a shield of 100. Each tick strikes the enemies within 5 m for 10; a cut one
+    // strikes its target for 7.
+    let script = r#"
+fn on_channel_tick(ctx, caster) {
+    for unit in ctx.find(caster, caster.pos, 5, "enemies") {
+        ctx.damage(unit, 10, "true");
+    }
+}
+fn on_interrupt(ctx, caster, target) {
+    ctx.damage(target, 7, "true");
+}
+"#;
+    let mut game = Match::new();
+    game.load_stats();
+    let ward = ModifierData {
+        shield: Some(int(100)),
+        ..ModifierData::default()
+    };
+    Stats::load_modifier(&mut game.sim.world, 0, "ward", &ward, None);
+    let drain = ActionData {
+        script: Some(PackagePath::parse("drain.rhai").unwrap()),
+        range: Some(Ranked::One(RangeField::Range(Range::Meters(Num::int(5))))),
+        channel: Some(ChannelData {
+            duration_ms: Ranked::One(int(300)),
+            tick_ms: Ranked::One(int(100)),
+        }),
+        hold: Some(DeclaredName::new("ward").unwrap()),
+        ..ActionData::cast(Targeting::Unit(FilterData::parse("enemies").unwrap()))
+    };
+    let drain = game.load("drain", &drain, script);
+    let ward = Stats::modifier(&game.sim.world, 0, "ward").unwrap();
+    // Cast in tick 0 by a caster at x, an enemy beside it; then `cut` in tick 5, if any.
+    let run = |game: &mut Match, x: i64, cut: &dyn Fn(&mut Match, StableId)| {
+        let caster = game.caster(drain, 1);
+        game.sim.insert(caster, Modifiers::default());
+        *game.sim.get_mut::<Position>(caster) = ground(Num::int(x), Num::ZERO);
+        let target = game.spawn(1, ground(Num::int(x + 1), Num::ZERO), ());
+        game.cast(caster, ActionTarget::Unit(target));
+        let mut seen = Vec::new();
+        for tick in 1..=12 {
+            if tick == 5 {
+                cut(game, caster);
+            }
+            game.sim.step();
+            let entity = game.sim.entity(caster);
+            let modifiers = game.sim.world.get::<Modifiers>(entity).unwrap();
+            let held = modifiers.get(ward, Some(caster)).is_some();
+            seen.push((game.sim.health(target), held));
+        }
+        assert_eq!(game.failed_calls(), []);
+        seen
+    };
+    // Whole: it runs from tick 1, ticks in ticks 4, 7 and 10, its last at its end, and holds
+    // Ward from its first tick's Resolve to its end.
+    let whole = run(&mut game, 0, &|_, _| {});
+    let health = |seen: &[(i64, bool)]| seen.iter().map(|(health, _)| *health).collect::<Vec<_>>();
+    assert_eq!(
+        health(&whole),
+        [500, 500, 500, 490, 490, 490, 480, 480, 480, 470, 470, 470]
+    );
+    let held: Vec<bool> = whole.iter().map(|(_, held)| *held).collect();
+    assert_eq!(
+        held,
+        [
+            true, true, true, true, true, true, true, true, true, false, false, false
+        ]
+    );
+    // A new order in tick 5 cuts it, after its tick 4: its `on_interrupt` strikes for 7 then, and
+    // it ticks no more; so does a stun in tick 5.
+    let cut = [500, 500, 500, 490, 483, 483, 483, 483, 483, 483, 483, 483];
+    let ordered = run(&mut game, 20, &|game, caster| {
+        let mut slots = game.sim.get_mut::<ActionSlots>(caster);
+        slots.order(0, ActionTarget::None);
+    });
+    assert_eq!(health(&ordered), cut);
+    let stunned = run(&mut game, 40, &|game, caster| {
+        game.sim.set_blocks(caster, &[Block::Cast]);
+    });
+    assert_eq!(health(&stunned), cut);
+    // Death in tick 5's Resolve cuts it too; its `on_interrupt` runs in the next tick's Hit.
+    let killed = run(&mut game, 60, &|game, caster| {
+        let damage = Num::int(1000);
+        combat::internals::queue_damage(&mut game.sim.world, None, caster, damage, "true");
+    });
+    let late = [500, 500, 500, 490, 490, 483, 483, 483, 483, 483, 483, 483];
+    assert_eq!(health(&killed), late);
 }
 
 #[test]

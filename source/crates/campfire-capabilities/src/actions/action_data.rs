@@ -164,58 +164,20 @@ impl ActionData {
         rank: u8,
         target: impl Fn(&DeclaredName) -> Option<CostTarget>,
     ) -> Result<RankFields, ActionField> {
-        let param_at = |name: &str, field| match self.params.get(name) {
-            Some(Param::Ranked(ranked)) => ranked.at(rank).ok_or(field),
-            Some(Param::Scaling(_)) | None => Err(field),
-        };
-        let whole = |field, ranked: Option<&Ranked<Number>>| -> Result<u64, ActionField> {
-            let Some(ranked) = ranked else {
-                return Ok(0);
-            };
-            let value = match ranked.get(rank).ok_or(field)? {
-                Number::Value(value) => *value,
-                Number::Param(reference) => param_at(reference.param.as_str(), field)?,
-            };
-            match value {
-                Scalar::Int(value) => u64::try_from(value).ok(),
-                Scalar::Decimal(_) => None,
-            }
-            .ok_or(field)
-        };
+        let whole = |field, ranked: Option<&Ranked<Number>>| self.whole_at(rank, field, ranked);
         let range = match &self.range {
             None => Range::Global,
             Some(ranked) => match ranked.get(rank).ok_or(ActionField::Range)? {
                 RangeField::Range(range) => *range,
                 RangeField::Param(reference) => {
-                    let meters = param_at(reference.param.as_str(), ActionField::Range)?.to_num();
+                    let meters = self
+                        .param_at(rank, reference.param.as_str(), ActionField::Range)?
+                        .to_num();
                     let meters = meters.filter(|meters| *meters >= Num::ZERO);
                     Range::Meters(meters.ok_or(ActionField::Range)?)
                 }
             },
         };
-        let toggle = self
-            .toggle
-            .as_ref()
-            .map(|toggle| {
-                let (per, costs) = match toggle {
-                    Toggle::CostPerAttack(costs) => (TogglePer::Attack, costs),
-                    Toggle::CostPerSecond(costs) => (TogglePer::Second, costs),
-                };
-                let mut cost = Vec::with_capacity(costs.len());
-                for (name, amount) in costs {
-                    let amount = whole(ActionField::Toggle, Some(amount))?;
-                    let amount = i64::try_from(amount).ok().and_then(Num::from_int);
-                    let Some(CostTarget::Pool(pool)) = target(name) else {
-                        return Err(ActionField::Toggle);
-                    };
-                    cost.push((pool, amount.ok_or(ActionField::Toggle)?));
-                }
-                Ok(RankToggle {
-                    per,
-                    cost: PoolCost::new(cost),
-                })
-            })
-            .transpose()?;
         let mut cost = Vec::with_capacity(self.cost.len());
         let mut resource_cost = Vec::with_capacity(self.cost.len());
         for (name, amount) in &self.cost {
@@ -236,20 +198,107 @@ impl ActionData {
             cost: PoolCost::new(cost),
             resource_cost,
             windup_ms: whole(ActionField::Windup, self.windup_ms.as_ref())?,
-            charges: self
-                .charges
-                .as_ref()
-                .map(|charges| {
-                    let max = whole(ActionField::Charges, Some(&charges.max))?;
-                    let max = u8::try_from(max).ok().and_then(NonZeroU8::new);
-                    Ok(RankCharges {
-                        max: max.ok_or(ActionField::Charges)?,
-                        recharge_ms: whole(ActionField::Charges, Some(&charges.recharge_ms))?,
-                    })
-                })
-                .transpose()?,
-            toggle,
+            charges: self.charges_at(rank)?,
+            toggle: self.toggle_at(rank, &target)?,
+            channel: self.channel_at(rank)?,
         })
+    }
+
+    /// Its param `name` at `rank`, a ranked one; `field` for one it does not declare, or a
+    /// scaling one, whose value is the caster's, not the action's.
+    fn param_at(&self, rank: u8, name: &str, field: ActionField) -> Result<Scalar, ActionField> {
+        match self.params.get(name) {
+            Some(Param::Ranked(ranked)) => ranked.at(rank).ok_or(field),
+            Some(Param::Scaling(_)) | None => Err(field),
+        }
+    }
+
+    /// The whole number `ranked` gives at `rank`, a `{ param }` read at that rank; 0 with none,
+    /// and `field` for one that is not a whole number at least 0.
+    fn whole_at(
+        &self,
+        rank: u8,
+        field: ActionField,
+        ranked: Option<&Ranked<Number>>,
+    ) -> Result<u64, ActionField> {
+        let Some(ranked) = ranked else {
+            return Ok(0);
+        };
+        let value = match ranked.get(rank).ok_or(field)? {
+            Number::Value(value) => *value,
+            Number::Param(reference) => self.param_at(rank, reference.param.as_str(), field)?,
+        };
+        match value {
+            Scalar::Int(value) => u64::try_from(value).ok(),
+            Scalar::Decimal(_) => None,
+        }
+        .ok_or(field)
+    }
+
+    /// Its charges at `rank`: a count of 1 to 255, and a recharge.
+    fn charges_at(&self, rank: u8) -> Result<Option<RankCharges>, ActionField> {
+        let field = ActionField::Charges;
+        self.charges
+            .as_ref()
+            .map(|charges| {
+                let max = self.whole_at(rank, field, Some(&charges.max))?;
+                let max = u8::try_from(max).ok().and_then(NonZeroU8::new);
+                Ok(RankCharges {
+                    max: max.ok_or(field)?,
+                    recharge_ms: self.whole_at(rank, field, Some(&charges.recharge_ms))?,
+                })
+            })
+            .transpose()
+    }
+
+    /// Its toggle at `rank`: its cost, in the pools `target` finds alone.
+    fn toggle_at(
+        &self,
+        rank: u8,
+        target: impl Fn(&DeclaredName) -> Option<CostTarget>,
+    ) -> Result<Option<RankToggle>, ActionField> {
+        let field = ActionField::Toggle;
+        self.toggle
+            .as_ref()
+            .map(|toggle| {
+                let (per, costs) = match toggle {
+                    Toggle::CostPerAttack(costs) => (TogglePer::Attack, costs),
+                    Toggle::CostPerSecond(costs) => (TogglePer::Second, costs),
+                };
+                let mut cost = Vec::with_capacity(costs.len());
+                for (name, amount) in costs {
+                    let amount = self.whole_at(rank, field, Some(amount))?;
+                    let amount = i64::try_from(amount).ok().and_then(Num::from_int);
+                    let Some(CostTarget::Pool(pool)) = target(name) else {
+                        return Err(field);
+                    };
+                    cost.push((pool, amount.ok_or(field)?));
+                }
+                Ok(RankToggle {
+                    per,
+                    cost: PoolCost::new(cost),
+                })
+            })
+            .transpose()
+    }
+
+    /// Its channel at `rank`: a length and a time between ticks, neither 0.
+    fn channel_at(&self, rank: u8) -> Result<Option<RankChannel>, ActionField> {
+        let field = ActionField::Channel;
+        self.channel
+            .as_ref()
+            .map(|channel| {
+                let duration_ms = self.whole_at(rank, field, Some(&channel.duration_ms))?;
+                let tick_ms = self.whole_at(rank, field, Some(&channel.tick_ms))?;
+                if duration_ms == 0 || tick_ms == 0 {
+                    return Err(field);
+                }
+                Ok(RankChannel {
+                    duration_ms,
+                    tick_ms,
+                })
+            })
+            .transpose()
     }
 
     /// Every number field that reads a param, `{ param = "<name>" }`: the names it reads.
@@ -340,6 +389,14 @@ pub struct RankFields {
     pub windup_ms: u64,
     pub charges: Option<RankCharges>,
     pub toggle: Option<RankToggle>,
+    pub channel: Option<RankChannel>,
+}
+
+/// A channel at one rank: how long it runs, and the time between its ticks, both positive.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RankChannel {
+    pub duration_ms: u64,
+    pub tick_ms: u64,
 }
 
 /// A toggle's cost at one rank: in the caster's pools, paid as each attack goes off, or at each

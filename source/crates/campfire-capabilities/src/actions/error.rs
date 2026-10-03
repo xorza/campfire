@@ -14,6 +14,8 @@ pub enum ActionField {
     Charges,
     /// Its toggle's cost: whole amounts of the caster's pools.
     Toggle,
+    /// Its channel: a length and a time between ticks of whole milliseconds, neither 0.
+    Channel,
 }
 
 /// Why an action that passed the package load does not load into a match: what only the

@@ -56,7 +56,16 @@ impl ActionBook {
             script.is_some(),
             "an action has a script exactly when its data names one"
         );
-        let hooks = scripts.defines(script, &[Hook::OnResolve, Hook::OnHit, Hook::OnEnd]);
+        let hooks = scripts.defines(
+            script,
+            &[
+                Hook::OnResolve,
+                Hook::OnHit,
+                Hook::OnEnd,
+                Hook::OnChannelTick,
+                Hook::OnInterrupt,
+            ],
+        );
         let id = ActionId::nth(u32::try_from(self.actions.len()).expect("actions fit u32"));
         Arc::make_mut(&mut self.actions).push(Action {
             package,
@@ -317,6 +326,7 @@ pub(crate) mod internals {
                     windup: weapon.windup,
                     charges: None,
                     toggle: None,
+                    channel: None,
                 }],
                 resource_costs: weapon.resource_cost.into_iter().collect(),
                 script: None,
@@ -351,6 +361,7 @@ pub(crate) mod internals {
                     windup: time,
                     charges: None,
                     toggle: None,
+                    channel: None,
                 }],
                 resource_costs: resource_cost.into_iter().collect(),
                 script: None,
