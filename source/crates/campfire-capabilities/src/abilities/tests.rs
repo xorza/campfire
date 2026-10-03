@@ -3,9 +3,9 @@ use std::num::NonZeroU8;
 
 use bevy_ecs::bundle::Bundle;
 use campfire_common::PlayerSlot;
-use campfire_math::{Num, Vec3};
+use campfire_math::{Num, Rng, RngStream, Vec3};
 use campfire_script::NumError;
-use campfire_sim::{Capability, EntityIndex, StateHash, TickInput, TickInputs};
+use campfire_sim::{Capability, EntityIndex, SimRng, StateHash, TickInput, TickInputs};
 
 use super::*;
 use crate::actions::Actions;
@@ -753,6 +753,51 @@ fn a_failed_script_changes_nothing_and_fails_the_same_way_everywhere() {
             assert_eq!(spent, [ScriptLimits::ROOMY.per_call]);
         }
     }
+}
+
+#[test]
+fn each_caster_draws_from_its_own_sequence() {
+    // Each caster's Lash Out strikes the enemy beside it for two draws: tens, then ones.
+    let script = r#"
+fn on_resolve(ctx, caster, target) {
+    let digits = [1, 2, 3, 4, 5, 6, 7, 8, 9];
+    for unit in ctx.find(caster, caster.pos, ctx.p.radius, "enemies") {
+        ctx.damage(unit, ctx.pick(digits) * 10 + ctx.pick(digits), "true");
+    }
+}
+"#;
+    let mut game = Match::new();
+    game.load_stats();
+    let ability = game.load("lash_out", &lash_out(), script);
+    let first = game.caster(ability, 1);
+    let second = game.spawn(
+        0,
+        ground(Num::int(20), Num::ZERO),
+        (
+            Owner::new(PlayerSlot::new(0)),
+            ActionSlots::new([(ability, SlotKind::new(0), 1)]),
+        ),
+    );
+    game.give_pools(second, 100, 20);
+    let targets = [Num::int(1), Num::int(21)].map(|x| game.spawn(1, ground(x, Num::ZERO), ()));
+    game.casts(&[(first, ActionTarget::None), (second, ActionTarget::None)]);
+    assert_eq!(game.failed_calls(), []);
+    // The sequence of `script.draw` for each caster in this tick, opened as the world opens it.
+    let opener = game.sim.world.resource::<SimRng>().opener();
+    let sequence = |caster: StableId| opener.open(RngStream::new("script.draw"), caster.get());
+    let damage = |mut rng: Rng| {
+        let tens = i64::try_from(rng.pick(9)).unwrap() + 1;
+        let ones = i64::try_from(rng.pick(9)).unwrap() + 1;
+        tens * 10 + ones
+    };
+    let expected = [first, second].map(|caster| 500 - damage(sequence(caster)));
+    assert_eq!(targets.map(|target| game.sim.health(target)), expected);
+    // The two sequences are not one.
+    let words = |caster| {
+        let mut rng = sequence(caster);
+        [rng.next_u64(), rng.next_u64()]
+    };
+    assert_ne!(words(first), words(second));
 }
 
 #[test]

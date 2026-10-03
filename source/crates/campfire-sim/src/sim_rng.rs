@@ -1,6 +1,6 @@
 use bevy_ecs::resource::Resource;
 use campfire_common::SegmentSeed;
-use campfire_math::{Rng, RngSource, RngStream};
+use campfire_math::{Rng, RngOpener, RngSource, RngStream};
 
 use crate::sim_tick::SimTick;
 use crate::stable_id::StableId;
@@ -20,6 +20,12 @@ impl SimRng {
     /// pair opens twice in one tick, since the second would repeat the first one's draws.
     pub fn open(&self, stream: RngStream, entity: StableId) -> Rng {
         self.0.open(stream, entity.get())
+    }
+
+    /// What opens the running tick's sequences during a call that holds no world, as a script's
+    /// draws do; its holder keeps each sequence it opens for the tick.
+    pub const fn opener(&self) -> RngOpener {
+        self.0.opener()
     }
 
     pub(crate) fn begin_tick(&mut self, tick: SimTick) {

@@ -139,6 +139,10 @@ pub enum ApiError {
     /// A projectile launched in the other form than its type flies: a homing type at a unit, a
     /// line type along a direction.
     OtherFlight,
+    /// A probability below 0 or above 1.
+    NotAProbability,
+    /// A pick from an empty list.
+    EmptyPick,
 }
 
 /// Why a param a modifier reads does not hold.
@@ -271,6 +275,8 @@ impl fmt::Display for ApiError {
             ApiError::OtherFlight => {
                 "a homing projectile flies at a unit, and a line projectile along a direction"
             }
+            ApiError::NotAProbability => "probability is below 0 or above 1",
+            ApiError::EmptyPick => "pick from an empty list",
         })
     }
 }

@@ -83,21 +83,36 @@ impl PositionApi {
             .bind(rotated, |vector: &mut Vec3, degrees: INT| {
                 PositionApi::rotated(*vector, ApiError::num(degrees)?)
             });
-        api.plan(MemberSpec::operator(
-            ApiOwner::Vector,
-            "+",
-            "the sum of two vectors",
-        ))
-        .plan(MemberSpec::operator(
-            ApiOwner::Vector,
-            "-",
-            "the difference of two vectors",
-        ))
-        .plan(MemberSpec::operator(
+        let scaled = MemberSpec::operator(
             ApiOwner::Vector,
             "*",
-            "the vector scaled by a number",
-        ));
+            "the vector scaled by a number, on either side",
+        );
+        api.bind(
+            MemberSpec::operator(ApiOwner::Vector, "+", "the sum of two vectors"),
+            |a: Vec3, b: Vec3| PositionApi::exact(a.checked_add(b)),
+        )
+        .bind(
+            MemberSpec::operator(ApiOwner::Vector, "-", "the difference of two vectors"),
+            |a: Vec3, b: Vec3| PositionApi::exact(a.checked_sub(b)),
+        )
+        .bind(scaled, |vector: Vec3, factor: Num| {
+            PositionApi::exact(vector.checked_scale(factor))
+        })
+        .bind(scaled, |factor: Num, vector: Vec3| {
+            PositionApi::exact(vector.checked_scale(factor))
+        })
+        .bind(scaled, |vector: Vec3, factor: INT| {
+            PositionApi::exact(vector.checked_scale(ApiError::num(factor)?))
+        })
+        .bind(scaled, |factor: INT, vector: Vec3| {
+            PositionApi::exact(vector.checked_scale(ApiError::num(factor)?))
+        });
+    }
+
+    /// The vector a checked operation gave; one past what a number holds fails the call.
+    fn exact(vector: Option<Vec3>) -> Checked<Vec3> {
+        vector.ok_or_else(|| Box::new(Raised::error(NumError::Overflow)))
     }
 
     /// `vector` turned by `degrees` about the vertical; a turn too large to compute fails the call.
@@ -106,9 +121,7 @@ impl PositionApi {
             .checked_mul(Num::PI)
             .and_then(|turn| turn.checked_div_int(180))
             .ok_or_else(|| Box::new(Raised::error(NumError::Overflow)))?;
-        vector
-            .checked_rotated_y(radians.sin_cos())
-            .ok_or_else(|| Box::new(Raised::error(NumError::Overflow)))
+        PositionApi::exact(vector.checked_rotated_y(radians.sin_cos()))
     }
 
     /// Whether `to` is within `radius` of `from` in the map's metric, exactly: the reach rule

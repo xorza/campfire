@@ -228,6 +228,14 @@ fn source_opens_each_pair_once_per_tick() {
     assert_ne!(source.open(RngStream::new("t"), 1).next_u64(), a);
     source.begin_tick(5);
     assert_eq!(source.open(RngStream::new("s"), 1).next_u64(), a);
+    // An opener opens the same sequences away from the source, and two starts of one tick give
+    // two openers, so a holder knows to drop what the first opened.
+    let opener = source.opener();
+    assert_eq!(opener.open(RngStream::new("s"), 1).next_u64(), a);
+    assert_eq!(opener, source.opener());
+    source.begin_tick(5);
+    assert_ne!(opener, source.opener());
+    assert_eq!(source.opener().open(RngStream::new("s"), 1).next_u64(), a);
 }
 
 #[cfg(debug_assertions)]

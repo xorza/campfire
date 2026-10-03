@@ -1,6 +1,7 @@
 use campfire_common::SegmentSeed;
 
 use crate::rng::Rng;
+use crate::rng::rng_opener::RngOpener;
 use crate::rng::rng_stream::RngStream;
 
 /// Opens the random sequences of one log segment, one per (stream, entity) in each tick.
@@ -15,6 +16,8 @@ use crate::rng::rng_stream::RngStream;
 pub struct RngSource {
     seed: SegmentSeed,
     tick: u64,
+    /// How many ticks it started, a tick run again counted again.
+    starts: u64,
     #[cfg(debug_assertions)]
     opened: std::sync::Mutex<std::collections::BTreeSet<(RngStream, u64)>>,
 }
@@ -31,6 +34,7 @@ impl RngSource {
         RngSource {
             seed,
             tick: 0,
+            starts: 0,
             #[cfg(debug_assertions)]
             opened: std::sync::Mutex::new(std::collections::BTreeSet::new()),
         }
@@ -39,6 +43,7 @@ impl RngSource {
     /// Starts `tick`. Running a tick again, as rollback does, starts it again too.
     pub fn begin_tick(&mut self, tick: u64) {
         self.tick = tick;
+        self.starts += 1;
         #[cfg(debug_assertions)]
         self.opened
             .get_mut()
@@ -63,5 +68,13 @@ impl RngSource {
             );
         }
         Rng::new(&self.seed, stream, entity, self.tick)
+    }
+    /// What opens the current tick's sequences away from the source, for this start of the tick.
+    pub const fn opener(&self) -> RngOpener {
+        RngOpener {
+            seed: self.seed,
+            tick: self.tick,
+            start: self.starts,
+        }
     }
 }

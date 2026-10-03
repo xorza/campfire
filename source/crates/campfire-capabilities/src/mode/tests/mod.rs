@@ -971,6 +971,7 @@ impl Game {
 
 mod budgets;
 mod damage;
+mod draws;
 mod inputs;
 mod match_end;
 mod modifiers;

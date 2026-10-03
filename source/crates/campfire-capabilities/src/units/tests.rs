@@ -3,6 +3,7 @@ use std::sync::Arc;
 use bevy_ecs::bundle::Bundle;
 use campfire_common::{PlayerSlot, Tick};
 use campfire_math::{Num, Vec3};
+use campfire_script::NumError;
 use campfire_script::rhai::Array;
 use campfire_sim::{Capability, SimComponent, SimTick, SnapshotError, StableId};
 
@@ -205,6 +206,47 @@ fn a_position_measures_reach_and_distance_in_the_maps_metric() {
         .probe("fn probe(ctx, of) { of.pos.within(of.pos, -1) }", of)
         .unwrap_err();
     assert_eq!(error.kind(), FailureKind::Api(ApiError::NegativeRadius));
+}
+
+#[test]
+fn vectors_add_subtract_and_scale_each_rounded_once() {
+    let mut scene = Scene::new();
+    let of = scene.unit(at(0, 0, 0), 0, ());
+    scene.unit(at(3, 0, 4), 1, ());
+    let probe = r#"fn probe(ctx, of) {
+        let d = of.pos.direction_to(ctx.find(of, of.pos, 6, "enemies")[0].pos);
+        [d + d, d - d, d * 5, 5 * d, d * (num(1) / 2), (num(1) / 2) * d]
+    }"#;
+    // The direction to (3, 0, 4) is (0.6, 0, 0.8): 10 066 329.6 and 13 421 772.8 in 24 fraction
+    // bits, each rounded once, to 10 066 330 and 13 421 773. Their sum doubles each, the
+    // difference is none, and 5 times each is exact. Half of 13 421 773 is 6 710 886.5, a tie,
+    // which goes to the even 6 710 886.
+    let vector = |x, z| Vec3::new(Num::from_bits(x), Num::ZERO, Num::from_bits(z));
+    let read = scene.sim.probe(probe, of).unwrap().cast::<Array>();
+    let read: Vec<Vec3> = read.into_iter().map(Dynamic::cast::<Vec3>).collect();
+    let five = vector(5 * 10_066_330, 5 * 13_421_773);
+    let half = vector(5_033_165, 6_710_886);
+    assert_eq!(
+        read,
+        [
+            vector(20_132_660, 26_843_546),
+            Vec3::ZERO,
+            five,
+            five,
+            half,
+            half
+        ]
+    );
+    // 0.8 × 2³⁹ is about 4.4 × 10¹¹, within a number's 5.5 × 10¹¹; its double is past it, and
+    // the sum fails the call.
+    let error = scene
+        .sim
+        .read(
+            r#"let d = of.pos.direction_to(ctx.find(of, of.pos, 6, "enemies")[0].pos) * (1 << 38) * 2; d + d"#,
+            of,
+        )
+        .unwrap_err();
+    assert_eq!(error.kind(), FailureKind::Raised(Some(NumError::Overflow)));
 }
 
 #[test]

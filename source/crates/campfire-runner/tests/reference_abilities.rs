@@ -434,7 +434,7 @@ fn erupt_at(rate: TickRate, erupts: u64) {
 }
 
 #[test]
-fn cinders_chain_fire_reads_its_projectile_state_and_fails_only_on_pick_as_it_bounces() {
+fn cinders_chain_fire_bounces_between_two_enemies_until_its_bounces_run_out() {
     let mut arena = arena();
     let chain_fire = arena.action("hero-cinder", "chain_fire");
     let caster = caster(&mut arena, chain_fire, 1, (100, 0), ());
@@ -449,28 +449,38 @@ fn cinders_chain_fire_reads_its_projectile_state_and_fails_only_on_pick_as_it_bo
         query.iter(world).map(|(_, id)| id.get()).collect()
     };
 
-    // The cast's projectile, id 3 after the caster's 0 and the enemies' 1 and 2, flies 4 m at
-    // 10 m a second and hits `near`. Its `on_hit` reads the projectile's `bounces_left`, its
-    // type's default of 4, so it goes on to bounce, and fails on `ctx.pick`, which the release
-    // plans: the failed call deals none of its damage, and no projectile follows.
+    // The cast's projectile, id 3 after the caster's 0 and the enemies' 1 and 2, flies at 10 m a
+    // second, a third of a meter a tick rounded down, so 4 m takes 13 steps: it hits `near` in
+    // tick 13. Each hit deals 150 at rank 1 and, with its type's 4 bounces left and counting
+    // down, picks the one other enemy in reach: 4 bounces after the first hit, each 4 m and 13
+    // ticks, alternating, ids 4 to 7. The last hit, with none left, bounces no more.
     arena.tick(0, &[cast(caster, ActionTarget::Unit(near))]);
     let mut flown = Vec::new();
-    for _ in 0..30 {
+    let mut hits = Vec::new();
+    let mut last = [500, 500];
+    for tick in 1..=80 {
         flown.extend(projectiles(&mut arena));
         arena.step();
+        let now = [near, far].map(|unit| health(&arena, unit));
+        if now != last {
+            hits.push((tick, now));
+            last = now;
+        }
     }
     flown.dedup();
-    assert_eq!(flown, [3]);
+    assert_eq!(flown, [3, 4, 5, 6, 7]);
     assert_eq!(projectiles(&mut arena), Vec::<u64>::new());
-    assert_eq!([near, far].map(|unit| health(&arena, unit)), [500, 500]);
-    let failures = arena.failures();
-    assert_eq!(failures.len(), 1, "{failures:?}");
     assert_eq!(
-        (failures[0].unit, failures[0].hook),
-        (Some(caster), Hook::OnHit)
+        hits,
+        [
+            (13, [350, 500]),
+            (26, [350, 350]),
+            (39, [200, 350]),
+            (52, [200, 200]),
+            (65, [50, 200]),
+        ]
     );
-    let pick = r#"Script(Runtime("Function not found: pick (Ctx, array) (line 12, position 47)"))"#;
-    assert_eq!(format!("{:?}", failures[0].error), pick);
+    assert!(arena.failures().is_empty(), "{:?}", arena.failures());
 }
 
 #[test]

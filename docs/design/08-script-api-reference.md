@@ -16,7 +16,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `available` | `(player, choice, value)`, `choice` a choice | mode | core | since 1.0 | whether `player` may choose `value` of `choice`: no other player chose it in a unique choice |
 | `avatars` | `() or (team)` | every role | core | since 1.0 | the avatars, living or dead, of every team or of `team`, by stable id |
 | `carry` | read | mode | core | planned | the carry the session loaded, which the mode writes for the next session |
-| `chance` | `(p)` | every role | core | planned | true with probability `p`, from the secret stream |
+| `chance` | `(p)` | every role | core | since 1.0 | true with probability `p`, from 0 to 1, from the secret stream |
 | `charge` | read | action | abilities | planned | how long a charged cast was held, from 0 to 1 |
 | `choose` | `(player, choice, values)`, `choice` a choice | mode | core | since 1.0 | records `values`, as many as `choice` takes, each a value it offers, none twice and, in a unique choice, none another player chose, as what `player` chose of it; one value may be given alone |
 | `chosen` | `(player, choice)`, `choice` a choice | mode | core | since 1.0 | the values `player` chose of `choice`, in order; empty before the player chose |
@@ -40,7 +40,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `order_reset` | `(unit)` | AI | orders | since 1.0 | `unit` drops its target and walks home, taking no order until there, where its pools fill |
 | `origin` | read | action | abilities | planned | where the cast comes from |
 | `p` | read | every role | core | since 1.0 | the params: an ability's at its rank, a modifier's then its ability's, or the mode's |
-| `pick` | `(list)` | every role | core | planned | an entry of `list`, from the secret stream |
+| `pick` | `(list)` | every role | core | since 1.0 | an entry of `list`, each as likely, from the secret stream |
 | `players` | read | mode | core | since 1.0 | how many players the session has |
 | `projectile` | `(from, direction) or (from, unit)` | action | projectiles | since 1.0 | launches one more of the action's projectiles from `from`, its own cast: along `direction` for a line type, or homing on `unit` for a homing type; the new projectile, which spawns later in the tick |
 | `range` | read | action | abilities | planned | the ability's range at its rank |
@@ -156,9 +156,9 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 
 | Name | Form | Capability | Status | What it is |
 | --- | --- | --- | --- | --- |
-| `*` | operator | core | planned | the vector scaled by a number |
-| `+` | operator | core | planned | the sum of two vectors |
-| `-` | operator | core | planned | the difference of two vectors |
+| `*` | operator | core | since 1.0 | the vector scaled by a number, on either side |
+| `+` | operator | core | since 1.0 | the sum of two vectors |
+| `-` | operator | core | since 1.0 | the difference of two vectors |
 | `rotated_deg` | `(degrees)` | core | since 1.0 | the vector turned by `degrees` about the vertical, counter-clockwise seen from above |
 
 ## Map, `ctx.map`

@@ -13,6 +13,7 @@ pub use num::Num;
 pub use num::error::ParseNumError;
 pub use product_sum::ProductSum;
 pub use rng::Rng;
+pub use rng::rng_opener::RngOpener;
 pub use rng::rng_source::RngSource;
 pub use rng::rng_stream::RngStream;
 pub use u256::U256;

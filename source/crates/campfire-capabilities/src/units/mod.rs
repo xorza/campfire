@@ -7,6 +7,7 @@ use campfire_script::{ScriptError, ScriptHost, ScriptId};
 use campfire_sim::{EntityIndex, Position, SimSet, StateRegistry, TickRate};
 
 use crate::scripts::ctx::Ctx;
+use crate::scripts::draws::Draws;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_failures::ScriptFailures;
 use crate::units::body::Body;
@@ -120,6 +121,7 @@ impl Units {
         };
         let ctx = Ctx::new(view.clone());
         ctx.frame().add_part(UnitStateCall::default());
+        ctx.frame().add_part(Draws::default());
         let mut host = ScriptHost::new(budgets.limits().per_call);
         host.engine_mut()
             .set_default_tag(Dynamic::from(ctx.clone()));

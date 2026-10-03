@@ -6,6 +6,7 @@ use crate::rng::rng_stream::RngStream;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
+pub(crate) mod rng_opener;
 pub(crate) mod rng_source;
 pub(crate) mod rng_stream;
 

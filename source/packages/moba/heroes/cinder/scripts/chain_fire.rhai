@@ -9,7 +9,7 @@ fn on_hit(ctx, caster, target, hit) {
         pool = without(ctx.find_visible(caster, target.pos, ctx.p.bounce_radius, "enemies"), target);
     }
     if !pool.is_empty() {
-        let next = ctx.projectile(target, ctx.pick(pool));
+        let next = ctx.projectile(target.pos, ctx.pick(pool));
         next.state.bounces_left = hit.delivery.state.bounces_left - 1;
     }
 }
