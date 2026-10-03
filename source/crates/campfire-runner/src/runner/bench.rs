@@ -18,15 +18,15 @@ pub fn tick_3v3(c: &mut Criterion) {
     let reference = Reference3v3::load();
     let mut group = c.benchmark_group("tick_3v3");
     group.sample_size(10);
-    let mut runner = reference.start().into_runner();
+    let mut fixed = reference.start();
     group.bench_function("mean", |b| {
         b.iter_custom(|ticks| {
             let mut spent = Duration::ZERO;
             for _ in 0..ticks {
-                if runner.log().next_tick() == Tick::new(TICKS) {
-                    runner = reference.start().into_runner();
+                if fixed.runner().log().next_tick() == Tick::new(TICKS) {
+                    fixed = reference.start();
                 }
-                spent += timed_tick(&mut runner);
+                spent += timed_tick(fixed.runner_mut());
             }
             spent
         });
@@ -35,9 +35,9 @@ pub fn tick_3v3(c: &mut Criterion) {
         b.iter_custom(|matches| {
             let mut worst_sum = Duration::ZERO;
             for _ in 0..matches {
-                let mut runner = reference.start().into_runner();
+                let mut fixed = reference.start();
                 let worst = (0..TICKS)
-                    .map(|_| timed_tick(&mut runner))
+                    .map(|_| timed_tick(fixed.runner_mut()))
                     .max()
                     .unwrap_or_default();
                 worst_sum += worst;

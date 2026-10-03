@@ -1,4 +1,5 @@
 use campfire_common::Tick;
+use campfire_log::internals::LogCheck;
 use campfire_protocol::secp256k1::Secp256k1;
 use campfire_protocol::{Applied, InputChain, SessionId};
 
@@ -13,6 +14,8 @@ pub struct FixedMatch {
     chains: Vec<InputChain>,
     session_id: SessionId,
     applied: Vec<Applied>,
+    /// Last, so it drops after the runner and sees what the match logs as it drops.
+    log: LogCheck,
 }
 
 impl FixedMatch {
@@ -20,12 +23,14 @@ impl FixedMatch {
         runner: Runner,
         chains: Vec<InputChain>,
         session_id: SessionId,
+        log: LogCheck,
     ) -> FixedMatch {
         FixedMatch {
             runner,
             chains,
             session_id,
             applied: Vec::new(),
+            log,
         }
     }
 
@@ -57,7 +62,8 @@ impl FixedMatch {
         &mut self.runner
     }
 
-    pub fn into_runner(self) -> Runner {
-        self.runner
+    /// The events at Warn and Error that the match logged and no test took yet.
+    pub const fn log(&self) -> &LogCheck {
+        &self.log
     }
 }

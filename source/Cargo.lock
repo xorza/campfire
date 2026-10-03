@@ -2006,6 +2006,7 @@ version = "0.1.0"
 dependencies = [
  "bevy_ecs",
  "campfire-common",
+ "campfire-log",
  "campfire-math",
  "campfire-script",
  "campfire-sim",
@@ -2145,6 +2146,7 @@ dependencies = [
  "bevy_ecs",
  "campfire-capabilities",
  "campfire-common",
+ "campfire-log",
  "campfire-math",
  "campfire-package",
  "campfire-protocol",
@@ -2152,6 +2154,7 @@ dependencies = [
  "campfire-script",
  "campfire-sim",
  "criterion 0.8.2",
+ "serde",
  "tracing",
 ]
 
@@ -2190,6 +2193,7 @@ dependencies = [
  "bevy_ecs",
  "blake3",
  "campfire-common",
+ "campfire-log",
  "campfire-math",
  "criterion 0.8.2",
  "postcard",

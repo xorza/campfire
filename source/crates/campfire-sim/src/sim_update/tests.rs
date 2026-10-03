@@ -1,11 +1,15 @@
 use bevy_ecs::entity::Entity;
 use std::num::NonZeroU32;
+use std::panic;
 
 use bevy_ecs::component::Component;
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{ScheduleBuildError, ScheduleBuildWarning, ScheduleConfigs};
 use bevy_ecs::system::{Commands, Query, ScheduleSystem};
+use bevy_ecs::world::CommandQueue;
 use campfire_common::PlayerSlot;
+use campfire_log::internals::LogCheck;
+use campfire_log::{Level, LogLine};
 use campfire_math::{Num, RngSource, RngStream};
 use serde::{Deserialize, Serialize};
 
@@ -301,6 +305,7 @@ fn redundant_set_membership_fails_the_build() {
 
 #[test]
 fn same_seed_gives_same_hash_every_tick() {
+    let _log = LogCheck::start();
     let forward = hashes(SEED, false);
     assert_eq!(hashes(SEED, false), forward);
 
@@ -351,6 +356,7 @@ fn same_seed_gives_same_hash_every_tick() {
 
 #[test]
 fn ticks_advance_and_key_the_draws() {
+    let _log = LogCheck::start();
     let mut world = new_world(SEED);
     let mut schedule = workload(false);
     for tick in 0..TICKS {
@@ -415,4 +421,45 @@ fn ticks_advance_and_key_the_draws() {
         .map(|id| (id, reference(id).cast_signed(), TICKS - id))
         .collect();
     assert_eq!(units, expected);
+}
+
+#[test]
+fn a_warning_of_bevy_fails_the_log_check() {
+    // Bevy logs through the `log` crate: a command queue dropped with a command still in it
+    // warns as it drops, before the check does.
+    let failure = panic::catch_unwind(|| {
+        let _log = LogCheck::start();
+        let mut queue = CommandQueue::default();
+        queue.push(|_: &mut World| {});
+    })
+    .unwrap_err();
+    let failure = failure.downcast_ref::<String>().unwrap();
+    let (head, lines) = failure.split_once('\n').unwrap();
+    assert_eq!(
+        head,
+        "the test logged events at Warn or Error that it did not take:"
+    );
+    // The line also names Bevy's source file, by a path that differs on each machine.
+    let lines: Vec<_> = lines
+        .lines()
+        .map(|line| LogLine::parse(line).unwrap())
+        .collect();
+    let [line] = &lines[..] else {
+        panic!("one line: {lines:?}");
+    };
+    assert_eq!(
+        (
+            line.level,
+            line.target.as_str(),
+            line.fields["message"].as_str()
+        ),
+        (
+            Level::Warn,
+            "bevy_ecs::world::command_queue",
+            Some(
+                "CommandQueue has un-applied commands being dropped. Did you forget to call \
+                 SystemState::apply?"
+            )
+        )
+    );
 }

@@ -16,7 +16,7 @@ use campfire_common::{PlayerSlot, Tick};
 use campfire_math::{Num, Vec3};
 use campfire_protocol::SessionLog;
 use campfire_runner::Runner;
-use campfire_runner::internals::{Golden, HashTrail, MatchUnits, Reference3v3};
+use campfire_runner::internals::{FixedMatch, Golden, HashTrail, MatchUnits, Reference3v3};
 use campfire_script::ScriptHost;
 use campfire_sim::{EntityIndex, Position, StableId, TickRate};
 
@@ -28,7 +28,7 @@ const TICKS: u64 = 3200;
 
 #[derive(Debug)]
 struct Run {
-    runner: Runner,
+    fixed: FixedMatch,
     trail: HashTrail,
     golden: Golden,
     /// Each unit after the tick the heroes spawn in, and after the one the first wave spawns in.
@@ -190,10 +190,9 @@ fn run(reference: &Reference3v3) -> Run {
             seen.read(world, reference, tick);
         }
     }
-    let mut runner = fixed.into_runner();
-    runner.reveal_seed();
+    fixed.runner_mut().reveal_seed();
     Run {
-        runner,
+        fixed,
         trail,
         golden,
         at_pick_end,
@@ -278,13 +277,13 @@ fn a_3v3_match_replays_to_the_same_hashes() {
     assert_camp(&run);
     assert_gold(&reference, &run, melee);
     assert_learning(&run);
-    assert_replays(&reference, &run.runner, &run.trail);
+    assert_replays(&reference, run.fixed.runner(), &run.trail);
 }
 
 /// The match's state at its end, its scripts, and its units at the pick's end and as the first
 /// wave spawns; the unit type of the first wave's melee creeps.
 fn assert_start(reference: &Reference3v3, run: &Run) -> UnitType {
-    let world = run.runner.world();
+    let world = run.fixed.runner().world();
     // State in the order of its fields' names.
     let packages = reference.packages();
     let at = packages
@@ -481,7 +480,7 @@ fn assert_gold(reference: &Reference3v3, run: &Run, melee: UnitType) {
     // Income: 8 gold every 5 s from the pick's end, 100 ticks, in ticks 1299 to 3199: 20 times,
     // 160. Cinder's player takes first blood, 300 + 100, and the creeps' 35; Gale's the assist's
     // 150, split among one assister; Kensho's the wolf's 30; Veil's the creep's 15.
-    let amounts = run.runner.world().resource::<PlayerResources>();
+    let amounts = run.fixed.runner().world().resource::<PlayerResources>();
     let gold = ResourceId::named(&reference.packages().data().resources, "gold").unwrap();
     let paid: Vec<i64> = (0..Reference3v3::PLAYERS)
         .map(|slot| amounts.amount(PlayerSlot::new(slot), gold))
@@ -516,7 +515,7 @@ fn assert_learning(run: &Run) {
     ];
     assert_eq!(run.seen.learning, expected);
     // At the end, a hero's points are its levels less the ranks it learned.
-    let world = run.runner.world();
+    let world = run.fixed.runner().world();
     for slot in 0..Reference3v3::PLAYERS {
         let hero = hero_of(run, slot);
         let learned = Learning::of(world, hero);

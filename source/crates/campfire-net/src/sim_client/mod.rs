@@ -25,10 +25,12 @@ use lightyear::prelude::{
     Client, Disconnect, LocalTimeline, MessageReceiver, MessageSender, Predicted,
     PredictionManager, Replicated, SyncConfig, is_in_rollback,
 };
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use crate::events::match_started::MatchStarted;
+use crate::events::order_dropped::OrderDropped;
 use crate::events::orders_sent::OrdersSent;
+use crate::events::session_refused::SessionRefused;
 use crate::input_message::InputMessage;
 use crate::join::Join;
 use crate::match_start::MatchStart;
@@ -157,7 +159,11 @@ fn answer_offer(
                     info!(%session, "joined the offered session");
                 }
                 Some(Err(mismatch)) => {
-                    warn!(%session, %mismatch, "refused the offered session, which ends the link");
+                    SessionRefused {
+                        session,
+                        mismatch: mismatch.to_string(),
+                    }
+                    .log();
                     commands.trigger(Disconnect { entity: client });
                 }
             }
@@ -282,10 +288,11 @@ fn send_orders(
     let stamped = pending.0.len().min(session.max_inputs as usize);
     for order in pending.0.drain(..stamped) {
         if !sent.push(stamp, &order, session.max_payload_len) {
-            warn!(
-                ?order,
-                "dropped an order whose payload passes the session's max length"
-            );
+            OrderDropped {
+                unit: order.unit,
+                action: format!("{:?}", order.action),
+            }
+            .log();
         }
     }
     let payloads = sent.since(first);

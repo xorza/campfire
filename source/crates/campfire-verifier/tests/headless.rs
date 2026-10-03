@@ -15,10 +15,11 @@ use campfire_capabilities::{
 };
 use campfire_common::{Fingerprint, Tick, Ticks};
 use campfire_log::LogEvent;
+use campfire_log::internals::LogCheck;
 use campfire_math::{Num, Vec3};
 use campfire_package::{ModePackages, PackageDir, PackageStore, StoreError};
 use campfire_protocol::{Applied, SeedError, ServerSeed, SessionLog, SessionTerms};
-use campfire_runner::internals::{FixedSession, HashTrail, MatchUnits, Reference3v3};
+use campfire_runner::internals::{FixedMatch, FixedSession, HashTrail, MatchUnits, Reference3v3};
 use campfire_runner::{InputRules, Runner, StartError, TermsError};
 use campfire_sim::{EntityIndex, Position, StableId};
 use campfire_verifier::{Replay, Verified};
@@ -135,7 +136,7 @@ fn hero(runner: &Runner) -> Hero {
 
 #[derive(Debug)]
 struct Run {
-    runner: Runner,
+    fixed: FixedMatch,
     /// The state after each tick.
     trail: HashTrail,
 }
@@ -163,22 +164,19 @@ fn run(orders: &[&Sent], ticks: u64) -> Run {
         fixed.runner_mut().run_tick();
         trail.record(fixed.runner().world());
     }
-    let mut runner = fixed.into_runner();
-    runner.reveal_seed();
-    Run { runner, trail }
+    fixed.runner_mut().reveal_seed();
+    Run { fixed, trail }
 }
 
 #[test]
 fn run_and_replay_agree_on_every_tick() {
-    let Run {
-        runner,
-        trail: live,
-    } = run(&ORDERS.each_ref(), TICKS);
+    let Run { fixed, trail: live } = run(&ORDERS.each_ref(), TICKS);
+    let runner = fixed.runner();
     let arrived = Hero {
         position: Position::new(Vec3::new(Num::int(-2), Num::ZERO, Num::int(5))).unwrap(),
         destination: Destination::default(),
     };
-    assert_eq!(hero(&runner), arrived);
+    assert_eq!(hero(runner), arrived);
 
     let decoded = SessionLog::decode(&encoded(runner.log())).unwrap();
     let mut replay = Replay::new(decoded, &store()).unwrap();
@@ -208,10 +206,9 @@ fn a_3v3_log_with_learn_orders_verifies_from_the_store() {
         Reference3v3::play_tick(&mut fixed, tick);
         live.record(fixed.runner().world());
     }
-    let mut runner = fixed.into_runner();
-    runner.reveal_seed();
+    fixed.runner_mut().reveal_seed();
 
-    let decoded = SessionLog::decode(&encoded(runner.log())).unwrap();
+    let decoded = SessionLog::decode(&encoded(fixed.runner().log())).unwrap();
     let mut replay = Replay::new(decoded, &store()).unwrap();
     let mut replayed = HashTrail::default();
     while replay.run_tick() {
@@ -275,8 +272,8 @@ impl Seen {
 
 #[test]
 fn scripted_creeps_and_towers_replay_to_the_same_hashes() {
-    let Run { runner, trail } = run(&[&INTO_REACH], 72);
-    let decoded = SessionLog::decode(&encoded(runner.log())).unwrap();
+    let Run { fixed, trail } = run(&[&INTO_REACH], 72);
+    let decoded = SessionLog::decode(&encoded(fixed.runner().log())).unwrap();
     let mut replay = Replay::new(decoded, &store()).unwrap();
     let mut replayed = HashTrail::default();
     let mut seen = Vec::new();
@@ -338,7 +335,8 @@ fn encoded(log: &SessionLog) -> Vec<u8> {
 
 #[test]
 fn the_binary_logs_the_last_state_hash() {
-    let Run { runner, trail } = run(&ORDERS.each_ref(), TICKS);
+    let Run { fixed, trail } = run(&ORDERS.each_ref(), TICKS);
+    let runner = fixed.runner();
     // A directory of this run's own, which goes when the test ends, passed or failed.
     let scratch = TempDir::new_in(env!("CARGO_TARGET_TMPDIR")).unwrap();
     let dir = scratch.path().to_str().unwrap();
@@ -381,6 +379,7 @@ fn the_binary_logs_the_last_state_hash() {
 
 #[test]
 fn a_log_replays_only_with_its_seed_its_release_and_its_packages() {
+    let _log = LogCheck::start();
     let store = store();
     let session = session();
     assert!(matches!(

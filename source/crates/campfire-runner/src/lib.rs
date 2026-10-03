@@ -25,6 +25,7 @@ mod reference_3v3;
 #[cfg(feature = "internals")]
 mod restore_target;
 mod runner;
+mod script_call_failed;
 #[cfg(feature = "internals")]
 mod scripted;
 mod session;
@@ -33,6 +34,7 @@ mod session_rules;
 pub use error::{StartError, TermsError};
 pub use input_rules::InputRules;
 pub use runner::Runner;
+pub use script_call_failed::ScriptCallFailed;
 pub use session::Session;
 pub use session_rules::SessionRules;
 

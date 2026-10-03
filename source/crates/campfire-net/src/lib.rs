@@ -22,10 +22,16 @@ mod sim_server;
 
 pub use error::{JoinError, OrderScriptError, TermsMismatch};
 pub use events::input_logged::InputLogged;
+pub use events::input_message_refused::InputMessageRefused;
+pub use events::input_message_unfit::InputMessageUnfit;
+pub use events::input_never_applied::{InputNeverApplied, Unapplied};
+pub use events::join_refused::JoinRefused;
 pub use events::link_lost::LinkLost;
 pub use events::listening::Listening;
 pub use events::match_started::MatchStarted;
+pub use events::order_dropped::OrderDropped;
 pub use events::orders_sent::OrdersSent;
+pub use events::session_refused::SessionRefused;
 pub use events::session_written::SessionWritten;
 pub use events::ticks_caught_up::TicksCaughtUp;
 

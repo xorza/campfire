@@ -6,6 +6,7 @@ use campfire_capabilities::{
     ScriptFailures, Stats, Vision,
 };
 use campfire_common::{PlayerSlot, SegmentSeed};
+use campfire_log::internals::LogCheck;
 use campfire_package::ModePackages;
 use campfire_sim::{SimUpdate, StateRegistry, TickInput, TickInputs, TickRate};
 
@@ -20,11 +21,14 @@ pub struct Arena {
     packages: ModePackages,
     /// Every script failure since the match began; `ScriptFailures` keeps only the last tick's.
     failed: Vec<ScriptFailure>,
+    /// Last, so it drops after the world and sees what the world logs as it drops.
+    _log: LogCheck,
 }
 
 impl Arena {
     /// The arena of the mode at `dir` at `rate`, for `players` players.
     pub fn new(dir: &Path, rate: TickRate, players: u32) -> Arena {
+        let log = LogCheck::start();
         let packages = ModePackages::from_dir(dir).unwrap_or_else(|error| panic!("{error}"));
         let mut world = World::new();
         SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), rate);
@@ -38,6 +42,7 @@ impl Arena {
             world,
             packages,
             failed: Vec::new(),
+            _log: log,
         }
     }
 

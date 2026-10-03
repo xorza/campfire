@@ -10,6 +10,7 @@ use bevy_ecs::system::Commands;
 use bevy_state::app::StatesPlugin;
 use bevy_time::{TimePlugin, TimeUpdateStrategy};
 use campfire_capabilities::{Action, Body, MoveStep, Order, Owner, Team};
+use campfire_log::internals::LogCheck;
 use campfire_package::{ModePackages, PackageDir};
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey, XOnlyPublicKey};
 use campfire_protocol::{CertificateHash, SeedChain};
@@ -114,6 +115,8 @@ pub struct LocalMatch {
     links: Vec<Entity>,
     setup: MatchSetup,
     packages: Arc<ModePackages>,
+    /// Last, so it drops after the apps and sees what they log as they drop.
+    log: LogCheck,
 }
 
 impl LocalMatch {
@@ -132,6 +135,7 @@ impl LocalMatch {
 
     /// A match of the test lane mode at its default rate, its clients connected and synced.
     pub fn new(setup: MatchSetup) -> LocalMatch {
+        let log = LogCheck::start();
         assert!(
             (1..=2).contains(&setup.players),
             "the lane mode takes 1 or 2 players"
@@ -213,6 +217,7 @@ impl LocalMatch {
             links,
             setup,
             packages,
+            log,
         };
         for _ in 0..CONNECT_FRAMES {
             let synced = local
@@ -424,6 +429,11 @@ impl LocalMatch {
     }
 
     /// The packages of the session's mode.
+    /// The events at Warn and Error that the match logged and no test took yet.
+    pub const fn log(&self) -> &LogCheck {
+        &self.log
+    }
+
     pub fn packages(&self) -> &ModePackages {
         &self.packages
     }

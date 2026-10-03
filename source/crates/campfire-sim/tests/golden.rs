@@ -17,6 +17,7 @@ use bevy_ecs::system::{Commands, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use blake3::Hasher;
 use campfire_common::SegmentSeed;
+use campfire_log::internals::LogCheck;
 use campfire_math::{Num, RngSource, RngStream, Vec3};
 use campfire_sim::{
     EntityIndex, IdAllocator, SimComponent, SimRng, SimSet, SimTick, SimUpdate, StableId,
@@ -291,6 +292,7 @@ struct Section {
 
 #[test]
 fn golden_digests() {
+    let _log = LogCheck::start();
     let sections = [
         Section {
             name: "num",

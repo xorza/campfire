@@ -1,10 +1,12 @@
 use campfire_sim::Capability;
+use serde::Deserialize;
 
 use crate::scripts::script_role::ScriptRole;
 
 /// A hook the engine calls in a script, by name: every hook of the script API, whether the
-/// release calls it yet or not, so the package load checks know them all.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// release calls it yet or not, so the package load checks know them all. It reads back from
+/// its `Debug` name, as a log writes it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
 pub enum Hook {
     OnResolve,
     OnHit,

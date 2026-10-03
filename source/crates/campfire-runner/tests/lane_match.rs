@@ -5,12 +5,13 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 
 use campfire_capabilities::{
-    Action, ActionSlots, Deaths, Experience, Level, Order, PathWalker, Points, ScriptFailures,
-    Team, TrackId,
+    Action, ActionSlots, Deaths, Experience, Hook, Level, Order, PathWalker, Points,
+    ScriptFailures, Team, TrackId,
 };
 use campfire_common::Tick;
 use campfire_math::Num;
 use campfire_package::{ModePackages, PackageDir};
+use campfire_runner::ScriptCallFailed;
 use campfire_runner::internals::{FixedMatch, FixedSession, Golden, MatchUnits};
 use campfire_sim::{EntityIndex, StableId, StateHash};
 
@@ -159,6 +160,52 @@ fn the_lane_matchs_hashes_do_not_change_with_its_heroes_text() {
     };
     assert_ne!(walker(&plain), walker(&reworded));
     assert_eq!(hashes(plain), hashes(reworded));
+}
+
+#[test]
+fn a_failed_script_call_logs_its_tick_unit_hook_and_why() {
+    let mut files = PackageDir::workspace_tree("test");
+    let script = "modes/lane/scripts/tower_ai.rhai".into();
+    let text = String::from_utf8(files[&script].clone()).unwrap();
+    let think = "fn on_think(ctx, tower) {\n";
+    assert!(text.contains(think));
+    let text = text.replacen(
+        think,
+        "fn on_think(ctx, tower) {\n    throw \"no think\";\n",
+        1,
+    );
+    files.insert(script, text.into_bytes());
+    let dir = PackageDir::in_memory(Arc::new(files), "modes/lane");
+    let session = FixedSession::new(
+        ModePackages::from_package_dir(&dir).unwrap(),
+        NonZeroU32::new(30).unwrap(),
+        2,
+    );
+    let mut fixed = session.start();
+    for _ in 0..10 {
+        fixed.runner_mut().run_tick();
+    }
+    // The towers, the map's first units, think every ⌈250 ms × 30 / 1000⌉ = 8 ticks, each in the
+    // ticks whose remainder by 8 is its stable id: in ticks 0 to 9, 0 and 8 for the west's, id 0,
+    // and 1 and 9 for the east's, id 1.
+    let units = MatchUnits::of_world(fixed.runner().world());
+    let [west, east] = [units.spawned_at(-8, -3), units.spawned_at(8, -3)];
+    assert_eq!([west.get(), east.get()], [0, 1]);
+    let failed = |tick, unit| ScriptCallFailed {
+        tick: Tick::new(tick),
+        unit: Some(unit),
+        hook: Hook::OnThink,
+        error: "script call raised \"no think\"".to_owned(),
+    };
+    assert_eq!(
+        fixed.log().take::<ScriptCallFailed>(),
+        [
+            failed(0, west),
+            failed(1, east),
+            failed(8, west),
+            failed(9, east)
+        ]
+    );
 }
 
 /// The state hash of each of the first 300 ticks of a lane match of `packages`.

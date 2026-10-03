@@ -6,6 +6,7 @@ use bevy_ecs::query::{With, Without};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::system::{Commands, Query, Res, ResMut};
 use bevy_ecs::world::World;
+use campfire_log::LogEvent;
 use campfire_package::ModePackages;
 use campfire_protocol::secp256k1::{Secp256k1, VerifyOnly, XOnlyPublicKey};
 use campfire_protocol::{
@@ -17,9 +18,10 @@ use lightyear::prelude::server::ClientOf;
 use lightyear::prelude::{
     Connected, LocalTimeline, MessageReceiver, MessageSender, Tick as NetTick,
 };
-use tracing::{debug, info, warn};
+use tracing::{debug, info};
 
 use crate::error::JoinError;
+use crate::events::join_refused::JoinRefused;
 use crate::join::Join;
 use crate::net_protocol::MatchChannel;
 use crate::offer::Offer;
@@ -87,7 +89,7 @@ type OfferLinks<'w, 's> = Query<
         With<Connected>,
         With<ClientOf>,
         Without<Joined>,
-        Without<JoinRefused>,
+        Without<Refused>,
     ),
 >;
 
@@ -96,12 +98,12 @@ type JoinLinks<'w, 's> = Query<
     'w,
     's,
     (Entity, &'static Offered, &'static mut MessageReceiver<Join>),
-    (Without<Joined>, Without<JoinRefused>),
+    (Without<Joined>, Without<Refused>),
 >;
 
 /// Why the server refused a link's join. The link stays connected and receives nothing more.
 #[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct JoinRefused(pub JoinError);
+pub(crate) struct Refused(pub JoinError);
 
 impl Lobby {
     /// A session of the mode `packages` holds, by the setup's rules; an error when the mode does
@@ -206,8 +208,12 @@ impl Lobby {
                     commands.entity(link).insert(Joined);
                 }
                 Err(error) => {
-                    warn!(?link, %error, "refused a join");
-                    commands.entity(link).insert(JoinRefused(error));
+                    JoinRefused {
+                        link: format!("{link:?}"),
+                        error: error.to_string(),
+                    }
+                    .log();
+                    commands.entity(link).insert(Refused(error));
                 }
             }
         }

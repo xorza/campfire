@@ -2,17 +2,16 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::world::{Mut, World};
 use campfire_capabilities::{Mode, ScriptFailures};
 use campfire_common::Tick;
+use campfire_log::LogEvent;
 use campfire_package::{ModePackages, PackageStore};
 use campfire_protocol::{
     Applied, InputError, PlayerInput, ServerSeed, SessionLog, SessionTerms, Signature,
 };
-use campfire_sim::{
-    SimTick, SimUpdate, StableId, StateHash, StateRegistry, TickInput, TickInputs, TickRate,
-};
-use tracing::warn;
+use campfire_sim::{SimTick, SimUpdate, StateHash, StateRegistry, TickInput, TickInputs, TickRate};
 
 use crate::error::StartError;
 use crate::match_build::MatchBuild;
+use crate::script_call_failed::ScriptCallFailed;
 use crate::session_rules::SessionRules;
 
 /// A match's session log and state types, kept as a resource in the `World` that runs the match:
@@ -114,17 +113,17 @@ impl Session {
                 });
             }
         });
-        let tick = world.resource::<SimTick>().start().get();
+        let tick = world.resource::<SimTick>().start();
         world.run_schedule(SimUpdate);
         if let Some(failures) = world.get_non_send::<ScriptFailures>() {
             for failure in failures.get() {
-                warn!(
+                ScriptCallFailed {
                     tick,
-                    unit = failure.unit.map(StableId::get),
-                    hook = ?failure.hook,
-                    error = %failure.error,
-                    "a script call failed and changed nothing"
-                );
+                    unit: failure.unit,
+                    hook: failure.hook,
+                    error: failure.error.to_string(),
+                }
+                .log();
             }
         }
     }

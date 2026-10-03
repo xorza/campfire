@@ -1,6 +1,7 @@
 use std::num::NonZeroU32;
 
 use campfire_common::PlayerSlot;
+use campfire_log::internals::LogCheck;
 use campfire_package::ModePackages;
 use campfire_protocol::secp256k1::{Keypair, Secp256k1, SecretKey, XOnlyPublicKey};
 use campfire_protocol::{
@@ -92,6 +93,7 @@ impl FixedSession {
 
     /// A match at tick 0, its players joined, none of their inputs sent yet.
     pub fn start(&self) -> FixedMatch {
+        let check = LogCheck::start();
         let log = self.log();
         let chains = log
             .header()
@@ -104,7 +106,7 @@ impl FixedSession {
             .collect();
         let runner = Runner::new(log, FixedSession::seed(), &self.packages)
             .unwrap_or_else(|error| panic!("{error}"));
-        FixedMatch::new(runner, chains, self.terms.session_id())
+        FixedMatch::new(runner, chains, self.terms.session_id(), check)
     }
 
     /// Player `slot`'s session key.

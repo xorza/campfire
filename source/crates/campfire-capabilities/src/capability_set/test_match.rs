@@ -7,6 +7,7 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
 use bevy_ecs::system::{Query, Res};
 use bevy_ecs::world::{Mut, World};
 use campfire_common::{SegmentSeed, Tick};
+use campfire_log::internals::LogCheck;
 use campfire_math::Num;
 use campfire_script::rhai::Dynamic;
 use campfire_script::{Budget, ScriptHost};
@@ -34,6 +35,8 @@ use crate::units::unit_tags::UnitTags;
 pub(crate) struct TestMatch {
     pub(crate) world: World,
     pub(crate) registry: StateRegistry,
+    /// Last, so it drops after the world and sees what the world logs as it drops.
+    _log: LogCheck,
 }
 
 impl TestMatch {
@@ -47,6 +50,7 @@ impl TestMatch {
         rate: TickRate,
         budgets: Option<ScriptBudgets>,
     ) -> TestMatch {
+        let log = LogCheck::start();
         let mut world = World::new();
         SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), rate);
         let mut schedule = SimUpdate::schedule();
@@ -59,7 +63,11 @@ impl TestMatch {
             internals::bind_life(&mut world, PoolId::FIRST);
         }
         world.add_schedule(schedule);
-        TestMatch { world, registry }
+        TestMatch {
+            world,
+            registry,
+            _log: log,
+        }
     }
 
     /// A client's match at `RATE` of `declared`: no script host, and no system that runs scripts.

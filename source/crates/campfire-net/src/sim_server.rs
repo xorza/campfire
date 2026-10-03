@@ -23,9 +23,12 @@ use lightyear::prelude::{
     LocalTimeline, MessageReceiver, MessageSender, NetworkTarget, PredictionTarget, Replicate,
     Unlink, UnlinkReason, VisibilityExt,
 };
-use tracing::{debug, info, trace, trace_span, warn};
+use tracing::{debug, info, trace, trace_span};
 
 use crate::events::input_logged::InputLogged;
+use crate::events::input_message_refused::InputMessageRefused;
+use crate::events::input_message_unfit::InputMessageUnfit;
+use crate::events::input_never_applied::{InputNeverApplied, Unapplied};
 use crate::events::ticks_caught_up::TicksCaughtUp;
 use crate::events::unit_died::UnitDied;
 use crate::input_message::InputMessage;
@@ -170,17 +173,13 @@ fn record_inputs(
 ) {
     frame.0 = session.log().next_tick();
     for (entity, mut link, mut receiver) in &mut links {
-        let slot = link.slot.get();
         for message in receiver.receive() {
             if link.refused {
                 continue;
             }
             let next_tick = session.log().next_tick();
             let Some(inputs) = message.inputs(link.slot) else {
-                warn!(
-                    slot,
-                    "refused an input message whose frames do not fit its payloads"
-                );
+                InputMessageUnfit { slot: link.slot }.log();
                 link.refused = true;
                 commands.trigger(Unlink {
                     entity,
@@ -189,7 +188,12 @@ fn record_inputs(
                 continue;
             };
             if let Err(error) = session.record(inputs.clone(), message.signature(), &mut applied) {
-                warn!(slot, %next_tick, %error, "refused an input message, which ends the link");
+                InputMessageRefused {
+                    slot: link.slot,
+                    next_tick,
+                    error: error.to_string(),
+                }
+                .log();
                 link.refused = true;
                 commands.trigger(Unlink {
                     entity,
@@ -198,21 +202,26 @@ fn record_inputs(
                 continue;
             }
             for (input, &outcome) in inputs.zip(applied.iter()) {
-                match outcome {
-                    Applied::At(tick) => InputLogged {
-                        slot: link.slot,
-                        stamp: input.stamp,
-                        tick,
+                let outcome = match outcome {
+                    Applied::At(tick) => {
+                        InputLogged {
+                            slot: link.slot,
+                            stamp: input.stamp,
+                            tick,
+                        }
+                        .log();
+                        continue;
                     }
-                    .log(),
-                    Applied::Late | Applied::Early => warn!(
-                        slot,
-                        %input.stamp,
-                        %next_tick,
-                        ?outcome,
-                        "logged an input that never takes effect"
-                    ),
+                    Applied::Late => Unapplied::Late,
+                    Applied::Early => Unapplied::Early,
+                };
+                InputNeverApplied {
+                    slot: link.slot,
+                    stamp: input.stamp,
+                    next_tick,
+                    outcome,
                 }
+                .log();
             }
         }
     }

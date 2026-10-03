@@ -1,5 +1,6 @@
 use bevy_ecs::world::World;
 use campfire_common::SegmentSeed;
+use campfire_log::internals::LogCheck;
 use campfire_package::ModePackages;
 use campfire_sim::{EntityIndex, SimUpdate, SnapshotError, StateHash, StateRegistry, TickRate};
 
@@ -11,11 +12,14 @@ use crate::match_build::MatchBuild;
 pub struct RestoreTarget {
     world: World,
     registry: StateRegistry,
+    /// Last, so it drops after the world and sees what the world logs as it drops.
+    _log: LogCheck,
 }
 
 impl RestoreTarget {
     /// The match of `packages` for `players` players at the mode's default rate.
     pub fn new(packages: &ModePackages, players: u32) -> RestoreTarget {
+        let log = LogCheck::start();
         let mut world = World::new();
         let rate = TickRate::new(packages.manifest().tick_hz.default());
         SimUpdate::prepare(&mut world, SegmentSeed::new([0; 32]), rate);
@@ -23,7 +27,11 @@ impl RestoreTarget {
         let mut registry = StateRegistry::new();
         MatchBuild::run(packages, &mut world, &mut schedule, &mut registry, players);
         world.add_schedule(schedule);
-        RestoreTarget { world, registry }
+        RestoreTarget {
+            world,
+            registry,
+            _log: log,
+        }
     }
 
     /// Writes the snapshot of the match in `world`, of the same mode, into `out`.

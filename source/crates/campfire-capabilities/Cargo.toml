@@ -20,6 +20,7 @@ postcard.workspace = true
 serde.workspace = true
 
 [dev-dependencies]
+campfire-log = { workspace = true, features = ["internals"] }
 toml.workspace = true
 
 [[bench]]

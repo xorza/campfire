@@ -14,8 +14,8 @@ use campfire_capabilities::{
 use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_math::{Num, Vec3};
 use campfire_net::internals::{End, LocalMatch, MatchSetup};
-use campfire_net::{InputChannel, InputMessage, PlayerLink, TickHashes};
-use campfire_protocol::{PlayerInput, SessionLog, Signature};
+use campfire_net::{InputChannel, InputMessage, InputMessageRefused, PlayerLink, TickHashes};
+use campfire_protocol::{InputError, PlayerInput, SessionLog, Signature};
 use campfire_runner::internals::HashTrail;
 use campfire_runner::{Runner, Session};
 use campfire_sim::{EntityIndex, Position, SimTick, Unpredicted};
@@ -184,12 +184,13 @@ fn a_burst_of_orders_waits_for_later_stamps_and_a_forged_message_ends_its_link()
     };
     assert_eq!(refused(&local), (false, true));
 
-    // A message whose signature the player's session key did not make: the server refuses it,
-    // and ends the link.
+    // A message whose signature the player's session key did not make, stamped for the next tick
+    // so that only its signature is wrong: the server refuses it, and ends the link.
+    let next_tick = Tick::new(local.next_tick(End::Server));
     let forged = InputMessage::new(
         [PlayerInput {
             slot: PlayerSlot::new(0),
-            stamp: Tick::new(0),
+            stamp: next_tick,
             payload: b"",
         }],
         Signature::from_bytes([0; 64]),
@@ -203,6 +204,14 @@ fn a_burst_of_orders_waits_for_later_stamps_and_a_forged_message_ends_its_link()
     // A perfect link carries it in the step it is sent.
     local.step();
     assert_eq!(refused(&local), (true, false));
+    assert_eq!(
+        local.log().take::<InputMessageRefused>(),
+        [InputMessageRefused {
+            slot: PlayerSlot::new(0),
+            next_tick,
+            error: InputError::BadSignature.to_string(),
+        }]
+    );
 }
 
 #[test]

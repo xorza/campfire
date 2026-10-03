@@ -6,7 +6,12 @@ license.workspace = true
 autotests = false
 
 [features]
-internals = ["dep:bevy_state", "dep:bevy_time", "campfire-package/internals"]
+internals = [
+    "dep:bevy_state",
+    "dep:bevy_time",
+    "campfire-log/internals",
+    "campfire-package/internals",
+]
 bench = ["internals", "dep:criterion"]
 
 [dependencies]
@@ -33,7 +38,6 @@ tracing.workspace = true
 [dev-dependencies]
 campfire-net = { workspace = true, features = ["internals"] }
 campfire-capabilities = { workspace = true, features = ["internals"] }
-campfire-log = { workspace = true, features = ["internals"] }
 campfire-runner = { workspace = true, features = ["internals"] }
 
 [[test]]
