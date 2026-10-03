@@ -206,7 +206,7 @@ impl ModeApi {
             &["offers", "unique", "count", "slot"],
             &[],
         )
-        .data(DataTable::SlotKind, &["name", "ranks"], &["levels"]);
+        .data(DataTable::SlotKind, &["name", "ranks", "levels"], &[]);
         let mode = |name, signature, description| {
             MemberSpec::call(name, signature, description).roles(RoleSet::MODE)
         };

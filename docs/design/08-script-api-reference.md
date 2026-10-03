@@ -273,7 +273,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | --- | --- |
 | `name` | since 1.0 |
 | `ranks` | since 1.0 |
-| `levels` | planned |
+| `levels` | since 1.0 |
 
 ### A choice, `[choices.<name>]`
 

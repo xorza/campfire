@@ -6,7 +6,7 @@ What each vision group may see, and so what each client receives. Only what a cl
 
 ## Data
 
-A unit type's `vision = { sight_range }`, in meters, not negative. The map's `[grid]`, with `cell` in meters, positive, the cells the grid fog of war marks; a mode with the grid backend needs it. The mode's tags with `hidden` and `detects` ([Tags](stats.md#tags)).
+A unit type's `vision = { sight_range }`, in meters, not negative. The map's `[grid]`, with `cell` in meters, positive, the cells the grid fog of war marks; a mode with the grid backend needs it; and `[[grid.brush]]`, each a simple polygon of `points`, as a wall's ([Navigation](navigation.md#data)). The mode's tags with `hidden` and `detects` ([Tags](stats.md#tags)).
 
 ## Rules
 
@@ -20,9 +20,13 @@ A unit type's `vision = { sight_range }`, in meters, not negative. The map's `[g
 
 ### Grid fog of war
 
-The grid divides the map's bounds into square cells of the map's cell size; a point on the max edge lies in the last cell, so every unit stands in a cell. In the Vision stage, the last stage of a tick, each living unit with a `sight_range` reveals to its group every cell whose center is within that range on the ground plane, on either metric: the cells are squares of the ground plane, with no height. A unit is seen by its own group always, from the moment it spawns, before its first Vision stage, and by each group that revealed the cell it stands in. The rule is the same for every unit: a structure, a projectile and an item on the ground too are seen only while in sight. Terrain and brush do not block sight yet. The grid keeps one bitmap for each group, and a detection bitmap for each group that has a detector, and each tick clears only the words the tick before set, so the stage costs what the units see, not the map's size times the groups. A map with a vision grid holds at most 64 teams, and so at most 64 groups; the load refuses more.
+The grid divides the map's bounds into square cells of the map's cell size; a point on the max edge lies in the last cell, so every unit stands in a cell. In the Vision stage, the last stage of a tick, each living unit with a `sight_range` reveals to its group every cell whose center is within that range on the ground plane, on either metric: the cells are squares of the ground plane, with no height. A unit is seen by its own group always, from the moment it spawns, before its first Vision stage, and by each group that revealed the cell it stands in. The rule is the same for every unit: a structure, a projectile and an item on the ground too are seen only while in sight.
 
-What each group sees is state: it is hashed with the rest, and the queries of the next tick read it. After each tick the server replicates each unit to the clients whose group sees it, from the tick it comes into sight until the tick it leaves sight, when the client despawns it. A unit hidden in the tick it spawns never reaches that client. A sight range should exceed the reach it chooses targets within by half a cell's diagonal, so a unit sees every target it may take.
+- **Brush.** A cell whose center lies inside a brush polygon, or on its edge, is that brush's, the first the map lists. A unit reveals a brush's cells only while it stands in that brush, as League of Legends' brush hides who stands in it from everyone outside; it sees out of the brush as from anywhere. A ward in a brush sees into it.
+- **Reveals.** `ctx.reveal(pos, radius, ms)` reveals to the acting unit's group the cells whose centers lie within `radius` of `pos`, brush cells included, from that tick's Vision stage for `ms`, as Farsight and Snow Owl do; it detects no hidden unit. A call with no acting unit, a negative radius, or a time of zero fails.
+- **Walls** block no sight yet: a unit sees over them, as the 3v3's lanes need no more. The grid keeps one bitmap for each group, and a detection bitmap for each group that has a detector, and each tick clears only the words the tick before set, so the stage costs what the units see, not the map's size times the groups. A map with a vision grid holds at most 64 teams, and so at most 64 groups; the load refuses more.
+
+What each group sees is state, and so are the reveals under way: they are hashed with the rest, and the queries of the next tick read them. After each tick the server replicates each unit to the clients whose group sees it, from the tick it comes into sight until the tick it leaves sight, when the client despawns it. A unit hidden in the tick it spawns never reaches that client. A sight range should exceed the reach it chooses targets within by half a cell's diagonal, so a unit sees every target it may take.
 
 ### Hidden units
 
@@ -43,8 +47,8 @@ Smoke, closed doors and walls built during a match block sight while they stand,
 
 ## State and derived
 
-- **State:** which groups see each unit, from the last Vision stage.
-- **Derived:** the vision groups, from the relations; the revealed cells of each group, each tick.
+- **State:** which groups see each unit, from the last Vision stage; the reveals under way, each its group, place, radius and last tick.
+- **Derived:** the vision groups, from the relations; each cell's brush, from the map; the revealed cells of each group, each tick.
 
 ## Script API
 

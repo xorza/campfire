@@ -6,7 +6,7 @@ Design: [Actions](../design/04-capabilities/actions.md). Rules: [Issue log](../.
 
 ## Research
 
-- **Stage 7.** The `spawn` effect has no unit type to spawn from an avatar or a loadout: those packages hold delivery types alone, and `ctx.spawn_unit` takes only the mode's own types and avatars. A summon also has no timed life to end it.
+- **Stage 7.** The `spawn` effect of an avatar's or a loadout's action has no unit type to spawn: those packages hold delivery types alone, and `ctx.spawn_unit` takes only the mode's own types and avatars.
 
 ## Ready
 
