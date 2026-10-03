@@ -359,7 +359,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-static FLAWS: [Flaw; 221] = [
+static FLAWS: [Flaw; 226] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -433,6 +433,56 @@ static FLAWS: [Flaw; 221] = [
         ),
         MODE,
         |problem| matches!(problem, LoadProblem::LevelTracks),
+    ),
+    // A slot kind's levels: one for each of its ranks, each at least 1 and at least the one
+    // before, on a kind with ranks, in a mode with the `level` track.
+    flaw(
+        MODE_DATA,
+        Edit::Replace("levels = [6, 11, 16]", "levels = [6, 11]"),
+        MODE,
+        |problem| {
+            read_fails(
+                problem,
+                "data/mode.toml",
+                "a slot kind's `levels` gives one level",
+            )
+        },
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace("levels = [6, 11, 16]", "levels = [6, 16, 11]"),
+        MODE,
+        |problem| {
+            read_fails(
+                problem,
+                "data/mode.toml",
+                "a slot kind's `levels` gives one level",
+            )
+        },
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace("levels = [1, 3, 5, 7, 9]", "levels = [0, 3, 5, 7, 9]"),
+        MODE,
+        |problem| read_fails(problem, "data/mode.toml", "a level is at least 1"),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace("name = \"spell\"\n", "name = \"spell\"\nlevels = [1]\n"),
+        MODE,
+        |problem| {
+            read_fails(
+                problem,
+                "data/mode.toml",
+                "a slot kind's `levels` needs its `ranks`",
+            )
+        },
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace("level = true\n", ""),
+        MODE,
+        |problem| matches!(problem, LoadProblem::RankLevels(kind) if kind.as_str() == "basic"),
     ),
     flaw(
         HUSK,

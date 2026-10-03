@@ -56,22 +56,21 @@ enum Landed {
 impl DamagePass {
     /// Applies the tick's damage and heals in the queue's order, with the units as the pass began:
     /// each damage through the mode's `calc_damage` when it has one, then an attack's weapon's
-    /// `on_hit` list, then its combat events, whose damage joins the end of the queue; each heal
-    /// through the mode's `calc_heal` when it has one.
+    /// `on_hit` list, then its combat events, whose damage joins the end of the queue, and whose
+    /// heals, as leech's, are dealt next; each heal through the mode's `calc_heal` when it has
+    /// one.
     /// Damage to a unit at zero life, or to an invulnerable one, does nothing, and so does a heal of a
     /// unit at zero life.
     pub(crate) fn run(world: &mut World, mut assisters: Local<'_, Vec<StableId>>) {
         let now = world.resource::<SimTick>().start();
         world.resource_mut::<Deaths>().clear(now);
-        world.resource_mut::<PassQueue>().sort();
+        world.resource_mut::<PassQueue>().begin();
         let weigher = world.remove_non_send::<DamageWeigher>();
         let healer = world.remove_non_send::<HealWeigher>();
         let events = world.remove_non_send::<CombatEvents>();
         let ctx = world.get_non_send::<Ctx>().cloned();
         if weigher.is_none() && healer.is_none() && events.is_none() {
-            let mut at = 0;
-            while let Some(entry) = world.resource::<PassQueue>().get(at) {
-                at += 1;
+            while let Some(entry) = world.resource_mut::<PassQueue>().next() {
                 match entry {
                     PassEntry::Damage(damage) => {
                         DamagePass::deal(world, damage, damage.amount, now);
@@ -79,12 +78,10 @@ impl DamagePass {
                     PassEntry::Heal(heal) => DamagePass::heal(world, heal.target, heal.amount),
                 }
             }
-        } else if world.resource::<PassQueue>().get(0).is_some() {
+        } else if !world.resource::<PassQueue>().is_empty() {
             let view = world.non_send::<View>().clone();
             ScriptBatch::run(world, &view, |batch| {
-                let mut at = 0;
-                while let Some(entry) = batch.world().resource::<PassQueue>().get(at) {
-                    at += 1;
+                while let Some(entry) = batch.world().resource_mut::<PassQueue>().next() {
                     let damage = match entry {
                         PassEntry::Damage(damage) => damage,
                         PassEntry::Heal(heal) => {
@@ -135,7 +132,7 @@ impl DamagePass {
         if let Some(events) = events {
             world.insert_non_send(events);
         }
-        world.resource_mut::<PassQueue>().clear();
+        world.resource_mut::<PassQueue>().end();
     }
 
     /// The entity of `unit`, when it exists and its life pool is above zero: one that damage,

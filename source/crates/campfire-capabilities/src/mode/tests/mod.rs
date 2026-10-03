@@ -15,7 +15,7 @@ use crate::actions::action_data::{ActionData, Targeting};
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_target::ActionTarget;
 use crate::actions::slot_kind::SlotKind;
-use crate::actions::slot_kinds::{SlotKindData, SlotKinds};
+use crate::actions::slot_kinds::{SlotKindData, SlotKinds, SlotRanks};
 use crate::capability_set::test_match::TestMatch;
 use crate::combat::combat_rules::CombatRules;
 use crate::combat::damage::{Damage, DamageCause};
@@ -449,8 +449,7 @@ fn rally() -> ModifierData {
 fn slot_kinds() -> SlotKinds {
     let kind = |name, ranks| SlotKindData {
         name: DeclaredName::new(name).unwrap(),
-        ranks: NonZeroU8::new(ranks),
-        levels: Vec::new(),
+        ranks: NonZeroU8::new(ranks).map(|count| SlotRanks::new(count, None).unwrap()),
     };
     SlotKinds(vec![kind("basic", 2), kind("spell", 0)])
 }

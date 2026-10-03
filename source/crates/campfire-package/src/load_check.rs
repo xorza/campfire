@@ -1220,19 +1220,30 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// The mode's slot kinds: no more than a slot's index holds, and none named twice.
+    /// The mode's slot kinds: no more than a slot's index holds, none named twice, and none that
+    /// gives its ranks levels in a mode with no `level` track to read them on.
     fn slot_kinds(&self) -> Result<(), LoadProblem> {
-        let kinds = &self.packages.data.slots.0;
+        let data = &self.packages.data;
+        let kinds = &data.slots.0;
         if kinds.len() > ActionSlots::LIMIT {
             return Err(LoadProblem::Choice(ChoiceProblem::TooManySlotKinds));
         }
         let mut seen = BTreeSet::new();
-        match kinds.iter().find(|kind| !seen.insert(&kind.name)) {
-            Some(kind) => Err(LoadProblem::Repeated {
+        if let Some(kind) = kinds.iter().find(|kind| !seen.insert(&kind.name)) {
+            return Err(LoadProblem::Repeated {
                 at: Place::SlotKinds,
                 name: kind.name.to_string(),
-            }),
-            None => Ok(()),
+            });
+        }
+        let level_track = data.tracks.values().any(|track| track.level);
+        let leveled = kinds.iter().find(|kind| {
+            kind.ranks
+                .as_ref()
+                .is_some_and(|ranks| ranks.levels().is_some())
+        });
+        match leveled {
+            Some(kind) if !level_track => Err(LoadProblem::RankLevels(kind.name.clone())),
+            _ => Ok(()),
         }
     }
 

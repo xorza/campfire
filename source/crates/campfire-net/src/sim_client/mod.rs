@@ -108,9 +108,10 @@ impl Plugin for SimClient {
         ));
         world.init_resource::<SentInputs>();
         // Prediction covers all the latency, with no input delay: an input goes out stamped with
-        // the tick the client predicts it in, which Lightyear keeps ahead of the server's by the
-        // round trip; with input delay it would keep that tick nearer, and the input would land
-        // late.
+        // the tick the client predicts it in, which Lightyear keeps ahead of the server's present
+        // tick by half the round trip and its margins, so the input arrives before the server
+        // runs that tick; with input delay it would keep that tick nearer, and the input would
+        // land late.
         app.insert_resource(InputTimelineConfig::new(
             SyncConfig::default(),
             InputDelayConfig::no_input_delay(),

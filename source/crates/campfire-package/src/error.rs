@@ -187,6 +187,8 @@ pub enum LoadProblem {
     TooMany(Limit),
     /// More than one of the mode's tracks is the `level` track.
     LevelTracks,
+    /// The slot kind of that name gives its ranks levels, in a mode with no `level` track.
+    RankLevels(DeclaredName),
     /// A per-rank array of an ability has another length than its ranks.
     RankCount { action: DeclaredName, ranks: u8 },
     /// The script at `path`, or the one data names there.
@@ -707,6 +709,10 @@ impl fmt::Display for LoadProblem {
             }
             LoadProblem::TooMany(limit) => write!(f, "{limit}"),
             LoadProblem::LevelTracks => f.write_str("more than one `level` track"),
+            LoadProblem::RankLevels(kind) => write!(
+                f,
+                "slot kind {kind}: its ranks' `levels` need a `level` track"
+            ),
             LoadProblem::NoDamageKinds => {
                 f.write_str("the mode declares combat, and no damage kinds")
             }

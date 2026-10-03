@@ -924,15 +924,29 @@ fn shields_absorb_soonest_end_first_and_vamps_heal_from_health_taken() {
     DamagePass::heal(&mut fight.sim.world, source, Num::ONE);
     assert_eq!(fight.sim.life(source), Num::int(100));
     fight.stats(source, [-half, half, Num::ONE / 4]);
+    // Leech is dealt next, before the rest of the queue: at 10, an attack of 20 steals 20 × 0.5,
+    // halved, 5, before the 12 of a foe, whose higher id sorts it after: 10 + 5 − 12. Dealt at
+    // the end of the queue, it would come after the 12, which kills.
+    let foe = fight.unit(Team::new(1), at(2, 0, 0), dummy());
+    assert!(source < foe);
+    fight
+        .sim
+        .get_mut::<Pools>(source)
+        .take(PoolId::FIRST, Num::int(90));
+    fight.damage(Some(foe), source, 12, DamageCause::Effect);
+    fight.damage(Some(source), target, 20, ATTACK);
+    fight.sim.run_until(3);
+    assert_eq!(fight.sim.life(source), Num::int(3));
+    assert_eq!(fight.sim.life(target), Num::int(35));
     // Without the bindings the same stats do nothing: at 50, an attack of 10 heals the source
     // nothing, and a heal of 10 is whole.
     super::internals::bind_life(&mut fight.sim.world, PoolId::FIRST);
     let entity = fight.sim.entity(source);
     let mut pools = fight.sim.world.get_mut::<Pools>(entity).unwrap();
-    pools.take(PoolId::FIRST, Num::int(50));
+    pools.add(PoolId::FIRST, Num::int(47));
     fight.damage(Some(source), target, 10, ATTACK);
-    fight.sim.run_until(3);
-    assert_eq!(fight.sim.life(target), Num::int(45));
+    fight.sim.run_until(4);
+    assert_eq!(fight.sim.life(target), Num::int(25));
     assert_eq!(fight.sim.life(source), Num::int(50));
     DamagePass::heal(&mut fight.sim.world, source, Num::int(10));
     assert_eq!(fight.sim.life(source), Num::int(60));

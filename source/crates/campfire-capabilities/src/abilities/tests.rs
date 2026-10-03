@@ -1632,6 +1632,43 @@ fn on_damage_taken(ctx, m, d) {
     assert_eq!(game.failed_calls(), [failed]);
 }
 
+#[test]
+fn a_hook_heal_is_dealt_before_the_rest_of_the_pass() {
+    // A unit that heals itself by its modifier's `mend`, twice, each time true damage reaches it.
+    let hooks = r#"
+fn on_damage_taken(ctx, m, d) {
+    if d.kind == "true" {
+        ctx.heal(m.carrier, ctx.p.mend);
+        ctx.heal(m.carrier, ctx.p.mend);
+    }
+}
+"#;
+    let mut game = Match::with_modifiers(hooks, &[("mend", scripted(None, &[("mend", 30)]))]);
+    let carrier = game.spawn(1, ground(Num::ZERO, Num::ZERO), ());
+    game.give(carrier, "mend");
+    for (amount, kind) in [(450, 2), (100, 0)] {
+        game.sim
+            .world
+            .resource_mut::<PassQueue>()
+            .push_damage(Damage {
+                source: None,
+                target: carrier,
+                amount: Num::int(amount),
+                kind: DamageKind::new(kind),
+                cause: DamageCause::Effect,
+                ability: None,
+                depth: 0,
+                hit: None,
+            });
+    }
+    game.sim.step();
+    // 500 − 450, then the hook's two heals of 30 before the 100 queued after the 450:
+    // 50 + 30 + 30 − 100. Dealt at the end of the queue, they would come after the 100, which
+    // kills.
+    assert_eq!(game.sim.health(carrier), 10);
+    assert_eq!(game.failed_calls(), []);
+}
+
 /// A match of stats, combat, abilities, projectiles and areas whose `fighter` type has 40 attack
 /// damage and 1 armor, which its weapons read as their damage and their rate, with a homing
 /// `bolt` of 30 m a second; `mark`, a shield of the `sap` param of the action that applies it;
