@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 
 use campfire_common::{PlayerSlot, SegmentSeed, Ticks};
 use campfire_math::{Num, RngSource, Vec3};
-use campfire_sim::{Capability, EntityIndex, SimComponent};
+use campfire_sim::{EntityIndex, SimComponent};
 
 use super::*;
 use crate::actions::action_book::internals::{self, TestWeapon};
@@ -797,7 +797,10 @@ impl Fight {
     }
 }
 
-const ATTACK: DamageCause = DamageCause::Attack { roll: Num::ZERO };
+const ATTACK: DamageCause = DamageCause::Attack {
+    roll: Num::ZERO,
+    rank: 1,
+};
 
 #[test]
 fn the_pass_deals_damage_in_its_order_and_credits_the_kill() {

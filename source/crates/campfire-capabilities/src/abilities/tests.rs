@@ -200,10 +200,10 @@ fn the_field_table_names_the_first_field_a_kind_misuses() {
         ActionDataField::misused(&action, ActionKind::Train),
         Some(ActionDataField::Script)
     );
-    // With no cast fields, an attack lacks its weapon's rate, then a cast refuses the rate.
+    // With no script or cooldown, an attack lacks its weapon's rate, then a cast refuses the
+    // rate. An attack takes the params and an `on_hit` list, and refuses an `on_end` list.
     action.script = None;
     action.cooldown_ms = None;
-    action.params = BTreeMap::new();
     assert_eq!(
         ActionDataField::misused(&action, ActionKind::Attack),
         Some(ActionDataField::Rate)
@@ -211,7 +211,16 @@ fn the_field_table_names_the_first_field_a_kind_misuses() {
     action.rate = Some(Stat::named("armor").unwrap());
     action.damage = Some(Stat::named("attack_damage").unwrap());
     action.damage_kind = Some(DeclaredName::new("physical").unwrap());
+    action.on_hit = sapper(false).on_hit;
     assert_eq!(ActionDataField::misused(&action, ActionKind::Attack), None);
+    let ending = ActionData {
+        on_end: action.on_hit.clone(),
+        ..action.clone()
+    };
+    assert_eq!(
+        ActionDataField::misused(&ending, ActionKind::Attack),
+        Some(ActionDataField::OnEnd)
+    );
     assert_eq!(
         ActionDataField::misused(&action, ActionKind::Cast),
         Some(ActionDataField::Rate)
@@ -1170,6 +1179,101 @@ fn a_stun_a_script_applies_blocks_its_target_alike_in_every_run() {
 }
 
 #[test]
+fn a_purge_ends_the_applications_of_the_modifiers_that_grant_its_tag() {
+    // Two casters' lists purge `stunned` in tick 0, each from its own target. The first carries
+    // a stun from each caster and a slow from the second: both stuns end, whatever their source,
+    // and the slow, which grants `slowed`, stays, so its tags no longer stop it moving. The
+    // second carries a stun from the first caster that its passive holds and an application
+    // renewed, and a stun from the second caster: the application ends, the hold keeps the first
+    // stun, as its passive would apply it again, and the second ends.
+    let declared = [Capability::Stats, Capability::Combat, Capability::Abilities];
+    let mut game = Match::with(ScriptLimits::ROOMY, &declared);
+    game.load_stats();
+    for (name, tag) in [("slow", "slowed"), ("stun", "stunned")] {
+        let data = ModifierData {
+            tags: vec![DeclaredName::new(tag).unwrap()],
+            ..ModifierData::default()
+        };
+        Stats::load_modifier(&mut game.sim.world, 0, name, &data, None);
+    }
+    let stunned = TagData {
+        blocks: vec![Block::Move],
+        ..TagData::default()
+    };
+    let effects = BTreeMap::from([(DeclaredName::new("stunned").unwrap(), stunned)]);
+    let book = game
+        .sim
+        .world
+        .non_send::<View>()
+        .types_mut()
+        .tag_book(&effects);
+    game.sim.world.insert_resource(book);
+    let purge = Effecting::Purge {
+        tag: DeclaredName::new("stunned").unwrap(),
+    };
+    let data = ActionData {
+        script: None,
+        on_resolve: vec![effect(purge, EffectTo::Reached)],
+        ..strike()
+    };
+    let ability = Actions::load(&mut game.sim.world, 0, "cleanse", &data, None, 1).unwrap();
+    EffectLists::load(&mut game.sim.world, ability, 0, &data);
+    let [first, second] = [(); 2].map(|()| game.caster(ability, 1));
+    let target = Units::load_type(
+        &mut game.sim.world,
+        TypeScope::Mode,
+        "target",
+        &UnitTypeData::default(),
+    );
+    let parts = || {
+        (
+            target,
+            Level::default(),
+            UnitStats::default(),
+            UnitTags::default(),
+            Modifiers::default(),
+        )
+    };
+    let freed = game.spawn(1, ground(Num::int(1), Num::ZERO), parts());
+    let held = game.spawn(1, ground(Num::int(-1), Num::ZERO), parts());
+    for source in [first, second] {
+        game.give_from(freed, source, "stun");
+    }
+    game.give_from(freed, second, "slow");
+    let [stun, slow] =
+        ["stun", "slow"].map(|name| Stats::modifier(&game.sim.world, 0, name).unwrap());
+    stats::internals::give_modifier(
+        &mut game.sim.world,
+        held,
+        stun,
+        Some((first, None, 1)),
+        true,
+    );
+    game.give_from(held, first, "stun");
+    game.give_from(held, second, "stun");
+    game.sim.step();
+    let stopped = |game: &Match, unit| {
+        let entity = game.sim.entity(unit);
+        UnitTags::effects_of(game.sim.world.get(entity)).blocks(Block::Move)
+    };
+    assert_eq!([stopped(&game, freed), stopped(&game, held)], [true, true]);
+    game.casts(&[
+        (first, ActionTarget::Unit(freed)),
+        (second, ActionTarget::Unit(held)),
+    ]);
+    assert_eq!(game.failed_calls(), []);
+    assert_eq!(
+        stats::internals::carried(&game.sim.world, freed),
+        [(slow, Some(second))]
+    );
+    assert_eq!(
+        stats::internals::carried(&game.sim.world, held),
+        [(stun, Some(first))]
+    );
+    assert_eq!([stopped(&game, freed), stopped(&game, held)], [false, true]);
+}
+
+#[test]
 fn a_cast_heals_and_restores_and_a_negative_amount_fails_it() {
     let mut game = Match::new();
     game.load_stats();
@@ -1264,7 +1368,7 @@ fn an_xp_effect_to_a_unit_without_the_track_fails_its_cast_as_add_xp_does() {
         ..strike()
     };
     let ability = Actions::load(&mut game.sim.world, 0, "strike", &data, None, 1).unwrap();
-    Abilities::load_effects(&mut game.sim.world, ability, 0, &data);
+    EffectLists::load(&mut game.sim.world, ability, 0, &data);
     let tracked = game.spawn(
         1,
         ground(Num::int(1), Num::ZERO),
@@ -1324,7 +1428,7 @@ fn an_xp_effect_to_a_source_that_despawned_fails_its_hit() {
         ..strike()
     };
     let ability = Actions::load(&mut game.sim.world, 0, "bolt", &data, None, 1).unwrap();
-    Abilities::load_effects(&mut game.sim.world, ability, 0, &data);
+    EffectLists::load(&mut game.sim.world, ability, 0, &data);
     let caster = game.caster(ability, 1);
     game.sim
         .insert(caster, Experience::new(TrackSet::of([valor]), None));
@@ -1523,6 +1627,255 @@ fn on_damage_taken(ctx, m, d) {
     let failed = FailedCall {
         unit: Some(echoer),
         hook: Hook::OnDamageTaken,
+        kind: FailureKind::Api(ApiError::ChainTooDeep),
+    };
+    assert_eq!(game.failed_calls(), [failed]);
+}
+
+/// A match of stats, combat, abilities and projectiles whose `fighter` type has 40 attack damage
+/// and 1 armor, which its weapons read as their damage and their rate, with a homing `bolt` of
+/// 30 m a second; `mark`, a shield of the `sap` param of the action that applies it; and `ward`,
+/// a shield of 100.
+fn weapon_match() -> (Match, UnitType) {
+    let declared = [
+        Capability::Stats,
+        Capability::Combat,
+        Capability::Abilities,
+        Capability::Projectiles,
+    ];
+    let mut game = Match::with(ScriptLimits::ROOMY, &declared);
+    let fighter = Units::load_type(
+        &mut game.sim.world,
+        TypeScope::Mode,
+        "fighter",
+        &UnitTypeData::default(),
+    );
+    let flat = |value| StatValue {
+        base: Num::int(value),
+        per_level: Num::ZERO,
+    };
+    let [attack_damage, armor] = ["attack_damage", "armor"].map(|name| Stat::named(name).unwrap());
+    let growth = StatsData([(attack_damage, flat(40)), (armor, flat(1))].into());
+    let rules: BTreeMap<_, _> = scaling_stats()
+        .map(|stat| (stat, StatRule::default()))
+        .into();
+    let book = StatBook::new(&rules, [(fighter, &growth)], Num::int(6));
+    Stats::load_book(&mut game.sim.world, book);
+    let bolt = Units::load_type(
+        &mut game.sim.world,
+        TypeScope::Mode,
+        "bolt",
+        &UnitTypeData::default(),
+    );
+    let flight = ProjectileData {
+        homing: true,
+        ..ProjectileData::flying(Num::int(30))
+    };
+    Projectiles::load_type(&mut game.sim.world, bolt, &flight);
+    for (name, shield) in [("mark", param("sap")), ("ward", int(100))] {
+        let data = ModifierData {
+            shield: Some(shield),
+            ..ModifierData::default()
+        };
+        Stats::load_modifier(&mut game.sim.world, 0, name, &data, None);
+    }
+    (game, fighter)
+}
+
+/// A weapon of no windup and 1 attack a second, of the attacker's attack damage, physical: within
+/// 2 m, or within 6 m firing a `bolt`. Its `on_hit` shields the target by `mark`, of its `sap`
+/// param of 40, then deals its `bite` param as true damage, 10 plus half the attacker's attack
+/// damage.
+fn sapper(ranged: bool) -> ActionData {
+    let meters = if ranged { 6 } else { 2 };
+    let delivery = ranged.then(|| DeliveryData::Projectile {
+        unit_type: DeclaredName::new("bolt").unwrap(),
+        count: NonZeroU8::MIN,
+        spread_deg: Num::ZERO,
+    });
+    let bite = scaling(
+        Ranked::One(Num::int(10)),
+        0,
+        &[("attack_damage", Num::HALF)],
+        &[],
+    );
+    ActionData {
+        kind: ActionKind::Attack,
+        script: None,
+        range: Some(Ranked::One(RangeField::Range(Range::Meters(Num::int(
+            meters,
+        ))))),
+        rate: Some(Stat::named("armor").unwrap()),
+        damage: Some(Stat::named("attack_damage").unwrap()),
+        damage_kind: Some(DeclaredName::new("physical").unwrap()),
+        delivery,
+        params: BTreeMap::from([
+            (
+                DeclaredName::new("sap").unwrap(),
+                Param::Ranked(Ranked::One(Scalar::Int(40))),
+            ),
+            (DeclaredName::new("bite").unwrap(), bite),
+        ]),
+        on_hit: vec![
+            effect(
+                Effecting::Modifier {
+                    id: DeclaredName::new("mark").unwrap(),
+                    duration_ms: None,
+                },
+                EffectTo::Reached,
+            ),
+            effect(
+                Effecting::Damage {
+                    amount: param("bite"),
+                    kind: DeclaredName::new("true").unwrap(),
+                },
+                EffectTo::Reached,
+            ),
+        ],
+        ..ActionData::cast(Targeting::Unit(FilterData::parse("enemies").unwrap()))
+    }
+}
+
+impl Match {
+    /// Loads `data` as the weapon `name` of package 0, of one rank, with its effect lists.
+    fn load_weapon(&mut self, name: &str, data: &ActionData) -> ActionId {
+        let weapon = Actions::load(&mut self.sim.world, 0, name, data, None, 1).unwrap();
+        EffectLists::load(&mut self.sim.world, weapon, 0, data);
+        weapon
+    }
+
+    /// A `fighter` of team 0 at the origin, of level 1, with `slots`.
+    fn fighter(&mut self, fighter: UnitType, slots: ActionSlots) -> StableId {
+        let parts = (fighter, Level::new(1).unwrap(), UnitStats::default(), slots);
+        self.spawn(0, ground(Num::ZERO, Num::ZERO), parts)
+    }
+
+    /// The shield of `unit`'s `mark` from `source`, if it carries one.
+    fn mark(&self, unit: StableId, source: StableId) -> Option<Num> {
+        let mark = Stats::modifier(&self.sim.world, 0, "mark").unwrap();
+        let entity = self.sim.entity(unit);
+        let modifiers = self.sim.world.get::<Modifiers>(entity).unwrap();
+        let clocks = self.sim.world.get::<ModifierClocks>(entity).unwrap();
+        modifiers.get(mark, Some(source))?;
+        clocks.shield_of(modifiers, mark, Some(source))
+    }
+}
+
+#[test]
+fn a_weapons_on_hit_list_follows_each_attack_that_reaches_its_target() {
+    // A melee attack on a target 1 m out strikes as its windup of no ticks ends, in tick 0; a
+    // bolt launched then flies 1 m a tick from tick 1 and reaches a target 4 m out in tick 4; a
+    // cast whose script
+    // calls `ctx.attack_hit` strikes with the caster's weapon in tick 0. Each deals 40, 500 → 460;
+    // then its list shields the target by `mark`, from the attacker with the weapon's `sap` of
+    // 40, at once, and queues its `bite` of 10 + 0.5 × 40 = 30 at the end of the pass, which the
+    // shield absorbs: 460 left, and 10 of the shield.
+    let extra = "fn on_resolve(ctx, caster, target) { ctx.attack_hit(target); }";
+    for (row, ranged, by_cast, hits_in) in [
+        ("melee", false, false, 0),
+        ("ranged", true, false, 4),
+        ("extra", false, true, 0),
+    ] {
+        let (mut game, fighter) = weapon_match();
+        let weapon = game.load_weapon("sapper", &sapper(ranged));
+        let out = if ranged { 4 } else { 1 };
+        let target = game.spawn(1, ground(Num::int(out), Num::ZERO), Modifiers::default());
+        let attacker = if by_cast {
+            let data = ActionData {
+                range: Some(Ranked::One(RangeField::Range(Range::Meters(Num::int(5))))),
+                ..strike()
+            };
+            let cast = game.load("swing", &data, extra);
+            let slots =
+                ActionSlots::new([(cast, SlotKind::new(0), 1), (weapon, SlotKind::new(1), 1)]);
+            let caster = game.fighter(fighter, slots);
+            game.give_pools(caster, 100, 20);
+            game.cast(caster, ActionTarget::Unit(target));
+            caster
+        } else {
+            let slots = ActionSlots::new([(weapon, SlotKind::new(0), 1)]);
+            let attacker = game.fighter(fighter, slots);
+            game.sim
+                .get_mut::<ActionSlots>(attacker)
+                .set_attack_target(Some(target));
+            attacker
+        };
+        if by_cast {
+            assert_eq!(game.failed_calls(), [], "{row}");
+        }
+        while game.sim.now() < Tick::new(hits_in) {
+            assert_eq!(
+                (game.sim.health(target), game.mark(target, attacker)),
+                (500, None),
+                "{row} before its hit"
+            );
+            game.sim.step();
+            assert_eq!(game.failed_calls(), [], "{row}");
+        }
+        if !by_cast {
+            game.sim.step();
+            assert_eq!(game.failed_calls(), [], "{row}");
+        }
+        assert_eq!(
+            (game.sim.health(target), game.mark(target, attacker)),
+            (460, Some(Num::int(10))),
+            "{row}"
+        );
+    }
+}
+
+#[test]
+fn a_weapons_list_runs_one_link_down_for_each_attack_that_reaches_a_living_target() {
+    // Attacks of 40 by the sapper, queued straight into the pass: on a living target at depth 0,
+    // and at depth 14, the list runs at depths 1 and 15, as above; on a target whose tags block
+    // damage, or at zero life, the attack does nothing and no list follows; at depth 15 the list
+    // would run at 16, past the chain's limit, so it fails, recorded for the attacker, and
+    // applies nothing. A target warded by 100 takes nothing of the attack, all absorbed, and the
+    // list still follows: its mark of 40 holds, and the bite of 30 comes off one of the shields.
+    let (mut game, fighter) = weapon_match();
+    let weapon = game.load_weapon("sapper", &sapper(false));
+    let attacker = game.fighter(fighter, ActionSlots::new([(weapon, SlotKind::new(0), 1)]));
+    let mut target = |x| game.spawn(1, ground(Num::int(x), Num::ZERO), Modifiers::default());
+    let [living, blocked, spent, deep, deepest, warded] = [1, 2, 3, 4, 5, 6].map(&mut target);
+    game.sim.set_blocks(blocked, &[Block::Damage]);
+    game.sim
+        .get_mut::<Pools>(spent)
+        .take(PoolId::FIRST, Num::int(500));
+    game.give_from(warded, warded, "ward");
+    let attack = |target, depth| Damage {
+        source: Some(attacker),
+        target,
+        amount: Num::int(40),
+        kind: DamageKind::new(0),
+        cause: DamageCause::Attack {
+            roll: Num::ZERO,
+            rank: 1,
+        },
+        ability: Some(weapon),
+        depth,
+        hit: None,
+    };
+    let mut queue = game.sim.world.resource_mut::<PassQueue>();
+    for (target, depth) in [
+        (living, 0),
+        (blocked, 0),
+        (spent, 0),
+        (deep, 14),
+        (deepest, 15),
+        (warded, 0),
+    ] {
+        queue.push_damage(attack(target, depth));
+    }
+    game.sim.step();
+    let shields = [living, blocked, spent, deep, deepest].map(|unit| game.mark(unit, attacker));
+    let marked = Some(Num::int(10));
+    assert_eq!(shields, [marked, None, None, marked, None]);
+    let lives = [living, blocked, spent, deep, deepest, warded].map(|unit| game.sim.health(unit));
+    assert_eq!(lives, [460, 500, 0, 460, 460, 500]);
+    assert!(game.mark(warded, attacker).is_some());
+    let failed = FailedCall {
+        unit: Some(attacker),
+        hook: Hook::OnHit,
         kind: FailureKind::Api(ApiError::ChainTooDeep),
     };
     assert_eq!(game.failed_calls(), [failed]);
@@ -2147,7 +2500,7 @@ fn fan_of_frost_from_data_alone_hits_exactly_the_units_in_reach() {
     Projectiles::load_type(&mut game.sim.world, arrow, &data);
     let fan = fan_of_frost();
     let ability = Actions::load(&mut game.sim.world, 0, "fan_of_frost", &fan, None, 1).unwrap();
-    Abilities::load_effects(&mut game.sim.world, ability, 0, &fan);
+    EffectLists::load(&mut game.sim.world, ability, 0, &fan);
     let caster = game.caster(ability, 1);
     // Bodiless units: on the middle arrow 4 m out; on the outer arrow 4 m out, at 15 degrees,
     // (3.8637, 1.0353); between two arrows at 4 m, 3.75 degrees off each, 0.26 m from each line,

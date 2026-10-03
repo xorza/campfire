@@ -124,6 +124,7 @@ impl Volley {
             },
             payload: LaunchPayload::Attack {
                 action: ActionId::nth(0),
+                rank: 1,
                 amount: Num::int(10),
                 kind: DamageKind::new(0),
                 roll: Num::ZERO,

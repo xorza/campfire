@@ -894,8 +894,8 @@ impl<'a> LoadCheck<'a> {
     }
 
     /// The effect lists of `action`, whose id is `id`: each effect one the release runs, of a
-    /// capability the mode declares and a name it declares, in a list that runs, to a unit the
-    /// list reaches; and each number at least 0 and a sim number at every rank, a duration whole
+    /// capability the mode declares and a name it declares, in a list that runs, a hit's of a
+    /// delivery or of an attack, which reaches its target at once, to a unit the list reaches; and each number at least 0 and a sim number at every rank, a duration whole
     /// milliseconds within a `u32`. The modifiers and params they name, the action's checks find.
     fn effects(&self, id: &DeclaredName, action: &ActionData) -> Result<(), LoadProblem> {
         let data = &self.packages.data;
@@ -906,7 +906,8 @@ impl<'a> LoadCheck<'a> {
                 list,
                 problem,
             };
-            if !effects.is_empty() && list != Hook::OnResolve && action.delivery.is_none() {
+            let delivers = action.delivery.is_some() || action.kind == ActionKind::Attack;
+            if !effects.is_empty() && list != Hook::OnResolve && !delivers {
                 return Err(fail(EffectProblem::NoDelivery));
             }
             let reaches = match list {
@@ -951,6 +952,13 @@ impl<'a> LoadCheck<'a> {
                         self.require(Capability::Progression, &at)?;
                         if !data.tracks.contains_key(track) {
                             return Err(unknown(NameKind::Track, track));
+                        }
+                    }
+                    Effecting::Purge { tag } => {
+                        self.require(Capability::Stats, &at)?;
+                        own_tags(slice::from_ref(tag), &at)?;
+                        if !self.tags.contains(tag.as_str()) {
+                            return Err(unknown(NameKind::Tag, tag));
                         }
                     }
                 }

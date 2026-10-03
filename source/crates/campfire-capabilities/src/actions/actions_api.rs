@@ -4,9 +4,11 @@ use campfire_sim::Capability;
 
 use crate::actions::action_data_field::ActionDataField;
 use crate::actions::actions_column::ActionsColumn;
+use crate::actions::effect_data::PlannedEffect;
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::script_api::api_owner::ApiOwner;
+use crate::scripts::script_api::data_table::DataTable;
 use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::units::unit::Unit;
 
@@ -34,6 +36,11 @@ impl ActionsApi {
                     .ok_or_else(|| ApiError::NoAttack.fail().into())
             },
         )
-        .action_fields(ActionDataField::of(None));
+        .action_fields(ActionDataField::of(None))
+        .data(
+            DataTable::Effect,
+            &["damage", "heal", "restore", "modifier", "xp", "purge", "to"],
+            &PlannedEffect::ALL.map(PlannedEffect::name),
+        );
     }
 }

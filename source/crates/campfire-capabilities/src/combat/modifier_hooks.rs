@@ -11,11 +11,10 @@ use crate::combat::damage::Damage;
 use crate::combat::damage_handle::DamageHandle;
 use crate::scripts::call_start::CallStart;
 use crate::scripts::ctx::Ctx;
-use crate::scripts::error::{ApiError, CallError};
+use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
-use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::instance::Instance;
 use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_clocks::ModifierClocks;
@@ -197,17 +196,13 @@ impl ModifierHooks {
             .expect("a modifier whose script defines a hook has one");
         let (ability, rank, package) = (instance.ability, instance.rank, entry.package);
         let pool = ModifierHooks::pool(world, heard.source);
-        let begun = if depth >= ScriptLimits::CHAIN_DEPTH {
-            Err(CallError::Api(ApiError::ChainTooDeep))
-        } else {
-            let start = CallStart {
-                acting: heard.source,
-                action: ability,
-                rank,
-                ..CallStart::hook(heard.id, package, depth)
-            };
-            self.ctx.frame().begin(world, start)
+        let start = CallStart {
+            acting: heard.source,
+            action: ability,
+            rank,
+            ..CallStart::hook(heard.id, package, depth)
         };
+        let begun = self.ctx.frame().begin(world, start);
         if let Err(error) = begun {
             batch.record(Some(carrier), hook, error);
             return;

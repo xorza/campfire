@@ -130,7 +130,7 @@ fn a_mode_state_field_is_sent_to_no_client_unless_it_says() {
 }
 
 #[test]
-fn an_effect_to_the_source_reads_and_any_other_to_does_not() {
+fn an_effect_to_the_source_reads_and_any_other_to_does_not_and_a_purge_reads_its_tag() {
     // Rime's Fan of Frost's hits also heal its caster by 1: the list reads it after the slow.
     let to_source = Edit::Replace(
         SLOWS,
@@ -153,6 +153,24 @@ fn an_effect_to_the_source_reads_and_any_other_to_does_not() {
         rime.content.actions["fan_of_frost"].on_hit.last(),
         Some(&heal)
     );
+    // A purge names a tag the match declares, which Rime's slow grants.
+    let purge = Edit::Replace(SLOWS, r#"{ purge = { tag = "slowed" } },"#);
+    let packages = ModePackages::from_package_dir(&edited([(RIME, purge)])).unwrap();
+    let rime = packages
+        .dependencies()
+        .iter()
+        .find(|dependent| dependent.package.header.name == "hero-rime")
+        .unwrap();
+    let purge = Effecting::Purge {
+        tag: DeclaredName::new("slowed").unwrap(),
+    };
+    assert_eq!(
+        rime.content.actions["fan_of_frost"]
+            .on_hit
+            .last()
+            .map(|effect| &effect.does),
+        Some(&purge)
+    );
     // `to` names the source alone.
     let to_target = Edit::Replace(SLOWS, r#"{ heal = { amount = 1 }, to = "target" },"#);
     let error = ModePackages::from_package_dir(&edited([(RIME, to_target)])).unwrap_err();
@@ -160,6 +178,32 @@ fn an_effect_to_the_source_reads_and_any_other_to_does_not() {
         read_fails(&error.problem, "data/avatar.toml", "unknown variant"),
         "{error}"
     );
+}
+
+/// The end of the melee creep's weapon, which delivers at once.
+const MELEE_END: &str = "damage_kind = \"physical\"\n\n[actions.caster_creep_attack]";
+
+/// The melee creep's weapon's end with a list `list` of one true damage of its `bite` param, half
+/// its attack damage plus 5.
+fn biting(list: &str) -> String {
+    format!(
+        "damage_kind = \"physical\"\n{list} = [{{ damage = {{ amount = {{ param = \"bite\" }}, kind = \"true\" }} }}]\n\n[actions.melee_creep_attack.params]\nbite = {{ base = 5, attack_damage = \"0.5\" }}\n\n[actions.caster_creep_attack]"
+    )
+}
+
+#[test]
+fn a_weapon_takes_params_and_an_on_hit_list_and_refuses_an_on_end_list() {
+    // A weapon's `on_hit` follows its attack, which reaches its target at once with no delivery.
+    let on_hit = biting("on_hit");
+    let edit = Edit::Replace(MELEE_END, &on_hit);
+    let packages = ModePackages::from_package_dir(&edited([(MODE_DATA, edit)])).unwrap();
+    let weapon = &packages.content().actions["melee_creep_attack"];
+    assert_eq!((weapon.on_hit.len(), weapon.params.len()), (1, 1));
+    let on_end = biting("on_end");
+    let edit = Edit::Replace(MELEE_END, &on_end);
+    let error = ModePackages::from_package_dir(&edited([(MODE_DATA, edit)])).unwrap_err();
+    let refused = |problem: &LoadProblem| matches!(problem, LoadProblem::KindField { action, field: ActionDataField::OnEnd } if action == "melee_creep_attack");
+    assert!(refused(&error.problem), "{error}");
 }
 
 /// The 3v3 as its packages hold it.
@@ -293,7 +337,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-static FLAWS: [Flaw; 209] = [
+static FLAWS: [Flaw; 211] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -573,9 +617,21 @@ static FLAWS: [Flaw; 209] = [
     ),
     flaw(
         RIME,
-        Edit::Replace(SLOWS, r#"{ purge = { tag = "slowed" } },"#),
+        Edit::Replace(SLOWS, r#"{ spawn = { unit_type = "frost_arrow" } },"#),
         "hero-rime",
-        |problem| matches!(problem, LoadProblem::Effect { action, list: Hook::OnHit, problem: EffectProblem::Planned(PlannedEffect::Purge) } if action == "fan_of_frost"),
+        |problem| matches!(problem, LoadProblem::Effect { action, list: Hook::OnHit, problem: EffectProblem::Planned(PlannedEffect::Spawn) } if action == "fan_of_frost"),
+    ),
+    flaw(
+        RIME,
+        Edit::Replace(SLOWS, r#"{ purge = { tag = "frozen" } },"#),
+        "hero-rime",
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Tag, at: Place::Action(action), name } if action == "fan_of_frost" && name == "frozen"),
+    ),
+    flaw(
+        RIME,
+        Edit::Replace(SLOWS, r#"{ purge = { tag = "avatar" } },"#),
+        "hero-rime",
+        |problem| matches!(problem, LoadProblem::EngineTag { at: Place::Action(action), tag: EngineTag::Avatar } if action == "fan_of_frost"),
     ),
     flaw(
         RIME,

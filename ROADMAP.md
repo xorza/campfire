@@ -15,7 +15,7 @@ Done when the playtest finds that the 1v1 reads and plays well.
 
 ### 4. Game model
 
-- The model in code ([The model](docs/design/04-capabilities/00-overview.md#the-model)): effect lists in the core; a weapon's `on_hit` effects and params; the `purge` and `launch` effects; a projectile's `hits = "none"` and a delivery's sight.
+- The model in code ([The model](docs/design/04-capabilities/00-overview.md#the-model)): the `launch` effect; a projectile's `hits = "none"` and a delivery's sight.
 - The reference packages rewritten to each as it lands.
 
 Done when the 3v3 match plays as before on the model, with no failed call of its mode, creep, tower or camp scripts, every reference package loads on its API version with its text in `en.ftl`, and every log verifies.

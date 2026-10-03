@@ -5,7 +5,6 @@ use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
 use crate::scripts::hook::Hook;
 use crate::scripts::role_set::RoleSet;
-use crate::scripts::script_api::data_table::DataTable;
 use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::scripts::script_api::status::Status;
 use crate::units::block::Block;
@@ -54,11 +53,6 @@ impl AbilitiesApi {
         .hook(Hook::OnResolve, Status::Runs(ApiVersion::FIRST))
         .hook(Hook::OnChannelTick, Status::Planned)
         .hook(Hook::OnInterrupt, Status::Planned)
-        .action_fields(ActionDataField::of(Some(Capability::Abilities)))
-        .data(
-            DataTable::Effect,
-            &["damage", "heal", "restore", "modifier", "xp", "to"],
-            &["purge", "spawn", "launch", "move", "loot", "noise"],
-        );
+        .action_fields(ActionDataField::of(Some(Capability::Abilities)));
     }
 }

@@ -35,6 +35,7 @@ use crate::units::dead::Dead;
 use crate::units::modifier_id::ModifierId;
 use crate::units::row_fill::RowFill;
 use crate::units::script_view::View;
+use crate::units::tag::Tag;
 
 pub(crate) mod application;
 pub(crate) mod applier;
@@ -181,6 +182,22 @@ impl Stats {
                 id,
                 source,
             } => Stats::remove_modifier(world, carrier, id, source),
+            ModifierEffect::Purge { carrier, tag } => Stats::purge(world, carrier, tag),
+        }
+    }
+
+    /// Ends the applications of the modifiers `carrier` holds that grant `tag`: an instance no
+    /// hold keeps ends, and one a passive, an aura, an area or a player holds stays, as its holder
+    /// would apply it again.
+    fn purge(world: &mut World, carrier: StableId, tag: Tag) {
+        let Some(entity) = world.resource::<EntityIndex>().get(carrier) else {
+            return;
+        };
+        let Some(book) = world.get_resource::<ModifierBook>().cloned() else {
+            return;
+        };
+        if let Some(mut carried) = CarriedMut::of(world, entity) {
+            carried.purge(|id| book.tags(id).contains(tag));
         }
     }
 

@@ -25,7 +25,6 @@ use crate::stats::stats_data::{StatValue, StatsData};
 use crate::units::Units;
 use crate::units::block::Block;
 use crate::units::body::Body;
-use crate::units::tag::Tag;
 use crate::units::tag_book::TagBook;
 use crate::units::tag_effects::TagEffects;
 use crate::units::tag_set::TagSet;

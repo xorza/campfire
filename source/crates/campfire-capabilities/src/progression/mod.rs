@@ -2,8 +2,9 @@ use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::query::ROQueryItem;
 use bevy_ecs::schedule::Schedule;
 use bevy_ecs::world::{Mut, World};
-use campfire_sim::{EntityIndex, StateRegistry};
+use campfire_sim::{Capability, EntityIndex, StateRegistry};
 
+use crate::actions::effect_queues::EffectQueues;
 use crate::progression::experience::Experience;
 use crate::progression::level_ups::{LevelUp, LevelUps};
 use crate::progression::progression_effect::ProgressionEffect;
@@ -36,6 +37,9 @@ impl Progression {
         view.add_source::<RowParts>(world, fill_row);
         world.insert_resource(TrackBook::default());
         world.insert_resource(LevelUps::default());
+        world
+            .resource_mut::<EffectQueues>()
+            .register(Capability::Progression, ProgressionEffect::queue_listed);
         registry.register_component::<Experience>();
         registry.register_resource::<LevelUps>();
     }

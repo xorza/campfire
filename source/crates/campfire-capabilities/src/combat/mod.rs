@@ -6,18 +6,21 @@ use bevy_ecs::world::{Mut, World};
 use campfire_common::Tick;
 use campfire_math::RngStream;
 use campfire_sim::{
-    Keyed, Ordered, Position, SimRng, SimSet, SimTick, StableId, StateRegistry, TickRate,
+    Capability, Keyed, Ordered, Position, SimRng, SimSet, SimTick, StableId, StateRegistry,
+    TickRate,
 };
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::{ActionSlots, InProgress, SlotAim};
 use crate::actions::action_target::ActionTarget;
+use crate::actions::effect_queues::EffectQueues;
 use crate::actions::purse::{Payer, Purse};
 use crate::actions::rank_values::RankValues;
 use crate::actions::targets::Targets;
 use crate::actions::weapon::Weapon;
 use crate::actions::{Actions, ActionsSet};
 use crate::combat::combat_column::CombatColumn;
+use crate::combat::combat_effect::CombatEffect;
 use crate::combat::combat_event::CombatEvent;
 use crate::combat::combat_events::CombatEvents;
 use crate::combat::damage::{Damage, DamageCause};
@@ -128,6 +131,9 @@ impl Combat {
         world.insert_resource(PassQueue::default());
         world.insert_resource(Shots::default());
         world.insert_resource(Deaths::default());
+        world
+            .resource_mut::<EffectQueues>()
+            .register(Capability::Combat, CombatEffect::queue_listed);
         if let Some(ctx) = world.get_non_send::<Ctx>().cloned() {
             let hooks = ModifierHooks::new(ctx);
             world.insert_non_send(CombatEvents::new(move |batch, event| {
@@ -189,6 +195,7 @@ impl Combat {
         Wielded {
             slot: underway.slot(),
             action: slot.action,
+            rank: slot.rank,
             weapon: action
                 .kind
                 .weapon()
@@ -324,8 +331,9 @@ type Attacker<'a> = (
 #[derive(Debug, Clone, Copy)]
 struct Wielded<'a> {
     slot: u8,
-    /// The weapon's action, which its damage names.
+    /// The weapon's action, which its damage names, and the rank of its slot.
     action: ActionId,
+    rank: u8,
     weapon: Weapon,
     values: RankValues,
     resource_cost: &'a [ResourceAmount],
@@ -522,6 +530,7 @@ fn strike(
         }
         let Wielded {
             action,
+            rank,
             weapon,
             values,
             resource_cost,
@@ -548,6 +557,7 @@ fn strike(
                 target,
                 unit_type,
                 action,
+                rank,
                 amount,
                 kind: weapon.kind,
                 roll,
@@ -557,7 +567,7 @@ fn strike(
                 target,
                 amount,
                 kind: weapon.kind,
-                cause: DamageCause::Attack { roll },
+                cause: DamageCause::Attack { roll, rank },
                 ability: Some(action),
                 depth: 0,
                 hit: None,

@@ -75,6 +75,17 @@ impl<'w> CarriedMut<'w> {
         }
     }
 
+    /// See `Modifiers::purge`.
+    pub(crate) fn purge(&mut self, grants: impl Fn(ModifierId) -> bool) {
+        let Parts { modifiers, clocks } = self.parts();
+        if modifiers.purge(clocks, grants) {
+            self.mark(Touched {
+                stats: true,
+                clocks: true,
+            });
+        }
+    }
+
     /// See `Modifiers::expire`.
     pub(crate) fn expire(&mut self, now: Tick) {
         let Parts { modifiers, clocks } = self.parts();

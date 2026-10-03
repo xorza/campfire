@@ -323,6 +323,25 @@ impl Modifiers {
         changed
     }
 
+    /// Ends the applications of the instances whose modifier `grants` says grants a purged tag,
+    /// with their clocks: each ends unless a hold keeps it. Whether it changed any.
+    pub(crate) fn purge(
+        &mut self,
+        clocks: &mut ModifierClocks,
+        grants: impl Fn(ModifierId) -> bool,
+    ) -> bool {
+        let mut changed = false;
+        self.remove_where(clocks, |instance| {
+            if !grants(instance.id) || instance.lifetime.applied.is_none() {
+                return false;
+            }
+            changed = true;
+            instance.lifetime.applied = None;
+            instance.lifetime.holds.is_empty()
+        });
+        changed
+    }
+
     /// Removes, with their clocks, the instances `ends` says end, which it may change.
     fn remove_where(
         &mut self,

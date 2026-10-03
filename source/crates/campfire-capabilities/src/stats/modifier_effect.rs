@@ -7,6 +7,7 @@ use crate::scripts::frame::Frame;
 use crate::stats::Stats;
 use crate::stats::applier::Applier;
 use crate::units::modifier_id::ModifierId;
+use crate::units::tag::Tag;
 
 /// A change to a unit's modifiers that a call queued.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -25,6 +26,9 @@ pub(crate) enum ModifierEffect {
         id: ModifierId,
         source: Option<StableId>,
     },
+    /// The end of the applications of `carrier`'s modifiers that grant `tag`, whatever their
+    /// source; an instance a hold keeps stays.
+    Purge { carrier: StableId, tag: Tag },
 }
 
 /// From the call's acting unit, by its action at its rank.

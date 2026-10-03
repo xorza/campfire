@@ -22,11 +22,12 @@ pub(crate) struct Damage {
 }
 
 /// What dealt a damage: an attack, with the roll it drew as its windup ended; an extra attack,
-/// from `ctx.attack_hit`, which draws none; or an ability's or modifier's effect.
+/// from `ctx.attack_hit`, which draws none; or an ability's or modifier's effect. An attack names
+/// the rank of its weapon's slot, at which the weapon's `on_hit` list reads its params.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DamageCause {
-    Attack { roll: Num },
-    ExtraAttack,
+    Attack { roll: Num, rank: u8 },
+    ExtraAttack { rank: u8 },
     Effect,
 }
 
@@ -34,14 +35,23 @@ impl DamageCause {
     /// Whether an attack dealt it, an extra one included: `leech` heals by its `attack` stat
     /// from it, by its `other` stat from the rest.
     pub(crate) const fn attack(self) -> bool {
-        matches!(self, DamageCause::Attack { .. } | DamageCause::ExtraAttack)
+        self.weapon_rank().is_some()
     }
 
     /// The roll of an attack, at least 0 and less than 1; `None` for any other cause.
     pub(crate) const fn roll(self) -> Option<Num> {
         match self {
-            DamageCause::Attack { roll } => Some(roll),
-            DamageCause::ExtraAttack | DamageCause::Effect => None,
+            DamageCause::Attack { roll, .. } => Some(roll),
+            DamageCause::ExtraAttack { .. } | DamageCause::Effect => None,
+        }
+    }
+
+    /// The rank of the weapon an attack dealt it with, an extra one included; `None` for an
+    /// effect.
+    pub(crate) const fn weapon_rank(self) -> Option<u8> {
+        match self {
+            DamageCause::Attack { rank, .. } | DamageCause::ExtraAttack { rank } => Some(rank),
+            DamageCause::Effect => None,
         }
     }
 }

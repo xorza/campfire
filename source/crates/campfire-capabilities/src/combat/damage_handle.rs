@@ -57,7 +57,7 @@ impl DamageHandle {
             )
             .bind(
                 field("extra", "whether `ctx.attack_hit` dealt it"),
-                |d: &mut DamageHandle| d.damage.cause == DamageCause::ExtraAttack,
+                |d: &mut DamageHandle| matches!(d.damage.cause, DamageCause::ExtraAttack { .. }),
             )
             .bind(
                 field(

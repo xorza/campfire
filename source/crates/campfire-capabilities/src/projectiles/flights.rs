@@ -214,6 +214,7 @@ impl Flights<'_> {
         match projectile.payload() {
             Payload::Attack {
                 action,
+                rank,
                 amount,
                 kind,
                 roll,
@@ -222,7 +223,7 @@ impl Flights<'_> {
                 target,
                 amount,
                 kind,
-                cause: DamageCause::Attack { roll },
+                cause: DamageCause::Attack { roll, rank },
                 ability: Some(action),
                 depth: 0,
                 hit: Some(hit),

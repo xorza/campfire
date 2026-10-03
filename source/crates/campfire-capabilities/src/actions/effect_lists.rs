@@ -1,16 +1,15 @@
 use std::ops::Range;
 
 use bevy_ecs::resource::Resource;
+use bevy_ecs::world::World;
 use campfire_math::Num;
-use campfire_sim::{StableId, TickRate};
+use campfire_sim::{Capability, StableId, TickRate};
 
-use crate::abilities::effect_names::EffectNames;
 use crate::actions::action_data::ActionData;
 use crate::actions::effect_data::{EffectData, EffectTo, Effecting};
-use crate::combat::combat_effect::CombatEffect;
-use crate::progression::progression_effect::ProgressionEffect;
-use crate::progression::tracks_column::TracksColumn;
-use crate::scripts::error::{ApiError, CallError};
+use crate::actions::effect_names::EffectNames;
+use crate::actions::effect_queues::EffectQueues;
+use crate::scripts::error::CallError;
 use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
 use crate::stats::modifier_effect::ModifierEffect;
@@ -19,6 +18,7 @@ use crate::stats::stats_call::StatsCall;
 use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
 use crate::units::script_view::View;
+use crate::units::tag::Tag;
 use crate::units::track_id::TrackId;
 use crate::values::damage_kind::DamageKind;
 use crate::values::number::Number;
@@ -61,6 +61,9 @@ pub(crate) enum Does {
         track: TrackId,
         amount: Amount,
     },
+    Purge {
+        tag: Tag,
+    },
 }
 
 /// A number of a listed effect: a value, or the param at its place among its action's, which the
@@ -98,19 +101,27 @@ impl EffectLists {
         })
     }
 
-    /// Queues `list` in `frame`, a call of its action at its rank: each effect to `reached`, the
-    /// unit the list reached, or to the acting unit; its durations at `rate`. Experience to a
-    /// unit `view` does not hold, or that does not have the track, fails the call, as
-    /// `ctx.add_xp` does.
+    /// Queues the list of `action` that runs before its `hook` in `frame`, a call of the action
+    /// at its rank, which `world` runs: each effect to `reached`, the unit the list reached, or to
+    /// the acting unit. A modifier and a purge queue here, as `stats` is below the action pipeline; every
+    /// other effect queues as its capability registered, which can fail the call, as experience
+    /// to a unit without the track fails `ctx.add_xp`.
     pub(crate) fn queue(
-        list: &[Listed],
+        world: &World,
+        action: ActionId,
+        hook: Hook,
         frame: &mut Frame,
         view: &View,
         reached: Option<StableId>,
-        rate: TickRate,
     ) -> Result<(), CallError> {
+        let list = world.resource::<EffectLists>().of(action, hook);
+        if list.is_empty() {
+            return Ok(());
+        }
+        let rate = *world.resource::<TickRate>();
+        let queues = world.resource::<EffectQueues>();
         let acting = frame.acting();
-        for listed in list {
+        for &listed in list {
             let unit = match listed.to {
                 EffectTo::Reached => {
                     reached.expect("the load lets only an effect to the source reach no unit")
@@ -118,24 +129,6 @@ impl EffectLists {
                 EffectTo::Source => acting.expect("an action's list runs for its acting unit"),
             };
             match listed.does {
-                Does::Damage { amount, kind } => {
-                    let amount = amount.number(frame);
-                    frame.effects.push(CombatEffect::Damage {
-                        target: unit,
-                        amount,
-                        kind,
-                    });
-                }
-                Does::Heal { amount } => {
-                    let amount = amount.number(frame);
-                    frame.effects.push(CombatEffect::Heal { unit, amount });
-                }
-                Does::Restore { pool, amount } => {
-                    let amount = amount.number(frame);
-                    frame
-                        .effects
-                        .push(CombatEffect::Restore { unit, pool, amount });
-                }
                 Does::Modifier { id, duration_ms } => {
                     let duration = duration_ms.map(|ms| {
                         // Whole, as the load checked, so the floor is exact.
@@ -151,20 +144,24 @@ impl EffectLists {
                         duration,
                     });
                 }
-                Does::Xp { track, amount } => {
-                    if !TracksColumn::has(view, unit, track) {
-                        return Err(CallError::Api(ApiError::NoTrack));
-                    }
-                    let amount = amount.number(frame);
-                    frame.effects.push(ProgressionEffect::AddXp {
-                        unit,
-                        track,
-                        amount,
-                    });
-                }
+                Does::Purge { tag } => frame
+                    .effects
+                    .push(ModifierEffect::Purge { carrier: unit, tag }),
+                does => queues.of(does.capability())(does, unit, frame, view)?,
             }
         }
         Ok(())
+    }
+}
+
+impl Does {
+    /// The capability whose effect it is.
+    pub(crate) const fn capability(self) -> Capability {
+        match self {
+            Does::Damage { .. } | Does::Heal { .. } | Does::Restore { .. } => Capability::Combat,
+            Does::Modifier { .. } | Does::Purge { .. } => Capability::Stats,
+            Does::Xp { .. } => Capability::Progression,
+        }
     }
 }
 
@@ -210,6 +207,9 @@ impl Listed {
                     track: names.track(track),
                     amount: amount(number),
                 },
+                Effecting::Purge { tag } => Does::Purge {
+                    tag: names.tag(tag),
+                },
                 Effecting::Planned(_) => unreachable!("the load refuses a planned effect"),
             };
             Listed {
@@ -225,7 +225,7 @@ impl Listed {
 impl Amount {
     /// Its value in `frame`, a call of its action: 0 for a scaling param below zero, which its
     /// source's stats can make it, as the load checks every other number not negative.
-    fn number(self, frame: &Frame) -> Num {
+    pub(crate) fn number(self, frame: &Frame) -> Num {
         match self {
             Amount::Value(value) => value,
             Amount::Param(at) => StatsCall::ability_value(frame, at)
@@ -239,4 +239,88 @@ impl Amount {
 /// A position in the buffer, which a match's data keeps within `u32`.
 fn position(len: usize) -> u32 {
     u32::try_from(len).expect("a match's effects fit u32")
+}
+
+#[cfg(test)]
+pub(crate) mod internals {
+    use crate::actions::action_data::ActionData;
+    use crate::actions::effect_lists::{EffectLists, Listed};
+    use crate::actions::effect_names::EffectNames;
+    use crate::progression::tracks_column::TracksColumn;
+    use crate::stats::Stats;
+    use crate::stats::param_book::ParamBook;
+    use crate::stats::pool_id::PoolId;
+    use crate::stats::stats_column::StatsColumn;
+    use crate::units::action_id::ActionId;
+    use crate::units::modifier_id::ModifierId;
+    use crate::units::script_view::View;
+    use crate::units::tag::Tag;
+    use crate::units::track_id::TrackId;
+    use crate::values::damage_kind::DamageKind;
+    use crate::values::declared_name::DeclaredName;
+    use bevy_ecs::world::World;
+
+    impl EffectLists {
+        /// Loads the effect lists of `action` of `package`, which loaded last from `data`, which
+        /// the package load checked: each name resolved to its id, each param to its place among
+        /// the action's params.
+        pub(crate) fn load(world: &mut World, action: ActionId, package: u16, data: &ActionData) {
+            let view = world.non_send::<View>().clone();
+            let names = MatchEffectNames {
+                world,
+                view: &view,
+                action,
+                package,
+            };
+            let lists = Listed::lists_of(data, &names);
+            world.resource_mut::<EffectLists>().push(action, lists);
+        }
+    }
+
+    /// The names of an action's effect lists as a match's world resolves them: its view, its param
+    /// book, and the modifiers of the action's package.
+    #[derive(Debug)]
+    struct MatchEffectNames<'w> {
+        world: &'w World,
+        view: &'w View,
+        action: ActionId,
+        package: u16,
+    }
+
+    impl EffectNames for MatchEffectNames<'_> {
+        fn param(&self, name: &DeclaredName) -> usize {
+            self.world
+                .resource::<ParamBook>()
+                .actions()
+                .named(self.action.index(), name.as_str())
+                .expect("the load checked an effect's param")
+        }
+
+        fn damage_kind(&self, name: &DeclaredName) -> DamageKind {
+            self.view
+                .damage_kind_named(name.as_str())
+                .expect("the load checked an effect's damage kind")
+        }
+
+        fn pool(&self, name: &DeclaredName) -> PoolId {
+            StatsColumn::pool_id_named(self.view, name.as_str())
+                .expect("the load checked an effect's pool")
+        }
+
+        fn modifier(&self, name: &DeclaredName) -> ModifierId {
+            Stats::modifier(self.world, self.package, name.as_str())
+                .expect("the load checked an effect's modifier")
+        }
+
+        fn track(&self, name: &DeclaredName) -> TrackId {
+            TracksColumn::track_named(self.view, name.as_str())
+                .expect("the load checked an effect's track")
+        }
+
+        fn tag(&self, name: &DeclaredName) -> Tag {
+            self.view
+                .tag_named(name.as_str())
+                .expect("the load checked an effect's tag")
+        }
+    }
 }

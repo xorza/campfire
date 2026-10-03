@@ -7,6 +7,7 @@ use campfire_sim::{EntityIndex, SimTick, StableId};
 
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::ActionSlots;
+use crate::actions::effect_lists::EffectLists;
 use crate::combat::assist_window::AssistWindow;
 use crate::combat::combat_bindings::CombatBindings;
 use crate::combat::combat_effect::CombatEffect;
@@ -20,6 +21,9 @@ use crate::combat::heal_weigher::HealWeigher;
 use crate::combat::pass_queue::{PassEntry, PassQueue};
 use crate::combat::recent_attack::RecentAttack;
 use crate::combat::recent_attackers::RecentAttackers;
+use crate::scripts::call_start::CallStart;
+use crate::scripts::ctx::Ctx;
+
 use crate::scripts::frame::Frame;
 use crate::scripts::hook::Hook;
 use crate::scripts::script_batch::ScriptBatch;
@@ -51,8 +55,9 @@ enum Landed {
 
 impl DamagePass {
     /// Applies the tick's damage and heals in the queue's order, with the units as the pass began:
-    /// each damage through the mode's `calc_damage` when it has one, then its combat events, whose
-    /// damage joins the end of the queue; each heal through the mode's `calc_heal` when it has one.
+    /// each damage through the mode's `calc_damage` when it has one, then an attack's weapon's
+    /// `on_hit` list, then its combat events, whose damage joins the end of the queue; each heal
+    /// through the mode's `calc_heal` when it has one.
     /// Damage to a unit at zero life, or to an invulnerable one, does nothing, and so does a heal of a
     /// unit at zero life.
     pub(crate) fn run(world: &mut World, mut assisters: Local<'_, Vec<StableId>>) {
@@ -62,6 +67,7 @@ impl DamagePass {
         let weigher = world.remove_non_send::<DamageWeigher>();
         let healer = world.remove_non_send::<HealWeigher>();
         let events = world.remove_non_send::<CombatEvents>();
+        let ctx = world.get_non_send::<Ctx>().cloned();
         if weigher.is_none() && healer.is_none() && events.is_none() {
             let mut at = 0;
             while let Some(entry) = world.resource::<PassQueue>().get(at) {
@@ -105,6 +111,11 @@ impl DamagePass {
                         })
                     });
                     let landed = DamagePass::deal(batch.world(), damage, amount, now);
+                    if landed != Landed::Nothing
+                        && let Some(ctx) = &ctx
+                    {
+                        DamagePass::run_weapon_list(batch, ctx, damage, now);
+                    }
                     if let Some(events) = &events {
                         let dealt = Damage {
                             amount: amount.max(Num::ZERO),
@@ -142,6 +153,49 @@ impl DamagePass {
     fn damageable(world: &World, unit: StableId) -> Option<Entity> {
         DamagePass::living(world, unit)
             .filter(|&entity| !UnitTags::effects_of(world.get(entity)).blocks(Block::Damage))
+    }
+
+    /// Runs the `on_hit` list of the weapon of `damage`, an attack's that reached its target, in
+    /// one call: to the target, from the attacker, at the weapon's rank, with the attack's hit, one
+    /// link down the chain of combat events, as a hook its events cause runs; its effects apply as
+    /// a hook's do. A call at `ScriptLimits::CHAIN_DEPTH`, or one that fails, applies nothing and
+    /// is recorded. Any other damage has no list.
+    fn run_weapon_list(batch: &mut ScriptBatch<'_>, ctx: &Ctx, damage: Damage, now: Tick) {
+        let (Some(rank), Some(weapon)) = (damage.cause.weapon_rank(), damage.ability) else {
+            return;
+        };
+        let world = batch.world();
+        if world
+            .resource::<EffectLists>()
+            .of(weapon, Hook::OnHit)
+            .is_empty()
+        {
+            return;
+        }
+        let source = damage
+            .source
+            .expect("an attack of a weapon names its attacker");
+        let package = world
+            .resource::<ActionBook>()
+            .get(weapon)
+            .expect("a weapon is in the book")
+            .package;
+        let start = CallStart {
+            depth: damage.depth.saturating_add(1),
+            hit: damage.hit,
+            ..CallStart::cast(weapon, rank, source, package)
+        };
+        let queued = {
+            let mut frame = ctx.frame();
+            frame.begin(world, start).and_then(|()| {
+                let target = Some(damage.target);
+                EffectLists::queue(world, weapon, Hook::OnHit, &mut frame, ctx.view(), target)
+            })
+        };
+        match queued {
+            Ok(()) => ctx.apply(batch.world(), now),
+            Err(error) => batch.record(Some(source), Hook::OnHit, error),
+        }
     }
 
     /// Runs the events of `damage`, which `landed`, its amount after `calc_damage`: an attack's
@@ -313,19 +367,19 @@ impl DamagePass {
                 let first = unit.get::<ActionSlots>().and_then(|slots| {
                     let slot = slots.slot(book.weapon_for(slots, None)?)?;
                     let weapon = book.get(slot.action)?.kind.weapon()?;
-                    Some((slot.action, weapon))
+                    Some((slot, weapon))
                 });
-                let Some((action, weapon)) = first else {
+                let Some((slot, weapon)) = first else {
                     return;
                 };
                 let stats = unit.get::<UnitStats>().map_or(&[][..], UnitStats::values);
                 let hit = Damage {
-                    ability: Some(action),
+                    ability: Some(slot.action),
                     ..damage(
                         target,
                         weapon.damage(stats),
                         weapon.kind,
-                        DamageCause::ExtraAttack,
+                        DamageCause::ExtraAttack { rank: slot.rank },
                     )
                 };
                 world.resource_mut::<PassQueue>().push_damage(hit);

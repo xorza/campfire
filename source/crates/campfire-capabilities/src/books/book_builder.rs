@@ -2,12 +2,12 @@ use std::collections::BTreeMap;
 
 use campfire_script::ScriptId;
 
-use crate::abilities::effect_lists::Listed;
-use crate::abilities::effect_names::EffectNames;
 use crate::actions::action_data::ActionData;
 use crate::actions::action_names::ActionNames;
 use crate::actions::action_parts::ActionParts;
 use crate::actions::cost_target::CostTarget;
+use crate::actions::effect_lists::Listed;
+use crate::actions::effect_names::EffectNames;
 use crate::areas::area_spec::AreaSpec;
 use crate::books::book_input::{BookInput, BookKind, BookPackage};
 use crate::books::error::BookError;
@@ -32,6 +32,7 @@ use crate::units::action_id::ActionId;
 use crate::units::engine_tag::EngineTag;
 use crate::units::filter::Filter;
 use crate::units::modifier_id::ModifierId;
+use crate::units::tag::Tag;
 use crate::units::track_id::TrackId;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_type::UnitType;
@@ -552,5 +553,9 @@ impl EffectNames for BuildNames<'_> {
         self.tracks
             .and_then(|tracks| tracks.named(name.as_str()))
             .expect(CHECKED)
+    }
+
+    fn tag(&self, name: &DeclaredName) -> Tag {
+        self.types.tag_named(name.as_str()).expect(CHECKED)
     }
 }

@@ -29,6 +29,8 @@ pub enum Effecting {
     },
     /// `xp = { track, amount }`.
     Xp { track: DeclaredName, amount: Number },
+    /// `purge = { tag }`, of the modifiers that grant the tag.
+    Purge { tag: DeclaredName },
     /// An effect the design names that the release does not run yet; the load refuses it.
     Planned(PlannedEffect),
 }
@@ -36,7 +38,6 @@ pub enum Effecting {
 /// The effects the design names that the release does not run yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlannedEffect {
-    Purge,
     Spawn,
     Launch,
     Move,
@@ -94,6 +95,12 @@ struct XpFields {
     amount: Number,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct PurgeFields {
+    tag: DeclaredName,
+}
+
 impl Effecting {
     /// The numbers it gives: its amount, and a modifier's duration.
     pub fn numbers(&self) -> impl Iterator<Item = &Number> + '_ {
@@ -103,7 +110,7 @@ impl Effecting {
             | Effecting::Restore { amount, .. }
             | Effecting::Xp { amount, .. } => (Some(amount), None),
             Effecting::Modifier { duration_ms, .. } => (None, duration_ms.as_ref()),
-            Effecting::Planned(_) => (None, None),
+            Effecting::Purge { .. } | Effecting::Planned(_) => (None, None),
         };
         amount.into_iter().chain(duration)
     }
@@ -118,10 +125,17 @@ impl Effecting {
 }
 
 impl PlannedEffect {
+    pub const ALL: [PlannedEffect; 5] = [
+        PlannedEffect::Spawn,
+        PlannedEffect::Launch,
+        PlannedEffect::Move,
+        PlannedEffect::Loot,
+        PlannedEffect::Noise,
+    ];
+
     /// The effect's key in data.
     pub const fn name(self) -> &'static str {
         match self {
-            PlannedEffect::Purge => "purge",
             PlannedEffect::Spawn => "spawn",
             PlannedEffect::Launch => "launch",
             PlannedEffect::Move => "move",
@@ -142,7 +156,7 @@ impl<'de> Deserialize<'de> for EffectData {
             restore: Option<RestoreFields>,
             modifier: Option<ModifierFields>,
             xp: Option<XpFields>,
-            purge: Option<IgnoredAny>,
+            purge: Option<PurgeFields>,
             spawn: Option<IgnoredAny>,
             launch: Option<IgnoredAny>,
             #[serde(rename = "move")]
@@ -153,7 +167,6 @@ impl<'de> Deserialize<'de> for EffectData {
         }
         let fields = Fields::deserialize(deserializer)?;
         let planned = [
-            (fields.purge.is_some(), PlannedEffect::Purge),
             (fields.spawn.is_some(), PlannedEffect::Spawn),
             (fields.launch.is_some(), PlannedEffect::Launch),
             (fields.moves.is_some(), PlannedEffect::Move),
@@ -179,7 +192,10 @@ impl<'de> Deserialize<'de> for EffectData {
         let xp = fields
             .xp
             .map(|XpFields { track, amount }| Effecting::Xp { track, amount });
-        let mut effects = [damage, heal, restore, modifier, xp]
+        let purge = fields
+            .purge
+            .map(|PurgeFields { tag }| Effecting::Purge { tag });
+        let mut effects = [damage, heal, restore, modifier, xp, purge]
             .into_iter()
             .flatten()
             .chain(planned);

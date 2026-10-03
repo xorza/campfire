@@ -30,13 +30,14 @@ pub(crate) struct Launch {
     pub(crate) payload: LaunchPayload,
 }
 
-/// What a launch carries: an attack's damage of `kind` and the roll it drew, or the action at
-/// `rank` whose hooks it runs, of the cast numbered `cast` this tick, whose group is the first
-/// projectile of the cast, known once that one spawns.
+/// What a launch carries: an attack's damage of `kind`, the rank of its weapon's slot and the
+/// roll it drew, or the action at `rank` whose hooks it runs, of the cast numbered `cast` this
+/// tick, whose group is the first projectile of the cast, known once that one spawns.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum LaunchPayload {
     Attack {
         action: ActionId,
+        rank: u8,
         amount: Num,
         kind: DamageKind,
         roll: Num,

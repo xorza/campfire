@@ -310,6 +310,10 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `windup_ms` | since 1.0 |
 | `passive_modifier` | since 1.0 |
 | `passive_while_ready` | since 1.0 |
+| `params` | since 1.0 |
+| `on_resolve` | since 1.0 |
+| `on_hit` | since 1.0 |
+| `on_end` | since 1.0 |
 | `rate` | since 1.0 |
 | `damage` | since 1.0 |
 | `damage_kind` | since 1.0 |
@@ -322,10 +326,6 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `hold` | planned |
 | `charges` | planned |
 | `charge` | planned |
-| `params` | since 1.0 |
-| `on_resolve` | since 1.0 |
-| `on_hit` | since 1.0 |
-| `on_end` | since 1.0 |
 | `unit_type` | since 1.0 |
 
 ### An effect of an action's `on_resolve`, `on_hit` or `on_end`
@@ -337,8 +337,8 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `restore` | since 1.0 |
 | `modifier` | since 1.0 |
 | `xp` | since 1.0 |
+| `purge` | since 1.0 |
 | `to` | since 1.0 |
-| `purge` | planned |
 | `spawn` | planned |
 | `launch` | planned |
 | `move` | planned |

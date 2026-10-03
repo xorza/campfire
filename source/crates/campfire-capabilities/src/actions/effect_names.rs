@@ -1,5 +1,6 @@
 use crate::stats::pool_id::PoolId;
 use crate::units::modifier_id::ModifierId;
+use crate::units::tag::Tag;
 use crate::units::track_id::TrackId;
 use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
@@ -14,4 +15,5 @@ pub(crate) trait EffectNames {
     /// The modifier `name` of the action's package.
     fn modifier(&self, name: &DeclaredName) -> ModifierId;
     fn track(&self, name: &DeclaredName) -> TrackId;
+    fn tag(&self, name: &DeclaredName) -> Tag;
 }

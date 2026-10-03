@@ -7,7 +7,8 @@ use crate::players::player_resources::PlayerResources;
 use crate::scripts::call_part::{CallPart, CallParts};
 use crate::scripts::call_start::CallStart;
 use crate::scripts::effects::Effects;
-use crate::scripts::error::CallError;
+use crate::scripts::error::{ApiError, CallError};
+use crate::scripts::script_limits::ScriptLimits;
 use crate::scripts::script_role::ScriptRole;
 use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
@@ -134,8 +135,12 @@ impl Frame {
     }
 
     /// Starts the call `start` in `world`, every part readied for it; a part that fails to ready,
-    /// as a param that overflows at the call's rank, fails the call.
+    /// as a param that overflows at the call's rank, fails the call, and so does one at
+    /// `ScriptLimits::CHAIN_DEPTH` of a chain of combat events, which the pass must end.
     pub(crate) fn begin(&mut self, world: &World, start: CallStart) -> Result<(), CallError> {
+        if start.depth >= ScriptLimits::CHAIN_DEPTH {
+            return Err(CallError::Api(ApiError::ChainTooDeep));
+        }
         self.read_resources(world);
         self.ids.clone_from(world.resource::<IdAllocator>());
         self.ids_taken = false;

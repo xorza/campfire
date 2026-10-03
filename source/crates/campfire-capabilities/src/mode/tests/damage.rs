@@ -27,8 +27,12 @@ fn the_3v3s_calc_damage_weighs_each_hit_exactly() {
     game.tick(&[]);
     let crit = DamageCause::Attack {
         roll: Num::from_bits((1 << Num::FRAC_BITS) / 4 - 1),
+        rank: 1,
     };
-    let attack = DamageCause::Attack { roll: Num::ONE / 4 };
+    let attack = DamageCause::Attack {
+        roll: Num::ONE / 4,
+        rank: 1,
+    };
     // 100 physical, its roll of 0.25 no crit, 150 dealt: armor 120 × (1 − 0.5) − 10 = 50, 150 ×
     // 100 ÷ 150 = 100, less the block of 5: 95.
     game.damage(Some(source), armored, 100, "physical", attack);
@@ -42,7 +46,10 @@ fn the_3v3s_calc_damage_weighs_each_hit_exactly() {
     game.damage(Some(source), exposed, 100, "true", DamageCause::Effect);
     // An attack of 100 physical from no source, its roll 0: no bonus and no crit chance, 100 ×
     // 1.5 = 150.
-    let lowest = DamageCause::Attack { roll: Num::ZERO };
+    let lowest = DamageCause::Attack {
+        roll: Num::ZERO,
+        rank: 1,
+    };
     game.damage(None, exposed, 100, "physical", lowest);
     game.tick(&[]);
     assert!(game.failures().is_empty());

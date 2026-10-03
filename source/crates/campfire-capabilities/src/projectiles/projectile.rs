@@ -40,14 +40,15 @@ pub(crate) enum Flight {
     },
 }
 
-/// What a projectile carries: an attack's damage of `kind` and the roll it drew, or the action
-/// at `rank` whose `on_hit` and `on_end` it runs, with the projectiles of its cast in `group`,
-/// named by the first of them.
+/// What a projectile carries: an attack's damage of `kind`, the rank of its weapon's slot and the
+/// roll it drew, or the action at `rank` whose `on_hit` and `on_end` it runs, with the projectiles
+/// of its cast in `group`, named by the first of them.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum Payload {
     Attack {
         /// The weapon's action, which its damage names.
         action: ActionId,
+        rank: u8,
         amount: Num,
         kind: DamageKind,
         roll: Num,
@@ -118,8 +119,11 @@ impl SimComponent for Projectile {
             .is_some_and(|(&unit_type, specs)| specs.get(unit_type).is_some());
         let book = world.get_resource::<ActionBook>();
         let carries = match self.payload {
-            Payload::Attack { action, kind, .. } => {
-                book.and_then(|book| book.get(action)).is_some()
+            Payload::Attack {
+                action, rank, kind, ..
+            } => {
+                book.and_then(|book| book.get(action))
+                    .is_some_and(|action| action.has_rank(rank))
                     && world
                         .get_non_send::<View>()
                         .is_none_or(|view| view.has_damage_kind(kind))

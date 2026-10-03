@@ -158,15 +158,10 @@ impl ActionDataField {
                 true,
                 [Refuses, Refuses, Needs],
             ),
-            ActionDataField::Params => ("params", Some(Abilities), true, [Takes, Refuses, Refuses]),
-            ActionDataField::OnResolve => (
-                "on_resolve",
-                Some(Abilities),
-                true,
-                [Takes, Refuses, Refuses],
-            ),
-            ActionDataField::OnHit => ("on_hit", Some(Abilities), true, [Takes, Refuses, Refuses]),
-            ActionDataField::OnEnd => ("on_end", Some(Abilities), true, [Takes, Refuses, Refuses]),
+            ActionDataField::Params => ("params", None, true, [Takes, Takes, Refuses]),
+            ActionDataField::OnResolve => ("on_resolve", None, true, [Takes, Refuses, Refuses]),
+            ActionDataField::OnHit => ("on_hit", None, true, [Takes, Takes, Refuses]),
+            ActionDataField::OnEnd => ("on_end", None, true, [Takes, Refuses, Refuses]),
         };
         FieldRule {
             name,

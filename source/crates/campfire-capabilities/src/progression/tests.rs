@@ -1,5 +1,5 @@
 use campfire_math::Num;
-use campfire_sim::{Capability, Position};
+use campfire_sim::Position;
 use serde::Serialize;
 
 use crate::capability_set::test_match::TestMatch;

@@ -293,6 +293,7 @@ fn take_shots(mut shots: ResMut<'_, Shots>, mut launches: ResMut<'_, Launches>) 
             },
             payload: LaunchPayload::Attack {
                 action: shot.action,
+                rank: shot.rank,
                 amount: shot.amount,
                 kind: shot.kind,
                 roll: shot.roll,
@@ -336,11 +337,13 @@ fn launch(mut spawner: DeliverySpawner<'_, '_>, mut launches: ResMut<'_, Launche
                 }
                 LaunchPayload::Attack {
                     action,
+                    rank,
                     amount,
                     kind,
                     roll,
                 } => Payload::Attack {
                     action,
+                    rank,
                     amount,
                     kind,
                     roll,

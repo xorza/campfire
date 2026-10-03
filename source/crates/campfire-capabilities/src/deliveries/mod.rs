@@ -4,10 +4,10 @@ use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::Local;
 use bevy_ecs::world::World;
 use campfire_script::rhai::Dynamic;
-use campfire_sim::{EntityIndex, SimSet, SimTick, TickRate};
+use campfire_sim::{EntityIndex, SimSet, SimTick};
 
-use crate::abilities::effect_lists::EffectLists;
 use crate::actions::action_book::ActionBook;
+use crate::actions::effect_lists::EffectLists;
 use crate::combat::CombatSet;
 use crate::deliveries::delivered::{Delivered, Reach};
 use crate::scripts::call_start::CallStart;
@@ -104,9 +104,8 @@ fn run_hooks(world: &mut World, due: &[Delivered]) {
                 .expect("a delivery's action is in the book");
             let script = action.hook(hook);
             let package = action.package;
-            let lists = batch.world().get_resource::<EffectLists>();
-            let list = lists.map_or(&[][..], |lists| lists.of(by.action, hook));
-            if script.is_none() && list.is_empty() {
+            let lists = batch.world().resource::<EffectLists>();
+            if script.is_none() && lists.of(by.action, hook).is_empty() {
                 continue;
             }
             let view = ctx.view();
@@ -130,12 +129,14 @@ fn run_hooks(world: &mut World, due: &[Delivered]) {
                 batch.record(Some(by.source), hook, error);
                 continue;
             }
-            let world = batch.world();
-            let list = world
-                .get_resource::<EffectLists>()
-                .map_or(&[][..], |lists| lists.of(by.action, hook));
-            let rate = *world.resource::<TickRate>();
-            let queued = EffectLists::queue(list, &mut ctx.frame(), ctx.view(), reach.unit(), rate);
+            let queued = EffectLists::queue(
+                batch.world(),
+                by.action,
+                hook,
+                &mut ctx.frame(),
+                ctx.view(),
+                reach.unit(),
+            );
             if let Err(error) = queued {
                 batch.record(Some(by.source), hook, error);
                 continue;
