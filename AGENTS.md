@@ -49,3 +49,4 @@ The issue log is `docs/issues/`, one file for each system: each engine module of
 ## Code
 
 - **No data in strings.** A value from a fixed set is an enum, a value with rules is a checked newtype, and an error is an enum of cases. Text from data files, scripts, JSON or the network becomes these types where it enters. Strings stay only for human text and for names the outside format defines.
+- **Match tests** follow [One scripted match for each mode](docs/design/02-engine-core.md#testing-and-diagnostics): a new rule joins the mode's scripted match, not a new run.
