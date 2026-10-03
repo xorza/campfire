@@ -18,6 +18,7 @@ Done when the playtest finds that the 1v1 reads and plays well.
 - Progression: points, the `learn` order and perks ([Progression](docs/design/04-capabilities/progression.md)).
 - Action values and bookkeeping; channels, toggles and `ctx.reveal` ([Actions](docs/design/04-capabilities/actions.md)).
 - Forced movement: dash, knock back, teleport ([Navigation](docs/design/04-capabilities/navigation.md#forced-movement)).
+- The core's planned script names: `ctx.pick` and `ctx.chance` from the secret stream, and the vector operators `*`, `+` and `-` ([Script API reference](docs/design/08-script-api-reference.md)).
 - Terrain in the map: the cells each layer's map blocks, which routes go round and the pathing grid holds, for walls and the jungle ([Navigation](docs/design/04-capabilities/navigation.md#data)); brush that blocks sight from outside it ([Vision](docs/design/04-capabilities/vision.md#grid-fog-of-war)).
 - The package load refuses a planned name, once no reference package uses one: design 08 accepts a planned name at load, so a script that uses one loads and fails at each call, as Rime's Snow Owl does on `ctx.reveal`.
 - Items for the MOBA: inventory, equipment, the shop, item actions and passives ([Items](docs/design/04-capabilities/items.md)).
@@ -44,7 +45,7 @@ Done when both play to their goldens on every OS in CI.
 
 ### 8. Genre proofs: shooter and battle royale
 
-- First cuts: `character` and level geometry, `hitboxes` (rays with lag compensation), item units on the ground, random tables, relevance, teams beyond 63.
+- First cuts: `character` and level geometry, `hitboxes` (rays with lag compensation), `interaction` (the `use` action and its `blocks = ["use"]` tag effect, for planting and defusing the bomb), item units on the ground, random tables, relevance, teams beyond 63.
 - The CS round and the BR zone.
 
 Done when both play to their goldens on every OS in CI.
@@ -109,7 +110,7 @@ Done when an item sells between two players with no one holding the money, and a
 
 ### 16. Shooters
 
-- `character` and `hitboxes` at depth, 64 to 128 Hz, 3D occlusion and smoke.
+- `character` and `hitboxes` at depth, 64 to 128 Hz, 3D occlusion and smoke; projectiles that fall under `gravity`, for grenades and bullet drop ([Hitboxes](docs/design/04-capabilities/hitboxes.md)).
 
 ### 17. RTS
 

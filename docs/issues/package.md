@@ -6,6 +6,8 @@ Design: [Modules](../design/02-engine-core.md#modules), `package`. Rules: [Issue
 
 ## Research
 
+- **Stage 10.** Only an avatar names its human text, its `name`; an action, a loadout's spell, a mode, a team and a choice have no message id, so a client can show none of their names, while the design says each name is a message id ([Human text](../design/03-game-scripting.md#game-package)).
+
 ## Ready
 
 - **Stage 5.** Every name the [script API reference](../design/08-script-api-reference.md) lists as planned loads and does nothing: a call or a field fails when a script uses it, and a hook never runs. Rime's Snow Owl fails on `ctx.reveal` as it ends, and Cinder's Chain Fire on `ctx.pick` as it bounces.
