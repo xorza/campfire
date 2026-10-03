@@ -173,6 +173,37 @@ fn conflicts(add: fn(&mut Schedule)) -> Vec<[String; 2]> {
     }
 }
 
+/// A set inside `SimSet::Act`, for a system to join both.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+struct Inner;
+
+/// The schedule with `Inner` inside `SimSet::Act`, and what `add` adds.
+fn with_inner(add: fn(&mut Schedule)) -> Schedule {
+    let mut schedule = SimUpdate::schedule();
+    schedule.configure_sets(Inner.in_set(SimSet::Act));
+    add(&mut schedule);
+    schedule
+}
+
+/// The set memberships the build reports as redundant, each as the set and its member, or none
+/// when it builds.
+fn redundant_edges(add: fn(&mut Schedule)) -> Vec<[String; 2]> {
+    let mut world = new_world(SEED);
+    let mut schedule = with_inner(add);
+    match schedule.initialize(&mut world) {
+        Ok(_) => Vec::new(),
+        Err(ScheduleBuildError::Elevated(ScheduleBuildWarning::HierarchyRedundancy(error))) => {
+            let graph = schedule.graph();
+            error
+                .0
+                .iter()
+                .map(|(set, member)| [graph.get_node_name(set), graph.get_node_name(member)])
+                .collect()
+        }
+        Err(other) => panic!("unexpected build error: {other}"),
+    }
+}
+
 #[derive(Debug)]
 struct Case {
     name: &'static str,
@@ -228,6 +259,43 @@ fn conflicting_unordered_systems_fail_the_build() {
     ];
     for case in cases {
         assert_eq!(conflicts(case.add), case.expected, "{}", case.name);
+    }
+}
+
+#[test]
+fn redundant_set_membership_fails_the_build() {
+    let cases = [
+        Case {
+            name: "a system in a set and in the step the set is in",
+            add: |s| {
+                s.add_systems(wander.in_set(SimSet::Act).in_set(Inner));
+            },
+            expected: &[["Act", "wander (in sets Act, Inner)"]],
+        },
+        Case {
+            name: "the same system in the set only",
+            add: |s| {
+                s.add_systems(wander.in_set(Inner));
+            },
+            expected: &[],
+        },
+    ];
+    for Case {
+        name,
+        add,
+        expected,
+    } in cases
+    {
+        assert_eq!(redundant_edges(add), expected, "{name}");
+
+        // The build with no sync points keeps the check.
+        let mut world = new_world(SEED);
+        world.add_schedule(with_inner(add));
+        assert_eq!(
+            SimUpdate::build_without_sync_points(&mut world).is_err(),
+            !expected.is_empty(),
+            "{name}: without sync points"
+        );
     }
 }
 

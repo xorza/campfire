@@ -61,6 +61,8 @@ impl SimUpdate {
     /// The schedule with no game systems yet. The tick's random sequences start before
     /// `SimSet::Inputs`; after `SimSet::Vision` the tick advances and its inputs are cleared. Two
     /// systems with conflicting access and no order fail the build, since either order could win.
+    /// A set membership that a longer path already implies fails it too, so the redundant edge
+    /// shows in every test that builds the schedule, not only as a log line of a running match.
     /// It runs on one thread whatever features the build turns on: a tick's systems are too small
     /// to share, and Bevy's parallel executor, which its `multi_threaded` feature turns on
     /// wherever a workspace build enables it, made a 3v3 tick cost 2.5 times as much.
@@ -73,6 +75,7 @@ impl SimUpdate {
         )]
         schedule.set_build_settings(ScheduleBuildSettings {
             ambiguity_detection: LogLevel::Error,
+            hierarchy_detection: LogLevel::Error,
             ..ScheduleBuildSettings::new()
         });
         for stages in SimSet::ALL.windows(2) {
@@ -109,26 +112,24 @@ fn end_tick(mut tick: ResMut<'_, SimTick>, mut inputs: ResMut<'_, TickInputs>) {
 
 #[cfg(any(test, feature = "internals"))]
 pub(crate) mod internals {
-    use bevy_ecs::schedule::{LogLevel, ScheduleBuildSettings};
+    use bevy_ecs::schedule::ScheduleBuildSettings;
     use bevy_ecs::world::World;
 
     use crate::sim_update::SimUpdate;
 
     impl SimUpdate {
-        /// Builds `world`'s sim schedule again with no automatic sync points: one of them
-        /// orders the systems it lies between, so the ambiguity check then sees every pair of
-        /// systems that only a sync point keeps in order. The error names its systems.
+        /// Builds `world`'s sim schedule again with no automatic sync points, and the build's
+        /// other settings kept: one of them orders the systems it lies between, so the ambiguity
+        /// check then sees every pair of systems that only a sync point keeps in order. The error
+        /// names its systems.
         pub fn build_without_sync_points(world: &mut World) -> Result<(), String> {
             world.schedule_scope(SimUpdate, |world, schedule| {
-                #[expect(
-                    clippy::disallowed_methods,
-                    reason = "turns the sync points off and keeps ambiguity detection an error"
-                )]
-                schedule.set_build_settings(ScheduleBuildSettings {
-                    ambiguity_detection: LogLevel::Error,
+                let settings = ScheduleBuildSettings {
                     auto_insert_apply_deferred: false,
-                    ..ScheduleBuildSettings::new()
-                });
+                    ..schedule.get_build_settings()
+                };
+                #[expect(clippy::disallowed_methods, reason = "turns only the sync points off")]
+                schedule.set_build_settings(settings);
                 let built = schedule.initialize(world).map(drop);
                 built.map_err(|error| error.to_string(schedule.graph(), world))
             })
