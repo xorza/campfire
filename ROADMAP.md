@@ -38,7 +38,7 @@ Done when both play to their goldens on every OS in CI.
 
 ### 8. Genre proofs: shooter and battle royale
 
-- First cuts: `character` and level geometry, `hitboxes` (rays with lag compensation), `interaction` (the `use` action and its `blocks = ["use"]` tag effect, for planting and defusing the bomb), item units on the ground, random tables, relevance, teams beyond 63.
+- First cuts: `character` and level geometry, `hitboxes` (rays with lag compensation), `interaction` (the `use` action and its `blocks = ["use"]` tag effect, for planting and defusing the bomb), item units on the ground, random tables, relevance, with the components that go only to a unit's owner or team, teams beyond 63.
 - The CS round and the BR zone.
 
 Done when both play to their goldens on every OS in CI.
