@@ -19,8 +19,8 @@ pub fn collision(c: &mut Criterion) {
         group.bench_function(name, |bench| {
             bench.iter(|| {
                 colliders.clone_from(&bodies);
-                let contacts = broadphase.contacts(black_box(&colliders), &index).to_vec();
-                Collider::resolve(&mut colliders, &contacts);
+                let contacts = broadphase.contacts(black_box(&colliders), &index);
+                Collider::resolve(&mut colliders, contacts);
                 black_box(&colliders);
             });
         });

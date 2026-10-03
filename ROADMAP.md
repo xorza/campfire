@@ -6,12 +6,6 @@ The stages to 1.0, in order, open items only: remove an item when it is done, an
 
 The 3v3 MOBA with bots, on LAN or a local server, its logs verified and a crashed match restored; the game model proven on a tiny mode of every target genre. Players use local Nostr key files; no relays, listings, launcher or payments.
 
-### 3. Vertical slice, close
-
-- The collision bench on a quiet machine, its numbers beside the collision design.
-
-Done when the bench shows that collision fits the Collide stage's share of a tick at 30 Hz.
-
 ### 5. MOBA mechanics
 
 - Progression: points, the `learn` order and perks ([Progression](docs/design/04-capabilities/progression.md)).
