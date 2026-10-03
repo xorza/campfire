@@ -28,6 +28,7 @@ fn an_area_that_triggers_after_it_ends_fails_to_decode() {
         source: u64,
         action: u32,
         rank: u8,
+        start: Option<()>,
         launch: Option<u32>,
         aimed: Option<u64>,
         triggers_at: Option<u64>,
@@ -38,6 +39,7 @@ fn an_area_that_triggers_after_it_ends_fails_to_decode() {
             source: 1,
             action: 0,
             rank: 1,
+            start: None,
             launch: None,
             aimed: None,
             triggers_at,
@@ -127,6 +129,7 @@ fn an_area_is_state_and_restores() {
         source,
         action,
         rank: 1,
+        start: None,
         launch: None,
     };
     let area = Area::new(by, None, Some(Tick::new(5)), Tick::new(9)).unwrap();

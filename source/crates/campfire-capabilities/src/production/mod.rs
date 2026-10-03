@@ -102,11 +102,7 @@ impl Production {
 
     /// The train `slots` hold ordered, not yet checked, whose action `book` says trains.
     fn ordered(slots: &ActionSlots, book: &ActionBook) -> Option<SlotAim> {
-        let Some(InProgress::Order {
-            aim,
-            resolves_at: None,
-        }) = slots.in_progress()
-        else {
+        let Some(InProgress::Order { aim, started: None }) = slots.in_progress() else {
             return None;
         };
         let slot = slots.slot(aim.slot)?;

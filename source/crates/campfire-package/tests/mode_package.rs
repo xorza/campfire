@@ -58,7 +58,7 @@ const RIME: &str = "heroes/rime/data/avatar.toml";
 /// Rime's Fan of Frost's `on_hit` effect that slows.
 const SLOWS: &str = r#"{ modifier = { id = "slow", duration_ms = { param = "slow_ms" } } },"#;
 const LASH_OUT: &str = "heroes/husk/scripts/lash_out.rhai";
-const CYCLONE: &str = "heroes/gale/scripts/cyclone.rhai";
+const CHAIN_FIRE: &str = "heroes/cinder/scripts/chain_fire.rhai";
 /// The script of Rime's passive.
 const STILLNESS: &str = "heroes/rime/scripts/stillness.rhai";
 const SNOW_OWL: &str = "heroes/rime/scripts/snow_owl.rhai";
@@ -961,16 +961,19 @@ static FLAWS: [Flaw; 229] = [
     // A unit type's state field has a default of its type, and a script names after `.state`
     // only a field some state of the match declares.
     flaw(
-        GALE,
-        Edit::Set("units.cyclone.state.charge.default", r#""full""#),
-        "hero-gale",
+        CINDER,
+        Edit::Set("units.chain_fire.state.bounces_left.default", r#""full""#),
+        "hero-cinder",
         |problem| read_fails(problem, "data/avatar.toml", "a default not of the type"),
     ),
     flaw(
-        CYCLONE,
-        Edit::Replace("hit.delivery.state.charge;", "hit.delivery.state.charges;"),
-        "hero-gale",
-        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownState(name), .. } if name == "charges"),
+        CHAIN_FIRE,
+        Edit::Replace(
+            "hit.delivery.state.bounces_left == 0",
+            "hit.delivery.state.bounces == 0",
+        ),
+        "hero-cinder",
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownState(name), .. } if name == "bounces"),
     ),
     // A variable that nothing defines before its use fails the load, in a hook and in a
     // function of the script alike.

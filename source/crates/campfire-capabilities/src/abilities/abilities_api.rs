@@ -1,6 +1,6 @@
 use campfire_math::Num;
 use campfire_script::rhai::{Dynamic, INT};
-use campfire_sim::Capability;
+use campfire_sim::{Capability, Position};
 
 use crate::abilities::abilities_effect::AbilitiesEffect;
 use crate::actions::actions_column::ActionsColumn;
@@ -49,11 +49,17 @@ impl AbilitiesApi {
             ),
             |ctx: &mut Ctx| AbilitiesApi::range(ctx),
         )
-        .plan(cast(
-            "charge",
-            "how long a charged cast was held, from 0 to 1",
-        ))
-        .plan(cast("origin", "where the cast's unit stood as it started"))
+        .bind(
+            cast(
+                "charge",
+                "the share of its most a charged action charged, from 0 to 1",
+            ),
+            |ctx: &mut Ctx| AbilitiesApi::charge(ctx),
+        )
+        .bind(
+            cast("origin", "where the action's unit stood as it started"),
+            |ctx: &mut Ctx| AbilitiesApi::origin(ctx),
+        )
         .bind(
             call(
                 "reduce_cooldown",
@@ -95,6 +101,21 @@ impl AbilitiesApi {
         .hook(Hook::OnInterrupt, Status::Runs(ApiVersion::FIRST))
         .action_fields(ActionDataField::of(Some(Capability::Abilities)));
     }
+    /// Where the running call's action's unit stood as the action started.
+    fn origin(ctx: &Ctx) -> Checked<Position> {
+        ctx.require(RoleSet::ACTION)?;
+        let start = ctx.frame().start();
+        Ok(start.ok_or_else(|| ApiError::NoStart.fail())?.origin)
+    }
+
+    /// The share of its most the running call's charged action charged.
+    fn charge(ctx: &Ctx) -> Checked<Num> {
+        ctx.require(RoleSet::ACTION)?;
+        let start = ctx.frame().start();
+        let start = start.ok_or_else(|| ApiError::NoStart.fail())?;
+        Ok(start.charge.ok_or_else(|| ApiError::NotCharged.fail())?)
+    }
+
     /// The range of the running call's action at its rank: meters, or `()` for a global one.
     fn range(ctx: &Ctx) -> Checked<Dynamic> {
         ctx.require(RoleSet::ACTION)?;

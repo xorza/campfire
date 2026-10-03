@@ -201,6 +201,7 @@ impl ActionData {
             charges: self.charges_at(rank)?,
             toggle: self.toggle_at(rank, &target)?,
             channel: self.channel_at(rank)?,
+            charge_ms: self.charge_at(rank)?,
         })
     }
 
@@ -283,6 +284,18 @@ impl ActionData {
     }
 
     /// Its channel at `rank`: a length and a time between ticks, neither 0.
+    /// Its charge's most at `rank`: whole milliseconds, not 0.
+    fn charge_at(&self, rank: u8) -> Result<Option<u64>, ActionField> {
+        let field = ActionField::Charge;
+        self.charge
+            .as_ref()
+            .map(|charge| {
+                let most = self.whole_at(rank, field, Some(&charge.max_ms))?;
+                (most > 0).then_some(most).ok_or(field)
+            })
+            .transpose()
+    }
+
     fn channel_at(&self, rank: u8) -> Result<Option<RankChannel>, ActionField> {
         let field = ActionField::Channel;
         self.channel
@@ -390,6 +403,8 @@ pub struct RankFields {
     pub charges: Option<RankCharges>,
     pub toggle: Option<RankToggle>,
     pub channel: Option<RankChannel>,
+    /// A charged action's most, in milliseconds.
+    pub charge_ms: Option<u64>,
 }
 
 /// A channel at one rank: how long it runs, and the time between its ticks, both positive.

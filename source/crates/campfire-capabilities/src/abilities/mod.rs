@@ -21,7 +21,10 @@ use crate::scripts::call_start::CallStart;
 use crate::units::action_id::ActionId;
 
 use crate::actions::action_data::TogglePer;
-use crate::actions::action_slots::{ActionSlot, ActionSlots, ChannelStep, InProgress, SlotAim};
+use crate::actions::action_slots::{
+    ActionCall, ActionSlot, ActionSlots, ChannelStep, InProgress, SlotAim,
+};
+use crate::values::action_start::ActionStart;
 
 use crate::actions::action_target::ActionTarget;
 use crate::actions::purse::{Payer, Purse};
@@ -155,12 +158,12 @@ fn run_channels(
     ScriptBatch::run(world, ctx.view(), |batch| {
         for &Keyed { id, entity } in &*due {
             let step = step_channel(batch.world(), now, entity);
-            for (aim, hook) in [
+            for (call, hook) in [
                 (step.interrupted, Hook::OnInterrupt),
                 (step.ticked, Hook::OnChannelTick),
             ] {
-                if let Some(aim) = aim {
-                    channel_call(batch, &ctx, now, id, entity, aim, hook);
+                if let Some(call) = call {
+                    channel_call(batch, &ctx, now, id, entity, call, hook);
                 }
             }
         }
@@ -179,18 +182,19 @@ fn step_channel(world: &mut World, now: Tick, entity: Entity) -> ChannelStep {
     })
 }
 
-/// Runs `hook` of the action in `aim`'s slot of `caster`, the unit of `entity`, at its rank, with
-/// the unit and, for `on_interrupt`, the target, when the action's script defines it; a failed
-/// call applies nothing, and is recorded.
+/// Runs `hook` of the channel `call` of `caster`, the unit of `entity`, at its action's rank, as
+/// the action started, with the unit and, for `on_interrupt`, the target, when the action's script
+/// defines it; a failed call applies nothing, and is recorded.
 fn channel_call(
     batch: &mut ScriptBatch<'_>,
     ctx: &Ctx,
     now: Tick,
     caster: StableId,
     entity: Entity,
-    aim: SlotAim,
+    call: ActionCall,
     hook: Hook,
 ) {
+    let ActionCall { aim, start } = call;
     let world = batch.world();
     let unit = world.entity(entity);
     let slot = unit
@@ -206,7 +210,10 @@ fn channel_call(
         return;
     };
     let package = action.package;
-    let start = CallStart::cast(slot.action, slot.rank, caster, package);
+    let start = CallStart {
+        start: Some(start),
+        ..CallStart::cast(slot.action, slot.rank, caster, package)
+    };
     let begun = ctx.frame().begin(world, start);
     let outcome = begun.and_then(|()| {
         let pool = owner.map_or(Pool::Think, Pool::Player);
@@ -298,8 +305,9 @@ fn run_toggles(
 }
 
 /// Starts each cast a unit was ordered, in Act: one that passes its checks, its target within
-/// range, starts, and any other is dropped. A unit its tags keep from casting keeps its order: a
-/// cast it started goes back to it.
+/// range, starts, or for a charged action starts to charge, and any other is dropped. A unit its
+/// tags keep from casting keeps its order: a cast it started goes back to it, and a charge ends,
+/// spending nothing. A charge its order released, or that is full, resolves.
 fn start_casts(
     tick: Res<'_, SimTick>,
     book: Res<'_, ActionBook>,
@@ -322,7 +330,15 @@ fn start_casts(
 ) {
     let now = tick.start();
     for (&position, &team, mut slots, pools, owner, body, tags) in &mut units {
-        let Some(InProgress::Order { aim, resolves_at }) = slots.in_progress() else {
+        if let Some(InProgress::Charge { .. }) = slots.in_progress() {
+            if UnitTags::effects_of(tags).blocks(Block::Cast) {
+                slots.interrupt();
+            } else {
+                slots.release(now);
+            }
+            continue;
+        }
+        let Some(InProgress::Order { aim, started }) = slots.in_progress() else {
             continue;
         };
         let slot = slots
@@ -335,12 +351,12 @@ fn start_casts(
             continue;
         }
         if UnitTags::effects_of(tags).blocks(Block::Cast) {
-            if resolves_at.is_some() {
+            if started.is_some() {
                 slots.interrupt();
             }
             continue;
         }
-        if resolves_at.is_some() {
+        if started.is_some() {
             continue;
         }
         if slot.toggle.is_some() {
@@ -365,9 +381,19 @@ fn start_casts(
                 checked
             })
             .filter(|checked| checked.in_range(position, radius, &targets))
-            .map(|checked| (now.after(checked.values.windup), checked.target));
+            .map(|checked| (checked.values, checked.target));
         match started {
-            Some((resolves_at, target)) => slots.start(resolves_at, target),
+            Some((values, target)) => {
+                if let Some(most) = values.charge {
+                    slots.charge(target, position, now, now.after(most));
+                } else {
+                    let start = ActionStart {
+                        origin: position,
+                        charge: None,
+                    };
+                    slots.start(now.after(values.windup), target, start);
+                }
+            }
             None => slots.stop(),
         }
     }
@@ -440,7 +466,10 @@ fn predict_casts(
     let now = tick.start();
     let second = Abilities::second(*rate);
     for (&team, mut slots, pools, owner, tags) in &mut casters {
-        let Some(casting) = slots
+        let Some(ActionCall {
+            aim: casting,
+            start,
+        }) = slots
             .in_progress()
             .and_then(|underway| underway.cast_due(now))
         else {
@@ -471,7 +500,7 @@ fn predict_casts(
                     slot: casting.slot,
                     target,
                 };
-                slots.channel(aim, now.after(Ticks::new(1)), rule);
+                slots.channel(aim, now.after(Ticks::new(1)), rule, start);
             }
         }
     }
@@ -497,6 +526,8 @@ struct Prepared {
     toggles: bool,
     /// Its channel, which starts the tick after it resolves.
     channel: Option<ChannelRule>,
+    /// How it started, which each of its hooks reads.
+    start: ActionStart,
 }
 
 /// Resolves one cast: its script runs, then its effects, cost and cooldown apply together, or,
@@ -512,7 +543,7 @@ fn resolve(batch: &mut ScriptBatch<'_>, ctx: &Ctx, now: Tick, caster: StableId, 
                 slot: prepared.slot,
                 target: prepared.aim,
             };
-            channel = prepared.channel.map(|rule| (aim, rule));
+            channel = prepared.channel.map(|rule| (aim, rule, prepared.start));
         }),
         Err(error) => Err(error),
     };
@@ -524,8 +555,8 @@ fn resolve(batch: &mut ScriptBatch<'_>, ctx: &Ctx, now: Tick, caster: StableId, 
         .get_mut::<ActionSlots>(entity)
         .expect("a caster has slots");
     slots.stop();
-    if let Some((aim, rule)) = channel {
-        slots.channel(aim, now.after(Ticks::new(1)), rule);
+    if let Some((aim, rule, start)) = channel {
+        slots.channel(aim, now.after(Ticks::new(1)), rule, start);
     }
 }
 
@@ -537,6 +568,7 @@ fn apply(world: &mut World, ctx: &Ctx, now: Tick, entity: Entity, prepared: &Pre
         source: prepared.caster.id,
         action: prepared.action,
         rank: prepared.rank,
+        start: Some(prepared.start),
         launch: None,
     };
     let book = world.resource::<ActionBook>();
@@ -590,7 +622,10 @@ fn prepare(
     };
     let unit = world.entity(entity);
     let slots = unit.get::<ActionSlots>().expect("a due caster has slots");
-    let casting = slots
+    let ActionCall {
+        aim: casting,
+        start,
+    } = slots
         .in_progress()
         .and_then(|underway| underway.cast_due(now))
         .expect("a due caster casts");
@@ -612,7 +647,10 @@ fn prepare(
     let package = checked.action.package;
     frame.begin(
         world,
-        CallStart::cast(checked.id, checked.rank, caster.id, package),
+        CallStart {
+            start: Some(start),
+            ..CallStart::cast(checked.id, checked.rank, caster.id, package)
+        },
     )?;
     let resource_cost = checked.action.resource_cost(checked.rank);
     if !resource_cost.is_empty() {
@@ -639,6 +677,7 @@ fn prepare(
         charges: checked.values.charges,
         toggles: checked.values.toggle.is_some(),
         channel: checked.values.channel,
+        start,
     }))
 }
 

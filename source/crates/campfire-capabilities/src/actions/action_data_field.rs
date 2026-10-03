@@ -133,9 +133,7 @@ impl ActionDataField {
             ActionDataField::Charges => {
                 ("charges", Some(Abilities), true, [Takes, Refuses, Refuses])
             }
-            ActionDataField::Charge => {
-                ("charge", Some(Abilities), false, [Takes, Refuses, Refuses])
-            }
+            ActionDataField::Charge => ("charge", Some(Abilities), true, [Takes, Refuses, Refuses]),
             ActionDataField::PassiveModifier => {
                 ("passive_modifier", None, true, [Takes, Takes, Takes])
             }

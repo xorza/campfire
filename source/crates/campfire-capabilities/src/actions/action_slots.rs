@@ -3,7 +3,7 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
 use campfire_math::Num;
-use campfire_sim::{SimComponent, StableId};
+use campfire_sim::{Position, SimComponent, StableId};
 use serde::{Deserialize, Serialize};
 
 use crate::actions::action_book::ActionBook;
@@ -14,6 +14,7 @@ use crate::actions::rank_values::{ChannelRule, ChargeRule};
 use crate::actions::slot_kind::SlotKind;
 use crate::stats::pools::Pools;
 use crate::units::action_id::ActionId;
+use crate::values::action_start::ActionStart;
 
 /// A unit's actions: its slots, kind after kind in the mode's order, each an action at a rank
 /// with its cooldown; the action it was ordered or has under way, one at a time; and the unit its
@@ -24,7 +25,7 @@ pub struct ActionSlots {
     underway: Option<InProgress>,
     attack_target: Option<StableId>,
     /// A channel an order, a stop or an interrupt cut, whose `on_interrupt` has yet to run.
-    interrupted: Option<SlotAim>,
+    interrupted: Option<ActionCall>,
 }
 
 /// One slot: the action, its kind, its rank, 0 while not learned, the first tick it may start
@@ -82,29 +83,54 @@ pub(crate) enum InProgress {
         target: StableId,
         resolves_at: Tick,
     },
-    /// The action `aim` names, as ordered: not checked yet while `resolves_at` is `None`, then
-    /// started, to resolve in that tick. Whether it casts or trains is its action's kind, and only
+    /// The action `aim` names, as ordered: not checked yet while `started` is `None`, then
+    /// started, to resolve in its tick. Whether it casts or trains is its action's kind, and only
     /// a cast starts.
     Order {
         aim: SlotAim,
-        resolves_at: Option<Tick>,
+        started: Option<Started>,
     },
-    /// The channel of the action `aim` names, which resolved at its target: it ticks next in
-    /// `next`, and ends in `ends`.
+    /// The charged action `aim` names, charging from `since` at the target its check kept, from
+    /// `origin`: full in `full`, and `released` once its order came again. It resolves when
+    /// released, or full.
+    Charge {
+        aim: SlotAim,
+        origin: Position,
+        since: Tick,
+        full: Tick,
+        released: bool,
+    },
+    /// The channel of the action `aim` names, which resolved at its target, as it `start`ed: it
+    /// ticks next in `next`, and ends in `ends`.
     Channel {
         aim: SlotAim,
         next: Tick,
         ends: Tick,
+        start: ActionStart,
     },
 }
 
+/// A started order: the tick it resolves in, and how it started.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct Started {
+    pub(crate) resolves_at: Tick,
+    pub(crate) start: ActionStart,
+}
+
 /// What a tick of a channel did: the channel an order, a stop or an interrupt cut since the last
-/// one, whose `on_interrupt` runs now, and the slot whose channel ticked, whose
-/// `on_channel_tick` runs now.
+/// one, whose `on_interrupt` runs now, and the channel that ticked, whose `on_channel_tick` runs
+/// now.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ChannelStep {
-    pub(crate) interrupted: Option<SlotAim>,
-    pub(crate) ticked: Option<SlotAim>,
+    pub(crate) interrupted: Option<ActionCall>,
+    pub(crate) ticked: Option<ActionCall>,
+}
+
+/// A call of a started action: the action and its target, and how the action started.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) struct ActionCall {
+    pub(crate) aim: SlotAim,
+    pub(crate) start: ActionStart,
 }
 
 /// The action in `slot`, and what it is aimed at.
@@ -123,6 +149,10 @@ impl InProgress {
                 aim: SlotAim { slot, .. },
                 ..
             }
+            | InProgress::Charge {
+                aim: SlotAim { slot, .. },
+                ..
+            }
             | InProgress::Channel {
                 aim: SlotAim { slot, .. },
                 ..
@@ -138,6 +168,10 @@ impl InProgress {
                 aim: SlotAim { slot, .. },
                 ..
             }
+            | InProgress::Charge {
+                aim: SlotAim { slot, .. },
+                ..
+            }
             | InProgress::Channel {
                 aim: SlotAim { slot, .. },
                 ..
@@ -145,13 +179,13 @@ impl InProgress {
         }
     }
 
-    /// The aim of a started order that resolves by `now`: of a cast, as only a cast starts.
-    pub(crate) fn cast_due(self, now: Tick) -> Option<SlotAim> {
+    /// The call of a started order that resolves by `now`: of a cast, as only a cast starts.
+    pub(crate) fn cast_due(self, now: Tick) -> Option<ActionCall> {
         match self {
             InProgress::Order {
                 aim,
-                resolves_at: Some(at),
-            } if at <= now => Some(aim),
+                started: Some(Started { resolves_at, start }),
+            } if resolves_at <= now => Some(ActionCall { aim, start }),
             _ => None,
         }
     }
@@ -159,9 +193,14 @@ impl InProgress {
     /// The tick it resolves in, once started.
     pub(crate) const fn resolves_at(self) -> Option<Tick> {
         match self {
-            InProgress::Attack { resolves_at, .. } => Some(resolves_at),
-            InProgress::Order { resolves_at, .. } => resolves_at,
-            InProgress::Channel { .. } => None,
+            InProgress::Attack { resolves_at, .. }
+            | InProgress::Order {
+                started: Some(Started { resolves_at, .. }),
+                ..
+            } => Some(resolves_at),
+            InProgress::Order { started: None, .. }
+            | InProgress::Charge { .. }
+            | InProgress::Channel { .. } => None,
         }
     }
 }
@@ -230,12 +269,19 @@ impl ActionSlots {
             .expect("a rank below the action's ranks");
     }
 
-    /// Orders the action in `slot` at `target`, in place of any other action not resolved yet.
+    /// Orders the action in `slot` at `target`, in place of any other action not resolved yet;
+    /// an action in `slot` that charges is released instead.
     pub(crate) const fn order(&mut self, slot: u8, target: ActionTarget) {
+        if let Some(InProgress::Charge { aim, released, .. }) = &mut self.underway
+            && aim.slot == slot
+        {
+            *released = true;
+            return;
+        }
         self.cut_channel();
         self.underway = Some(InProgress::Order {
             aim: SlotAim { slot, target },
-            resolves_at: None,
+            started: None,
         });
     }
 
@@ -243,15 +289,83 @@ impl ActionSlots {
         self.underway
     }
 
-    /// Starts the ordered cast, to resolve in `resolves_at` at the `target` its check kept.
-    pub(crate) const fn start(&mut self, resolves_at: Tick, target: ActionTarget) {
-        if let Some(InProgress::Order {
-            aim,
-            resolves_at: started,
-        }) = &mut self.underway
-        {
-            *started = Some(resolves_at);
+    /// Starts the ordered cast, to resolve in `resolves_at` at the `target` its check kept, as it
+    /// `start`ed.
+    pub(crate) const fn start(
+        &mut self,
+        resolves_at: Tick,
+        target: ActionTarget,
+        start: ActionStart,
+    ) {
+        if let Some(InProgress::Order { aim, started }) = &mut self.underway {
             aim.target = target;
+            *started = Some(Started { resolves_at, start });
+        }
+    }
+
+    /// Starts the ordered charged cast at the `target` its check kept, from `origin`, charging
+    /// from `now` until `full`.
+    pub(crate) const fn charge(
+        &mut self,
+        target: ActionTarget,
+        origin: Position,
+        now: Tick,
+        full: Tick,
+    ) {
+        if let Some(InProgress::Order { aim, .. }) = self.underway {
+            self.underway = Some(InProgress::Charge {
+                aim: SlotAim {
+                    slot: aim.slot,
+                    target,
+                },
+                origin,
+                since: now,
+                full,
+                released: false,
+            });
+        }
+    }
+
+    /// Releases a charge its order released, or that is full by `now`: it resolves now, with the
+    /// share of its most it charged.
+    pub(crate) fn release(&mut self, now: Tick) {
+        let Some(InProgress::Charge {
+            aim,
+            origin,
+            since,
+            full,
+            released,
+        }) = self.underway
+        else {
+            return;
+        };
+        if !released && now < full {
+            return;
+        }
+        let ticks = |to: Tick| {
+            let held = to.since(since).expect("a charge ends after it starts");
+            Num::from_int(i64::try_from(held.get()).expect("a charge's ticks fit i64"))
+                .expect("a charge's ticks fit a number")
+        };
+        let charge = ticks(now.min(full))
+            .checked_div(ticks(full))
+            .expect("a charge's most is a tick at least");
+        self.underway = Some(InProgress::Order {
+            aim,
+            started: Some(Started {
+                resolves_at: now,
+                start: ActionStart {
+                    origin,
+                    charge: Some(charge),
+                },
+            }),
+        });
+    }
+
+    /// Cancels a charge under way, which spends nothing.
+    pub(crate) const fn cancel_charge(&mut self) {
+        if let Some(InProgress::Charge { .. }) = self.underway {
+            self.underway = None;
         }
     }
 
@@ -271,8 +385,8 @@ impl ActionSlots {
     pub(crate) const fn interrupt(&mut self) {
         self.cut_channel();
         match &mut self.underway {
-            Some(InProgress::Attack { .. }) => self.underway = None,
-            Some(InProgress::Order { resolves_at, .. }) => *resolves_at = None,
+            Some(InProgress::Attack { .. } | InProgress::Charge { .. }) => self.underway = None,
+            Some(InProgress::Order { started, .. }) => *started = None,
             Some(InProgress::Channel { .. }) | None => {}
         }
     }
@@ -286,18 +400,26 @@ impl ActionSlots {
     /// Cuts a channel under way, for its `on_interrupt` to run: a new order of the unit does, and
     /// so do a stop and an interrupt.
     pub(crate) const fn cut_channel(&mut self) {
-        if let Some(InProgress::Channel { aim, .. }) = self.underway {
+        if let Some(InProgress::Channel { aim, start, .. }) = self.underway {
             self.underway = None;
-            self.interrupted = Some(aim);
+            self.interrupted = Some(ActionCall { aim, start });
         }
     }
 
-    /// Channels the action `aim` names from the tick `start`, `rule` its channel at its rank.
-    pub(crate) const fn channel(&mut self, aim: SlotAim, start: Tick, rule: ChannelRule) {
+    /// Channels the action `aim` names from the tick `from`, `rule` its channel at its rank, as
+    /// the action `start`ed.
+    pub(crate) const fn channel(
+        &mut self,
+        aim: SlotAim,
+        from: Tick,
+        rule: ChannelRule,
+        start: ActionStart,
+    ) {
         self.underway = Some(InProgress::Channel {
             aim,
-            next: start.after(rule.tick),
-            ends: start.after(rule.duration),
+            next: from.after(rule.tick),
+            ends: from.after(rule.duration),
+            start,
         });
     }
 
@@ -317,13 +439,19 @@ impl ActionSlots {
             self.cut_channel();
         }
         let interrupted = self.interrupted.take();
-        let Some(InProgress::Channel { aim, next, ends }) = self.underway else {
+        let Some(InProgress::Channel {
+            aim,
+            next,
+            ends,
+            start,
+        }) = self.underway
+        else {
             return ChannelStep {
                 interrupted,
                 ticked: None,
             };
         };
-        let ticked = (next <= now).then_some(aim);
+        let ticked = (next <= now).then_some(ActionCall { aim, start });
         if ends <= now {
             self.underway = None;
         } else if ticked.is_some() {
@@ -331,6 +459,7 @@ impl ActionSlots {
                 aim,
                 next: next.after(tick),
                 ends,
+                start,
             });
         }
         ChannelStep {
@@ -513,8 +642,15 @@ impl SimComponent for ActionSlots {
             let slot = self.slots.get(usize::from(underway.slot()));
             let action = slot.and_then(|slot| Some((slot.rank, book.get(slot.action)?)));
             let attacks = matches!(underway, InProgress::Attack { .. });
-            if matches!(underway, InProgress::Channel { .. }) {
-                return action.is_some();
+            match underway {
+                InProgress::Channel { .. } => return action.is_some(),
+                InProgress::Charge { since, full, .. } => {
+                    let charges = action.is_some_and(|(rank, action)| {
+                        action.has_rank(rank) && action.values(rank).charge.is_some()
+                    });
+                    return charges && since < full && full <= Tick::LIMIT;
+                }
+                _ => {}
             }
             action.is_some_and(|(rank, action)| {
                 let started = || {
@@ -529,7 +665,9 @@ impl SimComponent for ActionSlots {
         });
         // A channel only of an action with one, at a rank it has, and a cut one of a slot it has.
         let channel = match self.underway {
-            Some(InProgress::Channel { aim, next, ends }) => {
+            Some(InProgress::Channel {
+                aim, next, ends, ..
+            }) => {
                 let rule = self
                     .slots
                     .get(usize::from(aim.slot))
@@ -540,7 +678,7 @@ impl SimComponent for ActionSlots {
         };
         let interrupted = self
             .interrupted
-            .is_none_or(|aim| usize::from(aim.slot) < self.slots.len());
+            .is_none_or(|cut| usize::from(cut.aim.slot) < self.slots.len());
         // A toggle on only for an action with one, at a rank it has.
         let toggles = self.slots.iter().all(|slot| {
             slot.toggle.is_none_or(|next| {

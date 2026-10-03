@@ -9,8 +9,11 @@ use campfire_sim::{Capability, EntityIndex, SimRng, StateHash, TickInput, TickIn
 
 use super::*;
 use crate::actions::Actions;
-use crate::actions::action_data::{ActionData, ChannelData, ChargesData, RangeField, Targeting};
+use crate::actions::action_data::{
+    ActionData, ChannelData, ChargeData, ChargesData, RangeField, Targeting,
+};
 use crate::actions::action_data_field::ActionDataField;
+use crate::actions::action_slots::Started;
 use crate::actions::cost_target::CostTarget;
 use crate::actions::delivery_data::DeliveryData;
 use crate::actions::effect_data::{EffectData, EffectTo, Effecting};
@@ -654,14 +657,19 @@ fn a_cast_its_casters_tags_stop_is_kept_and_an_interrupted_one_spends_nothing() 
     let enemy = game.spawn(1, ground(Num::int(5), Num::ZERO), ());
     let target = ActionTarget::Unit(enemy);
     let aim = SlotAim { slot: 0, target };
-    let ordered = Some(InProgress::Order {
-        aim,
-        resolves_at: None,
-    });
+    let ordered = Some(InProgress::Order { aim, started: None });
+    // Each start from where the caster stands, the origin.
+    let start = ActionStart {
+        origin: ground(Num::ZERO, Num::ZERO),
+        charge: None,
+    };
     let started = |tick| {
         Some(InProgress::Order {
             aim,
-            resolves_at: Some(Tick::new(tick)),
+            started: Some(Started {
+                resolves_at: Tick::new(tick),
+                start,
+            }),
         })
     };
     // A stun in tick 7's Move stage, after the casts start in Act and before they resolve in Hit.
@@ -990,6 +998,95 @@ fn on_interrupt(ctx, caster, target) {
     });
     let late = [500, 500, 500, 490, 490, 483, 483, 483, 483, 483, 483, 483];
     assert_eq!(health(&killed), late);
+}
+
+#[test]
+fn a_charged_cast_resolves_at_its_release_or_full_with_its_share_and_its_origin() {
+    // Draw: charges up to 3000 ms, 90 ticks, for 10 mana at its release. It deals its target its
+    // share times 90, and ten times how far the caster stands from where it started.
+    let script = r#"
+fn on_resolve(ctx, caster, target) {
+    ctx.damage(target, ctx.charge * 90 + ctx.origin.distance_to(caster.pos) * 10, "true");
+}
+"#;
+    let mut game = Match::new();
+    game.load_stats();
+    let draw = ActionData {
+        script: Some(PackagePath::parse("draw.rhai").unwrap()),
+        range: Some(Ranked::One(RangeField::Range(Range::Meters(Num::int(5))))),
+        charge: Some(ChargeData {
+            max_ms: Ranked::One(int(3000)),
+        }),
+        cost: cost("mana", int(10)),
+        ..ActionData::cast(Targeting::Unit(FilterData::parse("enemies").unwrap()))
+    };
+    let plain = ActionData {
+        charge: None,
+        ..draw.clone()
+    };
+    let draw = game.load("draw", &draw, script);
+    let plain = game.load("plain", &plain, script);
+    let other = game.load("other", &lash_out(), LASH_OUT);
+    let caster = |game: &mut Match, x: i64| {
+        let at = ground(Num::int(x), Num::ZERO);
+        let slots = ActionSlots::new([(draw, SlotKind::new(0), 1), (other, SlotKind::new(0), 1)]);
+        let caster = game.spawn(0, at, (Owner::new(PlayerSlot::new(0)), slots));
+        game.give_pools(caster, 100, 20);
+        let target = game.spawn(1, ground(Num::int(x + 3), Num::ZERO), ());
+        (caster, target)
+    };
+    let order = |game: &mut Match, unit: StableId, slot: u8, target: ActionTarget| {
+        game.sim.get_mut::<ActionSlots>(unit).order(slot, target);
+    };
+    let run_to = |game: &mut Match, tick: u64| game.sim.run_until(tick);
+    let share = |held: i64| Num::int(held).checked_div(Num::int(90)).unwrap();
+
+    // Ordered in tick 0, it charges; in tick 10 the caster moves 2 m, which keeps the charge; its
+    // order again in tick 30 releases it: 30 of 90 ticks, a third, as 24 fraction bits round it.
+    let (released, target) = caster(&mut game, 0);
+    order(&mut game, released, 0, ActionTarget::Unit(target));
+    run_to(&mut game, 10);
+    *game.sim.get_mut::<Position>(released) = ground(Num::int(-2), Num::ZERO);
+    run_to(&mut game, 30);
+    order(&mut game, released, 0, ActionTarget::Unit(target));
+    game.sim.step();
+    let dealt = share(30) * Num::int(90) + Num::int(20);
+    assert_eq!(game.sim.life(target), Num::int(500) - dealt);
+    assert_eq!(game.pool(released), 90);
+    // Never released, it resolves full in tick 90 of its start: all 90.
+    let start = game.sim.now().get();
+    let (full, target) = caster(&mut game, 20);
+    order(&mut game, full, 0, ActionTarget::Unit(target));
+    run_to(&mut game, start + 91);
+    assert_eq!(game.sim.life(target), Num::int(410));
+    // Another action's order cancels it, and so does a stun: the draw spends nothing. Lash Out,
+    // ordered instead, hits the target 3 m away for its 75 and costs its 35.
+    for (cut, life, mana) in [(0, 425, 65), (1, 500, 100)] {
+        let (cancelled, target) = caster(&mut game, 40 + 20 * i64::from(cut));
+        order(&mut game, cancelled, 0, ActionTarget::Unit(target));
+        game.sim.step();
+        if cut == 0 {
+            order(&mut game, cancelled, 1, ActionTarget::None);
+        } else {
+            game.sim.set_blocks(cancelled, &[Block::Cast]);
+        }
+        game.sim.step();
+        let now = game.sim.now().get();
+        run_to(&mut game, now + 100);
+        assert_eq!(game.sim.health(target), life, "cut {cut}");
+        assert_eq!(game.pool(cancelled), mana, "cut {cut}");
+    }
+    assert_eq!(game.failed_calls(), []);
+    // The same script in an action that does not charge fails its call.
+    let at = ground(Num::int(100), Num::ZERO);
+    let slots = ActionSlots::new([(plain, SlotKind::new(0), 1)]);
+    let caster = game.spawn(0, at, (Owner::new(PlayerSlot::new(0)), slots));
+    game.give_pools(caster, 100, 20);
+    let target = game.spawn(1, ground(Num::int(103), Num::ZERO), ());
+    game.cast(caster, ActionTarget::Unit(target));
+    let failed = game.failed_calls();
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed[0].kind, FailureKind::Api(ApiError::NotCharged));
 }
 
 #[test]

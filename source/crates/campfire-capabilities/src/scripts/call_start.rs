@@ -3,13 +3,14 @@ use campfire_sim::StableId;
 use crate::scripts::script_role::ScriptRole;
 use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
+use crate::values::action_start::ActionStart;
 use crate::values::hit::Hit;
 
 /// What a call starts with: its role; its acting unit, a cast's caster, a modifier's source or
 /// the unit that thinks, none for the mode; the action whose params it reads, at `rank`, and its
 /// modifier's; the package whose names it means, 0 the mode's; the depth of the chain of combat
-/// events it runs in, 0 outside one; and the hit a delivery's hook runs for, which the damage
-/// it deals carries.
+/// events it runs in, 0 outside one; the hit a delivery's hook runs for, which the damage it
+/// deals carries; and how its action started.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CallStart {
     pub(crate) role: ScriptRole,
@@ -20,6 +21,7 @@ pub(crate) struct CallStart {
     pub(crate) package: u16,
     pub(crate) depth: u8,
     pub(crate) hit: Option<Hit>,
+    pub(crate) start: Option<ActionStart>,
 }
 
 impl CallStart {
@@ -35,6 +37,7 @@ impl CallStart {
             package: 0,
             depth: 0,
             hit: None,
+            start: None,
         }
     }
 
@@ -54,6 +57,7 @@ impl CallStart {
             package,
             depth: 0,
             hit: None,
+            start: None,
         }
     }
 
@@ -69,6 +73,7 @@ impl CallStart {
             package,
             depth,
             hit: None,
+            start: None,
         }
     }
 }

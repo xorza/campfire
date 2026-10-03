@@ -151,6 +151,10 @@ pub enum ApiError {
     NotAFraction,
     /// An ability with no charges.
     NoCharges,
+    /// A value of an action's start in a call of an action that did not start, such as a weapon's.
+    NoStart,
+    /// `ctx.charge` of an action that does not charge.
+    NotCharged,
 }
 
 /// Why a param a modifier reads does not hold.
@@ -289,6 +293,8 @@ impl fmt::Display for ApiError {
             ApiError::NotHeld => "the unit does not hold the ability",
             ApiError::NotAFraction => "fraction is below 0 or above 1",
             ApiError::NoCharges => "the ability has no charges",
+            ApiError::NoStart => "the call's action did not start",
+            ApiError::NotCharged => "the call's action does not charge",
         })
     }
 }

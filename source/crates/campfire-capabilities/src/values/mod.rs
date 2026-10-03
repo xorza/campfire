@@ -1,6 +1,7 @@
 //! Data value types: the numbers, per-rank values, params, filters and package paths that data
 //! files write.
 
+pub(crate) mod action_start;
 pub(crate) mod attitude;
 pub(crate) mod bounds;
 pub(crate) mod damage_kind;

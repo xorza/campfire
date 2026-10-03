@@ -114,7 +114,6 @@ delivery = { projectile = "wind_bolt" }
 
 [units.cyclone]
 projectile = { speed = "9", width = "1.2" }
-state = { charge = { type = "num", default = 0 } }
 
 [units.wind_bolt]
 projectile = { speed = "12", homing = true }

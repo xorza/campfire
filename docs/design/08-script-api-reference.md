@@ -17,7 +17,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `avatars` | `() or (team)` | every role | core | since 1.0 | the avatars, living or dead, of every team or of `team`, by stable id |
 | `carry` | read | mode | core | planned | the carry the session loaded, which the mode writes for the next session |
 | `chance` | `(p)` | every role | core | since 1.0 | true with probability `p`, from 0 to 1, from the secret stream |
-| `charge` | read | action | abilities | planned | how long a charged cast was held, from 0 to 1 |
+| `charge` | read | action | abilities | since 1.0 | the share of its most a charged action charged, from 0 to 1 |
 | `choose` | `(player, choice, values)`, `choice` a choice | mode | core | since 1.0 | records `values`, as many as `choice` takes, each a value it offers, none twice and, in a unique choice, none another player chose, as what `player` chose of it; one value may be given alone |
 | `chosen` | `(player, choice)`, `choice` a choice | mode | core | since 1.0 | the values `player` chose of `choice`, in order; empty before the player chose |
 | `damage` | `(target, amount, kind)`, `kind` a damage kind | every role | combat | since 1.0 | deals `amount` of `kind`, one of the mode's `[combat] damage_kinds`, to `target` |
@@ -38,7 +38,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `order_follow_path` | `(unit)` | AI | orders | since 1.0 | `unit` drops its target and walks its path again |
 | `order_move` | `(unit, pos)` | AI | orders | since 1.0 | `unit` drops its target and walks to `pos`, within the map, off its path |
 | `order_reset` | `(unit)` | AI | orders | since 1.0 | `unit` drops its target and walks home, taking no order until there, where its pools fill |
-| `origin` | read | action | abilities | planned | where the cast's unit stood as it started |
+| `origin` | read | action | abilities | since 1.0 | where the action's unit stood as it started |
 | `p` | read | every role | core | since 1.0 | the params: an ability's at its rank, a modifier's then its ability's, or the mode's |
 | `pick` | `(list)` | every role | core | since 1.0 | an entry of `list`, each as likely, from the secret stream |
 | `players` | read | mode | core | since 1.0 | how many players the session has |
@@ -325,7 +325,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `channel` | since 1.0 |
 | `hold` | since 1.0 |
 | `charges` | since 1.0 |
-| `charge` | planned |
+| `charge` | since 1.0 |
 | `unit_type` | since 1.0 |
 
 ### An effect of an action's `on_resolve`, `on_hit` or `on_end`

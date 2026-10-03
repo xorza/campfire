@@ -195,6 +195,7 @@ impl Projectiles {
                 payload: LaunchPayload::Action {
                     action: by.action,
                     rank: by.rank,
+                    start: by.start,
                     cast,
                 },
             }));
@@ -321,7 +322,12 @@ fn launch(mut spawner: DeliverySpawner<'_, '_>, mut launches: ResMut<'_, Launche
     {
         spawner.spawn(source, from, unit_type, id, |id| {
             let payload = match payload {
-                LaunchPayload::Action { action, rank, cast } => {
+                LaunchPayload::Action {
+                    action,
+                    rank,
+                    start,
+                    cast,
+                } => {
                     let first = match group {
                         Some((at, first)) if at == cast => first,
                         _ => {
@@ -332,6 +338,7 @@ fn launch(mut spawner: DeliverySpawner<'_, '_>, mut launches: ResMut<'_, Launche
                     Payload::Action {
                         action,
                         rank,
+                        start,
                         group: first,
                     }
                 }

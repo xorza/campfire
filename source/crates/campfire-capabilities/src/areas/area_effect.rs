@@ -51,6 +51,7 @@ impl AreaEffect {
             source,
             action,
             rank: frame.rank(),
+            start: frame.start(),
             launch: Some(launch),
         };
         frame.effects.push(AreaEffect {

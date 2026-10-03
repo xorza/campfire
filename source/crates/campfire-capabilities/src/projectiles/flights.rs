@@ -228,11 +228,17 @@ impl Flights<'_> {
                 depth: 0,
                 hit: Some(hit),
             }),
-            Payload::Action { action, rank, .. } => self.deliveries.delivered.push(Delivered {
+            Payload::Action {
+                action,
+                rank,
+                start,
+                ..
+            } => self.deliveries.delivered.push(Delivered {
                 by: Delivering {
                     source: projectile.source(),
                     action,
                     rank,
+                    start,
                     launch: None,
                 },
                 reach: Reach::Hit(target),
@@ -244,12 +250,19 @@ impl Flights<'_> {
     /// An action's projectile ends as `hit` says: its `on_end` runs. An attack's ends with
     /// nothing more.
     fn end(&mut self, projectile: &Projectile, hit: Hit) {
-        if let Payload::Action { action, rank, .. } = projectile.payload() {
+        if let Payload::Action {
+            action,
+            rank,
+            start,
+            ..
+        } = projectile.payload()
+        {
             self.deliveries.delivered.push(Delivered {
                 by: Delivering {
                     source: projectile.source(),
                     action,
                     rank,
+                    start,
                     launch: None,
                 },
                 reach: Reach::End,

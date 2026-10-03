@@ -12,6 +12,7 @@ use crate::scripts::script_limits::ScriptLimits;
 use crate::scripts::script_role::ScriptRole;
 use crate::units::action_id::ActionId;
 use crate::units::modifier_id::ModifierId;
+use crate::values::action_start::ActionStart;
 use crate::values::hit::Hit;
 
 /// What the running call reads and queues, beside the units the view holds: its role, its
@@ -35,6 +36,8 @@ pub(crate) struct Frame {
     package: u16,
     /// The hit a delivery's hook runs for.
     hit: Option<Hit>,
+    /// How its action started.
+    start: Option<ActionStart>,
     /// Whether it is a pure hook's, whose `ctx` only reads.
     pub(crate) pure: bool,
     /// The stable ids as the call takes them for the units it creates, and whether it took one.
@@ -76,6 +79,10 @@ impl Frame {
 
     pub(crate) const fn hit(&self) -> Option<Hit> {
         self.hit
+    }
+
+    pub(crate) const fn start(&self) -> Option<ActionStart> {
+        self.start
     }
 
     /// Adds `part`, which every call readies, and which applies what a call wrote to it.
@@ -153,6 +160,7 @@ impl Frame {
             package,
             depth,
             hit,
+            start: action_start,
         } = start;
         self.role = Some(role);
         self.acting = acting;
@@ -162,6 +170,7 @@ impl Frame {
         self.package = package;
         self.depth = depth;
         self.hit = hit;
+        self.start = action_start;
         self.pure = false;
         self.effects.clear();
         self.parts.begin(world, &start)

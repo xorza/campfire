@@ -126,6 +126,7 @@ fn run_hooks(world: &mut World, due: &[Delivered]) {
                 .map(|owner| owner.slot());
             let start = CallStart {
                 hit: Some(hit),
+                start: by.start,
                 ..CallStart::cast(by.action, by.rank, by.source, package)
             };
             let begun = ctx.frame().begin(batch.world(), start);

@@ -31,6 +31,8 @@ pub(crate) struct RankValues {
     pub(crate) charges: Option<ChargeRule>,
     pub(crate) toggle: Option<RankToggle>,
     pub(crate) channel: Option<ChannelRule>,
+    /// A charged action's most, a tick at least.
+    pub(crate) charge: Option<Ticks>,
 }
 
 /// How long a channel runs, and the time between its ticks, in ticks, both at least one.
@@ -94,6 +96,7 @@ impl RankValues {
                         })
                     })
                     .transpose()?,
+                charge: fields.charge_ms.map(ticks).transpose()?,
             });
             loaded.resource_costs.extend(fields.resource_cost);
         }

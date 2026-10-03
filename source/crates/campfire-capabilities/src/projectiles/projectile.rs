@@ -12,6 +12,7 @@ use crate::units::action_id::ActionId;
 use crate::units::by_type::ByType;
 use crate::units::script_view::View;
 use crate::units::unit_type::UnitType;
+use crate::values::action_start::ActionStart;
 use crate::values::damage_kind::DamageKind;
 
 /// A projectile unit in flight: whose it is, how it flies, at its type's speed, and what it
@@ -56,6 +57,7 @@ pub(crate) enum Payload {
     Action {
         action: ActionId,
         rank: u8,
+        start: Option<ActionStart>,
         group: StableId,
     },
 }

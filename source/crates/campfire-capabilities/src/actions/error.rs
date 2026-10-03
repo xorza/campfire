@@ -16,6 +16,8 @@ pub enum ActionField {
     Toggle,
     /// Its channel: a length and a time between ticks of whole milliseconds, neither 0.
     Channel,
+    /// Its charge's most: whole milliseconds, not 0.
+    Charge,
 }
 
 /// Why an action that passed the package load does not load into a match: what only the

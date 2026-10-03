@@ -6,6 +6,7 @@ use campfire_math::Num;
 use crate::projectiles::projectile::Flight;
 use crate::units::action_id::ActionId;
 use crate::units::unit_type::UnitType;
+use crate::values::action_start::ActionStart;
 use crate::values::damage_kind::DamageKind;
 
 /// The projectiles that launch this tick: those ranged attacks fire, those actions deliver, and
@@ -45,6 +46,7 @@ pub(crate) enum LaunchPayload {
     Action {
         action: ActionId,
         rank: u8,
+        start: Option<ActionStart>,
         cast: u32,
     },
 }
