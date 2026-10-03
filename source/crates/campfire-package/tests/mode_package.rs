@@ -359,7 +359,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-static FLAWS: [Flaw; 228] = [
+static FLAWS: [Flaw; 229] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -1330,6 +1330,13 @@ static FLAWS: [Flaw; 228] = [
         Edit::Rename("modifiers.withered.stats.magic_resist", "spirit"),
         "hero-husk",
         |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, name, .. } if name == "spirit"),
+    ),
+    // A hold needs a toggle or a channel to hold its modifier while.
+    flaw(
+        RIME,
+        Edit::Remove("actions.chill_arrows.toggle"),
+        "hero-rime",
+        |problem| matches!(problem, LoadProblem::HoldAlone(action) if action.as_str() == "chill_arrows"),
     ),
     // Only a point aim clamps to the range.
     flaw(

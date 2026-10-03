@@ -21,13 +21,15 @@ pub(crate) enum Ends {
     At(Tick),
 }
 
-/// What holds an instance beside an application: its ability's passive, which its rank keeps, or
-/// an aura, an area or a player, which hold it while their rules select its carrier. Every hold
-/// from one source of one modifier is one hold: which of them holds it changes nothing.
+/// What holds an instance beside an application: its ability's passive, which its rank keeps; an
+/// aura, an area or a player, which hold it while their rules select its carrier; or an action's
+/// `hold`, which its toggle that is on or its channel that runs keeps. Every hold from one source
+/// of one modifier is one hold: which of them holds it changes nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Hold {
     Passive,
     Held,
+    Running,
 }
 
 /// The holds that keep an instance, a bit each.
@@ -97,7 +99,8 @@ impl Lifetime {
 }
 
 impl HoldSet {
-    const ALL: u8 = HoldSet::bit(Hold::Passive) | HoldSet::bit(Hold::Held);
+    const ALL: u8 =
+        HoldSet::bit(Hold::Passive) | HoldSet::bit(Hold::Held) | HoldSet::bit(Hold::Running);
 
     pub(crate) const fn of(hold: Hold) -> HoldSet {
         HoldSet(HoldSet::bit(hold))
@@ -174,10 +177,10 @@ mod tests {
     #[test]
     fn a_hold_set_decodes_only_bits_of_holds() {
         let decode = |bits: u8| postcard::from_bytes::<HoldSet>(&[bits]).ok();
-        assert_eq!(
-            decode(0b11),
-            Some(HoldSet::of(Hold::Passive).with(Hold::Held))
-        );
-        assert_eq!(decode(0b100), None);
+        let all = HoldSet::of(Hold::Passive)
+            .with(Hold::Held)
+            .with(Hold::Running);
+        assert_eq!(decode(0b111), Some(all));
+        assert_eq!(decode(0b1000), None);
     }
 }

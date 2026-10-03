@@ -1,5 +1,6 @@
 use campfire_script::ScriptId;
 
+use crate::actions::action_data::RankToggle;
 use crate::actions::delivery::Delivery;
 use crate::actions::kind_spec::KindSpec;
 use crate::actions::rank_values::{ChargeRule, RankValues};
@@ -20,6 +21,8 @@ pub(crate) struct Action {
     pub(crate) kind: KindSpec,
     /// The modifier its unit holds while it has a rank, and whether only while it is ready.
     pub(crate) passive: Option<Passive>,
+    /// The modifier its unit holds while its toggle is on or its channel runs.
+    pub(crate) hold: Option<ModifierId>,
     pub(crate) aim: Aim,
     /// Its capability fields at each rank, from rank 1.
     pub(crate) ranks: Vec<RankValues>,
@@ -75,6 +78,13 @@ impl Action {
     pub(crate) fn charge_rule(&self, rank: u8) -> Option<ChargeRule> {
         self.has_rank(rank)
             .then(|| self.values(rank).charges)
+            .flatten()
+    }
+
+    /// Its toggle at `rank`; none at a rank it does not have, as 0 before it is learned.
+    pub(crate) fn toggle_rule(&self, rank: u8) -> Option<RankToggle> {
+        self.has_rank(rank)
+            .then(|| self.values(rank).toggle)
             .flatten()
     }
 

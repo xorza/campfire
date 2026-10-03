@@ -11,7 +11,7 @@ use super::*;
 use crate::actions::Actions;
 use crate::actions::action_data::{ActionData, ChargesData, RangeField, Targeting};
 use crate::actions::action_data_field::ActionDataField;
-use crate::actions::action_slots::{ActionSlot, SlotAim};
+use crate::actions::action_slots::SlotAim;
 use crate::actions::cost_target::CostTarget;
 use crate::actions::delivery_data::DeliveryData;
 use crate::actions::effect_data::{EffectData, EffectTo, Effecting};

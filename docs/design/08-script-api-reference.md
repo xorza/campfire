@@ -321,9 +321,9 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `script` | since 1.0 |
 | `cooldown_ms` | since 1.0 |
 | `clamp_to_range` | since 1.0 |
-| `toggle` | planned |
+| `toggle` | since 1.0 |
 | `channel` | planned |
-| `hold` | planned |
+| `hold` | since 1.0 |
 | `charges` | since 1.0 |
 | `charge` | planned |
 | `unit_type` | since 1.0 |

@@ -16,6 +16,8 @@ use campfire_sim::{
     EntityIndex, IdAllocator, SimSet, SimTick, StateRegistry, TickInputs, TickRate,
 };
 
+use crate::abilities::AbilitiesSet;
+use crate::actions::ActionsSet;
 use crate::actions::action_slots::ActionSlots;
 use crate::combat::CombatSet;
 use crate::combat::assist_window::AssistWindow;
@@ -173,7 +175,9 @@ impl Mode {
                 .after(StatsSet::Regenerate)
                 .after(NavigationSet::TrackStatics)
                 .after(CombatSet::Respawn)
-                .before(OrdersSet::Orders),
+                .before(OrdersSet::Orders)
+                .before(AbilitiesSet::Toggles)
+                .before(ActionsSet::HoldAtInputs),
             (run_timers, unit_deaths, level_ups)
                 .chain()
                 .in_set(SimSet::Mode)

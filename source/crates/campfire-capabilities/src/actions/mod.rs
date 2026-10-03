@@ -75,6 +75,9 @@ pub(crate) enum ActionsSet {
     /// In `SimSet::Resolve`, once the tick's damage is dealt and before units die: passives hold
     /// as the slots stand.
     HoldAtResolve,
+    /// In `SimSet::Hit`, once the attacks going off paid their toggles and before their events:
+    /// holds follow the toggles an unpaid cost turned off.
+    HoldAtStrike,
 }
 
 impl Actions {
@@ -107,6 +110,9 @@ impl Actions {
                 .after(StatsSet::Expire)
                 .after(hold_charges),
             hold_passives
+                .in_set(SimSet::Hit)
+                .in_set(ActionsSet::HoldAtStrike),
+            hold_passives
                 .in_set(SimSet::Resolve)
                 .in_set(ActionsSet::HoldAtResolve),
             hold_passives.in_set(SimSet::Vision),
@@ -133,11 +139,12 @@ fn hold_charges(
     }
 }
 
-/// Keeps each unit's passives as its slots stand: the passive of each action with a rank, and
-/// with `passive_while_ready` off cooldown, from the unit itself at the action's rank, applied
-/// again when the rank changes; and none other. It runs as each tick starts, after the casts
-/// resolve and the attacks strike, and after the mode's calls, which learn ranks. A passive's
-/// params are the match's param book's.
+/// Keeps each unit's passives and holds as its slots stand: the passive of each action with a
+/// rank, and with `passive_while_ready` off cooldown, and the `hold` of each action whose toggle
+/// is on, each from the unit itself at the action's rank, applied again when the rank changes;
+/// and none other. It runs as each tick starts, after the casts resolve and the attacks strike,
+/// and after the mode's calls, which learn ranks. A passive's or a hold's params are the match's
+/// param book's.
 fn hold_passives(
     actions: Res<'_, ActionBook>,
     book: Option<Res<'_, ModifierBook>>,
@@ -157,36 +164,44 @@ fn hold_passives(
     for (&id, slots, modifiers, clocks) in &mut units {
         let mut carried = CarriedMut::new(modifiers, clocks);
         for slot in slots.iter() {
-            let Some(passive) = actions.get(slot.action).and_then(|action| action.passive) else {
-                continue;
-            };
-            let held = carried
-                .modifiers()
-                .get(passive.modifier, Some(id))
-                .filter(|instance| instance.lifetime.held_by(Hold::Passive))
-                .map(|instance| instance.rank);
-            let holds = slot.rank > 0 && (!passive.while_ready || slot.ready_at <= now);
-            if !holds {
-                if held.is_some() {
-                    carried.release(passive.modifier, Some(id), Hold::Passive);
+            let action = actions
+                .get(slot.action)
+                .expect("a slot's action is in the book");
+            let mut keep = |modifier, hold, holds: bool| {
+                let held = carried
+                    .modifiers()
+                    .get(modifier, Some(id))
+                    .filter(|instance| instance.lifetime.held_by(hold))
+                    .map(|instance| instance.rank);
+                if !holds {
+                    if held.is_some() {
+                        carried.release(modifier, Some(id), hold);
+                    }
+                    return;
                 }
-                continue;
-            }
-            if held == Some(slot.rank) {
-                continue;
-            }
-            let applier = Applier {
-                source: Some(id),
-                ability: Some(slot.action),
-                rank: slot.rank,
-                hold: Some(Hold::Passive),
+                if held == Some(slot.rank) {
+                    return;
+                }
+                let applier = Applier {
+                    source: Some(id),
+                    ability: Some(slot.action),
+                    rank: slot.rank,
+                    hold: Some(hold),
+                };
+                let source = sources.get(id);
+                let param = |place: &ParamPlace| {
+                    let (ability, rank) = (Some(slot.action), slot.rank);
+                    params.modifier_param(modifier, ability, rank, place, source.as_ref())
+                };
+                carried.apply(book.application(modifier, applier, None, now, *rate, param));
             };
-            let source = sources.get(id);
-            let param = |place: &ParamPlace| {
-                let (ability, rank) = (Some(slot.action), slot.rank);
-                params.modifier_param(passive.modifier, ability, rank, place, source.as_ref())
-            };
-            carried.apply(book.application(passive.modifier, applier, None, now, *rate, param));
+            if let Some(passive) = action.passive {
+                let holds = slot.rank > 0 && (!passive.while_ready || slot.ready_at <= now);
+                keep(passive.modifier, Hold::Passive, holds);
+            }
+            if let Some(hold) = action.hold {
+                keep(hold, Hold::Running, slot.toggle.is_some());
+            }
         }
     }
 }

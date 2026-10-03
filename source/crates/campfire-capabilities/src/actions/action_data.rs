@@ -193,6 +193,29 @@ impl ActionData {
                 }
             },
         };
+        let toggle = self
+            .toggle
+            .as_ref()
+            .map(|toggle| {
+                let (per, costs) = match toggle {
+                    Toggle::CostPerAttack(costs) => (TogglePer::Attack, costs),
+                    Toggle::CostPerSecond(costs) => (TogglePer::Second, costs),
+                };
+                let mut cost = Vec::with_capacity(costs.len());
+                for (name, amount) in costs {
+                    let amount = whole(ActionField::Toggle, Some(amount))?;
+                    let amount = i64::try_from(amount).ok().and_then(Num::from_int);
+                    let Some(CostTarget::Pool(pool)) = target(name) else {
+                        return Err(ActionField::Toggle);
+                    };
+                    cost.push((pool, amount.ok_or(ActionField::Toggle)?));
+                }
+                Ok(RankToggle {
+                    per,
+                    cost: PoolCost::new(cost),
+                })
+            })
+            .transpose()?;
         let mut cost = Vec::with_capacity(self.cost.len());
         let mut resource_cost = Vec::with_capacity(self.cost.len());
         for (name, amount) in &self.cost {
@@ -225,6 +248,7 @@ impl ActionData {
                     })
                 })
                 .transpose()?,
+            toggle,
         })
     }
 
@@ -315,6 +339,22 @@ pub struct RankFields {
     pub resource_cost: Vec<ResourceAmount>,
     pub windup_ms: u64,
     pub charges: Option<RankCharges>,
+    pub toggle: Option<RankToggle>,
+}
+
+/// A toggle's cost at one rank: in the caster's pools, paid as each attack goes off, or at each
+/// whole second it is on.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct RankToggle {
+    pub per: TogglePer,
+    pub cost: PoolCost,
+}
+
+/// When a toggle pays its cost.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TogglePer {
+    Attack,
+    Second,
 }
 
 /// An action's charges at one rank: how many it holds at most, and how long one takes to come

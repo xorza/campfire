@@ -11,6 +11,7 @@ use campfire_sim::{
     EntityIndex, Position, SimSet, SimTick, StableId, StateRegistry, TickInputs, TickRate,
 };
 
+use crate::abilities::AbilitiesSet;
 use crate::actions::ActionsSet;
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_kind::ActionKind;
@@ -91,7 +92,10 @@ impl Orders {
                 .in_set(SimSet::Act)
                 .before(CombatSet::Attack),
         ));
-        schedule.configure_sets(ActionsSet::HoldAtInputs.after(OrdersSet::Orders));
+        schedule.configure_sets((
+            ActionsSet::HoldAtInputs.after(OrdersSet::Orders),
+            OrdersSet::Orders.after(AbilitiesSet::Toggles),
+        ));
         registry.register_component::<NextThink>();
         registry.register_component::<Resetting>();
         if !world.contains_non_send::<Ctx>() {

@@ -103,7 +103,9 @@ pub(crate) enum CombatSet {
     Respawn,
     /// In `SimSet::Act`: attacks start, and targets that are gone are dropped.
     Attack,
-    /// In `SimSet::Hit`: windups that end strike, or fire, each with its roll drawn.
+    /// In `SimSet::Hit`: the attacks going off pay the toggles that cost an attack.
+    Pay,
+    /// In `SimSet::Hit`, after `Pay`: windups that end strike, or fire, each with its roll drawn.
     Strike,
     /// In `SimSet::Hit`, after `Strike`: the tick's shots become launches, before any cast
     /// delivers.
@@ -150,10 +152,17 @@ impl Combat {
             ActionsSet::HoldAtResolve
                 .after(CombatSet::Damage)
                 .before(CombatSet::Die),
+            CombatSet::Pay.in_set(SimSet::Hit).before(CombatSet::Strike),
+            ActionsSet::HoldAtStrike
+                .after(CombatSet::Pay)
+                .before(CombatSet::Strike),
         ));
         Actions::schedule(schedule);
         schedule.add_systems((
             start_attacks.in_set(CombatSet::Attack),
+            pay_attack_toggles
+                .in_set(SimSet::Hit)
+                .in_set(CombatSet::Pay),
             (attack_events, strike)
                 .chain()
                 .in_set(SimSet::Hit)
@@ -468,6 +477,28 @@ fn run_intervals(
         }
     });
     world.insert_non_send(events);
+}
+
+/// Pays, for each attack going off this tick, its attacker's toggles that cost an attack; one its
+/// pools cannot pay turns off, before the attack's events. A client that predicts the attack pays
+/// nothing, as its pools come from the server.
+fn pay_attack_toggles(
+    (tick, book, predicting): (
+        Res<'_, SimTick>,
+        Res<'_, ActionBook>,
+        Option<Res<'_, Predicting>>,
+    ),
+    mut attackers: Query<'_, '_, (&mut ActionSlots, &mut Pools), Without<Dead>>,
+) {
+    if predicting.is_some() {
+        return;
+    }
+    let now = tick.start();
+    for (mut slots, mut pools) in &mut attackers {
+        if Combat::going_off(&slots, now).is_some() {
+            slots.pay_attack_toggles(&book, &mut pools);
+        }
+    }
 }
 
 /// Delivers each attack whose windup ends this tick, in the order of its attacker's stable id: it

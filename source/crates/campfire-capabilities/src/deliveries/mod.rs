@@ -44,7 +44,7 @@ pub(crate) enum DeliverySet {
 
 impl Deliveries {
     /// Adds the deliveries' hooks to a match, once for the capabilities that deliver: after the
-    /// `DeliverySet`s, before attacks strike.
+    /// `DeliverySet`s, before attacks pay their toggles and strike.
     pub(crate) fn install(world: &mut World, schedule: &mut Schedule) {
         if world.contains_resource::<Deliveries>() {
             return;
@@ -54,13 +54,13 @@ impl Deliveries {
             (DeliverySet::Fly, DeliverySet::Trigger)
                 .chain()
                 .in_set(SimSet::Hit)
-                .before(CombatSet::Strike),
+                .before(CombatSet::Pay),
         );
         schedule.add_systems(
             deliver
                 .in_set(SimSet::Hit)
                 .after(DeliverySet::Trigger)
-                .before(CombatSet::Strike),
+                .before(CombatSet::Pay),
         );
     }
 }

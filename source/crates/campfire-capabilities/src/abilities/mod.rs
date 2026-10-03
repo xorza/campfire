@@ -1,14 +1,14 @@
 use std::mem;
 
 use bevy_ecs::entity::Entity;
-use bevy_ecs::query::{QueryState, Without};
-use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule};
+use bevy_ecs::query::{Has, QueryState, Without};
+use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Local, Query, Res};
 use bevy_ecs::world::{Mut, World};
 use campfire_common::{Tick, Ticks};
 use campfire_script::ScriptId;
 use campfire_script::rhai::Dynamic;
-use campfire_sim::{Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry};
+use campfire_sim::{Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry, TickRate};
 
 use crate::actions::effect_lists::{EffectLists, ListsOf};
 
@@ -20,7 +20,8 @@ use crate::actions::rank_values::ChargeRule;
 use crate::scripts::call_start::CallStart;
 use crate::units::action_id::ActionId;
 
-use crate::actions::action_slots::{ActionSlots, InProgress};
+use crate::actions::action_data::TogglePer;
+use crate::actions::action_slots::{ActionSlot, ActionSlots, InProgress};
 
 use crate::actions::action_target::ActionTarget;
 use crate::actions::purse::{Payer, Purse};
@@ -41,6 +42,7 @@ use crate::scripts::hook::Hook;
 use crate::scripts::pool::Pool;
 use crate::scripts::script_batch::ScriptBatch;
 
+use crate::stats::StatsSet;
 use crate::stats::pool_cost::PoolCost;
 
 use crate::stats::pools::Pools;
@@ -59,7 +61,20 @@ pub(crate) mod abilities_effect;
 #[derive(Debug)]
 pub struct Abilities;
 
+/// The systems of `abilities`, for the capabilities built on it to order theirs against.
+#[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) enum AbilitiesSet {
+    /// In `SimSet::Inputs`, before the holds follow: toggles pay their seconds or turn off.
+    Toggles,
+}
+
 impl Abilities {
+    /// A second at `rate`, the time a toggle pays its cost each.
+    fn second(rate: TickRate) -> Ticks {
+        rate.ticks(1000)
+            .expect("a second counts in ticks at every rate")
+    }
+
     /// Adds abilities to a match, on the core `Units` installs: in Hit, after attacks strike and
     /// before the tick's projectiles launch, due casts resolve: the delivery, the cost, the
     /// cooldown and the script's effects apply together, or none of them. A cast resolves in the
@@ -76,12 +91,70 @@ impl Abilities {
             );
             return;
         }
-        schedule.add_systems(
+        schedule.add_systems((
+            run_toggles
+                .in_set(SimSet::Inputs)
+                .in_set(AbilitiesSet::Toggles)
+                .after(StatsSet::Regenerate)
+                .after(CombatSet::Respawn)
+                .before(ActionsSet::HoldAtInputs),
             resolve_casts
                 .in_set(SimSet::Hit)
                 .after(CombatSet::Fire)
                 .before(CombatSet::Launch),
+        ));
+    }
+}
+
+/// Keeps each toggle that is on, as each tick starts, before the holds follow: death or a tag that
+/// blocks casting turns it off; one that costs a second pays at each whole second from when it
+/// turned on, and one its pools cannot pay turns off. The server alone runs it, as a client's
+/// pools come from the server.
+fn run_toggles(
+    (tick, rate, book): (Res<'_, SimTick>, Res<'_, TickRate>, Res<'_, ActionBook>),
+    mut units: Query<
+        '_,
+        '_,
+        (
+            &mut ActionSlots,
+            Option<&mut Pools>,
+            Option<&UnitTags>,
+            Has<Dead>,
+        ),
+    >,
+    mut on: Local<'_, Vec<(u8, ActionSlot)>>,
+) {
+    let now = tick.start();
+    let second = Abilities::second(*rate);
+    for (mut slots, mut pools, tags, dead) in &mut units {
+        on.clear();
+        on.extend(
+            (0..)
+                .zip(slots.iter())
+                .filter(|(_, slot)| slot.toggle.is_some()),
         );
+        let stops = dead || UnitTags::effects_of(tags).blocks(Block::Cast);
+        for &(at, slot) in &*on {
+            if stops {
+                slots.toggle_off(at);
+                continue;
+            }
+            let next = slot.toggle.expect("a toggle that is on");
+            let toggle = book
+                .get(slot.action)
+                .and_then(|action| action.toggle_rule(slot.rank))
+                .expect("a toggle that is on has its rule");
+            if toggle.per != TogglePer::Second || next > now {
+                continue;
+            }
+            match pools.as_deref_mut() {
+                Some(pools) if pools.affords(&toggle.cost) => {
+                    pools.pay(&toggle.cost);
+                    slots.toggle_on(at, next.after(second));
+                }
+                _ => slots.toggle_off(at),
+            }
+        }
     }
 }
 
@@ -129,6 +202,14 @@ fn start_casts(
             continue;
         }
         if resolves_at.is_some() {
+            continue;
+        }
+        if slot.toggle.is_some() {
+            if now >= slot.ready_at {
+                slots.toggle_off(aim.slot);
+                slots.cool_down(aim.slot, now.after(action.values(slot.rank).cooldown));
+            }
+            slots.stop();
             continue;
         }
         let purse = Purse {
@@ -200,7 +281,7 @@ fn resolve_casts(
 /// tags keep it from casting goes back to its order. Its cost and its effects come from the
 /// server.
 fn predict_casts(
-    tick: Res<'_, SimTick>,
+    (tick, rate): (Res<'_, SimTick>, Res<'_, TickRate>),
     book: Res<'_, ActionBook>,
     resources: Option<Res<'_, PlayerResources>>,
     targets: Targets<'_, '_>,
@@ -218,6 +299,7 @@ fn predict_casts(
     >,
 ) {
     let now = tick.start();
+    let second = Abilities::second(*rate);
     for (&team, mut slots, pools, owner, tags) in &mut casters {
         let Some(casting) = slots
             .in_progress()
@@ -241,6 +323,9 @@ fn predict_casts(
             .map(|checked| checked.values);
         if let Some(values) = values {
             slots.spend(casting.slot, now, values.cooldown, values.charges);
+            if values.toggle.is_some() {
+                slots.toggle_on(casting.slot, now.after(second));
+            }
         }
         slots.stop();
     }
@@ -262,6 +347,8 @@ struct Prepared {
     cost: PoolCost,
     cooldown: Ticks,
     charges: Option<ChargeRule>,
+    /// Whether it turns its toggle on.
+    toggles: bool,
 }
 
 /// Resolves one cast: its script runs, then its effects, cost and cooldown apply together, or,
@@ -322,6 +409,13 @@ fn apply(world: &mut World, ctx: &Ctx, now: Tick, entity: Entity, prepared: &Pre
         .get_mut::<ActionSlots>(entity)
         .expect("a caster has slots")
         .spend(prepared.slot, now, prepared.cooldown, prepared.charges);
+    if prepared.toggles {
+        let second = Abilities::second(*world.resource::<TickRate>());
+        world
+            .get_mut::<ActionSlots>(entity)
+            .expect("a caster has slots")
+            .toggle_on(prepared.slot, now.after(second));
+    }
 }
 
 /// The cast of `entity` checked again, and its params at its rank put in the frame; `None` when
@@ -393,6 +487,7 @@ fn prepare(
         cost: checked.values.cost,
         cooldown: checked.values.cooldown,
         charges: checked.values.charges,
+        toggles: checked.values.toggle.is_some(),
     }))
 }
 

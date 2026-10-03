@@ -12,6 +12,8 @@ pub enum ActionField {
     Windup,
     /// Its charges: a count of 1 to 255, and a recharge of whole milliseconds.
     Charges,
+    /// Its toggle's cost: whole amounts of the caster's pools.
+    Toggle,
 }
 
 /// Why an action that passed the package load does not load into a match: what only the

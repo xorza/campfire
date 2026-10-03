@@ -125,13 +125,11 @@ impl ActionDataField {
                 true,
                 [Takes, Refuses, Refuses],
             ),
-            ActionDataField::Toggle => {
-                ("toggle", Some(Abilities), false, [Takes, Refuses, Refuses])
-            }
+            ActionDataField::Toggle => ("toggle", Some(Abilities), true, [Takes, Refuses, Refuses]),
             ActionDataField::Channel => {
                 ("channel", Some(Abilities), false, [Takes, Refuses, Refuses])
             }
-            ActionDataField::Hold => ("hold", Some(Abilities), false, [Takes, Refuses, Refuses]),
+            ActionDataField::Hold => ("hold", Some(Abilities), true, [Takes, Refuses, Refuses]),
             ActionDataField::Charges => {
                 ("charges", Some(Abilities), true, [Takes, Refuses, Refuses])
             }

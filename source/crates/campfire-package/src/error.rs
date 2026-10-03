@@ -173,6 +173,8 @@ pub enum LoadProblem {
     TrainAims(DeclaredName),
     /// An action clamps its aim to its range, and aims at no point.
     ClampAims(DeclaredName),
+    /// An action holds a modifier, and has no toggle or channel to hold it while.
+    HoldAlone(DeclaredName),
     /// An action of a kind the release does not run yet.
     KindNotRun {
         action: DeclaredName,
@@ -747,6 +749,9 @@ impl fmt::Display for LoadProblem {
                     f,
                     "action \"{action}\": only a point aim clamps to the range"
                 )
+            }
+            LoadProblem::HoldAlone(action) => {
+                write!(f, "action \"{action}\": a hold needs a toggle or a channel")
             }
             LoadProblem::KindNotRun { action, kind } => {
                 write!(

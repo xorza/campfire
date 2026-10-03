@@ -46,6 +46,7 @@ impl ActionBook {
         let ActionParts {
             kind,
             passive,
+            hold,
             aim,
             ranks,
             delivery,
@@ -62,6 +63,7 @@ impl ActionBook {
             name: name.into(),
             kind,
             passive,
+            hold,
             aim,
             ranks: ranks.values,
             resource_costs: ranks.resource_costs.into_boxed_slice(),
@@ -306,6 +308,7 @@ pub(crate) mod internals {
                     kind: DamageKind::new(0),
                 }),
                 passive: None,
+                hold: None,
                 aim: Aim::Unit(weapon.aim),
                 ranks: vec![RankValues {
                     range: weapon.range,
@@ -313,6 +316,7 @@ pub(crate) mod internals {
                     cost: weapon.cost,
                     windup: weapon.windup,
                     charges: None,
+                    toggle: None,
                 }],
                 resource_costs: weapon.resource_cost.into_iter().collect(),
                 script: None,
@@ -338,6 +342,7 @@ pub(crate) mod internals {
                 name: "train".into(),
                 kind: KindSpec::Train(unit),
                 passive: None,
+                hold: None,
                 aim: Aim::None,
                 ranks: vec![RankValues {
                     range: Range::Global,
@@ -345,6 +350,7 @@ pub(crate) mod internals {
                     cost: PoolCost::default(),
                     windup: time,
                     charges: None,
+                    toggle: None,
                 }],
                 resource_costs: resource_cost.into_iter().collect(),
                 script: None,

@@ -14,13 +14,15 @@ use crate::actions::kind_spec::KindSpec;
 use crate::actions::rank_values::LoadedRanks;
 use crate::actions::rank_values::RankValues;
 use crate::actions::weapon::Weapon;
+use crate::units::modifier_id::ModifierId;
 
 /// What an action's data gives, resolved against the match: its kind with what the kind needs,
-/// its passive, its aim, its fields at each rank, and how it delivers.
+/// its passive and its hold, its aim, its fields at each rank, and how it delivers.
 #[derive(Debug)]
 pub(crate) struct ActionParts {
     pub(crate) kind: KindSpec,
     pub(crate) passive: Option<Passive>,
+    pub(crate) hold: Option<ModifierId>,
     pub(crate) aim: Aim,
     pub(crate) ranks: LoadedRanks,
     pub(crate) delivery: Option<Delivery>,
@@ -81,9 +83,11 @@ impl ActionParts {
             };
             Delivery { unit_type, shape }
         });
+        let hold = data.hold.as_ref().map(|name| names.modifier(package, name));
         Ok(ActionParts {
             kind,
             passive,
+            hold,
             aim,
             ranks,
             delivery,

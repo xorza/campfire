@@ -3,7 +3,7 @@ use std::num::NonZeroU8;
 use campfire_common::Ticks;
 use campfire_sim::TickRate;
 
-use crate::actions::action_data::ActionData;
+use crate::actions::action_data::{ActionData, RankToggle};
 
 use crate::actions::cost_target::CostTarget;
 
@@ -29,6 +29,7 @@ pub(crate) struct RankValues {
     pub(crate) cost: PoolCost,
     pub(crate) windup: Ticks,
     pub(crate) charges: Option<ChargeRule>,
+    pub(crate) toggle: Option<RankToggle>,
 }
 
 /// How many charges an action holds at most, and the ticks one takes to come back.
@@ -75,6 +76,7 @@ impl RankValues {
                         })
                     })
                     .transpose()?,
+                toggle: fields.toggle,
             });
             loaded.resource_costs.extend(fields.resource_cost);
         }

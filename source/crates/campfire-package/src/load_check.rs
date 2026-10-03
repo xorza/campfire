@@ -839,6 +839,9 @@ impl<'a> LoadCheck<'a> {
         if action.clamp_to_range && action.targeting != Targeting::Point {
             return Err(LoadProblem::ClampAims(id.to_owned()));
         }
+        if action.hold.is_some() && action.toggle.is_none() && action.channel.is_none() {
+            return Err(LoadProblem::HoldAlone(id.to_owned()));
+        }
         match action.kind {
             ActionKind::Cast => {
                 self.require(Capability::Abilities, &at)?;

@@ -271,6 +271,114 @@ fn kenshos_twin_cut_hits_twice_on_each_seventh_attack_and_never_answers_itself()
     assert!(arena.failures().is_empty(), "{:?}", arena.failures());
 }
 
+/// Arms `unit` as `arm` does, with `ability` at rank 1 in slot 0, before the weapon.
+fn arm_with(arena: &mut Arena, unit: StableId, ability: ActionId, damage: i64, period: u64) {
+    arm(arena, unit, damage, period);
+    let world = arena.world_mut();
+    let entity = world.resource::<EntityIndex>().get(unit).unwrap();
+    let weapon = world.get::<ActionSlots>(entity).unwrap().slot(0).unwrap();
+    let slots = ActionSlots::new([
+        (ability, SlotKind::new(0), 1),
+        (weapon.action, weapon.kind, weapon.rank),
+    ]);
+    world.entity_mut(entity).insert(slots);
+}
+
+/// Whether `unit` has the toggle of its slot 0 on.
+fn toggled(arena: &Arena, unit: StableId) -> bool {
+    let world = arena.world();
+    let entity = world.resource::<EntityIndex>().get(unit).unwrap();
+    let slots = world.get::<ActionSlots>(entity).unwrap();
+    slots.slot(0).unwrap().toggle.is_some()
+}
+
+#[test]
+fn rimes_chill_arrows_pays_mana_each_attack_and_turns_off_when_it_cannot() {
+    let mut arena = arena();
+    let chill = arena.action("hero-rime", "chill_arrows");
+    let hold = arena.modifier("hero-rime", "chill_arrows");
+    let player = Owner::new(PlayerSlot::new(0));
+    // Rime with 20 mana, a weapon of 10 every 10 ticks; an enemy beside her.
+    let rime = spawn_with(&mut arena, 0, 0, (20, 0), (player, Modifiers::default()));
+    let enemy = spawn(&mut arena, 1, 1, Modifiers::default());
+    arm_with(&mut arena, rime, chill, 10, 10);
+    let mana = |arena: &Arena| pool(arena, rime, "mana").round();
+    let holds = |arena: &Arena| carried(arena, rime).contains(&(hold, Some(rime)));
+    // Tick 0: on, at no cost but its toggle's, and its hold from that tick's Resolve.
+    arena.tick(0, &[cast(rime, ActionTarget::None)]);
+    assert_eq!(
+        (toggled(&arena, rime), holds(&arena), mana(&arena)),
+        (true, true, 20)
+    );
+    // Each attack pays 8 as it goes off, in ticks 1 and 11: 4 are left. The third, in tick 21,
+    // cannot pay: the toggle turns off before it, and its hold with it.
+    arena.tick(0, &[attack(rime, enemy)]);
+    for _ in 2..=11 {
+        arena.step();
+    }
+    assert_eq!((toggled(&arena, rime), mana(&arena)), (true, 4));
+    for _ in 12..=21 {
+        arena.step();
+    }
+    assert_eq!(
+        (toggled(&arena, rime), holds(&arena), mana(&arena)),
+        (false, false, 4)
+    );
+    assert_eq!(health(&arena, enemy), 470);
+    // On again, then a second cast turns it off as it starts, at no cost.
+    arena.tick(0, &[cast(rime, ActionTarget::None)]);
+    assert!(toggled(&arena, rime));
+    arena.tick(0, &[cast(rime, ActionTarget::None)]);
+    assert_eq!((toggled(&arena, rime), mana(&arena)), (false, 4));
+    assert!(arena.failures().is_empty(), "{:?}", arena.failures());
+}
+
+#[test]
+fn husks_dread_pays_mana_each_second_burns_enemies_near_and_ends_at_death() {
+    let mut arena = arena();
+    let dread = arena.action("hero-husk", "dread");
+    // Husk with 20 mana; an enemy of 500 health 2 m away, inside Dread's 3 m.
+    let husk = caster(&mut arena, dread, 1, (20, 0), Modifiers::default());
+    let enemy = spawn(&mut arena, 1, 2, ());
+    let mana = |arena: &Arena| pool(arena, husk, "mana").round();
+    // On in tick 0. It pays 8 at each whole second, in ticks 30 and 60: 4 are left. Its hold's
+    // interval of 1000 ms deals 1.5% of the enemy's 500 health in ticks 30 and 60. In tick 90 it
+    // cannot pay: it turns off before its hold's interval, which deals nothing more.
+    arena.tick(0, &[cast(husk, ActionTarget::None)]);
+    let mut seen = Vec::new();
+    for tick in 1..=95 {
+        arena.step();
+        if [30, 60, 90].contains(&tick) {
+            seen.push((
+                tick,
+                toggled(&arena, husk),
+                mana(&arena),
+                pool(&arena, enemy, "health"),
+            ));
+        }
+    }
+    // 0.015 in 24 fraction bits is 251 658, its 0.24 rounded off, so each burn is 500 times
+    // that: a hair below 7.5.
+    let burn = Num::int(500) * Num::from_bits(251_658);
+    let after = |burns: i64| Num::int(500) - burn * Num::int(burns);
+    assert_eq!(
+        seen,
+        [
+            (30, true, 12, after(1)),
+            (60, true, 4, after(2)),
+            (90, false, 4, after(2)),
+        ]
+    );
+    // On again, it ends as Husk dies.
+    arena.tick(0, &[cast(husk, ActionTarget::None)]);
+    assert!(toggled(&arena, husk));
+    internals::queue_damage(arena.world_mut(), None, husk, Num::int(1000), "true");
+    arena.step();
+    arena.step();
+    assert!(!toggled(&arena, husk));
+    assert!(arena.failures().is_empty(), "{:?}", arena.failures());
+}
+
 #[test]
 fn veils_dusk_mark_detonates_once_on_veils_next_damage() {
     let mut arena = arena();

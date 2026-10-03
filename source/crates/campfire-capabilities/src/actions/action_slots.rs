@@ -7,10 +7,12 @@ use campfire_sim::{SimComponent, StableId};
 use serde::{Deserialize, Serialize};
 
 use crate::actions::action_book::ActionBook;
+use crate::actions::action_data::TogglePer;
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_target::ActionTarget;
 use crate::actions::rank_values::ChargeRule;
 use crate::actions::slot_kind::SlotKind;
+use crate::stats::pools::Pools;
 use crate::units::action_id::ActionId;
 
 /// A unit's actions: its slots, kind after kind in the mode's order, each an action at a rank
@@ -32,6 +34,8 @@ pub struct ActionSlot {
     pub rank: u8,
     pub ready_at: Tick,
     pub charges: Option<SlotCharges>,
+    /// While its toggle is on, the tick it pays its cost each second next.
+    pub toggle: Option<Tick>,
 }
 
 /// A slot's charges: how many it holds, and the tick the next comes back while it holds fewer
@@ -149,6 +153,7 @@ impl ActionSlots {
                 rank,
                 ready_at: Tick::ZERO,
                 charges: None,
+                toggle: None,
             })
             .collect();
         debug_assert!(slots.is_sorted_by_key(|slot| slot.kind));
@@ -169,6 +174,7 @@ impl ActionSlots {
             rank,
             ready_at: Tick::ZERO,
             charges: None,
+            toggle: None,
         });
         self.slots.splice(at..at, added);
         if let Some(underway) = &mut self.underway
@@ -323,6 +329,35 @@ impl ActionSlots {
         })
     }
 
+    /// Turns the toggle of `slot` on, to pay its cost each second from `next`.
+    pub(crate) fn toggle_on(&mut self, slot: u8, next: Tick) {
+        self.slots[usize::from(slot)].toggle = Some(next);
+    }
+
+    /// Turns the toggle of `slot` off.
+    pub(crate) fn toggle_off(&mut self, slot: u8) {
+        self.slots[usize::from(slot)].toggle = None;
+    }
+
+    /// Pays the cost of each toggle that is on and pays as each attack goes off, from `pools`, as
+    /// `book` gives it at the slot's rank; one that `pools` cannot pay turns off instead.
+    pub(crate) fn pay_attack_toggles(&mut self, book: &ActionBook, pools: &mut Pools) {
+        for slot in self.slots.iter_mut().filter(|slot| slot.toggle.is_some()) {
+            let toggle = book
+                .get(slot.action)
+                .and_then(|action| action.toggle_rule(slot.rank))
+                .expect("a toggle that is on has its rule");
+            if toggle.per != TogglePer::Attack {
+                continue;
+            }
+            if pools.affords(&toggle.cost) {
+                pools.pay(&toggle.cost);
+            } else {
+                slot.toggle = None;
+            }
+        }
+    }
+
     /// Sets the charges of `slot`.
     pub(crate) fn set_charges(&mut self, slot: u8, charges: Option<SlotCharges>) {
         self.slots[usize::from(slot)].charges = charges;
@@ -397,6 +432,16 @@ impl SimComponent for ActionSlots {
                 (action.kind.kind() == ActionKind::Attack) == attacks && attack
             })
         });
+        // A toggle on only for an action with one, at a rank it has.
+        let toggles = self.slots.iter().all(|slot| {
+            slot.toggle.is_none_or(|next| {
+                let toggles = book
+                    .get(slot.action)
+                    .and_then(|action| action.toggle_rule(slot.rank))
+                    .is_some();
+                toggles && next <= Tick::LIMIT
+            })
+        });
         // Charges no more than the action holds at its rank, and only for an action with them.
         let charges = self.slots.iter().all(|slot| {
             slot.charges.is_none_or(|charges| {
@@ -417,5 +462,6 @@ impl SimComponent for ActionSlots {
             && underway
             && times
             && charges
+            && toggles
     }
 }
