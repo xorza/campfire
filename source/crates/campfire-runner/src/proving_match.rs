@@ -1,14 +1,14 @@
 use std::num::NonZeroU32;
 
-use bevy_ecs::world::EntityRef;
-use campfire_capabilities::{Action, ActionTarget, Experience, Order, Owner, Team, TrainQueue};
-use campfire_common::Tick;
+use campfire_capabilities::{Action, ActionTarget, Order, Team, TrainQueue};
 use campfire_math::{Num, Vec3};
 use campfire_package::{ModePackages, PackageDir};
-use campfire_sim::{EntityIndex, Position, StableId};
+use campfire_sim::{Position, StableId};
 
 use crate::fixed_match::FixedMatch;
 use crate::fixed_session::FixedSession;
+use crate::match_units::MatchUnits;
+use crate::scripted::{Plan, Scripted};
 
 /// The proving mode of `packages/test`: a small match that uses every capability the release
 /// runs, played by two scripted players. It is owned by the tests, so no balance change of the
@@ -22,18 +22,9 @@ const TICK_HZ: NonZeroU32 = NonZeroU32::new(20).unwrap();
 /// The camps team, which holds the neutral boulder.
 const CAMPS: Team = Team::new(2);
 
-/// One scripted input: what player `slot` orders, sent for `stamp`.
+/// What a proving player orders, by the role of the units it names.
 #[derive(Debug, Clone, Copy)]
-struct Scripted {
-    stamp: u64,
-    slot: u32,
-    plan: Plan,
-}
-
-/// What a scripted input orders, by the role of the units it names, which the match resolves to
-/// stable ids when it sends the input.
-#[derive(Debug, Clone, Copy)]
-enum Plan {
+enum ProvingPlan {
     /// The hero walks to a point.
     Move { x: i64, z: i64 },
     /// The hero casts the action in `slot` at `at`.
@@ -67,33 +58,33 @@ enum Aim {
 ///   the sage's orb and nova.
 /// - North's barracks compete again once the income of tick 100 comes.
 /// - The lancer breaks the boulder, a static body near the lane.
-const SCRIPT: [Scripted; 17] = [
-    order(2, 0, Plan::Train { barracks: 0 }),
-    order(2, 0, Plan::Train { barracks: 1 }),
-    order(2, 1, Plan::Train { barracks: 0 }),
-    order(3, 0, Plan::Move { x: -1, z: -1 }),
-    order(3, 1, Plan::Move { x: 2, z: 2 }),
+const SCRIPT: [Scripted<ProvingPlan>; 17] = [
+    order(2, 0, ProvingPlan::Train { barracks: 0 }),
+    order(2, 0, ProvingPlan::Train { barracks: 1 }),
+    order(2, 1, ProvingPlan::Train { barracks: 0 }),
+    order(3, 0, ProvingPlan::Move { x: -1, z: -1 }),
+    order(3, 1, ProvingPlan::Move { x: 2, z: 2 }),
     cast(30, 0, 0, Aim::EnemyHeroPoint),
     cast(40, 1, 0, Aim::EnemyHero),
     cast(60, 0, 1, Aim::EnemyHeroPoint),
     cast(70, 1, 1, Aim::Nothing),
     cast(80, 0, 2, Aim::Nothing),
-    order(105, 0, Plan::Train { barracks: 1 }),
-    order(105, 0, Plan::Train { barracks: 0 }),
-    order(120, 0, Plan::AttackBoulder),
-    order(160, 1, Plan::Move { x: -6, z: -1 }),
+    order(105, 0, ProvingPlan::Train { barracks: 1 }),
+    order(105, 0, ProvingPlan::Train { barracks: 0 }),
+    order(120, 0, ProvingPlan::AttackBoulder),
+    order(160, 1, ProvingPlan::Move { x: -6, z: -1 }),
     cast(200, 0, 0, Aim::EnemyHeroPoint),
     cast(260, 1, 0, Aim::EnemyHero),
     cast(260, 0, 1, Aim::Point { x: -4, z: -1 }),
 ];
 
-const fn order(stamp: u64, slot: u32, plan: Plan) -> Scripted {
-    Scripted { stamp, slot, plan }
+const fn order(stamp: u64, slot: u32, plan: ProvingPlan) -> Scripted<ProvingPlan> {
+    Scripted::new(stamp, slot, plan)
 }
 
 /// A cast by the player `slot`'s hero of its ability slot `ability` at `at`.
-const fn cast(stamp: u64, slot: u32, ability: u8, at: Aim) -> Scripted {
-    order(stamp, slot, Plan::Cast { slot: ability, at })
+const fn cast(stamp: u64, slot: u32, ability: u8, at: Aim) -> Scripted<ProvingPlan> {
+    order(stamp, slot, ProvingPlan::Cast { slot: ability, at })
 }
 
 impl ProvingMatch {
@@ -120,40 +111,36 @@ impl ProvingMatch {
 
     /// Runs tick `tick` of `fixed`: first sends the scripted inputs stamped for it, then runs it.
     pub fn play_tick(fixed: &mut FixedMatch, tick: u64) {
-        for scripted in SCRIPT.iter().filter(|scripted| scripted.stamp == tick) {
-            let order = ProvingMatch::resolve(fixed, scripted);
-            fixed.send(scripted.slot, Tick::new(tick), &Order::payload(&[order]));
-        }
-        fixed.runner_mut().run_tick();
+        Scripted::play_tick(&SCRIPT, fixed, tick);
     }
+}
 
-    /// The order `scripted` stands for, with its units' stable ids now.
-    fn resolve(fixed: &FixedMatch, scripted: &Scripted) -> Order {
-        let units = Units::of(fixed);
-        let hero = units.hero(scripted.slot);
-        let enemy = units.hero(1 - scripted.slot);
-        let (unit, action) = match scripted.plan {
-            Plan::Move { x, z } => (
+impl Plan for ProvingPlan {
+    fn order(self, units: MatchUnits<'_>, slot: u32) -> Order {
+        let hero = units.hero(slot);
+        let enemy = units.hero(1 - slot);
+        let (unit, action) = match self {
+            ProvingPlan::Move { x, z } => (
                 hero,
                 Action::Move {
                     x: Num::int(x),
                     z: Num::int(z),
                 },
             ),
-            Plan::AttackBoulder => (
+            ProvingPlan::AttackBoulder => (
                 hero,
                 Action::Attack {
-                    target: units.boulder(),
+                    target: boulder(units),
                 },
             ),
-            Plan::Train { barracks } => (
-                units.barracks(scripted.slot)[barracks],
+            ProvingPlan::Train { barracks: at } => (
+                barracks(units, slot)[at],
                 Action::Slot {
                     slot: 0,
                     target: ActionTarget::None,
                 },
             ),
-            Plan::Cast { slot, at } => {
+            ProvingPlan::Cast { slot, at } => {
                 let target = match at {
                     Aim::Nothing => ActionTarget::None,
                     Aim::Point { x, z } => ActionTarget::Point(ground(Num::int(x), Num::int(z))),
@@ -167,65 +154,24 @@ impl ProvingMatch {
     }
 }
 
-/// The units of a running match that the script names.
-#[derive(Debug)]
-struct Units<'a> {
-    fixed: &'a FixedMatch,
+/// Player `slot`'s barracks, by stable id.
+fn barracks(units: MatchUnits<'_>, slot: u32) -> Vec<StableId> {
+    units
+        .all()
+        .filter(|(_, unit)| MatchUnits::owned_by(unit, slot) && unit.contains::<TrainQueue>())
+        .map(|(id, _)| id)
+        .collect()
 }
 
-impl Units<'_> {
-    const fn of(fixed: &FixedMatch) -> Units<'_> {
-        Units { fixed }
-    }
-
-    /// Every unit, with its stable id, in the order of the ids.
-    fn all(&self) -> impl Iterator<Item = (StableId, EntityRef<'_>)> {
-        let world = self.fixed.runner().world();
-        world
-            .resource::<EntityIndex>()
-            .iter()
-            .map(move |(id, entity)| (id, world.entity(entity)))
-    }
-
-    /// Player `slot`'s hero: the unit it owns that gains experience.
-    fn hero(&self, slot: u32) -> StableId {
-        self.all()
-            .find(|(_, unit)| owned_by(unit, slot) && unit.contains::<Experience>())
-            .map(|(id, _)| id)
-            .expect("each player has a hero")
-    }
-
-    /// Player `slot`'s barracks, by stable id.
-    fn barracks(&self, slot: u32) -> Vec<StableId> {
-        self.all()
-            .filter(|(_, unit)| owned_by(unit, slot) && unit.contains::<TrainQueue>())
-            .map(|(id, _)| id)
-            .collect()
-    }
-
-    fn boulder(&self) -> StableId {
-        self.all()
-            .find(|(_, unit)| unit.get::<Team>() == Some(&CAMPS))
-            .map(|(id, _)| id)
-            .expect("the boulder stands until its order")
-    }
-
-    fn position(&self, id: StableId) -> Position {
-        let world = self.fixed.runner().world();
-        let entity = world
-            .resource::<EntityIndex>()
-            .get(id)
-            .expect("a unit of the match");
-        *world
-            .get::<Position>(entity)
-            .expect("a unit stands somewhere")
-    }
+/// The neutral boulder.
+fn boulder(units: MatchUnits<'_>) -> StableId {
+    units
+        .all()
+        .find(|(_, unit)| unit.get::<Team>() == Some(&CAMPS))
+        .map(|(id, _)| id)
+        .expect("the boulder stands until its order")
 }
 
-fn owned_by(unit: &EntityRef<'_>, slot: u32) -> bool {
-    unit.get::<Owner>()
-        .is_some_and(|owner| owner.slot().get() == slot)
-}
 const fn ground(x: Num, z: Num) -> Position {
     Position::new(Vec3::new(x, Num::ZERO, z)).expect("a point of the map")
 }

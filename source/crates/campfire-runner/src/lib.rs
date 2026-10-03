@@ -17,12 +17,16 @@ mod hash_trail;
 mod input_rules;
 mod match_build;
 #[cfg(feature = "internals")]
+mod match_units;
+#[cfg(feature = "internals")]
 mod proving_match;
 #[cfg(feature = "internals")]
 mod reference_3v3;
 #[cfg(feature = "internals")]
 mod restore_target;
 mod runner;
+#[cfg(feature = "internals")]
+mod scripted;
 mod session;
 mod session_rules;
 
@@ -44,7 +48,8 @@ pub mod internals {
     pub use crate::fixed_session::FixedSession;
     pub use crate::golden::Golden;
     pub use crate::hash_trail::{Difference, HashTrail};
+    pub use crate::match_units::MatchUnits;
     pub use crate::proving_match::ProvingMatch;
-    pub use crate::reference_3v3::Reference3v3;
+    pub use crate::reference_3v3::{Play, Reference3v3};
     pub use crate::restore_target::RestoreTarget;
 }

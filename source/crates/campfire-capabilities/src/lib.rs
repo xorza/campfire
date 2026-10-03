@@ -186,7 +186,7 @@ pub use vision::seen_by::SeenBy;
 
 #[cfg(any(test, feature = "internals"))]
 pub mod internals {
-    pub use crate::combat::internals::Arms;
+    pub use crate::combat::internals::{Arms, queue_damage};
     pub use crate::stats::internals::{carried, give_modifier};
     pub use crate::stats::pools::internals::spent;
     pub use crate::units::relations::internals::set_relation;

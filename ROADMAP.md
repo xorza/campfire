@@ -13,12 +13,6 @@ The 3v3 MOBA with bots, on LAN or a local server, its logs verified and a crashe
 
 Done when the playtest finds that the 1v1 reads and plays well.
 
-### 4. Game model
-
-- The 3v3 played by scripted players: attacks, spells, towers, camps, kills and the late rules, with no hero abilities until stage 5.
-
-Done when the 3v3 match plays as before on the model, with no failed call of its mode, creep, tower or camp scripts, every reference package loads on its API version with its text in `en.ftl`, and every log verifies.
-
 ### 5. MOBA mechanics
 
 - Progression: points, the `learn` order and perks ([Progression](docs/design/04-capabilities/progression.md)).

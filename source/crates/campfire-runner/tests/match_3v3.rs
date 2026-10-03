@@ -10,9 +10,9 @@ use campfire_common::PlayerSlot;
 use campfire_math::{Num, Vec3};
 use campfire_protocol::SessionLog;
 use campfire_runner::Runner;
-use campfire_runner::internals::{Golden, HashTrail, Reference3v3};
+use campfire_runner::internals::{Golden, HashTrail, Play, Reference3v3};
 use campfire_script::ScriptHost;
-use campfire_sim::{EntityIndex, Position, TickRate};
+use campfire_sim::{EntityIndex, Position, StableId, TickRate};
 
 #[derive(Debug)]
 struct Run {
@@ -22,21 +22,32 @@ struct Run {
     /// Each unit after the tick the heroes spawn in, and after the one the first wave spawns in.
     at_pick_end: Vec<Unit>,
     at_first_wave: Vec<Unit>,
-    /// The units that died, and the ticks that ended with a projectile in flight.
-    deaths: usize,
+    /// Each unit that died, with its killer, and the ticks that ended with a projectile in
+    /// flight.
+    deaths: Vec<(StableId, Option<StableId>)>,
     shooting: usize,
 }
 
-/// A unit as a test sees it: its team, its unit type, where it stands, who controls it, whether
+/// A unit as a test sees it: its stable id, its team, its unit type, where it stands, who controls it, whether
 /// it walks a lane, and its ability slots.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Unit {
+    id: StableId,
     team: Team,
     kind: UnitType,
     pos: Position,
     controller: Option<u32>,
     walks: bool,
     slots: Vec<ActionSlot>,
+}
+
+/// Player `slot`'s hero, as the pick's end spawned it.
+fn hero_of(run: &Run, slot: u32) -> StableId {
+    let hero = run
+        .at_pick_end
+        .iter()
+        .find(|unit| unit.controller == Some(slot));
+    hero.expect("each player has a hero").id
 }
 
 /// The mode param `name` of the reference, a number of milliseconds.
@@ -52,9 +63,10 @@ fn units(runner: &Runner) -> Vec<Unit> {
     world
         .resource::<EntityIndex>()
         .iter()
-        .filter_map(|(_, entity)| {
+        .filter_map(|(id, entity)| {
             let unit = world.entity(entity);
             Some(Unit {
+                id,
                 team: *unit.get::<Team>()?,
                 kind: *unit.get::<UnitType>()?,
                 pos: *unit.get::<Position>()?,
@@ -68,32 +80,31 @@ fn units(runner: &Runner) -> Vec<Unit> {
         .collect()
 }
 
-/// A match of `ticks` ticks in which each player picks a hero and two spells before tick 0.
+/// A match of `ticks` ticks in which each player picks a hero and two spells before tick 0, and
+/// then plays the lanes.
 fn run(reference: &Reference3v3, ticks: u64) -> Run {
-    let runner = reference.start();
+    let mut fixed = reference.start();
+    let runner = fixed.runner();
     // A timer fires in the tick its time ends in. The pick's, set in tick 0, ends in the tick
     // before its count of ticks; the first wave's, set then, its own count later.
     let rate = *runner.world().resource::<TickRate>();
     let timer = |name| rate.ticks(param_ms(reference, name)).unwrap().get();
     let pick_end = timer("pick_ms") - 1;
     let first_wave = pick_end + timer("first_wave_ms");
-    let mut run = Run {
-        runner,
-        trail: HashTrail::default(),
-        golden: Golden::new(reference.packages(), Reference3v3::PLAYERS),
-        at_pick_end: Vec::new(),
-        at_first_wave: Vec::new(),
-        deaths: 0,
-        shooting: 0,
-    };
+    let mut trail = HashTrail::default();
+    let mut golden = Golden::new(reference.packages(), Reference3v3::PLAYERS);
+    let (mut at_pick_end, mut at_first_wave) = (Vec::new(), Vec::new());
+    let (mut deaths, mut shooting) = (Vec::new(), 0);
     for tick in 0..ticks {
-        run.runner.run_tick();
-        run.trail.record(run.runner.world());
-        run.golden.record(&run.runner);
-        let world = run.runner.world();
-        run.deaths += world.resource::<Deaths>().iter().count();
+        Reference3v3::play_tick(&mut fixed, Play::Lanes, tick);
+        let runner = fixed.runner();
+        trail.record(runner.world());
+        golden.record(runner);
+        let world = runner.world();
+        let died = world.resource::<Deaths>().iter();
+        deaths.extend(died.map(|death| (death.fallen.unit, death.killer)));
         let mut projectiles = world.try_query::<&Projectile>().unwrap();
-        run.shooting += usize::from(projectiles.iter(world).next().is_some());
+        shooting += usize::from(projectiles.iter(world).next().is_some());
         let failures = world.non_send::<ScriptFailures>();
         assert!(
             failures.get().is_empty(),
@@ -101,13 +112,22 @@ fn run(reference: &Reference3v3, ticks: u64) -> Run {
             failures.get()
         );
         if tick == pick_end {
-            run.at_pick_end = units(&run.runner);
+            at_pick_end = units(runner);
         } else if tick == first_wave {
-            run.at_first_wave = units(&run.runner);
+            at_first_wave = units(runner);
         }
     }
-    run.runner.reveal_seed();
-    run
+    let mut runner = fixed.into_runner();
+    runner.reveal_seed();
+    Run {
+        runner,
+        trail,
+        golden,
+        at_pick_end,
+        at_first_wave,
+        deaths,
+        shooting,
+    }
 }
 
 fn ground(x: i64, z: i64) -> Position {
@@ -120,8 +140,8 @@ fn a_3v3_match_replays_to_the_same_hashes() {
     let reference = Reference3v3::load();
     // At the 3v3's slowest rate, 20 ticks a second, the pick ends in tick 1199 and the first wave
     // spawns in tick 2399; the waves meet and fight from tick 2803, so the run holds the first
-    // 400 ticks of their fight, in which melee creeps strike and caster creeps fire bolts. No
-    // tower, camp or hero fights in it.
+    // 400 ticks of their fight, in which melee creeps strike, caster creeps fire bolts, and
+    // Cinder and Veil farm the west and the east lane.
     let run = run(&reference, 3200);
     run.golden.check("3v3");
     let runner = &run.runner;
@@ -212,31 +232,61 @@ fn a_3v3_match_replays_to_the_same_hashes() {
     // The goldens pin the fight exactly; the run reaches it: units die, and bolts fly. The heroes
     // cast nothing, so every projectile is an attack's.
     assert!(
-        run.deaths > 0 && run.shooting > 0,
-        "{} {}",
+        !run.deaths.is_empty() && run.shooting > 0,
+        "{:?} {}",
         run.deaths,
         run.shooting
     );
 
+    assert_gold(&reference, &run, wave[0].kind);
+
+    assert_replays(&reference, &run.runner, &run.trail);
+}
+
+/// The players' gold after `run`: the income, and the bounty of each creep of the first wave a
+/// hero felled, by its kind, `melee` or a caster's.
+fn assert_gold(reference: &Reference3v3, run: &Run, melee: UnitType) {
+    // Each creep a hero fells pays its player its bounty: 20 for a melee creep, the first three
+    // of a group, 15 for a caster. Cinder fells two of the south's west group, a caster and a
+    // melee creep, and Veil two of the north's east group, a caster and a melee creep: 35 each.
+    let [cinder, veil] = [0, 5].map(|slot| hero_of(run, slot));
+    let bounty = |killer| -> i64 {
+        run.deaths
+            .iter()
+            .filter(|&&(_, by)| by == Some(killer))
+            .map(|&(victim, _)| {
+                let at = run
+                    .at_first_wave
+                    .iter()
+                    .position(|unit| unit.id == victim)
+                    .unwrap();
+                if run.at_first_wave[at].kind == melee {
+                    20
+                } else {
+                    15
+                }
+            })
+            .sum()
+    };
+    assert_eq!([bounty(cinder), bounty(veil)], [35, 35]);
+
     // Income: 8 gold every 5 s from the pick's end, 100 ticks, in ticks 1299 to 3199: 20 times,
-    // and no bounty reaches a player.
-    let amounts = world.resource::<PlayerResources>();
+    // and the bounties of the creeps Cinder's and Veil's players fell.
+    let amounts = run.runner.world().resource::<PlayerResources>();
     let gold = ResourceId::named(&reference.packages().data().resources, "gold").unwrap();
     for slot in 0..Reference3v3::PLAYERS {
+        let bounty = if [0, 5].contains(&slot) { 35 } else { 0 };
         assert_eq!(
             amounts.amount(PlayerSlot::new(slot), gold),
-            160,
+            160 + bounty,
             "player {slot}"
         );
     }
-
-    assert_replays(&reference, &run);
 }
 
-/// The match of `run`, its log replayed from its file, gives its hash after every tick and ends
-/// where it ended.
-fn assert_replays(reference: &Reference3v3, run: &Run) {
-    let runner = &run.runner;
+/// The match of `runner`, which recorded `trail`, its log replayed from its file, gives its hash
+/// after every tick and ends where it ended.
+pub(crate) fn assert_replays(reference: &Reference3v3, runner: &Runner, trail: &HashTrail) {
     let mut file = Vec::new();
     runner.log().encode(&mut file);
     let decoded = SessionLog::decode(&file).unwrap();
@@ -247,10 +297,10 @@ fn assert_replays(reference: &Reference3v3, run: &Run) {
     )
     .unwrap();
     let mut replayed = HashTrail::default();
-    for _ in run.trail.totals() {
+    for _ in trail.totals() {
         replay.run_tick();
         replayed.record(replay.world());
     }
-    run.trail.assert_same(&replayed);
+    trail.assert_same(&replayed);
     assert_eq!(replay.log().next_tick(), runner.log().next_tick());
 }

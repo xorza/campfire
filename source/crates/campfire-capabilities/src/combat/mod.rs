@@ -682,14 +682,19 @@ pub(crate) mod internals {
     #[cfg(test)]
     use crate::units::team::Team;
 
+    use campfire_sim::StableId;
+
     use crate::actions::action_book::internals::{self, TestWeapon};
     use crate::actions::action_slots::ActionSlots;
     use crate::actions::range::Range;
     use crate::actions::slot_kind::SlotKind;
     #[cfg(test)]
     use crate::combat::combat_bindings::CombatBindings;
+    use crate::combat::damage::{Damage, DamageCause};
+    use crate::combat::pass_queue::PassQueue;
     #[cfg(test)]
     use crate::stats::life_pool::LifePool;
+    use crate::units::script_view::View;
 
     #[cfg(test)]
     use crate::stats::pool_id::PoolId;
@@ -698,6 +703,31 @@ pub(crate) mod internals {
     use crate::units::filter::Filter;
     use crate::units::unit_type::UnitType;
     use crate::values::relation::Relation;
+
+    /// Queues `amount` of the damage kind `kind` from `source` to `target` for the tick's damage
+    /// pass, as an effect of no action deals it: for a test that deals what no input can.
+    pub fn queue_damage(
+        world: &mut World,
+        source: Option<StableId>,
+        target: StableId,
+        amount: Num,
+        kind: &str,
+    ) {
+        let kind = world
+            .non_send::<View>()
+            .damage_kind_named(kind)
+            .unwrap_or_else(|_| panic!("the mode declares the damage kind {kind}"));
+        world.resource_mut::<PassQueue>().push_damage(Damage {
+            source,
+            target,
+            amount,
+            kind,
+            cause: DamageCause::Effect,
+            ability: None,
+            depth: 0,
+            hit: None,
+        });
+    }
 
     /// A test unit's weapon: it aims at enemies within `range`, winds up `windup`, may attack
     /// again `period` after an attack's start, deals `damage`, and fires a projectile of the
