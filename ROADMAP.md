@@ -8,7 +8,7 @@ The 3v3 MOBA with bots, on LAN or a local server, its logs verified and a crashe
 
 ### 5. MOBA mechanics
 
-- Progression: points, the `learn` order and perks ([Progression](docs/design/04-capabilities/progression.md)).
+- Progression: points and the `learn` order ([Progression](docs/design/04-capabilities/progression.md)).
 - Action values and bookkeeping; channels, toggles and `ctx.reveal` ([Actions](docs/design/04-capabilities/actions.md)).
 - Forced movement: dash, knock back, teleport ([Navigation](docs/design/04-capabilities/navigation.md#forced-movement)).
 - The core's planned script names: `ctx.pick` and `ctx.chance` from the secret stream, and the vector operators `*`, `+` and `-` ([Script API reference](docs/design/08-script-api-reference.md)).
@@ -45,7 +45,7 @@ Done when both play to their goldens on every OS in CI.
 
 ### 9. Genre proofs: RPG and MMO
 
-- First cuts: `quests` and dialogue, `world` (dormant regions), the game clock, senses, crafting, tracks and perks, sweeps, package overrides, generated maps, scripted systems.
+- First cuts: `quests` and dialogue, `world` (dormant regions), the game clock, senses, crafting, perks ([Progression](docs/design/04-capabilities/progression.md#data)), sweeps, package overrides, generated maps, scripted systems.
 - The MMO zone, the Diablo level and the RPG town; the test that every pair of capabilities meets in a test mode ([Testing combinations](docs/design/04-capabilities/00-overview.md#testing-combinations)).
 
 Done when all three play to their goldens on every OS in CI, and the pair test passes.
