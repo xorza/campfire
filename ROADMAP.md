@@ -8,10 +8,9 @@ The 3v3 MOBA with bots, on LAN or a local server, its logs verified and a crashe
 
 ### 3. Vertical slice, close
 
-- The fourth LAN playtest of the 1v1, with routes and collision.
 - The collision bench on a quiet machine, its numbers beside the collision design.
 
-Done when the playtest finds that the 1v1 reads and plays well.
+Done when the bench shows that collision fits the Collide stage's share of a tick at 30 Hz.
 
 ### 5. MOBA mechanics
 
