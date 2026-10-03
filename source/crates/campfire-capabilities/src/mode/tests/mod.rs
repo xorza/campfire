@@ -45,6 +45,7 @@ use crate::production::production_data::ProductionData;
 use crate::production::train_queue::{Queued, TrainQueue};
 use crate::progression::Progression;
 use crate::progression::experience::Experience;
+use crate::progression::points::Points;
 use crate::progression::track_data::{Thresholds, TrackData};
 use crate::progression::track_set::TrackSet;
 use crate::scripts::call_start::CallStart;

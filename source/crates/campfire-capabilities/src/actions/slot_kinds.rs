@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::num::NonZeroU8;
 
+use bevy_ecs::resource::Resource;
 use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
@@ -8,8 +9,9 @@ use crate::actions::slot_kind::SlotKind;
 use crate::stats::level::Level;
 use crate::values::declared_name::DeclaredName;
 
-/// The mode's `[[slots]]`: the kinds of slot actions sit in on a unit, in order.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Deserialize)]
+/// The mode's `[[slots]]`: the kinds of slot actions sit in on a unit, in order. As a resource,
+/// the match's, which the `learn` order reads; none until the mode's books install.
+#[derive(Resource, Debug, Clone, Default, PartialEq, Eq, Deserialize)]
 #[serde(transparent)]
 pub struct SlotKinds(pub Vec<SlotKindData>);
 
@@ -123,6 +125,13 @@ impl SlotKinds {
             .ranks
             .as_ref()
             .map_or(1, |ranks| ranks.count().get())
+    }
+
+    /// The level of the `level` track that `rank`, from 1, of an action in `kind` needs; none
+    /// when the kind gives its ranks no levels.
+    pub(crate) fn level_of(&self, kind: SlotKind, rank: u8) -> Option<Level> {
+        let levels = self.0[kind.index()].ranks.as_ref()?.levels()?;
+        Some(levels[usize::from(rank) - 1])
     }
 
     /// The rank an action in `kind` has as its unit spawns or it is granted: 1 for a kind with

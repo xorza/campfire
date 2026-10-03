@@ -7,10 +7,10 @@ use campfire_sim::{Capability, EntityIndex, StateRegistry};
 use crate::actions::effect_queues::EffectQueues;
 use crate::progression::experience::Experience;
 use crate::progression::level_ups::{LevelUp, LevelUps};
+use crate::progression::points::Points;
 use crate::progression::progression_effect::ProgressionEffect;
 use crate::progression::track_book::TrackBook;
 
-use crate::progression::track_set::TrackSet;
 use crate::progression::tracks_column::TracksColumn;
 use crate::stats::level::Level;
 use crate::units::row_fill::RowFill;
@@ -18,6 +18,7 @@ use crate::units::script_view::View;
 
 pub(crate) mod experience;
 pub(crate) mod level_ups;
+pub(crate) mod points;
 pub(crate) mod progression_api;
 pub(crate) mod progression_effect;
 pub(crate) mod track_book;
@@ -41,11 +42,13 @@ impl Progression {
             .resource_mut::<EffectQueues>()
             .register(Capability::Progression, ProgressionEffect::queue_listed);
         registry.register_component::<Experience>();
+        registry.register_component::<Points>();
         registry.register_resource::<LevelUps>();
     }
 
     /// Applies `effect`: experience raises its track's level, each level reached joins the
-    /// tick's level-ups, and a level reached on the `level` track becomes the unit's level.
+    /// tick's level-ups, and a level reached on the `level` track becomes the unit's level and
+    /// gives it a point.
     fn apply(world: &mut World, effect: ProgressionEffect) {
         match effect {
             ProgressionEffect::AddXp {
@@ -59,8 +62,12 @@ impl Progression {
                     .expect("a unit given experience exists");
                 world.resource_scope(|world, book: Mut<'_, TrackBook>| {
                     let mut carrier = world.entity_mut(entity);
-                    let (mut experience, mut level) = carrier
-                        .get_components_mut::<(&mut Experience, Option<&mut Level>)>()
+                    let (mut experience, mut level, points) = carrier
+                        .get_components_mut::<(
+                            &mut Experience,
+                            Option<&mut Level>,
+                            Option<&mut Points>,
+                        )>()
                         .expect("a unit given experience has tracks");
                     // The unit's level counts as changed only when it rises, as its stats are
                     // derived again when it changes.
@@ -75,6 +82,9 @@ impl Progression {
                         && book.level_track() == Some(track)
                     {
                         level.set_changed();
+                        points
+                            .expect("a unit with the `level` track has points")
+                            .gain(raised.to.get() - raised.from.get());
                     }
                     let reached = (raised.from.get() + 1..=raised.to.get())
                         .map(|level| Level::new(level).expect("a level past another"));
@@ -88,13 +98,18 @@ impl Progression {
     }
 }
 
-/// The part of a unit progression reads into its row: its experience.
-type RowParts = Option<&'static Experience>;
+/// The parts of a unit progression reads into its row: its experience, its level, which is its
+/// `level` track's, and its points.
+type RowParts = (
+    Option<&'static Experience>,
+    Option<&'static Level>,
+    Option<&'static Points>,
+);
 
-/// Fills a row of the script view with the tracks a unit has.
-fn fill_row(experience: ROQueryItem<'_, '_, RowParts>, fill: &mut RowFill<'_>) {
-    let tracks = experience.map_or(TrackSet::default(), Experience::tracks);
-    fill.column::<TracksColumn>().push(tracks);
+/// Fills a row of the script view with a unit's tracks, its progress on each, and its points.
+fn fill_row((experience, level, points): ROQueryItem<'_, '_, RowParts>, fill: &mut RowFill<'_>) {
+    fill.column::<TracksColumn>()
+        .push(experience, level, points);
 }
 
 #[cfg(test)]

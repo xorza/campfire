@@ -5,7 +5,7 @@ use bevy_ecs::bundle::Bundle;
 use campfire_common::PlayerSlot;
 use campfire_math::{Num, Vec3};
 use campfire_script::NumError;
-use campfire_sim::{Capability, EntityIndex, StateHash};
+use campfire_sim::{Capability, EntityIndex, StateHash, TickInput, TickInputs};
 
 use super::*;
 use crate::actions::Actions;
@@ -18,6 +18,7 @@ use crate::actions::effect_data::{EffectData, EffectTo, Effecting};
 use crate::actions::error::{ActionError, ActionField};
 use crate::actions::range::Range;
 use crate::actions::slot_kind::SlotKind;
+use crate::actions::slot_kinds::{SlotKindData, SlotKinds, SlotRanks};
 use crate::areas::area::Area;
 use crate::areas::area_data::{AreaData, AreaInside};
 use crate::capability_set::test_match::TestMatch;
@@ -27,11 +28,15 @@ use crate::combat::internals::Armed;
 use crate::combat::on_death::OnDeath;
 use crate::combat::pass_queue::PassQueue;
 use crate::combat::recent_attackers::RecentAttackers;
+use crate::navigation::Navigation;
+use crate::navigation::destination::Destination;
 use crate::orders::Orders;
 use crate::orders::ai_data::AiData;
+use crate::orders::order::{Action, Order};
 use crate::players::resource_id::ResourceId;
 use crate::progression::Progression;
 use crate::progression::experience::Experience;
+use crate::progression::points::Points;
 use crate::progression::track_data::{Thresholds, TrackData};
 use crate::progression::track_set::TrackSet;
 use crate::projectiles::projectile::Projectile;
@@ -54,6 +59,7 @@ use crate::stats::modifier_book::ModifierBook;
 use crate::stats::modifier_clocks::ModifierClocks;
 use crate::stats::modifier_data::ModifierData;
 use crate::stats::modifiers::Modifiers;
+use crate::stats::move_step::MoveStep;
 use crate::stats::pool_id::PoolId;
 use crate::stats::stat_book::StatBook;
 use crate::stats::stat_change::StatChange;
@@ -1666,6 +1672,110 @@ fn on_damage_taken(ctx, m, d) {
     // 50 + 30 + 30 − 100. Dealt at the end of the queue, they would come after the 100, which
     // kills.
     assert_eq!(game.sim.health(carrier), 10);
+    assert_eq!(game.failed_calls(), []);
+}
+
+#[test]
+fn a_learn_order_spends_a_point_on_the_next_rank_its_level_allows() {
+    let declared = [
+        Capability::Stats,
+        Capability::Combat,
+        Capability::Navigation,
+        Capability::Abilities,
+        Capability::Orders,
+    ];
+    let mut game = Match::with(ScriptLimits::ROOMY, &declared);
+    game.load_stats();
+    // A guard whose shield is Lash Out's damage at its rank, which its passive holds: 75 at rank
+    // 1, then 25 more a rank. Its 5 ranks need levels 1, 1, 3, 3 and 5.
+    let guard = ModifierData {
+        shield: Some(param("damage")),
+        ..ModifierData::default()
+    };
+    Stats::load_modifier(&mut game.sim.world, 0, "guard", &guard, None);
+    let mut data = lash_out();
+    data.passive_modifier = Some(DeclaredName::new("guard").unwrap());
+    let ability = game.load("lash_out", &data, LASH_OUT);
+    let levels = [1, 1, 3, 3, 5].map(|level| Level::new(level).unwrap());
+    let ranks = SlotRanks::new(NonZeroU8::new(5).unwrap(), Some(levels.to_vec())).unwrap();
+    game.sim.world.insert_resource(SlotKinds(vec![SlotKindData {
+        name: DeclaredName::new("basic").unwrap(),
+        ranks: Some(ranks),
+    }]));
+    // Player 0's caster, at level 1 with 2 points, its spawn's and one more.
+    let caster = game.caster(ability, 0);
+    let track = TrackId::new(0).unwrap();
+    let mut points = Points::at_spawn(TrackSet::of([track]), Some(track)).unwrap();
+    points.gain(1);
+    let step = MoveStep::new(Num::ONE).unwrap();
+    let parts = (Level::default(), points, Modifiers::default());
+    game.sim.insert(caster, (parts, Navigation::walker(step)));
+    let entity = game.sim.entity(caster);
+    let id = Stats::modifier(&game.sim.world, 0, "guard").unwrap();
+    let send = |game: &mut Match, slot: u32, actions: &[Action]| {
+        let orders: Vec<_> = actions
+            .iter()
+            .map(|&action| Order {
+                unit: caster,
+                action,
+            })
+            .collect();
+        let payload = Order::payload(&orders);
+        game.sim.world.resource_mut::<TickInputs>().push(TickInput {
+            slot: PlayerSlot::new(slot),
+            payload: &payload,
+        });
+        game.sim.step();
+    };
+    // Its rank, its points, and the shield its passive holds.
+    let progress = |game: &Match| {
+        let modifiers = game.sim.world.get::<Modifiers>(entity).unwrap();
+        let clocks = game.sim.world.get::<ModifierClocks>(entity).unwrap();
+        let shield = clocks
+            .shield_of(modifiers, id, Some(caster))
+            .map(|shield| shield.to_int().unwrap());
+        let points = game.sim.world.get::<Points>(entity).unwrap().get();
+        (game.slot(caster).rank, points, shield)
+    };
+    let learn = Action::Learn { slot: 0 };
+
+    // Player 1 does not control the caster: nothing. Player 0 orders a walk, which a learn in the
+    // next tick does not stop: rank 1 for a point, its shield in the same tick.
+    send(&mut game, 1, &[learn]);
+    assert_eq!(progress(&game), (0, 2, None));
+    let walk = Action::Move {
+        x: Num::int(9),
+        z: Num::ZERO,
+    };
+    send(&mut game, 0, &[walk]);
+    send(&mut game, 0, &[learn]);
+    assert_eq!(progress(&game), (1, 1, Some(75)));
+    let destination = game.sim.world.get::<Destination>(entity).unwrap().get();
+    assert_eq!(destination, Some(ground(Num::int(9), Num::ZERO)));
+    // In tick 3, a cast ordered before two learns: the first learns rank 2 with the last point,
+    // the second finds none, and the cast starts at rank 2, after the learns of its tick, with
+    // rank 2's cooldown of 9000 ms, 270 ticks.
+    let cast = Action::Slot {
+        slot: 0,
+        target: ActionTarget::None,
+    };
+    send(&mut game, 0, &[cast, learn, learn]);
+    assert_eq!(progress(&game), (2, 0, Some(100)));
+    assert_eq!(game.slot(caster).ready_at, Tick::new(3 + 270));
+    // Rank 3 needs level 3: refused at level 1 with 4 points, learned at level 3 though dead.
+    game.sim.get_mut::<Points>(caster).gain(4);
+    send(&mut game, 0, &[learn]);
+    assert_eq!(progress(&game), (2, 4, Some(100)));
+    *game.sim.get_mut::<Level>(caster) = Level::new(3).unwrap();
+    game.sim.insert(caster, Dead);
+    send(&mut game, 0, &[learn]);
+    let (rank, points, _) = progress(&game);
+    assert_eq!((rank, points), (3, 3));
+    game.sim.world.entity_mut(entity).remove::<Dead>();
+    // At level 5, ranks 4 and 5; a third learn finds the last rank, and spends nothing.
+    *game.sim.get_mut::<Level>(caster) = Level::new(5).unwrap();
+    send(&mut game, 0, &[learn, learn, learn]);
+    assert_eq!(progress(&game), (5, 1, Some(175)));
     assert_eq!(game.failed_calls(), []);
 }
 

@@ -26,6 +26,7 @@ use crate::navigation::path_walker::{PathEnd, PathWalker};
 use crate::navigation::paths::Paths;
 use crate::production::train_queue::TrainQueue;
 use crate::progression::experience::Experience;
+use crate::progression::points::Points;
 use crate::progression::track_book::TrackBook;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
@@ -212,6 +213,9 @@ impl ModeBook {
         }
         if !kit.tracks.is_empty() {
             unit.insert(Experience::new(kit.tracks, level_track));
+        }
+        if let Some(points) = Points::at_spawn(kit.tracks, level_track) {
+            unit.insert(points);
         }
         if kit.queue.is_some() {
             unit.insert(TrainQueue::default());

@@ -8,6 +8,7 @@ use campfire_sim::{SimSet, SimTick, StableId, StateRegistry, TickRate};
 use crate::actions::action_book::ActionBook;
 use crate::actions::effect_lists::EffectLists;
 use crate::actions::effect_queues::EffectQueues;
+use crate::actions::slot_kinds::SlotKinds;
 use crate::scripts::ctx::Ctx;
 use crate::stats::carried_mut::CarriedMut;
 use crate::stats::lifetime::Hold;
@@ -84,6 +85,7 @@ impl Actions {
         view.add_column(ActionsColumn::default());
         view.add_source::<RowParts>(world, fill_row);
         world.insert_resource(ActionBook::default());
+        world.insert_resource(SlotKinds::default());
         world.insert_resource(EffectQueues::default());
         if world.contains_non_send::<Ctx>() {
             world.insert_resource(EffectLists::default());

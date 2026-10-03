@@ -16,8 +16,8 @@ use crate::scripts::script_api::member_spec::MemberSpec;
 use crate::scripts::script_api::status::Status;
 use crate::units::unit::Unit;
 
-/// The script API of `progression`: `ctx.add_xp` and `on_level_up`; reads of a unit's progress,
-/// points and perks, which the release plans.
+/// The script API of `progression`: `ctx.add_xp` and `on_level_up`; reads of a unit's progress
+/// and points; and perks, which the release plans.
 #[derive(Debug)]
 pub(crate) struct ProgressionApi;
 
@@ -56,9 +56,43 @@ impl ProgressionApi {
             "(unit, id)",
             "gives `unit` the perk `id`, with no point and no requirement",
         ))
-        .plan(method("xp", "(track)", "its experience on `track`"))
-        .plan(method("track_level", "(track)", "its level on `track`"))
-        .plan(unit("points", "its unspent points"))
+        .bind(
+            method(
+                "xp",
+                "(track)",
+                "its experience on `track`, one of its unit type's",
+            )
+            .name(0, NameKind::Track),
+            |unit: &mut Unit, track: &str| {
+                let view = unit.view();
+                let track = TracksColumn::track_named(view, track)?;
+                TracksColumn::xp(view, unit.row_index(), track)
+            },
+        )
+        .bind(
+            method(
+                "track_level",
+                "(track)",
+                "its level on `track`, one of its unit type's",
+            )
+            .name(0, NameKind::Track),
+            |unit: &mut Unit, track: &str| -> Checked<INT> {
+                let view = unit.view();
+                let track = TracksColumn::track_named(view, track)?;
+                let level = TracksColumn::level(view, unit.row_index(), track)?;
+                Ok(INT::from(level.get()))
+            },
+        )
+        .bind(
+            unit(
+                "points",
+                "its unspent points, which a unit with the `level` track has",
+            ),
+            |unit: &mut Unit| -> Checked<INT> {
+                let points = TracksColumn::points(unit.view(), unit.row_index())?;
+                Ok(INT::from(points.get()))
+            },
+        )
         .plan(method("has_perk", "(id)", "whether it has the perk `id`"))
         .hook(Hook::OnLevelUp, Status::Runs(ApiVersion::FIRST))
         .data(DataTable::Mode, &["tracks"], &[])

@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use bevy_ecs::world::World;
 
+use crate::actions::slot_kinds::SlotKinds;
 use crate::combat::combat_bindings::CombatBindings;
 use crate::mode::mode_data::ModeData;
 use crate::mode::mode_map::ModeMap;
@@ -17,8 +18,8 @@ use crate::units::unit_types::UnitTypes;
 use crate::values::declared_name::DeclaredName;
 
 /// The books of the mode's own rules: its stats, at the match's rate, under its move speed cap;
-/// its pools; its tags' effects and each unit type's own tags; what its combat reads; and the
-/// names of its damage kinds and of its players' resources, by id.
+/// its pools; its tags' effects and each unit type's own tags; what its combat reads; its slot
+/// kinds; and the names of its damage kinds and of its players' resources, by id.
 #[derive(Debug)]
 pub struct ModeBooks {
     pub(crate) stats: StatBook,
@@ -27,6 +28,7 @@ pub struct ModeBooks {
     /// None with no life pool, as in a mode with no combat.
     pub(crate) life: Option<LifePool>,
     pub(crate) bindings: Option<CombatBindings>,
+    pub(crate) slot_kinds: SlotKinds,
     pub(crate) damage_kinds: Arc<[DeclaredName]>,
     pub(crate) resources: Arc<[DeclaredName]>,
     pub(crate) map: ModeMap,
@@ -34,7 +36,8 @@ pub struct ModeBooks {
 
 impl ModeBooks {
     /// Puts the books in `world`, a match whose capabilities are installed: the stat and pool
-    /// books, the tags' effects, what combat reads, and the names its scripts read. `Mode::install`
+    /// books, the tags' effects, what combat reads, the slot kinds, and the names its scripts
+    /// read. `Mode::install`
     /// calls it, and installs the map it gives back; a test arena calls it alone, for a match
     /// whose mode runs no script and has no map.
     pub fn install(self, world: &mut World) -> ModeMap {
@@ -44,6 +47,7 @@ impl ModeBooks {
             tags,
             life,
             bindings,
+            slot_kinds,
             damage_kinds,
             resources,
             map,
@@ -59,6 +63,7 @@ impl ModeBooks {
         }
         Stats::load(world, stats, pools);
         world.insert_resource(tags);
+        world.insert_resource(slot_kinds);
         map
     }
 
@@ -90,6 +95,7 @@ impl ModeBooks {
             life,
             tags: types.tag_book(&data.tags),
             stats,
+            slot_kinds: data.slots.clone(),
             damage_kinds: data.combat.damage_kinds.as_slice().into(),
             resources: data.resources.as_slice().into(),
             map,

@@ -10,5 +10,3 @@ Design: [Progression](../design/04-capabilities/progression.md). Rules: [Issue l
 
 ## Ready
 
-- **Plan: P3.** Units have no points: design 04's progression gives a unit with the `level` track a point for each level it has, and `unit.points`, `unit.track_level` and `unit.xp` are planned.
-- **Plan: P4.** No order learns a rank: only the mode's `ctx.learn` does, and [Learning](../design/04-capabilities/progression.md#rules) gives the player the `learn` order.

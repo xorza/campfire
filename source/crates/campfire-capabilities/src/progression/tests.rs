@@ -1,10 +1,11 @@
 use campfire_math::Num;
-use campfire_sim::Position;
+use campfire_sim::{Position, SimComponent};
 use serde::Serialize;
 
 use crate::capability_set::test_match::TestMatch;
 use crate::progression::experience::TrackXp;
 use crate::progression::track_data::{Thresholds, TrackData};
+use crate::progression::track_set::TrackSet;
 use crate::units::team::Team;
 use crate::units::track_id::TrackId;
 use crate::values::declared_name::DeclaredName;
@@ -142,13 +143,17 @@ fn experience_is_state_and_restores() {
     let declared = [Capability::Stats, Capability::Progression];
     let mut sim = TestMatch::client(&declared);
     tracks(&mut sim);
-    // A unit 150 into `level`, at level 2, and 10 into `valor`, still at level 1.
+    // A unit 150 into `level`, at level 2 with a point more than at its spawn, and 10 into
+    // `valor`, still at level 1.
     let book = book();
-    let mut experience = Experience::new(TrackSet::of([track(0), track(1)]), book.level_track());
+    let both = TrackSet::of([track(0), track(1)]);
+    let mut experience = Experience::new(both, book.level_track());
     let mut level = Level::default();
+    let mut points = Points::at_spawn(both, book.level_track()).unwrap();
     experience.add(track(0), Num::int(150), &book, Some(&mut level));
     experience.add(track(1), Num::int(10), &book, None);
-    let unit = sim.spawn(Position::ORIGIN, (Team::new(0), level, experience));
+    points.gain(1);
+    let unit = sim.spawn(Position::ORIGIN, (Team::new(0), level, experience, points));
     let mut restored = TestMatch::client(&declared);
     tracks(&mut restored);
     sim.restore_into(&mut restored);
@@ -157,4 +162,15 @@ fn experience_is_state_and_restores() {
         sim.get::<Experience>(unit)
     );
     assert_eq!(restored.get::<Level>(unit).get(), 2);
+    assert_eq!(restored.get::<Points>(unit).get(), 2);
+    // Only a unit with the `level` track has points: one with `valor` alone has none at its
+    // spawn, and points on it fail the check.
+    let valor = TrackSet::of([track(1)]);
+    assert_eq!(Points::at_spawn(valor, book.level_track()), None);
+    let held = sim.spawn(
+        Position::ORIGIN,
+        (Experience::new(valor, book.level_track()), points),
+    );
+    assert!(!points.check(&sim.world, sim.entity(held)));
+    assert!(points.check(&sim.world, sim.entity(unit)));
 }

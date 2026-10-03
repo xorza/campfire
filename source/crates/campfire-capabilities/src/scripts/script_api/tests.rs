@@ -112,6 +112,14 @@ fn every_hook_and_state_has_a_status_and_names_hold_their_roles() {
     let points = api.member(ApiOwner::Unit, "points").unwrap();
     assert_eq!(
         (points.capability, points.status),
+        (
+            Some(Capability::Progression),
+            Status::Runs(ApiVersion::FIRST)
+        )
+    );
+    let perk = api.member(ApiOwner::Unit, "has_perk").unwrap();
+    assert_eq!(
+        (perk.capability, perk.status),
         (Some(Capability::Progression), Status::Planned)
     );
     assert!(api.builtin("len") && api.builtin("max") && !api.builtin("pos"));

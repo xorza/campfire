@@ -23,6 +23,8 @@ pub enum Action {
     Attack { target: StableId },
     /// Start the action in `slot` at `target`: a cast, or a train.
     Slot { slot: u8, target: ActionTarget },
+    /// Learn the next rank of the action in `slot`, for a point.
+    Learn { slot: u8 },
 }
 
 impl Order {

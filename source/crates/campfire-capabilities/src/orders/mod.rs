@@ -16,6 +16,7 @@ use crate::actions::action_book::ActionBook;
 use crate::actions::action_kind::ActionKind;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::range::Range;
+use crate::actions::slot_kinds::SlotKinds;
 use crate::actions::targets::Targets;
 use crate::combat::CombatSet;
 use crate::navigation::destination::Destination;
@@ -30,6 +31,7 @@ use crate::orders::next_think::NextThink;
 use crate::orders::order::{Action, Order};
 use crate::orders::resetting::Resetting;
 use crate::orders::unit_order::{OrderedUnit, UnitOrder};
+use crate::progression::points::Points;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::CallError;
 use crate::scripts::hook::Hook;
@@ -38,6 +40,7 @@ use crate::scripts::script_batch::ScriptBatch;
 use crate::units::dead::Dead;
 
 use crate::stats::StatsSet;
+use crate::stats::level::Level;
 use crate::stats::pools::Pools;
 use crate::units::body::Body;
 use crate::units::by_type::ByType;
@@ -69,14 +72,14 @@ pub(crate) enum OrdersSet {
 pub struct Orders;
 
 impl Orders {
-    /// Adds orders to a match: in Inputs, orders become current; in Think, the resets whose units
-    /// arrived end, then the units due this tick think; in Act, before combat starts attacks,
-    /// units walk their paths and chase their targets. It builds on the core `Units` installs, on
+    /// Adds orders to a match: in Inputs, orders become current and ranks are learned; in Think,
+    /// the resets whose units arrived end, then the units due this tick think; in Act, before
+    /// combat starts attacks, units walk their paths and chase their targets. It builds on the core `Units` installs, on
     /// combat and on navigation. Without the core's scripts, as on a client, no unit thinks.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         world.init_resource::<PlayerOrders>();
         schedule.add_systems((
-            (check_player_orders, apply_player_orders)
+            (check_player_orders, apply_player_orders, learn_ranks)
                 .chain()
                 .in_set(SimSet::Inputs)
                 .in_set(OrdersSet::Orders)
@@ -191,6 +194,7 @@ fn check_player_orders(
                 matches!(kind, Some(ActionKind::Cast | ActionKind::Train))
                     .then_some(UnitOrder::Slot { slot, target })
             }
+            Action::Learn { .. } => None,
         };
         let entity = index.get(order.unit).expect("a unit the index named");
         checked.0.extend(checked_order.map(|order| (entity, order)));
@@ -225,6 +229,53 @@ fn apply_player_orders(
         };
         let resets = order.apply(ordered, &bounds);
         debug_assert!(!resets, "a player orders no reset");
+    }
+}
+
+/// Applies each learn order the tick's inputs give, in input order, so a second learn in a tick
+/// sees the point the first spent: to a unit its player controls, dead or not, the next rank of
+/// the action in the slot, for a point, when the unit's level reaches the one the slot's kind
+/// gives that rank. It changes nothing under way. An order that fails a check is dropped: a
+/// client can send anything.
+fn learn_ranks(
+    inputs: Res<'_, TickInputs>,
+    index: Res<'_, EntityIndex>,
+    (book, kinds): (Res<'_, ActionBook>, Res<'_, SlotKinds>),
+    mut units: Query<'_, '_, (&Owner, &mut ActionSlots, &mut Points, &Level)>,
+) {
+    for command in inputs.commands(Order::CAPABILITY) {
+        let Some(Order {
+            unit,
+            action: Action::Learn { slot },
+        }) = Order::decode(command.body)
+        else {
+            continue;
+        };
+        let Some(Ok((owner, mut slots, mut points, &level))) =
+            index.get(unit).map(|entity| units.get_mut(entity))
+        else {
+            continue;
+        };
+        let Some(held) = slots.slot(slot) else {
+            continue;
+        };
+        let action = book
+            .get(held.action)
+            .expect("a slot's action is in the book");
+        let next = held
+            .rank
+            .checked_add(1)
+            .filter(|&next| action.has_rank(next));
+        let learnable = next.is_some_and(|next| {
+            kinds
+                .level_of(held.kind, next)
+                .is_none_or(|needed| needed <= level)
+        });
+        if owner.slot() != command.slot || !learnable || points.get() == 0 {
+            continue;
+        }
+        points.spend();
+        slots.learn(slot);
     }
 }
 

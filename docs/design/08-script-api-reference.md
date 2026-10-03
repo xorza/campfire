@@ -79,7 +79,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `owner` | read | core | since 1.0 | its player's slot, `()` with none |
 | `params` | read | core | since 1.0 | its unit type's params, unresolved |
 | `path` | read | navigation | since 1.0 | the name of the path it walks, `()` with none |
-| `points` | read | progression | planned | its unspent points |
+| `points` | read | progression | since 1.0 | its unspent points, which a unit with the `level` track has |
 | `pool` | `(name)`, `name` a pool | stats | since 1.0 | the current amount of its pool `name` |
 | `pool_max` | `(name)`, `name` a pool | stats | since 1.0 | the maximum of its pool `name` |
 | `pos` | read | core | since 1.0 | where it stands |
@@ -90,9 +90,9 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `state` | read | core | since 1.0 | its script state, by name, which a call may write and read back |
 | `target` | read | core | since 1.0 | its attack's target, `()` with none |
 | `team` | read | core | since 1.0 | its team's name |
-| `track_level` | `(track)` | progression | planned | its level on `track` |
+| `track_level` | `(track)`, `track` a track | progression | since 1.0 | its level on `track`, one of its unit type's |
 | `unit_type` | read | core | since 1.0 | its unit type's name |
-| `xp` | `(track)` | progression | planned | its experience on `track` |
+| `xp` | `(track)`, `track` a track | progression | since 1.0 | its experience on `track`, one of its unit type's |
 
 ## New unit, of `spawn_unit`, `ctx.projectile` and `ctx.area`
 

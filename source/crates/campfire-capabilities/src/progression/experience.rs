@@ -49,8 +49,9 @@ impl Experience {
         }
     }
 
-    pub(crate) fn tracks(&self) -> TrackSet {
-        TrackSet::of(self.tracks.iter().map(|track| track.track))
+    /// Its tracks, in the order of their ids.
+    pub(crate) fn iter(&self) -> impl Iterator<Item = TrackXp> {
+        self.tracks.iter().copied()
     }
 
     pub fn get(&self, track: TrackId) -> Option<TrackXp> {

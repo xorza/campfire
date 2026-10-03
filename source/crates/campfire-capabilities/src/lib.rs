@@ -108,6 +108,7 @@ pub use production::Production;
 pub use production::train_queue::TrainQueue;
 pub use progression::Progression;
 pub use progression::experience::Experience;
+pub use progression::points::Points;
 
 pub use projectiles::Projectiles;
 pub use projectiles::projectile::Projectile;

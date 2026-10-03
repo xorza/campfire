@@ -411,7 +411,11 @@ const STATE: [(Option<Capability>, &[&str]); 11] = [
     ),
     (
         Some(Capability::Progression),
-        &["progression.experience", "progression.level_ups"],
+        &[
+            "progression.experience",
+            "progression.level_ups",
+            "progression.points",
+        ],
     ),
     (
         Some(Combat),
