@@ -287,11 +287,22 @@ impl View {
     /// `ms` in ticks at the match's rate, rounded up, at least one; an error for a negative time
     /// or one too long to count.
     pub(crate) fn ticks(&self, ms: INT) -> Checked<Ticks> {
-        let ms = u64::try_from(ms)
-            .ok()
-            .ok_or_else(|| ApiError::NegativeTime.fail())?;
+        Ok(self.duration(ms).map_err(ApiError::fail)?)
+    }
+
+    /// `ms`, more than 0, in ticks as `ticks` gives them: what lasts, as a reveal or a knock
+    /// back, lasts some time.
+    pub(crate) fn lasting(&self, ms: INT) -> Result<Ticks, ApiError> {
+        if ms == 0 {
+            return Err(ApiError::ZeroTime);
+        }
+        self.duration(ms)
+    }
+
+    fn duration(&self, ms: INT) -> Result<Ticks, ApiError> {
+        let ms = u64::try_from(ms).ok().ok_or(ApiError::NegativeTime)?;
         let ticks = self.0.borrow().rate.duration(ms);
-        Ok(ticks.ok_or_else(|| ApiError::TimeTooLarge.fail())?)
+        ticks.ok_or(ApiError::TimeTooLarge)
     }
 
     /// Sets the match's unit types and tags, as the load built them.

@@ -1,8 +1,8 @@
 //! The reference heroes' abilities as their packages hold them: every ability's data reads into
 //! the typed schema, and Husk's Lash Out, Kensho's Twin Cut, Veil's Dusk Mark and Smoke Ring,
-//! Rime's Fan of Frost and Snow Owl, and Cinder's Eruption and Chain Fire, loaded as a match of the 3v3 loads
-//! them, act exactly. The tests pin the content's values, so a change to the content changes them,
-//! by design.
+//! Rime's Fan of Frost and Snow Owl, Cinder's Eruption and Chain Fire, and the Farsight spell,
+//! loaded as a match of the 3v3 loads them, act exactly. The tests pin the content's values, so a
+//! change to the content changes them, by design.
 
 use std::collections::BTreeMap;
 use std::num::NonZeroU32;
@@ -11,9 +11,9 @@ use bevy_ecs::bundle::Bundle;
 
 use campfire_capabilities::internals::{self, Arms};
 use campfire_capabilities::{
-    Action, ActionId, ActionSlots, ActionTarget, Area, DeclaredName, Hook, ModifierId, Modifiers,
-    Number, OnDeath, Order, Owner, PackagePath, Param, Pools, Projectile, Range, RangeField,
-    Ranked, RecentAttackers, Scalar, Scaling, SlotKind, Stat, Targeting, Team,
+    Action, ActionId, ActionSlots, ActionTarget, Area, DeclaredName, ModifierId, Modifiers, Number,
+    OnDeath, Order, Owner, PackagePath, Param, Pools, Projectile, Range, RangeField, Ranked,
+    RecentAttackers, Scalar, Scaling, SeenBy, SlotKind, Stat, Targeting, Team,
 };
 use campfire_common::PlayerSlot;
 use campfire_math::{Num, Vec3};
@@ -502,10 +502,23 @@ fn rimes_fan_of_frost_from_its_package_hits_exactly_the_units_in_reach_once_each
 }
 
 #[test]
-fn rimes_snow_owl_flies_to_its_point_and_ends_there() {
+fn rimes_snow_owl_flies_to_its_point_and_ends_there_and_its_sight_lingers() {
     let mut arena = arena();
+    arena.load_vision(2);
     let snow_owl = arena.action("hero-rime", "snow_owl");
     let caster = caster(&mut arena, snow_owl, 1, (0, 0), ());
+    // An enemy at (10, 0): its cell's center (10.5, 0.5) is √12.5 ≈ 3.54 m from the point, within
+    // the owl's sight of 4 m and its linger's radius of 4 m; the caster has no sight of its own.
+    let enemy = spawn(&mut arena, 1, 10, ());
+    let seen = |arena: &Arena| {
+        let world = arena.world();
+        let entity = world.resource::<EntityIndex>().get(enemy).unwrap();
+        world
+            .get::<SeenBy>(entity)
+            .unwrap()
+            .get()
+            .contains(Team::new(0))
+    };
     let owls = |arena: &mut Arena| -> Vec<Position> {
         let world = arena.world_mut();
         let mut owls = world.query::<(&Projectile, &Position)>();
@@ -517,6 +530,7 @@ fn rimes_snow_owl_flies_to_its_point_and_ends_there() {
     // sixteenth ends it on the point, where its `on_end` runs.
     let point = Position::new(Vec3::new(Num::int(7), Num::ZERO, Num::ZERO)).unwrap();
     arena.tick(0, &[cast(caster, ActionTarget::Point(point))]);
+    assert!(!seen(&arena));
     for _ in 1..=15 {
         arena.step();
     }
@@ -526,13 +540,48 @@ fn rimes_snow_owl_flies_to_its_point_and_ends_there() {
     assert_eq!(owls(&mut arena), [flying]);
     arena.step();
     assert_eq!(owls(&mut arena), []);
-    // Its `on_end` ran, for its caster, and failed only on `ctx.reveal`, which vision plans.
-    let failures = arena.failures();
-    assert_eq!(failures.len(), 1, "{failures:?}");
+    // Its `on_end` in tick 16 reveals 4 m round the point for 5000 ms, 150 ticks: the Vision
+    // stages of ticks 16 to 165, with the owl gone.
+    assert!(seen(&arena));
+    for _ in 17..=165 {
+        arena.step();
+    }
+    assert!(seen(&arena));
+    arena.step();
+    assert!(!seen(&arena));
+    assert!(arena.failures().is_empty(), "{:?}", arena.failures());
+}
+
+#[test]
+fn farsight_shows_its_cells_to_the_caster_team_alone_for_its_time() {
+    let mut arena = arena();
+    arena.load_vision(3);
+    let farsight = arena.action("player-spells", "farsight");
+    let caster = caster(&mut arena, farsight, 1, (0, 0), ());
+    // Revealed 6 m round (20, 0): the cell of (25, 0), its center (25.5, 0.5) √30.5 ≈ 5.52 m
+    // off, and not that of (26, 0), at (26.5, 0.5) √42.5 ≈ 6.52 m off. Team 2 sees neither.
+    let near = spawn(&mut arena, 1, 25, ());
+    let far = spawn(&mut arena, 1, 26, ());
+    let seen = |arena: &Arena, unit: StableId| {
+        let world = arena.world();
+        let entity = world.resource::<EntityIndex>().get(unit).unwrap();
+        let teams = world.get::<SeenBy>(entity).unwrap().get();
+        [0, 2].map(|team| teams.contains(Team::new(team)))
+    };
+    // It resolves at once, in tick 0, and reveals for 5000 ms, 150 ticks: ticks 0 to 149.
+    let point = Position::new(Vec3::new(Num::int(20), Num::ZERO, Num::ZERO)).unwrap();
+    arena.tick(0, &[cast(caster, ActionTarget::Point(point))]);
     assert_eq!(
-        (failures[0].unit, failures[0].hook),
-        (Some(caster), Hook::OnEnd)
+        [near, far].map(|unit| seen(&arena, unit)),
+        [[true, false], [false; 2]]
     );
+    for _ in 1..=149 {
+        arena.step();
+    }
+    assert_eq!(seen(&arena, near), [true, false]);
+    arena.step();
+    assert_eq!(seen(&arena, near), [false; 2]);
+    assert!(arena.failures().is_empty(), "{:?}", arena.failures());
 }
 
 #[test]

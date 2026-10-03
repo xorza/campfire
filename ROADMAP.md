@@ -12,7 +12,7 @@ The 3v3 MOBA with bots, on LAN or a local server, its logs verified and a crashe
 - Forced movement: dash, knock back, teleport ([Navigation](docs/design/04-capabilities/navigation.md#forced-movement)).
 - The core's planned script names: `ctx.pick` and `ctx.chance` from the secret stream, and the vector operators `*`, `+` and `-` ([Script API reference](docs/design/08-script-api-reference.md)).
 - Terrain in the map: the cells each layer's map blocks, which routes go round and the pathing grid holds, for walls and the jungle ([Navigation](docs/design/04-capabilities/navigation.md#data)); brush that blocks sight from outside it ([Vision](docs/design/04-capabilities/vision.md#grid-fog-of-war)).
-- The package load refuses a planned name, once no reference package uses one: design 08 accepts a planned name at load, so a script that uses one loads and fails at each call, as Rime's Snow Owl does on `ctx.reveal`.
+- The package load refuses a planned name, once no reference package uses one: design 08 accepts a planned name at load, so a package that uses one loads, and the name does nothing, as the 3v3's tags block `use` before items run.
 - Items for the MOBA: inventory, equipment, the shop, item actions and passives ([Items](docs/design/04-capabilities/items.md)).
 - The 3v3 scenario's players cast the abilities they learn, beside the attacks, spells, towers and camps of stage 4's scenario.
 

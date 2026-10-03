@@ -1,6 +1,5 @@
 use campfire_math::Num;
 use campfire_script::rhai::{Array, Dynamic, INT, ImmutableString};
-use campfire_sim::Capability;
 
 use crate::scripts::api_builder::ApiBuilder;
 use crate::scripts::api_version::ApiVersion;
@@ -45,14 +44,6 @@ impl CoreApi {
                     "an entry of `list`, each as likely, from the secret stream",
                 ),
                 |ctx: &mut Ctx, list: Array| CoreApi::pick(ctx, &list),
-            )
-            .plan(
-                MemberSpec::call("dash", "(unit, to, speed)", "moves `unit` to `to` at `speed`")
-                    .capability(Capability::Navigation),
-            )
-            .plan(
-                MemberSpec::call("teleport", "(unit, pos)", "puts `unit` at `pos`")
-                    .capability(Capability::Navigation),
             )
             .data(DataTable::ModeNavigation, &["layers"], &[])
             .data(DataTable::Collision, &["radius", "layer"], &[])

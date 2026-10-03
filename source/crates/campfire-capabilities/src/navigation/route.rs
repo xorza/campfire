@@ -6,7 +6,9 @@ use campfire_sim::{Position, SimComponent};
 use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
+use crate::navigation::destination::Destination;
 use crate::navigation::pathing_grid::PathingGrid;
+use crate::navigation::progress::Progress;
 
 /// A walker's long route to its destination: the goal it serves, with the tick it asked the
 /// planner for a route there while it waits for one, and the waypoints of the route planned last,
@@ -62,6 +64,20 @@ impl Route {
             at: goal,
             asked: Some(asked),
         });
+    }
+
+    /// Asks in `tick` for a route to `destination` again, if it has one, and forgets `progress`:
+    /// a unit a forced move left elsewhere walks to it from there.
+    pub(crate) fn ask_again(
+        &mut self,
+        destination: &Destination,
+        progress: &mut Progress,
+        tick: Tick,
+    ) {
+        if let Some(goal) = destination.get() {
+            self.ask(goal, tick);
+            progress.restart();
+        }
     }
 
     /// Takes the planner's answer to its ask: `waypoints`, the last the goal when `reached`.

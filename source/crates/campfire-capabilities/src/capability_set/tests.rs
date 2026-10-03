@@ -435,6 +435,7 @@ const STATE: [(Option<Capability>, &[&str]); 11] = [
         Some(Navigation),
         &[
             "navigation.destination",
+            "navigation.forced_move",
             "navigation.move_step",
             "navigation.on_path",
             "navigation.path_walker",
@@ -442,7 +443,10 @@ const STATE: [(Option<Capability>, &[&str]); 11] = [
             "navigation.route",
         ],
     ),
-    (Some(Vision), &["vision.seen_by", "vision.sight"]),
+    (
+        Some(Vision),
+        &["vision.reveals", "vision.seen_by", "vision.sight"],
+    ),
     (
         Some(Projectiles),
         &["projectiles.projectile", "projectiles.struck_units"],

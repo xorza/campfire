@@ -119,12 +119,7 @@ impl StatsApi {
                 "ends the modifier, projectile or area at once",
             ),
             |ctx: &mut Ctx, handle: ModifierHandle| ctx.queue(handle.remove()),
-        )
-        .plan(call(
-            "knock_back",
-            "(unit, from, distance, ms)",
-            "pushes `unit` away from `from`",
-        ));
+        );
         api.hook(Hook::OnInterval, Status::Runs(ApiVersion::FIRST))
             .hook(Hook::OnAttack, Status::Runs(ApiVersion::FIRST))
             .hook(Hook::OnAttackHit, Status::Runs(ApiVersion::FIRST))

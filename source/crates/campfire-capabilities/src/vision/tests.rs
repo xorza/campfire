@@ -1,8 +1,12 @@
 use campfire_math::{Num, Vec3};
+use campfire_script::{Budget, ScriptHost};
 use campfire_sim::{Capability, IdAllocator, StableId};
 
 use super::*;
 use crate::capability_set::test_match::TestMatch;
+use crate::scripts::ctx::Ctx;
+use crate::scripts::error::internals::FailureKind;
+use crate::scripts::error::{ApiError, CallError};
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::pools::Pools;
@@ -10,6 +14,7 @@ use crate::units::tag_effects::TagEffects;
 use crate::units::unit::Unit;
 use crate::values::attitude::Attitude;
 use crate::values::bounds::Bounds;
+
 fn at(x: i64, z: i64) -> Position {
     Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap()
 }
@@ -54,6 +59,37 @@ impl Scene {
     /// Gives unit `id` tags with `effects`, as its modifiers would.
     fn set_effects(&mut self, id: StableId, effects: TagEffects) {
         self.sim.insert(id, UnitTags::with_effects(effects));
+    }
+
+    /// Runs `ctx.reveal(at.pos, radius, ms)` as `actor` thinks, or as the mode with no actor,
+    /// then applies what it queued; why it failed, when it did.
+    fn reveal(
+        &mut self,
+        actor: Option<StableId>,
+        at: StableId,
+        radius: &str,
+        ms: i64,
+    ) -> Result<(), FailureKind> {
+        let world = &mut self.sim.world;
+        let ctx = world.non_send::<Ctx>().clone();
+        ctx.view().read(world);
+        match actor {
+            Some(actor) => ctx.frame().begin_think(world, actor),
+            None => ctx.frame().begin_mode(world, false),
+        }
+        let at = ctx.view().unit(at).unwrap();
+        let source = format!("fn probe(ctx, at) {{ ctx.reveal(at.pos, {radius}, {ms}) }}");
+        let returned = {
+            let mut host = world.non_send_mut::<ScriptHost>();
+            let script = host.compile(&source).unwrap();
+            let mut budget = Budget::new(u64::MAX);
+            host.call(&mut budget, script, "probe", (ctx.clone(), at))
+        };
+        let returned = returned.map_err(|error| CallError::from_script(error).kind())?;
+        assert!(returned.is_unit());
+        let now = self.sim.now();
+        ctx.apply(&mut self.sim.world, now);
+        Ok(())
     }
 
     fn seen_by(&self, id: StableId) -> TeamSet {
@@ -187,4 +223,60 @@ fn friendly_teams_share_vision_as_one_group_unless_their_vision_is_off() {
     assert_eq!(scene.seen_by(zero), teams(&[0]));
     assert_eq!(scene.seen_by(forty), teams(&[40]));
     assert_eq!(scene.seen_by(sixty_three), teams(&[0, 63]));
+}
+
+#[test]
+fn a_reveal_shows_its_cells_to_the_caster_group_alone_for_its_time_and_no_hidden_unit() {
+    let mut scene = Scene::new();
+    let team = |index| TeamSet::of(Team::new(index));
+    // Team 0's caster far off sees nothing near (5, 0). Its reveal of 2 m round (5, 0) holds the
+    // cell of (5, 0), its center at (5.5, 0.5) √0.5 ≈ 0.71 m away, and of (5, 1), at (5.5, 1.5)
+    // √2.5 ≈ 1.58 m away; not that of (7, 0), at (7.5, 0.5) √6.5 ≈ 2.55 m away. Team 2 sees
+    // nothing there, and team 1's sneak at (5, 1) stays hidden.
+    let caster = scene.spawn(0, -9, -9, Some(1));
+    let target = scene.spawn(1, 5, 0, None);
+    let sneak = scene.spawn(1, 5, 1, None);
+    scene.set_effects(sneak, TagEffects::default().with_hidden());
+    let beyond = scene.spawn(1, 7, 0, None);
+    scene.spawn(2, -9, 9, Some(1));
+    scene.sim.step();
+    assert_eq!(scene.seen_by(target), team(1));
+
+    // 100 ms at 30 ticks a second is 3 ticks: the Vision stages of ticks 1, 2 and 3.
+    assert_eq!(scene.sim.now().get(), 1);
+    assert_eq!(scene.reveal(Some(caster), target, "2", 100), Ok(()));
+    let seen = |scene: &Scene| [target, sneak, beyond].map(|id| scene.seen_by(id));
+    for tick in 1..=3 {
+        scene.sim.step();
+        assert_eq!(
+            seen(&scene),
+            [team(1).with(Team::new(0)), team(1), team(1)],
+            "tick {tick}"
+        );
+        // The reveal under way is state, restored with the rest, and its restored match sees
+        // the same in the next tick.
+        if tick == 2 {
+            let mut restored = Scene::new();
+            scene.sim.restore_into(&mut restored.sim);
+            restored.sim.step();
+            assert_eq!(restored.seen_by(target), team(1).with(Team::new(0)));
+        }
+    }
+    // Its last tick past, it reveals nothing, and is gone.
+    scene.sim.step();
+    assert_eq!(seen(&scene), [team(1), team(1), team(1)]);
+    assert_eq!(*scene.sim.world.resource::<Reveals>(), Reveals::default());
+
+    // A call with no acting unit, a negative radius, a time of 0 or a negative one fails.
+    let fails = [
+        (None, "2", 100, ApiError::NoActingUnit),
+        (Some(caster), "-1", 100, ApiError::NegativeRadius),
+        (Some(caster), "2", 0, ApiError::ZeroTime),
+        (Some(caster), "2", -1, ApiError::NegativeTime),
+    ];
+    for (actor, radius, ms, error) in fails {
+        let failed = scene.reveal(actor, target, radius, ms);
+        assert_eq!(failed, Err(FailureKind::Api(error)), "{error:?}");
+    }
+    assert_eq!(*scene.sim.world.resource::<Reveals>(), Reveals::default());
 }

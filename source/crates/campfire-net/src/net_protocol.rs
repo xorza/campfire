@@ -1,8 +1,8 @@
 use bevy_app::{App, Plugin};
 use campfire_capabilities::{
-    ActionSlots, Area, Body, Dead, Destination, Level, MatchEnd, ModifierClocks, Modifiers,
-    MoveStep, Owner, Points, Pools, Progress, Projectile, Relations, Respawn, Route, SpawnPoint,
-    Team, UnitType,
+    ActionSlots, Area, Body, Dead, Destination, ForcedMove, Level, MatchEnd, ModifierClocks,
+    Modifiers, MoveStep, Owner, Points, Pools, Progress, Projectile, Relations, Respawn, Route,
+    SpawnPoint, Team, UnitType,
 };
 use campfire_sim::{Position, StableId};
 use lightyear::prelude::{
@@ -30,8 +30,8 @@ pub(crate) struct JoinChannel;
 
 /// What the server and the client must register alike, in the same order: the messages, their
 /// channels, and the sim components that replicate. The client predicts where its own units are,
-/// where they walk to and by which route, which it plans on its own pathing grid, and their death
-/// and respawn, which it learns from the server: its sim stops a dead unit and brings it back as
+/// where they walk to and by which route, which it plans on its own pathing grid, the forced moves
+/// it learns of, which it continues as the server does, and their death and respawn, which it learns from the server: its sim stops a dead unit and brings it back as
 /// the server's does, and a rollback restores both. It learns each unit's type once and its
 /// level as it changes, and derives its own units' stats, tags and step from them and their
 /// modifiers as the server does, so the server sends a unit's step only with the unit. It starts
@@ -84,6 +84,7 @@ impl Plugin for NetProtocol {
         app.component::<Destination>().replicate().predict();
         app.component::<Route>().replicate().predict();
         app.component::<Progress>().replicate().predict();
+        app.component::<ForcedMove>().replicate().predict();
         app.component::<Modifiers>().replicate().predict();
         app.component::<ModifierClocks>().replicate().predict();
     }

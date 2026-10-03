@@ -16,7 +16,7 @@ use crate::actions::action_data_field::ActionDataField;
 use crate::actions::action_slots::Started;
 use crate::actions::cost_target::CostTarget;
 use crate::actions::delivery_data::DeliveryData;
-use crate::actions::effect_data::{EffectData, EffectTo, Effecting};
+use crate::actions::effect_data::{EffectData, EffectTo, Effecting, MoveData};
 use crate::actions::error::{ActionError, ActionField};
 use crate::actions::range::Range;
 use crate::actions::slot_kind::SlotKind;
@@ -461,6 +461,151 @@ fn lash_out_hits_every_enemy_within_its_radius_exactly() {
     game.cast(husk, ActionTarget::None);
     assert_eq!(healths(&game), [300, 300, 500, 300, 500, 500]);
     assert_eq!(game.pool(husk), 30);
+}
+
+#[test]
+fn a_knock_back_interrupts_a_windup_and_the_cast_waits_for_its_end() {
+    let declared = [
+        Capability::Stats,
+        Capability::Combat,
+        Capability::Navigation,
+        Capability::Abilities,
+    ];
+    let mut game = Match::with(ScriptLimits::ROOMY, &declared);
+    // Aim winds up 300 ms, 9 ticks, within 10 m; Shove, at once, knocks its target 3 m away from
+    // its caster over 100 ms, 3 ticks.
+    let aim = ActionData {
+        windup_ms: Some(Ranked::One(int(300))),
+        range: Some(Ranked::One(RangeField::Range(Range::Meters(Num::int(10))))),
+        ..strike()
+    };
+    let aim = game.load("aim", &aim, STRIKE);
+    let shove = ActionData {
+        script: Some(PackagePath::parse("shove.rhai").unwrap()),
+        range: Some(Ranked::One(RangeField::Range(Range::Meters(Num::int(5))))),
+        ..ActionData::cast(Targeting::Unit(FilterData::parse("enemies").unwrap()))
+    };
+    let script =
+        "fn on_resolve(ctx, caster, target) { ctx.knock_back(target, caster.pos, 3, 100); }";
+    let shove = game.load("shove", &shove, script);
+    let caster = game.caster(aim, 1);
+    game.sim
+        .insert(caster, Navigation::walker(MoveStep::new(Num::ONE).unwrap()));
+    let slots = ActionSlots::new([(shove, SlotKind::new(0), 1)]);
+    let shover = game.spawn(1, ground(Num::int(5), Num::ZERO), slots);
+
+    // Aim starts in tick 0, to resolve in tick 9. Shove resolves in tick 2's Hit stage, after
+    // Move, and knocks the caster along −x in ticks 3, 4 and 5: Aim's windup is interrupted in
+    // tick 3, and its order waits through tick 5. It starts again in tick 6, from (−3, 0, 0),
+    // and resolves in tick 15.
+    game.cast(caster, ActionTarget::Unit(shover));
+    game.sim.step();
+    game.cast(shover, ActionTarget::Unit(caster));
+    game.sim.run_until(6);
+    assert_eq!(
+        *game.sim.get::<Position>(caster),
+        ground(Num::int(-3), Num::ZERO)
+    );
+    let ordered = InProgress::Order {
+        aim: SlotAim {
+            slot: 0,
+            target: ActionTarget::Unit(shover),
+        },
+        started: None,
+    };
+    assert_eq!(
+        game.sim.get::<ActionSlots>(caster).in_progress(),
+        Some(ordered)
+    );
+    game.sim.run_until(15);
+    assert_eq!(game.sim.health(shover), 500);
+    game.sim.step();
+    assert_eq!(game.sim.health(shover), 450);
+    assert_eq!(game.failed_calls(), []);
+
+    // A forced move of a unit that does not walk, a dash of no step, a knock back of no
+    // distance or of no time, fails.
+    let refused = [
+        (shover, "ctx.teleport(of, of.pos)", ApiError::NoWalker),
+        (caster, "ctx.dash(of, of.pos, 0)", ApiError::NotASpeed),
+        (caster, "ctx.dash(of, of.pos, -1)", ApiError::NotASpeed),
+        (
+            caster,
+            "ctx.knock_back(of, of.pos, 0, 100)",
+            ApiError::NotADistance,
+        ),
+        (
+            caster,
+            "ctx.knock_back(of, of.pos, 1, 0)",
+            ApiError::ZeroTime,
+        ),
+        (
+            caster,
+            "ctx.knock_back(of, of.pos, 1, -1)",
+            ApiError::NegativeTime,
+        ),
+    ];
+    for (of, call, error) in refused {
+        let failed = game.sim.read(call, of).unwrap_err();
+        assert_eq!(failed.kind(), FailureKind::Api(error), "{call}");
+    }
+}
+
+#[test]
+fn a_listed_move_knocks_back_and_dashes_as_the_calls_do() {
+    let declared = [
+        Capability::Stats,
+        Capability::Combat,
+        Capability::Navigation,
+        Capability::Abilities,
+    ];
+    let mut game = Match::with(ScriptLimits::ROOMY, &declared);
+    // Lunge knocks the unit it reaches 3 m away from its caster over 100 ms, 3 ticks, and dashes
+    // its caster at it, 30 m a second, a meter a tick.
+    let knock_back = MoveData::KnockBack {
+        from: EffectTo::Source,
+        distance: int(3),
+        ms: int(100),
+    };
+    let dash = MoveData::Dash {
+        to: EffectTo::Reached,
+        speed: int(30),
+    };
+    let lunge = ActionData {
+        script: None,
+        range: Some(Ranked::One(RangeField::Range(Range::Meters(Num::int(10))))),
+        on_resolve: vec![
+            effect(Effecting::Move(knock_back), EffectTo::Reached),
+            effect(Effecting::Move(dash), EffectTo::Source),
+        ],
+        ..ActionData::cast(Targeting::Unit(FilterData::parse("enemies").unwrap()))
+    };
+    let id = Actions::load(&mut game.sim.world, 0, "lunge", &lunge, None, 1).unwrap();
+    EffectLists::load(&mut game.sim.world, id, 0, &lunge);
+    let lunge = id;
+    let walker = || Navigation::walker(MoveStep::new(Num::ONE).unwrap());
+    let caster = game.caster(lunge, 1);
+    game.sim.insert(caster, walker());
+    let target = game.spawn(1, ground(Num::int(2), Num::ZERO), walker());
+    // It resolves in tick 0. The caster, of the lower id, moves first each tick, at the target's
+    // place before the target's own move: 1, 2, 3, then 4, and in tick 5 onto 5, where they
+    // touch, as neither has a body. The target goes 3, 4, 5.
+    game.cast(caster, ActionTarget::Unit(target));
+    let mut places = Vec::new();
+    for _ in 0..5 {
+        game.sim.step();
+        let x = |id| game.sim.get::<Position>(id).get().x.to_int().unwrap();
+        places.push((x(caster), x(target)));
+    }
+    assert_eq!(places, [(1, 3), (2, 4), (3, 5), (4, 5), (5, 5)]);
+    assert_eq!(game.failed_calls(), []);
+    // A unit that does not walk takes no forced move: the list fails the cast.
+    let still = game.spawn(1, ground(Num::int(6), Num::ZERO), ());
+    game.sim.run_until(40);
+    game.cast(caster, ActionTarget::Unit(still));
+    let failed = game.failed_calls();
+    assert_eq!(failed.len(), 1);
+    assert_eq!(failed[0].kind, FailureKind::Api(ApiError::NoWalker));
 }
 
 #[test]

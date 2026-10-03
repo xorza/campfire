@@ -359,7 +359,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-static FLAWS: [Flaw; 229] = [
+static FLAWS: [Flaw; 232] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -770,6 +770,32 @@ static FLAWS: [Flaw; 229] = [
         Edit::Replace(SLOWS, r#"{ spawn = { unit_type = "frost_arrow" } },"#),
         "hero-rime",
         |problem| matches!(problem, LoadProblem::Effect { action, list: Hook::OnHit, problem: EffectProblem::Planned(PlannedEffect::Spawn) } if action == "fan_of_frost"),
+    ),
+    // A move is a dash's `to` and `speed`, or a knock back's `from`, `distance` and whole `ms`;
+    // its other unit, as its own, is one its list reaches.
+    flaw(
+        RIME,
+        Edit::Replace(SLOWS, r#"{ move = { to = "source", distance = 1 } },"#),
+        "hero-rime",
+        |problem| read_fails(problem, "data/avatar.toml", "a dash's"),
+    ),
+    flaw(
+        RIME,
+        Edit::Replace(
+            SLOWS,
+            r#"{ move = { from = "source", distance = 1, ms = "0.5" } },"#,
+        ),
+        "hero-rime",
+        |problem| matches!(problem, LoadProblem::Effect { action, list: Hook::OnHit, problem: EffectProblem::Duration } if action == "fan_of_frost"),
+    ),
+    flaw(
+        CINDER,
+        Edit::Set(
+            "actions.attack.on_hit",
+            r#"[{ launch = { area = "eruption", on_end = [{ move = { to = "reached", speed = 5 }, to = "source" }] } }]"#,
+        ),
+        "hero-cinder",
+        |problem| matches!(problem, LoadProblem::Effect { action, list: Hook::OnEnd, problem: EffectProblem::NoUnit } if action == "attack"),
     ),
     flaw(
         RIME,

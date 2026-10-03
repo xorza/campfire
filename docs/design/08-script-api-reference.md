@@ -21,7 +21,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `choose` | `(player, choice, values)`, `choice` a choice | mode | core | since 1.0 | records `values`, as many as `choice` takes, each a value it offers, none twice and, in a unique choice, none another player chose, as what `player` chose of it; one value may be given alone |
 | `chosen` | `(player, choice)`, `choice` a choice | mode | core | since 1.0 | the values `player` chose of `choice`, in order; empty before the player chose |
 | `damage` | `(target, amount, kind)`, `kind` a damage kind | every role | combat | since 1.0 | deals `amount` of `kind`, one of the mode's `[combat] damage_kinds`, to `target` |
-| `dash` | `(unit, to, speed)` | every role | navigation | planned | moves `unit` to `to` at `speed` |
+| `dash` | `(unit, to, speed)` | every role | navigation | since 1.0 | moves `unit` on the ground plane at `speed` meters a second to `to`: a point, or a unit it follows until their bodies touch |
 | `end` | `(team) or (())` | mode | core | since 1.0 | ends the match, once: `team` wins, `()` is a draw |
 | `enemy_team` | `(team)`, `team` a team | every role | core | since 1.0 | the one team that is `team`'s enemy, in a mode of two playing teams |
 | `find` | `(of, pos, radius, filter)`, `filter` a filter | every role | core | since 1.0 | the living targets whose bodies come within `radius` of `pos`, as an area's, that `filter` selects for `of`, seen or not, by stable id |
@@ -30,7 +30,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `grant` | `(unit, kind, ids)`, `kind` a slot kind | mode | abilities | since 1.0 | puts the actions `ids`, loadout entries the mode depends on, in the slot kind `kind` of `unit`, after its slots of that kind, at the kind's first rank |
 | `grant_perk` | `(unit, id)` | every role | progression | planned | gives `unit` the perk `id`, with no point and no requirement |
 | `heal` | `(unit, amount)` | every role | combat | since 1.0 | heals `unit`'s life pool, times one plus its `heal_scale` stat |
-| `knock_back` | `(unit, from, distance, ms)` | every role | stats | planned | pushes `unit` away from `from` |
+| `knock_back` | `(unit, from, distance, ms)` | every role | navigation | since 1.0 | moves `unit` `distance` straight away from `from` over `ms` |
 | `learn` | `(avatar, slot)` | mode | abilities | since 1.0 | the ability in `slot` a rank more, up to its last |
 | `map` | read | every role | core | since 1.0 | the map: its paths and its markers |
 | `nearest_visible` | `(of, radius, filter)`, `filter` a filter | every role | vision | since 1.0 | the nearest living target, centre to centre, whose body `radius` from the edge of `of`'s reaches, as a weapon's range, that `filter` selects and `of`'s team sees, `()` with none |
@@ -49,7 +49,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `remove` | `(handle)` | every role | stats | since 1.0 | ends the modifier, projectile or area at once |
 | `respawn` | `(unit, ms)` | mode | combat | since 1.0 | brings back `unit`, dead and of a type that stays, `ms` from the call |
 | `restore` | `(unit, pool, amount)`, `pool` a pool | every role | combat | since 1.0 | gives `unit` back `amount` of its `pool`, unscaled |
-| `reveal` | `(pos, radius, ms)` | every role | vision | planned | shows the source's team what is within `radius` of `pos` |
+| `reveal` | `(pos, radius, ms)` | action, modifier, AI | vision | since 1.0 | shows the acting unit's vision group the cells within `radius` of `pos` for `ms`, from this tick's Vision stage; no hidden unit |
 | `save` | `()` | mode | core | planned | asks for a save at the end of the tick |
 | `set_relation` | `(a, b, relation)`, `a` a team, `b` a team, `relation` a `Relation` | every role | core | since 1.0 | sets how teams `a` and `b` regard each other, their vision as it was |
 | `spawn_group` | `(team, path, from, types)`, `team` a team, `path` a path, `from` a `PathEnd` | mode | core | since 1.0 | spawns `types` of `team` in order at the end `from` of `path`, walking it from there |
@@ -57,7 +57,7 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `state` | read | mode | core | since 1.0 | the mode's state fields, by name, to read and write |
 | `team_of` | `(player)` | mode | core | since 1.0 | the name of `player`'s team |
 | `teams` | read | every role | core | since 1.0 | the playing teams' names, the teams with slots |
-| `teleport` | `(unit, pos)` | every role | navigation | planned | puts `unit` at `pos` |
+| `teleport` | `(unit, pos)` | every role | navigation | since 1.0 | puts `unit` at `pos` at once, or at the nearest place it may stand |
 | `timer` | `(name, ms, repeat, data)` | mode | core | since 1.0 | calls `on_timer` `ms` from the call, rounded up to whole ticks, at least one |
 | `units_tagged` | `(tag)`, `tag` a tag | every role | core | since 1.0 | the units of a tag, living or dead, by stable id |
 
@@ -339,9 +339,9 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `xp` | since 1.0 |
 | `purge` | since 1.0 |
 | `launch` | since 1.0 |
+| `move` | since 1.0 |
 | `to` | since 1.0 |
 | `spawn` | planned |
-| `move` | planned |
 | `loot` | planned |
 | `noise` | planned |
 

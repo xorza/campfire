@@ -36,6 +36,7 @@ use crate::deliveries::delivering::Delivering;
 use crate::players::player_resources::PlayerResources;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
+use crate::units::forced_move::ForcedMove;
 
 use crate::projectiles::Projectiles;
 use crate::scripts::ctx::Ctx;
@@ -172,7 +173,9 @@ fn run_channels(
 
 /// Runs the channel of `entity` at `now`, as `run_channels` does, and gives back the hooks due.
 fn step_channel(world: &mut World, now: Tick, entity: Entity) -> ChannelStep {
-    let blocked = UnitTags::effects_of(world.get::<UnitTags>(entity)).blocks(Block::Cast);
+    let unit = world.entity(entity);
+    let forced = unit.contains::<ForcedMove>();
+    let blocked = ForcedMove::blocks(unit.get::<UnitTags>(), forced, Block::Cast);
     world.resource_scope(|world, book: Mut<'_, ActionBook>| {
         let mut slots = world
             .get_mut::<ActionSlots>(entity)
@@ -324,14 +327,16 @@ fn start_casts(
             Option<&Owner>,
             Option<&Body>,
             Option<&UnitTags>,
+            Has<ForcedMove>,
         ),
         Without<Dead>,
     >,
 ) {
     let now = tick.start();
-    for (&position, &team, mut slots, pools, owner, body, tags) in &mut units {
+    for (&position, &team, mut slots, pools, owner, body, tags, forced) in &mut units {
+        let blocked = ForcedMove::blocks(tags, forced, Block::Cast);
         if let Some(InProgress::Charge { .. }) = slots.in_progress() {
-            if UnitTags::effects_of(tags).blocks(Block::Cast) {
+            if blocked {
                 slots.interrupt();
             } else {
                 slots.release(now);
@@ -350,7 +355,7 @@ fn start_casts(
         if action.kind.kind() != ActionKind::Cast {
             continue;
         }
-        if UnitTags::effects_of(tags).blocks(Block::Cast) {
+        if blocked {
             if started.is_some() {
                 slots.interrupt();
             }
@@ -421,7 +426,9 @@ fn resolve_casts(
     due.clear();
     due.extend_from_slice(order.sort(resolving));
     due.retain(|&Keyed { entity, .. }| {
-        let can_cast = !UnitTags::effects_of(world.get::<UnitTags>(entity)).blocks(Block::Cast);
+        let unit = world.entity(entity);
+        let forced = unit.contains::<ForcedMove>();
+        let can_cast = !ForcedMove::blocks(unit.get::<UnitTags>(), forced, Block::Cast);
         if !can_cast {
             world
                 .get_mut::<ActionSlots>(entity)
@@ -459,13 +466,14 @@ fn predict_casts(
             Option<&Pools>,
             Option<&Owner>,
             Option<&UnitTags>,
+            Has<ForcedMove>,
         ),
         Without<Dead>,
     >,
 ) {
     let now = tick.start();
     let second = Abilities::second(*rate);
-    for (&team, mut slots, pools, owner, tags) in &mut casters {
+    for (&team, mut slots, pools, owner, tags, forced) in &mut casters {
         let Some(ActionCall {
             aim: casting,
             start,
@@ -475,7 +483,7 @@ fn predict_casts(
         else {
             continue;
         };
-        if UnitTags::effects_of(tags).blocks(Block::Cast) {
+        if ForcedMove::blocks(tags, forced, Block::Cast) {
             slots.interrupt();
             continue;
         }

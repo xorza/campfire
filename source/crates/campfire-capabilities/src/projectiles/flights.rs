@@ -51,14 +51,19 @@ impl Aloft<'_> {
 impl Flights<'_> {
     /// Flies `aloft` a step; whether it ended. A homing one flies towards its target's position
     /// now, and hits it where its step ends when its body, of half its width, then reaches the
-    /// target's; one whose target is dead, gone or no target ends without a hit. One along a line
+    /// target's; one whose target is dead, gone, no target or lost to a teleport ends without a
+    /// hit. One along a line
     /// hits each unit its type's `hits` selects whose body comes within half its width of this
     /// tick's path, in the order of the point of the path nearest each, then by stable id, each
     /// unit once, and once a cast for a type that says so; it ends at its first hit when its type
     /// stops on one, and at the end of its range.
     pub(crate) fn fly(&mut self, targets: &Targets<'_, '_>, aloft: Aloft<'_>) -> bool {
         match aloft.projectile.flight() {
-            Flight::Homing { target, flown } => self.homing(targets, aloft, target, flown),
+            Flight::Homing {
+                target,
+                flown,
+                lost,
+            } => self.homing(targets, aloft, target, flown, lost),
             Flight::Line {
                 direction,
                 flown,
@@ -74,6 +79,7 @@ impl Flights<'_> {
         aloft: Aloft<'_>,
         target: StableId,
         flown: Num,
+        lost: bool,
     ) -> bool {
         let Aloft {
             id,
@@ -83,7 +89,7 @@ impl Flights<'_> {
             ..
         } = aloft;
         let from = *position;
-        let Some(unit) = targets.living(target) else {
+        let Some(unit) = targets.living(target).filter(|_| !lost) else {
             let hit = Hit {
                 delivery: Some(id),
                 target: Some(target),

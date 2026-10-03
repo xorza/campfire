@@ -38,15 +38,30 @@ pub enum Effecting {
         on_hit: Vec<EffectData>,
         on_end: Vec<EffectData>,
     },
+    /// `move = { to, speed }` or `move = { from, distance, ms }`: a forced move.
+    Move(MoveData),
     /// An effect the design names that the release does not run yet; the load refuses it.
     Planned(PlannedEffect),
+}
+
+/// A forced move of the unit an effect applies to, whose other unit is `"source"`, the acting
+/// unit, or `"reached"`, the unit the list reached.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum MoveData {
+    /// A dash at `speed` meters a second to `to`, which it follows until their bodies touch.
+    Dash { to: EffectTo, speed: Number },
+    /// A knock back `distance` away from `from` over `ms`.
+    KnockBack {
+        from: EffectTo,
+        distance: Number,
+        ms: Number,
+    },
 }
 
 /// The effects the design names that the release does not run yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlannedEffect {
     Spawn,
-    Move,
     Loot,
     Noise,
 }
@@ -65,6 +80,23 @@ pub enum EffectTo {
 #[serde(rename_all = "snake_case")]
 enum ToName {
     Source,
+}
+
+/// A forced move's other unit, as data names it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum MoveUnit {
+    Source,
+    Reached,
+}
+
+impl MoveUnit {
+    const fn to(self) -> EffectTo {
+        match self {
+            MoveUnit::Source => EffectTo::Source,
+            MoveUnit::Reached => EffectTo::Reached,
+        }
+    }
 }
 
 #[derive(Debug, Deserialize)]
@@ -107,6 +139,43 @@ struct PurgeFields {
     tag: DeclaredName,
 }
 
+/// A dash's `to` and `speed`, or a knock back's `from`, `distance` and `ms`.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct MoveFields {
+    to: Option<MoveUnit>,
+    speed: Option<Number>,
+    from: Option<MoveUnit>,
+    distance: Option<Number>,
+    ms: Option<Number>,
+}
+
+impl MoveFields {
+    fn data(self) -> Option<MoveData> {
+        match self {
+            MoveFields {
+                to: Some(to),
+                speed: Some(speed),
+                from: None,
+                distance: None,
+                ms: None,
+            } => Some(MoveData::Dash { to: to.to(), speed }),
+            MoveFields {
+                to: None,
+                speed: None,
+                from: Some(from),
+                distance: Some(distance),
+                ms: Some(ms),
+            } => Some(MoveData::KnockBack {
+                from: from.to(),
+                distance,
+                ms,
+            }),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Debug, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct LaunchFields {
@@ -118,19 +187,22 @@ struct LaunchFields {
 }
 
 impl Effecting {
-    /// The numbers it gives: its amount, and a modifier's duration.
+    /// The numbers it gives: its amount, a modifier's duration, a dash's speed, or a knock
+    /// back's distance and time.
     pub fn numbers(&self) -> impl Iterator<Item = &Number> + '_ {
-        let (amount, duration) = match self {
+        let numbers = match self {
             Effecting::Damage { amount, .. }
             | Effecting::Heal { amount }
             | Effecting::Restore { amount, .. }
-            | Effecting::Xp { amount, .. } => (Some(amount), None),
-            Effecting::Modifier { duration_ms, .. } => (None, duration_ms.as_ref()),
+            | Effecting::Xp { amount, .. }
+            | Effecting::Move(MoveData::Dash { speed: amount, .. }) => [Some(amount), None],
+            Effecting::Modifier { duration_ms, .. } => [duration_ms.as_ref(), None],
+            Effecting::Move(MoveData::KnockBack { distance, ms, .. }) => [Some(distance), Some(ms)],
             Effecting::Purge { .. } | Effecting::Launch { .. } | Effecting::Planned(_) => {
-                (None, None)
+                [None, None]
             }
         };
-        amount.into_iter().chain(duration)
+        numbers.into_iter().flatten()
     }
 
     /// The effects of the lists it holds: a launch's `on_hit`, then its `on_end`.
@@ -152,9 +224,8 @@ impl Effecting {
 }
 
 impl PlannedEffect {
-    pub const ALL: [PlannedEffect; 4] = [
+    pub const ALL: [PlannedEffect; 3] = [
         PlannedEffect::Spawn,
-        PlannedEffect::Move,
         PlannedEffect::Loot,
         PlannedEffect::Noise,
     ];
@@ -163,7 +234,6 @@ impl PlannedEffect {
     pub const fn name(self) -> &'static str {
         match self {
             PlannedEffect::Spawn => "spawn",
-            PlannedEffect::Move => "move",
             PlannedEffect::Loot => "loot",
             PlannedEffect::Noise => "noise",
         }
@@ -185,7 +255,7 @@ impl<'de> Deserialize<'de> for EffectData {
             spawn: Option<IgnoredAny>,
             launch: Option<LaunchFields>,
             #[serde(rename = "move")]
-            moves: Option<IgnoredAny>,
+            moves: Option<MoveFields>,
             loot: Option<IgnoredAny>,
             noise: Option<IgnoredAny>,
             to: Option<ToName>,
@@ -193,7 +263,6 @@ impl<'de> Deserialize<'de> for EffectData {
         let fields = Fields::deserialize(deserializer)?;
         let planned = [
             (fields.spawn.is_some(), PlannedEffect::Spawn),
-            (fields.moves.is_some(), PlannedEffect::Move),
             (fields.loot.is_some(), PlannedEffect::Loot),
             (fields.noise.is_some(), PlannedEffect::Noise),
         ];
@@ -230,7 +299,15 @@ impl<'de> Deserialize<'de> for EffectData {
                 on_end,
             },
         );
-        let mut effects = [damage, heal, restore, modifier, xp, purge, launch]
+        let moves = match fields.moves.map(MoveFields::data) {
+            Some(None) => {
+                return Err(D::Error::custom(
+                    "a dash's `to` and `speed`, or a knock back's `from`, `distance` and `ms`",
+                ));
+            }
+            moves => moves.flatten().map(Effecting::Move),
+        };
+        let mut effects = [damage, heal, restore, modifier, xp, purge, launch, moves]
             .into_iter()
             .flatten()
             .chain(planned);

@@ -46,13 +46,13 @@ A map can hold paths of waypoints, such as a MOBA's lanes or a patrol route. A u
 
 ### Forced movement
 
-A dash, a knock back and a teleport move a unit through effects and calls ([Effects](actions.md#effects)), not by its step, in the Move stage before units walk:
+A dash, a knock back and a teleport move a unit that walks through effects and calls ([Effects](actions.md#effects)), not by its step. A dash and a knock back move it in the Move stage, after units walk, by stable id, so a dash at a unit follows its place of that tick:
 
-- **Dash:** `ctx.dash(unit, to, speed)` or the effect `move = { to, speed }` moves the unit along the ground plane at `speed` meters a second, a fixed distance each tick, to `to`: a point, or a unit, whose place of each tick it follows until their bodies touch, as League of Legends' Lee Sin follows his mark.
-- **Knock back:** `ctx.knock_back(unit, from, distance, ms)` or `move = { from, distance, ms }` moves it `distance` straight away from `from` over `ms`; a unit on `from` goes along x, as collision parts two on one spot.
-- **Teleport:** `ctx.teleport(unit, pos)` puts it at `pos` at once, or at the nearest place its walker may stand.
+- **Dash:** `ctx.dash(unit, to, speed)` or the effect `move = { to, speed }` moves the unit along the ground plane, at its own height, at `speed` meters a second, a fixed step each tick of `speed` over the tick rate, rounded once, to `to`: a point, or a unit, whose place of each tick it follows until their bodies touch, as League of Legends' Lee Sin follows his mark. A dash at a unit that is gone or dead ends where it is.
+- **Knock back:** `ctx.knock_back(unit, from, distance, ms)` or `move = { from, distance, ms }` moves it `distance` straight away from `from` on the ground plane over `ms`, rounded up to ticks: each tick the share of the way left that one of the ticks left is, so the last ends on its end; a unit on `from` goes along x, as collision parts two on one spot.
+- **Teleport:** `ctx.teleport(unit, pos)` puts it at once at `pos`, taken to the nearest point of the bounds, or, where its walker may not stand on the pathing grid, at the center of the nearest cell it may stand in, ties to the lower number, as a route's goal; on a grid with no such cell it stays.
 
-A dash or a knock back passes through other units, as both League of Legends' and Dota 2's do, and stops at the first step that would take its body onto a cell its walker's grid blocks, or past the bounds; collision parts it from the units it ends on. While one moves it, a unit takes no step of its own and starts no action, and the action it winds up or channels is interrupted, as a stun would; its order waits, and it walks its route again from where it ends. A new forced move replaces the one under way. A teleport disjoints: it ends the homing projectiles that target the unit; a dash and a knock back do not, as in Dota 2, where Blink disjoints and Force Staff does not. A dash that an action of instant delivery starts in its `on_resolve` is that action's delivery: its `on_end` runs as the dash ends, with a hit whose target is the dash's unit target, or `()`, and whose place is where the dash ended. A forced move is state, and a client continues one it learned of as the server does.
+A dash or a knock back passes through other units, as both League of Legends' and Dota 2's do: steering and collision skip its unit while it moves. It ends before the first step whose way a static body of its layer blocks, by the exact test of a route's straight line, and on the bounds at the first step past them; collision parts it from the units it ends on. While one moves it, a unit takes no step of its own and starts no action, and the action it winds up or channels is interrupted, as a stun would; its order waits, and it asks its route again from where it ends. A new forced move replaces the one under way, and a teleport ends it. A teleport disjoints: it ends the homing projectiles that target the unit; a dash and a knock back do not, as in Dota 2, where Blink disjoints and Force Staff does not. A dash that an action of instant delivery starts in its `on_resolve` is that action's delivery: its `on_end` runs as the dash ends, with a hit whose target is the dash's unit target, or `()`, and whose place is where the dash ended. A forced move is state, and a client continues one it learned of as the server does.
 
 ### Map checks
 
@@ -64,12 +64,12 @@ In the Collide stage, after Move, each pair of living bodies on one layer that o
 
 ## State and derived
 
-- **State:** each unit's destination, route, progress (the ticks it has been kept back), the path it walks and its direction; the forced move under way: its kind, its target or end, its speed and its last tick.
+- **State:** each unit's destination, route, progress (the ticks it has been kept back), the path it walks and its direction; the forced move under way: a dash's point or unit and its step a tick, or a knock back's end and the ticks it has left.
 - **Derived:** the pathing grids, regions and static indexes, from the map and the units that cannot walk; a unit's step a tick, from its stats.
 
 ## Script API
 
-`ctx.map` with `paths` and `markers(tag)`; `ctx.spawn_group(team, path, from, types)`, `from` the path's end, `PathEnd::Start` or `PathEnd::End` ([Engine enums](../08-script-api.md#engine-enums)); `ctx.dash`, `ctx.knock_back`, `ctx.teleport` ([Forced movement](#forced-movement)), each failing the call for a unit with no walker, a negative or zero speed, distance or time; `unit.path`, `unit.pos`, `unit.radius`.
+`ctx.map` with `paths` and `markers(tag)`; `ctx.spawn_group(team, path, from, types)`, `from` the path's end, `PathEnd::Start` or `PathEnd::End` ([Engine enums](../08-script-api.md#engine-enums)); `ctx.dash`, `ctx.knock_back`, `ctx.teleport` ([Forced movement](#forced-movement)), each failing the call for a unit with no walker, a speed of no step a tick, a distance not above 0 or beyond the world's bound, or a time not above 0; `unit.path`, `unit.pos`, `unit.radius`.
 
 ## Network
 

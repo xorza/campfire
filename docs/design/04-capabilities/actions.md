@@ -116,7 +116,7 @@ An effect list is an array of effects, each one table; the effects queue in orde
 | `purge = { tag }` | Ends the applications of its modifiers that grant the tag, a tag the mode declares and not the engine's, whatever their source: an instance a passive, an aura, an area or a player holds stays, as its holder would apply it again, as Dota 2's dispels remove applied buffs and never passives or auras |
 | `spawn = { unit_type, duration_ms }` | Spawns a unit of a type of the mode's package where it stands, or at the point an action's `on_resolve` aimed at, on the source's team and of its player; with `duration_ms` it despawns that long after, as a ward does. An action of the mode's own package, as its items' are, may spawn; one of an avatar's or a loadout's package waits for summons ([Issue log](../../issues/actions.md)) |
 | `launch = { area, on_hit, on_end }` | Lands an area of the action's package where it stands, which runs its own lists |
-| `move = { to, speed }`, `move = { from, distance, ms }` | Forced movement: a dash or a knock back ([Navigation](navigation.md#forced-movement)) |
+| `move = { to, speed }`, `move = { from, distance, ms }` | Forced movement: a dash at the unit `to` names, or a knock back away from the one `from` names, `"source"` or `"reached"`; `ms` whole milliseconds ([Navigation](navigation.md#forced-movement)) |
 | `xp = { track, amount }` | Experience on a track ([Progression](progression.md)) |
 | `loot = { table, level }` | Rolls a random table and drops what it gives where the unit stands ([Random tables](00-overview.md#random-tables)) |
 | `noise = { radius }` | A noise that units within the radius hear ([Senses](vision.md#senses)) |

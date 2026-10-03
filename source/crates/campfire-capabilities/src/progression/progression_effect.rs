@@ -29,6 +29,7 @@ impl ProgressionEffect {
     pub(crate) fn queue_listed(
         does: Does,
         unit: StableId,
+        _: Option<StableId>,
         frame: &mut Frame,
         view: &View,
     ) -> Result<(), CallError> {

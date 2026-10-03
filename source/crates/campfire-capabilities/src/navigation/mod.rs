@@ -3,22 +3,25 @@ use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, Allow, Has, ROQueryItem, With, Without};
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
-use bevy_ecs::system::{Local, Query, Res, ResMut};
+use bevy_ecs::system::{Commands, Local, ParamSet, Query, Res, ResMut};
 use bevy_ecs::world::World;
-use campfire_math::Num;
+use campfire_math::{Num, Vec3};
 use campfire_sim::{
-    Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry, TickRate, Unpredicted,
+    Capability, EntityIndex, Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry,
+    TickRate, Unpredicted,
 };
 
+use crate::actions::effect_queues::EffectQueues;
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::broadphase::Broadphase;
 use crate::navigation::collider::Collider;
 use crate::navigation::destination::Destination;
+use crate::navigation::navigation_column::NavigationColumn;
+use crate::navigation::navigation_effect::NavigationEffect;
 use crate::navigation::on_path::OnPath;
 use crate::navigation::path_walker::PathWalker;
 use crate::navigation::pathing_grid::PathingGrid;
 use crate::navigation::paths::Paths;
-use crate::navigation::paths_column::PathsColumn;
 use crate::navigation::progress::Progress;
 use crate::navigation::route::Route;
 use crate::navigation::route_planner::{RoutePlanner, Waiting, Walkable};
@@ -31,6 +34,7 @@ use crate::units::block::Block;
 use crate::units::body::Body;
 use crate::units::body_grid::Placed;
 use crate::units::dead::Dead;
+use crate::units::forced_move::{DashTo, ForcedMove, Goal};
 use crate::units::row_fill::RowFill;
 use crate::units::script_view::View;
 use crate::units::unit_tags::UnitTags;
@@ -45,12 +49,13 @@ pub(crate) mod collider;
 pub(crate) mod destination;
 pub(crate) mod error;
 pub(crate) mod navigation_api;
+pub(crate) mod navigation_column;
+pub(crate) mod navigation_effect;
 pub(crate) mod navigation_rules;
 pub(crate) mod on_path;
 pub(crate) mod path_walker;
 pub(crate) mod pathing_grid;
 pub(crate) mod paths;
-pub(crate) mod paths_column;
 pub(crate) mod progress;
 pub(crate) mod regions;
 pub(crate) mod route;
@@ -68,8 +73,8 @@ pub(crate) enum NavigationSet {
     TrackStatics,
 }
 
-/// The `navigation` capability: units that walk routes to a destination, and the map's waypoint
-/// paths.
+/// The `navigation` capability: units that walk routes to a destination, the map's waypoint
+/// paths, and the forced moves of dashes, knock backs and teleports.
 #[derive(Debug)]
 pub struct Navigation;
 
@@ -86,22 +91,32 @@ impl Navigation {
 
     /// Adds navigation to a match, with no paths, the world for bounds, and a static index for
     /// walkers as wide as a body may be, until the mode sets its map's: in Move, units walk their
-    /// routes to their destinations, straight lines until the map gives a pathing grid; in Collide,
-    /// overlapping living bodies part; after Collide, each unit that walks stands within the bounds
-    /// again.
+    /// routes to their destinations, straight lines until the map gives a pathing grid, then the
+    /// forced moves move theirs; in Collide, overlapping living bodies part; after Collide, each
+    /// unit that walks stands within the bounds again.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         let view = world.non_send::<View>().clone();
-        view.add_column(PathsColumn::default());
+        view.add_column(NavigationColumn::default());
         view.add_source::<RowParts>(world, fill_row);
         world.insert_resource(Paths::default());
         world.insert_resource(Bounds::WORLD);
         world.insert_resource(BodyIndex::new(Body::MAX_RADIUS));
         world.insert_resource(StaticChanges::default());
+        world
+            .resource_mut::<EffectQueues>()
+            .register(Capability::Navigation, NavigationEffect::queue_listed);
         schedule.add_systems((
             track_static_bodies
                 .in_set(SimSet::Inputs)
                 .in_set(NavigationSet::TrackStatics),
-            (forget_dead, route_units, plan_routes, steer, move_units)
+            (
+                forget_dead,
+                route_units,
+                plan_routes,
+                steer,
+                move_units,
+                force_units,
+            )
                 .chain()
                 .in_set(SimSet::Move),
             (track_static_bodies, collide)
@@ -115,6 +130,7 @@ impl Navigation {
         registry.register_component::<OnPath>();
         registry.register_component::<Route>();
         registry.register_component::<Progress>();
+        registry.register_component::<ForcedMove>();
     }
 
     /// Gives the match the map's pathing grid over `cells`, for the kinds of `walkers`, a static
@@ -161,13 +177,14 @@ fn track_static_bodies(
     }
 }
 
-/// The part of a unit navigation reads into its row: the path it is on.
-type RowParts = Option<&'static OnPath>;
+/// The parts of a unit navigation reads into its row: the path it is on, and whether it walks.
+type RowParts = (Option<&'static OnPath>, Has<MoveStep>);
 
-/// Fills a row of the script view with the path the unit walks or stands on.
-fn fill_row(path: ROQueryItem<'_, '_, RowParts>, fill: &mut RowFill<'_>) {
+/// Fills a row of the script view with the path the unit walks or stands on, and whether it
+/// walks.
+fn fill_row((path, walks): ROQueryItem<'_, '_, RowParts>, fill: &mut RowFill<'_>) {
     let path = path.map(|path| path.get());
-    fill.column::<PathsColumn>().push(path);
+    fill.column::<NavigationColumn>().push(path, walks);
 }
 
 /// Keeps each walker's route on its destination. A walker with a new destination asks for a route
@@ -323,7 +340,12 @@ fn steer(
             Option<&Destination>,
             Option<&UnitTags>,
         ),
-        (With<MoveStep>, Without<Dead>, Allow<Unpredicted>),
+        (
+            With<MoveStep>,
+            Without<Dead>,
+            Without<ForcedMove>,
+            Allow<Unpredicted>,
+        ),
     >,
     mut walkers: Query<
         '_,
@@ -338,6 +360,7 @@ fn steer(
             &mut Route,
             &mut Progress,
             Option<&UnitTags>,
+            Has<ForcedMove>,
         ),
         Without<Dead>,
     >,
@@ -351,11 +374,11 @@ fn steer(
         .expect("a pathing grid comes with its planner");
     let still = bodies
         .iter()
-        .filter(|(.., destination, tags)| !walks(*destination, *tags))
+        .filter(|(.., destination, tags)| !walks(*destination, *tags, false))
         .map(|(&id, &at, body, ..)| IndexedBody::of(id, at, body));
     let walking = bodies
         .iter()
-        .filter(|(.., destination, tags)| walks(*destination, *tags))
+        .filter(|(.., destination, tags)| walks(*destination, *tags, false))
         .map(|(&id, &at, body, ..)| Placed {
             id,
             key: body.layer(),
@@ -369,9 +392,12 @@ fn steer(
         .get();
     let ordered = walkers.iter().map(|(entity, &id, ..)| Keyed { id, entity });
     for &Keyed { entity, .. } in order.sort(ordered) {
-        let (_, &id, &at, destination, step, body, mut route, mut progress, tags) =
+        let (_, &id, &at, destination, step, body, mut route, mut progress, tags, forced) =
             walkers.get_mut(entity).expect("a walker in the order");
-        if !walks(Some(destination), tags) || route.asked().is_some() || route.ahead().is_empty() {
+        if !walks(Some(destination), tags, forced)
+            || route.asked().is_some()
+            || route.ahead().is_empty()
+        {
             continue;
         }
         let steered = Steered {
@@ -388,11 +414,16 @@ fn steer(
     }
 }
 
-/// Makes each unit that died since the last Move stage forget where it walked to. No order
-/// reaches a dead unit, so it walks nowhere until it lives again.
+/// Makes each unit that died since the last Move stage forget where it walked to, and ends its
+/// forced move. No order reaches a dead unit, so it walks nowhere until it lives again.
 fn forget_dead(
+    mut forced: Query<'_, '_, Entity, (Added<Dead>, With<ForcedMove>)>,
     mut units: Query<'_, '_, (&mut Destination, &mut Route, &mut Progress), Added<Dead>>,
+    mut commands: Commands<'_, '_>,
 ) {
+    for entity in &mut forced {
+        commands.entity(entity).remove::<ForcedMove>();
+    }
     for (mut destination, mut route, mut progress) in &mut units {
         if destination.get().is_some() {
             destination.set(None);
@@ -408,7 +439,7 @@ fn forget_dead(
 /// the next with the rest of its step. Past the last it has arrived, and drops its destination,
 /// and its route when the route reached the goal: one that ends short stays, arrived short, so an
 /// order that sends the unit there again plans nothing. A unit whose route waits for the planner
-/// walks the one it has, if any. One its tags stop keeps both.
+/// walks the one it has, if any. One its tags or a forced move stop keeps both.
 fn move_units(
     mut units: Query<
         '_,
@@ -420,12 +451,13 @@ fn move_units(
             &mut Progress,
             &MoveStep,
             Option<&UnitTags>,
+            Has<ForcedMove>,
         ),
         Without<Dead>,
     >,
 ) {
-    for (mut position, mut destination, mut route, mut progress, step, tags) in &mut units {
-        if !walks(Some(&destination), tags) {
+    for (mut position, mut destination, mut route, mut progress, step, tags, forced) in &mut units {
+        if !walks(Some(&destination), tags, forced) {
             continue;
         }
         let mut at = position.get();
@@ -457,7 +489,8 @@ fn move_units(
 }
 
 /// Parts the living bodies of one layer that overlap as the stage starts, pair by pair in stable-id
-/// order; a pair that only overlaps after this tick's pushes parts in the next. Only a unit that
+/// order; a pair that only overlaps after this tick's pushes parts in the next. A body a forced
+/// move moves passes through the others, and parts from them once the move ends. Only a unit that
 /// can walk is pushed, and one walking to a destination yields to one that stands. The static
 /// bodies' contacts come from `statics`, which holds them as the stage starts. A predicting client
 /// also parts its own units from the units it holds as the server sent them that cannot walk, such
@@ -478,6 +511,7 @@ fn collide(
             Option<&Destination>,
             Option<&UnitTags>,
             Has<Unpredicted>,
+            Has<ForcedMove>,
         ),
         (Without<Dead>, Allow<Unpredicted>),
     >,
@@ -489,16 +523,16 @@ fn collide(
     colliders.extend(
         units
             .iter()
-            .filter(|&(.., movable, _, _, held)| !(held && movable))
+            .filter(|&(.., movable, _, _, held, forced)| !(forced || held && movable))
             .map(
-                |(entity, &id, body, position, movable, destination, tags, _)| Collider {
+                |(entity, &id, body, position, movable, destination, tags, ..)| Collider {
                     id,
                     entity,
                     at: position.get(),
                     radius: body.radius(),
                     layer: body.layer(),
                     movable,
-                    walking: walks(destination, tags),
+                    walking: walks(destination, tags, false),
                 },
             ),
     );
@@ -522,11 +556,104 @@ fn collide(
     }
 }
 
-/// Whether a unit walks this tick: it has a destination, and its tags let it move. One they
-/// stop stands, to the units round it as to itself.
-fn walks(destination: Option<&Destination>, tags: Option<&UnitTags>) -> bool {
+/// Whether a unit walks this tick: it has a destination, and neither its tags nor a forced move,
+/// when `forced`, stop it. One they stop stands, to the units round it as to itself.
+fn walks(destination: Option<&Destination>, tags: Option<&UnitTags>, forced: bool) -> bool {
     destination.is_some_and(|destination| destination.get().is_some())
-        && !UnitTags::effects_of(tags).blocks(Block::Move)
+        && !ForcedMove::blocks(tags, forced, Block::Move)
+}
+
+/// Moves each unit a forced move moves, by stable id, once the units walked, so a dash at a unit
+/// follows its place of this tick, at the unit's own height. A step whose way a static body of the
+/// unit's layer blocks is not taken, and one past the bounds stops on them; either ends the move.
+/// A unit whose move ended walks its route again from there.
+fn force_units(
+    (tick, bounds, statics, index): (
+        Res<'_, SimTick>,
+        Res<'_, Bounds>,
+        Res<'_, BodyIndex>,
+        Res<'_, EntityIndex>,
+    ),
+    mut units: ParamSet<
+        '_,
+        '_,
+        (
+            Query<'_, '_, (&Position, Option<&Body>), (Without<Dead>, Allow<Unpredicted>)>,
+            Query<
+                '_,
+                '_,
+                (
+                    Entity,
+                    &StableId,
+                    &mut Position,
+                    &mut ForcedMove,
+                    Option<&Body>,
+                ),
+                Without<Dead>,
+            >,
+        ),
+    >,
+    mut walkers: Query<'_, '_, (&Destination, &mut Route, &mut Progress)>,
+    mut commands: Commands<'_, '_>,
+    mut order: Local<'_, Ordered>,
+) {
+    let now = tick.start();
+    let ordered = {
+        let moving = units.p1();
+        order.sort(moving.iter().map(|(entity, &id, ..)| Keyed { id, entity }))
+    };
+    for &Keyed { entity, .. } in ordered {
+        let (at, mut forced, body) = {
+            let moving = units.p1();
+            let (_, _, &at, &forced, body) = moving.get(entity).expect("a unit in the order");
+            (at, forced, body.copied())
+        };
+        let walker = Walker::of(body.as_ref());
+        let ground = |place: Vec3| Vec3::new(place.x, at.get().y, place.z);
+        let goal = match forced {
+            ForcedMove::Dash {
+                to: DashTo::Point(point),
+                ..
+            } => Some(Goal {
+                at: ground(point.get()),
+                reach: Num::ZERO,
+            }),
+            ForcedMove::Dash {
+                to: DashTo::Unit(target),
+                ..
+            } => {
+                let targets = units.p0();
+                let found = index.get(target).and_then(|unit| targets.get(unit).ok());
+                found.map(|(place, body)| Goal {
+                    at: ground(place.get()),
+                    reach: walker.radius + Body::radius_of(body),
+                })
+            }
+            ForcedMove::KnockBack { to, .. } => Some(Goal {
+                at: to,
+                reach: Num::ZERO,
+            }),
+        };
+        let advanced = forced.advance(at.get(), goal);
+        let to = bounds.ground_point([advanced.at.x, advanced.at.z], at);
+        let past = to.get() != advanced.at;
+        let blocked = statics.blocks(Segment::new(at, to), walker);
+        let ends = advanced.ends || past || blocked;
+        let mut moving = units.p1();
+        let (_, _, mut position, mut under_way, _) =
+            moving.get_mut(entity).expect("a unit in the order");
+        if !blocked {
+            position.set_if_neq(to);
+        }
+        if ends {
+            commands.entity(entity).remove::<ForcedMove>();
+            if let Ok((destination, mut route, mut progress)) = walkers.get_mut(entity) {
+                route.ask_again(destination, &mut progress, now);
+            }
+        } else {
+            under_way.set_if_neq(forced);
+        }
+    }
 }
 
 /// Clamps each unit that walks into the bounds; a unit already within them does not change.

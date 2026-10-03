@@ -390,7 +390,7 @@ impl RoutePlanner {
     /// `k` rings out is at least `k − ½` cells off, or the rings leave the cells a walker may
     /// stand in: the grid, or a short route's window. So a search visits each cell of those once
     /// at most, each counted in `work`.
-    fn nearest_open(
+    pub(crate) fn nearest_open(
         &self,
         walkable: Walkable<'_>,
         goal: Position,

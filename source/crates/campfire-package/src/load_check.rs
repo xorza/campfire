@@ -4,10 +4,10 @@ use std::{iter, slice};
 use campfire_capabilities::{
     ActionData, ActionDataField, ActionKind, ActionSlots, ApiOwner, ApiVersion, BookError, Books,
     CollisionData, CombatRules, DeclaredName, DeliveryData, EffectData, EffectTo, Effecting,
-    EngineTag, EnumRecord, FilterData, Hook, MemberKind, ModifierData, ModifierProblem, NameKind,
-    Number, Offers, PackagePath, Param, ParamProblem, Pools, ProjectileHits, Range, RangeField,
-    ResourceId, Scalar, ScriptApi, ScriptRole, Stat, Targeting, TrackId, TypePlace, UnitTypeData,
-    UnitTypeFile,
+    EngineTag, EnumRecord, FilterData, Hook, MemberKind, ModifierData, ModifierProblem, MoveData,
+    NameKind, Number, Offers, PackagePath, Param, ParamProblem, Pools, ProjectileHits, Range,
+    RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Stat, Targeting, TrackId, TypePlace,
+    UnitTypeData, UnitTypeFile,
 };
 use campfire_math::Num;
 use campfire_sim::{Capability, TickRate};
@@ -1001,6 +1001,19 @@ impl<'a> LoadCheck<'a> {
                     own_tags(slice::from_ref(tag), &at)?;
                     if !self.tags.contains(tag.as_str()) {
                         return Err(unknown(NameKind::Tag, tag));
+                    }
+                }
+                Effecting::Move(moves) => {
+                    self.require(Capability::Navigation, &at)?;
+                    let (other, ms) = match moves {
+                        MoveData::Dash { to, .. } => (to, None),
+                        MoveData::KnockBack { from, ms, .. } => (from, Some(ms)),
+                    };
+                    if *other == EffectTo::Reached && !reaches {
+                        return Err(fail(EffectProblem::NoUnit));
+                    }
+                    if ms.is_some_and(|ms| !whole_ms(action, ms)) {
+                        return Err(fail(EffectProblem::Duration));
                     }
                 }
                 Effecting::Launch {

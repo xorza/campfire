@@ -1,7 +1,5 @@
 use bevy_ecs::change_detection::DetectChanges;
 use campfire_common::Tick;
-use campfire_math::Vec3;
-use campfire_sim::Capability;
 
 use super::*;
 use crate::capability_set::test_match::TestMatch;
@@ -794,3 +792,5 @@ fn every_navigation_type_is_state() {
     restored.sim.world.insert_resource(lane());
     walk.sim.restore_into(&mut restored.sim);
 }
+
+mod forced;

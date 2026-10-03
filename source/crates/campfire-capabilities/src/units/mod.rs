@@ -36,6 +36,7 @@ pub(crate) mod collision_data;
 pub(crate) mod dead;
 pub(crate) mod engine_tag;
 pub(crate) mod filter;
+pub(crate) mod forced_move;
 pub(crate) mod hit_handle;
 pub(crate) mod layer;
 pub(crate) mod living_unit;

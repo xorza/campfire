@@ -155,6 +155,16 @@ pub enum ApiError {
     NoStart,
     /// `ctx.charge` of an action that does not charge.
     NotCharged,
+    /// A call that acts as its unit with no acting unit, as the mode's, or one that is gone.
+    NoActingUnit,
+    /// A time of 0 where something must last.
+    ZeroTime,
+    /// A forced move of a unit that does not walk.
+    NoWalker,
+    /// A speed of no step a tick: 0, negative, or too small to move a bit.
+    NotASpeed,
+    /// A distance that is not more than 0, or beyond the world's bound.
+    NotADistance,
 }
 
 /// Why a param a modifier reads does not hold.
@@ -295,6 +305,11 @@ impl fmt::Display for ApiError {
             ApiError::NoCharges => "the ability has no charges",
             ApiError::NoStart => "the call's action did not start",
             ApiError::NotCharged => "the call's action does not charge",
+            ApiError::NoActingUnit => "the call has no acting unit",
+            ApiError::ZeroTime => "time is 0",
+            ApiError::NoWalker => "the unit does not walk",
+            ApiError::NotASpeed => "speed moves less than a bit a tick",
+            ApiError::NotADistance => "distance is not more than 0, or beyond the world's bound",
         })
     }
 }

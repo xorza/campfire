@@ -42,6 +42,7 @@ impl CombatEffect {
     pub(crate) fn queue_listed(
         does: Does,
         unit: StableId,
+        _: Option<StableId>,
         frame: &mut Frame,
         _: &View,
     ) -> Result<(), CallError> {
@@ -60,9 +61,7 @@ impl CombatEffect {
                 pool,
                 amount: amount.number(frame),
             },
-            Does::Modifier { .. } | Does::Xp { .. } | Does::Purge { .. } | Does::Launch { .. } => {
-                unreachable!("combat queues only its own listed effects")
-            }
+            _ => unreachable!("combat queues only its own listed effects"),
         };
         frame.effects.push(effect);
         Ok(())

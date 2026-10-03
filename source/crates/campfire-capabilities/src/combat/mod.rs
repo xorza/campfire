@@ -50,6 +50,7 @@ use crate::units::action_id::ActionId;
 use crate::units::block::Block;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
+use crate::units::forced_move::ForcedMove;
 use crate::units::modifier_id::ModifierId;
 use crate::units::owner::Owner;
 use crate::units::predicting::Predicting;
@@ -268,13 +269,14 @@ fn start_attacks(
             Option<&Owner>,
             Option<&Body>,
             Option<&UnitTags>,
+            Has<ForcedMove>,
         ),
         Without<Dead>,
     >,
 ) {
     let now = tick.start();
-    for (&position, &team, mut slots, pools, owner, body, tags) in &mut units {
-        let blocked = UnitTags::effects_of(tags).blocks(Block::Attack);
+    for (&position, &team, mut slots, pools, owner, body, tags, forced) in &mut units {
+        let blocked = ForcedMove::blocks(tags, forced, Block::Attack);
         match slots.in_progress() {
             Some(
                 InProgress::Order { .. } | InProgress::Charge { .. } | InProgress::Channel { .. },
@@ -333,6 +335,7 @@ type Attacker<'a> = (
     &'a StableId,
     &'a ActionSlots,
     Option<&'a UnitTags>,
+    Has<ForcedMove>,
     Option<&'a Pools>,
     Option<&'a Owner>,
 );
@@ -353,10 +356,11 @@ struct Wielded<'a> {
 }
 
 impl Wielded<'_> {
-    /// Whether its attack, going off, strikes for a unit with `tags`: no tag keeps it from
-    /// attacking, and `purse` still affords its cost, as the checks run again at delivery.
-    fn strikes(&self, tags: Option<&UnitTags>, purse: Purse<'_>) -> bool {
-        !UnitTags::effects_of(tags).blocks(Block::Attack)
+    /// Whether its attack, going off, strikes for a unit with `tags`, under a forced move when
+    /// `forced`: neither keeps it from attacking, and `purse` still affords its cost, as the
+    /// checks run again at delivery.
+    fn strikes(&self, tags: Option<&UnitTags>, forced: bool, purse: Purse<'_>) -> bool {
+        !ForcedMove::blocks(tags, forced, Block::Attack)
             && purse.affords(&self.values.cost, self.resource_cost)
     }
 }
@@ -382,14 +386,14 @@ fn attack_events(
     let book = world.resource::<ActionBook>();
     let resources = world.get_resource::<PlayerResources>();
     going.clear();
-    for (&attacker, slots, tags, pools, owner) in attackers.iter(world) {
+    for (&attacker, slots, tags, forced, pools, owner) in attackers.iter(world) {
         let purse = Purse {
             pools,
             resources,
             owner: owner.map(|owner| owner.slot()),
         };
         if let Some(target) = Combat::going_off(slots, now)
-            && Combat::wielded(book, slots).strikes(tags, purse)
+            && Combat::wielded(book, slots).strikes(tags, forced, purse)
         {
             going.push(GoingOff { attacker, target });
         }
@@ -536,6 +540,7 @@ fn strike(
             Option<&UnitStats>,
             Option<&mut Pools>,
             Option<&UnitTags>,
+            Has<ForcedMove>,
             Option<&Owner>,
         ),
         Without<Dead>,
@@ -547,7 +552,7 @@ fn strike(
         Combat::going_off(slots, now).map(|_| Keyed { id, entity })
     });
     for &Keyed { entity, .. } in order.sort(going) {
-        let (_, &source, &from, mut slots, stats, pools, tags, owner) =
+        let (_, &source, &from, mut slots, stats, pools, tags, forced, owner) =
             attackers.get_mut(entity).expect("an attacker in the order");
         let target = Combat::going_off(&slots, now).expect("an attack going off");
         let owner = owner.map(|owner| owner.slot());
@@ -557,7 +562,7 @@ fn strike(
             owner,
         };
         let wielded = Combat::wielded(&book, &slots);
-        if !wielded.strikes(tags, purse) {
+        if !wielded.strikes(tags, forced, purse) {
             slots.interrupt();
             continue;
         }

@@ -7,7 +7,7 @@ use campfire_sim::{Capability, StableId, TickRate};
 use serde::{Deserialize, Serialize};
 
 use crate::actions::action_data::ActionData;
-use crate::actions::effect_data::{EffectData, EffectTo, Effecting};
+use crate::actions::effect_data::{EffectData, EffectTo, Effecting, MoveData};
 use crate::actions::effect_names::EffectNames;
 use crate::actions::effect_queues::EffectQueues;
 use crate::scripts::error::CallError;
@@ -85,6 +85,17 @@ pub(crate) enum Does {
     Launch {
         area: UnitType,
         launch: LaunchId,
+    },
+    /// A dash at `speed` to the unit `to` names.
+    Dash {
+        to: EffectTo,
+        speed: Amount,
+    },
+    /// A knock back `distance` away from the unit `from` names, over `ms`.
+    KnockBack {
+        from: EffectTo,
+        distance: Amount,
+        ms: Amount,
     },
 }
 
@@ -167,6 +178,15 @@ impl EffectLists {
                     launch,
                 }
             }
+            Effecting::Move(MoveData::Dash { to, speed }) => Does::Dash {
+                to: *to,
+                speed: Amount::of(speed, names),
+            },
+            Effecting::Move(MoveData::KnockBack { from, distance, ms }) => Does::KnockBack {
+                from: *from,
+                distance: Amount::of(distance, names),
+                ms: Amount::of(ms, names),
+            },
             Effecting::Planned(_) => unreachable!("the load refuses a planned effect"),
         }
     }
@@ -246,7 +266,7 @@ impl EffectLists {
                 Does::Purge { tag } => frame
                     .effects
                     .push(ModifierEffect::Purge { carrier: unit, tag }),
-                does => queues.of(does.capability())(does, unit, frame, view)?,
+                does => queues.of(does.capability())(does, unit, reached, frame, view)?,
             }
         }
         Ok(())
@@ -261,6 +281,7 @@ impl Does {
             Does::Modifier { .. } | Does::Purge { .. } => Capability::Stats,
             Does::Xp { .. } => Capability::Progression,
             Does::Launch { .. } => Capability::Areas,
+            Does::Dash { .. } | Does::KnockBack { .. } => Capability::Navigation,
         }
     }
 }

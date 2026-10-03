@@ -11,8 +11,11 @@ use crate::combat::internals::Armed;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attack::RecentAttack;
 use crate::combat::recent_attackers::RecentAttackers;
+use crate::navigation::navigation_effect::NavigationEffect;
 use crate::projectiles::projectile_data::{ProjectileData, ProjectileHits};
 use crate::projectiles::struck_units::Struck;
+use crate::scripts::effects::Effect;
+use crate::scripts::frame::Frame;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
 use crate::stats::pool_id::PoolId;
@@ -20,6 +23,7 @@ use crate::units::Units;
 use crate::units::action_id::ActionId;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
+use crate::units::forced_move::DashTo;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::damage_kind::DamageKind;
@@ -286,6 +290,60 @@ fn a_projectile_whose_target_dies_or_goes_first_ends_without_a_hit() {
     assert_eq!(volley.sim.now().get(), 6);
     assert_eq!(volley.projectiles(), []);
     assert_eq!(volley.sim.health(doomed), 100);
+}
+
+#[test]
+fn a_teleport_ends_the_homing_projectiles_on_its_unit_and_a_dash_does_not() {
+    let mut volley = Volley::of(&[
+        Capability::Stats,
+        Capability::Combat,
+        Capability::Navigation,
+        Capability::Projectiles,
+    ]);
+    let first = volley.unit(0, at(0, 0), shooter(volley.bolt));
+    let second = volley.unit(0, at(0, 1), shooter(volley.bolt));
+    let blinker = volley.unit(1, at(5, 0), target());
+    let dasher = volley.unit(1, at(5, 1), target());
+    volley.attack(first, blinker);
+    volley.attack(second, dasher);
+
+    // Both fire in tick 2 and fly from tick 3. Before tick 5 one target teleports to (6, 0), and
+    // the other dashes to (6, 1), half a meter a tick. In tick 5 the projectile on the first ends
+    // where it was, with no hit; the one on the second flies on, 6 m from tick 3 at half a meter
+    // a tick, and strikes it in tick 14, where it stands since tick 6. Neither shooter fires
+    // again before tick 22.
+    volley.sim.run_until(5);
+    assert_eq!(volley.projectiles().len(), 2);
+    let now = volley.sim.now();
+    let blink = NavigationEffect::Teleport {
+        unit: blinker,
+        to: at(6, 0),
+    };
+    let dash = NavigationEffect::Dash {
+        unit: dasher,
+        to: DashTo::Point(at(6, 1)),
+        step: Num::from_bits(1 << (Num::FRAC_BITS - 1)),
+    };
+    for effect in [blink, dash] {
+        effect.apply(&mut volley.sim.world, &mut Frame::default(), now);
+    }
+    volley.sim.step();
+    let flying = volley
+        .sim
+        .world
+        .query::<&Projectile>()
+        .iter(&volley.sim.world)
+        .map(Projectile::flight)
+        .collect::<Vec<_>>();
+    assert!(matches!(flying[..], [Flight::Homing { target, lost: false, .. }] if target == dasher));
+    volley.sim.run_until(14);
+    assert_eq!(
+        [blinker, dasher].map(|id| volley.sim.health(id)),
+        [100, 100]
+    );
+    volley.sim.step();
+    assert_eq!([blinker, dasher].map(|id| volley.sim.health(id)), [100, 70]);
+    assert_eq!(*volley.sim.get::<Position>(dasher), at(6, 1));
 }
 
 #[test]

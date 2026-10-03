@@ -47,7 +47,7 @@ Smoke, closed doors and walls built during a match block sight while they stand,
 
 ## State and derived
 
-- **State:** which groups see each unit, from the last Vision stage; the reveals under way, each its group, place, radius and last tick.
+- **State:** which groups see each unit, from the last Vision stage; the reveals under way, each its team, place, radius and last tick; its team's group sees it, as the groups follow the relations.
 - **Derived:** the vision groups, from the relations; each cell's brush, from the map; the revealed cells of each group, each tick.
 
 ## Script API

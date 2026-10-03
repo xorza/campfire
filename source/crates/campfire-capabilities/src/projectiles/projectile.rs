@@ -24,14 +24,15 @@ pub struct Projectile {
     payload: Payload,
 }
 
-/// How a projectile flies: homing on a unit, or along a line, a unit vector on the ground or in
-/// space, for `range` meters, with the unit its action aimed at, if one; `flown` meters of it so
-/// far.
+/// How a projectile flies: homing on a unit, `lost` once a teleport of the unit disjointed it, or
+/// along a line, a unit vector on the ground or in space, for `range` meters, with the unit its
+/// action aimed at, if one; `flown` meters of it so far.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) enum Flight {
     Homing {
         target: StableId,
         flown: Num,
+        lost: bool,
     },
     Line {
         direction: Vec3,
@@ -93,6 +94,19 @@ impl Projectile {
 
     pub(crate) const fn payload(&self) -> Payload {
         self.payload
+    }
+
+    /// Loses the unit it homes on, as a teleport of the unit disjoints it: it ends in its next
+    /// step, with no hit.
+    pub(crate) const fn disjoint(&mut self) {
+        if let Flight::Homing { lost, .. } = &mut self.flight {
+            *lost = true;
+        }
+    }
+
+    /// Whether it homes on `unit`, its target not lost.
+    pub(crate) const fn homes_on(&self, unit: StableId) -> bool {
+        matches!(self.flight, Flight::Homing { target, lost: false, .. } if target.get() == unit.get())
     }
 
     /// Counts `flown` meters flown in all.

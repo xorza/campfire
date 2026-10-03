@@ -3,7 +3,7 @@ use std::path::Path;
 use bevy_ecs::world::World;
 use campfire_capabilities::{
     ActionId, Actions, DeclaredName, ModeInputs, ModifierId, Order, PoolId, ScriptFailure,
-    ScriptFailures, Stats,
+    ScriptFailures, Stats, Vision,
 };
 use campfire_common::{PlayerSlot, SegmentSeed};
 use campfire_package::ModePackages;
@@ -47,6 +47,18 @@ impl Arena {
 
     pub const fn world_mut(&mut self) -> &mut World {
         &mut self.world
+    }
+
+    /// Gives the match the map's vision grid, for `teams` teams, as the mode's install does: from
+    /// the next Vision stage, each team sees what its units and its reveals show it.
+    pub fn load_vision(&mut self, teams: usize) {
+        let grid = self
+            .packages
+            .map()
+            .grid()
+            .unwrap_or_else(|error| panic!("{error}"));
+        let grid = grid.expect("the map has a vision grid");
+        Vision::load_grid(&mut self.world, grid, teams);
     }
 
     /// The place among the match's packages of the package `name`.

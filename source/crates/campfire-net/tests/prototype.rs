@@ -7,8 +7,9 @@ use bevy_ecs::entity::Entity;
 use bevy_ecs::query::With;
 use campfire_capabilities::internals::{give_modifier, set_relation};
 use campfire_capabilities::{
-    Action, ActionSlots, Attitude, Bounds, Combat, Dead, Destination, MatchEnd, MatchResult,
-    Metric, Modifiers, MoveStep, Owner, PoolId, Pools, Projectile, Relations, Respawn, Stats, Team,
+    Action, ActionSlots, Attitude, Bounds, Combat, DashTo, Dead, Destination, ForcedMove, MatchEnd,
+    MatchResult, Metric, Modifiers, MoveStep, Owner, PoolId, Pools, Projectile, Relations, Respawn,
+    Stats, Team,
 };
 use campfire_common::{PlayerSlot, Tick, Ticks};
 use campfire_math::{Num, Vec3};
@@ -391,6 +392,48 @@ fn a_slow_and_a_stun_end_on_the_client_in_the_tick_they_end_on_the_server() {
         assert_eq!(rollbacks(&local), learned, "{name}");
         assert_ne!(hero(local.server()).destination, Destination::default());
     }
+}
+
+#[test]
+fn a_client_continues_a_dash_it_learns_of_as_the_server_runs_it() {
+    let mut local = LocalMatch::new(MatchSetup::SOLO);
+    local.start_match();
+    // The hero walks off the lane, where nothing meets it, as in the stun's test. The server
+    // dashes it 6 m along −x, a fifth of a meter a tick, 30 ticks: it learns the dash some
+    // ticks in, and predicts the rest of it, and its walk again once it ends, as the server
+    // runs them.
+    local.order(0, move_to(-16, -6));
+    for _ in 0..=lead(&local) {
+        local.step();
+    }
+    let rollbacks = |local: &LocalMatch| local.rollbacks(0);
+    let dashing = |app: &App| app.world().get::<ForcedMove>(hero_entity(app)).is_some();
+    let entity = hero_entity(local.server());
+    let world = local.server_mut().world_mut();
+    let at = world.get::<Position>(entity).unwrap().get();
+    let to = Position::new(Vec3::new(at.x - Num::int(6), at.y, at.z)).unwrap();
+    let step = Num::ONE.checked_div_int(5).unwrap();
+    world.entity_mut(entity).insert(ForcedMove::Dash {
+        to: DashTo::Point(to),
+        step,
+    });
+    let mut frames = 0;
+    while !dashing(local.client(0)) {
+        local.step();
+        frames += 1;
+        assert!(frames < 30, "the client learns the dash");
+    }
+    let learned = rollbacks(&local);
+    while dashing(local.server()) || dashing(local.client(0)) {
+        local.step();
+        frames += 1;
+        assert!(frames < 60, "the dash ends");
+    }
+    for _ in 0..=lead(&local) {
+        local.step();
+    }
+    assert_eq!(rollbacks(&local), learned);
+    assert_ne!(hero(local.server()).destination, Destination::default());
 }
 
 #[test]

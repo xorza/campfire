@@ -75,6 +75,7 @@ impl Projectiles {
             Toward::Unit(target) => Flight::Homing {
                 target,
                 flown: Num::ZERO,
+                lost: false,
             },
             Toward::Direction(direction) => {
                 let Some(direction) = world.resource::<Metric>().direction(direction) else {
@@ -116,6 +117,7 @@ impl Projectiles {
             let homing = Flight::Homing {
                 target: unit,
                 flown: Num::ZERO,
+                lost: false,
             };
             Projectiles::push(world, by, unit_type, from, None, [homing]);
             return;
@@ -291,6 +293,7 @@ fn take_shots(mut shots: ResMut<'_, Shots>, mut launches: ResMut<'_, Launches>) 
             flight: Flight::Homing {
                 target: shot.target,
                 flown: Num::ZERO,
+                lost: false,
             },
             payload: LaunchPayload::Attack {
                 action: shot.action,
