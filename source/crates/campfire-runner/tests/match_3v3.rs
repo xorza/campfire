@@ -1,18 +1,29 @@
-//! The reference 3v3 as its packages hold it plays a match with no failed call that replays to the
-//! same state hashes. The test pins the content's units and slots, so a change to the content
-//! changes it, by design.
+//! The reference 3v3 as its packages hold it, played by scripted players, plays a match with no
+//! failed call that replays to the same state hashes: a skirmish of first blood, mend, haste and
+//! a tower that turns on a diver; a camp whose wolf answers, resets past its leash and falls; and
+//! the lanes, where heroes farm the first waves. Each rule's result is computed from the mode's
+//! numbers. The test pins the content's units and values, so a change to the content changes
+//! it, by design.
 
+use bevy_ecs::world::World;
+use campfire_capabilities::internals;
 use campfire_capabilities::{
     ActionSlot, ActionSlots, Deaths, ModeParam, ModeState, Owner, PathWalker, PlayerResources,
-    Projectile, ResourceId, Scalar, ScriptFailures, SlotKind, StateValue, Team, UnitType,
+    ResourceId, Scalar, ScriptFailures, SlotKind, StateValue, Stats, Team, UnitType,
 };
-use campfire_common::PlayerSlot;
+use campfire_common::{PlayerSlot, Tick};
 use campfire_math::{Num, Vec3};
 use campfire_protocol::SessionLog;
 use campfire_runner::Runner;
-use campfire_runner::internals::{Golden, HashTrail, Play, Reference3v3};
+use campfire_runner::internals::{Golden, HashTrail, MatchUnits, Reference3v3};
 use campfire_script::ScriptHost;
 use campfire_sim::{EntityIndex, Position, StableId, TickRate};
+
+use crate::reference::{level_xp, life, respawn_at};
+
+/// The ticks the match plays: the pick, the skirmish, the camp, and the first 400 ticks of the
+/// first waves' fight, which begins in tick 2803.
+const TICKS: u64 = 3200;
 
 #[derive(Debug)]
 struct Run {
@@ -22,14 +33,44 @@ struct Run {
     /// Each unit after the tick the heroes spawn in, and after the one the first wave spawns in.
     at_pick_end: Vec<Unit>,
     at_first_wave: Vec<Unit>,
-    /// Each unit that died, with its killer, and the ticks that ended with a projectile in
-    /// flight.
-    deaths: Vec<(StableId, Option<StableId>)>,
-    shooting: usize,
+    deaths: Vec<Death>,
+    seen: Seen,
 }
 
-/// A unit as a test sees it: its stable id, its team, its unit type, where it stands, who controls it, whether
-/// it walks a lane, and its ability slots.
+/// A unit that died: in tick `tick`, felled by `killer` with `assisters`, and the tick it comes
+/// back in, if its type stays.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Death {
+    tick: u64,
+    unit: StableId,
+    killer: Option<StableId>,
+    assisters: Vec<StableId>,
+    respawn: Option<Tick>,
+}
+
+/// What the run reads in the ticks its rules play out in.
+#[derive(Debug, Default)]
+struct Seen {
+    /// Whether Husk holds haste after ticks 1400 and 1401.
+    hasted: Vec<bool>,
+    /// Gale's life after ticks 1878 to 1880.
+    gale: Vec<Num>,
+    /// After each of ticks 2190 to 2219, the target of the south's west outer tower, and
+    /// Kensho's life.
+    tower: Vec<(Option<StableId>, Num)>,
+    /// Each hero's experience after tick 2312, when the skirmish's deaths have shared theirs.
+    xp_after_skirmish: Vec<Num>,
+    /// The south camp's wolf's target after tick 2460; how far from its camp it chases, in
+    /// ticks 2500 to 2619; and its target and its place after tick 2640.
+    wolf_answers: Option<StableId>,
+    wolf_farthest: Num,
+    wolf_home: Option<(Option<StableId>, Position)>,
+    /// Each hero's experience after ticks 2993 and 2994, the wolf's fall.
+    xp_at_wolf_fall: Vec<Vec<Num>>,
+}
+
+/// A unit as a test sees it: its stable id, its team, its unit type, where it stands, who
+/// controls it, whether it walks a lane, and its ability slots.
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct Unit {
     id: StableId,
@@ -80,9 +121,9 @@ fn units(runner: &Runner) -> Vec<Unit> {
         .collect()
 }
 
-/// A match of `ticks` ticks in which each player picks a hero and two spells before tick 0, and
-/// then plays the lanes.
-fn run(reference: &Reference3v3, ticks: u64) -> Run {
+/// A match of `TICKS` ticks in which each player picks a hero and two spells before tick 0, and
+/// then plays as the reference's script says.
+fn run(reference: &Reference3v3) -> Run {
     let mut fixed = reference.start();
     let runner = fixed.runner();
     // A timer fires in the tick its time ends in. The pick's, set in tick 0, ends in the tick
@@ -94,27 +135,34 @@ fn run(reference: &Reference3v3, ticks: u64) -> Run {
     let mut trail = HashTrail::default();
     let mut golden = Golden::new(reference.packages(), Reference3v3::PLAYERS);
     let (mut at_pick_end, mut at_first_wave) = (Vec::new(), Vec::new());
-    let (mut deaths, mut shooting) = (Vec::new(), 0);
-    for tick in 0..ticks {
-        Reference3v3::play_tick(&mut fixed, Play::Lanes, tick);
+    let mut deaths = Vec::new();
+    let mut seen = Seen::default();
+    for tick in 0..TICKS {
+        Reference3v3::play_tick(&mut fixed, tick);
         let runner = fixed.runner();
         trail.record(runner.world());
-        golden.record(runner);
+        golden.record_hashed(runner, trail.last());
         let world = runner.world();
-        let died = world.resource::<Deaths>().iter();
-        deaths.extend(died.map(|death| (death.fallen.unit, death.killer)));
-        let mut projectiles = world.try_query::<&Projectile>().unwrap();
-        shooting += usize::from(projectiles.iter(world).next().is_some());
         let failures = world.non_send::<ScriptFailures>();
         assert!(
             failures.get().is_empty(),
             "tick {tick}: {:?}",
             failures.get()
         );
+        deaths.extend(world.resource::<Deaths>().iter().map(|death| Death {
+            tick,
+            unit: death.fallen.unit,
+            killer: death.killer,
+            assisters: death.assisters.to_vec(),
+            respawn: respawn_at(world, death.fallen.unit),
+        }));
         if tick == pick_end {
             at_pick_end = units(runner);
         } else if tick == first_wave {
             at_first_wave = units(runner);
+        }
+        if tick >= pick_end {
+            seen.read(world, reference, tick);
         }
     }
     let mut runner = fixed.into_runner();
@@ -126,7 +174,55 @@ fn run(reference: &Reference3v3, ticks: u64) -> Run {
         at_pick_end,
         at_first_wave,
         deaths,
-        shooting,
+        seen,
+    }
+}
+
+impl Seen {
+    /// Reads what tick `tick` of the 3v3 of `reference`, which `world` just ran, shows of the
+    /// rules the script plays out.
+    fn read(&mut self, world: &World, reference: &Reference3v3, tick: u64) {
+        let units = MatchUnits::of_world(world);
+        let heroes = [0, 1, 2, 3, 4, 5].map(|slot| units.hero(slot));
+        let [_, gale, husk, kensho, ..] = heroes;
+        let target = |unit| {
+            let entity = world.resource::<EntityIndex>().get(unit).unwrap();
+            world.get::<ActionSlots>(entity).unwrap().attack_target()
+        };
+        let xp = || heroes.map(|hero| level_xp(world, reference, hero)).to_vec();
+        if [1400, 1401].contains(&tick) {
+            let spells = reference
+                .packages()
+                .packages()
+                .position(|view| view.package.header.name == "player-spells");
+            let spells = u16::try_from(spells.unwrap()).unwrap();
+            let haste = Stats::modifier(world, spells, "haste").unwrap();
+            let carried = internals::carried(world, husk);
+            self.hasted.push(carried.iter().any(|&(id, _)| id == haste));
+        }
+        if (1878..=1880).contains(&tick) {
+            self.gale.push(life(world, reference, gale));
+        }
+        if (2190..2220).contains(&tick) {
+            let tower = units.spawned_at(-42, 16);
+            self.tower
+                .push((target(tower), life(world, reference, kensho)));
+        }
+        if tick == 2312 {
+            self.xp_after_skirmish = xp();
+        }
+        let wolf = units.spawned_at(-18, 12);
+        let home = ground(-18, 12).get();
+        match tick {
+            2460 => self.wolf_answers = target(wolf),
+            2500..2620 => {
+                let away = units.position(wolf).get().distance(home);
+                self.wolf_farthest = self.wolf_farthest.max(away);
+            }
+            2640 => self.wolf_home = Some((target(wolf), units.position(wolf))),
+            2993 | 2994 => self.xp_at_wolf_fall.push(xp()),
+            _ => {}
+        }
     }
 }
 
@@ -135,17 +231,29 @@ fn ground(x: i64, z: i64) -> Position {
     Position::new(Vec3::new(meters(x), Num::ZERO, meters(z))).unwrap()
 }
 
+/// The unit that stood at `x`, `z` at the pick's end: a structure or a camp.
+fn placed(run: &Run, x: i64, z: i64) -> StableId {
+    let at = ground(x, z);
+    let unit = run.at_pick_end.iter().find(|unit| unit.pos == at);
+    unit.expect("a placed unit").id
+}
+
 #[test]
 fn a_3v3_match_replays_to_the_same_hashes() {
     let reference = Reference3v3::load();
-    // At the 3v3's slowest rate, 20 ticks a second, the pick ends in tick 1199 and the first wave
-    // spawns in tick 2399; the waves meet and fight from tick 2803, so the run holds the first
-    // 400 ticks of their fight, in which melee creeps strike, caster creeps fire bolts, and
-    // Cinder and Veil farm the west and the east lane.
-    let run = run(&reference, 3200);
+    let run = run(&reference);
     run.golden.check("3v3");
-    let runner = &run.runner;
-    let world = runner.world();
+    let melee = assert_start(&reference, &run);
+    assert_skirmish(&run);
+    assert_camp(&run);
+    assert_gold(&reference, &run, melee);
+    assert_replays(&reference, &run.runner, &run.trail);
+}
+
+/// The match's state at its end, its scripts, and its units at the pick's end and as the first
+/// wave spawns; the unit type of the first wave's melee creeps.
+fn assert_start(reference: &Reference3v3, run: &Run) -> UnitType {
+    let world = run.runner.world();
     // State in the order of its fields' names.
     let packages = reference.packages();
     let at = packages
@@ -228,60 +336,126 @@ fn a_3v3_match_replays_to_the_same_hashes() {
     // Melee creeps first, then casters, both types of the wave list.
     assert_eq!(wave[0].kind, wave[1].kind);
     assert_ne!(wave[0].kind, wave[5].kind);
-
-    // The goldens pin the fight exactly; the run reaches it: units die, and bolts fly. The heroes
-    // cast nothing, so every projectile is an attack's.
-    assert!(
-        !run.deaths.is_empty() && run.shooting > 0,
-        "{:?} {}",
-        run.deaths,
-        run.shooting
-    );
-
-    assert_gold(&reference, &run, wave[0].kind);
-
-    assert_replays(&reference, &run.runner, &run.trail);
+    wave[0].kind
 }
 
-/// The players' gold after `run`: the income, and the bounty of each creep of the first wave a
-/// hero felled, by its kind, `melee` or a caster's.
+/// The skirmish: first blood and its assist, a tower's kill, the experience a hero's fall
+/// shares, the respawns, mend, haste, and the tower that turns on the diver.
+fn assert_skirmish(run: &Run) {
+    let heroes = [0, 1, 2, 3, 4, 5].map(|slot| hero_of(run, slot));
+    let [cinder, gale, husk, _, rime, _] = heroes;
+    let tower = placed(run, -42, 16);
+    // Cinder fells Rime in tick 1840, Gale assisting, and the tower fells Husk in tick 2311,
+    // with no hero assisting. A hero of level 1 comes back 5000 + 2500 × 1 ms, 150 ticks, after
+    // the end of the tick it fell in.
+    let fallen: Vec<&Death> = run
+        .deaths
+        .iter()
+        .filter(|death| heroes.contains(&death.unit))
+        .collect();
+    let rime_fell = Death {
+        tick: 1840,
+        unit: rime,
+        killer: Some(cinder),
+        assisters: vec![gale],
+        respawn: Some(Tick::new(1840 + 1 + 150)),
+    };
+    let husk_fell = Death {
+        tick: 2311,
+        unit: husk,
+        killer: Some(tower),
+        assisters: Vec::new(),
+        respawn: Some(Tick::new(2311 + 1 + 150)),
+    };
+    assert_eq!(fallen, [&rime_fell, &husk_fell]);
+
+    // A fallen hero of level 1 shares 150 + 25 × 1 experience among the enemy heroes within
+    // 16 m: Rime's between Cinder and Gale, 87.5 each; Husk's to Kensho, beside the tower.
+    let half = Num::int(175) / 2;
+    let xp = [half, half, Num::ZERO, Num::int(175), Num::ZERO, Num::ZERO];
+    assert_eq!(run.seen.xp_after_skirmish, xp);
+
+    // Mend heals Gale by 75 + 15 × (1 − 1) in tick 1880, beside the regen of every tick; haste,
+    // cast in tick 1200, lasts 10 s, 200 ticks, and its end comes as tick 1401 starts.
+    let gale = &run.seen.gale;
+    let regen = gale[1] - gale[0];
+    assert_eq!(gale[2] - gale[1] - regen, Num::int(75));
+    assert_eq!(run.seen.hasted, [true, false]);
+
+    // The tower holds Cinder, the nearest hero in its range, until Husk strikes Kensho, which
+    // turns it on Husk within one think of 250 ms, 5 ticks.
+    let tower = &run.seen.tower;
+    let struck = tower
+        .iter()
+        .position(|&(_, kensho)| kensho < Num::int(444))
+        .unwrap();
+    assert_eq!(tower[struck - 1].0, Some(cinder));
+    assert_eq!(tower[struck + 5].0, Some(husk));
+}
+
+/// The south camp: its wolf answers Kensho, who struck it, chases him south past its 8 m leash
+/// and goes home; then he fells it, Rime assisting.
+fn assert_camp(run: &Run) {
+    let [kensho, rime] = [3, 4].map(|slot| hero_of(run, slot));
+    let wolf = placed(run, -18, 12);
+    assert_eq!(run.seen.wolf_answers, Some(kensho));
+    assert!(
+        run.seen.wolf_farthest > Num::int(8),
+        "{}",
+        run.seen.wolf_farthest
+    );
+    assert_eq!(run.seen.wolf_home, Some((None, ground(-18, 12))));
+    // It falls in tick 2994 and comes back 60 s, 1200 ticks, after the end of that tick; its 90
+    // experience is split between the two heroes within 16 m, 45 each, in that tick alone.
+    let fell = run.deaths.iter().find(|death| death.unit == wolf);
+    let expected = Death {
+        tick: 2994,
+        unit: wolf,
+        killer: Some(kensho),
+        assisters: vec![rime],
+        respawn: Some(Tick::new(2994 + 1 + 1200)),
+    };
+    assert_eq!(fell, Some(&expected));
+    let [before, after] = [0, 1].map(|at| &run.seen.xp_at_wolf_fall[at]);
+    let gained: Vec<Num> = after.iter().zip(before).map(|(a, b)| *a - *b).collect();
+    let share = Num::int(45);
+    let zero = Num::ZERO;
+    assert_eq!(gained, [zero, zero, zero, share, share, zero]);
+}
+
+/// The players' gold at the end: the income, first blood and its assist, the wolf's bounty, and
+/// the bounty of each creep of the first wave a hero felled, by its kind, `melee` or a caster's.
 fn assert_gold(reference: &Reference3v3, run: &Run, melee: UnitType) {
-    // Each creep a hero fells pays its player its bounty: 20 for a melee creep, the first three
-    // of a group, 15 for a caster. Cinder fells two of the south's west group, a caster and a
-    // melee creep, and Veil two of the north's east group, a caster and a melee creep: 35 each.
+    // A creep a hero fells pays its player 20 for a melee creep, the first three of a group, and
+    // 15 for a caster: Cinder fells a caster and a melee creep of the south's west group, 35, and
+    // Veil a caster of the north's east group, 15.
     let [cinder, veil] = [0, 5].map(|slot| hero_of(run, slot));
     let bounty = |killer| -> i64 {
-        run.deaths
+        let felled = run
+            .deaths
             .iter()
-            .filter(|&&(_, by)| by == Some(killer))
-            .map(|&(victim, _)| {
-                let at = run
+            .filter(|death| death.killer == Some(killer));
+        felled
+            .filter_map(|death| {
+                let creep = run
                     .at_first_wave
                     .iter()
-                    .position(|unit| unit.id == victim)
-                    .unwrap();
-                if run.at_first_wave[at].kind == melee {
-                    20
-                } else {
-                    15
-                }
+                    .find(|unit| unit.id == death.unit && unit.walks)?;
+                Some(if creep.kind == melee { 20 } else { 15 })
             })
             .sum()
     };
-    assert_eq!([bounty(cinder), bounty(veil)], [35, 35]);
+    assert_eq!([bounty(cinder), bounty(veil)], [35, 15]);
 
     // Income: 8 gold every 5 s from the pick's end, 100 ticks, in ticks 1299 to 3199: 20 times,
-    // and the bounties of the creeps Cinder's and Veil's players fell.
+    // 160. Cinder's player takes first blood, 300 + 100, and the creeps' 35; Gale's the assist's
+    // 150, split among one assister; Kensho's the wolf's 30; Veil's the creep's 15.
     let amounts = run.runner.world().resource::<PlayerResources>();
     let gold = ResourceId::named(&reference.packages().data().resources, "gold").unwrap();
-    for slot in 0..Reference3v3::PLAYERS {
-        let bounty = if [0, 5].contains(&slot) { 35 } else { 0 };
-        assert_eq!(
-            amounts.amount(PlayerSlot::new(slot), gold),
-            160 + bounty,
-            "player {slot}"
-        );
-    }
+    let paid: Vec<i64> = (0..Reference3v3::PLAYERS)
+        .map(|slot| amounts.amount(PlayerSlot::new(slot), gold))
+        .collect();
+    assert_eq!(paid, [160 + 435, 160 + 150, 160, 160 + 30, 160, 160 + 15]);
 }
 
 /// The match of `runner`, which recorded `trail`, its log replayed from its file, gives its hash

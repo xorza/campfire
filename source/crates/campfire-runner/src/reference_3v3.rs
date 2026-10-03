@@ -32,19 +32,6 @@ const HEROES: [&str; 6] = [
     "hero-veil",
 ];
 
-/// A play of the reference 3v3: the orders its scripted players send after the pick.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Play {
-    /// The north's heroes fight the west camp's wolf.
-    Camp,
-    /// Before the first wave, two north heroes fell Rime, and one heals them; Husk, hastened,
-    /// strikes Kensho beside the south's west outer tower and falls to it.
-    Skirmish,
-    /// Cinder walks to the west lane and Veil to the east one, and each strikes the enemy creep
-    /// of least life near it while the first waves fight.
-    Lanes,
-}
-
 /// What a 3v3 player orders, by the role of the units it names.
 #[derive(Debug, Clone, Copy)]
 enum ReferencePlan {
@@ -69,52 +56,54 @@ const FARM_REACH: i64 = 10;
 const HASTE: u8 = 4;
 const MEND: u8 = 5;
 
-/// The west camp's wolf, on its marker.
-const WEST_CAMP: (i64, i64) = (-18, -12);
+/// The south camp's wolf, west of the middle, on its marker.
+const SOUTH_CAMP: (i64, i64) = (-18, 12);
 
-/// The camp: Husk, player 2's hero, walks from the north spawn to the west camp's wolf and
-/// strikes it; it walks back south past the wolf's leash, which sends the wolf home; then Husk,
-/// Cinder and Gale, players 0 and 1's heroes, who waited south of the camp, fell it.
-const CAMP: [Scripted<ReferencePlan>; 7] = [
-    order(1200, 2, attack_at(WEST_CAMP)),
-    order(1200, 0, ReferencePlan::Move { x: -20, z: -24 }),
-    order(1200, 1, ReferencePlan::Move { x: -16, z: -24 }),
-    order(1560, 2, ReferencePlan::Move { x: -18, z: -32 }),
-    order(1700, 0, attack_at(WEST_CAMP)),
-    order(1700, 1, attack_at(WEST_CAMP)),
-    order(1700, 2, attack_at(WEST_CAMP)),
-];
-
-/// The skirmish: players 0 to 2 hold Cinder, Gale and Husk, north; 3 to 5 Kensho, Rime and
-/// Veil, south.
-const SKIRMISH: [Scripted<ReferencePlan>; 13] = [
-    order(1200, 0, ReferencePlan::Move { x: -2, z: -26 }),
-    order(1200, 1, ReferencePlan::Move { x: 2, z: -26 }),
-    order(1200, 4, ReferencePlan::Move { x: 0, z: -20 }),
-    order(1200, 3, ReferencePlan::Move { x: -38, z: 12 }),
-    order(1200, 2, ReferencePlan::Cast { slot: HASTE }),
-    order(1201, 2, ReferencePlan::Move { x: -34, z: 4 }),
-    order(1700, 0, ReferencePlan::AttackHero { slot: 4 }),
-    order(1700, 1, ReferencePlan::AttackHero { slot: 4 }),
-    order(1700, 4, ReferencePlan::AttackHero { slot: 1 }),
-    order(1880, 1, ReferencePlan::Cast { slot: MEND }),
-    order(1880, 0, ReferencePlan::Move { x: -36, z: 10 }),
-    order(2160, 2, ReferencePlan::AttackHero { slot: 3 }),
-    order(2225, 0, ReferencePlan::Move { x: -30, z: -6 }),
-];
-
-/// The lanes: Cinder, player 0's hero, waits on the west lane north of its middle, and Veil,
-/// player 5's, on the east lane south of it; each farms every 40 ticks from tick 2810, once the
-/// first waves meet in tick 2803, to tick 3170.
-const LANES: [Scripted<ReferencePlan>; 22] = {
-    let mut script = [order(1200, 0, ReferencePlan::Move { x: -38, z: -8 }); 22];
-    script[1] = order(1200, 5, ReferencePlan::Move { x: 38, z: 8 });
+/// The orders of the 3v3's scripted players after the pick. Players 0 to 2 hold Cinder, Gale and
+/// Husk, north; 3 to 5 Kensho, Rime and Veil, south. At 20 ticks a second the heroes spawn in
+/// tick 1199 and the first waves meet in tick 2803.
+/// - A skirmish: Husk casts haste; Cinder and Gale fell Rime in the middle as she strikes Gale,
+///   and Gale casts mend. Cinder walks into the range of the south's west outer tower, Husk
+///   strikes Kensho beside it, which turns the tower on him, and he falls to it.
+/// - A camp: Kensho strikes the south camp's wolf and walks south past its leash, which sends
+///   it home; then he and Rime fell it.
+/// - The lanes: Cinder on the west lane and Veil on the east one strike the enemy creep of least
+///   life near them every 40 ticks while the first waves fight.
+const SCRIPT: [Scripted<ReferencePlan>; 40] = {
+    let mut script = [order(1200, 0, ReferencePlan::Move { x: -2, z: -26 }); 40];
+    let moves = [
+        order(1200, 1, ReferencePlan::Move { x: 2, z: -26 }),
+        order(1200, 4, ReferencePlan::Move { x: 0, z: -20 }),
+        order(1200, 3, ReferencePlan::Move { x: -38, z: 12 }),
+        order(1200, 5, ReferencePlan::Move { x: 38, z: 8 }),
+        order(1200, 2, ReferencePlan::Cast { slot: HASTE }),
+        order(1201, 2, ReferencePlan::Move { x: -34, z: 4 }),
+        order(1700, 0, ReferencePlan::AttackHero { slot: 4 }),
+        order(1700, 1, ReferencePlan::AttackHero { slot: 4 }),
+        order(1700, 4, ReferencePlan::AttackHero { slot: 1 }),
+        order(1880, 1, ReferencePlan::Cast { slot: MEND }),
+        order(1880, 0, ReferencePlan::Move { x: -36, z: 10 }),
+        order(2000, 4, ReferencePlan::Move { x: -18, z: 24 }),
+        order(2160, 2, ReferencePlan::AttackHero { slot: 3 }),
+        order(2225, 0, ReferencePlan::Move { x: -30, z: -6 }),
+        order(2240, 0, ReferencePlan::Move { x: -38, z: -8 }),
+        order(2320, 3, attack_at(SOUTH_CAMP)),
+        order(2500, 3, ReferencePlan::Move { x: -18, z: 30 }),
+        order(2650, 3, attack_at(SOUTH_CAMP)),
+        order(2650, 4, attack_at(SOUTH_CAMP)),
+    ];
     let mut at = 0;
-    while at < 10 {
-        let stamp = 2810 + 40 * at as u64;
-        script[2 + 2 * at] = order(stamp, 0, ReferencePlan::Farm);
-        script[3 + 2 * at] = order(stamp, 5, ReferencePlan::Farm);
+    while at < moves.len() {
+        script[1 + at] = moves[at];
         at += 1;
+    }
+    let farms = 1 + moves.len();
+    let mut farm = 0;
+    while farm < 10 {
+        let stamp = 2810 + 40 * farm as u64;
+        script[farms + 2 * farm] = order(stamp, 0, ReferencePlan::Farm);
+        script[farms + 1 + 2 * farm] = order(stamp, 5, ReferencePlan::Farm);
+        farm += 1;
     }
     script
 };
@@ -166,15 +155,10 @@ impl Reference3v3 {
         fixed
     }
 
-    /// Runs tick `tick` of `fixed`, a match of `play`: first sends its orders stamped for it,
+    /// Runs tick `tick` of `fixed`: first sends the scripted players' orders stamped for it,
     /// then runs it.
-    pub fn play_tick(fixed: &mut FixedMatch, play: Play, tick: u64) {
-        let script: &[Scripted<ReferencePlan>] = match play {
-            Play::Camp => &CAMP,
-            Play::Skirmish => &SKIRMISH,
-            Play::Lanes => &LANES,
-        };
-        Scripted::play_tick(script, fixed, tick);
+    pub fn play_tick(fixed: &mut FixedMatch, tick: u64) {
+        Scripted::play_tick(&SCRIPT, fixed, tick);
     }
 }
 

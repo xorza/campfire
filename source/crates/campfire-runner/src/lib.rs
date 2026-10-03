@@ -50,6 +50,6 @@ pub mod internals {
     pub use crate::hash_trail::{Difference, HashTrail};
     pub use crate::match_units::MatchUnits;
     pub use crate::proving_match::ProvingMatch;
-    pub use crate::reference_3v3::{Play, Reference3v3};
+    pub use crate::reference_3v3::Reference3v3;
     pub use crate::restore_target::RestoreTarget;
 }

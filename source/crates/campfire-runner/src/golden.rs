@@ -52,11 +52,14 @@ impl Golden {
 
     /// Records the tick `runner` just ran.
     pub fn record(&mut self, runner: &Runner) {
+        self.record_hashed(runner, runner.state_hash());
+    }
+
+    /// Records the tick `runner` just ran, whose state hash `state` is, as a `HashTrail` that
+    /// recorded the tick holds it: the state is hashed once a tick.
+    pub fn record_hashed(&mut self, runner: &Runner, state: StateHash) {
         let behaviour = self.behaviour(runner);
-        self.ticks.push(GoldenTick {
-            state: runner.state_hash(),
-            behaviour,
-        });
+        self.ticks.push(GoldenTick { state, behaviour });
     }
 
     /// The digest of what the tick `runner` just ran did, in no type's layout:

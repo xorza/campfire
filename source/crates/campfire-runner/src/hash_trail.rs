@@ -43,6 +43,11 @@ impl HashTrail {
         &self.totals
     }
 
+    /// The state hash of the tick it recorded last.
+    pub fn last(&self) -> StateHash {
+        *self.totals.last().expect("a trail that recorded a tick")
+    }
+
     /// How `replayed` differs from it: the first tick of another hash, or another count of
     /// ticks; `None` when it holds the same ticks.
     pub fn difference(&self, replayed: &HashTrail) -> Option<Difference> {
