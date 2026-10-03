@@ -161,9 +161,7 @@ impl Combat {
         Actions::schedule(schedule);
         schedule.add_systems((
             start_attacks.in_set(CombatSet::Attack),
-            pay_attack_toggles
-                .in_set(SimSet::Hit)
-                .in_set(CombatSet::Pay),
+            pay_attack_toggles.in_set(CombatSet::Pay),
             (attack_events, strike)
                 .chain()
                 .in_set(SimSet::Hit)
