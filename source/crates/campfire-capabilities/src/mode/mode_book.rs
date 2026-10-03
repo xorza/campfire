@@ -10,7 +10,6 @@ use campfire_sim::{EntityIndex, StableId};
 
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::slot_kind::SlotKind;
-use crate::actions::slot_kinds::SlotKinds;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::mode::choice_book::ChoiceBook;
 use crate::mode::game_map::GameMap;
@@ -60,7 +59,6 @@ pub(crate) struct ModeBook {
     pub(crate) roster: Roster,
     pub(crate) teams: Rc<Teams>,
     pub(crate) choices: ChoiceBook,
-    pub(crate) slot_kinds: SlotKinds,
     /// The ranks of every loadout entry.
     pub(crate) loadout_ranks: u8,
     /// What each of the mode's unit types spawns with.
@@ -124,7 +122,6 @@ impl ModeBook {
             roster: Roster::new(setup.units.avatars, &setup.units.loadout),
             teams: Rc::new(teams),
             choices: ChoiceBook::new(&setup.data.choices),
-            slot_kinds: setup.data.slots.clone(),
             loadout_ranks: setup.data.loadout_ranks(),
             types,
             actions,
@@ -222,10 +219,9 @@ impl ModeBook {
         }
         let actions = self.actions(unit_type);
         if !actions.is_empty() {
-            let slots = actions.iter().map(|action| {
-                let rank = self.slot_kinds.first_rank(action.kind);
-                (action.ability, action.kind, rank)
-            });
+            let slots = actions
+                .iter()
+                .map(|action| (action.ability, action.kind, action.rank));
             unit.insert(ActionSlots::new(slots));
         }
         let entity = unit.id();
@@ -275,16 +271,15 @@ impl ModeBook {
     /// Puts `abilities` in `kind` of `unit`, after the slots of that kind it has, at the first
     /// rank of the kind; nothing for a unit that is gone.
     pub(crate) fn grant(
-        &self,
         world: &mut World,
         unit: StableId,
         kind: SlotKind,
+        rank: u8,
         abilities: &[ActionId],
     ) {
         let Some(entity) = world.resource::<EntityIndex>().get(unit) else {
             return;
         };
-        let rank = self.slot_kinds.first_rank(kind);
         let mut unit = world.entity_mut(entity);
         if let Some(mut slots) = unit.get_mut::<ActionSlots>() {
             slots.grant(kind, abilities, rank);

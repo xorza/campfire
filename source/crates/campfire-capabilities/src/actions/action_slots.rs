@@ -1,7 +1,8 @@
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
-use campfire_common::Tick;
+use campfire_common::{Tick, Ticks};
+use campfire_math::Num;
 use campfire_sim::{SimComponent, StableId};
 use serde::{Deserialize, Serialize};
 
@@ -234,6 +235,29 @@ impl ActionSlots {
     /// Puts `slot` on cooldown until `ready_at`.
     pub(crate) fn cool_down(&mut self, slot: u8, ready_at: Tick) {
         self.slots[usize::from(slot)].ready_at = ready_at;
+    }
+
+    /// Takes `cut` off the cooldown of each slot of `action`, to no earlier than `now`.
+    pub(crate) fn cut_cooldown(&mut self, action: ActionId, cut: Ticks, now: Tick) {
+        for slot in self.slots.iter_mut().filter(|slot| slot.action == action) {
+            let left = slot.ready_at.since(now).unwrap_or(Ticks::ZERO);
+            slot.ready_at = now.after(Ticks::new(left.get().saturating_sub(cut.get())));
+        }
+    }
+
+    /// Takes `fraction`, from 0 to 1, of what is left of the cooldown of each slot of `kind` at
+    /// `now`; what stays rounds up to a whole tick, as every time does.
+    pub(crate) fn cut_cooldowns(&mut self, kind: SlotKind, fraction: Num, now: Tick) {
+        debug_assert!((Num::ZERO..=Num::ONE).contains(&fraction));
+        let keep = Num::ONE - fraction;
+        for slot in self.slots.iter_mut().filter(|slot| slot.kind == kind) {
+            let left = slot.ready_at.since(now).unwrap_or(Ticks::ZERO);
+            let kept = Num::from_int(i64::try_from(left.get()).expect("a cooldown fits i64"))
+                .and_then(|left| left.checked_mul(keep))
+                .expect("a cooldown within the tick limit scales within a number");
+            let kept = u64::try_from(kept.ceil()).expect("what is kept is not negative");
+            slot.ready_at = now.after(Ticks::new(kept));
+        }
     }
 }
 

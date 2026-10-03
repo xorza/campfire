@@ -38,14 +38,14 @@ Generated from the script API's registry ([One source](08-script-api.md#one-sour
 | `order_follow_path` | `(unit)` | AI | orders | since 1.0 | `unit` drops its target and walks its path again |
 | `order_move` | `(unit, pos)` | AI | orders | since 1.0 | `unit` drops its target and walks to `pos`, within the map, off its path |
 | `order_reset` | `(unit)` | AI | orders | since 1.0 | `unit` drops its target and walks home, taking no order until there, where its pools fill |
-| `origin` | read | action | abilities | planned | where the cast comes from |
+| `origin` | read | action | abilities | planned | where the cast's unit stood as it started |
 | `p` | read | every role | core | since 1.0 | the params: an ability's at its rank, a modifier's then its ability's, or the mode's |
 | `pick` | `(list)` | every role | core | since 1.0 | an entry of `list`, each as likely, from the secret stream |
 | `players` | read | mode | core | since 1.0 | how many players the session has |
 | `projectile` | `(from, direction) or (from, unit)` | action | projectiles | since 1.0 | launches one more of the action's projectiles from `from`, its own cast: along `direction` for a line type, or homing on `unit` for a homing type; the new projectile, which spawns later in the tick |
-| `range` | read | action | abilities | planned | the ability's range at its rank |
-| `reduce_cooldown` | `(unit, id, ms)` | every role | abilities | planned | takes `ms` off the cooldown of `unit`'s ability `id` |
-| `reduce_cooldowns` | `(unit, fraction)` | every role | abilities | planned | takes `fraction` off the cooldowns of `unit`'s basic abilities |
+| `range` | read | action | abilities | since 1.0 | the ability's range at its rank in meters, `()` for a global one |
+| `reduce_cooldown` | `(unit, id, ms)`, `id` a ability | every role | abilities | since 1.0 | takes `ms` off the cooldown of `unit`'s ability `id`, of the script's package |
+| `reduce_cooldowns` | `(unit, kind, fraction)`, `kind` a slot kind | every role | abilities | since 1.0 | takes `fraction` of what is left off the cooldowns of `unit`'s abilities in the slot kind `kind` |
 | `remove` | `(handle)` | every role | stats | since 1.0 | ends the modifier, projectile or area at once |
 | `respawn` | `(unit, ms)` | mode | combat | since 1.0 | brings back `unit`, dead and of a type that stays, `ms` from the call |
 | `restore` | `(unit, pool, amount)`, `pool` a pool | every role | combat | since 1.0 | gives `unit` back `amount` of its `pool`, unscaled |
@@ -320,7 +320,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `delivery` | since 1.0 |
 | `script` | since 1.0 |
 | `cooldown_ms` | since 1.0 |
-| `clamp_to_range` | planned |
+| `clamp_to_range` | since 1.0 |
 | `toggle` | planned |
 | `channel` | planned |
 | `hold` | planned |

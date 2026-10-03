@@ -627,6 +627,7 @@ fn setup(
                     actions: vec![SlotAction {
                         kind: SlotKind::new(0),
                         ability: strike,
+                        rank: 0,
                     }],
                     ..unit(x, hero)
                 },
@@ -970,6 +971,7 @@ impl Game {
 }
 
 mod budgets;
+mod cooldowns;
 mod damage;
 mod draws;
 mod inputs;

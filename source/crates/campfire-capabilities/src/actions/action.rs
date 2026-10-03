@@ -47,7 +47,10 @@ pub(crate) struct Passive {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Aim {
     None,
-    Point,
+    /// A point, moved in to the action's range when it lies beyond it, with `clamp`.
+    Point {
+        clamp: bool,
+    },
     Direction,
     Unit(Filter),
 }

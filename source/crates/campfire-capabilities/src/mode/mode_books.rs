@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use bevy_ecs::world::World;
 
+use crate::actions::actions_column::ActionsColumn;
 use crate::actions::slot_kinds::SlotKinds;
 use crate::combat::combat_bindings::CombatBindings;
 use crate::mode::mode_data::ModeData;
@@ -63,6 +64,7 @@ impl ModeBooks {
         }
         Stats::load(world, stats, pools);
         world.insert_resource(tags);
+        ActionsColumn::share_kinds(world.non_send::<View>(), slot_kinds.clone());
         world.insert_resource(slot_kinds);
         map
     }

@@ -107,7 +107,7 @@ impl Projectiles {
     ) {
         let book = world.resource::<ActionBook>();
         let delivers = book.get(by.action).expect("a cast's action is in the book");
-        let to_point = delivers.aim == Aim::Point;
+        let to_point = matches!(delivers.aim, Aim::Point { .. });
         let spec = *world
             .resource::<ByType<ProjectileSpec>>()
             .get(unit_type)

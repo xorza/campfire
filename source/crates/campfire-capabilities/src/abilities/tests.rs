@@ -756,6 +756,78 @@ fn a_failed_script_changes_nothing_and_fails_the_same_way_everywhere() {
 }
 
 #[test]
+fn a_point_aim_beyond_the_range_clamps_in_to_it_when_the_action_says_so() {
+    // 10 true damage to each enemy within half a meter of the point the cast resolves at.
+    let script = r#"
+fn on_resolve(ctx, caster, target) {
+    for unit in ctx.find(caster, target, num(1) / 2, "enemies") {
+        ctx.damage(unit, 10, "true");
+    }
+}
+"#;
+    let leap = |clamp| ActionData {
+        script: Some(PackagePath::parse("leap.rhai").unwrap()),
+        range: Some(Ranked::One(RangeField::Range(Range::Meters(Num::int(4))))),
+        clamp_to_range: clamp,
+        ..ActionData::cast(Targeting::Point)
+    };
+    let mut game = Match::new();
+    game.load_stats();
+    let clamped = game.load("leap", &leap(true), script);
+    let plain = game.load("hop", &leap(false), script);
+    let point = |x, z| ActionTarget::Point(ground(Num::int(x), Num::int(z)));
+    let enemy = |game: &mut Match, x, z| game.spawn(1, ground(Num::int(x), Num::int(z)), ());
+    // From the origin, 4 m of range: an aim at 10 m along x lands at 4 m; one at 2 m stays.
+    for (aim, at) in [(point(10, 0), (4, 0)), (point(2, 0), (2, 0))] {
+        let caster = game.caster(clamped, 1);
+        let struck = enemy(&mut game, at.0, at.1);
+        game.cast(caster, aim);
+        assert_eq!(game.sim.health(struck), 490, "{at:?}");
+    }
+    // An aim at (9, 12), 15 m off, lands on its line at 4 m: (2.4, 3.2), rounded once each, and
+    // a bit shorter where that rounding ends past the range; the enemy there is struck.
+    let caster = game.caster(clamped, 1);
+    let struck = game.spawn(1, ground(Num::int(12) / 5, Num::int(16) / 5), ());
+    game.cast(caster, point(9, 12));
+    assert_eq!(game.sim.health(struck), 490);
+    // An action that does not clamp starts no cast at a point beyond its range.
+    let caster = game.caster(plain, 1);
+    let missed = enemy(&mut game, 4, 0);
+    game.cast(caster, point(10, 0));
+    assert_eq!(game.sim.health(missed), 500);
+    assert_eq!(game.failed_calls(), []);
+}
+
+#[test]
+fn a_cast_reads_its_range_at_its_rank() {
+    // 10 damage a meter of range; 1 for a global range, which reads as `()`.
+    let script = r#"
+fn on_resolve(ctx, caster, target) {
+    if ctx.range == () {
+        ctx.damage(target, 1, "true");
+    } else {
+        ctx.damage(target, ctx.range * 10, "true");
+    }
+}
+"#;
+    let mut game = Match::new();
+    game.load_stats();
+    let near = game.load("strike", &strike(), script);
+    let global = ActionData {
+        range: Some(Ranked::One(RangeField::Range(Range::Global))),
+        ..strike()
+    };
+    let far = game.load("far", &global, script);
+    for (action, damage) in [(near, 50), (far, 1)] {
+        let caster = game.caster(action, 1);
+        let target = game.spawn(1, ground(Num::int(3), Num::ZERO), ());
+        game.cast(caster, ActionTarget::Unit(target));
+        assert_eq!(game.sim.health(target), 500 - damage);
+    }
+    assert_eq!(game.failed_calls(), []);
+}
+
+#[test]
 fn each_caster_draws_from_its_own_sequence() {
     // Each caster's Lash Out strikes the enemy beside it for two draws: tens, then ones.
     let script = r#"

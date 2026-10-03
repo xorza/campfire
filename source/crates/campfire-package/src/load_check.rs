@@ -52,6 +52,7 @@ struct PackageNames<'a> {
     /// What data says of each script it names.
     scripts: BTreeMap<&'a PackagePath, ScriptUse<'a>>,
     modifiers: &'a BTreeMap<DeclaredName, ModifierData>,
+    actions: &'a BTreeMap<DeclaredName, ActionData>,
 }
 
 /// What data says of a script: the roles it serves, and the params its `ctx.p` may read.
@@ -254,7 +255,7 @@ impl<'a> LoadCheck<'a> {
         {
             return Err(LoadProblem::NoPathingGrid);
         }
-        let mut names = PackageNames::new(&packages.mode, &content.modifiers);
+        let mut names = PackageNames::new(&packages.mode, &content.modifiers, &content.actions);
         let mode_params: BTreeSet<&str> = data.params.keys().map(DeclaredName::as_str).collect();
         names.serve(&data.script, ScriptRole::Mode, mode_params.iter().copied());
         for unit_type in units.values() {
@@ -342,7 +343,7 @@ impl<'a> LoadCheck<'a> {
         }
         let loadout_ranks = self.packages.data.loadout_ranks();
         let ranks = |id: &str| slotted.as_ref().map_or(loadout_ranks, |ranks| ranks[id]);
-        let mut names = PackageNames::new(package, modifiers);
+        let mut names = PackageNames::new(package, modifiers, actions);
         self.actions(actions, &content.units, ranks, &mut names)?;
         let ways = self.packages.modifier_ways(view);
         self.modifiers(&mut names, &ways, actions, ranks)?;
@@ -641,7 +642,7 @@ impl<'a> LoadCheck<'a> {
                 });
             }
             for named in &facts.names {
-                self.script_name(named, names.modifiers, &at)?;
+                self.script_name(named, names, &at)?;
             }
             if let Some(field) = facts
                 .state_fields
@@ -730,19 +731,20 @@ impl<'a> LoadCheck<'a> {
     }
 
     /// A name a script at `at` gives an argument of a name kind is one of its kind that the match
-    /// has: a modifier one of the script's package's, `modifiers`; a unit type one of the mode's
-    /// scope.
+    /// has: a modifier or an ability one of the script's package's, as `package` holds them; a unit
+    /// type one of the mode's scope.
     fn script_name(
         &self,
         named: &ScriptName,
-        modifiers: &BTreeMap<DeclaredName, ModifierData>,
+        package: &PackageNames<'_>,
         at: &Place,
     ) -> Result<(), LoadProblem> {
         let packages = self.packages;
         let data = &packages.data;
         let name = named.name.as_str();
         let known = match named.kind {
-            NameKind::Modifier => return modifier_exists(modifiers, name, at),
+            NameKind::Modifier => return modifier_exists(package.modifiers, name, at),
+            NameKind::Ability => package.actions.contains_key(name),
             NameKind::Filter => return self.filter_text(name, at),
             NameKind::Stat => {
                 let stat = Stat::named(name).ok_or_else(|| named.unknown(at))?;
@@ -833,6 +835,9 @@ impl<'a> LoadCheck<'a> {
                 action: id.to_owned(),
                 field,
             });
+        }
+        if action.clamp_to_range && action.targeting != Targeting::Point {
+            return Err(LoadProblem::ClampAims(id.to_owned()));
         }
         match action.kind {
             ActionKind::Cast => {
@@ -1414,11 +1419,13 @@ impl<'a> PackageNames<'a> {
     const fn new(
         package: &'a Package,
         modifiers: &'a BTreeMap<DeclaredName, ModifierData>,
+        actions: &'a BTreeMap<DeclaredName, ActionData>,
     ) -> PackageNames<'a> {
         PackageNames {
             package,
             scripts: BTreeMap::new(),
             modifiers,
+            actions,
         }
     }
 

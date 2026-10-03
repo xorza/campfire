@@ -122,7 +122,7 @@ impl ActionDataField {
             ActionDataField::ClampToRange => (
                 "clamp_to_range",
                 Some(Abilities),
-                false,
+                true,
                 [Takes, Refuses, Refuses],
             ),
             ActionDataField::Toggle => {

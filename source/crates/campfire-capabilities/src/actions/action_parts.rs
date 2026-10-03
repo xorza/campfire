@@ -42,7 +42,9 @@ impl ActionParts {
         });
         let aim = match &data.targeting {
             Targeting::None => Aim::None,
-            Targeting::Point => Aim::Point,
+            Targeting::Point => Aim::Point {
+                clamp: data.clamp_to_range,
+            },
             Targeting::Direction => Aim::Direction,
             Targeting::Unit(filter) => Aim::Unit(names.filter(filter)),
         };

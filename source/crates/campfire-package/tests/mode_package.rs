@@ -359,7 +359,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-static FLAWS: [Flaw; 226] = [
+static FLAWS: [Flaw; 228] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -1291,6 +1291,16 @@ static FLAWS: [Flaw; 226] = [
         "hero-husk",
         |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Param, at: Place::Script(path), name } if path.to_string() == "scripts/lash_out.rhai" && name == "radios"),
     ),
+    // A cooldown cut names an ability of the script's own package.
+    flaw(
+        LASH_OUT,
+        Edit::Replace(
+            r#"ctx.reduce_cooldown(m.carrier, "lash_out""#,
+            r#"ctx.reduce_cooldown(m.carrier, "lash""#,
+        ),
+        "hero-husk",
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Ability, at: Place::Script(path), name } if path.to_string() == "scripts/lash_out.rhai" && name == "lash"),
+    ),
     flaw(
         "heroes/cinder/scripts/wildfire.rhai",
         Edit::Replace(r#""kindle""#, r#""kindl""#),
@@ -1320,6 +1330,13 @@ static FLAWS: [Flaw; 226] = [
         Edit::Rename("modifiers.withered.stats.magic_resist", "spirit"),
         "hero-husk",
         |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Stat, name, .. } if name == "spirit"),
+    ),
+    // Only a point aim clamps to the range.
+    flaw(
+        "spells/data/loadout.toml",
+        Edit::Set("actions.blink.targeting", r#""direction""#),
+        "player-spells",
+        |problem| matches!(problem, LoadProblem::ClampAims(action) if action.as_str() == "blink"),
     ),
     // A stat change names one operation; a scaling param scales with declared stats alone.
     flaw(

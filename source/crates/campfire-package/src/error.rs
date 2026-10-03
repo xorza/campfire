@@ -171,6 +171,8 @@ pub enum LoadProblem {
     GlobalAttack(DeclaredName),
     /// A train aims at something: it takes no target.
     TrainAims(DeclaredName),
+    /// An action clamps its aim to its range, and aims at no point.
+    ClampAims(DeclaredName),
     /// An action of a kind the release does not run yet.
     KindNotRun {
         action: DeclaredName,
@@ -739,6 +741,12 @@ impl fmt::Display for LoadProblem {
             }
             LoadProblem::TrainAims(action) => {
                 write!(f, "action \"{action}\": a train takes no target")
+            }
+            LoadProblem::ClampAims(action) => {
+                write!(
+                    f,
+                    "action \"{action}\": only a point aim clamps to the range"
+                )
             }
             LoadProblem::KindNotRun { action, kind } => {
                 write!(

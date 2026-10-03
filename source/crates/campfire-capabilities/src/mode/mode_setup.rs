@@ -46,6 +46,8 @@ pub(crate) struct UnitTypeSetup {
 pub(crate) struct SlotAction {
     pub(crate) kind: SlotKind,
     pub(crate) ability: ActionId,
+    /// Its rank as its unit spawns: its kind's first.
+    pub(crate) rank: u8,
 }
 
 /// The entries of the mode's loadout packages, loaded: each one's id and ability, by place.

@@ -143,6 +143,12 @@ pub enum ApiError {
     NotAProbability,
     /// A pick from an empty list.
     EmptyPick,
+    /// An ability the calling package does not declare.
+    UnknownAbility,
+    /// An ability the unit does not hold.
+    NotHeld,
+    /// A fraction below 0 or above 1.
+    NotAFraction,
 }
 
 /// Why a param a modifier reads does not hold.
@@ -277,6 +283,9 @@ impl fmt::Display for ApiError {
             }
             ApiError::NotAProbability => "probability is below 0 or above 1",
             ApiError::EmptyPick => "pick from an empty list",
+            ApiError::UnknownAbility => "ability the package does not declare",
+            ApiError::NotHeld => "the unit does not hold the ability",
+            ApiError::NotAFraction => "fraction is below 0 or above 1",
         })
     }
 }

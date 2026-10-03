@@ -69,7 +69,7 @@ Values of the fields may be one or one per rank, like params; times become whole
 ### Values and bookkeeping
 
 - **Values.** In an action's hooks, `ctx.range` is its range at its rank in meters, `()` for a global one; `ctx.origin` is where its unit stood as the action started; `ctx.charge` is above, and fails the call for an action with no `charge`.
-- **Cooldowns.** `ctx.reduce_cooldown(unit, id, ms)` takes `ms` off the cooldown of the unit's action `id`, of the script's package, and `ctx.reduce_cooldowns(unit, kind, fraction)` takes `fraction` of what is left off the cooldown of each of the unit's actions in the slot kind `kind`, as League of Legends' Master Yi's takedowns do. Neither makes a ready tick earlier than the current one; an action the unit does not hold, a kind the mode does not declare, a negative `ms`, and a fraction outside 0 to 1 fail the call.
+- **Cooldowns.** `ctx.reduce_cooldown(unit, id, ms)` takes `ms` off the cooldown of the unit's action `id`, of the script's package, and `ctx.reduce_cooldowns(unit, kind, fraction)` takes `fraction` of what is left off the cooldown of each of the unit's actions in the slot kind `kind`, as League of Legends' Master Yi's takedowns do, what stays rounded up to a whole tick, as every time is. Neither makes a ready tick earlier than the current one; an action the unit does not hold, a kind the mode does not declare, a negative `ms`, and a fraction outside 0 to 1 fail the call.
 
 ### Kinds
 
@@ -150,7 +150,7 @@ An order names an action and a target ([Orders](control.md#orders)); a button of
 
 ## Script API
 
-`ctx.p`, `ctx.range`, `ctx.charge`, `ctx.origin` ([Values and bookkeeping](#values-and-bookkeeping)); `ctx.projectile(from, direction)` for a line type and `(from, unit)` for a homing type, the other form failing the call, `ctx.area(pos)`, each returning the new unit ([New units at once](../08-script-api.md#rules)); `ctx.reduce_cooldown(unit, id, ms)`, `ctx.reduce_cooldowns(unit, slot_kind, fraction)`, `ctx.add_charge(unit, id)`, `ctx.learn(unit, slot)`; the hooks `on_resolve(ctx, unit, target)`, `on_hit(ctx, unit, target, hit)`, `on_end(ctx, unit, hit)`, `on_channel_tick(ctx, unit)` and `on_interrupt(ctx, unit, target)`. Projectiles and areas are unit handles, with the fields of their sections.
+`ctx.p`, `ctx.range`, `ctx.charge`, `ctx.origin` ([Values and bookkeeping](#values-and-bookkeeping)); `ctx.projectile(from, direction)` for a line type and `(from, unit)` for a homing type, the other form failing the call, `ctx.area(pos)`, each returning the new unit ([New units at once](../08-script-api.md#rules)); `ctx.reduce_cooldown(unit, id, ms)`, `ctx.reduce_cooldowns(unit, kind, fraction)`, `ctx.add_charge(unit, id)`, `ctx.learn(unit, slot)`; the hooks `on_resolve(ctx, unit, target)`, `on_hit(ctx, unit, target, hit)`, `on_end(ctx, unit, hit)`, `on_channel_tick(ctx, unit)` and `on_interrupt(ctx, unit, target)`. Projectiles and areas are unit handles, with the fields of their sections.
 
 ## Network
 

@@ -187,7 +187,7 @@ pub(crate) mod internals {
     impl Actions {
         /// The action `name` of `package`, as the match loaded it.
         pub fn action(world: &World, package: u16, name: &str) -> Option<ActionId> {
-            world.resource::<ActionBook>().action_named(package, name)
+            world.resource::<ActionBook>().named(package, name)
         }
     }
 }

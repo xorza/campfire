@@ -591,13 +591,12 @@ impl ModeApi {
     fn grant(ctx: &Ctx, unit: StableId, slots: usize, kind: &str, ids: &Array) -> Checked<()> {
         ctx.require(RoleSet::MODE)?;
         let book = ModeBook::of_or_fail(ctx)?;
-        let kind = book
-            .slot_kinds
-            .named(kind)
-            .ok_or_else(|| ApiError::UnknownSlotKind.fail())?;
-        if book.slot_kinds.ranks(kind) != book.loadout_ranks {
+        let view = ctx.view();
+        let kind = ActionsColumn::kind_named(view, kind)?;
+        if ActionsColumn::kind_ranks(view, kind) != book.loadout_ranks {
             return Err(ApiError::SlotKindRanks.fail().into());
         }
+        let rank = ActionsColumn::first_rank(view, kind);
         let abilities = ids
             .iter()
             .map(|id| {
@@ -625,6 +624,7 @@ impl ModeApi {
         frame.effects.push(ModeEffect::Grant {
             unit,
             kind,
+            rank,
             abilities,
         });
         Ok(())

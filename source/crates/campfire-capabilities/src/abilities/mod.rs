@@ -51,6 +51,7 @@ use crate::units::unit::Unit;
 use crate::units::unit_tags::UnitTags;
 
 pub(crate) mod abilities_api;
+pub(crate) mod abilities_effect;
 
 /// The `abilities` capability: abilities in slots, cast through their checks, with the effect a
 /// script describes.
@@ -138,6 +139,10 @@ fn start_casts(
         let radius = Body::radius_of(body);
         let started = book
             .check(now, &slots, purse, aim, attitude, |id| targets.living(id))
+            .map(|mut checked| {
+                checked.clamp(position, radius, &targets);
+                checked
+            })
             .filter(|checked| checked.in_range(position, radius, &targets))
             .map(|checked| (now.after(checked.values.windup), checked.target));
         match started {

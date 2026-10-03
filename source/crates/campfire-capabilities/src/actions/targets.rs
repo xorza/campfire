@@ -94,6 +94,11 @@ impl Targets<'_, '_> {
         self.metric.reaches(from, radius, range, at, Num::ZERO)
     }
 
+    /// The point `step` from `from` toward `to` in the map's metric, or `to` when it is nearer.
+    pub(crate) fn toward(&self, from: Position, to: Position, step: Num) -> Position {
+        self.metric.step_toward(from, to, step)
+    }
+
     /// `target`, when it is a living unit that may be a target.
     pub(crate) fn living(&self, target: StableId) -> Option<LivingUnit> {
         let row = self.units.get(self.index.get(target)?).ok()?;

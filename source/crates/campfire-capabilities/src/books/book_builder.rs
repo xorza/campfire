@@ -401,9 +401,11 @@ impl<'a> BookBuilder<'a> {
         let mut slots = Vec::new();
         for (kind, ids) in &file.slots {
             let kind = data.slots.named(kind.as_str()).expect(CHECKED);
+            let rank = data.slots.first_rank(kind);
             let slotted = ids.iter().map(|id| SlotAction {
                 kind,
                 ability: actions[id.as_str()],
+                rank,
             });
             slots.extend(slotted);
         }

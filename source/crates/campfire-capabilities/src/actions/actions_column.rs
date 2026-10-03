@@ -8,17 +8,22 @@ use crate::actions::action_book::ActionBook;
 use crate::actions::action_slots::ActionSlots;
 use crate::actions::delivery::Delivery;
 use crate::actions::range;
+use crate::actions::slot_kind::SlotKind;
+use crate::actions::slot_kinds::SlotKinds;
+use crate::scripts::error::{ApiError, Checked};
 use crate::units::action_id::ActionId;
 use crate::units::filter::Filter;
 use crate::units::script_view::View;
 use crate::units::unit_row::UnitRow;
 use crate::units::view_column::ViewColumn;
 
-/// What the action pipeline adds to the script view: the match's actions, and each unit's
-/// ability slots, the unit its attacks aim at, and the range of its first weapon, a row each.
+/// What the action pipeline adds to the script view: the match's actions and slot kinds, and each
+/// unit's ability slots, the unit its attacks aim at, and the range of its first weapon, a row
+/// each.
 #[derive(Debug, Default)]
 pub(crate) struct ActionsColumn {
     book: ActionBook,
+    kinds: SlotKinds,
     rows: Vec<ActionsRow>,
     slots: Vec<SlotRow>,
 }
@@ -32,10 +37,11 @@ struct ActionsRow {
     slots: Range<u32>,
 }
 
-/// An ability slot as the view read it: the rank of its ability, 0 while not learned, how many
-/// ranks the ability has, and the filter of the units it may attack when it is a weapon.
+/// An ability slot as the view read it: its action, the rank of its ability, 0 while not learned,
+/// how many ranks the ability has, and the filter of the units it may attack when it is a weapon.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SlotRow {
+    pub(crate) action: ActionId,
     pub(crate) rank: u8,
     pub(crate) ranks: u8,
     pub(crate) weapon: Option<Filter>,
@@ -77,6 +83,7 @@ impl ActionsColumn {
                 .get(slot.action)
                 .expect("a slot's action is in the book");
             SlotRow {
+                action: slot.action,
                 rank: slot.rank,
                 ranks: u8::try_from(action.ranks.len()).expect("an action has few ranks"),
                 weapon: action.weapon_filter(),
@@ -97,6 +104,55 @@ impl ActionsColumn {
         view.column_mut(|column: &mut ActionsColumn| {
             column.book = book;
         });
+    }
+
+    /// Shares the mode's slot kinds with the view, which names them to scripts.
+    pub(crate) fn share_kinds(view: &View, kinds: SlotKinds) {
+        view.column_mut(|column: &mut ActionsColumn| {
+            column.kinds = kinds;
+        });
+    }
+
+    /// The action `name` of `package`; an error for one the package does not declare.
+    pub(crate) fn action_named(view: &View, package: u16, name: &str) -> Checked<ActionId> {
+        let found = ActionsColumn::read(view, |column| column.book.named(package, name));
+        Ok(found.ok_or_else(|| ApiError::UnknownAbility.fail())?)
+    }
+
+    /// The slot kind `name`; an error for one the mode does not declare.
+    pub(crate) fn kind_named(view: &View, name: &str) -> Checked<SlotKind> {
+        let found = ActionsColumn::read(view, |column| column.kinds.named(name));
+        Ok(found.ok_or_else(|| ApiError::UnknownSlotKind.fail())?)
+    }
+
+    /// Whether the unit in row `row` holds action `id` in a slot.
+    pub(crate) fn holds(view: &View, row: usize, id: ActionId) -> bool {
+        ActionsColumn::read(view, |column| {
+            column.run(row).iter().any(|slot| slot.action == id)
+        })
+    }
+
+    /// How many ranks an action in `kind` has.
+    pub(crate) fn kind_ranks(view: &View, kind: SlotKind) -> u8 {
+        ActionsColumn::read(view, |column| column.kinds.ranks(kind))
+    }
+
+    /// The rank an action in `kind` has as it is granted: 1 for a kind with no `ranks`, 0 for
+    /// one whose ranks are learned.
+    pub(crate) fn first_rank(view: &View, kind: SlotKind) -> u8 {
+        ActionsColumn::read(view, |column| column.kinds.first_rank(kind))
+    }
+
+    /// The range of action `id` at `rank`, one of its ranks.
+    pub(crate) fn range(view: &View, id: ActionId, rank: u8) -> range::Range {
+        ActionsColumn::read(view, |column| {
+            column
+                .book
+                .get(id)
+                .expect("an action of the match")
+                .values(rank)
+                .range
+        })
     }
 
     /// What `read` gives of the column, which every match's pipeline adds.

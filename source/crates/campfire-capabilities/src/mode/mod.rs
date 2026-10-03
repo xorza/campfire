@@ -220,8 +220,9 @@ impl Mode {
             ModeEffect::Grant {
                 unit,
                 kind,
+                rank,
                 abilities,
-            } => book.grant(world, unit, kind, &abilities),
+            } => ModeBook::grant(world, unit, kind, rank, &abilities),
             ModeEffect::Respawn { unit, ticks } => {
                 let entity = world.resource::<EntityIndex>().get(unit);
                 let entity = entity.expect("a dead unit that stays is in the world");

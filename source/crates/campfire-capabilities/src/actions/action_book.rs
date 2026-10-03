@@ -81,6 +81,15 @@ impl ActionBook {
         self.actions.get(id.index())
     }
 
+    /// The action `name` of `package`.
+    pub(crate) fn named(&self, package: u16, name: &str) -> Option<ActionId> {
+        let at = self
+            .actions
+            .iter()
+            .position(|action| action.package == package && &*action.name == name)?;
+        Some(ActionId::nth(u32::try_from(at).expect("actions fit u32")))
+    }
+
     /// The action `aim` names of a unit with `slots`, when it may go on: its slot holds a learned
     /// action that is ready, `purse` affords its cost in each pool and player resource, and its
     /// target is a living unit the action's filter selects, or the action takes none, which drops
@@ -104,7 +113,9 @@ impl ActionBook {
         }
         let target = match (action.aim, aim.target) {
             (Aim::None, _) => ActionTarget::None,
-            (Aim::Point | Aim::Direction, ActionTarget::Point(at)) => ActionTarget::Point(at),
+            (Aim::Point { .. } | Aim::Direction, ActionTarget::Point(at)) => {
+                ActionTarget::Point(at)
+            }
             (Aim::Unit(filter), ActionTarget::Unit(target))
                 if living(target)
                     .is_some_and(|unit| filter.selects(attitude(unit.team), unit.tags)) =>
@@ -160,6 +171,30 @@ pub(crate) struct Checked<'a> {
 }
 
 impl Checked<'_> {
+    /// Moves a point it aims at beyond its range in to the range, along the line from the unit
+    /// at `position` with a body of `radius`, when its aim clamps, as `targets` measure reach.
+    pub(crate) fn clamp(&mut self, position: Position, radius: Num, targets: &Targets<'_, '_>) {
+        let (Aim::Point { clamp: true }, Range::Meters(range), ActionTarget::Point(at)) =
+            (self.action.aim, self.values.range, self.target)
+        else {
+            return;
+        };
+        if targets.reaches_point(position, radius, range, at) {
+            return;
+        }
+        // The step rounds once in each coordinate, so it may end a last bit past the reach;
+        // stepping a bit shorter each time ends within it after a few.
+        let mut step = range
+            .checked_add(radius)
+            .expect("a reach past every number reaches every point");
+        let mut clamped = targets.toward(position, at, step);
+        while !targets.reaches_point(position, radius, range, clamped) {
+            step -= Num::from_bits(1);
+            clamped = targets.toward(position, at, step);
+        }
+        self.target = ActionTarget::Point(clamped);
+    }
+
     /// Whether its target is within its range of a unit at `position` with a body of `radius`,
     /// as `targets` measure reach: a unit's body, or a point it aims at; an action of global
     /// reach, one that aims at a direction, or one with no target always is. The range counts
@@ -177,7 +212,7 @@ impl Checked<'_> {
             (Aim::Unit(_), ActionTarget::Unit(target)) => targets
                 .living(target)
                 .is_some_and(|unit| targets.reaches(position, radius, range, &unit)),
-            (Aim::Point, ActionTarget::Point(at)) => {
+            (Aim::Point { .. }, ActionTarget::Point(at)) => {
                 targets.reaches_point(position, radius, range, at)
             }
             _ => true,
@@ -281,17 +316,6 @@ pub(crate) mod internals {
                 delivery,
             },
         )
-    }
-
-    impl ActionBook {
-        /// The action `name` of `package`.
-        pub(crate) fn action_named(&self, package: u16, name: &str) -> Option<ActionId> {
-            let at = self
-                .actions
-                .iter()
-                .position(|action| action.package == package && &*action.name == name)?;
-            Some(ActionId::nth(u32::try_from(at).expect("actions fit u32")))
-        }
     }
 
     /// Adds a train of `unit` that takes `time` and costs `resource_cost`, no pool and no

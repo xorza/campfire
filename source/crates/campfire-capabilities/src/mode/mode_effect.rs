@@ -42,6 +42,8 @@ pub(crate) enum ModeEffect {
     Grant {
         unit: StableId,
         kind: SlotKind,
+        /// The kind's first rank, which the actions take.
+        rank: u8,
         abilities: Vec<ActionId>,
     },
     Respawn {
