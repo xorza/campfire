@@ -150,27 +150,27 @@ impl Flights<'_> {
         };
         let metric = targets.metric();
         self.met.clear();
-        let (start, end) = (from.get(), to.get());
-        let half = spec.width / 2;
-        let low = [start.x.min(end.x), start.z.min(end.z)]
-            .map(|axis| axis.checked_sub(half).unwrap_or(Num::MIN));
-        let high = [start.x.max(end.x), start.z.max(end.z)]
-            .map(|axis| axis.checked_add(half).unwrap_or(Num::MAX));
-        let (met, struck) = (&mut *self.met, &*self.struck);
-        self.grid.visit(low, high, |body| {
-            let Some(unit) = targets.living(body.id) else {
-                return;
-            };
-            let selects = spec
-                .hits
-                .selects(targets.attitude(team, unit.team), unit.tags);
-            if !selects || struck.contains(Struck { by, unit: unit.id }) {
-                return;
-            }
-            if let Some(share) = metric.meets(from, to, unit.pos, half + unit.radius) {
-                met.push((share.along, unit.id));
-            }
-        });
+        if let Some(hits) = spec.hits {
+            let (start, end) = (from.get(), to.get());
+            let half = spec.width / 2;
+            let low = [start.x.min(end.x), start.z.min(end.z)]
+                .map(|axis| axis.checked_sub(half).unwrap_or(Num::MIN));
+            let high = [start.x.max(end.x), start.z.max(end.z)]
+                .map(|axis| axis.checked_add(half).unwrap_or(Num::MAX));
+            let (met, struck) = (&mut *self.met, &*self.struck);
+            self.grid.visit(low, high, |body| {
+                let Some(unit) = targets.living(body.id) else {
+                    return;
+                };
+                let selects = hits.selects(targets.attitude(team, unit.team), unit.tags);
+                if !selects || struck.contains(Struck { by, unit: unit.id }) {
+                    return;
+                }
+                if let Some(share) = metric.meets(from, to, unit.pos, half + unit.radius) {
+                    met.push((share.along, unit.id));
+                }
+            });
+        }
         // Every share of a step has the step's squared length below it, so the raw `along`
         // orders the nearest points exactly.
         self.met.sort_unstable();

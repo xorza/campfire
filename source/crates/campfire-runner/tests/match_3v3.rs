@@ -3,8 +3,8 @@
 //! changes it, by design.
 
 use campfire_capabilities::{
-    ActionSlot, ActionSlots, ModeParam, ModeState, Owner, PathWalker, PlayerResources, ResourceId,
-    Scalar, ScriptFailures, SlotKind, StateValue, Team, UnitType,
+    ActionSlot, ActionSlots, Deaths, ModeParam, ModeState, Owner, PathWalker, PlayerResources,
+    Projectile, ResourceId, Scalar, ScriptFailures, SlotKind, StateValue, Team, UnitType,
 };
 use campfire_common::PlayerSlot;
 use campfire_math::{Num, Vec3};
@@ -22,6 +22,9 @@ struct Run {
     /// Each unit after the tick the heroes spawn in, and after the one the first wave spawns in.
     at_pick_end: Vec<Unit>,
     at_first_wave: Vec<Unit>,
+    /// The units that died, and the ticks that ended with a projectile in flight.
+    deaths: usize,
+    shooting: usize,
 }
 
 /// A unit as a test sees it: its team, its unit type, where it stands, who controls it, whether
@@ -80,12 +83,18 @@ fn run(reference: &Reference3v3, ticks: u64) -> Run {
         golden: Golden::new(reference.packages(), Reference3v3::PLAYERS),
         at_pick_end: Vec::new(),
         at_first_wave: Vec::new(),
+        deaths: 0,
+        shooting: 0,
     };
     for tick in 0..ticks {
         run.runner.run_tick();
         run.trail.record(run.runner.world());
         run.golden.record(&run.runner);
-        let failures = run.runner.world().non_send::<ScriptFailures>();
+        let world = run.runner.world();
+        run.deaths += world.resource::<Deaths>().iter().count();
+        let mut projectiles = world.try_query::<&Projectile>().unwrap();
+        run.shooting += usize::from(projectiles.iter(world).next().is_some());
+        let failures = world.non_send::<ScriptFailures>();
         assert!(
             failures.get().is_empty(),
             "tick {tick}: {:?}",
@@ -109,7 +118,11 @@ fn ground(x: i64, z: i64) -> Position {
 #[test]
 fn a_3v3_match_replays_to_the_same_hashes() {
     let reference = Reference3v3::load();
-    let run = run(&reference, 2500);
+    // At the 3v3's slowest rate, 20 ticks a second, the pick ends in tick 1199 and the first wave
+    // spawns in tick 2399; the waves meet and fight from tick 2803, so the run holds the first
+    // 400 ticks of their fight, in which melee creeps strike and caster creeps fire bolts. No
+    // tower, camp or hero fights in it.
+    let run = run(&reference, 3200);
     run.golden.check("3v3");
     let runner = &run.runner;
     let world = runner.world();
@@ -196,13 +209,23 @@ fn a_3v3_match_replays_to_the_same_hashes() {
     assert_eq!(wave[0].kind, wave[1].kind);
     assert_ne!(wave[0].kind, wave[5].kind);
 
-    // Income: 8 gold every 5 s from the pick's end, 100 ticks, in ticks 1299 to 2499: 13 times.
+    // The goldens pin the fight exactly; the run reaches it: units die, and bolts fly. The heroes
+    // cast nothing, so every projectile is an attack's.
+    assert!(
+        run.deaths > 0 && run.shooting > 0,
+        "{} {}",
+        run.deaths,
+        run.shooting
+    );
+
+    // Income: 8 gold every 5 s from the pick's end, 100 ticks, in ticks 1299 to 3199: 20 times,
+    // and no bounty reaches a player.
     let amounts = world.resource::<PlayerResources>();
     let gold = ResourceId::named(&reference.packages().data().resources, "gold").unwrap();
     for slot in 0..Reference3v3::PLAYERS {
         assert_eq!(
             amounts.amount(PlayerSlot::new(slot), gold),
-            104,
+            160,
             "player {slot}"
         );
     }

@@ -5,8 +5,8 @@ use campfire_capabilities::{
     ActionData, ActionDataField, ActionKind, ActionSlots, ApiOwner, ApiVersion, BookError, Books,
     CollisionData, CombatRules, DeclaredName, DeliveryData, EffectTo, Effecting, EngineTag,
     EnumRecord, FilterData, Hook, MemberKind, ModifierData, ModifierProblem, NameKind, Number,
-    Offers, PackagePath, Param, ParamProblem, Pools, Range, RangeField, ResourceId, Scalar,
-    ScriptApi, ScriptRole, Stat, Targeting, TrackId, TypePlace, UnitTypeData, UnitTypeFile,
+    Offers, PackagePath, Param, ParamProblem, Pools, ProjectileHits, Range, RangeField, ResourceId,
+    Scalar, ScriptApi, ScriptRole, Stat, Targeting, TrackId, TypePlace, UnitTypeData, UnitTypeFile,
 };
 use campfire_math::Num;
 use campfire_sim::{Capability, TickRate};
@@ -380,7 +380,12 @@ impl<'a> LoadCheck<'a> {
                     DeliveryData::Area { .. } => Capability::Areas,
                 };
                 self.require(capability, &at)?;
-                delivery_holds(id, ability, delivery, units)?;
+                let hooks_hit = ability
+                    .script
+                    .as_ref()
+                    .and_then(|path| names.package.script(path))
+                    .is_some_and(|script| script.defines(Hook::OnHit));
+                delivery_holds(id, ability, delivery, units, hooks_hit)?;
             }
             for modifier in ability.modifiers() {
                 modifier_exists(names.modifiers, modifier.as_str(), &at)?;
@@ -1107,8 +1112,19 @@ impl<'a> LoadCheck<'a> {
                     at.clone(),
                 )));
             }
-            if let Some(hits) = &projectile.hits {
-                self.filter_data(hits, at)?;
+            match &projectile.hits {
+                ProjectileHits::Units(hits) => self.filter_data(hits, at)?,
+                ProjectileHits::Nothing => {
+                    let hits_aside = projectile.homing
+                        || projectile.stop_on_hit
+                        || projectile.once_per_cast
+                        || projectile.width > Num::ZERO;
+                    if hits_aside {
+                        return Err(LoadProblem::Delivery(DeliveryProblem::HitsNothing(
+                            at.clone(),
+                        )));
+                    }
+                }
             }
         }
         if let Some(stats) = &unit_type.stats {
@@ -1490,14 +1506,17 @@ fn modifier_exists(
     })
 }
 
-/// The `delivery` of `action`, whose id is `id`: a unit type of its package's `units` with the
-/// section of its kind. A projectile needs an aim, and homes alone and at a unit; an area lands
-/// on a point, a unit or the caster, not along a direction; a weapon's is a homing projectile.
+/// The `delivery` of `action`, whose id is `id` and whose script defines `on_hit` when
+/// `hooks_hit`: a unit type of its package's `units` with the section of its kind. A projectile
+/// needs an aim, homes alone and at a unit, and hits a unit when the action has an `on_hit` list
+/// or hook; an area lands on a point, a unit or the caster, not along a direction; a weapon's is
+/// a homing projectile.
 fn delivery_holds(
     id: &DeclaredName,
     action: &ActionData,
     delivery: &DeliveryData,
     units: &BTreeMap<DeclaredName, UnitTypeFile>,
+    hooks_hit: bool,
 ) -> Result<(), LoadProblem> {
     let fail = |problem: fn(DeclaredName) -> DeliveryProblem| {
         Err(LoadProblem::Delivery(problem(id.clone())))
@@ -1525,6 +1544,11 @@ fn delivery_holds(
             }
             if projectile.homing && (!at_unit || count.get() > 1) {
                 return fail(DeliveryProblem::Homing);
+            }
+            if projectile.hits == ProjectileHits::Nothing
+                && (hooks_hit || !action.on_hit.is_empty())
+            {
+                return fail(DeliveryProblem::NoHit);
             }
             projectile.homing
         }

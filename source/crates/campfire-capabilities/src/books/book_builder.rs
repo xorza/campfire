@@ -426,7 +426,8 @@ impl<'a> BookBuilder<'a> {
     }
 
     /// The projectile or area type `name` of `file`, of the package at `index`, in the scope its
-    /// actions name types in, which only actions deliver, so the mode spawns none.
+    /// actions name types in, which only actions deliver, so the mode spawns none; with its sight,
+    /// when it has a `vision` section.
     fn delivery(
         &mut self,
         index: u16,
@@ -453,6 +454,9 @@ impl<'a> BookBuilder<'a> {
                 }
             })?;
             books.areas.set(unit_type, spec);
+        }
+        if let Some(vision) = file.vision {
+            books.sights.set(unit_type, vision.sight);
         }
         Ok(())
     }

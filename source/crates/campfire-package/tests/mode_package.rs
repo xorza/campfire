@@ -61,6 +61,7 @@ const LASH_OUT: &str = "heroes/husk/scripts/lash_out.rhai";
 const CYCLONE: &str = "heroes/gale/scripts/cyclone.rhai";
 /// The script of Rime's passive.
 const STILLNESS: &str = "heroes/rime/scripts/stillness.rhai";
+const SNOW_OWL: &str = "heroes/rime/scripts/snow_owl.rhai";
 const CREEP_AI: &str = "modes/3v3/scripts/creep_ai.rhai";
 const MODE: &str = "moba-3v3";
 /// A package whose manifest does not read has no name, so its directory names it.
@@ -337,7 +338,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-static FLAWS: [Flaw; 211] = [
+static FLAWS: [Flaw; 218] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -614,6 +615,56 @@ static FLAWS: [Flaw; 211] = [
         Edit::Replace("unit_type = \"tower\"", "unit_type = \"tower_bolt\""),
         MODE,
         |problem| matches!(problem, LoadProblem::Mode(ModeError::UnknownUnitType(name)) if name == "tower_bolt"),
+    ),
+    // Snow Owl hits nothing: a width, a stop on hit, a hit once a cast or homing would use hits,
+    // and so would an `on_hit` list or hook of its action.
+    flaw(
+        RIME,
+        Edit::Set("units.snow_owl.projectile.width", r#""0.5""#),
+        "hero-rime",
+        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::HitsNothing(Place::UnitType(name))) if name == "snow_owl"),
+    ),
+    flaw(
+        RIME,
+        Edit::Set("units.snow_owl.projectile.stop_on_hit", "true"),
+        "hero-rime",
+        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::HitsNothing(Place::UnitType(name))) if name == "snow_owl"),
+    ),
+    flaw(
+        RIME,
+        Edit::Set("units.snow_owl.projectile.once_per_cast", "true"),
+        "hero-rime",
+        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::HitsNothing(Place::UnitType(name))) if name == "snow_owl"),
+    ),
+    flaw(
+        RIME,
+        Edit::Set("units.snow_owl.projectile.homing", "true"),
+        "hero-rime",
+        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::HitsNothing(Place::UnitType(name))) if name == "snow_owl"),
+    ),
+    flaw(
+        RIME,
+        Edit::Set(
+            "actions.snow_owl.on_hit",
+            r#"[{ damage = { amount = 1, kind = "true" } }]"#,
+        ),
+        "hero-rime",
+        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NoHit(action)) if action == "snow_owl"),
+    ),
+    flaw(
+        SNOW_OWL,
+        Edit::Replace(
+            "fn on_end(ctx, caster, hit) {",
+            "fn on_hit(ctx, caster, target, hit) {}\n\nfn on_end(ctx, caster, hit) {",
+        ),
+        "hero-rime",
+        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::NoHit(action)) if action == "snow_owl"),
+    ),
+    flaw(
+        RIME,
+        Edit::Set("units.snow_owl.projectile.hits", r#""nobody""#),
+        "hero-rime",
+        |problem| read_fails(problem, "data/avatar.toml", r#"filter "nobody""#),
     ),
     flaw(
         RIME,

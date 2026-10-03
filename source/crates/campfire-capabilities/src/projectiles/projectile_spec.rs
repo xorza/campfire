@@ -1,12 +1,13 @@
 use campfire_math::Num;
 use campfire_sim::TickRate;
 
-use crate::projectiles::projectile_data::ProjectileData;
+use crate::projectiles::projectile_data::{ProjectileData, ProjectileHits};
 use crate::units::filter::Filter;
 use crate::units::unit_types::UnitTypes;
 
 /// A projectile type as a match runs it: its speed a tick, its width, its range if it has its
-/// own, whether it homes, stops at its first hit, or hits a unit once a cast, and what it hits.
+/// own, whether it homes, stops at its first hit, or hits a unit once a cast, and the units it
+/// hits, none when it hits nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct ProjectileSpec {
     pub(crate) speed: Num,
@@ -15,14 +16,19 @@ pub(crate) struct ProjectileSpec {
     pub(crate) homing: bool,
     pub(crate) stop_on_hit: bool,
     pub(crate) once_per_cast: bool,
-    pub(crate) hits: Filter,
+    pub(crate) hits: Option<Filter>,
 }
 
 impl ProjectileSpec {
     /// The spec of `data`, which the package load checked: its speed a tick at `rate`, and
     /// what it hits among the tags of `types`.
     pub(crate) fn of(data: &ProjectileData, types: &UnitTypes, rate: TickRate) -> ProjectileSpec {
-        let hits = Filter::resolve_or_enemies(data.hits.as_ref(), types);
+        let hits = match &data.hits {
+            ProjectileHits::Nothing => None,
+            ProjectileHits::Units(filter) => {
+                Some(Filter::resolve(filter, types).expect("the load checked the filter's tags"))
+            }
+        };
         ProjectileSpec {
             speed: data
                 .speed
@@ -33,7 +39,7 @@ impl ProjectileSpec {
             homing: data.homing,
             stop_on_hit: data.stop_on_hit,
             once_per_cast: data.once_per_cast,
-            hits: hits.expect("the load checked the filter's tags"),
+            hits,
         }
     }
 }

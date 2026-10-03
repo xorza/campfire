@@ -15,7 +15,8 @@ Done when the playtest finds that the 1v1 reads and plays well.
 
 ### 4. Game model
 
-- The model in code ([The model](docs/design/04-capabilities/00-overview.md#the-model)): the `launch` effect; a projectile's `hits = "none"` and a delivery's sight.
+- The model in code ([The model](docs/design/04-capabilities/00-overview.md#the-model)): the `launch` effect.
+- The 3v3 played by scripted players: attacks, spells, towers, camps, kills and the late rules, with no hero abilities until stage 5.
 - The reference packages rewritten to each as it lands.
 
 Done when the 3v3 match plays as before on the model, with no failed call of its mode, creep, tower or camp scripts, every reference package loads on its API version with its text in `en.ftl`, and every log verifies.
@@ -28,6 +29,7 @@ Done when the 3v3 match plays as before on the model, with no failed call of its
 - Terrain in the map: the cells each layer's map blocks, which routes go round and the pathing grid holds, for walls and the jungle ([Navigation](docs/design/04-capabilities/navigation.md#data)); brush that blocks sight from outside it ([Vision](docs/design/04-capabilities/vision.md#grid-fog-of-war)).
 - The package load refuses a planned name, once no reference package uses one: design 08 accepts a planned name at load, so a script that uses one loads and fails at each call, as Rime's Snow Owl does on `ctx.reveal`.
 - Items for the MOBA: inventory, equipment, the shop, item actions and passives ([Items](docs/design/04-capabilities/items.md)).
+- The 3v3 scenario's players learn and cast their heroes' abilities, beside the attacks, spells, towers and camps of stage 4's scenario.
 
 Done when every mechanic design 07 lists runs from the reference heroes' and spells' packages, and none uses a planned name.
 

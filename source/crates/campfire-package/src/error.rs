@@ -356,7 +356,7 @@ pub enum DeliveryProblem {
     /// catch its target.
     NotFaster(Place),
     /// A unit type at `at` with a `projectile` or an `area` section has both, or a section of a
-    /// unit that stands; a dependency's unit type is no delivery type; or an avatar is one.
+    /// unit that stands but `vision`; a dependency's unit type is no delivery type; or an avatar is one.
     NotDelivery(Place),
     /// An action's `delivery` names a unit type of its package with no section of its kind.
     WrongSection {
@@ -375,6 +375,11 @@ pub enum DeliveryProblem {
     AreaTime(DeclaredName),
     /// A train makes a projectile or an area type, whose units only actions deliver.
     Trained(DeclaredName),
+    /// A projectile type at `at` hits nothing, beside a width, a stop at its first hit, a hit once
+    /// a cast or homing, which only hits use.
+    HitsNothing(Place),
+    /// An action has an `on_hit` list or hook, and its projectile hits nothing.
+    NoHit(DeclaredName),
 }
 
 impl fmt::Display for DeliveryProblem {
@@ -388,8 +393,9 @@ impl fmt::Display for DeliveryProblem {
             }
             DeliveryProblem::NotDelivery(at) => write!(
                 f,
-                "{at}: a projectile or area type has tags, params and one of the two sections \
-                 alone, a dependency's unit types are delivery types, and an avatar is none"
+                "{at}: a projectile or area type has tags, params, one of the two sections and a \
+                 vision section alone, a dependency's unit types are delivery types, and an \
+                 avatar is none"
             ),
             DeliveryProblem::WrongSection { action, unit_type } => write!(
                 f,
@@ -420,6 +426,15 @@ impl fmt::Display for DeliveryProblem {
             DeliveryProblem::Trained(action) => {
                 write!(f, "train \"{action}\" makes a projectile or an area type")
             }
+            DeliveryProblem::HitsNothing(at) => write!(
+                f,
+                "{at}: a projectile that hits nothing has no width, no stop on hit, no hit once a \
+                 cast, and does not home"
+            ),
+            DeliveryProblem::NoHit(action) => write!(
+                f,
+                "action \"{action}\" has an `on_hit`, and its projectile hits nothing"
+            ),
             DeliveryProblem::AreaTime(unit_type) => {
                 write!(
                     f,

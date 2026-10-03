@@ -7,6 +7,7 @@ use bevy_ecs::system::{Commands, Local, Query, Res};
 use bevy_ecs::world::World;
 use campfire_sim::{Position, SimSet, StateRegistry};
 
+use crate::units::by_type::ByType;
 use crate::units::dead::Dead;
 use crate::units::relations::Relations;
 use crate::units::row_fill::RowFill;
@@ -40,12 +41,14 @@ pub struct Vision;
 impl Vision {
     /// Adds vision to a match, on combat: in Vision, the last stage of a tick, each living unit
     /// with a sight reveals the grid cells around it to its vision group, and each unit learns the
-    /// teams that see it. A match sees nothing until its mode gives the grid.
+    /// teams that see it. A match sees nothing until its mode gives the grid. The sights of the
+    /// delivery types, which no kit holds, are a book of their own.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         let view = world.non_send::<View>().clone();
         view.add_column(SightColumn::default());
         view.add_source::<RowParts>(world, fill_row);
         schedule.add_systems(see.in_set(SimSet::Vision));
+        world.insert_resource(ByType::<Sight>::default());
         registry.register_component::<SeenBy>();
         registry.register_component::<Sight>();
     }

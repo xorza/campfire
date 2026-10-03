@@ -53,7 +53,7 @@ impl ProjectilesApi {
                 "once_per_cast",
                 "hits",
             ],
-            &["gravity", "sight_radius", "collide"],
+            &["gravity"],
         );
     }
 

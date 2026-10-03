@@ -10,5 +10,4 @@ Design: [Actions](../design/04-capabilities/actions.md). Rules: [Issue log](../.
 
 ## Ready
 
-- **Plan: M4.** The load takes a projectile's `collide` and `sight_radius` and ignores them, and refuses a `vision` section on a delivery type, where the design gives `hits = "none"` and a delivery's `vision`.
 - **Plan: M5.** The load refuses the `launch` effect as planned.

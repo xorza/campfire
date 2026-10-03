@@ -111,6 +111,7 @@ pub use progression::experience::Experience;
 
 pub use projectiles::Projectiles;
 pub use projectiles::projectile::Projectile;
+pub use projectiles::projectile_data::ProjectileHits;
 
 pub use scripts::api_version::ApiVersion;
 pub use scripts::applies::Applies;

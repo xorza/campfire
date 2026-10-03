@@ -3,11 +3,12 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer};
 
 use crate::values::filter_data::FilterData;
+use crate::values::relation::Relation;
 use crate::values::scalar::Scalar;
 
 /// A unit type's `projectile` section, which makes its units projectiles: they fly `speed`
 /// meters a second, `width` meters wide, for `range` meters or their action's range, homing on
-/// a unit or along a line, and hit the units `hits` selects, `enemies` by default.
+/// a unit or along a line, and hit what `hits` says, the units of `enemies` by default.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ProjectileData {
     pub speed: Num,
@@ -18,10 +19,16 @@ pub struct ProjectileData {
     pub stop_on_hit: bool,
     /// A unit one projectile of a cast hit is no hit for another of the same cast.
     pub once_per_cast: bool,
-    pub hits: Option<FilterData>,
+    pub hits: ProjectileHits,
     pub gravity: Option<Scalar>,
-    pub sight_radius: Option<Scalar>,
-    pub collide: Option<bool>,
+}
+
+/// What a projectile hits. In data: `none`, or a filter of the units it hits.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ProjectileHits {
+    /// No unit: it flies to its end, as Snow Owl flies to its point.
+    Nothing,
+    Units(FilterData),
 }
 
 /// Data is untrusted, so a speed that is not positive, or a width or a range that is negative,
@@ -40,10 +47,8 @@ impl<'de> Deserialize<'de> for ProjectileData {
             stop_on_hit: bool,
             #[serde(default)]
             once_per_cast: bool,
-            hits: Option<FilterData>,
+            hits: Option<ProjectileHits>,
             gravity: Option<Scalar>,
-            sight_radius: Option<Scalar>,
-            collide: Option<bool>,
         }
         let fields = Fields::deserialize(deserializer)?;
         let at_least = |value: Scalar, least: Num| value.to_num().filter(|&value| value >= least);
@@ -71,11 +76,29 @@ impl<'de> Deserialize<'de> for ProjectileData {
             homing: fields.homing,
             stop_on_hit: fields.stop_on_hit,
             once_per_cast: fields.once_per_cast,
-            hits: fields.hits,
+            hits: fields.hits.unwrap_or(ProjectileHits::ENEMIES),
             gravity: fields.gravity,
-            sight_radius: fields.sight_radius,
-            collide: fields.collide,
         })
+    }
+}
+
+impl ProjectileHits {
+    /// The units of `enemies`, which a projectile hits when its data names none.
+    pub const ENEMIES: ProjectileHits = ProjectileHits::Units(FilterData {
+        relation: Relation::Enemies,
+        tags: Vec::new(),
+    });
+}
+
+impl<'de> Deserialize<'de> for ProjectileHits {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<ProjectileHits, D::Error> {
+        let text = String::deserialize(deserializer)?;
+        match text.as_str() {
+            "none" => Ok(ProjectileHits::Nothing),
+            filter => FilterData::parse(filter)
+                .map(ProjectileHits::Units)
+                .ok_or_else(|| D::Error::custom(format!("filter {filter:?}"))),
+        }
     }
 }
 
@@ -83,7 +106,7 @@ impl<'de> Deserialize<'de> for ProjectileData {
 pub(crate) mod internals {
     use campfire_math::Num;
 
-    use crate::projectiles::projectile_data::ProjectileData;
+    use crate::projectiles::projectile_data::{ProjectileData, ProjectileHits};
 
     impl ProjectileData {
         /// A projectile of `speed` m/s and nothing more, as a section that names its speed alone
@@ -96,10 +119,8 @@ pub(crate) mod internals {
                 homing: false,
                 stop_on_hit: false,
                 once_per_cast: false,
-                hits: None,
+                hits: ProjectileHits::ENEMIES,
                 gravity: None,
-                sight_radius: None,
-                collide: None,
             }
         }
     }

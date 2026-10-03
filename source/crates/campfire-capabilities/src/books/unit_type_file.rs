@@ -57,7 +57,8 @@ impl UnitTypeFile {
     }
 
     /// Whether it is a delivery type and nothing more: a `projectile` or an `area` section, one
-    /// of them, beside its tags, params and state, and no section of a unit that stands.
+    /// of them, beside its tags, params, state and `vision`, and no section of a unit that
+    /// stands.
     pub fn delivery_only(&self) -> bool {
         let UnitTypeFile {
             core: _,
@@ -67,7 +68,7 @@ impl UnitTypeFile {
             stats,
             combat,
             orders,
-            vision,
+            vision: _,
             collision,
             tracks,
             production,
@@ -81,7 +82,6 @@ impl UnitTypeFile {
             && stats.is_none()
             && combat.is_none()
             && orders.is_none()
-            && vision.is_none()
             && collision.is_none()
             && tracks.is_empty()
             && production.is_none()

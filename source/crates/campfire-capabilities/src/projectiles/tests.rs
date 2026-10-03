@@ -11,7 +11,7 @@ use crate::combat::internals::Armed;
 use crate::combat::on_death::OnDeath;
 use crate::combat::recent_attack::RecentAttack;
 use crate::combat::recent_attackers::RecentAttackers;
-use crate::projectiles::projectile_data::ProjectileData;
+use crate::projectiles::projectile_data::{ProjectileData, ProjectileHits};
 use crate::projectiles::struck_units::Struck;
 use crate::scripts::script_budgets::ScriptBudgets;
 use crate::scripts::script_limits::ScriptLimits;
@@ -23,6 +23,11 @@ use crate::units::dead::Dead;
 use crate::units::type_scope::TypeScope;
 use crate::units::unit_type_data::UnitTypeData;
 use crate::values::damage_kind::DamageKind;
+use crate::values::filter_data::FilterData;
+use crate::values::grid::Grid;
+use crate::vision::Vision;
+use crate::vision::seen_by::SeenBy;
+use crate::vision::sight::Sight;
 fn at(x: i64, z: i64) -> Position {
     Position::new(Vec3::new(Num::int(x), Num::ZERO, Num::int(z))).unwrap()
 }
@@ -61,18 +66,24 @@ struct Volley {
     lance: UnitType,
     /// A line of no width for 6 m, that ends at its first hit.
     dart: UnitType,
+    /// A line for 6 m that hits nothing.
+    scout: UnitType,
 }
 
 impl Volley {
     /// A match with combat and projectiles, and the projectiles' types.
     fn new() -> Volley {
-        let declared = [
+        Volley::of(&[
             Capability::Stats,
             Capability::Combat,
             Capability::Projectiles,
-        ];
+        ])
+    }
+
+    /// A match of `declared`, with combat and projectiles among them, and the projectiles' types.
+    fn of(declared: &[Capability]) -> Volley {
         let budgets = ScriptBudgets::new(ScriptLimits::ROOMY, 1);
-        let mut sim = TestMatch::server(&declared, budgets);
+        let mut sim = TestMatch::server(declared, budgets);
         let world = &mut sim.world;
         let types = [
             ("bolt", projectile(true, Num::ZERO, None, false)),
@@ -84,8 +95,15 @@ impl Volley {
                 "dart",
                 projectile(false, Num::ZERO, Some(Num::int(6)), true),
             ),
+            (
+                "scout",
+                ProjectileData {
+                    hits: ProjectileHits::Nothing,
+                    ..projectile(false, Num::ZERO, Some(Num::int(6)), false)
+                },
+            ),
         ];
-        let [bolt, lance, dart] = types.map(|(name, data)| {
+        let [bolt, lance, dart, scout] = types.map(|(name, data)| {
             let unit_type =
                 Units::load_type(world, TypeScope::Mode, name, &UnitTypeData::default());
             Projectiles::load_type(world, unit_type, &data);
@@ -96,6 +114,7 @@ impl Volley {
             bolt,
             lance,
             dart,
+            scout,
         }
     }
 
@@ -377,6 +396,42 @@ fn a_line_projectile_hits_each_enemy_its_path_comes_within_reach_of_once_and_end
 }
 
 #[test]
+fn a_projectile_that_hits_nothing_crosses_bodies_and_one_with_sight_reveals_where_it_flies() {
+    // A scout of team 0, which hits nothing, flies from the origin along x, half a meter a tick
+    // from tick 1, for 6 m, and sees 1 m: its type's vision section, which the delivery spawner
+    // gives its unit. An enemy of team 1 stands on its path at (5, 0), in the cell whose center is
+    // (5.5, 0.5); the scout's sight reaches that center from x within √0.75 ≈ 0.87 m of 5.5, so
+    // after ticks 10 and 11, at 5 m and 5.5 m. It ends at its range in tick 12, and despawns.
+    let mut volley = Volley::of(&[
+        Capability::Stats,
+        Capability::Combat,
+        Capability::Projectiles,
+        Capability::Vision,
+    ]);
+    let world = &mut volley.sim.world;
+    let bounds = Bounds::new([Num::int(-10), Num::int(-10)], [Num::int(10), Num::int(10)]).unwrap();
+    Vision::load_grid(world, Grid::new(Num::ONE, bounds).unwrap(), 2);
+    let sight = Sight::new(Num::ONE).unwrap();
+    world
+        .resource_mut::<ByType<Sight>>()
+        .set(volley.scout, sight);
+    let source = volley.unit(0, at(0, -9), target());
+    let enemy = volley.unit(1, at(5, 0), target());
+    volley.fire_line(source, volley.scout);
+    let seen = |volley: &Volley| volley.sim.get::<SeenBy>(enemy).get().contains(Team::new(0));
+    let mut seen_in = Vec::new();
+    for tick in 0..14 {
+        volley.sim.step();
+        if seen(&volley) {
+            seen_in.push(tick);
+        }
+    }
+    assert_eq!(seen_in, [10, 11]);
+    assert_eq!(volley.projectiles(), []);
+    assert_eq!(volley.sim.health(enemy), 100);
+}
+
+#[test]
 fn a_projectile_reads_only_with_a_positive_speed_and_no_negative_width_or_range() {
     let read = |text: &str| toml::from_str::<ProjectileData>(text);
     let refusal = |text: &str| read(text).unwrap_err().message().to_owned();
@@ -387,8 +442,22 @@ fn a_projectile_reads_only_with_a_positive_speed_and_no_negative_width_or_range(
         ProjectileData {
             speed: Num::int(20),
             range: Some(Num::ZERO),
-            ..plain
+            ..plain.clone()
         }
+    );
+    // `hits` is `none` or a filter, `enemies` when it is absent.
+    let hits = |text: &str| read(&format!("speed = 1\nhits = {text}")).map(|data| data.hits);
+    assert_eq!(hits("\"none\"").unwrap(), ProjectileHits::Nothing);
+    assert_eq!(
+        hits("\"allies:avatar\"").unwrap(),
+        ProjectileHits::Units(FilterData::parse("allies:avatar").unwrap())
+    );
+    assert_eq!(plain.hits, ProjectileHits::ENEMIES);
+    assert!(
+        hits("\"nobody\"")
+            .unwrap_err()
+            .message()
+            .starts_with("filter \"nobody\"")
     );
     for (text, message) in [
         ("speed = 0", "a projectile's speed is positive"),

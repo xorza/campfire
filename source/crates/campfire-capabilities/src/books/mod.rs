@@ -30,6 +30,7 @@ use crate::units::predicting::Predicting;
 use crate::units::script_view::View;
 use crate::units::unit_state_column::UnitStateColumn;
 use crate::units::unit_types::UnitTypes;
+use crate::vision::sight::Sight;
 
 pub(crate) mod book_builder;
 pub(crate) mod book_input;
@@ -49,7 +50,7 @@ pub struct Books {
 
 /// What the builder loads package by package: the unit types and tags, the tracks, the
 /// modifiers and actions with their params and effect lists, the AIs, the projectile and area
-/// specs, and what the mode's book takes from them.
+/// specs and the delivery types' sights, and what the mode's book takes from them.
 #[derive(Debug, Default)]
 pub(crate) struct BookParts {
     types: UnitTypes,
@@ -62,6 +63,8 @@ pub(crate) struct BookParts {
     ais: ByType<Ai>,
     projectiles: ByType<ProjectileSpec>,
     areas: ByType<AreaSpec>,
+    /// The sights of the delivery types with a `vision` section.
+    sights: ByType<Sight>,
     producers: ByType<ProductionData>,
     units: ModeUnits,
 }
@@ -108,6 +111,7 @@ impl Books {
         replace(world, parts.ais);
         replace(world, parts.projectiles);
         replace(world, parts.areas);
+        replace(world, parts.sights);
         replace(world, parts.producers);
         ModeInputs {
             units: parts.units,

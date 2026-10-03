@@ -1,4 +1,4 @@
-use campfire_capabilities::{PackagePath, ScriptApi};
+use campfire_capabilities::{Hook, PackagePath, ScriptApi};
 use campfire_common::Fingerprint;
 use campfire_script::ScriptHost;
 
@@ -6,7 +6,7 @@ use crate::error::{LoadError, LoadProblem, ScriptProblem};
 use crate::files::package_header::PackageHeader;
 use crate::package_files::PackageFiles;
 use crate::package_text::PackageText;
-use crate::script_facts::ScriptFacts;
+use crate::script_facts::{Function, ScriptFacts};
 
 /// Where a package holds its game scripts.
 const SCRIPTS: &str = "scripts";
@@ -27,6 +27,14 @@ pub struct Script {
     pub path: PackagePath,
     pub source: String,
     pub(crate) facts: ScriptFacts,
+}
+
+impl Script {
+    /// Whether it defines `hook`.
+    pub(crate) fn defines(&self, hook: Hook) -> bool {
+        let named = |function: &Function| Hook::named(&function.name) == Some(hook);
+        self.facts.functions.iter().any(named)
+    }
 }
 
 impl Package {

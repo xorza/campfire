@@ -366,8 +366,6 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `once_per_cast` | since 1.0 |
 | `hits` | since 1.0 |
 | `gravity` | planned |
-| `sight_radius` | planned |
-| `collide` | planned |
 
 ### A unit type's `area`
 
