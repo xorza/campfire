@@ -10,4 +10,3 @@ Design: [Actions](../design/04-capabilities/actions.md). Rules: [Issue log](../.
 
 ## Ready
 
-- **Plan: M5.** The load refuses the `launch` effect as planned.

@@ -1,8 +1,9 @@
 use campfire_common::Tick;
-use campfire_sim::{Capability, SimComponent};
+use campfire_sim::SimComponent;
 use serde::Serialize;
 
 use crate::actions::action_book;
+use crate::actions::effect_lists::LaunchId;
 use crate::areas::area_data::{AreaData, AreaInside};
 use crate::capability_set::test_match::TestMatch;
 use crate::stats::Stats;
@@ -27,6 +28,7 @@ fn an_area_that_triggers_after_it_ends_fails_to_decode() {
         source: u64,
         action: u32,
         rank: u8,
+        launch: Option<u32>,
         aimed: Option<u64>,
         triggers_at: Option<u64>,
         ends_at: u64,
@@ -36,6 +38,7 @@ fn an_area_that_triggers_after_it_ends_fails_to_decode() {
             source: 1,
             action: 0,
             rank: 1,
+            launch: None,
             aimed: None,
             triggers_at,
             ends_at,
@@ -124,6 +127,7 @@ fn an_area_is_state_and_restores() {
         source,
         action,
         rank: 1,
+        launch: None,
     };
     let area = Area::new(by, None, Some(Tick::new(5)), Tick::new(9)).unwrap();
     let id = sim.spawn(Position::ORIGIN, (Team::new(0), field, area));
@@ -141,6 +145,13 @@ fn an_area_is_state_and_restores() {
     assert!(check(Some(Tick::LIMIT), Tick::LIMIT));
     assert!(!check(None, past));
     assert!(!check(Some(past), past));
+    // An area of a launch the match did not load has no lists to run.
+    let launched = Delivering {
+        launch: Some(LaunchId::nth(0)),
+        ..by
+    };
+    let area = Area::new(launched, None, None, Tick::LIMIT).unwrap();
+    assert!(!area.check(&sim.world, entity));
     // An area that holds Rally on allies, which reads its action's `ward`: the train, which
     // declares none, cannot have delivered it, as Rally would fail as an ally takes it.
     let ward = DeclaredName::new("ward").unwrap();

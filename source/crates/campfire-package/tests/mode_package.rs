@@ -205,6 +205,27 @@ fn a_weapon_takes_params_and_an_on_hit_list_and_refuses_an_on_end_list() {
     let error = ModePackages::from_package_dir(&edited([(MODE_DATA, edit)])).unwrap_err();
     let refused = |problem: &LoadProblem| matches!(problem, LoadProblem::KindField { action, field: ActionDataField::OnEnd } if action == "melee_creep_attack");
     assert!(refused(&error.problem), "{error}");
+    // Cinder's bolt launches an eruption, an area type of her own package, where it hits.
+    let edit = Edit::Set(
+        "actions.attack.on_hit",
+        r#"[{ launch = { area = "eruption" } }]"#,
+    );
+    let packages = ModePackages::from_package_dir(&edited([(CINDER, edit)])).unwrap();
+    let cinder = packages
+        .dependencies()
+        .iter()
+        .find(|dependent| dependent.package.header.name == "hero-cinder")
+        .unwrap();
+    let launch = Effecting::Launch {
+        area: DeclaredName::new("eruption").unwrap(),
+        on_hit: Vec::new(),
+        on_end: Vec::new(),
+    };
+    let on_hit = &cinder.content.actions["attack"].on_hit;
+    assert_eq!(
+        on_hit.iter().map(|effect| &effect.does).collect::<Vec<_>>(),
+        [&launch]
+    );
 }
 
 /// The 3v3 as its packages hold it.
@@ -338,7 +359,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-static FLAWS: [Flaw; 218] = [
+static FLAWS: [Flaw; 221] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -665,6 +686,34 @@ static FLAWS: [Flaw; 218] = [
         Edit::Set("units.snow_owl.projectile.hits", r#""nobody""#),
         "hero-rime",
         |problem| read_fails(problem, "data/avatar.toml", r#"filter "nobody""#),
+    ),
+    // A launch names an area type of its own package, and its `on_end` reaches no unit.
+    flaw(
+        CINDER,
+        Edit::Set(
+            "actions.attack.on_hit",
+            r#"[{ launch = { area = "fire_lance" } }]"#,
+        ),
+        "hero-cinder",
+        |problem| matches!(problem, LoadProblem::Delivery(DeliveryProblem::WrongSection { action, unit_type }) if action == "attack" && unit_type == "fire_lance"),
+    ),
+    flaw(
+        CINDER,
+        Edit::Set(
+            "actions.attack.on_hit",
+            r#"[{ launch = { area = "pyre" } }]"#,
+        ),
+        "hero-cinder",
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::UnitType, at: Place::Action(action), name } if action == "attack" && name == "pyre"),
+    ),
+    flaw(
+        CINDER,
+        Edit::Set(
+            "actions.attack.on_hit",
+            r#"[{ launch = { area = "eruption", on_end = [{ heal = { amount = 1 } }] } }]"#,
+        ),
+        "hero-cinder",
+        |problem| matches!(problem, LoadProblem::Effect { action, list: Hook::OnEnd, problem: EffectProblem::NoUnit } if action == "attack"),
     ),
     flaw(
         RIME,

@@ -338,9 +338,9 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `modifier` | since 1.0 |
 | `xp` | since 1.0 |
 | `purge` | since 1.0 |
+| `launch` | since 1.0 |
 | `to` | since 1.0 |
 | `spawn` | planned |
-| `launch` | planned |
 | `move` | planned |
 | `loot` | planned |
 | `noise` | planned |

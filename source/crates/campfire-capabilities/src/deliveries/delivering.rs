@@ -3,17 +3,21 @@ use serde::{Deserialize, Serialize};
 
 use crate::actions::actions_column::ActionsColumn;
 use crate::actions::delivery::{Delivery, DeliveryShape};
+use crate::actions::effect_lists::LaunchId;
 use crate::scripts::ctx::Ctx;
 use crate::scripts::error::{ApiError, Checked};
 use crate::scripts::role_set::RoleSet;
 use crate::units::action_id::ActionId;
 
-/// What a delivery belongs to: the unit that delivers it, and its action at `rank`.
+/// What a delivery belongs to: the unit that delivers it, its action at `rank`, and the launch
+/// whose lists it runs, none for the action's own delivery, which runs the action's lists and
+/// hooks.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub(crate) struct Delivering {
     pub(crate) source: StableId,
     pub(crate) action: ActionId,
     pub(crate) rank: u8,
+    pub(crate) launch: Option<LaunchId>,
 }
 
 /// One more delivery a call launches: what it belongs to, and its action's delivery.
@@ -43,6 +47,7 @@ impl Delivering {
             source,
             action,
             rank,
+            launch: None,
         };
         Ok(Launcher { by, delivery })
     }

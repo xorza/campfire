@@ -10,7 +10,7 @@ use campfire_script::ScriptId;
 use campfire_script::rhai::Dynamic;
 use campfire_sim::{Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry};
 
-use crate::actions::effect_lists::EffectLists;
+use crate::actions::effect_lists::{EffectLists, ListsOf};
 
 use crate::actions::ActionsSet;
 use crate::actions::action_book::ActionBook;
@@ -286,6 +286,7 @@ fn apply(world: &mut World, ctx: &Ctx, now: Tick, entity: Entity, prepared: &Pre
         source: prepared.caster.id,
         action: prepared.action,
         rank: prepared.rank,
+        launch: None,
     };
     let book = world.resource::<ActionBook>();
     match book.get(by.action).and_then(|action| action.delivery) {
@@ -392,7 +393,7 @@ fn prepare(
 fn run(batch: &mut ScriptBatch<'_>, ctx: &Ctx, prepared: &mut Prepared) -> Result<(), CallError> {
     EffectLists::queue(
         batch.world(),
-        prepared.action,
+        ListsOf::Action(prepared.action),
         Hook::OnResolve,
         &mut ctx.frame(),
         ctx.view(),

@@ -4,6 +4,7 @@ use bevy_ecs::resource::Resource;
 use bevy_ecs::world::World;
 use campfire_math::Num;
 use campfire_sim::{Capability, StableId, TickRate};
+use serde::{Deserialize, Serialize};
 
 use crate::actions::action_data::ActionData;
 use crate::actions::effect_data::{EffectData, EffectTo, Effecting};
@@ -20,16 +21,32 @@ use crate::units::modifier_id::ModifierId;
 use crate::units::script_view::View;
 use crate::units::tag::Tag;
 use crate::units::track_id::TrackId;
+use crate::units::unit_type::UnitType;
 use crate::values::damage_kind::DamageKind;
 use crate::values::number::Number;
 
-/// The effect lists of each action, their names resolved as the action loaded: one buffer, and
-/// by action id the run of each of its lists, `on_resolve`, `on_hit` and `on_end`. An action
-/// past the end has none. Package data, not state.
+/// The effect lists of each action, their names resolved as the action loaded: one buffer, by
+/// action id the run of each of its lists, `on_resolve`, `on_hit` and `on_end`, and by launch id
+/// the run of each list a launch holds, `on_hit` and `on_end`. An action past the end has none.
+/// Package data, not state.
 #[derive(Resource, Debug, Default)]
 pub(crate) struct EffectLists {
     effects: Vec<Listed>,
     runs: Vec<[Range<u32>; 3]>,
+    launches: Vec<[Range<u32>; 2]>,
+}
+
+/// A launch of an effect list, by its place among the match's launches, whose own lists its area
+/// runs.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
+pub(crate) struct LaunchId(u32);
+
+/// Whose lists a call runs: an action's, or those a launch holds.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ListsOf {
+    Action(ActionId),
+    Launch(LaunchId),
 }
 
 /// An effect of a list: what it does, and to whom.
@@ -64,6 +81,11 @@ pub(crate) enum Does {
     Purge {
         tag: Tag,
     },
+    /// An area of the type `area`, which runs the lists of `launch`.
+    Launch {
+        area: UnitType,
+        launch: LaunchId,
+    },
 }
 
 /// A number of a listed effect: a value, or the param at its place among its action's, which the
@@ -75,46 +97,123 @@ pub(crate) enum Amount {
 }
 
 impl EffectLists {
-    /// Adds the lists of `action`, which loaded last: `on_resolve`, `on_hit` and `on_end`.
-    pub(crate) fn push(&mut self, action: ActionId, lists: [Vec<Listed>; 3]) {
+    /// Adds the lists of `action`, which loaded last, from `data`, which the package load
+    /// checked, their names resolved by `names`: `on_resolve`, `on_hit` and `on_end`, and the
+    /// lists each launch of them holds, however deep.
+    pub(crate) fn push(&mut self, action: ActionId, data: &ActionData, names: &impl EffectNames) {
         if self.runs.len() <= action.index() {
             self.runs.resize(action.index() + 1, [0..0, 0..0, 0..0]);
         }
-        self.runs[action.index()] = lists.map(|list| {
-            let start = position(self.effects.len());
-            self.effects.extend(list);
-            start..position(self.effects.len())
-        });
+        let mut runs = [0..0, 0..0, 0..0];
+        for (run, list) in runs
+            .iter_mut()
+            .zip([&data.on_resolve, &data.on_hit, &data.on_end])
+        {
+            *run = self.append(list, names);
+        }
+        self.runs[action.index()] = runs;
     }
 
-    /// The list of `action` that runs before its `hook`: `on_resolve`, `on_hit` or `on_end`.
-    pub(crate) fn of(&self, action: ActionId, hook: Hook) -> &[Listed] {
-        let list = match hook {
-            Hook::OnResolve => 0,
-            Hook::OnHit => 1,
-            Hook::OnEnd => 2,
-            _ => unreachable!("only a resolve and a delivery's hit and end have lists"),
+    /// Appends `list`, its names resolved by `names`, after the lists its launches hold, so its
+    /// own effects lie together; its run.
+    fn append(&mut self, list: &[EffectData], names: &impl EffectNames) -> Range<u32> {
+        let resolved: Vec<Listed> = list
+            .iter()
+            .map(|effect| Listed {
+                does: self.resolve(&effect.does, names),
+                to: effect.to,
+            })
+            .collect();
+        let start = position(self.effects.len());
+        self.effects.extend(resolved);
+        start..position(self.effects.len())
+    }
+
+    /// What `does` does, its names resolved by `names`; a launch's lists appended first.
+    fn resolve(&mut self, does: &Effecting, names: &impl EffectNames) -> Does {
+        match does {
+            Effecting::Damage { amount, kind } => Does::Damage {
+                amount: Amount::of(amount, names),
+                kind: names.damage_kind(kind),
+            },
+            Effecting::Heal { amount } => Does::Heal {
+                amount: Amount::of(amount, names),
+            },
+            Effecting::Restore { pool, amount } => Does::Restore {
+                pool: names.pool(pool),
+                amount: Amount::of(amount, names),
+            },
+            Effecting::Modifier { id, duration_ms } => Does::Modifier {
+                id: names.modifier(id),
+                duration_ms: duration_ms.as_ref().map(|ms| Amount::of(ms, names)),
+            },
+            Effecting::Xp { track, amount } => Does::Xp {
+                track: names.track(track),
+                amount: Amount::of(amount, names),
+            },
+            Effecting::Purge { tag } => Does::Purge {
+                tag: names.tag(tag),
+            },
+            Effecting::Launch {
+                area,
+                on_hit,
+                on_end,
+            } => {
+                let lists = [self.append(on_hit, names), self.append(on_end, names)];
+                let launch = LaunchId(position(self.launches.len()));
+                self.launches.push(lists);
+                Does::Launch {
+                    area: names.delivery_type(area),
+                    launch,
+                }
+            }
+            Effecting::Planned(_) => unreachable!("the load refuses a planned effect"),
+        }
+    }
+
+    /// The list of `of` that runs before its `hook`: an action's `on_resolve`, `on_hit` or
+    /// `on_end`, or a launch's `on_hit` or `on_end`.
+    pub(crate) fn of(&self, of: ListsOf, hook: Hook) -> &[Listed] {
+        let run = match (of, hook) {
+            (ListsOf::Action(action), _) => {
+                let list = match hook {
+                    Hook::OnResolve => 0,
+                    Hook::OnHit => 1,
+                    Hook::OnEnd => 2,
+                    _ => unreachable!("only a resolve and a delivery's hit and end have lists"),
+                };
+                self.runs.get(action.index()).map(|runs| &runs[list])
+            }
+            (ListsOf::Launch(launch), Hook::OnHit | Hook::OnEnd) => {
+                let list = usize::from(hook == Hook::OnEnd);
+                Some(&self.launches[launch.0 as usize][list])
+            }
+            (ListsOf::Launch(_), _) => unreachable!("a launch's area has a hit and an end alone"),
         };
-        self.runs.get(action.index()).map_or(&[], |runs| {
-            let run = &runs[list];
+        run.map_or(&[], |run| {
             &self.effects[run.start as usize..run.end as usize]
         })
     }
 
-    /// Queues the list of `action` that runs before its `hook` in `frame`, a call of the action
-    /// at its rank, which `world` runs: each effect to `reached`, the unit the list reached, or to
-    /// the acting unit. A modifier and a purge queue here, as `stats` is below the action pipeline; every
-    /// other effect queues as its capability registered, which can fail the call, as experience
-    /// to a unit without the track fails `ctx.add_xp`.
+    /// Whether the match loaded `launch`.
+    pub(crate) fn has_launch(&self, launch: LaunchId) -> bool {
+        (launch.0 as usize) < self.launches.len()
+    }
+
+    /// Queues the list of `of` that runs before its `hook` in `frame`, a call of its action at
+    /// its rank, which `world` runs: each effect to `reached`, the unit the list reached, or to
+    /// the acting unit. A modifier and a purge queue here, as `stats` is below the action
+    /// pipeline; every other effect queues as its capability registered, which can fail the
+    /// call, as experience to a unit without the track fails `ctx.add_xp`.
     pub(crate) fn queue(
         world: &World,
-        action: ActionId,
+        of: ListsOf,
         hook: Hook,
         frame: &mut Frame,
         view: &View,
         reached: Option<StableId>,
     ) -> Result<(), CallError> {
-        let list = world.resource::<EffectLists>().of(action, hook);
+        let list = world.resource::<EffectLists>().of(of, hook);
         if list.is_empty() {
             return Ok(());
         }
@@ -161,68 +260,24 @@ impl Does {
             Does::Damage { .. } | Does::Heal { .. } | Does::Restore { .. } => Capability::Combat,
             Does::Modifier { .. } | Does::Purge { .. } => Capability::Stats,
             Does::Xp { .. } => Capability::Progression,
+            Does::Launch { .. } => Capability::Areas,
         }
     }
 }
 
-impl Listed {
-    /// The lists of `data`, `on_resolve`, `on_hit` and `on_end`, which the package load checked,
-    /// their names resolved by `names`.
-    pub(crate) fn lists_of(data: &ActionData, names: &impl EffectNames) -> [Vec<Listed>; 3] {
-        let amount = |number: &Number| match number {
+impl Amount {
+    /// `number`, its param resolved by `names`, which the load checked a sim number.
+    fn of(number: &Number, names: &impl EffectNames) -> Amount {
+        match number {
             Number::Value(value) => Amount::Value(
                 value
                     .to_num()
                     .expect("the load checked each number of an effect list"),
             ),
             Number::Param(reference) => Amount::Param(names.param(&reference.param)),
-        };
-        let resolve = |effect: &EffectData| {
-            let does = match &effect.does {
-                Effecting::Damage {
-                    amount: number,
-                    kind,
-                } => Does::Damage {
-                    amount: amount(number),
-                    kind: names.damage_kind(kind),
-                },
-                Effecting::Heal { amount: number } => Does::Heal {
-                    amount: amount(number),
-                },
-                Effecting::Restore {
-                    pool,
-                    amount: number,
-                } => Does::Restore {
-                    pool: names.pool(pool),
-                    amount: amount(number),
-                },
-                Effecting::Modifier { id, duration_ms } => Does::Modifier {
-                    id: names.modifier(id),
-                    duration_ms: duration_ms.as_ref().map(amount),
-                },
-                Effecting::Xp {
-                    track,
-                    amount: number,
-                } => Does::Xp {
-                    track: names.track(track),
-                    amount: amount(number),
-                },
-                Effecting::Purge { tag } => Does::Purge {
-                    tag: names.tag(tag),
-                },
-                Effecting::Planned(_) => unreachable!("the load refuses a planned effect"),
-            };
-            Listed {
-                does,
-                to: effect.to,
-            }
-        };
-        [&data.on_resolve, &data.on_hit, &data.on_end]
-            .map(|list| list.iter().map(resolve).collect::<Vec<_>>())
+        }
     }
-}
 
-impl Amount {
     /// Its value in `frame`, a call of its action: 0 for a scaling param below zero, which its
     /// source's stats can make it, as the load checks every other number not negative.
     pub(crate) fn number(self, frame: &Frame) -> Num {
@@ -244,7 +299,7 @@ fn position(len: usize) -> u32 {
 #[cfg(test)]
 pub(crate) mod internals {
     use crate::actions::action_data::ActionData;
-    use crate::actions::effect_lists::{EffectLists, Listed};
+    use crate::actions::effect_lists::{EffectLists, LaunchId};
     use crate::actions::effect_names::EffectNames;
     use crate::progression::tracks_column::TracksColumn;
     use crate::stats::Stats;
@@ -256,9 +311,18 @@ pub(crate) mod internals {
     use crate::units::script_view::View;
     use crate::units::tag::Tag;
     use crate::units::track_id::TrackId;
+    use crate::units::type_scope::TypeScope;
+    use crate::units::unit_type::UnitType;
     use crate::values::damage_kind::DamageKind;
     use crate::values::declared_name::DeclaredName;
     use bevy_ecs::world::World;
+
+    impl LaunchId {
+        /// The launch at `at` among the match's launches.
+        pub(crate) const fn nth(at: u32) -> LaunchId {
+            LaunchId(at)
+        }
+    }
 
     impl EffectLists {
         /// Loads the effect lists of `action` of `package`, which loaded last from `data`, which
@@ -266,14 +330,15 @@ pub(crate) mod internals {
         /// the action's params.
         pub(crate) fn load(world: &mut World, action: ActionId, package: u16, data: &ActionData) {
             let view = world.non_send::<View>().clone();
+            let mut lists = world.remove_resource::<EffectLists>().unwrap();
             let names = MatchEffectNames {
                 world,
                 view: &view,
                 action,
                 package,
             };
-            let lists = Listed::lists_of(data, &names);
-            world.resource_mut::<EffectLists>().push(action, lists);
+            lists.push(action, data, &names);
+            world.insert_resource(lists);
         }
     }
 
@@ -321,6 +386,14 @@ pub(crate) mod internals {
             self.view
                 .tag_named(name.as_str())
                 .expect("the load checked an effect's tag")
+        }
+
+        fn delivery_type(&self, name: &DeclaredName) -> UnitType {
+            let scope = TypeScope::of_package(self.package);
+            self.view
+                .types_mut()
+                .named(scope, name.as_str())
+                .expect("the load checked a launch's area type")
         }
     }
 }

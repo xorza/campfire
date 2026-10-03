@@ -6,7 +6,6 @@ use crate::actions::action_data::ActionData;
 use crate::actions::action_names::ActionNames;
 use crate::actions::action_parts::ActionParts;
 use crate::actions::cost_target::CostTarget;
-use crate::actions::effect_lists::Listed;
 use crate::actions::effect_names::EffectNames;
 use crate::areas::area_spec::AreaSpec;
 use crate::books::book_input::{BookInput, BookKind, BookPackage};
@@ -331,8 +330,7 @@ impl<'a> BookBuilder<'a> {
                 action: Some(action),
                 package: index,
             };
-            let lists = Listed::lists_of(data, &names);
-            books.effects.push(action, lists);
+            books.effects.push(action, data, &names);
         }
         Ok(action)
     }
@@ -561,5 +559,9 @@ impl EffectNames for BuildNames<'_> {
 
     fn tag(&self, name: &DeclaredName) -> Tag {
         self.types.tag_named(name.as_str()).expect(CHECKED)
+    }
+
+    fn delivery_type(&self, name: &DeclaredName) -> UnitType {
+        self.unit_type(self.package, name)
     }
 }

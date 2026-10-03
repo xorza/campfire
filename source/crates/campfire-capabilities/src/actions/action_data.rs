@@ -266,12 +266,20 @@ impl ActionData {
         ]
     }
 
-    /// Every effect of its lists.
+    /// Every effect of its lists, and of the lists a launch holds, however deep.
     fn effects(&self) -> impl Iterator<Item = &EffectData> + '_ {
-        self.on_resolve
+        let mut found = Vec::new();
+        let mut open: Vec<&EffectData> = self
+            .on_resolve
             .iter()
             .chain(&self.on_hit)
             .chain(&self.on_end)
+            .collect();
+        while let Some(effect) = open.pop() {
+            open.extend(effect.does.nested());
+            found.push(effect);
+        }
+        found.into_iter()
     }
 
     /// The filter its data names: its targeting's.

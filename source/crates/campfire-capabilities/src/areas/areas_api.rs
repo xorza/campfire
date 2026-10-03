@@ -42,7 +42,7 @@ impl AreasApi {
         let mut frame = ctx.write()?;
         let id = frame.take_id();
         frame.effects.push(AreaEffect {
-            id,
+            id: Some(id),
             by: launcher.by,
             unit_type,
             at,

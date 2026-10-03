@@ -1632,16 +1632,18 @@ fn on_damage_taken(ctx, m, d) {
     assert_eq!(game.failed_calls(), [failed]);
 }
 
-/// A match of stats, combat, abilities and projectiles whose `fighter` type has 40 attack damage
-/// and 1 armor, which its weapons read as their damage and their rate, with a homing `bolt` of
-/// 30 m a second; `mark`, a shield of the `sap` param of the action that applies it; and `ward`,
-/// a shield of 100.
+/// A match of stats, combat, abilities, projectiles and areas whose `fighter` type has 40 attack
+/// damage and 1 armor, which its weapons read as their damage and their rate, with a homing
+/// `bolt` of 30 m a second; `mark`, a shield of the `sap` param of the action that applies it;
+/// `ward`, a shield of 100; and `blast` and `ring`, areas of 2 m on enemies, of no delay and no
+/// duration.
 fn weapon_match() -> (Match, UnitType) {
     let declared = [
         Capability::Stats,
         Capability::Combat,
         Capability::Abilities,
         Capability::Projectiles,
+        Capability::Areas,
     ];
     let mut game = Match::with(ScriptLimits::ROOMY, &declared);
     let fighter = Units::load_type(
@@ -1672,6 +1674,22 @@ fn weapon_match() -> (Match, UnitType) {
         ..ProjectileData::flying(Num::int(30))
     };
     Projectiles::load_type(&mut game.sim.world, bolt, &flight);
+    for name in ["blast", "ring"] {
+        let area = Units::load_type(
+            &mut game.sim.world,
+            TypeScope::Mode,
+            name,
+            &UnitTypeData::default(),
+        );
+        let data = AreaData {
+            radius: Num::int(2),
+            delay_ms: 0,
+            duration_ms: 0,
+            affects: None,
+            inside: AreaInside::default(),
+        };
+        Areas::load_type(&mut game.sim.world, area, 0, &data);
+    }
     for (name, shield) in [("mark", param("sap")), ("ward", int(100))] {
         let data = ModifierData {
             shield: Some(shield),
@@ -1822,6 +1840,111 @@ fn a_weapons_on_hit_list_follows_each_attack_that_reaches_its_target() {
             "{row}"
         );
     }
+}
+
+/// `damage` true damage of `amount`.
+fn true_of(amount: Number) -> Effecting {
+    Effecting::Damage {
+        amount,
+        kind: DeclaredName::new("true").unwrap(),
+    }
+}
+
+/// A launch of `area` with its lists `on_hit` and `on_end`.
+fn launch(area: &str, on_hit: Vec<EffectData>, on_end: Vec<EffectData>) -> Effecting {
+    Effecting::Launch {
+        area: DeclaredName::new(area).unwrap(),
+        on_hit,
+        on_end,
+    }
+}
+
+#[test]
+fn a_launch_lands_its_area_where_it_reaches_and_runs_the_lists_it_holds_once_each() {
+    // A cannon within 2 m, of no windup, whose `on_hit` launches a blast, which deals its `splash`
+    // param, half the attacker's 40 attack damage, 20, to each enemy within 2 m, and whose
+    // `on_end` launches a ring where the attacker stands, which deals 5 to each enemy within
+    // 2 m of it.
+    let (mut game, fighter) = weapon_match();
+    let ring = launch(
+        "ring",
+        vec![effect(true_of(int(5)), EffectTo::Reached)],
+        Vec::new(),
+    );
+    let blast = launch(
+        "blast",
+        vec![effect(true_of(param("splash")), EffectTo::Reached)],
+        vec![effect(ring, EffectTo::Source)],
+    );
+    let splash = scaling(
+        Ranked::One(Num::ZERO),
+        0,
+        &[("attack_damage", Num::HALF)],
+        &[],
+    );
+    let cannon = ActionData {
+        params: BTreeMap::from([(DeclaredName::new("splash").unwrap(), splash)]),
+        on_hit: vec![effect(blast, EffectTo::Reached)],
+        ..sapper(false)
+    };
+    let weapon = game.load_weapon("cannon", &cannon);
+    let attacker = game.fighter(fighter, ActionSlots::new([(weapon, SlotKind::new(0), 1)]));
+    let [target, near, far] = [1, 2, 4].map(|x| {
+        let at = ground(Num::int(x) + Num::HALF * i64::from(x == 2), Num::ZERO);
+        game.spawn(1, at, ())
+    });
+    game.sim
+        .get_mut::<ActionSlots>(attacker)
+        .set_attack_target(Some(target));
+    // Tick 0: the attack deals 40 in Resolve, and its list launches the blast on the target,
+    // 1 m out, which lands then. Tick 1: the blast triggers in Hit, a tick after it landed; it
+    // reaches the target and the unit 1.5 m past it, not the one 3 m past, and deals 20 to each;
+    // it ends at its trigger, and its `on_end` lands the ring on the attacker in that Hit. Tick
+    // 2: the ring reaches the target, 1 m from the attacker, alone, and deals 5. Each list runs
+    // once: the next attack is 30 ticks after the first.
+    let mut lives = Vec::new();
+    for _ in 0..5 {
+        game.sim.step();
+        lives.push([target, near, far].map(|unit| game.sim.health(unit)));
+    }
+    assert_eq!(game.failed_calls(), []);
+    assert_eq!(
+        lives,
+        [
+            [460, 500, 500],
+            [440, 480, 500],
+            [435, 480, 500],
+            [435, 480, 500],
+            [435, 480, 500],
+        ]
+    );
+    let mut areas = game.sim.world.query::<&Area>();
+    assert_eq!(areas.iter(&game.sim.world).count(), 0);
+
+    // The attacker despawns after tick 0, as a dead creep does: the blast it launched still
+    // triggers in tick 1, and its `on_end` launches the ring where the gone attacker would stand,
+    // which lands nothing, as an area whose source is gone does.
+    let (mut game, fighter) = weapon_match();
+    let weapon = game.load_weapon("cannon", &cannon);
+    let attacker = game.fighter(fighter, ActionSlots::new([(weapon, SlotKind::new(0), 1)]));
+    let target = game.spawn(1, ground(Num::ONE, Num::ZERO), ());
+    game.sim
+        .get_mut::<ActionSlots>(attacker)
+        .set_attack_target(Some(target));
+    game.sim.step();
+    let entity = game.sim.entity(attacker);
+    game.sim.world.despawn(entity);
+    let mut lives = Vec::new();
+    for _ in 0..3 {
+        game.sim.step();
+        lives.push(game.sim.health(target));
+    }
+    // The blast's splash of 0 + 0.5 × the attack damage of a source that is gone, which has no
+    // stats, is 0: the target keeps the 460 the attack left it, in every tick, and no call fails.
+    assert_eq!(game.failed_calls(), []);
+    assert_eq!(lives, [460, 460, 460]);
+    let mut areas = game.sim.world.query::<&Area>();
+    assert_eq!(areas.iter(&game.sim.world).count(), 0);
 }
 
 #[test]

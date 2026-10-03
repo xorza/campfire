@@ -31,6 +31,13 @@ pub enum Effecting {
     Xp { track: DeclaredName, amount: Number },
     /// `purge = { tag }`, of the modifiers that grant the tag.
     Purge { tag: DeclaredName },
+    /// `launch = { area, on_hit, on_end }`: an area type of the action's package, which runs its
+    /// own lists.
+    Launch {
+        area: DeclaredName,
+        on_hit: Vec<EffectData>,
+        on_end: Vec<EffectData>,
+    },
     /// An effect the design names that the release does not run yet; the load refuses it.
     Planned(PlannedEffect),
 }
@@ -39,7 +46,6 @@ pub enum Effecting {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PlannedEffect {
     Spawn,
-    Launch,
     Move,
     Loot,
     Noise,
@@ -101,6 +107,16 @@ struct PurgeFields {
     tag: DeclaredName,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LaunchFields {
+    area: DeclaredName,
+    #[serde(default)]
+    on_hit: Vec<EffectData>,
+    #[serde(default)]
+    on_end: Vec<EffectData>,
+}
+
 impl Effecting {
     /// The numbers it gives: its amount, and a modifier's duration.
     pub fn numbers(&self) -> impl Iterator<Item = &Number> + '_ {
@@ -110,9 +126,20 @@ impl Effecting {
             | Effecting::Restore { amount, .. }
             | Effecting::Xp { amount, .. } => (Some(amount), None),
             Effecting::Modifier { duration_ms, .. } => (None, duration_ms.as_ref()),
-            Effecting::Purge { .. } | Effecting::Planned(_) => (None, None),
+            Effecting::Purge { .. } | Effecting::Launch { .. } | Effecting::Planned(_) => {
+                (None, None)
+            }
         };
         amount.into_iter().chain(duration)
+    }
+
+    /// The effects of the lists it holds: a launch's `on_hit`, then its `on_end`.
+    pub fn nested(&self) -> impl Iterator<Item = &EffectData> + '_ {
+        let (on_hit, on_end): (&[EffectData], &[EffectData]) = match self {
+            Effecting::Launch { on_hit, on_end, .. } => (on_hit, on_end),
+            _ => (&[], &[]),
+        };
+        on_hit.iter().chain(on_end)
     }
 
     /// The modifier of its package it applies, if it applies one.
@@ -125,9 +152,8 @@ impl Effecting {
 }
 
 impl PlannedEffect {
-    pub const ALL: [PlannedEffect; 5] = [
+    pub const ALL: [PlannedEffect; 4] = [
         PlannedEffect::Spawn,
-        PlannedEffect::Launch,
         PlannedEffect::Move,
         PlannedEffect::Loot,
         PlannedEffect::Noise,
@@ -137,7 +163,6 @@ impl PlannedEffect {
     pub const fn name(self) -> &'static str {
         match self {
             PlannedEffect::Spawn => "spawn",
-            PlannedEffect::Launch => "launch",
             PlannedEffect::Move => "move",
             PlannedEffect::Loot => "loot",
             PlannedEffect::Noise => "noise",
@@ -158,7 +183,7 @@ impl<'de> Deserialize<'de> for EffectData {
             xp: Option<XpFields>,
             purge: Option<PurgeFields>,
             spawn: Option<IgnoredAny>,
-            launch: Option<IgnoredAny>,
+            launch: Option<LaunchFields>,
             #[serde(rename = "move")]
             moves: Option<IgnoredAny>,
             loot: Option<IgnoredAny>,
@@ -168,7 +193,6 @@ impl<'de> Deserialize<'de> for EffectData {
         let fields = Fields::deserialize(deserializer)?;
         let planned = [
             (fields.spawn.is_some(), PlannedEffect::Spawn),
-            (fields.launch.is_some(), PlannedEffect::Launch),
             (fields.moves.is_some(), PlannedEffect::Move),
             (fields.loot.is_some(), PlannedEffect::Loot),
             (fields.noise.is_some(), PlannedEffect::Noise),
@@ -195,7 +219,18 @@ impl<'de> Deserialize<'de> for EffectData {
         let purge = fields
             .purge
             .map(|PurgeFields { tag }| Effecting::Purge { tag });
-        let mut effects = [damage, heal, restore, modifier, xp, purge]
+        let launch = fields.launch.map(
+            |LaunchFields {
+                 area,
+                 on_hit,
+                 on_end,
+             }| Effecting::Launch {
+                area,
+                on_hit,
+                on_end,
+            },
+        );
+        let mut effects = [damage, heal, restore, modifier, xp, purge, launch]
             .into_iter()
             .flatten()
             .chain(planned);

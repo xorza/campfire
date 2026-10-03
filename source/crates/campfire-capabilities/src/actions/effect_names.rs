@@ -2,6 +2,7 @@ use crate::stats::pool_id::PoolId;
 use crate::units::modifier_id::ModifierId;
 use crate::units::tag::Tag;
 use crate::units::track_id::TrackId;
+use crate::units::unit_type::UnitType;
 use crate::values::damage_kind::DamageKind;
 use crate::values::declared_name::DeclaredName;
 
@@ -16,4 +17,6 @@ pub(crate) trait EffectNames {
     fn modifier(&self, name: &DeclaredName) -> ModifierId;
     fn track(&self, name: &DeclaredName) -> TrackId;
     fn tag(&self, name: &DeclaredName) -> Tag;
+    /// The projectile or area type `name` of the action's package.
+    fn delivery_type(&self, name: &DeclaredName) -> UnitType;
 }

@@ -111,7 +111,7 @@ The engine fixes the stages of a tick, and each capability puts its systems into
 | 4 | Move | Steering, the character controller, forced movement |
 | 5 | Collide | Core: the mode's collision backend resolves overlaps within each layer |
 | 6 | Hit | Actions whose time ended deliver: strikes, rays, projectiles, areas; actions resolve with their effects; modifier intervals |
-| 7 | Resolve | The damage and heal pass, deaths, auras |
+| 7 | Resolve | The damage and heal pass; the areas its weapons' `on_hit` lists launched land; deaths, auras |
 | 8 | Mode | Due timers, then the capabilities' events in the order they happened, region events among them; spawns; generated regions; `ctx.end` and `ctx.save` |
 | 9 | Vision | `vision` marks what each vision group sees. The tick's end: the dead whose type despawns go, and the units' action passives follow the ranks the Mode stage's calls learned |
 

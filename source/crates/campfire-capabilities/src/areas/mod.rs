@@ -4,9 +4,12 @@ use bevy_ecs::system::{Local, Query, Res, ResMut};
 use bevy_ecs::world::World;
 use campfire_common::Ticks;
 use campfire_math::Num;
-use campfire_sim::{Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry};
+use campfire_sim::{
+    Capability, Keyed, Ordered, Position, SimSet, SimTick, StableId, StateRegistry,
+};
 
 use crate::actions::action_target::ActionTarget;
+use crate::actions::effect_queues::EffectQueues;
 use crate::areas::area::Area;
 
 use crate::actions::targets::Targets;
@@ -43,18 +46,25 @@ pub struct Areas;
 
 impl Areas {
     /// Adds areas to a match. In Hit, after projectiles fly, each area due triggers, and its
-    /// reaches and its end run their action's `on_hit` and `on_end`; after the tick's projectiles
-    /// launch, its areas land. In Resolve, before stats hold their modifiers, each area lists
-    /// those it holds on the units inside.
+    /// reaches and its end run their action's `on_hit` and `on_end`, or its launch's; after the
+    /// tick's projectiles launch, its areas land. In Resolve, the areas the damage pass launched
+    /// land, and then, before stats hold their modifiers, each area lists those it holds on the
+    /// units inside. A launch queues as an effect of `areas`.
     pub fn install(world: &mut World, schedule: &mut Schedule, registry: &mut StateRegistry) {
         Deliveries::install(world, schedule);
         world.insert_resource(AreaLaunches::default());
         world.insert_resource(ByType::<AreaSpec>::default());
+        world
+            .resource_mut::<EffectQueues>()
+            .register(Capability::Areas, AreaEffect::queue_listed);
         schedule.add_systems((
             trigger.in_set(DeliverySet::Trigger),
             land.in_set(SimSet::Hit)
                 .after(CombatSet::Launch)
                 .before(CombatSet::Interval),
+            land.in_set(SimSet::Resolve)
+                .after(CombatSet::Damage)
+                .before(CombatSet::Die),
             hold_inside
                 .in_set(SimSet::Resolve)
                 .after(CombatSet::Die)
@@ -67,14 +77,7 @@ impl Areas {
     /// where it says.
     fn apply(world: &mut World, effect: AreaEffect) {
         let at = Bounds::of(world).clamp(effect.at);
-        Areas::push(
-            world,
-            effect.by,
-            effect.unit_type,
-            at,
-            None,
-            Some(effect.id),
-        );
+        Areas::push(world, effect.by, effect.unit_type, at, None, effect.id);
     }
 
     /// Lands the area of `unit_type` of `by`, which aimed at `target` from `from`: on the point it

@@ -3,10 +3,11 @@ use std::{iter, slice};
 
 use campfire_capabilities::{
     ActionData, ActionDataField, ActionKind, ActionSlots, ApiOwner, ApiVersion, BookError, Books,
-    CollisionData, CombatRules, DeclaredName, DeliveryData, EffectTo, Effecting, EngineTag,
-    EnumRecord, FilterData, Hook, MemberKind, ModifierData, ModifierProblem, NameKind, Number,
-    Offers, PackagePath, Param, ParamProblem, Pools, ProjectileHits, Range, RangeField, ResourceId,
-    Scalar, ScriptApi, ScriptRole, Stat, Targeting, TrackId, TypePlace, UnitTypeData, UnitTypeFile,
+    CollisionData, CombatRules, DeclaredName, DeliveryData, EffectData, EffectTo, Effecting,
+    EngineTag, EnumRecord, FilterData, Hook, MemberKind, ModifierData, ModifierProblem, NameKind,
+    Number, Offers, PackagePath, Param, ParamProblem, Pools, ProjectileHits, Range, RangeField,
+    ResourceId, Scalar, ScriptApi, ScriptRole, Stat, Targeting, TrackId, TypePlace, UnitTypeData,
+    UnitTypeFile,
 };
 use campfire_math::Num;
 use campfire_sim::{Capability, TickRate};
@@ -373,7 +374,7 @@ impl<'a> LoadCheck<'a> {
             let at = Place::Action(id.clone());
             self.kind(id, ability)?;
             self.ranked(id, ability, ranks(id.as_str()))?;
-            self.effects(id, ability)?;
+            self.effects(id, ability, units)?;
             if let Some(delivery) = &ability.delivery {
                 let capability = match delivery {
                     DeliveryData::Projectile { .. } => Capability::Projectiles,
@@ -898,78 +899,123 @@ impl<'a> LoadCheck<'a> {
         Ok(())
     }
 
-    /// The effect lists of `action`, whose id is `id`: each effect one the release runs, of a
-    /// capability the mode declares and a name it declares, in a list that runs, a hit's of a
-    /// delivery or of an attack, which reaches its target at once, to a unit the list reaches; and each number at least 0 and a sim number at every rank, a duration whole
-    /// milliseconds within a `u32`. The modifiers and params they name, the action's checks find.
-    fn effects(&self, id: &DeclaredName, action: &ActionData) -> Result<(), LoadProblem> {
-        let data = &self.packages.data;
-        let at = Place::Action(id.clone());
+    /// The effect lists of `action`, whose id is `id`, of a package of `units`: a hit's or an
+    /// end's list of an action that delivers, or of an attack, which reaches its target at once;
+    /// and each list as `effect_list` checks it.
+    fn effects(
+        &self,
+        id: &DeclaredName,
+        action: &ActionData,
+        units: &BTreeMap<DeclaredName, UnitTypeFile>,
+    ) -> Result<(), LoadProblem> {
         for (list, effects) in action.effect_lists() {
-            let fail = |problem| LoadProblem::Effect {
-                action: id.clone(),
-                list,
-                problem,
-            };
             let delivers = action.delivery.is_some() || action.kind == ActionKind::Attack;
             if !effects.is_empty() && list != Hook::OnResolve && !delivers {
-                return Err(fail(EffectProblem::NoDelivery));
+                return Err(LoadProblem::Effect {
+                    action: id.clone(),
+                    list,
+                    problem: EffectProblem::NoDelivery,
+                });
             }
             let reaches = match list {
                 Hook::OnResolve => matches!(action.targeting, Targeting::Unit(_)),
                 _ => list == Hook::OnHit,
             };
-            for effect in effects {
-                if effect.to == EffectTo::Reached && !reaches {
-                    return Err(fail(EffectProblem::NoUnit));
+            self.effect_list(id, action, units, list, effects, reaches)?;
+        }
+        Ok(())
+    }
+
+    /// The list `effects` of `action`, whose id is `id`, which runs before `list` and reaches a
+    /// unit when `reaches`: each effect one the release runs, of a capability the mode declares
+    /// and a name it declares, to a unit the list reaches; each number at least 0 and a sim
+    /// number at every rank, a duration whole milliseconds within a `u32`; a launch of an area
+    /// type of `units`, whose `on_hit` reaches a unit and whose `on_end` does not. The modifiers
+    /// and params they name, the action's checks find.
+    fn effect_list(
+        &self,
+        id: &DeclaredName,
+        action: &ActionData,
+        units: &BTreeMap<DeclaredName, UnitTypeFile>,
+        list: Hook,
+        effects: &[EffectData],
+        reaches: bool,
+    ) -> Result<(), LoadProblem> {
+        let data = &self.packages.data;
+        let at = Place::Action(id.clone());
+        let fail = |problem| LoadProblem::Effect {
+            action: id.clone(),
+            list,
+            problem,
+        };
+        for effect in effects {
+            if effect.to == EffectTo::Reached && !reaches {
+                return Err(fail(EffectProblem::NoUnit));
+            }
+            let unknown = |of, name: &DeclaredName| LoadProblem::Unknown {
+                of,
+                at: at.clone(),
+                name: name.to_string(),
+            };
+            match &effect.does {
+                Effecting::Planned(planned) => {
+                    return Err(fail(EffectProblem::Planned(*planned)));
                 }
-                let unknown = |of, name: &DeclaredName| LoadProblem::Unknown {
-                    of,
-                    at: at.clone(),
-                    name: name.to_string(),
-                };
-                match &effect.does {
-                    Effecting::Planned(planned) => {
-                        return Err(fail(EffectProblem::Planned(*planned)));
-                    }
-                    Effecting::Damage { kind, .. } => {
-                        self.require(Capability::Combat, &at)?;
-                        if !data.combat.damage_kinds.contains(kind) {
-                            return Err(unknown(NameKind::DamageKind, kind));
-                        }
-                    }
-                    Effecting::Heal { .. } => self.require(Capability::Combat, &at)?,
-                    Effecting::Restore { pool, .. } => {
-                        self.require(Capability::Combat, &at)?;
-                        if !data.pools.contains_key(pool) {
-                            return Err(unknown(NameKind::Pool, pool));
-                        }
-                    }
-                    Effecting::Modifier { duration_ms, .. } => {
-                        self.require(Capability::Stats, &at)?;
-                        if let Some(duration) = duration_ms
-                            && !whole_ms(action, duration)
-                        {
-                            return Err(fail(EffectProblem::Duration));
-                        }
-                    }
-                    Effecting::Xp { track, .. } => {
-                        self.require(Capability::Progression, &at)?;
-                        if !data.tracks.contains_key(track) {
-                            return Err(unknown(NameKind::Track, track));
-                        }
-                    }
-                    Effecting::Purge { tag } => {
-                        self.require(Capability::Stats, &at)?;
-                        own_tags(slice::from_ref(tag), &at)?;
-                        if !self.tags.contains(tag.as_str()) {
-                            return Err(unknown(NameKind::Tag, tag));
-                        }
+                Effecting::Damage { kind, .. } => {
+                    self.require(Capability::Combat, &at)?;
+                    if !data.combat.damage_kinds.contains(kind) {
+                        return Err(unknown(NameKind::DamageKind, kind));
                     }
                 }
-                for number in effect.does.numbers() {
-                    number_holds(action, number).map_err(fail)?;
+                Effecting::Heal { .. } => self.require(Capability::Combat, &at)?,
+                Effecting::Restore { pool, .. } => {
+                    self.require(Capability::Combat, &at)?;
+                    if !data.pools.contains_key(pool) {
+                        return Err(unknown(NameKind::Pool, pool));
+                    }
                 }
+                Effecting::Modifier { duration_ms, .. } => {
+                    self.require(Capability::Stats, &at)?;
+                    if let Some(duration) = duration_ms
+                        && !whole_ms(action, duration)
+                    {
+                        return Err(fail(EffectProblem::Duration));
+                    }
+                }
+                Effecting::Xp { track, .. } => {
+                    self.require(Capability::Progression, &at)?;
+                    if !data.tracks.contains_key(track) {
+                        return Err(unknown(NameKind::Track, track));
+                    }
+                }
+                Effecting::Purge { tag } => {
+                    self.require(Capability::Stats, &at)?;
+                    own_tags(slice::from_ref(tag), &at)?;
+                    if !self.tags.contains(tag.as_str()) {
+                        return Err(unknown(NameKind::Tag, tag));
+                    }
+                }
+                Effecting::Launch {
+                    area,
+                    on_hit,
+                    on_end,
+                } => {
+                    self.require(Capability::Areas, &at)?;
+                    let unit_type = units
+                        .get(area)
+                        .ok_or_else(|| unknown(NameKind::UnitType, area))?;
+                    if unit_type.area.is_none() {
+                        return Err(LoadProblem::Delivery(DeliveryProblem::WrongSection {
+                            action: id.clone(),
+                            unit_type: area.clone(),
+                        }));
+                    }
+                    self.effect_list(id, action, units, Hook::OnHit, on_hit, true)?;
+                    self.effect_list(id, action, units, Hook::OnEnd, on_end, false)?;
+                }
+            }
+            for number in effect.does.numbers() {
+                number_holds(action, number).map_err(fail)?;
             }
         }
         Ok(())

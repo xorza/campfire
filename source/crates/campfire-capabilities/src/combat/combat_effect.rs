@@ -60,7 +60,7 @@ impl CombatEffect {
                 pool,
                 amount: amount.number(frame),
             },
-            Does::Modifier { .. } | Does::Xp { .. } | Does::Purge { .. } => {
+            Does::Modifier { .. } | Does::Xp { .. } | Does::Purge { .. } | Does::Launch { .. } => {
                 unreachable!("combat queues only its own listed effects")
             }
         };

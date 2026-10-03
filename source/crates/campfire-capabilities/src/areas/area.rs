@@ -7,13 +7,14 @@ use serde::de::Error;
 use serde::{Deserialize, Deserializer, Serialize};
 
 use crate::actions::action_book::ActionBook;
+use crate::actions::effect_lists::EffectLists;
 use crate::areas::area_spec::AreaSpec;
 use crate::deliveries::delivering::Delivering;
 use crate::stats::modifier_book::ModifierBook;
 use crate::units::by_type::ByType;
 use crate::units::unit_type::UnitType;
 
-/// An area unit on the ground: the delivery it is, whose `on_hit` and `on_end` it runs, the unit
+/// An area unit on the ground: the delivery it is, whose lists and hooks it runs, the unit
 /// its action aimed at, if one, the tick it triggers, `None` once it did, and the tick it ends,
 /// never before its trigger.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize)]
@@ -66,8 +67,9 @@ impl SimComponent for Area {
     const NAME: &'static str = "areas.area";
 
     // An area of a type with no area section, or of an action the book lacks or at a rank past
-    // its ranks, has no rules for its trigger or its hooks; and one whose action does not give a
-    // param its inside modifiers read would fail as a unit takes one.
+    // its ranks, or of a launch the match did not load, has no rules for its trigger or its
+    // hooks; and one whose action does not give a param its inside modifiers read would fail as
+    // a unit takes one.
     fn check(&self, world: &World, entity: Entity) -> bool {
         let spec = world
             .get::<UnitType>(entity)
@@ -77,12 +79,22 @@ impl SimComponent for Area {
         let by = book
             .and_then(|book| book.get(self.by.action))
             .is_some_and(|action| action.has_rank(self.by.rank));
-        let Delivering { action, rank, .. } = self.by;
+        let Delivering {
+            action,
+            rank,
+            launch,
+            ..
+        } = self.by;
+        let launched = launch.is_none_or(|launch| {
+            world
+                .get_resource::<EffectLists>()
+                .is_some_and(|lists| lists.has_launch(launch))
+        });
         let applies = |modifier| ModifierBook::has_way_in(world, modifier, Some(action), rank);
         let holds = |spec: &AreaSpec| spec.inside.modifiers().all(applies);
         let times =
             self.triggers_at.is_none_or(|at| at <= Tick::LIMIT) && self.ends_at <= Tick::LIMIT;
-        by && spec.is_some_and(holds) && times
+        by && launched && spec.is_some_and(holds) && times
     }
 }
 

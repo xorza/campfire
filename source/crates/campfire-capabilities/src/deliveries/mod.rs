@@ -7,7 +7,7 @@ use campfire_script::rhai::Dynamic;
 use campfire_sim::{EntityIndex, SimSet, SimTick};
 
 use crate::actions::action_book::ActionBook;
-use crate::actions::effect_lists::EffectLists;
+use crate::actions::effect_lists::{EffectLists, ListsOf};
 use crate::combat::CombatSet;
 use crate::deliveries::delivered::{Delivered, Reach};
 use crate::scripts::call_start::CallStart;
@@ -84,8 +84,9 @@ fn deliver(
 /// Runs the hooks of `due`, in order: each with its action's params at its rank, its caster,
 /// `()` once gone, its target, `()` for an end, and its hit, from its caster's player's pool, or
 /// the think pool. The action's list for the hook queues first, to the unit reached; a hook its
-/// action's script does not define does not run, and its list applies alone. A failed call
-/// changes nothing, its list included, and is recorded.
+/// action's script does not define does not run, and its list applies alone. A launch's area
+/// runs its launch's list alone, and no hook. A failed call changes nothing, its list included,
+/// and is recorded.
 fn run_hooks(world: &mut World, due: &[Delivered]) {
     if due.is_empty() {
         return;
@@ -102,10 +103,13 @@ fn run_hooks(world: &mut World, due: &[Delivered]) {
             let action = book
                 .get(by.action)
                 .expect("a delivery's action is in the book");
-            let script = action.hook(hook);
+            let script = action.hook(hook).filter(|_| by.launch.is_none());
             let package = action.package;
             let lists = batch.world().resource::<EffectLists>();
-            if script.is_none() && lists.of(by.action, hook).is_empty() {
+            let of = by
+                .launch
+                .map_or(ListsOf::Action(by.action), ListsOf::Launch);
+            if script.is_none() && lists.of(of, hook).is_empty() {
                 continue;
             }
             let view = ctx.view();
@@ -131,7 +135,7 @@ fn run_hooks(world: &mut World, due: &[Delivered]) {
             }
             let queued = EffectLists::queue(
                 batch.world(),
-                by.action,
+                of,
                 hook,
                 &mut ctx.frame(),
                 ctx.view(),

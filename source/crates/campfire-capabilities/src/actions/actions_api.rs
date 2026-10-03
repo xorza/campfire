@@ -39,7 +39,9 @@ impl ActionsApi {
         .action_fields(ActionDataField::of(None))
         .data(
             DataTable::Effect,
-            &["damage", "heal", "restore", "modifier", "xp", "purge", "to"],
+            &[
+                "damage", "heal", "restore", "modifier", "xp", "purge", "launch", "to",
+            ],
             &PlannedEffect::ALL.map(PlannedEffect::name),
         );
     }
