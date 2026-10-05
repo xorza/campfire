@@ -265,6 +265,43 @@ pub enum LoadProblem {
         path: PackagePath,
         problem: LocaleProblem,
     },
+    /// The mode's item types, its shop or an inventory.
+    Item(ItemProblem),
+}
+
+/// What is wrong with the mode's item types, its shop or an inventory.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ItemProblem {
+    /// A package other than the mode holds item types, which no shop or inventory names.
+    OutsideMode,
+    /// The item is built, through its components, from itself.
+    ComponentLoop(DeclaredName),
+    /// An inventory at `at` fills a slot kind with ranks, while an item's action has one.
+    RankedInventory { at: Place, kind: DeclaredName },
+    /// A unit type at `at` holds more slots, its own and its inventory's, than a unit holds.
+    TooManySlots(Place),
+}
+
+impl fmt::Display for ItemProblem {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ItemProblem::OutsideMode => f.write_str("only the mode package holds item types"),
+            ItemProblem::ComponentLoop(item) => {
+                write!(f, "item {item} is built from itself through its components")
+            }
+            ItemProblem::RankedInventory { at, kind } => {
+                write!(
+                    f,
+                    "{at}: its inventory fills {kind}, a slot kind with ranks"
+                )
+            }
+            ItemProblem::TooManySlots(at) => write!(
+                f,
+                "{at}: more than {} slots with its inventory",
+                ActionSlots::LIMIT
+            ),
+        }
+    }
 }
 
 /// What is wrong with a file of human text.
@@ -480,6 +517,10 @@ pub enum Place {
     Resources,
     /// The mode's slot kinds.
     SlotKinds,
+    /// The mode's item type of that id.
+    Item(DeclaredName),
+    /// The mode's `[shop]`.
+    Shop,
 }
 
 /// A use of `ctx` that hides it from the load checks: every value of `ctx` in a script is a
@@ -564,6 +605,8 @@ impl fmt::Display for Place {
             Place::Loadouts => f.write_str("the mode's loadouts"),
             Place::Resources => f.write_str("the mode's resources and pools"),
             Place::SlotKinds => f.write_str("the mode's slot kinds"),
+            Place::Item(id) => write!(f, "item {id}"),
+            Place::Shop => f.write_str("the mode's [shop]"),
         }
     }
 }
@@ -791,6 +834,7 @@ impl fmt::Display for LoadProblem {
             LoadProblem::NoLifePool => f.write_str("combat with no [combat] life"),
             LoadProblem::CombatMissing(at) => write!(f, "{at}: the life pool without combat"),
             LoadProblem::Locale { path, problem } => write!(f, "{path}: {problem}"),
+            LoadProblem::Item(problem) => write!(f, "{problem}"),
             LoadProblem::UnitKit { at, error } => write!(f, "{at}: {error}"),
             LoadProblem::Ai { at, error } => write!(f, "{at}: {error}"),
             LoadProblem::Action { action, error } => write!(f, "action \"{action}\": {error}"),

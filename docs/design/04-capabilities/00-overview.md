@@ -32,7 +32,7 @@ Every capability says its mechanism in the same few terms, so that capabilities 
 | `hitboxes` | planned | The ray and sweep deliveries: shots and swings against hitboxes, lag compensation, spread | [Hitboxes](hitboxes.md) |
 | `navigation` | built | Layers, routes on a grid or a navmesh, local steering, waypoint paths | [Navigation](navigation.md) |
 | `vision` | built | What each vision group sees: grid fog of war, hidden units and detection, 3D occlusion, relevance | [Vision](vision.md) |
-| `items` | planned | Inventories, item types, recipes and shops; an item grants modifiers and an action; later equipment, world items and crafting | [Items](items.md) |
+| `items` | built | Inventories, item types, recipes and shops; an item grants modifiers and an action; later equipment, world items and crafting | [Items](items.md) |
 | `progression` | built | Experience on tracks, levels, points to learn ranks, perks, veterancy | [Progression](progression.md) |
 | `quests` | planned | Quests with stages and objectives, dialogue with topics and choices, campaign objectives | [Quests](quests.md) |
 | `interaction` | planned | The use action on objects: doors, containers, plant and defuse, capture points, dialogue, entering vehicles and buildings | [Interaction](interaction.md) |

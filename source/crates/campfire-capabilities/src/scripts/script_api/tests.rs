@@ -14,6 +14,9 @@ use crate::areas::area_data::{AreaData, AreaInside};
 use crate::capability_set::CapabilitySet;
 use crate::combat::combat_data::CombatData;
 use crate::combat::combat_rules::{CombatRules, Leech};
+use crate::items::inventory_data::InventoryData;
+use crate::items::item_data::ItemData;
+use crate::items::shop_data::ShopData;
 use crate::mode::choice_data::ChoiceData;
 use crate::mode::mode_data::ModeData;
 use crate::mode::relation_data::RelationData;
@@ -219,10 +222,10 @@ fn the_reference_is_what_the_registry_writes() {
 #[test]
 fn the_data_fields_are_the_schemas() {
     let api = CapabilitySet::script_api();
-    // The mode's file holds its package's actions and modifiers beside `ModeData`, which
-    // the package load reads apart.
+    // The mode's file holds its package's actions, modifiers and item types beside `ModeData`,
+    // which the package load reads apart.
     let mut mode = serde_fields::<ModeData>();
-    mode.extend(["actions", "modifiers"]);
+    mode.extend(["actions", "modifiers", "items"]);
     mode.sort_unstable();
     let tables = [
         (DataTable::Mode, mode),
@@ -247,6 +250,9 @@ fn the_data_fields_are_the_schemas() {
         (DataTable::Collision, serde_fields::<CollisionData>()),
         (DataTable::Ai, serde_fields::<AiData>()),
         (DataTable::Tag, serde_fields::<TagData>()),
+        (DataTable::Item, serde_fields::<ItemData>()),
+        (DataTable::Inventory, serde_fields::<InventoryData>()),
+        (DataTable::Shop, serde_fields::<ShopData>()),
     ];
     for (table, schema) in tables {
         let mut recorded: Vec<_> = api

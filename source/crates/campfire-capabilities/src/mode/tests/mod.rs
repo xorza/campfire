@@ -573,6 +573,7 @@ fn mode_files() -> ModeFiles {
             }],
             tags: BTreeMap::new(),
             tracks: tracks(),
+            shop: None,
         },
         modifiers: [
             ("blessing".to_owned(), blessing()),

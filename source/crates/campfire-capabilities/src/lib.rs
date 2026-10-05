@@ -25,6 +25,7 @@ mod books;
 mod capability_set;
 mod combat;
 mod deliveries;
+mod items;
 mod mode;
 mod navigation;
 mod orders;
@@ -86,6 +87,10 @@ pub use scripts::state_decl::synced_state_decl::SyncTo;
 
 pub use mode::team_manifest::TeamManifest;
 
+pub use items::Items;
+pub use items::inventory_data::InventoryData;
+pub use items::item_data::ItemData;
+pub use items::shop_data::ShopData;
 pub use mode::unit_kit::UnitKit;
 pub use navigation::Navigation;
 pub use navigation::destination::Destination;

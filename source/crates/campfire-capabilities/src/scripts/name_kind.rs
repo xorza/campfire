@@ -27,6 +27,8 @@ pub enum NameKind {
     SlotKind,
     /// An action of the script's own package.
     Ability,
+    /// An item type of the mode package.
+    Item,
 }
 
 impl fmt::Display for NameKind {
@@ -50,6 +52,7 @@ impl fmt::Display for NameKind {
             NameKind::Path => "path",
             NameKind::Choice => "choice",
             NameKind::SlotKind => "slot kind",
+            NameKind::Item => "item type",
             NameKind::Ability => "ability",
         })
     }

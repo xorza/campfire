@@ -3,7 +3,7 @@ use serde::Deserialize;
 use serde::de::Error;
 
 /// The keys of a data file's table that hold a package's content.
-const KEYS: [&str; 3] = ["actions", "modifiers", "units"];
+const KEYS: [&str; 4] = ["actions", "modifiers", "units", "items"];
 
 /// Takes a package's content's keys out of `table`, a data file's, and reads them; the rest of
 /// the table stays.

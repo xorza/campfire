@@ -6,6 +6,7 @@ use serde::Deserialize;
 use crate::actions::cost_target::CostTarget;
 use crate::actions::slot_kinds::SlotKinds;
 use crate::combat::combat_rules::CombatRules;
+use crate::items::shop_data::ShopData;
 use crate::mode::choice_data::ChoiceData;
 use crate::mode::relation_data::RelationData;
 use crate::navigation::navigation_rules::NavigationRules;
@@ -21,8 +22,8 @@ use crate::values::package_path::PackagePath;
 use crate::values::scalar::Scalar;
 use crate::values::stat::Stat;
 
-/// The mode's `data/mode.toml`, but its actions and modifiers, which its package's content holds:
-/// its script, its player inputs, its state and its params.
+/// The mode's `data/mode.toml`, but its actions, modifiers and item types, which its package's
+/// content holds: its script, its player inputs, its state, its params and its shop.
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct ModeData {
@@ -64,6 +65,8 @@ pub struct ModeData {
     /// The tracks its units gain experience on, by name.
     #[serde(default)]
     pub tracks: BTreeMap<DeclaredName, TrackData>,
+    /// Where its units buy and sell items.
+    pub shop: Option<ShopData>,
 }
 
 impl ModeData {

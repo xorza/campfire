@@ -153,7 +153,7 @@ fn the_design_names_each_capability_and_marks_built_exactly_those_the_release_in
 
 /// The layer of each module of the crate, lowest first: a module imports from its own layer
 /// and the layers below, as design 02's structural rules ask. `lib.rs` sits above them all.
-const LAYERS: [(&str, u8); 19] = [
+const LAYERS: [(&str, u8); 20] = [
     ("values", 0),
     ("units", 1),
     ("scripts", 1),
@@ -169,6 +169,7 @@ const LAYERS: [(&str, u8); 19] = [
     ("vision", 5),
     ("progression", 5),
     ("production", 5),
+    ("items", 5),
     ("orders", 6),
     ("mode", 7),
     ("capability_set", 8),
@@ -386,7 +387,7 @@ fn a_name_is_looked_up_only_by_a_script_call_or_the_load() {
 
 /// The state types of the core, then those each capability adds to the ones it builds on, in
 /// name order: each its own.
-const STATE: [(Option<Capability>, &[&str]); 11] = [
+const STATE: [(Option<Capability>, &[&str]); 12] = [
     (
         None,
         &[
@@ -456,6 +457,7 @@ const STATE: [(Option<Capability>, &[&str]); 11] = [
     (Some(Abilities), &[]),
     (Some(Orders), &["orders.next_think", "orders.resetting"]),
     (Some(Capability::Production), &["production.train_queue"]),
+    (Some(Capability::Items), &[]),
 ];
 
 #[test]

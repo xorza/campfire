@@ -25,8 +25,8 @@ mod script_facts;
 mod texts;
 
 pub use error::{
-    ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem, EffectProblem, Limit, LoadError,
-    LoadProblem, LocaleProblem, PackageRef, Place, ScriptProblem, StoreError,
+    ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem, EffectProblem, ItemProblem, Limit,
+    LoadError, LoadProblem, LocaleProblem, PackageRef, Place, ScriptProblem, StoreError,
 };
 pub use files::avatar_data::AvatarData;
 pub use files::tick_range::TickRange;

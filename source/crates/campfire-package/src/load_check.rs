@@ -4,18 +4,18 @@ use std::{iter, slice};
 use campfire_capabilities::{
     ActionData, ActionDataField, ActionKind, ActionSlots, ApiOwner, ApiVersion, BookError, Books,
     CollisionData, CombatRules, DeclaredName, DeliveryData, EffectData, EffectTo, Effecting,
-    EngineTag, EnumRecord, FilterData, Hook, MemberKind, ModifierData, ModifierProblem, MoveData,
-    NameKind, Number, Offers, PackagePath, Param, ParamProblem, Pools, ProjectileHits, Range,
-    RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Stat, Targeting, TrackId, TypePlace,
-    UnitTypeData, UnitTypeFile,
+    EngineTag, EnumRecord, FilterData, Hook, ItemData, MemberKind, ModifierData, ModifierProblem,
+    MoveData, NameKind, Number, Offers, PackagePath, Param, ParamProblem, Pools, ProjectileHits,
+    Range, RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Stat, Targeting, TrackId,
+    TypePlace, UnitTypeData, UnitTypeFile,
 };
 use campfire_math::Num;
 use campfire_sim::{Capability, TickRate};
 
 use crate::dependent::{Dependent, DependentKind};
 use crate::error::{
-    ChoiceProblem, CtxMisuse, DeliveryProblem, EffectProblem, Limit, LoadError, LoadProblem, Place,
-    ScriptProblem,
+    ChoiceProblem, CtxMisuse, DeliveryProblem, EffectProblem, ItemProblem, Limit, LoadError,
+    LoadProblem, Place, ScriptProblem,
 };
 use crate::mode_packages::ModePackages;
 use crate::modifier_ways::{ModifierWays, Way};
@@ -231,6 +231,7 @@ impl<'a> LoadCheck<'a> {
         }
         self.slot_kinds()?;
         self.choices()?;
+        self.items()?;
         for (name, unit_type) in units {
             let at = Place::UnitType(name.clone());
             self.unit_type(unit_type, &at, &content.actions, &content.modifiers)?;
@@ -302,6 +303,9 @@ impl<'a> LoadCheck<'a> {
     ) -> Result<(), LoadProblem> {
         let package = &dependent.package;
         let content = &dependent.content;
+        if !content.items.is_empty() {
+            return Err(LoadProblem::Item(ItemProblem::OutsideMode));
+        }
         let (actions, modifiers) = (&content.actions, &content.modifiers);
         let slotted = match &dependent.kind {
             DependentKind::Avatar(avatar) => {
@@ -787,7 +791,11 @@ impl<'a> LoadCheck<'a> {
                 packages.content.units.contains_key(name)
                     || packages.avatar_names().any(|avatar| avatar == name)
             }
-            NameKind::Param | NameKind::Cost | NameKind::Layer | NameKind::Message => {
+            NameKind::Param
+            | NameKind::Cost
+            | NameKind::Layer
+            | NameKind::Message
+            | NameKind::Item => {
                 unreachable!("no argument of the script API is a {}", named.kind)
             }
         };
@@ -1153,6 +1161,7 @@ impl<'a> LoadCheck<'a> {
             (unit_type.production.is_some(), Capability::Production),
             (unit_type.projectile.is_some(), Capability::Projectiles),
             (unit_type.area.is_some(), Capability::Areas),
+            (unit_type.inventory.is_some(), Capability::Items),
         ];
         for (used, capability) in sections {
             if used {
@@ -1223,6 +1232,7 @@ impl<'a> LoadCheck<'a> {
                 }
             }
         }
+        self.inventory(unit_type, at)?;
         if let Some(passive) = &unit_type.passive {
             modifier_exists(modifiers, passive.as_str(), at)?;
         }
@@ -1237,6 +1247,100 @@ impl<'a> LoadCheck<'a> {
                 at: at.clone(),
                 name: track.to_string(),
             });
+        }
+        Ok(())
+    }
+
+    /// The inventory of a unit type at `at`, if it has one: it fills a slot kind the mode declares,
+    /// of one rank, as an item's action has, and its slots and the type's own are no more than a
+    /// unit holds.
+    fn inventory(&self, unit_type: &UnitTypeFile, at: &Place) -> Result<(), LoadProblem> {
+        let Some(inventory) = &unit_type.inventory else {
+            return Ok(());
+        };
+        let kinds = &self.packages.data.slots;
+        let kind = kinds.named(inventory.kind.as_str()).ok_or_else(|| {
+            LoadProblem::Choice(ChoiceProblem::UnknownSlotKind {
+                at: at.clone(),
+                kind: inventory.kind.to_string(),
+            })
+        })?;
+        if kinds.ranks(kind) != 1 {
+            return Err(LoadProblem::Item(ItemProblem::RankedInventory {
+                at: at.clone(),
+                kind: inventory.kind.clone(),
+            }));
+        }
+        let own: usize = unit_type.slots.values().map(Vec::len).sum();
+        if own + usize::from(inventory.slots.get()) > ActionSlots::LIMIT {
+            return Err(LoadProblem::Item(ItemProblem::TooManySlots(at.clone())));
+        }
+        Ok(())
+    }
+
+    /// The mode's item types and its shop: an item costs in the mode's player resources, is
+    /// built from items of the mode and never from itself, and names modifiers and an action of
+    /// the mode; the shop sells the mode's items, for one of its player resources, at a tag of the
+    /// map's markers. Either needs `items`.
+    fn items(&self) -> Result<(), LoadProblem> {
+        let packages = self.packages;
+        let (data, content) = (&packages.data, &packages.content);
+        let items = &content.items;
+        let unknown = |at: &Place, name: &DeclaredName, of| LoadProblem::Unknown {
+            at: at.clone(),
+            name: name.to_string(),
+            of,
+        };
+        for (id, item) in items {
+            let at = Place::Item(id.clone());
+            self.require(Capability::Items, &at)?;
+            let resource =
+                |name: &&DeclaredName| ResourceId::named(&data.resources, name.as_str()).is_none();
+            if let Some(name) = item.cost.keys().find(resource) {
+                return Err(unknown(&at, name, NameKind::Resource));
+            }
+            if let Some(name) = item
+                .components
+                .iter()
+                .find(|name| !items.contains_key(*name))
+            {
+                return Err(unknown(&at, name, NameKind::Item));
+            }
+            let modifiers = &content.modifiers;
+            if let Some(name) = item
+                .modifiers
+                .iter()
+                .find(|name| !modifiers.contains_key(*name))
+            {
+                return Err(unknown(&at, name, NameKind::Modifier));
+            }
+            if let Some(action) = item
+                .action
+                .as_ref()
+                .filter(|action| !content.actions.contains_key(*action))
+            {
+                return Err(unknown(&at, action, NameKind::Ability));
+            }
+        }
+        if let Some(looped) = component_loop(items) {
+            return Err(LoadProblem::Item(ItemProblem::ComponentLoop(
+                looped.clone(),
+            )));
+        }
+        let Some(shop) = &data.shop else {
+            return Ok(());
+        };
+        let at = Place::Shop;
+        self.require(Capability::Items, &at)?;
+        if let Some(name) = shop.items.iter().find(|name| !items.contains_key(*name)) {
+            return Err(unknown(&at, name, NameKind::Item));
+        }
+        if ResourceId::named(&data.resources, shop.resource.as_str()).is_none() {
+            return Err(unknown(&at, &shop.resource, NameKind::Resource));
+        }
+        let tagged = packages.map.markers.iter().flat_map(|marker| &marker.tags);
+        if !tagged.into_iter().any(|tag| *tag == shop.at) {
+            return Err(unknown(&at, &shop.at, NameKind::MarkerTag));
         }
         Ok(())
     }
@@ -1651,4 +1755,39 @@ fn delivery_holds(
 /// Whether `names` holds `name`.
 fn declares<'n>(mut names: impl Iterator<Item = &'n DeclaredName>, name: &str) -> bool {
     names.any(|declared| declared.as_str() == name)
+}
+
+/// An item of `items` built, through its components, from itself, if one is: the first a walk of
+/// each item's components in id order meets again on its own path.
+fn component_loop(items: &BTreeMap<DeclaredName, ItemData>) -> Option<&DeclaredName> {
+    /// Where the walk is with an item: not met, on the path, or done with every item it is built
+    /// from.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    enum Mark {
+        Open,
+        OnPath,
+        Done,
+    }
+    fn walk<'i>(
+        id: &'i DeclaredName,
+        items: &'i BTreeMap<DeclaredName, ItemData>,
+        marks: &mut BTreeMap<&'i DeclaredName, Mark>,
+    ) -> Option<&'i DeclaredName> {
+        match marks.get(id).copied().unwrap_or(Mark::Open) {
+            Mark::OnPath => return Some(id),
+            Mark::Done => return None,
+            Mark::Open => {}
+        }
+        marks.insert(id, Mark::OnPath);
+        let components = items.get(id).map_or(&[][..], |item| &item.components[..]);
+        for component in components {
+            if let Some(looped) = walk(component, items, marks) {
+                return Some(looped);
+            }
+        }
+        marks.insert(id, Mark::Done);
+        None
+    }
+    let mut marks = BTreeMap::new();
+    items.keys().find_map(|id| walk(id, items, &mut marks))
 }

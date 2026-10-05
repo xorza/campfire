@@ -234,6 +234,8 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | Field | Status |
 | --- | --- |
 | `tracks` | since 1.0 |
+| `items` | since 1.0 |
+| `shop` | since 1.0 |
 | `script` | since 1.0 |
 | `combat` | since 1.0 |
 | `navigation` | since 1.0 |
@@ -458,3 +460,30 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | `hidden` | since 1.0 |
 | `detects` | since 1.0 |
 | `immune` | since 1.0 |
+
+### An item type, `[items.<id>]`
+
+| Field | Status |
+| --- | --- |
+| `cost` | since 1.0 |
+| `components` | since 1.0 |
+| `stack` | since 1.0 |
+| `uses` | since 1.0 |
+| `modifiers` | since 1.0 |
+| `action` | since 1.0 |
+
+### A unit type's `inventory`
+
+| Field | Status |
+| --- | --- |
+| `slots` | since 1.0 |
+| `kind` | since 1.0 |
+
+### The mode's `[shop]`
+
+| Field | Status |
+| --- | --- |
+| `items` | since 1.0 |
+| `resource` | since 1.0 |
+| `at` | since 1.0 |
+| `sell_share` | since 1.0 |
