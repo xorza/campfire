@@ -10,7 +10,9 @@ use crate::mode::placed_unit::{PlacedPath, PlacedUnit};
 use crate::mode::relation_data::RelationData;
 use crate::mode::team_manifest::TeamManifest;
 use crate::navigation::Navigation;
+use crate::navigation::navigation_rules::NavigationRules;
 use crate::navigation::paths::Paths;
+use crate::navigation::terrain::Terrain;
 use crate::navigation::walker::Walker;
 use crate::units::relations::Relations;
 use crate::units::team::Team;
@@ -42,6 +44,8 @@ pub(crate) struct MapGround {
     bounds: Bounds,
     relations: Relations,
     pathing: Option<Grid>,
+    /// The cells the walls block on the pathing grid; none without it.
+    terrain: Terrain,
 }
 
 /// A marker of the map, names resolved: its name, its tags, its point and its team if it names
@@ -74,7 +78,8 @@ impl ModeMap {
     /// mode does not have: teams that share a name or more than `Team::LIMIT`, or more than
     /// `VisionGrid::MAX_TEAMS` with a vision grid; a relation of a team to itself, of a team the
     /// mode lacks, or of a pair named before; and in the map, grids that make no grid of its
-    /// bounds, a path with no waypoint or another's name, a placed unit of a type, team or path it
+    /// bounds, a wall on a layer of no name `rules` declares or with points that make no simple
+    /// polygon, a path with no waypoint or another's name, a placed unit of a type, team or path it
     /// lacks, or that walks from an end of no path, a marker of another's name, a team it lacks, or
     /// with a point and a region or a region outside the bounds, and any point that does not fit
     /// its metric or its bounds.
@@ -82,6 +87,7 @@ impl ModeMap {
         map: &MapData,
         teams: &[TeamManifest],
         relations: &[RelationData],
+        rules: &NavigationRules,
         unit_type: impl Fn(&str) -> Option<UnitType>,
     ) -> Result<ModeMap, ModeError> {
         ModeMap::check_teams(teams)?;
@@ -108,11 +114,9 @@ impl ModeMap {
             return Err(ModeError::TooManyVisionTeams);
         }
         let pathing = map.pathing()?;
-        let point = |point: &MapPoint| match point.position() {
-            _ if !point.fits(map.metric) => Err(ModeError::PointShape),
-            Some(pos) if map.bounds.contains(pos) => Ok(pos),
-            _ => Err(ModeError::OutOfBounds),
-        };
+        let walls = map.walls(rules)?;
+        let terrain = pathing.map_or_else(Terrain::default, |grid| Terrain::new(&grid, &walls));
+        let point = |point: &MapPoint| map.point(point);
         let mut points = Vec::with_capacity(map.paths.len());
         for (at, path) in map.paths.iter().enumerate() {
             if map.paths[..at].iter().any(|other| other.name == path.name) {
@@ -174,6 +178,7 @@ impl ModeMap {
                 bounds: map.bounds,
                 relations: resolved,
                 pathing,
+                terrain,
             },
             paths,
             placed,
@@ -191,12 +196,13 @@ impl MapGround {
             bounds,
             relations,
             pathing,
+            terrain,
         } = self;
         world.insert_resource(metric);
         world.insert_resource(bounds);
         world.insert_resource(relations);
         if let Some(pathing) = pathing {
-            Navigation::load_pathing(world, pathing, walkers);
+            Navigation::load_pathing(world, pathing, &terrain, walkers);
         }
     }
 }

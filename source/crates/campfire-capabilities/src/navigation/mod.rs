@@ -31,6 +31,7 @@ use crate::navigation::route_planner::{RoutePlanner, Waiting, Walkable};
 use crate::navigation::segment::Segment;
 use crate::navigation::static_changes::StaticChanges;
 use crate::navigation::steering::{Steered, Steering};
+use crate::navigation::terrain::Terrain;
 use crate::navigation::walker::Walker;
 use crate::stats::move_step::MoveStep;
 use crate::units::block::Block;
@@ -67,7 +68,9 @@ pub(crate) mod route_planner;
 pub(crate) mod segment;
 pub(crate) mod static_changes;
 pub(crate) mod steering;
+pub(crate) mod terrain;
 pub(crate) mod walker;
+pub(crate) mod wall;
 
 /// The systems of `navigation`, for the systems of other capabilities to order theirs against.
 #[derive(SystemSet, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -137,14 +140,19 @@ impl Navigation {
         registry.register_component::<ForcedMove>();
     }
 
-    /// Gives the match the map's pathing grid over `cells`, for the kinds of `walkers`, a static
-    /// index for the widest of them, and a planner of routes on the grid; the static bodies fill
-    /// the grid and the index from the first tick on.
-    pub fn load_pathing(world: &mut World, cells: Grid, walkers: Vec<Walker>) {
+    /// Gives the match the map's pathing grid over `cells`, with the cells `terrain`'s walls
+    /// block, for the kinds of `walkers`, a static index for the widest of them, and a planner of
+    /// routes on the grid; the static bodies fill the grid and the index from the first tick on.
+    pub(crate) fn load_pathing(
+        world: &mut World,
+        cells: Grid,
+        terrain: &Terrain,
+        walkers: Vec<Walker>,
+    ) {
         let widest = walkers.iter().map(|walker| walker.radius).max();
         world.insert_resource(BodyIndex::new(widest.unwrap_or(Num::ZERO)));
         world.insert_resource(RoutePlanner::new(&cells));
-        world.insert_resource(PathingGrid::new(cells, walkers));
+        world.insert_resource(PathingGrid::new(cells, walkers, terrain));
     }
 }
 
@@ -193,8 +201,8 @@ fn fill_row((path, walks): ROQueryItem<'_, '_, RowParts>, fill: &mut RowFill<'_>
 
 /// Keeps each walker's route on its destination. A walker with a new destination asks for a route
 /// there, unless its route reaches its goal and the walker may go straight on from the waypoint
-/// before the last to the new one, as a chaser after a target that moved: then only the last
-/// waypoint moves. After the static bodies changed, a walker whose way along its route a static
+/// before the last to the new one, past every static body and every cell the walls block it from,
+/// as a chaser after a target that moved: then only the last waypoint moves. After the static bodies changed, a walker whose way along its route a static
 /// body of its layer blocks asks for its route again; after they lost a body, so does one whose
 /// route ends short of its goal, and one that arrived short of it walks there again. A walker
 /// with no destination forgets its route, unless it arrived short. With no pathing grid, as in a
@@ -254,8 +262,18 @@ fn route_units(
                     [] => None,
                 };
                 let straight = from.filter(|_| route.reached() && route.asked().is_none());
+                let blocks = |from| {
+                    grid.as_ref().is_some_and(|grid| {
+                        let walkable = Walkable {
+                            clearance: grid.clearance(walker),
+                            statics: &statics,
+                            short: None,
+                        };
+                        walkable.blocks(Segment::new(from, goal))
+                    })
+                };
                 if let Some(from) = straight
-                    && !(planned && statics.blocks(Segment::new(from, goal), walker))
+                    && !blocks(from)
                 {
                     route.move_goal(goal);
                 } else {

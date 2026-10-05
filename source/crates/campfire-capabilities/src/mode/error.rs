@@ -2,6 +2,7 @@ use std::error::Error;
 use std::fmt;
 
 use crate::values::declared_name::DeclaredName;
+use crate::values::polygon::error::PolygonError;
 use crate::values::stat::Stat;
 
 /// Why a unit type's values do not make a unit. Packages are untrusted, so each is an expected
@@ -47,6 +48,13 @@ pub enum ModeError {
     /// The grid's cell is not positive or beyond the world's bound, or it makes more than 2²²
     /// cells.
     Grid,
+    /// A wall names a layer the mode does not declare.
+    UnknownLayer(DeclaredName),
+    /// The points of wall `wall`, counted from 0, make no simple polygon.
+    Wall {
+        wall: usize,
+        problem: PolygonError,
+    },
 }
 
 impl fmt::Display for UnitKitError {
@@ -96,6 +104,8 @@ impl fmt::Display for ModeError {
             ModeError::Grid => f.write_str(
                 "the grid needs a positive cell within the world's bound and at most 2²² cells",
             ),
+            ModeError::UnknownLayer(name) => write!(f, "no layer \"{name}\""),
+            ModeError::Wall { wall, problem } => write!(f, "wall {wall}: {problem}"),
         }
     }
 }

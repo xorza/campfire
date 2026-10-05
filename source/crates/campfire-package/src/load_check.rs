@@ -200,7 +200,7 @@ impl<'a> LoadCheck<'a> {
         };
         packages
             .map
-            .check_walkable(&walkers, body_of)
+            .check_walkable(&walkers, &packages.data.navigation, body_of)
             .map_err(LoadProblem::Map)
     }
 

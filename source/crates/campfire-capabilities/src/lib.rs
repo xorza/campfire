@@ -122,6 +122,7 @@ pub use scripts::hook::Hook;
 pub use scripts::name_kind::NameKind;
 pub use scripts::script_role::ScriptRole;
 pub use values::engine_enum::EngineEnum;
+pub use values::polygon::error::PolygonError;
 
 pub use scripts::script_api::{MemberKind, ScriptApi};
 

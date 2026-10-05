@@ -2,8 +2,10 @@ use campfire_math::Vec3;
 use campfire_sim::{IdAllocator, Position};
 
 use super::*;
+use crate::navigation::wall::Wall;
 use crate::units::layer::Layer;
 use crate::values::bounds::Bounds;
+use crate::values::polygon::Polygon;
 /// A walker of `radius` on the first layer.
 fn ground(radius: Num) -> Walker {
     Walker {
@@ -50,6 +52,7 @@ fn grid() -> PathingGrid {
             ground(Num::HALF),
             ground(Num::HALF),
         ],
+        &Terrain::default(),
     )
 }
 
@@ -143,4 +146,66 @@ fn a_static_body_blocks_the_cells_closer_than_the_two_radii() {
     assert_eq!(drawn(&grid, air()), ["......"; 6]);
     follow(&mut grid, &mut index, &[]);
     assert_eq!(drawn(&grid, ground(Num::ONE)), ["......"; 6]);
+}
+
+#[test]
+fn a_wall_blocks_its_cells_and_those_a_walker_comes_closer_to_and_no_body_opens_them() {
+    // A wall on the ground round the origin, from (−0.5, −0.5) to (0.5, 0.5): the four centers
+    // (±0.5, ±0.5) lie on its corners, so it blocks those four cells.
+    let bounds = Bounds::new([Num::int(-3), Num::int(-3)], [Num::int(3), Num::int(3)]).unwrap();
+    let cells = Grid::new(Num::int(1), bounds).unwrap();
+    let corner = |x: i64, z: i64| [Num::HALF * x, Num::HALF * z];
+    let area = Polygon::new(vec![
+        corner(-1, -1),
+        corner(1, -1),
+        corner(1, 1),
+        corner(-1, 1),
+    ]);
+    let wall = Wall {
+        layer: Layer::FIRST,
+        area: area.unwrap(),
+    };
+    let terrain = Terrain::new(&cells, &[wall]);
+    let walkers = vec![
+        air(),
+        ground(Num::ZERO),
+        ground(Num::HALF),
+        ground(Num::ONE),
+    ];
+    let mut grid = PathingGrid::new(cells, walkers, &terrain);
+    // A neighbor's center lies half a meter from a blocked cell's square, and a diagonal one
+    // √0.5 ≈ 0.71 m: a walker of no body and one of 0.5 m come closer to neither, and stand
+    // there; one of 1 m comes closer to both, and the wall keeps it from a ring round the four.
+    let walled = ["......", "......", "..##..", "..##..", "......", "......"];
+    let ringed = ["......", ".####.", ".####.", ".####.", ".####.", "......"];
+    let drawn_all = |grid: &PathingGrid| {
+        [
+            ground(Num::ZERO),
+            ground(Num::HALF),
+            ground(Num::ONE),
+            air(),
+        ]
+        .map(|walker| drawn(grid, walker))
+    };
+    let open = ["......"; 6].map(str::to_owned).to_vec();
+    let lines = |rows: [&str; 6]| rows.map(str::to_owned).to_vec();
+    let expected = [lines(walled), lines(walled), lines(ringed), open.clone()];
+    assert_eq!(drawn_all(&grid), expected);
+    // A tower of 1 m at the origin blocks for the walker of 1 m the cells within 2 m of it, which
+    // the ring holds; once it is gone, the wall's cells stay blocked.
+    let mut index = BodyIndex::new(Num::ONE);
+    let tower = IndexedBody {
+        id: IdAllocator::default().allocate(),
+        at: Position::new(Vec3::new(Num::ZERO, Num::ZERO, Num::ZERO)).unwrap(),
+        radius: Num::ONE,
+        layer: Layer::FIRST,
+    };
+    index.update(&[tower]);
+    grid.update(&index);
+    let small = ["......", "......", "..##..", "..##..", "......", "......"];
+    assert_eq!(drawn(&grid, ground(Num::HALF)), small);
+    assert_eq!(drawn(&grid, ground(Num::ONE)), ringed);
+    index.update(&[]);
+    grid.update(&index);
+    assert_eq!(drawn_all(&grid), expected);
 }

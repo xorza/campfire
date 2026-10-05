@@ -145,7 +145,8 @@ fn a_map_with_vision_holds_at_most_64_teams() {
             })
             .collect()
     };
-    let resolve = |count| ModeMap::resolve(&files.map, &teams(count), &[], |_| None).err();
+    let rules = NavigationRules::default();
+    let resolve = |count| ModeMap::resolve(&files.map, &teams(count), &[], &rules, |_| None).err();
     assert_ne!(resolve(64), Some(ModeError::TooManyVisionTeams));
     assert_eq!(resolve(65), Some(ModeError::TooManyVisionTeams));
 }

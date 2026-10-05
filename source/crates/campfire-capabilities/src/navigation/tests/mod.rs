@@ -3,12 +3,19 @@ use campfire_common::Tick;
 
 use super::*;
 use crate::capability_set::test_match::TestMatch;
-use crate::mode::map_data::{GridData, MapData, MapPoint, MarkerData, PathData, PlacedUnitData};
+use crate::mode::error::ModeError;
+use crate::mode::map_data::{
+    MapData, MapNavigationData, MapPoint, MarkerData, PathData, PlacedUnitData, WallData,
+};
 use crate::navigation::error::MapProblem;
+use crate::navigation::navigation_rules::NavigationRules;
 use crate::navigation::path_walker::PathEnd;
+use crate::navigation::wall::Wall;
 use crate::units::layer::Layer;
 use crate::units::path_id::PathId;
 use crate::values::declared_name::DeclaredName;
+use crate::values::polygon::Polygon;
+use crate::values::polygon::error::PolygonError;
 use crate::values::scalar::Scalar;
 
 const ONE: i64 = 1 << 24;
@@ -40,9 +47,22 @@ impl Walk {
 
     /// Loads a pathing grid of `cell` cells from `min` to `max` for `walkers`.
     fn load_pathing(&mut self, cell: Num, min: [i64; 2], max: [i64; 2], walkers: Vec<Walker>) {
+        self.load_walled(cell, min, max, walkers, &[]);
+    }
+
+    /// Loads a pathing grid as `load_pathing` does, with `walls`.
+    fn load_walled(
+        &mut self,
+        cell: Num,
+        min: [i64; 2],
+        max: [i64; 2],
+        walkers: Vec<Walker>,
+        walls: &[Wall],
+    ) {
         let bounds = Bounds::new(min.map(Num::int), max.map(Num::int)).unwrap();
         let grid = Grid::new(cell, bounds).unwrap();
-        Navigation::load_pathing(&mut self.sim.world, grid, walkers);
+        let terrain = Terrain::new(&grid, walls);
+        Navigation::load_pathing(&mut self.sim.world, grid, &terrain, walkers);
     }
 
     /// A unit at `at` walking a meter a tick to `to`.
@@ -306,6 +326,52 @@ fn a_walker_goes_round_a_tower_and_never_touches_it() {
             assert_eq!(*walk.sim.get::<Position>(walker), stop.unwrap());
         }
     }
+}
+
+#[test]
+fn a_walker_goes_round_a_wall_smoothed_past_its_corners_and_never_through_it() {
+    // Over 1 m cells from (0, 0) to (10, 6), a wall from (4, 0) to (6, 4) blocks the cells whose
+    // centers it holds, columns 4 and 5 of rows 0 to 3, to a walker of no body. One at (2, 1)
+    // walks half a meter a tick to (8, 1).
+    let half = Num::HALF;
+    let mut walk = Walk::new();
+    let box_of = |[x0, z0]: [i64; 2], [x1, z1]: [i64; 2]| {
+        let area = [[x0, z0], [x1, z0], [x1, z1], [x0, z1]].map(|point| point.map(Num::int));
+        Polygon::new(area.to_vec()).unwrap()
+    };
+    let barrier = Wall {
+        layer: Layer::FIRST,
+        area: box_of([4, 0], [6, 4]),
+    };
+    walk.load_walled(
+        Num::ONE,
+        [0, 0],
+        [10, 6],
+        vec![ground(Num::ZERO)],
+        &[barrier],
+    );
+    let walker = walk.unit(at(2, 0, 1), Some(at(8, 0, 1)));
+    // Its route goes over the wall's top, row 4, and keeps a waypoint only where the line on would
+    // touch a blocked cell: from (2, 1) to the next cell, (4.5, 4.5), it is at z = 3.8 at x = 4,
+    // on cell (4, 3); from (3.5, 4.5) to the cell after (6.5, 4.5), (7.5, 3.5), at z = 3.875 at
+    // x = 6, on cell (5, 3). From (6.5, 4.5) it goes straight to its goal.
+    let point = |x: i64, z: i64| Position::new(Vec3::new(half * x, Num::ZERO, half * z)).unwrap();
+    walk.sim.step();
+    let corners = [point(7, 9), point(13, 9), point(16, 2)];
+    assert_eq!(walk.get_route(walker).ahead(), corners);
+    // It walks √14.5 ≈ 3.81 m, 3 m and √14.5 m, a meter a tick, never into the wall's square,
+    // and arrives in its eleventh tick.
+    let mut steps = 1;
+    while walk.sim.get::<Destination>(walker).get().is_some() {
+        let pos = walk.sim.get::<Position>(walker).get();
+        let inside =
+            |value: Num, low: i64, high: i64| Num::int(low) <= value && value <= Num::int(high);
+        assert!(!(inside(pos.x, 4, 6) && inside(pos.z, 0, 4)), "{pos:?}");
+        walk.sim.step();
+        steps += 1;
+    }
+    assert_eq!(steps, 11);
+    assert_eq!(*walk.sim.get::<Position>(walker), at(8, 0, 1));
 }
 
 /// Whether the bodies of radii `a` and `b` at `first` and `second` overlap on the ground plane,
@@ -643,21 +709,17 @@ fn a_walker_that_arrives_short_waits_there_until_a_static_body_goes() {
     assert_eq!(*walk.sim.get::<Progress>(walker), Progress::default());
 }
 
-#[test]
-fn a_map_loads_only_if_the_widest_walker_reaches_every_waypoint_and_stands_on_every_marker() {
-    // A corridor 10 m by 4 m in half-meter cells, a lane along z = 2 from (1, 2) to (9, 2),
-    // walkers of 0.5 m and towers of 0.9 m. Towers at (5, 0) and (5, 4) block the centers closer
-    // than 1.4 m, z up to 1.25 and from 2.75 at x = 4.75 and 5.25, which leaves z = 1.75 and
-    // 2.25 open: a gap a walker passes. One more at (5, 2) closes it.
-    let tower_radius = Num::from_bits((9 << Num::FRAC_BITS) / 10);
-    let half = Num::HALF;
+/// A corridor 10 m by 4 m in half-meter cells, a lane along z = 2 from (1, 2) to (9, 2), towers
+/// at `towers`, a creep on the west spawn at (1, 1), which walks and so blocks nothing, and a camp
+/// marker at `camp`.
+fn corridor(towers: &[(i64, i64)], camp: (i64, i64)) -> MapData {
     let point = MapPoint::ground;
     let placed = |unit_type, (x, z)| PlacedUnitData::new(unit_type, "west", point(x, z));
     let marker = |name, (x, z)| MarkerData::tagged(name, &[name], point(x, z));
-    // A creep placed on the west spawn walks, so it blocks nothing.
-    let map = |towers: &[(i64, i64)], camp: (i64, i64)| MapData {
-        navigation: Some(GridData {
-            cell: Scalar::Decimal(half),
+    MapData {
+        navigation: Some(MapNavigationData {
+            cell: Scalar::Decimal(Num::HALF),
+            walls: Vec::new(),
         }),
         paths: vec![PathData {
             name: DeclaredName::new("lane").unwrap(),
@@ -672,18 +734,32 @@ fn a_map_loads_only_if_the_widest_walker_reaches_every_waypoint_and_stands_on_ev
         ..MapData::planar(
             Bounds::new([Num::int(0), Num::int(0)], [Num::int(10), Num::int(4)]).unwrap(),
         )
-    };
-    // A tower stands on the ground, a cloud of the same width in the air.
-    let body_of = |unit_type: &str| {
-        let tower = Body::new(tower_radius).unwrap();
-        match unit_type {
-            "tower" => Some(tower),
-            "cloud" => Some(tower.on(AIR)),
-            _ => None,
-        }
-    };
+    }
+}
+
+/// The corridor's bodies: a tower of 0.9 m on the ground, a cloud of the same width in the air.
+fn corridor_body(unit_type: &str) -> Option<Body> {
+    let tower = Body::new(Num::from_bits((9 << Num::FRAC_BITS) / 10)).unwrap();
+    match unit_type {
+        "tower" => Some(tower),
+        "cloud" => Some(tower.on(AIR)),
+        _ => None,
+    }
+}
+
+#[test]
+fn a_map_loads_only_if_the_widest_walker_reaches_every_waypoint_and_stands_on_every_marker() {
+    // Walkers of 0.5 m in the corridor. Towers at (5, 0) and (5, 4) block the centers closer than
+    // 1.4 m, z up to 1.25 and from 2.75 at x = 4.75 and 5.25, which leaves z = 1.75 and 2.25 open:
+    // a gap a walker passes. One more at (5, 2) closes it.
+    let half = Num::HALF;
+    let point = MapPoint::ground;
+    let placed = |unit_type, (x, z)| PlacedUnitData::new(unit_type, "west", point(x, z));
+    let map = corridor;
+    let body_of = corridor_body;
+    let rules = NavigationRules::default();
     let check = |towers: &[(i64, i64)], neutral| {
-        map(towers, neutral).check_walkable(&[ground(half)], body_of)
+        map(towers, neutral).check_walkable(&[ground(half)], &rules, body_of)
     };
     assert_eq!(check(&[(5, 0), (5, 4)], (8, 3)), Ok(()));
     let unreachable = MapProblem::WaypointUnreachable {
@@ -714,9 +790,9 @@ fn a_map_loads_only_if_the_widest_walker_reaches_every_waypoint_and_stands_on_ev
     };
     let both = [ground(half), flyer];
     let closed = map(&[(5, 0), (5, 2), (5, 4)], (8, 3));
-    assert_eq!(closed.check_walkable(&[flyer], body_of), Ok(()));
+    assert_eq!(closed.check_walkable(&[flyer], &rules, body_of), Ok(()));
     assert_eq!(
-        closed.check_walkable(&both, body_of),
+        closed.check_walkable(&both, &rules, body_of),
         Err(MapProblem::WaypointUnreachable {
             path: DeclaredName::new("lane").unwrap(),
             waypoint: 1,
@@ -724,9 +800,98 @@ fn a_map_loads_only_if_the_widest_walker_reaches_every_waypoint_and_stands_on_ev
     );
     let mut clouded = map(&[(5, 0), (5, 4)], (8, 3));
     clouded.units.push(placed("cloud", (7, 3)));
-    assert_eq!(clouded.check_walkable(&[ground(half)], body_of), Ok(()));
-    assert_eq!(clouded.check_walkable(&both, body_of), blocked("camp"));
-    assert_eq!(clouded.check_walkable(&[], body_of), Ok(()));
+    assert_eq!(
+        clouded.check_walkable(&[ground(half)], &rules, body_of),
+        Ok(())
+    );
+    assert_eq!(
+        clouded.check_walkable(&both, &rules, body_of),
+        blocked("camp")
+    );
+    assert_eq!(clouded.check_walkable(&[], &rules, body_of), Ok(()));
+}
+
+#[test]
+fn a_wall_closes_a_way_and_loads_only_as_a_simple_polygon_on_a_declared_layer() {
+    let half = Num::HALF;
+    let point = MapPoint::ground;
+    let rules = NavigationRules::default();
+    let flyer = Walker {
+        layer: AIR,
+        radius: half,
+    };
+    let both = [ground(half), flyer];
+    let body_of = corridor_body;
+    // A wall on the ground across the map from x = 5 to 6 closes the lane as the towers do, and
+    // the air walker flies over it; a wall round the spawn marker leaves the walker no place
+    // there. A wall's points must be in the map's bounds, on a layer the mode declares, and make
+    // a simple polygon.
+    let wall = |layer: Option<&str>, points: &[(i64, i64)]| WallData {
+        layer: layer.map(|layer| DeclaredName::new(layer).unwrap()),
+        points: points.iter().map(|&(x, z)| point(x, z)).collect(),
+    };
+    let walled = |walls: Vec<WallData>| {
+        let mut walled = corridor(&[], (8, 3));
+        walled.navigation.as_mut().unwrap().walls = walls;
+        walled
+    };
+    let across = walled(vec![wall(None, &[(5, 0), (6, 0), (6, 4), (5, 4)])]);
+    assert_eq!(across.check_walkable(&[flyer], &rules, body_of), Ok(()));
+    assert_eq!(
+        across.check_walkable(&both, &rules, body_of),
+        Err(MapProblem::WaypointUnreachable {
+            path: DeclaredName::new("lane").unwrap(),
+            waypoint: 1,
+        })
+    );
+    let round = walled(vec![wall(None, &[(0, 0), (2, 0), (2, 2), (0, 2)])]);
+    let spawn = DeclaredName::new("spawn").unwrap();
+    let blocked = Err(MapProblem::MarkerBlocked { marker: spawn });
+    assert_eq!(round.check_walkable(&both, &rules, body_of), blocked);
+    let air = DeclaredName::new("air").unwrap();
+    let layered = NavigationRules {
+        layers: vec![DeclaredName::new("ground").unwrap(), air.clone()],
+    };
+    let refused = [
+        (
+            wall(Some("air"), &[(5, 0), (6, 0), (6, 4)]),
+            &rules,
+            ModeError::UnknownLayer(air),
+        ),
+        (
+            wall(None, &[(5, 0), (6, 0), (6, 5)]),
+            &rules,
+            ModeError::OutOfBounds,
+        ),
+        (
+            wall(None, &[(5, 0), (6, 0)]),
+            &rules,
+            ModeError::Wall {
+                wall: 0,
+                problem: PolygonError::TooFewPoints,
+            },
+        ),
+        (
+            wall(Some("air"), &[(5, 0), (6, 4), (6, 0), (5, 4)]),
+            &layered,
+            ModeError::Wall {
+                wall: 0,
+                problem: PolygonError::EdgesMeet {
+                    first: 0,
+                    second: 2,
+                },
+            },
+        ),
+    ];
+    for (wall, rules, error) in refused {
+        assert_eq!(walled(vec![wall]).walls(rules), Err(error));
+    }
+    let lifted = walled(vec![wall(Some("air"), &[(5, 0), (6, 0), (6, 4)])]);
+    let walls = lifted.walls(&layered).unwrap();
+    assert_eq!(
+        walls.iter().map(|wall| wall.layer).collect::<Vec<_>>(),
+        [AIR]
+    );
 }
 
 #[test]

@@ -174,131 +174,79 @@ impl Grid {
         }
     }
 
-    /// The index along `axis` of `at`, which is within the bounds.
-    fn index(&self, axis: usize, at: Num) -> usize {
+    /// The center of `cell`, `[x, z]` in halves of a bit, exactly.
+    pub(crate) fn center_twice(&self, cell: usize) -> [i128; 2] {
+        let at = [cell % self.columns(), cell / self.columns()];
+        let step = i128::from(self.cell.to_bits());
+        let min = self.bounds.min();
+        [0, 1].map(|axis| {
+            let index = i128::try_from(at[axis]).expect("a cell of the grid");
+            2 * i128::from(min[axis].to_bits()) + step * (2 * index + 1)
+        })
+    }
+
+    /// Whether `hit` is true of a cell of the grid whose closed square the segment from `from` to
+    /// `to` on the ground plane touches, exactly, corners included, so a segment through a corner
+    /// touches the four cells round it; cells are visited column by column, and the first hit
+    /// ends the visit. Each column's span of the segment gives the rows it touches, from the
+    /// segment's z at the span's ends, a fraction kept whole by its denominator.
+    pub(crate) fn touches(
+        &self,
+        from: Position,
+        to: Position,
+        mut hit: impl FnMut(usize) -> bool,
+    ) -> bool {
+        let min = self.bounds.min().map(|axis| i128::from(axis.to_bits()));
+        let ground = |pos: Position| {
+            let at = pos.get();
+            [
+                i128::from(at.x.to_bits()) - min[0],
+                i128::from(at.z.to_bits()) - min[1],
+            ]
+        };
+        let (mut a, mut b) = (ground(from), ground(to));
+        if a[0] > b[0] {
+            (a, b) = (b, a);
+        }
+        let cell = i128::from(self.cell.to_bits());
+        let last = |axis: usize| i128::from(self.size[axis]) - 1;
+        let (dx, dz) = (b[0] - a[0], b[1] - a[1]);
+        let first_column = (ceil_div(a[0], cell) - 1).max(0);
+        let last_column = b[0].div_euclid(cell).min(last(0));
+        for column in first_column..=last_column {
+            let (z_low, z_high, scale) = if dx == 0 {
+                (a[1].min(b[1]), a[1].max(b[1]), cell)
+            } else {
+                // The segment's z at x, times `dx`.
+                let at = |x: i128| a[1] * dx + (x - a[0]) * dz;
+                let start = at(a[0].max(column * cell));
+                let end = at(b[0].min((column + 1) * cell));
+                (start.min(end), start.max(end), dx * cell)
+            };
+            let first_row = (ceil_div(z_low, scale) - 1).max(0);
+            let last_row = z_high.div_euclid(scale).min(last(1));
+            for row in first_row..=last_row {
+                let at = row * i128::from(self.size[0]) + column;
+                if hit(usize::try_from(at).expect("a cell of the grid")) {
+                    return true;
+                }
+            }
+        }
+        false
+    }
+
+    /// The index along `axis`, 0 for x and 1 for z, of `at`, which is within the bounds.
+    pub(crate) fn index(&self, axis: usize, at: Num) -> usize {
         let offset = at.to_bits() - self.bounds.min()[axis].to_bits();
         let index = (offset / self.cell.to_bits()).min(i64::from(self.size[axis]) - 1);
         usize::try_from(index).expect("a point within the bounds is past their min")
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    fn at(x: Num, z: Num) -> Position {
-        Position::new(Vec3::new(x, Num::ZERO, z)).unwrap()
-    }
-
-    #[test]
-    fn a_grid_covers_its_rectangle_in_whole_cells_and_reveals_exactly() {
-        // 1 m cells over (−2, −1) to (2, 1.5): 4 along x, 3 along z, the last row half outside.
-        let half = Num::HALF;
-        let bounds = Bounds::new(
-            [Num::int(-2), Num::int(-1)],
-            [Num::int(2), Num::int(1) + half],
-        )
-        .unwrap();
-        let grid = Grid::new(Num::int(1), bounds).unwrap();
-        assert_eq!(grid.cells(), 12);
-        // Cell (2, 1) is x from 0 to 1, z from 0 to 1: number 1 × 4 + 2 = 6.
-        assert_eq!(grid.cell_of(at(Num::ZERO, Num::ZERO)), Some(6));
-        assert_eq!(
-            grid.cell_of(at(Num::int(1) - Num::EPSILON, Num::int(1) - Num::EPSILON)),
-            Some(6)
-        );
-        assert_eq!(grid.cell_of(at(Num::int(-2), Num::int(-1))), Some(0));
-        // On the max edges: x = 2 ends cell column 3, the last, so (2, 0) is in 1 × 4 + 3 = 7;
-        // z = 1.5 is inside row 2, so (0, 1.5) is in 2 × 4 + 2 = 10, and the corner in 11.
-        let edges = [
-            at(Num::int(2), Num::ZERO),
-            at(Num::ZERO, Num::int(1) + half),
-            at(Num::int(2), Num::int(1) + half),
-        ];
-        assert_eq!(
-            edges.map(|pos| grid.cell_of(pos)),
-            [Some(7), Some(10), Some(11)]
-        );
-        // Outside the bounds, even within the last row's cells, which reach z = 2.
-        let off = [
-            at(Num::int(2) + Num::EPSILON, Num::ZERO),
-            at(Num::int(-2) - Num::EPSILON, Num::ZERO),
-            at(Num::ZERO, Num::int(1) + half + Num::EPSILON),
-        ];
-        assert_eq!(off.map(|pos| grid.cell_of(pos)), [None, None, None]);
-
-        // From (0, 0) the nearest centers, (±0.5, ±0.5), are √0.5 ≈ 0.707 m away, the next
-        // ones, such as (1.5, 0.5), √2.5 ≈ 1.58 m. A radius of 1.5 reaches only the four.
-        let reveal = |radius: Num| {
-            let mut cells = Vec::new();
-            grid.spans_within(at(Num::ZERO, Num::ZERO), radius, |span| cells.extend(span));
-            cells
-        };
-        assert_eq!(reveal(Num::int(1) + half), [1, 2, 5, 6]);
-        // A radius of 1.59 reaches the centers √2.5 ≈ 1.581 away too: the ring around the four,
-        // less the cells off the grid and the corners, √4.5 away.
-        let reach = Num::from_bits((159 << 24) / 100);
-        assert_eq!(reveal(reach), [0, 1, 2, 3, 4, 5, 6, 7, 9, 10]);
-        assert!(reveal(Num::ZERO).is_empty());
-        // A radius past every center, the largest number among them, reveals every cell: the
-        // reach stops at 8 bounds before it doubles.
-        let every: Vec<usize> = (0..grid.cells()).collect();
-        assert_eq!(reveal(Num::MAX), every);
-        assert_eq!(reveal(Position::BOUND), every);
-
-        // Against each cell's center tested alone, in halves of a bit, from points on and off
-        // the grid, on cell lines and between them, with radii that end on centers and between.
-        let quarter = Num::QUARTER;
-        let twice = |value: Num| 2 * i128::from(value.to_bits());
-        for x in -12..12 {
-            for z in -8..10 {
-                let pos = at(quarter * x, quarter * z);
-                for radius in [0, 1, 2, 3, 5, 6, 7, 9, 12, 20].map(|r| quarter * r) {
-                    // Within the radius, and strictly closer than it.
-                    for strict in [false, true] {
-                        let mut spans = Vec::new();
-                        if strict {
-                            grid.spans_closer(pos, radius, |span| spans.extend(span));
-                        } else {
-                            grid.spans_within(pos, radius, |span| spans.extend(span));
-                        }
-                        let alone: Vec<usize> = (0..grid.cells())
-                            .filter(|&cell| {
-                                let center = |index: usize, axis: usize| {
-                                    twice(grid.bounds.min()[axis])
-                                        + i128::from(grid.cell.to_bits()) * (2 * index as i128 + 1)
-                                };
-                                let dx = twice(pos.get().x) - center(cell % 4, 0);
-                                let dz = twice(pos.get().z) - center(cell / 4, 1);
-                                let square = dx * dx + dz * dz;
-                                let reach = twice(radius) * twice(radius);
-                                if strict {
-                                    square < reach
-                                } else {
-                                    square <= reach
-                                }
-                            })
-                            .collect();
-                        assert_eq!(spans, alone, "{x} {z} {radius:?} {strict}");
-                    }
-                }
-            }
-        }
-
-        // 2048 × 2049 cells are more than 2²² = 2048 × 2048.
-        let wide =
-            Bounds::new([Num::int(0), Num::int(0)], [Num::int(2048), Num::int(2049)]).unwrap();
-        let square =
-            Bounds::new([Num::int(0), Num::int(0)], [Num::int(2048), Num::int(2048)]).unwrap();
-        assert_eq!(
-            Grid::new(Num::int(1), square).map(|grid| grid.cells()),
-            Some(1 << 22)
-        );
-        for (cell, bounds) in [
-            (Num::ZERO, bounds),
-            (Position::BOUND + Num::EPSILON, bounds),
-            (Num::int(1), wide),
-        ] {
-            assert_eq!(Grid::new(cell, bounds), None, "{cell:?} {bounds:?}");
-        }
-    }
+/// `value` over `by`, positive, rounded up.
+const fn ceil_div(value: i128, by: i128) -> i128 {
+    -(-value).div_euclid(by)
 }
+
+#[cfg(test)]
+mod tests;

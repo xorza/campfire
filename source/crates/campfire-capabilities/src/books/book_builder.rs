@@ -173,8 +173,15 @@ impl<'a> BookBuilder<'a> {
             let stands = mode_units.get(name).is_some_and(|file| !file.delivers());
             stands.then(|| types.named(TypeScope::Mode, name).expect(CHECKED))
         };
-        let map = ModeMap::resolve(input.map, input.teams, &input.data.relations, standing)
-            .map_err(BookError::Mode)?;
+        let data = input.data;
+        let map = ModeMap::resolve(
+            input.map,
+            input.teams,
+            &data.relations,
+            &data.navigation,
+            standing,
+        )
+        .map_err(BookError::Mode)?;
         let mode = ModeBooks::build(
             input.data,
             &parts.units.unit_types,

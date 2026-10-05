@@ -8,15 +8,21 @@ use crate::mode::error::ModeError;
 use crate::mode::mode_data::ModeParam;
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::error::MapProblem;
+use crate::navigation::navigation_rules::NavigationRules;
 use crate::navigation::path_walker::PathEnd;
 use crate::navigation::pathing_grid::PathingGrid;
+use crate::navigation::route_planner::Walkable;
 use crate::navigation::segment::Segment;
+use crate::navigation::terrain::Terrain;
 use crate::navigation::walker::Walker;
+use crate::navigation::wall::Wall;
 use crate::units::body::Body;
+use crate::units::layer::Layer;
 use crate::values::bounds::Bounds;
 use crate::values::declared_name::DeclaredName;
 use crate::values::grid::Grid;
 use crate::values::metric::Metric;
+use crate::values::polygon::Polygon;
 use crate::values::scalar::Scalar;
 
 /// The mode's `map/map.toml`: its metric, its bounds, its grids, its paths, the units placed on it
@@ -29,9 +35,9 @@ pub struct MapData {
     pub bounds: Bounds,
     /// The cells vision reveals, over the bounds; a mode that declares `vision` has one.
     pub grid: Option<GridData>,
-    /// The cells units plan routes over, over the bounds; a mode that declares `navigation` has
-    /// one.
-    pub navigation: Option<GridData>,
+    /// The cells units plan routes over, over the bounds, and the walls that block them; a mode
+    /// that declares `navigation` has one.
+    pub navigation: Option<MapNavigationData>,
     #[serde(default)]
     pub paths: Vec<PathData>,
     /// The units that stand on the map from the start.
@@ -47,6 +53,25 @@ pub struct MapData {
 #[serde(deny_unknown_fields)]
 pub struct GridData {
     pub cell: Scalar,
+}
+
+/// A map's `[navigation]`: the size of the square cells routes are planned on, in meters, and its
+/// walls.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct MapNavigationData {
+    pub cell: Scalar,
+    #[serde(default)]
+    pub walls: Vec<WallData>,
+}
+
+/// A wall, `[[navigation.walls]]`: on `layer`, the mode's first when it names none, the polygon of
+/// `points`.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WallData {
+    pub layer: Option<DeclaredName>,
+    pub points: Vec<MapPoint>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -113,11 +138,14 @@ impl MapData {
     pub fn check_walkable(
         &self,
         walkers: &[Walker],
+        rules: &NavigationRules,
         body_of: impl Fn(&str) -> Option<Body>,
     ) -> Result<(), MapProblem> {
         let Some(cells) = self.pathing().expect("the book build checked the map") else {
             return Ok(());
         };
+        let walls = self.walls(rules).expect("the book build checked the map");
+        let terrain = Terrain::new(&cells, &walls);
         debug_assert!(walkers.is_sorted(), "walkers by layer, then radius");
         let widest = walkers
             .chunk_by(|a, b| a.layer == b.layer)
@@ -140,11 +168,16 @@ impl MapData {
         let widest_radius = walkers.iter().map(|walker| walker.radius).max();
         let mut statics = BodyIndex::new(widest_radius.unwrap_or(Num::ZERO));
         statics.update(&structures);
-        let mut grid = PathingGrid::new(cells, widest.clone().collect());
+        let mut grid = PathingGrid::new(cells, widest.clone().collect(), &terrain);
         grid.update(&statics);
         for walker in widest {
             let clearance = grid.clearance(walker);
-            let stands = |at: Position| !statics.blocks(Segment::new(at, at), walker);
+            let walkable = Walkable {
+                clearance,
+                statics: &statics,
+                short: None,
+            };
+            let stands = |at: Position| !walkable.blocks(Segment::new(at, at));
             for marker in &self.markers {
                 if marker.pos.is_some_and(|pos| !stands(point(&pos))) {
                     let marker = marker.name.clone();
@@ -174,22 +207,55 @@ impl MapData {
     /// The vision grid over the bounds, if the map has one; an error unless its cell is positive
     /// and at most the world's bound, and it has at most 2²² cells.
     pub fn grid(&self) -> Result<Option<Grid>, ModeError> {
-        self.grid_of(self.grid)
+        self.grid_of(self.grid.map(|grid| grid.cell))
     }
 
     /// The pathing grid's cells over the bounds, if the map has them; an error as for `grid`.
     pub fn pathing(&self) -> Result<Option<Grid>, ModeError> {
-        self.grid_of(self.navigation)
+        self.grid_of(self.navigation.as_ref().map(|navigation| navigation.cell))
     }
 
-    fn grid_of(&self, data: Option<GridData>) -> Result<Option<Grid>, ModeError> {
-        let Some(data) = data else {
+    /// The map's walls, each on the layer of `rules` it names; an error for a layer the mode does
+    /// not declare, a point that does not fit the map's metric or lies outside its bounds, and
+    /// points that make no simple polygon.
+    pub(crate) fn walls(&self, rules: &NavigationRules) -> Result<Vec<Wall>, ModeError> {
+        let Some(navigation) = &self.navigation else {
+            return Ok(Vec::new());
+        };
+        let mut walls = Vec::with_capacity(navigation.walls.len());
+        for (wall, data) in navigation.walls.iter().enumerate() {
+            let layer = match &data.layer {
+                Some(name) => rules
+                    .layer_named(name)
+                    .ok_or_else(|| ModeError::UnknownLayer(name.clone()))?,
+                None => Layer::FIRST,
+            };
+            let mut points = Vec::with_capacity(data.points.len());
+            for point in &data.points {
+                let at = self.point(point)?.get();
+                points.push([at.x, at.z]);
+            }
+            let area = Polygon::new(points).map_err(|problem| ModeError::Wall { wall, problem })?;
+            walls.push(Wall { layer, area });
+        }
+        Ok(walls)
+    }
+
+    /// `point` as a position; an error unless it fits the map's metric and lies within its
+    /// bounds.
+    pub(crate) fn point(&self, point: &MapPoint) -> Result<Position, ModeError> {
+        match point.position() {
+            _ if !point.fits(self.metric) => Err(ModeError::PointShape),
+            Some(pos) if self.bounds.contains(pos) => Ok(pos),
+            _ => Err(ModeError::OutOfBounds),
+        }
+    }
+
+    fn grid_of(&self, cell: Option<Scalar>) -> Result<Option<Grid>, ModeError> {
+        let Some(cell) = cell else {
             return Ok(None);
         };
-        let grid = data
-            .cell
-            .to_num()
-            .and_then(|cell| Grid::new(cell, self.bounds));
+        let grid = cell.to_num().and_then(|cell| Grid::new(cell, self.bounds));
         grid.map(Some).ok_or(ModeError::Grid)
     }
 }

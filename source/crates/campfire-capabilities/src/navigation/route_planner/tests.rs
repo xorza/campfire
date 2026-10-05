@@ -6,6 +6,7 @@ use campfire_math::{RngSource, RngStream};
 
 use super::*;
 use crate::navigation::pathing_grid::PathingGrid;
+use crate::navigation::terrain::Terrain;
 use crate::navigation::walker::Walker;
 use crate::units::layer::Layer;
 use crate::values::bounds::Bounds;
@@ -41,6 +42,7 @@ fn walled(rows: &[&str]) -> Walled {
     let mut grid = PathingGrid::new(
         Grid::new(Num::ONE, bounds.unwrap()).unwrap(),
         vec![walker()],
+        &Terrain::default(),
     );
     let mut ids = IdAllocator::default();
     let mut posts = Vec::new();
