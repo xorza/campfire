@@ -41,7 +41,7 @@ mod vision;
 
 pub use abilities::Abilities;
 pub use actions::Actions;
-pub use actions::action_data::{ActionData, RangeField, Targeting};
+pub use actions::action_data::{ActionData, RangeField, Targeting, Toggle};
 pub use actions::action_data_field::ActionDataField;
 pub use actions::action_kind::ActionKind;
 pub use actions::action_slots::{ActionSlot, ActionSlots};

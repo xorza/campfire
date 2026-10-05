@@ -1,18 +1,21 @@
 //! The reference 3v3 as its packages hold it, played by scripted players, plays a match with no
 //! failed call that replays to the same state hashes: a skirmish of first blood, mend, haste and
-//! a tower that turns on a diver; a camp whose wolf answers, resets past its leash and falls; and
-//! the lanes, where heroes farm the first waves; and heroes that learn ranks with their points. Each rule's result is computed from the mode's
-//! numbers. The test pins the content's units and values, so a change to the content changes
-//! it, by design.
+//! a tower that turns on a diver; a camp whose wolf answers, resets past its leash and falls; the
+//! lanes, where heroes farm the first waves; heroes that learn ranks with their points; then the
+//! farm to level 6, the shop, and a showcase in which each hero uses its items and casts each of
+//! its abilities. Each rule's result is computed from the mode's numbers. The test pins the
+//! content's units and values, so a change to the content changes it, by design. It plays a
+//! match long enough for every hero to learn its ultimate, and takes several seconds.
+
+mod showcase;
 
 use bevy_ecs::world::World;
 use campfire_capabilities::internals;
 use campfire_capabilities::{
-    ActionSlot, ActionSlots, Dead, Deaths, Level, ModeParam, ModeState, Owner, PathWalker,
-    PlayerResources, Points, ResourceId, Scalar, ScriptFailures, SlotKind, StateValue, Stats, Team,
-    UnitType,
+    ActionSlot, ActionSlots, Dead, Deaths, Level, ModeParam, ModeState, Owner, PathWalker, Points,
+    Scalar, ScriptFailures, SlotKind, StateValue, Stats, Team, UnitType,
 };
-use campfire_common::{PlayerSlot, Tick};
+use campfire_common::Tick;
 use campfire_math::{Num, Vec3};
 use campfire_protocol::SessionLog;
 use campfire_runner::Runner;
@@ -20,11 +23,15 @@ use campfire_runner::internals::{FixedMatch, Golden, HashTrail, MatchUnits, Refe
 use campfire_script::ScriptHost;
 use campfire_sim::{EntityIndex, Position, StableId, TickRate};
 
-use crate::reference::{level_xp, life, respawn_at};
+use crate::match_3v3::showcase::Showcase;
+use crate::reference::{gold, level_xp, life, respawn_at};
 
-/// The ticks the match plays: the pick, the skirmish, the camp, and the first 400 ticks of the
+/// The ticks of the skirmish: the pick, the skirmish, the camp, and the first 400 ticks of the
 /// first waves' fight, which begins in tick 2803.
-const TICKS: u64 = 3200;
+const SKIRMISH: u64 = 3200;
+/// The ticks the match plays: the skirmish, the farm, the shop, and the showcase's casts, with
+/// the window of its last.
+const TICKS: u64 = Reference3v3::SHOWCASE + Reference3v3::CAST_EVERY * Reference3v3::CASTS;
 
 #[derive(Debug)]
 struct Run {
@@ -36,6 +43,7 @@ struct Run {
     at_first_wave: Vec<Unit>,
     deaths: Vec<Death>,
     seen: Seen,
+    showcase: Showcase,
 }
 
 /// A unit that died: in tick `tick`, felled by `killer` with `assisters`, and the tick it comes
@@ -70,6 +78,8 @@ struct Seen {
     xp_at_wolf_fall: Vec<Vec<Num>>,
     /// Cinder's, Veil's and Rime's learning after ticks 1200, 1201 and 1900, in that order.
     learning: Vec<[Learning; 3]>,
+    /// Each player's gold at the skirmish's end.
+    gold: Vec<i64>,
 }
 
 /// A hero's learning as a tick left it: the ranks of its basic abilities and its ultimate, its
@@ -162,8 +172,9 @@ fn run(reference: &Reference3v3) -> Run {
     let (mut at_pick_end, mut at_first_wave) = (Vec::new(), Vec::new());
     let mut deaths = Vec::new();
     let mut seen = Seen::default();
+    let mut showcase = Showcase::default();
     for tick in 0..TICKS {
-        Reference3v3::play_tick(&mut fixed, tick);
+        reference.play_tick(&mut fixed, tick);
         let runner = fixed.runner();
         trail.record(runner.world());
         golden.record_hashed(runner, trail.last());
@@ -186,9 +197,10 @@ fn run(reference: &Reference3v3) -> Run {
         } else if tick == first_wave {
             at_first_wave = units(runner);
         }
-        if tick >= pick_end {
+        if (pick_end..SKIRMISH).contains(&tick) {
             seen.read(world, reference, tick);
         }
+        showcase.read(world, reference, tick);
     }
     fixed.runner_mut().reveal_seed();
     Run {
@@ -199,6 +211,7 @@ fn run(reference: &Reference3v3) -> Run {
         at_first_wave,
         deaths,
         seen,
+        showcase,
     }
 }
 
@@ -252,6 +265,11 @@ impl Seen {
             let learning = [cinder, veil, rime].map(|hero| Learning::of(world, hero));
             self.learning.push(learning);
         }
+        if tick == SKIRMISH - 1 {
+            self.gold = (0..Reference3v3::PLAYERS)
+                .map(|slot| gold(world, reference, slot))
+                .collect();
+        }
     }
 }
 
@@ -275,8 +293,12 @@ fn a_3v3_match_replays_to_the_same_hashes() {
     let melee = assert_start(&reference, &run);
     assert_skirmish(&run);
     assert_camp(&run);
-    assert_gold(&reference, &run, melee);
+    assert_gold(&run, melee);
     assert_learning(&run);
+    showcase::assert_farm(&run.showcase);
+    showcase::assert_shop(&reference, &run.showcase);
+    let world = run.fixed.runner().world();
+    showcase::assert_casts(&reference, &run.showcase, world, TICKS);
     assert_replays(&reference, run.fixed.runner(), &run.trail);
 }
 
@@ -389,7 +411,7 @@ fn assert_skirmish(run: &Run) {
     let fallen: Vec<&Death> = run
         .deaths
         .iter()
-        .filter(|death| heroes.contains(&death.unit))
+        .filter(|death| death.tick < SKIRMISH && heroes.contains(&death.unit))
         .collect();
     let rime_fell = Death {
         tick: 1840,
@@ -461,9 +483,9 @@ fn assert_camp(run: &Run) {
     assert_eq!(gained, [zero, zero, zero, share, share, zero]);
 }
 
-/// The players' gold at the end: the income, first blood and its assist, the wolf's bounty, and
+/// The players' gold at the skirmish's end: the income, first blood and its assist, the wolf's bounty, and
 /// the bounty of each creep of the first wave a hero felled, by its kind, `melee` or a caster's.
-fn assert_gold(reference: &Reference3v3, run: &Run, melee: UnitType) {
+fn assert_gold(run: &Run, melee: UnitType) {
     // A creep a hero fells pays its player 20 for a melee creep, the first three of a group, and
     // 15 for a caster: Cinder fells a caster and a melee creep of the south's west group, 35, and
     // Veil a caster of the north's east group, 15.
@@ -472,7 +494,7 @@ fn assert_gold(reference: &Reference3v3, run: &Run, melee: UnitType) {
         let felled = run
             .deaths
             .iter()
-            .filter(|death| death.killer == Some(killer));
+            .filter(|death| death.tick < SKIRMISH && death.killer == Some(killer));
         felled
             .filter_map(|death| {
                 let creep = run
@@ -488,12 +510,10 @@ fn assert_gold(reference: &Reference3v3, run: &Run, melee: UnitType) {
     // Income: 8 gold every 5 s from the pick's end, 100 ticks, in ticks 1299 to 3199: 20 times,
     // 160. Cinder's player takes first blood, 300 + 100, and the creeps' 35; Gale's the assist's
     // 150, split among one assister; Kensho's the wolf's 30; Veil's the creep's 15.
-    let amounts = run.fixed.runner().world().resource::<PlayerResources>();
-    let gold = ResourceId::named(&reference.packages().data().resources, "gold").unwrap();
-    let paid: Vec<i64> = (0..Reference3v3::PLAYERS)
-        .map(|slot| amounts.amount(PlayerSlot::new(slot), gold))
-        .collect();
-    assert_eq!(paid, [160 + 435, 160 + 150, 160, 160 + 30, 160, 160 + 15]);
+    assert_eq!(
+        run.seen.gold,
+        [160 + 435, 160 + 150, 160, 160 + 30, 160, 160 + 15]
+    );
 }
 
 /// Learning: each hero spawns with a point, which a learn spends on a rank its level allows.

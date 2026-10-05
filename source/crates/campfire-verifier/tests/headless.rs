@@ -203,7 +203,7 @@ fn a_3v3_log_with_learn_orders_verifies_from_the_store() {
     let mut fixed = reference.start();
     let mut live = HashTrail::default();
     for tick in 0..=1900 {
-        Reference3v3::play_tick(&mut fixed, tick);
+        reference.play_tick(&mut fixed, tick);
         live.record(fixed.runner().world());
     }
     fixed.runner_mut().reveal_seed();

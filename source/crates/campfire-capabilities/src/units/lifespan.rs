@@ -18,6 +18,10 @@ impl Lifespan {
         Lifespan { ends }
     }
 
+    pub const fn ends(self) -> Tick {
+        self.ends
+    }
+
     /// Whether its life ends with the tick that starts at `now`.
     pub(crate) fn ends_after(self, now: Tick) -> bool {
         self.ends <= now.after(Ticks::new(1))

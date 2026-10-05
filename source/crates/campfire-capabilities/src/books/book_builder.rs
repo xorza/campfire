@@ -214,10 +214,7 @@ impl<'a> BookBuilder<'a> {
         actions: &BTreeMap<&str, ActionId>,
     ) -> ItemBook {
         let items = &package.content.items;
-        let id = |name: &DeclaredName| {
-            let at = items.keys().position(|other| other == name).expect(CHECKED);
-            ItemId::nth(u32::try_from(at).expect("a mode's item count fits u32"))
-        };
+        let id = |name: &DeclaredName| ItemId::named(items, name.as_str()).expect(CHECKED);
         let resources = &self.input.data.resources;
         let specs = items.values().map(|item| ItemSpec {
             cost: item
@@ -252,10 +249,10 @@ impl<'a> BookBuilder<'a> {
         resources: &[DeclaredName],
         map: &ModeMap,
     ) -> Shop {
-        let sells = data.items.iter().map(|name| {
-            let at = items.keys().position(|other| other == name).expect(CHECKED);
-            ItemId::nth(u32::try_from(at).expect("a mode's item count fits u32"))
-        });
+        let sells = data
+            .items
+            .iter()
+            .map(|name| ItemId::named(items, name.as_str()).expect(CHECKED));
         let places = map
             .markers
             .iter()
