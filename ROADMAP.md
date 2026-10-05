@@ -51,6 +51,7 @@ Done when all three play to their goldens on every OS in CI, and the pair test p
 
 - The 3v3 two-lane map, six heroes, about 20 items, structures that fall in order, the neutral objective, whole camps and streak bounties, team-view bots ([Reference MOBA](docs/design/07-reference-moba.md)).
 - The client: interpolation, presentation scripts and events, assets within their limits; areas drawn where they lie and as far as they reach; the mode's and the units' script state sent to each client as each field's `sync` says ([Script state](docs/design/03-game-scripting.md#script-state)).
+- Multiplayer pause and game speed, by the host's setting of who may pause: each client pauses and changes its tick length with the server ([Sessions](docs/design/10-sessions.md#decisions), D6).
 - Creator tools: data schemas and hot reload ([Creator tools](docs/design/02-engine-core.md#creator-tools)).
 
 Done when two humans and four bots play a whole 3v3 on LAN to its end, and its log verifies on every OS.

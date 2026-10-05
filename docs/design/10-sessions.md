@@ -1,0 +1,112 @@
+# Campfire — Sessions
+
+How a session outlives its server process, its players' links and its players: the journal, crash restore, slots and their controllers, reconnects and late joins, server bots, receipts, checkpoints, saves and loads, and the local server. Stage 6 builds it; [Lifecycle and sessions](02-engine-core.md#lifecycle-and-sessions), [Session log](05-protocol-spec.md#session-log) and [Singleplayer and saves](01-campfire-design.md#singleplayer-and-saves) give the rules it serves.
+
+## Decisions
+
+- **D1. A private write-ahead journal makes the log durable; the published format stays one file written at the end.** The server appends each record to a journal of framed, checksummed records and syncs it on a background thread, as SQLite's WAL and LevelDB's log do; a restart reads it to the last whole record. The published log is written from what the journal rebuilds, so it keeps one canonical file and one fingerprint, and no torn record ever reaches a verifier.
+- **D2. A checkpoint copies only the state changed since the last one, as design 02 says.** At the boundary the main thread clones the changed components and resources, and the despawns and removals since the last checkpoint, into a delta; a background thread applies it to its own copy of the state and encodes, hashes and writes the snapshot. A full 3v3 snapshot costs at most 105 µs and its hash 70 µs (i9-13980HX), so the copy is for the scale of a world, built now.
+- **D3. Every state write marks its component changed.** The copy trusts Bevy's change ticks, so no state type's value may change while its change tick stays: derived data that must not trigger a refresh lives apart from the state it would hide. A test copies the state of the goldens' matches every tick and compares it with a full snapshot.
+- **D4. Bots are server slots.** The host gives each slot as a player, a bot or open. The server makes a bot's inputs and signs each with the server key, as the protocol's Bot source says. In Stage 6 an order script drives a bot; Stage 10's team-view bots replace the driver only.
+- **D5. The mode decides who may take a slot.** `[players]` gives `late_join`, `bot_takeover` and `leaver`; the host gives the grace period and the restore window.
+- **D6. Pause and game speed work on the local server only.** A pause stops `Time<Virtual>` on the server and on its one client; a game speed changes the tick length of both, as Lightyear sets `Time<Virtual>`'s relative speed itself every frame. Multiplayer pause, by the host's setting, waits for a later stage.
+- **D7. A burst after a stall is bounded below the max input delay.** The server sets `Time<Virtual>`'s max delta so one frame runs at most `max_input_delay − 1` ticks, so no on-time input ever becomes late; the time past the bound is dropped and logged, the server falls behind the wall clock, and its clients' sync follows, as fixed-timestep loops do ([Fix Your Timestep](https://gafferongames.com/post/fix_your_timestep/), Bevy's max delta).
+- **D8. Keys are plain key files.** A secret key is a NIP-19 `nsec` in a file only its owner reads (mode 0600 on Unix); a file others may read is refused, as OpenSSH refuses a key with loose permissions. Windows has no modes: the file goes in the user's profile, which other users cannot read by default, and no check runs. NIP-49 encryption comes with `identity` in milestone 2, for every OS.
+- **D9. A journal that fails ends the server; the host's supervisor starts it again.** A failed write or sync is never retried and trusted: Linux may drop the pages a failed fsync held, so a retry can succeed over lost data, as PostgreSQL's fsyncgate showed, and PostgreSQL now panics instead. The server logs the failure and exits with its own exit code; a crash exits too. The server never restarts itself: systemd's `Restart=on-failure`, a Docker restart policy or launchd starts it again, and the start restores the session.
+- **D10. The newest login wins.** A join of a main key whose slot has a live link ends the old link and seats the new one, in the lobby and after the start, as game servers do (Minecraft's "logged in from another location"): a player who comes back is never locked out by a link the server has not yet seen fail.
+
+## Slots and controllers
+
+- **Plan.** The terms carry one entry per player slot of the manifest: `player`, `bot` or `open`. The session id hashes it, so every delegation signs it. The match starts when every `player` slot holds a joined, connected player.
+- **Controller.** At every tick each slot has one controller: a player (a delegation, its chain and its counts), a bot, open, or reserved for a player who left. The log knows it from its own records, with no package: it checks a player packet against the slot's current player, and a bot input against a bot slot.
+- **Changes.** The server logs each change as a signed server input: `Join` (a player takes the slot, with their delegation, starting a new chain from its id), `Renew` (the same main key, a new session key, the chain going on), `Leave` (the player left, by asking or after the grace period), and `Connected` and `Disconnected`, which change no controller. A `Leave` turns the slot into what the mode's `leaver` says: `reserve` keeps it for that main key only, `bot` gives it to a bot, `open` opens it to anyone `late_join` lets in. The slot remembers its leaver, who may always take it back while it is reserved, played by a bot or still open. Anyone else's `Join` takes an open slot only when `late_join` is on, a bot slot only when `bot_takeover` is on, and a reserved slot never. The log checks the structure; the runner checks the mode's rules as it records, so a verifier checks both.
+- **Mode data.** `[players]`: `late_join` (default `false`), `bot_takeover` (default `false`, and `true` only with `late_join`), `leaver` (`reserve`, the default, `bot` or `open`).
+- **In the sim.** A `Join` and a `Leave` reach the sim as session events of their tick, which the core gives the mode in the Mode stage before the timers: `on_player_join(ctx, player)` and `on_player_leave(ctx, player)`, in log order. The players at the start join with the match, and run no hook. `ctx.players` counts the slots, whatever controls them. A slot's units stay the slot's whatever controls it, so the mode's rules see one player.
+- **Pending inputs.** A player's inputs logged before a `Join` or a `Leave` of their slot and due later never apply, as a late input does not; a `Renew` keeps them.
+
+## Server inputs
+
+A server input is logged before the tick it applies in, with one Schnorr signature by the server key over `"campfire/server-input/v1" ‖ session id ‖ u64 tick ‖ u32 index ‖ input`, where `tick` is the next tick when it was logged, `index` counts the server inputs logged before that tick from 0, and `input` is its postcard encoding:
+
+| Input | Fields | Effect |
+| --- | --- | --- |
+| `Bot` | slot, payload | Commands of the slot's bot, applied in that tick as a player's are, in slot order; at most the max inputs per tick a tick |
+| `Join` | slot, delegation JSON | The slot's controller becomes the delegation's player, whose chain starts from its id; `on_player_join` |
+| `Renew` | slot, delegation JSON | The slot's player, the same main key, signs with the new session key from now on |
+| `Leave` | slot, reason (`asked`, `grace`) | The slot becomes what `leaver` says; `on_player_leave` |
+| `Connected`, `Disconnected` | slot | None; the log shows when a player's link came and went |
+
+A delegation in a `Join` or a `Renew` must name the session, the server and a session key, as the header's do; its seed contribution is ignored.
+
+## The journal
+
+- **Files.** Each session has a directory under the server's data directory: `private` (written once, before the first offer, synced: the seed chain's root and its length, 1,024 segments unless the host says, the host's settings, the session's terms), `journal`, and `snapshots/`, each snapshot named by its SHA-256 in hex. The published log goes to `logs/<session id>.campfire-log`. Every file is the owner's only (0600).
+- **Frames.** `journal` starts with `campfire/journal/v1`; each record is a `u32` length, the record's postcard bytes, and the 32-byte BLAKE3 of `"campfire/journal-frame/v1" ‖ bytes`, LevelDB's framing with a hash in place of its CRC32C. A reader stops at the first frame that is short, longer than the 16 MiB a record may be, or whose hash fails, and truncates the file there.
+- **Durable files.** Every file but the journal is written whole and atomically: to a temporary file in its directory, synced, renamed over its name, and the directory synced, on Unix, so neither the bytes nor the name can be lost; Windows has no directory sync, and its rename is the last step. A new directory, and the journal when it is made, are synced into their parent the same way. Rust's `sync_all` is `F_FULLFSYNC` on Apple systems, which a filesystem without it refuses: that is a failure of the journal like any other.
+- **Lock.** A server holds an exclusive lock on its data directory's `lock` file while it runs, so two servers never write one journal; a second one exits with an error.
+- **Records.** `Header` (terms and slot starts), `Entry` (a player packet or a server input, logged before the next tick), `Sealed` (the next tick sealed), `CheckpointBegun` (segment, tick), `CheckpointDone` (the checkpoint record), `Loaded` (segment, the checkpoint it loads), `Result`.
+- **Writer.** The main thread encodes each record and sends its bytes to the writer thread, never touching the disk. The writer appends what it holds, syncs, and publishes how many records are durable; the next sync waits for the next records, so a busy tick groups many records in one sync. A crash loses at most the records not yet synced. A failed write or sync is reported to the main thread, which logs it and exits (D9).
+- **Publishing.** When the session ends, the server writes the published log from the log in memory, which equals what the journal rebuilds.
+
+## Crash restore
+
+- **Start.** A server whose data directory holds a session with no `Result` record restores it instead of opening a new one; a journal whose terms name another engine release is refused, with an error naming that release, for the release that wrote it to restore. It keeps its key and its TLS certificate in the data directory, so its listing and the clients' pins stay true. A self-signed certificate, which WebTransport allows for 14 days at most, is made again at a start with no session to restore when it would expire within two days, so a session and its restores run inside one certificate's life.
+- **Window.** The restore window runs from the journal's last write, its modification time. A server back after it aborts the session: it logs a `Result` of `aborted`, publishes the log, and opens no match.
+- **Replay.** Within it, the server rebuilds the log from the journal, builds the match from the latest checkpoint whose `CheckpointDone` it holds, or from tick 0 with none, and replays the ticks after it. A checkpoint begun but not done, its snapshot lost with the crash, starts its segment all the same: the replay switches to its seed at its boundary and takes the checkpoint again there. It logs `Disconnected` for each slot a player controls, and from the next tick on runs the match on: sim tick `t` is Lightyear tick `t + start`, with `start` new, so the ticks the crash lost take no time in the sim.
+- **Supervisor.** The server exits with failure on a crash and on a failed journal, and the host's supervisor starts it again (D9). A systemd unit, the example the docs give:
+
+  ```ini
+  [Service]
+  ExecStart=/usr/local/bin/campfire-server --data /var/lib/campfire <mode> 0.0.0.0:4433
+  Restart=on-failure
+  RestartSec=1
+  ```
+- **Clients.** A client whose link fails tries to connect again, after waits that start at 1 s and double to 8 s at most, each drawn at random below its bound, as AWS's "full jitter" does, so clients that lost one server do not all come back in one instant; it stops when the restore window and the grace period have passed, which the offer gave it, and exits with failure.
+
+## Reconnect and late join
+
+- **Door.** After the start, the server still offers its terms, its grace period and restore window, and a challenge to every new link. A join's delegation names its main key: a key that controls a slot gets it back, its live link ended if it has one (D10), and a key that left a slot still reserved, played by a bot or open gets it back too; any other gets an open slot when `late_join` allows, else a bot slot when `bot_takeover` allows, else a refusal. A new session key for a slot's player is a `Renew`; the same key needs none. The server checks each delegation's expiry against its clock at every join, so a client whose delegation expired delegates a new session key, which the server logs as a `Renew`.
+- **Resume.** The server answers a seated link with the slot, the Lightyear tick of the next sim tick and that tick, and the chain the log holds for the slot: its seq and head, or none for a new chain. A client that holds its chain's history since its last receipt cuts its chain back to that head, when its own hash at that seq is the same; the inputs after it never apply, and the client logs them. A client with no history, as after a restart, takes the server's head: the signatures already logged cover every earlier input, so the client signs only what comes after. A head that differs from the client's own at the same seq ends the link: the server rewrote the chain.
+- **Client world.** Lightyear despawns every replicated entity of a client whose link ends, unless it is `Persistent`, which no campfire entity is; the client also clears its predicted ticks and its sent inputs. On the resumed link the server shows the new link every unit its team sees at once, as no `SeenBy` changes for it, and replication sends them whole.
+- **Grace.** A player whose link fails is logged `Disconnected`, and keeps the slot for the host's grace period, measured by the server's monotonic clock; a player back in time is `Connected` again. After it, the server logs `Leave` with `grace`. A player who asks to leave is logged `Leave` with `asked` at once. When every slot a player controlled has left, and no player holds a link, the session ends and the server publishes the log.
+
+## Server bots
+
+- **Host.** The server takes the bot slots of its plan, each with an order file, and an order file for the slots that become bots after a leaver; a slot with none idles.
+- **Driver.** Before each tick, for each bot slot, the driver gives the orders and mode inputs its script has for that tick, as payloads in the client's encoding; the server signs each as a `Bot` input and logs it before the tick runs. An order script gains `[[input]]` entries, `{ tick, name, value }`, for mode inputs such as a hero pick.
+
+## Receipts
+
+About once a second, for each player whose durable seq advanced, the server signs `{session id, slot, delegation id, tick, seq, head}` over `"campfire/receipt/v1" ‖ session id ‖ u32 slot ‖ delegation id ‖ u64 tick ‖ u64 seq ‖ head` and sends it. Only inputs whose journal records are synced count, so a receipt names only what a crash cannot lose. The client checks the signature and that the head is its own chain's at that seq, keeps the newest, and writes it to its data directory.
+
+## Checkpoints
+
+- **Segments.** A checkpoint at the boundary before tick `t` ends segment `k` and starts `k + 1`: from `t` on the sim draws from segment `k + 1`'s seed, `SimRng` replaced, as the seed is not state. A checkpoint past the seed chain's last segment ends the session, as design 05 says, with an `aborted` result.
+- **Copy.** The core registers, for each state type, a copy of its values changed since the last checkpoint, and an apply of that copy to another world. A value counts as changed when its Bevy change tick is newer than the world's change tick at the last checkpoint, which each checkpoint takes and then advances, so every later write is newer. No state type holds interior mutability, which change ticks cannot see. The entity index records the ids it gained and lost since the last checkpoint, and after each tick a drain records the stable ids of each state type's removed components that still live. At the boundary the main thread builds the delta, and the checkpoint thread applies it to its world, snapshots and hashes that world with the same registry, writes the snapshot, and signs the record. The thread's world starts as a full copy of the match's first state, or of the state a restore or a load built, made before the first tick runs. The snapshot file is synced before the `CheckpointDone` record goes to the journal, so a restore never meets a record without its snapshot.
+- **Record.** `{segment, tick, state hash, snapshot fingerprint, log carry, signature}`, signed over `"campfire/checkpoint/v1" ‖ session id ‖ postcard of the rest`. The log carry is the log's own state at the boundary, so a segment verifies alone: each slot's controller and its leaver, with a player's delegation, chain seq and head, stamp counts and spill; and the inputs logged before `t` and due from `t` on.
+- **Restore equivalence.** A match restored from a checkpoint's snapshot and log carry plays the same ticks to the same hashes as the match that made it; every gap a test finds is closed as state, or as derived data rebuilt after a restore.
+
+## Saves and loads
+
+- **Save.** A save is a checkpoint a player keeps. The mode asks with `ctx.save()`, which makes one at the end of the tick, or by `[saves] autosave_ms`, at each multiple of it from the session's start; the player asks with a save command on the local server, refused when the mode's `[saves] by` is `mode`.
+- **Load.** A load ends the session's run and restores the chosen checkpoint as a new segment: the journal logs `Loaded`, the server builds the match from the snapshot and the log carry, and every client resumes, as after a crash. The published log keeps each segment up to the checkpoint the next starts from, so the log after a loaded save is dropped, and the segments chain.
+- **Scope.** Saves and loads run on one release; converters come in Stage 7.
+
+## Local server
+
+A singleplayer client starts the server as a thread, linked by Lightyear's in-process transport, with its data in the client's data directory and the client's player in slot 0; bots or open slots fill the rest as the command line says. The pause key pauses `Time<Virtual>` on both; the speed keys set the tick length of both to the session's tick length over 0.5, 1, 2 or 4. Neither enters the log.
+
+## Protocol changes
+
+- **Terms.** The session id appends `u64 slot count ‖ u8 per slot` (0 player, 1 bot, 2 open) to what it hashes.
+- **Log file.** `campfire/session-log/v2`: the header (the terms, then each slot's start: a player's delegation JSON, `bot` or `open`); a `u32` count of segments, each its checkpoint record (none for segment 0, which starts at tick 0), a `u64` count of its sealed ticks, the entries logged before each, and, for the last segment only, the entries logged after its last tick; the last segment's server seed, which reveals every earlier one, as an option; and the result record as an option. An entry is a player packet as before, or a server input with its signature.
+- **Result.** `{tick, outcome, final state hash, signature}`, the outcome `won` with a team, `draw`, or `aborted`, signed over `"campfire/result/v1" ‖ session id ‖ postcard of the rest`.
+- **Verification.** A verifier replays the segments in order from tick 0, checking each checkpoint's hash as the replay reaches it, switching to the next segment's seed and log carry there; with the snapshots at hand, it also checks each snapshot's fingerprint and that it restores to its record's hash.
+
+## Tests
+
+- Each record and signature has a round-trip test and a test that refuses each flaw; a torn or corrupted journal tail restores to its last whole record.
+- A match restored from its journal, cut at every kind of record, plays to the same per-tick hashes as the match that wrote it; so does one restored from each checkpoint.
+- The goldens' matches keep a copy of their state through the checkpoint copy every tick, and it equals a full snapshot every tick.
+- Net scenarios: a client that loses its link and comes back; a late join to an open slot and a bot takeover; a leaver after the grace period, under each `leaver` rule; a restored server that every client rejoins.
+- The LAN check kills the server mid-match and restarts it, stops a bot client and starts it again with its key file, and verifies the log the session ends with; and it plays a match against server bots on a local server with no network.
