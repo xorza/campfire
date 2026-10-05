@@ -84,6 +84,8 @@ Values of the fields may be one or one per rank, like params; times become whole
 | `gather` | `production` | `use` | Walks to a node, gathers, and carries the load to a drop-off, again until stopped |
 | `craft` | `items` | `use` | Takes a recipe's items and pools, at a station a filter selects or anywhere, and makes an item, or adds modifiers to one, as enchanting does ([Items](items.md)) |
 
+An action in an item's slot is in the `use` group, whatever its kind ([Items](items.md#rules)).
+
 ### Deliveries
 
 | Delivery | Capability | Reaches |
