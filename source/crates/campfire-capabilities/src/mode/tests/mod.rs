@@ -358,6 +358,7 @@ fn map() -> MapData {
     MapData {
         grid: Some(GridData {
             cell: Scalar::Int(1),
+            brush: Vec::new(),
         }),
         navigation: Some(MapNavigationData {
             cell: Scalar::Int(1),

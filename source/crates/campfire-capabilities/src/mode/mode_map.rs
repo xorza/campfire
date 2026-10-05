@@ -22,6 +22,7 @@ use crate::values::declared_name::DeclaredName;
 use crate::values::grid::Grid;
 use crate::values::metric::Metric;
 use crate::values::name_list::NameList;
+use crate::values::polygon::Polygon;
 use crate::vision::vision_grid::VisionGrid;
 
 /// The mode's map and the relations of its teams, every name resolved once, as the book builder
@@ -34,6 +35,8 @@ pub struct ModeMap {
     pub(crate) placed: Vec<PlacedUnit>,
     pub(crate) markers: Vec<MarkerSpec>,
     pub(crate) grid: Option<Grid>,
+    /// The areas of the vision grid's brush, in the map's order.
+    pub(crate) brush: Vec<Polygon>,
 }
 
 /// What a client's prediction takes of the map as a match does, and no script reads: its metric,
@@ -78,8 +81,8 @@ impl ModeMap {
     /// mode does not have: teams that share a name or more than `Team::LIMIT`, or more than
     /// `VisionGrid::MAX_TEAMS` with a vision grid; a relation of a team to itself, of a team the
     /// mode lacks, or of a pair named before; and in the map, grids that make no grid of its
-    /// bounds, a wall on a layer of no name `rules` declares or with points that make no simple
-    /// polygon, a path with no waypoint or another's name, a placed unit of a type, team or path it
+    /// bounds, a wall on a layer of no name `rules` declares, a wall or a brush with points that
+    /// make no simple polygon, a path with no waypoint or another's name, a placed unit of a type, team or path it
     /// lacks, or that walks from an end of no path, a marker of another's name, a team it lacks, or
     /// with a point and a region or a region outside the bounds, and any point that does not fit
     /// its metric or its bounds.
@@ -110,6 +113,7 @@ impl ModeMap {
             resolved.set(pair[0], pair[1], relation.relation, relation.vision);
         }
         let grid = map.grid()?;
+        let brush = map.brush()?;
         if grid.is_some() && teams.len() > VisionGrid::MAX_TEAMS {
             return Err(ModeError::TooManyVisionTeams);
         }
@@ -184,6 +188,7 @@ impl ModeMap {
             placed,
             markers,
             grid,
+            brush,
         })
     }
 }

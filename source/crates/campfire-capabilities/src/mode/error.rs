@@ -55,6 +55,11 @@ pub enum ModeError {
         wall: usize,
         problem: PolygonError,
     },
+    /// The points of brush `brush`, counted from 0, make no simple polygon.
+    Brush {
+        brush: usize,
+        problem: PolygonError,
+    },
 }
 
 impl fmt::Display for UnitKitError {
@@ -106,6 +111,7 @@ impl fmt::Display for ModeError {
             ),
             ModeError::UnknownLayer(name) => write!(f, "no layer \"{name}\""),
             ModeError::Wall { wall, problem } => write!(f, "wall {wall}: {problem}"),
+            ModeError::Brush { brush, problem } => write!(f, "brush {brush}: {problem}"),
         }
     }
 }

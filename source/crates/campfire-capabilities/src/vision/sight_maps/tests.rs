@@ -1,5 +1,10 @@
 use super::*;
 
+/// Sets `cells` in the bitmap at `run` of `words`, none hidden, noting the words in `set`.
+fn set_bits(words: &mut [u64], set: &mut Vec<usize>, run: usize, cells: Range<usize>) {
+    Bitmap { words, set, run }.set(cells, None);
+}
+
 #[test]
 fn set_bits_fills_a_run_within_one_word_and_across_words_and_notes_them() {
     let (mut words, mut set) = ([0; 3], Vec::new());
@@ -44,8 +49,8 @@ fn a_tick_clears_only_what_the_tick_before_revealed() {
     // and 1, and detects 130; group 0 detects nothing.
     let mut maps = SightMaps::default();
     maps.reset(200, 2);
-    maps.reveal(1, 60..70, false);
-    maps.reveal(1, 130..131, true);
+    maps.reveal(1, 60..70, false, None);
+    maps.reveal(1, 130..131, true, None);
     let seen = |maps: &SightMaps, group, cell, hidden| maps.sees(group, cell, hidden);
     assert!(seen(&maps, 1, 60, false) && seen(&maps, 1, 69, false));
     assert!(!seen(&maps, 1, 59, false) && !seen(&maps, 1, 70, false));
@@ -62,7 +67,7 @@ fn a_tick_clears_only_what_the_tick_before_revealed() {
     );
     assert_eq!((maps.set_revealed.len(), maps.set_detected.len()), (0, 0));
     // Group 0 then sees a run across three words: 0 to 191.
-    maps.reveal(0, 0..192, false);
+    maps.reveal(0, 0..192, false, None);
     assert_eq!(maps.set_revealed, [0, 1, 2]);
     assert!(seen(&maps, 0, 191, false) && !seen(&maps, 0, 192, false));
 }

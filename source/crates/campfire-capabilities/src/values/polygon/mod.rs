@@ -11,7 +11,7 @@ pub(crate) mod error;
 /// point to the next and from the last to the first, none meeting another but where two that
 /// follow each other share their point. A wall's or a brush's area.
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub(crate) struct Polygon {
+pub struct Polygon {
     points: Vec<[Num; 2]>,
 }
 

@@ -123,6 +123,7 @@ impl Mode {
             placed,
             markers,
             grid,
+            brush,
         } = books.install(world);
         ground.install(world, walkers);
         let state = ModeState::initial(setup.data);
@@ -133,7 +134,7 @@ impl Mode {
             GameMap::new(paths.names().map(ImmutableString::from), &markers),
         );
         if let Some(grid) = grid {
-            Vision::load_grid(world, grid, book.teams.count());
+            Vision::load_grid(world, grid, &brush, book.teams.count());
         }
         if let Some(window) = assist_window {
             world.insert_resource(AssistWindow(window));

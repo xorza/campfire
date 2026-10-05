@@ -22,7 +22,7 @@ fn the_start_spawns_the_map_then_runs_on_match_start_and_timers_never_fire_early
         Some(PathId::new(0))
     );
     // The map's grid is the match's, for its 3 teams: a, b and the neutral one.
-    let vision = *game.sim.world.resource::<VisionGrid>();
+    let vision = game.sim.world.resource::<VisionGrid>();
     let grid = Grid::new(Num::int(1), map().bounds).unwrap();
     assert_eq!((vision.grid, vision.teams), (grid, 3));
     assert_eq!(*game.sim.world.resource::<Bounds>(), map().bounds);

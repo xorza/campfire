@@ -16,6 +16,8 @@ use crate::units::team::Team;
 use crate::units::team_set::TeamSet;
 use crate::units::unit_tags::UnitTags;
 use crate::values::grid::Grid;
+use crate::values::polygon::Polygon;
+use crate::vision::brush_map::BrushMap;
 use crate::vision::reveals::Reveals;
 use crate::vision::seen_by::SeenBy;
 use crate::vision::sight::Sight;
@@ -24,6 +26,7 @@ use crate::vision::sight_maps::SightMaps;
 use crate::vision::vision_grid::VisionGrid;
 use crate::vision::vision_groups::VisionGroups;
 
+pub(crate) mod brush_map;
 pub(crate) mod reveal_effect;
 pub(crate) mod reveals;
 pub(crate) mod seen_by;
@@ -58,13 +61,15 @@ impl Vision {
         registry.register_component::<Sight>();
     }
 
-    /// Gives the match the map's `grid`, and the number of its teams.
-    pub fn load_grid(world: &mut World, grid: Grid, teams: usize) {
+    /// Gives the match the map's `grid`, with the brush of `brush`'s areas, in the map's order,
+    /// and the number of its teams.
+    pub fn load_grid(world: &mut World, grid: Grid, brush: &[Polygon], teams: usize) {
         assert!(
             teams <= VisionGrid::MAX_TEAMS,
             "the mode's check limits the teams of a map with vision"
         );
-        world.insert_resource(VisionGrid { grid, teams });
+        let brush = BrushMap::new(&grid, brush);
+        world.insert_resource(VisionGrid { grid, brush, teams });
     }
 
     /// The teams that see `unit`: those the last Vision stage found, or, before it ran, the
@@ -88,9 +93,9 @@ fn fill_row(parts: ROQueryItem<'_, '_, RowParts>, fill: &mut RowFill<'_>) {
     fill.column::<SightColumn>().push(seen_by);
 }
 
-/// Reveals the cells each living unit with a sight sees to its vision group, and those each such
-/// unit whose tags detect sees to its group's detection, and each reveal under way its cells to
-/// its team's group, then gives each unit the teams that see it: its own group's, and those of
+/// Reveals the cells each living unit with a sight sees to its vision group, but the cells of
+/// every brush other than the one it stands in, and those each such unit whose tags detect sees to
+/// its group's detection, and each reveal under way its cells, brush included, to its team's group, then gives each unit the teams that see it: its own group's, and those of
 /// each group whose cells hold it, or, for a unit its tags hide, whose detection does. The groups
 /// follow the relations as they change.
 fn see(
@@ -126,14 +131,19 @@ fn see(
     for (&pos, &team, sight, tags) in &seers {
         let group = groups.of(team);
         let detects = UnitTags::effects_of(tags).detects();
+        let stands = grid
+            .grid
+            .cell_of(pos)
+            .expect("every unit stands within the bounds, which the grid covers");
+        let hidden = grid.brush.hidden_from(stands);
         grid.grid.spans_within(pos, sight.range(), |cells| {
-            maps.reveal(group, cells, detects);
+            maps.reveal(group, cells, detects, hidden);
         });
     }
     reveals.run(tick.start(), |reveal| {
         let group = groups.of(reveal.team);
         grid.grid.spans_within(reveal.pos, reveal.radius, |cells| {
-            maps.reveal(group, cells, false);
+            maps.reveal(group, cells, false, None);
         });
     });
     for (entity, &pos, &team, tags, seen) in &mut units {

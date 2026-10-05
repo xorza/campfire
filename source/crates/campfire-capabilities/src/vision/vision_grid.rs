@@ -1,12 +1,14 @@
 use bevy_ecs::resource::Resource;
 
 use crate::values::grid::Grid;
+use crate::vision::brush_map::BrushMap;
 
-/// The map's grid that sight reveals, and how many teams the match holds: package data, not
-/// state. A restore takes it from the map, as a new match does.
-#[derive(Resource, Debug, Clone, Copy, PartialEq, Eq)]
+/// The map's grid that sight reveals, its brush, and how many teams the match holds: package
+/// data, not state. A restore takes it from the map, as a new match does.
+#[derive(Resource, Debug, Clone, PartialEq, Eq)]
 pub(crate) struct VisionGrid {
     pub(crate) grid: Grid,
+    pub(crate) brush: BrushMap,
     pub(crate) teams: usize,
 }
 

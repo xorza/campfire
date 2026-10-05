@@ -33,6 +33,11 @@ impl Scene {
 
     /// A match of `teams` teams.
     fn of_teams(teams: usize) -> Scene {
+        Scene::with_brush(teams, &[])
+    }
+
+    /// A match of `teams` teams whose map has the brush of `brush`'s areas, in order.
+    fn with_brush(teams: usize, brush: &[Polygon]) -> Scene {
         let limits = ScriptLimits::ROOMY;
         let scripts = ScriptBudgets::new(limits, 1);
         let declared = [Capability::Stats, Capability::Combat, Capability::Vision];
@@ -40,7 +45,7 @@ impl Scene {
         let bounds =
             Bounds::new([Num::int(-10), Num::int(-10)], [Num::int(10), Num::int(10)]).unwrap();
         let grid = Grid::new(Num::int(1), bounds).unwrap();
-        Vision::load_grid(&mut sim.world, grid, teams);
+        Vision::load_grid(&mut sim.world, grid, brush, teams);
         Scene { sim }
     }
 
@@ -279,4 +284,47 @@ fn a_reveal_shows_its_cells_to_the_caster_group_alone_for_its_time_and_no_hidden
         assert_eq!(failed, Err(FailureKind::Api(error)), "{error:?}");
     }
     assert_eq!(*scene.sim.world.resource::<Reveals>(), Reveals::default());
+}
+
+#[test]
+fn a_unit_in_brush_is_seen_only_from_its_brush_and_by_a_reveal() {
+    // Brush A from (2, −2) to (6, 2) holds the 1 m cells whose centers have x from 2.5 to 5.5 and z
+    // from −1.5 to 1.5; brush B from (5, −2) to (9, 2) those from 6.5 to 8.5, as the column of
+    // 5.5, which both hold, is A's, the first the map lists.
+    let area = |[x0, z0]: [i64; 2], [x1, z1]: [i64; 2]| {
+        let corners = [[x0, z0], [x1, z0], [x1, z1], [x0, z1]].map(|point| point.map(Num::int));
+        Polygon::new(corners.to_vec()).unwrap()
+    };
+    let brush = [area([2, -2], [6, 2]), area([5, -2], [9, 2])];
+    let mut scene = Scene::with_brush(3, &brush);
+    let team = |index| TeamSet::of(Team::new(index));
+    let and = |a: u8, b: u8| team(a).with(Team::new(b));
+    // Team 1 hides in A at (3, 0), its cell's center (3.5, 0.5); team 0 watches from (0, 0), 3.54 m
+    // off, and team 2 lurks in B at (8, 0), 5 m off. Each sees 6 m.
+    let hider = scene.spawn(1, 3, 0, Some(6));
+    let watcher = scene.spawn(0, 0, 0, Some(6));
+    let lurker = scene.spawn(2, 8, 0, Some(6));
+    scene.sim.step();
+    // The hider is seen by no one outside A; it sees out of A, so the watcher is seen by it, and
+    // not into B, so the lurker is not. The watcher sees no brush cell at all.
+    let seen = |scene: &Scene| [hider, watcher, lurker].map(|id| scene.seen_by(id));
+    assert_eq!(seen(&scene), [team(1), and(0, 1), team(2)]);
+    // A unit of team 2 at (5, 0), in the column both hold, stands in A, and so sees the hider, 2 m
+    // off.
+    scene.spawn(2, 5, 0, Some(3));
+    scene.sim.step();
+    assert_eq!(seen(&scene)[0], and(1, 2));
+    // The watcher's reveal of 1 m round the hider sees into A for its 3 ticks.
+    assert_eq!(scene.reveal(Some(watcher), hider, "1", 100), Ok(()));
+    for _ in 0..3 {
+        scene.sim.step();
+        assert_eq!(seen(&scene)[0], and(1, 2).with(Team::new(0)));
+    }
+    scene.sim.step();
+    assert_eq!(seen(&scene)[0], and(1, 2));
+    // Once the watcher stands in A too, at (2, 1), its cell's center (2.5, 1.5), it sees the hider
+    // from there.
+    *scene.sim.get_mut::<Position>(watcher) = at(2, 1);
+    scene.sim.step();
+    assert_eq!(seen(&scene)[0], and(1, 2).with(Team::new(0)));
 }
