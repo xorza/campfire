@@ -137,6 +137,157 @@ slot = "spell"
 [[slots]]
 name = "weapon"
 
+# The six slots of a hero's inventory, after its weapon: each item's active, if it has one.
+[[slots]]
+name = "item"
+
+# Each team's base sells items, and buys them back at 70% of their cost, as League of Legends'
+# shop does; a dead hero shops from anywhere.
+[shop]
+items = [
+    "health_potion",
+    "mana_potion",
+    "sight_ward",
+    "vision_ward",
+    "elixir_of_sight",
+    "long_sword",
+    "ruby_crystal",
+    "cloth_armor",
+    "warblade",
+    "stoneplate",
+    "quicksilver",
+]
+resource = "gold"
+at = "shop"
+sell_share = "0.7"
+
+# Consumables: potions that restore 120 health or 75 mana over 15 s, five to a slot; a sight
+# ward, hidden, that watches for 90 s, and a vision ward, seen, with true sight and no end, two
+# to a slot; and an elixir of true sight until death.
+[items.health_potion]
+cost = { gold = 50 }
+stack = 5
+uses = 1
+action = "drink_health_potion"
+
+[items.mana_potion]
+cost = { gold = 50 }
+stack = 5
+uses = 1
+action = "drink_mana_potion"
+
+[items.sight_ward]
+cost = { gold = 75 }
+stack = 2
+uses = 1
+action = "place_sight_ward"
+
+[items.vision_ward]
+cost = { gold = 75 }
+stack = 2
+uses = 1
+action = "place_vision_ward"
+
+[items.elixir_of_sight]
+cost = { gold = 250 }
+uses = 1
+action = "drink_elixir_of_sight"
+
+# Components, each a stat its carrier holds.
+[items.long_sword]
+cost = { gold = 350 }
+modifiers = ["long_sword"]
+
+[items.ruby_crystal]
+cost = { gold = 400 }
+modifiers = ["ruby_crystal"]
+
+[items.cloth_armor]
+cost = { gold = 300 }
+modifiers = ["cloth_armor"]
+
+# Items built from components: a warblade of attack damage and health; a stoneplate of armor and
+# health whose active hardens its carrier; and a quicksilver of armor whose active cleanses
+# slows and roots.
+[items.warblade]
+cost = { gold = 1100 }
+components = ["long_sword", "ruby_crystal"]
+modifiers = ["warblade"]
+
+[items.stoneplate]
+cost = { gold = 1000 }
+components = ["cloth_armor", "ruby_crystal"]
+modifiers = ["stoneplate"]
+action = "harden"
+
+[items.quicksilver]
+cost = { gold = 900 }
+components = ["cloth_armor"]
+modifiers = ["quicksilver"]
+action = "cleanse"
+
+[modifiers.health_potion]
+stats = { health_regen = 8 }
+
+[modifiers.mana_potion]
+stats = { mana_regen = 5 }
+
+[modifiers.elixir_of_sight]
+tags = ["true_sight"]
+
+[modifiers.long_sword]
+stats = { attack_damage = 10 }
+
+[modifiers.ruby_crystal]
+stats = { health = 150 }
+
+[modifiers.cloth_armor]
+stats = { armor = 15 }
+
+[modifiers.warblade]
+stats = { attack_damage = 25, health = 300 }
+
+[modifiers.stoneplate]
+stats = { armor = 40, health = 250 }
+
+[modifiers.hardened]
+stats = { armor = 60 }
+
+[modifiers.quicksilver]
+stats = { armor = 20 }
+
+[actions.drink_health_potion]
+targeting = "none"
+on_resolve = [{ modifier = { id = "health_potion", duration_ms = 15000 }, to = "source" }]
+
+[actions.drink_mana_potion]
+targeting = "none"
+on_resolve = [{ modifier = { id = "mana_potion", duration_ms = 15000 }, to = "source" }]
+
+[actions.place_sight_ward]
+targeting = "point"
+range = "6.0"
+on_resolve = [{ spawn = { unit_type = "sight_ward", duration_ms = 90000 } }]
+
+[actions.place_vision_ward]
+targeting = "point"
+range = "6.0"
+on_resolve = [{ spawn = { unit_type = "vision_ward" } }]
+
+[actions.drink_elixir_of_sight]
+targeting = "none"
+on_resolve = [{ modifier = { id = "elixir_of_sight" }, to = "source" }]
+
+[actions.harden]
+targeting = "none"
+cooldown_ms = 60000
+on_resolve = [{ modifier = { id = "hardened", duration_ms = 2500 }, to = "source" }]
+
+[actions.cleanse]
+targeting = "none"
+cooldown_ms = 90000
+on_resolve = [{ purge = { tag = "slowed" }, to = "source" }, { purge = { tag = "rooted" }, to = "source" }]
+
 # Each unit type's weapon: its attack, at the rate and for the damage of its stats.
 [actions.melee_creep_attack]
 kind = "attack"

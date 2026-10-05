@@ -71,8 +71,7 @@ const MODE_SCRIPT: &str = "modes/3v3/scripts/mode.rhai";
 /// A train of a melee creep, which the mode's data does not hold, put before its first action.
 const RECRUIT: &str = "[actions.recruit]\nkind = \"train\"\ntargeting = \"none\"\nunit_type = \"melee_creep\"\n\n[actions.melee_creep_attack]";
 /// The manifest's capabilities with `production`.
-const PRODUCTION: Edit<'static> =
-    Edit::Replace(r#""progression"]"#, r#""progression", "production"]"#);
+const PRODUCTION: Edit<'static> = Edit::Replace(r#""items"]"#, r#""items", "production"]"#);
 
 /// Whether `problem` is Rime's Slow's `slow` param failing for `kind` by `way`.
 fn slow_fails(problem: &LoadProblem, way: Option<&Way>, kind: ParamProblem) -> bool {
@@ -280,13 +279,13 @@ fn a_mode_script_spawns_its_own_unit_types_and_avatars_by_name() {
 
 #[test]
 fn the_engines_tags_and_the_modes_fill_the_tags_a_match_holds() {
-    // The 3v3 names 24 tags: the 10 of its `[tags]`, 6 of its heroes' classes, 7 more of its unit
-    // types', and `slowed`, which modifiers grant. The engine has 3, so 229 layers, each a
-    // tag, fill the 256 a match holds, and 230 are past it.
+    // The 3v3 names 25 tags: the 10 of its `[tags]`, 6 of its heroes' classes, 8 more of its unit
+    // types', `ward` among them, and `slowed`, which modifiers grant. The engine has 3, so 228
+    // layers, each a tag, fill the 256 a match holds, and 229 are past it.
     let tags = |packages: &ModePackages| packages.tag_names().len();
     let packages = ModePackages::from_package_dir(&edited([])).unwrap();
-    assert_eq!(tags(&packages), 24);
-    let [(path, layers)] = <[_; 1]>::try_from(layers(229)).unwrap();
+    assert_eq!(tags(&packages), 25);
+    let [(path, layers)] = <[_; 1]>::try_from(layers(228)).unwrap();
     let edit = Edit::Set(&path, &layers);
     let packages = ModePackages::from_package_dir(&edited([(MODE_DATA, edit)])).unwrap();
     assert_eq!(tags(&packages), 253);
@@ -296,7 +295,7 @@ fn the_engines_tags_and_the_modes_fill_the_tags_a_match_holds() {
         "[tags.projectile]\nhidden = true\n\n[tags.stunned]",
     );
     let packages = ModePackages::from_package_dir(&edited([(MODE_DATA, edit)])).unwrap();
-    assert_eq!(tags(&packages), 24);
+    assert_eq!(tags(&packages), 25);
 }
 
 /// `count` navigation layers, each a tag: the edit by path that declares them.
@@ -327,10 +326,10 @@ struct LimitCase {
 #[test]
 fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
     let cases = [
-        // The 3v3's 24 tags and the engine's 3 leave 229 of the 256 a match holds for layers.
+        // The 3v3's 25 tags and the engine's 3 leave 228 of the 256 a match holds for layers.
         LimitCase {
             more: layers,
-            allowed: 229,
+            allowed: 228,
             limit: Limit::Tags,
         },
         // `level` and 31 more fill the 32 tracks a unit holds.
@@ -399,7 +398,7 @@ static FLAWS: [Flaw; 235] = [
     ),
     flaw(
         MANIFEST,
-        Edit::Replace(r#", "vision", "progression"]"#, r#", "progression"]"#),
+        Edit::Replace(r#", "vision", "progression""#, r#", "progression""#),
         MODE,
         |problem| matches!(problem, LoadProblem::Undeclared { capability: Capability::Vision, at: Place::UnitType(name) } if name == "caster_creep"),
     ),
@@ -407,7 +406,7 @@ static FLAWS: [Flaw; 235] = [
     // unit type lists one the mode declares.
     flaw(
         MANIFEST,
-        Edit::Replace(r#", "progression"]"#, "]"),
+        Edit::Replace(r#", "progression", "items"]"#, r#", "items"]"#),
         MODE,
         |problem| {
             matches!(
@@ -2056,17 +2055,17 @@ static FLAWS: [Flaw; 235] = [
     ),
     Flaw {
         file: MAP,
-        edit: Edit::Remove("markers.2.pos"),
+        edit: Edit::Remove("markers.4.pos"),
         also: &[(
             MAP,
-            Edit::Set("markers.2.region", "{ min = [-20, -14], max = [-16, -70] }"),
+            Edit::Set("markers.4.region", "{ min = [-20, -14], max = [-16, -70] }"),
         )],
         package: MODE,
         refused: |problem| matches!(problem, LoadProblem::Mode(ModeError::Region(marker)) if marker == "camp1"),
     },
     flaw(
         MAP,
-        Edit::Set("markers.2.region", "{ min = [-20, -14], max = [-16, -10] }"),
+        Edit::Set("markers.4.region", "{ min = [-20, -14], max = [-16, -10] }"),
         MODE,
         |problem| matches!(problem, LoadProblem::Mode(ModeError::Region(marker)) if marker == "camp1"),
     ),
@@ -2084,7 +2083,7 @@ static FLAWS: [Flaw; 235] = [
     ),
     flaw(
         MAP,
-        Edit::Set("markers.3.name", r#""camp1""#),
+        Edit::Set("markers.5.name", r#""camp1""#),
         MODE,
         |problem| matches!(problem, LoadProblem::Mode(ModeError::RepeatedName(name)) if name == "camp1"),
     ),
@@ -2311,10 +2310,10 @@ static FLAWS: [Flaw; 235] = [
         MODE_DATA,
         Edit::Replace(
             "[modifiers.warden_blessing]\n",
-            "[modifiers.warden_blessing]\naffects = \"allies:ward\"\n",
+            "[modifiers.warden_blessing]\naffects = \"allies:totem\"\n",
         ),
         MODE,
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Filter, name: filter, .. } if filter == "allies:ward"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Filter, name: filter, .. } if filter == "allies:totem"),
     ),
     // A relation names two of the mode's teams, a pair once.
     flaw(
@@ -2337,9 +2336,9 @@ static FLAWS: [Flaw; 235] = [
     ),
     flaw(
         "heroes/kensho/data/avatar.toml",
-        Edit::Replace(r#"targeting = "enemies""#, r#"targeting = "enemies:ward""#),
+        Edit::Replace(r#"targeting = "enemies""#, r#"targeting = "enemies:totem""#),
         "hero-kensho",
-        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Filter, name: filter, .. } if filter == "enemies:ward"),
+        |problem| matches!(problem, LoadProblem::Unknown { of: NameKind::Filter, name: filter, .. } if filter == "enemies:totem"),
     ),
     // A second spells package with a spell the first holds.
     Flaw {

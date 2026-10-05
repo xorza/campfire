@@ -82,6 +82,24 @@ orders = { ai = "scripts/camp_ai.rhai", think_ms = 250 }
 vision = { sight_range = "11.0" }
 collision = { radius = "0.7" }
 
+# Wards: a sight ward, hidden, and a vision ward, seen, with true sight. Each has no body, and
+# falls to a few hits, each of which deals it 1, whatever it was.
+[units.sight_ward]
+tags = ["ward", "stealthed"]
+params = { gold = 15, xp = 0 }
+pools = ["health"]
+stats = { health = { base = 3 } }
+combat = {}
+vision = { sight_range = "9.0" }
+
+[units.vision_ward]
+tags = ["ward", "true_sight"]
+params = { gold = 30, xp = 0 }
+pools = ["health"]
+stats = { health = { base = 4 } }
+combat = {}
+vision = { sight_range = "9.0" }
+
 [units.caster_creep_bolt]
 projectile = { speed = "6.5", homing = true }
 

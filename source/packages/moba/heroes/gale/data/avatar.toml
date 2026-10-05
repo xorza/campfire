@@ -4,6 +4,7 @@ pools = ["health", "mana"]
 tracks = ["level"]
 passive = "fair_wind"
 slots = { basic = ["cyclone", "gust", "wind_shield"], ultimate = ["tempest"], weapon = ["attack"] }
+inventory = { slots = 6, kind = "item" }
 
 [combat]
 

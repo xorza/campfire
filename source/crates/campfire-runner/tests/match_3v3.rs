@@ -317,8 +317,9 @@ fn assert_start(reference: &Reference3v3, run: &Run) -> UnitType {
     );
     // Each hero's slots, kind after kind: its three basic abilities and its ultimate, unlearned,
     // then the two spells its player chose, haste and mend, learned from the spawn: the same
-    // two abilities for every hero; and last its weapon, learned from the spawn.
-    let [basic, ultimate, spell, weapon] = [0, 1, 2, 3].map(SlotKind::new);
+    // two abilities for every hero; its weapon, learned from the spawn; and last the six slots of
+    // its inventory, empty, of one rank.
+    let [basic, ultimate, spell, weapon, item] = [0, 1, 2, 3, 4].map(SlotKind::new);
     let spells = &run.at_pick_end[14].slots[4..6];
     for unit in &run.at_pick_end[14..20] {
         let slots: Vec<_> = unit
@@ -334,8 +335,15 @@ fn assert_start(reference: &Reference3v3, run: &Run) -> UnitType {
             (spell, 1),
             (spell, 1),
             (weapon, 1),
+            (item, 1),
+            (item, 1),
+            (item, 1),
+            (item, 1),
+            (item, 1),
+            (item, 1),
         ];
         assert_eq!(slots, kinds);
+        assert!(unit.slots[7..].iter().all(|slot| slot.action.is_none()));
         assert_eq!(&unit.slots[4..6], spells);
     }
     assert_ne!(spells[0].action, spells[1].action);

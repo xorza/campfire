@@ -1,4 +1,4 @@
-//! The mode's item types, its shop and its units' inventories: each reads as its data holds it,
+//! The 3v3's item types, its shop and its heroes' inventories: each reads as its data holds it,
 //! and each flaw of them fails the load with its own problem.
 
 use std::num::{NonZeroU8, NonZeroU32};
@@ -17,76 +17,9 @@ const MODE_DATA: &str = "modes/3v3/data/mode.toml";
 const HUSK: &str = "heroes/husk/data/avatar.toml";
 const MAP: &str = "modes/3v3/map/map.toml";
 
-/// A shop in each base: a region of the team's, the map's third and fourth markers.
-const SHOPS: &str = r#"[[markers]]
-name = "north_shop"
-tags = ["shop"]
-team = "north"
-region = { min = [-8, -68], max = [8, -56] }
-
-[[markers]]
-name = "south_shop"
-tags = ["shop"]
-team = "south"
-region = { min = [-8, 56], max = [8, 68] }
-
-[[markers]]
-name = "camp1""#;
-
-/// A potion of five to a slot that heals as it is drunk, a blade, and an edge built from the
-/// blade, sold at the teams' shops for gold, half back on a sale.
-const ITEMS: &str = r#"[items.potion]
-cost = { gold = 50 }
-stack = 5
-uses = 1
-action = "drink"
-
-[items.blade]
-cost = { gold = 300 }
-
-[items.edge]
-cost = { gold = 500 }
-components = ["blade"]
-modifiers = ["warden_blessing"]
-
-[actions.drink]
-targeting = "none"
-on_resolve = [{ heal = { amount = 50 }, to = "source" }]
-
-[shop]
-items = ["potion", "blade", "edge"]
-resource = "gold"
-at = "shop"
-sell_share = "0.5"
-
-[actions.warden_attack]"#;
-
-/// The 3v3 with `items` declared, the items above, a slot kind of items after the weapon, and
-/// Husk's inventory of six of them; then `more` edits.
+/// The 3v3 with `more` edits.
 fn with_items(more: &[(&'static str, Edit<'static>)]) -> Result<ModePackages, LoadError> {
-    let base = [
-        (
-            MANIFEST,
-            Edit::Replace(r#""progression"]"#, r#""progression", "items"]"#),
-        ),
-        (
-            MODE_DATA,
-            Edit::Replace(
-                "[[slots]]\nname = \"weapon\"\n",
-                "[[slots]]\nname = \"weapon\"\n\n[[slots]]\nname = \"item\"\n",
-            ),
-        ),
-        (MODE_DATA, Edit::Replace("[actions.warden_attack]", ITEMS)),
-        (MAP, Edit::Replace("[[markers]]\nname = \"camp1\"", SHOPS)),
-        (
-            HUSK,
-            Edit::Replace(
-                "weapon = [\"attack\"] }\n",
-                "weapon = [\"attack\"] }\ninventory = { slots = 6, kind = \"item\" }\n",
-            ),
-        ),
-    ];
-    ModePackages::from_package_dir(&edited(base.into_iter().chain(more.iter().copied())))
+    ModePackages::from_package_dir(&edited(more.iter().copied()))
 }
 
 fn name(text: &str) -> DeclaredName {
@@ -94,27 +27,35 @@ fn name(text: &str) -> DeclaredName {
 }
 
 #[test]
-fn items_read_as_their_data_holds_them() {
+fn the_3v3s_items_read_as_their_data_holds_them() {
     let packages = with_items(&[]).unwrap();
     let items = &packages.content().items;
-    let potion = &items[&name("potion")];
+    assert_eq!(items.len(), 11);
+    // A health potion of 50, five to a slot, of one use, drunk by its action.
+    let potion = &items[&name("health_potion")];
     assert_eq!(potion.cost[&name("gold")], 50);
     assert_eq!(
         (potion.stack.get(), potion.uses.map(NonZeroU32::get)),
         (5, Some(1))
     );
-    assert_eq!(potion.action, Some(name("drink")));
-    // A stack of one by default, no uses, no components and no modifiers.
-    let blade = &items[&name("blade")];
-    assert_eq!((blade.stack.get(), blade.uses), (1, None));
-    let edge = &items[&name("edge")];
-    assert_eq!(edge.components, [name("blade")]);
-    assert_eq!(edge.modifiers, [name("warden_blessing")]);
+    assert_eq!(potion.action, Some(name("drink_health_potion")));
+    // A long sword: a stack of one by default, no uses, its stat its modifier.
+    let sword = &items[&name("long_sword")];
+    assert_eq!((sword.stack.get(), sword.uses), (1, None));
+    assert_eq!(sword.modifiers, [name("long_sword")]);
+    // A warblade, built from a long sword and a ruby crystal, 350 + 400 of its 1100.
+    let warblade = &items[&name("warblade")];
+    assert_eq!(
+        warblade.components,
+        [name("long_sword"), name("ruby_crystal")]
+    );
+    assert_eq!(warblade.cost[&name("gold")], 1100);
     let shop = packages.data().shop.as_ref().unwrap();
-    assert_eq!(shop.items, [name("potion"), name("blade"), name("edge")]);
+    assert_eq!(shop.items.len(), 11);
     assert_eq!((shop.resource.as_str(), shop.at.as_str()), ("gold", "shop"));
-    assert_eq!(shop.sell_share.of(300), 150);
-    // A unit type's inventory, as Husk's reads.
+    // 70% of a warblade's 1100 is 770.
+    assert_eq!(shop.sell_share.of(1100), 770);
+    // A unit type's inventory, as every hero's reads.
     let unit: UnitTypeFile = toml::from_str("inventory = { slots = 6, kind = \"item\" }").unwrap();
     let inventory = unit.inventory.unwrap();
     assert_eq!(
@@ -150,64 +91,77 @@ fn item(id: &str) -> Place {
 const FLAWS: [Flaw; 20] = [
     // An item costs in the mode's player resources.
     Flaw {
-        edits: &[(MODE_DATA, Edit::Set("items.blade.cost", "{ silver = 300 }"))],
+        edits: &[(
+            MODE_DATA,
+            Edit::Set("items.long_sword.cost", "{ silver = 350 }"),
+        )],
         package: MODE,
-        refused: |problem| unknown(problem, &item("blade"), NameKind::Resource, "silver"),
+        refused: |problem| unknown(problem, &item("long_sword"), NameKind::Resource, "silver"),
     },
     // An item is built from the mode's items, never from itself.
     Flaw {
         edits: &[(
             MODE_DATA,
-            Edit::Set("items.edge.components", r#"["sword"]"#),
+            Edit::Set("items.warblade.components", r#"["sword"]"#),
         )],
         package: MODE,
-        refused: |problem| unknown(problem, &item("edge"), NameKind::Item, "sword"),
+        refused: |problem| unknown(problem, &item("warblade"), NameKind::Item, "sword"),
     },
     Flaw {
         edits: &[(
             MODE_DATA,
-            Edit::Set("items.blade.components", r#"["edge"]"#),
+            Edit::Set("items.long_sword.components", r#"["warblade"]"#),
         )],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::ComponentLoop(item)) if item == "blade"),
+        refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::ComponentLoop(item)) if item == "long_sword"),
     },
     Flaw {
         edits: &[(
             MODE_DATA,
-            Edit::Set("items.blade.components", r#"["blade"]"#),
+            Edit::Set("items.long_sword.components", r#"["long_sword"]"#),
         )],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::ComponentLoop(item)) if item == "blade"),
+        refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::ComponentLoop(item)) if item == "long_sword"),
     },
-    // An item costs at least what its components cost.
+    // An item costs at least what its components cost: 350 + 400 = 750.
     Flaw {
-        edits: &[(MODE_DATA, Edit::Set("items.edge.cost", "{ gold = 299 }"))],
+        edits: &[(
+            MODE_DATA,
+            Edit::Set("items.warblade.cost", "{ gold = 749 }"),
+        )],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::CheaperThanComponents(item)) if item == "edge"),
+        refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::CheaperThanComponents(item)) if item == "warblade"),
     },
     // A stack and uses of at least one.
     Flaw {
-        edits: &[(MODE_DATA, Edit::Set("items.potion.stack", "0"))],
+        edits: &[(MODE_DATA, Edit::Set("items.health_potion.stack", "0"))],
         package: MODE,
         refused: |problem| unread(problem, "data/mode.toml", "nonzero"),
     },
     Flaw {
-        edits: &[(MODE_DATA, Edit::Set("items.potion.uses", "0"))],
+        edits: &[(MODE_DATA, Edit::Set("items.health_potion.uses", "0"))],
         package: MODE,
         refused: |problem| unread(problem, "data/mode.toml", "nonzero"),
     },
     // An item's modifiers and action are the mode's.
     Flaw {
-        edits: &[(MODE_DATA, Edit::Set("items.edge.modifiers", r#"["sharp"]"#))],
+        edits: &[(
+            MODE_DATA,
+            Edit::Set("items.warblade.modifiers", r#"["sharp"]"#),
+        )],
         package: MODE,
-        refused: |problem| unknown(problem, &item("edge"), NameKind::Modifier, "sharp"),
+        refused: |problem| unknown(problem, &item("warblade"), NameKind::Modifier, "sharp"),
     },
     Flaw {
-        edits: &[(MODE_DATA, Edit::Set("items.potion.action", r#""sip""#))],
+        edits: &[(
+            MODE_DATA,
+            Edit::Set("items.health_potion.action", r#""sip""#),
+        )],
         package: MODE,
-        refused: |problem| unknown(problem, &item("potion"), NameKind::Ability, "sip"),
+        refused: |problem| unknown(problem, &item("health_potion"), NameKind::Ability, "sip"),
     },
-    // An inventory fills a slot kind of the mode of one rank, with a slot at least.
+    // An inventory fills a slot kind of the mode of one rank, with a slot at least, that no unit
+    // type or choice puts other actions in.
     Flaw {
         edits: &[(HUSK, Edit::Set("inventory.kind", r#""bag""#))],
         package: "hero-husk",
@@ -227,7 +181,6 @@ const FLAWS: [Flaw; 20] = [
         package: "hero-husk",
         refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::RankedInventory { kind, .. }) if kind == "relics"),
     },
-    // An inventory's slot kind holds no other action: a choice fills none of it.
     Flaw {
         edits: &[(HUSK, Edit::Set("inventory.kind", r#""spell""#))],
         package: MODE,
@@ -238,10 +191,13 @@ const FLAWS: [Flaw; 20] = [
         package: "hero-husk",
         refused: |problem| unread(problem, "data/avatar.toml", "nonzero"),
     },
-    // The shop sells the mode's items for one of its resources at a tag of the map's markers,
-    // giving back a share of 0 to 1.
+    // The shop sells the mode's items, each only for its resource, at a tag of the map's markers,
+    // each with a region and a team, giving back a share of 0 to 1.
     Flaw {
-        edits: &[(MODE_DATA, Edit::Set("shop.items", r#"["potion", "sword"]"#))],
+        edits: &[(
+            MODE_DATA,
+            Edit::Set("shop.items", r#"["health_potion", "sword"]"#),
+        )],
         package: MODE,
         refused: |problem| unknown(problem, &Place::Shop, NameKind::Item, "sword"),
     },
@@ -255,18 +211,16 @@ const FLAWS: [Flaw; 20] = [
         package: MODE,
         refused: |problem| unknown(problem, &Place::Shop, NameKind::MarkerTag, "base"),
     },
-    // An item the shop sells costs only in the shop's resource; each of its markers has a region
-    // and a team.
     Flaw {
         edits: &[
             (MODE_DATA, Edit::Set("resources", r#"["gold", "silver"]"#)),
             (
                 MODE_DATA,
-                Edit::Set("items.potion.cost", "{ gold = 50, silver = 1 }"),
+                Edit::Set("items.health_potion.cost", "{ gold = 50, silver = 1 }"),
             ),
         ],
         package: MODE,
-        refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::ShopResource(item)) if item == "potion"),
+        refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::ShopResource(item)) if item == "health_potion"),
     },
     Flaw {
         edits: &[(MAP, Edit::Remove("markers.2.region"))],
@@ -284,12 +238,9 @@ const FLAWS: [Flaw; 20] = [
             )
         },
     },
-    // Items need `items`, and only the mode holds them.
+    // Items need `items`.
     Flaw {
-        edits: &[(
-            MANIFEST,
-            Edit::Replace(r#""progression", "items"]"#, r#""progression"]"#),
-        )],
+        edits: &[(MANIFEST, Edit::Replace(r#", "items"]"#, "]"))],
         package: MODE,
         refused: |problem| {
             matches!(

@@ -4,6 +4,7 @@ pools = ["health", "mana"]
 tracks = ["level"]
 passive = "stillness"
 slots = { basic = ["chill_arrows", "fan_of_frost", "snow_owl"], ultimate = ["glacier_arrow"], weapon = ["attack"] }
+inventory = { slots = 6, kind = "item" }
 
 [combat]
 
