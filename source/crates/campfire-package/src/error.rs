@@ -267,6 +267,8 @@ pub enum LoadProblem {
     },
     /// The mode's item types, its shop or an inventory.
     Item(ItemProblem),
+    /// The data at `at` gives `field`, which design 08 plans and the release does not read yet.
+    Planned { field: &'static str, at: Place },
 }
 
 /// What is wrong with the mode's item types, its shop or an inventory.
@@ -377,6 +379,9 @@ pub enum ScriptProblem {
     /// It uses `ctx` other than design 08's convention allows, so the load checks cannot see
     /// every use of it.
     CtxMisuse(CtxMisuse),
+    /// It uses or defines a name design 08 plans, a `ctx` name, a field or method of a handle, or
+    /// a hook, which the release does not run yet.
+    Planned(String),
 }
 
 /// What is wrong with an effect of an action's list.
@@ -556,6 +561,8 @@ pub enum Place {
     Item(DeclaredName),
     /// The mode's `[shop]`.
     Shop,
+    /// The mode's `data/mode.toml`.
+    Mode,
 }
 
 /// A use of `ctx` that hides it from the load checks: every value of `ctx` in a script is a
@@ -642,6 +649,7 @@ impl fmt::Display for Place {
             Place::SlotKinds => f.write_str("the mode's slot kinds"),
             Place::Item(id) => write!(f, "item {id}"),
             Place::Shop => f.write_str("the mode's [shop]"),
+            Place::Mode => f.write_str("the mode's data/mode.toml"),
         }
     }
 }
@@ -674,6 +682,9 @@ impl fmt::Display for ScriptProblem {
                 f.write_str("makes a function pointer: a closure, an anonymous function or Fn")
             }
             ScriptProblem::CtxMisuse(misuse) => write!(f, "{misuse}"),
+            ScriptProblem::Planned(name) => {
+                write!(f, "{name} is planned, and the release does not run it yet")
+            }
         }
     }
 }
@@ -870,6 +881,12 @@ impl fmt::Display for LoadProblem {
             LoadProblem::CombatMissing(at) => write!(f, "{at}: the life pool without combat"),
             LoadProblem::Locale { path, problem } => write!(f, "{path}: {problem}"),
             LoadProblem::Item(problem) => write!(f, "{problem}"),
+            LoadProblem::Planned { field, at } => {
+                write!(
+                    f,
+                    "{at}: {field} is planned, and the release does not read it yet"
+                )
+            }
             LoadProblem::UnitKit { at, error } => write!(f, "{at}: {error}"),
             LoadProblem::Ai { at, error } => write!(f, "{at}: {error}"),
             LoadProblem::Action { action, error } => write!(f, "action \"{action}\": {error}"),

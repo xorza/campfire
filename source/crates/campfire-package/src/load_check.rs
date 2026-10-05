@@ -3,11 +3,11 @@ use std::{iter, slice};
 
 use campfire_capabilities::{
     ActionData, ActionDataField, ActionKind, ActionSlots, ApiOwner, ApiVersion, BookError, Books,
-    CollisionData, CombatRules, DeclaredName, DeliveryData, EffectData, EffectTo, Effecting,
-    EngineTag, EnumRecord, FilterData, Hook, ItemData, MemberKind, ModifierData, ModifierProblem,
-    MoveData, NameKind, Number, Offers, PackagePath, Param, ParamProblem, Pools, ProjectileHits,
-    Range, RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Stat, Targeting, TrackId,
-    TypePlace, UnitTypeData, UnitTypeFile,
+    CollisionData, CombatRules, DataTable, DeclaredName, DeliveryData, EffectData, EffectTo,
+    Effecting, EngineTag, EnumRecord, FilterData, Hook, ItemData, MemberKind, ModifierData,
+    ModifierProblem, MoveData, NameKind, Number, Offers, PackagePath, Param, ParamProblem, Pools,
+    ProjectileHits, Range, RangeField, ResourceId, Scalar, ScriptApi, ScriptRole, Stat, Status,
+    Targeting, TrackId, TypePlace, UnitTypeData, UnitTypeFile,
 };
 use campfire_math::Num;
 use campfire_sim::{Capability, TickRate};
@@ -21,7 +21,7 @@ use crate::mode_packages::ModePackages;
 use crate::modifier_ways::{ModifierWays, Way};
 use crate::package::Package;
 use crate::package_view::{PackageView, ViewKind};
-use crate::script_facts::{EnumString, ScriptFacts, ScriptName};
+use crate::script_facts::{EnumString, Function, ScriptFacts, ScriptName};
 
 /// Design 08's checks at package load, over a mode and every package it depends on: data matches
 /// its schema (the reads checked that), every per-rank array has an entry for each rank, every
@@ -122,6 +122,7 @@ impl<'a> LoadCheck<'a> {
             state_fields: LoadCheck::state_fields(packages),
         };
         check.mode().map_err(fail)?;
+        check.planned_data().map_err(fail)?;
         check.loadout()?;
         for (view, dependent) in packages.packages().skip(1).zip(&packages.dependencies) {
             check
@@ -608,25 +609,9 @@ impl<'a> LoadCheck<'a> {
                 return Err(misuse(found.clone()));
             }
             for function in &facts.functions {
-                let hook = Hook::named(&function.name);
-                if hook.is_none()
-                    && Hook::PREFIXES
-                        .iter()
-                        .any(|prefix| function.name.starts_with(prefix))
-                {
-                    return Err(fail(ScriptProblem::UnknownHook(function.name.clone())));
-                }
-                let Some(hook) = hook else {
+                let Some(hook) = self.hook(function, roles).map_err(fail)? else {
                     continue;
                 };
-                if !roles.contains(&hook.role()) || hook.params() != function.params {
-                    return Err(fail(ScriptProblem::UnknownHook(function.name.clone())));
-                }
-                if !function.ctx_first {
-                    return Err(misuse(CtxMisuse::HookParam {
-                        function: function.name.clone(),
-                    }));
-                }
                 if let Some(capability) = hook.capability() {
                     self.require(capability, &at)?;
                 }
@@ -639,14 +624,15 @@ impl<'a> LoadCheck<'a> {
                 let Some(member) = member else {
                     return Err(fail(ScriptProblem::UnknownCtx(used.name.clone())));
                 };
+                if member.status == Status::Planned {
+                    return Err(fail(ScriptProblem::Planned(used.name.clone())));
+                }
                 if let Some(capability) = member.capability {
                     self.require(capability, &at)?;
                 }
             }
             for used in &facts.members {
-                if !self.member_known(facts, &used.name, used.kind) {
-                    return Err(fail(ScriptProblem::UnknownMember(used.name.clone())));
-                }
+                self.member(facts, &used.name, used.kind).map_err(fail)?;
             }
             self.enums(facts).map_err(fail)?;
             if let Some(name) = facts
@@ -729,24 +715,72 @@ impl<'a> LoadCheck<'a> {
         fields
     }
 
-    /// Whether a field or method `name` that a script with `facts` reads on a value is one some
-    /// handle has, one the engine has of its own, a key of the script's object maps, or one of
-    /// its functions, called as a method.
-    fn member_known(&self, facts: &ScriptFacts, name: &str, kind: MemberKind) -> bool {
-        let handle = self.api.members().iter().any(|member| {
+    /// The hook `function` defines, if its name is a hook's: one of `roles` that runs, with the
+    /// hook's parameters, and `ctx` first. A name with a hook's prefix that names none fails.
+    fn hook(
+        &self,
+        function: &Function,
+        roles: &BTreeSet<ScriptRole>,
+    ) -> Result<Option<Hook>, ScriptProblem> {
+        let name = &function.name;
+        let Some(hook) = Hook::named(name) else {
+            if Hook::PREFIXES.iter().any(|prefix| name.starts_with(prefix)) {
+                return Err(ScriptProblem::UnknownHook(name.clone()));
+            }
+            return Ok(None);
+        };
+        if !roles.contains(&hook.role()) || hook.params() != function.params {
+            return Err(ScriptProblem::UnknownHook(name.clone()));
+        }
+        let planned = self
+            .api
+            .hooks()
+            .iter()
+            .any(|held| held.hook == hook && held.status == Status::Planned);
+        if planned {
+            return Err(ScriptProblem::Planned(name.clone()));
+        }
+        if !function.ctx_first {
+            return Err(ScriptProblem::CtxMisuse(CtxMisuse::HookParam {
+                function: name.clone(),
+            }));
+        }
+        Ok(Some(hook))
+    }
+
+    /// A script may read or call `name`, of `kind`, on a value other than `ctx`: a handle's field
+    /// or method that runs, one the engine has of its own, a key of the script's object maps or
+    /// one of its functions. A name only a planned handle member has is planned.
+    fn member(
+        &self,
+        facts: &ScriptFacts,
+        name: &str,
+        kind: MemberKind,
+    ) -> Result<(), ScriptProblem> {
+        let own = match kind {
+            MemberKind::Field => {
+                self.api.builtin(&format!("get${name}"))
+                    || facts.map_keys.iter().any(|key| key == name)
+            }
+            _ => {
+                self.api.builtin(name)
+                    || facts.functions.iter().any(|function| function.name == name)
+            }
+        };
+        if own {
+            return Ok(());
+        }
+        let mut problem = ScriptProblem::UnknownMember(name.to_owned());
+        let handles = self.api.members().iter().filter(|member| {
             member.owner != ApiOwner::Ctx && member.name == name && member.kind == kind
         });
-        handle
-            || match kind {
-                MemberKind::Field => {
-                    self.api.builtin(&format!("get${name}"))
-                        || facts.map_keys.iter().any(|key| key == name)
-                }
-                _ => {
-                    self.api.builtin(name)
-                        || facts.functions.iter().any(|function| function.name == name)
-                }
+        for member in handles {
+            if member.status != Status::Planned {
+                return Ok(());
             }
+            problem = ScriptProblem::Planned(name.to_owned());
+        }
+        Err(problem)
     }
 
     /// A name a script at `at` gives an argument of a name kind is one of its kind that the match
@@ -1508,6 +1542,39 @@ impl<'a> LoadCheck<'a> {
                     at: Place::Choice(name.clone()),
                     kind: kind.clone(),
                 }));
+            }
+        }
+        Ok(())
+    }
+
+    /// No data gives a field design 08 plans: the mode's `state_version`, or a projectile type's
+    /// `gravity` in any package. An action's planned effects fail the action's own checks.
+    fn planned_data(&self) -> Result<(), LoadProblem> {
+        let planned = |table: DataTable, field: &str| {
+            self.api.data().iter().any(|held| {
+                held.table == table && held.name == field && held.status == Status::Planned
+            })
+        };
+        let packages = self.packages;
+        if packages.data.state_version.is_some() && planned(DataTable::Mode, "state_version") {
+            return Err(LoadProblem::Planned {
+                field: "state_version",
+                at: Place::Mode,
+            });
+        }
+        let units = packages
+            .packages()
+            .flat_map(|view| view.content.units.iter());
+        for (name, unit_type) in units {
+            let falls = unit_type
+                .projectile
+                .as_ref()
+                .is_some_and(|projectile| projectile.gravity.is_some());
+            if falls && planned(DataTable::Projectile, "gravity") {
+                return Err(LoadProblem::Planned {
+                    field: "gravity",
+                    at: Place::UnitType(name.clone()),
+                });
             }
         }
         Ok(())

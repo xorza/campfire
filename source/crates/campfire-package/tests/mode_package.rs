@@ -5,9 +5,10 @@ use std::num::NonZeroU32;
 use std::path::Path;
 
 use campfire_capabilities::{
-    ActionDataField, ActionError, ActionField, ActionKind, AiError, DeclaredName, EffectData,
-    EffectTo, Effecting, EngineEnum, EngineTag, Hook, MapProblem, ModeError, ModifierProblem,
-    NameKind, Number, ParamProblem, PlannedEffect, Scalar, SyncTo, UnitKitError,
+    ActionDataField, ActionError, ActionField, ActionKind, AiError, CapabilitySet, DeclaredName,
+    EffectData, EffectTo, Effecting, EngineEnum, EngineTag, Hook, MapProblem, ModeError,
+    ModifierProblem, NameKind, Number, ParamProblem, PlannedEffect, Scalar, Status, SyncTo,
+    UnitKitError,
 };
 use campfire_package::{
     ChoiceProblem, ContentError, CtxMisuse, DeliveryProblem, EffectProblem, Limit, LoadError,
@@ -358,7 +359,7 @@ fn a_mode_loads_up_to_each_limit_and_fails_one_past_it() {
 }
 
 /// Each flaw, one to a copy of the packages, and the problem it fails the load with.
-static FLAWS: [Flaw; 235] = [
+static FLAWS: [Flaw; 241] = [
     // The release runs package API 1.0: another major, and a newer minor, do not load.
     flaw(
         MANIFEST,
@@ -1338,6 +1339,69 @@ static FLAWS: [Flaw; 235] = [
         ),
         MODE,
         |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::UnknownCtx(name), .. } if name == "order_reset"),
+    ),
+    // Names design 08 plans: a `ctx` method and field, a handle's field, a hook and data fields.
+    flaw(
+        MODE_SCRIPT,
+        Edit::Replace(
+            "fn on_match_start(ctx) {",
+            "fn on_match_start(ctx) {\n    ctx.save();",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::Planned(name), .. } if name == "save"),
+    ),
+    flaw(
+        MODE_SCRIPT,
+        Edit::Replace(
+            "fn on_match_start(ctx) {",
+            "fn on_match_start(ctx) {\n    let carried = ctx.carry;",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::Planned(name), .. } if name == "carry"),
+    ),
+    flaw(
+        CHAIN_FIRE,
+        Edit::Replace(
+            "if hit.delivery.state",
+            "if hit.part == () && hit.delivery.state",
+        ),
+        "hero-cinder",
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::Planned(name), .. } if name == "part"),
+    ),
+    flaw(
+        MODE_SCRIPT,
+        Edit::Replace(
+            "fn on_match_start(ctx) {",
+            "fn on_player_join(ctx, player) {}\n\nfn on_match_start(ctx) {",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Script { problem: ScriptProblem::Planned(name), .. } if name == "on_player_join"),
+    ),
+    flaw(
+        MODE_DATA,
+        Edit::Replace(
+            "resources = [\"gold\"]",
+            "resources = [\"gold\"]\nstate_version = 1",
+        ),
+        MODE,
+        |problem| {
+            matches!(
+                problem,
+                LoadProblem::Planned {
+                    field: "state_version",
+                    at: Place::Mode
+                }
+            )
+        },
+    ),
+    flaw(
+        UNITS,
+        Edit::Replace(
+            "speed = \"12\", homing = true",
+            "speed = \"12\", homing = true, gravity = \"9.8\"",
+        ),
+        MODE,
+        |problem| matches!(problem, LoadProblem::Planned { field: "gravity", at: Place::UnitType(name) } if name == "tower_bolt"),
     ),
     flaw(
         LASH_OUT,
@@ -2410,6 +2474,23 @@ fn every_flaw_of_a_package_fails_its_load_with_its_own_problem() {
     assert!(
         matches!(*error.problem, LoadProblem::TooMany(Limit::DamageKinds)),
         "{error}"
+    );
+
+    // The flaws hold each data field and tag effect the release plans: `loot` and `noise` as
+    // an action's effects, the others as fields.
+    let api = CapabilitySet::script_api();
+    let mut planned: Vec<_> = api
+        .data()
+        .iter()
+        .filter(|field| field.status == Status::Planned)
+        .map(|field| field.name)
+        .collect();
+    planned.sort_unstable();
+    assert_eq!(planned, ["gravity", "loot", "noise", "state_version"]);
+    assert!(
+        api.tag_effects()
+            .iter()
+            .all(|held| held.status != Status::Planned)
     );
 
     // A hero is no mode.

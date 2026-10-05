@@ -136,7 +136,9 @@ pub use values::share::Share;
 pub use scripts::script_api::{MemberKind, ScriptApi};
 
 pub use scripts::script_api::api_owner::ApiOwner;
+pub use scripts::script_api::data_table::DataTable;
 pub use scripts::script_api::enum_record::EnumRecord;
+pub use scripts::script_api::status::Status;
 
 pub use scripts::script_api::member_spec::{EnumArgs, NameArgs};
 pub use scripts::script_book::ScriptBook;
