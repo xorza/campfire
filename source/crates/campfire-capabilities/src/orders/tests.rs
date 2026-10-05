@@ -6,7 +6,7 @@ use campfire_sim::{Capability, Command, TickInput};
 
 use super::*;
 use crate::actions::action_book::internals::{self, TestWeapon};
-use crate::actions::action_slots::{InProgress, SlotAim};
+use crate::actions::action_slots::{InProgress, OrderPhase, SlotAim};
 use crate::actions::action_target::ActionTarget;
 use crate::actions::slot_kind::SlotKind;
 use crate::capability_set::test_match::TestMatch;
@@ -397,7 +397,7 @@ fn a_slot_order_starts_a_cast_or_a_train_and_no_other_kind() {
             slot: 1,
             target: ActionTarget::None,
         },
-        started: None,
+        phase: OrderPhase::Ordered,
     };
     for (at, order) in [(0, None), (7, None), (1, Some(train_order))] {
         game.tick(&[(0, &slot(at))]);

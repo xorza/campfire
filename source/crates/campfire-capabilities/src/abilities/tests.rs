@@ -32,7 +32,6 @@ use crate::combat::on_death::OnDeath;
 use crate::combat::pass_queue::PassQueue;
 use crate::combat::recent_attackers::RecentAttackers;
 use crate::navigation::Navigation;
-use crate::navigation::destination::Destination;
 use crate::orders::Orders;
 use crate::orders::ai_data::AiData;
 use crate::orders::order::{Action, Order};
@@ -511,7 +510,7 @@ fn a_knock_back_interrupts_a_windup_and_the_cast_waits_for_its_end() {
             slot: 0,
             target: ActionTarget::Unit(shover),
         },
-        started: None,
+        phase: OrderPhase::Ordered,
     };
     assert_eq!(
         game.sim.get::<ActionSlots>(caster).in_progress(),
@@ -849,7 +848,10 @@ fn a_cast_its_casters_tags_stop_is_kept_and_an_interrupted_one_spends_nothing() 
     let enemy = game.spawn(1, ground(Num::int(5), Num::ZERO), ());
     let target = ActionTarget::Unit(enemy);
     let aim = SlotAim { slot: 0, target };
-    let ordered = Some(InProgress::Order { aim, started: None });
+    let ordered = Some(InProgress::Order {
+        aim,
+        phase: OrderPhase::Ordered,
+    });
     // Each start from where the caster stands, the origin.
     let start = ActionStart {
         origin: ground(Num::ZERO, Num::ZERO),
@@ -858,7 +860,7 @@ fn a_cast_its_casters_tags_stop_is_kept_and_an_interrupted_one_spends_nothing() 
     let started = |tick| {
         Some(InProgress::Order {
             aim,
-            started: Some(Started {
+            phase: OrderPhase::Started(Started {
                 resolves_at: Tick::new(tick),
                 start,
             }),
@@ -994,6 +996,174 @@ fn on_resolve(ctx, caster, target) {
     let missed = enemy(&mut game, 4, 0);
     game.cast(caster, point(10, 0));
     assert_eq!(game.sim.health(missed), 500);
+    assert_eq!(game.failed_calls(), []);
+}
+
+/// A match of units that walk and take orders, with Hop, which deals 10 to each enemy within half
+/// a meter of its point, and Jab, which deals 10 to its target; each reaches 4 m, and resolves as
+/// it starts.
+#[derive(Debug)]
+struct Reaching {
+    game: Match,
+    hop: ActionId,
+    jab: ActionId,
+}
+
+impl Reaching {
+    fn new() -> Reaching {
+        let declared = [
+            Capability::Stats,
+            Capability::Combat,
+            Capability::Navigation,
+            Capability::Abilities,
+            Capability::Orders,
+        ];
+        let mut game = Match::with(ScriptLimits::ROOMY, &declared);
+        let hop = ActionData {
+            script: Some(PackagePath::parse("hop.rhai").unwrap()),
+            range: Some(Ranked::One(RangeField::Range(Range::Meters(Num::int(4))))),
+            ..ActionData::cast(Targeting::Point)
+        };
+        let jab = ActionData {
+            script: Some(PackagePath::parse("jab.rhai").unwrap()),
+            targeting: Targeting::Unit(FilterData::parse("enemies").unwrap()),
+            ..hop.clone()
+        };
+        let hop_script = r#"
+fn on_resolve(ctx, caster, target) {
+    for unit in ctx.find(caster, target, num(1) / 2, "enemies") {
+        ctx.damage(unit, 10, "true");
+    }
+}
+"#;
+        let jab_script =
+            r#"fn on_resolve(ctx, caster, target) { ctx.damage(target, 10, "true"); }"#;
+        let hop = game.load("hop", &hop, hop_script);
+        let jab = game.load("jab", &jab, jab_script);
+        Reaching { game, hop, jab }
+    }
+
+    /// Player 0's caster at the origin with `ability`, walking a meter a tick.
+    fn caster(&mut self, ability: ActionId) -> StableId {
+        let caster = self.game.caster(ability, 1);
+        self.game.sim.insert(caster, walker(Num::ONE));
+        caster
+    }
+
+    fn x(&self, unit: StableId) -> Num {
+        self.game.sim.get::<Position>(unit).get().x
+    }
+}
+
+/// A unit that walks `meters` a tick.
+fn walker(meters: Num) -> impl Bundle {
+    Navigation::walker(MoveStep::new(meters).unwrap())
+}
+
+#[test]
+fn a_cast_beyond_its_range_walks_in_range_first_and_starts_there() {
+    let mut reaching = Reaching::new();
+    // A hop at (10, 0) from the origin, a meter a tick: the Act stage of tick t finds the caster
+    // at t, before that tick's step, and 10 − t m within 4 m first in tick 6, where it stops and
+    // hops.
+    let hopper = reaching.caster(reaching.hop);
+    let game = &mut reaching.game;
+    let still = game.spawn(1, ground(Num::int(10), Num::ZERO), ());
+    game.cast(hopper, ActionTarget::Point(ground(Num::int(10), Num::ZERO)));
+    assert!(game.sim.get::<ActionSlots>(hopper).approaching());
+    game.sim.run_until(6);
+    assert_eq!(
+        (reaching.x(hopper), reaching.game.sim.health(still)),
+        (Num::int(6), 500)
+    );
+    reaching.game.sim.step();
+    assert_eq!(
+        (reaching.x(hopper), reaching.game.sim.health(still)),
+        (Num::int(6), 490)
+    );
+    reaching.game.sim.run_until(20);
+    assert_eq!(reaching.x(hopper), Num::int(6));
+
+    // A jab at an enemy at 12 m that walks away half a meter a tick: the Act stage of tick t
+    // finds it at 12 + t/2 and the caster at t, 12 − t/2 m apart, within 4 m first in tick 16.
+    let jabber = reaching.caster(reaching.jab);
+    let game = &mut reaching.game;
+    let start = game.sim.world.resource::<SimTick>().start().get();
+    let fleeing = game.spawn(1, ground(Num::int(12), Num::ZERO), walker(halves(1)));
+    let away = Destination::to(Some(ground(Num::int(100), Num::ZERO)));
+    game.sim.insert(fleeing, away);
+    game.cast(jabber, ActionTarget::Unit(fleeing));
+    game.sim.run_until(start + 16);
+    assert_eq!(game.sim.health(fleeing), 500);
+    game.sim.step();
+    assert_eq!(
+        (reaching.x(jabber), reaching.game.sim.health(fleeing)),
+        (Num::int(16), 490)
+    );
+    assert_eq!(reaching.game.failed_calls(), []);
+}
+
+#[test]
+fn a_new_order_a_block_or_a_failed_check_ends_a_walk_in_range() {
+    let mut reaching = Reaching::new();
+    let mover = reaching.caster(reaching.jab);
+    let game = &mut reaching.game;
+    let far = game.spawn(1, ground(Num::ZERO, Num::int(30)), ());
+    let send = |game: &mut Match, action| {
+        let payload = Order::payload(&[Order {
+            unit: mover,
+            action,
+        }]);
+        game.sim.world.resource_mut::<TickInputs>().push(TickInput {
+            slot: PlayerSlot::new(0),
+            payload: &payload,
+        });
+        game.sim.step();
+    };
+    let jab = Action::Slot {
+        slot: 0,
+        target: ActionTarget::Unit(far),
+    };
+    let approaching = |game: &Match| game.sim.get::<ActionSlots>(mover).approaching();
+    // A move order ends the walk to jab, and the jab: the unit walks where it was told.
+    send(game, jab);
+    assert!(approaching(game));
+    let back = ground(Num::ZERO, Num::int(-5));
+    send(
+        game,
+        Action::Move {
+            x: back.get().x,
+            z: back.get().z,
+        },
+    );
+    assert_eq!(game.sim.get::<ActionSlots>(mover).in_progress(), None);
+    assert_eq!(game.sim.get::<Destination>(mover).get(), Some(back));
+    // A silence keeps the jab as an order, and the unit stands until it ends; then it walks on.
+    send(game, jab);
+    assert!(approaching(game));
+    game.sim.set_blocks(mover, &[Block::Cast]);
+    game.sim.step();
+    let ordered = InProgress::Order {
+        aim: SlotAim {
+            slot: 0,
+            target: ActionTarget::Unit(far),
+        },
+        phase: OrderPhase::Ordered,
+    };
+    assert_eq!(
+        game.sim.get::<ActionSlots>(mover).in_progress(),
+        Some(ordered)
+    );
+    assert_eq!(game.sim.get::<Destination>(mover).get(), None);
+    game.sim.set_blocks(mover, &[]);
+    game.sim.step();
+    assert!(approaching(game));
+    // A target that dies drops the jab, and stops the walk where it is.
+    let entity = game.sim.entity(far);
+    game.sim.world.entity_mut(entity).insert(Dead);
+    game.sim.step();
+    assert_eq!(game.sim.get::<ActionSlots>(mover).in_progress(), None);
+    assert_eq!(game.sim.get::<Destination>(mover).get(), None);
     assert_eq!(game.failed_calls(), []);
 }
 

@@ -209,6 +209,18 @@ impl Checked<'_> {
         self.target = ActionTarget::Point(clamped);
     }
 
+    /// Where a unit walks to come in range of its target: the living unit's place, or the point;
+    /// none for an action that aims at nothing or along a direction.
+    pub(crate) fn aimed_at(&self, targets: &Targets<'_, '_>) -> Option<Position> {
+        match (self.action.aim, self.target) {
+            (Aim::Unit(_), ActionTarget::Unit(target)) => {
+                targets.living(target).map(|unit| unit.pos)
+            }
+            (Aim::Point { .. }, ActionTarget::Point(at)) => Some(at),
+            _ => None,
+        }
+    }
+
     /// Whether its target is within its range of a unit at `position` with a body of `radius`,
     /// as `targets` measure reach: a unit's body, or a point it aims at; an action of global
     /// reach, one that aims at a direction, or one with no target always is. The range counts

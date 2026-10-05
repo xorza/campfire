@@ -1,10 +1,9 @@
-use bevy_ecs::change_detection::DetectChangesMut;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::query::{Added, Has, QueryState, With, Without};
 use bevy_ecs::resource::Resource;
 use bevy_ecs::schedule::{IntoScheduleConfigs, Schedule, SystemSet};
 use bevy_ecs::system::{Commands, Local, Query, Res, ResMut};
-use bevy_ecs::world::{Mut, World};
+use bevy_ecs::world::World;
 use campfire_common::{Tick, Ticks};
 use campfire_script::{ScriptError, ScriptId};
 use campfire_sim::{
@@ -383,7 +382,8 @@ fn think(
     });
 }
 
-/// Sends each path walker with no attack target, on its path, to the waypoint it walks to, and on
+/// Sends each path walker with no attack target and no cast walking in range, on its path, to the
+/// waypoint it walks to, and on
 /// to the next once the waypoint is within its body, or it stands on the waypoint with no body:
 /// walkers that push each other never stand on one point. A walker that chased a target walks back
 /// to where it left its path.
@@ -405,7 +405,8 @@ fn follow_paths(
     >,
 ) {
     for (&position, path, mut walker, slots, mut destination, route, body) in &mut walkers {
-        if walker.left() || slots.is_some_and(|slots| slots.attack_target().is_some()) {
+        let busy = |slots: &ActionSlots| slots.attack_target().is_some() || slots.approaching();
+        if walker.left() || slots.is_some_and(busy) {
             continue;
         }
         let path = path.get();
@@ -414,12 +415,13 @@ fn follow_paths(
             walker.advance();
             waypoint = paths.waypoint(path, walker.next(), walker.walks_from());
         }
-        walk_to(&mut destination, route, waypoint);
+        Destination::walk_to(&mut destination, route, waypoint);
     }
 }
 
 /// Walks each unit that can move to its attack target while out of the range of the weapon it
-/// attacks it with, and stops it in range or in its windup. A unit whose target is gone, dead, no
+/// attacks it with, and stops it in range or in its windup; a cast that walks in range walks the
+/// unit instead. A unit whose target is gone, dead, no
 /// longer an enemy or one no weapon of it selects drops it and stops.
 fn chase(
     book: Res<'_, ActionBook>,
@@ -442,7 +444,7 @@ fn chase(
         let Some(target) = slots.attack_target() else {
             continue;
         };
-        if slots.attacking().is_some() {
+        if slots.attacking().is_some() || slots.approaching() {
             continue;
         }
         let aimed = targets.enemy(team, target).and_then(|unit| {
@@ -453,30 +455,15 @@ fn chase(
         match aimed {
             None => {
                 slots.set_attack_target(None);
-                walk_to(&mut destination, route, None);
+                Destination::walk_to(&mut destination, route, None);
             }
             Some((unit, Range::Meters(range)))
                 if !targets.reaches(position, Body::radius_of(body), range, &unit) =>
             {
-                walk_to(&mut destination, route, Some(unit.pos));
+                Destination::walk_to(&mut destination, route, Some(unit.pos));
             }
-            Some(_) => walk_to(&mut destination, route, None),
+            Some(_) => Destination::walk_to(&mut destination, route, None),
         }
-    }
-}
-
-/// Sets where a unit walks, leaving a destination that does not change untouched: a write marks
-/// it changed, and an avatar's destination replicates. A unit whose `route` arrived short of
-/// `target` stays where it stands, with no destination, until the static bodies change.
-fn walk_to(
-    destination: &mut Mut<'_, Destination>,
-    route: Option<&Route>,
-    target: Option<Position>,
-) {
-    let arrived =
-        target.is_some_and(|target| route.is_some_and(|route| route.arrived_short_of(target)));
-    if !arrived {
-        destination.set_if_neq(Destination::to(target));
     }
 }
 

@@ -10,6 +10,5 @@ Design: [Actions](../design/04-capabilities/actions.md). Rules: [Issue log](../.
 
 ## Ready
 
-- **Plan: M3.** A cast whose target is out of its range drops its order: `start_casts` stops the unit, where [The pipeline](../design/04-capabilities/actions.md#the-pipeline) and [Over time](../design/04-capabilities/actions.md#over-time) make it walk in range first, as an attack's chase does.
 - **Stage 16.** The projectile section's `gravity` is planned: no projectile falls, so no grenade arcs and no bullet drops.
 

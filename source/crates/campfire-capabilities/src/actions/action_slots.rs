@@ -83,13 +83,9 @@ pub(crate) enum InProgress {
         target: StableId,
         resolves_at: Tick,
     },
-    /// The action `aim` names, as ordered: not checked yet while `started` is `None`, then
-    /// started, to resolve in its tick. Whether it casts or trains is its action's kind, and only
-    /// a cast starts.
-    Order {
-        aim: SlotAim,
-        started: Option<Started>,
-    },
+    /// The action `aim` names, as ordered, in its `phase`. Whether it casts or trains is its
+    /// action's kind, and only a cast walks in range and starts.
+    Order { aim: SlotAim, phase: OrderPhase },
     /// The charged action `aim` names, charging from `since` at the target its check kept, from
     /// `origin`: full in `full`, and `released` once its order came again. It resolves when
     /// released, or full.
@@ -108,6 +104,15 @@ pub(crate) enum InProgress {
         ends: Tick,
         start: ActionStart,
     },
+}
+
+/// How far an ordered action got: not checked yet, walking in range of its target, which then
+/// owns its unit's walk, or started.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub(crate) enum OrderPhase {
+    Ordered,
+    Approaching,
+    Started(Started),
 }
 
 /// A started order: the tick it resolves in, and how it started.
@@ -184,7 +189,7 @@ impl InProgress {
         match self {
             InProgress::Order {
                 aim,
-                started: Some(Started { resolves_at, start }),
+                phase: OrderPhase::Started(Started { resolves_at, start }),
             } if resolves_at <= now => Some(ActionCall { aim, start }),
             _ => None,
         }
@@ -195,10 +200,13 @@ impl InProgress {
         match self {
             InProgress::Attack { resolves_at, .. }
             | InProgress::Order {
-                started: Some(Started { resolves_at, .. }),
+                phase: OrderPhase::Started(Started { resolves_at, .. }),
                 ..
             } => Some(resolves_at),
-            InProgress::Order { started: None, .. }
+            InProgress::Order {
+                phase: OrderPhase::Ordered | OrderPhase::Approaching,
+                ..
+            }
             | InProgress::Charge { .. }
             | InProgress::Channel { .. } => None,
         }
@@ -281,7 +289,7 @@ impl ActionSlots {
         self.cut_channel();
         self.underway = Some(InProgress::Order {
             aim: SlotAim { slot, target },
-            started: None,
+            phase: OrderPhase::Ordered,
         });
     }
 
@@ -297,10 +305,28 @@ impl ActionSlots {
         target: ActionTarget,
         start: ActionStart,
     ) {
-        if let Some(InProgress::Order { aim, started }) = &mut self.underway {
+        if let Some(InProgress::Order { aim, phase }) = &mut self.underway {
             aim.target = target;
-            *started = Some(Started { resolves_at, start });
+            *phase = OrderPhase::Started(Started { resolves_at, start });
         }
+    }
+
+    /// Makes the ordered cast walk in range of its target, which then owns the unit's walk.
+    pub(crate) const fn approach(&mut self) {
+        if let Some(InProgress::Order { phase, .. }) = &mut self.underway {
+            *phase = OrderPhase::Approaching;
+        }
+    }
+
+    /// Whether an ordered cast walks in range of its target, and so owns the unit's walk.
+    pub(crate) const fn approaching(&self) -> bool {
+        matches!(
+            self.underway,
+            Some(InProgress::Order {
+                phase: OrderPhase::Approaching,
+                ..
+            })
+        )
     }
 
     /// Starts the ordered charged cast at the `target` its check kept, from `origin`, charging
@@ -352,7 +378,7 @@ impl ActionSlots {
             .expect("a charge's most is a tick at least");
         self.underway = Some(InProgress::Order {
             aim,
-            started: Some(Started {
+            phase: OrderPhase::Started(Started {
                 resolves_at: now,
                 start: ActionStart {
                     origin,
@@ -380,13 +406,13 @@ impl ActionSlots {
         });
     }
 
-    /// Stops what is under way and spends nothing: a cast goes back to its order, which starts it
-    /// again from its check; an attack starts again from the attack target when it may.
+    /// Stops what is under way and spends nothing: a cast, started or walking in range, goes back
+    /// to its order, which starts it again from its check; an attack starts again from the attack target when it may.
     pub(crate) const fn interrupt(&mut self) {
         self.cut_channel();
         match &mut self.underway {
             Some(InProgress::Attack { .. } | InProgress::Charge { .. }) => self.underway = None,
-            Some(InProgress::Order { started, .. }) => *started = None,
+            Some(InProgress::Order { phase, .. }) => *phase = OrderPhase::Ordered,
             Some(InProgress::Channel { .. }) | None => {}
         }
     }

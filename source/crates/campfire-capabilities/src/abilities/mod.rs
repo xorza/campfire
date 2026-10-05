@@ -22,7 +22,7 @@ use crate::units::action_id::ActionId;
 
 use crate::actions::action_data::TogglePer;
 use crate::actions::action_slots::{
-    ActionCall, ActionSlot, ActionSlots, ChannelStep, InProgress, SlotAim,
+    ActionCall, ActionSlot, ActionSlots, ChannelStep, InProgress, OrderPhase, SlotAim,
 };
 use crate::values::action_start::ActionStart;
 
@@ -30,6 +30,8 @@ use crate::actions::action_target::ActionTarget;
 use crate::actions::purse::{Payer, Purse};
 use crate::areas::Areas;
 use crate::combat::CombatSet;
+use crate::navigation::destination::Destination;
+use crate::navigation::route::Route;
 
 use crate::actions::targets::Targets;
 use crate::deliveries::Deliveries;
@@ -311,9 +313,11 @@ fn run_toggles(
 }
 
 /// Starts each cast a unit was ordered, in Act: one that passes its checks, its target within
-/// range, starts, or for a charged action starts to charge, and any other is dropped. A unit its
-/// tags keep from casting keeps its order: a cast it started goes back to it, and a charge ends,
-/// spending nothing. A charge its order released, or that is full, resolves.
+/// range, starts, or for a charged action starts to charge; one whose target is beyond range, of a
+/// unit that walks, walks in range first, its walk in place of any other, and stops there to start;
+/// any other is dropped, and stops the walk it took. A unit its tags or a forced move keep from
+/// casting keeps its order, and stands: a cast it started or walked in range for goes back to it,
+/// and a charge ends, spending nothing. A charge its order released, or that is full, resolves.
 fn start_casts(
     tick: Res<'_, SimTick>,
     book: Res<'_, ActionBook>,
@@ -331,12 +335,16 @@ fn start_casts(
             Option<&Body>,
             Option<&UnitTags>,
             Has<ForcedMove>,
+            Option<&mut Destination>,
+            Option<&Route>,
         ),
         Without<Dead>,
     >,
 ) {
     let now = tick.start();
-    for (&position, &team, mut slots, pools, owner, body, tags, forced) in &mut units {
+    for (&position, &team, mut slots, pools, owner, body, tags, forced, mut destination, route) in
+        &mut units
+    {
         let blocked = ForcedMove::blocks(tags, forced, Block::Cast);
         if let Some(InProgress::Charge { .. }) = slots.in_progress() {
             if blocked {
@@ -346,7 +354,7 @@ fn start_casts(
             }
             continue;
         }
-        let Some(InProgress::Order { aim, started }) = slots.in_progress() else {
+        let Some(InProgress::Order { aim, phase }) = slots.in_progress() else {
             continue;
         };
         let slot = slots
@@ -358,13 +366,15 @@ fn start_casts(
         if action.kind.kind() != ActionKind::Cast {
             continue;
         }
+        let approached = phase == OrderPhase::Approaching;
         if blocked {
-            if started.is_some() {
-                slots.interrupt();
+            if approached {
+                walk(destination.as_mut(), route, None);
             }
+            slots.interrupt();
             continue;
         }
-        if started.is_some() {
+        if let OrderPhase::Started(_) = phase {
             continue;
         }
         if slot.toggle.is_some() {
@@ -382,28 +392,53 @@ fn start_casts(
         };
         let attitude = |other| targets.attitude(team, other);
         let radius = Body::radius_of(body);
-        let started = book
+        let checked = book
             .check(now, &slots, purse, aim, attitude, |id| targets.living(id))
             .map(|mut checked| {
                 checked.clamp(position, radius, &targets);
                 checked
-            })
-            .filter(|checked| checked.in_range(position, radius, &targets))
-            .map(|checked| (checked.values, checked.target));
-        match started {
-            Some((values, target)) => {
-                if let Some(most) = values.charge {
-                    slots.charge(target, position, now, now.after(most));
-                } else {
-                    let start = ActionStart {
-                        origin: position,
-                        charge: None,
-                    };
-                    slots.start(now.after(values.windup), target, start);
-                }
+            });
+        let Some(checked) = checked else {
+            if approached {
+                walk(destination.as_mut(), route, None);
             }
-            None => slots.stop(),
+            slots.stop();
+            continue;
+        };
+        if !checked.in_range(position, radius, &targets) {
+            match (destination.is_some(), checked.aimed_at(&targets)) {
+                (true, Some(to)) => {
+                    walk(destination.as_mut(), route, Some(to));
+                    slots.approach();
+                }
+                _ => slots.stop(),
+            }
+            continue;
         }
+        if approached {
+            walk(destination.as_mut(), route, None);
+        }
+        let values = checked.values;
+        if let Some(most) = values.charge {
+            slots.charge(checked.target, position, now, now.after(most));
+        } else {
+            let start = ActionStart {
+                origin: position,
+                charge: None,
+            };
+            slots.start(now.after(values.windup), checked.target, start);
+        }
+    }
+}
+
+/// Walks the unit of `destination`, one that walks, to `to`, or stops it.
+fn walk(
+    destination: Option<&mut Mut<'_, Destination>>,
+    route: Option<&Route>,
+    to: Option<Position>,
+) {
+    if let Some(destination) = destination {
+        Destination::walk_to(destination, route, to);
     }
 }
 

@@ -10,7 +10,7 @@ use campfire_sim::{
 use crate::actions::ActionsSet;
 use crate::actions::action_book::ActionBook;
 use crate::actions::action_kind::ActionKind;
-use crate::actions::action_slots::{ActionSlots, InProgress, SlotAim};
+use crate::actions::action_slots::{ActionSlots, InProgress, OrderPhase, SlotAim};
 use crate::actions::kind_spec::KindSpec;
 use crate::actions::purse::{Payer, Purse};
 use crate::players::player_resources::PlayerResources;
@@ -102,7 +102,11 @@ impl Production {
 
     /// The train `slots` hold ordered, not yet checked, whose action `book` says trains.
     fn ordered(slots: &ActionSlots, book: &ActionBook) -> Option<SlotAim> {
-        let Some(InProgress::Order { aim, started: None }) = slots.in_progress() else {
+        let Some(InProgress::Order {
+            aim,
+            phase: OrderPhase::Ordered,
+        }) = slots.in_progress()
+        else {
             return None;
         };
         let slot = slots.slot(aim.slot)?;

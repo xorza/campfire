@@ -1,3 +1,4 @@
+use bevy_ecs::change_detection::{DetectChangesMut, Mut};
 use bevy_ecs::component::Component;
 use bevy_ecs::entity::Entity;
 use bevy_ecs::world::World;
@@ -5,6 +6,7 @@ use campfire_sim::{Position, SimComponent};
 use serde::{Deserialize, Serialize};
 
 use crate::navigation::pathing_grid::PathingGrid;
+use crate::navigation::route::Route;
 
 /// Where a unit walks to; none once it arrives.
 #[derive(Component, Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -23,6 +25,22 @@ impl Destination {
 
     pub(crate) const fn set(&mut self, target: Option<Position>) {
         self.0 = target;
+    }
+
+    /// Sets where a unit walks, leaving a destination that does not change untouched: a write
+    /// marks it changed, and an avatar's destination replicates. A unit whose `route` arrived
+    /// short of `target` stays where it stands, with no destination, until the static bodies
+    /// change.
+    pub(crate) fn walk_to(
+        destination: &mut Mut<'_, Destination>,
+        route: Option<&Route>,
+        target: Option<Position>,
+    ) {
+        let arrived =
+            target.is_some_and(|target| route.is_some_and(|route| route.arrived_short_of(target)));
+        if !arrived {
+            destination.set_if_neq(Destination::to(target));
+        }
     }
 }
 
