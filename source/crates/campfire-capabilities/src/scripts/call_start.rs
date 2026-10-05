@@ -2,6 +2,7 @@ use campfire_sim::StableId;
 
 use crate::scripts::script_role::ScriptRole;
 use crate::units::action_id::ActionId;
+use crate::units::forced_move::DashDelivery;
 use crate::units::modifier_id::ModifierId;
 use crate::values::action_start::ActionStart;
 use crate::values::hit::Hit;
@@ -10,7 +11,8 @@ use crate::values::hit::Hit;
 /// the unit that thinks, none for the mode; the action whose params it reads, at `rank`, and its
 /// modifier's; the package whose names it means, 0 the mode's; the depth of the chain of combat
 /// events it runs in, 0 outside one; the hit a delivery's hook runs for, which the damage it
-/// deals carries; and how its action started.
+/// deals carries; how its action started; and the delivery a dash it starts carries, an instant
+/// action's own in its `on_resolve`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct CallStart {
     pub(crate) role: ScriptRole,
@@ -22,6 +24,7 @@ pub(crate) struct CallStart {
     pub(crate) depth: u8,
     pub(crate) hit: Option<Hit>,
     pub(crate) start: Option<ActionStart>,
+    pub(crate) dash_delivers: Option<DashDelivery>,
 }
 
 impl CallStart {
@@ -38,6 +41,7 @@ impl CallStart {
             depth: 0,
             hit: None,
             start: None,
+            dash_delivers: None,
         }
     }
 
@@ -58,6 +62,7 @@ impl CallStart {
             depth: 0,
             hit: None,
             start: None,
+            dash_delivers: None,
         }
     }
 
@@ -74,6 +79,7 @@ impl CallStart {
             depth,
             hit: None,
             start: None,
+            dash_delivers: None,
         }
     }
 }

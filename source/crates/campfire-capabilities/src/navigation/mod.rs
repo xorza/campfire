@@ -12,6 +12,9 @@ use campfire_sim::{
 };
 
 use crate::actions::effect_queues::EffectQueues;
+use crate::deliveries::Deliveries;
+use crate::deliveries::delivered::{Delivered, Reach};
+use crate::deliveries::delivering::Delivering;
 use crate::navigation::body_index::{BodyIndex, IndexedBody};
 use crate::navigation::broadphase::Broadphase;
 use crate::navigation::collider::Collider;
@@ -34,12 +37,13 @@ use crate::units::block::Block;
 use crate::units::body::Body;
 use crate::units::body_grid::Placed;
 use crate::units::dead::Dead;
-use crate::units::forced_move::{DashTo, ForcedMove, Goal};
+use crate::units::forced_move::{DashDelivery, DashTo, ForcedMove, Goal};
 use crate::units::row_fill::RowFill;
 use crate::units::script_view::View;
 use crate::units::unit_tags::UnitTags;
 use crate::values::bounds::Bounds;
 use crate::values::grid::Grid;
+use crate::values::hit::Hit;
 
 #[cfg(feature = "bench")]
 pub(crate) mod bench;
@@ -566,7 +570,8 @@ fn walks(destination: Option<&Destination>, tags: Option<&UnitTags>, forced: boo
 /// Moves each unit a forced move moves, by stable id, once the units walked, so a dash at a unit
 /// follows its place of this tick, at the unit's own height. A step whose way a static body of the
 /// unit's layer blocks is not taken, and one past the bounds stops on them; either ends the move.
-/// A unit whose move ended walks its route again from there.
+/// A unit whose move ended walks its route again from there, and a dash that delivers an action
+/// queues that action's end, its hooks to run in Hit.
 fn force_units(
     (tick, bounds, statics, index): (
         Res<'_, SimTick>,
@@ -574,6 +579,7 @@ fn force_units(
         Res<'_, BodyIndex>,
         Res<'_, EntityIndex>,
     ),
+    mut deliveries: Option<ResMut<'_, Deliveries>>,
     mut units: ParamSet<
         '_,
         '_,
@@ -642,8 +648,22 @@ fn force_units(
         let mut moving = units.p1();
         let (_, _, mut position, mut under_way, _) =
             moving.get_mut(entity).expect("a unit in the order");
-        if !blocked {
-            position.set_if_neq(to);
+        let stands = if blocked { at } else { to };
+        position.set_if_neq(stands);
+        if let ForcedMove::Dash {
+            to: dash_to,
+            delivers: Some(delivery),
+            ..
+        } = &mut forced
+        {
+            delivery.went(at, stands);
+            if ends {
+                deliveries
+                    .as_deref_mut()
+                    .expect("a dash that delivers an action runs in a match with abilities")
+                    .delivered
+                    .push(dash_end(*delivery, *dash_to, at, stands));
+            }
         }
         if ends {
             commands.entity(entity).remove::<ForcedMove>();
@@ -653,6 +673,40 @@ fn force_units(
         } else {
             under_way.set_if_neq(forced);
         }
+    }
+}
+
+/// The end of a dash to `to` that delivers `delivery`, whose last step went from `from` to
+/// `stands`: a hit with no delivery unit, the dash's unit as its target, its place where it
+/// stands, its distance the way the dash went, and its direction the last step's.
+fn dash_end(delivery: DashDelivery, to: DashTo, from: Position, stands: Position) -> Delivered {
+    let DashDelivery {
+        source,
+        action,
+        rank,
+        start,
+        dashed,
+    } = delivery;
+    let target = match to {
+        DashTo::Unit(target) => Some(target),
+        DashTo::Point(_) => None,
+    };
+    Delivered {
+        by: Delivering {
+            source,
+            action,
+            rank,
+            start,
+            launch: None,
+        },
+        reach: Reach::End,
+        hit: Hit {
+            delivery: None,
+            target,
+            pos: stands,
+            distance: dashed,
+            direction: from.ground_offset(stands).normalized(),
+        },
     }
 }
 

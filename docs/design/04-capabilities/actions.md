@@ -103,7 +103,7 @@ Projectiles and areas are units of types with a `projectile` or an `area` sectio
 
 A projectile or an area type may have a `vision` section, as any unit type does: its unit reveals to its source's group what it sees while it lasts, by the rule every unit follows ([Vision](vision.md#grid-fog-of-war)), as Snow Owl reveals where it flies and Dota 2 gives projectiles and thinkers vision.
 
-Each delivery records how it reached a unit in a **hit**: the projectile or area unit that delivered it, or `()` at once; the unit the action aimed at; where it hit, or where its delivery ended, an area's centre for an area; the distance flown, 0 for an area; the direction, none for an area; and, for a ray or a sweep, the body part. The `on_hit` and `on_end` hooks receive it, and the damage the delivery deals carries it as `d.hit` ([Combat](combat.md#damage-and-heals)).
+Each delivery records how it reached a unit in a **hit**: the projectile or area unit that delivered it, or `()` at once; the unit the action aimed at; where it hit, or where its delivery ended, an area's centre for an area; the distance flown, or the way a dash went, 0 for an area; the direction, none for an area; and, for a ray or a sweep, the body part. The `on_hit` and `on_end` hooks receive it, and the damage the delivery deals carries it as `d.hit` ([Combat](combat.md#damage-and-heals)).
 
 ### Effects
 

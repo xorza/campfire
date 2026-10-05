@@ -32,11 +32,12 @@ use crate::areas::Areas;
 use crate::combat::CombatSet;
 
 use crate::actions::targets::Targets;
+use crate::deliveries::Deliveries;
 use crate::deliveries::delivering::Delivering;
 use crate::players::player_resources::PlayerResources;
 use crate::units::body::Body;
 use crate::units::dead::Dead;
-use crate::units::forced_move::ForcedMove;
+use crate::units::forced_move::{DashDelivery, ForcedMove};
 
 use crate::projectiles::Projectiles;
 use crate::scripts::ctx::Ctx;
@@ -104,10 +105,12 @@ impl Abilities {
 
     /// Adds abilities to a match, on the core `Units` installs: in Hit, after attacks strike and
     /// before the tick's projectiles launch, due casts resolve: the delivery, the cost, the
-    /// cooldown and the script's effects apply together, or none of them. A cast resolves in the
+    /// cooldown and the script's effects apply together, or none of them. A dash an instant cast
+    /// starts is its delivery, whose end runs with the deliveries' hooks. A cast resolves in the
     /// script host; without the core's scripts, as on a client, a due cast of a unit it predicts
     /// only cools down, as the server's does.
     pub fn install(world: &mut World, schedule: &mut Schedule, _: &mut StateRegistry) {
+        Deliveries::install(world, schedule);
         schedule.add_systems(start_casts.in_set(SimSet::Act).in_set(ActionsSet::Start));
         if !world.contains_non_send::<Ctx>() {
             schedule.add_systems(
@@ -615,8 +618,9 @@ fn apply(world: &mut World, ctx: &Ctx, now: Tick, entity: Entity, prepared: &Pre
     }
 }
 
-/// The cast of `entity` checked again, and its params at its rank put in the frame; `None` when
-/// it no longer passes its checks, or its caster is no unit the view read.
+/// The cast of `entity` checked again, and its params at its rank put in the frame, with its
+/// delivery for a dash it starts when it delivers at once; `None` when it no longer passes its
+/// checks, or its caster is no unit the view read.
 fn prepare(
     world: &World,
     ctx: &Ctx,
@@ -657,6 +661,16 @@ fn prepare(
         world,
         CallStart {
             start: Some(start),
+            dash_delivers: checked
+                .action
+                .delivery
+                .is_none()
+                .then_some(DashDelivery::new(
+                    caster.id,
+                    checked.id,
+                    checked.rank,
+                    Some(start),
+                )),
             ..CallStart::cast(checked.id, checked.rank, caster.id, package)
         },
     )?;

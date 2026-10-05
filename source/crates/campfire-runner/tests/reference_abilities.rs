@@ -1,6 +1,7 @@
 //! The reference heroes' abilities as their packages hold them: every ability's data reads into
-//! the typed schema, and Husk's Lash Out, Kensho's Twin Cut, Veil's Dusk Mark and Smoke Ring,
-//! Rime's Fan of Frost and Snow Owl, Cinder's Eruption and Chain Fire, and the Farsight spell,
+//! the typed schema, and Husk's Lash Out and Grasping Wraps, Kensho's Twin Cut, Veil's Dusk Mark,
+//! Smoke Ring and Night Step, Rime's Fan of Frost and Snow Owl, Cinder's Eruption and Chain Fire,
+//! and the Farsight spell,
 //! loaded as a match of the 3v3 loads them, act exactly. The tests pin the content's values, so a
 //! change to the content changes them, by design.
 
@@ -11,9 +12,10 @@ use bevy_ecs::bundle::Bundle;
 
 use campfire_capabilities::internals::{self, Arms};
 use campfire_capabilities::{
-    Action, ActionId, ActionSlots, ActionTarget, Area, DeclaredName, ModifierId, Modifiers, Number,
-    OnDeath, Order, Owner, PackagePath, Param, Pools, Projectile, Range, RangeField, Ranked,
-    RecentAttackers, Scalar, Scaling, SeenBy, SlotKind, Stat, Targeting, Team,
+    Action, ActionId, ActionSlots, ActionTarget, Area, Body, DeclaredName, ForcedMove, ModifierId,
+    Modifiers, MoveStep, Navigation, Number, OnDeath, Order, Owner, PackagePath, Param, Pools,
+    Projectile, Range, RangeField, Ranked, RecentAttackers, Scalar, Scaling, SeenBy, SlotKind,
+    Stat, Targeting, Team,
 };
 use campfire_common::PlayerSlot;
 use campfire_math::{Num, Vec3};
@@ -734,5 +736,88 @@ fn veils_smoke_ring_from_its_package_holds_its_modifiers_on_the_units_inside_whi
     arena.step();
     assert_eq!(held(&arena), [vec![], vec![], vec![], vec![], vec![]]);
     assert_eq!(areas(&mut arena), 0);
+    assert!(arena.failures().is_empty(), "{:?}", arena.failures());
+}
+
+/// A body of half a meter.
+fn body() -> Body {
+    Body::new(Num::ONE.checked_div_int(2).unwrap()).unwrap()
+}
+
+/// A body of half a meter that walks a meter a tick.
+fn walker() -> impl Bundle {
+    let step = MoveStep::new(Num::ONE).unwrap();
+    (body(), Navigation::walker(step))
+}
+
+/// Where `unit` stands along x, and the forced move under way on it.
+fn forced(arena: &Arena, unit: StableId) -> (Num, Option<ForcedMove>) {
+    let world = arena.world();
+    let entity = world.resource::<EntityIndex>().get(unit).unwrap();
+    let x = world.get::<Position>(entity).unwrap().get().x;
+    (x, world.get::<ForcedMove>(entity).copied())
+}
+
+#[test]
+fn veils_night_step_dashes_to_its_target_and_strikes_as_the_dash_ends_beside_it() {
+    let mut arena = arena();
+    let night_step = arena.action("hero-veil", "night_step");
+    let veil = caster(&mut arena, night_step, 1, (0, 200), walker());
+    let enemy = spawn(&mut arena, 1, 6, body());
+
+    // It resolves at once in tick 0, and its dash of 22 m a second goes 22/30 m a tick, s, from
+    // tick 1, until the bodies of half a meter touch, 1 m apart. Six steps leave 6 − 6s = 1.6 m,
+    // within 1 + s; the seventh, in tick 7, ends the dash on 5 m, and its `on_end` deals rank 1's
+    // 100 magic, with no ability power, in that tick.
+    arena.tick(0, &[cast(veil, ActionTarget::Unit(enemy))]);
+    for _ in 1..=6 {
+        arena.step();
+    }
+    let (x, dash) = forced(&arena, veil);
+    let step = Num::int(22).checked_div_int(30).unwrap();
+    assert_eq!((x, health(&arena, enemy)), (step * 6, 500));
+    assert!(matches!(
+        dash,
+        Some(ForcedMove::Dash {
+            delivers: Some(_),
+            ..
+        })
+    ));
+    arena.step();
+    assert_eq!(forced(&arena, veil), (Num::int(5), None));
+    assert_eq!(health(&arena, enemy), 400);
+    for _ in 0..30 {
+        arena.step();
+    }
+    assert_eq!(health(&arena, enemy), 400);
+    assert!(arena.failures().is_empty(), "{:?}", arena.failures());
+}
+
+#[test]
+fn husks_grasping_wraps_pulls_him_to_the_enemy_hit_and_its_pull_delivers_nothing() {
+    let mut arena = arena();
+    let wraps = arena.action("hero-husk", "grasping_wraps");
+    let husk = caster(&mut arena, wraps, 1, (200, 0), walker());
+    let enemy = spawn(&mut arena, 1, 5, (body(), Modifiers::default()));
+
+    // The cast resolves after its windup of 250 ms, 8 ticks, and its wraps fly 20/30 m a tick
+    // from tick 9, 1.6 m wide: they reach the enemy's body once their front comes within 0.8 +
+    // 0.5 m of its center, in their sixth step, tick 14. Its `on_hit` deals rank 1's 80, stuns,
+    // and pulls Husk at 18 m a second: a dash from the delivery's hit, not from `on_resolve`, so
+    // it delivers no action and its end runs no `on_end`.
+    arena.tick(0, &[cast(husk, ActionTarget::Point(milli(5000, 0)))]);
+    let mut pulled = None;
+    for tick in 1..=40 {
+        arena.step();
+        if pulled.is_none() && forced(&arena, husk).1.is_some() {
+            pulled = Some((tick, forced(&arena, husk).1.unwrap()));
+        }
+    }
+    let (tick, pull) = pulled.unwrap();
+    assert_eq!(tick, 14);
+    assert!(matches!(pull, ForcedMove::Dash { delivers: None, .. }));
+    // The pull ends with the bodies touching, Husk on 4 m, and the enemy took the hit alone.
+    assert_eq!(forced(&arena, husk), (Num::int(4), None));
+    assert_eq!(health(&arena, enemy), 420);
     assert!(arena.failures().is_empty(), "{:?}", arena.failures());
 }

@@ -323,6 +323,7 @@ fn a_teleport_ends_the_homing_projectiles_on_its_unit_and_a_dash_does_not() {
         unit: dasher,
         to: DashTo::Point(at(6, 1)),
         step: Num::from_bits(1 << (Num::FRAC_BITS - 1)),
+        delivers: None,
     };
     for effect in [blink, dash] {
         effect.apply(&mut volley.sim.world, &mut Frame::default(), now);

@@ -37,6 +37,7 @@ fn a_dash_moves_its_unit_exactly_to_a_point_or_to_the_unit_it_follows() {
         ForcedMove::Dash {
             to,
             step: Num::int(2),
+            delivers: None,
         },
     );
     // A walker of 0.5 m walks a meter a tick along x from (10, 0, 20); a chaser of 0.5 m dashes 3
@@ -51,6 +52,7 @@ fn a_dash_moves_its_unit_exactly_to_a_point_or_to_the_unit_it_follows() {
         ForcedMove::Dash {
             to,
             step: Num::int(3),
+            delivers: None,
         },
     );
     let mut dash_path = Vec::new();
@@ -103,6 +105,7 @@ fn a_knock_back_moves_its_unit_away_by_equal_shares_and_a_new_move_replaces_it()
         unit: off_itself,
         to: DashTo::Point(at(11, 0, 4)),
         step: Num::int(2),
+        delivers: None,
     });
     walk.sim.step();
     assert_eq!(walk.at(off_point), at(0, 0, 2));
@@ -149,6 +152,7 @@ fn a_forced_move_stops_before_a_static_body_and_on_the_bounds() {
         ForcedMove::Dash {
             to: DashTo::Point(at(4, 0, 0)),
             step: Num::int(2),
+            delivers: None,
         },
     );
     // A knock back of 9 m over 3 ticks from (−2, 0, 2) along x: 1, then 4, on the bound, then
@@ -191,6 +195,7 @@ fn a_teleport_puts_its_unit_where_it_may_stand_at_once_and_ends_its_move() {
         ForcedMove::Dash {
             to: DashTo::Point(at(3, 0, -3)),
             step: HALF,
+            delivers: None,
         },
     );
     walk.sim.step();

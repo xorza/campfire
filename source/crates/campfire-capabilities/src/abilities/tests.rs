@@ -552,7 +552,7 @@ fn a_knock_back_interrupts_a_windup_and_the_cast_waits_for_its_end() {
 }
 
 #[test]
-fn a_listed_move_knocks_back_and_dashes_as_the_calls_do() {
+fn a_listed_move_knocks_back_and_dashes_as_the_calls_do_and_the_dash_delivers_the_cast() {
     let declared = [
         Capability::Stats,
         Capability::Combat,
@@ -561,7 +561,10 @@ fn a_listed_move_knocks_back_and_dashes_as_the_calls_do() {
     ];
     let mut game = Match::with(ScriptLimits::ROOMY, &declared);
     // Lunge knocks the unit it reaches 3 m away from its caster over 100 ms, 3 ticks, and dashes
-    // its caster at it, 30 m a second, a meter a tick.
+    // its caster at it, 30 m a second, a meter a tick. It delivers at once, so the dash is its
+    // delivery: as the dash ends, its `on_end` list deals its caster 1, and its hook deals the
+    // dash's target the meters it went and ten times how far from where it began it ended, when
+    // no projectile or area delivered it and its last step went somewhere.
     let knock_back = MoveData::KnockBack {
         from: EffectTo::Source,
         distance: int(3),
@@ -571,16 +574,30 @@ fn a_listed_move_knocks_back_and_dashes_as_the_calls_do() {
         to: EffectTo::Reached,
         speed: int(30),
     };
+    let damage = Effecting::Damage {
+        amount: int(1),
+        kind: DeclaredName::new("true").unwrap(),
+    };
     let lunge = ActionData {
-        script: None,
+        script: Some(PackagePath::parse("lunge.rhai").unwrap()),
         range: Some(Ranked::One(RangeField::Range(Range::Meters(Num::int(10))))),
         on_resolve: vec![
             effect(Effecting::Move(knock_back), EffectTo::Reached),
             effect(Effecting::Move(dash), EffectTo::Source),
         ],
+        on_end: vec![effect(damage, EffectTo::Source)],
         ..ActionData::cast(Targeting::Unit(FilterData::parse("enemies").unwrap()))
     };
-    let id = Actions::load(&mut game.sim.world, 0, "lunge", &lunge, None, 1).unwrap();
+    let source = r#"
+        fn on_end(ctx, caster, hit) {
+            if hit.delivery == () && hit.direction != () {
+                let from = hit.pos.distance_to(ctx.origin);
+                ctx.damage(hit.target, hit.distance + from * 10, "true");
+            }
+        }
+    "#;
+    let script = Units::compile_hooked(&mut game.sim.world, source).unwrap();
+    let id = Actions::load(&mut game.sim.world, 0, "lunge", &lunge, Some(script), 1).unwrap();
     EffectLists::load(&mut game.sim.world, id, 0, &lunge);
     let lunge = id;
     let walker = || Navigation::walker(MoveStep::new(Num::ONE).unwrap());
@@ -592,12 +609,20 @@ fn a_listed_move_knocks_back_and_dashes_as_the_calls_do() {
     // touch, as neither has a body. The target goes 3, 4, 5.
     game.cast(caster, ActionTarget::Unit(target));
     let mut places = Vec::new();
+    let mut healths = Vec::new();
     for _ in 0..5 {
         game.sim.step();
         let x = |id| game.sim.get::<Position>(id).get().x.to_int().unwrap();
         places.push((x(caster), x(target)));
+        healths.push((game.sim.health(caster), game.sim.health(target)));
     }
     assert_eq!(places, [(1, 3), (2, 4), (3, 5), (4, 5), (5, 5)]);
+    // The dash ends in tick 5, on (5, 0, 0), after 5 steps of a meter from the origin: its
+    // caster takes 1, and its target 5 + 50 = 55, of 500. No other tick runs its end.
+    assert_eq!(
+        healths,
+        [(500, 500), (500, 500), (500, 500), (500, 500), (499, 445)]
+    );
     assert_eq!(game.failed_calls(), []);
     // A unit that does not walk takes no forced move: the list fails the cast.
     let still = game.spawn(1, ground(Num::int(6), Num::ZERO), ());
@@ -606,6 +631,28 @@ fn a_listed_move_knocks_back_and_dashes_as_the_calls_do() {
     let failed = game.failed_calls();
     assert_eq!(failed.len(), 1);
     assert_eq!(failed[0].kind, FailureKind::Api(ApiError::NoWalker));
+    // A dash a knock back cuts delivers nothing, as League of Legends' and Dota 2's cut dashes
+    // deliver nothing: the knock back replaces it, and its end runs no `on_end`.
+    let far = game.spawn(1, ground(Num::int(12), Num::ZERO), walker());
+    game.sim.run_until(80);
+    game.cast(caster, ActionTarget::Unit(far));
+    let dashing = game.sim.get::<ForcedMove>(caster);
+    assert!(matches!(
+        dashing,
+        ForcedMove::Dash {
+            delivers: Some(_),
+            ..
+        }
+    ));
+    let cut = ForcedMove::KnockBack {
+        to: Vec3::new(Num::ZERO, Num::ZERO, Num::ZERO),
+        left: 2,
+    };
+    game.sim.insert(caster, cut);
+    game.sim.run_until(120);
+    assert_eq!(game.sim.get::<Position>(caster).get().x, Num::ZERO);
+    assert_eq!((game.sim.health(caster), game.sim.health(far)), (499, 500));
+    assert_eq!(game.failed_calls(), []);
 }
 
 #[test]
