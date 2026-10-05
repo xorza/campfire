@@ -1280,18 +1280,13 @@ impl<'a> LoadCheck<'a> {
 
     /// The mode's item types and its shop: an item costs in the mode's player resources, at
     /// least what its components cost in each, is built from items of the mode and never from
-    /// itself, and names modifiers and an action of the mode; the shop sells the mode's items,
-    /// each costing only in the one player resource it takes, at a tag of the map's markers, each
-    /// marker of which has a region and a team it serves. Either needs `items`.
+    /// itself, and names modifiers of the mode, none another's passive, and an action of the
+    /// mode; no unit type or choice fills an inventory's slot kind; and the shop holds. Either
+    /// needs `items`.
     fn items(&self) -> Result<(), LoadProblem> {
         let packages = self.packages;
         let (data, content) = (&packages.data, &packages.content);
         let items = &content.items;
-        let unknown = |at: &Place, name: &DeclaredName, of| LoadProblem::Unknown {
-            at: at.clone(),
-            name: name.to_string(),
-            of,
-        };
         for (id, item) in items {
             let at = Place::Item(id.clone());
             self.require(Capability::Items, &at)?;
@@ -1323,6 +1318,21 @@ impl<'a> LoadCheck<'a> {
                 return Err(unknown(&at, action, NameKind::Ability));
             }
         }
+        let mode_passives = content.units.iter().filter_map(|(name, unit_type)| {
+            Some((Place::UnitType(name.clone()), unit_type.passive.as_ref()?))
+        });
+        for (owner, modifier) in mode_passives.chain(action_passives(&content.actions)) {
+            let held = items
+                .iter()
+                .find(|(_, item)| item.modifiers.contains(modifier));
+            if let Some((item, _)) = held {
+                return Err(LoadProblem::SharedPassive {
+                    modifier: modifier.clone(),
+                    owners: [owner, Place::Item(item.clone())],
+                });
+            }
+        }
+        self.inventory_kinds()?;
         if let Some(looped) = component_loop(items) {
             return Err(LoadProblem::Item(ItemProblem::ComponentLoop(
                 looped.clone(),
@@ -1344,6 +1354,15 @@ impl<'a> LoadCheck<'a> {
                 )));
             }
         }
+        self.shop()
+    }
+
+    /// The mode's shop: it sells the mode's items, each costing only in the one player resource
+    /// it takes, at a tag of the map's markers, each marker of which has a region and a team it
+    /// serves.
+    fn shop(&self) -> Result<(), LoadProblem> {
+        let packages = self.packages;
+        let (data, items) = (&packages.data, &packages.content.items);
         let Some(shop) = &data.shop else {
             return Ok(());
         };
@@ -1378,6 +1397,49 @@ impl<'a> LoadCheck<'a> {
         };
         if let Some(item) = shop.items.iter().find(other) {
             return Err(LoadProblem::Item(ItemProblem::ShopResource(item.clone())));
+        }
+        Ok(())
+    }
+
+    /// No unit type, the mode's or an avatar, and no choice puts actions in a slot kind whose
+    /// slots an inventory fills: those slots are the items'.
+    fn inventory_kinds(&self) -> Result<(), LoadProblem> {
+        let packages = self.packages;
+        let typed =
+            packages
+                .content
+                .units
+                .iter()
+                .map(|(name, unit_type)| (Place::UnitType(name.clone()), unit_type))
+                .chain(packages.dependencies.iter().filter_map(
+                    |dependent| match &dependent.kind {
+                        DependentKind::Avatar(avatar) => Some((
+                            Place::Avatar(dependent.package.header.name.clone()),
+                            &avatar.unit,
+                        )),
+                        DependentKind::Loadout => None,
+                    },
+                ));
+        let typed: Vec<(Place, &UnitTypeFile)> = typed.collect();
+        let kinds: BTreeSet<&DeclaredName> = typed
+            .iter()
+            .filter_map(|(_, unit_type)| Some(&unit_type.inventory.as_ref()?.kind))
+            .collect();
+        for (at, unit_type) in &typed {
+            if let Some(kind) = unit_type.slots.keys().find(|kind| kinds.contains(kind)) {
+                return Err(LoadProblem::Item(ItemProblem::InventoryKindSlotted {
+                    at: at.clone(),
+                    kind: kind.clone(),
+                }));
+            }
+        }
+        for (name, choice) in &packages.data.choices {
+            if let Some(kind) = choice.slot.as_ref().filter(|kind| kinds.contains(kind)) {
+                return Err(LoadProblem::Item(ItemProblem::InventoryKindSlotted {
+                    at: Place::Choice(name.clone()),
+                    kind: kind.clone(),
+                }));
+            }
         }
         Ok(())
     }
@@ -1792,6 +1854,15 @@ fn delivery_holds(
 /// Whether `names` holds `name`.
 fn declares<'n>(mut names: impl Iterator<Item = &'n DeclaredName>, name: &str) -> bool {
     names.any(|declared| declared.as_str() == name)
+}
+
+/// The problem of `name`, of `of`, unknown at `at`.
+fn unknown(at: &Place, name: &DeclaredName, of: NameKind) -> LoadProblem {
+    LoadProblem::Unknown {
+        at: at.clone(),
+        name: name.to_string(),
+        of,
+    }
 }
 
 /// An item of `items` built, through its components, from itself, if one is: the first a walk of

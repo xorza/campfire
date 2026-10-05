@@ -218,7 +218,7 @@ Each enum's module holds its members, and the function `named`, which gives the 
 | Effect | Status |
 | --- | --- |
 | `blocks = ["move"]` | since 1.0 |
-| `blocks = ["use"]` | planned |
+| `blocks = ["use"]` | since 1.0 |
 | `immune = [tags]` | since 1.0 |
 | `blocks = ["attack"]` | since 1.0 |
 | `blocks = ["target"]` | since 1.0 |

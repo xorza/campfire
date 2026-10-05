@@ -164,8 +164,11 @@ fn hold_passives(
     for (&id, slots, modifiers, clocks) in &mut units {
         let mut carried = CarriedMut::new(modifiers, clocks);
         for (index, slot) in (0..).zip(slots.iter()) {
+            let Some(ability) = slot.action else {
+                continue;
+            };
             let action = actions
-                .get(slot.action)
+                .get(ability)
                 .expect("a slot's action is in the book");
             let mut keep = |modifier, hold, holds: bool| {
                 let held = carried
@@ -184,13 +187,13 @@ fn hold_passives(
                 }
                 let applier = Applier {
                     source: Some(id),
-                    ability: Some(slot.action),
+                    ability: Some(ability),
                     rank: slot.rank,
                     hold: Some(hold),
                 };
                 let source = sources.get(id);
                 let param = |place: &ParamPlace| {
-                    let (ability, rank) = (Some(slot.action), slot.rank);
+                    let (ability, rank) = (Some(ability), slot.rank);
                     params.modifier_param(modifier, ability, rank, place, source.as_ref())
                 };
                 carried.apply(book.application(modifier, applier, None, now, *rate, param));

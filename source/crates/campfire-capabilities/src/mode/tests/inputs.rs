@@ -67,7 +67,10 @@ fn player_inputs_choose_heroes_and_spells_and_a_failed_call_changes_nothing() {
         PlayerSlot::new(0)
     );
     let slots = game.sim.world.get::<ActionSlots>(hero).unwrap();
-    let slots: Vec<_> = slots.iter().map(|slot| (slot.action, slot.rank)).collect();
+    let slots: Vec<_> = slots
+        .iter()
+        .map(|slot| (slot.action.unwrap(), slot.rank))
+        .collect();
     assert_eq!(slots, [(game.strike, 0), (game.blink, 1)]);
 }
 
@@ -205,7 +208,9 @@ fn on_input(ctx, player, name, value) {
     let hero = game.entity(1);
     let slots = |game: &Game| {
         let slots = game.sim.world.get::<ActionSlots>(hero).unwrap();
-        let slots = slots.iter().map(|slot| (slot.action, slot.kind, slot.rank));
+        let slots = slots
+            .iter()
+            .map(|slot| (slot.action.unwrap(), slot.kind, slot.rank));
         slots.collect::<Vec<_>>()
     };
     let [basic, spell] = [0, 1].map(SlotKind::new);

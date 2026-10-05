@@ -18,8 +18,10 @@ use crate::actions::action_slots::ActionSlots;
 use crate::actions::range::Range;
 use crate::actions::targets::Targets;
 use crate::combat::CombatSet;
+use crate::items::ItemsSet;
 use crate::items::inventory::Inventory;
 use crate::items::item_book::ItemBook;
+use crate::items::item_id::ItemId;
 use crate::items::shop::Shop;
 use crate::navigation::destination::Destination;
 use crate::navigation::on_path::OnPath;
@@ -98,6 +100,7 @@ impl Orders {
         ));
         schedule.configure_sets((
             ActionsSet::HoldAtInputs.after(OrdersSet::Orders),
+            ItemsSet::HoldAtInputs.after(OrdersSet::Orders),
             OrdersSet::Orders.after(AbilitiesSet::Toggles),
         ));
         registry.register_component::<NextThink>();
@@ -204,7 +207,7 @@ fn check_player_orders(
             Action::Slot { slot, target } => {
                 let kind = slots
                     .and_then(|slots| slots.slot(slot))
-                    .and_then(|held| book.get(held.action))
+                    .and_then(|held| book.get(held.action?))
                     .map(|action| action.kind.kind());
                 matches!(kind, Some(ActionKind::Cast | ActionKind::Train))
                     .then_some(UnitOrder::Slot { slot, target })
@@ -290,7 +293,8 @@ fn learn_ranks(
 /// inventory, dead or not. A buy of an item the shop sells, and a sale, need the unit dead or in a
 /// shop of its team; a buy pays its price, which the player affords, and needs room for the item
 /// once the components it gives up left; a sale gives back the shop's share of the stack's cost.
-/// A swap swaps two of the unit's slots anywhere. An order that fails a check is dropped: a client
+/// A swap swaps two of the unit's slots anywhere. Each slot whose item type changes holds its new
+/// item's action, or none, afresh; a swapped slot keeps its action's cooldown. An order that fails a check is dropped: a client
 /// can send anything. A client predicts no trade, as its resources and slots come from the
 /// server.
 fn trade_items(
@@ -300,8 +304,19 @@ fn trade_items(
         Option<Res<'_, Shop>>,
         Option<ResMut<'_, PlayerResources>>,
     ),
-    mut units: Query<'_, '_, (&Owner, &Team, &Position, &mut Inventory, Has<Dead>)>,
-    mut given_up: Local<'_, Vec<u32>>,
+    mut units: Query<
+        '_,
+        '_,
+        (
+            &Owner,
+            &Team,
+            &Position,
+            &mut Inventory,
+            Option<&mut ActionSlots>,
+            Has<Dead>,
+        ),
+    >,
+    (mut given_up, mut before): (Local<'_, Vec<u32>>, Local<'_, Vec<Option<ItemId>>>),
 ) {
     let (Some(book), Some(mut resources)) = (book, resources) else {
         return;
@@ -310,7 +325,7 @@ fn trade_items(
         let Some(Order { unit, action }) = Order::decode(command.body) else {
             continue;
         };
-        let Some(Ok((owner, &team, &pos, mut inventory, dead))) =
+        let Some(Ok((owner, &team, &pos, mut inventory, mut slots, dead))) =
             index.get(unit).map(|entity| units.get_mut(entity))
         else {
             continue;
@@ -318,12 +333,14 @@ fn trade_items(
         if owner.slot() != command.slot {
             continue;
         }
+        inventory.note(&mut before);
         let shop = shop
             .as_deref()
             .filter(|shop| dead || shop.serves(team, pos));
         match (action, shop) {
             (Action::Swap { from, to }, _) => {
-                inventory.swap(from, to);
+                inventory.swap_with(from, to, slots.as_deref_mut());
+                continue;
             }
             (Action::Buy { item }, Some(shop)) if shop.sells(item) => {
                 let Some(price) = inventory.purchase(&book, item, shop.resource, &mut given_up)
@@ -351,7 +368,10 @@ fn trade_items(
                     inventory.restore(slot, carried);
                 }
             }
-            _ => {}
+            _ => continue,
+        }
+        if let Some(slots) = slots.as_deref_mut() {
+            inventory.follow(&book, slots, &before);
         }
     }
 }

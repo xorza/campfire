@@ -281,7 +281,7 @@ fn arm_with(arena: &mut Arena, unit: StableId, ability: ActionId, damage: i64, p
     let weapon = world.get::<ActionSlots>(entity).unwrap().slot(0).unwrap();
     let slots = ActionSlots::new([
         (ability, SlotKind::new(0), 1),
-        (weapon.action, weapon.kind, weapon.rank),
+        (weapon.action.unwrap(), weapon.kind, weapon.rank),
     ]);
     world.entity_mut(entity).insert(slots);
 }

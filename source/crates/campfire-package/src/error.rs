@@ -286,6 +286,8 @@ pub enum ItemProblem {
     ShopResource(DeclaredName),
     /// The marker has the shop's tag, and no region or no team to serve.
     ShopMarker(DeclaredName),
+    /// A unit type or a choice at `at` puts actions in `kind`, whose slots an inventory fills.
+    InventoryKindSlotted { at: Place, kind: DeclaredName },
 }
 
 impl fmt::Display for ItemProblem {
@@ -314,6 +316,12 @@ impl fmt::Display for ItemProblem {
                 write!(
                     f,
                     "marker {marker} has the shop's tag, and no region or no team"
+                )
+            }
+            ItemProblem::InventoryKindSlotted { at, kind } => {
+                write!(
+                    f,
+                    "{at}: puts actions in {kind}, whose slots an inventory fills"
                 )
             }
             ItemProblem::TooManySlots(at) => write!(

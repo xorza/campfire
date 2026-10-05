@@ -197,12 +197,11 @@ impl Combat {
     fn wielded<'a>(book: &'a ActionBook, slots: &ActionSlots) -> Wielded<'a> {
         let underway = slots.in_progress().expect("an attack is under way");
         let slot = slots.slot(underway.slot()).expect("an attack's slot");
-        let action = book
-            .get(slot.action)
-            .expect("a slot's action is in the book");
+        let id = slot.action.expect("an attack's slot holds its weapon");
+        let action = book.get(id).expect("a slot's action is in the book");
         Wielded {
             slot: underway.slot(),
-            action: slot.action,
+            action: id,
             rank: slot.rank,
             weapon: action
                 .kind

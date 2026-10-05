@@ -364,7 +364,7 @@ impl DamagePass {
                 let book = world.resource::<ActionBook>();
                 let first = unit.get::<ActionSlots>().and_then(|slots| {
                     let slot = slots.slot(book.weapon_for(slots, None)?)?;
-                    let weapon = book.get(slot.action)?.kind.weapon()?;
+                    let weapon = book.get(slot.action?)?.kind.weapon()?;
                     Some((slot, weapon))
                 });
                 let Some((slot, weapon)) = first else {
@@ -372,7 +372,7 @@ impl DamagePass {
                 };
                 let stats = unit.get::<UnitStats>().map_or(&[][..], UnitStats::values);
                 let hit = Damage {
-                    ability: Some(slot.action),
+                    ability: slot.action,
                     ..damage(
                         target,
                         weapon.damage(stats),

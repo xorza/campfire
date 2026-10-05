@@ -12,6 +12,8 @@ use crate::units::modifier_id::ModifierId;
 #[derive(Resource, Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct ItemBook {
     items: Vec<ItemSpec>,
+    /// Every modifier an item holds, each once, in order.
+    modifiers: Vec<ModifierId>,
 }
 
 /// An item type as a match reads it, its names resolved: its cost, the items it is built from,
@@ -29,8 +31,19 @@ pub(crate) struct ItemSpec {
 
 impl ItemBook {
     /// The book of `items`, the ids following their order.
-    pub(crate) const fn new(items: Vec<ItemSpec>) -> ItemBook {
-        ItemBook { items }
+    pub(crate) fn new(items: Vec<ItemSpec>) -> ItemBook {
+        let mut modifiers: Vec<ModifierId> = items
+            .iter()
+            .flat_map(|item| item.modifiers.iter().copied())
+            .collect();
+        modifiers.sort_unstable();
+        modifiers.dedup();
+        ItemBook { items, modifiers }
+    }
+
+    /// Every modifier an item holds, each once, in order.
+    pub(crate) fn modifiers(&self) -> &[ModifierId] {
+        &self.modifiers
     }
 
     pub(crate) fn get(&self, item: ItemId) -> Option<&ItemSpec> {

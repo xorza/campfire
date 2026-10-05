@@ -160,7 +160,8 @@ impl ModeBook {
     }
 
     /// Spawns `at`, with its kit, its script state at its type's defaults, its actions, each at
-    /// the first rank of its kind, its passive, and `parts`.
+    /// the first rank of its kind, an empty slot of its inventory's kind for each inventory slot,
+    /// its passive, and `parts`.
     pub(crate) fn spawn(&self, world: &mut World, at: SpawnAt, parts: impl Bundle) -> Entity {
         let SpawnAt {
             id,
@@ -218,15 +219,17 @@ impl ModeBook {
         if kit.queue.is_some() {
             unit.insert(TrainQueue::default());
         }
-        if let Some(inventory) = kit.inventory {
-            unit.insert(Inventory::new(inventory.slots));
-        }
         let actions = self.actions(unit_type);
-        if !actions.is_empty() {
+        if !actions.is_empty() || kit.inventory.is_some() {
             let slots = actions
                 .iter()
                 .map(|action| (action.ability, action.kind, action.rank));
-            unit.insert(ActionSlots::new(slots));
+            let mut slots = ActionSlots::new(slots);
+            if let Some(inventory) = kit.inventory {
+                slots.add_empty(inventory.kind, inventory.slots.get());
+                unit.insert(Inventory::new(inventory.slots, inventory.kind));
+            }
+            unit.insert(slots);
         }
         let entity = unit.id();
         if let Some(passive) = self.types.get(unit_type).and_then(|held| held.passive) {

@@ -117,7 +117,8 @@ impl ActionBook {
         living: impl Fn(StableId) -> Option<LivingUnit>,
     ) -> Option<Checked<'_>> {
         let slot = slots.slot(aim.slot).filter(|slot| slot.rank > 0)?;
-        let action = self.get(slot.action)?;
+        let id = slot.action?;
+        let action = self.get(id)?;
         let values = action.values(slot.rank);
         let affords = purse.affords(&values.cost, action.resource_cost(slot.rank));
         let charged =
@@ -139,7 +140,7 @@ impl ActionBook {
             _ => return None,
         };
         Some(Checked {
-            id: slot.action,
+            id,
             target,
             action,
             rank: slot.rank,
@@ -155,10 +156,10 @@ impl ActionBook {
         target: Option<(Attitude, TagSet)>,
     ) -> Option<u8> {
         let at = slots.iter().position(|slot| {
-            let action = self
-                .get(slot.action)
-                .expect("a slot's action is in the book");
-            Action::arms(slot.rank, action.weapon_filter(), target)
+            slot.action.is_some_and(|action| {
+                let action = self.get(action).expect("a slot's action is in the book");
+                Action::arms(slot.rank, action.weapon_filter(), target)
+            })
         })?;
         Some(u8::try_from(at).expect("a unit's slots fit u8"))
     }
@@ -166,9 +167,10 @@ impl ActionBook {
     /// The range of the learned action in `slot` of `slots`, at its rank.
     pub(crate) fn range(&self, slots: &ActionSlots, slot: u8) -> Range {
         let slot = slots.slot(slot).expect("a unit's slot");
-        let action = self
-            .get(slot.action)
-            .expect("a slot's action is in the book");
+        let action = slot
+            .action
+            .and_then(|action| self.get(action))
+            .expect("a learned slot's action is in the book");
         action.values(slot.rank).range
     }
 }

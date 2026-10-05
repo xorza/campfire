@@ -147,7 +147,7 @@ fn item(id: &str) -> Place {
     Place::Item(name(id))
 }
 
-const FLAWS: [Flaw; 19] = [
+const FLAWS: [Flaw; 20] = [
     // An item costs in the mode's player resources.
     Flaw {
         edits: &[(MODE_DATA, Edit::Set("items.blade.cost", "{ silver = 300 }"))],
@@ -214,9 +214,24 @@ const FLAWS: [Flaw; 19] = [
         refused: |problem| matches!(problem, LoadProblem::Choice(ChoiceProblem::UnknownSlotKind { kind, .. }) if kind == "bag"),
     },
     Flaw {
-        edits: &[(HUSK, Edit::Set("inventory.kind", r#""basic""#))],
+        edits: &[
+            (
+                MODE_DATA,
+                Edit::Replace(
+                    "[[slots]]\nname = \"item\"\n",
+                    "[[slots]]\nname = \"item\"\n\n[[slots]]\nname = \"relics\"\nranks = 2\n",
+                ),
+            ),
+            (HUSK, Edit::Set("inventory.kind", r#""relics""#)),
+        ],
         package: "hero-husk",
-        refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::RankedInventory { kind, .. }) if kind == "basic"),
+        refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::RankedInventory { kind, .. }) if kind == "relics"),
+    },
+    // An inventory's slot kind holds no other action: a choice fills none of it.
+    Flaw {
+        edits: &[(HUSK, Edit::Set("inventory.kind", r#""spell""#))],
+        package: MODE,
+        refused: |problem| matches!(problem, LoadProblem::Item(ItemProblem::InventoryKindSlotted { at: Place::Choice(choice), kind }) if choice == "spells" && kind == "spell"),
     },
     Flaw {
         edits: &[(HUSK, Edit::Set("inventory.slots", "0"))],

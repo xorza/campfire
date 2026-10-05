@@ -6,14 +6,18 @@ use bevy_ecs::world::World;
 use campfire_sim::SimComponent;
 use serde::{Deserialize, Serialize};
 
+use crate::actions::action_slots::ActionSlots;
+use crate::actions::slot_kind::SlotKind;
 use crate::items::item_book::ItemBook;
 use crate::items::item_id::ItemId;
 use crate::players::resource_id::ResourceId;
+use crate::units::block::Block;
 
 /// What a carrier carries: its inventory's slots, in order, each empty or holding a stack of one
-/// item type. State of `items`.
+/// item type, and the slot kind whose action slots they fill, one each. State of `items`.
 #[derive(Component, Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Inventory {
+    kind: SlotKind,
     slots: Vec<Option<Carried>>,
 }
 
@@ -27,10 +31,21 @@ pub struct Carried {
 }
 
 impl Inventory {
-    /// `slots` empty slots.
-    pub(crate) fn new(slots: NonZeroU8) -> Inventory {
+    /// `slots` empty slots, which fill action slots of `kind`.
+    pub(crate) fn new(slots: NonZeroU8, kind: SlotKind) -> Inventory {
         Inventory {
+            kind,
             slots: vec![None; usize::from(slots.get())],
+        }
+    }
+
+    /// The group a tag blocks of the action in a slot of `kind`, of a unit that carries
+    /// `inventory`: `use` for an item's slot, whatever its action's kind, else `cast`.
+    pub(crate) fn group(inventory: Option<&Inventory>, kind: SlotKind) -> Block {
+        if inventory.is_some_and(|inventory| inventory.kind == kind) {
+            Block::Use
+        } else {
+            Block::Cast
         }
     }
 
@@ -144,12 +159,85 @@ impl Inventory {
     }
 
     /// Swaps two slots, empty or not; `false` when either is no slot.
-    pub(crate) fn swap(&mut self, from: u8, to: u8) -> bool {
+    fn swap(&mut self, from: u8, to: u8) -> bool {
         let (from, to) = (usize::from(from), usize::from(to));
         if from.max(to) >= self.slots.len() {
             return false;
         }
         self.slots.swap(from, to);
+        true
+    }
+    /// Notes in `items` each slot's item type, none for an empty slot, for `follow` to compare.
+    pub(crate) fn note(&self, items: &mut Vec<Option<ItemId>>) {
+        items.clear();
+        items.extend(
+            self.slots
+                .iter()
+                .map(|slot| slot.map(|carried| carried.item)),
+        );
+    }
+
+    /// Fills each action slot of a slot whose item type differs from `before`'s with its item's
+    /// action, or none, afresh, in `slots`, the carrier's.
+    pub(crate) fn follow(
+        &self,
+        book: &ItemBook,
+        slots: &mut ActionSlots,
+        before: &[Option<ItemId>],
+    ) {
+        let first = slots.first_of(self.kind);
+        for (at, (slot, &was)) in self.slots.iter().zip(before).enumerate() {
+            let item = slot.map(|carried| carried.item);
+            if item != was {
+                let action =
+                    item.and_then(|item| book.get(item).expect("an item of the book").action);
+                let at = u8::try_from(at).expect("a slot index fits u8");
+                slots.fill(first + at, action);
+            }
+        }
+    }
+
+    /// Spends a use of the consumable in the item's slot whose action slot is `slot` of `slots`,
+    /// the carrier's, when `slot` is one of its inventory's: the item on top goes with its last
+    /// use, the next fresh, and the inventory slot with the last item, its action slot then empty.
+    pub(crate) fn spend_use(&mut self, book: &ItemBook, slots: &mut ActionSlots, slot: u8) {
+        let first = slots.first_of(self.kind);
+        let Some(at) = slot
+            .checked_sub(first)
+            .filter(|&at| usize::from(at) < self.slots.len())
+        else {
+            return;
+        };
+        let held = &mut self.slots[usize::from(at)];
+        let Some(carried) = held else {
+            return;
+        };
+        let Some(uses) = carried.uses else {
+            return;
+        };
+        if let Some(left) = NonZeroU32::new(uses.get() - 1) {
+            carried.uses = Some(left);
+            return;
+        }
+        if let Some(count) = NonZeroU32::new(carried.count.get() - 1) {
+            carried.count = count;
+            carried.uses = book.get(carried.item).expect("an item of the book").uses;
+        } else {
+            *held = None;
+            slots.fill(slot, None);
+        }
+    }
+
+    /// Swaps slots `from` and `to`, and their action slots in `slots`, the carrier's, each
+    /// keeping its cooldown; `false` when either is no slot.
+    pub(crate) fn swap_with(&mut self, from: u8, to: u8, slots: Option<&mut ActionSlots>) -> bool {
+        if !self.swap(from, to) {
+            return false;
+        }
+        if let Some(slots) = slots {
+            let first = slots.first_of(self.kind);
+            slots.swap(first + from, first + to);
+        }
         true
     }
 }

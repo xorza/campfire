@@ -17,7 +17,6 @@ use crate::combat::internals::Armed;
 use crate::combat::on_death::OnDeath;
 use crate::items::inventory::Carried;
 use crate::items::item_book::ItemSpec;
-use crate::items::item_id::ItemId;
 use crate::items::shop::ShopPlace;
 use crate::navigation::Navigation;
 use crate::navigation::path_walker::PathEnd;
@@ -1288,7 +1287,7 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
         (
             Owner::new(PlayerSlot::new(0)),
             Team::new(0),
-            Inventory::new(three),
+            Inventory::new(three, SlotKind::new(0)),
         ),
     );
     let step = |game: &mut Match, actions: &[Action]| game.tick(&[(0, &trades(hero, actions))]);
@@ -1380,7 +1379,7 @@ fn a_hero_buys_and_sells_at_its_shop_for_exactly_the_price_and_the_share() {
         (
             Owner::new(PlayerSlot::new(0)),
             Team::new(1),
-            Inventory::new(three),
+            Inventory::new(three, SlotKind::new(0)),
         ),
     );
     game.sim

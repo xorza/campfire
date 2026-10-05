@@ -119,7 +119,7 @@ impl Fight {
         let slots = self.sim.try_get::<ActionSlots>(id).unwrap();
         let slot = slots.slot(0).unwrap();
         let book = self.sim.world.resource::<ActionBook>();
-        let windup = book.get(slot.action).unwrap().ranks[0].windup;
+        let windup = book.get(slot.action.unwrap()).unwrap().ranks[0].windup;
         let started = slots.attacking().and(slots.in_progress());
         let started = started.and_then(InProgress::resolves_at);
         Attack {
@@ -591,7 +591,8 @@ fn every_combat_type_is_state_and_restores() {
         .get::<ActionSlots>(fighter)
         .slot(0)
         .unwrap()
-        .action;
+        .action
+        .unwrap();
     let ranked = |rank| {
         let mut slots = ActionSlots::new([(weapon, SlotKind::new(0), rank)]);
         slots.set_attack_target(Some(doomed));

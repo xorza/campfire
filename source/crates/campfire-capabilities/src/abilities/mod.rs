@@ -30,6 +30,8 @@ use crate::actions::action_target::ActionTarget;
 use crate::actions::purse::{Payer, Purse};
 use crate::areas::Areas;
 use crate::combat::CombatSet;
+use crate::items::inventory::Inventory;
+use crate::items::item_book::ItemBook;
 use crate::navigation::destination::Destination;
 use crate::navigation::route::Route;
 
@@ -95,7 +97,7 @@ impl Abilities {
         slots
             .channeling()
             .and_then(|slot| slots.slot(slot))
-            .and_then(|slot| book.get(slot.action)?.channel_rule(slot.rank))
+            .and_then(|slot| book.get(slot.action?)?.channel_rule(slot.rank))
             .map_or(Ticks::ZERO, |rule| rule.tick)
     }
 
@@ -180,7 +182,12 @@ fn run_channels(
 fn step_channel(world: &mut World, now: Tick, entity: Entity) -> ChannelStep {
     let unit = world.entity(entity);
     let forced = unit.contains::<ForcedMove>();
-    let blocked = ForcedMove::blocks(unit.get::<UnitTags>(), forced, Block::Cast);
+    let slots = unit.get::<ActionSlots>();
+    let channel = slots.and_then(|slots| slots.slot(slots.channeling()?));
+    let group = channel.map_or(Block::Cast, |slot| {
+        Inventory::group(unit.get::<Inventory>(), slot.kind)
+    });
+    let blocked = ForcedMove::blocks(unit.get::<UnitTags>(), forced, group);
     world.resource_scope(|world, book: Mut<'_, ActionBook>| {
         let mut slots = world
             .get_mut::<ActionSlots>(entity)
@@ -211,16 +218,15 @@ fn channel_call(
         .expect("a channel's slot");
     let owner = unit.get::<Owner>().map(|owner| owner.slot());
     let book = world.resource::<ActionBook>();
-    let action = book
-        .get(slot.action)
-        .expect("a slot's action is in the book");
+    let id = slot.action.expect("a channel's slot holds its action");
+    let action = book.get(id).expect("a slot's action is in the book");
     let (Some(script), Some(handle)) = (action.hook(hook), ctx.view().unit(caster)) else {
         return;
     };
     let package = action.package;
     let start = CallStart {
         start: Some(start),
-        ..CallStart::cast(slot.action, slot.rank, caster, package)
+        ..CallStart::cast(id, slot.rank, caster, package)
     };
     let begun = ctx.frame().begin(world, start);
     let outcome = begun.and_then(|()| {
@@ -273,6 +279,7 @@ fn run_toggles(
             &mut ActionSlots,
             Option<&mut Pools>,
             Option<&UnitTags>,
+            Option<&Inventory>,
             Has<Dead>,
         ),
     >,
@@ -280,23 +287,23 @@ fn run_toggles(
 ) {
     let now = tick.start();
     let second = Abilities::second(*rate);
-    for (mut slots, mut pools, tags, dead) in &mut units {
+    for (mut slots, mut pools, tags, inventory, dead) in &mut units {
         on.clear();
         on.extend(
             (0..)
                 .zip(slots.iter())
                 .filter(|(_, slot)| slot.toggle.is_some()),
         );
-        let stops = dead || UnitTags::effects_of(tags).blocks(Block::Cast);
         for &(at, slot) in &*on {
-            if stops {
+            let group = Inventory::group(inventory, slot.kind);
+            if dead || UnitTags::effects_of(tags).blocks(group) {
                 slots.toggle_off(at);
                 continue;
             }
             let next = slot.toggle.expect("a toggle that is on");
-            let toggle = book
-                .get(slot.action)
-                .and_then(|action| action.toggle_rule(slot.rank))
+            let toggle = slot
+                .action
+                .and_then(|action| book.get(action)?.toggle_rule(slot.rank))
                 .expect("a toggle that is on has its rule");
             if toggle.per != TogglePer::Second || next > now {
                 continue;
@@ -337,16 +344,35 @@ fn start_casts(
             Has<ForcedMove>,
             Option<&mut Destination>,
             Option<&Route>,
+            Option<&Inventory>,
         ),
         Without<Dead>,
     >,
 ) {
     let now = tick.start();
-    for (&position, &team, mut slots, pools, owner, body, tags, forced, mut destination, route) in
-        &mut units
+    for (
+        &position,
+        &team,
+        mut slots,
+        pools,
+        owner,
+        body,
+        tags,
+        forced,
+        mut destination,
+        route,
+        inventory,
+    ) in &mut units
     {
-        let blocked = ForcedMove::blocks(tags, forced, Block::Cast);
-        if let Some(InProgress::Charge { .. }) = slots.in_progress() {
+        let Some(underway) = slots.in_progress() else {
+            continue;
+        };
+        let kind = slots
+            .slot(underway.slot())
+            .expect("a slot the unit has")
+            .kind;
+        let blocked = ForcedMove::blocks(tags, forced, Inventory::group(inventory, kind));
+        if let InProgress::Charge { .. } = underway {
             if blocked {
                 slots.interrupt();
             } else {
@@ -360,13 +386,16 @@ fn start_casts(
         let slot = slots
             .slot(aim.slot)
             .expect("an order of a slot the unit has");
-        let action = book
-            .get(slot.action)
-            .expect("a slot's action is in the book");
+        let approached = phase == OrderPhase::Approaching;
+        // An item sold in the tick of its order leaves its slot with no action to start.
+        let Some(id) = slot.action else {
+            drop_cast(&mut slots, destination.as_mut(), route, approached);
+            continue;
+        };
+        let action = book.get(id).expect("a slot's action is in the book");
         if action.kind.kind() != ActionKind::Cast {
             continue;
         }
-        let approached = phase == OrderPhase::Approaching;
         if blocked {
             if approached {
                 walk(destination.as_mut(), route, None);
@@ -399,10 +428,7 @@ fn start_casts(
                 checked
             });
         let Some(checked) = checked else {
-            if approached {
-                walk(destination.as_mut(), route, None);
-            }
-            slots.stop();
+            drop_cast(&mut slots, destination.as_mut(), route, approached);
             continue;
         };
         if !checked.in_range(position, radius, &targets) {
@@ -418,17 +444,21 @@ fn start_casts(
         if approached {
             walk(destination.as_mut(), route, None);
         }
-        let values = checked.values;
-        if let Some(most) = values.charge {
-            slots.charge(checked.target, position, now, now.after(most));
-        } else {
-            let start = ActionStart {
-                origin: position,
-                charge: None,
-            };
-            slots.start(now.after(values.windup), checked.target, start);
-        }
+        slots.begin(&checked, position, now);
     }
+}
+
+/// Drops the cast ordered in `slots`, and stops the walk it took when it `approached`.
+fn drop_cast(
+    slots: &mut ActionSlots,
+    destination: Option<&mut Mut<'_, Destination>>,
+    route: Option<&Route>,
+    approached: bool,
+) {
+    if approached {
+        walk(destination, route, None);
+    }
+    slots.stop();
 }
 
 /// Walks the unit of `destination`, one that walks, to `to`, or stops it.
@@ -466,7 +496,11 @@ fn resolve_casts(
     due.retain(|&Keyed { entity, .. }| {
         let unit = world.entity(entity);
         let forced = unit.contains::<ForcedMove>();
-        let can_cast = !ForcedMove::blocks(unit.get::<UnitTags>(), forced, Block::Cast);
+        let slots = unit.get::<ActionSlots>().expect("a due caster has slots");
+        let due = slots.in_progress().expect("a due cast is under way");
+        let kind = slots.slot(due.slot()).expect("a cast's slot").kind;
+        let group = Inventory::group(unit.get::<Inventory>(), kind);
+        let can_cast = !ForcedMove::blocks(unit.get::<UnitTags>(), forced, group);
         if !can_cast {
             world
                 .get_mut::<ActionSlots>(entity)
@@ -505,13 +539,14 @@ fn predict_casts(
             Option<&Owner>,
             Option<&UnitTags>,
             Has<ForcedMove>,
+            Option<&Inventory>,
         ),
         Without<Dead>,
     >,
 ) {
     let now = tick.start();
     let second = Abilities::second(*rate);
-    for (&team, mut slots, pools, owner, tags, forced) in &mut casters {
+    for (&team, mut slots, pools, owner, tags, forced, inventory) in &mut casters {
         let Some(ActionCall {
             aim: casting,
             start,
@@ -521,7 +556,8 @@ fn predict_casts(
         else {
             continue;
         };
-        if ForcedMove::blocks(tags, forced, Block::Cast) {
+        let kind = slots.slot(casting.slot).expect("a cast's slot").kind;
+        if ForcedMove::blocks(tags, forced, Inventory::group(inventory, kind)) {
             slots.interrupt();
             continue;
         }
@@ -607,7 +643,8 @@ fn resolve(batch: &mut ScriptBatch<'_>, ctx: &Ctx, now: Tick, caster: StableId, 
 }
 
 /// Applies a cast that ran: its delivery's launches, then the effects it queued in `frame` and
-/// its handle writes, its cost and its cooldown.
+/// its handle writes, its cost and its cooldown, and of an item's action, a use of its
+/// consumable.
 fn apply(world: &mut World, ctx: &Ctx, now: Tick, entity: Entity, prepared: &Prepared) {
     let from = *world.get::<Position>(entity).expect("a caster stands");
     let by = Delivering {
@@ -644,6 +681,15 @@ fn apply(world: &mut World, ctx: &Ctx, now: Tick, entity: Entity, prepared: &Pre
         .get_mut::<ActionSlots>(entity)
         .expect("a caster has slots")
         .spend(prepared.slot, now, prepared.cooldown, prepared.charges);
+    if world.contains_resource::<ItemBook>() {
+        world.resource_scope(|world, book: Mut<'_, ItemBook>| {
+            let mut caster = world.entity_mut(entity);
+            let carried = caster.get_components_mut::<(&mut Inventory, &mut ActionSlots)>();
+            if let Ok((mut inventory, mut slots)) = carried {
+                inventory.spend_use(&book, &mut slots, prepared.slot);
+            }
+        });
+    }
     if prepared.toggles {
         let second = Abilities::second(*world.resource::<TickRate>());
         world

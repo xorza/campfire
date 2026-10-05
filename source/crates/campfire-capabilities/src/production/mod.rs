@@ -110,7 +110,7 @@ impl Production {
             return None;
         };
         let slot = slots.slot(aim.slot)?;
-        let trains = book.get(slot.action)?.kind.kind() == ActionKind::Train;
+        let trains = book.get(slot.action?)?.kind.kind() == ActionKind::Train;
         trains.then_some(aim)
     }
 }
